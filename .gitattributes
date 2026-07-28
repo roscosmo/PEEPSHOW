@@ -1,0 +1,38 @@
+* text=auto eol=lf
+
+*.c text eol=lf
+*.h text eol=lf
+*.s text eol=lf
+*.S text eol=lf
+*.ld text eol=lf
+*.cmake text eol=lf
+CMakeLists.txt text eol=lf
+*.ioc text eol=lf
+*.gdb text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.ps1 text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.pdf binary
+*.wasm binary
+*.zip binary
+*.7z binary
+*.rar binary
+*.blend binary
+*.blend1 binary
+*.stl binary
+*.3mf binary
+*.elf binary
+*.bin binary

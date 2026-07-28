@@ -1,0 +1,15 @@
+target extended-remote localhost:61234
+monitor halt
+info registers pc lr sp xpsr
+p/x g_ps_phase0b_pmic_probe
+p/x g_ps_phase1_display_baseline_probe
+p/d g_ps_phase1_display_baseline_probe.spi3_kernel_hz
+p/x g_ps_phase1_display_baseline_probe.gpiod_odr
+p/x g_ps_phase1_display_baseline_probe.gpiod_idr
+p/x g_ps_phase1_display_baseline_probe.vlt_lcd_pin_state
+p/x g_ps_phase1_display_baseline_probe.spi3_nssp_disabled
+p/x g_ps_phase1_display_baseline_probe.spi3_lsb_first
+p/x g_ps_phase1_display_baseline_probe.spi3_nss_active_high
+info breakpoints
+detach
+quit

@@ -1,0 +1,306 @@
+# Tracealyzer Snapshot Evidence Contract
+
+This document defines how PeepShow uses Tracealyzer-style RTOS traces during active-target bring-up and Platform validation, currently HW6.
+
+V1 policy uses snapshot/ring-buffer trace capture by default.
+
+Streaming trace is optional future work and is not required for bring-up sign-off unless snapshot evidence proves insufficient.
+
+Related:
+
+- [[Development_Tooling_Index]]
+- [[Debug_and_Observability]]
+- [[Debug_Workflows]]
+- [[Power_Measurement_and_Trace_Correlation_Runbook]]
+- [[Telemetry_And_Debug_Dashboard_Contract]]
+- [[RTOS_Ownership_and_Queue_Topology]]
+- [[Brought_Up_Tracker]]
+- [[Validation_Plan]]
+- [[Evidence_Artifact_Convention]]
+- [[USB_Development_Mode_Contract]]
+- [[Live_Tuning_And_Knobs_Contract]]
+
+---
+
+## Scope
+
+Defines:
+
+- Tracealyzer snapshot evidence policy
+- required RTOS and Platform event visibility
+- trace capture artifact requirements
+- memory and build-profile guardrails
+- snapshot test workflow
+
+Does not define:
+
+- Tracealyzer licensing
+- exact Percepio recorder source layout
+- exact toolchain project integration
+- paid streaming trace workflows
+- product/shipping telemetry behavior
+
+---
+
+## Core Rule
+
+Trace snapshots are bring-up evidence artifacts.
+
+They may prove:
+
+- ThreadX thread scheduling behavior
+- owner-thread wake and block behavior
+- queue/event flow
+- runtime lifecycle transitions
+- storage/USB ownership transitions
+- sleep prepare and wake resume ordering
+- fault lead-up context
+
+They must not be used to claim:
+
+- STOP current
+- wake latency
+- physical peripheral timing
+- electrical behavior
+- storage-media integrity
+- display signal correctness
+- BLE module behavior
+
+Physical hardware claims still require measured HW6 evidence.
+
+---
+
+## Snapshot-First Policy
+
+V1 uses snapshot/ring-buffer capture.
+
+Expected workflow:
+
+```text
+enable trace build/profile
+arm snapshot ring buffer
+run one focused scenario
+halt immediately after scenario, marker, timeout, or fault
+dump trace snapshot
+open/save Tracealyzer artifact
+record artifact path in Brought_Up_Tracker
+```
+
+Rules:
+
+- tests should be designed so the relevant behavior fits inside the snapshot window.
+- each snapshot captures one focused scenario where possible.
+- repeated short snapshots are preferred over a vague long-running trace during bring-up.
+- streaming trace is deferred unless a bug cannot be captured in a bounded snapshot window.
+
+Useful snapshot scenarios:
+
+- boot to scheduler start
+- each owner thread idle/block behavior
+- display full/partial flush request
+- storage request and completion
+- USB MSC entry/export/reclaim
+- package install validate/commit
+- input event to runtime event path
+- sensor request/event path
+- audio cue/BBB request path
+- sleep quiesce to STOP entry
+- wake to owner revalidation
+- runtime unit transition
+- injected fault to safe path
+
+---
+
+## Tracealyzer Integration Expectations
+
+Tracealyzer support is a development/build option.
+
+Expected ThreadX integration requirements:
+
+- ThreadX event trace enabled in the trace build
+- recorder initialized during ThreadX application setup
+- snapshot/ring-buffer storage configured with a bounded RAM budget
+- trace start policy selected per build profile
+- trace buffer dump procedure documented in bring-up workflow
+
+Rules:
+
+- trace integration must be behind build flags or a trace build profile.
+- trace recorder source/config must not be edited ad hoc during normal bring-up.
+- trace configuration must be recorded with evidence.
+- trace instrumentation must not require USB MSC or CDC developer mode.
+- trace snapshot capture must work with debugger halt/dump first.
+
+---
+
+## Required RTOS Visibility
+
+Trace snapshots should show:
+
+- thread creation/start
+- thread ready/running/blocking transitions
+- queue send/receive activity where available
+- event flag waits/signals where available
+- mutex/semaphore use where available
+- timer behavior where available
+- CPU idle/residency approximation where available
+
+Minimum owner threads to identify by stable names:
+
+- `thPower`
+- `thDisplay`
+- `thAudio`
+- `thInput`
+- `thUI`
+- `thRuntime`
+- `thStorage`
+- `thSensor`
+- `thComm`
+
+Trace naming must match [[RTOS_Ownership_and_Queue_Topology]].
+
+---
+
+## Required PeepShow User Events
+
+ThreadX trace alone is not enough.
+
+PeepShow must emit custom trace events for Platform and Engine state transitions that are not automatically visible as RTOS events.
+
+Required custom event classes:
+
+| Event Class | Purpose |
+|---|---|
+| `mode.transition` | system/runtime mode state changes |
+| `owner.state` | owner FSM state transition |
+| `queue.overflow` | dropped or rejected owner request |
+| `sleep.quiesce_begin` | power owner begins quiesce |
+| `sleep.quiesce_ack` | owner acknowledges quiesce |
+| `sleep.enter` | Platform attempts sleep entry |
+| `wake.reason` | normalized wake reason classified |
+| `resume.owner_revalidate` | owner validates hardware/state after wake |
+| `display.flush` | display flush begin/end/fault |
+| `storage.owner` | storage mount/export/reclaim/install transition |
+| `usb.personality` | MSC or CDC personality selected |
+| `runtime.lifecycle` | runtime host mount/start/suspend/resume/stop/unmount |
+| `package.install` | package stage/validate/commit/rollback event |
+| `fault.path` | fault classification and safe route |
+| `power.sync` | optional marker used to correlate trace/SWO/telemetry with external current measurement |
+
+Rules:
+
+- custom event IDs must be stable.
+- event payloads must be bounded.
+- high-rate events must be filterable.
+- custom trace events must not expose protected storage, raw pointers, register dumps, or package private data.
+- middleware behavior such as FileX, LevelX, USBX, or BLE owner flow should be represented by owner-level custom events when automatic middleware trace visibility is unavailable.
+
+---
+
+## Memory Budget
+
+Trace buffers are development-only memory consumers.
+
+Rules:
+
+- trace buffer size must be explicitly configured.
+- trace buffer placement must be documented.
+- trace buffers must not consume SRAM4 display/retention space unless an explicit trace build says so and the run is not used for SRAM4/power evidence.
+- trace build memory usage must be excluded from shipping memory budgets.
+- any bring-up evidence using trace instrumentation must record the trace buffer size and configuration.
+
+Recommended policy:
+
+- start with a small snapshot ring buffer.
+- increase buffer size only for a specific scenario.
+- do not tune normal firmware memory layout around trace-only needs.
+
+---
+
+## Power And Timing Caveats
+
+Trace instrumentation changes timing and power behavior.
+
+Rules:
+
+- trace-enabled runs may prove ordering and scheduling.
+- trace-enabled runs must not be used as final current, STOP residency, or wake-latency evidence unless the test explicitly accepts trace overhead.
+- power-correlation marker policy is defined in [[Power_Measurement_and_Trace_Correlation_Runbook]].
+- compare timing-sensitive results only between runs with the same trace configuration.
+- trace-disabled confirmation is required for final low-power measurements.
+
+---
+
+## Evidence Artifact Requirements
+
+Each Tracealyzer snapshot evidence entry must record:
+
+- test case ID
+- scenario name
+- board revision
+- firmware commit
+- knobs hash/version
+- trace build/profile
+- trace recorder configuration
+- trace buffer size and placement
+- capture trigger or halt point
+- Tracealyzer artifact path
+- summary of expected ordering
+- pass/fail result
+- issue ID for failures
+
+The artifact should be linked from [[Brought_Up_Tracker]].
+
+---
+
+## Snapshot Acceptance Criteria
+
+A snapshot is useful bring-up evidence only if:
+
+- the relevant threads are named and identifiable
+- the relevant owner events are visible
+- the interesting scenario is inside the captured window
+- expected ordering can be checked from the trace
+- trace configuration is recorded
+- artifact path is retained
+
+Snapshots that miss the relevant window are useful debugging attempts, but not completion evidence.
+
+---
+
+## Streaming Trace Policy
+
+Streaming trace is deferred.
+
+It may be reconsidered if:
+
+- a failure cannot be captured with repeated snapshot scenarios
+- long-run thread behavior must be proven visually
+- the chosen debugger/transport supports reliable Tracealyzer streaming
+- RAM snapshot buffers are too small for required evidence
+- the project accepts the tool/license/setup requirements
+
+Until then, bring-up documentation should assume snapshot capture.
+
+---
+
+## Validation Cases
+
+1. trace build boots to ThreadX scheduler with owner thread names visible.
+2. each owner thread blocks when idle and wakes on its expected queue/event path.
+3. display flush scenario shows request, owner wake, transfer begin/end event, and return to idle.
+4. storage request scenario shows request, owner wake, operation, completion, and no competing storage owner.
+5. USB MSC scenario shows MSC personality selection and no CDC developer personality.
+6. sleep quiesce snapshot shows owner acknowledgements before sleep entry.
+7. wake snapshot shows wake reason classification before owner resume validation completes.
+8. runtime lifecycle snapshot shows mount/start/suspend/resume/stop/unmount ordering.
+9. injected fault snapshot shows fault classification and safe route.
+10. trace-enabled evidence records trace config, buffer size, firmware commit, knobs hash, and artifact path.
+
+---
+
+## Rule
+
+Use Tracealyzer snapshots to prove RTOS and owner-thread behavior during bring-up.
+
+Use measured HW6 evidence to prove hardware behavior.

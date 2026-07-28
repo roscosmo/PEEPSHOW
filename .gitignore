@@ -1,0 +1,44 @@
+# Local archives and large source assets
+/backups/
+/blend3d/
+
+# Local development environments and caches
+/tools/.venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# STM32 and CMake generated output
+/firmware/**/build/
+/firmware/**/cmake-build-*/
+/firmware/**/mx.scratch/
+/firmware/**/*.elf
+/firmware/**/*.hex
+/firmware/**/*.bin
+/firmware/**/*.map
+/firmware/**/*.o
+/firmware/**/*.obj
+/firmware/**/*.d
+/firmware/**/*.su
+
+# Local probe, debugger, and measurement output
+/PPK2_logs/
+/tmp/
+/__codex_*
+/firmware/**/__fw0_*_stdout*.txt
+/firmware/**/__fw0_*_stderr*.txt
+/firmware/**/__fw0_*.out
+/firmware/**/__fw0_*.err
+
+# Per-user editor state
+/docs/.obsidian/workspace.json
+/docs/.obsidian/workspace-mobile.json
+/docs/.obsidian/cache/
+/docs/.trash/
+
+# Operating-system noise
+Thumbs.db
+Desktop.ini
+.DS_Store

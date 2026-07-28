@@ -1,0 +1,24 @@
+set pagination off
+printf "stage                          = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_stage
+printf "nina_boot_rx_len               = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_boot_rx_len
+printf "nina_boot_rx_word0             = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_boot_rx_word0
+printf "nina_boot_rx_word1             = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_boot_rx_word1
+printf "nina_at_tx_status              = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_at_tx_status
+printf "nina_at_rx_len                 = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_at_rx_len
+printf "nina_at_ok                     = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_at_ok
+printf "nina_at_error                  = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_at_error
+printf "nina_at_rx_word0               = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_at_rx_word0
+printf "nina_at_rx_word1               = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_at_rx_word1
+printf "nina_poweroff_tx_status        = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_poweroff_tx_status
+printf "nina_poweroff_rx_len           = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_poweroff_rx_len
+printf "nina_poweroff_ok               = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_poweroff_ok
+printf "nina_poweroff_error            = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_poweroff_error
+printf "nina_poweroff_rx_word0         = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_poweroff_rx_word0
+printf "nina_poweroff_rx_word1         = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_poweroff_rx_word1
+printf "nina_poweroff_rx_word2         = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_poweroff_rx_word2
+printf "nina_poweroff_rx_word3         = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_poweroff_rx_word3
+printf "nina_nrst_state                = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_nrst_state
+printf "nina_pin_park_done             = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_pin_park_done
+printf "nina_gpioa_moder_after         = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_gpioa_moder_after
+printf "nina_gpiob_moder_after         = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_gpiob_moder_after
+printf "nina_gpioc_moder_after         = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nina_gpioc_moder_after

@@ -1,0 +1,21 @@
+set pagination off
+printf "power_rails_ready              = 0x%lx\n", g_ps_phase5_threadx_probe.power_rails_ready
+printf "power_pgood_after              = 0x%lx\n", g_ps_phase5_threadx_probe.power_pgood_after
+printf "power_fault_after              = 0x%lx\n", g_ps_phase5_threadx_probe.power_fault_after
+printf "sleep_trigger_requested        = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_sleep_trigger_requested
+printf "sleep_trigger_button_id        = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_sleep_trigger_button_id
+printf "sleep_trigger_tick             = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_sleep_trigger_tick
+printf "resume_cycle_count           = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_resume_cycle_count
+printf "resume_i2c_init_status        = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_resume_i2c_init_status
+printf "resume_trigger_cleared        = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_resume_trigger_cleared
+printf "stage                          = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_stage
+printf "stage_tick                     = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_stage_tick
+printf "stage_hold_ticks               = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_stage_hold_ticks
+printf "quiesce_request                = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_quiesce_request
+printf "quiesce_ack_mask               = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_quiesce_ack_mask
+printf "quiesce_ack_wait_complete      = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_quiesce_ack_wait_complete
+printf "external_sleep_done            = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_external_sleep_done
+printf "diag_cut_3v3_enabled           = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_diag_cut_3v3_enabled
+printf "diag_cut_3v3_tick              = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_diag_cut_3v3_tick
+printf "peripheral_deinit_done         = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_peripheral_deinit_done
+printf "stop2_attempted                = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_stop2_attempted

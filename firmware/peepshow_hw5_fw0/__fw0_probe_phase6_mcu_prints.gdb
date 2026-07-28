@@ -1,0 +1,24 @@
+set pagination off
+printf "stage                          = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_stage
+printf "audio_lptim_stop_status        = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_audio_lptim_stop_status
+printf "audio_sai_stop_status          = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_audio_sai_stop_status
+printf "adc_deinit_status              = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_adc_deinit_status
+printf "ospi_deinit_status             = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_ospi_deinit_status
+printf "spi_deinit_status              = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_spi_deinit_status
+printf "lptim_deinit_status            = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_lptim_deinit_status
+printf "sai_deinit_status              = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_sai_deinit_status
+printf "uart_deinit_status             = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_uart_deinit_status
+printf "i2c_deinit_status              = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_i2c_deinit_status
+printf "pll2_disabled                  = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_pll2_disabled
+printf "hsi_disabled                   = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_hsi_disabled
+printf "msik_disabled                  = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_msik_disabled
+printf "display_vlt_lcd_state          = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_display_vlt_lcd_state
+printf "audio_sd_mode_state            = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_audio_sd_mode_state
+printf "systick_ctrl_before_stop2      = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_systick_ctrl_before_stop2
+printf "systick_ctrl_after_disable     = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_systick_ctrl_after_disable
+printf "nvic_icer0_after_disable       = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nvic_icer0_after_disable
+printf "nvic_icer1_after_disable       = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_nvic_icer1_after_disable
+printf "pwr_sr_before_stop2            = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_pwr_sr_before_stop2
+printf "pwr_wusr_before_stop2          = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_pwr_wusr_before_stop2
+printf "scb_scr_before_stop2           = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_scb_scr_before_stop2
+printf "dbgmcu_cr_before_stop2         = 0x%lx\n", g_ps_phase5_threadx_probe.phase6_dbgmcu_cr_before_stop2

@@ -1,0 +1,27 @@
+set pagination off
+p/x g_ps_phase5_threadx_probe.input_queue_create_status
+p/x g_ps_phase5_threadx_probe.input_queue_ready
+p/x g_ps_phase5_threadx_probe.input_queue_sent
+p/x g_ps_phase5_threadx_probe.input_queue_send_fail
+p/x g_ps_phase5_threadx_probe.input_queue_received
+p/x g_ps_phase5_threadx_probe.input_last_button_id
+p/x g_ps_phase5_threadx_probe.input_last_active_level
+p/x g_ps_phase5_threadx_probe.input_button_edges
+p/x g_ps_phase5_threadx_probe.input_button_presses
+p/x g_ps_phase5_threadx_probe.input_button_releases
+p/x g_ps_phase5_threadx_probe.input_debounce_rejected
+p/x g_ps_phase5_threadx_probe.input_debounced_edges
+p/x g_ps_phase5_threadx_probe.input_debounced_presses
+p/x g_ps_phase5_threadx_probe.input_debounced_releases
+p/x g_ps_phase5_threadx_probe.input_debounced_mask
+p/x g_ps_phase5_threadx_probe.input_chord_events
+p/x g_ps_phase5_threadx_probe.ui_queue_create_status
+p/x g_ps_phase5_threadx_probe.ui_queue_ready
+p/x g_ps_phase5_threadx_probe.ui_queue_sent
+p/x g_ps_phase5_threadx_probe.ui_queue_send_fail
+p/x g_ps_phase5_threadx_probe.ui_queue_received
+p/x g_ps_phase5_threadx_probe.ui_last_event_type
+p/x g_ps_phase5_threadx_probe.ui_last_button_id
+p/x g_ps_phase5_threadx_probe.ui_last_active_level
+p/x g_ps_phase5_threadx_probe.ui_button_events
+p/x g_ps_phase5_threadx_probe.ui_chord_events

@@ -1,0 +1,19 @@
+{
+	"nodes":[
+		{"id":"title","type":"text","text":"HW5 Hardware Visual Map\n\nDrop schematic, PCB, housing, and photo exports into this canvas.\nKeep source assets under docs/assets/hardware/hw5/.","x":-560,"y":-360,"width":420,"height":180},
+		{"id":"hardware-index","type":"file","file":"07 Hardware/Hardware_Index.md","x":-80,"y":-360,"width":320,"height":160},
+		{"id":"pin-map","type":"file","file":"07 Hardware/HW5_CubeMX_Pin_Map.md","x":-80,"y":-120,"width":320,"height":160},
+		{"id":"pin-ownership","type":"file","file":"07 Hardware/HW5_Pin_Ownership_Matrix.md","x":320,"y":-120,"width":320,"height":160},
+		{"id":"power","type":"file","file":"07 Hardware/HW5_Power_Rails.md","x":-80,"y":120,"width":320,"height":160},
+		{"id":"wake","type":"file","file":"07 Hardware/HW5_Wake_Sources.md","x":320,"y":120,"width":320,"height":160},
+		{"id":"bringup","type":"file","file":"02 Bring-up/Brought_Up_Tracker.md","x":-80,"y":360,"width":320,"height":160},
+		{"id":"asset-note","type":"file","file":"assets/hardware/hw5/Hardware_Asset_Export_Guide.md","x":-560,"y":-120,"width":420,"height":160}
+	],
+	"edges":[
+		{"id":"edge-title-assets","fromNode":"title","fromSide":"bottom","toNode":"asset-note","toSide":"top"},
+		{"id":"edge-index-pinmap","fromNode":"hardware-index","fromSide":"bottom","toNode":"pin-map","toSide":"top"},
+		{"id":"edge-pinmap-ownership","fromNode":"pin-map","fromSide":"right","toNode":"pin-ownership","toSide":"left"},
+		{"id":"edge-power-wake","fromNode":"power","fromSide":"right","toNode":"wake","toSide":"left"},
+		{"id":"edge-index-bringup","fromNode":"hardware-index","fromSide":"bottom","toNode":"bringup","toSide":"top"}
+	]
+}

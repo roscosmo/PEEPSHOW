@@ -1,0 +1,19 @@
+set pagination off
+p/x g_ps_phase5_threadx_probe.magic
+p/x g_ps_phase5_threadx_probe.phase
+p/x g_ps_phase5_threadx_probe.init_time
+p/x g_ps_phase5_threadx_probe.pool_available_bytes
+p/x g_ps_phase5_threadx_probe.pool_fragments
+p/x g_ps_phase5_threadx_probe.create_status
+p/x g_ps_phase5_threadx_probe.start_mask
+p/x g_ps_phase5_threadx_probe.heartbeat
+p/x g_ps_phase5_threadx_probe.last_time
+p/x g_ps_phase5_threadx_probe.thread_resumptions
+p/x g_ps_phase5_threadx_probe.thread_suspensions
+p/x g_ps_phase5_threadx_probe.thread_solicited_preemptions
+p/x g_ps_phase5_threadx_probe.thread_interrupt_preemptions
+p/x g_ps_phase5_threadx_probe.thread_priority_inversions
+p/x g_ps_phase5_threadx_probe.thread_timeouts
+p/x g_ps_phase5_threadx_probe.thread_non_idle_returns
+p/x g_ps_phase5_threadx_probe.thread_idle_returns
+p/x g_ps_phase5_threadx_probe.complete

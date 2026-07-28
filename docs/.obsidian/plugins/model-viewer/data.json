@@ -1,0 +1,18 @@
+{
+  "modelViewer": {
+    "attributes": {
+      "camera-controls": "true",
+      "interaction-prompt": "none"
+    }
+  },
+  "fileView": {
+    "enableOverlay": true,
+    "attributes": {}
+  },
+  "embed": {
+    "aspectRatio": "1:1",
+    "maxHeight": 1200,
+    "enableOverlay": true,
+    "attributes": {}
+  }
+}

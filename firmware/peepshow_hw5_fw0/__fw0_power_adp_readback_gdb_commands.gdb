@@ -1,0 +1,46 @@
+set pagination off
+set confirm off
+file build/Debug/peepshow_hw5_fw0.elf
+target remote localhost:61235
+monitor halt
+info registers pc lr sp
+p/x g_ps_phase5_threadx_probe.magic
+p/x g_ps_phase5_threadx_probe.phase
+p/x g_ps_phase5_threadx_probe.power_action_count
+p/x g_ps_phase5_threadx_probe.power_action_error_count
+p/x g_ps_phase5_threadx_probe.power_pmic_init_status
+p/x g_ps_phase5_threadx_probe.power_rail_config_status
+p/x g_ps_phase5_threadx_probe.power_read_before_status
+p/x g_ps_phase5_threadx_probe.power_read_after_status
+p/x g_ps_phase5_threadx_probe.power_buck_cfg_after
+p/x g_ps_phase5_threadx_probe.power_buck_vout_after
+p/x g_ps_phase5_threadx_probe.power_buckboost_cfg_after
+p/x g_ps_phase5_threadx_probe.power_buckboost_vout_after
+p/x g_ps_phase5_threadx_probe.power_pgood_after
+p/x g_ps_phase5_threadx_probe.power_fault_after
+p/x g_ps_phase5_threadx_probe.power_vbat_mv
+p/x g_ps_phase5_threadx_probe.power_vbat_raw
+p/x g_ps_phase5_threadx_probe.power_i2c_error_after
+p/x g_ps_phase5_threadx_probe.power_rails_ready
+p/x g_ps_phase5_threadx_probe.power_pgood_poll_count
+p/x g_ps_phase5_threadx_probe.power_adp_id
+p/x g_ps_phase5_threadx_probe.power_adp_revision
+p/x g_ps_phase5_threadx_probe.power_charger_function
+p/x g_ps_phase5_threadx_probe.power_charger_status1
+p/x g_ps_phase5_threadx_probe.power_charger_status2
+p/x g_ps_phase5_threadx_probe.power_supervisory
+p/x g_ps_phase5_threadx_probe.power_pgood1_mask
+p/x g_ps_phase5_threadx_probe.power_pgood2_mask
+p/x g_ps_phase5_threadx_probe.power_int_enable1
+p/x g_ps_phase5_threadx_probe.power_int_enable2
+p/x g_ps_phase5_threadx_probe.power_shipmode
+p/x g_ps_phase5_threadx_probe.power_buck_vout_mv
+p/x g_ps_phase5_threadx_probe.power_buck_vout_delay_us
+p/x g_ps_phase5_threadx_probe.power_buckboost_vout_mv
+p/x g_ps_phase5_threadx_probe.power_buckboost_vout_delay_us
+p/x g_ps_phase5_threadx_probe.power_buck_enable_decoded
+p/x g_ps_phase5_threadx_probe.power_buck_ilim_ma_decoded
+p/x g_ps_phase5_threadx_probe.power_buckboost_enable_decoded
+p/x g_ps_phase5_threadx_probe.power_buckboost_ilim_ma_decoded
+detach
+quit
