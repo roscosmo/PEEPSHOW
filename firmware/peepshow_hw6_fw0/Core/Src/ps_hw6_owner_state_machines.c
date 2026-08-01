@@ -10,6 +10,7 @@
 #include "ps_comm_state.h"
 #include "ps_display_events.h"
 #include "ps_display_state.h"
+#include "ps_dev_at25sl128a.h"
 #include "ps_dev_lis2dux12.h"
 #include "ps_dev_tmag3001.h"
 #include "ps_hw_i2c3.h"
@@ -37,13 +38,7 @@
 #define PS_HW6_TMAG_ADDRESS               (0x34U)
 #define PS_HW6_IMU_ADDRESS                (0x18U)
 
-#define PS_HW6_FLASH_CMD_JEDEC_ID          (0x9FU)
-#define PS_HW6_FLASH_CMD_RELEASE_POWER_DOWN (0xABU)
-#define PS_HW6_FLASH_CMD_DEEP_POWER_DOWN   (0xB9U)
 #define PS_HW6_FLASH_WAKE_SETTLE_TICKS     (1UL)
-#define PS_HW6_FLASH_ID0                   (0x1FU)
-#define PS_HW6_FLASH_ID1                   (0x42U)
-#define PS_HW6_FLASH_ID2                   (0x18U)
 
 #define PS_HW6_NINA_DSR_HOST_CONTROL_PIN   (GPIO_PIN_8)
 #define PS_HW6_NINA_DSR_HOST_CONTROL_PORT  (GPIOC)
@@ -264,6 +259,7 @@ static const uint32_t ps_cycle_inactive_states[PS_HW6_OWNER_SM_COUNT] =
 
 static ps_dev_lis2dux12_t ps_imu_device;
 static ps_dev_tmag3001_t ps_joystick_device;
+static ps_dev_at25sl128a_t ps_flash_device;
 static uint8_t ps_nina_rx_buffer[PS_HW6_NINA_RX_BUFFER_SIZE];
 
 static void PS_HW6_SM_RecordTrace(uint32_t state_machine_id,
@@ -369,6 +365,16 @@ static void PS_HW6_SM_UpdateJoystickDriverProbe(void)
     ps_joystick_device.last_status;
 }
 
+static void PS_HW6_SM_UpdateFlashDriverProbe(void)
+{
+  g_ps_hw6_owner_sm_probe.flash_driver_api_version =
+    ps_flash_device.api_version;
+  g_ps_hw6_owner_sm_probe.flash_driver_state = ps_flash_device.state;
+  g_ps_hw6_owner_sm_probe.flash_driver_operation_count =
+    ps_flash_device.operation_count;
+  g_ps_hw6_owner_sm_probe.flash_driver_last_status =
+    ps_flash_device.last_status;
+}
 static HAL_StatusTypeDef PS_HW6_SM_StabilizePower(void)
 {
   HAL_StatusTypeDef status;
@@ -512,7 +518,6 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeJoystick(void)
   g_ps_hw6_owner_sm_probe.joystick_i2c_state_after = i2c_state_after;
   g_ps_hw6_owner_sm_probe.joystick_i2c_error_after = i2c_error_after;
   PS_HW6_SM_UpdateJoystickDriverProbe();
-
   if (status == HAL_OK)
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
@@ -591,61 +596,6 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeImu(void)
   return status;
 }
 
-static void PS_HW6_SM_PrepareOspiCommand(OSPI_RegularCmdTypeDef *command,
-                                         uint8_t instruction,
-                                         uint32_t data_mode,
-                                         uint32_t length)
-{
-  (void)memset(command, 0, sizeof(*command));
-  command->OperationType = HAL_OSPI_OPTYPE_COMMON_CFG;
-  command->FlashId = HAL_OSPI_FLASH_ID_1;
-  command->Instruction = instruction;
-  command->InstructionMode = HAL_OSPI_INSTRUCTION_1_LINE;
-  command->InstructionSize = HAL_OSPI_INSTRUCTION_8_BITS;
-  command->InstructionDtrMode = HAL_OSPI_INSTRUCTION_DTR_DISABLE;
-  command->AddressMode = HAL_OSPI_ADDRESS_NONE;
-  command->AddressDtrMode = HAL_OSPI_ADDRESS_DTR_DISABLE;
-  command->AlternateBytesMode = HAL_OSPI_ALTERNATE_BYTES_NONE;
-  command->AlternateBytesDtrMode = HAL_OSPI_ALTERNATE_BYTES_DTR_DISABLE;
-  command->DataMode = data_mode;
-  command->NbData = length;
-  command->DataDtrMode = HAL_OSPI_DATA_DTR_DISABLE;
-  command->DummyCycles = 0U;
-  command->DQSMode = HAL_OSPI_DQS_DISABLE;
-  command->SIOOMode = HAL_OSPI_SIOO_INST_EVERY_CMD;
-}
-
-static HAL_StatusTypeDef PS_HW6_SM_ReadFlash(uint8_t instruction,
-                                             uint8_t *data,
-                                             uint32_t length)
-{
-  OSPI_RegularCmdTypeDef command;
-  HAL_StatusTypeDef status;
-
-  if ((data == NULL) || (length == 0U))
-  {
-    return HAL_ERROR;
-  }
-
-  PS_HW6_SM_PrepareOspiCommand(&command, instruction,
-                               HAL_OSPI_DATA_1_LINE, length);
-  status = HAL_OSPI_Command(&hospi1, &command, PS_HW6_SM_OSPI_TIMEOUT_MS);
-  if (status == HAL_OK)
-  {
-    status = HAL_OSPI_Receive(&hospi1, data, PS_HW6_SM_OSPI_TIMEOUT_MS);
-  }
-  return status;
-}
-
-static HAL_StatusTypeDef PS_HW6_SM_SendFlashCommand(uint8_t instruction)
-{
-  OSPI_RegularCmdTypeDef command;
-
-  PS_HW6_SM_PrepareOspiCommand(&command, instruction,
-                               HAL_OSPI_DATA_NONE, 0U);
-  return HAL_OSPI_Command(&hospi1, &command, PS_HW6_SM_OSPI_TIMEOUT_MS);
-}
-
 static HAL_StatusTypeDef PS_HW6_SM_ParkUsb(void)
 {
   HAL_StatusTypeDef status = HAL_OK;
@@ -701,8 +651,10 @@ static HAL_StatusTypeDef PS_HW6_SM_ParkUsb(void)
 
 static HAL_StatusTypeDef PS_HW6_SM_StabilizeStorage(void)
 {
+  ps_dev_at25sl128a_jedec_result_t jedec_result;
+  ps_dev_at25sl128a_command_result_t command_result;
+  ps_status_t driver_status;
   HAL_StatusTypeDef status;
-  uint8_t id[3] = {0U, 0U, 0U};
 
   (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
                             STORAGE_EV_INIT, HAL_OK);
@@ -718,21 +670,20 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeStorage(void)
   (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
                             FLASH_EV_BOOT, HAL_OK);
 
-  status = PS_HW6_SM_ReadFlash(PS_HW6_FLASH_CMD_JEDEC_ID,
-                               id, sizeof(id));
-  g_ps_hw6_owner_sm_probe.flash_jedec_status = (uint32_t)status;
-  g_ps_hw6_owner_sm_probe.flash_jedec_id[0] = id[0];
-  g_ps_hw6_owner_sm_probe.flash_jedec_id[1] = id[1];
-  g_ps_hw6_owner_sm_probe.flash_jedec_id[2] = id[2];
+  driver_status = ps_dev_at25sl128a_read_jedec(
+    &ps_flash_device,
+    &jedec_result);
+  status = PS_HW6_SM_StatusToHal(driver_status);
+  g_ps_hw6_owner_sm_probe.flash_jedec_status = jedec_result.hal_status;
+  g_ps_hw6_owner_sm_probe.flash_jedec_id[0] = jedec_result.jedec_id[0];
+  g_ps_hw6_owner_sm_probe.flash_jedec_id[1] = jedec_result.jedec_id[1];
+  g_ps_hw6_owner_sm_probe.flash_jedec_id[2] = jedec_result.jedec_id[2];
   g_ps_hw6_owner_sm_probe.flash_identity_match =
-    ((status == HAL_OK) &&
-     (id[0] == PS_HW6_FLASH_ID0) &&
-     (id[1] == PS_HW6_FLASH_ID1) &&
-     (id[2] == PS_HW6_FLASH_ID2)) ? 1UL : 0UL;
+    jedec_result.identity_match;
+  PS_HW6_SM_UpdateFlashDriverProbe();
 
   if (g_ps_hw6_owner_sm_probe.flash_identity_match == 0UL)
   {
-    status = HAL_ERROR;
     (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
                               FLASH_EV_PROBE_FAIL, status);
     (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
@@ -744,8 +695,12 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeStorage(void)
                             FLASH_EV_PROBE_OK, HAL_OK);
   (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
                             FLASH_EV_CONFIG_OK, HAL_OK);
-  status = PS_HW6_SM_SendFlashCommand(PS_HW6_FLASH_CMD_DEEP_POWER_DOWN);
-  g_ps_hw6_owner_sm_probe.flash_deep_power_down_status = (uint32_t)status;
+  driver_status = ps_dev_at25sl128a_enter_deep_power_down(
+    &ps_flash_device,
+    &command_result);
+  status = PS_HW6_SM_StatusToHal(driver_status);
+  g_ps_hw6_owner_sm_probe.flash_deep_power_down_status =
+    command_result.hal_status;
   if (status == HAL_OK)
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
@@ -771,6 +726,7 @@ storage_done:
   {
     status = HAL_ERROR;
   }
+  PS_HW6_SM_UpdateFlashDriverProbe();
   return status;
 }
 
@@ -1300,8 +1256,10 @@ static HAL_StatusTypeDef PS_HW6_SM_QuiesceImu(uint32_t cycle_index)
 
 static HAL_StatusTypeDef PS_HW6_SM_ResumeStorage(uint32_t cycle_index)
 {
+  ps_dev_at25sl128a_command_result_t command_result;
+  ps_dev_at25sl128a_jedec_result_t jedec_result;
+  ps_status_t driver_status;
   HAL_StatusTypeDef status;
-  uint8_t id[3] = {0U, 0U, 0U};
 
   if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] !=
        (uint32_t)STORAGE_FLASH_READY) ||
@@ -1311,25 +1269,33 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeStorage(uint32_t cycle_index)
     return HAL_ERROR;
   }
 
-  status = PS_HW6_SM_SendFlashCommand(
-    PS_HW6_FLASH_CMD_RELEASE_POWER_DOWN);
+  driver_status = ps_dev_at25sl128a_release_from_deep_power_down(
+    &ps_flash_device,
+    &command_result);
+  status = PS_HW6_SM_StatusToHal(driver_status);
   g_ps_hw6_owner_sm_probe.flash_cycle_release_status[cycle_index] =
-    (uint32_t)status;
+    command_result.hal_status;
   if (status == HAL_OK)
   {
     tx_thread_sleep(PS_HW6_FLASH_WAKE_SETTLE_TICKS);
     (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
                               FLASH_EV_WAKE_REVALIDATE, status);
-    status = PS_HW6_SM_ReadFlash(PS_HW6_FLASH_CMD_JEDEC_ID,
-                                 id, sizeof(id));
+    driver_status = ps_dev_at25sl128a_read_jedec(
+      &ps_flash_device,
+      &jedec_result);
+    status = PS_HW6_SM_StatusToHal(driver_status);
+  }
+  else
+  {
+    (void)memset(&jedec_result, 0, sizeof(jedec_result));
+    jedec_result.hal_status = command_result.hal_status;
   }
   g_ps_hw6_owner_sm_probe.flash_cycle_jedec_status[cycle_index] =
-    (uint32_t)status;
+    jedec_result.hal_status;
   g_ps_hw6_owner_sm_probe.flash_cycle_identity_match[cycle_index] =
-    ((status == HAL_OK) &&
-     (id[0] == PS_HW6_FLASH_ID0) &&
-     (id[1] == PS_HW6_FLASH_ID1) &&
-     (id[2] == PS_HW6_FLASH_ID2)) ? 1UL : 0UL;
+    jedec_result.identity_match;
+  PS_HW6_SM_UpdateFlashDriverProbe();
+
   if (g_ps_hw6_owner_sm_probe.flash_cycle_identity_match[cycle_index] != 0UL)
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
@@ -1346,11 +1312,14 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeStorage(uint32_t cycle_index)
     (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
                               FLASH_EV_PROBE_FAIL, status);
   }
+  PS_HW6_SM_UpdateFlashDriverProbe();
   return status;
 }
 
 static HAL_StatusTypeDef PS_HW6_SM_QuiesceStorage(uint32_t cycle_index)
 {
+  ps_dev_at25sl128a_command_result_t command_result;
+  ps_status_t driver_status;
   HAL_StatusTypeDef status;
 
   if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] !=
@@ -1361,9 +1330,13 @@ static HAL_StatusTypeDef PS_HW6_SM_QuiesceStorage(uint32_t cycle_index)
     return HAL_ERROR;
   }
 
-  status = PS_HW6_SM_SendFlashCommand(PS_HW6_FLASH_CMD_DEEP_POWER_DOWN);
+  driver_status = ps_dev_at25sl128a_enter_deep_power_down(
+    &ps_flash_device,
+    &command_result);
+  status = PS_HW6_SM_StatusToHal(driver_status);
   g_ps_hw6_owner_sm_probe
-    .flash_cycle_deep_power_down_status[cycle_index] = (uint32_t)status;
+    .flash_cycle_deep_power_down_status[cycle_index] =
+    command_result.hal_status;
   if (status == HAL_OK)
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
@@ -1374,6 +1347,7 @@ static HAL_StatusTypeDef PS_HW6_SM_QuiesceStorage(uint32_t cycle_index)
     (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
                               FLASH_EV_FAULT, status);
   }
+  PS_HW6_SM_UpdateFlashDriverProbe();
   return status;
 }
 
@@ -1479,6 +1453,7 @@ void PS_HW6_OwnerStateMachines_Init(void)
 {
   ps_status_t imu_init_status;
   ps_status_t joystick_init_status;
+  ps_status_t flash_init_status;
   uint32_t cycle_index;
   uint32_t direction;
   uint32_t index;
@@ -1507,6 +1482,14 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.joystick_driver_init_status =
     (uint32_t)joystick_init_status;
   PS_HW6_SM_UpdateJoystickDriverProbe();
+
+  flash_init_status = ps_dev_at25sl128a_init(
+    &ps_flash_device,
+    &hospi1,
+    PS_HW6_SM_OSPI_TIMEOUT_MS);
+  g_ps_hw6_owner_sm_probe.flash_driver_init_status =
+    (uint32_t)flash_init_status;
+  PS_HW6_SM_UpdateFlashDriverProbe();
 
   for (index = 0U; index < PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT; ++index)
   {
@@ -1569,6 +1552,8 @@ void PS_HW6_OwnerStateMachines_Init(void)
     g_ps_hw6_owner_sm_probe.flash_cycle_release_status[cycle_index] =
       PS_HW6_OWNER_SM_STATUS_NOT_RUN;
     g_ps_hw6_owner_sm_probe.flash_cycle_jedec_status[cycle_index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.flash_cycle_identity_match[cycle_index] =
       PS_HW6_OWNER_SM_STATUS_NOT_RUN;
     g_ps_hw6_owner_sm_probe
       .flash_cycle_deep_power_down_status[cycle_index] =

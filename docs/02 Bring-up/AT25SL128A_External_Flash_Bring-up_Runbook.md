@@ -3,7 +3,7 @@
 This runbook records the measured HW5 procedure for the external flash and storage base path.
 
 > [!important] HW6 reuse
-> Reuse the procedure on HW6 against the HW6 pin/DMA contracts. Begin with non-destructive identity/status reads, use only an approved scratch region for write/erase tests, and record all new evidence in [[HW6_Brought_Up_Tracker]].
+> Reuse the procedure on HW6 against the HW6 pin/DMA contracts. Begin with non-destructive identity/status reads, use only an approved scratch region for write/erase tests, and record all new evidence in [[HW6_Brought_Up_Tracker]]. `EV-HW6-20260802-P5-FLASH-010` validates the current HW6 storage-owner non-destructive JEDEC/release/deep-power-down wrapper path; erase/program/FileX/USB behavior remains open.
 
 Related:
 
@@ -104,7 +104,7 @@ Populate this table during bring-up. The current values are placeholders until m
 | Step | Configuration | Expected result | Measured result | Status |
 | --- | --- | --- | --- | --- |
 | conservative clock | `PLL2Q = 64 MHz`, prescaler `8` | stable OCTOSPI command path | `fw0` generated with `OCTOSPIMFreq_Value=64000000`, `OCTOSPI1.ClockPrescaler=8`; GDB probe read `ospi_kernel_hz=64000000` | pass |
-| device ID | JEDEC/device ID read | bytes match AT25SL128A datasheet | Non-destructive polling command read returned JEDEC ID `1F 42 18` | pass |
+| device ID | JEDEC/device ID read | bytes match AT25SL128A datasheet | Non-destructive polling command read returned JEDEC ID `1F 42 18`; `EV-HW6-20260802-P5-FLASH-010` revalidated this through `ps_dev_at25sl128a` in the storage owner with JEDEC status/match `0x0/1` | pass |
 | status read | status/config registers | busy/protection/quad state understood | Non-destructive reads of commands `0x05`, `0x35`, and `0x15` returned `00 00 00`; write-enable/busy/protection bits clear in this snapshot | pass |
 | scratch range | final 4 KiB sector, `0x00FFF000..0x00FFFFFF` | bring-up-only destructive scratch region; future flash-layout pass must not assume this remains available | User approved use of the final sector for immediate bring-up tests before final protected/fault-log layout is assigned | active |
 | sector erase | scratch only | erased state readback | Initial erase of `0x00FFF000` completed; first 256 bytes read back as `0xFF` with `0` mismatches | pass |
@@ -112,13 +112,19 @@ Populate this table during bring-up. The current values are placeholders until m
 | polling readback | scratch pattern | byte-for-byte match | Polling readback matched all 256 bytes; first 16 bytes `A5 A4 A7 A6 A1 A0 A3 A2 AD AC AF AE A9 A8 AB AA` | pass |
 | DMA readback | scratch pattern | byte-for-byte match and clean completion signaling | 256-byte GPDMA read of programmed scratch pattern passed after enabling OCTOSPI1 IRQ completion handling; `dma_read_status=0`, `dma_wait_status=0`, `dma_verify_mismatch_count=0`, first 16 bytes `A5 A4 A7 A6 A1 A0 A3 A2 AD AC AF AE A9 A8 AB AA` | pass |
 | DMA program | scratch page pattern | page program completes and readback matches | 256-byte page program via GPDMA passed after enabling OCTOSPI1 IRQ completion handling; `dma_program_status=0`, `dma_program_wait_status=0`, `program_wait_status=0`, and both DMA/polling readbacks matched with `0` mismatches | pass |
-| deep power-down | flash DPD command `0xB9` | command accepted after active operations completed | DPD command returned `HAL_OK` after scratch cleanup erase and blank verification completed | pass |
-| wake/revalidate | release from DPD command `0xAB` | ID/readback valid after wake | Release command returned `HAL_OK`; post-wake JEDEC ID remained `1F 42 18`; post-wake scratch readback had `0` non-blank bytes in the first 256 bytes at `0x00FFF000` | pass |
+| deep power-down | flash DPD command `0xB9` | command accepted after active operations completed | DPD command returned `HAL_OK`; `EV-HW6-20260802-P5-FLASH-010` revalidated owner-routed DPD with baseline status `0x0` and final OSPI state/error `0x2/0x0` | pass |
+| wake/revalidate | release from DPD command `0xAB` | ID/readback valid after wake | Release command returned `HAL_OK`; post-wake JEDEC ID remained `1F 42 18`; `EV-HW6-20260802-P5-FLASH-010` revalidated both owner-routed lifecycle cycles with release/JEDEC/match/DPD `0/0/1/0` | pass |
 | local mount | FileX/LevelX after baseline | staging/export mount succeeds | TBD | open |
 | USB export | staging/export only | host cannot see protected regions | TBD | open |
 
 ---
 
+
+## HW6 Measured Evidence
+
+`EV-HW6-20260802-P5-FLASH-010` validates the current non-destructive storage-owner flash wrapper path on `HW6-UNIT-001`: `ps_dev_at25sl128a` read JEDEC identity, released the AT25SL128A from deep-power-down, re-read identity, and recommitted deep-power-down across the baseline workflow plus two bounded owner-routed resume/quiesce cycles. The probe reported flash driver API/init/state/ops/last `1 / 0 / 3 / 8 / 0`, baseline JEDEC status/ID/match `0x0 / 1f 42 18 / 1`, baseline deep-power-down status `0x0`, both cycle release/JEDEC/match/DPD lines `0 / 0 / 1 / 0`, and final OSPI state/error `0x2 / 0x0`.
+
+This evidence is intentionally non-destructive. It does not close scratch erase/program/readback, DMA flash transfers, LevelX/FileX, USB MSC export/reclaim, protected fault-log layout, package installation, storage timing budgets, current, or storage fault injection/recovery.
 ## Validation Procedure
 
 1. Confirm OCTOSPI pins and idle levels.

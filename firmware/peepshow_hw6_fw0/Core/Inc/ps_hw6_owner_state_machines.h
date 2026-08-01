@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (6UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (7UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -178,6 +178,11 @@ typedef struct
   uint32_t imu_cycle_active_status[PS_HW6_OWNER_SM_CYCLE_COUNT];
   uint32_t imu_cycle_sleep_status[PS_HW6_OWNER_SM_CYCLE_COUNT];
 
+  uint32_t flash_driver_api_version;
+  uint32_t flash_driver_init_status;
+  uint32_t flash_driver_state;
+  uint32_t flash_driver_operation_count;
+  uint32_t flash_driver_last_status;
   uint32_t flash_jedec_status;
   uint32_t flash_jedec_id[3];
   uint32_t flash_identity_match;

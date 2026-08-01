@@ -265,6 +265,7 @@ printf "post-deep-PD read omitted  = %u (expected 1; registers are inaccessible)
 printf "I2C state/error            = 0x%x / 0x%x\n", $sm->imu_i2c_state_after, $sm->imu_i2c_error_after
 
 printf "\n  AT25SL128A idle baseline\n"
+printf "driver API/init/state/ops/last = %u / %u / %u / %u / %u\n", $sm->flash_driver_api_version, $sm->flash_driver_init_status, $sm->flash_driver_state, $sm->flash_driver_operation_count, $sm->flash_driver_last_status
 printf "JEDEC status/ID/match      = 0x%x / %02x %02x %02x / %u\n", $sm->flash_jedec_status, $sm->flash_jedec_id[0], $sm->flash_jedec_id[1], $sm->flash_jedec_id[2], $sm->flash_identity_match
 printf "deep-power-down status     = 0x%x\n", $sm->flash_deep_power_down_status
 printf "OSPI state/error           = 0x%x / 0x%x\n", $sm->flash_ospi_state_after, $sm->flash_ospi_error_after

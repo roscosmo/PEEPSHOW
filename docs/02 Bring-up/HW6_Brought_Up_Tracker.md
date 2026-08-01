@@ -7,7 +7,7 @@ not proof of HW6 behavior.
 
 ## Metadata
 
-- Status: `owner_lifecycle_v8_audio_driver_passed`; all seven physical owner domains reached
+- Status: `owner_lifecycle_v9_flash_driver_passed`; all seven physical owner domains reached
   inactive states and completed two bounded inactive-active-inactive cycles with
   success/failure masks `0x7F / 0x00`; lifecycle-v5 validates the LIS2DUX12
   I2C deep-power-down wake NACK, `WHO_AM_I=0x47`, and low-rate `CTRL5=0x10`;
@@ -16,7 +16,7 @@ not proof of HW6 behavior.
   `DEVICE_CONFIG2=0x02`, and terminal sleep recommit;
   formal Phase 0 intake, fault policy, STOP2, active sensing, interrupts,
   current evidence, and production contracts remain open
-- Last updated: `2026-08-01`
+- Last updated: `2026-08-02`
 - Hardware target: `HW6`
 - PCB revision: `pending_record`
 - Schematic revision: `pending_record`
@@ -27,7 +27,7 @@ not proof of HW6 behavior.
 - Safe-arrival IOC: `firmware/peepshow_hw6_fw0/peepshow_hw6_fw0.ioc`
 - Original safe-arrival IOC SHA-256: `BE3528A142EECCB9F92E35FBAF23D3D876B1375ED34E9D1FB80FBF50C89740D0`
 - Active FW0 IOC SHA-256: `C3EA72AD444196CA2C3053D3F4F11B5462B3D4978CF9295744C341A493D90DA8`
-- Active FW0 ELF SHA-256: `52A2B3A8FBF1D0CD3DFEDDF5AA01D0E73AB880CF0ADD23201DBD7039AE67271A`
+- Active FW0 ELF SHA-256: `9E0C7D042130B89957E8BF79CEA1970B84B24AD0E95B37B4584DEB452EEB3070`
 - Active FW0 baseline commit: `9b3f664635b9a31c0e36e2e44137eb800d9bbe1a`
 - Full-intent IOC: `firmware/peepshow_hw6_fw1/PEEPSHOW_HW6_FW1.ioc`
 - Full-intent IOC SHA-256: `40801363273BB8ABD0072EFC5FFFF55E6878625B687033E03A6A5259E3DF179A`
@@ -39,10 +39,10 @@ not proof of HW6 behavior.
 |---|---|---|---|
 | 0 - intake, safe power, recovery | in progress; safe-power/runtime subset measured, intake records remain open | [[HW6_Arrival_Phase0_Checklist]] | identified unit, safe rails, recoverable SWD, evidence initialized |
 | 1 - PMIC and clocks | complete read-only ADP5360 map and guarded six-byte reversible profile transaction pass on unit 001; persistent profile, fuel-gauge sweep, NTC/JEITA behavior, VBUS policy, protection thresholds, controlled charging, IRQs, and clock characterization remain open | [[HW6_Power_Rails]], [[HW6_Clock_Tree_Contract]] | rails, faults, clocks, reset causes proven |
-| 2 - display and storage | partial: AT25SL128A identity/status and RTOS-owned driver-backed full-frame SPI3/LPDMA diagnostic display pass; partial updates and destructive flash behavior remain open | display/flash runbooks, [[HW6_DMA_Map]] | retained display/flash behavior proven |
+| 2 - display and storage | partial: AT25SL128A identity/status, storage-owned driver-backed JEDEC/release/deep-power-down lifecycle, and RTOS-owned driver-backed full-frame SPI3/LPDMA diagnostic display pass; partial updates, destructive flash behavior, FileX/LevelX, package install, and USB MSC remain open | display/flash runbooks, [[HW6_DMA_Map]] | retained display plus non-destructive flash identity/deep-power-down behavior proven |
 | 3 - speaker audio | partial: RTOS-owned driver-backed 4.096 MHz SAI, 16 kHz DMA tone, audible output, and clean `SD_MODE` shutdown pass; current, refill/underrun, and fault recovery remain open | [[Audio_Output_Bring-up_Runbook]] | speaker-only SAI/DMA/output/shutdown proven |
 | 4 - input and sensors | partial: LIS2DUX12 identity at `0x18`, TMAG3001 identity at `0x34`, owner-routed terminal inactive entry, LIS2DUX12 lifecycle wake/low-rate/suspend pass, and TMAG3001 driver-backed `thInput` wake/configure/sleep cycles pass; joystick axis mapping, sampling, calibration, threshold IRQ, event wake, current, embedded IMU functions, and buttons remain open | button/joystick/IMU runbooks, [[HW6_Wake_Sources]] | sensor identities plus driver-backed IMU and joystick lifecycle paths proven |
-| 5 - RTOS owner integration | partial: topology, bounded waits, `WFI`, queue ownership, acknowledgements, physical power/display/audio actions, one complete seven-owner inactive lifecycle pass, lifecycle-v5 LIS driver cycle pass, lifecycle-v6 TMAG driver cycle pass, lifecycle-v7 display driver cycle pass, and lifecycle-v8 audio driver cycle pass with masks `0x7F / 0x00`; saturation, injected faults, cancellation, STOP2 handoff, and production quiesce remain open | [[RTOS_Ownership_and_Queue_Topology]], [[Subsystem_State_Machines]] | queues, ownership, driver-backed IMU/input/display/audio lifecycle, faults, and quiesce proven |
+| 5 - RTOS owner integration | partial: topology, bounded waits, `WFI`, queue ownership, acknowledgements, physical power/display/audio actions, one complete seven-owner inactive lifecycle pass, lifecycle-v5 LIS driver cycle pass, lifecycle-v6 TMAG driver cycle pass, lifecycle-v7 display driver cycle pass, lifecycle-v8 audio driver cycle pass, and lifecycle-v9 flash driver cycle pass with masks `0x7F / 0x00`; saturation, injected faults, cancellation, STOP2 handoff, and production quiesce remain open | [[RTOS_Ownership_and_Queue_Topology]], [[Subsystem_State_Machines]] | queues, ownership, driver-backed IMU/input/display/audio/flash lifecycle, faults, and quiesce proven |
 | 6 - STOP2, LPBAM, wake, power | staged work unblocked by the passing inactive owner baseline; STOP2 entry, owner resume, wake sources, LPBAM, current, and operating points remain open | sleep/LPBAM/power runbooks | waiting current, wake/resume, LPBAM, operating points proven |
 | 7 - USB, BLE, NFC, installer | partial: NINA-B112 bounded AT handshake and owner-routed `AT&D4`/DSR STOP entry pass; detached USB shutdown passes; BLE data/NFC/power, resume, and connected USB behavior remain open | communication/USB runbooks | transport, recovery, sessions, NFC, and power proven |
 | 8 - runtime host lifecycle | blocked by Platform | Engine/runtime contracts | package lifecycle proven on HW6 |
@@ -77,6 +77,7 @@ Use [[Evidence_Artifact_Convention]] and target-qualified evidence IDs.
 | 2026-08-01 | HW6-UNIT-001 (provisional) | EV-HW6-20260801-P5-INPUT-007 | lifecycle-v6 TMAG3001 driver-backed input-owner wake/configure/sleep cycle | PASS | `docs/02 Bring-up/Evidence/HW6/2026/08/01/EV-HW6-20260801-P5-INPUT-007/` | complete/success `1/1`, two cycles passed with masks `0x7F/0x00` and `0x3FF/0x3FF`; TMAG driver API/init/state/ops/last `1/0/3/5/0`, identity `00/49/54`, active config `0x70/0x02`, terminal sleep recommitted |
 | 2026-08-01 | HW6-UNIT-001 (provisional) | EV-HW6-20260801-P5-DISPLAY-008 | lifecycle-v7 LS013B7DH05 display-driver-backed full-frame DMA owner cycle | PASS | `docs/02 Bring-up/Evidence/HW6/2026/08/01/EV-HW6-20260801-P5-DISPLAY-008/` | complete/success `1/1`, two cycles passed with masks `0x7F/0x00` and `0x3FF/0x3FF`; display driver API/init/state/ops/last `1/0x0/2/3/0x0`, card hash `0x360cda71`, DMA done `1`, SPI/DMA errors `0x0/0x0` |
 | 2026-08-01 | HW6-UNIT-001 (provisional) | EV-HW6-20260801-P5-AUDIO-009 | lifecycle-v8 `ps_dev_audio` speaker-driver owner tone cycle | PASS | `docs/02 Bring-up/Evidence/HW6/2026/08/01/EV-HW6-20260801-P5-AUDIO-009/` | complete/success `1/1`, two cycles passed with masks `0x7F/0x00` and `0x3FF/0x3FF`; audio driver API/init/state/ops/last `1/0x0/3/3/0x0`, SAI/sample/tone `4096000/16000/1000`, `SD_MODE` `0/1/0`, start/stop `0x0/0x0`, audible three-tone result |
+| 2026-08-02 | HW6-UNIT-001 (provisional) | EV-HW6-20260802-P5-FLASH-010 | lifecycle-v9 `ps_dev_at25sl128a` storage-owner JEDEC/release/deep-power-down cycle | PASS | `docs/02 Bring-up/Evidence/HW6/2026/08/02/EV-HW6-20260802-P5-FLASH-010/` | complete/success `1/1`, two cycles passed with masks `0x7F/0x00` and `0x3FF/0x3FF`; flash driver API/init/state/ops/last `1/0/3/8/0`, JEDEC `1f 42 18`, baseline DPD `0x0`, cycle release/JEDEC/match/DPD `0/0/1/0`, OSPI state/error `0x2/0x0` |
 
 Every row records:
 

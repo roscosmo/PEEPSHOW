@@ -48,6 +48,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/LS013B7DH05.c
+    Core/Src/ps_dev_at25sl128a.c
     Core/Src/ps_dev_audio.c
     Core/Src/ps_dev_ls013b7dh05.c
     Core/Src/ps_dev_adp5360.c
