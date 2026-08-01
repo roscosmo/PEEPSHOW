@@ -80,6 +80,7 @@ ps_hw_i2c3_transfer_result_t ps_hw_i2c3_mem_write(
   const uint8_t *data,
   uint16_t length,
   uint32_t transfer_timeout_ms);
+ps_status_t ps_hw_i2c3_diagnostics(uint32_t *state, uint32_t *error);
 
 /* Compatibility helpers for probes not yet migrated to a device driver. */
 PS_HW_I2C3_Result PS_HW_I2C3_ReadRegister(uint8_t address_7bit,

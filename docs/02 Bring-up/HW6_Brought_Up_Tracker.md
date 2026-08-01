@@ -7,10 +7,13 @@ not proof of HW6 behavior.
 
 ## Metadata
 
-- Status: `owner_lifecycle_v5_passed`; all seven physical owner domains reached
+- Status: `owner_lifecycle_v6_tmag_driver_passed`; all seven physical owner domains reached
   inactive states and completed two bounded inactive-active-inactive cycles with
   success/failure masks `0x7F / 0x00`; lifecycle-v5 validates the LIS2DUX12
   I2C deep-power-down wake NACK, `WHO_AM_I=0x47`, and low-rate `CTRL5=0x10`;
+  lifecycle-v6 validates the HW6-native TMAG3001 input-driver wrapper through
+  `thInput`, including identity, active `SENSOR_CONFIG1=0x70` /
+  `DEVICE_CONFIG2=0x02`, and terminal sleep recommit;
   formal Phase 0 intake, fault policy, STOP2, active sensing, interrupts,
   current evidence, and production contracts remain open
 - Last updated: `2026-08-01`
@@ -24,7 +27,7 @@ not proof of HW6 behavior.
 - Safe-arrival IOC: `firmware/peepshow_hw6_fw0/peepshow_hw6_fw0.ioc`
 - Original safe-arrival IOC SHA-256: `BE3528A142EECCB9F92E35FBAF23D3D876B1375ED34E9D1FB80FBF50C89740D0`
 - Active FW0 IOC SHA-256: `C3EA72AD444196CA2C3053D3F4F11B5462B3D4978CF9295744C341A493D90DA8`
-- Active FW0 ELF SHA-256: `E704C7A95BD7AE59DA7E5CAE7BF4DADC9B0C7A0BEBAD7380EF206FACC33CF92B`
+- Active FW0 ELF SHA-256: `D43B24747A293379044361B88AF6649CA43AFF035F93F259E3979891678FF512`
 - Active FW0 baseline commit: `9b3f664635b9a31c0e36e2e44137eb800d9bbe1a`
 - Full-intent IOC: `firmware/peepshow_hw6_fw1/PEEPSHOW_HW6_FW1.ioc`
 - Full-intent IOC SHA-256: `40801363273BB8ABD0072EFC5FFFF55E6878625B687033E03A6A5259E3DF179A`
@@ -38,8 +41,8 @@ not proof of HW6 behavior.
 | 1 - PMIC and clocks | complete read-only ADP5360 map and guarded six-byte reversible profile transaction pass on unit 001; persistent profile, fuel-gauge sweep, NTC/JEITA behavior, VBUS policy, protection thresholds, controlled charging, IRQs, and clock characterization remain open | [[HW6_Power_Rails]], [[HW6_Clock_Tree_Contract]] | rails, faults, clocks, reset causes proven |
 | 2 - display and storage | partial: AT25SL128A identity/status and RTOS-owned full-frame SPI3/LPDMA diagnostic display pass; partial updates and destructive flash behavior remain open | display/flash runbooks, [[HW6_DMA_Map]] | retained display/flash behavior proven |
 | 3 - speaker audio | partial: RTOS-owned 4.096 MHz SAI, 16 kHz DMA tone, audible output, and clean `SD_MODE` shutdown pass; current, refill/underrun, and quiesce remain open | [[Audio_Output_Bring-up_Runbook]] | speaker-only SAI/DMA/output/shutdown proven |
-| 4 - input and sensors | partial: LIS2DUX12 identity at `0x18`, TMAG3001 identity at `0x34`, owner-routed terminal inactive entry, and LIS2DUX12 lifecycle wake/low-rate/suspend pass; active sampling, calibration, interrupts, event wake, current, embedded step-counter retention, and buttons remain open | button/joystick/IMU runbooks, [[HW6_Wake_Sources]] | buttons, joystick, IMU, PMIC IRQ proven |
-| 5 - RTOS owner integration | partial: topology, bounded waits, `WFI`, queue ownership, acknowledgements, physical power/display/audio actions, one complete seven-owner inactive lifecycle pass, and lifecycle-v5 two-cycle wake/revalidate/quiesce pass with masks `0x7F / 0x00`; saturation, injected faults, cancellation, STOP2 handoff, and production quiesce remain open | [[RTOS_Ownership_and_Queue_Topology]], [[Subsystem_State_Machines]] | queues, ownership, faults, and quiesce proven |
+| 4 - input and sensors | partial: LIS2DUX12 identity at `0x18`, TMAG3001 identity at `0x34`, owner-routed terminal inactive entry, LIS2DUX12 lifecycle wake/low-rate/suspend pass, and TMAG3001 driver-backed `thInput` wake/configure/sleep cycles pass; joystick axis mapping, sampling, calibration, threshold IRQ, event wake, current, embedded IMU functions, and buttons remain open | button/joystick/IMU runbooks, [[HW6_Wake_Sources]] | sensor identities plus driver-backed IMU and joystick lifecycle paths proven |
+| 5 - RTOS owner integration | partial: topology, bounded waits, `WFI`, queue ownership, acknowledgements, physical power/display/audio actions, one complete seven-owner inactive lifecycle pass, lifecycle-v5 LIS driver cycle pass, and lifecycle-v6 TMAG driver cycle pass with masks `0x7F / 0x00`; saturation, injected faults, cancellation, STOP2 handoff, and production quiesce remain open | [[RTOS_Ownership_and_Queue_Topology]], [[Subsystem_State_Machines]] | queues, ownership, driver-backed IMU/input lifecycle, faults, and quiesce proven |
 | 6 - STOP2, LPBAM, wake, power | staged work unblocked by the passing inactive owner baseline; STOP2 entry, owner resume, wake sources, LPBAM, current, and operating points remain open | sleep/LPBAM/power runbooks | waiting current, wake/resume, LPBAM, operating points proven |
 | 7 - USB, BLE, NFC, installer | partial: NINA-B112 bounded AT handshake and owner-routed `AT&D4`/DSR STOP entry pass; detached USB shutdown passes; BLE data/NFC/power, resume, and connected USB behavior remain open | communication/USB runbooks | transport, recovery, sessions, NFC, and power proven |
 | 8 - runtime host lifecycle | blocked by Platform | Engine/runtime contracts | package lifecycle proven on HW6 |
@@ -71,6 +74,7 @@ Use [[Evidence_Artifact_Convention]] and target-qualified evidence IDs.
 | 2026-07-31 | HW6-UNIT-001 (provisional) | EV-HW6-20260731-P5-OWNERS-004 | corrected seven-owner inactive lifecycle baseline | PASS | `docs/02 Bring-up/Evidence/HW6/2026/07/31/EV-HW6-20260731-P5-OWNERS-004/` | complete/success `1/1`, owner masks `0x7F/0x00`, no rejected transitions, terminal sensor writes committed, NINA `AT&D4` STOP path passed without reset fallback |
 | 2026-08-01 | HW6-UNIT-001 (provisional) | EV-HW6-20260801-P5-OWNERS-005 | lifecycle-v3 two-cycle owner resume/quiesce diagnosis | FAIL | `docs/02 Bring-up/Evidence/HW6/2026/08/01/EV-HW6-20260801-P5-OWNERS-005/` | all queue transport and non-IMU actions passed; IMU failed because firmware treated the expected I2C deep-power-down wake NACK as a fault |
 | 2026-08-01 | HW6-UNIT-001 (provisional) | EV-HW6-20260801-P5-OWNERS-006 | lifecycle-v5 official LIS2DUX12 driver wake/low-rate/suspend cycle | PASS | `docs/02 Bring-up/Evidence/HW6/2026/08/01/EV-HW6-20260801-P5-OWNERS-006/` | complete/success `1/1`, two cycles passed with masks `0x7F/0x00` and `0x3FF/0x3FF`; IMU wake NACK accepted `1 4 1`, `WHO_AM_I=0x47`, active `CTRL5=0x10`, deep-power-down recommitted |
+| 2026-08-01 | HW6-UNIT-001 (provisional) | EV-HW6-20260801-P5-INPUT-007 | lifecycle-v6 TMAG3001 driver-backed input-owner wake/configure/sleep cycle | PASS | `docs/02 Bring-up/Evidence/HW6/2026/08/01/EV-HW6-20260801-P5-INPUT-007/` | complete/success `1/1`, two cycles passed with masks `0x7F/0x00` and `0x3FF/0x3FF`; TMAG driver API/init/state/ops/last `1/0/3/5/0`, identity `00/49/54`, active config `0x70/0x02`, terminal sleep recommitted |
 
 Every row records:
 

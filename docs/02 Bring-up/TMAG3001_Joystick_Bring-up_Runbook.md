@@ -3,8 +3,9 @@
 This runbook records the measured HW5 procedure for bringing up the `TMAG3001A1YBGR` hall-effect joystick.
 
 > [!important] HW6 reuse
-> HW6 identity and owner-routed terminal inactive entry now pass on unit 001.
-> Axes, threshold/interrupt, calibration, wake, and current measurements still
+> HW6 identity, owner-routed terminal inactive entry, and the HW6-native
+> TMAG3001 input-driver lifecycle path now pass on unit 001. Axes,
+> threshold/interrupt, calibration, event wake, and current measurements still
 > require HW6 evidence in [[HW6_Brought_Up_Tracker]]. The failed HW5 component
 > incident is diagnostic history, not evidence about an HW6 unit.
 
@@ -148,6 +149,13 @@ Every successful validation must link evidence from [[Brought_Up_Tracker]].
   failure, bounded identity retry, `Sensor_Config_1=0x70`, continuous mode, and
   terminal sleep write. The overall run failed only on the unrelated IMU wake
   path; exact results are preserved in `EV-HW6-20260801-P5-OWNERS-005`.
+- 2026-08-01: `EV-HW6-20260801-P5-INPUT-007` proves the driver-backed
+  `thInput` TMAG3001 lifecycle path. The run passed top-level owner success
+  `1/1`, masks `0x7F/0x00`, two active/inactive state masks
+  `0x3FF/0x3FF`, driver `API/init/state/ops/last = 1/0/3/5/0`, identity
+  `00/49/54`, active `Sensor_Config_1=0x70`, active
+  `Device_Config_2=0x02`, expected first wake status `5`, retry `0`, and
+  terminal sleep recommit.
 
 Do not mark joystick threshold wake, direction classification, calibration, or
 inactive current known-good without measured target-specific evidence.

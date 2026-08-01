@@ -335,6 +335,22 @@ ps_hw_i2c3_transfer_result_t ps_hw_i2c3_mem_write(
   return result;
 }
 
+ps_status_t ps_hw_i2c3_diagnostics(uint32_t *state, uint32_t *error)
+{
+  if ((state == NULL) || (error == NULL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  if ((ps_hw_i2c3_initialized == 0U) || (ps_hw_i2c3_handle == NULL))
+  {
+    return PS_STATUS_NOT_INITIALIZED;
+  }
+
+  *state = (uint32_t)HAL_I2C_GetState(ps_hw_i2c3_handle);
+  *error = HAL_I2C_GetError(ps_hw_i2c3_handle);
+  return PS_STATUS_OK;
+}
+
 PS_HW_I2C3_Result PS_HW_I2C3_ReadRegister(uint8_t address_7bit,
                                            uint8_t register_address,
                                            uint8_t *value,

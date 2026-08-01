@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (5UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (6UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -116,6 +116,11 @@ typedef struct
   uint32_t trace_write_index;
   PS_HW6_OwnerStateTrace trace[PS_HW6_OWNER_SM_TRACE_DEPTH];
 
+  uint32_t joystick_driver_api_version;
+  uint32_t joystick_driver_init_status;
+  uint32_t joystick_driver_state;
+  uint32_t joystick_driver_operation_count;
+  uint32_t joystick_driver_last_status;
   uint32_t joystick_ready_status;
   uint32_t joystick_identity_status;
   uint32_t joystick_device_id;

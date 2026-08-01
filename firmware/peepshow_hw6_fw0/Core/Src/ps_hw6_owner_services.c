@@ -4,6 +4,7 @@
 
 #include "LS013B7DH05.h"
 #include "main.h"
+#include "ps_dev_adp5360.h"
 #include "ps_hw_i2c3.h"
 
 #define PS_HW6_OWNER_PHASE_INIT             (0x6700UL)
@@ -13,9 +14,6 @@
 #define PS_HW6_OWNER_PHASE_COMPLETE         (0x67FFUL)
 
 #define PS_HW6_PMIC_ADDRESS_7BIT            (0x46U)
-#define PS_HW6_PMIC_LEASE_WAIT_TICKS        (10UL)
-#define PS_HW6_PMIC_TRANSFER_TIMEOUT_MS     (50U)
-#define PS_HW6_PMIC_RAIL_PGOOD_MASK         (0x03U)
 
 #define PS_HW6_DISPLAY_PATTERN_ID           (0x54455354UL)
 #define PS_HW6_DISPLAY_PRESENT_TIMEOUT_MS   (250U)
@@ -39,20 +37,11 @@ extern DMA_HandleTypeDef handle_LPDMA1_Channel0;
 
 volatile PS_HW6_OwnerProbe g_ps_hw6_owner_probe;
 
+static ps_dev_adp5360_t ps_hw6_pmic;
 static LS013B7DH05 ps_hw6_display;
 static uint8_t ps_hw6_display_framebuffer[BUFFER_LENGTH];
 static int16_t ps_hw6_audio_buffer[PS_HW6_AUDIO_BUFFER_HALFWORDS]
   __attribute__((aligned(4)));
-
-static const uint8_t ps_hw6_pmic_registers[PS_HW6_OWNER_POWER_REGISTER_COUNT] =
-{
-  0x00U, 0x29U, 0x2AU, 0x2BU, 0x2CU, 0x2EU, 0x2FU
-};
-
-static const uint8_t ps_hw6_pmic_expected[PS_HW6_OWNER_POWER_REGISTER_COUNT] =
-{
-  0x10U, 0x31U, 0x18U, 0x18U, 0x13U, 0x00U, 0x07U
-};
 
 static const int16_t ps_hw6_sine_16[16] =
 {
@@ -243,7 +232,7 @@ UINT PS_HW6_OwnerServices_Init(void)
   for (i = 0U; i < PS_HW6_OWNER_POWER_REGISTER_COUNT; ++i)
   {
     g_ps_hw6_owner_probe.power_register_address[i] =
-      ps_hw6_pmic_registers[i];
+      ps_dev_adp5360_power_register(i);
     g_ps_hw6_owner_probe.power_register_value[i] = 0UL;
     g_ps_hw6_owner_probe.power_lease_get_status[i] =
       PS_HW6_OWNER_STATUS_NOT_RUN;
@@ -260,56 +249,136 @@ UINT PS_HW6_OwnerServices_Init(void)
   PS_HW6_PrepareAudioTone();
   status = PS_HW_I2C3_Init(&hi2c3);
   g_ps_hw6_owner_probe.services_init_status = status;
+  if (status == TX_SUCCESS)
+  {
+    ps_status_t driver_status = ps_dev_adp5360_init(
+      &ps_hw6_pmic, PS_HW6_PMIC_ADDRESS_7BIT);
+    g_ps_hw6_owner_probe.power_driver_init_status =
+      (uint32_t)driver_status;
+  }
+  else
+  {
+    g_ps_hw6_owner_probe.power_driver_init_status =
+      (uint32_t)PS_STATUS_NOT_INITIALIZED;
+  }
+  g_ps_hw6_owner_probe.power_driver_api_version =
+    ps_hw6_pmic.api_version;
+  g_ps_hw6_owner_probe.power_driver_state = ps_hw6_pmic.state;
+  g_ps_hw6_owner_probe.power_driver_operation_count =
+    ps_hw6_pmic.operation_count;
+  g_ps_hw6_owner_probe.power_driver_last_status =
+    ps_hw6_pmic.last_status;
   return status;
 }
 
 HAL_StatusTypeDef PS_HW6_PowerOwner_RunSnapshot(void)
 {
-  HAL_StatusTypeDef overall = HAL_OK;
-  uint32_t i;
+  static ps_dev_adp5360_power_snapshot_t snapshot;
+  ps_status_t status;
+  uint32_t index;
 
   g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_POWER;
   g_ps_hw6_owner_probe.power_complete = 0UL;
   g_ps_hw6_owner_probe.power_success = 0UL;
 
-  for (i = 0U; i < PS_HW6_OWNER_POWER_REGISTER_COUNT; ++i)
+  status = ps_dev_adp5360_read_power_snapshot(&ps_hw6_pmic, &snapshot);
+  for (index = 0U; index < PS_HW6_OWNER_POWER_REGISTER_COUNT; ++index)
   {
-    uint8_t value = 0U;
-    PS_HW_I2C3_Result result = PS_HW_I2C3_ReadRegister(
-      PS_HW6_PMIC_ADDRESS_7BIT,
-      ps_hw6_pmic_registers[i],
-      &value,
-      PS_HW6_PMIC_LEASE_WAIT_TICKS,
-      PS_HW6_PMIC_TRANSFER_TIMEOUT_MS);
-
-    g_ps_hw6_owner_probe.power_register_value[i] = value;
-    g_ps_hw6_owner_probe.power_lease_get_status[i] = result.acquire_status;
-    g_ps_hw6_owner_probe.power_transfer_status[i] = result.transfer_status;
-    g_ps_hw6_owner_probe.power_transfer_error[i] = result.transfer_error;
-    g_ps_hw6_owner_probe.power_lease_put_status[i] = result.release_status;
-
-    if ((result.acquire_status != TX_SUCCESS) ||
-        (result.transfer_status != HAL_OK) ||
-        (result.release_status != TX_SUCCESS) ||
-        (value != ps_hw6_pmic_expected[i]))
-    {
-      overall = HAL_ERROR;
-    }
+    g_ps_hw6_owner_probe.power_register_address[index] =
+      snapshot.register_address[index];
+    g_ps_hw6_owner_probe.power_register_value[index] =
+      snapshot.register_value[index];
+    g_ps_hw6_owner_probe.power_lease_get_status[index] =
+      snapshot.acquire_tx_status;
+    g_ps_hw6_owner_probe.power_transfer_status[index] =
+      snapshot.register_hal_status[index];
+    g_ps_hw6_owner_probe.power_transfer_error[index] =
+      snapshot.register_hal_error[index];
+    g_ps_hw6_owner_probe.power_lease_put_status[index] =
+      snapshot.release_tx_status;
   }
 
-  g_ps_hw6_owner_probe.power_i2c_state_after = HAL_I2C_GetState(&hi2c3);
-  g_ps_hw6_owner_probe.power_i2c_error_after = HAL_I2C_GetError(&hi2c3);
-  g_ps_hw6_owner_probe.power_identity_match =
-    (g_ps_hw6_owner_probe.power_register_value[0] == 0x10U) ? 1UL : 0UL;
-  g_ps_hw6_owner_probe.power_fault_clear =
-    (g_ps_hw6_owner_probe.power_register_value[5] == 0x00U) ? 1UL : 0UL;
-  g_ps_hw6_owner_probe.power_rails_ready =
-    ((g_ps_hw6_owner_probe.power_register_value[6] &
-      PS_HW6_PMIC_RAIL_PGOOD_MASK) == PS_HW6_PMIC_RAIL_PGOOD_MASK) ?
-    1UL : 0UL;
+  (void)ps_hw_i2c3_diagnostics(
+    (uint32_t *)&g_ps_hw6_owner_probe.power_i2c_state_after,
+    (uint32_t *)&g_ps_hw6_owner_probe.power_i2c_error_after);
+  g_ps_hw6_owner_probe.power_driver_api_version = ps_hw6_pmic.api_version;
+  g_ps_hw6_owner_probe.power_driver_state = ps_hw6_pmic.state;
+  g_ps_hw6_owner_probe.power_driver_operation_count =
+    ps_hw6_pmic.operation_count;
+  g_ps_hw6_owner_probe.power_driver_last_status = ps_hw6_pmic.last_status;
+  g_ps_hw6_owner_probe.power_driver_function_ready_mask =
+    snapshot.function_ready_mask;
+  g_ps_hw6_owner_probe.power_driver_read_ok_mask = snapshot.read_ok_mask;
+  g_ps_hw6_owner_probe.power_driver_expected_match_mask =
+    snapshot.expected_match_mask;
+  g_ps_hw6_owner_probe.power_identity_match = snapshot.identity_match;
+  g_ps_hw6_owner_probe.power_fault_clear = snapshot.fault_clear;
+  g_ps_hw6_owner_probe.power_rails_ready = snapshot.rails_ready;
+  g_ps_hw6_owner_probe.power_charger_status1 = snapshot.charger_status1;
+  g_ps_hw6_owner_probe.power_charger_status2 = snapshot.charger_status2;
+  g_ps_hw6_owner_probe.power_charger_status1_status =
+    snapshot.charger_status1_status;
+  g_ps_hw6_owner_probe.power_charger_status2_status =
+    snapshot.charger_status2_status;
+  g_ps_hw6_owner_probe.power_charger_status1_hal_status =
+    snapshot.charger_status1_hal_status;
+  g_ps_hw6_owner_probe.power_charger_status1_hal_error =
+    snapshot.charger_status1_hal_error;
+  g_ps_hw6_owner_probe.power_charger_status2_hal_status =
+    snapshot.charger_status2_hal_status;
+  g_ps_hw6_owner_probe.power_charger_status2_hal_error =
+    snapshot.charger_status2_hal_error;
+  g_ps_hw6_owner_probe.power_charger_monitor_read_ok_mask =
+    snapshot.charger_monitor_read_ok_mask;
+  g_ps_hw6_owner_probe.power_charger_mode = snapshot.charger_mode;
+  g_ps_hw6_owner_probe.power_charger_status = snapshot.charger_status;
+  g_ps_hw6_owner_probe.power_charger_charge_type =
+    snapshot.charger_charge_type;
+  g_ps_hw6_owner_probe.power_charger_health = snapshot.charger_health;
+  g_ps_hw6_owner_probe.power_battery_status = snapshot.battery_status;
+  g_ps_hw6_owner_probe.power_battery_thermal_status =
+    snapshot.battery_thermal_status;
+  g_ps_hw6_owner_probe.power_battery_present = snapshot.battery_present;
+  g_ps_hw6_owner_probe.power_vbus_ok = snapshot.vbus_ok;
+  g_ps_hw6_owner_probe.power_battery_ok = snapshot.battery_ok;
+  g_ps_hw6_owner_probe.power_charge_complete = snapshot.charge_complete;
+  for (index = 0U; index < PS_DEV_ADP5360_FUEL_REGISTER_COUNT; ++index)
+  {
+    g_ps_hw6_owner_probe.power_fuel_register_address[index] =
+      snapshot.fuel_register_address[index];
+    g_ps_hw6_owner_probe.power_fuel_register_value[index] =
+      snapshot.fuel_register_value[index];
+    g_ps_hw6_owner_probe.power_fuel_register_status[index] =
+      (uint32_t)snapshot.fuel_register_status[index];
+    g_ps_hw6_owner_probe.power_fuel_register_hal_status[index] =
+      snapshot.fuel_register_hal_status[index];
+    g_ps_hw6_owner_probe.power_fuel_register_hal_error[index] =
+      snapshot.fuel_register_hal_error[index];
+  }
+  g_ps_hw6_owner_probe.power_fuel_read_ok_mask = snapshot.fuel_read_ok_mask;
+  g_ps_hw6_owner_probe.power_fuel_soc_percent = snapshot.fuel_soc_percent;
+  g_ps_hw6_owner_probe.power_fuel_vbat_mv = snapshot.fuel_vbat_mv;
+  g_ps_hw6_owner_probe.power_fuel_vbat_h = snapshot.fuel_vbat_h;
+  g_ps_hw6_owner_probe.power_fuel_vbat_l = snapshot.fuel_vbat_l;
+  g_ps_hw6_owner_probe.power_regulator_read_ok_mask =
+    snapshot.regulator_read_ok_mask;
+  g_ps_hw6_owner_probe.power_regulator_buck_cfg =
+    snapshot.regulator_buck_cfg;
+  g_ps_hw6_owner_probe.power_regulator_buck_output =
+    snapshot.regulator_buck_output;
+  g_ps_hw6_owner_probe.power_regulator_buckbst_cfg =
+    snapshot.regulator_buckbst_cfg;
+  g_ps_hw6_owner_probe.power_regulator_buckbst_output =
+    snapshot.regulator_buckbst_output;
+  g_ps_hw6_owner_probe.power_regulator_vout1_ok =
+    snapshot.regulator_vout1_ok;
+  g_ps_hw6_owner_probe.power_regulator_vout2_ok =
+    snapshot.regulator_vout2_ok;
+  g_ps_hw6_owner_probe.power_regulator_battery_ok =
+    snapshot.regulator_battery_ok;
   g_ps_hw6_owner_probe.power_complete = 1UL;
-  g_ps_hw6_owner_probe.power_success = (overall == HAL_OK) ? 1UL : 0UL;
-  return overall;
+  g_ps_hw6_owner_probe.power_success = (status == PS_STATUS_OK) ? 1UL : 0UL;
+  return (status == PS_STATUS_OK) ? HAL_OK : HAL_ERROR;
 }
 
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void)

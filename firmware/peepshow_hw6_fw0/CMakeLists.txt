@@ -48,7 +48,9 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/LS013B7DH05.c
+    Core/Src/ps_dev_adp5360.c
     Core/Src/ps_dev_lis2dux12.c
+    Core/Src/ps_dev_tmag3001.c
     Core/Src/ps_hw_i2c3.c
     Core/Src/ps_hw6_owner_services.c
     Core/Src/ps_hw6_owner_state_machines.c

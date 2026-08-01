@@ -11,6 +11,7 @@
 #include "ps_display_events.h"
 #include "ps_display_state.h"
 #include "ps_dev_lis2dux12.h"
+#include "ps_dev_tmag3001.h"
 #include "ps_hw_i2c3.h"
 #include "ps_hw6_owner_services.h"
 #include "ps_hw6_rtos_probe.h"
@@ -28,29 +29,12 @@
 #define PS_HW6_SM_PHASE_RUNNING           (0x6810UL)
 #define PS_HW6_SM_PHASE_COMPLETE          (0x68FFUL)
 #define PS_HW6_SM_REQUIRED_OWNER_MASK     (0x7FUL)
-#define PS_HW6_SM_I2C_LEASE_TICKS         (20UL)
-#define PS_HW6_SM_I2C_TIMEOUT_MS          (50U)
+
 #define PS_HW6_SM_OSPI_TIMEOUT_MS         (100U)
 #define PS_HW6_SM_ALL_STATE_MASK          \
   ((1UL << PS_HW6_OWNER_SM_COUNT) - 1UL)
 
 #define PS_HW6_TMAG_ADDRESS               (0x34U)
-#define PS_HW6_TMAG_REG_DEVICE_CONFIG2    (0x01U)
-#define PS_HW6_TMAG_REG_SENSOR_CONFIG1    (0x02U)
-#define PS_HW6_TMAG_REG_DEVICE_ID         (0x0DU)
-#define PS_HW6_TMAG_REG_MANUFACTURER_LSB  (0x0EU)
-#define PS_HW6_TMAG_REG_MANUFACTURER_MSB  (0x0FU)
-#define PS_HW6_TMAG_MAG_CHANNEL_MASK      (0xF0U)
-#define PS_HW6_TMAG_LOW_NOISE_MASK        (0x10U)
-#define PS_HW6_TMAG_OPERATING_MODE_MASK   (0x03U)
-#define PS_HW6_TMAG_OPERATING_MODE_STANDBY (0x00U)
-#define PS_HW6_TMAG_OPERATING_MODE_SLEEP  (0x01U)
-#define PS_HW6_TMAG_OPERATING_MODE_CONTINUOUS (0x02U)
-#define PS_HW6_TMAG_ACTIVE_CHANNELS       (0x70U)
-#define PS_HW6_TMAG_WAKE_SETTLE_TICKS     (1UL)
-#define PS_HW6_TMAG_WRITE_REQUIRED_MASK   (0x07UL)
-#define PS_HW6_TMAG_VERIFY_REQUIRED_MASK  (0x03UL)
-
 #define PS_HW6_IMU_ADDRESS                (0x18U)
 
 #define PS_HW6_FLASH_CMD_JEDEC_ID          (0x9FU)
@@ -280,6 +264,7 @@ static const uint32_t ps_cycle_inactive_states[PS_HW6_OWNER_SM_COUNT] =
 };
 
 static ps_dev_lis2dux12_t ps_imu_device;
+static ps_dev_tmag3001_t ps_joystick_device;
 static uint8_t ps_nina_rx_buffer[PS_HW6_NINA_RX_BUFFER_SIZE];
 
 static void PS_HW6_SM_RecordTrace(uint32_t state_machine_id,
@@ -357,13 +342,6 @@ static HAL_StatusTypeDef PS_HW6_SM_Transition(uint32_t state_machine_id,
   return HAL_ERROR;
 }
 
-static uint32_t PS_HW6_SM_I2CResultIsOk(PS_HW_I2C3_Result result)
-{
-  return ((result.acquire_status == TX_SUCCESS) &&
-          (result.transfer_status == HAL_OK) &&
-          (result.release_status == TX_SUCCESS)) ? 1UL : 0UL;
-}
-
 static HAL_StatusTypeDef PS_HW6_SM_StatusToHal(ps_status_t status)
 {
   return (status == PS_STATUS_OK) ? HAL_OK : HAL_ERROR;
@@ -380,26 +358,16 @@ static void PS_HW6_SM_UpdateImuDriverProbe(void)
     ps_imu_device.last_status;
 }
 
-static HAL_StatusTypeDef PS_HW6_SM_ReadI2C(uint8_t address,
-                                           uint8_t reg,
-                                           uint8_t *value)
+static void PS_HW6_SM_UpdateJoystickDriverProbe(void)
 {
-  PS_HW_I2C3_Result result = PS_HW_I2C3_ReadRegister(
-    address, reg, value, PS_HW6_SM_I2C_LEASE_TICKS,
-    PS_HW6_SM_I2C_TIMEOUT_MS);
-
-  return (PS_HW6_SM_I2CResultIsOk(result) != 0UL) ? HAL_OK : HAL_ERROR;
-}
-
-static HAL_StatusTypeDef PS_HW6_SM_WriteI2C(uint8_t address,
-                                            uint8_t reg,
-                                            uint8_t value)
-{
-  PS_HW_I2C3_Result result = PS_HW_I2C3_WriteRegister(
-    address, reg, value, PS_HW6_SM_I2C_LEASE_TICKS,
-    PS_HW6_SM_I2C_TIMEOUT_MS);
-
-  return (PS_HW6_SM_I2CResultIsOk(result) != 0UL) ? HAL_OK : HAL_ERROR;
+  g_ps_hw6_owner_sm_probe.joystick_driver_api_version =
+    ps_joystick_device.api_version;
+  g_ps_hw6_owner_sm_probe.joystick_driver_state =
+    ps_joystick_device.state;
+  g_ps_hw6_owner_sm_probe.joystick_driver_operation_count =
+    ps_joystick_device.operation_count;
+  g_ps_hw6_owner_sm_probe.joystick_driver_last_status =
+    ps_joystick_device.last_status;
 }
 
 static HAL_StatusTypeDef PS_HW6_SM_StabilizePower(void)
@@ -493,157 +461,72 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeAudio(void)
 
 static HAL_StatusTypeDef PS_HW6_SM_StabilizeJoystick(void)
 {
-  HAL_StatusTypeDef status = HAL_OK;
-  uint8_t value = 0U;
-  uint8_t sensor_config1;
-  uint8_t device_config2;
-  uint8_t sleep_device_config2;
+  ps_dev_tmag3001_stabilize_result_t result;
+  ps_status_t driver_status;
+  HAL_StatusTypeDef status;
+  uint32_t i2c_state_after = 0UL;
+  uint32_t i2c_error_after = 0UL;
 
   (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
                             JOY_EV_ENABLE_REQUEST, HAL_OK);
+  driver_status = ps_dev_tmag3001_stabilize_suspended(
+    &ps_joystick_device,
+    &result);
+  status = PS_HW6_SM_StatusToHal(driver_status);
 
-  status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                             PS_HW6_TMAG_REG_DEVICE_ID, &value);
-  g_ps_hw6_owner_sm_probe.joystick_ready_status = (uint32_t)status;
-  g_ps_hw6_owner_sm_probe.joystick_device_id = value;
-  if (status == HAL_OK)
-  {
-    status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                               PS_HW6_TMAG_REG_MANUFACTURER_LSB, &value);
-    g_ps_hw6_owner_sm_probe.joystick_manufacturer_lsb = value;
-  }
-  if (status == HAL_OK)
-  {
-    status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                               PS_HW6_TMAG_REG_MANUFACTURER_MSB, &value);
-    g_ps_hw6_owner_sm_probe.joystick_manufacturer_msb = value;
-  }
-  g_ps_hw6_owner_sm_probe.joystick_identity_status = (uint32_t)status;
+  g_ps_hw6_owner_sm_probe.joystick_ready_status =
+    (uint32_t)result.ready_status;
+  g_ps_hw6_owner_sm_probe.joystick_identity_status =
+    (uint32_t)result.identity_status;
+  g_ps_hw6_owner_sm_probe.joystick_device_id = result.device_id;
+  g_ps_hw6_owner_sm_probe.joystick_manufacturer_lsb =
+    result.manufacturer_lsb;
+  g_ps_hw6_owner_sm_probe.joystick_manufacturer_msb =
+    result.manufacturer_msb;
   g_ps_hw6_owner_sm_probe.joystick_identity_match =
-    ((g_ps_hw6_owner_sm_probe.joystick_manufacturer_lsb == 0x49U) &&
-     (g_ps_hw6_owner_sm_probe.joystick_manufacturer_msb == 0x54U)) ?
-    1UL : 0UL;
-  if ((status != HAL_OK) ||
-      (g_ps_hw6_owner_sm_probe.joystick_identity_match == 0UL))
+    result.identity_match;
+  g_ps_hw6_owner_sm_probe.joystick_sensor_config1_before =
+    result.sensor_config1_before;
+  g_ps_hw6_owner_sm_probe.joystick_sensor_config1_after =
+    result.sensor_config1_after;
+  g_ps_hw6_owner_sm_probe.joystick_device_config2_before =
+    result.device_config2_before;
+  g_ps_hw6_owner_sm_probe.joystick_device_config2_after =
+    result.device_config2_after;
+  g_ps_hw6_owner_sm_probe.joystick_device_config2_sleep =
+    result.device_config2_sleep;
+  g_ps_hw6_owner_sm_probe.joystick_write_ok_mask =
+    result.write_ok_mask;
+  g_ps_hw6_owner_sm_probe.joystick_verify_ok_mask =
+    result.verify_ok_mask;
+  g_ps_hw6_owner_sm_probe.joystick_sensor_config1_verify_status =
+    (uint32_t)result.sensor_config1_verify_status;
+  g_ps_hw6_owner_sm_probe.joystick_device_config2_verify_status =
+    (uint32_t)result.device_config2_verify_status;
+  g_ps_hw6_owner_sm_probe.joystick_sleep_write_status =
+    (uint32_t)result.sleep_write_status;
+  g_ps_hw6_owner_sm_probe.joystick_terminal_sleep_committed =
+    result.terminal_sleep_committed;
+  g_ps_hw6_owner_sm_probe.joystick_post_sleep_read_omitted =
+    result.post_sleep_read_omitted;
+  (void)ps_hw_i2c3_diagnostics(&i2c_state_after, &i2c_error_after);
+  g_ps_hw6_owner_sm_probe.joystick_i2c_state_after = i2c_state_after;
+  g_ps_hw6_owner_sm_probe.joystick_i2c_error_after = i2c_error_after;
+  PS_HW6_SM_UpdateJoystickDriverProbe();
+
+  if (status == HAL_OK)
   {
-    status = HAL_ERROR;
     (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
-                              JOY_EV_I2C_ERROR, status);
-    goto joystick_done;
-  }
-
-  (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
-                            JOY_EV_PROBE_OK, HAL_OK);
-  status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                             PS_HW6_TMAG_REG_SENSOR_CONFIG1,
-                             &sensor_config1);
-  if (status == HAL_OK)
-  {
-    g_ps_hw6_owner_sm_probe.joystick_sensor_config1_before = sensor_config1;
-    sensor_config1 &= (uint8_t)~PS_HW6_TMAG_MAG_CHANNEL_MASK;
-    status = PS_HW6_SM_WriteI2C(PS_HW6_TMAG_ADDRESS,
-                                PS_HW6_TMAG_REG_SENSOR_CONFIG1,
-                                sensor_config1);
-    if (status == HAL_OK)
-    {
-      g_ps_hw6_owner_sm_probe.joystick_write_ok_mask |= 1UL << 0U;
-    }
-  }
-  if (status == HAL_OK)
-  {
-    status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                               PS_HW6_TMAG_REG_SENSOR_CONFIG1, &value);
-    g_ps_hw6_owner_sm_probe.joystick_sensor_config1_verify_status =
-      (uint32_t)status;
-    if ((status == HAL_OK) && (value == sensor_config1))
-    {
-      g_ps_hw6_owner_sm_probe.joystick_sensor_config1_after = value;
-      g_ps_hw6_owner_sm_probe.joystick_verify_ok_mask |= 1UL << 0U;
-    }
-    else
-    {
-      status = HAL_ERROR;
-    }
-  }
-  if (status == HAL_OK)
-  {
-    status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                               PS_HW6_TMAG_REG_DEVICE_CONFIG2,
-                               &device_config2);
-  }
-  if (status == HAL_OK)
-  {
-    g_ps_hw6_owner_sm_probe.joystick_device_config2_before = device_config2;
-    device_config2 =
-      (uint8_t)((device_config2 &
-                 (uint8_t)~(PS_HW6_TMAG_LOW_NOISE_MASK |
-                            PS_HW6_TMAG_OPERATING_MODE_MASK)) |
-                PS_HW6_TMAG_OPERATING_MODE_STANDBY);
-    status = PS_HW6_SM_WriteI2C(PS_HW6_TMAG_ADDRESS,
-                                PS_HW6_TMAG_REG_DEVICE_CONFIG2,
-                                device_config2);
-    if (status == HAL_OK)
-    {
-      g_ps_hw6_owner_sm_probe.joystick_write_ok_mask |= 1UL << 1U;
-    }
-  }
-  if (status == HAL_OK)
-  {
-    status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                               PS_HW6_TMAG_REG_DEVICE_CONFIG2, &value);
-    g_ps_hw6_owner_sm_probe.joystick_device_config2_verify_status =
-      (uint32_t)status;
-    if ((status == HAL_OK) && (value == device_config2))
-    {
-      g_ps_hw6_owner_sm_probe.joystick_device_config2_after = value;
-      g_ps_hw6_owner_sm_probe.joystick_verify_ok_mask |= 1UL << 1U;
-    }
-    else
-    {
-      status = HAL_ERROR;
-    }
-  }
-  if (status == HAL_OK)
-  {
-    sleep_device_config2 =
-      (uint8_t)(device_config2 | PS_HW6_TMAG_OPERATING_MODE_SLEEP);
-    g_ps_hw6_owner_sm_probe.joystick_device_config2_sleep =
-      sleep_device_config2;
-    g_ps_hw6_owner_sm_probe.joystick_post_sleep_read_omitted = 1UL;
-    status = PS_HW6_SM_WriteI2C(PS_HW6_TMAG_ADDRESS,
-                                PS_HW6_TMAG_REG_DEVICE_CONFIG2,
-                                sleep_device_config2);
-    g_ps_hw6_owner_sm_probe.joystick_sleep_write_status =
-      (uint32_t)status;
-    if (status == HAL_OK)
-    {
-      g_ps_hw6_owner_sm_probe.joystick_write_ok_mask |= 1UL << 2U;
-      g_ps_hw6_owner_sm_probe.joystick_terminal_sleep_committed = 1UL;
-    }
-  }
-
-  if ((status == HAL_OK) &&
-      (g_ps_hw6_owner_sm_probe.joystick_write_ok_mask ==
-       PS_HW6_TMAG_WRITE_REQUIRED_MASK) &&
-      (g_ps_hw6_owner_sm_probe.joystick_verify_ok_mask ==
-       PS_HW6_TMAG_VERIFY_REQUIRED_MASK) &&
-      (g_ps_hw6_owner_sm_probe.joystick_terminal_sleep_committed != 0UL))
-  {
+                              JOY_EV_PROBE_OK, HAL_OK);
     (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
                               JOY_EV_CONFIG_OK, status);
   }
   else
   {
-    status = HAL_ERROR;
     (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
                               JOY_EV_I2C_ERROR, status);
   }
 
-joystick_done:
-  g_ps_hw6_owner_sm_probe.joystick_i2c_state_after =
-    (uint32_t)HAL_I2C_GetState(&hi2c3);
-  g_ps_hw6_owner_sm_probe.joystick_i2c_error_after =
-    HAL_I2C_GetError(&hi2c3);
   return status;
 }
 
@@ -1258,12 +1141,9 @@ static HAL_StatusTypeDef PS_HW6_SM_QuiesceAudio(void)
 
 static HAL_StatusTypeDef PS_HW6_SM_ResumeJoystick(uint32_t cycle_index)
 {
+  ps_dev_tmag3001_wake_result_t result;
+  ps_status_t driver_status;
   HAL_StatusTypeDef status;
-  uint8_t value = 0U;
-  uint8_t manufacturer_lsb = 0U;
-  uint8_t manufacturer_msb = 0U;
-  uint8_t sensor_config1 = 0U;
-  uint8_t device_config2 = 0U;
 
   if (PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
                            JOY_EV_RESUME, HAL_OK) != HAL_OK)
@@ -1271,92 +1151,29 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeJoystick(uint32_t cycle_index)
     return HAL_ERROR;
   }
 
-  status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                             PS_HW6_TMAG_REG_DEVICE_ID, &value);
+  driver_status = ps_dev_tmag3001_wake_continuous(
+    &ps_joystick_device,
+    &result);
+  status = PS_HW6_SM_StatusToHal(driver_status);
+
   g_ps_hw6_owner_sm_probe.joystick_cycle_wake_probe_status[cycle_index] =
-    (uint32_t)status;
-  tx_thread_sleep(PS_HW6_TMAG_WAKE_SETTLE_TICKS);
-
-  status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                             PS_HW6_TMAG_REG_DEVICE_ID, &value);
+    (uint32_t)result.wake_probe_status;
   g_ps_hw6_owner_sm_probe.joystick_cycle_wake_retry_status[cycle_index] =
-    (uint32_t)status;
-  if (status == HAL_OK)
-  {
-    status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                               PS_HW6_TMAG_REG_MANUFACTURER_LSB,
-                               &manufacturer_lsb);
-  }
-  if (status == HAL_OK)
-  {
-    status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                               PS_HW6_TMAG_REG_MANUFACTURER_MSB,
-                               &manufacturer_msb);
-  }
-  if ((status != HAL_OK) || (manufacturer_lsb != 0x49U) ||
-      (manufacturer_msb != 0x54U))
-  {
-    status = HAL_ERROR;
-    (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
-                              JOY_EV_I2C_ERROR, status);
-    goto joystick_resume_done;
-  }
+    (uint32_t)result.wake_retry_status;
+  g_ps_hw6_owner_sm_probe.joystick_cycle_active_status[cycle_index] =
+    (uint32_t)result.active_status;
+  g_ps_hw6_owner_sm_probe
+    .joystick_cycle_active_sensor_config1[cycle_index] =
+    result.active_sensor_config1;
+  g_ps_hw6_owner_sm_probe
+    .joystick_cycle_active_device_config2[cycle_index] =
+    result.active_device_config2;
+  PS_HW6_SM_UpdateJoystickDriverProbe();
 
-  (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
-                            JOY_EV_PROBE_OK, HAL_OK);
-  status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                             PS_HW6_TMAG_REG_SENSOR_CONFIG1,
-                             &sensor_config1);
   if (status == HAL_OK)
   {
-    sensor_config1 =
-      (uint8_t)((sensor_config1 & (uint8_t)~PS_HW6_TMAG_MAG_CHANNEL_MASK) |
-                PS_HW6_TMAG_ACTIVE_CHANNELS);
-    status = PS_HW6_SM_WriteI2C(PS_HW6_TMAG_ADDRESS,
-                                PS_HW6_TMAG_REG_SENSOR_CONFIG1,
-                                sensor_config1);
-  }
-  if (status == HAL_OK)
-  {
-    status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                               PS_HW6_TMAG_REG_DEVICE_CONFIG2,
-                               &device_config2);
-  }
-  if (status == HAL_OK)
-  {
-    device_config2 =
-      (uint8_t)((device_config2 &
-                 (uint8_t)~(PS_HW6_TMAG_LOW_NOISE_MASK |
-                            PS_HW6_TMAG_OPERATING_MODE_MASK)) |
-                PS_HW6_TMAG_OPERATING_MODE_CONTINUOUS);
-    status = PS_HW6_SM_WriteI2C(PS_HW6_TMAG_ADDRESS,
-                                PS_HW6_TMAG_REG_DEVICE_CONFIG2,
-                                device_config2);
-  }
-  if (status == HAL_OK)
-  {
-    status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                               PS_HW6_TMAG_REG_SENSOR_CONFIG1, &value);
-    if ((status != HAL_OK) || (value != sensor_config1))
-    {
-      status = HAL_ERROR;
-    }
-  }
-  if (status == HAL_OK)
-  {
-    g_ps_hw6_owner_sm_probe
-      .joystick_cycle_active_sensor_config1[cycle_index] = value;
-    status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                               PS_HW6_TMAG_REG_DEVICE_CONFIG2, &value);
-    if ((status != HAL_OK) || (value != device_config2))
-    {
-      status = HAL_ERROR;
-    }
-  }
-  if (status == HAL_OK)
-  {
-    g_ps_hw6_owner_sm_probe
-      .joystick_cycle_active_device_config2[cycle_index] = value;
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                              JOY_EV_PROBE_OK, HAL_OK);
     (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
                               JOY_EV_SLOW_POLL_REQUEST, status);
   }
@@ -1366,71 +1183,31 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeJoystick(uint32_t cycle_index)
                               JOY_EV_I2C_ERROR, status);
   }
 
-joystick_resume_done:
-  g_ps_hw6_owner_sm_probe.joystick_cycle_active_status[cycle_index] =
-    (uint32_t)status;
   return status;
 }
 
 static HAL_StatusTypeDef PS_HW6_SM_QuiesceJoystick(uint32_t cycle_index)
 {
+  ps_dev_tmag3001_suspend_result_t result;
+  ps_status_t driver_status;
   HAL_StatusTypeDef status;
-  uint8_t value = 0U;
-  uint8_t sensor_config1 = 0U;
-  uint8_t device_config2 = 0U;
+  uint32_t i2c_state_after = 0UL;
+  uint32_t i2c_error_after = 0UL;
 
-  status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                             PS_HW6_TMAG_REG_SENSOR_CONFIG1,
-                             &sensor_config1);
-  if (status == HAL_OK)
-  {
-    sensor_config1 &= (uint8_t)~PS_HW6_TMAG_MAG_CHANNEL_MASK;
-    status = PS_HW6_SM_WriteI2C(PS_HW6_TMAG_ADDRESS,
-                                PS_HW6_TMAG_REG_SENSOR_CONFIG1,
-                                sensor_config1);
-  }
-  if (status == HAL_OK)
-  {
-    status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                               PS_HW6_TMAG_REG_SENSOR_CONFIG1, &value);
-    if ((status != HAL_OK) || (value != sensor_config1))
-    {
-      status = HAL_ERROR;
-    }
-  }
-  if (status == HAL_OK)
-  {
-    status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                               PS_HW6_TMAG_REG_DEVICE_CONFIG2,
-                               &device_config2);
-  }
-  if (status == HAL_OK)
-  {
-    device_config2 =
-      (uint8_t)(device_config2 &
-                (uint8_t)~(PS_HW6_TMAG_LOW_NOISE_MASK |
-                           PS_HW6_TMAG_OPERATING_MODE_MASK));
-    status = PS_HW6_SM_WriteI2C(PS_HW6_TMAG_ADDRESS,
-                                PS_HW6_TMAG_REG_DEVICE_CONFIG2,
-                                device_config2);
-  }
-  if (status == HAL_OK)
-  {
-    status = PS_HW6_SM_ReadI2C(PS_HW6_TMAG_ADDRESS,
-                               PS_HW6_TMAG_REG_DEVICE_CONFIG2, &value);
-    if ((status != HAL_OK) || (value != device_config2))
-    {
-      status = HAL_ERROR;
-    }
-  }
-  if (status == HAL_OK)
-  {
-    status = PS_HW6_SM_WriteI2C(
-      PS_HW6_TMAG_ADDRESS, PS_HW6_TMAG_REG_DEVICE_CONFIG2,
-      (uint8_t)(device_config2 | PS_HW6_TMAG_OPERATING_MODE_SLEEP));
-  }
+  driver_status = ps_dev_tmag3001_suspend(&ps_joystick_device, &result);
+  status = PS_HW6_SM_StatusToHal(driver_status);
+
   g_ps_hw6_owner_sm_probe.joystick_cycle_sleep_status[cycle_index] =
-    (uint32_t)status;
+    (uint32_t)result.sleep_status;
+  g_ps_hw6_owner_sm_probe.joystick_terminal_sleep_committed =
+    result.terminal_sleep_committed;
+  g_ps_hw6_owner_sm_probe.joystick_post_sleep_read_omitted =
+    result.post_sleep_read_omitted;
+  (void)ps_hw_i2c3_diagnostics(&i2c_state_after, &i2c_error_after);
+  g_ps_hw6_owner_sm_probe.joystick_i2c_state_after = i2c_state_after;
+  g_ps_hw6_owner_sm_probe.joystick_i2c_error_after = i2c_error_after;
+  PS_HW6_SM_UpdateJoystickDriverProbe();
+
   if (status == HAL_OK)
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
@@ -1705,6 +1482,7 @@ static HAL_StatusTypeDef PS_HW6_SM_QuiesceBle(uint32_t cycle_index)
 void PS_HW6_OwnerStateMachines_Init(void)
 {
   ps_status_t imu_init_status;
+  ps_status_t joystick_init_status;
   uint32_t cycle_index;
   uint32_t direction;
   uint32_t index;
@@ -1726,6 +1504,13 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.imu_driver_init_status =
     (uint32_t)imu_init_status;
   PS_HW6_SM_UpdateImuDriverProbe();
+
+  joystick_init_status = ps_dev_tmag3001_init(
+    &ps_joystick_device,
+    PS_HW6_TMAG_ADDRESS);
+  g_ps_hw6_owner_sm_probe.joystick_driver_init_status =
+    (uint32_t)joystick_init_status;
+  PS_HW6_SM_UpdateJoystickDriverProbe();
 
   for (index = 0U; index < PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT; ++index)
   {

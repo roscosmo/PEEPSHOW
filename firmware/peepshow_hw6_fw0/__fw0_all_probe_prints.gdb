@@ -110,6 +110,8 @@ printf "audio send/ack/flags      = 0x%x / 0x%x / 0x%x\n", $owner->audio_command
 
 printf "\n  power owner: read-only ADP5360 snapshot\n"
 printf "command/complete/success  = %u / %u / %u\n", $owner->power_command_tick, $owner->power_complete, $owner->power_success
+printf "ADP driver API/init/state/ops/last = %u / %u / %u / %u / %u\n", $owner->power_driver_api_version, $owner->power_driver_init_status, $owner->power_driver_state, $owner->power_driver_operation_count, $owner->power_driver_last_status
+printf "ADP functions/read/match = 0x%x / 0x%x / 0x%x\n", $owner->power_driver_function_ready_mask, $owner->power_driver_read_ok_mask, $owner->power_driver_expected_match_mask
 printf "register addresses        = %02x %02x %02x %02x %02x %02x %02x\n", $owner->power_register_address[0], $owner->power_register_address[1], $owner->power_register_address[2], $owner->power_register_address[3], $owner->power_register_address[4], $owner->power_register_address[5], $owner->power_register_address[6]
 printf "register values           = %02x %02x %02x %02x %02x %02x %02x\n", $owner->power_register_value[0], $owner->power_register_value[1], $owner->power_register_value[2], $owner->power_register_value[3], $owner->power_register_value[4], $owner->power_register_value[5], $owner->power_register_value[6]
 printf "lease get status          = %x %x %x %x %x %x %x\n", $owner->power_lease_get_status[0], $owner->power_lease_get_status[1], $owner->power_lease_get_status[2], $owner->power_lease_get_status[3], $owner->power_lease_get_status[4], $owner->power_lease_get_status[5], $owner->power_lease_get_status[6]
@@ -118,6 +120,20 @@ printf "HAL transfer errors       = %x %x %x %x %x %x %x\n", $owner->power_trans
 printf "lease put status          = %x %x %x %x %x %x %x\n", $owner->power_lease_put_status[0], $owner->power_lease_put_status[1], $owner->power_lease_put_status[2], $owner->power_lease_put_status[3], $owner->power_lease_put_status[4], $owner->power_lease_put_status[5], $owner->power_lease_put_status[6]
 printf "I2C state/error           = 0x%x / 0x%x\n", $owner->power_i2c_state_after, $owner->power_i2c_error_after
 printf "identity/rails/fault OK   = %u / %u / %u\n", $owner->power_identity_match, $owner->power_rails_ready, $owner->power_fault_clear
+printf "ADP charger status regs  = %02x / %02x\n", $owner->power_charger_status1, $owner->power_charger_status2
+printf "ADP charger read sts     = 0x%x / 0x%x mask 0x%x\n", $owner->power_charger_status1_status, $owner->power_charger_status2_status, $owner->power_charger_monitor_read_ok_mask
+printf "ADP charger HAL sts/err  = 0x%x/0x%x 0x%x/0x%x\n", $owner->power_charger_status1_hal_status, $owner->power_charger_status1_hal_error, $owner->power_charger_status2_hal_status, $owner->power_charger_status2_hal_error
+printf "ADP mode/status/type/health = %u / %u / %u / %u\n", $owner->power_charger_mode, $owner->power_charger_status, $owner->power_charger_charge_type, $owner->power_charger_health
+printf "ADP battery stat/therm/present = %u / %u / %u\n", $owner->power_battery_status, $owner->power_battery_thermal_status, $owner->power_battery_present
+printf "ADP PGOOD vbus/bat/full = %u / %u / %u\n", $owner->power_vbus_ok, $owner->power_battery_ok, $owner->power_charge_complete
+printf "ADP fuel regs            = %02x %02x %02x %02x %02x\n", $owner->power_fuel_register_address[0], $owner->power_fuel_register_address[1], $owner->power_fuel_register_address[2], $owner->power_fuel_register_address[3], $owner->power_fuel_register_address[4]
+printf "ADP fuel values          = %02x %02x %02x %02x %02x\n", $owner->power_fuel_register_value[0], $owner->power_fuel_register_value[1], $owner->power_fuel_register_value[2], $owner->power_fuel_register_value[3], $owner->power_fuel_register_value[4]
+printf "ADP fuel read mask       = 0x%x\n", $owner->power_fuel_read_ok_mask
+printf "ADP fuel raw sts         = %x %x %x %x %x\n", $owner->power_fuel_register_status[0], $owner->power_fuel_register_status[1], $owner->power_fuel_register_status[2], $owner->power_fuel_register_status[3], $owner->power_fuel_register_status[4]
+printf "ADP fuel SOC/VBAT        = %u %% / %u mV (raw %02x %02x)\n", $owner->power_fuel_soc_percent, $owner->power_fuel_vbat_mv, $owner->power_fuel_vbat_h, $owner->power_fuel_vbat_l
+printf "ADP regulator read mask  = 0x%x\n", $owner->power_regulator_read_ok_mask
+printf "ADP regulator cfg/out    = buck %02x/%02x buckbst %02x/%02x\n", $owner->power_regulator_buck_cfg, $owner->power_regulator_buck_output, $owner->power_regulator_buckbst_cfg, $owner->power_regulator_buckbst_output
+printf "ADP regulator ok bits    = vout1 %u vout2 %u bat %u\n", $owner->power_regulator_vout1_ok, $owner->power_regulator_vout2_ok, $owner->power_regulator_battery_ok
 
 printf "\n  display owner: 144x168 diagnostic card\n"
 printf "command/complete/success  = %u / %u / %u\n", $owner->display_command_tick, $owner->display_complete, $owner->display_success
@@ -209,6 +225,7 @@ printf "flash                      %u 8  %u %u %u %x %x\n", $sm->current_state[8
 printf "BLE                        %u 10 %u %u %u %x %x\n", $sm->current_state[9], $sm->transition_count[9], $sm->rejected_transition_count[9], $sm->last_event[9], $sm->last_action_status[9], $sm->last_error[9]
 
 printf "\n  TMAG3001 verified suspended baseline\n"
+printf "driver API/init/state/ops/last = %u / %u / %u / %u / %u\n", $sm->joystick_driver_api_version, $sm->joystick_driver_init_status, $sm->joystick_driver_state, $sm->joystick_driver_operation_count, $sm->joystick_driver_last_status
 printf "ready/identity/match       = 0x%x / 0x%x / %u\n", $sm->joystick_ready_status, $sm->joystick_identity_status, $sm->joystick_identity_match
 printf "device/mfr LSB/MSB         = %02x / %02x / %02x\n", $sm->joystick_device_id, $sm->joystick_manufacturer_lsb, $sm->joystick_manufacturer_msb
 printf "SENSOR_CONFIG1 before/verified = %02x / %02x\n", $sm->joystick_sensor_config1_before, $sm->joystick_sensor_config1_after

@@ -61,6 +61,12 @@ not the complete production transition model.
   then require ACK and `WHO_AM_I=0x47` before configuring active low-rate mode
   with `CTRL5=0x10`. Evidence is preserved in
   `EV-HW6-20260801-P5-OWNERS-006`.
+- Lifecycle v6 kept the same owner cycle and moved the TMAG3001 input path out
+  of owner-local raw register code into the HW6-native `ps_dev_tmag3001` wrapper
+  under the I2C3 input lease. It passed identity, expected sleeping-device wake
+  status `5` followed by retry success, active `SENSOR_CONFIG1=0x70` /
+  `DEVICE_CONFIG2=0x02`, and terminal sleep recommit. Evidence is preserved in
+  `EV-HW6-20260801-P5-INPUT-007`.
 - The lifecycle-v5 active boundary is `PWR_ACTIVE_RT`, `PMIC_MONITOR`,
   `DISP_STATIC_HOLD`, `AUDIO_IDLE`, `SPK_OFF`, `JOY_SLOW_POLL`,
   `IMU_LOW_RATE_SAMPLE`, `STORAGE_FLASH_READY`, `FLASH_READY`, and `BLE_IDLE`.
@@ -83,7 +89,7 @@ not the complete production transition model.
   accessible.
 
 This is a stabilization slice, not the complete production transition model.
-Lifecycle-v5 closes the bounded owner-routed repeatability check, but
+Lifecycle-v6 keeps the bounded owner-routed repeatability check passing with both LIS2DUX12 and TMAG3001 driver-backed paths, but
 cancellation, injected faults, retries, STOP2 handoff, saturation, current, and
 production runtime mode changes remain separate required evidence.
 

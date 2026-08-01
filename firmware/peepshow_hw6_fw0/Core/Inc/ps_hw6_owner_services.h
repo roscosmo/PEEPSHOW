@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "stm32u5xx_hal.h"
+#include "ps_dev_adp5360.h"
 #include "tx_api.h"
 
 #ifdef __cplusplus
@@ -36,6 +37,14 @@ typedef struct
   uint32_t power_command_tick;
   uint32_t power_complete;
   uint32_t power_success;
+  uint32_t power_driver_api_version;
+  uint32_t power_driver_init_status;
+  uint32_t power_driver_state;
+  uint32_t power_driver_operation_count;
+  uint32_t power_driver_last_status;
+  uint32_t power_driver_function_ready_mask;
+  uint32_t power_driver_read_ok_mask;
+  uint32_t power_driver_expected_match_mask;
   uint32_t power_register_address[PS_HW6_OWNER_POWER_REGISTER_COUNT];
   uint32_t power_register_value[PS_HW6_OWNER_POWER_REGISTER_COUNT];
   uint32_t power_lease_get_status[PS_HW6_OWNER_POWER_REGISTER_COUNT];
@@ -47,6 +56,43 @@ typedef struct
   uint32_t power_identity_match;
   uint32_t power_rails_ready;
   uint32_t power_fault_clear;
+  uint32_t power_charger_status1;
+  uint32_t power_charger_status2;
+  uint32_t power_charger_status1_status;
+  uint32_t power_charger_status2_status;
+  uint32_t power_charger_status1_hal_status;
+  uint32_t power_charger_status1_hal_error;
+  uint32_t power_charger_status2_hal_status;
+  uint32_t power_charger_status2_hal_error;
+  uint32_t power_charger_monitor_read_ok_mask;
+  uint32_t power_charger_mode;
+  uint32_t power_charger_status;
+  uint32_t power_charger_charge_type;
+  uint32_t power_charger_health;
+  uint32_t power_battery_status;
+  uint32_t power_battery_thermal_status;
+  uint32_t power_battery_present;
+  uint32_t power_vbus_ok;
+  uint32_t power_battery_ok;
+  uint32_t power_charge_complete;
+  uint32_t power_fuel_register_address[PS_DEV_ADP5360_FUEL_REGISTER_COUNT];
+  uint32_t power_fuel_register_value[PS_DEV_ADP5360_FUEL_REGISTER_COUNT];
+  uint32_t power_fuel_register_status[PS_DEV_ADP5360_FUEL_REGISTER_COUNT];
+  uint32_t power_fuel_register_hal_status[PS_DEV_ADP5360_FUEL_REGISTER_COUNT];
+  uint32_t power_fuel_register_hal_error[PS_DEV_ADP5360_FUEL_REGISTER_COUNT];
+  uint32_t power_fuel_read_ok_mask;
+  uint32_t power_fuel_soc_percent;
+  uint32_t power_fuel_vbat_mv;
+  uint32_t power_fuel_vbat_h;
+  uint32_t power_fuel_vbat_l;
+  uint32_t power_regulator_read_ok_mask;
+  uint32_t power_regulator_buck_cfg;
+  uint32_t power_regulator_buck_output;
+  uint32_t power_regulator_buckbst_cfg;
+  uint32_t power_regulator_buckbst_output;
+  uint32_t power_regulator_vout1_ok;
+  uint32_t power_regulator_vout2_ok;
+  uint32_t power_regulator_battery_ok;
 
   uint32_t display_command_tick;
   uint32_t display_complete;

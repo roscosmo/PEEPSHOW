@@ -170,6 +170,14 @@ revalidates `WHO_AM_I=0x47`, configures low-rate active mode with
 `CTRL5=0x10`, and recommits deep-power-down at the end of each cycle. Transport
 and action success remain independent.
 
+Lifecycle-v6 kept the same queue envelopes and replaced the remaining raw
+TMAG3001 owner-local register sequence with the HW6-native `ps_dev_tmag3001`
+wrapper under the input-owner I2C3 lease. It passed identity, active XYZ
+continuous configuration (`SENSOR_CONFIG1=0x70`, `DEVICE_CONFIG2=0x02`),
+expected first sleeping-device wake status `5` plus retry success, and terminal
+sleep recommit across both cycles.
+
+
 The cycle performs real device work: flash release/re-identification/deep
 power-down, TMAG wake/configure/sleep, LIS deep-power-down exit/low-rate setup/
 deep-power-down, NINA DSR wake/AT/DSR STOP, display DMA, audio DMA, and PMIC

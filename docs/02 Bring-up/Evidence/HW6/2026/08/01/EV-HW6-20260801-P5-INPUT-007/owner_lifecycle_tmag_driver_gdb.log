@@ -1,0 +1,54 @@
+Program
+ received signal SIGINT, Interrupt.
+PS_HW6_RTOS_LowPowerEnter () at G:/PEEPSHOW/firmware/peepshow_hw6_fw0/Core/Src/ps_hw6_rtos_probe.c:691
+691	  __ISB();
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_all_probe_prints.gdb
+=== HW6 FW0 BOOT + PERIPHERAL + RTOS + OWNER STATE PROBE ===
+boot magic/version/phase = 0x48364630 / 0x1 / 0x60ff
+boot complete/pre-RTOS hb = 1 / 0x0
+MCU device/revision      = 0x482 / 0x3001
+SYSCLK Hz                = 24000000
+output expected/actual   = 0x8 / 0x8
+boot errors/asserts      = 0 / 0
+
+--- retained-peripheral lifecycle state machines ---
+start request              = 0
+magic/version/phase        = 0x48364653 / 0x6 / 0x68ff
+complete/success           = 1 / 1
+required/completed         = 0x7f / 0x7f
+success/failure owners     = 0x7f / 0x0
+workflow start/end/delta   = 551 / 1479 / 928 ticks
+
+--- two bounded inactive-active-inactive owner cycles ---
+requested/completed/success = 2 / 2 / 1
+required owner/state masks  = 0x7f / 0x3ff
+
+cycle 0:
+resume success/failure      = 0x7f / 0x0
+quiesce success/failure     = 0x7f / 0x0
+active/inactive state match = 0x3ff / 0x3ff
+TMAG wake/retry/active/sleep = 5 0 0 0
+TMAG active config1/config2  = 70 / 02
+
+cycle 1:
+resume success/failure      = 0x7f / 0x0
+quiesce success/failure     = 0x7f / 0x0
+active/inactive state match = 0x3ff / 0x3ff
+TMAG wake/retry/active/sleep = 5 0 0 0
+TMAG active config1/config2  = 70 / 02
+
+  TMAG3001 verified suspended baseline
+driver API/init/state/ops/last = 1 / 0 / 3 / 5 / 0
+ready/identity/match       = 0x0 / 0x0 / 1
+device/mfr LSB/MSB         = 00 / 49 / 54
+SENSOR_CONFIG1 before/verified = 00 / 00
+DEVICE_CONFIG2 before/verified/sleep = 00 / 00 / 01
+pre-terminal verify status = 0x0 / 0x0
+write/verify masks         = 0x7 / 0x3 (expected 0x7 / 0x3)
+terminal sleep status/committed = 0x0 / 1
+post-sleep read omitted    = 1 (expected 1; any address probe wakes TMAG)
+I2C state/error            = 0x20 / 0x0
+
+--- scheduler idle and workflow marker ---
+PWR_DBG state/toggles/last = 0 / 2 / 1479
+=== END HW6 FW0 BOOT + PERIPHERAL + RTOS + OWNER STATE PROBE ===
