@@ -180,6 +180,8 @@ sleep recommit across both cycles.
 
 Lifecycle-v7 kept the same queue envelopes and replaced the display owner direct LCD calls with the `ps_dev_ls013b7dh05` wrapper. It passed the known full-frame card through `thDisplay` with driver API/init/state/ops/last `1 / 0x0 / 2 / 3 / 0x0`, hash `0x360cda71`, DMA done `1`, and zero SPI/DMA errors. Evidence is preserved in `EV-HW6-20260801-P5-DISPLAY-008`.
 
+Lifecycle-v8 kept the same queue envelopes and replaced the audio owner direct SAI/GPDMA and `SD_MODE` calls with the `ps_dev_audio` wrapper. It passed the known speaker tone through `thAudio` with driver API/init/state/ops/last `1 / 0x0 / 3 / 3 / 0x0`, SAI/sample/tone `4096000 / 16000 / 1000`, `SD_MODE` `0 / 1 / 0`, start/stop `0x0 / 0x0`, and zero SAI/DMA errors. Evidence is preserved in `EV-HW6-20260801-P5-AUDIO-009`.
+
 The cycle performs real device work: flash release/re-identification/deep
 power-down, TMAG wake/configure/sleep, LIS deep-power-down exit/low-rate setup/
 deep-power-down, NINA DSR wake/AT/DSR STOP, display DMA, audio DMA, and PMIC

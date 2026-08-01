@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "ps_dev_audio.h"
 #include "ps_dev_ls013b7dh05.h"
 #include "main.h"
 #include "ps_dev_adp5360.h"
@@ -38,6 +39,7 @@ extern DMA_HandleTypeDef handle_LPDMA1_Channel0;
 volatile PS_HW6_OwnerProbe g_ps_hw6_owner_probe;
 
 static ps_dev_adp5360_t ps_hw6_pmic;
+static ps_dev_audio_t ps_hw6_audio;
 static ps_dev_ls013b7dh05_t ps_hw6_display;
 static uint8_t ps_hw6_display_framebuffer[PS_DEV_LS013B7DH05_BUFFER_SIZE];
 static int16_t ps_hw6_audio_buffer[PS_HW6_AUDIO_BUFFER_HALFWORDS]
@@ -58,6 +60,15 @@ static void PS_HW6_UpdateDisplayDriverProbe(void)
     ps_hw6_display.operation_count;
   g_ps_hw6_owner_probe.display_driver_last_status =
     ps_hw6_display.last_status;
+}
+
+static void PS_HW6_UpdateAudioDriverProbe(void)
+{
+  g_ps_hw6_owner_probe.audio_driver_api_version = ps_hw6_audio.api_version;
+  g_ps_hw6_owner_probe.audio_driver_state = ps_hw6_audio.state;
+  g_ps_hw6_owner_probe.audio_driver_operation_count =
+    ps_hw6_audio.operation_count;
+  g_ps_hw6_owner_probe.audio_driver_last_status = ps_hw6_audio.last_status;
 }
 
 static uint32_t PS_HW6_DisplaySetBlack(uint16_t x, uint16_t y)
@@ -263,6 +274,13 @@ UINT PS_HW6_OwnerServices_Init(void)
   g_ps_hw6_owner_probe.display_driver_init_status =
     (uint32_t)ps_dev_ls013b7dh05_init(&ps_hw6_display, &hspi3);
   PS_HW6_UpdateDisplayDriverProbe();
+  g_ps_hw6_owner_probe.audio_driver_init_status =
+    (uint32_t)ps_dev_audio_init(&ps_hw6_audio,
+                                &hsai_BlockA1,
+                                &handle_GPDMA1_Channel3,
+                                SD_MODE_GPIO_Port,
+                                SD_MODE_Pin);
+  PS_HW6_UpdateAudioDriverProbe();
   status = PS_HW_I2C3_Init(&hi2c3);
   g_ps_hw6_owner_probe.services_init_status = status;
   if (status == TX_SUCCESS)
@@ -440,55 +458,53 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void)
   return HAL_ERROR;
 }
 
+HAL_StatusTypeDef PS_HW6_AudioOwner_VerifyIdle(void)
+{
+  ps_dev_audio_play_result_t result;
+  ps_status_t driver_status;
+
+  driver_status = ps_dev_audio_verify_idle(&ps_hw6_audio, &result);
+  g_ps_hw6_owner_probe.audio_sd_state_after = result.sd_state_after;
+  g_ps_hw6_owner_probe.audio_sai_state_after = result.sai_state_after;
+  g_ps_hw6_owner_probe.audio_sai_error_after = result.sai_error_after;
+  g_ps_hw6_owner_probe.audio_dma_state_after = result.dma_state_after;
+  g_ps_hw6_owner_probe.audio_dma_error_after = result.dma_error_after;
+  PS_HW6_UpdateAudioDriverProbe();
+  return (driver_status == PS_STATUS_OK) ? HAL_OK : HAL_ERROR;
+}
+
 HAL_StatusTypeDef PS_HW6_AudioOwner_RunTone(void)
 {
-  HAL_StatusTypeDef start_status;
-  HAL_StatusTypeDef stop_status = HAL_ERROR;
+  ps_dev_audio_play_result_t result;
+  ps_status_t driver_status;
 
   g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_AUDIO;
   g_ps_hw6_owner_probe.audio_complete = 0UL;
   g_ps_hw6_owner_probe.audio_success = 0UL;
-  g_ps_hw6_owner_probe.audio_sai_kernel_hz =
-    HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SAI1);
-  g_ps_hw6_owner_probe.audio_sd_state_before =
-    HAL_GPIO_ReadPin(SD_MODE_GPIO_Port, SD_MODE_Pin);
 
-  (void)HAL_SAI_DMAStop(&hsai_BlockA1);
-  HAL_GPIO_WritePin(SD_MODE_GPIO_Port, SD_MODE_Pin, GPIO_PIN_SET);
-  g_ps_hw6_owner_probe.audio_sd_state_enabled =
-    HAL_GPIO_ReadPin(SD_MODE_GPIO_Port, SD_MODE_Pin);
-  tx_thread_sleep(PS_HW6_AUDIO_AMP_SETTLE_TICKS);
+  driver_status = ps_dev_audio_play_dma(
+    &ps_hw6_audio,
+    ps_hw6_audio_buffer,
+    PS_HW6_AUDIO_BUFFER_HALFWORDS,
+    PS_HW6_AUDIO_AMP_SETTLE_TICKS,
+    PS_HW6_AUDIO_DURATION_TICKS,
+    4096000UL,
+    &result);
 
-  start_status = HAL_SAI_Transmit_DMA(
-    &hsai_BlockA1,
-    (uint8_t *)ps_hw6_audio_buffer,
-    PS_HW6_AUDIO_BUFFER_HALFWORDS);
-  g_ps_hw6_owner_probe.audio_start_status = start_status;
-  if (start_status == HAL_OK)
-  {
-    tx_thread_sleep(PS_HW6_AUDIO_DURATION_TICKS);
-    stop_status = HAL_SAI_DMAStop(&hsai_BlockA1);
-  }
-
-  g_ps_hw6_owner_probe.audio_stop_status = stop_status;
-  HAL_GPIO_WritePin(SD_MODE_GPIO_Port, SD_MODE_Pin, GPIO_PIN_RESET);
-  g_ps_hw6_owner_probe.audio_sd_state_after =
-    HAL_GPIO_ReadPin(SD_MODE_GPIO_Port, SD_MODE_Pin);
-  g_ps_hw6_owner_probe.audio_sai_state_after = HAL_SAI_GetState(&hsai_BlockA1);
-  g_ps_hw6_owner_probe.audio_sai_error_after = HAL_SAI_GetError(&hsai_BlockA1);
-  g_ps_hw6_owner_probe.audio_dma_state_after =
-    HAL_DMA_GetState(&handle_GPDMA1_Channel3);
-  g_ps_hw6_owner_probe.audio_dma_error_after =
-    HAL_DMA_GetError(&handle_GPDMA1_Channel3);
+  g_ps_hw6_owner_probe.audio_sai_kernel_hz = result.sai_kernel_hz;
+  g_ps_hw6_owner_probe.audio_sd_state_before = result.sd_state_before;
+  g_ps_hw6_owner_probe.audio_sd_state_enabled = result.sd_state_enabled;
+  g_ps_hw6_owner_probe.audio_start_status = result.start_hal_status;
+  g_ps_hw6_owner_probe.audio_stop_status = result.stop_hal_status;
+  g_ps_hw6_owner_probe.audio_sd_state_after = result.sd_state_after;
+  g_ps_hw6_owner_probe.audio_sai_state_after = result.sai_state_after;
+  g_ps_hw6_owner_probe.audio_sai_error_after = result.sai_error_after;
+  g_ps_hw6_owner_probe.audio_dma_state_after = result.dma_state_after;
+  g_ps_hw6_owner_probe.audio_dma_error_after = result.dma_error_after;
+  PS_HW6_UpdateAudioDriverProbe();
   g_ps_hw6_owner_probe.audio_complete = 1UL;
 
-  if ((start_status == HAL_OK) &&
-      (stop_status == HAL_OK) &&
-      (g_ps_hw6_owner_probe.audio_sai_kernel_hz == 4096000UL) &&
-      (g_ps_hw6_owner_probe.audio_sd_state_enabled != 0UL) &&
-      (g_ps_hw6_owner_probe.audio_sd_state_after == 0UL) &&
-      (g_ps_hw6_owner_probe.audio_sai_error_after == HAL_SAI_ERROR_NONE) &&
-      (g_ps_hw6_owner_probe.audio_dma_error_after == HAL_DMA_ERROR_NONE))
+  if (driver_status == PS_STATUS_OK)
   {
     g_ps_hw6_owner_probe.audio_success = 1UL;
     return HAL_OK;

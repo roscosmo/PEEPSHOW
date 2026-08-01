@@ -66,7 +66,6 @@
 extern I2C_HandleTypeDef hi2c3;
 extern OSPI_HandleTypeDef hospi1;
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
-extern SAI_HandleTypeDef hsai_BlockA1;
 extern UART_HandleTypeDef hlpuart1;
 
 volatile PS_HW6_OwnerStateMachineProbe g_ps_hw6_owner_sm_probe;
@@ -1129,12 +1128,9 @@ static HAL_StatusTypeDef PS_HW6_SM_QuiesceAudio(void)
   if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_AUDIO] ==
        (uint32_t)AUDIO_IDLE) &&
       (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_SPEAKER] ==
-       (uint32_t)SPK_OFF) &&
-      (HAL_GPIO_ReadPin(SD_MODE_GPIO_Port, SD_MODE_Pin) == GPIO_PIN_RESET) &&
-      (HAL_SAI_GetState(&hsai_BlockA1) == HAL_SAI_STATE_READY) &&
-      (HAL_SAI_GetError(&hsai_BlockA1) == HAL_SAI_ERROR_NONE))
+       (uint32_t)SPK_OFF))
   {
-    return HAL_OK;
+    return PS_HW6_AudioOwner_VerifyIdle();
   }
   return HAL_ERROR;
 }

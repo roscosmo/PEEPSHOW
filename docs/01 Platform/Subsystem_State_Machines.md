@@ -68,6 +68,7 @@ not the complete production transition model.
   `DEVICE_CONFIG2=0x02`, and terminal sleep recommit. Evidence is preserved in
   `EV-HW6-20260801-P5-INPUT-007`.
 - Lifecycle v7 kept the same owner cycle and moved the LS013B7DH05 display path out of direct owner-local LCD calls into the `ps_dev_ls013b7dh05` wrapper. It passed the full-frame diagnostic card through `thDisplay` with driver API/init/state/ops/last `1 / 0x0 / 2 / 3 / 0x0`, matching card hash `0x360cda71`, DMA done `1`, and zero SPI/DMA errors. Evidence is preserved in `EV-HW6-20260801-P5-DISPLAY-008`.
+- Lifecycle v8 kept the same owner cycle and moved the speaker audio path out of direct owner-local SAI/GPDMA and `SD_MODE` operations into the `ps_dev_audio` wrapper. It passed the diagnostic tone through `thAudio` with driver API/init/state/ops/last `1 / 0x0 / 3 / 3 / 0x0`, SAI/sample/tone `4096000 / 16000 / 1000`, `SD_MODE` `0 / 1 / 0`, start/stop `0x0 / 0x0`, and zero SAI/DMA errors. Evidence is preserved in `EV-HW6-20260801-P5-AUDIO-009`.
 - The lifecycle-v5 active boundary is `PWR_ACTIVE_RT`, `PMIC_MONITOR`,
   `DISP_STATIC_HOLD`, `AUDIO_IDLE`, `SPK_OFF`, `JOY_SLOW_POLL`,
   `IMU_LOW_RATE_SAMPLE`, `STORAGE_FLASH_READY`, `FLASH_READY`, and `BLE_IDLE`.
@@ -90,7 +91,7 @@ not the complete production transition model.
   accessible.
 
 This is a stabilization slice, not the complete production transition model.
-Lifecycle-v7 keeps the bounded owner-routed repeatability check passing with LIS2DUX12, TMAG3001, and LS013B7DH05 driver-backed paths, but
+Lifecycle-v8 keeps the bounded owner-routed repeatability check passing with LIS2DUX12, TMAG3001, LS013B7DH05, and speaker-audio driver-backed paths, but
 cancellation, injected faults, retries, STOP2 handoff, saturation, current, and
 production runtime mode changes remain separate required evidence.
 
@@ -440,7 +441,7 @@ Key events:
 - `EV_RECOVER_OK`
 
 Rules:
-- `thAudio` owns every audio path present on the active target. HW6 exposes the speaker path only.
+- `thAudio` owns every audio path present on the active target. HW6 exposes the speaker path only. The validated HW6 diagnostic path enters through `ps_dev_audio`, which owns `SD_MODE`, SAI1/GPDMA playback, bounded stop, and final idle/off verification.
 - Speaker output supports exactly 1 music voice plus 5 SFX voices mixed to 16 kHz mono PCM.
 - On legacy targets granting `audio.bbb`, BBB output is procedural symbolic audio through `BUZZ`, not PCM streaming.
 - Speaker/BBB concurrency applies only to targets that physically provide and grant both paths; it is not an HW6 behavior.

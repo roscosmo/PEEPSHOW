@@ -101,9 +101,9 @@ Populate this table during bring-up. The current values are placeholders until m
 | --- | --- | --- | --- | --- |
 | speaker idle | `SD_MODE` low | MAX98357A shutdown | `fw0` Phase 3A BBB probe forced `SD_MODE` low before and after the BBB tone; GDB readback showed `sd_mode_state_before=0` and `sd_mode_state_after=0`. Speaker amp shutdown current/behavior has not yet been measured separately. | partial |
 | audio clock | `PLL2P = 4.096 MHz` | 16 kHz mono frame timing | `fw0` SAI1 probe used `PLL2P = 4.096 MHz`; firmware readback showed `sai_kernel_hz=4096000` and `speaker_sample_rate_hz=16000` | pass |
-| speaker tone | generated PCM | audible clean tone, no DMA underrun | `fw0` generated a `1 kHz` SAI1 TX DMA PCM tone with `SD_MODE` high; first run was silent due to a loose speaker connection, then user replugged/rebooted and heard a loud tone. A follow-up PPK2 ladder showed amp-on silence / sine amplitude `512` / sine amplitude `1500` were all about `10 mA` and too soft, sine amplitude `3000` was about `15 mA` and subjectively good, and a short square amplitude `1000` was about `10 mA` and also acceptable. | pass |
+| speaker tone | generated PCM | audible clean tone, no DMA underrun | `EV-HW6-20260801-P5-AUDIO-009` validated `ps_dev_audio` through `thAudio`: three audible ~750 ms 1 kHz tones, SAI/sample/tone `4096000/16000/1000`, amplitude `3000`, buffer `2048` halfwords, start/stop `0x0/0x0`, SAI/DMA errors `0x0/0x0`. Earlier HW5 notes remain historical only. | pass |
 | DMA service | circular buffer | half/full callbacks or equivalent service events | SAI TX DMA probe showed `speaker_start_status=0`, `speaker_stop_status=0`, `speaker_half_cplt_count=50`, `speaker_cplt_count=49`, `speaker_error_count=0`, `sai_error_after=0` | pass |
-| speaker stop | stop/drain path | DMA stopped, `SD_MODE` low | SAI TX DMA probe stopped with `speaker_stop_status=0`, `sai_state_after=READY`, `sai_error_after=0`, and `sd_mode_state_after=0` | pass |
+| speaker stop | stop/drain path | DMA stopped, `SD_MODE` low | `EV-HW6-20260801-P5-AUDIO-009` validated `SD_MODE` `0/1/0`, SAI state/error `0x1/0x0`, and DMA state/error `0x1/0x0` after each owner-routed tone cycle. | pass |
 | BBB tone | LPTIM1 fixed frequency | piezo tone generated | `PB2` / `LPTIM1_CH1` generated a one-shot `2 kHz` active-high PWM tone for about `500 ms` from MSIK `4 MHz`; GDB readback showed `period=1999`, `pulse=1000`, all HAL statuses `0`, and user heard a beep | pass |
 | BBB sweep | bounded sweep | sweep generated and stopped cleanly | `PB2` / `LPTIM1_CH1` generated a rising sweep from `800 Hz` to `4000 Hz` over `24` steps at `35 ms` per step; GDB readback showed all `24` steps completed, no failed step, start/stop/final step statuses `0`, and user heard the sweep | pass |
 | BBB melody | bounded sequence | pattern completes and PAM idles | Six-step BBB melody/gap pattern completed in firmware with `6` requested and `6` completed steps, no failed step, and clean start/stop statuses; user heard the melody but perceived it closer to five tones, likely due to timing or piezo response masking one step | pass_with_note |
@@ -144,3 +144,9 @@ Record in [[Brought_Up_Tracker]]:
 - any underrun/fault observations
 
 Audio failure is major but non-fatal according to [[Audio_Contract]].
+
+## HW6 Measured Evidence
+
+`EV-HW6-20260801-P5-AUDIO-009` validates the current driver-backed speaker path on `HW6-UNIT-001`: `ps_dev_audio` drove `SD_MODE`, started SAI1/GPDMA playback, waited the bounded tone duration, stopped DMA, and verified final idle/off state through `thAudio`. The probe reported audio driver API/init/state/ops/last `1 / 0x0 / 3 / 3 / 0x0`, SAI/sample/tone `4096000 / 16000 / 1000`, duration/amplitude/buffer `750 ms / 3000 / 2048 halfwords`, `SD_MODE` `0 / 1 / 0`, start/stop `0x0 / 0x0`, SAI state/error `0x1 / 0x0`, and DMA state/error `0x1 / 0x0`. The operator heard the expected three tones.
+
+This closes only the owner-routed diagnostic speaker DMA path. Refill/underrun behavior, mixer/SFX playback, ADPCM asset handling, volume/fade/mute policy, current measurement, STOP2 quiesce current, and fault injection remain open.

@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (2UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (3UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_STATUS_NOT_RUN              (0xFFFFFFFFUL)
 
@@ -119,6 +119,11 @@ typedef struct
   uint32_t display_dma_error_after;
   uint32_t display_ack_set_status;
 
+  uint32_t audio_driver_api_version;
+  uint32_t audio_driver_init_status;
+  uint32_t audio_driver_state;
+  uint32_t audio_driver_operation_count;
+  uint32_t audio_driver_last_status;
   uint32_t audio_command_tick;
   uint32_t audio_complete;
   uint32_t audio_success;
@@ -146,6 +151,7 @@ UINT PS_HW6_OwnerServices_Init(void);
 HAL_StatusTypeDef PS_HW6_PowerOwner_RunSnapshot(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void);
 HAL_StatusTypeDef PS_HW6_AudioOwner_RunTone(void);
+HAL_StatusTypeDef PS_HW6_AudioOwner_VerifyIdle(void);
 void PS_HW6_OwnerServices_MarkComplete(void);
 
 #ifdef __cplusplus

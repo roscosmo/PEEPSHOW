@@ -150,6 +150,7 @@ printf "expected workflow count    = three presents total: baseline plus two res
 
 printf "\n  audio owner: speaker DMA tone\n"
 printf "command/complete/success  = %u / %u / %u\n", $owner->audio_command_tick, $owner->audio_complete, $owner->audio_success
+printf "audio driver API/init/state/ops/last = %u / 0x%x / %u / %u / 0x%x\n", $owner->audio_driver_api_version, $owner->audio_driver_init_status, $owner->audio_driver_state, $owner->audio_driver_operation_count, $owner->audio_driver_last_status
 printf "kernel/sample/tone Hz     = %u / %u / %u\n", $owner->audio_sai_kernel_hz, $owner->audio_sample_rate_hz, $owner->audio_tone_hz
 printf "duration/amplitude/buffer = %u ms / %u / %u halfwords\n", $owner->audio_duration_ms, $owner->audio_amplitude, $owner->audio_buffer_halfwords
 printf "SD before/enabled/after   = %u / %u / %u\n", $owner->audio_sd_state_before, $owner->audio_sd_state_enabled, $owner->audio_sd_state_after
