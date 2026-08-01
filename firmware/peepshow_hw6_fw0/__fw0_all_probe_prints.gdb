@@ -1,0 +1,287 @@
+set pagination off
+
+printf "=== HW6 FW0 BOOT + PERIPHERAL + RTOS + OWNER STATE PROBE ===\n"
+printf "boot magic/version/phase = 0x%x / 0x%x / 0x%x\n", g_ps_hw6_fw0_probe.magic, g_ps_hw6_fw0_probe.version, g_ps_hw6_fw0_probe.phase
+printf "boot complete/pre-RTOS hb = %u / 0x%x\n", g_ps_hw6_fw0_probe.complete, g_ps_hw6_fw0_probe.heartbeat
+printf "MCU device/revision      = 0x%x / 0x%x\n", g_ps_hw6_fw0_probe.device_id, g_ps_hw6_fw0_probe.revision_id
+printf "SYSCLK Hz                = %u\n", g_ps_hw6_fw0_probe.sysclk_hz
+printf "output expected/actual   = 0x%x / 0x%x\n", g_ps_hw6_fw0_probe.expected_output_mask, g_ps_hw6_fw0_probe.output_mask
+printf "boot errors/asserts      = %u / %u\n", g_ps_hw6_fw0_probe.error_count, g_ps_hw6_fw0_probe.assert_count
+
+printf "\n--- consolidated result ---\n"
+printf "magic/version/phase      = 0x%x / 0x%x / 0x%x\n", g_ps_hw6_peripheral_probe.magic, g_ps_hw6_peripheral_probe.version, g_ps_hw6_peripheral_probe.phase
+printf "complete/duration ticks  = %u / %u\n", g_ps_hw6_peripheral_probe.complete, g_ps_hw6_peripheral_probe.duration_ticks
+printf "required/attempted       = 0x%x / 0x%x\n", g_ps_hw6_peripheral_probe.required_mask, g_ps_hw6_peripheral_probe.attempted_mask
+printf "pass/failure/skipped     = 0x%x / 0x%x / 0x%x\n", g_ps_hw6_peripheral_probe.pass_mask, g_ps_hw6_peripheral_probe.failure_mask, g_ps_hw6_peripheral_probe.skipped_mask
+printf "PMIC / IMU / joystick    = %u / %u / %u\n", (g_ps_hw6_peripheral_probe.pass_mask >> 0) & 1, (g_ps_hw6_peripheral_probe.pass_mask >> 1) & 1, (g_ps_hw6_peripheral_probe.pass_mask >> 2) & 1
+printf "flash / NINA AT          = %u / %u\n", (g_ps_hw6_peripheral_probe.pass_mask >> 3) & 1, (g_ps_hw6_peripheral_probe.pass_mask >> 4) & 1
+printf "pre-RTOS skipped 5..7    = display/audio/USB physical tests\n"
+
+printf "\n--- I2C bus ---\n"
+printf "state before/after       = 0x%x / 0x%x\n", g_ps_hw6_peripheral_probe.i2c_state_before, g_ps_hw6_peripheral_probe.i2c_state_after
+printf "error before/after       = 0x%x / 0x%x\n", g_ps_hw6_peripheral_probe.i2c_error_before, g_ps_hw6_peripheral_probe.i2c_error_after
+
+printf "\n--- ADP5360 @ 0x%x ---\n", g_ps_hw6_peripheral_probe.pmic_address_7bit
+printf "ready/id/fault/pgood sts = 0x%x / 0x%x / 0x%x / 0x%x\n", g_ps_hw6_peripheral_probe.pmic_ready_status, g_ps_hw6_peripheral_probe.pmic_id_status, g_ps_hw6_peripheral_probe.pmic_fault_status, g_ps_hw6_peripheral_probe.pmic_pgood_status
+printf "id/fault/pgood           = 0x%x / 0x%x / 0x%x\n", g_ps_hw6_peripheral_probe.pmic_id, g_ps_hw6_peripheral_probe.pmic_fault, g_ps_hw6_peripheral_probe.pmic_pgood
+printf "identity/rails ready     = %u / %u\n", g_ps_hw6_peripheral_probe.pmic_identity_match, g_ps_hw6_peripheral_probe.pmic_rails_ready
+
+printf "\n--- LIS2DUX12 address diagnosis ---\n"
+set $imu = &g_ps_hw6_peripheral_probe
+printf "0x%x ready/error          = 0x%x / 0x%x\n", $imu->imu_address_7bit, $imu->imu_ready_status, $imu->imu_ready_error
+printf "0x%x read/error/WHO_AM_I  = 0x%x / 0x%x / 0x%x\n", $imu->imu_address_7bit, $imu->imu_whoami_status, $imu->imu_whoami_error, $imu->imu_whoami
+printf "0x%x ready/error          = 0x%x / 0x%x\n", $imu->imu_alt_address_7bit, $imu->imu_alt_ready_status, $imu->imu_alt_ready_error
+printf "0x%x read/error/WHO_AM_I  = 0x%x / 0x%x / 0x%x\n", $imu->imu_alt_address_7bit, $imu->imu_alt_whoami_status, $imu->imu_alt_whoami_error, $imu->imu_alt_whoami
+printf "detected address/match    = 0x%x / %u\n", $imu->imu_detected_address_7bit, $imu->imu_identity_match
+
+printf "\n--- TMAG3001 @ 0x%x ---\n", g_ps_hw6_peripheral_probe.joystick_address_7bit
+printf "ready/id/mfr statuses    = 0x%x / 0x%x / 0x%x / 0x%x\n", g_ps_hw6_peripheral_probe.joystick_ready_status, g_ps_hw6_peripheral_probe.joystick_device_id_status, g_ps_hw6_peripheral_probe.joystick_manufacturer_lsb_status, g_ps_hw6_peripheral_probe.joystick_manufacturer_msb_status
+printf "device/mfr LSB/MSB       = 0x%x / 0x%x / 0x%x\n", g_ps_hw6_peripheral_probe.joystick_device_id, g_ps_hw6_peripheral_probe.joystick_manufacturer_lsb, g_ps_hw6_peripheral_probe.joystick_manufacturer_msb
+printf "identity match           = %u\n", g_ps_hw6_peripheral_probe.joystick_identity_match
+
+printf "\n--- AT25SL128A ---\n"
+printf "JEDEC/status reads       = 0x%x / 0x%x / 0x%x / 0x%x\n", g_ps_hw6_peripheral_probe.flash_jedec_status, g_ps_hw6_peripheral_probe.flash_status1_status, g_ps_hw6_peripheral_probe.flash_status2_status, g_ps_hw6_peripheral_probe.flash_status3_status
+printf "JEDEC ID                 = %02x %02x %02x\n", g_ps_hw6_peripheral_probe.flash_jedec_id[0], g_ps_hw6_peripheral_probe.flash_jedec_id[1], g_ps_hw6_peripheral_probe.flash_jedec_id[2]
+printf "status 1/2/3             = %02x %02x %02x\n", g_ps_hw6_peripheral_probe.flash_status[0], g_ps_hw6_peripheral_probe.flash_status[1], g_ps_hw6_peripheral_probe.flash_status[2]
+printf "identity / OSPI error    = %u / 0x%x\n", g_ps_hw6_peripheral_probe.flash_identity_match, g_ps_hw6_peripheral_probe.flash_ospi_error_after
+
+printf "\n--- NINA-B112 AT handshake ---\n"
+printf "NRST before/up/after     = %u / %u / %u\n", g_ps_hw6_peripheral_probe.nina_nrst_before, g_ps_hw6_peripheral_probe.nina_nrst_released, g_ps_hw6_peripheral_probe.nina_nrst_after
+printf "boot wait/rx             = %u ms / %u bytes\n", g_ps_hw6_peripheral_probe.nina_boot_wait_ms, g_ps_hw6_peripheral_probe.nina_boot_rx_len
+printf "attempts/tx/rx           = %u / 0x%x / %u bytes\n", g_ps_hw6_peripheral_probe.nina_attempt_count, g_ps_hw6_peripheral_probe.nina_at_tx_status, g_ps_hw6_peripheral_probe.nina_at_rx_len
+printf "OK / ERROR               = %u / %u\n", g_ps_hw6_peripheral_probe.nina_at_ok, g_ps_hw6_peripheral_probe.nina_at_error
+printf "UART state/error         = 0x%x / 0x%x\n", g_ps_hw6_peripheral_probe.nina_uart_state_after, g_ps_hw6_peripheral_probe.nina_uart_error_after
+printf "response                 = %s\n", g_ps_hw6_peripheral_probe.nina_at_rx
+
+printf "\n--- pre-RTOS peripheral state ---\n"
+printf "RTC / SAI                = 0x%x / 0x%x\n", g_ps_hw6_peripheral_probe.rtc_state, g_ps_hw6_peripheral_probe.audio_sai_state
+printf "display SPI / LPTIM      = 0x%x / 0x%x\n", g_ps_hw6_peripheral_probe.display_spi_state, g_ps_hw6_peripheral_probe.display_lptim_state
+printf "USB PCD                  = 0x%x\n", g_ps_hw6_peripheral_probe.usb_pcd_state
+
+printf "\n--- ThreadX topology and startup self-test ---\n"
+set $rtos = &g_ps_hw6_rtos_probe
+printf "magic/version/phase       = 0x%x / 0x%x / 0x%x\n", $rtos->magic, $rtos->version, $rtos->phase
+printf "init/runtime complete     = %u / %u\n", $rtos->init_complete, $rtos->runtime_complete
+printf "init status/error step/id = 0x%x / 0x%x / 0x%x\n", $rtos->init_status, $rtos->init_error_step, $rtos->init_error_index
+printf "tick Hz/owners/queues/egs = %u / %u / %u / %u\n", $rtos->ticks_per_second, $rtos->owner_count, $rtos->queue_count, $rtos->event_group_count
+printf "owner required/started    = 0x%x / 0x%x\n", $rtos->owner_required_mask, $rtos->owner_start_mask
+printf "queue required/self-test  = 0x%x / 0x%x\n", $rtos->queue_required_mask, $rtos->queue_selftest_mask
+printf "event required/self-test  = 0x%x / 0x%x\n", $rtos->event_required_mask, $rtos->event_selftest_mask
+printf "pool info before/after    = 0x%x / 0x%x\n", $rtos->pool_info_before_status, $rtos->pool_info_after_status
+printf "pool bytes before/after   = %u / %u\n", $rtos->pool_available_before, $rtos->pool_available_after
+printf "pool fragments before/after = %u / %u\n", $rtos->pool_fragments_before, $rtos->pool_fragments_after
+
+printf "\nowner/queue object status: stack qmem qcreate send thread\n"
+printf "power   /qSysEvents       %x %x %x %x %x\n", $rtos->stack_alloc_status[0], $rtos->queue_alloc_status[0], $rtos->queue_create_status[0], $rtos->queue_selftest_send_status[0], $rtos->thread_create_status[0]
+printf "audio   /qAudioCmd        %x %x %x %x %x\n", $rtos->stack_alloc_status[1], $rtos->queue_alloc_status[1], $rtos->queue_create_status[1], $rtos->queue_selftest_send_status[1], $rtos->thread_create_status[1]
+printf "input   /qInputRaw        %x %x %x %x %x\n", $rtos->stack_alloc_status[2], $rtos->queue_alloc_status[2], $rtos->queue_create_status[2], $rtos->queue_selftest_send_status[2], $rtos->thread_create_status[2]
+printf "display /qDisplayCmd      %x %x %x %x %x\n", $rtos->stack_alloc_status[3], $rtos->queue_alloc_status[3], $rtos->queue_create_status[3], $rtos->queue_selftest_send_status[3], $rtos->thread_create_status[3]
+printf "sensor  /qSensorReq       %x %x %x %x %x\n", $rtos->stack_alloc_status[4], $rtos->queue_alloc_status[4], $rtos->queue_create_status[4], $rtos->queue_selftest_send_status[4], $rtos->thread_create_status[4]
+printf "storage /qStorageReq      %x %x %x %x %x\n", $rtos->stack_alloc_status[5], $rtos->queue_alloc_status[5], $rtos->queue_create_status[5], $rtos->queue_selftest_send_status[5], $rtos->thread_create_status[5]
+printf "comm    /qCommCmd         %x %x %x %x %x\n", $rtos->stack_alloc_status[6], $rtos->queue_alloc_status[6], $rtos->queue_create_status[6], $rtos->queue_selftest_send_status[6], $rtos->thread_create_status[6]
+printf "UI      /qUIEvents        %x %x %x %x %x\n", $rtos->stack_alloc_status[7], $rtos->queue_alloc_status[7], $rtos->queue_create_status[7], $rtos->queue_selftest_send_status[7], $rtos->thread_create_status[7]
+printf "runtime /qRuntimeEvents   %x %x %x %x %x\n", $rtos->stack_alloc_status[8], $rtos->queue_alloc_status[8], $rtos->queue_create_status[8], $rtos->queue_selftest_send_status[8], $rtos->thread_create_status[8]
+
+printf "\nevent group status: create set get\n"
+printf "egMode                    %x %x %x\n", $rtos->event_create_status[0], $rtos->event_set_status[0], $rtos->event_get_status[0]
+printf "egPower                   %x %x %x\n", $rtos->event_create_status[1], $rtos->event_set_status[1], $rtos->event_get_status[1]
+printf "egHealth                  %x %x %x\n", $rtos->event_create_status[2], $rtos->event_set_status[2], $rtos->event_get_status[2]
+printf "egDebug                   %x %x %x\n", $rtos->event_create_status[3], $rtos->event_set_status[3], $rtos->event_get_status[3]
+
+printf "\nowner runtime: heartbeat last_tick receives timeouts errors\n"
+printf "power                     %u %u %u %u %u\n", $rtos->owner_heartbeat[0], $rtos->owner_last_tick[0], $rtos->queue_receive_count[0], $rtos->queue_timeout_count[0], $rtos->queue_message_error_count[0]
+printf "audio                     %u %u %u %u %u\n", $rtos->owner_heartbeat[1], $rtos->owner_last_tick[1], $rtos->queue_receive_count[1], $rtos->queue_timeout_count[1], $rtos->queue_message_error_count[1]
+printf "input                     %u %u %u %u %u\n", $rtos->owner_heartbeat[2], $rtos->owner_last_tick[2], $rtos->queue_receive_count[2], $rtos->queue_timeout_count[2], $rtos->queue_message_error_count[2]
+printf "display                   %u %u %u %u %u\n", $rtos->owner_heartbeat[3], $rtos->owner_last_tick[3], $rtos->queue_receive_count[3], $rtos->queue_timeout_count[3], $rtos->queue_message_error_count[3]
+printf "sensor                    %u %u %u %u %u\n", $rtos->owner_heartbeat[4], $rtos->owner_last_tick[4], $rtos->queue_receive_count[4], $rtos->queue_timeout_count[4], $rtos->queue_message_error_count[4]
+printf "storage                   %u %u %u %u %u\n", $rtos->owner_heartbeat[5], $rtos->owner_last_tick[5], $rtos->queue_receive_count[5], $rtos->queue_timeout_count[5], $rtos->queue_message_error_count[5]
+printf "comm                      %u %u %u %u %u\n", $rtos->owner_heartbeat[6], $rtos->owner_last_tick[6], $rtos->queue_receive_count[6], $rtos->queue_timeout_count[6], $rtos->queue_message_error_count[6]
+printf "UI                        %u %u %u %u %u\n", $rtos->owner_heartbeat[7], $rtos->owner_last_tick[7], $rtos->queue_receive_count[7], $rtos->queue_timeout_count[7], $rtos->queue_message_error_count[7]
+printf "runtime                   %u %u %u %u %u\n", $rtos->owner_heartbeat[8], $rtos->owner_last_tick[8], $rtos->queue_receive_count[8], $rtos->queue_timeout_count[8], $rtos->queue_message_error_count[8]
+
+printf "\n--- owner-thread physical workflow ---\n"
+set $owner = &g_ps_hw6_owner_probe
+printf "magic/version/phase       = 0x%x / 0x%x / 0x%x\n", $owner->magic, $owner->version, $owner->phase
+printf "complete/success/init     = %u / %u / 0x%x\n", $owner->complete, $owner->success, $owner->services_init_status
+printf "workflow start/end/delta  = %u / %u / %u ticks\n", $owner->workflow_start_tick, $owner->workflow_end_tick, $owner->workflow_end_tick - $owner->workflow_start_tick
+printf "power command send/tick   = 0x%x / %u\n", $owner->power_command_send_status, $owner->power_command_tick
+printf "display send/ack/flags    = 0x%x / 0x%x / 0x%x\n", $owner->display_command_send_status, $owner->display_ack_wait_status, $owner->display_ack_flags
+printf "audio send/ack/flags      = 0x%x / 0x%x / 0x%x\n", $owner->audio_command_send_status, $owner->audio_ack_wait_status, $owner->audio_ack_flags
+
+printf "\n  power owner: read-only ADP5360 snapshot\n"
+printf "command/complete/success  = %u / %u / %u\n", $owner->power_command_tick, $owner->power_complete, $owner->power_success
+printf "register addresses        = %02x %02x %02x %02x %02x %02x %02x\n", $owner->power_register_address[0], $owner->power_register_address[1], $owner->power_register_address[2], $owner->power_register_address[3], $owner->power_register_address[4], $owner->power_register_address[5], $owner->power_register_address[6]
+printf "register values           = %02x %02x %02x %02x %02x %02x %02x\n", $owner->power_register_value[0], $owner->power_register_value[1], $owner->power_register_value[2], $owner->power_register_value[3], $owner->power_register_value[4], $owner->power_register_value[5], $owner->power_register_value[6]
+printf "lease get status          = %x %x %x %x %x %x %x\n", $owner->power_lease_get_status[0], $owner->power_lease_get_status[1], $owner->power_lease_get_status[2], $owner->power_lease_get_status[3], $owner->power_lease_get_status[4], $owner->power_lease_get_status[5], $owner->power_lease_get_status[6]
+printf "HAL transfer status       = %x %x %x %x %x %x %x\n", $owner->power_transfer_status[0], $owner->power_transfer_status[1], $owner->power_transfer_status[2], $owner->power_transfer_status[3], $owner->power_transfer_status[4], $owner->power_transfer_status[5], $owner->power_transfer_status[6]
+printf "HAL transfer errors       = %x %x %x %x %x %x %x\n", $owner->power_transfer_error[0], $owner->power_transfer_error[1], $owner->power_transfer_error[2], $owner->power_transfer_error[3], $owner->power_transfer_error[4], $owner->power_transfer_error[5], $owner->power_transfer_error[6]
+printf "lease put status          = %x %x %x %x %x %x %x\n", $owner->power_lease_put_status[0], $owner->power_lease_put_status[1], $owner->power_lease_put_status[2], $owner->power_lease_put_status[3], $owner->power_lease_put_status[4], $owner->power_lease_put_status[5], $owner->power_lease_put_status[6]
+printf "I2C state/error           = 0x%x / 0x%x\n", $owner->power_i2c_state_after, $owner->power_i2c_error_after
+printf "identity/rails/fault OK   = %u / %u / %u\n", $owner->power_identity_match, $owner->power_rails_ready, $owner->power_fault_clear
+
+printf "\n  display owner: 144x168 diagnostic card\n"
+printf "command/complete/success  = %u / %u / %u\n", $owner->display_command_tick, $owner->display_complete, $owner->display_success
+printf "size/pattern/hash/black   = %ux%u / 0x%x / 0x%x / %u\n", $owner->display_width, $owner->display_height, $owner->display_pattern_id, $owner->display_framebuffer_hash, $owner->display_black_pixels
+printf "expected hash/black       = 0x360cda71 / 1725\n"
+printf "RTC state/CR              = 0x%x / 0x%x\n", $owner->display_rtc_state, $owner->display_rtc_cr
+printf "SPI before/init/present   = 0x%x / 0x%x / 0x%x\n", $owner->display_spi_state_before, $owner->display_init_status, $owner->display_present_status
+printf "DMA done/state/error      = %u / 0x%x / 0x%x\n", $owner->display_dma_done, $owner->display_dma_state_after, $owner->display_dma_error_after
+printf "SPI state/error after     = 0x%x / 0x%x\n", $owner->display_spi_state_after, $owner->display_spi_error_after
+printf "ack set status            = 0x%x\n", $owner->display_ack_set_status
+printf "expected visual           = white field, 2px black border, center cross, four distinct corner markers\n"
+printf "expected workflow count    = three presents total: baseline plus two resume cycles\n"
+
+printf "\n  audio owner: speaker DMA tone\n"
+printf "command/complete/success  = %u / %u / %u\n", $owner->audio_command_tick, $owner->audio_complete, $owner->audio_success
+printf "kernel/sample/tone Hz     = %u / %u / %u\n", $owner->audio_sai_kernel_hz, $owner->audio_sample_rate_hz, $owner->audio_tone_hz
+printf "duration/amplitude/buffer = %u ms / %u / %u halfwords\n", $owner->audio_duration_ms, $owner->audio_amplitude, $owner->audio_buffer_halfwords
+printf "SD before/enabled/after   = %u / %u / %u\n", $owner->audio_sd_state_before, $owner->audio_sd_state_enabled, $owner->audio_sd_state_after
+printf "start/stop status         = 0x%x / 0x%x\n", $owner->audio_start_status, $owner->audio_stop_status
+printf "SAI state/error after     = 0x%x / 0x%x\n", $owner->audio_sai_state_after, $owner->audio_sai_error_after
+printf "DMA state/error after     = 0x%x / 0x%x\n", $owner->audio_dma_state_after, $owner->audio_dma_error_after
+printf "ack set status            = 0x%x\n", $owner->audio_ack_set_status
+printf "expected audible result   = three 1 kHz tones of about 750 ms: baseline plus two resume cycles\n"
+
+printf "\n--- retained-peripheral lifecycle state machines ---\n"
+set $sm = &g_ps_hw6_owner_sm_probe
+printf "start request              = %u\n", g_ps_hw6_owner_sm_start_request
+printf "magic/version/phase        = 0x%x / 0x%x / 0x%x\n", $sm->magic, $sm->version, $sm->phase
+printf "complete/success           = %u / %u\n", $sm->complete, $sm->success
+printf "required/completed         = 0x%x / 0x%x\n", $sm->required_owner_mask, $sm->completed_owner_mask
+printf "success/failure owners     = 0x%x / 0x%x\n", $sm->success_owner_mask, $sm->failure_owner_mask
+printf "workflow start/end/delta   = %u / %u / %u ticks\n", $sm->workflow_start_tick, $sm->workflow_end_tick, $sm->workflow_end_tick - $sm->workflow_start_tick
+
+printf "\nowner lifecycle transport: send wait ack action start end\n"
+printf "power                      %x %x %x %x %u %u\n", $sm->owner_command_send_status[0], $sm->owner_ack_wait_status[0], $sm->owner_ack_flags[0], $sm->owner_action_status[0], $sm->owner_action_start_tick[0], $sm->owner_action_end_tick[0]
+printf "audio                      %x %x %x %x %u %u\n", $sm->owner_command_send_status[1], $sm->owner_ack_wait_status[1], $sm->owner_ack_flags[1], $sm->owner_action_status[1], $sm->owner_action_start_tick[1], $sm->owner_action_end_tick[1]
+printf "input                      %x %x %x %x %u %u\n", $sm->owner_command_send_status[2], $sm->owner_ack_wait_status[2], $sm->owner_ack_flags[2], $sm->owner_action_status[2], $sm->owner_action_start_tick[2], $sm->owner_action_end_tick[2]
+printf "display                    %x %x %x %x %u %u\n", $sm->owner_command_send_status[3], $sm->owner_ack_wait_status[3], $sm->owner_ack_flags[3], $sm->owner_action_status[3], $sm->owner_action_start_tick[3], $sm->owner_action_end_tick[3]
+printf "sensor                     %x %x %x %x %u %u\n", $sm->owner_command_send_status[4], $sm->owner_ack_wait_status[4], $sm->owner_ack_flags[4], $sm->owner_action_status[4], $sm->owner_action_start_tick[4], $sm->owner_action_end_tick[4]
+printf "storage                    %x %x %x %x %u %u\n", $sm->owner_command_send_status[5], $sm->owner_ack_wait_status[5], $sm->owner_ack_flags[5], $sm->owner_action_status[5], $sm->owner_action_start_tick[5], $sm->owner_action_end_tick[5]
+printf "comm                       %x %x %x %x %u %u\n", $sm->owner_command_send_status[6], $sm->owner_ack_wait_status[6], $sm->owner_ack_flags[6], $sm->owner_action_status[6], $sm->owner_action_start_tick[6], $sm->owner_action_end_tick[6]
+
+printf "\n--- two bounded inactive-active-inactive owner cycles ---\n"
+printf "requested/completed/success = %u / %u / %u\n", $sm->cycle_requested_count, $sm->cycle_completed_count, $sm->cycle_success
+printf "required owner/state masks  = 0x7f / 0x3ff\n"
+printf "owner map: 0=power 1=audio 2=input 3=display 4=sensor 5=storage 6=comm\n"
+set $cycle = 0
+while $cycle < 2
+  printf "\ncycle %u start/active/end     = %u / %u / %u ticks\n", $cycle, $sm->cycle_start_tick[$cycle], $sm->cycle_active_tick[$cycle], $sm->cycle_end_tick[$cycle]
+  printf "resume success/failure      = 0x%x / 0x%x\n", $sm->cycle_resume_success_mask[$cycle], $sm->cycle_resume_failure_mask[$cycle]
+  printf "quiesce success/failure     = 0x%x / 0x%x\n", $sm->cycle_quiesce_success_mask[$cycle], $sm->cycle_quiesce_failure_mask[$cycle]
+  printf "active/inactive state match = 0x%x / 0x%x\n", $sm->cycle_active_state_match_mask[$cycle], $sm->cycle_inactive_state_match_mask[$cycle]
+  set $direction = 0
+  while $direction < 2
+    if $direction == 0
+      printf "  resume transport/action: owner send wait ack action start end\n"
+    else
+      printf "  quiesce transport/action: owner send wait ack action start end\n"
+    end
+    set $physical_owner = 0
+    while $physical_owner < 7
+      printf "  %u %x %x %x %x %u %u\n", $physical_owner, $sm->cycle_command_send_status[$cycle][$direction][$physical_owner], $sm->cycle_ack_wait_status[$cycle][$direction][$physical_owner], $sm->cycle_ack_flags[$cycle][$direction][$physical_owner], $sm->cycle_action_status[$cycle][$direction][$physical_owner], $sm->cycle_action_start_tick[$cycle][$direction][$physical_owner], $sm->cycle_action_end_tick[$cycle][$direction][$physical_owner]
+      set $physical_owner = $physical_owner + 1
+    end
+    set $direction = $direction + 1
+  end
+
+  printf "  TMAG wake/retry/active/sleep = %x %x %x %x\n", $sm->joystick_cycle_wake_probe_status[$cycle], $sm->joystick_cycle_wake_retry_status[$cycle], $sm->joystick_cycle_active_status[$cycle], $sm->joystick_cycle_sleep_status[$cycle]
+  printf "  TMAG active config1/config2  = %02x / %02x\n", $sm->joystick_cycle_active_sensor_config1[$cycle], $sm->joystick_cycle_active_device_config2[$cycle]
+  printf "  IMU wake status/error/accepted = %x %x %u\n", $sm->imu_cycle_wake_probe_status[$cycle], $sm->imu_cycle_wake_probe_error[$cycle], $sm->imu_cycle_wake_probe_accepted[$cycle]
+  printf "  IMU WHO/active/sleep         = %x %x %x\n", $sm->imu_cycle_whoami_status[$cycle], $sm->imu_cycle_active_status[$cycle], $sm->imu_cycle_sleep_status[$cycle]
+  printf "  IMU WHO/active CTRL5         = %02x / %02x (expected 47 / 10)\n", $sm->imu_cycle_whoami[$cycle], $sm->imu_cycle_active_ctrl5[$cycle]
+  printf "  flash release/JEDEC/match/DPD = %x %x %u %x\n", $sm->flash_cycle_release_status[$cycle], $sm->flash_cycle_jedec_status[$cycle], $sm->flash_cycle_identity_match[$cycle], $sm->flash_cycle_deep_power_down_status[$cycle]
+  printf "  BLE UART/AT/RX/suspend       = %x %x %u %x\n", $sm->ble_cycle_uart_init_status[$cycle], $sm->ble_cycle_wake_at_status[$cycle], $sm->ble_cycle_wake_rx_len[$cycle], $sm->ble_cycle_suspend_uart_status[$cycle]
+  printf "  BLE DSR resume/quiesce       = %u / %u\n", $sm->ble_cycle_dsr_after_resume[$cycle], $sm->ble_cycle_dsr_after_quiesce[$cycle]
+  set $cycle = $cycle + 1
+end
+
+printf "\nFSM final state: current expected transitions rejected last_event last_status last_error\n"
+printf "power                      %u 2  %u %u %u %x %x\n", $sm->current_state[0], $sm->transition_count[0], $sm->rejected_transition_count[0], $sm->last_event[0], $sm->last_action_status[0], $sm->last_error[0]
+printf "PMIC                       %u 3  %u %u %u %x %x\n", $sm->current_state[1], $sm->transition_count[1], $sm->rejected_transition_count[1], $sm->last_event[1], $sm->last_action_status[1], $sm->last_error[1]
+printf "display                    %u 2  %u %u %u %x %x\n", $sm->current_state[2], $sm->transition_count[2], $sm->rejected_transition_count[2], $sm->last_event[2], $sm->last_action_status[2], $sm->last_error[2]
+printf "audio                      %u 2  %u %u %u %x %x\n", $sm->current_state[3], $sm->transition_count[3], $sm->rejected_transition_count[3], $sm->last_event[3], $sm->last_action_status[3], $sm->last_error[3]
+printf "speaker                    %u 0  %u %u %u %x %x\n", $sm->current_state[4], $sm->transition_count[4], $sm->rejected_transition_count[4], $sm->last_event[4], $sm->last_action_status[4], $sm->last_error[4]
+printf "joystick                   %u 12 %u %u %u %x %x\n", $sm->current_state[5], $sm->transition_count[5], $sm->rejected_transition_count[5], $sm->last_event[5], $sm->last_action_status[5], $sm->last_error[5]
+printf "IMU                        %u 8  %u %u %u %x %x\n", $sm->current_state[6], $sm->transition_count[6], $sm->rejected_transition_count[6], $sm->last_event[6], $sm->last_action_status[6], $sm->last_error[6]
+printf "storage                    %u 2  %u %u %u %x %x\n", $sm->current_state[7], $sm->transition_count[7], $sm->rejected_transition_count[7], $sm->last_event[7], $sm->last_action_status[7], $sm->last_error[7]
+printf "flash                      %u 8  %u %u %u %x %x\n", $sm->current_state[8], $sm->transition_count[8], $sm->rejected_transition_count[8], $sm->last_event[8], $sm->last_action_status[8], $sm->last_error[8]
+printf "BLE                        %u 10 %u %u %u %x %x\n", $sm->current_state[9], $sm->transition_count[9], $sm->rejected_transition_count[9], $sm->last_event[9], $sm->last_action_status[9], $sm->last_error[9]
+
+printf "\n  TMAG3001 verified suspended baseline\n"
+printf "ready/identity/match       = 0x%x / 0x%x / %u\n", $sm->joystick_ready_status, $sm->joystick_identity_status, $sm->joystick_identity_match
+printf "device/mfr LSB/MSB         = %02x / %02x / %02x\n", $sm->joystick_device_id, $sm->joystick_manufacturer_lsb, $sm->joystick_manufacturer_msb
+printf "SENSOR_CONFIG1 before/verified = %02x / %02x\n", $sm->joystick_sensor_config1_before, $sm->joystick_sensor_config1_after
+printf "DEVICE_CONFIG2 before/verified/sleep = %02x / %02x / %02x\n", $sm->joystick_device_config2_before, $sm->joystick_device_config2_after, $sm->joystick_device_config2_sleep
+printf "pre-terminal verify status = 0x%x / 0x%x\n", $sm->joystick_sensor_config1_verify_status, $sm->joystick_device_config2_verify_status
+printf "write/verify masks         = 0x%x / 0x%x (expected 0x7 / 0x3)\n", $sm->joystick_write_ok_mask, $sm->joystick_verify_ok_mask
+printf "terminal sleep status/committed = 0x%x / %u\n", $sm->joystick_sleep_write_status, $sm->joystick_terminal_sleep_committed
+printf "post-sleep read omitted    = %u (expected 1; any address probe wakes TMAG)\n", $sm->joystick_post_sleep_read_omitted
+printf "I2C state/error            = 0x%x / 0x%x\n", $sm->joystick_i2c_state_after, $sm->joystick_i2c_error_after
+
+printf "\n  LIS2DUX12 verified deep-power-down baseline\n"
+printf "driver API/init/state/ops/last = %u / %u / %u / %u / %u\n", $sm->imu_driver_api_version, $sm->imu_driver_init_status, $sm->imu_driver_state, $sm->imu_driver_operation_count, $sm->imu_driver_last_status
+printf "ready/WHO status/value/match = 0x%x / 0x%x / %02x / %u\n", $sm->imu_ready_status, $sm->imu_whoami_status, $sm->imu_whoami, $sm->imu_identity_match
+printf "register addresses         ="
+set $i = 0
+while $i < 11
+  printf " %02x", $sm->imu_register_address[$i]
+  set $i = $i + 1
+end
+printf "\nregister before            ="
+set $i = 0
+while $i < 11
+  printf " %02x", $sm->imu_register_before[$i]
+  set $i = $i + 1
+end
+printf "\nverified before terminal   ="
+set $i = 0
+while $i < 10
+  printf " %02x", $sm->imu_register_after[$i]
+  set $i = $i + 1
+end
+printf "\nsnapshot/write/verify     = 0x%x / 0x%x / 0x%x (expected 0x7ff / 0x7ff / 0x3ff)\n", $sm->imu_snapshot_ok_mask, $sm->imu_write_ok_mask, $sm->imu_verify_ok_mask
+printf "deep-PD value/status/committed = %02x / 0x%x / %u\n", $sm->imu_deep_power_down_value, $sm->imu_deep_power_down_write_status, $sm->imu_terminal_deep_power_down_committed
+printf "post-deep-PD read omitted  = %u (expected 1; registers are inaccessible)\n", $sm->imu_post_deep_power_down_read_omitted
+printf "I2C state/error            = 0x%x / 0x%x\n", $sm->imu_i2c_state_after, $sm->imu_i2c_error_after
+
+printf "\n  AT25SL128A idle baseline\n"
+printf "JEDEC status/ID/match      = 0x%x / %02x %02x %02x / %u\n", $sm->flash_jedec_status, $sm->flash_jedec_id[0], $sm->flash_jedec_id[1], $sm->flash_jedec_id[2], $sm->flash_identity_match
+printf "deep-power-down status     = 0x%x\n", $sm->flash_deep_power_down_status
+printf "OSPI state/error           = 0x%x / 0x%x\n", $sm->flash_ospi_state_after, $sm->flash_ospi_error_after
+
+printf "\n  USB device detached baseline (owned by storage)\n"
+printf "VBUS present               = %u (expected 0)\n", $sm->usb_vbus_present
+printf "PCD state before/after     = 0x%x / 0x%x\n", $sm->usb_pcd_state_before, $sm->usb_pcd_state_after
+printf "clock before/after         = %u / %u\n", $sm->usb_clock_enabled_before, $sm->usb_clock_enabled_after
+printf "VDDUSB before/after        = %u / %u\n", $sm->usb_vddusb_enabled_before, $sm->usb_vddusb_enabled_after
+printf "deinit attempted/status    = %u / 0x%x\n", $sm->usb_deinit_attempted, $sm->usb_deinit_status
+printf "USB parked                 = %u (expected 1)\n", $sm->usb_parked
+
+printf "\n  NINA-B112 AT-controlled STOP baseline\n"
+printf "NRST before/released/after = %u / %u / %u\n", $sm->ble_nrst_before, $sm->ble_nrst_released, $sm->ble_nrst_after
+printf "NINA_DSR host-DTR before/after = %u / %u\n", $sm->ble_dsr_host_control_before, $sm->ble_dsr_host_control_after
+printf "boot RX / commands         = %u bytes / %u\n", $sm->ble_boot_rx_len, $sm->ble_command_count
+printf "slots 0..6                 = AT / UPWRMNG(skip) / UPWRMNG(skip) / UBTDM / UBTCM / UBTPM / &D4\n"
+printf "command TX statuses        = %x %x %x %x %x %x %x\n", $sm->ble_command_tx_status[0], $sm->ble_command_tx_status[1], $sm->ble_command_tx_status[2], $sm->ble_command_tx_status[3], $sm->ble_command_tx_status[4], $sm->ble_command_tx_status[5], $sm->ble_command_tx_status[6]
+printf "command RX lengths         = %u %u %u %u %u %u %u\n", $sm->ble_command_rx_len[0], $sm->ble_command_rx_len[1], $sm->ble_command_rx_len[2], $sm->ble_command_rx_len[3], $sm->ble_command_rx_len[4], $sm->ble_command_rx_len[5], $sm->ble_command_rx_len[6]
+printf "required/attempted/skipped = 0x%x / 0x%x / 0x%x (expected 0x79 / 0x79 / 0x6)\n", $sm->ble_command_required_mask, $sm->ble_command_attempted_mask, $sm->ble_command_skipped_mask
+printf "OK/error masks             = 0x%x / 0x%x (expected 0x79 / 0)\n", $sm->ble_command_ok_mask, $sm->ble_command_error_mask
+printf "UART deinit/state/error    = 0x%x / 0x%x / 0x%x\n", $sm->ble_uart_deinit_status, $sm->ble_uart_state_after, $sm->ble_uart_error_after
+printf "fallback reset asserted    = %u (expected 0)\n", $sm->ble_fallback_reset_asserted
+
+printf "\n  bounded transition trace: tick fsm from event to action\n"
+set $trace_count = $sm->trace_count
+set $trace_index = ($sm->trace_write_index + 128 - $trace_count) % 128
+set $i = 0
+while $i < $trace_count
+  printf "%u %u %u %u %u %x\n", $sm->trace[$trace_index].tick, $sm->trace[$trace_index].state_machine_id, $sm->trace[$trace_index].from_state, $sm->trace[$trace_index].event, $sm->trace[$trace_index].to_state, $sm->trace[$trace_index].action_status
+  set $trace_index = ($trace_index + 1) % 128
+  set $i = $i + 1
+end
+
+printf "\n--- scheduler idle and workflow marker ---\n"
+printf "WFI setup/enter/exit/adjust = %u / %u / %u / %u\n", $rtos->low_power_setup_count, $rtos->low_power_enter_count, $rtos->low_power_exit_count, $rtos->low_power_adjust_count
+printf "next scheduler timeout ticks = %u\n", $rtos->low_power_next_ticks
+printf "PWR_DBG state/toggles/last = %u / %u / %u\n", $rtos->pwr_dbg_state, $rtos->pwr_dbg_toggle_count, $rtos->pwr_dbg_last_toggle_tick
+printf "=== END HW6 FW0 BOOT + PERIPHERAL + RTOS + OWNER STATE PROBE ===\n"

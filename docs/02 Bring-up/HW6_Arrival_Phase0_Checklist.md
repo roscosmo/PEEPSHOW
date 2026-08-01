@@ -3,9 +3,11 @@
 This is the first procedure for each initial HW6 board. It is an intake and
 safety gate, not subsystem validation.
 
-Status: `drafted`
+Status: `active`
 
-Execution status: `blocked` until the remaining pre-arrival documentation gates and safe HW6 arrival firmware target are closed.
+Execution status: `in_progress`. The first unit has passed the bounded safe-power,
+SWD-recovery, FW0, and `PWR_DBG` route checks. Formal identity, photos, and the
+unpowered electrical record remain open, so Phase 0 is not closed.
 
 Related:
 
@@ -56,18 +58,22 @@ Minimum artifacts:
 
 | Field | Value |
 |---|---|
-| Date/time |  |
+| Date/time | `2026-07-30 AEST` |
 | Hardware target | `HW6` |
-| Board ID / serial |  |
-| PCB revision |  |
-| Schematic revision |  |
-| BOM revision |  |
-| Assembly source / lot |  |
-| Hardware rework state | `none` or explicit list |
-| Firmware commit / image |  |
-| IOC hash |  |
-| Instruments and versions |  |
-| Evidence ID |  |
+| Board ID / serial | `HW6-UNIT-001` (provisional; formal identifier pending) |
+| PCB revision | `pending_record` |
+| Schematic revision | `pending_record` |
+| BOM revision | `pending_record` |
+| Assembly source / lot | `pending_record` |
+| Hardware rework state | `pending_record` |
+| Firmware commit / image | base commit `9b3f664635b9a31c0e36e2e44137eb800d9bbe1a`; ELF SHA-256 `7DFCFBE2F4995F1D9597D17E7C42AD65E77F15FBDFA4DF5567ED5014DA00775A` |
+| IOC hash | `F92EC587CCDE0261C6EC565447E38D627E5FB49B4FE1137890176C250DA195B4` |
+| Instruments and versions | Nordic PPK2 source meter/logic input, STLINK-V3MINIE `V3J16M8`, DMM; exact DMM identity pending |
+| Evidence ID | `EV-HW6-20260730-P0-ARRIVAL-001` |
+
+The unit was electrically tested as a naked PCB with no display, speaker, or
+housing attached. ST-LINK remained connected during the recorded active-current
+measurements and is therefore part of the instrumentation load.
 
 ## Visual Inspection
 
@@ -123,17 +129,17 @@ instrument behavior and settling/drift where relevant.
 
 | Observation | Expected Result | Measured | Status |
 |---|---|---|---|
-| source voltage/current limit | recorded |  | open |
-| initial current | no short-current behavior |  | open |
-| 1.8 V rail | stable in expected design range |  | open |
-| 3.3 V rail | stable in expected design range |  | open |
-| reset / BOOT0 / Start | sane idle/release behavior |  | open |
-| display translator / EXTCOMIN path | hardwired enabled; EXTCOMIN reaches panel |  | open |
-| `PWR_DBG` | low/idle unless an explicit diagnostic marker test is active |  | open |
-| NINA reset/auxiliary pins | reset/high-Z policy |  | open |
-| speaker shutdown | disabled |  | open |
-| PMIC interrupt/fault | explainable |  | open |
-| visible heating | none unexpected |  | open |
+| source voltage/current limit | recorded | PPK2 source at `3.300 V`; configured current limit not recorded | partial |
+| initial current | no short-current behavior | about `10 uA` in hardware shutdown; about `2.65 mA` after START/boot settle on the initial minimal image; no short-current behavior observed | pass |
+| 1.8 V rail | stable in expected design range | `1.8 V` present | pass |
+| 3.3 V rail | stable in expected design range | `3.3 V` present | pass |
+| reset / BOOT0 / Start | sane idle/release behavior | START exits hardware shutdown; normal SWD and connect-under-reset recovery both work | pass |
+| display translator / EXTCOMIN path | hardwired enabled; EXTCOMIN reaches panel | no display attached; electrical panel-path validation not run | pending |
+| `PWR_DBG` | low/idle unless an explicit diagnostic marker test is active | idle-low baseline observed; temporary 250 ms heartbeat captured on PPK2 D7 using the 1.8 V logic reference | pass |
+| NINA reset/auxiliary pins | reset/high-Z policy | FW0 reports `NINA_NRST` low; physical NINA behavior not yet probed | partial |
+| speaker shutdown | disabled | FW0 reports `SD_MODE` low; speaker not attached | partial |
+| PMIC interrupt/fault | explainable | ADP5360 identity `0x10`, revision `0x8`, fault `0x00`, PGOOD `0x07`; interrupt behavior not yet tested | partial |
+| visible heating | none unexpected | not formally recorded | open |
 
 ## First Debugger And Recovery Gate
 
@@ -149,6 +155,15 @@ After safe power is established:
 8. Confirm the board remains recoverable after reset.
 
 Do not flash an HW5 image onto HW6.
+
+First-unit debugger result:
+
+- STM32 device ID `0x482`, revision `Rev W`, target voltage `1.80 V`
+- minimal FW0 built, flashed, verified, and reset successfully
+- attach-under-reset recovery proven
+- FW0 boot probe completed with no recorded firmware errors or assertions
+- `PWR_DBG` produced 20 D7 edges in the five-second evidence capture, with a
+  mean edge interval of `247.455 ms`
 
 ## Exit Criteria
 

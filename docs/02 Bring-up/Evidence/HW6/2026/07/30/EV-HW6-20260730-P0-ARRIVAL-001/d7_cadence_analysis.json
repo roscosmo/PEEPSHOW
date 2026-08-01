@@ -1,0 +1,16 @@
+﻿{
+    "source_csv":  "20260730T033642Z_hw6-fw0-pwr-dbg-heartbeat.csv",
+    "method":  "Detect changes in D7 (digital_bits mask 0x80) in the 1 kS/s saved CSV and calculate adjacent edge intervals from time_us.",
+    "saved_rows":  4998,
+    "monitored_input":  "D7",
+    "bit_mask":  "0x80",
+    "edge_count":  20,
+    "first_level_high":  true,
+    "last_level_high":  true,
+    "first_edge_ms":  63.6720999609679,
+    "last_edge_ms":  4765.3192998841405,
+    "interval_count":  19,
+    "mean_interval_ms":  247.45511578543014,
+    "min_interval_ms":  242.22350004129112,
+    "max_interval_ms":  254.44780010730028
+}

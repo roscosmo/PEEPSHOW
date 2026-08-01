@@ -1,0 +1,64 @@
+source __fw0_adp5360_probe_prints.gdb
+=== HW6 FW0 ADP5360 READ-ONLY PROBE ===
+magic                 = 0x4836504d
+version               = 0x1
+phase                 = 0x61ff
+complete              = 0x1
+success               = 0x1
+start_tick            = 0x3
+end_tick              = 0xc
+duration_ticks        = 9
+address_7bit          = 0x46
+address_hal           = 0x8c
+ready_status          = 0x0
+ready_error           = 0x0
+i2c_state_before      = 0x20
+i2c_error_before      = 0x0
+i2c_state_after       = 0x20
+i2c_error_after       = 0x0
+attempted_count       = 14
+read_count            = 14
+failure_count         = 0
+read_ok_mask          = 0x3fff
+
+--- non-destructive register reads ---
+reg 0x00 = 0x10  status=0x0  error=0x0
+reg 0x01 = 0x08  status=0x0  error=0x0
+reg 0x08 = 0x00  status=0x0  error=0x0
+reg 0x09 = 0x00  status=0x0  error=0x0
+reg 0x21 = 0x00  status=0x0  error=0x0
+reg 0x25 = 0x00  status=0x0  error=0x0
+reg 0x26 = 0x00  status=0x0  error=0x0
+reg 0x29 = 0x31  status=0x0  error=0x0
+reg 0x2a = 0x18  status=0x0  error=0x0
+reg 0x2b = 0x18  status=0x0  error=0x0
+reg 0x2c = 0x13  status=0x0  error=0x0
+reg 0x2d = 0x80  status=0x0  error=0x0
+reg 0x2e = 0x00  status=0x0  error=0x0
+reg 0x2f = 0x07  status=0x0  error=0x0
+
+--- decoded ---
+manufacturer_model_id = 0x10
+manufacturer_id       = 0x1
+model_id              = 0x0
+identity_match        = 0x1
+silicon_revision      = 0x8
+charger_status1       = 0x0
+charger_status2       = 0x0
+battery_soc_percent   = 0
+vbat_raw              = 0x0
+vbat_mv               = 0
+buck_config           = 0x31
+buck_vout             = 0x18
+buckboost_config      = 0x18
+buckboost_vout        = 0x13
+supervisory           = 0x80
+fault                 = 0x0
+pgood                 = 0x7
+vout1_ok              = 0x1
+vout2_ok              = 0x1
+rails_ready           = 0x1
+vbus_ok               = 0x0
+battery_ok            = 0x1
+mr_pressed            = 0x0
+=== END HW6 FW0 ADP5360 PROBE ===

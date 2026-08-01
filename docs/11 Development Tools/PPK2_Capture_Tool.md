@@ -40,6 +40,7 @@ Use **Acquire PPK2** to take `COM10` (or the selected port) with Target source p
 - live current trace retained since Target source power-on or **Reset Plot**
 - large direct source-power toggle with no confirmation step
 - **RESET TARGET** power-cycle control, which turns source power off briefly and then back on without releasing the PPK2
+- selectable `D1` through `D7` logic monitor, with a live HIGH/LOW indicator, edge count, and a digital trace aligned to the current plot
 - selectable full-trace or latest 0.5, 1, 2, 5, 10, or 20 second plot view
 - visible recording indicator while CSV capture is active
 - recent 1 second current summary plus session mean, minimum, maximum, RMS, charge, energy, and sample count since power-on or plot reset
@@ -47,7 +48,18 @@ Use **Acquire PPK2** to take `COM10` (or the selected port) with Target source p
 - last CSV artifact path
 - explicit release of the serial port and target source power
 
-The live plot is a downsampled operator view retained in memory for the current powered session. **Reset Plot Data** clears the operator trace, live current statistics, and charge/energy integration without stopping source power; older live samples are ignored after reset. **RESET TARGET** stops any active capture, turns target source power off for about 0.5 s, turns it back on, and starts a fresh live session. The CSV remains the source artifact for analysis.
+The live plot is a downsampled operator view retained in memory for the current powered session. Each GUI poll requests only the selected time window and a display-sized point budget; the service preserves bucket current extrema, final logic state, and accumulated edge masks while reducing the response. This keeps the console responsive without changing the saved CSV. **Reset Plot Data** clears the operator trace, live current statistics, and charge/energy integration without stopping source power; older live samples are ignored after reset. **RESET TARGET** stops any active capture, turns target source power off for about 0.5 s, turns it back on, and starts a fresh live session. The CSV remains the source artifact for analysis.
+
+The logic selector defaults to `D7`. Channel `Dn` maps to bit `n` in the PPK2 API's per-sample `digital_bits` value. The plotted logic level is sampled in the same 10 ms buckets as the 100 point/s operator current trace. An orange marker means at least one edge occurred inside that bucket, including a pulse that returned to its previous level before the bucket ended. The edge count is exact for samples received by the service. All eight raw bits remain in each CSV row; use a `100 kS/s` CSV capture when exact edge timing matters.
+
+The PPK2 logic header needs its own target-side logic reference and ground. The
+source-meter `VOUT` connection does not implicitly provide the logic-header
+`VCC`. Connect the target IO rail to logic `VCC`, target ground to logic `GND`,
+and the marker signal to the selected `D1` through `D7` input. For HW6,
+`PWR_DBG` is a 1.8 V signal, so use the target 1.8 V rail as the logic reference.
+Do not connect a logic reference outside the PPK2 input specification.
+
+**Reset Plot Data** also resets the displayed logic edge count and logic history. Changing the selected logic input does not reset or alter captured data.
 
 Charge and energy are operator estimates from integrated PPK2 samples: current is integrated against the nominal PPK2 sample rate to produce `mAh`, and `mWh` is derived from that charge and the configured source voltage. Use these for quick bring-up comparisons; use saved CSV artifacts for final evidence analysis.
 

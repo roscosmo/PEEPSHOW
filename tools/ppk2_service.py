@@ -21,7 +21,10 @@ from ppk2_api.ppk2_api import PPK2_API
 SAMPLE_RATE_HZ = 100_000
 SERVICE_PORT = 49365
 SESSION_FILE = Path("PPK2_logs/ppk2_service_session.json")
+SERVICE_PROTOCOL = 7
 PLOT_POINTS_PER_SECOND = 100
+DIGITAL_CHANNEL_COUNT = 8
+PlotPoint = tuple[float, float, int, int]
 
 
 def open_ppk(port: str, voltage_mv: int) -> PPK2_API:
@@ -53,6 +56,65 @@ def valid_label(label: str) -> bool:
     return bool(label) and label.replace("-", "").replace("_", "").isalnum()
 
 
+def _window_start(points: list[PlotPoint], window_s: float | None) -> int:
+    if not points or window_s is None:
+        return 0
+    cutoff = points[-1][0] - window_s
+    low = 0
+    high = len(points)
+    while low < high:
+        middle = (low + high) // 2
+        if points[middle][0] < cutoff:
+            low = middle + 1
+        else:
+            high = middle
+    return low
+
+
+def plot_view(points: list[PlotPoint], window_s: float | None, max_points: int) -> list[PlotPoint]:
+    """Return a bounded display view while preserving extrema, final state, and edge masks."""
+    selected = points[_window_start(points, window_s):]
+    if max_points <= 0 or len(selected) <= max_points:
+        return list(selected)
+
+    bucket_count = max(1, max_points // 4)
+    bucket_size = math.ceil(len(selected) / bucket_count)
+    result: list[PlotPoint] = []
+    for offset in range(0, len(selected), bucket_size):
+        bucket = selected[offset:offset + bucket_size]
+        if not bucket:
+            continue
+        minimum = min(range(len(bucket)), key=lambda index: bucket[index][1])
+        maximum = max(range(len(bucket)), key=lambda index: bucket[index][1])
+        indices = sorted({0, minimum, maximum, len(bucket) - 1})
+        transition_mask = 0
+        for point in bucket:
+            transition_mask |= point[3]
+        for index in indices:
+            time_s, current_ua, digital_bits, _ = bucket[index]
+            result.append((
+                time_s,
+                current_ua,
+                digital_bits,
+                transition_mask if index == indices[-1] else 0,
+            ))
+    return result
+
+
+def recent_plot_statistics(points: list[PlotPoint], window_s: float = 1.0) -> dict:
+    selected = points[_window_start(points, window_s):]
+    if not selected:
+        return {}
+    currents = [point[1] for point in selected]
+    return {
+        "window_s": window_s,
+        "mean_ua": sum(currents) / len(currents),
+        "min_ua": min(currents),
+        "max_ua": max(currents),
+        "point_count": len(currents),
+    }
+
+
 class CaptureState:
     def __init__(self, ppk: PPK2_API, port: str, voltage_mv: int) -> None:
         self.ppk = ppk
@@ -78,10 +140,13 @@ class CaptureState:
         self.energy_mwh = 0.0
         self.min_ua: float | None = None
         self.max_ua: float | None = None
-        self.plot: list[tuple[float, float]] = []
+        self.plot: list[PlotPoint] = []
         self.plot_sum = 0.0
         self.plot_count = 0
-        self.record_plot: list[tuple[float, float]] = []
+        self.plot_transition_mask = 0
+        self.latest_digital_bits: int | None = None
+        self.digital_edge_counts = [0] * DIGITAL_CHANNEL_COUNT
+        self.record_plot: list[PlotPoint] = []
         self.history = deque(maxlen=8)
         self.trace_id = ""
         self.last_result: dict | None = None
@@ -97,6 +162,9 @@ class CaptureState:
         self.record_energy_mwh = 0.0
         self.record_min_ua: float | None = None
         self.record_max_ua: float | None = None
+        self.record_latest_digital_bits: int | None = None
+        self.record_plot_transition_mask = 0
+        self.record_digital_edge_counts = [0] * DIGITAL_CHANNEL_COUNT
 
     def start_live(self) -> None:
         with self.lock:
@@ -116,6 +184,9 @@ class CaptureState:
             self.plot.clear()
             self.plot_sum = 0.0
             self.plot_count = 0
+            self.plot_transition_mask = 0
+            self.latest_digital_bits = None
+            self.digital_edge_counts = [0] * DIGITAL_CHANNEL_COUNT
             self.last_error = ""
             self.worker = threading.Thread(target=self._meter_worker, daemon=True, name="ppk2-meter")
             self.worker.start()
@@ -139,9 +210,13 @@ class CaptureState:
             self.plot.clear()
             self.plot_sum = 0.0
             self.plot_count = 0
+            self.plot_transition_mask = 0
+            self.latest_digital_bits = None
+            self.digital_edge_counts = [0] * DIGITAL_CHANNEL_COUNT
         return {"ok": True, "plot_reset": True}
 
-    def snapshot(self, include_plot: bool = False, trace_id: str = "live") -> dict:
+    def snapshot(self, include_plot: bool = False, trace_id: str = "live",
+                 plot_window_s: float | None = None, plot_max_points: int = 0) -> dict:
         with self.lock:
             stats = {"sample_count": self.sample_count}
             if self.sample_count:
@@ -153,13 +228,17 @@ class CaptureState:
                     charge_mah=self.charge_mah,
                     energy_mwh=self.energy_mwh,
                 )
-            selected = list(self.plot)
+            selected = self.plot
             selected_id = "live"
+            selected_latest_bits = self.latest_digital_bits
+            selected_edge_counts = list(self.digital_edge_counts)
             if trace_id != "live":
                 for item in self.history:
                     if item["id"] == trace_id:
                         selected = item["plot"]
                         selected_id = trace_id
+                        selected_latest_bits = item["digital_latest_bits"]
+                        selected_edge_counts = item["digital_edge_counts"]
                         break
             value = {
                 "meter_active": self.meter_active,
@@ -172,9 +251,15 @@ class CaptureState:
                 "last_error": self.last_error,
                 "selected_trace_id": selected_id,
                 "history": [{"id": item["id"], "label": item["label"]} for item in self.history],
+                "digital_latest_bits": selected_latest_bits,
+                "digital_edge_counts": selected_edge_counts,
+                "digital_channels": [f"D{index}" for index in range(DIGITAL_CHANNEL_COUNT)],
+                "recent_plot_statistics": recent_plot_statistics(selected),
             }
             if include_plot:
-                value["plot"] = selected
+                value["plot"] = plot_view(selected, plot_window_s, plot_max_points)
+                value["plot_points_available"] = len(selected)
+                value["plot_points_returned"] = len(value["plot"])
             return value
 
     def start(self, request: dict) -> dict:
@@ -215,6 +300,9 @@ class CaptureState:
             self.record_max_ua = None
             self.record_plot = []
             self.last_error = ""
+            self.record_latest_digital_bits = self.latest_digital_bits
+            self.record_plot_transition_mask = 0
+            self.record_digital_edge_counts = [0] * DIGITAL_CHANNEL_COUNT
         return {"ok": True, "capture_active": True}
 
     def stop(self) -> dict:
@@ -251,7 +339,13 @@ class CaptureState:
         if self.last_error:
             result["error"] = self.last_error
         self.last_result = result
-        self.history.append({"id": self.trace_id, "label": self.label, "plot": list(self.record_plot)})
+        self.history.append({
+            "id": self.trace_id,
+            "label": self.label,
+            "plot": list(self.record_plot),
+            "digital_latest_bits": self.record_latest_digital_bits,
+            "digital_edge_counts": list(self.record_digital_edge_counts),
+        })
         if self.record_metadata_path is not None:
             self.record_metadata_path.write_text(json.dumps({
                 "tool": "tools/ppk2_service.py",
@@ -265,6 +359,7 @@ class CaptureState:
                 "csv_sample_rate_hz": SAMPLE_RATE_HZ / self.sample_stride,
                 "csv_sample_stride": self.sample_stride,
                 "csv": self.record_csv_path.name if self.record_csv_path else "",
+                "digital_bit_mapping": {f"D{index}": index for index in range(DIGITAL_CHANNEL_COUNT)},
                 "statistics": stats,
                 "error": self.last_error or None,
             }, indent=2) + "\n", encoding="ascii")
@@ -283,6 +378,7 @@ class CaptureState:
                 values, bits = self.ppk.get_samples(raw)
                 for current_ua, digital_bits in zip(values, bits):
                     current = float(current_ua)
+                    digital = int(digital_bits) & 0xff
                     now = time.monotonic()
                     with self.lock:
                         if not self.meter_active:
@@ -296,15 +392,50 @@ class CaptureState:
                         self.energy_mwh += sample_mah * (self.voltage_mv / 1000.0)
                         self.min_ua = current if self.min_ua is None else min(self.min_ua, current)
                         self.max_ua = current if self.max_ua is None else max(self.max_ua, current)
+                        if self.latest_digital_bits is None:
+                            self.latest_digital_bits = digital
+                        else:
+                            changed = self.latest_digital_bits ^ digital
+                            if changed:
+                                self.plot_transition_mask |= changed
+                                for channel in range(DIGITAL_CHANNEL_COUNT):
+                                    if changed & (1 << channel):
+                                        self.digital_edge_counts[channel] += 1
+                            self.latest_digital_bits = digital
+
+                        if self.active:
+                            if self.record_latest_digital_bits is None:
+                                self.record_latest_digital_bits = digital
+                            else:
+                                record_changed = self.record_latest_digital_bits ^ digital
+                                if record_changed:
+                                    self.record_plot_transition_mask |= record_changed
+                                    for channel in range(DIGITAL_CHANNEL_COUNT):
+                                        if record_changed & (1 << channel):
+                                            self.record_digital_edge_counts[channel] += 1
+                                self.record_latest_digital_bits = digital
+
                         self.plot_sum += current
                         self.plot_count += 1
                         if self.plot_count >= SAMPLE_RATE_HZ // PLOT_POINTS_PER_SECOND:
-                            point = (time_s, self.plot_sum / self.plot_count)
+                            point = (
+                                time_s,
+                                self.plot_sum / self.plot_count,
+                                digital,
+                                self.plot_transition_mask,
+                            )
                             self.plot.append(point)
                             if self.active:
-                                self.record_plot.append((now - self.record_started, point[1]))
+                                self.record_plot.append((
+                                    now - self.record_started,
+                                    point[1],
+                                    digital,
+                                    self.record_plot_transition_mask,
+                                ))
                             self.plot_sum = 0.0
                             self.plot_count = 0
+                            self.plot_transition_mask = 0
+                            self.record_plot_transition_mask = 0
                         if self.active:
                             record_time_s = now - self.record_started
                             if self.record_sample_count % self.sample_stride == 0:
@@ -312,7 +443,7 @@ class CaptureState:
                                     self.record_sample_count,
                                     record_time_s * 1_000_000,
                                     current,
-                                    digital_bits,
+                                    digital,
                                 ))
                             self.record_sample_count += 1
                             self.record_current_sum += current
@@ -355,7 +486,7 @@ def service(args: argparse.Namespace) -> int:
     try:
         SESSION_FILE.write_text(json.dumps({
             "pid": os.getpid(), "port": args.port, "voltage_mv": args.voltage_mv,
-            "service_port": args.service_port, "protocol": 5,
+            "service_port": args.service_port, "protocol": SERVICE_PROTOCOL,
         }) + "\n", encoding="ascii")
         if not args.quiet:
             print(f"PPK2 acquired: {args.port} at {args.voltage_mv} mV source setting; Target power is OFF.", flush=True)
@@ -372,11 +503,26 @@ def service(args: argparse.Namespace) -> int:
                     request = json.loads(handle.readline().decode("ascii"))
                     command = request.get("command")
                     if command in ("status", "snapshot"):
+                        plot_window_s = None
+                        plot_max_points = 0
+                        if command == "snapshot":
+                            if request.get("plot_window_s") is not None:
+                                plot_window_s = float(request["plot_window_s"])
+                                if not 0.05 <= plot_window_s <= 86400.0:
+                                    raise ValueError("plot_window_s must be 0.05..86400")
+                            plot_max_points = int(request.get("plot_max_points", 0))
+                            if plot_max_points != 0 and not 100 <= plot_max_points <= 10000:
+                                raise ValueError("plot_max_points must be 100..10000")
                         response = {
                             "ok": True, "power": "on" if target_power else "off",
                             "port": args.port, "voltage_mv": args.voltage_mv,
-                            "service_port": args.service_port, "protocol": 5,
-                            **capture_state.snapshot(command == "snapshot", str(request.get("trace_id", "live"))),
+                            "service_port": args.service_port, "protocol": SERVICE_PROTOCOL,
+                            **capture_state.snapshot(
+                                command == "snapshot",
+                                str(request.get("trace_id", "live")),
+                                plot_window_s,
+                                plot_max_points,
+                            ),
                         }
                     elif command == "power_on":
                         ppk.toggle_DUT_power("ON")

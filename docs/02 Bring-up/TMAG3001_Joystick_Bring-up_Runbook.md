@@ -3,7 +3,10 @@
 This runbook records the measured HW5 procedure for bringing up the `TMAG3001A1YBGR` hall-effect joystick.
 
 > [!important] HW6 reuse
-> Repeat identity, axes, threshold/interrupt, calibration, low-power, and current measurements on HW6 and record them in [[HW6_Brought_Up_Tracker]]. The failed HW5 component incident is diagnostic history, not evidence about an HW6 unit.
+> HW6 identity and owner-routed terminal inactive entry now pass on unit 001.
+> Axes, threshold/interrupt, calibration, wake, and current measurements still
+> require HW6 evidence in [[HW6_Brought_Up_Tracker]]. The failed HW5 component
+> incident is diagnostic history, not evidence about an HW6 unit.
 
 Related:
 
@@ -96,6 +99,7 @@ Record exact transactions here once measured.
 | 11 | enter threshold-armed mode | `Device_Config_2` / `0x01` and `Sensor_Config_1` / `0x02` | experimental active capture used `Device_Config_2=0x02`, `Sensor_Config_1=0x70` | `10 ms` after writes | readback `0x02`, `0x70` | Active continuous/sample mode only, not threshold-armed mode. 2026-06-16 repaired-board active captures wrote/read both values with HAL status `0`; the later TI-driver path used `TMAG3001enableMagChannels(MAG_CH_EN_XYZ)` and `TMAG3001enterContinuousMeasureMode()`. Final wake-up/sleep and threshold mode remain pending. |
 | 12 | bounded sample read | `0x12..0x18` | read X/Y/Z and status | read only after experimental active setup | read succeeds and raw values are captured | Repaired-board read-only result-window probe returned HAL status `0`, bytes `{0x00,0x00,0x00,0x00,0x00,0x00,0x10}`, decoded `X=0`, `Y=0`, `Z=0`, and window `Conv_Status=0x10`. After raw experimental active setup on 2026-06-16, capture completed `200/200` samples with `read_error_count=0`, `i2c_error_after=0`, and non-zero changing XYZ sample points, for example sample 0 `X=0xDA40`, `Y=0xCE10`, `Z=0x8170`, sample 80 `X=0x37F0`, `Y=0x00D0`, `Z=0xE050`, and sample 199 `X=0x0450`, `Y=0xF0E0`, `Z=0x0060`. After TI-driver active setup on 2026-06-16, capture again completed `200/200` samples with `read_error_count=0`, `i2c_error_after=0`, and non-zero changing XYZ sample points, for example sample 0 `X=0xD060`, `Y=0xCD80`, `Z=0xCE20`, sample 80 `X=0x05C0`, `Y=0xF140`, `Z=0x0090`, and sample 199 `X=0x0560`, `Y=0xF140`, `Z=0x0080`. Exact signed scaling, axis polarity/order, neutral/range calibration, and threshold behavior remain pending. |
 | 13 | interrupt clear validation | TMAG addressed by valid I2C access | read or write | TBD | `JOY_INT` deasserts | exact clear behavior must be measured |
+| 14 | enter inactive sleep baseline | `Device_Config_2` / `0x01` | low-current standby bits verified first, then `Operating_Mode=1h` as the terminal write | device timing only | no post-write I2C read | TMAG3001 recognizes its address while asleep, wakes, and deliberately NACKs. A readback probe therefore both creates a false error and leaves the device awake. Validate readable configuration before this write; afterward use the successful terminal write plus current evidence. |
 
 ---
 
@@ -112,6 +116,7 @@ Record exact transactions here once measured.
 9. Reboot with missing/invalid calibration and confirm safe-mode calibration starts.
 10. Validate encoder and L/R navigation in joystick safe mode.
 11. Force or simulate an I2C/config fault and validate recovery or safe mode.
+12. For an inactive-sleep test, perform no TMAG-addressed I2C transaction after the terminal sleep write until an intentional wake is required.
 
 ---
 
@@ -136,4 +141,13 @@ The following values must be measured on HW5 hardware and recorded before the jo
 
 Every successful validation must link evidence from [[Brought_Up_Tracker]].
 
-Do not mark joystick threshold wake, direction classification, or calibration known-good without measured HW5 evidence.
+- 2026-07-31: `EV-HW6-20260731-P5-OWNERS-004` proves identity, readable
+  pre-terminal configuration, successful terminal `Operating_Mode=1h`, and a
+  clean I2C controller state without a wake-causing readback.
+- 2026-08-01: both lifecycle-v3 cycles passed the expected first-address wake
+  failure, bounded identity retry, `Sensor_Config_1=0x70`, continuous mode, and
+  terminal sleep write. The overall run failed only on the unrelated IMU wake
+  path; exact results are preserved in `EV-HW6-20260801-P5-OWNERS-005`.
+
+Do not mark joystick threshold wake, direction classification, calibration, or
+inactive current known-good without measured target-specific evidence.

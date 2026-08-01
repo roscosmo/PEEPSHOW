@@ -23,7 +23,21 @@ Current HW6 battery planning basis, pending incoming-board validation:
 - Bring-up battery simulator / source meter: Nordic Power Profiler Kit II (`PPK2`) or equivalent controlled source.
 - Previous cell family: `LIR2540` rechargeable coin cell.
 - Current cell family: `303040` flat LiPo pouch cell.
-- Current seller-stated capacity: `450 mAh`, treated as unverified until measured.
+- Reported cell marking: `3.7 V` nominal, `450 mAh`, `1.665 Wh`.
+- The marked energy is internally consistent: `3.7 V x 0.450 Ah = 1.665 Wh`.
+- Confirmed charge terminal voltage: `4.20 V`.
+- The cell is accepted for charging at up to `1 C` (`450 mA`), but the
+  ADP5360 charger is limited to `320 mA`; therefore the Platform charge-current
+  ceiling is `320 mA` (`0.711 C`) before input-power and thermal derating.
+- The cell has two electrical leads. A board-mounted `100 kOhm` NTC is held in
+  physical contact with the pouch and is the ADP5360 temperature input.
+- The current development cells include protection for handling/assembly. That
+  protection is not part of the Platform safety contract: production cells may
+  be unprotected, and ADP5360 battery protection must remain configured and
+  validated as the authoritative protection path.
+- Capacity remains a label/specification value until measured. Charge
+  termination current, USB/VBUS input-current policy, and final production-cell
+  integrated-protection status remain pending.
 
 Connections carried into the final HW6 design/IOC intent and requiring board-level revalidation:
 
@@ -166,11 +180,42 @@ Required thresholds:
 - VBUS disagreement timeout
 - PMIC read retry limit
 
+### HW6 Cell Profile And Validation State
+
+This is the reviewed profile basis, not permission to charge a real cell. On
+HW6 unit 001, the six selected encodings passed a guarded no-cell/no-VBUS
+write, exact readback, reverse restore, and exact restore readback. This proves
+register acceptance only. Persistent profile application, fuel-gauge behavior,
+JEITA behavior, protection thresholds, VBUS policy, and real-cell charging
+remain gated by their dedicated tests.
+
+| Item | Profile intent | ADP5360 candidate / present state |
+|---|---|---|
+| Cell | single-cell `303040` LiPo, `3.7 V` nominal, `4.20 V` terminal, `450 mAh` label | `BAT_CAP=0xE1` (`225 x 2 mAh`) accepted/read back/restored; gauge characterization remains open |
+| Fast charge | maximum `320 mA` (`0.711 C`); dynamically limited by the validated VBUS source budget | `0x04=0x3F` accepted/read back/restored; physical charging at this setting is not approved |
+| Charge voltage | `4.20 V` | `0x03=0x82` accepted/read back/restored; controlled terminal-voltage validation remains open |
+| VBUS input limit | must follow the classified USB/source contract, independently of the cell charge-rate permission | register `0x02` remains `0x81` / `100 mA` until source-current policy is validated |
+| Temperature | board-mounted `100 kOhm` NTC in physical contact with pouch; JEITA charging required | `0x0A=0x80` and `0x07=0xAC` accepted/read back/restored; temperature-zone behavior remains open |
+| Fuel gauge | start in sleep mode and automatically enter active mode above its current threshold | `0x20=0xE1` and `0x27=0x53` accepted/read back/restored; voltage/SOC/current-mode characterization remains open |
+| Independent protection | ADP5360 protection is mandatory whether or not a development cell also contains a PCM | present `0x11..0x15 = 03 90 E6 78 E8`: enabled, `2.50 V` UV, `600 mA` discharge OC, `4.30 V` OV, `400 mA` charge OC; retain provisionally pending fault and peak-load tests |
+
+The ADP5360 register limits and encodings above are derived from the
+[ADP5360 data sheet](https://www.analog.com/media/en/technical-documentation/data-sheets/ADP5360.pdf).
+The reversible HW6 result is recorded as
+`EV-HW6-20260731-P1-ADP5360-003`.
+
 Thresholds must be logged with firmware version during bring-up tests.
 
 Rules:
 
 - real-cell charging must not begin until the selected cell chemistry, polarity, protection status, charge voltage, and charge-current limit are confirmed.
+- `1 C` cell permission does not grant `450 mA` charging: the ADP5360 maximum
+  is `320 mA`, and the active VBUS/input contract may impose a lower limit.
+- initial real-cell commissioning must begin at the already-observed `100 mA`
+  setting; promotion toward `320 mA` requires current, temperature, VBUS-limit,
+  charge-state, and fault evidence.
+- ADP5360 protection configuration is required even when a development cell
+  contains its own handling/assembly protection circuit.
 - seller-stated pouch-cell capacity is not a design fact until measured or otherwise verified.
 - ADP5360 fuel-gauge capacity configuration is a Platform battery-profile setting, not a package or game setting.
 - if the physical cell capacity exceeds the ADP5360 fuel-gauge coding range, charger safety policy still follows the cell datasheet and PMIC limits; package-visible battery estimates must be treated as approximate until characterized.

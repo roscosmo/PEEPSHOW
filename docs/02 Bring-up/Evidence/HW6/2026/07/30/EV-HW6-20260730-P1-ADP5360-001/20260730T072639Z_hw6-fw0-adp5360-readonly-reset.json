@@ -1,0 +1,33 @@
+{
+  "tool": "tools/ppk2_service.py",
+  "instrument": "Nordic Power Profiler Kit II",
+  "captured_at_utc": "2026-07-30T07:26:45.246036+00:00",
+  "port": "COM10",
+  "source_voltage_mv": 3300,
+  "duration_requested_s": 6.0,
+  "duration_elapsed_s": 6.0017162000294775,
+  "sample_rate_hz_nominal": 100000,
+  "csv_sample_rate_hz": 100000.0,
+  "csv_sample_stride": 1,
+  "csv": "20260730T072639Z_hw6-fw0-adp5360-readonly-reset.csv",
+  "digital_bit_mapping": {
+    "D0": 0,
+    "D1": 1,
+    "D2": 2,
+    "D3": 3,
+    "D4": 4,
+    "D5": 5,
+    "D6": 6,
+    "D7": 7
+  },
+  "statistics": {
+    "sample_count": 600065,
+    "mean_ua": 959.9767792595088,
+    "min_ua": 15.69411242147904,
+    "max_ua": 12029.115682960892,
+    "rms_ua": 1463.250694204817,
+    "charge_mah": 0.0016001346279069684,
+    "energy_mwh": 0.005280444272091016
+  },
+  "error": null
+}

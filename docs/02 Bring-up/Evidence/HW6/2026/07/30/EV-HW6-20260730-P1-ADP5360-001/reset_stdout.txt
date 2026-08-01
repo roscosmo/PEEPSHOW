@@ -1,0 +1,25 @@
+      -------------------------------------------------------------------
+                       STM32CubeProgrammer v2.16.0                  
+      -------------------------------------------------------------------
+
+ST-LINK SN  : 003100403433510337363934
+ST-LINK FW  : V3J16M8
+Board       : STLINK-V3MINIE
+Voltage     : 1.80V
+SWD freq    : 3300 KHz
+Connect mode: Normal
+Reset mode  : Software reset
+Device ID   : 0x482
+Revision ID : Rev W
+Device name : STM32U575/STM32U585
+Flash size  : 2 MBytes
+Start Address : 8000000
+Device type : MCU
+Device CPU  : Cortex-M33
+BL Version  : 0x93
+Debug in Low Power mode enabled
+
+
+MCU Reset
+
+Software reset is performed

@@ -1,0 +1,104 @@
+#ifndef PS_HW6_OWNER_SERVICES_H
+#define PS_HW6_OWNER_SERVICES_H
+
+#include <stdint.h>
+
+#include "stm32u5xx_hal.h"
+#include "tx_api.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (1UL)
+#define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
+#define PS_HW6_OWNER_STATUS_NOT_RUN              (0xFFFFFFFFUL)
+
+typedef struct
+{
+  uint32_t magic;
+  uint32_t version;
+  uint32_t phase;
+  uint32_t complete;
+  uint32_t success;
+  uint32_t services_init_status;
+  uint32_t workflow_start_tick;
+  uint32_t workflow_end_tick;
+  uint32_t power_command_send_status;
+  uint32_t display_command_send_status;
+  uint32_t display_ack_wait_status;
+  uint32_t display_ack_flags;
+  uint32_t audio_command_send_status;
+  uint32_t audio_ack_wait_status;
+  uint32_t audio_ack_flags;
+
+  uint32_t power_command_tick;
+  uint32_t power_complete;
+  uint32_t power_success;
+  uint32_t power_register_address[PS_HW6_OWNER_POWER_REGISTER_COUNT];
+  uint32_t power_register_value[PS_HW6_OWNER_POWER_REGISTER_COUNT];
+  uint32_t power_lease_get_status[PS_HW6_OWNER_POWER_REGISTER_COUNT];
+  uint32_t power_transfer_status[PS_HW6_OWNER_POWER_REGISTER_COUNT];
+  uint32_t power_transfer_error[PS_HW6_OWNER_POWER_REGISTER_COUNT];
+  uint32_t power_lease_put_status[PS_HW6_OWNER_POWER_REGISTER_COUNT];
+  uint32_t power_i2c_state_after;
+  uint32_t power_i2c_error_after;
+  uint32_t power_identity_match;
+  uint32_t power_rails_ready;
+  uint32_t power_fault_clear;
+
+  uint32_t display_command_tick;
+  uint32_t display_complete;
+  uint32_t display_success;
+  uint32_t display_width;
+  uint32_t display_height;
+  uint32_t display_pattern_id;
+  uint32_t display_framebuffer_hash;
+  uint32_t display_black_pixels;
+  uint32_t display_rtc_state;
+  uint32_t display_rtc_cr;
+  uint32_t display_spi_state_before;
+  uint32_t display_init_status;
+  uint32_t display_present_status;
+  uint32_t display_dma_done;
+  uint32_t display_spi_state_after;
+  uint32_t display_spi_error_after;
+  uint32_t display_dma_state_after;
+  uint32_t display_dma_error_after;
+  uint32_t display_ack_set_status;
+
+  uint32_t audio_command_tick;
+  uint32_t audio_complete;
+  uint32_t audio_success;
+  uint32_t audio_sai_kernel_hz;
+  uint32_t audio_sample_rate_hz;
+  uint32_t audio_tone_hz;
+  uint32_t audio_duration_ms;
+  uint32_t audio_amplitude;
+  uint32_t audio_buffer_halfwords;
+  uint32_t audio_sd_state_before;
+  uint32_t audio_sd_state_enabled;
+  uint32_t audio_start_status;
+  uint32_t audio_stop_status;
+  uint32_t audio_sd_state_after;
+  uint32_t audio_sai_state_after;
+  uint32_t audio_sai_error_after;
+  uint32_t audio_dma_state_after;
+  uint32_t audio_dma_error_after;
+  uint32_t audio_ack_set_status;
+} PS_HW6_OwnerProbe;
+
+extern volatile PS_HW6_OwnerProbe g_ps_hw6_owner_probe;
+
+UINT PS_HW6_OwnerServices_Init(void);
+HAL_StatusTypeDef PS_HW6_PowerOwner_RunSnapshot(void);
+HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void);
+HAL_StatusTypeDef PS_HW6_AudioOwner_RunTone(void);
+void PS_HW6_OwnerServices_MarkComplete(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* PS_HW6_OWNER_SERVICES_H */

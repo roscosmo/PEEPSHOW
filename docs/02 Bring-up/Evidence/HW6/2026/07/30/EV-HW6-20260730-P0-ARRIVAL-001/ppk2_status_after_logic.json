@@ -1,0 +1,75 @@
+{
+  "ok": true,
+  "power": "on",
+  "port": "COM10",
+  "voltage_mv": 3300,
+  "service_port": 49365,
+  "protocol": 7,
+  "meter_active": true,
+  "capture_active": false,
+  "capture_label": "hw6-fw0-pwr-dbg-heartbeat",
+  "capture_elapsed_s": 0.0,
+  "capture_requested_s": 5.0,
+  "statistics": {
+    "sample_count": 55809536,
+    "mean_ua": 871.2020810997446,
+    "min_ua": -0.8559932423348966,
+    "max_ua": 111539.76450869138,
+    "rms_ua": 1301.822543943652,
+    "charge_mah": 0.135059399743441,
+    "energy_mwh": 0.44569601915811397
+  },
+  "last_result": {
+    "ok": true,
+    "statistics": {
+      "sample_count": 499713,
+      "mean_ua": 888.9673454964297,
+      "min_ua": 12.673061387608243,
+      "max_ua": 10100.769246593258,
+      "rms_ua": 1320.3971664490703,
+      "charge_mah": 0.001233968164222617,
+      "energy_mwh": 0.004072094941933051
+    },
+    "csv": "docs\\02 Bring-up\\Evidence\\HW6\\2026\\07\\30\\EV-HW6-20260730-P0-ARRIVAL-001\\20260730T033642Z_hw6-fw0-pwr-dbg-heartbeat.csv",
+    "metadata": "docs\\02 Bring-up\\Evidence\\HW6\\2026\\07\\30\\EV-HW6-20260730-P0-ARRIVAL-001\\20260730T033642Z_hw6-fw0-pwr-dbg-heartbeat.json",
+    "duration_elapsed_s": 5.001066899858415,
+    "csv_sample_rate_hz": 1000.0,
+    "trace_id": "20260730T033642Z_hw6-fw0-pwr-dbg-heartbeat"
+  },
+  "last_error": "",
+  "selected_trace_id": "live",
+  "history": [
+    {
+      "id": "20260730T033642Z_hw6-fw0-pwr-dbg-heartbeat",
+      "label": "hw6-fw0-pwr-dbg-heartbeat"
+    }
+  ],
+  "digital_latest_bits": 128,
+  "digital_edge_counts": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    2209
+  ],
+  "digital_channels": [
+    "D0",
+    "D1",
+    "D2",
+    "D3",
+    "D4",
+    "D5",
+    "D6",
+    "D7"
+  ],
+  "recent_plot_statistics": {
+    "window_s": 1.0,
+    "mean_ua": 889.03191545772,
+    "min_ua": 839.7154863210984,
+    "max_ua": 944.0186529274114,
+    "point_count": 101
+  }
+}

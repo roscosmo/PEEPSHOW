@@ -1,0 +1,30 @@
+#ifndef PS_AUDIO_STATE_H
+#define PS_AUDIO_STATE_H
+
+typedef enum
+{
+  AUDIO_OFF = 0,
+  AUDIO_INIT,
+  AUDIO_IDLE,
+  AUDIO_ACTIVE,
+  AUDIO_SUSPENDING,
+  AUDIO_SUSPENDED,
+  AUDIO_RECOVERING,
+  AUDIO_ERROR
+} PS_AudioState;
+
+typedef enum
+{
+  SPK_OFF = 0,
+  SPK_ENABLE,
+  SPK_IDLE,
+  SPK_PRELOAD,
+  SPK_BUFFERING,
+  SPK_PLAYING,
+  SPK_DRAINING,
+  SPK_PAUSED,
+  SPK_UNDERRUN,
+  SPK_ERROR
+} PS_SpeakerState;
+
+#endif /* PS_AUDIO_STATE_H */

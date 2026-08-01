@@ -3,7 +3,12 @@
 This runbook records the measured HW5 procedure for bringing up the `LIS2DUX12TR` IMU, embedded smart functions, and step counter.
 
 > [!important] HW6 reuse
-> Repeat identity, embedded-function, lowest-power, wake/event, and current measurements on HW6 and record them in [[HW6_Brought_Up_Tracker]]. HW5 register values are starting hypotheses only.
+> HW6 identity and owner-routed terminal deep-power-down entry now pass on unit
+> 001. Lifecycle-v5 also proves the I2C deep-power-down wake NACK, identity
+> retry, low-rate `CTRL5=0x10`, and return to deep-power-down across two
+> owner-routed cycles. Embedded-function, interrupt/event, current, step-counter
+> retention, and active sensing measurements still require HW6 evidence in
+> [[HW6_Brought_Up_Tracker]]. HW5 register values are starting hypotheses only.
 
 Related:
 
@@ -90,6 +95,7 @@ Record exact transactions here once measured.
 | 15 | start accelerometer baseline | `CTRL5` | `0x61` | per ODR/write timing | TBD | 25 Hz, +/-4 g baseline |
 | 16 | read step count | `STEP_COUNTER_H:L` / `0x29:0x28` | read | TBD | monotonically increasing during walk test | read through embedded-function register access |
 | 17 | reset step count | `EMB_FUNC_SRC.PEDO_RST_STEP` | set bit | TBD | bit auto-clears | validates reset path |
+| 18 | enter inactive deep-power-down baseline | `SLEEP` / `0x3D` | set `DEEP_PD=1` only after all other shutdown registers are read back | device timing only | no post-write register read | In deep power-down the register map is inaccessible. The first I2C address transaction starts a wake, returns NACK, and can take up to 25 ms. Treat the successful terminal write as the final bus operation and use current evidence for the retained low-power state. |
 
 ---
 
@@ -105,6 +111,7 @@ Record exact transactions here once measured.
 8. Disable per-step interrupt wake for normal low-power runtime.
 9. Trigger motion/tap/shake/tilt events and record interrupt behavior separately from step counting.
 10. Force or simulate an I2C fault and validate recovery.
+11. For a deep-power-down test, perform no LIS-addressed transaction after setting `DEEP_PD`; a readback is a wake command, not verification.
 
 ---
 
@@ -130,4 +137,24 @@ Do not skip this pass. The baseline sequence proves functionality; it does not p
 
 Every successful validation must link evidence from [[Brought_Up_Tracker]].
 
-Do not mark the IMU, embedded functions, or step counter known-good without measured HW5 evidence.
+- 2026-07-31: `EV-HW6-20260731-P5-OWNERS-004` proves identity, all readable
+  shutdown-register writes, exact pre-terminal verification mask `0x3FF`, and
+  successful terminal `SLEEP.DEEP_PD=1` with a clean I2C controller state.
+- 2026-08-01: the lifecycle-v3 run recorded `HAL_ERROR` at the expected
+  first-address wake-NACK point, but did not retain the raw AF error. Firmware
+  also incorrectly used the SPI-only
+  `EN_DEVICE_CONFIG.SOFT_PD` exit sequence and converted that NACK into
+  `IMU_ERROR`. Both cycle transport paths completed; the IMU alone missed the
+  active and inactive boundary masks. This diagnostic is preserved in
+  `EV-HW6-20260801-P5-OWNERS-005`.
+- 2026-08-01: lifecycle-v5 passed on `HW6-UNIT-001` with the official
+  LIS2DUX12 driver path. Both cycles accepted the expected I2C
+  deep-power-down wake NACK (`status/error/accepted = 1 / 4 / 1`), retried to
+  `WHO_AM_I=0x47`, configured low-rate active mode with `CTRL5=0x10`, and
+  returned to terminal deep-power-down. Baseline masks were
+  `snapshot/write/verify = 0x7FF / 0x7FF / 0x3FF`, and driver
+  `api/init/state/ops/last = 1 / 0 / 3 / 5 / 0`. Evidence is preserved in
+  `EV-HW6-20260801-P5-OWNERS-006`.
+
+Do not mark active sensing, embedded functions, wake, current, or the step
+counter known-good without measured target-specific evidence.

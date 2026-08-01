@@ -1,0 +1,33 @@
+{
+  "tool": "tools/ppk2_service.py",
+  "instrument": "Nordic Power Profiler Kit II",
+  "captured_at_utc": "2026-07-30T03:36:47.640300+00:00",
+  "port": "COM10",
+  "source_voltage_mv": 3300,
+  "duration_requested_s": 5.0,
+  "duration_elapsed_s": 5.001066899858415,
+  "sample_rate_hz_nominal": 100000,
+  "csv_sample_rate_hz": 1000.0,
+  "csv_sample_stride": 100,
+  "csv": "20260730T033642Z_hw6-fw0-pwr-dbg-heartbeat.csv",
+  "digital_bit_mapping": {
+    "D0": 0,
+    "D1": 1,
+    "D2": 2,
+    "D3": 3,
+    "D4": 4,
+    "D5": 5,
+    "D6": 6,
+    "D7": 7
+  },
+  "statistics": {
+    "sample_count": 499713,
+    "mean_ua": 888.9673454964297,
+    "min_ua": 12.673061387608243,
+    "max_ua": 10100.769246593258,
+    "rms_ua": 1320.3971664490703,
+    "charge_mah": 0.001233968164222617,
+    "energy_mwh": 0.004072094941933051
+  },
+  "error": null
+}

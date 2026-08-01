@@ -1,0 +1,34 @@
+
+
+STMicroelectronics ST-LINK GDB server. Version 7.7.0
+Copyright (c) 2024, STMicroelectronics. All rights reserved.
+
+Starting server with the following options:
+        Persistent Mode            : Disabled
+        Logging Level              : 31
+        Listen Port Number         : 61234
+        Status Refresh Delay       : 15s
+        Verbose Mode               : Disabled
+
+COM frequency = 21333 kHz
+Target connection mode: Attach
+Target connection failed
+COM frequency = 16000 kHz
+Target connection mode: Attach
+Target connection failed
+COM frequency = 12000 kHz
+Target connection mode: Attach
+Target connection failed
+COM frequency = 8000 kHz
+Target connection mode: Attach
+Target connection failed
+COM frequency = 1777 kHz
+Target connection mode: Attach
+Target connection failed
+COM frequency = 750 kHz
+Target connection mode: Attach
+Target connection failed
+Target unknown MCU target
+
+Error in initializing ST-LINK device.
+Reason: Unknown MCU found on target.

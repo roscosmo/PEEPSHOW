@@ -1,0 +1,59 @@
+=== HW6 FW0 BOOT + PERIPHERAL PROBE ===
+boot magic/version/phase = 0x48364630 / 0x1 / 0x60ff
+boot complete/heartbeat  = 1 / 0x16
+MCU device/revision      = 0x482 / 0x3001
+SYSCLK Hz                = 24000000
+output expected/actual   = 0x8 / 0x8
+boot errors/asserts      = 0 / 0
+
+--- consolidated result ---
+magic/version/phase      = 0x48365052 / 0x2 / 0x65ff
+complete/duration ticks  = 1 / 1405
+required/attempted       = 0x1f / 0x1f
+pass/failure/skipped     = 0x1f / 0x0 / 0xe0
+PMIC / IMU / joystick    = 1 / 1 / 1
+flash / NINA AT          = 1 / 1
+skipped bits 5..7        = display/audio/USB physical tests
+
+--- I2C bus ---
+state before/after       = 0x20 / 0x20
+error before/after       = 0x0 / 0x0
+
+--- ADP5360 @ 0x46 ---
+ready/id/fault/pgood sts = 0x0 / 0x0 / 0x0 / 0x0
+id/fault/pgood           = 0x10 / 0x0 / 0x7
+identity/rails ready     = 1 / 1
+
+--- LIS2DUX12 address diagnosis ---
+0x18 ready/error          = 0x0 / 0x0
+0x18 read/error/WHO_AM_I  = 0x0 / 0x0 / 0x47
+0x19 ready/error          = 0x1 / 0x4
+0x19 read/error/WHO_AM_I  = 0x1 / 0x4 / 0x0
+detected address/match    = 0x18 / 1
+
+--- TMAG3001 @ 0x34 ---
+ready/id/mfr statuses    = 0x0 / 0x0 / 0x0 / 0x0
+device/mfr LSB/MSB       = 0x0 / 0x49 / 0x54
+identity match           = 1
+
+--- AT25SL128A ---
+JEDEC/status reads       = 0x0 / 0x0 / 0x0 / 0x0
+JEDEC ID                 = 1f 42 18
+status 1/2/3             = 00 00 00
+identity / OSPI error    = 1 / 0x0
+
+--- NINA-B112 AT handshake ---
+NRST before/up/after     = 0 / 0 / 0
+boot wait/rx             = 750 ms / 13 bytes
+attempts/tx/rx           = 1 / 0x0 / 10 bytes
+OK / ERROR               = 1 / 0
+UART state/error         = 0x20 / 0x0
+response                 = AT
+
+OK
+
+--- initialized only on naked board ---
+RTC / SAI                = 0x1 / 0x1
+display SPI / LPTIM      = 0x1 / 0x1
+USB PCD                  = 0x1
+=== END HW6 FW0 BOOT + PERIPHERAL PROBE ===

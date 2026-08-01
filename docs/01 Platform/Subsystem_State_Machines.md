@@ -22,6 +22,73 @@ Required implementation artifacts per subsystem:
 
 ---
 
+## HW6 FW0 Owner-Lifecycle Baseline
+
+The first HW6 implementation of the retained-peripheral state machines is built
+in `firmware/peepshow_hw6_fw0` and its one-way inactive lifecycle baseline has
+passed on `HW6-UNIT-001`. This section records the accepted stabilization slice,
+not the complete production transition model.
+
+- Public state and event contracts are split by subsystem in
+  `Core/Inc/ps_{power,display,audio,input,sensor,storage,comm}_{state,events}.h`.
+- `Core/Src/ps_hw6_owner_state_machines.c` contains explicit transition tables,
+  invalid-transition rejection, per-machine status, and a bounded 128-entry
+  transition trace.
+- The seven physical ThreadX owners retain exclusive hardware access. `thPower`
+  coordinates the baseline through the existing queues and bounded event-group
+  acknowledgements; it does not operate another owner's peripheral directly.
+- A lifecycle pass is never run automatically at boot. It is armed explicitly
+  with `__fw0_owner_sm_start.gdb`, allowing normal RTOS startup to remain free of
+  display, audio, sensor-register, flash-power, or NINA-mode side effects.
+- The baseline target states are `PWR_ACTIVE_LP`, `PMIC_MONITOR`,
+  `DISP_STATIC_HOLD`, `AUDIO_IDLE`, `SPK_OFF`, `JOY_SUSPENDED`,
+  `IMU_SUSPENDED`, `STORAGE_FLASH_READY`, `FLASH_DEEP_POWER_DOWN`, and
+  `BLE_SUSPENDED`.
+- On 2026-07-31 lifecycle v2 passed with required/completed masks `0x7F/0x7F`,
+  success/failure masks `0x7F/0x00`, and no rejected transitions. Evidence is
+  preserved in `EV-HW6-20260731-P5-OWNERS-004`.
+- The first lifecycle-v3 board run on 2026-08-01 completed every queue
+  send/wait/ack and passed every physical owner except the LIS2DUX12 path.
+  Its first post-deep-power-down I2C transaction returned `HAL_ERROR` exactly
+  where ST documents the wake NACK, but v3 did not retain the raw AF error and
+  treated the response as a fault, leaving the IMU FSM in `IMU_ERROR`. The
+  failed diagnostic is preserved in
+  `EV-HW6-20260801-P5-OWNERS-005`.
+- Lifecycle v5 passed the same two bounded owner-routed
+  `inactive -> active -> inactive` cycles without STOP2 on `HW6-UNIT-001`.
+  Its IMU path uses the official LIS2DUX12 driver and I2C-specific wake
+  contract: require the first address NACK with `HAL_I2C_ERROR_AF`, wait 30 ms,
+  then require ACK and `WHO_AM_I=0x47` before configuring active low-rate mode
+  with `CTRL5=0x10`. Evidence is preserved in
+  `EV-HW6-20260801-P5-OWNERS-006`.
+- The lifecycle-v5 active boundary is `PWR_ACTIVE_RT`, `PMIC_MONITOR`,
+  `DISP_STATIC_HOLD`, `AUDIO_IDLE`, `SPK_OFF`, `JOY_SLOW_POLL`,
+  `IMU_LOW_RATE_SAMPLE`, `STORAGE_FLASH_READY`, `FLASH_READY`, and `BLE_IDLE`.
+  Display and audio return to their stable ready states after completing their
+  finite diagnostic action; they are not held busy merely to satisfy a probe.
+- The joystick/TMAG3001 and LIS2DUX12 paths use read-modify-write plus exact
+  readback verification while their register maps remain accessible. Their
+  sleep/deep-power-down writes are terminal: no post-write address transaction
+  is allowed because that would wake the device. Flash identity is checked
+  before deep power-down. The NINA path verifies every supported AT response
+  before using `AT&D4`, deasserting the module's `NINA_DSR` host-DTR control
+  input on `PC8`, waiting for STOP entry, and deinitializing its UART.
+  `PC7/NINA_DTR` remains a module-status output and is not driven.
+- USB device mode remains part of the storage-owner state machine. For the
+  detached baseline, `thStorage` requires VBUS low, deinitializes the PCD, and
+  verifies that both the USB clock and VDDUSB domain are disabled. A connected
+  host is rejected by this baseline rather than silently powered down.
+- Button, classifier, and START-overlay contracts are compiled, but physical
+  button transitions remain deferred until the HW6 housing makes the inputs
+  accessible.
+
+This is a stabilization slice, not the complete production transition model.
+Lifecycle-v5 closes the bounded owner-routed repeatability check, but
+cancellation, injected faults, retries, STOP2 handoff, saturation, current, and
+production runtime mode changes remain separate required evidence.
+
+---
+
 ## 1) System Performance State Machine
 
 States:

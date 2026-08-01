@@ -68,6 +68,17 @@ HardFault data must be captured before reset.
 
 Prefer trace markers over frequent breakpoint halts.
 
+## GDB Probe Helper Policy
+
+- provide one user-facing `source` script per logical probe or experiment
+- group summary and detailed sections inside that script
+- split helpers only when GDB limitations, materially excessive output, or a
+  genuinely independent procedure requires it
+- do not require the operator to source several files merely to print one
+  probe structure
+- keep historical helpers referenced by accepted evidence, but identify one
+  canonical current helper in new instructions
+
 ## Bounded Build, Flash, And Debug Workflow
 
 Agents may run build, flash, and debugger inspection only through bounded wrappers.

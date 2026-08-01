@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "statistics": {
+    "sample_count": 600065,
+    "mean_ua": 959.9767792595088,
+    "min_ua": 15.69411242147904,
+    "max_ua": 12029.115682960892,
+    "rms_ua": 1463.250694204817,
+    "charge_mah": 0.0016001346279069684,
+    "energy_mwh": 0.005280444272091016
+  },
+  "csv": "G:\\PEEPSHOW\\docs\\02 Bring-up\\Evidence\\HW6\\2026\\07\\30\\EV-HW6-20260730-P1-ADP5360-001\\20260730T072639Z_hw6-fw0-adp5360-readonly-reset.csv",
+  "metadata": "G:\\PEEPSHOW\\docs\\02 Bring-up\\Evidence\\HW6\\2026\\07\\30\\EV-HW6-20260730-P1-ADP5360-001\\20260730T072639Z_hw6-fw0-adp5360-readonly-reset.json",
+  "duration_elapsed_s": 6.0017162000294775,
+  "csv_sample_rate_hz": 100000.0,
+  "trace_id": "20260730T072639Z_hw6-fw0-adp5360-readonly-reset"
+}

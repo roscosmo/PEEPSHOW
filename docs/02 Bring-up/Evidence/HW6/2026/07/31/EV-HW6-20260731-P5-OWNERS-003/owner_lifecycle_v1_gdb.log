@@ -1,0 +1,297 @@
+source __fw0_owner_sm_start.gdb
+HW6 peripheral lifecycle stabilization requested.
+Continue the target; PWR_DBG is high only while the seven-owner pass runs.
+{"output":"","token":32,"outOfBandRecord":[],"resultRecords":{"resultClass":"done","results":[]}}
+
+Program
+ received signal SIGINT, Interrupt.
+PS_HW6_RTOS_LowPowerEnter () at G:/PEEPSHOW/firmware/peepshow_hw6_fw0/Core/Src/ps_hw6_rtos_probe.c:549
+549	  __ISB();
+source __fw0_all_probe_prints.gdb
+=== HW6 FW0 BOOT + PERIPHERAL + RTOS + OWNER STATE PROBE ===
+boot magic/version/phase = 0x48364630 / 0x1 / 0x60ff
+boot complete/pre-RTOS hb = 1 / 0x0
+MCU device/revision      = 0x482 / 0x3001
+SYSCLK Hz                = 24000000
+output expected/actual   = 0x8 / 0x8
+boot errors/asserts      = 0 / 0
+
+--- consolidated result ---
+magic/version/phase      = 0x48365052 / 0x2 / 0x65ff
+complete/duration ticks  = 1 / 1405
+required/attempted       = 0x1f / 0x1f
+pass/failure/skipped     = 0x1f / 0x0 / 0xe0
+PMIC / IMU / joystick    = 1 / 1 / 1
+flash / NINA AT          = 1 / 1
+pre-RTOS skipped 5..7    = display/audio/USB physical tests
+
+--- I2C bus ---
+state before/after       = 0x20 / 0x20
+error before/after       = 0x0 / 0x0
+
+--- ADP5360 @ 0x
+46 ---
+ready/id/fault/pgood sts = 0x0 / 0x0 / 0x0 / 0x0
+id/fault/pgood           = 0x10 / 0x0 / 0x7
+identity/rails ready     = 1 / 1
+
+--- LIS2DUX12 address diagnosis ---
+0x18 ready/error          = 0x0 / 0x0
+0x18 read/error/WHO_AM_I  = 0x0 / 0x0 / 0x47
+0x19 ready/error          = 0x1 / 0x4
+0x19 read/error/WHO_AM_I  = 0x1 / 0x4 / 0x0
+detected address/match    = 0x18 / 1
+
+--- TMAG3001 @ 0x
+34 ---
+ready/id/mfr statuses    = 0x0 / 0x0 / 0x0 / 0x0
+device/mfr LSB/MSB       = 0x0 / 0x49 / 0x54
+identity match           = 1
+
+--- AT25SL128A ---
+JEDEC/status reads       = 0x0 / 0x0 / 0x0 / 0x0
+JEDEC ID                 = 1f 42 18
+status 1/2/3             = 00 00 00
+identity / OSPI error    = 1 / 0x0
+
+--- NINA-B112 AT handshake ---
+NRST before/up/after     = 0 / 0 / 0
+boot wait/rx             = 750 ms / 13 bytes
+attempts/tx/rx           = 1 / 0x0 / 10 bytes
+OK / ERROR               = 1 / 0
+UART state/error         = 0x20 / 0x0
+response                 = AT
+
+OK
+
+--- pre-RTOS peripheral state ---
+RTC / SAI                = 0x1 / 0x1
+display SPI / LPTIM      = 0x1 / 0x1
+USB PCD                  = 0x1
+
+--- ThreadX topology and startup self-test ---
+magic/version/phase       = 0x48365254 / 0x2 / 0x66ff
+init/runtime complete     = 1 / 1
+init status/error step/id = 0x0 / 0xffffffff / 0xffffffff
+tick Hz/owners/queues/egs = 100 / 9 / 9 / 4
+owner required/started    = 0x1ff / 0x1ff
+queue required/self-test  = 0x1ff / 0x1ff
+event required/self-test  = 0xf / 0xf
+pool info before/after    = 0x0 / 0x0
+pool bytes before/after   = 16376 / 5864
+pool fragments before/after = 2 / 20
+
+owner/queue object status: stack qmem qcreate send thread
+power   /qSysEvents       0 0 0 0 0
+audio   /qAudioCmd        0 0 0 0 0
+input   /qInputRaw        0 0 0 0 0
+display /qDisplayCmd      0 0 0 0 0
+sensor  /qSensorReq       0 0 0 0 0
+storage /qStorageReq      0 0 0 0 0
+comm    /qCommCmd         0 0 0 0 0
+UI      /qUIEvents        0 0 0 0 0
+runtime /qRuntimeEvents   0 0 0 0 0
+
+event group status: create set get
+egMode                    0 0 0
+egPower                   0 0 0
+egHealth                  0 0 0
+egDebug                   0 0 0
+
+owner runtime: heartbeat last_tick receives timeouts errors
+power                     56 1552 1 55 0
+audio                     61 1554 2 59 0
+input                     64 1554 2 62 0
+display                   64 1552 2 62 0
+sensor                    64 1555 2 62 0
+storage                   64 1555 2 62 0
+comm                      60 1552 2 58 0
+UI                        63 1552 1 62 0
+runtime                   63 1552 1 62 0
+
+--- owner-thread physical workflow ---
+magic/version/phase       = 0x48364f57 / 0x1 / 0x67ff
+complete/success/init     = 1 / 0 / 0x0
+workflow start/end/delta  = 451 / 627 / 176 ticks
+power command send/tick   = 0x0 / 451
+display send/ack/flags    = 0x0 / 0x0 / 0x8
+audio send/ack/flags      = 0x0 / 0x0 / 0x2
+
+  power owner: read-only ADP5360 snapshot
+command/complete/success  = 451 / 1 / 1
+register addresses        = 00 29 2a 2b 2c 2e 2f
+register values           = 10 31 18 18 13 00 07
+lease get status          = 0 0 0 0 0 0 0
+HAL transfer status       = 0 0 0 0 0 0 0
+HAL transfer errors       = 0 0 0 0 0 0 0
+lease put status          = 0 0 0 0 0 0 0
+I2C state/error           = 0x20 / 0x0
+identity/rails/fault OK   = 1 / 1 / 1
+
+  display owner: 144x168 diagnostic card
+command/complete/success  = 451 / 1 / 1
+size/pattern/hash/black   = 144x168 / 0x54455354 / 0x360cda71 / 1725
+expected hash/black       = 0x360cda71 / 1725
+RTC state/CR              = 0x1 / 0x40880000
+SPI before/init/present   = 0x1 / 0x0 / 0x0
+DMA done/state/error      = 1 / 0x1 / 0x0
+SPI state/error after     = 0x1 / 0x0
+ack set status            = 0x0
+expected visual           = white field, 2px black border, center cross, four distinct corner markers
+
+  audio owner: speaker DMA tone
+command/complete/success  = 452 / 1 / 1
+kernel/sample/tone Hz     = 4096000 / 16000 / 1000
+duration/amplitude/buffer = 750 ms / 3000 / 2048 halfwords
+SD before/enabled/after   = 0 / 1 / 0
+start/stop status         = 0x0 / 0x0
+SAI state/error after     = 0x1 / 0x0
+DMA state/error after     = 0x1 / 0x0
+ack set status            = 0x0
+expected audible result   = one 1 kHz tone for about 750 ms
+
+--- retained-peripheral lifecycle state machines ---
+start request              = 0
+magic/version/phase        = 0x48364653 / 0x1 / 0x68ff
+complete/success           = 1 / 0
+required/completed         = 0x7f / 0x7f
+success/failure owners     = 0x2b / 0x54
+workflow start/end/delta   = 451 / 627 / 176 ticks
+
+owner lifecycle transport: send wait ack action start end
+power                      0 0 1 0 451 451
+audio                      0 0 2 0 452 529
+input                      0 0 4 1 529 529
+display                    0 0 8 0 451 452
+sensor                     0 0 10 1 529 530
+storage                    0 0 20 0 530 530
+comm                       0 0 40 1 530 627
+
+FSM final state: current expected transitions rejected last_event last_status last_error
+power                      2 2  2 0 2 0 ffffffff
+PMIC                       3 3  2 0 2 0 ffffffff
+display                    2 2  2 0 2 0 ffffffff
+audio                      2 2  4 0 5 0 ffffffff
+speaker                    0 0  6 0 6 0 ffffffff
+joystick                   14 12 3 0 16 1 1
+IMU                        10 8  3 0 15 1 1
+storage                    2 2  2 0 2 0 ffffffff
+flash                      8 8  4 0 8 0 ffffffff
+BLE                        11 10 4 0 7 1 1
+
+  TMAG3001 verified suspended baseline
+ready/identity/match       = 0x0 / 0x0 / 1
+device/mfr LSB/MSB         = 00 / 49 / 54
+SENSOR_CONFIG1 before/after = 00 / 54
+DEVICE_CONFIG2 before/after = 00 / 00
+write/verify masks         = 0x3 / 0x0 (expected 0x3 / 0x3)
+I2C state/error            = 0x20 / 0x4
+
+  LIS2DUX12 verified deep-power-down baseline
+ready/WHO status/value/match = 0x0 / 0x0 / 47 / 1
+register addresses         =
+ 15
+ 11
+ 12
+ 17
+ 1f
+ 20
+ 32
+ 13
+ 14
+ 10
+ 3d
+
+register before            =
+ 00
+ 00
+ 00
+ 00
+ 00
+ 00
+ 00
+ 00
+ 00
+ 10
+ 00
+
+register after             =
+ 00
+ 00
+ 00
+ 00
+ 00
+ 00
+ 00
+ 00
+ 00
+ 00
+ 00
+
+snapshot/write/verify     = 0x
+7ff / 0x7ff / 0x0 (expected 0x7ff each)
+I2C state/error            = 0x20 / 0x4
+
+  AT25SL128A idle baseline
+JEDEC status/ID/match      = 0x0 / 1f 42 18 / 1
+deep-power-down status     = 0x0
+OSPI state/error           = 0x2 / 0x0
+
+  USB device detached baseline (owned by storage)
+VBUS present               = 0 (expected 0)
+PCD state before/after     = 0x1 / 0x0
+clock before/after         = 1 / 0
+VDDUSB before/after        = 1 / 0
+deinit attempted/status    = 1 / 0x0
+USB parked                 = 1 (expected 1)
+
+  NINA-B112 AT-controlled STOP baseline
+NRST before/released/after = 0 / 0 / 0
+NINA_DSR host-DTR before/after = 0 / 0
+boot RX / commands         = 13 bytes / 2
+command TX statuses        = 0 0 ffffffff ffffffff ffffffff ffffffff ffffffff
+command RX lengths         = 10 26 0 0 0 0 0
+OK/error masks             = 0x1 / 0x2 (expected 0x7f / 0)
+UART deinit/state/error    = 0x0 / 0x0 / 0x0
+fallback reset asserted    = 1 (expected 0)
+
+  bounded transition trace: tick fsm from event to action
+451 0 0 1 1 0
+451 1 0 1 1 0
+451 1 1 2 3 0
+451 0 1 2 2 0
+451 2 0 1 1 0
+452 2 1 2 2 0
+452 3 0 1 1 0
+452 3 1 2 2 0
+452 4 0 1 1 0
+452 4 1 2 2 0
+452 4 2 3 3 0
+452 3 2 3 3 0
+452 4 3 4 5 0
+529 4 5 5 6 0
+529 4 6 6 0 0
+529 3 3 5 2 0
+529 5 0 1 1 0
+529 5 1 3 2 0
+529 5 2 16 14 1
+529 6 0 1 1 0
+529 6 1 3 2 0
+530 6 2 15 10 1
+530 7 0 1 1 0
+530 8 0 1 2 0
+530 8 2 2 3 0
+530 8 3 4 4 0
+530 8 4 8 8 0
+530 7 1 2 2 0
+530 9 0 1 1 0
+532 9 1 3 2 0
+621 9 2 4 3 0
+627 9 3 7 11 1
+
+--- scheduler idle and workflow marker ---
+WFI setup/enter/exit/adjust = 1573 / 1573 / 1572 / 1572
+next scheduler timeout ticks = 5
+PWR_DBG state/toggles/last = 0 / 2 / 627
+=== END HW6 FW0 BOOT + PERIPHERAL + RTOS + OWNER STATE PROBE ===
+{"output":"","token":42,"outOfBandRecord":[],"resultRecords":{"resultClass":"done","results":[]}}

@@ -1,0 +1,44 @@
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_owner_sm_start.gdb
+HW6 baseline stabilization plus two owner lifecycle cycles requested.
+Continue the target; PWR_DBG is high only while the bounded workflow runs.
+Expected physical result: three display-card presents and three ~750 ms tones total.
+
+Program received signal SIGINT, Interrupt.
+PS_HW6_RTOS_LowPowerEnter () at G:/PEEPSHOW/firmware/peepshow_hw6_fw0/Core/Src/ps_hw6_rtos_probe.c:691
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_all_probe_prints.gdb
+
+Key lifecycle-v5 pass telemetry copied from the operator GDB transcript:
+
+complete/success           = 1 / 1
+required/completed         = 0x7f / 0x7f
+success/failure owners     = 0x7f / 0x0
+requested/completed/success = 2 / 2 / 1
+
+cycle 0:
+resume success/failure      = 0x7f / 0x0
+quiesce success/failure     = 0x7f / 0x0
+active/inactive state match = 0x3ff / 0x3ff
+IMU wake status/error/accepted = 1 4 1
+IMU WHO/active/sleep         = 0 0 0
+IMU WHO/active CTRL5         = 47 / 10 (expected 47 / 10)
+
+cycle 1:
+resume success/failure      = 0x7f / 0x0
+quiesce success/failure     = 0x7f / 0x0
+active/inactive state match = 0x3ff / 0x3ff
+IMU wake status/error/accepted = 1 4 1
+IMU WHO/active/sleep         = 0 0 0
+IMU WHO/active CTRL5         = 47 / 10 (expected 47 / 10)
+
+LIS2DUX12 verified deep-power-down baseline:
+driver API/init/state/ops/last = 1 / 0 / 3 / 5 / 0
+ready/WHO status/value/match = 0x0 / 0x0 / 47 / 1
+snapshot/write/verify     = 0x7ff / 0x7ff / 0x3ff (expected 0x7ff / 0x7ff / 0x3ff)
+deep-PD value/status/committed = 01 / 0x0 / 1
+post-deep-PD read omitted  = 1 (expected 1; registers are inaccessible)
+I2C state/error            = 0x20 / 0x0
+
+Physical observation:
+three display-card presents and three speaker tones were observed.
+
+PWR_DBG state/toggles/last = 0 / 2 / 1158

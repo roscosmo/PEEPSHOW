@@ -3,7 +3,10 @@
 This runbook records the measured HW5 procedure for bringing up the `NINA-B112-04B` BLE module.
 
 > [!important] HW6 reuse
-> Repeat UART/flow-control, BLE, SPS, NFC, AT-command sleep, wake, and current measurements on HW6 and record them in [[HW6_Brought_Up_Tracker]]. Communication wake remains blocked unless separately measured and granted.
+> HW6 UART command transport and owner-routed `AT&D4`/DSR STOP entry now pass on
+> unit 001. BLE, SPS, NFC, wake, flow-control stress, and current measurements
+> still require HW6 evidence in [[HW6_Brought_Up_Tracker]]. Communication wake
+> remains blocked unless separately measured and granted.
 
 Related:
 
@@ -52,6 +55,20 @@ Record exact behavior once measured.
 
 ---
 
+## HW6 Inactive STOP Baseline
+
+For the fitted `NINA-B112` running u-connectXpress `5.0.0`, the required inactive sequence is:
+
+1. Hold host-controlled `NINA_DSR` (`PC8`) asserted low while issuing commands.
+2. Require `AT`, `AT+UBTDM=1`, `AT+UBTCM=1`, `AT+UBTPM=1`, and `AT&D4` to return `OK`.
+3. Deassert `NINA_DSR` high and allow at least one second for the documented NINA-B1 UART/STOP transition.
+4. Deinitialize the host UART while leaving `NINA_NRST` released high.
+5. Use reset assertion only as a bounded fault fallback, not as the normal suspended state.
+
+`AT+UPWRMNG` is not part of this sequence. Revision 56 of the u-connectXpress AT manual lists that command for NINA-B2/W13/W15, not NINA-B1. The HW6 lifecycle probe preserves two historical command slots as explicitly skipped telemetry so an unsupported command cannot block `AT&D4` again.
+
+---
+
 ## Validation Procedure
 
 1. Validate safe defaults for NINA GPIO without attempting communication: `NINA_NRST` asserted low, `NINA_SW1`/`NINA_SW2`/`NINA_DTR`/`NINA_DSR` high-Z/no-pull unless the test intentionally uses them.
@@ -85,4 +102,14 @@ Record exact behavior once measured.
 
 Every successful validation must link evidence from [[Brought_Up_Tracker]].
 
-Do not mark NINA reset, strap, UART, pairing, or transfer behavior known-good without measured HW5 evidence.
+- 2026-07-31: `EV-HW6-20260731-P5-OWNERS-004` proves bounded reset/boot, five
+  required NINA-B1 AT responses, `AT&D4`, host DSR deassertion, the documented
+  STOP settling interval, UART deinitialization, and no reset fallback.
+- 2026-08-01: both lifecycle-v3 cycles passed host-DTR assertion, preserved
+  115200-baud hardware-flow-control UART reinitialization, STOP exit, fresh
+  `AT`/`OK`, repeated `AT&D4` STOP, and UART deinit without touching module
+  reset. The overall run failed only on the unrelated IMU wake path; exact
+  results are preserved in `EV-HW6-20260801-P5-OWNERS-005`.
+
+Do not mark wake, flow-control stress, pairing, SPS data, NFC, current, or USB
+installer interaction known-good without measured target-specific evidence.
