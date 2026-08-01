@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-#include "LS013B7DH05.h"
+#include "ps_dev_ls013b7dh05.h"
 #include "main.h"
 #include "ps_dev_adp5360.h"
 #include "ps_hw_i2c3.h"
@@ -38,8 +38,8 @@ extern DMA_HandleTypeDef handle_LPDMA1_Channel0;
 volatile PS_HW6_OwnerProbe g_ps_hw6_owner_probe;
 
 static ps_dev_adp5360_t ps_hw6_pmic;
-static LS013B7DH05 ps_hw6_display;
-static uint8_t ps_hw6_display_framebuffer[BUFFER_LENGTH];
+static ps_dev_ls013b7dh05_t ps_hw6_display;
+static uint8_t ps_hw6_display_framebuffer[PS_DEV_LS013B7DH05_BUFFER_SIZE];
 static int16_t ps_hw6_audio_buffer[PS_HW6_AUDIO_BUFFER_HALFWORDS]
   __attribute__((aligned(4)));
 
@@ -49,17 +49,30 @@ static const int16_t ps_hw6_sine_16[16] =
   0, -1148, -2121, -2772, -3000, -2772, -2121, -1148
 };
 
+static void PS_HW6_UpdateDisplayDriverProbe(void)
+{
+  g_ps_hw6_owner_probe.display_driver_api_version =
+    ps_hw6_display.api_version;
+  g_ps_hw6_owner_probe.display_driver_state = ps_hw6_display.state;
+  g_ps_hw6_owner_probe.display_driver_operation_count =
+    ps_hw6_display.operation_count;
+  g_ps_hw6_owner_probe.display_driver_last_status =
+    ps_hw6_display.last_status;
+}
+
 static uint32_t PS_HW6_DisplaySetBlack(uint16_t x, uint16_t y)
 {
   uint32_t index;
   uint8_t mask;
 
-  if ((x >= DISPLAY_WIDTH) || (y >= DISPLAY_HEIGHT))
+  if ((x >= PS_DEV_LS013B7DH05_WIDTH) ||
+      (y >= PS_DEV_LS013B7DH05_HEIGHT))
   {
     return 0UL;
   }
 
-  index = ((uint32_t)y * LINE_WIDTH) + ((uint32_t)x >> 3U);
+  index = ((uint32_t)y * PS_DEV_LS013B7DH05_LINE_WIDTH) +
+          ((uint32_t)x >> 3U);
   mask = (uint8_t)(1U << (x & 7U));
   if ((ps_hw6_display_framebuffer[index] & mask) == 0U)
   {
@@ -127,52 +140,52 @@ static void PS_HW6_PrepareDisplayPattern(void)
   for (i = 0U; i < 2U; ++i)
   {
     black_pixels += PS_HW6_DisplayHorizontalLine(
-      i, (uint16_t)(DISPLAY_WIDTH - 1U - i), i);
+      i, (uint16_t)(PS_DEV_LS013B7DH05_WIDTH - 1U - i), i);
     black_pixels += PS_HW6_DisplayHorizontalLine(
-      i, (uint16_t)(DISPLAY_WIDTH - 1U - i),
-      (uint16_t)(DISPLAY_HEIGHT - 1U - i));
+      i, (uint16_t)(PS_DEV_LS013B7DH05_WIDTH - 1U - i),
+      (uint16_t)(PS_DEV_LS013B7DH05_HEIGHT - 1U - i));
     black_pixels += PS_HW6_DisplayVerticalLine(
-      i, i, (uint16_t)(DISPLAY_HEIGHT - 1U - i));
+      i, i, (uint16_t)(PS_DEV_LS013B7DH05_HEIGHT - 1U - i));
     black_pixels += PS_HW6_DisplayVerticalLine(
-      (uint16_t)(DISPLAY_WIDTH - 1U - i), i,
-      (uint16_t)(DISPLAY_HEIGHT - 1U - i));
+      (uint16_t)(PS_DEV_LS013B7DH05_WIDTH - 1U - i), i,
+      (uint16_t)(PS_DEV_LS013B7DH05_HEIGHT - 1U - i));
   }
 
   black_pixels += PS_HW6_DisplayHorizontalLine(
-    8U, (uint16_t)(DISPLAY_WIDTH - 9U), DISPLAY_HEIGHT / 2U);
+    8U, (uint16_t)(PS_DEV_LS013B7DH05_WIDTH - 9U), PS_DEV_LS013B7DH05_HEIGHT / 2U);
   black_pixels += PS_HW6_DisplayVerticalLine(
-    DISPLAY_WIDTH / 2U, 8U, (uint16_t)(DISPLAY_HEIGHT - 9U));
+    PS_DEV_LS013B7DH05_WIDTH / 2U, 8U, (uint16_t)(PS_DEV_LS013B7DH05_HEIGHT - 9U));
 
   black_pixels += PS_HW6_DisplayFilledRect(8U, 8U, 10U, 10U);
   black_pixels += PS_HW6_DisplayHorizontalLine(
-    (uint16_t)(DISPLAY_WIDTH - 19U), (uint16_t)(DISPLAY_WIDTH - 9U), 8U);
+    (uint16_t)(PS_DEV_LS013B7DH05_WIDTH - 19U), (uint16_t)(PS_DEV_LS013B7DH05_WIDTH - 9U), 8U);
   black_pixels += PS_HW6_DisplayVerticalLine(
-    (uint16_t)(DISPLAY_WIDTH - 9U), 8U, 18U);
+    (uint16_t)(PS_DEV_LS013B7DH05_WIDTH - 9U), 8U, 18U);
   for (i = 0U; i < 11U; ++i)
   {
     black_pixels += PS_HW6_DisplaySetBlack(
-      (uint16_t)(8U + i), (uint16_t)(DISPLAY_HEIGHT - 19U + i));
+      (uint16_t)(8U + i), (uint16_t)(PS_DEV_LS013B7DH05_HEIGHT - 19U + i));
     black_pixels += PS_HW6_DisplaySetBlack(
-      (uint16_t)(18U - i), (uint16_t)(DISPLAY_HEIGHT - 19U + i));
+      (uint16_t)(18U - i), (uint16_t)(PS_DEV_LS013B7DH05_HEIGHT - 19U + i));
   }
   for (i = 0U; i < 12U; ++i)
   {
     if ((i & 1U) == 0U)
     {
       black_pixels += PS_HW6_DisplayFilledRect(
-        (uint16_t)(DISPLAY_WIDTH - 20U + i),
-        (uint16_t)(DISPLAY_HEIGHT - 20U), 1U, 12U);
+        (uint16_t)(PS_DEV_LS013B7DH05_WIDTH - 20U + i),
+        (uint16_t)(PS_DEV_LS013B7DH05_HEIGHT - 20U), 1U, 12U);
     }
   }
 
-  for (i = 0U; i < BUFFER_LENGTH; ++i)
+  for (i = 0U; i < PS_DEV_LS013B7DH05_BUFFER_SIZE; ++i)
   {
     hash ^= ps_hw6_display_framebuffer[i];
     hash *= 16777619UL;
   }
 
-  g_ps_hw6_owner_probe.display_width = DISPLAY_WIDTH;
-  g_ps_hw6_owner_probe.display_height = DISPLAY_HEIGHT;
+  g_ps_hw6_owner_probe.display_width = PS_DEV_LS013B7DH05_WIDTH;
+  g_ps_hw6_owner_probe.display_height = PS_DEV_LS013B7DH05_HEIGHT;
   g_ps_hw6_owner_probe.display_pattern_id = PS_HW6_DISPLAY_PATTERN_ID;
   g_ps_hw6_owner_probe.display_framebuffer_hash = hash;
   g_ps_hw6_owner_probe.display_black_pixels = black_pixels;
@@ -247,6 +260,9 @@ UINT PS_HW6_OwnerServices_Init(void)
   HAL_GPIO_WritePin(SD_MODE_GPIO_Port, SD_MODE_Pin, GPIO_PIN_RESET);
   PS_HW6_PrepareDisplayPattern();
   PS_HW6_PrepareAudioTone();
+  g_ps_hw6_owner_probe.display_driver_init_status =
+    (uint32_t)ps_dev_ls013b7dh05_init(&ps_hw6_display, &hspi3);
+  PS_HW6_UpdateDisplayDriverProbe();
   status = PS_HW_I2C3_Init(&hi2c3);
   g_ps_hw6_owner_probe.services_init_status = status;
   if (status == TX_SUCCESS)
@@ -383,8 +399,8 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_RunSnapshot(void)
 
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void)
 {
-  HAL_StatusTypeDef init_status;
-  HAL_StatusTypeDef present_status = HAL_ERROR;
+  ps_dev_ls013b7dh05_present_result_t result;
+  ps_status_t driver_status;
 
   g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_DISPLAY;
   g_ps_hw6_owner_probe.display_complete = 0UL;
@@ -393,28 +409,24 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void)
   g_ps_hw6_owner_probe.display_rtc_cr = hrtc.Instance->CR;
   g_ps_hw6_owner_probe.display_spi_state_before = HAL_SPI_GetState(&hspi3);
 
-  init_status = LCD_Init(&ps_hw6_display, &hspi3);
-  g_ps_hw6_owner_probe.display_init_status = init_status;
-  if (init_status == HAL_OK)
-  {
-    present_status = LCD_PresentFull_DMA(&ps_hw6_display,
-                                         ps_hw6_display_framebuffer,
-                                         PS_HW6_DISPLAY_PRESENT_TIMEOUT_MS);
-  }
+  driver_status = ps_dev_ls013b7dh05_present_full_dma(
+    &ps_hw6_display,
+    ps_hw6_display_framebuffer,
+    PS_HW6_DISPLAY_PRESENT_TIMEOUT_MS,
+    &handle_LPDMA1_Channel0,
+    &result);
 
-  g_ps_hw6_owner_probe.display_present_status = present_status;
-  g_ps_hw6_owner_probe.display_dma_done =
-    LCD_FlushDMA_IsDone() ? 1UL : 0UL;
-  g_ps_hw6_owner_probe.display_spi_state_after = HAL_SPI_GetState(&hspi3);
-  g_ps_hw6_owner_probe.display_spi_error_after = HAL_SPI_GetError(&hspi3);
-  g_ps_hw6_owner_probe.display_dma_state_after =
-    HAL_DMA_GetState(&handle_LPDMA1_Channel0);
-  g_ps_hw6_owner_probe.display_dma_error_after =
-    HAL_DMA_GetError(&handle_LPDMA1_Channel0);
+  g_ps_hw6_owner_probe.display_init_status = result.init_hal_status;
+  g_ps_hw6_owner_probe.display_present_status = result.present_hal_status;
+  g_ps_hw6_owner_probe.display_dma_done = result.dma_done;
+  g_ps_hw6_owner_probe.display_spi_state_after = result.spi_state_after;
+  g_ps_hw6_owner_probe.display_spi_error_after = result.spi_error_after;
+  g_ps_hw6_owner_probe.display_dma_state_after = result.dma_state_after;
+  g_ps_hw6_owner_probe.display_dma_error_after = result.dma_error_after;
+  PS_HW6_UpdateDisplayDriverProbe();
   g_ps_hw6_owner_probe.display_complete = 1UL;
 
-  if ((init_status == HAL_OK) &&
-      (present_status == HAL_OK) &&
+  if ((driver_status == PS_STATUS_OK) &&
       (g_ps_hw6_owner_probe.display_dma_done != 0UL) &&
       (g_ps_hw6_owner_probe.display_rtc_state == HAL_RTC_STATE_READY) &&
       ((g_ps_hw6_owner_probe.display_rtc_cr & RTC_CR_COE) != 0UL) &&

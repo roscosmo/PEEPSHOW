@@ -178,6 +178,8 @@ expected first sleeping-device wake status `5` plus retry success, and terminal
 sleep recommit across both cycles.
 
 
+Lifecycle-v7 kept the same queue envelopes and replaced the display owner direct LCD calls with the `ps_dev_ls013b7dh05` wrapper. It passed the known full-frame card through `thDisplay` with driver API/init/state/ops/last `1 / 0x0 / 2 / 3 / 0x0`, hash `0x360cda71`, DMA done `1`, and zero SPI/DMA errors. Evidence is preserved in `EV-HW6-20260801-P5-DISPLAY-008`.
+
 The cycle performs real device work: flash release/re-identification/deep
 power-down, TMAG wake/configure/sleep, LIS deep-power-down exit/low-rate setup/
 deep-power-down, NINA DSR wake/AT/DSR STOP, display DMA, audio DMA, and PMIC

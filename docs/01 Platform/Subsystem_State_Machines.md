@@ -67,6 +67,7 @@ not the complete production transition model.
   status `5` followed by retry success, active `SENSOR_CONFIG1=0x70` /
   `DEVICE_CONFIG2=0x02`, and terminal sleep recommit. Evidence is preserved in
   `EV-HW6-20260801-P5-INPUT-007`.
+- Lifecycle v7 kept the same owner cycle and moved the LS013B7DH05 display path out of direct owner-local LCD calls into the `ps_dev_ls013b7dh05` wrapper. It passed the full-frame diagnostic card through `thDisplay` with driver API/init/state/ops/last `1 / 0x0 / 2 / 3 / 0x0`, matching card hash `0x360cda71`, DMA done `1`, and zero SPI/DMA errors. Evidence is preserved in `EV-HW6-20260801-P5-DISPLAY-008`.
 - The lifecycle-v5 active boundary is `PWR_ACTIVE_RT`, `PMIC_MONITOR`,
   `DISP_STATIC_HOLD`, `AUDIO_IDLE`, `SPK_OFF`, `JOY_SLOW_POLL`,
   `IMU_LOW_RATE_SAMPLE`, `STORAGE_FLASH_READY`, `FLASH_READY`, and `BLE_IDLE`.
@@ -89,7 +90,7 @@ not the complete production transition model.
   accessible.
 
 This is a stabilization slice, not the complete production transition model.
-Lifecycle-v6 keeps the bounded owner-routed repeatability check passing with both LIS2DUX12 and TMAG3001 driver-backed paths, but
+Lifecycle-v7 keeps the bounded owner-routed repeatability check passing with LIS2DUX12, TMAG3001, and LS013B7DH05 driver-backed paths, but
 cancellation, injected faults, retries, STOP2 handoff, saturation, current, and
 production runtime mode changes remain separate required evidence.
 
@@ -240,7 +241,7 @@ Key events:
 - `EV_DISP_RECOVER_OK`
 
 Rules:
-- `thDisplay` owns SPI3, LPDMA, framebuffer flushes, and dirty tracking. HW6 has no software-controlled translator OE; its display translator is hardwired enabled.
+- `thDisplay` owns SPI3, LPDMA, framebuffer flushes, and dirty tracking. HW6 has no software-controlled translator OE; its display translator is hardwired enabled. The validated HW6 full-frame path enters through `ps_dev_ls013b7dh05` and preserves the proven LS013B7DH05 packetization/LPDMA transport below that wrapper.
 - `LCD_1HZ` / EXTCOMIN is maintained from RTC while the display holds an image.
 - Logical display resolution is landscape `168 x 144`; native panel mapping is portrait `144 x 168`.
 - Present in `DISP_SUSPENDED` is invalid and must be rejected.

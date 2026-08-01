@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (1UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (2UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_STATUS_NOT_RUN              (0xFFFFFFFFUL)
 
@@ -94,6 +94,11 @@ typedef struct
   uint32_t power_regulator_vout2_ok;
   uint32_t power_regulator_battery_ok;
 
+  uint32_t display_driver_api_version;
+  uint32_t display_driver_init_status;
+  uint32_t display_driver_state;
+  uint32_t display_driver_operation_count;
+  uint32_t display_driver_last_status;
   uint32_t display_command_tick;
   uint32_t display_complete;
   uint32_t display_success;

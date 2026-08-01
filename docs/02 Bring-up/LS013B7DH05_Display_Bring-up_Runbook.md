@@ -79,12 +79,12 @@ Populate this table during HW6 bring-up. The current values remain placeholders 
 | all white | pixel polarity and clear path | uniform cleared display | TBD | open |
 | all black | pixel polarity and full-frame fill | uniform filled display | TBD | open |
 | checkerboard | byte order and adjacent pixel mapping | alternating pattern with no skew | TBD | open |
-| border | logical edge mapping | visible border on all four logical edges | TBD | open |
+| border | logical edge mapping | visible border on all four logical edges | deterministic lifecycle-v7 diagnostic card hash `0x360cda71` with 2 px border and corner markers; operator-visible full-frame card | partial |
 | single pixel | coordinate transform | expected logical coordinate appears | TBD | open |
-| vertical line | x-axis mapping | straight vertical line in landscape space | TBD | open |
-| horizontal line | y-axis mapping | straight horizontal line in landscape space | TBD | open |
+| vertical line | x-axis mapping | straight vertical line in landscape space | center cross visible in lifecycle-v7 diagnostic card | partial |
+| horizontal line | y-axis mapping | straight horizontal line in landscape space | center cross visible in lifecycle-v7 diagnostic card | partial |
 | small dirty row range | partial update | only target rows change | TBD | open |
-| SRAM4 DMA source | buffer placement and DMA reachability | payload read from approved SRAM4 display buffer | TBD | open |
+| SRAM4 DMA source | buffer placement and DMA reachability | payload read from approved SRAM4 display buffer | lifecycle-v7 full-frame DMA completed with `DMA done/state/error = 1 / 0x1 / 0x0`; SRAM4 usage `3368 B` | partial |
 | static hold | low-power hold behavior | image remains visible; EXTCOMIN remains valid | TBD | open |
 
 ---
@@ -115,8 +115,8 @@ Acceptance requires correct image output, clean ownership reclaim, correct EXTCO
 | translator path | hardwired enabled | SPI and EXTCOMIN path continuously available | TBD | open |
 | EXTCOMIN | RTC 1 Hz calibration output | `LCD_1HZ` reaches panel | TBD | open |
 | SPI baseline | conservative SPI3 TX | valid SCK/MOSI/NSS waveforms | TBD | open |
-| full frame | clear/fill patterns | correct full-screen image | TBD | open |
-| orientation | mapping patterns | logical `168 x 144` landscape confirmed | TBD | open |
+| full frame | clear/fill patterns | correct full-screen image | lifecycle-v7 driver-backed diagnostic card presented three times, hash `0x360cda71`, SPI/DMA errors `0x0/0x0` | partial |
+| orientation | mapping patterns | logical `168 x 144` landscape confirmed | lifecycle-v7 card used native `144 x 168` buffer with visible border/cross/corner markers; detailed pixel-orientation regression remains pending | partial |
 | partial update | row/range payload | only target rows change | TBD | open |
 | SRAM4 display buffer | approved SRAM4 DMA source | LPDMA reads correct payload without corruption/fault | TBD | open |
 | static hold | low-power hold | image remains visible | TBD | open |
@@ -157,3 +157,9 @@ Record in [[HW6_Brought_Up_Tracker]]:
 - LPBAM evidence: prevalidated SRAM4 sequence correctness, autonomous transfer window, wake/exit behavior, ownership reclaim, image correctness, and current comparison
 
 Do not mark LPBAM display animation supported without measured scenario evidence. If it fails, normal display bring-up may still pass, but LPBAM remains unavailable.
+
+## HW6 Measured Evidence
+
+`EV-HW6-20260801-P5-DISPLAY-008` validates the current driver-backed owner path on `HW6-UNIT-001`: `ps_dev_ls013b7dh05` presented the known full-frame diagnostic card through SPI3/LPDMA three times across the baseline workflow plus two owner-routed resume cycles. The probe reported driver API/init/state/ops/last `1 / 0x0 / 2 / 3 / 0x0`, card `144x168 / 0x54455354 / 0x360cda71 / 1725`, SPI before/init/present `0x1 / 0x0 / 0x0`, DMA done/state/error `1 / 0x1 / 0x0`, and SPI state/error after `0x1 / 0x0`.
+
+This closes only the full-frame owner DMA path. Partial updates, detailed pixel-orientation regression, low-power/static-hold current, STOP-context EXTCOMIN proof, LPBAM autonomous playback, and fault injection remain open.

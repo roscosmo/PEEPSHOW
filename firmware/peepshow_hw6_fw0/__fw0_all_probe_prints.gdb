@@ -137,6 +137,7 @@ printf "ADP regulator ok bits    = vout1 %u vout2 %u bat %u\n", $owner->power_re
 
 printf "\n  display owner: 144x168 diagnostic card\n"
 printf "command/complete/success  = %u / %u / %u\n", $owner->display_command_tick, $owner->display_complete, $owner->display_success
+printf "display driver API/init/state/ops/last = %u / 0x%x / %u / %u / 0x%x\n", $owner->display_driver_api_version, $owner->display_driver_init_status, $owner->display_driver_state, $owner->display_driver_operation_count, $owner->display_driver_last_status
 printf "size/pattern/hash/black   = %ux%u / 0x%x / 0x%x / %u\n", $owner->display_width, $owner->display_height, $owner->display_pattern_id, $owner->display_framebuffer_hash, $owner->display_black_pixels
 printf "expected hash/black       = 0x360cda71 / 1725\n"
 printf "RTC state/CR              = 0x%x / 0x%x\n", $owner->display_rtc_state, $owner->display_rtc_cr
