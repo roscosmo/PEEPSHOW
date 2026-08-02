@@ -268,6 +268,27 @@ printf "\n  AT25SL128A idle baseline\n"
 printf "driver API/init/state/ops/last = %u / %u / %u / %u / %u\n", $sm->flash_driver_api_version, $sm->flash_driver_init_status, $sm->flash_driver_state, $sm->flash_driver_operation_count, $sm->flash_driver_last_status
 printf "JEDEC status/ID/match      = 0x%x / %02x %02x %02x / %u\n", $sm->flash_jedec_status, $sm->flash_jedec_id[0], $sm->flash_jedec_id[1], $sm->flash_jedec_id[2], $sm->flash_identity_match
 printf "deep-power-down status     = 0x%x\n", $sm->flash_deep_power_down_status
+printf "scratch status/address/length = %u / 0x%08x / %u\n", $sm->flash_scratch_status, $sm->flash_scratch_address, $sm->flash_scratch_length
+printf "scratch status1 before        = 0x%02x\n", $sm->flash_scratch_status1_before
+printf "erase WREN/cmd/wait/polls     = 0x%x / 0x%x / %u / %u\n", $sm->flash_scratch_erase_write_enable_status, $sm->flash_scratch_erase_status, $sm->flash_scratch_erase_wait_status, $sm->flash_scratch_erase_poll_count
+printf "erase blank read/mismatches   = 0x%x / %u\n", $sm->flash_scratch_erase_blank_read_status, $sm->flash_scratch_erase_blank_mismatch_count
+printf "program WREN/cmd/wait/polls   = 0x%x / 0x%x / %u / %u\n", $sm->flash_scratch_program_write_enable_status, $sm->flash_scratch_program_status, $sm->flash_scratch_program_wait_status, $sm->flash_scratch_program_poll_count
+printf "program read/mismatches       = 0x%x / %u\n", $sm->flash_scratch_program_read_status, $sm->flash_scratch_program_mismatch_count
+printf "program first16              ="
+set $i = 0
+while $i < 16
+  printf " %02x", $sm->flash_scratch_program_first16[$i]
+  set $i = $i + 1
+end
+printf "\ncleanup WREN/cmd/wait/polls = 0x%x / 0x%x / %u / %u\n", $sm->flash_scratch_cleanup_write_enable_status, $sm->flash_scratch_cleanup_erase_status, $sm->flash_scratch_cleanup_wait_status, $sm->flash_scratch_cleanup_poll_count
+printf "cleanup blank read/mismatches = 0x%x / %u\n", $sm->flash_scratch_cleanup_blank_read_status, $sm->flash_scratch_cleanup_blank_mismatch_count
+printf "cleanup first16              ="
+set $i = 0
+while $i < 16
+  printf " %02x", $sm->flash_scratch_cleanup_first16[$i]
+  set $i = $i + 1
+end
+printf "\nscratch OSPI state/error    = 0x%x / 0x%x\n", $sm->flash_scratch_ospi_state_after, $sm->flash_scratch_ospi_error_after
 printf "OSPI state/error           = 0x%x / 0x%x\n", $sm->flash_ospi_state_after, $sm->flash_ospi_error_after
 
 printf "\n  USB device detached baseline (owned by storage)\n"

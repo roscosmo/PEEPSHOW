@@ -15,6 +15,7 @@ extern "C" {
 #define PS_DEV_AT25SL128A_JEDEC_ID0 (0x1FU)
 #define PS_DEV_AT25SL128A_JEDEC_ID1 (0x42U)
 #define PS_DEV_AT25SL128A_JEDEC_ID2 (0x18U)
+#define PS_DEV_AT25SL128A_PAGE_SIZE  (256UL)
 
 typedef enum
 {
@@ -54,6 +55,37 @@ typedef struct
   uint32_t ospi_error_after;
 } ps_dev_at25sl128a_command_result_t;
 
+typedef struct
+{
+  ps_status_t status;
+  uint32_t address;
+  uint32_t length;
+  uint32_t status_read_hal_status;
+  uint32_t status1_before;
+  uint32_t erase_write_enable_hal_status;
+  uint32_t erase_hal_status;
+  uint32_t erase_wait_status;
+  uint32_t erase_poll_count;
+  uint32_t erase_blank_read_hal_status;
+  uint32_t erase_blank_mismatch_count;
+  uint32_t program_write_enable_hal_status;
+  uint32_t program_hal_status;
+  uint32_t program_wait_status;
+  uint32_t program_poll_count;
+  uint32_t program_read_hal_status;
+  uint32_t program_mismatch_count;
+  uint8_t program_first16[16];
+  uint32_t cleanup_write_enable_hal_status;
+  uint32_t cleanup_erase_hal_status;
+  uint32_t cleanup_wait_status;
+  uint32_t cleanup_poll_count;
+  uint32_t cleanup_blank_read_hal_status;
+  uint32_t cleanup_blank_mismatch_count;
+  uint8_t cleanup_first16[16];
+  uint32_t ospi_state_after;
+  uint32_t ospi_error_after;
+} ps_dev_at25sl128a_scratch_result_t;
+
 ps_status_t ps_dev_at25sl128a_init(ps_dev_at25sl128a_t *device,
                                    OSPI_HandleTypeDef *ospi,
                                    uint32_t timeout_ms);
@@ -69,6 +101,11 @@ ps_status_t ps_dev_at25sl128a_read_jedec(
 ps_status_t ps_dev_at25sl128a_enter_deep_power_down(
   ps_dev_at25sl128a_t *device,
   ps_dev_at25sl128a_command_result_t *result);
+
+ps_status_t ps_dev_at25sl128a_run_scratch_test(
+  ps_dev_at25sl128a_t *device,
+  uint32_t address,
+  ps_dev_at25sl128a_scratch_result_t *result);
 
 #ifdef __cplusplus
 }
