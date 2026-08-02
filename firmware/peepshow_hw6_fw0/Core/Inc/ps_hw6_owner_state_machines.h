@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (8UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (10UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -192,19 +192,40 @@ typedef struct
   uint32_t flash_scratch_length;
   uint32_t flash_scratch_status1_before;
   uint32_t flash_scratch_erase_write_enable_status;
+  uint32_t flash_scratch_erase_write_enable_status1;
   uint32_t flash_scratch_erase_status;
+  uint32_t flash_scratch_erase_command_status1;
   uint32_t flash_scratch_erase_wait_status;
   uint32_t flash_scratch_erase_poll_count;
   uint32_t flash_scratch_erase_blank_read_status;
   uint32_t flash_scratch_erase_blank_mismatch_count;
+  uint32_t flash_scratch_erase_blank_first16[16];
   uint32_t flash_scratch_program_write_enable_status;
+  uint32_t flash_scratch_program_write_enable_status1;
   uint32_t flash_scratch_program_status;
   uint32_t flash_scratch_program_wait_status;
   uint32_t flash_scratch_program_poll_count;
   uint32_t flash_scratch_program_read_status;
   uint32_t flash_scratch_program_mismatch_count;
   uint32_t flash_scratch_program_first16[16];
+  uint32_t flash_scratch_dma_program_write_enable_status;
+  uint32_t flash_scratch_dma_program_write_enable_status1;
+  uint32_t flash_scratch_dma_program_status;
+  uint32_t flash_scratch_dma_program_transfer_wait_status;
+  uint32_t flash_scratch_dma_program_transfer_poll_count;
+  uint32_t flash_scratch_dma_program_flash_wait_status;
+  uint32_t flash_scratch_dma_program_flash_poll_count;
+  uint32_t flash_scratch_dma_read_status;
+  uint32_t flash_scratch_dma_read_transfer_wait_status;
+  uint32_t flash_scratch_dma_read_transfer_poll_count;
+  uint32_t flash_scratch_dma_verify_mismatch_count;
+  uint32_t flash_scratch_dma_first16[16];
+  uint32_t flash_scratch_dma_tx_state_after;
+  uint32_t flash_scratch_dma_tx_error_after;
+  uint32_t flash_scratch_dma_rx_state_after;
+  uint32_t flash_scratch_dma_rx_error_after;
   uint32_t flash_scratch_cleanup_write_enable_status;
+  uint32_t flash_scratch_cleanup_write_enable_status1;
   uint32_t flash_scratch_cleanup_erase_status;
   uint32_t flash_scratch_cleanup_wait_status;
   uint32_t flash_scratch_cleanup_poll_count;

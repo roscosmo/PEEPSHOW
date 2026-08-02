@@ -34,6 +34,8 @@ typedef struct
   uint32_t state;
   uint32_t last_status;
   OSPI_HandleTypeDef *ospi;
+  DMA_HandleTypeDef *dma_rx;
+  DMA_HandleTypeDef *dma_tx;
   uint32_t timeout_ms;
 } ps_dev_at25sl128a_t;
 
@@ -63,19 +65,40 @@ typedef struct
   uint32_t status_read_hal_status;
   uint32_t status1_before;
   uint32_t erase_write_enable_hal_status;
+  uint32_t erase_write_enable_status1;
   uint32_t erase_hal_status;
+  uint32_t erase_command_status1;
   uint32_t erase_wait_status;
   uint32_t erase_poll_count;
   uint32_t erase_blank_read_hal_status;
   uint32_t erase_blank_mismatch_count;
+  uint8_t erase_blank_first16[16];
   uint32_t program_write_enable_hal_status;
+  uint32_t program_write_enable_status1;
   uint32_t program_hal_status;
   uint32_t program_wait_status;
   uint32_t program_poll_count;
   uint32_t program_read_hal_status;
   uint32_t program_mismatch_count;
   uint8_t program_first16[16];
+  uint32_t dma_program_write_enable_hal_status;
+  uint32_t dma_program_write_enable_status1;
+  uint32_t dma_program_hal_status;
+  uint32_t dma_program_transfer_wait_status;
+  uint32_t dma_program_transfer_poll_count;
+  uint32_t dma_program_flash_wait_status;
+  uint32_t dma_program_flash_poll_count;
+  uint32_t dma_read_hal_status;
+  uint32_t dma_read_transfer_wait_status;
+  uint32_t dma_read_transfer_poll_count;
+  uint32_t dma_verify_mismatch_count;
+  uint8_t dma_first16[16];
+  uint32_t dma_tx_state_after;
+  uint32_t dma_tx_error_after;
+  uint32_t dma_rx_state_after;
+  uint32_t dma_rx_error_after;
   uint32_t cleanup_write_enable_hal_status;
+  uint32_t cleanup_write_enable_status1;
   uint32_t cleanup_erase_hal_status;
   uint32_t cleanup_wait_status;
   uint32_t cleanup_poll_count;
@@ -88,6 +111,8 @@ typedef struct
 
 ps_status_t ps_dev_at25sl128a_init(ps_dev_at25sl128a_t *device,
                                    OSPI_HandleTypeDef *ospi,
+                                   DMA_HandleTypeDef *dma_rx,
+                                   DMA_HandleTypeDef *dma_tx,
                                    uint32_t timeout_ms);
 
 ps_status_t ps_dev_at25sl128a_release_from_deep_power_down(

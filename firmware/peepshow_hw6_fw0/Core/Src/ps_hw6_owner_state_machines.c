@@ -60,6 +60,8 @@
   (sizeof(array) / sizeof((array)[0]))
 
 extern I2C_HandleTypeDef hi2c3;
+extern DMA_HandleTypeDef handle_GPDMA1_Channel4;
+extern DMA_HandleTypeDef handle_GPDMA1_Channel5;
 extern OSPI_HandleTypeDef hospi1;
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 extern UART_HandleTypeDef hlpuart1;
@@ -396,8 +398,12 @@ static void PS_HW6_SM_RecordFlashScratchResult(
     result->status1_before;
   g_ps_hw6_owner_sm_probe.flash_scratch_erase_write_enable_status =
     result->erase_write_enable_hal_status;
+  g_ps_hw6_owner_sm_probe.flash_scratch_erase_write_enable_status1 =
+    result->erase_write_enable_status1;
   g_ps_hw6_owner_sm_probe.flash_scratch_erase_status =
     result->erase_hal_status;
+  g_ps_hw6_owner_sm_probe.flash_scratch_erase_command_status1 =
+    result->erase_command_status1;
   g_ps_hw6_owner_sm_probe.flash_scratch_erase_wait_status =
     result->erase_wait_status;
   g_ps_hw6_owner_sm_probe.flash_scratch_erase_poll_count =
@@ -408,6 +414,8 @@ static void PS_HW6_SM_RecordFlashScratchResult(
     result->erase_blank_mismatch_count;
   g_ps_hw6_owner_sm_probe.flash_scratch_program_write_enable_status =
     result->program_write_enable_hal_status;
+  g_ps_hw6_owner_sm_probe.flash_scratch_program_write_enable_status1 =
+    result->program_write_enable_status1;
   g_ps_hw6_owner_sm_probe.flash_scratch_program_status =
     result->program_hal_status;
   g_ps_hw6_owner_sm_probe.flash_scratch_program_wait_status =
@@ -418,13 +426,49 @@ static void PS_HW6_SM_RecordFlashScratchResult(
     result->program_read_hal_status;
   g_ps_hw6_owner_sm_probe.flash_scratch_program_mismatch_count =
     result->program_mismatch_count;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_program_write_enable_status =
+    result->dma_program_write_enable_hal_status;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_program_write_enable_status1 =
+    result->dma_program_write_enable_status1;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_program_status =
+    result->dma_program_hal_status;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_program_transfer_wait_status =
+    result->dma_program_transfer_wait_status;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_program_transfer_poll_count =
+    result->dma_program_transfer_poll_count;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_program_flash_wait_status =
+    result->dma_program_flash_wait_status;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_program_flash_poll_count =
+    result->dma_program_flash_poll_count;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_read_status =
+    result->dma_read_hal_status;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_read_transfer_wait_status =
+    result->dma_read_transfer_wait_status;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_read_transfer_poll_count =
+    result->dma_read_transfer_poll_count;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_verify_mismatch_count =
+    result->dma_verify_mismatch_count;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_tx_state_after =
+    result->dma_tx_state_after;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_tx_error_after =
+    result->dma_tx_error_after;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_rx_state_after =
+    result->dma_rx_state_after;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_rx_error_after =
+    result->dma_rx_error_after;
   for (index = 0UL; index < 16UL; ++index)
   {
+    g_ps_hw6_owner_sm_probe.flash_scratch_erase_blank_first16[index] =
+      result->erase_blank_first16[index];
     g_ps_hw6_owner_sm_probe.flash_scratch_program_first16[index] =
       result->program_first16[index];
+    g_ps_hw6_owner_sm_probe.flash_scratch_dma_first16[index] =
+      result->dma_first16[index];
   }
   g_ps_hw6_owner_sm_probe.flash_scratch_cleanup_write_enable_status =
     result->cleanup_write_enable_hal_status;
+  g_ps_hw6_owner_sm_probe.flash_scratch_cleanup_write_enable_status1 =
+    result->cleanup_write_enable_status1;
   g_ps_hw6_owner_sm_probe.flash_scratch_cleanup_erase_status =
     result->cleanup_erase_hal_status;
   g_ps_hw6_owner_sm_probe.flash_scratch_cleanup_wait_status =
@@ -1575,6 +1619,8 @@ void PS_HW6_OwnerStateMachines_Init(void)
   flash_init_status = ps_dev_at25sl128a_init(
     &ps_flash_device,
     &hospi1,
+    &handle_GPDMA1_Channel4,
+    &handle_GPDMA1_Channel5,
     PS_HW6_SM_OSPI_TIMEOUT_MS);
   g_ps_hw6_owner_sm_probe.flash_driver_init_status =
     (uint32_t)flash_init_status;
@@ -1715,6 +1761,18 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.flash_scratch_program_wait_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.flash_scratch_program_read_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_program_write_enable_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_program_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_program_transfer_wait_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_program_flash_wait_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_read_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_scratch_dma_read_transfer_wait_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.flash_scratch_cleanup_write_enable_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;

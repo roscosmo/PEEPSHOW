@@ -271,8 +271,17 @@ printf "deep-power-down status     = 0x%x\n", $sm->flash_deep_power_down_status
 printf "scratch status/address/length = %u / 0x%08x / %u\n", $sm->flash_scratch_status, $sm->flash_scratch_address, $sm->flash_scratch_length
 printf "scratch status1 before        = 0x%02x\n", $sm->flash_scratch_status1_before
 printf "erase WREN/cmd/wait/polls     = 0x%x / 0x%x / %u / %u\n", $sm->flash_scratch_erase_write_enable_status, $sm->flash_scratch_erase_status, $sm->flash_scratch_erase_wait_status, $sm->flash_scratch_erase_poll_count
+printf "erase status1 after WREN/cmd  = 0x%02x / 0x%02x\n", $sm->flash_scratch_erase_write_enable_status1, $sm->flash_scratch_erase_command_status1
 printf "erase blank read/mismatches   = 0x%x / %u\n", $sm->flash_scratch_erase_blank_read_status, $sm->flash_scratch_erase_blank_mismatch_count
+printf "erase blank first16           ="
+set $i = 0
+while $i < 16
+  printf " %02x", $sm->flash_scratch_erase_blank_first16[$i]
+  set $i = $i + 1
+end
+printf "\n"
 printf "program WREN/cmd/wait/polls   = 0x%x / 0x%x / %u / %u\n", $sm->flash_scratch_program_write_enable_status, $sm->flash_scratch_program_status, $sm->flash_scratch_program_wait_status, $sm->flash_scratch_program_poll_count
+printf "program status1 after WREN    = 0x%02x\n", $sm->flash_scratch_program_write_enable_status1
 printf "program read/mismatches       = 0x%x / %u\n", $sm->flash_scratch_program_read_status, $sm->flash_scratch_program_mismatch_count
 printf "program first16              ="
 set $i = 0
@@ -280,7 +289,21 @@ while $i < 16
   printf " %02x", $sm->flash_scratch_program_first16[$i]
   set $i = $i + 1
 end
-printf "\ncleanup WREN/cmd/wait/polls = 0x%x / 0x%x / %u / %u\n", $sm->flash_scratch_cleanup_write_enable_status, $sm->flash_scratch_cleanup_erase_status, $sm->flash_scratch_cleanup_wait_status, $sm->flash_scratch_cleanup_poll_count
+printf "\nDMA program WREN/cmd/xfer wait/polls = 0x%x / 0x%x / %u / %u\n", $sm->flash_scratch_dma_program_write_enable_status, $sm->flash_scratch_dma_program_status, $sm->flash_scratch_dma_program_transfer_wait_status, $sm->flash_scratch_dma_program_transfer_poll_count
+printf "DMA program status1 after WREN = 0x%02x\n", $sm->flash_scratch_dma_program_write_enable_status1
+printf "DMA program flash wait/polls = %u / %u\n", $sm->flash_scratch_dma_program_flash_wait_status, $sm->flash_scratch_dma_program_flash_poll_count
+printf "DMA read cmd/xfer wait/polls = 0x%x / %u / %u\n", $sm->flash_scratch_dma_read_status, $sm->flash_scratch_dma_read_transfer_wait_status, $sm->flash_scratch_dma_read_transfer_poll_count
+printf "DMA read mismatches          = %u\n", $sm->flash_scratch_dma_verify_mismatch_count
+printf "DMA first16                 ="
+set $i = 0
+while $i < 16
+  printf " %02x", $sm->flash_scratch_dma_first16[$i]
+  set $i = $i + 1
+end
+printf "\nDMA tx state/error           = 0x%x / 0x%x\n", $sm->flash_scratch_dma_tx_state_after, $sm->flash_scratch_dma_tx_error_after
+printf "DMA rx state/error           = 0x%x / 0x%x\n", $sm->flash_scratch_dma_rx_state_after, $sm->flash_scratch_dma_rx_error_after
+printf "cleanup WREN/cmd/wait/polls = 0x%x / 0x%x / %u / %u\n", $sm->flash_scratch_cleanup_write_enable_status, $sm->flash_scratch_cleanup_erase_status, $sm->flash_scratch_cleanup_wait_status, $sm->flash_scratch_cleanup_poll_count
+printf "cleanup status1 after WREN    = 0x%02x\n", $sm->flash_scratch_cleanup_write_enable_status1
 printf "cleanup blank read/mismatches = 0x%x / %u\n", $sm->flash_scratch_cleanup_blank_read_status, $sm->flash_scratch_cleanup_blank_mismatch_count
 printf "cleanup first16              ="
 set $i = 0

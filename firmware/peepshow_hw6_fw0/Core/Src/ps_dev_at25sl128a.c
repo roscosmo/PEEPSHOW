@@ -13,6 +13,8 @@
 
 #define PS_DEV_AT25SL128A_STATUS1_BUSY_MASK      (0x01U)
 #define PS_DEV_AT25SL128A_WAIT_MAX_POLLS         (20000UL)
+#define PS_DEV_AT25SL128A_DMA_WAIT_MAX_POLLS     (20000UL)
+#define PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS    (1UL)
 #define PS_DEV_AT25SL128A_SCRATCH_PATTERN_BASE   (0xA5U)
 
 static uint8_t ps_dev_at25sl128a_tx_buffer[PS_DEV_AT25SL128A_PAGE_SIZE];
@@ -217,6 +219,105 @@ static HAL_StatusTypeDef ps_dev_at25sl128a_page_program(
   return hal_status;
 }
 
+static ps_status_t ps_dev_at25sl128a_wait_dma_transfer(
+  ps_dev_at25sl128a_t *device,
+  uint32_t *wait_status,
+  uint32_t *poll_count)
+{
+  uint32_t index;
+
+  if ((device == NULL) || (wait_status == NULL) || (poll_count == NULL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  *wait_status = (uint32_t)PS_STATUS_TIMEOUT;
+  *poll_count = 0UL;
+  for (index = 0UL; index < PS_DEV_AT25SL128A_DMA_WAIT_MAX_POLLS; ++index)
+  {
+    *poll_count = index + 1UL;
+    if (HAL_OSPI_GetState(device->ospi) == HAL_OSPI_STATE_READY)
+    {
+      *wait_status = (uint32_t)PS_STATUS_OK;
+      return PS_STATUS_OK;
+    }
+    if ((device->ospi->hdma != NULL) &&
+        (HAL_DMA_GetState(device->ospi->hdma) == HAL_DMA_STATE_READY))
+    {
+      HAL_OSPI_IRQHandler(device->ospi);
+      if (HAL_OSPI_GetState(device->ospi) == HAL_OSPI_STATE_READY)
+      {
+        *wait_status = (uint32_t)PS_STATUS_OK;
+        return PS_STATUS_OK;
+      }
+    }
+    if (HAL_OSPI_GetError(device->ospi) != HAL_OSPI_ERROR_NONE)
+    {
+      *wait_status = (uint32_t)PS_STATUS_IO_ERROR;
+      return PS_STATUS_IO_ERROR;
+    }
+  }
+  return PS_STATUS_TIMEOUT;
+}
+
+static HAL_StatusTypeDef ps_dev_at25sl128a_read_data_dma(
+  ps_dev_at25sl128a_t *device,
+  uint32_t address,
+  uint8_t *data,
+  uint32_t length)
+{
+  OSPI_RegularCmdTypeDef command;
+  HAL_StatusTypeDef hal_status;
+
+  if ((device->dma_rx == NULL) || (data == NULL))
+  {
+    return HAL_ERROR;
+  }
+
+  ps_dev_at25sl128a_prepare_address_command(
+    &command,
+    PS_DEV_AT25SL128A_CMD_READ_DATA,
+    address,
+    HAL_OSPI_DATA_1_LINE,
+    length);
+  hal_status = HAL_OSPI_Command(device->ospi, &command, device->timeout_ms);
+  if (hal_status == HAL_OK)
+  {
+    device->ospi->hdma = device->dma_rx;
+    hal_status = HAL_OSPI_Receive_DMA(device->ospi, data);
+  }
+  return hal_status;
+}
+
+static HAL_StatusTypeDef ps_dev_at25sl128a_page_program_dma(
+  ps_dev_at25sl128a_t *device,
+  uint32_t address,
+  uint8_t *data,
+  uint32_t length)
+{
+  OSPI_RegularCmdTypeDef command;
+  HAL_StatusTypeDef hal_status;
+
+  if ((device->dma_tx == NULL) || (data == NULL))
+  {
+    return HAL_ERROR;
+  }
+
+  ps_dev_at25sl128a_prepare_address_command(
+    &command,
+    PS_DEV_AT25SL128A_CMD_PAGE_PROGRAM,
+    address,
+    HAL_OSPI_DATA_1_LINE,
+    length);
+  hal_status = HAL_OSPI_Command(device->ospi, &command, device->timeout_ms);
+  if (hal_status == HAL_OK)
+  {
+    device->ospi->hdma = device->dma_tx;
+    hal_status = HAL_OSPI_Transmit_DMA(device->ospi, data);
+  }
+  return hal_status;
+}
+
 static uint32_t ps_dev_at25sl128a_count_blank_mismatches(
   const uint8_t *data,
   uint32_t length)
@@ -254,9 +355,12 @@ static uint32_t ps_dev_at25sl128a_count_pattern_mismatches(
 
 ps_status_t ps_dev_at25sl128a_init(ps_dev_at25sl128a_t *device,
                                    OSPI_HandleTypeDef *ospi,
+                                   DMA_HandleTypeDef *dma_rx,
+                                   DMA_HandleTypeDef *dma_tx,
                                    uint32_t timeout_ms)
 {
-  if ((device == NULL) || (ospi == NULL) || (timeout_ms == 0UL))
+  if ((device == NULL) || (ospi == NULL) || (dma_rx == NULL) ||
+      (dma_tx == NULL) || (timeout_ms == 0UL))
   {
     return PS_STATUS_INVALID_ARGUMENT;
   }
@@ -264,6 +368,8 @@ ps_status_t ps_dev_at25sl128a_init(ps_dev_at25sl128a_t *device,
   (void)memset(device, 0, sizeof(*device));
   device->api_version = PS_DEV_AT25SL128A_API_VERSION;
   device->ospi = ospi;
+  device->dma_rx = dma_rx;
+  device->dma_tx = dma_tx;
   device->timeout_ms = timeout_ms;
   device->state = PS_DEV_AT25SL128A_STATE_READY;
   device->last_status = PS_STATUS_OK;
@@ -410,6 +516,7 @@ ps_status_t ps_dev_at25sl128a_run_scratch_test(
   uint8_t status1 = 0U;
   uint32_t index;
   uint32_t cleanup_required = 0UL;
+  uint32_t dma_phase_started = 0UL;
 
   if ((device == NULL) || (result == NULL))
   {
@@ -428,6 +535,15 @@ ps_status_t ps_dev_at25sl128a_run_scratch_test(
   result->program_hal_status = (uint32_t)HAL_ERROR;
   result->program_wait_status = (uint32_t)PS_STATUS_NOT_INITIALIZED;
   result->program_read_hal_status = (uint32_t)HAL_ERROR;
+  result->dma_program_write_enable_hal_status = (uint32_t)HAL_ERROR;
+  result->dma_program_hal_status = (uint32_t)HAL_ERROR;
+  result->dma_program_transfer_wait_status =
+    (uint32_t)PS_STATUS_NOT_INITIALIZED;
+  result->dma_program_flash_wait_status =
+    (uint32_t)PS_STATUS_NOT_INITIALIZED;
+  result->dma_read_hal_status = (uint32_t)HAL_ERROR;
+  result->dma_read_transfer_wait_status =
+    (uint32_t)PS_STATUS_NOT_INITIALIZED;
   result->cleanup_write_enable_hal_status = (uint32_t)HAL_ERROR;
   result->cleanup_erase_hal_status = (uint32_t)HAL_ERROR;
   result->cleanup_wait_status = (uint32_t)PS_STATUS_NOT_INITIALIZED;
@@ -460,6 +576,9 @@ ps_status_t ps_dev_at25sl128a_run_scratch_test(
     status = ps_dev_at25sl128a_hal_status(hal_status);
     goto scratch_done;
   }
+  (void)ps_dev_at25sl128a_read_status1(device, &status1);
+  result->erase_write_enable_status1 = status1;
+  HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
 
   hal_status = ps_dev_at25sl128a_erase_sector(device, address);
   result->erase_hal_status = (uint32_t)hal_status;
@@ -468,6 +587,9 @@ ps_status_t ps_dev_at25sl128a_run_scratch_test(
     status = ps_dev_at25sl128a_hal_status(hal_status);
     goto scratch_done;
   }
+  (void)ps_dev_at25sl128a_read_status1(device, &status1);
+  result->erase_command_status1 = status1;
+  HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
 
   cleanup_required = 1UL;
 
@@ -480,6 +602,9 @@ ps_status_t ps_dev_at25sl128a_run_scratch_test(
     goto cleanup;
   }
 
+  (void)memset(ps_dev_at25sl128a_rx_buffer,
+               0xEE,
+               PS_DEV_AT25SL128A_PAGE_SIZE);
   hal_status = ps_dev_at25sl128a_read_data(
     device,
     address,
@@ -490,6 +615,10 @@ ps_status_t ps_dev_at25sl128a_run_scratch_test(
   {
     status = ps_dev_at25sl128a_hal_status(hal_status);
     goto cleanup;
+  }
+  for (index = 0UL; index < 16UL; ++index)
+  {
+    result->erase_blank_first16[index] = ps_dev_at25sl128a_rx_buffer[index];
   }
   result->erase_blank_mismatch_count =
     ps_dev_at25sl128a_count_blank_mismatches(
@@ -516,6 +645,9 @@ ps_status_t ps_dev_at25sl128a_run_scratch_test(
     status = ps_dev_at25sl128a_hal_status(hal_status);
     goto cleanup;
   }
+  (void)ps_dev_at25sl128a_read_status1(device, &status1);
+  result->program_write_enable_status1 = status1;
+  HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
 
   hal_status = ps_dev_at25sl128a_page_program(
     device,
@@ -528,6 +660,7 @@ ps_status_t ps_dev_at25sl128a_run_scratch_test(
     status = ps_dev_at25sl128a_hal_status(hal_status);
     goto cleanup;
   }
+  HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
 
   status = ps_dev_at25sl128a_wait_while_busy(
     device,
@@ -580,6 +713,12 @@ cleanup:
   }
   if (hal_status == HAL_OK)
   {
+    (void)ps_dev_at25sl128a_read_status1(device, &status1);
+    result->cleanup_write_enable_status1 = status1;
+    HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
+  }
+  if (hal_status == HAL_OK)
+  {
     hal_status = ps_dev_at25sl128a_erase_sector(device, address);
     result->cleanup_erase_hal_status = (uint32_t)hal_status;
     if ((hal_status != HAL_OK) && (status == PS_STATUS_OK))
@@ -587,6 +726,10 @@ cleanup:
       status = ps_dev_at25sl128a_hal_status(hal_status);
       goto scratch_done;
     }
+  }
+  if (hal_status == HAL_OK)
+  {
+    HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
   }
   if (hal_status == HAL_OK)
   {
@@ -629,6 +772,100 @@ cleanup:
         status = PS_STATUS_VERIFY_FAILED;
       }
     }
+  }
+
+  if ((status == PS_STATUS_OK) && (dma_phase_started == 0UL))
+  {
+    dma_phase_started = 1UL;
+    for (index = 0UL; index < PS_DEV_AT25SL128A_PAGE_SIZE; ++index)
+    {
+      ps_dev_at25sl128a_tx_buffer[index] =
+        (uint8_t)(PS_DEV_AT25SL128A_SCRATCH_PATTERN_BASE ^ index);
+      ps_dev_at25sl128a_rx_buffer[index] = 0U;
+    }
+
+    hal_status = ps_dev_at25sl128a_send_command(
+      device,
+      PS_DEV_AT25SL128A_CMD_WRITE_ENABLE);
+    result->dma_program_write_enable_hal_status = (uint32_t)hal_status;
+    if (hal_status != HAL_OK)
+    {
+      status = ps_dev_at25sl128a_hal_status(hal_status);
+      goto cleanup;
+    }
+    (void)ps_dev_at25sl128a_read_status1(device, &status1);
+    result->dma_program_write_enable_status1 = status1;
+    HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
+
+    hal_status = ps_dev_at25sl128a_page_program_dma(
+      device,
+      address,
+      ps_dev_at25sl128a_tx_buffer,
+      PS_DEV_AT25SL128A_PAGE_SIZE);
+    result->dma_program_hal_status = (uint32_t)hal_status;
+    if (hal_status != HAL_OK)
+    {
+      status = ps_dev_at25sl128a_hal_status(hal_status);
+      goto cleanup;
+    }
+    HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
+
+    status = ps_dev_at25sl128a_wait_dma_transfer(
+      device,
+      &result->dma_program_transfer_wait_status,
+      &result->dma_program_transfer_poll_count);
+    result->dma_tx_state_after = (uint32_t)HAL_DMA_GetState(device->dma_tx);
+    result->dma_tx_error_after = HAL_DMA_GetError(device->dma_tx);
+    if (status != PS_STATUS_OK)
+    {
+      goto cleanup;
+    }
+
+    status = ps_dev_at25sl128a_wait_while_busy(
+      device,
+      &result->dma_program_flash_wait_status,
+      &result->dma_program_flash_poll_count);
+    if (status != PS_STATUS_OK)
+    {
+      goto cleanup;
+    }
+
+    hal_status = ps_dev_at25sl128a_read_data_dma(
+      device,
+      address,
+      ps_dev_at25sl128a_rx_buffer,
+      PS_DEV_AT25SL128A_PAGE_SIZE);
+    result->dma_read_hal_status = (uint32_t)hal_status;
+    if (hal_status != HAL_OK)
+    {
+      status = ps_dev_at25sl128a_hal_status(hal_status);
+      goto cleanup;
+    }
+
+    status = ps_dev_at25sl128a_wait_dma_transfer(
+      device,
+      &result->dma_read_transfer_wait_status,
+      &result->dma_read_transfer_poll_count);
+    result->dma_rx_state_after = (uint32_t)HAL_DMA_GetState(device->dma_rx);
+    result->dma_rx_error_after = HAL_DMA_GetError(device->dma_rx);
+    if (status != PS_STATUS_OK)
+    {
+      goto cleanup;
+    }
+
+    for (index = 0UL; index < 16UL; ++index)
+    {
+      result->dma_first16[index] = ps_dev_at25sl128a_rx_buffer[index];
+    }
+    result->dma_verify_mismatch_count =
+      ps_dev_at25sl128a_count_pattern_mismatches(
+        ps_dev_at25sl128a_rx_buffer,
+        PS_DEV_AT25SL128A_PAGE_SIZE);
+    if (result->dma_verify_mismatch_count != 0UL)
+    {
+      status = PS_STATUS_VERIFY_FAILED;
+    }
+    goto cleanup;
   }
 
 scratch_done:
