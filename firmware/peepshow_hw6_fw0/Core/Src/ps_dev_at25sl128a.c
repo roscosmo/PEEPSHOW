@@ -506,6 +506,321 @@ ps_status_t ps_dev_at25sl128a_enter_deep_power_down(
   return result->status;
 }
 
+static void ps_dev_at25sl128a_init_io_result(
+  ps_dev_at25sl128a_io_result_t *result,
+  uint32_t address,
+  uint32_t length)
+{
+  (void)memset(result, 0, sizeof(*result));
+  result->status = PS_STATUS_INTERNAL_ERROR;
+  result->address = address;
+  result->length = length;
+  result->write_enable_hal_status = (uint32_t)HAL_ERROR;
+  result->command_hal_status = (uint32_t)HAL_ERROR;
+  result->transfer_wait_status = (uint32_t)PS_STATUS_NOT_INITIALIZED;
+  result->flash_wait_status = (uint32_t)PS_STATUS_NOT_INITIALIZED;
+}
+
+static void ps_dev_at25sl128a_finish_io_result(
+  ps_dev_at25sl128a_t *device,
+  ps_dev_at25sl128a_io_result_t *result,
+  ps_status_t status,
+  DMA_HandleTypeDef *dma)
+{
+  if (dma != NULL)
+  {
+    result->dma_state_after = (uint32_t)HAL_DMA_GetState(dma);
+    result->dma_error_after = HAL_DMA_GetError(dma);
+  }
+  result->ospi_state_after = (uint32_t)HAL_OSPI_GetState(device->ospi);
+  result->ospi_error_after = HAL_OSPI_GetError(device->ospi);
+  result->status = ps_dev_at25sl128a_finish(device, status);
+}
+ps_status_t ps_dev_at25sl128a_erase_4k(
+  ps_dev_at25sl128a_t *device,
+  uint32_t address,
+  ps_dev_at25sl128a_io_result_t *result)
+{
+  HAL_StatusTypeDef hal_status;
+  ps_status_t status;
+  uint8_t status1 = 0U;
+
+  if ((device == NULL) || (result == NULL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  ps_dev_at25sl128a_init_io_result(result,
+                                   address,
+                                   PS_DEV_AT25SL128A_SECTOR_SIZE);
+  if (device->initialized == 0U)
+  {
+    result->status = PS_STATUS_NOT_INITIALIZED;
+    return result->status;
+  }
+  if (((address % PS_DEV_AT25SL128A_SECTOR_SIZE) != 0UL) ||
+      (address >= PS_DEV_AT25SL128A_TOTAL_SIZE))
+  {
+    result->status = PS_STATUS_INVALID_ARGUMENT;
+    return result->status;
+  }
+
+  device->operation_count++;
+  device->state = PS_DEV_AT25SL128A_STATE_ACTIVE;
+
+  hal_status = ps_dev_at25sl128a_send_command(
+    device,
+    PS_DEV_AT25SL128A_CMD_WRITE_ENABLE);
+  result->write_enable_hal_status = (uint32_t)hal_status;
+  if (hal_status != HAL_OK)
+  {
+    status = ps_dev_at25sl128a_hal_status(hal_status);
+    ps_dev_at25sl128a_finish_io_result(device, result, status, NULL);
+    return result->status;
+  }
+  (void)ps_dev_at25sl128a_read_status1(device, &status1);
+  result->write_enable_status1 = status1;
+  HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
+
+  hal_status = ps_dev_at25sl128a_erase_sector(device, address);
+  result->command_hal_status = (uint32_t)hal_status;
+  if (hal_status != HAL_OK)
+  {
+    status = ps_dev_at25sl128a_hal_status(hal_status);
+    ps_dev_at25sl128a_finish_io_result(device, result, status, NULL);
+    return result->status;
+  }
+  HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
+
+  status = ps_dev_at25sl128a_wait_while_busy(
+    device,
+    &result->flash_wait_status,
+    &result->flash_poll_count);
+  ps_dev_at25sl128a_finish_io_result(device, result, status, NULL);
+  return result->status;
+}
+
+ps_status_t ps_dev_at25sl128a_read(
+  ps_dev_at25sl128a_t *device,
+  uint32_t address,
+  uint8_t *data,
+  uint32_t length,
+  ps_dev_at25sl128a_io_result_t *result)
+{
+  HAL_StatusTypeDef hal_status;
+  ps_status_t status;
+
+  if ((device == NULL) || (data == NULL) || (result == NULL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  ps_dev_at25sl128a_init_io_result(result, address, length);
+  if (device->initialized == 0U)
+  {
+    result->status = PS_STATUS_NOT_INITIALIZED;
+    return result->status;
+  }
+  if ((length == 0UL) || ((address + length) > PS_DEV_AT25SL128A_TOTAL_SIZE))
+  {
+    result->status = PS_STATUS_INVALID_ARGUMENT;
+    return result->status;
+  }
+
+  device->operation_count++;
+  device->state = PS_DEV_AT25SL128A_STATE_ACTIVE;
+  hal_status = ps_dev_at25sl128a_read_data(device, address, data, length);
+  result->command_hal_status = (uint32_t)hal_status;
+  status = ps_dev_at25sl128a_hal_status(hal_status);
+  ps_dev_at25sl128a_finish_io_result(device, result, status, NULL);
+  return result->status;
+}
+ps_status_t ps_dev_at25sl128a_read_dma(
+  ps_dev_at25sl128a_t *device,
+  uint32_t address,
+  uint8_t *data,
+  uint32_t length,
+  ps_dev_at25sl128a_io_result_t *result)
+{
+  HAL_StatusTypeDef hal_status;
+  ps_status_t status;
+
+  if ((device == NULL) || (data == NULL) || (result == NULL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  ps_dev_at25sl128a_init_io_result(result, address, length);
+  if (device->initialized == 0U)
+  {
+    result->status = PS_STATUS_NOT_INITIALIZED;
+    return result->status;
+  }
+  if ((length == 0UL) || ((address + length) > PS_DEV_AT25SL128A_TOTAL_SIZE))
+  {
+    result->status = PS_STATUS_INVALID_ARGUMENT;
+    return result->status;
+  }
+
+  device->operation_count++;
+  device->state = PS_DEV_AT25SL128A_STATE_ACTIVE;
+  hal_status = ps_dev_at25sl128a_read_data_dma(device, address, data, length);
+  result->command_hal_status = (uint32_t)hal_status;
+  if (hal_status == HAL_OK)
+  {
+    status = ps_dev_at25sl128a_wait_dma_transfer(
+      device,
+      &result->transfer_wait_status,
+      &result->transfer_poll_count);
+  }
+  else
+  {
+    status = ps_dev_at25sl128a_hal_status(hal_status);
+  }
+  ps_dev_at25sl128a_finish_io_result(device, result, status, device->dma_rx);
+  return result->status;
+}
+
+ps_status_t ps_dev_at25sl128a_program_page(
+  ps_dev_at25sl128a_t *device,
+  uint32_t address,
+  const uint8_t *data,
+  uint32_t length,
+  ps_dev_at25sl128a_io_result_t *result)
+{
+  HAL_StatusTypeDef hal_status;
+  ps_status_t status;
+  uint8_t status1 = 0U;
+
+  if ((device == NULL) || (data == NULL) || (result == NULL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  ps_dev_at25sl128a_init_io_result(result, address, length);
+  if (device->initialized == 0U)
+  {
+    result->status = PS_STATUS_NOT_INITIALIZED;
+    return result->status;
+  }
+  if ((length == 0UL) || (length > PS_DEV_AT25SL128A_PAGE_SIZE) ||
+      ((address % PS_DEV_AT25SL128A_PAGE_SIZE) + length >
+       PS_DEV_AT25SL128A_PAGE_SIZE) ||
+      ((address + length) > PS_DEV_AT25SL128A_TOTAL_SIZE))
+  {
+    result->status = PS_STATUS_INVALID_ARGUMENT;
+    return result->status;
+  }
+
+  device->operation_count++;
+  device->state = PS_DEV_AT25SL128A_STATE_ACTIVE;
+
+  hal_status = ps_dev_at25sl128a_send_command(
+    device,
+    PS_DEV_AT25SL128A_CMD_WRITE_ENABLE);
+  result->write_enable_hal_status = (uint32_t)hal_status;
+  if (hal_status != HAL_OK)
+  {
+    status = ps_dev_at25sl128a_hal_status(hal_status);
+    ps_dev_at25sl128a_finish_io_result(device, result, status, NULL);
+    return result->status;
+  }
+  (void)ps_dev_at25sl128a_read_status1(device, &status1);
+  result->write_enable_status1 = status1;
+  HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
+
+  hal_status = ps_dev_at25sl128a_page_program(
+    device,
+    address,
+    (uint8_t *)data,
+    length);
+  result->command_hal_status = (uint32_t)hal_status;
+  if (hal_status != HAL_OK)
+  {
+    status = ps_dev_at25sl128a_hal_status(hal_status);
+    ps_dev_at25sl128a_finish_io_result(device, result, status, NULL);
+    return result->status;
+  }
+  HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
+
+  status = ps_dev_at25sl128a_wait_while_busy(
+    device,
+    &result->flash_wait_status,
+    &result->flash_poll_count);
+  ps_dev_at25sl128a_finish_io_result(device, result, status, NULL);
+  return result->status;
+}
+ps_status_t ps_dev_at25sl128a_program_page_dma(
+  ps_dev_at25sl128a_t *device,
+  uint32_t address,
+  const uint8_t *data,
+  uint32_t length,
+  ps_dev_at25sl128a_io_result_t *result)
+{
+  HAL_StatusTypeDef hal_status;
+  ps_status_t status;
+  uint8_t status1 = 0U;
+
+  if ((device == NULL) || (data == NULL) || (result == NULL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  ps_dev_at25sl128a_init_io_result(result, address, length);
+  if (device->initialized == 0U)
+  {
+    result->status = PS_STATUS_NOT_INITIALIZED;
+    return result->status;
+  }
+  if ((length == 0UL) || (length > PS_DEV_AT25SL128A_PAGE_SIZE) ||
+      ((address % PS_DEV_AT25SL128A_PAGE_SIZE) + length >
+       PS_DEV_AT25SL128A_PAGE_SIZE) ||
+      ((address + length) > PS_DEV_AT25SL128A_TOTAL_SIZE))
+  {
+    result->status = PS_STATUS_INVALID_ARGUMENT;
+    return result->status;
+  }
+
+  device->operation_count++;
+  device->state = PS_DEV_AT25SL128A_STATE_ACTIVE;
+
+  hal_status = ps_dev_at25sl128a_send_command(
+    device,
+    PS_DEV_AT25SL128A_CMD_WRITE_ENABLE);
+  result->write_enable_hal_status = (uint32_t)hal_status;
+  if (hal_status != HAL_OK)
+  {
+    status = ps_dev_at25sl128a_hal_status(hal_status);
+    ps_dev_at25sl128a_finish_io_result(device, result, status, device->dma_tx);
+    return result->status;
+  }
+  (void)ps_dev_at25sl128a_read_status1(device, &status1);
+  result->write_enable_status1 = status1;
+  HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
+
+  hal_status = ps_dev_at25sl128a_page_program_dma(
+    device,
+    address,
+    (uint8_t *)data,
+    length);
+  result->command_hal_status = (uint32_t)hal_status;
+  if (hal_status != HAL_OK)
+  {
+    status = ps_dev_at25sl128a_hal_status(hal_status);
+    ps_dev_at25sl128a_finish_io_result(device, result, status, device->dma_tx);
+    return result->status;
+  }
+  HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
+
+  status = ps_dev_at25sl128a_wait_dma_transfer(
+    device,
+    &result->transfer_wait_status,
+    &result->transfer_poll_count);
+  if (status == PS_STATUS_OK)
+  {
+    status = ps_dev_at25sl128a_wait_while_busy(
+      device,
+      &result->flash_wait_status,
+      &result->flash_poll_count);
+  }
+  ps_dev_at25sl128a_finish_io_result(device, result, status, device->dma_tx);
+  return result->status;
+}
 ps_status_t ps_dev_at25sl128a_run_scratch_test(
   ps_dev_at25sl128a_t *device,
   uint32_t address,

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (10UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (11UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -234,6 +234,38 @@ typedef struct
   uint32_t flash_scratch_cleanup_first16[16];
   uint32_t flash_scratch_ospi_state_after;
   uint32_t flash_scratch_ospi_error_after;
+  uint32_t flash_block_api_version;
+  uint32_t flash_block_init_status;
+  uint32_t flash_block_operation_count;
+  uint32_t flash_block_last_status;
+  uint32_t flash_block_geometry_total_size;
+  uint32_t flash_block_geometry_erase_size;
+  uint32_t flash_block_geometry_page_size;
+  uint32_t flash_block_geometry_count;
+  uint32_t flash_block_test_status;
+  uint32_t flash_block_test_address;
+  uint32_t flash_block_test_index;
+  uint32_t flash_block_test_length;
+  uint32_t flash_block_erase_status;
+  uint32_t flash_block_erase_poll_count;
+  uint32_t flash_block_blank_read_status;
+  uint32_t flash_block_blank_read_count;
+  uint32_t flash_block_blank_mismatch_count;
+  uint32_t flash_block_blank_first16[16];
+  uint32_t flash_block_program_status;
+  uint32_t flash_block_program_page_count;
+  uint32_t flash_block_program_last_poll_count;
+  uint32_t flash_block_verify_read_status;
+  uint32_t flash_block_verify_read_count;
+  uint32_t flash_block_verify_mismatch_count;
+  uint32_t flash_block_verify_first16[16];
+  uint32_t flash_block_cleanup_status;
+  uint32_t flash_block_cleanup_poll_count;
+  uint32_t flash_block_cleanup_read_status;
+  uint32_t flash_block_cleanup_mismatch_count;
+  uint32_t flash_block_cleanup_first16[16];
+  uint32_t flash_block_ospi_state_after;
+  uint32_t flash_block_ospi_error_after;
   uint32_t flash_ospi_state_after;
   uint32_t flash_ospi_error_after;
   uint32_t flash_cycle_release_status[PS_HW6_OWNER_SM_CYCLE_COUNT];

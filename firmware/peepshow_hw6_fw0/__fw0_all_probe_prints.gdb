@@ -313,7 +313,34 @@ while $i < 16
 end
 printf "\nscratch OSPI state/error    = 0x%x / 0x%x\n", $sm->flash_scratch_ospi_state_after, $sm->flash_scratch_ospi_error_after
 printf "OSPI state/error           = 0x%x / 0x%x\n", $sm->flash_ospi_state_after, $sm->flash_ospi_error_after
-
+printf "\n  raw flash block adapter scratch sector\n"
+printf "block API/init/ops/last     = %u / %u / %u / %u\n", $sm->flash_block_api_version, $sm->flash_block_init_status, $sm->flash_block_operation_count, $sm->flash_block_last_status
+printf "geometry total/erase/page/count = %u / %u / %u / %u\n", $sm->flash_block_geometry_total_size, $sm->flash_block_geometry_erase_size, $sm->flash_block_geometry_page_size, $sm->flash_block_geometry_count
+printf "test status/index/address/len = %u / %u / 0x%08x / %u\n", $sm->flash_block_test_status, $sm->flash_block_test_index, $sm->flash_block_test_address, $sm->flash_block_test_length
+printf "erase status/polls        = %u / %u\n", $sm->flash_block_erase_status, $sm->flash_block_erase_poll_count
+printf "blank read count/status/mismatch = %u / %u / %u\n", $sm->flash_block_blank_read_count, $sm->flash_block_blank_read_status, $sm->flash_block_blank_mismatch_count
+printf "blank first16             ="
+set $i = 0
+while $i < 16
+  printf " %02x", $sm->flash_block_blank_first16[$i]
+  set $i = $i + 1
+end
+printf "\nprogram status/pages/last polls = %u / %u / %u\n", $sm->flash_block_program_status, $sm->flash_block_program_page_count, $sm->flash_block_program_last_poll_count
+printf "verify read count/status/mismatch = %u / %u / %u\n", $sm->flash_block_verify_read_count, $sm->flash_block_verify_read_status, $sm->flash_block_verify_mismatch_count
+printf "verify first16            ="
+set $i = 0
+while $i < 16
+  printf " %02x", $sm->flash_block_verify_first16[$i]
+  set $i = $i + 1
+end
+printf "\ncleanup status/read/mismatch = %u / %u / %u\n", $sm->flash_block_cleanup_status, $sm->flash_block_cleanup_read_status, $sm->flash_block_cleanup_mismatch_count
+printf "cleanup first16           ="
+set $i = 0
+while $i < 16
+  printf " %02x", $sm->flash_block_cleanup_first16[$i]
+  set $i = $i + 1
+end
+printf "\nblock OSPI state/error    = 0x%x / 0x%x\n", $sm->flash_block_ospi_state_after, $sm->flash_block_ospi_error_after
 printf "\n  USB device detached baseline (owned by storage)\n"
 printf "VBUS present               = %u (expected 0)\n", $sm->usb_vbus_present
 printf "PCD state before/after     = 0x%x / 0x%x\n", $sm->usb_pcd_state_before, $sm->usb_pcd_state_after

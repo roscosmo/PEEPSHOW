@@ -6,7 +6,8 @@
 #include "ps_hw6_owner_services.h"
 #include "ps_hw6_owner_state_machines.h"
 
-#define PS_HW6_RTOS_STACK_BYTES          (1024UL)
+#define PS_HW6_RTOS_DEFAULT_STACK_BYTES  (1024UL)
+#define PS_HW6_RTOS_STORAGE_STACK_BYTES  (2048UL)
 #define PS_HW6_RTOS_QUEUE_DEPTH          (8UL)
 #define PS_HW6_RTOS_QUEUE_STORAGE_BYTES  (PS_HW6_RTOS_MESSAGE_WORDS * \
                                            PS_HW6_RTOS_QUEUE_DEPTH * \
@@ -69,6 +70,19 @@ static CHAR *const ps_event_names[PS_HW6_RTOS_EVENT_GROUP_COUNT] =
 static const UINT ps_owner_priorities[PS_HW6_RTOS_OWNER_COUNT] =
 {
   5U, 6U, 7U, 8U, 9U, 10U, 11U, 12U, 13U
+};
+
+static const ULONG ps_owner_stack_bytes[PS_HW6_RTOS_OWNER_COUNT] =
+{
+  PS_HW6_RTOS_DEFAULT_STACK_BYTES,
+  PS_HW6_RTOS_DEFAULT_STACK_BYTES,
+  PS_HW6_RTOS_DEFAULT_STACK_BYTES,
+  PS_HW6_RTOS_DEFAULT_STACK_BYTES,
+  PS_HW6_RTOS_DEFAULT_STACK_BYTES,
+  PS_HW6_RTOS_STORAGE_STACK_BYTES,
+  PS_HW6_RTOS_DEFAULT_STACK_BYTES,
+  PS_HW6_RTOS_DEFAULT_STACK_BYTES,
+  PS_HW6_RTOS_DEFAULT_STACK_BYTES
 };
 
 static void PS_HW6_RTOS_RecordFirstError(UINT status,
@@ -564,7 +578,7 @@ UINT PS_HW6_RTOS_Init(TX_BYTE_POOL *pool)
   for (i = 0U; i < PS_HW6_RTOS_OWNER_COUNT; ++i)
   {
     status = tx_byte_allocate(pool, &ps_thread_stacks[i],
-                              PS_HW6_RTOS_STACK_BYTES, TX_NO_WAIT);
+                              ps_owner_stack_bytes[i], TX_NO_WAIT);
     g_ps_hw6_rtos_probe.stack_alloc_status[i] = status;
     PS_HW6_RTOS_RecordFirstError(status, PS_HW6_RTOS_STEP_STACK_ALLOC, i);
   }
@@ -649,7 +663,7 @@ UINT PS_HW6_RTOS_Init(TX_BYTE_POOL *pool)
     {
       status = tx_thread_create(&ps_threads[i], ps_owner_names[i],
                                 PS_HW6_RTOS_OwnerEntry, (ULONG)i,
-                                ps_thread_stacks[i], PS_HW6_RTOS_STACK_BYTES,
+                                ps_thread_stacks[i], ps_owner_stack_bytes[i],
                                 ps_owner_priorities[i], ps_owner_priorities[i],
                                 TX_NO_TIME_SLICE, TX_AUTO_START);
     }

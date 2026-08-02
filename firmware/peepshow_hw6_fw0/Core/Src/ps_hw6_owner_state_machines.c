@@ -22,6 +22,7 @@
 #include "ps_power_state.h"
 #include "ps_sensor_events.h"
 #include "ps_sensor_state.h"
+#include "ps_storage_flash_block.h"
 #include "ps_storage_events.h"
 #include "ps_storage_state.h"
 #include "tx_api.h"
@@ -40,6 +41,8 @@
 
 #define PS_HW6_FLASH_WAKE_SETTLE_TICKS     (1UL)
 #define PS_HW6_FLASH_SCRATCH_ADDRESS       (0x00FFF000UL)
+#define PS_HW6_FLASH_SCRATCH_BLOCK_INDEX   (PS_HW6_FLASH_SCRATCH_ADDRESS / \
+                                            PS_DEV_AT25SL128A_SECTOR_SIZE)
 
 #define PS_HW6_NINA_DSR_HOST_CONTROL_PIN   (GPIO_PIN_8)
 #define PS_HW6_NINA_DSR_HOST_CONTROL_PORT  (GPIOC)
@@ -263,6 +266,11 @@ static const uint32_t ps_cycle_inactive_states[PS_HW6_OWNER_SM_COUNT] =
 static ps_dev_lis2dux12_t ps_imu_device;
 static ps_dev_tmag3001_t ps_joystick_device;
 static ps_dev_at25sl128a_t ps_flash_device;
+static ps_storage_flash_block_t ps_flash_block;
+static ps_dev_at25sl128a_jedec_result_t ps_flash_jedec_result;
+static ps_dev_at25sl128a_command_result_t ps_flash_command_result;
+static ps_dev_at25sl128a_scratch_result_t ps_flash_scratch_result;
+static ps_storage_flash_block_test_result_t ps_flash_block_result;
 static uint8_t ps_nina_rx_buffer[PS_HW6_NINA_RX_BUFFER_SIZE];
 
 static void PS_HW6_SM_RecordTrace(uint32_t state_machine_id,
@@ -366,6 +374,24 @@ static void PS_HW6_SM_UpdateJoystickDriverProbe(void)
     ps_joystick_device.operation_count;
   g_ps_hw6_owner_sm_probe.joystick_driver_last_status =
     ps_joystick_device.last_status;
+}
+
+static void PS_HW6_SM_UpdateFlashBlockProbe(void)
+{
+  g_ps_hw6_owner_sm_probe.flash_block_api_version =
+    ps_flash_block.api_version;
+  g_ps_hw6_owner_sm_probe.flash_block_operation_count =
+    ps_flash_block.operation_count;
+  g_ps_hw6_owner_sm_probe.flash_block_last_status =
+    ps_flash_block.last_status;
+  g_ps_hw6_owner_sm_probe.flash_block_geometry_total_size =
+    ps_flash_block.geometry.total_size;
+  g_ps_hw6_owner_sm_probe.flash_block_geometry_erase_size =
+    ps_flash_block.geometry.erase_block_size;
+  g_ps_hw6_owner_sm_probe.flash_block_geometry_page_size =
+    ps_flash_block.geometry.program_page_size;
+  g_ps_hw6_owner_sm_probe.flash_block_geometry_count =
+    ps_flash_block.geometry.logical_block_count;
 }
 
 static void PS_HW6_SM_UpdateFlashDriverProbe(void)
@@ -490,6 +516,73 @@ static void PS_HW6_SM_RecordFlashScratchResult(
     result->ospi_error_after;
 }
 
+static void PS_HW6_SM_RecordFlashBlockResult(
+  const ps_storage_flash_block_test_result_t *result)
+{
+  uint32_t index;
+
+  if (result == NULL)
+  {
+    return;
+  }
+
+  g_ps_hw6_owner_sm_probe.flash_block_test_status =
+    (uint32_t)result->status;
+  g_ps_hw6_owner_sm_probe.flash_block_test_address = result->address;
+  g_ps_hw6_owner_sm_probe.flash_block_test_index = result->block_index;
+  g_ps_hw6_owner_sm_probe.flash_block_test_length = result->length;
+  g_ps_hw6_owner_sm_probe.flash_block_geometry_total_size =
+    result->geometry_total_size;
+  g_ps_hw6_owner_sm_probe.flash_block_geometry_erase_size =
+    result->geometry_erase_block_size;
+  g_ps_hw6_owner_sm_probe.flash_block_geometry_page_size =
+    result->geometry_program_page_size;
+  g_ps_hw6_owner_sm_probe.flash_block_geometry_count =
+    result->geometry_logical_block_count;
+  g_ps_hw6_owner_sm_probe.flash_block_erase_status =
+    result->erase_status;
+  g_ps_hw6_owner_sm_probe.flash_block_erase_poll_count =
+    result->erase_poll_count;
+  g_ps_hw6_owner_sm_probe.flash_block_blank_read_status =
+    result->blank_read_status;
+  g_ps_hw6_owner_sm_probe.flash_block_blank_read_count =
+    result->blank_read_count;
+  g_ps_hw6_owner_sm_probe.flash_block_blank_mismatch_count =
+    result->blank_mismatch_count;
+  g_ps_hw6_owner_sm_probe.flash_block_program_status =
+    result->program_status;
+  g_ps_hw6_owner_sm_probe.flash_block_program_page_count =
+    result->program_page_count;
+  g_ps_hw6_owner_sm_probe.flash_block_program_last_poll_count =
+    result->program_last_poll_count;
+  g_ps_hw6_owner_sm_probe.flash_block_verify_read_status =
+    result->verify_read_status;
+  g_ps_hw6_owner_sm_probe.flash_block_verify_read_count =
+    result->verify_read_count;
+  g_ps_hw6_owner_sm_probe.flash_block_verify_mismatch_count =
+    result->verify_mismatch_count;
+  g_ps_hw6_owner_sm_probe.flash_block_cleanup_status =
+    result->cleanup_status;
+  g_ps_hw6_owner_sm_probe.flash_block_cleanup_poll_count =
+    result->cleanup_poll_count;
+  g_ps_hw6_owner_sm_probe.flash_block_cleanup_read_status =
+    result->cleanup_read_status;
+  g_ps_hw6_owner_sm_probe.flash_block_cleanup_mismatch_count =
+    result->cleanup_mismatch_count;
+  for (index = 0UL; index < 16UL; ++index)
+  {
+    g_ps_hw6_owner_sm_probe.flash_block_blank_first16[index] =
+      result->blank_first16[index];
+    g_ps_hw6_owner_sm_probe.flash_block_verify_first16[index] =
+      result->verify_first16[index];
+    g_ps_hw6_owner_sm_probe.flash_block_cleanup_first16[index] =
+      result->cleanup_first16[index];
+  }
+  g_ps_hw6_owner_sm_probe.flash_block_ospi_state_after =
+    result->ospi_state_after;
+  g_ps_hw6_owner_sm_probe.flash_block_ospi_error_after =
+    result->ospi_error_after;
+}
 static HAL_StatusTypeDef PS_HW6_SM_StabilizePower(void)
 {
   HAL_StatusTypeDef status;
@@ -766,9 +859,6 @@ static HAL_StatusTypeDef PS_HW6_SM_ParkUsb(void)
 
 static HAL_StatusTypeDef PS_HW6_SM_StabilizeStorage(void)
 {
-  ps_dev_at25sl128a_jedec_result_t jedec_result;
-  ps_dev_at25sl128a_command_result_t command_result;
-  ps_dev_at25sl128a_scratch_result_t scratch_result;
   ps_status_t driver_status;
   HAL_StatusTypeDef status;
 
@@ -788,14 +878,18 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeStorage(void)
 
   driver_status = ps_dev_at25sl128a_read_jedec(
     &ps_flash_device,
-    &jedec_result);
+    &ps_flash_jedec_result);
   status = PS_HW6_SM_StatusToHal(driver_status);
-  g_ps_hw6_owner_sm_probe.flash_jedec_status = jedec_result.hal_status;
-  g_ps_hw6_owner_sm_probe.flash_jedec_id[0] = jedec_result.jedec_id[0];
-  g_ps_hw6_owner_sm_probe.flash_jedec_id[1] = jedec_result.jedec_id[1];
-  g_ps_hw6_owner_sm_probe.flash_jedec_id[2] = jedec_result.jedec_id[2];
+  g_ps_hw6_owner_sm_probe.flash_jedec_status =
+    ps_flash_jedec_result.hal_status;
+  g_ps_hw6_owner_sm_probe.flash_jedec_id[0] =
+    ps_flash_jedec_result.jedec_id[0];
+  g_ps_hw6_owner_sm_probe.flash_jedec_id[1] =
+    ps_flash_jedec_result.jedec_id[1];
+  g_ps_hw6_owner_sm_probe.flash_jedec_id[2] =
+    ps_flash_jedec_result.jedec_id[2];
   g_ps_hw6_owner_sm_probe.flash_identity_match =
-    jedec_result.identity_match;
+    ps_flash_jedec_result.identity_match;
   PS_HW6_SM_UpdateFlashDriverProbe();
 
   if (g_ps_hw6_owner_sm_probe.flash_identity_match == 0UL)
@@ -815,9 +909,9 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeStorage(void)
   driver_status = ps_dev_at25sl128a_run_scratch_test(
     &ps_flash_device,
     PS_HW6_FLASH_SCRATCH_ADDRESS,
-    &scratch_result);
+    &ps_flash_scratch_result);
   status = PS_HW6_SM_StatusToHal(driver_status);
-  PS_HW6_SM_RecordFlashScratchResult(&scratch_result);
+  PS_HW6_SM_RecordFlashScratchResult(&ps_flash_scratch_result);
   PS_HW6_SM_UpdateFlashDriverProbe();
   if (status != HAL_OK)
   {
@@ -828,12 +922,28 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeStorage(void)
     goto storage_done;
   }
 
+  driver_status = ps_storage_flash_block_run_scratch_test(
+    &ps_flash_block,
+    PS_HW6_FLASH_SCRATCH_BLOCK_INDEX,
+    &ps_flash_block_result);
+  status = PS_HW6_SM_StatusToHal(driver_status);
+  PS_HW6_SM_RecordFlashBlockResult(&ps_flash_block_result);
+  PS_HW6_SM_UpdateFlashBlockProbe();
+  PS_HW6_SM_UpdateFlashDriverProbe();
+  if (status != HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_FAULT, status);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_FAULT, status);
+    goto storage_done;
+  }
   driver_status = ps_dev_at25sl128a_enter_deep_power_down(
     &ps_flash_device,
-    &command_result);
+    &ps_flash_command_result);
   status = PS_HW6_SM_StatusToHal(driver_status);
   g_ps_hw6_owner_sm_probe.flash_deep_power_down_status =
-    command_result.hal_status;
+    ps_flash_command_result.hal_status;
   if (status == HAL_OK)
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
@@ -1463,6 +1573,7 @@ static HAL_StatusTypeDef PS_HW6_SM_QuiesceStorage(uint32_t cycle_index)
     return HAL_ERROR;
   }
 
+
   driver_status = ps_dev_at25sl128a_enter_deep_power_down(
     &ps_flash_device,
     &command_result);
@@ -1587,6 +1698,7 @@ void PS_HW6_OwnerStateMachines_Init(void)
   ps_status_t imu_init_status;
   ps_status_t joystick_init_status;
   ps_status_t flash_init_status;
+  ps_status_t flash_block_init_status;
   uint32_t cycle_index;
   uint32_t direction;
   uint32_t index;
@@ -1625,6 +1737,13 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.flash_driver_init_status =
     (uint32_t)flash_init_status;
   PS_HW6_SM_UpdateFlashDriverProbe();
+
+  flash_block_init_status = ps_storage_flash_block_init(
+    &ps_flash_block,
+    &ps_flash_device);
+  g_ps_hw6_owner_sm_probe.flash_block_init_status =
+    (uint32_t)flash_block_init_status;
+  PS_HW6_SM_UpdateFlashBlockProbe();
 
   for (index = 0U; index < PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT; ++index)
   {
@@ -1745,6 +1864,20 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.flash_deep_power_down_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.flash_scratch_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_block_test_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_block_erase_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_block_blank_read_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_block_program_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_block_verify_read_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_block_cleanup_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_block_cleanup_read_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.flash_scratch_erase_write_enable_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;

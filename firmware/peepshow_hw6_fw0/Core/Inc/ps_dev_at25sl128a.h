@@ -16,6 +16,8 @@ extern "C" {
 #define PS_DEV_AT25SL128A_JEDEC_ID1 (0x42U)
 #define PS_DEV_AT25SL128A_JEDEC_ID2 (0x18U)
 #define PS_DEV_AT25SL128A_PAGE_SIZE  (256UL)
+#define PS_DEV_AT25SL128A_SECTOR_SIZE (4096UL)
+#define PS_DEV_AT25SL128A_TOTAL_SIZE  (16UL * 1024UL * 1024UL)
 
 typedef enum
 {
@@ -56,6 +58,24 @@ typedef struct
   uint32_t ospi_state_after;
   uint32_t ospi_error_after;
 } ps_dev_at25sl128a_command_result_t;
+
+typedef struct
+{
+  ps_status_t status;
+  uint32_t address;
+  uint32_t length;
+  uint32_t write_enable_hal_status;
+  uint32_t write_enable_status1;
+  uint32_t command_hal_status;
+  uint32_t transfer_wait_status;
+  uint32_t transfer_poll_count;
+  uint32_t flash_wait_status;
+  uint32_t flash_poll_count;
+  uint32_t dma_state_after;
+  uint32_t dma_error_after;
+  uint32_t ospi_state_after;
+  uint32_t ospi_error_after;
+} ps_dev_at25sl128a_io_result_t;
 
 typedef struct
 {
@@ -126,6 +146,39 @@ ps_status_t ps_dev_at25sl128a_read_jedec(
 ps_status_t ps_dev_at25sl128a_enter_deep_power_down(
   ps_dev_at25sl128a_t *device,
   ps_dev_at25sl128a_command_result_t *result);
+
+ps_status_t ps_dev_at25sl128a_erase_4k(
+  ps_dev_at25sl128a_t *device,
+  uint32_t address,
+  ps_dev_at25sl128a_io_result_t *result);
+
+ps_status_t ps_dev_at25sl128a_read(
+  ps_dev_at25sl128a_t *device,
+  uint32_t address,
+  uint8_t *data,
+  uint32_t length,
+  ps_dev_at25sl128a_io_result_t *result);
+
+ps_status_t ps_dev_at25sl128a_read_dma(
+  ps_dev_at25sl128a_t *device,
+  uint32_t address,
+  uint8_t *data,
+  uint32_t length,
+  ps_dev_at25sl128a_io_result_t *result);
+
+ps_status_t ps_dev_at25sl128a_program_page(
+  ps_dev_at25sl128a_t *device,
+  uint32_t address,
+  const uint8_t *data,
+  uint32_t length,
+  ps_dev_at25sl128a_io_result_t *result);
+
+ps_status_t ps_dev_at25sl128a_program_page_dma(
+  ps_dev_at25sl128a_t *device,
+  uint32_t address,
+  const uint8_t *data,
+  uint32_t length,
+  ps_dev_at25sl128a_io_result_t *result);
 
 ps_status_t ps_dev_at25sl128a_run_scratch_test(
   ps_dev_at25sl128a_t *device,
