@@ -1,0 +1,1792 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://peepshow.local/schema/knobs.schema.json",
+  "title": "PeepShow Compile-Time Knobs",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "audio_dma_frames",
+    "audio_sample_rate",
+    "audio_test_tone_amplitude",
+    "audio_test_tone_hz",
+    "debug_swo_enable",
+    "rtos_audio_thread_preemption_threshold",
+    "rtos_audio_thread_priority",
+    "rtos_audio_thread_stack_bytes",
+    "rtos_audio_thread_time_slice",
+    "rtos_audio_wait_ticks",
+    "rtos_display_thread_preemption_threshold",
+    "rtos_display_thread_priority",
+    "rtos_display_thread_stack_bytes",
+    "rtos_display_thread_time_slice",
+    "rtos_display_wait_ticks",
+    "rtos_qdisplay_cmd_depth",
+    "rtos_storage_thread_preemption_threshold",
+    "rtos_storage_thread_priority",
+    "rtos_storage_thread_stack_bytes",
+    "rtos_storage_thread_time_slice",
+    "rtos_storage_wait_ticks",
+    "rtos_qstorage_req_depth",
+    "rtos_input_thread_preemption_threshold",
+    "rtos_input_thread_priority",
+    "rtos_input_thread_stack_bytes",
+    "rtos_input_thread_time_slice",
+    "rtos_input_wait_ticks",
+    "rtos_game_thread_preemption_threshold",
+    "rtos_game_thread_priority",
+    "rtos_game_thread_stack_bytes",
+    "rtos_game_thread_time_slice",
+    "rtos_game_wait_ticks",
+    "rtos_qinput_cmd_depth",
+    "rtos_qinput_raw_depth",
+    "rtos_qui_events_depth",
+    "rtos_qgame_events_depth",
+    "input_debounce_ticks",
+    "input_repeat_delay_ticks",
+    "input_repeat_period_ticks",
+    "input_repeat_period_stage1_ticks",
+    "input_repeat_period_stage2_ticks",
+    "input_repeat_accel_stage1_after_ticks",
+    "input_repeat_accel_stage2_after_ticks",
+    "input_joy_repeat_delay_ticks",
+    "input_joy_repeat_period_ticks",
+    "input_joy_repeat_period_stage1_ticks",
+    "input_joy_repeat_period_stage2_ticks",
+    "input_joy_repeat_accel_stage1_after_ticks",
+    "input_joy_repeat_accel_stage2_after_ticks",
+    "input_repeat_enable_mask",
+    "input_long_enable_mask",
+    "input_long_press_ticks",
+    "input_boot_long_only",
+    "input_realtime_activity_min_ticks",
+    "rtos_sensor_thread_preemption_threshold",
+    "rtos_sensor_thread_priority",
+    "rtos_sensor_thread_stack_bytes",
+    "rtos_sensor_thread_time_slice",
+    "rtos_sensor_wait_ticks",
+    "sensor_recovery_max_attempts",
+    "sensor_recovery_backoff_ticks",
+    "sensor_fault_retry_ticks",
+    "sensor_bus_recovery_scl_pulses",
+    "sensor_pmic_guard_enable",
+    "sensor_pmic_poll_period_ms",
+    "sensor_lis_stream_poll_period_ms",
+    "sensor_lis_step_status_poll_period_ms",
+    "sensor_joy_poll_period_ms",
+    "sensor_pmic_cutoff_mv",
+    "sensor_pmic_cutoff_hys_mv",
+    "sensor_pmic_cutoff_confirm_samples",
+    "sensor_pmic_warn_mv",
+    "sensor_pmic_warn_hys_mv",
+    "sensor_pmic_warn_soc_pct",
+    "sensor_pmic_warn_soc_hys_pct",
+    "sensor_pmic_crit_soc_pct",
+    "sensor_pmic_crit_soc_hys_pct",
+    "sensor_lis_low_power_odr",
+    "sensor_lis_low_power_bw",
+    "sensor_lis_low_power_step_odr",
+    "sensor_lis_low_power_step_bw",
+    "sensor_lis_live_odr",
+    "sensor_lis_live_bw",
+    "sensor_lis_fs",
+    "sensor_lis_step_false_rej_enable",
+    "sensor_lis_step_in_fifo_enable",
+    "sensor_joy_cal_neutral_window_ms",
+    "sensor_joy_cal_neutral_step_ms",
+    "sensor_joy_cal_direction_window_ms",
+    "sensor_joy_cal_direction_step_ms",
+    "sensor_joy_cal_sweep_window_ms",
+    "sensor_joy_cal_sweep_step_ms",
+    "sensor_joy_release_stable_samples",
+    "sensor_joy_digital_release_percent",
+    "sensor_joy_neutral_deadzone_scale_permille",
+    "sensor_joy_neutral_deadzone_min_mt_x10",
+    "sensor_joy_neutral_deadzone_max_mt_x10",
+    "storage_settings_addr",
+    "storage_smoke_addr",
+    "storage_smoke_len",
+    "storage_fat_base_addr",
+    "storage_fat_size_bytes",
+    "storage_filex_cache_bytes",
+    "storage_filex_sectors_per_cluster",
+    "storage_filex_dir_entries",
+    "rtos_qaudio_cmd_depth",
+    "rtos_qsensor_req_depth",
+    "rtos_power_thread_preemption_threshold",
+    "rtos_power_thread_priority",
+    "rtos_power_quiesce_timeout_ticks",
+    "rtos_power_thread_stack_bytes",
+    "rtos_power_thread_time_slice",
+    "rtos_power_wait_ticks",
+    "rtos_qsys_events_depth",
+    "rtos_tick_hz",
+    "power_perf_hint_stride",
+    "power_perf_frame_budget_ticks",
+    "power_perf_miss_margin_ticks",
+    "power_perf_headroom_margin_ticks",
+    "power_perf_up_streak_frames",
+    "power_perf_down_streak_frames",
+    "power_perf_min_dwell_ticks",
+    "turbo_clock_mhz",
+    "ui_fps",
+    "ui_static_entry_point",
+    "use_lpbam"
+  ],
+  "properties": {
+    "ui_fps": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60,
+      "description": "UI update rate used outside REALTIME frame scheduling.",
+      "category": "UI",
+      "order": 10,
+      "unit": "Hz",
+      "restart_required": true
+    },
+    "ui_static_entry_point": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2,
+      "default": 0,
+      "oneOf": [
+        {
+          "const": 0,
+          "title": "Auto (JoyCal if gate invalid)"
+        },
+        {
+          "const": 1,
+          "title": "Home"
+        },
+        {
+          "const": 2,
+          "title": "JoyCal"
+        }
+      ],
+      "description": "Page entered when transitioning into STATIC mode.",
+      "category": "UI",
+      "order": 11,
+      "gui_tab": "ui",
+      "gui_section": "Navigation",
+      "gui_label": "Static Entry Page",
+      "restart_required": true
+      ,
+      "unit": "mode"
+    },
+    "rtos_tick_hz": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 2000,
+      "description": "ThreadX tick frequency configured at build time.",
+      "category": "RTOS",
+      "order": 20,
+      "unit": "Hz",
+      "restart_required": true
+    },
+    "rtos_power_thread_priority": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 31,
+      "description": "ThreadX priority assigned to thPower.",
+      "category": "RTOS",
+      "order": 21,
+      "unit": "level",
+      "restart_required": true
+    },
+    "rtos_display_thread_priority": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 31,
+      "description": "ThreadX priority assigned to thDisplay.",
+      "category": "RTOS",
+      "order": 22,
+      "unit": "level",
+      "restart_required": true
+    },
+    "rtos_power_thread_preemption_threshold": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 31,
+      "description": "ThreadX preemption threshold for thPower.",
+      "category": "RTOS",
+      "order": 23,
+      "unit": "level",
+      "restart_required": true
+    },
+    "rtos_display_thread_preemption_threshold": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 31,
+      "description": "ThreadX preemption threshold for thDisplay.",
+      "category": "RTOS",
+      "order": 24,
+      "unit": "level",
+      "restart_required": true
+    },
+    "rtos_storage_thread_priority": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 31,
+      "description": "ThreadX priority assigned to thStorage.",
+      "category": "RTOS",
+      "order": 25,
+      "unit": "level",
+      "restart_required": true
+    },
+    "rtos_storage_thread_preemption_threshold": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 31,
+      "description": "ThreadX preemption threshold for thStorage.",
+      "category": "RTOS",
+      "order": 26,
+      "unit": "level",
+      "restart_required": true
+    },
+    "rtos_input_thread_priority": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 31,
+      "description": "ThreadX priority assigned to thInput.",
+      "category": "RTOS",
+      "order": 27,
+      "unit": "level",
+      "restart_required": true
+    },
+    "rtos_input_thread_preemption_threshold": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 31,
+      "description": "ThreadX preemption threshold for thInput.",
+      "category": "RTOS",
+      "order": 28,
+      "unit": "level",
+      "restart_required": true
+    },
+    "rtos_game_thread_priority": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 31,
+      "description": "ThreadX priority assigned to thGame.",
+      "category": "RTOS",
+      "order": 28,
+      "unit": "level",
+      "restart_required": true
+    },
+    "rtos_game_thread_preemption_threshold": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 31,
+      "description": "ThreadX preemption threshold for thGame.",
+      "category": "RTOS",
+      "order": 28,
+      "unit": "level",
+      "restart_required": true
+    },
+    "rtos_audio_thread_priority": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 31,
+      "description": "ThreadX priority assigned to thAudio.",
+      "category": "RTOS",
+      "order": 29,
+      "unit": "level",
+      "restart_required": true
+    },
+    "rtos_audio_thread_preemption_threshold": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 31,
+      "description": "ThreadX preemption threshold for thAudio.",
+      "category": "RTOS",
+      "order": 30,
+      "unit": "level",
+      "restart_required": true
+    },
+    "rtos_sensor_thread_priority": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 31,
+      "description": "ThreadX priority assigned to thSensor.",
+      "category": "RTOS",
+      "order": 46,
+      "unit": "level",
+      "restart_required": true
+    },
+    "rtos_sensor_thread_preemption_threshold": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 31,
+      "description": "ThreadX preemption threshold for thSensor.",
+      "category": "RTOS",
+      "order": 47,
+      "unit": "level",
+      "restart_required": true
+    },
+    "rtos_power_thread_stack_bytes": {
+      "type": "integer",
+      "minimum": 512,
+      "multipleOf": 4,
+      "description": "Stack allocation size for thPower.",
+      "category": "RTOS",
+      "order": 29,
+      "unit": "bytes",
+      "restart_required": true
+    },
+    "rtos_display_thread_stack_bytes": {
+      "type": "integer",
+      "minimum": 512,
+      "multipleOf": 4,
+      "description": "Stack allocation size for thDisplay.",
+      "category": "RTOS",
+      "order": 30,
+      "unit": "bytes",
+      "restart_required": true
+    },
+    "rtos_storage_thread_stack_bytes": {
+      "type": "integer",
+      "minimum": 512,
+      "multipleOf": 4,
+      "description": "Stack allocation size for thStorage.",
+      "category": "RTOS",
+      "order": 31,
+      "unit": "bytes",
+      "restart_required": true
+    },
+    "rtos_input_thread_stack_bytes": {
+      "type": "integer",
+      "minimum": 512,
+      "multipleOf": 4,
+      "description": "Stack allocation size for thInput.",
+      "category": "RTOS",
+      "order": 32,
+      "unit": "bytes",
+      "restart_required": true
+    },
+    "rtos_game_thread_stack_bytes": {
+      "type": "integer",
+      "minimum": 512,
+      "multipleOf": 4,
+      "description": "Stack allocation size for thGame.",
+      "category": "RTOS",
+      "order": 32,
+      "unit": "bytes",
+      "restart_required": true
+    },
+    "rtos_audio_thread_stack_bytes": {
+      "type": "integer",
+      "minimum": 512,
+      "multipleOf": 4,
+      "description": "Stack allocation size for thAudio.",
+      "category": "RTOS",
+      "order": 33,
+      "unit": "bytes",
+      "restart_required": true
+    },
+    "rtos_sensor_thread_stack_bytes": {
+      "type": "integer",
+      "minimum": 512,
+      "multipleOf": 4,
+      "description": "Stack allocation size for thSensor.",
+      "category": "RTOS",
+      "order": 48,
+      "unit": "bytes",
+      "restart_required": true
+    },
+    "rtos_power_thread_time_slice": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "ThreadX time slice for thPower.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 33,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "rtos_display_thread_time_slice": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "ThreadX time slice for thDisplay.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 34,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "rtos_storage_thread_time_slice": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "ThreadX time slice for thStorage.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 35,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "rtos_input_thread_time_slice": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "ThreadX time slice for thInput.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 36,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "rtos_game_thread_time_slice": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "ThreadX time slice for thGame.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 36,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "rtos_audio_thread_time_slice": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "ThreadX time slice for thAudio.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 37,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "rtos_sensor_thread_time_slice": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "ThreadX time slice for thSensor.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 49,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "rtos_power_quiesce_timeout_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000,
+      "description": "Maximum ticks to wait for quiesce acknowledgements before timeout.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 37,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "rtos_display_wait_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "Bounded wait timeout used by thDisplay queue receive loop.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 38,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "rtos_storage_wait_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "Bounded wait timeout used by thStorage queue receive loop.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 39,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "rtos_input_wait_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "Bounded wait timeout used by thInput queue receive loop.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 40,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "rtos_game_wait_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "Bounded wait timeout used by thGame queue receive loop outside REALTIME cadence waits.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 40,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "rtos_audio_wait_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "Bounded wait timeout used by thAudio queue receive loop.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 41,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "rtos_sensor_wait_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "Bounded wait timeout used by thSensor queue receive loop.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 50,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "sensor_recovery_max_attempts": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 8,
+      "description": "Maximum bounded probe attempts before marking a sensor FAULT.",
+      "category": "RTOS",
+      "order": 52,
+      "unit": "attempts",
+      "restart_required": true
+    },
+    "sensor_recovery_backoff_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000,
+      "description": "Backoff delay between sensor recovery attempts while RECOVERING.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 53,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "sensor_fault_retry_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100000,
+      "description": "Retry delay before attempting to recover a sensor marked FAULT.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 54,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "sensor_bus_recovery_scl_pulses": {
+      "type": "integer",
+      "minimum": 9,
+      "maximum": 16,
+      "description": "Number of SCL pulses used during sensor I2C bus recovery when SDA is stuck low.",
+      "category": "RTOS",
+      "order": 55,
+      "unit": "pulses",
+      "restart_required": true
+    },
+    "sensor_pmic_guard_enable": {
+      "type": "boolean",
+      "description": "Enable PMIC low-voltage guard that forces ISOFET off below cutoff threshold.",
+      "category": "RTOS",
+      "gui_tab": "power",
+      "gui_section": "Battery Guard",
+      "gui_label": "Low-Voltage Guard",
+      "order": 56,
+      "restart_required": true
+    },
+    "sensor_pmic_poll_period_ms": {
+      "type": "integer",
+      "minimum": 20,
+      "maximum": 10000,
+      "description": "Polling period for PMIC battery/fault monitoring in thSensor.",
+      "category": "RTOS",
+      "gui_tab": "power",
+      "gui_section": "Battery Guard",
+      "gui_label": "Monitor Period",
+      "order": 57,
+      "unit": "ms",
+      "restart_required": true
+    },
+    "sensor_lis_stream_poll_period_ms": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 1000,
+      "description": "Polling period for LIS live stream sampling when stream mode is enabled in STATIC/REALTIME.",
+      "category": "RTOS",
+      "gui_tab": "lis2",
+      "gui_section": "Stream",
+      "gui_label": "Stream Poll Period",
+      "order": 67,
+      "unit": "ms",
+      "restart_required": true
+    },
+    "sensor_lis_step_status_poll_period_ms": {
+      "type": "integer",
+      "minimum": 50,
+      "maximum": 5000,
+      "description": "Polling period for LIS step/embedded status refresh while stream mode is active.",
+      "category": "RTOS",
+      "gui_tab": "lis2",
+      "gui_section": "Step",
+      "gui_label": "Step Status Poll",
+      "order": 68,
+      "unit": "ms",
+      "restart_required": true
+    },
+    "sensor_joy_poll_period_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "Polling period for live joystick sampling when input gating is active.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Runtime",
+      "gui_label": "Live Poll Period",
+      "order": 69,
+      "unit": "ms",
+      "restart_required": true
+    },
+    "sensor_pmic_cutoff_mv": {
+      "type": "integer",
+      "minimum": 2400,
+      "maximum": 3600,
+      "description": "Battery voltage threshold that triggers forced ISOFET off when guard is enabled.",
+      "category": "RTOS",
+      "gui_tab": "power",
+      "gui_section": "Battery Guard",
+      "gui_label": "Cutoff Threshold",
+      "order": 58,
+      "unit": "mV",
+      "restart_required": true
+    },
+    "sensor_pmic_cutoff_hys_mv": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 400,
+      "description": "Hysteresis band above cutoff used to clear low-voltage debounce streaks before latching.",
+      "category": "RTOS",
+      "gui_tab": "power",
+      "gui_section": "Battery Guard",
+      "gui_label": "Cutoff Hysteresis",
+      "order": 59,
+      "unit": "mV",
+      "restart_required": true
+    },
+    "sensor_pmic_cutoff_confirm_samples": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 32,
+      "description": "Number of consecutive low-voltage samples required before forcing ISOFET off.",
+      "category": "RTOS",
+      "gui_tab": "power",
+      "gui_section": "Battery Guard",
+      "gui_label": "Confirm Samples",
+      "order": 60,
+      "unit": "samples",
+      "restart_required": true
+    },
+    "sensor_pmic_warn_mv": {
+      "type": "integer",
+      "minimum": 2800,
+      "maximum": 4300,
+      "description": "Battery voltage threshold for WARN health state.",
+      "category": "RTOS",
+      "gui_tab": "power",
+      "gui_section": "Battery Health",
+      "gui_label": "Warn Threshold",
+      "order": 61,
+      "unit": "mV",
+      "restart_required": true
+    },
+    "sensor_pmic_warn_hys_mv": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 500,
+      "description": "Voltage hysteresis for exiting WARN health state.",
+      "category": "RTOS",
+      "gui_tab": "power",
+      "gui_section": "Battery Health",
+      "gui_label": "Warn Hysteresis",
+      "order": 62,
+      "unit": "mV",
+      "restart_required": true
+    },
+    "sensor_pmic_warn_soc_pct": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "SOC threshold for WARN health state.",
+      "category": "RTOS",
+      "gui_tab": "power",
+      "gui_section": "Battery Health",
+      "gui_label": "Warn SOC",
+      "order": 63,
+      "unit": "%",
+      "restart_required": true
+    },
+    "sensor_pmic_warn_soc_hys_pct": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 50,
+      "description": "SOC hysteresis for exiting WARN health state.",
+      "category": "RTOS",
+      "gui_tab": "power",
+      "gui_section": "Battery Health",
+      "gui_label": "Warn SOC Hys",
+      "order": 64,
+      "unit": "%",
+      "restart_required": true
+    },
+    "sensor_pmic_crit_soc_pct": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "SOC threshold for CRIT health state.",
+      "category": "RTOS",
+      "gui_tab": "power",
+      "gui_section": "Battery Health",
+      "gui_label": "Crit SOC",
+      "order": 65,
+      "unit": "%",
+      "restart_required": true
+    },
+    "sensor_pmic_crit_soc_hys_pct": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 50,
+      "description": "SOC hysteresis for exiting CRIT health state.",
+      "category": "RTOS",
+      "gui_tab": "power",
+      "gui_section": "Battery Health",
+      "gui_label": "Crit SOC Hys",
+      "order": 66,
+      "unit": "%",
+      "restart_required": true
+    },
+    "sensor_lis_low_power_odr": {
+      "type": "integer",
+      "oneOf": [
+        {
+          "const": 1,
+          "title": "1.6 Hz (ULP)"
+        },
+        {
+          "const": 2,
+          "title": "3 Hz (ULP)"
+        },
+        {
+          "const": 3,
+          "title": "25 Hz (ULP)"
+        }
+      ],
+      "description": "LIS ODR used in LOW_POWER profile when step-counter path is inactive.",
+      "category": "RTOS",
+      "gui_tab": "lis2",
+      "gui_section": "Profile",
+      "gui_label": "Low Power ODR",
+      "order": 56,
+      "unit": "mode",
+      "restart_required": true
+    },
+    "sensor_lis_low_power_bw": {
+      "type": "integer",
+      "oneOf": [
+        {
+          "const": 0,
+          "title": "ODR / 2"
+        },
+        {
+          "const": 1,
+          "title": "ODR / 4"
+        },
+        {
+          "const": 2,
+          "title": "ODR / 8"
+        },
+        {
+          "const": 3,
+          "title": "ODR / 16"
+        }
+      ],
+      "description": "LIS BW divider used in LOW_POWER profile when step-counter path is inactive.",
+      "category": "RTOS",
+      "gui_tab": "lis2",
+      "gui_section": "Profile",
+      "gui_label": "Low Power BW",
+      "order": 57,
+      "unit": "mode",
+      "restart_required": true
+    },
+    "sensor_lis_low_power_step_odr": {
+      "type": "integer",
+      "oneOf": [
+        {
+          "const": 4,
+          "title": "6 Hz (LP)"
+        },
+        {
+          "const": 5,
+          "title": "12.5 Hz (LP)"
+        },
+        {
+          "const": 6,
+          "title": "25 Hz (LP)"
+        },
+        {
+          "const": 7,
+          "title": "50 Hz (LP)"
+        },
+        {
+          "const": 8,
+          "title": "100 Hz (LP)"
+        }
+      ],
+      "description": "LIS ODR used in LOW_POWER profile while step-counter path is active.",
+      "category": "RTOS",
+      "gui_tab": "lis2",
+      "gui_section": "Profile",
+      "gui_label": "Low Power ODR (Step)",
+      "order": 58,
+      "unit": "mode",
+      "restart_required": true
+    },
+    "sensor_lis_low_power_step_bw": {
+      "type": "integer",
+      "oneOf": [
+        {
+          "const": 0,
+          "title": "ODR / 2"
+        },
+        {
+          "const": 1,
+          "title": "ODR / 4"
+        },
+        {
+          "const": 2,
+          "title": "ODR / 8"
+        },
+        {
+          "const": 3,
+          "title": "ODR / 16"
+        }
+      ],
+      "description": "LIS BW divider used in LOW_POWER profile while step-counter path is active.",
+      "category": "RTOS",
+      "gui_tab": "lis2",
+      "gui_section": "Profile",
+      "gui_label": "Low Power BW (Step)",
+      "order": 59,
+      "unit": "mode",
+      "restart_required": true
+    },
+    "sensor_lis_live_odr": {
+      "type": "integer",
+      "oneOf": [
+        {
+          "const": 6,
+          "title": "25 Hz (LP)"
+        },
+        {
+          "const": 7,
+          "title": "50 Hz (LP)"
+        },
+        {
+          "const": 8,
+          "title": "100 Hz (LP)"
+        },
+        {
+          "const": 9,
+          "title": "200 Hz (LP)"
+        },
+        {
+          "const": 10,
+          "title": "400 Hz (LP)"
+        },
+        {
+          "const": 11,
+          "title": "800 Hz (LP)"
+        },
+        {
+          "const": 22,
+          "title": "25 Hz (HP)"
+        },
+        {
+          "const": 23,
+          "title": "50 Hz (HP)"
+        },
+        {
+          "const": 24,
+          "title": "100 Hz (HP)"
+        },
+        {
+          "const": 25,
+          "title": "200 Hz (HP)"
+        },
+        {
+          "const": 26,
+          "title": "400 Hz (HP)"
+        },
+        {
+          "const": 27,
+          "title": "800 Hz (HP)"
+        }
+      ],
+      "description": "LIS ODR used in LIVE profile.",
+      "category": "RTOS",
+      "gui_tab": "lis2",
+      "gui_section": "Profile",
+      "gui_label": "Live ODR",
+      "order": 60,
+      "unit": "mode",
+      "restart_required": true
+    },
+    "sensor_lis_live_bw": {
+      "type": "integer",
+      "oneOf": [
+        {
+          "const": 0,
+          "title": "ODR / 2"
+        },
+        {
+          "const": 1,
+          "title": "ODR / 4"
+        },
+        {
+          "const": 2,
+          "title": "ODR / 8"
+        },
+        {
+          "const": 3,
+          "title": "ODR / 16"
+        }
+      ],
+      "description": "LIS BW divider used in LIVE profile.",
+      "category": "RTOS",
+      "gui_tab": "lis2",
+      "gui_section": "Profile",
+      "gui_label": "Live BW",
+      "order": 61,
+      "unit": "mode",
+      "restart_required": true
+    },
+    "sensor_lis_fs": {
+      "type": "integer",
+      "oneOf": [
+        {
+          "const": 0,
+          "title": "±2 g"
+        },
+        {
+          "const": 1,
+          "title": "±4 g"
+        },
+        {
+          "const": 2,
+          "title": "±8 g"
+        },
+        {
+          "const": 3,
+          "title": "±16 g"
+        }
+      ],
+      "description": "LIS full-scale selection (0=2g, 1=4g, 2=8g, 3=16g).",
+      "category": "RTOS",
+      "gui_tab": "lis2",
+      "gui_section": "Profile",
+      "gui_label": "Full Scale",
+      "order": 62,
+      "unit": "mode",
+      "restart_required": true
+    },
+    "sensor_lis_step_false_rej_enable": {
+      "type": "boolean",
+      "description": "Enable LIS false-step rejection in step-counter configuration.",
+      "category": "RTOS",
+      "gui_tab": "lis2",
+      "gui_section": "Step Counter",
+      "gui_label": "False Step Rejection",
+      "order": 63,
+      "restart_required": true
+    },
+    "sensor_lis_step_in_fifo_enable": {
+      "type": "boolean",
+      "description": "Enable LIS step-counter in FIFO mode.",
+      "category": "RTOS",
+      "gui_tab": "lis2",
+      "gui_section": "Step Counter",
+      "gui_label": "Step In FIFO",
+      "order": 64,
+      "restart_required": true
+    },
+    "sensor_joy_cal_neutral_window_ms": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 10000,
+      "description": "Time window for joystick neutral calibration capture in thSensor.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Calibration",
+      "order": 56,
+      "unit": "ms",
+      "restart_required": true
+    },
+    "sensor_joy_cal_neutral_step_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 200,
+      "description": "Sampling cadence for neutral joystick calibration updates.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Calibration",
+      "order": 57,
+      "unit": "ms",
+      "restart_required": true
+    },
+    "sensor_joy_cal_direction_window_ms": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 5000,
+      "description": "Time window for each directional joystick calibration hold (UP/RIGHT/DOWN/LEFT).",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Calibration",
+      "order": 58,
+      "unit": "ms",
+      "restart_required": true
+    },
+    "sensor_joy_cal_direction_step_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 200,
+      "description": "Sampling cadence for directional joystick calibration capture.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Calibration",
+      "order": 59,
+      "unit": "ms",
+      "restart_required": true
+    },
+    "sensor_joy_cal_sweep_window_ms": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 15000,
+      "description": "Time window for joystick sweep calibration capture in thSensor.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Calibration",
+      "order": 60,
+      "unit": "ms",
+      "restart_required": true
+    },
+    "sensor_joy_cal_sweep_step_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 200,
+      "description": "Sampling cadence for sweep joystick calibration updates.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Calibration",
+      "order": 61,
+      "unit": "ms",
+      "restart_required": true
+    },
+    "sensor_joy_release_stable_samples": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 8,
+      "description": "Consecutive neutral samples required before releasing a held joystick direction.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Input Mapping",
+      "order": 62,
+      "unit": "samples",
+      "restart_required": true
+    },
+    "sensor_joy_digital_release_percent": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 95,
+      "description": "How far the stick must return toward center before a held direction releases. Lower values release earlier; higher values hold longer.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Input Mapping",
+      "order": 63,
+      "unit": "%",
+      "restart_required": true
+    },
+    "sensor_joy_neutral_deadzone_scale_permille": {
+      "type": "integer",
+      "minimum": 500,
+      "maximum": 5000,
+      "description": "Multiplier for measured idle stick noise during neutral calibration. Higher value increases neutral deadzone and reduces drift. 1000 = 1.0x, 2500 = 2.5x.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Deadzone",
+      "gui_label": "Center Ignore Multiplier",
+      "gui_hint": "How much idle stick wobble to ignore. Higher value reduces drift but also reduces fine movement near center.",
+      "order": 64,
+      "unit": "permille",
+      "restart_required": true
+    },
+    "sensor_joy_neutral_deadzone_min_mt_x10": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 300,
+      "description": "Minimum allowed neutral deadzone after calibration. Value is in 0.1 mT steps: 15 = 1.5 mT.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Deadzone",
+      "gui_label": "Center Ignore Minimum",
+      "gui_hint": "Minimum center ignore zone allowed. Used when calibration computes too little filtering.",
+      "order": 65,
+      "unit": "0.1 mT",
+      "restart_required": true
+    },
+    "sensor_joy_neutral_deadzone_max_mt_x10": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 800,
+      "description": "Maximum allowed neutral deadzone after calibration. Value is in 0.1 mT steps: 120 = 12.0 mT. Raise this if drift remains at rest.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Deadzone",
+      "gui_label": "Center Ignore Maximum",
+      "gui_hint": "Maximum center ignore zone allowed. Raise if drift remains; too high can make small movements feel unresponsive.",
+      "order": 66,
+      "unit": "0.1 mT",
+      "restart_required": true
+    },
+    "storage_settings_addr": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16773120,
+      "description": "24-bit flash base address of the raw joystick/settings blob sector (must be 4 KiB aligned).",
+      "category": "RTOS",
+      "order": 60,
+      "display": {
+        "base": "hex",
+        "prefix": "0x",
+        "width": 6
+      },
+      "unit": "bytes",
+      "restart_required": true
+    },
+    "storage_smoke_addr": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16773120,
+      "description": "24-bit flash address used by storage raw read/write smoke test (must be 4 KiB aligned).",
+      "category": "RTOS",
+      "order": 61,
+      "display": {
+        "base": "hex",
+        "prefix": "0x",
+        "width": 6
+      },
+      "unit": "bytes",
+      "restart_required": true
+    },
+    "storage_smoke_len": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 256,
+      "description": "Byte count programmed and read back during storage raw smoke test.",
+      "category": "RTOS",
+      "order": 62,
+      "unit": "bytes",
+      "restart_required": true
+    },
+    "storage_fat_base_addr": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16773120,
+      "description": "Flash base address of the FAT transport region used by LevelX/FileX (must be 4 KiB aligned).",
+      "category": "RTOS",
+      "order": 63,
+      "display": {
+        "base": "hex",
+        "prefix": "0x",
+        "width": 6
+      },
+      "unit": "bytes",
+      "restart_required": true
+    },
+    "storage_fat_size_bytes": {
+      "type": "integer",
+      "minimum": 4096,
+      "maximum": 16777216,
+      "multipleOf": 4096,
+      "description": "Size of the FAT transport region in bytes (4 KiB aligned).",
+      "category": "RTOS",
+      "order": 64,
+      "unit": "bytes",
+      "restart_required": true
+    },
+    "storage_filex_cache_bytes": {
+      "type": "integer",
+      "minimum": 512,
+      "maximum": 16384,
+      "multipleOf": 4,
+      "description": "Static FileX media cache buffer size used by thStorage.",
+      "category": "RTOS",
+      "order": 65,
+      "unit": "bytes",
+      "restart_required": true
+    },
+    "storage_filex_sectors_per_cluster": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64,
+      "oneOf": [
+        {
+          "const": 1,
+          "title": "1 sector"
+        },
+        {
+          "const": 2,
+          "title": "2 sectors"
+        },
+        {
+          "const": 4,
+          "title": "4 sectors"
+        },
+        {
+          "const": 8,
+          "title": "8 sectors"
+        },
+        {
+          "const": 16,
+          "title": "16 sectors"
+        },
+        {
+          "const": 32,
+          "title": "32 sectors"
+        },
+        {
+          "const": 64,
+          "title": "64 sectors"
+        }
+      ],
+      "description": "FAT format cluster size in sectors for transport volume formatting.",
+      "category": "RTOS",
+      "order": 66,
+      "unit": "sectors",
+      "restart_required": true
+    },
+    "storage_filex_dir_entries": {
+      "type": "integer",
+      "minimum": 16,
+      "maximum": 1024,
+      "description": "FAT root directory entry count used during transport volume formatting.",
+      "category": "RTOS",
+      "order": 67,
+      "unit": "entries",
+      "restart_required": true
+    },
+    "rtos_qdisplay_cmd_depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64,
+      "description": "Queue depth for qDisplayCmd owner thread commands.",
+      "category": "RTOS",
+      "order": 41,
+      "unit": "entries",
+      "restart_required": true
+    },
+    "rtos_qstorage_req_depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64,
+      "description": "Queue depth for qStorageReq owner thread requests.",
+      "category": "RTOS",
+      "order": 42,
+      "unit": "entries",
+      "restart_required": true
+    },
+    "rtos_qinput_cmd_depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64,
+      "description": "Queue depth for qInputCmd owner thread commands.",
+      "category": "RTOS",
+      "order": 43,
+      "unit": "entries",
+      "restart_required": true
+    },
+    "rtos_qinput_raw_depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64,
+      "description": "Queue depth for qInputRaw ISR-produced button edge events.",
+      "category": "RTOS",
+      "order": 44,
+      "unit": "entries",
+      "restart_required": true
+    },
+    "rtos_qui_events_depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64,
+      "description": "Queue depth for qUIEvents logical actions posted by thInput.",
+      "category": "RTOS",
+      "order": 45,
+      "unit": "entries",
+      "restart_required": true
+    },
+    "rtos_qgame_events_depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64,
+      "description": "Queue depth for qGameEvents logical actions posted by thInput.",
+      "category": "RTOS",
+      "order": 46,
+      "unit": "entries",
+      "restart_required": true
+    },
+    "input_debounce_ticks": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 500,
+      "description": "Debounce window applied by thInput to raw button edges.",
+      "category": "RTOS",
+      "tick_basis": "hal_ms",
+      "order": 47,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "input_repeat_delay_ticks": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5000,
+      "description": "Initial hold delay before thInput emits repeated logical actions (0 disables repeat).",
+      "category": "RTOS",
+      "tick_basis": "hal_ms",
+      "order": 48,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "input_repeat_period_ticks": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2000,
+      "description": "Repeat interval for held buttons emitted by thInput (0 disables repeat).",
+      "category": "RTOS",
+      "tick_basis": "hal_ms",
+      "order": 49,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "input_repeat_period_stage1_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2000,
+      "description": "Accelerated repeat interval after stage-1 hold threshold.",
+      "category": "RTOS",
+      "tick_basis": "hal_ms",
+      "order": 49,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "input_repeat_period_stage2_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2000,
+      "description": "Fastest repeat interval after stage-2 hold threshold.",
+      "category": "RTOS",
+      "tick_basis": "hal_ms",
+      "order": 49,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "input_repeat_accel_stage1_after_ticks": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20000,
+      "description": "Held duration threshold to switch from base repeat period to stage-1 repeat period.",
+      "category": "RTOS",
+      "tick_basis": "hal_ms",
+      "order": 49,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "input_repeat_accel_stage2_after_ticks": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 40000,
+      "description": "Held duration threshold to switch from stage-1 repeat period to stage-2 repeat period.",
+      "category": "RTOS",
+      "tick_basis": "hal_ms",
+      "order": 49,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "input_joy_repeat_delay_ticks": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5000,
+      "description": "How long the stick must be held before repeating begins. 0 means repeat starts immediately.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Repeat",
+      "gui_label": "Repeat Start Delay",
+      "tick_basis": "hal_ms",
+      "order": 49,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "input_joy_repeat_period_ticks": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2000,
+      "description": "Base interval between repeated moves while held. Lower = faster repeat. 0 disables repeat.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Repeat",
+      "gui_label": "Repeat Interval (Base)",
+      "tick_basis": "hal_ms",
+      "order": 49,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "input_joy_repeat_period_stage1_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2000,
+      "description": "Interval used after Speedup 1 starts. Lower = faster repeat.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Repeat",
+      "gui_label": "Repeat Interval (Speedup 1)",
+      "tick_basis": "hal_ms",
+      "order": 49,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "input_joy_repeat_period_stage2_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2000,
+      "description": "Interval used after Speedup 2 starts (usually fastest). Lower = faster repeat.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Repeat",
+      "gui_label": "Repeat Interval (Speedup 2)",
+      "tick_basis": "hal_ms",
+      "order": 49,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "input_joy_repeat_accel_stage1_after_ticks": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20000,
+      "description": "How long to hold before switching from Base interval to Speedup 1 interval.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Repeat",
+      "gui_label": "Speedup 1 Starts After Hold",
+      "tick_basis": "hal_ms",
+      "order": 49,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "input_joy_repeat_accel_stage2_after_ticks": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 40000,
+      "description": "How long to hold before switching from Speedup 1 interval to Speedup 2 interval.",
+      "category": "RTOS",
+      "gui_tab": "joystick",
+      "gui_section": "Repeat",
+      "gui_label": "Speedup 2 Starts After Hold",
+      "tick_basis": "hal_ms",
+      "order": 49,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "input_repeat_enable_mask": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 511,
+      "description": "Per-source repeat enable bitmask (bits 0..8 map A,B,L,R,BOOT,JOY_UP,JOY_RIGHT,JOY_DOWN,JOY_LEFT).",
+      "category": "RTOS",
+      "gui_tab": "input",
+      "gui_section": "Source Masks",
+      "gui_label": "Repeat Enabled Sources",
+      "order": 49,
+      "unit": "bitmask",
+      "display": {
+        "widget": "bitmask",
+        "base": "hex",
+        "prefix": "0x",
+        "width": 3,
+        "bits": [
+          { "bit": 0, "label": "BTN_A" },
+          { "bit": 1, "label": "BTN_B" },
+          { "bit": 2, "label": "BTN_L" },
+          { "bit": 3, "label": "BTN_R" },
+          { "bit": 4, "label": "BTN_BOOT" },
+          { "bit": 5, "label": "JOY_UP" },
+          { "bit": 6, "label": "JOY_RIGHT" },
+          { "bit": 7, "label": "JOY_DOWN" },
+          { "bit": 8, "label": "JOY_LEFT" }
+        ]
+      },
+      "restart_required": true
+    },
+    "input_long_enable_mask": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 511,
+      "description": "Per-source long-press enable bitmask (bits 0..8 map A,B,L,R,BOOT,JOY_UP,JOY_RIGHT,JOY_DOWN,JOY_LEFT).",
+      "category": "RTOS",
+      "gui_tab": "input",
+      "gui_section": "Source Masks",
+      "gui_label": "Long-Press Enabled Sources",
+      "order": 49,
+      "unit": "bitmask",
+      "display": {
+        "widget": "bitmask",
+        "base": "hex",
+        "prefix": "0x",
+        "width": 3,
+        "bits": [
+          { "bit": 0, "label": "BTN_A" },
+          { "bit": 1, "label": "BTN_B" },
+          { "bit": 2, "label": "BTN_L" },
+          { "bit": 3, "label": "BTN_R" },
+          { "bit": 4, "label": "BTN_BOOT" },
+          { "bit": 5, "label": "JOY_UP" },
+          { "bit": 6, "label": "JOY_RIGHT" },
+          { "bit": 7, "label": "JOY_DOWN" },
+          { "bit": 8, "label": "JOY_LEFT" }
+        ]
+      },
+      "restart_required": true
+    },
+    "input_long_press_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000,
+      "description": "Hold duration required before thInput emits one long-press event.",
+      "category": "RTOS",
+      "tick_basis": "hal_ms",
+      "order": 49,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "input_boot_long_only": {
+      "type": "boolean",
+      "description": "When enabled, BOOT key emits only long-press action events.",
+      "category": "RTOS",
+      "order": 49,
+      "restart_required": true
+    },
+    "input_realtime_activity_min_ticks": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5000,
+      "description": "Minimum interval between REALTIME input-activity events posted to qSysEvents (0 posts every routed action).",
+      "category": "RTOS",
+      "tick_basis": "hal_ms",
+      "order": 49,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "rtos_qaudio_cmd_depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64,
+      "description": "Queue depth for qAudioCmd owner thread commands.",
+      "category": "RTOS",
+      "order": 50,
+      "unit": "entries",
+      "restart_required": true
+    },
+    "rtos_qsensor_req_depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64,
+      "description": "Queue depth for qSensorReq owner thread requests.",
+      "category": "RTOS",
+      "order": 51,
+      "unit": "entries",
+      "restart_required": true
+    },
+    "rtos_qsys_events_depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64,
+      "description": "Queue depth for qSysEvents mode/power requests.",
+      "category": "RTOS",
+      "order": 44,
+      "unit": "entries",
+      "restart_required": true
+    },
+    "rtos_power_wait_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "Bounded wait timeout used by thPower queue receive loop.",
+      "category": "RTOS",
+      "tick_basis": "threadx",
+      "order": 45,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "audio_dma_frames": {
+      "type": "integer",
+      "minimum": 32,
+      "maximum": 2048,
+      "multipleOf": 2,
+      "description": "Total stereo frame count in the audio DMA test-tone buffer.",
+      "category": "Audio",
+      "order": 30,
+      "unit": "frames",
+      "restart_required": true
+    },
+    "audio_sample_rate": {
+      "type": "integer",
+      "minimum": 8000,
+      "maximum": 48000,
+      "description": "Audio output sample rate for the SAI pipeline.",
+      "category": "Audio",
+      "order": 31,
+      "unit": "Hz",
+      "restart_required": true
+    },
+    "audio_test_tone_hz": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 4000,
+      "description": "Square-wave frequency used by the audio bring-up test tone.",
+      "category": "Audio",
+      "order": 32,
+      "unit": "Hz",
+      "restart_required": true
+    },
+    "audio_test_tone_amplitude": {
+      "type": "integer",
+      "minimum": 256,
+      "maximum": 32767,
+      "description": "Peak signed amplitude used for the audio bring-up test tone.",
+      "category": "Audio",
+      "order": 33,
+      "unit": "pcm",
+      "restart_required": true
+    },
+    "use_lpbam": {
+      "type": "boolean",
+      "description": "Enable LPBAM-assisted low-power peripheral sequences.",
+      "category": "Power",
+      "gui_tab": "power",
+      "gui_section": "Low Power",
+      "order": 40,
+      "restart_required": true
+    },
+    "turbo_clock_mhz": {
+      "type": "integer",
+      "minimum": 20,
+      "maximum": 160,
+      "description": "Target top-end system clock used by performance profiles.",
+      "category": "Power",
+      "gui_tab": "power",
+      "gui_section": "Clock & Perf",
+      "order": 50,
+      "unit": "MHz",
+      "restart_required": true
+    },
+    "power_perf_hint_stride": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 32,
+      "description": "Post one perf hint every N display presents to bound qSys event rate.",
+      "category": "Power",
+      "gui_hint": "How often performance updates are sent. 1 = every frame, 2 = every second frame.",
+      "order": 51,
+      "unit": "frames",
+      "restart_required": true
+    },
+    "power_perf_frame_budget_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "Frame-time budget used by thPower perf governor (ticks at KNOB_RTOS_TICK_HZ).",
+      "category": "Power",
+      "gui_hint": "Target frame time budget for power scaling decisions.",
+      "tick_basis": "threadx",
+      "order": 52,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "power_perf_miss_margin_ticks": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 200,
+      "description": "Margin above frame budget counted as a frame miss for turbo upshift.",
+      "category": "Power",
+      "gui_hint": "Extra time above budget before a frame is treated as slow.",
+      "tick_basis": "threadx",
+      "order": 53,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "power_perf_headroom_margin_ticks": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 200,
+      "description": "Headroom below frame budget required to count toward downshift from turbo.",
+      "category": "Power",
+      "gui_hint": "Time below budget required to count as healthy headroom.",
+      "tick_basis": "threadx",
+      "order": 54,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "power_perf_up_streak_frames": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 120,
+      "description": "Consecutive missed-frame hints required before requesting turbo profile.",
+      "category": "Power",
+      "gui_hint": "Number of slow frames in a row before increasing performance.",
+      "order": 55,
+      "unit": "frames",
+      "restart_required": true
+    },
+    "power_perf_down_streak_frames": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 600,
+      "description": "Consecutive headroom hints required before requesting normal profile.",
+      "category": "Power",
+      "gui_hint": "Number of good frames in a row before reducing performance.",
+      "order": 56,
+      "unit": "frames",
+      "restart_required": true
+    },
+    "power_perf_min_dwell_ticks": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 60000,
+      "description": "Minimum ticks between perf profile switches to prevent oscillation.",
+      "category": "Power",
+      "gui_hint": "Minimum delay before another performance-profile switch is allowed.",
+      "tick_basis": "threadx",
+      "order": 57,
+      "unit": "ticks",
+      "restart_required": true
+    },
+    "debug_swo_enable": {
+      "type": "boolean",
+      "description": "Compile-time gate for SWO debug instrumentation.",
+      "category": "Debug",
+      "order": 60,
+      "restart_required": true
+    }
+  }
+}
