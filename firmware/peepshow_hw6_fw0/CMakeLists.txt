@@ -62,6 +62,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/ps_storage_flash_block.c
     Core/Src/ps_storage_filex_levelx.c
     Core/Src/ps_storage_layout.c
+    Core/Src/ps_storage_msc_bridge.c
     Drivers/Components/lis2dux12/lis2dux12_reg.c
 )
 

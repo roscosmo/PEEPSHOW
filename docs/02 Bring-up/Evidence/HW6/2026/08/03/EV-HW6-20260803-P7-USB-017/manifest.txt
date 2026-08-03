@@ -1,0 +1,12 @@
+evidence_id: EV-HW6-20260803-P7-USB-017
+date: 2026-08-03
+board: HW6-UNIT-001 provisional
+firmware_target: firmware/peepshow_hw6_fw0
+elf: firmware/peepshow_hw6_fw0/build/Debug/peepshow_hw6_fw0.elf
+elf_sha256: D3786EDF27391BC8DD88D78CE5634D8D06583AE9F63BA8C8B8F24D2CEC371B09
+ioc: firmware/peepshow_hw6_fw0/peepshow_hw6_fw0.ioc
+ioc_sha256: 0F2FF8A5440E5C4812F85FAD0F2C46E3CB293C758A81F334BE8BECDC807A0039
+log: owner_lifecycle_usbx_msc_bridge_baseline_gdb.log
+log_sha256: F2F9FAEA152F5B340D471377B1D0F802DDDF92F870A313812A6A61B58DA2EB2F
+result: PASS
+summary: USBX Device MSC initializes successfully with the bounded thStorage MSC bridge registered and USB still parked; MSC geometry is 2048 512-byte sectors over the first 1 MiB of USB_STAGING, and lifecycle-v13 owner workflow still passes with no host traffic.

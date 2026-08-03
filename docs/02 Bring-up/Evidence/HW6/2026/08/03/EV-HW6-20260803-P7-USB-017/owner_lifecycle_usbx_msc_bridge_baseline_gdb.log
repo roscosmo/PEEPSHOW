@@ -1,0 +1,677 @@
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_all_probe_prints.gdb
+=== HW6 FW0 BOOT + PERIPHERAL + RTOS + OWNER STATE PROBE ===
+boot magic/version/phase = 0x48364630 / 0x1 / 0x60ff
+boot complete/pre-RTOS hb = 1 / 0x0
+MCU device/revision      = 0x482 / 0x3001
+SYSCLK Hz                = 24000000
+output expected/actual   = 0x8 / 0x8
+boot errors/asserts      = 0 / 0
+
+--- consolidated result ---
+magic/version/phase      = 0x48365052 / 0x2 / 0x65ff
+complete/duration ticks  = 1 / 1405
+required/attempted       = 0x1f / 0x1f
+pass/failure/skipped     = 0x1f / 0x0 / 0xe0
+PMIC / IMU / joystick    = 1 / 1 / 1
+flash / NINA AT          = 1 / 1
+pre-RTOS skipped 5..7    = display/audio/USB physical tests
+
+--- I2C bus ---
+state before/after       = 0x20 / 0x20
+error before/after       = 0x0 / 0x0
+
+--- ADP5360 @ 0x
+46 ---
+ready/id/fault/pgood sts = 0x0 / 0x0 / 0x0 / 0x0
+id/fault/pgood           = 0x10 / 0x0 / 0x7
+identity/rails ready     = 1 / 1
+
+--- LIS2DUX12 address diagnosis ---
+0x18 ready/error          = 0x0 / 0x0
+0x18 read/error/WHO_AM_I  = 0x0 / 0x0 / 0x47
+0x19 ready/error          = 0x1 / 0x4
+0x19 read/error/WHO_AM_I  = 0x1 / 0x4 / 0x0
+detected address/match    = 0x18 / 1
+
+--- TMAG3001 @ 0x
+34 ---
+ready/id/mfr statuses    = 0x0 / 0x0 / 0x0 / 0x0
+device/mfr LSB/MSB       = 0x0 / 0x49 / 0x54
+identity match           = 1
+
+--- AT25SL128A ---
+JEDEC/status reads       = 0x0 / 0x0 / 0x0 / 0x0
+JEDEC ID                 = 1f 42 18
+status 1/2/3             = 00 00 00
+identity / OSPI error    = 1 / 0x0
+
+--- NINA-B112 AT handshake ---
+NRST before/up/after     = 0 / 0 / 0
+boot wait/rx             = 750 ms / 13 bytes
+attempts/tx/rx           = 1 / 0x0 / 10 bytes
+OK / ERROR               = 1 / 0
+UART state/error         = 0x20 / 0x0
+response                 = AT
+
+OK
+
+--- pre-RTOS peripheral state ---
+RTC / SAI                = 0x1 / 0x1
+display SPI / LPTIM      = 0x1 / 0x1
+USB PCD                  = 0x1
+
+--- ThreadX topology and startup self-test ---
+magic/version/phase       = 0x48365254 / 0x2 / 0x66ff
+init/runtime complete     = 1 / 1
+init status/error step/id = 0x0 / 0xffffffff / 0xffffffff
+tick Hz/owners/queues/egs = 100 / 9 / 9 / 4
+owner required/started    = 0x1ff / 0x1ff
+queue required/self-test  = 0x1ff / 0x1ff
+event required/self-test  = 0xf / 0xf
+pool info before/after    = 0x0 / 0x0
+pool bytes before/after   = 16376 / 4840
+pool fragments before/after = 2 / 20
+
+owner/queue object status: stack qmem qcreate send thread
+power   /qSysEvents       0 0 0 0 0
+audio   /qAudioCmd        0 0 0 0 0
+input   /qInputRaw        0 0 0 0 0
+display /qDisplayCmd      0 0 0 0 0
+sensor  /qSensorReq       0 0 0 0 0
+storage /qStorageReq      0 0 0 0 0
+comm    /qCommCmd         0 0 0 0 0
+UI      /qUIEvents        0 0 0 0 0
+runtime /qRuntimeEvents   0 0 0 0 0
+
+event group status: create set get
+egMode                    0 0 0
+egPower                   0 0 0
+egHealth                  0 0 0
+egDebug                   0 0 0
+
+owner runtime: heartbeat last_tick receives timeouts errors
+power                     22 1575 1 21 0
+audio                     59 1590 6 53 0
+input                     67 1575 6 61 0
+display                   68 1590 6 62 0
+sensor                    67 1575 6 61 0
+storage                   62 1575 6 56 0
+comm                      37 1575 6 31 0
+UI                        59 1574 1 58 0
+runtime                   59 1574 1 58 0
+
+--- owner-thread physical workflow ---
+magic/version/phase       = 0x48364f57 / 0x3 / 0x67ff
+complete/success/init     = 1 / 1 / 0x0
+workflow start/end/delta  = 376 / 1425 / 1049 ticks
+power command send/tick   = 0x0 / 376
+display send/ack/flags    = 0x0 / 0x0 / 0x8
+audio send/ack/flags      = 0x0 / 0x0 / 0x2
+
+  power owner: read-only ADP5360 snapshot
+command/complete/success  = 376 / 1 / 1
+ADP driver API/init/state/ops/last = 3 / 0 / 2 / 3 / 0
+ADP functions/read/match = 0xf / 0x7f / 0x7f
+register addresses        = 00 29 2a 2b 2c 2e 2f
+register values           = 10 31 18 18 13 00 07
+lease get status          = 0 0 0 0 0 0 0
+HAL transfer status       = 0 0 0 0 0 0 0
+HAL transfer errors       = 0 0 0 0 0 0 0
+lease put status          = 0 0 0 0 0 0 0
+I2C state/error           = 0x20 / 0x0
+identity/rails/fault OK   = 1 / 1 / 1
+ADP charger status regs  = 00 / 00
+ADP charger read sts     = 0x0 / 0x0 mask 0x3
+ADP charger HAL sts/err  = 0x0/0x0 0x0/0x0
+ADP mode/status/type/health = 0 / 0 / 0 / 0
+ADP battery stat/therm/present = 0 / 0 / 1
+ADP PGOOD vbus/bat/full = 0 / 1 / 0
+ADP fuel regs            = 20 21 25 26 27
+ADP fuel values          = 32 00 00 00 50
+ADP fuel read mask       = 0x1f
+ADP fuel raw sts         = 0 0 0 0 0
+ADP fuel SOC/VBAT        = 0 % / 0 mV (raw 00 00)
+ADP regulator read mask  = 0x1f
+ADP regulator cfg/out    = buck 31/18 buckbst 18/13
+ADP regulator ok bits    = vout1 1 vout2 1 bat 1
+
+  display owner: 144x168 diagnostic card
+command/complete/success  = 376 / 1 / 1
+display driver API/init/state/ops/last = 1 / 0x0 / 2 / 3 / 0x0
+size/pattern/hash/black   = 144x168 / 0x54455354 / 0x360cda71 / 1725
+expected hash/black       = 0x360cda71 / 1725
+RTC state/CR              = 0x1 / 0x40880000
+SPI before/init/present   = 0x1 / 0x0 / 0x0
+DMA done/state/error      = 1 / 0x1 / 0x0
+SPI state/error after     = 0x1 / 0x0
+ack set status            = 0x0
+expected visual           = white field, 2px black border, center cross, four distinct corner markers
+expected workflow count    = three presents total: baseline plus two resume cycles
+
+  audio owner: speaker DMA tone
+command/complete/success  = 378 / 1 / 1
+audio driver API/init/state/ops/last = 1 / 0x0 / 3 / 3 / 0x0
+kernel/sample/tone Hz     = 4096000 / 16000 / 1000
+duration/amplitude/buffer = 750 ms / 3000 / 2048 halfwords
+SD before/enabled/after   = 0 / 1 / 0
+start/stop status         = 0x0 / 0x0
+SAI state/error after     = 0x1 / 0x0
+DMA state/error after     = 0x1 / 0x0
+ack set status            = 0x0
+expected audible result   = three 1 kHz tones of about 750 ms: baseline plus two resume cycles
+
+--- retained-peripheral lifecycle state machines ---
+start request              = 0
+magic/version/phase        = 0x48364653 / 0xd / 0x68ff
+complete/success           = 1 / 1
+required/completed         = 0x7f / 0x7f
+success/failure owners     = 0x7f / 0x0
+workflow start/end/delta   = 376 / 1425 / 1049 ticks
+
+owner lifecycle transport: send wait ack action start end
+power                      0 0 1 0 376 376
+audio                      0 0 2 0 378 456
+input                      0 0 4 0 456 456
+display                    0 0 8 0 376 378
+sensor                     0 0 10 0 456 458
+storage                    0 0 20 0 458 579
+comm                       0 0 40 0 579 798
+
+--- two bounded inactive-active-inactive owner cycles ---
+requested/completed/success = 2 / 2 / 1
+required owner/state masks  = 0x7f / 0x3ff
+owner map: 0=power 1=audio 2=input 3=display 4=sensor 5=storage 6=comm
+
+cycle
+0 start/active/end     = 798 / 1001 / 1111 ticks
+resume success/failure      = 0x7f / 0x0
+quiesce success/failure     = 0x7f / 0x0
+active/inactive state match = 0x3ff / 0x3ff
+  resume transport/action: owner send wait ack action start end
+  0 0 0 1 0 798 798
+  1 0 0 2 0 924 1001
+  2 0 0 4 0 799 800
+  3 0 0 8 0 923 924
+  4 0 0 10 0 800 803
+  5 0 0 20 0 798 799
+  6 0 0 40 0 803 923
+  quiesce transport/action: owner send wait ack action start end
+  0 0 0 1 0 1111 1111
+  1 0 0 2 0 1001 1001
+  2 0 0 4 0 1111 1111
+  3 0 0 8 0 1001 1001
+  4 0 0 10 0 1111 1111
+  5 0 0 20 0 1111 1111
+  6 0 0 40 0 1001 1111
+  TMAG wake/retry/active/sleep = 5 0 0 0
+  TMAG active config1/config2  = 70 / 02
+  IMU wake status/error/accepted = 1 4 1
+  IMU WHO/active/sleep         = 0 0 0
+  IMU WHO/active CTRL5         = 47 / 10 (expected 47 / 10)
+  flash release/JEDEC/match/DPD = 0 0 1 0
+  BLE UART/AT/RX/suspend       = 0 0 10 0
+  BLE DSR resume/quiesce       = 0 / 1
+
+cycle
+1 start/active/end     = 1111 / 1315 / 1425 ticks
+resume success/failure      = 0x7f / 0x0
+quiesce success/failure     = 0x7f / 0x0
+active/inactive state match = 0x3ff / 0x3ff
+  resume transport/action: owner send wait ack action start end
+  0 0 0 1 0 1111 1112
+  1 0 0 2 0 1238 1315
+  2 0 0 4 0 1113 1114
+  3 0 0 8 0 1237 1238
+  4 0 0 10 0 1114 1117
+  5 0 0 20 0 1112 1113
+  6 0 0 40 0 1117 1237
+  quiesce transport/action: owner send wait ack action start end
+  0 0 0 1 0 1425 1425
+  1 0 0 2 0 1315 1315
+  2 0 0 4 0 1425 1425
+  3 0 0 8 0 1315 1315
+  4 0 0 10 0 1425 1425
+  5 0 0 20 0 1425 1425
+  6 0 0 40 0 1315 1425
+  TMAG wake/retry/active/sleep = 5 0 0 0
+  TMAG active config1/config2  = 70 / 02
+  IMU wake status/error/accepted = 1 4 1
+  IMU WHO/active/sleep         = 0 0 0
+  IMU WHO/active CTRL5         = 47 / 10 (expected 47 / 10)
+  flash release/JEDEC/match/DPD = 0 0 1 0
+  BLE UART/AT/RX/suspend       = 0 0 10 0
+  BLE DSR resume/quiesce       = 0 / 1
+
+FSM final state: current expected transitions rejected last_event last_status last_error
+power                      2 2  6 0 5 0 ffffffff
+PMIC                       3 3  2 0 2 0 ffffffff
+display                    2 2  6 0 6 0 ffffffff
+audio                      2 2  8 0 5 0 ffffffff
+speaker                    0 0  18 0 6 0 ffffffff
+joystick                   12 12 11 0 14 0 ffffffff
+IMU                        8 8  11 0 13 0 ffffffff
+storage                    2 2  2 0 2 0 ffffffff
+flash                      8 8  12 0 8 0 ffffffff
+BLE                        10 10 16 0 19 0 ffffffff
+
+  TMAG3001 verified suspended baseline
+driver API/init/state/ops/last = 1 / 0 / 3 / 5 / 0
+ready/identity/match       = 0x0 / 0x0 / 1
+device/mfr LSB/MSB         = 00 / 49 / 54
+SENSOR_CONFIG1 before/verified = 00 / 00
+DEVICE_CONFIG2 before/verified/sleep = 00 / 00 / 01
+pre-terminal verify status = 0x0 / 0x0
+write/verify masks         = 0x7 / 0x3 (expected 0x7 / 0x3)
+terminal sleep status/committed = 0x0 / 1
+post-sleep read omitted    = 1 (expected 1; any address probe wakes TMAG)
+I2C state/error            = 0x20 / 0x0
+
+  LIS2DUX12 verified deep-power-down baseline
+driver API/init/state/ops/last = 1 / 0 / 3 / 5 / 0
+ready/WHO status/value/match = 0x0 / 0x0 / 47 / 1
+register addresses         =
+ 15
+ 11
+ 12
+ 17
+ 1f
+ 20
+ 32
+ 13
+ 14
+ 10
+ 3d
+
+register before            =
+ 00
+ 00
+ 00
+ 00
+ 00
+ 00
+ 00
+ 00
+ 00
+ 10
+ 00
+
+verified before terminal   =
+ 00
+ 00
+ 00
+ 00
+ 00
+ 00
+ 01
+ 00
+ 00
+ 10
+
+snapshot/write/verify     = 0x
+7ff / 0x7ff / 0x3ff (expected 0x7ff / 0x7ff / 0x3ff)
+deep-PD value/status/committed = 01 / 0x0 / 1
+post-deep-PD read omitted  = 1 (expected 1; registers are inaccessible)
+I2C state/error            = 0x20 / 0x0
+
+  AT25SL128A idle baseline
+driver API/init/state/ops/last = 1 / 0 / 3 / 3685 / 0
+JEDEC status/ID/match      = 0x0 / 1f 42 18 / 1
+deep-power-down status     = 0x0
+scratch status/address/length = 0 / 0x00fff000 / 256
+scratch status1 before        = 0x00
+scratch WRDI/status1       = 0x1 / 0x00
+erase WREN/cmd/wait/polls     = 0x0 / 0x0 / 0 / 694
+erase status1 after WREN/cmd  = 0x02 / 0x01
+erase retry count/WRDI/WREN/cmd/status1 = 0 / 0x1 0x00 / 0x1 0x00 / 0x1 0x00
+erase blank read/mismatches   = 0x0 / 0
+erase blank first16           =
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+
+program WREN/cmd/wait/polls   = 0x0 / 0x0 / 0 / 1
+program status1 after WREN    = 0x02
+program read/mismatches       = 0x0 / 0
+program first16              =
+ a5
+ a4
+ a7
+ a6
+ a1
+ a0
+ a3
+ a2
+ ad
+ ac
+ af
+ ae
+ a9
+ a8
+ ab
+ aa
+
+DMA program WREN/cmd/xfer wait/polls = 0x
+0 / 0x0 / 0 / 1
+DMA program status1 after WREN = 0x02
+DMA program flash wait/polls = 0 / 1
+DMA read cmd/xfer wait/polls = 0x0 / 0 / 27
+DMA read mismatches          = 0
+DMA first16                 =
+ a5
+ a4
+ a7
+ a6
+ a1
+ a0
+ a3
+ a2
+ ad
+ ac
+ af
+ ae
+ a9
+ a8
+ ab
+ aa
+
+DMA tx state/error           = 0x
+1 / 0x0
+DMA rx state/error           = 0x1 / 0x0
+cleanup WREN/cmd/wait/polls = 0x0 / 0x0 / 0 / 694
+cleanup status1 after WREN    = 0x02
+cleanup blank read/mismatches = 0x0 / 0
+cleanup first16              =
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+
+scratch OSPI state/error    = 0x
+2 / 0x0
+OSPI state/error           = 0x2 / 0x0
+
+  raw flash block adapter scratch sector
+block API/init/ops/last     = 1 / 0 / 3599 / 0
+geometry total/erase/page/count = 16777216 / 4096 / 256 / 4096
+test status/index/address/len = 0 / 4095 / 0x00fff000 / 4096
+erase status/polls        = 0 / 693
+blank read count/status/mismatch = 16 / 0 / 0
+blank first16             =
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+
+program status/pages/last polls =
+0 / 16 / 1
+verify read count/status/mismatch = 16 / 0 / 0
+verify first16            =
+ 5a
+ 5b
+ 58
+ 59
+ 5e
+ 5f
+ 5c
+ 5d
+ 52
+ 53
+ 50
+ 51
+ 56
+ 57
+ 54
+ 55
+
+cleanup status/read/mismatch =
+0 / 0 / 0
+cleanup first16           =
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+ ff
+
+block OSPI state/error    = 0x
+2 / 0x0
+
+  storage flash region layout
+layout API/status/count    = 1 / 0 / 10
+layout total/erase/end     = 16777216 / 4096 / 0x01000000
+layout errors align/overlap/range = 0 / 0 / 0
+layout host/protected masks = 0x40 / 0x3bf
+layout scratch index/start/len = 9 / 0x00fff000 / 4096
+
+  FileX + LevelX local smoke test
+fxlx API/status/region      = 1 / 0 / 6
+region start/len           = 0x00ac0000 / 5242880
+test start/len             = 0x00ac0000 / 1048576
+erase/sector/count         = 4096 / 512 / 2048
+LX init/open/close         = 0x0 / 0x0 / 0x0
+FX format/open/flush/close = 0x0 / 0x0 / 0x0 / 0x0
+file create/open/write     = 0x0 / 0x0 / 0x0
+file seek/read/close       = 0x0 / 0x0 / 0x0
+bytes written/read/mismatch = 256 / 256 / 0
+boot read first16          =
+ eb
+ 34
+ 90
+ 45
+ 4c
+ 20
+ 46
+ 49
+ 4c
+ 45
+ 58
+ 00
+ 02
+ 01
+ 01
+ 00
+
+boot bps/spc/res/fats      =
+512 / 1 / 1 / 1
+boot root/total/spf/sig    = 32 / 2048 / 6 / 0xaa55
+file read first16          =
+ 48
+ 57
+ 36
+ 2d
+ 46
+ 58
+ 4c
+ 58
+ 49
+ 4a
+ 4b
+ 4c
+ 4d
+ 4e
+ 4f
+ 50
+
+LX driver rd/wr/erase/verify =
+3522 / 76 / 0 / 0
+LX driver last status      = 0x0
+FX driver rd/wr/flush/abort = 9 / 12 / 2 / 0
+FX driver init/uninit/release = 2 / 2 / 0
+FX driver last req/status  = 0x8 / 0x0
+
+  USB device detached baseline (owned by storage)
+VBUS present               = 0 (expected 0)
+PCD state before/after     = 0x1 / 0x0
+clock before/after         = 1 / 0
+VDDUSB before/after        = 1 / 0
+deinit attempted/status    = 1 / 0x0
+USB parked                 = 1 (expected 1)
+USBX pool/init status      = 0x0 / 0x0 (baseline may be nonzero before MSC bridge)
+USBX stage statuses       = alloc 0x0 system 0x0 devstack 0x0 class 0x0 appstack 0x0 thread 0x0
+USBX desc lengths         = HS 60 FS 50 string 58 lang 2
+USBX MSC cfg/if/lba/blk   = 1 / 0 / 2047 / 512
+MSC bridge api/init      = 1 / 1
+MSC bridge submit/done/timeout/busy = 0 / 0 / 0 / 0
+MSC bridge rd/wr/fl/status = 0 / 0 / 0 / 0
+MSC bridge last cmd/lba/blocks = 0x0 / 0 / 0
+MSC bridge tx/owner/ux/media/ps = 0x0 / 0x0 / 0x0 / 0x0 / 0x0
+
+  NINA-B112 AT-controlled STOP baseline
+NRST before/released/after = 0 / 0 / 1
+NINA_DSR host-DTR before/after = 0 / 1
+boot RX / commands         = 13 bytes / 7
+slots 0..6                 = AT / UPWRMNG(skip) / UPWRMNG(skip) / UBTDM / UBTCM / UBTPM / &D4
+command TX statuses        = 0 ffffffff ffffffff 0 0 0 0
+command RX lengths         = 10 0 0 18 18 18 13
+required/attempted/skipped = 0x79 / 0x79 / 0x6 (expected 0x79 / 0x79 / 0x6)
+OK/error masks             = 0x79 / 0x0 (expected 0x79 / 0)
+UART deinit/state/error    = 0x0 / 0x0 / 0x0
+fallback reset asserted    = 0 (expected 0)
+
+  bounded transition trace: tick fsm from event to action
+376 0 0 1 1 0
+376 1 0 1 1 0
+376 1 1 2 3 0
+376 0 1 2 2 0
+376 2 0 1 1 0
+378 2 1 2 2 0
+378 3 0 1 1 0
+378 3 1 2 2 0
+378 4 0 1 1 0
+378 4 1 2 2 0
+378 4 2 3 3 0
+378 3 2 3 3 0
+378 4 3 4 5 0
+456 4 5 5 6 0
+456 4 6 6 0 0
+456 3 3 5 2 0
+456 5 0 1 1 0
+456 5 1 3 2 0
+456 5 2 4 12 0
+456 6 0 1 1 0
+458 6 1 3 2 0
+458 6 2 4 8 0
+458 7 0 1 1 0
+458 8 0 1 2 0
+458 8 2 2 3 0
+458 8 3 4 4 0
+579 8 4 8 8 0
+579 7 1 2 2 0
+579 9 0 1 1 0
+581 9 1 3 2 0
+666 9 2 4 3 0
+688 9 3 6 4 0
+688 9 4 2 9 0
+798 9 9 19 10 0
+798 0 2 4 3 0
+799 8 8 9 2 0
+799 8 2 2 3 0
+799 8 3 4 4 0
+799 5 12 15 1 0
+800 5 1 3 2 0
+800 5 2 12 8 0
+800 6 8 14 1 0
+803 6 1 3 2 0
+803 6 2 10 6 0
+803 9 10 20 2 0
+923 9 2 4 3 0
+923 9 3 6 4 0
+923 2 2 7 5 0
+924 2 5 6 2 0
+924 4 0 1 1 0
+924 4 1 2 2 0
+924 4 2 3 3 0
+924 3 2 3 3 0
+924 4 3 4 5 0
+1001 4 5 5 6 0
+1001 4 6 6 0 0
+1001 3 3 5 2 0
+1001 9 4 2 9 0
+1111 9 9 19 10 0
+1111 6 6 13 8 0
+1111 5 8 14 12 0
+1111 8 4 8 8 0
+1111 0 3 5 2 0
+1112 0 2 4 3 0
+1113 8 8 9 2 0
+1113 8 2 2 3 0
+1113 8 3 4 4 0
+1113 5 12 15 1 0
+1114 5 1 3 2 0
+1114 5 2 12 8 0
+1114 6 8 14 1 0
+1117 6 1 3 2 0
+1117 6 2 10 6 0
+1117 9 10 20 2 0
+1237 9 2 4 3 0
+1237 9 3 6 4 0
+1237 2 2 7 5 0
+1238 2 5 6 2 0
+1238 4 0 1 1 0
+1238 4 1 2 2 0
+1238 4 2 3 3 0
+1238 3 2 3 3 0
+1238 4 3 4 5 0
+1315 4 5 5 6 0
+1315 4 6 6 0 0
+1315 3 3 5 2 0
+1315 9 4 2 9 0
+1425 9 9 19 10 0
+1425 6 6 13 8 0
+1425 5 8 14 12 0
+1425 8 4 8 8 0
+1425 0 3 5 2 0
+
+--- scheduler idle and workflow marker ---
+WFI setup/enter/exit/adjust = 1482 / 1482 / 1481 / 1481
+next scheduler timeout ticks = 4
+PWR_DBG state/toggles/last = 0 / 2 / 1425
+=== END HW6 FW0 BOOT + PERIPHERAL + RTOS + OWNER STATE PROBE ===
+{"output":"","token":41,"outOfBandRecord":[],"resultRecords":{"resultClass":"done","results":[]}}

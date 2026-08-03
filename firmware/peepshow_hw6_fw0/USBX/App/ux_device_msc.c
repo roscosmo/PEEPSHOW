@@ -23,6 +23,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "ps_storage_msc_bridge.h"
 
 /* USER CODE END Includes */
 
@@ -106,11 +107,12 @@ UINT USBD_STORAGE_Read(VOID *storage_instance, ULONG lun, UCHAR *data_pointer,
   /* USER CODE BEGIN USBD_STORAGE_Read */
   UX_PARAMETER_NOT_USED(storage_instance);
   UX_PARAMETER_NOT_USED(lun);
-  UX_PARAMETER_NOT_USED(data_pointer);
-  UX_PARAMETER_NOT_USED(number_blocks);
-  UX_PARAMETER_NOT_USED(lba);
-  UX_PARAMETER_NOT_USED(media_status);
-  /* USER CODE END USBD_STORAGE_Read */
+  status = PS_StorageMscBridge_Submit(PS_STORAGE_MSC_COMMAND_READ,
+                                      data_pointer,
+                                      (uint32_t)lba,
+                                      (uint32_t)number_blocks,
+                                      media_status);
+/* USER CODE END USBD_STORAGE_Read */
 
   return status;
 }
@@ -135,11 +137,12 @@ UINT USBD_STORAGE_Write(VOID *storage_instance, ULONG lun, UCHAR *data_pointer,
   /* USER CODE BEGIN USBD_STORAGE_Write */
   UX_PARAMETER_NOT_USED(storage_instance);
   UX_PARAMETER_NOT_USED(lun);
-  UX_PARAMETER_NOT_USED(data_pointer);
-  UX_PARAMETER_NOT_USED(number_blocks);
-  UX_PARAMETER_NOT_USED(lba);
-  UX_PARAMETER_NOT_USED(media_status);
-  /* USER CODE END USBD_STORAGE_Write */
+  status = PS_StorageMscBridge_Submit(PS_STORAGE_MSC_COMMAND_WRITE,
+                                      data_pointer,
+                                      (uint32_t)lba,
+                                      (uint32_t)number_blocks,
+                                      media_status);
+/* USER CODE END USBD_STORAGE_Write */
 
   return status;
 }
@@ -163,10 +166,12 @@ UINT USBD_STORAGE_Flush(VOID *storage_instance, ULONG lun, ULONG number_blocks,
   /* USER CODE BEGIN USBD_STORAGE_Flush */
   UX_PARAMETER_NOT_USED(storage_instance);
   UX_PARAMETER_NOT_USED(lun);
-  UX_PARAMETER_NOT_USED(number_blocks);
-  UX_PARAMETER_NOT_USED(lba);
-  UX_PARAMETER_NOT_USED(media_status);
-  /* USER CODE END USBD_STORAGE_Flush */
+  status = PS_StorageMscBridge_Submit(PS_STORAGE_MSC_COMMAND_FLUSH,
+                                      UX_NULL,
+                                      (uint32_t)lba,
+                                      (uint32_t)number_blocks,
+                                      media_status);
+/* USER CODE END USBD_STORAGE_Flush */
 
   return status;
 }
@@ -190,8 +195,12 @@ UINT USBD_STORAGE_Status(VOID *storage_instance, ULONG lun, ULONG media_id,
   UX_PARAMETER_NOT_USED(storage_instance);
   UX_PARAMETER_NOT_USED(lun);
   UX_PARAMETER_NOT_USED(media_id);
-  UX_PARAMETER_NOT_USED(media_status);
-  /* USER CODE END USBD_STORAGE_Status */
+  status = PS_StorageMscBridge_Submit(PS_STORAGE_MSC_COMMAND_STATUS,
+                                      UX_NULL,
+                                      0UL,
+                                      0UL,
+                                      media_status);
+/* USER CODE END USBD_STORAGE_Status */
 
   return status;
 }
@@ -236,8 +245,8 @@ ULONG USBD_STORAGE_GetMediaLastLba(VOID)
   ULONG LastLba = 0U;
 
   /* USER CODE BEGIN USBD_STORAGE_GetMediaLastLba */
-
-  /* USER CODE END USBD_STORAGE_GetMediaLastLba */
+  LastLba = PS_STORAGE_MSC_BRIDGE_LAST_LBA;
+/* USER CODE END USBD_STORAGE_GetMediaLastLba */
 
   return LastLba;
 }
@@ -253,8 +262,8 @@ ULONG USBD_STORAGE_GetMediaBlocklength(VOID)
   ULONG MediaBlockLen = 0U;
 
   /* USER CODE BEGIN USBD_STORAGE_GetMediaBlocklength */
-
-  /* USER CODE END USBD_STORAGE_GetMediaBlocklength */
+  MediaBlockLen = PS_STORAGE_MSC_BRIDGE_BLOCK_SIZE;
+/* USER CODE END USBD_STORAGE_GetMediaBlocklength */
 
   return MediaBlockLen;
 }

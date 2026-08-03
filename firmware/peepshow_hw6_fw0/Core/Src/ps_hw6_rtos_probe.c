@@ -5,6 +5,7 @@
 #include "main.h"
 #include "ps_hw6_owner_services.h"
 #include "ps_hw6_owner_state_machines.h"
+#include "ps_storage_msc_bridge.h"
 
 #define PS_HW6_RTOS_DEFAULT_STACK_BYTES  (1024UL)
 #define PS_HW6_RTOS_STORAGE_STACK_BYTES  (2048UL)
@@ -144,6 +145,7 @@ static void PS_HW6_RTOS_ResetProbe(void)
     ps_queue_storage[i] = TX_NULL;
   }
 
+
   for (i = 0U; i < PS_HW6_RTOS_EVENT_GROUP_COUNT; ++i)
   {
     g_ps_hw6_rtos_probe.event_create_status[i] = PS_HW6_RTOS_STATUS_NOT_RUN;
@@ -199,6 +201,22 @@ static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
   return 0UL;
 }
 
+static uint32_t PS_HW6_RTOS_StorageMscCommandIsValid(uint32_t owner_id,
+                                                      const ULONG *message)
+{
+  if ((owner_id != PS_HW6_RTOS_OWNER_STORAGE) ||
+      (message[0] != PS_HW6_RTOS_STORAGE_MSC_MAGIC) ||
+      (message[1] != PS_HW6_RTOS_OWNER_STORAGE) ||
+      (message[3] != PS_HW6_RTOS_STORAGE_MSC_TOKEN))
+  {
+    return 0UL;
+  }
+
+  return ((message[2] == PS_HW6_RTOS_STORAGE_MSC_READ) ||
+          (message[2] == PS_HW6_RTOS_STORAGE_MSC_WRITE) ||
+          (message[2] == PS_HW6_RTOS_STORAGE_MSC_FLUSH) ||
+          (message[2] == PS_HW6_RTOS_STORAGE_MSC_STATUS)) ? 1UL : 0UL;
+}
 static uint32_t PS_HW6_RTOS_CommandCycleIndex(const ULONG *message)
 {
   return (uint32_t)(message[3] ^ PS_HW6_RTOS_COMMAND_TOKEN);
@@ -523,6 +541,10 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         PS_HW6_RTOS_HandleOwnerCommand(
           owner_id, message[2], PS_HW6_RTOS_CommandCycleIndex(message));
       }
+      else if (PS_HW6_RTOS_StorageMscCommandIsValid(owner_id, message) != 0UL)
+      {
+        PS_HW6_OwnerStateMachines_HandleStorageMsc(message[2]);
+      }
       else
       {
         g_ps_hw6_rtos_probe.queue_message_error_count[owner_id]++;
@@ -609,6 +631,9 @@ UINT PS_HW6_RTOS_Init(TX_BYTE_POOL *pool)
     PS_HW6_RTOS_RecordFirstError(status, PS_HW6_RTOS_STEP_QUEUE_CREATE, i);
   }
 
+  status = PS_StorageMscBridge_Init(&ps_queues[PS_HW6_RTOS_OWNER_STORAGE]);
+  PS_HW6_RTOS_RecordFirstError(status, PS_HW6_RTOS_STEP_QUEUE_CREATE,
+                               PS_HW6_RTOS_OWNER_STORAGE);
   for (i = 0U; i < PS_HW6_RTOS_EVENT_GROUP_COUNT; ++i)
   {
     status = tx_event_flags_create(&ps_event_groups[i], ps_event_names[i]);

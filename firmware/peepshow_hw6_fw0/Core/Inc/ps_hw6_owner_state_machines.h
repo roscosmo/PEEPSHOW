@@ -394,6 +394,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Resume(uint32_t owner_id,
                                                     uint32_t cycle_index);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Quiesce(uint32_t owner_id,
                                                      uint32_t cycle_index);
+void PS_HW6_OwnerStateMachines_HandleStorageMsc(uint32_t command);
 void PS_HW6_OwnerStateMachines_RecordCycleCommand(
   uint32_t cycle_index,
   uint32_t direction,

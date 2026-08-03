@@ -386,6 +386,14 @@ printf "VDDUSB before/after        = %u / %u\n", $sm->usb_vddusb_enabled_before,
 printf "deinit attempted/status    = %u / 0x%x\n", $sm->usb_deinit_attempted, $sm->usb_deinit_status
 printf "USB parked                 = %u (expected 1)\n", $sm->usb_parked
 printf "USBX pool/init status      = 0x%x / 0x%x (baseline may be nonzero before MSC bridge)\n", g_ps_hw6_usbx_byte_pool_create_status, g_ps_hw6_usbx_device_init_status
+printf "USBX stage statuses       = alloc 0x%x system 0x%x devstack 0x%x class 0x%x appstack 0x%x thread 0x%x\n", g_ps_hw6_usbx_stack_alloc_status, g_ps_hw6_usbx_system_init_status, g_ps_hw6_usbx_device_stack_status, g_ps_hw6_usbx_class_register_status, g_ps_hw6_usbx_thread_stack_status, g_ps_hw6_usbx_thread_create_status
+printf "USBX desc lengths         = HS %u FS %u string %u lang %u\n", g_ps_hw6_usbx_framework_hs_length, g_ps_hw6_usbx_framework_fs_length, g_ps_hw6_usbx_string_framework_length, g_ps_hw6_usbx_language_framework_length
+printf "USBX MSC cfg/if/lba/blk   = %u / %u / %u / %u\n", g_ps_hw6_usbx_storage_configuration_number, g_ps_hw6_usbx_storage_interface_number, g_ps_hw6_usbx_storage_last_lba, g_ps_hw6_usbx_storage_block_length
+printf "MSC bridge api/init      = %u / %u\n", g_ps_storage_msc_bridge_probe.api_version, g_ps_storage_msc_bridge_probe.initialized
+printf "MSC bridge submit/done/timeout/busy = %u / %u / %u / %u\n", g_ps_storage_msc_bridge_probe.submit_count, g_ps_storage_msc_bridge_probe.completed_count, g_ps_storage_msc_bridge_probe.timeout_count, g_ps_storage_msc_bridge_probe.busy_count
+printf "MSC bridge rd/wr/fl/status = %u / %u / %u / %u\n", g_ps_storage_msc_bridge_probe.read_count, g_ps_storage_msc_bridge_probe.write_count, g_ps_storage_msc_bridge_probe.flush_count, g_ps_storage_msc_bridge_probe.status_count
+printf "MSC bridge last cmd/lba/blocks = 0x%x / %u / %u\n", g_ps_storage_msc_bridge_probe.last_command, g_ps_storage_msc_bridge_probe.last_lba, g_ps_storage_msc_bridge_probe.last_block_count
+printf "MSC bridge tx/owner/ux/media/ps = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", g_ps_storage_msc_bridge_probe.last_tx_status, g_ps_storage_msc_bridge_probe.last_owner_status, g_ps_storage_msc_bridge_probe.last_ux_status, g_ps_storage_msc_bridge_probe.last_media_status, g_ps_storage_msc_bridge_probe.last_ps_status
 
 printf "\n  NINA-B112 AT-controlled STOP baseline\n"
 printf "NRST before/released/after = %u / %u / %u\n", $sm->ble_nrst_before, $sm->ble_nrst_released, $sm->ble_nrst_after

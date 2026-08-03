@@ -26,6 +26,7 @@
 #include "ps_storage_events.h"
 #include "ps_storage_filex_levelx.h"
 #include "ps_storage_layout.h"
+#include "ps_storage_msc_bridge.h"
 #include "ps_storage_state.h"
 #include "tx_api.h"
 
@@ -57,6 +58,7 @@
 #define PS_HW6_NINA_WAKE_SETTLE_TICKS      (110UL)
 #define PS_HW6_NINA_RX_BYTE_TIMEOUT_MS     (10U)
 #define PS_HW6_NINA_TX_TIMEOUT_MS          (250U)
+#define PS_HW6_STORAGE_MSC_ERASE_SIZE (4096UL)
 #define PS_HW6_NINA_RX_BUFFER_SIZE         (128U)
 #define PS_HW6_NINA_REQUIRED_COMMAND_MASK  (0x79UL)
 #define PS_HW6_NINA_UNSUPPORTED_COMMAND_MASK (0x06UL)
@@ -276,6 +278,7 @@ static ps_storage_flash_block_test_result_t ps_flash_block_result;
 static ps_storage_layout_validation_t ps_storage_layout_result;
 static ps_storage_filex_levelx_smoke_result_t ps_storage_fxlx_result;
 static uint8_t ps_nina_rx_buffer[PS_HW6_NINA_RX_BUFFER_SIZE];
+static uint8_t ps_storage_msc_erase_cache[PS_HW6_STORAGE_MSC_ERASE_SIZE];
 
 static void PS_HW6_SM_RecordTrace(uint32_t state_machine_id,
                                    uint32_t from_state,
@@ -1189,6 +1192,173 @@ storage_done:
   return status;
 }
 
+static ps_status_t PS_HW6_SM_EnsureFlashAwake(void)
+{
+  ps_status_t status;
+
+  if (ps_flash_device.state == PS_DEV_AT25SL128A_STATE_DEEP_POWER_DOWN)
+  {
+    status = ps_dev_at25sl128a_release_from_deep_power_down(
+      &ps_flash_device,
+      &ps_flash_command_result);
+    PS_HW6_SM_UpdateFlashDriverProbe();
+    return status;
+  }
+  return PS_STATUS_OK;
+}
+
+static ps_status_t PS_HW6_SM_HandleStorageMscRead(
+  ps_storage_msc_request_t *request)
+{
+  uint32_t address;
+  uint32_t length;
+  ps_status_t status;
+
+  if ((request == NULL) || (request->data == NULL) ||
+      (request->block_count == 0UL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  address = PS_HW6_SM_FindStorageRegion(PS_STORAGE_REGION_USB_STAGING)->start +
+            (request->lba * PS_STORAGE_MSC_BRIDGE_BLOCK_SIZE);
+  length = request->block_count * PS_STORAGE_MSC_BRIDGE_BLOCK_SIZE;
+
+  status = PS_HW6_SM_EnsureFlashAwake();
+  if (status == PS_STATUS_OK)
+  {
+    status = ps_storage_flash_block_read(&ps_flash_block,
+                                         address,
+                                         request->data,
+                                         length);
+  }
+  PS_HW6_SM_UpdateFlashBlockProbe();
+  PS_HW6_SM_UpdateFlashDriverProbe();
+  g_ps_storage_msc_bridge_probe.read_count++;
+  return status;
+}
+
+static ps_status_t PS_HW6_SM_HandleStorageMscWrite(
+  ps_storage_msc_request_t *request)
+{
+  const ps_storage_region_t *region;
+  uint32_t write_start;
+  uint32_t write_length;
+  uint32_t write_end;
+  uint32_t erase_address;
+  ps_status_t status;
+
+  if ((request == NULL) || (request->data == NULL) ||
+      (request->block_count == 0UL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  region = PS_HW6_SM_FindStorageRegion(PS_STORAGE_REGION_USB_STAGING);
+  write_start = region->start +
+                (request->lba * PS_STORAGE_MSC_BRIDGE_BLOCK_SIZE);
+  write_length = request->block_count * PS_STORAGE_MSC_BRIDGE_BLOCK_SIZE;
+  write_end = write_start + write_length;
+
+  status = PS_HW6_SM_EnsureFlashAwake();
+  if (status != PS_STATUS_OK)
+  {
+    return status;
+  }
+
+  for (erase_address = write_start & ~(PS_HW6_STORAGE_MSC_ERASE_SIZE - 1UL);
+       erase_address < write_end;
+       erase_address += PS_HW6_STORAGE_MSC_ERASE_SIZE)
+  {
+    uint32_t source_offset;
+    uint32_t copy_offset;
+    uint32_t copy_length;
+    uint32_t block_index;
+
+    status = ps_storage_flash_block_read(&ps_flash_block,
+                                         erase_address,
+                                         ps_storage_msc_erase_cache,
+                                         PS_HW6_STORAGE_MSC_ERASE_SIZE);
+    if (status != PS_STATUS_OK)
+    {
+      break;
+    }
+
+    copy_offset = (write_start > erase_address) ?
+                  (write_start - erase_address) : 0UL;
+    source_offset = (erase_address > write_start) ?
+                    (erase_address - write_start) : 0UL;
+    copy_length = PS_HW6_STORAGE_MSC_ERASE_SIZE - copy_offset;
+    if (copy_length > (write_length - source_offset))
+    {
+      copy_length = write_length - source_offset;
+    }
+
+    (void)memcpy(&ps_storage_msc_erase_cache[copy_offset],
+                 &request->data[source_offset],
+                 copy_length);
+
+    block_index = erase_address / ps_flash_block.geometry.logical_block_size;
+    status = ps_storage_flash_block_erase(&ps_flash_block,
+                                          block_index,
+                                          NULL);
+    if (status != PS_STATUS_OK)
+    {
+      break;
+    }
+
+    status = ps_storage_flash_block_program(&ps_flash_block,
+                                            erase_address,
+                                            ps_storage_msc_erase_cache,
+                                            PS_HW6_STORAGE_MSC_ERASE_SIZE);
+    if (status != PS_STATUS_OK)
+    {
+      break;
+    }
+  }
+
+  PS_HW6_SM_UpdateFlashBlockProbe();
+  PS_HW6_SM_UpdateFlashDriverProbe();
+  g_ps_storage_msc_bridge_probe.write_count++;
+  return status;
+}
+
+void PS_HW6_OwnerStateMachines_HandleStorageMsc(uint32_t command)
+{
+  ps_storage_msc_request_t *request = PS_StorageMscBridge_CurrentRequest();
+  ps_status_t status = PS_STATUS_OK;
+
+  if ((request == NULL) ||
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] !=
+       STORAGE_FLASH_READY))
+  {
+    status = PS_STATUS_INVALID_STATE;
+  }
+  else if (command == PS_HW6_RTOS_STORAGE_MSC_READ)
+  {
+    status = PS_HW6_SM_HandleStorageMscRead(request);
+  }
+  else if (command == PS_HW6_RTOS_STORAGE_MSC_WRITE)
+  {
+    status = PS_HW6_SM_HandleStorageMscWrite(request);
+  }
+  else if (command == PS_HW6_RTOS_STORAGE_MSC_FLUSH)
+  {
+    g_ps_storage_msc_bridge_probe.flush_count++;
+  }
+  else if (command == PS_HW6_RTOS_STORAGE_MSC_STATUS)
+  {
+    g_ps_storage_msc_bridge_probe.status_count++;
+  }
+  else
+  {
+    status = PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  PS_StorageMscBridge_Complete((status == PS_STATUS_OK) ? UX_SUCCESS : UX_ERROR,
+                               (status == PS_STATUS_OK) ? 0UL : 1UL,
+                               (uint32_t)status);
+}
 static uint32_t PS_HW6_SM_BufferContains(const uint8_t *buffer,
                                          uint32_t length,
                                          const char *needle)
