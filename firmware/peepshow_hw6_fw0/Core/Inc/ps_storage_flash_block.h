@@ -72,6 +72,25 @@ ps_status_t ps_storage_flash_block_get_geometry(
   const ps_storage_flash_block_t *block,
   ps_storage_flash_block_geometry_t *geometry);
 
+ps_status_t ps_storage_flash_block_read(ps_storage_flash_block_t *block,
+                                        uint32_t address,
+                                        uint8_t *data,
+                                        uint32_t length);
+
+ps_status_t ps_storage_flash_block_program(ps_storage_flash_block_t *block,
+                                           uint32_t address,
+                                           const uint8_t *data,
+                                           uint32_t length);
+
+ps_status_t ps_storage_flash_block_erase(ps_storage_flash_block_t *block,
+                                         uint32_t block_index,
+                                         uint32_t *poll_count);
+
+ps_status_t ps_storage_flash_block_verify_erased(
+  ps_storage_flash_block_t *block,
+  uint32_t block_index,
+  uint32_t *mismatch_count);
+
 ps_status_t ps_storage_flash_block_run_scratch_test(
   ps_storage_flash_block_t *block,
   uint32_t block_index,

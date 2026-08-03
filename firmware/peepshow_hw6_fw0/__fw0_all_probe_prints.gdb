@@ -349,6 +349,35 @@ printf "layout total/erase/end     = %u / %u / 0x%08x\n", $sm->storage_layout_to
 printf "layout errors align/overlap/range = %u / %u / %u\n", $sm->storage_layout_alignment_errors, $sm->storage_layout_overlap_errors, $sm->storage_layout_range_errors
 printf "layout host/protected masks = 0x%x / 0x%x\n", $sm->storage_layout_host_exposed_mask, $sm->storage_layout_protected_mask
 printf "layout scratch index/start/len = %u / 0x%08x / %u\n", $sm->storage_layout_scratch_index, $sm->storage_layout_scratch_start, $sm->storage_layout_scratch_length
+printf "\n  FileX + LevelX local smoke test\n"
+printf "fxlx API/status/region      = %u / %u / %u\n", $sm->storage_fxlx_api_version, $sm->storage_fxlx_status, $sm->storage_fxlx_region_id
+printf "region start/len           = 0x%08x / %u\n", $sm->storage_fxlx_region_start, $sm->storage_fxlx_region_length
+printf "test start/len             = 0x%08x / %u\n", $sm->storage_fxlx_test_start, $sm->storage_fxlx_test_length
+printf "erase/sector/count         = %u / %u / %u\n", $sm->storage_fxlx_erase_block_size, $sm->storage_fxlx_sector_size, $sm->storage_fxlx_sector_count
+printf "LX init/open/close         = 0x%x / 0x%x / 0x%x\n", $sm->storage_fxlx_lx_initialize_status, $sm->storage_fxlx_lx_open_status, $sm->storage_fxlx_lx_close_status
+printf "FX format/open/flush/close = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->storage_fxlx_fx_format_status, $sm->storage_fxlx_fx_open_status, $sm->storage_fxlx_fx_flush_status, $sm->storage_fxlx_fx_close_status
+printf "file create/open/write     = 0x%x / 0x%x / 0x%x\n", $sm->storage_fxlx_file_create_status, $sm->storage_fxlx_file_open_status, $sm->storage_fxlx_file_write_status
+printf "file seek/read/close       = 0x%x / 0x%x / 0x%x\n", $sm->storage_fxlx_file_seek_status, $sm->storage_fxlx_file_read_status, $sm->storage_fxlx_file_close_status
+printf "bytes written/read/mismatch = %u / %u / %u\n", $sm->storage_fxlx_bytes_written, $sm->storage_fxlx_bytes_read, $sm->storage_fxlx_verify_mismatch_count
+printf "boot read first16          ="
+set $i = 0
+while $i < 16
+  printf " %02x", $sm->storage_fxlx_boot_read_first16[$i]
+  set $i = $i + 1
+end
+printf "\nboot bps/spc/res/fats      = %u / %u / %u / %u\n", $sm->storage_fxlx_boot_bytes_per_sector, $sm->storage_fxlx_boot_sectors_per_cluster, $sm->storage_fxlx_boot_reserved_sectors, $sm->storage_fxlx_boot_number_of_fats
+printf "boot root/total/spf/sig    = %u / %u / %u / 0x%04x\n", $sm->storage_fxlx_boot_root_entries, $sm->storage_fxlx_boot_total_sectors, $sm->storage_fxlx_boot_sectors_per_fat, $sm->storage_fxlx_boot_signature
+printf "file read first16          ="
+set $i = 0
+while $i < 16
+  printf " %02x", $sm->storage_fxlx_read_first16[$i]
+  set $i = $i + 1
+end
+printf "\nLX driver rd/wr/erase/verify = %u / %u / %u / %u\n", $sm->storage_fxlx_lx_driver_read_count, $sm->storage_fxlx_lx_driver_write_count, $sm->storage_fxlx_lx_driver_erase_count, $sm->storage_fxlx_lx_driver_verify_count
+printf "LX driver last status      = 0x%x\n", $sm->storage_fxlx_lx_driver_last_status
+printf "FX driver rd/wr/flush/abort = %u / %u / %u / %u\n", $sm->storage_fxlx_fx_driver_read_count, $sm->storage_fxlx_fx_driver_write_count, $sm->storage_fxlx_fx_driver_flush_count, $sm->storage_fxlx_fx_driver_abort_count
+printf "FX driver init/uninit/release = %u / %u / %u\n", $sm->storage_fxlx_fx_driver_init_count, $sm->storage_fxlx_fx_driver_uninit_count, $sm->storage_fxlx_fx_driver_release_count
+printf "FX driver last req/status  = 0x%x / 0x%x\n", $sm->storage_fxlx_fx_driver_last_request, $sm->storage_fxlx_fx_driver_last_status
 printf "\n  USB device detached baseline (owned by storage)\n"
 printf "VBUS present               = %u (expected 0)\n", $sm->usb_vbus_present
 printf "PCD state before/after     = 0x%x / 0x%x\n", $sm->usb_pcd_state_before, $sm->usb_pcd_state_after

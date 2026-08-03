@@ -209,6 +209,178 @@ ps_status_t ps_storage_flash_block_get_geometry(
   return PS_STATUS_OK;
 }
 
+ps_status_t ps_storage_flash_block_read(ps_storage_flash_block_t *block,
+                                        uint32_t address,
+                                        uint8_t *data,
+                                        uint32_t length)
+{
+  ps_dev_at25sl128a_io_result_t io_result;
+  ps_status_t status;
+
+  if ((block == NULL) || (data == NULL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  if (block->initialized == 0UL)
+  {
+    return PS_STATUS_NOT_INITIALIZED;
+  }
+  if ((length == 0UL) || (address > block->geometry.total_size) ||
+      (length > (block->geometry.total_size - address)))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  block->operation_count++;
+  status = ps_dev_at25sl128a_read(block->flash, address, data, length,
+                                  &io_result);
+  block->last_status = (uint32_t)status;
+  return status;
+}
+
+ps_status_t ps_storage_flash_block_program(ps_storage_flash_block_t *block,
+                                           uint32_t address,
+                                           const uint8_t *data,
+                                           uint32_t length)
+{
+  ps_dev_at25sl128a_io_result_t io_result;
+  ps_status_t status = PS_STATUS_OK;
+  uint32_t offset = 0UL;
+
+  if ((block == NULL) || (data == NULL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  if (block->initialized == 0UL)
+  {
+    return PS_STATUS_NOT_INITIALIZED;
+  }
+  if ((length == 0UL) || (address > block->geometry.total_size) ||
+      (length > (block->geometry.total_size - address)))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  block->operation_count++;
+  while (offset < length)
+  {
+    uint32_t page_offset = (address + offset) % block->geometry.program_page_size;
+    uint32_t chunk = block->geometry.program_page_size - page_offset;
+    if (chunk > (length - offset))
+    {
+      chunk = length - offset;
+    }
+
+    status = ps_dev_at25sl128a_program_page(block->flash,
+                                            address + offset,
+                                            &data[offset],
+                                            chunk,
+                                            &io_result);
+    if (status != PS_STATUS_OK)
+    {
+      break;
+    }
+    offset += chunk;
+  }
+
+  block->last_status = (uint32_t)status;
+  return status;
+}
+
+ps_status_t ps_storage_flash_block_erase(ps_storage_flash_block_t *block,
+                                         uint32_t block_index,
+                                         uint32_t *poll_count)
+{
+  ps_dev_at25sl128a_io_result_t io_result;
+  ps_status_t status;
+  uint32_t address;
+
+  if (block == NULL)
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  if (block->initialized == 0UL)
+  {
+    return PS_STATUS_NOT_INITIALIZED;
+  }
+  if (block_index >= block->geometry.logical_block_count)
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  block->operation_count++;
+  address = block_index * block->geometry.logical_block_size;
+  status = ps_dev_at25sl128a_erase_4k(block->flash, address, &io_result);
+  if (poll_count != NULL)
+  {
+    *poll_count = io_result.flash_poll_count;
+  }
+  block->last_status = (uint32_t)status;
+  return status;
+}
+
+ps_status_t ps_storage_flash_block_verify_erased(
+  ps_storage_flash_block_t *block,
+  uint32_t block_index,
+  uint32_t *mismatch_count)
+{
+  ps_dev_at25sl128a_io_result_t io_result;
+  ps_status_t status = PS_STATUS_OK;
+  uint32_t address;
+  uint32_t offset;
+  uint32_t mismatch_total = 0UL;
+
+  if (block == NULL)
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  if (block->initialized == 0UL)
+  {
+    return PS_STATUS_NOT_INITIALIZED;
+  }
+  if (block_index >= block->geometry.logical_block_count)
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  block->operation_count++;
+  address = block_index * block->geometry.logical_block_size;
+  for (offset = 0UL; offset < block->geometry.logical_block_size;
+       offset += PS_DEV_AT25SL128A_PAGE_SIZE)
+  {
+    uint32_t chunk = block->geometry.logical_block_size - offset;
+    if (chunk > PS_DEV_AT25SL128A_PAGE_SIZE)
+    {
+      chunk = PS_DEV_AT25SL128A_PAGE_SIZE;
+    }
+    (void)memset(ps_storage_flash_block_rx, 0x00,
+                 PS_DEV_AT25SL128A_PAGE_SIZE);
+    status = ps_dev_at25sl128a_read(block->flash,
+                                    address + offset,
+                                    ps_storage_flash_block_rx,
+                                    chunk,
+                                    &io_result);
+    if (status != PS_STATUS_OK)
+    {
+      break;
+    }
+    mismatch_total += PS_StorageFlashBlock_CountBlankMismatches(
+      ps_storage_flash_block_rx,
+      chunk);
+  }
+
+  if ((status == PS_STATUS_OK) && (mismatch_total != 0UL))
+  {
+    status = PS_STATUS_VERIFY_FAILED;
+  }
+  if (mismatch_count != NULL)
+  {
+    *mismatch_count = mismatch_total;
+  }
+  block->last_status = (uint32_t)status;
+  return status;
+}
+
 ps_status_t ps_storage_flash_block_run_scratch_test(
   ps_storage_flash_block_t *block,
   uint32_t block_index,

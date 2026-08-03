@@ -24,6 +24,7 @@
 #include "ps_sensor_state.h"
 #include "ps_storage_flash_block.h"
 #include "ps_storage_events.h"
+#include "ps_storage_filex_levelx.h"
 #include "ps_storage_layout.h"
 #include "ps_storage_state.h"
 #include "tx_api.h"
@@ -273,6 +274,7 @@ static ps_dev_at25sl128a_command_result_t ps_flash_command_result;
 static ps_dev_at25sl128a_scratch_result_t ps_flash_scratch_result;
 static ps_storage_flash_block_test_result_t ps_flash_block_result;
 static ps_storage_layout_validation_t ps_storage_layout_result;
+static ps_storage_filex_levelx_smoke_result_t ps_storage_fxlx_result;
 static uint8_t ps_nina_rx_buffer[PS_HW6_NINA_RX_BUFFER_SIZE];
 
 static void PS_HW6_SM_RecordTrace(uint32_t state_machine_id,
@@ -640,6 +642,129 @@ static void PS_HW6_SM_RecordStorageLayoutResult(
     result->scratch_start;
   g_ps_hw6_owner_sm_probe.storage_layout_scratch_length =
     result->scratch_length;
+}
+
+static void PS_HW6_SM_RecordStorageFxLxResult(
+  const ps_storage_filex_levelx_smoke_result_t *result)
+{
+  uint32_t index;
+
+  if (result == NULL)
+  {
+    return;
+  }
+
+  g_ps_hw6_owner_sm_probe.storage_fxlx_api_version = result->api_version;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_status = (uint32_t)result->status;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_region_id = result->region_id;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_region_start = result->region_start;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_region_length = result->region_length;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_test_start = result->test_start;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_test_length = result->test_length;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_erase_block_size =
+    result->erase_block_size;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_sector_size =
+    result->logical_sector_size;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_sector_count =
+    result->logical_sector_count;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_lx_initialize_status =
+    result->lx_initialize_status;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_lx_open_status =
+    result->lx_open_status;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_format_status =
+    result->fx_format_status;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_open_status =
+    result->fx_open_status;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_file_create_status =
+    result->file_create_status;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_file_open_status =
+    result->file_open_status;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_file_write_status =
+    result->file_write_status;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_file_seek_status =
+    result->file_seek_status;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_file_read_status =
+    result->file_read_status;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_file_close_status =
+    result->file_close_status;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_flush_status =
+    result->fx_flush_status;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_close_status =
+    result->fx_close_status;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_lx_close_status =
+    result->lx_close_status;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_bytes_written = result->bytes_written;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_bytes_read = result->bytes_read;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_verify_mismatch_count =
+    result->verify_mismatch_count;
+  for (index = 0UL; index < 16UL; ++index)
+  {
+    g_ps_hw6_owner_sm_probe.storage_fxlx_boot_read_first16[index] =
+      result->boot_read_first16[index];
+    g_ps_hw6_owner_sm_probe.storage_fxlx_read_first16[index] =
+      result->read_first16[index];
+  }
+  g_ps_hw6_owner_sm_probe.storage_fxlx_boot_bytes_per_sector =
+    result->boot_bytes_per_sector;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_boot_sectors_per_cluster =
+    result->boot_sectors_per_cluster;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_boot_reserved_sectors =
+    result->boot_reserved_sectors;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_boot_number_of_fats =
+    result->boot_number_of_fats;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_boot_root_entries =
+    result->boot_root_entries;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_boot_total_sectors =
+    result->boot_total_sectors;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_boot_sectors_per_fat =
+    result->boot_sectors_per_fat;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_boot_signature =
+    result->boot_signature;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_lx_driver_read_count =
+    result->lx_driver_read_count;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_lx_driver_write_count =
+    result->lx_driver_write_count;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_lx_driver_erase_count =
+    result->lx_driver_erase_count;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_lx_driver_verify_count =
+    result->lx_driver_verify_count;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_lx_driver_last_status =
+    result->lx_driver_last_status;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_driver_read_count =
+    result->fx_driver_read_count;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_driver_write_count =
+    result->fx_driver_write_count;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_driver_flush_count =
+    result->fx_driver_flush_count;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_driver_abort_count =
+    result->fx_driver_abort_count;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_driver_init_count =
+    result->fx_driver_init_count;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_driver_uninit_count =
+    result->fx_driver_uninit_count;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_driver_release_count =
+    result->fx_driver_release_count;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_driver_last_request =
+    result->fx_driver_last_request;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_driver_last_status =
+    result->fx_driver_last_status;
+}
+
+static const ps_storage_region_t *PS_HW6_SM_FindStorageRegion(
+  ps_storage_region_id_t id)
+{
+  uint32_t count;
+  uint32_t index;
+  const ps_storage_region_t *regions = ps_storage_layout_regions(&count);
+
+  for (index = 0UL; index < count; ++index)
+  {
+    if (regions[index].id == id)
+    {
+      return &regions[index];
+    }
+  }
+  return NULL;
 }
 
 static HAL_StatusTypeDef PS_HW6_SM_StabilizePower(void)
@@ -1011,6 +1136,24 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeStorage(void)
                               STORAGE_EV_FAULT, status);
     goto storage_done;
   }
+
+  driver_status = ps_storage_filex_levelx_run_smoke(
+    &ps_flash_block,
+    PS_HW6_SM_FindStorageRegion(PS_STORAGE_REGION_USB_STAGING),
+    &ps_storage_fxlx_result);
+  status = PS_HW6_SM_StatusToHal(driver_status);
+  PS_HW6_SM_RecordStorageFxLxResult(&ps_storage_fxlx_result);
+  PS_HW6_SM_UpdateFlashBlockProbe();
+  PS_HW6_SM_UpdateFlashDriverProbe();
+  if (status != HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_FAULT, status);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_FAULT, status);
+    goto storage_done;
+  }
+
   driver_status = ps_dev_at25sl128a_enter_deep_power_down(
     &ps_flash_device,
     &ps_flash_command_result);
@@ -1951,6 +2094,34 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.flash_block_cleanup_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.flash_block_cleanup_read_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_lx_initialize_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_lx_open_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_format_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_open_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_file_create_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_file_open_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_file_write_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_file_seek_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_file_read_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_file_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_flush_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_fx_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_fxlx_lx_close_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.flash_scratch_erase_write_enable_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (12UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (13UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -289,6 +289,56 @@ typedef struct
   uint32_t storage_layout_scratch_index;
   uint32_t storage_layout_scratch_start;
   uint32_t storage_layout_scratch_length;
+  uint32_t storage_fxlx_api_version;
+  uint32_t storage_fxlx_status;
+  uint32_t storage_fxlx_region_id;
+  uint32_t storage_fxlx_region_start;
+  uint32_t storage_fxlx_region_length;
+  uint32_t storage_fxlx_test_start;
+  uint32_t storage_fxlx_test_length;
+  uint32_t storage_fxlx_erase_block_size;
+  uint32_t storage_fxlx_sector_size;
+  uint32_t storage_fxlx_sector_count;
+  uint32_t storage_fxlx_lx_initialize_status;
+  uint32_t storage_fxlx_lx_open_status;
+  uint32_t storage_fxlx_fx_format_status;
+  uint32_t storage_fxlx_fx_open_status;
+  uint32_t storage_fxlx_file_create_status;
+  uint32_t storage_fxlx_file_open_status;
+  uint32_t storage_fxlx_file_write_status;
+  uint32_t storage_fxlx_file_seek_status;
+  uint32_t storage_fxlx_file_read_status;
+  uint32_t storage_fxlx_file_close_status;
+  uint32_t storage_fxlx_fx_flush_status;
+  uint32_t storage_fxlx_fx_close_status;
+  uint32_t storage_fxlx_lx_close_status;
+  uint32_t storage_fxlx_bytes_written;
+  uint32_t storage_fxlx_bytes_read;
+  uint32_t storage_fxlx_verify_mismatch_count;
+  uint32_t storage_fxlx_boot_read_first16[16];
+  uint32_t storage_fxlx_boot_bytes_per_sector;
+  uint32_t storage_fxlx_boot_sectors_per_cluster;
+  uint32_t storage_fxlx_boot_reserved_sectors;
+  uint32_t storage_fxlx_boot_number_of_fats;
+  uint32_t storage_fxlx_boot_root_entries;
+  uint32_t storage_fxlx_boot_total_sectors;
+  uint32_t storage_fxlx_boot_sectors_per_fat;
+  uint32_t storage_fxlx_boot_signature;
+  uint32_t storage_fxlx_read_first16[16];
+  uint32_t storage_fxlx_lx_driver_read_count;
+  uint32_t storage_fxlx_lx_driver_write_count;
+  uint32_t storage_fxlx_lx_driver_erase_count;
+  uint32_t storage_fxlx_lx_driver_verify_count;
+  uint32_t storage_fxlx_lx_driver_last_status;
+  uint32_t storage_fxlx_fx_driver_read_count;
+  uint32_t storage_fxlx_fx_driver_write_count;
+  uint32_t storage_fxlx_fx_driver_flush_count;
+  uint32_t storage_fxlx_fx_driver_abort_count;
+  uint32_t storage_fxlx_fx_driver_init_count;
+  uint32_t storage_fxlx_fx_driver_uninit_count;
+  uint32_t storage_fxlx_fx_driver_release_count;
+  uint32_t storage_fxlx_fx_driver_last_request;
+  uint32_t storage_fxlx_fx_driver_last_status;
   uint32_t flash_ospi_state_after;
   uint32_t flash_ospi_error_after;
   uint32_t flash_cycle_release_status[PS_HW6_OWNER_SM_CYCLE_COUNT];
