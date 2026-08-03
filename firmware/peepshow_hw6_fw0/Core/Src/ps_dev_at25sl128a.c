@@ -3,6 +3,9 @@
 #include <string.h>
 
 #define PS_DEV_AT25SL128A_CMD_WRITE_ENABLE       (0x06U)
+#define PS_DEV_AT25SL128A_CMD_WRITE_DISABLE      (0x04U)
+#define PS_DEV_AT25SL128A_CMD_ENABLE_RESET       (0x66U)
+#define PS_DEV_AT25SL128A_CMD_RESET              (0x99U)
 #define PS_DEV_AT25SL128A_CMD_READ_STATUS1       (0x05U)
 #define PS_DEV_AT25SL128A_CMD_PAGE_PROGRAM       (0x02U)
 #define PS_DEV_AT25SL128A_CMD_READ_DATA          (0x03U)
@@ -12,8 +15,10 @@
 #define PS_DEV_AT25SL128A_CMD_DEEP_POWER_DOWN    (0xB9U)
 
 #define PS_DEV_AT25SL128A_STATUS1_BUSY_MASK      (0x01U)
+#define PS_DEV_AT25SL128A_STATUS1_WEL_MASK       (0x02U)
 #define PS_DEV_AT25SL128A_WAIT_MAX_POLLS         (20000UL)
 #define PS_DEV_AT25SL128A_DMA_WAIT_MAX_POLLS     (20000UL)
+#define PS_DEV_AT25SL128A_ACCEPT_MAX_POLLS       (1000UL)
 #define PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS    (1UL)
 #define PS_DEV_AT25SL128A_SCRATCH_PATTERN_BASE   (0xA5U)
 
@@ -156,6 +161,36 @@ static ps_status_t ps_dev_at25sl128a_wait_while_busy(
     }
   }
   return PS_STATUS_TIMEOUT;
+}
+
+static ps_status_t ps_dev_at25sl128a_wait_write_acceptance(
+  ps_dev_at25sl128a_t *device,
+  uint8_t *accepted_status1)
+{
+  HAL_StatusTypeDef hal_status;
+  uint8_t status1 = 0U;
+  uint32_t index;
+
+  if ((device == NULL) || (accepted_status1 == NULL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  for (index = 0UL; index < PS_DEV_AT25SL128A_ACCEPT_MAX_POLLS; ++index)
+  {
+    hal_status = ps_dev_at25sl128a_read_status1(device, &status1);
+    if (hal_status != HAL_OK)
+    {
+      return ps_dev_at25sl128a_hal_status(hal_status);
+    }
+    *accepted_status1 = status1;
+    if (((status1 & PS_DEV_AT25SL128A_STATUS1_BUSY_MASK) != 0U) ||
+        ((status1 & PS_DEV_AT25SL128A_STATUS1_WEL_MASK) == 0U))
+    {
+      return PS_STATUS_OK;
+    }
+  }
+  return PS_STATUS_VERIFY_FAILED;
 }
 
 static HAL_StatusTypeDef ps_dev_at25sl128a_erase_sector(
@@ -365,6 +400,11 @@ ps_status_t ps_dev_at25sl128a_init(ps_dev_at25sl128a_t *device,
     return PS_STATUS_INVALID_ARGUMENT;
   }
 
+  HAL_StatusTypeDef hal_status;
+  ps_status_t status;
+  uint32_t wait_status;
+  uint32_t poll_count;
+
   (void)memset(device, 0, sizeof(*device));
   device->api_version = PS_DEV_AT25SL128A_API_VERSION;
   device->ospi = ospi;
@@ -374,6 +414,35 @@ ps_status_t ps_dev_at25sl128a_init(ps_dev_at25sl128a_t *device,
   device->state = PS_DEV_AT25SL128A_STATE_READY;
   device->last_status = PS_STATUS_OK;
   device->initialized = 1U;
+
+  hal_status = ps_dev_at25sl128a_send_command(
+    device,
+    PS_DEV_AT25SL128A_CMD_ENABLE_RESET);
+  if (hal_status != HAL_OK)
+  {
+    status = ps_dev_at25sl128a_hal_status(hal_status);
+    (void)ps_dev_at25sl128a_finish(device, status);
+    return status;
+  }
+  hal_status = ps_dev_at25sl128a_send_command(
+    device,
+    PS_DEV_AT25SL128A_CMD_RESET);
+  if (hal_status != HAL_OK)
+  {
+    status = ps_dev_at25sl128a_hal_status(hal_status);
+    (void)ps_dev_at25sl128a_finish(device, status);
+    return status;
+  }
+  status = ps_dev_at25sl128a_wait_while_busy(
+    device,
+    &wait_status,
+    &poll_count);
+  if (status != PS_STATUS_OK)
+  {
+    (void)ps_dev_at25sl128a_finish(device, status);
+    return status;
+  }
+
   return PS_STATUS_OK;
 }
 
@@ -589,6 +658,14 @@ ps_status_t ps_dev_at25sl128a_erase_4k(
     ps_dev_at25sl128a_finish_io_result(device, result, status, NULL);
     return result->status;
   }
+
+  status = ps_dev_at25sl128a_wait_write_acceptance(device, &status1);
+  if (status != PS_STATUS_OK)
+  {
+    result->flash_wait_status = (uint32_t)status;
+    ps_dev_at25sl128a_finish_io_result(device, result, status, NULL);
+    return result->status;
+  }
   HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
 
   status = ps_dev_at25sl128a_wait_while_busy(
@@ -737,6 +814,14 @@ ps_status_t ps_dev_at25sl128a_program_page(
     ps_dev_at25sl128a_finish_io_result(device, result, status, NULL);
     return result->status;
   }
+
+  status = ps_dev_at25sl128a_wait_write_acceptance(device, &status1);
+  if (status != PS_STATUS_OK)
+  {
+    result->flash_wait_status = (uint32_t)status;
+    ps_dev_at25sl128a_finish_io_result(device, result, status, NULL);
+    return result->status;
+  }
   HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
 
   status = ps_dev_at25sl128a_wait_while_busy(
@@ -842,8 +927,12 @@ ps_status_t ps_dev_at25sl128a_run_scratch_test(
   result->address = address;
   result->length = PS_DEV_AT25SL128A_PAGE_SIZE;
   result->status_read_hal_status = (uint32_t)HAL_ERROR;
+  result->write_disable_hal_status = (uint32_t)HAL_ERROR;
   result->erase_write_enable_hal_status = (uint32_t)HAL_ERROR;
   result->erase_hal_status = (uint32_t)HAL_ERROR;
+  result->erase_retry_write_disable_status = (uint32_t)HAL_ERROR;
+  result->erase_retry_write_enable_status = (uint32_t)HAL_ERROR;
+  result->erase_retry_hal_status = (uint32_t)HAL_ERROR;
   result->erase_wait_status = (uint32_t)PS_STATUS_NOT_INITIALIZED;
   result->erase_blank_read_hal_status = (uint32_t)HAL_ERROR;
   result->program_write_enable_hal_status = (uint32_t)HAL_ERROR;
@@ -882,6 +971,32 @@ ps_status_t ps_dev_at25sl128a_run_scratch_test(
     goto scratch_done;
   }
 
+  if ((status1 & PS_DEV_AT25SL128A_STATUS1_WEL_MASK) != 0U)
+  {
+    hal_status = ps_dev_at25sl128a_send_command(
+      device,
+      PS_DEV_AT25SL128A_CMD_WRITE_DISABLE);
+    result->write_disable_hal_status = (uint32_t)hal_status;
+    if (hal_status != HAL_OK)
+    {
+      status = ps_dev_at25sl128a_hal_status(hal_status);
+      goto scratch_done;
+    }
+    HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
+    hal_status = ps_dev_at25sl128a_read_status1(device, &status1);
+    result->write_disable_status1 = status1;
+    if (hal_status != HAL_OK)
+    {
+      status = ps_dev_at25sl128a_hal_status(hal_status);
+      goto scratch_done;
+    }
+    if ((status1 & PS_DEV_AT25SL128A_STATUS1_WEL_MASK) != 0U)
+    {
+      status = PS_STATUS_VERIFY_FAILED;
+      goto scratch_done;
+    }
+  }
+
   hal_status = ps_dev_at25sl128a_send_command(
     device,
     PS_DEV_AT25SL128A_CMD_WRITE_ENABLE);
@@ -893,6 +1008,11 @@ ps_status_t ps_dev_at25sl128a_run_scratch_test(
   }
   (void)ps_dev_at25sl128a_read_status1(device, &status1);
   result->erase_write_enable_status1 = status1;
+  if ((status1 & PS_DEV_AT25SL128A_STATUS1_WEL_MASK) == 0U)
+  {
+    status = PS_STATUS_VERIFY_FAILED;
+    goto scratch_done;
+  }
   HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
 
   hal_status = ps_dev_at25sl128a_erase_sector(device, address);
@@ -902,8 +1022,72 @@ ps_status_t ps_dev_at25sl128a_run_scratch_test(
     status = ps_dev_at25sl128a_hal_status(hal_status);
     goto scratch_done;
   }
-  (void)ps_dev_at25sl128a_read_status1(device, &status1);
+  status = ps_dev_at25sl128a_wait_write_acceptance(device, &status1);
   result->erase_command_status1 = status1;
+  if (status == PS_STATUS_VERIFY_FAILED)
+  {
+    result->erase_retry_count = 1UL;
+    hal_status = ps_dev_at25sl128a_send_command(
+      device,
+      PS_DEV_AT25SL128A_CMD_WRITE_DISABLE);
+    result->erase_retry_write_disable_status = (uint32_t)hal_status;
+    if (hal_status != HAL_OK)
+    {
+      status = ps_dev_at25sl128a_hal_status(hal_status);
+      goto scratch_done;
+    }
+    HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
+    hal_status = ps_dev_at25sl128a_read_status1(device, &status1);
+    result->erase_retry_write_disable_status1 = status1;
+    if (hal_status != HAL_OK)
+    {
+      status = ps_dev_at25sl128a_hal_status(hal_status);
+      goto scratch_done;
+    }
+    if ((status1 & PS_DEV_AT25SL128A_STATUS1_WEL_MASK) != 0U)
+    {
+      status = PS_STATUS_VERIFY_FAILED;
+      goto scratch_done;
+    }
+    hal_status = ps_dev_at25sl128a_send_command(
+      device,
+      PS_DEV_AT25SL128A_CMD_WRITE_ENABLE);
+    result->erase_retry_write_enable_status = (uint32_t)hal_status;
+    if (hal_status != HAL_OK)
+    {
+      status = ps_dev_at25sl128a_hal_status(hal_status);
+      goto scratch_done;
+    }
+    hal_status = ps_dev_at25sl128a_read_status1(device, &status1);
+    result->erase_retry_write_enable_status1 = status1;
+    if (hal_status != HAL_OK)
+    {
+      status = ps_dev_at25sl128a_hal_status(hal_status);
+      goto scratch_done;
+    }
+    if ((status1 & PS_DEV_AT25SL128A_STATUS1_WEL_MASK) == 0U)
+    {
+      status = PS_STATUS_VERIFY_FAILED;
+      goto scratch_done;
+    }
+    hal_status = ps_dev_at25sl128a_erase_sector(device, address);
+    result->erase_retry_hal_status = (uint32_t)hal_status;
+    if (hal_status != HAL_OK)
+    {
+      status = ps_dev_at25sl128a_hal_status(hal_status);
+      goto scratch_done;
+    }
+    status = ps_dev_at25sl128a_wait_write_acceptance(device, &status1);
+    result->erase_retry_status1 = status1;
+    if (status != PS_STATUS_OK)
+    {
+      goto scratch_done;
+    }
+  }
+  else if (status != PS_STATUS_OK)
+  {
+    goto scratch_done;
+  }
   HAL_Delay(PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS);
 
   cleanup_required = 1UL;

@@ -60,6 +60,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/ps_hw6_peripheral_probe.c
     Core/Src/ps_hw6_rtos_probe.c
     Core/Src/ps_storage_flash_block.c
+    Core/Src/ps_storage_layout.c
     Drivers/Components/lis2dux12/lis2dux12_reg.c
 )
 

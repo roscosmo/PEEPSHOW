@@ -24,6 +24,7 @@
 #include "ps_sensor_state.h"
 #include "ps_storage_flash_block.h"
 #include "ps_storage_events.h"
+#include "ps_storage_layout.h"
 #include "ps_storage_state.h"
 #include "tx_api.h"
 
@@ -271,6 +272,7 @@ static ps_dev_at25sl128a_jedec_result_t ps_flash_jedec_result;
 static ps_dev_at25sl128a_command_result_t ps_flash_command_result;
 static ps_dev_at25sl128a_scratch_result_t ps_flash_scratch_result;
 static ps_storage_flash_block_test_result_t ps_flash_block_result;
+static ps_storage_layout_validation_t ps_storage_layout_result;
 static uint8_t ps_nina_rx_buffer[PS_HW6_NINA_RX_BUFFER_SIZE];
 
 static void PS_HW6_SM_RecordTrace(uint32_t state_machine_id,
@@ -422,6 +424,10 @@ static void PS_HW6_SM_RecordFlashScratchResult(
     result->length;
   g_ps_hw6_owner_sm_probe.flash_scratch_status1_before =
     result->status1_before;
+  g_ps_hw6_owner_sm_probe.flash_scratch_write_disable_status =
+    result->write_disable_hal_status;
+  g_ps_hw6_owner_sm_probe.flash_scratch_write_disable_status1 =
+    result->write_disable_status1;
   g_ps_hw6_owner_sm_probe.flash_scratch_erase_write_enable_status =
     result->erase_write_enable_hal_status;
   g_ps_hw6_owner_sm_probe.flash_scratch_erase_write_enable_status1 =
@@ -430,6 +436,20 @@ static void PS_HW6_SM_RecordFlashScratchResult(
     result->erase_hal_status;
   g_ps_hw6_owner_sm_probe.flash_scratch_erase_command_status1 =
     result->erase_command_status1;
+  g_ps_hw6_owner_sm_probe.flash_scratch_erase_retry_count =
+    result->erase_retry_count;
+  g_ps_hw6_owner_sm_probe.flash_scratch_erase_retry_write_disable_status =
+    result->erase_retry_write_disable_status;
+  g_ps_hw6_owner_sm_probe.flash_scratch_erase_retry_write_disable_status1 =
+    result->erase_retry_write_disable_status1;
+  g_ps_hw6_owner_sm_probe.flash_scratch_erase_retry_write_enable_status =
+    result->erase_retry_write_enable_status;
+  g_ps_hw6_owner_sm_probe.flash_scratch_erase_retry_write_enable_status1 =
+    result->erase_retry_write_enable_status1;
+  g_ps_hw6_owner_sm_probe.flash_scratch_erase_retry_status =
+    result->erase_retry_hal_status;
+  g_ps_hw6_owner_sm_probe.flash_scratch_erase_retry_status1 =
+    result->erase_retry_status1;
   g_ps_hw6_owner_sm_probe.flash_scratch_erase_wait_status =
     result->erase_wait_status;
   g_ps_hw6_owner_sm_probe.flash_scratch_erase_poll_count =
@@ -583,6 +603,45 @@ static void PS_HW6_SM_RecordFlashBlockResult(
   g_ps_hw6_owner_sm_probe.flash_block_ospi_error_after =
     result->ospi_error_after;
 }
+
+static void PS_HW6_SM_RecordStorageLayoutResult(
+  const ps_storage_layout_validation_t *result)
+{
+  if (result == NULL)
+  {
+    return;
+  }
+
+  g_ps_hw6_owner_sm_probe.storage_layout_api_version =
+    result->api_version;
+  g_ps_hw6_owner_sm_probe.storage_layout_validation_status =
+    (uint32_t)result->status;
+  g_ps_hw6_owner_sm_probe.storage_layout_region_count =
+    result->region_count;
+  g_ps_hw6_owner_sm_probe.storage_layout_total_size =
+    result->total_size;
+  g_ps_hw6_owner_sm_probe.storage_layout_erase_size =
+    result->erase_block_size;
+  g_ps_hw6_owner_sm_probe.storage_layout_end =
+    result->layout_end;
+  g_ps_hw6_owner_sm_probe.storage_layout_alignment_errors =
+    result->alignment_error_count;
+  g_ps_hw6_owner_sm_probe.storage_layout_overlap_errors =
+    result->overlap_error_count;
+  g_ps_hw6_owner_sm_probe.storage_layout_range_errors =
+    result->range_error_count;
+  g_ps_hw6_owner_sm_probe.storage_layout_host_exposed_mask =
+    result->host_exposed_mask;
+  g_ps_hw6_owner_sm_probe.storage_layout_protected_mask =
+    result->protected_mask;
+  g_ps_hw6_owner_sm_probe.storage_layout_scratch_index =
+    result->scratch_region_index;
+  g_ps_hw6_owner_sm_probe.storage_layout_scratch_start =
+    result->scratch_start;
+  g_ps_hw6_owner_sm_probe.storage_layout_scratch_length =
+    result->scratch_length;
+}
+
 static HAL_StatusTypeDef PS_HW6_SM_StabilizePower(void)
 {
   HAL_StatusTypeDef status;
@@ -930,6 +989,20 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeStorage(void)
   PS_HW6_SM_RecordFlashBlockResult(&ps_flash_block_result);
   PS_HW6_SM_UpdateFlashBlockProbe();
   PS_HW6_SM_UpdateFlashDriverProbe();
+  if (status != HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_FAULT, status);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_FAULT, status);
+    goto storage_done;
+  }
+
+  driver_status = ps_storage_layout_validate(
+    &ps_flash_block.geometry,
+    &ps_storage_layout_result);
+  status = PS_HW6_SM_StatusToHal(driver_status);
+  PS_HW6_SM_RecordStorageLayoutResult(&ps_storage_layout_result);
   if (status != HAL_OK)
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (11UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (12UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -191,10 +191,19 @@ typedef struct
   uint32_t flash_scratch_address;
   uint32_t flash_scratch_length;
   uint32_t flash_scratch_status1_before;
+  uint32_t flash_scratch_write_disable_status;
+  uint32_t flash_scratch_write_disable_status1;
   uint32_t flash_scratch_erase_write_enable_status;
   uint32_t flash_scratch_erase_write_enable_status1;
   uint32_t flash_scratch_erase_status;
   uint32_t flash_scratch_erase_command_status1;
+  uint32_t flash_scratch_erase_retry_count;
+  uint32_t flash_scratch_erase_retry_write_disable_status;
+  uint32_t flash_scratch_erase_retry_write_disable_status1;
+  uint32_t flash_scratch_erase_retry_write_enable_status;
+  uint32_t flash_scratch_erase_retry_write_enable_status1;
+  uint32_t flash_scratch_erase_retry_status;
+  uint32_t flash_scratch_erase_retry_status1;
   uint32_t flash_scratch_erase_wait_status;
   uint32_t flash_scratch_erase_poll_count;
   uint32_t flash_scratch_erase_blank_read_status;
@@ -266,6 +275,20 @@ typedef struct
   uint32_t flash_block_cleanup_first16[16];
   uint32_t flash_block_ospi_state_after;
   uint32_t flash_block_ospi_error_after;
+  uint32_t storage_layout_api_version;
+  uint32_t storage_layout_validation_status;
+  uint32_t storage_layout_region_count;
+  uint32_t storage_layout_total_size;
+  uint32_t storage_layout_erase_size;
+  uint32_t storage_layout_end;
+  uint32_t storage_layout_alignment_errors;
+  uint32_t storage_layout_overlap_errors;
+  uint32_t storage_layout_range_errors;
+  uint32_t storage_layout_host_exposed_mask;
+  uint32_t storage_layout_protected_mask;
+  uint32_t storage_layout_scratch_index;
+  uint32_t storage_layout_scratch_start;
+  uint32_t storage_layout_scratch_length;
   uint32_t flash_ospi_state_after;
   uint32_t flash_ospi_error_after;
   uint32_t flash_cycle_release_status[PS_HW6_OWNER_SM_CYCLE_COUNT];

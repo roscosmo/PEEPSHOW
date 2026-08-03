@@ -270,8 +270,10 @@ printf "JEDEC status/ID/match      = 0x%x / %02x %02x %02x / %u\n", $sm->flash_j
 printf "deep-power-down status     = 0x%x\n", $sm->flash_deep_power_down_status
 printf "scratch status/address/length = %u / 0x%08x / %u\n", $sm->flash_scratch_status, $sm->flash_scratch_address, $sm->flash_scratch_length
 printf "scratch status1 before        = 0x%02x\n", $sm->flash_scratch_status1_before
+printf "scratch WRDI/status1       = 0x%x / 0x%02x\n", $sm->flash_scratch_write_disable_status, $sm->flash_scratch_write_disable_status1
 printf "erase WREN/cmd/wait/polls     = 0x%x / 0x%x / %u / %u\n", $sm->flash_scratch_erase_write_enable_status, $sm->flash_scratch_erase_status, $sm->flash_scratch_erase_wait_status, $sm->flash_scratch_erase_poll_count
 printf "erase status1 after WREN/cmd  = 0x%02x / 0x%02x\n", $sm->flash_scratch_erase_write_enable_status1, $sm->flash_scratch_erase_command_status1
+printf "erase retry count/WRDI/WREN/cmd/status1 = %u / 0x%x 0x%02x / 0x%x 0x%02x / 0x%x 0x%02x\n", $sm->flash_scratch_erase_retry_count, $sm->flash_scratch_erase_retry_write_disable_status, $sm->flash_scratch_erase_retry_write_disable_status1, $sm->flash_scratch_erase_retry_write_enable_status, $sm->flash_scratch_erase_retry_write_enable_status1, $sm->flash_scratch_erase_retry_status, $sm->flash_scratch_erase_retry_status1
 printf "erase blank read/mismatches   = 0x%x / %u\n", $sm->flash_scratch_erase_blank_read_status, $sm->flash_scratch_erase_blank_mismatch_count
 printf "erase blank first16           ="
 set $i = 0
@@ -341,6 +343,12 @@ while $i < 16
   set $i = $i + 1
 end
 printf "\nblock OSPI state/error    = 0x%x / 0x%x\n", $sm->flash_block_ospi_state_after, $sm->flash_block_ospi_error_after
+printf "\n  storage flash region layout\n"
+printf "layout API/status/count    = %u / %u / %u\n", $sm->storage_layout_api_version, $sm->storage_layout_validation_status, $sm->storage_layout_region_count
+printf "layout total/erase/end     = %u / %u / 0x%08x\n", $sm->storage_layout_total_size, $sm->storage_layout_erase_size, $sm->storage_layout_end
+printf "layout errors align/overlap/range = %u / %u / %u\n", $sm->storage_layout_alignment_errors, $sm->storage_layout_overlap_errors, $sm->storage_layout_range_errors
+printf "layout host/protected masks = 0x%x / 0x%x\n", $sm->storage_layout_host_exposed_mask, $sm->storage_layout_protected_mask
+printf "layout scratch index/start/len = %u / 0x%08x / %u\n", $sm->storage_layout_scratch_index, $sm->storage_layout_scratch_start, $sm->storage_layout_scratch_length
 printf "\n  USB device detached baseline (owned by storage)\n"
 printf "VBUS present               = %u (expected 0)\n", $sm->usb_vbus_present
 printf "PCD state before/after     = 0x%x / 0x%x\n", $sm->usb_pcd_state_before, $sm->usb_pcd_state_after
