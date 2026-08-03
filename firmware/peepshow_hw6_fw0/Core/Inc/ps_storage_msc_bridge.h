@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-#define PS_STORAGE_MSC_BRIDGE_API_VERSION (1UL)
+#define PS_STORAGE_MSC_BRIDGE_API_VERSION (2UL)
 #define PS_STORAGE_MSC_BRIDGE_BLOCK_SIZE  (512UL)
 #define PS_STORAGE_MSC_BRIDGE_BLOCK_COUNT (2048UL)
 #define PS_STORAGE_MSC_BRIDGE_LAST_LBA    \
@@ -28,10 +28,20 @@ typedef struct
 {
   uint32_t api_version;
   uint32_t initialized;
+  uint32_t export_enabled;
+  uint32_t media_present;
+  uint32_t write_enabled;
+  uint32_t dirty;
   uint32_t submit_count;
   uint32_t completed_count;
   uint32_t timeout_count;
   uint32_t busy_count;
+  uint32_t denied_count;
+  uint32_t denied_read_count;
+  uint32_t denied_write_count;
+  uint32_t denied_status_count;
+  uint32_t activate_count;
+  uint32_t deactivate_count;
   uint32_t read_count;
   uint32_t write_count;
   uint32_t flush_count;
@@ -60,6 +70,11 @@ typedef struct
 extern volatile ps_storage_msc_bridge_probe_t g_ps_storage_msc_bridge_probe;
 
 UINT PS_StorageMscBridge_Init(TX_QUEUE *storage_queue);
+void PS_StorageMscBridge_SetPolicy(uint32_t export_enabled,
+                                   uint32_t media_present,
+                                   uint32_t write_enabled);
+void PS_StorageMscBridge_MarkActivated(void);
+void PS_StorageMscBridge_MarkDeactivated(void);
 UINT PS_StorageMscBridge_Submit(ps_storage_msc_command_t command,
                                 uint8_t *data,
                                 uint32_t lba,

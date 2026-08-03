@@ -47,6 +47,27 @@ static UINT PS_StorageMscBridge_Reject(UINT ux_status,
   return ux_status;
 }
 
+static UINT PS_StorageMscBridge_RejectPolicy(ps_storage_msc_command_t command,
+                                             ULONG *media_status)
+{
+  g_ps_storage_msc_bridge_probe.denied_count++;
+  switch (command)
+  {
+    case PS_STORAGE_MSC_COMMAND_READ:
+      g_ps_storage_msc_bridge_probe.denied_read_count++;
+      break;
+    case PS_STORAGE_MSC_COMMAND_WRITE:
+      g_ps_storage_msc_bridge_probe.denied_write_count++;
+      break;
+    case PS_STORAGE_MSC_COMMAND_STATUS:
+      g_ps_storage_msc_bridge_probe.denied_status_count++;
+      break;
+    default:
+      break;
+  }
+  return PS_StorageMscBridge_Reject(UX_ERROR, media_status);
+}
+
 UINT PS_StorageMscBridge_Init(TX_QUEUE *storage_queue)
 {
   UINT status;
@@ -80,6 +101,28 @@ UINT PS_StorageMscBridge_Init(TX_QUEUE *storage_queue)
   return TX_SUCCESS;
 }
 
+void PS_StorageMscBridge_SetPolicy(uint32_t export_enabled,
+                                   uint32_t media_present,
+                                   uint32_t write_enabled)
+{
+  g_ps_storage_msc_bridge_probe.export_enabled =
+    (export_enabled != 0UL) ? 1UL : 0UL;
+  g_ps_storage_msc_bridge_probe.media_present =
+    (media_present != 0UL) ? 1UL : 0UL;
+  g_ps_storage_msc_bridge_probe.write_enabled =
+    (write_enabled != 0UL) ? 1UL : 0UL;
+}
+
+void PS_StorageMscBridge_MarkActivated(void)
+{
+  g_ps_storage_msc_bridge_probe.activate_count++;
+}
+
+void PS_StorageMscBridge_MarkDeactivated(void)
+{
+  g_ps_storage_msc_bridge_probe.deactivate_count++;
+}
+
 UINT PS_StorageMscBridge_Submit(ps_storage_msc_command_t command,
                                 uint8_t *data,
                                 uint32_t lba,
@@ -106,6 +149,16 @@ UINT PS_StorageMscBridge_Submit(ps_storage_msc_command_t command,
       ((data == UX_NULL) || (block_count == 0UL)))
   {
     return PS_StorageMscBridge_Reject(UX_ERROR, media_status);
+  }
+  if ((g_ps_storage_msc_bridge_probe.export_enabled == 0UL) ||
+      (g_ps_storage_msc_bridge_probe.media_present == 0UL))
+  {
+    return PS_StorageMscBridge_RejectPolicy(command, media_status);
+  }
+  if ((command == PS_STORAGE_MSC_COMMAND_WRITE) &&
+      (g_ps_storage_msc_bridge_probe.write_enabled == 0UL))
+  {
+    return PS_StorageMscBridge_RejectPolicy(command, media_status);
   }
   if ((block_count > PS_STORAGE_MSC_BRIDGE_BLOCK_COUNT) ||
       (lba > PS_STORAGE_MSC_BRIDGE_LAST_LBA) ||
@@ -174,6 +227,11 @@ UINT PS_StorageMscBridge_Submit(ps_storage_msc_command_t command,
     (uint32_t)ps_storage_msc_request.media_status;
   g_ps_storage_msc_bridge_probe.last_ps_status =
     ps_storage_msc_request.ps_status;
+  if ((ps_storage_msc_request.ux_status == UX_SUCCESS) &&
+      (command == PS_STORAGE_MSC_COMMAND_WRITE))
+  {
+    g_ps_storage_msc_bridge_probe.dirty = 1UL;
+  }
 
   (void)tx_mutex_put(&ps_storage_msc_mutex);
   return ps_storage_msc_request.ux_status;

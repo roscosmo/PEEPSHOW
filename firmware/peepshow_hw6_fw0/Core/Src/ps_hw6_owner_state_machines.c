@@ -1157,6 +1157,8 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeStorage(void)
     goto storage_done;
   }
 
+  PS_StorageMscBridge_SetPolicy(0UL, 1UL, 1UL);
+
   driver_status = ps_dev_at25sl128a_enter_deep_power_down(
     &ps_flash_device,
     &ps_flash_command_result);

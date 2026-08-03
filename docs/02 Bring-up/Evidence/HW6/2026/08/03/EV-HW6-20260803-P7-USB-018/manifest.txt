@@ -1,0 +1,12 @@
+evidence_id: EV-HW6-20260803-P7-USB-018
+date: 2026-08-03
+board: HW6-UNIT-001 provisional
+firmware_target: firmware/peepshow_hw6_fw0
+elf: firmware/peepshow_hw6_fw0/build/Debug/peepshow_hw6_fw0.elf
+elf_sha256: C830E39787B3A7287CCF342EAD58ECBDC6DE45348E90FEACCCE29C0DC117DE84
+ioc: firmware/peepshow_hw6_fw0/peepshow_hw6_fw0.ioc
+ioc_sha256: 0F2FF8A5440E5C4812F85FAD0F2C46E3CB293C758A81F334BE8BECDC807A0039
+log: owner_lifecycle_usbx_msc_export_policy_gdb.log
+log_sha256: 3C23FE971B65A430855507D71327053B7C0857CA65334A6A25F8B1B6CD947BD2
+result: PASS
+summary: USBX Device MSC bridge export policy is explicit and defaults closed while USB remains parked; media is present and write-capable only after FileX/LevelX local smoke passes, export remains disabled, no callbacks activate, and no host traffic reaches thStorage.

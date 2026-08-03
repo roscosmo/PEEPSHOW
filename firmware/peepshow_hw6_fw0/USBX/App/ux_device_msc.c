@@ -67,6 +67,7 @@ VOID USBD_STORAGE_Activate(VOID *storage_instance)
 {
   /* USER CODE BEGIN USBD_STORAGE_Activate */
   UX_PARAMETER_NOT_USED(storage_instance);
+  PS_StorageMscBridge_MarkActivated();
   /* USER CODE END USBD_STORAGE_Activate */
 
   return;
@@ -82,6 +83,7 @@ VOID USBD_STORAGE_Deactivate(VOID *storage_instance)
 {
   /* USER CODE BEGIN USBD_STORAGE_Deactivate  */
   UX_PARAMETER_NOT_USED(storage_instance);
+  PS_StorageMscBridge_MarkDeactivated();
   /* USER CODE END USBD_STORAGE_Deactivate */
 
   return;
