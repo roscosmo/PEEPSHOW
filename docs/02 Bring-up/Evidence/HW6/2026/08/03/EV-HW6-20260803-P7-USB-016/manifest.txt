@@ -1,0 +1,12 @@
+evidence_id: EV-HW6-20260803-P7-USB-016
+date: 2026-08-03
+board: HW6-UNIT-001 provisional
+firmware_target: firmware/peepshow_hw6_fw0
+elf: firmware/peepshow_hw6_fw0/build/Debug/peepshow_hw6_fw0.elf
+elf_sha256: 52DAC904A6F1DE2BE76103CA74A88ED608E1D2454F09BEC92BD9B1C46BFE61D6
+ioc: firmware/peepshow_hw6_fw0/peepshow_hw6_fw0.ioc
+ioc_sha256: 0F2FF8A5440E5C4812F85FAD0F2C46E3CB293C758A81F334BE8BECDC807A0039
+log: owner_lifecycle_usbx_generated_baseline_gdb.log
+log_sha256: DB9E0004831CC3F38BED6255C142887E10B9093C61F2D03ABE2943E30FBFE71F
+result: PASS
+summary: CubeMX-generated USBX Device MSC baseline linked and initialized diagnostically; lifecycle-v13 owner workflow still passes, USB remains parked, and generated MSC init status is recorded as 0xff until a thStorage MSC bridge is implemented.

@@ -385,6 +385,7 @@ printf "clock before/after         = %u / %u\n", $sm->usb_clock_enabled_before, 
 printf "VDDUSB before/after        = %u / %u\n", $sm->usb_vddusb_enabled_before, $sm->usb_vddusb_enabled_after
 printf "deinit attempted/status    = %u / 0x%x\n", $sm->usb_deinit_attempted, $sm->usb_deinit_status
 printf "USB parked                 = %u (expected 1)\n", $sm->usb_parked
+printf "USBX pool/init status      = 0x%x / 0x%x (baseline may be nonzero before MSC bridge)\n", g_ps_hw6_usbx_byte_pool_create_status, g_ps_hw6_usbx_device_init_status
 
 printf "\n  NINA-B112 AT-controlled STOP baseline\n"
 printf "NRST before/released/after = %u / %u / %u\n", $sm->ble_nrst_before, $sm->ble_nrst_released, $sm->ble_nrst_after

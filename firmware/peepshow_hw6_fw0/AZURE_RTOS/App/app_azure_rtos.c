@@ -42,7 +42,8 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-
+volatile UINT g_ps_hw6_usbx_byte_pool_create_status = 0xFFFFFFFFU;
+volatile UINT g_ps_hw6_usbx_device_init_status = 0xFFFFFFFFU;
 /* USER CODE END PV */
 
 #if (USE_STATIC_ALLOCATION == 1)
@@ -62,6 +63,14 @@ static TX_BYTE_POOL tx_app_byte_pool;
 #endif
 __ALIGN_BEGIN static UCHAR  fx_byte_pool_buffer[FX_APP_MEM_POOL_SIZE] __ALIGN_END;
 static TX_BYTE_POOL FILEX_MEM_POOL_VAR_NAME;
+
+/* USER CODE BEGIN UX_Device_Pool_Buffer */
+/* USER CODE END UX_Device_Pool_Buffer */
+#if defined ( __ICCARM__ )
+#pragma data_alignment=4
+#endif
+__ALIGN_BEGIN static UCHAR  ux_device_byte_pool_buffer[UX_DEVICE_APP_MEM_POOL_SIZE] __ALIGN_END;
+static TX_BYTE_POOL ux_device_app_byte_pool;
 
 #endif
 
@@ -138,6 +147,33 @@ VOID tx_application_define(VOID *first_unused_memory)
     /* USER CODE END  MX_FileX_Init_Success */
   }
 
+  status = tx_byte_pool_create(&ux_device_app_byte_pool, "Ux App memory pool", ux_device_byte_pool_buffer, UX_DEVICE_APP_MEM_POOL_SIZE);
+  g_ps_hw6_usbx_byte_pool_create_status = status;
+  if (status != TX_SUCCESS)
+  {
+    /* USER CODE BEGIN UX_Device_Byte_Pool_Error */
+
+    /* USER CODE END UX_Device_Byte_Pool_Error */
+  }
+  else
+  {
+    /* USER CODE BEGIN UX_Device_Byte_Pool_Success */
+
+    /* USER CODE END UX_Device_Byte_Pool_Success */
+
+    memory_ptr = (VOID *)&ux_device_app_byte_pool;
+    status = MX_USBX_Device_Init(memory_ptr);
+    g_ps_hw6_usbx_device_init_status = status;
+    if (status != UX_SUCCESS)
+    {
+      /* USER CODE BEGIN  MX_USBX_Device_Init_Error */
+      /* USBX is diagnostic-only until MSC is routed through thStorage. */
+      /* USER CODE END  MX_USBX_Device_Init_Error */
+    }
+    /* USER CODE BEGIN  MX_USBX_Device_Init_Success */
+
+    /* USER CODE END  MX_USBX_Device_Init_Success */
+  }
 #else
 /*
  * Using dynamic memory allocation requires to apply some changes to the linker file.
