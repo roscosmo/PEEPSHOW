@@ -22,6 +22,11 @@
 #include "stm32u5xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+extern volatile unsigned int g_usbx_device_pool_create_status;
+extern volatile unsigned int g_usbx_device_init_status;
+extern volatile unsigned int g_usbx_init_stage;
+extern volatile unsigned int g_usbx_init_error_code;
+extern void *_ux_system_slave;
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,6 +46,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
+volatile unsigned long g_usb_irq_guard_drop_count = 0UL;
 
 /* USER CODE END PV */
 
@@ -59,11 +65,15 @@ extern DMA_HandleTypeDef handle_GPDMA1_Channel2;
 extern UART_HandleTypeDef huart1;
 extern DMA_HandleTypeDef handle_GPDMA1_Channel5;
 extern DMA_HandleTypeDef handle_GPDMA1_Channel4;
+extern RTC_HandleTypeDef hrtc;
+extern DMA_NodeTypeDef Node_GPDMA1_Channel3;
+extern DMA_QListTypeDef List_GPDMA1_Channel3;
 extern DMA_HandleTypeDef handle_GPDMA1_Channel3;
 extern SAI_HandleTypeDef hsai_BlockA1;
 extern DMA_HandleTypeDef handle_LPDMA1_Channel0;
 extern SPI_HandleTypeDef hspi3;
 extern TIM_HandleTypeDef htim2;
+extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 extern TIM_HandleTypeDef htim6;
 
 /* USER CODE BEGIN EV */
@@ -167,6 +177,20 @@ void DebugMon_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32u5xx.s).                    */
 /******************************************************************************/
+
+/**
+  * @brief This function handles RTC non-secure interrupt.
+  */
+void RTC_IRQHandler(void)
+{
+  /* USER CODE BEGIN RTC_IRQn 0 */
+
+  /* USER CODE END RTC_IRQn 0 */
+  HAL_RTCEx_WakeUpTimerIRQHandler(&hrtc);
+  /* USER CODE BEGIN RTC_IRQn 1 */
+
+  /* USER CODE END RTC_IRQn 1 */
+}
 
 /**
   * @brief This function handles EXTI Line1 interrupt.
@@ -390,6 +414,34 @@ void USART1_IRQHandler(void)
   /* USER CODE BEGIN USART1_IRQn 1 */
 
   /* USER CODE END USART1_IRQn 1 */
+}
+
+/**
+  * @brief This function handles USB OTG FS global interrupt.
+  */
+void OTG_FS_IRQHandler(void)
+{
+  /* USER CODE BEGIN OTG_FS_IRQn 0 */
+  if ((g_usbx_device_pool_create_status != 0U) ||
+      (g_usbx_device_init_status != 0U) ||
+      (g_usbx_init_stage < 101U) ||
+      (g_usbx_init_error_code != 0U) ||
+      (_ux_system_slave == 0))
+  {
+    HAL_NVIC_DisableIRQ(OTG_FS_IRQn);
+    NVIC_ClearPendingIRQ(OTG_FS_IRQn);
+    if (g_usb_irq_guard_drop_count < 0xFFFFFFFFUL)
+    {
+      g_usb_irq_guard_drop_count++;
+    }
+    return;
+  }
+
+  /* USER CODE END OTG_FS_IRQn 0 */
+  HAL_PCD_IRQHandler(&hpcd_USB_OTG_FS);
+  /* USER CODE BEGIN OTG_FS_IRQn 1 */
+
+  /* USER CODE END OTG_FS_IRQn 1 */
 }
 
 /**

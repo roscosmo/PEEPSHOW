@@ -20,9 +20,9 @@ Defines:
 - Composition order and pixel semantics
 - Dirty-row tracking and partial update strategy
 - Logical-to-physical coordinate mapping
-- 2bpp world surface format (4-tone + transparency)
-- 1× binary clamp present mode
-- 2× Bayer zoom present mode
+- 2bpp world surface format (5-tone + transparency via extended mask decode)
+- 1x binary clamp present mode
+- 2x Bayer zoom present mode
 
 Does NOT define:
 - Thread ownership or queues (see rtos_architecture.md)
@@ -243,7 +243,7 @@ The 2bpp surface is an internal intermediate representation only.
 Pixel levels:
 - 0 = white
 - 1 = light grey
-- 2 = dark grey
+- 2 = mid grey
 - 3 = black
 
 Each pixel uses 2 bits.
@@ -266,28 +266,39 @@ All bitmaps (tiles, sprites, images) use:
 - 1bpp mask plane
 
 Mask semantics:
-- mask bit = 1 → pixel exists
-- mask bit = 0 → transparent
+- mask bit = 1 -> opaque pixel
+- mask bit = 0 -> transparent or extended-tone pixel (see decode table)
 
-Transparency is mask-only.
-Color level 0 is a valid white pixel.
+Runtime decode for masked 2bpp pixels (authoritative):
+- mask=1, level=0 -> white (0/4 black)
+- mask=1, level=1 -> light grey (1/4 black)
+- mask=1, level=2 -> mid grey (2/4 black)
+- mask=0, level=1 -> dark grey (3/4 black, extended tone)
+- mask=1, level=3 -> black (4/4 black)
+- mask=0, level=0 -> transparent
+
+Reserved combinations (currently treated as transparent):
+- mask=0, level=2
+- mask=0, level=3
+
+Asset generators must emit transparent pixels as mask=0, level=0 to avoid ambiguity.
 
 ---
 
 ## Present Modes
 
-### Mode A: 1× Binary Clamp Present
+### Mode A: 1x Binary Clamp Present
 
 World resolution:
 - Equal to panel resolution
 
 Mapping:
-- level 0,1 → WHITE
-- level 2,3 → BLACK
+- black_limit 0,1 -> WHITE
+- black_limit 2,3,4 -> BLACK
 
 Formal rule:
 
-panel_bit = (level >= 2) ? 0 : 1
+panel_bit = (black_limit >= 2) ? 0 : 1
 
 Where:
 - 1 = white
@@ -297,26 +308,33 @@ No spatial scaling occurs.
 
 ---
 
-### Mode B: 2× Bayer Dither Zoom Present
+### Mode B: 2x Bayer Dither Zoom Present
 
 World resolution:
-- (DISPLAY_WIDTH / 2) × (DISPLAY_HEIGHT / 2)
+- (DISPLAY_WIDTH / 2) x (DISPLAY_HEIGHT / 2)
 
-Each world pixel expands to a 2×2 block in the panel framebuffer.
+Each world pixel expands to a 2x2 block in the panel framebuffer.
 
-Bayer 2×2 matrix:
+Bayer 2x2 matrix:
 
 0 2
 3 1
 
-For each world pixel level L:
+For each decoded world pixel:
 - threshold = bayer[dx][dy]
-- panel_pixel = (L > threshold) ? BLACK : WHITE
+- panel_pixel = (threshold < black_limit) ? BLACK : WHITE
 
 Effect:
-- 4-tone appearance
-- Visible 2× zoom
+- 5-tone appearance (+ transparent via mask encoding)
+- Visible 2x zoom
 - World viewport reduced to half width and half height
+
+Effective black coverage used by runtime Bayer present:
+- white      -> 0/4 black
+- light grey -> 1/4 black
+- mid grey   -> 2/4 black
+- dark grey  -> 3/4 black
+- black      -> 4/4 black
 
 ---
 
@@ -371,4 +389,4 @@ Clip is evaluated in logical coordinates.
 
 ---
 
-Last updated: 2026-02-27
+Last updated: 2026-03-16

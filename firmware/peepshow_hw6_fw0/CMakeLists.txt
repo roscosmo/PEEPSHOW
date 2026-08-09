@@ -40,6 +40,17 @@ add_executable(${CMAKE_PROJECT_NAME})
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
 
+# Re-apply non-Cube invariants after regeneration.
+get_target_property(_stm32cubemx_defs stm32cubemx INTERFACE_COMPILE_DEFINITIONS)
+if(NOT _stm32cubemx_defs OR _stm32cubemx_defs STREQUAL "_stm32cubemx_defs-NOTFOUND")
+    set(_stm32cubemx_defs "")
+endif()
+list(FILTER _stm32cubemx_defs EXCLUDE REGEX "^TX_PORT_BASEPRI=.*")
+list(APPEND _stm32cubemx_defs TX_PORT_BASEPRI=0x20)
+set_target_properties(stm32cubemx PROPERTIES
+    INTERFACE_COMPILE_DEFINITIONS "${_stm32cubemx_defs}"
+)
+
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
@@ -64,8 +75,29 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/ps_storage_layout.c
     Core/Src/ps_storage_msc_bridge.c
     Drivers/Components/lis2dux12/lis2dux12_reg.c
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_callback.c
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_endpoint_create.c
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_endpoint_destroy.c
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_endpoint_reset.c
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_endpoint_stall.c
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_endpoint_status.c
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_frame_number_get.c
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_function.c
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_initialize.c
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_initialize_complete.c
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_interrupt_handler.c
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_transfer_abort.c
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_transfer_request.c
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_transfer_run.c
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_uninitialize.c
 )
 
+set_source_files_properties(
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_callback.c
+    Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_frame_number_get.c
+    USBX/App/ux_device_descriptors.c
+    PROPERTIES COMPILE_OPTIONS -Wno-unused-parameter
+)
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Drivers/Components/lis2dux12
@@ -73,8 +105,6 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
-    # CubeMX emits the hooks but does not pass this define to the GNU port ASM.
-    TX_LOW_POWER
 )
 
 # Add linked libraries

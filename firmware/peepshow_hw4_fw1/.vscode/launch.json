@@ -18,6 +18,18 @@
                     "imageFileName": "${command:st-stm32-ide-debug-launch.get-projects-binary-from-context1}"
                 }
             ]
+        },
+        {
+            "type": "stlinkgdbtarget",
+            "request": "attach",
+            "name": "STM32Cube: Attach ST-Link GDB Server (No Flash)",
+            "origin": "snippet",
+            "cwd": "${workspaceFolder}",
+            "imagesAndSymbols": [
+                {
+                    "imageFileName": "${command:st-stm32-ide-debug-launch.get-projects-binary-from-context1}"
+                }
+            ]
         }
     ]
 }

@@ -22,6 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "knobs_autogen.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -54,6 +55,8 @@ DMA_HandleTypeDef handle_GPDMA1_Channel4;
 RTC_HandleTypeDef hrtc;
 
 SAI_HandleTypeDef hsai_BlockA1;
+DMA_NodeTypeDef Node_GPDMA1_Channel3;
+DMA_QListTypeDef List_GPDMA1_Channel3;
 DMA_HandleTypeDef handle_GPDMA1_Channel3;
 
 SPI_HandleTypeDef hspi3;
@@ -85,11 +88,25 @@ static void MX_ICACHE_Init(void);
 static void MX_USB_OTG_FS_PCD_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
+static void ApplyDebugLowPowerPolicy(void);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static void ApplyDebugLowPowerPolicy(void)
+{
+  if (KNOB_DEBUG_SWO_ENABLE != 0)
+  {
+    HAL_DBGMCU_EnableDBGStopMode();
+    HAL_DBGMCU_EnableDBGStandbyMode();
+  }
+  else
+  {
+    HAL_DBGMCU_DisableDBGStopMode();
+    HAL_DBGMCU_DisableDBGStandbyMode();
+  }
+}
 
 /* USER CODE END 0 */
 
@@ -107,6 +124,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+ 
   HAL_Init();
 
   /* USER CODE BEGIN Init */
@@ -123,6 +141,7 @@ int main(void)
   SystemPower_Config();
 
   /* USER CODE BEGIN SysInit */
+  ApplyDebugLowPowerPolicy();
 
   /* USER CODE END SysInit */
 
@@ -141,6 +160,9 @@ int main(void)
   MX_USB_OTG_FS_PCD_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
+  /* Keep OTG FS IRQ masked until USBX stack is fully ready. */
+  HAL_NVIC_DisableIRQ(OTG_FS_IRQn);
+  NVIC_ClearPendingIRQ(OTG_FS_IRQn);
   /* USER CODE END 2 */
 
   MX_ThreadX_Init();
@@ -185,7 +207,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.MSIState = RCC_MSI_ON;
   RCC_OscInitStruct.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_2;
+  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_1;
   RCC_OscInitStruct.MSIKClockRange = RCC_MSIKRANGE_4;
   RCC_OscInitStruct.MSIKState = RCC_MSIK_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
@@ -228,7 +250,7 @@ void PeriphCommonClock_Config(void)
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_OSPI|RCC_PERIPHCLK_SAI1;
   PeriphClkInit.Sai1ClockSelection = RCC_SAI1CLKSOURCE_PLL2;
   PeriphClkInit.OspiClockSelection = RCC_OSPICLKSOURCE_PLL2;
-  PeriphClkInit.PLL2.PLL2Source = RCC_PLLSOURCE_MSI;
+  PeriphClkInit.PLL2.PLL2Source = RCC_PLLSOURCE_HSI;
   PeriphClkInit.PLL2.PLL2M = 1;
   PeriphClkInit.PLL2.PLL2N = 32;
   PeriphClkInit.PLL2.PLL2P = 125;
@@ -256,6 +278,59 @@ static void SystemPower_Config(void)
   HAL_PWREx_DisableRAMsContentStopRetention(PWR_DMA2DRAM_FULL_STOP_RETENTION);
   HAL_PWREx_DisableRAMsContentStopRetention(PWR_PKA32RAM_FULL_STOP_RETENTION);
 /* USER CODE BEGIN PWR */
+  /*
+   * STOP2 should not retain cache or peripheral RAM contents that can be
+   * repopulated on wake. Do not touch general SRAM banks here: the live RTOS
+   * image still spans normal SRAM outside SRAM4.
+   */
+#ifdef PWR_ICACHE_FULL_STOP
+  HAL_PWREx_DisableRAMsContentStopRetention(PWR_ICACHE_FULL_STOP_RETENTION);
+#endif
+#ifdef PWR_DCACHE1_FULL_STOP
+  HAL_PWREx_DisableRAMsContentStopRetention(PWR_DCACHE1_FULL_STOP_RETENTION);
+#endif
+#ifdef PWR_DCACHE2_FULL_STOP
+  HAL_PWREx_DisableRAMsContentStopRetention(PWR_DCACHE2_FULL_STOP_RETENTION);
+#endif
+#ifdef PWR_PERIPHRAM_FULL_STOP
+  HAL_PWREx_DisableRAMsContentStopRetention(PWR_PERIPHRAM_FULL_STOP_RETENTION);
+#endif
+#ifdef PWR_GRAPHICPRAM_FULL_STOP
+  HAL_PWREx_DisableRAMsContentStopRetention(PWR_GRAPHICPRAM_FULL_STOP_RETENTION);
+#endif
+#ifdef PWR_DSIRAM_FULL_STOP
+  HAL_PWREx_DisableRAMsContentStopRetention(PWR_DSIRAM_FULL_STOP_RETENTION);
+#endif
+#ifdef PWR_JPEGRAM_FULL_STOP
+  HAL_PWREx_DisableRAMsContentStopRetention(PWR_JPEGRAM_FULL_STOP_RETENTION);
+#endif
+
+  /*
+   * The linked image plus reserved heap/stack extends to 0x20054478, which sits
+   * inside SRAM3 page 2 on this STM32U575. SRAM3 pages 3+ are therefore unused
+   * by the live STOP2 image and can be powered down safely.
+   */
+#ifdef PWR_SRAM3_PAGE3_STOP
+  HAL_PWREx_DisableRAMsContentStopRetention(PWR_SRAM3_PAGE3_STOP_RETENTION);
+#endif
+#ifdef PWR_SRAM3_PAGE4_STOP
+  HAL_PWREx_DisableRAMsContentStopRetention(PWR_SRAM3_PAGE4_STOP_RETENTION);
+#endif
+#ifdef PWR_SRAM3_PAGE5_STOP
+  HAL_PWREx_DisableRAMsContentStopRetention(PWR_SRAM3_PAGE5_STOP_RETENTION);
+#endif
+#ifdef PWR_SRAM3_PAGE6_STOP
+  HAL_PWREx_DisableRAMsContentStopRetention(PWR_SRAM3_PAGE6_STOP_RETENTION);
+#endif
+#ifdef PWR_SRAM3_PAGE7_STOP
+  HAL_PWREx_DisableRAMsContentStopRetention(PWR_SRAM3_PAGE7_STOP_RETENTION);
+#endif
+#ifdef PWR_SRAM3_PAGE8_STOP
+  HAL_PWREx_DisableRAMsContentStopRetention(PWR_SRAM3_PAGE8_STOP_RETENTION);
+#endif
+#ifdef PWR_SRAM3_PAGE9_STOP
+  HAL_PWREx_DisableRAMsContentStopRetention(PWR_SRAM3_PAGE9_STOP_RETENTION);
+#endif
 /* USER CODE END PWR */
 }
 
@@ -626,7 +701,7 @@ static void MX_RTC_Init(void)
 
   /** Enable the WakeUp
   */
-  if (HAL_RTCEx_SetWakeUpTimer(&hrtc, 0, RTC_WAKEUPCLOCK_RTCCLK_DIV16) != HAL_OK)
+  if (HAL_RTCEx_SetWakeUpTimer_IT(&hrtc, 0, RTC_WAKEUPCLOCK_RTCCLK_DIV16, 0) != HAL_OK)
   {
     Error_Handler();
   }
@@ -813,6 +888,19 @@ static void MX_USB_OTG_FS_PCD_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USB_OTG_FS_Init 2 */
+  /* Configure USB OTG FS FIFOs for EP0 + MSC bulk IN/OUT. */
+  if (HAL_PCDEx_SetRxFiFo(&hpcd_USB_OTG_FS, 0x80U) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 0U, 0x40U) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 1U, 0x80U) != HAL_OK)
+  {
+    Error_Handler();
+  }
 
   /* USER CODE END USB_OTG_FS_Init 2 */
 

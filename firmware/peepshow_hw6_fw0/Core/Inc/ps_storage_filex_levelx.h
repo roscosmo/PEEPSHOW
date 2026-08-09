@@ -25,6 +25,10 @@ typedef struct
   uint32_t erase_block_size;
   uint32_t logical_sector_size;
   uint32_t logical_sector_count;
+  uint32_t preformat_erase_status;
+  uint32_t preformat_erase_block_count;
+  uint32_t preformat_erase_failed_block;
+  uint32_t preformat_erase_last_poll_count;
   uint32_t lx_initialize_status;
   uint32_t lx_open_status;
   uint32_t fx_format_status;
@@ -71,6 +75,18 @@ ps_status_t ps_storage_filex_levelx_run_smoke(
   ps_storage_flash_block_t *block,
   const ps_storage_region_t *region,
   ps_storage_filex_levelx_smoke_result_t *result);
+
+ps_status_t ps_storage_filex_levelx_msc_open(
+  ps_storage_flash_block_t *block,
+  const ps_storage_region_t *region);
+ps_status_t ps_storage_filex_levelx_msc_close(void);
+ps_status_t ps_storage_filex_levelx_msc_read(uint32_t lba,
+                                             uint32_t block_count,
+                                             uint8_t *data);
+ps_status_t ps_storage_filex_levelx_msc_write(uint32_t lba,
+                                              uint32_t block_count,
+                                              const uint8_t *data);
+uint32_t ps_storage_filex_levelx_msc_is_open(void);
 
 #ifdef __cplusplus
 }

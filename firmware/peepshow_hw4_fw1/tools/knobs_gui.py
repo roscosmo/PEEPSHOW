@@ -11,7 +11,9 @@ Features:
   - Numeric knobs with schema minimum+maximum get a slider + entry
   - Automatic timestamped backup + backup history log on changed saves
   - Scrollable per-tab editor
-  - Save & Exit: writes config/knobs.json then runs tools/gen_knobs.py
+  - Save: writes config/knobs.json + runs tools/gen_knobs.py --knobs-only
+  - Save & Exit: same as Save, then closes
+  - Audio tab action: generate audio assets/options (tools/gen_knobs.py --audio-only)
   - Window close (X) or Exit (No Save): quits without saving
 
 Run:
@@ -73,6 +75,7 @@ class KnobMeta:
     gui_section: str = ""
     gui_label: str = ""
     gui_hint: str = ""
+    gui_advanced: bool = False
     tick_basis: str = ""
     has_default: bool = False
     default: Any = None
@@ -166,6 +169,7 @@ def extract_meta(schema: dict[str, Any], key: str) -> KnobMeta:
         gui_section=(p.get("gui_section", "") or "").strip(),
         gui_label=(p.get("gui_label", "") or p.get("title", "") or "").strip(),
         gui_hint=(p.get("gui_hint", "") or "").strip(),
+        gui_advanced=bool(p.get("gui_advanced", False)),
         tick_basis=(p.get("tick_basis", "") or "").strip().lower(),
         has_default=("default" in p),
         default=p.get("default"),
@@ -275,27 +279,36 @@ class KnobsApp(ctk.CTk):
         self.required = list(self.schema_raw.get("required", []) or [])
         self.additional_properties = bool(self.schema_raw.get("additionalProperties", True))
 
-        # Build meta map from schema + existing file keys.
+        # Build meta map from schema only.
+        # Unknown keys in knobs.json are intentionally ignored so stale/legacy
+        # knobs do not pollute the editor UI.
         schema_props = self.schema_raw.get("properties", {}) or {}
-        all_keys: list[str] = []
-        for k in schema_props.keys():
-            if k not in all_keys:
-                all_keys.append(k)
-        for k in self.knobs_raw.keys():
-            if k not in all_keys:
-                all_keys.append(k)
+        all_keys: list[str] = [str(k) for k in schema_props.keys()]
 
         self.meta: dict[str, KnobMeta] = {k: extract_meta(self.schema_raw, k) for k in all_keys}
 
         # Working knob set:
         # - preserve file values
         # - inject schema defaults for missing keys
+        # - migrate selected legacy audio keys to new realtime per-source keys
+        legacy_aliases: dict[str, str] = {
+            "game_rt_fps_target": "ui_fps",
+            "audio_map_rt_joy_move_clip": "audio_map_rt_move_clip",
+            "audio_map_rt_btn_a_clip": "audio_map_rt_confirm_clip",
+            "audio_map_rt_btn_b_clip": "audio_map_rt_cancel_clip",
+            "audio_map_rt_btn_l_clip": "audio_map_rt_move_clip",
+            "audio_map_rt_btn_r_clip": "audio_map_rt_move_clip",
+        }
         self.knobs_data: dict[str, Any] = {}
         self.implicit_default_keys: set[str] = set()
         for k in all_keys:
             if k in self.knobs_raw:
                 self.knobs_data[k] = self.knobs_raw[k]
             else:
+                alias_key = legacy_aliases.get(k)
+                if alias_key and (alias_key in self.knobs_raw):
+                    self.knobs_data[k] = self.knobs_raw[alias_key]
+                    continue
                 m = self.meta[k]
                 if m.has_default:
                     self.knobs_data[k] = m.default
@@ -331,7 +344,24 @@ class KnobsApp(ctk.CTk):
             font=ctk.CTkFont(size=13, weight="bold"),
         ).grid(row=0, column=0, sticky="w", padx=12, pady=12)
 
+        controls = ctk.CTkFrame(header, fg_color="transparent")
+        controls.grid(row=0, column=1, sticky="e", padx=12, pady=12)
+        self.show_advanced_var = tk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            controls,
+            text="Show Advanced",
+            variable=self.show_advanced_var,
+            command=self._on_toggle_show_advanced,
+        ).pack(side="right")
+
+        self._advanced_flags_state: dict[str, bool] = {
+            k: bool((self.meta.get(k) or extract_meta(self.schema_raw, k)).gui_advanced)
+            for k in self.all_keys
+        }
+        self._advanced_var_map: dict[str, tk.BooleanVar] = {}
+
         # Tabs
+        self._tab_rebuild_pending = False
         self.tabview = ctk.CTkTabview(self, corner_radius=12)
         self.tabview.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 8))
 
@@ -354,7 +384,8 @@ class KnobsApp(ctk.CTk):
         right.grid(row=0, column=1, sticky="e", padx=12, pady=10)
 
         ctk.CTkButton(right, text="Exit (No Save)", command=self.on_close_no_save).pack(side="right", padx=(0, 10))
-        ctk.CTkButton(right, text="Save & Exit", command=self.on_save_and_exit).pack(side="right")
+        ctk.CTkButton(right, text="Save + Exit", command=self.on_save_and_exit).pack(side="right", padx=(10, 0))
+        ctk.CTkButton(right, text="Save (Stay Open)", command=self.on_save_stay_open).pack(side="right", padx=(10, 0))
 
     def _tab_name(self, key: str, meta: Optional[KnobMeta] = None) -> str:
         m = meta or self.meta.get(key) or extract_meta(self.schema_raw, key)
@@ -410,14 +441,46 @@ class KnobsApp(ctk.CTk):
         return sorted(keys, key=sort_key)
 
     def _build_tabs(self) -> None:
+        self._var_map.clear()
+        self._advanced_var_map.clear()
+
         # Group keys by explicit schema gui_tab first, then prefix fallback.
         tabs: dict[str, list[str]] = {}
+        show_advanced = bool(self.show_advanced_var.get())
         for k in self.all_keys:
             m = self.meta.get(k) or extract_meta(self.schema_raw, k)
+            if (not show_advanced) and bool(self._advanced_flags_state.get(k, m.gui_advanced)):
+                continue
             tabs.setdefault(self._tab_name(k, m), []).append(k)
 
         for tab_name in sorted(tabs.keys(), key=self._tab_sort_key):
             tab = self.tabview.add(tab_name)
+
+            if tab_name == "audio":
+                audio_actions = ctk.CTkFrame(tab, corner_radius=10)
+                audio_actions.pack(fill="x", padx=12, pady=(12, 0))
+                audio_actions.grid_columnconfigure(0, weight=1)
+                ctk.CTkLabel(
+                    audio_actions,
+                    text="Audio Tools",
+                    anchor="w",
+                    font=ctk.CTkFont(size=13, weight="bold"),
+                ).grid(row=0, column=0, sticky="w", padx=10, pady=(8, 6))
+
+                btns = ctk.CTkFrame(audio_actions, fg_color="transparent")
+                btns.grid(row=1, column=0, sticky="w", padx=10, pady=(0, 8))
+                ctk.CTkButton(
+                    btns,
+                    text="Refresh Audio File List",
+                    command=self.on_generate_audio_assets,
+                ).pack(side="left")
+                ctk.CTkLabel(
+                    audio_actions,
+                    text="Use this after adding/removing files in Assets/audio/system_ui (or Assets/audio/system). Then pick clips and press Save (Stay Open) or Save + Exit.",
+                    anchor="w",
+                    text_color="#8a94a6",
+                    font=ctk.CTkFont(size=11),
+                ).grid(row=2, column=0, sticky="w", padx=10, pady=(0, 8))
 
             # Scrollable area
             scroll = ctk.CTkScrollableFrame(tab, corner_radius=12)
@@ -448,6 +511,34 @@ class KnobsApp(ctk.CTk):
                 for key in self._sorted_keys_for_tab(sections[section_name]):
                     self._add_knob_row(scroll, row, key)
                     row += 1
+
+    def _persist_visible_widget_values_to_model(self) -> None:
+        for key, (meta, kind, obj) in self._var_map.items():
+            try:
+                self.knobs_data[key] = self._parse_value(meta, kind, obj)
+            except Exception:
+                # Keep previous value if widget text is currently invalid.
+                pass
+        for key, var in self._advanced_var_map.items():
+            self._advanced_flags_state[key] = bool(var.get())
+
+    def _on_toggle_show_advanced(self) -> None:
+        self._persist_visible_widget_values_to_model()
+        if self._tab_rebuild_pending:
+            return
+        self._tab_rebuild_pending = True
+        self.after_idle(self._rebuild_tabview)
+
+    def _rebuild_tabview(self) -> None:
+        self._tab_rebuild_pending = False
+        if hasattr(self, "tabview") and self.tabview.winfo_exists():
+            self.tabview.destroy()
+        self.tabview = ctk.CTkTabview(self, corner_radius=12)
+        self.tabview.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 8))
+        self._build_tabs()
+
+    def _on_knob_advanced_changed(self, key: str, var: tk.BooleanVar) -> None:
+        self._advanced_flags_state[key] = bool(var.get())
 
     def _tick_rate_hz_for_meta(self, meta: KnobMeta) -> tuple[Optional[float], str]:
         if meta.tick_basis == "hal_ms":
@@ -701,8 +792,8 @@ class KnobsApp(ctk.CTk):
             label_l = label.lower()
 
             # UI / top-level behavior
-            if k == "ui_fps":
-                return "UI refresh rate outside REALTIME mode."
+            if k == "game_rt_fps_target":
+                return "Target frame rate for REALTIME game loop pacing."
             if k == "ui_static_entry_point":
                 return "Which page opens when entering STATIC mode."
 
@@ -715,6 +806,10 @@ class KnobsApp(ctk.CTk):
                 return "Frequency of the built-in audio test tone."
             if k == "audio_test_tone_amplitude":
                 return "Volume level of the built-in audio test tone."
+            if k == "audio_music_loop_clip":
+                return "Asset ID that should loop when played directly. Use 0 for no auto-loop asset."
+            if k.startswith("audio_map_"):
+                return "Select which audio asset file is played for this action source."
 
             # General power toggles
             if k == "use_lpbam":
@@ -987,14 +1082,27 @@ class KnobsApp(ctk.CTk):
             font=ctk.CTkFont(size=11, family="Consolas"),
         )
         json_key_lbl.grid(row=1, column=0, sticky="w", pady=(2, 0))
+        label_row = 2
         if key in self.implicit_default_keys:
             ctk.CTkLabel(
                 label_block,
-                text="schema default",
+                text="using schema default",
                 anchor="w",
                 text_color="#d2a85e",
                 font=ctk.CTkFont(size=10),
-            ).grid(row=2, column=0, sticky="w", pady=(1, 0))
+            ).grid(row=label_row, column=0, sticky="w", pady=(1, 0))
+            label_row += 1
+
+        if bool(self.show_advanced_var.get()):
+            adv_var = tk.BooleanVar(value=bool(self._advanced_flags_state.get(key, meta.gui_advanced)))
+            self._advanced_var_map[key] = adv_var
+            ctk.CTkCheckBox(
+                label_block,
+                text="Advanced",
+                variable=adv_var,
+                command=lambda k=key, v=adv_var: self._on_knob_advanced_changed(k, v),
+                font=ctk.CTkFont(size=10),
+            ).grid(row=label_row, column=0, sticky="w", pady=(1, 0))
 
         # editor container
         editor = ctk.CTkFrame(parent, corner_radius=12)
@@ -1338,16 +1446,21 @@ class KnobsApp(ctk.CTk):
         return raw
 
     def _collect_and_validate(self) -> tuple[Optional[dict[str, Any]], list[str]]:
+        self._persist_visible_widget_values_to_model()
         new_knobs: dict[str, Any] = {}
         errors: list[str] = []
 
         for key in self.all_keys:
-            meta, kind, obj = self._var_map[key]
-            try:
-                value = self._parse_value(meta, kind, obj)
-            except Exception as e:
-                errors.append(f"{key}: parse error: {e}")
-                continue
+            meta = self.meta.get(key) or extract_meta(self.schema_raw, key)
+            if key in self._var_map:
+                _meta, kind, obj = self._var_map[key]
+                try:
+                    value = self._parse_value(meta, kind, obj)
+                except Exception as e:
+                    errors.append(f"{key}: parse error: {e}")
+                    continue
+            else:
+                value = self.knobs_data.get(key)
 
             err = validate_value(meta, value)
             if err:
@@ -1376,6 +1489,22 @@ class KnobsApp(ctk.CTk):
         ordered_keys = sorted(knobs.keys(), key=lambda k: (self._tab_sort_key(tab_of(k)), order_of(k), k))
         ordered = {k: knobs[k] for k in ordered_keys}
         return json.dumps(ordered, indent=2, sort_keys=False) + "\n"
+
+    def _schema_with_advanced_flags_dump(self) -> tuple[dict[str, Any], str]:
+        schema_next: dict[str, Any] = json.loads(json.dumps(self.schema_raw))
+        props = schema_next.get("properties", {}) or {}
+
+        for key in self.all_keys:
+            prop = props.get(key)
+            if not isinstance(prop, dict):
+                continue
+            is_adv = bool(self._advanced_flags_state.get(key, False))
+            if is_adv:
+                prop["gui_advanced"] = True
+            else:
+                prop.pop("gui_advanced", None)
+
+        return schema_next, json.dumps(schema_next, indent=2, sort_keys=False) + "\n"
 
     @staticmethod
     def _sha256_hex(text: str) -> str:
@@ -1414,11 +1543,192 @@ class KnobsApp(ctk.CTk):
     def on_close_no_save(self) -> None:
         self.destroy()
 
+    def _run_generator(self, extra_args: list[str]) -> tuple[int, str]:
+        if not self.gen_script.is_file():
+            raise FileNotFoundError(f"Generator not found: {self.gen_script}")
+        proc = subprocess.run(
+            [sys.executable, str(self.gen_script), *extra_args],
+            cwd=str(self.repo_root),
+            capture_output=True,
+            text=True,
+        )
+        out = (proc.stdout or "") + ("\n" if proc.stdout and proc.stderr else "") + (proc.stderr or "")
+        return proc.returncode, out.strip()
+
+    @staticmethod
+    def _canonical_audio_order(files: list[str]) -> list[str]:
+        preferred = [
+            "UI_Move.wav",
+            "UI_Confirm.wav",
+            "UI_Decline.wav",
+            "UI_Denied.wav",
+            "UI_map_open.wav",
+            "UI_map_close.wav",
+        ]
+        rank = {name: ix for ix, name in enumerate(preferred)}
+        return sorted(files, key=lambda n: (rank.get(n, 10_000), n.lower()))
+
+    def _resolve_system_audio_dir_for_preview(self) -> Path:
+        audio_root = self.repo_root / "Assets" / "audio"
+        for rel in ("system_ui", "system"):
+            candidate = audio_root / rel
+            if candidate.is_dir():
+                return candidate
+        if audio_root.is_dir():
+            return audio_root
+        return audio_root / "system_ui"
+
+    def _audio_manifest_sync_preview(self) -> dict[str, Any]:
+        audio_dir = self._resolve_system_audio_dir_for_preview()
+        audio_files = self._canonical_audio_order(
+            [
+                p.name
+                for p in audio_dir.iterdir()
+                if p.is_file() and p.suffix.lower() == ".wav"
+            ]
+        ) if audio_dir.is_dir() else []
+
+        manifest_path = self.config_dir / "audio_manifest.json"
+        defaults = [
+            "UI_Move.wav",
+            "UI_Confirm.wav",
+            "UI_Decline.wav",
+            "UI_Denied.wav",
+            "UI_map_open.wav",
+            "UI_map_close.wav",
+        ]
+
+        if not manifest_path.is_file():
+            default_embed = [name for name in defaults if name in set(audio_files)]
+            return {
+                "manifest_path": manifest_path,
+                "audio_dir": audio_dir,
+                "audio_files": audio_files,
+                "added": [],
+                "removed": [],
+                "create_manifest": True,
+                "create_count": len(default_embed),
+            }
+
+        raw = load_json(manifest_path)
+        if not isinstance(raw, dict):
+            raise TypeError(f"{manifest_path} must be a JSON object")
+        embedded_raw = raw.get("embedded", [])
+        if not isinstance(embedded_raw, list):
+            raise TypeError(f"{manifest_path} 'embedded' must be an array")
+
+        available = set(audio_files)
+        selected: list[str] = []
+        seen: set[str] = set()
+        removed: list[str] = []
+
+        for item in embedded_raw:
+            if not isinstance(item, str):
+                continue
+            name = item.strip()
+            if not name:
+                continue
+            if name not in available:
+                removed.append(name)
+                continue
+            if name in seen:
+                continue
+            selected.append(name)
+            seen.add(name)
+
+        added: list[str] = []
+        for name in audio_files:
+            if name in seen:
+                continue
+            added.append(name)
+            seen.add(name)
+
+        return {
+            "manifest_path": manifest_path,
+            "audio_dir": audio_dir,
+            "audio_files": audio_files,
+            "added": added,
+            "removed": removed,
+            "create_manifest": False,
+            "create_count": 0,
+        }
+
+    def _restart_gui(self) -> None:
+        script_path = Path(__file__).resolve()
+        try:
+            subprocess.Popen(
+                [sys.executable, str(script_path)],
+                cwd=str(self.repo_root),
+            )
+        finally:
+            self.destroy()
+
+    def on_generate_audio_assets(self) -> None:
+        try:
+            preview = self._audio_manifest_sync_preview()
+        except Exception as e:
+            messagebox.showerror("Audio preview failed", f"Could not inspect audio manifest/folder:\n{e}")
+            return
+
+        prompt_lines: list[str] = []
+        manifest_rel = preview["manifest_path"].relative_to(self.repo_root).as_posix()
+        audio_dir_rel = preview["audio_dir"].relative_to(self.repo_root).as_posix()
+        if bool(preview.get("create_manifest")):
+            prompt_lines.append(f"Audio manifest not found: {manifest_rel}")
+            prompt_lines.append(f"Source folder: {audio_dir_rel}")
+            prompt_lines.append(
+                f"Generator will create manifest with default system UI embed set ({preview.get('create_count', 0)} files)."
+            )
+        else:
+            added = list(preview.get("added", []))
+            removed = list(preview.get("removed", []))
+            if added or removed:
+                prompt_lines.append(f"Manifest sync preview: {manifest_rel}")
+                prompt_lines.append(f"Source folder: {audio_dir_rel}")
+                prompt_lines.append(f"+ Added: {len(added)}")
+                if added:
+                    prompt_lines.append("  " + ", ".join(added))
+                prompt_lines.append(f"- Removed: {len(removed)}")
+                if removed:
+                    prompt_lines.append("  " + ", ".join(removed))
+
+        if prompt_lines:
+            prompt_lines.append("")
+            prompt_lines.append("Continue with audio generation?")
+            if not messagebox.askyesno("Sync Audio Manifest", "\n".join(prompt_lines)):
+                return
+
+        try:
+            rc, out = self._run_generator(["--audio-only"])
+        except Exception as e:
+            messagebox.showerror("Generator failed", f"Could not run generator:\n{e}")
+            return
+        if rc != 0:
+            messagebox.showerror(
+                "Generator failed",
+                f"tools/gen_knobs.py --audio-only exited {rc}:\n\n{out}",
+            )
+            return
+        msg = [
+            "Generated audio assets + refreshed audio options.",
+            "The editor will restart so dropdown lists load the updated schema.",
+        ]
+        if out:
+            msg.extend(["", out])
+        messagebox.showinfo("Audio Generated", "\n".join(msg))
+        self._restart_gui()
+
+    def on_save_stay_open(self) -> None:
+        self._save_knobs_only(close_after=False)
+
     def on_save_and_exit(self) -> None:
+        self._save_knobs_only(close_after=True)
+
+    def _collect_backup_and_write(self) -> tuple[Optional[dict[str, Any]], Optional[str], Optional[Path]]:
         new_knobs, errors = self._collect_and_validate()
         if errors:
             messagebox.showerror("Invalid values", "Fix these before saving:\n\n" + "\n".join(errors[:80]))
-            return
+            return None, None, None
         assert new_knobs is not None
 
         new_text = self._ordered_dump(new_knobs)
@@ -1428,7 +1738,7 @@ class KnobsApp(ctk.CTk):
                 old_text = self.knobs_path.read_text(encoding="utf-8")
         except Exception as e:
             messagebox.showerror("Read failed", f"Could not read current {self.knobs_path}:\n{e}")
-            return
+            return None, None, None
 
         backup_path: Optional[Path] = None
         if old_text != new_text:
@@ -1436,20 +1746,39 @@ class KnobsApp(ctk.CTk):
                 backup_path = self._write_backup(old_text, new_text)
             except Exception as e:
                 messagebox.showerror("Backup failed", f"Could not create knob backup:\n{e}")
-                return
+                return None, None, None
 
         # Write knobs.json
         try:
             self.knobs_path.write_text(new_text, encoding="utf-8", newline="\n")
         except Exception as e:
             messagebox.showerror("Save failed", f"Could not write {self.knobs_path}:\n{e}")
+            return None, None, None
+
+        return new_knobs, new_text, backup_path
+
+    def _save_knobs_only(self, close_after: bool) -> None:
+        saved = self._collect_backup_and_write()
+        if saved[0] is None:
+            return
+        _new_knobs, _new_text, backup_path = saved
+        assert _new_knobs is not None
+        self.knobs_data = dict(_new_knobs)
+
+        schema_changed = False
+        try:
+            old_schema_text = self.schema_path.read_text(encoding="utf-8") if self.schema_path.is_file() else ""
+            schema_next, new_schema_text = self._schema_with_advanced_flags_dump()
+            if old_schema_text != new_schema_text:
+                self.schema_path.write_text(new_schema_text, encoding="utf-8", newline="\n")
+                self.schema_raw = schema_next
+                self.meta = {k: extract_meta(self.schema_raw, k) for k in self.all_keys}
+                schema_changed = True
+        except Exception as e:
+            messagebox.showerror("Save failed", f"Could not update {self.schema_path}:\n{e}")
             return
 
         # Run generator
-        if not self.gen_script.is_file():
-            messagebox.showerror("Generator not found", f"Expected:\n{self.gen_script}")
-            return
-
         autogen_before = ""
         try:
             if self.autogen_header_path.is_file():
@@ -1458,19 +1787,13 @@ class KnobsApp(ctk.CTk):
             autogen_before = ""
 
         try:
-            proc = subprocess.run(
-                [sys.executable, str(self.gen_script)],
-                cwd=str(self.repo_root),
-                capture_output=True,
-                text=True,
-            )
+            rc, out = self._run_generator(["--knobs-only"])
         except Exception as e:
             messagebox.showerror("Generator failed", f"Could not run generator:\n{e}")
             return
 
-        if proc.returncode != 0:
-            out = (proc.stdout or "") + ("\n" if proc.stdout and proc.stderr else "") + (proc.stderr or "")
-            messagebox.showerror("Generator failed", f"tools/gen_knobs.py exited {proc.returncode}:\n\n{out.strip()}")
+        if rc != 0:
+            messagebox.showerror("Generator failed", f"tools/gen_knobs.py --knobs-only exited {rc}:\n\n{out}")
             return
 
         autogen_after = ""
@@ -1484,19 +1807,21 @@ class KnobsApp(ctk.CTk):
 
         msg_lines = [
             f"Saved: {self.knobs_path.relative_to(self.repo_root)}",
+            f"Schema updated: {'yes' if schema_changed else 'no'}",
             f"Generated: {self.autogen_header_path.relative_to(self.repo_root)}",
             f"Autogen changed: {'yes' if autogen_changed else 'no'}",
         ]
         if backup_path is not None:
             msg_lines.append(f"Backup: {backup_path.relative_to(self.repo_root)}")
-        if proc.stdout and proc.stdout.strip():
+        if out:
             msg_lines.append("")
-            msg_lines.append("gen_knobs.py output:")
-            msg_lines.append(proc.stdout.strip())
+            msg_lines.append("gen_knobs.py --knobs-only output:")
+            msg_lines.append(out)
 
         messagebox.showinfo("Knobs Saved", "\n".join(msg_lines))
 
-        self.destroy()
+        if close_after:
+            self.destroy()
 
 
 def main() -> int:

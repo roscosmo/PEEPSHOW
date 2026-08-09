@@ -10,9 +10,9 @@
 extern "C" {
 #endif
 
-#define PS_STORAGE_MSC_BRIDGE_API_VERSION (2UL)
+#define PS_STORAGE_MSC_BRIDGE_API_VERSION (3UL)
 #define PS_STORAGE_MSC_BRIDGE_BLOCK_SIZE  (512UL)
-#define PS_STORAGE_MSC_BRIDGE_BLOCK_COUNT (2048UL)
+#define PS_STORAGE_MSC_BRIDGE_BLOCK_COUNT (10240UL)
 #define PS_STORAGE_MSC_BRIDGE_LAST_LBA    \
   (PS_STORAGE_MSC_BRIDGE_BLOCK_COUNT - 1UL)
 
@@ -46,6 +46,7 @@ typedef struct
   uint32_t write_count;
   uint32_t flush_count;
   uint32_t status_count;
+  uint32_t fast_status_count;
   uint32_t last_command;
   uint32_t last_lba;
   uint32_t last_block_count;
@@ -80,6 +81,7 @@ UINT PS_StorageMscBridge_Submit(ps_storage_msc_command_t command,
                                 uint32_t lba,
                                 uint32_t block_count,
                                 ULONG *media_status);
+UINT PS_StorageMscBridge_Status(ULONG *media_status);
 ps_storage_msc_request_t *PS_StorageMscBridge_CurrentRequest(void);
 void PS_StorageMscBridge_Complete(UINT ux_status,
                                   ULONG media_status,

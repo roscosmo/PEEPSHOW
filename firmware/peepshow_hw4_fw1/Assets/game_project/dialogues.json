@@ -1,0 +1,25 @@
+[
+  {
+    "id": "town_intro_01",
+    "start_node_id": "start",
+    "nodes": [
+      {
+        "id": "start",
+        "speaker_id": "elder",
+        "text": "Welcome home.",
+        "choices": [
+          {
+            "label": "Thanks",
+            "next_node_id": "end"
+          }
+        ]
+      },
+      {
+        "id": "end",
+        "speaker_id": "elder",
+        "text": "Take care out there.",
+        "choices": []
+      }
+    ]
+  }
+]

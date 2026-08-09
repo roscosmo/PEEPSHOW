@@ -23,6 +23,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 /* USER CODE END Includes */
 
@@ -49,6 +50,8 @@ static TX_THREAD ux_device_app_thread;
 
 /* USER CODE BEGIN PV */
 volatile UINT g_ps_hw6_usbx_init_stage;
+volatile UINT g_ps_hw6_usbx_init_error_code;
+volatile UINT g_ps_hw6_usbx_dcd_status;
 volatile UINT g_ps_hw6_usbx_stack_alloc_status;
 volatile UINT g_ps_hw6_usbx_system_init_status;
 volatile UINT g_ps_hw6_usbx_device_stack_status;
@@ -63,6 +66,9 @@ volatile ULONG g_ps_hw6_usbx_storage_configuration_number;
 volatile ULONG g_ps_hw6_usbx_storage_interface_number;
 volatile ULONG g_ps_hw6_usbx_storage_last_lba;
 volatile ULONG g_ps_hw6_usbx_storage_block_length;
+static UCHAR g_ps_hw6_msc_vendor_id[9]   = "ROSCOSMO";
+static UCHAR g_ps_hw6_msc_product_id[17] = "PEEPSHOW STORAGE";
+static UCHAR g_ps_hw6_msc_product_rev[5] = "0001";
 
 /* USER CODE END PV */
 
@@ -93,6 +99,7 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
 
   /* USER CODE BEGIN MX_USBX_Device_Init0 */
   g_ps_hw6_usbx_init_stage = 1U;
+  g_ps_hw6_usbx_init_error_code = UX_SUCCESS;
 
   /* USER CODE END MX_USBX_Device_Init0 */
   /* Allocate the stack for USBX Memory */
@@ -102,6 +109,8 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
   if (ret != TX_SUCCESS)
   {
     /* USER CODE BEGIN USBX_ALLOCATE_STACK_ERROR */
+    g_ps_hw6_usbx_init_stage = 2U;
+    g_ps_hw6_usbx_init_error_code = TX_POOL_ERROR;
     return ret;
     /* USER CODE END USBX_ALLOCATE_STACK_ERROR */
   }
@@ -112,6 +121,8 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
   if (ret != UX_SUCCESS)
   {
     /* USER CODE BEGIN USBX_SYSTEM_INITIALIZE_ERROR */
+    g_ps_hw6_usbx_init_stage = 3U;
+    g_ps_hw6_usbx_init_error_code = ret;
     return ret;
     /* USER CODE END USBX_SYSTEM_INITIALIZE_ERROR */
   }
@@ -148,6 +159,8 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
   if (ret != UX_SUCCESS)
   {
     /* USER CODE BEGIN USBX_DEVICE_INITIALIZE_ERROR */
+    g_ps_hw6_usbx_init_stage = 4U;
+    g_ps_hw6_usbx_init_error_code = ret;
     return ret;
     /* USER CODE END USBX_DEVICE_INITIALIZE_ERROR */
   }
@@ -193,6 +206,10 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
     ux_slave_class_storage_media_notification = USBD_STORAGE_Notification;
 
   /* USER CODE BEGIN STORAGE_PARAMETER */
+  storage_parameter.ux_slave_class_storage_parameter_vendor_id = g_ps_hw6_msc_vendor_id;
+  storage_parameter.ux_slave_class_storage_parameter_product_id = g_ps_hw6_msc_product_id;
+  storage_parameter.ux_slave_class_storage_parameter_product_rev = g_ps_hw6_msc_product_rev;
+
 
   /* USER CODE END STORAGE_PARAMETER */
 
@@ -214,6 +231,8 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
   if (ret != UX_SUCCESS)
   {
     /* USER CODE BEGIN USBX_DEVICE_STORAGE_REGISTER_ERROR */
+    g_ps_hw6_usbx_init_stage = 5U;
+    g_ps_hw6_usbx_init_error_code = ret;
     return ret;
     /* USER CODE END USBX_DEVICE_STORAGE_REGISTER_ERROR */
   }
@@ -225,6 +244,8 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
   if (ret != TX_SUCCESS)
   {
     /* USER CODE BEGIN MAIN_THREAD_ALLOCATE_STACK_ERROR */
+    g_ps_hw6_usbx_init_stage = 6U;
+    g_ps_hw6_usbx_init_error_code = TX_POOL_ERROR;
     return ret;
     /* USER CODE END MAIN_THREAD_ALLOCATE_STACK_ERROR */
   }
@@ -238,11 +259,15 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
   if (ret != TX_SUCCESS)
   {
     /* USER CODE BEGIN MAIN_THREAD_CREATE_ERROR */
+    g_ps_hw6_usbx_init_stage = 7U;
+    g_ps_hw6_usbx_init_error_code = TX_THREAD_ERROR;
     return ret;
     /* USER CODE END MAIN_THREAD_CREATE_ERROR */
   }
 
   /* USER CODE BEGIN MX_USBX_Device_Init1 */
+  g_ps_hw6_usbx_init_stage = 100U;
+  g_ps_hw6_usbx_init_error_code = UX_SUCCESS;
 
   /* USER CODE END MX_USBX_Device_Init1 */
 
@@ -257,7 +282,25 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
 static VOID app_ux_device_thread_entry(ULONG thread_input)
 {
   /* USER CODE BEGIN app_ux_device_thread_entry */
+  UINT dcd_status = UX_SUCCESS;
   TX_PARAMETER_NOT_USED(thread_input);
+  g_ps_hw6_usbx_init_stage = 8U;
+  dcd_status = ux_dcd_stm32_initialize((ULONG)USB_OTG_FS,
+                                       (ULONG)&hpcd_USB_OTG_FS);
+  g_ps_hw6_usbx_dcd_status = dcd_status;
+  if (dcd_status != UX_SUCCESS)
+  {
+    g_ps_hw6_usbx_init_stage = 9U;
+    g_ps_hw6_usbx_init_error_code = dcd_status;
+    return;
+  }
+  g_ps_hw6_usbx_init_stage = 101U;
+  g_ps_hw6_usbx_init_error_code = UX_SUCCESS;
+
+  while (1)
+  {
+    tx_thread_sleep(UX_PERIODIC_RATE);
+  }
   /* USER CODE END app_ux_device_thread_entry */
 }
 

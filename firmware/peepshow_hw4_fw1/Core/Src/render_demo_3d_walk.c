@@ -12,12 +12,14 @@
  * - LIS X tilt: strafe
  */
 
-#include "render_demo.h"
+#include "render_demo_3d_walk.h"
 
 #include "display_renderer.h"
 #include "font8x8_basic.h"
+#include "knobs_autogen.h"
 #include "main.h"
 #include "th_mode.h"
+#include "tx_api.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -53,6 +55,10 @@ typedef struct
 {
   uint8_t initialized;
   uint8_t room_enabled;
+  uint8_t pose_valid;
+  uint8_t ui_valid;
+  uint8_t force_full_redraw;
+  uint8_t last_room_enabled;
 
   uint16_t width;
   uint16_t height;
@@ -67,13 +73,29 @@ typedef struct
   float pitch;
 
   uint32_t fps;
-  uint32_t fps_ms_acc;
+  uint32_t fps_tick_acc;
   uint32_t fps_frames;
-  uint32_t boot_ms;
-  uint32_t last_frame_ms;
+  uint32_t uptime_ms;
+  ULONG boot_tick;
+  ULONG last_frame_tick;
+  uint32_t ui_last_sim_sec;
+  uint32_t ui_last_wall_sec;
+  uint32_t ui_last_fps;
+
+  float last_cam_x;
+  float last_cam_z;
+  float last_yaw;
 } render_demo_state_t;
 
 static render_demo_state_t s_demo;
+
+typedef enum
+{
+  RENDER_DEMO3D_ROLE_IGNORE = 0U,
+  RENDER_DEMO3D_ROLE_PRIMARY = 1U,
+  RENDER_DEMO3D_ROLE_SECONDARY = 2U,
+  RENDER_DEMO3D_ROLE_BACK = 3U
+} render_demo3d_role_t;
 
 /* ---- Geometry: Room (axis-aligned box) ---- */
 
@@ -154,6 +176,57 @@ static float RenderDemo_ClampF(float x, float lo, float hi)
   return x;
 }
 
+static render_demo3d_role_t RenderDemo3dWalk_RoleForSource(ULONG source)
+{
+  ULONG role = 0UL;
+
+  switch (source)
+  {
+    case GAME_RT_INPUT_SRC_BTN_A:
+      role = (ULONG)KNOB_GAME_RT_WALK_BTN_A_ROLE;
+      break;
+
+    case GAME_RT_INPUT_SRC_BTN_B:
+      role = (ULONG)KNOB_GAME_RT_WALK_BTN_B_ROLE;
+      break;
+
+    case GAME_RT_INPUT_SRC_BTN_L:
+      role = (ULONG)KNOB_GAME_RT_WALK_BTN_L_ROLE;
+      break;
+
+    case GAME_RT_INPUT_SRC_BTN_R:
+      role = (ULONG)KNOB_GAME_RT_WALK_BTN_R_ROLE;
+      break;
+
+    case GAME_RT_INPUT_SRC_JOY_UP:
+      role = (ULONG)KNOB_GAME_RT_WALK_JOY_UP_ROLE;
+      break;
+
+    case GAME_RT_INPUT_SRC_JOY_RIGHT:
+      role = (ULONG)KNOB_GAME_RT_WALK_JOY_RIGHT_ROLE;
+      break;
+
+    case GAME_RT_INPUT_SRC_JOY_DOWN:
+      role = (ULONG)KNOB_GAME_RT_WALK_JOY_DOWN_ROLE;
+      break;
+
+    case GAME_RT_INPUT_SRC_JOY_LEFT:
+      role = (ULONG)KNOB_GAME_RT_WALK_JOY_LEFT_ROLE;
+      break;
+
+    default:
+      role = (ULONG)RENDER_DEMO3D_ROLE_IGNORE;
+      break;
+  }
+
+  if (role > (ULONG)RENDER_DEMO3D_ROLE_BACK)
+  {
+    role = (ULONG)RENDER_DEMO3D_ROLE_IGNORE;
+  }
+
+  return (render_demo3d_role_t)role;
+}
+
 static char *RenderDemo_U32ToDec(char *dst, uint32_t v)
 {
   char tmp[11];
@@ -172,6 +245,58 @@ static char *RenderDemo_U32ToDec(char *dst, uint32_t v)
 
   *dst = '\0';
   return dst;
+}
+
+static uint8_t RenderDemo3dWalk_SceneChanged(void)
+{
+  const float pos_eps = 0.005f;
+  const float yaw_eps = 0.002f;
+  uint8_t changed = 0U;
+
+  if (s_demo.pose_valid == 0U)
+  {
+    changed = 1U;
+  }
+  else
+  {
+    if ((RenderDemo_AbsF(s_demo.cam_x - s_demo.last_cam_x) > pos_eps) ||
+        (RenderDemo_AbsF(s_demo.cam_z - s_demo.last_cam_z) > pos_eps) ||
+        (RenderDemo_AbsF(s_demo.yaw - s_demo.last_yaw) > yaw_eps) ||
+        (s_demo.room_enabled != s_demo.last_room_enabled))
+    {
+      changed = 1U;
+    }
+  }
+
+  if (changed != 0U)
+  {
+    s_demo.last_cam_x = s_demo.cam_x;
+    s_demo.last_cam_z = s_demo.cam_z;
+    s_demo.last_yaw = s_demo.yaw;
+    s_demo.last_room_enabled = s_demo.room_enabled;
+    s_demo.pose_valid = 1U;
+  }
+
+  return changed;
+}
+
+static uint8_t RenderDemo3dWalk_UiChanged(uint32_t wall_sec)
+{
+  const uint32_t sim_sec = s_demo.uptime_ms / 1000U;
+
+  if ((s_demo.ui_valid == 0U) ||
+      (s_demo.ui_last_sim_sec != sim_sec) ||
+      (s_demo.ui_last_wall_sec != wall_sec) ||
+      (s_demo.ui_last_fps != s_demo.fps))
+  {
+    s_demo.ui_last_sim_sec = sim_sec;
+    s_demo.ui_last_wall_sec = wall_sec;
+    s_demo.ui_last_fps = s_demo.fps;
+    s_demo.ui_valid = 1U;
+    return 1U;
+  }
+
+  return 0U;
 }
 
 static float RenderDemo_LisRawToNorm(int32_t raw)
@@ -1183,130 +1308,243 @@ static void RenderDemo_DrawTopBar(void)
 
 static void RenderDemo_DrawBottomBar(void)
 {
-  char up_buf[24];
-  char *p = up_buf;
-  uint32_t uptime_sec = 0U;
+  char stat_buf[28];
+  char *p = stat_buf;
+  uint32_t sim_sec;
+  uint32_t wall_sec = 0U;
   uint16_t y0;
 
-  if (s_demo.last_frame_ms >= s_demo.boot_ms)
+  sim_sec = s_demo.uptime_ms / 1000U;
+  if (s_demo.last_frame_tick >= s_demo.boot_tick)
   {
-    uptime_sec = (s_demo.last_frame_ms - s_demo.boot_ms) / 1000U;
+    wall_sec = (uint32_t)((s_demo.last_frame_tick - s_demo.boot_tick) / (ULONG)TX_TIMER_TICKS_PER_SECOND);
   }
 
   y0 = (uint16_t)(s_demo.height - s_demo.ui_bar_h);
   renderFillRect(0U, y0, s_demo.width, s_demo.ui_bar_h, RENDER_LAYER_UI, RENDER_COLOR_BLACK);
 
-  *p++ = 'U';
-  *p++ = 'P';
+  *p++ = 'S';
+  *p++ = 'I';
+  *p++ = 'M';
   *p++ = ':';
   *p++ = ' ';
-  p = RenderDemo_U32ToDec(p, uptime_sec);
+  p = RenderDemo_U32ToDec(p, sim_sec);
+  *p++ = 's';
+  *p++ = ' ';
+  *p++ = 'W';
+  *p++ = 'A';
+  *p++ = 'L';
+  *p++ = 'L';
+  *p++ = ':';
+  *p++ = ' ';
+  p = RenderDemo_U32ToDec(p, wall_sec);
   *p++ = 's';
   *p = '\0';
 
-  renderDrawText(4U, (uint16_t)(y0 + 3U), up_buf, RENDER_LAYER_UI, RENDER_COLOR_WHITE);
-  renderDrawText((uint16_t)(s_demo.width > 138U ? (s_demo.width - 138U) : 2U),
-                 (uint16_t)(y0 + 3U),
-                 "JOY:X=TURN Y=FWD/BACK  LIS:X=STRAFE", RENDER_LAYER_UI, RENDER_COLOR_WHITE);
+  renderDrawText(4U, (uint16_t)(y0 + 3U), stat_buf, RENDER_LAYER_UI, RENDER_COLOR_WHITE);
 }
 
 /* ---- Public API ---- */
 
-void RenderDemo_Reset(void)
+void RenderDemo3dWalk_Reset(void)
 {
   (void)memset(&s_demo, 0, sizeof(s_demo));
 }
 
-void RenderDemo_ToggleBackground(void)
+static void RenderDemo3dWalk_EnsureInitialized(void)
+{
+  ULONG now_tick;
+
+  if (s_demo.initialized != 0U)
+  {
+    return;
+  }
+
+  now_tick = tx_time_get();
+  s_demo.width = RENDER_WIDTH;
+  s_demo.height = RENDER_HEIGHT;
+  s_demo.ui_bar_h = (s_demo.height > ((UI_BAR_H_PIXELS * 2U) + 1U)) ? UI_BAR_H_PIXELS : 0U;
+  s_demo.game_y0 = s_demo.ui_bar_h;
+  s_demo.game_y1 = (s_demo.height > s_demo.ui_bar_h) ? (uint16_t)(s_demo.height - s_demo.ui_bar_h - 1U) : 0U;
+
+  if (s_demo.game_y1 < s_demo.game_y0)
+  {
+    s_demo.game_y0 = 0U;
+    s_demo.game_y1 = (s_demo.height > 0U) ? (uint16_t)(s_demo.height - 1U) : 0U;
+  }
+
+  s_demo.room_enabled = 1U;
+
+  /* Start near back wall so the room is in front at yaw=0 */
+  s_demo.cam_x = 0.0f;
+  s_demo.cam_y = 1.05f;
+  s_demo.cam_z = (-ROOM_HALF_Z + 1.2f);
+  s_demo.yaw = 0.0f;
+  s_demo.pitch = 0.0f;
+
+  s_demo.uptime_ms = 0U;
+  s_demo.boot_tick = now_tick;
+  s_demo.last_frame_tick = now_tick;
+  s_demo.pose_valid = 0U;
+  s_demo.ui_valid = 0U;
+  s_demo.force_full_redraw = 1U;
+  s_demo.initialized = 1U;
+}
+
+void RenderDemo3dWalk_ToggleBackground(void)
 {
   /* API compat: unused */
 }
 
-void RenderDemo_ToggleCube(void)
+void RenderDemo3dWalk_ToggleCube(void)
 {
-  if (s_demo.initialized == 0U)
-  {
-    return;
-  }
+  RenderDemo3dWalk_EnsureInitialized();
   s_demo.room_enabled = (s_demo.room_enabled == 0U) ? 1U : 0U;
 }
 
-void RenderDemo_DrawFrame(const app_sensor_snapshot_t *sensor_snapshot)
+uint8_t RenderDemo3dWalk_HandleControl(const game_runtime_input_t *input,
+                                       uint8_t *request_exit_to_static,
+                                       game_runtime_audio_cue_t *audio_cue_out)
 {
-  uint32_t now_ms;
-  uint32_t dt_ms;
+  render_demo3d_role_t role;
 
-  if (s_demo.initialized == 0U)
+  if (input == NULL)
   {
-    now_ms = HAL_GetTick();
-
-    s_demo.width = RENDER_WIDTH;
-    s_demo.height = RENDER_HEIGHT;
-    s_demo.ui_bar_h = (s_demo.height > ((UI_BAR_H_PIXELS * 2U) + 1U)) ? UI_BAR_H_PIXELS : 0U;
-    s_demo.game_y0 = s_demo.ui_bar_h;
-    s_demo.game_y1 = (s_demo.height > s_demo.ui_bar_h) ? (uint16_t)(s_demo.height - s_demo.ui_bar_h - 1U) : 0U;
-
-    if (s_demo.game_y1 < s_demo.game_y0)
-    {
-      s_demo.game_y0 = 0U;
-      s_demo.game_y1 = (s_demo.height > 0U) ? (uint16_t)(s_demo.height - 1U) : 0U;
-    }
-
-    s_demo.room_enabled = 1U;
-
-    /* Start near back wall so the room is in front at yaw=0 */
-    s_demo.cam_x = 0.0f;
-    s_demo.cam_y = 1.05f;
-    s_demo.cam_z = (-ROOM_HALF_Z + 1.2f);
-    s_demo.yaw = 0.0f;
-    s_demo.pitch = 0.0f;
-
-    s_demo.boot_ms = now_ms;
-    s_demo.last_frame_ms = now_ms;
-    s_demo.initialized = 1U;
+    return 0U;
   }
 
-  now_ms = HAL_GetTick();
-  dt_ms = (uint32_t)(now_ms - s_demo.last_frame_ms);
-  s_demo.last_frame_ms = now_ms;
-
-  s_demo.fps_ms_acc += dt_ms;
-  s_demo.fps_frames++;
-  if (s_demo.fps_ms_acc >= 1000U)
+  if (request_exit_to_static != NULL)
   {
-    if (s_demo.fps_ms_acc > 0U)
-    {
-      s_demo.fps = (uint32_t)((s_demo.fps_frames * 1000U) / s_demo.fps_ms_acc);
-    }
-    s_demo.fps_ms_acc = 0U;
-    s_demo.fps_frames = 0U;
+    *request_exit_to_static = 0U;
+  }
+  if (audio_cue_out != NULL)
+  {
+    *audio_cue_out = GAME_RT_AUDIO_CUE_NONE;
   }
 
-  renderClear(RENDER_COLOR_WHITE);
-  Render_SetModeIndicator(TH_MODE_REALTIME);
+  if (input->event != (ULONG)GAME_RT_INPUT_EVENT_PRESS)
+  {
+    return 0U;
+  }
 
+  role = RenderDemo3dWalk_RoleForSource(input->source);
+
+  switch (role)
+  {
+    case RENDER_DEMO3D_ROLE_PRIMARY:
+      RenderDemo3dWalk_ToggleBackground();
+      if (audio_cue_out != NULL)
+      {
+        *audio_cue_out = GAME_RT_AUDIO_CUE_PRIMARY;
+      }
+      return 1U;
+
+    case RENDER_DEMO3D_ROLE_SECONDARY:
+      RenderDemo3dWalk_ToggleCube();
+      if (audio_cue_out != NULL)
+      {
+        *audio_cue_out = GAME_RT_AUDIO_CUE_SECONDARY;
+      }
+      return 1U;
+
+    case RENDER_DEMO3D_ROLE_BACK:
+      if (request_exit_to_static != NULL)
+      {
+        *request_exit_to_static = 1U;
+      }
+      if (audio_cue_out != NULL)
+      {
+        *audio_cue_out = GAME_RT_AUDIO_CUE_BACK;
+      }
+      return 1U;
+
+    default:
+      return 0U;
+  }
+}
+
+void RenderDemo3dWalk_Update(const app_sensor_snapshot_t *sensor_snapshot, uint32_t dt_ms)
+{
+  RenderDemo3dWalk_EnsureInitialized();
+
+  s_demo.uptime_ms += dt_ms;
   if (s_demo.room_enabled != 0U)
   {
     RenderDemo_UpdateRoomFromSensor(sensor_snapshot, dt_ms);
+  }
+}
 
-    /* Room first */
-    RenderDemo_DrawRoomShadedInk();
-    RenderDemo_DrawBoxWireframe(kRoomVerts, kRoomEdges);
+void RenderDemo3dWalk_DrawFrame(const app_sensor_snapshot_t *sensor_snapshot)
+{
+  ULONG now_tick;
+  ULONG dt_ticks;
+  uint32_t wall_sec;
+  uint8_t scene_changed;
+  uint8_t ui_changed;
+  (void)sensor_snapshot;
 
-    /* Pillar: sorted opaque fill + silhouette outline */
-    RenderDemo_DrawPillarShadedOpaque_SortedAll();
-    RenderDemo_DrawPillarSilhouetteOutline();
+  RenderDemo3dWalk_EnsureInitialized();
+
+  now_tick = tx_time_get();
+  dt_ticks = (ULONG)(now_tick - s_demo.last_frame_tick);
+  s_demo.last_frame_tick = now_tick;
+  s_demo.fps_tick_acc += (uint32_t)dt_ticks;
+  s_demo.fps_frames++;
+  if (s_demo.fps_tick_acc >= (uint32_t)TX_TIMER_TICKS_PER_SECOND)
+  {
+    if (s_demo.fps_tick_acc > 0U)
+    {
+      s_demo.fps = (uint32_t)(((uint64_t)s_demo.fps_frames * (uint64_t)TX_TIMER_TICKS_PER_SECOND) /
+                              (uint64_t)s_demo.fps_tick_acc);
+    }
+    s_demo.fps_tick_acc = 0U;
+    s_demo.fps_frames = 0U;
   }
 
-  if (s_demo.ui_bar_h > 0U)
+  wall_sec = 0U;
+  if (s_demo.last_frame_tick >= s_demo.boot_tick)
+  {
+    wall_sec = (uint32_t)((s_demo.last_frame_tick - s_demo.boot_tick) / (ULONG)TX_TIMER_TICKS_PER_SECOND);
+  }
+  scene_changed = RenderDemo3dWalk_SceneChanged();
+  ui_changed = RenderDemo3dWalk_UiChanged(wall_sec);
+
+  if (s_demo.force_full_redraw != 0U)
+  {
+    scene_changed = 1U;
+  }
+
+  if (scene_changed != 0U)
+  {
+    renderClear(RENDER_COLOR_WHITE);
+    Render_SetModeIndicator(TH_MODE_REALTIME);
+
+    if (s_demo.room_enabled != 0U)
+    {
+      /* Room first */
+      RenderDemo_DrawRoomShadedInk();
+      RenderDemo_DrawBoxWireframe(kRoomVerts, kRoomEdges);
+
+      /* Pillar: sorted opaque fill + silhouette outline */
+      RenderDemo_DrawPillarShadedOpaque_SortedAll();
+      RenderDemo_DrawPillarSilhouetteOutline();
+    }
+
+    if (s_demo.ui_bar_h > 0U)
+    {
+      RenderDemo_DrawTopBar();
+      RenderDemo_DrawBottomBar();
+    }
+    else
+    {
+      renderDrawText(2U, 2U, "3D ROOM+PILLAR", RENDER_LAYER_UI, RENDER_COLOR_BLACK);
+    }
+  }
+  else if ((ui_changed != 0U) && (s_demo.ui_bar_h > 0U))
   {
     RenderDemo_DrawTopBar();
     RenderDemo_DrawBottomBar();
   }
-  else
-  {
-    renderDrawText(2U, 2U, "3D ROOM+PILLAR", RENDER_LAYER_UI, RENDER_COLOR_BLACK);
-  }
 
-  Render_MarkDirtyAll();
+  s_demo.force_full_redraw = 0U;
 }

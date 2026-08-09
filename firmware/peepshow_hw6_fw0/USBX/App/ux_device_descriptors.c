@@ -33,6 +33,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define USBD_MSC_IF_SUBCLASS 0x06U
 
 /* USER CODE END PD */
 
@@ -214,13 +215,14 @@ uint8_t *USBD_Get_String_Framework(ULONG *Length)
 
   /* Set the Serial number in USBD_string_framework */
   USBD_Desc_GetString((uint8_t *)USBD_SERIAL_NUMBER, USBD_string_framework + count, &len);
+  count += len + 1U;
 
   /* USER CODE BEGIN String_Framework1 */
 
   /* USER CODE END String_Framework1 */
 
-  /* Get the length of USBD_string_framework */
-  *Length = strlen((const char *)USBD_string_framework);
+  /* Get the exact binary framework length (not C-string length). */
+  *Length = (ULONG)count;
 
   return USBD_string_framework;
 }
@@ -239,8 +241,8 @@ uint8_t *USBD_Get_Language_Id_Framework(ULONG *Length)
   USBD_language_id_framework[count++] = USBD_LANGID_STRING & 0xFF;
   USBD_language_id_framework[count++] = USBD_LANGID_STRING >> 8;
 
-  /* Get the length of USBD_language_id_framework */
-  *Length = strlen((const char *)USBD_language_id_framework);
+  /* Get the exact binary framework length (not C-string length). */
+  *Length = (ULONG)count;
 
   return USBD_language_id_framework;
 }
@@ -664,7 +666,7 @@ static void  USBD_FrameWork_MSCDesc(USBD_DevClassHandleTypeDef *pdev,
   /* Append MSC Interface descriptor */
   __USBD_FRAMEWORK_SET_IF((pdev->tclasslist[pdev->classId].Ifs[0]), (0U), \
                           (uint8_t)(pdev->tclasslist[pdev->classId].NumEps),
-                          (0x08U), (0x06U), (0x50U), (0U));
+                          (0x08U), (USBD_MSC_IF_SUBCLASS), (0x50U), (0U));
 
   /* Append Endpoint descriptor to Configuration descriptor */
   __USBD_FRAMEWORK_SET_EP((pdev->tclasslist[pdev->classId].Eps[0].add),

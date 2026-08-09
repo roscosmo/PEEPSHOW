@@ -22,6 +22,11 @@
 #include "stm32u5xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+extern volatile unsigned int g_ps_hw6_usbx_byte_pool_create_status;
+extern volatile unsigned int g_ps_hw6_usbx_device_init_status;
+extern volatile unsigned int g_ps_hw6_usbx_init_stage;
+extern volatile unsigned int g_ps_hw6_usbx_init_error_code;
+extern void *_ux_system_slave;
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,6 +46,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
+volatile unsigned long g_ps_hw6_usb_irq_guard_drop_count = 0UL;
 
 /* USER CODE END PV */
 
@@ -355,6 +361,20 @@ void TIM6_IRQHandler(void)
 void OTG_FS_IRQHandler(void)
 {
   /* USER CODE BEGIN OTG_FS_IRQn 0 */
+  if ((g_ps_hw6_usbx_byte_pool_create_status != 0U) ||
+      (g_ps_hw6_usbx_device_init_status != 0U) ||
+      (g_ps_hw6_usbx_init_stage < 101U) ||
+      (g_ps_hw6_usbx_init_error_code != 0U) ||
+      (_ux_system_slave == 0))
+  {
+    HAL_NVIC_DisableIRQ(OTG_FS_IRQn);
+    NVIC_ClearPendingIRQ(OTG_FS_IRQn);
+    if (g_ps_hw6_usb_irq_guard_drop_count < 0xFFFFFFFFUL)
+    {
+      g_ps_hw6_usb_irq_guard_drop_count++;
+    }
+    return;
+  }
 
   /* USER CODE END OTG_FS_IRQn 0 */
   HAL_PCD_IRQHandler(&hpcd_USB_OTG_FS);

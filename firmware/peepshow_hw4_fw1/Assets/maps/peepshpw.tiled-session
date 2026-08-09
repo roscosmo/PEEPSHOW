@@ -1,0 +1,76 @@
+{
+    "Map/SizeTest": {
+        "height": 4300,
+        "width": 2
+    },
+    "activeFile": "town_map.json",
+    "expandedProjectPaths": [
+    ],
+    "file.lastUsedOpenFilter": "All Files (*)",
+    "fileStates": {
+        "C:/town_map.tsx": {
+            "scaleInDock": 1
+        },
+        "market.json": {
+            "expandedObjectLayers": [
+                3
+            ],
+            "scale": 7.43375,
+            "selectedLayer": 2,
+            "viewCenter": {
+                "x": 80.04035648225997,
+                "y": 80.57844291239279
+            }
+        },
+        "market.tsx": {
+            "scaleInDock": 3,
+            "scaleInEditor": 4
+        },
+        "outdoor.json": {
+            "scale": 4,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 113.25,
+                "y": 96.5
+            }
+        },
+        "town_map.json": {
+            "scale": 3,
+            "selectedLayer": 3,
+            "viewCenter": {
+                "x": 139,
+                "y": 187.33333333333334
+            }
+        },
+        "town_map.tsx": {
+            "scaleInDock": 2,
+            "scaleInEditor": 1
+        }
+    },
+    "last.exportedFilePath": "C:/Users/Rosco/Documents/STM32/PeepShowV0/Assets/maps",
+    "last.externalTilesetPath": "C:/Users/Rosco/Documents/STM32/PeepShowV0/Assets/maps",
+    "last.imagePath": "C:/Users/Rosco/Documents/STM32/PeepShowV0/Assets/maps",
+    "lastUsedTilesetExportFilter": "All Files (*)",
+    "map.height": 15,
+    "map.lastUsedExportFilter": "JSON map files (*.tmj *.json)",
+    "map.lastUsedFormat": "json",
+    "map.tileHeight": 16,
+    "map.tileWidth": 16,
+    "map.width": 14,
+    "openFiles": [
+        "town_map.tsx",
+        "town_map.json"
+    ],
+    "project": "peepshpw.tiled-project",
+    "property.type": "string",
+    "recentFiles": [
+        "market.tsx",
+        "town_map.tsx",
+        "town_map.json"
+    ],
+    "tileset.lastUsedFormat": "tsx",
+    "tileset.tileSize": {
+        "height": 16,
+        "width": 16
+    }
+}

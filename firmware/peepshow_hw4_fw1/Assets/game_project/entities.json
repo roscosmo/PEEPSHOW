@@ -1,0 +1,35 @@
+[
+  {
+    "id": "pet_player",
+    "display_name": "Pet Player",
+    "category": "player",
+    "sprite_set_id": "player_main",
+    "animation_set_id": "player_default",
+    "controller_type": "player_topdown",
+    "collision_profile_id": "actor_16x16",
+    "dialogue_id": "",
+    "ability_set_id": "pet_default",
+    "loot_table_id": "",
+    "ai_profile_id": "",
+    "event_hooks": []
+  },
+  {
+    "id": "slime_green",
+    "display_name": "Green Slime",
+    "category": "enemy",
+    "sprite_set_id": "slime_green_anim",
+    "animation_set_id": "slime_default",
+    "controller_type": "enemy_wander_chase",
+    "collision_profile_id": "actor_16x16",
+    "dialogue_id": "",
+    "ability_set_id": "slime_basic",
+    "loot_table_id": "slime_basic",
+    "ai_profile_id": "wander_chase_near",
+    "event_hooks": [
+      {
+        "trigger": "on_death",
+        "script_id": "slime_death_default"
+      }
+    ]
+  }
+]

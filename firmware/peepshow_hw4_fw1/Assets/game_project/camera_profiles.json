@@ -1,0 +1,24 @@
+[
+  {
+    "id": "scene_default",
+    "display_name": "Scene Default",
+    "profile_id": 1,
+    "camera_deadzone_w_px": 24,
+    "camera_deadzone_h_px": 24,
+    "camera_follow_permille": 280,
+    "camera_max_speed_px_s": 240,
+    "camera_lookahead_x_px": 16,
+    "camera_lookahead_y_px": 16
+  },
+  {
+    "id": "topdown_follow",
+    "display_name": "Topdown Follow",
+    "profile_id": 4,
+    "camera_deadzone_w_px": 24,
+    "camera_deadzone_h_px": 24,
+    "camera_follow_permille": 280,
+    "camera_max_speed_px_s": 240,
+    "camera_lookahead_x_px": 16,
+    "camera_lookahead_y_px": 16
+  }
+]

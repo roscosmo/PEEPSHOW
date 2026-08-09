@@ -1,0 +1,37 @@
+[
+  {
+    "id": "home",
+    "display_name": "Home",
+    "page_id": 1,
+    "route_kind": "native_page",
+    "native_page_key": "home"
+  },
+  {
+    "id": "pet",
+    "display_name": "Pet",
+    "page_id": 2,
+    "route_kind": "native_page",
+    "native_page_key": "pet"
+  },
+  {
+    "id": "system_menu",
+    "display_name": "System Menu",
+    "page_id": 3,
+    "route_kind": "native_tree",
+    "native_tree_key": "system_root"
+  },
+  {
+    "id": "pet_feed_menu",
+    "display_name": "Pet Feed Menu",
+    "page_id": 4,
+    "route_kind": "native_tree",
+    "native_tree_key": "pet_feed"
+  },
+  {
+    "id": "joy_target",
+    "display_name": "Joystick Target",
+    "page_id": 5,
+    "route_kind": "native_page",
+    "native_page_key": "joy_target"
+  }
+]

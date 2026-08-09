@@ -1,0 +1,12 @@
+evidence_id: EV-HW6-20260809-P7-USB-019
+date: 2026-08-09
+board: HW6-UNIT-001 provisional
+firmware_target: firmware/peepshow_hw6_fw0
+elf: firmware/peepshow_hw6_fw0/build/Debug/peepshow_hw6_fw0.elf
+elf_sha256: 291B4DBB5917D8EC9A2001FA77377B62DB943DE00D6C71D07E899FE9AA683F71
+ioc: firmware/peepshow_hw6_fw0/peepshow_hw6_fw0.ioc
+ioc_sha256: 0F2FF8A5440E5C4812F85FAD0F2C46E3CB293C758A81F334BE8BECDC807A0039
+log: docs/02 Bring-up/EV-HW6-20260809-P7-USB-019_usb_msc_host_mount_gdb.log
+log_sha256: F766C5AEA9634C3A893DF25C77DA1DF18B7D255DA0AE0659480E81450AB0F21C
+result: PASS
+summary: USBX Device MSC active host export mounted a writable FAT staging volume on Windows through thStorage. User read the expected HW6_FXLX.TXT payload, firmware stayed at 160 MHz during MSC, bridge submit/done matched, and bridge timeout/busy counters stayed zero. USB reclaim, reconnect soak, and package installer behavior remain open.

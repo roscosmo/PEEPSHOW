@@ -5,6 +5,7 @@
 #include "ps_hw6_rtos_probe.h"
 
 #define PS_STORAGE_MSC_BRIDGE_WAIT_TICKS (1000UL)
+#define PS_STORAGE_MSC_BRIDGE_QUEUE_WAIT_TICKS (25UL)
 #define PS_STORAGE_MSC_BRIDGE_MEDIA_OK   (0UL)
 #define PS_STORAGE_MSC_BRIDGE_MEDIA_FAIL (1UL)
 
@@ -82,7 +83,7 @@ UINT PS_StorageMscBridge_Init(TX_QUEUE *storage_queue)
 
   status = tx_mutex_create(&ps_storage_msc_mutex,
                            "psStorageMscMutex",
-                           TX_NO_INHERIT);
+                           TX_INHERIT);
   if (status != TX_SUCCESS)
   {
     return status;
@@ -196,7 +197,8 @@ UINT PS_StorageMscBridge_Submit(ps_storage_msc_command_t command,
   message[2] = (ULONG)rtos_command;
   message[3] = PS_HW6_RTOS_STORAGE_MSC_TOKEN;
 
-  status = tx_queue_send(ps_storage_msc_queue, message, TX_NO_WAIT);
+  status = tx_queue_send(ps_storage_msc_queue, message,
+                         PS_STORAGE_MSC_BRIDGE_QUEUE_WAIT_TICKS);
   g_ps_storage_msc_bridge_probe.last_tx_status = status;
   if (status == TX_SUCCESS)
   {
@@ -235,6 +237,43 @@ UINT PS_StorageMscBridge_Submit(ps_storage_msc_command_t command,
 
   (void)tx_mutex_put(&ps_storage_msc_mutex);
   return ps_storage_msc_request.ux_status;
+}
+
+UINT PS_StorageMscBridge_Status(ULONG *media_status)
+{
+  ULONG media_status_local = PS_STORAGE_MSC_BRIDGE_MEDIA_FAIL;
+
+  if (media_status == UX_NULL)
+  {
+    media_status = &media_status_local;
+  }
+
+  if ((ps_storage_msc_objects_created != 0UL) &&
+      (ps_storage_msc_queue != TX_NULL) &&
+      (g_ps_storage_msc_bridge_probe.export_enabled != 0UL) &&
+      (g_ps_storage_msc_bridge_probe.media_present != 0UL))
+  {
+    *media_status = PS_STORAGE_MSC_BRIDGE_MEDIA_OK;
+    g_ps_storage_msc_bridge_probe.status_count++;
+    g_ps_storage_msc_bridge_probe.fast_status_count++;
+    g_ps_storage_msc_bridge_probe.last_command =
+      (uint32_t)PS_STORAGE_MSC_COMMAND_STATUS;
+    g_ps_storage_msc_bridge_probe.last_lba = 0UL;
+    g_ps_storage_msc_bridge_probe.last_block_count = 0UL;
+    g_ps_storage_msc_bridge_probe.last_tx_status = TX_SUCCESS;
+    g_ps_storage_msc_bridge_probe.last_owner_status = TX_SUCCESS;
+    g_ps_storage_msc_bridge_probe.last_ux_status = UX_SUCCESS;
+    g_ps_storage_msc_bridge_probe.last_media_status =
+      PS_STORAGE_MSC_BRIDGE_MEDIA_OK;
+    g_ps_storage_msc_bridge_probe.last_ps_status = 0UL;
+    return UX_SUCCESS;
+  }
+
+  return PS_StorageMscBridge_Submit(PS_STORAGE_MSC_COMMAND_STATUS,
+                                    UX_NULL,
+                                    0UL,
+                                    0UL,
+                                    media_status);
 }
 
 ps_storage_msc_request_t *PS_StorageMscBridge_CurrentRequest(void)

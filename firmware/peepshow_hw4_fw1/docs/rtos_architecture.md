@@ -62,7 +62,7 @@ This prevents:
 | thDisplay  | High           | SPI3 + LPDMA |
 | thAudio    | Realtime       | SAI1 + audio DMA |
 | thRadio    | AboveNormal    | LPUART1 + LPBAM |
-| thInput    | AboveNormal    | Raw → logical input routing |
+| thInput    | AboveNormal    | Raw â†’ logical input routing |
 | thUI       | Normal         | STOP runtime + STATIC UI |
 | thGame     | Normal         | REALTIME runtime |
 | thStorage  | Low            | OCTOSPI + FileX + LevelX |
@@ -104,6 +104,7 @@ Used for:
 - Mode transitions
 - Clock requests
 - Audio/stream on/off
+- Audio active/inactive performance-floor assertions
 - Inactivity timeout
 - STOP entry requests
 
@@ -199,7 +200,7 @@ The routing layer never decides gameplay meaning.
 
 ---
 
-## Stage 1 — Raw Input
+## Stage 1 â€” Raw Input
 
 ISRs emit raw events only:
 
@@ -211,19 +212,21 @@ No mode logic in ISR.
 
 ---
 
-## Stage 2 — Logical Actions
+## Stage 2 â€” Logical Actions
 
-thInput converts raw events into ActionEvents.
+thInput converts raw events into source-distinct ActionEvents.
 
 Examples:
 
-- ACT_CONFIRM
-- ACT_CANCEL
-- ACT_LEFT
-- ACT_RIGHT
-- ACT_UP
-- ACT_DOWN
-- ACT_MENU
+- ACT_BTN_A
+- ACT_BTN_B
+- ACT_BTN_L
+- ACT_BTN_R
+- ACT_BTN_BOOT
+- ACT_JOY_UP
+- ACT_JOY_RIGHT
+- ACT_JOY_DOWN
+- ACT_JOY_LEFT
 
 Responsibilities of thInput:
 
@@ -231,15 +234,39 @@ Responsibilities of thInput:
 - Repeat policy
 - Inactivity timer reset
 - Mode-based routing:
-  - STOP/STATIC → qUIEvents
-  - REALTIME → qGameEvents
-  - System override → qSysEvents
+  - STOP/STATIC â†’ qUIEvents
+  - REALTIME â†’ qGameEvents
+  - System override â†’ qSysEvents
 
 thInput must not interpret gameplay meaning.
 
 ---
 
-## Stage 3 — REALTIME Focus Stack
+## STOP/STATIC Page Input Policy
+
+STOP/STATIC UI uses a two-step contract:
+
+1. thInput maps raw sources to source-distinct actions (`BTN_*`, `JOY_*`).
+2. `thUI` maps actions to router events for compatibility, while preserving source-distinct action identity on UI events.
+3. The active UI page may apply an input policy before handling the event.
+
+The page-level policy exists to resolve cases where multiple physical sources
+map to the same logical action but should not be treated the same in a given
+screen.
+
+Rules:
+- Default page policy is allow-all.
+- Page input policy is evaluated in router page mode before page event handlers.
+- Rejected events are treated as not handled (no action and no nav-audio side effects).
+- Ownership remains unchanged (`thInput` routes; `thUI` decides page semantics).
+
+Example:
+- Joy Target accepts deadzone adjust only from `BTN_L/BTN_R` actions.
+- `JOY_LEFT/JOY_RIGHT` actions are intentionally ignored on that page.
+
+---
+
+## Stage 3 â€” REALTIME Focus Stack
 
 Owned by thGame.
 
@@ -248,7 +275,7 @@ Only REALTIME uses contextual input.
 Focus stack dispatch:
 
 1. Deliver ActionEvent to top layer.
-2. If consumed → stop.
+2. If consumed â†’ stop.
 3. Else propagate downward.
 4. Repeat until consumed or stack exhausted.
 
@@ -343,7 +370,7 @@ The following are not allowed:
 
 REALTIME must be deterministic:
 
-- Same inputs + same state → same outputs
+- Same inputs + same state â†’ same outputs
 - No hidden async mutation
 - No uncontrolled memory allocation
 - Focus stack order must be explicit
@@ -373,4 +400,4 @@ All threads must:
 
 ---
 
-Last updated: 2026-02-18
+Last updated: 2026-03-14

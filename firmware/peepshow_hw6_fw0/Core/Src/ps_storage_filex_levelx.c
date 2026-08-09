@@ -5,14 +5,18 @@
 
 #include "fx_api.h"
 #include "lx_api.h"
+#include "ps_storage_msc_bridge.h"
 
-#define PS_STORAGE_FXLX_TEST_LENGTH          (0x00100000UL)
+#define PS_STORAGE_FXLX_TEST_LENGTH          (0x00500000UL)
 #define PS_STORAGE_FXLX_SECTOR_SIZE          (512UL)
 #define PS_STORAGE_FXLX_FAKE_BASE            (0x10000000UL)
 #define PS_STORAGE_FXLX_MEDIA_MEMORY_SIZE    (4096UL)
 #define PS_STORAGE_FXLX_FILE_PAYLOAD_SIZE    (256UL)
 #define PS_STORAGE_FXLX_NOT_RUN              (0xFFFFFFFFUL)
-#define PS_STORAGE_FXLX_VOLUME_NAME          "PSHW6"
+#define PS_STORAGE_FXLX_VOLUME_NAME          "PEEPSHOW   "
+#define PS_STORAGE_FXLX_NUM_FATS             (2U)
+#define PS_STORAGE_FXLX_DIR_ENTRIES          (256U)
+#define PS_STORAGE_FXLX_SECTORS_PER_CLUSTER  (8U)
 #define PS_STORAGE_FXLX_FILE_NAME            "HW6_FXLX.TXT"
 
 static ps_storage_flash_block_t *ps_storage_fxlx_block;
@@ -26,6 +30,8 @@ static UCHAR ps_storage_fxlx_media_memory[PS_STORAGE_FXLX_MEDIA_MEMORY_SIZE];
 static UCHAR ps_storage_fxlx_write_buffer[PS_STORAGE_FXLX_FILE_PAYLOAD_SIZE];
 static UCHAR ps_storage_fxlx_read_buffer[PS_STORAGE_FXLX_FILE_PAYLOAD_SIZE];
 static ps_storage_filex_levelx_smoke_result_t *ps_storage_fxlx_result;
+static uint32_t ps_storage_fxlx_levelx_initialized;
+static uint32_t ps_storage_fxlx_msc_opened;
 
 static uint32_t PS_StorageFxLx_Min(uint32_t a, uint32_t b)
 {
@@ -63,6 +69,125 @@ static ps_status_t PS_StorageFxLx_CheckAddress(ULONG *flash_address,
 static UINT PS_StorageFxLx_StatusToFx(ps_status_t status)
 {
   return (status == PS_STATUS_OK) ? FX_SUCCESS : FX_IO_ERROR;
+}
+
+static ps_status_t PS_StorageFxLx_StatusFromLx(UINT status)
+{
+  return (status == LX_SUCCESS) ? PS_STATUS_OK : PS_STATUS_IO_ERROR;
+}
+
+static uint32_t PS_StorageFxLx_ExportLength(
+  const ps_storage_region_t *region)
+{
+  return PS_StorageFxLx_Min(region->length, PS_STORAGE_FXLX_TEST_LENGTH);
+}
+
+static ps_status_t PS_StorageFxLx_ValidateExport(
+  ps_storage_flash_block_t *block,
+  const ps_storage_region_t *region,
+  uint32_t *export_length)
+{
+  uint32_t length;
+
+  if ((block == NULL) || (region == NULL) || (export_length == NULL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  length = PS_StorageFxLx_ExportLength(region);
+  if ((block->initialized == 0UL) ||
+      (region->id != PS_STORAGE_REGION_USB_STAGING) ||
+      (region->host_exposed == 0UL) ||
+      (length < (128UL * 1024UL)) ||
+      ((region->start % block->geometry.erase_block_size) != 0UL) ||
+      ((length % block->geometry.erase_block_size) != 0UL) ||
+      ((length / PS_STORAGE_FXLX_SECTOR_SIZE) !=
+       PS_STORAGE_MSC_BRIDGE_BLOCK_COUNT))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  *export_length = length;
+  return PS_STATUS_OK;
+}
+
+static ps_status_t PS_StorageFxLx_EraseExportRange(
+  ps_storage_flash_block_t *block,
+  uint32_t start,
+  uint32_t length,
+  ps_storage_filex_levelx_smoke_result_t *result)
+{
+  ps_status_t status = PS_STATUS_OK;
+  uint32_t first_block;
+  uint32_t block_count;
+  uint32_t block_ix;
+  uint32_t poll_count = 0UL;
+
+  if (result != NULL)
+  {
+    result->preformat_erase_status = PS_STATUS_INTERNAL_ERROR;
+    result->preformat_erase_block_count = 0UL;
+    result->preformat_erase_failed_block = PS_STORAGE_FXLX_NOT_RUN;
+    result->preformat_erase_last_poll_count = 0UL;
+  }
+
+  if ((block == NULL) || (block->initialized == 0UL) ||
+      (block->geometry.logical_block_size == 0UL) || (length == 0UL) ||
+      ((start % block->geometry.logical_block_size) != 0UL) ||
+      ((length % block->geometry.logical_block_size) != 0UL))
+  {
+    status = PS_STATUS_INVALID_ARGUMENT;
+    if (result != NULL)
+    {
+      result->preformat_erase_status = (uint32_t)status;
+    }
+    return status;
+  }
+
+  first_block = start / block->geometry.logical_block_size;
+  block_count = length / block->geometry.logical_block_size;
+  if ((first_block > block->geometry.logical_block_count) ||
+      (block_count > (block->geometry.logical_block_count - first_block)))
+  {
+    status = PS_STATUS_INVALID_ARGUMENT;
+    if (result != NULL)
+    {
+      result->preformat_erase_status = (uint32_t)status;
+    }
+    return status;
+  }
+
+  if (result != NULL)
+  {
+    result->preformat_erase_block_count = block_count;
+  }
+
+  for (block_ix = 0UL; block_ix < block_count; ++block_ix)
+  {
+    poll_count = 0UL;
+    status = ps_storage_flash_block_erase(block,
+                                          first_block + block_ix,
+                                          &poll_count);
+    if (result != NULL)
+    {
+      result->preformat_erase_last_poll_count = poll_count;
+    }
+    if (status != PS_STATUS_OK)
+    {
+      if (result != NULL)
+      {
+        result->preformat_erase_status = (uint32_t)status;
+        result->preformat_erase_failed_block = first_block + block_ix;
+      }
+      return status;
+    }
+  }
+
+  if (result != NULL)
+  {
+    result->preformat_erase_status = PS_STATUS_OK;
+  }
+  return PS_STATUS_OK;
 }
 
 static UINT PS_StorageFxLx_Read(ULONG *flash_address,
@@ -356,12 +481,174 @@ static uint32_t PS_StorageFxLx_CountMismatches(uint32_t length)
   return mismatches;
 }
 
+ps_status_t ps_storage_filex_levelx_msc_open(
+  ps_storage_flash_block_t *block,
+  const ps_storage_region_t *region)
+{
+  UINT status;
+  uint32_t export_length;
+  ps_status_t ps_status;
+
+  ps_status = PS_StorageFxLx_ValidateExport(block, region, &export_length);
+  if (ps_status != PS_STATUS_OK)
+  {
+    return ps_status;
+  }
+
+  if ((ps_storage_fxlx_msc_opened != 0UL) ||
+      (ps_storage_fxlx_nor.lx_nor_flash_state == LX_NOR_FLASH_OPENED))
+  {
+    ps_storage_fxlx_msc_opened = 1UL;
+    return PS_STATUS_OK;
+  }
+
+  if (ps_storage_fxlx_levelx_initialized == 0UL)
+  {
+    status = lx_nor_flash_initialize();
+    if (status != LX_SUCCESS)
+    {
+      return PS_StorageFxLx_StatusFromLx(status);
+    }
+    ps_storage_fxlx_levelx_initialized = 1UL;
+  }
+
+  ps_storage_fxlx_block = block;
+  ps_storage_fxlx_start = region->start;
+  ps_storage_fxlx_length = export_length;
+  ps_storage_fxlx_result = NULL;
+  (void)memset(&ps_storage_fxlx_nor, 0, sizeof(ps_storage_fxlx_nor));
+
+  status = lx_nor_flash_open(&ps_storage_fxlx_nor,
+                             (CHAR *)"at25-usb-stage",
+                             PS_StorageFxLx_NorInit);
+  if (status != LX_SUCCESS)
+  {
+    ps_storage_fxlx_block = NULL;
+    ps_storage_fxlx_msc_opened = 0UL;
+    return PS_StorageFxLx_StatusFromLx(status);
+  }
+
+  ps_storage_fxlx_msc_opened = 1UL;
+  return PS_STATUS_OK;
+}
+
+ps_status_t ps_storage_filex_levelx_msc_close(void)
+{
+  UINT status;
+
+  if ((ps_storage_fxlx_msc_opened == 0UL) &&
+      (ps_storage_fxlx_nor.lx_nor_flash_state != LX_NOR_FLASH_OPENED))
+  {
+    return PS_STATUS_OK;
+  }
+
+  status = lx_nor_flash_close(&ps_storage_fxlx_nor);
+  if (status != LX_SUCCESS)
+  {
+    return PS_StorageFxLx_StatusFromLx(status);
+  }
+
+  (void)memset(&ps_storage_fxlx_nor, 0, sizeof(ps_storage_fxlx_nor));
+  ps_storage_fxlx_block = NULL;
+  ps_storage_fxlx_result = NULL;
+  ps_storage_fxlx_msc_opened = 0UL;
+  return PS_STATUS_OK;
+}
+
+ps_status_t ps_storage_filex_levelx_msc_read(uint32_t lba,
+                                             uint32_t block_count,
+                                             uint8_t *data)
+{
+  UINT status = LX_SUCCESS;
+  uint32_t block_ix;
+  uint32_t logical_sector_count;
+
+  if ((data == NULL) || (block_count == 0UL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  if ((ps_storage_fxlx_msc_opened == 0UL) ||
+      (ps_storage_fxlx_nor.lx_nor_flash_state != LX_NOR_FLASH_OPENED))
+  {
+    return PS_STATUS_INVALID_STATE;
+  }
+
+  logical_sector_count = ps_storage_fxlx_length / PS_STORAGE_FXLX_SECTOR_SIZE;
+  if ((lba >= logical_sector_count) ||
+      (block_count > (logical_sector_count - lba)))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  for (block_ix = 0UL; block_ix < block_count; ++block_ix)
+  {
+    status = lx_nor_flash_sector_read(&ps_storage_fxlx_nor,
+                                      (ULONG)lba + block_ix,
+                                      data + (block_ix *
+                                              PS_STORAGE_FXLX_SECTOR_SIZE));
+    if (status != LX_SUCCESS)
+    {
+      break;
+    }
+  }
+
+  return PS_StorageFxLx_StatusFromLx(status);
+}
+
+ps_status_t ps_storage_filex_levelx_msc_write(uint32_t lba,
+                                              uint32_t block_count,
+                                              const uint8_t *data)
+{
+  UINT status = LX_SUCCESS;
+  uint32_t block_ix;
+  uint32_t logical_sector_count;
+
+  if ((data == NULL) || (block_count == 0UL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  if ((ps_storage_fxlx_msc_opened == 0UL) ||
+      (ps_storage_fxlx_nor.lx_nor_flash_state != LX_NOR_FLASH_OPENED))
+  {
+    return PS_STATUS_INVALID_STATE;
+  }
+
+  logical_sector_count = ps_storage_fxlx_length / PS_STORAGE_FXLX_SECTOR_SIZE;
+  if ((lba >= logical_sector_count) ||
+      (block_count > (logical_sector_count - lba)))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  for (block_ix = 0UL; block_ix < block_count; ++block_ix)
+  {
+    status = lx_nor_flash_sector_write(&ps_storage_fxlx_nor,
+                                       (ULONG)lba + block_ix,
+                                       (VOID *)(data + (block_ix *
+                                                PS_STORAGE_FXLX_SECTOR_SIZE)));
+    if (status != LX_SUCCESS)
+    {
+      break;
+    }
+  }
+
+  return PS_StorageFxLx_StatusFromLx(status);
+}
+
+uint32_t ps_storage_filex_levelx_msc_is_open(void)
+{
+  return ((ps_storage_fxlx_msc_opened != 0UL) &&
+          (ps_storage_fxlx_nor.lx_nor_flash_state == LX_NOR_FLASH_OPENED)) ?
+         1UL : 0UL;
+}
+
 ps_status_t ps_storage_filex_levelx_run_smoke(
   ps_storage_flash_block_t *block,
   const ps_storage_region_t *region,
   ps_storage_filex_levelx_smoke_result_t *result)
 {
   UINT status;
+  ps_status_t erase_status;
   ULONG actual_read = 0UL;
   uint32_t index;
 
@@ -376,12 +663,15 @@ ps_status_t ps_storage_filex_levelx_run_smoke(
   result->region_start = region->start;
   result->region_length = region->length;
   result->test_start = region->start;
-  result->test_length = PS_StorageFxLx_Min(region->length,
-                                           PS_STORAGE_FXLX_TEST_LENGTH);
+  result->test_length = PS_StorageFxLx_ExportLength(region);
   result->erase_block_size = block->geometry.erase_block_size;
   result->logical_sector_size = PS_STORAGE_FXLX_SECTOR_SIZE;
   result->logical_sector_count = result->test_length /
                                  PS_STORAGE_FXLX_SECTOR_SIZE;
+  result->preformat_erase_status = PS_STORAGE_FXLX_NOT_RUN;
+  result->preformat_erase_block_count = 0UL;
+  result->preformat_erase_failed_block = PS_STORAGE_FXLX_NOT_RUN;
+  result->preformat_erase_last_poll_count = 0UL;
 
   result->lx_initialize_status = PS_STORAGE_FXLX_NOT_RUN;
   result->lx_open_status = PS_STORAGE_FXLX_NOT_RUN;
@@ -410,6 +700,7 @@ ps_status_t ps_storage_filex_levelx_run_smoke(
   ps_storage_fxlx_start = result->test_start;
   ps_storage_fxlx_length = result->test_length;
   ps_storage_fxlx_result = result;
+  ps_storage_fxlx_msc_opened = 0UL;
   (void)memset(&ps_storage_fxlx_nor, 0, sizeof(ps_storage_fxlx_nor));
   (void)memset(&ps_storage_fxlx_media, 0, sizeof(ps_storage_fxlx_media));
   (void)memset(&ps_storage_fxlx_file, 0, sizeof(ps_storage_fxlx_file));
@@ -419,6 +710,16 @@ ps_status_t ps_storage_filex_levelx_run_smoke(
                sizeof(ps_storage_fxlx_read_buffer));
   PS_StorageFxLx_FillPayload();
 
+  erase_status = PS_StorageFxLx_EraseExportRange(block,
+                                                 result->test_start,
+                                                 result->test_length,
+                                                 result);
+  if (erase_status != PS_STATUS_OK)
+  {
+    result->status = erase_status;
+    return result->status;
+  }
+
   status = lx_nor_flash_initialize();
   result->lx_initialize_status = status;
   if (status != LX_SUCCESS)
@@ -426,6 +727,7 @@ ps_status_t ps_storage_filex_levelx_run_smoke(
     result->status = PS_STATUS_INTERNAL_ERROR;
     return result->status;
   }
+  ps_storage_fxlx_levelx_initialized = 1UL;
 
   status = lx_nor_flash_open(&ps_storage_fxlx_nor,
                              (CHAR *)"at25-usb-stage",
@@ -443,12 +745,12 @@ ps_status_t ps_storage_filex_levelx_run_smoke(
                            ps_storage_fxlx_media_memory,
                            sizeof(ps_storage_fxlx_media_memory),
                            (CHAR *)PS_STORAGE_FXLX_VOLUME_NAME,
-                           1U,
-                           32U,
+                           PS_STORAGE_FXLX_NUM_FATS,
+                           PS_STORAGE_FXLX_DIR_ENTRIES,
                            0U,
                            result->logical_sector_count,
                            PS_STORAGE_FXLX_SECTOR_SIZE,
-                           1U,
+                           PS_STORAGE_FXLX_SECTORS_PER_CLUSTER,
                            1U,
                            1U);
   result->fx_format_status = status;
@@ -568,5 +870,6 @@ close_media:
 
   ps_storage_fxlx_block = NULL;
   ps_storage_fxlx_result = NULL;
+  ps_storage_fxlx_msc_opened = 0UL;
   return result->status;
 }

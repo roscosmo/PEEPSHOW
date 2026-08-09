@@ -1,4 +1,15 @@
-/* Extracted from app_threadx.c for thread-level organization. */
+/* Thread entry implementation for App_ThreadX runtime. */
+
+/* Display helpers. */
+static void AppDisplaySetTranslator(uint8_t enabled);
+static void AppDisplaySetCs(uint8_t active);
+static HAL_StatusTypeDef AppDisplayEnsureReady(void);
+static uint8_t AppModeToThMode(app_mode_t mode_token, th_mode_t *mode_out);
+static void AppDisplayPrepareBootstrapFrame(void);
+static void AppDebugDisplayStackSample(void);
+static UINT AppRendererLock(void);
+static VOID AppRendererUnlock(void);
+static HAL_StatusTypeDef AppDisplayPresent(uint16_t *dirty_rows_out, uint8_t *full_flush_out);
 
 static VOID AppDisplayThreadEntry(ULONG thread_input)
 {
@@ -6,6 +17,9 @@ static VOID AppDisplayThreadEntry(ULONG thread_input)
   app_display_cmd_t cmd;
   ULONG t0;
   ULONG t1;
+  ULONG draw_ticks;
+  uint16_t dirty_rows;
+  uint8_t full_flush;
 
   (void)thread_input;
   if (AppRendererLock() == TX_SUCCESS)
@@ -33,15 +47,22 @@ static VOID AppDisplayThreadEntry(ULONG thread_input)
         case APP_DISPLAY_CMD_RESUME:
           g_display_present_pending = 0UL;
           AppDisplaySetTranslator(1U);
-          if (AppRendererLock() == TX_SUCCESS)
+          if (g_ui_boot_ready != 0UL)
           {
-            Render_MarkDirtyAll();
-            AppRendererUnlock();
+            if (AppRendererLock() == TX_SUCCESS)
+            {
+              Render_MarkDirtyAll();
+              AppRendererUnlock();
+            }
+            dirty_rows = 0U;
+            full_flush = 0U;
+            t0 = tx_time_get();
+            (void)AppDisplayPresent(&dirty_rows, &full_flush);
+            t1 = tx_time_get();
+            draw_ticks = ((g_eg_mode.tx_event_flags_group_current & APP_MODE_FLAG_REALTIME) != 0UL) ?
+                         g_power_perf_last_draw_ticks : 0UL;
+            AppPowerPerfHintPost((ULONG)(t1 - t0), draw_ticks, (ULONG)dirty_rows, (ULONG)full_flush);
           }
-          t0 = tx_time_get();
-          (void)AppDisplayPresent();
-          t1 = tx_time_get();
-          AppPowerPerfHintPost((ULONG)(t1 - t0));
           break;
 
         case APP_DISPLAY_CMD_INVALIDATE_ALL:
@@ -54,10 +75,14 @@ static VOID AppDisplayThreadEntry(ULONG thread_input)
 
         case APP_DISPLAY_CMD_PRESENT:
           g_display_present_pending = 0UL;
+          dirty_rows = 0U;
+          full_flush = 0U;
           t0 = tx_time_get();
-          (void)AppDisplayPresent();
+          (void)AppDisplayPresent(&dirty_rows, &full_flush);
           t1 = tx_time_get();
-          AppPowerPerfHintPost((ULONG)(t1 - t0));
+          draw_ticks = ((g_eg_mode.tx_event_flags_group_current & APP_MODE_FLAG_REALTIME) != 0UL) ?
+                       g_power_perf_last_draw_ticks : 0UL;
+          AppPowerPerfHintPost((ULONG)(t1 - t0), draw_ticks, (ULONG)dirty_rows, (ULONG)full_flush);
           break;
 
         case APP_DISPLAY_CMD_SET_MODE:

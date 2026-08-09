@@ -60,6 +60,8 @@ HAL_StatusTypeDef AT25_Read(OSPI_HandleTypeDef*, uint32_t addr, uint8_t *dst, ui
 HAL_StatusTypeDef AT25_PageProgram(OSPI_HandleTypeDef*, uint32_t addr, const uint8_t *src, uint32_t n);
 HAL_StatusTypeDef AT25_Erase4K(OSPI_HandleTypeDef*, uint32_t addr);
 HAL_StatusTypeDef AT25_Erase64K(OSPI_HandleTypeDef*, uint32_t addr);
+HAL_StatusTypeDef AT25_EnterDeepPowerDown(OSPI_HandleTypeDef *hospi);
+HAL_StatusTypeDef AT25_ReleaseDeepPowerDown(OSPI_HandleTypeDef *hospi);
 void AT25_GetDebug(AT25_Debug *out);
 
 

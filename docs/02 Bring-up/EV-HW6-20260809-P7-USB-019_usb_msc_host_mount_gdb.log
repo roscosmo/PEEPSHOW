@@ -1,0 +1,102 @@
+
+Program
+ received signal SIGINT, Interrupt.
+__tx_ts_wait () at G:/PEEPSHOW/firmware/peepshow_hw6_fw0/Middlewares/ST/threadx/ports/cortex_m33/gnu/src\tx_thread_schedule.S:274
+274	    LDR     r1, =TX_PORT_BASEPRI                    // Mask interrupt priorities =< TX_PORT_BASEPRI
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_usb_state_prints.gdb
+=== HW6 FW0 USBX / PCD STATE PRINT ===
+Use while halted after USB MSC export attempt. Read-only; do not reset first.
+
+--- USB export probe summary ---
+export req/tick/vbus = 1 / 11955 / 0
+export policy/dcd/init/start = 0x0 / 0x0 / 0x0 / 0x0
+export flash_wake/fxlx_open = 0x0 / 0x0
+usbx pool/init/stage/error/dcd irqguard = 0x0 / 0x0 / 101 / 0x0 / 0x0 / 0
+rtos low-power enter/usb-skip = 0 / 0
+export irq prio before/after devconnect = 5 / 5 / 0x0
+export pcd/clk/vdd/started = 0x1 / 1 / 1 / 1
+clock SystemCoreClock/SysTick_LOAD/SysTick_CTRL = 160000000 / 0x1869ff / 0x10007
+bridge activate/deactivate = 1 / 0
+bridge submit/done/timeout/busy = 199 / 199 / 0 / 0
+bridge rd/wr/fl/status/fast_status = 145 / 54 / 0 / 249 / 249
+bridge policy/media/write/dirty/init = 1 / 1 / 1 / 1 / 1
+bridge last cmd/lba/blocks tx/owner/ux/media/ps = 4 / 0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0x0
+reclaim devdisc/uxdisc-not-used/fxlx_close = 0xffffffff / 0xffffffff / 0xffffffff
+dcd extra timing telemetry = reverted to FW4 transfer_request.c; use endpoint transfer fields below
+
+--- USBX storage-thread SCSI trace ---
+live phase/recv ux/cmpl/req/act/len/lun/sig/cblen/op/cmd/csw_send = 1 / 0x0 / 0x0 / 64 / 31 / 31 / 0 / 0x43425355 / 6 / 0x0 / 0x0 / 0x0
+media callbacks rd/wr/fl/status = 145 / 54 / 0 / 249
+media read last lba/blocks/status/media = 25 / 1 / 0x0 / 0x0
+media write last lba/blocks/status/media = 49 / 1 / 0x0 / 0x0
+media flush last lba/blocks/status/media = 0 / 0 / 0x0 / 0x0
+media status last status/media = 0x0 / 0x0
+cbw/last_op/flags/host_len/unknown/op/csw = 132 / 0x0 / 0x0 / 0 / 0 / 0x0 / 0x0
+trace wr/count = 132 / 16
+trace[00] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0 / 0x0 / 0x2 / 0x0 / 64 / 31
+trace[01] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0 / 0x0 / 0x2 / 0x0 / 64 / 31
+trace[02] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0 / 0x0 / 0x2 / 0x0 / 64 / 31
+trace[03] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0 / 0x0 / 0x2 / 0x0 / 64 / 31
+trace[04] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0 / 0x0 / 0x2 / 0x0 / 64 / 31
+trace[05] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0 / 0x0 / 0x2 / 0x0 / 64 / 31
+trace[06] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0 / 0x0 / 0x2 / 0x0 / 64 / 31
+trace[07] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0 / 0x0 / 0x2 / 0x0 / 64 / 31
+trace[08] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0 / 0x0 / 0x2 / 0x0 / 64 / 31
+trace[09] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0 / 0x0 / 0x2 / 0x0 / 64 / 31
+trace[10] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0 / 0x0 / 0x2 / 0x0 / 64 / 31
+trace[11] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0 / 0x0 / 0x2 / 0x0 / 64 / 31
+trace[12] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0 / 0x0 / 0x2 / 0x0 / 64 / 31
+trace[13] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0 / 0x0 / 0x2 / 0x0 / 64 / 31
+trace[14] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0 / 0x0 / 0x2 / 0x0 / 64 / 31
+trace[15] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x0 / 0 / 0x0 / 0x0 / 0x0 / 0x0 / 0 / 0x0 / 0x2 / 0x0 / 64 / 31
+
+--- ThreadX scheduler state ---
+current/execute/system/preempt/highest = (nil) / (nil) / 0 / 0 / 32
+
+--- USBX system pointers/status ---
+_ux_system_slave = 0x2000e430
+slave speed/power/remote wake cap/en = 1 / 2 / 0 / 0
+framework lengths active/fs/hs/string/lang = 50 / 50 / 60 / 40 / 2
+class array = 0x2000e610 interface class[0] = 0x2000e610
+--- USBX DCD/device state ---
+dcd status/type/irq/io/address/hw = 0x1 / 0x80 / 0x0 / 0x0 / 1 / 0x2000fa80
+device state/config/power = 0x3 / 1 / 0
+interfaces first/pool/count = 0x2000e850 / 0x2000e850 / 1
+endpoints pool/count = 0x2000e8a0 / 2
+control ep status/state addr/attr/mps = 0x0 / 0x0 / 0x0 / 0x0 / 64
+--- interface 0 / endpoints ---
+if0 = 0x2000e850
+if0 status/class/instance/next/first_ep = 0x1 / 0x2000e610 / 0x2000edf0 / (nil) / 0x2000e8a0
+if0 desc number/alt/eps/class/sub/proto = 0 / 0 / 2 / 0x8 / 0x6 / 0x50
+ep0 = 0x2000e8a0
+ep0 status/state addr/attr/mps/next = 0x1 / 0x0 / 0x81 / 0x2 / 64 / 0x2000e930
+ep0 transfer xfer_status/completion/actual/requested/timeout = 0x2 / 0x0 / 13 / 13 / 4294967295
+ep0 semaphore count/suspended = 0 / 0
+ep1 = 0x2000e930
+ep1 status/state addr/attr/mps/next = 0x1 / 0x0 / 0x2 / 0x2 / 64 / (nil)
+ep1 transfer xfer_status/completion/actual/requested/timeout = 0x1 / 0x0 / 0 / 64 / 4294967295
+ep1 semaphore count/suspended = 0 / 1
+--- last BOT/transfer buffers ---
+bulk IN data ptr = 0x2000e9d0 first32:
+0x2000e9d0 <ux_device_byte_pool_buffer+1540>:	0x55	0x53	0x42	0x53	0x90	0xb5	0x58	0x9e
+0x2000e9d8 <ux_device_byte_pool_buffer+1548>:	0x00	0x00	0x00	0x00	0x00	0x4e	0x4f	0x50
+0x2000e9e0 <ux_device_byte_pool_buffer+1556>:	0x51	0x52	0x53	0x54	0x55	0x56	0x57	0x58
+0x2000e9e8 <ux_device_byte_pool_buffer+1564>:	0x59	0x5a	0x41	0x42	0x43	0x44	0x45	0x46
+bulk OUT CBW ptr = 0x2000ebe0 first31:
+0x2000ebe0 <ux_device_byte_pool_buffer+2068>:	0x55	0x53	0x42	0x43	0x90	0xb5	0x58	0x9e
+0x2000ebe8 <ux_device_byte_pool_buffer+2076>:	0x00	0x00	0x00	0x00	0x00	0x00	0x06	0x00
+0x2000ebf0 <ux_device_byte_pool_buffer+2084>:	0x00	0x00	0x00	0x00	0x00	0x00	0x00	0x00
+0x2000ebf8 <ux_device_byte_pool_buffer+2092>:	0x00	0x00	0x00	0x00	0x00	0x00	0x00
+CBW flags/lun/cblen/op/cdb1..5 = 0x0 / 0 / 6 / 0x0 / 0x0 0x0 0x0 0x0 0x0
+--- storage class instance ---
+class status/instance/thread_stack/ifnum/cfg = 0x1 / 0x2000edf0 / 0x2000ee70 / 0 / 1
+class thread name/state/prio/preempt/run/susp/susp_cb/susp_status = ux_slave_storage_thread / 6 / 5 / 5 / 694 / 0 / 0x2000e990 / 0x0
+storage iface/luns/host_len/cbw_flags/cbw_lun/tag/residue/csw = 0x2000e850 / 1 / 0 / 0x0 / 0 / 0x9e58b590 / 0 / 0x0
+storage ids vendor/product/rev/serial = 0x20000018 / 0x20000024 / 0x20000038 / 0x2000011c
+lun0 lba/block/type/removable/readonly/media_id/sense/disk = 10239 / 512 / 0 / 128 / 0 / 0 / 0x0 / 0x0
+--- STM32 PCD / OTG registers ---
+HAL PCD state/error = 0x1 / 0x0
+GAHBCFG/GUSBCFG/GRSTCTL/GINTSTS/GINTMSK = 0x00000001 / 0x40001840 / 0x80000000 / 0x44808438 / 0x803c3810
+OTG device/endpoint typed-register detail omitted: debugger has no USB_OTG_FS_DEVICE symbol.
+=== END HW6 FW0 USBX / PCD STATE PRINT ===
+{"output":"","token":51,"outOfBandRecord":[],"resultRecords":{"resultClass":"done","results":[]}}

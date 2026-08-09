@@ -24,6 +24,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "ps_storage_msc_bridge.h"
+#include "ux_device_class_storage.h"
 
 /* USER CODE END Includes */
 
@@ -54,6 +55,32 @@
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+volatile ULONG g_usbd_storage_read_entry_count = 0UL;
+volatile ULONG g_usbd_storage_write_entry_count = 0UL;
+volatile ULONG g_usbd_storage_flush_entry_count = 0UL;
+volatile ULONG g_usbd_storage_status_entry_count = 0UL;
+volatile ULONG g_usbd_storage_read_last_lba = 0UL;
+volatile ULONG g_usbd_storage_read_last_blocks = 0UL;
+volatile ULONG g_usbd_storage_read_last_status = 0UL;
+volatile ULONG g_usbd_storage_read_last_media_status = 0UL;
+volatile ULONG g_usbd_storage_write_last_lba = 0UL;
+volatile ULONG g_usbd_storage_write_last_blocks = 0UL;
+volatile ULONG g_usbd_storage_write_last_status = 0UL;
+volatile ULONG g_usbd_storage_write_last_media_status = 0UL;
+volatile ULONG g_usbd_storage_flush_last_lba = 0UL;
+volatile ULONG g_usbd_storage_flush_last_blocks = 0UL;
+volatile ULONG g_usbd_storage_flush_last_status = 0UL;
+volatile ULONG g_usbd_storage_flush_last_media_status = 0UL;
+volatile ULONG g_usbd_storage_status_last_status = 0UL;
+volatile ULONG g_usbd_storage_status_last_media_status = 0UL;
+
+static ULONG PS_UsbMscSenseNotReadyNoMedium(void)
+{
+  return UX_DEVICE_CLASS_STORAGE_SENSE_STATUS(
+    UX_SLAVE_CLASS_STORAGE_SENSE_KEY_NOT_READY,
+    0x3AU,
+    0x00U);
+}
 
 /* USER CODE END 0 */
 
@@ -107,14 +134,30 @@ UINT USBD_STORAGE_Read(VOID *storage_instance, ULONG lun, UCHAR *data_pointer,
   UINT status = UX_SUCCESS;
 
   /* USER CODE BEGIN USBD_STORAGE_Read */
+  ULONG media_status_local = 1UL;
+  g_usbd_storage_read_entry_count++;
+  g_usbd_storage_read_last_lba = lba;
+  g_usbd_storage_read_last_blocks = number_blocks;
   UX_PARAMETER_NOT_USED(storage_instance);
   UX_PARAMETER_NOT_USED(lun);
+  if (media_status == UX_NULL)
+  {
+    media_status = &media_status_local;
+  }
+
   status = PS_StorageMscBridge_Submit(PS_STORAGE_MSC_COMMAND_READ,
                                       data_pointer,
                                       (uint32_t)lba,
                                       (uint32_t)number_blocks,
                                       media_status);
-/* USER CODE END USBD_STORAGE_Read */
+  g_usbd_storage_read_last_status = status;
+  g_usbd_storage_read_last_media_status = *media_status;
+  if (status != TX_SUCCESS)
+  {
+    *media_status = PS_UsbMscSenseNotReadyNoMedium();
+    return UX_ERROR;
+  }
+  /* USER CODE END USBD_STORAGE_Read */
 
   return status;
 }
@@ -137,14 +180,30 @@ UINT USBD_STORAGE_Write(VOID *storage_instance, ULONG lun, UCHAR *data_pointer,
   UINT status = UX_SUCCESS;
 
   /* USER CODE BEGIN USBD_STORAGE_Write */
+  ULONG media_status_local = 1UL;
+  g_usbd_storage_write_entry_count++;
+  g_usbd_storage_write_last_lba = lba;
+  g_usbd_storage_write_last_blocks = number_blocks;
   UX_PARAMETER_NOT_USED(storage_instance);
   UX_PARAMETER_NOT_USED(lun);
+  if (media_status == UX_NULL)
+  {
+    media_status = &media_status_local;
+  }
+
   status = PS_StorageMscBridge_Submit(PS_STORAGE_MSC_COMMAND_WRITE,
                                       data_pointer,
                                       (uint32_t)lba,
                                       (uint32_t)number_blocks,
                                       media_status);
-/* USER CODE END USBD_STORAGE_Write */
+  g_usbd_storage_write_last_status = status;
+  g_usbd_storage_write_last_media_status = *media_status;
+  if (status != TX_SUCCESS)
+  {
+    *media_status = PS_UsbMscSenseNotReadyNoMedium();
+    return UX_ERROR;
+  }
+  /* USER CODE END USBD_STORAGE_Write */
 
   return status;
 }
@@ -166,14 +225,30 @@ UINT USBD_STORAGE_Flush(VOID *storage_instance, ULONG lun, ULONG number_blocks,
   UINT status = UX_SUCCESS;
 
   /* USER CODE BEGIN USBD_STORAGE_Flush */
+  ULONG media_status_local = 1UL;
+  g_usbd_storage_flush_entry_count++;
+  g_usbd_storage_flush_last_lba = lba;
+  g_usbd_storage_flush_last_blocks = number_blocks;
   UX_PARAMETER_NOT_USED(storage_instance);
   UX_PARAMETER_NOT_USED(lun);
+  if (media_status == UX_NULL)
+  {
+    media_status = &media_status_local;
+  }
+
   status = PS_StorageMscBridge_Submit(PS_STORAGE_MSC_COMMAND_FLUSH,
                                       UX_NULL,
                                       (uint32_t)lba,
                                       (uint32_t)number_blocks,
                                       media_status);
-/* USER CODE END USBD_STORAGE_Flush */
+  g_usbd_storage_flush_last_status = status;
+  g_usbd_storage_flush_last_media_status = *media_status;
+  if (status != TX_SUCCESS)
+  {
+    *media_status = PS_UsbMscSenseNotReadyNoMedium();
+    return UX_ERROR;
+  }
+  /* USER CODE END USBD_STORAGE_Flush */
 
   return status;
 }
@@ -194,15 +269,25 @@ UINT USBD_STORAGE_Status(VOID *storage_instance, ULONG lun, ULONG media_id,
   UINT status = UX_SUCCESS;
 
   /* USER CODE BEGIN USBD_STORAGE_Status */
+  ULONG media_status_local = 1UL;
+  g_usbd_storage_status_entry_count++;
   UX_PARAMETER_NOT_USED(storage_instance);
   UX_PARAMETER_NOT_USED(lun);
   UX_PARAMETER_NOT_USED(media_id);
-  status = PS_StorageMscBridge_Submit(PS_STORAGE_MSC_COMMAND_STATUS,
-                                      UX_NULL,
-                                      0UL,
-                                      0UL,
-                                      media_status);
-/* USER CODE END USBD_STORAGE_Status */
+  if (media_status == UX_NULL)
+  {
+    media_status = &media_status_local;
+  }
+
+  status = PS_StorageMscBridge_Status(media_status);
+  g_usbd_storage_status_last_status = status;
+  g_usbd_storage_status_last_media_status = *media_status;
+  if (status != TX_SUCCESS)
+  {
+    *media_status = PS_UsbMscSenseNotReadyNoMedium();
+    return UX_ERROR;
+  }
+  /* USER CODE END USBD_STORAGE_Status */
 
   return status;
 }

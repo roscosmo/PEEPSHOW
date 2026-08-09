@@ -21,7 +21,7 @@ If this runbook conflicts with `docs/01 Platform/Authority_and_Invariants.md` or
 
 Use this runbook for:
 
-- first USBX MSC bring-up on HW5
+- first USBX MSC bring-up on HW6
 - regression recovery after USB/storage/CubeMX/USBX changes
 - host enumeration/mount failures
 - intermittent MSC hardfault triage
@@ -63,6 +63,7 @@ Current known Windows strings from the prior USBX path are useful search filters
 - `USB\VID_0483&PID_5710\...`
 - `USBSTOR\DISK&VEN_AZURERTO&PROD_USBX_STORAGE_DEV...`
 - `AzureRTO USBX storage dev`
+- `ROSCOSMO PEEPSHOW STORAGE USB Device`
 
 If HW5 descriptors or staging size intentionally differ, record the generated descriptor/media truth in evidence before interpreting host output as a fault.
 
@@ -76,6 +77,21 @@ msc: fail=0
 ```
 
 If the device, disk, volume, or arbitration state is missing, use the decision tree below.
+
+### 1.3 Current HW6 Active-MSC Evidence
+
+`EV-HW6-20260809-P7-USB-019` is the first HW6 active USBX MSC host-mount pass on `HW6-UNIT-001`.
+
+Measured pass facts:
+
+- Windows mounted the FAT staging volume and the user read the expected `HW6_FXLX.TXT` payload.
+- The bridge handled host traffic through `thStorage`: submit/done/timeout/busy `199 / 199 / 0 / 0`.
+- Media callbacks reached read/write/status `145 / 54 / 249`; dirty state became `1` after host writes.
+- The exported LUN was staging-only with last LBA/block `10239 / 512`.
+- USBX configured interface `0x08 / 0x06 / 0x50`, device state/config `0x3 / 1`, and no DCD IRQ guard drops.
+- The successful fix was the active MSC performance floor: `SystemCoreClock=160000000`, `SysTick_LOAD=0x1869ff` during export.
+
+Do not re-open descriptor churn for a disk-without-volume symptom until the active-MSC clock/performance floor, bridge timeout/busy counters, and SCSI progression have been checked first.
 
 ---
 
@@ -119,7 +135,7 @@ Do not start speculative patching until this inventory is filled in with current
 | MSC-STAB-003 | MSC transfer request max length bound | `USBX/App/ux_user.h` | confirm `UX_SLAVE_REQUEST_DATA_MAX_LENGTH` remains bounded for the MSC baseline, historically `512` | unstable BULK IN behavior during host probing |
 | MSC-STAB-004 | MODE SENSE transfer clamp | `Middlewares/ST/usbx/common/usbx_device_classes/src/ux_device_class_storage_mode_sense.c` | confirm transfer length is bounded by valid response payload and host allocation, historically through `UX_MIN(...)` | MODE SENSE/MODE SELECT stalls or BOT progression wedge |
 | MSC-STAB-005 | caching mode page WCE policy | `USBX/App/ux_device_class_storage.h` | confirm the caching mode-page write-cache flag policy is Windows-compatible, historically WCE forced to `0` | Windows follows MODE SELECT path that wedges BOT progression |
-| MSC-STAB-006 | installer/export performance floor | Platform power/perf mode change path | confirm active MSC service gets enough performance headroom for USB probe/read bursts | timing starvation under host probe/read bursts |
+| MSC-STAB-006 | installer/export performance floor | Platform power/perf mode change path | confirm active MSC service gets enough performance headroom for USB probe/read bursts; HW6 evidence `EV-HW6-20260809-P7-USB-019` requires `160 MHz` during active export | timing starvation under host probe/read bursts; on HW6 this appeared as disk object present but no mounted volume until the 160 MHz export guard was added |
 | MSC-STAB-007 | storage thread null guards | `Middlewares/ST/usbx/common/usbx_device_classes/src/ux_device_class_storage_thread.c` | inspect interface, endpoint-chain, and stall-call dereferences for null-guard coverage or confirm upstream fix | hardfault in `_ux_device_class_storage_thread`, historically precise bus fault with `BFAR=0x00000004` |
 
 For each row record:

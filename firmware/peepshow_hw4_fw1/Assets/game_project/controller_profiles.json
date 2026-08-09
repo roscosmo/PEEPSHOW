@@ -1,0 +1,22 @@
+[
+  {
+    "id": "scene_default",
+    "display_name": "Scene Default",
+    "profile_id": 1,
+    "topdown_render_scale": 2,
+    "topdown_tile_present_mode": 0,
+    "move_speed_px_s": 72,
+    "move_accel_px_s2": 480,
+    "move_decel_px_s2": 640
+  },
+  {
+    "id": "topdown_player",
+    "display_name": "Topdown Player",
+    "profile_id": 2,
+    "topdown_render_scale": 2,
+    "topdown_tile_present_mode": 0,
+    "move_speed_px_s": 48,
+    "move_accel_px_s2": 480,
+    "move_decel_px_s2": 640
+  }
+]

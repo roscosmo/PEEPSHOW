@@ -1,0 +1,34 @@
+[
+  {
+    "id": "pet_house",
+    "display_name": "Pet House",
+    "tiled_map": "Assets/maps/pet_house.json",
+    "map_asset_id": 1001,
+    "tileset_asset_id": 2001,
+    "music_asset_id": 3001
+  },
+  {
+    "id": "town_map",
+    "display_name": "Town Map",
+    "tiled_map": "Assets/maps/town_map.json",
+    "map_asset_id": 1002,
+    "tileset_asset_id": 2002,
+    "music_asset_id": 3001
+  },
+  {
+    "id": "market",
+    "display_name": "Market",
+    "tiled_map": "Assets/maps/market.json",
+    "map_asset_id": 1003,
+    "tileset_asset_id": 2003,
+    "music_asset_id": 3001
+  },
+  {
+    "id": "outdoor",
+    "display_name": "Outdoor",
+    "tiled_map": "Assets/maps/outdoor.json",
+    "map_asset_id": 1004,
+    "tileset_asset_id": 2004,
+    "music_asset_id": 3001
+  }
+]

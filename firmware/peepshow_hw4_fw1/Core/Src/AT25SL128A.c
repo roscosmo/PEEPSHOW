@@ -12,6 +12,8 @@
 #define AT25_CMD_RST        0x99
 #define AT25_CMD_EQPI       0x38      // Enable QPI (enter 4-4-4)
 #define AT25_CMD_RQPI       0xF5      // Exit QPI (send while in QPI)
+#define AT25_CMD_DPD        0xB9      // Deep power-down
+#define AT25_CMD_RDPD       0xAB      // Release from deep power-down
 
 /* ---------- Status register bits ---------- */
 #define AT25_SR1_WIP        0x01
@@ -20,6 +22,8 @@
 
 /* ---------- Local defaults ---------- */
 #define AT25_DEFAULT_TIMEOUT_MS  100
+#define AT25_OSPI_CMD_TIMEOUT_MS 100u
+#define AT25_OSPI_IO_TIMEOUT_MS  100u
 
 
 #ifndef AT25_CMD_READ
@@ -51,6 +55,8 @@ static volatile AT25_Debug g_at25_dbg_err = {0};
 #define AT25_DBG_OP_PP        3u
 #define AT25_DBG_OP_ERASE4K   4u
 #define AT25_DBG_OP_ERASE64K  5u
+#define AT25_DBG_OP_DPD       6u
+#define AT25_DBG_OP_RDPD      7u
 
 static void at25_dbg_note(OSPI_HandleTypeDef *h,
                           uint8_t op,
@@ -150,7 +156,7 @@ static HAL_StatusTypeDef cmd_only(OSPI_HandleTypeDef *h,
     c.DummyCycles        = 0;
     c.NbData             = 0;
     c.DQSMode            = HAL_OSPI_DQS_DISABLE;
-    return HAL_OSPI_Command(h, &c, HAL_MAX_DELAY);
+    return HAL_OSPI_Command(h, &c, AT25_OSPI_CMD_TIMEOUT_MS);
 }
 
 static HAL_StatusTypeDef read_bytes(OSPI_HandleTypeDef *h,
@@ -174,9 +180,9 @@ static HAL_StatusTypeDef read_bytes(OSPI_HandleTypeDef *h,
     c.NbData             = n;
     c.DQSMode            = HAL_OSPI_DQS_DISABLE;
 
-    HAL_StatusTypeDef st = HAL_OSPI_Command(h, &c, HAL_MAX_DELAY);
+    HAL_StatusTypeDef st = HAL_OSPI_Command(h, &c, AT25_OSPI_CMD_TIMEOUT_MS);
     if (st != HAL_OK) return st;
-    return HAL_OSPI_Receive(h, buf, HAL_MAX_DELAY);
+    return HAL_OSPI_Receive(h, buf, AT25_OSPI_IO_TIMEOUT_MS);
 }
 
 static HAL_StatusTypeDef write_bytes(OSPI_HandleTypeDef *h,
@@ -199,9 +205,9 @@ static HAL_StatusTypeDef write_bytes(OSPI_HandleTypeDef *h,
     c.NbData             = n;
     c.DQSMode            = HAL_OSPI_DQS_DISABLE;
 
-    HAL_StatusTypeDef st = HAL_OSPI_Command(h, &c, HAL_MAX_DELAY);
+    HAL_StatusTypeDef st = HAL_OSPI_Command(h, &c, AT25_OSPI_CMD_TIMEOUT_MS);
     if (st != HAL_OK) return st;
-    return HAL_OSPI_Transmit(h, (uint8_t*)buf, HAL_MAX_DELAY);
+    return HAL_OSPI_Transmit(h, (uint8_t*)buf, AT25_OSPI_IO_TIMEOUT_MS);
 }
 
 /* Poll SR1 until (SR1 & mask) == match */
@@ -233,7 +239,7 @@ static HAL_StatusTypeDef poll_sr1(OSPI_HandleTypeDef *h,
     p.Interval         = 0x10;
     p.AutomaticStop    = HAL_OSPI_AUTOMATIC_STOP_ENABLE;
 
-    HAL_StatusTypeDef st = HAL_OSPI_Command(h, &c, HAL_MAX_DELAY);
+    HAL_StatusTypeDef st = HAL_OSPI_Command(h, &c, AT25_OSPI_CMD_TIMEOUT_MS);
     if (st != HAL_OK) return st;
     return HAL_OSPI_AutoPolling(h, &p, timeout_ms);
 }
@@ -282,6 +288,30 @@ HAL_StatusTypeDef AT25_WriteSR2(OSPI_HandleTypeDef *hospi, uint8_t value)
 
     return wait_wip0(hospi,
                      HAL_OSPI_INSTRUCTION_1_LINE, HAL_OSPI_DATA_1_LINE, 200);
+}
+
+HAL_StatusTypeDef AT25_EnterDeepPowerDown(OSPI_HandleTypeDef *hospi)
+{
+    uint32_t instr_lines = s_qpi_mode ? HAL_OSPI_INSTRUCTION_4_LINES : HAL_OSPI_INSTRUCTION_1_LINE;
+    HAL_StatusTypeDef st = cmd_only(hospi, AT25_CMD_DPD, instr_lines);
+    if (st == HAL_OK) {
+        /* tDP ~ a few microseconds; keep margin. */
+        at25_delay_us(10u);
+    }
+    at25_dbg_note(hospi, AT25_DBG_OP_DPD, 0u, 0u, st, st);
+    return st;
+}
+
+HAL_StatusTypeDef AT25_ReleaseDeepPowerDown(OSPI_HandleTypeDef *hospi)
+{
+    uint32_t instr_lines = s_qpi_mode ? HAL_OSPI_INSTRUCTION_4_LINES : HAL_OSPI_INSTRUCTION_1_LINE;
+    HAL_StatusTypeDef st = cmd_only(hospi, AT25_CMD_RDPD, instr_lines);
+    if (st == HAL_OK) {
+        /* tRES1/tRES2 guard before next command. */
+        at25_delay_us(50u);
+    }
+    at25_dbg_note(hospi, AT25_DBG_OP_RDPD, 0u, 0u, st, st);
+    return st;
 }
 
 /* ---------- The main init ---------- */
@@ -386,12 +416,12 @@ HAL_StatusTypeDef AT25_Read(OSPI_HandleTypeDef *h, uint32_t addr,
     c.NbData             = n;
     c.DQSMode            = HAL_OSPI_DQS_DISABLE;
 
-    HAL_StatusTypeDef st_cmd = HAL_OSPI_Command(h, &c, HAL_MAX_DELAY);
+    HAL_StatusTypeDef st_cmd = HAL_OSPI_Command(h, &c, AT25_OSPI_CMD_TIMEOUT_MS);
     if (st_cmd != HAL_OK) {
         at25_dbg_note(h, AT25_DBG_OP_READ, addr, n, st_cmd, st_cmd);
         return st_cmd;
     }
-    HAL_StatusTypeDef st_io = HAL_OSPI_Receive(h, dst, HAL_MAX_DELAY);
+    HAL_StatusTypeDef st_io = HAL_OSPI_Receive(h, dst, AT25_OSPI_IO_TIMEOUT_MS);
     at25_dbg_note(h, AT25_DBG_OP_READ, addr, n, st_cmd, st_io);
     return st_io;
 }
@@ -434,12 +464,12 @@ HAL_StatusTypeDef AT25_PageProgram(OSPI_HandleTypeDef *h, uint32_t addr,
         c.NbData             = chunk;
         c.DQSMode            = HAL_OSPI_DQS_DISABLE;
 
-        HAL_StatusTypeDef st_cmd = HAL_OSPI_Command(h, &c, HAL_MAX_DELAY);
+        HAL_StatusTypeDef st_cmd = HAL_OSPI_Command(h, &c, AT25_OSPI_CMD_TIMEOUT_MS);
         if (st_cmd != HAL_OK) {
             at25_dbg_note(h, AT25_DBG_OP_PP, addr, chunk, st_cmd, st_cmd);
             return st_cmd;
         }
-        HAL_StatusTypeDef st_io = HAL_OSPI_Transmit(h, (uint8_t*)src, HAL_MAX_DELAY);
+        HAL_StatusTypeDef st_io = HAL_OSPI_Transmit(h, (uint8_t*)src, AT25_OSPI_IO_TIMEOUT_MS);
         if (st_io != HAL_OK) {
             at25_dbg_note(h, AT25_DBG_OP_PP, addr, chunk, st_cmd, st_io);
             return st_io;
@@ -491,7 +521,7 @@ HAL_StatusTypeDef AT25_Erase4K(OSPI_HandleTypeDef *h, uint32_t addr)
     c.NbData             = 0;
     c.DQSMode            = HAL_OSPI_DQS_DISABLE;
 
-    HAL_StatusTypeDef st_cmd = HAL_OSPI_Command(h, &c, HAL_MAX_DELAY);
+    HAL_StatusTypeDef st_cmd = HAL_OSPI_Command(h, &c, AT25_OSPI_CMD_TIMEOUT_MS);
     if (st_cmd != HAL_OK) {
         at25_dbg_note(h, AT25_DBG_OP_ERASE4K, addr, 4096u, st_cmd, st_cmd);
         return st_cmd;
@@ -533,7 +563,7 @@ HAL_StatusTypeDef AT25_Erase64K(OSPI_HandleTypeDef *h, uint32_t addr)
     c.NbData             = 0;
     c.DQSMode            = HAL_OSPI_DQS_DISABLE;
 
-    HAL_StatusTypeDef st_cmd = HAL_OSPI_Command(h, &c, HAL_MAX_DELAY);
+    HAL_StatusTypeDef st_cmd = HAL_OSPI_Command(h, &c, AT25_OSPI_CMD_TIMEOUT_MS);
     if (st_cmd != HAL_OK) {
         at25_dbg_note(h, AT25_DBG_OP_ERASE64K, addr, AT25_ERASE64K_SIZE, st_cmd, st_cmd);
         return st_cmd;

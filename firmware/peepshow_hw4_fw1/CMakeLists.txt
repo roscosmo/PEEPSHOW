@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+﻿cmake_minimum_required(VERSION 3.22)
 
 #
 # This file is generated only once,
@@ -27,12 +27,12 @@ include("cmake/gcc-arm-none-eabi.cmake")
 # Enable compile command to ease indexing with e.g. clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
-# Enable CMake support for ASM and C languages
-enable_language(C ASM)
-
 # Core project settings
 project(${CMAKE_PROJECT_NAME})
 message("Build type: " ${CMAKE_BUILD_TYPE})
+
+# Enable CMake support for ASM and C languages
+enable_language(C ASM)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
@@ -56,6 +56,7 @@ target_sources(stm32cubemx INTERFACE
     Core/Src/LS013B7DH05.c
     Core/Src/display_renderer.c
     Core/Src/font8x8_basic.c
+    Core/Src/render_font.c
 )
 
 # Link directories setup
@@ -71,39 +72,47 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/tmag_joy.c
     Core/Src/LIS2DUX12.c
     Core/Src/AT25SL128A.c
+    Core/Src/audio_assets.c
+    Core/Src/game_map.c
+    Core/Src/game_tileset.c
+    Core/Src/game_sprite_anim.c
+    Core/Src/game_package.c
+    Core/Src/game_package_manifest.c
+    Core/Src/game_runtime.c
+    Core/Src/game_mode_topdown_basic.c
     Core/Src/render_demo.c
+    Core/Src/render_demo_3d_walk.c
+    Core/Src/render_demo_title_anim.c
+    Core/Src/ui/ui_runtime_context.c
     Core/Src/ui/ui_router.c
-    Core/Src/ui/ui_menu_tree.c
-    Core/Src/ui/pages/page_home.c
-    Core/Src/ui/pages/page_menu.c
-    Core/Src/ui/pages/page_menu_list_common.c
-    Core/Src/ui/pages/page_menu_input_sub.c
-    Core/Src/ui/pages/page_menu_sensors_sub.c
-    Core/Src/ui/pages/page_menu_power_time_sub.c
-    Core/Src/ui/pages/page_menu_system_sub.c
-    Core/Src/ui/pages/page_joy_cal.c
-    Core/Src/ui/pages/page_stub_common.c
-    Core/Src/ui/pages/page_batt_stats.c
-    Core/Src/ui/pages/page_communications.c
-    Core/Src/ui/pages/page_joy_cursor.c
-    Core/Src/ui/pages/page_joy_target.c
-    Core/Src/ui/pages/page_lis2.c
-    Core/Src/ui/pages/page_lis2_steps.c
-    Core/Src/ui/pages/page_menu_input.c
-    Core/Src/ui/pages/page_rtc_set.c
-    Core/Src/ui/pages/page_seed.c
-    Core/Src/ui/pages/page_sleep.c
-    Core/Src/ui/pages/page_sound.c
-    Core/Src/ui/pages/page_storage.c
-    Core/Src/ui/pages/page_display_stress.c
+    Core/Src/ui/ui_page_registry.c
+    Core/Src/ui/ui_menu_root.c
+    Core/Src/ui/ui_menu_system.c
+    Core/Src/ui/ui_menu_input.c
+    Core/Src/ui/ui_menu_sensors.c
+    Core/Src/ui/ui_menu_power_time.c
+    Core/Src/ui/ui_menu_usb_flash_prompt.c
+    Core/Src/ui/ui_page_home.c
+    Core/Src/ui/ui_page_pet.c
+    Core/Src/ui/ui_page_batt_stats.c
+    Core/Src/ui/ui_page_audio_levels.c
+    Core/Src/ui/ui_page_lis2.c
+    Core/Src/ui/ui_page_lis2_steps.c
+    Core/Src/ui/ui_page_joy_common.c
+    Core/Src/ui/ui_page_joy_target.c
+    Core/Src/ui/ui_page_joy_cal.c
+    Core/Src/ui/ui_page_flashing.c
 )
 
 set_source_files_properties(
     Core/Src/display_renderer.c
+    Core/Src/game_mode_topdown_basic.c
+    Core/Src/LS013B7DH05.c
     Core/Src/render_demo.c
-    Core/Src/ui/pages/page_display_stress.c
+    Core/Src/render_demo_3d_walk.c
+    Core/Src/render_demo_title_anim.c
     PROPERTIES
-    COMPILE_FLAGS "-O3 -ffast-math -fno-math-errno -ffp-contract=fast"
+    COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O3>"
 )
 
 # Add include paths
@@ -122,3 +131,4 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
     # Add user defined libraries
 )
+

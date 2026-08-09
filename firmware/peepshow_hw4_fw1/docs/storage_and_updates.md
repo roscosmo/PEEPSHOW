@@ -251,6 +251,27 @@ Replacing an installed blob:
 
 ---
 
+## Pre-USBX Manifest Bring-up Path (Temporary, Authoritative for this phase)
+
+Until USBX MSC ingest/install is implemented, game package manifest validation is performed using
+the fixed raw manifest slot only.
+
+Slot (knob-defined):
+- `storage_game_pkg_manifest_addr` (currently `0x00181000`)
+- `storage_game_pkg_manifest_max_bytes` (currently `4096`)
+
+Workflow:
+1. `thStorage` erases the manifest slot.
+2. Host generates manifest bytes (`tools/gen_game_package_manifest.py`) and writes them to slot with ST-LINK/CubeProgrammer/debugger workflow.
+3. Firmware validates by calling `APP_STORAGE_REQ_GAME_PACKAGE_MANIFEST_LOAD_DEFAULT`.
+
+Rules:
+- This is a bring-up path only.
+- No FAT/FileX runtime dependency is introduced for manifest loading in this phase.
+- USBX/FileX-based manifest install is deferred to later phase and will supersede this temporary ingest method.
+
+---
+
 ## FLASHING Mode (USB MSC)
 
 FLASHING mode exists to isolate USB timing and eliminate concurrency.

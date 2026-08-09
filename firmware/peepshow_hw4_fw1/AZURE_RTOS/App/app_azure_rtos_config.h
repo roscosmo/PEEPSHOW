@@ -47,7 +47,13 @@ extern "C" {
 
 #define FX_APP_MEM_POOL_SIZE                     1024
 
+#define UX_DEVICE_APP_MEM_POOL_SIZE              1024
+
 /* USER CODE BEGIN EC */
+/* Keep USBX byte pool sized for device stack + MSC class.
+ * CubeMX may regenerate the default value above (1024). */
+#undef UX_DEVICE_APP_MEM_POOL_SIZE
+#define UX_DEVICE_APP_MEM_POOL_SIZE              32768
 
 /* USER CODE END EC */
 

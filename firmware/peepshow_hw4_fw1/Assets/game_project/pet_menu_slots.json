@@ -1,0 +1,88 @@
+[
+  {
+    "id": "feed",
+    "display_name": "Feed",
+    "slot_index": 0,
+    "icon_action_id": 0,
+    "select_kind": "feed",
+    "status_kind": "none",
+    "status_source": "none"
+  },
+  {
+    "id": "play",
+    "display_name": "Play",
+    "slot_index": 1,
+    "icon_action_id": 1,
+    "select_kind": "play",
+    "status_kind": "none",
+    "status_source": "none"
+  },
+  {
+    "id": "market_scene",
+    "display_name": "Market",
+    "slot_index": 2,
+    "icon_action_id": 2,
+    "select_kind": "launch_mode",
+    "mode_key": "market_scene",
+    "status_kind": "none",
+    "status_source": "none"
+  },
+  {
+    "id": "render_demo_3d_walk",
+    "display_name": "3D Walk",
+    "slot_index": 3,
+    "icon_action_id": 3,
+    "select_kind": "launch_mode",
+    "mode_key": "render_demo_3d_walk",
+    "status_kind": "none",
+    "status_source": "none"
+  },
+  {
+    "id": "render_demo_fx",
+    "display_name": "FX Demo",
+    "slot_index": 4,
+    "icon_action_id": 4,
+    "select_kind": "launch_mode",
+    "mode_key": "render_demo_fx",
+    "status_kind": "none",
+    "status_source": "none"
+  },
+  {
+    "id": "start_game",
+    "display_name": "Start Game",
+    "slot_index": 8,
+    "icon_action_id": 8,
+    "select_kind": "start_game",
+    "status_kind": "none",
+    "status_source": "none"
+  },
+  {
+    "id": "render_demo_title_anim",
+    "display_name": "Title Anim",
+    "slot_index": 5,
+    "icon_action_id": 5,
+    "select_kind": "launch_mode",
+    "mode_key": "render_demo_title_anim",
+    "status_kind": "none",
+    "status_source": "none"
+  },
+  {
+    "id": "pet_sand_fx",
+    "display_name": "Sand FX",
+    "slot_index": 7,
+    "icon_action_id": 6,
+    "select_kind": "sand_fx",
+    "status_kind": "none",
+    "status_source": "none"
+  },
+  {
+    "id": "options",
+    "display_name": "Options",
+    "slot_index": 9,
+    "icon_action_id": 9,
+    "select_kind": "options",
+    "status_kind": "level4",
+    "status_source": "battery",
+    "status_base_icon_action_id": 6
+  }
+]

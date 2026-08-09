@@ -8,7 +8,7 @@
 #define PS_DEV_AT25SL128A_CMD_RESET              (0x99U)
 #define PS_DEV_AT25SL128A_CMD_READ_STATUS1       (0x05U)
 #define PS_DEV_AT25SL128A_CMD_PAGE_PROGRAM       (0x02U)
-#define PS_DEV_AT25SL128A_CMD_READ_DATA          (0x03U)
+#define PS_DEV_AT25SL128A_CMD_FAST_READ          (0x0BU)
 #define PS_DEV_AT25SL128A_CMD_SECTOR_ERASE_4K    (0x20U)
 #define PS_DEV_AT25SL128A_CMD_JEDEC_ID           (0x9FU)
 #define PS_DEV_AT25SL128A_CMD_RELEASE_POWER_DOWN (0xABU)
@@ -21,6 +21,7 @@
 #define PS_DEV_AT25SL128A_ACCEPT_MAX_POLLS       (1000UL)
 #define PS_DEV_AT25SL128A_POST_WRITE_DELAY_MS    (1UL)
 #define PS_DEV_AT25SL128A_SCRATCH_PATTERN_BASE   (0xA5U)
+#define PS_DEV_AT25SL128A_FAST_READ_DUMMY_CYCLES (8U)
 
 static uint8_t ps_dev_at25sl128a_tx_buffer[PS_DEV_AT25SL128A_PAGE_SIZE];
 static uint8_t ps_dev_at25sl128a_rx_buffer[PS_DEV_AT25SL128A_PAGE_SIZE];
@@ -219,10 +220,11 @@ static HAL_StatusTypeDef ps_dev_at25sl128a_read_data(
 
   ps_dev_at25sl128a_prepare_address_command(
     &command,
-    PS_DEV_AT25SL128A_CMD_READ_DATA,
+    PS_DEV_AT25SL128A_CMD_FAST_READ,
     address,
     HAL_OSPI_DATA_1_LINE,
     length);
+  command.DummyCycles = PS_DEV_AT25SL128A_FAST_READ_DUMMY_CYCLES;
   hal_status = HAL_OSPI_Command(device->ospi, &command, device->timeout_ms);
   if (hal_status == HAL_OK)
   {
@@ -311,10 +313,11 @@ static HAL_StatusTypeDef ps_dev_at25sl128a_read_data_dma(
 
   ps_dev_at25sl128a_prepare_address_command(
     &command,
-    PS_DEV_AT25SL128A_CMD_READ_DATA,
+    PS_DEV_AT25SL128A_CMD_FAST_READ,
     address,
     HAL_OSPI_DATA_1_LINE,
     length);
+  command.DummyCycles = PS_DEV_AT25SL128A_FAST_READ_DUMMY_CYCLES;
   hal_status = HAL_OSPI_Command(device->ospi, &command, device->timeout_ms);
   if (hal_status == HAL_OK)
   {

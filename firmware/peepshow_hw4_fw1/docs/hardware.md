@@ -176,6 +176,14 @@ Rules:
 - Single-owner policy is mandatory (see peripheral_robustness.md)
 - Bus recovery capability is mandatory (stuck SDA/SCL recovery)
 
+### Buttons (A/B/L/R/BOOT)
+
+- EXTI mode: rising + falling edge.
+- Effective pressed polarity in current board path: **active-high**.
+- Input edge mapping contract:
+  - rising edge -> press
+  - falling edge -> release
+
 ---
 
 ## Level Translators / Enables

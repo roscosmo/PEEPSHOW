@@ -125,8 +125,18 @@ Used for signs, chests, scripted triggers.
 
 Properties:
 
-- `action` (string): `sign`, `chest`, `npc`
-- `text_id` (int): Dialogue lookup ID
+- `script_id` (string, preferred): Script key from `Assets/game_project/scripts.json`
+- `dialogue_id` (string, preferred): Dialogue key from `Assets/game_project/dialogues.json`
+- `action` (string, fallback): legacy action key
+- `text_id` (int, fallback): legacy dialogue lookup ID
+
+Build/runtime note:
+
+- Map blob generation packs `Interact` references into object args:
+  - `arg0` = hash(`script_id`) if present, else hash(`action`)
+  - `arg1` = hash(`dialogue_id`) if present, else legacy text/dialog fallback
+- Topdown runtime consumes these args on interact input and tracks last-seen
+  script/dialogue refs for runtime event handling.
 
 Sign example:
 

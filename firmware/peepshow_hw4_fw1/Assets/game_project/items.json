@@ -1,0 +1,20 @@
+[
+  {
+    "id": "slime_gel",
+    "name": "Slime Gel",
+    "category": "crafting_item",
+    "max_stack": 99,
+    "value": 5,
+    "description": "Sticky crafting material.",
+    "use_effect_id": ""
+  },
+  {
+    "id": "potion_small",
+    "name": "Small Potion",
+    "category": "consumable",
+    "max_stack": 10,
+    "value": 20,
+    "description": "Restores a small amount of health.",
+    "use_effect_id": "heal_20"
+  }
+]

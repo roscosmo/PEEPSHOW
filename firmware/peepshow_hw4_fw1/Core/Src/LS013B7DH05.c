@@ -81,19 +81,44 @@ static HAL_StatusTypeDef BuildWriteBurst(const uint8_t *buf, const uint16_t *row
     uint8_t *w = txBuf;
     *w++ = MLCD_CMD_WRITE;
 
-    for (uint16_t i = 0; i < rowCount; i++) {
+    /*
+     * Coalesce contiguous dirty rows into runs.
+     * Protocol still emits [addr][line][dummy] per row, but run handling avoids
+     * repeated address math for contiguous spans.
+     */
+    for (uint16_t i = 0u; i < rowCount; ) {
         uint16_t r = rows[i];
-        if (r < 1u || r > DISPLAY_HEIGHT) return HAL_ERROR;
+        uint16_t run_last = r;
+        if ((r < 1u) || (r > DISPLAY_HEIGHT)) return HAL_ERROR;
 
-        *w++ = (uint8_t)r;
+        while ((i + 1u) < rowCount) {
+            uint16_t next_r = rows[(uint16_t)(i + 1u)];
+            if (next_r != (uint16_t)(run_last + 1u)) {
+                break;
+            }
+            if ((next_r < 1u) || (next_r > DISPLAY_HEIGHT)) return HAL_ERROR;
+            run_last = next_r;
+            i++;
+        }
 
-        const uint8_t *src_row = buf + ((uint32_t)(r - 1u) * LINE_WIDTH);
+        {
+            uint16_t row = r;
+            const uint8_t *src_row = buf + ((uint32_t)(row - 1u) * LINE_WIDTH);
+            while (row <= run_last) {
+                *w++ = (uint8_t)row;
 
-        /* NO rev8(): buffer is already in panel order */
-        memcpy(w, src_row, LINE_WIDTH);
-        w += LINE_WIDTH;
+                /* NO rev8(): buffer is already in panel order */
+                memcpy(w, src_row, LINE_WIDTH);
+                w += LINE_WIDTH;
 
-        *w++ = 0x00u; /* per-line dummy */
+                *w++ = 0x00u; /* per-line dummy */
+
+                row++;
+                src_row += LINE_WIDTH;
+            }
+        }
+
+        i++;
     }
 
     *w++ = 0x00u; /* final dummy */

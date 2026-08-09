@@ -119,6 +119,23 @@ It must:
 
 The debugger must not guess random breakpoints.
 
+Scratch-memory safety for runtime tuning:
+- Do not use buffers that back active runtime views as temporary debugger write
+  targets.
+- In particular, if a map is currently loaded, avoid writing temporary structs
+  into `g_storage_scene_map_blob_buf` (runtime map view keeps pointers into this
+  memory).
+- Prefer `g_storage_game_package_manifest_buf` or a dedicated scratch region for
+  temporary tune patches.
+
+Runtime tune call-context safety:
+- Do not invoke runtime tune apply/reset functions directly from arbitrary halted
+  debugger context (can be in ISR/handler context and corrupt execution state).
+- Use queued debug-tune workflow (`ps_rt_tune_*` helpers) so apply/reset happens
+  inside `thGame` REALTIME thread context.
+- Current queued model is single-slot pending; issuing multiple `ps_rt_tune_*`
+  commands before letting `thGame` run will overwrite earlier pending values.
+
 ---
 
 ## SWO Logging Rules

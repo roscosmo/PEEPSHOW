@@ -1,0 +1,16 @@
+[
+  {
+    "id": "default_input",
+    "display_name": "Default Input",
+    "profile_id": 1,
+    "input_deadzone_permille": 150,
+    "input_flags": 3
+  },
+  {
+    "id": "menu_input",
+    "display_name": "Menu Input",
+    "profile_id": 2,
+    "input_deadzone_permille": 120,
+    "input_flags": 1
+  }
+]

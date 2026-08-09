@@ -123,17 +123,22 @@ All authoritative specs live in `/docs`.
 | `docs/authority.md` | Cross-cutting invariants (ownership, modes, timing, prohibitions) | Starting any work; resolving conflicts; reviewing PRs |
 | `docs/hardware.md` | Board topology, peripherals, pins, rails, canonical parts | Wiring/peripheral assumptions; bring-up checks |
 | `docs/boot_and_bringup.md` | Bring-up order + validation steps | Defining “what to test next”; staging STOP2 adoption |
-| `docs/brought_up.md` | Current bring-up progress tracker vs planned phases | Seeing what is already validated and what is still pending |
+| `docs/brought_up.md` | Active bring-up phase tracker + evidence ledger vs planned phases | Checking current phase status, closeout gates, and validation evidence |
+| `docs/brought_up_archive.md` | Append-only historical bring-up snapshots and closure notes (non-authoritative) | Looking up prior validated updates and temp-measure retirement history |
 | `docs/power_management.md` | STOP2 policy, wake sources, clock profiles, governor | Anything involving sleep/wake, clocks, battery behavior |
 | `docs/peripheral_robustness.md` | Robust init/recovery rules for flaky peripherals | Hardening boot/wake reliability; retry state machines |
 | `docs/rtos_architecture.md` | ThreadX structure, owner threads, queues/events, ISR rules | Creating tasks/queues; assigning peripheral ownership |
 | `docs/debugging.md` | Debug channels, HardFault capture, logging discipline | Adding diagnostics; crash capture; SWO/RTT usage |
 | `docs/display_and_rendering.md` | Sharp LCD rules, SPI oddities, buffer formats, flush discipline | Anything touching display config, renderer, DMA, buffers |
 | `docs/game_engine.md` | Runtime architecture, focus stack, frame loop contracts | Implementing game systems; input routing; scene lifecycle |
+| `docs/game_package_contract.md` | Package mode descriptors and pet→REALTIME routing contract | Wiring package-selected realtime modes and launch routes |
+| `docs/game_runtime_public_api.md` | Public game/runtime API boundary and live-tuning contract | Keeping game-dev changes inside supported APIs without crossing system ownership |
 | `docs/game_logic_architecture.md` | High-level gameplay layering, modes → gameplay responsibilities | Deciding where “game rules” live vs engine plumbing |
+| `docs/game_authoring_stack.md` | Tiled-vs-IDE authoring split and v1 domain/tool contract | Building content tools and keeping map placement separate from gameplay definitions |
 | `docs/state_machine.md` | FSM structure, generated/user split rules, integration | Adding pet/game FSMs; events/transitions; codegen workflow |
 | `docs/Tiled_map_integration.md` | Tiled export conventions, layer/object semantics, map ingest | Importing maps; collision layers; spawn points; properties |
 | `docs/storage_and_updates.md` | Flash layout, blob install/update rules, FileX boundaries | USB MSC behavior; installs; updates; raw region reads |
+| `docs/usbx_msc_bringup.md` | USB MSC bring-up playbook (failure signatures, patch points, soak criteria) | Bringing up or debugging FLASHING USB MSC enumeration/mount stability |
 | `docs/asset_pipeline.md` | PC-side asset build → firmware-ready blobs/headers | Extending asset generator; adding asset types |
 | `docs/audio.md` | Audio pipeline, formats, DMA buffering, constraints | Adding sounds/music/voices; preventing frame jitter |
 | `docs/knobs.md` | Compile-time knob system + what is allowed to be tunable | Adding/configuring knobs; keeping builds deterministic |

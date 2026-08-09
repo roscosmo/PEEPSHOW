@@ -134,11 +134,18 @@ VOID  fx_stm32_levelx_nor_driver(FX_MEDIA *media_ptr)
 
         case FX_DRIVER_UNINIT:
             {
+                if (current_driver->initialized == FX_FALSE)
+                {
+                    media_ptr->fx_media_driver_status = FX_SUCCESS;
+                    break;
+                }
+
                 /* Successful driver */
                 status = lx_nor_flash_close(&current_driver->flash_instance);
 
                 if (status == LX_SUCCESS)
                 {
+                    current_driver->initialized = FX_FALSE;
                     media_ptr->fx_media_driver_status =  FX_SUCCESS;
                 }
                 else

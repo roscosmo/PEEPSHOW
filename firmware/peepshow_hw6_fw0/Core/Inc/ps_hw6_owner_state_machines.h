@@ -299,6 +299,10 @@ typedef struct
   uint32_t storage_fxlx_erase_block_size;
   uint32_t storage_fxlx_sector_size;
   uint32_t storage_fxlx_sector_count;
+  uint32_t storage_fxlx_preformat_erase_status;
+  uint32_t storage_fxlx_preformat_erase_block_count;
+  uint32_t storage_fxlx_preformat_erase_failed_block;
+  uint32_t storage_fxlx_preformat_erase_last_poll_count;
   uint32_t storage_fxlx_lx_initialize_status;
   uint32_t storage_fxlx_lx_open_status;
   uint32_t storage_fxlx_fx_format_status;
@@ -356,6 +360,34 @@ typedef struct
   uint32_t usb_clock_enabled_after;
   uint32_t usb_vddusb_enabled_after;
   uint32_t usb_parked;
+  uint32_t usb_export_request_count;
+  uint32_t usb_export_start_tick;
+  uint32_t usb_export_vbus_present;
+  uint32_t usb_export_policy_status;
+  uint32_t usb_export_flash_wake_status;
+  uint32_t usb_export_fxlx_open_status;
+  uint32_t usb_export_dcd_status;
+  uint32_t usb_export_pcd_init_status;
+  uint32_t usb_export_pcd_start_status;
+  uint32_t usb_export_irq_priority_before;
+  uint32_t usb_export_irq_priority_after;
+  uint32_t usb_export_devconnect_status;
+  uint32_t usb_export_pcd_state_after;
+  uint32_t usb_export_clock_enabled_after;
+  uint32_t usb_export_vddusb_enabled_after;
+  uint32_t usb_export_started;
+  uint32_t usb_reclaim_request_count;
+  uint32_t usb_reclaim_start_tick;
+  uint32_t usb_reclaim_dirty_seen;
+  uint32_t usb_reclaim_devdisconnect_status;
+  uint32_t usb_reclaim_disconnect_status;
+  uint32_t usb_reclaim_pcd_stop_status;
+  uint32_t usb_reclaim_deinit_status;
+  uint32_t usb_reclaim_fxlx_close_status;
+  uint32_t usb_reclaim_pcd_state_after;
+  uint32_t usb_reclaim_clock_enabled_after;
+  uint32_t usb_reclaim_vddusb_enabled_after;
+  uint32_t usb_reclaim_parked;
 
   uint32_t ble_nrst_before;
   uint32_t ble_nrst_released;
@@ -385,10 +417,14 @@ typedef struct
 
 extern volatile PS_HW6_OwnerStateMachineProbe g_ps_hw6_owner_sm_probe;
 extern volatile uint32_t g_ps_hw6_owner_sm_start_request;
+extern volatile uint32_t g_ps_hw6_storage_usb_export_request;
+extern volatile uint32_t g_ps_hw6_storage_usb_reclaim_request;
 
 void PS_HW6_OwnerStateMachines_Init(void);
 void PS_HW6_OwnerStateMachines_BeginWorkflow(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Stabilize(uint32_t owner_id);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void);
 void PS_HW6_OwnerStateMachines_BeginCycle(uint32_t cycle_index);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Resume(uint32_t owner_id,
                                                     uint32_t cycle_index);

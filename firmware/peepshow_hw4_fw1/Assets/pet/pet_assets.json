@@ -1,0 +1,40 @@
+{
+  "icon_sheet": {
+    "png": "Assets/pet/icons/pet_menu_sheet.png",
+    "cell_w": 16,
+    "cell_h": 16,
+    "cols": 5,
+    "rows": 2,
+    "icons": {
+      "feed": { "x": 0, "y": 0 },
+      "play": { "x": 1, "y": 0 },
+      "slot3": { "x": 2, "y": 0 },
+      "slot4": { "x": 3, "y": 0 },
+      "slot5": { "x": 4, "y": 0 },
+      "slot6": { "x": 0, "y": 1 },
+      "slot7": { "x": 1, "y": 1 },
+      "slot8": { "x": 2, "y": 1 },
+      "start_game": { "x": 3, "y": 1 },
+      "options": { "x": 4, "y": 1 }
+    }
+  },
+  "selection_bg": "icons/selection_bg_16.png",
+  "states": {
+    "sleep": "states/sleep.png",
+    "idle": "states/idle.png",
+    "feed": "states/feed.png",
+    "play": "states/play.png",
+    "rest": "states/rest.png"
+  },
+  "rows": {
+    "top": ["feed", "play", "slot3", "slot4", "slot5"],
+    "bottom": ["slot6", "slot7", "slot8", "start_game", "options"]
+  },
+  "pet_state_map": {
+    "0": "sleep",
+    "1": "idle",
+    "2": "feed",
+    "3": "play",
+    "4": "rest"
+  }
+}

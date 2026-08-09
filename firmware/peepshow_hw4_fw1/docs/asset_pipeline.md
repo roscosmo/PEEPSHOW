@@ -55,7 +55,7 @@ Export:
 - Transparency preserved (alpha channel)
 
 Color constraints:
-- Maximum 4 colour levels (0–3)
+- 5 visible shades + transparency
 - Fully transparent pixels allowed
 
 ---
@@ -117,7 +117,7 @@ A host-side toolchain must:
    - Object metadata
 3. Convert to compact binary structures.
 4. Parse PNG sprites and tiles:
-   - Quantize to 4 colour levels (0–3)
+   - Quantize to 5 visible shades (+ transparent)
    - Extract transparency mask
    - Convert to 2bpp color plane
    - Convert to 1bpp mask plane
@@ -145,17 +145,24 @@ Colour levels:
 
 - 0 = white
 - 1 = light grey
-- 2 = dark grey
+- 2 = mid grey
 - 3 = black
 
-These levels are preserved in the 2bpp plane.
+Runtime decode for masked 2bpp assets:
+- mask=1, level=0 -> white (0/4 black)
+- mask=1, level=1 -> light grey (1/4 black)
+- mask=1, level=2 -> mid grey (2/4 black)
+- mask=0, level=1 -> dark grey (3/4 black, extended tone)
+- mask=1, level=3 -> black (4/4 black)
+- mask=0, level=0 -> transparent
 
-Transparency is determined solely by the mask plane.
+Reserved combinations (currently treated as transparent):
+- mask=0, level=2
+- mask=0, level=3
 
-Mask rules:
-- mask bit = 1 → pixel exists
-- mask bit = 0 → transparent
-- Color level 0 is valid visible white
+Generator contract:
+- Transparent pixels must be encoded as mask=0, level=0.
+- Dark-grey (3/4 black) pixels must be encoded as mask=0, level=1.
 
 ---
 
@@ -250,8 +257,89 @@ Examples:
 - STRING_TABLE
 - SCRIPT_DATA
 - METADATA
+- GAME_PACKAGE_MANIFEST
 
 Unknown chunk types must be safely ignored.
+
+---
+
+## Game Package Manifest Chunk (V1-V4)
+
+`GAME_PACKAGE_MANIFEST` chunk provides package-owned mode descriptors and pet route
+mapping for runtime launch selection.
+
+Binary layout is defined by:
+
+- `Core/Inc/game_package_manifest.h`
+
+Manifest header must include:
+
+- magic/version
+- bounded table counts
+- table offsets
+- `total_size`
+- CRC32
+
+Manifest table content:
+
+- mode descriptors:
+  - v1: (`mode_id`, `runtime_kind`, `backend_id`)
+  - v2/v3: v1 fields plus runtime config payload (scene addresses/sizes,
+    controller profile, camera profile, movement/camera tuning)
+  - v4: v2/v3 fields plus package reference IDs for map/tileset/audio
+- pet routes (`pet_entry_id`, `mode_id`)
+
+Runtime contract:
+
+- parser must be bounded and deterministic
+- no dynamic allocation
+- invalid manifest must be rejected and system must fall back safely
+
+Host-side generation tool (current):
+
+- `tools/gen_game_package_manifest.py`
+- input example: `Assets/game_package/manifest.example.json`
+- v2 input example: `Assets/game_package/manifest.v2.example.json`
+- output default: `Assets/game_package/manifest.bin`
+
+JSON fields (required):
+
+- `manifest_version` (`u16`, optional; defaults to `4`)
+- `package_id` (`u32`)
+- `package_version` (`u32`)
+- `modes[]` objects with:
+  - `mode_id` (`u32`)
+  - `runtime_kind` (`u16`)
+  - `backend_id` (`u16`)
+  - authoring profile references:
+    - `controller_profile_key` (from `Assets/game_project/controller_profiles.json`)
+    - `camera_profile_key` (from `Assets/game_project/camera_profiles.json`)
+    - `input_profile_key` (from `Assets/game_project/input_profiles.json`)
+  - v2/v3/v4 optional runtime config fields:
+    - `scene_map_addr`, `scene_map_size_bytes`
+    - `scene_tileset_addr`, `scene_tileset_size_bytes`
+    - profile-derived at build time (resolved from profile keys):
+      - `topdown_render_scale`, `topdown_tile_present_mode`
+      - `controller_profile_id`, `camera_profile_id`
+      - `input_deadzone_permille`, `input_flags`
+      - `move_speed_px_s`, `move_accel_px_s2`, `move_decel_px_s2`
+      - `camera_deadzone_w_px`, `camera_deadzone_h_px`
+      - `camera_follow_permille`, `camera_max_speed_px_s`
+      - `camera_lookahead_x_px`, `camera_lookahead_y_px`
+    - legacy inline mode tuning fields are still accepted for compatibility, but profile-owned values are preferred
+  - v4 optional package reference ID fields:
+    - `scene_map_id`, `scene_tileset_id`
+    - `music_asset_id`
+    - `sfx_interact_asset_id`, `sfx_confirm_asset_id`, `sfx_error_asset_id`
+- `pet_routes[]` objects with:
+  - `pet_entry_id` (`u16`)
+  - `mode_id` (`u32`, must reference an entry in `modes[]`)
+
+Example:
+
+```bash
+python tools/gen_game_package_manifest.py
+```
 
 ---
 
@@ -275,6 +363,28 @@ Object record must contain:
 All values must be fixed-width integers.
 
 No pointers inside blob.
+
+Current baseline system map blob (`TMAP`, v1):
+
+- header: `game_map_blob_header_t` (`Core/Inc/game_map.h`)
+- tile flags plane: 1 byte per cell (`solid/water/slow/occluder/roof/emissive`)
+- tile gid plane: 16-bit gid per cell
+- object table: fixed-size `game_map_object_t` records (bounded, no pointers)
+
+Host-side converter:
+
+- `tools/gen_tiled_map_blob.py`
+
+Example:
+
+```bash
+python tools/gen_tiled_map_blob.py --in-json Assets/maps/inside_building.json --out-bin Assets/maps/build/inside_building.tmap.bin
+```
+
+Runtime parser:
+
+- `GameMap_Parse()` in `Core/Src/game_map.c`
+- consumed via game runtime seam (`GameRuntime_LoadSceneMapBlob`)
 
 ---
 
@@ -311,6 +421,17 @@ For each sprite:
 No panel-native 1bpp conversion at build time.
 
 All sprites are consumed into world2bpp surface at runtime.
+
+Local player-sheet helper (firmware-side topdown placeholder path):
+
+```bash
+python tools/gen_player_sprites.py
+```
+
+Inputs/outputs:
+- input sheet: `Assets/sprites/player_sheet.png`
+- optional frame map: `Assets/sprites/player_sheet.json`
+- output header: `Assets/sprites/player_sprites_autogen.h`
 
 ---
 
@@ -454,4 +575,4 @@ Firmware must not attempt to repair malformed blobs.
 
 ---
 
-Last updated: 2026-02-27
+Last updated: 2026-03-16

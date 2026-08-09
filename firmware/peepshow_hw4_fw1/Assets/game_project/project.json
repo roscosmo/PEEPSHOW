@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "project_id": "peepshow_demo",
+  "name": "PeepShow Demo Project",
+  "domains": {
+    "maps": "maps.json",
+    "pages": "pages.json",
+    "pet_menu_slots": "pet_menu_slots.json",
+    "controller_profiles": "controller_profiles.json",
+    "camera_profiles": "camera_profiles.json",
+    "input_profiles": "input_profiles.json",
+    "entities": "entities.json",
+    "dialogues": "dialogues.json",
+    "scripts": "scripts.json",
+    "items": "items.json"
+  }
+}

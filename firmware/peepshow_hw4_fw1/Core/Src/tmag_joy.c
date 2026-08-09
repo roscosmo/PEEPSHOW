@@ -323,7 +323,7 @@ TMAGJoy_Config TMAGJoy_DefaultConfig(void)
     c.extra_rotate_deg = 0.0f;
     c.dir_bias_deg     = 0.0f;
 
-    c.digital_thresh_norm = 0.60f;
+    c.digital_thresh_norm = ((float)KNOB_SENSOR_JOY_DIGITAL_PRESS_PERMILLE) / 1000.0f;
 
     return c;
 }

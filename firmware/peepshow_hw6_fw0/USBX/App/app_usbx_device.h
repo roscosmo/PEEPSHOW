@@ -49,6 +49,10 @@ extern "C" {
 #define UX_DEVICE_APP_THREAD_PRIO         10
 
 /* USER CODE BEGIN EC */
+/* Keep USBX stack memory sized for MSC enumeration stability.
+ * CubeMX may regenerate the default value above. */
+#undef USBX_DEVICE_MEMORY_STACK_SIZE
+#define USBX_DEVICE_MEMORY_STACK_SIZE       24576
 
 /* USER CODE END EC */
 

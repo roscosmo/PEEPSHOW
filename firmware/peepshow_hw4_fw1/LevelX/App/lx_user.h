@@ -70,7 +70,7 @@
 
 /* #define LX_STANDALONE_ENABLE */
 
-/* #define LX_THREAD_SAFE_ENABLE */
+#define LX_THREAD_SAFE_ENABLE
 
 /* USER CODE BEGIN 2 */
 

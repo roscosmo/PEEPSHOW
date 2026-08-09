@@ -1,0 +1,15 @@
+{
+  "embedded": [
+    "UI_Move.wav",
+    "UI_Confirm.wav",
+    "UI_Decline.wav",
+    "UI_Denied.wav",
+    "UI_map_open.wav",
+    "UI_map_close.wav",
+    "UI_door.wav",
+    "MUSIC_whispers_in_the_fog.wav",
+    "SFX_door.wav",
+    "SFX_explosion.wav",
+    "SFX_ghost_laugh.wav"
+  ]
+}

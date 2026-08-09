@@ -101,6 +101,18 @@ whatever is required so ThreadX timers/sleeps behave correctly post-transition.
 
 **Rule:** no mode transition is “complete” until timebases are sane.
 
+### 3.3 Timebase labeling contract
+All timeout/period knobs must state both:
+- value domain (what units the knob value is authored in)
+- runtime compare domain (what clock/tick source is used at execution)
+
+Allowed domains:
+- `threadx`: values are used as ThreadX ticks (`tx_time_get`, `tx_thread_sleep`, queue waits)
+- `hal_ms`: values are used in HAL tick milliseconds (`HAL_GetTick`)
+- `knob_rtos_tick_hz`: values are authored at `KNOB_RTOS_TICK_HZ` and must be converted once before comparing against runtime ticks
+
+If conversion is required, it must be explicit and centralized at a single boundary function.
+
 ---
 
 ## 4. STOP2 entry/exit discipline

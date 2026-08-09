@@ -1,0 +1,15 @@
+{
+  "glyph_w": 8,
+  "glyph_h": 8,
+  "cols": 16,
+  "rows": 14,
+  "first_char": 32,
+  "threshold": 128,
+  "fonts": {
+    "regular": "Assets/fonts/gb_font_default.png",
+    "bold": "Assets/fonts/gb_font_thick.png",
+    "italic_lower": "Assets/fonts/gb_font_slant_lower.png",
+    "italic_upper": "Assets/fonts/gb_font_slant_upper.png",
+    "tiny": "Assets/fonts/gb_font_tiny.png"
+  }
+}

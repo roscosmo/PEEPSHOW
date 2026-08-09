@@ -1611,6 +1611,10 @@ int main(void)
   MX_SPI3_Init();
   MX_USB_OTG_FS_PCD_Init();
   /* USER CODE BEGIN 2 */
+  /* Keep OTG FS IRQ masked until the storage owner explicitly exports MSC. */
+  HAL_NVIC_DisableIRQ(OTG_FS_IRQn);
+  NVIC_ClearPendingIRQ(OTG_FS_IRQn);
+
   g_ps_hw6_fw0_probe.output_mask = PS_HW6_FW0_ReadOutputMask();
   g_ps_hw6_fw0_probe.phase = PS_HW6_FW0_PHASE_GPIO_READY;
   if (g_ps_hw6_fw0_probe.output_mask !=
@@ -2192,15 +2196,27 @@ static void MX_USB_OTG_FS_PCD_Init(void)
   hpcd_USB_OTG_FS.Init.Sof_enable = DISABLE;
   hpcd_USB_OTG_FS.Init.low_power_enable = DISABLE;
   hpcd_USB_OTG_FS.Init.lpm_enable = DISABLE;
-  hpcd_USB_OTG_FS.Init.battery_charging_enable = ENABLE;
+  hpcd_USB_OTG_FS.Init.battery_charging_enable = DISABLE;
   hpcd_USB_OTG_FS.Init.use_dedicated_ep1 = DISABLE;
-  hpcd_USB_OTG_FS.Init.vbus_sensing_enable = ENABLE;
+  hpcd_USB_OTG_FS.Init.vbus_sensing_enable = DISABLE;
   hpcd_USB_OTG_FS.Init.dma_enable = DISABLE;
   if (HAL_PCD_Init(&hpcd_USB_OTG_FS) != HAL_OK)
   {
     Error_Handler();
   }
   /* USER CODE BEGIN USB_OTG_FS_Init 2 */
+  if (HAL_PCDEx_SetRxFiFo(&hpcd_USB_OTG_FS, 0x80U) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 0U, 0x40U) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_FS, 1U, 0x80U) != HAL_OK)
+  {
+    Error_Handler();
+  }
 
   /* USER CODE END USB_OTG_FS_Init 2 */
 

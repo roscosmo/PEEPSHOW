@@ -34,6 +34,24 @@ Firmware includes only `knobs_autogen.h`.
 
 ---
 
+## Timebase Contract
+
+Every knob that represents time must declare its timebase and runtime compare domain.
+
+Canonical domains:
+
+- `threadx`: value is in ThreadX ticks and is compared directly against `tx_time_get()`/ThreadX waits.
+- `hal_ms`: value is in HAL tick milliseconds and is compared against `HAL_GetTick()`.
+- `knob_rtos_tick_hz`: value is authored in `KNOB_RTOS_TICK_HZ` units and converted once to runtime ticks before compare.
+
+Rule for implementation:
+
+- If conversion is needed, do it at one explicit boundary helper near the compare site.
+- Do not mix domains in-place inside business logic.
+- Schema descriptions must say both the authored domain and the runtime compare domain.
+
+---
+
 ## Files
 
 ### 1) config/knobs.json

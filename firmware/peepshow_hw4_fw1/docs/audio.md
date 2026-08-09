@@ -18,7 +18,7 @@ Defines:
 - Audio DMA buffer discipline
 - Runtime asset source model (installed blobs)
 - Playback contract (SFX + music)
-- Power coordination (PLL2P usage)
+- Power coordination (PLL2P usage + REALTIME perf-floor handshake)
 - Determinism and latency requirements
 
 Does NOT define:
@@ -81,6 +81,7 @@ Other threads must not:
 - Reconfigure PLL2P directly
 
 Clock requests must go through qSysEvents to thPower.
+Audio performance-floor assertions (active/inactive) must also go through qSysEvents to thPower.
 
 ---
 
@@ -197,6 +198,13 @@ PLL2P usage:
 - Disabled when no playback active.
 - Reference counting handled in thPower.
 
+REALTIME performance-floor usage:
+
+- thAudio asserts `audio active` while clip playback is active in REALTIME.
+- thAudio clears `audio active` when clip playback stops.
+- thPower applies/release the REALTIME performance floor from these events.
+- Audio does not change clocks directly; thPower remains sole owner.
+
 Before STOP2:
 - DMA stopped.
 - SAI disabled.
@@ -250,4 +258,4 @@ Audio must never crash the system.
 
 ---
 
-Last updated: 2026-02-18
+Last updated: 2026-03-14

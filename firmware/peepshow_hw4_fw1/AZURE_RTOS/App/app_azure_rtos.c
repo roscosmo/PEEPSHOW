@@ -42,6 +42,11 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
+volatile UINT g_usbx_device_pool_create_status = TX_SUCCESS;
+volatile UINT g_usbx_device_init_status = UX_SUCCESS;
+volatile ULONG g_usbx_device_pool_create_fail_count = 0UL;
+volatile ULONG g_usbx_device_init_fail_count = 0UL;
+volatile ULONG g_usbx_device_init_ok_count = 0UL;
 
 /* USER CODE END PV */
 
@@ -62,6 +67,14 @@ static TX_BYTE_POOL tx_app_byte_pool;
 #endif
 __ALIGN_BEGIN static UCHAR  fx_byte_pool_buffer[FX_APP_MEM_POOL_SIZE] __ALIGN_END;
 static TX_BYTE_POOL FILEX_MEM_POOL_VAR_NAME;
+
+/* USER CODE BEGIN UX_Device_Pool_Buffer */
+/* USER CODE END UX_Device_Pool_Buffer */
+#if defined ( __ICCARM__ )
+#pragma data_alignment=4
+#endif
+__ALIGN_BEGIN static UCHAR  ux_device_byte_pool_buffer[UX_DEVICE_APP_MEM_POOL_SIZE] __ALIGN_END;
+static TX_BYTE_POOL ux_device_app_byte_pool;
 
 #endif
 
@@ -138,6 +151,48 @@ VOID tx_application_define(VOID *first_unused_memory)
     /* USER CODE END  MX_FileX_Init_Success */
   }
 
+  if (tx_byte_pool_create(&ux_device_app_byte_pool, "Ux App memory pool", ux_device_byte_pool_buffer, UX_DEVICE_APP_MEM_POOL_SIZE) != TX_SUCCESS)
+  {
+    /* USER CODE BEGIN UX_Device_Byte_Pool_Error */
+    g_usbx_device_pool_create_status = TX_POOL_ERROR;
+    if (g_usbx_device_pool_create_fail_count < 0xFFFFFFFFUL)
+    {
+      g_usbx_device_pool_create_fail_count++;
+    }
+
+    /* USER CODE END UX_Device_Byte_Pool_Error */
+  }
+  else
+  {
+    /* USER CODE BEGIN UX_Device_Byte_Pool_Success */
+    g_usbx_device_pool_create_status = TX_SUCCESS;
+
+    /* USER CODE END UX_Device_Byte_Pool_Success */
+
+    memory_ptr = (VOID *)&ux_device_app_byte_pool;
+    status = MX_USBX_Device_Init(memory_ptr);
+    if (status != UX_SUCCESS)
+    {
+      /* USER CODE BEGIN  MX_USBX_Device_Init_Error */
+      g_usbx_device_init_status = status;
+      if (g_usbx_device_init_fail_count < 0xFFFFFFFFUL)
+      {
+        g_usbx_device_init_fail_count++;
+      }
+      /* USER CODE END  MX_USBX_Device_Init_Error */
+    }
+    /* USER CODE BEGIN  MX_USBX_Device_Init_Success */
+    else
+    {
+      g_usbx_device_init_status = UX_SUCCESS;
+      if (g_usbx_device_init_ok_count < 0xFFFFFFFFUL)
+      {
+        g_usbx_device_init_ok_count++;
+      }
+    }
+
+    /* USER CODE END  MX_USBX_Device_Init_Success */
+  }
 #else
 /*
  * Using dynamic memory allocation requires to apply some changes to the linker file.

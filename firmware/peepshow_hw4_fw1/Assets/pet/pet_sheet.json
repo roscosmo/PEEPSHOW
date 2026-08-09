@@ -1,0 +1,66 @@
+{
+  "sheet": {
+    "png": "Assets/pet/pet_sheet.png",
+    "cell_w": 16,
+    "cell_h": 16,
+    "cols": 4,
+    "rows": 7
+  },
+  "frames": {
+    "idle_down_1":  { "x": 0, "y": 0 },
+    "idle_down_2":  { "x": 1, "y": 0 },
+    "idle_up_1":    { "x": 2, "y": 0 },
+    "idle_up_2":    { "x": 3, "y": 0 },
+
+    "idle_right_1": { "x": 0, "y": 1 },
+    "idle_right_2": { "x": 1, "y": 1 },
+    "idle_left_1":  { "x": 2, "y": 1 },
+    "idle_left_2":  { "x": 3, "y": 1 },
+
+    "walk_down_1":  { "x": 0, "y": 2 },
+    "walk_down_2":  { "x": 1, "y": 2 },
+    "walk_down_3":  { "x": 2, "y": 2 },
+    "walk_up_1":    { "x": 3, "y": 2 },
+
+    "walk_up_2":    { "x": 0, "y": 3 },
+    "walk_up_3":    { "x": 1, "y": 3 },
+    "walk_right_1": { "x": 2, "y": 3 },
+    "walk_right_2": { "x": 3, "y": 3 },
+
+    "walk_right_3": { "x": 0, "y": 4 },
+    "walk_left_1":  { "x": 1, "y": 4 },
+    "walk_left_2":  { "x": 2, "y": 4 },
+    "walk_left_3":  { "x": 3, "y": 4 },
+
+    "eat_1":        { "x": 0, "y": 5 },
+    "eat_2":        { "x": 1, "y": 5 },
+    "eat_3":        { "x": 2, "y": 5 },
+    "eat_4":        { "x": 3, "y": 5 },
+
+    "play_1":       { "x": 0, "y": 6 },
+    "play_2":       { "x": 1, "y": 6 },
+    "play_3":       { "x": 2, "y": 6 },
+    "play_4":       { "x": 3, "y": 6 }
+  },
+  "clips": {
+    "idle_down":  { "frames": ["idle_down_1", "idle_down_2"], "frame_ms": 1000, "loop": true,  "tick_domain": "stop_wake_1hz" },
+    "idle_up":    { "frames": ["idle_up_1", "idle_up_2"],     "frame_ms": 1000, "loop": true,  "tick_domain": "stop_wake_1hz" },
+    "idle_right": { "frames": ["idle_right_1", "idle_right_2"], "frame_ms": 1000, "loop": true, "tick_domain": "stop_wake_1hz" },
+    "idle_left":  { "frames": ["idle_left_1", "idle_left_2"], "frame_ms": 1000, "loop": true,  "tick_domain": "stop_wake_1hz" },
+
+    "walk_down":  { "frames": ["walk_down_1", "walk_down_2", "walk_down_3"], "frame_ms": 180, "loop": true,  "tick_domain": "active" },
+    "walk_up":    { "frames": ["walk_up_1", "walk_up_2", "walk_up_3"],       "frame_ms": 180, "loop": true,  "tick_domain": "active" },
+    "walk_right": { "frames": ["walk_right_1", "walk_right_2", "walk_right_3"], "frame_ms": 180, "loop": true, "tick_domain": "active" },
+    "walk_left":  { "frames": ["walk_left_1", "walk_left_2", "walk_left_3"], "frame_ms": 180, "loop": true,  "tick_domain": "active" },
+
+    "eat":        { "frames": ["eat_1", "eat_2", "eat_3", "eat_4"], "frame_ms": 500, "loop": false, "tick_domain": "active" },
+    "play":       { "frames": ["play_1", "play_2", "play_3", "play_4"], "frame_ms": 500, "loop": false, "tick_domain": "active" }
+  },
+  "state_to_clip": {
+    "sleep": "idle_down",
+    "idle": "idle_down",
+    "feed": "eat",
+    "play": "play",
+    "rest": "idle_down"
+  }
+}

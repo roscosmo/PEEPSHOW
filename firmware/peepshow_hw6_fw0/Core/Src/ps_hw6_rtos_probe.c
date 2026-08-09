@@ -27,6 +27,7 @@
 #define PS_HW6_RTOS_EVENT_DEBUG_INDEX     (3U)
 #define PS_HW6_RTOS_ACK_OWNER(owner_id)   (1UL << (owner_id))
 #define PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS  (1000UL)
+#define PS_HW6_RTOS_STORAGE_STABILIZE_ACK_WAIT_TICKS (30000UL)
 #define PS_HW6_RTOS_STATUS_NOT_RUN        (0xFFFFFFFFUL)
 
 #define PS_HW6_RTOS_PHASE_INIT            (0x6600UL)
@@ -44,6 +45,7 @@
 #define PS_HW6_RTOS_STEP_THREAD_CREATE    (8UL)
 
 volatile PS_HW6_RTOS_Probe g_ps_hw6_rtos_probe;
+volatile uint32_t g_ps_hw6_rtos_low_power_usb_skip_count;
 
 static TX_THREAD ps_threads[PS_HW6_RTOS_OWNER_COUNT];
 static TX_QUEUE ps_queues[PS_HW6_RTOS_QUEUE_COUNT];
@@ -120,6 +122,7 @@ static void PS_HW6_RTOS_ResetProbe(void)
 
   (void)memset((void *)&g_ps_hw6_rtos_probe, 0,
                sizeof(g_ps_hw6_rtos_probe));
+  g_ps_hw6_rtos_low_power_usb_skip_count = 0UL;
   g_ps_hw6_rtos_probe.magic = PS_HW6_RTOS_PROBE_MAGIC;
   g_ps_hw6_rtos_probe.version = PS_HW6_RTOS_PROBE_VERSION;
   g_ps_hw6_rtos_probe.phase = PS_HW6_RTOS_PHASE_INIT;
@@ -297,6 +300,13 @@ static void PS_HW6_RTOS_RunCycleOwnerCommand(uint32_t cycle_index,
     send_status, wait_status, (uint32_t)actual_flags);
 }
 
+static ULONG PS_HW6_RTOS_StabilizeAckWaitTicks(uint32_t owner_id)
+{
+  return (owner_id == PS_HW6_RTOS_OWNER_STORAGE) ?
+         PS_HW6_RTOS_STORAGE_STABILIZE_ACK_WAIT_TICKS :
+         PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS;
+}
+
 static void PS_HW6_RTOS_RunPowerWorkflow(void)
 {
   static const uint32_t owner_order[] =
@@ -356,7 +366,7 @@ static void PS_HW6_RTOS_RunPowerWorkflow(void)
       wait_status = tx_event_flags_get(
         &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
         expected_ack, TX_AND_CLEAR, &actual_flags,
-        PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
+        PS_HW6_RTOS_StabilizeAckWaitTicks(owner_id));
     }
     PS_HW6_OwnerStateMachines_RecordCommand(
       owner_id, send_status, wait_status, (uint32_t)actual_flags);
@@ -570,6 +580,24 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       g_ps_hw6_owner_probe.power_command_send_status = TX_SUCCESS;
       PS_HW6_RTOS_RunPowerWorkflow();
     }
+    if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
+        (g_ps_hw6_storage_usb_export_request != 0UL) &&
+        (g_ps_hw6_owner_sm_probe.complete != 0UL))
+    {
+      g_ps_hw6_storage_usb_export_request = 0UL;
+      PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_SET);
+      (void)PS_HW6_OwnerStateMachines_StartUsbExport();
+      PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_RESET);
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
+        (g_ps_hw6_storage_usb_reclaim_request != 0UL) &&
+        (g_ps_hw6_owner_sm_probe.complete != 0UL))
+    {
+      g_ps_hw6_storage_usb_reclaim_request = 0UL;
+      PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_SET);
+      (void)PS_HW6_OwnerStateMachines_ReclaimUsbExport();
+      PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_RESET);
+    }
   }
 }
 
@@ -725,6 +753,12 @@ void PS_HW6_RTOS_LowPowerTimerSetup(ULONG count)
 void PS_HW6_RTOS_LowPowerEnter(void)
 {
   g_ps_hw6_rtos_probe.low_power_enter_count++;
+  if (g_ps_storage_msc_bridge_probe.export_enabled != 0UL)
+  {
+    g_ps_hw6_rtos_low_power_usb_skip_count++;
+    return;
+  }
+
   __DSB();
   __WFI();
   __ISB();

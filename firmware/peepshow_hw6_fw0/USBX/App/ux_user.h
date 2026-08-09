@@ -94,7 +94,15 @@
 #define UX_USER_H
 
 /* USER CODE BEGIN 1 */
-
+/*
+ * FLASHING/MSC export mode must respond promptly to BOT/SCSI requests.
+ * Keep the class thread above low-priority application workers and keep
+ * MSC transfer chunks to one logical sector, matching the validated FW4
+ * Windows enumeration path.
+ */
+#define UX_THREAD_STACK_SIZE                 (3 * 1024)
+#define UX_THREAD_PRIORITY_CLASS             5
+#define UX_SLAVE_REQUEST_DATA_MAX_LENGTH     512
 /* USER CODE END 1 */
 
 /* Define various build options for the USBX port.  The application should either make changes

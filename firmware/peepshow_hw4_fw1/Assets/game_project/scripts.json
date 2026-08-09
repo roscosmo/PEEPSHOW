@@ -1,0 +1,27 @@
+[
+  {
+    "id": "shrine_enter",
+    "trigger": "on_area_enter",
+    "actions": [
+      {
+        "op": "show_dialogue",
+        "dialogue_id": "town_intro_01"
+      },
+      {
+        "op": "set_flag",
+        "flag_id": "met_elder"
+      }
+    ]
+  },
+  {
+    "id": "slime_death_default",
+    "trigger": "on_entity_death",
+    "actions": [
+      {
+        "op": "add_item",
+        "item_id": "slime_gel",
+        "count": 1
+      }
+    ]
+  }
+]

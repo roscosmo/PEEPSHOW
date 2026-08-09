@@ -62,7 +62,7 @@ Initial clock state must be conservative and stable.
 Boot clock policy:
 
 - Use PLL1 for SYSCLK.
-- Select stable HCLK (e.g., 80 MHz initial).
+- Select a stable conservative boot profile (typically `CLK_LOW`; exact MHz is project-configured).
 - Configure MSIK and LSE early.
 - Do not enable PLL2 until required by subsystem.
 
@@ -70,6 +70,10 @@ SysTick must be correctly initialized after final SYSCLK selection.
 
 If SYSCLK changes later:
 - SysTick must be reprogrammed immediately.
+
+Clock values shown in this document are policy examples, not frozen constants.
+Authoritative runtime profile definitions live in `docs/power_management.md` and the
+active build configuration.
 
 ---
 
@@ -115,6 +119,19 @@ Rules:
 
 Development proceeds in phases.
 
+Phase status is recorded in `docs/brought_up.md`.
+Detailed historical snapshots and baseline appendices live in
+`docs/brought_up_archive.md`.
+
+Status tokens:
+- `Not started`: no hardware evidence logged for the phase goals.
+- `In progress`: partial evidence exists, but at least one phase goal/precondition
+  is still open.
+- `Complete`: all phase goals/preconditions are met and supporting evidence is
+  logged in the tracker.
+
+A phase must not be marked `Complete` until the above criteria are satisfied.
+
 ### Phase 0 – Power + Clock Stability
 
 Goals:
@@ -148,7 +165,9 @@ Goals:
 - Initialize LevelX + FileX.
 - Mount and format FAT volume.
 
-Do not enable FLASHING mode yet.
+Do not enable full USB MSC flashing workflow yet.
+Control-plane mode routing checks are allowed only if they do not run host-facing
+MSC/FileX flashing behavior.
 
 ---
 
@@ -269,4 +288,4 @@ HardFaults must not be ignored.
 
 ---
 
-Last updated: 2026-02-18
+Last updated: 2026-03-11

@@ -1,0 +1,37 @@
+{
+  "manifest_version": 2,
+  "package_id": 1,
+  "package_version": 2,
+  "modes": [
+    {
+      "mode_id": 1,
+      "runtime_kind": 1,
+      "backend_id": 3,
+      "scene_map_addr": 3145728,
+      "scene_map_size_bytes": 0,
+      "scene_tileset_addr": 3149824,
+      "scene_tileset_size_bytes": 0,
+      "topdown_render_scale": 2,
+      "topdown_tile_present_mode": 0,
+      "controller_profile_id": 2,
+      "camera_profile_id": 4,
+      "input_deadzone_permille": 150,
+      "input_flags": 3,
+      "move_speed_px_s": 72,
+      "move_accel_px_s2": 480,
+      "move_decel_px_s2": 640,
+      "camera_deadzone_w_px": 24,
+      "camera_deadzone_h_px": 24,
+      "camera_follow_permille": 280,
+      "camera_max_speed_px_s": 240,
+      "camera_lookahead_x_px": 0,
+      "camera_lookahead_y_px": 0
+    }
+  ],
+  "pet_routes": [
+    {
+      "pet_entry_id": 1,
+      "mode_id": 1
+    }
+  ]
+}
