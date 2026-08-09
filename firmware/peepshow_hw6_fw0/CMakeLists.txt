@@ -70,6 +70,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/ps_hw6_owner_state_machines.c
     Core/Src/ps_hw6_peripheral_probe.c
     Core/Src/ps_hw6_rtos_probe.c
+    Core/Src/ps_hw6_usb_export.c
     Core/Src/ps_storage_flash_block.c
     Core/Src/ps_storage_filex_levelx.c
     Core/Src/ps_storage_layout.c

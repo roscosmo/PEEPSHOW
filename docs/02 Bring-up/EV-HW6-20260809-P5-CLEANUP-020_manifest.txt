@@ -1,0 +1,15 @@
+evidence_id: EV-HW6-20260809-P5-CLEANUP-020
+date: 2026-08-09
+board: HW6-UNIT-001 provisional
+test_case: behavior-preserving USB export module extraction validation
+firmware_target: firmware/peepshow_hw6_fw0
+elf: firmware/peepshow_hw6_fw0/build/Debug/peepshow_hw6_fw0.elf
+elf_sha256: CFA841AA341CACB162B579F0AD1939AD52F30F3CE3CC095C330DCD2A7AD3CFDE
+ioc: firmware/peepshow_hw6_fw0/peepshow_hw6_fw0.ioc
+ioc_sha256: 0F2FF8A5440E5C4812F85FAD0F2C46E3CB293C758A81F334BE8BECDC807A0039
+log: docs/02 Bring-up/EV-HW6-20260809-P5-CLEANUP-020_usb_export_cleanup_gdb.log
+log_sha256: 6CFFDF8EAF77775ACDF3F163C92599034D9B1E716B60F95C9DA873F5A1BF5CC9
+result: PASS
+summary: USB export clock and PCD start/stop mechanics were extracted from ps_hw6_owner_state_machines.c into ps_hw6_usb_export without intended behavior change. The owner lifecycle still completed successfully, Windows mounted the staging FAT volume, the expected HW6_FXLX.TXT payload was readable, active export ran at 160 MHz, and MSC bridge traffic completed without timeout or busy errors.
+key_telemetry: lifecycle complete/success 1/1; owner masks 0x7F/0x00; cycle state masks 0x3FF/0x3FF; export policy/dcd/init/start 0x0/0x0/0x0/0x0; flash_wake/fxlx_open 0x0/0x0; SystemCoreClock 160000000; SysTick_LOAD 0x1869ff; bridge submit/done/timeout/busy 201/201/0/0; callbacks read/write/status 145/56/211; LUN 10239/512.
+open_items: USB reclaim and reconnect soak remain open; this cleanup does not close joystick axis mapping, buttons, power policy, package installer, or storage fault injection.

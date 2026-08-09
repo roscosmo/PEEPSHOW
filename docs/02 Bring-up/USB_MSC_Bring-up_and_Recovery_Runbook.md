@@ -90,6 +90,7 @@ Measured pass facts:
 - The exported LUN was staging-only with last LBA/block `10239 / 512`.
 - USBX configured interface `0x08 / 0x06 / 0x50`, device state/config `0x3 / 1`, and no DCD IRQ guard drops.
 - The successful fix was the active MSC performance floor: `SystemCoreClock=160000000`, `SysTick_LOAD=0x1869ff` during export.
+- `EV-HW6-20260809-P5-CLEANUP-020` revalidates this path after extracting active export clock/PCD mechanics into `ps_hw6_usb_export`: lifecycle still passed, Windows still mounted/read `HW6_FXLX.TXT`, bridge submit/done/timeout/busy was `201 / 201 / 0 / 0`, and callbacks reached read/write/status `145 / 56 / 211`.
 
 Do not re-open descriptor churn for a disk-without-volume symptom until the active-MSC clock/performance floor, bridge timeout/busy counters, and SCSI progression have been checked first.
 
