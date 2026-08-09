@@ -725,10 +725,9 @@ UART logging is not supported.
 
 ## debug.gdb Contract
 
-The root `debug.gdb` file is authoritative.
 
 Rules:
-- Use `debug.gdb` for breakpoint-based debugging.
+- Use a `.gdb` for breakpoint-based debugging.
 - Do not invent arbitrary breakpoint locations.
 - Maximum 5 breakpoints total.
 - Breakpoints must not be placed in:
@@ -752,12 +751,10 @@ Always extract:
 
 Never treat HardFaults as “random”.
 
-## SWO Logging Rules
+## SWO Optomisation
 
-- Structured event codes only.
-- No continuous streaming.
-- Rate-limited.
-- Non-blocking.
+- SWO is available, and traceX should be used for optomisation at the appropriate stage in development. 
+
 
 ## STOP2 Debug Discipline
 
@@ -765,13 +762,6 @@ Never treat HardFaults as “random”.
 - Prefer SWO over breakpoints around STOP transitions.
 - Do not guess about wake causes; request evidence.
 
-## Agent Debug Behavior
-
-When diagnosing runtime issues:
-1. Request SWO markers or HardFault record.
-2. Refer to `debug.gdb` for strategic breakpoints.
-3. Avoid speculative fixes.
-4. Ask for trace data before proposing architectural changes.
 
 ---
 

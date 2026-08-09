@@ -371,20 +371,27 @@ minimum project understanding pass.
 
 ## REQUIRED READING ORDER (minimum set)
 
-1. `docs/authority.md` (cross-cutting invariants; wins over all)
-2. `README.md` (doc index + mode overview)
+1. `docs/01 Platform/Authority_and_Invariants.md` (cross-cutting invariants; wins over all)
+2. `README.md` (workspace overview and docs vault pointer)
 3. The single domain doc relevant to the work:
-   - Power/STOP2: `docs/power_management.md`
-   - ThreadX ownership/queues: `docs/rtos_architecture.md`
-   - Display/rendering: `docs/display_and_rendering.md`
-   - Storage/install/update: `docs/storage_and_updates.md`
-   - Asset generation: `docs/asset_pipeline.md`
-   - Audio pipeline: `docs/audio.md`
-   - Peripheral recovery: `docs/peripheral_robustness.md`
-   - FSM rules: `docs/state_machine.md`
-   - Tiled/maps: `docs/Tiled_map_integration.md`
-   - Debug rules: `docs/debugging.md`
-   - Knobs system: `docs/knobs.md`
+   - Platform boundaries: `docs/01 Platform/Architecture_and_Boundaries.md`
+   - HW6 hardware facts: `docs/07 Hardware/HW6_Hardware_Revision_Contract.md`
+   - Power/STOP2: `docs/01 Platform/Power/Power_and_Sleep_Policy.md`
+   - PMIC/power rails: `docs/01 Platform/Power/PMIC_and_Power_Contract.md`
+   - ThreadX ownership/queues: `docs/01 Platform/RTOS/RTOS_Ownership_and_Queue_Topology.md`
+   - Display/rendering: `docs/01 Platform/Rendering/Display_and_Rendering_Contract.md`
+   - Storage/install/update: `docs/01 Platform/Storage/Storage_and_Installer_Contract.md`
+   - USB development/export: `docs/11 Development Tools/USB_Development_Mode_Contract.md`
+   - Asset/package tooling: `docs/06 Assets Pipeline/Asset_Pipeline_and_Package_Tooling_Contract.md`
+   - Audio pipeline: `docs/01 Platform/Audio/Audio_Contract.md`
+   - Input joystick: `docs/01 Platform/Input/Joystick_Hall_Input_Contract.md`
+   - Input buttons: `docs/01 Platform/Input/Button_Input_Contract.md`
+   - Shell/settings/calibration: `docs/01 Platform/Shell_Settings_Calibration_Contract.md`
+   - Shell/UI navigation: `docs/01 Platform/Shell_and_UI_Navigation_State_Machine.md`
+   - Peripheral recovery: `docs/01 Platform/Peripheral_Robustness_Contract.md`
+   - FSM rules: `docs/01 Platform/Subsystem_State_Machines.md`
+   - Debug rules: `docs/01 Platform/Debug/Debug_and_Observability.md`
+   - Knobs system: `docs/01 Platform/Knobs_and_Tuning_Contract.md`
 
 ## Bootstrap Read-Once Rule (Mandatory)
 
@@ -396,7 +403,7 @@ minimum project understanding pass.
 
 Before proposing code changes, the agent must state briefly:
 - **Domain authority:** which doc(s) govern this change
-- **Hard invariants touched:** relevant invariants from `docs/authority.md`
+- **Hard invariants touched:** relevant invariants from `docs/01 Platform/Authority_and_Invariants.md`
 - **Ownership impact:** owning thread(s) involved, if any
 - **Mode impact:** affected mode(s): STOP / STATIC / REALTIME / FLASHING
 
