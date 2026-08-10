@@ -108,6 +108,30 @@ Rules:
 
 ---
 
+## HW6 FW0 Router Bring-Up Status
+
+On HW6 unit 001, FW0 has a first shell router integrated with `thUI`,
+`thInput`, and `thDisplay`:
+
+- `thUI` owns page transitions for BOOT, HOME, MENU, SETTINGS, CALIBRATION,
+  PACKAGES, RUNTIME, and ERROR pages
+- `thInput` supplies generic button events (`BTN_A`, `BTN_B`, `BTN_L`,
+  `BTN_R`); it does not publish universal enter/back actions
+- `thUI` maps those generic events contextually: A selects/advances, B backs
+  out, and L/R move focus when joystick navigation is unavailable
+- display presentation is routed through `thDisplay`; the UI does not touch the
+  display peripheral directly
+- HOME dispatch is gated until normal boot power work is complete
+
+The measured UI router prints showed HOME reached from BOOT, display render
+requests completed, and later button navigation reached the calibration page
+with nonzero generic button counts. The user also physically confirmed A/B/L/R
+navigation on the display.
+
+This is an FW0 shell scaffold, not the final renderer or final menu system.
+The joystick calibration page can be entered, but its multi-step calibration
+flow is not complete yet.
+
 ## Validation Cases
 
 1. page stack and back behavior remains deterministic

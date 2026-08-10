@@ -151,6 +151,28 @@ restoration fails.
 
 ---
 
+### HW6 FW0 EN_MR_SD Normal-Boot Result
+
+FW0 now enables the ADP5360 hardware START/MR shipment-entry option during
+normal boot through the power owner. The firmware sets Supervisory Setting
+register `0x2D`, bit `1` (`EN_MR_SD`), then records the normal ADP5360 status
+snapshot. The passing HW6 unit 001 result is recorded as
+`EV-HW6-20260810-P5-BOOT-021`.
+
+Measured evidence from that capture:
+
+- RTOS init/runtime complete `1 / 1`
+- normal boot power/display complete `1 / 1`
+- ADP driver API/init/MR/state/ops/last `4 / 0 / 0 / 2 / 2 / 0`
+- PMIC snapshot command/complete/success `0 / 1 / 1`
+- I2C lease, HAL transfer, and release statuses all `0`
+- ADP identity, rail, and fault checks all passed
+
+This confirms the protective hardware path for a 12-second START/MR hold is
+enabled. It does not authorize routine intentional shipment-entry testing as
+part of button navigation work, and it does not close the software warning,
+save/quiesce, release-cancel, wake/recovery, or first-boot policy tests.
+
 ## Threshold / Policy Ledger
 
 Populate this table during bring-up. Values are placeholders until selected and measured.
@@ -203,6 +225,7 @@ Thresholds are Platform tuning constants, not Reference Game policy.
 | charging | USB attached | charging/charge-done state reported | TBD | open |
 | low battery | simulated or measured threshold | forced sleep selected | TBD | open |
 | critical battery | simulated or controlled threshold | ISOFET disconnect selected, not shipping mode | TBD | open |
+| EN_MR_SD enable | normal boot through `thPower` | ADP5360 Supervisory Setting `0x2D[1]` set so START/MR 12 s shipment entry is enabled | power/display boot complete `1/1`, ADP driver API `4`, MR status `0`, PMIC snapshot success `1` | pass_unit_001; software prep UX open |
 | START prep | sustained hold below hardware cutoff | warning/save/quiesce path starts | TBD | open |
 | START release | release during prep | software warning/prep cancelled | TBD | open |
 | first boot | no settings/calibration | no save/backup dependency during ship prep | TBD | open |
@@ -221,11 +244,12 @@ Thresholds are Platform tuning constants, not Reference Game policy.
 8. Validate charging and charge-done reporting only after real-cell charge configuration is reviewed and safe.
 9. Validate low-battery threshold routes to forced sleep policy.
 10. Validate critical-battery threshold disconnects ISOFET, not shipping mode.
-11. Validate normal START short/long press remains firmware-observable before hardware shipping threshold.
-12. Validate START hold warning/prep path can run before the ADP5360 shipping threshold.
-13. Validate first-boot START shipping intent is ignored by firmware policy.
-14. Validate PMIC read failure uses bounded recovery and does not silently trust stale power state.
-15. Validate VBUS disagreement blocks installer/storage ownership decisions until explained.
+11. Validate normal boot enables ADP5360 `EN_MR_SD` through `thPower` before intentional START shipping-entry tests.
+12. Validate normal START short/long press remains firmware-observable before hardware shipping threshold.
+13. Validate START hold warning/prep path can run before the ADP5360 shipping threshold.
+14. Validate first-boot START shipping intent is ignored by firmware policy.
+15. Validate PMIC read failure uses bounded recovery and does not silently trust stale power state.
+16. Validate VBUS disagreement blocks installer/storage ownership decisions until explained.
 
 ---
 

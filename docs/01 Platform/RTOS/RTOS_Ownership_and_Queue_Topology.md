@@ -110,6 +110,30 @@ Phase 5 remains open for real producer/consumer routing, sole-owner peripheral
 access, saturation and timeout policy, fault propagation, and the power
 quiesce/resume barrier.
 
+## HW6 FW0 Normal Boot Lifecycle Baseline
+
+`EV-HW6-20260810-P5-BOOT-021` records the current FW0 normal boot behavior on
+`HW6-UNIT-001` after the UI router and PMIC shipping-mode enable work:
+
+- all nine owner threads, queues, and event groups initialize successfully
+- `thDisplay` renders the bootstrap/UI framebuffer once after owner startup
+- `thPower` performs the normal boot power stabilization path after display
+  bootstrap has been requested
+- the power stabilization path enables ADP5360 `EN_MR_SD` through the PMIC
+  driver and then takes the read-only ADP5360 snapshot
+- `thUI` dispatches HOME only after the power boot flag is complete
+
+The measured RTOS probe v3 values are `init/runtime complete = 1 / 1`, `boot
+power/display = 1 / 1`, owner started mask `0x1ff`, queue self-test mask
+`0x1ff`, event self-test mask `0xf`, and init status `0x0`.
+
+This is the intended normal boot slice for FW0. It is deliberately smaller than
+the retained-peripheral diagnostic lifecycle: display/audio/sensor/storage/comm
+diagnostic cycles are not auto-run, and the retained lifecycle report may show
+only the power owner completed (`required/completed = 0x7f / 0x1`) during a
+normal boot capture. That result is expected unless the diagnostic workflow is
+explicitly requested.
+
 ## HW6 Measured Owner-Path Baseline
 
 `EV-HW6-20260731-P5-OWNERS-002` replaced the periodic power-owner diagnostic

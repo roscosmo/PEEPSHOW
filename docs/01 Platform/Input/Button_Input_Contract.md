@@ -24,6 +24,26 @@ No button is a universal accept/back/action key at the Platform layer.
 - `BTN_BOOT` is hardware `BOOT0`. If sampled high at reset, STM32 ROM bootloader may run before application firmware can classify it. If application firmware is running, `BTN_BOOT` is reserved for system maintenance/recovery behavior and must not be exposed as normal Engine/Game input.
 - UI, Engine, and Reference Game code consume logical button events and chord masks only.
 
+## HW6 FW0 Bring-Up Status
+
+On HW6 unit 001, FW0 has proven the application-visible A/B/L/R/Start button
+edge path and the first UI consumption path:
+
+- raw EXTI/debounce probing recorded A/B/L/R and Start press/release events
+  returning to inactive state
+- `thInput` publishes generic button impulses, not universal accept/back actions
+- `thUI` currently maps `BTN_A`, `BTN_B`, `BTN_L`, and `BTN_R` according to
+  shell context for menu navigation and calibration screens
+- A/B/L/R navigation was physically confirmed through the UI: L/R changed focus
+  and A/B entered/exited pages
+- L/R are approved fallback navigation controls while joystick calibration is
+  missing or invalid
+
+This is not the complete button contract. Long press, repeat, chord, stuck
+button, wake-from-low-power, `BTN_BOOT`, and START shipping-prep timing remain
+open. START shipping-mode enable itself is a PMIC/power-owner boot action and
+is recorded in [[PMIC_and_Power_Contract]].
+
 ## Start Button / ADP5360 Shipping Mode
 
 `BTN_START` is electrically tied into the ADP5360 `MR` path.

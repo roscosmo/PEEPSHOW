@@ -59,6 +59,23 @@ The display contract must define before implementation:
 - dirty granularity
 - DMA alignment and buffer region
 
+## HW6 FW0 Display Bring-Up Status
+
+On HW6 unit 001, FW0 has proven the first owner-routed UI/bootstrap display
+path through `thDisplay`:
+
+- the display owner initializes and presents a bootstrap/UI framebuffer during
+  normal boot
+- the current firmware maps the logical landscape UI to the native portrait
+  panel with a 90 degree counter-clockwise rotation
+- the user confirmed the corrected orientation visually on the physical display
+- the renderer is intentionally minimal; detailed display rendering work remains
+  later Platform work
+
+This bring-up result proves basic orientation and owner-routed presentation. It
+does not close partial updates, dirty tracking, LPBAM, final typography/layout,
+renderer polish, or display fault recovery.
+
 ## DMA-Safe Buffer Placement
 
 HW6 display DMA/LPDMA source data must live in the SRAM4 display-DMA/autonomous arena. This allocation model is validated on HW5 and provisional on HW6 until the incoming board and generated HW6 firmware reproduce the transfer, retention, and STOP behavior.
@@ -75,6 +92,7 @@ The display owner exclusively sequences the SRAM4 overlay. Once an autonomous sl
 Packages and normal authoring tools do not name SRAM4, buffer addresses, row payload formats, dirty rows, transfer chunks, or LPBAM descriptors. They provide settled visual states and waiting-visual intent through [[Rendering_API_Contract]] and [[Asset_Pipeline_and_Package_Tooling_Contract]].
 
 Measured allocation and admission limits are defined in [[Memory_and_Budgeting_Contract]], published through [[Target_Profile_Schema_Contract]], and evidenced in [[Brought_Up_Tracker]].
+
 ## Update Classes
 
 Display requests must declare an update class:

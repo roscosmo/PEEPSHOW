@@ -102,6 +102,19 @@ Populate this table during bring-up. The current values are placeholders until m
 
 ---
 
+### HW6 FW0 UI Navigation Status
+
+FW0 has proven A/B/L/R as usable shell navigation inputs on HW6 unit 001. The
+Platform still emits generic button impulses; the shell currently maps A/B/L/R
+contextually for entering, backing out, and moving focus while joystick
+calibration is missing or invalid. This belongs to UI/input routing evidence,
+not to final game binding policy.
+
+START remains a dual-purpose input. The ADP5360 `EN_MR_SD` bit is now enabled
+during normal boot by `thPower`; intentional tests that approach or cross the
+12-second shipment threshold belong to [[ADP5360_Power_Bring-up_Runbook]], not
+ordinary button-navigation validation.
+
 ## Validation Procedure
 
 1. Confirm idle and pressed logic levels for A/B/L/R.

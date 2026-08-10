@@ -37,9 +37,19 @@ not the complete production transition model.
 - The seven physical ThreadX owners retain exclusive hardware access. `thPower`
   coordinates the baseline through the existing queues and bounded event-group
   acknowledgements; it does not operate another owner's peripheral directly.
-- A lifecycle pass is never run automatically at boot. It is armed explicitly
-  with `__fw0_owner_sm_start.gdb`, allowing normal RTOS startup to remain free of
-  display, audio, sensor-register, flash-power, or NINA-mode side effects.
+- The full retained-peripheral diagnostic lifecycle is never run automatically
+  at boot. It is armed explicitly with `__fw0_owner_sm_start.gdb`, allowing
+  normal RTOS startup to remain free of display, audio, sensor-register,
+  flash-power, or NINA-mode diagnostic side effects.
+- FW0 normal boot may still run a smaller power-owner stabilization slice. On
+  HW6 unit 001, evidence `EV-HW6-20260810-P5-BOOT-021` shows `thPower` moved
+  through the boot PMIC path, enabled ADP5360 `EN_MR_SD`, and reached the
+  monitored low-power-active baseline while `thDisplay` provided the bootstrap
+  UI framebuffer.
+- During that normal boot capture, retained lifecycle `required/completed =
+  0x7f / 0x1` is expected: only the power owner ran its boot stabilization
+  action. The diagnostic workflow remained unrequested with complete/success
+  `0 / 0`, no audio tone, and no sensor/storage/comm diagnostic cycle.
 - The baseline target states are `PWR_ACTIVE_LP`, `PMIC_MONITOR`,
   `DISP_STATIC_HOLD`, `AUDIO_IDLE`, `SPK_OFF`, `JOY_SUSPENDED`,
   `IMU_SUSPENDED`, `STORAGE_FLASH_READY`, `FLASH_DEEP_POWER_DOWN`, and

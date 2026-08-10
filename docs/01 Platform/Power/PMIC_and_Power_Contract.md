@@ -83,6 +83,35 @@ Rules:
 - firmware must not assume it can prevent shipping mode once the ADP5360 threshold is reached
 - low-battery and critical-battery policy must not use shipping mode as the automatic response
 
+### HW6 FW0 Shipping-Mode Enable Status
+
+On HW6 unit 001, FW0 normal boot now enables the ADP5360 hardware START/MR
+shipping-mode path through `thPower`. The power owner sets Supervisory Setting
+register `0x2D`, bit `1` (`EN_MR_SD`), then takes the normal PMIC status
+snapshot. Evidence `EV-HW6-20260810-P5-BOOT-021` records:
+
+- RTOS init/runtime complete `1 / 1`
+- normal boot power/display complete `1 / 1`
+- ADP driver API/init/MR/state/ops/last `4 / 0 / 0 / 2 / 2 / 0`
+- PMIC snapshot command/complete/success `0 / 1 / 1`
+- ADP register read addresses `00 29 2a 2b 2c 2e 2f`, values
+  `10 31 18 18 13 00 07`
+- I2C lease, HAL transfer, and lease release statuses all `0`
+- identity, rails, and fault checks all pass
+
+This measured result means the firmware enables the ADP5360 option that lets a
+12-second START/MR hold enter shipment mode, which protects the cells while the
+full low-power policy is still under development.
+
+This does not close the full shipping-mode product behavior. Firmware still
+needs START hold classification, warning/countdown UI, save/quiesce behavior,
+release cancellation, wake/recovery proof, and first-boot/no-settings policy.
+The hardware threshold must still be treated as final once reached.
+
+This path is a normal boot power-owner action. It is not part of the retained
+peripheral diagnostic lifecycle and must not require display, audio, sensor,
+storage, or communication diagnostic cycles.
+
 ---
 
 ## VBUS Detection
@@ -252,5 +281,6 @@ Fault handling depends on severity:
 11. low-battery forced sleep
 12. critical-battery ISOFET disconnect
 13. START hold shipping-prep handoff from input to power
+14. ADP5360 `EN_MR_SD` enable during normal boot through `thPower`
 
 Evidence for these cases belongs in [[HW6_Brought_Up_Tracker]]. A passing HW5 result may define the initial procedure or expected value, but it does not close the corresponding HW6 row.

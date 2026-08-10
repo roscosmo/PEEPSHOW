@@ -91,6 +91,30 @@ The public joystick API must not expose these raw register values except through
 
 ---
 
+## HW6 FW0 Bring-Up Status
+
+On HW6 unit 001, FW0 has proven TMAG3001 identity, driver-backed owner wake and
+sleep cycles, and provisional raw/live sample capture. Raw sweep probes showed
+usable X/Y movement range, but neutral position and deadzone behavior are not
+ready for normal input policy. A later normalized capture reported a nonzero
+cardinal direction while the user had returned the stick to neutral, so the
+current calibration/deadzone state must be treated as invalid for shell/game
+use.
+
+Current FW0 calibration status:
+
+- raw X/Y/Z diagnostic sampling works through `thInput`
+- a provisional normalized joystick API exists for diagnostics
+- the calibration flow can be reached from the shell UI
+- the multi-step guided calibration flow is not complete
+- L/R plus A/B remain the required fallback controls while calibration is
+  missing or invalid
+
+Debugger-only one-position captures are not sufficient calibration evidence for
+this joystick. The accepted path is an on-device guided calibration flow that
+lets the user leave neutral, confirm right-side travel, and perform circular
+range capture using the display and buttons.
+
 ## Calibration Contract
 
 Joystick calibration is required for normal usability.
