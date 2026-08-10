@@ -5,7 +5,9 @@
 #include "main.h"
 #include "ps_hw6_owner_services.h"
 #include "ps_hw6_owner_state_machines.h"
+#include "ps_input_buttons.h"
 #include "ps_storage_msc_bridge.h"
+#include "ps_ui_router.h"
 
 #define PS_HW6_RTOS_DEFAULT_STACK_BYTES  (1024UL)
 #define PS_HW6_RTOS_STORAGE_STACK_BYTES  (2048UL)
@@ -20,6 +22,11 @@
 #define PS_HW6_RTOS_STARTUP_KIND          (0x51554555UL)
 #define PS_HW6_RTOS_COMMAND_MAGIC         (0x434D4421UL)
 #define PS_HW6_RTOS_COMMAND_TOKEN         (0xC0DEC0DEUL)
+#define PS_HW6_RTOS_DISPLAY_UI_MAGIC      (0x44554921UL)
+#define PS_HW6_RTOS_UI_INPUT_MAGIC        (0x55494221UL)
+#define PS_HW6_RTOS_UI_INPUT_PRESS        (1UL)
+#define PS_HW6_RTOS_DISPLAY_UI_CAL_MASK   (0xFFFFUL)
+#define PS_HW6_RTOS_DISPLAY_UI_FOCUS_SHIFT (16U)
 #define PS_HW6_RTOS_COMMAND_POWER_WORKFLOW (1UL)
 #define PS_HW6_RTOS_COMMAND_STABILIZE     (2UL)
 #define PS_HW6_RTOS_COMMAND_RESUME        (3UL)
@@ -52,6 +59,7 @@ static TX_QUEUE ps_queues[PS_HW6_RTOS_QUEUE_COUNT];
 static TX_EVENT_FLAGS_GROUP ps_event_groups[PS_HW6_RTOS_EVENT_GROUP_COUNT];
 static VOID *ps_thread_stacks[PS_HW6_RTOS_OWNER_COUNT];
 static VOID *ps_queue_storage[PS_HW6_RTOS_QUEUE_COUNT];
+static uint32_t ps_ui_boot_complete_sent;
 
 static CHAR *const ps_owner_names[PS_HW6_RTOS_OWNER_COUNT] =
 {
@@ -123,6 +131,7 @@ static void PS_HW6_RTOS_ResetProbe(void)
   (void)memset((void *)&g_ps_hw6_rtos_probe, 0,
                sizeof(g_ps_hw6_rtos_probe));
   g_ps_hw6_rtos_low_power_usb_skip_count = 0UL;
+  ps_ui_boot_complete_sent = 0UL;
   g_ps_hw6_rtos_probe.magic = PS_HW6_RTOS_PROBE_MAGIC;
   g_ps_hw6_rtos_probe.version = PS_HW6_RTOS_PROBE_VERSION;
   g_ps_hw6_rtos_probe.phase = PS_HW6_RTOS_PHASE_INIT;
@@ -220,6 +229,79 @@ static uint32_t PS_HW6_RTOS_StorageMscCommandIsValid(uint32_t owner_id,
           (message[2] == PS_HW6_RTOS_STORAGE_MSC_FLUSH) ||
           (message[2] == PS_HW6_RTOS_STORAGE_MSC_STATUS)) ? 1UL : 0UL;
 }
+
+static ULONG PS_HW6_RTOS_DisplayUiPackedState(uint32_t calibration_page,
+                                              uint32_t focus_index)
+{
+  return (ULONG)((calibration_page & PS_HW6_RTOS_DISPLAY_UI_CAL_MASK) |
+                 (focus_index << PS_HW6_RTOS_DISPLAY_UI_FOCUS_SHIFT));
+}
+
+static uint32_t PS_HW6_RTOS_DisplayUiPackedCalibration(ULONG packed_state)
+{
+  return (uint32_t)(packed_state & PS_HW6_RTOS_DISPLAY_UI_CAL_MASK);
+}
+
+static uint32_t PS_HW6_RTOS_DisplayUiPackedFocus(ULONG packed_state)
+{
+  return (uint32_t)(packed_state >> PS_HW6_RTOS_DISPLAY_UI_FOCUS_SHIFT);
+}
+
+static uint32_t PS_HW6_RTOS_DisplayUiCommandIsValid(uint32_t owner_id,
+                                                     const ULONG *message)
+{
+  if ((owner_id != PS_HW6_RTOS_OWNER_DISPLAY) ||
+      (message[0] != PS_HW6_RTOS_DISPLAY_UI_MAGIC) ||
+      (message[1] != PS_HW6_RTOS_OWNER_DISPLAY) ||
+      (message[2] > PS_UI_ROUTER_PAGE_ERROR) ||
+      (PS_HW6_RTOS_DisplayUiPackedCalibration(message[3]) >
+       PS_UI_ROUTER_CAL_JOYSTICK_REVIEW) ||
+      (PS_HW6_RTOS_DisplayUiPackedFocus(message[3]) > 2UL))
+  {
+    return 0UL;
+  }
+
+  return 1UL;
+}
+
+static uint32_t PS_HW6_RTOS_UiInputCommandIsValid(uint32_t owner_id,
+                                                  const ULONG *message)
+{
+  if ((owner_id != PS_HW6_RTOS_OWNER_UI) ||
+      (message[0] != PS_HW6_RTOS_UI_INPUT_MAGIC) ||
+      (message[1] != PS_HW6_RTOS_OWNER_UI) ||
+      (message[2] != PS_HW6_RTOS_UI_INPUT_PRESS) ||
+      (message[3] < PS_INPUT_BUTTON_ID_A) ||
+      (message[3] > PS_INPUT_BUTTON_ID_R))
+  {
+    return 0UL;
+  }
+
+  return 1UL;
+}
+
+static uint32_t PS_HW6_RTOS_RouterEventForButton(uint32_t button_id)
+{
+  if (button_id == PS_INPUT_BUTTON_ID_A)
+  {
+    return PS_UI_ROUTER_EVENT_INPUT_BTN_A;
+  }
+  if (button_id == PS_INPUT_BUTTON_ID_B)
+  {
+    return PS_UI_ROUTER_EVENT_INPUT_BTN_B;
+  }
+  if (button_id == PS_INPUT_BUTTON_ID_L)
+  {
+    return PS_UI_ROUTER_EVENT_INPUT_BTN_L;
+  }
+  if (button_id == PS_INPUT_BUTTON_ID_R)
+  {
+    return PS_UI_ROUTER_EVENT_INPUT_BTN_R;
+  }
+
+  return 0UL;
+}
+
 static uint32_t PS_HW6_RTOS_CommandCycleIndex(const ULONG *message)
 {
   return (uint32_t)(message[3] ^ PS_HW6_RTOS_COMMAND_TOKEN);
@@ -259,6 +341,42 @@ static UINT PS_HW6_RTOS_SendCycleCommand(uint32_t owner_id,
   message[2] = command;
   message[3] = PS_HW6_RTOS_COMMAND_TOKEN ^ (ULONG)cycle_index;
   return tx_queue_send(&ps_queues[owner_id], message, TX_NO_WAIT);
+}
+static UINT PS_HW6_RTOS_SendDisplayUiRenderCommand(uint32_t page,
+                                                    uint32_t calibration_page,
+                                                    uint32_t focus_index)
+{
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+
+  message[0] = PS_HW6_RTOS_DISPLAY_UI_MAGIC;
+  message[1] = PS_HW6_RTOS_OWNER_DISPLAY;
+  message[2] = (ULONG)page;
+  message[3] = PS_HW6_RTOS_DisplayUiPackedState(calibration_page,
+                                                focus_index);
+  return tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_DISPLAY],
+                       message,
+                       TX_NO_WAIT);
+}
+
+static UINT PS_HW6_RTOS_SendUiButtonPress(ps_input_button_id_t button_id)
+{
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+
+  message[0] = PS_HW6_RTOS_UI_INPUT_MAGIC;
+  message[1] = PS_HW6_RTOS_OWNER_UI;
+  message[2] = PS_HW6_RTOS_UI_INPUT_PRESS;
+  message[3] = (ULONG)button_id;
+  return tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_UI],
+                       message,
+                       TX_NO_WAIT);
+}
+
+static void PS_HW6_RTOS_SendCurrentUiRenderCommand(void)
+{
+  (void)PS_HW6_RTOS_SendDisplayUiRenderCommand(
+    g_ps_ui_router_probe.current_page,
+    g_ps_ui_router_probe.calibration_page,
+    g_ps_ui_router_probe.focus_index);
 }
 
 static void PS_HW6_RTOS_SetPowerDebug(GPIO_PinState state)
@@ -510,6 +628,10 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
   ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
   ULONG now;
   UINT status;
+  ps_status_t router_status;
+  ps_input_button_id_t button_id;
+  uint32_t button_timestamp;
+  uint32_t button_drain_count;
   uint32_t word;
 
   if (owner_id >= PS_HW6_RTOS_OWNER_COUNT)
@@ -555,6 +677,22 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       {
         PS_HW6_OwnerStateMachines_HandleStorageMsc(message[2]);
       }
+      else if (PS_HW6_RTOS_DisplayUiCommandIsValid(owner_id, message) != 0UL)
+      {
+        (void)PS_HW6_DisplayOwner_RenderUI(
+          (uint32_t)message[2],
+          PS_HW6_RTOS_DisplayUiPackedCalibration(message[3]),
+          PS_HW6_RTOS_DisplayUiPackedFocus(message[3]));
+      }
+      else if (PS_HW6_RTOS_UiInputCommandIsValid(owner_id, message) != 0UL)
+      {
+        router_status = PS_UIRouter_Dispatch(
+          PS_HW6_RTOS_RouterEventForButton((uint32_t)message[3]));
+        if (router_status == PS_STATUS_OK)
+        {
+          PS_HW6_RTOS_SendCurrentUiRenderCommand();
+        }
+      }
       else
       {
         g_ps_hw6_rtos_probe.queue_message_error_count[owner_id]++;
@@ -579,6 +717,66 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       g_ps_hw6_owner_sm_start_request = 0UL;
       g_ps_hw6_owner_probe.power_command_send_status = TX_SUCCESS;
       PS_HW6_RTOS_RunPowerWorkflow();
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
+        (g_ps_hw6_joystick_sample_request != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      g_ps_hw6_joystick_sample_request = 0UL;
+      (void)PS_HW6_OwnerStateMachines_RunJoystickSampleProbe();
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
+        (g_ps_hw6_joystick_live_request != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      g_ps_hw6_joystick_live_request = 0UL;
+      (void)PS_HW6_OwnerStateMachines_RunJoystickLiveProbe();
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
+        (g_ps_hw6_joystick_cardinal_request != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      g_ps_hw6_joystick_cardinal_request = 0UL;
+      (void)PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe();
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      for (button_drain_count = 0UL;
+           button_drain_count < 4UL;
+           ++button_drain_count)
+      {
+        if (PS_InputButtons_TakePress(&button_id,
+                                      &button_timestamp) == 0UL)
+        {
+          break;
+        }
+        (void)button_timestamp;
+        (void)PS_HW6_RTOS_SendUiButtonPress(button_id);
+      }
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_UI) &&
+        (ps_ui_boot_complete_sent == 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      ps_ui_boot_complete_sent = 1UL;
+      router_status = PS_UIRouter_Dispatch(
+        PS_UI_ROUTER_EVENT_BOOT_COMPLETE);
+      if (router_status == PS_STATUS_OK)
+      {
+        PS_HW6_RTOS_SendCurrentUiRenderCommand();
+      }
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_UI) &&
+        (g_ps_ui_router_request != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      g_ps_ui_router_request = 0UL;
+      router_status = PS_UIRouter_Dispatch(g_ps_ui_router_request_event);
+      if (router_status == PS_STATUS_OK)
+      {
+        PS_HW6_RTOS_SendCurrentUiRenderCommand();
+      }
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
         (g_ps_hw6_storage_usb_export_request != 0UL) &&
@@ -617,6 +815,8 @@ UINT PS_HW6_RTOS_Init(TX_BYTE_POOL *pool)
   HAL_GPIO_WritePin(PWR_DBG_GPIO_Port, PWR_DBG_Pin, GPIO_PIN_RESET);
   (void)PS_HW6_OwnerServices_Init();
   PS_HW6_OwnerStateMachines_Init();
+  PS_UIRouter_Init();
+  PS_InputButtons_Init();
 
   status = PS_HW6_RTOS_SnapshotPool(
     pool,

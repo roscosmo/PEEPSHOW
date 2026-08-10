@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (13UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (14UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -146,7 +146,70 @@ typedef struct
   uint32_t joystick_cycle_active_sensor_config1[PS_HW6_OWNER_SM_CYCLE_COUNT];
   uint32_t joystick_cycle_active_device_config2[PS_HW6_OWNER_SM_CYCLE_COUNT];
   uint32_t joystick_cycle_active_status[PS_HW6_OWNER_SM_CYCLE_COUNT];
+  uint32_t joystick_cycle_sample_status[PS_HW6_OWNER_SM_CYCLE_COUNT];
+  int32_t joystick_cycle_sample_x[PS_HW6_OWNER_SM_CYCLE_COUNT];
+  int32_t joystick_cycle_sample_y[PS_HW6_OWNER_SM_CYCLE_COUNT];
+  int32_t joystick_cycle_sample_z[PS_HW6_OWNER_SM_CYCLE_COUNT];
+  uint32_t joystick_cycle_sample_conv_status[PS_HW6_OWNER_SM_CYCLE_COUNT];
   uint32_t joystick_cycle_sleep_status[PS_HW6_OWNER_SM_CYCLE_COUNT];
+  uint32_t joystick_sample_request_count;
+  uint32_t joystick_sample_start_tick;
+  uint32_t joystick_sample_end_tick;
+  uint32_t joystick_sample_status;
+  uint32_t joystick_sample_stabilize_status;
+  uint32_t joystick_sample_wake_status;
+  uint32_t joystick_sample_read_status;
+  uint32_t joystick_sample_sleep_status;
+  uint32_t joystick_sample_center_status;
+  uint32_t joystick_sample_center_conv_status;
+  int32_t joystick_sample_center_x;
+  int32_t joystick_sample_center_y;
+  int32_t joystick_sample_center_z;
+  uint32_t joystick_sample_count;
+  uint32_t joystick_sample_error_count;
+  int32_t joystick_sample_first_x;
+  int32_t joystick_sample_first_y;
+  int32_t joystick_sample_first_z;
+  int32_t joystick_sample_min_x;
+  int32_t joystick_sample_min_y;
+  int32_t joystick_sample_min_z;
+  int32_t joystick_sample_max_x;
+  int32_t joystick_sample_max_y;
+  int32_t joystick_sample_max_z;
+  int32_t joystick_sample_x;
+  int32_t joystick_sample_y;
+  int32_t joystick_sample_z;
+  uint32_t joystick_sample_conv_status;
+
+  uint32_t joystick_input_api_version;
+  uint32_t joystick_input_policy;
+  uint32_t joystick_input_calibration_valid;
+  uint32_t joystick_input_active;
+  uint32_t joystick_input_direction_mask;
+  uint32_t joystick_input_sample_tick;
+  uint32_t joystick_input_sample_age_ticks;
+  uint32_t joystick_input_update_count;
+  uint32_t joystick_input_fault_count;
+  uint32_t joystick_input_last_status;
+  int32_t joystick_input_raw_x;
+  int32_t joystick_input_raw_y;
+  int32_t joystick_input_raw_z;
+  int32_t joystick_input_delta_x;
+  int32_t joystick_input_delta_y;
+  int32_t joystick_input_normalized_x;
+  int32_t joystick_input_normalized_y;
+  uint32_t joystick_input_magnitude;
+  uint32_t joystick_input_conv_status;
+  uint32_t joystick_live_request_count;
+  uint32_t joystick_live_start_tick;
+  uint32_t joystick_live_end_tick;
+  uint32_t joystick_live_status;
+  uint32_t joystick_live_sample_count;
+  uint32_t joystick_live_error_count;
+  uint32_t joystick_cardinal_request_count;
+  uint32_t joystick_cardinal_start_tick;
+  uint32_t joystick_cardinal_end_tick;
+  uint32_t joystick_cardinal_status;
 
   uint32_t imu_driver_api_version;
   uint32_t imu_driver_init_status;
@@ -419,12 +482,18 @@ extern volatile PS_HW6_OwnerStateMachineProbe g_ps_hw6_owner_sm_probe;
 extern volatile uint32_t g_ps_hw6_owner_sm_start_request;
 extern volatile uint32_t g_ps_hw6_storage_usb_export_request;
 extern volatile uint32_t g_ps_hw6_storage_usb_reclaim_request;
+extern volatile uint32_t g_ps_hw6_joystick_sample_request;
+extern volatile uint32_t g_ps_hw6_joystick_live_request;
+extern volatile uint32_t g_ps_hw6_joystick_cardinal_request;
 
 void PS_HW6_OwnerStateMachines_Init(void);
 void PS_HW6_OwnerStateMachines_BeginWorkflow(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Stabilize(uint32_t owner_id);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSampleProbe(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickLiveProbe(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void);
 void PS_HW6_OwnerStateMachines_BeginCycle(uint32_t cycle_index);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Resume(uint32_t owner_id,
                                                     uint32_t cycle_index);

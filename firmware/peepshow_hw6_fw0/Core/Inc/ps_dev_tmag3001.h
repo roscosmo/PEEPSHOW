@@ -78,6 +78,17 @@ typedef struct
   uint32_t last_hal_error;
 } ps_dev_tmag3001_suspend_result_t;
 
+typedef struct
+{
+  ps_status_t status;
+  int16_t x;
+  int16_t y;
+  int16_t z;
+  uint8_t conv_status;
+  uint32_t last_hal_status;
+  uint32_t last_hal_error;
+} ps_dev_tmag3001_raw_sample_t;
+
 ps_status_t ps_dev_tmag3001_init(ps_dev_tmag3001_t *device,
                                  uint8_t address_7bit);
 ps_status_t ps_dev_tmag3001_stabilize_suspended(
@@ -89,6 +100,9 @@ ps_status_t ps_dev_tmag3001_wake_continuous(
 ps_status_t ps_dev_tmag3001_suspend(
   ps_dev_tmag3001_t *device,
   ps_dev_tmag3001_suspend_result_t *result);
+ps_status_t ps_dev_tmag3001_read_raw_sample(
+  ps_dev_tmag3001_t *device,
+  ps_dev_tmag3001_raw_sample_t *sample);
 
 #ifdef __cplusplus
 }

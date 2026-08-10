@@ -205,6 +205,8 @@ while $cycle < 2
 
   printf "  TMAG wake/retry/active/sleep = %x %x %x %x\n", $sm->joystick_cycle_wake_probe_status[$cycle], $sm->joystick_cycle_wake_retry_status[$cycle], $sm->joystick_cycle_active_status[$cycle], $sm->joystick_cycle_sleep_status[$cycle]
   printf "  TMAG active config1/config2  = %02x / %02x\n", $sm->joystick_cycle_active_sensor_config1[$cycle], $sm->joystick_cycle_active_device_config2[$cycle]
+  printf "  TMAG sample status/conv     = %x / %02x\n", $sm->joystick_cycle_sample_status[$cycle], $sm->joystick_cycle_sample_conv_status[$cycle]
+  printf "  TMAG raw X/Y/Z              = %d / %d / %d\n", $sm->joystick_cycle_sample_x[$cycle], $sm->joystick_cycle_sample_y[$cycle], $sm->joystick_cycle_sample_z[$cycle]
   printf "  IMU wake status/error/accepted = %x %x %u\n", $sm->imu_cycle_wake_probe_status[$cycle], $sm->imu_cycle_wake_probe_error[$cycle], $sm->imu_cycle_wake_probe_accepted[$cycle]
   printf "  IMU WHO/active/sleep         = %x %x %x\n", $sm->imu_cycle_whoami_status[$cycle], $sm->imu_cycle_active_status[$cycle], $sm->imu_cycle_sleep_status[$cycle]
   printf "  IMU WHO/active CTRL5         = %02x / %02x (expected 47 / 10)\n", $sm->imu_cycle_whoami[$cycle], $sm->imu_cycle_active_ctrl5[$cycle]

@@ -1,0 +1,107 @@
+#ifndef PS_UI_ROUTER_H
+#define PS_UI_ROUTER_H
+
+#include <stdint.h>
+
+#include "ps_status.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define PS_UI_ROUTER_API_VERSION (1UL)
+#define PS_UI_ROUTER_STATUS_NOT_RUN (0xFFFFFFFFUL)
+
+typedef enum
+{
+  PS_UI_ROUTER_PAGE_BOOTSTRAP = 0,
+  PS_UI_ROUTER_PAGE_HOME,
+  PS_UI_ROUTER_PAGE_MENU,
+  PS_UI_ROUTER_PAGE_SETTINGS,
+  PS_UI_ROUTER_PAGE_CALIBRATION,
+  PS_UI_ROUTER_PAGE_PACKAGE_BROWSER,
+  PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF,
+  PS_UI_ROUTER_PAGE_ERROR
+} ps_ui_router_page_t;
+
+typedef enum
+{
+  PS_UI_ROUTER_NAV_IDLE = 0,
+  PS_UI_ROUTER_NAV_FOCUS,
+  PS_UI_ROUTER_NAV_TRANSITION_LOCK,
+  PS_UI_ROUTER_NAV_TEXT_ENTRY,
+  PS_UI_ROUTER_NAV_NUMERIC_ENTRY,
+  PS_UI_ROUTER_NAV_MODAL_LOCK
+} ps_ui_router_nav_t;
+
+typedef enum
+{
+  PS_UI_ROUTER_MODAL_NONE = 0,
+  PS_UI_ROUTER_MODAL_DIALOG,
+  PS_UI_ROUTER_MODAL_INPUT_ENTRY
+} ps_ui_router_modal_t;
+
+typedef enum
+{
+  PS_UI_ROUTER_CAL_NONE = 0,
+  PS_UI_ROUTER_CAL_INPUT_ROOT,
+  PS_UI_ROUTER_CAL_JOYSTICK_NEUTRAL,
+  PS_UI_ROUTER_CAL_JOYSTICK_RIGHT,
+  PS_UI_ROUTER_CAL_JOYSTICK_CIRCLE,
+  PS_UI_ROUTER_CAL_JOYSTICK_REVIEW
+} ps_ui_router_calibration_page_t;
+
+typedef enum
+{
+  PS_UI_ROUTER_EVENT_BOOT_COMPLETE = 1,
+  PS_UI_ROUTER_EVENT_NAV_HOME,
+  PS_UI_ROUTER_EVENT_NAV_MENU,
+  PS_UI_ROUTER_EVENT_NAV_SETTINGS,
+  PS_UI_ROUTER_EVENT_NAV_CALIBRATION,
+  PS_UI_ROUTER_EVENT_NAV_PACKAGES,
+  PS_UI_ROUTER_EVENT_LAUNCH_RUNTIME,
+  PS_UI_ROUTER_EVENT_RUNTIME_RETURNED,
+  PS_UI_ROUTER_EVENT_SHELL_FAULT,
+  PS_UI_ROUTER_EVENT_RECOVER_OK,
+  PS_UI_ROUTER_EVENT_CAL_JOYSTICK_START,
+  PS_UI_ROUTER_EVENT_CAL_JOYSTICK_NEUTRAL_ACCEPT,
+  PS_UI_ROUTER_EVENT_CAL_JOYSTICK_RIGHT_ACCEPT,
+  PS_UI_ROUTER_EVENT_CAL_JOYSTICK_CIRCLE_ACCEPT,
+  PS_UI_ROUTER_EVENT_CAL_JOYSTICK_REVIEW_ACCEPT,
+  PS_UI_ROUTER_EVENT_PAGE_TRANSITION_END,
+  PS_UI_ROUTER_EVENT_INPUT_BTN_A,
+  PS_UI_ROUTER_EVENT_INPUT_BTN_B,
+  PS_UI_ROUTER_EVENT_INPUT_BTN_L,
+  PS_UI_ROUTER_EVENT_INPUT_BTN_R
+} ps_ui_router_event_t;
+
+typedef struct
+{
+  uint32_t api_version;
+  uint32_t current_page;
+  uint32_t previous_page;
+  uint32_t requested_page;
+  uint32_t nav_state;
+  uint32_t modal_state;
+  uint32_t calibration_page;
+  uint32_t focus_index;
+  uint32_t last_button_event;
+  uint32_t button_event_count;
+  uint32_t last_event;
+  uint32_t transition_count;
+  uint32_t rejected_event_count;
+  uint32_t last_status;
+} ps_ui_router_probe_t;
+
+extern volatile ps_ui_router_probe_t g_ps_ui_router_probe;
+extern volatile uint32_t g_ps_ui_router_request;
+extern volatile uint32_t g_ps_ui_router_request_event;
+
+void PS_UIRouter_Init(void);
+ps_status_t PS_UIRouter_Dispatch(uint32_t event);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* PS_UI_ROUTER_H */

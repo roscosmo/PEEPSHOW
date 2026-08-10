@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <ps_hw6_peripheral_probe.h>
+#include "ps_input_buttons.h"
 
 /* USER CODE END Includes */
 
@@ -2351,7 +2352,27 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+static void PS_Main_RecordButtonExti(uint16_t GPIO_Pin,
+                                     GPIO_PinState level)
+{
+  if ((GPIO_Pin == BTN_A_Pin) ||
+      (GPIO_Pin == BTN_B_Pin) ||
+      (GPIO_Pin == BTN_L_Pin) ||
+      (GPIO_Pin == BTN_R_Pin))
+  {
+    PS_InputButtons_RecordExti(GPIO_Pin, level);
+  }
+}
 
+void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin)
+{
+  PS_Main_RecordButtonExti(GPIO_Pin, GPIO_PIN_SET);
+}
+
+void HAL_GPIO_EXTI_Falling_Callback(uint16_t GPIO_Pin)
+{
+  PS_Main_RecordButtonExti(GPIO_Pin, GPIO_PIN_RESET);
+}
 /* USER CODE END 4 */
 
 /**

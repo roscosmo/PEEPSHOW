@@ -1,0 +1,368 @@
+#include "ps_ui_router.h"
+
+typedef struct
+{
+  uint32_t current_page;
+  uint32_t previous_page;
+  uint32_t requested_page;
+  uint32_t nav_state;
+  uint32_t modal_state;
+  uint32_t calibration_page;
+  uint32_t focus_index;
+  uint32_t last_button_event;
+  uint32_t button_event_count;
+  uint32_t last_event;
+  uint32_t transition_count;
+  uint32_t rejected_event_count;
+  uint32_t last_status;
+} ps_ui_router_state_t;
+
+volatile ps_ui_router_probe_t g_ps_ui_router_probe;
+volatile uint32_t g_ps_ui_router_request;
+volatile uint32_t g_ps_ui_router_request_event;
+
+static ps_ui_router_state_t ps_ui_router_state;
+
+static void PS_UIRouter_UpdateProbe(void)
+{
+  g_ps_ui_router_probe.api_version = PS_UI_ROUTER_API_VERSION;
+  g_ps_ui_router_probe.current_page = ps_ui_router_state.current_page;
+  g_ps_ui_router_probe.previous_page = ps_ui_router_state.previous_page;
+  g_ps_ui_router_probe.requested_page = ps_ui_router_state.requested_page;
+  g_ps_ui_router_probe.nav_state = ps_ui_router_state.nav_state;
+  g_ps_ui_router_probe.modal_state = ps_ui_router_state.modal_state;
+  g_ps_ui_router_probe.calibration_page =
+    ps_ui_router_state.calibration_page;
+  g_ps_ui_router_probe.focus_index = ps_ui_router_state.focus_index;
+  g_ps_ui_router_probe.last_button_event =
+    ps_ui_router_state.last_button_event;
+  g_ps_ui_router_probe.button_event_count =
+    ps_ui_router_state.button_event_count;
+  g_ps_ui_router_probe.last_event = ps_ui_router_state.last_event;
+  g_ps_ui_router_probe.transition_count =
+    ps_ui_router_state.transition_count;
+  g_ps_ui_router_probe.rejected_event_count =
+    ps_ui_router_state.rejected_event_count;
+  g_ps_ui_router_probe.last_status = ps_ui_router_state.last_status;
+}
+
+static uint32_t PS_UIRouter_CanNavigate(void)
+{
+  if ((ps_ui_router_state.nav_state == PS_UI_ROUTER_NAV_TEXT_ENTRY) ||
+      (ps_ui_router_state.nav_state == PS_UI_ROUTER_NAV_NUMERIC_ENTRY) ||
+      (ps_ui_router_state.nav_state == PS_UI_ROUTER_NAV_MODAL_LOCK) ||
+      (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_ERROR))
+  {
+    return 0UL;
+  }
+  return 1UL;
+}
+
+static ps_status_t PS_UIRouter_GotoPage(uint32_t page)
+{
+  if (PS_UIRouter_CanNavigate() == 0UL)
+  {
+    return PS_STATUS_INVALID_STATE;
+  }
+
+  ps_ui_router_state.previous_page = ps_ui_router_state.current_page;
+  ps_ui_router_state.requested_page = page;
+  ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_TRANSITION_LOCK;
+  ps_ui_router_state.current_page = page;
+  ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_FOCUS;
+  ps_ui_router_state.transition_count++;
+  if (page == PS_UI_ROUTER_PAGE_MENU)
+  {
+    ps_ui_router_state.focus_index = 1UL;
+  }
+  else
+  {
+    ps_ui_router_state.focus_index = 0UL;
+  }
+  if (page != PS_UI_ROUTER_PAGE_CALIBRATION)
+  {
+    ps_ui_router_state.calibration_page = PS_UI_ROUTER_CAL_NONE;
+  }
+  return PS_STATUS_OK;
+}
+
+static ps_status_t PS_UIRouter_StartJoystickCalibration(void)
+{
+  if (ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_CALIBRATION)
+  {
+    return PS_STATUS_INVALID_STATE;
+  }
+  ps_ui_router_state.calibration_page =
+    PS_UI_ROUTER_CAL_JOYSTICK_NEUTRAL;
+  ps_ui_router_state.transition_count++;
+  return PS_STATUS_OK;
+}
+
+static ps_status_t PS_UIRouter_AdvanceJoystickCalibration(uint32_t from_page,
+                                                          uint32_t to_page)
+{
+  if ((ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_CALIBRATION) ||
+      (ps_ui_router_state.calibration_page != from_page))
+  {
+    return PS_STATUS_INVALID_STATE;
+  }
+  ps_ui_router_state.calibration_page = to_page;
+  ps_ui_router_state.transition_count++;
+  return PS_STATUS_OK;
+}
+
+static ps_status_t PS_UIRouter_DispatchButtonA(void)
+{
+  if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_HOME)
+  {
+    return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
+  }
+  if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_MENU)
+  {
+    if (ps_ui_router_state.focus_index == 0UL)
+    {
+      return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_SETTINGS);
+    }
+    if (ps_ui_router_state.focus_index == 1UL)
+    {
+      return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_CALIBRATION);
+    }
+    return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_PACKAGE_BROWSER);
+  }
+  if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_CALIBRATION)
+  {
+    if (ps_ui_router_state.calibration_page == PS_UI_ROUTER_CAL_INPUT_ROOT)
+    {
+      return PS_UIRouter_StartJoystickCalibration();
+    }
+    if (ps_ui_router_state.calibration_page ==
+        PS_UI_ROUTER_CAL_JOYSTICK_NEUTRAL)
+    {
+      return PS_UIRouter_AdvanceJoystickCalibration(
+        PS_UI_ROUTER_CAL_JOYSTICK_NEUTRAL,
+        PS_UI_ROUTER_CAL_JOYSTICK_RIGHT);
+    }
+    if (ps_ui_router_state.calibration_page ==
+        PS_UI_ROUTER_CAL_JOYSTICK_RIGHT)
+    {
+      return PS_UIRouter_AdvanceJoystickCalibration(
+        PS_UI_ROUTER_CAL_JOYSTICK_RIGHT,
+        PS_UI_ROUTER_CAL_JOYSTICK_CIRCLE);
+    }
+    if (ps_ui_router_state.calibration_page ==
+        PS_UI_ROUTER_CAL_JOYSTICK_CIRCLE)
+    {
+      return PS_UIRouter_AdvanceJoystickCalibration(
+        PS_UI_ROUTER_CAL_JOYSTICK_CIRCLE,
+        PS_UI_ROUTER_CAL_JOYSTICK_REVIEW);
+    }
+    if (ps_ui_router_state.calibration_page ==
+        PS_UI_ROUTER_CAL_JOYSTICK_REVIEW)
+    {
+      return PS_UIRouter_AdvanceJoystickCalibration(
+        PS_UI_ROUTER_CAL_JOYSTICK_REVIEW,
+        PS_UI_ROUTER_CAL_INPUT_ROOT);
+    }
+  }
+  if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_PACKAGE_BROWSER)
+  {
+    return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF);
+  }
+  return PS_STATUS_INVALID_STATE;
+}
+
+static ps_status_t PS_UIRouter_DispatchButtonB(void)
+{
+  if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_HOME)
+  {
+    return PS_STATUS_OK;
+  }
+  if ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_CALIBRATION) &&
+      (ps_ui_router_state.calibration_page != PS_UI_ROUTER_CAL_INPUT_ROOT))
+  {
+    ps_ui_router_state.calibration_page = PS_UI_ROUTER_CAL_INPUT_ROOT;
+    ps_ui_router_state.transition_count++;
+    return PS_STATUS_OK;
+  }
+  return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
+}
+
+static ps_status_t PS_UIRouter_DispatchButtonL(void)
+{
+  if (ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_MENU)
+  {
+    return PS_STATUS_INVALID_STATE;
+  }
+  ps_ui_router_state.focus_index =
+    (ps_ui_router_state.focus_index == 0UL) ? 2UL :
+    (ps_ui_router_state.focus_index - 1UL);
+  ps_ui_router_state.transition_count++;
+  return PS_STATUS_OK;
+}
+
+static ps_status_t PS_UIRouter_DispatchButtonR(void)
+{
+  if (ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_MENU)
+  {
+    return PS_STATUS_INVALID_STATE;
+  }
+  ps_ui_router_state.focus_index =
+    (ps_ui_router_state.focus_index >= 2UL) ? 0UL :
+    (ps_ui_router_state.focus_index + 1UL);
+  ps_ui_router_state.transition_count++;
+  return PS_STATUS_OK;
+}
+
+void PS_UIRouter_Init(void)
+{
+  ps_ui_router_state.current_page = PS_UI_ROUTER_PAGE_BOOTSTRAP;
+  ps_ui_router_state.previous_page = PS_UI_ROUTER_PAGE_BOOTSTRAP;
+  ps_ui_router_state.requested_page = PS_UI_ROUTER_PAGE_BOOTSTRAP;
+  ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_IDLE;
+  ps_ui_router_state.modal_state = PS_UI_ROUTER_MODAL_NONE;
+  ps_ui_router_state.calibration_page = PS_UI_ROUTER_CAL_NONE;
+  ps_ui_router_state.focus_index = 0UL;
+  ps_ui_router_state.last_button_event = 0UL;
+  ps_ui_router_state.button_event_count = 0UL;
+  ps_ui_router_state.last_event = 0UL;
+  ps_ui_router_state.transition_count = 0UL;
+  ps_ui_router_state.rejected_event_count = 0UL;
+  ps_ui_router_state.last_status = PS_UI_ROUTER_STATUS_NOT_RUN;
+  g_ps_ui_router_request = 0UL;
+  g_ps_ui_router_request_event = 0UL;
+  PS_UIRouter_UpdateProbe();
+}
+
+ps_status_t PS_UIRouter_Dispatch(uint32_t event)
+{
+  ps_status_t status = PS_STATUS_UNSUPPORTED;
+
+  ps_ui_router_state.last_event = event;
+  switch (event)
+  {
+    case PS_UI_ROUTER_EVENT_BOOT_COMPLETE:
+      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_HOME);
+      break;
+    case PS_UI_ROUTER_EVENT_NAV_HOME:
+      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_HOME);
+      break;
+    case PS_UI_ROUTER_EVENT_NAV_MENU:
+      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
+      break;
+    case PS_UI_ROUTER_EVENT_NAV_SETTINGS:
+      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_SETTINGS);
+      break;
+    case PS_UI_ROUTER_EVENT_NAV_CALIBRATION:
+      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_CALIBRATION);
+      if (status == PS_STATUS_OK)
+      {
+        ps_ui_router_state.calibration_page =
+          PS_UI_ROUTER_CAL_INPUT_ROOT;
+      }
+      break;
+    case PS_UI_ROUTER_EVENT_NAV_PACKAGES:
+      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_PACKAGE_BROWSER);
+      break;
+    case PS_UI_ROUTER_EVENT_LAUNCH_RUNTIME:
+      if ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_HOME) ||
+          (ps_ui_router_state.current_page ==
+           PS_UI_ROUTER_PAGE_PACKAGE_BROWSER))
+      {
+        status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF);
+      }
+      else
+      {
+        status = PS_STATUS_INVALID_STATE;
+      }
+      break;
+    case PS_UI_ROUTER_EVENT_RUNTIME_RETURNED:
+      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_HOME);
+      break;
+    case PS_UI_ROUTER_EVENT_SHELL_FAULT:
+      ps_ui_router_state.previous_page = ps_ui_router_state.current_page;
+      ps_ui_router_state.requested_page = PS_UI_ROUTER_PAGE_ERROR;
+      ps_ui_router_state.current_page = PS_UI_ROUTER_PAGE_ERROR;
+      ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_MODAL_LOCK;
+      ps_ui_router_state.modal_state = PS_UI_ROUTER_MODAL_DIALOG;
+      ps_ui_router_state.transition_count++;
+      status = PS_STATUS_OK;
+      break;
+    case PS_UI_ROUTER_EVENT_RECOVER_OK:
+      if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_ERROR)
+      {
+        ps_ui_router_state.previous_page = ps_ui_router_state.current_page;
+        ps_ui_router_state.requested_page = PS_UI_ROUTER_PAGE_HOME;
+        ps_ui_router_state.current_page = PS_UI_ROUTER_PAGE_HOME;
+        ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_FOCUS;
+        ps_ui_router_state.modal_state = PS_UI_ROUTER_MODAL_NONE;
+        ps_ui_router_state.calibration_page = PS_UI_ROUTER_CAL_NONE;
+        ps_ui_router_state.transition_count++;
+        status = PS_STATUS_OK;
+      }
+      else
+      {
+        status = PS_STATUS_INVALID_STATE;
+      }
+      break;
+
+    case PS_UI_ROUTER_EVENT_CAL_JOYSTICK_START:
+      status = PS_UIRouter_StartJoystickCalibration();
+      break;
+    case PS_UI_ROUTER_EVENT_CAL_JOYSTICK_NEUTRAL_ACCEPT:
+      status = PS_UIRouter_AdvanceJoystickCalibration(
+        PS_UI_ROUTER_CAL_JOYSTICK_NEUTRAL,
+        PS_UI_ROUTER_CAL_JOYSTICK_RIGHT);
+      break;
+    case PS_UI_ROUTER_EVENT_CAL_JOYSTICK_RIGHT_ACCEPT:
+      status = PS_UIRouter_AdvanceJoystickCalibration(
+        PS_UI_ROUTER_CAL_JOYSTICK_RIGHT,
+        PS_UI_ROUTER_CAL_JOYSTICK_CIRCLE);
+      break;
+    case PS_UI_ROUTER_EVENT_CAL_JOYSTICK_CIRCLE_ACCEPT:
+      status = PS_UIRouter_AdvanceJoystickCalibration(
+        PS_UI_ROUTER_CAL_JOYSTICK_CIRCLE,
+        PS_UI_ROUTER_CAL_JOYSTICK_REVIEW);
+      break;
+    case PS_UI_ROUTER_EVENT_CAL_JOYSTICK_REVIEW_ACCEPT:
+      status = PS_UIRouter_AdvanceJoystickCalibration(
+        PS_UI_ROUTER_CAL_JOYSTICK_REVIEW,
+        PS_UI_ROUTER_CAL_INPUT_ROOT);
+      break;
+    case PS_UI_ROUTER_EVENT_PAGE_TRANSITION_END:
+      ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_FOCUS;
+      status = PS_STATUS_OK;
+      break;
+    case PS_UI_ROUTER_EVENT_INPUT_BTN_A:
+      ps_ui_router_state.last_button_event = event;
+      ps_ui_router_state.button_event_count++;
+      status = PS_UIRouter_DispatchButtonA();
+      break;
+    case PS_UI_ROUTER_EVENT_INPUT_BTN_B:
+      ps_ui_router_state.last_button_event = event;
+      ps_ui_router_state.button_event_count++;
+      status = PS_UIRouter_DispatchButtonB();
+      break;
+    case PS_UI_ROUTER_EVENT_INPUT_BTN_L:
+      ps_ui_router_state.last_button_event = event;
+      ps_ui_router_state.button_event_count++;
+      status = PS_UIRouter_DispatchButtonL();
+      break;
+    case PS_UI_ROUTER_EVENT_INPUT_BTN_R:
+      ps_ui_router_state.last_button_event = event;
+      ps_ui_router_state.button_event_count++;
+      status = PS_UIRouter_DispatchButtonR();
+      break;
+    default:
+      status = PS_STATUS_UNSUPPORTED;
+      break;
+  }
+
+  if (status != PS_STATUS_OK)
+  {
+    ps_ui_router_state.rejected_event_count++;
+  }
+  ps_ui_router_state.last_status = (uint32_t)status;
+  PS_UIRouter_UpdateProbe();
+  return status;
+}
+

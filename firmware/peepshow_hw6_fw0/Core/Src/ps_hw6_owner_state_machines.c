@@ -18,6 +18,7 @@
 #include "ps_hw6_rtos_probe.h"
 #include "ps_hw6_usb_export.h"
 #include "ps_input_events.h"
+#include "ps_input_joystick.h"
 #include "ps_input_state.h"
 #include "ps_power_events.h"
 #include "ps_power_state.h"
@@ -42,6 +43,10 @@
 
 #define PS_HW6_TMAG_ADDRESS               (0x34U)
 #define PS_HW6_IMU_ADDRESS                (0x18U)
+#define PS_HW6_JOYSTICK_SWEEP_DURATION_TICKS (500UL)
+#define PS_HW6_JOYSTICK_SWEEP_PERIOD_TICKS   (5UL)
+#define PS_HW6_JOYSTICK_LIVE_DURATION_TICKS  (250UL)
+#define PS_HW6_JOYSTICK_LIVE_PERIOD_TICKS    (2UL)
 
 #define PS_HW6_FLASH_WAKE_SETTLE_TICKS     (1UL)
 #define PS_HW6_FLASH_SCRATCH_ADDRESS       (0x00FFF000UL)
@@ -78,6 +83,9 @@ volatile PS_HW6_OwnerStateMachineProbe g_ps_hw6_owner_sm_probe;
 volatile uint32_t g_ps_hw6_owner_sm_start_request;
 volatile uint32_t g_ps_hw6_storage_usb_export_request;
 volatile uint32_t g_ps_hw6_storage_usb_reclaim_request;
+volatile uint32_t g_ps_hw6_joystick_sample_request;
+volatile uint32_t g_ps_hw6_joystick_live_request;
+volatile uint32_t g_ps_hw6_joystick_cardinal_request;
 
 typedef struct
 {
@@ -150,16 +158,32 @@ static const PS_HW6_StateTransition ps_joystick_transitions[] =
 {
   {JOY_OFF, JOY_EV_ENABLE_REQUEST, JOY_PROBE},
   {JOY_SUSPENDED, JOY_EV_RESUME, JOY_PROBE},
+  {JOY_SUSPENDED, JOY_EV_THRESHOLD_ARM_REQUEST, JOY_THRESHOLD_ARMED},
+  {JOY_SUSPENDED, JOY_EV_SLOW_POLL_REQUEST, JOY_SLOW_POLL},
+  {JOY_SUSPENDED, JOY_EV_FAST_POLL_REQUEST, JOY_FAST_POLL},
   {JOY_PROBE, JOY_EV_PROBE_OK, JOY_CONFIG},
   {JOY_CONFIG, JOY_EV_CONFIG_OK, JOY_SUSPENDED},
+  {JOY_CONFIG, JOY_EV_THRESHOLD_ARM_REQUEST, JOY_THRESHOLD_ARMED},
   {JOY_CONFIG, JOY_EV_SLOW_POLL_REQUEST, JOY_SLOW_POLL},
+  {JOY_CONFIG, JOY_EV_FAST_POLL_REQUEST, JOY_FAST_POLL},
+  {JOY_THRESHOLD_ARMED, JOY_EV_INTERRUPT, JOY_WAKE_PENDING},
+  {JOY_THRESHOLD_ARMED, JOY_EV_SLOW_POLL_REQUEST, JOY_SLOW_POLL},
+  {JOY_WAKE_PENDING, JOY_EV_SAMPLE_DONE, JOY_DIRECTION_SAMPLE},
+  {JOY_DIRECTION_SAMPLE, JOY_EV_NORMALIZE_DONE, JOY_THRESHOLD_ARMED},
+  {JOY_SLOW_POLL, JOY_EV_THRESHOLD_ARM_REQUEST, JOY_THRESHOLD_ARMED},
+  {JOY_SLOW_POLL, JOY_EV_FAST_POLL_REQUEST, JOY_FAST_POLL},
   {JOY_SLOW_POLL, JOY_EV_QUIESCE, JOY_SUSPENDED},
+  {JOY_FAST_POLL, JOY_EV_SLOW_POLL_REQUEST, JOY_SLOW_POLL},
+  {JOY_FAST_POLL, JOY_EV_QUIESCE, JOY_SUSPENDED},
   {JOY_PROBE, JOY_EV_I2C_ERROR, JOY_ERROR},
   {JOY_CONFIG, JOY_EV_I2C_ERROR, JOY_ERROR},
+  {JOY_THRESHOLD_ARMED, JOY_EV_I2C_ERROR, JOY_ERROR},
+  {JOY_WAKE_PENDING, JOY_EV_I2C_ERROR, JOY_ERROR},
+  {JOY_DIRECTION_SAMPLE, JOY_EV_I2C_ERROR, JOY_ERROR},
   {JOY_SLOW_POLL, JOY_EV_I2C_ERROR, JOY_ERROR},
+  {JOY_FAST_POLL, JOY_EV_I2C_ERROR, JOY_ERROR},
   {JOY_ERROR, JOY_EV_RECOVER_OK, JOY_PROBE}
 };
-
 static const PS_HW6_StateTransition ps_imu_transitions[] =
 {
   {IMU_OFF, IMU_EV_ENABLE_REQUEST, IMU_PROBE},
@@ -279,6 +303,19 @@ static const uint32_t ps_cycle_inactive_states[PS_HW6_OWNER_SM_COUNT] =
 
 static ps_dev_lis2dux12_t ps_imu_device;
 static ps_dev_tmag3001_t ps_joystick_device;
+static ps_input_joystick_state_t ps_joystick_input_state;
+static const ps_input_joystick_calibration_t ps_joystick_hw6_default_calibration =
+{
+  -5616,
+  -5536,
+  -20960,
+  27536,
+  -27392,
+  19520,
+  3500,
+  450,
+  1UL
+};
 static ps_dev_at25sl128a_t ps_flash_device;
 static ps_storage_flash_block_t ps_flash_block;
 static ps_dev_at25sl128a_jedec_result_t ps_flash_jedec_result;
@@ -394,6 +431,136 @@ static void PS_HW6_SM_UpdateJoystickDriverProbe(void)
     ps_joystick_device.last_status;
 }
 
+static void PS_HW6_SM_UpdateJoystickInputProbe(void)
+{
+  g_ps_hw6_owner_sm_probe.joystick_input_api_version =
+    ps_joystick_input_state.api_version;
+  g_ps_hw6_owner_sm_probe.joystick_input_policy =
+    ps_joystick_input_state.policy;
+  g_ps_hw6_owner_sm_probe.joystick_input_calibration_valid =
+    ps_joystick_input_state.calibration_valid;
+  g_ps_hw6_owner_sm_probe.joystick_input_active =
+    ps_joystick_input_state.active;
+  g_ps_hw6_owner_sm_probe.joystick_input_direction_mask =
+    ps_joystick_input_state.direction_mask;
+  g_ps_hw6_owner_sm_probe.joystick_input_sample_tick =
+    ps_joystick_input_state.sample_tick;
+  g_ps_hw6_owner_sm_probe.joystick_input_sample_age_ticks =
+    ps_joystick_input_state.sample_age_ticks;
+  g_ps_hw6_owner_sm_probe.joystick_input_update_count =
+    ps_joystick_input_state.update_count;
+  g_ps_hw6_owner_sm_probe.joystick_input_fault_count =
+    ps_joystick_input_state.fault_count;
+  g_ps_hw6_owner_sm_probe.joystick_input_last_status =
+    ps_joystick_input_state.last_status;
+  g_ps_hw6_owner_sm_probe.joystick_input_raw_x =
+    ps_joystick_input_state.raw_x;
+  g_ps_hw6_owner_sm_probe.joystick_input_raw_y =
+    ps_joystick_input_state.raw_y;
+  g_ps_hw6_owner_sm_probe.joystick_input_raw_z =
+    ps_joystick_input_state.raw_z;
+  g_ps_hw6_owner_sm_probe.joystick_input_delta_x =
+    ps_joystick_input_state.delta_x;
+  g_ps_hw6_owner_sm_probe.joystick_input_delta_y =
+    ps_joystick_input_state.delta_y;
+  g_ps_hw6_owner_sm_probe.joystick_input_normalized_x =
+    ps_joystick_input_state.normalized_x;
+  g_ps_hw6_owner_sm_probe.joystick_input_normalized_y =
+    ps_joystick_input_state.normalized_y;
+  g_ps_hw6_owner_sm_probe.joystick_input_magnitude =
+    ps_joystick_input_state.magnitude;
+  g_ps_hw6_owner_sm_probe.joystick_input_conv_status =
+    ps_joystick_input_state.conv_status;
+}
+
+static HAL_StatusTypeDef PS_HW6_SM_NormalizeJoystickSample(
+  const ps_dev_tmag3001_raw_sample_t *sample,
+  uint32_t policy)
+{
+  ps_input_joystick_raw_sample_t raw_sample;
+  ps_status_t input_status;
+  uint32_t now_tick;
+
+  if (sample == (const ps_dev_tmag3001_raw_sample_t *)0)
+  {
+    return HAL_ERROR;
+  }
+
+  now_tick = (uint32_t)tx_time_get();
+  raw_sample.raw_x = (int32_t)sample->x;
+  raw_sample.raw_y = (int32_t)sample->y;
+  raw_sample.raw_z = (int32_t)sample->z;
+  raw_sample.conv_status = (uint32_t)sample->conv_status;
+  raw_sample.sample_tick = now_tick;
+
+  input_status = PS_InputJoystick_Normalize(
+    &ps_joystick_hw6_default_calibration,
+    &raw_sample,
+    policy,
+    now_tick,
+    &ps_joystick_input_state);
+  PS_HW6_SM_UpdateJoystickInputProbe();
+  return PS_HW6_SM_StatusToHal(input_status);
+}
+
+static void PS_HW6_SM_ResetJoystickInputProbe(void)
+{
+  PS_InputJoystick_InitState(&ps_joystick_input_state);
+  PS_HW6_SM_UpdateJoystickInputProbe();
+  g_ps_hw6_owner_sm_probe.joystick_live_request_count = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_live_start_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_live_end_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_live_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.joystick_live_sample_count = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_live_error_count = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_request_count = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_start_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_end_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+}
+
+static void PS_HW6_SM_ResetJoystickSampleProbe(void)
+{
+  g_ps_hw6_owner_sm_probe.joystick_sample_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.joystick_sample_stabilize_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.joystick_sample_wake_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.joystick_sample_read_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.joystick_sample_sleep_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.joystick_sample_center_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.joystick_sample_center_conv_status = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_sample_center_x = 0;
+  g_ps_hw6_owner_sm_probe.joystick_sample_center_y = 0;
+  g_ps_hw6_owner_sm_probe.joystick_sample_center_z = 0;
+  g_ps_hw6_owner_sm_probe.joystick_sample_count = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_sample_error_count = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_sample_first_x = 0;
+  g_ps_hw6_owner_sm_probe.joystick_sample_first_y = 0;
+  g_ps_hw6_owner_sm_probe.joystick_sample_first_z = 0;
+  g_ps_hw6_owner_sm_probe.joystick_sample_min_x = 0;
+  g_ps_hw6_owner_sm_probe.joystick_sample_min_y = 0;
+  g_ps_hw6_owner_sm_probe.joystick_sample_min_z = 0;
+  g_ps_hw6_owner_sm_probe.joystick_sample_max_x = 0;
+  g_ps_hw6_owner_sm_probe.joystick_sample_max_y = 0;
+  g_ps_hw6_owner_sm_probe.joystick_sample_max_z = 0;
+  g_ps_hw6_owner_sm_probe.joystick_sample_x = 0;
+  g_ps_hw6_owner_sm_probe.joystick_sample_y = 0;
+  g_ps_hw6_owner_sm_probe.joystick_sample_z = 0;
+  g_ps_hw6_owner_sm_probe.joystick_sample_conv_status = 0UL;
+}
+
+static void PS_HW6_SM_ResetJoystickRuntimeProbes(void)
+{
+  PS_HW6_SM_ResetJoystickInputProbe();
+  PS_HW6_SM_ResetJoystickSampleProbe();
+}
 static void PS_HW6_SM_UpdateFlashBlockProbe(void)
 {
   g_ps_hw6_owner_sm_probe.flash_block_api_version =
@@ -1010,6 +1177,377 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeImu(void)
   return status;
 }
 
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSampleProbe(void)
+{
+  ps_dev_tmag3001_stabilize_result_t stabilize_result;
+  ps_dev_tmag3001_wake_result_t wake_result;
+  ps_dev_tmag3001_raw_sample_t sample;
+  ps_dev_tmag3001_suspend_result_t suspend_result;
+  ps_status_t driver_status;
+  HAL_StatusTypeDef status;
+  uint32_t sweep_start_tick;
+  uint32_t first_sample;
+
+  g_ps_hw6_owner_sm_probe.joystick_sample_request_count++;
+  g_ps_hw6_owner_sm_probe.joystick_sample_start_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_sm_probe.joystick_sample_end_tick = 0UL;
+  PS_HW6_SM_ResetJoystickSampleProbe();
+
+  status = HAL_OK;
+  if (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_READY)
+  {
+    driver_status = ps_dev_tmag3001_stabilize_suspended(
+      &ps_joystick_device,
+      &stabilize_result);
+    g_ps_hw6_owner_sm_probe.joystick_sample_stabilize_status =
+      (uint32_t)driver_status;
+    status = PS_HW6_SM_StatusToHal(driver_status);
+  }
+
+  if (status == HAL_OK)
+  {
+    driver_status = ps_dev_tmag3001_wake_continuous(
+      &ps_joystick_device,
+      &wake_result);
+    g_ps_hw6_owner_sm_probe.joystick_sample_wake_status =
+      (uint32_t)driver_status;
+    status = PS_HW6_SM_StatusToHal(driver_status);
+  }
+
+  if (status == HAL_OK)
+  {
+    driver_status = ps_dev_tmag3001_read_raw_sample(
+      &ps_joystick_device,
+      &sample);
+    g_ps_hw6_owner_sm_probe.joystick_sample_center_status =
+      (uint32_t)sample.status;
+    g_ps_hw6_owner_sm_probe.joystick_sample_center_conv_status =
+      (uint32_t)sample.conv_status;
+    g_ps_hw6_owner_sm_probe.joystick_sample_center_x =
+      (int32_t)sample.x;
+    g_ps_hw6_owner_sm_probe.joystick_sample_center_y =
+      (int32_t)sample.y;
+    g_ps_hw6_owner_sm_probe.joystick_sample_center_z =
+      (int32_t)sample.z;
+    g_ps_hw6_owner_sm_probe.joystick_sample_read_status =
+      (uint32_t)sample.status;
+    status = PS_HW6_SM_StatusToHal(driver_status);
+  }
+
+  first_sample = 1UL;
+  sweep_start_tick = (uint32_t)tx_time_get();
+  while ((status == HAL_OK) &&
+         (((uint32_t)tx_time_get() - sweep_start_tick) <
+          PS_HW6_JOYSTICK_SWEEP_DURATION_TICKS))
+  {
+    driver_status = ps_dev_tmag3001_read_raw_sample(
+      &ps_joystick_device,
+      &sample);
+    g_ps_hw6_owner_sm_probe.joystick_sample_read_status =
+      (uint32_t)sample.status;
+    status = PS_HW6_SM_StatusToHal(driver_status);
+    if (status == HAL_OK)
+    {
+      (void)PS_HW6_SM_NormalizeJoystickSample(
+        &sample,
+        PS_INPUT_JOYSTICK_POLICY_FAST_POLL);
+      if (first_sample != 0UL)
+      {
+        g_ps_hw6_owner_sm_probe.joystick_sample_first_x =
+          (int32_t)sample.x;
+        g_ps_hw6_owner_sm_probe.joystick_sample_first_y =
+          (int32_t)sample.y;
+        g_ps_hw6_owner_sm_probe.joystick_sample_first_z =
+          (int32_t)sample.z;
+        g_ps_hw6_owner_sm_probe.joystick_sample_min_x =
+          (int32_t)sample.x;
+        g_ps_hw6_owner_sm_probe.joystick_sample_min_y =
+          (int32_t)sample.y;
+        g_ps_hw6_owner_sm_probe.joystick_sample_min_z =
+          (int32_t)sample.z;
+        g_ps_hw6_owner_sm_probe.joystick_sample_max_x =
+          (int32_t)sample.x;
+        g_ps_hw6_owner_sm_probe.joystick_sample_max_y =
+          (int32_t)sample.y;
+        g_ps_hw6_owner_sm_probe.joystick_sample_max_z =
+          (int32_t)sample.z;
+        first_sample = 0UL;
+      }
+      if ((int32_t)sample.x < g_ps_hw6_owner_sm_probe.joystick_sample_min_x)
+      {
+        g_ps_hw6_owner_sm_probe.joystick_sample_min_x = (int32_t)sample.x;
+      }
+      if ((int32_t)sample.y < g_ps_hw6_owner_sm_probe.joystick_sample_min_y)
+      {
+        g_ps_hw6_owner_sm_probe.joystick_sample_min_y = (int32_t)sample.y;
+      }
+      if ((int32_t)sample.z < g_ps_hw6_owner_sm_probe.joystick_sample_min_z)
+      {
+        g_ps_hw6_owner_sm_probe.joystick_sample_min_z = (int32_t)sample.z;
+      }
+      if ((int32_t)sample.x > g_ps_hw6_owner_sm_probe.joystick_sample_max_x)
+      {
+        g_ps_hw6_owner_sm_probe.joystick_sample_max_x = (int32_t)sample.x;
+      }
+      if ((int32_t)sample.y > g_ps_hw6_owner_sm_probe.joystick_sample_max_y)
+      {
+        g_ps_hw6_owner_sm_probe.joystick_sample_max_y = (int32_t)sample.y;
+      }
+      if ((int32_t)sample.z > g_ps_hw6_owner_sm_probe.joystick_sample_max_z)
+      {
+        g_ps_hw6_owner_sm_probe.joystick_sample_max_z = (int32_t)sample.z;
+      }
+      g_ps_hw6_owner_sm_probe.joystick_sample_x = (int32_t)sample.x;
+      g_ps_hw6_owner_sm_probe.joystick_sample_y = (int32_t)sample.y;
+      g_ps_hw6_owner_sm_probe.joystick_sample_z = (int32_t)sample.z;
+      g_ps_hw6_owner_sm_probe.joystick_sample_conv_status =
+        sample.conv_status;
+      g_ps_hw6_owner_sm_probe.joystick_sample_count++;
+    }
+    else
+    {
+      g_ps_hw6_owner_sm_probe.joystick_sample_error_count++;
+    }
+
+    if (((uint32_t)tx_time_get() - sweep_start_tick) <
+        PS_HW6_JOYSTICK_SWEEP_DURATION_TICKS)
+    {
+      tx_thread_sleep(PS_HW6_JOYSTICK_SWEEP_PERIOD_TICKS);
+    }
+  }
+
+  if ((status == HAL_OK) &&
+      (g_ps_hw6_owner_sm_probe.joystick_sample_count == 0UL))
+  {
+    status = HAL_ERROR;
+  }
+
+  if (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_ACTIVE)
+  {
+    driver_status = ps_dev_tmag3001_suspend(
+      &ps_joystick_device,
+      &suspend_result);
+    g_ps_hw6_owner_sm_probe.joystick_sample_sleep_status =
+      (uint32_t)suspend_result.sleep_status;
+    if (status == HAL_OK)
+    {
+      status = PS_HW6_SM_StatusToHal(driver_status);
+    }
+  }
+
+  g_ps_hw6_owner_sm_probe.joystick_sample_status = (uint32_t)status;
+  g_ps_hw6_owner_sm_probe.joystick_sample_end_tick =
+    (uint32_t)tx_time_get();
+  PS_HW6_SM_UpdateJoystickDriverProbe();
+  PS_HW6_SM_UpdateJoystickInputProbe();
+  return status;
+}
+
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickLiveProbe(void)
+{
+  ps_dev_tmag3001_stabilize_result_t stabilize_result;
+  ps_dev_tmag3001_wake_result_t wake_result;
+  ps_dev_tmag3001_raw_sample_t sample;
+  ps_dev_tmag3001_suspend_result_t suspend_result;
+  ps_status_t driver_status;
+  HAL_StatusTypeDef status;
+  uint32_t live_start_tick;
+
+  g_ps_hw6_owner_sm_probe.joystick_live_request_count++;
+  g_ps_hw6_owner_sm_probe.joystick_live_start_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_sm_probe.joystick_live_end_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_live_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.joystick_live_sample_count = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_live_error_count = 0UL;
+
+  status = HAL_OK;
+  if (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_READY)
+  {
+    driver_status = ps_dev_tmag3001_stabilize_suspended(
+      &ps_joystick_device,
+      &stabilize_result);
+    status = PS_HW6_SM_StatusToHal(driver_status);
+  }
+
+  if (status == HAL_OK)
+  {
+    driver_status = ps_dev_tmag3001_wake_continuous(
+      &ps_joystick_device,
+      &wake_result);
+    status = PS_HW6_SM_StatusToHal(driver_status);
+  }
+
+  if (status == HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                               JOY_EV_FAST_POLL_REQUEST,
+                               HAL_OK);
+  }
+
+  live_start_tick = (uint32_t)tx_time_get();
+  while ((status == HAL_OK) &&
+         (((uint32_t)tx_time_get() - live_start_tick) <
+          PS_HW6_JOYSTICK_LIVE_DURATION_TICKS))
+  {
+    driver_status = ps_dev_tmag3001_read_raw_sample(
+      &ps_joystick_device,
+      &sample);
+    status = PS_HW6_SM_StatusToHal(driver_status);
+    if (status == HAL_OK)
+    {
+      status = PS_HW6_SM_NormalizeJoystickSample(
+        &sample,
+        PS_INPUT_JOYSTICK_POLICY_FAST_POLL);
+      if (status == HAL_OK)
+      {
+        g_ps_hw6_owner_sm_probe.joystick_live_sample_count++;
+      }
+      else
+      {
+        g_ps_hw6_owner_sm_probe.joystick_live_error_count++;
+      }
+    }
+    else
+    {
+      g_ps_hw6_owner_sm_probe.joystick_live_error_count++;
+    }
+
+    if (((uint32_t)tx_time_get() - live_start_tick) <
+        PS_HW6_JOYSTICK_LIVE_DURATION_TICKS)
+    {
+      tx_thread_sleep(PS_HW6_JOYSTICK_LIVE_PERIOD_TICKS);
+    }
+  }
+
+  if ((status == HAL_OK) &&
+      (g_ps_hw6_owner_sm_probe.joystick_live_sample_count == 0UL))
+  {
+    status = HAL_ERROR;
+  }
+
+  if (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_ACTIVE)
+  {
+    driver_status = ps_dev_tmag3001_suspend(
+      &ps_joystick_device,
+      &suspend_result);
+    if (status == HAL_OK)
+    {
+      status = PS_HW6_SM_StatusToHal(driver_status);
+    }
+  }
+
+  if (status == HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                               JOY_EV_QUIESCE,
+                               HAL_OK);
+  }
+  else
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                               JOY_EV_I2C_ERROR,
+                               status);
+  }
+
+  PS_HW6_SM_UpdateJoystickDriverProbe();
+  PS_HW6_SM_UpdateJoystickInputProbe();
+  g_ps_hw6_owner_sm_probe.joystick_live_end_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_sm_probe.joystick_live_status = (uint32_t)status;
+  return status;
+}
+
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void)
+{
+  ps_dev_tmag3001_stabilize_result_t stabilize_result;
+  ps_dev_tmag3001_wake_result_t wake_result;
+  ps_dev_tmag3001_raw_sample_t sample;
+  ps_dev_tmag3001_suspend_result_t suspend_result;
+  ps_status_t driver_status;
+  HAL_StatusTypeDef status;
+
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_request_count++;
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_start_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_end_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+
+  status = HAL_OK;
+  if (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_READY)
+  {
+    driver_status = ps_dev_tmag3001_stabilize_suspended(
+      &ps_joystick_device,
+      &stabilize_result);
+    status = PS_HW6_SM_StatusToHal(driver_status);
+  }
+
+  if (status == HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                               JOY_EV_THRESHOLD_ARM_REQUEST,
+                               HAL_OK);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                               JOY_EV_INTERRUPT,
+                               HAL_OK);
+    driver_status = ps_dev_tmag3001_wake_continuous(
+      &ps_joystick_device,
+      &wake_result);
+    status = PS_HW6_SM_StatusToHal(driver_status);
+  }
+
+  if (status == HAL_OK)
+  {
+    driver_status = ps_dev_tmag3001_read_raw_sample(
+      &ps_joystick_device,
+      &sample);
+    status = PS_HW6_SM_StatusToHal(driver_status);
+  }
+
+  if (status == HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                               JOY_EV_SAMPLE_DONE,
+                               HAL_OK);
+    status = PS_HW6_SM_NormalizeJoystickSample(
+      &sample,
+      PS_INPUT_JOYSTICK_POLICY_DIRECTION_SAMPLE);
+  }
+
+  if (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_ACTIVE)
+  {
+    driver_status = ps_dev_tmag3001_suspend(
+      &ps_joystick_device,
+      &suspend_result);
+    if (status == HAL_OK)
+    {
+      status = PS_HW6_SM_StatusToHal(driver_status);
+    }
+  }
+
+  if (status == HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                               JOY_EV_NORMALIZE_DONE,
+                               HAL_OK);
+  }
+  else
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                               JOY_EV_I2C_ERROR,
+                               status);
+  }
+
+  PS_HW6_SM_UpdateJoystickDriverProbe();
+  PS_HW6_SM_UpdateJoystickInputProbe();
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_end_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_status = (uint32_t)status;
+  return status;
+}
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void)
 {
   HAL_StatusTypeDef status = HAL_OK;
@@ -2242,6 +2780,9 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_start_request = 0UL;
   g_ps_hw6_storage_usb_export_request = 0UL;
   g_ps_hw6_storage_usb_reclaim_request = 0UL;
+  g_ps_hw6_joystick_sample_request = 0UL;
+  g_ps_hw6_joystick_live_request = 0UL;
+  g_ps_hw6_joystick_cardinal_request = 0UL;
   PS_HW6_UsbExport_Reset();
   g_ps_hw6_owner_sm_probe.magic = PS_HW6_OWNER_SM_PROBE_MAGIC;
   g_ps_hw6_owner_sm_probe.version = PS_HW6_OWNER_SM_PROBE_VERSION;
@@ -2264,6 +2805,7 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.joystick_driver_init_status =
     (uint32_t)joystick_init_status;
   PS_HW6_SM_UpdateJoystickDriverProbe();
+  PS_HW6_SM_ResetJoystickRuntimeProbes();
 
   flash_init_status = ps_dev_at25sl128a_init(
     &ps_flash_device,

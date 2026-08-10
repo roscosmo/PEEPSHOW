@@ -8,12 +8,15 @@
 #define PS_DEV_TMAG3001_MAX_LEASE_MS        (250UL)
 #define PS_DEV_TMAG3001_TRANSFER_TIMEOUT_MS (50UL)
 #define PS_DEV_TMAG3001_WAKE_SETTLE_TICKS   (1UL)
+#define PS_DEV_TMAG3001_SAMPLE_SETTLE_TICKS (1UL)
 
 #define PS_DEV_TMAG3001_REG_DEVICE_CONFIG2   (0x01U)
 #define PS_DEV_TMAG3001_REG_SENSOR_CONFIG1   (0x02U)
 #define PS_DEV_TMAG3001_REG_DEVICE_ID        (0x0DU)
 #define PS_DEV_TMAG3001_REG_MANUFACTURER_LSB (0x0EU)
 #define PS_DEV_TMAG3001_REG_MANUFACTURER_MSB (0x0FU)
+#define PS_DEV_TMAG3001_REG_X_RESULT_MSB    (0x12U)
+#define PS_DEV_TMAG3001_SAMPLE_WINDOW_LEN    (7U)
 
 #define PS_DEV_TMAG3001_MANUFACTURER_LSB     (0x49U)
 #define PS_DEV_TMAG3001_MANUFACTURER_MSB     (0x54U)
@@ -504,6 +507,79 @@ ps_status_t ps_dev_tmag3001_wake_continuous(
     device->state = PS_DEV_TMAG3001_STATE_ACTIVE;
   }
   return result->status;
+}
+
+
+ps_status_t ps_dev_tmag3001_read_raw_sample(
+  ps_dev_tmag3001_t *device,
+  ps_dev_tmag3001_raw_sample_t *sample)
+{
+  ps_hw_i2c3_lease_t lease;
+  ps_hw_i2c3_lease_result_t acquire_result;
+  ps_dev_tmag3001_transport_t transport;
+  uint8_t data[PS_DEV_TMAG3001_SAMPLE_WINDOW_LEN];
+  ps_status_t status;
+
+  if ((device == NULL) || (sample == NULL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  (void)memset(sample, 0, sizeof(*sample));
+  sample->status = PS_STATUS_INTERNAL_ERROR;
+  if (device->initialized == 0U)
+  {
+    sample->status = PS_STATUS_NOT_INITIALIZED;
+    return sample->status;
+  }
+  if (device->state != PS_DEV_TMAG3001_STATE_ACTIVE)
+  {
+    sample->status = PS_STATUS_INVALID_STATE;
+    device->last_status = (uint32_t)sample->status;
+    return sample->status;
+  }
+  device->operation_count++;
+
+  acquire_result = ps_hw_i2c3_acquire(
+    PS_HW_I2C3_CLIENT_INPUT,
+    PS_DEV_TMAG3001_ACQUIRE_TIMEOUT_MS,
+    PS_DEV_TMAG3001_MAX_LEASE_MS,
+    &lease);
+  if (acquire_result.status != PS_STATUS_OK)
+  {
+    sample->status = acquire_result.status;
+    device->last_status = (uint32_t)sample->status;
+    device->state = PS_DEV_TMAG3001_STATE_FAULT;
+    return sample->status;
+  }
+  (void)memset(&transport, 0, sizeof(transport));
+  (void)memset(data, 0, sizeof(data));
+  tx_thread_sleep(PS_DEV_TMAG3001_SAMPLE_SETTLE_TICKS);
+
+  transport.last_transfer = ps_hw_i2c3_mem_read(
+    &lease,
+    device->address_7bit,
+    PS_DEV_TMAG3001_REG_X_RESULT_MSB,
+    data,
+    PS_DEV_TMAG3001_SAMPLE_WINDOW_LEN,
+    PS_DEV_TMAG3001_TRANSFER_TIMEOUT_MS);
+  status = transport.last_transfer.status;
+  if (status == PS_STATUS_OK)
+  {
+    sample->x = (int16_t)(((uint16_t)data[0] << 8) | (uint16_t)data[1]);
+    sample->y = (int16_t)(((uint16_t)data[2] << 8) | (uint16_t)data[3]);
+    sample->z = (int16_t)(((uint16_t)data[4] << 8) | (uint16_t)data[5]);
+    sample->conv_status = data[6];
+  }
+
+  ps_dev_tmag3001_set_last_hal(
+    &transport, &sample->last_hal_status, &sample->last_hal_error);
+  status = ps_dev_tmag3001_finish(device, &lease, status);
+  sample->status = status;
+  if (status == PS_STATUS_OK)
+  {
+    device->state = PS_DEV_TMAG3001_STATE_ACTIVE;
+  }
+  return sample->status;
 }
 
 ps_status_t ps_dev_tmag3001_suspend(
