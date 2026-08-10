@@ -210,7 +210,20 @@ typedef struct
   uint32_t joystick_cardinal_start_tick;
   uint32_t joystick_cardinal_end_tick;
   uint32_t joystick_cardinal_status;
-
+  uint32_t joystick_calibration_capture_request_count;
+  uint32_t joystick_calibration_capture_start_tick;
+  uint32_t joystick_calibration_capture_end_tick;
+  uint32_t joystick_calibration_capture_status;
+  uint32_t joystick_calibration_capture_page;
+  uint32_t joystick_calibration_active_valid;
+  int32_t joystick_calibration_center_x;
+  int32_t joystick_calibration_center_y;
+  int32_t joystick_calibration_min_x;
+  int32_t joystick_calibration_max_x;
+  int32_t joystick_calibration_min_y;
+  int32_t joystick_calibration_max_y;
+  int32_t joystick_calibration_deadzone_counts;
+  int32_t joystick_calibration_direction_threshold;
   uint32_t imu_driver_api_version;
   uint32_t imu_driver_init_status;
   uint32_t imu_driver_state;
@@ -485,6 +498,8 @@ extern volatile uint32_t g_ps_hw6_storage_usb_reclaim_request;
 extern volatile uint32_t g_ps_hw6_joystick_sample_request;
 extern volatile uint32_t g_ps_hw6_joystick_live_request;
 extern volatile uint32_t g_ps_hw6_joystick_cardinal_request;
+extern volatile uint32_t g_ps_hw6_joystick_calibration_capture_request;
+extern volatile uint32_t g_ps_hw6_joystick_calibration_capture_page;
 
 void PS_HW6_OwnerStateMachines_Init(void);
 void PS_HW6_OwnerStateMachines_BeginWorkflow(void);
@@ -494,6 +509,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSampleProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickLiveProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCalibrationCapture(
+  uint32_t calibration_page);
 void PS_HW6_OwnerStateMachines_BeginCycle(uint32_t cycle_index);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Resume(uint32_t owner_id,
                                                     uint32_t cycle_index);

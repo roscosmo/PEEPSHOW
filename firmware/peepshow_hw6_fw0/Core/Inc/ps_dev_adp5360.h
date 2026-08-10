@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-#define PS_DEV_ADP5360_API_VERSION       (3UL)
+#define PS_DEV_ADP5360_API_VERSION       (4UL)
 #define PS_DEV_ADP5360_POWER_REGISTER_COUNT (7UL)
 #define PS_DEV_ADP5360_FUEL_REGISTER_COUNT  (5UL)
 
@@ -102,6 +102,8 @@ typedef struct
 
 ps_status_t ps_dev_adp5360_init(ps_dev_adp5360_t *device,
                                 uint8_t address_7bit);
+ps_status_t ps_dev_adp5360_enable_mr_shipping_mode(
+  ps_dev_adp5360_t *device);
 ps_status_t ps_dev_adp5360_read_power_snapshot(
   ps_dev_adp5360_t *device,
   ps_dev_adp5360_power_snapshot_t *snapshot);

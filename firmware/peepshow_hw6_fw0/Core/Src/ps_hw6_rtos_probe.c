@@ -60,6 +60,8 @@ static TX_EVENT_FLAGS_GROUP ps_event_groups[PS_HW6_RTOS_EVENT_GROUP_COUNT];
 static VOID *ps_thread_stacks[PS_HW6_RTOS_OWNER_COUNT];
 static VOID *ps_queue_storage[PS_HW6_RTOS_QUEUE_COUNT];
 static uint32_t ps_ui_boot_complete_sent;
+static uint32_t ps_power_boot_done;
+static uint32_t ps_display_bootstrap_sent;
 
 static CHAR *const ps_owner_names[PS_HW6_RTOS_OWNER_COUNT] =
 {
@@ -132,6 +134,8 @@ static void PS_HW6_RTOS_ResetProbe(void)
                sizeof(g_ps_hw6_rtos_probe));
   g_ps_hw6_rtos_low_power_usb_skip_count = 0UL;
   ps_ui_boot_complete_sent = 0UL;
+  ps_power_boot_done = 0UL;
+  ps_display_bootstrap_sent = 0UL;
   g_ps_hw6_rtos_probe.magic = PS_HW6_RTOS_PROBE_MAGIC;
   g_ps_hw6_rtos_probe.version = PS_HW6_RTOS_PROBE_VERSION;
   g_ps_hw6_rtos_probe.phase = PS_HW6_RTOS_PHASE_INIT;
@@ -297,6 +301,41 @@ static uint32_t PS_HW6_RTOS_RouterEventForButton(uint32_t button_id)
   if (button_id == PS_INPUT_BUTTON_ID_R)
   {
     return PS_UI_ROUTER_EVENT_INPUT_BTN_R;
+  }
+
+  return 0UL;
+}
+
+static uint32_t PS_HW6_RTOS_RouterEventForCalibrationCapture(
+  uint32_t calibration_page)
+{
+  if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_NEUTRAL)
+  {
+    return PS_UI_ROUTER_EVENT_CAL_JOYSTICK_NEUTRAL_ACCEPT;
+  }
+  if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_RIGHT)
+  {
+    return PS_UI_ROUTER_EVENT_CAL_JOYSTICK_RIGHT_ACCEPT;
+  }
+  if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_CIRCLE)
+  {
+    return PS_UI_ROUTER_EVENT_CAL_JOYSTICK_CIRCLE_ACCEPT;
+  }
+  return 0UL;
+}
+
+static uint32_t PS_HW6_RTOS_RequestJoystickCalibrationCapture(
+  uint32_t button_id)
+{
+  uint32_t calibration_page = g_ps_ui_router_probe.calibration_page;
+
+  if ((button_id == PS_INPUT_BUTTON_ID_A) &&
+      (g_ps_ui_router_probe.current_page == PS_UI_ROUTER_PAGE_CALIBRATION) &&
+      (PS_HW6_RTOS_RouterEventForCalibrationCapture(calibration_page) != 0UL))
+  {
+    g_ps_hw6_joystick_calibration_capture_page = calibration_page;
+    g_ps_hw6_joystick_calibration_capture_request = 1UL;
+    return 1UL;
   }
 
   return 0UL;
@@ -686,11 +725,15 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       }
       else if (PS_HW6_RTOS_UiInputCommandIsValid(owner_id, message) != 0UL)
       {
-        router_status = PS_UIRouter_Dispatch(
-          PS_HW6_RTOS_RouterEventForButton((uint32_t)message[3]));
-        if (router_status == PS_STATUS_OK)
+        if (PS_HW6_RTOS_RequestJoystickCalibrationCapture(
+              (uint32_t)message[3]) == 0UL)
         {
-          PS_HW6_RTOS_SendCurrentUiRenderCommand();
+          router_status = PS_UIRouter_Dispatch(
+            PS_HW6_RTOS_RouterEventForButton((uint32_t)message[3]));
+          if (router_status == PS_STATUS_OK)
+          {
+            PS_HW6_RTOS_SendCurrentUiRenderCommand();
+          }
         }
       }
       else
@@ -709,6 +752,27 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
 
     PS_HW6_RTOS_UpdateRuntimeComplete();
 
+    if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
+        (ps_power_boot_done == 0UL) &&
+        (ps_display_bootstrap_sent != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      (void)PS_HW6_OwnerStateMachines_Stabilize(
+        PS_HW6_RTOS_OWNER_POWER);
+      ps_power_boot_done = 1UL;
+      g_ps_hw6_rtos_probe.boot_power_done = 1UL;
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) &&
+        (ps_display_bootstrap_sent == 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      ps_display_bootstrap_sent = 1UL;
+      g_ps_hw6_rtos_probe.boot_display_bootstrap_sent = 1UL;
+      (void)PS_HW6_DisplayOwner_RenderUI(
+        PS_UI_ROUTER_PAGE_BOOTSTRAP,
+        PS_UI_ROUTER_CAL_NONE,
+        0UL);
+    }
     if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
         (g_ps_hw6_owner_sm_start_request != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL) &&
@@ -740,6 +804,20 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       (void)PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe();
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
+        (g_ps_hw6_joystick_calibration_capture_request != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      uint32_t calibration_page = g_ps_hw6_joystick_calibration_capture_page;
+      g_ps_hw6_joystick_calibration_capture_request = 0UL;
+      if (PS_HW6_OwnerStateMachines_RunJoystickCalibrationCapture(
+            calibration_page) == HAL_OK)
+      {
+        g_ps_ui_router_request_event =
+          PS_HW6_RTOS_RouterEventForCalibrationCapture(calibration_page);
+        g_ps_ui_router_request = 1UL;
+      }
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
       for (button_drain_count = 0UL;
@@ -757,6 +835,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_UI) &&
         (ps_ui_boot_complete_sent == 0UL) &&
+        (ps_power_boot_done != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
       ps_ui_boot_complete_sent = 1UL;

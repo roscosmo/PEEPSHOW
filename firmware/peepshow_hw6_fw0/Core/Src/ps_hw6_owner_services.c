@@ -561,6 +561,8 @@ UINT PS_HW6_OwnerServices_Init(void)
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.audio_ack_set_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.power_driver_mr_shipping_mode_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
 
   for (i = 0U; i < PS_HW6_OWNER_POWER_REGISTER_COUNT; ++i)
   {
@@ -612,6 +614,24 @@ UINT PS_HW6_OwnerServices_Init(void)
   g_ps_hw6_owner_probe.power_driver_last_status =
     ps_hw6_pmic.last_status;
   return status;
+}
+
+HAL_StatusTypeDef PS_HW6_PowerOwner_EnableMrShippingMode(void)
+{
+  ps_status_t status;
+
+  status = ps_dev_adp5360_enable_mr_shipping_mode(&ps_hw6_pmic);
+  g_ps_hw6_owner_probe.power_driver_mr_shipping_mode_status =
+    (uint32_t)status;
+  g_ps_hw6_owner_probe.power_driver_api_version =
+    ps_hw6_pmic.api_version;
+  g_ps_hw6_owner_probe.power_driver_state = ps_hw6_pmic.state;
+  g_ps_hw6_owner_probe.power_driver_operation_count =
+    ps_hw6_pmic.operation_count;
+  g_ps_hw6_owner_probe.power_driver_last_status =
+    ps_hw6_pmic.last_status;
+
+  return (status == PS_STATUS_OK) ? HAL_OK : HAL_ERROR;
 }
 
 HAL_StatusTypeDef PS_HW6_PowerOwner_RunSnapshot(void)

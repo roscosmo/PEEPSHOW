@@ -15,6 +15,7 @@
 #define PS_DEV_ADP5360_REG_BUCK_OUTPUT     (0x2AU)
 #define PS_DEV_ADP5360_REG_BUCKBST_CFG     (0x2BU)
 #define PS_DEV_ADP5360_REG_BUCKBST_OUTPUT  (0x2CU)
+#define PS_DEV_ADP5360_REG_SUPERVISORY     (0x2DU)
 #define PS_DEV_ADP5360_REG_FAULT_STATUS    (0x2EU)
 #define PS_DEV_ADP5360_REG_PGOOD_STATUS    (0x2FU)
 #define PS_DEV_ADP5360_REG_CHARGER_STATUS_1 (0x08U)
@@ -40,6 +41,7 @@
 #define PS_DEV_ADP5360_CHARGER_MONITOR_MASK (0x03UL)
 #define PS_DEV_ADP5360_SOC_PERCENT_MASK    (0x7FU)
 #define PS_DEV_ADP5360_REGULATOR_MASK      (0x1FUL)
+#define PS_DEV_ADP5360_SUPERVISORY_EN_MR_SD (0x02U)
 
 
 typedef enum
@@ -244,6 +246,72 @@ ps_status_t ps_dev_adp5360_init(ps_dev_adp5360_t *device,
   return PS_STATUS_OK;
 }
 
+ps_status_t ps_dev_adp5360_enable_mr_shipping_mode(
+  ps_dev_adp5360_t *device)
+{
+  ps_hw_i2c3_lease_t lease;
+  ps_hw_i2c3_lease_result_t acquire_result;
+  ps_hw_i2c3_lease_result_t release_result;
+  ps_hw_i2c3_transfer_result_t transfer_result;
+  ps_status_t status;
+  uint8_t value = 0U;
+
+  if (device == NULL)
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  if (device->initialized == 0U)
+  {
+    return PS_STATUS_NOT_INITIALIZED;
+  }
+
+  device->operation_count++;
+  acquire_result = ps_hw_i2c3_acquire(
+    PS_HW_I2C3_CLIENT_POWER,
+    PS_DEV_ADP5360_ACQUIRE_TIMEOUT_MS,
+    PS_DEV_ADP5360_MAX_LEASE_MS,
+    &lease);
+  if (acquire_result.status != PS_STATUS_OK)
+  {
+    device->last_status = (uint32_t)acquire_result.status;
+    device->state = PS_DEV_ADP5360_STATE_FAULT;
+    return acquire_result.status;
+  }
+
+  transfer_result = ps_hw_i2c3_mem_read(
+    &lease,
+    device->address_7bit,
+    PS_DEV_ADP5360_REG_SUPERVISORY,
+    &value,
+    1U,
+    PS_DEV_ADP5360_TRANSFER_TIMEOUT_MS);
+  status = transfer_result.status;
+
+  if (status == PS_STATUS_OK)
+  {
+    value |= PS_DEV_ADP5360_SUPERVISORY_EN_MR_SD;
+    transfer_result = ps_hw_i2c3_mem_write(
+      &lease,
+      device->address_7bit,
+      PS_DEV_ADP5360_REG_SUPERVISORY,
+      &value,
+      1U,
+      PS_DEV_ADP5360_TRANSFER_TIMEOUT_MS);
+    status = transfer_result.status;
+  }
+
+  release_result = ps_hw_i2c3_release(&lease);
+  if ((status == PS_STATUS_OK) &&
+      (release_result.status != PS_STATUS_OK))
+  {
+    status = release_result.status;
+  }
+
+  device->last_status = (uint32_t)status;
+  device->state = (status == PS_STATUS_OK) ?
+    PS_DEV_ADP5360_STATE_MONITOR : PS_DEV_ADP5360_STATE_FAULT;
+  return status;
+}
 ps_status_t ps_dev_adp5360_read_power_snapshot(
   ps_dev_adp5360_t *device,
   ps_dev_adp5360_power_snapshot_t *snapshot)

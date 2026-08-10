@@ -39,6 +39,7 @@ typedef struct
   uint32_t power_success;
   uint32_t power_driver_api_version;
   uint32_t power_driver_init_status;
+  uint32_t power_driver_mr_shipping_mode_status;
   uint32_t power_driver_state;
   uint32_t power_driver_operation_count;
   uint32_t power_driver_last_status;
@@ -153,6 +154,7 @@ typedef struct
 extern volatile PS_HW6_OwnerProbe g_ps_hw6_owner_probe;
 
 UINT PS_HW6_OwnerServices_Init(void);
+HAL_StatusTypeDef PS_HW6_PowerOwner_EnableMrShippingMode(void);
 HAL_StatusTypeDef PS_HW6_PowerOwner_RunSnapshot(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(uint32_t page,
