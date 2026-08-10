@@ -102,6 +102,7 @@ printf "runtime                   %u %u %u %u %u\n", $rtos->owner_heartbeat[8], 
 
 printf "\n--- normal boot owner services ---\n"
 set $owner = &g_ps_hw6_owner_probe
+set $sm = &g_ps_hw6_owner_sm_probe
 printf "magic/version/phase       = 0x%x / 0x%x / 0x%x\n", $owner->magic, $owner->version, $owner->phase
 printf "complete/success/init     = %u / %u / 0x%x\n", $owner->complete, $owner->success, $owner->services_init_status
 printf "diagnostic workflow ticks = %u / %u / %u (0 means not requested)\n", $owner->workflow_start_tick, $owner->workflow_end_tick, $owner->workflow_end_tick - $owner->workflow_start_tick
@@ -111,7 +112,10 @@ printf "audio send/ack/flags      = 0x%x / 0x%x / 0x%x\n", $owner->audio_command
 
 printf "\n  power owner: read-only ADP5360 snapshot\n"
 printf "command/complete/success  = %u / %u / %u\n", $owner->power_command_tick, $owner->power_complete, $owner->power_success
-printf "ADP driver API/init/MR/state/ops/last = %u / %u / %u / %u / %u / %u\n", $owner->power_driver_api_version, $owner->power_driver_init_status, $owner->power_driver_mr_shipping_mode_status, $owner->power_driver_state, $owner->power_driver_operation_count, $owner->power_driver_last_status
+printf "ADP driver API/init/MR/sw/state/ops/last = %u / %u / %u / %u / %u / %u / %u\n", $owner->power_driver_api_version, $owner->power_driver_init_status, $owner->power_driver_mr_shipping_mode_status, $owner->power_driver_software_shipping_mode_status, $owner->power_driver_state, $owner->power_driver_operation_count, $owner->power_driver_last_status
+printf "ADP sw ship count/tick/request = %u / %u / %u\n", $owner->power_software_ship_request_count, $owner->power_software_ship_request_tick, g_ps_hw6_pmic_software_ship_request
+printf "START quiesce count/status/tick = %u / 0x%x / %u\n", $sm->start_power_quiesce_request_count, $sm->start_power_quiesce_last_status, $sm->start_power_quiesce_last_tick
+printf "START sw ship en/req/skip/status/tick = %u / %u / %u / 0x%x / %u\n", $sm->start_power_software_ship_enabled, $sm->start_power_software_ship_request_count, $sm->start_power_software_ship_skipped_count, $sm->start_power_software_ship_last_status, $sm->start_power_software_ship_last_tick
 printf "ADP functions/read/match = 0x%x / 0x%x / 0x%x\n", $owner->power_driver_function_ready_mask, $owner->power_driver_read_ok_mask, $owner->power_driver_expected_match_mask
 printf "register addresses        = %02x %02x %02x %02x %02x %02x %02x\n", $owner->power_register_address[0], $owner->power_register_address[1], $owner->power_register_address[2], $owner->power_register_address[3], $owner->power_register_address[4], $owner->power_register_address[5], $owner->power_register_address[6]
 printf "register values           = %02x %02x %02x %02x %02x %02x %02x\n", $owner->power_register_value[0], $owner->power_register_value[1], $owner->power_register_value[2], $owner->power_register_value[3], $owner->power_register_value[4], $owner->power_register_value[5], $owner->power_register_value[6]
@@ -147,6 +151,8 @@ printf "DMA done/state/error      = %u / 0x%x / 0x%x\n", $owner->display_dma_don
 printf "SPI state/error after     = 0x%x / 0x%x\n", $owner->display_spi_state_after, $owner->display_spi_error_after
 printf "ack set status            = 0x%x\n", $owner->display_ack_set_status
 printf "expected visual           = early blank hold, then current UI page\n"
+printf "display UI page/cal/focus = %u / %u / %u\n", $owner->display_ui_page, $owner->display_ui_calibration_page, $owner->display_ui_focus_index
+printf "display shutdown/cd       = %u / %u\n", $owner->display_ui_shutdown_state, $owner->display_ui_shutdown_countdown_seconds
 printf "expected normal boot      = display hold flag set, then HOME render after power\n"
 
 printf "\n  audio owner: idle unless diagnostic workflow requested\n"
@@ -177,6 +183,8 @@ printf "START prep/warn/imm/release/drop = %u / %u / %u / %u / %u\n", g_ps_input
 printf "START power count/event/status/hold ticks = %u / %u / 0x%x / %u\n", $sm->start_power_event_count, $sm->start_power_last_event, $sm->start_power_last_status, $sm->start_power_last_hold_ticks
 printf "START power return state = %u\n", $sm->start_power_return_state
 printf "START power prep/warn/imm/cancel = %u / %u / %u / %u\n", $sm->start_power_ship_prep_count, $sm->start_power_ship_warning_count, $sm->start_power_ship_imminent_count, $sm->start_power_cancel_count
+printf "START power quiesce count/status/tick = %u / 0x%x / %u\n", $sm->start_power_quiesce_request_count, $sm->start_power_quiesce_last_status, $sm->start_power_quiesce_last_tick
+printf "START power sw ship en/req/skip/status/tick = %u / %u / %u / 0x%x / %u\n", $sm->start_power_software_ship_enabled, $sm->start_power_software_ship_request_count, $sm->start_power_software_ship_skipped_count, $sm->start_power_software_ship_last_status, $sm->start_power_software_ship_last_tick
 printf "\nowner lifecycle transport: send wait ack action start end\n"
 printf "power                      %x %x %x %x %u %u\n", $sm->owner_command_send_status[0], $sm->owner_ack_wait_status[0], $sm->owner_ack_flags[0], $sm->owner_action_status[0], $sm->owner_action_start_tick[0], $sm->owner_action_end_tick[0]
 printf "audio                      %x %x %x %x %u %u\n", $sm->owner_command_send_status[1], $sm->owner_ack_wait_status[1], $sm->owner_ack_flags[1], $sm->owner_action_status[1], $sm->owner_action_start_tick[1], $sm->owner_action_end_tick[1]

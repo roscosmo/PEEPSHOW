@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_UI_ROUTER_API_VERSION (1UL)
+#define PS_UI_ROUTER_API_VERSION (2UL)
 #define PS_UI_ROUTER_STATUS_NOT_RUN (0xFFFFFFFFUL)
 
 typedef enum
@@ -21,7 +21,8 @@ typedef enum
   PS_UI_ROUTER_PAGE_CALIBRATION,
   PS_UI_ROUTER_PAGE_PACKAGE_BROWSER,
   PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF,
-  PS_UI_ROUTER_PAGE_ERROR
+  PS_UI_ROUTER_PAGE_ERROR,
+  PS_UI_ROUTER_PAGE_SHUTDOWN
 } ps_ui_router_page_t;
 
 typedef enum
@@ -53,6 +54,15 @@ typedef enum
 
 typedef enum
 {
+  PS_UI_ROUTER_SHUTDOWN_NONE = 0,
+  PS_UI_ROUTER_SHUTDOWN_PREP,
+  PS_UI_ROUTER_SHUTDOWN_WARNING,
+  PS_UI_ROUTER_SHUTDOWN_IMMINENT,
+  PS_UI_ROUTER_SHUTDOWN_CANCELLED
+} ps_ui_router_shutdown_state_t;
+
+typedef enum
+{
   PS_UI_ROUTER_EVENT_BOOT_COMPLETE = 1,
   PS_UI_ROUTER_EVENT_NAV_HOME,
   PS_UI_ROUTER_EVENT_NAV_MENU,
@@ -72,7 +82,11 @@ typedef enum
   PS_UI_ROUTER_EVENT_INPUT_BTN_A,
   PS_UI_ROUTER_EVENT_INPUT_BTN_B,
   PS_UI_ROUTER_EVENT_INPUT_BTN_L,
-  PS_UI_ROUTER_EVENT_INPUT_BTN_R
+  PS_UI_ROUTER_EVENT_INPUT_BTN_R,
+  PS_UI_ROUTER_EVENT_SHUTDOWN_PREP,
+  PS_UI_ROUTER_EVENT_SHUTDOWN_WARNING,
+  PS_UI_ROUTER_EVENT_SHUTDOWN_IMMINENT,
+  PS_UI_ROUTER_EVENT_SHUTDOWN_CANCEL
 } ps_ui_router_event_t;
 
 typedef struct
@@ -85,6 +99,10 @@ typedef struct
   uint32_t modal_state;
   uint32_t calibration_page;
   uint32_t focus_index;
+  uint32_t shutdown_state;
+  uint32_t shutdown_countdown_seconds;
+  uint32_t shutdown_event_count;
+  uint32_t shutdown_return_page;
   uint32_t last_button_event;
   uint32_t button_event_count;
   uint32_t last_event;

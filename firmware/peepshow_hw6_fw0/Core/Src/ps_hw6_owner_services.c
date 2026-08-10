@@ -315,9 +315,29 @@ static uint32_t PS_HW6_DisplayDrawCenteredText(uint16_t y,
   return PS_HW6_DisplayDrawText(x, y, text, scale);
 }
 
+static const char *PS_HW6_DisplayShutdownCountdownLine(
+  uint32_t countdown_seconds)
+{
+  if (countdown_seconds == 3UL)
+  {
+    return "POWER OFF IN 3";
+  }
+  if (countdown_seconds == 2UL)
+  {
+    return "POWER OFF IN 2";
+  }
+  if (countdown_seconds == 1UL)
+  {
+    return "POWER OFF IN 1";
+  }
+  return "PREPARING";
+}
+
 static void PS_HW6_DisplayUIStrings(uint32_t page,
                                     uint32_t calibration_page,
                                     uint32_t focus_index,
+                                    uint32_t shutdown_state,
+                                    uint32_t shutdown_countdown_seconds,
                                     const char **title,
                                     const char **line1,
                                     const char **line2)
@@ -396,6 +416,13 @@ static void PS_HW6_DisplayUIStrings(uint32_t page,
       *line1 = "SHELL FAULT";
       *line2 = "RECOVER";
       break;
+    case PS_UI_ROUTER_PAGE_SHUTDOWN:
+      *title = "SHUTDOWN";
+      *line1 = PS_HW6_DisplayShutdownCountdownLine(
+        shutdown_countdown_seconds);
+      *line2 = (shutdown_state == PS_UI_ROUTER_SHUTDOWN_CANCELLED) ?
+        "CANCELLED" : "HOLD START";
+      break;
     default:
       *title = "BOOT";
       *line1 = "STARTING";
@@ -406,7 +433,9 @@ static void PS_HW6_DisplayUIStrings(uint32_t page,
 
 static void PS_HW6_PrepareDisplayUIPage(uint32_t page,
                                         uint32_t calibration_page,
-                                        uint32_t focus_index)
+                                        uint32_t focus_index,
+                                        uint32_t shutdown_state,
+                                        uint32_t shutdown_countdown_seconds)
 {
   const char *title;
   const char *line1;
@@ -416,7 +445,14 @@ static void PS_HW6_PrepareDisplayUIPage(uint32_t page,
   (void)memset(ps_hw6_display_framebuffer, 0xFF,
                sizeof(ps_hw6_display_framebuffer));
   ps_hw6_display_ui_rotate_ccw = 1UL;
-  PS_HW6_DisplayUIStrings(page, calibration_page, focus_index, &title, &line1, &line2);
+  PS_HW6_DisplayUIStrings(page,
+                          calibration_page,
+                          focus_index,
+                          shutdown_state,
+                          shutdown_countdown_seconds,
+                          &title,
+                          &line1,
+                          &line2);
 
   black_pixels += PS_HW6_DisplayHorizontalLine(
     0U, (uint16_t)(PS_HW6_DISPLAY_UI_LOGICAL_WIDTH - 1U), 0U);
@@ -563,6 +599,10 @@ UINT PS_HW6_OwnerServices_Init(void)
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.power_driver_mr_shipping_mode_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.power_driver_software_shipping_mode_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.power_software_ship_request_count = 0UL;
+  g_ps_hw6_owner_probe.power_software_ship_request_tick = 0UL;
 
   for (i = 0U; i < PS_HW6_OWNER_POWER_REGISTER_COUNT; ++i)
   {
@@ -622,6 +662,28 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_EnableMrShippingMode(void)
 
   status = ps_dev_adp5360_enable_mr_shipping_mode(&ps_hw6_pmic);
   g_ps_hw6_owner_probe.power_driver_mr_shipping_mode_status =
+    (uint32_t)status;
+  g_ps_hw6_owner_probe.power_driver_api_version =
+    ps_hw6_pmic.api_version;
+  g_ps_hw6_owner_probe.power_driver_state = ps_hw6_pmic.state;
+  g_ps_hw6_owner_probe.power_driver_operation_count =
+    ps_hw6_pmic.operation_count;
+  g_ps_hw6_owner_probe.power_driver_last_status =
+    ps_hw6_pmic.last_status;
+
+  return (status == PS_STATUS_OK) ? HAL_OK : HAL_ERROR;
+}
+
+HAL_StatusTypeDef PS_HW6_PowerOwner_EnterSoftwareShipmentMode(void)
+{
+  ps_status_t status;
+
+  g_ps_hw6_owner_probe.power_software_ship_request_count++;
+  g_ps_hw6_owner_probe.power_software_ship_request_tick =
+    (uint32_t)tx_time_get();
+
+  status = ps_dev_adp5360_enter_shipment_mode(&ps_hw6_pmic);
+  g_ps_hw6_owner_probe.power_driver_software_shipping_mode_status =
     (uint32_t)status;
   g_ps_hw6_owner_probe.power_driver_api_version =
     ps_hw6_pmic.api_version;
@@ -798,6 +860,10 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearBootHold(void)
   g_ps_hw6_owner_probe.display_ui_request_count++;
   g_ps_hw6_owner_probe.display_ui_page = PS_UI_ROUTER_PAGE_BOOTSTRAP;
   g_ps_hw6_owner_probe.display_ui_calibration_page = PS_UI_ROUTER_CAL_NONE;
+  g_ps_hw6_owner_probe.display_ui_focus_index = 0UL;
+  g_ps_hw6_owner_probe.display_ui_shutdown_state =
+    PS_UI_ROUTER_SHUTDOWN_NONE;
+  g_ps_hw6_owner_probe.display_ui_shutdown_countdown_seconds = 0UL;
   g_ps_hw6_owner_probe.display_rtc_state = HAL_RTC_GetState(&hrtc);
   g_ps_hw6_owner_probe.display_rtc_cr = hrtc.Instance->CR;
   g_ps_hw6_owner_probe.display_spi_state_before = HAL_SPI_GetState(&hspi3);
@@ -837,9 +903,12 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearBootHold(void)
   return HAL_ERROR;
 }
 
-HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(uint32_t page,
-                                               uint32_t calibration_page,
-                                               uint32_t focus_index)
+HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
+  uint32_t page,
+  uint32_t calibration_page,
+  uint32_t focus_index,
+  uint32_t shutdown_state,
+  uint32_t shutdown_countdown_seconds)
 {
   ps_dev_ls013b7dh05_present_result_t result;
   ps_status_t driver_status;
@@ -850,11 +919,19 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(uint32_t page,
   g_ps_hw6_owner_probe.display_ui_request_count++;
   g_ps_hw6_owner_probe.display_ui_page = page;
   g_ps_hw6_owner_probe.display_ui_calibration_page = calibration_page;
+  g_ps_hw6_owner_probe.display_ui_focus_index = focus_index;
+  g_ps_hw6_owner_probe.display_ui_shutdown_state = shutdown_state;
+  g_ps_hw6_owner_probe.display_ui_shutdown_countdown_seconds =
+    shutdown_countdown_seconds;
   g_ps_hw6_owner_probe.display_rtc_state = HAL_RTC_GetState(&hrtc);
   g_ps_hw6_owner_probe.display_rtc_cr = hrtc.Instance->CR;
   g_ps_hw6_owner_probe.display_spi_state_before = HAL_SPI_GetState(&hspi3);
 
-  PS_HW6_PrepareDisplayUIPage(page, calibration_page, focus_index);
+  PS_HW6_PrepareDisplayUIPage(page,
+                              calibration_page,
+                              focus_index,
+                              shutdown_state,
+                              shutdown_countdown_seconds);
   driver_status = ps_dev_ls013b7dh05_present_full_dma(
     &ps_hw6_display,
     ps_hw6_display_framebuffer,

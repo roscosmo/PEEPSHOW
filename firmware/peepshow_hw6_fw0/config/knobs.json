@@ -1,7 +1,8 @@
 {
   "input_start_long_press_ms": 1000,
-  "input_start_ship_prep_ms": 5000,
+  "input_start_ship_prep_ms": 6000,
   "input_start_ship_warn_ms": 9000,
   "input_start_ship_imminent_ms": 11000,
-  "input_start_stable_samples": 2
+  "input_start_stable_samples": 2,
+  "power_start_software_ship_enable": false
 }

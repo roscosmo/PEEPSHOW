@@ -104,14 +104,14 @@ This measured result means the firmware enables the ADP5360 option that lets a
 full low-power policy is still under development.
 
 This does not close the full shipping-mode product behavior. Firmware now has
-target-validated START hold classification through the 5 s prep, 9 s warning,
-and 11 s imminent scaffold, and HW6 unit 001 confirmed ADP5360 shipment entry
+target-validated START hold classification through the prep, warning,
+and imminent scaffold, and HW6 unit 001 confirmed ADP5360 shipment entry
 after a long START/MR hold. Firmware still needs warning/countdown UI,
 save/quiesce behavior, release-cancel proof, wake/recovery proof, and
 first-boot/no-settings policy. The hardware threshold must still be treated as
 final once reached.
 
-The current FW0 START scaffold routes input-owned hold events to `thPower`, records them in the power state-machine probe, preserves the prior active return state, and enters existing `PWR_SHIP_PREP` / `PMIC_SHIP_PENDING` states. It intentionally does not command shipment entry or perform final low-power shutdown work yet. The ADP5360 hardware, not firmware, owns actual shipment entry after the MR low-time threshold.
+The current FW0 START scaffold routes input-owned hold events to `thPower`, records them in the power state-machine probe, preserves the prior active return state, enters existing `PWR_SHIP_PREP` / `PMIC_SHIP_PENDING` states, calls a counted no-op save/quiesce placeholder on ship-prep, and asks `thUI` to show a plain `SHUTDOWN` scaffold page. Release before shipment requests cancel and returns the UI to the prior page. FW0 also contains a guarded power-owner primitive for ADP5360 software shipment entry by writing Shipment Mode register `0x36 = 1`. START imminent may request that primitive only when `KNOB_POWER_START_SOFTWARE_SHIP_ENABLE` is true; the generated default is false, so normal bring-up START tests do not software-enter shipment. HW6 unit 001 validation confirmed this gate stayed closed during a full prep/warning/imminent/release sequence: software shipment enable/request/skip was `0/0/1`, PMIC software shipment request count stayed `0`, and the UI/display returned to HOME after release.
 
 This path is a normal boot power-owner action. It is not part of the retained
 peripheral diagnostic lifecycle and must not require display, audio, sensor,
@@ -287,5 +287,6 @@ Fault handling depends on severity:
 12. critical-battery ISOFET disconnect
 13. START hold shipping-prep handoff from input to power
 14. ADP5360 `EN_MR_SD` enable during normal boot through `thPower`
+15. START shutdown UI scaffold, release-cancel, and default-off software shipment request gate
 
 Evidence for these cases belongs in [[HW6_Brought_Up_Tracker]]. A passing HW5 result may define the initial procedure or expected value, but it does not close the corresponding HW6 row.

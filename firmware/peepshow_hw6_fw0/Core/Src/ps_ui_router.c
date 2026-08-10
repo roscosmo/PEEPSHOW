@@ -9,6 +9,10 @@ typedef struct
   uint32_t modal_state;
   uint32_t calibration_page;
   uint32_t focus_index;
+  uint32_t shutdown_state;
+  uint32_t shutdown_countdown_seconds;
+  uint32_t shutdown_event_count;
+  uint32_t shutdown_return_page;
   uint32_t last_button_event;
   uint32_t button_event_count;
   uint32_t last_event;
@@ -34,6 +38,14 @@ static void PS_UIRouter_UpdateProbe(void)
   g_ps_ui_router_probe.calibration_page =
     ps_ui_router_state.calibration_page;
   g_ps_ui_router_probe.focus_index = ps_ui_router_state.focus_index;
+  g_ps_ui_router_probe.shutdown_state =
+    ps_ui_router_state.shutdown_state;
+  g_ps_ui_router_probe.shutdown_countdown_seconds =
+    ps_ui_router_state.shutdown_countdown_seconds;
+  g_ps_ui_router_probe.shutdown_event_count =
+    ps_ui_router_state.shutdown_event_count;
+  g_ps_ui_router_probe.shutdown_return_page =
+    ps_ui_router_state.shutdown_return_page;
   g_ps_ui_router_probe.last_button_event =
     ps_ui_router_state.last_button_event;
   g_ps_ui_router_probe.button_event_count =
@@ -58,6 +70,51 @@ static uint32_t PS_UIRouter_CanNavigate(void)
   return 1UL;
 }
 
+static ps_status_t PS_UIRouter_ShowShutdown(uint32_t shutdown_state,
+                                           uint32_t countdown_seconds)
+{
+  if (ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_SHUTDOWN)
+  {
+    ps_ui_router_state.shutdown_return_page =
+      ps_ui_router_state.current_page;
+    ps_ui_router_state.previous_page = ps_ui_router_state.current_page;
+    ps_ui_router_state.current_page = PS_UI_ROUTER_PAGE_SHUTDOWN;
+    ps_ui_router_state.requested_page = PS_UI_ROUTER_PAGE_SHUTDOWN;
+  }
+
+  ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_MODAL_LOCK;
+  ps_ui_router_state.modal_state = PS_UI_ROUTER_MODAL_DIALOG;
+  ps_ui_router_state.calibration_page = PS_UI_ROUTER_CAL_NONE;
+  ps_ui_router_state.focus_index = 0UL;
+  ps_ui_router_state.shutdown_state = shutdown_state;
+  ps_ui_router_state.shutdown_countdown_seconds = countdown_seconds;
+  ps_ui_router_state.shutdown_event_count++;
+  ps_ui_router_state.transition_count++;
+  return PS_STATUS_OK;
+}
+
+static ps_status_t PS_UIRouter_CancelShutdown(void)
+{
+  uint32_t return_page = ps_ui_router_state.shutdown_return_page;
+
+  if ((return_page == PS_UI_ROUTER_PAGE_BOOTSTRAP) ||
+      (return_page == PS_UI_ROUTER_PAGE_ERROR) ||
+      (return_page == PS_UI_ROUTER_PAGE_SHUTDOWN))
+  {
+    return_page = PS_UI_ROUTER_PAGE_HOME;
+  }
+
+  ps_ui_router_state.previous_page = ps_ui_router_state.current_page;
+  ps_ui_router_state.current_page = return_page;
+  ps_ui_router_state.requested_page = return_page;
+  ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_FOCUS;
+  ps_ui_router_state.modal_state = PS_UI_ROUTER_MODAL_NONE;
+  ps_ui_router_state.shutdown_state = PS_UI_ROUTER_SHUTDOWN_CANCELLED;
+  ps_ui_router_state.shutdown_countdown_seconds = 0UL;
+  ps_ui_router_state.shutdown_event_count++;
+  ps_ui_router_state.transition_count++;
+  return PS_STATUS_OK;
+}
 static ps_status_t PS_UIRouter_GotoPage(uint32_t page)
 {
   if (PS_UIRouter_CanNavigate() == 0UL)
@@ -222,6 +279,10 @@ void PS_UIRouter_Init(void)
   ps_ui_router_state.modal_state = PS_UI_ROUTER_MODAL_NONE;
   ps_ui_router_state.calibration_page = PS_UI_ROUTER_CAL_NONE;
   ps_ui_router_state.focus_index = 0UL;
+  ps_ui_router_state.shutdown_state = PS_UI_ROUTER_SHUTDOWN_NONE;
+  ps_ui_router_state.shutdown_countdown_seconds = 0UL;
+  ps_ui_router_state.shutdown_event_count = 0UL;
+  ps_ui_router_state.shutdown_return_page = PS_UI_ROUTER_PAGE_HOME;
   ps_ui_router_state.last_button_event = 0UL;
   ps_ui_router_state.button_event_count = 0UL;
   ps_ui_router_state.last_event = 0UL;
@@ -331,6 +392,18 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
     case PS_UI_ROUTER_EVENT_PAGE_TRANSITION_END:
       ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_FOCUS;
       status = PS_STATUS_OK;
+      break;
+    case PS_UI_ROUTER_EVENT_SHUTDOWN_PREP:
+      status = PS_UIRouter_ShowShutdown(PS_UI_ROUTER_SHUTDOWN_PREP, 0UL);
+      break;
+    case PS_UI_ROUTER_EVENT_SHUTDOWN_WARNING:
+      status = PS_UIRouter_ShowShutdown(PS_UI_ROUTER_SHUTDOWN_WARNING, 3UL);
+      break;
+    case PS_UI_ROUTER_EVENT_SHUTDOWN_IMMINENT:
+      status = PS_UIRouter_ShowShutdown(PS_UI_ROUTER_SHUTDOWN_IMMINENT, 1UL);
+      break;
+    case PS_UI_ROUTER_EVENT_SHUTDOWN_CANCEL:
+      status = PS_UIRouter_CancelShutdown();
       break;
     case PS_UI_ROUTER_EVENT_INPUT_BTN_A:
       ps_ui_router_state.last_button_event = event;

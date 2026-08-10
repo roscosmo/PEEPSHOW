@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (15UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (16UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -126,6 +126,14 @@ typedef struct
   uint32_t start_power_ship_warning_count;
   uint32_t start_power_ship_imminent_count;
   uint32_t start_power_cancel_count;
+  uint32_t start_power_quiesce_request_count;
+  uint32_t start_power_quiesce_last_status;
+  uint32_t start_power_quiesce_last_tick;
+  uint32_t start_power_software_ship_enabled;
+  uint32_t start_power_software_ship_request_count;
+  uint32_t start_power_software_ship_skipped_count;
+  uint32_t start_power_software_ship_last_status;
+  uint32_t start_power_software_ship_last_tick;
 
   uint32_t joystick_driver_api_version;
   uint32_t joystick_driver_init_status;
@@ -504,6 +512,7 @@ typedef struct
 
 extern volatile PS_HW6_OwnerStateMachineProbe g_ps_hw6_owner_sm_probe;
 extern volatile uint32_t g_ps_hw6_owner_sm_start_request;
+extern volatile uint32_t g_ps_hw6_pmic_software_ship_request;
 extern volatile uint32_t g_ps_hw6_storage_usb_export_request;
 extern volatile uint32_t g_ps_hw6_storage_usb_reclaim_request;
 extern volatile uint32_t g_ps_hw6_joystick_sample_request;

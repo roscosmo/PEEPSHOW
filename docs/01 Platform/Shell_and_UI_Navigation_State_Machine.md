@@ -29,6 +29,7 @@ States:
 - `SHELL_PACKAGE_BROWSER`
 - `SHELL_RUNTIME_HANDOFF`
 - `SHELL_ERROR`
+- `SHELL_SHUTDOWN`
 
 Key events:
 - `EV_BOOT_COMPLETE`
@@ -114,7 +115,7 @@ On HW6 unit 001, FW0 has a first shell router integrated with `thUI`,
 `thInput`, and `thDisplay`:
 
 - `thUI` owns page transitions for BOOT, HOME, MENU, SETTINGS, CALIBRATION,
-  PACKAGES, RUNTIME, and ERROR pages
+  PACKAGES, RUNTIME, ERROR, and SHUTDOWN pages
 - `thInput` supplies generic button events (`BTN_A`, `BTN_B`, `BTN_L`,
   `BTN_R`); it does not publish universal enter/back actions
 - `thUI` maps those generic events contextually: A selects/advances, B backs
@@ -132,6 +133,8 @@ This is an FW0 shell scaffold, not the final renderer or final menu system.
 The joystick calibration page can be entered, but its multi-step calibration
 flow is not complete yet.
 
+Current FW0 also has a validated START shutdown scaffold: `thPower` accepts input-owned prep/warning/imminent/cancel lifecycle events, `thUI` maps those into a modal `SHUTDOWN` page, and `thDisplay` renders plain text for prep and warning states. HW6 unit 001 showed `PREPARING`, `POWER OFF IN 3/2/1`, then release before shipment returned to HOME with UI/display page `1` and shutdown state `4` (`CANCELLED`). This page is scaffolding only; final animation, sprites, copy, save progress, and product power-off policy remain open.
+
 ## Validation Cases
 
 1. page stack and back behavior remains deterministic
@@ -139,3 +142,5 @@ flow is not complete yet.
 3. text/numeric entry does not leak navigation actions
 4. runtime handoff/return restores shell state cleanly
 5. invalid transitions are rejected and logged
+6. START shutdown overlay blocks normal A/B/L/R page navigation while active
+7. START release before shipment cancels the shutdown overlay and restores the prior page

@@ -9,7 +9,8 @@
     "input_start_ship_prep_ms",
     "input_start_ship_warn_ms",
     "input_start_ship_imminent_ms",
-    "input_start_stable_samples"
+    "input_start_stable_samples",
+    "power_start_software_ship_enable"
   ],
   "properties": {
     "input_start_long_press_ms": {
@@ -71,6 +72,16 @@
       "class": "protected_policy",
       "path": "platform.knobs.input.start_stable_samples",
       "description": "Consecutive START live-level samples required before the sampled PA4 level is treated as stable."
+    },
+    "power_start_software_ship_enable": {
+      "type": "boolean",
+      "default": false,
+      "unit": "bool",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.start_software_ship_enable",
+      "description": "When true, the START imminent lifecycle event asks thPower to write the PMIC software shipment-mode register. Default false keeps bring-up tests non-destructive."
     }
   }
 }

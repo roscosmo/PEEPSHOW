@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "knobs_autogen.h"
 #include "main.h"
 #include "ps_audio_events.h"
 #include "ps_audio_state.h"
@@ -86,6 +87,7 @@ extern UART_HandleTypeDef hlpuart1;
 
 volatile PS_HW6_OwnerStateMachineProbe g_ps_hw6_owner_sm_probe;
 volatile uint32_t g_ps_hw6_owner_sm_start_request;
+volatile uint32_t g_ps_hw6_pmic_software_ship_request;
 volatile uint32_t g_ps_hw6_storage_usb_export_request;
 volatile uint32_t g_ps_hw6_storage_usb_reclaim_request;
 volatile uint32_t g_ps_hw6_joystick_sample_request;
@@ -95,6 +97,37 @@ volatile uint32_t g_ps_hw6_joystick_calibration_capture_request;
 volatile uint32_t g_ps_hw6_joystick_calibration_capture_page;
 
 static uint32_t ps_start_power_return_state;
+
+static HAL_StatusTypeDef PS_HW6_StartPowerPrepareForShipment(void)
+{
+  g_ps_hw6_owner_sm_probe.start_power_quiesce_request_count++;
+  g_ps_hw6_owner_sm_probe.start_power_quiesce_last_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_sm_probe.start_power_quiesce_last_status =
+    (uint32_t)HAL_OK;
+  return HAL_OK;
+}
+
+static void PS_HW6_StartPowerRequestSoftwareShipment(void)
+{
+  g_ps_hw6_owner_sm_probe.start_power_software_ship_enabled =
+    (uint32_t)KNOB_POWER_START_SOFTWARE_SHIP_ENABLE;
+  if (KNOB_POWER_START_SOFTWARE_SHIP_ENABLE != 0UL)
+  {
+    g_ps_hw6_owner_sm_probe.start_power_software_ship_request_count++;
+    g_ps_hw6_owner_sm_probe.start_power_software_ship_last_tick =
+      (uint32_t)tx_time_get();
+    g_ps_hw6_pmic_software_ship_request = 1UL;
+    g_ps_hw6_owner_sm_probe.start_power_software_ship_last_status =
+      (uint32_t)HAL_OK;
+  }
+  else
+  {
+    g_ps_hw6_owner_sm_probe.start_power_software_ship_skipped_count++;
+    g_ps_hw6_owner_sm_probe.start_power_software_ship_last_status =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  }
+}
 
 typedef struct
 {
@@ -3130,6 +3163,12 @@ void PS_HW6_OwnerStateMachines_Init(void)
 
   g_ps_hw6_owner_sm_probe.start_power_last_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.start_power_quiesce_last_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.start_power_software_ship_enabled =
+    (uint32_t)KNOB_POWER_START_SOFTWARE_SHIP_ENABLE;
+  g_ps_hw6_owner_sm_probe.start_power_software_ship_last_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   ps_start_power_return_state = PWR_ACTIVE_LP;
   g_ps_hw6_owner_sm_probe.start_power_return_state =
     ps_start_power_return_state;
@@ -3321,9 +3360,16 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandleStartShippingIntent(
         (start_event ==
          (uint32_t)PS_INPUT_START_POWER_EVENT_SHIP_PREP))
     {
+      (void)PS_HW6_StartPowerPrepareForShipment();
       (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
                                 PMIC_EV_SHIP_REQUEST,
                                 HAL_OK);
+    }
+    else if ((status == HAL_OK) &&
+             (start_event ==
+              (uint32_t)PS_INPUT_START_POWER_EVENT_SHIP_IMMINENT))
+    {
+      PS_HW6_StartPowerRequestSoftwareShipment();
     }
     else if ((status == HAL_OK) &&
              (start_event ==

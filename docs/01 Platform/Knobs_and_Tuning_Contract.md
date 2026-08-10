@@ -47,7 +47,7 @@ Live tuning, where allowed, is a developer-only extension defined by [[Live_Tuni
 
 Generated header is never manually edited.
 
-HW6 FW0 currently uses this pipeline in `firmware/peepshow_hw6_fw0` for the START shipping-prep scaffold. The initial target-local source files are `config/knobs.json`, `config/knobs.schema.json`, and `tools/gen_knobs.py`; the generated firmware output is `Core/Inc/knobs_autogen.h`. This bootstrap is intentionally small and should be expanded as additional measured HW6 firmware tunables are adopted.
+HW6 FW0 currently uses this pipeline in `firmware/peepshow_hw6_fw0` for the START shipping-prep scaffold. The target-local source files are `config/knobs.json`, `config/knobs.schema.json`, and `tools/gen_knobs.py`; the generated firmware output is `Core/Inc/knobs_autogen.h`. Current generated knobs cover START hold thresholds, START live-level stable-sample acceptance, and the protected default-off `KNOB_POWER_START_SOFTWARE_SHIP_ENABLE` switch. This bootstrap is intentionally small and should be expanded as additional measured HW6 firmware tunables are adopted.
 
 ---
 

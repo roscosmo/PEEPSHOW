@@ -173,8 +173,7 @@ enabled. Subsequent HW6 unit 001 FW0 captures validated the software
 shipping-prep, warning, and imminent scaffold at 5 s, 9 s, and 11 s. Those FW0 scaffold timings are now backed by HW6 `config/knobs.json` and `Core/Inc/knobs_autogen.h`, and
 the user confirmed ADP5360 shipment entry after a long START/MR hold. This
 does not authorize routine intentional shipment-entry testing as part of button
-navigation work, and it does not close save/quiesce, release-cancel,
-wake/recovery, or first-boot policy tests.
+navigation work. The START shutdown UI scaffold, no-op quiesce hook, release-cancel routing, and default-off software shipment gate are now target-validated. Real save/quiesce, wake/recovery, first-boot policy, and software shipment register `0x36` entry remain open.
 
 ## Threshold / Policy Ledger
 
@@ -202,8 +201,8 @@ Populate this table during bring-up. Values are placeholders until selected and 
 | charger-present debounce/filter | TBD | USB connect/disconnect logs | open |
 | VBUS disagreement timeout | TBD | ADP5360 vs `PA9` mismatch handling | open |
 | PMIC read retry limit | TBD | transient failure recovery test | open |
-| START ship-prep threshold | `KNOB_INPUT_START_SHIP_PREP_MS = 5000 ms` FW0 scaffold | power owner receives prep before hardware cutoff | pass_unit_001; knob-backed; save/quiesce policy open |
-| START warning threshold | `KNOB_INPUT_START_SHIP_WARN_MS = 9000 ms` FW0 scaffold | warning starts early enough before hardware cutoff | pass_unit_001; knob-backed; warning UI open |
+| START ship-prep threshold | `KNOB_INPUT_START_SHIP_PREP_MS = 6000 ms` current FW0 scaffold; prior validation at `5000 ms` | power owner receives prep before hardware cutoff | pass_unit_001 at prior value; knob-backed; save/quiesce policy open |
+| START warning threshold | `KNOB_INPUT_START_SHIP_WARN_MS = 9000 ms` FW0 scaffold | warning starts early enough before hardware cutoff | pass_unit_001; knob-backed; plain shutdown UI scaffold target-validated |
 | START imminent threshold | `KNOB_INPUT_START_SHIP_IMMINENT_MS = 11000 ms` FW0 scaffold | final warning before hardware cutoff | pass_unit_001; knob-backed; close to PMIC threshold |
 
 Thresholds are Platform tuning constants, not Reference Game policy.
@@ -230,9 +229,10 @@ Thresholds are Platform tuning constants, not Reference Game policy.
 | low battery | simulated or measured threshold | forced sleep selected | TBD | open |
 | critical battery | simulated or controlled threshold | ISOFET disconnect selected, not shipping mode | TBD | open |
 | EN_MR_SD enable | normal boot through `thPower` | ADP5360 Supervisory Setting `0x2D[1]` set so START/MR 12 s shipment entry is enabled | power/display boot complete `1/1`, ADP driver API `4`, MR status `0`, PMIC snapshot success `1` | pass_unit_001; software prep UX open |
-| START prep | sustained hold below hardware cutoff | warning/save/quiesce path starts | 5 s START hold reached `START_SHIP_PREP`, power event `1`, power state `8/8`, raw/stable PA4 `0/0` | scaffold_pass_unit_001; save/quiesce open |
-| START warning/imminent | sustained hold below/near hardware cutoff | warning and imminent events route to `thPower` | 9-10 s hold reached `START_SHIP_WARNING`; >11 s hold reached `START_SHIP_IMMINENT`; prep/warn/imm counters `1/1/1`; user confirmed PMIC shipment after long hold | scaffold_pass_unit_001; warning UI and release-cancel open |
-| START release | release during prep | software warning/prep cancelled | TBD | open |
+| START prep | sustained hold below hardware cutoff | warning/save/quiesce path starts | 5 s START hold reached `START_SHIP_PREP`, power event `1`, power state `8/8`, raw/stable PA4 `0/0`; current FW0 calls counted no-op quiesce placeholder | scaffold_pass_unit_001; real save/quiesce open; no-op hook target-validated |
+| START warning/imminent | sustained hold below/near hardware cutoff | warning and imminent events route to `thPower` and `thUI` shutdown scaffold | 9-10 s hold reached `START_SHIP_WARNING`; >11 s hold reached `START_SHIP_IMMINENT`; prep/warn/imm counters `1/1/1`; user confirmed PMIC shipment after long hold | scaffold_pass_unit_001; UI scaffold target-validated; real save/recovery open |
+| START release | release during prep | software warning/prep cancelled | UI release-cancel scaffold restored HOME after release; UI/display page `1`, shutdown state `4` | scaffold_pass_unit_001 |
+| software shipment primitive | guarded power-owner request writes ADP5360 Shipment Mode register `0x36 = 1` | device enters shipment only after explicit gated test | implemented; START imminent requests it only when `KNOB_POWER_START_SOFTWARE_SHIP_ENABLE` is true, generated default false; full hold/release validation kept enable/request/skip `0/0/1` and PMIC sw ship count `0` | gate_pass_unit_001; register `0x36` entry not target-validated; not final product UX |
 | first boot | no settings/calibration | no save/backup dependency during ship prep | TBD | open |
 
 ---
