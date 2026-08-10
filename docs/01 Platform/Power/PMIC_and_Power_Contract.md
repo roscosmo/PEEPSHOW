@@ -62,9 +62,11 @@ Per [[Platform_Hardware_Abstraction_Contract]], the PMIC driver uses the public 
 
 ## Power Policy Decisions
 
-- Low battery threshold causes forced sleep.
-- Critical battery threshold disconnects the ISOFET.
-- Critical battery must not enter shipping mode as the battery response, because START can wake the PMIC/device and create a shipping/wake loop.
+- Low battery warning threshold warns, reduces optional load, and prepares the system for possible shutdown.
+- Low battery forced-sleep threshold may enter STOP/static low-power behavior only while the pack is still recoverable without a latched shutdown.
+- Critical battery threshold is a controlled shutdown path: firmware saves/quiesces what it can, then requests ADP5360 shipment mode by software when the critical-battery software-shipment gate is enabled.
+- ADP5360 hardware BAT_UV / ISOFET protection is the lower emergency fallback, not the normal PeepOS critical-battery policy.
+- Firmware must prevent restart loops by using a restart-allow threshold above the critical-shutdown threshold and by allowing charger/VBUS-present recovery handling.
 - The device may run normally while charging.
 - Flashing/install mode is the exception: charging does not imply normal runtime use while the device is in flashing mode.
 - All main power rails may remain active; power savings come primarily from MCU sleep, peripheral low-power modes, local enables, and device-specific shutdown/deep-power-down.
@@ -81,7 +83,9 @@ Rules:
 - firmware should save state and quiesce before the hardware shipping threshold
 - firmware may display warning/countdown UI
 - firmware must not assume it can prevent shipping mode once the ADP5360 threshold is reached
-- low-battery and critical-battery policy must not use shipping mode as the automatic response
+- START shipping intent and battery-critical shutdown are separate state-machine paths that may share the final ADP5360 shipment-mode primitive.
+- battery-critical software shipment is allowed only after controlled save/quiesce policy has run and only when its explicit Platform gate is enabled.
+- battery-critical software shipment must use a restart-allow threshold above the critical threshold so START or battery rebound cannot cause a shutdown/wake loop.
 
 ### HW6 FW0 Shipping-Mode Enable Status
 
@@ -116,6 +120,36 @@ The current FW0 START scaffold routes input-owned hold events to `thPower`, reco
 This path is a normal boot power-owner action. It is not part of the retained
 peripheral diagnostic lifecycle and must not require display, audio, sensor,
 storage, or communication diagnostic cycles.
+
+---
+
+## Critical-Battery Shipment And Restart Gate
+
+Critical-battery shutdown is a PeepOS-controlled sequence while firmware is still alive enough to make a safe decision.
+
+Rules:
+
+- On critical battery, `thPower` must request owner quiesce/save through bounded Platform-owned hooks before any software shipment request.
+- If the critical-battery software-shipment gate is disabled, firmware must record and expose that shipment would have been requested, but it must not write ADP5360 Shipment Mode register `0x36`.
+- If the gate is enabled and quiesce/save policy succeeds or reaches its bounded fallback, `thPower` may request ADP5360 Shipment Mode register `0x36 = 1`.
+- The ADP5360 hardware BAT_UV / ISOFET cutoff remains a lower emergency protection path if firmware cannot act in time.
+- Startup must read battery/VBUS state before enabling display-intensive work, audio, vibration, radio, switched rails, package runtime, or installer behavior.
+- Battery threshold decisions must use a valid decoded VBAT measurement; successful I2C reads with all-zero/raw-invalid fuel-gauge voltage must be treated as unknown and must not trigger critical shutdown.
+- ADP5360 fuel-gauge VBAT reads must not be trusted until `thPower` has configured fuel-gauge active mode and requested an SOC/VBAT refresh.
+- If VBUS/charger recovery is present, startup may remain in a charge/recovery shell even below the restart-allow threshold.
+- If VBUS is absent and battery is below the restart-allow threshold after a shipment wake or low-battery reset, firmware must not continue normal runtime. With the boot-low-battery shipment gate disabled, it records a would-ship result; with the gate enabled, it re-enters software shipment.
+- The restart-allow threshold must be higher than the critical-shutdown threshold.
+
+Provisional FW0 thresholds, pending HW6 measurement and UX review:
+
+| Threshold / gate | Provisional value | Purpose |
+|---|---:|---|
+| battery monitor cadence | `1000 ms` | periodic `thPower` PMIC snapshot while FW0 monitor scaffold is active |
+| warning threshold | `3500 mV` | show warning and reduce optional load |
+| critical controlled-shipment threshold | `3300 mV` | save/quiesce then request software shipment when enabled |
+| restart-allow threshold | `3600 mV` | prevent battery rebound from restarting normal runtime |
+| critical software-shipment gate | `false` | keep bring-up tests from powering off unexpectedly |
+| boot-low-battery shipment gate | `false` | record would-ship until the boot path is validated |
 
 ---
 
@@ -163,8 +197,8 @@ Rules:
 - Only `thPower` transitions this FSM.
 - STOP entry requires owner quiesce acknowledgements or explicit timeout/fault policy.
 - Wake resume must classify wake source before handing control back to runtime policy.
-- Forced sleep is the low-battery response.
-- ISOFET disconnect is the critical-battery response.
+- Forced sleep is the recoverable low-battery response.
+- Controlled software shipment is the critical-battery response when enabled after save/quiesce; ADP5360 hardware BAT_UV / ISOFET protection remains the emergency fallback below firmware policy.
 
 ---
 
@@ -180,8 +214,8 @@ This state machine describes what firmware knows about the PMIC, charger, and ba
 | `PMIC_MONITOR` | Normal monitoring state for battery, charger, VBUS, interrupt, and fault status. |
 | `PMIC_CHARGING` | Charger/input is present and battery is charging. Runtime may continue unless another mode blocks it. |
 | `PMIC_CHARGE_DONE` | PMIC reports full or charge termination state. |
-| `PMIC_LOW_BATT` | Battery crossed the low threshold; firmware warns where possible and forces sleep. |
-| `PMIC_CRITICAL_BATT` | Battery crossed the critical threshold; firmware saves what it can and disconnects the ISOFET. |
+| `PMIC_LOW_BATT` | Battery crossed the low threshold; firmware warns, sheds optional load where possible, and may force recoverable sleep. |
+| `PMIC_CRITICAL_BATT` | Battery crossed the critical threshold; firmware saves/quiesces what it can, then requests ADP5360 software shipment when the explicit gate is enabled. |
 | `PMIC_SHIP_PENDING` | START hold indicates ADP5360 shipping-mode threshold may be reached soon. |
 | `PMIC_RECOVERING` | Firmware is retrying or revalidating after a transient PMIC/status fault. |
 | `PMIC_ERROR` | PMIC or battery state cannot be trusted. System must degrade or fault depending on severity. |
@@ -191,8 +225,9 @@ Rules:
 - PMIC register access must be serialized by `thPower`.
 - `PMIC_INT` may wake or notify, but handling occurs in `thPower` context.
 - Charging state does not grant storage/installer ownership.
-- Low battery and START shipping intent are different paths and must stay separate.
-- Critical battery must prefer ISOFET disconnect over shipping mode.
+- Low battery, critical-battery shutdown, and START shipping intent are different policy paths and must stay separate.
+- Critical battery uses controlled software shipment above the hardware BAT_UV fallback when the explicit Platform gate is enabled.
+- Boot/restart policy must not allow battery rebound or START wake to loop back into runtime below the restart-allow threshold unless VBUS/charger recovery is present.
 
 ---
 
@@ -209,7 +244,9 @@ Required thresholds:
 - charge termination current
 - low battery warning threshold
 - low battery forced-sleep threshold
-- critical battery ISOFET-disconnect threshold
+- critical battery controlled-shipment threshold
+- post-shipment restart-allow threshold
+- critical-battery software-shipment enable gate
 - charger-present debounce/filter timing
 - VBUS disagreement timeout
 - PMIC read retry limit
@@ -264,8 +301,9 @@ Fault handling depends on severity:
 
 - transient I2C/status read failure: retry in `PMIC_RECOVERING`
 - repeated PMIC read failure: degrade and report power-monitor fault
-- low battery: force sleep
-- critical battery: save where possible, then disconnect ISOFET
+- low battery: warn, shed optional load, and force recoverable sleep if needed
+- critical battery: save/quiesce where possible, then request gated software shipment
+- hardware BAT_UV / ISOFET disconnect: emergency fallback below firmware policy
 - incoherent VBUS/charger/install state: block installer ownership until resolved
 - unsafe rail or reset condition: enter `PWR_FAULT`
 
@@ -283,10 +321,12 @@ Fault handling depends on severity:
 8. VBUS-only charger/power-bank attach does not trigger MSC prompt or storage handoff
 9. charging while normal runtime is active
 10. charging while flashing/install mode is active
-11. low-battery forced sleep
-12. critical-battery ISOFET disconnect
-13. START hold shipping-prep handoff from input to power
-14. ADP5360 `EN_MR_SD` enable during normal boot through `thPower`
-15. START shutdown UI scaffold, release-cancel, and default-off software shipment request gate
+11. low-battery warning / recoverable forced sleep
+12. critical-battery controlled software-shipment path and default-off gate
+13. post-shipment boot/restart gate below restart-allow threshold, with VBUS recovery exception
+14. hardware BAT_UV / ISOFET fallback validation
+15. START hold shipping-prep handoff from input to power
+16. ADP5360 `EN_MR_SD` enable during normal boot through `thPower`
+17. START shutdown UI scaffold, release-cancel, and default-off software shipment request gate
 
 Evidence for these cases belongs in [[HW6_Brought_Up_Tracker]]. A passing HW5 result may define the initial procedure or expected value, but it does not close the corresponding HW6 row.

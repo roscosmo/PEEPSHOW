@@ -1,4 +1,4 @@
-#ifndef PS_HW6_OWNER_STATE_MACHINES_H
+﻿#ifndef PS_HW6_OWNER_STATE_MACHINES_H
 #define PS_HW6_OWNER_STATE_MACHINES_H
 
 #include <stdint.h>
@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (16UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (17UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -39,6 +39,30 @@ typedef enum
   PS_HW6_OWNER_SM_CYCLE_RESUME = 0,
   PS_HW6_OWNER_SM_CYCLE_QUIESCE
 } PS_HW6_OwnerStateMachineCycleDirection;
+
+typedef enum
+{
+  PS_HW6_POWER_BATTERY_POLICY_UNKNOWN = 0,
+  PS_HW6_POWER_BATTERY_POLICY_BOOT_OK,
+  PS_HW6_POWER_BATTERY_POLICY_OK,
+  PS_HW6_POWER_BATTERY_POLICY_WARNING,
+  PS_HW6_POWER_BATTERY_POLICY_CRITICAL,
+  PS_HW6_POWER_BATTERY_POLICY_BOOT_RESTART_BLOCKED,
+  PS_HW6_POWER_BATTERY_POLICY_SHIP_REQUESTED
+} PS_HW6_PowerBatteryPolicyState;
+
+typedef enum
+{
+  PS_HW6_POWER_BATTERY_EVENT_NONE = 0,
+  PS_HW6_POWER_BATTERY_EVENT_BOOT_CHECK,
+  PS_HW6_POWER_BATTERY_EVENT_MONITOR_CHECK,
+  PS_HW6_POWER_BATTERY_EVENT_WARNING,
+  PS_HW6_POWER_BATTERY_EVENT_CRITICAL,
+  PS_HW6_POWER_BATTERY_EVENT_BOOT_RESTART_BLOCK,
+  PS_HW6_POWER_BATTERY_EVENT_SHIP_REQUEST,
+  PS_HW6_POWER_BATTERY_EVENT_SHIP_SKIPPED,
+  PS_HW6_POWER_BATTERY_EVENT_SNAPSHOT_FAIL
+} PS_HW6_PowerBatteryPolicyEvent;
 
 typedef struct
 {
@@ -134,6 +158,34 @@ typedef struct
   uint32_t start_power_software_ship_skipped_count;
   uint32_t start_power_software_ship_last_status;
   uint32_t start_power_software_ship_last_tick;
+
+  uint32_t battery_policy_state;
+  uint32_t battery_policy_last_event;
+  uint32_t battery_policy_monitor_count;
+  uint32_t battery_policy_boot_check_count;
+  uint32_t battery_policy_last_snapshot_status;
+  uint32_t battery_policy_last_tick;
+  uint32_t battery_policy_next_tick;
+  uint32_t battery_policy_period_ticks;
+  uint32_t battery_policy_warning_mv;
+  uint32_t battery_policy_critical_mv;
+  uint32_t battery_policy_restart_allow_mv;
+  uint32_t battery_policy_vbat_mv;
+  uint32_t battery_policy_fuel_ok;
+  uint32_t battery_policy_vbus_ok;
+  uint32_t battery_policy_battery_present;
+  uint32_t battery_policy_warning_count;
+  uint32_t battery_policy_critical_count;
+  uint32_t battery_policy_boot_restart_block_count;
+  uint32_t battery_policy_quiesce_request_count;
+  uint32_t battery_policy_quiesce_last_status;
+  uint32_t battery_policy_quiesce_last_tick;
+  uint32_t battery_policy_critical_ship_enabled;
+  uint32_t battery_policy_boot_ship_enabled;
+  uint32_t battery_policy_software_ship_request_count;
+  uint32_t battery_policy_software_ship_skipped_count;
+  uint32_t battery_policy_software_ship_last_status;
+  uint32_t battery_policy_software_ship_last_tick;
 
   uint32_t joystick_driver_api_version;
   uint32_t joystick_driver_init_status;
@@ -534,6 +586,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCalibrationCapture(
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandleStartShippingIntent(
   uint32_t start_event,
   uint32_t hold_ticks);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunBatteryMonitor(
+  uint32_t now_tick);
 void PS_HW6_OwnerStateMachines_BeginCycle(uint32_t cycle_index);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Resume(uint32_t owner_id,
                                                     uint32_t cycle_index);

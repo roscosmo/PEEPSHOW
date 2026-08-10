@@ -1,6 +1,6 @@
 # ADP5360 Power Bring-up Runbook
 
-This runbook records the measured HW5 procedure for PMIC, charger, battery, VBUS, ISOFET, and shipping-mode validation.
+This runbook records the measured HW5 procedure for PMIC, charger, battery, VBUS, hardware BAT_UV / ISOFET fallback, and shipment-mode validation.
 
 > [!important] HW6 reuse
 > Reuse the procedure on HW6, but execute it against [[HW6_Power_Rails]] and [[HW6_Wake_Sources]] and record every new result in [[HW6_Brought_Up_Tracker]]. No HW5 pass transfers to HW6.
@@ -25,8 +25,8 @@ This runbook covers:
 - VBUS detection through ADP5360 and `USB_OTG_FS_VBUS` on `PA9`
 - HW6 `303040` LiPo pouch-cell configuration and capacity assumptions
 - charge and charge-done state reporting
-- low-battery forced sleep threshold behavior
-- critical-battery ISOFET disconnect behavior
+- low-battery warning and recoverable forced-sleep threshold behavior
+- critical-battery controlled software-shipment behavior
 - START / ADP5360 `MR` shipping-mode path
 - first-boot START shipping-intent ignore behavior
 
@@ -52,9 +52,9 @@ Power bring-up can physically shut the device down or disconnect the battery pat
 | Test | Hazard | Required gate |
 | --- | --- | --- |
 | START shipping-mode entry | device may enter shipping mode | prove normal Start warning/prep first; confirm 200 ms wake/recovery path |
-| critical-battery ISOFET disconnect | device may lose power | perform only with controlled supply/battery setup and recovery plan |
+| critical-battery controlled shipment | device may enter shipment mode and lose system power | keep the software-shipment gate disabled until quiesce/save and recovery behavior are validated; perform enabled tests only with controlled supply/battery setup and recovery plan |
 | charger/VBUS edge tests | storage/USB policy may change | ensure no install/export/write operation is active |
-| low-battery forced sleep | runtime may be stopped | ensure save/quiesce behavior is observable |
+| low-battery warning / forced sleep | runtime may be slowed or stopped | ensure warning, load-shed, and save/quiesce behavior is observable |
 
 For early bring-up, prefer register-controlled, threshold-simulated, or bench-supply-controlled tests where the ADP5360 supports them. Record whether each result is measured physically or simulated through safe configuration.
 
@@ -123,8 +123,8 @@ This sequence proves the PMIC monitor path before full sleep policy depends on i
 9. Compare VBUS classification from ADP5360 status and `PA9` USB VBUS sense.
 10. Connect USB power and confirm charging/input-present state without showing an MSC prompt or changing storage ownership by itself.
 11. Disconnect USB and confirm charger/input-absent state.
-12. Trigger or simulate low-battery threshold and confirm forced-sleep policy is selected.
-13. Trigger or simulate critical-battery threshold and confirm ISOFET-disconnect policy is selected instead of shipping mode.
+12. Trigger or simulate low-battery warning / recoverable forced-sleep thresholds and confirm warning/load-shed/sleep policy is selected.
+13. Trigger or simulate critical-battery threshold and confirm the controlled software-shipment path is selected, with the default-off gate recording would-ship instead of powering off.
 14. Hold START long enough to generate firmware shipping-prep intent below the ADP5360 hardware threshold.
 15. Release START during prep and confirm firmware cancels software-side warning/prep.
 16. Validate first-boot/no-settings policy ignores save/backup work for START shipping intent because there is nothing valid to preserve yet.
@@ -195,9 +195,13 @@ Populate this table during bring-up. Values are placeholders until selected and 
 | temperature charge policy | JEITA enabled | register readback plus cold/cool/normal/warm/hot charge-state tests | reversible_write_pass_unit_001; behavior open |
 | cell-integrated protection | development cell protected for handling; production TBC | procurement/BOM record | open; not a Platform safety dependency |
 | ADP5360 protection | mandatory authoritative path; present `2.50 V` UV, `600 mA` discharge OC, `4.30 V` OV, `400 mA` charge OC | controlled threshold/fault tests and peak-load margin | baseline_decoded; validation open |
-| low battery warning threshold | TBD | warning event and log | open |
-| low battery forced-sleep threshold | TBD | forced-sleep transition evidence | open |
-| critical battery ISOFET-disconnect threshold | TBD | controlled disconnect or safe simulation evidence | open |
+| battery monitor period | provisional `1000 ms` | periodic `thPower` PMIC snapshot cadence and current impact | target evidence: FW0 probe showed `period=100` ticks and monitor count advancing; current impact and long-run behavior remain open |
+| low battery warning threshold | provisional `3500 mV` | warning event, optional-load reduction, and log | provisional; FW0 knob scaffold implemented; build/target validation pending |
+| low battery forced-sleep threshold | TBD | recoverable forced-sleep transition evidence | open |
+| critical battery controlled-shipment threshold | provisional `3300 mV` | controlled save/quiesce, would-ship gate evidence, then enabled software-shipment evidence | scaffold implemented; raw-zero VBAT guard target-validated; threshold behavior still requires valid fuel-gauge voltage evidence |
+| post-shipment restart-allow threshold | provisional `3600 mV` | boot/restart gate blocks normal runtime below threshold unless VBUS/charger recovery is present | scaffold implemented; raw-zero VBAT guard target-validated; restart behavior still requires valid fuel-gauge voltage evidence |
+| critical-battery software-shipment enable gate | default `false` | disabled tests record would-ship; enabled tests write ADP5360 `0x36 = 1` only after explicit approval | provisional; FW0 knob scaffold implemented; build/target validation pending |
+| boot-low-battery shipment enable gate | default `false` | disabled boot tests record would-ship below restart threshold; enabled tests re-enter shipment only after recovery path is validated | provisional; FW0 knob scaffold implemented; build/target validation pending |
 | charger-present debounce/filter | TBD | USB connect/disconnect logs | open |
 | VBUS disagreement timeout | TBD | ADP5360 vs `PA9` mismatch handling | open |
 | PMIC read retry limit | TBD | transient failure recovery test | open |
@@ -214,20 +218,22 @@ Thresholds are Platform tuning constants, not Reference Game policy.
 | Step | Configuration | Expected result | Measured result | Status |
 | --- | --- | --- | --- | --- |
 | PPK2 setup | source mode, current capture | device powers as battery simulator; current trace captured | TBD | open |
-| battery voltage sweep | selected voltage points | PMIC/fuel readback tracks voltage safely | TBD | open |
+| battery voltage sweep | selected voltage points | PMIC/fuel readback tracks voltage safely | fuel-gauge active/refresh readback now valid at one point: `3720 mV`, raw `0x74/0x40`, mode `0x51`; multi-point sweep still TBD | partial_pass_unit_001; sweep open |
 | cell profile | `303040` provisional profile | charge/fuel settings match reviewed cell assumptions | six-byte profile delta accepted and exactly restored; persistent application and behavior remain open | reversible_pass_unit_001 |
 | BAT_CAP | code `225` for 450 mAh | register accepts/readbacks configured value | `0xE1` accepted/read back/restored exactly | reversible_pass_unit_001; sweep open |
 | charger config | `4.20 V`; staged `100 mA` then up to `320 mA`; provisional `5 mA` termination; JEITA/`100 kOhm` NTC | no-cell readback first, then controlled real-cell current/voltage/temperature evidence | `03=82`, `04=3F`, `0A=80`, and `07=AC` accepted/read back/restored; no charging exercised | reversible_pass_unit_001; physical tests open |
 | battery protection | authoritative ADP5360 protection regardless of cell PCM | decoded settings survive power cycle and controlled fault tests behave safely | enabled baseline decoded; thresholds not yet stimulated | partial_unit_001 |
 | I2C probe | address `0x46` | ADP5360 ACKs | HW6 unit 001 ACKed; complete 55/55 read-only map passed | pass_unit_001 |
 | address representation | public 7-bit `0x46` through `ps_hw_i2c3` | convention confirmed | public `0x46`, STM32 HAL shifted `0x8c` | pass_unit_001 |
-| status read | PMIC status registers | charger/battery/fault state readable | identity `0x10`, revision `0x8`, PGOOD `0x07`, fault `0x00`; full map captured; fuel gauge disabled and telemetry invalid | partial_unit_001 |
+| status read | PMIC status registers | charger/battery/fault state readable | identity `0x10`, revision `0x8`, PGOOD `0x07`, fault `0x00`; full map captured; fuel gauge disabled and telemetry invalid in inventory; FW0 fuel-gauge active/refresh sequence now validates mode `0x51` and nonzero VBAT `3720 mV` | partial_unit_001; fuel_prepare_pass_unit_001 |
 | configuration map | read-only `0x00..0x36` | every register readable before write planning | 55/55 reads; factory 100 mAh profile, fuel gauge/IRQs disabled, charger/protection baseline captured | pass_inventory_unit_001 |
 | PMIC_INT | safe event or pending clear | EXTI15 event and owner handling | TBD | open |
 | VBUS cross-check | USB attach/detach | ADP5360 and `PA9` agree or log diagnostic; no VBUS-only MSC prompt | TBD | open |
 | charging | USB attached | charging/charge-done state reported | TBD | open |
-| low battery | simulated or measured threshold | forced sleep selected | TBD | open |
-| critical battery | simulated or controlled threshold | ISOFET disconnect selected, not shipping mode | TBD | open |
+| low battery | simulated or measured threshold | warning / recoverable forced-sleep path selected | TBD | open |
+| critical battery | simulated or controlled threshold | controlled software-shipment path selected; default-off gate records would-ship until enabled | TBD | open |
+| hardware BAT_UV / ISOFET fallback | controlled low-voltage threshold below firmware policy | ADP5360 protection removes the battery path only as emergency fallback | TBD | open |
+| boot low-battery restart gate | boot below restart-allow threshold with and without VBUS | no normal runtime below threshold without VBUS; VBUS permits charge/recovery shell | TBD | open |
 | EN_MR_SD enable | normal boot through `thPower` | ADP5360 Supervisory Setting `0x2D[1]` set so START/MR 12 s shipment entry is enabled | power/display boot complete `1/1`, ADP driver API `4`, MR status `0`, PMIC snapshot success `1` | pass_unit_001; software prep UX open |
 | START prep | sustained hold below hardware cutoff | warning/save/quiesce path starts | 5 s START hold reached `START_SHIP_PREP`, power event `1`, power state `8/8`, raw/stable PA4 `0/0`; current FW0 calls counted no-op quiesce placeholder | scaffold_pass_unit_001; real save/quiesce open; no-op hook target-validated |
 | START warning/imminent | sustained hold below/near hardware cutoff | warning and imminent events route to `thPower` and `thUI` shutdown scaffold | 9-10 s hold reached `START_SHIP_WARNING`; >11 s hold reached `START_SHIP_IMMINENT`; prep/warn/imm counters `1/1/1`; user confirmed PMIC shipment after long hold | scaffold_pass_unit_001; UI scaffold target-validated; real save/recovery open |
@@ -247,8 +253,8 @@ Thresholds are Platform tuning constants, not Reference Game policy.
 6. Compare VBUS classification from ADP5360 and `PA9` VBUS divider/path; confirm VBUS-only power does not offer MSC mode.
 7. Validate provisional `303040` cell profile settings without charging a real cell.
 8. Validate charging and charge-done reporting only after real-cell charge configuration is reviewed and safe.
-9. Validate low-battery threshold routes to forced sleep policy.
-10. Validate critical-battery threshold disconnects ISOFET, not shipping mode.
+9. Validate low-battery threshold routes to warning / recoverable forced-sleep policy.
+10. Validate critical-battery threshold routes to controlled software-shipment policy, with default-off would-ship evidence before enabled tests.
 11. Validate normal boot enables ADP5360 `EN_MR_SD` through `thPower` before intentional START shipping-entry tests.
 12. Validate normal START short/long press remains firmware-observable before hardware shipping threshold.
 13. Validate START hold warning/prep path can run before the ADP5360 shipping threshold.
@@ -272,8 +278,8 @@ Record in [[Brought_Up_Tracker]]:
 - PMIC interrupt observation
 - VBUS cross-check result, including no VBUS-only MSC prompt/storage handoff
 - charging state result
-- low-battery forced-sleep test result
-- critical-battery ISOFET disconnect result if safely testable
+- low-battery warning / forced-sleep test result
+- critical-battery controlled software-shipment result if safely testable
 - START / shipping-mode timing observations
 
 Do not mark power behavior known-good without measured HW6 evidence.

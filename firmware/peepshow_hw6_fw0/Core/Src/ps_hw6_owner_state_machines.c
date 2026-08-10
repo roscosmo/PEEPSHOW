@@ -78,6 +78,8 @@
 #define PS_HW6_ARRAY_COUNT(array) \
   (sizeof(array) / sizeof((array)[0]))
 
+#define PS_HW6_BATTERY_FUEL_VBAT_OK_MASK  (0x0CUL)
+
 extern I2C_HandleTypeDef hi2c3;
 extern DMA_HandleTypeDef handle_GPDMA1_Channel4;
 extern DMA_HandleTypeDef handle_GPDMA1_Channel5;
@@ -97,6 +99,212 @@ volatile uint32_t g_ps_hw6_joystick_calibration_capture_request;
 volatile uint32_t g_ps_hw6_joystick_calibration_capture_page;
 
 static uint32_t ps_start_power_return_state;
+static uint32_t ps_power_battery_monitor_period_ticks;
+static uint32_t ps_power_battery_owns_ship_prep;
+static HAL_StatusTypeDef PS_HW6_SM_Transition(uint32_t state_machine_id,
+                                               uint32_t event,
+                                               HAL_StatusTypeDef action_status);
+
+static uint32_t PS_HW6_SM_MsToTicks(uint32_t ms)
+{
+  uint64_t scaled;
+
+  scaled = (((uint64_t)ms * (uint64_t)TX_TIMER_TICKS_PER_SECOND) +
+            999ULL) / 1000ULL;
+  if (scaled == 0ULL)
+  {
+    return 1UL;
+  }
+  if (scaled > 0xFFFFFFFFULL)
+  {
+    return 0xFFFFFFFFUL;
+  }
+  return (uint32_t)scaled;
+}
+
+static HAL_StatusTypeDef PS_HW6_BatteryPolicyPrepareForShipment(void)
+{
+  g_ps_hw6_owner_sm_probe.battery_policy_quiesce_request_count++;
+  g_ps_hw6_owner_sm_probe.battery_policy_quiesce_last_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_sm_probe.battery_policy_quiesce_last_status =
+    (uint32_t)HAL_OK;
+  return HAL_OK;
+}
+
+static void PS_HW6_BatteryPolicyRequestSoftwareShipment(uint32_t boot_check)
+{
+  uint32_t enabled = (boot_check != 0UL) ?
+    (uint32_t)KNOB_POWER_BOOT_LOW_BATTERY_SHIP_ENABLE :
+    (uint32_t)KNOB_POWER_CRITICAL_SOFTWARE_SHIP_ENABLE;
+
+  g_ps_hw6_owner_sm_probe.battery_policy_critical_ship_enabled =
+    (uint32_t)KNOB_POWER_CRITICAL_SOFTWARE_SHIP_ENABLE;
+  g_ps_hw6_owner_sm_probe.battery_policy_boot_ship_enabled =
+    (uint32_t)KNOB_POWER_BOOT_LOW_BATTERY_SHIP_ENABLE;
+
+  if (enabled != 0UL)
+  {
+    g_ps_hw6_owner_sm_probe.battery_policy_software_ship_request_count++;
+    g_ps_hw6_owner_sm_probe.battery_policy_software_ship_last_tick =
+      (uint32_t)tx_time_get();
+    g_ps_hw6_owner_sm_probe.battery_policy_software_ship_last_status =
+      (uint32_t)HAL_OK;
+    g_ps_hw6_owner_sm_probe.battery_policy_state =
+      PS_HW6_POWER_BATTERY_POLICY_SHIP_REQUESTED;
+    g_ps_hw6_owner_sm_probe.battery_policy_last_event =
+      PS_HW6_POWER_BATTERY_EVENT_SHIP_REQUEST;
+    g_ps_hw6_pmic_software_ship_request = 1UL;
+  }
+  else
+  {
+    g_ps_hw6_owner_sm_probe.battery_policy_software_ship_skipped_count++;
+    g_ps_hw6_owner_sm_probe.battery_policy_software_ship_last_status =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.battery_policy_last_event =
+      PS_HW6_POWER_BATTERY_EVENT_SHIP_SKIPPED;
+  }
+}
+
+static HAL_StatusTypeDef PS_HW6_SM_EvaluateBatteryPolicy(
+  HAL_StatusTypeDef snapshot_status,
+  uint32_t boot_check)
+{
+  uint32_t fuel_ok;
+  uint32_t vbat_mv;
+  uint32_t vbus_ok;
+  uint32_t now_tick = (uint32_t)tx_time_get();
+
+  g_ps_hw6_owner_sm_probe.battery_policy_warning_mv =
+    (uint32_t)KNOB_POWER_BATTERY_WARNING_MV;
+  g_ps_hw6_owner_sm_probe.battery_policy_critical_mv =
+    (uint32_t)KNOB_POWER_BATTERY_CRITICAL_SHIP_MV;
+  g_ps_hw6_owner_sm_probe.battery_policy_restart_allow_mv =
+    (uint32_t)KNOB_POWER_BATTERY_RESTART_ALLOW_MV;
+  g_ps_hw6_owner_sm_probe.battery_policy_period_ticks =
+    ps_power_battery_monitor_period_ticks;
+  g_ps_hw6_owner_sm_probe.battery_policy_critical_ship_enabled =
+    (uint32_t)KNOB_POWER_CRITICAL_SOFTWARE_SHIP_ENABLE;
+  g_ps_hw6_owner_sm_probe.battery_policy_boot_ship_enabled =
+    (uint32_t)KNOB_POWER_BOOT_LOW_BATTERY_SHIP_ENABLE;
+  g_ps_hw6_owner_sm_probe.battery_policy_last_snapshot_status =
+    (uint32_t)snapshot_status;
+  g_ps_hw6_owner_sm_probe.battery_policy_last_tick = now_tick;
+  g_ps_hw6_owner_sm_probe.battery_policy_next_tick =
+    now_tick + ps_power_battery_monitor_period_ticks;
+
+  if (boot_check != 0UL)
+  {
+    g_ps_hw6_owner_sm_probe.battery_policy_boot_check_count++;
+    g_ps_hw6_owner_sm_probe.battery_policy_last_event =
+      PS_HW6_POWER_BATTERY_EVENT_BOOT_CHECK;
+  }
+  else
+  {
+    g_ps_hw6_owner_sm_probe.battery_policy_monitor_count++;
+    g_ps_hw6_owner_sm_probe.battery_policy_last_event =
+      PS_HW6_POWER_BATTERY_EVENT_MONITOR_CHECK;
+  }
+
+  fuel_ok = ((g_ps_hw6_owner_probe.power_fuel_read_ok_mask &
+              PS_HW6_BATTERY_FUEL_VBAT_OK_MASK) ==
+             PS_HW6_BATTERY_FUEL_VBAT_OK_MASK) ? 1UL : 0UL;
+  vbat_mv = g_ps_hw6_owner_probe.power_fuel_vbat_mv;
+  if ((fuel_ok != 0UL) && (vbat_mv == 0UL))
+  {
+    fuel_ok = 0UL;
+  }
+  vbus_ok = g_ps_hw6_owner_probe.power_vbus_ok;
+
+  g_ps_hw6_owner_sm_probe.battery_policy_fuel_ok = fuel_ok;
+  g_ps_hw6_owner_sm_probe.battery_policy_vbat_mv = vbat_mv;
+  g_ps_hw6_owner_sm_probe.battery_policy_vbus_ok = vbus_ok;
+  g_ps_hw6_owner_sm_probe.battery_policy_battery_present =
+    g_ps_hw6_owner_probe.power_battery_present;
+
+  if ((snapshot_status != HAL_OK) || (fuel_ok == 0UL))
+  {
+    g_ps_hw6_owner_sm_probe.battery_policy_state =
+      PS_HW6_POWER_BATTERY_POLICY_UNKNOWN;
+    g_ps_hw6_owner_sm_probe.battery_policy_last_event =
+      PS_HW6_POWER_BATTERY_EVENT_SNAPSHOT_FAIL;
+    return HAL_ERROR;
+  }
+
+  if ((boot_check != 0UL) && (vbus_ok == 0UL) &&
+      (vbat_mv < (uint32_t)KNOB_POWER_BATTERY_RESTART_ALLOW_MV))
+  {
+    g_ps_hw6_owner_sm_probe.battery_policy_state =
+      PS_HW6_POWER_BATTERY_POLICY_BOOT_RESTART_BLOCKED;
+    g_ps_hw6_owner_sm_probe.battery_policy_last_event =
+      PS_HW6_POWER_BATTERY_EVENT_BOOT_RESTART_BLOCK;
+    g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_block_count++;
+    (void)PS_HW6_BatteryPolicyPrepareForShipment();
+    PS_HW6_BatteryPolicyRequestSoftwareShipment(1UL);
+    return HAL_OK;
+  }
+
+  if (vbat_mv <= (uint32_t)KNOB_POWER_BATTERY_CRITICAL_SHIP_MV)
+  {
+    g_ps_hw6_owner_sm_probe.battery_policy_state =
+      PS_HW6_POWER_BATTERY_POLICY_CRITICAL;
+    g_ps_hw6_owner_sm_probe.battery_policy_last_event =
+      PS_HW6_POWER_BATTERY_EVENT_CRITICAL;
+    g_ps_hw6_owner_sm_probe.battery_policy_critical_count++;
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_POWER,
+                               PWR_EV_SHIP_REQUEST,
+                               HAL_OK);
+    ps_power_battery_owns_ship_prep = 1UL;
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
+                               PMIC_EV_CRITICAL_BATTERY,
+                               HAL_OK);
+    (void)PS_HW6_BatteryPolicyPrepareForShipment();
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
+                               PMIC_EV_SHIP_REQUEST,
+                               HAL_OK);
+    PS_HW6_BatteryPolicyRequestSoftwareShipment(0UL);
+    return HAL_OK;
+  }
+
+  if (vbat_mv <= (uint32_t)KNOB_POWER_BATTERY_WARNING_MV)
+  {
+    g_ps_hw6_owner_sm_probe.battery_policy_state =
+      PS_HW6_POWER_BATTERY_POLICY_WARNING;
+    g_ps_hw6_owner_sm_probe.battery_policy_last_event =
+      PS_HW6_POWER_BATTERY_EVENT_WARNING;
+    g_ps_hw6_owner_sm_probe.battery_policy_warning_count++;
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
+                               PMIC_EV_LOW_BATTERY,
+                               HAL_OK);
+    return HAL_OK;
+  }
+
+  g_ps_hw6_owner_sm_probe.battery_policy_state =
+    (boot_check != 0UL) ? PS_HW6_POWER_BATTERY_POLICY_BOOT_OK :
+    PS_HW6_POWER_BATTERY_POLICY_OK;
+  if ((ps_power_battery_owns_ship_prep != 0UL) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_POWER] ==
+       PWR_SHIP_PREP))
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_POWER,
+                               PWR_EV_LP_REQUEST,
+                               HAL_OK);
+    ps_power_battery_owns_ship_prep = 0UL;
+  }
+
+  if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC] ==
+       PMIC_LOW_BATT) ||
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC] ==
+       PMIC_CRITICAL_BATT) ||
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC] ==
+       PMIC_SHIP_PENDING))
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
+                               PMIC_EV_RECOVER_OK,
+                               HAL_OK);
+  }
+  return HAL_OK;
+}
 
 static HAL_StatusTypeDef PS_HW6_StartPowerPrepareForShipment(void)
 {
@@ -149,6 +357,13 @@ static const PS_HW6_StateTransition ps_power_transitions[] =
   {PWR_RAIL_VALIDATE, PWR_EV_RAILS_FAIL, PWR_FAULT},
   {PWR_ACTIVE_LP, PWR_EV_RT_REQUEST, PWR_ACTIVE_RT},
   {PWR_ACTIVE_RT, PWR_EV_LP_REQUEST, PWR_ACTIVE_LP},
+  {PWR_ACTIVE_LP, PWR_EV_LOW_BATTERY, PWR_FORCED_SLEEP},
+  {PWR_ACTIVE_RT, PWR_EV_LOW_BATTERY, PWR_FORCED_SLEEP},
+  {PWR_FORCED_SLEEP, PWR_EV_LOW_BATTERY, PWR_FORCED_SLEEP},
+  {PWR_ACTIVE_LP, PWR_EV_SHIP_REQUEST, PWR_SHIP_PREP},
+  {PWR_ACTIVE_RT, PWR_EV_SHIP_REQUEST, PWR_SHIP_PREP},
+  {PWR_FORCED_SLEEP, PWR_EV_SHIP_REQUEST, PWR_SHIP_PREP},
+  {PWR_SHIP_PREP, PWR_EV_SHIP_REQUEST, PWR_SHIP_PREP},
   {PWR_ACTIVE_LP, PWR_EV_START_SHIP_PREP, PWR_SHIP_PREP},
   {PWR_ACTIVE_RT, PWR_EV_START_SHIP_PREP, PWR_SHIP_PREP},
   {PWR_SHIP_PREP, PWR_EV_START_SHIP_WARNING, PWR_SHIP_PREP},
@@ -163,7 +378,17 @@ static const PS_HW6_StateTransition ps_pmic_transitions[] =
   {PMIC_OFFLINE, PMIC_EV_PROBE_REQUEST, PMIC_PROBE},
   {PMIC_PROBE, PMIC_EV_PROBE_OK, PMIC_MONITOR},
   {PMIC_PROBE, PMIC_EV_PROBE_FAIL, PMIC_ERROR},
+  {PMIC_MONITOR, PMIC_EV_LOW_BATTERY, PMIC_LOW_BATT},
+  {PMIC_LOW_BATT, PMIC_EV_LOW_BATTERY, PMIC_LOW_BATT},
+  {PMIC_LOW_BATT, PMIC_EV_RECOVER_OK, PMIC_MONITOR},
+  {PMIC_CRITICAL_BATT, PMIC_EV_RECOVER_OK, PMIC_MONITOR},
+  {PMIC_MONITOR, PMIC_EV_CRITICAL_BATTERY, PMIC_CRITICAL_BATT},
+  {PMIC_LOW_BATT, PMIC_EV_CRITICAL_BATTERY, PMIC_CRITICAL_BATT},
+  {PMIC_CRITICAL_BATT, PMIC_EV_CRITICAL_BATTERY, PMIC_CRITICAL_BATT},
+  {PMIC_SHIP_PENDING, PMIC_EV_CRITICAL_BATTERY, PMIC_SHIP_PENDING},
   {PMIC_MONITOR, PMIC_EV_SHIP_REQUEST, PMIC_SHIP_PENDING},
+  {PMIC_CRITICAL_BATT, PMIC_EV_SHIP_REQUEST, PMIC_SHIP_PENDING},
+  {PMIC_SHIP_PENDING, PMIC_EV_SHIP_REQUEST, PMIC_SHIP_PENDING},
   {PMIC_SHIP_PENDING, PMIC_EV_RECOVER_OK, PMIC_MONITOR},
   {PMIC_ERROR, PMIC_EV_RECOVER_OK, PMIC_PROBE}
 };
@@ -1085,6 +1310,7 @@ static const ps_storage_region_t *PS_HW6_SM_FindStorageRegion(
 static HAL_StatusTypeDef PS_HW6_SM_StabilizePower(void)
 {
   HAL_StatusTypeDef mr_shipping_status;
+  HAL_StatusTypeDef fuel_gauge_status;
   HAL_StatusTypeDef snapshot_status;
   HAL_StatusTypeDef status;
 
@@ -1092,8 +1318,10 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizePower(void)
   (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
                             PMIC_EV_PROBE_REQUEST, HAL_OK);
   mr_shipping_status = PS_HW6_PowerOwner_EnableMrShippingMode();
+  fuel_gauge_status = PS_HW6_PowerOwner_PrepareFuelGauge();
   snapshot_status = PS_HW6_PowerOwner_RunSnapshot();
   status = ((mr_shipping_status == HAL_OK) &&
+            (fuel_gauge_status == HAL_OK) &&
             (snapshot_status == HAL_OK)) ? HAL_OK : HAL_ERROR;
   if (status == HAL_OK)
   {
@@ -1109,6 +1337,7 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizePower(void)
     (void)PS_HW6_SM_Transition(PS_HW6_SM_POWER,
                               PWR_EV_RAILS_FAIL, status);
   }
+  (void)PS_HW6_SM_EvaluateBatteryPolicy(snapshot_status, 1UL);
   return status;
 }
 
@@ -2563,6 +2792,7 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumePower(void)
 {
   HAL_StatusTypeDef status = PS_HW6_PowerOwner_RunSnapshot();
 
+  (void)PS_HW6_SM_EvaluateBatteryPolicy(status, 0UL);
   if (status == HAL_OK)
   {
     if (PS_HW6_SM_Transition(PS_HW6_SM_POWER,
@@ -3173,6 +3403,48 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.start_power_return_state =
     ps_start_power_return_state;
 
+  ps_power_battery_owns_ship_prep = 0UL;
+  ps_power_battery_monitor_period_ticks =
+    PS_HW6_SM_MsToTicks((uint32_t)KNOB_POWER_BATTERY_MONITOR_PERIOD_MS);
+  g_ps_hw6_owner_sm_probe.battery_policy_state =
+    PS_HW6_POWER_BATTERY_POLICY_UNKNOWN;
+  g_ps_hw6_owner_sm_probe.battery_policy_last_event =
+    PS_HW6_POWER_BATTERY_EVENT_NONE;
+  g_ps_hw6_owner_sm_probe.battery_policy_monitor_count = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_boot_check_count = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_last_snapshot_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.battery_policy_last_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_next_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_period_ticks =
+    ps_power_battery_monitor_period_ticks;
+  g_ps_hw6_owner_sm_probe.battery_policy_warning_mv =
+    (uint32_t)KNOB_POWER_BATTERY_WARNING_MV;
+  g_ps_hw6_owner_sm_probe.battery_policy_critical_mv =
+    (uint32_t)KNOB_POWER_BATTERY_CRITICAL_SHIP_MV;
+  g_ps_hw6_owner_sm_probe.battery_policy_restart_allow_mv =
+    (uint32_t)KNOB_POWER_BATTERY_RESTART_ALLOW_MV;
+  g_ps_hw6_owner_sm_probe.battery_policy_vbat_mv = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_fuel_ok = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_vbus_ok = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_battery_present = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_warning_count = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_critical_count = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_block_count = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_quiesce_request_count = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_quiesce_last_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.battery_policy_quiesce_last_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_critical_ship_enabled =
+    (uint32_t)KNOB_POWER_CRITICAL_SOFTWARE_SHIP_ENABLE;
+  g_ps_hw6_owner_sm_probe.battery_policy_boot_ship_enabled =
+    (uint32_t)KNOB_POWER_BOOT_LOW_BATTERY_SHIP_ENABLE;
+  g_ps_hw6_owner_sm_probe.battery_policy_software_ship_request_count = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_software_ship_skipped_count = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_software_ship_last_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.battery_policy_software_ship_last_tick = 0UL;
+
   g_ps_hw6_owner_sm_probe.joystick_ready_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.joystick_identity_status =
@@ -3383,6 +3655,30 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandleStartShippingIntent(
 
   g_ps_hw6_owner_sm_probe.start_power_last_status = (uint32_t)status;
   return status;
+}
+
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunBatteryMonitor(
+  uint32_t now_tick)
+{
+  HAL_StatusTypeDef snapshot_status;
+  uint32_t last_tick = g_ps_hw6_owner_sm_probe.battery_policy_last_tick;
+
+  if (ps_power_battery_monitor_period_ticks == 0UL)
+  {
+    ps_power_battery_monitor_period_ticks =
+      PS_HW6_SM_MsToTicks((uint32_t)KNOB_POWER_BATTERY_MONITOR_PERIOD_MS);
+  }
+
+  if ((last_tick != 0UL) &&
+      ((now_tick - last_tick) < ps_power_battery_monitor_period_ticks))
+  {
+    g_ps_hw6_owner_sm_probe.battery_policy_next_tick =
+      last_tick + ps_power_battery_monitor_period_ticks;
+    return HAL_OK;
+  }
+
+  snapshot_status = PS_HW6_PowerOwner_RunSnapshot();
+  return PS_HW6_SM_EvaluateBatteryPolicy(snapshot_status, 0UL);
 }
 
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Stabilize(uint32_t owner_id)

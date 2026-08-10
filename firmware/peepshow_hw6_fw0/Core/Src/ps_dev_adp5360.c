@@ -25,6 +25,13 @@
 #define PS_DEV_ADP5360_REG_FUEL_VBAT_H     (0x25U)
 #define PS_DEV_ADP5360_REG_FUEL_VBAT_L     (0x26U)
 #define PS_DEV_ADP5360_REG_FUEL_MODE       (0x27U)
+#define PS_DEV_ADP5360_REG_SOC_RESET       (0x28U)
+#define PS_DEV_ADP5360_FUEL_SOC_LOW_11     (0x40U)
+#define PS_DEV_ADP5360_FUEL_SLEEP_CURR_10  (0x10U)
+#define PS_DEV_ADP5360_FUEL_SLEEP_TIME_1   (0x00U)
+#define PS_DEV_ADP5360_FUEL_ACTIVE_MODE    (0x00U)
+#define PS_DEV_ADP5360_FUEL_ENABLE         (0x01U)
+#define PS_DEV_ADP5360_SOC_RESET_REFRESH   (0x80U)
 #define PS_DEV_ADP5360_REG_SHIPMENT        (0x36U)
 
 #define PS_DEV_ADP5360_EXPECTED_ID         (0x10U)
@@ -295,6 +302,91 @@ ps_status_t ps_dev_adp5360_enable_mr_shipping_mode(
       &lease,
       device->address_7bit,
       PS_DEV_ADP5360_REG_SUPERVISORY,
+      &value,
+      1U,
+      PS_DEV_ADP5360_TRANSFER_TIMEOUT_MS);
+    status = transfer_result.status;
+  }
+
+  release_result = ps_hw_i2c3_release(&lease);
+  if ((status == PS_STATUS_OK) &&
+      (release_result.status != PS_STATUS_OK))
+  {
+    status = release_result.status;
+  }
+
+  device->last_status = (uint32_t)status;
+  device->state = (status == PS_STATUS_OK) ?
+    PS_DEV_ADP5360_STATE_MONITOR : PS_DEV_ADP5360_STATE_FAULT;
+  return status;
+}
+
+ps_status_t ps_dev_adp5360_prepare_fuel_gauge(
+  ps_dev_adp5360_t *device)
+{
+  ps_hw_i2c3_lease_t lease;
+  ps_hw_i2c3_lease_result_t acquire_result;
+  ps_hw_i2c3_lease_result_t release_result;
+  ps_hw_i2c3_transfer_result_t transfer_result;
+  ps_status_t status;
+  uint8_t value;
+
+  if (device == NULL)
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  if (device->initialized == 0U)
+  {
+    return PS_STATUS_NOT_INITIALIZED;
+  }
+
+  device->operation_count++;
+  acquire_result = ps_hw_i2c3_acquire(
+    PS_HW_I2C3_CLIENT_POWER,
+    PS_DEV_ADP5360_ACQUIRE_TIMEOUT_MS,
+    PS_DEV_ADP5360_MAX_LEASE_MS,
+    &lease);
+  if (acquire_result.status != PS_STATUS_OK)
+  {
+    device->last_status = (uint32_t)acquire_result.status;
+    device->state = PS_DEV_ADP5360_STATE_FAULT;
+    return acquire_result.status;
+  }
+
+  value = (uint8_t)(PS_DEV_ADP5360_FUEL_SOC_LOW_11 |
+                    PS_DEV_ADP5360_FUEL_SLEEP_CURR_10 |
+                    PS_DEV_ADP5360_FUEL_SLEEP_TIME_1 |
+                    PS_DEV_ADP5360_FUEL_ACTIVE_MODE |
+                    PS_DEV_ADP5360_FUEL_ENABLE);
+  transfer_result = ps_hw_i2c3_mem_write(
+    &lease,
+    device->address_7bit,
+    PS_DEV_ADP5360_REG_FUEL_MODE,
+    &value,
+    1U,
+    PS_DEV_ADP5360_TRANSFER_TIMEOUT_MS);
+  status = transfer_result.status;
+
+  if (status == PS_STATUS_OK)
+  {
+    value = PS_DEV_ADP5360_SOC_RESET_REFRESH;
+    transfer_result = ps_hw_i2c3_mem_write(
+      &lease,
+      device->address_7bit,
+      PS_DEV_ADP5360_REG_SOC_RESET,
+      &value,
+      1U,
+      PS_DEV_ADP5360_TRANSFER_TIMEOUT_MS);
+    status = transfer_result.status;
+  }
+
+  if (status == PS_STATUS_OK)
+  {
+    value = 0U;
+    transfer_result = ps_hw_i2c3_mem_write(
+      &lease,
+      device->address_7bit,
+      PS_DEV_ADP5360_REG_SOC_RESET,
       &value,
       1U,
       PS_DEV_ADP5360_TRANSFER_TIMEOUT_MS);

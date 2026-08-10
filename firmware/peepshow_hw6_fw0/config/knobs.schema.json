@@ -1,4 +1,4 @@
-{
+﻿{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://peepshow.local/schema/hw6-fw0-knobs.schema.json",
   "title": "PeepShow HW6 FW0 Compile-Time Knobs",
@@ -10,6 +10,12 @@
     "input_start_ship_warn_ms",
     "input_start_ship_imminent_ms",
     "input_start_stable_samples",
+    "power_battery_monitor_period_ms",
+    "power_battery_warning_mv",
+    "power_battery_critical_ship_mv",
+    "power_battery_restart_allow_mv",
+    "power_critical_software_ship_enable",
+    "power_boot_low_battery_ship_enable",
     "power_start_software_ship_enable"
   ],
   "properties": {
@@ -72,6 +78,74 @@
       "class": "protected_policy",
       "path": "platform.knobs.input.start_stable_samples",
       "description": "Consecutive START live-level samples required before the sampled PA4 level is treated as stable."
+    },
+    "power_battery_monitor_period_ms": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 60000,
+      "default": 1000,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.battery_monitor_period_ms",
+      "description": "Cadence for thPower-owned PMIC battery voltage snapshots while the FW0 monitor scaffold is active."
+    },
+    "power_battery_warning_mv": {
+      "type": "integer",
+      "minimum": 2500,
+      "maximum": 4300,
+      "default": 3500,
+      "unit": "mV",
+      "timebase_domain": "snapshot",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.battery_warning_mv",
+      "description": "Pack voltage where thPower records low-battery warning policy."
+    },
+    "power_battery_critical_ship_mv": {
+      "type": "integer",
+      "minimum": 2500,
+      "maximum": 4300,
+      "default": 3300,
+      "unit": "mV",
+      "timebase_domain": "snapshot",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.battery_critical_ship_mv",
+      "description": "Pack voltage where thPower records critical controlled-shipment policy."
+    },
+    "power_battery_restart_allow_mv": {
+      "type": "integer",
+      "minimum": 2500,
+      "maximum": 4300,
+      "default": 3600,
+      "unit": "mV",
+      "timebase_domain": "boot_snapshot",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.battery_restart_allow_mv",
+      "description": "Pack voltage required before normal runtime is allowed without charger/VBUS recovery."
+    },
+    "power_critical_software_ship_enable": {
+      "type": "boolean",
+      "default": false,
+      "unit": "bool",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.critical_software_ship_enable",
+      "description": "When true, critical-battery policy may request ADP5360 software shipment after the bounded quiesce scaffold. Default false records would-ship only."
+    },
+    "power_boot_low_battery_ship_enable": {
+      "type": "boolean",
+      "default": false,
+      "unit": "bool",
+      "timebase_domain": "boot_snapshot",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.boot_low_battery_ship_enable",
+      "description": "When true, boot below restart-allow voltage with no VBUS may re-enter ADP5360 software shipment. Default false records would-ship only."
     },
     "power_start_software_ship_enable": {
       "type": "boolean",

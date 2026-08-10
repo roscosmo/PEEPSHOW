@@ -1,4 +1,4 @@
-#include "ps_hw6_rtos_probe.h"
+﻿#include "ps_hw6_rtos_probe.h"
 
 #include <string.h>
 
@@ -907,6 +907,12 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     {
       g_ps_hw6_pmic_software_ship_request = 0UL;
       (void)PS_HW6_PowerOwner_EnterSoftwareShipmentMode();
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
+        (ps_power_boot_done != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      (void)PS_HW6_OwnerStateMachines_RunBatteryMonitor((uint32_t)now);
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
         (g_ps_hw6_joystick_sample_request != 0UL) &&
