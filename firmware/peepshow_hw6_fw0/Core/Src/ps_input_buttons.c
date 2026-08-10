@@ -1,5 +1,7 @@
 #include "ps_input_buttons.h"
 
+#include "knobs_autogen.h"
+
 #include "tx_api.h"
 
 #define PS_INPUT_BUTTON_MASK_A (1UL << 0U)
@@ -8,11 +10,6 @@
 #define PS_INPUT_BUTTON_MASK_R (1UL << 3U)
 #define PS_INPUT_BUTTON_COUNT  (4UL)
 
-#define PS_INPUT_START_LONG_PRESS_MS    (1000UL)
-#define PS_INPUT_START_SHIP_PREP_MS     (5000UL)
-#define PS_INPUT_START_SHIP_WARN_MS     (9000UL)
-#define PS_INPUT_START_SHIP_IMMINENT_MS (11000UL)
-#define PS_INPUT_START_STABLE_SAMPLES    (2UL)
 
 volatile ps_input_buttons_probe_t g_ps_input_buttons_probe;
 
@@ -71,7 +68,7 @@ static void PS_InputButtons_UpdateStartSample(uint32_t live_level)
 
   if (live_level == ps_input_start_sample_level)
   {
-    if (ps_input_start_stable_count < PS_INPUT_START_STABLE_SAMPLES)
+    if (ps_input_start_stable_count < KNOB_INPUT_START_STABLE_SAMPLES)
     {
       ps_input_start_stable_count++;
     }
@@ -82,7 +79,7 @@ static void PS_InputButtons_UpdateStartSample(uint32_t live_level)
     ps_input_start_stable_count = 1UL;
   }
 
-  if (ps_input_start_stable_count >= PS_INPUT_START_STABLE_SAMPLES)
+  if (ps_input_start_stable_count >= KNOB_INPUT_START_STABLE_SAMPLES)
   {
     ps_input_start_stable_level = ps_input_start_sample_level;
   }
@@ -304,7 +301,7 @@ void PS_InputButtons_Init(void)
   g_ps_input_buttons_probe.start_live_level = 1UL;
   g_ps_input_buttons_probe.start_raw_level = 1UL;
   g_ps_input_buttons_probe.start_stable_level = 1UL;
-  g_ps_input_buttons_probe.start_stable_count = PS_INPUT_START_STABLE_SAMPLES;
+  g_ps_input_buttons_probe.start_stable_count = KNOB_INPUT_START_STABLE_SAMPLES;
   g_ps_input_buttons_probe.start_sample_count = 0UL;
   g_ps_input_buttons_probe.start_synth_press_count = 0UL;
   g_ps_input_buttons_probe.start_next_check_tick = 0UL;
@@ -329,7 +326,7 @@ void PS_InputButtons_Init(void)
   ps_input_start_release_pending = 0UL;
   ps_input_start_sample_level = 1UL;
   ps_input_start_stable_level = 1UL;
-  ps_input_start_stable_count = PS_INPUT_START_STABLE_SAMPLES;
+  ps_input_start_stable_count = KNOB_INPUT_START_STABLE_SAMPLES;
   ps_input_start_armed = 0UL;
   ps_input_start_press_tick = 0UL;
   ps_input_start_next_check_tick = 0UL;
@@ -337,13 +334,13 @@ void PS_InputButtons_Init(void)
   ps_input_start_pending_timestamp = 0UL;
   ps_input_start_pending_hold_ticks = 0UL;
   ps_input_start_long_ticks =
-    PS_InputButtons_MsToTicks(PS_INPUT_START_LONG_PRESS_MS);
+    PS_InputButtons_MsToTicks(KNOB_INPUT_START_LONG_PRESS_MS);
   ps_input_start_ship_prep_ticks =
-    PS_InputButtons_MsToTicks(PS_INPUT_START_SHIP_PREP_MS);
+    PS_InputButtons_MsToTicks(KNOB_INPUT_START_SHIP_PREP_MS);
   ps_input_start_ship_warn_ticks =
-    PS_InputButtons_MsToTicks(PS_INPUT_START_SHIP_WARN_MS);
+    PS_InputButtons_MsToTicks(KNOB_INPUT_START_SHIP_WARN_MS);
   ps_input_start_ship_imminent_ticks =
-    PS_InputButtons_MsToTicks(PS_INPUT_START_SHIP_IMMINENT_MS);
+    PS_InputButtons_MsToTicks(KNOB_INPUT_START_SHIP_IMMINENT_MS);
 
   for (i = 0UL; i < PS_INPUT_BUTTON_COUNT; ++i)
   {

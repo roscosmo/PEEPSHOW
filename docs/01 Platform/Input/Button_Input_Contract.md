@@ -66,7 +66,7 @@ Timing details:
 
 - ADP5360 shipping-mode threshold: approximately 12 s by hardware design.
 - ADP5360 shipping-mode exit press: approximately 200 ms by hardware design.
-- Firmware warning/quiesce lead time is policy-defined and must become a knob.
+- Firmware warning/quiesce lead time is policy-defined and must be controlled by Platform knobs.
 
 ## Required Knobs
 
@@ -79,6 +79,8 @@ Timing details:
 | `KNOB_INPUT_BTN_REPEAT_PERIOD_MS` | repeat event cadence |
 | `KNOB_INPUT_BTN_STUCK_MS` | stuck-button fault threshold |
 | `KNOB_INPUT_CHORD_WINDOW_MS` | window for combining button presses into a chord |
+| `KNOB_INPUT_START_LONG_PRESS_MS` | Start-hold duration where firmware leaves the normal-press window |
+| `KNOB_INPUT_START_STABLE_SAMPLES` | consecutive PA4 live-level samples required before START level is treated as stable |
 | `KNOB_INPUT_START_SHIP_PREP_MS` | Start-hold duration where save/quiesce preparation begins |
 | `KNOB_INPUT_START_SHIP_WARN_MS` | Start-hold duration where visible warning/countdown begins |
 | `KNOB_INPUT_START_SHIP_IMMINENT_MS` | Start-hold duration where shipping-mode entry is considered imminent |
@@ -198,7 +200,7 @@ Current FW0 scaffolding admits `BTN_START` into the EXTI-backed input path and k
 
 Validated HW6 unit 001 FW0 evidence: a 5 s hold reached `START_SHIP_PREP` with checkpoint/live ticks `500/525`; a 9-10 s hold reached `START_SHIP_WARNING` with `900/1075`; a >11 s hold reached `START_SHIP_IMMINENT` with `1100/1675`; raw/stable PA4 was `0/0` during sustained holds; and `thPower` recorded prep/warning/imminent counters `1/1/1`. The ADP5360 hardware shipment path was confirmed separately by holding START/MR past the hardware threshold.
 
-The required knob names above remain authoritative. FW0 currently keeps the scaffold thresholds local to the input module because this target does not yet expose the knob generation files; those values must move to the knobs pipeline before this behavior becomes product policy.
+The required knob names above are authoritative. HW6 FW0 now sources the START overlay scaffold values from `firmware/peepshow_hw6_fw0/config/knobs.json`, validates them with `config/knobs.schema.json`, generates `Core/Inc/knobs_autogen.h` through `tools/gen_knobs.py`, and consumes only the generated macros in the input module. The current generated defaults preserve the validated scaffold values: START long press `1000 ms`, ship-prep `5000 ms`, warning `9000 ms`, imminent `11000 ms`, and START stable-level acceptance `2` samples.
 
 ## Logical Event Model
 

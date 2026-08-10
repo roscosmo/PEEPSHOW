@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://peepshow.local/schema/hw6-fw0-knobs.schema.json",
+  "title": "PeepShow HW6 FW0 Compile-Time Knobs",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "input_start_long_press_ms",
+    "input_start_ship_prep_ms",
+    "input_start_ship_warn_ms",
+    "input_start_ship_imminent_ms",
+    "input_start_stable_samples"
+  ],
+  "properties": {
+    "input_start_long_press_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 30000,
+      "default": 1000,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.start_long_press_ms",
+      "description": "START hold duration where firmware leaves the normal-press window."
+    },
+    "input_start_ship_prep_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 30000,
+      "default": 5000,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.start_ship_prep_ms",
+      "description": "START hold duration where save/quiesce preparation begins."
+    },
+    "input_start_ship_warn_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 30000,
+      "default": 9000,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.start_ship_warn_ms",
+      "description": "START hold duration where visible warning/countdown should begin."
+    },
+    "input_start_ship_imminent_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 30000,
+      "default": 11000,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.start_ship_imminent_ms",
+      "description": "START hold duration where hardware shipping-mode entry is considered imminent."
+    },
+    "input_start_stable_samples": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16,
+      "default": 2,
+      "unit": "samples",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.start_stable_samples",
+      "description": "Consecutive START live-level samples required before the sampled PA4 level is treated as stable."
+    }
+  }
+}

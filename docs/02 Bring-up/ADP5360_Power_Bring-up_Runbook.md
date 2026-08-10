@@ -170,7 +170,7 @@ Measured evidence from that capture:
 
 This confirms the protective hardware path for a 12-second START/MR hold is
 enabled. Subsequent HW6 unit 001 FW0 captures validated the software
-shipping-prep, warning, and imminent scaffold at 5 s, 9 s, and 11 s, and
+shipping-prep, warning, and imminent scaffold at 5 s, 9 s, and 11 s. Those FW0 scaffold timings are now backed by HW6 `config/knobs.json` and `Core/Inc/knobs_autogen.h`, and
 the user confirmed ADP5360 shipment entry after a long START/MR hold. This
 does not authorize routine intentional shipment-entry testing as part of button
 navigation work, and it does not close save/quiesce, release-cancel,
@@ -202,9 +202,9 @@ Populate this table during bring-up. Values are placeholders until selected and 
 | charger-present debounce/filter | TBD | USB connect/disconnect logs | open |
 | VBUS disagreement timeout | TBD | ADP5360 vs `PA9` mismatch handling | open |
 | PMIC read retry limit | TBD | transient failure recovery test | open |
-| START ship-prep threshold | `5 s` FW0 scaffold | power owner receives prep before hardware cutoff | pass_unit_001; save/quiesce policy open |
-| START warning threshold | `9 s` FW0 scaffold | warning starts early enough before hardware cutoff | pass_unit_001; warning UI open |
-| START imminent threshold | `11 s` FW0 scaffold | final warning before hardware cutoff | pass_unit_001; close to PMIC threshold |
+| START ship-prep threshold | `KNOB_INPUT_START_SHIP_PREP_MS = 5000 ms` FW0 scaffold | power owner receives prep before hardware cutoff | pass_unit_001; knob-backed; save/quiesce policy open |
+| START warning threshold | `KNOB_INPUT_START_SHIP_WARN_MS = 9000 ms` FW0 scaffold | warning starts early enough before hardware cutoff | pass_unit_001; knob-backed; warning UI open |
+| START imminent threshold | `KNOB_INPUT_START_SHIP_IMMINENT_MS = 11000 ms` FW0 scaffold | final warning before hardware cutoff | pass_unit_001; knob-backed; close to PMIC threshold |
 
 Thresholds are Platform tuning constants, not Reference Game policy.
 
