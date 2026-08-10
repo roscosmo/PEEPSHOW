@@ -14,6 +14,7 @@ printf "button event/count    = %u / %u\n", $ui->last_button_event, $ui->button_
 printf "request/event flags   = %u / %u\n", g_ps_ui_router_request, g_ps_ui_router_request_event
 printf "display ui req/render = %u / %u\n", $ow->display_ui_request_count, $ow->display_ui_render_count
 printf "display ui page/cal   = %u / %u\n", $ow->display_ui_page, $ow->display_ui_calibration_page
+printf "display complete/success = %u / %u\n", $ow->display_complete, $ow->display_success
 printf "display status/hash   = 0x%x / 0x%x\n", $ow->display_ui_status, $ow->display_framebuffer_hash
 printf "input edge/press      = %u / %u\n", $btn->isr_edge_count, $btn->press_count
 printf "input pending/button  = 0x%x / %u\n", $btn->pending_mask, $btn->last_button_id

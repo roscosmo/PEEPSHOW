@@ -17,6 +17,7 @@
 #include "ps_hw6_owner_services.h"
 #include "ps_hw6_rtos_probe.h"
 #include "ps_hw6_usb_export.h"
+#include "ps_input_buttons.h"
 #include "ps_input_events.h"
 #include "ps_input_joystick.h"
 #include "ps_input_state.h"
@@ -93,6 +94,8 @@ volatile uint32_t g_ps_hw6_joystick_cardinal_request;
 volatile uint32_t g_ps_hw6_joystick_calibration_capture_request;
 volatile uint32_t g_ps_hw6_joystick_calibration_capture_page;
 
+static uint32_t ps_start_power_return_state;
+
 typedef struct
 {
   uint32_t from_state;
@@ -113,6 +116,12 @@ static const PS_HW6_StateTransition ps_power_transitions[] =
   {PWR_RAIL_VALIDATE, PWR_EV_RAILS_FAIL, PWR_FAULT},
   {PWR_ACTIVE_LP, PWR_EV_RT_REQUEST, PWR_ACTIVE_RT},
   {PWR_ACTIVE_RT, PWR_EV_LP_REQUEST, PWR_ACTIVE_LP},
+  {PWR_ACTIVE_LP, PWR_EV_START_SHIP_PREP, PWR_SHIP_PREP},
+  {PWR_ACTIVE_RT, PWR_EV_START_SHIP_PREP, PWR_SHIP_PREP},
+  {PWR_SHIP_PREP, PWR_EV_START_SHIP_WARNING, PWR_SHIP_PREP},
+  {PWR_SHIP_PREP, PWR_EV_START_SHIP_IMMINENT, PWR_SHIP_PREP},
+  {PWR_SHIP_PREP, PWR_EV_LP_REQUEST, PWR_ACTIVE_LP},
+  {PWR_SHIP_PREP, PWR_EV_RT_REQUEST, PWR_ACTIVE_RT},
   {PWR_FAULT, PWR_EV_RECOVER_OK, PWR_RAIL_VALIDATE}
 };
 
@@ -121,6 +130,8 @@ static const PS_HW6_StateTransition ps_pmic_transitions[] =
   {PMIC_OFFLINE, PMIC_EV_PROBE_REQUEST, PMIC_PROBE},
   {PMIC_PROBE, PMIC_EV_PROBE_OK, PMIC_MONITOR},
   {PMIC_PROBE, PMIC_EV_PROBE_FAIL, PMIC_ERROR},
+  {PMIC_MONITOR, PMIC_EV_SHIP_REQUEST, PMIC_SHIP_PENDING},
+  {PMIC_SHIP_PENDING, PMIC_EV_RECOVER_OK, PMIC_MONITOR},
   {PMIC_ERROR, PMIC_EV_RECOVER_OK, PMIC_PROBE}
 };
 
@@ -3117,6 +3128,12 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.imu_deep_power_down_write_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
 
+  g_ps_hw6_owner_sm_probe.start_power_last_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  ps_start_power_return_state = PWR_ACTIVE_LP;
+  g_ps_hw6_owner_sm_probe.start_power_return_state =
+    ps_start_power_return_state;
+
   g_ps_hw6_owner_sm_probe.joystick_ready_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.joystick_identity_status =
@@ -3253,6 +3270,73 @@ void PS_HW6_OwnerStateMachines_BeginWorkflow(void)
 {
   g_ps_hw6_owner_sm_probe.phase = PS_HW6_SM_PHASE_RUNNING;
   g_ps_hw6_owner_sm_probe.workflow_start_tick = (uint32_t)tx_time_get();
+}
+
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandleStartShippingIntent(
+  uint32_t start_event,
+  uint32_t hold_ticks)
+{
+  HAL_StatusTypeDef status = HAL_ERROR;
+  uint32_t power_event = 0UL;
+
+  g_ps_hw6_owner_sm_probe.start_power_event_count++;
+  g_ps_hw6_owner_sm_probe.start_power_last_event = start_event;
+  g_ps_hw6_owner_sm_probe.start_power_last_hold_ticks = hold_ticks;
+  g_ps_hw6_owner_sm_probe.start_power_last_tick = (uint32_t)tx_time_get();
+
+  if (start_event ==
+      (uint32_t)PS_INPUT_START_POWER_EVENT_SHIP_PREP)
+  {
+    power_event = PWR_EV_START_SHIP_PREP;
+    ps_start_power_return_state =
+      g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_POWER];
+    g_ps_hw6_owner_sm_probe.start_power_return_state =
+      ps_start_power_return_state;
+    g_ps_hw6_owner_sm_probe.start_power_ship_prep_count++;
+  }
+  else if (start_event ==
+           (uint32_t)PS_INPUT_START_POWER_EVENT_SHIP_WARNING)
+  {
+    power_event = PWR_EV_START_SHIP_WARNING;
+    g_ps_hw6_owner_sm_probe.start_power_ship_warning_count++;
+  }
+  else if (start_event ==
+           (uint32_t)PS_INPUT_START_POWER_EVENT_SHIP_IMMINENT)
+  {
+    power_event = PWR_EV_START_SHIP_IMMINENT;
+    g_ps_hw6_owner_sm_probe.start_power_ship_imminent_count++;
+  }
+  else if (start_event ==
+           (uint32_t)PS_INPUT_START_POWER_EVENT_RELEASED_BEFORE_SHIP)
+  {
+    power_event = (ps_start_power_return_state == PWR_ACTIVE_RT) ?
+      PWR_EV_RT_REQUEST : PWR_EV_LP_REQUEST;
+    g_ps_hw6_owner_sm_probe.start_power_cancel_count++;
+  }
+
+  if (power_event != 0UL)
+  {
+    status = PS_HW6_SM_Transition(PS_HW6_SM_POWER, power_event, HAL_OK);
+    if ((status == HAL_OK) &&
+        (start_event ==
+         (uint32_t)PS_INPUT_START_POWER_EVENT_SHIP_PREP))
+    {
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
+                                PMIC_EV_SHIP_REQUEST,
+                                HAL_OK);
+    }
+    else if ((status == HAL_OK) &&
+             (start_event ==
+              (uint32_t)PS_INPUT_START_POWER_EVENT_RELEASED_BEFORE_SHIP))
+    {
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
+                                PMIC_EV_RECOVER_OK,
+                                HAL_OK);
+    }
+  }
+
+  g_ps_hw6_owner_sm_probe.start_power_last_status = (uint32_t)status;
+  return status;
 }
 
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Stabilize(uint32_t owner_id)

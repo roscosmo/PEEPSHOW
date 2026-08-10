@@ -169,9 +169,12 @@ Measured evidence from that capture:
 - ADP identity, rail, and fault checks all passed
 
 This confirms the protective hardware path for a 12-second START/MR hold is
-enabled. It does not authorize routine intentional shipment-entry testing as
-part of button navigation work, and it does not close the software warning,
-save/quiesce, release-cancel, wake/recovery, or first-boot policy tests.
+enabled. Subsequent HW6 unit 001 FW0 captures validated the software
+shipping-prep, warning, and imminent scaffold at 5 s, 9 s, and 11 s, and
+the user confirmed ADP5360 shipment entry after a long START/MR hold. This
+does not authorize routine intentional shipment-entry testing as part of button
+navigation work, and it does not close save/quiesce, release-cancel,
+wake/recovery, or first-boot policy tests.
 
 ## Threshold / Policy Ledger
 
@@ -199,8 +202,9 @@ Populate this table during bring-up. Values are placeholders until selected and 
 | charger-present debounce/filter | TBD | USB connect/disconnect logs | open |
 | VBUS disagreement timeout | TBD | ADP5360 vs `PA9` mismatch handling | open |
 | PMIC read retry limit | TBD | transient failure recovery test | open |
-| START ship-prep warning threshold | TBD | warning starts early enough for save/quiesce | open |
-| START imminent threshold | TBD | final warning before hardware cutoff | open |
+| START ship-prep threshold | `5 s` FW0 scaffold | power owner receives prep before hardware cutoff | pass_unit_001; save/quiesce policy open |
+| START warning threshold | `9 s` FW0 scaffold | warning starts early enough before hardware cutoff | pass_unit_001; warning UI open |
+| START imminent threshold | `11 s` FW0 scaffold | final warning before hardware cutoff | pass_unit_001; close to PMIC threshold |
 
 Thresholds are Platform tuning constants, not Reference Game policy.
 
@@ -226,7 +230,8 @@ Thresholds are Platform tuning constants, not Reference Game policy.
 | low battery | simulated or measured threshold | forced sleep selected | TBD | open |
 | critical battery | simulated or controlled threshold | ISOFET disconnect selected, not shipping mode | TBD | open |
 | EN_MR_SD enable | normal boot through `thPower` | ADP5360 Supervisory Setting `0x2D[1]` set so START/MR 12 s shipment entry is enabled | power/display boot complete `1/1`, ADP driver API `4`, MR status `0`, PMIC snapshot success `1` | pass_unit_001; software prep UX open |
-| START prep | sustained hold below hardware cutoff | warning/save/quiesce path starts | TBD | open |
+| START prep | sustained hold below hardware cutoff | warning/save/quiesce path starts | 5 s START hold reached `START_SHIP_PREP`, power event `1`, power state `8/8`, raw/stable PA4 `0/0` | scaffold_pass_unit_001; save/quiesce open |
+| START warning/imminent | sustained hold below/near hardware cutoff | warning and imminent events route to `thPower` | 9-10 s hold reached `START_SHIP_WARNING`; >11 s hold reached `START_SHIP_IMMINENT`; prep/warn/imm counters `1/1/1`; user confirmed PMIC shipment after long hold | scaffold_pass_unit_001; warning UI and release-cancel open |
 | START release | release during prep | software warning/prep cancelled | TBD | open |
 | first boot | no settings/calibration | no save/backup dependency during ship prep | TBD | open |
 

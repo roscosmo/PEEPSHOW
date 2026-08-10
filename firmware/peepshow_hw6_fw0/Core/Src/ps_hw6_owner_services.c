@@ -787,6 +787,56 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void)
   return HAL_ERROR;
 }
 
+HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearBootHold(void)
+{
+  uint32_t clear_hal_status = (uint32_t)HAL_ERROR;
+  ps_status_t driver_status;
+
+  g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_DISPLAY;
+  g_ps_hw6_owner_probe.display_complete = 0UL;
+  g_ps_hw6_owner_probe.display_success = 0UL;
+  g_ps_hw6_owner_probe.display_ui_request_count++;
+  g_ps_hw6_owner_probe.display_ui_page = PS_UI_ROUTER_PAGE_BOOTSTRAP;
+  g_ps_hw6_owner_probe.display_ui_calibration_page = PS_UI_ROUTER_CAL_NONE;
+  g_ps_hw6_owner_probe.display_rtc_state = HAL_RTC_GetState(&hrtc);
+  g_ps_hw6_owner_probe.display_rtc_cr = hrtc.Instance->CR;
+  g_ps_hw6_owner_probe.display_spi_state_before = HAL_SPI_GetState(&hspi3);
+
+  (void)memset(ps_hw6_display_framebuffer, 0xFF,
+               sizeof(ps_hw6_display_framebuffer));
+  ps_hw6_display_ui_rotate_ccw = 1UL;
+  g_ps_hw6_owner_probe.display_framebuffer_hash =
+    PS_HW6_DisplayFramebufferHash();
+  g_ps_hw6_owner_probe.display_black_pixels = 0UL;
+
+  driver_status = ps_dev_ls013b7dh05_clear(&ps_hw6_display,
+                                           &clear_hal_status);
+  g_ps_hw6_owner_probe.display_init_status = clear_hal_status;
+  g_ps_hw6_owner_probe.display_present_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_dma_done = LCD_FlushDMA_IsDone() ? 1UL : 0UL;
+  g_ps_hw6_owner_probe.display_spi_state_after = HAL_SPI_GetState(&hspi3);
+  g_ps_hw6_owner_probe.display_spi_error_after = HAL_SPI_GetError(&hspi3);
+  g_ps_hw6_owner_probe.display_dma_state_after =
+    HAL_DMA_GetState(&handle_LPDMA1_Channel0);
+  g_ps_hw6_owner_probe.display_dma_error_after =
+    HAL_DMA_GetError(&handle_LPDMA1_Channel0);
+  g_ps_hw6_owner_probe.display_ui_status = (uint32_t)driver_status;
+  PS_HW6_UpdateDisplayDriverProbe();
+  g_ps_hw6_owner_probe.display_complete = 1UL;
+
+  if ((driver_status == PS_STATUS_OK) &&
+      (g_ps_hw6_owner_probe.display_rtc_state == HAL_RTC_STATE_READY) &&
+      ((g_ps_hw6_owner_probe.display_rtc_cr & RTC_CR_COE) != 0UL) &&
+      (g_ps_hw6_owner_probe.display_spi_error_after == HAL_SPI_ERROR_NONE))
+  {
+    g_ps_hw6_owner_probe.display_success = 1UL;
+    return HAL_OK;
+  }
+
+  return HAL_ERROR;
+}
+
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(uint32_t page,
                                                uint32_t calibration_page,
                                                uint32_t focus_index)

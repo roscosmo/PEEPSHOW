@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 
-#define PS_DEV_LS013B7DH05_API_VERSION (1UL)
+#define PS_DEV_LS013B7DH05_API_VERSION (2UL)
 #define PS_DEV_LS013B7DH05_WIDTH       DISPLAY_WIDTH
 #define PS_DEV_LS013B7DH05_HEIGHT      DISPLAY_HEIGHT
 #define PS_DEV_LS013B7DH05_LINE_WIDTH  LINE_WIDTH
@@ -50,6 +50,8 @@ typedef struct
 
 ps_status_t ps_dev_ls013b7dh05_init(ps_dev_ls013b7dh05_t *device,
                                     SPI_HandleTypeDef *bus);
+ps_status_t ps_dev_ls013b7dh05_clear(ps_dev_ls013b7dh05_t *device,
+                                     uint32_t *clear_hal_status);
 ps_status_t ps_dev_ls013b7dh05_present_full_dma(
   ps_dev_ls013b7dh05_t *device,
   const uint8_t *framebuffer,

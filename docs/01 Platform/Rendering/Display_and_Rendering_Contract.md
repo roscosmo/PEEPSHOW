@@ -64,15 +64,16 @@ The display contract must define before implementation:
 On HW6 unit 001, FW0 has proven the first owner-routed UI/bootstrap display
 path through `thDisplay`:
 
-- the display owner initializes and presents a bootstrap/UI framebuffer during
-  normal boot
+- the display owner initializes and owns the first normal-boot panel action
+- the current FW0 target clears the panel into static hold immediately when
+  `thDisplay` starts, then lets UI render HOME after power boot completes
 - the current firmware maps the logical landscape UI to the native portrait
   panel with a 90 degree counter-clockwise rotation
 - the user confirmed the corrected orientation visually on the physical display
 - the renderer is intentionally minimal; detailed display rendering work remains
   later Platform work
 
-This bring-up result proves basic orientation and owner-routed presentation. It
+The existing bring-up result proves basic orientation and owner-routed presentation; the early clear/hold boot behavior still needs target confirmation. It
 does not close partial updates, dirty tracking, LPBAM, final typography/layout,
 renderer polish, or display fault recovery.
 

@@ -157,6 +157,7 @@ UINT PS_HW6_OwnerServices_Init(void);
 HAL_StatusTypeDef PS_HW6_PowerOwner_EnableMrShippingMode(void);
 HAL_StatusTypeDef PS_HW6_PowerOwner_RunSnapshot(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void);
+HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearBootHold(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(uint32_t page,
                                                uint32_t calibration_page,
                                                uint32_t focus_index);

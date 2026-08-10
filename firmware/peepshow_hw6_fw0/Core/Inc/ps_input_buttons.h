@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_INPUT_BUTTONS_API_VERSION (1UL)
+#define PS_INPUT_BUTTONS_API_VERSION (5UL)
 
 typedef enum
 {
@@ -17,14 +17,36 @@ typedef enum
   PS_INPUT_BUTTON_ID_A,
   PS_INPUT_BUTTON_ID_B,
   PS_INPUT_BUTTON_ID_L,
-  PS_INPUT_BUTTON_ID_R
+  PS_INPUT_BUTTON_ID_R,
+  PS_INPUT_BUTTON_ID_START
 } ps_input_button_id_t;
 
 typedef enum
 {
   PS_INPUT_BUTTON_EVENT_NONE = 0,
-  PS_INPUT_BUTTON_EVENT_PRESS
+  PS_INPUT_BUTTON_EVENT_PRESS,
+  PS_INPUT_BUTTON_EVENT_RELEASE
 } ps_input_button_event_t;
+
+typedef enum
+{
+  PS_INPUT_START_STATE_IDLE = 0,
+  PS_INPUT_START_STATE_NORMAL_PRESS,
+  PS_INPUT_START_STATE_LONG_PRESS,
+  PS_INPUT_START_STATE_SHIP_PREP,
+  PS_INPUT_START_STATE_SHIP_WARNING,
+  PS_INPUT_START_STATE_SHIP_IMMINENT,
+  PS_INPUT_START_STATE_RELEASED
+} ps_input_start_state_t;
+
+typedef enum
+{
+  PS_INPUT_START_POWER_EVENT_NONE = 0,
+  PS_INPUT_START_POWER_EVENT_SHIP_PREP,
+  PS_INPUT_START_POWER_EVENT_SHIP_WARNING,
+  PS_INPUT_START_POWER_EVENT_SHIP_IMMINENT,
+  PS_INPUT_START_POWER_EVENT_RELEASED_BEFORE_SHIP
+} ps_input_start_power_event_t;
 
 typedef struct
 {
@@ -38,14 +60,45 @@ typedef struct
   uint32_t last_event;
   uint32_t last_level;
   uint32_t last_tick;
+  uint32_t start_state;
+  uint32_t start_active;
+  uint32_t start_press_pending;
+  uint32_t start_release_pending;
+  uint32_t start_armed;
+  uint32_t start_live_level;
+  uint32_t start_raw_level;
+  uint32_t start_stable_level;
+  uint32_t start_stable_count;
+  uint32_t start_sample_count;
+  uint32_t start_synth_press_count;
+  uint32_t start_next_check_tick;
+  uint32_t start_checkpoint_count;
+  uint32_t start_synth_release_count;
+  uint32_t start_press_tick;
+  uint32_t start_release_tick;
+  uint32_t start_hold_ticks;
+  uint32_t start_ship_prep_count;
+  uint32_t start_ship_warning_count;
+  uint32_t start_ship_imminent_count;
+  uint32_t start_release_before_ship_count;
+  uint32_t start_pending_event;
+  uint32_t start_pending_timestamp;
+  uint32_t start_pending_hold_ticks;
+  uint32_t start_pending_drop_count;
 } ps_input_buttons_probe_t;
 
 extern volatile ps_input_buttons_probe_t g_ps_input_buttons_probe;
 
 void PS_InputButtons_Init(void);
 void PS_InputButtons_RecordExti(uint16_t gpio_pin, GPIO_PinState level);
+uint32_t PS_InputButtons_StartCheckDue(uint32_t now_tick);
+void PS_InputButtons_PollStart(uint32_t now_tick);
 uint32_t PS_InputButtons_TakePress(ps_input_button_id_t *button_id,
                                    uint32_t *timestamp);
+uint32_t PS_InputButtons_TakeStartPowerEvent(
+  ps_input_start_power_event_t *event,
+  uint32_t *timestamp,
+  uint32_t *hold_ticks);
 
 #ifdef __cplusplus
 }

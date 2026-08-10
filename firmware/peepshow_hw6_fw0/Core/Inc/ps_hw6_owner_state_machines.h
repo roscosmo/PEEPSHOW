@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (14UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (15UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -115,6 +115,17 @@ typedef struct
   uint32_t trace_count;
   uint32_t trace_write_index;
   PS_HW6_OwnerStateTrace trace[PS_HW6_OWNER_SM_TRACE_DEPTH];
+
+  uint32_t start_power_event_count;
+  uint32_t start_power_last_event;
+  uint32_t start_power_last_hold_ticks;
+  uint32_t start_power_last_tick;
+  uint32_t start_power_last_status;
+  uint32_t start_power_return_state;
+  uint32_t start_power_ship_prep_count;
+  uint32_t start_power_ship_warning_count;
+  uint32_t start_power_ship_imminent_count;
+  uint32_t start_power_cancel_count;
 
   uint32_t joystick_driver_api_version;
   uint32_t joystick_driver_init_status;
@@ -511,6 +522,9 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickLiveProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCalibrationCapture(
   uint32_t calibration_page);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandleStartShippingIntent(
+  uint32_t start_event,
+  uint32_t hold_ticks);
 void PS_HW6_OwnerStateMachines_BeginCycle(uint32_t cycle_index);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Resume(uint32_t owner_id,
                                                     uint32_t cycle_index);

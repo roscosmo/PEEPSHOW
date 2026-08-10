@@ -2355,7 +2355,8 @@ static void MX_GPIO_Init(void)
 static void PS_Main_RecordButtonExti(uint16_t GPIO_Pin,
                                      GPIO_PinState level)
 {
-  if ((GPIO_Pin == BTN_A_Pin) ||
+  if ((GPIO_Pin == BTN_START_Pin) ||
+      (GPIO_Pin == BTN_A_Pin) ||
       (GPIO_Pin == BTN_B_Pin) ||
       (GPIO_Pin == BTN_L_Pin) ||
       (GPIO_Pin == BTN_R_Pin))

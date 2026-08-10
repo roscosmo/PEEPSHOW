@@ -62,7 +62,7 @@ printf "\n--- ThreadX topology and startup self-test ---\n"
 set $rtos = &g_ps_hw6_rtos_probe
 printf "magic/version/phase       = 0x%x / 0x%x / 0x%x\n", $rtos->magic, $rtos->version, $rtos->phase
 printf "init/runtime complete     = %u / %u\n", $rtos->init_complete, $rtos->runtime_complete
-printf "boot power/display       = %u / %u\n", $rtos->boot_power_done, $rtos->boot_display_bootstrap_sent
+printf "boot power/display hold  = %u / %u\n", $rtos->boot_power_done, $rtos->boot_display_bootstrap_sent
 printf "init status/error step/id = 0x%x / 0x%x / 0x%x\n", $rtos->init_status, $rtos->init_error_step, $rtos->init_error_index
 printf "tick Hz/owners/queues/egs = %u / %u / %u / %u\n", $rtos->ticks_per_second, $rtos->owner_count, $rtos->queue_count, $rtos->event_group_count
 printf "owner required/started    = 0x%x / 0x%x\n", $rtos->owner_required_mask, $rtos->owner_start_mask
@@ -136,18 +136,18 @@ printf "ADP regulator read mask  = 0x%x\n", $owner->power_regulator_read_ok_mask
 printf "ADP regulator cfg/out    = buck %02x/%02x buckbst %02x/%02x\n", $owner->power_regulator_buck_cfg, $owner->power_regulator_buck_output, $owner->power_regulator_buckbst_cfg, $owner->power_regulator_buckbst_output
 printf "ADP regulator ok bits    = vout1 %u vout2 %u bat %u\n", $owner->power_regulator_vout1_ok, $owner->power_regulator_vout2_ok, $owner->power_regulator_battery_ok
 
-printf "\n  display owner: current UI/bootstrap framebuffer\n"
+printf "\n  display owner: boot clear hold or current UI framebuffer\n"
 printf "command/complete/success  = %u / %u / %u\n", $owner->display_command_tick, $owner->display_complete, $owner->display_success
 printf "display driver API/init/state/ops/last = %u / 0x%x / %u / %u / 0x%x\n", $owner->display_driver_api_version, $owner->display_driver_init_status, $owner->display_driver_state, $owner->display_driver_operation_count, $owner->display_driver_last_status
 printf "size/pattern/hash/black   = %ux%u / 0x%x / 0x%x / %u\n", $owner->display_width, $owner->display_height, $owner->display_pattern_id, $owner->display_framebuffer_hash, $owner->display_black_pixels
-printf "hash/black note          = content dependent for UI pages\n"
+printf "hash/black note          = clear hold is all-white; UI pages are content dependent\n"
 printf "RTC state/CR              = 0x%x / 0x%x\n", $owner->display_rtc_state, $owner->display_rtc_cr
 printf "SPI before/init/present   = 0x%x / 0x%x / 0x%x\n", $owner->display_spi_state_before, $owner->display_init_status, $owner->display_present_status
 printf "DMA done/state/error      = %u / 0x%x / 0x%x\n", $owner->display_dma_done, $owner->display_dma_state_after, $owner->display_dma_error_after
 printf "SPI state/error after     = 0x%x / 0x%x\n", $owner->display_spi_state_after, $owner->display_spi_error_after
 printf "ack set status            = 0x%x\n", $owner->display_ack_set_status
-printf "expected visual           = current UI page, not diagnostic card\n"
-printf "expected normal boot      = at least one display present\n"
+printf "expected visual           = early blank hold, then current UI page\n"
+printf "expected normal boot      = display hold flag set, then HOME render after power\n"
 
 printf "\n  audio owner: idle unless diagnostic workflow requested\n"
 printf "command/complete/success  = %u / %u / %u\n", $owner->audio_command_tick, $owner->audio_complete, $owner->audio_success
@@ -171,6 +171,12 @@ printf "normal boot note         = power owner only is expected here for now\n"
 printf "success/failure owners     = 0x%x / 0x%x\n", $sm->success_owner_mask, $sm->failure_owner_mask
 printf "diagnostic workflow ticks  = %u / %u / %u (0 means not requested)\n", $sm->workflow_start_tick, $sm->workflow_end_tick, $sm->workflow_end_tick - $sm->workflow_start_tick
 
+printf "START overlay state/active/hold ticks = %u / %u / %u\n", g_ps_input_buttons_probe.start_state, g_ps_input_buttons_probe.start_active, g_ps_input_buttons_probe.start_hold_ticks
+printf "START armed/live/next/check/synth = %u / %u / %u / %u / %u\n", g_ps_input_buttons_probe.start_armed, g_ps_input_buttons_probe.start_live_level, g_ps_input_buttons_probe.start_next_check_tick, g_ps_input_buttons_probe.start_checkpoint_count, g_ps_input_buttons_probe.start_synth_release_count
+printf "START prep/warn/imm/release/drop = %u / %u / %u / %u / %u\n", g_ps_input_buttons_probe.start_ship_prep_count, g_ps_input_buttons_probe.start_ship_warning_count, g_ps_input_buttons_probe.start_ship_imminent_count, g_ps_input_buttons_probe.start_release_before_ship_count, g_ps_input_buttons_probe.start_pending_drop_count
+printf "START power count/event/status/hold ticks = %u / %u / 0x%x / %u\n", $sm->start_power_event_count, $sm->start_power_last_event, $sm->start_power_last_status, $sm->start_power_last_hold_ticks
+printf "START power return state = %u\n", $sm->start_power_return_state
+printf "START power prep/warn/imm/cancel = %u / %u / %u / %u\n", $sm->start_power_ship_prep_count, $sm->start_power_ship_warning_count, $sm->start_power_ship_imminent_count, $sm->start_power_cancel_count
 printf "\nowner lifecycle transport: send wait ack action start end\n"
 printf "power                      %x %x %x %x %u %u\n", $sm->owner_command_send_status[0], $sm->owner_ack_wait_status[0], $sm->owner_ack_flags[0], $sm->owner_action_status[0], $sm->owner_action_start_tick[0], $sm->owner_action_end_tick[0]
 printf "audio                      %x %x %x %x %u %u\n", $sm->owner_command_send_status[1], $sm->owner_ack_wait_status[1], $sm->owner_ack_flags[1], $sm->owner_action_status[1], $sm->owner_action_start_tick[1], $sm->owner_action_end_tick[1]

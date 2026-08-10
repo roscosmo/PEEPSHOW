@@ -39,10 +39,11 @@ edge path and the first UI consumption path:
 - L/R are approved fallback navigation controls while joystick calibration is
   missing or invalid
 
-This is not the complete button contract. Long press, repeat, chord, stuck
-button, wake-from-low-power, `BTN_BOOT`, and START shipping-prep timing remain
-open. START shipping-mode enable itself is a PMIC/power-owner boot action and
-is recorded in [[PMIC_and_Power_Contract]].
+This is not the complete button contract. Non-START long press, repeat, chord,
+stuck button, wake-from-low-power, and `BTN_BOOT` remain open. START
+shipping-prep/warning/imminent timing has an FW0 scaffold validated on HW6
+unit 001, but final product behavior is still governed by
+[[PMIC_and_Power_Contract]].
 
 ## Start Button / ADP5360 Shipping Mode
 
@@ -188,6 +189,16 @@ Published events:
 - `INPUT_START_RELEASED_BEFORE_SHIP`
 
 These events are power/save intent. They are not game input.
+
+### HW6 FW0 Start Overlay Scaffold Status
+
+Current FW0 scaffolding admits `BTN_START` into the EXTI-backed input path and keeps it out of the ordinary A/B/L/R UI button queue. The EXTI handler only latches press/release edges; `thInput` consumes those latches on its ThreadX tick and also samples the live PA4 level on the bounded input-owner heartbeat. START press acceptance is edge-assisted when PA4 is raw low, missed press edges are recovered from a debounced stable-low PA4 sample, and release is accepted only after the debounced stable-high PA4 level confirms it. `thInput` arms START hold checkpoints from the same ThreadX tick domain, tracks the `START_*` overlay states, and publishes shipping-prep, warning, imminent, and release-before-ship events to `thPower`. `HAL_GetTick()` may be used for debug timestamps on edges, but it is not authoritative for START hold classification.
+
+`thPower` currently treats those events as lifecycle intent only: it records debugger-visible counters, enters existing `PWR_SHIP_PREP` / `PMIC_SHIP_PENDING` scaffold states, and cancels back toward the prior active power state on release before hardware shipment entry. It does not yet run save/quiesce, warning UI, settings persistence, STOP behavior, or final shipment-entry policy.
+
+Validated HW6 unit 001 FW0 evidence: a 5 s hold reached `START_SHIP_PREP` with checkpoint/live ticks `500/525`; a 9-10 s hold reached `START_SHIP_WARNING` with `900/1075`; a >11 s hold reached `START_SHIP_IMMINENT` with `1100/1675`; raw/stable PA4 was `0/0` during sustained holds; and `thPower` recorded prep/warning/imminent counters `1/1/1`. The ADP5360 hardware shipment path was confirmed separately by holding START/MR past the hardware threshold.
+
+The required knob names above remain authoritative. FW0 currently keeps the scaffold thresholds local to the input module because this target does not yet expose the knob generation files; those values must move to the knobs pipeline before this behavior becomes product policy.
 
 ## Logical Event Model
 

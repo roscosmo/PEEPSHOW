@@ -38,6 +38,46 @@ ps_status_t ps_dev_ls013b7dh05_init(ps_dev_ls013b7dh05_t *device,
   return PS_STATUS_OK;
 }
 
+ps_status_t ps_dev_ls013b7dh05_clear(ps_dev_ls013b7dh05_t *device,
+                                     uint32_t *clear_hal_status)
+{
+  HAL_StatusTypeDef init_status;
+  ps_status_t status;
+
+  if (device == NULL)
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  if (clear_hal_status != NULL)
+  {
+    *clear_hal_status = (uint32_t)HAL_ERROR;
+  }
+  if (device->initialized == 0U)
+  {
+    device->last_status = (uint32_t)PS_STATUS_NOT_INITIALIZED;
+    return PS_STATUS_NOT_INITIALIZED;
+  }
+
+  device->operation_count++;
+  init_status = LCD_Init(&device->panel, device->bus);
+  if (clear_hal_status != NULL)
+  {
+    *clear_hal_status = (uint32_t)init_status;
+  }
+
+  status = ps_dev_ls013b7dh05_hal_status(init_status);
+  device->last_status = (uint32_t)status;
+  if (status == PS_STATUS_OK)
+  {
+    device->state = PS_DEV_LS013B7DH05_STATE_STATIC_HOLD;
+  }
+  else
+  {
+    device->state = PS_DEV_LS013B7DH05_STATE_FAULT;
+  }
+  return status;
+}
+
 ps_status_t ps_dev_ls013b7dh05_present_full_dma(
   ps_dev_ls013b7dh05_t *device,
   const uint8_t *framebuffer,

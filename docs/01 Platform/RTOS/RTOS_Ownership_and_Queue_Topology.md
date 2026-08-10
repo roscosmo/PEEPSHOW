@@ -112,13 +112,15 @@ quiesce/resume barrier.
 
 ## HW6 FW0 Normal Boot Lifecycle Baseline
 
-`EV-HW6-20260810-P5-BOOT-021` records the current FW0 normal boot behavior on
+`EV-HW6-20260810-P5-BOOT-021` records the prior FW0 normal boot behavior on
 `HW6-UNIT-001` after the UI router and PMIC shipping-mode enable work:
 
 - all nine owner threads, queues, and event groups initialize successfully
-- `thDisplay` renders the bootstrap/UI framebuffer once after owner startup
-- `thPower` performs the normal boot power stabilization path after display
-  bootstrap has been requested
+- `thDisplay` owns the first panel action after the display owner starts; the
+  current FW0 target is an immediate clear/static hold to remove panel static
+  before normal UI routing
+- `thPower` performs the normal boot power stabilization path after the display
+  boot hold has been requested
 - the power stabilization path enables ADP5360 `EN_MR_SD` through the PMIC
   driver and then takes the read-only ADP5360 snapshot
 - `thUI` dispatches HOME only after the power boot flag is complete

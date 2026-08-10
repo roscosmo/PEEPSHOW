@@ -103,10 +103,15 @@ This measured result means the firmware enables the ADP5360 option that lets a
 12-second START/MR hold enter shipment mode, which protects the cells while the
 full low-power policy is still under development.
 
-This does not close the full shipping-mode product behavior. Firmware still
-needs START hold classification, warning/countdown UI, save/quiesce behavior,
-release cancellation, wake/recovery proof, and first-boot/no-settings policy.
-The hardware threshold must still be treated as final once reached.
+This does not close the full shipping-mode product behavior. Firmware now has
+target-validated START hold classification through the 5 s prep, 9 s warning,
+and 11 s imminent scaffold, and HW6 unit 001 confirmed ADP5360 shipment entry
+after a long START/MR hold. Firmware still needs warning/countdown UI,
+save/quiesce behavior, release-cancel proof, wake/recovery proof, and
+first-boot/no-settings policy. The hardware threshold must still be treated as
+final once reached.
+
+The current FW0 START scaffold routes input-owned hold events to `thPower`, records them in the power state-machine probe, preserves the prior active return state, and enters existing `PWR_SHIP_PREP` / `PMIC_SHIP_PENDING` states. It intentionally does not command shipment entry or perform final low-power shutdown work yet. The ADP5360 hardware, not firmware, owns actual shipment entry after the MR low-time threshold.
 
 This path is a normal boot power-owner action. It is not part of the retained
 peripheral diagnostic lifecycle and must not require display, audio, sensor,

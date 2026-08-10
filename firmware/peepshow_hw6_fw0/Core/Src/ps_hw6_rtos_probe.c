@@ -24,6 +24,7 @@
 #define PS_HW6_RTOS_COMMAND_TOKEN         (0xC0DEC0DEUL)
 #define PS_HW6_RTOS_DISPLAY_UI_MAGIC      (0x44554921UL)
 #define PS_HW6_RTOS_UI_INPUT_MAGIC        (0x55494221UL)
+#define PS_HW6_RTOS_POWER_INPUT_MAGIC     (0x50574921UL)
 #define PS_HW6_RTOS_UI_INPUT_PRESS        (1UL)
 #define PS_HW6_RTOS_DISPLAY_UI_CAL_MASK   (0xFFFFUL)
 #define PS_HW6_RTOS_DISPLAY_UI_FOCUS_SHIFT (16U)
@@ -284,6 +285,21 @@ static uint32_t PS_HW6_RTOS_UiInputCommandIsValid(uint32_t owner_id,
   return 1UL;
 }
 
+static uint32_t PS_HW6_RTOS_PowerInputCommandIsValid(uint32_t owner_id,
+                                                     const ULONG *message)
+{
+  if ((owner_id != PS_HW6_RTOS_OWNER_POWER) ||
+      (message[0] != PS_HW6_RTOS_POWER_INPUT_MAGIC) ||
+      (message[1] != PS_HW6_RTOS_OWNER_POWER) ||
+      (message[2] < PS_INPUT_START_POWER_EVENT_SHIP_PREP) ||
+      (message[2] > PS_INPUT_START_POWER_EVENT_RELEASED_BEFORE_SHIP))
+  {
+    return 0UL;
+  }
+
+  return 1UL;
+}
+
 static uint32_t PS_HW6_RTOS_RouterEventForButton(uint32_t button_id)
 {
   if (button_id == PS_INPUT_BUTTON_ID_A)
@@ -406,6 +422,21 @@ static UINT PS_HW6_RTOS_SendUiButtonPress(ps_input_button_id_t button_id)
   message[2] = PS_HW6_RTOS_UI_INPUT_PRESS;
   message[3] = (ULONG)button_id;
   return tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_UI],
+                       message,
+                       TX_NO_WAIT);
+}
+
+static UINT PS_HW6_RTOS_SendPowerStartEvent(
+  ps_input_start_power_event_t event,
+  uint32_t hold_ticks)
+{
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+
+  message[0] = PS_HW6_RTOS_POWER_INPUT_MAGIC;
+  message[1] = PS_HW6_RTOS_OWNER_POWER;
+  message[2] = (ULONG)event;
+  message[3] = (ULONG)hold_ticks;
+  return tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_POWER],
                        message,
                        TX_NO_WAIT);
 }
@@ -669,8 +700,12 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
   UINT status;
   ps_status_t router_status;
   ps_input_button_id_t button_id;
+  ps_input_start_power_event_t start_power_event;
   uint32_t button_timestamp;
   uint32_t button_drain_count;
+  uint32_t start_power_timestamp;
+  uint32_t start_power_hold_ticks;
+  uint32_t start_power_drain_count;
   uint32_t word;
 
   if (owner_id >= PS_HW6_RTOS_OWNER_COUNT)
@@ -685,6 +720,14 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
   g_ps_hw6_rtos_probe.owner_last_tick[owner_id] = (uint32_t)now;
   g_ps_hw6_rtos_probe.owner_start_mask |= (1UL << owner_id);
   PS_HW6_RTOS_UpdateRuntimeComplete();
+
+  if ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) &&
+      (ps_display_bootstrap_sent == 0UL))
+  {
+    ps_display_bootstrap_sent = 1UL;
+    g_ps_hw6_rtos_probe.boot_display_bootstrap_sent = 1UL;
+    (void)PS_HW6_DisplayOwner_ClearBootHold();
+  }
 
   for (;;)
   {
@@ -715,6 +758,12 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       else if (PS_HW6_RTOS_StorageMscCommandIsValid(owner_id, message) != 0UL)
       {
         PS_HW6_OwnerStateMachines_HandleStorageMsc(message[2]);
+      }
+      else if (PS_HW6_RTOS_PowerInputCommandIsValid(owner_id, message) != 0UL)
+      {
+        (void)PS_HW6_OwnerStateMachines_HandleStartShippingIntent(
+          (uint32_t)message[2],
+          (uint32_t)message[3]);
       }
       else if (PS_HW6_RTOS_DisplayUiCommandIsValid(owner_id, message) != 0UL)
       {
@@ -761,17 +810,6 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         PS_HW6_RTOS_OWNER_POWER);
       ps_power_boot_done = 1UL;
       g_ps_hw6_rtos_probe.boot_power_done = 1UL;
-    }
-    if ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) &&
-        (ps_display_bootstrap_sent == 0UL) &&
-        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
-    {
-      ps_display_bootstrap_sent = 1UL;
-      g_ps_hw6_rtos_probe.boot_display_bootstrap_sent = 1UL;
-      (void)PS_HW6_DisplayOwner_RenderUI(
-        PS_UI_ROUTER_PAGE_BOOTSTRAP,
-        PS_UI_ROUTER_CAL_NONE,
-        0UL);
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
         (g_ps_hw6_owner_sm_start_request != 0UL) &&
@@ -820,6 +858,24 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
+      if (PS_InputButtons_StartCheckDue((uint32_t)now) != 0UL)
+      {
+        PS_InputButtons_PollStart((uint32_t)now);
+      }
+      for (start_power_drain_count = 0UL;
+           start_power_drain_count < 4UL;
+           ++start_power_drain_count)
+      {
+        if (PS_InputButtons_TakeStartPowerEvent(&start_power_event,
+                                               &start_power_timestamp,
+                                               &start_power_hold_ticks) == 0UL)
+        {
+          break;
+        }
+        (void)start_power_timestamp;
+        (void)PS_HW6_RTOS_SendPowerStartEvent(start_power_event,
+                                             start_power_hold_ticks);
+      }
       for (button_drain_count = 0UL;
            button_drain_count < 4UL;
            ++button_drain_count)
