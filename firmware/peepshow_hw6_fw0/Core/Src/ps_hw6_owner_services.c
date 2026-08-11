@@ -1186,6 +1186,10 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_VerifyIdle(void)
   ps_dev_audio_play_result_t result;
   ps_status_t driver_status;
 
+  g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_AUDIO;
+  g_ps_hw6_owner_probe.audio_complete = 0UL;
+  g_ps_hw6_owner_probe.audio_success = 0UL;
+
   driver_status = ps_dev_audio_verify_idle(&ps_hw6_audio, &result);
   g_ps_hw6_owner_probe.audio_sd_state_after = result.sd_state_after;
   g_ps_hw6_owner_probe.audio_sai_state_after = result.sai_state_after;
@@ -1193,7 +1197,13 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_VerifyIdle(void)
   g_ps_hw6_owner_probe.audio_dma_state_after = result.dma_state_after;
   g_ps_hw6_owner_probe.audio_dma_error_after = result.dma_error_after;
   PS_HW6_UpdateAudioDriverProbe();
-  return (driver_status == PS_STATUS_OK) ? HAL_OK : HAL_ERROR;
+  g_ps_hw6_owner_probe.audio_complete = 1UL;
+  if (driver_status == PS_STATUS_OK)
+  {
+    g_ps_hw6_owner_probe.audio_success = 1UL;
+    return HAL_OK;
+  }
+  return HAL_ERROR;
 }
 
 HAL_StatusTypeDef PS_HW6_AudioOwner_RunTone(void)

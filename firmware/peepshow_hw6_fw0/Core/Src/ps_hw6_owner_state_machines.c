@@ -39,11 +39,18 @@
 #define PS_HW6_SM_PHASE_RUNNING           (0x6810UL)
 #define PS_HW6_SM_PHASE_COMPLETE          (0x68FFUL)
 #define PS_HW6_SM_REQUIRED_OWNER_MASK     (0x7FUL)
+#define PS_HW6_STOP2_ACTIVE_PREP_OWNER_MASK \
+  (PS_HW6_SM_REQUIRED_OWNER_MASK & \
+   ~(1UL << PS_HW6_RTOS_OWNER_STORAGE))
 #define PS_HW6_POWER_QUIESCE_CYCLE_INDEX  (0xFFFFFFFFUL)
 
 #define PS_HW6_SM_OSPI_TIMEOUT_MS         (100U)
 #define PS_HW6_SM_ALL_STATE_MASK          \
   ((1UL << PS_HW6_OWNER_SM_COUNT) - 1UL)
+#define PS_HW6_STOP2_ACTIVE_PREP_STATE_MASK \
+  (PS_HW6_SM_ALL_STATE_MASK & \
+   ~(1UL << PS_HW6_SM_STORAGE) & \
+   ~(1UL << PS_HW6_SM_FLASH))
 
 #define PS_HW6_TMAG_ADDRESS               (0x34U)
 #define PS_HW6_IMU_ADDRESS                (0x18U)
@@ -96,6 +103,9 @@ volatile uint32_t g_ps_hw6_owner_sm_start_request;
 volatile uint32_t g_ps_hw6_pmic_software_ship_request;
 volatile uint32_t g_ps_hw6_power_sleep_prep_request;
 volatile uint32_t g_ps_hw6_power_stop2_request;
+volatile uint32_t g_ps_hw6_power_stop2_active_resume_request;
+volatile uint32_t g_ps_hw6_power_stop2_active_prep_request;
+volatile uint32_t g_ps_hw6_power_stop2_active_enter_request;
 volatile uint32_t g_ps_hw6_storage_usb_export_request;
 volatile uint32_t g_ps_hw6_storage_usb_reclaim_request;
 volatile uint32_t g_ps_hw6_joystick_sample_request;
@@ -1591,11 +1601,33 @@ static HAL_StatusTypeDef PS_HW6_SM_RunAudioTone(void)
 
 static HAL_StatusTypeDef PS_HW6_SM_StabilizeAudio(void)
 {
-  (void)PS_HW6_SM_Transition(PS_HW6_SM_AUDIO,
-                            AUDIO_EV_INIT_REQ, HAL_OK);
-  (void)PS_HW6_SM_Transition(PS_HW6_SM_AUDIO,
-                            AUDIO_EV_INIT_OK, HAL_OK);
-  return PS_HW6_SM_RunAudioTone();
+  uint32_t audio_state =
+    g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_AUDIO];
+
+  if (audio_state == (uint32_t)AUDIO_OFF)
+  {
+    if (PS_HW6_SM_Transition(PS_HW6_SM_AUDIO,
+                             AUDIO_EV_INIT_REQ, HAL_OK) != HAL_OK)
+    {
+      return HAL_ERROR;
+    }
+    if (PS_HW6_SM_Transition(PS_HW6_SM_AUDIO,
+                             AUDIO_EV_INIT_OK, HAL_OK) != HAL_OK)
+    {
+      return HAL_ERROR;
+    }
+  }
+  else if (audio_state != (uint32_t)AUDIO_IDLE)
+  {
+    return HAL_ERROR;
+  }
+
+  if (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_SPEAKER] !=
+      (uint32_t)SPK_OFF)
+  {
+    return HAL_ERROR;
+  }
+  return PS_HW6_AudioOwner_VerifyIdle();
 }
 
 static HAL_StatusTypeDef PS_HW6_SM_StabilizeJoystick(void)
@@ -3042,7 +3074,7 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeAudio(void)
   {
     return HAL_ERROR;
   }
-  return PS_HW6_SM_RunAudioTone();
+  return PS_HW6_AudioOwner_VerifyIdle();
 }
 
 static HAL_StatusTypeDef PS_HW6_SM_QuiesceAudio(void)
@@ -3463,6 +3495,9 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_start_request = 0UL;
   g_ps_hw6_power_sleep_prep_request = 0UL;
   g_ps_hw6_power_stop2_request = 0UL;
+  g_ps_hw6_power_stop2_active_resume_request = 0UL;
+  g_ps_hw6_power_stop2_active_prep_request = 0UL;
+  g_ps_hw6_power_stop2_active_enter_request = 0UL;
   g_ps_hw6_storage_usb_export_request = 0UL;
   g_ps_hw6_storage_usb_reclaim_request = 0UL;
   g_ps_hw6_joystick_sample_request = 0UL;
@@ -3730,6 +3765,16 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.stop2_expected_wake_pin = BTN_START_Pin;
   g_ps_hw6_owner_sm_probe.stop2_wake_start_idr = 0UL;
   g_ps_hw6_owner_sm_probe.stop2_wake_end_idr = 0UL;
+  g_ps_hw6_owner_sm_probe.stop2_active_prep_request_count = 0UL;
+  g_ps_hw6_owner_sm_probe.stop2_active_prep_start_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.stop2_active_prep_end_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.stop2_active_prep_cycle_index = 0UL;
+  g_ps_hw6_owner_sm_probe.stop2_active_prep_last_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.stop2_active_prep_ready = 0UL;
+  g_ps_hw6_owner_sm_probe.stop2_active_enter_request_count = 0UL;
+  g_ps_hw6_owner_sm_probe.stop2_active_enter_gate_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   for (index = 0U; index < PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT; ++index)
   {
     g_ps_hw6_owner_sm_probe.power_quiesce_send_status[index] =
@@ -3970,7 +4015,6 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
   g_ps_hw6_owner_sm_probe.stop2_expected_wake_pin = BTN_START_Pin;
   g_ps_hw6_owner_sm_probe.stop2_wake_start_idr = 0UL;
   g_ps_hw6_owner_sm_probe.stop2_wake_end_idr = 0UL;
-
   status = PS_HW6_SM_Transition(PS_HW6_SM_POWER,
                                 PWR_EV_SLEEP_REQUEST,
                                 HAL_OK);
@@ -4053,6 +4097,126 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
 
   g_ps_hw6_owner_sm_probe.stop2_end_tick = (uint32_t)tx_time_get();
   g_ps_hw6_owner_sm_probe.stop2_last_status = (uint32_t)status;
+  return status;
+}
+
+void PS_HW6_OwnerStateMachines_BeginStop2ActivePrep(uint32_t cycle_index)
+{
+  uint32_t direction;
+  uint32_t owner_id;
+
+  g_ps_hw6_owner_sm_probe.stop2_active_prep_request_count++;
+  g_ps_hw6_owner_sm_probe.stop2_active_prep_start_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_sm_probe.stop2_active_prep_end_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.stop2_active_prep_cycle_index = cycle_index;
+  g_ps_hw6_owner_sm_probe.stop2_active_prep_last_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.stop2_active_prep_ready = 0UL;
+  g_ps_hw6_owner_sm_probe.stop2_active_enter_request_count = 0UL;
+  g_ps_hw6_owner_sm_probe.stop2_active_enter_gate_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+
+  if (cycle_index >= PS_HW6_OWNER_SM_CYCLE_COUNT)
+  {
+    g_ps_hw6_owner_sm_probe.stop2_active_prep_last_status =
+      (uint32_t)HAL_ERROR;
+    return;
+  }
+
+  g_ps_hw6_owner_sm_probe.cycle_start_tick[cycle_index] = 0UL;
+  g_ps_hw6_owner_sm_probe.cycle_active_tick[cycle_index] = 0UL;
+  g_ps_hw6_owner_sm_probe.cycle_end_tick[cycle_index] = 0UL;
+  g_ps_hw6_owner_sm_probe.cycle_resume_success_mask[cycle_index] = 0UL;
+  g_ps_hw6_owner_sm_probe.cycle_resume_failure_mask[cycle_index] = 0UL;
+  g_ps_hw6_owner_sm_probe.cycle_quiesce_success_mask[cycle_index] = 0UL;
+  g_ps_hw6_owner_sm_probe.cycle_quiesce_failure_mask[cycle_index] = 0UL;
+  g_ps_hw6_owner_sm_probe.cycle_active_state_match_mask[cycle_index] = 0UL;
+  g_ps_hw6_owner_sm_probe.cycle_inactive_state_match_mask[cycle_index] = 0UL;
+
+  for (direction = 0U;
+       direction < PS_HW6_OWNER_SM_CYCLE_DIRECTION_COUNT;
+       ++direction)
+  {
+    for (owner_id = 0U;
+         owner_id < PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT;
+         ++owner_id)
+    {
+      g_ps_hw6_owner_sm_probe
+        .cycle_command_send_status[cycle_index][direction][owner_id] =
+        PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+      g_ps_hw6_owner_sm_probe
+        .cycle_ack_wait_status[cycle_index][direction][owner_id] =
+        PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+      g_ps_hw6_owner_sm_probe
+        .cycle_ack_flags[cycle_index][direction][owner_id] = 0UL;
+      g_ps_hw6_owner_sm_probe
+        .cycle_action_start_tick[cycle_index][direction][owner_id] = 0UL;
+      g_ps_hw6_owner_sm_probe
+        .cycle_action_end_tick[cycle_index][direction][owner_id] = 0UL;
+      g_ps_hw6_owner_sm_probe
+        .cycle_action_status[cycle_index][direction][owner_id] =
+        PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    }
+  }
+}
+
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_EndStop2ActivePrep(
+  uint32_t cycle_index)
+{
+  HAL_StatusTypeDef status;
+
+  g_ps_hw6_owner_sm_probe.stop2_active_prep_end_tick =
+    (uint32_t)tx_time_get();
+  if (cycle_index >= PS_HW6_OWNER_SM_CYCLE_COUNT)
+  {
+    status = HAL_ERROR;
+  }
+  else
+  {
+    status = ((g_ps_hw6_owner_sm_probe.cycle_resume_success_mask
+                 [cycle_index] == PS_HW6_STOP2_ACTIVE_PREP_OWNER_MASK) &&
+              (g_ps_hw6_owner_sm_probe.cycle_resume_failure_mask
+                 [cycle_index] == 0UL) &&
+              (g_ps_hw6_owner_sm_probe.cycle_quiesce_success_mask
+                 [cycle_index] == PS_HW6_STOP2_ACTIVE_PREP_OWNER_MASK) &&
+              (g_ps_hw6_owner_sm_probe.cycle_quiesce_failure_mask
+                 [cycle_index] == 0UL) &&
+              (g_ps_hw6_owner_sm_probe.cycle_active_state_match_mask
+                 [cycle_index] == PS_HW6_STOP2_ACTIVE_PREP_STATE_MASK) &&
+              (g_ps_hw6_owner_sm_probe.cycle_inactive_state_match_mask
+                 [cycle_index] == PS_HW6_STOP2_ACTIVE_PREP_STATE_MASK)) ?
+      HAL_OK : HAL_ERROR;
+  }
+  g_ps_hw6_owner_sm_probe.stop2_active_prep_last_status =
+    (uint32_t)status;
+  g_ps_hw6_owner_sm_probe.stop2_active_prep_ready = (status == HAL_OK) ?
+    1UL : 0UL;
+  return status;
+}
+
+HAL_StatusTypeDef
+PS_HW6_OwnerStateMachines_RunStop2AfterActivePrepScaffold(void)
+{
+  HAL_StatusTypeDef status;
+
+  g_ps_hw6_owner_sm_probe.stop2_active_enter_request_count++;
+  if ((g_ps_hw6_owner_sm_probe.stop2_active_prep_ready == 0UL) ||
+      (g_ps_hw6_owner_sm_probe.stop2_active_prep_last_status !=
+       (uint32_t)HAL_OK))
+  {
+    g_ps_hw6_owner_sm_probe.stop2_active_enter_gate_status =
+      (uint32_t)HAL_ERROR;
+    return HAL_ERROR;
+  }
+
+  g_ps_hw6_owner_sm_probe.stop2_active_enter_gate_status =
+    (uint32_t)HAL_OK;
+  status = PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold();
+  if (status != HAL_OK)
+  {
+    g_ps_hw6_owner_sm_probe.stop2_active_prep_ready = 0UL;
+  }
   return status;
 }
 

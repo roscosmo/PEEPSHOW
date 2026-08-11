@@ -2,9 +2,9 @@
 
 ## Summary
 
-HW6 unit 001 validated the first FW0 real STOP2 scaffold and the first baseline post-wake owner-liveness pass. A debugger-triggered request was handled by `thPower`, all non-power owners acknowledged the bounded sleep-prep quiesce barrier, `thPower` entered real STOP2 through `HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI)`, and a physical START press woke the MCU. After wake, firmware restored the system clock, resumed the HAL tick, sent bounded post-STOP resume commands to all non-power owners, recorded owner ACK/liveness proof, and returned the power FSM to `PWR_ACTIVE_LP`.
+HW6 unit 001 validated the first FW0 real STOP2 scaffold, the first baseline post-wake owner-liveness pass, and the first staged active-owner STOP2 resume pass. A debugger-triggered request was handled by `thPower`, all non-power owners acknowledged the bounded sleep-prep quiesce barrier, `thPower` entered real STOP2 through `HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI)`, and a physical START press woke the MCU. After wake, firmware restored the system clock, resumed the HAL tick, sent bounded post-STOP resume commands to all non-power owners, recorded owner ACK/liveness proof, and returned the power FSM to `PWR_ACTIVE_LP`. Probe API `27` added a debugger-only staged active-owner path so bring-up can prove active owner resume/quiesce completion before deliberately entering STOP2.
 
-This is not production automatic sleep policy evidence. It validates the manual STOP2 entry/wake/resume scaffold only, with owner liveness proven for the current inactive/parked baseline. It does not yet prove automatic STOP admission, wake-source classification policy, active-owner resume work, LPBAM, current, or repeated sleep/wake cycles.
+This is not production automatic sleep policy evidence. It validates the manual STOP2 entry/wake/resume scaffold only. It now includes both the inactive/parked baseline and a staged active-owner proof where audio, input, display, sensor, and comm owners were made active, quiesced, STOP2-entered, and then resumed or confirmed live after START wake. It does not yet prove automatic STOP admission, wake-source classification policy, LPBAM, current, repeated sleep/wake cycles, or fault-injection behavior.
 
 ## Procedure
 
@@ -15,6 +15,8 @@ This is not production automatic sleep policy evidence. It validates the manual 
 5. Pressed START briefly to wake the MCU from STOP2.
 6. Halted the target and sourced `firmware/peepshow_hw6_fw0/__fw0_stop2_power_prints.gdb`.
 7. Repeated the same manual STOP2 path on probe API version `25` after adding the post-STOP owner resume/liveness barrier.
+8. Repeated the STOP2 path on probe API version `27` with a staged active-owner debug flow: first `__fw0_stop2_active_prep_request.gdb` to bring selected owners active and quiesce them without entering STOP2, then `__fw0_stop2_active_enter_request.gdb` to enter STOP2 only after `prep_ready = 1`.
+9. Pressed START to wake from the staged active-owner STOP2 pass, allowed post-wake resume to complete, and sourced `__fw0_stop2_power_prints.gdb`.
 
 ## Result
 
@@ -73,7 +75,6 @@ manual request flag = 0
 
 - Production automatic STOP2 admission is still open.
 - Wake-source classification is still open beyond this expected START wake observation.
-- Active-owner resume work after STOP is still open; this scaffold proves baseline owner liveness when owners are already inactive or parked.
 - RTOS/HAL tick compensation across STOP residency is still open.
 - STOP2 current measurement is still open.
 - LPBAM waiting display behavior is still open.

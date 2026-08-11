@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (25UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (27UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -205,6 +205,14 @@ typedef struct
   uint32_t stop2_expected_wake_pin;
   uint32_t stop2_wake_start_idr;
   uint32_t stop2_wake_end_idr;
+  uint32_t stop2_active_prep_request_count;
+  uint32_t stop2_active_prep_start_tick;
+  uint32_t stop2_active_prep_end_tick;
+  uint32_t stop2_active_prep_cycle_index;
+  uint32_t stop2_active_prep_last_status;
+  uint32_t stop2_active_prep_ready;
+  uint32_t stop2_active_enter_request_count;
+  uint32_t stop2_active_enter_gate_status;
 
   uint32_t start_power_event_count;
   uint32_t start_power_last_event;
@@ -646,6 +654,9 @@ extern volatile uint32_t g_ps_hw6_owner_sm_start_request;
 extern volatile uint32_t g_ps_hw6_pmic_software_ship_request;
 extern volatile uint32_t g_ps_hw6_power_sleep_prep_request;
 extern volatile uint32_t g_ps_hw6_power_stop2_request;
+extern volatile uint32_t g_ps_hw6_power_stop2_active_resume_request;
+extern volatile uint32_t g_ps_hw6_power_stop2_active_prep_request;
+extern volatile uint32_t g_ps_hw6_power_stop2_active_enter_request;
 extern volatile uint32_t g_ps_hw6_storage_usb_export_request;
 extern volatile uint32_t g_ps_hw6_storage_usb_reclaim_request;
 extern volatile uint32_t g_ps_hw6_joystick_sample_request;
@@ -673,6 +684,11 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandleStartShippingIntent(
   uint32_t hold_ticks);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunSleepPrepScaffold(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void);
+void PS_HW6_OwnerStateMachines_BeginStop2ActivePrep(uint32_t cycle_index);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_EndStop2ActivePrep(
+  uint32_t cycle_index);
+HAL_StatusTypeDef
+PS_HW6_OwnerStateMachines_RunStop2AfterActivePrepScaffold(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunBatteryMonitor(
   uint32_t now_tick);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandlePmicInterrupt(
