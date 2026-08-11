@@ -1363,7 +1363,7 @@ static const ps_storage_region_t *PS_HW6_SM_FindStorageRegion(
 static HAL_StatusTypeDef PS_HW6_SM_StabilizePower(void)
 {
   HAL_StatusTypeDef mr_shipping_status;
-  HAL_StatusTypeDef thermistor_status;
+  HAL_StatusTypeDef charger_profile_status;
   HAL_StatusTypeDef fuel_gauge_status;
   HAL_StatusTypeDef snapshot_status;
   HAL_StatusTypeDef status;
@@ -1372,11 +1372,11 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizePower(void)
   (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
                             PMIC_EV_PROBE_REQUEST, HAL_OK);
   mr_shipping_status = PS_HW6_PowerOwner_EnableMrShippingMode();
-  thermistor_status = PS_HW6_PowerOwner_ConfigureThermistor();
+  charger_profile_status = PS_HW6_PowerOwner_ConfigureChargerProfile();
   fuel_gauge_status = PS_HW6_PowerOwner_PrepareFuelGauge();
   snapshot_status = PS_HW6_PowerOwner_RunSnapshot();
   status = ((mr_shipping_status == HAL_OK) &&
-            (thermistor_status == HAL_OK) &&
+            (charger_profile_status == HAL_OK) &&
             (fuel_gauge_status == HAL_OK) &&
             (snapshot_status == HAL_OK)) ? HAL_OK : HAL_ERROR;
   if (status == HAL_OK)
@@ -3711,6 +3711,30 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandleStartShippingIntent(
 
   g_ps_hw6_owner_sm_probe.start_power_last_status = (uint32_t)status;
   return status;
+}
+
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandlePmicInterrupt(
+  uint32_t now_tick,
+  uint32_t pending_count,
+  uint32_t irq_count,
+  uint32_t gpio_pin,
+  uint32_t level,
+  uint32_t irq_tick)
+{
+  HAL_StatusTypeDef snapshot_status;
+
+  g_ps_hw6_owner_sm_probe.pmic_int_irq_count = irq_count;
+  g_ps_hw6_owner_sm_probe.pmic_int_pending_count = pending_count;
+  g_ps_hw6_owner_sm_probe.pmic_int_last_pin = gpio_pin;
+  g_ps_hw6_owner_sm_probe.pmic_int_last_level = level;
+  g_ps_hw6_owner_sm_probe.pmic_int_last_irq_tick = irq_tick;
+  g_ps_hw6_owner_sm_probe.pmic_int_snapshot_count++;
+  g_ps_hw6_owner_sm_probe.pmic_int_last_snapshot_tick = now_tick;
+
+  snapshot_status = PS_HW6_PowerOwner_RunSnapshot();
+  g_ps_hw6_owner_sm_probe.pmic_int_last_snapshot_status =
+    (uint32_t)snapshot_status;
+  return PS_HW6_SM_EvaluateBatteryPolicy(snapshot_status, 0UL);
 }
 
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunBatteryMonitor(

@@ -12,8 +12,10 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (9UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (10UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
+#define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
+  PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
 #define PS_HW6_OWNER_STATUS_NOT_RUN              (0xFFFFFFFFUL)
 
 typedef struct
@@ -42,6 +44,7 @@ typedef struct
   uint32_t power_driver_mr_shipping_mode_status;
   uint32_t power_driver_fuel_gauge_prepare_status;
   uint32_t power_driver_thermistor_config_status;
+  uint32_t power_driver_charger_profile_status;
   uint32_t power_driver_software_shipping_mode_status;
   uint32_t power_software_ship_request_count;
   uint32_t power_software_ship_request_tick;
@@ -75,6 +78,12 @@ typedef struct
   uint32_t power_charger_thermistor_control_hal_status;
   uint32_t power_charger_thermistor_control_hal_error;
   uint32_t power_charger_monitor_read_ok_mask;
+  uint32_t power_charger_config_read_ok_mask;
+  uint32_t power_charger_config_address[PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT];
+  uint32_t power_charger_config_value[PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT];
+  uint32_t power_charger_config_status[PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT];
+  uint32_t power_charger_config_hal_status[PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT];
+  uint32_t power_charger_config_hal_error[PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT];
   uint32_t power_charger_mode;
   uint32_t power_charger_status;
   uint32_t power_charger_charge_type;
@@ -173,6 +182,7 @@ UINT PS_HW6_OwnerServices_Init(void);
 HAL_StatusTypeDef PS_HW6_PowerOwner_EnableMrShippingMode(void);
 HAL_StatusTypeDef PS_HW6_PowerOwner_PrepareFuelGauge(void);
 HAL_StatusTypeDef PS_HW6_PowerOwner_ConfigureThermistor(void);
+HAL_StatusTypeDef PS_HW6_PowerOwner_ConfigureChargerProfile(void);
 HAL_StatusTypeDef PS_HW6_PowerOwner_EnterSoftwareShipmentMode(void);
 HAL_StatusTypeDef PS_HW6_PowerOwner_RunSnapshot(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void);

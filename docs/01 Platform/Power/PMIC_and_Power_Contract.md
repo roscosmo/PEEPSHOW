@@ -186,6 +186,22 @@ Measured result:
 
 This validates that FW0 configures the ADP5360 thermistor bias correctly for the board `100 kOhm` NTC and that the PMIC can enter charging state while PeepOS remains in normal active operation. It does not validate higher charge current, charge termination, full-state behavior, JEITA hot/cold/cool/warm behavior, long-run thermal behavior, or final production charging policy.
 
+HW6 unit 001 FW0 evidence `EV-HW6-20260811-P1-CHARGER-028` validates the later boot-applied conservative charger profile with VBUS absent. The profile is applied by `thPower` during normal PMIC stabilization and then read back by the normal snapshot path. Measured result:
+
+- owner probe API/snapshot `10 / 1 / 1`
+- power/PMIC state `2 / 3`, meaning normal active low-power runtime with `PMIC_MONITOR`
+- ADP5360/MCU VBUS agreement `0 / 0 / 1`
+- charger profile write status `0x0`
+- charger profile read mask `0x1f`
+- charger profile addresses `0x02 / 0x03 / 0x04 / 0x07 / 0x0A`
+- charger profile values `0x81 / 0x82 / 0x29 / 0xAC / 0x80`
+- charger profile read statuses all `0x0`
+- thermistor-control readback `0x80`
+- fuel/policy VBAT `3759 mV`, VBUS absent, battery present
+- PMIC interrupt counters stayed `0 / 0 / 0`, so this capture did not exercise a PMIC interrupt edge
+
+This validates conservative boot-applied register ownership and exact readback for `0x02`, `0x03`, `0x04`, `0x07`, and `0x0A`. It does not validate PMIC_INT event behavior, charge-current promotion, charge termination, JEITA zone behavior, or long-run thermal behavior.
+
 Rules:
 
 - VBUS may wake the device, update charger policy, and notify USB policy.
@@ -276,21 +292,22 @@ Required thresholds:
 This is the reviewed profile basis, not final production charge approval. On
 HW6 unit 001, the six selected encodings passed a guarded no-cell/no-VBUS
 write, exact readback, reverse restore, and exact restore readback. This proves
-register acceptance only. FW0 now also validates room-temperature `100 kOhm`
-NTC bias/readback and initial real-cell charging-state reporting at the retained
-low-current VBUS baseline. Persistent profile application, JEITA zone behavior,
-protection thresholds, VBUS current policy, charge termination, current
-promotion, and production charging behavior remain gated by their dedicated
-tests.
+register acceptance. FW0 now also validates boot-applied conservative charger
+profile write/readback, room-temperature `100 kOhm` NTC bias/readback, and
+initial real-cell charging-state reporting at the retained low-current VBUS
+baseline. JEITA zone behavior, protection thresholds, VBUS current policy,
+charge termination, current promotion, and production charging behavior remain
+gated by their dedicated tests.
 
 | Item | Profile intent | ADP5360 candidate / present state |
 |---|---|---|
 | Cell | single-cell `303040` LiPo, `3.7 V` nominal, `4.20 V` terminal, `450 mAh` label | `BAT_CAP=0xE1` (`225 x 2 mAh`) accepted/read back/restored; gauge characterization remains open |
-| Fast charge | maximum `320 mA` (`0.711 C`); dynamically limited by the validated VBUS source budget | `0x04=0x3F` accepted/read back/restored; physical charging at this setting is not approved |
-| Charge voltage | `4.20 V` | `0x03=0x82` accepted/read back/restored; controlled terminal-voltage validation remains open |
-| VBUS input limit | must follow the classified USB/source contract, independently of the cell charge-rate permission | register `0x02` remains `0x81` / `100 mA` until source-current policy is validated |
-| Temperature | board-mounted `100 kOhm` NTC in physical contact with pouch; JEITA charging required | `0x0A=0x80` accepted during FW0 boot and read back during real-cell/VBUS test; room-temperature THR status reports OK; hot/cold/cool/warm substitution behavior remains open |
-| Fuel gauge | start in sleep mode and automatically enter active mode above its current threshold | `0x20=0xE1` and `0x27=0x53` accepted/read back/restored; voltage/SOC/current-mode characterization remains open |
+| Fast charge | maximum `320 mA` (`0.711 C`); dynamically limited by the validated VBUS source budget | conservative FW0 boot profile applies and reads back `0x04=0x29`; `0x04=0x3F` was accepted/read back/restored in the no-cell reversible test, but physical charging at that setting is not approved |
+| Charge voltage | `4.20 V` | FW0 boot profile applies and reads back `0x03=0x82`; controlled terminal-voltage validation remains open |
+| VBUS input limit | must follow the classified USB/source contract, independently of the cell charge-rate permission | FW0 boot profile applies and reads back `0x02=0x81` / `100 mA`; source-current policy and promotion remain open |
+| Charger function / JEITA policy | enable the reviewed ADP5360 charger-function baseline without granting final JEITA behavior | FW0 boot profile applies and reads back `0x07=0xAC`; hot/cold/cool/warm substitution behavior remains open |
+| Temperature | board-mounted `100 kOhm` NTC in physical contact with pouch; JEITA charging required | FW0 boot profile applies and reads back `0x0A=0x80`; real-cell/VBUS room-temperature THR status reports OK; hot/cold/cool/warm substitution behavior remains open |
+| Fuel gauge | start in sleep mode and automatically enter active mode above its current threshold | `0x20=0xE1` and `0x27=0x53` accepted/read back/restored; FW0 prepare path validates nonzero VBAT/SOC reads; current-mode and capacity characterization remain open |
 | Independent protection | ADP5360 protection is mandatory whether or not a development cell also contains a PCM | present `0x11..0x15 = 03 90 E6 78 E8`: enabled, `2.50 V` UV, `600 mA` discharge OC, `4.30 V` OV, `400 mA` charge OC; retain provisionally pending fault and peak-load tests |
 
 The ADP5360 register limits and encodings above are derived from the
@@ -341,15 +358,17 @@ Fault handling depends on severity:
 5. VBUS path disagreement handling
 6. PPK2 or equivalent battery-simulator operation across selected voltage points
 7. ADP5360 battery-profile configuration for the selected cell
-8. VBUS-only charger/power-bank attach does not trigger MSC prompt or storage handoff
-9. charging while normal runtime is active
-10. charging while flashing/install mode is active
-11. low-battery warning / recoverable forced sleep
-12. critical-battery controlled software-shipment path and default-off gate
-13. post-shipment boot/restart gate below restart-allow threshold, with VBUS recovery exception
-14. hardware BAT_UV / ISOFET fallback validation
-15. START hold shipping-prep handoff from input to power
-16. ADP5360 `EN_MR_SD` enable during normal boot through `thPower`
-17. START shutdown UI scaffold, release-cancel, and default-off software shipment request gate
+8. ADP5360 boot-applied conservative charger profile write/readback
+9. VBUS-only charger/power-bank attach does not trigger MSC prompt or storage handoff
+10. charging while normal runtime is active
+11. charging while flashing/install mode is active
+12. low-battery warning / recoverable forced sleep
+13. critical-battery controlled software-shipment path and default-off gate
+14. post-shipment boot/restart gate below restart-allow threshold, with VBUS recovery exception
+15. hardware BAT_UV / ISOFET fallback validation
+16. START hold shipping-prep handoff from input to power
+17. ADP5360 `EN_MR_SD` enable during normal boot through `thPower`
+18. START shutdown UI scaffold, release-cancel, and default-off software shipment request gate
+19. PMIC_INT edge capture and `thPower` snapshot handling under a safe charger/battery/fault event
 
 Evidence for these cases belongs in [[HW6_Brought_Up_Tracker]]. A passing HW5 result may define the initial procedure or expected value, but it does not close the corresponding HW6 row.

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (3UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (4UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -92,6 +92,14 @@ typedef struct
   uint32_t pwr_dbg_state;
   uint32_t pwr_dbg_toggle_count;
   uint32_t pwr_dbg_last_toggle_tick;
+
+  uint32_t pmic_int_irq_count;
+  uint32_t pmic_int_pending_count;
+  uint32_t pmic_int_consumed_count;
+  uint32_t pmic_int_last_pin;
+  uint32_t pmic_int_last_level;
+  uint32_t pmic_int_last_irq_tick;
+  uint32_t pmic_int_last_consume_tick;
 } PS_HW6_RTOS_Probe;
 
 extern volatile PS_HW6_RTOS_Probe g_ps_hw6_rtos_probe;
@@ -101,6 +109,7 @@ void PS_HW6_RTOS_LowPowerTimerSetup(ULONG count);
 void PS_HW6_RTOS_LowPowerEnter(void);
 void PS_HW6_RTOS_LowPowerExit(void);
 ULONG PS_HW6_RTOS_LowPowerTimerAdjust(void);
+void PS_HW6_RTOS_RecordPmicIntExti(uint16_t gpio_pin, uint32_t level);
 
 #ifdef __cplusplus
 }

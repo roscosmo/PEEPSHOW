@@ -66,6 +66,12 @@ static VOID *ps_queue_storage[PS_HW6_RTOS_QUEUE_COUNT];
 static uint32_t ps_ui_boot_complete_sent;
 static uint32_t ps_power_boot_done;
 static uint32_t ps_display_bootstrap_sent;
+static volatile uint32_t ps_pmic_int_pending_count;
+static volatile uint32_t ps_pmic_int_irq_count;
+static volatile uint32_t ps_pmic_int_last_pin;
+static volatile uint32_t ps_pmic_int_last_level;
+static volatile uint32_t ps_pmic_int_last_irq_tick;
+static uint32_t ps_pmic_int_consumed_count;
 
 static CHAR *const ps_owner_names[PS_HW6_RTOS_OWNER_COUNT] =
 {
@@ -115,6 +121,27 @@ static void PS_HW6_RTOS_RecordFirstError(UINT status,
   }
 }
 
+void PS_HW6_RTOS_RecordPmicIntExti(uint16_t gpio_pin, uint32_t level)
+{
+  if (gpio_pin != PMIC_INT_Pin)
+  {
+    return;
+  }
+
+  ps_pmic_int_irq_count++;
+  ps_pmic_int_pending_count++;
+  ps_pmic_int_last_pin = (uint32_t)gpio_pin;
+  ps_pmic_int_last_level = level;
+  ps_pmic_int_last_irq_tick = HAL_GetTick();
+
+  g_ps_hw6_rtos_probe.pmic_int_irq_count = ps_pmic_int_irq_count;
+  g_ps_hw6_rtos_probe.pmic_int_pending_count =
+    ps_pmic_int_pending_count - ps_pmic_int_consumed_count;
+  g_ps_hw6_rtos_probe.pmic_int_last_pin = ps_pmic_int_last_pin;
+  g_ps_hw6_rtos_probe.pmic_int_last_level = ps_pmic_int_last_level;
+  g_ps_hw6_rtos_probe.pmic_int_last_irq_tick = ps_pmic_int_last_irq_tick;
+}
+
 static UINT PS_HW6_RTOS_SnapshotPool(TX_BYTE_POOL *pool,
                                       uint32_t *available,
                                       uint32_t *fragments)
@@ -140,6 +167,12 @@ static void PS_HW6_RTOS_ResetProbe(void)
   ps_ui_boot_complete_sent = 0UL;
   ps_power_boot_done = 0UL;
   ps_display_bootstrap_sent = 0UL;
+  ps_pmic_int_pending_count = 0UL;
+  ps_pmic_int_irq_count = 0UL;
+  ps_pmic_int_last_pin = 0UL;
+  ps_pmic_int_last_level = 0UL;
+  ps_pmic_int_last_irq_tick = 0UL;
+  ps_pmic_int_consumed_count = 0UL;
   g_ps_hw6_rtos_probe.magic = PS_HW6_RTOS_PROBE_MAGIC;
   g_ps_hw6_rtos_probe.version = PS_HW6_RTOS_PROBE_VERSION;
   g_ps_hw6_rtos_probe.phase = PS_HW6_RTOS_PHASE_INIT;
@@ -907,6 +940,35 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     {
       g_ps_hw6_pmic_software_ship_request = 0UL;
       (void)PS_HW6_PowerOwner_EnterSoftwareShipmentMode();
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
+        (ps_power_boot_done != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL) &&
+        (ps_pmic_int_pending_count != ps_pmic_int_consumed_count))
+    {
+      uint32_t pending_count = ps_pmic_int_pending_count;
+      uint32_t pending_delta = pending_count - ps_pmic_int_consumed_count;
+      uint32_t irq_count = ps_pmic_int_irq_count;
+      uint32_t last_pin = ps_pmic_int_last_pin;
+      uint32_t last_level = ps_pmic_int_last_level;
+      uint32_t irq_tick = ps_pmic_int_last_irq_tick;
+
+      ps_pmic_int_consumed_count = pending_count;
+      g_ps_hw6_rtos_probe.pmic_int_irq_count = irq_count;
+      g_ps_hw6_rtos_probe.pmic_int_pending_count = 0UL;
+      g_ps_hw6_rtos_probe.pmic_int_consumed_count =
+        ps_pmic_int_consumed_count;
+      g_ps_hw6_rtos_probe.pmic_int_last_pin = last_pin;
+      g_ps_hw6_rtos_probe.pmic_int_last_level = last_level;
+      g_ps_hw6_rtos_probe.pmic_int_last_irq_tick = irq_tick;
+      g_ps_hw6_rtos_probe.pmic_int_last_consume_tick = (uint32_t)now;
+      (void)PS_HW6_OwnerStateMachines_HandlePmicInterrupt(
+        (uint32_t)now,
+        pending_delta,
+        irq_count,
+        last_pin,
+        last_level,
+        irq_tick);
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
         (ps_power_boot_done != 0UL) &&

@@ -604,6 +604,8 @@ UINT PS_HW6_OwnerServices_Init(void)
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.power_driver_thermistor_config_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.power_driver_charger_profile_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.power_driver_software_shipping_mode_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.power_software_ship_request_count = 0UL;
@@ -621,6 +623,19 @@ UINT PS_HW6_OwnerServices_Init(void)
     g_ps_hw6_owner_probe.power_transfer_error[i] =
       PS_HW6_OWNER_STATUS_NOT_RUN;
     g_ps_hw6_owner_probe.power_lease_put_status[i] =
+      PS_HW6_OWNER_STATUS_NOT_RUN;
+  }
+
+  for (i = 0U; i < PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT; ++i)
+  {
+    g_ps_hw6_owner_probe.power_charger_config_address[i] =
+      ps_dev_adp5360_charger_config_register(i);
+    g_ps_hw6_owner_probe.power_charger_config_value[i] = 0UL;
+    g_ps_hw6_owner_probe.power_charger_config_status[i] =
+      PS_HW6_OWNER_STATUS_NOT_RUN;
+    g_ps_hw6_owner_probe.power_charger_config_hal_status[i] =
+      PS_HW6_OWNER_STATUS_NOT_RUN;
+    g_ps_hw6_owner_probe.power_charger_config_hal_error[i] =
       PS_HW6_OWNER_STATUS_NOT_RUN;
   }
 
@@ -705,6 +720,33 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_ConfigureThermistor(void)
     &ps_hw6_pmic,
     (uint8_t)KNOB_POWER_CHARGER_THERMISTOR_CONTROL);
   g_ps_hw6_owner_probe.power_driver_thermistor_config_status =
+    (uint32_t)status;
+  g_ps_hw6_owner_probe.power_driver_api_version =
+    ps_hw6_pmic.api_version;
+  g_ps_hw6_owner_probe.power_driver_state = ps_hw6_pmic.state;
+  g_ps_hw6_owner_probe.power_driver_operation_count =
+    ps_hw6_pmic.operation_count;
+  g_ps_hw6_owner_probe.power_driver_last_status =
+    ps_hw6_pmic.last_status;
+
+  return (status == PS_STATUS_OK) ? HAL_OK : HAL_ERROR;
+}
+
+HAL_StatusTypeDef PS_HW6_PowerOwner_ConfigureChargerProfile(void)
+{
+  ps_dev_adp5360_charger_profile_t profile;
+  ps_status_t status;
+
+  profile.vbus_ilim = (uint8_t)KNOB_POWER_CHARGER_VBUS_ILIM;
+  profile.termination_setting =
+    (uint8_t)KNOB_POWER_CHARGER_TERMINATION_SETTING;
+  profile.current_setting = (uint8_t)KNOB_POWER_CHARGER_CURRENT_SETTING;
+  profile.function_setting = (uint8_t)KNOB_POWER_CHARGER_FUNCTION_SETTING;
+  profile.thermistor_control =
+    (uint8_t)KNOB_POWER_CHARGER_THERMISTOR_CONTROL;
+
+  status = ps_dev_adp5360_configure_charger_profile(&ps_hw6_pmic, &profile);
+  g_ps_hw6_owner_probe.power_driver_charger_profile_status =
     (uint32_t)status;
   g_ps_hw6_owner_probe.power_driver_api_version =
     ps_hw6_pmic.api_version;
@@ -806,6 +848,22 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_RunSnapshot(void)
     snapshot.charger_thermistor_control_hal_error;
   g_ps_hw6_owner_probe.power_charger_monitor_read_ok_mask =
     snapshot.charger_monitor_read_ok_mask;
+  g_ps_hw6_owner_probe.power_charger_config_read_ok_mask =
+    snapshot.charger_config_read_ok_mask;
+  for (index = 0U; index < PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT;
+       ++index)
+  {
+    g_ps_hw6_owner_probe.power_charger_config_address[index] =
+      snapshot.charger_config_address[index];
+    g_ps_hw6_owner_probe.power_charger_config_value[index] =
+      snapshot.charger_config_value[index];
+    g_ps_hw6_owner_probe.power_charger_config_status[index] =
+      (uint32_t)snapshot.charger_config_status[index];
+    g_ps_hw6_owner_probe.power_charger_config_hal_status[index] =
+      snapshot.charger_config_hal_status[index];
+    g_ps_hw6_owner_probe.power_charger_config_hal_error[index] =
+      snapshot.charger_config_hal_error[index];
+  }
   g_ps_hw6_owner_probe.power_charger_mode = snapshot.charger_mode;
   g_ps_hw6_owner_probe.power_charger_status = snapshot.charger_status;
   g_ps_hw6_owner_probe.power_charger_charge_type =

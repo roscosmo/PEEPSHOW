@@ -14,8 +14,8 @@ design and imported IOC.
 | R | `PB8`, EXTI8 | `thInput` | policy-defined input wake | pending HW6 proof |
 | Joystick | `PC11 JOY_INT`, EXTI11 | `thInput` / `thPower` | threshold-armed contexts | pending HW6 proof |
 | IMU | `PB14 MPU_INT`, EXTI14 | `thSensor` / `thPower` | admitted motion contexts | pending HW6 proof |
-| PMIC | `PB15 PMIC_INT`, EXTI15 | `thPower` | charger/battery/fault policy | pending HW6 proof |
-| USB VBUS | `PA9` plus PMIC VBUS classification | `thPower` / USB policy | external power/detect | pending HW6 proof |
+| PMIC | `PB15 PMIC_INT`, EXTI15 | `thPower` | charger/battery/fault policy | FW0 ISR-to-`thPower` scaffold implemented; no PMIC_INT edge has been target-validated yet |
+| USB VBUS | `PA9` plus PMIC VBUS classification | `thPower` / USB policy | external power/detect | active-runtime ADP5360/PA9 agreement validated for absent and present VBUS; STOP/wake behavior remains pending |
 
 ## Explicitly Absent Wake Paths
 

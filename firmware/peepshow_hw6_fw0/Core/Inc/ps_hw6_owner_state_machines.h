@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (17UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (18UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -186,6 +186,15 @@ typedef struct
   uint32_t battery_policy_software_ship_skipped_count;
   uint32_t battery_policy_software_ship_last_status;
   uint32_t battery_policy_software_ship_last_tick;
+
+  uint32_t pmic_int_irq_count;
+  uint32_t pmic_int_pending_count;
+  uint32_t pmic_int_last_pin;
+  uint32_t pmic_int_last_level;
+  uint32_t pmic_int_last_irq_tick;
+  uint32_t pmic_int_snapshot_count;
+  uint32_t pmic_int_last_snapshot_status;
+  uint32_t pmic_int_last_snapshot_tick;
 
   uint32_t joystick_driver_api_version;
   uint32_t joystick_driver_init_status;
@@ -588,6 +597,13 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandleStartShippingIntent(
   uint32_t hold_ticks);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunBatteryMonitor(
   uint32_t now_tick);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandlePmicInterrupt(
+  uint32_t now_tick,
+  uint32_t pending_count,
+  uint32_t irq_count,
+  uint32_t gpio_pin,
+  uint32_t level,
+  uint32_t irq_tick);
 void PS_HW6_OwnerStateMachines_BeginCycle(uint32_t cycle_index);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Resume(uint32_t owner_id,
                                                     uint32_t cycle_index);

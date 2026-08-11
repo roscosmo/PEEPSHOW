@@ -10,9 +10,10 @@
 extern "C" {
 #endif
 
-#define PS_DEV_ADP5360_API_VERSION       (7UL)
+#define PS_DEV_ADP5360_API_VERSION       (8UL)
 #define PS_DEV_ADP5360_POWER_REGISTER_COUNT (7UL)
 #define PS_DEV_ADP5360_FUEL_REGISTER_COUNT  (5UL)
+#define PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT (5UL)
 
 typedef enum
 {
@@ -43,6 +44,15 @@ typedef struct
 
 typedef struct
 {
+  uint8_t vbus_ilim;
+  uint8_t termination_setting;
+  uint8_t current_setting;
+  uint8_t function_setting;
+  uint8_t thermistor_control;
+} ps_dev_adp5360_charger_profile_t;
+
+typedef struct
+{
   ps_status_t status;
   uint32_t function_ready_mask;
   uint32_t acquire_status;
@@ -56,6 +66,12 @@ typedef struct
   uint32_t register_hal_error[PS_DEV_ADP5360_POWER_REGISTER_COUNT];
   uint32_t read_ok_mask;
   uint32_t expected_match_mask;
+  uint8_t charger_config_address[PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT];
+  uint8_t charger_config_value[PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT];
+  ps_status_t charger_config_status[PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT];
+  uint32_t charger_config_hal_status[PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT];
+  uint32_t charger_config_hal_error[PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT];
+  uint32_t charger_config_read_ok_mask;
   uint32_t identity_match;
   uint32_t rails_ready;
   uint32_t fault_clear;
@@ -110,6 +126,9 @@ ps_status_t ps_dev_adp5360_enable_mr_shipping_mode(
   ps_dev_adp5360_t *device);
 ps_status_t ps_dev_adp5360_prepare_fuel_gauge(
   ps_dev_adp5360_t *device);
+ps_status_t ps_dev_adp5360_configure_charger_profile(
+  ps_dev_adp5360_t *device,
+  const ps_dev_adp5360_charger_profile_t *profile);
 ps_status_t ps_dev_adp5360_configure_thermistor(
   ps_dev_adp5360_t *device,
   uint8_t control);
@@ -119,6 +138,7 @@ ps_status_t ps_dev_adp5360_read_power_snapshot(
   ps_dev_adp5360_t *device,
   ps_dev_adp5360_power_snapshot_t *snapshot);
 uint8_t ps_dev_adp5360_power_register(uint32_t index);
+uint8_t ps_dev_adp5360_charger_config_register(uint32_t index);
 
 #ifdef __cplusplus
 }

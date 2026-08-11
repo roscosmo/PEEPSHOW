@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include <ps_hw6_peripheral_probe.h>
 #include "ps_input_buttons.h"
+#include "ps_hw6_rtos_probe.h"
 
 /* USER CODE END Includes */
 
@@ -2355,6 +2356,13 @@ static void MX_GPIO_Init(void)
 static void PS_Main_RecordButtonExti(uint16_t GPIO_Pin,
                                      GPIO_PinState level)
 {
+  if (GPIO_Pin == PMIC_INT_Pin)
+  {
+    PS_HW6_RTOS_RecordPmicIntExti(
+      GPIO_Pin,
+      (level == GPIO_PIN_SET) ? 1UL : 0UL);
+  }
+
   if ((GPIO_Pin == BTN_START_Pin) ||
       (GPIO_Pin == BTN_A_Pin) ||
       (GPIO_Pin == BTN_B_Pin) ||

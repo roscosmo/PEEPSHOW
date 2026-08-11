@@ -14,6 +14,10 @@
     "power_battery_warning_mv",
     "power_battery_critical_ship_mv",
     "power_battery_restart_allow_mv",
+    "power_charger_vbus_ilim",
+    "power_charger_termination_setting",
+    "power_charger_current_setting",
+    "power_charger_function_setting",
     "power_charger_thermistor_control",
     "power_critical_software_ship_enable",
     "power_boot_low_battery_ship_enable",
@@ -128,7 +132,54 @@
       "path": "platform.knobs.power.battery_restart_allow_mv",
       "description": "Pack voltage required before normal runtime is allowed without charger/VBUS recovery."
     },
-    "power_charger_thermistor_control": {
+    "power_charger_vbus_ilim": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255,
+      "default": 129,
+      "unit": "register_byte",
+      "timebase_domain": "boot_snapshot",
+      "owner": "thPower",
+      "class": "hardware_profile",
+      "path": "platform.knobs.power.charger_vbus_ilim",
+      "description": "ADP5360 CHARGER_VBUS_ILIM register byte. Default 0x81 retains the measured low-current VBUS input baseline during staged charger bring-up."
+    },
+    "power_charger_termination_setting": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255,
+      "default": 130,
+      "unit": "register_byte",
+      "timebase_domain": "boot_snapshot",
+      "owner": "thPower",
+      "class": "hardware_profile",
+      "path": "platform.knobs.power.charger_termination_setting",
+      "description": "ADP5360 CHARGER_TERMINATION_SETTING register byte. Default 0x82 selects the reviewed 4.20 V cell terminal profile."
+    },
+    "power_charger_current_setting": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255,
+      "default": 41,
+      "unit": "register_byte",
+      "timebase_domain": "boot_snapshot",
+      "owner": "thPower",
+      "class": "hardware_profile",
+      "path": "platform.knobs.power.charger_current_setting",
+      "description": "ADP5360 CHARGER_CURRENT_SETTING register byte. Default 0x29 retains the current low-current bring-up value; promotion requires current and thermal evidence."
+    },
+    "power_charger_function_setting": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255,
+      "default": 172,
+      "unit": "register_byte",
+      "timebase_domain": "boot_snapshot",
+      "owner": "thPower",
+      "class": "hardware_profile",
+      "path": "platform.knobs.power.charger_function_setting",
+      "description": "ADP5360 CHARGER_FUNCTION_SETTING register byte. Default 0xAC applies the reviewed JEITA-related charger function candidate during boot."
+    },    "power_charger_thermistor_control": {
       "type": "integer",
       "minimum": 0,
       "maximum": 255,
