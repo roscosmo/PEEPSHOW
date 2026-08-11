@@ -52,7 +52,8 @@ Power bring-up can physically shut the device down or disconnect the battery pat
 | Test | Hazard | Required gate |
 | --- | --- | --- |
 | START shipping-mode entry | device may enter shipping mode | prove normal Start warning/prep first; confirm 200 ms wake/recovery path |
-| critical-battery controlled shipment | device may enter shipment mode and lose system power | keep the software-shipment gate disabled until quiesce/save and recovery behavior are validated; perform enabled tests only with controlled supply/battery setup and recovery plan |
+| critical-battery controlled shipment | device may enter shipment mode and lose system power | keep the automatic software-shipment gate disabled until quiesce/save and recovery behavior are validated; perform enabled tests only with controlled supply/battery setup and recovery plan |
+| manual software shipment primitive | device enters shipment mode immediately after ADP5360 `0x36 = 1` | use only as an explicit gated test with a known wake/recovery path; do not use as routine START/button validation |
 | charger/VBUS edge tests | storage/USB policy may change | ensure no install/export/write operation is active |
 | low-battery warning / forced sleep | runtime may be slowed or stopped | ensure warning, load-shed, and save/quiesce behavior is observable |
 
@@ -170,10 +171,23 @@ Measured evidence from that capture:
 
 This confirms the protective hardware path for a 12-second START/MR hold is
 enabled. Subsequent HW6 unit 001 FW0 captures validated the software
-shipping-prep, warning, and imminent scaffold at 5 s, 9 s, and 11 s. Those FW0 scaffold timings are now backed by HW6 `config/knobs.json` and `Core/Inc/knobs_autogen.h`, and
-the user confirmed ADP5360 shipment entry after a long START/MR hold. This
-does not authorize routine intentional shipment-entry testing as part of button
-navigation work. The START shutdown UI scaffold, no-op quiesce hook, release-cancel routing, and default-off software shipment gate are now target-validated. Real save/quiesce, wake/recovery, first-boot policy, and software shipment register `0x36` entry remain open.
+shipping-prep, warning, and imminent scaffold at 5 s, 9 s, and 11 s. Those FW0
+scaffold timings are now backed by HW6 `config/knobs.json` and
+`Core/Inc/knobs_autogen.h`, and the user confirmed ADP5360 shipment entry after
+a long START/MR hold. This does not authorize routine intentional
+shipment-entry testing as part of button navigation work. The START shutdown UI
+scaffold, no-op quiesce hook, release-cancel routing, and default-off software
+shipment gate are now target-validated.
+
+`EV-HW6-20260811-P1-SHIP-032` validates the guarded software shipment primitive
+through ADP5360 Shipment Mode register `0x36`. The target was in normal active
+state with no pending software shipment request; a debugger-only
+`g_ps_hw6_pmic_software_ship_request = 1` request caused target power loss /
+debugger `E31`, and the device restarted from START. This proves the firmware
+can enter shipment mode under power-owner control without waiting for the
+12-second MR threshold. Real save/quiesce, automatic START software shipment,
+automatic battery-critical shipment, first-boot policy, and final recovery UX
+remain open.
 
 ### HW6 FW0 Initial Real-Cell Charger Result
 
@@ -249,10 +263,10 @@ Populate this table during bring-up. Values are placeholders until selected and 
 | battery monitor period | provisional `1000 ms` | periodic `thPower` PMIC snapshot cadence and current impact | target evidence: FW0 probe showed `period=100` ticks and monitor count advancing; current impact and long-run behavior remain open |
 | low battery warning threshold | provisional `3500 mV` | warning event, optional-load reduction, and log | runtime_warning_pass_unit_001; UX/load-shed behavior open |
 | low battery forced-sleep threshold | TBD | recoverable forced-sleep transition evidence | open |
-| critical battery controlled-shipment threshold | provisional `3300 mV` | controlled save/quiesce, would-ship gate evidence, then enabled software-shipment evidence | runtime_critical_gate_pass_unit_001 with valid fuel-gauge voltage; enabled software shipment open |
+| critical battery controlled-shipment threshold | provisional `3300 mV` | controlled save/quiesce, would-ship gate evidence, then enabled automatic critical-battery software-shipment evidence | runtime_critical_gate_pass_unit_001 with valid fuel-gauge voltage; shared software shipment primitive pass; automatic critical shipment open |
 | post-shipment restart-allow threshold | provisional `3600 mV` | boot/restart gate blocks normal runtime below threshold; no VBUS routes to low-battery block, VBUS routes to charge recovery, and VBAT above threshold returns HOME | runtime_recovery_pass_unit_001; boot_gate_recovery_pass_unit_001; boot_charge_recovery_pass_unit_001 |
-| critical-battery software-shipment enable gate | default `false` | disabled tests record would-ship; enabled tests write ADP5360 `0x36 = 1` only after explicit approval | provisional; FW0 knob scaffold implemented; build/target validation pending |
-| boot-low-battery shipment enable gate | default `false` | disabled boot tests record would-ship below restart threshold; enabled tests re-enter shipment only after recovery path is validated | provisional; FW0 knob scaffold implemented; build/target validation pending |
+| critical-battery software-shipment enable gate | default `false` | disabled tests record would-ship; enabled tests write ADP5360 `0x36 = 1` only after explicit approval | provisional; FW0 knob scaffold implemented; shared `0x36` primitive target-validated; automatic critical path open |
+| boot-low-battery shipment enable gate | default `false` | disabled boot tests record would-ship below restart threshold; enabled tests re-enter shipment only after recovery path is validated | provisional; FW0 knob scaffold implemented; shared `0x36` primitive target-validated; automatic boot path open |
 | charger-present debounce/filter | TBD | USB connect/disconnect logs | open |
 | VBUS disagreement timeout | TBD | ADP5360 vs `PA9` mismatch handling | open |
 | PMIC read retry limit | TBD | transient failure recovery test | open |
@@ -282,14 +296,14 @@ Thresholds are Platform tuning constants, not Reference Game policy.
 | VBUS cross-check | USB attach/detach | ADP5360 and `PA9` agree or log diagnostic; no VBUS-only MSC prompt | unplugged/plugged probes showed ADP5360 and `PA9` agree; plugged real-cell charger probe reported VBUS agreement `1/1/1` | vbus_agree_pass_unit_001; storage/MSC non-prompt behavior still needs combined charger/USB policy proof |
 | charging | USB attached | charging/charge-done state reported | real cell plus board `100 kOhm` NTC at room temperature: owner API/snapshot `9/1/1`, power/PMIC `2/4`, charger raw `0x22/0xE4`, read mask `0x7`, therm config/status/register `0x0/0x0/0x80`, THR `7`, charger mode/status/type/health `2/1/2/0`, VBAT `3732 mV` | initial_charge_state_pass_unit_001; charge-done/current/thermal/JEITA behavior open |
 | low battery | simulated or measured threshold | warning / recoverable forced-sleep path selected | source `3.46 V`, PMIC `3421 mV`, policy/event `3/3`, warning count `4`, power/PMIC `2/6`, no quiesce or ship request | warning_runtime_pass_unit_001; final UX/load-shed behavior open |
-| critical battery | simulated or controlled threshold | controlled software-shipment path selected; default-off gate records would-ship until enabled | source `3.27 V`, PMIC `3232 mV`, policy/event `4/7`, critical count `3`, quiesce count `3`, ship request/skip `0/3`, power/PMIC `8/8` | critical_runtime_gate_pass_unit_001; enabled software shipment open |
+| critical battery | simulated or controlled threshold | controlled software-shipment path selected; default-off gate records would-ship until enabled | source `3.27 V`, PMIC `3232 mV`, policy/event `4/7`, critical count `3`, quiesce count `3`, ship request/skip `0/3`, power/PMIC `8/8` | critical_runtime_gate_pass_unit_001; shared software shipment primitive pass; automatic critical shipment open |
 | hardware BAT_UV / ISOFET fallback | controlled low-voltage threshold below firmware policy | ADP5360 protection removes the battery path only as emergency fallback | TBD | open |
-| boot low-battery restart gate | boot below restart-allow threshold with and without VBUS | no normal runtime below threshold without VBUS; VBUS permits charge/recovery shell | no-VBUS boot/restart block validated at PMIC-read `3270 mV`: policy/event `5/5`, boot gate pending/blocked/clear `1/1/0`, quiesce `1`, software ship request/skip `0/1`, power/PMIC `8/8`, UI/display page/shutdown `8/5`; recovery above restart threshold validated at `3707 mV`: policy/event `2/2`, boot gate `0/0/1`, power/PMIC `2/3`, UI/display `1/0`; VBUS-present charge recovery validated with restart forced to `4200 mV`: PMIC-read `3968 mV`, policy/event `6/6`, boot gate pending/block/charge/clear `1/1/1/0`, ship request/skip `0/0`, power/PMIC `2/4`, UI/display `8/6`; restored restart `3600 mV` with PMIC-read `4049 mV` cleared to policy/event `2/2`, gate `0/0/0/1`, UI/display `1/0` | boot_gate_recovery_pass_unit_001; boot_charge_recovery_pass_unit_001; enabled software shipment open |
+| boot low-battery restart gate | boot below restart-allow threshold with and without VBUS | no normal runtime below threshold without VBUS; VBUS permits charge/recovery shell | no-VBUS boot/restart block validated at PMIC-read `3270 mV`: policy/event `5/5`, boot gate pending/blocked/clear `1/1/0`, quiesce `1`, software ship request/skip `0/1`, power/PMIC `8/8`, UI/display page/shutdown `8/5`; recovery above restart threshold validated at `3707 mV`: policy/event `2/2`, boot gate `0/0/1`, power/PMIC `2/3`, UI/display `1/0`; VBUS-present charge recovery validated with restart forced to `4200 mV`: PMIC-read `3968 mV`, policy/event `6/6`, boot gate pending/block/charge/clear `1/1/1/0`, ship request/skip `0/0`, power/PMIC `2/4`, UI/display `8/6`; restored restart `3600 mV` with PMIC-read `4049 mV` cleared to policy/event `2/2`, gate `0/0/0/1`, UI/display `1/0` | boot_gate_recovery_pass_unit_001; boot_charge_recovery_pass_unit_001; shared software shipment primitive pass; automatic boot shipment open |
 | EN_MR_SD enable | normal boot through `thPower` | ADP5360 Supervisory Setting `0x2D[1]` set so START/MR 12 s shipment entry is enabled | power/display boot complete `1/1`, ADP driver API `4`, MR status `0`, PMIC snapshot success `1` | pass_unit_001; software prep UX open |
 | START prep | sustained hold below hardware cutoff | warning/save/quiesce path starts | 5 s START hold reached `START_SHIP_PREP`, power event `1`, power state `8/8`, raw/stable PA4 `0/0`; current FW0 calls counted no-op quiesce placeholder | scaffold_pass_unit_001; real save/quiesce open; no-op hook target-validated |
 | START warning/imminent | sustained hold below/near hardware cutoff | warning and imminent events route to `thPower` and `thUI` shutdown scaffold | 9-10 s hold reached `START_SHIP_WARNING`; >11 s hold reached `START_SHIP_IMMINENT`; prep/warn/imm counters `1/1/1`; user confirmed PMIC shipment after long hold | scaffold_pass_unit_001; UI scaffold target-validated; real save/recovery open |
 | START release | release during prep | software warning/prep cancelled | UI release-cancel scaffold restored HOME after release; UI/display page `1`, shutdown state `4` | scaffold_pass_unit_001 |
-| software shipment primitive | guarded power-owner request writes ADP5360 Shipment Mode register `0x36 = 1` | device enters shipment only after explicit gated test | implemented; START imminent requests it only when `KNOB_POWER_START_SOFTWARE_SHIP_ENABLE` is true, generated default false; full hold/release validation kept enable/request/skip `0/0/1` and PMIC sw ship count `0` | gate_pass_unit_001; register `0x36` entry not target-validated; not final product UX |
+| software shipment primitive | guarded power-owner request writes ADP5360 Shipment Mode register `0x36 = 1` | device enters shipment only after explicit gated test | debugger-only request `g_ps_hw6_pmic_software_ship_request = 1` from normal active state caused debugger `E31`, target power loss, and restart only from START | primitive_pass_unit_001; automatic START/battery paths and final product UX open |
 | first boot | no settings/calibration | no save/backup dependency during ship prep | TBD | open |
 
 ---
