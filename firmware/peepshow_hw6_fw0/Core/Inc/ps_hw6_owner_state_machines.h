@@ -1,4 +1,4 @@
-﻿#ifndef PS_HW6_OWNER_STATE_MACHINES_H
+#ifndef PS_HW6_OWNER_STATE_MACHINES_H
 #define PS_HW6_OWNER_STATE_MACHINES_H
 
 #include <stdint.h>
@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (20UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (21UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -65,6 +65,17 @@ typedef enum
   PS_HW6_POWER_BATTERY_EVENT_SHIP_SKIPPED,
   PS_HW6_POWER_BATTERY_EVENT_SNAPSHOT_FAIL
 } PS_HW6_PowerBatteryPolicyEvent;
+
+typedef enum
+{
+  PS_HW6_POWER_QUIESCE_REASON_NONE = 0,
+  PS_HW6_POWER_QUIESCE_REASON_START_SHUTDOWN,
+  PS_HW6_POWER_QUIESCE_REASON_BATTERY_CRITICAL,
+  PS_HW6_POWER_QUIESCE_REASON_BOOT_LOW_BATTERY
+} PS_HW6_PowerQuiesceReason;
+
+typedef HAL_StatusTypeDef (*PS_HW6_PowerQuiesceBarrierCallback)(
+  uint32_t reason);
 
 typedef struct
 {
@@ -141,6 +152,21 @@ typedef struct
   uint32_t trace_count;
   uint32_t trace_write_index;
   PS_HW6_OwnerStateTrace trace[PS_HW6_OWNER_SM_TRACE_DEPTH];
+
+  uint32_t power_quiesce_request_count;
+  uint32_t power_quiesce_reason;
+  uint32_t power_quiesce_start_tick;
+  uint32_t power_quiesce_end_tick;
+  uint32_t power_quiesce_required_mask;
+  uint32_t power_quiesce_send_ok_mask;
+  uint32_t power_quiesce_ack_ok_mask;
+  uint32_t power_quiesce_success_mask;
+  uint32_t power_quiesce_failure_mask;
+  uint32_t power_quiesce_last_status;
+  uint32_t power_quiesce_send_status[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
+  uint32_t power_quiesce_ack_status[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
+  uint32_t power_quiesce_ack_flags[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
+  uint32_t power_quiesce_owner_status[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
 
   uint32_t start_power_event_count;
   uint32_t start_power_last_event;
@@ -589,6 +615,8 @@ extern volatile uint32_t g_ps_hw6_joystick_calibration_capture_request;
 extern volatile uint32_t g_ps_hw6_joystick_calibration_capture_page;
 
 void PS_HW6_OwnerStateMachines_Init(void);
+void PS_HW6_OwnerStateMachines_SetPowerQuiesceCallback(
+  PS_HW6_PowerQuiesceBarrierCallback callback);
 void PS_HW6_OwnerStateMachines_BeginWorkflow(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Stabilize(uint32_t owner_id);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void);
@@ -615,6 +643,15 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Resume(uint32_t owner_id,
                                                     uint32_t cycle_index);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Quiesce(uint32_t owner_id,
                                                      uint32_t cycle_index);
+void PS_HW6_OwnerStateMachines_BeginPowerQuiesce(uint32_t reason);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_QuiesceForPowerBarrier(
+  uint32_t owner_id);
+void PS_HW6_OwnerStateMachines_RecordPowerQuiesceCommand(
+  uint32_t owner_id,
+  uint32_t send_status,
+  uint32_t ack_wait_status,
+  uint32_t ack_flags);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_EndPowerQuiesce(void);
 void PS_HW6_OwnerStateMachines_HandleStorageMsc(uint32_t command);
 void PS_HW6_OwnerStateMachines_RecordCycleCommand(
   uint32_t cycle_index,

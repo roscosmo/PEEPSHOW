@@ -1,4 +1,4 @@
-﻿#include "ps_hw6_rtos_probe.h"
+#include "ps_hw6_rtos_probe.h"
 
 #include <string.h>
 
@@ -37,6 +37,7 @@
 #define PS_HW6_RTOS_COMMAND_STABILIZE     (2UL)
 #define PS_HW6_RTOS_COMMAND_RESUME        (3UL)
 #define PS_HW6_RTOS_COMMAND_QUIESCE       (4UL)
+#define PS_HW6_RTOS_COMMAND_POWER_QUIESCE (5UL)
 #define PS_HW6_RTOS_EVENT_DEBUG_INDEX     (3U)
 #define PS_HW6_RTOS_ACK_OWNER(owner_id)   (1UL << (owner_id))
 #define PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS  (1000UL)
@@ -248,6 +249,13 @@ static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
     }
 
     cycle_index = (uint32_t)(message[3] ^ PS_HW6_RTOS_COMMAND_TOKEN);
+    if ((message[2] == PS_HW6_RTOS_COMMAND_POWER_QUIESCE) &&
+        (cycle_index > (uint32_t)PS_HW6_POWER_QUIESCE_REASON_NONE) &&
+        (cycle_index <=
+         (uint32_t)PS_HW6_POWER_QUIESCE_REASON_BOOT_LOW_BATTERY))
+    {
+      return 1UL;
+    }
     if (((message[2] == PS_HW6_RTOS_COMMAND_RESUME) ||
          (message[2] == PS_HW6_RTOS_COMMAND_QUIESCE)) &&
         (cycle_index < PS_HW6_OWNER_SM_CYCLE_COUNT))
@@ -496,6 +504,24 @@ static UINT PS_HW6_RTOS_SendCycleCommand(uint32_t owner_id,
   message[3] = PS_HW6_RTOS_COMMAND_TOKEN ^ (ULONG)cycle_index;
   return tx_queue_send(&ps_queues[owner_id], message, TX_NO_WAIT);
 }
+static UINT PS_HW6_RTOS_SendPowerQuiesceCommand(uint32_t owner_id,
+                                                 uint32_t reason)
+{
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+
+  if ((owner_id >= PS_HW6_RTOS_QUEUE_COUNT) ||
+      (reason <= (uint32_t)PS_HW6_POWER_QUIESCE_REASON_NONE) ||
+      (reason > (uint32_t)PS_HW6_POWER_QUIESCE_REASON_BOOT_LOW_BATTERY))
+  {
+    return TX_QUEUE_ERROR;
+  }
+
+  message[0] = PS_HW6_RTOS_COMMAND_MAGIC;
+  message[1] = (ULONG)owner_id;
+  message[2] = PS_HW6_RTOS_COMMAND_POWER_QUIESCE;
+  message[3] = PS_HW6_RTOS_COMMAND_TOKEN ^ (ULONG)reason;
+  return tx_queue_send(&ps_queues[owner_id], message, TX_NO_WAIT);
+}
 static UINT PS_HW6_RTOS_SendDisplayUiRenderCommand(
   uint32_t page,
   uint32_t calibration_page,
@@ -602,6 +628,44 @@ static ULONG PS_HW6_RTOS_StabilizeAckWaitTicks(uint32_t owner_id)
          PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS;
 }
 
+
+static HAL_StatusTypeDef PS_HW6_RTOS_RunPowerQuiesceBarrier(uint32_t reason)
+{
+  static const uint32_t quiesce_order[] =
+  {
+    PS_HW6_RTOS_OWNER_AUDIO,
+    PS_HW6_RTOS_OWNER_DISPLAY,
+    PS_HW6_RTOS_OWNER_COMM,
+    PS_HW6_RTOS_OWNER_SENSOR,
+    PS_HW6_RTOS_OWNER_INPUT,
+    PS_HW6_RTOS_OWNER_STORAGE
+  };
+  uint32_t index;
+
+  PS_HW6_OwnerStateMachines_BeginPowerQuiesce(reason);
+  for (index = 0U;
+       index < (sizeof(quiesce_order) / sizeof(quiesce_order[0]));
+       ++index)
+  {
+    const uint32_t owner_id = quiesce_order[index];
+    const ULONG expected_ack = PS_HW6_RTOS_ACK_OWNER(owner_id);
+    ULONG actual_flags = 0UL;
+    UINT send_status = PS_HW6_RTOS_SendPowerQuiesceCommand(
+      owner_id, reason);
+    UINT wait_status = send_status;
+
+    if (send_status == TX_SUCCESS)
+    {
+      wait_status = tx_event_flags_get(
+        &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+        expected_ack, TX_AND_CLEAR, &actual_flags,
+        PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
+    }
+    PS_HW6_OwnerStateMachines_RecordPowerQuiesceCommand(
+      owner_id, send_status, wait_status, (uint32_t)actual_flags);
+  }
+  return PS_HW6_OwnerStateMachines_EndPowerQuiesce();
+}
 static void PS_HW6_RTOS_RunPowerWorkflow(void)
 {
   static const uint32_t owner_order[] =
@@ -768,6 +832,15 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
     {
       g_ps_hw6_owner_probe.audio_ack_set_status = status;
     }
+  }
+  else if ((owner_id > PS_HW6_RTOS_OWNER_POWER) &&
+           (owner_id <= PS_HW6_RTOS_OWNER_COMM) &&
+           (command == PS_HW6_RTOS_COMMAND_POWER_QUIESCE))
+  {
+    (void)PS_HW6_OwnerStateMachines_QuiesceForPowerBarrier(owner_id);
+    (void)tx_event_flags_set(
+      &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+      PS_HW6_RTOS_ACK_OWNER(owner_id), TX_OR);
   }
   else if ((owner_id > PS_HW6_RTOS_OWNER_POWER) &&
            (owner_id <= PS_HW6_RTOS_OWNER_COMM) &&
@@ -1191,6 +1264,8 @@ UINT PS_HW6_RTOS_Init(TX_BYTE_POOL *pool)
   HAL_GPIO_WritePin(PWR_DBG_GPIO_Port, PWR_DBG_Pin, GPIO_PIN_RESET);
   (void)PS_HW6_OwnerServices_Init();
   PS_HW6_OwnerStateMachines_Init();
+  PS_HW6_OwnerStateMachines_SetPowerQuiesceCallback(
+    PS_HW6_RTOS_RunPowerQuiesceBarrier);
   PS_UIRouter_Init();
   PS_InputButtons_Init();
   PS_Main_PmicIntExtiArm();

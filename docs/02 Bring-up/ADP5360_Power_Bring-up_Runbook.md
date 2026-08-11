@@ -176,8 +176,7 @@ scaffold timings are now backed by HW6 `config/knobs.json` and
 `Core/Inc/knobs_autogen.h`, and the user confirmed ADP5360 shipment entry after
 a long START/MR hold. This does not authorize routine intentional
 shipment-entry testing as part of button navigation work. The START shutdown UI
-scaffold, no-op quiesce hook, release-cancel routing, and default-off software
-shipment gate are now target-validated.
+scaffold, release-cancel routing, default-off software shipment gate, and real owner-ACK quiesce barrier are now target-validated.
 
 `EV-HW6-20260811-P1-SHIP-032` validates the guarded software shipment primitive
 through ADP5360 Shipment Mode register `0x36`. The target was in normal active
@@ -185,7 +184,7 @@ state with no pending software shipment request; a debugger-only
 `g_ps_hw6_pmic_software_ship_request = 1` request caused target power loss /
 debugger `E31`, and the device restarted from START. This proves the firmware
 can enter shipment mode under power-owner control without waiting for the
-12-second MR threshold. Real save/quiesce, automatic START software shipment,
+12-second MR threshold. Persistent save policy, automatic START software shipment,
 automatic battery-critical shipment, first-boot policy, and final recovery UX
 remain open.
 
@@ -263,14 +262,14 @@ Populate this table during bring-up. Values are placeholders until selected and 
 | battery monitor period | provisional `1000 ms` | periodic `thPower` PMIC snapshot cadence and current impact | target evidence: FW0 probe showed `period=100` ticks and monitor count advancing; current impact and long-run behavior remain open |
 | low battery warning threshold | provisional `3500 mV` | warning event, optional-load reduction, and log | runtime_warning_pass_unit_001; UX/load-shed behavior open |
 | low battery forced-sleep threshold | TBD | recoverable forced-sleep transition evidence | open |
-| critical battery controlled-shipment threshold | provisional `3300 mV` | controlled save/quiesce, would-ship gate evidence, then enabled automatic critical-battery software-shipment evidence | runtime_critical_gate_pass_unit_001 with valid fuel-gauge voltage; shared software shipment primitive pass; automatic critical shipment open |
+| critical battery controlled-shipment threshold | provisional `3300 mV` | controlled owner quiesce/save, would-ship gate evidence, then enabled automatic critical-battery software-shipment evidence | runtime_critical_gate_pass_unit_001 with valid fuel-gauge voltage; shared software shipment primitive pass; owner-ACK quiesce barrier validated through START path; automatic critical shipment open |
 | post-shipment restart-allow threshold | provisional `3600 mV` | boot/restart gate blocks normal runtime below threshold; no VBUS routes to low-battery block, VBUS routes to charge recovery, and VBAT above threshold returns HOME | runtime_recovery_pass_unit_001; boot_gate_recovery_pass_unit_001; boot_charge_recovery_pass_unit_001 |
 | critical-battery software-shipment enable gate | default `false` | disabled tests record would-ship; enabled tests write ADP5360 `0x36 = 1` only after explicit approval | provisional; FW0 knob scaffold implemented; shared `0x36` primitive target-validated; automatic critical path open |
 | boot-low-battery shipment enable gate | default `false` | disabled boot tests record would-ship below restart threshold; enabled tests re-enter shipment only after recovery path is validated | provisional; FW0 knob scaffold implemented; shared `0x36` primitive target-validated; automatic boot path open |
 | charger-present debounce/filter | TBD | USB connect/disconnect logs | open |
 | VBUS disagreement timeout | TBD | ADP5360 vs `PA9` mismatch handling | open |
 | PMIC read retry limit | TBD | transient failure recovery test | open |
-| START ship-prep threshold | `KNOB_INPUT_START_SHIP_PREP_MS = 6000 ms` current FW0 scaffold; prior validation at `5000 ms` | power owner receives prep before hardware cutoff | pass_unit_001 at prior value; knob-backed; save/quiesce policy open |
+| START ship-prep threshold | `KNOB_INPUT_START_SHIP_PREP_MS = 5000 ms` current FW0 scaffold | power owner receives prep before hardware cutoff | pass_unit_001; knob-backed; owner-ACK quiesce barrier validated; persistent save policy open |
 | START warning threshold | `KNOB_INPUT_START_SHIP_WARN_MS = 9000 ms` FW0 scaffold | warning starts early enough before hardware cutoff | pass_unit_001; knob-backed; plain shutdown UI scaffold target-validated |
 | START imminent threshold | `KNOB_INPUT_START_SHIP_IMMINENT_MS = 11000 ms` FW0 scaffold | final warning before hardware cutoff | pass_unit_001; knob-backed; close to PMIC threshold |
 
@@ -300,8 +299,8 @@ Thresholds are Platform tuning constants, not Reference Game policy.
 | hardware BAT_UV / ISOFET fallback | controlled low-voltage threshold below firmware policy | ADP5360 protection removes the battery path only as emergency fallback | TBD | open |
 | boot low-battery restart gate | boot below restart-allow threshold with and without VBUS | no normal runtime below threshold without VBUS; VBUS permits charge/recovery shell | no-VBUS boot/restart block validated at PMIC-read `3270 mV`: policy/event `5/5`, boot gate pending/blocked/clear `1/1/0`, quiesce `1`, software ship request/skip `0/1`, power/PMIC `8/8`, UI/display page/shutdown `8/5`; recovery above restart threshold validated at `3707 mV`: policy/event `2/2`, boot gate `0/0/1`, power/PMIC `2/3`, UI/display `1/0`; VBUS-present charge recovery validated with restart forced to `4200 mV`: PMIC-read `3968 mV`, policy/event `6/6`, boot gate pending/block/charge/clear `1/1/1/0`, ship request/skip `0/0`, power/PMIC `2/4`, UI/display `8/6`; restored restart `3600 mV` with PMIC-read `4049 mV` cleared to policy/event `2/2`, gate `0/0/0/1`, UI/display `1/0` | boot_gate_recovery_pass_unit_001; boot_charge_recovery_pass_unit_001; shared software shipment primitive pass; automatic boot shipment open |
 | EN_MR_SD enable | normal boot through `thPower` | ADP5360 Supervisory Setting `0x2D[1]` set so START/MR 12 s shipment entry is enabled | power/display boot complete `1/1`, ADP driver API `4`, MR status `0`, PMIC snapshot success `1` | pass_unit_001; software prep UX open |
-| START prep | sustained hold below hardware cutoff | warning/save/quiesce path starts | 5 s START hold reached `START_SHIP_PREP`, power event `1`, power state `8/8`, raw/stable PA4 `0/0`; current FW0 calls counted no-op quiesce placeholder | scaffold_pass_unit_001; real save/quiesce open; no-op hook target-validated |
-| START warning/imminent | sustained hold below/near hardware cutoff | warning and imminent events route to `thPower` and `thUI` shutdown scaffold | 9-10 s hold reached `START_SHIP_WARNING`; >11 s hold reached `START_SHIP_IMMINENT`; prep/warn/imm counters `1/1/1`; user confirmed PMIC shipment after long hold | scaffold_pass_unit_001; UI scaffold target-validated; real save/recovery open |
+| START prep | sustained hold below hardware cutoff | warning/save/quiesce path starts | Clean START hold reached `START_SHIP_PREP` with release count `0`, power/PMIC `8/8`, quiesce count/status `1/0x0`, barrier reason/count/status `1/1/0x0`, barrier masks `0x7e/0x7e/0x7e/0x7e/0x0`, and all owner/send/ACK statuses `0x0` | start_owner_quiesce_pass_unit_001; persistent save policy open; automatic START software shipment open |
+| START warning/imminent | sustained hold below/near hardware cutoff | warning and imminent events route to `thPower` and `thUI` shutdown scaffold | 9-10 s hold reached `START_SHIP_WARNING`; >11 s hold reached `START_SHIP_IMMINENT`; prep/warn/imm counters `1/1/1`; user confirmed PMIC shipment after long hold | scaffold_pass_unit_001; UI scaffold target-validated; persistent save/final recovery UX open |
 | START release | release during prep | software warning/prep cancelled | UI release-cancel scaffold restored HOME after release; UI/display page `1`, shutdown state `4` | scaffold_pass_unit_001 |
 | software shipment primitive | guarded power-owner request writes ADP5360 Shipment Mode register `0x36 = 1` | device enters shipment only after explicit gated test | debugger-only request `g_ps_hw6_pmic_software_ship_request = 1` from normal active state caused debugger `E31`, target power loss, and restart only from START | primitive_pass_unit_001; automatic START/battery paths and final product UX open |
 | first boot | no settings/calibration | no save/backup dependency during ship prep | TBD | open |
@@ -322,7 +321,7 @@ Thresholds are Platform tuning constants, not Reference Game policy.
 10. Validate critical-battery threshold routes to controlled software-shipment policy, with default-off would-ship evidence before enabled tests.
 11. Validate normal boot enables ADP5360 `EN_MR_SD` through `thPower` before intentional START shipping-entry tests.
 12. Validate normal START short/long press remains firmware-observable before hardware shipping threshold.
-13. Validate START hold warning/prep path can run before the ADP5360 shipping threshold.
+13. Validate START hold warning/prep path can run owner-ACK quiesce before the ADP5360 shipping threshold.
 14. Validate first-boot START shipping intent is ignored by firmware policy.
 15. Validate PMIC read failure uses bounded recovery and does not silently trust stale power state.
 16. Validate VBUS disagreement blocks installer/storage ownership decisions until explained.
