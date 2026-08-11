@@ -81,8 +81,10 @@ HW6 FW0 validated baseline:
 - CubeMX generated Trace Async/SWO and `TX_ENABLE_EVENT_TRACE` support.
 - FW0 calls `tx_trace_enable()` from the `tx_application_define()` user block in `AZURE_RTOS/App/app_azure_rtos.c`.
 - Current knobs: `KNOB_DEBUG_TRACEX_ENABLE=1`, `KNOB_DEBUG_TRACEX_BUFFER_BYTES=32768`, `KNOB_DEBUG_TRACEX_REGISTRY_ENTRIES=64`.
-- Target GDB helper: `firmware/peepshow_hw6_fw0/__fw0_tracex_prints.gdb`.
-- First target evidence returned `enable status/runtime = 0x0 / 1`, buffer `0x2000a7a0 / 32768`, trace start/end `0x2000b3d0 / 0x20012790`, and registry total/available `64 / 29`.
+- Target GDB status helper: `firmware/peepshow_hw6_fw0/__fw0_tracex_prints.gdb`.
+- Target GDB dump helper: `firmware/peepshow_hw6_fw0/__fw0_tracex_dump.gdb`; while halted, it writes `firmware/peepshow_hw6_fw0/TraceFiles/__fw0_tracex_snapshot.trx` from the live TraceX buffer.
+- First target status evidence returned `enable status/runtime = 0x0 / 1`, buffer `0x2000a7a0 / 32768`, trace start/end `0x2000b3d0 / 0x20012790`, and registry total/available `64 / 29`.
+- First target dump evidence wrote `firmware/peepshow_hw6_fw0/TraceFiles/__fw0_tracex_snapshot.trx` at `32768` bytes. Tracealyzer host import remains the next validation step.
 
 ---
 
@@ -141,4 +143,5 @@ Release builds must:
 - compile out verbose debug paths
 - keep structured fault capture
 - preserve deterministic timing behavior
+
 
