@@ -5,6 +5,7 @@
 #include "ps_dev_audio.h"
 #include "ps_dev_ls013b7dh05.h"
 #include "main.h"
+#include "knobs_autogen.h"
 #include "ps_ui_router.h"
 #include "ps_dev_adp5360.h"
 #include "ps_hw_i2c3.h"
@@ -601,6 +602,8 @@ UINT PS_HW6_OwnerServices_Init(void)
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.power_driver_fuel_gauge_prepare_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.power_driver_thermistor_config_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.power_driver_software_shipping_mode_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.power_software_ship_request_count = 0UL;
@@ -694,6 +697,26 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_PrepareFuelGauge(void)
   return (status == PS_STATUS_OK) ? HAL_OK : HAL_ERROR;
 }
 
+HAL_StatusTypeDef PS_HW6_PowerOwner_ConfigureThermistor(void)
+{
+  ps_status_t status;
+
+  status = ps_dev_adp5360_configure_thermistor(
+    &ps_hw6_pmic,
+    (uint8_t)KNOB_POWER_CHARGER_THERMISTOR_CONTROL);
+  g_ps_hw6_owner_probe.power_driver_thermistor_config_status =
+    (uint32_t)status;
+  g_ps_hw6_owner_probe.power_driver_api_version =
+    ps_hw6_pmic.api_version;
+  g_ps_hw6_owner_probe.power_driver_state = ps_hw6_pmic.state;
+  g_ps_hw6_owner_probe.power_driver_operation_count =
+    ps_hw6_pmic.operation_count;
+  g_ps_hw6_owner_probe.power_driver_last_status =
+    ps_hw6_pmic.last_status;
+
+  return (status == PS_STATUS_OK) ? HAL_OK : HAL_ERROR;
+}
+
 HAL_StatusTypeDef PS_HW6_PowerOwner_EnterSoftwareShipmentMode(void)
 {
   ps_status_t status;
@@ -773,6 +796,14 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_RunSnapshot(void)
     snapshot.charger_status2_hal_status;
   g_ps_hw6_owner_probe.power_charger_status2_hal_error =
     snapshot.charger_status2_hal_error;
+  g_ps_hw6_owner_probe.power_charger_thermistor_control =
+    snapshot.charger_thermistor_control;
+  g_ps_hw6_owner_probe.power_charger_thermistor_control_status =
+    snapshot.charger_thermistor_control_status;
+  g_ps_hw6_owner_probe.power_charger_thermistor_control_hal_status =
+    snapshot.charger_thermistor_control_hal_status;
+  g_ps_hw6_owner_probe.power_charger_thermistor_control_hal_error =
+    snapshot.charger_thermistor_control_hal_error;
   g_ps_hw6_owner_probe.power_charger_monitor_read_ok_mask =
     snapshot.charger_monitor_read_ok_mask;
   g_ps_hw6_owner_probe.power_charger_mode = snapshot.charger_mode;
@@ -785,6 +816,17 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_RunSnapshot(void)
     snapshot.battery_thermal_status;
   g_ps_hw6_owner_probe.power_battery_present = snapshot.battery_present;
   g_ps_hw6_owner_probe.power_vbus_ok = snapshot.vbus_ok;
+  g_ps_hw6_owner_probe.power_mcu_vbus_present =
+    (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9) == GPIO_PIN_SET) ? 1UL : 0UL;
+  g_ps_hw6_owner_probe.power_vbus_agree =
+    (g_ps_hw6_owner_probe.power_vbus_ok ==
+     g_ps_hw6_owner_probe.power_mcu_vbus_present) ? 1UL : 0UL;
+  if (g_ps_hw6_owner_probe.power_vbus_agree == 0UL)
+  {
+    g_ps_hw6_owner_probe.power_vbus_disagree_count++;
+    g_ps_hw6_owner_probe.power_vbus_last_disagree_tick =
+      (uint32_t)tx_time_get();
+  }
   g_ps_hw6_owner_probe.power_battery_ok = snapshot.battery_ok;
   g_ps_hw6_owner_probe.power_charge_complete = snapshot.charge_complete;
   for (index = 0U; index < PS_DEV_ADP5360_FUEL_REGISTER_COUNT; ++index)

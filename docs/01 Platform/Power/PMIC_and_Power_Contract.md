@@ -168,6 +168,24 @@ Disagreement between the PMIC VBUS view and MCU VBUS view is a diagnostic event 
 
 VBUS classification means external USB power is present. It does not by itself prove a USB data host exists.
 
+### HW6 FW0 Charger/VBUS Status
+
+HW6 unit 001 FW0 evidence `EV-HW6-20260811-P1-CHARGER-027` validates the staged charger monitor path with a real cell, board-mounted `100 kOhm` NTC at room temperature, and USB/VBUS plugged.
+
+Measured result:
+
+- owner probe API/snapshot `9 / 1 / 1`
+- power/PMIC state `2 / 4`, meaning normal active runtime with `PMIC_CHARGING`
+- ADP5360/MCU VBUS agreement `1 / 1 / 1`
+- charger raw status `0x22 / 0xE4`
+- charger monitor read mask `0x7`, covering charger status 1, charger status 2, and thermistor-control readback
+- thermistor config/status/register `0x0 / 0x0 / 0x80`
+- thermistor status bits `7`, meaning thermistor OK
+- charger mode/status/type/health `2 / 1 / 2 / 0`, meaning fast-charge mode, charging, fast-charge type, and good health
+- fuel/policy VBAT `3732 mV`, VBUS present, battery present
+
+This validates that FW0 configures the ADP5360 thermistor bias correctly for the board `100 kOhm` NTC and that the PMIC can enter charging state while PeepOS remains in normal active operation. It does not validate higher charge current, charge termination, full-state behavior, JEITA hot/cold/cool/warm behavior, long-run thermal behavior, or final production charging policy.
+
 Rules:
 
 - VBUS may wake the device, update charger policy, and notify USB policy.
@@ -255,12 +273,15 @@ Required thresholds:
 
 ### HW6 Cell Profile And Validation State
 
-This is the reviewed profile basis, not permission to charge a real cell. On
+This is the reviewed profile basis, not final production charge approval. On
 HW6 unit 001, the six selected encodings passed a guarded no-cell/no-VBUS
 write, exact readback, reverse restore, and exact restore readback. This proves
-register acceptance only. Persistent profile application, fuel-gauge behavior,
-JEITA behavior, protection thresholds, VBUS policy, and real-cell charging
-remain gated by their dedicated tests.
+register acceptance only. FW0 now also validates room-temperature `100 kOhm`
+NTC bias/readback and initial real-cell charging-state reporting at the retained
+low-current VBUS baseline. Persistent profile application, JEITA zone behavior,
+protection thresholds, VBUS current policy, charge termination, current
+promotion, and production charging behavior remain gated by their dedicated
+tests.
 
 | Item | Profile intent | ADP5360 candidate / present state |
 |---|---|---|
@@ -268,7 +289,7 @@ remain gated by their dedicated tests.
 | Fast charge | maximum `320 mA` (`0.711 C`); dynamically limited by the validated VBUS source budget | `0x04=0x3F` accepted/read back/restored; physical charging at this setting is not approved |
 | Charge voltage | `4.20 V` | `0x03=0x82` accepted/read back/restored; controlled terminal-voltage validation remains open |
 | VBUS input limit | must follow the classified USB/source contract, independently of the cell charge-rate permission | register `0x02` remains `0x81` / `100 mA` until source-current policy is validated |
-| Temperature | board-mounted `100 kOhm` NTC in physical contact with pouch; JEITA charging required | `0x0A=0x80` and `0x07=0xAC` accepted/read back/restored; temperature-zone behavior remains open |
+| Temperature | board-mounted `100 kOhm` NTC in physical contact with pouch; JEITA charging required | `0x0A=0x80` accepted during FW0 boot and read back during real-cell/VBUS test; room-temperature THR status reports OK; hot/cold/cool/warm substitution behavior remains open |
 | Fuel gauge | start in sleep mode and automatically enter active mode above its current threshold | `0x20=0xE1` and `0x27=0x53` accepted/read back/restored; voltage/SOC/current-mode characterization remains open |
 | Independent protection | ADP5360 protection is mandatory whether or not a development cell also contains a PCM | present `0x11..0x15 = 03 90 E6 78 E8`: enabled, `2.50 V` UV, `600 mA` discharge OC, `4.30 V` OV, `400 mA` charge OC; retain provisionally pending fault and peak-load tests |
 
@@ -281,7 +302,7 @@ Thresholds must be logged with firmware version during bring-up tests.
 
 Rules:
 
-- real-cell charging must not begin until the selected cell chemistry, polarity, protection status, charge voltage, and charge-current limit are confirmed.
+- real-cell charging beyond the retained low-current baseline must not proceed until the selected cell chemistry, polarity, protection status, charge voltage, and charge-current limit are confirmed for that test.
 - `1 C` cell permission does not grant `450 mA` charging: the ADP5360 maximum
   is `320 mA`, and the active VBUS/input contract may impose a lower limit.
 - initial real-cell commissioning must begin at the already-observed `100 mA`

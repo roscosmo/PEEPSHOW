@@ -1,4 +1,4 @@
-﻿{
+{
   "input_start_long_press_ms": 1000,
   "input_start_ship_prep_ms": 6000,
   "input_start_ship_warn_ms": 9000,
@@ -8,6 +8,7 @@
   "power_battery_warning_mv": 3500,
   "power_battery_critical_ship_mv": 3300,
   "power_battery_restart_allow_mv": 3600,
+  "power_charger_thermistor_control": 128,
   "power_critical_software_ship_enable": false,
   "power_boot_low_battery_ship_enable": false,
   "power_start_software_ship_enable": false

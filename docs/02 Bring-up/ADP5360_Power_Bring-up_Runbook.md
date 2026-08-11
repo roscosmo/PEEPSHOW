@@ -175,6 +175,24 @@ the user confirmed ADP5360 shipment entry after a long START/MR hold. This
 does not authorize routine intentional shipment-entry testing as part of button
 navigation work. The START shutdown UI scaffold, no-op quiesce hook, release-cancel routing, and default-off software shipment gate are now target-validated. Real save/quiesce, wake/recovery, first-boot policy, and software shipment register `0x36` entry remain open.
 
+### HW6 FW0 Initial Real-Cell Charger Result
+
+`EV-HW6-20260811-P1-CHARGER-027` validates the first FW0 charger-state path with a real cell, USB/VBUS plugged, and the board-mounted `100 kOhm` NTC at room temperature.
+
+Measured evidence:
+
+- owner API/snapshot `9 / 1 / 1`
+- power/PMIC state `2 / 4`, so normal runtime stayed active while the PMIC FSM reported charging
+- ADP5360/MCU VBUS agreement `1 / 1 / 1`
+- charger raw status `0x22 / 0xE4`
+- charger read mask `0x7`
+- thermistor config/status/register `0x0 / 0x0 / 0x80`
+- thermistor status bits `7`
+- charger mode/status/type/health `2 / 1 / 2 / 0`
+- fuel VBAT/SOC/mask `3732 / 17 / 0x1f`
+
+This closes the earlier FW0 `100 kOhm` thermistor-bias mismatch for the room-temperature case and proves active charge-state reporting at the retained low-current baseline. It does not close current measurement, charge termination, charge-done state, JEITA hot/cold/cool/warm substitution, VBUS current-limit promotion, or long-run thermal behavior.
+
 ## Threshold / Policy Ledger
 
 Populate this table during bring-up. Values are placeholders until selected and measured.
@@ -191,15 +209,15 @@ Populate this table during bring-up. Values are placeholders until selected and 
 | charge current limit | `320 mA` absolute ceiling (`0.711 C`); first-cell commissioning at `100 mA` | VBUS contract plus staged current/thermal evidence | profile_ceiling_recorded; promotion open |
 | VBUS input current limit | present `100 mA`; dynamic target TBD | USB/source classification and input-current evidence | open; do not raise solely from cell rating |
 | charge termination current | provisional `5 mA` retained | controlled CV/termination evidence and cell behavior review | provisional |
-| thermistor arrangement | two-wire cell; board `100 kOhm` NTC physically contacts pouch | `6 uA` bias readback, room-temperature resistance/THR status, and hot/cold substitution test | arrangement_recorded; present `10 kOhm` bias mismatch open |
+| thermistor arrangement | two-wire cell; board `100 kOhm` NTC physically contacts pouch | `6 uA` bias readback, room-temperature THR status, and hot/cold substitution test | room_temp_pass_unit_001 with `0x0A=0x80` and THR status `7`; hot/cold substitution open |
 | temperature charge policy | JEITA enabled | register readback plus cold/cool/normal/warm/hot charge-state tests | reversible_write_pass_unit_001; behavior open |
 | cell-integrated protection | development cell protected for handling; production TBC | procurement/BOM record | open; not a Platform safety dependency |
 | ADP5360 protection | mandatory authoritative path; present `2.50 V` UV, `600 mA` discharge OC, `4.30 V` OV, `400 mA` charge OC | controlled threshold/fault tests and peak-load margin | baseline_decoded; validation open |
 | battery monitor period | provisional `1000 ms` | periodic `thPower` PMIC snapshot cadence and current impact | target evidence: FW0 probe showed `period=100` ticks and monitor count advancing; current impact and long-run behavior remain open |
-| low battery warning threshold | provisional `3500 mV` | warning event, optional-load reduction, and log | provisional; FW0 knob scaffold implemented; build/target validation pending |
+| low battery warning threshold | provisional `3500 mV` | warning event, optional-load reduction, and log | runtime_warning_pass_unit_001; UX/load-shed behavior open |
 | low battery forced-sleep threshold | TBD | recoverable forced-sleep transition evidence | open |
-| critical battery controlled-shipment threshold | provisional `3300 mV` | controlled save/quiesce, would-ship gate evidence, then enabled software-shipment evidence | scaffold implemented; raw-zero VBAT guard target-validated; threshold behavior still requires valid fuel-gauge voltage evidence |
-| post-shipment restart-allow threshold | provisional `3600 mV` | boot/restart gate blocks normal runtime below threshold unless VBUS/charger recovery is present | scaffold implemented; raw-zero VBAT guard target-validated; restart behavior still requires valid fuel-gauge voltage evidence |
+| critical battery controlled-shipment threshold | provisional `3300 mV` | controlled save/quiesce, would-ship gate evidence, then enabled software-shipment evidence | runtime_critical_gate_pass_unit_001 with valid fuel-gauge voltage; enabled software shipment open |
+| post-shipment restart-allow threshold | provisional `3600 mV` | boot/restart gate blocks normal runtime below threshold unless VBUS/charger recovery is present | runtime_recovery_pass_unit_001; boot restart behavior open |
 | critical-battery software-shipment enable gate | default `false` | disabled tests record would-ship; enabled tests write ADP5360 `0x36 = 1` only after explicit approval | provisional; FW0 knob scaffold implemented; build/target validation pending |
 | boot-low-battery shipment enable gate | default `false` | disabled boot tests record would-ship below restart threshold; enabled tests re-enter shipment only after recovery path is validated | provisional; FW0 knob scaffold implemented; build/target validation pending |
 | charger-present debounce/filter | TBD | USB connect/disconnect logs | open |
@@ -221,15 +239,15 @@ Thresholds are Platform tuning constants, not Reference Game policy.
 | battery voltage sweep | selected voltage points | PMIC/fuel readback tracks voltage safely | source `3.8 V` produced `3755 mV`; source `3.46 V` produced `3421 mV`; source `3.27 V` produced `3232 mV`; return to source `3.8 V` produced `3814 mV`; mode stayed `0x51` | runtime_sweep_pass_unit_001; broader calibration/current evidence open |
 | cell profile | `303040` provisional profile | charge/fuel settings match reviewed cell assumptions | six-byte profile delta accepted and exactly restored; persistent application and behavior remain open | reversible_pass_unit_001 |
 | BAT_CAP | code `225` for 450 mAh | register accepts/readbacks configured value | `0xE1` accepted/read back/restored exactly | reversible_pass_unit_001; sweep open |
-| charger config | `4.20 V`; staged `100 mA` then up to `320 mA`; provisional `5 mA` termination; JEITA/`100 kOhm` NTC | no-cell readback first, then controlled real-cell current/voltage/temperature evidence | `03=82`, `04=3F`, `0A=80`, and `07=AC` accepted/read back/restored; no charging exercised | reversible_pass_unit_001; physical tests open |
+| charger config | `4.20 V`; staged `100 mA` then up to `320 mA`; provisional `5 mA` termination; JEITA/`100 kOhm` NTC | no-cell readback first, then controlled real-cell current/voltage/temperature evidence | `03=82`, `04=3F`, `0A=80`, and `07=AC` accepted/read back/restored; FW0 boot config/readback of `0x0A=0x80` produced room-temperature THR OK and active fast-charge state at the retained VBUS baseline | reversible_pass_unit_001; initial_real_cell_charge_state_pass_unit_001; current/termination/thermal promotion open |
 | battery protection | authoritative ADP5360 protection regardless of cell PCM | decoded settings survive power cycle and controlled fault tests behave safely | enabled baseline decoded; thresholds not yet stimulated | partial_unit_001 |
 | I2C probe | address `0x46` | ADP5360 ACKs | HW6 unit 001 ACKed; complete 55/55 read-only map passed | pass_unit_001 |
 | address representation | public 7-bit `0x46` through `ps_hw_i2c3` | convention confirmed | public `0x46`, STM32 HAL shifted `0x8c` | pass_unit_001 |
 | status read | PMIC status registers | charger/battery/fault state readable | identity `0x10`, revision `0x8`, PGOOD `0x07`, fault `0x00`; full map captured; fuel gauge disabled and telemetry invalid in inventory; FW0 fuel-gauge active/refresh sequence now validates mode `0x51` and nonzero VBAT `3720 mV` | partial_unit_001; fuel_prepare_pass_unit_001 |
 | configuration map | read-only `0x00..0x36` | every register readable before write planning | 55/55 reads; factory 100 mAh profile, fuel gauge/IRQs disabled, charger/protection baseline captured | pass_inventory_unit_001 |
 | PMIC_INT | safe event or pending clear | EXTI15 event and owner handling | TBD | open |
-| VBUS cross-check | USB attach/detach | ADP5360 and `PA9` agree or log diagnostic; no VBUS-only MSC prompt | TBD | open |
-| charging | USB attached | charging/charge-done state reported | TBD | open |
+| VBUS cross-check | USB attach/detach | ADP5360 and `PA9` agree or log diagnostic; no VBUS-only MSC prompt | unplugged/plugged probes showed ADP5360 and `PA9` agree; plugged real-cell charger probe reported VBUS agreement `1/1/1` | vbus_agree_pass_unit_001; storage/MSC non-prompt behavior still needs combined charger/USB policy proof |
+| charging | USB attached | charging/charge-done state reported | real cell plus board `100 kOhm` NTC at room temperature: owner API/snapshot `9/1/1`, power/PMIC `2/4`, charger raw `0x22/0xE4`, read mask `0x7`, therm config/status/register `0x0/0x0/0x80`, THR `7`, charger mode/status/type/health `2/1/2/0`, VBAT `3732 mV` | initial_charge_state_pass_unit_001; charge-done/current/thermal/JEITA behavior open |
 | low battery | simulated or measured threshold | warning / recoverable forced-sleep path selected | source `3.46 V`, PMIC `3421 mV`, policy/event `3/3`, warning count `4`, power/PMIC `2/6`, no quiesce or ship request | warning_runtime_pass_unit_001; final UX/load-shed behavior open |
 | critical battery | simulated or controlled threshold | controlled software-shipment path selected; default-off gate records would-ship until enabled | source `3.27 V`, PMIC `3232 mV`, policy/event `4/7`, critical count `3`, quiesce count `3`, ship request/skip `0/3`, power/PMIC `8/8` | critical_runtime_gate_pass_unit_001; enabled software shipment open |
 | hardware BAT_UV / ISOFET fallback | controlled low-voltage threshold below firmware policy | ADP5360 protection removes the battery path only as emergency fallback | TBD | open |

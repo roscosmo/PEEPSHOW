@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-#define PS_DEV_ADP5360_API_VERSION       (6UL)
+#define PS_DEV_ADP5360_API_VERSION       (7UL)
 #define PS_DEV_ADP5360_POWER_REGISTER_COUNT (7UL)
 #define PS_DEV_ADP5360_FUEL_REGISTER_COUNT  (5UL)
 
@@ -65,8 +65,12 @@ typedef struct
   uint32_t charger_status1_hal_error;
   uint32_t charger_status2_hal_status;
   uint32_t charger_status2_hal_error;
+  uint32_t charger_thermistor_control_status;
+  uint32_t charger_thermistor_control_hal_status;
+  uint32_t charger_thermistor_control_hal_error;
   uint8_t charger_status1;
   uint8_t charger_status2;
+  uint8_t charger_thermistor_control;
   uint32_t charger_monitor_read_ok_mask;
   uint32_t charger_mode;
   uint32_t charger_status;
@@ -106,6 +110,9 @@ ps_status_t ps_dev_adp5360_enable_mr_shipping_mode(
   ps_dev_adp5360_t *device);
 ps_status_t ps_dev_adp5360_prepare_fuel_gauge(
   ps_dev_adp5360_t *device);
+ps_status_t ps_dev_adp5360_configure_thermistor(
+  ps_dev_adp5360_t *device,
+  uint8_t control);
 ps_status_t ps_dev_adp5360_enter_shipment_mode(
   ps_dev_adp5360_t *device);
 ps_status_t ps_dev_adp5360_read_power_snapshot(

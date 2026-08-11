@@ -1,4 +1,4 @@
-﻿{
+{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://peepshow.local/schema/hw6-fw0-knobs.schema.json",
   "title": "PeepShow HW6 FW0 Compile-Time Knobs",
@@ -14,6 +14,7 @@
     "power_battery_warning_mv",
     "power_battery_critical_ship_mv",
     "power_battery_restart_allow_mv",
+    "power_charger_thermistor_control",
     "power_critical_software_ship_enable",
     "power_boot_low_battery_ship_enable",
     "power_start_software_ship_enable"
@@ -126,6 +127,18 @@
       "class": "protected_policy",
       "path": "platform.knobs.power.battery_restart_allow_mv",
       "description": "Pack voltage required before normal runtime is allowed without charger/VBUS recovery."
+    },
+    "power_charger_thermistor_control": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255,
+      "default": 128,
+      "unit": "register_byte",
+      "timebase_domain": "boot_snapshot",
+      "owner": "thPower",
+      "class": "hardware_profile",
+      "path": "platform.knobs.power.charger_thermistor_control",
+      "description": "ADP5360 BATTERY_THERMISTOR_CONTROL register byte for the HW6 board-mounted 100 kOhm NTC. Default 0x80 selects the 6 uA thermistor current used for staged charging bring-up."
     },
     "power_critical_software_ship_enable": {
       "type": "boolean",

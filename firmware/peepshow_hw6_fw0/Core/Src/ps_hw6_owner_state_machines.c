@@ -79,6 +79,8 @@
   (sizeof(array) / sizeof((array)[0]))
 
 #define PS_HW6_BATTERY_FUEL_VBAT_OK_MASK  (0x0CUL)
+#define PS_HW6_CHARGER_STATUS_CHARGING     (1UL)
+#define PS_HW6_CHARGER_STATUS_FULL         (2UL)
 
 extern I2C_HandleTypeDef hi2c3;
 extern DMA_HandleTypeDef handle_GPDMA1_Channel4;
@@ -292,12 +294,45 @@ static HAL_StatusTypeDef PS_HW6_SM_EvaluateBatteryPolicy(
     ps_power_battery_owns_ship_prep = 0UL;
   }
 
-  if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC] ==
-       PMIC_LOW_BATT) ||
-      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC] ==
-       PMIC_CRITICAL_BATT) ||
-      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC] ==
+  if ((vbus_ok != 0UL) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC] !=
        PMIC_SHIP_PENDING))
+  {
+    if ((g_ps_hw6_owner_probe.power_charge_complete != 0UL) ||
+        (g_ps_hw6_owner_probe.power_charger_status ==
+         PS_HW6_CHARGER_STATUS_FULL))
+    {
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
+                                 PMIC_EV_CHARGE_DONE,
+                                 HAL_OK);
+    }
+    else if (g_ps_hw6_owner_probe.power_charger_status ==
+             PS_HW6_CHARGER_STATUS_CHARGING)
+    {
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
+                                 PMIC_EV_CHARGING,
+                                 HAL_OK);
+    }
+    else if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC] ==
+              PMIC_CHARGING) ||
+             (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC] ==
+              PMIC_CHARGE_DONE))
+    {
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
+                                 PMIC_EV_RECOVER_OK,
+                                 HAL_OK);
+    }
+  }
+  else if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC] ==
+            PMIC_LOW_BATT) ||
+           (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC] ==
+            PMIC_CRITICAL_BATT) ||
+           (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC] ==
+            PMIC_SHIP_PENDING) ||
+           (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC] ==
+            PMIC_CHARGING) ||
+           (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC] ==
+            PMIC_CHARGE_DONE))
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
                                PMIC_EV_RECOVER_OK,
@@ -378,15 +413,33 @@ static const PS_HW6_StateTransition ps_pmic_transitions[] =
   {PMIC_OFFLINE, PMIC_EV_PROBE_REQUEST, PMIC_PROBE},
   {PMIC_PROBE, PMIC_EV_PROBE_OK, PMIC_MONITOR},
   {PMIC_PROBE, PMIC_EV_PROBE_FAIL, PMIC_ERROR},
+  {PMIC_MONITOR, PMIC_EV_CHARGING, PMIC_CHARGING},
+  {PMIC_CHARGING, PMIC_EV_CHARGING, PMIC_CHARGING},
+  {PMIC_CHARGE_DONE, PMIC_EV_CHARGING, PMIC_CHARGING},
+  {PMIC_MONITOR, PMIC_EV_CHARGE_DONE, PMIC_CHARGE_DONE},
+  {PMIC_CHARGING, PMIC_EV_CHARGE_DONE, PMIC_CHARGE_DONE},
+  {PMIC_CHARGE_DONE, PMIC_EV_CHARGE_DONE, PMIC_CHARGE_DONE},
+  {PMIC_CHARGING, PMIC_EV_RECOVER_OK, PMIC_MONITOR},
+  {PMIC_CHARGE_DONE, PMIC_EV_RECOVER_OK, PMIC_MONITOR},
+  {PMIC_LOW_BATT, PMIC_EV_CHARGING, PMIC_CHARGING},
+  {PMIC_CRITICAL_BATT, PMIC_EV_CHARGING, PMIC_CHARGING},
+  {PMIC_LOW_BATT, PMIC_EV_CHARGE_DONE, PMIC_CHARGE_DONE},
+  {PMIC_CRITICAL_BATT, PMIC_EV_CHARGE_DONE, PMIC_CHARGE_DONE},
   {PMIC_MONITOR, PMIC_EV_LOW_BATTERY, PMIC_LOW_BATT},
+  {PMIC_CHARGING, PMIC_EV_LOW_BATTERY, PMIC_LOW_BATT},
+  {PMIC_CHARGE_DONE, PMIC_EV_LOW_BATTERY, PMIC_LOW_BATT},
   {PMIC_LOW_BATT, PMIC_EV_LOW_BATTERY, PMIC_LOW_BATT},
   {PMIC_LOW_BATT, PMIC_EV_RECOVER_OK, PMIC_MONITOR},
   {PMIC_CRITICAL_BATT, PMIC_EV_RECOVER_OK, PMIC_MONITOR},
   {PMIC_MONITOR, PMIC_EV_CRITICAL_BATTERY, PMIC_CRITICAL_BATT},
   {PMIC_LOW_BATT, PMIC_EV_CRITICAL_BATTERY, PMIC_CRITICAL_BATT},
+  {PMIC_CHARGING, PMIC_EV_CRITICAL_BATTERY, PMIC_CRITICAL_BATT},
+  {PMIC_CHARGE_DONE, PMIC_EV_CRITICAL_BATTERY, PMIC_CRITICAL_BATT},
   {PMIC_CRITICAL_BATT, PMIC_EV_CRITICAL_BATTERY, PMIC_CRITICAL_BATT},
   {PMIC_SHIP_PENDING, PMIC_EV_CRITICAL_BATTERY, PMIC_SHIP_PENDING},
   {PMIC_MONITOR, PMIC_EV_SHIP_REQUEST, PMIC_SHIP_PENDING},
+  {PMIC_CHARGING, PMIC_EV_SHIP_REQUEST, PMIC_SHIP_PENDING},
+  {PMIC_CHARGE_DONE, PMIC_EV_SHIP_REQUEST, PMIC_SHIP_PENDING},
   {PMIC_CRITICAL_BATT, PMIC_EV_SHIP_REQUEST, PMIC_SHIP_PENDING},
   {PMIC_SHIP_PENDING, PMIC_EV_SHIP_REQUEST, PMIC_SHIP_PENDING},
   {PMIC_SHIP_PENDING, PMIC_EV_RECOVER_OK, PMIC_MONITOR},
@@ -1310,6 +1363,7 @@ static const ps_storage_region_t *PS_HW6_SM_FindStorageRegion(
 static HAL_StatusTypeDef PS_HW6_SM_StabilizePower(void)
 {
   HAL_StatusTypeDef mr_shipping_status;
+  HAL_StatusTypeDef thermistor_status;
   HAL_StatusTypeDef fuel_gauge_status;
   HAL_StatusTypeDef snapshot_status;
   HAL_StatusTypeDef status;
@@ -1318,9 +1372,11 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizePower(void)
   (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
                             PMIC_EV_PROBE_REQUEST, HAL_OK);
   mr_shipping_status = PS_HW6_PowerOwner_EnableMrShippingMode();
+  thermistor_status = PS_HW6_PowerOwner_ConfigureThermistor();
   fuel_gauge_status = PS_HW6_PowerOwner_PrepareFuelGauge();
   snapshot_status = PS_HW6_PowerOwner_RunSnapshot();
   status = ((mr_shipping_status == HAL_OK) &&
+            (thermistor_status == HAL_OK) &&
             (fuel_gauge_status == HAL_OK) &&
             (snapshot_status == HAL_OK)) ? HAL_OK : HAL_ERROR;
   if (status == HAL_OK)
