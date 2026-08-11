@@ -110,6 +110,7 @@ static uint32_t ps_power_battery_owns_ship_prep;
 static uint32_t ps_power_boot_restart_gate_pending;
 static uint32_t ps_power_boot_restart_gate_blocked;
 static PS_HW6_PowerQuiesceBarrierCallback ps_power_quiesce_barrier_callback;
+static PS_HW6_PostStopResumeBarrierCallback ps_post_stop_resume_barrier_callback;
 static HAL_StatusTypeDef PS_HW6_SM_Transition(uint32_t state_machine_id,
                                                uint32_t event,
                                                HAL_StatusTypeDef action_status);
@@ -138,6 +139,15 @@ static HAL_StatusTypeDef PS_HW6_RequestPowerQuiesce(uint32_t reason)
     return HAL_ERROR;
   }
   return ps_power_quiesce_barrier_callback(reason);
+}
+
+static HAL_StatusTypeDef PS_HW6_RequestPostStopResume(void)
+{
+  if (ps_post_stop_resume_barrier_callback == NULL)
+  {
+    return HAL_ERROR;
+  }
+  return ps_post_stop_resume_barrier_callback();
 }
 
 static HAL_StatusTypeDef PS_HW6_BatteryPolicyPrepareForShipment(
@@ -3064,18 +3074,21 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeJoystick(uint32_t cycle_index)
     &result);
   status = PS_HW6_SM_StatusToHal(driver_status);
 
-  g_ps_hw6_owner_sm_probe.joystick_cycle_wake_probe_status[cycle_index] =
-    (uint32_t)result.wake_probe_status;
-  g_ps_hw6_owner_sm_probe.joystick_cycle_wake_retry_status[cycle_index] =
-    (uint32_t)result.wake_retry_status;
-  g_ps_hw6_owner_sm_probe.joystick_cycle_active_status[cycle_index] =
-    (uint32_t)result.active_status;
-  g_ps_hw6_owner_sm_probe
-    .joystick_cycle_active_sensor_config1[cycle_index] =
-    result.active_sensor_config1;
-  g_ps_hw6_owner_sm_probe
-    .joystick_cycle_active_device_config2[cycle_index] =
-    result.active_device_config2;
+  if (cycle_index < PS_HW6_OWNER_SM_CYCLE_COUNT)
+  {
+    g_ps_hw6_owner_sm_probe.joystick_cycle_wake_probe_status[cycle_index] =
+      (uint32_t)result.wake_probe_status;
+    g_ps_hw6_owner_sm_probe.joystick_cycle_wake_retry_status[cycle_index] =
+      (uint32_t)result.wake_retry_status;
+    g_ps_hw6_owner_sm_probe.joystick_cycle_active_status[cycle_index] =
+      (uint32_t)result.active_status;
+    g_ps_hw6_owner_sm_probe
+      .joystick_cycle_active_sensor_config1[cycle_index] =
+      result.active_sensor_config1;
+    g_ps_hw6_owner_sm_probe
+      .joystick_cycle_active_device_config2[cycle_index] =
+      result.active_device_config2;
+  }
   PS_HW6_SM_UpdateJoystickDriverProbe();
 
   if (status == HAL_OK)
@@ -3148,19 +3161,22 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeImu(uint32_t cycle_index)
     &ps_imu_device,
     &result);
   status = PS_HW6_SM_StatusToHal(driver_status);
-  g_ps_hw6_owner_sm_probe.imu_cycle_wake_probe_status[cycle_index] =
-    result.wake_probe_hal_status;
-  g_ps_hw6_owner_sm_probe.imu_cycle_wake_probe_error[cycle_index] =
-    result.wake_probe_hal_error;
-  g_ps_hw6_owner_sm_probe.imu_cycle_wake_probe_accepted[cycle_index] =
-    result.wake_probe_accepted;
-  g_ps_hw6_owner_sm_probe.imu_cycle_whoami_status[cycle_index] =
-    (uint32_t)PS_HW6_SM_StatusToHal(result.whoami_status);
-  g_ps_hw6_owner_sm_probe.imu_cycle_whoami[cycle_index] = result.whoami;
-  g_ps_hw6_owner_sm_probe.imu_cycle_active_ctrl5[cycle_index] =
-    result.active_ctrl5;
-  g_ps_hw6_owner_sm_probe.imu_cycle_active_status[cycle_index] =
-    (uint32_t)status;
+  if (cycle_index < PS_HW6_OWNER_SM_CYCLE_COUNT)
+  {
+    g_ps_hw6_owner_sm_probe.imu_cycle_wake_probe_status[cycle_index] =
+      result.wake_probe_hal_status;
+    g_ps_hw6_owner_sm_probe.imu_cycle_wake_probe_error[cycle_index] =
+      result.wake_probe_hal_error;
+    g_ps_hw6_owner_sm_probe.imu_cycle_wake_probe_accepted[cycle_index] =
+      result.wake_probe_accepted;
+    g_ps_hw6_owner_sm_probe.imu_cycle_whoami_status[cycle_index] =
+      (uint32_t)PS_HW6_SM_StatusToHal(result.whoami_status);
+    g_ps_hw6_owner_sm_probe.imu_cycle_whoami[cycle_index] = result.whoami;
+    g_ps_hw6_owner_sm_probe.imu_cycle_active_ctrl5[cycle_index] =
+      result.active_ctrl5;
+    g_ps_hw6_owner_sm_probe.imu_cycle_active_status[cycle_index] =
+      (uint32_t)status;
+  }
   PS_HW6_SM_UpdateImuDriverProbe();
 
   if ((result.whoami_status == PS_STATUS_OK) &&
@@ -3222,6 +3238,7 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeStorage(uint32_t cycle_index)
   ps_dev_at25sl128a_jedec_result_t jedec_result;
   ps_status_t driver_status;
   HAL_StatusTypeDef status;
+  uint32_t identity_match;
 
   if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] !=
        (uint32_t)STORAGE_FLASH_READY) ||
@@ -3235,8 +3252,11 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeStorage(uint32_t cycle_index)
     &ps_flash_device,
     &command_result);
   status = PS_HW6_SM_StatusToHal(driver_status);
-  g_ps_hw6_owner_sm_probe.flash_cycle_release_status[cycle_index] =
-    command_result.hal_status;
+  if (cycle_index < PS_HW6_OWNER_SM_CYCLE_COUNT)
+  {
+    g_ps_hw6_owner_sm_probe.flash_cycle_release_status[cycle_index] =
+      command_result.hal_status;
+  }
   if (status == HAL_OK)
   {
     tx_thread_sleep(PS_HW6_FLASH_WAKE_SETTLE_TICKS);
@@ -3252,13 +3272,17 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeStorage(uint32_t cycle_index)
     (void)memset(&jedec_result, 0, sizeof(jedec_result));
     jedec_result.hal_status = command_result.hal_status;
   }
-  g_ps_hw6_owner_sm_probe.flash_cycle_jedec_status[cycle_index] =
-    jedec_result.hal_status;
-  g_ps_hw6_owner_sm_probe.flash_cycle_identity_match[cycle_index] =
-    jedec_result.identity_match;
+  identity_match = jedec_result.identity_match;
+  if (cycle_index < PS_HW6_OWNER_SM_CYCLE_COUNT)
+  {
+    g_ps_hw6_owner_sm_probe.flash_cycle_jedec_status[cycle_index] =
+      jedec_result.hal_status;
+    g_ps_hw6_owner_sm_probe.flash_cycle_identity_match[cycle_index] =
+      identity_match;
+  }
   PS_HW6_SM_UpdateFlashDriverProbe();
 
-  if (g_ps_hw6_owner_sm_probe.flash_cycle_identity_match[cycle_index] != 0UL)
+  if (identity_match != 0UL)
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
                               FLASH_EV_PROBE_OK, HAL_OK);
@@ -3352,8 +3376,11 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeBle(uint32_t cycle_index)
 
   PS_HW6_SM_ConfigureNinaDsrHostControl(GPIO_PIN_RESET);
   status = PS_HW6_SM_InitNinaUart();
-  g_ps_hw6_owner_sm_probe.ble_cycle_uart_init_status[cycle_index] =
-    (uint32_t)status;
+  if (cycle_index < PS_HW6_OWNER_SM_CYCLE_COUNT)
+  {
+    g_ps_hw6_owner_sm_probe.ble_cycle_uart_init_status[cycle_index] =
+      (uint32_t)status;
+  }
   if (status == HAL_OK)
   {
     tx_thread_sleep(PS_HW6_NINA_WAKE_SETTLE_TICKS);
@@ -3363,13 +3390,16 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeBle(uint32_t cycle_index)
       PS_HW6_NINA_BOOT_DRAIN_TICKS, PS_HW6_NINA_RX_QUIET_TICKS);
     status = PS_HW6_SM_NinaCommand(0U, "AT\r\n");
   }
-  g_ps_hw6_owner_sm_probe.ble_cycle_wake_at_status[cycle_index] =
-    (uint32_t)status;
-  g_ps_hw6_owner_sm_probe.ble_cycle_wake_rx_len[cycle_index] =
-    g_ps_hw6_owner_sm_probe.ble_command_rx_len[0];
-  g_ps_hw6_owner_sm_probe.ble_cycle_dsr_after_resume[cycle_index] =
-    (uint32_t)HAL_GPIO_ReadPin(PS_HW6_NINA_DSR_HOST_CONTROL_PORT,
-                              PS_HW6_NINA_DSR_HOST_CONTROL_PIN);
+  if (cycle_index < PS_HW6_OWNER_SM_CYCLE_COUNT)
+  {
+    g_ps_hw6_owner_sm_probe.ble_cycle_wake_at_status[cycle_index] =
+      (uint32_t)status;
+    g_ps_hw6_owner_sm_probe.ble_cycle_wake_rx_len[cycle_index] =
+      g_ps_hw6_owner_sm_probe.ble_command_rx_len[0];
+    g_ps_hw6_owner_sm_probe.ble_cycle_dsr_after_resume[cycle_index] =
+      (uint32_t)HAL_GPIO_ReadPin(PS_HW6_NINA_DSR_HOST_CONTROL_PORT,
+                                PS_HW6_NINA_DSR_HOST_CONTROL_PIN);
+  }
   if (status == HAL_OK)
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_BLE,
@@ -3661,6 +3691,18 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.power_quiesce_failure_mask = 0UL;
   g_ps_hw6_owner_sm_probe.power_quiesce_last_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_request_count = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_start_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_end_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_required_mask = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_send_ok_mask = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_ack_ok_mask = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_success_mask = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_failure_mask = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_noop_mask = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_action_mask = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_last_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.sleep_prep_request_count = 0UL;
   g_ps_hw6_owner_sm_probe.sleep_prep_start_tick = 0UL;
   g_ps_hw6_owner_sm_probe.sleep_prep_end_tick = 0UL;
@@ -3696,6 +3738,13 @@ void PS_HW6_OwnerStateMachines_Init(void)
       PS_HW6_OWNER_SM_STATUS_NOT_RUN;
     g_ps_hw6_owner_sm_probe.power_quiesce_ack_flags[index] = 0UL;
     g_ps_hw6_owner_sm_probe.power_quiesce_owner_status[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.post_stop_resume_send_status[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.post_stop_resume_ack_status[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.post_stop_resume_ack_flags[index] = 0UL;
+    g_ps_hw6_owner_sm_probe.post_stop_resume_owner_status[index] =
       PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   }
   g_ps_hw6_owner_sm_probe.joystick_ready_status =
@@ -3836,6 +3885,12 @@ void PS_HW6_OwnerStateMachines_SetPowerQuiesceCallback(
   ps_power_quiesce_barrier_callback = callback;
 }
 
+void PS_HW6_OwnerStateMachines_SetPostStopResumeCallback(
+  PS_HW6_PostStopResumeBarrierCallback callback)
+{
+  ps_post_stop_resume_barrier_callback = callback;
+}
+
 void PS_HW6_OwnerStateMachines_BeginWorkflow(void)
 {
   g_ps_hw6_owner_sm_probe.phase = PS_HW6_SM_PHASE_RUNNING;
@@ -3895,6 +3950,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
   HAL_StatusTypeDef quiesce_status = HAL_ERROR;
   HAL_StatusTypeDef enter_transition_status = HAL_ERROR;
   HAL_StatusTypeDef wake_transition_status = HAL_ERROR;
+  HAL_StatusTypeDef post_stop_resume_status = HAL_ERROR;
   HAL_StatusTypeDef recover_status = HAL_ERROR;
 
   g_ps_hw6_owner_sm_probe.stop2_request_count++;
@@ -3954,13 +4010,25 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
                                                       HAL_OK);
         if (wake_transition_status == HAL_OK)
         {
+          post_stop_resume_status = PS_HW6_RequestPostStopResume();
           recover_status = PS_HW6_SM_Transition(PS_HW6_SM_POWER,
                                                 PWR_EV_LP_REQUEST,
                                                 HAL_OK);
+          if (post_stop_resume_status != HAL_OK)
+          {
+            status = post_stop_resume_status;
+          }
+          else
+          {
+            status = recover_status;
+          }
+        }
+        else
+        {
+          status = wake_transition_status;
         }
         g_ps_hw6_owner_sm_probe.stop2_recover_status =
           (uint32_t)recover_status;
-        status = (recover_status == HAL_OK) ? HAL_OK : recover_status;
       }
       else
       {
@@ -4513,6 +4581,213 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_EndPowerQuiesce(void)
             ((g_ps_hw6_owner_sm_probe.power_quiesce_failure_mask &
               required_mask) == 0UL)) ? HAL_OK : HAL_ERROR;
   g_ps_hw6_owner_sm_probe.power_quiesce_last_status = (uint32_t)status;
+  return status;
+}
+
+
+void PS_HW6_OwnerStateMachines_BeginPostStopResume(void)
+{
+  uint32_t index;
+
+  g_ps_hw6_owner_sm_probe.post_stop_resume_request_count++;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_start_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_sm_probe.post_stop_resume_end_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_required_mask =
+    PS_HW6_SM_REQUIRED_OWNER_MASK & ~(1UL << PS_HW6_RTOS_OWNER_POWER);
+  g_ps_hw6_owner_sm_probe.post_stop_resume_send_ok_mask = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_ack_ok_mask = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_success_mask = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_failure_mask = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_noop_mask = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_action_mask = 0UL;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_last_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  for (index = 0U; index < PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT; ++index)
+  {
+    g_ps_hw6_owner_sm_probe.post_stop_resume_send_status[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.post_stop_resume_ack_status[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.post_stop_resume_ack_flags[index] = 0UL;
+    g_ps_hw6_owner_sm_probe.post_stop_resume_owner_status[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  }
+}
+
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ResumeForPostStopBarrier(
+  uint32_t owner_id)
+{
+  HAL_StatusTypeDef status = HAL_ERROR;
+  uint32_t owner_bit;
+  uint32_t state;
+  uint32_t action_required = 0UL;
+
+  if ((owner_id == PS_HW6_RTOS_OWNER_POWER) ||
+      (owner_id >= PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT))
+  {
+    return HAL_ERROR;
+  }
+
+  owner_bit = 1UL << owner_id;
+  switch (owner_id)
+  {
+    case PS_HW6_RTOS_OWNER_AUDIO:
+      state = g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_AUDIO];
+      if ((state == (uint32_t)AUDIO_OFF) ||
+          ((state == (uint32_t)AUDIO_IDLE) &&
+           (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_SPEAKER] ==
+            (uint32_t)SPK_OFF)))
+      {
+        status = HAL_OK;
+      }
+      break;
+
+    case PS_HW6_RTOS_OWNER_INPUT:
+      state = g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK];
+      if (state == (uint32_t)JOY_OFF)
+      {
+        status = HAL_OK;
+      }
+      else if (state == (uint32_t)JOY_SUSPENDED)
+      {
+        action_required = 1UL;
+        status = PS_HW6_SM_ResumeJoystick(PS_HW6_POWER_QUIESCE_CYCLE_INDEX);
+      }
+      break;
+
+    case PS_HW6_RTOS_OWNER_DISPLAY:
+      state = g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_DISPLAY];
+      if ((state == (uint32_t)DISP_OFF) ||
+          (state == (uint32_t)DISP_STATIC_HOLD))
+      {
+        status = HAL_OK;
+      }
+      break;
+
+    case PS_HW6_RTOS_OWNER_SENSOR:
+      state = g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_IMU];
+      if (state == (uint32_t)IMU_OFF)
+      {
+        status = HAL_OK;
+      }
+      else if (state == (uint32_t)IMU_SUSPENDED)
+      {
+        action_required = 1UL;
+        status = PS_HW6_SM_ResumeImu(PS_HW6_POWER_QUIESCE_CYCLE_INDEX);
+      }
+      break;
+
+    case PS_HW6_RTOS_OWNER_STORAGE:
+      if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] ==
+           (uint32_t)STORAGE_OFFLINE) ||
+          (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+           (uint32_t)FLASH_OFF) ||
+          ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] ==
+            (uint32_t)STORAGE_FLASH_READY) &&
+           (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+            (uint32_t)FLASH_READY)))
+      {
+        status = HAL_OK;
+      }
+      else if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] ==
+                (uint32_t)STORAGE_FLASH_READY) &&
+               (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+                (uint32_t)FLASH_DEEP_POWER_DOWN))
+      {
+        action_required = 1UL;
+        status = PS_HW6_SM_ResumeStorage(PS_HW6_POWER_QUIESCE_CYCLE_INDEX);
+      }
+      break;
+
+    case PS_HW6_RTOS_OWNER_COMM:
+      state = g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_BLE];
+      if ((state == (uint32_t)BLE_OFF) ||
+          (state == (uint32_t)BLE_IDLE))
+      {
+        status = HAL_OK;
+      }
+      else if (state == (uint32_t)BLE_SUSPENDED)
+      {
+        action_required = 1UL;
+        status = PS_HW6_SM_ResumeBle(PS_HW6_POWER_QUIESCE_CYCLE_INDEX);
+      }
+      break;
+
+    default:
+      status = HAL_ERROR;
+      break;
+  }
+
+  g_ps_hw6_owner_sm_probe.post_stop_resume_owner_status[owner_id] =
+    (uint32_t)status;
+  if (status == HAL_OK)
+  {
+    g_ps_hw6_owner_sm_probe.post_stop_resume_success_mask |= owner_bit;
+    if (action_required != 0UL)
+    {
+      g_ps_hw6_owner_sm_probe.post_stop_resume_action_mask |= owner_bit;
+    }
+    else
+    {
+      g_ps_hw6_owner_sm_probe.post_stop_resume_noop_mask |= owner_bit;
+    }
+  }
+  else
+  {
+    g_ps_hw6_owner_sm_probe.post_stop_resume_failure_mask |= owner_bit;
+  }
+  return status;
+}
+
+void PS_HW6_OwnerStateMachines_RecordPostStopResumeCommand(
+  uint32_t owner_id,
+  uint32_t send_status,
+  uint32_t ack_wait_status,
+  uint32_t ack_flags)
+{
+  uint32_t owner_bit;
+
+  if ((owner_id == PS_HW6_RTOS_OWNER_POWER) ||
+      (owner_id >= PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT))
+  {
+    return;
+  }
+
+  owner_bit = 1UL << owner_id;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_send_status[owner_id] =
+    send_status;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_ack_status[owner_id] =
+    ack_wait_status;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_ack_flags[owner_id] = ack_flags;
+  if (send_status == TX_SUCCESS)
+  {
+    g_ps_hw6_owner_sm_probe.post_stop_resume_send_ok_mask |= owner_bit;
+  }
+  if ((ack_wait_status == TX_SUCCESS) &&
+      ((ack_flags & owner_bit) != 0UL))
+  {
+    g_ps_hw6_owner_sm_probe.post_stop_resume_ack_ok_mask |= owner_bit;
+  }
+}
+
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_EndPostStopResume(void)
+{
+  uint32_t required_mask =
+    g_ps_hw6_owner_sm_probe.post_stop_resume_required_mask;
+  HAL_StatusTypeDef status;
+
+  g_ps_hw6_owner_sm_probe.post_stop_resume_end_tick =
+    (uint32_t)tx_time_get();
+  status = (((g_ps_hw6_owner_sm_probe.post_stop_resume_send_ok_mask &
+              required_mask) == required_mask) &&
+            ((g_ps_hw6_owner_sm_probe.post_stop_resume_ack_ok_mask &
+              required_mask) == required_mask) &&
+            ((g_ps_hw6_owner_sm_probe.post_stop_resume_success_mask &
+              required_mask) == required_mask) &&
+            ((g_ps_hw6_owner_sm_probe.post_stop_resume_failure_mask &
+              required_mask) == 0UL)) ? HAL_OK : HAL_ERROR;
+  g_ps_hw6_owner_sm_probe.post_stop_resume_last_status = (uint32_t)status;
   return status;
 }
 

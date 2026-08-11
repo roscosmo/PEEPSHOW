@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (23UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (25UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -77,6 +77,7 @@ typedef enum
 
 typedef HAL_StatusTypeDef (*PS_HW6_PowerQuiesceBarrierCallback)(
   uint32_t reason);
+typedef HAL_StatusTypeDef (*PS_HW6_PostStopResumeBarrierCallback)(void);
 
 typedef struct
 {
@@ -168,6 +169,21 @@ typedef struct
   uint32_t power_quiesce_ack_status[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
   uint32_t power_quiesce_ack_flags[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
   uint32_t power_quiesce_owner_status[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
+  uint32_t post_stop_resume_request_count;
+  uint32_t post_stop_resume_start_tick;
+  uint32_t post_stop_resume_end_tick;
+  uint32_t post_stop_resume_required_mask;
+  uint32_t post_stop_resume_send_ok_mask;
+  uint32_t post_stop_resume_ack_ok_mask;
+  uint32_t post_stop_resume_success_mask;
+  uint32_t post_stop_resume_failure_mask;
+  uint32_t post_stop_resume_noop_mask;
+  uint32_t post_stop_resume_action_mask;
+  uint32_t post_stop_resume_last_status;
+  uint32_t post_stop_resume_send_status[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
+  uint32_t post_stop_resume_ack_status[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
+  uint32_t post_stop_resume_ack_flags[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
+  uint32_t post_stop_resume_owner_status[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
 
   uint32_t sleep_prep_request_count;
   uint32_t sleep_prep_start_tick;
@@ -641,6 +657,8 @@ extern volatile uint32_t g_ps_hw6_joystick_calibration_capture_page;
 void PS_HW6_OwnerStateMachines_Init(void);
 void PS_HW6_OwnerStateMachines_SetPowerQuiesceCallback(
   PS_HW6_PowerQuiesceBarrierCallback callback);
+void PS_HW6_OwnerStateMachines_SetPostStopResumeCallback(
+  PS_HW6_PostStopResumeBarrierCallback callback);
 void PS_HW6_OwnerStateMachines_BeginWorkflow(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Stabilize(uint32_t owner_id);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void);
@@ -672,12 +690,21 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Quiesce(uint32_t owner_id,
 void PS_HW6_OwnerStateMachines_BeginPowerQuiesce(uint32_t reason);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_QuiesceForPowerBarrier(
   uint32_t owner_id);
+void PS_HW6_OwnerStateMachines_BeginPostStopResume(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ResumeForPostStopBarrier(
+  uint32_t owner_id);
 void PS_HW6_OwnerStateMachines_RecordPowerQuiesceCommand(
   uint32_t owner_id,
   uint32_t send_status,
   uint32_t ack_wait_status,
   uint32_t ack_flags);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_EndPowerQuiesce(void);
+void PS_HW6_OwnerStateMachines_RecordPostStopResumeCommand(
+  uint32_t owner_id,
+  uint32_t send_status,
+  uint32_t ack_wait_status,
+  uint32_t ack_flags);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_EndPostStopResume(void);
 void PS_HW6_OwnerStateMachines_HandleStorageMsc(uint32_t command);
 void PS_HW6_OwnerStateMachines_RecordCycleCommand(
   uint32_t cycle_index,
