@@ -151,6 +151,8 @@ Provisional FW0 thresholds, pending HW6 measurement and UX review:
 | critical software-shipment gate | `false` | keep bring-up tests from powering off unexpectedly |
 | boot-low-battery shipment gate | `false` | record would-ship until the boot path is validated |
 
+HW6 FW0 target evidence now validates the runtime policy path at one normal point, one warning point, one critical point, and one recovery point. Threshold values remain provisional until UX, current, boot-restart, VBUS recovery, and enabled software-shipment evidence are complete.
+
 ---
 
 ## VBUS Detection
