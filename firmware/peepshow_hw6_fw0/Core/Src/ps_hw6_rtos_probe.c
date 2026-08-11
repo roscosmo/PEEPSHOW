@@ -252,7 +252,7 @@ static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
     if ((message[2] == PS_HW6_RTOS_COMMAND_POWER_QUIESCE) &&
         (cycle_index > (uint32_t)PS_HW6_POWER_QUIESCE_REASON_NONE) &&
         (cycle_index <=
-         (uint32_t)PS_HW6_POWER_QUIESCE_REASON_BOOT_LOW_BATTERY))
+         (uint32_t)PS_HW6_POWER_QUIESCE_REASON_SLEEP_PREP))
     {
       return 1UL;
     }
@@ -511,7 +511,7 @@ static UINT PS_HW6_RTOS_SendPowerQuiesceCommand(uint32_t owner_id,
 
   if ((owner_id >= PS_HW6_RTOS_QUEUE_COUNT) ||
       (reason <= (uint32_t)PS_HW6_POWER_QUIESCE_REASON_NONE) ||
-      (reason > (uint32_t)PS_HW6_POWER_QUIESCE_REASON_BOOT_LOW_BATTERY))
+      (reason > (uint32_t)PS_HW6_POWER_QUIESCE_REASON_SLEEP_PREP))
   {
     return TX_QUEUE_ERROR;
   }
@@ -1019,6 +1019,22 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     {
       g_ps_hw6_pmic_software_ship_request = 0UL;
       (void)PS_HW6_PowerOwner_EnterSoftwareShipmentMode();
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
+        (g_ps_hw6_power_sleep_prep_request != 0UL) &&
+        (ps_power_boot_done != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      g_ps_hw6_power_sleep_prep_request = 0UL;
+      (void)PS_HW6_OwnerStateMachines_RunSleepPrepScaffold();
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
+        (g_ps_hw6_power_stop2_request != 0UL) &&
+        (ps_power_boot_done != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      g_ps_hw6_power_stop2_request = 0UL;
+      (void)PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold();
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
         (ps_power_boot_done != 0UL) &&

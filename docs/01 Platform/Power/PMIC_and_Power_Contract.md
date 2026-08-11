@@ -114,7 +114,7 @@ This does not close the full shipping-mode product behavior. Firmware now has
 target-validated START hold classification through the prep, warning,
 and imminent scaffold, and HW6 unit 001 confirmed ADP5360 shipment entry
 after a long START/MR hold. Firmware still needs warning/countdown UI,
-save/quiesce behavior, release-cancel proof, wake/recovery proof, and
+save/quiesce behavior, enabled automatic shipment tests, final wake/recovery UX, and
 first-boot/no-settings policy. The hardware threshold must still be treated as
 final once reached.
 
@@ -158,7 +158,7 @@ Provisional FW0 thresholds, pending HW6 measurement and UX review:
 | critical software-shipment gate | `false` | keep bring-up tests from powering off unexpectedly |
 | boot-low-battery shipment gate | `false` | record would-ship until the boot path is validated |
 
-HW6 FW0 target evidence now validates the runtime policy path at one normal point, one warning point, one critical point, one runtime recovery point, the no-VBUS boot/restart block, the VBUS-present boot charge-recovery path, the START owner-ACK quiesce barrier, and the shared ADP5360 software shipment primitive. The no-VBUS boot-gate case used a controlled source: `3270 mV` held policy state `BOOT_RESTART_BLOCKED`, kept power/PMIC in `PWR_SHIP_PREP` / `PMIC_SHIP_PENDING`, showed UI/display shutdown state `LOW_BATT_BOOT`, and recorded a default-off software-shipment skip. Raising the source produced `3707 mV`, cleared the boot gate, returned power/PMIC to `PWR_ACTIVE_LP` / `PMIC_MONITOR`, and returned UI/display to HOME. The VBUS-present case used the restart threshold forced to `4200 mV`: PMIC-read `3968 mV` selected `BOOT_CHARGE_RECOVERY`, suppressed HOME, showed UI/display shutdown state `LOW_BATT_CHARGE`, kept shipment requests at zero, and PMIC entered `PMIC_CHARGING`. Restoring the restart threshold to `3600 mV` with PMIC-read `4049 mV` cleared the boot gate and returned UI/display to HOME while PMIC stayed charging. `EV-HW6-20260811-P1-SHIP-032` then proved a manual power-owner request can write ADP5360 `0x36 = 1` and place the device in shipment mode. Threshold values remain provisional until UX, current, automatic gated software-shipment paths, and persistent save evidence are complete.
+HW6 FW0 target evidence now validates the runtime policy path at one normal point, one warning point, one critical point, one runtime recovery point, the no-VBUS boot/restart block, the VBUS-present boot charge-recovery path, the START owner-ACK quiesce barrier, the pre-STOP sleep-prep owner-ACK scaffold, the manual STOP2 START-wake scaffold, and the shared ADP5360 software shipment primitive. The no-VBUS boot-gate case used a controlled source: `3270 mV` held policy state `BOOT_RESTART_BLOCKED`, kept power/PMIC in `PWR_SHIP_PREP` / `PMIC_SHIP_PENDING`, showed UI/display shutdown state `LOW_BATT_BOOT`, and recorded a default-off software-shipment skip. Raising the source produced `3707 mV`, cleared the boot gate, returned power/PMIC to `PWR_ACTIVE_LP` / `PMIC_MONITOR`, and returned UI/display to HOME. The VBUS-present case used the restart threshold forced to `4200 mV`: PMIC-read `3968 mV` selected `BOOT_CHARGE_RECOVERY`, suppressed HOME, showed UI/display shutdown state `LOW_BATT_CHARGE`, kept shipment requests at zero, and PMIC entered `PMIC_CHARGING`. Restoring the restart threshold to `3600 mV` with PMIC-read `4049 mV` cleared the boot gate and returned UI/display to HOME while PMIC stayed charging. `EV-HW6-20260811-P1-SHIP-032` then proved a manual power-owner request can write ADP5360 `0x36 = 1` and place the device in shipment mode. Threshold values remain provisional until UX, current, automatic gated software-shipment paths, and persistent save evidence are complete. `EV-HW6-20260811-P1-SLEEP-034` proves sleep-prep can enter `PWR_SLEEP_PREP`, collect owner ACKs with masks `0x7e/0x7e/0x7e/0x7e/0x0`, intentionally skip STOP entry, and recover to `PWR_ACTIVE_LP`. `EV-HW6-20260811-P1-STOP2-035` proves the follow-on manual path can enter real STOP2 after the same owner-ACK barrier, wake from START on PA4, restore clocks, and recover the power FSM to `PWR_ACTIVE_LP`; production automatic STOP admission, wake classification, owner resume/liveness, tick compensation, LPBAM, and current remain open.
 
 ---
 
@@ -412,6 +412,8 @@ Fault handling depends on severity:
 16. START hold shipping-prep handoff from input to power
 17. ADP5360 `EN_MR_SD` enable during normal boot through `thPower`
 18. START shutdown UI scaffold, owner-ACK quiesce barrier, release-cancel, and default-off software shipment request gate
-19. PMIC_INT edge capture and `thPower` snapshot handling under a safe charger/battery/fault event
+19. pre-STOP sleep-prep scaffold with owner-ACK quiesce and active-LP recovery; real STOP2 entry intentionally skipped
+20. manual STOP2 START-wake scaffold with owner-ACK quiesce, clock restore, and active-LP recovery
+21. PMIC_INT edge capture and `thPower` snapshot handling under a safe charger/battery/fault event
 
 Evidence for these cases belongs in [[HW6_Brought_Up_Tracker]]. A passing HW5 result may define the initial procedure or expected value, but it does not close the corresponding HW6 row.

@@ -1,4 +1,4 @@
-﻿# Power and Sleep Policy
+# Power and Sleep Policy
 
 This document defines how the PeepShow Platform translates Engine and runtime intent into power behavior.
 
@@ -243,6 +243,8 @@ Profile-dependent waiting-visual behavior:
 5. publish mode transition complete event
 
 All waits in this sequence must have explicit timeout.
+
+HW6 FW0 evidence `EV-HW6-20260811-P1-SLEEP-034` validates the pre-STOP portion of this sequence: `thPower` enters `PWR_SLEEP_PREP`, collects owner ACKs through bounded queues, intentionally skips real STOP entry, and recovers to `PWR_ACTIVE_LP`. HW6 FW0 evidence `EV-HW6-20260811-P1-STOP2-035` validates the next manual scaffold step: after the same owner-ACK barrier, `thPower` enters real STOP2, wakes from a physical START press, restores clocks, and returns the power FSM to `PWR_ACTIVE_LP`. These two evidence items do not yet validate production automatic STOP admission, wake-source classification policy, owner resume/liveness after STOP, tick compensation, LPBAM waiting visuals, or current.
 
 ---
 

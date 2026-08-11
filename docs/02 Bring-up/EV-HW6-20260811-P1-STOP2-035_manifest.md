@@ -1,0 +1,56 @@
+# EV-HW6-20260811-P1-STOP2-035 - FW0 manual STOP2 START-wake scaffold
+
+## Summary
+
+HW6 unit 001 validated the first FW0 real STOP2 scaffold. A debugger-triggered request was handled by `thPower`, all non-power owners acknowledged the bounded sleep-prep quiesce barrier, `thPower` entered real STOP2 through `HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI)`, and a physical START press woke the MCU. After wake, firmware restored the system clock, resumed the HAL tick, recorded probe state, and returned the power FSM to `PWR_ACTIVE_LP`.
+
+This is not production automatic sleep policy evidence. It validates the manual STOP2 entry/wake/resume scaffold only.
+
+## Procedure
+
+1. Built and flashed the FW0 image containing probe API version `23`.
+2. Halted the target after normal boot.
+3. Sourced `firmware/peepshow_hw6_fw0/__fw0_stop2_power_request.gdb` to set `g_ps_hw6_power_stop2_request = 1`.
+4. Continued the target so `thPower` could process the manual request.
+5. Pressed START briefly to wake the MCU from STOP2.
+6. Halted the target and sourced `firmware/peepshow_hw6_fw0/__fw0_stop2_power_prints.gdb`.
+
+## Result
+
+```text
+--- HW6 STOP2 START-wake scaffold ---
+api/status          = 23 / 0x0
+stop2 count/start/wake/end = 1 / 229 / 229 / 229
+stop2 quiesce/enter/clock/recover = 0x0 / 0x0 / 0x0 / 0x0
+stop2 expected wake pin = 0x10
+stop2 IDR before/after = 0x6055 / 0x6045
+power state/last event = 2 / 5
+barrier reason/count/status = 4 / 1 / 0x0
+barrier ticks start/end = 229 / 229
+barrier masks req/send/ack/ok/fail = 0x7e / 0x7e / 0x7e / 0x7e / 0x0
+barrier owner stat A/I/D/S/ST/C = 0x0 / 0x0 / 0x0 / 0x0 / 0x0 / 0x0
+barrier send stat A/I/D/S/ST/C = 0x0 / 0x0 / 0x0 / 0x0 / 0x0 / 0x0
+barrier ack stat A/I/D/S/ST/C = 0x0 / 0x0 / 0x0 / 0x0 / 0x0 / 0x0
+manual request flag = 0
+```
+
+## Interpretation
+
+- Probe API version `23` identifies the STOP2 START-wake scaffold build.
+- `stop2_last_status = 0x0` means the full manual scaffold completed successfully.
+- `stop2 quiesce/enter/clock/recover = 0x0 / 0x0 / 0x0 / 0x0` means owner quiesce passed, STOP-entry transition passed, clock restore was recorded as OK after wake, and recovery to active LP passed.
+- `stop2 expected wake pin = 0x10` is START on PA4.
+- `stop2 IDR before/after = 0x6055 / 0x6045` shows PA4 high before STOP entry and low after wake capture, matching START being pressed during wake.
+- `power state/last event = 2 / 5` means final power state is `PWR_ACTIVE_LP` after `PWR_EV_LP_REQUEST` recovery.
+- Barrier reason `4` is `SLEEP_PREP`.
+- Barrier masks `0x7e / 0x7e / 0x7e / 0x7e / 0x0` prove all non-power owners were requested, commands were sent, ACKs were received, owner actions succeeded, and no owner failed.
+
+## Open Items
+
+- Production automatic STOP2 admission is still open.
+- Wake-source classification is still open beyond this expected START wake observation.
+- Owner resume/liveness after STOP is still open; this scaffold proves quiesce and power-state recovery, not a full post-STOP owner resume cycle.
+- RTOS/HAL tick compensation across STOP residency is still open.
+- STOP2 current measurement is still open.
+- LPBAM waiting display behavior is still open.
+- Timeout/fault behavior for failed owner ACKs remains open.

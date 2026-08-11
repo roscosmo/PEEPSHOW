@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (21UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (23UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -71,7 +71,8 @@ typedef enum
   PS_HW6_POWER_QUIESCE_REASON_NONE = 0,
   PS_HW6_POWER_QUIESCE_REASON_START_SHUTDOWN,
   PS_HW6_POWER_QUIESCE_REASON_BATTERY_CRITICAL,
-  PS_HW6_POWER_QUIESCE_REASON_BOOT_LOW_BATTERY
+  PS_HW6_POWER_QUIESCE_REASON_BOOT_LOW_BATTERY,
+  PS_HW6_POWER_QUIESCE_REASON_SLEEP_PREP
 } PS_HW6_PowerQuiesceReason;
 
 typedef HAL_StatusTypeDef (*PS_HW6_PowerQuiesceBarrierCallback)(
@@ -167,6 +168,27 @@ typedef struct
   uint32_t power_quiesce_ack_status[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
   uint32_t power_quiesce_ack_flags[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
   uint32_t power_quiesce_owner_status[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
+
+  uint32_t sleep_prep_request_count;
+  uint32_t sleep_prep_start_tick;
+  uint32_t sleep_prep_end_tick;
+  uint32_t sleep_prep_last_status;
+  uint32_t sleep_prep_quiesce_status;
+  uint32_t sleep_prep_stop_entry_skipped;
+  uint32_t sleep_prep_recover_status;
+
+  uint32_t stop2_request_count;
+  uint32_t stop2_start_tick;
+  uint32_t stop2_wake_tick;
+  uint32_t stop2_end_tick;
+  uint32_t stop2_last_status;
+  uint32_t stop2_quiesce_status;
+  uint32_t stop2_enter_status;
+  uint32_t stop2_clock_restore_status;
+  uint32_t stop2_recover_status;
+  uint32_t stop2_expected_wake_pin;
+  uint32_t stop2_wake_start_idr;
+  uint32_t stop2_wake_end_idr;
 
   uint32_t start_power_event_count;
   uint32_t start_power_last_event;
@@ -606,6 +628,8 @@ typedef struct
 extern volatile PS_HW6_OwnerStateMachineProbe g_ps_hw6_owner_sm_probe;
 extern volatile uint32_t g_ps_hw6_owner_sm_start_request;
 extern volatile uint32_t g_ps_hw6_pmic_software_ship_request;
+extern volatile uint32_t g_ps_hw6_power_sleep_prep_request;
+extern volatile uint32_t g_ps_hw6_power_stop2_request;
 extern volatile uint32_t g_ps_hw6_storage_usb_export_request;
 extern volatile uint32_t g_ps_hw6_storage_usb_reclaim_request;
 extern volatile uint32_t g_ps_hw6_joystick_sample_request;
@@ -629,6 +653,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCalibrationCapture(
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandleStartShippingIntent(
   uint32_t start_event,
   uint32_t hold_ticks);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunSleepPrepScaffold(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunBatteryMonitor(
   uint32_t now_tick);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandlePmicInterrupt(
