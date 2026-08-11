@@ -19,6 +19,8 @@
     "power_charger_current_setting",
     "power_charger_function_setting",
     "power_charger_thermistor_control",
+    "power_pmic_interrupt_enable1",
+    "power_pmic_interrupt_enable2",
     "power_critical_software_ship_enable",
     "power_boot_low_battery_ship_enable",
     "power_start_software_ship_enable"
@@ -190,6 +192,30 @@
       "class": "hardware_profile",
       "path": "platform.knobs.power.charger_thermistor_control",
       "description": "ADP5360 BATTERY_THERMISTOR_CONTROL register byte for the HW6 board-mounted 100 kOhm NTC. Default 0x80 selects the 6 uA thermistor current used for staged charging bring-up."
+    },
+    "power_pmic_interrupt_enable1": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255,
+      "default": 3,
+      "unit": "register_byte",
+      "timebase_domain": "boot_snapshot",
+      "owner": "thPower",
+      "class": "hardware_profile",
+      "path": "platform.knobs.power.pmic_interrupt_enable1",
+      "description": "ADP5360 INTERRUPT_ENABLE1 register byte. Default 0x03 enables VBUS and charger-status interrupts only during HW6 staged bring-up."
+    },
+    "power_pmic_interrupt_enable2": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255,
+      "default": 0,
+      "unit": "register_byte",
+      "timebase_domain": "boot_snapshot",
+      "owner": "thPower",
+      "class": "hardware_profile",
+      "path": "platform.knobs.power.pmic_interrupt_enable2",
+      "description": "ADP5360 INTERRUPT_ENABLE2 register byte. Default 0x00 leaves MR/watchdog/rail interrupts disabled until each source has a specific validation procedure."
     },
     "power_critical_software_ship_enable": {
       "type": "boolean",

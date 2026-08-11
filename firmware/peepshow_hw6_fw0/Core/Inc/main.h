@@ -53,7 +53,8 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+uint32_t PS_Main_PmicIntExtiIsArmed(void);
+void PS_Main_PmicIntExtiArm(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

@@ -409,6 +409,7 @@ volatile PS_HW6_ADP5360_Probe g_ps_hw6_adp5360_probe;
 volatile PS_HW6_ADP5360_MapProbe g_ps_hw6_adp5360_map_probe;
 volatile PS_HW6_ADP5360_ProfileProbe g_ps_hw6_adp5360_profile_probe;
 volatile PS_HW6_ADP5360_FuelProbe g_ps_hw6_adp5360_fuel_probe;
+volatile uint32_t g_ps_hw6_pmic_int_exti_armed;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -2349,10 +2350,33 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_EnableIRQ(EXTI15_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
+  g_ps_hw6_pmic_int_exti_armed = 0UL;
+  HAL_NVIC_DisableIRQ(EXTI15_IRQn);
+  HAL_NVIC_ClearPendingIRQ(EXTI15_IRQn);
+  GPIO_InitStruct.Pin = PMIC_INT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(PMIC_INT_GPIO_Port, &GPIO_InitStruct);
+  __HAL_GPIO_EXTI_CLEAR_IT(PMIC_INT_Pin);
+  HAL_NVIC_ClearPendingIRQ(EXTI15_IRQn);
 /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+uint32_t PS_Main_PmicIntExtiIsArmed(void)
+{
+  return g_ps_hw6_pmic_int_exti_armed;
+}
+
+void PS_Main_PmicIntExtiArm(void)
+{
+  g_ps_hw6_pmic_int_exti_armed = 0UL;
+  __HAL_GPIO_EXTI_CLEAR_IT(PMIC_INT_Pin);
+  HAL_NVIC_ClearPendingIRQ(EXTI15_IRQn);
+  g_ps_hw6_pmic_int_exti_armed = 1UL;
+  HAL_NVIC_EnableIRQ(EXTI15_IRQn);
+}
+
 static void PS_Main_RecordButtonExti(uint16_t GPIO_Pin,
                                      GPIO_PinState level)
 {

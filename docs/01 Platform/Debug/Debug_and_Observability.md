@@ -63,6 +63,26 @@ Must be observable with low overhead:
 
 ---
 
+## PMIC Interrupt Observability
+
+PMIC interrupt evidence must show both the MCU edge and the power-owner work it
+caused. An ISR counter by itself only proves the MCU saw an edge; it does not
+prove PMIC policy ran. Required PMIC_INT evidence includes:
+
+- EXTI edge count and last edge timestamp
+- pending/consumed count showing the event reached `thPower`
+- normal ADP5360 snapshot status from `thPower` context
+- interrupt enable registers and read statuses
+- interrupt flag pre-clear values and write-one-clear statuses
+- confirmation that VBUS/charger events did not trigger USB MSC export or
+  storage ownership by themselves
+
+On HW6 FW0, `EXTI15` is deliberately disarmed during early startup and armed
+only after RTOS owner services exist. This prevents early PMIC_INT edges from
+running owner-dependent work before ThreadX initialization is complete.
+
+---
+
 ## HardFault Record Contract
 
 On HardFault capture:

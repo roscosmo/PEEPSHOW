@@ -136,7 +136,7 @@ only the power owner completed (`required/completed = 0x7f / 0x1`) during a
 normal boot capture. That result is expected unless the diagnostic workflow is
 explicitly requested.
 
-Later FW0 PMIC/charger work extends the normal power-owner path without changing ownership: `PMIC_INT` on `PB15` records a minimal EXTI edge counter/timestamp in ISR context, and `thPower` consumes the pending edge on its bounded heartbeat path by taking the normal ADP5360 snapshot and rerunning battery/charger policy. The periodic `thPower` battery snapshot remains as a fallback until PMIC interrupt-source enable/clear behavior is target-validated.
+Later FW0 PMIC/charger work extends the normal power-owner path without changing ownership: `PMIC_INT` on `PB15` records a minimal EXTI edge counter/timestamp in ISR context, and `thPower` consumes the pending edge on its bounded heartbeat path by taking the normal ADP5360 snapshot and rerunning battery/charger policy. HW6 unit 001 validates the charger/VBUS-safe PMIC interrupt profile with MCU `PB15` pull-up, guarded `EXTI15` arming after RTOS owner initialization, ADP5360 interrupt enables `0x03/0x00`, write-one-clear flag handling, and interrupt-driven `thPower` snapshot consumption. The periodic `thPower` battery snapshot remains as a fallback for non-enabled sources and long-run monitor coverage.
 
 ## HW6 Measured Owner-Path Baseline
 

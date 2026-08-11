@@ -1108,6 +1108,7 @@ UINT PS_HW6_RTOS_Init(TX_BYTE_POOL *pool)
   PS_HW6_OwnerStateMachines_Init();
   PS_UIRouter_Init();
   PS_InputButtons_Init();
+  PS_Main_PmicIntExtiArm();
 
   status = PS_HW6_RTOS_SnapshotPool(
     pool,

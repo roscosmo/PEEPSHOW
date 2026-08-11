@@ -606,6 +606,8 @@ UINT PS_HW6_OwnerServices_Init(void)
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.power_driver_charger_profile_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.power_driver_interrupt_config_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.power_driver_software_shipping_mode_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.power_software_ship_request_count = 0UL;
@@ -636,6 +638,32 @@ UINT PS_HW6_OwnerServices_Init(void)
     g_ps_hw6_owner_probe.power_charger_config_hal_status[i] =
       PS_HW6_OWNER_STATUS_NOT_RUN;
     g_ps_hw6_owner_probe.power_charger_config_hal_error[i] =
+      PS_HW6_OWNER_STATUS_NOT_RUN;
+  }
+
+  for (i = 0U; i < PS_HW6_OWNER_INTERRUPT_REGISTER_COUNT; ++i)
+  {
+    g_ps_hw6_owner_probe.power_interrupt_register_address[i] =
+      ps_dev_adp5360_interrupt_register(i);
+    g_ps_hw6_owner_probe.power_interrupt_register_value[i] = 0UL;
+    g_ps_hw6_owner_probe.power_interrupt_register_status[i] =
+      PS_HW6_OWNER_STATUS_NOT_RUN;
+    g_ps_hw6_owner_probe.power_interrupt_register_hal_status[i] =
+      PS_HW6_OWNER_STATUS_NOT_RUN;
+    g_ps_hw6_owner_probe.power_interrupt_register_hal_error[i] =
+      PS_HW6_OWNER_STATUS_NOT_RUN;
+  }
+
+  for (i = 0U; i < PS_HW6_OWNER_INTERRUPT_FLAG_REGISTER_COUNT; ++i)
+  {
+    g_ps_hw6_owner_probe.power_interrupt_clear_address[i] =
+      ps_dev_adp5360_interrupt_register(i + 2U);
+    g_ps_hw6_owner_probe.power_interrupt_clear_value[i] = 0UL;
+    g_ps_hw6_owner_probe.power_interrupt_clear_status[i] =
+      PS_HW6_OWNER_STATUS_NOT_RUN;
+    g_ps_hw6_owner_probe.power_interrupt_clear_hal_status[i] =
+      PS_HW6_OWNER_STATUS_NOT_RUN;
+    g_ps_hw6_owner_probe.power_interrupt_clear_hal_error[i] =
       PS_HW6_OWNER_STATUS_NOT_RUN;
   }
 
@@ -759,6 +787,28 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_ConfigureChargerProfile(void)
   return (status == PS_STATUS_OK) ? HAL_OK : HAL_ERROR;
 }
 
+HAL_StatusTypeDef PS_HW6_PowerOwner_ConfigurePmicInterrupts(void)
+{
+  ps_dev_adp5360_interrupt_profile_t profile;
+  ps_status_t status;
+
+  profile.enable1 = (uint8_t)KNOB_POWER_PMIC_INTERRUPT_ENABLE1;
+  profile.enable2 = (uint8_t)KNOB_POWER_PMIC_INTERRUPT_ENABLE2;
+
+  status = ps_dev_adp5360_configure_interrupts(&ps_hw6_pmic, &profile);
+  g_ps_hw6_owner_probe.power_driver_interrupt_config_status =
+    (uint32_t)status;
+  g_ps_hw6_owner_probe.power_driver_api_version =
+    ps_hw6_pmic.api_version;
+  g_ps_hw6_owner_probe.power_driver_state = ps_hw6_pmic.state;
+  g_ps_hw6_owner_probe.power_driver_operation_count =
+    ps_hw6_pmic.operation_count;
+  g_ps_hw6_owner_probe.power_driver_last_status =
+    ps_hw6_pmic.last_status;
+
+  return (status == PS_STATUS_OK) ? HAL_OK : HAL_ERROR;
+}
+
 HAL_StatusTypeDef PS_HW6_PowerOwner_EnterSoftwareShipmentMode(void)
 {
   ps_status_t status;
@@ -863,6 +913,38 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_RunSnapshot(void)
       snapshot.charger_config_hal_status[index];
     g_ps_hw6_owner_probe.power_charger_config_hal_error[index] =
       snapshot.charger_config_hal_error[index];
+  }
+  g_ps_hw6_owner_probe.power_interrupt_read_ok_mask =
+    snapshot.interrupt_read_ok_mask;
+  for (index = 0U; index < PS_HW6_OWNER_INTERRUPT_REGISTER_COUNT;
+       ++index)
+  {
+    g_ps_hw6_owner_probe.power_interrupt_register_address[index] =
+      snapshot.interrupt_register_address[index];
+    g_ps_hw6_owner_probe.power_interrupt_register_value[index] =
+      snapshot.interrupt_register_value[index];
+    g_ps_hw6_owner_probe.power_interrupt_register_status[index] =
+      (uint32_t)snapshot.interrupt_register_status[index];
+    g_ps_hw6_owner_probe.power_interrupt_register_hal_status[index] =
+      snapshot.interrupt_register_hal_status[index];
+    g_ps_hw6_owner_probe.power_interrupt_register_hal_error[index] =
+      snapshot.interrupt_register_hal_error[index];
+  }
+  g_ps_hw6_owner_probe.power_interrupt_clear_ok_mask =
+    snapshot.interrupt_clear_ok_mask;
+  for (index = 0U; index < PS_HW6_OWNER_INTERRUPT_FLAG_REGISTER_COUNT;
+       ++index)
+  {
+    g_ps_hw6_owner_probe.power_interrupt_clear_address[index] =
+      snapshot.interrupt_clear_address[index];
+    g_ps_hw6_owner_probe.power_interrupt_clear_value[index] =
+      snapshot.interrupt_clear_value[index];
+    g_ps_hw6_owner_probe.power_interrupt_clear_status[index] =
+      (uint32_t)snapshot.interrupt_clear_status[index];
+    g_ps_hw6_owner_probe.power_interrupt_clear_hal_status[index] =
+      snapshot.interrupt_clear_hal_status[index];
+    g_ps_hw6_owner_probe.power_interrupt_clear_hal_error[index] =
+      snapshot.interrupt_clear_hal_error[index];
   }
   g_ps_hw6_owner_probe.power_charger_mode = snapshot.charger_mode;
   g_ps_hw6_owner_probe.power_charger_status = snapshot.charger_status;

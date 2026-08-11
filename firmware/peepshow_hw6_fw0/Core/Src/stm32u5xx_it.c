@@ -291,7 +291,11 @@ void EXTI14_IRQHandler(void)
 void EXTI15_IRQHandler(void)
 {
   /* USER CODE BEGIN EXTI15_IRQn 0 */
-
+  if (PS_Main_PmicIntExtiIsArmed() == 0UL)
+  {
+    __HAL_GPIO_EXTI_CLEAR_IT(PMIC_INT_Pin);
+    return;
+  }
   /* USER CODE END EXTI15_IRQn 0 */
   HAL_GPIO_EXTI_IRQHandler(PMIC_INT_Pin);
   /* USER CODE BEGIN EXTI15_IRQn 1 */

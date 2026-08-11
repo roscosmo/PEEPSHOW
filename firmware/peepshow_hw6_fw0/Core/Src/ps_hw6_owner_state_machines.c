@@ -1364,6 +1364,7 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizePower(void)
 {
   HAL_StatusTypeDef mr_shipping_status;
   HAL_StatusTypeDef charger_profile_status;
+  HAL_StatusTypeDef interrupt_config_status;
   HAL_StatusTypeDef fuel_gauge_status;
   HAL_StatusTypeDef snapshot_status;
   HAL_StatusTypeDef status;
@@ -1373,10 +1374,12 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizePower(void)
                             PMIC_EV_PROBE_REQUEST, HAL_OK);
   mr_shipping_status = PS_HW6_PowerOwner_EnableMrShippingMode();
   charger_profile_status = PS_HW6_PowerOwner_ConfigureChargerProfile();
+  interrupt_config_status = PS_HW6_PowerOwner_ConfigurePmicInterrupts();
   fuel_gauge_status = PS_HW6_PowerOwner_PrepareFuelGauge();
   snapshot_status = PS_HW6_PowerOwner_RunSnapshot();
   status = ((mr_shipping_status == HAL_OK) &&
             (charger_profile_status == HAL_OK) &&
+            (interrupt_config_status == HAL_OK) &&
             (fuel_gauge_status == HAL_OK) &&
             (snapshot_status == HAL_OK)) ? HAL_OK : HAL_ERROR;
   if (status == HAL_OK)

@@ -46,6 +46,9 @@ Connections carried into the final HW6 design/IOC intent and requiring board-lev
 - `BTN_START` is connected to the ADP5360 `MR` path.
 - VBUS can be detected through ADP5360 status and through the MCU USB VBUS sense path.
 - `USB_OTG_FS_VBUS` is on `PA9`.
+- On HW6 unit 001, `PMIC_INT` requires the MCU-side `PB15` pull-up. Treat the
+  ADP5360 interrupt output as an active-low interrupt line that is not
+  externally pulled up on the validated board.
 
 Per [[Platform_Hardware_Abstraction_Contract]], the PMIC driver uses the public 7-bit address `0x46`; STM32 HAL shifted-address handling is hidden inside the `ps_hw_i2c3` layer.
 
@@ -200,7 +203,43 @@ HW6 unit 001 FW0 evidence `EV-HW6-20260811-P1-CHARGER-028` validates the later b
 - fuel/policy VBAT `3759 mV`, VBUS absent, battery present
 - PMIC interrupt counters stayed `0 / 0 / 0`, so this capture did not exercise a PMIC interrupt edge
 
-This validates conservative boot-applied register ownership and exact readback for `0x02`, `0x03`, `0x04`, `0x07`, and `0x0A`. It does not validate PMIC_INT event behavior, charge-current promotion, charge termination, JEITA zone behavior, or long-run thermal behavior.
+This validates conservative boot-applied register ownership and exact readback for `0x02`, `0x03`, `0x04`, `0x07`, and `0x0A`. PMIC_INT event behavior was validated later in `EV-HW6-20260811-P1-CHARGER-029`. This capture does not validate charge-current promotion, charge termination, JEITA zone behavior, or long-run thermal behavior.
+
+HW6 unit 001 FW0 evidence `EV-HW6-20260811-P1-CHARGER-029` validates the
+PMIC interrupt path after the conservative charger profile. The ADP5360
+interrupt output is active low and, on the measured HW6 board, needs the MCU
+internal `PB15` pull-up. Firmware therefore configures `PB15` with pull-up,
+holds `EXTI15` disarmed during early Cube/HAL startup, then explicitly arms the
+interrupt after RTOS owner services are initialized. This avoids a boot-time
+interrupt entering ThreadX startup before queues and flags exist.
+
+Measured result:
+
+- owner probe API/snapshot `12 / 1 / 1`
+- normal active power state with PMIC monitor state `2 / 3`
+- PMIC interrupt configuration status `0x0`
+- PMIC interrupt registers `0x32 / 0x33 / 0x34 / 0x35`
+- PMIC interrupt register values `0x03 / 0x00 / 0x00 / 0x00`
+- PMIC interrupt read statuses all `0x0`
+- PMIC interrupt flag clear mask `0x03`, clear statuses `0x0 / 0x0`
+- ISR edge/consumed counters `1 / 1`
+- `thPower` pending/snapshot/status `1 / 1 / 0x0`
+- VBUS absent agreement remained `0 / 0 / 1`
+- conservative charger profile readback still matched `0x81 / 0x82 / 0x29 / 0xAC / 0x80`
+
+Rules:
+
+- PMIC interrupt enables are applied only by `thPower`.
+- FW0 enables `INTERRUPT_ENABLE1=0x03` and `INTERRUPT_ENABLE2=0x00` through
+  compile-time knobs. This admits the charger/VBUS-safe interrupt subset only.
+- MR, watchdog, rail, and fault interrupt sources stay disabled until each
+  source has a dedicated target validation.
+- ADP5360 interrupt flags are not cleared by reading. The power-owner snapshot
+  must record the pre-clear flag bytes and then write `1` to the corresponding
+  bits in `INTERRUPT_FLAG1` / `INTERRUPT_FLAG2` to clear them.
+- `PMIC_INT` may request a power-owner PMIC snapshot. It must not directly
+  trigger USB MSC export, storage handoff, installer entry, or any PMIC I2C
+  operation from ISR context.
 
 Rules:
 

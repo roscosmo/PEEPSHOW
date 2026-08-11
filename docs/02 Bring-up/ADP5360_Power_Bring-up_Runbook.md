@@ -193,6 +193,39 @@ Measured evidence:
 
 This closes the earlier FW0 `100 kOhm` thermistor-bias mismatch for the room-temperature case and proves active charge-state reporting at the retained low-current baseline. It does not close current measurement, charge termination, charge-done state, JEITA hot/cold/cool/warm substitution, VBUS current-limit promotion, or long-run thermal behavior.
 
+### HW6 FW0 PMIC_INT Result
+
+`EV-HW6-20260811-P1-CHARGER-029` validates the first FW0 PMIC interrupt event
+path after the boot-applied conservative charger profile. The ADP5360
+interrupt line is active low and, on HW6 unit 001, needs the MCU internal
+`PB15` pull-up. Firmware now configures that pull-up, suppresses early `EXTI15`
+handling during Cube/HAL startup, and explicitly arms `EXTI15` after RTOS owner
+services are initialized.
+
+Measured evidence:
+
+- owner API/snapshot `12 / 1 / 1`
+- power/PMIC state `2 / 3`
+- PMIC interrupt config/status `0x0 / 0xf`
+- interrupt registers `0x32 / 0x33 / 0x34 / 0x35`
+- interrupt register values `0x03 / 0x00 / 0x00 / 0x00`
+- interrupt read statuses all `0x0`
+- interrupt flag clear mask/status `0x03 / 0x0 / 0x0`
+- `pmic int irq/pending/cons = 1 / 0 / 1`
+- `pmic int sm pending/snap/status = 1 / 1 / 0x0`
+
+This proves the MCU EXTI edge reached firmware, the pending event was consumed
+by `thPower`, and the normal PMIC snapshot path handled the interrupt source.
+The PMIC interrupt flags are write-one-to-clear: snapshot code must record the
+pre-clear flag bytes and then write the same set bits to `0x34` / `0x35`.
+Reading the flag registers is not a clear operation.
+
+The FW0 interrupt-enable knobs currently configure the charger/VBUS-safe subset
+only: `INTERRUPT_ENABLE1=0x03`, `INTERRUPT_ENABLE2=0x00`. MR, watchdog, rail,
+and fault interrupt sources remain open until each has a dedicated target test.
+VBUS/charger interrupts may update power/charger state, but they must not
+trigger USB MSC export or storage ownership changes by themselves.
+
 ## Threshold / Policy Ledger
 
 Populate this table during bring-up. Values are placeholders until selected and measured.
@@ -245,7 +278,7 @@ Thresholds are Platform tuning constants, not Reference Game policy.
 | address representation | public 7-bit `0x46` through `ps_hw_i2c3` | convention confirmed | public `0x46`, STM32 HAL shifted `0x8c` | pass_unit_001 |
 | status read | PMIC status registers | charger/battery/fault state readable | identity `0x10`, revision `0x8`, PGOOD `0x07`, fault `0x00`; full map captured; fuel gauge disabled and telemetry invalid in inventory; FW0 fuel-gauge active/refresh sequence now validates mode `0x51` and nonzero VBAT `3720 mV` | partial_unit_001; fuel_prepare_pass_unit_001 |
 | configuration map | read-only `0x00..0x36` | every register readable before write planning | 55/55 reads; factory 100 mAh profile, fuel gauge/IRQs disabled, charger/protection baseline captured | pass_inventory_unit_001 |
-| PMIC_INT | safe event or pending clear | EXTI15 event and owner handling | TBD | open |
+| PMIC_INT | safe event or pending clear | EXTI15 event and owner handling | EXTI edge and `thPower` snapshot pass with MCU `PB15` pull-up, early-boot EXTI guard, `INTERRUPT_ENABLE1=0x03`, flag readback/clear status all `0x0`, ISR consumed count `1`, and owner snapshot status `0x0` | charger_vbus_irq_pass_unit_001; other interrupt sources open |
 | VBUS cross-check | USB attach/detach | ADP5360 and `PA9` agree or log diagnostic; no VBUS-only MSC prompt | unplugged/plugged probes showed ADP5360 and `PA9` agree; plugged real-cell charger probe reported VBUS agreement `1/1/1` | vbus_agree_pass_unit_001; storage/MSC non-prompt behavior still needs combined charger/USB policy proof |
 | charging | USB attached | charging/charge-done state reported | real cell plus board `100 kOhm` NTC at room temperature: owner API/snapshot `9/1/1`, power/PMIC `2/4`, charger raw `0x22/0xE4`, read mask `0x7`, therm config/status/register `0x0/0x0/0x80`, THR `7`, charger mode/status/type/health `2/1/2/0`, VBAT `3732 mV` | initial_charge_state_pass_unit_001; charge-done/current/thermal/JEITA behavior open |
 | low battery | simulated or measured threshold | warning / recoverable forced-sleep path selected | source `3.46 V`, PMIC `3421 mV`, policy/event `3/3`, warning count `4`, power/PMIC `2/6`, no quiesce or ship request | warning_runtime_pass_unit_001; final UX/load-shed behavior open |

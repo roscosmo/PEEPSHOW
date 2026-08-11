@@ -13,6 +13,8 @@
   "power_charger_current_setting": 41,
   "power_charger_function_setting": 172,
   "power_charger_thermistor_control": 128,
+  "power_pmic_interrupt_enable1": 3,
+  "power_pmic_interrupt_enable2": 0,
   "power_critical_software_ship_enable": false,
   "power_boot_low_battery_ship_enable": false,
   "power_start_software_ship_enable": false

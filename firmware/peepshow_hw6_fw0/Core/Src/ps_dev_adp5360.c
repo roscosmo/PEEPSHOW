@@ -40,6 +40,10 @@
 #define PS_DEV_ADP5360_FUEL_ACTIVE_MODE    (0x00U)
 #define PS_DEV_ADP5360_FUEL_ENABLE         (0x01U)
 #define PS_DEV_ADP5360_SOC_RESET_REFRESH   (0x80U)
+#define PS_DEV_ADP5360_REG_INTERRUPT_ENABLE1 (0x32U)
+#define PS_DEV_ADP5360_REG_INTERRUPT_ENABLE2 (0x33U)
+#define PS_DEV_ADP5360_REG_INTERRUPT_FLAG1 (0x34U)
+#define PS_DEV_ADP5360_REG_INTERRUPT_FLAG2 (0x35U)
 #define PS_DEV_ADP5360_REG_SHIPMENT        (0x36U)
 
 #define PS_DEV_ADP5360_EXPECTED_ID         (0x10U)
@@ -126,6 +130,15 @@ static const uint8_t ps_dev_adp5360_charger_config_registers
   PS_DEV_ADP5360_REG_CHARGER_CURRENT,
   PS_DEV_ADP5360_REG_CHARGER_FUNCTION,
   PS_DEV_ADP5360_REG_CHARGER_THERMISTOR_CONTROL
+};
+
+static const uint8_t ps_dev_adp5360_interrupt_registers
+  [PS_DEV_ADP5360_INTERRUPT_REGISTER_COUNT] =
+{
+  PS_DEV_ADP5360_REG_INTERRUPT_ENABLE1,
+  PS_DEV_ADP5360_REG_INTERRUPT_ENABLE2,
+  PS_DEV_ADP5360_REG_INTERRUPT_FLAG1,
+  PS_DEV_ADP5360_REG_INTERRUPT_FLAG2
 };
 
 
@@ -505,6 +518,78 @@ ps_status_t ps_dev_adp5360_configure_charger_profile(
   return status;
 }
 
+ps_status_t ps_dev_adp5360_configure_interrupts(
+  ps_dev_adp5360_t *device,
+  const ps_dev_adp5360_interrupt_profile_t *profile)
+{
+  ps_hw_i2c3_lease_t lease;
+  ps_hw_i2c3_lease_result_t acquire_result;
+  ps_hw_i2c3_lease_result_t release_result;
+  ps_hw_i2c3_transfer_result_t transfer_result;
+  ps_status_t status = PS_STATUS_OK;
+
+  if ((device == NULL) || (profile == NULL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  if (device->initialized == 0U)
+  {
+    return PS_STATUS_NOT_INITIALIZED;
+  }
+
+  device->operation_count++;
+  acquire_result = ps_hw_i2c3_acquire(
+    PS_HW_I2C3_CLIENT_POWER,
+    PS_DEV_ADP5360_ACQUIRE_TIMEOUT_MS,
+    PS_DEV_ADP5360_MAX_LEASE_MS,
+    &lease);
+  if (acquire_result.status != PS_STATUS_OK)
+  {
+    device->last_status = (uint32_t)acquire_result.status;
+    device->state = PS_DEV_ADP5360_STATE_FAULT;
+    return acquire_result.status;
+  }
+
+  transfer_result = ps_hw_i2c3_mem_write(
+    &lease,
+    device->address_7bit,
+    PS_DEV_ADP5360_REG_INTERRUPT_ENABLE1,
+    &profile->enable1,
+    1U,
+    PS_DEV_ADP5360_TRANSFER_TIMEOUT_MS);
+  if (transfer_result.status != PS_STATUS_OK)
+  {
+    status = transfer_result.status;
+  }
+
+  if (status == PS_STATUS_OK)
+  {
+    transfer_result = ps_hw_i2c3_mem_write(
+      &lease,
+      device->address_7bit,
+      PS_DEV_ADP5360_REG_INTERRUPT_ENABLE2,
+      &profile->enable2,
+      1U,
+      PS_DEV_ADP5360_TRANSFER_TIMEOUT_MS);
+    if (transfer_result.status != PS_STATUS_OK)
+    {
+      status = transfer_result.status;
+    }
+  }
+
+  release_result = ps_hw_i2c3_release(&lease);
+  if ((status == PS_STATUS_OK) &&
+      (release_result.status != PS_STATUS_OK))
+  {
+    status = release_result.status;
+  }
+
+  device->last_status = (uint32_t)status;
+  device->state = (status == PS_STATUS_OK) ?
+    PS_DEV_ADP5360_STATE_MONITOR : PS_DEV_ADP5360_STATE_FAULT;
+  return status;
+}
+
 ps_status_t ps_dev_adp5360_configure_thermistor(
   ps_dev_adp5360_t *device,
   uint8_t control)
@@ -647,6 +732,20 @@ ps_status_t ps_dev_adp5360_read_power_snapshot(
       ps_dev_adp5360_charger_config_registers[index];
     snapshot->charger_config_status[index] = PS_STATUS_INTERNAL_ERROR;
   }
+  for (index = 0U; index < PS_DEV_ADP5360_INTERRUPT_REGISTER_COUNT;
+       ++index)
+  {
+    snapshot->interrupt_register_address[index] =
+      ps_dev_adp5360_interrupt_registers[index];
+    snapshot->interrupt_register_status[index] = PS_STATUS_INTERNAL_ERROR;
+  }
+  for (index = 0U; index < PS_DEV_ADP5360_INTERRUPT_FLAG_REGISTER_COUNT;
+       ++index)
+  {
+    snapshot->interrupt_clear_address[index] =
+      ps_dev_adp5360_interrupt_registers[index + 2U];
+    snapshot->interrupt_clear_status[index] = PS_STATUS_INTERNAL_ERROR;
+  }
   for (index = 0U; index < PS_DEV_ADP5360_FUEL_REGISTER_COUNT; ++index)
   {
     snapshot->fuel_register_address[index] =
@@ -746,6 +845,78 @@ ps_status_t ps_dev_adp5360_read_power_snapshot(
       status = charger_config_result.status;
     }
   }
+  for (index = 0U; index < PS_DEV_ADP5360_INTERRUPT_REGISTER_COUNT;
+       ++index)
+  {
+    ps_hw_i2c3_transfer_result_t interrupt_result;
+    uint8_t value = 0U;
+
+    interrupt_result = ps_hw_i2c3_mem_read(
+      &lease,
+      device->address_7bit,
+      snapshot->interrupt_register_address[index],
+      &value,
+      1U,
+      PS_DEV_ADP5360_TRANSFER_TIMEOUT_MS);
+    snapshot->interrupt_register_value[index] = value;
+    snapshot->interrupt_register_status[index] = interrupt_result.status;
+    snapshot->interrupt_register_hal_status[index] =
+      interrupt_result.hal_status;
+    snapshot->interrupt_register_hal_error[index] =
+      interrupt_result.hal_error;
+    snapshot->last_hal_status = interrupt_result.hal_status;
+    snapshot->last_hal_error = interrupt_result.hal_error;
+    if (interrupt_result.status == PS_STATUS_OK)
+    {
+      snapshot->interrupt_read_ok_mask |= 1UL << index;
+    }
+    else if (status == PS_STATUS_OK)
+    {
+      status = interrupt_result.status;
+    }
+  }
+
+  for (index = 0U; index < PS_DEV_ADP5360_INTERRUPT_FLAG_REGISTER_COUNT;
+       ++index)
+  {
+    ps_hw_i2c3_transfer_result_t clear_result;
+    uint8_t clear_value = snapshot->interrupt_register_value[index + 2U];
+
+    if (snapshot->interrupt_register_status[index + 2U] != PS_STATUS_OK)
+    {
+      continue;
+    }
+
+    snapshot->interrupt_clear_value[index] = clear_value;
+    if (clear_value == 0U)
+    {
+      snapshot->interrupt_clear_status[index] = PS_STATUS_OK;
+      snapshot->interrupt_clear_ok_mask |= 1UL << index;
+      continue;
+    }
+
+    clear_result = ps_hw_i2c3_mem_write(
+      &lease,
+      device->address_7bit,
+      snapshot->interrupt_clear_address[index],
+      &clear_value,
+      1U,
+      PS_DEV_ADP5360_TRANSFER_TIMEOUT_MS);
+    snapshot->interrupt_clear_status[index] = clear_result.status;
+    snapshot->interrupt_clear_hal_status[index] = clear_result.hal_status;
+    snapshot->interrupt_clear_hal_error[index] = clear_result.hal_error;
+    snapshot->last_hal_status = clear_result.hal_status;
+    snapshot->last_hal_error = clear_result.hal_error;
+    if (clear_result.status == PS_STATUS_OK)
+    {
+      snapshot->interrupt_clear_ok_mask |= 1UL << index;
+    }
+    else if (status == PS_STATUS_OK)
+    {
+      status = clear_result.status;
+    }
+  }
+
   status1_result = ps_hw_i2c3_mem_read(
     &lease,
     device->address_7bit,
@@ -918,6 +1089,15 @@ uint8_t ps_dev_adp5360_charger_config_register(uint32_t index)
   }
   return ps_dev_adp5360_charger_config_registers[index];
 }
+uint8_t ps_dev_adp5360_interrupt_register(uint32_t index)
+{
+  if (index >= PS_DEV_ADP5360_INTERRUPT_REGISTER_COUNT)
+  {
+    return 0U;
+  }
+  return ps_dev_adp5360_interrupt_registers[index];
+}
+
 uint8_t ps_dev_adp5360_power_register(uint32_t index)
 {
   if (index >= PS_DEV_ADP5360_POWER_REGISTER_COUNT)

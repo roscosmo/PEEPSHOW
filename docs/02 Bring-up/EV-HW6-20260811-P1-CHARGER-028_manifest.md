@@ -19,7 +19,7 @@ Validated:
 
 Still open:
 
-- PMIC_INT edge generation, source enable/clear behavior, and `thPower` interrupt-driven snapshot proof
+- PMIC_INT edge generation, source enable/clear behavior, and `thPower` interrupt-driven snapshot proof were still open in this capture; later validated by `EV-HW6-20260811-P1-CHARGER-029`
 - charge-current measurement and staged current promotion
 - charge termination / full-state evidence
 - JEITA hot/cold/cool/warm substitution evidence
@@ -57,4 +57,4 @@ pmic int sm pending/snap/status = 0 / 0 / 0x0
 
 ## Interpretation
 
-The charger profile is now a normal boot power-owner action, not a one-off debugger poke. The PMIC accepted and retained the conservative settings through readback. PMIC_INT did not fire in this capture, so interrupt-driven charger/battery/fault handling remains unvalidated even though the ISR-to-`thPower` scaffold is now present.
+The charger profile is now a normal boot power-owner action, not a one-off debugger poke. The PMIC accepted and retained the conservative settings through readback. PMIC_INT did not fire in this capture, so this evidence did not validate interrupt-driven charger/battery/fault handling. That interrupt path was later validated by `EV-HW6-20260811-P1-CHARGER-029` for the charger/VBUS-safe interrupt subset.

@@ -10,10 +10,12 @@
 extern "C" {
 #endif
 
-#define PS_DEV_ADP5360_API_VERSION       (8UL)
+#define PS_DEV_ADP5360_API_VERSION       (10UL)
 #define PS_DEV_ADP5360_POWER_REGISTER_COUNT (7UL)
 #define PS_DEV_ADP5360_FUEL_REGISTER_COUNT  (5UL)
 #define PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT (5UL)
+#define PS_DEV_ADP5360_INTERRUPT_REGISTER_COUNT (4UL)
+#define PS_DEV_ADP5360_INTERRUPT_FLAG_REGISTER_COUNT (2UL)
 
 typedef enum
 {
@@ -53,6 +55,12 @@ typedef struct
 
 typedef struct
 {
+  uint8_t enable1;
+  uint8_t enable2;
+} ps_dev_adp5360_interrupt_profile_t;
+
+typedef struct
+{
   ps_status_t status;
   uint32_t function_ready_mask;
   uint32_t acquire_status;
@@ -72,6 +80,18 @@ typedef struct
   uint32_t charger_config_hal_status[PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT];
   uint32_t charger_config_hal_error[PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT];
   uint32_t charger_config_read_ok_mask;
+  uint8_t interrupt_register_address[PS_DEV_ADP5360_INTERRUPT_REGISTER_COUNT];
+  uint8_t interrupt_register_value[PS_DEV_ADP5360_INTERRUPT_REGISTER_COUNT];
+  ps_status_t interrupt_register_status[PS_DEV_ADP5360_INTERRUPT_REGISTER_COUNT];
+  uint32_t interrupt_register_hal_status[PS_DEV_ADP5360_INTERRUPT_REGISTER_COUNT];
+  uint32_t interrupt_register_hal_error[PS_DEV_ADP5360_INTERRUPT_REGISTER_COUNT];
+  uint32_t interrupt_read_ok_mask;
+  uint8_t interrupt_clear_address[PS_DEV_ADP5360_INTERRUPT_FLAG_REGISTER_COUNT];
+  uint8_t interrupt_clear_value[PS_DEV_ADP5360_INTERRUPT_FLAG_REGISTER_COUNT];
+  ps_status_t interrupt_clear_status[PS_DEV_ADP5360_INTERRUPT_FLAG_REGISTER_COUNT];
+  uint32_t interrupt_clear_hal_status[PS_DEV_ADP5360_INTERRUPT_FLAG_REGISTER_COUNT];
+  uint32_t interrupt_clear_hal_error[PS_DEV_ADP5360_INTERRUPT_FLAG_REGISTER_COUNT];
+  uint32_t interrupt_clear_ok_mask;
   uint32_t identity_match;
   uint32_t rails_ready;
   uint32_t fault_clear;
@@ -129,6 +149,9 @@ ps_status_t ps_dev_adp5360_prepare_fuel_gauge(
 ps_status_t ps_dev_adp5360_configure_charger_profile(
   ps_dev_adp5360_t *device,
   const ps_dev_adp5360_charger_profile_t *profile);
+ps_status_t ps_dev_adp5360_configure_interrupts(
+  ps_dev_adp5360_t *device,
+  const ps_dev_adp5360_interrupt_profile_t *profile);
 ps_status_t ps_dev_adp5360_configure_thermistor(
   ps_dev_adp5360_t *device,
   uint8_t control);
@@ -139,6 +162,7 @@ ps_status_t ps_dev_adp5360_read_power_snapshot(
   ps_dev_adp5360_power_snapshot_t *snapshot);
 uint8_t ps_dev_adp5360_power_register(uint32_t index);
 uint8_t ps_dev_adp5360_charger_config_register(uint32_t index);
+uint8_t ps_dev_adp5360_interrupt_register(uint32_t index);
 
 #ifdef __cplusplus
 }
