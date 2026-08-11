@@ -141,6 +141,8 @@ Rules:
 - ADP5360 fuel-gauge VBAT reads must not be trusted until `thPower` has configured fuel-gauge active mode and requested an SOC/VBAT refresh.
 - If VBUS/charger recovery is present, startup may remain in a charge/recovery shell even below the restart-allow threshold.
 - If VBUS is absent and battery is below the restart-allow threshold after a shipment wake or low-battery reset, firmware must not continue normal runtime. With the boot-low-battery shipment gate disabled, it records a would-ship result; with the gate enabled, it re-enters software shipment.
+- The boot/restart battery check remains pending until the first valid fuel-gauge VBAT sample is available. It must not treat the initial unavailable fuel reading as permission to enter normal runtime.
+- While boot/restart is blocked, the UI may show a plain low-battery recovery page. That page is not a normal shutdown-cancel target; it clears only when `thPower` reports VBUS present or VBAT at/above the restart-allow threshold.
 - The restart-allow threshold must be higher than the critical-shutdown threshold.
 
 Provisional FW0 thresholds, pending HW6 measurement and UX review:
@@ -154,7 +156,7 @@ Provisional FW0 thresholds, pending HW6 measurement and UX review:
 | critical software-shipment gate | `false` | keep bring-up tests from powering off unexpectedly |
 | boot-low-battery shipment gate | `false` | record would-ship until the boot path is validated |
 
-HW6 FW0 target evidence now validates the runtime policy path at one normal point, one warning point, one critical point, and one recovery point. Threshold values remain provisional until UX, current, boot-restart, VBUS recovery, and enabled software-shipment evidence are complete.
+HW6 FW0 target evidence now validates the runtime policy path at one normal point, one warning point, one critical point, one runtime recovery point, and the no-VBUS boot/restart block with UI recovery after VBAT rises above the restart-allow threshold. The validated boot-gate case used a controlled source: `3270 mV` held policy state `BOOT_RESTART_BLOCKED`, kept power/PMIC in `PWR_SHIP_PREP` / `PMIC_SHIP_PENDING`, showed UI/display shutdown state `LOW_BATT_BOOT`, and recorded a default-off software-shipment skip. Raising the source produced `3707 mV`, cleared the boot gate, returned power/PMIC to `PWR_ACTIVE_LP` / `PMIC_MONITOR`, and returned UI/display to HOME. Threshold values remain provisional until UX, current, VBUS recovery, and enabled software-shipment evidence are complete.
 
 ---
 
@@ -403,7 +405,7 @@ Fault handling depends on severity:
 11. charging while flashing/install mode is active
 12. low-battery warning / recoverable forced sleep
 13. critical-battery controlled software-shipment path and default-off gate
-14. post-shipment boot/restart gate below restart-allow threshold, with VBUS recovery exception
+14. post-shipment boot/restart gate below restart-allow threshold, including UI recovery above restart-allow and the VBUS recovery exception
 15. hardware BAT_UV / ISOFET fallback validation
 16. START hold shipping-prep handoff from input to power
 17. ADP5360 `EN_MR_SD` enable during normal boot through `thPower`

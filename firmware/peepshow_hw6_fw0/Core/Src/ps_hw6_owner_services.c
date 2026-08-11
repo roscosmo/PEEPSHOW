@@ -418,11 +418,20 @@ static void PS_HW6_DisplayUIStrings(uint32_t page,
       *line2 = "RECOVER";
       break;
     case PS_UI_ROUTER_PAGE_SHUTDOWN:
-      *title = "SHUTDOWN";
-      *line1 = PS_HW6_DisplayShutdownCountdownLine(
-        shutdown_countdown_seconds);
-      *line2 = (shutdown_state == PS_UI_ROUTER_SHUTDOWN_CANCELLED) ?
-        "CANCELLED" : "HOLD START";
+      if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_BOOT)
+      {
+        *title = "LOW BATTERY";
+        *line1 = "CHARGE DEVICE";
+        *line2 = "NO RUNTIME";
+      }
+      else
+      {
+        *title = "SHUTDOWN";
+        *line1 = PS_HW6_DisplayShutdownCountdownLine(
+          shutdown_countdown_seconds);
+        *line2 = (shutdown_state == PS_UI_ROUTER_SHUTDOWN_CANCELLED) ?
+          "CANCELLED" : "HOLD START";
+      }
       break;
     default:
       *title = "BOOT";

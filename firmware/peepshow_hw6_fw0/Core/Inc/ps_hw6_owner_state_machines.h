@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (18UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (19UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -177,6 +177,9 @@ typedef struct
   uint32_t battery_policy_warning_count;
   uint32_t battery_policy_critical_count;
   uint32_t battery_policy_boot_restart_block_count;
+  uint32_t battery_policy_boot_restart_gate_pending;
+  uint32_t battery_policy_boot_restart_gate_blocked;
+  uint32_t battery_policy_boot_restart_gate_clear_count;
   uint32_t battery_policy_quiesce_request_count;
   uint32_t battery_policy_quiesce_last_status;
   uint32_t battery_policy_quiesce_last_tick;

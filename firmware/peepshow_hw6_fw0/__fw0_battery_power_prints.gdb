@@ -4,8 +4,11 @@ printf "--- HW6 battery power policy scaffold ---\n"
 set $sm = &g_ps_hw6_owner_sm_probe
 set $owner = &g_ps_hw6_owner_probe
 set $rtos = &g_ps_hw6_rtos_probe
+set $ui = &g_ps_ui_router_probe
 printf "api/state/event       = %u / %u / %u\n", $sm->version, $sm->battery_policy_state, $sm->battery_policy_last_event
 printf "counts boot/monitor   = %u / %u\n", $sm->battery_policy_boot_check_count, $sm->battery_policy_monitor_count
+printf "boot home suppress/ui  = %u / %u\n", $rtos->boot_home_suppressed, $rtos->boot_low_battery_ui_sent
+printf "boot gate pend/block/clr = %u / %u / %u\n", $sm->battery_policy_boot_restart_gate_pending, $sm->battery_policy_boot_restart_gate_blocked, $sm->battery_policy_boot_restart_gate_clear_count
 printf "snapshot status/tick  = 0x%x / %u\n", $sm->battery_policy_last_snapshot_status, $sm->battery_policy_last_tick
 printf "driver read/exp/rails/fault = 0x%x / 0x%x / %u / %u\n", $owner->power_driver_read_ok_mask, $owner->power_driver_expected_match_mask, $owner->power_rails_ready, $owner->power_fault_clear
 printf "period/next tick      = %u / %u\n", $sm->battery_policy_period_ticks, $sm->battery_policy_next_tick
@@ -33,12 +36,15 @@ printf "quiesce count/status/tick = %u / 0x%x / %u\n", $sm->battery_policy_quies
 printf "ship gates crit/boot  = %u / %u\n", $sm->battery_policy_critical_ship_enabled, $sm->battery_policy_boot_ship_enabled
 printf "ship req/skip/status/tick = %u / %u / 0x%x / %u\n", $sm->battery_policy_software_ship_request_count, $sm->battery_policy_software_ship_skipped_count, $sm->battery_policy_software_ship_last_status, $sm->battery_policy_software_ship_last_tick
 printf "power state/pmic state = %u / %u\n", $sm->current_state[0], $sm->current_state[1]
+printf "ui page/shutdown/count = %u / %u / %u\n", $ui->current_page, $ui->shutdown_state, $ui->shutdown_event_count
+printf "display page/shutdown = %u / %u\n", $owner->display_ui_page, $owner->display_ui_shutdown_state
 printf "pmic MR/fuel prep/sw ship status = 0x%x / 0x%x / 0x%x\n", $owner->power_driver_mr_shipping_mode_status, $owner->power_driver_fuel_gauge_prepare_status, $owner->power_driver_software_shipping_mode_status
 printf "pmic sw ship status/count/tick = 0x%x / %u / %u\n", $owner->power_driver_software_shipping_mode_status, $owner->power_software_ship_request_count, $owner->power_software_ship_request_tick
 printf "pmic sw ship request flag = %u\n", g_ps_hw6_pmic_software_ship_request
 printf "pmic int irq/pending/cons = %u / %u / %u\n", $rtos->pmic_int_irq_count, $rtos->pmic_int_pending_count, $rtos->pmic_int_consumed_count
 printf "pmic int pin/level/irq/consume = %u / %u / %u / %u\n", $rtos->pmic_int_last_pin, $rtos->pmic_int_last_level, $rtos->pmic_int_last_irq_tick, $rtos->pmic_int_last_consume_tick
 printf "pmic int sm pending/snap/status = %u / %u / 0x%x\n", $sm->pmic_int_pending_count, $sm->pmic_int_snapshot_count, $sm->pmic_int_last_snapshot_status
+printf "ui shutdown: NONE=0 PREP=1 WARNING=2 IMMINENT=3 CANCELLED=4 LOW_BATT_BOOT=5\n"
 printf "policy states: UNKNOWN=0 BOOT_OK=1 OK=2 WARNING=3 CRITICAL=4 BOOT_RESTART_BLOCKED=5 SHIP_REQUESTED=6\n"
 printf "policy events: NONE=0 BOOT=1 MONITOR=2 WARNING=3 CRITICAL=4 BOOT_BLOCK=5 SHIP_REQ=6 SHIP_SKIP=7 SNAPSHOT_FAIL=8\n"
 printf "charger status: NOT_CHARGING=0 CHARGING=1 FULL=2 DISCHARGING=3 LDO=4 TIMER=5 BAT_DETECT=6 UNKNOWN=7\n"

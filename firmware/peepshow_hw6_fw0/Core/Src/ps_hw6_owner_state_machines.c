@@ -103,6 +103,8 @@ volatile uint32_t g_ps_hw6_joystick_calibration_capture_page;
 static uint32_t ps_start_power_return_state;
 static uint32_t ps_power_battery_monitor_period_ticks;
 static uint32_t ps_power_battery_owns_ship_prep;
+static uint32_t ps_power_boot_restart_gate_pending;
+static uint32_t ps_power_boot_restart_gate_blocked;
 static HAL_StatusTypeDef PS_HW6_SM_Transition(uint32_t state_machine_id,
                                                uint32_t event,
                                                HAL_StatusTypeDef action_status);
@@ -175,6 +177,7 @@ static HAL_StatusTypeDef PS_HW6_SM_EvaluateBatteryPolicy(
   uint32_t fuel_ok;
   uint32_t vbat_mv;
   uint32_t vbus_ok;
+  uint32_t boot_gate_active;
   uint32_t now_tick = (uint32_t)tx_time_get();
 
   g_ps_hw6_owner_sm_probe.battery_policy_warning_mv =
@@ -189,6 +192,10 @@ static HAL_StatusTypeDef PS_HW6_SM_EvaluateBatteryPolicy(
     (uint32_t)KNOB_POWER_CRITICAL_SOFTWARE_SHIP_ENABLE;
   g_ps_hw6_owner_sm_probe.battery_policy_boot_ship_enabled =
     (uint32_t)KNOB_POWER_BOOT_LOW_BATTERY_SHIP_ENABLE;
+  g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_pending =
+    ps_power_boot_restart_gate_pending;
+  g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_blocked =
+    ps_power_boot_restart_gate_blocked;
   g_ps_hw6_owner_sm_probe.battery_policy_last_snapshot_status =
     (uint32_t)snapshot_status;
   g_ps_hw6_owner_sm_probe.battery_policy_last_tick = now_tick;
@@ -233,17 +240,49 @@ static HAL_StatusTypeDef PS_HW6_SM_EvaluateBatteryPolicy(
     return HAL_ERROR;
   }
 
-  if ((boot_check != 0UL) && (vbus_ok == 0UL) &&
-      (vbat_mv < (uint32_t)KNOB_POWER_BATTERY_RESTART_ALLOW_MV))
+  boot_gate_active = ((boot_check != 0UL) ||
+                      (ps_power_boot_restart_gate_pending != 0UL)) ?
+    1UL : 0UL;
+  if (boot_gate_active != 0UL)
   {
-    g_ps_hw6_owner_sm_probe.battery_policy_state =
-      PS_HW6_POWER_BATTERY_POLICY_BOOT_RESTART_BLOCKED;
-    g_ps_hw6_owner_sm_probe.battery_policy_last_event =
-      PS_HW6_POWER_BATTERY_EVENT_BOOT_RESTART_BLOCK;
-    g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_block_count++;
-    (void)PS_HW6_BatteryPolicyPrepareForShipment();
-    PS_HW6_BatteryPolicyRequestSoftwareShipment(1UL);
-    return HAL_OK;
+    if ((vbus_ok != 0UL) ||
+        (vbat_mv >= (uint32_t)KNOB_POWER_BATTERY_RESTART_ALLOW_MV))
+    {
+      if (ps_power_boot_restart_gate_pending != 0UL)
+      {
+        g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_clear_count++;
+      }
+      ps_power_boot_restart_gate_pending = 0UL;
+      ps_power_boot_restart_gate_blocked = 0UL;
+      g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_pending = 0UL;
+      g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_blocked = 0UL;
+    }
+    else
+    {
+      g_ps_hw6_owner_sm_probe.battery_policy_state =
+        PS_HW6_POWER_BATTERY_POLICY_BOOT_RESTART_BLOCKED;
+      g_ps_hw6_owner_sm_probe.battery_policy_last_event =
+        PS_HW6_POWER_BATTERY_EVENT_BOOT_RESTART_BLOCK;
+      if (ps_power_boot_restart_gate_blocked == 0UL)
+      {
+        g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_block_count++;
+        (void)PS_HW6_SM_Transition(PS_HW6_SM_POWER,
+                                   PWR_EV_SHIP_REQUEST,
+                                   HAL_OK);
+        ps_power_battery_owns_ship_prep = 1UL;
+        (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
+                                   PMIC_EV_SHIP_REQUEST,
+                                   HAL_OK);
+        (void)PS_HW6_BatteryPolicyPrepareForShipment();
+        PS_HW6_BatteryPolicyRequestSoftwareShipment(1UL);
+      }
+      ps_power_boot_restart_gate_blocked = 1UL;
+      g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_pending =
+        ps_power_boot_restart_gate_pending;
+      g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_blocked =
+        ps_power_boot_restart_gate_blocked;
+      return HAL_OK;
+    }
   }
 
   if (vbat_mv <= (uint32_t)KNOB_POWER_BATTERY_CRITICAL_SHIP_MV)
@@ -3463,6 +3502,8 @@ void PS_HW6_OwnerStateMachines_Init(void)
     ps_start_power_return_state;
 
   ps_power_battery_owns_ship_prep = 0UL;
+  ps_power_boot_restart_gate_pending = 1UL;
+  ps_power_boot_restart_gate_blocked = 0UL;
   ps_power_battery_monitor_period_ticks =
     PS_HW6_SM_MsToTicks((uint32_t)KNOB_POWER_BATTERY_MONITOR_PERIOD_MS);
   g_ps_hw6_owner_sm_probe.battery_policy_state =
@@ -3490,6 +3531,11 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.battery_policy_warning_count = 0UL;
   g_ps_hw6_owner_sm_probe.battery_policy_critical_count = 0UL;
   g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_block_count = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_pending =
+    ps_power_boot_restart_gate_pending;
+  g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_blocked =
+    ps_power_boot_restart_gate_blocked;
+  g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_clear_count = 0UL;
   g_ps_hw6_owner_sm_probe.battery_policy_quiesce_request_count = 0UL;
   g_ps_hw6_owner_sm_probe.battery_policy_quiesce_last_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;

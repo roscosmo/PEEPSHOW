@@ -97,6 +97,12 @@ static ps_status_t PS_UIRouter_CancelShutdown(void)
 {
   uint32_t return_page = ps_ui_router_state.shutdown_return_page;
 
+  if (ps_ui_router_state.shutdown_state ==
+      PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_BOOT)
+  {
+    return PS_STATUS_INVALID_STATE;
+  }
+
   if ((return_page == PS_UI_ROUTER_PAGE_BOOTSTRAP) ||
       (return_page == PS_UI_ROUTER_PAGE_ERROR) ||
       (return_page == PS_UI_ROUTER_PAGE_SHUTDOWN))
@@ -115,6 +121,16 @@ static ps_status_t PS_UIRouter_CancelShutdown(void)
   ps_ui_router_state.transition_count++;
   return PS_STATUS_OK;
 }
+
+static ps_status_t PS_UIRouter_ShowLowBatteryBootBlock(void)
+{
+  ps_status_t status = PS_UIRouter_ShowShutdown(
+    PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_BOOT, 0UL);
+
+  ps_ui_router_state.shutdown_return_page = PS_UI_ROUTER_PAGE_BOOTSTRAP;
+  return status;
+}
+
 static ps_status_t PS_UIRouter_GotoPage(uint32_t page)
 {
   if (PS_UIRouter_CanNavigate() == 0UL)
@@ -349,7 +365,10 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
       status = PS_STATUS_OK;
       break;
     case PS_UI_ROUTER_EVENT_RECOVER_OK:
-      if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_ERROR)
+      if ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_ERROR) ||
+          ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_SHUTDOWN) &&
+           (ps_ui_router_state.shutdown_state ==
+            PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_BOOT)))
       {
         ps_ui_router_state.previous_page = ps_ui_router_state.current_page;
         ps_ui_router_state.requested_page = PS_UI_ROUTER_PAGE_HOME;
@@ -357,6 +376,8 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
         ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_FOCUS;
         ps_ui_router_state.modal_state = PS_UI_ROUTER_MODAL_NONE;
         ps_ui_router_state.calibration_page = PS_UI_ROUTER_CAL_NONE;
+        ps_ui_router_state.shutdown_state = PS_UI_ROUTER_SHUTDOWN_NONE;
+        ps_ui_router_state.shutdown_countdown_seconds = 0UL;
         ps_ui_router_state.transition_count++;
         status = PS_STATUS_OK;
       }
@@ -404,6 +425,9 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
       break;
     case PS_UI_ROUTER_EVENT_SHUTDOWN_CANCEL:
       status = PS_UIRouter_CancelShutdown();
+      break;
+    case PS_UI_ROUTER_EVENT_LOW_BATTERY_BOOT_BLOCK:
+      status = PS_UIRouter_ShowLowBatteryBootBlock();
       break;
     case PS_UI_ROUTER_EVENT_INPUT_BTN_A:
       ps_ui_router_state.last_button_event = event;
