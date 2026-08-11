@@ -22,6 +22,7 @@
 #include "app_azure_rtos.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "knobs_autogen.h"
 
 /* USER CODE END Includes */
 
@@ -32,6 +33,11 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#if (KNOB_DEBUG_TRACEX_ENABLE != 0)
+#define PS_HW6_TRACEX_BUFFER_WORDS \
+  ((KNOB_DEBUG_TRACEX_BUFFER_BYTES + sizeof(ULONG) - 1U) / sizeof(ULONG))
+#endif
+
 
 /* USER CODE END PD */
 
@@ -44,6 +50,15 @@
 /* USER CODE BEGIN PV */
 volatile UINT g_ps_hw6_usbx_byte_pool_create_status = 0xFFFFFFFFU;
 volatile UINT g_ps_hw6_usbx_device_init_status = 0xFFFFFFFFU;
+volatile UINT g_ps_hw6_tracex_enable_status = TX_FEATURE_NOT_ENABLED;
+volatile ULONG g_ps_hw6_tracex_runtime_enabled = 0UL;
+volatile ULONG g_ps_hw6_tracex_buffer_address = 0UL;
+volatile ULONG g_ps_hw6_tracex_buffer_bytes = 0UL;
+volatile ULONG g_ps_hw6_tracex_registry_entries = 0UL;
+
+#if (KNOB_DEBUG_TRACEX_ENABLE != 0)
+static ULONG ps_hw6_tracex_buffer[PS_HW6_TRACEX_BUFFER_WORDS];
+#endif
 /* USER CODE END PV */
 
 #if (USE_STATIC_ALLOCATION == 1)
@@ -87,6 +102,23 @@ static TX_BYTE_POOL ux_device_app_byte_pool;
 VOID tx_application_define(VOID *first_unused_memory)
 {
   /* USER CODE BEGIN  tx_application_define_1*/
+#if (KNOB_DEBUG_TRACEX_ENABLE != 0)
+  g_ps_hw6_tracex_buffer_address = (ULONG)ps_hw6_tracex_buffer;
+  g_ps_hw6_tracex_buffer_bytes = (ULONG)sizeof(ps_hw6_tracex_buffer);
+  g_ps_hw6_tracex_registry_entries = (ULONG)KNOB_DEBUG_TRACEX_REGISTRY_ENTRIES;
+  g_ps_hw6_tracex_enable_status = tx_trace_enable(ps_hw6_tracex_buffer,
+                                                  (ULONG)sizeof(ps_hw6_tracex_buffer),
+                                                  (ULONG)KNOB_DEBUG_TRACEX_REGISTRY_ENTRIES);
+  g_ps_hw6_tracex_runtime_enabled =
+    (g_ps_hw6_tracex_enable_status == TX_SUCCESS) ? 1UL : 0UL;
+#else
+  g_ps_hw6_tracex_enable_status = TX_FEATURE_NOT_ENABLED;
+  g_ps_hw6_tracex_runtime_enabled = 0UL;
+  g_ps_hw6_tracex_buffer_address = 0UL;
+  g_ps_hw6_tracex_buffer_bytes = 0UL;
+  g_ps_hw6_tracex_registry_entries = 0UL;
+#endif
+
 
   /* USER CODE END  tx_application_define_1 */
 #if (USE_STATIC_ALLOCATION == 1)

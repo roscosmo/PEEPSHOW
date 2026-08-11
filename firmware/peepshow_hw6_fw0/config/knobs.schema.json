@@ -10,6 +10,9 @@
     "input_start_ship_warn_ms",
     "input_start_ship_imminent_ms",
     "input_start_stable_samples",
+    "debug_tracex_enable",
+    "debug_tracex_buffer_bytes",
+    "debug_tracex_registry_entries",
     "power_battery_monitor_period_ms",
     "power_battery_warning_mv",
     "power_battery_critical_ship_mv",
@@ -85,6 +88,41 @@
       "class": "protected_policy",
       "path": "platform.knobs.input.start_stable_samples",
       "description": "Consecutive START live-level samples required before the sampled PA4 level is treated as stable."
+    },
+    "debug_tracex_enable": {
+      "type": "boolean",
+      "default": true,
+      "unit": "bool",
+      "timebase_domain": "threadx",
+      "owner": "kernel",
+      "class": "debug_visibility",
+      "path": "platform.knobs.debug.tracex_enable",
+      "description": "When true, FW0 enables the static TraceX capture buffer during tx_application_define()."
+    },
+    "debug_tracex_buffer_bytes": {
+      "type": "integer",
+      "minimum": 4096,
+      "maximum": 262144,
+      "multipleOf": 4,
+      "default": 32768,
+      "unit": "bytes",
+      "timebase_domain": "threadx",
+      "owner": "kernel",
+      "class": "debug_visibility",
+      "path": "platform.knobs.debug.tracex_buffer_bytes",
+      "description": "Static RAM reserved for TraceX event capture in trace-enabled bring-up builds."
+    },
+    "debug_tracex_registry_entries": {
+      "type": "integer",
+      "minimum": 8,
+      "maximum": 256,
+      "default": 64,
+      "unit": "entries",
+      "timebase_domain": "threadx",
+      "owner": "kernel",
+      "class": "debug_visibility",
+      "path": "platform.knobs.debug.tracex_registry_entries",
+      "description": "TraceX object registry slots reserved for ThreadX objects visible in the capture."
     },
     "power_battery_monitor_period_ms": {
       "type": "integer",

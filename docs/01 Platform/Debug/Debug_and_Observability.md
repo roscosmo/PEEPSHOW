@@ -14,7 +14,7 @@ Dashboard-facing telemetry is defined in [[Telemetry_And_Debug_Dashboard_Contrac
 
 - SWD (required)
 - SWO structured events (preferred)
-- Tracealyzer snapshot/ring-buffer traces for RTOS and owner-thread bring-up evidence
+- TraceX/Tracealyzer snapshot/ring-buffer traces for RTOS and owner-thread bring-up evidence
 - HW6 `PH1` / `PWR_DBG` physical timing marker for PPK2 logic correlation in development evidence builds
 - USB CDC developer personality optional, rate-limited, and mutually exclusive with MSC in v1
 
@@ -60,6 +60,29 @@ Must be observable with low overhead:
 - fault and recovery transitions
 - owner-thread scheduling and queue/event wake paths during trace-enabled bring-up builds
 - dashboard-facing state vector and bounded telemetry events where a dev/debug profile enables them
+
+---
+
+## TraceX Runtime Scaffold
+
+TraceX is allowed for HW6 FW0 bring-up as a bounded, static RAM trace buffer. It is an observation tool for RTOS scheduling, object creation, event flags, queue activity, and owner-thread lifecycle behavior. It is not a package-facing diagnostic API and it must not become a hidden control path.
+
+Rules:
+
+- TraceX compile/runtime enable is development-only and must be controlled by Platform debug knobs.
+- The trace buffer is statically allocated; no heap allocation is allowed.
+- The runtime enable call must happen after ThreadX internal trace initialization and before Platform-owned ThreadX objects are created.
+- The trace buffer size and object registry count are compile-time knobs, because they change RAM budget and capture depth.
+- TraceX capture must not replace explicit owner-state probes, PMIC snapshots, fault records, or USB/MSC evidence.
+- STOP2 evidence must state whether TraceX/SWD/debug-in-low-power changed the behavior being measured.
+
+HW6 FW0 validated baseline:
+
+- CubeMX generated Trace Async/SWO and `TX_ENABLE_EVENT_TRACE` support.
+- FW0 calls `tx_trace_enable()` from the `tx_application_define()` user block in `AZURE_RTOS/App/app_azure_rtos.c`.
+- Current knobs: `KNOB_DEBUG_TRACEX_ENABLE=1`, `KNOB_DEBUG_TRACEX_BUFFER_BYTES=32768`, `KNOB_DEBUG_TRACEX_REGISTRY_ENTRIES=64`.
+- Target GDB helper: `firmware/peepshow_hw6_fw0/__fw0_tracex_prints.gdb`.
+- First target evidence returned `enable status/runtime = 0x0 / 1`, buffer `0x2000a7a0 / 32768`, trace start/end `0x2000b3d0 / 0x20012790`, and registry total/available `64 / 29`.
 
 ---
 
@@ -118,3 +141,4 @@ Release builds must:
 - compile out verbose debug paths
 - keep structured fault capture
 - preserve deterministic timing behavior
+

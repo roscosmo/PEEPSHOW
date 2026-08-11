@@ -336,6 +336,26 @@ target_sources(stm32cubemx INTERFACE
     ../../Middlewares/ST/levelx/common/src/lx_nor_flash_sector_release.c
     ../../Middlewares/ST/levelx/common/src/lx_nor_flash_sector_write.c
     ../../Middlewares/ST/levelx/common/src/lx_nor_flash_system_error.c
+    ../../Middlewares/ST/threadx/common/src/tx_trace_buffer_full_notify.c
+    ../../Middlewares/ST/threadx/common/src/tx_trace_disable.c
+    ../../Middlewares/ST/threadx/common/src/tx_trace_enable.c
+    ../../Middlewares/ST/threadx/common/src/tx_trace_event_filter.c
+    ../../Middlewares/ST/threadx/common/src/tx_trace_event_unfilter.c
+    ../../Middlewares/ST/threadx/common/src/tx_trace_initialize.c
+    ../../Middlewares/ST/threadx/common/src/tx_trace_interrupt_control.c
+    ../../Middlewares/ST/threadx/common/src/tx_trace_isr_enter_insert.c
+    ../../Middlewares/ST/threadx/common/src/tx_trace_isr_exit_insert.c
+    ../../Middlewares/ST/threadx/common/src/tx_trace_object_register.c
+    ../../Middlewares/ST/threadx/common/src/tx_trace_object_unregister.c
+    ../../Middlewares/ST/threadx/common/src/tx_trace_user_event_insert.c
+    ../../Middlewares/ST/threadx/../usbx/common/core/src/ux_trace_event_insert.c
+    ../../Middlewares/ST/threadx/../usbx/common/core/src/ux_trace_event_update.c
+    ../../Middlewares/ST/threadx/../usbx/common/core/src/ux_trace_object_register.c
+    ../../Middlewares/ST/threadx/../usbx/common/core/src/ux_trace_object_unregister.c
+    ../../Middlewares/ST/threadx/../filex/common/src/fx_trace_event_insert.c
+    ../../Middlewares/ST/threadx/../filex/common/src/fx_trace_event_update.c
+    ../../Middlewares/ST/threadx/../filex/common/src/fx_trace_object_register.c
+    ../../Middlewares/ST/threadx/../filex/common/src/fx_trace_object_unregister.c
     ../../Middlewares/ST/threadx/common/src/tx_initialize_high_level.c
     ../../Middlewares/ST/threadx/common/src/tx_initialize_kernel_enter.c
     ../../Middlewares/ST/threadx/common/src/tx_initialize_kernel_setup.c

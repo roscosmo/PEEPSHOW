@@ -1,4 +1,4 @@
-﻿# Platform Knobs and Compile-Time Tuning Contract
+# Platform Knobs and Compile-Time Tuning Contract
 
 This document defines the Platform knob system contract for PeepOS firmware tunables.
 
@@ -47,7 +47,7 @@ Live tuning, where allowed, is a developer-only extension defined by [[Live_Tuni
 
 Generated header is never manually edited.
 
-HW6 FW0 currently uses this pipeline in `firmware/peepshow_hw6_fw0` for the START shipping-prep scaffold, battery power-policy scaffold, and conservative ADP5360 charger boot profile. The target-local source files are `config/knobs.json`, `config/knobs.schema.json`, and `tools/gen_knobs.py`; the generated firmware output is `Core/Inc/knobs_autogen.h`. Current generated knobs cover START hold thresholds, START live-level stable-sample acceptance, the protected default-off `KNOB_POWER_START_SOFTWARE_SHIP_ENABLE` switch, battery monitor cadence, provisional warning/critical/restart-allow voltage thresholds, protected default-off critical/boot low-battery software-shipment gates, and the boot-applied charger profile registers `KNOB_POWER_CHARGER_VBUS_ILIM`, `KNOB_POWER_CHARGER_TERMINATION_SETTING`, `KNOB_POWER_CHARGER_CURRENT_SETTING`, `KNOB_POWER_CHARGER_FUNCTION_SETTING`, and `KNOB_POWER_CHARGER_THERMISTOR_CONTROL`. Charger profile knobs are power-owner boot-applied hardware policy values; normal package tools must not expose them, and promotion from the retained low-current baseline remains evidence-gated.
+HW6 FW0 currently uses this pipeline in `firmware/peepshow_hw6_fw0` for the START shipping-prep scaffold, battery power-policy scaffold, conservative ADP5360 charger boot profile, and TraceX bring-up visibility scaffold. The target-local source files are `config/knobs.json`, `config/knobs.schema.json`, and `tools/gen_knobs.py`; the generated firmware output is `Core/Inc/knobs_autogen.h`. Current generated knobs cover START hold thresholds, START live-level stable-sample acceptance, the protected default-off `KNOB_POWER_START_SOFTWARE_SHIP_ENABLE` switch, battery monitor cadence, provisional warning/critical/restart-allow voltage thresholds, protected default-off critical/boot low-battery software-shipment gates, the boot-applied charger profile registers `KNOB_POWER_CHARGER_VBUS_ILIM`, `KNOB_POWER_CHARGER_TERMINATION_SETTING`, `KNOB_POWER_CHARGER_CURRENT_SETTING`, `KNOB_POWER_CHARGER_FUNCTION_SETTING`, and `KNOB_POWER_CHARGER_THERMISTOR_CONTROL`, and the TraceX debug visibility knobs `KNOB_DEBUG_TRACEX_ENABLE`, `KNOB_DEBUG_TRACEX_BUFFER_BYTES`, and `KNOB_DEBUG_TRACEX_REGISTRY_ENTRIES`. Charger profile knobs are power-owner boot-applied hardware policy values; TraceX buffer knobs are kernel/debug static-budget values; normal package tools must not expose either group, and promotion from retained conservative defaults remains evidence-gated.
 
 ---
 
@@ -199,6 +199,7 @@ Every Platform knob should declare a tuning class.
 | `compile_time` | memory layout, stack/queue depth, object counts, static hardware configuration | no |
 | `boot_applied` | defaults loaded or applied during boot/init | no, or reboot-required |
 | `runtime_live_safe` | value can be changed at a safe runtime boundary through owner validation | yes in developer mode |
+| `debug_visibility` | development-only telemetry, trace, probe, and evidence-capture resource sizing | no, except explicit debug profile rebuilds |
 | `protected_policy` | power, storage, PMIC, safety, or architecture policy with high risk | no, except explicit bring-up firmware policy |
 
 Rules:
