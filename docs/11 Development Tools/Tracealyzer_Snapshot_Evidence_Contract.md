@@ -141,16 +141,17 @@ Validated target setup:
 
 - CubeMX Trace Async/SWO and ThreadX event trace support are enabled for the debug build.
 - `tx_trace_enable()` runs from `AZURE_RTOS/App/app_azure_rtos.c` during `tx_application_define()` before Platform-owned ThreadX objects are created.
-- Trace configuration is controlled by knobs: `KNOB_DEBUG_TRACEX_ENABLE`, `KNOB_DEBUG_TRACEX_BUFFER_BYTES`, and `KNOB_DEBUG_TRACEX_REGISTRY_ENTRIES`.
+- Trace configuration is controlled by knobs: `KNOB_DEBUG_TRACEX_ENABLE`, `KNOB_DEBUG_TRACEX_BUFFER_BYTES`, `KNOB_DEBUG_TRACEX_REGISTRY_ENTRIES`, and `KNOB_DEBUG_TRACEX_USER_EVENTS_ENABLE`.
 - Current validated buffer is `32768` bytes at `0x2000a7a0`; current registry configuration is `64` entries.
 - `firmware/peepshow_hw6_fw0/__fw0_tracex_prints.gdb` prints live TraceX status while halted.
-- `firmware/peepshow_hw6_fw0/__fw0_tracex_dump.gdb` dumps the live buffer to `firmware/peepshow_hw6_fw0/TraceFiles/__fw0_tracex_snapshot.trx` while halted.
+- `firmware/peepshow_hw6_fw0/__fw0_tracex_dump.gdb` dumps the live buffer to latest snapshot `firmware/peepshow_hw6_fw0/TraceFiles/__fw0_tracex_snapshot.trx` while halted, then asks the host shell to create a timestamped sibling copy in the same `TraceFiles` folder.
 - First dump validation produced `firmware/peepshow_hw6_fw0/TraceFiles/__fw0_tracex_snapshot.trx` as a `32768` byte snapshot file in the TraceX-generated `TraceFiles` folder.
+- TraceX viewer import was validated by user-provided screenshot showing Azure RTOS TraceX 6.4.0 opening the snapshot with named ThreadX/owner threads and scheduler activity.
+- PeepShow app-marker insertion is target-validated: `__fw0_tracex_app_markers_prints.gdb` reported API `1`, insert/success/skip/error `35/35/0/0`, last event `0x5110`, and last status `0x0` after menu interaction.
 
 Current limitations:
 
-- Tracealyzer desktop import has not yet been validated.
-- PeepShow custom user events are not implemented yet; current visibility is ThreadX/middleware event trace plus object registry visibility.
+- PeepShow custom user events are implemented as a debug-only FW0 scaffold for owner state changes/rejections, UI dispatch, input button sends, START power path, PMIC interrupt consumption, and STOP2 prep/enter/wake/recover. Detailed scenario-specific marker evidence remains open.
 - Trace-enabled runs remain development evidence only and must not be used as final STOP current, wake-latency, or production memory-budget evidence.
 
 ---

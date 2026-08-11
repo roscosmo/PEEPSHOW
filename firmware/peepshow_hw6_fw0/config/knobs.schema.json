@@ -11,6 +11,7 @@
     "input_start_ship_imminent_ms",
     "input_start_stable_samples",
     "debug_tracex_enable",
+    "debug_tracex_user_events_enable",
     "debug_tracex_buffer_bytes",
     "debug_tracex_registry_entries",
     "power_battery_monitor_period_ms",
@@ -98,6 +99,16 @@
       "class": "debug_visibility",
       "path": "platform.knobs.debug.tracex_enable",
       "description": "When true, FW0 enables the static TraceX capture buffer during tx_application_define()."
+    },
+    "debug_tracex_user_events_enable": {
+      "type": "boolean",
+      "default": true,
+      "unit": "bool",
+      "timebase_domain": "threadx",
+      "owner": "kernel",
+      "class": "debug_visibility",
+      "path": "platform.knobs.debug.tracex_user_events_enable",
+      "description": "When true, FW0 emits PeepShow user events into the TraceX buffer at selected owner and UI lifecycle boundaries."
     },
     "debug_tracex_buffer_bytes": {
       "type": "integer",

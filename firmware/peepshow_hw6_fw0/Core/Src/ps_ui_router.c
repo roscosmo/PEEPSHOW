@@ -1,5 +1,7 @@
 #include "ps_ui_router.h"
 
+#include "ps_hw6_trace.h"
+
 typedef struct
 {
   uint32_t current_page;
@@ -324,6 +326,7 @@ void PS_UIRouter_Init(void)
 ps_status_t PS_UIRouter_Dispatch(uint32_t event)
 {
   ps_status_t status = PS_STATUS_UNSUPPORTED;
+  uint32_t entry_page = ps_ui_router_state.current_page;
 
   ps_ui_router_state.last_event = event;
   switch (event)
@@ -475,6 +478,10 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
     ps_ui_router_state.rejected_event_count++;
   }
   ps_ui_router_state.last_status = (uint32_t)status;
+  PS_HW6_TraceUiDispatch(event,
+                         entry_page,
+                         ps_ui_router_state.current_page,
+                         (uint32_t)status);
   PS_UIRouter_UpdateProbe();
   return status;
 }

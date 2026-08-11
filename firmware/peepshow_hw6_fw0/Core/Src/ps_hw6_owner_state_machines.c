@@ -17,6 +17,7 @@
 #include "ps_hw_i2c3.h"
 #include "ps_hw6_owner_services.h"
 #include "ps_hw6_rtos_probe.h"
+#include "ps_hw6_trace.h"
 #include "ps_hw6_usb_export.h"
 #include "ps_input_buttons.h"
 #include "ps_input_events.h"
@@ -875,6 +876,10 @@ static HAL_StatusTypeDef PS_HW6_SM_Transition(uint32_t state_machine_id,
       }
       PS_HW6_SM_RecordTrace(state_machine_id, current_state, event,
                             transition->to_state, (uint32_t)action_status);
+      PS_HW6_TraceOwnerState(state_machine_id,
+                              current_state,
+                              event,
+                              transition->to_state);
       return HAL_OK;
     }
   }
@@ -884,6 +889,10 @@ static HAL_StatusTypeDef PS_HW6_SM_Transition(uint32_t state_machine_id,
   g_ps_hw6_owner_sm_probe.last_error[state_machine_id] = (uint32_t)HAL_ERROR;
   PS_HW6_SM_RecordTrace(state_machine_id, current_state, event,
                         current_state, (uint32_t)HAL_ERROR);
+  PS_HW6_TraceOwnerReject(state_machine_id,
+                          current_state,
+                          event,
+                          (uint32_t)HAL_ERROR);
   return HAL_ERROR;
 }
 
@@ -4015,6 +4024,10 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
   g_ps_hw6_owner_sm_probe.stop2_expected_wake_pin = BTN_START_Pin;
   g_ps_hw6_owner_sm_probe.stop2_wake_start_idr = 0UL;
   g_ps_hw6_owner_sm_probe.stop2_wake_end_idr = 0UL;
+  PS_HW6_TraceSleep(PS_HW6_TRACE_SLEEP_STAGE_PREP_START,
+                    (uint32_t)PS_HW6_POWER_QUIESCE_REASON_SLEEP_PREP,
+                    g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_POWER],
+                    (uint32_t)HAL_OK);
   status = PS_HW6_SM_Transition(PS_HW6_SM_POWER,
                                 PWR_EV_SLEEP_REQUEST,
                                 HAL_OK);
@@ -4038,6 +4051,10 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
         (uint32_t)enter_transition_status;
       if (enter_transition_status == HAL_OK)
       {
+        PS_HW6_TraceSleep(PS_HW6_TRACE_SLEEP_STAGE_ENTER_STOP2,
+                          (uint32_t)PS_HW6_POWER_QUIESCE_REASON_SLEEP_PREP,
+                          g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_POWER],
+                          (uint32_t)enter_transition_status);
         HAL_SuspendTick();
         __DSB();
         HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
@@ -4048,6 +4065,10 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
         g_ps_hw6_owner_sm_probe.stop2_wake_tick = (uint32_t)tx_time_get();
         g_ps_hw6_owner_sm_probe.stop2_wake_end_idr = BTN_START_GPIO_Port->IDR;
         g_ps_hw6_owner_sm_probe.stop2_clock_restore_status = (uint32_t)HAL_OK;
+        PS_HW6_TraceSleep(PS_HW6_TRACE_SLEEP_STAGE_WAKE_STOP2,
+                          (uint32_t)BTN_START_Pin,
+                          g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_POWER],
+                          (uint32_t)HAL_OK);
 
         wake_transition_status = PS_HW6_SM_Transition(PS_HW6_SM_POWER,
                                                       PWR_EV_WAKE,
@@ -4097,6 +4118,10 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
 
   g_ps_hw6_owner_sm_probe.stop2_end_tick = (uint32_t)tx_time_get();
   g_ps_hw6_owner_sm_probe.stop2_last_status = (uint32_t)status;
+  PS_HW6_TraceSleep(PS_HW6_TRACE_SLEEP_STAGE_RECOVER,
+                    (uint32_t)PS_HW6_POWER_QUIESCE_REASON_SLEEP_PREP,
+                    g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_POWER],
+                    (uint32_t)status);
   return status;
 }
 
@@ -4294,6 +4319,10 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandleStartShippingIntent(
   }
 
   g_ps_hw6_owner_sm_probe.start_power_last_status = (uint32_t)status;
+  PS_HW6_TracePowerStart(start_event,
+                         hold_ticks,
+                         (uint32_t)status,
+                         power_event);
   return status;
 }
 
@@ -4318,6 +4347,10 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandlePmicInterrupt(
   snapshot_status = PS_HW6_PowerOwner_RunSnapshot();
   g_ps_hw6_owner_sm_probe.pmic_int_last_snapshot_status =
     (uint32_t)snapshot_status;
+  PS_HW6_TracePmicInterrupt(pending_count,
+                             irq_count,
+                             level,
+                             (uint32_t)snapshot_status);
   return PS_HW6_SM_EvaluateBatteryPolicy(snapshot_status, 0UL);
 }
 

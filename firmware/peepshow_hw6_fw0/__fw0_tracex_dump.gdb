@@ -12,7 +12,8 @@ set $ps_hw6_tracex_can_dump = $ps_hw6_tracex_can_dump && (g_ps_hw6_tracex_buffer
 set $ps_hw6_tracex_can_dump = $ps_hw6_tracex_can_dump && (g_ps_hw6_tracex_buffer_bytes != 0)
 if $ps_hw6_tracex_can_dump
   dump binary memory G:/PEEPSHOW/firmware/peepshow_hw6_fw0/TraceFiles/__fw0_tracex_snapshot.trx $ps_hw6_tracex_base $ps_hw6_tracex_end
-  printf "dumped TraceX buffer to G:/PEEPSHOW/firmware/peepshow_hw6_fw0/TraceFiles/__fw0_tracex_snapshot.trx\n"
+  printf "dumped latest TraceX buffer to G:/PEEPSHOW/firmware/peepshow_hw6_fw0/TraceFiles/__fw0_tracex_snapshot.trx\n"
+  shell powershell -NoProfile -Command "$src='G:/PEEPSHOW/firmware/peepshow_hw6_fw0/TraceFiles/__fw0_tracex_snapshot.trx'; $stamp=Get-Date -Format 'yyyyMMdd_HHmmss'; $dst='G:/PEEPSHOW/firmware/peepshow_hw6_fw0/TraceFiles/__fw0_tracex_snapshot_' + $stamp + '.trx'; Copy-Item -LiteralPath $src -Destination $dst; Write-Host ('timestamped TraceX snapshot: ' + $dst)"
 else
   printf "SKIPPED: TraceX is not enabled or buffer metadata is invalid.\n"
 end

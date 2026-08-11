@@ -80,11 +80,12 @@ HW6 FW0 validated baseline:
 
 - CubeMX generated Trace Async/SWO and `TX_ENABLE_EVENT_TRACE` support.
 - FW0 calls `tx_trace_enable()` from the `tx_application_define()` user block in `AZURE_RTOS/App/app_azure_rtos.c`.
-- Current knobs: `KNOB_DEBUG_TRACEX_ENABLE=1`, `KNOB_DEBUG_TRACEX_BUFFER_BYTES=32768`, `KNOB_DEBUG_TRACEX_REGISTRY_ENTRIES=64`.
+- Current knobs: `KNOB_DEBUG_TRACEX_ENABLE=1`, `KNOB_DEBUG_TRACEX_BUFFER_BYTES=32768`, `KNOB_DEBUG_TRACEX_REGISTRY_ENTRIES=64`, `KNOB_DEBUG_TRACEX_USER_EVENTS_ENABLE=1`.
 - Target GDB status helper: `firmware/peepshow_hw6_fw0/__fw0_tracex_prints.gdb`.
-- Target GDB dump helper: `firmware/peepshow_hw6_fw0/__fw0_tracex_dump.gdb`; while halted, it writes `firmware/peepshow_hw6_fw0/TraceFiles/__fw0_tracex_snapshot.trx` from the live TraceX buffer.
+- Target GDB dump helper: `firmware/peepshow_hw6_fw0/__fw0_tracex_dump.gdb`; while halted, it writes the live TraceX buffer to latest snapshot `firmware/peepshow_hw6_fw0/TraceFiles/__fw0_tracex_snapshot.trx` and asks the host shell to copy that dump to a timestamped sibling named `__fw0_tracex_snapshot_YYYYMMDD_HHMMSS.trx`.
 - First target status evidence returned `enable status/runtime = 0x0 / 1`, buffer `0x2000a7a0 / 32768`, trace start/end `0x2000b3d0 / 0x20012790`, and registry total/available `64 / 29`.
-- First target dump evidence wrote `firmware/peepshow_hw6_fw0/TraceFiles/__fw0_tracex_snapshot.trx` at `32768` bytes. Tracealyzer host import remains the next validation step.
+- First target dump evidence wrote `firmware/peepshow_hw6_fw0/TraceFiles/__fw0_tracex_snapshot.trx` at `32768` bytes. TraceX viewer import was validated by user-provided screenshot showing Azure RTOS TraceX 6.4.0 opening the snapshot with named ThreadX/owner threads and scheduler activity.
+- PeepShow app marker validation returned `trace api/count ok/skip/err = 1 / 35 / 35 / 0 / 0`, with last event `0x5110` and last status `0x0`, proving the FW0 user-event wrapper inserted owner/UI/input/power markers successfully during a menu interaction trace.
 
 ---
 

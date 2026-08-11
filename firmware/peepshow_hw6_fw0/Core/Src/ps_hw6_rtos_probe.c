@@ -5,6 +5,7 @@
 #include "main.h"
 #include "ps_hw6_owner_services.h"
 #include "ps_hw6_owner_state_machines.h"
+#include "ps_hw6_trace.h"
 #include "ps_input_buttons.h"
 #include "ps_storage_msc_bridge.h"
 #include "ps_ui_router.h"
@@ -569,14 +570,20 @@ static UINT PS_HW6_RTOS_SendDisplayUiRenderCommand(
 static UINT PS_HW6_RTOS_SendUiButtonPress(ps_input_button_id_t button_id)
 {
   ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+  UINT status;
 
   message[0] = PS_HW6_RTOS_UI_INPUT_MAGIC;
   message[1] = PS_HW6_RTOS_OWNER_UI;
   message[2] = PS_HW6_RTOS_UI_INPUT_PRESS;
   message[3] = (ULONG)button_id;
-  return tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_UI],
-                       message,
-                       TX_NO_WAIT);
+  status = tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_UI],
+                         message,
+                         TX_NO_WAIT);
+  PS_HW6_TraceInputButton((uint32_t)button_id,
+                          PS_HW6_RTOS_OWNER_UI,
+                          (uint32_t)status,
+                          0UL);
+  return status;
 }
 
 static UINT PS_HW6_RTOS_SendPowerStartEvent(
@@ -584,14 +591,20 @@ static UINT PS_HW6_RTOS_SendPowerStartEvent(
   uint32_t hold_ticks)
 {
   ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+  UINT status;
 
   message[0] = PS_HW6_RTOS_POWER_INPUT_MAGIC;
   message[1] = PS_HW6_RTOS_OWNER_POWER;
   message[2] = (ULONG)event;
   message[3] = (ULONG)hold_ticks;
-  return tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_POWER],
-                       message,
-                       TX_NO_WAIT);
+  status = tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_POWER],
+                         message,
+                         TX_NO_WAIT);
+  PS_HW6_TracePowerStart((uint32_t)event,
+                         hold_ticks,
+                         (uint32_t)status,
+                         PS_HW6_RTOS_OWNER_POWER);
+  return status;
 }
 
 static void PS_HW6_RTOS_SendCurrentUiRenderCommand(void)
