@@ -424,6 +424,12 @@ static void PS_HW6_DisplayUIStrings(uint32_t page,
         *line1 = "CHARGE DEVICE";
         *line2 = "NO RUNTIME";
       }
+      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_CHARGE)
+      {
+        *title = "LOW BATTERY";
+        *line1 = "CHARGING";
+        *line2 = "PLEASE WAIT";
+      }
       else
       {
         *title = "SHUTDOWN";

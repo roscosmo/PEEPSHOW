@@ -32,7 +32,7 @@
 #define PS_HW6_RTOS_DISPLAY_UI_SHUTDOWN_SHIFT (16U)
 #define PS_HW6_RTOS_DISPLAY_UI_COUNTDOWN_SHIFT (24U)
 #define PS_HW6_RTOS_DISPLAY_UI_SHUTDOWN_MAX \
-  ((uint32_t)PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_BOOT)
+  ((uint32_t)PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_CHARGE)
 #define PS_HW6_RTOS_COMMAND_POWER_WORKFLOW (1UL)
 #define PS_HW6_RTOS_COMMAND_STABILIZE     (2UL)
 #define PS_HW6_RTOS_COMMAND_RESUME        (3UL)
@@ -985,11 +985,24 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_clear_count;
       if ((g_ps_hw6_owner_sm_probe.battery_policy_state ==
            PS_HW6_POWER_BATTERY_POLICY_BOOT_RESTART_BLOCKED) &&
-          (g_ps_hw6_rtos_probe.boot_low_battery_ui_sent == 0UL) &&
+          ((g_ps_hw6_rtos_probe.boot_low_battery_ui_sent == 0UL) ||
+           (g_ps_ui_router_probe.shutdown_state !=
+            PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_BOOT)) &&
           (g_ps_ui_router_request == 0UL))
       {
         g_ps_ui_router_request_event =
           PS_UI_ROUTER_EVENT_LOW_BATTERY_BOOT_BLOCK;
+        g_ps_ui_router_request = 1UL;
+      }
+      else if ((g_ps_hw6_owner_sm_probe.battery_policy_state ==
+                PS_HW6_POWER_BATTERY_POLICY_BOOT_CHARGE_RECOVERY) &&
+               ((g_ps_hw6_rtos_probe.boot_low_battery_ui_sent == 0UL) ||
+                (g_ps_ui_router_probe.shutdown_state !=
+                 PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_CHARGE)) &&
+               (g_ps_ui_router_request == 0UL))
+      {
+        g_ps_ui_router_request_event =
+          PS_UI_ROUTER_EVENT_LOW_BATTERY_CHARGE_RECOVERY;
         g_ps_ui_router_request = 1UL;
       }
       else if ((boot_gate_clear_count != 0UL) &&
@@ -1075,26 +1088,48 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (ps_power_boot_done != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
-      ps_ui_boot_complete_sent = 1UL;
-      if (g_ps_hw6_owner_sm_probe.battery_policy_state ==
-          PS_HW6_POWER_BATTERY_POLICY_BOOT_RESTART_BLOCKED)
+      if ((g_ps_hw6_owner_sm_probe.battery_policy_state ==
+           PS_HW6_POWER_BATTERY_POLICY_UNKNOWN) &&
+          (g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_pending !=
+           0UL))
       {
         g_ps_hw6_rtos_probe.boot_home_suppressed = 1UL;
-        router_status = PS_UIRouter_Dispatch(
-          PS_UI_ROUTER_EVENT_LOW_BATTERY_BOOT_BLOCK);
-        if (router_status == PS_STATUS_OK)
-        {
-          g_ps_hw6_rtos_probe.boot_low_battery_ui_sent = 1UL;
-          PS_HW6_RTOS_SendCurrentUiRenderCommand();
-        }
       }
       else
       {
-        router_status = PS_UIRouter_Dispatch(
-          PS_UI_ROUTER_EVENT_BOOT_COMPLETE);
-        if (router_status == PS_STATUS_OK)
+        ps_ui_boot_complete_sent = 1UL;
+        if (g_ps_hw6_owner_sm_probe.battery_policy_state ==
+            PS_HW6_POWER_BATTERY_POLICY_BOOT_RESTART_BLOCKED)
         {
-          PS_HW6_RTOS_SendCurrentUiRenderCommand();
+          g_ps_hw6_rtos_probe.boot_home_suppressed = 1UL;
+          router_status = PS_UIRouter_Dispatch(
+            PS_UI_ROUTER_EVENT_LOW_BATTERY_BOOT_BLOCK);
+          if (router_status == PS_STATUS_OK)
+          {
+            g_ps_hw6_rtos_probe.boot_low_battery_ui_sent = 1UL;
+            PS_HW6_RTOS_SendCurrentUiRenderCommand();
+          }
+        }
+        else if (g_ps_hw6_owner_sm_probe.battery_policy_state ==
+                 PS_HW6_POWER_BATTERY_POLICY_BOOT_CHARGE_RECOVERY)
+        {
+          g_ps_hw6_rtos_probe.boot_home_suppressed = 1UL;
+          router_status = PS_UIRouter_Dispatch(
+            PS_UI_ROUTER_EVENT_LOW_BATTERY_CHARGE_RECOVERY);
+          if (router_status == PS_STATUS_OK)
+          {
+            g_ps_hw6_rtos_probe.boot_low_battery_ui_sent = 1UL;
+            PS_HW6_RTOS_SendCurrentUiRenderCommand();
+          }
+        }
+        else
+        {
+          router_status = PS_UIRouter_Dispatch(
+            PS_UI_ROUTER_EVENT_BOOT_COMPLETE);
+          if (router_status == PS_STATUS_OK)
+          {
+            PS_HW6_RTOS_SendCurrentUiRenderCommand();
+          }
         }
       }
     }
@@ -1107,7 +1142,8 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       router_status = PS_UIRouter_Dispatch(router_event);
       if (router_status == PS_STATUS_OK)
       {
-        if (router_event == PS_UI_ROUTER_EVENT_LOW_BATTERY_BOOT_BLOCK)
+        if ((router_event == PS_UI_ROUTER_EVENT_LOW_BATTERY_BOOT_BLOCK) ||
+            (router_event == PS_UI_ROUTER_EVENT_LOW_BATTERY_CHARGE_RECOVERY))
         {
           g_ps_hw6_rtos_probe.boot_low_battery_ui_sent = 1UL;
         }

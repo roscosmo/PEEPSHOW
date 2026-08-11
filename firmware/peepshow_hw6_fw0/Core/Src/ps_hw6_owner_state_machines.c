@@ -245,8 +245,7 @@ static HAL_StatusTypeDef PS_HW6_SM_EvaluateBatteryPolicy(
     1UL : 0UL;
   if (boot_gate_active != 0UL)
   {
-    if ((vbus_ok != 0UL) ||
-        (vbat_mv >= (uint32_t)KNOB_POWER_BATTERY_RESTART_ALLOW_MV))
+    if (vbat_mv >= (uint32_t)KNOB_POWER_BATTERY_RESTART_ALLOW_MV)
     {
       if (ps_power_boot_restart_gate_pending != 0UL)
       {
@@ -257,13 +256,62 @@ static HAL_StatusTypeDef PS_HW6_SM_EvaluateBatteryPolicy(
       g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_pending = 0UL;
       g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_blocked = 0UL;
     }
+    else if (vbus_ok != 0UL)
+    {
+      g_ps_hw6_owner_sm_probe.battery_policy_state =
+        PS_HW6_POWER_BATTERY_POLICY_BOOT_CHARGE_RECOVERY;
+      g_ps_hw6_owner_sm_probe.battery_policy_last_event =
+        PS_HW6_POWER_BATTERY_EVENT_BOOT_CHARGE_RECOVERY;
+      if (g_ps_hw6_owner_sm_probe.battery_policy_boot_charge_recovery_count ==
+          0UL)
+      {
+        g_ps_hw6_owner_sm_probe.battery_policy_boot_charge_recovery_count++;
+      }
+      if ((ps_power_battery_owns_ship_prep != 0UL) &&
+          (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_POWER] ==
+           PWR_SHIP_PREP))
+      {
+        (void)PS_HW6_SM_Transition(PS_HW6_SM_POWER,
+                                   PWR_EV_LP_REQUEST,
+                                   HAL_OK);
+        ps_power_battery_owns_ship_prep = 0UL;
+      }
+      ps_power_boot_restart_gate_blocked = 1UL;
+      g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_pending =
+        ps_power_boot_restart_gate_pending;
+      g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_blocked =
+        ps_power_boot_restart_gate_blocked;
+      if ((g_ps_hw6_owner_probe.power_charge_complete != 0UL) ||
+          (g_ps_hw6_owner_probe.power_charger_status ==
+           PS_HW6_CHARGER_STATUS_FULL))
+      {
+        (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
+                                   PMIC_EV_CHARGE_DONE,
+                                   HAL_OK);
+      }
+      else if (g_ps_hw6_owner_probe.power_charger_status ==
+               PS_HW6_CHARGER_STATUS_CHARGING)
+      {
+        (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
+                                   PMIC_EV_CHARGING,
+                                   HAL_OK);
+      }
+      else
+      {
+        (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
+                                   PMIC_EV_LOW_BATTERY,
+                                   HAL_OK);
+      }
+      return HAL_OK;
+    }
     else
     {
       g_ps_hw6_owner_sm_probe.battery_policy_state =
         PS_HW6_POWER_BATTERY_POLICY_BOOT_RESTART_BLOCKED;
       g_ps_hw6_owner_sm_probe.battery_policy_last_event =
         PS_HW6_POWER_BATTERY_EVENT_BOOT_RESTART_BLOCK;
-      if (ps_power_boot_restart_gate_blocked == 0UL)
+      if (g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_block_count ==
+          0UL)
       {
         g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_block_count++;
         (void)PS_HW6_SM_Transition(PS_HW6_SM_POWER,
@@ -3531,6 +3579,7 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.battery_policy_warning_count = 0UL;
   g_ps_hw6_owner_sm_probe.battery_policy_critical_count = 0UL;
   g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_block_count = 0UL;
+  g_ps_hw6_owner_sm_probe.battery_policy_boot_charge_recovery_count = 0UL;
   g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_pending =
     ps_power_boot_restart_gate_pending;
   g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_blocked =

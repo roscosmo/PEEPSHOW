@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (19UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (20UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -48,6 +48,7 @@ typedef enum
   PS_HW6_POWER_BATTERY_POLICY_WARNING,
   PS_HW6_POWER_BATTERY_POLICY_CRITICAL,
   PS_HW6_POWER_BATTERY_POLICY_BOOT_RESTART_BLOCKED,
+  PS_HW6_POWER_BATTERY_POLICY_BOOT_CHARGE_RECOVERY,
   PS_HW6_POWER_BATTERY_POLICY_SHIP_REQUESTED
 } PS_HW6_PowerBatteryPolicyState;
 
@@ -59,6 +60,7 @@ typedef enum
   PS_HW6_POWER_BATTERY_EVENT_WARNING,
   PS_HW6_POWER_BATTERY_EVENT_CRITICAL,
   PS_HW6_POWER_BATTERY_EVENT_BOOT_RESTART_BLOCK,
+  PS_HW6_POWER_BATTERY_EVENT_BOOT_CHARGE_RECOVERY,
   PS_HW6_POWER_BATTERY_EVENT_SHIP_REQUEST,
   PS_HW6_POWER_BATTERY_EVENT_SHIP_SKIPPED,
   PS_HW6_POWER_BATTERY_EVENT_SNAPSHOT_FAIL
@@ -177,6 +179,7 @@ typedef struct
   uint32_t battery_policy_warning_count;
   uint32_t battery_policy_critical_count;
   uint32_t battery_policy_boot_restart_block_count;
+  uint32_t battery_policy_boot_charge_recovery_count;
   uint32_t battery_policy_boot_restart_gate_pending;
   uint32_t battery_policy_boot_restart_gate_blocked;
   uint32_t battery_policy_boot_restart_gate_clear_count;

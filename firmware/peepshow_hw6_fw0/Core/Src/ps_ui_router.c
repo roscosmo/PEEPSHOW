@@ -97,8 +97,10 @@ static ps_status_t PS_UIRouter_CancelShutdown(void)
 {
   uint32_t return_page = ps_ui_router_state.shutdown_return_page;
 
-  if (ps_ui_router_state.shutdown_state ==
-      PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_BOOT)
+  if ((ps_ui_router_state.shutdown_state ==
+       PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_BOOT) ||
+      (ps_ui_router_state.shutdown_state ==
+       PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_CHARGE))
   {
     return PS_STATUS_INVALID_STATE;
   }
@@ -126,6 +128,15 @@ static ps_status_t PS_UIRouter_ShowLowBatteryBootBlock(void)
 {
   ps_status_t status = PS_UIRouter_ShowShutdown(
     PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_BOOT, 0UL);
+
+  ps_ui_router_state.shutdown_return_page = PS_UI_ROUTER_PAGE_BOOTSTRAP;
+  return status;
+}
+
+static ps_status_t PS_UIRouter_ShowLowBatteryChargeRecovery(void)
+{
+  ps_status_t status = PS_UIRouter_ShowShutdown(
+    PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_CHARGE, 0UL);
 
   ps_ui_router_state.shutdown_return_page = PS_UI_ROUTER_PAGE_BOOTSTRAP;
   return status;
@@ -367,8 +378,10 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
     case PS_UI_ROUTER_EVENT_RECOVER_OK:
       if ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_ERROR) ||
           ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_SHUTDOWN) &&
-           (ps_ui_router_state.shutdown_state ==
-            PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_BOOT)))
+           ((ps_ui_router_state.shutdown_state ==
+             PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_BOOT) ||
+            (ps_ui_router_state.shutdown_state ==
+             PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_CHARGE))))
       {
         ps_ui_router_state.previous_page = ps_ui_router_state.current_page;
         ps_ui_router_state.requested_page = PS_UI_ROUTER_PAGE_HOME;
@@ -428,6 +441,9 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
       break;
     case PS_UI_ROUTER_EVENT_LOW_BATTERY_BOOT_BLOCK:
       status = PS_UIRouter_ShowLowBatteryBootBlock();
+      break;
+    case PS_UI_ROUTER_EVENT_LOW_BATTERY_CHARGE_RECOVERY:
+      status = PS_UIRouter_ShowLowBatteryChargeRecovery();
       break;
     case PS_UI_ROUTER_EVENT_INPUT_BTN_A:
       ps_ui_router_state.last_button_event = event;

@@ -25,7 +25,7 @@ Validated:
 
 Still open:
 
-- VBUS-present boot recovery shell below restart-allow threshold
+- VBUS-present boot recovery shell below restart-allow threshold is validated separately in `EV-HW6-20260811-P1-BATT-031`
 - enabled boot software-shipment register write through ADP5360 `0x36`
 - final low-battery/shutdown UX, animations, and assets
 - real save/quiesce behavior before software shipment
