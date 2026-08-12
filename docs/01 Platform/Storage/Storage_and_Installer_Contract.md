@@ -312,7 +312,7 @@ If external flash is unavailable:
 6. USB data-host activity/enumeration is detected before MSC availability is offered; normal boot USB parking is explicitly not MSC availability
 7. USB MSC exports only an already-provisioned staging/export volume and never auto-formats it during export
 8. settings/saves/installed blobs are never host-writable
-9. host write/read/delete smoke succeeds on staging/export volume
+9. host write/read/delete smoke succeeds on staging/export volume; HW6 evidence `EV-HW6-20260812-P1-MSCSMOKE-041` validates create/read persistence across eject/reclaim/export and delete followed by clean reclaim on the freshly provisioned staging volume
 10. firmware reclaim/rescan detects changed staging contents
 11. package install preserves last known valid installed index on interruption
 12. runtime asset reads use [[Package_Asset_Loading_API_Contract]] over raw installed blob storage, not FAT/FileX
