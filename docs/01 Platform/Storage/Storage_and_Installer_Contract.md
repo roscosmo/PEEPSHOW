@@ -161,6 +161,7 @@ USB export rules:
 - `thStorage` owns FileX/LevelX, the MSC media bridge, and export/reclaim sequencing, but USB active clock selection is requested through `thPower`
 - export prep must not use detached USB-park checks that reject VBUS; detached parking and active MSC export are different states
 - reclaim disables the bridge export policy, stops/disconnects USB, closes FileX/LevelX, returns the clock policy to base, then firmware may rescan staging/export
+- normal boot may ask `thStorage` to run a USB boot-park cleanup command; this command only parks generated USB device hardware and refreshes clock readback, and must not mount FileX/LevelX, initialize package storage, expose MSC, or prove storage readiness
 
 ## USB Data-Host Detection And MSC Gate
 
@@ -211,6 +212,7 @@ PeepShow v1 uses mutually exclusive USB personalities.
 Rules:
 
 - VBUS attach alone must not enter or prompt for MSC installer/export behavior.
+- boot USB parking is not a USB personality and not data-host detection; it is firmware-owned cleanup of PCD/USB clock/VDDUSB/HSI48 state before normal runtime.
 - after USB data-host detection/enumeration and explicit installer/export entry, normal user transfer uses the MSC personality unless explicit dev-mode entry policy is active.
 - CDC developer mode must not expose MSC at the same time in v1.
 - CDC package upload writes through firmware-owned staging and `thStorage`, not a host-mounted FAT volume.
@@ -292,7 +294,7 @@ If external flash is unavailable:
 3. local mount reaches `STORAGE_LOCAL_READY`
 4. storage failure routes to `STORAGE_SAFE_MODE`
 5. VBUS-only charger/power attach does not prompt for or enter MSC mode
-6. USB data-host activity/enumeration is detected before MSC availability is offered
+6. USB data-host activity/enumeration is detected before MSC availability is offered; normal boot USB parking is explicitly not MSC availability
 7. USB MSC exports only staging/export volume
 8. settings/saves/installed blobs are never host-writable
 9. host write/read/delete smoke succeeds on staging/export volume

@@ -77,8 +77,9 @@ Rules:
 - active gameplay is disabled or policy-limited during installer/export mode.
 - Active MSC export requests the power-owned USB device clock capability; firmware must not use subsystem-local ad hoc clock overrides for USB MSC.
 - Reclaim must return ownership to firmware, close the staging/export filesystem path, and release the USB clock capability before normal runtime resumes.
+- Normal boot USB parking is not a personality, not MSC availability, and not CDC developer control. It is a storage-owned cleanup command that parks generated USB device hardware before normal runtime continues.
 
-This personality is governed by [[Storage_and_Installer_Contract]] and [[USB_MSC_Bring-up_and_Recovery_Runbook]]. FW0 target evidence `EV-HW6-20260812-P1-CLOCKUSB-037` validates the current manual debug export/reclaim path through `thStorage` and `thPower`; production UI entry/exit policy and reconnect soak remain separate validation work.
+This personality is governed by [[Storage_and_Installer_Contract]] and [[USB_MSC_Bring-up_and_Recovery_Runbook]]. FW0 target evidence `EV-HW6-20260812-P1-CLOCKUSB-037` validates the current manual debug export/reclaim path through `thStorage` and `thPower`; `EV-HW6-20260812-P1-CLOCKBOOT-038` separately validates normal-boot USB parking with no MSC exposure. Production UI entry/exit policy and reconnect soak remain separate validation work.
 
 ---
 

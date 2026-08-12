@@ -21,5 +21,10 @@
   "power_pmic_interrupt_enable2": 0,
   "power_critical_software_ship_enable": false,
   "power_boot_low_battery_ship_enable": false,
-  "power_start_software_ship_enable": false
+  "power_start_software_ship_enable": false,
+  "power_clock_reactive_base_hz": 24000000,
+  "power_clock_reactive_burst_hz": 48000000,
+  "power_clock_realtime_balanced_hz": 80000000,
+  "power_clock_io_high_hz": 160000000,
+  "power_clock_pll2_autogate_enable": false
 }

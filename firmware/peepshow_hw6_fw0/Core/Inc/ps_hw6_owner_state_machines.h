@@ -674,6 +674,7 @@ void PS_HW6_OwnerStateMachines_BeginWorkflow(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Stabilize(uint32_t owner_id);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ParkUsbForBoot(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSampleProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickLiveProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void);

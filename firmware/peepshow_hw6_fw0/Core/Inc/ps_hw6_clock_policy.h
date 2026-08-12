@@ -9,8 +9,9 @@
 extern "C" {
 #endif
 
-#define PS_HW6_CLOCK_POLICY_API_VERSION (1UL)
+#define PS_HW6_CLOCK_POLICY_API_VERSION (2UL)
 #define PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN (0xFFFFFFFFUL)
+#define PS_HW6_CLOCK_REQUESTER_COUNT (9U)
 
 typedef enum
 {
@@ -35,13 +36,31 @@ typedef enum
   (1UL << 4)
 #define PS_HW6_CLOCK_CAP_REACTIVE_TRANSACTION_ACTIVE \
   (1UL << 5)
+#define PS_HW6_CLOCK_CAP_LPBAM_DISPLAY_AUTONOMOUS \
+  (1UL << 6)
 #define PS_HW6_CLOCK_CAP_ALL \
   (PS_HW6_CLOCK_CAP_USB_DEVICE_ACTIVE | \
    PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE | \
    PS_HW6_CLOCK_CAP_SAI_AUDIO_ACTIVE | \
    PS_HW6_CLOCK_CAP_DISPLAY_TRANSFER_ACTIVE | \
    PS_HW6_CLOCK_CAP_REALTIME_DEADLINE_ACTIVE | \
-   PS_HW6_CLOCK_CAP_REACTIVE_TRANSACTION_ACTIVE)
+   PS_HW6_CLOCK_CAP_REACTIVE_TRANSACTION_ACTIVE | \
+   PS_HW6_CLOCK_CAP_LPBAM_DISPLAY_AUTONOMOUS)
+
+#define PS_HW6_CLOCK_DOMAIN_USB_DEVICE \
+  (1UL << 0)
+#define PS_HW6_CLOCK_DOMAIN_PLL2_OCTOSPI \
+  (1UL << 1)
+#define PS_HW6_CLOCK_DOMAIN_PLL2_SAI \
+  (1UL << 2)
+#define PS_HW6_CLOCK_DOMAIN_DISPLAY_TRANSFER \
+  (1UL << 3)
+#define PS_HW6_CLOCK_DOMAIN_REALTIME_DEADLINE \
+  (1UL << 4)
+#define PS_HW6_CLOCK_DOMAIN_REACTIVE_TRANSACTION \
+  (1UL << 5)
+#define PS_HW6_CLOCK_DOMAIN_LPBAM_DISPLAY_AUTONOMOUS \
+  (1UL << 6)
 
 typedef struct
 {
@@ -54,6 +73,21 @@ typedef struct
   uint32_t selected_profile;
   uint32_t current_profile;
   uint32_t active_capabilities;
+  uint32_t requester_capabilities[PS_HW6_CLOCK_REQUESTER_COUNT];
+  uint32_t requester_active_mask;
+  uint32_t aggregated_capabilities;
+  uint32_t required_domain_mask;
+  uint32_t managed_domain_mask;
+  uint32_t readback_domain_mask;
+  uint32_t stop2_blocker_capabilities;
+  uint32_t stop2_blocker_domain_mask;
+  uint32_t stop2_ready;
+  uint32_t lpbam_stop2_ready;
+  uint32_t pll2_autogate_enabled;
+  uint32_t pll2_autogate_skip_count;
+  uint32_t target_sysclk_hz;
+  uint32_t supported_profile_mask;
+  uint32_t scaffold_profile_mask;
   uint32_t last_stage;
   uint32_t last_status;
   uint32_t last_tick;
@@ -78,11 +112,16 @@ typedef struct
 extern volatile ps_hw6_clock_policy_probe_t g_ps_hw6_clock_policy_probe;
 
 void PS_HW6_ClockPolicy_Reset(void);
+void PS_HW6_ClockPolicy_RecordHardwareSnapshot(void);
 uint32_t PS_HW6_ClockPolicy_SelectProfile(uint32_t capabilities);
 uint32_t PS_HW6_ClockPolicy_ProfileIsActive(
   uint32_t profile,
   uint32_t required_capabilities);
 UINT PS_HW6_ClockPolicy_ApplyProfile(
+  uint32_t requested_profile,
+  uint32_t capabilities);
+UINT PS_HW6_ClockPolicy_ApplyRequesterProfile(
+  uint32_t requester_id,
   uint32_t requested_profile,
   uint32_t capabilities);
 UINT PS_HW6_ClockPolicy_RestoreBase(void);

@@ -62,7 +62,7 @@ printf "\n--- ThreadX topology and startup self-test ---\n"
 set $rtos = &g_ps_hw6_rtos_probe
 printf "magic/version/phase       = 0x%x / 0x%x / 0x%x\n", $rtos->magic, $rtos->version, $rtos->phase
 printf "init/runtime complete     = %u / %u\n", $rtos->init_complete, $rtos->runtime_complete
-printf "boot power/display hold  = %u / %u\n", $rtos->boot_power_done, $rtos->boot_display_bootstrap_sent
+printf "boot power/display bootstrap = %u / %u\n", $rtos->boot_power_done, $rtos->boot_display_bootstrap_sent
 printf "init status/error step/id = 0x%x / 0x%x / 0x%x\n", $rtos->init_status, $rtos->init_error_step, $rtos->init_error_index
 printf "tick Hz/owners/queues/egs = %u / %u / %u / %u\n", $rtos->ticks_per_second, $rtos->owner_count, $rtos->queue_count, $rtos->event_group_count
 printf "owner required/started    = 0x%x / 0x%x\n", $rtos->owner_required_mask, $rtos->owner_start_mask
@@ -153,7 +153,7 @@ printf "ack set status            = 0x%x\n", $owner->display_ack_set_status
 printf "expected visual           = early blank hold, then current UI page\n"
 printf "display UI page/cal/focus = %u / %u / %u\n", $owner->display_ui_page, $owner->display_ui_calibration_page, $owner->display_ui_focus_index
 printf "display shutdown/cd       = %u / %u\n", $owner->display_ui_shutdown_state, $owner->display_ui_shutdown_countdown_seconds
-printf "expected normal boot      = display hold flag set, then HOME render after power\n"
+printf "expected normal boot      = display bootstrap sent, then HOME render after power\n"
 
 printf "\n  audio owner: idle unless diagnostic workflow requested\n"
 printf "command/complete/success  = %u / %u / %u\n", $owner->audio_command_tick, $owner->audio_complete, $owner->audio_success
@@ -173,7 +173,7 @@ printf "start request              = %u\n", g_ps_hw6_owner_sm_start_request
 printf "magic/version/phase        = 0x%x / 0x%x / 0x%x\n", $sm->magic, $sm->version, $sm->phase
 printf "complete/success           = %u / %u\n", $sm->complete, $sm->success
 printf "required/completed         = 0x%x / 0x%x\n", $sm->required_owner_mask, $sm->completed_owner_mask
-printf "normal boot note         = power owner only is expected here for now\n"
+printf "normal boot note         = power owner completes; storage may show USB boot-park transport\n"
 printf "success/failure owners     = 0x%x / 0x%x\n", $sm->success_owner_mask, $sm->failure_owner_mask
 printf "diagnostic workflow ticks  = %u / %u / %u (0 means not requested)\n", $sm->workflow_start_tick, $sm->workflow_end_tick, $sm->workflow_end_tick - $sm->workflow_start_tick
 

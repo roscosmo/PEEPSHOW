@@ -27,7 +27,12 @@
     "power_pmic_interrupt_enable2",
     "power_critical_software_ship_enable",
     "power_boot_low_battery_ship_enable",
-    "power_start_software_ship_enable"
+    "power_start_software_ship_enable",
+    "power_clock_reactive_base_hz",
+    "power_clock_reactive_burst_hz",
+    "power_clock_realtime_balanced_hz",
+    "power_clock_io_high_hz",
+    "power_clock_pll2_autogate_enable"
   ],
   "properties": {
     "input_start_long_press_ms": {
@@ -295,6 +300,64 @@
       "class": "protected_policy",
       "path": "platform.knobs.power.start_software_ship_enable",
       "description": "When true, the START imminent lifecycle event asks thPower to write the PMIC software shipment-mode register. Default false keeps bring-up tests non-destructive."
+    },
+    "power_clock_reactive_base_hz": {
+      "type": "integer",
+      "minimum": 1000000,
+      "maximum": 160000000,
+      "default": 24000000,
+      "unit": "Hz",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.clock_reactive_base_hz",
+      "description": "Target SYSCLK/HCLK for the low active reactive profile used by menus, input, PMIC monitoring, and static display hold. FW0 currently validates 24 MHz restore after USB reclaim."
+    },
+    "power_clock_reactive_burst_hz": {
+      "type": "integer",
+      "minimum": 1000000,
+      "maximum": 160000000,
+      "default": 48000000,
+      "unit": "Hz",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.clock_reactive_burst_hz",
+      "description": "Candidate SYSCLK/HCLK for bounded reactive bursts such as UI/display/storage transactions. This is visible policy intent until measured and promoted."
+    },
+    "power_clock_realtime_balanced_hz": {
+      "type": "integer",
+      "minimum": 1000000,
+      "maximum": 160000000,
+      "default": 80000000,
+      "unit": "Hz",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.clock_realtime_balanced_hz",
+      "description": "Candidate SYSCLK/HCLK for realtime/gameplay deadlines. Actual use requires deadline and current evidence before promotion."
+    },
+    "power_clock_io_high_hz": {
+      "type": "integer",
+      "minimum": 1000000,
+      "maximum": 160000000,
+      "default": 160000000,
+      "unit": "Hz",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.clock_io_high_hz",
+      "description": "Target SYSCLK/HCLK for high-throughput I/O windows such as USB MSC export. FW0 currently implements and validates 160 MHz only."
+    },
+    "power_clock_pll2_autogate_enable": {
+      "type": "boolean",
+      "default": false,
+      "unit": "bool",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.clock_pll2_autogate_enable",
+      "description": "When true, thPower may later gate PLL2 when neither SAI nor OCTOSPI owns it. Default false keeps FW0 conservative while probes prove request/release behavior."
     }
   }
 }

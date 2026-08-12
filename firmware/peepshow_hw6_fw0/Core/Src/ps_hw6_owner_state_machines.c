@@ -2606,8 +2606,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void)
 }
 static HAL_StatusTypeDef PS_HW6_SM_ParkUsb(void)
 {
-  HAL_StatusTypeDef status = HAL_OK;
-  uint32_t pwr_clock_was_disabled;
+  HAL_StatusTypeDef status;
+  UINT usb_status;
 
   g_ps_hw6_owner_sm_probe.usb_vbus_present =
     (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9) == GPIO_PIN_SET) ? 1UL : 0UL;
@@ -2618,30 +2618,10 @@ static HAL_StatusTypeDef PS_HW6_SM_ParkUsb(void)
   g_ps_hw6_owner_sm_probe.usb_vddusb_enabled_before =
     (READ_BIT(PWR->SVMCR, PWR_SVMCR_USV) != 0U) ? 1UL : 0UL;
 
-  if (g_ps_hw6_owner_sm_probe.usb_vbus_present != 0UL)
-  {
-    status = HAL_BUSY;
-  }
-  else
-  {
-    g_ps_hw6_owner_sm_probe.usb_deinit_attempted = 1UL;
-    status = HAL_PCD_DeInit(&hpcd_USB_OTG_FS);
-    g_ps_hw6_owner_sm_probe.usb_deinit_status = (uint32_t)status;
-    if (status == HAL_OK)
-    {
-      pwr_clock_was_disabled =
-        (__HAL_RCC_PWR_IS_CLK_DISABLED() != 0U) ? 1UL : 0UL;
-      if (pwr_clock_was_disabled != 0UL)
-      {
-        __HAL_RCC_PWR_CLK_ENABLE();
-      }
-      HAL_PWREx_DisableVddUSB();
-      if (pwr_clock_was_disabled != 0UL)
-      {
-        __HAL_RCC_PWR_CLK_DISABLE();
-      }
-    }
-  }
+  g_ps_hw6_owner_sm_probe.usb_deinit_attempted = 1UL;
+  usb_status = PS_HW6_UsbExport_StopDevice();
+  g_ps_hw6_owner_sm_probe.usb_deinit_status = (uint32_t)usb_status;
+  status = (usb_status == TX_SUCCESS) ? HAL_OK : HAL_ERROR;
 
   g_ps_hw6_owner_sm_probe.usb_pcd_state_after =
     (uint32_t)HAL_PCD_GetState(&hpcd_USB_OTG_FS);
@@ -2654,7 +2634,13 @@ static HAL_StatusTypeDef PS_HW6_SM_ParkUsb(void)
      (g_ps_hw6_owner_sm_probe.usb_clock_enabled_after == 0UL) &&
      (g_ps_hw6_owner_sm_probe.usb_vddusb_enabled_after == 0UL)) ? 1UL : 0UL;
 
+  PS_HW6_ClockPolicy_RecordHardwareSnapshot();
   return (g_ps_hw6_owner_sm_probe.usb_parked != 0UL) ? HAL_OK : status;
+}
+
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ParkUsbForBoot(void)
+{
+  return PS_HW6_SM_ParkUsb();
 }
 
 static HAL_StatusTypeDef PS_HW6_SM_StabilizeStorage(void)

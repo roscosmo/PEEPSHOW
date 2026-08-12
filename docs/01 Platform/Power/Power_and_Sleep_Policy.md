@@ -162,10 +162,13 @@ Initial precedence for HW6:
 5. Runtime/gameplay requests `REALTIME_DEADLINE_ACTIVE`: `thPower` selects the lowest measured realtime operating point with frame/audio/sensor/display margin.
 6. Menu/input/static-display work requests `REACTIVE_TRANSACTION_ACTIVE`: `thPower` selects the lowest measured reactive point that meets response limits and returns to the selected waiting backend efficiently.
 
-The first firmware step is now split between visible resolver/probe scaffolding and one validated active path. FW0 reports requested capabilities, selected internal profile, blockers, and readback status; the USB MSC/export path additionally has a target-validated `CLK_IO_HIGH` apply and base restore path.
+The first FW0 implementation is split between resolver scaffolding, one validated active USB path, and one validated normal-boot cleanup path. FW0 reports requested capabilities, selected internal profile, blockers, requester slots, domain readback, and current profile status. Owners request capabilities; `thPower` resolves the profile, and storage remains the owner of USB device hardware and MSC media sequencing.
 
-HW6 evidence `EV-HW6-20260812-P1-CLOCKUSB-037` validates only this USB handoff: active MSC export runs at `160 MHz` with USB `48 MHz` available, and reclaim returns to the base `24 MHz` profile with USB clock/VDDUSB/HSI48 disabled. Other profiles must still be enabled one at a time after clock readbacks, TraceX timing, and current evidence pass.
+HW6 evidence `EV-HW6-20260812-P1-CLOCKUSB-037` validates the active USB handoff: MSC export requests `USB_DEVICE_ACTIVE`, `thPower` applies the `CLK_IO_HIGH` path, the host mounts the staging FAT volume, and reclaim closes FileX/LevelX, releases the storage requester slot, returns to the base `24 MHz` profile, and disables USB clock/VDDUSB/HSI48.
 
+HW6 evidence `EV-HW6-20260812-P1-CLOCKBOOT-038` validates the normal-boot cleanup path: after CubeMX/generated boot leaves USB PCD/VDDUSB state present, `thPower` sends a short storage-owned USB boot-park command. `thStorage` only parks USB device hardware, refreshes clock readback, and ACKs; it does not run full storage/flash initialization, FileX/LevelX, or MSC export. The validated boot result has HOME rendered, USB clock/VDDUSB/HSI48 disabled, and no long storage OSPI action.
+
+Other clock profiles remain scaffolded. `CLK_REACTIVE_BURST`, `CLK_REALTIME_BALANCED`, PLL2 autogating, current, transition energy, and hysteresis must still be enabled one at a time after clock readbacks, TraceX timing, and current evidence pass. FW0 currently leaves PLL2 readback active because autogate is intentionally disabled until SAI/OCTOSPI owner interactions and LPBAM cases are validated.
 ---
 
 ## Reactive Transaction Policy

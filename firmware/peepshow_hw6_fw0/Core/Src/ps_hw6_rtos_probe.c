@@ -44,11 +44,14 @@
 #define PS_HW6_RTOS_COMMAND_CLOCK_PROFILE (7UL)
 #define PS_HW6_RTOS_COMMAND_USB_EXPORT (8UL)
 #define PS_HW6_RTOS_COMMAND_USB_RECLAIM (9UL)
+#define PS_HW6_RTOS_COMMAND_USB_BOOT_PARK (10UL)
 #define PS_HW6_RTOS_EVENT_DEBUG_INDEX     (3U)
 #define PS_HW6_RTOS_ACK_OWNER(owner_id)   (1UL << (owner_id))
 #define PS_HW6_RTOS_CLOCK_ACK_FLAG        (1UL << 31)
 #define PS_HW6_RTOS_CLOCK_PROFILE_MASK    (0xFFUL)
 #define PS_HW6_RTOS_CLOCK_CAP_SHIFT       (8U)
+#define PS_HW6_RTOS_CLOCK_REQUESTER_SHIFT (16U)
+#define PS_HW6_RTOS_CLOCK_REQUESTER_MASK  (0xFFUL)
 #define PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS  (1000UL)
 #define PS_HW6_RTOS_STORAGE_STABILIZE_ACK_WAIT_TICKS (30000UL)
 #define PS_HW6_RTOS_STATUS_NOT_RUN        (0xFFFFFFFFUL)
@@ -235,13 +238,16 @@ static uint32_t PS_HW6_RTOS_MessageIsValid(uint32_t owner_id,
           (message[3] == (~((ULONG)owner_id)))) ? 1UL : 0UL;
 }
 
-static uint32_t PS_HW6_RTOS_ClockProfilePayload(uint32_t profile,
+static uint32_t PS_HW6_RTOS_ClockProfilePayload(uint32_t requester_id,
+                                                uint32_t profile,
                                                 uint32_t capabilities)
 {
   return (uint32_t)
     ((profile & PS_HW6_RTOS_CLOCK_PROFILE_MASK) |
      ((capabilities & PS_HW6_CLOCK_CAP_ALL) <<
-      PS_HW6_RTOS_CLOCK_CAP_SHIFT));
+      PS_HW6_RTOS_CLOCK_CAP_SHIFT) |
+     ((requester_id & PS_HW6_RTOS_CLOCK_REQUESTER_MASK) <<
+      PS_HW6_RTOS_CLOCK_REQUESTER_SHIFT));
 }
 
 static uint32_t PS_HW6_RTOS_ClockPayloadProfile(uint32_t payload)
@@ -254,25 +260,36 @@ static uint32_t PS_HW6_RTOS_ClockPayloadCapabilities(uint32_t payload)
   return (payload >> PS_HW6_RTOS_CLOCK_CAP_SHIFT) & PS_HW6_CLOCK_CAP_ALL;
 }
 
+static uint32_t PS_HW6_RTOS_ClockPayloadRequester(uint32_t payload)
+{
+  return (payload >> PS_HW6_RTOS_CLOCK_REQUESTER_SHIFT) &
+         PS_HW6_RTOS_CLOCK_REQUESTER_MASK;
+}
+
 static uint32_t PS_HW6_RTOS_ClockProfileRequestIsValid(uint32_t payload)
 {
   uint32_t profile = PS_HW6_RTOS_ClockPayloadProfile(payload);
   uint32_t capabilities = PS_HW6_RTOS_ClockPayloadCapabilities(payload);
+  uint32_t requester_id = PS_HW6_RTOS_ClockPayloadRequester(payload);
 
   if ((payload & ~(PS_HW6_RTOS_CLOCK_PROFILE_MASK |
                    (PS_HW6_CLOCK_CAP_ALL <<
-                    PS_HW6_RTOS_CLOCK_CAP_SHIFT))) != 0UL)
+                    PS_HW6_RTOS_CLOCK_CAP_SHIFT) |
+                   (PS_HW6_RTOS_CLOCK_REQUESTER_MASK <<
+                    PS_HW6_RTOS_CLOCK_REQUESTER_SHIFT))) != 0UL)
   {
     return 0UL;
   }
 
-  if ((capabilities & ~PS_HW6_CLOCK_CAP_ALL) != 0UL)
+  if (((capabilities & ~PS_HW6_CLOCK_CAP_ALL) != 0UL) ||
+      (requester_id >= PS_HW6_CLOCK_REQUESTER_COUNT))
   {
     return 0UL;
   }
 
   return (profile <= (uint32_t)PS_HW6_CLOCK_PROFILE_STOP_PREP) ? 1UL : 0UL;
 }
+
 static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
                                            const ULONG *message)
 {
@@ -299,7 +316,8 @@ static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
   }
   if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
       ((message[2] == PS_HW6_RTOS_COMMAND_USB_EXPORT) ||
-       (message[2] == PS_HW6_RTOS_COMMAND_USB_RECLAIM)) &&
+       (message[2] == PS_HW6_RTOS_COMMAND_USB_RECLAIM) ||
+       (message[2] == PS_HW6_RTOS_COMMAND_USB_BOOT_PARK)) &&
       (message[3] == PS_HW6_RTOS_COMMAND_TOKEN))
   {
     return 1UL;
@@ -629,12 +647,14 @@ static void PS_HW6_RTOS_PrimeDebugCommandAnchors(void)
 }
 
 
-static UINT PS_HW6_RTOS_SendClockProfileCommand(uint32_t profile,
-                                                 uint32_t capabilities)
+static UINT PS_HW6_RTOS_SendClockProfileCommand(uint32_t requester_id,
+                                                uint32_t profile,
+                                                uint32_t capabilities)
 {
   ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
 
-  if ((profile > (uint32_t)PS_HW6_CLOCK_PROFILE_STOP_PREP) ||
+  if ((requester_id >= PS_HW6_CLOCK_REQUESTER_COUNT) ||
+      (profile > (uint32_t)PS_HW6_CLOCK_PROFILE_STOP_PREP) ||
       ((capabilities & ~PS_HW6_CLOCK_CAP_ALL) != 0UL))
   {
     return TX_QUEUE_ERROR;
@@ -644,15 +664,17 @@ static UINT PS_HW6_RTOS_SendClockProfileCommand(uint32_t profile,
   message[1] = PS_HW6_RTOS_OWNER_POWER;
   message[2] = PS_HW6_RTOS_COMMAND_CLOCK_PROFILE;
   message[3] = PS_HW6_RTOS_COMMAND_TOKEN ^
-               (ULONG)PS_HW6_RTOS_ClockProfilePayload(profile,
+               (ULONG)PS_HW6_RTOS_ClockProfilePayload(requester_id,
+                                                       profile,
                                                        capabilities);
   return tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_POWER],
                        message,
                        TX_NO_WAIT);
 }
 
-static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t profile,
-                                                  uint32_t capabilities)
+static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t requester_id,
+                                                 uint32_t profile,
+                                                 uint32_t capabilities)
 {
   ULONG actual_flags = 0UL;
   UINT send_status;
@@ -664,7 +686,9 @@ static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t profile,
                            &actual_flags,
                            TX_NO_WAIT);
 
-  send_status = PS_HW6_RTOS_SendClockProfileCommand(profile, capabilities);
+  send_status = PS_HW6_RTOS_SendClockProfileCommand(requester_id,
+                                                    profile,
+                                                    capabilities);
   wait_status = send_status;
   if (send_status == TX_SUCCESS)
   {
@@ -685,6 +709,7 @@ static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t profile,
 
   return wait_status;
 }
+
 static UINT PS_HW6_RTOS_SendDisplayUiRenderCommand(
   uint32_t page,
   uint32_t calibration_page,
@@ -803,6 +828,43 @@ static ULONG PS_HW6_RTOS_StabilizeAckWaitTicks(uint32_t owner_id)
          PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS;
 }
 
+
+static UINT PS_HW6_RTOS_BootParkStorageUsb(void)
+{
+  const uint32_t owner_id = PS_HW6_RTOS_OWNER_STORAGE;
+  const ULONG expected_ack = PS_HW6_RTOS_ACK_OWNER(owner_id);
+  ULONG actual_flags = 0UL;
+  UINT send_status;
+  UINT wait_status;
+
+  (void)tx_event_flags_get(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+                           expected_ack,
+                           TX_AND_CLEAR,
+                           &actual_flags,
+                           TX_NO_WAIT);
+  actual_flags = 0UL;
+
+  send_status = PS_HW6_RTOS_SendCommand(owner_id,
+                                        PS_HW6_RTOS_COMMAND_USB_BOOT_PARK);
+  wait_status = send_status;
+  if (send_status == TX_SUCCESS)
+  {
+    wait_status = tx_event_flags_get(
+      &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+      expected_ack,
+      TX_AND_CLEAR,
+      &actual_flags,
+      PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
+  }
+
+  PS_HW6_OwnerStateMachines_RecordCommand(
+    owner_id,
+    send_status,
+    wait_status,
+    (uint32_t)actual_flags);
+
+  return wait_status;
+}
 
 static HAL_StatusTypeDef PS_HW6_RTOS_RunPowerQuiesceBarrier(uint32_t reason)
 {
@@ -937,7 +999,7 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2ActiveOwnerPrep(void)
       wait_status = tx_event_flags_get(
         &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
         expected_ack, TX_AND_CLEAR, &actual_flags,
-        PS_HW6_RTOS_StabilizeAckWaitTicks(owner_id));
+        PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
     }
     if ((send_status != TX_SUCCESS) ||
         (wait_status != TX_SUCCESS) ||
@@ -1141,7 +1203,8 @@ static void PS_HW6_RTOS_RunStorageUsbExportRequest(void)
 
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_SET);
   clock_status = PS_HW6_RTOS_RequestPowerClockProfile(
-    (uint32_t)PS_HW6_CLOCK_PROFILE_IO_HIGH,
+    PS_HW6_RTOS_OWNER_STORAGE,
+    (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
     PS_HW6_CLOCK_CAP_USB_DEVICE_ACTIVE);
   g_ps_hw6_owner_sm_probe.usb_export_policy_status =
     (uint32_t)clock_status;
@@ -1152,7 +1215,8 @@ static void PS_HW6_RTOS_RunStorageUsbExportRequest(void)
   if (export_status != HAL_OK)
   {
     (void)PS_HW6_RTOS_RequestPowerClockProfile(
-      (uint32_t)PS_HW6_CLOCK_PROFILE_REACTIVE_BASE,
+      PS_HW6_RTOS_OWNER_STORAGE,
+      (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
       0UL);
   }
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_RESET);
@@ -1163,7 +1227,8 @@ static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_SET);
   (void)PS_HW6_OwnerStateMachines_ReclaimUsbExport();
   (void)PS_HW6_RTOS_RequestPowerClockProfile(
-    (uint32_t)PS_HW6_CLOCK_PROFILE_REACTIVE_BASE,
+    PS_HW6_RTOS_OWNER_STORAGE,
+    (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
     0UL);
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_RESET);
 }
@@ -1183,7 +1248,8 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
   else if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
            (command == PS_HW6_RTOS_COMMAND_CLOCK_PROFILE))
   {
-    status = PS_HW6_ClockPolicy_ApplyProfile(
+    status = PS_HW6_ClockPolicy_ApplyRequesterProfile(
+      PS_HW6_RTOS_ClockPayloadRequester(cycle_index),
       PS_HW6_RTOS_ClockPayloadProfile(cycle_index),
       PS_HW6_RTOS_ClockPayloadCapabilities(cycle_index));
     (void)status;
@@ -1201,6 +1267,15 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
            (command == PS_HW6_RTOS_COMMAND_USB_RECLAIM))
   {
     PS_HW6_RTOS_RunStorageUsbReclaimRequest();
+  }
+  else if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
+           (command == PS_HW6_RTOS_COMMAND_USB_BOOT_PARK))
+  {
+    (void)PS_HW6_OwnerStateMachines_ParkUsbForBoot();
+    (void)tx_event_flags_set(
+      &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+      PS_HW6_RTOS_ACK_OWNER(owner_id),
+      TX_OR);
   }
   else if ((owner_id > PS_HW6_RTOS_OWNER_POWER) &&
            (owner_id <= PS_HW6_RTOS_OWNER_COMM) &&
@@ -1404,6 +1479,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (ps_display_bootstrap_sent != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
+      (void)PS_HW6_RTOS_BootParkStorageUsb();
       (void)PS_HW6_OwnerStateMachines_Stabilize(
         PS_HW6_RTOS_OWNER_POWER);
       ps_power_boot_done = 1UL;

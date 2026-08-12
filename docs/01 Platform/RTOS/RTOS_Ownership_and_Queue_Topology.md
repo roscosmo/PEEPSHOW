@@ -121,13 +121,14 @@ quiesce/resume barrier.
   before normal UI routing
 - `thPower` performs the normal boot power stabilization path after the display
   boot hold has been requested
+- before completing normal power boot, `thPower` may send a short storage-owned
+  USB boot-park command; this parks generated USB PCD/clock/VDDUSB/HSI48 state
+  without running full storage/flash initialization or MSC export
 - the power stabilization path enables ADP5360 `EN_MR_SD` through the PMIC
   driver and then takes the read-only ADP5360 snapshot
 - `thUI` dispatches HOME only after the power boot flag is complete
 
-The measured RTOS probe v3 values are `init/runtime complete = 1 / 1`, `boot
-power/display = 1 / 1`, owner started mask `0x1ff`, queue self-test mask
-`0x1ff`, event self-test mask `0xf`, and init status `0x0`.
+The measured RTOS probe values for the original v3 boot slice were `init/runtime complete = 1 / 1`, `boot power/display = 1 / 1`, owner started mask `0x1ff`, queue self-test mask `0x1ff`, event self-test mask `0xf`, and init status `0x0`. FW0 evidence `EV-HW6-20260812-P1-CLOCKBOOT-038` adds the storage-owned USB boot-park command: storage queue send/wait succeeded (`0/0`), the ACK flag was set, HOME rendered, USB clock/VDDUSB/HSI48 were off, and no long storage action ran during normal boot.
 
 This is the intended normal boot slice for FW0. It is deliberately smaller than
 the retained-peripheral diagnostic lifecycle: display/audio/sensor/storage/comm

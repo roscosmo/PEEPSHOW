@@ -53,11 +53,11 @@ The names below are internal policy labels. Any frequency shown is a candidate o
 | Internal profile | Intended use | SYSCLK / HCLK class | Required kernel clocks | Status |
 |---|---|---|---|---|
 | `CLK_BOOT_RECOVERY` | boot, fault handling, debugger-safe recovery | current generated MSI/MSIS baseline: IOC records `24 MHz`; any `25 MHz` MSIS retune must be generated and measured before promotion | I2C3/MSIK for PMIC/input bring-up; LPUART/HSI only if communication owner is admitted | documented policy placeholder |
-| `CLK_REACTIVE_BASE` | menus, input, PMIC monitor, static display hold, non-USB idle-active work | low MSI/MSIS class, expected `24/25 MHz` candidate range | display/I2C kernels only while their owners are active | unmeasured candidate |
+| `CLK_REACTIVE_BASE` | menus, input, PMIC monitor, static display hold, non-USB idle-active work | low MSI/MSIS class; FW0 boot/runtime base currently reads `24 MHz` | display/I2C kernels only while their owners are active | boot/HOME baseline observed; response/current characterization still pending |
 | `CLK_REACTIVE_BURST` | bounded UI or shell transaction where racing back to STOP may save energy | mid PLL SYSCLK class, expected `40/48 MHz` candidate range | no extra kernel clocks unless an owner requests them | unmeasured candidate |
 | `CLK_REALTIME_BALANCED` | runtime/gameplay with frame, input, sensor, display, and optional audio deadlines | measured realtime PLL class, expected `80 MHz` candidate before any higher point is granted | SAI/OCTOSPI only when their owning threads request those peripherals | unmeasured candidate |
 | `CLK_IO_HIGH` | USB MSC/export, installer windows, and high-throughput storage windows | high PLL SYSCLK class; FW0 currently uses `160 MHz` for active MSC export | USB `48 MHz`; OCTOSPI kernel only if storage is active | target-validated for manual MSC export/reclaim; current and long-soak evidence still pending |
-| `CLK_STOP_PREP` | transition toward STOP2 or software shipment | no active high-speed requirement after owner quiesce | USB clock off, PLL2 off unless a validated autonomous scenario still owns it | scaffold pending |
+| `CLK_STOP_PREP` | transition toward STOP2 or software shipment | no active high-speed requirement after owner quiesce | USB clock off, PLL2 off unless a validated autonomous scenario still owns it | STOP2 scaffold exists; USB-off paths validated, PLL2-off/autogate still pending |
 
 Capability requests are also internal. They describe what must be true, not how to program RCC:
 
@@ -74,7 +74,9 @@ PLL2 is not a global always-on clock. PLL2P is justified by active SAI audio, an
 
 USB clock is justified by an active USB-device capability only. Charger/VBUS presence by itself does not imply USB MSC/export ownership and must not automatically force the USB clock or high SYSCLK profile.
 
-FW0 evidence `EV-HW6-20260812-P1-CLOCKUSB-037` validates the first power-owned USB clock-policy path on `HW6-UNIT-001`: `thPower` applies the `CLK_IO_HIGH` / `USB_DEVICE_ACTIVE` path for MSC export, the host mounts the staging FAT volume, then reclaim restores the base `24 MHz` profile and disables USB clock/VDDUSB/HSI48. This validates the USB export/reclaim clock handoff only; it does not promote reactive, realtime, PLL2-off, current, transition-energy, or hysteresis policy.
+Normal boot may still need to undo CubeMX-generated USB hardware residue. FW0 validates this as a storage-owned USB boot-park command, not as MSC entry and not as full storage initialization: `thPower` asks `thStorage` to park USB device hardware, `thStorage` disables PCD/USB clock/VDDUSB/HSI48 and refreshes clock readback, then power continues to HOME. Evidence `EV-HW6-20260812-P1-CLOCKBOOT-038` showed `usb clk/vdd/hsi48 = 0/0/0`, `readback = 0x6`, HOME rendered, and no long storage/OSPI action.
+
+FW0 evidence `EV-HW6-20260812-P1-CLOCKUSB-037` validates the first power-owned USB clock-policy path on `HW6-UNIT-001`: `thPower` applies the `CLK_IO_HIGH` / `USB_DEVICE_ACTIVE` path for MSC export, the host mounts the staging FAT volume, then reclaim restores the base `24 MHz` profile and disables USB clock/VDDUSB/HSI48. Evidence `EV-HW6-20260812-P1-CLOCKBOOT-038` separately validates normal-boot USB parking with no MSC export and no storage/flash bring-up. These validate USB cleanup/handoff only; they do not promote reactive, realtime, PLL2-off, current, transition-energy, or hysteresis policy.
 
 ## Transition Rules
 
