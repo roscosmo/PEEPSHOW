@@ -56,6 +56,15 @@
 #define PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS  (1000UL)
 #define PS_HW6_RTOS_STORAGE_STABILIZE_ACK_WAIT_TICKS (30000UL)
 #define PS_HW6_RTOS_STATUS_NOT_RUN        (0xFFFFFFFFUL)
+#define PS_HW6_RTOS_STORAGE_CLOCK_REASON_NONE       (0UL)
+#define PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_EXPORT (1UL)
+#define PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_RECLAIM (2UL)
+#define PS_HW6_RTOS_STORAGE_CLOCK_REASON_FLASH_INIT (3UL)
+#define PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE    (4UL)
+#define PS_HW6_RTOS_STORAGE_CLOCK_MSC_CAPABILITIES \
+  (PS_HW6_CLOCK_CAP_USB_DEVICE_ACTIVE | PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE)
+#define PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES \
+  (PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE)
 
 #define PS_HW6_RTOS_PHASE_INIT            (0x6600UL)
 #define PS_HW6_RTOS_PHASE_ALLOCATED       (0x6610UL)
@@ -203,6 +212,16 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.init_status = TX_SUCCESS;
   g_ps_hw6_rtos_probe.init_error_step = PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.init_error_index = PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.storage_clock_last_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.storage_clock_export_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.storage_clock_reclaim_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.storage_clock_flash_init_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.storage_clock_release_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.ui_action_send_status = PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.ticks_per_second = TX_TIMER_TICKS_PER_SECOND;
   g_ps_hw6_rtos_probe.owner_count = PS_HW6_RTOS_OWNER_COUNT;
@@ -730,6 +749,54 @@ static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t requester_id,
   }
 
   return wait_status;
+}
+
+static UINT PS_HW6_RTOS_RequestStorageClockCapabilities(
+  uint32_t reason,
+  uint32_t capabilities)
+{
+  UINT status;
+
+  status = PS_HW6_RTOS_RequestPowerClockProfile(
+    PS_HW6_RTOS_OWNER_STORAGE,
+    (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
+    capabilities);
+
+  g_ps_hw6_rtos_probe.storage_clock_last_reason = reason;
+  g_ps_hw6_rtos_probe.storage_clock_last_capabilities = capabilities;
+  g_ps_hw6_rtos_probe.storage_clock_last_status = (uint32_t)status;
+
+  if (capabilities == 0UL)
+  {
+    g_ps_hw6_rtos_probe.storage_clock_release_count++;
+    g_ps_hw6_rtos_probe.storage_clock_release_status = (uint32_t)status;
+  }
+  else
+  {
+    g_ps_hw6_rtos_probe.storage_clock_request_count++;
+    if (reason == PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_EXPORT)
+    {
+      g_ps_hw6_rtos_probe.storage_clock_export_status = (uint32_t)status;
+    }
+    else if (reason == PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_RECLAIM)
+    {
+      g_ps_hw6_rtos_probe.storage_clock_reclaim_status = (uint32_t)status;
+    }
+    else if (reason == PS_HW6_RTOS_STORAGE_CLOCK_REASON_FLASH_INIT)
+    {
+      g_ps_hw6_rtos_probe.storage_clock_flash_init_status = (uint32_t)status;
+    }
+  }
+
+  return status;
+}
+
+static uint32_t PS_HW6_RTOS_StorageClockCapabilitiesActive(
+  uint32_t capabilities)
+{
+  return ((g_ps_hw6_clock_policy_probe.requester_capabilities[
+            PS_HW6_RTOS_OWNER_STORAGE] & capabilities) == capabilities) ?
+         1UL : 0UL;
 }
 
 static UINT PS_HW6_RTOS_SendDisplayUiRenderCommand(
@@ -1273,11 +1340,9 @@ static void PS_HW6_RTOS_RunStorageUsbExportRequest(void)
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_SET);
   PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
     PS_UI_ROUTER_SHUTDOWN_MSC_EXPORT);
-  clock_status = PS_HW6_RTOS_RequestPowerClockProfile(
-    PS_HW6_RTOS_OWNER_STORAGE,
-    (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
-    PS_HW6_CLOCK_CAP_USB_DEVICE_ACTIVE |
-    PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE);
+  clock_status = PS_HW6_RTOS_RequestStorageClockCapabilities(
+    PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_EXPORT,
+    PS_HW6_RTOS_STORAGE_CLOCK_MSC_CAPABILITIES);
   g_ps_hw6_owner_sm_probe.usb_export_policy_status =
     (uint32_t)clock_status;
   if (clock_status == TX_SUCCESS)
@@ -1297,9 +1362,8 @@ static void PS_HW6_RTOS_RunStorageUsbExportRequest(void)
       PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
         PS_UI_ROUTER_SHUTDOWN_MSC_ERROR);
     }
-    (void)PS_HW6_RTOS_RequestPowerClockProfile(
-      PS_HW6_RTOS_OWNER_STORAGE,
-      (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
+    (void)PS_HW6_RTOS_RequestStorageClockCapabilities(
+      PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE,
       0UL);
   }
   else
@@ -1312,15 +1376,23 @@ static void PS_HW6_RTOS_RunStorageUsbExportRequest(void)
 
 static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
 {
-  HAL_StatusTypeDef reclaim_status;
+  UINT clock_status;
+  HAL_StatusTypeDef reclaim_status = HAL_ERROR;
 
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_SET);
   PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
     PS_UI_ROUTER_SHUTDOWN_MSC_RECLAIM);
-  reclaim_status = PS_HW6_OwnerStateMachines_ReclaimUsbExport();
-  (void)PS_HW6_RTOS_RequestPowerClockProfile(
-    PS_HW6_RTOS_OWNER_STORAGE,
-    (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
+  clock_status = PS_HW6_RTOS_RequestStorageClockCapabilities(
+    PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_RECLAIM,
+    PS_HW6_RTOS_STORAGE_CLOCK_MSC_CAPABILITIES);
+  if ((clock_status == TX_SUCCESS) ||
+      (PS_HW6_RTOS_StorageClockCapabilitiesActive(
+         PS_HW6_RTOS_STORAGE_CLOCK_MSC_CAPABILITIES) != 0UL))
+  {
+    reclaim_status = PS_HW6_OwnerStateMachines_ReclaimUsbExport();
+  }
+  (void)PS_HW6_RTOS_RequestStorageClockCapabilities(
+    PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE,
     0UL);
   if (reclaim_status == HAL_OK)
   {
@@ -1343,17 +1415,15 @@ static void PS_HW6_RTOS_RunStorageFlashInitRequest(void)
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_SET);
   PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
     PS_UI_ROUTER_SHUTDOWN_FLASH_INIT);
-  clock_status = PS_HW6_RTOS_RequestPowerClockProfile(
-    PS_HW6_RTOS_OWNER_STORAGE,
-    (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
-    PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE);
+  clock_status = PS_HW6_RTOS_RequestStorageClockCapabilities(
+    PS_HW6_RTOS_STORAGE_CLOCK_REASON_FLASH_INIT,
+    PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES);
   if (clock_status == TX_SUCCESS)
   {
     flash_init_status = PS_HW6_OwnerStateMachines_InitializeFlash();
   }
-  (void)PS_HW6_RTOS_RequestPowerClockProfile(
-    PS_HW6_RTOS_OWNER_STORAGE,
-    (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
+  (void)PS_HW6_RTOS_RequestStorageClockCapabilities(
+    PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE,
     0UL);
   display_cue = (flash_init_status == HAL_OK) ?
     (uint32_t)PS_UI_ROUTER_SHUTDOWN_FLASH_DONE :
@@ -1361,7 +1431,6 @@ static void PS_HW6_RTOS_RunStorageFlashInitRequest(void)
   PS_HW6_RTOS_SendStorageLifecycleDisplayCue(display_cue);
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_RESET);
 }
-
 
 static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
                                            ULONG command,

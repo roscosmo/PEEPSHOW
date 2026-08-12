@@ -158,7 +158,8 @@ USB export rules:
 - display may show a static "flashing" or installer screen and then remain mostly inactive
 - runtime rendering/audio/gameplay are disabled or policy-limited during export
 - MSC export may run while VBUS is present; VBUS is expected during active host export but is not sufficient to enter export by itself
-- `thStorage` owns FileX/LevelX, the MSC media bridge, and export/reclaim sequencing, but USB active clock selection is requested through `thPower`
+- `thStorage` owns FileX/LevelX, the MSC media bridge, and export/reclaim sequencing, but USB active clock selection is requested through `thPower`; FW0 routes storage service requests through the storage clock requester slot so MSC export/reclaim request `USB_DEVICE_ACTIVE | OCTOSPI_ACTIVE`, explicit flash/staging provisioning requests `OCTOSPI_ACTIVE`, and cleanup releases the storage requester after the storage-owned operation completes
+- HW6 evidence `EV-HW6-20260812-P1-CLOCKSTORAGE-039` validates the MSC export/reclaim portion of this requester wrapper: active MSC held the storage requester at `ST=0x3`, selected `CLK_IO_HIGH`, and blocked STOP2; reclaim released storage to `ST=0x0`, returned to `REACTIVE_BASE`, cleared required/managed/readback clock domains, and parked USB/VDDUSB/HSI48 plus PLL2. Explicit flash/staging provisioning uses the same wrapper for `OCTOSPI_ACTIVE` but remains separately validated when provisioning is next run.
 - export prep must not use detached USB-park checks that reject VBUS; detached parking and active MSC export are different states
 - reclaim disables the bridge export policy, stops/disconnects USB, closes FileX/LevelX, returns the clock policy to base, then records whether staging/export needs firmware rescan
 - normal MSC export must only open an already-provisioned staging/export volume; it must not erase, format, or auto-repair flash as a side effect of host export

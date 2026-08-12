@@ -12,6 +12,8 @@ printf "USB availability pmic/mcu/agree bridge/cmd = %lu / %lu / %lu / %lu / %lu
 printf "availability states: UNKNOWN=0 NO_POWER=1 EXTERNAL_POWER=2 DATA_HOST=3 MSC_ACTIVE=4\n"
 printf "availability events: NONE=0 POWER=1 EXPORT_REQ=2 MSC_ACTIVE=3 MEDIA_CMD=4 RECLAIM=5\n"
 printf "export policy/dcd/init/start = 0x%lx / 0x%lx / 0x%lx / 0x%lx\n", g_ps_hw6_owner_sm_probe.usb_export_policy_status, g_ps_hw6_owner_sm_probe.usb_export_dcd_status, g_ps_hw6_owner_sm_probe.usb_export_pcd_init_status, g_ps_hw6_owner_sm_probe.usb_export_pcd_start_status
+printf "storage clock req/rel/reason/caps/status = %lu / %lu / %lu / 0x%lx / 0x%lx\n", g_ps_hw6_rtos_probe.storage_clock_request_count, g_ps_hw6_rtos_probe.storage_clock_release_count, g_ps_hw6_rtos_probe.storage_clock_last_reason, g_ps_hw6_rtos_probe.storage_clock_last_capabilities, g_ps_hw6_rtos_probe.storage_clock_last_status
+printf "storage clock export/reclaim/flash/release = 0x%lx / 0x%lx / 0x%lx / 0x%lx\n", g_ps_hw6_rtos_probe.storage_clock_export_status, g_ps_hw6_rtos_probe.storage_clock_reclaim_status, g_ps_hw6_rtos_probe.storage_clock_flash_init_status, g_ps_hw6_rtos_probe.storage_clock_release_status
 printf "export flash_wake/fxlx_open = 0x%lx / 0x%lx\n", g_ps_hw6_owner_sm_probe.usb_export_flash_wake_status, g_ps_hw6_owner_sm_probe.usb_export_fxlx_open_status
 set $fxlx_msc = &g_ps_storage_filex_levelx_msc_probe
 printf "fxlx msc api/status/stage/active = %lu / 0x%lx / %lu / %lu\n", $fxlx_msc->api_version, $fxlx_msc->status, $fxlx_msc->last_stage, $fxlx_msc->active
@@ -126,4 +128,5 @@ printf "--- STM32 PCD / OTG registers ---\n"
 printf "HAL PCD state/error = 0x%x / 0x%lx\n", hpcd_USB_OTG_FS.State, hpcd_USB_OTG_FS.ErrorCode
 printf "GAHBCFG/GUSBCFG/GRSTCTL/GINTSTS/GINTMSK = 0x%08lx / 0x%08lx / 0x%08lx / 0x%08lx / 0x%08lx\n", hpcd_USB_OTG_FS.Instance->GAHBCFG, hpcd_USB_OTG_FS.Instance->GUSBCFG, hpcd_USB_OTG_FS.Instance->GRSTCTL, hpcd_USB_OTG_FS.Instance->GINTSTS, hpcd_USB_OTG_FS.Instance->GINTMSK
 printf "OTG device/endpoint typed-register detail omitted: debugger has no USB_OTG_FS_DEVICE symbol.\n"
+printf "storage clock reasons: NONE=0 MSC_EXPORT=1 MSC_RECLAIM=2 FLASH_INIT=3 RELEASE=4\n"
 printf "=== END HW6 FW0 USBX / PCD STATE PRINT ===\n"
