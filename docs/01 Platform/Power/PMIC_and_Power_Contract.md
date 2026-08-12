@@ -44,8 +44,8 @@ Connections carried into the final HW6 design/IOC intent and requiring board-lev
 - ADP5360 is connected to MCU I2C at address `0x46`.
 - ADP5360 interrupt is `PMIC_INT` on `PB15` / `EXTI15`.
 - `BTN_START` is connected to the ADP5360 `MR` path.
-- VBUS can be detected through ADP5360 status and through the MCU USB VBUS sense path.
-- `USB_OTG_FS_VBUS` is on `PA9`.
+- VBUS can be detected reliably through ADP5360 status on HW6 unit 001.
+- `USB_OTG_FS_VBUS` is on `PA9`, but HW6 unit 001 measures only about `1.2 V` on PA9 from the fitted `47 kOhm` / `15 kOhm` USB divider. Treat PA9 VBUS as diagnostic-only for this board revision, not as authoritative policy input.
 - On HW6 unit 001, `PMIC_INT` requires the MCU-side `PB15` pull-up. Treat the
   ADP5360 interrupt output as an active-low interrupt line that is not
   externally pulled up on the validated board.
@@ -169,11 +169,13 @@ VBUS may be classified from:
 - ADP5360 charger/input status
 - MCU `USB_OTG_FS_VBUS` on `PA9`
 
-Both paths should be reconciled by `thPower`.
+`thPower` records both paths for diagnostics, but on current HW6 unit 001 policy must prefer the ADP5360 VBUS view because the PA9 divider output is below the reliable digital-high range.
 
 Disagreement between the PMIC VBUS view and MCU VBUS view is a diagnostic event until explained. It must not silently change installer/storage ownership.
 
 VBUS classification means external USB power is present. It does not by itself prove a USB data host exists.
+
+USB data-host classification is not derived from VBUS. FW0 diagnostics must report PMIC VBUS, MCU `PA9` VBUS, PMIC/MCU agreement, and USB protocol proof separately so charger-only attach cannot be confused with host-driven installer/export eligibility.
 
 ### HW6 FW0 Charger/VBUS Status
 

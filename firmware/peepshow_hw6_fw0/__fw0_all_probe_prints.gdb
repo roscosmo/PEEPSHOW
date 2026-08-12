@@ -415,7 +415,10 @@ printf "clock domains req/managed/read = 0x%x / 0x%x / 0x%x\n", $cp->required_do
 printf "PLL2 gate en/skip/on/off/status = %u / %u / %u / %u / 0x%x\n", $cp->pll2_autogate_enabled, $cp->pll2_autogate_skip_count, $cp->pll2_domain_on_count, $cp->pll2_domain_off_count, $cp->pll2_domain_last_status
 printf "PLL2 output req/read       = 0x%x / 0x%x\n", $cp->pll2_required_output_mask, $cp->pll2_output_enabled_mask
 printf "PLL2 ready sai/ospi Hz     = %u / %u / %u\n", $cp->pll2_ready, $cp->sai1_kernel_hz, $cp->ospi_kernel_hz
-printf "USB export req/tick/vbus   = %u / %u / %u\n", $sm->usb_export_request_count, $sm->usb_export_start_tick, $sm->usb_export_vbus_present
+printf "USB export req/tick/mcu_vbus_at_req = %u / %u / %u\n", $sm->usb_export_request_count, $sm->usb_export_start_tick, $sm->usb_export_vbus_present
+printf "USB export power pmic/mcu/agree at req = %u / %u / %u\n", $sm->usb_export_power_pmic_vbus_at_request, $sm->usb_export_power_mcu_vbus_at_request, $sm->usb_export_power_vbus_agree_at_request
+set $usb_data_host_seen = ((g_ps_storage_msc_bridge_probe.activate_count != 0) || (g_usbx_scsi_cbw_count != 0) || (g_ps_storage_msc_bridge_probe.read_count != 0) || (g_ps_storage_msc_bridge_probe.write_count != 0) || (g_ps_storage_msc_bridge_probe.status_count != 0))
+printf "USB data host seen/cbw/media rd/wr/stat = %u / %u / %u / %u / %u\n", $usb_data_host_seen, g_usbx_scsi_cbw_count, g_ps_storage_msc_bridge_probe.read_count, g_ps_storage_msc_bridge_probe.write_count, g_ps_storage_msc_bridge_probe.status_count
 printf "USB export policy/dcd/init/start = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->usb_export_policy_status, $sm->usb_export_dcd_status, $sm->usb_export_pcd_init_status, $sm->usb_export_pcd_start_status
 printf "USB export flash/fxlx      = 0x%x / 0x%x\n", $sm->usb_export_flash_wake_status, $sm->usb_export_fxlx_open_status
 set $fxlx_msc = &g_ps_storage_filex_levelx_msc_probe

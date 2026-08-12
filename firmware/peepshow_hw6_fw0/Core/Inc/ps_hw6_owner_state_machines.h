@@ -604,6 +604,9 @@ typedef struct
   uint32_t usb_export_request_count;
   uint32_t usb_export_start_tick;
   uint32_t usb_export_vbus_present;
+  uint32_t usb_export_power_pmic_vbus_at_request;
+  uint32_t usb_export_power_mcu_vbus_at_request;
+  uint32_t usb_export_power_vbus_agree_at_request;
   uint32_t usb_export_policy_status;
   uint32_t usb_export_flash_wake_status;
   uint32_t usb_export_fxlx_open_status;

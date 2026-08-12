@@ -84,6 +84,15 @@ removed initializers are not emitted.
 serves autonomous-display/LPBAM timing. It must not be removed with the piezo
 path.
 
+## Known HW6 Unit 001 Electrical Findings
+
+- `USB_OTG_FS_VBUS` / `PA9` is not reliable as a digital VBUS-present source on
+  the measured HW6 unit 001 assembly. The board divider was confirmed as
+  `5 V -> 47 kOhm -> PA9 -> 15 kOhm -> GND`, which produces approximately
+  `1.2 V` from a `5 V` USB input. That is below a safe STM32U575 `3.3 V` GPIO
+  high threshold. Firmware must treat PA9 VBUS as diagnostic-only on this
+  revision and use ADP5360 VBUS plus USB protocol evidence for policy decisions.
+
 ## Evidence Boundary
 
 - HW5 evidence is historical regression context only.

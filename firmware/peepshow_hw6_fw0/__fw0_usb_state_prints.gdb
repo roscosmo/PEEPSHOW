@@ -4,7 +4,8 @@ printf "Use while halted after USB MSC export attempt. Read-only; do not reset f
 printf "--- USB export probe summary ---\n"
 printf "display page/shutdown = %lu / %lu\n", g_ps_hw6_owner_probe.display_ui_page, g_ps_hw6_owner_probe.display_ui_shutdown_state
 printf "router page/shutdown/return = %lu / %lu / %lu\n", g_ps_ui_router_probe.current_page, g_ps_ui_router_probe.shutdown_state, g_ps_ui_router_probe.shutdown_return_page
-printf "export req/tick/vbus = %lu / %lu / %lu\n", g_ps_hw6_owner_sm_probe.usb_export_request_count, g_ps_hw6_owner_sm_probe.usb_export_start_tick, g_ps_hw6_owner_sm_probe.usb_export_vbus_present
+printf "export req/tick/mcu_vbus_at_req = %lu / %lu / %lu\n", g_ps_hw6_owner_sm_probe.usb_export_request_count, g_ps_hw6_owner_sm_probe.usb_export_start_tick, g_ps_hw6_owner_sm_probe.usb_export_vbus_present
+printf "export power pmic/mcu/agree at req = %lu / %lu / %lu\n", g_ps_hw6_owner_sm_probe.usb_export_power_pmic_vbus_at_request, g_ps_hw6_owner_sm_probe.usb_export_power_mcu_vbus_at_request, g_ps_hw6_owner_sm_probe.usb_export_power_vbus_agree_at_request
 printf "export policy/dcd/init/start = 0x%lx / 0x%lx / 0x%lx / 0x%lx\n", g_ps_hw6_owner_sm_probe.usb_export_policy_status, g_ps_hw6_owner_sm_probe.usb_export_dcd_status, g_ps_hw6_owner_sm_probe.usb_export_pcd_init_status, g_ps_hw6_owner_sm_probe.usb_export_pcd_start_status
 printf "export flash_wake/fxlx_open = 0x%lx / 0x%lx\n", g_ps_hw6_owner_sm_probe.usb_export_flash_wake_status, g_ps_hw6_owner_sm_probe.usb_export_fxlx_open_status
 set $fxlx_msc = &g_ps_storage_filex_levelx_msc_probe
@@ -23,6 +24,8 @@ printf "export irq prio before/after devconnect = %lu / %lu / 0x%lx\n", g_ps_hw6
 printf "export pcd/clk/vdd/started = 0x%lx / %lu / %lu / %lu\n", g_ps_hw6_owner_sm_probe.usb_export_pcd_state_after, g_ps_hw6_owner_sm_probe.usb_export_clock_enabled_after, g_ps_hw6_owner_sm_probe.usb_export_vddusb_enabled_after, g_ps_hw6_owner_sm_probe.usb_export_started
 printf "clock SystemCoreClock/SysTick_LOAD/SysTick_CTRL = %lu / 0x%lx / 0x%lx\n", SystemCoreClock, *(unsigned int*)0xE000E014, *(unsigned int*)0xE000E010
 printf "bridge activate/deactivate = %lu / %lu\n", g_ps_storage_msc_bridge_probe.activate_count, g_ps_storage_msc_bridge_probe.deactivate_count
+set $usb_data_host_seen = ((g_ps_storage_msc_bridge_probe.activate_count != 0) || (g_usbx_scsi_cbw_count != 0) || (g_ps_storage_msc_bridge_probe.read_count != 0) || (g_ps_storage_msc_bridge_probe.write_count != 0) || (g_ps_storage_msc_bridge_probe.status_count != 0))
+printf "USB data host seen/cbw/media rd/wr/stat = %lu / %lu / %lu / %lu / %lu\n", $usb_data_host_seen, g_usbx_scsi_cbw_count, g_ps_storage_msc_bridge_probe.read_count, g_ps_storage_msc_bridge_probe.write_count, g_ps_storage_msc_bridge_probe.status_count
 printf "bridge submit/done/timeout/busy = %lu / %lu / %lu / %lu\n", g_ps_storage_msc_bridge_probe.submit_count, g_ps_storage_msc_bridge_probe.completed_count, g_ps_storage_msc_bridge_probe.timeout_count, g_ps_storage_msc_bridge_probe.busy_count
 printf "bridge rd/wr/fl/status/fast_status = %lu / %lu / %lu / %lu / %lu\n", g_ps_storage_msc_bridge_probe.read_count, g_ps_storage_msc_bridge_probe.write_count, g_ps_storage_msc_bridge_probe.flush_count, g_ps_storage_msc_bridge_probe.status_count, g_ps_storage_msc_bridge_probe.fast_status_count
 printf "bridge policy/media/write/dirty/init = %lu / %lu / %lu / %lu / %lu\n", g_ps_storage_msc_bridge_probe.export_enabled, g_ps_storage_msc_bridge_probe.media_present, g_ps_storage_msc_bridge_probe.write_enabled, g_ps_storage_msc_bridge_probe.dirty, g_ps_storage_msc_bridge_probe.initialized

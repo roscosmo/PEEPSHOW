@@ -2620,6 +2620,12 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void)
   g_ps_hw6_owner_sm_probe.usb_export_start_tick = (uint32_t)tx_time_get();
   g_ps_hw6_owner_sm_probe.usb_export_vbus_present =
     (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9) == GPIO_PIN_SET) ? 1UL : 0UL;
+  g_ps_hw6_owner_sm_probe.usb_export_power_pmic_vbus_at_request =
+    g_ps_hw6_owner_probe.power_vbus_ok;
+  g_ps_hw6_owner_sm_probe.usb_export_power_mcu_vbus_at_request =
+    g_ps_hw6_owner_probe.power_mcu_vbus_present;
+  g_ps_hw6_owner_sm_probe.usb_export_power_vbus_agree_at_request =
+    g_ps_hw6_owner_probe.power_vbus_agree;
   g_ps_hw6_owner_sm_probe.usb_export_policy_status = 0xFFFFFFFFUL;
   g_ps_hw6_owner_sm_probe.usb_export_flash_wake_status = 0xFFFFFFFFUL;
   g_ps_hw6_owner_sm_probe.usb_export_fxlx_open_status = 0xFFFFFFFFUL;
@@ -4291,6 +4297,14 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.flash_scratch_cleanup_blank_read_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.usb_deinit_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.usb_export_vbus_present =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.usb_export_power_pmic_vbus_at_request =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.usb_export_power_mcu_vbus_at_request =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.usb_export_power_vbus_agree_at_request =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.usb_export_policy_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
