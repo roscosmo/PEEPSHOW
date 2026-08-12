@@ -1276,7 +1276,6 @@ static void PS_HW6_RTOS_RunStorageUsbExportRequest(void)
 static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
 {
   HAL_StatusTypeDef reclaim_status;
-  uint32_t display_cue;
 
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_SET);
   PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
@@ -1286,10 +1285,15 @@ static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
     PS_HW6_RTOS_OWNER_STORAGE,
     (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
     0UL);
-  display_cue = (reclaim_status == HAL_OK) ?
-    (uint32_t)PS_UI_ROUTER_SHUTDOWN_MSC_DONE :
-    (uint32_t)PS_UI_ROUTER_SHUTDOWN_MSC_ERROR;
-  PS_HW6_RTOS_SendStorageLifecycleDisplayCue(display_cue);
+  if (reclaim_status == HAL_OK)
+  {
+    PS_HW6_RTOS_SendCurrentUiRenderCommand();
+  }
+  else
+  {
+    PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
+      PS_UI_ROUTER_SHUTDOWN_MSC_ERROR);
+  }
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_RESET);
 }
 

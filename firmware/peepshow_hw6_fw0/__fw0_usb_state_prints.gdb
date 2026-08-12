@@ -3,6 +3,7 @@ printf "Use while halted after USB MSC export attempt. Read-only; do not reset f
 
 printf "--- USB export probe summary ---\n"
 printf "display page/shutdown = %lu / %lu\n", g_ps_hw6_owner_probe.display_ui_page, g_ps_hw6_owner_probe.display_ui_shutdown_state
+printf "router page/shutdown/return = %lu / %lu / %lu\n", g_ps_ui_router_probe.current_page, g_ps_ui_router_probe.shutdown_state, g_ps_ui_router_probe.shutdown_return_page
 printf "export req/tick/vbus = %lu / %lu / %lu\n", g_ps_hw6_owner_sm_probe.usb_export_request_count, g_ps_hw6_owner_sm_probe.usb_export_start_tick, g_ps_hw6_owner_sm_probe.usb_export_vbus_present
 printf "export policy/dcd/init/start = 0x%lx / 0x%lx / 0x%lx / 0x%lx\n", g_ps_hw6_owner_sm_probe.usb_export_policy_status, g_ps_hw6_owner_sm_probe.usb_export_dcd_status, g_ps_hw6_owner_sm_probe.usb_export_pcd_init_status, g_ps_hw6_owner_sm_probe.usb_export_pcd_start_status
 printf "export flash_wake/fxlx_open = 0x%lx / 0x%lx\n", g_ps_hw6_owner_sm_probe.usb_export_flash_wake_status, g_ps_hw6_owner_sm_probe.usb_export_fxlx_open_status
@@ -30,6 +31,7 @@ printf "reclaim devdisc/uxdisc-not-used/fxlx_close = 0x%lx / 0x%lx / 0x%lx\n", g
 printf "reclaim req/tick/dirty/parked = %lu / %lu / %lu / %lu\n", g_ps_hw6_owner_sm_probe.usb_reclaim_request_count, g_ps_hw6_owner_sm_probe.usb_reclaim_start_tick, g_ps_hw6_owner_sm_probe.usb_reclaim_dirty_seen, g_ps_hw6_owner_sm_probe.usb_reclaim_parked
 printf "staging rescan count/tick/dirty/pending = %lu / %lu / %lu / %lu\n", g_ps_hw6_owner_sm_probe.usb_stage_rescan_request_count, g_ps_hw6_owner_sm_probe.usb_stage_rescan_start_tick, g_ps_hw6_owner_sm_probe.usb_stage_rescan_dirty_seen, g_ps_hw6_owner_sm_probe.usb_stage_rescan_pending
 printf "staging rescan status/package scan = 0x%lx / 0x%lx\n", g_ps_hw6_owner_sm_probe.usb_stage_rescan_status, g_ps_hw6_owner_sm_probe.usb_stage_rescan_package_scan_status
+printf "staging rescan status legend: OK=0x0 PACKAGE_UNSUPPORTED=0xb NOT_RUN=0xffffffff\n"
 printf "dcd extra timing telemetry = reverted to FW4 transfer_request.c; use endpoint transfer fields below\n\n"
 
 printf "--- USBX storage-thread SCSI trace ---\n"

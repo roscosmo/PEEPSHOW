@@ -435,6 +435,7 @@ printf "USB reclaim fxlx close     = 0x%x\n", $sm->usb_reclaim_fxlx_close_status
 printf "USB reclaim pcd/clk/vdd/parked = 0x%x / %u / %u / %u\n", $sm->usb_reclaim_pcd_state_after, $sm->usb_reclaim_clock_enabled_after, $sm->usb_reclaim_vddusb_enabled_after, $sm->usb_reclaim_parked
 printf "USB staging rescan count/tick/dirty/pending = %u / %u / %u / %u\n", $sm->usb_stage_rescan_request_count, $sm->usb_stage_rescan_start_tick, $sm->usb_stage_rescan_dirty_seen, $sm->usb_stage_rescan_pending
 printf "USB staging rescan status/package = 0x%x / 0x%x\n", $sm->usb_stage_rescan_status, $sm->usb_stage_rescan_package_scan_status
+printf "USB staging rescan status legend: OK=0x0 PACKAGE_UNSUPPORTED=0xb NOT_RUN=0xffffffff\n"
 printf "USBX pool/init status      = 0x%x / 0x%x (baseline may be nonzero before MSC bridge)\n", g_ps_hw6_usbx_byte_pool_create_status, g_ps_hw6_usbx_device_init_status
 printf "USBX stage statuses       = alloc 0x%x system 0x%x devstack 0x%x class 0x%x appstack 0x%x thread 0x%x\n", g_ps_hw6_usbx_stack_alloc_status, g_ps_hw6_usbx_system_init_status, g_ps_hw6_usbx_device_stack_status, g_ps_hw6_usbx_class_register_status, g_ps_hw6_usbx_thread_stack_status, g_ps_hw6_usbx_thread_create_status
 printf "USBX desc lengths         = HS %u FS %u string %u lang %u\n", g_ps_hw6_usbx_framework_hs_length, g_ps_hw6_usbx_framework_fs_length, g_ps_hw6_usbx_string_framework_length, g_ps_hw6_usbx_language_framework_length

@@ -816,6 +816,7 @@ static void PS_HW6_SM_RecordUsbExportEntryState(void);
 static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForFlashReady(
   uint32_t record_usb_export_entry);
 static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForUsbExport(void);
+static HAL_StatusTypeDef PS_HW6_SM_RunUsbStageRescanScaffold(void);
 
 
 static void PS_HW6_SM_RecordTrace(uint32_t state_machine_id,
@@ -2443,6 +2444,20 @@ static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForUsbExport(void)
   return PS_HW6_SM_PrepareStorageForFlashReady(1UL);
 }
 
+static HAL_StatusTypeDef PS_HW6_SM_RunUsbStageRescanScaffold(void)
+{
+  if (g_ps_hw6_owner_sm_probe.usb_stage_rescan_pending == 0UL)
+  {
+    return HAL_OK;
+  }
+
+  g_ps_hw6_owner_sm_probe.usb_stage_rescan_status = (uint32_t)HAL_OK;
+  g_ps_hw6_owner_sm_probe.usb_stage_rescan_package_scan_status =
+    (uint32_t)PS_STATUS_UNSUPPORTED;
+  g_ps_hw6_owner_sm_probe.usb_stage_rescan_pending = 0UL;
+  return HAL_OK;
+}
+
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_InitializeFlash(void)
 {
   HAL_StatusTypeDef status;
@@ -2790,11 +2805,20 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void)
         (uint32_t)tx_time_get();
       g_ps_hw6_owner_sm_probe.usb_stage_rescan_pending = 1UL;
     }
-    g_ps_hw6_owner_sm_probe.usb_stage_rescan_status = (uint32_t)HAL_OK;
-    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
-                              STORAGE_EV_USB_RESCAN_OK,
-                              HAL_OK);
-    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_MSC_RECLAIM_DONE);
+    status = PS_HW6_SM_RunUsbStageRescanScaffold();
+    if (status == HAL_OK)
+    {
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                                STORAGE_EV_USB_RESCAN_OK,
+                                HAL_OK);
+      PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_MSC_RECLAIM_DONE);
+    }
+    else
+    {
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                                STORAGE_EV_FAULT, status);
+      PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
+    }
   }
   else
   {
