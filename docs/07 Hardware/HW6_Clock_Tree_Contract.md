@@ -44,6 +44,36 @@ code and HW6 LPBAM evidence.
 `thPower` owns operating-point selection. Packages express runtime semantics,
 not SYSCLK, voltage scale, PLL, flash latency, or kernel-clock choices.
 
+## Clock Policy Model
+
+HW6 clock control is an internal Platform policy, not a collection of subsystem-specific overrides. Owners publish state and capability needs; `thPower` selects and applies the clock profile at owner-safe boundaries.
+
+The names below are internal policy labels. Any frequency shown is a candidate or imported IOC fact until HW6 measurement promotes it.
+
+| Internal profile | Intended use | SYSCLK / HCLK class | Required kernel clocks | Status |
+|---|---|---|---|---|
+| `CLK_BOOT_RECOVERY` | boot, fault handling, debugger-safe recovery | current generated MSI/MSIS baseline: IOC records `24 MHz`; any `25 MHz` MSIS retune must be generated and measured before promotion | I2C3/MSIK for PMIC/input bring-up; LPUART/HSI only if communication owner is admitted | documented policy placeholder |
+| `CLK_REACTIVE_BASE` | menus, input, PMIC monitor, static display hold, non-USB idle-active work | low MSI/MSIS class, expected `24/25 MHz` candidate range | display/I2C kernels only while their owners are active | unmeasured candidate |
+| `CLK_REACTIVE_BURST` | bounded UI or shell transaction where racing back to STOP may save energy | mid PLL SYSCLK class, expected `40/48 MHz` candidate range | no extra kernel clocks unless an owner requests them | unmeasured candidate |
+| `CLK_REALTIME_BALANCED` | runtime/gameplay with frame, input, sensor, display, and optional audio deadlines | measured realtime PLL class, expected `80 MHz` candidate before any higher point is granted | SAI/OCTOSPI only when their owning threads request those peripherals | unmeasured candidate |
+| `CLK_IO_HIGH` | USB MSC/export, installer windows, and high-throughput storage windows | high PLL SYSCLK class; current ad hoc USB MSC `160 MHz` behavior belongs here | USB `48 MHz`; OCTOSPI kernel only if storage is active | scaffold target; not yet measured as policy |
+| `CLK_STOP_PREP` | transition toward STOP2 or software shipment | no active high-speed requirement after owner quiesce | USB clock off, PLL2 off unless a validated autonomous scenario still owns it | scaffold pending |
+
+Capability requests are also internal. They describe what must be true, not how to program RCC:
+
+| Capability | Typical source | Policy effect |
+|---|---|---|
+| `USB_DEVICE_ACTIVE` | USB/installer/MSC export ownership | keep USB `48 MHz` valid, block STOP2, and usually select `CLK_IO_HIGH` while active |
+| `OCTOSPI_ACTIVE` | `thStorage` package load/install/export transaction | keep OCTOSPI kernel valid; do not switch SYSCLK/PLL2 during an active bus transaction |
+| `SAI_AUDIO_ACTIVE` | `thAudio` playback/mixer/DMA state | keep PLL2P/SAI valid; do not vary the audio sample/kernel clock because CPU policy changed |
+| `DISPLAY_TRANSFER_ACTIVE` | `thDisplay` SPI/LPDMA transfer | keep display kernel stable until transfer completion; future LPBAM display ownership must be explicitly validated |
+| `REALTIME_DEADLINE_ACTIVE` | runtime/gameplay admitted by Platform | choose the lowest measured realtime point with deadline margin |
+| `REACTIVE_TRANSACTION_ACTIVE` | shell/menu/input transaction admitted by Platform | choose the lowest measured reactive point that completes the transaction and returns to the selected wait backend efficiently |
+
+PLL2 is not a global always-on clock. PLL2P is justified by active SAI audio, and PLL2Q is justified by active OCTOSPI/storage work. If neither capability is active, the production policy should be able to turn PLL2 off after owner quiesce and clock readback validation.
+
+USB clock is justified by an active USB-device capability only. Charger/VBUS presence by itself does not imply USB MSC/export ownership and must not automatically force the USB clock or high SYSCLK profile.
+
 ## Transition Rules
 
 - no clock/voltage transition during active DMA or bus transactions

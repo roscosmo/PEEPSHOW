@@ -198,6 +198,21 @@ Board-support code must agree with:
 - [[HW6_Power_Rails]]
 - [[HW6_Wake_Sources]]
 
+## Clock-Profile Abstraction
+
+Board support provides the low-level clock-profile helper API used by `thPower`. No device driver, package, runtime module, UI code, or non-power owner may call generated clock configuration, RCC, FLASH latency, voltage-scaling, USB clock, PLL, SAI clock, or OCTOSPI clock controls directly.
+
+Clock helper responsibilities:
+
+- validate that a requested internal profile is supported by the compiled HW6 target
+- apply voltage scale, flash latency/cache state, SYSCLK/HCLK source, bus prescalers, and affected peripheral kernel clocks in the documented safe order
+- enable or disable optional clock roots such as USB clock and PLL2 only when their capabilities are active
+- read back enough RCC/FLASH/PWR state for probe and TraceX evidence
+- return bounded status without hidden retries or unbounded waits
+- provide restore helpers after STOP/resume before owner work resumes
+
+The helper layer does not choose policy. It applies the profile selected by `thPower` and reports whether the hardware actually reached that state.
+
 ---
 
 ## Device Driver Responsibilities

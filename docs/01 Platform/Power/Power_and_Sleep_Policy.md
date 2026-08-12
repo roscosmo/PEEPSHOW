@@ -149,6 +149,21 @@ Rules:
 - if measurements do not justify dynamic switching, Platform uses one conservative validated point for that semantic.
 - target profiles publish derived response, cadence, and estimate limits; they do not publish or accept package-selectable clock frequencies.
 
+### Clock-Capability Resolution
+
+`thPower` resolves clocks from owner state and capability requests. Owners ask for what they need to do, not for RCC register values or MHz.
+
+Initial precedence for HW6:
+
+1. STOP2, shipment, and forced-sleep preparation win once admitted: owners quiesce, active DMA/bus work drains, USB clock is disabled, and PLL2 is disabled unless a separately validated autonomous scenario owns it.
+2. USB MSC/export or installer ownership requests `USB_DEVICE_ACTIVE`: USB `48 MHz` must be valid, STOP2 is blocked, and the internal policy should select the high I/O operating point instead of using an ad hoc USB-only clock override.
+3. Storage/package/external-flash work requests `OCTOSPI_ACTIVE`: OCTOSPI kernel clocks stay valid until the transaction is idle, and SYSCLK/PLL changes are forbidden while the bus is active.
+4. Audio playback requests `SAI_AUDIO_ACTIVE`: SAI kernel clocks remain stable for the sample rate, audio DMA is stopped before sleep, and CPU/SYSCLK policy must not disturb the audio clock.
+5. Runtime/gameplay requests `REALTIME_DEADLINE_ACTIVE`: `thPower` selects the lowest measured realtime operating point with frame/audio/sensor/display margin.
+6. Menu/input/static-display work requests `REACTIVE_TRANSACTION_ACTIVE`: `thPower` selects the lowest measured reactive point that meets response limits and returns to the selected waiting backend efficiently.
+
+The first firmware step should be a visible resolver/probe scaffold: report current requested capabilities, selected internal profile, blockers, and readback status without broad dynamic switching. Actual RCC/PLL switching should be enabled one profile at a time after the board-support apply/restore helper, clock readbacks, TraceX timing, and current evidence pass on HW6.
+
 ---
 
 ## Reactive Transaction Policy
