@@ -34,7 +34,7 @@
 #define PS_HW6_RTOS_DISPLAY_UI_SHUTDOWN_SHIFT (16U)
 #define PS_HW6_RTOS_DISPLAY_UI_COUNTDOWN_SHIFT (24U)
 #define PS_HW6_RTOS_DISPLAY_UI_SHUTDOWN_MAX \
-  ((uint32_t)PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_CHARGE)
+  ((uint32_t)PS_UI_ROUTER_SHUTDOWN_MSC_RECOVERY)
 #define PS_HW6_RTOS_COMMAND_POWER_WORKFLOW (1UL)
 #define PS_HW6_RTOS_COMMAND_STABILIZE     (2UL)
 #define PS_HW6_RTOS_COMMAND_RESUME        (3UL)
@@ -794,6 +794,17 @@ static void PS_HW6_RTOS_SendCurrentUiRenderCommand(void)
     g_ps_ui_router_probe.shutdown_countdown_seconds);
 }
 
+static void PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
+  uint32_t shutdown_state)
+{
+  (void)PS_HW6_RTOS_SendDisplayUiRenderCommand(
+    PS_UI_ROUTER_PAGE_SHUTDOWN,
+    PS_UI_ROUTER_CAL_NONE,
+    0UL,
+    shutdown_state,
+    0UL);
+}
+
 static void PS_HW6_RTOS_SetPowerDebug(GPIO_PinState state)
 {
   GPIO_PinState before = HAL_GPIO_ReadPin(PWR_DBG_GPIO_Port, PWR_DBG_Pin);
@@ -1214,6 +1225,8 @@ static void PS_HW6_RTOS_RunStorageUsbExportRequest(void)
   HAL_StatusTypeDef export_status = HAL_ERROR;
 
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_SET);
+  PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
+    PS_UI_ROUTER_SHUTDOWN_MSC_EXPORT);
   clock_status = PS_HW6_RTOS_RequestPowerClockProfile(
     PS_HW6_RTOS_OWNER_STORAGE,
     (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
@@ -1227,42 +1240,75 @@ static void PS_HW6_RTOS_RunStorageUsbExportRequest(void)
   }
   if (export_status != HAL_OK)
   {
+    if (g_ps_hw6_owner_sm_probe.usb_export_fxlx_open_status ==
+        (uint32_t)PS_STATUS_RECOVERY_REQUIRED)
+    {
+      PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
+        PS_UI_ROUTER_SHUTDOWN_MSC_RECOVERY);
+    }
+    else
+    {
+      PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
+        PS_UI_ROUTER_SHUTDOWN_MSC_ERROR);
+    }
     (void)PS_HW6_RTOS_RequestPowerClockProfile(
       PS_HW6_RTOS_OWNER_STORAGE,
       (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
       0UL);
+  }
+  else
+  {
+    PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
+      PS_UI_ROUTER_SHUTDOWN_MSC_ACTIVE);
   }
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_RESET);
 }
 
 static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
 {
+  HAL_StatusTypeDef reclaim_status;
+  uint32_t display_cue;
+
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_SET);
-  (void)PS_HW6_OwnerStateMachines_ReclaimUsbExport();
+  PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
+    PS_UI_ROUTER_SHUTDOWN_MSC_RECLAIM);
+  reclaim_status = PS_HW6_OwnerStateMachines_ReclaimUsbExport();
   (void)PS_HW6_RTOS_RequestPowerClockProfile(
     PS_HW6_RTOS_OWNER_STORAGE,
     (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
     0UL);
+  display_cue = (reclaim_status == HAL_OK) ?
+    (uint32_t)PS_UI_ROUTER_SHUTDOWN_MSC_DONE :
+    (uint32_t)PS_UI_ROUTER_SHUTDOWN_MSC_ERROR;
+  PS_HW6_RTOS_SendStorageLifecycleDisplayCue(display_cue);
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_RESET);
 }
 
 static void PS_HW6_RTOS_RunStorageFlashInitRequest(void)
 {
   UINT clock_status;
+  HAL_StatusTypeDef flash_init_status = HAL_ERROR;
+  uint32_t display_cue;
 
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_SET);
+  PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
+    PS_UI_ROUTER_SHUTDOWN_FLASH_INIT);
   clock_status = PS_HW6_RTOS_RequestPowerClockProfile(
     PS_HW6_RTOS_OWNER_STORAGE,
     (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
     PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE);
   if (clock_status == TX_SUCCESS)
   {
-    (void)PS_HW6_OwnerStateMachines_InitializeFlash();
+    flash_init_status = PS_HW6_OwnerStateMachines_InitializeFlash();
   }
   (void)PS_HW6_RTOS_RequestPowerClockProfile(
     PS_HW6_RTOS_OWNER_STORAGE,
     (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
     0UL);
+  display_cue = (flash_init_status == HAL_OK) ?
+    (uint32_t)PS_UI_ROUTER_SHUTDOWN_FLASH_DONE :
+    (uint32_t)PS_UI_ROUTER_SHUTDOWN_FLASH_ERROR;
+  PS_HW6_RTOS_SendStorageLifecycleDisplayCue(display_cue);
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_RESET);
 }
 

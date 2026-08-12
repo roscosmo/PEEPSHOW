@@ -50,7 +50,7 @@ printf "pmic sw ship request flag = %u\n", g_ps_hw6_pmic_software_ship_request
 printf "pmic int irq/pending/cons = %u / %u / %u\n", $rtos->pmic_int_irq_count, $rtos->pmic_int_pending_count, $rtos->pmic_int_consumed_count
 printf "pmic int pin/level/irq/consume = %u / %u / %u / %u\n", $rtos->pmic_int_last_pin, $rtos->pmic_int_last_level, $rtos->pmic_int_last_irq_tick, $rtos->pmic_int_last_consume_tick
 printf "pmic int sm pending/snap/status = %u / %u / 0x%x\n", $sm->pmic_int_pending_count, $sm->pmic_int_snapshot_count, $sm->pmic_int_last_snapshot_status
-printf "ui shutdown: NONE=0 PREP=1 WARNING=2 IMMINENT=3 CANCELLED=4 LOW_BATT_BOOT=5 LOW_BATT_CHARGE=6\n"
+printf "ui shutdown: NONE=0 PREP=1 WARNING=2 IMMINENT=3 CANCELLED=4 LOW_BOOT=5 LOW_CHARGE=6 FLASH_INIT=7 FLASH_DONE=8 FLASH_ERROR=9 MSC_EXPORT=10 MSC_ACTIVE=11 MSC_RECLAIM=12 MSC_DONE=13 MSC_ERROR=14 MSC_RECOVERY=15\n"
 printf "policy states: UNKNOWN=0 BOOT_OK=1 OK=2 WARNING=3 CRITICAL=4 BOOT_RESTART_BLOCKED=5 BOOT_CHARGE_RECOVERY=6 SHIP_REQUESTED=7\n"
 printf "policy events: NONE=0 BOOT=1 MONITOR=2 WARNING=3 CRITICAL=4 BOOT_BLOCK=5 BOOT_CHARGE=6 SHIP_REQ=7 SHIP_SKIP=8 SNAPSHOT_FAIL=9\n"
 printf "charger status: NOT_CHARGING=0 CHARGING=1 FULL=2 DISCHARGING=3 LDO=4 TIMER=5 BAT_DETECT=6 UNKNOWN=7\n"

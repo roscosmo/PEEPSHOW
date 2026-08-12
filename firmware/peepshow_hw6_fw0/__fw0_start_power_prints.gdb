@@ -43,6 +43,6 @@ printf "pmic MR/sw ship status   = 0x%x / 0x%x\n", $owner->power_driver_mr_shipp
 printf "pmic sw ship count/tick = %u / %u\n", $owner->power_software_ship_request_count, $owner->power_software_ship_request_tick
 printf "pmic sw ship request    = %u (manual request flag; do not set during normal START tests)\n", g_ps_hw6_pmic_software_ship_request
 printf "states: START idle=0 press=1 long=2 prep=3 warn=4 imminent=5 released=6\n"
-printf "ui shutdown: NONE=0 PREP=1 WARNING=2 IMMINENT=3 CANCELLED=4\n"
+printf "ui shutdown: NONE=0 PREP=1 WARNING=2 IMMINENT=3 CANCELLED=4 LOW_BOOT=5 LOW_CHARGE=6 FLASH_INIT=7 FLASH_DONE=8 FLASH_ERROR=9 MSC_EXPORT=10 MSC_ACTIVE=11 MSC_RECLAIM=12 MSC_DONE=13 MSC_ERROR=14 MSC_RECOVERY=15\n"
 printf "events: prep=1 warning=2 imminent=3 release-before-ship=4\n"
 printf "power: PWR_ACTIVE_LP=2 PWR_ACTIVE_RT=3 PWR_SHIP_PREP=8 PMIC_MONITOR=3 PMIC_SHIP_PENDING=8\n"

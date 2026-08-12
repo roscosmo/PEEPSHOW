@@ -2,6 +2,7 @@ printf "=== HW6 FW0 USBX / PCD STATE PRINT ===\n"
 printf "Use while halted after USB MSC export attempt. Read-only; do not reset first.\n\n"
 
 printf "--- USB export probe summary ---\n"
+printf "display page/shutdown = %lu / %lu\n", g_ps_hw6_owner_probe.display_ui_page, g_ps_hw6_owner_probe.display_ui_shutdown_state
 printf "export req/tick/vbus = %lu / %lu / %lu\n", g_ps_hw6_owner_sm_probe.usb_export_request_count, g_ps_hw6_owner_sm_probe.usb_export_start_tick, g_ps_hw6_owner_sm_probe.usb_export_vbus_present
 printf "export policy/dcd/init/start = 0x%lx / 0x%lx / 0x%lx / 0x%lx\n", g_ps_hw6_owner_sm_probe.usb_export_policy_status, g_ps_hw6_owner_sm_probe.usb_export_dcd_status, g_ps_hw6_owner_sm_probe.usb_export_pcd_init_status, g_ps_hw6_owner_sm_probe.usb_export_pcd_start_status
 printf "export flash_wake/fxlx_open = 0x%lx / 0x%lx\n", g_ps_hw6_owner_sm_probe.usb_export_flash_wake_status, g_ps_hw6_owner_sm_probe.usb_export_fxlx_open_status
@@ -14,6 +15,7 @@ printf "fxlx msc recovery invalid/count lx/driver = %lu / %lu / 0x%lx / 0x%lx\n"
 printf "fxlx msc LX rd/wr/erase/verify/last = %lu / %lu / %lu / %lu / 0x%lx\n", $fxlx_msc->lx_driver_read_count, $fxlx_msc->lx_driver_write_count, $fxlx_msc->lx_driver_erase_count, $fxlx_msc->lx_driver_verify_count, $fxlx_msc->lx_driver_last_status
 printf "fxlx msc block/flash/nor/ospi = 0x%lx / %lu / 0x%lx / %lu / 0x%lx\n", $fxlx_msc->block_last_status, $fxlx_msc->flash_state, $fxlx_msc->flash_last_status, $fxlx_msc->nor_state, $fxlx_msc->ospi_error_after
 printf "fxlx msc stages: IDLE=0 VALIDATE=1 OLD_OPEN=2 LX_INIT=3 LX_OPEN=4 OPENED=5 CLOSE=6 FAULT=7\n"
+printf "ui shutdown: NONE=0 PREP=1 WARNING=2 IMMINENT=3 CANCELLED=4 LOW_BOOT=5 LOW_CHARGE=6 FLASH_INIT=7 FLASH_DONE=8 FLASH_ERROR=9 MSC_EXPORT=10 MSC_ACTIVE=11 MSC_RECLAIM=12 MSC_DONE=13 MSC_ERROR=14 MSC_RECOVERY=15\n"
 printf "usbx pool/init/stage/error/dcd irqguard = 0x%lx / 0x%lx / %lu / 0x%lx / 0x%lx / %lu\n", g_ps_hw6_usbx_byte_pool_create_status, g_ps_hw6_usbx_device_init_status, g_ps_hw6_usbx_init_stage, g_ps_hw6_usbx_init_error_code, g_ps_hw6_usbx_dcd_status, g_ps_hw6_usb_irq_guard_drop_count
 printf "rtos low-power enter/usb-skip = %lu / %lu\n", g_ps_hw6_rtos_probe.low_power_enter_count, g_ps_hw6_rtos_low_power_usb_skip_count
 printf "export irq prio before/after devconnect = %lu / %lu / 0x%lx\n", g_ps_hw6_owner_sm_probe.usb_export_irq_priority_before, g_ps_hw6_owner_sm_probe.usb_export_irq_priority_after, g_ps_hw6_owner_sm_probe.usb_export_devconnect_status

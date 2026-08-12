@@ -153,6 +153,7 @@ printf "ack set status            = 0x%x\n", $owner->display_ack_set_status
 printf "expected visual           = early blank hold, then current UI page\n"
 printf "display UI page/cal/focus = %u / %u / %u\n", $owner->display_ui_page, $owner->display_ui_calibration_page, $owner->display_ui_focus_index
 printf "display shutdown/cd       = %u / %u\n", $owner->display_ui_shutdown_state, $owner->display_ui_shutdown_countdown_seconds
+printf "ui shutdown: NONE=0 PREP=1 WARNING=2 IMMINENT=3 CANCELLED=4 LOW_BOOT=5 LOW_CHARGE=6 FLASH_INIT=7 FLASH_DONE=8 FLASH_ERROR=9 MSC_EXPORT=10 MSC_ACTIVE=11 MSC_RECLAIM=12 MSC_DONE=13 MSC_ERROR=14 MSC_RECOVERY=15\n"
 printf "expected normal boot      = display bootstrap sent, then HOME render after power\n"
 
 printf "\n  audio owner: idle unless diagnostic workflow requested\n"

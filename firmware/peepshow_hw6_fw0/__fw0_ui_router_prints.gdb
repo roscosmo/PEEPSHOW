@@ -29,5 +29,6 @@ printf "joystick sample count/errors = %u / %u\n", $sm->joystick_sample_count, $
 printf "joystick sample min X/Y = %d / %d\n", $sm->joystick_sample_min_x, $sm->joystick_sample_min_y
 printf "joystick sample max X/Y = %d / %d\n", $sm->joystick_sample_max_x, $sm->joystick_sample_max_y
 printf "pages: BOOT=0 HOME=1 MENU=2 SETTINGS=3 CAL=4 PACKAGES=5 RUNTIME=6 ERROR=7 SHUTDOWN=8\n"
+printf "ui shutdown: NONE=0 PREP=1 WARNING=2 IMMINENT=3 CANCELLED=4 LOW_BOOT=5 LOW_CHARGE=6 FLASH_INIT=7 FLASH_DONE=8 FLASH_ERROR=9 MSC_EXPORT=10 MSC_ACTIVE=11 MSC_RECLAIM=12 MSC_DONE=13 MSC_ERROR=14 MSC_RECOVERY=15\n"
 printf "cal: NONE=0 INPUT_ROOT=1 JOY_NEUTRAL=2 JOY_RIGHT=3 JOY_CIRCLE=4 JOY_REVIEW=5\n"
 printf "events: BOOT_HOME=1 NAV_MENU=3 NAV_CAL=5 JOY_START=11 NEUTRAL=12 RIGHT=13 CIRCLE=14 REVIEW=15 BTN_A=17 BTN_B=18 BTN_L=19 BTN_R=20 SHUT_PREP=21 WARN=22 IMM=23 CANCEL=24\n"

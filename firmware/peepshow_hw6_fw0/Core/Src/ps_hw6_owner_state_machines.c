@@ -813,6 +813,8 @@ static uint8_t ps_nina_rx_buffer[PS_HW6_NINA_RX_BUFFER_SIZE];
 static ps_status_t PS_HW6_SM_EnsureFlashAwake(void);
 static HAL_StatusTypeDef PS_HW6_SM_ParkUsb(void);
 static void PS_HW6_SM_RecordUsbExportEntryState(void);
+static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForFlashReady(
+  uint32_t record_usb_export_entry);
 static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForUsbExport(void);
 
 
@@ -2269,7 +2271,8 @@ static void PS_HW6_SM_RecordUsbExportEntryState(void)
     g_ps_hw6_owner_sm_probe.usb_vddusb_enabled_before;
   g_ps_hw6_owner_sm_probe.usb_parked = 0UL;
 }
-static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForUsbExport(void)
+static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForFlashReady(
+  uint32_t record_usb_export_entry)
 {
   ps_status_t driver_status;
   HAL_StatusTypeDef status;
@@ -2306,7 +2309,10 @@ static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForUsbExport(void)
     return HAL_ERROR;
   }
 
-  PS_HW6_SM_RecordUsbExportEntryState();
+  if (record_usb_export_entry != 0UL)
+  {
+    PS_HW6_SM_RecordUsbExportEntryState();
+  }
 
   flash_state = g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH];
   if (flash_state == (uint32_t)FLASH_OFF)
@@ -2431,6 +2437,12 @@ static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForUsbExport(void)
 
   return status;
 }
+
+static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForUsbExport(void)
+{
+  return PS_HW6_SM_PrepareStorageForFlashReady(1UL);
+}
+
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_InitializeFlash(void)
 {
   HAL_StatusTypeDef status;
@@ -2462,10 +2474,22 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_InitializeFlash(void)
   if ((storage_state != (uint32_t)STORAGE_FLASH_READY) &&
       (recovery_required == 0UL))
   {
-    g_ps_hw6_owner_sm_probe.storage_flash_init_last_status =
-      (uint32_t)HAL_ERROR;
-    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
-    return HAL_ERROR;
+    status = PS_HW6_SM_PrepareStorageForFlashReady(0UL);
+    if (status != HAL_OK)
+    {
+      g_ps_hw6_owner_sm_probe.storage_flash_init_last_status =
+        (uint32_t)status;
+      PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
+      return status;
+    }
+    storage_state = g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE];
+    if (storage_state != (uint32_t)STORAGE_FLASH_READY)
+    {
+      g_ps_hw6_owner_sm_probe.storage_flash_init_last_status =
+        (uint32_t)HAL_ERROR;
+      PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
+      return HAL_ERROR;
+    }
   }
 
   driver_status = PS_HW6_SM_EnsureFlashAwake();

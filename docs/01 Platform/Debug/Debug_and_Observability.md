@@ -95,6 +95,26 @@ Current HW6 FW0 token meanings:
 
 Target GDB status helper: `firmware/peepshow_hw6_fw0/__fw0_swo_lifecycle_prints.gdb`.
 
+### HW6 FW0 Temporary Display Lifecycle Cues
+
+Until live SWO capture or CDC developer status is validated, HW6 FW0 bring-up may use static on-screen cues for explicit flash provisioning and USB MSC export/reclaim. These cues are observation-only: they must be sent through `thDisplay`, must not access storage or USB directly, and must not decide whether MSC export, erase, format, or reclaim happens.
+
+Current temporary cue meanings:
+
+| Display text | Meaning |
+| --- | --- |
+| `FLASH INIT / USB STAGING / WAIT` | explicit USB staging provisioning is running |
+| `FLASH INIT / USB STAGING / DONE` | explicit USB staging provisioning finished successfully |
+| `FLASH INIT / USB STAGING / ERROR` | explicit USB staging provisioning failed; inspect GDB probes |
+| `USB MSC / EXPORT / WAIT` | MSC export command has started |
+| `USB MSC / ACTIVE / EJECT FIRST` | MSC export started and the host may mount the staging volume |
+| `USB MSC / RECLAIM / WAIT` | firmware is reclaiming the exported staging volume |
+| `USB MSC / RECLAIM / DONE` | reclaim completed and USB hardware/clock policy returned to firmware control |
+| `USB MSC / ERROR / SEE GDB` | MSC export or reclaim failed; inspect GDB probes |
+| `USB MSC / MSC NEEDS / FLASH INIT` | MSC export found invalid staging media; run the explicit flash init command before retrying export |
+
+These cues are expected to be removed or replaced once the shell/installer UI and live debug transport are mature.
+
 ### HW6 FW0 Live SWO Tooling Block
 
 Status as of 2026-08-12: firmware-side SWO lifecycle markers exist, but live SWO capture is blocked by the current VS Code Cortex-Debug + ST-LINK GDB server backend.

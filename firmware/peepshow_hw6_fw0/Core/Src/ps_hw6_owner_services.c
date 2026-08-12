@@ -430,6 +430,60 @@ static void PS_HW6_DisplayUIStrings(uint32_t page,
         *line1 = "CHARGING";
         *line2 = "PLEASE WAIT";
       }
+      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_FLASH_INIT)
+      {
+        *title = "FLASH INIT";
+        *line1 = "USB STAGING";
+        *line2 = "WAIT";
+      }
+      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_FLASH_DONE)
+      {
+        *title = "FLASH INIT";
+        *line1 = "USB STAGING";
+        *line2 = "DONE";
+      }
+      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_FLASH_ERROR)
+      {
+        *title = "FLASH INIT";
+        *line1 = "USB STAGING";
+        *line2 = "ERROR";
+      }
+      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_EXPORT)
+      {
+        *title = "USB MSC";
+        *line1 = "EXPORT";
+        *line2 = "WAIT";
+      }
+      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_ACTIVE)
+      {
+        *title = "USB MSC";
+        *line1 = "ACTIVE";
+        *line2 = "EJECT FIRST";
+      }
+      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_RECLAIM)
+      {
+        *title = "USB MSC";
+        *line1 = "RECLAIM";
+        *line2 = "WAIT";
+      }
+      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_DONE)
+      {
+        *title = "USB MSC";
+        *line1 = "RECLAIM";
+        *line2 = "DONE";
+      }
+      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_ERROR)
+      {
+        *title = "USB MSC";
+        *line1 = "ERROR";
+        *line2 = "SEE GDB";
+      }
+      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_RECOVERY)
+      {
+        *title = "USB MSC";
+        *line1 = "MSC NEEDS";
+        *line2 = "FLASH INIT";
+      }
       else
       {
         *title = "SHUTDOWN";

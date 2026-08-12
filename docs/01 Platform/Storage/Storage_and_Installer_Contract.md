@@ -163,7 +163,9 @@ USB export rules:
 - reclaim disables the bridge export policy, stops/disconnects USB, closes FileX/LevelX, returns the clock policy to base, then firmware may rescan staging/export
 - normal MSC export must only open an already-provisioned staging/export volume; it must not erase, format, or auto-repair flash as a side effect of host export
 - destructive staging/export provisioning is a separate `thStorage` command for manufacturing, bring-up, or explicit recovery, and must be initiated intentionally before MSC export is retried
+- explicit provisioning may bootstrap storage/flash from `STORAGE_OFFLINE` / `FLASH_OFF` to the normal flash-ready precondition before it erases and formats only the USB staging/export region
 - explicit provisioning may emit sparse SWO lifecycle tokens (`REQ`, `WAK`, `LAY`, `ERS`, `FMT`, `DON`, `ERR`) under [[Debug_and_Observability]] so operators do not need to pause the target to guess completion timing
+- during HW6 FW0 USB/storage bring-up, explicit provisioning and MSC debug commands may also show temporary display cues through `thDisplay`; these cues are observation-only and must not decide storage, USB, erase, format, or reclaim behavior
 - if MSC export detects an unformatted or invalid LevelX/FileX staging volume, it reports recovery-required state and leaves formatting to the explicit provisioning command
 - normal boot may ask `thStorage` to run a USB boot-park cleanup command; this command only parks generated USB device hardware and refreshes clock readback, and must not mount FileX/LevelX, initialize package storage, expose MSC, or prove storage readiness
 
