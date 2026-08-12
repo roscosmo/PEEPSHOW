@@ -75,8 +75,10 @@ Rules:
 - settings, calibration, saves, installed packages, installed indexes, bonding records, and persistent fault logs remain protected.
 - firmware reclaims and rescans staging/export only after host release/exit policy.
 - active gameplay is disabled or policy-limited during installer/export mode.
+- Active MSC export requests the power-owned USB device clock capability; firmware must not use subsystem-local ad hoc clock overrides for USB MSC.
+- Reclaim must return ownership to firmware, close the staging/export filesystem path, and release the USB clock capability before normal runtime resumes.
 
-This personality is governed by [[Storage_and_Installer_Contract]] and [[USB_MSC_Bring-up_and_Recovery_Runbook]].
+This personality is governed by [[Storage_and_Installer_Contract]] and [[USB_MSC_Bring-up_and_Recovery_Runbook]]. FW0 target evidence `EV-HW6-20260812-P1-CLOCKUSB-037` validates the current manual debug export/reclaim path through `thStorage` and `thPower`; production UI entry/exit policy and reconnect soak remain separate validation work.
 
 ---
 

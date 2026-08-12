@@ -143,3 +143,15 @@ void PS_HW6_TraceSleep(uint32_t stage,
                      state,
                      status);
 }
+
+void PS_HW6_TraceClockPolicy(uint32_t profile,
+                             uint32_t capabilities,
+                             uint32_t status,
+                             uint32_t sysclk_hz)
+{
+  PS_HW6_TraceInsert(PS_HW6_TRACE_EVENT_CLOCK_POLICY,
+                     profile,
+                     capabilities,
+                     status,
+                     sysclk_hz);
+}

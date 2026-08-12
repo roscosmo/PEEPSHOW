@@ -91,6 +91,8 @@ Measured pass facts:
 - USBX configured interface `0x08 / 0x06 / 0x50`, device state/config `0x3 / 1`, and no DCD IRQ guard drops.
 - The successful fix was the active MSC performance floor: `SystemCoreClock=160000000`, `SysTick_LOAD=0x1869ff` during export.
 - `EV-HW6-20260809-P5-CLEANUP-020` revalidates this path after extracting active export clock/PCD mechanics into `ps_hw6_usb_export`: lifecycle still passed, Windows still mounted/read `HW6_FXLX.TXT`, bridge submit/done/timeout/busy was `201 / 201 / 0 / 0`, and callbacks reached read/write/status `145 / 56 / 211`.
+- `EV-HW6-20260812-P1-CLOCKUSB-037` revalidates active MSC after moving the `160 MHz` export requirement into the power-owned clock policy. Export mounted, `SystemCoreClock=160000000`, bridge submit/done/timeout/busy reached `200 / 200 / 0 / 0`, media callbacks reached read/write/status `144 / 56 / 205`, and the LUN remained `10239 / 512`.
+- The same evidence validates manual reclaim: after safe eject and reclaim request, FileX/LevelX close returned `0x0`, bridge export policy was `0`, HAL PCD state was stopped, `SystemCoreClock=24000000`, and clock policy reported USB clock/VDDUSB/HSI48 all off. The USBX class deactivate callback did not increment in this controlled reclaim path; current acceptance is explicit policy-off, filesystem close success, PCD stop, and clock restore.
 
 Do not re-open descriptor churn for a disk-without-volume symptom until the active-MSC clock/performance floor, bridge timeout/busy counters, and SCSI progression have been checked first.
 
@@ -136,7 +138,7 @@ Do not start speculative patching until this inventory is filled in with current
 | MSC-STAB-003 | MSC transfer request max length bound | `USBX/App/ux_user.h` | confirm `UX_SLAVE_REQUEST_DATA_MAX_LENGTH` remains bounded for the MSC baseline, historically `512` | unstable BULK IN behavior during host probing |
 | MSC-STAB-004 | MODE SENSE transfer clamp | `Middlewares/ST/usbx/common/usbx_device_classes/src/ux_device_class_storage_mode_sense.c` | confirm transfer length is bounded by valid response payload and host allocation, historically through `UX_MIN(...)` | MODE SENSE/MODE SELECT stalls or BOT progression wedge |
 | MSC-STAB-005 | caching mode page WCE policy | `USBX/App/ux_device_class_storage.h` | confirm the caching mode-page write-cache flag policy is Windows-compatible, historically WCE forced to `0` | Windows follows MODE SELECT path that wedges BOT progression |
-| MSC-STAB-006 | installer/export performance floor | Platform power/perf mode change path | confirm active MSC service gets enough performance headroom for USB probe/read bursts; HW6 evidence `EV-HW6-20260809-P7-USB-019` requires `160 MHz` during active export | timing starvation under host probe/read bursts; on HW6 this appeared as disk object present but no mounted volume until the 160 MHz export guard was added |
+| MSC-STAB-006 | installer/export performance floor | power-owned clock-policy path | confirm active MSC service gets enough performance headroom for USB probe/read bursts; HW6 evidence `EV-HW6-20260809-P7-USB-019` requires `160 MHz` during active export, and `EV-HW6-20260812-P1-CLOCKUSB-037` validates that requirement through `CLK_IO_HIGH` plus reclaim back to base | timing starvation under host probe/read bursts; on HW6 this appeared as disk object present but no mounted volume until the 160 MHz export guard was added |
 | MSC-STAB-007 | storage thread null guards | `Middlewares/ST/usbx/common/usbx_device_classes/src/ux_device_class_storage_thread.c` | inspect interface, endpoint-chain, and stall-call dereferences for null-guard coverage or confirm upstream fix | hardfault in `_ux_device_class_storage_thread`, historically precise bus fault with `BFAR=0x00000004` |
 
 For each row record:
@@ -165,28 +167,24 @@ Follow this sequence exactly for first active MSC bring-up.
 
 ### 4.2 Firmware Prep
 
-In GDB, where these helpers exist:
+For the current FW0 owner-routed debug image, use the local GDB request helper after normal lifecycle completes and the board is battery-powered with USB host VBUS attached:
 
 ```gdb
-source debug.gdb
-ps_storage_filex_format_wait
-ps_mode_verify_flashing
-ps_usb_scsi_trace_reset
+info address PS_HW6_RTOS_DebugRequestUsbExport
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_usb_msc_export_start.gdb
+continue
 ```
 
-Expected:
+After host mount, safe-eject the drive from Windows before reclaim:
 
-- format returns success, historically `rc=0`
-- mode token confirms the active installer/export transport mode
-- SCSI trace reset succeeds
-
-Historical HW4 helper output used:
-
-```text
-egMode=0x00000008
+```gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_usb_msc_reclaim_start.gdb
+continue
 ```
 
-Do not assume that numeric token remains authoritative on HW5. Record the actual HW5 mode/status value from the firmware under test.
+Do not use the detached USB parked baseline as active export prep. During active MSC export, VBUS present is expected; the detached park check exists for no-host parked state and must not reject export.
+
+Historical HW4 helpers used `source debug.gdb`, `ps_storage_filex_format_wait`, `ps_mode_verify_flashing`, and `ps_usb_scsi_trace_reset`. Do not assume those names or numeric mode tokens remain authoritative on HW6; record the actual helper and probe values from the firmware under test.
 
 ### 4.3 Host Enumeration And Mount Checks
 
@@ -231,17 +229,25 @@ Remove-Item $path -Force
 After the host probe window, halt only if needed and run:
 
 ```gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_usb_state_prints.gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_clock_policy_prints.gdb
+```
+
+Historical helper aliases may print the same facts as:
+
+```gdb
 ps_usb_status
 ps_usb_scsi_trace
 ```
 
 Pass criteria:
 
-- USB active
+- USB active during export
 - local FAT unmounted during host ownership
 - LevelX/media backing remains available in the intended mode
 - no MSC failure counter increase
 - normal SCSI progression appears in trace
+- after reclaim, FileX/LevelX close succeeds, bridge export policy is off, PCD is stopped, and clock policy has restored the base profile
 
 Historical healthy opcode flow included:
 
@@ -585,21 +591,21 @@ Record final evidence in [[Brought_Up_Tracker]].
 
 ## 13) Minimal Command Block
 
-Shortest active-MSC validation pass where the historical helper names still exist:
+Shortest current FW0 active-MSC validation pass:
 
 ```gdb
-source debug.gdb
-ps_storage_filex_format_wait
-ps_mode_verify_flashing
-ps_usb_scsi_trace_reset
+info address PS_HW6_RTOS_DebugRequestUsbExport
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_usb_msc_export_start.gdb
 continue
 ```
 
-After host mount attempt, halt after the probe window and run:
+After host mount, safe-eject the drive, reclaim, then halt after the probe window and run:
 
 ```gdb
-ps_usb_status
-ps_usb_scsi_trace
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_usb_msc_reclaim_start.gdb
+continue
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_usb_state_prints.gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_clock_policy_prints.gdb
 ```
 
 PowerShell:

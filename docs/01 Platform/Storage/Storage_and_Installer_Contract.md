@@ -157,6 +157,10 @@ USB export rules:
 - `B` button is the minimal local exit/cancel input during flashing/export mode
 - display may show a static "flashing" or installer screen and then remain mostly inactive
 - runtime rendering/audio/gameplay are disabled or policy-limited during export
+- MSC export may run while VBUS is present; VBUS is expected during active host export but is not sufficient to enter export by itself
+- `thStorage` owns FileX/LevelX, the MSC media bridge, and export/reclaim sequencing, but USB active clock selection is requested through `thPower`
+- export prep must not use detached USB-park checks that reject VBUS; detached parking and active MSC export are different states
+- reclaim disables the bridge export policy, stops/disconnects USB, closes FileX/LevelX, returns the clock policy to base, then firmware may rescan staging/export
 
 ## USB Data-Host Detection And MSC Gate
 

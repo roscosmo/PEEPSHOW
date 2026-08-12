@@ -5,6 +5,7 @@
 
 #include "knobs_autogen.h"
 #include "main.h"
+#include "ps_hw6_clock_policy.h"
 #include "ps_audio_events.h"
 #include "ps_audio_state.h"
 #include "ps_comm_events.h"
@@ -97,7 +98,6 @@ extern DMA_HandleTypeDef handle_GPDMA1_Channel5;
 extern OSPI_HandleTypeDef hospi1;
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
 extern UART_HandleTypeDef hlpuart1;
-extern void SystemClock_Config(void);
 
 volatile PS_HW6_OwnerStateMachineProbe g_ps_hw6_owner_sm_probe;
 volatile uint32_t g_ps_hw6_owner_sm_start_request;
@@ -811,6 +811,9 @@ static ps_storage_layout_validation_t ps_storage_layout_result;
 static ps_storage_filex_levelx_smoke_result_t ps_storage_fxlx_result;
 static uint8_t ps_nina_rx_buffer[PS_HW6_NINA_RX_BUFFER_SIZE];
 static ps_status_t PS_HW6_SM_EnsureFlashAwake(void);
+static HAL_StatusTypeDef PS_HW6_SM_ParkUsb(void);
+static void PS_HW6_SM_RecordUsbExportEntryState(void);
+static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForUsbExport(void);
 
 
 static void PS_HW6_SM_RecordTrace(uint32_t state_machine_id,
@@ -2239,11 +2242,193 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void)
   g_ps_hw6_owner_sm_probe.joystick_cardinal_status = (uint32_t)status;
   return status;
 }
+static void PS_HW6_SM_RecordUsbExportEntryState(void)
+{
+  g_ps_hw6_owner_sm_probe.usb_vbus_present =
+    (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9) == GPIO_PIN_SET) ? 1UL : 0UL;
+  g_ps_hw6_owner_sm_probe.usb_pcd_state_before =
+    (uint32_t)HAL_PCD_GetState(&hpcd_USB_OTG_FS);
+  g_ps_hw6_owner_sm_probe.usb_clock_enabled_before =
+    (__HAL_RCC_USB_IS_CLK_ENABLED() != 0U) ? 1UL : 0UL;
+  g_ps_hw6_owner_sm_probe.usb_vddusb_enabled_before =
+    (READ_BIT(PWR->SVMCR, PWR_SVMCR_USV) != 0U) ? 1UL : 0UL;
+  g_ps_hw6_owner_sm_probe.usb_deinit_attempted = 0UL;
+  g_ps_hw6_owner_sm_probe.usb_deinit_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.usb_pcd_state_after =
+    g_ps_hw6_owner_sm_probe.usb_pcd_state_before;
+  g_ps_hw6_owner_sm_probe.usb_clock_enabled_after =
+    g_ps_hw6_owner_sm_probe.usb_clock_enabled_before;
+  g_ps_hw6_owner_sm_probe.usb_vddusb_enabled_after =
+    g_ps_hw6_owner_sm_probe.usb_vddusb_enabled_before;
+  g_ps_hw6_owner_sm_probe.usb_parked = 0UL;
+}
+static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForUsbExport(void)
+{
+  ps_status_t driver_status;
+  HAL_StatusTypeDef status;
+  uint32_t storage_state;
+  uint32_t flash_state;
+
+  storage_state =
+    g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE];
+  if (storage_state == (uint32_t)STORAGE_FLASH_READY)
+  {
+    return HAL_OK;
+  }
+
+  if (storage_state == (uint32_t)STORAGE_OFFLINE)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_INIT,
+                              HAL_OK);
+  }
+  else if ((storage_state != (uint32_t)STORAGE_INIT) &&
+           (storage_state != (uint32_t)STORAGE_RECOVERING))
+  {
+    return HAL_ERROR;
+  }
+
+  if ((g_ps_hw6_owner_sm_probe.flash_driver_init_status !=
+       (uint32_t)PS_STATUS_OK) ||
+      (g_ps_hw6_owner_sm_probe.flash_block_init_status !=
+       (uint32_t)PS_STATUS_OK))
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_FAULT,
+                              HAL_ERROR);
+    return HAL_ERROR;
+  }
+
+  PS_HW6_SM_RecordUsbExportEntryState();
+
+  flash_state = g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH];
+  if (flash_state == (uint32_t)FLASH_OFF)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_BOOT,
+                              HAL_OK);
+  }
+  else if (flash_state == (uint32_t)FLASH_DEEP_POWER_DOWN)
+  {
+    driver_status = PS_HW6_SM_EnsureFlashAwake();
+    status = PS_HW6_SM_StatusToHal(driver_status);
+    if (status != HAL_OK)
+    {
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                                FLASH_EV_FAULT,
+                                status);
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                                STORAGE_EV_FAULT,
+                                status);
+      return status;
+    }
+    tx_thread_sleep(PS_HW6_FLASH_WAKE_SETTLE_TICKS);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_WAKE_REVALIDATE,
+                              status);
+  }
+
+  driver_status = ps_dev_at25sl128a_read_jedec(
+    &ps_flash_device,
+    &ps_flash_jedec_result);
+  status = PS_HW6_SM_StatusToHal(driver_status);
+  g_ps_hw6_owner_sm_probe.flash_jedec_status =
+    ps_flash_jedec_result.hal_status;
+  g_ps_hw6_owner_sm_probe.flash_jedec_id[0] =
+    ps_flash_jedec_result.jedec_id[0];
+  g_ps_hw6_owner_sm_probe.flash_jedec_id[1] =
+    ps_flash_jedec_result.jedec_id[1];
+  g_ps_hw6_owner_sm_probe.flash_jedec_id[2] =
+    ps_flash_jedec_result.jedec_id[2];
+  g_ps_hw6_owner_sm_probe.flash_identity_match =
+    ps_flash_jedec_result.identity_match;
+  PS_HW6_SM_UpdateFlashDriverProbe();
+
+  if ((status != HAL_OK) ||
+      (g_ps_hw6_owner_sm_probe.flash_identity_match == 0UL))
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_PROBE_FAIL,
+                              status);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_FAULT,
+                              status);
+    return HAL_ERROR;
+  }
+
+  if (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+      (uint32_t)FLASH_PROBE)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_PROBE_OK,
+                              HAL_OK);
+  }
+  if (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+      (uint32_t)FLASH_CONFIG)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_CONFIG_OK,
+                              HAL_OK);
+  }
+  if (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] !=
+      (uint32_t)FLASH_READY)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_FAULT,
+                              HAL_ERROR);
+    return HAL_ERROR;
+  }
+
+  driver_status = ps_storage_layout_validate(
+    &ps_flash_block.geometry,
+    &ps_storage_layout_result);
+  status = PS_HW6_SM_StatusToHal(driver_status);
+  PS_HW6_SM_RecordStorageLayoutResult(&ps_storage_layout_result);
+  if (status != HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_FAULT,
+                              status);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_FAULT,
+                              status);
+    return status;
+  }
+
+  PS_StorageMscBridge_SetPolicy(0UL, 1UL, 1UL);
+
+  driver_status = ps_dev_at25sl128a_enter_deep_power_down(
+    &ps_flash_device,
+    &ps_flash_command_result);
+  status = PS_HW6_SM_StatusToHal(driver_status);
+  g_ps_hw6_owner_sm_probe.flash_deep_power_down_status =
+    ps_flash_command_result.hal_status;
+  if (status == HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_REQUEST_DEEP_POWER_DOWN,
+                              status);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_FLASH_READY,
+                              status);
+  }
+  else
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_FAULT,
+                              status);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_FAULT,
+                              status);
+  }
+
+  return status;
+}
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void)
 {
   HAL_StatusTypeDef status = HAL_OK;
   ps_status_t storage_status;
-  UINT clock_status;
   UINT usb_status;
 
   g_ps_hw6_owner_sm_probe.usb_export_request_count++;
@@ -2260,6 +2445,14 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void)
   g_ps_hw6_owner_sm_probe.usb_export_irq_priority_after = 0xFFFFFFFFUL;
   g_ps_hw6_owner_sm_probe.usb_export_devconnect_status = 0xFFFFFFFFUL;
   g_ps_hw6_owner_sm_probe.usb_export_started = 0UL;
+
+  status = PS_HW6_SM_PrepareStorageForUsbExport();
+  if (status != HAL_OK)
+  {
+    g_ps_hw6_owner_sm_probe.usb_export_policy_status =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    return status;
+  }
 
   if (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] !=
       STORAGE_FLASH_READY)
@@ -2293,16 +2486,6 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void)
     return HAL_ERROR;
   }
 
-  clock_status = PS_HW6_UsbExport_ApplyActiveClock();
-  if (clock_status != TX_SUCCESS)
-  {
-    (void)ps_storage_filex_levelx_msc_close();
-    PS_HW6_UsbExport_RestoreBaseClock();
-    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
-                              STORAGE_EV_FAULT, HAL_ERROR);
-    return HAL_ERROR;
-  }
-
   PS_StorageMscBridge_SetPolicy(1UL, 1UL, 1UL);
   g_ps_hw6_owner_sm_probe.usb_export_policy_status = 0UL;
 
@@ -2328,7 +2511,6 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void)
   {
     PS_StorageMscBridge_SetPolicy(0UL, 1UL, 1UL);
     (void)ps_storage_filex_levelx_msc_close();
-    PS_HW6_UsbExport_RestoreBaseClock();
     (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
                               STORAGE_EV_FAULT, status);
   }
@@ -2387,7 +2569,6 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void)
   status = (usb_status == TX_SUCCESS) ? HAL_OK : HAL_ERROR;
 
   storage_status = ps_storage_filex_levelx_msc_close();
-  PS_HW6_UsbExport_RestoreBaseClock();
   g_ps_hw6_owner_sm_probe.usb_reclaim_fxlx_close_status =
     (uint32_t)storage_status;
   if ((status == HAL_OK) && (storage_status != PS_STATUS_OK))
@@ -3516,6 +3697,7 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_joystick_calibration_capture_page = PS_UI_ROUTER_CAL_NONE;
   ps_joystick_active_calibration = ps_joystick_hw6_default_calibration;
   PS_HW6_UsbExport_Reset();
+  PS_HW6_ClockPolicy_Reset();
   g_ps_hw6_owner_sm_probe.magic = PS_HW6_OWNER_SM_PROBE_MAGIC;
   g_ps_hw6_owner_sm_probe.version = PS_HW6_OWNER_SM_PROBE_VERSION;
   g_ps_hw6_owner_sm_probe.phase = PS_HW6_SM_PHASE_INIT;
@@ -4006,6 +4188,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
   HAL_StatusTypeDef wake_transition_status = HAL_ERROR;
   HAL_StatusTypeDef post_stop_resume_status = HAL_ERROR;
   HAL_StatusTypeDef recover_status = HAL_ERROR;
+  UINT clock_restore_status = TX_NOT_DONE;
 
   g_ps_hw6_owner_sm_probe.stop2_request_count++;
   g_ps_hw6_owner_sm_probe.stop2_start_tick = (uint32_t)tx_time_get();
@@ -4059,16 +4242,17 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
         __DSB();
         HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
         __ISB();
-        SystemClock_Config();
+        clock_restore_status = PS_HW6_ClockPolicy_RestoreBase();
         HAL_ResumeTick();
 
         g_ps_hw6_owner_sm_probe.stop2_wake_tick = (uint32_t)tx_time_get();
         g_ps_hw6_owner_sm_probe.stop2_wake_end_idr = BTN_START_GPIO_Port->IDR;
-        g_ps_hw6_owner_sm_probe.stop2_clock_restore_status = (uint32_t)HAL_OK;
+        g_ps_hw6_owner_sm_probe.stop2_clock_restore_status =
+          (uint32_t)clock_restore_status;
         PS_HW6_TraceSleep(PS_HW6_TRACE_SLEEP_STAGE_WAKE_STOP2,
                           (uint32_t)BTN_START_Pin,
                           g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_POWER],
-                          (uint32_t)HAL_OK);
+                          (uint32_t)clock_restore_status);
 
         wake_transition_status = PS_HW6_SM_Transition(PS_HW6_SM_POWER,
                                                       PWR_EV_WAKE,

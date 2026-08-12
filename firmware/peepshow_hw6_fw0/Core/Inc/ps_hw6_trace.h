@@ -19,6 +19,7 @@ extern "C" {
 #define PS_HW6_TRACE_EVENT_POWER_START       (0x5130UL)
 #define PS_HW6_TRACE_EVENT_PMIC_INTERRUPT    (0x5140UL)
 #define PS_HW6_TRACE_EVENT_SLEEP             (0x5150UL)
+#define PS_HW6_TRACE_EVENT_CLOCK_POLICY      (0x5160UL)
 
 #define PS_HW6_TRACE_SLEEP_STAGE_PREP_START  (1UL)
 #define PS_HW6_TRACE_SLEEP_STAGE_ENTER_STOP2 (2UL)
@@ -70,6 +71,10 @@ void PS_HW6_TraceSleep(uint32_t stage,
                        uint32_t reason,
                        uint32_t state,
                        uint32_t status);
+void PS_HW6_TraceClockPolicy(uint32_t profile,
+                             uint32_t capabilities,
+                             uint32_t status,
+                             uint32_t sysclk_hz);
 
 #ifdef __cplusplus
 }

@@ -25,6 +25,10 @@ Any dynamic switching policy must separately record transition latency, transiti
 
 Unknown wake reasons remain defects until explained.
 
+## Current HW6 FW0 Evidence
+
+- `EV-HW6-20260812-P1-CLOCKUSB-037` validates the first power-owned clock-policy handoff for USB MSC export/reclaim on `HW6-UNIT-001`. The export path selected `CLK_IO_HIGH`/USB capability and mounted with `SystemCoreClock=160000000`; reclaim restored base profile `CLK_REACTIVE_BASE`, `SystemCoreClock=24000000`, and `usb clk/vdd/hsi48 = 0 / 0 / 0`. This is correctness evidence for the USB path, not current, energy, reactive/realtime operating-point, or hysteresis evidence.
+
 Related:
 
 - [[Power_and_Sleep_Policy]]

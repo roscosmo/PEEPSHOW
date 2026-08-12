@@ -2,11 +2,10 @@
 
 #include "main.h"
 #include "app_usbx_device.h"
+#include "ps_hw6_clock_policy.h"
 #include "ps_hw6_owner_state_machines.h"
 
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
-extern void SystemClock_Config(void);
-extern void PeriphCommonClock_Config(void);
 extern volatile UINT g_ps_hw6_usbx_byte_pool_create_status;
 extern volatile UINT g_ps_hw6_usbx_device_init_status;
 extern volatile UINT g_ps_hw6_usbx_init_stage;
@@ -163,31 +162,6 @@ static UINT PS_HW6_UsbExport_StopDeviceWithGrace(ULONG disconnect_grace_ticks)
   return TX_NOT_DONE;
 }
 
-static UINT PS_HW6_UsbExport_RetuneThreadXSysTick(void)
-{
-  uint32_t hclk_hz = HAL_RCC_GetHCLKFreq();
-  uint32_t reload;
-
-  if (hclk_hz == 0UL)
-  {
-    return TX_NOT_DONE;
-  }
-
-  reload = hclk_hz / (uint32_t)TX_TIMER_TICKS_PER_SECOND;
-  if (reload == 0UL)
-  {
-    reload = 1UL;
-  }
-  if (reload > 0x01000000UL)
-  {
-    return TX_NOT_DONE;
-  }
-
-  SysTick->LOAD = reload - 1UL;
-  SysTick->VAL = 0UL;
-  return TX_SUCCESS;
-}
-
 static UINT PS_HW6_UsbExport_DeviceHardwareInit(void)
 {
   HAL_StatusTypeDef hal_status;
@@ -195,6 +169,13 @@ static UINT PS_HW6_UsbExport_DeviceHardwareInit(void)
   if (hpcd_USB_OTG_FS.State != HAL_PCD_STATE_RESET)
   {
     return TX_SUCCESS;
+  }
+
+  if (PS_HW6_ClockPolicy_ProfileIsActive(
+        (uint32_t)PS_HW6_CLOCK_PROFILE_IO_HIGH,
+        PS_HW6_CLOCK_CAP_USB_DEVICE_ACTIVE) == 0UL)
+  {
+    return TX_NOT_DONE;
   }
 
   if (PS_HW6_UsbExport_Clock48Set(RCC_HSI48_ON) != TX_SUCCESS)
@@ -258,83 +239,6 @@ void PS_HW6_UsbExport_Reset(void)
   ps_hw6_usb_device_stop_ok_count = 0UL;
   ps_hw6_usb_device_stop_fail_count = 0UL;
   ps_hw6_usb_device_last_error = 0L;
-}
-
-UINT PS_HW6_UsbExport_ApplyActiveClock(void)
-{
-  RCC_OscInitTypeDef osc = {0};
-  RCC_ClkInitTypeDef clk = {0};
-  HAL_StatusTypeDef hal_status;
-
-  if (HAL_RCC_GetSysClockFreq() >= 160000000UL)
-  {
-    return PS_HW6_UsbExport_RetuneThreadXSysTick();
-  }
-
-  clk.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |
-                  RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2 |
-                  RCC_CLOCKTYPE_PCLK3;
-  clk.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
-  clk.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  clk.APB1CLKDivider = RCC_HCLK_DIV2;
-  clk.APB2CLKDivider = RCC_HCLK_DIV2;
-  clk.APB3CLKDivider = RCC_HCLK_DIV8;
-  hal_status = HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_4);
-  if (hal_status != HAL_OK)
-  {
-    return TX_NOT_DONE;
-  }
-
-  hal_status = HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1);
-  if (hal_status != HAL_OK)
-  {
-    return TX_NOT_DONE;
-  }
-
-  osc.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-  osc.HSIState = RCC_HSI_ON;
-  osc.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  osc.PLL.PLLState = RCC_PLL_OFF;
-  hal_status = HAL_RCC_OscConfig(&osc);
-  if (hal_status != HAL_OK)
-  {
-    return TX_NOT_DONE;
-  }
-
-  osc.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-  osc.HSIState = RCC_HSI_ON;
-  osc.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  osc.PLL.PLLState = RCC_PLL_ON;
-  osc.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  osc.PLL.PLLM = 1;
-  osc.PLL.PLLN = 20;
-  osc.PLL.PLLP = 2;
-  osc.PLL.PLLQ = 2;
-  osc.PLL.PLLR = 2;
-  osc.PLL.PLLRGE = RCC_PLLVCIRANGE_1;
-  osc.PLL.PLLFRACN = 0;
-  osc.PLL.PLLMBOOST = RCC_PLLMBOOST_DIV1;
-  hal_status = HAL_RCC_OscConfig(&osc);
-  if (hal_status != HAL_OK)
-  {
-    return TX_NOT_DONE;
-  }
-
-  clk.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-  hal_status = HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_4);
-  if (hal_status != HAL_OK)
-  {
-    return TX_NOT_DONE;
-  }
-
-  return PS_HW6_UsbExport_RetuneThreadXSysTick();
-}
-
-void PS_HW6_UsbExport_RestoreBaseClock(void)
-{
-  SystemClock_Config();
-  PeriphCommonClock_Config();
-  (void)PS_HW6_UsbExport_RetuneThreadXSysTick();
 }
 
 UINT PS_HW6_UsbExport_StartDevice(void)

@@ -108,6 +108,8 @@ typedef struct
 extern volatile PS_HW6_RTOS_Probe g_ps_hw6_rtos_probe;
 
 UINT PS_HW6_RTOS_Init(TX_BYTE_POOL *pool);
+UINT PS_HW6_RTOS_DebugRequestUsbExport(void);
+UINT PS_HW6_RTOS_DebugRequestUsbReclaim(void);
 void PS_HW6_RTOS_LowPowerTimerSetup(ULONG count);
 void PS_HW6_RTOS_LowPowerEnter(void);
 void PS_HW6_RTOS_LowPowerExit(void);

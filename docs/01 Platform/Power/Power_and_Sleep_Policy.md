@@ -162,7 +162,9 @@ Initial precedence for HW6:
 5. Runtime/gameplay requests `REALTIME_DEADLINE_ACTIVE`: `thPower` selects the lowest measured realtime operating point with frame/audio/sensor/display margin.
 6. Menu/input/static-display work requests `REACTIVE_TRANSACTION_ACTIVE`: `thPower` selects the lowest measured reactive point that meets response limits and returns to the selected waiting backend efficiently.
 
-The first firmware step should be a visible resolver/probe scaffold: report current requested capabilities, selected internal profile, blockers, and readback status without broad dynamic switching. Actual RCC/PLL switching should be enabled one profile at a time after the board-support apply/restore helper, clock readbacks, TraceX timing, and current evidence pass on HW6.
+The first firmware step is now split between visible resolver/probe scaffolding and one validated active path. FW0 reports requested capabilities, selected internal profile, blockers, and readback status; the USB MSC/export path additionally has a target-validated `CLK_IO_HIGH` apply and base restore path.
+
+HW6 evidence `EV-HW6-20260812-P1-CLOCKUSB-037` validates only this USB handoff: active MSC export runs at `160 MHz` with USB `48 MHz` available, and reclaim returns to the base `24 MHz` profile with USB clock/VDDUSB/HSI48 disabled. Other profiles must still be enabled one at a time after clock readbacks, TraceX timing, and current evidence pass.
 
 ---
 
