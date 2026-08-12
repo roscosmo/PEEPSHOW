@@ -95,6 +95,7 @@ Measured pass facts:
 - `EV-HW6-20260812-P1-CLOCKSTORAGE-039` validates the named storage clock requester wrapper used by the menu/service MSC path. Active MSC held the storage requester at `USB_DEVICE_ACTIVE | OCTOSPI_ACTIVE` (`ST=0x3`), selected `CLK_IO_HIGH`, and blocked STOP2; reclaim released storage to `ST=0x0`, returned to `REACTIVE_BASE`, cleared clock domains, and parked USB/VDDUSB/HSI48 plus PLL2.
 - `EV-HW6-20260812-P1-FLASHINIT-040` validates explicit destructive staging provisioning outside MSC export. The flash init command erased/formatted the USB staging/export region with all storage statuses `0x0`, released the OCTOSPI-only storage clock request cleanly, and the next MSC export mounted as an intentionally empty host volume.
 - `EV-HW6-20260812-P1-MSCSMOKE-041` validates host write/read/delete smoke on that freshly provisioned staging volume. A PC-created text file survived eject/reclaim/export and was readable after remount; the file was then deleted and the final eject/reclaim completed cleanly. Firmware-side probes showed three export/reclaim cycles, bridge submit/done `588 / 588`, timeout/busy `0 / 0`, media read/write/status `471 / 117 / 651`, FileX-LevelX open/close `3 / 3`, reclaim close `0x0`, dirty rescan status `0x0`, and final storage clock release to base with STOP2 ready.
+- `EV-HW6-20260812-P1-MSCSOAK-042` validates the 8-cycle MSC reconnect/export/reclaim soak. The final probe showed export requests `8`, FileX-LevelX open/close `8 / 8`, bridge submit/done/timeout/busy `1352 / 1352 / 0 / 0`, media read/write/status `1235 / 117 / 1592`, reclaim close `0x0`, staging rescan count/dirty/pending `8 / 1 / 0`, and final clock release to `REACTIVE_BASE` with domains clear, STOP2 ready, USB/VDDUSB/HSI48 off, and PLL2 off.
 - The same evidence validates manual reclaim: after safe eject and reclaim request, FileX/LevelX close returned `0x0`, bridge export policy was `0`, HAL PCD state was stopped, `SystemCoreClock=24000000`, and clock policy reported USB clock/VDDUSB/HSI48 all off. The USBX class deactivate callback did not increment in this controlled reclaim path; current acceptance is explicit policy-off, filesystem close success, PCD stop, and clock restore.
 
 Do not re-open descriptor churn for a disk-without-volume symptom until the active-MSC clock/performance floor, bridge timeout/busy counters, and SCSI progression have been checked first.
@@ -581,7 +582,7 @@ MSC is sign-off ready only when all pass:
 1. VBUS-only charger/power-bank attach produces no MSC prompt or storage handoff.
 2. USB data-host activity/enumeration gates MSC availability and entry.
 3. stabilization inventory status is recorded for the current HW6 USBX stack.
-4. 8/8 reconnect soak cycles enumerate without reset/reflash.
+4. 8/8 reconnect soak cycles enumerate without reset/reflash. HW6 evidence `EV-HW6-20260812-P1-MSCSOAK-042` validates this for the current FW0 manual/menu MSC export path.
 5. host write/read/delete smoke passes.
 6. 10-15 minute plugged-in idle soak passes without hardfault.
 7. MSC status shows no failure escalation in the validation window.
