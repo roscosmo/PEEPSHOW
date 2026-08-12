@@ -166,6 +166,7 @@ USB export rules:
 - explicit provisioning may bootstrap storage/flash from `STORAGE_OFFLINE` / `FLASH_OFF` to the normal flash-ready precondition before it erases and formats only the USB staging/export region
 - explicit provisioning may emit sparse SWO lifecycle tokens (`REQ`, `WAK`, `LAY`, `ERS`, `FMT`, `DON`, `ERR`) under [[Debug_and_Observability]] so operators do not need to pause the target to guess completion timing
 - MSC entry/exit is an OS service request routed to `thStorage`; temporary GDB helpers are callers of that route, not a separate storage lifecycle
+- FW0 package-page USB transfer scaffold is another caller of that same route: `thUI` may request MSC enter/exit, but `thStorage` still owns export, host ownership, FileX/LevelX open/close, reclaim, and rescan.
 - during HW6 FW0 USB/storage bring-up, explicit provisioning and MSC service requests may also show temporary display cues through `thDisplay`; these cues are observation-only and must not decide storage, USB, erase, format, or reclaim behavior
 - MSC UI is an overlay: successful reclaim restores the UI page/state underneath the MSC cue; error and recovery states may remain on the MSC overlay until handled.
 - FW0 reclaim currently runs only the staging/export rescan scaffold: it consumes the dirty-rescan marker, records package scanning as unsupported/not implemented, and performs no package import or install writes

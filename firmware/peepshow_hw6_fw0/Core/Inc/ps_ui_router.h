@@ -1,4 +1,4 @@
-﻿#ifndef PS_UI_ROUTER_H
+#ifndef PS_UI_ROUTER_H
 #define PS_UI_ROUTER_H
 
 #include <stdint.h>
@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_UI_ROUTER_API_VERSION (5UL)
+#define PS_UI_ROUTER_API_VERSION (6UL)
 #define PS_UI_ROUTER_STATUS_NOT_RUN (0xFFFFFFFFUL)
 
 typedef enum
@@ -102,6 +102,13 @@ typedef enum
   PS_UI_ROUTER_EVENT_LOW_BATTERY_CHARGE_RECOVERY
 } ps_ui_router_event_t;
 
+typedef enum
+{
+  PS_UI_ROUTER_ACTION_NONE = 0,
+  PS_UI_ROUTER_ACTION_MSC_ENTER,
+  PS_UI_ROUTER_ACTION_MSC_EXIT
+} ps_ui_router_action_t;
+
 typedef struct
 {
   uint32_t api_version;
@@ -118,6 +125,10 @@ typedef struct
   uint32_t shutdown_return_page;
   uint32_t last_button_event;
   uint32_t button_event_count;
+  uint32_t pending_action;
+  uint32_t last_action;
+  uint32_t action_request_count;
+  uint32_t action_take_count;
   uint32_t last_event;
   uint32_t transition_count;
   uint32_t rejected_event_count;
@@ -130,6 +141,7 @@ extern volatile uint32_t g_ps_ui_router_request_event;
 
 void PS_UIRouter_Init(void);
 ps_status_t PS_UIRouter_Dispatch(uint32_t event);
+uint32_t PS_UIRouter_TakeAction(void);
 
 #ifdef __cplusplus
 }

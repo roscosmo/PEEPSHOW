@@ -129,7 +129,7 @@ requests completed, and later button navigation reached the calibration page
 with nonzero generic button counts. The user also physically confirmed A/B/L/R
 navigation on the display.
 
-This is an FW0 shell scaffold, not the final renderer or final menu system.
+This is an FW0 shell scaffold, not the final renderer or final menu system. The package page is currently a temporary USB transfer scaffold: A requests the normal MSC enter service through `thUI` -> `thStorage`, and B requests MSC exit while an export is active. This is a caller of the storage service, not a second USB ownership path.
 The joystick calibration page can be entered, but its multi-step calibration
 flow is not complete yet.
 

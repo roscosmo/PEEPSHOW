@@ -403,9 +403,9 @@ static void PS_HW6_DisplayUIStrings(uint32_t page,
       }
       break;
     case PS_UI_ROUTER_PAGE_PACKAGE_BROWSER:
-      *title = "PACKAGES";
-      *line1 = "BROWSE";
-      *line2 = "LAUNCH A";
+      *title = "USB";
+      *line1 = "TRANSFER";
+      *line2 = "START A";
       break;
     case PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF:
       *title = "RUNTIME";

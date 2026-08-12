@@ -203,6 +203,7 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.init_status = TX_SUCCESS;
   g_ps_hw6_rtos_probe.init_error_step = PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.init_error_index = PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.ui_action_send_status = PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.ticks_per_second = TX_TIMER_TICKS_PER_SECOND;
   g_ps_hw6_rtos_probe.owner_count = PS_HW6_RTOS_OWNER_COUNT;
   g_ps_hw6_rtos_probe.queue_count = PS_HW6_RTOS_QUEUE_COUNT;
@@ -770,6 +771,42 @@ static UINT PS_HW6_RTOS_SendUiButtonPress(ps_input_button_id_t button_id)
                           (uint32_t)status,
                           0UL);
   return status;
+}
+
+static uint32_t PS_HW6_RTOS_UiMscExportActive(void)
+{
+  return ((g_ps_hw6_owner_sm_probe.usb_host_msc_active != 0UL) ||
+          (g_ps_storage_msc_bridge_probe.export_enabled != 0UL)) ?
+         1UL : 0UL;
+}
+
+static void PS_HW6_RTOS_HandleUiRouterAction(uint32_t action)
+{
+  UINT status;
+
+  if (action == (uint32_t)PS_UI_ROUTER_ACTION_NONE)
+  {
+    return;
+  }
+
+  g_ps_hw6_rtos_probe.ui_action_last = action;
+  g_ps_hw6_rtos_probe.ui_action_count++;
+  if (action == (uint32_t)PS_UI_ROUTER_ACTION_MSC_ENTER)
+  {
+    g_ps_hw6_rtos_probe.ui_action_msc_enter_count++;
+    status = PS_HW6_RTOS_RequestUsbMscEnter();
+  }
+  else if (action == (uint32_t)PS_UI_ROUTER_ACTION_MSC_EXIT)
+  {
+    g_ps_hw6_rtos_probe.ui_action_msc_exit_count++;
+    status = PS_HW6_RTOS_RequestUsbMscExit();
+  }
+  else
+  {
+    g_ps_hw6_rtos_probe.ui_action_unsupported_count++;
+    status = TX_QUEUE_ERROR;
+  }
+  g_ps_hw6_rtos_probe.ui_action_send_status = (uint32_t)status;
 }
 
 static UINT PS_HW6_RTOS_SendPowerStartEvent(
@@ -1548,14 +1585,31 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       }
       else if (PS_HW6_RTOS_UiInputCommandIsValid(owner_id, message) != 0UL)
       {
-        if (PS_HW6_RTOS_RequestJoystickCalibrationCapture(
-              (uint32_t)message[3]) == 0UL)
+        uint32_t button = (uint32_t)message[3];
+        uint32_t action = (uint32_t)PS_UI_ROUTER_ACTION_NONE;
+
+        if ((button == (uint32_t)PS_INPUT_BUTTON_ID_B) &&
+            (PS_HW6_RTOS_UiMscExportActive() != 0UL))
+        {
+          g_ps_hw6_rtos_probe.ui_action_msc_exit_intercept_count++;
+          PS_HW6_RTOS_HandleUiRouterAction(
+            (uint32_t)PS_UI_ROUTER_ACTION_MSC_EXIT);
+        }
+        else if (PS_HW6_RTOS_RequestJoystickCalibrationCapture(button) == 0UL)
         {
           router_status = PS_UIRouter_Dispatch(
-            PS_HW6_RTOS_RouterEventForButton((uint32_t)message[3]));
+            PS_HW6_RTOS_RouterEventForButton(button));
           if (router_status == PS_STATUS_OK)
           {
-            PS_HW6_RTOS_SendCurrentUiRenderCommand();
+            action = PS_UIRouter_TakeAction();
+            if (action != (uint32_t)PS_UI_ROUTER_ACTION_NONE)
+            {
+              PS_HW6_RTOS_HandleUiRouterAction(action);
+            }
+            else
+            {
+              PS_HW6_RTOS_SendCurrentUiRenderCommand();
+            }
           }
         }
       }
