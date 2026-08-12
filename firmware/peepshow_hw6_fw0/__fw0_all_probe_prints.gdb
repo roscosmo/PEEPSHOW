@@ -417,7 +417,12 @@ printf "PLL2 output req/read       = 0x%x / 0x%x\n", $cp->pll2_required_output_m
 printf "PLL2 ready sai/ospi Hz     = %u / %u / %u\n", $cp->pll2_ready, $cp->sai1_kernel_hz, $cp->ospi_kernel_hz
 printf "USB export req/tick/mcu_vbus_at_req = %u / %u / %u\n", $sm->usb_export_request_count, $sm->usb_export_start_tick, $sm->usb_export_vbus_present
 printf "USB export power pmic/mcu/agree at req = %u / %u / %u\n", $sm->usb_export_power_pmic_vbus_at_request, $sm->usb_export_power_mcu_vbus_at_request, $sm->usb_export_power_vbus_agree_at_request
-set $usb_data_host_seen = ((g_ps_storage_msc_bridge_probe.activate_count != 0) || (g_usbx_scsi_cbw_count != 0) || (g_ps_storage_msc_bridge_probe.read_count != 0) || (g_ps_storage_msc_bridge_probe.write_count != 0) || (g_ps_storage_msc_bridge_probe.status_count != 0))
+printf "USB availability state/event/update/tick = %u / %u / %u / %u\n", $sm->usb_host_availability_state, $sm->usb_host_availability_event, $sm->usb_host_availability_update_count, $sm->usb_host_availability_tick
+printf "USB availability ext/data/avail/active = %u / %u / %u / %u\n", $sm->usb_host_external_power_present, $sm->usb_host_data_seen, $sm->usb_host_msc_available, $sm->usb_host_msc_active
+printf "USB availability pmic/mcu/agree bridge/cmd = %u / %u / %u / %u / %u\n", $sm->usb_host_pmic_vbus, $sm->usb_host_mcu_vbus, $sm->usb_host_power_agree, $sm->usb_host_bridge_activate_count, $sm->usb_host_bridge_command_count
+printf "USB availability states: UNKNOWN=0 NO_POWER=1 EXTERNAL_POWER=2 DATA_HOST=3 MSC_ACTIVE=4\n"
+printf "USB availability events: NONE=0 POWER=1 EXPORT_REQ=2 MSC_ACTIVE=3 MEDIA_CMD=4 RECLAIM=5\n"
+set $usb_data_host_seen = ((g_usbx_scsi_cbw_count != 0) || (g_ps_storage_msc_bridge_probe.read_count != 0) || (g_ps_storage_msc_bridge_probe.write_count != 0) || (g_ps_storage_msc_bridge_probe.flush_count != 0) || (g_ps_storage_msc_bridge_probe.status_count != 0))
 printf "USB data host seen/cbw/media rd/wr/stat = %u / %u / %u / %u / %u\n", $usb_data_host_seen, g_usbx_scsi_cbw_count, g_ps_storage_msc_bridge_probe.read_count, g_ps_storage_msc_bridge_probe.write_count, g_ps_storage_msc_bridge_probe.status_count
 printf "USB export policy/dcd/init/start = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->usb_export_policy_status, $sm->usb_export_dcd_status, $sm->usb_export_pcd_init_status, $sm->usb_export_pcd_start_status
 printf "USB export flash/fxlx      = 0x%x / 0x%x\n", $sm->usb_export_flash_wake_status, $sm->usb_export_fxlx_open_status

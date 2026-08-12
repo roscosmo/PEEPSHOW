@@ -813,6 +813,7 @@ static uint8_t ps_nina_rx_buffer[PS_HW6_NINA_RX_BUFFER_SIZE];
 static ps_status_t PS_HW6_SM_EnsureFlashAwake(void);
 static HAL_StatusTypeDef PS_HW6_SM_ParkUsb(void);
 static void PS_HW6_SM_RecordUsbExportEntryState(void);
+static void PS_HW6_SM_UpdateUsbHostAvailability(uint32_t event);
 static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForFlashReady(
   uint32_t record_usb_export_entry);
 static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForUsbExport(void);
@@ -1542,6 +1543,8 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizePower(void)
   interrupt_config_status = PS_HW6_PowerOwner_ConfigurePmicInterrupts();
   fuel_gauge_status = PS_HW6_PowerOwner_PrepareFuelGauge();
   snapshot_status = PS_HW6_PowerOwner_RunSnapshot();
+  PS_HW6_SM_UpdateUsbHostAvailability(
+    (uint32_t)PS_HW6_USB_HOST_EVENT_POWER_SNAPSHOT);
   status = ((mr_shipping_status == HAL_OK) &&
             (charger_profile_status == HAL_OK) &&
             (interrupt_config_status == HAL_OK) &&
@@ -2272,6 +2275,71 @@ static void PS_HW6_SM_RecordUsbExportEntryState(void)
     g_ps_hw6_owner_sm_probe.usb_vddusb_enabled_before;
   g_ps_hw6_owner_sm_probe.usb_parked = 0UL;
 }
+static void PS_HW6_SM_UpdateUsbHostAvailability(uint32_t event)
+{
+  uint32_t storage_state =
+    g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE];
+  uint32_t external_power =
+    (g_ps_hw6_owner_probe.power_vbus_ok != 0UL) ? 1UL : 0UL;
+  uint32_t msc_active =
+    ((g_ps_storage_msc_bridge_probe.export_enabled != 0UL) ||
+     (storage_state == (uint32_t)STORAGE_USB_STAGING_EXPORTED) ||
+     (storage_state == (uint32_t)STORAGE_USB_STAGING_DIRTY)) ? 1UL : 0UL;
+  uint32_t data_seen =
+    ((g_ps_storage_msc_bridge_probe.read_count != 0UL) ||
+     (g_ps_storage_msc_bridge_probe.write_count != 0UL) ||
+     (g_ps_storage_msc_bridge_probe.flush_count != 0UL) ||
+     (g_ps_storage_msc_bridge_probe.status_count != 0UL)) ? 1UL : 0UL;
+  uint32_t command_count =
+    g_ps_storage_msc_bridge_probe.read_count +
+    g_ps_storage_msc_bridge_probe.write_count +
+    g_ps_storage_msc_bridge_probe.flush_count +
+    g_ps_storage_msc_bridge_probe.status_count;
+  uint32_t state;
+
+  if (msc_active != 0UL)
+  {
+    state = (uint32_t)PS_HW6_USB_HOST_AVAILABILITY_MSC_ACTIVE;
+  }
+  else if (data_seen != 0UL)
+  {
+    state = (uint32_t)PS_HW6_USB_HOST_AVAILABILITY_DATA_HOST_SEEN;
+  }
+  else if (external_power != 0UL)
+  {
+    state = (uint32_t)PS_HW6_USB_HOST_AVAILABILITY_EXTERNAL_POWER;
+  }
+  else
+  {
+    state = (uint32_t)PS_HW6_USB_HOST_AVAILABILITY_NO_EXTERNAL_POWER;
+  }
+
+  g_ps_hw6_owner_sm_probe.usb_host_availability_state = state;
+  g_ps_hw6_owner_sm_probe.usb_host_availability_event = event;
+  g_ps_hw6_owner_sm_probe.usb_host_availability_update_count++;
+  g_ps_hw6_owner_sm_probe.usb_host_availability_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_sm_probe.usb_host_external_power_present =
+    external_power;
+  g_ps_hw6_owner_sm_probe.usb_host_data_seen = data_seen;
+  g_ps_hw6_owner_sm_probe.usb_host_msc_active = msc_active;
+  g_ps_hw6_owner_sm_probe.usb_host_msc_available =
+    ((external_power != 0UL) &&
+     (data_seen != 0UL) &&
+     (msc_active == 0UL) &&
+     (storage_state == (uint32_t)STORAGE_FLASH_READY)) ? 1UL : 0UL;
+  g_ps_hw6_owner_sm_probe.usb_host_pmic_vbus =
+    g_ps_hw6_owner_probe.power_vbus_ok;
+  g_ps_hw6_owner_sm_probe.usb_host_mcu_vbus =
+    g_ps_hw6_owner_probe.power_mcu_vbus_present;
+  g_ps_hw6_owner_sm_probe.usb_host_power_agree =
+    g_ps_hw6_owner_probe.power_vbus_agree;
+  g_ps_hw6_owner_sm_probe.usb_host_bridge_activate_count =
+    g_ps_storage_msc_bridge_probe.activate_count;
+  g_ps_hw6_owner_sm_probe.usb_host_bridge_command_count =
+    command_count;
+}
+
 static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForFlashReady(
   uint32_t record_usb_export_entry)
 {
@@ -2636,6 +2704,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void)
   g_ps_hw6_owner_sm_probe.usb_export_irq_priority_after = 0xFFFFFFFFUL;
   g_ps_hw6_owner_sm_probe.usb_export_devconnect_status = 0xFFFFFFFFUL;
   g_ps_hw6_owner_sm_probe.usb_export_started = 0UL;
+  PS_HW6_SM_UpdateUsbHostAvailability(
+    (uint32_t)PS_HW6_USB_HOST_EVENT_MSC_EXPORT_REQUEST);
   PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_MSC_EXPORT_START);
 
   status = PS_HW6_SM_PrepareStorageForUsbExport();
@@ -2710,6 +2780,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void)
     (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
                               STORAGE_EV_USB_MSC_ENTRY_ACCEPTED,
                               status);
+    PS_HW6_SM_UpdateUsbHostAvailability(
+      (uint32_t)PS_HW6_USB_HOST_EVENT_MSC_ACTIVE);
   }
   else
   {
@@ -2749,6 +2821,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void)
     0xFFFFFFFFUL;
   g_ps_hw6_owner_sm_probe.usb_reclaim_deinit_status =
     0xFFFFFFFFUL;
+  PS_HW6_SM_UpdateUsbHostAvailability(
+    (uint32_t)PS_HW6_USB_HOST_EVENT_MSC_RECLAIM);
   PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_MSC_RECLAIM_START);
 
   if (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] ==
@@ -2832,6 +2906,9 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void)
                               STORAGE_EV_FAULT, status);
     PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
   }
+
+  PS_HW6_SM_UpdateUsbHostAvailability(
+    (uint32_t)PS_HW6_USB_HOST_EVENT_MSC_RECLAIM);
 
   return (g_ps_hw6_owner_sm_probe.usb_reclaim_parked != 0UL) ?
          HAL_OK : status;
@@ -3119,6 +3196,8 @@ void PS_HW6_OwnerStateMachines_HandleStorageMsc(uint32_t command)
   PS_StorageMscBridge_Complete((status == PS_STATUS_OK) ? UX_SUCCESS : UX_ERROR,
                                (status == PS_STATUS_OK) ? 0UL : 1UL,
                                (uint32_t)status);
+  PS_HW6_SM_UpdateUsbHostAvailability(
+    (uint32_t)PS_HW6_USB_HOST_EVENT_MSC_MEDIA_COMMAND);
 }
 static uint32_t PS_HW6_SM_BufferContains(const uint8_t *buffer,
                                          uint32_t length,
@@ -3409,6 +3488,9 @@ static uint32_t PS_HW6_SM_StateMatchMask(const uint32_t *expected_states)
 static HAL_StatusTypeDef PS_HW6_SM_ResumePower(void)
 {
   HAL_StatusTypeDef status = PS_HW6_PowerOwner_RunSnapshot();
+
+  PS_HW6_SM_UpdateUsbHostAvailability(
+    (uint32_t)PS_HW6_USB_HOST_EVENT_POWER_SNAPSHOT);
 
   (void)PS_HW6_SM_EvaluateBatteryPolicy(status, 0UL);
   if (status == HAL_OK)
@@ -4756,6 +4838,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandlePmicInterrupt(
   g_ps_hw6_owner_sm_probe.pmic_int_last_snapshot_tick = now_tick;
 
   snapshot_status = PS_HW6_PowerOwner_RunSnapshot();
+  PS_HW6_SM_UpdateUsbHostAvailability(
+    (uint32_t)PS_HW6_USB_HOST_EVENT_POWER_SNAPSHOT);
   g_ps_hw6_owner_sm_probe.pmic_int_last_snapshot_status =
     (uint32_t)snapshot_status;
   PS_HW6_TracePmicInterrupt(pending_count,
@@ -4786,6 +4870,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunBatteryMonitor(
   }
 
   snapshot_status = PS_HW6_PowerOwner_RunSnapshot();
+  PS_HW6_SM_UpdateUsbHostAvailability(
+    (uint32_t)PS_HW6_USB_HOST_EVENT_POWER_SNAPSHOT);
   return PS_HW6_SM_EvaluateBatteryPolicy(snapshot_status, 0UL);
 }
 

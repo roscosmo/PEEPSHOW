@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (29UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (30UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -74,6 +74,25 @@ typedef enum
   PS_HW6_POWER_QUIESCE_REASON_BOOT_LOW_BATTERY,
   PS_HW6_POWER_QUIESCE_REASON_SLEEP_PREP
 } PS_HW6_PowerQuiesceReason;
+
+typedef enum
+{
+  PS_HW6_USB_HOST_AVAILABILITY_UNKNOWN = 0,
+  PS_HW6_USB_HOST_AVAILABILITY_NO_EXTERNAL_POWER,
+  PS_HW6_USB_HOST_AVAILABILITY_EXTERNAL_POWER,
+  PS_HW6_USB_HOST_AVAILABILITY_DATA_HOST_SEEN,
+  PS_HW6_USB_HOST_AVAILABILITY_MSC_ACTIVE
+} PS_HW6_UsbHostAvailabilityState;
+
+typedef enum
+{
+  PS_HW6_USB_HOST_EVENT_NONE = 0,
+  PS_HW6_USB_HOST_EVENT_POWER_SNAPSHOT,
+  PS_HW6_USB_HOST_EVENT_MSC_EXPORT_REQUEST,
+  PS_HW6_USB_HOST_EVENT_MSC_ACTIVE,
+  PS_HW6_USB_HOST_EVENT_MSC_MEDIA_COMMAND,
+  PS_HW6_USB_HOST_EVENT_MSC_RECLAIM
+} PS_HW6_UsbHostAvailabilityEvent;
 
 typedef HAL_StatusTypeDef (*PS_HW6_PowerQuiesceBarrierCallback)(
   uint32_t reason);
@@ -607,6 +626,19 @@ typedef struct
   uint32_t usb_export_power_pmic_vbus_at_request;
   uint32_t usb_export_power_mcu_vbus_at_request;
   uint32_t usb_export_power_vbus_agree_at_request;
+  uint32_t usb_host_availability_state;
+  uint32_t usb_host_availability_event;
+  uint32_t usb_host_availability_update_count;
+  uint32_t usb_host_availability_tick;
+  uint32_t usb_host_external_power_present;
+  uint32_t usb_host_data_seen;
+  uint32_t usb_host_msc_available;
+  uint32_t usb_host_msc_active;
+  uint32_t usb_host_pmic_vbus;
+  uint32_t usb_host_mcu_vbus;
+  uint32_t usb_host_power_agree;
+  uint32_t usb_host_bridge_activate_count;
+  uint32_t usb_host_bridge_command_count;
   uint32_t usb_export_policy_status;
   uint32_t usb_export_flash_wake_status;
   uint32_t usb_export_fxlx_open_status;

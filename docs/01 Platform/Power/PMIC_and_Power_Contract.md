@@ -176,6 +176,7 @@ Disagreement between the PMIC VBUS view and MCU VBUS view is a diagnostic event 
 VBUS classification means external USB power is present. It does not by itself prove a USB data host exists.
 
 USB data-host classification is not derived from VBUS. FW0 diagnostics must report PMIC VBUS, MCU `PA9` VBUS, PMIC/MCU agreement, and USB protocol proof separately so charger-only attach cannot be confused with host-driven installer/export eligibility.
+FW0 `thPower` PMIC snapshots may refresh the USB availability external-power fields, but no PMIC/VBUS event may mark data-host-seen or enter MSC; data-host proof remains USB protocol or MSC media traffic owned outside PMIC policy.
 
 ### HW6 FW0 Charger/VBUS Status
 

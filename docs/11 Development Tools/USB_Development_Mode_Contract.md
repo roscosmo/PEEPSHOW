@@ -77,6 +77,7 @@ Rules:
 - active gameplay is disabled or policy-limited during installer/export mode.
 - MSC export opens only an already-provisioned staging/export volume; destructive erase/format/provisioning is a separate explicit `thStorage` maintenance command.
 - Active MSC export requests the power-owned USB device clock capability; firmware must not use subsystem-local ad hoc clock overrides for USB MSC.
+- FW0 records USB availability as separate fields for external power, data-host proof, MSC eligibility, and active MSC ownership. Availability is policy/input telemetry for future UI entry; it must not auto-enter MSC from VBUS or charger attach.
 - Reclaim must return ownership to firmware, close the staging/export filesystem path, release the USB clock capability, and record whether staging/export needs firmware rescan before normal runtime resumes.
 - Normal boot USB parking is not a personality, not MSC availability, and not CDC developer control. It is a storage-owned cleanup command that parks generated USB device hardware before normal runtime continues.
 

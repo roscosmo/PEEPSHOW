@@ -202,6 +202,7 @@ Rules:
 
 - actual USB protocol activity or successful enumeration is required before MSC availability is offered.
 - Diagnostics must label one-time MCU VBUS samples as external-power samples, not host proof; MSC activation, USB configuration, and SCSI/media callbacks are data-host proof in FW0 export captures.
+- FW0 exposes a USB availability scaffold in the owner state-machine probe: external-power-present is PMIC/MCU VBUS evidence, data-host-seen requires MSC SCSI/media traffic, msc-available is future UI eligibility only, and msc-active means host currently owns staging/export. This state does not start MSC by itself.
 - a charger or USB-C power bank that provides VBUS without usable USB data must remain an external-power/charging case and must not trigger an MSC prompt.
 - lightweight host detection/enumeration may run while gameplay continues when Platform policy allows it.
 - pre-MSC detection should be lightweight control/status or protocol detection only; it is neither MSC storage export nor the CDC developer personality unless explicit dev-mode policy selects CDC.
