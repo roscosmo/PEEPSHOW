@@ -403,9 +403,36 @@ static void PS_HW6_DisplayUIStrings(uint32_t page,
       }
       break;
     case PS_UI_ROUTER_PAGE_PACKAGE_BROWSER:
-      *title = "USB";
-      *line1 = "TRANSFER";
-      *line2 = "START A";
+      if (focus_index == PS_UI_ROUTER_PACKAGE_CANDIDATE)
+      {
+        *title = "PACKAGE";
+        *line1 = "FOUND";
+        *line2 = "A INSTALL";
+      }
+      else if (focus_index == PS_UI_ROUTER_PACKAGE_INSTALLING)
+      {
+        *title = "PACKAGE";
+        *line1 = "INSTALL STUB";
+        *line2 = "WAIT";
+      }
+      else if (focus_index == PS_UI_ROUTER_PACKAGE_INSTALLED)
+      {
+        *title = "PACKAGE";
+        *line1 = "STUB DONE";
+        *line2 = "B BACK";
+      }
+      else if (focus_index == PS_UI_ROUTER_PACKAGE_ERROR)
+      {
+        *title = "PACKAGE";
+        *line1 = "STUB ERROR";
+        *line2 = "SEE GDB";
+      }
+      else
+      {
+        *title = "USB";
+        *line1 = "TRANSFER";
+        *line2 = "START A";
+      }
       break;
     case PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF:
       *title = "RUNTIME";

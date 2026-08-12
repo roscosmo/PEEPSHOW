@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_UI_ROUTER_API_VERSION (6UL)
+#define PS_UI_ROUTER_API_VERSION (7UL)
 #define PS_UI_ROUTER_STATUS_NOT_RUN (0xFFFFFFFFUL)
 
 typedef enum
@@ -74,6 +74,16 @@ typedef enum
 
 typedef enum
 {
+  PS_UI_ROUTER_PACKAGE_NONE = 0,
+  PS_UI_ROUTER_PACKAGE_CANDIDATE,
+  PS_UI_ROUTER_PACKAGE_INSTALLING,
+  PS_UI_ROUTER_PACKAGE_INSTALLED,
+  PS_UI_ROUTER_PACKAGE_CANCELLED,
+  PS_UI_ROUTER_PACKAGE_ERROR
+} ps_ui_router_package_state_t;
+
+typedef enum
+{
   PS_UI_ROUTER_EVENT_BOOT_COMPLETE = 1,
   PS_UI_ROUTER_EVENT_NAV_HOME,
   PS_UI_ROUTER_EVENT_NAV_MENU,
@@ -99,14 +109,19 @@ typedef enum
   PS_UI_ROUTER_EVENT_SHUTDOWN_IMMINENT,
   PS_UI_ROUTER_EVENT_SHUTDOWN_CANCEL,
   PS_UI_ROUTER_EVENT_LOW_BATTERY_BOOT_BLOCK,
-  PS_UI_ROUTER_EVENT_LOW_BATTERY_CHARGE_RECOVERY
+  PS_UI_ROUTER_EVENT_LOW_BATTERY_CHARGE_RECOVERY,
+  PS_UI_ROUTER_EVENT_PACKAGE_CANDIDATE_FOUND,
+  PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_DONE,
+  PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_ERROR,
+  PS_UI_ROUTER_EVENT_PACKAGE_CLEAR
 } ps_ui_router_event_t;
 
 typedef enum
 {
   PS_UI_ROUTER_ACTION_NONE = 0,
   PS_UI_ROUTER_ACTION_MSC_ENTER,
-  PS_UI_ROUTER_ACTION_MSC_EXIT
+  PS_UI_ROUTER_ACTION_MSC_EXIT,
+  PS_UI_ROUTER_ACTION_PACKAGE_INSTALL_STUB
 } ps_ui_router_action_t;
 
 typedef struct
@@ -123,6 +138,8 @@ typedef struct
   uint32_t shutdown_countdown_seconds;
   uint32_t shutdown_event_count;
   uint32_t shutdown_return_page;
+  uint32_t package_state;
+  uint32_t package_event_count;
   uint32_t last_button_event;
   uint32_t button_event_count;
   uint32_t pending_action;

@@ -8,6 +8,7 @@
 #include "ps_hw6_owner_state_machines.h"
 #include "ps_hw6_trace.h"
 #include "ps_input_buttons.h"
+#include "ps_storage_filex_levelx.h"
 #include "ps_storage_msc_bridge.h"
 #include "ps_ui_router.h"
 
@@ -46,6 +47,7 @@
 #define PS_HW6_RTOS_COMMAND_USB_RECLAIM (9UL)
 #define PS_HW6_RTOS_COMMAND_USB_BOOT_PARK (10UL)
 #define PS_HW6_RTOS_COMMAND_STORAGE_FLASH_INIT (11UL)
+#define PS_HW6_RTOS_COMMAND_PACKAGE_INSTALL_STUB (12UL)
 #define PS_HW6_RTOS_EVENT_DEBUG_INDEX     (3U)
 #define PS_HW6_RTOS_ACK_OWNER(owner_id)   (1UL << (owner_id))
 #define PS_HW6_RTOS_CLOCK_ACK_FLAG        (1UL << 31)
@@ -102,6 +104,8 @@ static volatile uint32_t ps_pmic_int_last_pin;
 static volatile uint32_t ps_pmic_int_last_level;
 static volatile uint32_t ps_pmic_int_last_irq_tick;
 static uint32_t ps_pmic_int_consumed_count;
+
+static void PS_HW6_RTOS_SendCurrentUiRenderCommand(void);
 
 static CHAR *const ps_owner_names[PS_HW6_RTOS_OWNER_COUNT] =
 {
@@ -340,7 +344,8 @@ static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
       ((message[2] == PS_HW6_RTOS_COMMAND_USB_EXPORT) ||
        (message[2] == PS_HW6_RTOS_COMMAND_USB_RECLAIM) ||
        (message[2] == PS_HW6_RTOS_COMMAND_USB_BOOT_PARK) ||
-       (message[2] == PS_HW6_RTOS_COMMAND_STORAGE_FLASH_INIT)) &&
+       (message[2] == PS_HW6_RTOS_COMMAND_STORAGE_FLASH_INIT) ||
+       (message[2] == PS_HW6_RTOS_COMMAND_PACKAGE_INSTALL_STUB)) &&
       (message[3] == PS_HW6_RTOS_COMMAND_TOKEN))
   {
     return 1UL;
@@ -443,13 +448,19 @@ static uint32_t PS_HW6_RTOS_DisplayUiPackedCountdown(ULONG packed_state)
 static uint32_t PS_HW6_RTOS_DisplayUiCommandIsValid(uint32_t owner_id,
                                                      const ULONG *message)
 {
+  uint32_t page = (uint32_t)message[2];
+  uint32_t focus = PS_HW6_RTOS_DisplayUiPackedFocus(message[3]);
+  uint32_t focus_max = (page ==
+                        (uint32_t)PS_UI_ROUTER_PAGE_PACKAGE_BROWSER) ?
+                       (uint32_t)PS_UI_ROUTER_PACKAGE_ERROR : 2UL;
+
   if ((owner_id != PS_HW6_RTOS_OWNER_DISPLAY) ||
       (message[0] != PS_HW6_RTOS_DISPLAY_UI_MAGIC) ||
       (message[1] != PS_HW6_RTOS_OWNER_DISPLAY) ||
-      (message[2] > PS_UI_ROUTER_PAGE_SHUTDOWN) ||
+      (page > PS_UI_ROUTER_PAGE_SHUTDOWN) ||
       (PS_HW6_RTOS_DisplayUiPackedCalibration(message[3]) >
        PS_UI_ROUTER_CAL_JOYSTICK_REVIEW) ||
-      (PS_HW6_RTOS_DisplayUiPackedFocus(message[3]) > 2UL) ||
+      (focus > focus_max) ||
       (PS_HW6_RTOS_DisplayUiPackedShutdown(message[3]) >
        PS_HW6_RTOS_DISPLAY_UI_SHUTDOWN_MAX) ||
       (PS_HW6_RTOS_DisplayUiPackedCountdown(message[3]) > 9UL))
@@ -672,6 +683,14 @@ UINT PS_HW6_RTOS_DebugRequestUsbReclaim(void)
 {
   return PS_HW6_RTOS_RequestUsbMscExit();
 }
+
+static UINT PS_HW6_RTOS_RequestPackageInstallStub(void)
+{
+  return PS_HW6_RTOS_SendCommand(
+    PS_HW6_RTOS_OWNER_STORAGE,
+    PS_HW6_RTOS_COMMAND_PACKAGE_INSTALL_STUB);
+}
+
 UINT PS_HW6_RTOS_DebugRequestStorageFlashInit(void)
 {
   return PS_HW6_RTOS_SendCommand(
@@ -849,6 +868,7 @@ static uint32_t PS_HW6_RTOS_UiMscExportActive(void)
 
 static void PS_HW6_RTOS_HandleUiRouterAction(uint32_t action)
 {
+  ps_status_t router_status;
   UINT status;
 
   if (action == (uint32_t)PS_UI_ROUTER_ACTION_NONE)
@@ -867,6 +887,25 @@ static void PS_HW6_RTOS_HandleUiRouterAction(uint32_t action)
   {
     g_ps_hw6_rtos_probe.ui_action_msc_exit_count++;
     status = PS_HW6_RTOS_RequestUsbMscExit();
+  }
+  else if (action ==
+           (uint32_t)PS_UI_ROUTER_ACTION_PACKAGE_INSTALL_STUB)
+  {
+    g_ps_hw6_rtos_probe.ui_action_package_install_stub_count++;
+    status = PS_HW6_RTOS_RequestPackageInstallStub();
+    if (status == TX_SUCCESS)
+    {
+      PS_HW6_RTOS_SendCurrentUiRenderCommand();
+    }
+    else
+    {
+      router_status = PS_UIRouter_Dispatch(
+        PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_ERROR);
+      if (router_status == PS_STATUS_OK)
+      {
+        PS_HW6_RTOS_SendCurrentUiRenderCommand();
+      }
+    }
   }
   else
   {
@@ -899,10 +938,18 @@ static UINT PS_HW6_RTOS_SendPowerStartEvent(
 
 static void PS_HW6_RTOS_SendCurrentUiRenderCommand(void)
 {
+  uint32_t display_focus = g_ps_ui_router_probe.focus_index;
+
+  if (g_ps_ui_router_probe.current_page ==
+      (uint32_t)PS_UI_ROUTER_PAGE_PACKAGE_BROWSER)
+  {
+    display_focus = g_ps_ui_router_probe.package_state;
+  }
+
   (void)PS_HW6_RTOS_SendDisplayUiRenderCommand(
     g_ps_ui_router_probe.current_page,
     g_ps_ui_router_probe.calibration_page,
-    g_ps_ui_router_probe.focus_index,
+    display_focus,
     g_ps_ui_router_probe.shutdown_state,
     g_ps_ui_router_probe.shutdown_countdown_seconds);
 }
@@ -1396,7 +1443,17 @@ static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
     0UL);
   if (reclaim_status == HAL_OK)
   {
-    PS_HW6_RTOS_SendCurrentUiRenderCommand();
+    if ((g_ps_hw6_owner_sm_probe.package_candidate_pending != 0UL) &&
+        (g_ps_ui_router_request == 0UL))
+    {
+      g_ps_ui_router_request_event =
+        PS_UI_ROUTER_EVENT_PACKAGE_CANDIDATE_FOUND;
+      g_ps_ui_router_request = 1UL;
+    }
+    else
+    {
+      PS_HW6_RTOS_SendCurrentUiRenderCommand();
+    }
   }
   else
   {
@@ -1404,6 +1461,20 @@ static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
       PS_UI_ROUTER_SHUTDOWN_MSC_ERROR);
   }
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_RESET);
+}
+
+static void PS_HW6_RTOS_RunStoragePackageInstallStubRequest(void)
+{
+  HAL_StatusTypeDef install_status;
+
+  install_status = PS_HW6_OwnerStateMachines_RunPackageInstallStub();
+  if (g_ps_ui_router_request == 0UL)
+  {
+    g_ps_ui_router_request_event = (install_status == HAL_OK) ?
+      (uint32_t)PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_DONE :
+      (uint32_t)PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_ERROR;
+    g_ps_ui_router_request = 1UL;
+  }
 }
 
 static void PS_HW6_RTOS_RunStorageFlashInitRequest(void)
@@ -1470,6 +1541,11 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
            (command == PS_HW6_RTOS_COMMAND_STORAGE_FLASH_INIT))
   {
     PS_HW6_RTOS_RunStorageFlashInitRequest();
+  }
+  else if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
+           (command == PS_HW6_RTOS_COMMAND_PACKAGE_INSTALL_STUB))
+  {
+    PS_HW6_RTOS_RunStoragePackageInstallStubRequest();
   }
   else if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
            (command == PS_HW6_RTOS_COMMAND_USB_BOOT_PARK))

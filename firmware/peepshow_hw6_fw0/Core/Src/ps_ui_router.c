@@ -15,6 +15,8 @@ typedef struct
   uint32_t shutdown_countdown_seconds;
   uint32_t shutdown_event_count;
   uint32_t shutdown_return_page;
+  uint32_t package_state;
+  uint32_t package_event_count;
   uint32_t last_button_event;
   uint32_t button_event_count;
   uint32_t pending_action;
@@ -52,6 +54,9 @@ static void PS_UIRouter_UpdateProbe(void)
     ps_ui_router_state.shutdown_event_count;
   g_ps_ui_router_probe.shutdown_return_page =
     ps_ui_router_state.shutdown_return_page;
+  g_ps_ui_router_probe.package_state = ps_ui_router_state.package_state;
+  g_ps_ui_router_probe.package_event_count =
+    ps_ui_router_state.package_event_count;
   g_ps_ui_router_probe.last_button_event =
     ps_ui_router_state.last_button_event;
   g_ps_ui_router_probe.button_event_count =
@@ -208,6 +213,13 @@ static ps_status_t PS_UIRouter_AdvanceJoystickCalibration(uint32_t from_page,
   return PS_STATUS_OK;
 }
 
+static void PS_UIRouter_SetPackageState(uint32_t package_state)
+{
+  ps_ui_router_state.package_state = package_state;
+  ps_ui_router_state.package_event_count++;
+  ps_ui_router_state.transition_count++;
+}
+
 static ps_status_t PS_UIRouter_RequestAction(uint32_t action)
 {
   if (action == (uint32_t)PS_UI_ROUTER_ACTION_NONE)
@@ -281,6 +293,20 @@ static ps_status_t PS_UIRouter_DispatchButtonA(void)
   }
   if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_PACKAGE_BROWSER)
   {
+    if (ps_ui_router_state.package_state == PS_UI_ROUTER_PACKAGE_CANDIDATE)
+    {
+      ps_status_t status = PS_UIRouter_RequestAction(
+        PS_UI_ROUTER_ACTION_PACKAGE_INSTALL_STUB);
+      if (status == PS_STATUS_OK)
+      {
+        PS_UIRouter_SetPackageState(PS_UI_ROUTER_PACKAGE_INSTALLING);
+      }
+      return status;
+    }
+    if (ps_ui_router_state.package_state == PS_UI_ROUTER_PACKAGE_INSTALLING)
+    {
+      return PS_STATUS_BUSY;
+    }
     return PS_UIRouter_RequestAction(PS_UI_ROUTER_ACTION_MSC_ENTER);
   }
   return PS_STATUS_INVALID_STATE;
@@ -297,6 +323,12 @@ static ps_status_t PS_UIRouter_DispatchButtonB(void)
   {
     ps_ui_router_state.calibration_page = PS_UI_ROUTER_CAL_INPUT_ROOT;
     ps_ui_router_state.transition_count++;
+    return PS_STATUS_OK;
+  }
+  if ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_PACKAGE_BROWSER) &&
+      (ps_ui_router_state.package_state != PS_UI_ROUTER_PACKAGE_NONE))
+  {
+    PS_UIRouter_SetPackageState(PS_UI_ROUTER_PACKAGE_NONE);
     return PS_STATUS_OK;
   }
   return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
@@ -341,6 +373,8 @@ void PS_UIRouter_Init(void)
   ps_ui_router_state.shutdown_countdown_seconds = 0UL;
   ps_ui_router_state.shutdown_event_count = 0UL;
   ps_ui_router_state.shutdown_return_page = PS_UI_ROUTER_PAGE_HOME;
+  ps_ui_router_state.package_state = PS_UI_ROUTER_PACKAGE_NONE;
+  ps_ui_router_state.package_event_count = 0UL;
   ps_ui_router_state.last_button_event = 0UL;
   ps_ui_router_state.button_event_count = 0UL;
   ps_ui_router_state.pending_action = PS_UI_ROUTER_ACTION_NONE;
@@ -493,6 +527,38 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
       break;
     case PS_UI_ROUTER_EVENT_LOW_BATTERY_CHARGE_RECOVERY:
       status = PS_UIRouter_ShowLowBatteryChargeRecovery();
+      break;
+    case PS_UI_ROUTER_EVENT_PACKAGE_CANDIDATE_FOUND:
+      ps_ui_router_state.previous_page = ps_ui_router_state.current_page;
+      ps_ui_router_state.current_page = PS_UI_ROUTER_PAGE_PACKAGE_BROWSER;
+      ps_ui_router_state.requested_page = PS_UI_ROUTER_PAGE_PACKAGE_BROWSER;
+      ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_FOCUS;
+      ps_ui_router_state.modal_state = PS_UI_ROUTER_MODAL_NONE;
+      ps_ui_router_state.calibration_page = PS_UI_ROUTER_CAL_NONE;
+      ps_ui_router_state.shutdown_state = PS_UI_ROUTER_SHUTDOWN_NONE;
+      ps_ui_router_state.shutdown_countdown_seconds = 0UL;
+      PS_UIRouter_SetPackageState(PS_UI_ROUTER_PACKAGE_CANDIDATE);
+      status = PS_STATUS_OK;
+      break;
+    case PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_DONE:
+      ps_ui_router_state.current_page = PS_UI_ROUTER_PAGE_PACKAGE_BROWSER;
+      ps_ui_router_state.requested_page = PS_UI_ROUTER_PAGE_PACKAGE_BROWSER;
+      ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_FOCUS;
+      ps_ui_router_state.modal_state = PS_UI_ROUTER_MODAL_NONE;
+      PS_UIRouter_SetPackageState(PS_UI_ROUTER_PACKAGE_INSTALLED);
+      status = PS_STATUS_OK;
+      break;
+    case PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_ERROR:
+      ps_ui_router_state.current_page = PS_UI_ROUTER_PAGE_PACKAGE_BROWSER;
+      ps_ui_router_state.requested_page = PS_UI_ROUTER_PAGE_PACKAGE_BROWSER;
+      ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_FOCUS;
+      ps_ui_router_state.modal_state = PS_UI_ROUTER_MODAL_DIALOG;
+      PS_UIRouter_SetPackageState(PS_UI_ROUTER_PACKAGE_ERROR);
+      status = PS_STATUS_OK;
+      break;
+    case PS_UI_ROUTER_EVENT_PACKAGE_CLEAR:
+      PS_UIRouter_SetPackageState(PS_UI_ROUTER_PACKAGE_NONE);
+      status = PS_STATUS_OK;
       break;
     case PS_UI_ROUTER_EVENT_INPUT_BTN_A:
       ps_ui_router_state.last_button_event = event;

@@ -11,11 +11,13 @@ printf "api/status/event       = %u / 0x%x / %u\n", $ui->api_version, $ui->last_
 printf "page prev/current/req  = %u / %u / %u\n", $ui->previous_page, $ui->current_page, $ui->requested_page
 printf "nav/modal/cal/focus   = %u / %u / %u / %u\n", $ui->nav_state, $ui->modal_state, $ui->calibration_page, $ui->focus_index
 printf "shutdown state/cd/ret/count = %u / %u / %u / %u\n", $ui->shutdown_state, $ui->shutdown_countdown_seconds, $ui->shutdown_return_page, $ui->shutdown_event_count
+printf "package state/count   = %u / %u\n", $ui->package_state, $ui->package_event_count
 printf "transitions/rejected  = %u / %u\n", $ui->transition_count, $ui->rejected_event_count
 printf "button event/count    = %u / %u\n", $ui->last_button_event, $ui->button_event_count
 printf "router action pend/last/req/take = %u / %u / %u / %u\n", $ui->pending_action, $ui->last_action, $ui->action_request_count, $ui->action_take_count
 printf "rtos ui action last/count/status = %u / %u / 0x%x\n", $rt->ui_action_last, $rt->ui_action_count, $rt->ui_action_send_status
 printf "rtos msc enter/exit/intercept/unsup = %u / %u / %u / %u\n", $rt->ui_action_msc_enter_count, $rt->ui_action_msc_exit_count, $rt->ui_action_msc_exit_intercept_count, $rt->ui_action_unsupported_count
+printf "rtos package install action = %u\n", $rt->ui_action_package_install_stub_count
 printf "usb availability ext/data/avail/active = %u / %u / %u / %u\n", $sm->usb_host_external_power_present, $sm->usb_host_data_seen, $sm->usb_host_msc_available, $sm->usb_host_msc_active
 printf "request/event flags   = %u / %u\n", g_ps_ui_router_request, g_ps_ui_router_request_event
 printf "display ui req/render = %u / %u\n", $ow->display_ui_request_count, $ow->display_ui_render_count
@@ -35,6 +37,7 @@ printf "joystick sample min X/Y = %d / %d\n", $sm->joystick_sample_min_x, $sm->j
 printf "joystick sample max X/Y = %d / %d\n", $sm->joystick_sample_max_x, $sm->joystick_sample_max_y
 printf "pages: BOOT=0 HOME=1 MENU=2 SETTINGS=3 CAL=4 PACKAGES=5 RUNTIME=6 ERROR=7 SHUTDOWN=8\n"
 printf "ui shutdown: NONE=0 PREP=1 WARNING=2 IMMINENT=3 CANCELLED=4 LOW_BOOT=5 LOW_CHARGE=6 FLASH_INIT=7 FLASH_DONE=8 FLASH_ERROR=9 MSC_EXPORT=10 MSC_ACTIVE=11 MSC_RECLAIM=12 MSC_DONE=13 MSC_ERROR=14 MSC_RECOVERY=15\n"
+printf "package: NONE=0 CANDIDATE=1 INSTALLING=2 INSTALLED=3 CANCELLED=4 ERROR=5\n"
 printf "cal: NONE=0 INPUT_ROOT=1 JOY_NEUTRAL=2 JOY_RIGHT=3 JOY_CIRCLE=4 JOY_REVIEW=5\n"
-printf "events: BOOT_HOME=1 NAV_MENU=3 NAV_CAL=5 JOY_START=11 NEUTRAL=12 RIGHT=13 CIRCLE=14 REVIEW=15 BTN_A=17 BTN_B=18 BTN_L=19 BTN_R=20 SHUT_PREP=21 WARN=22 IMM=23 CANCEL=24\n"
-printf "actions: NONE=0 MSC_ENTER=1 MSC_EXIT=2\n"
+printf "events: BOOT_HOME=1 NAV_MENU=3 NAV_CAL=5 JOY_START=11 NEUTRAL=12 RIGHT=13 CIRCLE=14 REVIEW=15 BTN_A=17 BTN_B=18 BTN_L=19 BTN_R=20 SHUT_PREP=21 WARN=22 IMM=23 CANCEL=24 PKG_FOUND=27 PKG_DONE=28 PKG_ERR=29 PKG_CLEAR=30\n"
+printf "actions: NONE=0 MSC_ENTER=1 MSC_EXIT=2 PACKAGE_INSTALL_STUB=3\n"

@@ -405,6 +405,7 @@ Rules:
 
 - use `PKG1` as the initial package-container magic/version family in examples.
 - FW0 USB staging may classify `.peepkg` / `.ppkg` filenames as package candidates after MSC reclaim, but that is not package validation; firmware must still validate the actual `PeepPkg` container before install/commit.
+- FW0 package import scaffolding may present a package-found prompt and run a storage-owned install stub for one staged package candidate, but the stub is not an installer. It must not parse, copy, erase, commit, or expose the package to runtime until the real bounded `PeepPkg` validator and install schema exist.
 - chunks are addressed by stable package IDs at authoring level and compact chunk indexes/offsets at runtime level.
 - every chunk has type, format version, offset, size, alignment, capability metadata, runtime-unit references, and integrity metadata.
 - per-chunk CRC plus whole-package checksum are required for v1 integrity.

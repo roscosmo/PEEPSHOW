@@ -1034,7 +1034,8 @@ static void PS_StorageFxLx_FinalizeStageScanClassification(
     result->classification = (uint32_t)PS_STORAGE_STAGE_SCAN_MULTIPLE;
     result->package_scan_status = (uint32_t)PS_STATUS_UNSUPPORTED;
   }
-  else if (result->package_candidate_count == 1UL)
+  else if ((result->package_candidate_count == 1UL) &&
+           (result->unsupported_count == 0UL))
   {
     result->classification =
       (uint32_t)PS_STORAGE_STAGE_SCAN_PACKAGE_CANDIDATE;
@@ -1159,7 +1160,6 @@ ps_status_t ps_storage_filex_levelx_scan_usb_staging(
       if ((attributes & FX_DIRECTORY) != 0U)
       {
         result->directory_count++;
-        result->unsupported_count++;
       }
       else
       {

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (31UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (32UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -683,6 +683,13 @@ typedef struct
   uint32_t usb_stage_rescan_fx_open_status;
   uint32_t usb_stage_rescan_fx_close_status;
   uint32_t usb_stage_rescan_lx_close_status;
+  uint32_t package_candidate_pending;
+  uint32_t package_install_stub_request_count;
+  uint32_t package_install_stub_start_tick;
+  uint32_t package_install_stub_candidate_classification;
+  uint32_t package_install_stub_candidate_count;
+  uint32_t package_install_stub_unsupported_count;
+  uint32_t package_install_stub_last_status;
 
   uint32_t ble_nrst_before;
   uint32_t ble_nrst_released;
@@ -736,6 +743,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Stabilize(uint32_t owner_id);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_InitializeFlash(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ParkUsbForBoot(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSampleProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickLiveProbe(void);

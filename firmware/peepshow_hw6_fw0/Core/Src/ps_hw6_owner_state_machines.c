@@ -2557,8 +2557,47 @@ static HAL_StatusTypeDef PS_HW6_SM_RunUsbStageRescanScaffold(void)
     ps_storage_stage_scan_result.fx_close_status;
   g_ps_hw6_owner_sm_probe.usb_stage_rescan_lx_close_status =
     ps_storage_stage_scan_result.lx_close_status;
+  g_ps_hw6_owner_sm_probe.package_candidate_pending =
+    ((scan_status == PS_STATUS_OK) &&
+     (ps_storage_stage_scan_result.classification ==
+      (uint32_t)PS_STORAGE_STAGE_SCAN_PACKAGE_CANDIDATE) &&
+     (ps_storage_stage_scan_result.package_candidate_count == 1UL) &&
+     (ps_storage_stage_scan_result.unsupported_count == 0UL) &&
+     (ps_storage_stage_scan_result.bounded == 0UL)) ? 1UL : 0UL;
   g_ps_hw6_owner_sm_probe.usb_stage_rescan_pending = 0UL;
   return (scan_status == PS_STATUS_OK) ? HAL_OK : HAL_ERROR;
+}
+
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
+{
+  HAL_StatusTypeDef status = HAL_ERROR;
+
+  g_ps_hw6_owner_sm_probe.package_install_stub_request_count++;
+  g_ps_hw6_owner_sm_probe.package_install_stub_start_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_sm_probe.package_install_stub_candidate_classification =
+    g_ps_hw6_owner_sm_probe.usb_stage_rescan_classification;
+  g_ps_hw6_owner_sm_probe.package_install_stub_candidate_count =
+    g_ps_hw6_owner_sm_probe.usb_stage_rescan_package_candidate_count;
+  g_ps_hw6_owner_sm_probe.package_install_stub_unsupported_count =
+    g_ps_hw6_owner_sm_probe.usb_stage_rescan_unsupported_count;
+
+  if ((g_ps_hw6_owner_sm_probe.package_candidate_pending != 0UL) &&
+      (g_ps_hw6_owner_sm_probe.usb_stage_rescan_status ==
+       (uint32_t)HAL_OK) &&
+      (g_ps_hw6_owner_sm_probe.usb_stage_rescan_classification ==
+       (uint32_t)PS_STORAGE_STAGE_SCAN_PACKAGE_CANDIDATE) &&
+      (g_ps_hw6_owner_sm_probe.usb_stage_rescan_package_candidate_count ==
+       1UL) &&
+      (g_ps_hw6_owner_sm_probe.usb_stage_rescan_unsupported_count == 0UL))
+  {
+    status = HAL_OK;
+    g_ps_hw6_owner_sm_probe.package_candidate_pending = 0UL;
+  }
+
+  g_ps_hw6_owner_sm_probe.package_install_stub_last_status =
+    (uint32_t)status;
+  return status;
 }
 
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_InitializeFlash(void)
@@ -2866,6 +2905,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void)
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.usb_stage_rescan_lx_close_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_candidate_pending = 0UL;
   g_ps_hw6_owner_sm_probe.usb_reclaim_fxlx_close_status =
     0xFFFFFFFFUL;
   g_ps_hw6_owner_sm_probe.usb_reclaim_devdisconnect_status =
@@ -4494,6 +4534,15 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.usb_stage_rescan_fx_close_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.usb_stage_rescan_lx_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_candidate_pending = 0UL;
+  g_ps_hw6_owner_sm_probe.package_install_stub_request_count = 0UL;
+  g_ps_hw6_owner_sm_probe.package_install_stub_start_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.package_install_stub_candidate_classification =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_install_stub_candidate_count = 0UL;
+  g_ps_hw6_owner_sm_probe.package_install_stub_unsupported_count = 0UL;
+  g_ps_hw6_owner_sm_probe.package_install_stub_last_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.ble_uart_deinit_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
