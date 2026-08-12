@@ -404,6 +404,7 @@ The `PeepPkg` container defined in [[Package_Blob_Format_Contract]] is the packa
 Rules:
 
 - use `PKG1` as the initial package-container magic/version family in examples.
+- FW0 USB staging may classify `.peepkg` / `.ppkg` filenames as package candidates after MSC reclaim, but that is not package validation; firmware must still validate the actual `PeepPkg` container before install/commit.
 - chunks are addressed by stable package IDs at authoring level and compact chunk indexes/offsets at runtime level.
 - every chunk has type, format version, offset, size, alignment, capability metadata, runtime-unit references, and integrity metadata.
 - per-chunk CRC plus whole-package checksum are required for v1 integrity.

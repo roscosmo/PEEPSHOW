@@ -13,6 +13,16 @@ extern "C" {
 
 #define PS_STORAGE_FILEX_LEVELX_API_VERSION (1UL)
 #define PS_STORAGE_FILEX_LEVELX_MSC_PROBE_API_VERSION (3UL)
+#define PS_STORAGE_FILEX_LEVELX_STAGE_SCAN_API_VERSION (1UL)
+
+typedef enum
+{
+  PS_STORAGE_STAGE_SCAN_EMPTY = 0,
+  PS_STORAGE_STAGE_SCAN_UNSUPPORTED,
+  PS_STORAGE_STAGE_SCAN_PACKAGE_CANDIDATE,
+  PS_STORAGE_STAGE_SCAN_MULTIPLE,
+  PS_STORAGE_STAGE_SCAN_ERROR
+} ps_storage_filex_levelx_stage_scan_classification_t;
 
 typedef struct
 {
@@ -106,6 +116,31 @@ typedef struct
   uint32_t nor_state;
 } ps_storage_filex_levelx_msc_probe_t;
 
+typedef struct
+{
+  ps_status_t status;
+  uint32_t api_version;
+  uint32_t classification;
+  uint32_t package_scan_status;
+  uint32_t region_id;
+  uint32_t region_start;
+  uint32_t region_length;
+  uint32_t export_length;
+  uint32_t entry_count;
+  uint32_t file_count;
+  uint32_t directory_count;
+  uint32_t package_candidate_count;
+  uint32_t unsupported_count;
+  uint32_t bounded;
+  uint32_t first_entry_status;
+  uint32_t last_entry_status;
+  uint32_t lx_initialize_status;
+  uint32_t lx_open_status;
+  uint32_t fx_open_status;
+  uint32_t fx_close_status;
+  uint32_t lx_close_status;
+} ps_storage_filex_levelx_stage_scan_result_t;
+
 extern volatile ps_storage_filex_levelx_msc_probe_t
   g_ps_storage_filex_levelx_msc_probe;
 
@@ -117,6 +152,10 @@ ps_status_t ps_storage_filex_levelx_initialize_usb_staging(
   ps_storage_flash_block_t *block,
   const ps_storage_region_t *region,
   ps_storage_filex_levelx_smoke_result_t *result);
+ps_status_t ps_storage_filex_levelx_scan_usb_staging(
+  ps_storage_flash_block_t *block,
+  const ps_storage_region_t *region,
+  ps_storage_filex_levelx_stage_scan_result_t *result);
 
 ps_status_t ps_storage_filex_levelx_msc_open(
   ps_storage_flash_block_t *block,

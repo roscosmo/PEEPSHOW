@@ -40,8 +40,10 @@ printf "bridge last cmd/lba/blocks tx/owner/ux/media/ps = %lu / %lu / %lu / 0x%l
 printf "reclaim devdisc/uxdisc-not-used/fxlx_close = 0x%lx / 0x%lx / 0x%lx\n", g_ps_hw6_owner_sm_probe.usb_reclaim_devdisconnect_status, g_ps_hw6_owner_sm_probe.usb_reclaim_disconnect_status, g_ps_hw6_owner_sm_probe.usb_reclaim_fxlx_close_status
 printf "reclaim req/tick/dirty/parked = %lu / %lu / %lu / %lu\n", g_ps_hw6_owner_sm_probe.usb_reclaim_request_count, g_ps_hw6_owner_sm_probe.usb_reclaim_start_tick, g_ps_hw6_owner_sm_probe.usb_reclaim_dirty_seen, g_ps_hw6_owner_sm_probe.usb_reclaim_parked
 printf "staging rescan count/tick/dirty/pending = %lu / %lu / %lu / %lu\n", g_ps_hw6_owner_sm_probe.usb_stage_rescan_request_count, g_ps_hw6_owner_sm_probe.usb_stage_rescan_start_tick, g_ps_hw6_owner_sm_probe.usb_stage_rescan_dirty_seen, g_ps_hw6_owner_sm_probe.usb_stage_rescan_pending
-printf "staging rescan status/package scan = 0x%lx / 0x%lx\n", g_ps_hw6_owner_sm_probe.usb_stage_rescan_status, g_ps_hw6_owner_sm_probe.usb_stage_rescan_package_scan_status
-printf "staging rescan status legend: OK=0x0 PACKAGE_UNSUPPORTED=0xb NOT_RUN=0xffffffff\n"
+printf "staging rescan status/package/class = 0x%lx / 0x%lx / %lu\n", g_ps_hw6_owner_sm_probe.usb_stage_rescan_status, g_ps_hw6_owner_sm_probe.usb_stage_rescan_package_scan_status, g_ps_hw6_owner_sm_probe.usb_stage_rescan_classification
+printf "staging entries file/dir/pkg/unsupported/bounded = %lu / %lu / %lu / %lu / %lu\n", g_ps_hw6_owner_sm_probe.usb_stage_rescan_file_count, g_ps_hw6_owner_sm_probe.usb_stage_rescan_directory_count, g_ps_hw6_owner_sm_probe.usb_stage_rescan_package_candidate_count, g_ps_hw6_owner_sm_probe.usb_stage_rescan_unsupported_count, g_ps_hw6_owner_sm_probe.usb_stage_rescan_bounded
+printf "staging entry fx first/last lx/fx open fx/lx close = 0x%lx / 0x%lx / 0x%lx / 0x%lx / 0x%lx / 0x%lx\n", g_ps_hw6_owner_sm_probe.usb_stage_rescan_first_entry_status, g_ps_hw6_owner_sm_probe.usb_stage_rescan_last_entry_status, g_ps_hw6_owner_sm_probe.usb_stage_rescan_lx_open_status, g_ps_hw6_owner_sm_probe.usb_stage_rescan_fx_open_status, g_ps_hw6_owner_sm_probe.usb_stage_rescan_fx_close_status, g_ps_hw6_owner_sm_probe.usb_stage_rescan_lx_close_status
+printf "staging class: EMPTY=0 UNSUPPORTED=1 PACKAGE_CANDIDATE=2 MULTIPLE=3 ERROR=4; package scan OK=0x0 UNSUPPORTED=0xb NOT_RUN=0xffffffff\n"
 printf "dcd extra timing telemetry = reverted to FW4 transfer_request.c; use endpoint transfer fields below\n\n"
 
 printf "--- USBX storage-thread SCSI trace ---\n"

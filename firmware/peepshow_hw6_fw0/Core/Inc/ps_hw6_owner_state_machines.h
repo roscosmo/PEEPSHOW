@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (30UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (31UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -670,6 +670,19 @@ typedef struct
   uint32_t usb_stage_rescan_pending;
   uint32_t usb_stage_rescan_status;
   uint32_t usb_stage_rescan_package_scan_status;
+  uint32_t usb_stage_rescan_classification;
+  uint32_t usb_stage_rescan_entry_count;
+  uint32_t usb_stage_rescan_file_count;
+  uint32_t usb_stage_rescan_directory_count;
+  uint32_t usb_stage_rescan_package_candidate_count;
+  uint32_t usb_stage_rescan_unsupported_count;
+  uint32_t usb_stage_rescan_bounded;
+  uint32_t usb_stage_rescan_first_entry_status;
+  uint32_t usb_stage_rescan_last_entry_status;
+  uint32_t usb_stage_rescan_lx_open_status;
+  uint32_t usb_stage_rescan_fx_open_status;
+  uint32_t usb_stage_rescan_fx_close_status;
+  uint32_t usb_stage_rescan_lx_close_status;
 
   uint32_t ble_nrst_before;
   uint32_t ble_nrst_released;

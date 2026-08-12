@@ -171,7 +171,7 @@ USB export rules:
 - FW0 package-page USB transfer scaffold is another caller of that same route: `thUI` may request MSC enter/exit, but `thStorage` still owns export, host ownership, FileX/LevelX open/close, reclaim, and rescan.
 - during HW6 FW0 USB/storage bring-up, explicit provisioning and MSC service requests may also show temporary display cues through `thDisplay`; these cues are observation-only and must not decide storage, USB, erase, format, or reclaim behavior
 - MSC UI is an overlay: successful reclaim restores the UI page/state underneath the MSC cue; error and recovery states may remain on the MSC overlay until handled.
-- FW0 reclaim currently runs only the staging/export rescan scaffold: it consumes the dirty-rescan marker, records package scanning as unsupported/not implemented, and performs no package import or install writes
+- FW0 reclaim runs a bounded staging/export root-directory classifier after dirty MSC reclaim: it opens FileX/LevelX only under `thStorage`, classifies the reclaimed volume as `EMPTY`, `UNSUPPORTED`, `PACKAGE_CANDIDATE`, `MULTIPLE`, or `ERROR`, closes FileX/LevelX before returning, and performs no package import or install writes. `PACKAGE_CANDIDATE` is a filename-level hint only for `.peepkg` / `.ppkg` files until the real PeepPkg validator is implemented.
 - if MSC export detects an unformatted or invalid LevelX/FileX staging volume, it reports recovery-required state and leaves formatting to the explicit provisioning command
 - normal boot may ask `thStorage` to run a USB boot-park cleanup command; this command only parks generated USB device hardware and refreshes clock readback, and must not mount FileX/LevelX, initialize package storage, expose MSC, or prove storage readiness
 
@@ -313,7 +313,7 @@ If external flash is unavailable:
 7. USB MSC exports only an already-provisioned staging/export volume and never auto-formats it during export
 8. settings/saves/installed blobs are never host-writable
 9. host write/read/delete smoke succeeds on staging/export volume; HW6 evidence `EV-HW6-20260812-P1-MSCSMOKE-041` validates create/read persistence across eject/reclaim/export and delete followed by clean reclaim on the freshly provisioned staging volume
-10. firmware reclaim/rescan detects changed staging contents
+10. firmware reclaim/rescan detects and classifies changed staging contents
 11. package install preserves last known valid installed index on interruption
 12. runtime asset reads use [[Package_Asset_Loading_API_Contract]] over raw installed blob storage, not FAT/FileX
 13. installer/export mode keeps display static and only minimal input active
