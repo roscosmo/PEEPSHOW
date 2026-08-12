@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (28UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (29UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -629,6 +629,12 @@ typedef struct
   uint32_t usb_reclaim_clock_enabled_after;
   uint32_t usb_reclaim_vddusb_enabled_after;
   uint32_t usb_reclaim_parked;
+  uint32_t usb_stage_rescan_request_count;
+  uint32_t usb_stage_rescan_start_tick;
+  uint32_t usb_stage_rescan_dirty_seen;
+  uint32_t usb_stage_rescan_pending;
+  uint32_t usb_stage_rescan_status;
+  uint32_t usb_stage_rescan_package_scan_status;
 
   uint32_t ble_nrst_before;
   uint32_t ble_nrst_released;

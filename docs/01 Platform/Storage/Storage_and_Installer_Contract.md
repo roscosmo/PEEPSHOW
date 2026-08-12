@@ -160,12 +160,14 @@ USB export rules:
 - MSC export may run while VBUS is present; VBUS is expected during active host export but is not sufficient to enter export by itself
 - `thStorage` owns FileX/LevelX, the MSC media bridge, and export/reclaim sequencing, but USB active clock selection is requested through `thPower`
 - export prep must not use detached USB-park checks that reject VBUS; detached parking and active MSC export are different states
-- reclaim disables the bridge export policy, stops/disconnects USB, closes FileX/LevelX, returns the clock policy to base, then firmware may rescan staging/export
+- reclaim disables the bridge export policy, stops/disconnects USB, closes FileX/LevelX, returns the clock policy to base, then records whether staging/export needs firmware rescan
 - normal MSC export must only open an already-provisioned staging/export volume; it must not erase, format, or auto-repair flash as a side effect of host export
 - destructive staging/export provisioning is a separate `thStorage` command for manufacturing, bring-up, or explicit recovery, and must be initiated intentionally before MSC export is retried
 - explicit provisioning may bootstrap storage/flash from `STORAGE_OFFLINE` / `FLASH_OFF` to the normal flash-ready precondition before it erases and formats only the USB staging/export region
 - explicit provisioning may emit sparse SWO lifecycle tokens (`REQ`, `WAK`, `LAY`, `ERS`, `FMT`, `DON`, `ERR`) under [[Debug_and_Observability]] so operators do not need to pause the target to guess completion timing
-- during HW6 FW0 USB/storage bring-up, explicit provisioning and MSC debug commands may also show temporary display cues through `thDisplay`; these cues are observation-only and must not decide storage, USB, erase, format, or reclaim behavior
+- MSC entry/exit is an OS service request routed to `thStorage`; temporary GDB helpers are callers of that route, not a separate storage lifecycle
+- during HW6 FW0 USB/storage bring-up, explicit provisioning and MSC service requests may also show temporary display cues through `thDisplay`; these cues are observation-only and must not decide storage, USB, erase, format, or reclaim behavior
+- FW0 reclaim currently records the staging/export dirty-rescan placeholder only; package scan/import remains future `thStorage` installer work
 - if MSC export detects an unformatted or invalid LevelX/FileX staging volume, it reports recovery-required state and leaves formatting to the explicit provisioning command
 - normal boot may ask `thStorage` to run a USB boot-park cleanup command; this command only parks generated USB device hardware and refreshes clock readback, and must not mount FileX/LevelX, initialize package storage, expose MSC, or prove storage readiness
 

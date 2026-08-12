@@ -629,20 +629,29 @@ static UINT PS_HW6_RTOS_SendPostStopResumeCommand(uint32_t owner_id)
   message[3] = PS_HW6_RTOS_COMMAND_TOKEN;
   return tx_queue_send(&ps_queues[owner_id], message, TX_NO_WAIT);
 }
-UINT PS_HW6_RTOS_DebugRequestUsbExport(void)
+UINT PS_HW6_RTOS_RequestUsbMscEnter(void)
 {
   return PS_HW6_RTOS_SendCommand(
     PS_HW6_RTOS_OWNER_STORAGE,
     PS_HW6_RTOS_COMMAND_USB_EXPORT);
 }
 
-UINT PS_HW6_RTOS_DebugRequestUsbReclaim(void)
+UINT PS_HW6_RTOS_RequestUsbMscExit(void)
 {
   return PS_HW6_RTOS_SendCommand(
     PS_HW6_RTOS_OWNER_STORAGE,
     PS_HW6_RTOS_COMMAND_USB_RECLAIM);
 }
 
+UINT PS_HW6_RTOS_DebugRequestUsbExport(void)
+{
+  return PS_HW6_RTOS_RequestUsbMscEnter();
+}
+
+UINT PS_HW6_RTOS_DebugRequestUsbReclaim(void)
+{
+  return PS_HW6_RTOS_RequestUsbMscExit();
+}
 UINT PS_HW6_RTOS_DebugRequestStorageFlashInit(void)
 {
   return PS_HW6_RTOS_SendCommand(

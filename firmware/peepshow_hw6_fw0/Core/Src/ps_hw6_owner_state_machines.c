@@ -2712,6 +2712,12 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void)
   g_ps_hw6_owner_sm_probe.usb_reclaim_start_tick = (uint32_t)tx_time_get();
   g_ps_hw6_owner_sm_probe.usb_reclaim_dirty_seen =
     g_ps_storage_msc_bridge_probe.dirty;
+  g_ps_hw6_owner_sm_probe.usb_stage_rescan_dirty_seen =
+    g_ps_hw6_owner_sm_probe.usb_reclaim_dirty_seen;
+  g_ps_hw6_owner_sm_probe.usb_stage_rescan_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.usb_stage_rescan_package_scan_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.usb_reclaim_fxlx_close_status =
     0xFFFFFFFFUL;
   g_ps_hw6_owner_sm_probe.usb_reclaim_devdisconnect_status =
@@ -2777,6 +2783,14 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void)
   if (g_ps_hw6_owner_sm_probe.usb_reclaim_parked != 0UL)
   {
     g_ps_hw6_owner_sm_probe.usb_parked = 1UL;
+    if (g_ps_hw6_owner_sm_probe.usb_reclaim_dirty_seen != 0UL)
+    {
+      g_ps_hw6_owner_sm_probe.usb_stage_rescan_request_count++;
+      g_ps_hw6_owner_sm_probe.usb_stage_rescan_start_tick =
+        (uint32_t)tx_time_get();
+      g_ps_hw6_owner_sm_probe.usb_stage_rescan_pending = 1UL;
+    }
+    g_ps_hw6_owner_sm_probe.usb_stage_rescan_status = (uint32_t)HAL_OK;
     (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
                               STORAGE_EV_USB_RESCAN_OK,
                               HAL_OK);
@@ -4281,6 +4295,10 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.usb_reclaim_deinit_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.usb_reclaim_fxlx_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.usb_stage_rescan_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.usb_stage_rescan_package_scan_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.ble_uart_deinit_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
