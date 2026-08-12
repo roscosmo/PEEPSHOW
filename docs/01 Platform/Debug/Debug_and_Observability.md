@@ -63,6 +63,67 @@ Must be observable with low overhead:
 
 ---
 
+## HW6 FW0 SWO Lifecycle Tokens
+
+HW6 FW0 may emit sparse three-letter lifecycle tokens over SWO/ITM stimulus port 0 when `KNOB_DEBUG_SWO_LIFECYCLE_ENABLE=1` and the debugger has SWO enabled.
+
+Rules:
+
+- tokens are observation-only and must not change firmware control flow
+- token writes must be non-blocking; if SWO is not ready, the event is dropped and counted in `g_ps_hw6_trace_probe`
+- tokens mark lifecycle boundaries only, not loop progress or high-rate data
+- SWO tokens complement TraceX snapshots and GDB probes; they do not replace owner-thread probes or fault records
+
+Current HW6 FW0 token meanings:
+
+| Token | Meaning |
+| --- | --- |
+| `BTD` | boot/runtime owner self-tests completed |
+| `RDY` | storage entered `STORAGE_FLASH_READY` |
+| `REQ` | explicit storage flash initialization requested |
+| `WAK` | flash wake succeeded during explicit flash init |
+| `LAY` | storage layout validation succeeded during explicit flash init |
+| `ERS` | USB staging erase started |
+| `FMT` | FAT/FileX format started |
+| `DON` | explicit storage flash initialization completed |
+| `ERR` | current lifecycle command failed before completion |
+| `EXP` | USB MSC export requested |
+| `MOK` | MSC media open succeeded |
+| `REC` | MSC media open found invalid media and requires explicit flash init |
+| `REL` | USB MSC reclaim requested |
+| `RDN` | USB MSC reclaim completed |
+
+Target GDB status helper: `firmware/peepshow_hw6_fw0/__fw0_swo_lifecycle_prints.gdb`.
+
+### HW6 FW0 Live SWO Tooling Block
+
+Status as of 2026-08-12: firmware-side SWO lifecycle markers exist, but live SWO capture is blocked by the current VS Code Cortex-Debug + ST-LINK GDB server backend.
+
+Observed debugger behavior:
+
+- Adding a Cortex-Debug `swoConfig` block to `firmware/peepshow_hw6_fw0/.vscode/launch.json` produced the warning: `SWO support is not available from the probe when using the ST-Link GDB server. Disabling SWO.`
+- After boot, `firmware/peepshow_hw6_fw0/__fw0_swo_lifecycle_prints.gdb` reported `swo emit/drop/disabled = 0 / 1 / 0`, `swo last token/status = 0x445442 / 0xfffffffd`, and `swo last text = BTD`.
+- That proves the firmware called the SWO marker path for `BTD`, but the debugger had not enabled ITM/SWO, so the non-blocking writer correctly dropped the token as `PS_HW6_TRACE_STATUS_NOT_READY`.
+
+Current rule for HW6 FW0 bring-up:
+
+- Do not keep `swoConfig` enabled in the ST-LINK GDB server launch profile; Cortex-Debug disables it anyway.
+- Keep the firmware SWO scaffold because it is harmless when SWO is not ready and will work with a backend that enables ITM stimulus port 0.
+- Until live SWO is validated, use GDB status helpers, TraceX snapshots, display text, and `PH1` / `PWR_DBG` for operator feedback.
+
+Candidate solution path for a separate debug-tooling task:
+
+1. Validate a Cortex-Debug backend that supports live SWO with ST-LINK hardware, likely OpenOCD/ST-Link rather than the ST-LINK GDB server.
+2. Confirm GDB script compatibility remains intact by sourcing the existing FW0 helpers after launch.
+3. Confirm reset, flash load, halt, interrupt, low-power debug, and reconnect behavior are not worse than the current ST-LINK GDB server flow.
+4. Confirm live text tokens `BTD` and `RDY` appear without pausing the target.
+5. Confirm a destructive flash provisioning run shows the expected token sequence ending in `DON` or `ERR` without requiring a mid-operation GDB interrupt.
+6. Only after that validation should the project launch profile grow a live-SWO variant.
+
+This is a tooling limitation, not evidence of a firmware lifecycle failure.
+
+---
+
 ## TraceX Runtime Scaffold
 
 TraceX is allowed for HW6 FW0 bring-up as a bounded, static RAM trace buffer. It is an observation tool for RTOS scheduling, object creation, event flags, queue activity, and owner-thread lifecycle behavior. It is not a package-facing diagnostic API and it must not become a hidden control path.
@@ -80,7 +141,7 @@ HW6 FW0 validated baseline:
 
 - CubeMX generated Trace Async/SWO and `TX_ENABLE_EVENT_TRACE` support.
 - FW0 calls `tx_trace_enable()` from the `tx_application_define()` user block in `AZURE_RTOS/App/app_azure_rtos.c`.
-- Current knobs: `KNOB_DEBUG_TRACEX_ENABLE=1`, `KNOB_DEBUG_TRACEX_BUFFER_BYTES=32768`, `KNOB_DEBUG_TRACEX_REGISTRY_ENTRIES=64`, `KNOB_DEBUG_TRACEX_USER_EVENTS_ENABLE=1`.
+- Current knobs: `KNOB_DEBUG_TRACEX_ENABLE=1`, `KNOB_DEBUG_TRACEX_BUFFER_BYTES=32768`, `KNOB_DEBUG_TRACEX_REGISTRY_ENTRIES=64`, `KNOB_DEBUG_TRACEX_USER_EVENTS_ENABLE=1`, `KNOB_DEBUG_SWO_LIFECYCLE_ENABLE=1`.
 - Target GDB status helper: `firmware/peepshow_hw6_fw0/__fw0_tracex_prints.gdb`.
 - Target GDB dump helper: `firmware/peepshow_hw6_fw0/__fw0_tracex_dump.gdb`; while halted, it writes the live TraceX buffer to latest snapshot `firmware/peepshow_hw6_fw0/TraceFiles/__fw0_tracex_snapshot.trx` and asks the host shell to copy that dump to a timestamped sibling named `__fw0_tracex_snapshot_YYYYMMDD_HHMMSS.trx`.
 - First target status evidence returned `enable status/runtime = 0x0 / 1`, buffer `0x2000a7a0 / 32768`, trace start/end `0x2000b3d0 / 0x20012790`, and registry total/available `64 / 29`.

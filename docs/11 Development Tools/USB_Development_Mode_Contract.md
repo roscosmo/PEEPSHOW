@@ -75,6 +75,7 @@ Rules:
 - settings, calibration, saves, installed packages, installed indexes, bonding records, and persistent fault logs remain protected.
 - firmware reclaims and rescans staging/export only after host release/exit policy.
 - active gameplay is disabled or policy-limited during installer/export mode.
+- MSC export opens only an already-provisioned staging/export volume; destructive erase/format/provisioning is a separate explicit `thStorage` maintenance command.
 - Active MSC export requests the power-owned USB device clock capability; firmware must not use subsystem-local ad hoc clock overrides for USB MSC.
 - Reclaim must return ownership to firmware, close the staging/export filesystem path, and release the USB clock capability before normal runtime resumes.
 - Normal boot USB parking is not a personality, not MSC availability, and not CDC developer control. It is a storage-owned cleanup command that parks generated USB device hardware before normal runtime continues.

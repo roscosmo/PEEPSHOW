@@ -6,6 +6,7 @@
   "input_start_stable_samples": 2,
   "debug_tracex_enable": true,
   "debug_tracex_user_events_enable": true,
+  "debug_swo_lifecycle_enable": true,
   "debug_tracex_buffer_bytes": 32768,
   "debug_tracex_registry_entries": 64,
   "power_battery_monitor_period_ms": 1000,
@@ -26,5 +27,5 @@
   "power_clock_reactive_burst_hz": 48000000,
   "power_clock_realtime_balanced_hz": 80000000,
   "power_clock_io_high_hz": 160000000,
-  "power_clock_pll2_autogate_enable": false
+  "power_clock_pll2_autogate_enable": true
 }

@@ -45,6 +45,7 @@
 #define PS_HW6_RTOS_COMMAND_USB_EXPORT (8UL)
 #define PS_HW6_RTOS_COMMAND_USB_RECLAIM (9UL)
 #define PS_HW6_RTOS_COMMAND_USB_BOOT_PARK (10UL)
+#define PS_HW6_RTOS_COMMAND_STORAGE_FLASH_INIT (11UL)
 #define PS_HW6_RTOS_EVENT_DEBUG_INDEX     (3U)
 #define PS_HW6_RTOS_ACK_OWNER(owner_id)   (1UL << (owner_id))
 #define PS_HW6_RTOS_CLOCK_ACK_FLAG        (1UL << 31)
@@ -82,6 +83,7 @@ static VOID *ps_thread_stacks[PS_HW6_RTOS_OWNER_COUNT];
 static VOID *ps_queue_storage[PS_HW6_RTOS_QUEUE_COUNT];
 static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_usb_export_anchor;
 static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_usb_reclaim_anchor;
+static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_storage_flash_init_anchor;
 static uint32_t ps_ui_boot_complete_sent;
 static uint32_t ps_power_boot_done;
 static uint32_t ps_display_bootstrap_sent;
@@ -317,7 +319,8 @@ static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
   if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
       ((message[2] == PS_HW6_RTOS_COMMAND_USB_EXPORT) ||
        (message[2] == PS_HW6_RTOS_COMMAND_USB_RECLAIM) ||
-       (message[2] == PS_HW6_RTOS_COMMAND_USB_BOOT_PARK)) &&
+       (message[2] == PS_HW6_RTOS_COMMAND_USB_BOOT_PARK) ||
+       (message[2] == PS_HW6_RTOS_COMMAND_STORAGE_FLASH_INIT)) &&
       (message[3] == PS_HW6_RTOS_COMMAND_TOKEN))
   {
     return 1UL;
@@ -640,10 +643,19 @@ UINT PS_HW6_RTOS_DebugRequestUsbReclaim(void)
     PS_HW6_RTOS_COMMAND_USB_RECLAIM);
 }
 
+UINT PS_HW6_RTOS_DebugRequestStorageFlashInit(void)
+{
+  return PS_HW6_RTOS_SendCommand(
+    PS_HW6_RTOS_OWNER_STORAGE,
+    PS_HW6_RTOS_COMMAND_STORAGE_FLASH_INIT);
+}
+
 static void PS_HW6_RTOS_PrimeDebugCommandAnchors(void)
 {
   ps_debug_usb_export_anchor = PS_HW6_RTOS_DebugRequestUsbExport;
   ps_debug_usb_reclaim_anchor = PS_HW6_RTOS_DebugRequestUsbReclaim;
+  ps_debug_storage_flash_init_anchor =
+    PS_HW6_RTOS_DebugRequestStorageFlashInit;
 }
 
 
@@ -1205,7 +1217,8 @@ static void PS_HW6_RTOS_RunStorageUsbExportRequest(void)
   clock_status = PS_HW6_RTOS_RequestPowerClockProfile(
     PS_HW6_RTOS_OWNER_STORAGE,
     (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
-    PS_HW6_CLOCK_CAP_USB_DEVICE_ACTIVE);
+    PS_HW6_CLOCK_CAP_USB_DEVICE_ACTIVE |
+    PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE);
   g_ps_hw6_owner_sm_probe.usb_export_policy_status =
     (uint32_t)clock_status;
   if (clock_status == TX_SUCCESS)
@@ -1226,6 +1239,26 @@ static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
 {
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_SET);
   (void)PS_HW6_OwnerStateMachines_ReclaimUsbExport();
+  (void)PS_HW6_RTOS_RequestPowerClockProfile(
+    PS_HW6_RTOS_OWNER_STORAGE,
+    (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
+    0UL);
+  PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_RESET);
+}
+
+static void PS_HW6_RTOS_RunStorageFlashInitRequest(void)
+{
+  UINT clock_status;
+
+  PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_SET);
+  clock_status = PS_HW6_RTOS_RequestPowerClockProfile(
+    PS_HW6_RTOS_OWNER_STORAGE,
+    (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
+    PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE);
+  if (clock_status == TX_SUCCESS)
+  {
+    (void)PS_HW6_OwnerStateMachines_InitializeFlash();
+  }
   (void)PS_HW6_RTOS_RequestPowerClockProfile(
     PS_HW6_RTOS_OWNER_STORAGE,
     (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
@@ -1267,6 +1300,11 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
            (command == PS_HW6_RTOS_COMMAND_USB_RECLAIM))
   {
     PS_HW6_RTOS_RunStorageUsbReclaimRequest();
+  }
+  else if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
+           (command == PS_HW6_RTOS_COMMAND_STORAGE_FLASH_INIT))
+  {
+    PS_HW6_RTOS_RunStorageFlashInitRequest();
   }
   else if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
            (command == PS_HW6_RTOS_COMMAND_USB_BOOT_PARK))
@@ -1348,6 +1386,10 @@ static void PS_HW6_RTOS_UpdateRuntimeComplete(void)
       (g_ps_hw6_rtos_probe.queue_selftest_mask == PS_HW6_RTOS_OWNER_MASK) &&
       (g_ps_hw6_rtos_probe.event_selftest_mask == PS_HW6_RTOS_EVENT_MASK))
   {
+    if (g_ps_hw6_rtos_probe.runtime_complete == 0UL)
+    {
+      PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_BOOT_DONE);
+    }
     g_ps_hw6_rtos_probe.runtime_complete = 1UL;
   }
 }
@@ -1480,6 +1522,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
       (void)PS_HW6_RTOS_BootParkStorageUsb();
+      (void)PS_HW6_ClockPolicy_ApplyBootIdleDomains();
       (void)PS_HW6_OwnerStateMachines_Stabilize(
         PS_HW6_RTOS_OWNER_POWER);
       ps_power_boot_done = 1UL;

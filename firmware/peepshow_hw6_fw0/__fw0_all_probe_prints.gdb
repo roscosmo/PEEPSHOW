@@ -367,7 +367,7 @@ printf "layout total/erase/end     = %u / %u / 0x%08x\n", $sm->storage_layout_to
 printf "layout errors align/overlap/range = %u / %u / %u\n", $sm->storage_layout_alignment_errors, $sm->storage_layout_overlap_errors, $sm->storage_layout_range_errors
 printf "layout host/protected masks = 0x%x / 0x%x\n", $sm->storage_layout_host_exposed_mask, $sm->storage_layout_protected_mask
 printf "layout scratch index/start/len = %u / 0x%08x / %u\n", $sm->storage_layout_scratch_index, $sm->storage_layout_scratch_start, $sm->storage_layout_scratch_length
-printf "\n  FileX + LevelX local smoke test\n"
+printf "\n  FileX + LevelX explicit init/provision result\n"
 printf "fxlx API/status/region      = %u / %u / %u\n", $sm->storage_fxlx_api_version, $sm->storage_fxlx_status, $sm->storage_fxlx_region_id
 printf "region start/len           = 0x%08x / %u\n", $sm->storage_fxlx_region_start, $sm->storage_fxlx_region_length
 printf "test start/len             = 0x%08x / %u\n", $sm->storage_fxlx_test_start, $sm->storage_fxlx_test_length
@@ -397,6 +397,8 @@ printf "LX driver last status      = 0x%x\n", $sm->storage_fxlx_lx_driver_last_s
 printf "FX driver rd/wr/flush/abort = %u / %u / %u / %u\n", $sm->storage_fxlx_fx_driver_read_count, $sm->storage_fxlx_fx_driver_write_count, $sm->storage_fxlx_fx_driver_flush_count, $sm->storage_fxlx_fx_driver_abort_count
 printf "FX driver init/uninit/release = %u / %u / %u\n", $sm->storage_fxlx_fx_driver_init_count, $sm->storage_fxlx_fx_driver_uninit_count, $sm->storage_fxlx_fx_driver_release_count
 printf "FX driver last req/status  = 0x%x / 0x%x\n", $sm->storage_fxlx_fx_driver_last_request, $sm->storage_fxlx_fx_driver_last_status
+printf "flash init count/tick/status = %u / %u / 0x%x\n", $sm->storage_flash_init_request_count, $sm->storage_flash_init_start_tick, $sm->storage_flash_init_last_status
+printf "flash init wake/layout/fxlx/dpd = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->storage_flash_init_wake_status, $sm->storage_flash_init_layout_status, $sm->storage_flash_init_fxlx_status, $sm->storage_flash_init_deep_power_down_status
 printf "\n  USB device detached baseline (owned by storage)\n"
 printf "VBUS present               = %u (expected 0)\n", $sm->usb_vbus_present
 printf "PCD state before/after     = 0x%x / 0x%x\n", $sm->usb_pcd_state_before, $sm->usb_pcd_state_after
@@ -404,9 +406,23 @@ printf "clock before/after         = %u / %u\n", $sm->usb_clock_enabled_before, 
 printf "VDDUSB before/after        = %u / %u\n", $sm->usb_vddusb_enabled_before, $sm->usb_vddusb_enabled_after
 printf "deinit attempted/status    = %u / 0x%x\n", $sm->usb_deinit_attempted, $sm->usb_deinit_status
 printf "USB parked                 = %u (expected 1)\n", $sm->usb_parked
+printf "\n  clock policy\n"
+set $cp = &g_ps_hw6_clock_policy_probe
+printf "clock api/apply/status     = %u / %u / 0x%x\n", $cp->api_version, $cp->apply_count, $cp->last_status
+printf "clock req/current/caps     = %u / %u / 0x%x\n", $cp->selected_profile, $cp->current_profile, $cp->active_capabilities
+printf "clock domains req/managed/read = 0x%x / 0x%x / 0x%x\n", $cp->required_domain_mask, $cp->managed_domain_mask, $cp->readback_domain_mask
+printf "PLL2 gate en/skip/on/off/status = %u / %u / %u / %u / 0x%x\n", $cp->pll2_autogate_enabled, $cp->pll2_autogate_skip_count, $cp->pll2_domain_on_count, $cp->pll2_domain_off_count, $cp->pll2_domain_last_status
+printf "PLL2 output req/read       = 0x%x / 0x%x\n", $cp->pll2_required_output_mask, $cp->pll2_output_enabled_mask
+printf "PLL2 ready sai/ospi Hz     = %u / %u / %u\n", $cp->pll2_ready, $cp->sai1_kernel_hz, $cp->ospi_kernel_hz
 printf "USB export req/tick/vbus   = %u / %u / %u\n", $sm->usb_export_request_count, $sm->usb_export_start_tick, $sm->usb_export_vbus_present
 printf "USB export policy/dcd/init/start = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->usb_export_policy_status, $sm->usb_export_dcd_status, $sm->usb_export_pcd_init_status, $sm->usb_export_pcd_start_status
 printf "USB export flash/fxlx      = 0x%x / 0x%x\n", $sm->usb_export_flash_wake_status, $sm->usb_export_fxlx_open_status
+set $fxlx_msc = &g_ps_storage_filex_levelx_msc_probe
+printf "USB export fxlx msc api/status/stage = %u / 0x%x / %u\n", $fxlx_msc->api_version, $fxlx_msc->status, $fxlx_msc->last_stage
+printf "USB export fxlx msc validate/lx open/driver = 0x%x / 0x%x / 0x%x\n", $fxlx_msc->validate_status, $fxlx_msc->lx_open_status, $fxlx_msc->lx_driver_last_status
+printf "USB export fxlx recovery invalid/count lx/driver = %u / %u / 0x%x / 0x%x\n", $fxlx_msc->invalid_media_detected, $fxlx_msc->recovery_required_count, $fxlx_msc->recovery_lx_open_status, $fxlx_msc->recovery_driver_status
+printf "USB export fxlx msc rd/wr/erase/verify = %u / %u / %u / %u\n", $fxlx_msc->lx_driver_read_count, $fxlx_msc->lx_driver_write_count, $fxlx_msc->lx_driver_erase_count, $fxlx_msc->lx_driver_verify_count
+printf "USB export fxlx msc block/flash/nor/ospi = 0x%x / %u / 0x%x / %u / 0x%x\n", $fxlx_msc->block_last_status, $fxlx_msc->flash_state, $fxlx_msc->flash_last_status, $fxlx_msc->nor_state, $fxlx_msc->ospi_error_after
 printf "USBX pool/init/stage/error/dcd irqguard = 0x%x / 0x%x / %u / 0x%x / 0x%x / %u\n", g_ps_hw6_usbx_byte_pool_create_status, g_ps_hw6_usbx_device_init_status, g_ps_hw6_usbx_init_stage, g_ps_hw6_usbx_init_error_code, g_ps_hw6_usbx_dcd_status, g_ps_hw6_usb_irq_guard_drop_count
 printf "RTOS low-power enter/usb-skip = %u / %u\n", g_ps_hw6_rtos_probe.low_power_enter_count, g_ps_hw6_rtos_low_power_usb_skip_count
 printf "USB export irq/devconn     = %u -> %u / 0x%x\n", $sm->usb_export_irq_priority_before, $sm->usb_export_irq_priority_after, $sm->usb_export_devconnect_status

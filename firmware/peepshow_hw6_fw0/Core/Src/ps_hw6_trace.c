@@ -1,6 +1,7 @@
 #include "ps_hw6_trace.h"
 
 #include "knobs_autogen.h"
+#include "stm32u5xx.h"
 #include "tx_api.h"
 
 volatile ps_hw6_trace_probe_t g_ps_hw6_trace_probe;
@@ -11,9 +12,67 @@ static void PS_HW6_TracePrimeProbe(void)
   {
     g_ps_hw6_trace_probe.api_version = PS_HW6_TRACE_API_VERSION;
     g_ps_hw6_trace_probe.last_status = PS_HW6_TRACE_STATUS_NOT_RUN;
+    g_ps_hw6_trace_probe.swo_last_status = PS_HW6_TRACE_STATUS_NOT_RUN;
   }
 }
 
+static uint32_t PS_HW6_TraceSwoReady(void)
+{
+  if ((CoreDebug->DEMCR & CoreDebug_DEMCR_TRCENA_Msk) == 0UL)
+  {
+    return 0UL;
+  }
+
+  if ((ITM->TCR & ITM_TCR_ITMENA_Msk) == 0UL)
+  {
+    return 0UL;
+  }
+
+  if ((ITM->TER & 1UL) == 0UL)
+  {
+    return 0UL;
+  }
+
+  if (ITM->PORT[0U].u32 == 0UL)
+  {
+    return 0UL;
+  }
+
+  return 1UL;
+}
+
+static void PS_HW6_TraceSwoWriteToken(uint32_t token)
+{
+  ITM->PORT[0U].u8 = (uint8_t)(token & 0xFFUL);
+  ITM->PORT[0U].u8 = (uint8_t)((token >> 8) & 0xFFUL);
+  ITM->PORT[0U].u8 = (uint8_t)((token >> 16) & 0xFFUL);
+  ITM->PORT[0U].u8 = (uint8_t)'\n';
+}
+
+void PS_HW6_TraceSwoLifecycle(uint32_t token)
+{
+  PS_HW6_TracePrimeProbe();
+
+  g_ps_hw6_trace_probe.swo_last_token = token;
+
+  if (KNOB_DEBUG_SWO_LIFECYCLE_ENABLE == 0UL)
+  {
+    g_ps_hw6_trace_probe.swo_disabled_count++;
+    g_ps_hw6_trace_probe.swo_last_status = PS_HW6_TRACE_STATUS_DISABLED;
+    return;
+  }
+
+  if (PS_HW6_TraceSwoReady() == 0UL)
+  {
+    g_ps_hw6_trace_probe.swo_drop_count++;
+    g_ps_hw6_trace_probe.swo_last_status = PS_HW6_TRACE_STATUS_NOT_READY;
+    return;
+  }
+
+  PS_HW6_TraceSwoWriteToken(token);
+  g_ps_hw6_trace_probe.swo_emit_count++;
+  g_ps_hw6_trace_probe.swo_last_status = 0UL;
+}
 static void PS_HW6_TraceInsert(uint32_t event_id,
                                uint32_t info1,
                                uint32_t info2,

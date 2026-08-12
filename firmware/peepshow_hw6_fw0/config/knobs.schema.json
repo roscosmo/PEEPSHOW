@@ -12,6 +12,7 @@
     "input_start_stable_samples",
     "debug_tracex_enable",
     "debug_tracex_user_events_enable",
+    "debug_swo_lifecycle_enable",
     "debug_tracex_buffer_bytes",
     "debug_tracex_registry_entries",
     "power_battery_monitor_period_ms",
@@ -114,6 +115,16 @@
       "class": "debug_visibility",
       "path": "platform.knobs.debug.tracex_user_events_enable",
       "description": "When true, FW0 emits PeepShow user events into the TraceX buffer at selected owner and UI lifecycle boundaries."
+    },
+    "debug_swo_lifecycle_enable": {
+      "type": "boolean",
+      "default": true,
+      "unit": "bool",
+      "timebase_domain": "threadx",
+      "owner": "kernel",
+      "class": "debug_visibility",
+      "path": "platform.knobs.debug.swo_lifecycle_enable",
+      "description": "When true, FW0 emits sparse three-letter lifecycle tokens over SWO/ITM stimulus port 0 when the debugger has SWO enabled."
     },
     "debug_tracex_buffer_bytes": {
       "type": "integer",

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (27UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (28UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -577,6 +577,13 @@ typedef struct
   uint32_t storage_fxlx_fx_driver_release_count;
   uint32_t storage_fxlx_fx_driver_last_request;
   uint32_t storage_fxlx_fx_driver_last_status;
+  uint32_t storage_flash_init_request_count;
+  uint32_t storage_flash_init_start_tick;
+  uint32_t storage_flash_init_wake_status;
+  uint32_t storage_flash_init_layout_status;
+  uint32_t storage_flash_init_fxlx_status;
+  uint32_t storage_flash_init_deep_power_down_status;
+  uint32_t storage_flash_init_last_status;
   uint32_t flash_ospi_state_after;
   uint32_t flash_ospi_error_after;
   uint32_t flash_cycle_release_status[PS_HW6_OWNER_SM_CYCLE_COUNT];
@@ -672,6 +679,7 @@ void PS_HW6_OwnerStateMachines_SetPostStopResumeCallback(
   PS_HW6_PostStopResumeBarrierCallback callback);
 void PS_HW6_OwnerStateMachines_BeginWorkflow(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Stabilize(uint32_t owner_id);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_InitializeFlash(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ParkUsbForBoot(void);

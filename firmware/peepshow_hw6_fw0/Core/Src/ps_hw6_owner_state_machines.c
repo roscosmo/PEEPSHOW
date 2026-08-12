@@ -883,6 +883,12 @@ static HAL_StatusTypeDef PS_HW6_SM_Transition(uint32_t state_machine_id,
                               current_state,
                               event,
                               transition->to_state);
+      if ((state_machine_id == PS_HW6_SM_STORAGE) &&
+          (transition->to_state == STORAGE_FLASH_READY) &&
+          (action_status == HAL_OK))
+      {
+        PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_STORAGE_READY);
+      }
       return HAL_OK;
     }
   }
@@ -2425,6 +2431,146 @@ static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForUsbExport(void)
 
   return status;
 }
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_InitializeFlash(void)
+{
+  HAL_StatusTypeDef status;
+  ps_status_t driver_status;
+  uint32_t storage_state;
+  uint32_t recovery_required;
+
+  g_ps_hw6_owner_sm_probe.storage_flash_init_request_count++;
+  g_ps_hw6_owner_sm_probe.storage_flash_init_start_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_sm_probe.storage_flash_init_wake_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_flash_init_layout_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_flash_init_fxlx_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_flash_init_deep_power_down_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_flash_init_last_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_FLASH_INIT_REQUEST);
+
+  storage_state = g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE];
+  recovery_required =
+    ((storage_state == (uint32_t)STORAGE_ERROR) &&
+     (g_ps_storage_filex_levelx_msc_probe.invalid_media_detected != 0UL)) ?
+    1UL : 0UL;
+
+  if ((storage_state != (uint32_t)STORAGE_FLASH_READY) &&
+      (recovery_required == 0UL))
+  {
+    g_ps_hw6_owner_sm_probe.storage_flash_init_last_status =
+      (uint32_t)HAL_ERROR;
+    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
+    return HAL_ERROR;
+  }
+
+  driver_status = PS_HW6_SM_EnsureFlashAwake();
+  g_ps_hw6_owner_sm_probe.storage_flash_init_wake_status =
+    (uint32_t)driver_status;
+  status = PS_HW6_SM_StatusToHal(driver_status);
+  if (status != HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_FAULT, status);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_FAULT, status);
+    g_ps_hw6_owner_sm_probe.storage_flash_init_last_status =
+      (uint32_t)status;
+    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
+    return status;
+  }
+
+  PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_FLASH_WAKE_OK);
+  driver_status = ps_storage_layout_validate(
+    &ps_flash_block.geometry,
+    &ps_storage_layout_result);
+  g_ps_hw6_owner_sm_probe.storage_flash_init_layout_status =
+    (uint32_t)driver_status;
+  status = PS_HW6_SM_StatusToHal(driver_status);
+  PS_HW6_SM_RecordStorageLayoutResult(&ps_storage_layout_result);
+  if (status != HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_FAULT, status);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_FAULT, status);
+    g_ps_hw6_owner_sm_probe.storage_flash_init_last_status =
+      (uint32_t)status;
+    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
+    return status;
+  }
+
+  PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_FLASH_LAYOUT_OK);
+  driver_status = ps_storage_filex_levelx_initialize_usb_staging(
+    &ps_flash_block,
+    PS_HW6_SM_FindStorageRegion(PS_STORAGE_REGION_USB_STAGING),
+    &ps_storage_fxlx_result);
+  g_ps_hw6_owner_sm_probe.storage_flash_init_fxlx_status =
+    (uint32_t)driver_status;
+  status = PS_HW6_SM_StatusToHal(driver_status);
+  PS_HW6_SM_RecordStorageFxLxResult(&ps_storage_fxlx_result);
+  PS_HW6_SM_UpdateFlashBlockProbe();
+  PS_HW6_SM_UpdateFlashDriverProbe();
+  if (status != HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_FAULT, status);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_FAULT, status);
+    g_ps_hw6_owner_sm_probe.storage_flash_init_last_status =
+      (uint32_t)status;
+    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
+    return status;
+  }
+
+  PS_StorageMscBridge_SetPolicy(0UL, 1UL, 1UL);
+
+  driver_status = ps_dev_at25sl128a_enter_deep_power_down(
+    &ps_flash_device,
+    &ps_flash_command_result);
+  g_ps_hw6_owner_sm_probe.storage_flash_init_deep_power_down_status =
+    (uint32_t)driver_status;
+  g_ps_hw6_owner_sm_probe.flash_deep_power_down_status =
+    ps_flash_command_result.hal_status;
+  status = PS_HW6_SM_StatusToHal(driver_status);
+  if (status != HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_FAULT, status);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_FAULT, status);
+    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
+  }
+  else
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_REQUEST_DEEP_POWER_DOWN,
+                              status);
+    if (recovery_required != 0UL)
+    {
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                                STORAGE_EV_RECOVER_OK,
+                                status);
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                                STORAGE_EV_FLASH_READY,
+                                status);
+    }
+    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_FLASH_INIT_DONE);
+  }
+
+  g_ps_hw6_owner_sm_probe.flash_ospi_state_after =
+    (uint32_t)HAL_OSPI_GetState(&hospi1);
+  g_ps_hw6_owner_sm_probe.flash_ospi_error_after =
+    HAL_OSPI_GetError(&hospi1);
+  PS_HW6_SM_UpdateFlashDriverProbe();
+  g_ps_hw6_owner_sm_probe.storage_flash_init_last_status =
+    (uint32_t)status;
+  return status;
+}
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void)
 {
   HAL_StatusTypeDef status = HAL_OK;
@@ -2445,12 +2591,14 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void)
   g_ps_hw6_owner_sm_probe.usb_export_irq_priority_after = 0xFFFFFFFFUL;
   g_ps_hw6_owner_sm_probe.usb_export_devconnect_status = 0xFFFFFFFFUL;
   g_ps_hw6_owner_sm_probe.usb_export_started = 0UL;
+  PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_MSC_EXPORT_START);
 
   status = PS_HW6_SM_PrepareStorageForUsbExport();
   if (status != HAL_OK)
   {
     g_ps_hw6_owner_sm_probe.usb_export_policy_status =
       PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
     return status;
   }
 
@@ -2459,6 +2607,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void)
   {
     g_ps_hw6_owner_sm_probe.usb_export_policy_status =
       PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
     return HAL_ERROR;
   }
 
@@ -2471,6 +2620,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void)
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
                               STORAGE_EV_FAULT, HAL_ERROR);
+    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
     return HAL_ERROR;
   }
 
@@ -2483,9 +2633,18 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void)
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
                               STORAGE_EV_FAULT, HAL_ERROR);
+    if (storage_status == PS_STATUS_RECOVERY_REQUIRED)
+    {
+      PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_MSC_RECOVERY_REQUIRED);
+    }
+    else
+    {
+      PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
+    }
     return HAL_ERROR;
   }
 
+  PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_MSC_OPEN_OK);
   PS_StorageMscBridge_SetPolicy(1UL, 1UL, 1UL);
   g_ps_hw6_owner_sm_probe.usb_export_policy_status = 0UL;
 
@@ -2513,6 +2672,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void)
     (void)ps_storage_filex_levelx_msc_close();
     (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
                               STORAGE_EV_FAULT, status);
+    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
   }
 
   return status;
@@ -2538,6 +2698,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void)
     0xFFFFFFFFUL;
   g_ps_hw6_owner_sm_probe.usb_reclaim_deinit_status =
     0xFFFFFFFFUL;
+  PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_MSC_RECLAIM_START);
 
   if (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] ==
       STORAGE_USB_STAGING_EXPORTED)
@@ -2557,6 +2718,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void)
   {
     g_ps_hw6_owner_sm_probe.usb_reclaim_disconnect_status =
       PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
     return HAL_ERROR;
   }
 
@@ -2594,11 +2756,13 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void)
     (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
                               STORAGE_EV_USB_RESCAN_OK,
                               HAL_OK);
+    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_MSC_RECLAIM_DONE);
   }
   else
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
                               STORAGE_EV_FAULT, status);
+    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
   }
 
   return (g_ps_hw6_owner_sm_probe.usb_reclaim_parked != 0UL) ?
@@ -2739,23 +2903,8 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeStorage(void)
     goto storage_done;
   }
 
-  driver_status = ps_storage_filex_levelx_run_smoke(
-    &ps_flash_block,
-    PS_HW6_SM_FindStorageRegion(PS_STORAGE_REGION_USB_STAGING),
-    &ps_storage_fxlx_result);
-  status = PS_HW6_SM_StatusToHal(driver_status);
-  PS_HW6_SM_RecordStorageFxLxResult(&ps_storage_fxlx_result);
-  PS_HW6_SM_UpdateFlashBlockProbe();
-  PS_HW6_SM_UpdateFlashDriverProbe();
-  if (status != HAL_OK)
-  {
-    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
-                              FLASH_EV_FAULT, status);
-    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
-                              STORAGE_EV_FAULT, status);
-    goto storage_done;
-  }
-
+  g_ps_hw6_owner_sm_probe.storage_fxlx_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   PS_StorageMscBridge_SetPolicy(0UL, 1UL, 1UL);
 
   driver_status = ps_dev_at25sl128a_enter_deep_power_down(
@@ -4030,6 +4179,18 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.storage_fxlx_fx_close_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.storage_fxlx_lx_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_flash_init_request_count = 0UL;
+  g_ps_hw6_owner_sm_probe.storage_flash_init_start_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.storage_flash_init_wake_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_flash_init_layout_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_flash_init_fxlx_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_flash_init_deep_power_down_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_flash_init_last_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.flash_scratch_erase_write_enable_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;

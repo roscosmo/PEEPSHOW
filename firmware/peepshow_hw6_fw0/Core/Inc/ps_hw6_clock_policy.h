@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_HW6_CLOCK_POLICY_API_VERSION (2UL)
+#define PS_HW6_CLOCK_POLICY_API_VERSION (3UL)
 #define PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN (0xFFFFFFFFUL)
 #define PS_HW6_CLOCK_REQUESTER_COUNT (9U)
 
@@ -104,6 +104,11 @@ typedef struct
   uint32_t hsi48_ready;
   uint32_t pll1_ready;
   uint32_t pll2_ready;
+  uint32_t pll2_output_enabled_mask;
+  uint32_t pll2_required_output_mask;
+  uint32_t pll2_domain_on_count;
+  uint32_t pll2_domain_off_count;
+  uint32_t pll2_domain_last_status;
   uint32_t usb_kernel_hz;
   uint32_t sai1_kernel_hz;
   uint32_t ospi_kernel_hz;
@@ -120,6 +125,7 @@ uint32_t PS_HW6_ClockPolicy_ProfileIsActive(
 UINT PS_HW6_ClockPolicy_ApplyProfile(
   uint32_t requested_profile,
   uint32_t capabilities);
+UINT PS_HW6_ClockPolicy_ApplyBootIdleDomains(void);
 UINT PS_HW6_ClockPolicy_ApplyRequesterProfile(
   uint32_t requester_id,
   uint32_t requested_profile,

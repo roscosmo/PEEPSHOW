@@ -5,6 +5,15 @@ printf "--- USB export probe summary ---\n"
 printf "export req/tick/vbus = %lu / %lu / %lu\n", g_ps_hw6_owner_sm_probe.usb_export_request_count, g_ps_hw6_owner_sm_probe.usb_export_start_tick, g_ps_hw6_owner_sm_probe.usb_export_vbus_present
 printf "export policy/dcd/init/start = 0x%lx / 0x%lx / 0x%lx / 0x%lx\n", g_ps_hw6_owner_sm_probe.usb_export_policy_status, g_ps_hw6_owner_sm_probe.usb_export_dcd_status, g_ps_hw6_owner_sm_probe.usb_export_pcd_init_status, g_ps_hw6_owner_sm_probe.usb_export_pcd_start_status
 printf "export flash_wake/fxlx_open = 0x%lx / 0x%lx\n", g_ps_hw6_owner_sm_probe.usb_export_flash_wake_status, g_ps_hw6_owner_sm_probe.usb_export_fxlx_open_status
+set $fxlx_msc = &g_ps_storage_filex_levelx_msc_probe
+printf "fxlx msc api/status/stage/active = %lu / 0x%lx / %lu / %lu\n", $fxlx_msc->api_version, $fxlx_msc->status, $fxlx_msc->last_stage, $fxlx_msc->active
+printf "fxlx msc open/close/old/export = %lu / %lu / %lu / %lu\n", $fxlx_msc->open_count, $fxlx_msc->close_count, $fxlx_msc->already_open, $fxlx_msc->export_length
+printf "fxlx msc region id/start/len = %lu / 0x%lx / %lu\n", $fxlx_msc->region_id, $fxlx_msc->region_start, $fxlx_msc->region_length
+printf "fxlx msc validate/lx init/open/close = 0x%lx / 0x%lx / 0x%lx / 0x%lx\n", $fxlx_msc->validate_status, $fxlx_msc->lx_initialize_status, $fxlx_msc->lx_open_status, $fxlx_msc->lx_close_status
+printf "fxlx msc recovery invalid/count lx/driver = %lu / %lu / 0x%lx / 0x%lx\n", $fxlx_msc->invalid_media_detected, $fxlx_msc->recovery_required_count, $fxlx_msc->recovery_lx_open_status, $fxlx_msc->recovery_driver_status
+printf "fxlx msc LX rd/wr/erase/verify/last = %lu / %lu / %lu / %lu / 0x%lx\n", $fxlx_msc->lx_driver_read_count, $fxlx_msc->lx_driver_write_count, $fxlx_msc->lx_driver_erase_count, $fxlx_msc->lx_driver_verify_count, $fxlx_msc->lx_driver_last_status
+printf "fxlx msc block/flash/nor/ospi = 0x%lx / %lu / 0x%lx / %lu / 0x%lx\n", $fxlx_msc->block_last_status, $fxlx_msc->flash_state, $fxlx_msc->flash_last_status, $fxlx_msc->nor_state, $fxlx_msc->ospi_error_after
+printf "fxlx msc stages: IDLE=0 VALIDATE=1 OLD_OPEN=2 LX_INIT=3 LX_OPEN=4 OPENED=5 CLOSE=6 FAULT=7\n"
 printf "usbx pool/init/stage/error/dcd irqguard = 0x%lx / 0x%lx / %lu / 0x%lx / 0x%lx / %lu\n", g_ps_hw6_usbx_byte_pool_create_status, g_ps_hw6_usbx_device_init_status, g_ps_hw6_usbx_init_stage, g_ps_hw6_usbx_init_error_code, g_ps_hw6_usbx_dcd_status, g_ps_hw6_usb_irq_guard_drop_count
 printf "rtos low-power enter/usb-skip = %lu / %lu\n", g_ps_hw6_rtos_probe.low_power_enter_count, g_ps_hw6_rtos_low_power_usb_skip_count
 printf "export irq prio before/after devconnect = %lu / %lu / 0x%lx\n", g_ps_hw6_owner_sm_probe.usb_export_irq_priority_before, g_ps_hw6_owner_sm_probe.usb_export_irq_priority_after, g_ps_hw6_owner_sm_probe.usb_export_devconnect_status

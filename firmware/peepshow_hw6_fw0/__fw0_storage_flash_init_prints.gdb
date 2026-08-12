@@ -1,0 +1,12 @@
+printf "--- HW6 explicit storage flash init / USB staging provision ---\n"
+printf "version/storage state/flash state = %u / %u / %u\n", g_ps_hw6_owner_sm_probe.version, g_ps_hw6_owner_sm_probe.current_state[7], g_ps_hw6_owner_sm_probe.current_state[8]
+printf "init count/start/status      = %u / %u / 0x%x\n", g_ps_hw6_owner_sm_probe.storage_flash_init_request_count, g_ps_hw6_owner_sm_probe.storage_flash_init_start_tick, g_ps_hw6_owner_sm_probe.storage_flash_init_last_status
+printf "init wake/layout/fxlx/dpd    = 0x%x / 0x%x / 0x%x / 0x%x\n", g_ps_hw6_owner_sm_probe.storage_flash_init_wake_status, g_ps_hw6_owner_sm_probe.storage_flash_init_layout_status, g_ps_hw6_owner_sm_probe.storage_flash_init_fxlx_status, g_ps_hw6_owner_sm_probe.storage_flash_init_deep_power_down_status
+printf "fxlx status/region/start/len = 0x%x / %u / 0x%x / %u\n", g_ps_hw6_owner_sm_probe.storage_fxlx_status, g_ps_hw6_owner_sm_probe.storage_fxlx_region_id, g_ps_hw6_owner_sm_probe.storage_fxlx_region_start, g_ps_hw6_owner_sm_probe.storage_fxlx_region_length
+printf "preformat erase sts/blocks/fail/polls = 0x%x / %u / %u / %u\n", g_ps_hw6_owner_sm_probe.storage_fxlx_preformat_erase_status, g_ps_hw6_owner_sm_probe.storage_fxlx_preformat_erase_block_count, g_ps_hw6_owner_sm_probe.storage_fxlx_preformat_erase_failed_block, g_ps_hw6_owner_sm_probe.storage_fxlx_preformat_erase_last_poll_count
+printf "LX init/open/close          = 0x%x / 0x%x / 0x%x\n", g_ps_hw6_owner_sm_probe.storage_fxlx_lx_initialize_status, g_ps_hw6_owner_sm_probe.storage_fxlx_lx_open_status, g_ps_hw6_owner_sm_probe.storage_fxlx_lx_close_status
+printf "FX format/open/flush/close  = 0x%x / 0x%x / 0x%x / 0x%x\n", g_ps_hw6_owner_sm_probe.storage_fxlx_fx_format_status, g_ps_hw6_owner_sm_probe.storage_fxlx_fx_open_status, g_ps_hw6_owner_sm_probe.storage_fxlx_fx_flush_status, g_ps_hw6_owner_sm_probe.storage_fxlx_fx_close_status
+printf "flash block/ospi/driver     = 0x%x / 0x%x / 0x%x\n", g_ps_hw6_owner_sm_probe.flash_block_last_status, g_ps_hw6_owner_sm_probe.flash_ospi_error_after, g_ps_hw6_owner_sm_probe.flash_driver_last_status
+printf "msc recovery invalid/count  = %u / %u\n", g_ps_storage_filex_levelx_msc_probe.invalid_media_detected, g_ps_storage_filex_levelx_msc_probe.recovery_required_count
+printf "status: HAL_OK=0x0 NOT_RUN=0xffffffff\n"
+printf "After this reports init status 0x0, run the normal USB MSC export helper.\n"
