@@ -15,7 +15,7 @@ Recommended baseline owners:
 | `thAudio` | audio bus, audio DMA, amp control |
 | `thInput` | raw input capture and logical action routing |
 | `thUI` | shell and shared UX service flow |
-| `thRuntime` | runtime host manager dispatch |
+| `thRuntime` | runtime host manager dispatch; tracks active runtime class, execution semantic, lifecycle, and shell/installer return context |
 | `thStorage` | flash, filesystem, install pipeline |
 | `thSensor` | sensor bus, sensor policy, health publication |
 | `thComm` | BLE/NINA module, communication UART, communication policy |
@@ -130,7 +130,7 @@ quiesce/resume barrier.
   driver and then takes the read-only ADP5360 snapshot
 - `thUI` dispatches HOME only after the power boot flag is complete
 
-The measured RTOS probe values for the original v3 boot slice were `init/runtime complete = 1 / 1`, `boot power/display = 1 / 1`, owner started mask `0x1ff`, queue self-test mask `0x1ff`, event self-test mask `0xf`, and init status `0x0`. FW0 evidence `EV-HW6-20260812-P1-CLOCKBOOT-038` adds the storage-owned USB boot-park command: storage queue send/wait succeeded (`0/0`), the ACK flag was set, HOME rendered, USB clock/VDDUSB/HSI48 were off, and no long storage action ran during normal boot.
+The measured RTOS probe values for the original v3 boot slice were `init/runtime complete = 1 / 1`, `boot power/display = 1 / 1`, owner started mask `0x1ff`, queue self-test mask `0x1ff`, event self-test mask `0xf`, and init status `0x0`. FW0 evidence `EV-HW6-20260812-P1-CLOCKBOOT-038` adds the storage-owned USB boot-park command: storage queue send/wait succeeded (`0/0`), the ACK flag was set, HOME rendered, USB clock/VDDUSB/HSI48 were off, and no long storage action ran during normal boot. HW6 evidence `EV-HW6-20260813-P1-RUNTIME-044` validates the first `thRuntime` scaffold: normal boot reports `SHELL / REACTIVE / RUNNING` (`class/exec/lifecycle = 1/1/2`), package MSC entry reports `INSTALLER / REACTIVE / RUNNING` (`1/5/1` class prev/current/return), a valid package prompt remains in `INSTALLER`, and install-stub completion returns to `SHELL` with no runtime error (`installer enter/done/err = 2/2/0`).
 
 This is the intended normal boot slice for FW0. It is deliberately smaller than
 the retained-peripheral diagnostic lifecycle: display/audio/sensor/storage/comm

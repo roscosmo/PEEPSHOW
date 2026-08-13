@@ -18,6 +18,10 @@ printf "router action pend/last/req/take = %u / %u / %u / %u\n", $ui->pending_ac
 printf "rtos ui action last/count/status = %u / %u / 0x%x\n", $rt->ui_action_last, $rt->ui_action_count, $rt->ui_action_send_status
 printf "rtos msc enter/exit/intercept/unsup = %u / %u / %u / %u\n", $rt->ui_action_msc_enter_count, $rt->ui_action_msc_exit_count, $rt->ui_action_msc_exit_intercept_count, $rt->ui_action_unsupported_count
 printf "rtos package install action = %u\n", $rt->ui_action_package_install_stub_count
+printf "runtime class/exec/life = %u / %u / %u\n", $rt->runtime_current_class, $rt->runtime_execution, $rt->runtime_lifecycle
+printf "runtime prev/return/page = %u / %u / %u\n", $rt->runtime_previous_class, $rt->runtime_return_class, $rt->runtime_return_page
+printf "runtime event/count/status = %u / %u / 0x%x\n", $rt->runtime_last_event, $rt->runtime_event_count, $rt->runtime_last_status
+printf "runtime install enter/done/err = %u / %u / %u\n", $rt->runtime_installer_enter_count, $rt->runtime_installer_complete_count, $rt->runtime_installer_error_count
 printf "usb availability ext/data/avail/active = %u / %u / %u / %u\n", $sm->usb_host_external_power_present, $sm->usb_host_data_seen, $sm->usb_host_msc_available, $sm->usb_host_msc_active
 printf "request/event flags   = %u / %u\n", g_ps_ui_router_request, g_ps_ui_router_request_event
 printf "display ui req/render = %u / %u\n", $ow->display_ui_request_count, $ow->display_ui_render_count
@@ -40,4 +44,7 @@ printf "ui shutdown: NONE=0 PREP=1 WARNING=2 IMMINENT=3 CANCELLED=4 LOW_BOOT=5 L
 printf "package: NONE=0 CANDIDATE=1 VALID=2 INSTALLING=3 INSTALLED=4 CANCELLED=5 ERROR=6\n"
 printf "cal: NONE=0 INPUT_ROOT=1 JOY_NEUTRAL=2 JOY_RIGHT=3 JOY_CIRCLE=4 JOY_REVIEW=5\n"
 printf "events: BOOT_HOME=1 NAV_MENU=3 NAV_CAL=5 JOY_START=11 NEUTRAL=12 RIGHT=13 CIRCLE=14 REVIEW=15 BTN_A=17 BTN_B=18 BTN_L=19 BTN_R=20 SHUT_PREP=21 WARN=22 IMM=23 CANCEL=24 PKG_FOUND=27 PKG_VALID=28 PKG_VALIDATE_ERR=29 PKG_DONE=30 PKG_ERR=31 PKG_CLEAR=32\n"
+printf "runtime classes: NONE=0 SHELL=1 LP_GRAPH=2 LP_MODULE=3 RT_SCENE=4 INSTALLER=5\n"
+printf "runtime exec: NONE=0 REACTIVE=1 REALTIME=2 lifecycle: NONE=0 MOUNTED=1 RUNNING=2 SUSPENDED=3 STOPPING=4 ERROR=5\n"
+printf "runtime events: BOOT_SHELL=1 INSTALLER_ENTER=2 INSTALLER_COMPLETE=3 INSTALLER_ERROR=4 PKG_ACTIVATE_STUB=5 PKG_RETURN=6 SUSPEND=7 RESUME=8\n"
 printf "actions: NONE=0 MSC_ENTER=1 MSC_EXIT=2 PACKAGE_INSTALL_STUB=3\n"

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (10UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (11UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -34,6 +34,46 @@ typedef enum
   PS_HW6_RTOS_OWNER_UI,
   PS_HW6_RTOS_OWNER_RUNTIME
 } PS_HW6_RTOS_OwnerId;
+
+typedef enum
+{
+  PS_HW6_RUNTIME_CLASS_NONE = 0,
+  PS_HW6_RUNTIME_CLASS_SHELL,
+  PS_HW6_RUNTIME_CLASS_LP_GRAPH,
+  PS_HW6_RUNTIME_CLASS_LP_MODULE,
+  PS_HW6_RUNTIME_CLASS_RT_SCENE,
+  PS_HW6_RUNTIME_CLASS_INSTALLER
+} ps_hw6_runtime_class_t;
+
+typedef enum
+{
+  PS_HW6_RUNTIME_EXEC_NONE = 0,
+  PS_HW6_RUNTIME_EXEC_REACTIVE,
+  PS_HW6_RUNTIME_EXEC_REALTIME
+} ps_hw6_runtime_execution_t;
+
+typedef enum
+{
+  PS_HW6_RUNTIME_LIFECYCLE_NONE = 0,
+  PS_HW6_RUNTIME_LIFECYCLE_MOUNTED,
+  PS_HW6_RUNTIME_LIFECYCLE_RUNNING,
+  PS_HW6_RUNTIME_LIFECYCLE_SUSPENDED,
+  PS_HW6_RUNTIME_LIFECYCLE_STOPPING,
+  PS_HW6_RUNTIME_LIFECYCLE_ERROR
+} ps_hw6_runtime_lifecycle_t;
+
+typedef enum
+{
+  PS_HW6_RUNTIME_EVENT_NONE = 0,
+  PS_HW6_RUNTIME_EVENT_BOOT_SHELL,
+  PS_HW6_RUNTIME_EVENT_INSTALLER_ENTER,
+  PS_HW6_RUNTIME_EVENT_INSTALLER_COMPLETE,
+  PS_HW6_RUNTIME_EVENT_INSTALLER_ERROR,
+  PS_HW6_RUNTIME_EVENT_PACKAGE_ACTIVATE_STUB,
+  PS_HW6_RUNTIME_EVENT_PACKAGE_RETURN,
+  PS_HW6_RUNTIME_EVENT_SUSPEND,
+  PS_HW6_RUNTIME_EVENT_RESUME
+} ps_hw6_runtime_event_t;
 
 typedef struct
 {
@@ -120,6 +160,28 @@ typedef struct
   uint32_t storage_clock_flash_init_status;
   uint32_t storage_clock_release_status;
 
+  uint32_t runtime_event_count;
+  uint32_t runtime_last_event;
+  uint32_t runtime_last_status;
+  uint32_t runtime_last_tick;
+  uint32_t runtime_current_class;
+  uint32_t runtime_previous_class;
+  uint32_t runtime_return_class;
+  uint32_t runtime_execution;
+  uint32_t runtime_lifecycle;
+  uint32_t runtime_active_package_id;
+  uint32_t runtime_active_unit_id;
+  uint32_t runtime_return_page;
+  uint32_t runtime_boot_shell_count;
+  uint32_t runtime_installer_enter_count;
+  uint32_t runtime_installer_complete_count;
+  uint32_t runtime_installer_error_count;
+  uint32_t runtime_package_activate_stub_count;
+  uint32_t runtime_package_return_count;
+  uint32_t runtime_suspend_count;
+  uint32_t runtime_resume_count;
+  uint32_t runtime_owner_request_count;
+  uint32_t runtime_owner_request_status;
   uint32_t ui_action_last;
   uint32_t ui_action_count;
   uint32_t ui_action_send_status;

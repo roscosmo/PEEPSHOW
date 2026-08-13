@@ -14,6 +14,17 @@ This document defines platform-provided runtime hosts and their lifecycle API.
 
 Runtimes are hosts, not game engines embedded in platform core.
 
+FW0 currently implements a minimal `thRuntime` scaffold for OS lifecycle
+visibility. It tracks the active runtime class, execution semantic, lifecycle
+state, shell/installer return context, and bounded event counts. HW6 evidence
+`EV-HW6-20260813-P1-RUNTIME-044` validates the first shell/installer path:
+normal boot enters `SHELL / REACTIVE / RUNNING`; package transfer enters
+`INSTALLER / REACTIVE / RUNNING`; the valid-package prompt remains in
+`INSTALLER`; and install-stub completion returns to `SHELL` without installer
+error. This proves runtime naming and handoff plumbing only. It does not prove
+final package execution, PeepPkg install commit, realtime admission, suspend/
+resume, or measured power behavior.
+
 ---
 
 ## Lifecycle Contract

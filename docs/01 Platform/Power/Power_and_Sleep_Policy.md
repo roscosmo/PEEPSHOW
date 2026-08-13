@@ -106,6 +106,7 @@ When [[IMU_Contract|IMU]] step counting is active, power policy must select the 
 
 `INSTALLER`
 - USB/staging ownership mode with strict subsystem isolation
+- reactive by default; it is a Platform-owned runtime class, not normal package gameplay
 
 ---
 
@@ -171,6 +172,8 @@ HW6 evidence `EV-HW6-20260812-P1-CLOCKBOOT-038` validates the normal-boot cleanu
 HW6 evidence `EV-HW6-20260812-P1-CLOCKSTORAGE-039` validates the named storage requester wrapper for MSC export/reclaim. During active MSC, the storage requester slot held `USB_DEVICE_ACTIVE | OCTOSPI_ACTIVE` (`ST=0x3`), the selected/current profile was `CLK_IO_HIGH`, required/managed/readback domains were `0x3/0x3/0x3`, and STOP2 was blocked. After safe eject/detach and reclaim, the storage requester released to `ST=0x0`, selected/current returned to `REACTIVE_BASE`, required/managed/readback domains were `0x0/0x0/0x0`, STOP2 was ready, USB clock/VDDUSB/HSI48 were off, and PLL2 was off.
 
 HW6 evidence `EV-HW6-20260812-P1-FLASHINIT-040` validates explicit flash/staging provisioning through the same storage requester wrapper. The destructive flash init command completed with flash init status `0x0`, wake/layout/FileX-LevelX/deep-power-down statuses `0x0/0x0/0x0/0x0`, erased `1280` blocks in the USB staging/export region, formatted/opened/flushed/closed FileX with all statuses `0x0`, and mounted as an empty host volume afterwards. Clock policy returned to `REACTIVE_BASE`, storage clock flash/release statuses were `0x0/0x0`, STOP2 was ready, domains were clear, USB/VDDUSB/HSI48 were off, and PLL2 was off after release.
+
+HW6 evidence `EV-HW6-20260813-P1-RUNTIME-044` validates the first runtime-class scaffold against power-policy terminology. Normal shell boot reports `SHELL / REACTIVE / RUNNING`; package transfer enters `INSTALLER / REACTIVE / RUNNING`; the valid-package prompt remains in `INSTALLER`; and install-stub completion returns to `SHELL`. This evidence validates naming and lifecycle plumbing only. It does not validate measured reactive current, realtime admission, package execution, or final installer commit behavior.
 
 Other clock profiles remain scaffolded. `CLK_REACTIVE_BURST`, `CLK_REALTIME_BALANCED`, PLL2 autogating, current, transition energy, and hysteresis must still be enabled one at a time after clock readbacks, TraceX timing, and current evidence pass. FW0 currently leaves PLL2 readback active because autogate is intentionally disabled until SAI/OCTOSPI owner interactions and LPBAM cases are validated.
 ---
