@@ -25,6 +25,7 @@ printf "runtime admission count/class/exec/caps/status = %u / %u / %u / 0x%x / 0
 printf "runtime admission reactive/realtime = 0x%x / 0x%x\n", $rt->runtime_admission_reactive_status, $rt->runtime_admission_realtime_status
 printf "system admission req/allow/deny/suspend = %u / %u / %u / %u\n", $rt->admission_request_count, $rt->admission_allow_count, $rt->admission_deny_count, $rt->admission_suspend_count
 printf "system admission last action/result/reason/status = %u / %u / %u / 0x%x\n", $rt->admission_last_action, $rt->admission_last_result, $rt->admission_last_reason, $rt->admission_last_status
+printf "system admission suspend by-system/action resume reason/status = %u / %u / %u / 0x%x\n", $rt->admission_runtime_suspended_by_system, $rt->admission_runtime_suspended_action, $rt->admission_runtime_resume_reason, $rt->admission_runtime_resume_status
 printf "system admission runtime/life/page/pkg/shutdown/overlay = %u / %u / %u / %u / %u / %u\n", $rt->admission_last_runtime_class, $rt->admission_last_runtime_lifecycle, $rt->admission_last_ui_page, $rt->admission_last_package_state, $rt->admission_last_shutdown_state, $rt->admission_last_overlay_active
 printf "runtime queue rx/timeout/error = %u / %u / %u\n", $rt->queue_receive_count[8], $rt->queue_timeout_count[8], $rt->queue_message_error_count[8]
 printf "ui page/package/shutdown = %u / %u / %u\n", $ui->current_page, $ui->package_state, $ui->shutdown_state
@@ -33,5 +34,5 @@ printf "exec: NONE=0 REACTIVE=1 REALTIME=2\n"
 printf "lifecycle: NONE=0 MOUNTED=1 RUNNING=2 SUSPENDED=3 STOPPING=4 ERROR=5\n"
 printf "events: BOOT_SHELL=1 INSTALLER_ENTER=2 INSTALLER_COMPLETE=3 INSTALLER_ERROR=4 PKG_ACTIVATE_STUB=5 PKG_REACTIVE=6 PKG_REALTIME=7 PKG_RETURN=8 SUSPEND=9 RESUME=10\n"
 printf "runtime clock reasons: NONE=0 REACTIVE_TXN=1 REALTIME_DEADLINE=2 RELEASE=3\n"
-printf "system admission actions: MSC_ENTER=1 MSC_EXIT=2 PKG_INSTALL=3 POWER_SHUT_PREP=4 result: DENY=0 ALLOW=1 ALLOW_AFTER_SUSPEND=2\n"
+printf "system admission actions: MSC_ENTER=1 MSC_EXIT=2 PKG_INSTALL=3 POWER_START_SHUT_PREP=4 POWER_BATT_CRIT_PREP=5 POWER_BOOT_LOW_PREP=6 result: DENY=0 ALLOW=1 ALLOW_AFTER_SUSPEND=2\n"
 printf "pages: BOOT=0 HOME=1 MENU=2 SETTINGS=3 CAL=4 PACKAGES=5 RUNTIME=6 ERROR=7 SHUTDOWN=8\n"

@@ -96,6 +96,8 @@ typedef enum
 
 typedef HAL_StatusTypeDef (*PS_HW6_PowerQuiesceBarrierCallback)(
   uint32_t reason);
+typedef HAL_StatusTypeDef (*PS_HW6_PowerAdmissionCallback)(
+  uint32_t reason);
 typedef HAL_StatusTypeDef (*PS_HW6_PostStopResumeBarrierCallback)(void);
 
 typedef struct
@@ -758,6 +760,8 @@ extern volatile uint32_t g_ps_hw6_joystick_calibration_capture_page;
 void PS_HW6_OwnerStateMachines_Init(void);
 void PS_HW6_OwnerStateMachines_SetPowerQuiesceCallback(
   PS_HW6_PowerQuiesceBarrierCallback callback);
+void PS_HW6_OwnerStateMachines_SetPowerAdmissionCallback(
+  PS_HW6_PowerAdmissionCallback callback);
 void PS_HW6_OwnerStateMachines_SetPostStopResumeCallback(
   PS_HW6_PostStopResumeBarrierCallback callback);
 void PS_HW6_OwnerStateMachines_BeginWorkflow(void);

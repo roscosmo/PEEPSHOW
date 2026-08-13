@@ -5,6 +5,7 @@ set $btn = &g_ps_input_buttons_probe
 set $sm = &g_ps_hw6_owner_sm_probe
 set $owner = &g_ps_hw6_owner_probe
 set $ui = &g_ps_ui_router_probe
+set $rtos = &g_ps_hw6_rtos_probe
 set $input_now = g_ps_hw6_rtos_probe.owner_last_tick[2]
 set $start_live_hold = 0
 if ($btn->start_active != 0) && ($btn->start_press_tick != 0)
@@ -37,6 +38,9 @@ printf "barrier owner stat A/I/D/S/ST/C = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%
 printf "barrier send stat A/I/D/S/ST/C = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->power_quiesce_send_status[1], $sm->power_quiesce_send_status[2], $sm->power_quiesce_send_status[3], $sm->power_quiesce_send_status[4], $sm->power_quiesce_send_status[5], $sm->power_quiesce_send_status[6]
 printf "barrier ack stat A/I/D/S/ST/C = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->power_quiesce_ack_status[1], $sm->power_quiesce_ack_status[2], $sm->power_quiesce_ack_status[3], $sm->power_quiesce_ack_status[4], $sm->power_quiesce_ack_status[5], $sm->power_quiesce_ack_status[6]
 printf "power sw ship en/req/skip/status/tick = %u / %u / %u / 0x%x / %u\n", $sm->start_power_software_ship_enabled, $sm->start_power_software_ship_request_count, $sm->start_power_software_ship_skipped_count, $sm->start_power_software_ship_last_status, $sm->start_power_software_ship_last_tick
+printf "admission req/allow/deny/susp/resume = %u / %u / %u / %u / %u\n", $rtos->admission_request_count, $rtos->admission_allow_count, $rtos->admission_deny_count, $rtos->admission_suspend_count, $rtos->admission_resume_count
+printf "admission last action/result/reason/status = %u / %u / %u / 0x%x\n", $rtos->admission_last_action, $rtos->admission_last_result, $rtos->admission_last_reason, $rtos->admission_last_status
+printf "admission suspend by-system/action resume reason/status = %u / %u / %u / 0x%x\n", $rtos->admission_runtime_suspended_by_system, $rtos->admission_runtime_suspended_action, $rtos->admission_runtime_resume_reason, $rtos->admission_runtime_resume_status
 printf "UI page/shutdown/countdown = %u / %u / %u\n", $ui->current_page, $ui->shutdown_state, $ui->shutdown_countdown_seconds
 printf "display page/shutdown/countdown = %u / %u / %u\n", $owner->display_ui_page, $owner->display_ui_shutdown_state, $owner->display_ui_shutdown_countdown_seconds
 printf "pmic MR/sw ship status   = 0x%x / 0x%x\n", $owner->power_driver_mr_shipping_mode_status, $owner->power_driver_software_shipping_mode_status
@@ -45,4 +49,5 @@ printf "pmic sw ship request    = %u (manual request flag; do not set during nor
 printf "states: START idle=0 press=1 long=2 prep=3 warn=4 imminent=5 released=6\n"
 printf "ui shutdown: NONE=0 PREP=1 WARNING=2 IMMINENT=3 CANCELLED=4 LOW_BOOT=5 LOW_CHARGE=6 FLASH_INIT=7 FLASH_DONE=8 FLASH_ERROR=9 MSC_EXPORT=10 MSC_ACTIVE=11 MSC_RECLAIM=12 MSC_DONE=13 MSC_ERROR=14 MSC_RECOVERY=15\n"
 printf "events: prep=1 warning=2 imminent=3 release-before-ship=4\n"
+printf "admission actions: MSC_ENTER=1 MSC_EXIT=2 PKG_INSTALL=3 POWER_START_SHUT_PREP=4 POWER_BATT_CRIT_PREP=5 POWER_BOOT_LOW_PREP=6\n"
 printf "power: PWR_ACTIVE_LP=2 PWR_ACTIVE_RT=3 PWR_SHIP_PREP=8 PMIC_MONITOR=3 PMIC_SHIP_PENDING=8\n"

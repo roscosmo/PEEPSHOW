@@ -132,6 +132,8 @@
 #define PS_HW6_RTOS_ADMISSION_ACTION_UI_MSC_EXIT (2UL)
 #define PS_HW6_RTOS_ADMISSION_ACTION_UI_PACKAGE_INSTALL_STUB (3UL)
 #define PS_HW6_RTOS_ADMISSION_ACTION_POWER_SHUTDOWN_PREP (4UL)
+#define PS_HW6_RTOS_ADMISSION_ACTION_POWER_BATTERY_CRITICAL_SHIP_PREP (5UL)
+#define PS_HW6_RTOS_ADMISSION_ACTION_POWER_BOOT_LOW_BATTERY_SHIP_PREP (6UL)
 #define PS_HW6_RTOS_ADMISSION_RESULT_DENY (0UL)
 #define PS_HW6_RTOS_ADMISSION_RESULT_ALLOW (1UL)
 #define PS_HW6_RTOS_ADMISSION_RESULT_ALLOW_AFTER_SUSPEND (2UL)
@@ -143,6 +145,8 @@
 #define PS_HW6_RTOS_ADMISSION_REASON_SYSTEM_BUSY (5UL)
 #define PS_HW6_RTOS_ADMISSION_REASON_SEND_FAILED (6UL)
 #define PS_HW6_RTOS_ADMISSION_REASON_UNSUPPORTED (7UL)
+#define PS_HW6_RTOS_ADMISSION_RESUME_REASON_NONE (0UL)
+#define PS_HW6_RTOS_ADMISSION_RESUME_REASON_START_CANCEL (1UL)
 
 #define PS_HW6_RTOS_STOP2_BLOCK_BOOT_NOT_READY        (1UL << 0)
 #define PS_HW6_RTOS_STOP2_BLOCK_POWER_STATE           (1UL << 1)
@@ -179,6 +183,9 @@ volatile uint32_t g_ps_hw6_runtime_return_request;
 volatile uint32_t g_ps_hw6_runtime_suspend_request;
 volatile uint32_t g_ps_hw6_runtime_resume_request;
 volatile uint32_t g_ps_hw6_admission_msc_enter_dry_run_request;
+volatile uint32_t g_ps_hw6_admission_power_shutdown_dry_run_request;
+volatile uint32_t g_ps_hw6_admission_power_battery_dry_run_request;
+volatile uint32_t g_ps_hw6_admission_power_cancel_dry_run_request;
 
 typedef UINT (*PS_HW6_RTOS_DebugCommandFn)(void);
 
@@ -339,6 +346,9 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_runtime_suspend_request = 0UL;
   g_ps_hw6_runtime_resume_request = 0UL;
   g_ps_hw6_admission_msc_enter_dry_run_request = 0UL;
+  g_ps_hw6_admission_power_shutdown_dry_run_request = 0UL;
+  g_ps_hw6_admission_power_battery_dry_run_request = 0UL;
+  g_ps_hw6_admission_power_cancel_dry_run_request = 0UL;
   g_ps_hw6_rtos_probe.magic = PS_HW6_RTOS_PROBE_MAGIC;
   g_ps_hw6_rtos_probe.version = PS_HW6_RTOS_PROBE_VERSION;
   g_ps_hw6_rtos_probe.phase = PS_HW6_RTOS_PHASE_INIT;
@@ -351,6 +361,8 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.admission_api_version =
     PS_HW6_RTOS_ADMISSION_API_VERSION;
   g_ps_hw6_rtos_probe.admission_last_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.admission_runtime_resume_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.init_status = TX_SUCCESS;
   g_ps_hw6_rtos_probe.init_error_step = PS_HW6_RTOS_STATUS_NOT_RUN;
@@ -1008,15 +1020,43 @@ static uint32_t PS_HW6_RTOS_RuntimePackageActive(void)
          1UL : 0UL;
 }
 
+static uint32_t PS_HW6_RTOS_AdmissionActionIsPowerAction(uint32_t action)
+{
+  return ((action == PS_HW6_RTOS_ADMISSION_ACTION_POWER_SHUTDOWN_PREP) ||
+          (action ==
+           PS_HW6_RTOS_ADMISSION_ACTION_POWER_BATTERY_CRITICAL_SHIP_PREP) ||
+          (action ==
+           PS_HW6_RTOS_ADMISSION_ACTION_POWER_BOOT_LOW_BATTERY_SHIP_PREP)) ?
+         1UL : 0UL;
+}
+
 static uint32_t PS_HW6_RTOS_AdmissionActionNeedsRuntimeSuspend(
   uint32_t action)
 {
   return ((action == PS_HW6_RTOS_ADMISSION_ACTION_UI_MSC_ENTER) ||
           (action ==
            PS_HW6_RTOS_ADMISSION_ACTION_UI_PACKAGE_INSTALL_STUB) ||
-          (action ==
-           PS_HW6_RTOS_ADMISSION_ACTION_POWER_SHUTDOWN_PREP)) ?
+          (PS_HW6_RTOS_AdmissionActionIsPowerAction(action) != 0UL)) ?
          1UL : 0UL;
+}
+
+static uint32_t PS_HW6_RTOS_AdmissionActionForPowerQuiesceReason(
+  uint32_t reason)
+{
+  if (reason == (uint32_t)PS_HW6_POWER_QUIESCE_REASON_START_SHUTDOWN)
+  {
+    return PS_HW6_RTOS_ADMISSION_ACTION_POWER_SHUTDOWN_PREP;
+  }
+  if (reason == (uint32_t)PS_HW6_POWER_QUIESCE_REASON_BATTERY_CRITICAL)
+  {
+    return PS_HW6_RTOS_ADMISSION_ACTION_POWER_BATTERY_CRITICAL_SHIP_PREP;
+  }
+  if (reason == (uint32_t)PS_HW6_POWER_QUIESCE_REASON_BOOT_LOW_BATTERY)
+  {
+    return PS_HW6_RTOS_ADMISSION_ACTION_POWER_BOOT_LOW_BATTERY_SHIP_PREP;
+  }
+
+  return PS_HW6_RTOS_ADMISSION_ACTION_NONE;
 }
 
 static void PS_HW6_RTOS_RecordAdmission(
@@ -1081,6 +1121,7 @@ static uint32_t PS_HW6_RTOS_AdmissionActionForUiRouterAction(
 static UINT PS_HW6_RTOS_AdmitSystemAction(uint32_t action)
 {
   uint32_t overlay_active = PS_HW6_RTOS_SystemOverlayActive();
+  uint32_t power_action = PS_HW6_RTOS_AdmissionActionIsPowerAction(action);
   UINT status = TX_SUCCESS;
 
   if (action == PS_HW6_RTOS_ADMISSION_ACTION_NONE)
@@ -1105,7 +1146,7 @@ static UINT PS_HW6_RTOS_AdmitSystemAction(uint32_t action)
     return TX_SUCCESS;
   }
 
-  if (overlay_active != 0UL)
+  if ((overlay_active != 0UL) && (power_action == 0UL))
   {
     PS_HW6_RTOS_RecordAdmission(
       action,
@@ -1132,6 +1173,11 @@ static UINT PS_HW6_RTOS_AdmitSystemAction(uint32_t action)
       return status;
     }
 
+    if (power_action != 0UL)
+    {
+      g_ps_hw6_rtos_probe.admission_runtime_suspended_by_system = 1UL;
+      g_ps_hw6_rtos_probe.admission_runtime_suspended_action = action;
+    }
     PS_HW6_RTOS_RecordAdmission(
       action,
       PS_HW6_RTOS_ADMISSION_RESULT_ALLOW_AFTER_SUSPEND,
@@ -1149,6 +1195,41 @@ static UINT PS_HW6_RTOS_AdmitSystemAction(uint32_t action)
     overlay_active);
   return TX_SUCCESS;
 }
+static UINT PS_HW6_RTOS_ResumePowerSuspendedRuntime(uint32_t reason)
+{
+  UINT status = TX_SUCCESS;
+
+  g_ps_hw6_rtos_probe.admission_resume_count++;
+  g_ps_hw6_rtos_probe.admission_runtime_resume_reason = reason;
+
+  if ((g_ps_hw6_rtos_probe.admission_runtime_suspended_by_system != 0UL) &&
+      (g_ps_hw6_rtos_probe.admission_runtime_suspended_action ==
+       PS_HW6_RTOS_ADMISSION_ACTION_POWER_SHUTDOWN_PREP))
+  {
+    status = PS_HW6_RTOS_RequestRuntimeCommandAndWait(
+      PS_HW6_RTOS_COMMAND_RUNTIME_RESUME);
+    if (status == TX_SUCCESS)
+    {
+      g_ps_hw6_rtos_probe.admission_runtime_suspended_by_system = 0UL;
+      g_ps_hw6_rtos_probe.admission_runtime_suspended_action =
+        PS_HW6_RTOS_ADMISSION_ACTION_NONE;
+    }
+  }
+
+  g_ps_hw6_rtos_probe.admission_runtime_resume_status = (uint32_t)status;
+  return status;
+}
+
+static HAL_StatusTypeDef PS_HW6_RTOS_RequestPowerSystemAdmission(
+  uint32_t reason)
+{
+  UINT status;
+  uint32_t action = PS_HW6_RTOS_AdmissionActionForPowerQuiesceReason(reason);
+
+  status = PS_HW6_RTOS_AdmitSystemAction(action);
+  return (status == TX_SUCCESS) ? HAL_OK : HAL_ERROR;
+}
+
 UINT PS_HW6_RTOS_RequestUsbMscEnter(void)
 {
   return PS_HW6_RTOS_SendCommand(
@@ -3152,6 +3233,12 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
             g_ps_ui_router_request_event = router_event;
             g_ps_ui_router_request = 1UL;
           }
+          if ((uint32_t)message[2] ==
+              (uint32_t)PS_INPUT_START_POWER_EVENT_RELEASED_BEFORE_SHIP)
+          {
+            (void)PS_HW6_RTOS_ResumePowerSuspendedRuntime(
+              PS_HW6_RTOS_ADMISSION_RESUME_REASON_START_CANCEL);
+          }
         }
       }
       else if (PS_HW6_RTOS_RuntimeInputCommandIsValid(owner_id, message) != 0UL)
@@ -3310,6 +3397,30 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         g_ps_hw6_admission_msc_enter_dry_run_request = 0UL;
         (void)PS_HW6_RTOS_AdmitSystemAction(
           PS_HW6_RTOS_ADMISSION_ACTION_UI_MSC_ENTER);
+      }
+    }
+
+    if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
+        (ps_power_boot_done != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      if (g_ps_hw6_admission_power_shutdown_dry_run_request != 0UL)
+      {
+        g_ps_hw6_admission_power_shutdown_dry_run_request = 0UL;
+        (void)PS_HW6_RTOS_RequestPowerSystemAdmission(
+          (uint32_t)PS_HW6_POWER_QUIESCE_REASON_START_SHUTDOWN);
+      }
+      if (g_ps_hw6_admission_power_battery_dry_run_request != 0UL)
+      {
+        g_ps_hw6_admission_power_battery_dry_run_request = 0UL;
+        (void)PS_HW6_RTOS_RequestPowerSystemAdmission(
+          (uint32_t)PS_HW6_POWER_QUIESCE_REASON_BATTERY_CRITICAL);
+      }
+      if (g_ps_hw6_admission_power_cancel_dry_run_request != 0UL)
+      {
+        g_ps_hw6_admission_power_cancel_dry_run_request = 0UL;
+        (void)PS_HW6_RTOS_ResumePowerSuspendedRuntime(
+          PS_HW6_RTOS_ADMISSION_RESUME_REASON_START_CANCEL);
       }
     }
 
@@ -3657,6 +3768,8 @@ UINT PS_HW6_RTOS_Init(TX_BYTE_POOL *pool)
   PS_HW6_OwnerStateMachines_Init();
   PS_HW6_OwnerStateMachines_SetPowerQuiesceCallback(
     PS_HW6_RTOS_RunPowerQuiesceBarrier);
+  PS_HW6_OwnerStateMachines_SetPowerAdmissionCallback(
+    PS_HW6_RTOS_RequestPowerSystemAdmission);
   PS_HW6_OwnerStateMachines_SetPostStopResumeCallback(
     PS_HW6_RTOS_RunPostStopResumeBarrier);
   PS_UIRouter_Init();

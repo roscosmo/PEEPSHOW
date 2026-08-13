@@ -121,6 +121,7 @@ static uint32_t ps_power_battery_owns_ship_prep;
 static uint32_t ps_power_boot_restart_gate_pending;
 static uint32_t ps_power_boot_restart_gate_blocked;
 static PS_HW6_PowerQuiesceBarrierCallback ps_power_quiesce_barrier_callback;
+static PS_HW6_PowerAdmissionCallback ps_power_admission_callback;
 static PS_HW6_PostStopResumeBarrierCallback ps_post_stop_resume_barrier_callback;
 static HAL_StatusTypeDef PS_HW6_SM_Transition(uint32_t state_machine_id,
                                                uint32_t event,
@@ -151,6 +152,14 @@ static HAL_StatusTypeDef PS_HW6_RequestPowerQuiesce(uint32_t reason)
   }
   return ps_power_quiesce_barrier_callback(reason);
 }
+static HAL_StatusTypeDef PS_HW6_RequestPowerAdmission(uint32_t reason)
+{
+  if (ps_power_admission_callback == NULL)
+  {
+    return HAL_ERROR;
+  }
+  return ps_power_admission_callback(reason);
+}
 
 static HAL_StatusTypeDef PS_HW6_RequestPostStopResume(void)
 {
@@ -165,6 +174,12 @@ static HAL_StatusTypeDef PS_HW6_BatteryPolicyPrepareForShipment(
   uint32_t reason)
 {
   HAL_StatusTypeDef status;
+
+  status = PS_HW6_RequestPowerAdmission(reason);
+  if (status != HAL_OK)
+  {
+    return status;
+  }
 
   g_ps_hw6_owner_sm_probe.battery_policy_quiesce_request_count++;
   g_ps_hw6_owner_sm_probe.battery_policy_quiesce_last_tick =
@@ -479,6 +494,13 @@ static HAL_StatusTypeDef PS_HW6_SM_EvaluateBatteryPolicy(
 static HAL_StatusTypeDef PS_HW6_StartPowerPrepareForShipment(void)
 {
   HAL_StatusTypeDef status;
+
+  status = PS_HW6_RequestPowerAdmission(
+    (uint32_t)PS_HW6_POWER_QUIESCE_REASON_START_SHUTDOWN);
+  if (status != HAL_OK)
+  {
+    return status;
+  }
 
   g_ps_hw6_owner_sm_probe.start_power_quiesce_request_count++;
   g_ps_hw6_owner_sm_probe.start_power_quiesce_last_tick =
@@ -4703,6 +4725,12 @@ void PS_HW6_OwnerStateMachines_SetPowerQuiesceCallback(
   PS_HW6_PowerQuiesceBarrierCallback callback)
 {
   ps_power_quiesce_barrier_callback = callback;
+}
+
+void PS_HW6_OwnerStateMachines_SetPowerAdmissionCallback(
+  PS_HW6_PowerAdmissionCallback callback)
+{
+  ps_power_admission_callback = callback;
 }
 
 void PS_HW6_OwnerStateMachines_SetPostStopResumeCallback(

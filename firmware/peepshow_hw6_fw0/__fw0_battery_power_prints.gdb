@@ -33,6 +33,9 @@ printf "vbus pmic/mcu/agree/disagree = %u / %u / %u / %u\n", $owner->power_vbus_
 printf "battery ok/present/full = %u / %u / %u\n", $owner->power_battery_ok, $owner->power_battery_present, $owner->power_charge_complete
 printf "warn/crit/bootblock   = %u / %u / %u\n", $sm->battery_policy_warning_count, $sm->battery_policy_critical_count, $sm->battery_policy_boot_restart_block_count
 printf "quiesce count/status/tick = %u / 0x%x / %u\n", $sm->battery_policy_quiesce_request_count, $sm->battery_policy_quiesce_last_status, $sm->battery_policy_quiesce_last_tick
+printf "admission req/allow/deny/susp/resume = %u / %u / %u / %u / %u\n", $rtos->admission_request_count, $rtos->admission_allow_count, $rtos->admission_deny_count, $rtos->admission_suspend_count, $rtos->admission_resume_count
+printf "admission last action/result/reason/status = %u / %u / %u / 0x%x\n", $rtos->admission_last_action, $rtos->admission_last_result, $rtos->admission_last_reason, $rtos->admission_last_status
+printf "admission suspend by-system/action resume reason/status = %u / %u / %u / 0x%x\n", $rtos->admission_runtime_suspended_by_system, $rtos->admission_runtime_suspended_action, $rtos->admission_runtime_resume_reason, $rtos->admission_runtime_resume_status
 printf "barrier reason/count/status = %u / %u / 0x%x\n", $sm->power_quiesce_reason, $sm->power_quiesce_request_count, $sm->power_quiesce_last_status
 printf "barrier ticks start/end = %u / %u\n", $sm->power_quiesce_start_tick, $sm->power_quiesce_end_tick
 printf "barrier masks req/send/ack/ok/fail = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->power_quiesce_required_mask, $sm->power_quiesce_send_ok_mask, $sm->power_quiesce_ack_ok_mask, $sm->power_quiesce_success_mask, $sm->power_quiesce_failure_mask
@@ -53,5 +56,6 @@ printf "pmic int sm pending/snap/status = %u / %u / 0x%x\n", $sm->pmic_int_pendi
 printf "ui shutdown: NONE=0 PREP=1 WARNING=2 IMMINENT=3 CANCELLED=4 LOW_BOOT=5 LOW_CHARGE=6 FLASH_INIT=7 FLASH_DONE=8 FLASH_ERROR=9 MSC_EXPORT=10 MSC_ACTIVE=11 MSC_RECLAIM=12 MSC_DONE=13 MSC_ERROR=14 MSC_RECOVERY=15\n"
 printf "policy states: UNKNOWN=0 BOOT_OK=1 OK=2 WARNING=3 CRITICAL=4 BOOT_RESTART_BLOCKED=5 BOOT_CHARGE_RECOVERY=6 SHIP_REQUESTED=7\n"
 printf "policy events: NONE=0 BOOT=1 MONITOR=2 WARNING=3 CRITICAL=4 BOOT_BLOCK=5 BOOT_CHARGE=6 SHIP_REQ=7 SHIP_SKIP=8 SNAPSHOT_FAIL=9\n"
+printf "admission actions: MSC_ENTER=1 MSC_EXIT=2 PKG_INSTALL=3 POWER_START_SHUT_PREP=4 POWER_BATT_CRIT_PREP=5 POWER_BOOT_LOW_PREP=6\n"
 printf "charger status: NOT_CHARGING=0 CHARGING=1 FULL=2 DISCHARGING=3 LDO=4 TIMER=5 BAT_DETECT=6 UNKNOWN=7\n"
 printf "power: PWR_ACTIVE_LP=2 PWR_ACTIVE_RT=3 PWR_FORCED_SLEEP=7 PWR_SHIP_PREP=8 PMIC_MONITOR=3 PMIC_CHARGING=4 PMIC_DONE=5 PMIC_LOW=6 PMIC_CRITICAL=7 PMIC_SHIP_PENDING=8\n"

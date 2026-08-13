@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (22UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (23UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -292,6 +292,11 @@ typedef struct
   uint32_t admission_allow_count;
   uint32_t admission_deny_count;
   uint32_t admission_suspend_count;
+  uint32_t admission_resume_count;
+  uint32_t admission_runtime_suspended_by_system;
+  uint32_t admission_runtime_suspended_action;
+  uint32_t admission_runtime_resume_reason;
+  uint32_t admission_runtime_resume_status;
   uint32_t admission_last_action;
   uint32_t admission_last_result;
   uint32_t admission_last_reason;
