@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (15UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (16UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -70,6 +70,8 @@ typedef enum
   PS_HW6_RUNTIME_EVENT_INSTALLER_COMPLETE,
   PS_HW6_RUNTIME_EVENT_INSTALLER_ERROR,
   PS_HW6_RUNTIME_EVENT_PACKAGE_ACTIVATE_STUB,
+  PS_HW6_RUNTIME_EVENT_PACKAGE_REACTIVE_ACTIVATE_STUB,
+  PS_HW6_RUNTIME_EVENT_PACKAGE_REALTIME_ACTIVATE_STUB,
   PS_HW6_RUNTIME_EVENT_PACKAGE_RETURN,
   PS_HW6_RUNTIME_EVENT_SUSPEND,
   PS_HW6_RUNTIME_EVENT_RESUME
@@ -186,11 +188,20 @@ typedef struct
   uint32_t runtime_installer_complete_count;
   uint32_t runtime_installer_error_count;
   uint32_t runtime_package_activate_stub_count;
+  uint32_t runtime_package_reactive_activate_stub_count;
+  uint32_t runtime_package_realtime_activate_stub_count;
   uint32_t runtime_package_return_count;
   uint32_t runtime_suspend_count;
   uint32_t runtime_resume_count;
   uint32_t runtime_owner_request_count;
   uint32_t runtime_owner_request_status;
+  uint32_t runtime_admission_request_count;
+  uint32_t runtime_admission_last_class;
+  uint32_t runtime_admission_last_execution;
+  uint32_t runtime_admission_last_capabilities;
+  uint32_t runtime_admission_last_status;
+  uint32_t runtime_admission_reactive_status;
+  uint32_t runtime_admission_realtime_status;
   uint32_t runtime_clock_request_count;
   uint32_t runtime_clock_release_count;
   uint32_t runtime_clock_last_reason;
