@@ -16,6 +16,9 @@ printf "transitions/rejected  = %u / %u\n", $ui->transition_count, $ui->rejected
 printf "button event/count    = %u / %u\n", $ui->last_button_event, $ui->button_event_count
 printf "router action pend/last/req/take = %u / %u / %u / %u\n", $ui->pending_action, $ui->last_action, $ui->action_request_count, $ui->action_take_count
 printf "rtos ui action last/count/status = %u / %u / 0x%x\n", $rt->ui_action_last, $rt->ui_action_count, $rt->ui_action_send_status
+printf "system admission req/allow/deny/suspend = %u / %u / %u / %u\n", $rt->admission_request_count, $rt->admission_allow_count, $rt->admission_deny_count, $rt->admission_suspend_count
+printf "system admission last action/result/reason/status = %u / %u / %u / 0x%x\n", $rt->admission_last_action, $rt->admission_last_result, $rt->admission_last_reason, $rt->admission_last_status
+printf "system admission runtime/life/page/pkg/shutdown/overlay = %u / %u / %u / %u / %u / %u\n", $rt->admission_last_runtime_class, $rt->admission_last_runtime_lifecycle, $rt->admission_last_ui_page, $rt->admission_last_package_state, $rt->admission_last_shutdown_state, $rt->admission_last_overlay_active
 printf "rtos ui clock req/rel/reason/caps/status = %u / %u / %u / 0x%x / 0x%x\n", $rt->ui_clock_request_count, $rt->ui_clock_release_count, $rt->ui_clock_last_reason, $rt->ui_clock_last_capabilities, $rt->ui_clock_last_status
 printf "rtos ui clock reactive/release = 0x%x / 0x%x\n", $rt->ui_clock_reactive_status, $rt->ui_clock_release_status
 printf "rtos display clock req/rel/reason/caps/status = %u / %u / %u / 0x%x / 0x%x\n", $rt->display_clock_request_count, $rt->display_clock_release_count, $rt->display_clock_last_reason, $rt->display_clock_last_capabilities, $rt->display_clock_last_status
@@ -57,6 +60,7 @@ printf "runtime classes: NONE=0 SHELL=1 LP_GRAPH=2 LP_MODULE=3 RT_SCENE=4 INSTAL
 printf "runtime exec: NONE=0 REACTIVE=1 REALTIME=2 lifecycle: NONE=0 MOUNTED=1 RUNNING=2 SUSPENDED=3 STOPPING=4 ERROR=5\n"
 printf "runtime events: BOOT_SHELL=1 INSTALLER_ENTER=2 INSTALLER_COMPLETE=3 INSTALLER_ERROR=4 PKG_ACTIVATE_STUB=5 PKG_REACTIVE=6 PKG_REALTIME=7 PKG_RETURN=8 SUSPEND=9 RESUME=10\n"
 printf "actions: NONE=0 MSC_ENTER=1 MSC_EXIT=2 PACKAGE_INSTALL_STUB=3\n"
+printf "system admission actions: NONE=0 MSC_ENTER=1 MSC_EXIT=2 PKG_INSTALL=3 POWER_SHUT_PREP=4 result: DENY=0 ALLOW=1 ALLOW_AFTER_SUSPEND=2\n"
 printf "input policy targets: NONE=0 UI=1 RUNTIME=2 reasons: UI_FOCUS=1 RUNTIME_NOT_READY=2 LOCKED=3 UNSUPPORTED_EVENT=4 INVALID=5 SEND_FAILED=6 OVERLAY=7 RUNTIME_FOCUS=8 UNSUPPORTED_CLASS=9\n"
 printf "ui clock reasons: NONE=0 REACTIVE_TXN=1 RELEASE=2\n"
 printf "display clock reasons: NONE=0 TRANSFER=1 RELEASE=2\n"

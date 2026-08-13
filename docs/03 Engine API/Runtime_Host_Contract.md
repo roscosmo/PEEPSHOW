@@ -27,6 +27,8 @@ resume, or measured power behavior.
 
 HW6 evidence `EV-HW6-20260813-P1-RUNTIMECLOCK-045` adds the first OS clock-intent plumbing proof for `thRuntime`: each admitted runtime command publishes a bounded `REACTIVE_TRANSACTION_ACTIVE` requester update through `thPower`, then releases the runtime requester slot when the command returns. The validated boot capture showed runtime clock request/release `1/1`, reactive/release statuses `0x0/0x0`, requester cap `RT=0x0` after idle settle, and `STOP2 ready=1`. This remains Platform plumbing only; runtime hosts still cannot choose clocks, voltage scale, PLLs, or sleep mode directly.
 
+FW0 probe version 22 adds the first system-action admission use of runtime suspend. When a package runtime class is active and shell policy starts a system overlay action such as MSC entry, the admission layer requests `suspend` from `thRuntime` and waits for a bounded owner ACK before the system action continues. This is still a scaffold: it proves routing, ACK timing, and state recording, not final package suspend handlers, retained package state, or final resume UX. HW6 evidence `EV-HW6-20260814-P1-ADMISSION-053` validates the dry-run path: reactive package stub entered `LP_MODULE / REACTIVE / RUNNING`; MSC-enter admission reported action/result/reason/status `1 / 2 / 3 / 0x0`, counts `request/allow/deny/suspend = 1 / 1 / 0 / 1`, and `thRuntime` moved to `SUSPENDED` with suspend count `1` and zero runtime queue errors.
+
 ---
 
 ## Lifecycle Contract

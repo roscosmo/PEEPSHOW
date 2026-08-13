@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (21UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (22UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -287,6 +287,22 @@ typedef struct
   uint32_t runtime_input_last_mask;
   uint32_t runtime_input_last_status;
   uint32_t runtime_input_last_tick;
+  uint32_t admission_api_version;
+  uint32_t admission_request_count;
+  uint32_t admission_allow_count;
+  uint32_t admission_deny_count;
+  uint32_t admission_suspend_count;
+  uint32_t admission_last_action;
+  uint32_t admission_last_result;
+  uint32_t admission_last_reason;
+  uint32_t admission_last_status;
+  uint32_t admission_last_runtime_class;
+  uint32_t admission_last_runtime_lifecycle;
+  uint32_t admission_last_ui_page;
+  uint32_t admission_last_package_state;
+  uint32_t admission_last_shutdown_state;
+  uint32_t admission_last_overlay_active;
+  uint32_t admission_last_tick;
   uint32_t ui_action_last;
   uint32_t ui_action_count;
   uint32_t ui_action_send_status;
