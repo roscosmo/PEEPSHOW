@@ -29,6 +29,8 @@ Unknown wake reasons remain defects until explained.
 
 - `EV-HW6-20260812-P1-CLOCKUSB-037` validates the first power-owned clock-policy handoff for USB MSC export/reclaim on `HW6-UNIT-001`. The export path selected `CLK_IO_HIGH`/USB capability and mounted with `SystemCoreClock=160000000`; reclaim restored base profile `CLK_REACTIVE_BASE`, `SystemCoreClock=24000000`, and `usb clk/vdd/hsi48 = 0 / 0 / 0`. This is correctness evidence for the USB path, not current, energy, reactive/realtime operating-point, or hysteresis evidence.
 
+- `EV-HW6-20260813-P1-STOP2CTRL-053` validates default-off controlled STOP2 entry on `HW6-UNIT-001`. `thPower` first reported eligibility status/block/pending `0x0 / 0x0 / 0x3`, then entered real STOP2 once, woke from physical START, restored clocks, and reported owner quiesce/enter/clock/recover/last statuses all `0x0`. This is correctness evidence for admission-gated STOP2 entry and wake recovery, not current, energy, LPBAM waiting visuals, tick compensation, or repeated-cycle evidence.
+
 Related:
 
 - [[Power_and_Sleep_Policy]]

@@ -132,6 +132,7 @@
 volatile PS_HW6_RTOS_Probe g_ps_hw6_rtos_probe;
 volatile uint32_t g_ps_hw6_rtos_low_power_usb_skip_count;
 volatile uint32_t g_ps_hw6_power_stop2_eligibility_request;
+volatile uint32_t g_ps_hw6_power_stop2_controlled_entry_request;
 volatile uint32_t g_ps_hw6_audio_clock_probe_request;
 volatile uint32_t g_ps_hw6_audio_clock_probe_release_request;
 volatile uint32_t g_ps_hw6_runtime_reactive_stub_request;
@@ -278,6 +279,7 @@ static void PS_HW6_RTOS_ResetProbe(void)
                sizeof(g_ps_hw6_rtos_probe));
   g_ps_hw6_rtos_low_power_usb_skip_count = 0UL;
   g_ps_hw6_power_stop2_eligibility_request = 0UL;
+  g_ps_hw6_power_stop2_controlled_entry_request = 0UL;
   g_ps_hw6_rtos_probe.boot_home_suppressed = 0UL;
   g_ps_hw6_rtos_probe.boot_low_battery_ui_sent = 0UL;
   g_ps_hw6_rtos_probe.boot_low_battery_recover_ui_sent = 0UL;
@@ -358,6 +360,12 @@ static void PS_HW6_RTOS_ResetProbe(void)
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.ui_action_send_status = PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.stop2_eligibility_last_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.stop2_control_last_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.stop2_control_eligibility_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.stop2_control_entry_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.ticks_per_second = TX_TIMER_TICKS_PER_SECOND;
   g_ps_hw6_rtos_probe.owner_count = PS_HW6_RTOS_OWNER_COUNT;
@@ -1243,6 +1251,53 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2EligibilityDryRun(void)
     (blocker_mask == 0UL) ? (uint32_t)HAL_OK : (uint32_t)HAL_ERROR;
 
   return (blocker_mask == 0UL) ? HAL_OK : HAL_ERROR;
+}
+
+static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2ControlledEntry(void)
+{
+  HAL_StatusTypeDef eligibility_status;
+  HAL_StatusTypeDef entry_status;
+  uint32_t stop2_count_before;
+
+  g_ps_hw6_rtos_probe.stop2_control_request_count++;
+  g_ps_hw6_rtos_probe.stop2_control_last_tick = (uint32_t)tx_time_get();
+  g_ps_hw6_rtos_probe.stop2_control_last_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.stop2_control_eligibility_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.stop2_control_entry_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+
+  eligibility_status = PS_HW6_RTOS_RunStop2EligibilityDryRun();
+  g_ps_hw6_rtos_probe.stop2_control_eligibility_status =
+    (uint32_t)eligibility_status;
+  g_ps_hw6_rtos_probe.stop2_control_eligibility_blocker_mask =
+    g_ps_hw6_rtos_probe.stop2_eligibility_blocker_mask;
+  g_ps_hw6_rtos_probe.stop2_control_eligibility_pending_mask =
+    g_ps_hw6_rtos_probe.stop2_eligibility_pending_mask;
+
+  stop2_count_before = g_ps_hw6_owner_sm_probe.stop2_request_count;
+  g_ps_hw6_rtos_probe.stop2_control_stop2_count_before =
+    stop2_count_before;
+  g_ps_hw6_rtos_probe.stop2_control_stop2_count_after =
+    stop2_count_before;
+
+  if (eligibility_status != HAL_OK)
+  {
+    g_ps_hw6_rtos_probe.stop2_control_last_status =
+      (uint32_t)HAL_ERROR;
+    return HAL_ERROR;
+  }
+
+  g_ps_hw6_rtos_probe.stop2_control_entry_attempt_count++;
+  entry_status = PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold();
+  g_ps_hw6_rtos_probe.stop2_control_entry_status =
+    (uint32_t)entry_status;
+  g_ps_hw6_rtos_probe.stop2_control_stop2_count_after =
+    g_ps_hw6_owner_sm_probe.stop2_request_count;
+  g_ps_hw6_rtos_probe.stop2_control_last_status =
+    (uint32_t)entry_status;
+  return entry_status;
 }
 
 static UINT PS_HW6_RTOS_SendDisplayUiRenderCommand(
@@ -2778,6 +2833,14 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       g_ps_hw6_power_stop2_eligibility_request = 0UL;
       (void)PS_HW6_RTOS_RunStop2EligibilityDryRun();
     }
+    if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
+        (g_ps_hw6_power_stop2_controlled_entry_request != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      g_ps_hw6_power_stop2_controlled_entry_request = 0UL;
+      (void)PS_HW6_RTOS_RunStop2ControlledEntry();
+    }
+
     if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
         (g_ps_hw6_power_sleep_prep_request != 0UL) &&
         (ps_power_boot_done != 0UL) &&
