@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_INPUT_BUTTONS_API_VERSION (8UL)
+#define PS_INPUT_BUTTONS_API_VERSION (9UL)
 #define PS_INPUT_BUTTON_PHYSICAL_COUNT (4UL)
 
 typedef enum
@@ -28,6 +28,17 @@ typedef enum
   PS_INPUT_BUTTON_EVENT_PRESS,
   PS_INPUT_BUTTON_EVENT_RELEASE
 } ps_input_button_event_t;
+
+typedef enum
+{
+  PS_INPUT_BUTTON_LOGICAL_EVENT_NONE = 0,
+  PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS,
+  PS_INPUT_BUTTON_LOGICAL_EVENT_RELEASE,
+  PS_INPUT_BUTTON_LOGICAL_EVENT_LONG_PRESS,
+  PS_INPUT_BUTTON_LOGICAL_EVENT_REPEAT,
+  PS_INPUT_BUTTON_LOGICAL_EVENT_CHORD,
+  PS_INPUT_BUTTON_LOGICAL_EVENT_STUCK
+} ps_input_button_logical_event_t;
 
 typedef enum
 {
@@ -64,6 +75,15 @@ typedef enum
 
 typedef struct
 {
+  ps_input_button_logical_event_t event;
+  ps_input_button_id_t button_id;
+  uint32_t button_mask;
+  uint32_t timestamp;
+  uint32_t hold_ticks;
+} ps_input_button_logical_record_t;
+
+typedef struct
+{
   uint32_t api_version;
   uint32_t isr_edge_count;
   uint32_t press_count;
@@ -94,6 +114,18 @@ typedef struct
   uint32_t button_repeat_count;
   uint32_t button_stuck_count;
   uint32_t button_bounce_reject_count;
+  uint32_t logical_event_count;
+  uint32_t logical_press_count;
+  uint32_t logical_release_count;
+  uint32_t logical_long_count;
+  uint32_t logical_repeat_count;
+  uint32_t logical_chord_count;
+  uint32_t logical_stuck_count;
+  uint32_t logical_last_event;
+  uint32_t logical_last_button_id;
+  uint32_t logical_last_mask;
+  uint32_t logical_last_timestamp;
+  uint32_t logical_last_hold_ticks;
   uint32_t start_state;
   uint32_t start_active;
   uint32_t start_press_pending;
@@ -129,6 +161,8 @@ uint32_t PS_InputButtons_StartCheckDue(uint32_t now_tick);
 void PS_InputButtons_PollStart(uint32_t now_tick);
 uint32_t PS_InputButtons_ButtonsCheckDue(uint32_t now_tick);
 void PS_InputButtons_PollButtons(uint32_t now_tick);
+uint32_t PS_InputButtons_TakeLogicalEvent(
+  ps_input_button_logical_record_t *record);
 uint32_t PS_InputButtons_TakePress(ps_input_button_id_t *button_id,
                                    uint32_t *timestamp);
 uint32_t PS_InputButtons_TakeStartPowerEvent(

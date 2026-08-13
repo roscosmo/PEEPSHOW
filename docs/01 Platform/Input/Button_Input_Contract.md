@@ -32,6 +32,7 @@ edge path and the first UI consumption path:
 - raw EXTI/debounce probing recorded A/B/L/R and Start press/release events
   returning to inactive state
 - `thInput` publishes generic button impulses, not universal accept/back actions
+- `thInput` now has an explicit logical-event and delivery-policy scaffold: physical A/B/L/R accepted presses become generic logical press records, then policy forwards allowed records without assigning UI meaning
 - `thUI` currently maps `BTN_A`, `BTN_B`, `BTN_L`, and `BTN_R` according to
   shell context for menu navigation and calibration screens
 - A/B/L/R navigation was physically confirmed through the UI: L/R changed focus
@@ -48,12 +49,16 @@ explicitly supported: if a release edge arrives while press debounce is still
 pending, the release is latched and the tap emits exactly one generic press
 impulse when the debounce interval expires, then returns to released.
 
+FW0 API version 9 adds the first logical input policy scaffold. `PS_InputButtons_TakeLogicalEvent()` currently emits validated physical A/B/L/R presses as `PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS` records with raw button IDs and masks. `thInput` then records policy context and forwards only allowed generic press records to `thUI`. The default policy is unlocked and UI-focused while the runtime host is active; it records suppression reasons for runtime-not-ready, lock-active, unsupported event, invalid button, and queue-send failure. This scaffold does not map A/B/L/R to accept/back/up/down, and it does not yet publish long, repeat, chord, or stuck logical events.
+
 Validated HW6 unit 001 FW0 evidence for API version 8: after physical A/B/L/R
 navigation, `__fw0_buttons_prints.gdb` reported `api/edges/presses/ignored =
 8 / 18 / 7 / 3`, `counts deb p/r accept p/r long repeat stuck bounce = 7 / 0 /
 7 / 7 / 0 / 0 / 0 / 0`, all A/B/L/R states returned to `RELEASED`, and the UI
 reacted as expected. The non-zero ignored edge count is allowed for extra
 release/bounce edges after a tap has already been latched and completed.
+
+Validated HW6 unit 001 FW0 evidence for API version 9: after physical A/B/L/R navigation, `__fw0_buttons_prints.gdb` reported `api/edges/presses/ignored = 9 / 20 / 7 / 3`, `logical counts event/p/r/l/rep/ch/stuck = 7 / 7 / 0 / 0 / 0 / 0 / 0`, and `input policy api/event/deliv/supp/lock = 1 / 7 / 7 / 0 / 0`. The last policy record was a generic UI-focused press with `target/reason/status = 1 / 1 / 0x0`; all A/B/L/R physical FSM states returned to `RELEASED`; and no policy suppression occurred during normal shell navigation. This validates the current scaffold: physical accepted presses are converted into generic logical press records, then forwarded through the delivery policy without assigning platform-level button meaning.
 
 This is not the complete button contract. Non-START long press, repeat, chord,
 stuck button, wake-from-low-power, and `BTN_BOOT` remain open. START
@@ -218,7 +223,7 @@ Current FW0 scaffolding admits `BTN_START` into the EXTI-backed input path and k
 
 Validated HW6 unit 001 FW0 evidence: a 5 s hold reached `START_SHIP_PREP` with checkpoint/live ticks `500/525`; a 9-10 s hold reached `START_SHIP_WARNING` with `900/1075`; a >11 s hold reached `START_SHIP_IMMINENT` with `1100/1675`; raw/stable PA4 was `0/0` during sustained holds; and `thPower` recorded prep/warning/imminent counters `1/1/1`. A later validated scaffold capture showed the user-visible `PREPARING` and `POWER OFF IN 3/2/1` screens, release before shipment returning to HOME, input prep/warn/imminent/release counters `1/1/1/1`, power prep/warn/imminent/cancel counters `1/1/1/1`, one no-op quiesce hook call, and software shipment remaining gated off with enable/request/skip `0/0/1`. The ADP5360 hardware shipment path was confirmed separately by holding START/MR past the hardware threshold.
 
-The required knob names above are authoritative. HW6 FW0 sources knob values from `firmware/peepshow_hw6_fw0/config/knobs.json`, validates them with `config/knobs.schema.json`, and generates `Core/Inc/knobs_autogen.h` through `tools/gen_knobs.py`. The START overlay scaffold consumes generated START macros. The A/B/L/R physical button FSM consumes the generic debounce, long-press, repeat, stuck, and chord-window knobs, although long/repeat/stuck/chord publication remains scaffolded until the higher-level classifier and focus policy are completed.
+The required knob names above are authoritative. HW6 FW0 sources knob values from `firmware/peepshow_hw6_fw0/config/knobs.json`, validates them with `config/knobs.schema.json`, and generates `Core/Inc/knobs_autogen.h` through `tools/gen_knobs.py`. The START overlay scaffold consumes generated START macros. The A/B/L/R physical button FSM consumes the generic debounce, long-press, repeat, stuck, and chord-window knobs. API version 9 adds the logical press record and delivery-policy probe, but long/repeat/stuck/chord publication remains scaffolded until the classifier emits those logical event types and the focus policy consumes them.
 
 Current generated defaults preserve the validated START scaffold shape while allowing timing adjustment: generic press/release debounce `20/20 ms`, generic long press `1000 ms`, generic repeat start/period `500/150 ms`, generic stuck threshold `30000 ms`, chord window `80 ms`, START long press `1000 ms`, ship-prep `5000 ms`, warning `9000 ms`, imminent `11000 ms`, START stable-level acceptance `2` samples, and software shipment request enable `false`.
 

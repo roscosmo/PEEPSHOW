@@ -129,6 +129,43 @@ static void PS_InputButtons_SetButtonState(uint32_t index,
   g_ps_input_buttons_probe.button_deadline_tick[index] = deadline_tick;
 }
 
+static void PS_InputButtons_RecordLogicalEvent(
+  const ps_input_button_logical_record_t *record)
+{
+  g_ps_input_buttons_probe.logical_event_count++;
+  g_ps_input_buttons_probe.logical_last_event = (uint32_t)record->event;
+  g_ps_input_buttons_probe.logical_last_button_id =
+    (uint32_t)record->button_id;
+  g_ps_input_buttons_probe.logical_last_mask = record->button_mask;
+  g_ps_input_buttons_probe.logical_last_timestamp = record->timestamp;
+  g_ps_input_buttons_probe.logical_last_hold_ticks = record->hold_ticks;
+
+  if (record->event == PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)
+  {
+    g_ps_input_buttons_probe.logical_press_count++;
+  }
+  else if (record->event == PS_INPUT_BUTTON_LOGICAL_EVENT_RELEASE)
+  {
+    g_ps_input_buttons_probe.logical_release_count++;
+  }
+  else if (record->event == PS_INPUT_BUTTON_LOGICAL_EVENT_LONG_PRESS)
+  {
+    g_ps_input_buttons_probe.logical_long_count++;
+  }
+  else if (record->event == PS_INPUT_BUTTON_LOGICAL_EVENT_REPEAT)
+  {
+    g_ps_input_buttons_probe.logical_repeat_count++;
+  }
+  else if (record->event == PS_INPUT_BUTTON_LOGICAL_EVENT_CHORD)
+  {
+    g_ps_input_buttons_probe.logical_chord_count++;
+  }
+  else if (record->event == PS_INPUT_BUTTON_LOGICAL_EVENT_STUCK)
+  {
+    g_ps_input_buttons_probe.logical_stuck_count++;
+  }
+}
+
 static void PS_InputButtons_QueueButtonPress(uint32_t index,
                                              uint32_t timestamp)
 {
@@ -1015,18 +1052,25 @@ void PS_InputButtons_PollButtons(uint32_t now_tick)
     __enable_irq();
   }
 }
-uint32_t PS_InputButtons_TakePress(ps_input_button_id_t *button_id,
-                                   uint32_t *timestamp)
+
+uint32_t PS_InputButtons_TakeLogicalEvent(
+  ps_input_button_logical_record_t *record)
 {
   uint32_t primask;
   uint32_t pending;
   uint32_t mask = 0UL;
   uint32_t index = 0UL;
 
-  if ((button_id == 0) || (timestamp == 0))
+  if (record == 0)
   {
     return 0UL;
   }
+
+  record->event = PS_INPUT_BUTTON_LOGICAL_EVENT_NONE;
+  record->button_id = PS_INPUT_BUTTON_ID_NONE;
+  record->button_mask = 0UL;
+  record->timestamp = 0UL;
+  record->hold_ticks = 0UL;
 
   primask = __get_PRIMASK();
   __disable_irq();
@@ -1044,38 +1088,66 @@ uint32_t PS_InputButtons_TakePress(ps_input_button_id_t *button_id,
   {
     mask = PS_INPUT_BUTTON_MASK_A;
     index = 0UL;
-    *button_id = PS_INPUT_BUTTON_ID_A;
+    record->button_id = PS_INPUT_BUTTON_ID_A;
   }
   else if ((pending & PS_INPUT_BUTTON_MASK_B) != 0UL)
   {
     mask = PS_INPUT_BUTTON_MASK_B;
     index = 1UL;
-    *button_id = PS_INPUT_BUTTON_ID_B;
+    record->button_id = PS_INPUT_BUTTON_ID_B;
   }
   else if ((pending & PS_INPUT_BUTTON_MASK_L) != 0UL)
   {
     mask = PS_INPUT_BUTTON_MASK_L;
     index = 2UL;
-    *button_id = PS_INPUT_BUTTON_ID_L;
+    record->button_id = PS_INPUT_BUTTON_ID_L;
   }
   else
   {
     mask = PS_INPUT_BUTTON_MASK_R;
     index = 3UL;
-    *button_id = PS_INPUT_BUTTON_ID_R;
+    record->button_id = PS_INPUT_BUTTON_ID_R;
   }
 
   ps_input_buttons_pending_mask &= ~mask;
-  *timestamp = ps_input_buttons_timestamp[index];
+  record->event = PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS;
+  record->button_mask = mask;
+  record->timestamp = ps_input_buttons_timestamp[index];
   g_ps_input_buttons_probe.pending_mask = ps_input_buttons_pending_mask;
   if (primask == 0UL)
   {
     __enable_irq();
   }
 
-  g_ps_input_buttons_probe.last_button_id = *button_id;
+  g_ps_input_buttons_probe.last_button_id = (uint32_t)record->button_id;
   g_ps_input_buttons_probe.last_event = PS_INPUT_BUTTON_EVENT_PRESS;
   g_ps_input_buttons_probe.press_count++;
+  PS_InputButtons_RecordLogicalEvent(record);
+  return 1UL;
+}
+
+uint32_t PS_InputButtons_TakePress(ps_input_button_id_t *button_id,
+                                   uint32_t *timestamp)
+{
+  ps_input_button_logical_record_t record;
+
+  if ((button_id == 0) || (timestamp == 0))
+  {
+    return 0UL;
+  }
+
+  if (PS_InputButtons_TakeLogicalEvent(&record) == 0UL)
+  {
+    return 0UL;
+  }
+
+  if (record.event != PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)
+  {
+    return 0UL;
+  }
+
+  *button_id = record.button_id;
+  *timestamp = record.timestamp;
   return 1UL;
 }
 

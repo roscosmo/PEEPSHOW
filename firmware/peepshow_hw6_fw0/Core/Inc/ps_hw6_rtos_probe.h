@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (19UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (20UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -260,6 +260,23 @@ typedef struct
   uint32_t display_clock_last_status;
   uint32_t display_clock_transfer_status;
   uint32_t display_clock_release_status;
+  uint32_t input_policy_api_version;
+  uint32_t input_policy_event_count;
+  uint32_t input_policy_deliver_count;
+  uint32_t input_policy_suppress_count;
+  uint32_t input_policy_lock_active;
+  uint32_t input_policy_last_event;
+  uint32_t input_policy_last_button_id;
+  uint32_t input_policy_last_mask;
+  uint32_t input_policy_last_timestamp;
+  uint32_t input_policy_last_target;
+  uint32_t input_policy_last_reason;
+  uint32_t input_policy_last_status;
+  uint32_t input_policy_last_runtime_class;
+  uint32_t input_policy_last_runtime_lifecycle;
+  uint32_t input_policy_last_ui_page;
+  uint32_t input_policy_last_package_state;
+  uint32_t input_policy_last_shutdown_state;
   uint32_t ui_action_last;
   uint32_t ui_action_count;
   uint32_t ui_action_send_status;

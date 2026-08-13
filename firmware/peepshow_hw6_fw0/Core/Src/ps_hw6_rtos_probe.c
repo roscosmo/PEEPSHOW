@@ -106,6 +106,19 @@
 #define PS_HW6_RTOS_DISPLAY_CLOCK_TRANSFER_CAPABILITIES \
   (PS_HW6_CLOCK_CAP_DISPLAY_TRANSFER_ACTIVE)
 
+#define PS_HW6_RTOS_INPUT_POLICY_API_VERSION (1UL)
+#define PS_HW6_RTOS_INPUT_POLICY_TARGET_NONE (0UL)
+#define PS_HW6_RTOS_INPUT_POLICY_TARGET_UI   (1UL)
+#define PS_HW6_RTOS_INPUT_POLICY_TARGET_RUNTIME (2UL)
+#define PS_HW6_RTOS_INPUT_POLICY_REASON_NONE (0UL)
+#define PS_HW6_RTOS_INPUT_POLICY_REASON_UI_FOCUS (1UL)
+#define PS_HW6_RTOS_INPUT_POLICY_REASON_RUNTIME_NOT_READY (2UL)
+#define PS_HW6_RTOS_INPUT_POLICY_REASON_LOCKED (3UL)
+#define PS_HW6_RTOS_INPUT_POLICY_REASON_UNSUPPORTED_EVENT (4UL)
+#define PS_HW6_RTOS_INPUT_POLICY_REASON_INVALID_BUTTON (5UL)
+#define PS_HW6_RTOS_INPUT_POLICY_REASON_SEND_FAILED (6UL)
+#define PS_HW6_RTOS_INPUT_POLICY_STATUS_SUPPRESSED (0xFFFFFFFEUL)
+
 #define PS_HW6_RTOS_STOP2_BLOCK_BOOT_NOT_READY        (1UL << 0)
 #define PS_HW6_RTOS_STOP2_BLOCK_POWER_STATE           (1UL << 1)
 #define PS_HW6_RTOS_STOP2_BLOCK_PMIC_STATE            (1UL << 2)
@@ -302,6 +315,10 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.magic = PS_HW6_RTOS_PROBE_MAGIC;
   g_ps_hw6_rtos_probe.version = PS_HW6_RTOS_PROBE_VERSION;
   g_ps_hw6_rtos_probe.phase = PS_HW6_RTOS_PHASE_INIT;
+  g_ps_hw6_rtos_probe.input_policy_api_version =
+    PS_HW6_RTOS_INPUT_POLICY_API_VERSION;
+  g_ps_hw6_rtos_probe.input_policy_last_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.init_status = TX_SUCCESS;
   g_ps_hw6_rtos_probe.init_error_step = PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.init_error_index = PS_HW6_RTOS_STATUS_NOT_RUN;
@@ -1338,6 +1355,92 @@ static UINT PS_HW6_RTOS_SendUiButtonPress(ps_input_button_id_t button_id)
                           PS_HW6_RTOS_OWNER_UI,
                           (uint32_t)status,
                           0UL);
+  return status;
+}
+
+static UINT PS_HW6_RTOS_DeliverInputLogicalEvent(
+  const ps_input_button_logical_record_t *record)
+{
+  UINT status = (UINT)PS_HW6_RTOS_INPUT_POLICY_STATUS_SUPPRESSED;
+  uint32_t target = PS_HW6_RTOS_INPUT_POLICY_TARGET_NONE;
+  uint32_t reason = PS_HW6_RTOS_INPUT_POLICY_REASON_NONE;
+  uint32_t event = PS_INPUT_BUTTON_LOGICAL_EVENT_NONE;
+  uint32_t button_id = PS_INPUT_BUTTON_ID_NONE;
+  uint32_t button_mask = 0UL;
+  uint32_t timestamp = 0UL;
+
+  if (record != 0)
+  {
+    event = (uint32_t)record->event;
+    button_id = (uint32_t)record->button_id;
+    button_mask = record->button_mask;
+    timestamp = record->timestamp;
+  }
+
+  g_ps_hw6_rtos_probe.input_policy_event_count++;
+  g_ps_hw6_rtos_probe.input_policy_last_event = event;
+  g_ps_hw6_rtos_probe.input_policy_last_button_id = button_id;
+  g_ps_hw6_rtos_probe.input_policy_last_mask = button_mask;
+  g_ps_hw6_rtos_probe.input_policy_last_timestamp = timestamp;
+  g_ps_hw6_rtos_probe.input_policy_last_runtime_class =
+    g_ps_hw6_rtos_probe.runtime_current_class;
+  g_ps_hw6_rtos_probe.input_policy_last_runtime_lifecycle =
+    g_ps_hw6_rtos_probe.runtime_lifecycle;
+  g_ps_hw6_rtos_probe.input_policy_last_ui_page =
+    g_ps_ui_router_probe.current_page;
+  g_ps_hw6_rtos_probe.input_policy_last_package_state =
+    g_ps_ui_router_probe.package_state;
+  g_ps_hw6_rtos_probe.input_policy_last_shutdown_state =
+    g_ps_ui_router_probe.shutdown_state;
+
+  if (record == 0)
+  {
+    reason = PS_HW6_RTOS_INPUT_POLICY_REASON_INVALID_BUTTON;
+  }
+  else if (record->event != PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)
+  {
+    reason = PS_HW6_RTOS_INPUT_POLICY_REASON_UNSUPPORTED_EVENT;
+  }
+  else if ((record->button_id < PS_INPUT_BUTTON_ID_A) ||
+           (record->button_id > PS_INPUT_BUTTON_ID_R))
+  {
+    reason = PS_HW6_RTOS_INPUT_POLICY_REASON_INVALID_BUTTON;
+  }
+  else if (g_ps_hw6_rtos_probe.input_policy_lock_active != 0UL)
+  {
+    reason = PS_HW6_RTOS_INPUT_POLICY_REASON_LOCKED;
+  }
+  else if ((g_ps_hw6_rtos_probe.runtime_current_class ==
+            (uint32_t)PS_HW6_RUNTIME_CLASS_NONE) ||
+           (g_ps_hw6_rtos_probe.runtime_lifecycle !=
+            (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_RUNNING))
+  {
+    reason = PS_HW6_RTOS_INPUT_POLICY_REASON_RUNTIME_NOT_READY;
+  }
+  else
+  {
+    target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
+    reason = PS_HW6_RTOS_INPUT_POLICY_REASON_UI_FOCUS;
+    status = PS_HW6_RTOS_SendUiButtonPress(record->button_id);
+    if (status == TX_SUCCESS)
+    {
+      g_ps_hw6_rtos_probe.input_policy_deliver_count++;
+    }
+    else
+    {
+      reason = PS_HW6_RTOS_INPUT_POLICY_REASON_SEND_FAILED;
+      g_ps_hw6_rtos_probe.input_policy_suppress_count++;
+    }
+  }
+
+  if (target == PS_HW6_RTOS_INPUT_POLICY_TARGET_NONE)
+  {
+    g_ps_hw6_rtos_probe.input_policy_suppress_count++;
+  }
+
+  g_ps_hw6_rtos_probe.input_policy_last_target = target;
+  g_ps_hw6_rtos_probe.input_policy_last_reason = reason;
+  g_ps_hw6_rtos_probe.input_policy_last_status = (uint32_t)status;
   return status;
 }
 
@@ -2569,9 +2672,8 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
   ULONG now;
   UINT status;
   ps_status_t router_status;
-  ps_input_button_id_t button_id;
+  ps_input_button_logical_record_t button_record;
   ps_input_start_power_event_t start_power_event;
-  uint32_t button_timestamp;
   uint32_t button_drain_count;
   uint32_t start_power_timestamp;
   uint32_t start_power_hold_ticks;
@@ -3012,13 +3114,11 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
            button_drain_count < 4UL;
            ++button_drain_count)
       {
-        if (PS_InputButtons_TakePress(&button_id,
-                                      &button_timestamp) == 0UL)
+        if (PS_InputButtons_TakeLogicalEvent(&button_record) == 0UL)
         {
           break;
         }
-        (void)button_timestamp;
-        (void)PS_HW6_RTOS_SendUiButtonPress(button_id);
+        (void)PS_HW6_RTOS_DeliverInputLogicalEvent(&button_record);
       }
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_UI) &&

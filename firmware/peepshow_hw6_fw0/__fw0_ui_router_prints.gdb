@@ -35,6 +35,9 @@ printf "display complete/success = %u / %u\n", $ow->display_complete, $ow->displ
 printf "display status/hash   = 0x%x / 0x%x\n", $ow->display_ui_status, $ow->display_framebuffer_hash
 printf "input edge/press      = %u / %u\n", $btn->isr_edge_count, $btn->press_count
 printf "input pending/button  = 0x%x / %u\n", $btn->pending_mask, $btn->last_button_id
+printf "input logical event/press = %u / %u\n", $btn->logical_event_count, $btn->logical_press_count
+printf "input policy event/deliv/supp = %u / %u / %u\n", $rt->input_policy_event_count, $rt->input_policy_deliver_count, $rt->input_policy_suppress_count
+printf "input policy last target/reason/status = %u / %u / 0x%x\n", $rt->input_policy_last_target, $rt->input_policy_last_reason, $rt->input_policy_last_status
 printf "joystick cal req/page/status = %u / %u / 0x%x\n", $sm->joystick_calibration_capture_request_count, $sm->joystick_calibration_capture_page, $sm->joystick_calibration_capture_status
 printf "joystick cal valid/dz/thr = %u / %d / %d\n", $sm->joystick_calibration_active_valid, $sm->joystick_calibration_deadzone_counts, $sm->joystick_calibration_direction_threshold
 printf "joystick cal center X/Y = %d / %d\n", $sm->joystick_calibration_center_x, $sm->joystick_calibration_center_y
@@ -52,5 +55,6 @@ printf "runtime classes: NONE=0 SHELL=1 LP_GRAPH=2 LP_MODULE=3 RT_SCENE=4 INSTAL
 printf "runtime exec: NONE=0 REACTIVE=1 REALTIME=2 lifecycle: NONE=0 MOUNTED=1 RUNNING=2 SUSPENDED=3 STOPPING=4 ERROR=5\n"
 printf "runtime events: BOOT_SHELL=1 INSTALLER_ENTER=2 INSTALLER_COMPLETE=3 INSTALLER_ERROR=4 PKG_ACTIVATE_STUB=5 PKG_REACTIVE=6 PKG_REALTIME=7 PKG_RETURN=8 SUSPEND=9 RESUME=10\n"
 printf "actions: NONE=0 MSC_ENTER=1 MSC_EXIT=2 PACKAGE_INSTALL_STUB=3\n"
+printf "input policy targets: NONE=0 UI=1 RUNTIME=2 reasons: UI_FOCUS=1 RUNTIME_NOT_READY=2 LOCKED=3 UNSUPPORTED=4 INVALID=5 SEND_FAILED=6\n"
 printf "ui clock reasons: NONE=0 REACTIVE_TXN=1 RELEASE=2\n"
 printf "display clock reasons: NONE=0 TRANSFER=1 RELEASE=2\n"
