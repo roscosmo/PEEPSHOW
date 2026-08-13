@@ -90,14 +90,33 @@ static UINT PS_HW6_UsbExport_DeviceHardwareOff(void)
   return (had_error == 0U) ? TX_SUCCESS : TX_NOT_DONE;
 }
 
+static UINT PS_HW6_UsbExport_DeviceHardwareOffInactive(void)
+{
+  uint8_t had_error = 0U;
+
+  HAL_NVIC_DisableIRQ(OTG_FS_IRQn);
+  NVIC_ClearPendingIRQ(OTG_FS_IRQn);
+  __HAL_RCC_USB_CLK_DISABLE();
+
+  PS_HW6_UsbExport_VddUsbSet(0U);
+  if (PS_HW6_UsbExport_Clock48Set(RCC_HSI48_OFF) != TX_SUCCESS)
+  {
+    had_error = 1U;
+  }
+
+  hpcd_USB_OTG_FS.ErrorCode = 0U;
+  hpcd_USB_OTG_FS.State = HAL_PCD_STATE_RESET;
+
+  return (had_error == 0U) ? TX_SUCCESS : TX_NOT_DONE;
+}
+
 static UINT PS_HW6_UsbExport_StopDeviceWithGrace(ULONG disconnect_grace_ticks)
 {
   HAL_StatusTypeDef hal_status;
   UINT hw_status;
   uint8_t had_error = 0U;
   uint8_t need_teardown =
-    ((ps_hw6_usb_device_active != 0UL) ||
-     (hpcd_USB_OTG_FS.State != HAL_PCD_STATE_RESET)) ? 1U : 0U;
+    (ps_hw6_usb_device_active != 0UL) ? 1U : 0U;
 
   if (need_teardown != 0U)
   {
@@ -127,7 +146,9 @@ static UINT PS_HW6_UsbExport_StopDeviceWithGrace(ULONG disconnect_grace_ticks)
 
   HAL_NVIC_DisableIRQ(OTG_FS_IRQn);
   NVIC_ClearPendingIRQ(OTG_FS_IRQn);
-  hw_status = PS_HW6_UsbExport_DeviceHardwareOff();
+  hw_status = (need_teardown != 0U) ?
+              PS_HW6_UsbExport_DeviceHardwareOff() :
+              PS_HW6_UsbExport_DeviceHardwareOffInactive();
   if (hw_status != TX_SUCCESS)
   {
     had_error = 1U;

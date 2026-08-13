@@ -46,9 +46,9 @@ Speaker path:
 - 16 kHz mono output
 - 16-bit PCM DMA output
 - 4-bit IMA ADPCM assets, mono, 16 kHz
-- 1 music voice
-- 5 SFX voices
-- music/SFX mixing to mono PCM
+- realtime units may use exactly 1 music voice plus 5 SFX voices
+- reactive units may use bounded SFX bursts only; music is rejected or deferred to a realtime/sustained-audio grant
+- music/SFX mixing to mono PCM where the active target profile grants sustained audio
 - volume, mute, fade, ducking, priority, and preemption
 
 BBB path:
@@ -102,7 +102,7 @@ Audio buses:
 - `sfx`
 - `bbb`
 
-Platform may reject requests that exceed validated bounds.
+Platform may reject requests that exceed validated bounds. On HW6, music requests are valid only while the active unit has a realtime or future sustained-audio grant. Reactive units may request short SFX only; while the SFX is active `thAudio` may keep the MCU awake and hold `SAI_AUDIO_ACTIVE`, but it must release that clock intent when the burst drains so the system can return to its selected reactive waiting backend.
 
 ## BBB Pattern Model
 
@@ -180,11 +180,12 @@ Rejected BBB requests:
 
 Speaker rules:
 
-- exactly 1 music voice
-- exactly 5 SFX voices
-- music and SFX mix into one mono PCM stream
+- realtime/sustained-audio operation grants exactly 1 music voice
+- realtime/sustained-audio operation grants exactly 5 SFX voices unless the target profile reduces the count with evidence
+- reactive operation grants bounded SFX bursts only and must not start music
+- music and SFX mix into one mono PCM stream only where the active profile grants sustained audio
 - SFX priority may preempt lower-priority SFX voices
-- music ducking is allowed for important SFX
+- music ducking is allowed for important SFX only where music is admitted
 - fades must be bounded and deterministic
 - DMA ISR only signals; decode/mix/refill occurs in `thAudio`
 
@@ -210,8 +211,10 @@ BBB rules:
 
 - Active speaker playback raises the power/performance floor and blocks deep sleep.
 - Active BBB output may block deep sleep for the duration of the pattern.
-- `thAudio` publishes active/inactive state to `thPower`.
-- Before deep sleep: drain or stop playback, stop DMA, stop BBB output, place `SD_MODE` low, and acknowledge quiesce.
+- `thAudio` publishes active/inactive state to `thPower` and requests `SAI_AUDIO_ACTIVE` only while the speaker path genuinely needs the SAI kernel clock.
+- Reactive SFX may hold `SAI_AUDIO_ACTIVE` only for the bounded burst/drain window, then must release it before PeepOS can return to STOP/LPBAM waiting behavior.
+- Realtime audio may hold `SAI_AUDIO_ACTIVE` for the admitted realtime unit lifetime, subject to quiesce/suspend policy.
+- Before deep sleep: drain or stop playback, stop DMA, stop BBB output, place `SD_MODE` low, release audio clock intent, and acknowledge quiesce.
 - Resume must revalidate clocks, SAI, DMA, and LPTIM before accepting requests.
 
 ## Failure Policy

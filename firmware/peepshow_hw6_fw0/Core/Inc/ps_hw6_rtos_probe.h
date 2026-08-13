@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (14UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (15UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -149,6 +149,15 @@ typedef struct
   uint32_t pmic_int_last_level;
   uint32_t pmic_int_last_irq_tick;
   uint32_t pmic_int_last_consume_tick;
+
+  uint32_t audio_clock_request_count;
+  uint32_t audio_clock_release_count;
+  uint32_t audio_clock_last_reason;
+  uint32_t audio_clock_last_capabilities;
+  uint32_t audio_clock_last_status;
+  uint32_t audio_clock_reactive_sfx_status;
+  uint32_t audio_clock_realtime_status;
+  uint32_t audio_clock_release_status;
 
   uint32_t storage_clock_request_count;
   uint32_t storage_clock_release_count;

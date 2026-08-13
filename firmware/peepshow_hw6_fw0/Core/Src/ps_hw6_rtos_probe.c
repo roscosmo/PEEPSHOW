@@ -68,6 +68,12 @@
 #define PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS  (1000UL)
 #define PS_HW6_RTOS_STORAGE_STABILIZE_ACK_WAIT_TICKS (30000UL)
 #define PS_HW6_RTOS_STATUS_NOT_RUN        (0xFFFFFFFFUL)
+#define PS_HW6_RTOS_AUDIO_CLOCK_REASON_NONE       (0UL)
+#define PS_HW6_RTOS_AUDIO_CLOCK_REASON_REACTIVE_SFX (1UL)
+#define PS_HW6_RTOS_AUDIO_CLOCK_REASON_REALTIME_MIXER (2UL)
+#define PS_HW6_RTOS_AUDIO_CLOCK_REASON_RELEASE    (3UL)
+#define PS_HW6_RTOS_AUDIO_CLOCK_SAI_CAPABILITIES \
+  (PS_HW6_CLOCK_CAP_SAI_AUDIO_ACTIVE)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_NONE       (0UL)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_EXPORT (1UL)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_RECLAIM (2UL)
@@ -113,6 +119,8 @@
 
 volatile PS_HW6_RTOS_Probe g_ps_hw6_rtos_probe;
 volatile uint32_t g_ps_hw6_rtos_low_power_usb_skip_count;
+volatile uint32_t g_ps_hw6_audio_clock_probe_request;
+volatile uint32_t g_ps_hw6_audio_clock_probe_release_request;
 
 typedef UINT (*PS_HW6_RTOS_DebugCommandFn)(void);
 
@@ -269,6 +277,14 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.init_status = TX_SUCCESS;
   g_ps_hw6_rtos_probe.init_error_step = PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.init_error_index = PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_clock_last_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_clock_reactive_sfx_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_clock_realtime_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_clock_release_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.storage_clock_last_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.storage_clock_export_status =
@@ -890,6 +906,44 @@ static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t requester_id,
   }
 
   return wait_status;
+}
+
+static UINT PS_HW6_RTOS_RequestAudioClockCapabilities(
+  uint32_t reason,
+  uint32_t capabilities)
+{
+  UINT status;
+
+  status = PS_HW6_RTOS_RequestPowerClockProfile(
+    PS_HW6_RTOS_OWNER_AUDIO,
+    (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
+    capabilities);
+
+  g_ps_hw6_rtos_probe.audio_clock_last_reason = reason;
+  g_ps_hw6_rtos_probe.audio_clock_last_capabilities = capabilities;
+  g_ps_hw6_rtos_probe.audio_clock_last_status = (uint32_t)status;
+
+  if (capabilities == 0UL)
+  {
+    g_ps_hw6_rtos_probe.audio_clock_release_count++;
+    g_ps_hw6_rtos_probe.audio_clock_release_status = (uint32_t)status;
+  }
+  else
+  {
+    g_ps_hw6_rtos_probe.audio_clock_request_count++;
+    if (reason == PS_HW6_RTOS_AUDIO_CLOCK_REASON_REACTIVE_SFX)
+    {
+      g_ps_hw6_rtos_probe.audio_clock_reactive_sfx_status =
+        (uint32_t)status;
+    }
+    else if (reason == PS_HW6_RTOS_AUDIO_CLOCK_REASON_REALTIME_MIXER)
+    {
+      g_ps_hw6_rtos_probe.audio_clock_realtime_status =
+        (uint32_t)status;
+    }
+  }
+
+  return status;
 }
 
 static UINT PS_HW6_RTOS_RequestStorageClockCapabilities(
@@ -2146,6 +2200,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
   uint32_t start_power_timestamp;
   uint32_t start_power_hold_ticks;
   uint32_t start_power_drain_count;
+  uint32_t audio_clock_release_after_request;
   uint32_t router_event;
   uint32_t boot_gate_clear_count;
   uint32_t word;
@@ -2302,6 +2357,35 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     }
 
     PS_HW6_RTOS_UpdateRuntimeComplete();
+
+    if ((owner_id == PS_HW6_RTOS_OWNER_AUDIO) &&
+        (ps_power_boot_done != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      if (g_ps_hw6_audio_clock_probe_request != 0UL)
+      {
+        audio_clock_release_after_request =
+          g_ps_hw6_audio_clock_probe_release_request;
+        g_ps_hw6_audio_clock_probe_request = 0UL;
+        (void)PS_HW6_RTOS_RequestAudioClockCapabilities(
+          PS_HW6_RTOS_AUDIO_CLOCK_REASON_REACTIVE_SFX,
+          PS_HW6_RTOS_AUDIO_CLOCK_SAI_CAPABILITIES);
+        if (audio_clock_release_after_request != 0UL)
+        {
+          g_ps_hw6_audio_clock_probe_release_request = 0UL;
+          (void)PS_HW6_RTOS_RequestAudioClockCapabilities(
+            PS_HW6_RTOS_AUDIO_CLOCK_REASON_RELEASE,
+            0UL);
+        }
+      }
+      if (g_ps_hw6_audio_clock_probe_release_request != 0UL)
+      {
+        g_ps_hw6_audio_clock_probe_release_request = 0UL;
+        (void)PS_HW6_RTOS_RequestAudioClockCapabilities(
+          PS_HW6_RTOS_AUDIO_CLOCK_REASON_RELEASE,
+          0UL);
+      }
+    }
 
     if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
         (ps_power_boot_done == 0UL) &&

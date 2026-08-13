@@ -12,7 +12,7 @@ Recommended baseline owners:
 |---|---|
 | `thPower` | mode state, sleep class, clock transitions |
 | `thDisplay` | display bus and display transfer path; publishes bounded display-transfer clock intent through `thPower` |
-| `thAudio` | audio bus, audio DMA, amp control |
+| `thAudio` | audio bus, audio DMA, amp control; publishes bounded SAI/audio clock intent through `thPower` |
 | `thInput` | raw input capture and logical action routing |
 | `thUI` | shell and shared UX service flow; publishes bounded shell/router reactive clock intent through `thPower` |
 | `thRuntime` | runtime host manager dispatch; tracks active runtime class, execution semantic, lifecycle, shell/installer return context, and symbolic runtime clock intent requests through `thPower` |
