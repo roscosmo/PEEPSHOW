@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (17UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (18UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -151,6 +151,23 @@ typedef struct
   uint32_t pmic_int_last_level;
   uint32_t pmic_int_last_irq_tick;
   uint32_t pmic_int_last_consume_tick;
+
+  uint32_t stop2_eligibility_request_count;
+  uint32_t stop2_eligibility_last_status;
+  uint32_t stop2_eligibility_last_tick;
+  uint32_t stop2_eligibility_ready;
+  uint32_t stop2_eligibility_blocker_mask;
+  uint32_t stop2_eligibility_pending_mask;
+  uint32_t stop2_eligibility_clock_capabilities;
+  uint32_t stop2_eligibility_clock_domains;
+  uint32_t stop2_eligibility_readback_domains;
+  uint32_t stop2_eligibility_lpbam_ready;
+  uint32_t stop2_eligibility_power_state;
+  uint32_t stop2_eligibility_pmic_state;
+  uint32_t stop2_eligibility_battery_policy;
+  uint32_t stop2_eligibility_runtime_class;
+  uint32_t stop2_eligibility_runtime_execution;
+  uint32_t stop2_eligibility_runtime_lifecycle;
 
   uint32_t audio_clock_request_count;
   uint32_t audio_clock_release_count;

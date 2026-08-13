@@ -9,6 +9,7 @@
 #include "ps_hw6_owner_state_machines.h"
 #include "ps_hw6_trace.h"
 #include "ps_input_buttons.h"
+#include "ps_power_state.h"
 #include "ps_storage_filex_levelx.h"
 #include "ps_storage_msc_bridge.h"
 #include "ps_ui_router.h"
@@ -105,6 +106,15 @@
 #define PS_HW6_RTOS_DISPLAY_CLOCK_TRANSFER_CAPABILITIES \
   (PS_HW6_CLOCK_CAP_DISPLAY_TRANSFER_ACTIVE)
 
+#define PS_HW6_RTOS_STOP2_BLOCK_BOOT_NOT_READY        (1UL << 0)
+#define PS_HW6_RTOS_STOP2_BLOCK_POWER_STATE           (1UL << 1)
+#define PS_HW6_RTOS_STOP2_BLOCK_PMIC_STATE            (1UL << 2)
+#define PS_HW6_RTOS_STOP2_BLOCK_BATTERY_POLICY        (1UL << 3)
+#define PS_HW6_RTOS_STOP2_BLOCK_CLOCK_CAPABILITY      (1UL << 4)
+#define PS_HW6_RTOS_STOP2_BLOCK_CLOCK_READBACK_DOMAIN (1UL << 5)
+#define PS_HW6_RTOS_STOP2_PENDING_OWNER_QUIESCE       (1UL << 0)
+#define PS_HW6_RTOS_STOP2_PENDING_LPBAM_VALIDATION    (1UL << 1)
+
 #define PS_HW6_RTOS_PHASE_INIT            (0x6600UL)
 #define PS_HW6_RTOS_PHASE_ALLOCATED       (0x6610UL)
 #define PS_HW6_RTOS_PHASE_OBJECTS_CREATED (0x6620UL)
@@ -121,6 +131,7 @@
 
 volatile PS_HW6_RTOS_Probe g_ps_hw6_rtos_probe;
 volatile uint32_t g_ps_hw6_rtos_low_power_usb_skip_count;
+volatile uint32_t g_ps_hw6_power_stop2_eligibility_request;
 volatile uint32_t g_ps_hw6_audio_clock_probe_request;
 volatile uint32_t g_ps_hw6_audio_clock_probe_release_request;
 volatile uint32_t g_ps_hw6_runtime_reactive_stub_request;
@@ -266,6 +277,7 @@ static void PS_HW6_RTOS_ResetProbe(void)
   (void)memset((void *)&g_ps_hw6_rtos_probe, 0,
                sizeof(g_ps_hw6_rtos_probe));
   g_ps_hw6_rtos_low_power_usb_skip_count = 0UL;
+  g_ps_hw6_power_stop2_eligibility_request = 0UL;
   g_ps_hw6_rtos_probe.boot_home_suppressed = 0UL;
   g_ps_hw6_rtos_probe.boot_low_battery_ui_sent = 0UL;
   g_ps_hw6_rtos_probe.boot_low_battery_recover_ui_sent = 0UL;
@@ -345,6 +357,8 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.display_clock_release_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.ui_action_send_status = PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.stop2_eligibility_last_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.ticks_per_second = TX_TIMER_TICKS_PER_SECOND;
   g_ps_hw6_rtos_probe.owner_count = PS_HW6_RTOS_OWNER_COUNT;
   g_ps_hw6_rtos_probe.queue_count = PS_HW6_RTOS_QUEUE_COUNT;
@@ -1124,6 +1138,111 @@ static uint32_t PS_HW6_RTOS_StorageClockCapabilitiesActive(
   return ((g_ps_hw6_clock_policy_probe.requester_capabilities[
             PS_HW6_RTOS_OWNER_STORAGE] & capabilities) == capabilities) ?
          1UL : 0UL;
+}
+
+static uint32_t PS_HW6_RTOS_Stop2PmicStateAllowsStop2(uint32_t pmic_state)
+{
+  return ((pmic_state == (uint32_t)PMIC_MONITOR) ||
+          (pmic_state == (uint32_t)PMIC_CHARGING) ||
+          (pmic_state == (uint32_t)PMIC_CHARGE_DONE) ||
+          (pmic_state == (uint32_t)PMIC_LOW_BATT)) ? 1UL : 0UL;
+}
+
+static uint32_t PS_HW6_RTOS_Stop2BatteryPolicyAllowsStop2(
+  uint32_t battery_policy)
+{
+  return ((battery_policy == (uint32_t)PS_HW6_POWER_BATTERY_POLICY_BOOT_OK) ||
+          (battery_policy == (uint32_t)PS_HW6_POWER_BATTERY_POLICY_OK) ||
+          (battery_policy == (uint32_t)PS_HW6_POWER_BATTERY_POLICY_WARNING) ||
+          (battery_policy ==
+           (uint32_t)PS_HW6_POWER_BATTERY_POLICY_BOOT_CHARGE_RECOVERY)) ?
+         1UL : 0UL;
+}
+
+static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2EligibilityDryRun(void)
+{
+  uint32_t blocker_mask = 0UL;
+  uint32_t pending_mask = 0UL;
+  uint32_t power_state;
+  uint32_t pmic_state;
+  uint32_t battery_policy;
+  uint32_t clock_capabilities;
+  uint32_t clock_domains;
+  uint32_t readback_domains;
+
+  PS_HW6_ClockPolicy_RecordHardwareSnapshot();
+
+  power_state =
+    g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_POWER];
+  pmic_state =
+    g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC];
+  battery_policy = g_ps_hw6_owner_sm_probe.battery_policy_state;
+  clock_capabilities = g_ps_hw6_clock_policy_probe.stop2_blocker_capabilities;
+  clock_domains = g_ps_hw6_clock_policy_probe.stop2_blocker_domain_mask;
+  readback_domains = g_ps_hw6_clock_policy_probe.readback_domain_mask;
+
+  if ((ps_power_boot_done == 0UL) ||
+      (g_ps_hw6_rtos_probe.runtime_complete == 0UL))
+  {
+    blocker_mask |= PS_HW6_RTOS_STOP2_BLOCK_BOOT_NOT_READY;
+  }
+  if (power_state != (uint32_t)PWR_ACTIVE_LP)
+  {
+    blocker_mask |= PS_HW6_RTOS_STOP2_BLOCK_POWER_STATE;
+  }
+  if (PS_HW6_RTOS_Stop2PmicStateAllowsStop2(pmic_state) == 0UL)
+  {
+    blocker_mask |= PS_HW6_RTOS_STOP2_BLOCK_PMIC_STATE;
+  }
+  if (PS_HW6_RTOS_Stop2BatteryPolicyAllowsStop2(battery_policy) == 0UL)
+  {
+    blocker_mask |= PS_HW6_RTOS_STOP2_BLOCK_BATTERY_POLICY;
+  }
+  if (clock_capabilities != 0UL)
+  {
+    blocker_mask |= PS_HW6_RTOS_STOP2_BLOCK_CLOCK_CAPABILITY;
+  }
+  if (readback_domains != 0UL)
+  {
+    blocker_mask |= PS_HW6_RTOS_STOP2_BLOCK_CLOCK_READBACK_DOMAIN;
+  }
+
+  if (blocker_mask == 0UL)
+  {
+    pending_mask |= PS_HW6_RTOS_STOP2_PENDING_OWNER_QUIESCE;
+    if (g_ps_hw6_clock_policy_probe.lpbam_stop2_ready == 0UL)
+    {
+      pending_mask |= PS_HW6_RTOS_STOP2_PENDING_LPBAM_VALIDATION;
+    }
+  }
+
+  g_ps_hw6_rtos_probe.stop2_eligibility_request_count++;
+  g_ps_hw6_rtos_probe.stop2_eligibility_last_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_rtos_probe.stop2_eligibility_ready =
+    (blocker_mask == 0UL) ? 1UL : 0UL;
+  g_ps_hw6_rtos_probe.stop2_eligibility_blocker_mask = blocker_mask;
+  g_ps_hw6_rtos_probe.stop2_eligibility_pending_mask = pending_mask;
+  g_ps_hw6_rtos_probe.stop2_eligibility_clock_capabilities =
+    clock_capabilities;
+  g_ps_hw6_rtos_probe.stop2_eligibility_clock_domains = clock_domains;
+  g_ps_hw6_rtos_probe.stop2_eligibility_readback_domains =
+    readback_domains;
+  g_ps_hw6_rtos_probe.stop2_eligibility_lpbam_ready =
+    g_ps_hw6_clock_policy_probe.lpbam_stop2_ready;
+  g_ps_hw6_rtos_probe.stop2_eligibility_power_state = power_state;
+  g_ps_hw6_rtos_probe.stop2_eligibility_pmic_state = pmic_state;
+  g_ps_hw6_rtos_probe.stop2_eligibility_battery_policy = battery_policy;
+  g_ps_hw6_rtos_probe.stop2_eligibility_runtime_class =
+    g_ps_hw6_rtos_probe.runtime_current_class;
+  g_ps_hw6_rtos_probe.stop2_eligibility_runtime_execution =
+    g_ps_hw6_rtos_probe.runtime_execution;
+  g_ps_hw6_rtos_probe.stop2_eligibility_runtime_lifecycle =
+    g_ps_hw6_rtos_probe.runtime_lifecycle;
+  g_ps_hw6_rtos_probe.stop2_eligibility_last_status =
+    (blocker_mask == 0UL) ? (uint32_t)HAL_OK : (uint32_t)HAL_ERROR;
+
+  return (blocker_mask == 0UL) ? HAL_OK : HAL_ERROR;
 }
 
 static UINT PS_HW6_RTOS_SendDisplayUiRenderCommand(
@@ -2651,6 +2770,13 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     {
       g_ps_hw6_pmic_software_ship_request = 0UL;
       (void)PS_HW6_PowerOwner_EnterSoftwareShipmentMode();
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
+        (g_ps_hw6_power_stop2_eligibility_request != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      g_ps_hw6_power_stop2_eligibility_request = 0UL;
+      (void)PS_HW6_RTOS_RunStop2EligibilityDryRun();
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
         (g_ps_hw6_power_sleep_prep_request != 0UL) &&
