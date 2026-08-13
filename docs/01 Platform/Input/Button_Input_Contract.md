@@ -39,6 +39,22 @@ edge path and the first UI consumption path:
 - L/R are approved fallback navigation controls while joystick calibration is
   missing or invalid
 
+FW0 A/B/L/R handling is now an EXTI-assisted, ThreadX-tick-owned physical FSM.
+The EXTI path only records raw press/release edges and debug timestamps;
+`thInput` owns debounce deadlines, accepted press impulses, release completion,
+and future long/repeat/stuck classification. `HAL_GetTick()` must not be used
+as the authoritative timing source for A/B/L/R classification. Quick taps are
+explicitly supported: if a release edge arrives while press debounce is still
+pending, the release is latched and the tap emits exactly one generic press
+impulse when the debounce interval expires, then returns to released.
+
+Validated HW6 unit 001 FW0 evidence for API version 8: after physical A/B/L/R
+navigation, `__fw0_buttons_prints.gdb` reported `api/edges/presses/ignored =
+8 / 18 / 7 / 3`, `counts deb p/r accept p/r long repeat stuck bounce = 7 / 0 /
+7 / 7 / 0 / 0 / 0 / 0`, all A/B/L/R states returned to `RELEASED`, and the UI
+reacted as expected. The non-zero ignored edge count is allowed for extra
+release/bounce edges after a tap has already been latched and completed.
+
 This is not the complete button contract. Non-START long press, repeat, chord,
 stuck button, wake-from-low-power, and `BTN_BOOT` remain open. START
 shipping-prep/warning/imminent timing has an FW0 scaffold validated on HW6
@@ -123,9 +139,11 @@ Each physical button has an independent FSM.
 
 | Current | Event | Next | Required Action |
 |---|---|---|---|
-| `BTN_RELEASED` | `EV_BTN_EDGE_ACTIVE` | `BTN_DEBOUNCE_PRESS` | start press debounce timer |
+| `BTN_RELEASED` | `EV_BTN_EDGE_ACTIVE` | `BTN_DEBOUNCE_PRESS` | latch active edge and start press debounce timer in `thInput` tick domain |
+| `BTN_DEBOUNCE_PRESS` | `EV_BTN_EDGE_INACTIVE` | `BTN_DEBOUNCE_PRESS` | latch quick-tap release; do not cancel the pending press |
 | `BTN_DEBOUNCE_PRESS` | `EV_BTN_DEBOUNCE_DONE` and active | `BTN_PRESSED` | emit down/press candidate to classifier |
-| `BTN_DEBOUNCE_PRESS` | `EV_BTN_DEBOUNCE_DONE` and inactive | `BTN_RELEASED` | reject bounce |
+| `BTN_DEBOUNCE_PRESS` | `EV_BTN_DEBOUNCE_DONE` and release latched | `BTN_RELEASED` | emit one press candidate plus release completion for a quick tap |
+| `BTN_DEBOUNCE_PRESS` | `EV_BTN_DEBOUNCE_DONE` and inactive with no latched release | `BTN_RELEASED` | reject bounce |
 | `BTN_PRESSED` | `EV_BTN_LONG_THRESHOLD` | `BTN_HELD` | emit long-press candidate if policy allows |
 | `BTN_HELD` | `EV_BTN_REPEAT_THRESHOLD` | `BTN_REPEAT` | start repeat cadence if repeat enabled |
 | `BTN_REPEAT` | `EV_BTN_REPEAT_TICK` | `BTN_REPEAT` | emit repeat candidate if focus accepts repeats |
@@ -200,7 +218,7 @@ Current FW0 scaffolding admits `BTN_START` into the EXTI-backed input path and k
 
 Validated HW6 unit 001 FW0 evidence: a 5 s hold reached `START_SHIP_PREP` with checkpoint/live ticks `500/525`; a 9-10 s hold reached `START_SHIP_WARNING` with `900/1075`; a >11 s hold reached `START_SHIP_IMMINENT` with `1100/1675`; raw/stable PA4 was `0/0` during sustained holds; and `thPower` recorded prep/warning/imminent counters `1/1/1`. A later validated scaffold capture showed the user-visible `PREPARING` and `POWER OFF IN 3/2/1` screens, release before shipment returning to HOME, input prep/warn/imminent/release counters `1/1/1/1`, power prep/warn/imminent/cancel counters `1/1/1/1`, one no-op quiesce hook call, and software shipment remaining gated off with enable/request/skip `0/0/1`. The ADP5360 hardware shipment path was confirmed separately by holding START/MR past the hardware threshold.
 
-The required knob names above are authoritative. HW6 FW0 sources knob values from `firmware/peepshow_hw6_fw0/config/knobs.json`, validates them with `config/knobs.schema.json`, and generates `Core/Inc/knobs_autogen.h` through `tools/gen_knobs.py`. The START overlay scaffold already consumes generated START macros. The generic button knobs are populated for the upcoming A/B/L/R/BOOT physical button FSM and classifier work, but they do not yet change the current short-press UI navigation path.
+The required knob names above are authoritative. HW6 FW0 sources knob values from `firmware/peepshow_hw6_fw0/config/knobs.json`, validates them with `config/knobs.schema.json`, and generates `Core/Inc/knobs_autogen.h` through `tools/gen_knobs.py`. The START overlay scaffold consumes generated START macros. The A/B/L/R physical button FSM consumes the generic debounce, long-press, repeat, stuck, and chord-window knobs, although long/repeat/stuck/chord publication remains scaffolded until the higher-level classifier and focus policy are completed.
 
 Current generated defaults preserve the validated START scaffold shape while allowing timing adjustment: generic press/release debounce `20/20 ms`, generic long press `1000 ms`, generic repeat start/period `500/150 ms`, generic stuck threshold `30000 ms`, chord window `80 ms`, START long press `1000 ms`, ship-prep `5000 ms`, warning `9000 ms`, imminent `11000 ms`, START stable-level acceptance `2` samples, and software shipment request enable `false`.
 
@@ -268,7 +286,7 @@ The package chooses whether automatic locking is enabled and chooses its declare
 
 ## Validation Cases
 
-1. active-high buttons debounce correctly and emit press/release duration
+1. active-high buttons debounce correctly, survive quick taps, and emit press/release duration
 2. active-low Start debounce correctly emits normal press/long press
 3. repeat generation can be enabled and ignored by focus policy
 4. chord window emits raw chord masks without Platform action mapping

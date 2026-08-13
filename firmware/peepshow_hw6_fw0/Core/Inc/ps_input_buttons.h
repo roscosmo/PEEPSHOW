@@ -9,7 +9,8 @@
 extern "C" {
 #endif
 
-#define PS_INPUT_BUTTONS_API_VERSION (5UL)
+#define PS_INPUT_BUTTONS_API_VERSION (8UL)
+#define PS_INPUT_BUTTON_PHYSICAL_COUNT (4UL)
 
 typedef enum
 {
@@ -27,6 +28,19 @@ typedef enum
   PS_INPUT_BUTTON_EVENT_PRESS,
   PS_INPUT_BUTTON_EVENT_RELEASE
 } ps_input_button_event_t;
+
+typedef enum
+{
+  PS_INPUT_BUTTON_STATE_DISABLED = 0,
+  PS_INPUT_BUTTON_STATE_RELEASED,
+  PS_INPUT_BUTTON_STATE_DEBOUNCE_PRESS,
+  PS_INPUT_BUTTON_STATE_PRESSED,
+  PS_INPUT_BUTTON_STATE_HELD,
+  PS_INPUT_BUTTON_STATE_REPEAT,
+  PS_INPUT_BUTTON_STATE_DEBOUNCE_RELEASE,
+  PS_INPUT_BUTTON_STATE_STUCK,
+  PS_INPUT_BUTTON_STATE_ERROR
+} ps_input_button_state_t;
 
 typedef enum
 {
@@ -60,6 +74,26 @@ typedef struct
   uint32_t last_event;
   uint32_t last_level;
   uint32_t last_tick;
+  uint32_t button_state[PS_INPUT_BUTTON_PHYSICAL_COUNT];
+  uint32_t button_raw_level[PS_INPUT_BUTTON_PHYSICAL_COUNT];
+  uint32_t button_press_tick[PS_INPUT_BUTTON_PHYSICAL_COUNT];
+  uint32_t button_release_tick[PS_INPUT_BUTTON_PHYSICAL_COUNT];
+  uint32_t button_deadline_tick[PS_INPUT_BUTTON_PHYSICAL_COUNT];
+  uint32_t button_debounce_press_ticks;
+  uint32_t button_debounce_release_ticks;
+  uint32_t button_long_press_ticks;
+  uint32_t button_repeat_start_ticks;
+  uint32_t button_repeat_period_ticks;
+  uint32_t button_stuck_ticks;
+  uint32_t button_chord_window_ticks;
+  uint32_t button_debounce_press_count;
+  uint32_t button_debounce_release_count;
+  uint32_t button_press_accept_count;
+  uint32_t button_release_accept_count;
+  uint32_t button_long_count;
+  uint32_t button_repeat_count;
+  uint32_t button_stuck_count;
+  uint32_t button_bounce_reject_count;
   uint32_t start_state;
   uint32_t start_active;
   uint32_t start_press_pending;
@@ -93,6 +127,8 @@ void PS_InputButtons_Init(void);
 void PS_InputButtons_RecordExti(uint16_t gpio_pin, GPIO_PinState level);
 uint32_t PS_InputButtons_StartCheckDue(uint32_t now_tick);
 void PS_InputButtons_PollStart(uint32_t now_tick);
+uint32_t PS_InputButtons_ButtonsCheckDue(uint32_t now_tick);
+void PS_InputButtons_PollButtons(uint32_t now_tick);
 uint32_t PS_InputButtons_TakePress(ps_input_button_id_t *button_id,
                                    uint32_t *timestamp);
 uint32_t PS_InputButtons_TakeStartPowerEvent(

@@ -2990,6 +2990,10 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       {
         PS_InputButtons_PollStart((uint32_t)now);
       }
+      if (PS_InputButtons_ButtonsCheckDue((uint32_t)now) != 0UL)
+      {
+        PS_InputButtons_PollButtons((uint32_t)now);
+      }
       for (start_power_drain_count = 0UL;
            start_power_drain_count < 4UL;
            ++start_power_drain_count)
