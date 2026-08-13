@@ -11,6 +11,8 @@ printf "storage clock req/rel/reason/caps/status = %u / %u / %u / 0x%x / 0x%x\n"
 printf "storage clock export/reclaim/flash/release = 0x%x / 0x%x / 0x%x / 0x%x\n", $rt->storage_clock_export_status, $rt->storage_clock_reclaim_status, $rt->storage_clock_flash_init_status, $rt->storage_clock_release_status
 printf "runtime clock req/rel/reason/caps/status = %u / %u / %u / 0x%x / 0x%x\n", $rt->runtime_clock_request_count, $rt->runtime_clock_release_count, $rt->runtime_clock_last_reason, $rt->runtime_clock_last_capabilities, $rt->runtime_clock_last_status
 printf "runtime clock reactive/realtime/release = 0x%x / 0x%x / 0x%x\n", $rt->runtime_clock_reactive_status, $rt->runtime_clock_realtime_status, $rt->runtime_clock_release_status
+printf "ui clock req/rel/reason/caps/status = %u / %u / %u / 0x%x / 0x%x\n", $rt->ui_clock_request_count, $rt->ui_clock_release_count, $rt->ui_clock_last_reason, $rt->ui_clock_last_capabilities, $rt->ui_clock_last_status
+printf "ui clock reactive/release = 0x%x / 0x%x\n", $rt->ui_clock_reactive_status, $rt->ui_clock_release_status
 printf "domains req/managed/readback = 0x%x / 0x%x / 0x%x\n", $cp->required_domain_mask, $cp->managed_domain_mask, $cp->readback_domain_mask
 printf "STOP2 blockers caps/dom/ready/lpbam = 0x%x / 0x%x / %u / %u\n", $cp->stop2_blocker_capabilities, $cp->stop2_blocker_domain_mask, $cp->stop2_ready, $cp->lpbam_stop2_ready
 printf "PLL2 autogate en/skip       = %u / %u\n", $cp->pll2_autogate_enabled, $cp->pll2_autogate_skip_count
@@ -29,4 +31,5 @@ printf "domains: USB=0x1 PLL2_OCTOSPI=0x2 PLL2_SAI=0x4 DISPLAY=0x8 RT=0x10 REACT
 printf "stages: IDLE=0 SELECT=1 SYSCLK_IO_HIGH=2 USB_ON=3 RESTORE_BASE=4 USB_OFF=5 SYSTICK=6 COMPLETE=7 REQUESTER=8 RESOLVE=9 PLL2_ON=10 PLL2_OFF=11\n"
 printf "storage clock reasons: NONE=0 MSC_EXPORT=1 MSC_RECLAIM=2 FLASH_INIT=3 RELEASE=4\n"
 printf "runtime clock reasons: NONE=0 REACTIVE_TXN=1 REALTIME_DEADLINE=2 RELEASE=3\n"
+printf "ui clock reasons: NONE=0 REACTIVE_TXN=1 RELEASE=2\n"
 printf "status: TX_SUCCESS=0x0 TX_NOT_DONE=0x20 NOT_RUN=0xffffffff\n"

@@ -16,6 +16,8 @@ printf "transitions/rejected  = %u / %u\n", $ui->transition_count, $ui->rejected
 printf "button event/count    = %u / %u\n", $ui->last_button_event, $ui->button_event_count
 printf "router action pend/last/req/take = %u / %u / %u / %u\n", $ui->pending_action, $ui->last_action, $ui->action_request_count, $ui->action_take_count
 printf "rtos ui action last/count/status = %u / %u / 0x%x\n", $rt->ui_action_last, $rt->ui_action_count, $rt->ui_action_send_status
+printf "rtos ui clock req/rel/reason/caps/status = %u / %u / %u / 0x%x / 0x%x\n", $rt->ui_clock_request_count, $rt->ui_clock_release_count, $rt->ui_clock_last_reason, $rt->ui_clock_last_capabilities, $rt->ui_clock_last_status
+printf "rtos ui clock reactive/release = 0x%x / 0x%x\n", $rt->ui_clock_reactive_status, $rt->ui_clock_release_status
 printf "rtos msc enter/exit/intercept/unsup = %u / %u / %u / %u\n", $rt->ui_action_msc_enter_count, $rt->ui_action_msc_exit_count, $rt->ui_action_msc_exit_intercept_count, $rt->ui_action_unsupported_count
 printf "rtos package install action = %u\n", $rt->ui_action_package_install_stub_count
 printf "runtime class/exec/life = %u / %u / %u\n", $rt->runtime_current_class, $rt->runtime_execution, $rt->runtime_lifecycle
@@ -48,3 +50,4 @@ printf "runtime classes: NONE=0 SHELL=1 LP_GRAPH=2 LP_MODULE=3 RT_SCENE=4 INSTAL
 printf "runtime exec: NONE=0 REACTIVE=1 REALTIME=2 lifecycle: NONE=0 MOUNTED=1 RUNNING=2 SUSPENDED=3 STOPPING=4 ERROR=5\n"
 printf "runtime events: BOOT_SHELL=1 INSTALLER_ENTER=2 INSTALLER_COMPLETE=3 INSTALLER_ERROR=4 PKG_ACTIVATE_STUB=5 PKG_RETURN=6 SUSPEND=7 RESUME=8\n"
 printf "actions: NONE=0 MSC_ENTER=1 MSC_EXIT=2 PACKAGE_INSTALL_STUB=3\n"
+printf "ui clock reasons: NONE=0 REACTIVE_TXN=1 RELEASE=2\n"

@@ -85,6 +85,11 @@
   (PS_HW6_CLOCK_CAP_REACTIVE_TRANSACTION_ACTIVE)
 #define PS_HW6_RTOS_RUNTIME_CLOCK_REALTIME_CAPABILITIES \
   (PS_HW6_CLOCK_CAP_REALTIME_DEADLINE_ACTIVE)
+#define PS_HW6_RTOS_UI_CLOCK_REASON_NONE       (0UL)
+#define PS_HW6_RTOS_UI_CLOCK_REASON_REACTIVE_TRANSACTION (1UL)
+#define PS_HW6_RTOS_UI_CLOCK_REASON_RELEASE    (2UL)
+#define PS_HW6_RTOS_UI_CLOCK_REACTIVE_CAPABILITIES \
+  (PS_HW6_CLOCK_CAP_REACTIVE_TRANSACTION_ACTIVE)
 
 #define PS_HW6_RTOS_PHASE_INIT            (0x6600UL)
 #define PS_HW6_RTOS_PHASE_ALLOCATED       (0x6610UL)
@@ -278,6 +283,12 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.runtime_clock_realtime_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.runtime_clock_release_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.ui_clock_last_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.ui_clock_reactive_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.ui_clock_release_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.ui_action_send_status = PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.ticks_per_second = TX_TIMER_TICKS_PER_SECOND;
@@ -939,6 +950,38 @@ static UINT PS_HW6_RTOS_RequestRuntimeClockCapabilities(
     else if (reason == PS_HW6_RTOS_RUNTIME_CLOCK_REASON_REALTIME_DEADLINE)
     {
       g_ps_hw6_rtos_probe.runtime_clock_realtime_status = (uint32_t)status;
+    }
+  }
+
+  return status;
+}
+
+static UINT PS_HW6_RTOS_RequestUiClockCapabilities(
+  uint32_t reason,
+  uint32_t capabilities)
+{
+  UINT status;
+
+  status = PS_HW6_RTOS_RequestPowerClockProfile(
+    PS_HW6_RTOS_OWNER_UI,
+    (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
+    capabilities);
+
+  g_ps_hw6_rtos_probe.ui_clock_last_reason = reason;
+  g_ps_hw6_rtos_probe.ui_clock_last_capabilities = capabilities;
+  g_ps_hw6_rtos_probe.ui_clock_last_status = (uint32_t)status;
+
+  if (capabilities == 0UL)
+  {
+    g_ps_hw6_rtos_probe.ui_clock_release_count++;
+    g_ps_hw6_rtos_probe.ui_clock_release_status = (uint32_t)status;
+  }
+  else
+  {
+    g_ps_hw6_rtos_probe.ui_clock_request_count++;
+    if (reason == PS_HW6_RTOS_UI_CLOCK_REASON_REACTIVE_TRANSACTION)
+    {
+      g_ps_hw6_rtos_probe.ui_clock_reactive_status = (uint32_t)status;
     }
   }
 
@@ -2145,6 +2188,10 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         uint32_t button = (uint32_t)message[3];
         uint32_t action = (uint32_t)PS_UI_ROUTER_ACTION_NONE;
 
+        (void)PS_HW6_RTOS_RequestUiClockCapabilities(
+          PS_HW6_RTOS_UI_CLOCK_REASON_REACTIVE_TRANSACTION,
+          PS_HW6_RTOS_UI_CLOCK_REACTIVE_CAPABILITIES);
+
         if ((button == (uint32_t)PS_INPUT_BUTTON_ID_B) &&
             (PS_HW6_RTOS_UiMscExportActive() != 0UL))
         {
@@ -2180,6 +2227,9 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
             }
           }
         }
+        (void)PS_HW6_RTOS_RequestUiClockCapabilities(
+          PS_HW6_RTOS_UI_CLOCK_REASON_RELEASE,
+          0UL);
       }
       else
       {
@@ -2406,6 +2456,9 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (ps_power_boot_done != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
+      (void)PS_HW6_RTOS_RequestUiClockCapabilities(
+        PS_HW6_RTOS_UI_CLOCK_REASON_REACTIVE_TRANSACTION,
+        PS_HW6_RTOS_UI_CLOCK_REACTIVE_CAPABILITIES);
       if ((g_ps_hw6_owner_sm_probe.battery_policy_state ==
            PS_HW6_POWER_BATTERY_POLICY_UNKNOWN) &&
           (g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_pending !=
@@ -2452,11 +2505,17 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
           }
         }
       }
+      (void)PS_HW6_RTOS_RequestUiClockCapabilities(
+        PS_HW6_RTOS_UI_CLOCK_REASON_RELEASE,
+        0UL);
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_UI) &&
         (g_ps_ui_router_request != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
+      (void)PS_HW6_RTOS_RequestUiClockCapabilities(
+        PS_HW6_RTOS_UI_CLOCK_REASON_REACTIVE_TRANSACTION,
+        PS_HW6_RTOS_UI_CLOCK_REACTIVE_CAPABILITIES);
       router_event = g_ps_ui_router_request_event;
       g_ps_ui_router_request = 0UL;
       router_status = PS_UIRouter_Dispatch(router_event);
@@ -2475,6 +2534,9 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         }
         PS_HW6_RTOS_SendCurrentUiRenderCommand();
       }
+      (void)PS_HW6_RTOS_RequestUiClockCapabilities(
+        PS_HW6_RTOS_UI_CLOCK_REASON_RELEASE,
+        0UL);
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
         (g_ps_hw6_storage_usb_export_request != 0UL) &&
