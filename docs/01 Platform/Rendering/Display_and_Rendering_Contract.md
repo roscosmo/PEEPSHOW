@@ -67,13 +67,16 @@ path through `thDisplay`:
 - the display owner initializes and owns the first normal-boot panel action
 - the current FW0 target clears the panel into static hold immediately when
   `thDisplay` starts, then lets UI render HOME after power boot completes
+- `thDisplay` publishes `DISPLAY_TRANSFER_ACTIVE` through `thPower` around
+  the validated boot clear-hold transfer; queued UI render calls are wrapped
+  the same way but still need a settled HOME-render target capture
 - the current firmware maps the logical landscape UI to the native portrait
   panel with a 90 degree counter-clockwise rotation
 - the user confirmed the corrected orientation visually on the physical display
 - the renderer is intentionally minimal; detailed display rendering work remains
   later Platform work
 
-The existing bring-up result proves basic orientation and owner-routed presentation; the early clear/hold boot behavior still needs target confirmation. It
+The existing bring-up result proves basic orientation, owner-routed presentation, and boot clear-hold display-transfer clock request/release (`EV-HW6-20260813-P1-DISPLAYCLOCK-047`). It
 does not close partial updates, dirty tracking, LPBAM, final typography/layout,
 renderer polish, or display fault recovery.
 
