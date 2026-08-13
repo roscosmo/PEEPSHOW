@@ -120,6 +120,7 @@ On HW6 unit 001, FW0 has a first shell router integrated with `thUI`,
   `BTN_R`); it does not publish universal enter/back actions
 - `thUI` maps those generic events contextually: A selects/advances, B backs
   out, and L/R move focus when joystick navigation is unavailable
+- the FW0 input focus resolver keeps shell, installer, shutdown, and MSC overlay button events on `thUI`; package runtime classes receive the same generic logical presses through `thRuntime` stubs instead of shell navigation
 - display presentation is routed through `thDisplay`; the UI does not touch the
   display peripheral directly
 - HOME dispatch is gated until normal boot power work is complete
@@ -135,6 +136,7 @@ transaction both requested and released UI reactive clock intent through
 `thPower`, then settled with requester cap `UI=0x0` and `STOP2 ready=1`.
 
 This is an FW0 shell scaffold, not the final renderer or final menu system. The package page is currently a temporary USB transfer scaffold: A requests the normal MSC enter service through `thUI` -> `thStorage`, and B requests MSC exit while an export is active. Package-page MSC reclaim asks `thStorage` to force a staging scan so an existing `.peepkg` / `.ppkg` can be recognized even when the bridge dirty flag is false. Valid package, install-stub, and error prompts return to MENU on B after clearing the prompt; successful install-stub completion also returns to MENU. This is a caller of the storage service, not a second USB ownership path. FW0 runtime evidence `EV-HW6-20260813-P1-RUNTIME-044` records this package-transfer flow as an `INSTALLER` runtime overlay that returns to `SHELL`; it is not final package launch or final installer UI.
+FW0 now has the first input focus split for that handoff: generic A/B/L/R logical presses remain UI-owned while `SHELL` or `INSTALLER` is current, and while a system overlay such as shutdown or MSC is active. `LP_GRAPH`, `LP_MODULE`, and `RT_SCENE` route to a `thRuntime` input stub so package code can later interpret the same generic events contextually. HW6 validation confirmed normal menu navigation still targets `thUI`, and a reactive package stub press targets `thRuntime` without driving shell navigation.
 The joystick calibration page can be entered, but its multi-step calibration
 flow is not complete yet.
 

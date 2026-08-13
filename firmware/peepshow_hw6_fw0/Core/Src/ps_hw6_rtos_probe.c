@@ -30,8 +30,12 @@
 #define PS_HW6_RTOS_COMMAND_TOKEN         (0xC0DEC0DEUL)
 #define PS_HW6_RTOS_DISPLAY_UI_MAGIC      (0x44554921UL)
 #define PS_HW6_RTOS_UI_INPUT_MAGIC        (0x55494221UL)
+#define PS_HW6_RTOS_RUNTIME_INPUT_MAGIC   (0x52494221UL)
 #define PS_HW6_RTOS_POWER_INPUT_MAGIC     (0x50574921UL)
 #define PS_HW6_RTOS_UI_INPUT_PRESS        (1UL)
+#define PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_ID_MASK (0xFFUL)
+#define PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_MASK_SHIFT (8U)
+#define PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_MASK_MASK (0xFFUL)
 #define PS_HW6_RTOS_DISPLAY_UI_FIELD_MASK  (0xFFUL)
 #define PS_HW6_RTOS_DISPLAY_UI_CAL_SHIFT   (0U)
 #define PS_HW6_RTOS_DISPLAY_UI_FOCUS_SHIFT (8U)
@@ -117,6 +121,9 @@
 #define PS_HW6_RTOS_INPUT_POLICY_REASON_UNSUPPORTED_EVENT (4UL)
 #define PS_HW6_RTOS_INPUT_POLICY_REASON_INVALID_BUTTON (5UL)
 #define PS_HW6_RTOS_INPUT_POLICY_REASON_SEND_FAILED (6UL)
+#define PS_HW6_RTOS_INPUT_POLICY_REASON_SYSTEM_OVERLAY (7UL)
+#define PS_HW6_RTOS_INPUT_POLICY_REASON_RUNTIME_FOCUS (8UL)
+#define PS_HW6_RTOS_INPUT_POLICY_REASON_UNSUPPORTED_CLASS (9UL)
 #define PS_HW6_RTOS_INPUT_POLICY_STATUS_SUPPRESSED (0xFFFFFFFEUL)
 
 #define PS_HW6_RTOS_STOP2_BLOCK_BOOT_NOT_READY        (1UL << 0)
@@ -318,6 +325,8 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.input_policy_api_version =
     PS_HW6_RTOS_INPUT_POLICY_API_VERSION;
   g_ps_hw6_rtos_probe.input_policy_last_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.runtime_input_last_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.init_status = TX_SUCCESS;
   g_ps_hw6_rtos_probe.init_error_step = PS_HW6_RTOS_STATUS_NOT_RUN;
@@ -674,6 +683,69 @@ static uint32_t PS_HW6_RTOS_UiInputCommandIsValid(uint32_t owner_id,
   }
 
   return 1UL;
+}
+
+static uint32_t PS_HW6_RTOS_RuntimeInputCommandIsValid(
+  uint32_t owner_id,
+  const ULONG *message)
+{
+  uint32_t event;
+  uint32_t packed_button;
+  uint32_t button_id;
+  uint32_t button_mask;
+
+  if ((owner_id != PS_HW6_RTOS_OWNER_RUNTIME) ||
+      (message[0] != PS_HW6_RTOS_RUNTIME_INPUT_MAGIC) ||
+      (message[1] != PS_HW6_RTOS_OWNER_RUNTIME))
+  {
+    return 0UL;
+  }
+
+  event = (uint32_t)message[2];
+  packed_button = (uint32_t)message[3];
+  button_id = packed_button & PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_ID_MASK;
+  button_mask = (packed_button >> PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_MASK_SHIFT) &
+                PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_MASK_MASK;
+
+  if ((event != (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS) ||
+      (button_id < (uint32_t)PS_INPUT_BUTTON_ID_A) ||
+      (button_id > (uint32_t)PS_INPUT_BUTTON_ID_R) ||
+      (button_mask == 0UL) ||
+      ((button_mask & ~0x0FUL) != 0UL))
+  {
+    return 0UL;
+  }
+
+  return 1UL;
+}
+
+static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
+{
+  uint32_t event;
+  uint32_t packed_button;
+  uint32_t button_id;
+  uint32_t button_mask;
+
+  event = (uint32_t)message[2];
+  packed_button = (uint32_t)message[3];
+  button_id = packed_button & PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_ID_MASK;
+  button_mask = (packed_button >> PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_MASK_SHIFT) &
+                PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_MASK_MASK;
+
+  g_ps_hw6_rtos_probe.runtime_input_event_count++;
+  if (event == (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)
+  {
+    g_ps_hw6_rtos_probe.runtime_input_button_count++;
+  }
+  g_ps_hw6_rtos_probe.runtime_input_last_event = event;
+  g_ps_hw6_rtos_probe.runtime_input_last_button_id = button_id;
+  g_ps_hw6_rtos_probe.runtime_input_last_mask = button_mask;
+  g_ps_hw6_rtos_probe.runtime_input_last_status = TX_SUCCESS;
+  g_ps_hw6_rtos_probe.runtime_input_last_tick = (uint32_t)tx_time_get();
+  PS_HW6_TraceInputButton(button_id,
+                          PS_HW6_RTOS_OWNER_RUNTIME,
+                          TX_SUCCESS,
+                          button_mask);
 }
 
 static uint32_t PS_HW6_RTOS_PowerInputCommandIsValid(uint32_t owner_id,
@@ -1358,6 +1430,61 @@ static UINT PS_HW6_RTOS_SendUiButtonPress(ps_input_button_id_t button_id)
   return status;
 }
 
+static uint32_t PS_HW6_RTOS_RuntimeInputPackedButton(
+  uint32_t button_id,
+  uint32_t button_mask)
+{
+  return ((button_id & PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_ID_MASK) |
+          ((button_mask & PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_MASK_MASK) <<
+           PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_MASK_SHIFT));
+}
+
+static UINT PS_HW6_RTOS_SendRuntimeInputEvent(
+  const ps_input_button_logical_record_t *record)
+{
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+  UINT status;
+
+  message[0] = PS_HW6_RTOS_RUNTIME_INPUT_MAGIC;
+  message[1] = PS_HW6_RTOS_OWNER_RUNTIME;
+  message[2] = (ULONG)record->event;
+  message[3] = (ULONG)PS_HW6_RTOS_RuntimeInputPackedButton(
+    (uint32_t)record->button_id,
+    record->button_mask);
+  status = tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_RUNTIME],
+                         message,
+                         TX_NO_WAIT);
+  PS_HW6_TraceInputButton((uint32_t)record->button_id,
+                          PS_HW6_RTOS_OWNER_RUNTIME,
+                          (uint32_t)status,
+                          record->button_mask);
+  return status;
+}
+
+static uint32_t PS_HW6_RTOS_InputPolicySystemOverlayActive(void)
+{
+  return ((g_ps_ui_router_probe.current_page ==
+           (uint32_t)PS_UI_ROUTER_PAGE_SHUTDOWN) ||
+          (g_ps_ui_router_probe.shutdown_state !=
+           (uint32_t)PS_UI_ROUTER_SHUTDOWN_NONE) ||
+          (g_ps_hw6_owner_sm_probe.usb_host_msc_active != 0UL) ||
+          (g_ps_storage_msc_bridge_probe.export_enabled != 0UL)) ?
+         1UL : 0UL;
+}
+
+static uint32_t PS_HW6_RTOS_InputPolicyRuntimeClassOwnsButtons(
+  uint32_t runtime_class)
+{
+  if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_LP_GRAPH) ||
+      (runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_LP_MODULE) ||
+      (runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_RT_SCENE))
+  {
+    return 1UL;
+  }
+
+  return 0UL;
+}
+
 static UINT PS_HW6_RTOS_DeliverInputLogicalEvent(
   const ps_input_button_logical_record_t *record)
 {
@@ -1368,6 +1495,11 @@ static UINT PS_HW6_RTOS_DeliverInputLogicalEvent(
   uint32_t button_id = PS_INPUT_BUTTON_ID_NONE;
   uint32_t button_mask = 0UL;
   uint32_t timestamp = 0UL;
+  uint32_t runtime_class;
+  uint32_t runtime_lifecycle;
+
+  runtime_class = g_ps_hw6_rtos_probe.runtime_current_class;
+  runtime_lifecycle = g_ps_hw6_rtos_probe.runtime_lifecycle;
 
   if (record != 0)
   {
@@ -1382,10 +1514,9 @@ static UINT PS_HW6_RTOS_DeliverInputLogicalEvent(
   g_ps_hw6_rtos_probe.input_policy_last_button_id = button_id;
   g_ps_hw6_rtos_probe.input_policy_last_mask = button_mask;
   g_ps_hw6_rtos_probe.input_policy_last_timestamp = timestamp;
-  g_ps_hw6_rtos_probe.input_policy_last_runtime_class =
-    g_ps_hw6_rtos_probe.runtime_current_class;
+  g_ps_hw6_rtos_probe.input_policy_last_runtime_class = runtime_class;
   g_ps_hw6_rtos_probe.input_policy_last_runtime_lifecycle =
-    g_ps_hw6_rtos_probe.runtime_lifecycle;
+    runtime_lifecycle;
   g_ps_hw6_rtos_probe.input_policy_last_ui_page =
     g_ps_ui_router_probe.current_page;
   g_ps_hw6_rtos_probe.input_policy_last_package_state =
@@ -1410,14 +1541,31 @@ static UINT PS_HW6_RTOS_DeliverInputLogicalEvent(
   {
     reason = PS_HW6_RTOS_INPUT_POLICY_REASON_LOCKED;
   }
-  else if ((g_ps_hw6_rtos_probe.runtime_current_class ==
-            (uint32_t)PS_HW6_RUNTIME_CLASS_NONE) ||
-           (g_ps_hw6_rtos_probe.runtime_lifecycle !=
+  else if (PS_HW6_RTOS_InputPolicySystemOverlayActive() != 0UL)
+  {
+    target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
+    reason = PS_HW6_RTOS_INPUT_POLICY_REASON_SYSTEM_OVERLAY;
+    status = PS_HW6_RTOS_SendUiButtonPress(record->button_id);
+    if (status == TX_SUCCESS)
+    {
+      g_ps_hw6_rtos_probe.input_policy_deliver_count++;
+      g_ps_hw6_rtos_probe.input_policy_ui_deliver_count++;
+      g_ps_hw6_rtos_probe.input_policy_overlay_deliver_count++;
+    }
+    else
+    {
+      reason = PS_HW6_RTOS_INPUT_POLICY_REASON_SEND_FAILED;
+      g_ps_hw6_rtos_probe.input_policy_suppress_count++;
+    }
+  }
+  else if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_NONE) ||
+           (runtime_lifecycle !=
             (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_RUNNING))
   {
     reason = PS_HW6_RTOS_INPUT_POLICY_REASON_RUNTIME_NOT_READY;
   }
-  else
+  else if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_SHELL) ||
+           (runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_INSTALLER))
   {
     target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
     reason = PS_HW6_RTOS_INPUT_POLICY_REASON_UI_FOCUS;
@@ -1425,12 +1573,34 @@ static UINT PS_HW6_RTOS_DeliverInputLogicalEvent(
     if (status == TX_SUCCESS)
     {
       g_ps_hw6_rtos_probe.input_policy_deliver_count++;
+      g_ps_hw6_rtos_probe.input_policy_ui_deliver_count++;
     }
     else
     {
       reason = PS_HW6_RTOS_INPUT_POLICY_REASON_SEND_FAILED;
       g_ps_hw6_rtos_probe.input_policy_suppress_count++;
     }
+  }
+  else if (PS_HW6_RTOS_InputPolicyRuntimeClassOwnsButtons(
+             runtime_class) != 0UL)
+  {
+    target = PS_HW6_RTOS_INPUT_POLICY_TARGET_RUNTIME;
+    reason = PS_HW6_RTOS_INPUT_POLICY_REASON_RUNTIME_FOCUS;
+    status = PS_HW6_RTOS_SendRuntimeInputEvent(record);
+    if (status == TX_SUCCESS)
+    {
+      g_ps_hw6_rtos_probe.input_policy_deliver_count++;
+      g_ps_hw6_rtos_probe.input_policy_runtime_deliver_count++;
+    }
+    else
+    {
+      reason = PS_HW6_RTOS_INPUT_POLICY_REASON_SEND_FAILED;
+      g_ps_hw6_rtos_probe.input_policy_suppress_count++;
+    }
+  }
+  else
+  {
+    reason = PS_HW6_RTOS_INPUT_POLICY_REASON_UNSUPPORTED_CLASS;
   }
 
   if (target == PS_HW6_RTOS_INPUT_POLICY_TARGET_NONE)
@@ -2756,6 +2926,10 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
             g_ps_ui_router_request = 1UL;
           }
         }
+      }
+      else if (PS_HW6_RTOS_RuntimeInputCommandIsValid(owner_id, message) != 0UL)
+      {
+        PS_HW6_RTOS_HandleRuntimeInput(message);
       }
       else if (PS_HW6_RTOS_DisplayUiCommandIsValid(owner_id, message) != 0UL)
       {

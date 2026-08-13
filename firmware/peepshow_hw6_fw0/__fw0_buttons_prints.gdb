@@ -9,8 +9,11 @@ printf "counts deb p/r accept p/r long repeat stuck bounce = %u / %u / %u / %u /
 printf "logical counts event/p/r/l/rep/ch/stuck = %u / %u / %u / %u / %u / %u / %u\n", $b->logical_event_count, $b->logical_press_count, $b->logical_release_count, $b->logical_long_count, $b->logical_repeat_count, $b->logical_chord_count, $b->logical_stuck_count
 printf "logical last event/button/mask/tick/hold = %u / %u / 0x%x / %u / %u\n", $b->logical_last_event, $b->logical_last_button_id, $b->logical_last_mask, $b->logical_last_timestamp, $b->logical_last_hold_ticks
 printf "input policy api/event/deliv/supp/lock = %u / %u / %u / %u / %u\n", $rt->input_policy_api_version, $rt->input_policy_event_count, $rt->input_policy_deliver_count, $rt->input_policy_suppress_count, $rt->input_policy_lock_active
+printf "input policy ui/runtime/overlay = %u / %u / %u\n", $rt->input_policy_ui_deliver_count, $rt->input_policy_runtime_deliver_count, $rt->input_policy_overlay_deliver_count
 printf "input policy last event/button/mask/target/reason/status = %u / %u / 0x%x / %u / %u / 0x%x\n", $rt->input_policy_last_event, $rt->input_policy_last_button_id, $rt->input_policy_last_mask, $rt->input_policy_last_target, $rt->input_policy_last_reason, $rt->input_policy_last_status
 printf "input policy runtime/life/page/pkg/shutdown = %u / %u / %u / %u / %u\n", $rt->input_policy_last_runtime_class, $rt->input_policy_last_runtime_lifecycle, $rt->input_policy_last_ui_page, $rt->input_policy_last_package_state, $rt->input_policy_last_shutdown_state
+printf "runtime input count/button = %u / %u\n", $rt->runtime_input_event_count, $rt->runtime_input_button_count
+printf "runtime input last event/button/mask/status/tick = %u / %u / 0x%x / 0x%x / %u\n", $rt->runtime_input_last_event, $rt->runtime_input_last_button_id, $rt->runtime_input_last_mask, $rt->runtime_input_last_status, $rt->runtime_input_last_tick
 printf "state A/B/L/R        = %u / %u / %u / %u\n", $b->button_state[0], $b->button_state[1], $b->button_state[2], $b->button_state[3]
 printf "raw A/B/L/R          = %u / %u / %u / %u\n", $b->button_raw_level[0], $b->button_raw_level[1], $b->button_raw_level[2], $b->button_raw_level[3]
 printf "press tick A/B/L/R   = %u / %u / %u / %u\n", $b->button_press_tick[0], $b->button_press_tick[1], $b->button_press_tick[2], $b->button_press_tick[3]
@@ -19,4 +22,4 @@ printf "deadline A/B/L/R     = %u / %u / %u / %u\n", $b->button_deadline_tick[0]
 printf "states: DISABLED=0 RELEASED=1 DEBOUNCE_PRESS=2 PRESSED=3 HELD=4 REPEAT=5 DEBOUNCE_RELEASE=6 STUCK=7 ERROR=8\n"
 printf "buttons: A=1 B=2 L=3 R=4 START=5; events: PRESS=1 RELEASE=2\n"
 printf "logical events: NONE=0 PRESS=1 RELEASE=2 LONG=3 REPEAT=4 CHORD=5 STUCK=6\n"
-printf "policy targets: NONE=0 UI=1 RUNTIME=2; reasons: NONE=0 UI_FOCUS=1 RUNTIME_NOT_READY=2 LOCKED=3 UNSUPPORTED=4 INVALID=5 SEND_FAILED=6\n"
+printf "policy targets: NONE=0 UI=1 RUNTIME=2; reasons: NONE=0 UI_FOCUS=1 RUNTIME_NOT_READY=2 LOCKED=3 UNSUPPORTED_EVENT=4 INVALID=5 SEND_FAILED=6 OVERLAY=7 RUNTIME_FOCUS=8 UNSUPPORTED_CLASS=9\n"
