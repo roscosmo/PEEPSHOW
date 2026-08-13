@@ -58,6 +58,17 @@ static void PS_HW6_ClockPolicy_SetStaticProbeFields(void)
     ((uint32_t)KNOB_POWER_CLOCK_PLL2_AUTOGATE_ENABLE != 0UL) ? 1UL : 0UL;
 }
 
+static void PS_HW6_ClockPolicy_ClearRequesterStatus(void)
+{
+  uint32_t index;
+
+  for (index = 0U; index < PS_HW6_CLOCK_REQUESTER_COUNT; ++index)
+  {
+    g_ps_hw6_clock_policy_probe.requester_status[index] =
+      PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
+  }
+}
+
 static void PS_HW6_ClockPolicy_PrimeProbe(void)
 {
   if (g_ps_hw6_clock_policy_probe.api_version !=
@@ -77,6 +88,7 @@ static void PS_HW6_ClockPolicy_PrimeProbe(void)
       PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
     g_ps_hw6_clock_policy_probe.pll2_domain_last_status =
       PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
+    PS_HW6_ClockPolicy_ClearRequesterStatus();
   }
 }
 
@@ -667,6 +679,8 @@ static void PS_HW6_ClockPolicy_ClearRequesterCapabilities(void)
   for (index = 0U; index < PS_HW6_CLOCK_REQUESTER_COUNT; ++index)
   {
     g_ps_hw6_clock_policy_probe.requester_capabilities[index] = 0UL;
+    g_ps_hw6_clock_policy_probe.requester_status[index] =
+      PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
   }
   g_ps_hw6_clock_policy_probe.requester_active_mask = 0UL;
   g_ps_hw6_clock_policy_probe.aggregated_capabilities = 0UL;
@@ -688,6 +702,7 @@ void PS_HW6_ClockPolicy_Reset(void)
     PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
   g_ps_hw6_clock_policy_probe.pll2_domain_last_status =
     PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
+  PS_HW6_ClockPolicy_ClearRequesterStatus();
   PS_HW6_ClockPolicy_RecordSnapshot();
   PS_HW6_ClockPolicy_UpdateResolverProbe(0UL,
     (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN);
@@ -809,6 +824,7 @@ UINT PS_HW6_ClockPolicy_ApplyRequesterProfile(
   uint32_t capabilities)
 {
   uint32_t aggregated_capabilities;
+  UINT status;
 
   PS_HW6_ClockPolicy_PrimeProbe();
   g_ps_hw6_clock_policy_probe.last_stage =
@@ -819,6 +835,11 @@ UINT PS_HW6_ClockPolicy_ApplyRequesterProfile(
       ((capabilities & ~PS_HW6_CLOCK_CAP_ALL) != 0UL))
   {
     g_ps_hw6_clock_policy_probe.last_status = (uint32_t)TX_NOT_DONE;
+    if (requester_id < PS_HW6_CLOCK_REQUESTER_COUNT)
+    {
+      g_ps_hw6_clock_policy_probe.requester_status[requester_id] =
+        (uint32_t)TX_NOT_DONE;
+    }
     return TX_NOT_DONE;
   }
 
@@ -826,8 +847,11 @@ UINT PS_HW6_ClockPolicy_ApplyRequesterProfile(
     capabilities;
   aggregated_capabilities =
     PS_HW6_ClockPolicy_AggregateRequesterCapabilities();
-  return PS_HW6_ClockPolicy_ApplyResolvedProfile(requested_profile,
-                                                 aggregated_capabilities);
+  status = PS_HW6_ClockPolicy_ApplyResolvedProfile(requested_profile,
+                                                   aggregated_capabilities);
+  g_ps_hw6_clock_policy_probe.requester_status[requester_id] =
+    (uint32_t)status;
+  return status;
 }
 
 UINT PS_HW6_ClockPolicy_RestoreBase(void)

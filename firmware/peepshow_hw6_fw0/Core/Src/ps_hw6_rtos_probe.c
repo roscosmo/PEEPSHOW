@@ -60,7 +60,7 @@
 #define PS_HW6_RTOS_COMMAND_RUNTIME_RESUME (20UL)
 #define PS_HW6_RTOS_EVENT_DEBUG_INDEX     (3U)
 #define PS_HW6_RTOS_ACK_OWNER(owner_id)   (1UL << (owner_id))
-#define PS_HW6_RTOS_CLOCK_ACK_FLAG        (1UL << 31)
+#define PS_HW6_RTOS_CLOCK_ACK_SHIFT       (16U)
 #define PS_HW6_RTOS_CLOCK_PROFILE_MASK    (0xFFUL)
 #define PS_HW6_RTOS_CLOCK_CAP_SHIFT       (8U)
 #define PS_HW6_RTOS_CLOCK_REQUESTER_SHIFT (16U)
@@ -77,6 +77,14 @@
   (PS_HW6_CLOCK_CAP_USB_DEVICE_ACTIVE | PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE)
 #define PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES \
   (PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE)
+#define PS_HW6_RTOS_RUNTIME_CLOCK_REASON_NONE       (0UL)
+#define PS_HW6_RTOS_RUNTIME_CLOCK_REASON_REACTIVE_TRANSACTION (1UL)
+#define PS_HW6_RTOS_RUNTIME_CLOCK_REASON_REALTIME_DEADLINE (2UL)
+#define PS_HW6_RTOS_RUNTIME_CLOCK_REASON_RELEASE    (3UL)
+#define PS_HW6_RTOS_RUNTIME_CLOCK_REACTIVE_CAPABILITIES \
+  (PS_HW6_CLOCK_CAP_REACTIVE_TRANSACTION_ACTIVE)
+#define PS_HW6_RTOS_RUNTIME_CLOCK_REALTIME_CAPABILITIES \
+  (PS_HW6_CLOCK_CAP_REALTIME_DEADLINE_ACTIVE)
 
 #define PS_HW6_RTOS_PHASE_INIT            (0x6600UL)
 #define PS_HW6_RTOS_PHASE_ALLOCATED       (0x6610UL)
@@ -263,6 +271,14 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.runtime_last_status = PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.runtime_owner_request_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.runtime_clock_last_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.runtime_clock_reactive_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.runtime_clock_realtime_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.runtime_clock_release_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.ui_action_send_status = PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.ticks_per_second = TX_TIMER_TICKS_PER_SECOND;
   g_ps_hw6_rtos_probe.owner_count = PS_HW6_RTOS_OWNER_COUNT;
@@ -334,6 +350,16 @@ static uint32_t PS_HW6_RTOS_ClockPayloadRequester(uint32_t payload)
 {
   return (payload >> PS_HW6_RTOS_CLOCK_REQUESTER_SHIFT) &
          PS_HW6_RTOS_CLOCK_REQUESTER_MASK;
+}
+
+static ULONG PS_HW6_RTOS_ClockAckFlag(uint32_t requester_id)
+{
+  if (requester_id >= PS_HW6_CLOCK_REQUESTER_COUNT)
+  {
+    return 0UL;
+  }
+
+  return 1UL << (PS_HW6_RTOS_CLOCK_ACK_SHIFT + requester_id);
 }
 
 static uint32_t PS_HW6_RTOS_ClockProfileRequestIsValid(uint32_t payload)
@@ -803,12 +829,18 @@ static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t requester_id,
                                                  uint32_t profile,
                                                  uint32_t capabilities)
 {
+  ULONG ack_flag = PS_HW6_RTOS_ClockAckFlag(requester_id);
   ULONG actual_flags = 0UL;
   UINT send_status;
   UINT wait_status;
 
+  if (ack_flag == 0UL)
+  {
+    return TX_QUEUE_ERROR;
+  }
+
   (void)tx_event_flags_get(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
-                           PS_HW6_RTOS_CLOCK_ACK_FLAG,
+                           ack_flag,
                            TX_AND_CLEAR,
                            &actual_flags,
                            TX_NO_WAIT);
@@ -821,7 +853,7 @@ static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t requester_id,
   {
     wait_status = tx_event_flags_get(
       &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
-      PS_HW6_RTOS_CLOCK_ACK_FLAG,
+      ack_flag,
       TX_AND_CLEAR,
       &actual_flags,
       PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
@@ -829,9 +861,9 @@ static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t requester_id,
 
   if ((send_status == TX_SUCCESS) &&
       (wait_status == TX_SUCCESS) &&
-      ((actual_flags & PS_HW6_RTOS_CLOCK_ACK_FLAG) != 0UL))
+      ((actual_flags & ack_flag) != 0UL))
   {
-    return (UINT)g_ps_hw6_clock_policy_probe.last_status;
+    return (UINT)g_ps_hw6_clock_policy_probe.requester_status[requester_id];
   }
 
   return wait_status;
@@ -871,6 +903,42 @@ static UINT PS_HW6_RTOS_RequestStorageClockCapabilities(
     else if (reason == PS_HW6_RTOS_STORAGE_CLOCK_REASON_FLASH_INIT)
     {
       g_ps_hw6_rtos_probe.storage_clock_flash_init_status = (uint32_t)status;
+    }
+  }
+
+  return status;
+}
+
+static UINT PS_HW6_RTOS_RequestRuntimeClockCapabilities(
+  uint32_t reason,
+  uint32_t capabilities)
+{
+  UINT status;
+
+  status = PS_HW6_RTOS_RequestPowerClockProfile(
+    PS_HW6_RTOS_OWNER_RUNTIME,
+    (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
+    capabilities);
+
+  g_ps_hw6_rtos_probe.runtime_clock_last_reason = reason;
+  g_ps_hw6_rtos_probe.runtime_clock_last_capabilities = capabilities;
+  g_ps_hw6_rtos_probe.runtime_clock_last_status = (uint32_t)status;
+
+  if (capabilities == 0UL)
+  {
+    g_ps_hw6_rtos_probe.runtime_clock_release_count++;
+    g_ps_hw6_rtos_probe.runtime_clock_release_status = (uint32_t)status;
+  }
+  else
+  {
+    g_ps_hw6_rtos_probe.runtime_clock_request_count++;
+    if (reason == PS_HW6_RTOS_RUNTIME_CLOCK_REASON_REACTIVE_TRANSACTION)
+    {
+      g_ps_hw6_rtos_probe.runtime_clock_reactive_status = (uint32_t)status;
+    }
+    else if (reason == PS_HW6_RTOS_RUNTIME_CLOCK_REASON_REALTIME_DEADLINE)
+    {
+      g_ps_hw6_rtos_probe.runtime_clock_realtime_status = (uint32_t)status;
     }
   }
 
@@ -1626,6 +1694,10 @@ static void PS_HW6_RTOS_RuntimeResume(void)
 
 static void PS_HW6_RTOS_HandleRuntimeCommand(ULONG command)
 {
+  (void)PS_HW6_RTOS_RequestRuntimeClockCapabilities(
+    PS_HW6_RTOS_RUNTIME_CLOCK_REASON_REACTIVE_TRANSACTION,
+    PS_HW6_RTOS_RUNTIME_CLOCK_REACTIVE_CAPABILITIES);
+
   if (command == PS_HW6_RTOS_COMMAND_RUNTIME_BOOT_SHELL)
   {
     PS_HW6_RTOS_RuntimeBootShell();
@@ -1664,6 +1736,10 @@ static void PS_HW6_RTOS_HandleRuntimeCommand(ULONG command)
       (uint32_t)PS_HW6_RUNTIME_EVENT_NONE,
       (uint32_t)PS_STATUS_UNSUPPORTED);
   }
+
+  (void)PS_HW6_RTOS_RequestRuntimeClockCapabilities(
+    PS_HW6_RTOS_RUNTIME_CLOCK_REASON_RELEASE,
+    0UL);
 }
 
 static void PS_HW6_RTOS_RunStorageUsbExportRequest(void)
@@ -1841,15 +1917,21 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
   else if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
            (command == PS_HW6_RTOS_COMMAND_CLOCK_PROFILE))
   {
+    uint32_t requester_id = PS_HW6_RTOS_ClockPayloadRequester(cycle_index);
+    ULONG ack_flag = PS_HW6_RTOS_ClockAckFlag(requester_id);
+
     status = PS_HW6_ClockPolicy_ApplyRequesterProfile(
-      PS_HW6_RTOS_ClockPayloadRequester(cycle_index),
+      requester_id,
       PS_HW6_RTOS_ClockPayloadProfile(cycle_index),
       PS_HW6_RTOS_ClockPayloadCapabilities(cycle_index));
     (void)status;
-    (void)tx_event_flags_set(
-      &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
-      PS_HW6_RTOS_CLOCK_ACK_FLAG,
-      TX_OR);
+    if (ack_flag != 0UL)
+    {
+      (void)tx_event_flags_set(
+        &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+        ack_flag,
+        TX_OR);
+    }
   }
   else if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
            (command == PS_HW6_RTOS_COMMAND_USB_EXPORT))

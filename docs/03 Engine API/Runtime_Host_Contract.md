@@ -25,6 +25,8 @@ error. This proves runtime naming and handoff plumbing only. It does not prove
 final package execution, PeepPkg install commit, realtime admission, suspend/
 resume, or measured power behavior.
 
+HW6 evidence `EV-HW6-20260813-P1-RUNTIMECLOCK-045` adds the first OS clock-intent plumbing proof for `thRuntime`: each admitted runtime command publishes a bounded `REACTIVE_TRANSACTION_ACTIVE` requester update through `thPower`, then releases the runtime requester slot when the command returns. The validated boot capture showed runtime clock request/release `1/1`, reactive/release statuses `0x0/0x0`, requester cap `RT=0x0` after idle settle, and `STOP2 ready=1`. This remains Platform plumbing only; runtime hosts still cannot choose clocks, voltage scale, PLLs, or sleep mode directly.
+
 ---
 
 ## Lifecycle Contract

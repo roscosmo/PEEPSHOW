@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_HW6_CLOCK_POLICY_API_VERSION (3UL)
+#define PS_HW6_CLOCK_POLICY_API_VERSION (4UL)
 #define PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN (0xFFFFFFFFUL)
 #define PS_HW6_CLOCK_REQUESTER_COUNT (9U)
 
@@ -74,6 +74,7 @@ typedef struct
   uint32_t current_profile;
   uint32_t active_capabilities;
   uint32_t requester_capabilities[PS_HW6_CLOCK_REQUESTER_COUNT];
+  uint32_t requester_status[PS_HW6_CLOCK_REQUESTER_COUNT];
   uint32_t requester_active_mask;
   uint32_t aggregated_capabilities;
   uint32_t required_domain_mask;
