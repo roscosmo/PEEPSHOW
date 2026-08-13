@@ -810,6 +810,8 @@ static ps_storage_flash_block_test_result_t ps_flash_block_result;
 static ps_storage_layout_validation_t ps_storage_layout_result;
 static ps_storage_filex_levelx_smoke_result_t ps_storage_fxlx_result;
 static ps_storage_filex_levelx_stage_scan_result_t ps_storage_stage_scan_result;
+static ps_storage_filex_levelx_package_validate_result_t
+  ps_storage_package_validate_result;
 static uint8_t ps_nina_rx_buffer[PS_HW6_NINA_RX_BUFFER_SIZE];
 static ps_status_t PS_HW6_SM_EnsureFlashAwake(void);
 static HAL_StatusTypeDef PS_HW6_SM_ParkUsb(void);
@@ -2516,10 +2518,47 @@ static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForUsbExport(void)
 static HAL_StatusTypeDef PS_HW6_SM_RunUsbStageRescanScaffold(void)
 {
   ps_status_t scan_status;
+  ps_status_t validate_status;
+  uint32_t validate_candidate;
+  uint32_t index;
 
   if (g_ps_hw6_owner_sm_probe.usb_stage_rescan_pending == 0UL)
   {
     return HAL_OK;
+  }
+
+  g_ps_hw6_owner_sm_probe.package_candidate_pending = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_start_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_validate_reason =
+    (uint32_t)PS_STORAGE_PACKAGE_VALIDATE_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_validate_candidate_count = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_unsupported_count = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_file_size = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_header_bytes = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_bytes_read = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_magic = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_magic_valid = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_minimum_envelope_valid = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_header_layout_supported = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_lx_open_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_validate_fx_open_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_validate_file_open_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_validate_file_read_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_validate_file_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_validate_fx_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_validate_lx_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  for (index = 0UL; index < 16UL; ++index)
+  {
+    g_ps_hw6_owner_sm_probe.package_validate_header_first16[index] = 0UL;
   }
 
   scan_status = ps_storage_filex_levelx_scan_usb_staging(
@@ -2557,13 +2596,76 @@ static HAL_StatusTypeDef PS_HW6_SM_RunUsbStageRescanScaffold(void)
     ps_storage_stage_scan_result.fx_close_status;
   g_ps_hw6_owner_sm_probe.usb_stage_rescan_lx_close_status =
     ps_storage_stage_scan_result.lx_close_status;
-  g_ps_hw6_owner_sm_probe.package_candidate_pending =
+
+  validate_candidate =
     ((scan_status == PS_STATUS_OK) &&
      (ps_storage_stage_scan_result.classification ==
       (uint32_t)PS_STORAGE_STAGE_SCAN_PACKAGE_CANDIDATE) &&
      (ps_storage_stage_scan_result.package_candidate_count == 1UL) &&
      (ps_storage_stage_scan_result.unsupported_count == 0UL) &&
      (ps_storage_stage_scan_result.bounded == 0UL)) ? 1UL : 0UL;
+
+  if (validate_candidate != 0UL)
+  {
+    g_ps_hw6_owner_sm_probe.package_validate_request_count++;
+    g_ps_hw6_owner_sm_probe.package_validate_start_tick =
+      (uint32_t)tx_time_get();
+    validate_status = ps_storage_filex_levelx_validate_usb_staging_package(
+      &ps_flash_block,
+      PS_HW6_SM_FindStorageRegion(PS_STORAGE_REGION_USB_STAGING),
+      &ps_storage_package_validate_result);
+
+    g_ps_hw6_owner_sm_probe.package_validate_status =
+      (uint32_t)validate_status;
+    g_ps_hw6_owner_sm_probe.package_validate_reason =
+      ps_storage_package_validate_result.reason;
+    g_ps_hw6_owner_sm_probe.package_validate_candidate_count =
+      ps_storage_package_validate_result.package_candidate_count;
+    g_ps_hw6_owner_sm_probe.package_validate_unsupported_count =
+      ps_storage_package_validate_result.unsupported_count;
+    g_ps_hw6_owner_sm_probe.package_validate_file_size =
+      ps_storage_package_validate_result.package_size_bytes;
+    g_ps_hw6_owner_sm_probe.package_validate_header_bytes =
+      ps_storage_package_validate_result.header_probe_bytes;
+    g_ps_hw6_owner_sm_probe.package_validate_bytes_read =
+      ps_storage_package_validate_result.bytes_read;
+    g_ps_hw6_owner_sm_probe.package_validate_magic =
+      ps_storage_package_validate_result.magic;
+    g_ps_hw6_owner_sm_probe.package_validate_magic_valid =
+      ps_storage_package_validate_result.magic_valid;
+    g_ps_hw6_owner_sm_probe.package_validate_minimum_envelope_valid =
+      ps_storage_package_validate_result.minimum_envelope_valid;
+    g_ps_hw6_owner_sm_probe.package_validate_header_layout_supported =
+      ps_storage_package_validate_result.header_layout_supported;
+    g_ps_hw6_owner_sm_probe.package_validate_lx_open_status =
+      ps_storage_package_validate_result.lx_open_status;
+    g_ps_hw6_owner_sm_probe.package_validate_fx_open_status =
+      ps_storage_package_validate_result.fx_open_status;
+    g_ps_hw6_owner_sm_probe.package_validate_file_open_status =
+      ps_storage_package_validate_result.file_open_status;
+    g_ps_hw6_owner_sm_probe.package_validate_file_read_status =
+      ps_storage_package_validate_result.file_read_status;
+    g_ps_hw6_owner_sm_probe.package_validate_file_close_status =
+      ps_storage_package_validate_result.file_close_status;
+    g_ps_hw6_owner_sm_probe.package_validate_fx_close_status =
+      ps_storage_package_validate_result.fx_close_status;
+    g_ps_hw6_owner_sm_probe.package_validate_lx_close_status =
+      ps_storage_package_validate_result.lx_close_status;
+    for (index = 0UL; index < 16UL; ++index)
+    {
+      g_ps_hw6_owner_sm_probe.package_validate_header_first16[index] =
+        ps_storage_package_validate_result.header_first16[index];
+    }
+
+    g_ps_hw6_owner_sm_probe.package_candidate_pending =
+      ((validate_status == PS_STATUS_OK) &&
+       (ps_storage_package_validate_result.reason ==
+        (uint32_t)PS_STORAGE_PACKAGE_VALIDATE_MINIMUM_ENVELOPE_OK) &&
+       (ps_storage_package_validate_result.magic_valid != 0UL) &&
+       (ps_storage_package_validate_result.minimum_envelope_valid != 0UL)) ?
+      1UL : 0UL;
+  }
+
   g_ps_hw6_owner_sm_probe.usb_stage_rescan_pending = 0UL;
   return (scan_status == PS_STATUS_OK) ? HAL_OK : HAL_ERROR;
 }
@@ -2589,7 +2691,14 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
        (uint32_t)PS_STORAGE_STAGE_SCAN_PACKAGE_CANDIDATE) &&
       (g_ps_hw6_owner_sm_probe.usb_stage_rescan_package_candidate_count ==
        1UL) &&
-      (g_ps_hw6_owner_sm_probe.usb_stage_rescan_unsupported_count == 0UL))
+      (g_ps_hw6_owner_sm_probe.usb_stage_rescan_unsupported_count == 0UL) &&
+      (g_ps_hw6_owner_sm_probe.package_validate_status ==
+       (uint32_t)PS_STATUS_OK) &&
+      (g_ps_hw6_owner_sm_probe.package_validate_reason ==
+       (uint32_t)PS_STORAGE_PACKAGE_VALIDATE_MINIMUM_ENVELOPE_OK) &&
+      (g_ps_hw6_owner_sm_probe.package_validate_magic_valid != 0UL) &&
+      (g_ps_hw6_owner_sm_probe.package_validate_minimum_envelope_valid !=
+       0UL))
   {
     status = HAL_OK;
     g_ps_hw6_owner_sm_probe.package_candidate_pending = 0UL;
@@ -2869,18 +2978,23 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void)
   return status;
 }
 
-HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void)
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(uint32_t force_stage_rescan)
 {
   HAL_StatusTypeDef status;
   ps_status_t storage_status;
   UINT usb_status;
+  uint32_t normalized_force_rescan;
+  uint32_t rescan_required;
 
   g_ps_hw6_owner_sm_probe.usb_reclaim_request_count++;
   g_ps_hw6_owner_sm_probe.usb_reclaim_start_tick = (uint32_t)tx_time_get();
+  normalized_force_rescan = (force_stage_rescan != 0UL) ? 1UL : 0UL;
   g_ps_hw6_owner_sm_probe.usb_reclaim_dirty_seen =
     g_ps_storage_msc_bridge_probe.dirty;
   g_ps_hw6_owner_sm_probe.usb_stage_rescan_dirty_seen =
     g_ps_hw6_owner_sm_probe.usb_reclaim_dirty_seen;
+  g_ps_hw6_owner_sm_probe.usb_stage_rescan_forced =
+    normalized_force_rescan;
   g_ps_hw6_owner_sm_probe.usb_stage_rescan_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.usb_stage_rescan_package_scan_status =
@@ -2973,7 +3087,10 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void)
   if (g_ps_hw6_owner_sm_probe.usb_reclaim_parked != 0UL)
   {
     g_ps_hw6_owner_sm_probe.usb_parked = 1UL;
-    if (g_ps_hw6_owner_sm_probe.usb_reclaim_dirty_seen != 0UL)
+    rescan_required =
+      ((g_ps_hw6_owner_sm_probe.usb_reclaim_dirty_seen != 0UL) ||
+       (normalized_force_rescan != 0UL)) ? 1UL : 0UL;
+    if (rescan_required != 0UL)
     {
       g_ps_hw6_owner_sm_probe.usb_stage_rescan_request_count++;
       g_ps_hw6_owner_sm_probe.usb_stage_rescan_start_tick =
@@ -4511,6 +4628,7 @@ void PS_HW6_OwnerStateMachines_Init(void)
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.usb_reclaim_fxlx_close_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.usb_stage_rescan_forced = 0UL;
   g_ps_hw6_owner_sm_probe.usb_stage_rescan_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.usb_stage_rescan_package_scan_status =
@@ -4536,6 +4654,39 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.usb_stage_rescan_lx_close_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.package_candidate_pending = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_request_count = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_start_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_validate_reason =
+    (uint32_t)PS_STORAGE_PACKAGE_VALIDATE_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_validate_candidate_count = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_unsupported_count = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_file_size = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_header_bytes = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_bytes_read = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_magic = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_magic_valid = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_minimum_envelope_valid = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_header_layout_supported = 0UL;
+  g_ps_hw6_owner_sm_probe.package_validate_lx_open_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_validate_fx_open_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_validate_file_open_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_validate_file_read_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_validate_file_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_validate_fx_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_validate_lx_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  for (index = 0UL; index < 16UL; ++index)
+  {
+    g_ps_hw6_owner_sm_probe.package_validate_header_first16[index] = 0UL;
+  }
   g_ps_hw6_owner_sm_probe.package_install_stub_request_count = 0UL;
   g_ps_hw6_owner_sm_probe.package_install_stub_start_tick = 0UL;
   g_ps_hw6_owner_sm_probe.package_install_stub_candidate_classification =

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (32UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (34UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -667,6 +667,7 @@ typedef struct
   uint32_t usb_stage_rescan_request_count;
   uint32_t usb_stage_rescan_start_tick;
   uint32_t usb_stage_rescan_dirty_seen;
+  uint32_t usb_stage_rescan_forced;
   uint32_t usb_stage_rescan_pending;
   uint32_t usb_stage_rescan_status;
   uint32_t usb_stage_rescan_package_scan_status;
@@ -684,6 +685,27 @@ typedef struct
   uint32_t usb_stage_rescan_fx_close_status;
   uint32_t usb_stage_rescan_lx_close_status;
   uint32_t package_candidate_pending;
+  uint32_t package_validate_request_count;
+  uint32_t package_validate_start_tick;
+  uint32_t package_validate_status;
+  uint32_t package_validate_reason;
+  uint32_t package_validate_candidate_count;
+  uint32_t package_validate_unsupported_count;
+  uint32_t package_validate_file_size;
+  uint32_t package_validate_header_bytes;
+  uint32_t package_validate_bytes_read;
+  uint32_t package_validate_magic;
+  uint32_t package_validate_magic_valid;
+  uint32_t package_validate_minimum_envelope_valid;
+  uint32_t package_validate_header_layout_supported;
+  uint32_t package_validate_lx_open_status;
+  uint32_t package_validate_fx_open_status;
+  uint32_t package_validate_file_open_status;
+  uint32_t package_validate_file_read_status;
+  uint32_t package_validate_file_close_status;
+  uint32_t package_validate_fx_close_status;
+  uint32_t package_validate_lx_close_status;
+  uint32_t package_validate_header_first16[16];
   uint32_t package_install_stub_request_count;
   uint32_t package_install_stub_start_tick;
   uint32_t package_install_stub_candidate_classification;
@@ -742,7 +764,8 @@ void PS_HW6_OwnerStateMachines_BeginWorkflow(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Stabilize(uint32_t owner_id);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_InitializeFlash(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void);
-HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(
+  uint32_t force_stage_rescan);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ParkUsbForBoot(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSampleProbe(void);

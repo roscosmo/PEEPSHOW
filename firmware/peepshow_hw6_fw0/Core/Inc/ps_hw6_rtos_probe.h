@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (9UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (10UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -77,6 +77,12 @@ typedef struct
   uint32_t event_set_status[PS_HW6_RTOS_EVENT_GROUP_COUNT];
   uint32_t event_get_status[PS_HW6_RTOS_EVENT_GROUP_COUNT];
   uint32_t thread_create_status[PS_HW6_RTOS_OWNER_COUNT];
+  uint32_t thread_stack_config_bytes[PS_HW6_RTOS_OWNER_COUNT];
+  uint32_t thread_stack_start[PS_HW6_RTOS_OWNER_COUNT];
+  uint32_t thread_stack_end[PS_HW6_RTOS_OWNER_COUNT];
+  uint32_t thread_stack_size[PS_HW6_RTOS_OWNER_COUNT];
+  uint32_t thread_stack_ptr[PS_HW6_RTOS_OWNER_COUNT];
+  uint32_t thread_stack_highest_ptr[PS_HW6_RTOS_OWNER_COUNT];
 
   uint32_t owner_heartbeat[PS_HW6_RTOS_OWNER_COUNT];
   uint32_t owner_last_tick[PS_HW6_RTOS_OWNER_COUNT];

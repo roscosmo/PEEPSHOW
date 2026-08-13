@@ -407,6 +407,12 @@ static void PS_HW6_DisplayUIStrings(uint32_t page,
       {
         *title = "PACKAGE";
         *line1 = "FOUND";
+        *line2 = "WAIT";
+      }
+      else if (focus_index == PS_UI_ROUTER_PACKAGE_VALID)
+      {
+        *title = "PACKAGE";
+        *line1 = "VALID";
         *line2 = "A INSTALL";
       }
       else if (focus_index == PS_UI_ROUTER_PACKAGE_INSTALLING)
@@ -424,7 +430,7 @@ static void PS_HW6_DisplayUIStrings(uint32_t page,
       else if (focus_index == PS_UI_ROUTER_PACKAGE_ERROR)
       {
         *title = "PACKAGE";
-        *line1 = "STUB ERROR";
+        *line1 = "PKG ERROR";
         *line2 = "SEE GDB";
       }
       else

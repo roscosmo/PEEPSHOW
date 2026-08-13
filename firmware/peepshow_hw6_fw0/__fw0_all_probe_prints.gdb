@@ -83,6 +83,17 @@ printf "comm    /qCommCmd         %x %x %x %x %x\n", $rtos->stack_alloc_status[6
 printf "UI      /qUIEvents        %x %x %x %x %x\n", $rtos->stack_alloc_status[7], $rtos->queue_alloc_status[7], $rtos->queue_create_status[7], $rtos->queue_selftest_send_status[7], $rtos->thread_create_status[7]
 printf "runtime /qRuntimeEvents   %x %x %x %x %x\n", $rtos->stack_alloc_status[8], $rtos->queue_alloc_status[8], $rtos->queue_create_status[8], $rtos->queue_selftest_send_status[8], $rtos->thread_create_status[8]
 
+printf "\nowner stack config/actual/start/end/sp/high:\n"
+printf "power                    %u %u 0x%x 0x%x 0x%x 0x%x\n", $rtos->thread_stack_config_bytes[0], $rtos->thread_stack_size[0], $rtos->thread_stack_start[0], $rtos->thread_stack_end[0], $rtos->thread_stack_ptr[0], $rtos->thread_stack_highest_ptr[0]
+printf "audio                    %u %u 0x%x 0x%x 0x%x 0x%x\n", $rtos->thread_stack_config_bytes[1], $rtos->thread_stack_size[1], $rtos->thread_stack_start[1], $rtos->thread_stack_end[1], $rtos->thread_stack_ptr[1], $rtos->thread_stack_highest_ptr[1]
+printf "input                    %u %u 0x%x 0x%x 0x%x 0x%x\n", $rtos->thread_stack_config_bytes[2], $rtos->thread_stack_size[2], $rtos->thread_stack_start[2], $rtos->thread_stack_end[2], $rtos->thread_stack_ptr[2], $rtos->thread_stack_highest_ptr[2]
+printf "display                  %u %u 0x%x 0x%x 0x%x 0x%x\n", $rtos->thread_stack_config_bytes[3], $rtos->thread_stack_size[3], $rtos->thread_stack_start[3], $rtos->thread_stack_end[3], $rtos->thread_stack_ptr[3], $rtos->thread_stack_highest_ptr[3]
+printf "sensor                   %u %u 0x%x 0x%x 0x%x 0x%x\n", $rtos->thread_stack_config_bytes[4], $rtos->thread_stack_size[4], $rtos->thread_stack_start[4], $rtos->thread_stack_end[4], $rtos->thread_stack_ptr[4], $rtos->thread_stack_highest_ptr[4]
+printf "storage                  %u %u 0x%x 0x%x 0x%x 0x%x\n", $rtos->thread_stack_config_bytes[5], $rtos->thread_stack_size[5], $rtos->thread_stack_start[5], $rtos->thread_stack_end[5], $rtos->thread_stack_ptr[5], $rtos->thread_stack_highest_ptr[5]
+printf "comm                     %u %u 0x%x 0x%x 0x%x 0x%x\n", $rtos->thread_stack_config_bytes[6], $rtos->thread_stack_size[6], $rtos->thread_stack_start[6], $rtos->thread_stack_end[6], $rtos->thread_stack_ptr[6], $rtos->thread_stack_highest_ptr[6]
+printf "UI                       %u %u 0x%x 0x%x 0x%x 0x%x\n", $rtos->thread_stack_config_bytes[7], $rtos->thread_stack_size[7], $rtos->thread_stack_start[7], $rtos->thread_stack_end[7], $rtos->thread_stack_ptr[7], $rtos->thread_stack_highest_ptr[7]
+printf "runtime                  %u %u 0x%x 0x%x 0x%x 0x%x\n", $rtos->thread_stack_config_bytes[8], $rtos->thread_stack_size[8], $rtos->thread_stack_start[8], $rtos->thread_stack_end[8], $rtos->thread_stack_ptr[8], $rtos->thread_stack_highest_ptr[8]
+
 printf "\nevent group status: create set get\n"
 printf "egMode                    %x %x %x\n", $rtos->event_create_status[0], $rtos->event_set_status[0], $rtos->event_get_status[0]
 printf "egPower                   %x %x %x\n", $rtos->event_create_status[1], $rtos->event_set_status[1], $rtos->event_get_status[1]
@@ -154,7 +165,7 @@ printf "expected visual           = early blank hold, then current UI page\n"
 printf "display UI page/cal/focus = %u / %u / %u\n", $owner->display_ui_page, $owner->display_ui_calibration_page, $owner->display_ui_focus_index
 printf "display shutdown/cd       = %u / %u\n", $owner->display_ui_shutdown_state, $owner->display_ui_shutdown_countdown_seconds
 printf "ui shutdown: NONE=0 PREP=1 WARNING=2 IMMINENT=3 CANCELLED=4 LOW_BOOT=5 LOW_CHARGE=6 FLASH_INIT=7 FLASH_DONE=8 FLASH_ERROR=9 MSC_EXPORT=10 MSC_ACTIVE=11 MSC_RECLAIM=12 MSC_DONE=13 MSC_ERROR=14 MSC_RECOVERY=15\n"
-printf "ui package: NONE=0 CANDIDATE=1 INSTALLING=2 INSTALLED=3 CANCELLED=4 ERROR=5\n"
+printf "ui package: NONE=0 CANDIDATE=1 VALID=2 INSTALLING=3 INSTALLED=4 CANCELLED=5 ERROR=6\n"
 printf "expected normal boot      = display bootstrap sent, then HOME render after power\n"
 
 printf "\n  audio owner: idle unless diagnostic workflow requested\n"
@@ -442,10 +453,14 @@ printf "USB reclaim req/tick/dirty = %u / %u / %u\n", $sm->usb_reclaim_request_c
 printf "USB reclaim devdisc/uxdisc-not-used/stop/deinit = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->usb_reclaim_devdisconnect_status, $sm->usb_reclaim_disconnect_status, $sm->usb_reclaim_pcd_stop_status, $sm->usb_reclaim_deinit_status
 printf "USB reclaim fxlx close     = 0x%x\n", $sm->usb_reclaim_fxlx_close_status
 printf "USB reclaim pcd/clk/vdd/parked = 0x%x / %u / %u / %u\n", $sm->usb_reclaim_pcd_state_after, $sm->usb_reclaim_clock_enabled_after, $sm->usb_reclaim_vddusb_enabled_after, $sm->usb_reclaim_parked
-printf "USB staging rescan count/tick/dirty/pending = %u / %u / %u / %u\n", $sm->usb_stage_rescan_request_count, $sm->usb_stage_rescan_start_tick, $sm->usb_stage_rescan_dirty_seen, $sm->usb_stage_rescan_pending
+printf "USB staging rescan count/tick/dirty/force/pending = %u / %u / %u / %u / %u\n", $sm->usb_stage_rescan_request_count, $sm->usb_stage_rescan_start_tick, $sm->usb_stage_rescan_dirty_seen, $sm->usb_stage_rescan_forced, $sm->usb_stage_rescan_pending
 printf "USB staging rescan status/package/class = 0x%x / 0x%x / %u\n", $sm->usb_stage_rescan_status, $sm->usb_stage_rescan_package_scan_status, $sm->usb_stage_rescan_classification
 printf "USB package pending/install count/status = %u / %u / 0x%x\n", $sm->package_candidate_pending, $sm->package_install_stub_request_count, $sm->package_install_stub_last_status
+printf "USB package validate count/status/reason = %u / 0x%x / %u\n", $sm->package_validate_request_count, $sm->package_validate_status, $sm->package_validate_reason
+printf "USB package validate size/read/magic/min/layout = %u / %u / 0x%x / %u / %u\n", $sm->package_validate_file_size, $sm->package_validate_bytes_read, $sm->package_validate_magic, $sm->package_validate_minimum_envelope_valid, $sm->package_validate_header_layout_supported
+printf "USB package validate first16 = %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n", $sm->package_validate_header_first16[0], $sm->package_validate_header_first16[1], $sm->package_validate_header_first16[2], $sm->package_validate_header_first16[3], $sm->package_validate_header_first16[4], $sm->package_validate_header_first16[5], $sm->package_validate_header_first16[6], $sm->package_validate_header_first16[7], $sm->package_validate_header_first16[8], $sm->package_validate_header_first16[9], $sm->package_validate_header_first16[10], $sm->package_validate_header_first16[11], $sm->package_validate_header_first16[12], $sm->package_validate_header_first16[13], $sm->package_validate_header_first16[14], $sm->package_validate_header_first16[15]
 printf "USB staging rescan status legend: OK=0x0 PACKAGE_UNSUPPORTED=0xb NOT_RUN=0xffffffff CLASS EMPTY=0 UNSUP=1 CAND=2 MULTI=3 ERROR=4\n"
+printf "USB package validate reason: NOT_RUN=0 MIN_OK=1 NO_CAND=2 MULTI=3 UNSUP=4 BOUNDED=5 SMALL=6 BAD_MAGIC=7 IO=8\n"
 printf "USBX pool/init status      = 0x%x / 0x%x (baseline may be nonzero before MSC bridge)\n", g_ps_hw6_usbx_byte_pool_create_status, g_ps_hw6_usbx_device_init_status
 printf "USBX stage statuses       = alloc 0x%x system 0x%x devstack 0x%x class 0x%x appstack 0x%x thread 0x%x\n", g_ps_hw6_usbx_stack_alloc_status, g_ps_hw6_usbx_system_init_status, g_ps_hw6_usbx_device_stack_status, g_ps_hw6_usbx_class_register_status, g_ps_hw6_usbx_thread_stack_status, g_ps_hw6_usbx_thread_create_status
 printf "USBX desc lengths         = HS %u FS %u string %u lang %u\n", g_ps_hw6_usbx_framework_hs_length, g_ps_hw6_usbx_framework_fs_length, g_ps_hw6_usbx_string_framework_length, g_ps_hw6_usbx_language_framework_length

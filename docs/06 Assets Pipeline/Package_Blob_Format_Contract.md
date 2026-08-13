@@ -14,6 +14,8 @@ Initial binary format examples use the magic/version family `PKG1`.
 
 `PKG1` is a package-container format marker, not a package API version. Individual schemas and chunk formats still carry their own versions.
 
+FW0 USB staging bring-up may use `PKG1` as a minimum-envelope read-only validator after MSC reclaim. That check only proves the staged file begins with the expected package magic; it does not freeze or validate the concrete binary header layout, chunk table, CRC/checksum, compatibility schema, signatures, or install commit policy.
+
 ---
 
 ## Container Shape

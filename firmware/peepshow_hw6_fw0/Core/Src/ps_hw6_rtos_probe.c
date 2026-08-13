@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "knobs_autogen.h"
 #include "main.h"
 #include "ps_hw6_clock_policy.h"
 #include "ps_hw6_owner_services.h"
@@ -12,8 +13,9 @@
 #include "ps_storage_msc_bridge.h"
 #include "ps_ui_router.h"
 
-#define PS_HW6_RTOS_DEFAULT_STACK_BYTES  (1024UL)
-#define PS_HW6_RTOS_STORAGE_STACK_BYTES  (2048UL)
+#define PS_HW6_RTOS_DEFAULT_STACK_BYTES  ((ULONG)KNOB_RTOS_DEFAULT_STACK_BYTES)
+#define PS_HW6_RTOS_POWER_STACK_BYTES    ((ULONG)KNOB_RTOS_POWER_STACK_BYTES)
+#define PS_HW6_RTOS_STORAGE_STACK_BYTES  ((ULONG)KNOB_RTOS_STORAGE_STACK_BYTES)
 #define PS_HW6_RTOS_QUEUE_DEPTH          (8UL)
 #define PS_HW6_RTOS_QUEUE_STORAGE_BYTES  (PS_HW6_RTOS_MESSAGE_WORDS * \
                                            PS_HW6_RTOS_QUEUE_DEPTH * \
@@ -131,7 +133,7 @@ static const UINT ps_owner_priorities[PS_HW6_RTOS_OWNER_COUNT] =
 
 static const ULONG ps_owner_stack_bytes[PS_HW6_RTOS_OWNER_COUNT] =
 {
-  PS_HW6_RTOS_DEFAULT_STACK_BYTES,
+  PS_HW6_RTOS_POWER_STACK_BYTES,
   PS_HW6_RTOS_DEFAULT_STACK_BYTES,
   PS_HW6_RTOS_DEFAULT_STACK_BYTES,
   PS_HW6_RTOS_DEFAULT_STACK_BYTES,
@@ -141,6 +143,30 @@ static const ULONG ps_owner_stack_bytes[PS_HW6_RTOS_OWNER_COUNT] =
   PS_HW6_RTOS_DEFAULT_STACK_BYTES,
   PS_HW6_RTOS_DEFAULT_STACK_BYTES
 };
+
+static void PS_HW6_RTOS_RecordThreadStackProbe(uint32_t owner_id)
+{
+  TX_THREAD *thread;
+
+  if (owner_id >= PS_HW6_RTOS_OWNER_COUNT)
+  {
+    return;
+  }
+
+  thread = &ps_threads[owner_id];
+  g_ps_hw6_rtos_probe.thread_stack_config_bytes[owner_id] =
+    (uint32_t)ps_owner_stack_bytes[owner_id];
+  g_ps_hw6_rtos_probe.thread_stack_start[owner_id] =
+    (uint32_t)(uintptr_t)thread->tx_thread_stack_start;
+  g_ps_hw6_rtos_probe.thread_stack_end[owner_id] =
+    (uint32_t)(uintptr_t)thread->tx_thread_stack_end;
+  g_ps_hw6_rtos_probe.thread_stack_size[owner_id] =
+    (uint32_t)thread->tx_thread_stack_size;
+  g_ps_hw6_rtos_probe.thread_stack_ptr[owner_id] =
+    (uint32_t)(uintptr_t)thread->tx_thread_stack_ptr;
+  g_ps_hw6_rtos_probe.thread_stack_highest_ptr[owner_id] =
+    (uint32_t)(uintptr_t)thread->tx_thread_stack_highest_ptr;
+}
 
 static void PS_HW6_RTOS_RecordFirstError(UINT status,
                                          uint32_t step,
@@ -242,6 +268,13 @@ static void PS_HW6_RTOS_ResetProbe(void)
     g_ps_hw6_rtos_probe.queue_create_status[i] = PS_HW6_RTOS_STATUS_NOT_RUN;
     g_ps_hw6_rtos_probe.queue_selftest_send_status[i] = PS_HW6_RTOS_STATUS_NOT_RUN;
     g_ps_hw6_rtos_probe.thread_create_status[i] = PS_HW6_RTOS_STATUS_NOT_RUN;
+    g_ps_hw6_rtos_probe.thread_stack_config_bytes[i] =
+      (uint32_t)ps_owner_stack_bytes[i];
+    g_ps_hw6_rtos_probe.thread_stack_start[i] = 0UL;
+    g_ps_hw6_rtos_probe.thread_stack_end[i] = 0UL;
+    g_ps_hw6_rtos_probe.thread_stack_size[i] = 0UL;
+    g_ps_hw6_rtos_probe.thread_stack_ptr[i] = 0UL;
+    g_ps_hw6_rtos_probe.thread_stack_highest_ptr[i] = 0UL;
     ps_thread_stacks[i] = TX_NULL;
     ps_queue_storage[i] = TX_NULL;
   }
@@ -1421,10 +1454,26 @@ static void PS_HW6_RTOS_RunStorageUsbExportRequest(void)
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_RESET);
 }
 
+static uint32_t PS_HW6_RTOS_ShouldForceUsbStageRescan(void)
+{
+  uint32_t current_page = g_ps_ui_router_probe.current_page;
+  uint32_t return_page = g_ps_ui_router_probe.shutdown_return_page;
+
+  return ((current_page ==
+           (uint32_t)PS_UI_ROUTER_PAGE_PACKAGE_BROWSER) ||
+          ((current_page == (uint32_t)PS_UI_ROUTER_PAGE_SHUTDOWN) &&
+           (return_page ==
+            (uint32_t)PS_UI_ROUTER_PAGE_PACKAGE_BROWSER))) ?
+         1UL : 0UL;
+}
+
 static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
 {
   UINT clock_status;
   HAL_StatusTypeDef reclaim_status = HAL_ERROR;
+  uint32_t force_stage_rescan;
+
+  force_stage_rescan = PS_HW6_RTOS_ShouldForceUsbStageRescan();
 
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_SET);
   PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
@@ -1436,7 +1485,8 @@ static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
       (PS_HW6_RTOS_StorageClockCapabilitiesActive(
          PS_HW6_RTOS_STORAGE_CLOCK_MSC_CAPABILITIES) != 0UL))
   {
-    reclaim_status = PS_HW6_OwnerStateMachines_ReclaimUsbExport();
+    reclaim_status = PS_HW6_OwnerStateMachines_ReclaimUsbExport(
+      force_stage_rescan);
   }
   (void)PS_HW6_RTOS_RequestStorageClockCapabilities(
     PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE,
@@ -1447,7 +1497,15 @@ static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
         (g_ps_ui_router_request == 0UL))
     {
       g_ps_ui_router_request_event =
-        PS_UI_ROUTER_EVENT_PACKAGE_CANDIDATE_FOUND;
+        PS_UI_ROUTER_EVENT_PACKAGE_VALID_FOUND;
+      g_ps_ui_router_request = 1UL;
+    }
+    else if ((g_ps_hw6_owner_sm_probe.package_validate_status !=
+              PS_HW6_OWNER_SM_STATUS_NOT_RUN) &&
+             (g_ps_ui_router_request == 0UL))
+    {
+      g_ps_ui_router_request_event =
+        PS_UI_ROUTER_EVENT_PACKAGE_VALIDATE_ERROR;
       g_ps_ui_router_request = 1UL;
     }
     else
@@ -1664,6 +1722,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
   now = tx_time_get();
   g_ps_hw6_rtos_probe.owner_last_tick[owner_id] = (uint32_t)now;
   g_ps_hw6_rtos_probe.owner_start_mask |= (1UL << owner_id);
+  PS_HW6_RTOS_RecordThreadStackProbe(owner_id);
   PS_HW6_RTOS_UpdateRuntimeComplete();
 
   if ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) &&
@@ -1681,6 +1740,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     now = tx_time_get();
     g_ps_hw6_rtos_probe.owner_heartbeat[owner_id]++;
     g_ps_hw6_rtos_probe.owner_last_tick[owner_id] = (uint32_t)now;
+    PS_HW6_RTOS_RecordThreadStackProbe(owner_id);
 
     if (status == TX_SUCCESS)
     {
@@ -2198,6 +2258,7 @@ UINT PS_HW6_RTOS_Init(TX_BYTE_POOL *pool)
       status = TX_NO_MEMORY;
     }
     g_ps_hw6_rtos_probe.thread_create_status[i] = status;
+    PS_HW6_RTOS_RecordThreadStackProbe(i);
     PS_HW6_RTOS_RecordFirstError(status, PS_HW6_RTOS_STEP_THREAD_CREATE, i);
   }
 
