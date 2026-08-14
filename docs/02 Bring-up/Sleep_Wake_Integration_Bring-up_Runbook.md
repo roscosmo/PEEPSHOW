@@ -76,6 +76,8 @@ HW6 FW0 controlled STOP2 START-wake evidence (`EV-HW6-20260814-P1-STOP2WAKE-056`
 HW6 FW0 knob-enabled automatic idle evidence (`EV-HW6-20260814-P1-STOP2AUTO-LPBAM-057`) proves the auto path is wired but deliberately refuses real sleep while LPBAM readiness is missing. With `power_auto_stop2_enable` compiled true, `auto block = 0x2000`, pending `0x3`, and owner STOP2 count `0` means the LPBAM guard worked. Do not expect automatic entry until the display owner has an explicit LPBAM-ready handoff.
 
 HW6 FW0 display-owned LPBAM readiness evidence (`EV-HW6-20260814-P1-DISPLPBAM-058`) proves that display-stable and LPBAM-ready are now separate probe states. Probe API `28` showed a stable menu render (`display complete/success = 1/1`, display/UI page `2/2`) while `display_lpbam_ready = 0`, ready page/status remained not-run, clear reason `3` showed a normal UI render cleared readiness, pending mask stayed `0x7`, and owner STOP2 count stayed `0`. This is correct until the real LPBAM prepare/arm path exists.
+
+HW6 FW0 display LPBAM prepare-handshake evidence (`EV-HW6-20260814-P1-LPBAMHANDSHAKE-059`) proves that `thPower` can queue a bounded prepare request to `thDisplay` and receive ACK/status evidence before automatic STOP2 admission. Probe API `29/14` showed send/wait `0x0/0x0`, ACK `0x108` including the display owner bit `0x8`, display prepare status `0xfffffffe` (`UNAVAILABLE`), ready `0`, and display clear count `2`. This is the correct blocked state until real LPBAM payload preparation exists.
 ---
 
 ## Baseline State Sequence
@@ -109,7 +111,7 @@ Populate one row per tested physical waiting backend or active workload. Runtime
 | `RT_SCENE` active -> reactive fallback | active then TBD wait backend | declared activity/wake policy | TBD | TBD | TBD | TBD | open |
 | `INSTALLER` waiting state | TBD | USB activity, B exit policy | TBD | TBD | TBD | TBD | open |
 | IMU step counter active | TBD | RTC/poll cadence plus optional IMU policy | TBD | TBD | TBD | TBD | open |
-| LPBAM waiting-visual backend | STOP2 + LPBAM | schedule/input/power/fault exit | TBD | TBD | TBD | TBD | open |
+| LPBAM waiting-visual backend | STOP2 + LPBAM | schedule/input/power/fault exit | prepare handshake `EV-HW6-20260814-P1-LPBAMHANDSHAKE-059`; payload TBD | TBD | TBD | TBD | open |
 
 ---
 

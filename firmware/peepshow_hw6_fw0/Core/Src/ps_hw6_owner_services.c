@@ -27,6 +27,7 @@
 #define PS_HW6_DISPLAY_LPBAM_CLEAR_PATTERN   (1UL)
 #define PS_HW6_DISPLAY_LPBAM_CLEAR_BOOT_HOLD (2UL)
 #define PS_HW6_DISPLAY_LPBAM_CLEAR_UI_RENDER (3UL)
+#define PS_HW6_DISPLAY_LPBAM_CLEAR_ABORT     (4UL)
 
 #define PS_HW6_AUDIO_SAMPLE_RATE_HZ         (16000UL)
 #define PS_HW6_AUDIO_TONE_HZ                (1000UL)
@@ -714,6 +715,10 @@ UINT PS_HW6_OwnerServices_Init(void)
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.display_lpbam_ready_page =
     PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_prepare_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_abort_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.audio_start_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.audio_stop_status =
@@ -1294,6 +1299,38 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
 
   return HAL_ERROR;
 }
+
+HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2(void)
+{
+  g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_DISPLAY;
+  g_ps_hw6_owner_probe.display_lpbam_prepare_count++;
+  g_ps_hw6_owner_probe.display_lpbam_prepare_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_probe.display_lpbam_ready = 0UL;
+  g_ps_hw6_owner_probe.display_lpbam_ready_page =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_ready_render_count =
+    g_ps_hw6_owner_probe.display_ui_render_count;
+  g_ps_hw6_owner_probe.display_lpbam_status =
+    PS_HW6_OWNER_STATUS_UNAVAILABLE;
+  g_ps_hw6_owner_probe.display_lpbam_prepare_status =
+    PS_HW6_OWNER_STATUS_UNAVAILABLE;
+  return HAL_ERROR;
+}
+
+HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2(void)
+{
+  g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_DISPLAY;
+  g_ps_hw6_owner_probe.display_lpbam_abort_count++;
+  g_ps_hw6_owner_probe.display_lpbam_abort_tick =
+    (uint32_t)tx_time_get();
+  PS_HW6_DisplayOwner_ClearLpbamReadiness(
+    PS_HW6_DISPLAY_LPBAM_CLEAR_ABORT);
+  g_ps_hw6_owner_probe.display_lpbam_abort_status =
+    (uint32_t)HAL_OK;
+  return HAL_OK;
+}
+
 HAL_StatusTypeDef PS_HW6_AudioOwner_VerifyIdle(void)
 {
   ps_dev_audio_play_result_t result;

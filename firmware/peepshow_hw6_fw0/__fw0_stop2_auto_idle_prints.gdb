@@ -20,9 +20,12 @@ printf "display ui req/render/page/status = %u / %u / %u / 0x%x\n", $ow->display
 printf "display complete/success = %u / %u\n", $ow->display_complete, $ow->display_success
 printf "display lpbam ready/page/render/status = %u / %u / %u / 0x%x\n", $ow->display_lpbam_ready, $ow->display_lpbam_ready_page, $ow->display_lpbam_ready_render_count, $ow->display_lpbam_status
 printf "display lpbam prep/clear/reason = %u / %u / %u\n", $ow->display_lpbam_prepare_count, $ow->display_lpbam_clear_count, $ow->display_lpbam_clear_reason
+printf "display lpbam prep status/abort/status = 0x%x / %u / 0x%x\n", $ow->display_lpbam_prepare_status, $ow->display_lpbam_abort_count, $ow->display_lpbam_abort_status
+printf "rtos lpbam prep count/send/wait/ack/owner/ready = %u / 0x%x / 0x%x / 0x%x / 0x%x / %u\n", $rt->stop2_lpbam_prepare_request_count, $rt->stop2_lpbam_prepare_send_status, $rt->stop2_lpbam_prepare_wait_status, $rt->stop2_lpbam_prepare_ack_flags, $rt->stop2_lpbam_prepare_owner_status, $rt->stop2_lpbam_prepare_ready_after
+printf "rtos lpbam abort count/send/wait/ack/owner = %u / 0x%x / 0x%x / 0x%x / 0x%x\n", $rt->stop2_lpbam_abort_request_count, $rt->stop2_lpbam_abort_send_status, $rt->stop2_lpbam_abort_wait_status, $rt->stop2_lpbam_abort_ack_flags, $rt->stop2_lpbam_abort_owner_status
 printf "input pending/start/logical/policy = 0x%x / %u / %u / %u\n", $btn->pending_mask, $btn->start_active, $btn->logical_event_count, $rt->input_policy_event_count
 printf "clock caps/dom/readback/lpbam = 0x%x / 0x%x / 0x%x / %u\n", $clk->stop2_blocker_capabilities, $clk->stop2_blocker_domain_mask, $clk->readback_domain_mask, $clk->lpbam_stop2_ready
 printf "owner stop2 count/start/wake/end = %u / %u / %u / %u\n", $sm->stop2_request_count, $sm->stop2_start_tick, $sm->stop2_wake_tick, $sm->stop2_end_tick
 printf "blockers: BOOT=0x1 POWER=0x2 PMIC=0x4 BATT=0x8 CLOCK_CAP=0x10 CLOCK_READBACK=0x20 DISABLED=0x40 RUNTIME=0x80 UI=0x100 DISPLAY=0x200 STORAGE_USB=0x400 INPUT=0x800 QUEUE=0x1000 LPBAM=0x2000\n"
 printf "pending: OWNER_QUIESCE=0x1 LPBAM=0x2 IDLE_WINDOW=0x4\n"
-printf "status: HAL_OK=0x0 HAL_ERROR=0x1 NOT_RUN=0xffffffff\n"
+printf "status: HAL_OK=0x0 HAL_ERROR=0x1 UNAVAILABLE=0xfffffffe NOT_RUN=0xffffffff\n"

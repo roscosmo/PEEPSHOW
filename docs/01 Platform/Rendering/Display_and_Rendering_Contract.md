@@ -219,7 +219,7 @@ reactive transaction settles
 
 The first autonomous transition begins from the seeded physical frame. Autonomous playback changes only presentation; it does not mutate committed package state. On wake or abort, the display owner reclaims SPI3/LPDMA/LPBAM and restores a known normal-display state before accepting new presents.
 
-FW0 now has the display-owned readiness scaffold for this handoff. Normal display actions clear `display_lpbam_ready`; `thPower` may treat STOP2 LPBAM validation as satisfied only when `thDisplay` later reports a ready page, ready render count, and `HAL_OK` LPBAM status that still match the current UI state. The scaffold does not arm LPBAM yet and must not be used as evidence of autonomous display playback.
+FW0 now has the display-owned readiness scaffold for this handoff. Normal display actions clear `display_lpbam_ready`; `thPower` asks `thDisplay` for an LPBAM prepare handoff before automatic STOP2 admission may treat LPBAM as ready. `thDisplay` may satisfy STOP2 LPBAM validation only when it later reports a ready page, ready render count, and `HAL_OK` LPBAM status that still match the current UI state. Until the real LPBAM payload path exists, `thDisplay` intentionally answers `UNAVAILABLE`; `thPower` must treat that as not ready, not as a fault. If entry is abandoned after a future successful prepare, `thPower` must send the display abort handoff so normal display ownership is reclaimed. The scaffold does not arm LPBAM yet and must not be used as evidence of autonomous display playback.
 
 If the preferred waiting visual does not fit the measured target budget, the display owner/compiler uses the package-declared reduced visual or hold fallback. Compilation failure must not silently convert a reactive wait into an awake polling loop.
 
@@ -252,6 +252,7 @@ LPBAM rules:
 - Normal display owner must reclaim SPI3/LPDMA/LPBAM resources cleanly after exit.
 - LPBAM does not run the renderer or package logic. It executes a compiled display program derived from the settled reactive state and its waiting-visual intent.
 - Display stability and LPBAM readiness are separate states: a successful normal render may be idle-safe, but STOP2 admission must remain pending until `thDisplay` explicitly reports the LPBAM handoff as ready.
+- `thPower` must not infer LPBAM readiness from a stable frame alone. It must receive the display-owner prepare ACK and `HAL_OK` ready result; `UNAVAILABLE` is a valid blocked state while LPBAM display preparation is not implemented.
 
 
 LPBAM bring-up timing:
