@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (23UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (24UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -180,6 +180,21 @@ typedef struct
   uint32_t stop2_control_stop2_count_before;
   uint32_t stop2_control_stop2_count_after;
 
+  uint32_t stop2_auto_enabled;
+  uint32_t stop2_auto_check_count;
+  uint32_t stop2_auto_entry_count;
+  uint32_t stop2_auto_skip_count;
+  uint32_t stop2_auto_last_status;
+  uint32_t stop2_auto_last_tick;
+  uint32_t stop2_auto_next_tick;
+  uint32_t stop2_auto_idle_start_tick;
+  uint32_t stop2_auto_idle_ticks;
+  uint32_t stop2_auto_required_idle_ticks;
+  uint32_t stop2_auto_blocker_mask;
+  uint32_t stop2_auto_pending_mask;
+  uint32_t stop2_auto_queue_pending_mask;
+  uint32_t stop2_auto_eligibility_status;
+  uint32_t stop2_auto_entry_status;
   uint32_t audio_clock_request_count;
   uint32_t audio_clock_release_count;
   uint32_t audio_clock_last_reason;

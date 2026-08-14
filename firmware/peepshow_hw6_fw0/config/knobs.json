@@ -37,5 +37,8 @@
   "power_clock_reactive_burst_hz": 48000000,
   "power_clock_realtime_balanced_hz": 80000000,
   "power_clock_io_high_hz": 160000000,
-  "power_clock_pll2_autogate_enable": true
+  "power_clock_pll2_autogate_enable": true,
+  "power_auto_stop2_enable": false,
+  "power_auto_stop2_check_period_ms": 1000,
+  "power_auto_stop2_idle_ms": 2000
 }

@@ -43,7 +43,10 @@
     "power_clock_reactive_burst_hz",
     "power_clock_realtime_balanced_hz",
     "power_clock_io_high_hz",
-    "power_clock_pll2_autogate_enable"
+    "power_clock_pll2_autogate_enable",
+    "power_auto_stop2_enable",
+    "power_auto_stop2_check_period_ms",
+    "power_auto_stop2_idle_ms"
   ],
   "properties": {
     "input_btn_debounce_press_ms": {
@@ -502,6 +505,40 @@
       "class": "protected_policy",
       "path": "platform.knobs.power.clock_pll2_autogate_enable",
       "description": "When true, thPower may later gate PLL2 when neither SAI nor OCTOSPI owns it. Default false keeps FW0 conservative while probes prove request/release behavior."
+    },
+    "power_auto_stop2_enable": {
+      "type": "boolean",
+      "default": false,
+      "unit": "bool",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.auto_stop2_enable",
+      "description": "When true, thPower may periodically enter STOP2 after all idle blockers clear and the required quiet window has elapsed. Default false keeps automatic sleep disabled during bring-up."
+    },
+    "power_auto_stop2_check_period_ms": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 60000,
+      "default": 1000,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.auto_stop2_check_period_ms",
+      "description": "Period between automatic STOP2 idle admission checks while the feature is enabled."
+    },
+    "power_auto_stop2_idle_ms": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 600000,
+      "default": 2000,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.auto_stop2_idle_ms",
+      "description": "Required continuous idle window before automatic STOP2 entry may be attempted."
     }
   }
 }
