@@ -1,12 +1,15 @@
 set pagination off
 set $rt = &g_ps_hw6_rtos_probe
 set $sm = &g_ps_hw6_owner_sm_probe
+set $ow = &g_ps_hw6_owner_probe
 printf "--- HW6 controlled STOP2 entry scaffold ---\n"
 printf "rtos api/control count/status/tick = %u / %u / 0x%x / %u\n", $rt->version, $rt->stop2_control_request_count, $rt->stop2_control_last_status, $rt->stop2_control_last_tick
 printf "elig status/block/pending = 0x%x / 0x%x / 0x%x\n", $rt->stop2_control_eligibility_status, $rt->stop2_control_eligibility_blocker_mask, $rt->stop2_control_eligibility_pending_mask
 printf "entry attempts/status     = %u / 0x%x\n", $rt->stop2_control_entry_attempt_count, $rt->stop2_control_entry_status
 printf "stop2 count before/after  = %u / %u\n", $rt->stop2_control_stop2_count_before, $rt->stop2_control_stop2_count_after
 printf "elig ready/block/pending  = %u / 0x%x / 0x%x\n", $rt->stop2_eligibility_ready, $rt->stop2_eligibility_blocker_mask, $rt->stop2_eligibility_pending_mask
+printf "display lpbam ready/page/render/status = %u / %u / %u / 0x%x\n", $ow->display_lpbam_ready, $ow->display_lpbam_ready_page, $ow->display_lpbam_ready_render_count, $ow->display_lpbam_status
+printf "display lpbam prep/clear/reason = %u / %u / %u\n", $ow->display_lpbam_prepare_count, $ow->display_lpbam_clear_count, $ow->display_lpbam_clear_reason
 printf "owner stop2 count/start/wake/end = %u / %u / %u / %u\n", $sm->stop2_request_count, $sm->stop2_start_tick, $sm->stop2_wake_tick, $sm->stop2_end_tick
 printf "owner stop2 status q/enter/clk/recover/last = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_quiesce_status, $sm->stop2_enter_status, $sm->stop2_clock_restore_status, $sm->stop2_recover_status, $sm->stop2_last_status
 printf "wake expected/start/end IDR = 0x%x / 0x%x / 0x%x\n", $sm->stop2_expected_wake_pin, $sm->stop2_wake_start_idr, $sm->stop2_wake_end_idr

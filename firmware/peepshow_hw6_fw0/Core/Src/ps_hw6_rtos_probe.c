@@ -1990,6 +1990,24 @@ static uint32_t PS_HW6_RTOS_Stop2BatteryPolicyAllowsStop2(
          1UL : 0UL;
 }
 
+static uint32_t PS_HW6_RTOS_Stop2DisplayLpbamReady(void)
+{
+  if ((g_ps_hw6_owner_probe.display_lpbam_ready == 0UL) ||
+      (g_ps_hw6_owner_probe.display_lpbam_status != (uint32_t)HAL_OK))
+  {
+    return 0UL;
+  }
+
+  if (g_ps_hw6_owner_probe.display_lpbam_ready_page !=
+      g_ps_ui_router_probe.current_page)
+  {
+    return 0UL;
+  }
+
+  return (g_ps_hw6_owner_probe.display_lpbam_ready_render_count ==
+          g_ps_hw6_owner_probe.display_ui_render_count) ? 1UL : 0UL;
+}
+
 static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2EligibilityDryRun(void)
 {
   uint32_t blocker_mask = 0UL;
@@ -2041,7 +2059,7 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2EligibilityDryRun(void)
   if (blocker_mask == 0UL)
   {
     pending_mask |= PS_HW6_RTOS_STOP2_PENDING_OWNER_QUIESCE;
-    if (g_ps_hw6_clock_policy_probe.lpbam_stop2_ready == 0UL)
+    if (PS_HW6_RTOS_Stop2DisplayLpbamReady() == 0UL)
     {
       pending_mask |= PS_HW6_RTOS_STOP2_PENDING_LPBAM_VALIDATION;
     }
@@ -2060,7 +2078,7 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2EligibilityDryRun(void)
   g_ps_hw6_rtos_probe.stop2_eligibility_readback_domains =
     readback_domains;
   g_ps_hw6_rtos_probe.stop2_eligibility_lpbam_ready =
-    g_ps_hw6_clock_policy_probe.lpbam_stop2_ready;
+    PS_HW6_RTOS_Stop2DisplayLpbamReady();
   g_ps_hw6_rtos_probe.stop2_eligibility_power_state = power_state;
   g_ps_hw6_rtos_probe.stop2_eligibility_pmic_state = pmic_state;
   g_ps_hw6_rtos_probe.stop2_eligibility_battery_policy = battery_policy;

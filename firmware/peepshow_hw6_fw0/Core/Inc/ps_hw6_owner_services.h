@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (12UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (13UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -166,6 +166,13 @@ typedef struct
   uint32_t display_ui_shutdown_state;
   uint32_t display_ui_shutdown_countdown_seconds;
   uint32_t display_ui_status;
+  uint32_t display_lpbam_ready;
+  uint32_t display_lpbam_ready_page;
+  uint32_t display_lpbam_ready_render_count;
+  uint32_t display_lpbam_prepare_count;
+  uint32_t display_lpbam_clear_count;
+  uint32_t display_lpbam_clear_reason;
+  uint32_t display_lpbam_status;
 
   uint32_t audio_driver_api_version;
   uint32_t audio_driver_init_status;

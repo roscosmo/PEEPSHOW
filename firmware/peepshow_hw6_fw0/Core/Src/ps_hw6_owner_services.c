@@ -24,6 +24,9 @@
 #define PS_HW6_DISPLAY_TEXT_SCALE            (2U)
 #define PS_HW6_DISPLAY_UI_LOGICAL_WIDTH      PS_DEV_LS013B7DH05_HEIGHT
 #define PS_HW6_DISPLAY_UI_LOGICAL_HEIGHT     PS_DEV_LS013B7DH05_WIDTH
+#define PS_HW6_DISPLAY_LPBAM_CLEAR_PATTERN   (1UL)
+#define PS_HW6_DISPLAY_LPBAM_CLEAR_BOOT_HOLD (2UL)
+#define PS_HW6_DISPLAY_LPBAM_CLEAR_UI_RENDER (3UL)
 
 #define PS_HW6_AUDIO_SAMPLE_RATE_HZ         (16000UL)
 #define PS_HW6_AUDIO_TONE_HZ                (1000UL)
@@ -76,6 +79,19 @@ static void PS_HW6_UpdateAudioDriverProbe(void)
   g_ps_hw6_owner_probe.audio_driver_operation_count =
     ps_hw6_audio.operation_count;
   g_ps_hw6_owner_probe.audio_driver_last_status = ps_hw6_audio.last_status;
+}
+
+static void PS_HW6_DisplayOwner_ClearLpbamReadiness(uint32_t reason)
+{
+  g_ps_hw6_owner_probe.display_lpbam_ready = 0UL;
+  g_ps_hw6_owner_probe.display_lpbam_ready_page =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_ready_render_count =
+    g_ps_hw6_owner_probe.display_ui_render_count;
+  g_ps_hw6_owner_probe.display_lpbam_clear_count++;
+  g_ps_hw6_owner_probe.display_lpbam_clear_reason = reason;
+  g_ps_hw6_owner_probe.display_lpbam_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
 }
 
 static uint32_t PS_HW6_DisplaySetBlack(uint16_t x, uint16_t y)
@@ -694,6 +710,10 @@ UINT PS_HW6_OwnerServices_Init(void)
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.display_ui_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_ready_page =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.audio_start_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.audio_stop_status =
@@ -1116,6 +1136,8 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void)
   ps_status_t driver_status;
 
   g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_DISPLAY;
+  PS_HW6_DisplayOwner_ClearLpbamReadiness(
+    PS_HW6_DISPLAY_LPBAM_CLEAR_PATTERN);
   g_ps_hw6_owner_probe.display_complete = 0UL;
   g_ps_hw6_owner_probe.display_success = 0UL;
   g_ps_hw6_owner_probe.display_rtc_state = HAL_RTC_GetState(&hrtc);
@@ -1159,6 +1181,8 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearBootHold(void)
   ps_status_t driver_status;
 
   g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_DISPLAY;
+  PS_HW6_DisplayOwner_ClearLpbamReadiness(
+    PS_HW6_DISPLAY_LPBAM_CLEAR_BOOT_HOLD);
   g_ps_hw6_owner_probe.display_complete = 0UL;
   g_ps_hw6_owner_probe.display_success = 0UL;
   g_ps_hw6_owner_probe.display_ui_request_count++;
@@ -1218,6 +1242,8 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   ps_status_t driver_status;
 
   g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_DISPLAY;
+  PS_HW6_DisplayOwner_ClearLpbamReadiness(
+    PS_HW6_DISPLAY_LPBAM_CLEAR_UI_RENDER);
   g_ps_hw6_owner_probe.display_complete = 0UL;
   g_ps_hw6_owner_probe.display_success = 0UL;
   g_ps_hw6_owner_probe.display_ui_request_count++;

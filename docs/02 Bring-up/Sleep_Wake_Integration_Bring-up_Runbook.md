@@ -74,6 +74,8 @@ Unknown wake reasons are defects until explained.
 HW6 FW0 controlled STOP2 START-wake evidence (`EV-HW6-20260814-P1-STOP2WAKE-056`) must be interpreted with debug state included. `DBGMCU->CR = 0x6` (`DBG_STOP | DBG_STANDBY`) caused an immediate return that correctly classified as `UNKNOWN`; clearing the real DBGMCU control register at `0xE0044004` to `0x0` produced the expected physical START wake classification with PA4 low and START edge evidence. Any future STOP2 wake/current run must record `DBGMCU->CR` before/after entry.
 
 HW6 FW0 knob-enabled automatic idle evidence (`EV-HW6-20260814-P1-STOP2AUTO-LPBAM-057`) proves the auto path is wired but deliberately refuses real sleep while LPBAM readiness is missing. With `power_auto_stop2_enable` compiled true, `auto block = 0x2000`, pending `0x3`, and owner STOP2 count `0` means the LPBAM guard worked. Do not expect automatic entry until the display owner has an explicit LPBAM-ready handoff.
+
+HW6 FW0 display-owned LPBAM readiness evidence (`EV-HW6-20260814-P1-DISPLPBAM-058`) proves that display-stable and LPBAM-ready are now separate probe states. Probe API `28` showed a stable menu render (`display complete/success = 1/1`, display/UI page `2/2`) while `display_lpbam_ready = 0`, ready page/status remained not-run, clear reason `3` showed a normal UI render cleared readiness, pending mask stayed `0x7`, and owner STOP2 count stayed `0`. This is correct until the real LPBAM prepare/arm path exists.
 ---
 
 ## Baseline State Sequence
