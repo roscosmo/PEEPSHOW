@@ -53,6 +53,7 @@ static ps_dev_audio_t ps_hw6_audio;
 static ps_dev_ls013b7dh05_t ps_hw6_display;
 static uint8_t ps_hw6_display_framebuffer[PS_DEV_LS013B7DH05_BUFFER_SIZE];
 static uint32_t ps_hw6_display_ui_rotate_ccw;
+static uint32_t ps_hw6_display_lpbam_debug_force_ready_once;
 static int16_t ps_hw6_audio_buffer[PS_HW6_AUDIO_BUFFER_HALFWORDS]
   __attribute__((aligned(4)));
 
@@ -717,6 +718,7 @@ UINT PS_HW6_OwnerServices_Init(void)
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.display_lpbam_prepare_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
+  ps_hw6_display_lpbam_debug_force_ready_once = 0UL;
   g_ps_hw6_owner_probe.display_lpbam_abort_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.audio_start_status =
@@ -1306,16 +1308,35 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2(void)
   g_ps_hw6_owner_probe.display_lpbam_prepare_count++;
   g_ps_hw6_owner_probe.display_lpbam_prepare_tick =
     (uint32_t)tx_time_get();
+  g_ps_hw6_owner_probe.display_lpbam_ready_render_count =
+    g_ps_hw6_owner_probe.display_ui_render_count;
+
+  if (ps_hw6_display_lpbam_debug_force_ready_once != 0UL)
+  {
+    ps_hw6_display_lpbam_debug_force_ready_once = 0UL;
+    g_ps_hw6_owner_probe.display_lpbam_debug_force_ready_count++;
+    g_ps_hw6_owner_probe.display_lpbam_ready = 1UL;
+    g_ps_hw6_owner_probe.display_lpbam_ready_page =
+      g_ps_ui_router_probe.current_page;
+    g_ps_hw6_owner_probe.display_lpbam_status = (uint32_t)HAL_OK;
+    g_ps_hw6_owner_probe.display_lpbam_prepare_status =
+      (uint32_t)HAL_OK;
+    return HAL_OK;
+  }
+
   g_ps_hw6_owner_probe.display_lpbam_ready = 0UL;
   g_ps_hw6_owner_probe.display_lpbam_ready_page =
     PS_HW6_OWNER_STATUS_NOT_RUN;
-  g_ps_hw6_owner_probe.display_lpbam_ready_render_count =
-    g_ps_hw6_owner_probe.display_ui_render_count;
   g_ps_hw6_owner_probe.display_lpbam_status =
     PS_HW6_OWNER_STATUS_UNAVAILABLE;
   g_ps_hw6_owner_probe.display_lpbam_prepare_status =
     PS_HW6_OWNER_STATUS_UNAVAILABLE;
   return HAL_ERROR;
+}
+
+void PS_HW6_DisplayOwner_DebugForceNextLpbamReady(void)
+{
+  ps_hw6_display_lpbam_debug_force_ready_once = 1UL;
 }
 
 HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2(void)

@@ -224,6 +224,7 @@ volatile uint32_t g_ps_hw6_admission_power_cancel_dry_run_request;
 volatile uint32_t g_ps_hw6_power_stop2_auto_idle_dry_run_request;
 volatile uint32_t g_ps_hw6_power_stop2_lpbam_prepare_request;
 volatile uint32_t g_ps_hw6_power_stop2_lpbam_abort_request;
+volatile uint32_t g_ps_hw6_power_stop2_lpbam_abort_late_test_request;
 
 typedef UINT (*PS_HW6_RTOS_DebugCommandFn)(void);
 
@@ -238,6 +239,8 @@ static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_storage_flash_init_anchor;
 static uint32_t ps_ui_boot_complete_sent;
 static uint32_t ps_power_boot_done;
 static uint32_t ps_display_bootstrap_sent;
+static uint32_t ps_stop2_lpbam_abort_late_test_active;
+static uint32_t ps_stop2_lpbam_late_blocker_armed;
 static volatile uint32_t ps_pmic_int_pending_count;
 static volatile uint32_t ps_pmic_int_irq_count;
 static volatile uint32_t ps_pmic_int_last_pin;
@@ -782,6 +785,9 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_power_stop2_auto_idle_dry_run_request = 0UL;
   g_ps_hw6_power_stop2_lpbam_prepare_request = 0UL;
   g_ps_hw6_power_stop2_lpbam_abort_request = 0UL;
+  g_ps_hw6_power_stop2_lpbam_abort_late_test_request = 0UL;
+  ps_stop2_lpbam_abort_late_test_active = 0UL;
+  ps_stop2_lpbam_late_blocker_armed = 0UL;
   g_ps_hw6_rtos_probe.magic = PS_HW6_RTOS_PROBE_MAGIC;
   g_ps_hw6_rtos_probe.version = PS_HW6_RTOS_PROBE_VERSION;
   g_ps_hw6_rtos_probe.phase = PS_HW6_RTOS_PHASE_INIT;
@@ -881,6 +887,8 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.stop2_lpbam_abort_wait_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.stop2_lpbam_abort_owner_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.stop2_lpbam_abort_late_test_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.stop2_auto_required_idle_ticks =
     PS_HW6_RTOS_MsToTicks((uint32_t)KNOB_POWER_AUTO_STOP2_IDLE_MS);
@@ -2455,6 +2463,12 @@ static uint32_t PS_HW6_RTOS_Stop2AutoDynamicBlockerMask(
   {
     blocker_mask |= PS_HW6_RTOS_STOP2_BLOCK_QUEUE_PENDING;
   }
+  if (ps_stop2_lpbam_late_blocker_armed != 0UL)
+  {
+    ps_stop2_lpbam_late_blocker_armed = 0UL;
+    g_ps_hw6_rtos_probe.stop2_lpbam_late_blocker_count++;
+    blocker_mask |= PS_HW6_RTOS_STOP2_BLOCK_INPUT_PENDING;
+  }
 
   if (queue_pending_mask != 0)
   {
@@ -2491,7 +2505,8 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2AutoIdleCheck(
   g_ps_hw6_rtos_probe.stop2_auto_entry_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
 
-  if ((KNOB_POWER_AUTO_STOP2_ENABLE == 0) && (allow_entry != 0UL))
+  if ((KNOB_POWER_AUTO_STOP2_ENABLE == 0) && (allow_entry != 0UL) &&
+      (ps_stop2_lpbam_abort_late_test_active == 0UL))
   {
     blocker_mask |= PS_HW6_RTOS_STOP2_BLOCK_AUTO_DISABLED;
   }
@@ -2514,6 +2529,10 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2AutoIdleCheck(
       if (PS_HW6_RTOS_RequestDisplayLpbamPrepare() == HAL_OK)
       {
         pending_mask &= ~PS_HW6_RTOS_STOP2_PENDING_LPBAM_VALIDATION;
+        if (ps_stop2_lpbam_abort_late_test_active != 0UL)
+        {
+          ps_stop2_lpbam_late_blocker_armed = 1UL;
+        }
         blocker_mask |= PS_HW6_RTOS_Stop2AutoDynamicBlockerMask(
           &queue_pending_mask);
         if (blocker_mask != 0UL)
@@ -2598,6 +2617,36 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2AutoIdleCheck(
   g_ps_hw6_rtos_probe.stop2_auto_entry_status = (uint32_t)entry_status;
   g_ps_hw6_rtos_probe.stop2_auto_last_status = (uint32_t)entry_status;
   return entry_status;
+}
+
+static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2LpbamAbortLateTest(
+  uint32_t now_tick)
+{
+  HAL_StatusTypeDef status;
+
+  g_ps_hw6_rtos_probe.stop2_lpbam_abort_late_test_count++;
+  g_ps_hw6_rtos_probe.stop2_lpbam_abort_late_test_tick = now_tick;
+  g_ps_hw6_rtos_probe.stop2_lpbam_abort_late_test_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.stop2_lpbam_abort_late_test_blocker_mask = 0UL;
+  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_display_clear_count =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  ps_stop2_lpbam_abort_late_test_active = 1UL;
+  ps_stop2_lpbam_late_blocker_armed = 0UL;
+
+  PS_HW6_DisplayOwner_DebugForceNextLpbamReady();
+  status = PS_HW6_RTOS_RunStop2AutoIdleCheck(now_tick, 1UL);
+
+  ps_stop2_lpbam_abort_late_test_active = 0UL;
+  ps_stop2_lpbam_late_blocker_armed = 0UL;
+  g_ps_hw6_rtos_probe.stop2_lpbam_abort_late_test_status =
+    (uint32_t)status;
+  g_ps_hw6_rtos_probe.stop2_lpbam_abort_late_test_blocker_mask =
+    g_ps_hw6_rtos_probe.stop2_auto_blocker_mask;
+  g_ps_hw6_rtos_probe.stop2_auto_next_tick = now_tick +
+    PS_HW6_RTOS_MsToTicks(
+      (uint32_t)KNOB_POWER_AUTO_STOP2_CHECK_PERIOD_MS);
+  return status;
 }
 
 static void PS_HW6_RTOS_RunStop2AutoIdlePeriodic(uint32_t now_tick)
@@ -4445,6 +4494,14 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     {
       g_ps_hw6_power_stop2_lpbam_abort_request = 0UL;
       (void)PS_HW6_RTOS_RequestDisplayLpbamAbort();
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
+        (g_ps_hw6_power_stop2_lpbam_abort_late_test_request != 0UL) &&
+        (ps_power_boot_done != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      g_ps_hw6_power_stop2_lpbam_abort_late_test_request = 0UL;
+      (void)PS_HW6_RTOS_RunStop2LpbamAbortLateTest((uint32_t)now);
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
         (ps_power_boot_done != 0UL) &&

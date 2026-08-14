@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (29UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (30UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -210,6 +210,11 @@ typedef struct
   uint32_t stop2_lpbam_abort_wait_status;
   uint32_t stop2_lpbam_abort_ack_flags;
   uint32_t stop2_lpbam_abort_owner_status;
+  uint32_t stop2_lpbam_abort_late_test_count;
+  uint32_t stop2_lpbam_abort_late_test_tick;
+  uint32_t stop2_lpbam_abort_late_test_status;
+  uint32_t stop2_lpbam_abort_late_test_blocker_mask;
+  uint32_t stop2_lpbam_late_blocker_count;
 
   uint32_t stop2_wake_classify_count;
   uint32_t stop2_wake_classify_tick;

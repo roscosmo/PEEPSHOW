@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (14UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (15UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -173,6 +173,7 @@ typedef struct
   uint32_t display_lpbam_prepare_count;
   uint32_t display_lpbam_prepare_tick;
   uint32_t display_lpbam_prepare_status;
+  uint32_t display_lpbam_debug_force_ready_count;
   uint32_t display_lpbam_abort_count;
   uint32_t display_lpbam_abort_tick;
   uint32_t display_lpbam_abort_status;
@@ -226,6 +227,7 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   uint32_t shutdown_countdown_seconds);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2(void);
+void PS_HW6_DisplayOwner_DebugForceNextLpbamReady(void);
 HAL_StatusTypeDef PS_HW6_AudioOwner_RunTone(void);
 HAL_StatusTypeDef PS_HW6_AudioOwner_VerifyIdle(void);
 void PS_HW6_OwnerServices_MarkComplete(void);

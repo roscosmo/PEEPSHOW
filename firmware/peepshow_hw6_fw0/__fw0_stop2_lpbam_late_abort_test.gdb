@@ -1,0 +1,2 @@
+set var g_ps_hw6_power_stop2_lpbam_abort_late_test_request = 1
+printf "HW6 display LPBAM late-abort test queued for thPower. Continue target briefly, then interrupt and source __fw0_stop2_lpbam_prints.gdb. This forces one debug LPBAM-ready prepare, injects a late input blocker, and should abort instead of entering STOP2.\n"
