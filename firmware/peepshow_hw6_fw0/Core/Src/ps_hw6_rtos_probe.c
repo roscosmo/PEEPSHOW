@@ -75,6 +75,30 @@
 #define PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS  (1000UL)
 #define PS_HW6_RTOS_STORAGE_STABILIZE_ACK_WAIT_TICKS (30000UL)
 #define PS_HW6_RTOS_STATUS_NOT_RUN        (0xFFFFFFFFUL)
+#define PS_HW6_RTOS_WAKE_SOURCE_START     (0x00000001UL)
+#define PS_HW6_RTOS_WAKE_SOURCE_BUTTON    (0x00000002UL)
+#define PS_HW6_RTOS_WAKE_SOURCE_JOYSTICK  (0x00000004UL)
+#define PS_HW6_RTOS_WAKE_SOURCE_SENSOR    (0x00000008UL)
+#define PS_HW6_RTOS_WAKE_SOURCE_PMIC      (0x00000010UL)
+#define PS_HW6_RTOS_WAKE_SOURCE_RTC       (0x00000020UL)
+#define PS_HW6_RTOS_WAKE_SOURCE_USB       (0x00000040UL)
+#define PS_HW6_RTOS_WAKE_SOURCE_FAULT     (0x00000080UL)
+#define PS_HW6_RTOS_WAKE_SOURCE_UNKNOWN   (0x80000000UL)
+#define PS_HW6_RTOS_WAKE_CAUSE_NONE       (0UL)
+#define PS_HW6_RTOS_WAKE_CAUSE_START      (1UL)
+#define PS_HW6_RTOS_WAKE_CAUSE_BUTTON     (2UL)
+#define PS_HW6_RTOS_WAKE_CAUSE_JOYSTICK   (3UL)
+#define PS_HW6_RTOS_WAKE_CAUSE_SENSOR     (4UL)
+#define PS_HW6_RTOS_WAKE_CAUSE_PMIC       (5UL)
+#define PS_HW6_RTOS_WAKE_CAUSE_RTC        (6UL)
+#define PS_HW6_RTOS_WAKE_CAUSE_USB        (7UL)
+#define PS_HW6_RTOS_WAKE_CAUSE_FAULT      (8UL)
+#define PS_HW6_RTOS_WAKE_CAUSE_UNKNOWN    (9UL)
+#define PS_HW6_RTOS_WAKE_BUTTON_PIN_MASK \
+  ((uint32_t)(BTN_A_Pin | BTN_B_Pin | BTN_L_Pin | BTN_R_Pin))
+#define PS_HW6_RTOS_WAKE_KNOWN_EXTI_MASK \
+  ((uint32_t)(BTN_START_Pin | BTN_A_Pin | BTN_B_Pin | BTN_L_Pin | \
+              BTN_R_Pin | JOY_INT_Pin | MPU_INT_Pin | PMIC_INT_Pin))
 #define PS_HW6_RTOS_AUDIO_CLOCK_REASON_NONE       (0UL)
 #define PS_HW6_RTOS_AUDIO_CLOCK_REASON_REACTIVE_SFX (1UL)
 #define PS_HW6_RTOS_AUDIO_CLOCK_REASON_REALTIME_MIXER (2UL)
@@ -215,6 +239,21 @@ static volatile uint32_t ps_pmic_int_last_pin;
 static volatile uint32_t ps_pmic_int_last_level;
 static volatile uint32_t ps_pmic_int_last_irq_tick;
 static uint32_t ps_pmic_int_consumed_count;
+static volatile uint32_t ps_stop2_wake_button_edges_before;
+static volatile uint32_t ps_stop2_wake_pmic_edges_before;
+static volatile uint32_t ps_stop2_wake_gpioa_before_idr;
+static volatile uint32_t ps_stop2_wake_gpiob_before_idr;
+static volatile uint32_t ps_stop2_wake_gpioc_before_idr;
+static volatile uint32_t ps_stop2_wake_dbgmcu_cr_before;
+static volatile uint32_t ps_stop2_wake_scb_icsr_before;
+static volatile uint32_t ps_stop2_wake_scb_scr_before;
+static volatile uint32_t ps_stop2_wake_scb_shcsr_before;
+static volatile uint32_t ps_stop2_wake_pwr_sr_before;
+static volatile uint32_t ps_stop2_wake_pwr_wusr_before;
+static volatile uint32_t ps_stop2_wake_nvic_ispr0_before;
+static volatile uint32_t ps_stop2_wake_nvic_ispr1_before;
+static volatile uint32_t ps_stop2_wake_nvic_ispr2_before;
+static volatile uint32_t ps_stop2_wake_nvic_ispr3_before;
 
 static void PS_HW6_RTOS_SendCurrentUiRenderCommand(void);
 
@@ -311,6 +350,345 @@ void PS_HW6_RTOS_RecordPmicIntExti(uint16_t gpio_pin, uint32_t level)
   g_ps_hw6_rtos_probe.pmic_int_last_irq_tick = ps_pmic_int_last_irq_tick;
 }
 
+static uint32_t PS_HW6_RTOS_Stop2WakePrimary(uint32_t source_mask)
+{
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_START) != 0UL)
+  {
+    return PS_HW6_RTOS_WAKE_CAUSE_START;
+  }
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_PMIC) != 0UL)
+  {
+    return PS_HW6_RTOS_WAKE_CAUSE_PMIC;
+  }
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_BUTTON) != 0UL)
+  {
+    return PS_HW6_RTOS_WAKE_CAUSE_BUTTON;
+  }
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_JOYSTICK) != 0UL)
+  {
+    return PS_HW6_RTOS_WAKE_CAUSE_JOYSTICK;
+  }
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_SENSOR) != 0UL)
+  {
+    return PS_HW6_RTOS_WAKE_CAUSE_SENSOR;
+  }
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_RTC) != 0UL)
+  {
+    return PS_HW6_RTOS_WAKE_CAUSE_RTC;
+  }
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_USB) != 0UL)
+  {
+    return PS_HW6_RTOS_WAKE_CAUSE_USB;
+  }
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_FAULT) != 0UL)
+  {
+    return PS_HW6_RTOS_WAKE_CAUSE_FAULT;
+  }
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_UNKNOWN) != 0UL)
+  {
+    return PS_HW6_RTOS_WAKE_CAUSE_UNKNOWN;
+  }
+  return PS_HW6_RTOS_WAKE_CAUSE_NONE;
+}
+
+void PS_HW6_RTOS_Stop2WakeClassifyBegin(void)
+{
+  ps_stop2_wake_button_edges_before =
+    g_ps_input_buttons_probe.isr_edge_count;
+  ps_stop2_wake_pmic_edges_before = ps_pmic_int_irq_count;
+  ps_stop2_wake_gpioa_before_idr = GPIOA->IDR;
+  ps_stop2_wake_gpiob_before_idr = GPIOB->IDR;
+  ps_stop2_wake_gpioc_before_idr = GPIOC->IDR;
+  ps_stop2_wake_dbgmcu_cr_before = DBGMCU->CR;
+  ps_stop2_wake_scb_icsr_before = SCB->ICSR;
+  ps_stop2_wake_scb_scr_before = SCB->SCR;
+  ps_stop2_wake_scb_shcsr_before = SCB->SHCSR;
+  ps_stop2_wake_pwr_sr_before = PWR->SR;
+  ps_stop2_wake_pwr_wusr_before = PWR->WUSR;
+  ps_stop2_wake_nvic_ispr0_before = NVIC->ISPR[0U];
+  ps_stop2_wake_nvic_ispr1_before = NVIC->ISPR[1U];
+  ps_stop2_wake_nvic_ispr2_before = NVIC->ISPR[2U];
+  ps_stop2_wake_nvic_ispr3_before = NVIC->ISPR[3U];
+
+  g_ps_hw6_rtos_probe.stop2_wake_source_mask = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_primary_cause =
+    PS_HW6_RTOS_WAKE_CAUSE_NONE;
+  g_ps_hw6_rtos_probe.stop2_wake_exti_rising = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_exti_falling = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_exti_imr = EXTI->IMR1;
+  g_ps_hw6_rtos_probe.stop2_wake_gpioa_before_idr =
+    ps_stop2_wake_gpioa_before_idr;
+  g_ps_hw6_rtos_probe.stop2_wake_gpiob_before_idr =
+    ps_stop2_wake_gpiob_before_idr;
+  g_ps_hw6_rtos_probe.stop2_wake_gpioc_before_idr =
+    ps_stop2_wake_gpioc_before_idr;
+  g_ps_hw6_rtos_probe.stop2_wake_gpioa_after_idr = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_gpiob_after_idr = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_gpioc_after_idr = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_button_edges_before =
+    ps_stop2_wake_button_edges_before;
+  g_ps_hw6_rtos_probe.stop2_wake_button_edges_after =
+    ps_stop2_wake_button_edges_before;
+  g_ps_hw6_rtos_probe.stop2_wake_pmic_edges_before =
+    ps_stop2_wake_pmic_edges_before;
+  g_ps_hw6_rtos_probe.stop2_wake_pmic_edges_after =
+    ps_stop2_wake_pmic_edges_before;
+  g_ps_hw6_rtos_probe.stop2_wake_dbgmcu_cr_before =
+    ps_stop2_wake_dbgmcu_cr_before;
+  g_ps_hw6_rtos_probe.stop2_wake_dbgmcu_cr_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_scb_icsr_before =
+    ps_stop2_wake_scb_icsr_before;
+  g_ps_hw6_rtos_probe.stop2_wake_scb_icsr_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_scb_scr_before =
+    ps_stop2_wake_scb_scr_before;
+  g_ps_hw6_rtos_probe.stop2_wake_scb_scr_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_scb_shcsr_before =
+    ps_stop2_wake_scb_shcsr_before;
+  g_ps_hw6_rtos_probe.stop2_wake_scb_shcsr_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_pwr_sr_before =
+    ps_stop2_wake_pwr_sr_before;
+  g_ps_hw6_rtos_probe.stop2_wake_pwr_sr_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_pwr_wusr_before =
+    ps_stop2_wake_pwr_wusr_before;
+  g_ps_hw6_rtos_probe.stop2_wake_pwr_wusr_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_pwr_wucr1 = PWR->WUCR1;
+  g_ps_hw6_rtos_probe.stop2_wake_pwr_wucr2 = PWR->WUCR2;
+  g_ps_hw6_rtos_probe.stop2_wake_pwr_wucr3 = PWR->WUCR3;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_ispr0_before =
+    ps_stop2_wake_nvic_ispr0_before;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_ispr1_before =
+    ps_stop2_wake_nvic_ispr1_before;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_ispr2_before =
+    ps_stop2_wake_nvic_ispr2_before;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_ispr3_before =
+    ps_stop2_wake_nvic_ispr3_before;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_ispr0_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_ispr1_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_ispr2_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_ispr3_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_iabr0_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_iabr1_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_iabr2_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_iabr3_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_iser0_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_iser1_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_iser2_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_iser3_after = 0UL;
+}
+
+void PS_HW6_RTOS_Stop2WakeClassifyAfterWake(void)
+{
+  uint32_t button_edges_after;
+  uint32_t exti_falling;
+  uint32_t exti_mask;
+  uint32_t exti_rising;
+  uint32_t gpioa_after;
+  uint32_t gpiob_after;
+  uint32_t gpioc_after;
+  uint32_t nvic_iabr0_after;
+  uint32_t nvic_iabr1_after;
+  uint32_t nvic_iabr2_after;
+  uint32_t nvic_iabr3_after;
+  uint32_t nvic_iser0_after;
+  uint32_t nvic_iser1_after;
+  uint32_t nvic_iser2_after;
+  uint32_t nvic_iser3_after;
+  uint32_t nvic_ispr0_after;
+  uint32_t nvic_ispr1_after;
+  uint32_t nvic_ispr2_after;
+  uint32_t nvic_ispr3_after;
+  uint32_t pmic_edges_after;
+  uint32_t source_mask = 0UL;
+
+  exti_rising = EXTI->RPR1;
+  exti_falling = EXTI->FPR1;
+  exti_mask = exti_rising | exti_falling;
+  gpioa_after = GPIOA->IDR;
+  gpiob_after = GPIOB->IDR;
+  gpioc_after = GPIOC->IDR;
+  button_edges_after = g_ps_input_buttons_probe.isr_edge_count;
+  pmic_edges_after = ps_pmic_int_irq_count;
+  nvic_ispr0_after = NVIC->ISPR[0U];
+  nvic_ispr1_after = NVIC->ISPR[1U];
+  nvic_ispr2_after = NVIC->ISPR[2U];
+  nvic_ispr3_after = NVIC->ISPR[3U];
+  nvic_iabr0_after = NVIC->IABR[0U];
+  nvic_iabr1_after = NVIC->IABR[1U];
+  nvic_iabr2_after = NVIC->IABR[2U];
+  nvic_iabr3_after = NVIC->IABR[3U];
+  nvic_iser0_after = NVIC->ISER[0U];
+  nvic_iser1_after = NVIC->ISER[1U];
+  nvic_iser2_after = NVIC->ISER[2U];
+  nvic_iser3_after = NVIC->ISER[3U];
+
+  if (((exti_mask & BTN_START_Pin) != 0UL) ||
+      ((button_edges_after != ps_stop2_wake_button_edges_before) &&
+       (g_ps_input_buttons_probe.last_button_id ==
+        (uint32_t)PS_INPUT_BUTTON_ID_START)) ||
+      (((ps_stop2_wake_gpioa_before_idr & BTN_START_Pin) != 0UL) &&
+       ((gpioa_after & BTN_START_Pin) == 0UL)) ||
+      ((gpioa_after & BTN_START_Pin) == 0UL))
+  {
+    source_mask |= PS_HW6_RTOS_WAKE_SOURCE_START;
+  }
+
+  if (((exti_mask & PS_HW6_RTOS_WAKE_BUTTON_PIN_MASK) != 0UL) ||
+      ((button_edges_after != ps_stop2_wake_button_edges_before) &&
+       (g_ps_input_buttons_probe.last_button_id >=
+        (uint32_t)PS_INPUT_BUTTON_ID_A) &&
+       (g_ps_input_buttons_probe.last_button_id <=
+        (uint32_t)PS_INPUT_BUTTON_ID_R)) ||
+      ((((ps_stop2_wake_gpiob_before_idr ^ gpiob_after) &
+         PS_HW6_RTOS_WAKE_BUTTON_PIN_MASK) != 0UL) &&
+       ((gpiob_after & PS_HW6_RTOS_WAKE_BUTTON_PIN_MASK) !=
+        PS_HW6_RTOS_WAKE_BUTTON_PIN_MASK)))
+  {
+    source_mask |= PS_HW6_RTOS_WAKE_SOURCE_BUTTON;
+  }
+
+  if (((exti_mask & JOY_INT_Pin) != 0UL) ||
+      (((ps_stop2_wake_gpioc_before_idr ^ gpioc_after) &
+        JOY_INT_Pin) != 0UL))
+  {
+    source_mask |= PS_HW6_RTOS_WAKE_SOURCE_JOYSTICK;
+  }
+
+  if (((exti_mask & MPU_INT_Pin) != 0UL) ||
+      (((ps_stop2_wake_gpiob_before_idr ^ gpiob_after) &
+        MPU_INT_Pin) != 0UL))
+  {
+    source_mask |= PS_HW6_RTOS_WAKE_SOURCE_SENSOR;
+  }
+
+  if (((exti_mask & PMIC_INT_Pin) != 0UL) ||
+      (pmic_edges_after != ps_stop2_wake_pmic_edges_before) ||
+      (((ps_stop2_wake_gpiob_before_idr & PMIC_INT_Pin) != 0UL) &&
+       ((gpiob_after & PMIC_INT_Pin) == 0UL)))
+  {
+    source_mask |= PS_HW6_RTOS_WAKE_SOURCE_PMIC;
+  }
+
+  if ((source_mask == 0UL) ||
+      ((exti_mask & ~PS_HW6_RTOS_WAKE_KNOWN_EXTI_MASK) != 0UL))
+  {
+    source_mask |= PS_HW6_RTOS_WAKE_SOURCE_UNKNOWN;
+    g_ps_hw6_rtos_probe.stop2_wake_unknown_count++;
+  }
+
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_START) != 0UL)
+  {
+    g_ps_hw6_rtos_probe.stop2_wake_start_count++;
+  }
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_BUTTON) != 0UL)
+  {
+    g_ps_hw6_rtos_probe.stop2_wake_button_count++;
+  }
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_JOYSTICK) != 0UL)
+  {
+    g_ps_hw6_rtos_probe.stop2_wake_joystick_count++;
+  }
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_SENSOR) != 0UL)
+  {
+    g_ps_hw6_rtos_probe.stop2_wake_sensor_count++;
+  }
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_PMIC) != 0UL)
+  {
+    g_ps_hw6_rtos_probe.stop2_wake_pmic_count++;
+  }
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_RTC) != 0UL)
+  {
+    g_ps_hw6_rtos_probe.stop2_wake_rtc_count++;
+  }
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_USB) != 0UL)
+  {
+    g_ps_hw6_rtos_probe.stop2_wake_usb_count++;
+  }
+  if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_FAULT) != 0UL)
+  {
+    g_ps_hw6_rtos_probe.stop2_wake_fault_count++;
+  }
+
+  g_ps_hw6_rtos_probe.stop2_wake_classify_count++;
+  g_ps_hw6_rtos_probe.stop2_wake_classify_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_rtos_probe.stop2_wake_source_mask = source_mask;
+  g_ps_hw6_rtos_probe.stop2_wake_primary_cause =
+    PS_HW6_RTOS_Stop2WakePrimary(source_mask);
+  g_ps_hw6_rtos_probe.stop2_wake_exti_rising = exti_rising;
+  g_ps_hw6_rtos_probe.stop2_wake_exti_falling = exti_falling;
+  g_ps_hw6_rtos_probe.stop2_wake_exti_imr = EXTI->IMR1;
+  g_ps_hw6_rtos_probe.stop2_wake_gpioa_before_idr =
+    ps_stop2_wake_gpioa_before_idr;
+  g_ps_hw6_rtos_probe.stop2_wake_gpiob_before_idr =
+    ps_stop2_wake_gpiob_before_idr;
+  g_ps_hw6_rtos_probe.stop2_wake_gpioc_before_idr =
+    ps_stop2_wake_gpioc_before_idr;
+  g_ps_hw6_rtos_probe.stop2_wake_gpioa_after_idr = gpioa_after;
+  g_ps_hw6_rtos_probe.stop2_wake_gpiob_after_idr = gpiob_after;
+  g_ps_hw6_rtos_probe.stop2_wake_gpioc_after_idr = gpioc_after;
+  g_ps_hw6_rtos_probe.stop2_wake_button_edges_before =
+    ps_stop2_wake_button_edges_before;
+  g_ps_hw6_rtos_probe.stop2_wake_button_edges_after =
+    button_edges_after;
+  g_ps_hw6_rtos_probe.stop2_wake_pmic_edges_before =
+    ps_stop2_wake_pmic_edges_before;
+  g_ps_hw6_rtos_probe.stop2_wake_pmic_edges_after =
+    pmic_edges_after;
+  g_ps_hw6_rtos_probe.stop2_wake_dbgmcu_cr_before =
+    ps_stop2_wake_dbgmcu_cr_before;
+  g_ps_hw6_rtos_probe.stop2_wake_dbgmcu_cr_after = DBGMCU->CR;
+  g_ps_hw6_rtos_probe.stop2_wake_scb_icsr_before =
+    ps_stop2_wake_scb_icsr_before;
+  g_ps_hw6_rtos_probe.stop2_wake_scb_icsr_after = SCB->ICSR;
+  g_ps_hw6_rtos_probe.stop2_wake_scb_scr_before =
+    ps_stop2_wake_scb_scr_before;
+  g_ps_hw6_rtos_probe.stop2_wake_scb_scr_after = SCB->SCR;
+  g_ps_hw6_rtos_probe.stop2_wake_scb_shcsr_before =
+    ps_stop2_wake_scb_shcsr_before;
+  g_ps_hw6_rtos_probe.stop2_wake_scb_shcsr_after = SCB->SHCSR;
+  g_ps_hw6_rtos_probe.stop2_wake_pwr_sr_before =
+    ps_stop2_wake_pwr_sr_before;
+  g_ps_hw6_rtos_probe.stop2_wake_pwr_sr_after = PWR->SR;
+  g_ps_hw6_rtos_probe.stop2_wake_pwr_wusr_before =
+    ps_stop2_wake_pwr_wusr_before;
+  g_ps_hw6_rtos_probe.stop2_wake_pwr_wusr_after = PWR->WUSR;
+  g_ps_hw6_rtos_probe.stop2_wake_pwr_wucr1 = PWR->WUCR1;
+  g_ps_hw6_rtos_probe.stop2_wake_pwr_wucr2 = PWR->WUCR2;
+  g_ps_hw6_rtos_probe.stop2_wake_pwr_wucr3 = PWR->WUCR3;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_ispr0_before =
+    ps_stop2_wake_nvic_ispr0_before;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_ispr1_before =
+    ps_stop2_wake_nvic_ispr1_before;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_ispr2_before =
+    ps_stop2_wake_nvic_ispr2_before;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_ispr3_before =
+    ps_stop2_wake_nvic_ispr3_before;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_ispr0_after =
+    nvic_ispr0_after;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_ispr1_after =
+    nvic_ispr1_after;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_ispr2_after =
+    nvic_ispr2_after;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_ispr3_after =
+    nvic_ispr3_after;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_iabr0_after =
+    nvic_iabr0_after;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_iabr1_after =
+    nvic_iabr1_after;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_iabr2_after =
+    nvic_iabr2_after;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_iabr3_after =
+    nvic_iabr3_after;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_iser0_after =
+    nvic_iser0_after;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_iser1_after =
+    nvic_iser1_after;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_iser2_after =
+    nvic_iser2_after;
+  g_ps_hw6_rtos_probe.stop2_wake_nvic_iser3_after =
+    nvic_iser3_after;
+}
+
 static UINT PS_HW6_RTOS_SnapshotPool(TX_BYTE_POOL *pool,
                                       uint32_t *available,
                                       uint32_t *fragments)
@@ -370,6 +748,21 @@ static void PS_HW6_RTOS_ResetProbe(void)
   ps_pmic_int_last_level = 0UL;
   ps_pmic_int_last_irq_tick = 0UL;
   ps_pmic_int_consumed_count = 0UL;
+  ps_stop2_wake_button_edges_before = 0UL;
+  ps_stop2_wake_pmic_edges_before = 0UL;
+  ps_stop2_wake_gpioa_before_idr = 0UL;
+  ps_stop2_wake_gpiob_before_idr = 0UL;
+  ps_stop2_wake_gpioc_before_idr = 0UL;
+  ps_stop2_wake_dbgmcu_cr_before = 0UL;
+  ps_stop2_wake_scb_icsr_before = 0UL;
+  ps_stop2_wake_scb_scr_before = 0UL;
+  ps_stop2_wake_scb_shcsr_before = 0UL;
+  ps_stop2_wake_pwr_sr_before = 0UL;
+  ps_stop2_wake_pwr_wusr_before = 0UL;
+  ps_stop2_wake_nvic_ispr0_before = 0UL;
+  ps_stop2_wake_nvic_ispr1_before = 0UL;
+  ps_stop2_wake_nvic_ispr2_before = 0UL;
+  ps_stop2_wake_nvic_ispr3_before = 0UL;
   g_ps_hw6_audio_clock_probe_request = 0UL;
   g_ps_hw6_audio_clock_probe_release_request = 0UL;
   g_ps_hw6_runtime_reactive_stub_request = 0UL;

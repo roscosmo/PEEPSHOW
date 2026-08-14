@@ -4834,6 +4834,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
       (uint32_t)quiesce_status;
     if (quiesce_status == HAL_OK)
     {
+      PS_HW6_RTOS_Stop2WakeClassifyBegin();
       g_ps_hw6_owner_sm_probe.stop2_wake_start_idr =
         BTN_START_GPIO_Port->IDR;
       __HAL_GPIO_EXTI_CLEAR_IT(BTN_START_Pin);
@@ -4859,6 +4860,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
 
         g_ps_hw6_owner_sm_probe.stop2_wake_tick = (uint32_t)tx_time_get();
         g_ps_hw6_owner_sm_probe.stop2_wake_end_idr = BTN_START_GPIO_Port->IDR;
+        PS_HW6_RTOS_Stop2WakeClassifyAfterWake();
         g_ps_hw6_owner_sm_probe.stop2_clock_restore_status =
           (uint32_t)clock_restore_status;
         PS_HW6_TraceSleep(PS_HW6_TRACE_SLEEP_STAGE_WAKE_STOP2,

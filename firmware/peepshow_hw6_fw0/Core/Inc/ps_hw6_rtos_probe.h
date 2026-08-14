@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (24UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (26UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -195,6 +195,65 @@ typedef struct
   uint32_t stop2_auto_queue_pending_mask;
   uint32_t stop2_auto_eligibility_status;
   uint32_t stop2_auto_entry_status;
+
+  uint32_t stop2_wake_classify_count;
+  uint32_t stop2_wake_classify_tick;
+  uint32_t stop2_wake_source_mask;
+  uint32_t stop2_wake_primary_cause;
+  uint32_t stop2_wake_unknown_count;
+  uint32_t stop2_wake_start_count;
+  uint32_t stop2_wake_button_count;
+  uint32_t stop2_wake_joystick_count;
+  uint32_t stop2_wake_sensor_count;
+  uint32_t stop2_wake_pmic_count;
+  uint32_t stop2_wake_rtc_count;
+  uint32_t stop2_wake_usb_count;
+  uint32_t stop2_wake_fault_count;
+  uint32_t stop2_wake_exti_rising;
+  uint32_t stop2_wake_exti_falling;
+  uint32_t stop2_wake_exti_imr;
+  uint32_t stop2_wake_gpioa_before_idr;
+  uint32_t stop2_wake_gpiob_before_idr;
+  uint32_t stop2_wake_gpioc_before_idr;
+  uint32_t stop2_wake_gpioa_after_idr;
+  uint32_t stop2_wake_gpiob_after_idr;
+  uint32_t stop2_wake_gpioc_after_idr;
+  uint32_t stop2_wake_button_edges_before;
+  uint32_t stop2_wake_button_edges_after;
+  uint32_t stop2_wake_pmic_edges_before;
+  uint32_t stop2_wake_pmic_edges_after;
+  uint32_t stop2_wake_dbgmcu_cr_before;
+  uint32_t stop2_wake_dbgmcu_cr_after;
+  uint32_t stop2_wake_scb_icsr_before;
+  uint32_t stop2_wake_scb_icsr_after;
+  uint32_t stop2_wake_scb_scr_before;
+  uint32_t stop2_wake_scb_scr_after;
+  uint32_t stop2_wake_scb_shcsr_before;
+  uint32_t stop2_wake_scb_shcsr_after;
+  uint32_t stop2_wake_pwr_sr_before;
+  uint32_t stop2_wake_pwr_sr_after;
+  uint32_t stop2_wake_pwr_wusr_before;
+  uint32_t stop2_wake_pwr_wusr_after;
+  uint32_t stop2_wake_pwr_wucr1;
+  uint32_t stop2_wake_pwr_wucr2;
+  uint32_t stop2_wake_pwr_wucr3;
+  uint32_t stop2_wake_nvic_ispr0_before;
+  uint32_t stop2_wake_nvic_ispr1_before;
+  uint32_t stop2_wake_nvic_ispr2_before;
+  uint32_t stop2_wake_nvic_ispr3_before;
+  uint32_t stop2_wake_nvic_ispr0_after;
+  uint32_t stop2_wake_nvic_ispr1_after;
+  uint32_t stop2_wake_nvic_ispr2_after;
+  uint32_t stop2_wake_nvic_ispr3_after;
+  uint32_t stop2_wake_nvic_iabr0_after;
+  uint32_t stop2_wake_nvic_iabr1_after;
+  uint32_t stop2_wake_nvic_iabr2_after;
+  uint32_t stop2_wake_nvic_iabr3_after;
+  uint32_t stop2_wake_nvic_iser0_after;
+  uint32_t stop2_wake_nvic_iser1_after;
+  uint32_t stop2_wake_nvic_iser2_after;
+  uint32_t stop2_wake_nvic_iser3_after;
+
   uint32_t audio_clock_request_count;
   uint32_t audio_clock_release_count;
   uint32_t audio_clock_last_reason;
@@ -346,6 +405,8 @@ void PS_HW6_RTOS_LowPowerEnter(void);
 void PS_HW6_RTOS_LowPowerExit(void);
 ULONG PS_HW6_RTOS_LowPowerTimerAdjust(void);
 void PS_HW6_RTOS_RecordPmicIntExti(uint16_t gpio_pin, uint32_t level);
+void PS_HW6_RTOS_Stop2WakeClassifyBegin(void);
+void PS_HW6_RTOS_Stop2WakeClassifyAfterWake(void);
 
 #ifdef __cplusplus
 }

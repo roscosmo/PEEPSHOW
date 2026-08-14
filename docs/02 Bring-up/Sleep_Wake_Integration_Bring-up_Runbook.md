@@ -71,6 +71,7 @@ Any owner timeout during quiesce is a failed sleep-entry test.
 
 Unknown wake reasons are defects until explained.
 
+HW6 FW0 controlled STOP2 START-wake evidence (`EV-HW6-20260814-P1-STOP2WAKE-056`) must be interpreted with debug state included. `DBGMCU->CR = 0x6` (`DBG_STOP | DBG_STANDBY`) caused an immediate return that correctly classified as `UNKNOWN`; clearing the real DBGMCU control register at `0xE0044004` to `0x0` produced the expected physical START wake classification with PA4 low and START edge evidence. Any future STOP2 wake/current run must record `DBGMCU->CR` before/after entry.
 ---
 
 ## Baseline State Sequence
