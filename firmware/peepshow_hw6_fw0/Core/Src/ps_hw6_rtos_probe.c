@@ -225,6 +225,7 @@ volatile uint32_t g_ps_hw6_admission_power_shutdown_dry_run_request;
 volatile uint32_t g_ps_hw6_admission_power_battery_dry_run_request;
 volatile uint32_t g_ps_hw6_admission_power_cancel_dry_run_request;
 volatile uint32_t g_ps_hw6_power_stop2_auto_idle_dry_run_request;
+volatile uint32_t g_ps_hw6_power_stop2_auto_idle_entry_request;
 volatile uint32_t g_ps_hw6_power_stop2_lpbam_prepare_request;
 volatile uint32_t g_ps_hw6_power_stop2_lpbam_abort_request;
 volatile uint32_t g_ps_hw6_power_stop2_lpbam_abort_late_test_request;
@@ -786,6 +787,7 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_admission_power_battery_dry_run_request = 0UL;
   g_ps_hw6_admission_power_cancel_dry_run_request = 0UL;
   g_ps_hw6_power_stop2_auto_idle_dry_run_request = 0UL;
+  g_ps_hw6_power_stop2_auto_idle_entry_request = 0UL;
   g_ps_hw6_power_stop2_lpbam_prepare_request = 0UL;
   g_ps_hw6_power_stop2_lpbam_abort_request = 0UL;
   g_ps_hw6_power_stop2_lpbam_abort_late_test_request = 0UL;
@@ -877,6 +879,8 @@ static void PS_HW6_RTOS_ResetProbe(void)
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.stop2_auto_entry_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.stop2_auto_debug_force_enable =
+    0UL;
   g_ps_hw6_rtos_probe.stop2_display_wait_backend_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.stop2_lpbam_prepare_send_status =
@@ -2564,7 +2568,8 @@ static uint32_t PS_HW6_RTOS_Stop2AutoDynamicBlockerMask(
 
 static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2AutoIdleCheck(
   uint32_t now_tick,
-  uint32_t allow_entry)
+  uint32_t allow_entry,
+  uint32_t debug_force_enable)
 {
   HAL_StatusTypeDef eligibility_status;
   HAL_StatusTypeDef entry_status = HAL_OK;
@@ -2589,8 +2594,11 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2AutoIdleCheck(
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.stop2_auto_entry_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.stop2_auto_debug_force_enable =
+    debug_force_enable;
 
   if ((KNOB_POWER_AUTO_STOP2_ENABLE == 0) && (allow_entry != 0UL) &&
+      (debug_force_enable == 0UL) &&
       (ps_stop2_lpbam_abort_late_test_active == 0UL))
   {
     blocker_mask |= PS_HW6_RTOS_STOP2_BLOCK_AUTO_DISABLED;
@@ -2723,7 +2731,7 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2LpbamAbortLateTest(
   ps_stop2_lpbam_late_blocker_armed = 0UL;
 
   PS_HW6_DisplayOwner_DebugForceNextLpbamReady();
-  status = PS_HW6_RTOS_RunStop2AutoIdleCheck(now_tick, 1UL);
+  status = PS_HW6_RTOS_RunStop2AutoIdleCheck(now_tick, 1UL, 0UL);
 
   ps_stop2_lpbam_abort_late_test_active = 0UL;
   ps_stop2_lpbam_late_blocker_armed = 0UL;
@@ -2761,7 +2769,21 @@ static void PS_HW6_RTOS_RunStop2AutoIdlePeriodic(uint32_t now_tick)
   }
 
   g_ps_hw6_rtos_probe.stop2_auto_next_tick = now_tick + period_ticks;
-  (void)PS_HW6_RTOS_RunStop2AutoIdleCheck(now_tick, 1UL);
+  (void)PS_HW6_RTOS_RunStop2AutoIdleCheck(now_tick, 1UL, 0UL);
+}
+
+static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2AutoIdleEntryTest(
+  uint32_t now_tick)
+{
+  uint32_t required_idle_ticks =
+    PS_HW6_RTOS_MsToTicks((uint32_t)KNOB_POWER_AUTO_STOP2_IDLE_MS);
+
+  g_ps_hw6_rtos_probe.stop2_auto_debug_force_entry_count++;
+  g_ps_hw6_rtos_probe.stop2_auto_debug_force_entry_tick = now_tick;
+  g_ps_hw6_rtos_probe.stop2_auto_idle_start_tick =
+    now_tick - required_idle_ticks;
+
+  return PS_HW6_RTOS_RunStop2AutoIdleCheck(now_tick, 1UL, 1UL);
 }
 
 static UINT PS_HW6_RTOS_SendDisplayUiRenderCommand(
@@ -4565,7 +4587,14 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
       g_ps_hw6_power_stop2_auto_idle_dry_run_request = 0UL;
-      (void)PS_HW6_RTOS_RunStop2AutoIdleCheck((uint32_t)now, 0UL);
+      (void)PS_HW6_RTOS_RunStop2AutoIdleCheck((uint32_t)now, 0UL, 0UL);
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
+        (g_ps_hw6_power_stop2_auto_idle_entry_request != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      g_ps_hw6_power_stop2_auto_idle_entry_request = 0UL;
+      (void)PS_HW6_RTOS_RunStop2AutoIdleEntryTest((uint32_t)now);
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
         (g_ps_hw6_power_stop2_lpbam_prepare_request != 0UL) &&

@@ -8,6 +8,7 @@ set $clk = &g_ps_hw6_clock_policy_probe
 printf "--- HW6 automatic STOP2 idle admission scaffold ---\n"
 printf "rtos api/runtime/boot = %u / %u / %u\n", $rt->version, $rt->runtime_complete, $rt->boot_power_done
 printf "auto enabled/check/entry/skip = %u / %u / %u / %u\n", $rt->stop2_auto_enabled, $rt->stop2_auto_check_count, $rt->stop2_auto_entry_count, $rt->stop2_auto_skip_count
+printf "auto force enable/count/tick = %u / %u / %u\n", $rt->stop2_auto_debug_force_enable, $rt->stop2_auto_debug_force_entry_count, $rt->stop2_auto_debug_force_entry_tick
 printf "auto status/tick/next = 0x%x / %u / %u\n", $rt->stop2_auto_last_status, $rt->stop2_auto_last_tick, $rt->stop2_auto_next_tick
 printf "auto idle start/live/required ticks = %u / %u / %u\n", $rt->stop2_auto_idle_start_tick, $rt->stop2_auto_idle_ticks, $rt->stop2_auto_required_idle_ticks
 printf "auto block/pending/queue = 0x%x / 0x%x / 0x%x\n", $rt->stop2_auto_blocker_mask, $rt->stop2_auto_pending_mask, $rt->stop2_auto_queue_pending_mask

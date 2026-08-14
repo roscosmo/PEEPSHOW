@@ -33,6 +33,8 @@ Unknown wake reasons remain defects until explained.
 
 - `EV-HW6-20260814-P1-STOP2HELD-061` validates the default held-frame display wait backend on `HW6-UNIT-001` using the automatic STOP2 idle dry-run. Probe API `31` reported backend request/selected/status/held `1 / 1 / 0x0 / 1`, stable display state, clear hard blockers, eligibility pending only owner quiesce, and dry-run pending `OWNER_QUIESCE | IDLE_WINDOW`; no real STOP2 entry occurred. This is correctness evidence for display-wait admission policy, not current, LPBAM playback, real automatic entry, or repeated-cycle evidence.
 
+- `EV-HW6-20260814-P1-STOP2AUTOENTRY-062` validates explicit one-shot held-frame automatic STOP2 entry on `HW6-UNIT-001`. Probe API `32` reported forced debug auto-entry `1 / 1`, auto entry status `0x0`, held-frame backend `1 / 1 / 0x0 / 1`, owner STOP2 count `0 -> 1`, quiesce/enter/clock/recover all `0x0`, debug-low-power disabled, `PWR_SR.STOPF = 0x2`, PA4 IDR `0x6055 -> 0x6045`, and START wake source/primary `0x1 / 1`. This is correctness evidence for the explicit held-frame auto-entry path and START wake/resume, not current, production periodic auto-sleep, LPBAM playback, or repeated-cycle evidence.
+
 Related:
 
 - [[Power_and_Sleep_Policy]]
