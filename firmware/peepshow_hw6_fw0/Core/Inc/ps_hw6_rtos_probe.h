@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (30UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (31UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -162,6 +162,10 @@ typedef struct
   uint32_t stop2_eligibility_clock_domains;
   uint32_t stop2_eligibility_readback_domains;
   uint32_t stop2_eligibility_lpbam_ready;
+  uint32_t stop2_display_wait_backend_requested;
+  uint32_t stop2_display_wait_backend_selected;
+  uint32_t stop2_display_wait_backend_status;
+  uint32_t stop2_display_wait_backend_held_ready;
   uint32_t stop2_eligibility_power_state;
   uint32_t stop2_eligibility_pmic_state;
   uint32_t stop2_eligibility_battery_policy;

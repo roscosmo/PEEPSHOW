@@ -8,6 +8,7 @@ printf "elig status/block/pending = 0x%x / 0x%x / 0x%x\n", $rt->stop2_control_el
 printf "entry attempts/status     = %u / 0x%x\n", $rt->stop2_control_entry_attempt_count, $rt->stop2_control_entry_status
 printf "stop2 count before/after  = %u / %u\n", $rt->stop2_control_stop2_count_before, $rt->stop2_control_stop2_count_after
 printf "elig ready/block/pending  = %u / 0x%x / 0x%x\n", $rt->stop2_eligibility_ready, $rt->stop2_eligibility_blocker_mask, $rt->stop2_eligibility_pending_mask
+printf "display backend req/selected/status/held = %u / %u / 0x%x / %u\n", $rt->stop2_display_wait_backend_requested, $rt->stop2_display_wait_backend_selected, $rt->stop2_display_wait_backend_status, $rt->stop2_display_wait_backend_held_ready
 printf "display lpbam ready/page/render/status = %u / %u / %u / 0x%x\n", $ow->display_lpbam_ready, $ow->display_lpbam_ready_page, $ow->display_lpbam_ready_render_count, $ow->display_lpbam_status
 printf "display lpbam prep/clear/reason = %u / %u / %u\n", $ow->display_lpbam_prepare_count, $ow->display_lpbam_clear_count, $ow->display_lpbam_clear_reason
 printf "display lpbam prep status/abort/status = 0x%x / %u / 0x%x\n", $ow->display_lpbam_prepare_status, $ow->display_lpbam_abort_count, $ow->display_lpbam_abort_status
@@ -36,6 +37,7 @@ printf "wake NVIC ISER after  = 0x%x / 0x%x / 0x%x / 0x%x\n", $rt->stop2_wake_nv
 printf "power state/pmic/battery   = %u / %u / %u\n", $rt->stop2_eligibility_power_state, $rt->stop2_eligibility_pmic_state, $rt->stop2_eligibility_battery_policy
 printf "runtime class/exec/life   = %u / %u / %u\n", $rt->stop2_eligibility_runtime_class, $rt->stop2_eligibility_runtime_execution, $rt->stop2_eligibility_runtime_lifecycle
 printf "blockers: BOOT=0x1 POWER=0x2 PMIC=0x4 BATT=0x8 CLOCK_CAP=0x10 CLOCK_READBACK=0x20\n"
+printf "display backends: NONE=0 HELD_FRAME=1 LPBAM=2\n"
 printf "wake masks: START=0x1 BUTTON=0x2 JOY=0x4 SENSOR=0x8 PMIC=0x10 RTC=0x20 USB=0x40 FAULT=0x80 UNKNOWN=0x80000000\n"
 printf "wake causes: NONE=0 START=1 BUTTON=2 JOY=3 SENSOR=4 PMIC=5 RTC=6 USB=7 FAULT=8 UNKNOWN=9\n"
 printf "status: HAL_OK=0x0 HAL_ERROR=0x1 UNAVAILABLE=0xfffffffe NOT_RUN=0xffffffff\n"

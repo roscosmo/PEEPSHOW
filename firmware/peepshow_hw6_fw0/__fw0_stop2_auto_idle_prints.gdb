@@ -18,6 +18,7 @@ printf "runtime class/exec/life/caps = %u / %u / %u / 0x%x\n", $rt->runtime_curr
 printf "ui page/nav/modal/pkg/shutdown/pending = %u / %u / %u / %u / %u / %u\n", $ui->current_page, $ui->nav_state, $ui->modal_state, $ui->package_state, $ui->shutdown_state, $ui->pending_action
 printf "display ui req/render/page/status = %u / %u / %u / 0x%x\n", $ow->display_ui_request_count, $ow->display_ui_render_count, $ow->display_ui_page, $ow->display_ui_status
 printf "display complete/success = %u / %u\n", $ow->display_complete, $ow->display_success
+printf "display backend req/selected/status/held = %u / %u / 0x%x / %u\n", $rt->stop2_display_wait_backend_requested, $rt->stop2_display_wait_backend_selected, $rt->stop2_display_wait_backend_status, $rt->stop2_display_wait_backend_held_ready
 printf "display lpbam ready/page/render/status = %u / %u / %u / 0x%x\n", $ow->display_lpbam_ready, $ow->display_lpbam_ready_page, $ow->display_lpbam_ready_render_count, $ow->display_lpbam_status
 printf "display lpbam prep/clear/reason = %u / %u / %u\n", $ow->display_lpbam_prepare_count, $ow->display_lpbam_clear_count, $ow->display_lpbam_clear_reason
 printf "display lpbam prep status/abort/status = 0x%x / %u / 0x%x\n", $ow->display_lpbam_prepare_status, $ow->display_lpbam_abort_count, $ow->display_lpbam_abort_status
@@ -28,4 +29,5 @@ printf "clock caps/dom/readback/lpbam = 0x%x / 0x%x / 0x%x / %u\n", $clk->stop2_
 printf "owner stop2 count/start/wake/end = %u / %u / %u / %u\n", $sm->stop2_request_count, $sm->stop2_start_tick, $sm->stop2_wake_tick, $sm->stop2_end_tick
 printf "blockers: BOOT=0x1 POWER=0x2 PMIC=0x4 BATT=0x8 CLOCK_CAP=0x10 CLOCK_READBACK=0x20 DISABLED=0x40 RUNTIME=0x80 UI=0x100 DISPLAY=0x200 STORAGE_USB=0x400 INPUT=0x800 QUEUE=0x1000 LPBAM=0x2000\n"
 printf "pending: OWNER_QUIESCE=0x1 LPBAM=0x2 IDLE_WINDOW=0x4\n"
+printf "display backends: NONE=0 HELD_FRAME=1 LPBAM=2\n"
 printf "status: HAL_OK=0x0 HAL_ERROR=0x1 UNAVAILABLE=0xfffffffe NOT_RUN=0xffffffff\n"

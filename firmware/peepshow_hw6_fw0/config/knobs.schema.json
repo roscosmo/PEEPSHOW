@@ -44,6 +44,7 @@
     "power_clock_realtime_balanced_hz",
     "power_clock_io_high_hz",
     "power_clock_pll2_autogate_enable",
+    "power_stop2_display_wait_backend",
     "power_auto_stop2_enable",
     "power_auto_stop2_check_period_ms",
     "power_auto_stop2_idle_ms"
@@ -505,6 +506,18 @@
       "class": "protected_policy",
       "path": "platform.knobs.power.clock_pll2_autogate_enable",
       "description": "When true, thPower may later gate PLL2 when neither SAI nor OCTOSPI owns it. Default false keeps FW0 conservative while probes prove request/release behavior."
+    },
+    "power_stop2_display_wait_backend": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2,
+      "default": 1,
+      "unit": "enum",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.stop2_display_wait_backend",
+      "description": "STOP2 display waiting backend selector: 1 = held frame, 2 = LPBAM display handoff. Default 1 enables baseline STOP2/current bring-up before HW6 LPBAM payloads are implemented."
     },
     "power_auto_stop2_enable": {
       "type": "boolean",

@@ -31,6 +31,8 @@ Unknown wake reasons remain defects until explained.
 
 - `EV-HW6-20260813-P1-STOP2CTRL-053` validates default-off controlled STOP2 entry on `HW6-UNIT-001`. `thPower` first reported eligibility status/block/pending `0x0 / 0x0 / 0x3`, then entered real STOP2 once, woke from physical START, restored clocks, and reported owner quiesce/enter/clock/recover/last statuses all `0x0`. This is correctness evidence for admission-gated STOP2 entry and wake recovery, not current, energy, LPBAM waiting visuals, tick compensation, or repeated-cycle evidence.
 
+- `EV-HW6-20260814-P1-STOP2HELD-061` validates the default held-frame display wait backend on `HW6-UNIT-001` using the automatic STOP2 idle dry-run. Probe API `31` reported backend request/selected/status/held `1 / 1 / 0x0 / 1`, stable display state, clear hard blockers, eligibility pending only owner quiesce, and dry-run pending `OWNER_QUIESCE | IDLE_WINDOW`; no real STOP2 entry occurred. This is correctness evidence for display-wait admission policy, not current, LPBAM playback, real automatic entry, or repeated-cycle evidence.
+
 Related:
 
 - [[Power_and_Sleep_Policy]]
