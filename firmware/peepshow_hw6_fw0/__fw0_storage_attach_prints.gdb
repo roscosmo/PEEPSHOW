@@ -1,0 +1,15 @@
+printf "--- HW6 non-destructive storage attach / flash check ---\n"
+printf "version/storage state/flash state = %u / %u / %u\n", g_ps_hw6_owner_sm_probe.version, g_ps_hw6_owner_sm_probe.current_state[7], g_ps_hw6_owner_sm_probe.current_state[8]
+printf "attach count/start/status    = %u / %u / 0x%x\n", g_ps_hw6_owner_sm_probe.storage_attach_request_count, g_ps_hw6_owner_sm_probe.storage_attach_start_tick, g_ps_hw6_owner_sm_probe.storage_attach_last_status
+printf "attach storage/flash state   = %u / %u\n", g_ps_hw6_owner_sm_probe.storage_attach_storage_state, g_ps_hw6_owner_sm_probe.storage_attach_flash_state
+printf "storage clock req/rel/reason/caps/status = %u / %u / %u / 0x%x / 0x%x\n", g_ps_hw6_rtos_probe.storage_clock_request_count, g_ps_hw6_rtos_probe.storage_clock_release_count, g_ps_hw6_rtos_probe.storage_clock_last_reason, g_ps_hw6_rtos_probe.storage_clock_last_capabilities, g_ps_hw6_rtos_probe.storage_clock_last_status
+printf "storage clock export/reclaim/flash/attach/post/release = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", g_ps_hw6_rtos_probe.storage_clock_export_status, g_ps_hw6_rtos_probe.storage_clock_reclaim_status, g_ps_hw6_rtos_probe.storage_clock_flash_init_status, g_ps_hw6_rtos_probe.storage_clock_attach_status, g_ps_hw6_rtos_probe.storage_clock_post_stop_resume_status, g_ps_hw6_rtos_probe.storage_clock_release_status
+printf "flash jedec status/id/match  = 0x%x / %02x %02x %02x / %u\n", g_ps_hw6_owner_sm_probe.flash_jedec_status, g_ps_hw6_owner_sm_probe.flash_jedec_id[0], g_ps_hw6_owner_sm_probe.flash_jedec_id[1], g_ps_hw6_owner_sm_probe.flash_jedec_id[2], g_ps_hw6_owner_sm_probe.flash_identity_match
+printf "layout status/region/start/len = 0x%x / %u / 0x%x / %u\n", g_ps_hw6_owner_sm_probe.storage_layout_validation_status, g_ps_hw6_owner_sm_probe.storage_layout_region_count, g_ps_hw6_owner_sm_probe.storage_fxlx_region_start, g_ps_hw6_owner_sm_probe.storage_fxlx_region_length
+printf "flash dpd/block/ospi/driver = 0x%x / 0x%x / 0x%x / 0x%x\n", g_ps_hw6_owner_sm_probe.flash_deep_power_down_status, g_ps_hw6_owner_sm_probe.flash_block_last_status, g_ps_hw6_owner_sm_probe.flash_ospi_error_after, g_ps_hw6_owner_sm_probe.flash_driver_last_status
+printf "storage OSPI park/restore count = %u / %u\n", g_ps_hw6_owner_sm_probe.storage_ospi_park_count, g_ps_hw6_owner_sm_probe.storage_ospi_restore_count
+printf "storage OSPI park ENR1/2 before/after = 0x%x / 0x%x / 0x%x / 0x%x\n", g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2enr1_before, g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2enr2_before, g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2enr1_after, g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2enr2_after
+printf "expected good attach: status 0x0, storage state 2, flash state 8, identity match 1\n"
+printf "states: STORAGE_FLASH_READY=2 FLASH_DEEP_POWER_DOWN=8\n"
+printf "storage clock reasons: NONE=0 MSC_EXPORT=1 MSC_RECLAIM=2 FLASH_INIT=3 RELEASE=4 ATTACH=5 POST_STOP_RESUME=6\n"
+printf "status: HAL_OK=0x0 NOT_RUN=0xffffffff\n"

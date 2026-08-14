@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (32UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (34UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -298,6 +298,8 @@ typedef struct
   uint32_t storage_clock_export_status;
   uint32_t storage_clock_reclaim_status;
   uint32_t storage_clock_flash_init_status;
+  uint32_t storage_clock_attach_status;
+  uint32_t storage_clock_post_stop_resume_status;
   uint32_t storage_clock_release_status;
 
   uint32_t runtime_event_count;
@@ -427,6 +429,7 @@ UINT PS_HW6_RTOS_RequestUsbMscExit(void);
 UINT PS_HW6_RTOS_DebugRequestUsbExport(void);
 UINT PS_HW6_RTOS_DebugRequestUsbReclaim(void);
 UINT PS_HW6_RTOS_DebugRequestStorageFlashInit(void);
+UINT PS_HW6_RTOS_DebugRequestStorageAttach(void);
 void PS_HW6_RTOS_LowPowerTimerSetup(ULONG count);
 void PS_HW6_RTOS_LowPowerEnter(void);
 void PS_HW6_RTOS_LowPowerExit(void);

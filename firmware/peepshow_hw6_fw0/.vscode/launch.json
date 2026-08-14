@@ -17,6 +17,21 @@
             "serverpath": "C:/ST/STM32CubeCLT_1.15.1/STLink-gdb-server/bin/ST-LINK_gdbserver.exe",
             "stm32cubeprogrammer": "C:/ST/STM32CubeCLT_1.15.1/STM32CubeProgrammer/bin",
             "showDevDebugOutput": "none",
-        }
+        },
+
+        {
+  "name": "HW6 FW0: Attach with ST-LINK",
+  "type": "cortex-debug",
+  "request": "attach",
+  "cwd": "${workspaceFolder}",
+  "executable": "${workspaceFolder}/build/Debug/peepshow_hw6_fw0.elf",
+  "device": "STM32U575RIT6",
+  "servertype": "stlink",
+  "interface": "swd",
+  "gdbPath": "C:/ST/STM32CubeCLT_1.15.1/GNU-tools-for-STM32/bin/arm-none-eabi-gdb.exe",
+  "serverpath": "C:/ST/STM32CubeCLT_1.15.1/STLink-gdb-server/bin/ST-LINK_gdbserver.exe",
+  "stm32cubeprogrammer": "C:/ST/STM32CubeCLT_1.15.1/STM32CubeProgrammer/bin",
+  "showDevDebugOutput": "none"
+}
     ]
 }

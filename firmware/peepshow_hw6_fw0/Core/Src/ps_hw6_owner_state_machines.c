@@ -836,6 +836,8 @@ static ps_storage_filex_levelx_package_validate_result_t
   ps_storage_package_validate_result;
 static uint8_t ps_nina_rx_buffer[PS_HW6_NINA_RX_BUFFER_SIZE];
 static ps_status_t PS_HW6_SM_EnsureFlashAwake(void);
+static void PS_HW6_SM_ParkOspiClocksForStop(void);
+static void PS_HW6_SM_RestoreOspiClocksAfterStop(void);
 static HAL_StatusTypeDef PS_HW6_SM_ParkUsb(void);
 static void PS_HW6_SM_RecordUsbExportEntryState(void);
 static void PS_HW6_SM_UpdateUsbHostAvailability(uint32_t event);
@@ -2515,6 +2517,7 @@ static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForFlashReady(
     (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
                               FLASH_EV_REQUEST_DEEP_POWER_DOWN,
                               status);
+    PS_HW6_SM_ParkOspiClocksForStop();
     (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
                               STORAGE_EV_FLASH_READY,
                               status);
@@ -2731,6 +2734,27 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
   return status;
 }
 
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_AttachStorage(void)
+{
+  HAL_StatusTypeDef status;
+
+  g_ps_hw6_owner_sm_probe.storage_attach_request_count++;
+  g_ps_hw6_owner_sm_probe.storage_attach_start_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_sm_probe.storage_attach_last_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+
+  status = PS_HW6_SM_PrepareStorageForFlashReady(0UL);
+
+  g_ps_hw6_owner_sm_probe.storage_attach_storage_state =
+    g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE];
+  g_ps_hw6_owner_sm_probe.storage_attach_flash_state =
+    g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH];
+  g_ps_hw6_owner_sm_probe.storage_attach_last_status =
+    (uint32_t)status;
+  return status;
+}
+
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_InitializeFlash(void)
 {
   HAL_StatusTypeDef status;
@@ -2862,6 +2886,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_InitializeFlash(void)
     (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
                               FLASH_EV_REQUEST_DEEP_POWER_DOWN,
                               status);
+    PS_HW6_SM_ParkOspiClocksForStop();
     if (recovery_required != 0UL)
     {
       (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
@@ -3296,6 +3321,7 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeStorage(void)
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
                               FLASH_EV_REQUEST_DEEP_POWER_DOWN, status);
+    PS_HW6_SM_ParkOspiClocksForStop();
     (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
                               STORAGE_EV_FLASH_READY, status);
   }
@@ -3327,6 +3353,7 @@ static ps_status_t PS_HW6_SM_EnsureFlashAwake(void)
 
   if (ps_flash_device.state == PS_DEV_AT25SL128A_STATE_DEEP_POWER_DOWN)
   {
+    PS_HW6_SM_RestoreOspiClocksAfterStop();
     status = ps_dev_at25sl128a_release_from_deep_power_down(
       &ps_flash_device,
       &ps_flash_command_result);
@@ -3973,6 +4000,44 @@ static HAL_StatusTypeDef PS_HW6_SM_QuiesceImu(uint32_t cycle_index)
   return status;
 }
 
+static void PS_HW6_SM_ParkOspiClocksForStop(void)
+{
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_count++;
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2enr1_before = RCC->AHB2ENR1;
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2enr2_before = RCC->AHB2ENR2;
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2smenr1_before = RCC->AHB2SMENR1;
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2smenr2_before = RCC->AHB2SMENR2;
+
+  __HAL_RCC_OSPI1_CLK_SLEEP_DISABLE();
+  __HAL_RCC_OCTOSPIM_CLK_SLEEP_DISABLE();
+  __HAL_RCC_OSPI1_CLK_DISABLE();
+  __HAL_RCC_OSPIM_CLK_DISABLE();
+
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2enr1_after = RCC->AHB2ENR1;
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2enr2_after = RCC->AHB2ENR2;
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2smenr1_after = RCC->AHB2SMENR1;
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2smenr2_after = RCC->AHB2SMENR2;
+}
+
+static void PS_HW6_SM_RestoreOspiClocksAfterStop(void)
+{
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_count++;
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_ahb2enr1_before = RCC->AHB2ENR1;
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_ahb2enr2_before = RCC->AHB2ENR2;
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_ahb2smenr1_before = RCC->AHB2SMENR1;
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_ahb2smenr2_before = RCC->AHB2SMENR2;
+
+  __HAL_RCC_OSPIM_CLK_ENABLE();
+  __HAL_RCC_OSPI1_CLK_ENABLE();
+  __HAL_RCC_OCTOSPIM_CLK_SLEEP_ENABLE();
+  __HAL_RCC_OSPI1_CLK_SLEEP_ENABLE();
+
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_ahb2enr1_after = RCC->AHB2ENR1;
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_ahb2enr2_after = RCC->AHB2ENR2;
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_ahb2smenr1_after = RCC->AHB2SMENR1;
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_ahb2smenr2_after = RCC->AHB2SMENR2;
+}
+
 static HAL_StatusTypeDef PS_HW6_SM_ResumeStorage(uint32_t cycle_index)
 {
   ps_dev_at25sl128a_command_result_t command_result;
@@ -3989,6 +4054,7 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeStorage(uint32_t cycle_index)
     return HAL_ERROR;
   }
 
+  PS_HW6_SM_RestoreOspiClocksAfterStop();
   driver_status = ps_dev_at25sl128a_release_from_deep_power_down(
     &ps_flash_device,
     &command_result);
@@ -3996,6 +4062,11 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeStorage(uint32_t cycle_index)
   if (cycle_index < PS_HW6_OWNER_SM_CYCLE_COUNT)
   {
     g_ps_hw6_owner_sm_probe.flash_cycle_release_status[cycle_index] =
+      command_result.hal_status;
+  }
+  if (cycle_index == PS_HW6_POWER_QUIESCE_CYCLE_INDEX)
+  {
+    g_ps_hw6_owner_sm_probe.flash_power_release_status =
       command_result.hal_status;
   }
   if (status == HAL_OK)
@@ -4020,6 +4091,12 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeStorage(uint32_t cycle_index)
       jedec_result.hal_status;
     g_ps_hw6_owner_sm_probe.flash_cycle_identity_match[cycle_index] =
       identity_match;
+  }
+  if (cycle_index == PS_HW6_POWER_QUIESCE_CYCLE_INDEX)
+  {
+    g_ps_hw6_owner_sm_probe.flash_power_jedec_status =
+      jedec_result.hal_status;
+    g_ps_hw6_owner_sm_probe.flash_power_identity_match = identity_match;
   }
   PS_HW6_SM_UpdateFlashDriverProbe();
 
@@ -4068,10 +4145,16 @@ static HAL_StatusTypeDef PS_HW6_SM_QuiesceStorage(uint32_t cycle_index)
       .flash_cycle_deep_power_down_status[cycle_index] =
       command_result.hal_status;
   }
+  if (cycle_index == PS_HW6_POWER_QUIESCE_CYCLE_INDEX)
+  {
+    g_ps_hw6_owner_sm_probe.flash_power_deep_power_down_status =
+      command_result.hal_status;
+  }
   if (status == HAL_OK)
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
                               FLASH_EV_REQUEST_DEEP_POWER_DOWN, status);
+    PS_HW6_SM_ParkOspiClocksForStop();
   }
   else
   {
@@ -4575,6 +4658,56 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.storage_flash_init_deep_power_down_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.storage_flash_init_last_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_attach_request_count = 0UL;
+  g_ps_hw6_owner_sm_probe.storage_attach_start_tick = 0UL;
+  g_ps_hw6_owner_sm_probe.storage_attach_last_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_attach_storage_state =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_attach_flash_state =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_power_release_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_power_jedec_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_power_identity_match =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.flash_power_deep_power_down_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_count = 0UL;
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_count = 0UL;
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2enr1_before =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2enr1_after =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2enr2_before =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2enr2_after =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2smenr1_before =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2smenr1_after =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2smenr2_before =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_ospi_park_ahb2smenr2_after =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_ahb2enr1_before =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_ahb2enr1_after =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_ahb2enr2_before =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_ahb2enr2_after =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_ahb2smenr1_before =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_ahb2smenr1_after =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_ahb2smenr2_before =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.storage_ospi_restore_ahb2smenr2_after =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.flash_scratch_erase_write_enable_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
@@ -5488,10 +5621,14 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_QuiesceForPowerBarrier(
       if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] ==
            (uint32_t)STORAGE_OFFLINE) ||
           (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
-           (uint32_t)FLASH_OFF) ||
-          (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
-           (uint32_t)FLASH_DEEP_POWER_DOWN))
+           (uint32_t)FLASH_OFF))
       {
+        status = HAL_OK;
+      }
+      else if (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+               (uint32_t)FLASH_DEEP_POWER_DOWN)
+      {
+        PS_HW6_SM_ParkOspiClocksForStop();
         status = HAL_OK;
       }
       else

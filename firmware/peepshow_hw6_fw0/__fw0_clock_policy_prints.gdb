@@ -10,7 +10,7 @@ printf "requester stat P/A/I/D/S/ST/C/UI/RT = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x /
 printf "audio clock req/rel/reason/caps/status = %u / %u / %u / 0x%x / 0x%x\n", $rt->audio_clock_request_count, $rt->audio_clock_release_count, $rt->audio_clock_last_reason, $rt->audio_clock_last_capabilities, $rt->audio_clock_last_status
 printf "audio clock sfx/rt/release = 0x%x / 0x%x / 0x%x\n", $rt->audio_clock_reactive_sfx_status, $rt->audio_clock_realtime_status, $rt->audio_clock_release_status
 printf "storage clock req/rel/reason/caps/status = %u / %u / %u / 0x%x / 0x%x\n", $rt->storage_clock_request_count, $rt->storage_clock_release_count, $rt->storage_clock_last_reason, $rt->storage_clock_last_capabilities, $rt->storage_clock_last_status
-printf "storage clock export/reclaim/flash/release = 0x%x / 0x%x / 0x%x / 0x%x\n", $rt->storage_clock_export_status, $rt->storage_clock_reclaim_status, $rt->storage_clock_flash_init_status, $rt->storage_clock_release_status
+printf "storage clock export/reclaim/flash/attach/post/release = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $rt->storage_clock_export_status, $rt->storage_clock_reclaim_status, $rt->storage_clock_flash_init_status, $rt->storage_clock_attach_status, $rt->storage_clock_post_stop_resume_status, $rt->storage_clock_release_status
 printf "runtime clock req/rel/reason/caps/status = %u / %u / %u / 0x%x / 0x%x\n", $rt->runtime_clock_request_count, $rt->runtime_clock_release_count, $rt->runtime_clock_last_reason, $rt->runtime_clock_last_capabilities, $rt->runtime_clock_last_status
 printf "runtime clock reactive/realtime/release = 0x%x / 0x%x / 0x%x\n", $rt->runtime_clock_reactive_status, $rt->runtime_clock_realtime_status, $rt->runtime_clock_release_status
 printf "ui clock req/rel/reason/caps/status = %u / %u / %u / 0x%x / 0x%x\n", $rt->ui_clock_request_count, $rt->ui_clock_release_count, $rt->ui_clock_last_reason, $rt->ui_clock_last_capabilities, $rt->ui_clock_last_status
@@ -34,7 +34,7 @@ printf "caps: USB=0x1 OCTOSPI=0x2 SAI=0x4 DISPLAY=0x8 RT=0x10 REACTIVE=0x20 LPBA
 printf "domains: USB=0x1 PLL2_OCTOSPI=0x2 PLL2_SAI=0x4 DISPLAY=0x8 RT=0x10 REACTIVE=0x20 LPBAM_DISPLAY=0x40\n"
 printf "stages: IDLE=0 SELECT=1 SYSCLK_IO_HIGH=2 USB_ON=3 RESTORE_BASE=4 USB_OFF=5 SYSTICK=6 COMPLETE=7 REQUESTER=8 RESOLVE=9 PLL2_ON=10 PLL2_OFF=11\n"
 printf "audio clock reasons: NONE=0 REACTIVE_SFX=1 REALTIME_MIXER=2 RELEASE=3\n"
-printf "storage clock reasons: NONE=0 MSC_EXPORT=1 MSC_RECLAIM=2 FLASH_INIT=3 RELEASE=4\n"
+printf "storage clock reasons: NONE=0 MSC_EXPORT=1 MSC_RECLAIM=2 FLASH_INIT=3 RELEASE=4 ATTACH=5 POST_STOP_RESUME=6\n"
 printf "runtime clock reasons: NONE=0 REACTIVE_TXN=1 REALTIME_DEADLINE=2 RELEASE=3\n"
 printf "ui clock reasons: NONE=0 REACTIVE_TXN=1 RELEASE=2\n"
 printf "display clock reasons: NONE=0 TRANSFER=1 RELEASE=2\n"
