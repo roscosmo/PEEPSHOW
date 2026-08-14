@@ -185,6 +185,7 @@
 #define PS_HW6_RTOS_STOP2_BLOCK_STORAGE_USB_BUSY      (1UL << 10)
 #define PS_HW6_RTOS_STOP2_BLOCK_INPUT_PENDING         (1UL << 11)
 #define PS_HW6_RTOS_STOP2_BLOCK_QUEUE_PENDING         (1UL << 12)
+#define PS_HW6_RTOS_STOP2_BLOCK_LPBAM_NOT_READY       (1UL << 13)
 #define PS_HW6_RTOS_STOP2_PENDING_OWNER_QUIESCE       (1UL << 0)
 #define PS_HW6_RTOS_STOP2_PENDING_LPBAM_VALIDATION    (1UL << 1)
 #define PS_HW6_RTOS_STOP2_PENDING_IDLE_WINDOW         (1UL << 2)
@@ -2299,6 +2300,11 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2AutoIdleCheck(
   if (queue_pending_mask != 0UL)
   {
     blocker_mask |= PS_HW6_RTOS_STOP2_BLOCK_QUEUE_PENDING;
+  }
+  if ((allow_entry != 0UL) &&
+      ((pending_mask & PS_HW6_RTOS_STOP2_PENDING_LPBAM_VALIDATION) != 0UL))
+  {
+    blocker_mask |= PS_HW6_RTOS_STOP2_BLOCK_LPBAM_NOT_READY;
   }
 
   if (blocker_mask == 0UL)
