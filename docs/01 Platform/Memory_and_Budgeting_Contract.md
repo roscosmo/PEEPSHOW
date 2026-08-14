@@ -126,13 +126,20 @@ For retained structures:
 
 Retained RAM is continuity-only, not durable storage.
 
+## HW6 STOP2 SRAM Retention Policy
+
+HW6 firmware keeps all SRAM banks powered/retained in STOP2 by default. The Platform does not selectively power down SRAM banks, does not copy runtime state into a special retained bank before sleep, and does not reconstruct ordinary RTOS/package/display state after wake.
+
+This is an intentional simplicity and robustness decision. It avoids firmware complexity around pointer validity, stack placement, linker placement, pre-sleep copying, wake reconstruction, and per-bank power bookkeeping. It also avoids the current STM32U575/U585 Stop 2 + LDO erratum class where powering down any SRAM bank can interact badly with some reset sources. Selective SRAM power-down is blocked unless a later measured current budget proves the retained-SRAM current is unacceptable and the erratum/reset behavior is explicitly re-reviewed.
+
+SRAM4 remains special only because it is the Platform display-DMA/autonomous LPBAM arena with validated DMA reachability and ownership rules. It is not special because it is the only retained RAM.
 ---
 
 ## SRAM4 Display-DMA And Autonomous Arena Contract
 
 SRAM4 is reserved for the Platform display-DMA/autonomous arena. It is not general retained runtime memory.
 
-The committed logical/panel framebuffer, RTOS continuity state, package state, renderer working planes, and game-resume state live in another retained RAM bank selected by Platform memory policy. SRAM4 contains only the memory that must remain DMA-safe and reachable by the validated display/LPBAM path:
+The committed logical/panel framebuffer, RTOS continuity state, package state, renderer working planes, and game-resume state live in ordinary retained SRAM outside the SRAM4 display arena. Because HW6 keeps all SRAM banks retained in STOP2, these objects do not need special pre-sleep copying or reconstruction. SRAM4 contains only the memory that must remain DMA-safe and reachable by the validated display/LPBAM path:
 
 - awake SPI transmit scratch
 - autonomous-display wire payload
@@ -155,7 +162,7 @@ Once an autonomous slice is armed, no normal display present may use the SRAM4 s
 
 Measured HW5 baseline and provisional HW6 allocation contract:
 
-The final HW6 IOC retains the SRAM4/LPDMA/LPBAM architecture, so these values are the initial HW6 admission model. They are not measured HW6 limits. Descriptor size, linker placement, retained-bank behavior, and usable guard space must be reconfirmed on HW6 before the profile changes from `pending_validation` to a granted autonomous-display budget.
+The final HW6 IOC retains the SRAM4/LPDMA/LPBAM architecture, so these values are the initial HW6 admission model. They are not measured HW6 limits. Descriptor size, linker placement, DMA reachability, and usable guard space must be reconfirmed on HW6 before the profile changes from `pending_validation` to a granted autonomous-display budget. SRAM bank retention itself is not an admission variable: all SRAM banks remain powered in STOP2 unless a future measured optimization explicitly changes the policy.
 
 | Item | Budget |
 |---|---:|
@@ -188,7 +195,7 @@ Rules:
 - package artifacts must not encode SRAM4 addresses, linker sections, SPI wire bytes, DMA descriptors, or LPBAM list structure.
 - the Platform Display Program Compiler owns target-specific packing and admission.
 - normal authoring tools report waiting-visual complexity in PeepOS terms; low-level row/chunk details are advanced diagnostics only.
-- exact linker section names and retention controls must be recorded before Platform freeze.
+- exact linker section names and SRAM4 DMA reachability controls must be recorded before Platform freeze; selective SRAM bank power-down is not part of the HW6 baseline policy.
 - autonomous-display grants and limits are published through measured target profiles.
 - a compiled slice that exceeds the active target budget must use its declared reduced visual or hold fallback; it must not silently keep the CPU awake.
 

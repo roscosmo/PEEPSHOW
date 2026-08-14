@@ -220,7 +220,7 @@ Architecture implication: SRAM4 should be treated as a byte budget, not a frame 
 Production SRAM4 allocation decision, 2026-07-23:
 
 ```text
-Decision: SRAM4 belongs to the display-DMA/autonomous LPBAM arena. RTOS, game resume state, source frames, and the committed framebuffer live in another retained RAM bank.
+Decision: SRAM4 belongs to the display-DMA/autonomous LPBAM arena. RTOS, game resume state, source frames, and the committed framebuffer live in ordinary retained SRAM outside the SRAM4 arena. HW6 keeps all SRAM banks powered in STOP2, so this is an ownership/DMA-placement rule, not a selective-retention rule.
 
 The awake display SPI staging buffer `txBuf` still needs SRAM4 residency for the validated LPDMA display path. It should not be treated as unrelated runtime RAM. Instead, production should make it an overlay/scratch allocation inside the same SRAM4 display arena. When the system is doing an awake display present, that region is a DMA TX staging buffer. Once the autonomous slice is compiled and armed, the same SRAM4 bytes may be retained LPBAM payload.
 
@@ -353,7 +353,7 @@ All 16 KiB of SRAM4 belongs to the Platform display-DMA/autonomous arena. It con
 - queue and slice metadata
 - alignment and guard space
 
-RTOS objects, package state, source frames, and the committed framebuffer live in another retained RAM bank.
+RTOS objects, package state, source frames, and the committed framebuffer live in ordinary retained SRAM outside SRAM4. All SRAM banks remain powered in HW6 STOP2; SRAM4 is reserved here for DMA/LPBAM reachability and display-owner arena discipline, not because other RAM is powered down.
 
 Accepted initial partition:
 
@@ -479,7 +479,7 @@ The architecture is accepted, but these implementation/evidence items remain ope
 - implement and validate the production Display Program Compiler
 - freeze target-profile waiting-visual limits from measured builds
 - measure final release current with production instrumentation removed
-- validate retained runtime/committed-framebuffer placement in the selected non-SRAM4 bank
+- validate runtime/committed-framebuffer placement outside the SRAM4 display arena; do not require a special retained bank while the HW6 all-SRAM-retained STOP2 policy is active
 - add compatibility-report and authoring-tool diagnostics for waiting-visual budget/fallback outcomes
 
 Record completion evidence in [[Brought_Up_Tracker]] and unresolved constants in [[Pending_Measured_Constants_Register]].
