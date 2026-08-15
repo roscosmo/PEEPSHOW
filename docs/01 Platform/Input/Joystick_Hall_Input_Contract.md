@@ -104,11 +104,35 @@ use.
 Current FW0 calibration status:
 
 - raw X/Y/Z diagnostic sampling works through `thInput`
+- bounded REST and full-travel SWEEP raw XYZ CSV capture helpers are target-validated
 - a provisional normalized joystick API exists for diagnostics
 - the calibration flow can be reached from the shell UI
 - the multi-step guided calibration flow is not complete
 - L/R plus A/B remain the required fallback controls while calibration is
   missing or invalid
+
+2026-08-14 HW6 FW0 diagnostic captures record the current measured raw range
+needed for calibration and threshold planning. The REST/flick capture completed
+`256/256` samples with no read errors, and the full-travel SWEEP capture
+completed `512/512` samples with no read errors. The normal SWEEP range was
+`X=-24368..27632`, `Y=-28832..21232`, and `Z=-32576..-32528`; the Z axis was
+effectively pinned over this capture, with maximum observed absolute delta `48`.
+A follow-up Z-high range diagnostic validated the `Sensor_Config_2` override and
+restore path (`before/active/restore = 0x0/0x1/0x0`, `512/512` samples, no read
+errors), but Z remained pinned at `-32592..-32560` with maximum delta `32`.
+This means Z-based wake-on-change is still not accepted for HW6 FW0; the
+baseline wake strategy remains calibrated X/Y absolute magnetic thresholds unless
+new mechanical or sensor-range evidence changes that. The diagnostic path runs
+inside `thInput`, uses bounded ThreadX sleeps and a hard timeout, and writes CSV
+files for offline plotting. This is diagnostic evidence only; it does not
+validate final calibration, threshold interrupt values, production wake policy,
+or joystick current.
+
+During this work, a REST capture exposed a `thInput` stack overflow while
+running the TMAG3001 read/sleep path. FW0 now uses a dedicated
+`KNOB_RTOS_INPUT_STACK_BYTES` budget of `1536` bytes. A larger `4096` byte
+diagnostic stack did not fit the current ThreadX byte-pool budget, so input
+stack sizing remains measured but provisional.
 
 Debugger-only one-position captures are not sufficient calibration evidence for
 this joystick. The accepted path is an on-device guided calibration flow that

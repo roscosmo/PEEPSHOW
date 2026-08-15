@@ -276,6 +276,7 @@ __tx_ts_wait:
 #else
     CPSID   i                                       // Disable interrupts
 #endif
+
     LDR     r1, [r2]                                // Pickup the next thread to execute pointer
     STR     r1, [r0]                                // Store it in the current pointer
     CBNZ    r1, __tx_ts_ready                       // If non-NULL, a new thread is ready!

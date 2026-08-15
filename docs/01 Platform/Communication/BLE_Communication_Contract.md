@@ -78,7 +78,7 @@ BLE is off unless a mode explicitly requests it, such as multiplayer, pairing, c
 
 ## Current CubeMX Baseline
 
-- `LPUART1` baud rate is `9600`.
+- `LPUART1` baud rate is `115200`.
 - `LPUART1` clock source is HSI at `16 MHz`.
 - RTS/CTS pins are assigned.
 - First BLE implementation should use interrupt-driven RX/TX static ring buffers. UART DMA is intentionally deferred until throughput or CPU measurements justify it.
@@ -87,17 +87,22 @@ BLE is off unless a mode explicitly requests it, such as multiplayer, pairing, c
 
 ## Required Knobs
 
-The following values must become compile-time knobs before implementation:
+The following values are compile-time knobs for FW0 NINA command transport and bring-up timing:
 
 | Knob | Purpose |
 |---|---|
 | `KNOB_COMM_BLE_RESET_ASSERT_MS` | minimum reset assertion time |
 | `KNOB_COMM_BLE_BOOT_WAIT_MS` | maximum wait for module boot-ready evidence |
-| `KNOB_COMM_BLE_CMD_TIMEOUT_MS` | command/response timeout |
-| `KNOB_COMM_BLE_PAIRING_TIMEOUT_MS` | maximum pairing/bonding operation time |
-| `KNOB_COMM_BLE_MAX_RECOVERY_RETRIES` | bounded recovery retries before fault escalation |
-| `KNOB_COMM_BLE_RX_BUF_BYTES` | static RX buffer size |
-| `KNOB_COMM_BLE_TX_BUF_BYTES` | static TX buffer size |
+| `KNOB_COMM_BLE_BOOT_DRAIN_MS` | boot-banner drain window before command probes |
+| `KNOB_COMM_BLE_RX_WINDOW_MS` | bounded command-response receive window |
+| `KNOB_COMM_BLE_RX_QUIET_MS` | receive quiet period used to end a response |
+| `KNOB_COMM_BLE_STOP_SETTLE_MS` | NINA-B1 `AT&D4` / DSR STOP settling interval |
+| `KNOB_COMM_BLE_WAKE_SETTLE_MS` | DSR wake settling interval before commands resume |
+| `KNOB_COMM_BLE_RX_BYTE_TIMEOUT_MS` | UART receive byte timeout |
+| `KNOB_COMM_BLE_TX_TIMEOUT_MS` | UART transmit timeout |
+| `KNOB_COMM_BLE_RX_BUFFER_BYTES` | static command-response RX buffer size |
+
+Advertising interval, connection interval bounds, scan duty cycle, pairing timeout, idle disconnect timeout, radio shutdown timeout, and MTU / packet batching limits remain open until real BLE radio behavior is implemented.
 
 BLE async transfer policy is interrupt-driven RX/TX static ring buffers first. UART DMA must remain disabled unless a later measured throughput or CPU-load requirement justifies it.
 
@@ -158,6 +163,20 @@ Rules:
 | `BLE_SUSPENDING` | quiesce sequence in progress |
 | `BLE_SUSPENDED` | communication paused for sleep or policy |
 | `BLE_ERROR` | module, UART, timeout, framing, pairing, storage, or recovery fault detected |
+
+## FW0 Mode Requests
+
+The FW0 owner state machine exposes explicit BLE mode requests for power-policy integration:
+
+| Mode | FW0 behavior | Status |
+|---|---|---|
+| `SHUTDOWN` | Deinitializes the UART, asserts NINA reset low, and leaves DSR high-Z. | Target-validated |
+| `STOP` | Wakes/configures the NINA command path, applies `AT&D4`, drives DSR high, deinitializes the UART, leaves reset released, and parks in `BLE_SUSPENDED`. | Target-validated |
+| `SEARCHING` | Brings the NINA to owner `BLE_ADVERTISING` as an OS placeholder. Real advertising commands are not implemented yet. | Placeholder |
+| `PAIRING` | Brings the NINA to owner `BLE_PAIRING` as an OS placeholder. Real pairing flow is not implemented yet. | Placeholder |
+| `CONNECTED` | Brings the NINA to owner `BLE_CONNECTED` as an OS placeholder. Real link/SPS behavior is not implemented yet. | Placeholder |
+
+`STOP` is the validated NINA-B1 low-power command mode. `SHUTDOWN` is the reset-asserted hard-off mode.
 
 ## Events
 

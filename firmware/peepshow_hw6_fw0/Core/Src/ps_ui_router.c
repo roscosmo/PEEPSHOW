@@ -535,6 +535,22 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
     case PS_UI_ROUTER_EVENT_LOW_BATTERY_CHARGE_RECOVERY:
       status = PS_UIRouter_ShowLowBatteryChargeRecovery();
       break;
+    case PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_REST:
+      status = PS_UIRouter_ShowShutdown(
+        PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_REST, 0UL);
+      break;
+    case PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_SWEEP:
+      status = PS_UIRouter_ShowShutdown(
+        PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_SWEEP, 0UL);
+      break;
+    case PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_DONE:
+      status = PS_UIRouter_ShowShutdown(
+        PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_DONE, 0UL);
+      break;
+    case PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_ERROR:
+      status = PS_UIRouter_ShowShutdown(
+        PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_ERROR, 0UL);
+      break;
     case PS_UI_ROUTER_EVENT_PACKAGE_CANDIDATE_FOUND:
       ps_ui_router_state.previous_page = ps_ui_router_state.current_page;
       ps_ui_router_state.current_page = PS_UI_ROUTER_PAGE_PACKAGE_BROWSER;

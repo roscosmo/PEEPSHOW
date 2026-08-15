@@ -10,7 +10,12 @@
 extern "C" {
 #endif
 
-#define PS_DEV_TMAG3001_API_VERSION (1UL)
+#define PS_DEV_TMAG3001_API_VERSION (2UL)
+
+#define PS_DEV_TMAG3001_SENSOR_CONFIG2_X_Y_RANGE_MASK (0x02U)
+#define PS_DEV_TMAG3001_SENSOR_CONFIG2_Z_RANGE_MASK   (0x01U)
+#define PS_DEV_TMAG3001_SENSOR_CONFIG2_X_Y_HIGH_RANGE (0x02U)
+#define PS_DEV_TMAG3001_SENSOR_CONFIG2_Z_HIGH_RANGE   (0x01U)
 
 typedef enum
 {
@@ -62,8 +67,16 @@ typedef struct
   ps_status_t wake_probe_status;
   ps_status_t wake_retry_status;
   ps_status_t active_status;
+  ps_status_t sensor_config2_status;
+  ps_status_t sensor_config2_restore_status;
   uint8_t active_sensor_config1;
+  uint8_t sensor_config2_before;
+  uint8_t active_sensor_config2;
+  uint8_t sensor_config2_restore;
   uint8_t active_device_config2;
+  uint32_t range_override_mask;
+  uint32_t range_override_value;
+  uint32_t range_override_applied;
   uint32_t last_hal_status;
   uint32_t last_hal_error;
 } ps_dev_tmag3001_wake_result_t;
@@ -97,6 +110,15 @@ ps_status_t ps_dev_tmag3001_stabilize_suspended(
 ps_status_t ps_dev_tmag3001_wake_continuous(
   ps_dev_tmag3001_t *device,
   ps_dev_tmag3001_wake_result_t *result);
+ps_status_t ps_dev_tmag3001_wake_continuous_with_range(
+  ps_dev_tmag3001_t *device,
+  uint8_t range_override_mask,
+  uint8_t range_override_value,
+  ps_dev_tmag3001_wake_result_t *result);
+ps_status_t ps_dev_tmag3001_set_sensor_config2(
+  ps_dev_tmag3001_t *device,
+  uint8_t value,
+  uint8_t *readback);
 ps_status_t ps_dev_tmag3001_suspend(
   ps_dev_tmag3001_t *device,
   ps_dev_tmag3001_suspend_result_t *result);

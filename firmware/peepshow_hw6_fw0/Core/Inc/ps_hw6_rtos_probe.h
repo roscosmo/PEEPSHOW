@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (34UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (35UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -430,6 +430,16 @@ UINT PS_HW6_RTOS_DebugRequestUsbExport(void);
 UINT PS_HW6_RTOS_DebugRequestUsbReclaim(void);
 UINT PS_HW6_RTOS_DebugRequestStorageFlashInit(void);
 UINT PS_HW6_RTOS_DebugRequestStorageAttach(void);
+UINT PS_HW6_RTOS_DebugRequestCommBleShutdown(void);
+UINT PS_HW6_RTOS_DebugRequestCommBleStop(void);
+UINT PS_HW6_RTOS_DebugRequestCommBleSearching(void);
+UINT PS_HW6_RTOS_DebugRequestCommBlePairing(void);
+UINT PS_HW6_RTOS_DebugRequestCommBleConnected(void);
+UINT PS_HW6_RTOS_DebugRequestImuOff(void);
+UINT PS_HW6_RTOS_DebugRequestImuLowRate(void);
+UINT PS_HW6_RTOS_DebugRequestImuEventArmed(void);
+UINT PS_HW6_RTOS_DebugRequestImuStepCounter(void);
+UINT PS_HW6_RTOS_DebugRequestImuStreaming(void);
 void PS_HW6_RTOS_LowPowerTimerSetup(ULONG count);
 void PS_HW6_RTOS_LowPowerEnter(void);
 void PS_HW6_RTOS_LowPowerExit(void);

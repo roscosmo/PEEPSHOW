@@ -535,6 +535,30 @@ static void PS_HW6_DisplayUIStrings(uint32_t page,
         *line1 = "MSC NEEDS";
         *line2 = "FLASH INIT";
       }
+      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_REST)
+      {
+        *title = "JOYSTICK REST";
+        *line1 = "FLICK";
+        *line2 = "RELEASE";
+      }
+      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_SWEEP)
+      {
+        *title = "JOYSTICK SWEEP";
+        *line1 = "FULL";
+        *line2 = "TRAVEL";
+      }
+      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_DONE)
+      {
+        *title = "JOYSTICK XYZ";
+        *line1 = "CAPTURE";
+        *line2 = "DONE";
+      }
+      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_ERROR)
+      {
+        *title = "JOYSTICK XYZ";
+        *line1 = "CAPTURE";
+        *line2 = "ERROR";
+      }
       else
       {
         *title = "SHUTDOWN";

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (37UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (41UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -19,6 +19,7 @@ extern "C" {
 #define PS_HW6_OWNER_SM_IMU_REGISTER_COUNT   (11U)
 #define PS_HW6_OWNER_SM_NINA_COMMAND_COUNT   (7U)
 #define PS_HW6_OWNER_SM_STATUS_NOT_RUN       (0xFFFFFFFFUL)
+#define PS_HW6_OWNER_SM_STATUS_UNAVAILABLE   (0xFFFFFFFEUL)
 
 typedef enum
 {
@@ -39,6 +40,46 @@ typedef enum
   PS_HW6_OWNER_SM_CYCLE_RESUME = 0,
   PS_HW6_OWNER_SM_CYCLE_QUIESCE
 } PS_HW6_OwnerStateMachineCycleDirection;
+
+typedef enum
+{
+  PS_HW6_JOYSTICK_XYZ_CAPTURE_NONE = 0,
+  PS_HW6_JOYSTICK_XYZ_CAPTURE_REST,
+  PS_HW6_JOYSTICK_XYZ_CAPTURE_SWEEP,
+  PS_HW6_JOYSTICK_XYZ_CAPTURE_SWEEP_Z_HIGH
+} PS_HW6_JoystickXyzCaptureMode;
+
+typedef enum
+{
+  PS_HW6_COMM_BLE_MODE_SHUTDOWN = 0,
+  PS_HW6_COMM_BLE_MODE_STOP,
+  PS_HW6_COMM_BLE_MODE_SEARCHING,
+  PS_HW6_COMM_BLE_MODE_PAIRING,
+  PS_HW6_COMM_BLE_MODE_CONNECTED
+} PS_HW6_CommBleMode;
+
+typedef enum
+{
+  PS_HW6_IMU_MODE_OFF = 0,
+  PS_HW6_IMU_MODE_LOW_RATE_SAMPLE,
+  PS_HW6_IMU_MODE_EVENT_ARMED,
+  PS_HW6_IMU_MODE_STEP_COUNTER,
+  PS_HW6_IMU_MODE_STREAMING
+} PS_HW6_ImuMode;
+
+typedef struct
+{
+  uint32_t index;
+  uint32_t tick;
+  uint32_t delta_tick;
+  uint32_t mode;
+  int16_t x;
+  int16_t y;
+  int16_t z;
+  uint16_t reserved;
+  uint32_t conv_status;
+  uint32_t read_status;
+} PS_HW6_JoystickXyzCaptureRecord;
 
 typedef enum
 {
@@ -359,6 +400,45 @@ typedef struct
   int32_t joystick_sample_y;
   int32_t joystick_sample_z;
   uint32_t joystick_sample_conv_status;
+  uint32_t joystick_xyz_capture_request_count;
+  uint32_t joystick_xyz_capture_start_tick;
+  uint32_t joystick_xyz_capture_end_tick;
+  uint32_t joystick_xyz_capture_status;
+  uint32_t joystick_xyz_capture_mode;
+  uint32_t joystick_xyz_capture_stabilize_status;
+  uint32_t joystick_xyz_capture_wake_status;
+  uint32_t joystick_xyz_capture_sleep_status;
+  uint32_t joystick_xyz_capture_sensor_config2_status;
+  uint32_t joystick_xyz_capture_sensor_config2_restore_status;
+  uint32_t joystick_xyz_capture_sensor_config2_before;
+  uint32_t joystick_xyz_capture_sensor_config2_active;
+  uint32_t joystick_xyz_capture_sensor_config2_restore;
+  uint32_t joystick_xyz_capture_range_override_mask;
+  uint32_t joystick_xyz_capture_range_override_value;
+  uint32_t joystick_xyz_capture_range_override_applied;
+  uint32_t joystick_xyz_capture_period_ticks;
+  uint32_t joystick_xyz_capture_timeout_ticks;
+  uint32_t joystick_xyz_capture_requested_samples;
+  uint32_t joystick_xyz_capture_capacity;
+  uint32_t joystick_xyz_capture_count;
+  uint32_t joystick_xyz_capture_success_count;
+  uint32_t joystick_xyz_capture_error_count;
+  uint32_t joystick_xyz_capture_timeout_count;
+  int32_t joystick_xyz_capture_first_x;
+  int32_t joystick_xyz_capture_first_y;
+  int32_t joystick_xyz_capture_first_z;
+  int32_t joystick_xyz_capture_min_x;
+  int32_t joystick_xyz_capture_min_y;
+  int32_t joystick_xyz_capture_min_z;
+  int32_t joystick_xyz_capture_max_x;
+  int32_t joystick_xyz_capture_max_y;
+  int32_t joystick_xyz_capture_max_z;
+  int32_t joystick_xyz_capture_last_x;
+  int32_t joystick_xyz_capture_last_y;
+  int32_t joystick_xyz_capture_last_z;
+  uint32_t joystick_xyz_capture_max_abs_delta_z;
+  uint32_t joystick_xyz_capture_last_read_status;
+  uint32_t joystick_xyz_capture_last_conv_status;
 
   uint32_t joystick_input_api_version;
   uint32_t joystick_input_policy;
@@ -432,6 +512,14 @@ typedef struct
   uint32_t imu_cycle_active_ctrl5[PS_HW6_OWNER_SM_CYCLE_COUNT];
   uint32_t imu_cycle_active_status[PS_HW6_OWNER_SM_CYCLE_COUNT];
   uint32_t imu_cycle_sleep_status[PS_HW6_OWNER_SM_CYCLE_COUNT];
+  uint32_t imu_mode_request_count;
+  uint32_t imu_mode_requested;
+  uint32_t imu_mode_active;
+  uint32_t imu_mode_last_status;
+  uint32_t imu_mode_last_tick;
+  uint32_t imu_mode_placeholder;
+  uint32_t imu_mode_power_floor;
+  uint32_t imu_mode_wake_source_enabled;
 
   uint32_t flash_driver_api_version;
   uint32_t flash_driver_init_status;
@@ -766,6 +854,14 @@ typedef struct
   uint32_t ble_cycle_suspend_uart_status[PS_HW6_OWNER_SM_CYCLE_COUNT];
   uint32_t ble_cycle_dsr_after_resume[PS_HW6_OWNER_SM_CYCLE_COUNT];
   uint32_t ble_cycle_dsr_after_quiesce[PS_HW6_OWNER_SM_CYCLE_COUNT];
+  uint32_t ble_mode_request_count;
+  uint32_t ble_mode_requested;
+  uint32_t ble_mode_active;
+  uint32_t ble_mode_last_status;
+  uint32_t ble_mode_last_tick;
+  uint32_t ble_mode_placeholder;
+  uint32_t ble_shutdown_reset_asserted;
+  uint32_t ble_dsr_highz_configured;
 } PS_HW6_OwnerStateMachineProbe;
 
 extern volatile PS_HW6_OwnerStateMachineProbe g_ps_hw6_owner_sm_probe;
@@ -783,6 +879,10 @@ extern volatile uint32_t g_ps_hw6_joystick_live_request;
 extern volatile uint32_t g_ps_hw6_joystick_cardinal_request;
 extern volatile uint32_t g_ps_hw6_joystick_calibration_capture_request;
 extern volatile uint32_t g_ps_hw6_joystick_calibration_capture_page;
+extern volatile uint32_t g_ps_hw6_joystick_xyz_capture_request;
+extern volatile uint32_t g_ps_hw6_joystick_xyz_capture_mode;
+extern volatile PS_HW6_JoystickXyzCaptureRecord
+  g_ps_hw6_joystick_xyz_capture_buffer[];
 
 void PS_HW6_OwnerStateMachines_Init(void);
 void PS_HW6_OwnerStateMachines_SetPowerQuiesceCallback(
@@ -803,8 +903,12 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ParkUsbForBoot(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSampleProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickLiveProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickXyzCapture(
+  uint32_t capture_mode);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCalibrationCapture(
   uint32_t calibration_page);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_SetBleMode(uint32_t mode);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_SetImuMode(uint32_t mode);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandleStartShippingIntent(
   uint32_t start_event,
   uint32_t hold_ticks);

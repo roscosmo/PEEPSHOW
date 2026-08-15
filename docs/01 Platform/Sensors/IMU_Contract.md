@@ -139,6 +139,18 @@ Do not mark embedded functions or step counting known-good from configuration al
 
 ---
 
+## FW0 Mode Requests
+
+The FW0 sensor owner exposes explicit LIS2DUX12 mode requests for power-policy integration:
+
+| Mode | FW0 behavior | Status |
+|---|---|---|
+| `OFF` | Parks the IMU in deep-power-down and leaves the owner in `IMU_SUSPENDED`. | Target-validated |
+| `LOW_RATE_SAMPLE` | Wakes/probes the device and reaches `IMU_LOW_RATE_SAMPLE`; WHOAMI observed as `0x47`. | Target-validated |
+| `EVENT_ARMED` | Placeholder only; records wake-source intent, returns unavailable, and leaves the IMU suspended. | Placeholder |
+| `STEP_COUNTER` | Placeholder only; records power-floor intent, returns unavailable, and leaves the IMU suspended. It must not wake the MCU per step by default. | Placeholder |
+| `STREAMING` | Placeholder only; records active power-floor intent, returns unavailable, and leaves the IMU suspended. | Placeholder |
+
 ## Validation Cases
 
 1. I2C probe at address `0x18`
@@ -147,7 +159,7 @@ Do not mark embedded functions or step counting known-good from configuration al
 4. step-counter activation and readback
 5. step-counter retention across the selected low-power mode
 6. motion/tap/shake/tilt interrupt path from `MPU_INT` on `PB14`
-7. low-rate sample mode
-8. streaming sample mode
+7. low-rate sample mode - target-validated in the FW0 mode-request path
+8. streaming sample mode - placeholder only; real register configuration remains open
 9. recovery after I2C/register fault
 10. graceful degradation when IMU is unavailable

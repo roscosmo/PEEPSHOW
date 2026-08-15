@@ -3,8 +3,10 @@
 This runbook records the measured HW5 procedure for bringing up the `NINA-B112-04B` BLE module.
 
 > [!important] HW6 reuse
-> HW6 UART command transport and owner-routed `AT&D4`/DSR STOP entry now pass on
-> unit 001. BLE, SPS, NFC, wake, flow-control stress, and current measurements
+> HW6 UART command transport, owner-routed `AT&D4`/DSR STOP entry, hard
+> shutdown, and FW0 BLE mode request scaffolds now pass on unit 001. SEARCHING,
+> PAIRING, and CONNECTED are OS placeholders only. Real BLE advertising, pairing,
+> data transfer, SPS, NFC, wake, flow-control stress, and current measurements
 > still require HW6 evidence in [[HW6_Brought_Up_Tracker]]. Communication wake
 > remains blocked unless separately measured and granted.
 
@@ -110,6 +112,12 @@ Every successful validation must link evidence from [[Brought_Up_Tracker]].
   `AT`/`OK`, repeated `AT&D4` STOP, and UART deinit without touching module
   reset. The overall run failed only on the unrelated IMU wake path; exact
   results are preserved in `EV-HW6-20260801-P5-OWNERS-005`.
+- 2026-08-15: FW0 BLE mode helpers validated SHUTDOWN, STOP, SEARCHING,
+  PAIRING, and CONNECTED OS paths. SHUTDOWN held reset low with DSR high-Z and
+  UART deinitialised. STOP reached `BLE_SUSPENDED` using the validated `AT&D4`
+  / DSR path with reset released and command errors `0`. SEARCHING, PAIRING,
+  and CONNECTED reached their owner states as placeholders only; real radio
+  advertising, pairing, link, and SPS behavior remain unproven.
 
 Do not mark wake, flow-control stress, pairing, SPS data, NFC, current, or USB
 installer interaction known-good without measured target-specific evidence.

@@ -17,6 +17,7 @@
 
 #define PS_HW6_RTOS_DEFAULT_STACK_BYTES  ((ULONG)KNOB_RTOS_DEFAULT_STACK_BYTES)
 #define PS_HW6_RTOS_POWER_STACK_BYTES    ((ULONG)KNOB_RTOS_POWER_STACK_BYTES)
+#define PS_HW6_RTOS_INPUT_STACK_BYTES    ((ULONG)KNOB_RTOS_INPUT_STACK_BYTES)
 #define PS_HW6_RTOS_STORAGE_STACK_BYTES  ((ULONG)KNOB_RTOS_STORAGE_STACK_BYTES)
 #define PS_HW6_RTOS_QUEUE_DEPTH          (8UL)
 #define PS_HW6_RTOS_QUEUE_STORAGE_BYTES  (PS_HW6_RTOS_MESSAGE_WORDS * \
@@ -43,7 +44,7 @@
 #define PS_HW6_RTOS_DISPLAY_UI_SHUTDOWN_SHIFT (16U)
 #define PS_HW6_RTOS_DISPLAY_UI_COUNTDOWN_SHIFT (24U)
 #define PS_HW6_RTOS_DISPLAY_UI_SHUTDOWN_MAX \
-  ((uint32_t)PS_UI_ROUTER_SHUTDOWN_MSC_RECOVERY)
+  ((uint32_t)PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_ERROR)
 #define PS_HW6_RTOS_COMMAND_POWER_WORKFLOW (1UL)
 #define PS_HW6_RTOS_COMMAND_STABILIZE     (2UL)
 #define PS_HW6_RTOS_COMMAND_RESUME        (3UL)
@@ -69,6 +70,8 @@
 #define PS_HW6_RTOS_COMMAND_DISPLAY_LPBAM_PREPARE (23UL)
 #define PS_HW6_RTOS_COMMAND_DISPLAY_LPBAM_ABORT (24UL)
 #define PS_HW6_RTOS_COMMAND_STORAGE_ATTACH (25UL)
+#define PS_HW6_RTOS_COMMAND_COMM_BLE_MODE (26UL)
+#define PS_HW6_RTOS_COMMAND_SENSOR_IMU_MODE (27UL)
 #define PS_HW6_RTOS_EVENT_DEBUG_INDEX     (3U)
 #define PS_HW6_RTOS_ACK_OWNER(owner_id)   (1UL << (owner_id))
 #define PS_HW6_RTOS_CLOCK_ACK_SHIFT       (16U)
@@ -245,6 +248,16 @@ static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_usb_export_anchor;
 static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_usb_reclaim_anchor;
 static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_storage_flash_init_anchor;
 static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_storage_attach_anchor;
+static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_comm_ble_shutdown_anchor;
+static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_comm_ble_stop_anchor;
+static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_comm_ble_searching_anchor;
+static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_comm_ble_pairing_anchor;
+static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_comm_ble_connected_anchor;
+static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_imu_off_anchor;
+static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_imu_low_rate_anchor;
+static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_imu_event_armed_anchor;
+static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_imu_step_counter_anchor;
+static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_imu_streaming_anchor;
 static uint32_t ps_ui_boot_complete_sent;
 static uint32_t ps_power_boot_done;
 static uint32_t ps_display_bootstrap_sent;
@@ -300,7 +313,7 @@ static const ULONG ps_owner_stack_bytes[PS_HW6_RTOS_OWNER_COUNT] =
 {
   PS_HW6_RTOS_POWER_STACK_BYTES,
   PS_HW6_RTOS_DEFAULT_STACK_BYTES,
-  PS_HW6_RTOS_DEFAULT_STACK_BYTES,
+  PS_HW6_RTOS_INPUT_STACK_BYTES,
   PS_HW6_RTOS_DEFAULT_STACK_BYTES,
   PS_HW6_RTOS_DEFAULT_STACK_BYTES,
   PS_HW6_RTOS_STORAGE_STACK_BYTES,
@@ -1073,6 +1086,19 @@ static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
   {
     return 1UL;
   }
+  cycle_index = (uint32_t)(message[3] ^ PS_HW6_RTOS_COMMAND_TOKEN);
+  if ((owner_id == PS_HW6_RTOS_OWNER_COMM) &&
+      (message[2] == PS_HW6_RTOS_COMMAND_COMM_BLE_MODE) &&
+      (cycle_index <= (uint32_t)PS_HW6_COMM_BLE_MODE_CONNECTED))
+  {
+    return 1UL;
+  }
+  if ((owner_id == PS_HW6_RTOS_OWNER_SENSOR) &&
+      (message[2] == PS_HW6_RTOS_COMMAND_SENSOR_IMU_MODE) &&
+      (cycle_index <= (uint32_t)PS_HW6_IMU_MODE_STREAMING))
+  {
+    return 1UL;
+  }
   if ((owner_id > PS_HW6_RTOS_OWNER_POWER) &&
       (owner_id <= PS_HW6_RTOS_OWNER_COMM))
   {
@@ -1410,6 +1436,23 @@ static UINT PS_HW6_RTOS_SendCycleCommand(uint32_t owner_id,
   message[1] = (ULONG)owner_id;
   message[2] = command;
   message[3] = PS_HW6_RTOS_COMMAND_TOKEN ^ (ULONG)cycle_index;
+  return tx_queue_send(&ps_queues[owner_id], message, TX_NO_WAIT);
+}
+static UINT PS_HW6_RTOS_SendModeCommand(uint32_t owner_id,
+                                         ULONG command,
+                                         uint32_t mode)
+{
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+
+  if (owner_id >= PS_HW6_RTOS_QUEUE_COUNT)
+  {
+    return TX_QUEUE_ERROR;
+  }
+
+  message[0] = PS_HW6_RTOS_COMMAND_MAGIC;
+  message[1] = (ULONG)owner_id;
+  message[2] = command;
+  message[3] = PS_HW6_RTOS_COMMAND_TOKEN ^ (ULONG)mode;
   return tx_queue_send(&ps_queues[owner_id], message, TX_NO_WAIT);
 }
 static UINT PS_HW6_RTOS_SendPowerQuiesceCommand(uint32_t owner_id,
@@ -1763,6 +1806,85 @@ UINT PS_HW6_RTOS_DebugRequestStorageAttach(void)
     PS_HW6_RTOS_OWNER_STORAGE,
     PS_HW6_RTOS_COMMAND_STORAGE_ATTACH);
 }
+UINT PS_HW6_RTOS_DebugRequestCommBleShutdown(void)
+{
+  return PS_HW6_RTOS_SendModeCommand(
+    PS_HW6_RTOS_OWNER_COMM,
+    PS_HW6_RTOS_COMMAND_COMM_BLE_MODE,
+    (uint32_t)PS_HW6_COMM_BLE_MODE_SHUTDOWN);
+}
+
+UINT PS_HW6_RTOS_DebugRequestCommBleStop(void)
+{
+  return PS_HW6_RTOS_SendModeCommand(
+    PS_HW6_RTOS_OWNER_COMM,
+    PS_HW6_RTOS_COMMAND_COMM_BLE_MODE,
+    (uint32_t)PS_HW6_COMM_BLE_MODE_STOP);
+}
+
+UINT PS_HW6_RTOS_DebugRequestCommBleSearching(void)
+{
+  return PS_HW6_RTOS_SendModeCommand(
+    PS_HW6_RTOS_OWNER_COMM,
+    PS_HW6_RTOS_COMMAND_COMM_BLE_MODE,
+    (uint32_t)PS_HW6_COMM_BLE_MODE_SEARCHING);
+}
+
+UINT PS_HW6_RTOS_DebugRequestCommBlePairing(void)
+{
+  return PS_HW6_RTOS_SendModeCommand(
+    PS_HW6_RTOS_OWNER_COMM,
+    PS_HW6_RTOS_COMMAND_COMM_BLE_MODE,
+    (uint32_t)PS_HW6_COMM_BLE_MODE_PAIRING);
+}
+
+UINT PS_HW6_RTOS_DebugRequestCommBleConnected(void)
+{
+  return PS_HW6_RTOS_SendModeCommand(
+    PS_HW6_RTOS_OWNER_COMM,
+    PS_HW6_RTOS_COMMAND_COMM_BLE_MODE,
+    (uint32_t)PS_HW6_COMM_BLE_MODE_CONNECTED);
+}
+
+UINT PS_HW6_RTOS_DebugRequestImuOff(void)
+{
+  return PS_HW6_RTOS_SendModeCommand(
+    PS_HW6_RTOS_OWNER_SENSOR,
+    PS_HW6_RTOS_COMMAND_SENSOR_IMU_MODE,
+    (uint32_t)PS_HW6_IMU_MODE_OFF);
+}
+
+UINT PS_HW6_RTOS_DebugRequestImuLowRate(void)
+{
+  return PS_HW6_RTOS_SendModeCommand(
+    PS_HW6_RTOS_OWNER_SENSOR,
+    PS_HW6_RTOS_COMMAND_SENSOR_IMU_MODE,
+    (uint32_t)PS_HW6_IMU_MODE_LOW_RATE_SAMPLE);
+}
+
+UINT PS_HW6_RTOS_DebugRequestImuEventArmed(void)
+{
+  return PS_HW6_RTOS_SendModeCommand(
+    PS_HW6_RTOS_OWNER_SENSOR,
+    PS_HW6_RTOS_COMMAND_SENSOR_IMU_MODE,
+    (uint32_t)PS_HW6_IMU_MODE_EVENT_ARMED);
+}
+
+UINT PS_HW6_RTOS_DebugRequestImuStepCounter(void)
+{
+  return PS_HW6_RTOS_SendModeCommand(
+    PS_HW6_RTOS_OWNER_SENSOR,
+    PS_HW6_RTOS_COMMAND_SENSOR_IMU_MODE,
+    (uint32_t)PS_HW6_IMU_MODE_STEP_COUNTER);
+}
+
+UINT PS_HW6_RTOS_DebugRequestImuStreaming(void)
+{
+  return PS_HW6_RTOS_SendModeCommand(
+    PS_HW6_RTOS_OWNER_SENSOR,
+    PS_HW6_RTOS_COMMAND_SENSOR_IMU_MODE,
+    (uint32_t)PS_HW6_IMU_MODE_STREAMING);
+}
 
 static void PS_HW6_RTOS_PrimeDebugCommandAnchors(void)
 {
@@ -1771,6 +1893,22 @@ static void PS_HW6_RTOS_PrimeDebugCommandAnchors(void)
   ps_debug_storage_flash_init_anchor =
     PS_HW6_RTOS_DebugRequestStorageFlashInit;
   ps_debug_storage_attach_anchor = PS_HW6_RTOS_DebugRequestStorageAttach;
+  ps_debug_comm_ble_shutdown_anchor =
+    PS_HW6_RTOS_DebugRequestCommBleShutdown;
+  ps_debug_comm_ble_stop_anchor = PS_HW6_RTOS_DebugRequestCommBleStop;
+  ps_debug_comm_ble_searching_anchor =
+    PS_HW6_RTOS_DebugRequestCommBleSearching;
+  ps_debug_comm_ble_pairing_anchor =
+    PS_HW6_RTOS_DebugRequestCommBlePairing;
+  ps_debug_comm_ble_connected_anchor =
+    PS_HW6_RTOS_DebugRequestCommBleConnected;
+  ps_debug_imu_off_anchor = PS_HW6_RTOS_DebugRequestImuOff;
+  ps_debug_imu_low_rate_anchor = PS_HW6_RTOS_DebugRequestImuLowRate;
+  ps_debug_imu_event_armed_anchor =
+    PS_HW6_RTOS_DebugRequestImuEventArmed;
+  ps_debug_imu_step_counter_anchor =
+    PS_HW6_RTOS_DebugRequestImuStepCounter;
+  ps_debug_imu_streaming_anchor = PS_HW6_RTOS_DebugRequestImuStreaming;
 }
 
 
@@ -4291,6 +4429,24 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
       PS_HW6_RTOS_ACK_OWNER(owner_id),
       TX_OR);
   }
+  else if ((owner_id == PS_HW6_RTOS_OWNER_COMM) &&
+           (command == PS_HW6_RTOS_COMMAND_COMM_BLE_MODE))
+  {
+    (void)PS_HW6_OwnerStateMachines_SetBleMode(cycle_index);
+    (void)tx_event_flags_set(
+      &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+      PS_HW6_RTOS_ACK_OWNER(PS_HW6_RTOS_OWNER_COMM),
+      TX_OR);
+  }
+  else if ((owner_id == PS_HW6_RTOS_OWNER_SENSOR) &&
+           (command == PS_HW6_RTOS_COMMAND_SENSOR_IMU_MODE))
+  {
+    (void)PS_HW6_OwnerStateMachines_SetImuMode(cycle_index);
+    (void)tx_event_flags_set(
+      &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+      PS_HW6_RTOS_ACK_OWNER(PS_HW6_RTOS_OWNER_SENSOR),
+      TX_OR);
+  }
   else if (owner_id == PS_HW6_RTOS_OWNER_RUNTIME)
   {
     PS_HW6_RTOS_HandleRuntimeCommand(command);
@@ -4849,6 +5005,44 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
                (g_ps_ui_router_request == 0UL))
       {
         g_ps_ui_router_request_event = PS_UI_ROUTER_EVENT_RECOVER_OK;
+        g_ps_ui_router_request = 1UL;
+      }
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
+        (g_ps_hw6_joystick_xyz_capture_request != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      HAL_StatusTypeDef capture_status;
+      uint32_t capture_mode = g_ps_hw6_joystick_xyz_capture_mode;
+      uint32_t capture_router_event = 0UL;
+
+      if (capture_mode == PS_HW6_JOYSTICK_XYZ_CAPTURE_REST)
+      {
+        capture_router_event = PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_REST;
+      }
+      else if (capture_mode == PS_HW6_JOYSTICK_XYZ_CAPTURE_SWEEP)
+      {
+        capture_router_event = PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_SWEEP;
+      }
+      else if (capture_mode == PS_HW6_JOYSTICK_XYZ_CAPTURE_SWEEP_Z_HIGH)
+      {
+        capture_router_event = PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_SWEEP;
+      }
+
+      g_ps_hw6_joystick_xyz_capture_request = 0UL;
+      if ((capture_router_event != 0UL) &&
+          (g_ps_ui_router_request == 0UL))
+      {
+        g_ps_ui_router_request_event = capture_router_event;
+        g_ps_ui_router_request = 1UL;
+      }
+      capture_status =
+        PS_HW6_OwnerStateMachines_RunJoystickXyzCapture(capture_mode);
+      if (g_ps_ui_router_request == 0UL)
+      {
+        g_ps_ui_router_request_event = (capture_status == HAL_OK) ?
+          PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_DONE :
+          PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_ERROR;
         g_ps_ui_router_request = 1UL;
       }
     }

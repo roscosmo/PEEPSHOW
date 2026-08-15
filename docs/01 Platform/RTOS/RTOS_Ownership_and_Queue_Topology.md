@@ -1,4 +1,4 @@
-# RTOS Ownership and Queue Topology
+﻿# RTOS Ownership and Queue Topology
 
 This document defines thread responsibilities, queue/event topology, and ISR signaling rules.
 
@@ -106,7 +106,7 @@ depths, and runtime burst behavior have not yet been measured. The startup
 envelope is diagnostic only; production message contracts remain under
 [[Interface_Control_Document]] authority.
 
-Current FW0 stack sizing is compile-time tunable through `KNOB_RTOS_DEFAULT_STACK_BYTES`, `KNOB_RTOS_POWER_STACK_BYTES`, and `KNOB_RTOS_STORAGE_STACK_BYTES`. `thPower` deliberately has a larger stack budget than the default owner stack because it owns PMIC policy plus HAL clock-policy transitions during USB MSC, STOP2, and shutdown paths. The RTOS probe records configured stack bytes plus ThreadX stack start/end/current/high-water pointers for each owner so stack damage can be separated from normal storage or USB reclaim failures.
+Current FW0 stack sizing is compile-time tunable through `KNOB_RTOS_DEFAULT_STACK_BYTES`, `KNOB_RTOS_POWER_STACK_BYTES`, `KNOB_RTOS_INPUT_STACK_BYTES`, and `KNOB_RTOS_STORAGE_STACK_BYTES`. `thPower` deliberately has a larger stack budget than the default owner stack because it owns PMIC policy plus HAL clock-policy transitions during USB MSC, STOP2, and shutdown paths. `thInput` has a measured provisional `1536` byte stack budget because bounded TMAG3001 raw XYZ diagnostic capture overflowed the original `1024` byte default stack; a `4096` byte input diagnostic stack exhausted the current ThreadX byte pool and is not the accepted default. The RTOS probe records configured stack bytes plus ThreadX stack start/end/current/high-water pointers for each owner so stack damage can be separated from normal storage, USB reclaim, or input-owner diagnostic failures.
 
 Phase 5 remains open for real producer/consumer routing, sole-owner peripheral
 access, saturation and timeout policy, fault propagation, and the power

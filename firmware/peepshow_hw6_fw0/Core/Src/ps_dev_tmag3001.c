@@ -12,6 +12,7 @@
 
 #define PS_DEV_TMAG3001_REG_DEVICE_CONFIG2   (0x01U)
 #define PS_DEV_TMAG3001_REG_SENSOR_CONFIG1   (0x02U)
+#define PS_DEV_TMAG3001_REG_SENSOR_CONFIG2   (0x03U)
 #define PS_DEV_TMAG3001_REG_DEVICE_ID        (0x0DU)
 #define PS_DEV_TMAG3001_REG_MANUFACTURER_LSB (0x0EU)
 #define PS_DEV_TMAG3001_REG_MANUFACTURER_MSB (0x0FU)
@@ -359,6 +360,15 @@ ps_status_t ps_dev_tmag3001_wake_continuous(
   ps_dev_tmag3001_t *device,
   ps_dev_tmag3001_wake_result_t *result)
 {
+  return ps_dev_tmag3001_wake_continuous_with_range(device, 0U, 0U, result);
+}
+
+ps_status_t ps_dev_tmag3001_wake_continuous_with_range(
+  ps_dev_tmag3001_t *device,
+  uint8_t range_override_mask,
+  uint8_t range_override_value,
+  ps_dev_tmag3001_wake_result_t *result)
+{
   ps_hw_i2c3_lease_t lease;
   ps_hw_i2c3_lease_result_t acquire_result;
   ps_dev_tmag3001_transport_t transport;
@@ -369,6 +379,7 @@ ps_status_t ps_dev_tmag3001_wake_continuous(
   uint8_t manufacturer_msb = 0U;
   uint32_t identity_match = 0UL;
   uint8_t sensor_config1 = 0U;
+  uint8_t sensor_config2 = 0U;
   uint8_t device_config2 = 0U;
 
   if ((device == NULL) || (result == NULL))
@@ -378,6 +389,10 @@ ps_status_t ps_dev_tmag3001_wake_continuous(
   (void)memset(result, 0, sizeof(*result));
   result->status = PS_STATUS_INTERNAL_ERROR;
   result->active_status = PS_STATUS_INTERNAL_ERROR;
+  result->sensor_config2_status = PS_STATUS_INTERNAL_ERROR;
+  result->sensor_config2_restore_status = PS_STATUS_OK;
+  result->range_override_mask = (uint32_t)range_override_mask;
+  result->range_override_value = (uint32_t)range_override_value;
   if (device->initialized == 0U)
   {
     result->status = PS_STATUS_NOT_INITIALIZED;
@@ -438,6 +453,54 @@ ps_status_t ps_dev_tmag3001_wake_continuous(
       &transport,
       PS_DEV_TMAG3001_REG_SENSOR_CONFIG1,
       sensor_config1);
+  }
+  if (status == PS_STATUS_OK)
+  {
+    status = ps_dev_tmag3001_read(
+      device,
+      &lease,
+      &transport,
+      PS_DEV_TMAG3001_REG_SENSOR_CONFIG2,
+      &sensor_config2);
+    result->sensor_config2_status = status;
+  }
+  if (status == PS_STATUS_OK)
+  {
+    result->sensor_config2_before = sensor_config2;
+    if (range_override_mask != 0U)
+    {
+      sensor_config2 =
+        (uint8_t)((sensor_config2 & (uint8_t)~range_override_mask) |
+                  (range_override_value & range_override_mask));
+      status = ps_dev_tmag3001_write(
+        device,
+        &lease,
+        &transport,
+        PS_DEV_TMAG3001_REG_SENSOR_CONFIG2,
+        sensor_config2);
+      if (status == PS_STATUS_OK)
+      {
+        result->range_override_applied = 1UL;
+      }
+    }
+  }
+  if (status == PS_STATUS_OK)
+  {
+    status = ps_dev_tmag3001_read(
+      device,
+      &lease,
+      &transport,
+      PS_DEV_TMAG3001_REG_SENSOR_CONFIG2,
+      &value);
+    result->sensor_config2_status = status;
+    if ((status == PS_STATUS_OK) && (value == sensor_config2))
+    {
+      result->active_sensor_config2 = value;
+    }
+    else if (status == PS_STATUS_OK)
+    {
+      status = PS_STATUS_VERIFY_FAILED;
+    }
   }
   if (status == PS_STATUS_OK)
   {
@@ -507,6 +570,81 @@ ps_status_t ps_dev_tmag3001_wake_continuous(
     device->state = PS_DEV_TMAG3001_STATE_ACTIVE;
   }
   return result->status;
+}
+
+ps_status_t ps_dev_tmag3001_set_sensor_config2(
+  ps_dev_tmag3001_t *device,
+  uint8_t value,
+  uint8_t *readback)
+{
+  ps_hw_i2c3_lease_t lease;
+  ps_hw_i2c3_lease_result_t acquire_result;
+  ps_dev_tmag3001_transport_t transport;
+  ps_status_t status;
+  uint8_t verify_value = 0U;
+
+  if (device == NULL)
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+  if (readback != NULL)
+  {
+    *readback = 0U;
+  }
+  if (device->initialized == 0U)
+  {
+    device->last_status = (uint32_t)PS_STATUS_NOT_INITIALIZED;
+    return PS_STATUS_NOT_INITIALIZED;
+  }
+  if (device->state != PS_DEV_TMAG3001_STATE_ACTIVE)
+  {
+    device->last_status = (uint32_t)PS_STATUS_INVALID_STATE;
+    return PS_STATUS_INVALID_STATE;
+  }
+  device->operation_count++;
+
+  acquire_result = ps_hw_i2c3_acquire(
+    PS_HW_I2C3_CLIENT_INPUT,
+    PS_DEV_TMAG3001_ACQUIRE_TIMEOUT_MS,
+    PS_DEV_TMAG3001_MAX_LEASE_MS,
+    &lease);
+  if (acquire_result.status != PS_STATUS_OK)
+  {
+    device->last_status = (uint32_t)acquire_result.status;
+    device->state = PS_DEV_TMAG3001_STATE_FAULT;
+    return acquire_result.status;
+  }
+  (void)memset(&transport, 0, sizeof(transport));
+
+  status = ps_dev_tmag3001_write(
+    device,
+    &lease,
+    &transport,
+    PS_DEV_TMAG3001_REG_SENSOR_CONFIG2,
+    value);
+  if (status == PS_STATUS_OK)
+  {
+    status = ps_dev_tmag3001_read(
+      device,
+      &lease,
+      &transport,
+      PS_DEV_TMAG3001_REG_SENSOR_CONFIG2,
+      &verify_value);
+  }
+  if (readback != NULL)
+  {
+    *readback = verify_value;
+  }
+  if ((status == PS_STATUS_OK) && (verify_value != value))
+  {
+    status = PS_STATUS_VERIFY_FAILED;
+  }
+  status = ps_dev_tmag3001_finish(device, &lease, status);
+  if (status == PS_STATUS_OK)
+  {
+    device->state = PS_DEV_TMAG3001_STATE_ACTIVE;
+  }
+  return status;
 }
 
 
