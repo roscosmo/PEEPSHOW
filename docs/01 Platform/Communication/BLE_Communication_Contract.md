@@ -96,7 +96,7 @@ The following values are compile-time knobs for FW0 NINA command transport and b
 | `KNOB_COMM_BLE_BOOT_DRAIN_MS` | boot-banner drain window before command probes |
 | `KNOB_COMM_BLE_RX_WINDOW_MS` | bounded command-response receive window |
 | `KNOB_COMM_BLE_RX_QUIET_MS` | receive quiet period used to end a response |
-| `KNOB_COMM_BLE_STOP_SETTLE_MS` | NINA-B1 `AT&D4` / DSR STOP settling interval |
+| `KNOB_COMM_BLE_STOP_SETTLE_MS` | NINA-B1 `AT&D4` / DSR Sleep/System-OFF settling interval |
 | `KNOB_COMM_BLE_WAKE_SETTLE_MS` | DSR wake settling interval before commands resume |
 | `KNOB_COMM_BLE_RX_BYTE_TIMEOUT_MS` | UART receive byte timeout |
 | `KNOB_COMM_BLE_TX_TIMEOUT_MS` | UART transmit timeout |
@@ -170,13 +170,15 @@ The FW0 owner state machine exposes explicit BLE mode requests for power-policy 
 
 | Mode | FW0 behavior | Status |
 |---|---|---|
-| `SHUTDOWN` | Deinitializes the UART, asserts NINA reset low, and leaves DSR high-Z. | Target-validated |
-| `STOP` | Wakes/configures the NINA command path, applies `AT&D4`, drives DSR high, deinitializes the UART, leaves reset released, and parks in `BLE_SUSPENDED`. | Target-validated |
+| `RESET_HELD` | Deinitializes the UART, asserts NINA reset low, and leaves DSR high-Z. This is a hard comparison/fallback state, not the routine low-power policy. | Target-validated |
+| `SLEEP_SYSTEM_OFF` | Wakes/configures the NINA command path, applies `AT&D4`, drives DSR high, deinitializes the UART, leaves reset released, and parks in `BLE_SUSPENDED`. This is intended to map to u-connectXpress DSR-controlled Sleep/System OFF. | Target-validated |
 | `SEARCHING` | Brings the NINA to owner `BLE_ADVERTISING` as an OS placeholder. Real advertising commands are not implemented yet. | Placeholder |
 | `PAIRING` | Brings the NINA to owner `BLE_PAIRING` as an OS placeholder. Real pairing flow is not implemented yet. | Placeholder |
 | `CONNECTED` | Brings the NINA to owner `BLE_CONNECTED` as an OS placeholder. Real link/SPS behavior is not implemented yet. | Placeholder |
 
-`STOP` is the validated NINA-B1 low-power command mode. `SHUTDOWN` is the reset-asserted hard-off mode.
+`SLEEP_SYSTEM_OFF` is the routine NINA-B1 low-power target when BLE radio service is not required. `RESET_HELD` is the reset-asserted hard-off comparison/fallback mode. The old FW0 helper names `STOP` and `SHUTDOWN` are retained only as compatibility aliases for these two physical policies.
+
+STOP2 resident policy preserves the logical active BLE mode while parking the physical module. The baseline STOP2 path targets `SLEEP_SYSTEM_OFF`, including the normal boot-default/off case, so the NINA reaches the validated `AT&D4` / DSR low-power path with reset released, DSR high, and UART deinitialized. This path should allow NFC/GPIO wake while BLE radio wake is unavailable, and NINA wake must be treated as a fresh module startup. `RESET_HELD` is reserved for an explicit reset-held request or bounded fault fallback, and must not be used as the default STOP2 resident state unless measurement proves it is better.
 
 ## Events
 

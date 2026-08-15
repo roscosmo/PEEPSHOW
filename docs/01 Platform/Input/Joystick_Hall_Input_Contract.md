@@ -55,6 +55,8 @@ Wake-on-change is not the default joystick wake policy. TMAG3001 wake-on-change 
 
 Absolute magnetic thresholds are the baseline because they can be configured across multiple axes, then firmware can read the result registers and classify direction using calibration.
 
+STOP2 baseline current policy is stricter than the normal low-power input model: until threshold and wake-and-sleep behavior are measured, `thInput` must terminally park TMAG3001 in sleep during STOP2 quiesce, write sleep last, and avoid any post-sleep I2C read that would immediately wake the part. The STOP2 quiesce implementation must keep the `INT_Config_1` target as a policy value, not bake in a permanent no-wake setting, so future wake-and-sleep or threshold-armed STOP2 modes can be selected without changing the driver sequencing.
+
 Realtime model:
 
 - use `JOY_FAST_POLL` for gameplay or calibration that needs continuous feedback
@@ -221,6 +223,14 @@ Baseline threshold-wake policy:
 - `Sensor_Config_4`, `Sensor_Config_5`, and `Sensor_Config_6` hold high thresholds for X/Y/Z when `THR_SEL = 2h` and angle mode is disabled.
 - `INT_Config_1.Threshold_INT = 1` enables threshold interrupt response.
 - `INT_Config_1.INT_Mode = 1h` routes the interrupt through the TMAG `INT` pin.
+
+STOP2 baseline park policy:
+
+- Clear active magnetic channels before terminal sleep.
+- Set the selected STOP2 `INT_Config_1` policy target before terminal sleep.
+- Write `Device_Config_2.Operating_Mode = Sleep` last.
+- Do not read TMAG registers after the sleep write unless deliberately waking it.
+- The current quiet baseline target is `INT_Config_1 = 0x01`; future threshold or wake-and-sleep targets may replace this value after validation.
 
 Bring-up should initially use a latched interrupt so a short threshold event cannot be missed while the MCU wakes. Final polarity and edge configuration must be validated against the HW6 `JOY_INT` circuit and CubeMX EXTI settings.
 

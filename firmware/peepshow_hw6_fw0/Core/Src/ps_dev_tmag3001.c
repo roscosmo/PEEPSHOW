@@ -13,6 +13,7 @@
 #define PS_DEV_TMAG3001_REG_DEVICE_CONFIG2   (0x01U)
 #define PS_DEV_TMAG3001_REG_SENSOR_CONFIG1   (0x02U)
 #define PS_DEV_TMAG3001_REG_SENSOR_CONFIG2   (0x03U)
+#define PS_DEV_TMAG3001_REG_INT_CONFIG1      (0x08U)
 #define PS_DEV_TMAG3001_REG_DEVICE_ID        (0x0DU)
 #define PS_DEV_TMAG3001_REG_MANUFACTURER_LSB (0x0EU)
 #define PS_DEV_TMAG3001_REG_MANUFACTURER_MSB (0x0FU)
@@ -28,9 +29,12 @@
 #define PS_DEV_TMAG3001_OPERATING_SLEEP      (0x01U)
 #define PS_DEV_TMAG3001_OPERATING_CONTINUOUS (0x02U)
 #define PS_DEV_TMAG3001_ACTIVE_CHANNELS      (0x70U)
+#define PS_DEV_TMAG3001_INT_CONFIG1_SLEEP_TARGET (0x01U)
 
 #define PS_DEV_TMAG3001_WRITE_REQUIRED_MASK  (0x07UL)
 #define PS_DEV_TMAG3001_VERIFY_REQUIRED_MASK (0x03UL)
+#define PS_DEV_TMAG3001_SLEEP_AUDIT_WRITE_MASK  (0x0FUL)
+#define PS_DEV_TMAG3001_SLEEP_AUDIT_VERIFY_MASK (0x07UL)
 
 typedef struct
 {
@@ -647,6 +651,249 @@ ps_status_t ps_dev_tmag3001_set_sensor_config2(
   return status;
 }
 
+
+ps_status_t ps_dev_tmag3001_prepare_sleep(
+  ps_dev_tmag3001_t *device,
+  uint8_t int_config1_target,
+  ps_dev_tmag3001_sleep_audit_result_t *result)
+{
+  ps_hw_i2c3_lease_t lease;
+  ps_hw_i2c3_lease_result_t acquire_result;
+  ps_dev_tmag3001_transport_t transport;
+  ps_status_t status;
+  uint8_t value = 0U;
+  uint8_t sensor_config1 = 0U;
+  uint8_t device_config2 = 0U;
+
+  if ((device == NULL) || (result == NULL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  (void)memset(result, 0, sizeof(*result));
+  result->status = PS_STATUS_INTERNAL_ERROR;
+  result->ready_status = PS_STATUS_INTERNAL_ERROR;
+  result->identity_status = PS_STATUS_INTERNAL_ERROR;
+  result->sensor_config1_verify_status = PS_STATUS_INTERNAL_ERROR;
+  result->int_config1_verify_status = PS_STATUS_INTERNAL_ERROR;
+  result->device_config2_verify_status = PS_STATUS_INTERNAL_ERROR;
+  result->sleep_write_status = PS_STATUS_INTERNAL_ERROR;
+  result->int_config1_target = int_config1_target;
+
+  if (device->initialized == 0U)
+  {
+    result->status = PS_STATUS_NOT_INITIALIZED;
+    return result->status;
+  }
+  device->operation_count++;
+
+  acquire_result = ps_hw_i2c3_acquire(
+    PS_HW_I2C3_CLIENT_INPUT,
+    PS_DEV_TMAG3001_ACQUIRE_TIMEOUT_MS,
+    PS_DEV_TMAG3001_MAX_LEASE_MS,
+    &lease);
+  if (acquire_result.status != PS_STATUS_OK)
+  {
+    result->status = acquire_result.status;
+    device->last_status = (uint32_t)result->status;
+    device->state = PS_DEV_TMAG3001_STATE_FAULT;
+    return result->status;
+  }
+  (void)memset(&transport, 0, sizeof(transport));
+
+  status = ps_dev_tmag3001_probe_identity(
+    device,
+    &lease,
+    &transport,
+    &result->device_id,
+    &result->manufacturer_lsb,
+    &result->manufacturer_msb,
+    &result->identity_match);
+  result->ready_status = status;
+  result->identity_status = status;
+
+  if (status == PS_STATUS_OK)
+  {
+    status = ps_dev_tmag3001_read(
+      device,
+      &lease,
+      &transport,
+      PS_DEV_TMAG3001_REG_SENSOR_CONFIG1,
+      &sensor_config1);
+  }
+  if (status == PS_STATUS_OK)
+  {
+    result->sensor_config1_before = sensor_config1;
+    sensor_config1 &= (uint8_t)~PS_DEV_TMAG3001_MAG_CHANNEL_MASK;
+    status = ps_dev_tmag3001_write(
+      device,
+      &lease,
+      &transport,
+      PS_DEV_TMAG3001_REG_SENSOR_CONFIG1,
+      sensor_config1);
+    if (status == PS_STATUS_OK)
+    {
+      result->write_ok_mask |= 1UL << 0U;
+    }
+  }
+  if (status == PS_STATUS_OK)
+  {
+    status = ps_dev_tmag3001_read(
+      device,
+      &lease,
+      &transport,
+      PS_DEV_TMAG3001_REG_SENSOR_CONFIG1,
+      &value);
+    result->sensor_config1_verify_status = status;
+    if ((status == PS_STATUS_OK) && (value == sensor_config1))
+    {
+      result->sensor_config1_after = value;
+      result->verify_ok_mask |= 1UL << 0U;
+    }
+    else if (status == PS_STATUS_OK)
+    {
+      status = PS_STATUS_VERIFY_FAILED;
+    }
+  }
+
+  if (status == PS_STATUS_OK)
+  {
+    status = ps_dev_tmag3001_read(
+      device,
+      &lease,
+      &transport,
+      PS_DEV_TMAG3001_REG_INT_CONFIG1,
+      &value);
+  }
+  if (status == PS_STATUS_OK)
+  {
+    result->int_config1_before = value;
+    status = ps_dev_tmag3001_write(
+      device,
+      &lease,
+      &transport,
+      PS_DEV_TMAG3001_REG_INT_CONFIG1,
+      result->int_config1_target);
+    if (status == PS_STATUS_OK)
+    {
+      result->write_ok_mask |= 1UL << 1U;
+    }
+  }
+  if (status == PS_STATUS_OK)
+  {
+    status = ps_dev_tmag3001_read(
+      device,
+      &lease,
+      &transport,
+      PS_DEV_TMAG3001_REG_INT_CONFIG1,
+      &value);
+    result->int_config1_verify_status = status;
+    if ((status == PS_STATUS_OK) && (value == result->int_config1_target))
+    {
+      result->int_config1_after = value;
+      result->verify_ok_mask |= 1UL << 1U;
+    }
+    else if (status == PS_STATUS_OK)
+    {
+      status = PS_STATUS_VERIFY_FAILED;
+    }
+  }
+
+  if (status == PS_STATUS_OK)
+  {
+    status = ps_dev_tmag3001_read(
+      device,
+      &lease,
+      &transport,
+      PS_DEV_TMAG3001_REG_DEVICE_CONFIG2,
+      &device_config2);
+  }
+  if (status == PS_STATUS_OK)
+  {
+    result->device_config2_before = device_config2;
+    device_config2 =
+      (uint8_t)((device_config2 &
+                 (uint8_t)~(PS_DEV_TMAG3001_LOW_NOISE_MASK |
+                            PS_DEV_TMAG3001_OPERATING_MODE_MASK)) |
+                PS_DEV_TMAG3001_OPERATING_STANDBY);
+    status = ps_dev_tmag3001_write(
+      device,
+      &lease,
+      &transport,
+      PS_DEV_TMAG3001_REG_DEVICE_CONFIG2,
+      device_config2);
+    if (status == PS_STATUS_OK)
+    {
+      result->write_ok_mask |= 1UL << 2U;
+    }
+  }
+  if (status == PS_STATUS_OK)
+  {
+    status = ps_dev_tmag3001_read(
+      device,
+      &lease,
+      &transport,
+      PS_DEV_TMAG3001_REG_DEVICE_CONFIG2,
+      &value);
+    result->device_config2_verify_status = status;
+    if ((status == PS_STATUS_OK) && (value == device_config2))
+    {
+      result->device_config2_after = value;
+      result->verify_ok_mask |= 1UL << 2U;
+    }
+    else if (status == PS_STATUS_OK)
+    {
+      status = PS_STATUS_VERIFY_FAILED;
+    }
+  }
+
+  result->device_config2_sleep =
+    (uint8_t)(device_config2 | PS_DEV_TMAG3001_OPERATING_SLEEP);
+  result->post_sleep_read_omitted = 1UL;
+  if (status == PS_STATUS_OK)
+  {
+    status = ps_dev_tmag3001_write(
+      device,
+      &lease,
+      &transport,
+      PS_DEV_TMAG3001_REG_DEVICE_CONFIG2,
+      result->device_config2_sleep);
+    result->sleep_write_status = status;
+    if (status == PS_STATUS_OK)
+    {
+      result->write_ok_mask |= 1UL << 3U;
+      result->terminal_sleep_committed = 1UL;
+    }
+  }
+
+  if ((status == PS_STATUS_OK) &&
+      ((result->write_ok_mask != PS_DEV_TMAG3001_SLEEP_AUDIT_WRITE_MASK) ||
+       (result->verify_ok_mask != PS_DEV_TMAG3001_SLEEP_AUDIT_VERIFY_MASK) ||
+       (result->terminal_sleep_committed == 0UL)))
+  {
+    status = PS_STATUS_VERIFY_FAILED;
+  }
+
+  ps_dev_tmag3001_set_last_hal(
+    &transport, &result->last_hal_status, &result->last_hal_error);
+  status = ps_dev_tmag3001_finish(device, &lease, status);
+  result->status = status;
+  if (status == PS_STATUS_OK)
+  {
+    device->state = PS_DEV_TMAG3001_STATE_SUSPENDED;
+  }
+  return result->status;
+}
+
+ps_status_t ps_dev_tmag3001_prepare_sleep_audit(
+  ps_dev_tmag3001_t *device,
+  ps_dev_tmag3001_sleep_audit_result_t *result)
+{
+  return ps_dev_tmag3001_prepare_sleep(
+    device,
+    PS_DEV_TMAG3001_INT_CONFIG1_SLEEP_TARGET,
+    result);
+}
 
 ps_status_t ps_dev_tmag3001_read_raw_sample(
   ps_dev_tmag3001_t *device,

@@ -1811,7 +1811,7 @@ UINT PS_HW6_RTOS_DebugRequestCommBleShutdown(void)
   return PS_HW6_RTOS_SendModeCommand(
     PS_HW6_RTOS_OWNER_COMM,
     PS_HW6_RTOS_COMMAND_COMM_BLE_MODE,
-    (uint32_t)PS_HW6_COMM_BLE_MODE_SHUTDOWN);
+    (uint32_t)PS_HW6_COMM_BLE_MODE_RESET_HELD);
 }
 
 UINT PS_HW6_RTOS_DebugRequestCommBleStop(void)
@@ -1819,7 +1819,7 @@ UINT PS_HW6_RTOS_DebugRequestCommBleStop(void)
   return PS_HW6_RTOS_SendModeCommand(
     PS_HW6_RTOS_OWNER_COMM,
     PS_HW6_RTOS_COMMAND_COMM_BLE_MODE,
-    (uint32_t)PS_HW6_COMM_BLE_MODE_STOP);
+    (uint32_t)PS_HW6_COMM_BLE_MODE_SLEEP_SYSTEM_OFF);
 }
 
 UINT PS_HW6_RTOS_DebugRequestCommBleSearching(void)
@@ -3425,9 +3425,18 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunPowerQuiesceBarrier(uint32_t reason)
     const uint32_t owner_id = quiesce_order[index];
     const ULONG expected_ack = PS_HW6_RTOS_ACK_OWNER(owner_id);
     ULONG actual_flags = 0UL;
-    UINT send_status = PS_HW6_RTOS_SendPowerQuiesceCommand(
-      owner_id, reason);
-    UINT wait_status = send_status;
+    UINT send_status;
+    UINT wait_status;
+
+    (void)tx_event_flags_get(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+                             expected_ack,
+                             TX_AND_CLEAR,
+                             &actual_flags,
+                             TX_NO_WAIT);
+    actual_flags = 0UL;
+
+    send_status = PS_HW6_RTOS_SendPowerQuiesceCommand(owner_id, reason);
+    wait_status = send_status;
 
     if (send_status == TX_SUCCESS)
     {
@@ -3486,6 +3495,13 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunPostStopResumeBarrier(void)
     }
     else
     {
+      (void)tx_event_flags_get(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+                               expected_ack,
+                               TX_AND_CLEAR,
+                               &actual_flags,
+                               TX_NO_WAIT);
+      actual_flags = 0UL;
+
       send_status = PS_HW6_RTOS_SendPostStopResumeCommand(owner_id);
       wait_status = send_status;
       if (send_status == TX_SUCCESS)
@@ -5045,6 +5061,13 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
           PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_ERROR;
         g_ps_ui_router_request = 1UL;
       }
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
+        (g_ps_hw6_joystick_sleep_audit_request != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      g_ps_hw6_joystick_sleep_audit_request = 0UL;
+      (void)PS_HW6_OwnerStateMachines_RunJoystickSleepAudit();
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
         (g_ps_hw6_joystick_sample_request != 0UL) &&

@@ -10,14 +10,15 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (41UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (49UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
 #define PS_HW6_OWNER_SM_CYCLE_COUNT          (2U)
 #define PS_HW6_OWNER_SM_CYCLE_DIRECTION_COUNT (2U)
 #define PS_HW6_OWNER_SM_IMU_REGISTER_COUNT   (11U)
-#define PS_HW6_OWNER_SM_NINA_COMMAND_COUNT   (7U)
+#define PS_HW6_OWNER_SM_NINA_COMMAND_COUNT   (8U)
+#define PS_HW6_OWNER_SM_NINA_IDENTITY_BYTES  (96U)
 #define PS_HW6_OWNER_SM_STATUS_NOT_RUN       (0xFFFFFFFFUL)
 #define PS_HW6_OWNER_SM_STATUS_UNAVAILABLE   (0xFFFFFFFEUL)
 
@@ -51,12 +52,17 @@ typedef enum
 
 typedef enum
 {
-  PS_HW6_COMM_BLE_MODE_SHUTDOWN = 0,
-  PS_HW6_COMM_BLE_MODE_STOP,
+  PS_HW6_COMM_BLE_MODE_RESET_HELD = 0,
+  PS_HW6_COMM_BLE_MODE_SLEEP_SYSTEM_OFF,
   PS_HW6_COMM_BLE_MODE_SEARCHING,
   PS_HW6_COMM_BLE_MODE_PAIRING,
   PS_HW6_COMM_BLE_MODE_CONNECTED
 } PS_HW6_CommBleMode;
+
+#define PS_HW6_COMM_BLE_MODE_SHUTDOWN \
+  PS_HW6_COMM_BLE_MODE_RESET_HELD
+#define PS_HW6_COMM_BLE_MODE_STOP \
+  PS_HW6_COMM_BLE_MODE_SLEEP_SYSTEM_OFF
 
 typedef enum
 {
@@ -267,6 +273,12 @@ typedef struct
   uint32_t stop2_expected_wake_pin;
   uint32_t stop2_wake_start_idr;
   uint32_t stop2_wake_end_idr;
+  uint32_t stop2_systick_ctrl_before;
+  uint32_t stop2_systick_ctrl_sleep;
+  uint32_t stop2_systick_ctrl_after;
+  uint32_t stop2_systick_icsr_before;
+  uint32_t stop2_systick_icsr_sleep;
+  uint32_t stop2_systick_icsr_after;
   uint32_t stop2_active_prep_request_count;
   uint32_t stop2_active_prep_start_tick;
   uint32_t stop2_active_prep_end_tick;
@@ -275,6 +287,15 @@ typedef struct
   uint32_t stop2_active_prep_ready;
   uint32_t stop2_active_enter_request_count;
   uint32_t stop2_active_enter_gate_status;
+  uint32_t stop2_policy_request_count;
+  uint32_t stop2_policy_reason;
+  uint32_t stop2_policy_last_tick;
+  uint32_t stop2_policy_ble_target_mode;
+  uint32_t stop2_policy_ble_active_mode;
+  uint32_t stop2_policy_ble_status;
+  uint32_t stop2_policy_imu_target_mode;
+  uint32_t stop2_policy_imu_active_mode;
+  uint32_t stop2_policy_imu_status;
 
   uint32_t start_power_event_count;
   uint32_t start_power_last_event;
@@ -361,6 +382,36 @@ typedef struct
   uint32_t joystick_post_sleep_read_omitted;
   uint32_t joystick_i2c_state_after;
   uint32_t joystick_i2c_error_after;
+  uint32_t joystick_sleep_audit_request_count;
+  uint32_t joystick_sleep_audit_start_tick;
+  uint32_t joystick_sleep_audit_end_tick;
+  uint32_t joystick_sleep_audit_status;
+  uint32_t joystick_sleep_audit_ready_status;
+  uint32_t joystick_sleep_audit_identity_status;
+  uint32_t joystick_sleep_audit_device_id;
+  uint32_t joystick_sleep_audit_manufacturer_lsb;
+  uint32_t joystick_sleep_audit_manufacturer_msb;
+  uint32_t joystick_sleep_audit_identity_match;
+  uint32_t joystick_sleep_audit_sensor_config1_before;
+  uint32_t joystick_sleep_audit_sensor_config1_after;
+  uint32_t joystick_sleep_audit_int_config1_before;
+  uint32_t joystick_sleep_audit_int_config1_target;
+  uint32_t joystick_sleep_audit_int_config1_after;
+  uint32_t joystick_sleep_audit_device_config2_before;
+  uint32_t joystick_sleep_audit_device_config2_after;
+  uint32_t joystick_sleep_audit_device_config2_sleep;
+  uint32_t joystick_sleep_audit_write_ok_mask;
+  uint32_t joystick_sleep_audit_verify_ok_mask;
+  uint32_t joystick_sleep_audit_sensor_config1_verify_status;
+  uint32_t joystick_sleep_audit_int_config1_verify_status;
+  uint32_t joystick_sleep_audit_device_config2_verify_status;
+  uint32_t joystick_sleep_audit_sleep_write_status;
+  uint32_t joystick_sleep_audit_terminal_sleep_committed;
+  uint32_t joystick_sleep_audit_post_sleep_read_omitted;
+  uint32_t joystick_sleep_audit_i2c_state_after;
+  uint32_t joystick_sleep_audit_i2c_error_after;
+  uint32_t joystick_sleep_audit_last_hal_status;
+  uint32_t joystick_sleep_audit_last_hal_error;
   uint32_t joystick_cycle_wake_probe_status[PS_HW6_OWNER_SM_CYCLE_COUNT];
   uint32_t joystick_cycle_wake_retry_status[PS_HW6_OWNER_SM_CYCLE_COUNT];
   uint32_t joystick_cycle_active_sensor_config1[PS_HW6_OWNER_SM_CYCLE_COUNT];
@@ -835,6 +886,18 @@ typedef struct
   uint32_t ble_nrst_after;
   uint32_t ble_dsr_host_control_before;
   uint32_t ble_dsr_host_control_after;
+  uint32_t ble_dsr_sleep_target_level;
+  uint32_t ble_dsr_assert_tick;
+  uint32_t ble_dsr_deassert_tick;
+  uint32_t ble_stop_settle_ticks;
+  uint32_t ble_stop_settle_start_tick;
+  uint32_t ble_stop_settle_end_tick;
+  uint32_t ble_dsr_before_sleep_level;
+  uint32_t ble_dsr_after_sleep_level;
+  uint32_t ble_sleep_dsr_deasserted;
+  uint32_t ble_identity_status;
+  uint32_t ble_identity_rx_len;
+  char ble_identity_response[PS_HW6_OWNER_SM_NINA_IDENTITY_BYTES];
   uint32_t ble_boot_rx_len;
   uint32_t ble_command_count;
   uint32_t ble_command_tx_status[PS_HW6_OWNER_SM_NINA_COMMAND_COUNT];
@@ -879,8 +942,10 @@ extern volatile uint32_t g_ps_hw6_joystick_live_request;
 extern volatile uint32_t g_ps_hw6_joystick_cardinal_request;
 extern volatile uint32_t g_ps_hw6_joystick_calibration_capture_request;
 extern volatile uint32_t g_ps_hw6_joystick_calibration_capture_page;
+extern volatile uint32_t g_ps_hw6_joystick_sleep_audit_request;
 extern volatile uint32_t g_ps_hw6_joystick_xyz_capture_request;
 extern volatile uint32_t g_ps_hw6_joystick_xyz_capture_mode;
+extern volatile uint32_t g_ps_hw6_ble_sleep_dsr_deasserted;
 extern volatile PS_HW6_JoystickXyzCaptureRecord
   g_ps_hw6_joystick_xyz_capture_buffer[];
 
@@ -903,6 +968,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ParkUsbForBoot(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSampleProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickLiveProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSleepAudit(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickXyzCapture(
   uint32_t capture_mode);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCalibrationCapture(

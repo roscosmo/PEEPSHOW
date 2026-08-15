@@ -16,6 +16,31 @@ printf "rtos lpbam prep count/send/wait/ack/owner/ready = %u / 0x%x / 0x%x / 0x%
 printf "rtos lpbam abort count/send/wait/ack/owner = %u / 0x%x / 0x%x / 0x%x / 0x%x\n", $rt->stop2_lpbam_abort_request_count, $rt->stop2_lpbam_abort_send_status, $rt->stop2_lpbam_abort_wait_status, $rt->stop2_lpbam_abort_ack_flags, $rt->stop2_lpbam_abort_owner_status
 printf "owner stop2 count/start/wake/end = %u / %u / %u / %u\n", $sm->stop2_request_count, $sm->stop2_start_tick, $sm->stop2_wake_tick, $sm->stop2_end_tick
 printf "owner stop2 status q/enter/clk/recover/last = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_quiesce_status, $sm->stop2_enter_status, $sm->stop2_clock_restore_status, $sm->stop2_recover_status, $sm->stop2_last_status
+printf "systick ctrl before/sleep/after = 0x%x / 0x%x / 0x%x\n", $sm->stop2_systick_ctrl_before, $sm->stop2_systick_ctrl_sleep, $sm->stop2_systick_ctrl_after
+printf "systick icsr before/sleep/after = 0x%x / 0x%x / 0x%x\n", $sm->stop2_systick_icsr_before, $sm->stop2_systick_icsr_sleep, $sm->stop2_systick_icsr_after
+printf "power quiesce count/reason/start/end/last = %u / %u / %u / %u / 0x%x\n", $sm->power_quiesce_request_count, $sm->power_quiesce_reason, $sm->power_quiesce_start_tick, $sm->power_quiesce_end_tick, $sm->power_quiesce_last_status
+printf "power quiesce masks req/send/ack/ok/fail = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->power_quiesce_required_mask, $sm->power_quiesce_send_ok_mask, $sm->power_quiesce_ack_ok_mask, $sm->power_quiesce_success_mask, $sm->power_quiesce_failure_mask
+printf "power quiesce owner stat A/I/D/S/ST/C = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->power_quiesce_owner_status[1], $sm->power_quiesce_owner_status[2], $sm->power_quiesce_owner_status[3], $sm->power_quiesce_owner_status[4], $sm->power_quiesce_owner_status[5], $sm->power_quiesce_owner_status[6]
+printf "power quiesce send stat A/I/D/S/ST/C = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->power_quiesce_send_status[1], $sm->power_quiesce_send_status[2], $sm->power_quiesce_send_status[3], $sm->power_quiesce_send_status[4], $sm->power_quiesce_send_status[5], $sm->power_quiesce_send_status[6]
+printf "power quiesce ack stat A/I/D/S/ST/C = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->power_quiesce_ack_status[1], $sm->power_quiesce_ack_status[2], $sm->power_quiesce_ack_status[3], $sm->power_quiesce_ack_status[4], $sm->power_quiesce_ack_status[5], $sm->power_quiesce_ack_status[6]
+printf "power quiesce ack flags A/I/D/S/ST/C = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->power_quiesce_ack_flags[1], $sm->power_quiesce_ack_flags[2], $sm->power_quiesce_ack_flags[3], $sm->power_quiesce_ack_flags[4], $sm->power_quiesce_ack_flags[5], $sm->power_quiesce_ack_flags[6]
+printf "audio sleep proof SD/sai/saierr/dma/dmaerr = %u / 0x%x / 0x%x / 0x%x / 0x%x\n", $ow->audio_sd_state_after, $ow->audio_sai_state_after, $ow->audio_sai_error_after, $ow->audio_dma_state_after, $ow->audio_dma_error_after
+printf "joystick sleep proof status/committed/omit/i2c = 0x%x / %u / %u / 0x%x / 0x%x\n", $sm->joystick_sleep_write_status, $sm->joystick_terminal_sleep_committed, $sm->joystick_post_sleep_read_omitted, $sm->joystick_i2c_state_after, $sm->joystick_i2c_error_after
+printf "joystick int cfg1 before/target/after = 0x%x / 0x%x / 0x%x\n", $sm->joystick_sleep_audit_int_config1_before, $sm->joystick_sleep_audit_int_config1_target, $sm->joystick_sleep_audit_int_config1_after
+printf "joystick sleep write/verify masks = 0x%x / 0x%x\n", $sm->joystick_sleep_audit_write_ok_mask, $sm->joystick_sleep_audit_verify_ok_mask
+printf "joystick cycle0 sleep/status/device2 = 0x%x / 0x%x / 0x%x\n", $sm->joystick_cycle_sleep_status[0], $sm->joystick_driver_last_status, $sm->joystick_device_config2_sleep
+printf "imu sleep proof value/write/committed/omit/i2c = 0x%x / 0x%x / %u / %u / 0x%x / 0x%x\n", $sm->imu_deep_power_down_value, $sm->imu_deep_power_down_write_status, $sm->imu_terminal_deep_power_down_committed, $sm->imu_post_deep_power_down_read_omitted, $sm->imu_i2c_state_after, $sm->imu_i2c_error_after
+printf "imu cycle0 sleep/status/whoami = 0x%x / 0x%x / 0x%x\n", $sm->imu_cycle_sleep_status[0], $sm->imu_driver_last_status, $sm->imu_whoami
+printf "stop2 policy count/reason/tick = %u / %u / %u\n", $sm->stop2_policy_request_count, $sm->stop2_policy_reason, $sm->stop2_policy_last_tick
+printf "stop2 policy BLE target/active/status = %u / %u / 0x%x\n", $sm->stop2_policy_ble_target_mode, $sm->stop2_policy_ble_active_mode, $sm->stop2_policy_ble_status
+printf "stop2 policy IMU target/active/status = %u / %u / 0x%x\n", $sm->stop2_policy_imu_target_mode, $sm->stop2_policy_imu_active_mode, $sm->stop2_policy_imu_status
+printf "BLE physical nrst/dsr/uart/reset/dsr-highz = %u / %u / 0x%x / %u / %u\n", $sm->ble_nrst_after, $sm->ble_dsr_host_control_after, $sm->ble_uart_deinit_status, $sm->ble_shutdown_reset_asserted, $sm->ble_dsr_highz_configured
+printf "BLE sleep dsr override/target/before/after = %u / %u / %u / %u\n", g_ps_hw6_ble_sleep_dsr_deasserted, $sm->ble_dsr_sleep_target_level, $sm->ble_dsr_before_sleep_level, $sm->ble_dsr_after_sleep_level
+printf "BLE dsr ticks assert/deassert settle start/end/ticks = %u / %u / %u / %u / %u\n", $sm->ble_dsr_assert_tick, $sm->ble_dsr_deassert_tick, $sm->ble_stop_settle_start_tick, $sm->ble_stop_settle_end_tick, $sm->ble_stop_settle_ticks
+printf "BLE identity status/rx len = 0x%x / %u\n", $sm->ble_identity_status, $sm->ble_identity_rx_len
+printf "BLE identity response: "
+x/s &$sm->ble_identity_response[0]
+printf "BLE command req/attempt/ok/err = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->ble_command_required_mask, $sm->ble_command_attempted_mask, $sm->ble_command_ok_mask, $sm->ble_command_error_mask
 printf "storage power rel/jedec/match/dpd = 0x%x / 0x%x / %u / 0x%x\n", $sm->flash_power_release_status, $sm->flash_power_jedec_status, $sm->flash_power_identity_match, $sm->flash_power_deep_power_down_status
 printf "storage clock post/release/status = 0x%x / 0x%x / 0x%x\n", $rt->storage_clock_post_stop_resume_status, $rt->storage_clock_release_status, $rt->storage_clock_last_status
 printf "storage OSPI park/restore count = %u / %u\n", $sm->storage_ospi_park_count, $sm->storage_ospi_restore_count
@@ -47,6 +72,9 @@ printf "power state/pmic/battery   = %u / %u / %u\n", $rt->stop2_eligibility_pow
 printf "runtime class/exec/life   = %u / %u / %u\n", $rt->stop2_eligibility_runtime_class, $rt->stop2_eligibility_runtime_execution, $rt->stop2_eligibility_runtime_lifecycle
 printf "blockers: BOOT=0x1 POWER=0x2 PMIC=0x4 BATT=0x8 CLOCK_CAP=0x10 CLOCK_READBACK=0x20\n"
 printf "display backends: NONE=0 HELD_FRAME=1 LPBAM=2\n"
+printf "BLE modes: RESET_HELD=0 SLEEP_SYSTEM_OFF=1 SEARCHING=2 PAIRING=3 CONNECTED=4\n"
+printf "IMU modes: OFF=0 LOW_RATE=1 EVENT_ARMED=2 STEP_COUNTER=3 STREAMING=4\n"
 printf "wake masks: START=0x1 BUTTON=0x2 JOY=0x4 SENSOR=0x8 PMIC=0x10 RTC=0x20 USB=0x40 FAULT=0x80 UNKNOWN=0x80000000\n"
 printf "wake causes: NONE=0 START=1 BUTTON=2 JOY=3 SENSOR=4 PMIC=5 RTC=6 USB=7 FAULT=8 UNKNOWN=9\n"
+printf "SysTick CTRL bits: ENABLE=0x1 TICKINT=0x2 CLKSOURCE=0x4\n"
 printf "status: HAL_OK=0x0 HAL_ERROR=0x1 UNAVAILABLE=0xfffffffe NOT_RUN=0xffffffff\n"

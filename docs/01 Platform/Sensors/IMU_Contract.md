@@ -151,6 +151,8 @@ The FW0 sensor owner exposes explicit LIS2DUX12 mode requests for power-policy i
 | `STEP_COUNTER` | Placeholder only; records power-floor intent, returns unavailable, and leaves the IMU suspended. It must not wake the MCU per step by default. | Placeholder |
 | `STREAMING` | Placeholder only; records active power-floor intent, returns unavailable, and leaves the IMU suspended. | Placeholder |
 
+STOP2 resident policy preserves the logical active IMU mode while selecting the physical state allowed during sleep. The default STOP2 target is `OFF`. `STEP_COUNTER` is the intended future STOP2-resident mode because it may keep embedded step counting alive while the MCU sleeps, but FW0 must block STOP2 for that target until the LIS2DUX12 register sequence, retention behavior, and interrupt policy are target-validated. `LOW_RATE_SAMPLE`, `EVENT_ARMED`, and `STREAMING` are not valid STOP2 resident states unless a later measured policy explicitly promotes them.
+
 ## Validation Cases
 
 1. I2C probe at address `0x18`
