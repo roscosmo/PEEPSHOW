@@ -2,8 +2,9 @@
 
 #include <string.h>
 
+#include "display_renderer.h"
+#include "LS013B7DH05.h"
 #include "ps_dev_audio.h"
-#include "ps_dev_ls013b7dh05.h"
 #include "main.h"
 #include "knobs_autogen.h"
 #include "ps_ui_router.h"
@@ -21,13 +22,14 @@
 #define PS_HW6_DISPLAY_PATTERN_ID           (0x54455354UL)
 #define PS_HW6_DISPLAY_PRESENT_TIMEOUT_MS   (250U)
 #define PS_HW6_DISPLAY_UI_PATTERN_ID         (0x55495047UL)
-#define PS_HW6_DISPLAY_TEXT_SCALE            (2U)
-#define PS_HW6_DISPLAY_UI_LOGICAL_WIDTH      PS_DEV_LS013B7DH05_HEIGHT
-#define PS_HW6_DISPLAY_UI_LOGICAL_HEIGHT     PS_DEV_LS013B7DH05_WIDTH
 #define PS_HW6_DISPLAY_LPBAM_CLEAR_PATTERN   (1UL)
 #define PS_HW6_DISPLAY_LPBAM_CLEAR_BOOT_HOLD (2UL)
 #define PS_HW6_DISPLAY_LPBAM_CLEAR_UI_RENDER (3UL)
 #define PS_HW6_DISPLAY_LPBAM_CLEAR_ABORT     (4UL)
+#define PS_HW6_DISPLAY_DRIVER_API_VERSION    (1UL)
+#define PS_HW6_DISPLAY_DRIVER_STATE_READY    (1UL)
+#define PS_HW6_DISPLAY_DRIVER_STATE_HOLD     (2UL)
+#define PS_HW6_DISPLAY_DRIVER_STATE_FAULT    (3UL)
 
 #define PS_HW6_AUDIO_SAMPLE_RATE_HZ         (16000UL)
 #define PS_HW6_AUDIO_TONE_HZ                (1000UL)
@@ -50,9 +52,11 @@ volatile PS_HW6_OwnerProbe g_ps_hw6_owner_probe;
 
 static ps_dev_adp5360_t ps_hw6_pmic;
 static ps_dev_audio_t ps_hw6_audio;
-static ps_dev_ls013b7dh05_t ps_hw6_display;
-static uint8_t ps_hw6_display_framebuffer[PS_DEV_LS013B7DH05_BUFFER_SIZE];
-static uint32_t ps_hw6_display_ui_rotate_ccw;
+static LS013B7DH05 ps_hw6_display;
+static uint32_t ps_hw6_display_driver_initialized;
+static uint32_t ps_hw6_display_driver_state;
+static uint32_t ps_hw6_display_driver_operation_count;
+static uint32_t ps_hw6_display_driver_last_status;
 static uint32_t ps_hw6_display_lpbam_debug_force_ready_once;
 static int16_t ps_hw6_audio_buffer[PS_HW6_AUDIO_BUFFER_HALFWORDS]
   __attribute__((aligned(4)));
@@ -66,14 +70,122 @@ static const int16_t ps_hw6_sine_16[16] =
 static void PS_HW6_UpdateDisplayDriverProbe(void)
 {
   g_ps_hw6_owner_probe.display_driver_api_version =
-    ps_hw6_display.api_version;
-  g_ps_hw6_owner_probe.display_driver_state = ps_hw6_display.state;
+    PS_HW6_DISPLAY_DRIVER_API_VERSION;
+  g_ps_hw6_owner_probe.display_driver_state = ps_hw6_display_driver_state;
   g_ps_hw6_owner_probe.display_driver_operation_count =
-    ps_hw6_display.operation_count;
+    ps_hw6_display_driver_operation_count;
   g_ps_hw6_owner_probe.display_driver_last_status =
-    ps_hw6_display.last_status;
+    ps_hw6_display_driver_last_status;
 }
 
+static HAL_StatusTypeDef PS_HW6_DisplayDriverInit(SPI_HandleTypeDef *bus)
+{
+  if (bus == NULL)
+  {
+    ps_hw6_display_driver_state = PS_HW6_DISPLAY_DRIVER_STATE_FAULT;
+    ps_hw6_display_driver_last_status = (uint32_t)HAL_ERROR;
+    return HAL_ERROR;
+  }
+
+  (void)memset(&ps_hw6_display, 0, sizeof(ps_hw6_display));
+  ps_hw6_display.Bus = bus;
+  ps_hw6_display_driver_initialized = 1UL;
+  ps_hw6_display_driver_state = PS_HW6_DISPLAY_DRIVER_STATE_READY;
+  ps_hw6_display_driver_last_status = (uint32_t)HAL_OK;
+  return HAL_OK;
+}
+
+static HAL_StatusTypeDef PS_HW6_DisplayOwner_PresentFull(
+  volatile uint32_t *init_status,
+  volatile uint32_t *present_status)
+{
+  HAL_StatusTypeDef init_result;
+  HAL_StatusTypeDef present_result = HAL_ERROR;
+
+  if (init_status != NULL)
+  {
+    *init_status = (uint32_t)HAL_ERROR;
+  }
+  if (present_status != NULL)
+  {
+    *present_status = (uint32_t)HAL_ERROR;
+  }
+  if (ps_hw6_display_driver_initialized == 0UL)
+  {
+    ps_hw6_display_driver_state = PS_HW6_DISPLAY_DRIVER_STATE_FAULT;
+    ps_hw6_display_driver_last_status = (uint32_t)HAL_ERROR;
+    return HAL_ERROR;
+  }
+
+  ps_hw6_display_driver_operation_count++;
+  init_result = LCD_Init(&ps_hw6_display, &hspi3);
+  if (init_status != NULL)
+  {
+    *init_status = (uint32_t)init_result;
+  }
+  if (init_result == HAL_OK)
+  {
+    present_result = LCD_PresentFull_DMA(
+      &ps_hw6_display,
+      DisplayRenderer_GetBuffer(),
+      PS_HW6_DISPLAY_PRESENT_TIMEOUT_MS);
+  }
+  if (present_status != NULL)
+  {
+    *present_status = (uint32_t)present_result;
+  }
+
+  ps_hw6_display_driver_last_status = (uint32_t)
+    ((init_result == HAL_OK) ? present_result : init_result);
+  ps_hw6_display_driver_state =
+    (ps_hw6_display_driver_last_status == (uint32_t)HAL_OK) ?
+    PS_HW6_DISPLAY_DRIVER_STATE_HOLD : PS_HW6_DISPLAY_DRIVER_STATE_FAULT;
+  return (HAL_StatusTypeDef)ps_hw6_display_driver_last_status;
+}
+
+static HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearPanel(
+  uint32_t *clear_status)
+{
+  HAL_StatusTypeDef status;
+
+  if (clear_status != NULL)
+  {
+    *clear_status = (uint32_t)HAL_ERROR;
+  }
+  if (ps_hw6_display_driver_initialized == 0UL)
+  {
+    ps_hw6_display_driver_state = PS_HW6_DISPLAY_DRIVER_STATE_FAULT;
+    ps_hw6_display_driver_last_status = (uint32_t)HAL_ERROR;
+    return HAL_ERROR;
+  }
+
+  ps_hw6_display_driver_operation_count++;
+  status = LCD_Init(&ps_hw6_display, &hspi3);
+  if (clear_status != NULL)
+  {
+    *clear_status = (uint32_t)status;
+  }
+  ps_hw6_display_driver_last_status = (uint32_t)status;
+  ps_hw6_display_driver_state = (status == HAL_OK) ?
+    PS_HW6_DISPLAY_DRIVER_STATE_HOLD : PS_HW6_DISPLAY_DRIVER_STATE_FAULT;
+  return status;
+}
+
+static void PS_HW6_DisplayOwner_ApplyRendererStats(
+  uint32_t pattern_id,
+  const display_renderer_stats_t *stats)
+{
+  if (stats == NULL)
+  {
+    return;
+  }
+
+  g_ps_hw6_owner_probe.display_width = stats->width;
+  g_ps_hw6_owner_probe.display_height = stats->height;
+  g_ps_hw6_owner_probe.display_pattern_id = pattern_id;
+  g_ps_hw6_owner_probe.display_framebuffer_hash = stats->framebuffer_hash;
+  g_ps_hw6_owner_probe.display_black_pixels = stats->black_pixels;
+}
 static void PS_HW6_UpdateAudioDriverProbe(void)
 {
   g_ps_hw6_owner_probe.audio_driver_api_version = ps_hw6_audio.api_version;
@@ -96,600 +208,32 @@ static void PS_HW6_DisplayOwner_ClearLpbamReadiness(uint32_t reason)
     PS_HW6_OWNER_STATUS_NOT_RUN;
 }
 
-static uint32_t PS_HW6_DisplaySetBlack(uint16_t x, uint16_t y)
-{
-  uint16_t panel_x = x;
-  uint16_t panel_y = y;
-  uint32_t index;
-  uint8_t mask;
-
-  if (ps_hw6_display_ui_rotate_ccw != 0UL)
-  {
-    if ((x >= PS_HW6_DISPLAY_UI_LOGICAL_WIDTH) ||
-        (y >= PS_HW6_DISPLAY_UI_LOGICAL_HEIGHT))
-    {
-      return 0UL;
-    }
-    panel_x = y;
-    panel_y = (uint16_t)(PS_HW6_DISPLAY_UI_LOGICAL_WIDTH - 1U - x);
-  }
-
-  if ((panel_x >= PS_DEV_LS013B7DH05_WIDTH) ||
-      (panel_y >= PS_DEV_LS013B7DH05_HEIGHT))
-  {
-    return 0UL;
-  }
-
-  index = ((uint32_t)panel_y * PS_DEV_LS013B7DH05_LINE_WIDTH) +
-          ((uint32_t)panel_x >> 3U);
-  mask = (uint8_t)(1U << (panel_x & 7U));
-  if ((ps_hw6_display_framebuffer[index] & mask) == 0U)
-  {
-    return 0UL;
-  }
-
-  ps_hw6_display_framebuffer[index] &= (uint8_t)~mask;
-  return 1UL;
-}
-static uint32_t PS_HW6_DisplayHorizontalLine(uint16_t x0,
-                                             uint16_t x1,
-                                             uint16_t y)
-{
-  uint32_t count = 0UL;
-  uint16_t x;
-
-  for (x = x0; x <= x1; ++x)
-  {
-    count += PS_HW6_DisplaySetBlack(x, y);
-  }
-  return count;
-}
-
-static uint32_t PS_HW6_DisplayVerticalLine(uint16_t x,
-                                           uint16_t y0,
-                                           uint16_t y1)
-{
-  uint32_t count = 0UL;
-  uint16_t y;
-
-  for (y = y0; y <= y1; ++y)
-  {
-    count += PS_HW6_DisplaySetBlack(x, y);
-  }
-  return count;
-}
-
-static uint32_t PS_HW6_DisplayFilledRect(uint16_t x0,
-                                         uint16_t y0,
-                                         uint16_t width,
-                                         uint16_t height)
-{
-  uint32_t count = 0UL;
-  uint16_t y;
-
-  for (y = y0; y < (uint16_t)(y0 + height); ++y)
-  {
-    count += PS_HW6_DisplayHorizontalLine(x0,
-                                          (uint16_t)(x0 + width - 1U),
-                                          y);
-  }
-  return count;
-}
-
-static uint32_t PS_HW6_DisplayFramebufferHash(void)
-{
-  uint32_t hash = 2166136261UL;
-  uint16_t i;
-
-  for (i = 0U; i < PS_DEV_LS013B7DH05_BUFFER_SIZE; ++i)
-  {
-    hash ^= ps_hw6_display_framebuffer[i];
-    hash *= 16777619UL;
-  }
-  return hash;
-}
-
-static uint32_t PS_HW6_DisplayGlyphRows(char glyph, uint8_t rows[7])
-{
-  static const uint8_t blank[7] = {0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U};
-  static const uint8_t glyphs[36][7] =
-  {
-    {0x0EU, 0x11U, 0x11U, 0x1FU, 0x11U, 0x11U, 0x11U},
-    {0x1EU, 0x11U, 0x11U, 0x1EU, 0x11U, 0x11U, 0x1EU},
-    {0x0EU, 0x11U, 0x10U, 0x10U, 0x10U, 0x11U, 0x0EU},
-    {0x1EU, 0x11U, 0x11U, 0x11U, 0x11U, 0x11U, 0x1EU},
-    {0x1FU, 0x10U, 0x10U, 0x1EU, 0x10U, 0x10U, 0x1FU},
-    {0x1FU, 0x10U, 0x10U, 0x1EU, 0x10U, 0x10U, 0x10U},
-    {0x0EU, 0x11U, 0x10U, 0x17U, 0x11U, 0x11U, 0x0FU},
-    {0x11U, 0x11U, 0x11U, 0x1FU, 0x11U, 0x11U, 0x11U},
-    {0x0EU, 0x04U, 0x04U, 0x04U, 0x04U, 0x04U, 0x0EU},
-    {0x01U, 0x01U, 0x01U, 0x01U, 0x11U, 0x11U, 0x0EU},
-    {0x11U, 0x12U, 0x14U, 0x18U, 0x14U, 0x12U, 0x11U},
-    {0x10U, 0x10U, 0x10U, 0x10U, 0x10U, 0x10U, 0x1FU},
-    {0x11U, 0x1BU, 0x15U, 0x15U, 0x11U, 0x11U, 0x11U},
-    {0x11U, 0x19U, 0x15U, 0x13U, 0x11U, 0x11U, 0x11U},
-    {0x0EU, 0x11U, 0x11U, 0x11U, 0x11U, 0x11U, 0x0EU},
-    {0x1EU, 0x11U, 0x11U, 0x1EU, 0x10U, 0x10U, 0x10U},
-    {0x0EU, 0x11U, 0x11U, 0x11U, 0x15U, 0x12U, 0x0DU},
-    {0x1EU, 0x11U, 0x11U, 0x1EU, 0x14U, 0x12U, 0x11U},
-    {0x0FU, 0x10U, 0x10U, 0x0EU, 0x01U, 0x01U, 0x1EU},
-    {0x1FU, 0x04U, 0x04U, 0x04U, 0x04U, 0x04U, 0x04U},
-    {0x11U, 0x11U, 0x11U, 0x11U, 0x11U, 0x11U, 0x0EU},
-    {0x11U, 0x11U, 0x11U, 0x11U, 0x11U, 0x0AU, 0x04U},
-    {0x11U, 0x11U, 0x11U, 0x15U, 0x15U, 0x15U, 0x0AU},
-    {0x11U, 0x11U, 0x0AU, 0x04U, 0x0AU, 0x11U, 0x11U},
-    {0x11U, 0x11U, 0x0AU, 0x04U, 0x04U, 0x04U, 0x04U},
-    {0x1FU, 0x01U, 0x02U, 0x04U, 0x08U, 0x10U, 0x1FU},
-    {0x0EU, 0x11U, 0x13U, 0x15U, 0x19U, 0x11U, 0x0EU},
-    {0x04U, 0x0CU, 0x04U, 0x04U, 0x04U, 0x04U, 0x0EU},
-    {0x0EU, 0x11U, 0x01U, 0x02U, 0x04U, 0x08U, 0x1FU},
-    {0x1EU, 0x01U, 0x01U, 0x0EU, 0x01U, 0x01U, 0x1EU},
-    {0x02U, 0x06U, 0x0AU, 0x12U, 0x1FU, 0x02U, 0x02U},
-    {0x1FU, 0x10U, 0x10U, 0x1EU, 0x01U, 0x01U, 0x1EU},
-    {0x07U, 0x08U, 0x10U, 0x1EU, 0x11U, 0x11U, 0x0EU},
-    {0x1FU, 0x01U, 0x02U, 0x04U, 0x08U, 0x08U, 0x08U},
-    {0x0EU, 0x11U, 0x11U, 0x0EU, 0x11U, 0x11U, 0x0EU},
-    {0x0EU, 0x11U, 0x11U, 0x0FU, 0x01U, 0x02U, 0x1CU}
-  };
-  const uint8_t *src = blank;
-  uint16_t i;
-
-  if ((glyph >= 'A') && (glyph <= 'Z'))
-  {
-    src = glyphs[(uint32_t)(glyph - 'A')];
-  }
-  else if ((glyph >= '0') && (glyph <= '9'))
-  {
-    src = glyphs[26U + (uint32_t)(glyph - '0')];
-  }
-  else if (glyph != ' ')
-  {
-    return 0UL;
-  }
-
-  for (i = 0U; i < 7U; ++i)
-  {
-    rows[i] = src[i];
-  }
-  return 1UL;
-}
-
-static uint32_t PS_HW6_DisplayDrawGlyph(uint16_t x,
-                                        uint16_t y,
-                                        char glyph,
-                                        uint16_t scale)
-{
-  uint8_t rows[7];
-  uint32_t count = 0UL;
-  uint16_t row;
-  uint16_t col;
-  uint16_t sx;
-  uint16_t sy;
-
-  if (PS_HW6_DisplayGlyphRows(glyph, rows) == 0UL)
-  {
-    return 0UL;
-  }
-
-  for (row = 0U; row < 7U; ++row)
-  {
-    for (col = 0U; col < 5U; ++col)
-    {
-      if ((rows[row] & (uint8_t)(1U << (4U - col))) != 0U)
-      {
-        for (sy = 0U; sy < scale; ++sy)
-        {
-          for (sx = 0U; sx < scale; ++sx)
-          {
-            count += PS_HW6_DisplaySetBlack(
-              (uint16_t)(x + (col * scale) + sx),
-              (uint16_t)(y + (row * scale) + sy));
-          }
-        }
-      }
-    }
-  }
-  return count;
-}
-
-static uint16_t PS_HW6_DisplayTextWidth(const char *text, uint16_t scale)
-{
-  uint16_t count = 0U;
-
-  while ((text != NULL) && (text[count] != '\0'))
-  {
-    ++count;
-  }
-  return (uint16_t)(count * 6U * scale);
-}
-
-static uint32_t PS_HW6_DisplayDrawText(uint16_t x,
-                                       uint16_t y,
-                                       const char *text,
-                                       uint16_t scale)
-{
-  uint32_t black_pixels = 0UL;
-  uint16_t index = 0U;
-
-  while ((text != NULL) && (text[index] != '\0'))
-  {
-    black_pixels += PS_HW6_DisplayDrawGlyph(
-      (uint16_t)(x + (index * 6U * scale)), y, text[index], scale);
-    ++index;
-  }
-  return black_pixels;
-}
-
-static uint32_t PS_HW6_DisplayDrawCenteredText(uint16_t y,
-                                               const char *text,
-                                               uint16_t scale)
-{
-  uint16_t width = PS_HW6_DisplayTextWidth(text, scale);
-  uint16_t x = 0U;
-
-  if (width < PS_HW6_DISPLAY_UI_LOGICAL_WIDTH)
-  {
-    x = (uint16_t)((PS_HW6_DISPLAY_UI_LOGICAL_WIDTH - width) / 2U);
-  }
-  return PS_HW6_DisplayDrawText(x, y, text, scale);
-}
-
-static const char *PS_HW6_DisplayShutdownCountdownLine(
-  uint32_t countdown_seconds)
-{
-  if (countdown_seconds == 3UL)
-  {
-    return "POWER OFF IN 3";
-  }
-  if (countdown_seconds == 2UL)
-  {
-    return "POWER OFF IN 2";
-  }
-  if (countdown_seconds == 1UL)
-  {
-    return "POWER OFF IN 1";
-  }
-  return "PREPARING";
-}
-
-static void PS_HW6_DisplayUIStrings(uint32_t page,
-                                    uint32_t calibration_page,
-                                    uint32_t focus_index,
-                                    uint32_t shutdown_state,
-                                    uint32_t shutdown_countdown_seconds,
-                                    const char **title,
-                                    const char **line1,
-                                    const char **line2)
-{
-  *title = "PEEPSHOW";
-  *line1 = "HOME";
-  *line2 = "MENU A";
-
-  switch (page)
-  {
-    case PS_UI_ROUTER_PAGE_HOME:
-      break;
-    case PS_UI_ROUTER_PAGE_MENU:
-      *title = "SYSTEM";
-      if (focus_index == 0UL)
-      {
-        *line1 = "SETTINGS";
-        *line2 = "CAL INPUT";
-      }
-      else if (focus_index == 1UL)
-      {
-        *line1 = "CAL INPUT";
-        *line2 = "PACKAGES";
-      }
-      else
-      {
-        *line1 = "PACKAGES";
-        *line2 = "SETTINGS";
-      }
-      break;
-    case PS_UI_ROUTER_PAGE_SETTINGS:
-      *title = "SETTINGS";
-      *line1 = "INPUT";
-      *line2 = "DISPLAY";
-      break;
-    case PS_UI_ROUTER_PAGE_CALIBRATION:
-      *title = "CALIBRATION";
-      if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_NEUTRAL)
-      {
-        *line1 = "STICK CENTER";
-        *line2 = "PRESS A";
-      }
-      else if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_RIGHT)
-      {
-        *line1 = "MOVE RIGHT";
-        *line2 = "PRESS A";
-      }
-      else if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_CIRCLE)
-      {
-        *line1 = "MAKE CIRCLES";
-        *line2 = "PRESS A";
-      }
-      else if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_REVIEW)
-      {
-        *line1 = "REVIEW";
-        *line2 = "PRESS A";
-      }
-      else
-      {
-        *line1 = "INPUT";
-        *line2 = "JOYSTICK A";
-      }
-      break;
-    case PS_UI_ROUTER_PAGE_PACKAGE_BROWSER:
-      if (focus_index == PS_UI_ROUTER_PACKAGE_CANDIDATE)
-      {
-        *title = "PACKAGE";
-        *line1 = "FOUND";
-        *line2 = "WAIT";
-      }
-      else if (focus_index == PS_UI_ROUTER_PACKAGE_VALID)
-      {
-        *title = "PACKAGE";
-        *line1 = "VALID";
-        *line2 = "A INSTALL";
-      }
-      else if (focus_index == PS_UI_ROUTER_PACKAGE_INSTALLING)
-      {
-        *title = "PACKAGE";
-        *line1 = "INSTALL STUB";
-        *line2 = "WAIT";
-      }
-      else if (focus_index == PS_UI_ROUTER_PACKAGE_INSTALLED)
-      {
-        *title = "PACKAGE";
-        *line1 = "STUB DONE";
-        *line2 = "B BACK";
-      }
-      else if (focus_index == PS_UI_ROUTER_PACKAGE_ERROR)
-      {
-        *title = "PACKAGE";
-        *line1 = "PKG ERROR";
-        *line2 = "SEE GDB";
-      }
-      else
-      {
-        *title = "USB";
-        *line1 = "TRANSFER";
-        *line2 = "START A";
-      }
-      break;
-    case PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF:
-      *title = "RUNTIME";
-      *line1 = "HANDOFF";
-      *line2 = "WAIT";
-      break;
-    case PS_UI_ROUTER_PAGE_ERROR:
-      *title = "ERROR";
-      *line1 = "SHELL FAULT";
-      *line2 = "RECOVER";
-      break;
-    case PS_UI_ROUTER_PAGE_SHUTDOWN:
-      if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_BOOT)
-      {
-        *title = "LOW BATTERY";
-        *line1 = "CHARGE DEVICE";
-        *line2 = "NO RUNTIME";
-      }
-      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_CHARGE)
-      {
-        *title = "LOW BATTERY";
-        *line1 = "CHARGING";
-        *line2 = "PLEASE WAIT";
-      }
-      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_FLASH_INIT)
-      {
-        *title = "FLASH INIT";
-        *line1 = "USB STAGING";
-        *line2 = "WAIT";
-      }
-      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_FLASH_DONE)
-      {
-        *title = "FLASH INIT";
-        *line1 = "USB STAGING";
-        *line2 = "DONE";
-      }
-      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_FLASH_ERROR)
-      {
-        *title = "FLASH INIT";
-        *line1 = "USB STAGING";
-        *line2 = "ERROR";
-      }
-      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_EXPORT)
-      {
-        *title = "USB MSC";
-        *line1 = "EXPORT";
-        *line2 = "WAIT";
-      }
-      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_ACTIVE)
-      {
-        *title = "USB MSC";
-        *line1 = "ACTIVE";
-        *line2 = "EJECT FIRST";
-      }
-      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_RECLAIM)
-      {
-        *title = "USB MSC";
-        *line1 = "RECLAIM";
-        *line2 = "WAIT";
-      }
-      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_DONE)
-      {
-        *title = "USB MSC";
-        *line1 = "RECLAIM";
-        *line2 = "DONE";
-      }
-      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_ERROR)
-      {
-        *title = "USB MSC";
-        *line1 = "ERROR";
-        *line2 = "SEE GDB";
-      }
-      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_RECOVERY)
-      {
-        *title = "USB MSC";
-        *line1 = "MSC NEEDS";
-        *line2 = "FLASH INIT";
-      }
-      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_REST)
-      {
-        *title = "JOYSTICK REST";
-        *line1 = "FLICK";
-        *line2 = "RELEASE";
-      }
-      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_SWEEP)
-      {
-        *title = "JOYSTICK SWEEP";
-        *line1 = "FULL";
-        *line2 = "TRAVEL";
-      }
-      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_DONE)
-      {
-        *title = "JOYSTICK XYZ";
-        *line1 = "CAPTURE";
-        *line2 = "DONE";
-      }
-      else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_ERROR)
-      {
-        *title = "JOYSTICK XYZ";
-        *line1 = "CAPTURE";
-        *line2 = "ERROR";
-      }
-      else
-      {
-        *title = "SHUTDOWN";
-        *line1 = PS_HW6_DisplayShutdownCountdownLine(
-          shutdown_countdown_seconds);
-        *line2 = (shutdown_state == PS_UI_ROUTER_SHUTDOWN_CANCELLED) ?
-          "CANCELLED" : "HOLD START";
-      }
-      break;
-    default:
-      *title = "BOOT";
-      *line1 = "STARTING";
-      *line2 = "WAIT";
-      break;
-  }
-}
-
 static void PS_HW6_PrepareDisplayUIPage(uint32_t page,
                                         uint32_t calibration_page,
                                         uint32_t focus_index,
                                         uint32_t shutdown_state,
                                         uint32_t shutdown_countdown_seconds)
 {
-  const char *title;
-  const char *line1;
-  const char *line2;
-  uint32_t black_pixels = 0UL;
+  display_renderer_stats_t stats;
 
-  (void)memset(ps_hw6_display_framebuffer, 0xFF,
-               sizeof(ps_hw6_display_framebuffer));
-  ps_hw6_display_ui_rotate_ccw = 1UL;
-  PS_HW6_DisplayUIStrings(page,
-                          calibration_page,
-                          focus_index,
-                          shutdown_state,
-                          shutdown_countdown_seconds,
-                          &title,
-                          &line1,
-                          &line2);
-
-  black_pixels += PS_HW6_DisplayHorizontalLine(
-    0U, (uint16_t)(PS_HW6_DISPLAY_UI_LOGICAL_WIDTH - 1U), 0U);
-  black_pixels += PS_HW6_DisplayHorizontalLine(
-    0U, (uint16_t)(PS_HW6_DISPLAY_UI_LOGICAL_WIDTH - 1U),
-    (uint16_t)(PS_HW6_DISPLAY_UI_LOGICAL_HEIGHT - 1U));
-  black_pixels += PS_HW6_DisplayVerticalLine(
-    0U, 0U, (uint16_t)(PS_HW6_DISPLAY_UI_LOGICAL_HEIGHT - 1U));
-  black_pixels += PS_HW6_DisplayVerticalLine(
-    (uint16_t)(PS_HW6_DISPLAY_UI_LOGICAL_WIDTH - 1U), 0U,
-    (uint16_t)(PS_HW6_DISPLAY_UI_LOGICAL_HEIGHT - 1U));
-  black_pixels += PS_HW6_DisplayHorizontalLine(
-    8U, (uint16_t)(PS_HW6_DISPLAY_UI_LOGICAL_WIDTH - 9U), 28U);
-  black_pixels += PS_HW6_DisplayDrawCenteredText(
-    8U, title, PS_HW6_DISPLAY_TEXT_SCALE);
-  black_pixels += PS_HW6_DisplayDrawCenteredText(
-    58U, line1, PS_HW6_DISPLAY_TEXT_SCALE);
-  black_pixels += PS_HW6_DisplayDrawCenteredText(
-    94U, line2, PS_HW6_DISPLAY_TEXT_SCALE);
-  black_pixels += PS_HW6_DisplayFilledRect(76U, 132U, 16U, 6U);
-  ps_hw6_display_ui_rotate_ccw = 0UL;
-
-  g_ps_hw6_owner_probe.display_width = PS_DEV_LS013B7DH05_WIDTH;
-  g_ps_hw6_owner_probe.display_height = PS_DEV_LS013B7DH05_HEIGHT;
-  g_ps_hw6_owner_probe.display_pattern_id = PS_HW6_DISPLAY_UI_PATTERN_ID;
-  g_ps_hw6_owner_probe.display_framebuffer_hash =
-    PS_HW6_DisplayFramebufferHash();
-  g_ps_hw6_owner_probe.display_black_pixels = black_pixels;
+  DisplayRenderer_PrepareUIPage(page,
+                                calibration_page,
+                                focus_index,
+                                shutdown_state,
+                                shutdown_countdown_seconds,
+                                &stats);
+  PS_HW6_DisplayOwner_ApplyRendererStats(
+    PS_HW6_DISPLAY_UI_PATTERN_ID, &stats);
 }
+
 static void PS_HW6_PrepareDisplayPattern(void)
 {
-  uint32_t black_pixels = 0UL;
-  uint32_t hash = 2166136261UL;
-  uint16_t i;
+  display_renderer_stats_t stats;
 
-  (void)memset(ps_hw6_display_framebuffer, 0xFF,
-               sizeof(ps_hw6_display_framebuffer));
-
-  for (i = 0U; i < 2U; ++i)
-  {
-    black_pixels += PS_HW6_DisplayHorizontalLine(
-      i, (uint16_t)(PS_DEV_LS013B7DH05_WIDTH - 1U - i), i);
-    black_pixels += PS_HW6_DisplayHorizontalLine(
-      i, (uint16_t)(PS_DEV_LS013B7DH05_WIDTH - 1U - i),
-      (uint16_t)(PS_DEV_LS013B7DH05_HEIGHT - 1U - i));
-    black_pixels += PS_HW6_DisplayVerticalLine(
-      i, i, (uint16_t)(PS_DEV_LS013B7DH05_HEIGHT - 1U - i));
-    black_pixels += PS_HW6_DisplayVerticalLine(
-      (uint16_t)(PS_DEV_LS013B7DH05_WIDTH - 1U - i), i,
-      (uint16_t)(PS_DEV_LS013B7DH05_HEIGHT - 1U - i));
-  }
-
-  black_pixels += PS_HW6_DisplayHorizontalLine(
-    8U, (uint16_t)(PS_DEV_LS013B7DH05_WIDTH - 9U), PS_DEV_LS013B7DH05_HEIGHT / 2U);
-  black_pixels += PS_HW6_DisplayVerticalLine(
-    PS_DEV_LS013B7DH05_WIDTH / 2U, 8U, (uint16_t)(PS_DEV_LS013B7DH05_HEIGHT - 9U));
-
-  black_pixels += PS_HW6_DisplayFilledRect(8U, 8U, 10U, 10U);
-  black_pixels += PS_HW6_DisplayHorizontalLine(
-    (uint16_t)(PS_DEV_LS013B7DH05_WIDTH - 19U), (uint16_t)(PS_DEV_LS013B7DH05_WIDTH - 9U), 8U);
-  black_pixels += PS_HW6_DisplayVerticalLine(
-    (uint16_t)(PS_DEV_LS013B7DH05_WIDTH - 9U), 8U, 18U);
-  for (i = 0U; i < 11U; ++i)
-  {
-    black_pixels += PS_HW6_DisplaySetBlack(
-      (uint16_t)(8U + i), (uint16_t)(PS_DEV_LS013B7DH05_HEIGHT - 19U + i));
-    black_pixels += PS_HW6_DisplaySetBlack(
-      (uint16_t)(18U - i), (uint16_t)(PS_DEV_LS013B7DH05_HEIGHT - 19U + i));
-  }
-  for (i = 0U; i < 12U; ++i)
-  {
-    if ((i & 1U) == 0U)
-    {
-      black_pixels += PS_HW6_DisplayFilledRect(
-        (uint16_t)(PS_DEV_LS013B7DH05_WIDTH - 20U + i),
-        (uint16_t)(PS_DEV_LS013B7DH05_HEIGHT - 20U), 1U, 12U);
-    }
-  }
-
-  for (i = 0U; i < PS_DEV_LS013B7DH05_BUFFER_SIZE; ++i)
-  {
-    hash ^= ps_hw6_display_framebuffer[i];
-    hash *= 16777619UL;
-  }
-
-  g_ps_hw6_owner_probe.display_width = PS_DEV_LS013B7DH05_WIDTH;
-  g_ps_hw6_owner_probe.display_height = PS_DEV_LS013B7DH05_HEIGHT;
-  g_ps_hw6_owner_probe.display_pattern_id = PS_HW6_DISPLAY_PATTERN_ID;
-  g_ps_hw6_owner_probe.display_framebuffer_hash = hash;
-  g_ps_hw6_owner_probe.display_black_pixels = black_pixels;
+  DisplayRenderer_PreparePattern(&stats);
+  PS_HW6_DisplayOwner_ApplyRendererStats(
+    PS_HW6_DISPLAY_PATTERN_ID, &stats);
 }
-
 static void PS_HW6_PrepareAudioTone(void)
 {
   uint32_t frame;
@@ -824,7 +368,7 @@ UINT PS_HW6_OwnerServices_Init(void)
   PS_HW6_PrepareDisplayPattern();
   PS_HW6_PrepareAudioTone();
   g_ps_hw6_owner_probe.display_driver_init_status =
-    (uint32_t)ps_dev_ls013b7dh05_init(&ps_hw6_display, &hspi3);
+    (uint32_t)PS_HW6_DisplayDriverInit(&hspi3);
   PS_HW6_UpdateDisplayDriverProbe();
   g_ps_hw6_owner_probe.audio_driver_init_status =
     (uint32_t)ps_dev_audio_init(&ps_hw6_audio,
@@ -1163,8 +707,7 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_RunSnapshot(void)
 
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void)
 {
-  ps_dev_ls013b7dh05_present_result_t result;
-  ps_status_t driver_status;
+  HAL_StatusTypeDef driver_status;
 
   g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_DISPLAY;
   PS_HW6_DisplayOwner_ClearLpbamReadiness(
@@ -1175,24 +718,21 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void)
   g_ps_hw6_owner_probe.display_rtc_cr = hrtc.Instance->CR;
   g_ps_hw6_owner_probe.display_spi_state_before = HAL_SPI_GetState(&hspi3);
 
-  driver_status = ps_dev_ls013b7dh05_present_full_dma(
-    &ps_hw6_display,
-    ps_hw6_display_framebuffer,
-    PS_HW6_DISPLAY_PRESENT_TIMEOUT_MS,
-    &handle_LPDMA1_Channel0,
-    &result);
+  driver_status = PS_HW6_DisplayOwner_PresentFull(
+    &g_ps_hw6_owner_probe.display_init_status,
+    &g_ps_hw6_owner_probe.display_present_status);
 
-  g_ps_hw6_owner_probe.display_init_status = result.init_hal_status;
-  g_ps_hw6_owner_probe.display_present_status = result.present_hal_status;
-  g_ps_hw6_owner_probe.display_dma_done = result.dma_done;
-  g_ps_hw6_owner_probe.display_spi_state_after = result.spi_state_after;
-  g_ps_hw6_owner_probe.display_spi_error_after = result.spi_error_after;
-  g_ps_hw6_owner_probe.display_dma_state_after = result.dma_state_after;
-  g_ps_hw6_owner_probe.display_dma_error_after = result.dma_error_after;
+  g_ps_hw6_owner_probe.display_dma_done = LCD_FlushDMA_IsDone() ? 1UL : 0UL;
+  g_ps_hw6_owner_probe.display_spi_state_after = HAL_SPI_GetState(&hspi3);
+  g_ps_hw6_owner_probe.display_spi_error_after = HAL_SPI_GetError(&hspi3);
+  g_ps_hw6_owner_probe.display_dma_state_after =
+    HAL_DMA_GetState(&handle_LPDMA1_Channel0);
+  g_ps_hw6_owner_probe.display_dma_error_after =
+    HAL_DMA_GetError(&handle_LPDMA1_Channel0);
   PS_HW6_UpdateDisplayDriverProbe();
   g_ps_hw6_owner_probe.display_complete = 1UL;
 
-  if ((driver_status == PS_STATUS_OK) &&
+  if ((driver_status == HAL_OK) &&
       (g_ps_hw6_owner_probe.display_dma_done != 0UL) &&
       (g_ps_hw6_owner_probe.display_rtc_state == HAL_RTC_STATE_READY) &&
       ((g_ps_hw6_owner_probe.display_rtc_cr & RTC_CR_COE) != 0UL) &&
@@ -1209,7 +749,7 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void)
 HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearBootHold(void)
 {
   uint32_t clear_hal_status = (uint32_t)HAL_ERROR;
-  ps_status_t driver_status;
+  HAL_StatusTypeDef driver_status;
 
   g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_DISPLAY;
   PS_HW6_DisplayOwner_ClearLpbamReadiness(
@@ -1227,15 +767,15 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearBootHold(void)
   g_ps_hw6_owner_probe.display_rtc_cr = hrtc.Instance->CR;
   g_ps_hw6_owner_probe.display_spi_state_before = HAL_SPI_GetState(&hspi3);
 
-  (void)memset(ps_hw6_display_framebuffer, 0xFF,
-               sizeof(ps_hw6_display_framebuffer));
-  ps_hw6_display_ui_rotate_ccw = 1UL;
+  DisplayRenderer_ClearWhite();
   g_ps_hw6_owner_probe.display_framebuffer_hash =
-    PS_HW6_DisplayFramebufferHash();
+    DisplayRenderer_FramebufferHash();
   g_ps_hw6_owner_probe.display_black_pixels = 0UL;
+  g_ps_hw6_owner_probe.display_width = DISPLAY_WIDTH;
+  g_ps_hw6_owner_probe.display_height = DISPLAY_HEIGHT;
+  g_ps_hw6_owner_probe.display_pattern_id = PS_HW6_DISPLAY_UI_PATTERN_ID;
 
-  driver_status = ps_dev_ls013b7dh05_clear(&ps_hw6_display,
-                                           &clear_hal_status);
+  driver_status = PS_HW6_DisplayOwner_ClearPanel(&clear_hal_status);
   g_ps_hw6_owner_probe.display_init_status = clear_hal_status;
   g_ps_hw6_owner_probe.display_present_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
@@ -1250,7 +790,7 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearBootHold(void)
   PS_HW6_UpdateDisplayDriverProbe();
   g_ps_hw6_owner_probe.display_complete = 1UL;
 
-  if ((driver_status == PS_STATUS_OK) &&
+  if ((driver_status == HAL_OK) &&
       (g_ps_hw6_owner_probe.display_rtc_state == HAL_RTC_STATE_READY) &&
       ((g_ps_hw6_owner_probe.display_rtc_cr & RTC_CR_COE) != 0UL) &&
       (g_ps_hw6_owner_probe.display_spi_error_after == HAL_SPI_ERROR_NONE))
@@ -1269,8 +809,7 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   uint32_t shutdown_state,
   uint32_t shutdown_countdown_seconds)
 {
-  ps_dev_ls013b7dh05_present_result_t result;
-  ps_status_t driver_status;
+  HAL_StatusTypeDef driver_status;
 
   g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_DISPLAY;
   PS_HW6_DisplayOwner_ClearLpbamReadiness(
@@ -1293,25 +832,22 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
                               focus_index,
                               shutdown_state,
                               shutdown_countdown_seconds);
-  driver_status = ps_dev_ls013b7dh05_present_full_dma(
-    &ps_hw6_display,
-    ps_hw6_display_framebuffer,
-    PS_HW6_DISPLAY_PRESENT_TIMEOUT_MS,
-    &handle_LPDMA1_Channel0,
-    &result);
+  driver_status = PS_HW6_DisplayOwner_PresentFull(
+    &g_ps_hw6_owner_probe.display_init_status,
+    &g_ps_hw6_owner_probe.display_present_status);
 
-  g_ps_hw6_owner_probe.display_init_status = result.init_hal_status;
-  g_ps_hw6_owner_probe.display_present_status = result.present_hal_status;
-  g_ps_hw6_owner_probe.display_dma_done = result.dma_done;
-  g_ps_hw6_owner_probe.display_spi_state_after = result.spi_state_after;
-  g_ps_hw6_owner_probe.display_spi_error_after = result.spi_error_after;
-  g_ps_hw6_owner_probe.display_dma_state_after = result.dma_state_after;
-  g_ps_hw6_owner_probe.display_dma_error_after = result.dma_error_after;
+  g_ps_hw6_owner_probe.display_dma_done = LCD_FlushDMA_IsDone() ? 1UL : 0UL;
+  g_ps_hw6_owner_probe.display_spi_state_after = HAL_SPI_GetState(&hspi3);
+  g_ps_hw6_owner_probe.display_spi_error_after = HAL_SPI_GetError(&hspi3);
+  g_ps_hw6_owner_probe.display_dma_state_after =
+    HAL_DMA_GetState(&handle_LPDMA1_Channel0);
+  g_ps_hw6_owner_probe.display_dma_error_after =
+    HAL_DMA_GetError(&handle_LPDMA1_Channel0);
   g_ps_hw6_owner_probe.display_ui_status = (uint32_t)driver_status;
   PS_HW6_UpdateDisplayDriverProbe();
   g_ps_hw6_owner_probe.display_complete = 1UL;
 
-  if ((driver_status == PS_STATUS_OK) &&
+  if ((driver_status == HAL_OK) &&
       (g_ps_hw6_owner_probe.display_dma_done != 0UL) &&
       (g_ps_hw6_owner_probe.display_rtc_state == HAL_RTC_STATE_READY) &&
       ((g_ps_hw6_owner_probe.display_rtc_cr & RTC_CR_COE) != 0UL) &&

@@ -27,6 +27,8 @@ Display is Platform-owned. Engine and Reference Game code request scene/frame pr
 - Other threads submit display requests only through `qDisplayCmd`.
 - No direct display HAL/LL calls are allowed outside `thDisplay`.
 - Engine/Reference Game code renders into approved abstractions and requests presentation.
+- Low-level panel code lives in `LS013B7DH05.c` and is limited to Sharp Memory LCD command framing, transfer preparation, DMA/polling flush mechanics, and panel-native clear/present operations.
+- The Platform display renderer lives above the panel driver in `display_renderer.c`; it owns the retained framebuffer, logical-to-native drawing helpers, basic text/shape composition, diagnostic patterns, framebuffer hash, and minimal FW0 UI page rendering.
 
 ## Electrical / Low-Power Rules
 
@@ -73,12 +75,11 @@ path through `thDisplay`:
 - the current firmware maps the logical landscape UI to the native portrait
   panel with a 90 degree counter-clockwise rotation
 - the user confirmed the corrected orientation visually on the physical display
-- the renderer is intentionally minimal; detailed display rendering work remains
-  later Platform work
+- the renderer is intentionally minimal and now sits in `display_renderer.c`
+  above the low-level `LS013B7DH05.c` panel driver; detailed display rendering
+  work remains later Platform work
 
-The existing bring-up result proves basic orientation, owner-routed presentation, and boot clear-hold display-transfer clock request/release (`EV-HW6-20260813-P1-DISPLAYCLOCK-047`). It
-does not close partial updates, dirty tracking, LPBAM, final typography/layout,
-renderer polish, or display fault recovery.
+The existing bring-up result proves basic orientation, owner-routed presentation, and boot clear-hold display-transfer clock request/release (`EV-HW6-20260813-P1-DISPLAYCLOCK-047`). Follow-up FW0 target evidence from probe API `36` validates that splitting the minimal renderer into `display_renderer.c` preserved normal UI render completion and held-frame STOP2 readiness: display UI request/render/page/status `2/1/1/0x0`, display complete/success `1/1`, backend request/selected/status/held `1/1/0x0/1`, and automatic STOP2 entry count `2`. It does not close partial updates, dirty tracking, LPBAM, final typography/layout, renderer polish, or display fault recovery.
 
 ## DMA-Safe Buffer Placement
 
@@ -319,6 +320,7 @@ On display failure:
 12. LPBAM idle animation experiment is attempted after baseline display validation and before sleep/wake integration closure
 13. LPBAM exit cleanly returns ownership to `thDisplay`
 14. display fault routes to fatal normal-operation fault path
+15. renderer/panel-driver boundary remains clean: `LS013B7DH05.c` stays low-level, and diagnostic/UI composition stays in `display_renderer.c`
 
 Related:
 
