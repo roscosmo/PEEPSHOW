@@ -32,6 +32,13 @@ printf "rtos lpbam abort count/send/wait/ack/owner = %u / 0x%x / 0x%x / 0x%x / 0
 printf "input pending/start/logical/policy = 0x%x / %u / %u / %u\n", $btn->pending_mask, $btn->start_active, $btn->logical_event_count, $rt->input_policy_event_count
 printf "clock caps/dom/readback/lpbam = 0x%x / 0x%x / 0x%x / %u\n", $clk->stop2_blocker_capabilities, $clk->stop2_blocker_domain_mask, $clk->readback_domain_mask, $clk->lpbam_stop2_ready
 printf "owner stop2 count/start/wake/end = %u / %u / %u / %u\n", $sm->stop2_request_count, $sm->stop2_start_tick, $sm->stop2_wake_tick, $sm->stop2_end_tick
+printf "wake expected/start/end IDR = 0x%x / 0x%x / 0x%x\n", $sm->stop2_expected_wake_pin, $sm->stop2_wake_start_idr, $sm->stop2_wake_end_idr
+printf "wake class count/tick/source/primary = %u / %u / 0x%x / %u\n", $rt->stop2_wake_classify_count, $rt->stop2_wake_classify_tick, $rt->stop2_wake_source_mask, $rt->stop2_wake_primary_cause
+printf "wake counts start/button/joy/sensor/pmic/unknown = %u / %u / %u / %u / %u / %u\n", $rt->stop2_wake_start_count, $rt->stop2_wake_button_count, $rt->stop2_wake_joystick_count, $rt->stop2_wake_sensor_count, $rt->stop2_wake_pmic_count, $rt->stop2_wake_unknown_count
+printf "wake exti R/F/IMR = 0x%x / 0x%x / 0x%x\n", $rt->stop2_wake_exti_rising, $rt->stop2_wake_exti_falling, $rt->stop2_wake_exti_imr
+printf "wake GPIOA before/after = 0x%x / 0x%x\n", $rt->stop2_wake_gpioa_before_idr, $rt->stop2_wake_gpioa_after_idr
+printf "wake GPIOB before/after = 0x%x / 0x%x\n", $rt->stop2_wake_gpiob_before_idr, $rt->stop2_wake_gpiob_after_idr
+printf "wake button edges before/after/last = %u / %u / %u / %u / %u\n", $rt->stop2_wake_button_edges_before, $rt->stop2_wake_button_edges_after, $btn->last_button_id, $btn->last_event, $btn->last_level
 printf "storage power rel/jedec/match/dpd = 0x%x / 0x%x / %u / 0x%x\n", $sm->flash_power_release_status, $sm->flash_power_jedec_status, $sm->flash_power_identity_match, $sm->flash_power_deep_power_down_status
 printf "storage OSPI park/restore count = %u / %u\n", $sm->storage_ospi_park_count, $sm->storage_ospi_restore_count
 printf "storage OSPI park ENR1/2 after = 0x%x / 0x%x\n", $sm->storage_ospi_park_ahb2enr1_after, $sm->storage_ospi_park_ahb2enr2_after
@@ -41,4 +48,6 @@ printf "storage OSPI restore SMEN1/2 after = 0x%x / 0x%x\n", $sm->storage_ospi_r
 printf "blockers: BOOT=0x1 POWER=0x2 PMIC=0x4 BATT=0x8 CLOCK_CAP=0x10 CLOCK_READBACK=0x20 DISABLED=0x40 RUNTIME=0x80 UI=0x100 DISPLAY=0x200 STORAGE_USB=0x400 INPUT=0x800 QUEUE=0x1000 LPBAM=0x2000 IDLE_PARK=0x4000\n"
 printf "pending: OWNER_QUIESCE=0x1 LPBAM=0x2 IDLE_WINDOW=0x4\n"
 printf "display backends: NONE=0 HELD_FRAME=1 LPBAM=2\n"
+printf "wake masks: START=0x1 BUTTON=0x2 JOY=0x4 SENSOR=0x8 PMIC=0x10 RTC=0x20 USB=0x40 FAULT=0x80 UNKNOWN=0x80000000\n"
+printf "wake causes: NONE=0 START=1 BUTTON=2 JOY=3 SENSOR=4 PMIC=5 RTC=6 USB=7 FAULT=8 UNKNOWN=9\n"
 printf "status: HAL_OK=0x0 HAL_ERROR=0x1 UNAVAILABLE=0xfffffffe NOT_RUN=0xffffffff\n"

@@ -37,6 +37,8 @@ edge path and the first UI consumption path:
   shell context for menu navigation and calibration screens
 - A/B/L/R navigation was physically confirmed through the UI: L/R changed focus
   and A/B entered/exited pages
+- A/B/L/R are validated STOP2 wake sources for the held-frame automatic idle
+  baseline; a wake press is preserved as normal input and delivered after resume
 - L/R are approved fallback navigation controls while joystick calibration is
   missing or invalid
 
@@ -65,10 +67,12 @@ release/bounce edges after a tap has already been latched and completed.
 Validated HW6 unit 001 FW0 evidence for API version 9: after physical A/B/L/R navigation, `__fw0_buttons_prints.gdb` reported `api/edges/presses/ignored = 9 / 20 / 7 / 3`, `logical counts event/p/r/l/rep/ch/stuck = 7 / 7 / 0 / 0 / 0 / 0 / 0`, and `input policy api/event/deliv/supp/lock = 1 / 7 / 7 / 0 / 0`. The last policy record was a generic UI-focused press with `target/reason/status = 1 / 1 / 0x0`; all A/B/L/R physical FSM states returned to `RELEASED`; and no policy suppression occurred during normal shell navigation. This validates the current scaffold: physical accepted presses are converted into generic logical press records, then forwarded through the delivery policy without assigning platform-level button meaning.
 
 This is not the complete button contract. Non-START long press, repeat, chord,
-stuck button, wake-from-low-power, and `BTN_BOOT` remain open. START
-shipping-prep/warning/imminent timing has an FW0 scaffold validated on HW6
-unit 001, but final product behavior is still governed by
+stuck button, non-START wake-source current measurement, and `BTN_BOOT` remain
+open. START shipping-prep/warning/imminent timing has an FW0 scaffold validated
+on HW6 unit 001, but final product behavior is still governed by
 [[PMIC_and_Power_Contract]].
+
+Validated HW6 unit 001 FW0 evidence `EV-HW6-20260816-P1-BUTTONWAKE-LIST-069` proves A/B/L/R can wake from automatic held-frame STOP2 without swallowing the wake press. The target reported owner STOP2 count `9`, latest wake source/primary `0x2/2` (`BUTTON`), wake counts `start/button/... = 0/9/...`, button edges `22 -> 23`, last button `4` with press event `1`, and input logical/policy counts caught up at `12/12`. Visual testing confirmed brief L/R presses woke the MCU, moved menu focus, and then the system returned to STOP2 on allowed shell pages. Calibration page `4` intentionally remained a UI blocker for auto-idle in this evidence.
 
 ## Start Button / ADP5360 Shipping Mode
 

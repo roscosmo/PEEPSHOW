@@ -121,6 +121,7 @@
    PS_HW6_STOP2_GPIO_GROUP_MASK_USB | \
    PS_HW6_STOP2_GPIO_GROUP_MASK_DISPLAY | \
    PS_HW6_STOP2_GPIO_GROUP_MASK_I2C)
+#define PS_HW6_STOP2_BUTTON_WAKE_EXTI_MASK ((uint32_t)(BTN_START_Pin | BTN_A_Pin | BTN_B_Pin | BTN_L_Pin | BTN_R_Pin))
 
 extern I2C_HandleTypeDef hi2c3;
 extern DMA_HandleTypeDef handle_GPDMA1_Channel4;
@@ -468,6 +469,16 @@ static HAL_StatusTypeDef PS_HW6_SM_ParkStop2GpioPins(void)
   __DSB();
   g_ps_hw6_owner_sm_probe.stop2_gpio_park_status = (uint32_t)HAL_OK;
   return HAL_OK;
+}
+
+static void PS_HW6_SM_ClearStop2ButtonWakePending(void)
+{
+  __HAL_GPIO_EXTI_CLEAR_IT(PS_HW6_STOP2_BUTTON_WAKE_EXTI_MASK);
+  HAL_NVIC_ClearPendingIRQ(BTN_START_EXTI_IRQn);
+  HAL_NVIC_ClearPendingIRQ(BTN_A_EXTI_IRQn);
+  HAL_NVIC_ClearPendingIRQ(BTN_B_EXTI_IRQn);
+  HAL_NVIC_ClearPendingIRQ(BTN_L_EXTI_IRQn);
+  HAL_NVIC_ClearPendingIRQ(BTN_R_EXTI_IRQn);
 }
 
 static HAL_StatusTypeDef PS_HW6_SM_RestoreStop2GpioPins(void)
@@ -6063,7 +6074,8 @@ void PS_HW6_OwnerStateMachines_Init(void)
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.stop2_recover_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
-  g_ps_hw6_owner_sm_probe.stop2_expected_wake_pin = BTN_START_Pin;
+  g_ps_hw6_owner_sm_probe.stop2_expected_wake_pin =
+    PS_HW6_STOP2_BUTTON_WAKE_EXTI_MASK;
   g_ps_hw6_owner_sm_probe.stop2_wake_start_idr = 0UL;
   g_ps_hw6_owner_sm_probe.stop2_wake_end_idr = 0UL;
   g_ps_hw6_owner_sm_probe.stop2_systick_ctrl_before =
@@ -6488,7 +6500,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.stop2_recover_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
-  g_ps_hw6_owner_sm_probe.stop2_expected_wake_pin = BTN_START_Pin;
+  g_ps_hw6_owner_sm_probe.stop2_expected_wake_pin =
+    PS_HW6_STOP2_BUTTON_WAKE_EXTI_MASK;
   g_ps_hw6_owner_sm_probe.stop2_wake_start_idr = 0UL;
   g_ps_hw6_owner_sm_probe.stop2_wake_end_idr = 0UL;
   g_ps_hw6_owner_sm_probe.stop2_systick_ctrl_before =
@@ -6522,8 +6535,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
       PS_HW6_RTOS_Stop2WakeClassifyBegin();
       g_ps_hw6_owner_sm_probe.stop2_wake_start_idr =
         BTN_START_GPIO_Port->IDR;
-      __HAL_GPIO_EXTI_CLEAR_IT(BTN_START_Pin);
-      HAL_NVIC_ClearPendingIRQ(BTN_START_EXTI_IRQn);
+      PS_HW6_SM_ClearStop2ButtonWakePending();
 
       enter_transition_status = PS_HW6_SM_Transition(PS_HW6_SM_POWER,
                                                      PWR_EV_STOP_ENTERED,

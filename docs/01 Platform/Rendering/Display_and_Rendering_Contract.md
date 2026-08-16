@@ -76,10 +76,12 @@ path through `thDisplay`:
   panel with a 90 degree counter-clockwise rotation
 - the user confirmed the corrected orientation visually on the physical display
 - the renderer is intentionally minimal and now sits in `display_renderer.c`
-  above the low-level `LS013B7DH05.c` panel driver; detailed display rendering
-  work remains later Platform work
+  above the low-level `LS013B7DH05.c` panel driver
+- FW0 currently renders shell pages as a compact three-row list with an explicit
+  selected-row cursor; this gives LPBAM bring-up a simple future blink payload
+  without adding package/runtime rendering behavior
 
-The existing bring-up result proves basic orientation, owner-routed presentation, and boot clear-hold display-transfer clock request/release (`EV-HW6-20260813-P1-DISPLAYCLOCK-047`). Follow-up FW0 target evidence from probe API `36` validates that splitting the minimal renderer into `display_renderer.c` preserved normal UI render completion and held-frame STOP2 readiness: display UI request/render/page/status `2/1/1/0x0`, display complete/success `1/1`, backend request/selected/status/held `1/1/0x0/1`, and automatic STOP2 entry count `2`. It does not close partial updates, dirty tracking, LPBAM, final typography/layout, renderer polish, or display fault recovery.
+The existing bring-up result proves basic orientation, owner-routed presentation, and boot clear-hold display-transfer clock request/release (`EV-HW6-20260813-P1-DISPLAYCLOCK-047`). Follow-up FW0 target evidence from probe API `36` validates that splitting the minimal renderer into `display_renderer.c` preserved normal UI render completion and held-frame STOP2 readiness: display UI request/render/page/status `2/1/1/0x0`, display complete/success `1/1`, backend request/selected/status/held `1/1/0x0/1`, and automatic STOP2 entry count `2`. HW6 evidence `EV-HW6-20260816-P1-BUTTONWAKE-LIST-069` visually validates the first list-style shell renderer and selected-row cursor; the same run kept display completion and held-frame readiness valid after repeated button wake/input cycles. It does not close partial updates, dirty tracking, LPBAM, final typography/layout, renderer polish, or display fault recovery.
 
 ## DMA-Safe Buffer Placement
 

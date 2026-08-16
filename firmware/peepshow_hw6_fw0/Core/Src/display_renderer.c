@@ -4,7 +4,17 @@
 
 #include "ps_ui_router.h"
 
-#define DISPLAY_RENDERER_TEXT_SCALE (2U)
+#define DISPLAY_RENDERER_TEXT_SCALE         (2U)
+#define DISPLAY_RENDERER_LIST_ROW_COUNT     (3U)
+#define DISPLAY_RENDERER_LIST_TEXT_SCALE    (2U)
+#define DISPLAY_RENDERER_LIST_TITLE_Y       (7U)
+#define DISPLAY_RENDERER_LIST_DIVIDER_Y     (27U)
+#define DISPLAY_RENDERER_LIST_ROW_Y0        (43U)
+#define DISPLAY_RENDERER_LIST_ROW_STEP      (30U)
+#define DISPLAY_RENDERER_LIST_CURSOR_X      (8U)
+#define DISPLAY_RENDERER_LIST_TEXT_X        (26U)
+#define DISPLAY_RENDERER_LIST_CURSOR_WIDTH  (8U)
+#define DISPLAY_RENDERER_LIST_CURSOR_HEIGHT (16U)
 
 static uint8_t s_display_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint32_t s_rotate_ccw;
@@ -289,252 +299,264 @@ static const char *DisplayRenderer_ShutdownCountdownLine(
   }
   return "PREPARING";
 }
-static void DisplayRenderer_UIStrings(uint32_t page,
-                                      uint32_t calibration_page,
-                                      uint32_t focus_index,
-                                      uint32_t shutdown_state,
-                                      uint32_t shutdown_countdown_seconds,
-                                      const char **title,
-                                      const char **line1,
-                                      const char **line2)
+
+typedef struct
 {
-  *title = "PEEPSHOW";
-  *line1 = "HOME";
-  *line2 = "MENU A";
+  const char *title;
+  const char *rows[DISPLAY_RENDERER_LIST_ROW_COUNT];
+  uint32_t selected_row;
+} display_renderer_list_t;
+
+static void DisplayRenderer_ListInit(display_renderer_list_t *list)
+{
+  uint32_t i;
+
+  list->title = "PEEPSHOW";
+  for (i = 0U; i < DISPLAY_RENDERER_LIST_ROW_COUNT; ++i)
+  {
+    list->rows[i] = "";
+  }
+  list->selected_row = 0UL;
+}
+
+static void DisplayRenderer_UIList(uint32_t page,
+                                   uint32_t calibration_page,
+                                   uint32_t focus_index,
+                                   uint32_t shutdown_state,
+                                   uint32_t shutdown_countdown_seconds,
+                                   display_renderer_list_t *list)
+{
+  DisplayRenderer_ListInit(list);
+  list->rows[0] = "HOME";
+  list->rows[1] = "MENU";
+  list->rows[2] = "PACKAGES";
 
   switch (page)
   {
     case PS_UI_ROUTER_PAGE_HOME:
+      list->selected_row = 1UL;
       break;
     case PS_UI_ROUTER_PAGE_MENU:
-      *title = "SYSTEM";
-      if (focus_index == 0UL)
-      {
-        *line1 = "SETTINGS";
-        *line2 = "CAL INPUT";
-      }
-      else if (focus_index == 1UL)
-      {
-        *line1 = "CAL INPUT";
-        *line2 = "PACKAGES";
-      }
-      else
-      {
-        *line1 = "PACKAGES";
-        *line2 = "SETTINGS";
-      }
+      list->title = "SYSTEM";
+      list->rows[0] = "SETTINGS";
+      list->rows[1] = "CAL INPUT";
+      list->rows[2] = "PACKAGES";
+      list->selected_row = (focus_index >= DISPLAY_RENDERER_LIST_ROW_COUNT) ?
+        0UL : focus_index;
       break;
     case PS_UI_ROUTER_PAGE_SETTINGS:
-      *title = "SETTINGS";
-      *line1 = "INPUT";
-      *line2 = "DISPLAY";
+      list->title = "SETTINGS";
+      list->rows[0] = "INPUT";
+      list->rows[1] = "DISPLAY";
+      list->rows[2] = "BACK";
       break;
     case PS_UI_ROUTER_PAGE_CALIBRATION:
-      *title = "CALIBRATION";
+      list->title = "CALIBRATION";
       if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_NEUTRAL)
       {
-        *line1 = "STICK CENTER";
-        *line2 = "PRESS A";
+        list->rows[0] = "STICK CENTER";
+        list->rows[1] = "PRESS A";
       }
       else if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_RIGHT)
       {
-        *line1 = "MOVE RIGHT";
-        *line2 = "PRESS A";
+        list->rows[0] = "MOVE RIGHT";
+        list->rows[1] = "PRESS A";
       }
       else if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_CIRCLE)
       {
-        *line1 = "MAKE CIRCLES";
-        *line2 = "PRESS A";
+        list->rows[0] = "MAKE CIRCLES";
+        list->rows[1] = "PRESS A";
       }
       else if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_REVIEW)
       {
-        *line1 = "REVIEW";
-        *line2 = "PRESS A";
+        list->rows[0] = "REVIEW";
+        list->rows[1] = "PRESS A";
       }
       else
       {
-        *line1 = "INPUT";
-        *line2 = "JOYSTICK A";
+        list->rows[0] = "INPUT";
+        list->rows[1] = "JOYSTICK A";
       }
+      list->rows[2] = "B BACK";
       break;
     case PS_UI_ROUTER_PAGE_PACKAGE_BROWSER:
       if (focus_index == PS_UI_ROUTER_PACKAGE_CANDIDATE)
       {
-        *title = "PACKAGE";
-        *line1 = "FOUND";
-        *line2 = "WAIT";
+        list->title = "PACKAGE";
+        list->rows[0] = "FOUND";
+        list->rows[1] = "WAIT";
       }
       else if (focus_index == PS_UI_ROUTER_PACKAGE_VALID)
       {
-        *title = "PACKAGE";
-        *line1 = "VALID";
-        *line2 = "A INSTALL";
+        list->title = "PACKAGE";
+        list->rows[0] = "VALID";
+        list->rows[1] = "A INSTALL";
       }
       else if (focus_index == PS_UI_ROUTER_PACKAGE_INSTALLING)
       {
-        *title = "PACKAGE";
-        *line1 = "INSTALL STUB";
-        *line2 = "WAIT";
+        list->title = "PACKAGE";
+        list->rows[0] = "INSTALL STUB";
+        list->rows[1] = "WAIT";
       }
       else if (focus_index == PS_UI_ROUTER_PACKAGE_INSTALLED)
       {
-        *title = "PACKAGE";
-        *line1 = "STUB DONE";
-        *line2 = "B BACK";
+        list->title = "PACKAGE";
+        list->rows[0] = "STUB DONE";
+        list->rows[1] = "B BACK";
       }
       else if (focus_index == PS_UI_ROUTER_PACKAGE_ERROR)
       {
-        *title = "PACKAGE";
-        *line1 = "PKG ERROR";
-        *line2 = "SEE GDB";
+        list->title = "PACKAGE";
+        list->rows[0] = "PKG ERROR";
+        list->rows[1] = "SEE GDB";
       }
       else
       {
-        *title = "USB";
-        *line1 = "TRANSFER";
-        *line2 = "START A";
+        list->title = "USB";
+        list->rows[0] = "TRANSFER";
+        list->rows[1] = "START A";
       }
+      list->rows[2] = "B BACK";
       break;
     case PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF:
-      *title = "RUNTIME";
-      *line1 = "HANDOFF";
-      *line2 = "WAIT";
+      list->title = "RUNTIME";
+      list->rows[0] = "HANDOFF";
+      list->rows[1] = "WAIT";
       break;
     case PS_UI_ROUTER_PAGE_ERROR:
-      *title = "ERROR";
-      *line1 = "SHELL FAULT";
-      *line2 = "RECOVER";
+      list->title = "ERROR";
+      list->rows[0] = "SHELL FAULT";
+      list->rows[1] = "RECOVER";
       break;
     case PS_UI_ROUTER_PAGE_SHUTDOWN:
       if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_BOOT)
       {
-        *title = "LOW BATTERY";
-        *line1 = "CHARGE DEVICE";
-        *line2 = "NO RUNTIME";
+        list->title = "LOW BATTERY";
+        list->rows[0] = "CHARGE DEVICE";
+        list->rows[1] = "NO RUNTIME";
       }
       else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_CHARGE)
       {
-        *title = "LOW BATTERY";
-        *line1 = "CHARGING";
-        *line2 = "PLEASE WAIT";
+        list->title = "LOW BATTERY";
+        list->rows[0] = "CHARGING";
+        list->rows[1] = "PLEASE WAIT";
       }
       else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_FLASH_INIT)
       {
-        *title = "FLASH INIT";
-        *line1 = "USB STAGING";
-        *line2 = "WAIT";
+        list->title = "FLASH INIT";
+        list->rows[0] = "USB STAGING";
+        list->rows[1] = "WAIT";
       }
       else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_FLASH_DONE)
       {
-        *title = "FLASH INIT";
-        *line1 = "USB STAGING";
-        *line2 = "DONE";
+        list->title = "FLASH INIT";
+        list->rows[0] = "USB STAGING";
+        list->rows[1] = "DONE";
       }
       else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_FLASH_ERROR)
       {
-        *title = "FLASH INIT";
-        *line1 = "USB STAGING";
-        *line2 = "ERROR";
+        list->title = "FLASH INIT";
+        list->rows[0] = "USB STAGING";
+        list->rows[1] = "ERROR";
       }
       else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_EXPORT)
       {
-        *title = "USB MSC";
-        *line1 = "EXPORT";
-        *line2 = "WAIT";
+        list->title = "USB MSC";
+        list->rows[0] = "EXPORT";
+        list->rows[1] = "WAIT";
       }
       else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_ACTIVE)
       {
-        *title = "USB MSC";
-        *line1 = "ACTIVE";
-        *line2 = "EJECT FIRST";
+        list->title = "USB MSC";
+        list->rows[0] = "ACTIVE";
+        list->rows[1] = "EJECT FIRST";
       }
       else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_RECLAIM)
       {
-        *title = "USB MSC";
-        *line1 = "RECLAIM";
-        *line2 = "WAIT";
+        list->title = "USB MSC";
+        list->rows[0] = "RECLAIM";
+        list->rows[1] = "WAIT";
       }
       else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_DONE)
       {
-        *title = "USB MSC";
-        *line1 = "RECLAIM";
-        *line2 = "DONE";
+        list->title = "USB MSC";
+        list->rows[0] = "RECLAIM";
+        list->rows[1] = "DONE";
       }
       else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_ERROR)
       {
-        *title = "USB MSC";
-        *line1 = "ERROR";
-        *line2 = "SEE GDB";
+        list->title = "USB MSC";
+        list->rows[0] = "ERROR";
+        list->rows[1] = "SEE GDB";
       }
       else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_MSC_RECOVERY)
       {
-        *title = "USB MSC";
-        *line1 = "MSC NEEDS";
-        *line2 = "FLASH INIT";
+        list->title = "USB MSC";
+        list->rows[0] = "MSC NEEDS";
+        list->rows[1] = "FLASH INIT";
       }
       else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_REST)
       {
-        *title = "JOYSTICK REST";
-        *line1 = "FLICK";
-        *line2 = "RELEASE";
+        list->title = "JOYSTICK REST";
+        list->rows[0] = "FLICK";
+        list->rows[1] = "RELEASE";
       }
       else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_SWEEP)
       {
-        *title = "JOYSTICK SWEEP";
-        *line1 = "FULL";
-        *line2 = "TRAVEL";
+        list->title = "JOYSTICK SWEEP";
+        list->rows[0] = "FULL";
+        list->rows[1] = "TRAVEL";
       }
       else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_DONE)
       {
-        *title = "JOYSTICK XYZ";
-        *line1 = "CAPTURE";
-        *line2 = "DONE";
+        list->title = "JOYSTICK XYZ";
+        list->rows[0] = "CAPTURE";
+        list->rows[1] = "DONE";
       }
       else if (shutdown_state == PS_UI_ROUTER_SHUTDOWN_JOYSTICK_XYZ_ERROR)
       {
-        *title = "JOYSTICK XYZ";
-        *line1 = "CAPTURE";
-        *line2 = "ERROR";
+        list->title = "JOYSTICK XYZ";
+        list->rows[0] = "CAPTURE";
+        list->rows[1] = "ERROR";
       }
       else
       {
-        *title = "SHUTDOWN";
-        *line1 = DisplayRenderer_ShutdownCountdownLine(
+        list->title = "SHUTDOWN";
+        list->rows[0] = DisplayRenderer_ShutdownCountdownLine(
           shutdown_countdown_seconds);
-        *line2 = (shutdown_state == PS_UI_ROUTER_SHUTDOWN_CANCELLED) ?
+        list->rows[1] = (shutdown_state == PS_UI_ROUTER_SHUTDOWN_CANCELLED) ?
           "CANCELLED" : "HOLD START";
       }
       break;
     default:
-      *title = "BOOT";
-      *line1 = "STARTING";
-      *line2 = "WAIT";
+      list->title = "BOOT";
+      list->rows[0] = "STARTING";
+      list->rows[1] = "WAIT";
       break;
   }
 }
-void DisplayRenderer_PrepareUIPage(
-  uint32_t page,
-  uint32_t calibration_page,
-  uint32_t focus_index,
-  uint32_t shutdown_state,
-  uint32_t shutdown_countdown_seconds,
-  display_renderer_stats_t *stats)
-{
-  const char *title;
-  const char *line1;
-  const char *line2;
-  uint32_t black_pixels = 0UL;
 
-  DisplayRenderer_ClearWhite();
-  s_rotate_ccw = 1UL;
-  DisplayRenderer_UIStrings(page,
-                            calibration_page,
-                            focus_index,
-                            shutdown_state,
-                            shutdown_countdown_seconds,
-                            &title,
-                            &line1,
-                            &line2);
+static uint32_t DisplayRenderer_DrawListCursor(uint32_t row, uint32_t visible)
+{
+  uint16_t y;
+
+  if ((visible == 0UL) || (row >= DISPLAY_RENDERER_LIST_ROW_COUNT))
+  {
+    return 0UL;
+  }
+
+  y = (uint16_t)(DISPLAY_RENDERER_LIST_ROW_Y0 +
+                 (row * DISPLAY_RENDERER_LIST_ROW_STEP));
+  return DisplayRenderer_FilledRect(DISPLAY_RENDERER_LIST_CURSOR_X,
+                                    y,
+                                    DISPLAY_RENDERER_LIST_CURSOR_WIDTH,
+                                    DISPLAY_RENDERER_LIST_CURSOR_HEIGHT);
+}
+
+static uint32_t DisplayRenderer_DrawList(const display_renderer_list_t *list)
+{
+  uint32_t black_pixels = 0UL;
+  uint32_t row;
 
   black_pixels += DisplayRenderer_HorizontalLine(
     0U, (uint16_t)(DISPLAY_RENDERER_WIDTH - 1U), 0U);
@@ -547,14 +569,45 @@ void DisplayRenderer_PrepareUIPage(
     (uint16_t)(DISPLAY_RENDERER_WIDTH - 1U), 0U,
     (uint16_t)(DISPLAY_RENDERER_HEIGHT - 1U));
   black_pixels += DisplayRenderer_HorizontalLine(
-    8U, (uint16_t)(DISPLAY_RENDERER_WIDTH - 9U), 28U);
+    8U, (uint16_t)(DISPLAY_RENDERER_WIDTH - 9U),
+    DISPLAY_RENDERER_LIST_DIVIDER_Y);
   black_pixels += DisplayRenderer_DrawCenteredText(
-    8U, title, DISPLAY_RENDERER_TEXT_SCALE);
-  black_pixels += DisplayRenderer_DrawCenteredText(
-    58U, line1, DISPLAY_RENDERER_TEXT_SCALE);
-  black_pixels += DisplayRenderer_DrawCenteredText(
-    94U, line2, DISPLAY_RENDERER_TEXT_SCALE);
-  black_pixels += DisplayRenderer_FilledRect(76U, 132U, 16U, 6U);
+    DISPLAY_RENDERER_LIST_TITLE_Y, list->title, DISPLAY_RENDERER_TEXT_SCALE);
+
+  for (row = 0U; row < DISPLAY_RENDERER_LIST_ROW_COUNT; ++row)
+  {
+    black_pixels += DisplayRenderer_DrawText(
+      DISPLAY_RENDERER_LIST_TEXT_X,
+      (uint16_t)(DISPLAY_RENDERER_LIST_ROW_Y0 +
+                 (row * DISPLAY_RENDERER_LIST_ROW_STEP)),
+      list->rows[row],
+      DISPLAY_RENDERER_LIST_TEXT_SCALE);
+  }
+
+  black_pixels += DisplayRenderer_DrawListCursor(list->selected_row, 1UL);
+  return black_pixels;
+}
+
+void DisplayRenderer_PrepareUIPage(
+  uint32_t page,
+  uint32_t calibration_page,
+  uint32_t focus_index,
+  uint32_t shutdown_state,
+  uint32_t shutdown_countdown_seconds,
+  display_renderer_stats_t *stats)
+{
+  display_renderer_list_t list;
+  uint32_t black_pixels = 0UL;
+
+  DisplayRenderer_ClearWhite();
+  s_rotate_ccw = 1UL;
+  DisplayRenderer_UIList(page,
+                         calibration_page,
+                         focus_index,
+                         shutdown_state,
+                         shutdown_countdown_seconds,
+                         &list);
+  black_pixels += DisplayRenderer_DrawList(&list);
   s_rotate_ccw = 0UL;
 
   DisplayRenderer_FillStats(stats, black_pixels);
