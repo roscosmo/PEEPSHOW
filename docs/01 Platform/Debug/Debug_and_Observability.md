@@ -218,6 +218,7 @@ HardFault data must be captured before reset.
 - avoid instrumentation that materially changes sleep behavior
 - STOP2 evidence must record `DBGMCU->CR` before/after entry; on STM32U575 the debug MCU configuration register is at `0xE0044004`, not `0xE0044000`
 - controlled physical START-wake proof on HW6 FW0 used `firmware/peepshow_hw6_fw0/__fw0_stop2_debug_low_power_off.gdb` to clear `DBG_STOP` and `DBG_STANDBY`, then restored them only when debug visibility was needed again
+- current measurements used for power targets must state whether SWD was physically attached; HW6 FW0 STOP2 floor evidence uses debugger-detached PPK2 current as the trusted value, with GDB probes used only after wake/reconnect to inspect retained ledgers
 
 HW6 FW0 evidence `EV-HW6-20260814-P1-STOP2WAKE-056` showed why this distinction matters: with `DBGMCU->CR = 0x6`, the controlled STOP2 helper entered and returned immediately with no EXTI, GPIO, NVIC, PMIC, or PWR wake-source evidence, so the result was classified as `UNKNOWN`. After clearing `DBGMCU->CR` to `0x0`, the same controlled helper entered STOP2 and woke from physical START with source mask `0x1`, primary cause `START`, PA4 IDR changing `0x6055 -> 0x6045`, START button edges `0 -> 1`, `PWR_SR.STOPF` set, and no unknown wake count.
 ---

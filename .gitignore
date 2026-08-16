@@ -33,6 +33,7 @@
 /firmware/**/__fw0_*.err
 /firmware/**/__fw0_tracex_snapshot.trx
 /firmware/**/TraceFiles/__fw0_tracex_snapshot.trx
+/firmware/**/PPKLogs
 
 # Per-user editor state
 /docs/.obsidian/workspace.json
