@@ -96,6 +96,32 @@
 #define PS_HW6_CHARGER_STATUS_CHARGING     (1UL)
 #define PS_HW6_CHARGER_STATUS_FULL         (2UL)
 
+#define PS_HW6_STOP2_GPIO_POLICY_VERSION   (2UL)
+#define PS_HW6_STOP2_GPIO_SNAPSHOT_BEFORE  (0UL)
+#define PS_HW6_STOP2_GPIO_SNAPSHOT_SLEEP   (1UL)
+#define PS_HW6_STOP2_GPIO_SNAPSHOT_AFTER   (2UL)
+#define PS_HW6_STOP2_GPIO_PORT_A           (0U)
+#define PS_HW6_STOP2_GPIO_PORT_B           (1U)
+#define PS_HW6_STOP2_GPIO_PORT_C           (2U)
+#define PS_HW6_STOP2_GPIO_PORT_H           (3U)
+#define PS_HW6_STOP2_GPIO_GROUP_OSPI       (0U)
+#define PS_HW6_STOP2_GPIO_GROUP_SAI        (1U)
+#define PS_HW6_STOP2_GPIO_GROUP_USB        (2U)
+#define PS_HW6_STOP2_GPIO_GROUP_DISPLAY    (3U)
+#define PS_HW6_STOP2_GPIO_GROUP_I2C        (4U)
+#define PS_HW6_STOP2_GPIO_GROUP_MASK_OSPI  (1UL << PS_HW6_STOP2_GPIO_GROUP_OSPI)
+#define PS_HW6_STOP2_GPIO_GROUP_MASK_SAI   (1UL << PS_HW6_STOP2_GPIO_GROUP_SAI)
+#define PS_HW6_STOP2_GPIO_GROUP_MASK_USB   (1UL << PS_HW6_STOP2_GPIO_GROUP_USB)
+#define PS_HW6_STOP2_GPIO_GROUP_MASK_DISPLAY \
+  (1UL << PS_HW6_STOP2_GPIO_GROUP_DISPLAY)
+#define PS_HW6_STOP2_GPIO_GROUP_MASK_I2C   (1UL << PS_HW6_STOP2_GPIO_GROUP_I2C)
+#define PS_HW6_STOP2_GPIO_GROUP_MASK_ALL   \
+  (PS_HW6_STOP2_GPIO_GROUP_MASK_OSPI | \
+   PS_HW6_STOP2_GPIO_GROUP_MASK_SAI | \
+   PS_HW6_STOP2_GPIO_GROUP_MASK_USB | \
+   PS_HW6_STOP2_GPIO_GROUP_MASK_DISPLAY | \
+   PS_HW6_STOP2_GPIO_GROUP_MASK_I2C)
+
 extern I2C_HandleTypeDef hi2c3;
 extern DMA_HandleTypeDef handle_GPDMA1_Channel4;
 extern DMA_HandleTypeDef handle_GPDMA1_Channel5;
@@ -122,6 +148,8 @@ volatile uint32_t g_ps_hw6_joystick_sleep_audit_request;
 volatile uint32_t g_ps_hw6_joystick_xyz_capture_request;
 volatile uint32_t g_ps_hw6_joystick_xyz_capture_mode;
 volatile uint32_t g_ps_hw6_ble_sleep_dsr_deasserted = 1UL;
+volatile uint32_t g_ps_hw6_stop2_gpio_park_group_mask_override =
+  PS_HW6_OWNER_SM_STATUS_NOT_RUN;
 volatile PS_HW6_JoystickXyzCaptureRecord
   g_ps_hw6_joystick_xyz_capture_buffer[KNOB_INPUT_JOYSTICK_XYZ_CAPTURE_SAMPLES];
 
@@ -133,6 +161,90 @@ static uint32_t ps_power_boot_restart_gate_blocked;
 static PS_HW6_PowerQuiesceBarrierCallback ps_power_quiesce_barrier_callback;
 static PS_HW6_PowerAdmissionCallback ps_power_admission_callback;
 static PS_HW6_PostStopResumeBarrierCallback ps_post_stop_resume_barrier_callback;
+
+static GPIO_TypeDef * const
+  ps_hw6_stop2_gpio_ports[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT] =
+{
+  GPIOA,
+  GPIOB,
+  GPIOC,
+  GPIOH
+};
+
+static const uint32_t
+  ps_hw6_stop2_gpio_used_masks[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT] =
+{
+  GPIO_PIN_0 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 |
+    GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9 |
+    GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12 | GPIO_PIN_13 |
+    GPIO_PIN_14 | GPIO_PIN_15,
+  GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_3 | GPIO_PIN_5 |
+    GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9 |
+    GPIO_PIN_10 | GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 |
+    GPIO_PIN_15,
+  GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_4 | GPIO_PIN_5 |
+    GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9 |
+    GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12 | GPIO_PIN_13 |
+    GPIO_PIN_14,
+  GPIO_PIN_1 | GPIO_PIN_3
+};
+
+static const uint32_t
+  ps_hw6_stop2_gpio_wake_masks[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT] =
+{
+  BTN_START_Pin,
+  BTN_A_Pin | BTN_B_Pin | BTN_L_Pin | BTN_R_Pin |
+    MPU_INT_Pin | PMIC_INT_Pin,
+  JOY_INT_Pin,
+  BTN_BOOT_Pin
+};
+
+static const uint32_t
+  ps_hw6_stop2_gpio_retain_masks[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT] =
+{
+  GPIO_PIN_13 | GPIO_PIN_14,
+  GPIO_PIN_3,
+  NINA_NRST_Pin | PS_HW6_NINA_DSR_HOST_CONTROL_PIN |
+    SD_MODE_Pin | LCD_1HZ_Pin | GPIO_PIN_14,
+  PWR_DBG_Pin
+};
+
+static const uint32_t
+  ps_hw6_stop2_gpio_group_masks[PS_HW6_OWNER_SM_STOP2_GPIO_GROUP_COUNT]
+                                [PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT] =
+{
+  {
+    GPIO_PIN_0 | GPIO_PIN_6 | GPIO_PIN_7,
+    GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_10,
+    0UL,
+    0UL
+  },
+  {
+    GPIO_PIN_8 | GPIO_PIN_10,
+    GPIO_PIN_9,
+    0UL,
+    0UL
+  },
+  {
+    GPIO_PIN_9 | GPIO_PIN_11 | GPIO_PIN_12,
+    0UL,
+    0UL,
+    0UL
+  },
+  {
+    GPIO_PIN_15,
+    0UL,
+    GPIO_PIN_10 | GPIO_PIN_12,
+    0UL
+  },
+  {
+    0UL,
+    0UL,
+    GPIO_PIN_0 | GPIO_PIN_1,
+    0UL
+  }
+};
+
 static HAL_StatusTypeDef PS_HW6_SM_Transition(uint32_t state_machine_id,
                                                uint32_t event,
                                                HAL_StatusTypeDef action_status);
@@ -152,6 +264,247 @@ static uint32_t PS_HW6_SM_MsToTicks(uint32_t ms)
     return 0xFFFFFFFFUL;
   }
   return (uint32_t)scaled;
+}
+
+static uint32_t PS_HW6_SM_GpioTwoBitMask(uint32_t pin_mask)
+{
+  uint32_t two_bit_mask = 0UL;
+  uint32_t pin;
+
+  for (pin = 0U; pin < 16U; ++pin)
+  {
+    if ((pin_mask & (1UL << pin)) != 0UL)
+    {
+      two_bit_mask |= (3UL << (pin * 2U));
+    }
+  }
+
+  return two_bit_mask;
+}
+
+static uint32_t PS_HW6_SM_Stop2GpioDefaultParkGroupMask(void)
+{
+  return ((uint32_t)KNOB_POWER_STOP2_GPIO_PARK_GROUP_MASK) &
+         PS_HW6_STOP2_GPIO_GROUP_MASK_ALL;
+}
+
+static uint32_t PS_HW6_SM_Stop2GpioActiveParkGroupMask(void)
+{
+  const uint32_t default_mask = PS_HW6_SM_Stop2GpioDefaultParkGroupMask();
+  uint32_t active_mask = default_mask;
+  const uint32_t override_mask =
+    g_ps_hw6_stop2_gpio_park_group_mask_override;
+
+  if (override_mask != PS_HW6_OWNER_SM_STATUS_NOT_RUN)
+  {
+    active_mask = override_mask & PS_HW6_STOP2_GPIO_GROUP_MASK_ALL;
+  }
+
+  g_ps_hw6_owner_sm_probe.stop2_gpio_park_group_default_mask =
+    default_mask;
+  g_ps_hw6_owner_sm_probe.stop2_gpio_park_group_override_mask =
+    override_mask;
+  g_ps_hw6_owner_sm_probe.stop2_gpio_park_group_active_mask =
+    active_mask;
+
+  return active_mask;
+}
+
+static void PS_HW6_SM_RecalculateStop2GpioParkMasks(void)
+{
+  const uint32_t active_mask = PS_HW6_SM_Stop2GpioActiveParkGroupMask();
+  uint32_t group;
+  uint32_t port;
+
+  for (port = 0U;
+       port < PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT;
+       ++port)
+  {
+    g_ps_hw6_owner_sm_probe.stop2_gpio_park_mask[port] = 0UL;
+  }
+
+  for (group = 0U;
+       group < PS_HW6_OWNER_SM_STOP2_GPIO_GROUP_COUNT;
+       ++group)
+  {
+    if ((active_mask & (1UL << group)) != 0UL)
+    {
+      for (port = 0U;
+           port < PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT;
+           ++port)
+      {
+        g_ps_hw6_owner_sm_probe.stop2_gpio_park_mask[port] |=
+          ps_hw6_stop2_gpio_group_masks[group][port];
+      }
+    }
+  }
+
+  for (port = 0U;
+       port < PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT;
+       ++port)
+  {
+    g_ps_hw6_owner_sm_probe.stop2_gpio_park_mask[port] &=
+      g_ps_hw6_owner_sm_probe.stop2_gpio_park_candidate_mask[port];
+  }
+}
+
+static void PS_HW6_SM_ResetStop2GpioAudit(void)
+{
+  uint32_t index;
+
+  g_ps_hw6_owner_sm_probe.stop2_gpio_policy_version =
+    PS_HW6_STOP2_GPIO_POLICY_VERSION;
+  g_ps_hw6_owner_sm_probe.stop2_gpio_snapshot_count = 0UL;
+  g_ps_hw6_owner_sm_probe.stop2_gpio_park_count = 0UL;
+  g_ps_hw6_owner_sm_probe.stop2_gpio_restore_count = 0UL;
+  g_ps_hw6_owner_sm_probe.stop2_gpio_park_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.stop2_gpio_restore_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+
+  for (index = 0U;
+       index < PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT;
+       ++index)
+  {
+    const uint32_t used_mask = ps_hw6_stop2_gpio_used_masks[index];
+    const uint32_t wake_mask = ps_hw6_stop2_gpio_wake_masks[index];
+    const uint32_t retain_mask = ps_hw6_stop2_gpio_retain_masks[index];
+
+    g_ps_hw6_owner_sm_probe.stop2_gpio_used_mask[index] = used_mask;
+    g_ps_hw6_owner_sm_probe.stop2_gpio_wake_mask[index] = wake_mask;
+    g_ps_hw6_owner_sm_probe.stop2_gpio_retain_mask[index] = retain_mask;
+    g_ps_hw6_owner_sm_probe.stop2_gpio_park_candidate_mask[index] =
+      used_mask & ~(wake_mask | retain_mask);
+    g_ps_hw6_owner_sm_probe.stop2_gpio_park_mask[index] = 0UL;
+    g_ps_hw6_owner_sm_probe.stop2_gpio_moder_before[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.stop2_gpio_pupdr_before[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.stop2_gpio_odr_before[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.stop2_gpio_idr_before[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.stop2_gpio_moder_sleep[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.stop2_gpio_pupdr_sleep[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.stop2_gpio_odr_sleep[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.stop2_gpio_idr_sleep[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.stop2_gpio_moder_after[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.stop2_gpio_pupdr_after[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.stop2_gpio_odr_after[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    g_ps_hw6_owner_sm_probe.stop2_gpio_idr_after[index] =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  }
+
+  PS_HW6_SM_RecalculateStop2GpioParkMasks();
+}
+
+static void PS_HW6_SM_RecordStop2GpioSnapshot(uint32_t snapshot)
+{
+  uint32_t index;
+
+  for (index = 0U;
+       index < PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT;
+       ++index)
+  {
+    GPIO_TypeDef * const port = ps_hw6_stop2_gpio_ports[index];
+
+    if (snapshot == PS_HW6_STOP2_GPIO_SNAPSHOT_BEFORE)
+    {
+      g_ps_hw6_owner_sm_probe.stop2_gpio_moder_before[index] = port->MODER;
+      g_ps_hw6_owner_sm_probe.stop2_gpio_pupdr_before[index] = port->PUPDR;
+      g_ps_hw6_owner_sm_probe.stop2_gpio_odr_before[index] = port->ODR;
+      g_ps_hw6_owner_sm_probe.stop2_gpio_idr_before[index] = port->IDR;
+    }
+    else if (snapshot == PS_HW6_STOP2_GPIO_SNAPSHOT_SLEEP)
+    {
+      g_ps_hw6_owner_sm_probe.stop2_gpio_moder_sleep[index] = port->MODER;
+      g_ps_hw6_owner_sm_probe.stop2_gpio_pupdr_sleep[index] = port->PUPDR;
+      g_ps_hw6_owner_sm_probe.stop2_gpio_odr_sleep[index] = port->ODR;
+      g_ps_hw6_owner_sm_probe.stop2_gpio_idr_sleep[index] = port->IDR;
+    }
+    else
+    {
+      g_ps_hw6_owner_sm_probe.stop2_gpio_moder_after[index] = port->MODER;
+      g_ps_hw6_owner_sm_probe.stop2_gpio_pupdr_after[index] = port->PUPDR;
+      g_ps_hw6_owner_sm_probe.stop2_gpio_odr_after[index] = port->ODR;
+      g_ps_hw6_owner_sm_probe.stop2_gpio_idr_after[index] = port->IDR;
+    }
+  }
+
+  g_ps_hw6_owner_sm_probe.stop2_gpio_snapshot_count++;
+}
+
+static HAL_StatusTypeDef PS_HW6_SM_ParkStop2GpioPins(void)
+{
+  uint32_t index;
+
+  PS_HW6_SM_RecalculateStop2GpioParkMasks();
+  g_ps_hw6_owner_sm_probe.stop2_gpio_park_count++;
+
+  for (index = 0U;
+       index < PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT;
+       ++index)
+  {
+    GPIO_TypeDef * const port = ps_hw6_stop2_gpio_ports[index];
+    const uint32_t pin_mask =
+      g_ps_hw6_owner_sm_probe.stop2_gpio_park_mask[index];
+
+    if (pin_mask != 0UL)
+    {
+      const uint32_t two_bit_mask = PS_HW6_SM_GpioTwoBitMask(pin_mask);
+
+      port->PUPDR &= ~two_bit_mask;
+      port->MODER = (port->MODER & ~two_bit_mask) | two_bit_mask;
+    }
+  }
+
+  __DSB();
+  g_ps_hw6_owner_sm_probe.stop2_gpio_park_status = (uint32_t)HAL_OK;
+  return HAL_OK;
+}
+
+static HAL_StatusTypeDef PS_HW6_SM_RestoreStop2GpioPins(void)
+{
+  uint32_t index;
+
+  g_ps_hw6_owner_sm_probe.stop2_gpio_restore_count++;
+
+  for (index = 0U;
+       index < PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT;
+       ++index)
+  {
+    GPIO_TypeDef * const port = ps_hw6_stop2_gpio_ports[index];
+    const uint32_t pin_mask =
+      g_ps_hw6_owner_sm_probe.stop2_gpio_park_mask[index];
+
+    if (pin_mask != 0UL)
+    {
+      const uint32_t two_bit_mask = PS_HW6_SM_GpioTwoBitMask(pin_mask);
+      const uint32_t odr_before =
+        g_ps_hw6_owner_sm_probe.stop2_gpio_odr_before[index];
+      const uint32_t pupdr_before =
+        g_ps_hw6_owner_sm_probe.stop2_gpio_pupdr_before[index];
+      const uint32_t moder_before =
+        g_ps_hw6_owner_sm_probe.stop2_gpio_moder_before[index];
+
+      port->ODR = (port->ODR & ~pin_mask) | (odr_before & pin_mask);
+      port->PUPDR = (port->PUPDR & ~two_bit_mask) |
+                    (pupdr_before & two_bit_mask);
+      port->MODER = (port->MODER & ~two_bit_mask) |
+                    (moder_before & two_bit_mask);
+    }
+  }
+
+  __DSB();
+  g_ps_hw6_owner_sm_probe.stop2_gpio_restore_status = (uint32_t)HAL_OK;
+  return HAL_OK;
 }
 
 static uint32_t PS_HW6_SM_SuspendThreadXSystick(void)
@@ -1905,12 +2258,79 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeJoystick(void)
   return status;
 }
 
+static void PS_HW6_SM_RecordImuStabilizeResult(
+  const ps_dev_lis2dux12_stabilize_result_t *result)
+{
+  uint32_t index;
+
+  g_ps_hw6_owner_sm_probe.imu_ready_status = result->whoami_hal_status;
+  g_ps_hw6_owner_sm_probe.imu_whoami_status = result->whoami_hal_status;
+  g_ps_hw6_owner_sm_probe.imu_whoami = result->whoami;
+  g_ps_hw6_owner_sm_probe.imu_identity_match = result->identity_match;
+  for (index = 0U; index < PS_HW6_OWNER_SM_IMU_REGISTER_COUNT; ++index)
+  {
+    g_ps_hw6_owner_sm_probe.imu_register_address[index] =
+      result->register_address[index];
+    g_ps_hw6_owner_sm_probe.imu_register_before[index] =
+      result->register_before[index];
+    g_ps_hw6_owner_sm_probe.imu_register_after[index] =
+      result->register_after[index];
+  }
+  g_ps_hw6_owner_sm_probe.imu_snapshot_ok_mask = result->snapshot_ok_mask;
+  g_ps_hw6_owner_sm_probe.imu_write_ok_mask = result->write_ok_mask;
+  g_ps_hw6_owner_sm_probe.imu_verify_ok_mask = result->verify_ok_mask;
+  g_ps_hw6_owner_sm_probe.imu_deep_power_down_value =
+    result->deep_power_down_value;
+  g_ps_hw6_owner_sm_probe.imu_deep_power_down_write_status =
+    (uint32_t)result->deep_power_down_status;
+  g_ps_hw6_owner_sm_probe.imu_terminal_deep_power_down_committed =
+    result->terminal_deep_power_down_committed;
+  g_ps_hw6_owner_sm_probe.imu_post_deep_power_down_read_omitted =
+    result->post_deep_power_down_read_omitted;
+  g_ps_hw6_owner_sm_probe.imu_i2c_state_after =
+    (uint32_t)HAL_I2C_GetState(&hi2c3);
+  g_ps_hw6_owner_sm_probe.imu_i2c_error_after =
+    HAL_I2C_GetError(&hi2c3);
+}
+
+static void PS_HW6_SM_ClearImuDeepPowerDownProof(void)
+{
+  g_ps_hw6_owner_sm_probe.imu_deep_power_down_write_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.imu_terminal_deep_power_down_committed = 0UL;
+  g_ps_hw6_owner_sm_probe.imu_post_deep_power_down_read_omitted = 0UL;
+}
+
+static uint32_t PS_HW6_SM_ImuDeepPowerDownProofValid(void)
+{
+  return ((g_ps_hw6_owner_sm_probe.imu_deep_power_down_write_status ==
+           (uint32_t)PS_STATUS_OK) &&
+          (g_ps_hw6_owner_sm_probe.imu_terminal_deep_power_down_committed !=
+           0UL) &&
+          (g_ps_hw6_owner_sm_probe.imu_post_deep_power_down_read_omitted !=
+           0UL)) ? 1UL : 0UL;
+}
+
+static void PS_HW6_SM_RecordImuSuspendResult(
+  const ps_dev_lis2dux12_suspend_result_t *result)
+{
+  g_ps_hw6_owner_sm_probe.imu_deep_power_down_write_status =
+    (uint32_t)result->deep_power_down_status;
+  g_ps_hw6_owner_sm_probe.imu_terminal_deep_power_down_committed =
+    result->terminal_deep_power_down_committed;
+  g_ps_hw6_owner_sm_probe.imu_post_deep_power_down_read_omitted =
+    result->post_deep_power_down_read_omitted;
+  g_ps_hw6_owner_sm_probe.imu_i2c_state_after =
+    (uint32_t)HAL_I2C_GetState(&hi2c3);
+  g_ps_hw6_owner_sm_probe.imu_i2c_error_after =
+    HAL_I2C_GetError(&hi2c3);
+}
+
 static HAL_StatusTypeDef PS_HW6_SM_StabilizeImu(void)
 {
   ps_dev_lis2dux12_stabilize_result_t result;
   ps_status_t driver_status;
   HAL_StatusTypeDef status;
-  uint32_t index;
 
   (void)PS_HW6_SM_Transition(PS_HW6_SM_IMU,
                             IMU_EV_ENABLE_REQUEST, HAL_OK);
@@ -1919,34 +2339,7 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeImu(void)
     &result);
   status = PS_HW6_SM_StatusToHal(driver_status);
 
-  g_ps_hw6_owner_sm_probe.imu_ready_status = result.whoami_hal_status;
-  g_ps_hw6_owner_sm_probe.imu_whoami_status = result.whoami_hal_status;
-  g_ps_hw6_owner_sm_probe.imu_whoami = result.whoami;
-  g_ps_hw6_owner_sm_probe.imu_identity_match = result.identity_match;
-  for (index = 0U; index < PS_HW6_OWNER_SM_IMU_REGISTER_COUNT; ++index)
-  {
-    g_ps_hw6_owner_sm_probe.imu_register_address[index] =
-      result.register_address[index];
-    g_ps_hw6_owner_sm_probe.imu_register_before[index] =
-      result.register_before[index];
-    g_ps_hw6_owner_sm_probe.imu_register_after[index] =
-      result.register_after[index];
-  }
-  g_ps_hw6_owner_sm_probe.imu_snapshot_ok_mask = result.snapshot_ok_mask;
-  g_ps_hw6_owner_sm_probe.imu_write_ok_mask = result.write_ok_mask;
-  g_ps_hw6_owner_sm_probe.imu_verify_ok_mask = result.verify_ok_mask;
-  g_ps_hw6_owner_sm_probe.imu_deep_power_down_value =
-    result.deep_power_down_value;
-  g_ps_hw6_owner_sm_probe.imu_deep_power_down_write_status =
-    (uint32_t)result.deep_power_down_status;
-  g_ps_hw6_owner_sm_probe.imu_terminal_deep_power_down_committed =
-    result.terminal_deep_power_down_committed;
-  g_ps_hw6_owner_sm_probe.imu_post_deep_power_down_read_omitted =
-    result.post_deep_power_down_read_omitted;
-  g_ps_hw6_owner_sm_probe.imu_i2c_state_after =
-    (uint32_t)HAL_I2C_GetState(&hi2c3);
-  g_ps_hw6_owner_sm_probe.imu_i2c_error_after =
-    HAL_I2C_GetError(&hi2c3);
+  PS_HW6_SM_RecordImuStabilizeResult(&result);
   PS_HW6_SM_UpdateImuDriverProbe();
 
   if (result.identity_match != 0UL)
@@ -4648,6 +5041,7 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeImu(uint32_t cycle_index)
     return HAL_ERROR;
   }
 
+  PS_HW6_SM_ClearImuDeepPowerDownProof();
   driver_status = ps_dev_lis2dux12_wake_low_rate(
     &ps_imu_device,
     &result);
@@ -4701,6 +5095,7 @@ static HAL_StatusTypeDef PS_HW6_SM_QuiesceImu(uint32_t cycle_index)
 
   driver_status = ps_dev_lis2dux12_suspend(&ps_imu_device, &result);
   status = PS_HW6_SM_StatusToHal(driver_status);
+  PS_HW6_SM_RecordImuSuspendResult(&result);
   if (cycle_index < PS_HW6_OWNER_SM_CYCLE_COUNT)
   {
     g_ps_hw6_owner_sm_probe.imu_cycle_sleep_status[cycle_index] =
@@ -5201,6 +5596,61 @@ static HAL_StatusTypeDef PS_HW6_SM_EnsureImuSuspended(void)
   return status;
 }
 
+static HAL_StatusTypeDef PS_HW6_SM_RunImuDeepPowerDownForStop2(
+  uint32_t cycle_index)
+{
+  ps_dev_lis2dux12_stabilize_result_t result;
+  ps_status_t driver_status;
+  HAL_StatusTypeDef status;
+
+  driver_status = ps_dev_lis2dux12_stabilize_suspended(
+    &ps_imu_device,
+    &result);
+  status = PS_HW6_SM_StatusToHal(driver_status);
+  PS_HW6_SM_RecordImuStabilizeResult(&result);
+  if (cycle_index < PS_HW6_OWNER_SM_CYCLE_COUNT)
+  {
+    g_ps_hw6_owner_sm_probe.imu_cycle_sleep_status[cycle_index] =
+      (uint32_t)status;
+  }
+  PS_HW6_SM_UpdateImuDriverProbe();
+  if (status != HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_IMU,
+                              IMU_EV_I2C_ERROR, status);
+  }
+  return status;
+}
+
+static HAL_StatusTypeDef PS_HW6_SM_ParkImuDeepPowerDownForStop2(
+  uint32_t cycle_index)
+{
+  HAL_StatusTypeDef status = HAL_OK;
+  uint32_t state = g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_IMU];
+
+  if (PS_HW6_SM_ImuDeepPowerDownProofValid() != 0UL)
+  {
+    return HAL_OK;
+  }
+  if (state == (uint32_t)IMU_OFF)
+  {
+    status = PS_HW6_SM_StabilizeImu();
+  }
+  else if (state == (uint32_t)IMU_LOW_RATE_SAMPLE)
+  {
+    status = PS_HW6_SM_QuiesceImu(cycle_index);
+  }
+  else if (state == (uint32_t)IMU_SUSPENDED)
+  {
+    status = PS_HW6_SM_RunImuDeepPowerDownForStop2(cycle_index);
+  }
+  else
+  {
+    status = HAL_ERROR;
+  }
+  return status;
+}
+
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_SetImuMode(uint32_t mode)
 {
   HAL_StatusTypeDef status = HAL_OK;
@@ -5320,6 +5770,7 @@ void PS_HW6_OwnerStateMachines_Init(void)
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.ble_identity_rx_len = 0UL;
   g_ps_hw6_owner_sm_probe.ble_identity_response[0] = '\0';
+  PS_HW6_SM_ResetStop2GpioAudit();
 
   imu_init_status = ps_dev_lis2dux12_init(
     &ps_imu_device,
@@ -5974,6 +6425,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
   HAL_StatusTypeDef wake_transition_status = HAL_ERROR;
   HAL_StatusTypeDef post_stop_resume_status = HAL_ERROR;
   HAL_StatusTypeDef recover_status = HAL_ERROR;
+  HAL_StatusTypeDef gpio_park_status = HAL_ERROR;
+  HAL_StatusTypeDef gpio_restore_status = HAL_ERROR;
   UINT clock_restore_status = TX_NOT_DONE;
   uint32_t systick_ctrl_before = 0UL;
 
@@ -6006,6 +6459,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.stop2_systick_icsr_after =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  PS_HW6_SM_ResetStop2GpioAudit();
   PS_HW6_TraceSleep(PS_HW6_TRACE_SLEEP_STAGE_PREP_START,
                     (uint32_t)PS_HW6_POWER_QUIESCE_REASON_SLEEP_PREP,
                     g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_POWER],
@@ -6038,20 +6492,33 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
                           (uint32_t)PS_HW6_POWER_QUIESCE_REASON_SLEEP_PREP,
                           g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_POWER],
                           (uint32_t)enter_transition_status);
-        HAL_SuspendTick();
-        systick_ctrl_before = PS_HW6_SM_SuspendThreadXSystick();
-        __DSB();
-        HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
-        __ISB();
-        clock_restore_status = PS_HW6_ClockPolicy_RestoreBase();
-        PS_HW6_SM_RestoreThreadXSystick(systick_ctrl_before);
-        HAL_ResumeTick();
+        PS_HW6_SM_RecordStop2GpioSnapshot(PS_HW6_STOP2_GPIO_SNAPSHOT_BEFORE);
+        gpio_park_status = PS_HW6_SM_ParkStop2GpioPins();
+        PS_HW6_SM_RecordStop2GpioSnapshot(PS_HW6_STOP2_GPIO_SNAPSHOT_SLEEP);
+        if (gpio_park_status == HAL_OK)
+        {
+          HAL_SuspendTick();
+          systick_ctrl_before = PS_HW6_SM_SuspendThreadXSystick();
+          __DSB();
+          HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
+          __ISB();
+          clock_restore_status = PS_HW6_ClockPolicy_RestoreBase();
+          gpio_restore_status = PS_HW6_SM_RestoreStop2GpioPins();
+          PS_HW6_SM_RestoreThreadXSystick(systick_ctrl_before);
+          HAL_ResumeTick();
 
-        g_ps_hw6_owner_sm_probe.stop2_wake_tick = (uint32_t)tx_time_get();
-        g_ps_hw6_owner_sm_probe.stop2_wake_end_idr = BTN_START_GPIO_Port->IDR;
-        PS_HW6_RTOS_Stop2WakeClassifyAfterWake();
+          g_ps_hw6_owner_sm_probe.stop2_wake_tick = (uint32_t)tx_time_get();
+          g_ps_hw6_owner_sm_probe.stop2_wake_end_idr = BTN_START_GPIO_Port->IDR;
+          PS_HW6_RTOS_Stop2WakeClassifyAfterWake();
+          PS_HW6_SM_RecordStop2GpioSnapshot(PS_HW6_STOP2_GPIO_SNAPSHOT_AFTER);
+        }
+        else
+        {
+          status = gpio_park_status;
+        }
         g_ps_hw6_owner_sm_probe.stop2_clock_restore_status =
-          (uint32_t)clock_restore_status;
+          (clock_restore_status == TX_SUCCESS) ?
+          (uint32_t)gpio_restore_status : (uint32_t)clock_restore_status;
         PS_HW6_TraceSleep(PS_HW6_TRACE_SLEEP_STAGE_WAKE_STOP2,
                           (uint32_t)BTN_START_Pin,
                           g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_POWER],
@@ -6655,7 +7122,6 @@ static uint32_t PS_HW6_SM_Stop2TargetImuMode(void)
 static HAL_StatusTypeDef PS_HW6_SM_ApplyStop2ImuResidentPolicy(void)
 {
   HAL_StatusTypeDef status = HAL_ERROR;
-  uint32_t state = g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_IMU];
   uint32_t target_mode = PS_HW6_SM_Stop2TargetImuMode();
 
   g_ps_hw6_owner_sm_probe.stop2_policy_imu_target_mode = target_mode;
@@ -6666,15 +7132,8 @@ static HAL_StatusTypeDef PS_HW6_SM_ApplyStop2ImuResidentPolicy(void)
 
   if (target_mode == (uint32_t)PS_HW6_IMU_MODE_OFF)
   {
-    if ((state == (uint32_t)IMU_OFF) ||
-        (state == (uint32_t)IMU_SUSPENDED))
-    {
-      status = HAL_OK;
-    }
-    else
-    {
-      status = PS_HW6_SM_QuiesceImu(PS_HW6_POWER_QUIESCE_CYCLE_INDEX);
-    }
+    status = PS_HW6_SM_ParkImuDeepPowerDownForStop2(
+      PS_HW6_POWER_QUIESCE_CYCLE_INDEX);
     g_ps_hw6_owner_sm_probe.stop2_policy_imu_status = (uint32_t)status;
   }
   else

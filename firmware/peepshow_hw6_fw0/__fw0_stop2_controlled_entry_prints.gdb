@@ -30,10 +30,31 @@ printf "joystick int cfg1 before/target/after = 0x%x / 0x%x / 0x%x\n", $sm->joys
 printf "joystick sleep write/verify masks = 0x%x / 0x%x\n", $sm->joystick_sleep_audit_write_ok_mask, $sm->joystick_sleep_audit_verify_ok_mask
 printf "joystick cycle0 sleep/status/device2 = 0x%x / 0x%x / 0x%x\n", $sm->joystick_cycle_sleep_status[0], $sm->joystick_driver_last_status, $sm->joystick_device_config2_sleep
 printf "imu sleep proof value/write/committed/omit/i2c = 0x%x / 0x%x / %u / %u / 0x%x / 0x%x\n", $sm->imu_deep_power_down_value, $sm->imu_deep_power_down_write_status, $sm->imu_terminal_deep_power_down_committed, $sm->imu_post_deep_power_down_read_omitted, $sm->imu_i2c_state_after, $sm->imu_i2c_error_after
+printf "imu snapshot/write/verify masks = 0x%x / 0x%x / 0x%x\n", $sm->imu_snapshot_ok_mask, $sm->imu_write_ok_mask, $sm->imu_verify_ok_mask
 printf "imu cycle0 sleep/status/whoami = 0x%x / 0x%x / 0x%x\n", $sm->imu_cycle_sleep_status[0], $sm->imu_driver_last_status, $sm->imu_whoami
 printf "stop2 policy count/reason/tick = %u / %u / %u\n", $sm->stop2_policy_request_count, $sm->stop2_policy_reason, $sm->stop2_policy_last_tick
 printf "stop2 policy BLE target/active/status = %u / %u / 0x%x\n", $sm->stop2_policy_ble_target_mode, $sm->stop2_policy_ble_active_mode, $sm->stop2_policy_ble_status
 printf "stop2 policy IMU target/active/status = %u / %u / 0x%x\n", $sm->stop2_policy_imu_target_mode, $sm->stop2_policy_imu_active_mode, $sm->stop2_policy_imu_status
+printf "gpio policy version/snapshots = %u / %u\n", $sm->stop2_gpio_policy_version, $sm->stop2_gpio_snapshot_count
+printf "gpio used A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_used_mask[0], $sm->stop2_gpio_used_mask[1], $sm->stop2_gpio_used_mask[2], $sm->stop2_gpio_used_mask[3]
+printf "gpio wake A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_wake_mask[0], $sm->stop2_gpio_wake_mask[1], $sm->stop2_gpio_wake_mask[2], $sm->stop2_gpio_wake_mask[3]
+printf "gpio retain A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_retain_mask[0], $sm->stop2_gpio_retain_mask[1], $sm->stop2_gpio_retain_mask[2], $sm->stop2_gpio_retain_mask[3]
+printf "gpio park cand A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_park_candidate_mask[0], $sm->stop2_gpio_park_candidate_mask[1], $sm->stop2_gpio_park_candidate_mask[2], $sm->stop2_gpio_park_candidate_mask[3]
+printf "gpio park groups default/override/active = 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_park_group_default_mask, $sm->stop2_gpio_park_group_override_mask, $sm->stop2_gpio_park_group_active_mask
+printf "gpio park count/status restore count/status = %u / 0x%x / %u / 0x%x\n", $sm->stop2_gpio_park_count, $sm->stop2_gpio_park_status, $sm->stop2_gpio_restore_count, $sm->stop2_gpio_restore_status
+printf "gpio park mask A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_park_mask[0], $sm->stop2_gpio_park_mask[1], $sm->stop2_gpio_park_mask[2], $sm->stop2_gpio_park_mask[3]
+printf "gpio MODER before A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_moder_before[0], $sm->stop2_gpio_moder_before[1], $sm->stop2_gpio_moder_before[2], $sm->stop2_gpio_moder_before[3]
+printf "gpio MODER sleep  A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_moder_sleep[0], $sm->stop2_gpio_moder_sleep[1], $sm->stop2_gpio_moder_sleep[2], $sm->stop2_gpio_moder_sleep[3]
+printf "gpio MODER after  A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_moder_after[0], $sm->stop2_gpio_moder_after[1], $sm->stop2_gpio_moder_after[2], $sm->stop2_gpio_moder_after[3]
+printf "gpio PUPDR before A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_pupdr_before[0], $sm->stop2_gpio_pupdr_before[1], $sm->stop2_gpio_pupdr_before[2], $sm->stop2_gpio_pupdr_before[3]
+printf "gpio PUPDR sleep  A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_pupdr_sleep[0], $sm->stop2_gpio_pupdr_sleep[1], $sm->stop2_gpio_pupdr_sleep[2], $sm->stop2_gpio_pupdr_sleep[3]
+printf "gpio PUPDR after  A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_pupdr_after[0], $sm->stop2_gpio_pupdr_after[1], $sm->stop2_gpio_pupdr_after[2], $sm->stop2_gpio_pupdr_after[3]
+printf "gpio ODR before A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_odr_before[0], $sm->stop2_gpio_odr_before[1], $sm->stop2_gpio_odr_before[2], $sm->stop2_gpio_odr_before[3]
+printf "gpio ODR sleep  A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_odr_sleep[0], $sm->stop2_gpio_odr_sleep[1], $sm->stop2_gpio_odr_sleep[2], $sm->stop2_gpio_odr_sleep[3]
+printf "gpio ODR after  A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_odr_after[0], $sm->stop2_gpio_odr_after[1], $sm->stop2_gpio_odr_after[2], $sm->stop2_gpio_odr_after[3]
+printf "gpio IDR before A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_idr_before[0], $sm->stop2_gpio_idr_before[1], $sm->stop2_gpio_idr_before[2], $sm->stop2_gpio_idr_before[3]
+printf "gpio IDR sleep  A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_idr_sleep[0], $sm->stop2_gpio_idr_sleep[1], $sm->stop2_gpio_idr_sleep[2], $sm->stop2_gpio_idr_sleep[3]
+printf "gpio IDR after  A/B/C/H = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_gpio_idr_after[0], $sm->stop2_gpio_idr_after[1], $sm->stop2_gpio_idr_after[2], $sm->stop2_gpio_idr_after[3]
 printf "BLE physical nrst/dsr/uart/reset/dsr-highz = %u / %u / 0x%x / %u / %u\n", $sm->ble_nrst_after, $sm->ble_dsr_host_control_after, $sm->ble_uart_deinit_status, $sm->ble_shutdown_reset_asserted, $sm->ble_dsr_highz_configured
 printf "BLE sleep dsr override/target/before/after = %u / %u / %u / %u\n", g_ps_hw6_ble_sleep_dsr_deasserted, $sm->ble_dsr_sleep_target_level, $sm->ble_dsr_before_sleep_level, $sm->ble_dsr_after_sleep_level
 printf "BLE dsr ticks assert/deassert settle start/end/ticks = %u / %u / %u / %u / %u\n", $sm->ble_dsr_assert_tick, $sm->ble_dsr_deassert_tick, $sm->ble_stop_settle_start_tick, $sm->ble_stop_settle_end_tick, $sm->ble_stop_settle_ticks
@@ -77,4 +98,5 @@ printf "IMU modes: OFF=0 LOW_RATE=1 EVENT_ARMED=2 STEP_COUNTER=3 STREAMING=4\n"
 printf "wake masks: START=0x1 BUTTON=0x2 JOY=0x4 SENSOR=0x8 PMIC=0x10 RTC=0x20 USB=0x40 FAULT=0x80 UNKNOWN=0x80000000\n"
 printf "wake causes: NONE=0 START=1 BUTTON=2 JOY=3 SENSOR=4 PMIC=5 RTC=6 USB=7 FAULT=8 UNKNOWN=9\n"
 printf "SysTick CTRL bits: ENABLE=0x1 TICKINT=0x2 CLKSOURCE=0x4\n"
+printf "GPIO park groups: OSPI=0x1 SAI=0x2 USB=0x4 DISPLAY_SPI=0x8 I2C=0x10; override NOT_RUN=0xffffffff uses knob default\n"
 printf "status: HAL_OK=0x0 HAL_ERROR=0x1 UNAVAILABLE=0xfffffffe NOT_RUN=0xffffffff\n"

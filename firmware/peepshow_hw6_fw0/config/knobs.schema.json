@@ -61,6 +61,7 @@
     "power_clock_io_high_hz",
     "power_clock_pll2_autogate_enable",
     "power_stop2_display_wait_backend",
+    "power_stop2_gpio_park_group_mask",
     "power_auto_stop2_enable",
     "power_auto_stop2_check_period_ms",
     "power_auto_stop2_idle_ms"
@@ -728,6 +729,18 @@
       "class": "protected_policy",
       "path": "platform.knobs.power.stop2_display_wait_backend",
       "description": "STOP2 display waiting backend selector: 1 = held frame, 2 = LPBAM display handoff. Default 1 enables baseline STOP2/current bring-up before HW6 LPBAM payloads are implemented."
+    },
+    "power_stop2_gpio_park_group_mask": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 31,
+      "default": 30,
+      "unit": "bitmask",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.stop2_gpio_park_group_mask",
+      "description": "STOP2 GPIO parking group mask. Bits: 0x1 OSPI, 0x2 SAI, 0x4 USB, 0x8 display SPI, 0x10 I2C. Default 0x1e parks SAI, USB, display SPI, and I2C while retaining OSPI pins because target current measurements showed OSPI analog parking adds passive STOP2 current."
     },
     "power_auto_stop2_enable": {
       "type": "boolean",

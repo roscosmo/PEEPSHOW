@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (49UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (51UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -19,6 +19,8 @@ extern "C" {
 #define PS_HW6_OWNER_SM_IMU_REGISTER_COUNT   (11U)
 #define PS_HW6_OWNER_SM_NINA_COMMAND_COUNT   (8U)
 #define PS_HW6_OWNER_SM_NINA_IDENTITY_BYTES  (96U)
+#define PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT (4U)
+#define PS_HW6_OWNER_SM_STOP2_GPIO_GROUP_COUNT (5U)
 #define PS_HW6_OWNER_SM_STATUS_NOT_RUN       (0xFFFFFFFFUL)
 #define PS_HW6_OWNER_SM_STATUS_UNAVAILABLE   (0xFFFFFFFEUL)
 
@@ -296,6 +298,32 @@ typedef struct
   uint32_t stop2_policy_imu_target_mode;
   uint32_t stop2_policy_imu_active_mode;
   uint32_t stop2_policy_imu_status;
+  uint32_t stop2_gpio_policy_version;
+  uint32_t stop2_gpio_snapshot_count;
+  uint32_t stop2_gpio_used_mask[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
+  uint32_t stop2_gpio_wake_mask[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
+  uint32_t stop2_gpio_retain_mask[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
+  uint32_t stop2_gpio_park_candidate_mask[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
+  uint32_t stop2_gpio_park_group_default_mask;
+  uint32_t stop2_gpio_park_group_override_mask;
+  uint32_t stop2_gpio_park_group_active_mask;
+  uint32_t stop2_gpio_park_count;
+  uint32_t stop2_gpio_restore_count;
+  uint32_t stop2_gpio_park_status;
+  uint32_t stop2_gpio_restore_status;
+  uint32_t stop2_gpio_park_mask[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
+  uint32_t stop2_gpio_moder_before[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
+  uint32_t stop2_gpio_pupdr_before[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
+  uint32_t stop2_gpio_odr_before[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
+  uint32_t stop2_gpio_idr_before[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
+  uint32_t stop2_gpio_moder_sleep[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
+  uint32_t stop2_gpio_pupdr_sleep[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
+  uint32_t stop2_gpio_odr_sleep[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
+  uint32_t stop2_gpio_idr_sleep[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
+  uint32_t stop2_gpio_moder_after[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
+  uint32_t stop2_gpio_pupdr_after[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
+  uint32_t stop2_gpio_odr_after[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
+  uint32_t stop2_gpio_idr_after[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT];
 
   uint32_t start_power_event_count;
   uint32_t start_power_last_event;
