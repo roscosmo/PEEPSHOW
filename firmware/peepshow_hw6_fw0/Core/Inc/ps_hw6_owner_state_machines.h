@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (51UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (52UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -984,6 +984,7 @@ void PS_HW6_OwnerStateMachines_SetPowerAdmissionCallback(
   PS_HW6_PowerAdmissionCallback callback);
 void PS_HW6_OwnerStateMachines_SetPostStopResumeCallback(
   PS_HW6_PostStopResumeBarrierCallback callback);
+uint32_t PS_HW6_OwnerStateMachines_Stop2IdlePeripheralsReady(void);
 void PS_HW6_OwnerStateMachines_BeginWorkflow(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Stabilize(uint32_t owner_id);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_AttachStorage(void);

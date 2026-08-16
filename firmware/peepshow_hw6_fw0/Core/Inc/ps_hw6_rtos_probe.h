@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (35UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (36UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -85,6 +85,18 @@ typedef struct
   uint32_t init_complete;
   uint32_t runtime_complete;
   uint32_t boot_power_done;
+  uint32_t boot_idle_peripheral_park_done;
+  uint32_t boot_idle_peripheral_park_request_count;
+  uint32_t boot_idle_peripheral_park_start_tick;
+  uint32_t boot_idle_peripheral_park_end_tick;
+  uint32_t boot_idle_peripheral_park_last_status;
+  uint32_t boot_idle_peripheral_park_ble_send_status;
+  uint32_t boot_idle_peripheral_park_ble_wait_status;
+  uint32_t boot_idle_peripheral_park_ble_ack_flags;
+  uint32_t boot_idle_peripheral_park_imu_send_status;
+  uint32_t boot_idle_peripheral_park_imu_wait_status;
+  uint32_t boot_idle_peripheral_park_imu_ack_flags;
+  uint32_t stop2_eligibility_idle_peripheral_park_ready;
   uint32_t boot_display_bootstrap_sent;
   uint32_t boot_home_suppressed;
   uint32_t boot_low_battery_ui_sent;

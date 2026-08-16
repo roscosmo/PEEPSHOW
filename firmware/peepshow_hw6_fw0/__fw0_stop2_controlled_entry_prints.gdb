@@ -4,10 +4,14 @@ set $sm = &g_ps_hw6_owner_sm_probe
 set $ow = &g_ps_hw6_owner_probe
 printf "--- HW6 controlled STOP2 entry scaffold ---\n"
 printf "rtos api/control count/status/tick = %u / %u / 0x%x / %u\n", $rt->version, $rt->stop2_control_request_count, $rt->stop2_control_last_status, $rt->stop2_control_last_tick
+printf "boot idle park done/count/status/start/end = %u / %u / 0x%x / %u / %u\n", $rt->boot_idle_peripheral_park_done, $rt->boot_idle_peripheral_park_request_count, $rt->boot_idle_peripheral_park_last_status, $rt->boot_idle_peripheral_park_start_tick, $rt->boot_idle_peripheral_park_end_tick
+printf "boot idle park BLE send/wait/ack = 0x%x / 0x%x / 0x%x\n", $rt->boot_idle_peripheral_park_ble_send_status, $rt->boot_idle_peripheral_park_ble_wait_status, $rt->boot_idle_peripheral_park_ble_ack_flags
+printf "boot idle park IMU send/wait/ack = 0x%x / 0x%x / 0x%x\n", $rt->boot_idle_peripheral_park_imu_send_status, $rt->boot_idle_peripheral_park_imu_wait_status, $rt->boot_idle_peripheral_park_imu_ack_flags
 printf "elig status/block/pending = 0x%x / 0x%x / 0x%x\n", $rt->stop2_control_eligibility_status, $rt->stop2_control_eligibility_blocker_mask, $rt->stop2_control_eligibility_pending_mask
 printf "entry attempts/status     = %u / 0x%x\n", $rt->stop2_control_entry_attempt_count, $rt->stop2_control_entry_status
 printf "stop2 count before/after  = %u / %u\n", $rt->stop2_control_stop2_count_before, $rt->stop2_control_stop2_count_after
 printf "elig ready/block/pending  = %u / 0x%x / 0x%x\n", $rt->stop2_eligibility_ready, $rt->stop2_eligibility_blocker_mask, $rt->stop2_eligibility_pending_mask
+printf "stop2 idle peripheral ready = %u\n", $rt->stop2_eligibility_idle_peripheral_park_ready
 printf "display backend req/selected/status/held = %u / %u / 0x%x / %u\n", $rt->stop2_display_wait_backend_requested, $rt->stop2_display_wait_backend_selected, $rt->stop2_display_wait_backend_status, $rt->stop2_display_wait_backend_held_ready
 printf "display lpbam ready/page/render/status = %u / %u / %u / 0x%x\n", $ow->display_lpbam_ready, $ow->display_lpbam_ready_page, $ow->display_lpbam_ready_render_count, $ow->display_lpbam_status
 printf "display lpbam prep/clear/reason = %u / %u / %u\n", $ow->display_lpbam_prepare_count, $ow->display_lpbam_clear_count, $ow->display_lpbam_clear_reason
@@ -91,7 +95,7 @@ printf "wake NVIC IABR after  = 0x%x / 0x%x / 0x%x / 0x%x\n", $rt->stop2_wake_nv
 printf "wake NVIC ISER after  = 0x%x / 0x%x / 0x%x / 0x%x\n", $rt->stop2_wake_nvic_iser0_after, $rt->stop2_wake_nvic_iser1_after, $rt->stop2_wake_nvic_iser2_after, $rt->stop2_wake_nvic_iser3_after
 printf "power state/pmic/battery   = %u / %u / %u\n", $rt->stop2_eligibility_power_state, $rt->stop2_eligibility_pmic_state, $rt->stop2_eligibility_battery_policy
 printf "runtime class/exec/life   = %u / %u / %u\n", $rt->stop2_eligibility_runtime_class, $rt->stop2_eligibility_runtime_execution, $rt->stop2_eligibility_runtime_lifecycle
-printf "blockers: BOOT=0x1 POWER=0x2 PMIC=0x4 BATT=0x8 CLOCK_CAP=0x10 CLOCK_READBACK=0x20\n"
+printf "blockers: BOOT=0x1 POWER=0x2 PMIC=0x4 BATT=0x8 CLOCK_CAP=0x10 CLOCK_READBACK=0x20 IDLE_PARK=0x4000\n"
 printf "display backends: NONE=0 HELD_FRAME=1 LPBAM=2\n"
 printf "BLE modes: RESET_HELD=0 SLEEP_SYSTEM_OFF=1 SEARCHING=2 PAIRING=3 CONNECTED=4\n"
 printf "IMU modes: OFF=0 LOW_RATE=1 EVENT_ARMED=2 STEP_COUNTER=3 STREAMING=4\n"

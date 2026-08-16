@@ -195,6 +195,7 @@
 #define PS_HW6_RTOS_STOP2_BLOCK_INPUT_PENDING         (1UL << 11)
 #define PS_HW6_RTOS_STOP2_BLOCK_QUEUE_PENDING         (1UL << 12)
 #define PS_HW6_RTOS_STOP2_BLOCK_LPBAM_NOT_READY       (1UL << 13)
+#define PS_HW6_RTOS_STOP2_BLOCK_IDLE_PERIPH_NOT_PARKED (1UL << 14)
 #define PS_HW6_RTOS_STOP2_PENDING_OWNER_QUIESCE       (1UL << 0)
 #define PS_HW6_RTOS_STOP2_PENDING_LPBAM_VALIDATION    (1UL << 1)
 #define PS_HW6_RTOS_STOP2_PENDING_IDLE_WINDOW         (1UL << 2)
@@ -260,6 +261,7 @@ static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_imu_step_counter_anchor;
 static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_imu_streaming_anchor;
 static uint32_t ps_ui_boot_complete_sent;
 static uint32_t ps_power_boot_done;
+static uint32_t ps_power_boot_idle_peripheral_park_done;
 static uint32_t ps_display_bootstrap_sent;
 static uint32_t ps_stop2_lpbam_abort_late_test_active;
 static uint32_t ps_stop2_lpbam_late_blocker_armed;
@@ -771,6 +773,7 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.boot_low_battery_recover_ui_sent = 0UL;
   ps_ui_boot_complete_sent = 0UL;
   ps_power_boot_done = 0UL;
+  ps_power_boot_idle_peripheral_park_done = 0UL;
   ps_display_bootstrap_sent = 0UL;
   ps_pmic_int_pending_count = 0UL;
   ps_pmic_int_irq_count = 0UL;
@@ -829,6 +832,16 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.init_status = TX_SUCCESS;
   g_ps_hw6_rtos_probe.init_error_step = PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.init_error_index = PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_last_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_ble_send_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_ble_wait_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_imu_send_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_imu_wait_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.audio_clock_last_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.audio_clock_reactive_sfx_status =
@@ -2483,6 +2496,8 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2EligibilityDryRun(void)
   clock_capabilities = g_ps_hw6_clock_policy_probe.stop2_blocker_capabilities;
   clock_domains = g_ps_hw6_clock_policy_probe.stop2_blocker_domain_mask;
   readback_domains = g_ps_hw6_clock_policy_probe.readback_domain_mask;
+  g_ps_hw6_rtos_probe.stop2_eligibility_idle_peripheral_park_ready =
+    PS_HW6_OwnerStateMachines_Stop2IdlePeripheralsReady();
 
   if ((ps_power_boot_done == 0UL) ||
       (g_ps_hw6_rtos_probe.runtime_complete == 0UL))
@@ -2508,6 +2523,13 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2EligibilityDryRun(void)
   if (readback_domains != 0UL)
   {
     blocker_mask |= PS_HW6_RTOS_STOP2_BLOCK_CLOCK_READBACK_DOMAIN;
+  }
+  if (((ps_power_boot_done != 0UL) &&
+       (g_ps_hw6_rtos_probe.runtime_complete != 0UL)) &&
+      ((ps_power_boot_idle_peripheral_park_done == 0UL) ||
+       (g_ps_hw6_rtos_probe.stop2_eligibility_idle_peripheral_park_ready == 0UL)))
+  {
+    blocker_mask |= PS_HW6_RTOS_STOP2_BLOCK_IDLE_PERIPH_NOT_PARKED;
   }
 
   if (blocker_mask == 0UL)
@@ -3366,6 +3388,104 @@ static ULONG PS_HW6_RTOS_StabilizeAckWaitTicks(uint32_t owner_id)
          PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS;
 }
 
+static void PS_HW6_RTOS_RunBootIdleParkModeCommand(
+  uint32_t owner_id,
+  ULONG command,
+  uint32_t mode,
+  uint32_t *send_slot,
+  uint32_t *wait_slot,
+  uint32_t *ack_slot)
+{
+  const ULONG expected_ack = PS_HW6_RTOS_ACK_OWNER(owner_id);
+  ULONG actual_flags = 0UL;
+  UINT send_status;
+  UINT wait_status;
+
+  (void)tx_event_flags_get(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+                           expected_ack,
+                           TX_AND_CLEAR,
+                           &actual_flags,
+                           TX_NO_WAIT);
+  actual_flags = 0UL;
+
+  send_status = PS_HW6_RTOS_SendModeCommand(owner_id, command, mode);
+  wait_status = send_status;
+  if (send_status == TX_SUCCESS)
+  {
+    wait_status = tx_event_flags_get(
+      &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+      expected_ack,
+      TX_AND_CLEAR,
+      &actual_flags,
+      PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
+  }
+
+  *send_slot = (uint32_t)send_status;
+  *wait_slot = (uint32_t)wait_status;
+  *ack_slot = (uint32_t)actual_flags;
+}
+
+static HAL_StatusTypeDef PS_HW6_RTOS_RunBootIdlePeripheralPark(void)
+{
+  HAL_StatusTypeDef status;
+  uint32_t ready;
+  uint32_t send_status;
+  uint32_t wait_status;
+  uint32_t ack_flags;
+
+  if (g_ps_hw6_rtos_probe.boot_idle_peripheral_park_request_count != 0UL)
+  {
+    return (HAL_StatusTypeDef)
+      g_ps_hw6_rtos_probe.boot_idle_peripheral_park_last_status;
+  }
+
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_request_count++;
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_start_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_last_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_done = 0UL;
+  ps_power_boot_idle_peripheral_park_done = 0UL;
+
+  PS_HW6_RTOS_RunBootIdleParkModeCommand(
+    PS_HW6_RTOS_OWNER_COMM,
+    PS_HW6_RTOS_COMMAND_COMM_BLE_MODE,
+    (uint32_t)PS_HW6_COMM_BLE_MODE_SLEEP_SYSTEM_OFF,
+    &send_status,
+    &wait_status,
+    &ack_flags);
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_ble_send_status =
+    send_status;
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_ble_wait_status =
+    wait_status;
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_ble_ack_flags =
+    ack_flags;
+
+  PS_HW6_RTOS_RunBootIdleParkModeCommand(
+    PS_HW6_RTOS_OWNER_SENSOR,
+    PS_HW6_RTOS_COMMAND_SENSOR_IMU_MODE,
+    (uint32_t)PS_HW6_IMU_MODE_OFF,
+    &send_status,
+    &wait_status,
+    &ack_flags);
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_imu_send_status =
+    send_status;
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_imu_wait_status =
+    wait_status;
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_imu_ack_flags =
+    ack_flags;
+
+  ready = PS_HW6_OwnerStateMachines_Stop2IdlePeripheralsReady();
+  status = (ready != 0UL) ? HAL_OK : HAL_ERROR;
+
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_done = ready;
+  ps_power_boot_idle_peripheral_park_done = ready;
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_last_status =
+    (uint32_t)status;
+  g_ps_hw6_rtos_probe.boot_idle_peripheral_park_end_tick =
+    (uint32_t)tx_time_get();
+  return status;
+}
 
 static UINT PS_HW6_RTOS_BootParkStorageUsb(void)
 {
@@ -4842,6 +4962,13 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         PS_HW6_RTOS_OWNER_POWER);
       ps_power_boot_done = 1UL;
       g_ps_hw6_rtos_probe.boot_power_done = 1UL;
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
+        (ps_power_boot_done != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL) &&
+        (g_ps_hw6_rtos_probe.boot_idle_peripheral_park_request_count == 0UL))
+    {
+      (void)PS_HW6_RTOS_RunBootIdlePeripheralPark();
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
         (g_ps_hw6_owner_sm_start_request != 0UL) &&

@@ -7102,6 +7102,30 @@ static uint32_t PS_HW6_SM_Stop2TargetBleMode(void)
   return (uint32_t)PS_HW6_COMM_BLE_MODE_SLEEP_SYSTEM_OFF;
 }
 
+static uint32_t PS_HW6_SM_Stop2BleResidentPolicyReady(void)
+{
+  uint32_t state = g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_BLE];
+  uint32_t target_mode = PS_HW6_SM_Stop2TargetBleMode();
+
+  if (target_mode == (uint32_t)PS_HW6_COMM_BLE_MODE_RESET_HELD)
+  {
+    return (state == (uint32_t)BLE_OFF) ? 1UL : 0UL;
+  }
+
+  if (target_mode == (uint32_t)PS_HW6_COMM_BLE_MODE_SLEEP_SYSTEM_OFF)
+  {
+    return ((state == (uint32_t)BLE_SUSPENDED) &&
+            (g_ps_hw6_owner_sm_probe.ble_mode_active ==
+             (uint32_t)PS_HW6_COMM_BLE_MODE_SLEEP_SYSTEM_OFF) &&
+            (g_ps_hw6_owner_sm_probe.ble_nrst_after ==
+             (uint32_t)GPIO_PIN_SET) &&
+            (g_ps_hw6_owner_sm_probe.ble_dsr_host_control_after ==
+             g_ps_hw6_owner_sm_probe.ble_dsr_sleep_target_level)) ? 1UL : 0UL;
+  }
+
+  return 0UL;
+}
+
 static HAL_StatusTypeDef PS_HW6_SM_ApplyStop2BleResidentPolicy(void)
 {
   HAL_StatusTypeDef status = HAL_ERROR;
@@ -7114,25 +7138,21 @@ static HAL_StatusTypeDef PS_HW6_SM_ApplyStop2BleResidentPolicy(void)
   g_ps_hw6_owner_sm_probe.stop2_policy_ble_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
 
-  if (target_mode == (uint32_t)PS_HW6_COMM_BLE_MODE_RESET_HELD)
+  if (PS_HW6_SM_Stop2BleResidentPolicyReady() != 0UL)
+  {
+    status = HAL_OK;
+  }
+  else if (target_mode == (uint32_t)PS_HW6_COMM_BLE_MODE_RESET_HELD)
   {
     status = (state == (uint32_t)BLE_OFF) ? HAL_OK :
       PS_HW6_SM_HardShutdownBle();
   }
   else if (target_mode == (uint32_t)PS_HW6_COMM_BLE_MODE_SLEEP_SYSTEM_OFF)
   {
-    if (state == (uint32_t)BLE_OFF)
-    {
-      status = PS_HW6_SM_StabilizeBle();
-    }
-    else if (state == (uint32_t)BLE_SUSPENDED)
-    {
-      status = HAL_OK;
-    }
-    else if ((state == (uint32_t)BLE_IDLE) ||
-             (state == (uint32_t)BLE_ADVERTISING) ||
-             (state == (uint32_t)BLE_PAIRING) ||
-             (state == (uint32_t)BLE_CONNECTED))
+    if ((state == (uint32_t)BLE_IDLE) ||
+        (state == (uint32_t)BLE_ADVERTISING) ||
+        (state == (uint32_t)BLE_PAIRING) ||
+        (state == (uint32_t)BLE_CONNECTED))
     {
       status = PS_HW6_SM_QuiesceBle(PS_HW6_POWER_QUIESCE_CYCLE_INDEX);
     }
@@ -7151,7 +7171,6 @@ static HAL_StatusTypeDef PS_HW6_SM_ApplyStop2BleResidentPolicy(void)
   g_ps_hw6_owner_sm_probe.stop2_policy_ble_status = (uint32_t)status;
   return status;
 }
-
 static uint32_t PS_HW6_SM_Stop2TargetImuMode(void)
 {
   uint32_t active_mode = g_ps_hw6_owner_sm_probe.imu_mode_active;
@@ -7163,9 +7182,30 @@ static uint32_t PS_HW6_SM_Stop2TargetImuMode(void)
   return (uint32_t)PS_HW6_IMU_MODE_OFF;
 }
 
+static uint32_t PS_HW6_SM_Stop2ImuResidentPolicyReady(void)
+{
+  uint32_t state = g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_IMU];
+  uint32_t target_mode = PS_HW6_SM_Stop2TargetImuMode();
+
+  if (target_mode == (uint32_t)PS_HW6_IMU_MODE_OFF)
+  {
+    return ((state == (uint32_t)IMU_SUSPENDED) &&
+            (PS_HW6_SM_ImuDeepPowerDownProofValid() != 0UL)) ? 1UL : 0UL;
+  }
+
+  return 0UL;
+}
+
+uint32_t PS_HW6_OwnerStateMachines_Stop2IdlePeripheralsReady(void)
+{
+  return ((PS_HW6_SM_Stop2BleResidentPolicyReady() != 0UL) &&
+          (PS_HW6_SM_Stop2ImuResidentPolicyReady() != 0UL)) ? 1UL : 0UL;
+}
+
 static HAL_StatusTypeDef PS_HW6_SM_ApplyStop2ImuResidentPolicy(void)
 {
   HAL_StatusTypeDef status = HAL_ERROR;
+  uint32_t state = g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_IMU];
   uint32_t target_mode = PS_HW6_SM_Stop2TargetImuMode();
 
   g_ps_hw6_owner_sm_probe.stop2_policy_imu_target_mode = target_mode;
@@ -7174,10 +7214,20 @@ static HAL_StatusTypeDef PS_HW6_SM_ApplyStop2ImuResidentPolicy(void)
   g_ps_hw6_owner_sm_probe.stop2_policy_imu_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
 
-  if (target_mode == (uint32_t)PS_HW6_IMU_MODE_OFF)
+  if (PS_HW6_SM_Stop2ImuResidentPolicyReady() != 0UL)
   {
-    status = PS_HW6_SM_ParkImuDeepPowerDownForStop2(
-      PS_HW6_POWER_QUIESCE_CYCLE_INDEX);
+    status = HAL_OK;
+  }
+  else if (target_mode == (uint32_t)PS_HW6_IMU_MODE_OFF)
+  {
+    if (state == (uint32_t)IMU_LOW_RATE_SAMPLE)
+    {
+      status = PS_HW6_SM_QuiesceImu(PS_HW6_POWER_QUIESCE_CYCLE_INDEX);
+    }
+    else
+    {
+      status = HAL_ERROR;
+    }
     g_ps_hw6_owner_sm_probe.stop2_policy_imu_status = (uint32_t)status;
   }
   else
@@ -7191,7 +7241,6 @@ static HAL_StatusTypeDef PS_HW6_SM_ApplyStop2ImuResidentPolicy(void)
     g_ps_hw6_owner_sm_probe.imu_mode_active;
   return status;
 }
-
 void PS_HW6_OwnerStateMachines_BeginPowerQuiesce(uint32_t reason)
 {
   uint32_t index;

@@ -6,7 +6,10 @@ set $ui = &g_ps_ui_router_probe
 set $btn = &g_ps_input_buttons_probe
 set $clk = &g_ps_hw6_clock_policy_probe
 printf "--- HW6 automatic STOP2 idle admission scaffold ---\n"
-printf "rtos api/runtime/boot = %u / %u / %u\n", $rt->version, $rt->runtime_complete, $rt->boot_power_done
+printf "rtos api/runtime/boot/idlepark = %u / %u / %u / %u\n", $rt->version, $rt->runtime_complete, $rt->boot_power_done, $rt->boot_idle_peripheral_park_done
+printf "boot idle park count/status/start/end = %u / 0x%x / %u / %u\n", $rt->boot_idle_peripheral_park_request_count, $rt->boot_idle_peripheral_park_last_status, $rt->boot_idle_peripheral_park_start_tick, $rt->boot_idle_peripheral_park_end_tick
+printf "boot idle park BLE send/wait/ack = 0x%x / 0x%x / 0x%x\n", $rt->boot_idle_peripheral_park_ble_send_status, $rt->boot_idle_peripheral_park_ble_wait_status, $rt->boot_idle_peripheral_park_ble_ack_flags
+printf "boot idle park IMU send/wait/ack = 0x%x / 0x%x / 0x%x\n", $rt->boot_idle_peripheral_park_imu_send_status, $rt->boot_idle_peripheral_park_imu_wait_status, $rt->boot_idle_peripheral_park_imu_ack_flags
 printf "auto enabled/check/entry/skip = %u / %u / %u / %u\n", $rt->stop2_auto_enabled, $rt->stop2_auto_check_count, $rt->stop2_auto_entry_count, $rt->stop2_auto_skip_count
 printf "auto force enable/count/tick = %u / %u / %u\n", $rt->stop2_auto_debug_force_enable, $rt->stop2_auto_debug_force_entry_count, $rt->stop2_auto_debug_force_entry_tick
 printf "auto status/tick/next = 0x%x / %u / %u\n", $rt->stop2_auto_last_status, $rt->stop2_auto_last_tick, $rt->stop2_auto_next_tick
@@ -14,6 +17,7 @@ printf "auto idle start/live/required ticks = %u / %u / %u\n", $rt->stop2_auto_i
 printf "auto block/pending/queue = 0x%x / 0x%x / 0x%x\n", $rt->stop2_auto_blocker_mask, $rt->stop2_auto_pending_mask, $rt->stop2_auto_queue_pending_mask
 printf "auto elig/entry status = 0x%x / 0x%x\n", $rt->stop2_auto_eligibility_status, $rt->stop2_auto_entry_status
 printf "elig ready/block/pending = %u / 0x%x / 0x%x\n", $rt->stop2_eligibility_ready, $rt->stop2_eligibility_blocker_mask, $rt->stop2_eligibility_pending_mask
+printf "stop2 idle peripheral ready = %u\n", $rt->stop2_eligibility_idle_peripheral_park_ready
 printf "power state/pmic/battery = %u / %u / %u\n", $rt->stop2_eligibility_power_state, $rt->stop2_eligibility_pmic_state, $rt->stop2_eligibility_battery_policy
 printf "runtime class/exec/life/caps = %u / %u / %u / 0x%x\n", $rt->runtime_current_class, $rt->runtime_execution, $rt->runtime_lifecycle, $rt->runtime_active_capabilities
 printf "ui page/nav/modal/pkg/shutdown/pending = %u / %u / %u / %u / %u / %u\n", $ui->current_page, $ui->nav_state, $ui->modal_state, $ui->package_state, $ui->shutdown_state, $ui->pending_action
@@ -34,7 +38,7 @@ printf "storage OSPI park ENR1/2 after = 0x%x / 0x%x\n", $sm->storage_ospi_park_
 printf "storage OSPI park SMEN1/2 after = 0x%x / 0x%x\n", $sm->storage_ospi_park_ahb2smenr1_after, $sm->storage_ospi_park_ahb2smenr2_after
 printf "storage OSPI restore ENR1/2 after = 0x%x / 0x%x\n", $sm->storage_ospi_restore_ahb2enr1_after, $sm->storage_ospi_restore_ahb2enr2_after
 printf "storage OSPI restore SMEN1/2 after = 0x%x / 0x%x\n", $sm->storage_ospi_restore_ahb2smenr1_after, $sm->storage_ospi_restore_ahb2smenr2_after
-printf "blockers: BOOT=0x1 POWER=0x2 PMIC=0x4 BATT=0x8 CLOCK_CAP=0x10 CLOCK_READBACK=0x20 DISABLED=0x40 RUNTIME=0x80 UI=0x100 DISPLAY=0x200 STORAGE_USB=0x400 INPUT=0x800 QUEUE=0x1000 LPBAM=0x2000\n"
+printf "blockers: BOOT=0x1 POWER=0x2 PMIC=0x4 BATT=0x8 CLOCK_CAP=0x10 CLOCK_READBACK=0x20 DISABLED=0x40 RUNTIME=0x80 UI=0x100 DISPLAY=0x200 STORAGE_USB=0x400 INPUT=0x800 QUEUE=0x1000 LPBAM=0x2000 IDLE_PARK=0x4000\n"
 printf "pending: OWNER_QUIESCE=0x1 LPBAM=0x2 IDLE_WINDOW=0x4\n"
 printf "display backends: NONE=0 HELD_FRAME=1 LPBAM=2\n"
 printf "status: HAL_OK=0x0 HAL_ERROR=0x1 UNAVAILABLE=0xfffffffe NOT_RUN=0xffffffff\n"
