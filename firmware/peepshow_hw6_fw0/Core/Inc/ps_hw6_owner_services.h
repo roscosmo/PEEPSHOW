@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (15UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (17UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -180,6 +180,42 @@ typedef struct
   uint32_t display_lpbam_clear_count;
   uint32_t display_lpbam_clear_reason;
   uint32_t display_lpbam_status;
+  uint32_t display_lpbam_active;
+  uint32_t display_lpbam_cursor_start_row;
+  uint32_t display_lpbam_cursor_row_count;
+  uint32_t display_lpbam_cursor_start_column;
+  uint32_t display_lpbam_cursor_column_count;
+  uint32_t display_lpbam_payload_frame_count;
+  uint32_t display_lpbam_payload_chunk_count;
+  uint32_t display_lpbam_payload_bytes;
+  uint32_t display_lpbam_fill_status;
+  uint32_t display_lpbam_clock_status;
+  uint32_t display_lpbam_link_status;
+  uint32_t display_lpbam_start_status;
+  uint32_t display_lpbam_dma_start_status;
+  uint32_t display_lpbam_lptim_init_status;
+  uint32_t display_lpbam_lptim_oc_status;
+  uint32_t display_lpbam_lptim_arr_status;
+  uint32_t display_lpbam_lptim_cmp_status;
+  uint32_t display_lpbam_lptim_start_status;
+  uint32_t display_lpbam_lptim_restore_status;
+  uint32_t display_lpbam_lptim_cr_after_config;
+  uint32_t display_lpbam_lptim_cfgr_after_config;
+  uint32_t display_lpbam_lptim_ccmr1_after_config;
+  uint32_t display_lpbam_lptim_arr_after_config;
+  uint32_t display_lpbam_lptim_cmp_after_config;
+  uint32_t display_lpbam_rcc_srdamr_before;
+  uint32_t display_lpbam_rcc_srdamr_after;
+  uint32_t display_lpbam_spi_autocr_before;
+  uint32_t display_lpbam_spi_autocr_after;
+  uint32_t display_lpbam_dma_state_after_start;
+  uint32_t display_lpbam_dma_error_after_start;
+  uint32_t display_lpbam_queue_node_count;
+  uint32_t display_lpbam_abort_lptim_status;
+  uint32_t display_lpbam_abort_dma_status;
+  uint32_t display_lpbam_abort_unlink_status;
+  uint32_t display_lpbam_abort_spi_status;
+  uint32_t display_lpbam_restore_status;
 
   uint32_t audio_driver_api_version;
   uint32_t audio_driver_init_status;

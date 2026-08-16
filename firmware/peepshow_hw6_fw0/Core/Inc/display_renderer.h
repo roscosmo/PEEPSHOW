@@ -21,9 +21,19 @@ typedef struct
   uint32_t black_pixels;
 } display_renderer_stats_t;
 
+typedef struct
+{
+  uint16_t start_row;
+  uint16_t row_count;
+  uint16_t start_column;
+  uint16_t column_count;
+} display_renderer_panel_region_t;
+
 void DisplayRenderer_ClearWhite(void);
 const uint8_t *DisplayRenderer_GetBuffer(void);
 uint32_t DisplayRenderer_FramebufferHash(void);
+uint32_t DisplayRenderer_GetLpbamCursorPanelRegion(
+  display_renderer_panel_region_t *region);
 void DisplayRenderer_PreparePattern(display_renderer_stats_t *stats);
 void DisplayRenderer_PrepareUIPage(
   uint32_t page,

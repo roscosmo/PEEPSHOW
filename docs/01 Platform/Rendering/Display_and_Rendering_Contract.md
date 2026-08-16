@@ -80,12 +80,16 @@ path through `thDisplay`:
 - FW0 currently renders shell pages as a compact three-row list with an explicit
   selected-row cursor; this gives LPBAM bring-up a simple future blink payload
   without adding package/runtime rendering behavior
+- FW0 now has a target-proven LPBAM cursor-slice handoff that can arm SPI3,
+  LPDMA1, LPTIM1, SRAM4 payloads/descriptors, enter STOP2, animate without CPU
+  intervention, wake, and reclaim normal display ownership; the current payload
+  is a bring-up slice, not the final renderer-driven waiting-animation compiler
 
-The existing bring-up result proves basic orientation, owner-routed presentation, and boot clear-hold display-transfer clock request/release (`EV-HW6-20260813-P1-DISPLAYCLOCK-047`). Follow-up FW0 target evidence from probe API `36` validates that splitting the minimal renderer into `display_renderer.c` preserved normal UI render completion and held-frame STOP2 readiness: display UI request/render/page/status `2/1/1/0x0`, display complete/success `1/1`, backend request/selected/status/held `1/1/0x0/1`, and automatic STOP2 entry count `2`. HW6 evidence `EV-HW6-20260816-P1-BUTTONWAKE-LIST-069` visually validates the first list-style shell renderer and selected-row cursor; the same run kept display completion and held-frame readiness valid after repeated button wake/input cycles. It does not close partial updates, dirty tracking, LPBAM, final typography/layout, renderer polish, or display fault recovery.
+The existing bring-up result proves basic orientation, owner-routed presentation, and boot clear-hold display-transfer clock request/release (`EV-HW6-20260813-P1-DISPLAYCLOCK-047`). Follow-up FW0 target evidence from probe API `36` validates that splitting the minimal renderer into `display_renderer.c` preserved normal UI render completion and held-frame STOP2 readiness: display UI request/render/page/status `2/1/1/0x0`, display complete/success `1/1`, backend request/selected/status/held `1/1/0x0/1`, and automatic STOP2 entry count `2`. HW6 evidence `EV-HW6-20260816-P1-BUTTONWAKE-LIST-069` visually validates the first list-style shell renderer and selected-row cursor; the same run kept display completion and held-frame readiness valid after repeated button wake/input cycles. HW6 evidence `EV-HW6-20260816-P1-LPBAMCURSOR-070` validates the first real HW6 LPBAM cursor-slice handoff: probe API `37/17` selected the LPBAM backend (`2/2/0x0/1`), prepared the cursor region at panel rows `153..160` and columns `73..88`, built four payload frames in four chunks for `732` bytes total, linked and started LPDMA successfully (`queue nodes = 24`), configured LPTIM1 for the `250 ms` frame cadence, entered STOP2 twice, visibly animated, woke, and aborted/reclaimed with all start/abort statuses `0x0`. This closes the first ownership, SRAM4, linked-list, STOP2 entry, wake, and reclaim proof for HW6 LPBAM. It does not close final visual correctness, current measurement with LPBAM active, renderer dirty tracking, arbitrary waiting-animation compilation, final typography/layout, renderer polish, or display fault recovery.
 
 ## DMA-Safe Buffer Placement
 
-HW6 display DMA/LPDMA source data must live in the SRAM4 display-DMA/autonomous arena. This allocation model is validated on HW5 and provisional on HW6 until the incoming board and generated HW6 firmware reproduce the transfer, retention, and STOP behavior.
+HW6 display DMA/LPDMA source data must live in the SRAM4 display-DMA/autonomous arena. This allocation model is validated on HW5 and now target-proven on HW6 for the first cursor-slice LPBAM handoff; final renderer-driven animation budgets remain provisional until dirty-row tracking, payload sizing, and LPBAM active current are measured.
 
 | Buffer | Purpose | Placement |
 |---|---|---|
@@ -222,7 +226,7 @@ reactive transaction settles
 
 The first autonomous transition begins from the seeded physical frame. Autonomous playback changes only presentation; it does not mutate committed package state. On wake or abort, the display owner reclaims SPI3/LPDMA/LPBAM and restores a known normal-display state before accepting new presents.
 
-FW0 now has a backend selector for display waiting. `HELD_FRAME` is the default baseline STOP2 backend: a completed successful current-page render may be held through STOP2 without arming LPBAM. `LPBAM` is the autonomous backend: normal display actions clear `display_lpbam_ready`, and `thPower` asks `thDisplay` for an LPBAM prepare handoff before automatic STOP2 admission may treat LPBAM as ready. `thDisplay` may satisfy STOP2 LPBAM validation only when it later reports a ready page, ready render count, and `HAL_OK` LPBAM status that still match the current UI state. Until the real LPBAM payload path exists, `thDisplay` intentionally answers `UNAVAILABLE`; `thPower` must treat that as not ready, not as a fault. If entry is abandoned after a future successful prepare, `thPower` must send the display abort handoff so normal display ownership is reclaimed. FW0 target evidence now validates that abort shape with a debug-only forced-ready prepare followed by a synthetic late input blocker; it does not arm real LPBAM. The scaffold does not arm LPBAM yet and must not be used as evidence of autonomous display playback.
+FW0 now has a backend selector for display waiting. `HELD_FRAME` is the default baseline STOP2 backend: a completed successful current-page render may be held through STOP2 without arming LPBAM. `LPBAM` is the autonomous backend: normal display actions clear `display_lpbam_ready`, and `thPower` asks `thDisplay` for an LPBAM prepare handoff before automatic STOP2 admission may treat LPBAM as ready. `thDisplay` may satisfy STOP2 LPBAM validation only when it later reports a ready page, ready render count, and `HAL_OK` LPBAM status that still match the current UI state. The first real HW6 path now prepares and starts a debug/test cursor-slice LPBAM payload; `UNAVAILABLE` remains the correct result when no validated LPBAM slice exists for the current renderer state or target profile. If entry is abandoned after a successful prepare, `thPower` must send the display abort handoff so normal display ownership is reclaimed. FW0 target evidence validates both the older forced-ready abort shape and the real cursor-slice start/STOP2/wake/abort path.
 
 If the preferred waiting visual does not fit the measured target budget, the display owner/compiler uses the package-declared reduced visual or hold fallback. Compilation failure must not silently convert a reactive wait into an awake polling loop.
 
@@ -230,7 +234,7 @@ If the preferred waiting visual does not fit the measured target budget, the dis
 
 ## LPBAM Display Scenario FSM
 
-LPBAM display animation is a hardware-validated HW5 Platform baseline for eligible reactive waiting visuals. On HW6 it remains `pending_validation`; shipping use is target-profile gated until HW6 owner integration, SRAM4 admission limits, STOP behavior, and display electrical behavior are evidenced.
+LPBAM display animation is a hardware-validated HW5 Platform baseline for eligible reactive waiting visuals. On HW6 the owner handoff, SRAM4 placement, linked-list start, STOP2 residency, wake, and abort/reclaim path are now validated for the current cursor-slice bring-up payload. Shipping use remains target-profile gated until renderer dirty-row integration, visual correctness, SRAM4 admission limits, LPBAM active current, and display electrical behavior are evidenced for production waiting visuals.
 
 It is allowed and designed-for, but not required for the normal display renderer to function.
 
@@ -255,9 +259,19 @@ LPBAM rules:
 - Normal display owner must reclaim SPI3/LPDMA/LPBAM resources cleanly after exit.
 - LPBAM does not run the renderer or package logic. It executes a compiled display program derived from the settled reactive state and its waiting-visual intent.
 - Display stability and LPBAM readiness are separate states: a successful normal render may satisfy the held-frame backend, but the LPBAM backend must remain pending until `thDisplay` explicitly reports the LPBAM handoff as ready.
-- `thPower` must not infer LPBAM readiness from a stable frame alone. If the selected backend is LPBAM, it must receive the display-owner prepare ACK and `HAL_OK` ready result; `UNAVAILABLE` is a valid blocked state while LPBAM display preparation is not implemented.
+- `thPower` must not infer LPBAM readiness from a stable frame alone. If the selected backend is LPBAM, it must receive the display-owner prepare ACK and `HAL_OK` ready result; `UNAVAILABLE` is a valid blocked state when no validated LPBAM slice exists for the current renderer state, target profile, or visual budget.
 - After a successful prepare, `thPower` must re-check hard blockers before entering STOP2. If input, UI, display, storage, queue, or other hard state changes are observed, `thPower` must send the LPBAM abort handoff and refuse sleep.
 
+Current FW0 LPBAM cursor-slice structure:
+
+- `thPower` selects the display wait backend. When `LPBAM` is selected, it sends a bounded prepare command to `thDisplay` before STOP2 entry and consumes the owner ACK/status instead of assuming readiness from a stable frame.
+- `thDisplay` accepts the prepare only when the normal renderer has completed the current UI page successfully and the ready page/render count still match the UI router.
+- The temporary bring-up compiler asks `display_renderer.c` for the selected cursor's native panel region, composes four cursor-blink frame states from the settled framebuffer, compares consecutive frames within that region, and packs only dirty panel rows.
+- Each LPBAM payload is a panel-native Sharp Memory LCD write stream in SRAM4. Payloads use the HW5-proven row packet format, including the guard-row/tail behavior, and split at `LCD_DMA_MAX_ROWS_PER_TRANSFER` (`48`) rows per chunk.
+- The current validated cursor slice changes `8` panel rows, so it builds one chunk per animation frame: `4` frames, `4` total chunks, `732` bytes total, and `24` LPDMA queue nodes after the SPI advanced helper expands each chunk into six DMA nodes.
+- The LPBAM scenario applies the LPTIM1 channel 1 trigger to the first DMA node of each frame payload, sets the queue circular, enables SPI3/LPTIM1/LPDMA1/SRAM4 autonomous clocks plus MSIK STOP support, starts LPDMA, then starts LPTIM1 at the `250 ms` frame cadence.
+- While LPBAM is active or ready, STOP2 GPIO parking must not park the display-SPI group. On wake or abort, `thDisplay` stops LPTIM1, aborts/unlinks LPDMA, aborts SPI, restores normal SPI/LPTIM ownership, clears LPBAM readiness, and returns to normal display ownership.
+- This cursor-region shortcut is not the final animation compiler. The next renderer step is a dirty-row contract so normal partial updates and LPBAM payload compilation consume the same framebuffer-dirty source of truth.
 
 LPBAM bring-up timing:
 

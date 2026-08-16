@@ -237,6 +237,7 @@ volatile uint32_t g_ps_hw6_power_stop2_auto_idle_entry_request;
 volatile uint32_t g_ps_hw6_power_stop2_lpbam_prepare_request;
 volatile uint32_t g_ps_hw6_power_stop2_lpbam_abort_request;
 volatile uint32_t g_ps_hw6_power_stop2_lpbam_abort_late_test_request;
+volatile uint32_t g_ps_hw6_power_stop2_display_backend_override;
 
 typedef UINT (*PS_HW6_RTOS_DebugCommandFn)(void);
 
@@ -812,6 +813,7 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_power_stop2_lpbam_prepare_request = 0UL;
   g_ps_hw6_power_stop2_lpbam_abort_request = 0UL;
   g_ps_hw6_power_stop2_lpbam_abort_late_test_request = 0UL;
+  g_ps_hw6_power_stop2_display_backend_override = 0UL;
   ps_stop2_lpbam_abort_late_test_active = 0UL;
   ps_stop2_lpbam_late_blocker_armed = 0UL;
   g_ps_hw6_rtos_probe.magic = PS_HW6_RTOS_PROBE_MAGIC;
@@ -2275,10 +2277,17 @@ static uint32_t PS_HW6_RTOS_Stop2DisplayHeldFrameReady(void)
 static uint32_t PS_HW6_RTOS_Stop2DisplayWaitBackendRequested(void)
 {
   uint32_t requested = (uint32_t)KNOB_POWER_STOP2_DISPLAY_WAIT_BACKEND;
+  uint32_t override = g_ps_hw6_power_stop2_display_backend_override;
 
   if (ps_stop2_lpbam_abort_late_test_active != 0UL)
   {
     return PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_LPBAM;
+  }
+
+  if ((override == PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_HELD_FRAME) ||
+      (override == PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_LPBAM))
+  {
+    return override;
   }
 
   if ((requested == PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_HELD_FRAME) ||
@@ -2926,6 +2935,16 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2AutoIdleCheck(
 
   g_ps_hw6_rtos_probe.stop2_auto_entry_count++;
   entry_status = PS_HW6_RTOS_RunStop2ControlledEntry();
+  if ((display_backend == PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_LPBAM) &&
+      (PS_HW6_RTOS_Stop2DisplayLpbamReady() != 0UL))
+  {
+    HAL_StatusTypeDef abort_status = PS_HW6_RTOS_RequestDisplayLpbamAbort();
+
+    if ((entry_status == HAL_OK) && (abort_status != HAL_OK))
+    {
+      entry_status = abort_status;
+    }
+  }
   g_ps_hw6_rtos_probe.stop2_auto_entry_status = (uint32_t)entry_status;
   g_ps_hw6_rtos_probe.stop2_auto_last_status = (uint32_t)entry_status;
   return entry_status;

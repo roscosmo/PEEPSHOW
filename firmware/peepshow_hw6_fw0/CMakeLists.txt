@@ -60,6 +60,8 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/LS013B7DH05.c
     Core/Src/display_renderer.c
+    Core/Src/ps_lpbam_display_buffers.c
+    LPBAM/LpbamAp1/lpbam_lpbamap1_scenario_build.c
     Core/Src/ps_dev_at25sl128a.c
     Core/Src/ps_dev_audio.c
     Core/Src/ps_dev_adp5360.c
@@ -81,6 +83,11 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/ps_storage_layout.c
     Core/Src/ps_storage_msc_bridge.c
     Drivers/Components/lis2dux12/lis2dux12_reg.c
+    Utilities/lpbam/stm32_adv_lpbam_common.c
+    Utilities/lpbam/STM32U5/stm32_ll_lpbam.c
+    Utilities/lpbam/stm32_lpbam_common.c
+    Utilities/lpbam/stm32_adv_lpbam_spi.c
+    Utilities/lpbam/stm32_lpbam_spi.c
     Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_callback.c
     Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_endpoint_create.c
     Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_endpoint_destroy.c
@@ -107,6 +114,9 @@ set_source_files_properties(
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Drivers/Components/lis2dux12
+    LPBAM/LpbamAp1
+    Utilities/lpbam
+    Utilities/lpbam/STM32U5
 )
 
 # Add project symbols (macros)

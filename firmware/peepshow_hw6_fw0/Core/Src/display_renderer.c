@@ -18,6 +18,64 @@
 
 static uint8_t s_display_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint32_t s_rotate_ccw;
+static display_renderer_panel_region_t s_lpbam_cursor_panel_region;
+static uint32_t s_lpbam_cursor_panel_region_valid;
+
+static void DisplayRenderer_InvalidateLpbamCursorRegion(void)
+{
+  (void)memset(&s_lpbam_cursor_panel_region, 0,
+               sizeof(s_lpbam_cursor_panel_region));
+  s_lpbam_cursor_panel_region_valid = 0UL;
+}
+
+static void DisplayRenderer_RecordLpbamCursorRegion(uint32_t row)
+{
+  uint16_t logical_x0;
+  uint16_t logical_x1;
+  uint16_t logical_y0;
+  uint16_t logical_y1;
+  uint16_t panel_x0;
+  uint16_t panel_x1;
+  uint16_t panel_y0;
+  uint16_t panel_y1;
+
+  if (row >= DISPLAY_RENDERER_LIST_ROW_COUNT)
+  {
+    DisplayRenderer_InvalidateLpbamCursorRegion();
+    return;
+  }
+
+  logical_x0 = DISPLAY_RENDERER_LIST_CURSOR_X;
+  logical_x1 = (uint16_t)(logical_x0 +
+                          DISPLAY_RENDERER_LIST_CURSOR_WIDTH - 1U);
+  logical_y0 = (uint16_t)(DISPLAY_RENDERER_LIST_ROW_Y0 +
+                          (row * DISPLAY_RENDERER_LIST_ROW_STEP));
+  logical_y1 = (uint16_t)(logical_y0 +
+                          DISPLAY_RENDERER_LIST_CURSOR_HEIGHT - 1U);
+
+  if (s_rotate_ccw != 0UL)
+  {
+    panel_x0 = logical_y0;
+    panel_x1 = logical_y1;
+    panel_y0 = (uint16_t)(DISPLAY_RENDERER_WIDTH - 1U - logical_x1);
+    panel_y1 = (uint16_t)(DISPLAY_RENDERER_WIDTH - 1U - logical_x0);
+  }
+  else
+  {
+    panel_x0 = logical_x0;
+    panel_x1 = logical_x1;
+    panel_y0 = logical_y0;
+    panel_y1 = logical_y1;
+  }
+
+  s_lpbam_cursor_panel_region.start_row = (uint16_t)(panel_y0 + 1U);
+  s_lpbam_cursor_panel_region.row_count =
+    (uint16_t)(panel_y1 - panel_y0 + 1U);
+  s_lpbam_cursor_panel_region.start_column = panel_x0;
+  s_lpbam_cursor_panel_region.column_count =
+    (uint16_t)(panel_x1 - panel_x0 + 1U);
+  s_lpbam_cursor_panel_region_valid = 1UL;
+}
 
 static void DisplayRenderer_FillStats(display_renderer_stats_t *stats,
                                       uint32_t black_pixels)
@@ -37,11 +95,24 @@ void DisplayRenderer_ClearWhite(void)
 {
   (void)memset(s_display_framebuffer, 0xFF,
                sizeof(s_display_framebuffer));
+  DisplayRenderer_InvalidateLpbamCursorRegion();
 }
 
 const uint8_t *DisplayRenderer_GetBuffer(void)
 {
   return s_display_framebuffer;
+}
+
+uint32_t DisplayRenderer_GetLpbamCursorPanelRegion(
+  display_renderer_panel_region_t *region)
+{
+  if ((region == NULL) || (s_lpbam_cursor_panel_region_valid == 0UL))
+  {
+    return 0UL;
+  }
+
+  *region = s_lpbam_cursor_panel_region;
+  return 1UL;
 }
 
 static uint32_t DisplayRenderer_SetBlack(uint16_t x, uint16_t y)
@@ -547,6 +618,7 @@ static uint32_t DisplayRenderer_DrawListCursor(uint32_t row, uint32_t visible)
 
   y = (uint16_t)(DISPLAY_RENDERER_LIST_ROW_Y0 +
                  (row * DISPLAY_RENDERER_LIST_ROW_STEP));
+  DisplayRenderer_RecordLpbamCursorRegion(row);
   return DisplayRenderer_FilledRect(DISPLAY_RENDERER_LIST_CURSOR_X,
                                     y,
                                     DISPLAY_RENDERER_LIST_CURSOR_WIDTH,

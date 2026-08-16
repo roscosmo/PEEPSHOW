@@ -301,6 +301,12 @@ static uint32_t PS_HW6_SM_Stop2GpioActiveParkGroupMask(void)
     active_mask = override_mask & PS_HW6_STOP2_GPIO_GROUP_MASK_ALL;
   }
 
+  if ((g_ps_hw6_owner_probe.display_lpbam_active != 0UL) ||
+      ((g_ps_hw6_owner_probe.display_lpbam_ready != 0UL) &&
+       (g_ps_hw6_owner_probe.display_lpbam_status == (uint32_t)HAL_OK)))
+  {
+    active_mask &= ~PS_HW6_STOP2_GPIO_GROUP_MASK_DISPLAY;
+  }
   g_ps_hw6_owner_sm_probe.stop2_gpio_park_group_default_mask =
     default_mask;
   g_ps_hw6_owner_sm_probe.stop2_gpio_park_group_override_mask =
