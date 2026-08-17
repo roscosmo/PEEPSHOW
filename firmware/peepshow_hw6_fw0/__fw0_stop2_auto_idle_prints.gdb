@@ -23,6 +23,7 @@ printf "runtime class/exec/life/caps = %u / %u / %u / 0x%x\n", $rt->runtime_curr
 printf "ui page/nav/modal/pkg/shutdown/pending = %u / %u / %u / %u / %u / %u\n", $ui->current_page, $ui->nav_state, $ui->modal_state, $ui->package_state, $ui->shutdown_state, $ui->pending_action
 printf "display ui req/render/page/status = %u / %u / %u / 0x%x\n", $ow->display_ui_request_count, $ow->display_ui_render_count, $ow->display_ui_page, $ow->display_ui_status
 printf "display complete/success = %u / %u\n", $ow->display_complete, $ow->display_success
+printf "display dirty rows count/first/last = %u / %u / %u\n", $ow->display_dirty_row_count, $ow->display_dirty_first_row, $ow->display_dirty_last_row
 printf "display backend req/selected/status/held = %u / %u / 0x%x / %u\n", $rt->stop2_display_wait_backend_requested, $rt->stop2_display_wait_backend_selected, $rt->stop2_display_wait_backend_status, $rt->stop2_display_wait_backend_held_ready
 printf "display lpbam ready/page/render/status = %u / %u / %u / 0x%x\n", $ow->display_lpbam_ready, $ow->display_lpbam_ready_page, $ow->display_lpbam_ready_render_count, $ow->display_lpbam_status
 printf "display lpbam prep/clear/reason = %u / %u / %u\n", $ow->display_lpbam_prepare_count, $ow->display_lpbam_clear_count, $ow->display_lpbam_clear_reason

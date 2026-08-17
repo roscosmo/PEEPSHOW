@@ -6,6 +6,7 @@ printf "--- HW6 display LPBAM STOP2 admission handshake ---\n"
 printf "rtos/owner api = %u / %u\n", $rt->version, $ow->version
 printf "backend override var = %u\n", g_ps_hw6_power_stop2_display_backend_override
 printf "ui page/render = %u / %u\n", $ui->current_page, $ow->display_ui_render_count
+printf "display dirty rows count/first/last = %u / %u / %u\n", $ow->display_dirty_row_count, $ow->display_dirty_first_row, $ow->display_dirty_last_row
 printf "display backend req/selected/status/held = %u / %u / 0x%x / %u\n", $rt->stop2_display_wait_backend_requested, $rt->stop2_display_wait_backend_selected, $rt->stop2_display_wait_backend_status, $rt->stop2_display_wait_backend_held_ready
 printf "display ready/page/render/status/active = %u / %u / %u / 0x%x / %u\n", $ow->display_lpbam_ready, $ow->display_lpbam_ready_page, $ow->display_lpbam_ready_render_count, $ow->display_lpbam_status, $ow->display_lpbam_active
 printf "display prep count/tick/status = %u / %u / 0x%x\n", $ow->display_lpbam_prepare_count, $ow->display_lpbam_prepare_tick, $ow->display_lpbam_prepare_status

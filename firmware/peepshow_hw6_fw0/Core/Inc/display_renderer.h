@@ -9,9 +9,10 @@
 extern "C" {
 #endif
 
-#define DISPLAY_RENDERER_WIDTH       DISPLAY_HEIGHT
-#define DISPLAY_RENDERER_HEIGHT      DISPLAY_WIDTH
-#define DISPLAY_RENDERER_BUFFER_SIZE BUFFER_LENGTH
+#define DISPLAY_RENDERER_WIDTH         DISPLAY_HEIGHT
+#define DISPLAY_RENDERER_HEIGHT        DISPLAY_WIDTH
+#define DISPLAY_RENDERER_BUFFER_SIZE   BUFFER_LENGTH
+#define DISPLAY_RENDERER_DIRTY_ROW_MAX DISPLAY_HEIGHT
 
 typedef struct
 {
@@ -19,6 +20,9 @@ typedef struct
   uint32_t height;
   uint32_t framebuffer_hash;
   uint32_t black_pixels;
+  uint32_t dirty_row_count;
+  uint32_t dirty_first_row;
+  uint32_t dirty_last_row;
 } display_renderer_stats_t;
 
 typedef struct
@@ -31,6 +35,7 @@ typedef struct
 
 void DisplayRenderer_ClearWhite(void);
 const uint8_t *DisplayRenderer_GetBuffer(void);
+uint32_t DisplayRenderer_GetDirtyRows(const uint16_t **rows);
 uint32_t DisplayRenderer_FramebufferHash(void);
 uint32_t DisplayRenderer_GetLpbamCursorPanelRegion(
   display_renderer_panel_region_t *region);

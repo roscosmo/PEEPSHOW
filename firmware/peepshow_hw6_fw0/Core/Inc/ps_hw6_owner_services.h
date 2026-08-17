@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (17UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (18UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -148,6 +148,9 @@ typedef struct
   uint32_t display_pattern_id;
   uint32_t display_framebuffer_hash;
   uint32_t display_black_pixels;
+  uint32_t display_dirty_row_count;
+  uint32_t display_dirty_first_row;
+  uint32_t display_dirty_last_row;
   uint32_t display_rtc_state;
   uint32_t display_rtc_cr;
   uint32_t display_spi_state_before;

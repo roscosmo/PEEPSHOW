@@ -85,11 +85,11 @@ path through `thDisplay`:
   intervention, wake, and reclaim normal display ownership; the current payload
   is a bring-up slice, not the final renderer-driven waiting-animation compiler
 
-The existing bring-up result proves basic orientation, owner-routed presentation, and boot clear-hold display-transfer clock request/release (`EV-HW6-20260813-P1-DISPLAYCLOCK-047`). Follow-up FW0 target evidence from probe API `36` validates that splitting the minimal renderer into `display_renderer.c` preserved normal UI render completion and held-frame STOP2 readiness: display UI request/render/page/status `2/1/1/0x0`, display complete/success `1/1`, backend request/selected/status/held `1/1/0x0/1`, and automatic STOP2 entry count `2`. HW6 evidence `EV-HW6-20260816-P1-BUTTONWAKE-LIST-069` visually validates the first list-style shell renderer and selected-row cursor; the same run kept display completion and held-frame readiness valid after repeated button wake/input cycles. HW6 evidence `EV-HW6-20260816-P1-LPBAMCURSOR-070` validates the first real HW6 LPBAM cursor-slice handoff: probe API `37/17` selected the LPBAM backend (`2/2/0x0/1`), prepared the cursor region at panel rows `153..160` and columns `73..88`, built four payload frames in four chunks for `732` bytes total, linked and started LPDMA successfully (`queue nodes = 24`), configured LPTIM1 for the `250 ms` frame cadence, entered STOP2 twice, visibly animated, woke, and aborted/reclaimed with all start/abort statuses `0x0`. This closes the first ownership, SRAM4, linked-list, STOP2 entry, wake, and reclaim proof for HW6 LPBAM. It does not close final visual correctness, current measurement with LPBAM active, renderer dirty tracking, arbitrary waiting-animation compilation, final typography/layout, renderer polish, or display fault recovery.
+The existing bring-up result proves basic orientation, owner-routed presentation, and boot clear-hold display-transfer clock request/release (`EV-HW6-20260813-P1-DISPLAYCLOCK-047`). Follow-up FW0 target evidence from probe API `36` validates that splitting the minimal renderer into `display_renderer.c` preserved normal UI render completion and held-frame STOP2 readiness: display UI request/render/page/status `2/1/1/0x0`, display complete/success `1/1`, backend request/selected/status/held `1/1/0x0/1`, and automatic STOP2 entry count `2`. HW6 evidence `EV-HW6-20260816-P1-BUTTONWAKE-LIST-069` visually validates the first list-style shell renderer and selected-row cursor; the same run kept display completion and held-frame readiness valid after repeated button wake/input cycles. HW6 evidence `EV-HW6-20260816-P1-LPBAMCURSOR-070` validates the first real HW6 LPBAM cursor-slice handoff: probe API `37/17` selected the LPBAM backend (`2/2/0x0/1`), prepared the cursor region at panel rows `153..160` and columns `73..88`, built four payload frames in four chunks for `732` bytes total, linked and started LPDMA successfully (`queue nodes = 24`), configured LPTIM1 for the `250 ms` frame cadence, entered STOP2 twice, visibly animated, woke, and aborted/reclaimed with all start/abort statuses `0x0`. HW6 evidence `EV-HW6-20260817-P1-DIRTYROWS-071` validates the first renderer-owned panel-native dirty-row source: RTOS probe API `37`, owner probe API `18`, display request/render/page/status `7/6/2/0x0`, display complete/success `1/1`, dirty rows count/first/last `168/1/168`, held-frame backend `1/1/0x0/1`, and automatic STOP2 entry count `3`. This closes the initial dirty-row plumbing from renderer to display owner row-list presentation. It does not close final visual correctness, current measurement with LPBAM active, incremental dirty-region drawing, arbitrary waiting-animation compilation, final typography/layout, renderer polish, or display fault recovery.
 
 ## DMA-Safe Buffer Placement
 
-HW6 display DMA/LPDMA source data must live in the SRAM4 display-DMA/autonomous arena. This allocation model is validated on HW5 and now target-proven on HW6 for the first cursor-slice LPBAM handoff; final renderer-driven animation budgets remain provisional until dirty-row tracking, payload sizing, and LPBAM active current are measured.
+HW6 display DMA/LPDMA source data must live in the SRAM4 display-DMA/autonomous arena. This allocation model is validated on HW5 and target-proven on HW6 for the first cursor-slice LPBAM handoff. Final renderer-driven animation budgets remain provisional until incremental dirty-row drawing, payload sizing, and LPBAM active current are measured.
 
 | Buffer | Purpose | Placement |
 |---|---|---|
@@ -271,7 +271,7 @@ Current FW0 LPBAM cursor-slice structure:
 - The current validated cursor slice changes `8` panel rows, so it builds one chunk per animation frame: `4` frames, `4` total chunks, `732` bytes total, and `24` LPDMA queue nodes after the SPI advanced helper expands each chunk into six DMA nodes.
 - The LPBAM scenario applies the LPTIM1 channel 1 trigger to the first DMA node of each frame payload, sets the queue circular, enables SPI3/LPTIM1/LPDMA1/SRAM4 autonomous clocks plus MSIK STOP support, starts LPDMA, then starts LPTIM1 at the `250 ms` frame cadence.
 - While LPBAM is active or ready, STOP2 GPIO parking must not park the display-SPI group. On wake or abort, `thDisplay` stops LPTIM1, aborts/unlinks LPDMA, aborts SPI, restores normal SPI/LPTIM ownership, clears LPBAM readiness, and returns to normal display ownership.
-- This cursor-region shortcut is not the final animation compiler. The next renderer step is a dirty-row contract so normal partial updates and LPBAM payload compilation consume the same framebuffer-dirty source of truth.
+- This cursor-region shortcut is not the final animation compiler. FW0 now has a renderer-owned panel-native dirty-row contract, and normal display presentation consumes that row list through `LCD_PresentRows_DMA()`. The current UI renderer still clears and redraws the whole frame, so it correctly reports all `168` rows dirty; the next renderer step is incremental dirty drawing so normal partial updates and LPBAM payload compilation consume the same framebuffer-dirty source of truth.
 
 LPBAM bring-up timing:
 
@@ -293,11 +293,18 @@ LPBAM acceptance criteria:
 
 Dirty update policy must define:
 
-- dirty granularity, likely rows or row-ranges first
+- dirty granularity is panel-native rows, because a Sharp Memory LCD row is the minimum update unit
+- row lists are 1-based native panel rows, sorted, deduplicated, and owned by `display_renderer.c`
 - threshold for full-frame fallback
 - maximum low-power update budget per cycle
 - orientation transform cost and ownership
 - static hold behavior after a flush
+
+Current FW0 dirty-row state:
+
+- `display_renderer.c` owns the framebuffer-dirty source of truth and exposes a bounded dirty-row list to `thDisplay`.
+- `thDisplay` presents the row list through `LCD_PresentRows_DMA()`; low-level LS013 code remains responsible only for panel packet transfer and chunking.
+- Existing list-style UI rendering still clears and redraws before every page, so normal UI pages mark all `168` panel rows dirty. Incremental page updates must remove that whole-frame clear when page primitives can erase/update only their affected rows.
 
 Policy must be deterministic and bounded.
 

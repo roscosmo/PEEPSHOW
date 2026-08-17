@@ -103,10 +103,12 @@ static HAL_StatusTypeDef PS_HW6_DisplayDriverInit(SPI_HandleTypeDef *bus)
   return HAL_OK;
 }
 
-static HAL_StatusTypeDef PS_HW6_DisplayOwner_PresentFull(
+static HAL_StatusTypeDef PS_HW6_DisplayOwner_PresentRendererRows(
   volatile uint32_t *init_status,
   volatile uint32_t *present_status)
 {
+  const uint16_t *dirty_rows = NULL;
+  uint32_t dirty_row_count;
   HAL_StatusTypeDef init_result;
   HAL_StatusTypeDef present_result = HAL_ERROR;
 
@@ -126,6 +128,7 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_PresentFull(
   }
 
   ps_hw6_display_driver_operation_count++;
+  dirty_row_count = DisplayRenderer_GetDirtyRows(&dirty_rows);
   init_result = LCD_Init(&ps_hw6_display, &hspi3);
   if (init_status != NULL)
   {
@@ -133,10 +136,24 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_PresentFull(
   }
   if (init_result == HAL_OK)
   {
-    present_result = LCD_PresentFull_DMA(
-      &ps_hw6_display,
-      DisplayRenderer_GetBuffer(),
-      PS_HW6_DISPLAY_PRESENT_TIMEOUT_MS);
+    if (dirty_row_count == 0UL)
+    {
+      present_result = HAL_OK;
+    }
+    else if ((dirty_rows == NULL) ||
+             (dirty_row_count > DISPLAY_RENDERER_DIRTY_ROW_MAX))
+    {
+      present_result = HAL_ERROR;
+    }
+    else
+    {
+      present_result = LCD_PresentRows_DMA(
+        &ps_hw6_display,
+        DisplayRenderer_GetBuffer(),
+        dirty_rows,
+        (uint16_t)dirty_row_count,
+        PS_HW6_DISPLAY_PRESENT_TIMEOUT_MS);
+    }
   }
   if (present_status != NULL)
   {
@@ -193,6 +210,9 @@ static void PS_HW6_DisplayOwner_ApplyRendererStats(
   g_ps_hw6_owner_probe.display_pattern_id = pattern_id;
   g_ps_hw6_owner_probe.display_framebuffer_hash = stats->framebuffer_hash;
   g_ps_hw6_owner_probe.display_black_pixels = stats->black_pixels;
+  g_ps_hw6_owner_probe.display_dirty_row_count = stats->dirty_row_count;
+  g_ps_hw6_owner_probe.display_dirty_first_row = stats->dirty_first_row;
+  g_ps_hw6_owner_probe.display_dirty_last_row = stats->dirty_last_row;
 }
 static void PS_HW6_UpdateAudioDriverProbe(void)
 {
@@ -1094,7 +1114,7 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void)
   g_ps_hw6_owner_probe.display_rtc_cr = hrtc.Instance->CR;
   g_ps_hw6_owner_probe.display_spi_state_before = HAL_SPI_GetState(&hspi3);
 
-  driver_status = PS_HW6_DisplayOwner_PresentFull(
+  driver_status = PS_HW6_DisplayOwner_PresentRendererRows(
     &g_ps_hw6_owner_probe.display_init_status,
     &g_ps_hw6_owner_probe.display_present_status);
 
@@ -1150,6 +1170,9 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearBootHold(void)
   g_ps_hw6_owner_probe.display_width = DISPLAY_WIDTH;
   g_ps_hw6_owner_probe.display_height = DISPLAY_HEIGHT;
   g_ps_hw6_owner_probe.display_pattern_id = PS_HW6_DISPLAY_UI_PATTERN_ID;
+  g_ps_hw6_owner_probe.display_dirty_row_count = DISPLAY_HEIGHT;
+  g_ps_hw6_owner_probe.display_dirty_first_row = 1UL;
+  g_ps_hw6_owner_probe.display_dirty_last_row = DISPLAY_HEIGHT;
 
   driver_status = PS_HW6_DisplayOwner_ClearPanel(&clear_hal_status);
   g_ps_hw6_owner_probe.display_init_status = clear_hal_status;
@@ -1208,7 +1231,7 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
                               focus_index,
                               shutdown_state,
                               shutdown_countdown_seconds);
-  driver_status = PS_HW6_DisplayOwner_PresentFull(
+  driver_status = PS_HW6_DisplayOwner_PresentRendererRows(
     &g_ps_hw6_owner_probe.display_init_status,
     &g_ps_hw6_owner_probe.display_present_status);
 

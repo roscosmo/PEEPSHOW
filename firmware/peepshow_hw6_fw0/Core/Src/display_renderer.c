@@ -17,9 +17,65 @@
 #define DISPLAY_RENDERER_LIST_CURSOR_HEIGHT (16U)
 
 static uint8_t s_display_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
+static uint16_t s_display_dirty_rows[DISPLAY_RENDERER_DIRTY_ROW_MAX];
+static uint8_t s_display_dirty_row_marks[DISPLAY_RENDERER_DIRTY_ROW_MAX];
+static uint16_t s_display_dirty_row_count;
 static uint32_t s_rotate_ccw;
 static display_renderer_panel_region_t s_lpbam_cursor_panel_region;
 static uint32_t s_lpbam_cursor_panel_region_valid;
+
+static void DisplayRenderer_ResetDirtyRows(void)
+{
+  (void)memset(s_display_dirty_rows, 0, sizeof(s_display_dirty_rows));
+  (void)memset(s_display_dirty_row_marks, 0,
+               sizeof(s_display_dirty_row_marks));
+  s_display_dirty_row_count = 0U;
+}
+
+static void DisplayRenderer_MarkPanelRowDirty(uint16_t panel_y)
+{
+  uint16_t panel_row;
+  uint16_t insert_at;
+  uint16_t i;
+
+  if (panel_y >= DISPLAY_HEIGHT)
+  {
+    return;
+  }
+  if (s_display_dirty_row_marks[panel_y] != 0U)
+  {
+    return;
+  }
+  if (s_display_dirty_row_count >= DISPLAY_RENDERER_DIRTY_ROW_MAX)
+  {
+    return;
+  }
+
+  panel_row = (uint16_t)(panel_y + 1U);
+  insert_at = 0U;
+  while ((insert_at < s_display_dirty_row_count) &&
+         (s_display_dirty_rows[insert_at] < panel_row))
+  {
+    ++insert_at;
+  }
+  for (i = s_display_dirty_row_count; i > insert_at; --i)
+  {
+    s_display_dirty_rows[i] = s_display_dirty_rows[i - 1U];
+  }
+  s_display_dirty_rows[insert_at] = panel_row;
+  s_display_dirty_row_marks[panel_y] = 1U;
+  ++s_display_dirty_row_count;
+}
+
+static void DisplayRenderer_MarkAllRowsDirty(void)
+{
+  uint16_t row;
+
+  for (row = 0U; row < DISPLAY_HEIGHT; ++row)
+  {
+    DisplayRenderer_MarkPanelRowDirty(row);
+  }
+}
 
 static void DisplayRenderer_InvalidateLpbamCursorRegion(void)
 {
@@ -89,18 +145,34 @@ static void DisplayRenderer_FillStats(display_renderer_stats_t *stats,
   stats->height = DISPLAY_HEIGHT;
   stats->framebuffer_hash = DisplayRenderer_FramebufferHash();
   stats->black_pixels = black_pixels;
+  stats->dirty_row_count = s_display_dirty_row_count;
+  stats->dirty_first_row = (s_display_dirty_row_count == 0U) ? 0UL :
+    (uint32_t)s_display_dirty_rows[0];
+  stats->dirty_last_row = (s_display_dirty_row_count == 0U) ? 0UL :
+    (uint32_t)s_display_dirty_rows[s_display_dirty_row_count - 1U];
 }
 
 void DisplayRenderer_ClearWhite(void)
 {
+  DisplayRenderer_ResetDirtyRows();
   (void)memset(s_display_framebuffer, 0xFF,
                sizeof(s_display_framebuffer));
+  DisplayRenderer_MarkAllRowsDirty();
   DisplayRenderer_InvalidateLpbamCursorRegion();
 }
 
 const uint8_t *DisplayRenderer_GetBuffer(void)
 {
   return s_display_framebuffer;
+}
+
+uint32_t DisplayRenderer_GetDirtyRows(const uint16_t **rows)
+{
+  if (rows != NULL)
+  {
+    *rows = s_display_dirty_rows;
+  }
+  return (uint32_t)s_display_dirty_row_count;
 }
 
 uint32_t DisplayRenderer_GetLpbamCursorPanelRegion(
@@ -145,6 +217,7 @@ static uint32_t DisplayRenderer_SetBlack(uint16_t x, uint16_t y)
   }
 
   s_display_framebuffer[index] &= (uint8_t)~mask;
+  DisplayRenderer_MarkPanelRowDirty(panel_y);
   return 1UL;
 }
 
