@@ -7,6 +7,7 @@ set $btn = &g_ps_input_buttons_probe
 set $clk = &g_ps_hw6_clock_policy_probe
 printf "--- HW6 automatic STOP2 idle admission scaffold ---\n"
 printf "rtos api/runtime/boot/idlepark = %u / %u / %u / %u\n", $rt->version, $rt->runtime_complete, $rt->boot_power_done, $rt->boot_idle_peripheral_park_done
+printf "owner api = %u\n", $ow->version
 printf "boot idle park count/status/start/end = %u / 0x%x / %u / %u\n", $rt->boot_idle_peripheral_park_request_count, $rt->boot_idle_peripheral_park_last_status, $rt->boot_idle_peripheral_park_start_tick, $rt->boot_idle_peripheral_park_end_tick
 printf "boot idle park BLE send/wait/ack = 0x%x / 0x%x / 0x%x\n", $rt->boot_idle_peripheral_park_ble_send_status, $rt->boot_idle_peripheral_park_ble_wait_status, $rt->boot_idle_peripheral_park_ble_ack_flags
 printf "boot idle park IMU send/wait/ack = 0x%x / 0x%x / 0x%x\n", $rt->boot_idle_peripheral_park_imu_send_status, $rt->boot_idle_peripheral_park_imu_wait_status, $rt->boot_idle_peripheral_park_imu_ack_flags

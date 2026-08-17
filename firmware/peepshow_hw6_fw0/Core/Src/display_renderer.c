@@ -17,9 +17,11 @@
 #define DISPLAY_RENDERER_LIST_CURSOR_HEIGHT (16U)
 
 static uint8_t s_display_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
+static uint8_t s_display_committed_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint16_t s_display_dirty_rows[DISPLAY_RENDERER_DIRTY_ROW_MAX];
 static uint8_t s_display_dirty_row_marks[DISPLAY_RENDERER_DIRTY_ROW_MAX];
 static uint16_t s_display_dirty_row_count;
+static uint32_t s_display_committed_valid;
 static uint32_t s_rotate_ccw;
 static display_renderer_panel_region_t s_lpbam_cursor_panel_region;
 static uint32_t s_lpbam_cursor_panel_region_valid;
@@ -74,6 +76,30 @@ static void DisplayRenderer_MarkAllRowsDirty(void)
   for (row = 0U; row < DISPLAY_HEIGHT; ++row)
   {
     DisplayRenderer_MarkPanelRowDirty(row);
+  }
+}
+
+static void DisplayRenderer_ComputeDirtyRowsFromCommitted(void)
+{
+  uint16_t row;
+  uint32_t row_offset;
+
+  DisplayRenderer_ResetDirtyRows();
+  if (s_display_committed_valid == 0UL)
+  {
+    DisplayRenderer_MarkAllRowsDirty();
+    return;
+  }
+
+  for (row = 0U; row < DISPLAY_HEIGHT; ++row)
+  {
+    row_offset = (uint32_t)row * LINE_WIDTH;
+    if (memcmp(&s_display_framebuffer[row_offset],
+               &s_display_committed_framebuffer[row_offset],
+               LINE_WIDTH) != 0)
+    {
+      DisplayRenderer_MarkPanelRowDirty(row);
+    }
   }
 }
 
@@ -157,7 +183,6 @@ void DisplayRenderer_ClearWhite(void)
   DisplayRenderer_ResetDirtyRows();
   (void)memset(s_display_framebuffer, 0xFF,
                sizeof(s_display_framebuffer));
-  DisplayRenderer_MarkAllRowsDirty();
   DisplayRenderer_InvalidateLpbamCursorRegion();
 }
 
@@ -173,6 +198,14 @@ uint32_t DisplayRenderer_GetDirtyRows(const uint16_t **rows)
     *rows = s_display_dirty_rows;
   }
   return (uint32_t)s_display_dirty_row_count;
+}
+
+void DisplayRenderer_CommitPresentedFrame(void)
+{
+  (void)memcpy(s_display_committed_framebuffer,
+               s_display_framebuffer,
+               sizeof(s_display_committed_framebuffer));
+  s_display_committed_valid = 1UL;
 }
 
 uint32_t DisplayRenderer_GetLpbamCursorPanelRegion(
@@ -217,7 +250,6 @@ static uint32_t DisplayRenderer_SetBlack(uint16_t x, uint16_t y)
   }
 
   s_display_framebuffer[index] &= (uint8_t)~mask;
-  DisplayRenderer_MarkPanelRowDirty(panel_y);
   return 1UL;
 }
 
@@ -478,7 +510,8 @@ static void DisplayRenderer_UIList(uint32_t page,
   switch (page)
   {
     case PS_UI_ROUTER_PAGE_HOME:
-      list->selected_row = 1UL;
+      list->selected_row = (focus_index >= DISPLAY_RENDERER_LIST_ROW_COUNT) ?
+        1UL : focus_index;
       break;
     case PS_UI_ROUTER_PAGE_MENU:
       list->title = "SYSTEM";
@@ -755,6 +788,7 @@ void DisplayRenderer_PrepareUIPage(
   black_pixels += DisplayRenderer_DrawList(&list);
   s_rotate_ccw = 0UL;
 
+  DisplayRenderer_ComputeDirtyRowsFromCommitted();
   DisplayRenderer_FillStats(stats, black_pixels);
 }
 
@@ -807,5 +841,6 @@ void DisplayRenderer_PreparePattern(display_renderer_stats_t *stats)
     }
   }
 
+  DisplayRenderer_ComputeDirtyRowsFromCommitted();
   DisplayRenderer_FillStats(stats, black_pixels);
 }

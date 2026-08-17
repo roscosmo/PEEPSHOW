@@ -173,7 +173,8 @@ static ps_status_t PS_UIRouter_GotoPage(uint32_t page)
   ps_ui_router_state.current_page = page;
   ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_FOCUS;
   ps_ui_router_state.transition_count++;
-  if (page == PS_UI_ROUTER_PAGE_MENU)
+  if ((page == PS_UI_ROUTER_PAGE_HOME) ||
+      (page == PS_UI_ROUTER_PAGE_MENU))
   {
     ps_ui_router_state.focus_index = 1UL;
   }
@@ -343,7 +344,8 @@ static ps_status_t PS_UIRouter_DispatchButtonB(void)
 
 static ps_status_t PS_UIRouter_DispatchButtonL(void)
 {
-  if (ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_MENU)
+  if ((ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_HOME) &&
+      (ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_MENU))
   {
     return PS_STATUS_INVALID_STATE;
   }
@@ -356,7 +358,8 @@ static ps_status_t PS_UIRouter_DispatchButtonL(void)
 
 static ps_status_t PS_UIRouter_DispatchButtonR(void)
 {
-  if (ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_MENU)
+  if ((ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_HOME) &&
+      (ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_MENU))
   {
     return PS_STATUS_INVALID_STATE;
   }

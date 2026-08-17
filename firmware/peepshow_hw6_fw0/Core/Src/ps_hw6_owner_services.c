@@ -129,7 +129,8 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_PresentRendererRows(
 
   ps_hw6_display_driver_operation_count++;
   dirty_row_count = DisplayRenderer_GetDirtyRows(&dirty_rows);
-  init_result = LCD_Init(&ps_hw6_display, &hspi3);
+  /* LCD_Init issues the panel all-clear command; row presents must not. */
+  init_result = (ps_hw6_display.Bus == &hspi3) ? HAL_OK : HAL_ERROR;
   if (init_status != NULL)
   {
     *init_status = (uint32_t)init_result;
@@ -158,6 +159,10 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_PresentRendererRows(
   if (present_status != NULL)
   {
     *present_status = (uint32_t)present_result;
+  }
+  if ((init_result == HAL_OK) && (present_result == HAL_OK))
+  {
+    DisplayRenderer_CommitPresentedFrame();
   }
 
   ps_hw6_display_driver_last_status = (uint32_t)
@@ -1175,6 +1180,10 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearBootHold(void)
   g_ps_hw6_owner_probe.display_dirty_last_row = DISPLAY_HEIGHT;
 
   driver_status = PS_HW6_DisplayOwner_ClearPanel(&clear_hal_status);
+  if (driver_status == HAL_OK)
+  {
+    DisplayRenderer_CommitPresentedFrame();
+  }
   g_ps_hw6_owner_probe.display_init_status = clear_hal_status;
   g_ps_hw6_owner_probe.display_present_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
