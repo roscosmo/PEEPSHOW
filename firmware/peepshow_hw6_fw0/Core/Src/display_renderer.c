@@ -18,10 +18,12 @@
 
 static uint8_t s_display_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint8_t s_display_committed_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
+static uint8_t s_display_cursor_base_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint16_t s_display_dirty_rows[DISPLAY_RENDERER_DIRTY_ROW_MAX];
 static uint8_t s_display_dirty_row_marks[DISPLAY_RENDERER_DIRTY_ROW_MAX];
 static uint16_t s_display_dirty_row_count;
 static uint32_t s_display_committed_valid;
+static uint32_t s_display_cursor_base_valid;
 static uint32_t s_rotate_ccw;
 static display_renderer_panel_region_t s_lpbam_cursor_panel_region;
 static uint32_t s_lpbam_cursor_panel_region_valid;
@@ -103,6 +105,71 @@ static void DisplayRenderer_ComputeDirtyRowsFromCommitted(void)
   }
 }
 
+static uint32_t DisplayRenderer_CountBlackPixels(void)
+{
+  uint32_t count = 0UL;
+  uint16_t i;
+  uint8_t bit;
+
+  for (i = 0U; i < DISPLAY_RENDERER_BUFFER_SIZE; ++i)
+  {
+    for (bit = 0U; bit < 8U; ++bit)
+    {
+      if ((s_display_framebuffer[i] & (uint8_t)(1U << bit)) == 0U)
+      {
+        ++count;
+      }
+    }
+  }
+  return count;
+}
+
+static void DisplayRenderer_SetPanelPixelWhite(uint16_t panel_x,
+                                               uint16_t panel_y)
+{
+  uint32_t index;
+  uint8_t mask;
+
+  if ((panel_x >= DISPLAY_WIDTH) || (panel_y >= DISPLAY_HEIGHT))
+  {
+    return;
+  }
+
+  index = ((uint32_t)panel_y * LINE_WIDTH) + ((uint32_t)panel_x >> 3U);
+  mask = (uint8_t)(1U << (panel_x & 7U));
+  s_display_framebuffer[index] |= mask;
+}
+
+static void DisplayRenderer_ClearPanelRegion(
+  const display_renderer_panel_region_t *region)
+{
+  uint16_t row;
+  uint16_t column;
+  uint16_t row_end;
+  uint16_t column_end;
+
+  if ((region == NULL) || (region->row_count == 0U) ||
+      (region->column_count == 0U) || (region->start_row == 0U))
+  {
+    return;
+  }
+
+  row_end = (uint16_t)(region->start_row + region->row_count - 1U);
+  column_end = (uint16_t)(region->start_column + region->column_count);
+  if ((row_end > DISPLAY_HEIGHT) || (column_end > DISPLAY_WIDTH))
+  {
+    return;
+  }
+
+  for (row = region->start_row; row <= row_end; ++row)
+  {
+    for (column = region->start_column; column < column_end; ++column)
+    {
+      DisplayRenderer_SetPanelPixelWhite(column, (uint16_t)(row - 1U));
+    }
+  }
+}
+
 static void DisplayRenderer_InvalidateLpbamCursorRegion(void)
 {
   (void)memset(&s_lpbam_cursor_panel_region, 0,
@@ -159,6 +226,20 @@ static void DisplayRenderer_RecordLpbamCursorRegion(uint32_t row)
   s_lpbam_cursor_panel_region_valid = 1UL;
 }
 
+static void DisplayRenderer_RecordCursorBaseFrame(void)
+{
+  if (s_lpbam_cursor_panel_region_valid == 0UL)
+  {
+    s_display_cursor_base_valid = 0UL;
+    return;
+  }
+
+  (void)memcpy(s_display_cursor_base_framebuffer,
+               s_display_framebuffer,
+               sizeof(s_display_cursor_base_framebuffer));
+  s_display_cursor_base_valid = 1UL;
+}
+
 static void DisplayRenderer_FillStats(display_renderer_stats_t *stats,
                                       uint32_t black_pixels)
 {
@@ -206,6 +287,31 @@ void DisplayRenderer_CommitPresentedFrame(void)
                s_display_framebuffer,
                sizeof(s_display_committed_framebuffer));
   s_display_committed_valid = 1UL;
+}
+
+uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
+  uint32_t visible,
+  display_renderer_stats_t *stats)
+{
+  if ((s_display_cursor_base_valid == 0UL) ||
+      (s_lpbam_cursor_panel_region_valid == 0UL))
+  {
+    DisplayRenderer_ResetDirtyRows();
+    DisplayRenderer_FillStats(stats, DisplayRenderer_CountBlackPixels());
+    return 0UL;
+  }
+
+  (void)memcpy(s_display_framebuffer,
+               s_display_cursor_base_framebuffer,
+               sizeof(s_display_framebuffer));
+  if (visible == 0UL)
+  {
+    DisplayRenderer_ClearPanelRegion(&s_lpbam_cursor_panel_region);
+  }
+
+  DisplayRenderer_ComputeDirtyRowsFromCommitted();
+  DisplayRenderer_FillStats(stats, DisplayRenderer_CountBlackPixels());
+  return 1UL;
 }
 
 uint32_t DisplayRenderer_GetLpbamCursorPanelRegion(
@@ -787,6 +893,7 @@ void DisplayRenderer_PrepareUIPage(
                          &list);
   black_pixels += DisplayRenderer_DrawList(&list);
   s_rotate_ccw = 0UL;
+  DisplayRenderer_RecordCursorBaseFrame();
 
   DisplayRenderer_ComputeDirtyRowsFromCommitted();
   DisplayRenderer_FillStats(stats, black_pixels);

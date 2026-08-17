@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (19UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (20UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -170,6 +170,11 @@ typedef struct
   uint32_t display_ui_shutdown_state;
   uint32_t display_ui_shutdown_countdown_seconds;
   uint32_t display_ui_status;
+  uint32_t display_blink_request_count;
+  uint32_t display_blink_render_count;
+  uint32_t display_blink_tick;
+  uint32_t display_blink_phase;
+  uint32_t display_blink_status;
   uint32_t display_lpbam_ready;
   uint32_t display_lpbam_ready_page;
   uint32_t display_lpbam_ready_render_count;
@@ -264,6 +269,7 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   uint32_t focus_index,
   uint32_t shutdown_state,
   uint32_t shutdown_countdown_seconds);
+HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderCursorBlink(uint32_t visible);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2(void);
 void PS_HW6_DisplayOwner_DebugForceNextLpbamReady(void);

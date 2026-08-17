@@ -21,6 +21,7 @@
   "debug_swo_lifecycle_enable": true,
   "debug_tracex_buffer_bytes": 32768,
   "debug_tracex_registry_entries": 64,
+  "display_cursor_blink_period_ms": 250,
   "rtos_default_stack_bytes": 1024,
   "rtos_power_stack_bytes": 4096,
   "rtos_input_stack_bytes": 1536,

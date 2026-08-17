@@ -25,10 +25,12 @@
 #define PS_HW6_DISPLAY_PATTERN_ID           (0x54455354UL)
 #define PS_HW6_DISPLAY_PRESENT_TIMEOUT_MS   (250U)
 #define PS_HW6_DISPLAY_UI_PATTERN_ID         (0x55495047UL)
+#define PS_HW6_DISPLAY_BLINK_PATTERN_ID      (0x424C4E4BUL)
 #define PS_HW6_DISPLAY_LPBAM_CLEAR_PATTERN   (1UL)
 #define PS_HW6_DISPLAY_LPBAM_CLEAR_BOOT_HOLD (2UL)
 #define PS_HW6_DISPLAY_LPBAM_CLEAR_UI_RENDER (3UL)
 #define PS_HW6_DISPLAY_LPBAM_CLEAR_ABORT     (4UL)
+#define PS_HW6_DISPLAY_LPBAM_CLEAR_BLINK     (5UL)
 #define PS_HW6_DISPLAY_LPBAM_LPTIM_250MS_ARR (7812U)
 #define PS_HW6_DISPLAY_LPBAM_LPTIM_250MS_CMP (3906U)
 #define PS_HW6_DISPLAY_DRIVER_API_VERSION    (1UL)
@@ -625,6 +627,17 @@ static void PS_HW6_PrepareDisplayUIPage(uint32_t page,
     PS_HW6_DISPLAY_UI_PATTERN_ID, &stats);
 }
 
+static uint32_t PS_HW6_PrepareDisplayCursorBlink(uint32_t visible)
+{
+  display_renderer_stats_t stats;
+  uint32_t ready;
+
+  ready = DisplayRenderer_PrepareCursorBlinkFrame(visible, &stats);
+  PS_HW6_DisplayOwner_ApplyRendererStats(
+    PS_HW6_DISPLAY_BLINK_PATTERN_ID, &stats);
+  return ready;
+}
+
 static void PS_HW6_PrepareDisplayPattern(void)
 {
   display_renderer_stats_t stats;
@@ -678,6 +691,8 @@ UINT PS_HW6_OwnerServices_Init(void)
   g_ps_hw6_owner_probe.display_ack_set_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.display_ui_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_blink_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.display_lpbam_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
@@ -1263,6 +1278,62 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
       (g_ps_hw6_owner_probe.display_dma_error_after == HAL_DMA_ERROR_NONE))
   {
     g_ps_hw6_owner_probe.display_ui_render_count++;
+    g_ps_hw6_owner_probe.display_success = 1UL;
+    return HAL_OK;
+  }
+
+  return HAL_ERROR;
+}
+
+HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderCursorBlink(uint32_t visible)
+{
+  HAL_StatusTypeDef driver_status;
+  uint32_t renderer_ready;
+
+  g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_DISPLAY;
+  PS_HW6_DisplayOwner_ClearLpbamReadiness(
+    PS_HW6_DISPLAY_LPBAM_CLEAR_BLINK);
+  g_ps_hw6_owner_probe.display_blink_request_count++;
+  g_ps_hw6_owner_probe.display_blink_tick = (uint32_t)tx_time_get();
+  g_ps_hw6_owner_probe.display_blink_phase = (visible == 0UL) ? 0UL : 1UL;
+  g_ps_hw6_owner_probe.display_rtc_state = HAL_RTC_GetState(&hrtc);
+  g_ps_hw6_owner_probe.display_rtc_cr = hrtc.Instance->CR;
+  g_ps_hw6_owner_probe.display_spi_state_before = HAL_SPI_GetState(&hspi3);
+
+  renderer_ready = PS_HW6_PrepareDisplayCursorBlink(visible);
+  if (renderer_ready == 0UL)
+  {
+    g_ps_hw6_owner_probe.display_blink_status =
+      PS_HW6_OWNER_STATUS_UNAVAILABLE;
+    PS_HW6_UpdateDisplayDriverProbe();
+    return HAL_ERROR;
+  }
+
+  g_ps_hw6_owner_probe.display_complete = 0UL;
+  g_ps_hw6_owner_probe.display_success = 0UL;
+  driver_status = PS_HW6_DisplayOwner_PresentRendererRows(
+    &g_ps_hw6_owner_probe.display_init_status,
+    &g_ps_hw6_owner_probe.display_present_status);
+
+  g_ps_hw6_owner_probe.display_dma_done = LCD_FlushDMA_IsDone() ? 1UL : 0UL;
+  g_ps_hw6_owner_probe.display_spi_state_after = HAL_SPI_GetState(&hspi3);
+  g_ps_hw6_owner_probe.display_spi_error_after = HAL_SPI_GetError(&hspi3);
+  g_ps_hw6_owner_probe.display_dma_state_after =
+    HAL_DMA_GetState(&handle_LPDMA1_Channel0);
+  g_ps_hw6_owner_probe.display_dma_error_after =
+    HAL_DMA_GetError(&handle_LPDMA1_Channel0);
+  g_ps_hw6_owner_probe.display_blink_status = (uint32_t)driver_status;
+  PS_HW6_UpdateDisplayDriverProbe();
+  g_ps_hw6_owner_probe.display_complete = 1UL;
+
+  if ((driver_status == HAL_OK) &&
+      (g_ps_hw6_owner_probe.display_dma_done != 0UL) &&
+      (g_ps_hw6_owner_probe.display_rtc_state == HAL_RTC_STATE_READY) &&
+      ((g_ps_hw6_owner_probe.display_rtc_cr & RTC_CR_COE) != 0UL) &&
+      (g_ps_hw6_owner_probe.display_spi_error_after == HAL_SPI_ERROR_NONE) &&
+      (g_ps_hw6_owner_probe.display_dma_error_after == HAL_DMA_ERROR_NONE))
+  {
+    g_ps_hw6_owner_probe.display_blink_render_count++;
     g_ps_hw6_owner_probe.display_success = 1UL;
     return HAL_OK;
   }

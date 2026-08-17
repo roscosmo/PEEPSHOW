@@ -37,6 +37,9 @@ void DisplayRenderer_ClearWhite(void);
 const uint8_t *DisplayRenderer_GetBuffer(void);
 uint32_t DisplayRenderer_GetDirtyRows(const uint16_t **rows);
 void DisplayRenderer_CommitPresentedFrame(void);
+uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
+  uint32_t visible,
+  display_renderer_stats_t *stats);
 uint32_t DisplayRenderer_FramebufferHash(void);
 uint32_t DisplayRenderer_GetLpbamCursorPanelRegion(
   display_renderer_panel_region_t *region);

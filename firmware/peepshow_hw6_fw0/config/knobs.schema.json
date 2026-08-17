@@ -27,6 +27,7 @@
     "debug_swo_lifecycle_enable",
     "debug_tracex_buffer_bytes",
     "debug_tracex_registry_entries",
+    "display_cursor_blink_period_ms",
     "rtos_default_stack_bytes",
     "rtos_power_stack_bytes",
     "rtos_input_stack_bytes",
@@ -325,6 +326,18 @@
       "class": "debug_visibility",
       "path": "platform.knobs.debug.tracex_registry_entries",
       "description": "TraceX object registry slots reserved for ThreadX objects visible in the capture."
+    },
+    "display_cursor_blink_period_ms": {
+      "type": "integer",
+      "minimum": 50,
+      "maximum": 5000,
+      "default": 250,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thDisplay",
+      "class": "protected_policy",
+      "path": "platform.knobs.display.cursor_blink_period_ms",
+      "description": "Awake cursor waiting-visual blink cadence. Default 250 ms matches the current LPBAM cursor bring-up cadence."
     },
     "rtos_default_stack_bytes": {
       "type": "integer",
