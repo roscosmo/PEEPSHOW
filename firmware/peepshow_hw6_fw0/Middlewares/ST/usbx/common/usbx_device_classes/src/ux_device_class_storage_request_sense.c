@@ -159,27 +159,14 @@ ULONG                   sense_length;
 
     /* Send a data payload with the sense codes.  */
     if (sense_length)
-    {
-        status = _ux_device_stack_transfer_request(transfer_request, sense_length, sense_length);
-        if (status != UX_SUCCESS)
-        {
-            storage -> ux_slave_class_storage_lun[lun].ux_slave_class_storage_request_sense_status =
-                                                UX_DEVICE_CLASS_STORAGE_SENSE_STATUS(0x02,0x54,0x00);
-            storage -> ux_slave_class_storage_csw_status = UX_SLAVE_CLASS_STORAGE_CSW_FAILED;
-            storage -> ux_slave_class_storage_csw_residue = storage -> ux_slave_class_storage_host_length;
-            return(status);
-        }
-    }
+        _ux_device_stack_transfer_request(transfer_request, sense_length, sense_length);
 
     /* Check length.  */
     if (storage -> ux_slave_class_storage_host_length != sense_length)
     {
         _ux_device_stack_endpoint_stall(endpoint_in);
         storage -> ux_slave_class_storage_csw_status = UX_SLAVE_CLASS_STORAGE_CSW_PHASE_ERROR;
-        return(UX_ERROR);
     }
-
-    storage -> ux_slave_class_storage_csw_status = UX_SLAVE_CLASS_STORAGE_CSW_PASSED;
 #endif
 
     /* Return completion status.  */    

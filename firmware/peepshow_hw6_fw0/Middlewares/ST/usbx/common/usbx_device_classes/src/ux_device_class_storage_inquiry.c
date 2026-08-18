@@ -101,7 +101,6 @@ UINT                    status = UX_SUCCESS;
 UX_SLAVE_TRANSFER       *transfer_request;
 UCHAR                   inquiry_page_code;
 ULONG                   inquiry_length;
-ULONG                   host_length;
 UCHAR                   *inquiry_buffer;
 
     UX_PARAMETER_NOT_USED(endpoint_out);
@@ -124,11 +123,8 @@ UCHAR                   *inquiry_buffer;
     /* From the SCSI Inquiry payload, get the page code.  */
     inquiry_page_code =  *(cbwcb + UX_SLAVE_CLASS_STORAGE_INQUIRY_PAGE_CODE);
     
-    /* Host transfer length from CBW.  */
-    host_length = storage -> ux_slave_class_storage_host_length;
-
     /* And the length to be returned. */
-    inquiry_length = host_length;
+    inquiry_length =  storage -> ux_slave_class_storage_host_length;
 
     /* Obtain the pointer to the transfer request.  */
     transfer_request =  &endpoint_in -> ux_slave_endpoint_transfer_request;
@@ -164,10 +160,9 @@ UCHAR                   *inquiry_buffer;
         else
             inquiry_buffer[UX_SLAVE_CLASS_STORAGE_INQUIRY_RESPONSE_DATA_FORMAT] =  0x00;
 
-        /* Store Additional Length (bytes following this field).  */
+        /* Store the length of the response.  There is a hack here. For CD-ROM, the data lg is fixed to 0x5B !  */
         if (storage -> ux_slave_class_storage_lun[lun].ux_slave_class_storage_media_type != UX_SLAVE_CLASS_STORAGE_MEDIA_CDROM)
-            inquiry_buffer[UX_SLAVE_CLASS_STORAGE_INQUIRY_RESPONSE_ADDITIONAL_LENGTH] =
-                    (UCHAR)(UX_SLAVE_CLASS_STORAGE_INQUIRY_RESPONSE_LENGTH - 5U);
+            inquiry_buffer[UX_SLAVE_CLASS_STORAGE_INQUIRY_RESPONSE_ADDITIONAL_LENGTH] =  UX_SLAVE_CLASS_STORAGE_INQUIRY_RESPONSE_LENGTH;
         else            
             inquiry_buffer[UX_SLAVE_CLASS_STORAGE_INQUIRY_RESPONSE_ADDITIONAL_LENGTH] =  UX_SLAVE_CLASS_STORAGE_INQUIRY_RESPONSE_LENGTH_CD_ROM;
 
@@ -241,22 +236,14 @@ UCHAR                   *inquiry_buffer;
 
     /* Send a data payload with the inquiry response buffer.  */
     if (inquiry_length)
-    {
-        status = _ux_device_stack_transfer_request(transfer_request, inquiry_length, host_length);
-        if (status != UX_SUCCESS)
-        {
-            storage -> ux_slave_class_storage_lun[lun].ux_slave_class_storage_request_sense_status =
-                                            UX_DEVICE_CLASS_STORAGE_SENSE_STATUS(0x02,0x54,0x00);
-            storage -> ux_slave_class_storage_csw_status = UX_SLAVE_CLASS_STORAGE_CSW_FAILED;
-            return(status);
-        }
-    }
+        _ux_device_stack_transfer_request(transfer_request, inquiry_length, inquiry_length);
 
-    /* Report short INQUIRY data through residue only.  */
-    if (host_length > inquiry_length)
-        storage -> ux_slave_class_storage_csw_residue = host_length - inquiry_length;
-    else
-        storage -> ux_slave_class_storage_csw_residue = 0U;
+    /* Check length.  */
+    if (storage -> ux_slave_class_storage_host_length != inquiry_length)
+    {
+        storage -> ux_slave_class_storage_csw_residue = storage -> ux_slave_class_storage_host_length - inquiry_length;
+        _ux_device_stack_endpoint_stall(endpoint_in);
+    }
 #endif
 
     /* Return completion status.  */

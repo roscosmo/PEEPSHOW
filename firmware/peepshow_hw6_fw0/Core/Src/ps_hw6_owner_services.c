@@ -67,6 +67,7 @@ static uint32_t ps_hw6_display_driver_state;
 static uint32_t ps_hw6_display_driver_operation_count;
 static uint32_t ps_hw6_display_driver_last_status;
 static uint32_t ps_hw6_display_lpbam_debug_force_ready_once;
+static uint32_t ps_hw6_display_lpbam_prearmed;
 static uint32_t ps_hw6_display_lpbam_active;
 static int16_t ps_hw6_audio_buffer[PS_HW6_AUDIO_BUFFER_HALFWORDS]
   __attribute__((aligned(4)));
@@ -220,6 +221,11 @@ static void PS_HW6_DisplayOwner_ApplyRendererStats(
   g_ps_hw6_owner_probe.display_dirty_row_count = stats->dirty_row_count;
   g_ps_hw6_owner_probe.display_dirty_first_row = stats->dirty_first_row;
   g_ps_hw6_owner_probe.display_dirty_last_row = stats->dirty_last_row;
+  g_ps_hw6_owner_probe.display_renderer_primitive_id = stats->primitive_id;
+  g_ps_hw6_owner_probe.display_renderer_previous_focus_row =
+    stats->previous_focus_row;
+  g_ps_hw6_owner_probe.display_renderer_current_focus_row =
+    stats->current_focus_row;
 }
 static void PS_HW6_UpdateAudioDriverProbe(void)
 {
@@ -245,7 +251,14 @@ static void PS_HW6_DisplayOwner_ClearLpbamReadiness(uint32_t reason)
 
 static void PS_HW6_DisplayOwner_ResetLpbamPrepareProbe(void)
 {
+  g_ps_hw6_owner_probe.display_lpbam_prearmed =
+    ps_hw6_display_lpbam_prearmed;
   g_ps_hw6_owner_probe.display_lpbam_active = ps_hw6_display_lpbam_active;
+  g_ps_hw6_owner_probe.display_lpbam_animation_id =
+    DISPLAY_RENDERER_ANIMATION_NONE;
+  g_ps_hw6_owner_probe.display_lpbam_source_primitive_id =
+    DISPLAY_RENDERER_PRIMITIVE_NONE;
+  g_ps_hw6_owner_probe.display_lpbam_focus_row = DISPLAY_RENDERER_ROW_NONE;
   g_ps_hw6_owner_probe.display_lpbam_cursor_start_row = 0UL;
   g_ps_hw6_owner_probe.display_lpbam_cursor_row_count = 0UL;
   g_ps_hw6_owner_probe.display_lpbam_cursor_start_column = 0UL;
@@ -258,6 +271,10 @@ static void PS_HW6_DisplayOwner_ResetLpbamPrepareProbe(void)
   g_ps_hw6_owner_probe.display_lpbam_clock_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.display_lpbam_link_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_prearm_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_commit_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.display_lpbam_start_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
@@ -293,6 +310,18 @@ static void PS_HW6_DisplayOwner_ResetLpbamPrepareProbe(void)
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.display_lpbam_spi_autocr_after =
     PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_spi_kernel_hz =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_spi_init_direction =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_spi_init_prescaler =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_spi_init_ss_idleness =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_spi_cfg1_after_init =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_spi_cfg2_after_init =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.display_lpbam_dma_state_after_start =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.display_lpbam_dma_error_after_start =
@@ -308,6 +337,27 @@ static void PS_HW6_DisplayOwner_ResetLpbamPrepareProbe(void)
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.display_lpbam_restore_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
+}
+
+static void PS_HW6_DisplayOwner_RecordLpbamSpiInitProbe(void)
+{
+  if (hspi3.Instance == NULL)
+  {
+    return;
+  }
+
+  g_ps_hw6_owner_probe.display_lpbam_spi_kernel_hz =
+    HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SPI3);
+  g_ps_hw6_owner_probe.display_lpbam_spi_init_direction =
+    hspi3.Init.Direction;
+  g_ps_hw6_owner_probe.display_lpbam_spi_init_prescaler =
+    hspi3.Init.BaudRatePrescaler;
+  g_ps_hw6_owner_probe.display_lpbam_spi_init_ss_idleness =
+    hspi3.Init.MasterSSIdleness;
+  g_ps_hw6_owner_probe.display_lpbam_spi_cfg1_after_init =
+    hspi3.Instance->CFG1;
+  g_ps_hw6_owner_probe.display_lpbam_spi_cfg2_after_init =
+    hspi3.Instance->CFG2;
 }
 
 static HAL_StatusTypeDef PS_HW6_DisplayOwner_EnableLpbamAutonomousClocks(void)
@@ -342,6 +392,7 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_EnableLpbamAutonomousClocks(void)
   {
     return HAL_ERROR;
   }
+  PS_HW6_DisplayOwner_RecordLpbamSpiInitProbe();
   g_ps_hw6_owner_probe.display_lpbam_spi_autocr_after =
     hspi3.Instance->AUTOCR;
 
@@ -390,6 +441,19 @@ static void PS_HW6_DisplayOwner_SetLptimBaseInit(uint32_t prescaler,
   hlptim1.Init.RepetitionCounter = 0UL;
 }
 
+static HAL_StatusTypeDef PS_HW6_DisplayOwner_WaitLptimFlag(uint32_t flag)
+{
+  for (uint32_t spin = 0U; spin < 100000U; ++spin)
+  {
+    if (__HAL_LPTIM_GET_FLAG(&hlptim1, flag) != RESET)
+    {
+      return HAL_OK;
+    }
+  }
+
+  return HAL_TIMEOUT;
+}
+
 static HAL_StatusTypeDef PS_HW6_DisplayOwner_ConfigLpbamLptim(void)
 {
   LPTIM_OC_ConfigTypeDef oc = {0};
@@ -407,12 +471,37 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_ConfigLpbamLptim(void)
     (void)HAL_LPTIM_DeInit(&hlptim1);
   }
 
-  PS_HW6_DisplayOwner_SetLptimBaseInit(
-    LPTIM_PRESCALER_DIV128,
-    PS_HW6_DISPLAY_LPBAM_LPTIM_250MS_ARR);
+  PS_HW6_DisplayOwner_SetLptimBaseInit(LPTIM_PRESCALER_DIV1, 65535UL);
   status = HAL_LPTIM_Init(&hlptim1);
   g_ps_hw6_owner_probe.display_lpbam_lptim_init_status =
     (uint32_t)status;
+  if (status != HAL_OK)
+  {
+    PS_HW6_DisplayOwner_RecordLptimConfigProbe();
+    return status;
+  }
+
+  oc.Pulse = 0UL;
+  oc.OCPolarity = LPTIM_OCPOLARITY_HIGH;
+  status = HAL_LPTIM_OC_ConfigChannel(&hlptim1, &oc, LPTIM_CHANNEL_1);
+  g_ps_hw6_owner_probe.display_lpbam_lptim_oc_status =
+    (uint32_t)status;
+  if (status != HAL_OK)
+  {
+    PS_HW6_DisplayOwner_RecordLptimConfigProbe();
+    return status;
+  }
+
+  __HAL_LPTIM_DISABLE(&hlptim1);
+  MODIFY_REG(hlptim1.Instance->CFGR,
+             LPTIM_CFGR_PRESC,
+             LPTIM_PRESCALER_DIV128);
+  __HAL_LPTIM_ENABLE(&hlptim1);
+
+  __HAL_LPTIM_CLEAR_FLAG(&hlptim1, LPTIM_FLAG_ARROK);
+  __HAL_LPTIM_AUTORELOAD_SET(&hlptim1,
+                             PS_HW6_DISPLAY_LPBAM_LPTIM_250MS_ARR);
+  status = PS_HW6_DisplayOwner_WaitLptimFlag(LPTIM_FLAG_ARROK);
   g_ps_hw6_owner_probe.display_lpbam_lptim_arr_status =
     (uint32_t)status;
   if (status != HAL_OK)
@@ -421,11 +510,11 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_ConfigLpbamLptim(void)
     return status;
   }
 
-  oc.Pulse = PS_HW6_DISPLAY_LPBAM_LPTIM_250MS_CMP;
-  oc.OCPolarity = LPTIM_OCPOLARITY_HIGH;
-  status = HAL_LPTIM_OC_ConfigChannel(&hlptim1, &oc, LPTIM_CHANNEL_1);
-  g_ps_hw6_owner_probe.display_lpbam_lptim_oc_status =
-    (uint32_t)status;
+  __HAL_LPTIM_CLEAR_FLAG(&hlptim1, LPTIM_FLAG_CMP1OK);
+  __HAL_LPTIM_COMPARE_SET(&hlptim1,
+                          LPTIM_CHANNEL_1,
+                          PS_HW6_DISPLAY_LPBAM_LPTIM_250MS_CMP);
+  status = PS_HW6_DisplayOwner_WaitLptimFlag(LPTIM_FLAG_CMP1OK);
   g_ps_hw6_owner_probe.display_lpbam_lptim_cmp_status =
     (uint32_t)status;
   PS_HW6_DisplayOwner_RecordLptimConfigProbe();
@@ -487,6 +576,16 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_LinkLpbamQueue(void)
   return status;
 }
 
+static HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortDisplaySpiAfterLpbam(void)
+{
+  if (hspi3.Instance == NULL)
+  {
+    return HAL_ERROR;
+  }
+
+  return HAL_SPI_Abort(&hspi3);
+}
+
 static HAL_StatusTypeDef PS_HW6_DisplayOwner_RestoreDisplaySpiAfterLpbam(void)
 {
   SPI_AutonomousModeConfTypeDef autonomous = {0};
@@ -511,7 +610,7 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_RestoreDisplaySpiAfterLpbam(void)
   }
 
   autonomous.TriggerState = SPI_AUTO_MODE_DISABLE;
-  autonomous.TriggerSelection = SPI_GRP2_LPDMA_CH0_TCF_TRG;
+  autonomous.TriggerSelection = SPI_GRP2_LPTIM1_CH1_TRG;
   autonomous.TriggerPolarity = SPI_TRIG_POLARITY_RISING;
   return HAL_SPIEx_SetConfigAutonomousMode(&hspi3, &autonomous);
 }
@@ -526,18 +625,29 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_StopLpbamPlayback(void)
   HAL_StatusTypeDef restore_status;
   HAL_StatusTypeDef final_status = HAL_OK;
 
-  if (ps_hw6_display_lpbam_active == 0UL)
+  if ((ps_hw6_display_lpbam_active == 0UL) &&
+      (ps_hw6_display_lpbam_prearmed == 0UL))
   {
+    g_ps_hw6_owner_probe.display_lpbam_prearmed = 0UL;
     g_ps_hw6_owner_probe.display_lpbam_active = 0UL;
     return HAL_OK;
   }
 
-  lptim_status = HAL_LPTIM_PWM_Stop(&hlptim1, LPTIM_CHANNEL_1);
+  if (ps_hw6_display_lpbam_active != 0UL)
+  {
+    lptim_status = HAL_LPTIM_PWM_Stop(&hlptim1, LPTIM_CHANNEL_1);
+    dma_status = HAL_DMA_Abort(&handle_LPDMA1_Channel0);
+    spi_status = PS_HW6_DisplayOwner_AbortDisplaySpiAfterLpbam();
+  }
+  else
+  {
+    lptim_status = HAL_OK;
+    dma_status = HAL_OK;
+    spi_status = HAL_OK;
+  }
   g_ps_hw6_owner_probe.display_lpbam_abort_lptim_status =
     (uint32_t)lptim_status;
   __HAL_LPTIM_DISABLE(&hlptim1);
-
-  dma_status = HAL_DMA_Abort(&handle_LPDMA1_Channel0);
   g_ps_hw6_owner_probe.display_lpbam_abort_dma_status =
     (uint32_t)dma_status;
 
@@ -545,7 +655,6 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_StopLpbamPlayback(void)
   g_ps_hw6_owner_probe.display_lpbam_abort_unlink_status =
     (uint32_t)unlink_status;
 
-  spi_status = HAL_SPI_Abort(&hspi3);
   g_ps_hw6_owner_probe.display_lpbam_abort_spi_status =
     (uint32_t)spi_status;
 
@@ -564,12 +673,14 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_StopLpbamPlayback(void)
     final_status = HAL_ERROR;
   }
 
+  ps_hw6_display_lpbam_prearmed = 0UL;
   ps_hw6_display_lpbam_active = 0UL;
+  g_ps_hw6_owner_probe.display_lpbam_prearmed = 0UL;
   g_ps_hw6_owner_probe.display_lpbam_active = 0UL;
   return final_status;
 }
 
-static HAL_StatusTypeDef PS_HW6_DisplayOwner_StartLpbamPlayback(void)
+static HAL_StatusTypeDef PS_HW6_DisplayOwner_PrearmLpbamPlayback(void)
 {
   HAL_StatusTypeDef status;
 
@@ -581,6 +692,31 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_StartLpbamPlayback(void)
     return status;
   }
 
+  ps_hw6_display_lpbam_prearmed = 1UL;
+  g_ps_hw6_owner_probe.display_lpbam_prearmed = 1UL;
+  return HAL_OK;
+}
+
+HAL_StatusTypeDef PS_HW6_DisplayOwner_CommitLpbamStop2(void)
+{
+  HAL_StatusTypeDef status;
+
+  g_ps_hw6_owner_probe.display_lpbam_commit_count++;
+  g_ps_hw6_owner_probe.display_lpbam_commit_tick =
+    (uint32_t)tx_time_get();
+
+  if ((ps_hw6_display_lpbam_prearmed == 0UL) ||
+      (ps_hw6_display_lpbam_active != 0UL) ||
+      (g_ps_hw6_owner_probe.display_lpbam_ready == 0UL) ||
+      (g_ps_hw6_owner_probe.display_lpbam_status != (uint32_t)HAL_OK))
+  {
+    g_ps_hw6_owner_probe.display_lpbam_commit_status =
+      (uint32_t)HAL_ERROR;
+    g_ps_hw6_owner_probe.display_lpbam_start_status =
+      (uint32_t)HAL_ERROR;
+    return HAL_ERROR;
+  }
+
   status = HAL_DMAEx_List_Start(&handle_LPDMA1_Channel0);
   g_ps_hw6_owner_probe.display_lpbam_dma_start_status =
     (uint32_t)status;
@@ -590,10 +726,16 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_StartLpbamPlayback(void)
     handle_LPDMA1_Channel0.ErrorCode;
   if (status != HAL_OK)
   {
+    g_ps_hw6_owner_probe.display_lpbam_commit_status =
+      (uint32_t)status;
+    g_ps_hw6_owner_probe.display_lpbam_start_status =
+      (uint32_t)status;
     return status;
   }
 
+  ps_hw6_display_lpbam_prearmed = 0UL;
   ps_hw6_display_lpbam_active = 1UL;
+  g_ps_hw6_owner_probe.display_lpbam_prearmed = 0UL;
   g_ps_hw6_owner_probe.display_lpbam_active = 1UL;
   __HAL_LPTIM_RESET_COUNTER(&hlptim1);
   status = HAL_LPTIM_PWM_Start(&hlptim1, LPTIM_CHANNEL_1);
@@ -601,11 +743,17 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_StartLpbamPlayback(void)
     (uint32_t)status;
   if (status != HAL_OK)
   {
+    g_ps_hw6_owner_probe.display_lpbam_commit_status =
+      (uint32_t)status;
+    g_ps_hw6_owner_probe.display_lpbam_start_status =
+      (uint32_t)status;
     return status;
   }
 
-  ps_hw6_display_lpbam_active = 1UL;
-  g_ps_hw6_owner_probe.display_lpbam_active = 1UL;
+  g_ps_hw6_owner_probe.display_lpbam_commit_status =
+    (uint32_t)HAL_OK;
+  g_ps_hw6_owner_probe.display_lpbam_start_status =
+    (uint32_t)HAL_OK;
   return HAL_OK;
 }
 
@@ -625,6 +773,11 @@ static void PS_HW6_PrepareDisplayUIPage(uint32_t page,
                                 &stats);
   PS_HW6_DisplayOwner_ApplyRendererStats(
     PS_HW6_DISPLAY_UI_PATTERN_ID, &stats);
+  g_ps_hw6_owner_probe.display_ui_primitive_id = stats.primitive_id;
+  g_ps_hw6_owner_probe.display_ui_previous_focus_row =
+    stats.previous_focus_row;
+  g_ps_hw6_owner_probe.display_ui_current_focus_row =
+    stats.current_focus_row;
 }
 
 static uint32_t PS_HW6_PrepareDisplayCursorBlink(uint32_t visible)
@@ -692,6 +845,14 @@ UINT PS_HW6_OwnerServices_Init(void)
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.display_ui_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_renderer_previous_focus_row =
+    DISPLAY_RENDERER_ROW_NONE;
+  g_ps_hw6_owner_probe.display_renderer_current_focus_row =
+    DISPLAY_RENDERER_ROW_NONE;
+  g_ps_hw6_owner_probe.display_ui_previous_focus_row =
+    DISPLAY_RENDERER_ROW_NONE;
+  g_ps_hw6_owner_probe.display_ui_current_focus_row =
+    DISPLAY_RENDERER_ROW_NONE;
   g_ps_hw6_owner_probe.display_blink_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.display_lpbam_status =
@@ -701,6 +862,7 @@ UINT PS_HW6_OwnerServices_Init(void)
   g_ps_hw6_owner_probe.display_lpbam_prepare_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   ps_hw6_display_lpbam_debug_force_ready_once = 0UL;
+  ps_hw6_display_lpbam_prearmed = 0UL;
   ps_hw6_display_lpbam_active = 0UL;
   PS_HW6_DisplayOwner_ResetLpbamPrepareProbe();
   g_ps_hw6_owner_probe.display_lpbam_abort_status =
@@ -1193,6 +1355,18 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearBootHold(void)
   g_ps_hw6_owner_probe.display_dirty_row_count = DISPLAY_HEIGHT;
   g_ps_hw6_owner_probe.display_dirty_first_row = 1UL;
   g_ps_hw6_owner_probe.display_dirty_last_row = DISPLAY_HEIGHT;
+  g_ps_hw6_owner_probe.display_renderer_primitive_id =
+    DISPLAY_RENDERER_PRIMITIVE_NONE;
+  g_ps_hw6_owner_probe.display_renderer_previous_focus_row =
+    DISPLAY_RENDERER_ROW_NONE;
+  g_ps_hw6_owner_probe.display_renderer_current_focus_row =
+    DISPLAY_RENDERER_ROW_NONE;
+  g_ps_hw6_owner_probe.display_ui_primitive_id =
+    DISPLAY_RENDERER_PRIMITIVE_NONE;
+  g_ps_hw6_owner_probe.display_ui_previous_focus_row =
+    DISPLAY_RENDERER_ROW_NONE;
+  g_ps_hw6_owner_probe.display_ui_current_focus_row =
+    DISPLAY_RENDERER_ROW_NONE;
 
   driver_status = PS_HW6_DisplayOwner_ClearPanel(&clear_hal_status);
   if (driver_status == HAL_OK)
@@ -1341,8 +1515,9 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderCursorBlink(uint32_t visible)
   return HAL_ERROR;
 }
 
-HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2(void)
+static HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2WithCursorPhase(uint32_t current_visible)
 {
+  display_renderer_animation_intent_t animation_intent;
   display_renderer_panel_region_t cursor_region;
   HAL_StatusTypeDef status;
   uint32_t chunk_total = 0UL;
@@ -1384,7 +1559,9 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2(void)
     return HAL_ERROR;
   }
 
-  if (DisplayRenderer_GetLpbamCursorPanelRegion(&cursor_region) == 0UL)
+  if ((DisplayRenderer_GetWaitingAnimationIntent(&animation_intent) == 0UL) ||
+      (animation_intent.animation_id !=
+       DISPLAY_RENDERER_ANIMATION_CURSOR_BLINK))
   {
     g_ps_hw6_owner_probe.display_lpbam_status =
       PS_HW6_OWNER_STATUS_UNAVAILABLE;
@@ -1393,7 +1570,15 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2(void)
     return HAL_ERROR;
   }
 
-  if (ps_hw6_display_lpbam_active != 0UL)
+  cursor_region = animation_intent.panel_region;
+  g_ps_hw6_owner_probe.display_lpbam_animation_id =
+    animation_intent.animation_id;
+  g_ps_hw6_owner_probe.display_lpbam_source_primitive_id =
+    animation_intent.source_primitive_id;
+  g_ps_hw6_owner_probe.display_lpbam_focus_row = animation_intent.focus_row;
+
+  if ((ps_hw6_display_lpbam_active != 0UL) ||
+      (ps_hw6_display_lpbam_prearmed != 0UL))
   {
     status = PS_HW6_DisplayOwner_StopLpbamPlayback();
     if (status != HAL_OK)
@@ -1414,12 +1599,13 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2(void)
   g_ps_hw6_owner_probe.display_lpbam_cursor_column_count =
     cursor_region.column_count;
 
-  status = PS_LpbamDisplay_BuildCursorBlinkBuffers(
+  status = PS_LpbamDisplay_BuildCursorBlinkBuffersFromFrame(
     DisplayRenderer_GetBuffer(),
     cursor_region.start_row,
     cursor_region.row_count,
     cursor_region.start_column,
-    cursor_region.column_count);
+    cursor_region.column_count,
+    (current_visible == 0UL) ? 0U : 1U);
   g_ps_hw6_owner_probe.display_lpbam_fill_status = (uint32_t)status;
   if (status != HAL_OK)
   {
@@ -1447,13 +1633,14 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2(void)
   }
   if (status == HAL_OK)
   {
-    status = PS_HW6_DisplayOwner_StartLpbamPlayback();
+    status = PS_HW6_DisplayOwner_PrearmLpbamPlayback();
   }
 
-  g_ps_hw6_owner_probe.display_lpbam_start_status = (uint32_t)status;
+  g_ps_hw6_owner_probe.display_lpbam_prearm_status = (uint32_t)status;
   if (status != HAL_OK)
   {
-    if (ps_hw6_display_lpbam_active != 0UL)
+    if ((ps_hw6_display_lpbam_active != 0UL) ||
+        (ps_hw6_display_lpbam_prearmed != 0UL))
     {
       (void)PS_HW6_DisplayOwner_StopLpbamPlayback();
     }
@@ -1484,6 +1671,18 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2(void)
   g_ps_hw6_owner_probe.display_lpbam_prepare_status =
     (uint32_t)HAL_OK;
   return HAL_OK;
+}
+
+HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2(void)
+{
+  return PS_HW6_DisplayOwner_PrepareLpbamStop2WithCursorPhase(0UL);
+}
+
+HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2ForCursorPhase(
+  uint32_t current_visible)
+{
+  return PS_HW6_DisplayOwner_PrepareLpbamStop2WithCursorPhase(
+    current_visible);
 }
 
 void PS_HW6_DisplayOwner_DebugForceNextLpbamReady(void)

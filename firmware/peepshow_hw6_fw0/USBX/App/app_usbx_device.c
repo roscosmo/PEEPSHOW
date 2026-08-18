@@ -103,10 +103,8 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
 
   /* USER CODE END MX_USBX_Device_Init0 */
   /* Allocate the stack for USBX Memory */
-  ret = tx_byte_allocate(byte_pool, (VOID **) &pointer,
-                         USBX_DEVICE_MEMORY_STACK_SIZE, TX_NO_WAIT);
-  g_ps_hw6_usbx_stack_alloc_status = ret;
-  if (ret != TX_SUCCESS)
+  if (tx_byte_allocate(byte_pool, (VOID **) &pointer,
+                       USBX_DEVICE_MEMORY_STACK_SIZE, TX_NO_WAIT) != TX_SUCCESS)
   {
     /* USER CODE BEGIN USBX_ALLOCATE_STACK_ERROR */
     g_ps_hw6_usbx_init_stage = 2U;
@@ -116,9 +114,7 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
   }
 
   /* Initialize USBX Memory */
-  ret = ux_system_initialize(pointer, USBX_DEVICE_MEMORY_STACK_SIZE, UX_NULL, 0);
-  g_ps_hw6_usbx_system_init_status = ret;
-  if (ret != UX_SUCCESS)
+  if (ux_system_initialize(pointer, USBX_DEVICE_MEMORY_STACK_SIZE, UX_NULL, 0) != UX_SUCCESS)
   {
     /* USER CODE BEGIN USBX_SYSTEM_INITIALIZE_ERROR */
     g_ps_hw6_usbx_init_stage = 3U;
@@ -130,23 +126,19 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
   /* Get Device Framework High Speed and get the length */
   device_framework_high_speed = USBD_Get_Device_Framework_Speed(USBD_HIGH_SPEED,
                                                                 &device_framework_hs_length);
-  g_ps_hw6_usbx_framework_hs_length = device_framework_hs_length;
 
   /* Get Device Framework Full Speed and get the length */
   device_framework_full_speed = USBD_Get_Device_Framework_Speed(USBD_FULL_SPEED,
                                                                 &device_framework_fs_length);
-  g_ps_hw6_usbx_framework_fs_length = device_framework_fs_length;
 
   /* Get String Framework and get the length */
   string_framework = USBD_Get_String_Framework(&string_framework_length);
-  g_ps_hw6_usbx_string_framework_length = string_framework_length;
 
   /* Get Language Id Framework and get the length */
   language_id_framework = USBD_Get_Language_Id_Framework(&language_id_framework_length);
-  g_ps_hw6_usbx_language_framework_length = language_id_framework_length;
 
   /* Install the device portion of USBX */
-  ret = ux_device_stack_initialize(device_framework_high_speed,
+  if (ux_device_stack_initialize(device_framework_high_speed,
                                  device_framework_hs_length,
                                  device_framework_full_speed,
                                  device_framework_fs_length,
@@ -154,9 +146,7 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
                                  string_framework_length,
                                  language_id_framework,
                                  language_id_framework_length,
-                                 UX_NULL);
-  g_ps_hw6_usbx_device_stack_status = ret;
-  if (ret != UX_SUCCESS)
+                                 UX_NULL) != UX_SUCCESS)
   {
     /* USER CODE BEGIN USBX_DEVICE_INITIALIZE_ERROR */
     g_ps_hw6_usbx_init_stage = 4U;
@@ -175,11 +165,9 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
   /* Initialize the storage class parameters for reading/writing to the Flash Disk */
   storage_parameter.ux_slave_class_storage_parameter_lun[0].
     ux_slave_class_storage_media_last_lba = USBD_STORAGE_GetMediaLastLba();
-  g_ps_hw6_usbx_storage_last_lba = storage_parameter.ux_slave_class_storage_parameter_lun[0].ux_slave_class_storage_media_last_lba;
 
   storage_parameter.ux_slave_class_storage_parameter_lun[0].
     ux_slave_class_storage_media_block_length = USBD_STORAGE_GetMediaBlocklength();
-  g_ps_hw6_usbx_storage_block_length = storage_parameter.ux_slave_class_storage_parameter_lun[0].ux_slave_class_storage_media_block_length;
 
   storage_parameter.ux_slave_class_storage_parameter_lun[0].
     ux_slave_class_storage_media_type = 0;
@@ -215,20 +203,16 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
 
   /* Get storage configuration number */
   storage_configuration_number = USBD_Get_Configuration_Number(CLASS_TYPE_MSC, 0);
-  g_ps_hw6_usbx_storage_configuration_number = storage_configuration_number;
 
   /* Find storage interface number */
   storage_interface_number = USBD_Get_Interface_Number(CLASS_TYPE_MSC, 0);
-  g_ps_hw6_usbx_storage_interface_number = storage_interface_number;
 
   /* Initialize the device storage class */
-  ret = ux_device_stack_class_register(_ux_system_slave_class_storage_name,
+  if (ux_device_stack_class_register(_ux_system_slave_class_storage_name,
                                      ux_device_class_storage_entry,
                                      storage_configuration_number,
                                      storage_interface_number,
-                                     &storage_parameter);
-  g_ps_hw6_usbx_class_register_status = ret;
-  if (ret != UX_SUCCESS)
+                                     &storage_parameter) != UX_SUCCESS)
   {
     /* USER CODE BEGIN USBX_DEVICE_STORAGE_REGISTER_ERROR */
     g_ps_hw6_usbx_init_stage = 5U;
@@ -238,10 +222,8 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
   }
 
   /* Allocate the stack for device application main thread */
-  ret = tx_byte_allocate(byte_pool, (VOID **) &pointer, UX_DEVICE_APP_THREAD_STACK_SIZE,
-                         TX_NO_WAIT);
-  g_ps_hw6_usbx_thread_stack_status = ret;
-  if (ret != TX_SUCCESS)
+  if (tx_byte_allocate(byte_pool, (VOID **) &pointer, UX_DEVICE_APP_THREAD_STACK_SIZE,
+                       TX_NO_WAIT) != TX_SUCCESS)
   {
     /* USER CODE BEGIN MAIN_THREAD_ALLOCATE_STACK_ERROR */
     g_ps_hw6_usbx_init_stage = 6U;
@@ -251,12 +233,10 @@ UINT MX_USBX_Device_Init(VOID *memory_ptr)
   }
 
   /* Create the device application main thread */
-  ret = tx_thread_create(&ux_device_app_thread, UX_DEVICE_APP_THREAD_NAME, app_ux_device_thread_entry,
+  if (tx_thread_create(&ux_device_app_thread, UX_DEVICE_APP_THREAD_NAME, app_ux_device_thread_entry,
                        0, pointer, UX_DEVICE_APP_THREAD_STACK_SIZE, UX_DEVICE_APP_THREAD_PRIO,
                        UX_DEVICE_APP_THREAD_PREEMPTION_THRESHOLD, UX_DEVICE_APP_THREAD_TIME_SLICE,
-                       UX_DEVICE_APP_THREAD_START_OPTION);
-  g_ps_hw6_usbx_thread_create_status = ret;
-  if (ret != TX_SUCCESS)
+                       UX_DEVICE_APP_THREAD_START_OPTION) != TX_SUCCESS)
   {
     /* USER CODE BEGIN MAIN_THREAD_CREATE_ERROR */
     g_ps_hw6_usbx_init_stage = 7U;

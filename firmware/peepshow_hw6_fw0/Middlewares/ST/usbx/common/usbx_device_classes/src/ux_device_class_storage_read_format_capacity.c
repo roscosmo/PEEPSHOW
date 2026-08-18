@@ -94,8 +94,6 @@ UINT  _ux_device_class_storage_read_format_capacity(UX_SLAVE_CLASS_STORAGE *stor
 UINT                    status;
 UX_SLAVE_TRANSFER       *transfer_request;
 UCHAR                   *read_format_capacity_buffer;
-ULONG                   host_length;
-ULONG                   transfer_length;
 
     UX_PARAMETER_NOT_USED(cbwcb);
     UX_PARAMETER_NOT_USED(endpoint_out);
@@ -115,9 +113,9 @@ ULONG                   transfer_length;
     /* Insert the size of the response block.  */
     _ux_utility_long_put_big_endian(&read_format_capacity_buffer[UX_SLAVE_CLASS_STORAGE_READ_FORMAT_CAPACITY_RESPONSE_SIZE], 8);
 
-    /* Insert current maximum number of blocks in the response.  */
+    /* Insert the last LBA address in the response.  */
     _ux_utility_long_put_big_endian(&read_format_capacity_buffer[UX_SLAVE_CLASS_STORAGE_READ_FORMAT_CAPACITY_RESPONSE_LAST_LBA],
-                                    storage -> ux_slave_class_storage_lun[lun].ux_slave_class_storage_media_last_lba + 1U);
+                                    storage -> ux_slave_class_storage_lun[lun].ux_slave_class_storage_media_last_lba);
 
     /* Insert the block length in the response.  This is in 3 bytes. */
     _ux_utility_long_put_big_endian(&read_format_capacity_buffer[UX_SLAVE_CLASS_STORAGE_READ_FORMAT_CAPACITY_RESPONSE_BLOCK_SIZE],
@@ -132,49 +130,21 @@ ULONG                   transfer_length;
     storage -> ux_device_class_storage_state = UX_DEVICE_CLASS_STORAGE_STATE_TRANS_START;
     storage -> ux_device_class_storage_cmd_state = UX_DEVICE_CLASS_STORAGE_CMD_READ;
 
-    host_length = storage -> ux_slave_class_storage_host_length;
-    transfer_length = UX_SLAVE_CLASS_STORAGE_READ_FORMAT_CAPACITY_RESPONSE_LENGTH;
-    if (transfer_length > host_length)
-        transfer_length = host_length;
-
     storage -> ux_device_class_storage_transfer = transfer_request;
     storage -> ux_device_class_storage_device_length =
-                    transfer_length;
+                    UX_SLAVE_CLASS_STORAGE_READ_FORMAT_CAPACITY_RESPONSE_LENGTH;
     storage -> ux_device_class_storage_data_length =
-                    transfer_length;
+                    UX_SLAVE_CLASS_STORAGE_READ_FORMAT_CAPACITY_RESPONSE_LENGTH;
     storage -> ux_device_class_storage_data_count = 0;
     UX_SLAVE_TRANSFER_STATE_RESET(storage -> ux_device_class_storage_transfer);
 
 #else
 
-    /* Send response bounded by host transfer length and track residue. */
-    host_length = storage -> ux_slave_class_storage_host_length;
-    transfer_length = UX_SLAVE_CLASS_STORAGE_READ_FORMAT_CAPACITY_RESPONSE_LENGTH;
-    if (transfer_length > host_length)
-        transfer_length = host_length;
-
-    if (transfer_length != 0U)
-    {
-        status = _ux_device_stack_transfer_request(transfer_request,
-                                                   transfer_length,
-                                                   host_length);
-        if (status != UX_SUCCESS)
-        {
-            storage -> ux_slave_class_storage_lun[lun].ux_slave_class_storage_request_sense_status =
-                                                UX_DEVICE_CLASS_STORAGE_SENSE_STATUS(0x02,0x54,0x00);
-            storage -> ux_slave_class_storage_csw_status = UX_SLAVE_CLASS_STORAGE_CSW_FAILED;
-            return(status);
-        }
-    }
-
-    if (host_length > transfer_length)
-        storage -> ux_slave_class_storage_csw_residue = host_length - transfer_length;
-    else
-        storage -> ux_slave_class_storage_csw_residue = 0U;
+    /* Send a data payload with the read_capacity response buffer.  */
+    _ux_device_stack_transfer_request(transfer_request, 
+                                  UX_SLAVE_CLASS_STORAGE_READ_FORMAT_CAPACITY_RESPONSE_LENGTH,
+                                  UX_SLAVE_CLASS_STORAGE_READ_FORMAT_CAPACITY_RESPONSE_LENGTH);
 #endif
-
-    storage -> ux_slave_class_storage_lun[lun].ux_slave_class_storage_request_sense_status =
-                                        UX_DEVICE_CLASS_STORAGE_SENSE_STATUS(0x00,0x00,0x00);
 
     /* Now we set the CSW with success.  */
     storage -> ux_slave_class_storage_csw_status = UX_SLAVE_CLASS_STORAGE_CSW_PASSED;

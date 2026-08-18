@@ -933,11 +933,9 @@ void HAL_PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd)
 /**************************************************************************/
 void HAL_PCD_SuspendCallback(PCD_HandleTypeDef *hpcd)
 {
-    UX_PARAMETER_NOT_USED(hpcd);
 
     /* Check the status change callback.  */
-    if ((_ux_system_slave != UX_NULL) &&
-        (_ux_system_slave -> ux_system_slave_change_function != UX_NULL))
+    if (_ux_system_slave -> ux_system_slave_change_function != UX_NULL)
     {
 
        /* Inform the application if a callback function was programmed.  */
@@ -986,11 +984,9 @@ void HAL_PCD_SuspendCallback(PCD_HandleTypeDef *hpcd)
 /**************************************************************************/
 void HAL_PCD_ResumeCallback(PCD_HandleTypeDef *hpcd)
 {
-    UX_PARAMETER_NOT_USED(hpcd);
 
     /* Check the status change callback.  */
-    if ((_ux_system_slave != UX_NULL) &&
-        (_ux_system_slave -> ux_system_slave_change_function != UX_NULL))
+    if (_ux_system_slave -> ux_system_slave_change_function != UX_NULL)
     {
 
        /* Inform the application if a callback function was programmed.  */

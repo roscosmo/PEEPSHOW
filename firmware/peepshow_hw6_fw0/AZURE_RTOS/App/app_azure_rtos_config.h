@@ -47,7 +47,7 @@ extern "C" {
 
 #define FX_APP_MEM_POOL_SIZE                     1024
 
-#define UX_DEVICE_APP_MEM_POOL_SIZE              16384
+#define UX_DEVICE_APP_MEM_POOL_SIZE              1024
 
 /* USER CODE BEGIN EC */
 /* Keep USBX byte pool sized for device stack + MSC class.

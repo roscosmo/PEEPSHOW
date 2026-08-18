@@ -26,7 +26,9 @@ uint16_t ps_lpbam_display_queue_start_slot PS_SRAM4_BUF_ATTR;
 static uint8_t ps_lpbam_display_payload_arena[PS_LPBAM_DISPLAY_ARENA_SIZE] PS_SRAM4_BUF_ATTR;
 static uint16_t ps_lpbam_display_payload_used PS_SRAM4_BUF_ATTR;
 static uint8_t ps_lpbam_display_experiment_variant;
-
+static uint16_t ps_lpbam_display_candidate_rows[DISPLAY_HEIGHT];
+static uint8_t ps_lpbam_display_candidate_row_enabled[DISPLAY_HEIGHT];
+static uint8_t ps_lpbam_display_dirty_row_list[DISPLAY_HEIGHT];
 #if defined(__GNUC__)
 __attribute__((weak))
 #endif
@@ -149,45 +151,64 @@ static void PS_LpbamDisplay_ResetPayloadState(void)
   ps_lpbam_display_queue_start_slot = 0U;
 }
 
-static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffers(
-  uint16_t start_row,
-  uint16_t row_count)
+HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffersForRows(
+  const uint16_t *candidate_rows,
+  uint16_t candidate_row_count)
 {
-  uint16_t final_row;
+  uint16_t first_candidate_row = 0U;
 
-  if ((start_row < 1U) || (row_count == 0U) ||
-      (((uint32_t)start_row + (uint32_t)row_count - 1U) > DISPLAY_HEIGHT))
+  if ((candidate_rows == NULL) || (candidate_row_count == 0U))
   {
     return HAL_ERROR;
   }
 
+  memset(ps_lpbam_display_candidate_row_enabled, 0,
+         sizeof(ps_lpbam_display_candidate_row_enabled));
+
+  for (uint16_t i = 0U; i < candidate_row_count; i++)
+  {
+    uint16_t row = candidate_rows[i];
+    if ((row < 1U) || (row > DISPLAY_HEIGHT))
+    {
+      return HAL_ERROR;
+    }
+
+    if (first_candidate_row == 0U)
+    {
+      first_candidate_row = row;
+    }
+    ps_lpbam_display_candidate_row_enabled[row - 1U] = 1U;
+  }
+
   PS_LpbamDisplay_ResetPayloadState();
-  final_row = (uint16_t)((uint32_t)start_row + (uint32_t)row_count - 1U);
 
   for (uint16_t frame = 0U; frame < PS_LPBAM_DISPLAY_FRAME_COUNT; frame++)
   {
     uint16_t previous = (uint16_t)((ps_lpbam_display_sequence_start_frame + frame) %
                                    PS_LPBAM_DISPLAY_FRAME_COUNT);
     uint16_t target = (uint16_t)((previous + 1U) % PS_LPBAM_DISPLAY_FRAME_COUNT);
-    uint8_t dirty_row_list[DISPLAY_HEIGHT] = {0};
     uint16_t dirty_rows = 0U;
     uint16_t chunk_count = 0U;
     uint16_t dirty_index = 0U;
 
-    for (uint16_t row = start_row; row <= final_row; row++)
+    memset(ps_lpbam_display_dirty_row_list, 0,
+           sizeof(ps_lpbam_display_dirty_row_list));
+
+    for (uint16_t row = 1U; row <= DISPLAY_HEIGHT; row++)
     {
-      if (PS_LpbamDisplay_RowIsDirty(ps_lpbam_display_frames[previous],
-                                     ps_lpbam_display_frames[target],
-                                     row) != 0U)
+      if ((ps_lpbam_display_candidate_row_enabled[row - 1U] != 0U) &&
+          (PS_LpbamDisplay_RowIsDirty(ps_lpbam_display_frames[previous],
+                                      ps_lpbam_display_frames[target],
+                                      row) != 0U))
       {
-        dirty_row_list[dirty_rows] = (uint8_t)row;
+        ps_lpbam_display_dirty_row_list[dirty_rows] = (uint8_t)row;
         dirty_rows++;
       }
     }
 
     if (dirty_rows == 0U)
     {
-      dirty_row_list[0] = (uint8_t)start_row;
+      ps_lpbam_display_dirty_row_list[0] = (uint8_t)first_candidate_row;
       dirty_rows = 1U;
     }
 
@@ -197,8 +218,8 @@ static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffers(
       uint16_t payload_max_len;
       uint8_t *payload = NULL;
       uint8_t *write;
-      uint16_t last_payload_row;
       uint16_t len = 0U;
+      uint16_t last_payload_row;
 
       if (chunk_count >= PS_LPBAM_DISPLAY_SEQUENCE_CHUNKS)
       {
@@ -223,12 +244,13 @@ static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffers(
 
       for (uint16_t i = 0U; i < rows_this_payload; i++)
       {
-        uint16_t row = dirty_row_list[dirty_index + i];
+        uint16_t row = ps_lpbam_display_dirty_row_list[dirty_index + i];
         PS_LpbamDisplay_AppendWireRow(&write, row,
                                       ps_lpbam_display_frames[target]);
       }
 
-      last_payload_row = dirty_row_list[(uint16_t)(dirty_index +
+      last_payload_row =
+        ps_lpbam_display_dirty_row_list[(uint16_t)(dirty_index +
                                                    rows_this_payload - 1U)];
       if (PS_LpbamDisplay_FinalizePayload(payload, write, last_payload_row,
                                           ps_lpbam_display_frames[target],
@@ -245,7 +267,7 @@ static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffers(
     }
 
     ps_lpbam_display_active_chunk_count[frame] = chunk_count;
-    ps_lpbam_display_dirty_start_row[frame] = dirty_row_list[0];
+    ps_lpbam_display_dirty_start_row[frame] = ps_lpbam_display_dirty_row_list[0];
     ps_lpbam_display_dirty_row_count[frame] = dirty_rows;
     ps_lpbam_display_active_frame_count++;
   }
@@ -259,6 +281,26 @@ static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffers(
           PS_LPBAM_DISPLAY_FRAME_COUNT) ? HAL_OK : HAL_ERROR;
 }
 
+static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffers(
+  uint16_t start_row,
+  uint16_t row_count)
+{
+  if ((start_row < 1U) || (row_count == 0U) ||
+      (((uint32_t)start_row + (uint32_t)row_count - 1U) > DISPLAY_HEIGHT))
+  {
+    return HAL_ERROR;
+  }
+
+  for (uint16_t i = 0U; i < row_count; i++)
+  {
+    ps_lpbam_display_candidate_rows[i] = (uint16_t)(start_row + i);
+  }
+
+  return PS_LpbamDisplay_BuildPayloadBuffersForRows(
+    ps_lpbam_display_candidate_rows,
+    row_count);
+}
+
 static void PS_LpbamDisplay_SetWhitePixel(uint8_t frame[DISPLAY_HEIGHT][LINE_WIDTH],
                                            uint16_t row_zero_based,
                                            uint16_t column)
@@ -269,6 +311,49 @@ static void PS_LpbamDisplay_SetWhitePixel(uint8_t frame[DISPLAY_HEIGHT][LINE_WID
   index = (uint32_t)column >> 3U;
   mask = (uint8_t)(1U << (column & 7U));
   frame[row_zero_based][index] |= mask;
+}
+
+static void PS_LpbamDisplay_ClearWhitePixel(uint8_t frame[DISPLAY_HEIGHT][LINE_WIDTH],
+                                             uint16_t row_zero_based,
+                                             uint16_t column)
+{
+  uint32_t index;
+  uint8_t mask;
+
+  index = (uint32_t)column >> 3U;
+  mask = (uint8_t)(1U << (column & 7U));
+  frame[row_zero_based][index] &= (uint8_t)(~mask);
+}
+
+static void PS_LpbamDisplay_ApplyCursorRegion(
+  uint8_t frame[DISPLAY_HEIGHT][LINE_WIDTH],
+  uint16_t start_row,
+  uint16_t row_count,
+  uint16_t start_column,
+  uint16_t column_count,
+  uint8_t visible)
+{
+  uint16_t final_row = (uint16_t)(start_row + row_count - 1U);
+  uint16_t final_column = (uint16_t)(start_column + column_count - 1U);
+
+  for (uint16_t row = (uint16_t)(start_row - 1U);
+       row < final_row;
+       row++)
+  {
+    for (uint16_t column = start_column;
+         column <= final_column;
+         column++)
+    {
+      if (visible != 0U)
+      {
+        PS_LpbamDisplay_SetWhitePixel(frame, row, column);
+      }
+      else
+      {
+        PS_LpbamDisplay_ClearWhitePixel(frame, row, column);
+      }
+    }
+  }
 }
 
 static HAL_StatusTypeDef PS_LpbamDisplay_ComposeCursorBlinkFrames(
@@ -297,23 +382,22 @@ static HAL_StatusTypeDef PS_LpbamDisplay_ComposeCursorBlinkFrames(
   for (uint16_t frame = 0U; frame < PS_LPBAM_DISPLAY_FRAME_COUNT; frame++)
   {
     memcpy(ps_lpbam_display_frames[frame], base_frame, BUFFER_LENGTH);
+    PS_LpbamDisplay_ApplyCursorRegion(ps_lpbam_display_frames[frame],
+                                      start_row,
+                                      row_count,
+                                      start_column,
+                                      column_count,
+                                      0U);
   }
 
   for (uint16_t frame = 1U; frame < PS_LPBAM_DISPLAY_FRAME_COUNT; frame += 2U)
   {
-    for (uint16_t row = (uint16_t)(start_row - 1U);
-         row < (uint16_t)final_row;
-         row++)
-    {
-      for (uint16_t column = start_column;
-           column <= (uint16_t)final_column;
-           column++)
-      {
-        PS_LpbamDisplay_SetWhitePixel(ps_lpbam_display_frames[frame],
-                                      row,
-                                      column);
-      }
-    }
+    PS_LpbamDisplay_ApplyCursorRegion(ps_lpbam_display_frames[frame],
+                                      start_row,
+                                      row_count,
+                                      start_column,
+                                      column_count,
+                                      1U);
   }
 
   return HAL_OK;
@@ -326,16 +410,17 @@ HAL_StatusTypeDef PS_LpbamDisplay_BuildPatternBuffers(uint16_t start_row,
   return PS_LpbamDisplay_BuildPayloadBuffers(start_row, row_count);
 }
 
-HAL_StatusTypeDef PS_LpbamDisplay_BuildCursorBlinkBuffers(
+HAL_StatusTypeDef PS_LpbamDisplay_BuildCursorBlinkBuffersFromFrame(
   const uint8_t *base_frame,
   uint16_t start_row,
   uint16_t row_count,
   uint16_t start_column,
-  uint16_t column_count)
+  uint16_t column_count,
+  uint16_t sequence_start_frame)
 {
   HAL_StatusTypeDef status;
 
-  PS_LpbamDisplay_SetSequenceStartFrame(0U);
+  PS_LpbamDisplay_SetSequenceStartFrame(sequence_start_frame);
   PS_LpbamDisplay_SetQueueStartSlot(0U);
   PS_LpbamDisplay_SetExperimentVariant(0xC1U);
 
@@ -350,5 +435,20 @@ HAL_StatusTypeDef PS_LpbamDisplay_BuildCursorBlinkBuffers(
   }
 
   return PS_LpbamDisplay_BuildPayloadBuffers(start_row, row_count);
+}
+
+HAL_StatusTypeDef PS_LpbamDisplay_BuildCursorBlinkBuffers(
+  const uint8_t *base_frame,
+  uint16_t start_row,
+  uint16_t row_count,
+  uint16_t start_column,
+  uint16_t column_count)
+{
+  return PS_LpbamDisplay_BuildCursorBlinkBuffersFromFrame(base_frame,
+                                                          start_row,
+                                                          row_count,
+                                                          start_column,
+                                                          column_count,
+                                                          0U);
 }
 

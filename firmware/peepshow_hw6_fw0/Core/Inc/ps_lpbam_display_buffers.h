@@ -38,6 +38,9 @@ uint8_t PS_LpbamDisplay_GetExperimentVariant(void);
 void PS_LpbamDisplay_SetSequenceStartFrame(uint16_t frame_index);
 void PS_LpbamDisplay_SetQueueStartSlot(uint16_t frame_slot);
 
+HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffersForRows(
+  const uint16_t *candidate_rows,
+  uint16_t candidate_row_count);
 HAL_StatusTypeDef PS_LpbamDisplay_BuildPatternBuffers(uint16_t start_row,
                                                       uint16_t row_count);
 HAL_StatusTypeDef PS_LpbamDisplay_BuildCursorBlinkBuffers(
@@ -46,5 +49,12 @@ HAL_StatusTypeDef PS_LpbamDisplay_BuildCursorBlinkBuffers(
   uint16_t row_count,
   uint16_t start_column,
   uint16_t column_count);
+HAL_StatusTypeDef PS_LpbamDisplay_BuildCursorBlinkBuffersFromFrame(
+  const uint8_t *base_frame,
+  uint16_t start_row,
+  uint16_t row_count,
+  uint16_t start_column,
+  uint16_t column_count,
+  uint16_t sequence_start_frame);
 
 #endif /* PS_LPBAM_DISPLAY_BUFFERS_H */

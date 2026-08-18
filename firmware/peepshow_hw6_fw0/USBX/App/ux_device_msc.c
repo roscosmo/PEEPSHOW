@@ -333,7 +333,7 @@ ULONG USBD_STORAGE_GetMediaLastLba(VOID)
 
   /* USER CODE BEGIN USBD_STORAGE_GetMediaLastLba */
   LastLba = PS_STORAGE_MSC_BRIDGE_LAST_LBA;
-/* USER CODE END USBD_STORAGE_GetMediaLastLba */
+  /* USER CODE END USBD_STORAGE_GetMediaLastLba */
 
   return LastLba;
 }
@@ -350,7 +350,7 @@ ULONG USBD_STORAGE_GetMediaBlocklength(VOID)
 
   /* USER CODE BEGIN USBD_STORAGE_GetMediaBlocklength */
   MediaBlockLen = PS_STORAGE_MSC_BRIDGE_BLOCK_SIZE;
-/* USER CODE END USBD_STORAGE_GetMediaBlocklength */
+  /* USER CODE END USBD_STORAGE_GetMediaBlocklength */
 
   return MediaBlockLen;
 }

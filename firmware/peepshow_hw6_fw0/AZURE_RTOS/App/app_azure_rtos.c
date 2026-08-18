@@ -179,9 +179,7 @@ VOID tx_application_define(VOID *first_unused_memory)
     /* USER CODE END  MX_FileX_Init_Success */
   }
 
-  status = tx_byte_pool_create(&ux_device_app_byte_pool, "Ux App memory pool", ux_device_byte_pool_buffer, UX_DEVICE_APP_MEM_POOL_SIZE);
-  g_ps_hw6_usbx_byte_pool_create_status = status;
-  if (status != TX_SUCCESS)
+  if (tx_byte_pool_create(&ux_device_app_byte_pool, "Ux App memory pool", ux_device_byte_pool_buffer, UX_DEVICE_APP_MEM_POOL_SIZE) != TX_SUCCESS)
   {
     /* USER CODE BEGIN UX_Device_Byte_Pool_Error */
 
@@ -195,7 +193,6 @@ VOID tx_application_define(VOID *first_unused_memory)
 
     memory_ptr = (VOID *)&ux_device_app_byte_pool;
     status = MX_USBX_Device_Init(memory_ptr);
-    g_ps_hw6_usbx_device_init_status = status;
     if (status != UX_SUCCESS)
     {
       /* USER CODE BEGIN  MX_USBX_Device_Init_Error */

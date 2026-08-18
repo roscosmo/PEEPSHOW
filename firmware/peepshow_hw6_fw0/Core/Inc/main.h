@@ -51,6 +51,15 @@ extern "C" {
 
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
+void MX_GPDMA1_Init(void);
+void MX_I2C3_Init(void);
+void MX_LPUART1_UART_Init(void);
+void MX_OCTOSPI1_Init(void);
+void MX_RTC_Init(void);
+void MX_SAI1_Init(void);
+void MX_LPTIM1_Init(void);
+void MX_SPI3_Init(void);
+void MX_USB_OTG_FS_PCD_Init(void);
 
 /* USER CODE BEGIN EFP */
 uint32_t PS_Main_PmicIntExtiIsArmed(void);

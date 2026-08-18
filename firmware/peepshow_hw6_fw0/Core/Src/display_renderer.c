@@ -16,6 +16,13 @@
 #define DISPLAY_RENDERER_LIST_CURSOR_WIDTH  (8U)
 #define DISPLAY_RENDERER_LIST_CURSOR_HEIGHT (16U)
 
+typedef struct
+{
+  const char *title;
+  const char *rows[DISPLAY_RENDERER_LIST_ROW_COUNT];
+  uint32_t selected_row;
+} display_renderer_list_t;
+
 static uint8_t s_display_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint8_t s_display_committed_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint8_t s_display_cursor_base_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
@@ -24,6 +31,11 @@ static uint8_t s_display_dirty_row_marks[DISPLAY_RENDERER_DIRTY_ROW_MAX];
 static uint16_t s_display_dirty_row_count;
 static uint32_t s_display_committed_valid;
 static uint32_t s_display_cursor_base_valid;
+static display_renderer_list_t s_display_committed_list;
+static display_renderer_list_t s_display_pending_list;
+static uint32_t s_display_committed_list_valid;
+static uint32_t s_display_pending_list_valid;
+static uint32_t s_display_pending_list_invalidates;
 static uint32_t s_rotate_ccw;
 static display_renderer_panel_region_t s_lpbam_cursor_panel_region;
 static uint32_t s_lpbam_cursor_panel_region_valid;
@@ -177,7 +189,9 @@ static void DisplayRenderer_InvalidateLpbamCursorRegion(void)
   s_lpbam_cursor_panel_region_valid = 0UL;
 }
 
-static void DisplayRenderer_RecordLpbamCursorRegion(uint32_t row)
+static uint32_t DisplayRenderer_GetListCursorPanelRegion(
+  uint32_t row,
+  display_renderer_panel_region_t *region)
 {
   uint16_t logical_x0;
   uint16_t logical_x1;
@@ -188,10 +202,9 @@ static void DisplayRenderer_RecordLpbamCursorRegion(uint32_t row)
   uint16_t panel_y0;
   uint16_t panel_y1;
 
-  if (row >= DISPLAY_RENDERER_LIST_ROW_COUNT)
+  if ((region == NULL) || (row >= DISPLAY_RENDERER_LIST_ROW_COUNT))
   {
-    DisplayRenderer_InvalidateLpbamCursorRegion();
-    return;
+    return 0UL;
   }
 
   logical_x0 = DISPLAY_RENDERER_LIST_CURSOR_X;
@@ -217,13 +230,32 @@ static void DisplayRenderer_RecordLpbamCursorRegion(uint32_t row)
     panel_y1 = logical_y1;
   }
 
-  s_lpbam_cursor_panel_region.start_row = (uint16_t)(panel_y0 + 1U);
-  s_lpbam_cursor_panel_region.row_count =
-    (uint16_t)(panel_y1 - panel_y0 + 1U);
-  s_lpbam_cursor_panel_region.start_column = panel_x0;
-  s_lpbam_cursor_panel_region.column_count =
-    (uint16_t)(panel_x1 - panel_x0 + 1U);
+  region->start_row = (uint16_t)(panel_y0 + 1U);
+  region->row_count = (uint16_t)(panel_y1 - panel_y0 + 1U);
+  region->start_column = panel_x0;
+  region->column_count = (uint16_t)(panel_x1 - panel_x0 + 1U);
+  return 1UL;
+}
+
+static void DisplayRenderer_RecordLpbamCursorRegion(uint32_t row)
+{
+  if (DisplayRenderer_GetListCursorPanelRegion(
+        row, &s_lpbam_cursor_panel_region) == 0UL)
+  {
+    DisplayRenderer_InvalidateLpbamCursorRegion();
+    return;
+  }
   s_lpbam_cursor_panel_region_valid = 1UL;
+}
+
+static void DisplayRenderer_ClearListCursor(uint32_t row)
+{
+  display_renderer_panel_region_t region;
+
+  if (DisplayRenderer_GetListCursorPanelRegion(row, &region) != 0UL)
+  {
+    DisplayRenderer_ClearPanelRegion(&region);
+  }
 }
 
 static void DisplayRenderer_RecordCursorBaseFrame(void)
@@ -241,7 +273,10 @@ static void DisplayRenderer_RecordCursorBaseFrame(void)
 }
 
 static void DisplayRenderer_FillStats(display_renderer_stats_t *stats,
-                                      uint32_t black_pixels)
+                                      uint32_t black_pixels,
+                                      uint32_t primitive_id,
+                                      uint32_t previous_focus_row,
+                                      uint32_t current_focus_row)
 {
   if (stats == NULL)
   {
@@ -257,6 +292,9 @@ static void DisplayRenderer_FillStats(display_renderer_stats_t *stats,
     (uint32_t)s_display_dirty_rows[0];
   stats->dirty_last_row = (s_display_dirty_row_count == 0U) ? 0UL :
     (uint32_t)s_display_dirty_rows[s_display_dirty_row_count - 1U];
+  stats->primitive_id = primitive_id;
+  stats->previous_focus_row = previous_focus_row;
+  stats->current_focus_row = current_focus_row;
 }
 
 void DisplayRenderer_ClearWhite(void)
@@ -265,6 +303,9 @@ void DisplayRenderer_ClearWhite(void)
   (void)memset(s_display_framebuffer, 0xFF,
                sizeof(s_display_framebuffer));
   DisplayRenderer_InvalidateLpbamCursorRegion();
+  s_display_cursor_base_valid = 0UL;
+  s_display_pending_list_valid = 0UL;
+  s_display_pending_list_invalidates = 1UL;
 }
 
 const uint8_t *DisplayRenderer_GetBuffer(void)
@@ -287,6 +328,20 @@ void DisplayRenderer_CommitPresentedFrame(void)
                s_display_framebuffer,
                sizeof(s_display_committed_framebuffer));
   s_display_committed_valid = 1UL;
+
+  if (s_display_pending_list_valid != 0UL)
+  {
+    s_display_committed_list = s_display_pending_list;
+    s_display_committed_list_valid = 1UL;
+  }
+  else if (s_display_pending_list_invalidates != 0UL)
+  {
+    (void)memset(&s_display_committed_list, 0,
+                 sizeof(s_display_committed_list));
+    s_display_committed_list_valid = 0UL;
+  }
+  s_display_pending_list_valid = 0UL;
+  s_display_pending_list_invalidates = 0UL;
 }
 
 uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
@@ -297,7 +352,13 @@ uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
       (s_lpbam_cursor_panel_region_valid == 0UL))
   {
     DisplayRenderer_ResetDirtyRows();
-    DisplayRenderer_FillStats(stats, DisplayRenderer_CountBlackPixels());
+    DisplayRenderer_FillStats(stats,
+                            DisplayRenderer_CountBlackPixels(),
+                            DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK,
+                            DISPLAY_RENDERER_ROW_NONE,
+                            s_display_committed_list_valid == 0UL ?
+                              DISPLAY_RENDERER_ROW_NONE :
+                              s_display_committed_list.selected_row);
     return 0UL;
   }
 
@@ -310,7 +371,13 @@ uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
   }
 
   DisplayRenderer_ComputeDirtyRowsFromCommitted();
-  DisplayRenderer_FillStats(stats, DisplayRenderer_CountBlackPixels());
+  DisplayRenderer_FillStats(stats,
+                            DisplayRenderer_CountBlackPixels(),
+                            DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK,
+                            DISPLAY_RENDERER_ROW_NONE,
+                            s_display_committed_list_valid == 0UL ?
+                              DISPLAY_RENDERER_ROW_NONE :
+                              s_display_committed_list.selected_row);
   return 1UL;
 }
 
@@ -323,6 +390,29 @@ uint32_t DisplayRenderer_GetLpbamCursorPanelRegion(
   }
 
   *region = s_lpbam_cursor_panel_region;
+  return 1UL;
+}
+
+uint32_t DisplayRenderer_GetWaitingAnimationIntent(
+  display_renderer_animation_intent_t *intent)
+{
+  if (intent == NULL)
+  {
+    return 0UL;
+  }
+  (void)memset(intent, 0, sizeof(*intent));
+
+  if ((s_display_cursor_base_valid == 0UL) ||
+      (s_lpbam_cursor_panel_region_valid == 0UL) ||
+      (s_display_committed_list_valid == 0UL))
+  {
+    return 0UL;
+  }
+
+  intent->animation_id = DISPLAY_RENDERER_ANIMATION_CURSOR_BLINK;
+  intent->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK;
+  intent->focus_row = s_display_committed_list.selected_row;
+  intent->panel_region = s_lpbam_cursor_panel_region;
   return 1UL;
 }
 
@@ -582,13 +672,6 @@ static const char *DisplayRenderer_ShutdownCountdownLine(
   return "PREPARING";
 }
 
-typedef struct
-{
-  const char *title;
-  const char *rows[DISPLAY_RENDERER_LIST_ROW_COUNT];
-  uint32_t selected_row;
-} display_renderer_list_t;
-
 static void DisplayRenderer_ListInit(display_renderer_list_t *list)
 {
   uint32_t i;
@@ -599,6 +682,81 @@ static void DisplayRenderer_ListInit(display_renderer_list_t *list)
     list->rows[i] = "";
   }
   list->selected_row = 0UL;
+}
+
+static uint32_t DisplayRenderer_TextEquals(const char *left,
+                                           const char *right)
+{
+  if (left == right)
+  {
+    return 1UL;
+  }
+  if ((left == NULL) || (right == NULL))
+  {
+    return 0UL;
+  }
+  return (strcmp(left, right) == 0) ? 1UL : 0UL;
+}
+
+static uint32_t DisplayRenderer_ListVisualContentMatches(
+  const display_renderer_list_t *left,
+  const display_renderer_list_t *right)
+{
+  uint32_t row;
+
+  if ((left == NULL) || (right == NULL))
+  {
+    return 0UL;
+  }
+  if (DisplayRenderer_TextEquals(left->title, right->title) == 0UL)
+  {
+    return 0UL;
+  }
+
+  for (row = 0U; row < DISPLAY_RENDERER_LIST_ROW_COUNT; ++row)
+  {
+    if (DisplayRenderer_TextEquals(left->rows[row], right->rows[row]) == 0UL)
+    {
+      return 0UL;
+    }
+  }
+  return 1UL;
+}
+
+static void DisplayRenderer_SetPendingList(const display_renderer_list_t *list)
+{
+  if (list != NULL)
+  {
+    s_display_pending_list = *list;
+    s_display_pending_list_valid = 1UL;
+    s_display_pending_list_invalidates = 0UL;
+  }
+}
+
+static uint32_t DisplayRenderer_ListFocusPrimitiveEligible(
+  const display_renderer_list_t *list)
+{
+  if ((list == NULL) || (s_display_committed_valid == 0UL) ||
+      (s_display_committed_list_valid == 0UL))
+  {
+    return 0UL;
+  }
+  if (DisplayRenderer_ListVisualContentMatches(
+        &s_display_committed_list, list) == 0UL)
+  {
+    return 0UL;
+  }
+  if (s_display_committed_list.selected_row == list->selected_row)
+  {
+    return 0UL;
+  }
+  if ((s_display_committed_list.selected_row >=
+       DISPLAY_RENDERER_LIST_ROW_COUNT) ||
+      (list->selected_row >= DISPLAY_RENDERER_LIST_ROW_COUNT))
+  {
+    return 0UL;
+  }
+  return 1UL;
 }
 
 static void DisplayRenderer_UIList(uint32_t page,
@@ -882,21 +1040,46 @@ void DisplayRenderer_PrepareUIPage(
 {
   display_renderer_list_t list;
   uint32_t black_pixels = 0UL;
+  uint32_t primitive_id = DISPLAY_RENDERER_PRIMITIVE_LIST_FULL;
+  uint32_t previous_focus_row = DISPLAY_RENDERER_ROW_NONE;
 
-  DisplayRenderer_ClearWhite();
-  s_rotate_ccw = 1UL;
   DisplayRenderer_UIList(page,
                          calibration_page,
                          focus_index,
                          shutdown_state,
                          shutdown_countdown_seconds,
                          &list);
-  black_pixels += DisplayRenderer_DrawList(&list);
-  s_rotate_ccw = 0UL;
-  DisplayRenderer_RecordCursorBaseFrame();
 
-  DisplayRenderer_ComputeDirtyRowsFromCommitted();
-  DisplayRenderer_FillStats(stats, black_pixels);
+  s_rotate_ccw = 1UL;
+  if (DisplayRenderer_ListFocusPrimitiveEligible(&list) != 0UL)
+  {
+    primitive_id = DISPLAY_RENDERER_PRIMITIVE_LIST_FOCUS;
+    previous_focus_row = s_display_committed_list.selected_row;
+    (void)memcpy(s_display_framebuffer,
+                 s_display_committed_framebuffer,
+                 sizeof(s_display_framebuffer));
+    DisplayRenderer_ClearListCursor(previous_focus_row);
+    (void)DisplayRenderer_DrawListCursor(list.selected_row, 1UL);
+    DisplayRenderer_RecordCursorBaseFrame();
+    DisplayRenderer_ComputeDirtyRowsFromCommitted();
+    black_pixels = DisplayRenderer_CountBlackPixels();
+  }
+  else
+  {
+    DisplayRenderer_ClearWhite();
+    s_rotate_ccw = 1UL;
+    black_pixels += DisplayRenderer_DrawList(&list);
+    DisplayRenderer_RecordCursorBaseFrame();
+    DisplayRenderer_ComputeDirtyRowsFromCommitted();
+  }
+  s_rotate_ccw = 0UL;
+  DisplayRenderer_SetPendingList(&list);
+
+  DisplayRenderer_FillStats(stats,
+                            black_pixels,
+                            primitive_id,
+                            previous_focus_row,
+                            list.selected_row);
 }
 
 void DisplayRenderer_PreparePattern(display_renderer_stats_t *stats)
@@ -949,5 +1132,9 @@ void DisplayRenderer_PreparePattern(display_renderer_stats_t *stats)
   }
 
   DisplayRenderer_ComputeDirtyRowsFromCommitted();
-  DisplayRenderer_FillStats(stats, black_pixels);
+  DisplayRenderer_FillStats(stats,
+                            black_pixels,
+                            DISPLAY_RENDERER_PRIMITIVE_PATTERN,
+                            DISPLAY_RENDERER_ROW_NONE,
+                            DISPLAY_RENDERER_ROW_NONE);
 }

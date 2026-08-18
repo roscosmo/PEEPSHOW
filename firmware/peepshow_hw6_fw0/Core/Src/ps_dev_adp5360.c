@@ -1104,5 +1104,4 @@ uint8_t ps_dev_adp5360_power_register(uint32_t index)
   {
     return 0U;
   }
-  return ps_dev_adp5360_power_registers[index];
-}
+  return ps_dev_adp5360_power_registers

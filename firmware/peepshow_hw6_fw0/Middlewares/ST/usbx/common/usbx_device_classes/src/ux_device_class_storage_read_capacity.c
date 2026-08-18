@@ -94,8 +94,6 @@ UINT  _ux_device_class_storage_read_capacity(UX_SLAVE_CLASS_STORAGE *storage, UL
 
 UINT                    status;
 ULONG                   media_status;
-ULONG                   host_length;
-ULONG                   transfer_length;
 UX_SLAVE_TRANSFER       *transfer_request;
 UCHAR                   *read_capacity_buffer;
 
@@ -162,30 +160,10 @@ UCHAR                   *read_capacity_buffer;
 
 #else
 
-        /* Send response bounded by host transfer length and track residue. */
-        host_length = storage -> ux_slave_class_storage_host_length;
-        transfer_length = UX_SLAVE_CLASS_STORAGE_READ_CAPACITY_RESPONSE_LENGTH;
-        if (transfer_length > host_length)
-            transfer_length = host_length;
-
-        if (transfer_length != 0U)
-        {
-            status = _ux_device_stack_transfer_request(transfer_request,
-                                                       transfer_length,
-                                                       host_length);
-            if (status != UX_SUCCESS)
-            {
-                storage -> ux_slave_class_storage_lun[lun].ux_slave_class_storage_request_sense_status =
-                                                    UX_DEVICE_CLASS_STORAGE_SENSE_STATUS(0x02,0x54,0x00);
-                storage -> ux_slave_class_storage_csw_status = UX_SLAVE_CLASS_STORAGE_CSW_FAILED;
-                return(status);
-            }
-        }
-
-        if (host_length > transfer_length)
-            storage -> ux_slave_class_storage_csw_residue = host_length - transfer_length;
-        else
-            storage -> ux_slave_class_storage_csw_residue = 0U;
+        /* Send a data payload with the read_capacity response buffer.  */
+        _ux_device_stack_transfer_request(transfer_request, 
+                                      UX_SLAVE_CLASS_STORAGE_READ_CAPACITY_RESPONSE_LENGTH,
+                                      UX_SLAVE_CLASS_STORAGE_READ_CAPACITY_RESPONSE_LENGTH);
 #endif
 
         /* Now we set the CSW with success.  */

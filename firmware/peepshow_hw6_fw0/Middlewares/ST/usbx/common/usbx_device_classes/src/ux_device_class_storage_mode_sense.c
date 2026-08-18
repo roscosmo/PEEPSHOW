@@ -135,7 +135,6 @@ ULONG                   flags_index;
 ULONG                   mode_data_length;
 UCHAR                   *page_pointer;
 ULONG                   page_length;
-ULONG                   transfer_length;
 
 
     UX_PARAMETER_NOT_USED(endpoint_out);
@@ -248,11 +247,11 @@ ULONG                   transfer_length;
         mode_data_length += page_length;
     }
 
-    /* Put payload length in header as "bytes following length field".  */
+    /* Put the payload length in the header.  */
     if (mode_sense_command == UX_SLAVE_CLASS_STORAGE_SCSI_MODE_SENSE_SHORT)
-        * transfer_request -> ux_slave_transfer_request_data_pointer = (UCHAR)(mode_data_length - 1U);
+        * transfer_request -> ux_slave_transfer_request_data_pointer = (UCHAR)(mode_data_length);
     else
-        _ux_utility_short_put_big_endian(transfer_request -> ux_slave_transfer_request_data_pointer, (USHORT)(mode_data_length - 2U));
+        _ux_utility_short_put_big_endian(transfer_request -> ux_slave_transfer_request_data_pointer, (USHORT)mode_data_length);
 
     /* Store the write protection flag.  */
     *(transfer_request -> ux_slave_transfer_request_data_pointer + flags_index) = read_only_flag;
@@ -264,36 +263,15 @@ ULONG                   transfer_length;
     storage -> ux_device_class_storage_cmd_state = UX_DEVICE_CLASS_STORAGE_CMD_READ;
 
     storage -> ux_device_class_storage_transfer = transfer_request;
-    transfer_length = mode_sense_reply_length;
-
-    storage -> ux_device_class_storage_device_length = transfer_length;
-    storage -> ux_device_class_storage_data_length = transfer_length;
+    storage -> ux_device_class_storage_device_length = mode_data_length;
+    storage -> ux_device_class_storage_data_length = mode_data_length;
     storage -> ux_device_class_storage_data_count = 0;
 
 #else
 
-    /* Send only valid MODE SENSE payload, bounded by host allocation. */
-    transfer_length = UX_MIN(mode_data_length, mode_sense_reply_length);
-
-    if (transfer_length != 0U)
-    {
-        status = _ux_device_stack_transfer_request(transfer_request,
-                                                   transfer_length,
-                                                   mode_sense_reply_length);
-        if (status != UX_SUCCESS)
-        {
-            storage -> ux_slave_class_storage_lun[lun].ux_slave_class_storage_request_sense_status =
-                                                UX_DEVICE_CLASS_STORAGE_SENSE_STATUS(0x02,0x54,0x00);
-            storage -> ux_slave_class_storage_csw_status = UX_SLAVE_CLASS_STORAGE_CSW_FAILED;
-            return(status);
-        }
-    }
-
-    storage -> ux_slave_class_storage_csw_residue = 0U;
+    /* Send a payload with the response buffer.  */
+    _ux_device_stack_transfer_request(transfer_request, mode_sense_reply_length, mode_sense_reply_length); 
 #endif
-
-    storage -> ux_slave_class_storage_lun[lun].ux_slave_class_storage_request_sense_status =
-                                        UX_DEVICE_CLASS_STORAGE_SENSE_STATUS(0x00,0x00,0x00);
 
     /* Now we set the CSW with success.  */
     storage -> ux_slave_class_storage_csw_status = UX_SLAVE_CLASS_STORAGE_CSW_PASSED;

@@ -85,73 +85,40 @@ UINT  _ux_device_class_storage_mode_select(UX_SLAVE_CLASS_STORAGE *storage, ULON
                                             UX_SLAVE_ENDPOINT *endpoint_in,
                                             UX_SLAVE_ENDPOINT *endpoint_out, UCHAR * cbwcb)
 {
-UINT                    status;
-ULONG                   expected_length;
-ULONG                   host_length;
-ULONG                   remaining;
-ULONG                   transfer_length;
-UX_SLAVE_TRANSFER       *transfer_request;
-UCHAR                   opcode;
+
+    UX_PARAMETER_NOT_USED(endpoint_in);
+    UX_PARAMETER_NOT_USED(cbwcb);
 
     /* If trace is enabled, insert this event into the trace buffer.  */
     UX_TRACE_IN_LINE_INSERT(UX_TRACE_DEVICE_CLASS_STORAGE_MODE_SELECT, storage, lun, 0, 0, UX_TRACE_DEVICE_CLASS_EVENTS, 0, 0)
 
-    host_length = storage -> ux_slave_class_storage_host_length;
-    opcode = cbwcb[0];
-
-    /* MODE SELECT(6): parameter list length is byte 4.
-       MODE SELECT(10): parameter list length is bytes 7..8.  */
-    if (opcode == 0x55U)
-        expected_length = (ULONG)_ux_utility_short_get_big_endian(cbwcb + 7);
-    else
-        expected_length = (ULONG)cbwcb[4];
-
-    /* MODE SELECT is host-to-device only. */
-    if ((storage -> ux_slave_class_storage_cbw_flags & 0x80U) != 0U)
+    /* This command is not yet supported. So Stall the endpoint.  */
+    if (storage -> ux_slave_class_storage_host_length)
     {
+
 #if !defined(UX_DEVICE_STANDALONE)
-        _ux_device_stack_endpoint_stall(endpoint_in);
+        _ux_device_stack_endpoint_stall(endpoint_out);
 #else
-        UX_PARAMETER_NOT_USED(endpoint_in);
         UX_PARAMETER_NOT_USED(endpoint_out);
 #endif
-        storage -> ux_slave_class_storage_csw_status = UX_SLAVE_CLASS_STORAGE_CSW_PHASE_ERROR;
-        return(UX_ERROR);
+
+        storage -> ux_slave_class_storage_csw_residue = storage -> ux_slave_class_storage_host_length;
     }
 
-#if !defined(UX_DEVICE_STANDALONE)
-    transfer_request = &endpoint_out -> ux_slave_endpoint_transfer_request;
-    remaining = host_length;
-    while (remaining > 0U)
-    {
-        transfer_length = remaining;
-        if (transfer_length > UX_SLAVE_CLASS_STORAGE_BUFFER_SIZE)
-            transfer_length = UX_SLAVE_CLASS_STORAGE_BUFFER_SIZE;
+    /* And update the REQUEST_SENSE codes.  */
+    storage -> ux_slave_class_storage_lun[lun].ux_slave_class_storage_request_sense_status =
+                                            UX_DEVICE_CLASS_STORAGE_SENSE_STATUS(0x05,0x26,0x01);
 
-        status = _ux_device_stack_transfer_request(transfer_request, transfer_length, transfer_length);
-        if (status != UX_SUCCESS)
-        {
-            _ux_device_stack_endpoint_stall(endpoint_out);
-            storage -> ux_slave_class_storage_csw_status = UX_SLAVE_CLASS_STORAGE_CSW_FAILED;
-            storage -> ux_slave_class_storage_csw_residue = remaining;
-            return(status);
-        }
+    /* Now we set the CSW with failure.  */
+    storage -> ux_slave_class_storage_csw_status = UX_SLAVE_CLASS_STORAGE_CSW_FAILED;
 
-        remaining -= transfer_length;
-    }
-#else
-    UX_PARAMETER_NOT_USED(endpoint_in);
-    UX_PARAMETER_NOT_USED(endpoint_out);
-#endif
+    /* Error trap. */
+    _ux_system_error_handler(UX_SYSTEM_LEVEL_THREAD, UX_SYSTEM_CONTEXT_CLASS, UX_FUNCTION_NOT_SUPPORTED);
 
-    /* Accept MODE SELECT as a no-op.
-       Report host overrun only when host declared more than command list length.  */
-    if (host_length > expected_length)
-        storage -> ux_slave_class_storage_csw_residue = host_length - expected_length;
-    else
-        storage -> ux_slave_class_storage_csw_residue = 0U;
-    storage -> ux_slave_class_storage_lun[lun].ux_slave_class_storage_request_sense_status = 0;
-    storage -> ux_slave_class_storage_csw_status = UX_SLAVE_CLASS_STORAGE_CSW_PASSED;
-    return(UX_SUCCESS);
+    /* If trace is enabled, insert this event into the trace buffer.  */
+    UX_TRACE_IN_LINE_INSERT(UX_TRACE_ERROR, UX_FUNCTION_NOT_SUPPORTED, 0, 0, 0, UX_TRACE_ERRORS, 0, 0)
+
+    /* Return not supported error!  */
+    return(UX_FUNCTION_NOT_SUPPORTED);
 }    
 

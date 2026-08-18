@@ -28,6 +28,7 @@
 /* USER CODE BEGIN LpbamAp1_Scenario_Descs 0 */
 #define PS_LPBAM_DESC_ATTR __attribute__((section(".sram4"))) __attribute__((aligned(32)))
 #define PS_LPBAM_FIRST_FRAME_IMMEDIATE 0U
+#define PS_LPBAM_DMA_NODE_CBR1_INDEX 2U
 /* USER CODE END LpbamAp1_Scenario_Descs 0 */
 
 /* USER CODE BEGIN Queue1_Q_DisplayBufA_Desc */
@@ -35,7 +36,7 @@ static LPBAM_SPI_TxDataDesc_t Queue1_Q_DisplayBuf_Desc[PS_LPBAM_DISPLAY_FRAME_CO
 /* USER CODE END Queue1_Q_DisplayBufA_Desc */
 
 /* USER CODE BEGIN LpbamAp1_Scenario_Descs 1 */
-
+static DMA_NodeTypeDef Queue1_Q_DisplayTail_Node[PS_LPBAM_DISPLAY_FRAME_COUNT][PS_LPBAM_DISPLAY_SEQUENCE_CHUNKS] PS_LPBAM_DESC_ATTR;
 /* USER CODE END LpbamAp1_Scenario_Descs 1 */
 
 /* Exported variables ------------------------------------------------------------------------------------------------*/
@@ -53,6 +54,7 @@ static LPBAM_Status_t PS_AppendDisplayChunk(uint8_t *buffer,
                                             uint16_t len,
                                             uint8_t wait_for_frame_trigger,
                                             LPBAM_SPI_TxDataDesc_t *descriptor,
+                                            DMA_NodeTypeDef *tail_node,
                                             DMA_QListTypeDef *queue);
 /* USER CODE END PFP */
 
@@ -66,6 +68,7 @@ void MX_LpbamAp1_Scenario_Build(void)
 {
   /* USER CODE BEGIN LpbamAp1_Scenario_Build 0 */
   memset(Queue1_Q_DisplayBuf_Desc, 0, sizeof(Queue1_Q_DisplayBuf_Desc));
+  memset(Queue1_Q_DisplayTail_Node, 0, sizeof(Queue1_Q_DisplayTail_Node));
   memset(&Queue1_Q, 0, sizeof(Queue1_Q));
   /* USER CODE END LpbamAp1_Scenario_Build 0 */
 
@@ -86,6 +89,7 @@ static void MX_Queue1_Q_Build(void)
 {
   /* USER CODE BEGIN Queue1_Q_Build_Clear */
   memset(Queue1_Q_DisplayBuf_Desc, 0, sizeof(Queue1_Q_DisplayBuf_Desc));
+  memset(Queue1_Q_DisplayTail_Node, 0, sizeof(Queue1_Q_DisplayTail_Node));
   memset(&Queue1_Q, 0, sizeof(Queue1_Q));
   /* USER CODE END Queue1_Q_Build_Clear */
 
@@ -102,6 +106,7 @@ static void MX_Queue1_Q_Build(void)
                                 ps_lpbam_display_tx_len[slot][chunk],
                                 wait_for_chunk,
                                 &Queue1_Q_DisplayBuf_Desc[frame][chunk],
+                                &Queue1_Q_DisplayTail_Node[frame][chunk],
                                 &Queue1_Q) != LPBAM_OK)
       {
         Error_Handler();
@@ -121,15 +126,25 @@ static LPBAM_Status_t PS_AppendDisplayChunk(uint8_t *buffer,
                                             uint16_t len,
                                             uint8_t wait_for_frame_trigger,
                                             LPBAM_SPI_TxDataDesc_t *descriptor,
+                                            DMA_NodeTypeDef *tail_node,
                                             DMA_QListTypeDef *queue)
 {
   LPBAM_DMAListInfo_t dma_list = {0};
+  LPBAM_COMMON_DataAdvConf_t data_config = {0};
   LPBAM_SPI_DataAdvConf_t tx = {0};
+  DMA_NodeConfTypeDef tail_config = {0};
+  uint16_t tail_len;
+  uint16_t word_len;
 
-  if ((buffer == NULL) || (descriptor == NULL) || (queue == NULL) || (len == 0U))
+  if ((buffer == NULL) || (descriptor == NULL) || (tail_node == NULL) ||
+      (queue == NULL) ||
+      (len == 0U) || ((((uint32_t)buffer) & 0x3UL) != 0UL))
   {
     return LPBAM_ERROR;
   }
+
+  word_len = (uint16_t)(len & (uint16_t)~0x3U);
+  tail_len = (uint16_t)(len - word_len);
 
   dma_list.QueueType = LPBAM_LINEAR_ADDRESSING_Q;
   dma_list.pInstance = LPDMA1;
@@ -144,6 +159,54 @@ static LPBAM_Status_t PS_AppendDisplayChunk(uint8_t *buffer,
   if (ADV_LPBAM_SPI_Tx_SetDataQ(SPI3, &dma_list, &tx, descriptor, queue) != LPBAM_OK)
   {
     return LPBAM_ERROR;
+  }
+
+  if (word_len != 0U)
+  {
+    data_config.UpdateSrcDataWidth = ENABLE;
+    data_config.UpdateDestDataWidth = ENABLE;
+    data_config.TransferConfig.Transfer.SrcDataWidth =
+      LPBAM_DMA_SRC_DATAWIDTH_WORD;
+    data_config.TransferConfig.Transfer.DestDataWidth =
+      LPBAM_DMA_DEST_DATAWIDTH_WORD;
+
+    if (ADV_LPBAM_Q_SetDataConfig(&data_config,
+                                  LPBAM_SPI_TX_DATAQ_DATA_NODE,
+                                  descriptor) != LPBAM_OK)
+    {
+      return LPBAM_ERROR;
+    }
+
+    descriptor->pNodes[LPBAM_SPI_TX_DATAQ_DATA_NODE]
+      .LinkRegisters[PS_LPBAM_DMA_NODE_CBR1_INDEX] =
+      (descriptor->pNodes[LPBAM_SPI_TX_DATAQ_DATA_NODE]
+         .LinkRegisters[PS_LPBAM_DMA_NODE_CBR1_INDEX] & ~DMA_CBR1_BNDT) |
+      ((uint32_t)word_len & DMA_CBR1_BNDT);
+
+    if (tail_len != 0U)
+    {
+      if (HAL_DMAEx_List_GetNodeConfig(
+            &tail_config,
+            &descriptor->pNodes[LPBAM_SPI_TX_DATAQ_DATA_NODE]) != HAL_OK)
+      {
+        return LPBAM_ERROR;
+      }
+
+      tail_config.Init.SrcDataWidth = DMA_SRC_DATAWIDTH_BYTE;
+      tail_config.Init.DestDataWidth = DMA_DEST_DATAWIDTH_BYTE;
+      tail_config.SrcAddress = (uint32_t)&buffer[word_len];
+      tail_config.DataSize = tail_len;
+
+      if (HAL_DMAEx_List_BuildNode(&tail_config, tail_node) != HAL_OK)
+      {
+        return LPBAM_ERROR;
+      }
+
+      if (HAL_DMAEx_List_InsertNode_Tail(queue, tail_node) != HAL_OK)
+      {
+        return LPBAM_ERROR;
+      }
+    }
   }
 
   if (wait_for_frame_trigger != 0U)

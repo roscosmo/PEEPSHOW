@@ -40,10 +40,9 @@ extern "C" {
 /*#define LPBAM_COMP_MODULE_ENABLED   */
 /*#define LPBAM_DAC_MODULE_ENABLED   */
 /*#define LPBAM_LPDMA_MODULE_ENABLED   */
-/*#define LPBAM_GPIO_MODULE_ENABLED   */
 /*#define LPBAM_LPGPIO_MODULE_ENABLED   */
 /*#define LPBAM_I2C_MODULE_ENABLED   */
-/*#define LPBAM_LPTIM_MODULE_ENABLED   */
+#define LPBAM_LPTIM_MODULE_ENABLED
 /*#define LPBAM_OPAMP_MODULE_ENABLED   */
 /*#define LPBAM_RTC_MODULE_ENABLED   */
 #define LPBAM_SPI_MODULE_ENABLED
@@ -56,4 +55,3 @@ extern "C" {
 #endif
 
 #endif /* STM32_LPBAM_CONF_H */
-

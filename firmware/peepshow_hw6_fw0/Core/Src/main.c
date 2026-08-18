@@ -416,16 +416,7 @@ volatile uint32_t g_ps_hw6_pmic_int_exti_armed;
 void SystemClock_Config(void);
 void PeriphCommonClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_GPDMA1_Init(void);
 static void MX_LPDMA1_Init(void);
-static void MX_I2C3_Init(void);
-static void MX_LPUART1_UART_Init(void);
-static void MX_OCTOSPI1_Init(void);
-static void MX_RTC_Init(void);
-static void MX_SAI1_Init(void);
-static void MX_LPTIM1_Init(void);
-static void MX_SPI3_Init(void);
-static void MX_USB_OTG_FS_PCD_Init(void);
 /* USER CODE BEGIN PFP */
 static uint32_t PS_HW6_FW0_ReadOutputMask(void);
 static void PS_HW6_FW0_RecordError(uint32_t phase, uint32_t code);
@@ -1748,7 +1739,7 @@ void PeriphCommonClock_Config(void)
   * @param None
   * @retval None
   */
-static void MX_GPDMA1_Init(void)
+void MX_GPDMA1_Init(void)
 {
 
   /* USER CODE BEGIN GPDMA1_Init 0 */
@@ -1780,7 +1771,7 @@ static void MX_GPDMA1_Init(void)
   * @param None
   * @retval None
   */
-static void MX_I2C3_Init(void)
+void MX_I2C3_Init(void)
 {
 
   /* USER CODE BEGIN I2C3_Init 0 */
@@ -1839,7 +1830,7 @@ static void MX_LPDMA1_Init(void)
   __HAL_RCC_LPDMA1_CLK_ENABLE();
 
   /* LPDMA1 interrupt Init */
-    HAL_NVIC_SetPriority(LPDMA1_Channel0_IRQn, 5, 0);
+    HAL_NVIC_SetPriority(LPDMA1_Channel0_IRQn, 15, 0);
     HAL_NVIC_EnableIRQ(LPDMA1_Channel0_IRQn);
 
   /* USER CODE BEGIN LPDMA1_Init 1 */
@@ -1856,7 +1847,7 @@ static void MX_LPDMA1_Init(void)
   * @param None
   * @retval None
   */
-static void MX_LPTIM1_Init(void)
+void MX_LPTIM1_Init(void)
 {
 
   /* USER CODE BEGIN LPTIM1_Init 0 */
@@ -1901,7 +1892,7 @@ static void MX_LPTIM1_Init(void)
   * @param None
   * @retval None
   */
-static void MX_LPUART1_UART_Init(void)
+void MX_LPUART1_UART_Init(void)
 {
 
   /* USER CODE BEGIN LPUART1_Init 0 */
@@ -1948,7 +1939,7 @@ static void MX_LPUART1_UART_Init(void)
   * @param None
   * @retval None
   */
-static void MX_OCTOSPI1_Init(void)
+void MX_OCTOSPI1_Init(void)
 {
 
   /* USER CODE BEGIN OCTOSPI1_Init 0 */
@@ -2006,7 +1997,7 @@ static void MX_OCTOSPI1_Init(void)
   * @param None
   * @retval None
   */
-static void MX_RTC_Init(void)
+void MX_RTC_Init(void)
 {
 
   /* USER CODE BEGIN RTC_Init 0 */
@@ -2088,7 +2079,7 @@ static void MX_RTC_Init(void)
   * @param None
   * @retval None
   */
-static void MX_SAI1_Init(void)
+void MX_SAI1_Init(void)
 {
 
   /* USER CODE BEGIN SAI1_Init 0 */
@@ -2125,7 +2116,7 @@ static void MX_SAI1_Init(void)
   * @param None
   * @retval None
   */
-static void MX_SPI3_Init(void)
+void MX_SPI3_Init(void)
 {
 
   /* USER CODE BEGIN SPI3_Init 0 */
@@ -2140,12 +2131,12 @@ static void MX_SPI3_Init(void)
   /* SPI3 parameter configuration*/
   hspi3.Instance = SPI3;
   hspi3.Init.Mode = SPI_MODE_MASTER;
-  hspi3.Init.Direction = SPI_DIRECTION_2LINES_TXONLY;
+  hspi3.Init.Direction = SPI_DIRECTION_1LINE;
   hspi3.Init.DataSize = SPI_DATASIZE_8BIT;
   hspi3.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi3.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi3.Init.NSS = SPI_NSS_HARD_OUTPUT;
-  hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
   hspi3.Init.FirstBit = SPI_FIRSTBIT_LSB;
   hspi3.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi3.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -2153,7 +2144,7 @@ static void MX_SPI3_Init(void)
   hspi3.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
   hspi3.Init.NSSPolarity = SPI_NSS_POLARITY_HIGH;
   hspi3.Init.FifoThreshold = SPI_FIFO_THRESHOLD_01DATA;
-  hspi3.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
+  hspi3.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_15CYCLE;
   hspi3.Init.MasterInterDataIdleness = SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
   hspi3.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
   hspi3.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
@@ -2173,6 +2164,11 @@ static void MX_SPI3_Init(void)
   }
   /* USER CODE BEGIN SPI3_Init 2 */
 
+  /* LPBAM writes four 8-bit frames per DMA request into the SPI FIFO. */
+  hspi3.Init.FifoThreshold = SPI_FIFO_THRESHOLD_04DATA;
+  MODIFY_REG(hspi3.Instance->CFG1, SPI_CFG1_FTHLV,
+             SPI_FIFO_THRESHOLD_04DATA);
+
   /* USER CODE END SPI3_Init 2 */
 
 }
@@ -2182,7 +2178,7 @@ static void MX_SPI3_Init(void)
   * @param None
   * @retval None
   */
-static void MX_USB_OTG_FS_PCD_Init(void)
+void MX_USB_OTG_FS_PCD_Init(void)
 {
 
   /* USER CODE BEGIN USB_OTG_FS_Init 0 */
@@ -2270,8 +2266,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(PWR_DBG_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA1 PA5 */
-  GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_5;
+  /*Configure GPIO pins : PA1 PA5 PA9 */
+  GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_5|GPIO_PIN_9;
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (52UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (58UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -265,6 +265,7 @@ typedef struct
 
   uint32_t stop2_request_count;
   uint32_t stop2_start_tick;
+  uint32_t stop2_wfi_tick;
   uint32_t stop2_wake_tick;
   uint32_t stop2_end_tick;
   uint32_t stop2_last_status;
@@ -281,6 +282,76 @@ typedef struct
   uint32_t stop2_systick_icsr_before;
   uint32_t stop2_systick_icsr_sleep;
   uint32_t stop2_systick_icsr_after;
+  uint32_t stop2_pre_wfi_hold_enabled;
+  uint32_t stop2_pre_wfi_hold_active;
+  uint32_t stop2_pre_wfi_hold_count;
+  uint32_t stop2_pre_wfi_hold_tick;
+  uint32_t stop2_pre_wfi_hold_skip_count;
+  uint32_t stop2_pre_wfi_rcc_srdamr;
+  uint32_t stop2_pre_wfi_spi_cr1;
+  uint32_t stop2_pre_wfi_spi_cfg1;
+  uint32_t stop2_pre_wfi_spi_cfg2;
+  uint32_t stop2_pre_wfi_spi_autocr;
+  uint32_t stop2_pre_wfi_spi_sr;
+  uint32_t stop2_pre_wfi_lptim_cr;
+  uint32_t stop2_pre_wfi_lptim_cfgr;
+  uint32_t stop2_pre_wfi_lptim_ccmr1;
+  uint32_t stop2_pre_wfi_lptim_arr;
+  uint32_t stop2_pre_wfi_lptim_cmp;
+  uint32_t stop2_srdrun_test_active;
+  uint32_t stop2_srdrun_test_count;
+  uint32_t stop2_srdrun_test_tick;
+  uint32_t stop2_srdrun_cr2_before;
+  uint32_t stop2_srdrun_cr2_forced;
+  uint32_t stop2_srdrun_cr2_after;
+  uint32_t stop2_apb3_div1_test_active;
+  uint32_t stop2_apb3_div1_test_count;
+  uint32_t stop2_apb3_div1_test_tick;
+  uint32_t stop2_apb3_cfgr3_before;
+  uint32_t stop2_apb3_cfgr3_forced;
+  uint32_t stop2_apb3_cfgr3_after;
+  uint32_t stop2_spi_autotrigger_test_active;
+  uint32_t stop2_spi_autotrigger_test_count;
+  uint32_t stop2_spi_autotrigger_test_tick;
+  uint32_t stop2_spi_autocr_before;
+  uint32_t stop2_spi_autocr_forced;
+  uint32_t stop2_spi_autocr_after;
+  uint32_t stop2_post_wfi_snapshot_count;
+  uint32_t stop2_post_wfi_snapshot_tick;
+  uint32_t stop2_post_wfi_break_count;
+  uint32_t stop2_post_wfi_rcc_srdamr;
+  uint32_t stop2_post_wfi_rcc_cfgr3;
+  uint32_t stop2_post_wfi_pwr_cr2;
+  uint32_t stop2_post_wfi_scb_icsr;
+  uint32_t stop2_post_wfi_nvic_ispr0;
+  uint32_t stop2_post_wfi_nvic_ispr1;
+  uint32_t stop2_post_wfi_nvic_iabr0;
+  uint32_t stop2_post_wfi_nvic_iabr1;
+  uint32_t stop2_post_wfi_lpdma_misr;
+  uint32_t stop2_post_wfi_dma_clbar;
+  uint32_t stop2_post_wfi_dma_csr;
+  uint32_t stop2_post_wfi_dma_ccr;
+  uint32_t stop2_post_wfi_dma_ctr1;
+  uint32_t stop2_post_wfi_dma_ctr2;
+  uint32_t stop2_post_wfi_dma_cbr1;
+  uint32_t stop2_post_wfi_dma_csar;
+  uint32_t stop2_post_wfi_dma_cdar;
+  uint32_t stop2_post_wfi_dma_cllr;
+  uint32_t stop2_post_wfi_spi_cr1;
+  uint32_t stop2_post_wfi_spi_cr2;
+  uint32_t stop2_post_wfi_spi_cfg1;
+  uint32_t stop2_post_wfi_spi_cfg2;
+  uint32_t stop2_post_wfi_spi_ier;
+  uint32_t stop2_post_wfi_spi_sr;
+  uint32_t stop2_post_wfi_spi_autocr;
+  uint32_t stop2_post_wfi_lptim_isr;
+  uint32_t stop2_post_wfi_lptim_dier;
+  uint32_t stop2_post_wfi_lptim_cfgr;
+  uint32_t stop2_post_wfi_lptim_cr;
+  uint32_t stop2_post_wfi_lptim_ccmr1;
+  uint32_t stop2_post_wfi_lptim_arr;
+  uint32_t stop2_post_wfi_lptim_cmp;
+  uint32_t stop2_post_wfi_lptim_cnt;
   uint32_t stop2_active_prep_request_count;
   uint32_t stop2_active_prep_start_tick;
   uint32_t stop2_active_prep_end_tick;
@@ -963,6 +1034,10 @@ extern volatile uint32_t g_ps_hw6_power_stop2_request;
 extern volatile uint32_t g_ps_hw6_power_stop2_active_resume_request;
 extern volatile uint32_t g_ps_hw6_power_stop2_active_prep_request;
 extern volatile uint32_t g_ps_hw6_power_stop2_active_enter_request;
+extern volatile uint32_t g_ps_hw6_power_stop2_srdrun_test_enable;
+extern volatile uint32_t g_ps_hw6_power_stop2_apb3_div1_test_enable;
+extern volatile uint32_t g_ps_hw6_power_stop2_post_wfi_break_enable;
+extern volatile uint32_t g_ps_hw6_power_stop2_spi_autotrigger_test_enable;
 extern volatile uint32_t g_ps_hw6_storage_usb_export_request;
 extern volatile uint32_t g_ps_hw6_storage_usb_reclaim_request;
 extern volatile uint32_t g_ps_hw6_joystick_sample_request;

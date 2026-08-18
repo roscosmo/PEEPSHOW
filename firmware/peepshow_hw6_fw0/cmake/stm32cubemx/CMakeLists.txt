@@ -20,12 +20,15 @@ target_compile_definitions(stm32cubemx INTERFACE
 )
 
 target_include_directories(stm32cubemx INTERFACE
+    ../../LPBAM/LpbamAp1
+    ../../Core/Inc
     ../../FileX/App
     ../../LevelX/App
-    ../../Core/Inc
     ../../AZURE_RTOS/App
     ../../USBX/App
     ../../USBX/Target
+    ../../Utilities/lpbam
+    ../../Utilities/lpbam/STM32U5
     ../../Drivers/STM32U5xx_HAL_Driver/Inc
     ../../Drivers/STM32U5xx_HAL_Driver/Inc/Legacy
     ../../Middlewares/ST/threadx/common/inc
@@ -51,14 +54,18 @@ target_sources(stm32cubemx INTERFACE
     ../../USBX/App/ux_device_descriptors.c
     ../../USBX/App/app_usbx_device.c
     ../../USBX/App/ux_device_msc.c
+    ../../LPBAM/LpbamAp1/lpbam_lpbamap1_scenario_config.c
+    ../../LPBAM/LpbamAp1/lpbam_lpbamap1_config.c
+    ../../LPBAM/LpbamAp1/lpbam_lpbamap1_scenario_build.c
     ../../FileX/App/app_filex.c
     ../../AZURE_RTOS/App/app_azure_rtos.c
-    ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_cortex.c
+    ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_ramcfg.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_i2c.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_i2c_ex.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_rcc.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_rcc_ex.c
+    ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_cortex.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_flash.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_flash_ex.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_gpio.c
@@ -70,6 +77,8 @@ target_sources(stm32cubemx INTERFACE
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_gtzc.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_icache.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_lptim.c
+    ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_spi.c
+    ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_spi_ex.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_uart.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_uart_ex.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_ospi.c
@@ -78,8 +87,6 @@ target_sources(stm32cubemx INTERFACE
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_rtc_ex.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_sai.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_sai_ex.c
-    ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_spi.c
-    ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_spi_ex.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_tim.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_tim_ex.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_pcd.c
@@ -624,6 +631,13 @@ target_sources(stm32cubemx INTERFACE
     ../../Middlewares/ST/usbx/common/core/src/ux_device_stack_transfer_all_request_abort.c
     ../../Middlewares/ST/usbx/common/core/src/ux_device_stack_transfer_request.c
     ../../Middlewares/ST/usbx/common/core/src/ux_device_stack_uninitialize.c
+    ../../Utilities/lpbam/stm32_adv_lpbam_common.c
+    ../../Utilities/lpbam/STM32U5/stm32_ll_lpbam.c
+    ../../Utilities/lpbam/stm32_lpbam_common.c
+    ../../Utilities/lpbam/stm32_adv_lpbam_lptim.c
+    ../../Utilities/lpbam/stm32_lpbam_lptim.c
+    ../../Utilities/lpbam/stm32_adv_lpbam_spi.c
+    ../../Utilities/lpbam/stm32_lpbam_spi.c
     ../../Core/Src/sysmem.c
     ../../Core/Src/syscalls.c
     ../../startup_stm32u575xx.s

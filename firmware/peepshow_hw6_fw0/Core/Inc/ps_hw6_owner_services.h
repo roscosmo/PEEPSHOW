@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (20UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (24UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -151,6 +151,9 @@ typedef struct
   uint32_t display_dirty_row_count;
   uint32_t display_dirty_first_row;
   uint32_t display_dirty_last_row;
+  uint32_t display_renderer_primitive_id;
+  uint32_t display_renderer_previous_focus_row;
+  uint32_t display_renderer_current_focus_row;
   uint32_t display_rtc_state;
   uint32_t display_rtc_cr;
   uint32_t display_spi_state_before;
@@ -170,6 +173,9 @@ typedef struct
   uint32_t display_ui_shutdown_state;
   uint32_t display_ui_shutdown_countdown_seconds;
   uint32_t display_ui_status;
+  uint32_t display_ui_primitive_id;
+  uint32_t display_ui_previous_focus_row;
+  uint32_t display_ui_current_focus_row;
   uint32_t display_blink_request_count;
   uint32_t display_blink_render_count;
   uint32_t display_blink_tick;
@@ -178,6 +184,9 @@ typedef struct
   uint32_t display_lpbam_ready;
   uint32_t display_lpbam_ready_page;
   uint32_t display_lpbam_ready_render_count;
+  uint32_t display_lpbam_animation_id;
+  uint32_t display_lpbam_source_primitive_id;
+  uint32_t display_lpbam_focus_row;
   uint32_t display_lpbam_prepare_count;
   uint32_t display_lpbam_prepare_tick;
   uint32_t display_lpbam_prepare_status;
@@ -188,6 +197,7 @@ typedef struct
   uint32_t display_lpbam_clear_count;
   uint32_t display_lpbam_clear_reason;
   uint32_t display_lpbam_status;
+  uint32_t display_lpbam_prearmed;
   uint32_t display_lpbam_active;
   uint32_t display_lpbam_cursor_start_row;
   uint32_t display_lpbam_cursor_row_count;
@@ -199,6 +209,10 @@ typedef struct
   uint32_t display_lpbam_fill_status;
   uint32_t display_lpbam_clock_status;
   uint32_t display_lpbam_link_status;
+  uint32_t display_lpbam_prearm_status;
+  uint32_t display_lpbam_commit_count;
+  uint32_t display_lpbam_commit_tick;
+  uint32_t display_lpbam_commit_status;
   uint32_t display_lpbam_start_status;
   uint32_t display_lpbam_dma_start_status;
   uint32_t display_lpbam_lptim_init_status;
@@ -216,6 +230,12 @@ typedef struct
   uint32_t display_lpbam_rcc_srdamr_after;
   uint32_t display_lpbam_spi_autocr_before;
   uint32_t display_lpbam_spi_autocr_after;
+  uint32_t display_lpbam_spi_kernel_hz;
+  uint32_t display_lpbam_spi_init_direction;
+  uint32_t display_lpbam_spi_init_prescaler;
+  uint32_t display_lpbam_spi_init_ss_idleness;
+  uint32_t display_lpbam_spi_cfg1_after_init;
+  uint32_t display_lpbam_spi_cfg2_after_init;
   uint32_t display_lpbam_dma_state_after_start;
   uint32_t display_lpbam_dma_error_after_start;
   uint32_t display_lpbam_queue_node_count;
@@ -271,6 +291,9 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   uint32_t shutdown_countdown_seconds);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderCursorBlink(uint32_t visible);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2(void);
+HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2ForCursorPhase(
+  uint32_t current_visible);
+HAL_StatusTypeDef PS_HW6_DisplayOwner_CommitLpbamStop2(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2(void);
 void PS_HW6_DisplayOwner_DebugForceNextLpbamReady(void);
 HAL_StatusTypeDef PS_HW6_AudioOwner_RunTone(void);

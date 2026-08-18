@@ -51,6 +51,17 @@ set_target_properties(stm32cubemx PROPERTIES
     INTERFACE_COMPILE_DEFINITIONS "${_stm32cubemx_defs}"
 )
 
+# The display owner builds and links the runtime LPBAM queue directly.  Keep
+# CubeMX's scenario scaffold in the project, but do not compile its alternate
+# peripheral initializer alongside the normal main.c initializers.
+get_target_property(_stm32cubemx_sources stm32cubemx INTERFACE_SOURCES)
+list(FILTER _stm32cubemx_sources EXCLUDE REGEX
+    "lpbam_lpbamap1_scenario_config\\.c$"
+)
+set_target_properties(stm32cubemx PROPERTIES
+    INTERFACE_SOURCES "${_stm32cubemx_sources}"
+)
+
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
