@@ -735,13 +735,13 @@
       "type": "integer",
       "minimum": 1,
       "maximum": 2,
-      "default": 1,
+      "default": 2,
       "unit": "enum",
       "timebase_domain": "threadx",
       "owner": "thPower",
       "class": "protected_policy",
       "path": "platform.knobs.power.stop2_display_wait_backend",
-      "description": "STOP2 display waiting backend selector: 1 = held frame, 2 = LPBAM display handoff. Default 1 enables baseline STOP2/current bring-up before HW6 LPBAM payloads are implemented."
+      "description": "STOP2 display waiting backend selector: 1 = held frame fallback, 2 = LPBAM display handoff. Default 2 uses the target-validated LPBAM cursor animation while waiting in STOP2."
     },
     "power_stop2_gpio_park_group_mask": {
       "type": "integer",

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (42UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (48UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -214,6 +214,11 @@ typedef struct
   uint32_t stop2_auto_debug_force_enable;
   uint32_t stop2_auto_debug_force_entry_count;
   uint32_t stop2_auto_debug_force_entry_tick;
+  uint32_t stop2_auto_clock_release_recheck_count;
+  uint32_t stop2_auto_clock_release_recheck_tick;
+  uint32_t stop2_auto_clock_release_recheck_requester;
+  uint32_t stop2_auto_clock_idle_preserve_count;
+  uint32_t stop2_auto_clock_idle_preserve_tick;
   uint32_t stop2_blink_handoff_request_count;
   uint32_t stop2_blink_handoff_last_tick;
   uint32_t stop2_blink_handoff_send_status;
@@ -237,15 +242,32 @@ typedef struct
   uint32_t stop2_lpbam_edge_start_phase;
   uint32_t stop2_lpbam_edge_run_count;
   uint32_t stop2_lpbam_edge_run_tick;
+  uint32_t stop2_lpbam_edge_run_phase;
   uint32_t stop2_lpbam_edge_status;
   uint32_t stop2_lpbam_edge_ready_tick;
   uint32_t stop2_lpbam_edge_miss_count;
+  uint32_t stop2_lpbam_edge_render_phase;
+  uint32_t stop2_lpbam_edge_render_status;
+  uint32_t stop2_lpbam_edge_render_tick;
+  uint32_t stop2_lpbam_edge_defer_count;
+  uint32_t stop2_lpbam_edge_wake_send_status;
+  uint32_t display_deadline_wait_count;
+  uint32_t display_deadline_wait_last_ticks;
+  uint32_t display_deadline_due_count;
+  uint32_t stop2_lpbam_power_recheck_request_count;
+  uint32_t stop2_lpbam_power_recheck_request_tick;
+  uint32_t stop2_lpbam_power_recheck_send_status;
+  uint32_t stop2_lpbam_power_recheck_consume_count;
+  uint32_t stop2_lpbam_power_recheck_consume_tick;
   uint32_t stop2_lpbam_abort_request_count;
   uint32_t stop2_lpbam_abort_last_tick;
   uint32_t stop2_lpbam_abort_send_status;
   uint32_t stop2_lpbam_abort_wait_status;
   uint32_t stop2_lpbam_abort_ack_flags;
   uint32_t stop2_lpbam_abort_owner_status;
+  uint32_t stop2_lpbam_abort_resume_phase;
+  uint32_t stop2_lpbam_abort_resume_status;
+  uint32_t stop2_lpbam_abort_resume_tick;
   uint32_t stop2_lpbam_abort_late_test_count;
   uint32_t stop2_lpbam_abort_late_test_tick;
   uint32_t stop2_lpbam_abort_late_test_status;

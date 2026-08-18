@@ -55,7 +55,7 @@
   "power_clock_realtime_balanced_hz": 80000000,
   "power_clock_io_high_hz": 160000000,
   "power_clock_pll2_autogate_enable": true,
-  "power_stop2_display_wait_backend": 1,
+  "power_stop2_display_wait_backend": 2,
   "power_stop2_gpio_park_group_mask": 30,
   "power_auto_stop2_enable": true,
   "power_auto_stop2_check_period_ms": 1000,

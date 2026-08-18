@@ -31,8 +31,9 @@
 #define PS_HW6_DISPLAY_LPBAM_CLEAR_UI_RENDER (3UL)
 #define PS_HW6_DISPLAY_LPBAM_CLEAR_ABORT     (4UL)
 #define PS_HW6_DISPLAY_LPBAM_CLEAR_BLINK     (5UL)
-#define PS_HW6_DISPLAY_LPBAM_LPTIM_250MS_ARR (7812U)
-#define PS_HW6_DISPLAY_LPBAM_LPTIM_250MS_CMP (3906U)
+#define PS_HW6_DISPLAY_LPBAM_LPTIM_PRESCALER (128UL)
+#define PS_HW6_DISPLAY_LPBAM_CADENCE_DIVISOR (2UL)
+#define PS_HW6_DISPLAY_MILLISECONDS_PER_SECOND (1000UL)
 #define PS_HW6_DISPLAY_DRIVER_API_VERSION    (1UL)
 #define PS_HW6_DISPLAY_DRIVER_STATE_READY    (1UL)
 #define PS_HW6_DISPLAY_DRIVER_STATE_HOLD     (2UL)
@@ -454,15 +455,53 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_WaitLptimFlag(uint32_t flag)
   return HAL_TIMEOUT;
 }
 
+static HAL_StatusTypeDef PS_HW6_DisplayOwner_GetLpbamTimerCounts(
+  uint32_t *period_counts,
+  uint32_t *compare_counts)
+{
+  uint32_t lptim_kernel_hz;
+  uint64_t denominator;
+  uint64_t counts;
+
+  if ((period_counts == NULL) || (compare_counts == NULL))
+  {
+    return HAL_ERROR;
+  }
+
+  lptim_kernel_hz = HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_LPTIM1);
+  denominator = (uint64_t)PS_HW6_DISPLAY_LPBAM_LPTIM_PRESCALER *
+                (uint64_t)PS_HW6_DISPLAY_MILLISECONDS_PER_SECOND *
+                (uint64_t)PS_HW6_DISPLAY_LPBAM_CADENCE_DIVISOR;
+  counts = ((uint64_t)lptim_kernel_hz *
+            (uint64_t)KNOB_DISPLAY_CURSOR_BLINK_PERIOD_MS +
+            (denominator / 2ULL)) / denominator;
+  if ((lptim_kernel_hz == 0UL) || (counts < 2ULL) ||
+      (counts > 65535ULL))
+  {
+    return HAL_ERROR;
+  }
+
+  *period_counts = (uint32_t)counts;
+  *compare_counts = (uint32_t)(counts / 2ULL);
+  return HAL_OK;
+}
+
 static HAL_StatusTypeDef PS_HW6_DisplayOwner_ConfigLpbamLptim(void)
 {
   LPTIM_OC_ConfigTypeDef oc = {0};
   HAL_StatusTypeDef status;
+  uint32_t period_counts;
+  uint32_t compare_counts;
 
   __HAL_RCC_MSIK_ENABLE();
   if (__HAL_RCC_GET_FLAG(RCC_FLAG_MSIKRDY) == 0U)
   {
     return HAL_TIMEOUT;
+  }
+  if (PS_HW6_DisplayOwner_GetLpbamTimerCounts(&period_counts,
+                                               &compare_counts) != HAL_OK)
+  {
+    return HAL_ERROR;
   }
 
   if (hlptim1.Instance != NULL)
@@ -499,8 +538,7 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_ConfigLpbamLptim(void)
   __HAL_LPTIM_ENABLE(&hlptim1);
 
   __HAL_LPTIM_CLEAR_FLAG(&hlptim1, LPTIM_FLAG_ARROK);
-  __HAL_LPTIM_AUTORELOAD_SET(&hlptim1,
-                             PS_HW6_DISPLAY_LPBAM_LPTIM_250MS_ARR);
+  __HAL_LPTIM_AUTORELOAD_SET(&hlptim1, period_counts);
   status = PS_HW6_DisplayOwner_WaitLptimFlag(LPTIM_FLAG_ARROK);
   g_ps_hw6_owner_probe.display_lpbam_lptim_arr_status =
     (uint32_t)status;
@@ -513,7 +551,7 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_ConfigLpbamLptim(void)
   __HAL_LPTIM_CLEAR_FLAG(&hlptim1, LPTIM_FLAG_CMP1OK);
   __HAL_LPTIM_COMPARE_SET(&hlptim1,
                           LPTIM_CHANNEL_1,
-                          PS_HW6_DISPLAY_LPBAM_LPTIM_250MS_CMP);
+                          compare_counts);
   status = PS_HW6_DisplayOwner_WaitLptimFlag(LPTIM_FLAG_CMP1OK);
   g_ps_hw6_owner_probe.display_lpbam_lptim_cmp_status =
     (uint32_t)status;
