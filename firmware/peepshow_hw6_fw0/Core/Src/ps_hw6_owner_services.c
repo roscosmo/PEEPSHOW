@@ -4,9 +4,10 @@
 
 #include "display_renderer.h"
 #include "LS013B7DH05.h"
-#include "lpbam_lpbamap1.h"
 #include "ps_dev_audio.h"
 #include "ps_lpbam_display_buffers.h"
+#include "ps_lpbam_display_queue.h"
+#include "stm32_lpbam.h"
 #include "stm32u5xx_ll_spi.h"
 #include "main.h"
 #include "knobs_autogen.h"
@@ -56,7 +57,6 @@ extern DMA_HandleTypeDef handle_GPDMA1_Channel3;
 extern LPTIM_HandleTypeDef hlptim1;
 extern SPI_HandleTypeDef hspi3;
 extern DMA_HandleTypeDef handle_LPDMA1_Channel0;
-extern DMA_QListTypeDef Queue1_Q;
 
 volatile PS_HW6_OwnerProbe g_ps_hw6_owner_probe;
 
@@ -608,9 +608,9 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_LinkLpbamQueue(void)
     return status;
   }
 
-  status = HAL_DMAEx_List_LinkQ(&handle_LPDMA1_Channel0, &Queue1_Q);
+  status = PS_LpbamDisplayQueue_Link(&handle_LPDMA1_Channel0);
   g_ps_hw6_owner_probe.display_lpbam_queue_node_count =
-    Queue1_Q.NodeNumber;
+    PS_LpbamDisplayQueue_GetNodeCount();
   return status;
 }
 
@@ -722,7 +722,13 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_PrearmLpbamPlayback(void)
 {
   HAL_StatusTypeDef status;
 
-  MX_LpbamAp1_Scenario_Build();
+  status = PS_LpbamDisplayQueue_Build();
+  if (status != HAL_OK)
+  {
+    g_ps_hw6_owner_probe.display_lpbam_link_status = (uint32_t)status;
+    return status;
+  }
+
   status = PS_HW6_DisplayOwner_LinkLpbamQueue();
   g_ps_hw6_owner_probe.display_lpbam_link_status = (uint32_t)status;
   if (status != HAL_OK)

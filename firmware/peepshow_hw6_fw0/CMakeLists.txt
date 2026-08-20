@@ -51,12 +51,15 @@ set_target_properties(stm32cubemx PROPERTIES
     INTERFACE_COMPILE_DEFINITIONS "${_stm32cubemx_defs}"
 )
 
-# The display owner builds and links the runtime LPBAM queue directly.  Keep
-# CubeMX's scenario scaffold in the project, but do not compile its alternate
-# peripheral initializer alongside the normal main.c initializers.
+# The display owner uses the user-owned runtime LPBAM queue. Keep CubeMX's
+# scenario scaffold regeneratable, but do not compile its generated builder or
+# alternate peripheral initializer alongside the runtime implementation.
 get_target_property(_stm32cubemx_sources stm32cubemx INTERFACE_SOURCES)
 list(FILTER _stm32cubemx_sources EXCLUDE REGEX
-    "lpbam_lpbamap1_scenario_config\\.c$"
+    "lpbam_lpbamap1_scenario_(build|config)\\.c$"
+)
+list(FILTER _stm32cubemx_sources EXCLUDE REGEX
+    "stm32_lpbam_(common|spi)\\.c$"
 )
 set_target_properties(stm32cubemx PROPERTIES
     INTERFACE_SOURCES "${_stm32cubemx_sources}"
@@ -72,7 +75,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/LS013B7DH05.c
     Core/Src/display_renderer.c
     Core/Src/ps_lpbam_display_buffers.c
-    LPBAM/LpbamAp1/lpbam_lpbamap1_scenario_build.c
+    Core/Src/ps_lpbam_display_queue.c
+    Core/Src/ps_lpbam_dma_node_compat.c
     Core/Src/ps_dev_at25sl128a.c
     Core/Src/ps_dev_audio.c
     Core/Src/ps_dev_adp5360.c
@@ -96,9 +100,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Drivers/Components/lis2dux12/lis2dux12_reg.c
     Utilities/lpbam/stm32_adv_lpbam_common.c
     Utilities/lpbam/STM32U5/stm32_ll_lpbam.c
-    Utilities/lpbam/stm32_lpbam_common.c
     Utilities/lpbam/stm32_adv_lpbam_spi.c
-    Utilities/lpbam/stm32_lpbam_spi.c
     Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_callback.c
     Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_endpoint_create.c
     Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_endpoint_destroy.c

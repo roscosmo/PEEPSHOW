@@ -56,7 +56,6 @@ LPBAM_Status_t LPBAM_SetDMATransferConfig(LPBAM_COMMON_TransferConfig_t const *c
   {
     return LPBAM_ERROR;
   }
-  dma_node_conf.Init.Mode = DMA_NORMAL;
 
   /* Update source increment */
   if (pTransferConfig->UpdateSrcInc == ENABLE)
@@ -129,7 +128,6 @@ LPBAM_Status_t LPBAM_SetDMATriggerConfig(LPBAM_COMMON_TrigConfig_t const *const 
   {
     return LPBAM_ERROR;
   }
-  dma_node_conf.Init.Mode = DMA_NORMAL;
 
   /* Set trigger information to DMA node */
   dma_node_conf.TriggerConfig.TriggerMode      = pTrigConfig->TriggerConfig.TriggerMode;
