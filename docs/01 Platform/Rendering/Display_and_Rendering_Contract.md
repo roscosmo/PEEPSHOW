@@ -95,9 +95,11 @@ HW6 evidence `EV-HW6-20260820-P1-LPBAMREGEN-074` validates the regeneration-safe
 
 HW6 evidence `EV-HW6-20260820-P1-REACTIVELPBAM-075` validates the first visually seamless awake-to-LPBAM cursor handoff and renderer-owned phase source. `display_renderer.c` authors phase `0` as outlined and phase `1` as solid, so both phases remain visible after a wake/move action; LPBAM consumes renderer-produced frames and only packs their dirty panel rows. Target probe APIs `49/10` reported display UI request/render `18/17`, blink request/render `52/52`, dirty rows `8/153/160`, three successful automatic and owner STOP2 entries, and final input admission `check/veto/status = 3/0/0x0`. The user could no longer perceive the STOP2 transition. This closes visual phase continuity for the current two-phase cursor test unit. It does not impose a two-frame limit, and general authored animation compilation, arbitrary dirty regions, LPBAM active-current measurement, final layout, and display fault recovery remain open.
 
+HW6 evidence `EV-HW6-20260820-P1-LPBAMCURRENT-076` validates the first autonomous-display current baseline. With debug-in-low-power disabled and SWD detached, the target averaged approximately `56 uA` over five minutes while the `250 ms` LPBAM cursor animation remained active. Against the earlier accepted held-frame STOP2 mean of `51.39 uA`, this is an approximate `4.61 uA` or `9%` average increase. At four frame transfers per second, that difference corresponds to roughly `1.15 uC` per transfer if the two captures are otherwise comparable. This closes average-current measurement for the current eight-row cursor slice. It does not establish the individual transfer-pulse shape or current scaling for other cadences, dirty-row counts, chunk counts, or production animations.
+
 ## DMA-Safe Buffer Placement
 
-HW6 display DMA/LPDMA source data must live in the SRAM4 display-DMA/autonomous arena. This allocation model is validated on HW5 and target-proven on HW6 for the first cursor-slice LPBAM handoff. Final renderer-driven animation budgets remain provisional until incremental dirty-row drawing, payload sizing, and LPBAM active current are measured.
+HW6 display DMA/LPDMA source data must live in the SRAM4 display-DMA/autonomous arena. This allocation model is validated on HW5 and target-proven on HW6 for the first cursor-slice LPBAM handoff. The current eight-row, `250 ms` cursor slice has a measured `56 uA` five-minute average, but final renderer-driven animation budgets remain provisional until current scaling is measured across representative dirty-row, payload, chunk, and cadence limits.
 
 | Buffer | Purpose | Placement |
 |---|---|---|
@@ -249,7 +251,7 @@ If the preferred waiting visual does not fit the measured target budget, the dis
 
 ## LPBAM Display Scenario FSM
 
-LPBAM display animation is a hardware-validated HW5 Platform baseline for eligible reactive waiting visuals. On HW6 the owner handoff, SRAM4 placement, linked-list start, STOP2 residency, complete-cursor row-unison behavior, phase-aligned cursor handoff, wake, and abort/reclaim path are now validated for the current cursor-slice bring-up payload. Shipping use remains target-profile gated until general waiting-animation compilation, SRAM4 admission limits, LPBAM active current, and display electrical behavior are evidenced for production waiting visuals.
+LPBAM display animation is a hardware-validated HW5 Platform baseline for eligible reactive waiting visuals. On HW6 the owner handoff, SRAM4 placement, linked-list start, STOP2 residency, complete-cursor row-unison behavior, phase-aligned cursor handoff, wake, abort/reclaim path, and first cursor-slice current baseline are now validated. Shipping use remains target-profile gated until general waiting-animation compilation, SRAM4 admission limits, current scaling across admitted production payloads, and display electrical behavior are evidenced for production waiting visuals.
 
 It is allowed and designed-for, but not required for the normal display renderer to function.
 
