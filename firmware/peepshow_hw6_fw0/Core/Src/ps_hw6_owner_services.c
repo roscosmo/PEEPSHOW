@@ -35,7 +35,7 @@
 #define PS_HW6_DISPLAY_LPBAM_LPTIM_PRESCALER (128UL)
 #define PS_HW6_DISPLAY_LPBAM_CADENCE_DIVISOR (2UL)
 #define PS_HW6_DISPLAY_MILLISECONDS_PER_SECOND (1000UL)
-#define PS_HW6_DISPLAY_DRIVER_API_VERSION    (1UL)
+#define PS_HW6_DISPLAY_DRIVER_API_VERSION    (2UL)
 #define PS_HW6_DISPLAY_DRIVER_STATE_READY    (1UL)
 #define PS_HW6_DISPLAY_DRIVER_STATE_HOLD     (2UL)
 #define PS_HW6_DISPLAY_DRIVER_STATE_FAULT    (3UL)
@@ -56,6 +56,7 @@ extern SAI_HandleTypeDef hsai_BlockA1;
 extern DMA_HandleTypeDef handle_GPDMA1_Channel3;
 extern LPTIM_HandleTypeDef hlptim1;
 extern SPI_HandleTypeDef hspi3;
+extern DMA_HandleTypeDef handle_GPDMA1_Channel0;
 extern DMA_HandleTypeDef handle_LPDMA1_Channel0;
 
 volatile PS_HW6_OwnerProbe g_ps_hw6_owner_probe;
@@ -374,6 +375,18 @@ static void PS_HW6_DisplayOwner_RecordLpbamSpiInitProbe(void)
     hspi3.Instance->CFG2;
 }
 
+static uint32_t PS_HW6_DisplayOwner_GetAwakeDmaState(void)
+{
+  return (hspi3.hdmatx != NULL) ? HAL_DMA_GetState(hspi3.hdmatx) :
+    (uint32_t)HAL_DMA_STATE_RESET;
+}
+
+static uint32_t PS_HW6_DisplayOwner_GetAwakeDmaError(void)
+{
+  return (hspi3.hdmatx != NULL) ? HAL_DMA_GetError(hspi3.hdmatx) :
+    HAL_DMA_ERROR_NO_XFER;
+}
+
 static HAL_StatusTypeDef PS_HW6_DisplayOwner_EnableLpbamAutonomousClocks(void)
 {
   SPI_AutonomousModeConfTypeDef autonomous = {0};
@@ -663,6 +676,9 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_RestoreDisplaySpiAfterLpbam(void)
   {
     return status;
   }
+
+  /* HAL_SPI_Init reruns MSP setup, where CubeMX links LPDMA last. */
+  __HAL_LINKDMA(&hspi3, hdmatx, handle_GPDMA1_Channel0);
 
   autonomous.TriggerState = SPI_AUTO_MODE_DISABLE;
   autonomous.TriggerSelection = SPI_GRP2_LPTIM1_CH1_TRG;
@@ -1365,9 +1381,9 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void)
   g_ps_hw6_owner_probe.display_spi_state_after = HAL_SPI_GetState(&hspi3);
   g_ps_hw6_owner_probe.display_spi_error_after = HAL_SPI_GetError(&hspi3);
   g_ps_hw6_owner_probe.display_dma_state_after =
-    HAL_DMA_GetState(&handle_LPDMA1_Channel0);
+    PS_HW6_DisplayOwner_GetAwakeDmaState();
   g_ps_hw6_owner_probe.display_dma_error_after =
-    HAL_DMA_GetError(&handle_LPDMA1_Channel0);
+    PS_HW6_DisplayOwner_GetAwakeDmaError();
   PS_HW6_UpdateDisplayDriverProbe();
   g_ps_hw6_owner_probe.display_complete = 1UL;
 
@@ -1441,9 +1457,9 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearBootHold(void)
   g_ps_hw6_owner_probe.display_spi_state_after = HAL_SPI_GetState(&hspi3);
   g_ps_hw6_owner_probe.display_spi_error_after = HAL_SPI_GetError(&hspi3);
   g_ps_hw6_owner_probe.display_dma_state_after =
-    HAL_DMA_GetState(&handle_LPDMA1_Channel0);
+    PS_HW6_DisplayOwner_GetAwakeDmaState();
   g_ps_hw6_owner_probe.display_dma_error_after =
-    HAL_DMA_GetError(&handle_LPDMA1_Channel0);
+    PS_HW6_DisplayOwner_GetAwakeDmaError();
   g_ps_hw6_owner_probe.display_ui_status = (uint32_t)driver_status;
   PS_HW6_UpdateDisplayDriverProbe();
   g_ps_hw6_owner_probe.display_complete = 1UL;
@@ -1498,9 +1514,9 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   g_ps_hw6_owner_probe.display_spi_state_after = HAL_SPI_GetState(&hspi3);
   g_ps_hw6_owner_probe.display_spi_error_after = HAL_SPI_GetError(&hspi3);
   g_ps_hw6_owner_probe.display_dma_state_after =
-    HAL_DMA_GetState(&handle_LPDMA1_Channel0);
+    PS_HW6_DisplayOwner_GetAwakeDmaState();
   g_ps_hw6_owner_probe.display_dma_error_after =
-    HAL_DMA_GetError(&handle_LPDMA1_Channel0);
+    PS_HW6_DisplayOwner_GetAwakeDmaError();
   g_ps_hw6_owner_probe.display_ui_status = (uint32_t)driver_status;
   PS_HW6_UpdateDisplayDriverProbe();
   g_ps_hw6_owner_probe.display_complete = 1UL;
@@ -1554,9 +1570,9 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderCursorBlink(uint32_t visible)
   g_ps_hw6_owner_probe.display_spi_state_after = HAL_SPI_GetState(&hspi3);
   g_ps_hw6_owner_probe.display_spi_error_after = HAL_SPI_GetError(&hspi3);
   g_ps_hw6_owner_probe.display_dma_state_after =
-    HAL_DMA_GetState(&handle_LPDMA1_Channel0);
+    PS_HW6_DisplayOwner_GetAwakeDmaState();
   g_ps_hw6_owner_probe.display_dma_error_after =
-    HAL_DMA_GetError(&handle_LPDMA1_Channel0);
+    PS_HW6_DisplayOwner_GetAwakeDmaError();
   g_ps_hw6_owner_probe.display_blink_status = (uint32_t)driver_status;
   PS_HW6_UpdateDisplayDriverProbe();
   g_ps_hw6_owner_probe.display_complete = 1UL;

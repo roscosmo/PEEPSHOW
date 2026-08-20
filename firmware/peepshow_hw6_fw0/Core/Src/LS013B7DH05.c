@@ -37,16 +37,16 @@
  */
 #define TXBUF_MAX (1u + (DISPLAY_HEIGHT * (LINE_WIDTH + 2u)) + 1u)
 
-/* Put txBuf in SRAM4 for the validated LPDMA display path. */
+/* Awake GPDMA staging stays in normal SRAM; SRAM4 is reserved for LPBAM. */
 #if defined(__GNUC__)
-  #define SRAM4_BUF_ATTR __attribute__((section(".sram4"))) __attribute__((aligned(4)))
+  #define TXBUF_ATTR __attribute__((aligned(4)))
 #elif defined(__ICCARM__)
-  #define SRAM4_BUF_ATTR __attribute__((section(".sram4"))) __attribute__((aligned(4)))
+  #define TXBUF_ATTR __attribute__((aligned(4)))
 #else
-  #define SRAM4_BUF_ATTR
+  #define TXBUF_ATTR
 #endif
 
-static uint8_t txBuf[TXBUF_MAX] SRAM4_BUF_ATTR;
+static uint8_t txBuf[TXBUF_MAX] TXBUF_ATTR;
 
 /* --------------------------- Build write burst ----------------------------- */
 /* rows[] are 1-based gate lines (1..DISPLAY_HEIGHT). */

@@ -399,6 +399,7 @@ DMA_QListTypeDef List_GPDMA1_Channel3;
 DMA_HandleTypeDef handle_GPDMA1_Channel3;
 
 SPI_HandleTypeDef hspi3;
+DMA_HandleTypeDef handle_GPDMA1_Channel0;
 DMA_HandleTypeDef handle_LPDMA1_Channel0;
 
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
@@ -1750,6 +1751,8 @@ void MX_GPDMA1_Init(void)
   __HAL_RCC_GPDMA1_CLK_ENABLE();
 
   /* GPDMA1 interrupt Init */
+    HAL_NVIC_SetPriority(GPDMA1_Channel0_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(GPDMA1_Channel0_IRQn);
     HAL_NVIC_SetPriority(GPDMA1_Channel3_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(GPDMA1_Channel3_IRQn);
     HAL_NVIC_SetPriority(GPDMA1_Channel4_IRQn, 5, 0);
@@ -2168,6 +2171,9 @@ void MX_SPI3_Init(void)
   hspi3.Init.FifoThreshold = SPI_FIFO_THRESHOLD_04DATA;
   MODIFY_REG(hspi3.Instance->CFG1, SPI_CFG1_FTHLV,
              SPI_FIFO_THRESHOLD_04DATA);
+
+  /* Awake display transfers use GPDMA; STOP2 LPBAM addresses LPDMA directly. */
+  __HAL_LINKDMA(&hspi3, hdmatx, handle_GPDMA1_Channel0);
 
   /* USER CODE END SPI3_Init 2 */
 

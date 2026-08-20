@@ -285,12 +285,13 @@ Current FW0 LPBAM cursor-slice structure:
 
 - `thPower` selects the display wait backend. When `LPBAM` is selected, it sends a bounded prepare command to `thDisplay` before STOP2 entry and consumes the owner ACK/status instead of assuming readiness from a stable frame.
 - `thDisplay` accepts the prepare only when the normal renderer has completed the current UI page successfully and the ready page/render count still match the UI router.
+- Awake panel presentation and autonomous presentation use separate DMA/memory paths under the same `thDisplay` ownership. Awake row/full-frame streams are packed into a normal-SRAM staging buffer and transmitted by SPI3 through GPDMA1 channel 0. Compiled autonomous payloads, queue descriptors, and metadata remain in SRAM4 and execute through LPDMA1 channel 0. The awake staging buffer must not consume SRAM4 capacity.
 - `display_renderer.c` is the sole author of cursor appearance. It copies the selected cursor's native panel region into each requested phase frame, using outlined phase `0` and solid phase `1`; both are visible. The LPBAM compiler repeats those renderer-produced phases across its four-frame bring-up sequence, compares consecutive frames within the bounded region, and packs only dirty panel rows.
 - Each LPBAM payload is a panel-native Sharp Memory LCD write stream in SRAM4. Payloads use the HW5-proven row packet format, including the guard-row/tail behavior, and split at `LCD_DMA_MAX_ROWS_PER_TRANSFER` (`48`) rows per chunk.
-- The current validated cursor slice changes `8` panel rows, so it builds one chunk per animation frame: `4` frames, `4` total chunks, and `732` bytes total. Each `183`-byte chunk is transferred as an aligned `180`-byte 32-bit DMA body plus a `3`-byte byte-width tail, producing `28` LPDMA queue nodes.
+- The current renderer-owned waiting-animation descriptor has `8` candidate panel rows. Its shared outlined/solid border leaves `6` rows changed per transition, so it builds one `143`-byte chunk per sequence frame: `4` frames, `4` total chunks, and `572` bytes total. The generic packer still splits each chunk into an aligned 32-bit DMA body plus a byte-width tail, producing `28` LPDMA queue nodes.
 - SPI3 remains at the target-proven `1 MHz` wire rate from the `4 MHz` MSIK kernel and `/4` prescaler. Its FIFO threshold is four 8-bit frames, matching each 32-bit DMA body write; reverting to a one-frame threshold recreates FIFO starvation in STOP2.
 - The LPBAM scenario applies the LPTIM1 channel 1 trigger to the first DMA node of each frame payload, sets the queue circular, enables SPI3/LPTIM1/LPDMA1/SRAM4 autonomous clocks plus MSIK STOP support, starts LPDMA, then starts LPTIM1 at the `250 ms` frame cadence.
-- While LPBAM is active or ready, STOP2 GPIO parking must not park the display-SPI group. On wake or abort, `thDisplay` stops LPTIM1, aborts/unlinks LPDMA, aborts SPI, restores normal SPI/LPTIM ownership, clears LPBAM readiness, and returns to normal display ownership.
+- While LPBAM is active or ready, STOP2 GPIO parking must not park the display-SPI group. On wake or abort, `thDisplay` stops LPTIM1, aborts/unlinks LPDMA, aborts SPI, restores normal SPI/LPTIM ownership, and explicitly relinks `hspi3.hdmatx` to GPDMA1 channel 0 after `HAL_SPI_Init()` reruns CubeMX MSP setup. It then clears LPBAM readiness and returns to normal display ownership. CubeMX currently initializes both SPI3 TX DMA channels and links LPDMA last, so omitting this wake-time relink routes normal-SRAM awake transfers through LPDMA and fails the first post-STOP2 render.
 - This cursor-region compiler is not the final general animation compiler. FW0 has a renderer-owned panel-native dirty-row contract, normal display presentation consumes that row list through `LCD_PresentRows_DMA()`, and HOME cursor movement/blinking updates only rows `153..160`. LPBAM now consumes the same renderer-authored phase pixels for that bounded region; later waiting-animation compilation must generalize this contract to arbitrary phase counts and non-contiguous dirty regions without moving visual authorship into the payload packer.
 - Runtime queue construction must remain in user-owned `ps_lpbam_display_queue.c`; CubeMX's `lpbam_lpbamap1_scenario_build.c` and `lpbam_lpbamap1_scenario_config.c` are non-runtime scaffolding and must remain excluded from the firmware target.
 - The user-owned `ps_lpbam_dma_node_compat.c` replacements must remain authoritative for `LPBAM_SetDMATransferConfig()`, `LPBAM_SetDMATriggerConfig()`, and `LPBAM_SPI_FillNodeConfig()`. Each rebuilt node explicitly sets `Init.Mode = DMA_NORMAL`; otherwise debug builds may assert in `HAL_DMAEx_List_BuildNode()` and release builds may consume undefined mode state after regeneration.
@@ -317,6 +318,8 @@ LPBAM acceptance criteria:
 5. `thDisplay` reclaims SPI3/LPDMA/LPBAM ownership without stale state
 6. image correctness and EXTCOMIN behavior remain valid
 7. failure routes to normal display owner recovery or disables LPBAM without breaking normal rendering
+
+HW6 evidence `EV-HW6-20260820-P1-DMASRAMSPLIT-078` validates the split after repeated LPBAM STOP2 entry and wake. The build placed the `3362`-byte awake `txBuf` at `0x2000019c`, the `9216`-byte LPBAM arena at `0x28000040`, and the LPBAM queue at `0x28003140`; SRAM4 use fell from `15992` to `12632` bytes. After wake, `hspi3.hdmatx` and GPDMA1 channel 0 both resolved to `0x20016060`, while LPDMA1 channel 0 remained separate at `0x200160d8`. Awake DMA state/error were `READY/0x0`, and display completion/success/status were `1/1/0x0`. A first test without the wake-time relink reproduced the expected failure by leaving `hspi3.hdmatx` on LPDMA with display status `HAL_ERROR`; the corrected restore path passed on target.
 
 ## Dirty-Region Policy
 
@@ -365,7 +368,7 @@ On display failure:
 3. pixel polarity, row order, line address, and byte ordering are verified
 4. partial row/region update correctness
 5. full-frame fallback correctness
-6. no overlapping SPI/LPDMA transfers
+6. no overlapping SPI/GPDMA/LPDMA transfers, and the active SPI DMA handle matches the current awake or autonomous transport
 7. `LCD_1HZ` / EXTCOMIN remains correct during static hold
 8. the hardwired translator passes SPI and EXTCOMIN correctly in active and STOP contexts
 9. no firmware path assumes or emits a `VLT_LCD` GPIO control
