@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (49UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (50UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -266,6 +266,9 @@ typedef struct
   uint32_t stop2_lpbam_edge_render_status;
   uint32_t stop2_lpbam_edge_render_tick;
   uint32_t stop2_lpbam_edge_defer_count;
+  uint32_t stop2_lpbam_edge_rearm_pending;
+  uint32_t stop2_lpbam_edge_rearm_count;
+  uint32_t stop2_lpbam_edge_rearm_tick;
   uint32_t stop2_lpbam_edge_wake_send_status;
   uint32_t display_deadline_wait_count;
   uint32_t display_deadline_wait_last_ticks;

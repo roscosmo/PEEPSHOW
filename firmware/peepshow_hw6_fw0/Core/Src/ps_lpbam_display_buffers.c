@@ -52,16 +52,6 @@ uint8_t PS_LpbamDisplay_GetExperimentVariant(void)
   return ps_lpbam_display_experiment_variant;
 }
 
-void PS_LpbamDisplay_SetSequenceStartFrame(uint16_t frame_index)
-{
-  ps_lpbam_display_sequence_start_frame = (uint16_t)(frame_index % PS_LPBAM_DISPLAY_FRAME_COUNT);
-}
-
-void PS_LpbamDisplay_SetQueueStartSlot(uint16_t frame_slot)
-{
-  ps_lpbam_display_queue_start_slot = (uint16_t)(frame_slot % PS_LPBAM_DISPLAY_FRAME_COUNT);
-}
-
 static uint8_t PS_LpbamDisplay_RowIsDirty(
   const uint8_t previous_frame[DISPLAY_HEIGHT][LINE_WIDTH],
   const uint8_t target_frame[DISPLAY_HEIGHT][LINE_WIDTH],
@@ -151,13 +141,17 @@ static void PS_LpbamDisplay_ResetPayloadState(void)
   ps_lpbam_display_queue_start_slot = 0U;
 }
 
-HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffersForRows(
+static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffersForRows(
   const uint16_t *candidate_rows,
-  uint16_t candidate_row_count)
+  uint16_t candidate_row_count,
+  uint16_t frame_count,
+  uint16_t sequence_start_frame)
 {
   uint16_t first_candidate_row = 0U;
 
-  if ((candidate_rows == NULL) || (candidate_row_count == 0U))
+  if ((candidate_rows == NULL) || (candidate_row_count == 0U) ||
+      (frame_count == 0U) ||
+      (frame_count > PS_LPBAM_DISPLAY_FRAME_COUNT))
   {
     return HAL_ERROR;
   }
@@ -181,12 +175,14 @@ HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffersForRows(
   }
 
   PS_LpbamDisplay_ResetPayloadState();
+  ps_lpbam_display_sequence_start_frame =
+    (uint16_t)(sequence_start_frame % frame_count);
 
-  for (uint16_t frame = 0U; frame < PS_LPBAM_DISPLAY_FRAME_COUNT; frame++)
+  for (uint16_t frame = 0U; frame < frame_count; frame++)
   {
     uint16_t previous = (uint16_t)((ps_lpbam_display_sequence_start_frame + frame) %
-                                   PS_LPBAM_DISPLAY_FRAME_COUNT);
-    uint16_t target = (uint16_t)((previous + 1U) % PS_LPBAM_DISPLAY_FRAME_COUNT);
+                                   frame_count);
+    uint16_t target = (uint16_t)((previous + 1U) % frame_count);
     uint16_t dirty_rows = 0U;
     uint16_t chunk_count = 0U;
     uint16_t dirty_index = 0U;
@@ -278,7 +274,7 @@ HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffersForRows(
          sizeof(ps_lpbam_display_frame_b));
 
   return (ps_lpbam_display_active_frame_count ==
-          PS_LPBAM_DISPLAY_FRAME_COUNT) ? HAL_OK : HAL_ERROR;
+          frame_count) ? HAL_OK : HAL_ERROR;
 }
 
 static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffers(
@@ -298,7 +294,9 @@ static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffers(
 
   return PS_LpbamDisplay_BuildPayloadBuffersForRows(
     ps_lpbam_display_candidate_rows,
-    row_count);
+    row_count,
+    PS_LPBAM_DISPLAY_FRAME_COUNT,
+    0U);
 }
 
 HAL_StatusTypeDef PS_LpbamDisplay_BuildPatternBuffers(uint16_t start_row,
@@ -309,13 +307,16 @@ HAL_StatusTypeDef PS_LpbamDisplay_BuildPatternBuffers(uint16_t start_row,
 }
 
 HAL_StatusTypeDef PS_LpbamDisplay_BuildPreparedAnimationBuffers(
-  uint16_t start_row,
-  uint16_t row_count,
+  const uint16_t *candidate_rows,
+  uint16_t candidate_row_count,
+  uint16_t frame_count,
   uint16_t sequence_start_frame)
 {
-  PS_LpbamDisplay_SetSequenceStartFrame(sequence_start_frame);
-  PS_LpbamDisplay_SetQueueStartSlot(0U);
   PS_LpbamDisplay_SetExperimentVariant(0xC1U);
-  return PS_LpbamDisplay_BuildPayloadBuffers(start_row, row_count);
+  return PS_LpbamDisplay_BuildPayloadBuffersForRows(
+    candidate_rows,
+    candidate_row_count,
+    frame_count,
+    sequence_start_frame);
 }
 

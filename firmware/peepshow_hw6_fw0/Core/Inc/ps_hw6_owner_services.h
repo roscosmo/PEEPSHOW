@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (24UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (25UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -22,6 +22,7 @@ extern "C" {
   PS_DEV_ADP5360_INTERRUPT_FLAG_REGISTER_COUNT
 #define PS_HW6_OWNER_STATUS_NOT_RUN              (0xFFFFFFFFUL)
 #define PS_HW6_OWNER_STATUS_UNAVAILABLE          (0xFFFFFFFEUL)
+#define PS_HW6_OWNER_LPBAM_SEQUENCE_MAX          (4U)
 
 typedef struct
 {
@@ -187,6 +188,14 @@ typedef struct
   uint32_t display_lpbam_animation_id;
   uint32_t display_lpbam_source_primitive_id;
   uint32_t display_lpbam_focus_row;
+  uint32_t display_lpbam_phase_count;
+  uint32_t display_lpbam_sequence_frame_count;
+  uint32_t display_lpbam_cadence_ms;
+  uint32_t display_lpbam_current_phase;
+  uint32_t display_lpbam_next_deadline_tick;
+  uint32_t display_lpbam_sequence_start_frame;
+  uint32_t display_lpbam_candidate_row_count;
+  uint32_t display_lpbam_sequence_phase[PS_HW6_OWNER_LPBAM_SEQUENCE_MAX];
   uint32_t display_lpbam_prepare_count;
   uint32_t display_lpbam_prepare_tick;
   uint32_t display_lpbam_prepare_status;
@@ -291,8 +300,9 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   uint32_t shutdown_countdown_seconds);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderCursorBlink(uint32_t visible);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2(void);
-HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2ForCursorPhase(
-  uint32_t current_visible);
+HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2ForAnimationPhase(
+  uint32_t current_phase,
+  uint32_t next_deadline_tick);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_CommitLpbamStop2(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2(void);
 void PS_HW6_DisplayOwner_DebugForceNextLpbamReady(void);

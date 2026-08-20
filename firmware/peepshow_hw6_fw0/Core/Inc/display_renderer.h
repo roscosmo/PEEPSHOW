@@ -21,6 +21,8 @@ extern "C" {
 #define DISPLAY_RENDERER_ANIMATION_NONE         (0UL)
 #define DISPLAY_RENDERER_ANIMATION_CURSOR_BLINK (1UL)
 #define DISPLAY_RENDERER_ROW_NONE               (0xFFFFFFFFUL)
+#define DISPLAY_RENDERER_WAITING_PHASE_MAX      (4U)
+#define DISPLAY_RENDERER_WAITING_SEQUENCE_MAX   (4U)
 
 typedef struct
 {
@@ -49,25 +51,34 @@ typedef struct
   uint32_t animation_id;
   uint32_t source_primitive_id;
   uint32_t focus_row;
-  display_renderer_panel_region_t panel_region;
-} display_renderer_animation_intent_t;
+  uint32_t phase_count;
+  uint32_t sequence_frame_count;
+  uint32_t cadence_ms;
+  uint32_t current_phase;
+  uint32_t next_deadline_tick;
+  uint32_t sequence_start_frame;
+  uint32_t sequence_phase[DISPLAY_RENDERER_WAITING_SEQUENCE_MAX];
+  const uint16_t *candidate_rows;
+  uint16_t candidate_row_count;
+  display_renderer_panel_region_t panel_bounds;
+} display_renderer_waiting_animation_t;
 
 void DisplayRenderer_ClearWhite(void);
 const uint8_t *DisplayRenderer_GetBuffer(void);
 uint32_t DisplayRenderer_GetDirtyRows(const uint16_t **rows);
 void DisplayRenderer_CommitPresentedFrame(void);
-uint32_t DisplayRenderer_CopyCursorBlinkFrame(
-  uint32_t visible,
-  uint8_t *destination,
-  uint32_t destination_size);
 uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
   uint32_t visible,
   display_renderer_stats_t *stats);
 uint32_t DisplayRenderer_FramebufferHash(void);
-uint32_t DisplayRenderer_GetLpbamCursorPanelRegion(
-  display_renderer_panel_region_t *region);
-uint32_t DisplayRenderer_GetWaitingAnimationIntent(
-  display_renderer_animation_intent_t *intent);
+const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
+  uint32_t current_phase,
+  uint32_t next_deadline_tick);
+uint32_t DisplayRenderer_CopyWaitingAnimationFrame(
+  const display_renderer_waiting_animation_t *animation,
+  uint32_t sequence_frame,
+  uint8_t *destination,
+  uint32_t destination_size);
 void DisplayRenderer_PreparePattern(display_renderer_stats_t *stats);
 void DisplayRenderer_PrepareUIPage(
   uint32_t page,

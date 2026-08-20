@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "knobs_autogen.h"
 #include "ps_ui_router.h"
 
 #define DISPLAY_RENDERER_TEXT_SCALE         (2U)
@@ -28,6 +29,9 @@ static uint8_t s_display_committed_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint8_t s_display_cursor_base_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint16_t s_display_dirty_rows[DISPLAY_RENDERER_DIRTY_ROW_MAX];
 static uint8_t s_display_dirty_row_marks[DISPLAY_RENDERER_DIRTY_ROW_MAX];
+static uint16_t
+  s_display_waiting_candidate_rows[DISPLAY_RENDERER_DIRTY_ROW_MAX];
+static display_renderer_waiting_animation_t s_display_waiting_animation;
 static uint16_t s_display_dirty_row_count;
 static uint32_t s_display_committed_valid;
 static uint32_t s_display_cursor_base_valid;
@@ -389,7 +393,7 @@ void DisplayRenderer_CommitPresentedFrame(void)
   s_display_pending_list_invalidates = 0UL;
 }
 
-uint32_t DisplayRenderer_CopyCursorBlinkFrame(
+static uint32_t DisplayRenderer_CopyCursorBlinkFrame(
   uint32_t visible,
   uint8_t *destination,
   uint32_t destination_size)
@@ -445,39 +449,102 @@ uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
   return 1UL;
 }
 
-uint32_t DisplayRenderer_GetLpbamCursorPanelRegion(
-  display_renderer_panel_region_t *region)
+const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
+  uint32_t current_phase,
+  uint32_t next_deadline_tick)
 {
-  if ((region == NULL) || (s_lpbam_cursor_panel_region_valid == 0UL))
-  {
-    return 0UL;
-  }
+  display_renderer_waiting_animation_t *animation =
+    &s_display_waiting_animation;
+  uint32_t frame;
+  uint32_t start_found = 0UL;
+  uint16_t row;
 
-  *region = s_lpbam_cursor_panel_region;
-  return 1UL;
-}
-
-uint32_t DisplayRenderer_GetWaitingAnimationIntent(
-  display_renderer_animation_intent_t *intent)
-{
-  if (intent == NULL)
-  {
-    return 0UL;
-  }
-  (void)memset(intent, 0, sizeof(*intent));
+  (void)memset(animation, 0, sizeof(*animation));
 
   if ((s_display_cursor_base_valid == 0UL) ||
       (s_lpbam_cursor_panel_region_valid == 0UL) ||
-      (s_display_committed_list_valid == 0UL))
+      (s_display_committed_list_valid == 0UL) ||
+      (current_phase >= 2UL) ||
+      (s_lpbam_cursor_panel_region.row_count == 0U) ||
+      (s_lpbam_cursor_panel_region.row_count >
+       DISPLAY_RENDERER_DIRTY_ROW_MAX))
+  {
+    return NULL;
+  }
+
+  for (row = 0U;
+       row < s_lpbam_cursor_panel_region.row_count;
+       ++row)
+  {
+    s_display_waiting_candidate_rows[row] =
+      (uint16_t)(s_lpbam_cursor_panel_region.start_row + row);
+  }
+
+  animation->animation_id = DISPLAY_RENDERER_ANIMATION_CURSOR_BLINK;
+  animation->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK;
+  animation->focus_row = s_display_committed_list.selected_row;
+  animation->phase_count = 2UL;
+  animation->sequence_frame_count = 4UL;
+  animation->cadence_ms = (uint32_t)KNOB_DISPLAY_CURSOR_BLINK_PERIOD_MS;
+  animation->current_phase = current_phase;
+  animation->next_deadline_tick = next_deadline_tick;
+  animation->sequence_phase[0] = 0UL;
+  animation->sequence_phase[1] = 1UL;
+  animation->sequence_phase[2] = 0UL;
+  animation->sequence_phase[3] = 1UL;
+  animation->candidate_rows = s_display_waiting_candidate_rows;
+  animation->candidate_row_count =
+    s_lpbam_cursor_panel_region.row_count;
+  animation->panel_bounds = s_lpbam_cursor_panel_region;
+
+  for (frame = 0UL;
+       frame < animation->sequence_frame_count;
+       ++frame)
+  {
+    if (animation->sequence_phase[frame] == current_phase)
+    {
+      animation->sequence_start_frame = frame;
+      start_found = 1UL;
+      break;
+    }
+  }
+  if (start_found == 0UL)
+  {
+    (void)memset(animation, 0, sizeof(*animation));
+    return NULL;
+  }
+
+  return animation;
+}
+
+uint32_t DisplayRenderer_CopyWaitingAnimationFrame(
+  const display_renderer_waiting_animation_t *animation,
+  uint32_t sequence_frame,
+  uint8_t *destination,
+  uint32_t destination_size)
+{
+  uint32_t phase;
+
+  if ((animation == NULL) ||
+      (animation->animation_id !=
+       DISPLAY_RENDERER_ANIMATION_CURSOR_BLINK) ||
+      (animation->phase_count != 2UL) ||
+      (animation->sequence_frame_count == 0UL) ||
+      (animation->sequence_frame_count >
+       DISPLAY_RENDERER_WAITING_SEQUENCE_MAX) ||
+      (sequence_frame >= animation->sequence_frame_count))
   {
     return 0UL;
   }
 
-  intent->animation_id = DISPLAY_RENDERER_ANIMATION_CURSOR_BLINK;
-  intent->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK;
-  intent->focus_row = s_display_committed_list.selected_row;
-  intent->panel_region = s_lpbam_cursor_panel_region;
-  return 1UL;
+  phase = animation->sequence_phase[sequence_frame];
+  if (phase >= animation->phase_count)
+  {
+    return 0UL;
+  }
+
+  return DisplayRenderer_CopyCursorBlinkFrame(
+    phase, destination, destination_size);
 }
 
 static uint32_t DisplayRenderer_SetBlack(uint16_t x, uint16_t y)

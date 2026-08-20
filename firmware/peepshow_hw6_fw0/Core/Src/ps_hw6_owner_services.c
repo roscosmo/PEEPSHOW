@@ -252,6 +252,8 @@ static void PS_HW6_DisplayOwner_ClearLpbamReadiness(uint32_t reason)
 
 static void PS_HW6_DisplayOwner_ResetLpbamPrepareProbe(void)
 {
+  uint32_t frame;
+
   g_ps_hw6_owner_probe.display_lpbam_prearmed =
     ps_hw6_display_lpbam_prearmed;
   g_ps_hw6_owner_probe.display_lpbam_active = ps_hw6_display_lpbam_active;
@@ -260,6 +262,17 @@ static void PS_HW6_DisplayOwner_ResetLpbamPrepareProbe(void)
   g_ps_hw6_owner_probe.display_lpbam_source_primitive_id =
     DISPLAY_RENDERER_PRIMITIVE_NONE;
   g_ps_hw6_owner_probe.display_lpbam_focus_row = DISPLAY_RENDERER_ROW_NONE;
+  g_ps_hw6_owner_probe.display_lpbam_phase_count = 0UL;
+  g_ps_hw6_owner_probe.display_lpbam_sequence_frame_count = 0UL;
+  g_ps_hw6_owner_probe.display_lpbam_cadence_ms = 0UL;
+  g_ps_hw6_owner_probe.display_lpbam_current_phase = 0UL;
+  g_ps_hw6_owner_probe.display_lpbam_next_deadline_tick = 0UL;
+  g_ps_hw6_owner_probe.display_lpbam_sequence_start_frame = 0UL;
+  g_ps_hw6_owner_probe.display_lpbam_candidate_row_count = 0UL;
+  for (frame = 0UL; frame < PS_HW6_OWNER_LPBAM_SEQUENCE_MAX; ++frame)
+  {
+    g_ps_hw6_owner_probe.display_lpbam_sequence_phase[frame] = 0UL;
+  }
   g_ps_hw6_owner_probe.display_lpbam_cursor_start_row = 0UL;
   g_ps_hw6_owner_probe.display_lpbam_cursor_row_count = 0UL;
   g_ps_hw6_owner_probe.display_lpbam_cursor_start_column = 0UL;
@@ -456,6 +469,7 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_WaitLptimFlag(uint32_t flag)
 }
 
 static HAL_StatusTypeDef PS_HW6_DisplayOwner_GetLpbamTimerCounts(
+  uint32_t cadence_ms,
   uint32_t *period_counts,
   uint32_t *compare_counts)
 {
@@ -463,7 +477,8 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_GetLpbamTimerCounts(
   uint64_t denominator;
   uint64_t counts;
 
-  if ((period_counts == NULL) || (compare_counts == NULL))
+  if ((cadence_ms == 0UL) ||
+      (period_counts == NULL) || (compare_counts == NULL))
   {
     return HAL_ERROR;
   }
@@ -473,7 +488,7 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_GetLpbamTimerCounts(
                 (uint64_t)PS_HW6_DISPLAY_MILLISECONDS_PER_SECOND *
                 (uint64_t)PS_HW6_DISPLAY_LPBAM_CADENCE_DIVISOR;
   counts = ((uint64_t)lptim_kernel_hz *
-            (uint64_t)KNOB_DISPLAY_CURSOR_BLINK_PERIOD_MS +
+            (uint64_t)cadence_ms +
             (denominator / 2ULL)) / denominator;
   if ((lptim_kernel_hz == 0UL) || (counts < 2ULL) ||
       (counts > 65535ULL))
@@ -486,7 +501,8 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_GetLpbamTimerCounts(
   return HAL_OK;
 }
 
-static HAL_StatusTypeDef PS_HW6_DisplayOwner_ConfigLpbamLptim(void)
+static HAL_StatusTypeDef PS_HW6_DisplayOwner_ConfigLpbamLptim(
+  uint32_t cadence_ms)
 {
   LPTIM_OC_ConfigTypeDef oc = {0};
   HAL_StatusTypeDef status;
@@ -498,7 +514,8 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_ConfigLpbamLptim(void)
   {
     return HAL_TIMEOUT;
   }
-  if (PS_HW6_DisplayOwner_GetLpbamTimerCounts(&period_counts,
+  if (PS_HW6_DisplayOwner_GetLpbamTimerCounts(cadence_ms,
+                                               &period_counts,
                                                &compare_counts) != HAL_OK)
   {
     return HAL_ERROR;
@@ -1559,10 +1576,13 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderCursorBlink(uint32_t visible)
   return HAL_ERROR;
 }
 
-static HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2WithCursorPhase(uint32_t current_visible)
+static HAL_StatusTypeDef
+PS_HW6_DisplayOwner_PrepareLpbamStop2WithAnimationPhase(
+  uint32_t current_phase,
+  uint32_t next_deadline_tick)
 {
-  display_renderer_animation_intent_t animation_intent;
-  display_renderer_panel_region_t cursor_region;
+  const display_renderer_waiting_animation_t *animation;
+  display_renderer_panel_region_t animation_bounds;
   HAL_StatusTypeDef status;
   uint32_t chunk_total = 0UL;
   uint16_t frame;
@@ -1603,9 +1623,18 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2WithCursorPhase(ui
     return HAL_ERROR;
   }
 
-  if ((DisplayRenderer_GetWaitingAnimationIntent(&animation_intent) == 0UL) ||
-      (animation_intent.animation_id !=
-       DISPLAY_RENDERER_ANIMATION_CURSOR_BLINK))
+  animation = DisplayRenderer_GetWaitingAnimation(
+    current_phase, next_deadline_tick);
+  if ((animation == NULL) ||
+      (animation->phase_count == 0UL) ||
+      (animation->phase_count > DISPLAY_RENDERER_WAITING_PHASE_MAX) ||
+      (animation->sequence_frame_count == 0UL) ||
+      (animation->sequence_frame_count > PS_LPBAM_DISPLAY_FRAME_COUNT) ||
+      (animation->sequence_start_frame >= animation->sequence_frame_count) ||
+      (animation->current_phase >= animation->phase_count) ||
+      (animation->cadence_ms == 0UL) ||
+      (animation->candidate_rows == NULL) ||
+      (animation->candidate_row_count == 0U))
   {
     g_ps_hw6_owner_probe.display_lpbam_status =
       PS_HW6_OWNER_STATUS_UNAVAILABLE;
@@ -1614,12 +1643,31 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2WithCursorPhase(ui
     return HAL_ERROR;
   }
 
-  cursor_region = animation_intent.panel_region;
+  animation_bounds = animation->panel_bounds;
   g_ps_hw6_owner_probe.display_lpbam_animation_id =
-    animation_intent.animation_id;
+    animation->animation_id;
   g_ps_hw6_owner_probe.display_lpbam_source_primitive_id =
-    animation_intent.source_primitive_id;
-  g_ps_hw6_owner_probe.display_lpbam_focus_row = animation_intent.focus_row;
+    animation->source_primitive_id;
+  g_ps_hw6_owner_probe.display_lpbam_focus_row = animation->focus_row;
+  g_ps_hw6_owner_probe.display_lpbam_phase_count = animation->phase_count;
+  g_ps_hw6_owner_probe.display_lpbam_sequence_frame_count =
+    animation->sequence_frame_count;
+  g_ps_hw6_owner_probe.display_lpbam_cadence_ms = animation->cadence_ms;
+  g_ps_hw6_owner_probe.display_lpbam_current_phase =
+    animation->current_phase;
+  g_ps_hw6_owner_probe.display_lpbam_next_deadline_tick =
+    animation->next_deadline_tick;
+  g_ps_hw6_owner_probe.display_lpbam_sequence_start_frame =
+    animation->sequence_start_frame;
+  g_ps_hw6_owner_probe.display_lpbam_candidate_row_count =
+    animation->candidate_row_count;
+  for (frame = 0U;
+       frame < DISPLAY_RENDERER_WAITING_SEQUENCE_MAX;
+       ++frame)
+  {
+    g_ps_hw6_owner_probe.display_lpbam_sequence_phase[frame] =
+      animation->sequence_phase[frame];
+  }
 
   if ((ps_hw6_display_lpbam_active != 0UL) ||
       (ps_hw6_display_lpbam_prearmed != 0UL))
@@ -1635,19 +1683,22 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2WithCursorPhase(ui
   }
 
   g_ps_hw6_owner_probe.display_lpbam_cursor_start_row =
-    cursor_region.start_row;
+    animation_bounds.start_row;
   g_ps_hw6_owner_probe.display_lpbam_cursor_row_count =
-    cursor_region.row_count;
+    animation_bounds.row_count;
   g_ps_hw6_owner_probe.display_lpbam_cursor_start_column =
-    cursor_region.start_column;
+    animation_bounds.start_column;
   g_ps_hw6_owner_probe.display_lpbam_cursor_column_count =
-    cursor_region.column_count;
+    animation_bounds.column_count;
 
   status = HAL_OK;
-  for (frame = 0U; frame < PS_LPBAM_DISPLAY_FRAME_COUNT; ++frame)
+  for (frame = 0U;
+       frame < animation->sequence_frame_count;
+       ++frame)
   {
-    if (DisplayRenderer_CopyCursorBlinkFrame(
-          (uint32_t)(frame & 1U),
+    if (DisplayRenderer_CopyWaitingAnimationFrame(
+          animation,
+          frame,
           &ps_lpbam_display_frames[frame][0][0],
           sizeof(ps_lpbam_display_frames[frame])) == 0UL)
     {
@@ -1658,9 +1709,10 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2WithCursorPhase(ui
   if (status == HAL_OK)
   {
     status = PS_LpbamDisplay_BuildPreparedAnimationBuffers(
-      cursor_region.start_row,
-      cursor_region.row_count,
-      (current_visible == 0UL) ? 0U : 1U);
+      animation->candidate_rows,
+      animation->candidate_row_count,
+      (uint16_t)animation->sequence_frame_count,
+      (uint16_t)animation->sequence_start_frame);
   }
   g_ps_hw6_owner_probe.display_lpbam_fill_status = (uint32_t)status;
   if (status != HAL_OK)
@@ -1685,7 +1737,8 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2WithCursorPhase(ui
   g_ps_hw6_owner_probe.display_lpbam_clock_status = (uint32_t)status;
   if (status == HAL_OK)
   {
-    status = PS_HW6_DisplayOwner_ConfigLpbamLptim();
+    status = PS_HW6_DisplayOwner_ConfigLpbamLptim(
+      animation->cadence_ms);
   }
   if (status == HAL_OK)
   {
@@ -1731,14 +1784,16 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2WithCursorPhase(ui
 
 HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2(void)
 {
-  return PS_HW6_DisplayOwner_PrepareLpbamStop2WithCursorPhase(0UL);
+  return PS_HW6_DisplayOwner_PrepareLpbamStop2WithAnimationPhase(0UL, 0UL);
 }
 
-HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2ForCursorPhase(
-  uint32_t current_visible)
+HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2ForAnimationPhase(
+  uint32_t current_phase,
+  uint32_t next_deadline_tick)
 {
-  return PS_HW6_DisplayOwner_PrepareLpbamStop2WithCursorPhase(
-    current_visible);
+  return PS_HW6_DisplayOwner_PrepareLpbamStop2WithAnimationPhase(
+    current_phase,
+    next_deadline_tick);
 }
 
 void PS_HW6_DisplayOwner_DebugForceNextLpbamReady(void)

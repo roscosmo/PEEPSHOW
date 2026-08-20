@@ -11,6 +11,7 @@ printf "edge private pending/target/phase/render/page = %u / %u / %u / %u / %u\n
 printf "edge probe state/req/run/status = %u / %u / %u / 0x%x\n", $rt->stop2_lpbam_edge_state, $rt->stop2_lpbam_edge_request_count, $rt->stop2_lpbam_edge_run_count, $rt->stop2_lpbam_edge_status
 printf "edge probe req/target/run/ready tick = %u / %u / %u / %u\n", $rt->stop2_lpbam_edge_request_tick, $rt->stop2_lpbam_edge_target_tick, $rt->stop2_lpbam_edge_run_tick, $rt->stop2_lpbam_edge_ready_tick
 printf "edge probe phase/miss = %u / %u\n", $rt->stop2_lpbam_edge_start_phase, $rt->stop2_lpbam_edge_miss_count
+printf "edge rearm pending/count/tick = %u / %u / %u\n", $rt->stop2_lpbam_edge_rearm_pending, $rt->stop2_lpbam_edge_rearm_count, $rt->stop2_lpbam_edge_rearm_tick
 printf "lpbam ready/page/render/status/active = %u / %u / %u / 0x%x / %u\n", $ow->display_lpbam_ready, $ow->display_lpbam_ready_page, $ow->display_lpbam_ready_render_count, $ow->display_lpbam_status, $ow->display_lpbam_active
 printf "lpbam prep count/tick/status fill/start = %u / %u / 0x%x / 0x%x / 0x%x\n", $ow->display_lpbam_prepare_count, $ow->display_lpbam_prepare_tick, $ow->display_lpbam_prepare_status, $ow->display_lpbam_fill_status, $ow->display_lpbam_start_status
 printf "lpbam abort count/tick/status = %u / %u / 0x%x\n", $ow->display_lpbam_abort_count, $ow->display_lpbam_abort_tick, $ow->display_lpbam_abort_status
