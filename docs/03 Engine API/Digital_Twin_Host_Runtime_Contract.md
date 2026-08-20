@@ -109,7 +109,11 @@ Conceptual state vector:
 peepos_state_vector:
   power_state
   sleep_class
-  runtime_class
+  system_host
+  scene_type
+  execution_semantic
+  scene_id
+  interaction_state
   runtime_lifecycle_state
   host_internal_state
   display_contract_state
@@ -210,8 +214,11 @@ state_vector:
   sequence
   timestamp_model
   target_profile_id
-  runtime_class
-  runtime_unit_id
+  system_host
+  scene_type
+  execution_semantic
+  scene_id
+  interaction_state
   runtime_lifecycle_state
   host_internal_state
   shell_state
@@ -256,7 +263,7 @@ event_record:
   payload_schema
   payload
   target_profile_id
-  runtime_unit_id
+  scene_id
   deterministic
 ```
 
@@ -359,7 +366,7 @@ Rules:
 
 The twin must match:
 
-- runtime class semantics
+- system-host, scene-type, and execution semantics
 - mount/start/suspend/resume/stop/unmount lifecycle
 - runtime logic state, event, guard, action, and transition semantics
 - package validation and capability admission behavior
@@ -385,18 +392,18 @@ The twin must not claim to prove:
 
 ---
 
-## Runtime Mode Simulation
+## Host And Scene Simulation
 
 The twin simulates mode behavior visible to packages and Engine hosts.
 
 Runtime logic execution follows [[Runtime_Logic_State_API_Contract]].
 
-| Mode / Class | Twin Behavior |
+| Host Or Scene | Twin Behavior |
 |---|---|
 | `SHELL` | PeepOS shell/package launch and return behavior where needed for testing |
-| `LP_GRAPH` | event, schedule, wake, and state-graph transactions separated by reactive waits |
-| `LP_MODULE` | bounded reactive module transactions with host-defined event/update limits |
-| `RT_SCENE` | fixed-step or wall-clock frame-paced scene execution with budget reporting |
+| `STATE_SCENE` | event, schedule, wake, and state-graph transactions separated by reactive waits |
+| `SEQUENCE_SCENE` | fixed-step or wall-clock bounded data-driven timeline execution with budget reporting |
+| `PROGRAM_SCENE` | fixed-step or wall-clock sandboxed frame execution with instruction/memory/frame budget reporting |
 | `INSTALLER` | package staging, validation, install, rollback, and no-normal-gameplay behavior |
 
 The twin must validate lifecycle and execution transitions:
@@ -404,8 +411,8 @@ The twin must validate lifecycle and execution transitions:
 - reactive event dispatch to settled wait
 - waiting visual hold or sequence to admitted wake
 - sleep-resident state to resumed reactive transaction
-- realtime entry, suspension, and reactive fallback
-- input lock, consumed Start unlock, and post-unlock focus restoration
+- sequence/program entry, suspension, and inactive/end/failure routing
+- interaction-state transition, consumed target-owned activation gesture, and post-activation focus restoration
 - installer entry/exit
 - package fault to safe return path
 
@@ -441,7 +448,7 @@ If the capability is blocked or unavailable:
 The twin must support only compatibility behavior defined by a measured profile or an explicitly non-shipping preview profile.
 ---
 
-## Power, Reactive Wait, And Input-Lock Simulation
+## Power, Reactive Wait, And Interaction-State Simulation
 
 The twin enforces PeepOS power semantics as a contract, not as an electrical measurement.
 
@@ -450,25 +457,25 @@ Required behavior:
 - a reactive host yields immediately after bounded event/state/action/render work settles
 - waiting for input does not run an awake package loop
 - package-authored gameplay inactivity is replayed as a normal schedule/state transition
-- automatic input locking may be enabled or disabled by the package
-- the lock timeout comes from the selected target/system policy and is not package-authored
-- when enabled, only admitted meaningful activity refreshes the lock timer
-- lock routes, bounded deferrals, Start-only unlock, consumed Start press, and symbolic lock/unlock lifecycle ordering match the Engine contracts
-- admitted interactive peer-wait behavior remains bounded and cannot bypass input lock
-- realtime behavior requires declared meaningful work and a reactive fallback
+- PeepOS inactivity handling is always present and cannot be disabled by the package
+- the inactivity timeout comes from the selected target/system policy and is not package-authored
+- only admitted meaningful activity refreshes the interaction window
+- inactive routes, bounded deferrals, target-owned activation gestures, gesture consumption, and symbolic `DEVICE_INACTIVE`/`DEVICE_ACTIVE` ordering match the Engine contracts
+- admitted interactive peer-wait behavior remains bounded and cannot bypass system inactivity policy
+- sequence/program behavior requires declared meaningful work and inactive routing
 - waiting-visual cadence and fallback are clamped by the source target profile
 - STOP-resident logical time may advance without running package code
 - wake reasons are classified and delivered through the normal lifecycle/event path
 
-Reactive cadence/latency bounds, input-lock bounds, waiting-visual limits, peer-wait policy, and realtime frame budgets come from measured/frozen target profiles.
+Reactive cadence/latency bounds, interaction-state bounds, waiting-visual limits, peer-wait policy, and realtime frame budgets come from measured/frozen target profiles.
 
 The twin should report:
 
 - current execution semantic
 - current reactive wait contract
 - requested and granted waiting-visual behavior
-- input-lock enabled/state/timer/route
-- consumed unlock action
+- interaction state/timer/inactive route
+- consumed activation gesture
 - meaningful-activity source
 - simulated sleep/hold residency
 - wake reason
@@ -482,10 +489,12 @@ The twin must use the same package-facing rendering semantics as [[Rendering_API
 Required behavior:
 
 - logical `168 x 144` canvas semantics match the active target profile
-- `UI -> GAME -> BG` layer order is preserved
+- `OVERLAY -> UI -> SCENE -> BACKGROUND` layer order is preserved
 - `masked_1bpp` and `tone5_masked` assets render through the same semantic rules as device runtime
 - integer scaling uses deterministic coverage patterns
 - waiting-visual sequences use validated final visual states only and do not execute package logic
+- the 250 ms HW6 v1 presentation phase quantum and one shared presentation epoch are preserved across awake/autonomous backend handoff
+- backend handoff never repeats the committed phase; wake derives phase and remaining interval from elapsed presentation time
 - frame checksums and screenshots derive from the logical rendered result
 
 The twin must not treat host renderer behavior as hardware evidence for Sharp LCD row order, SPI payload correctness, SRAM4 retention, LPDMA reachability, LPBAM behavior, or EXTCOMIN correctness.
@@ -533,7 +542,7 @@ Allowed host sources:
 Rules:
 
 - mappings produce logical button, encoder, joystick, focus, and action events
-- focus scopes, bindings, fallbacks, and runtime-unit input admission use the same rules as device runtime
+- focus scopes, bindings, fallbacks, and scene input admission use the same rules as device runtime
 - no raw GPIO or EXTI behavior is exposed
 - host keyboard, gamepad, and mouse inputs are editor/twin adapters only, not package input sources
 - `BTN_BOOT` remains unavailable as normal game input
@@ -624,9 +633,9 @@ Optional time models:
 - single-step event evaluation
 - recorded timeline replay
 
-All time models must preserve the runtime class and lifecycle contracts.
+All time models must preserve scene type, execution semantic, interaction state, and lifecycle contracts.
 
-Calendar time must be controllable in deterministic tests. The twin must replay package-visible local time, elapsed suspend time, schedule delivery, wake reasons, reactive yields, waiting-visual fallback, optional input-lock timing, consumed unlock presses, and admitted peer-wait expiry from the selected target profile.
+Calendar time must be controllable in deterministic tests. The twin must replay package-visible local time, elapsed suspend time, schedule delivery, wake reasons, reactive yields, presentation phase/epoch, waiting-visual fallback, interaction-state timing, consumed activation gestures, and admitted peer-wait expiry from the selected target profile.
 
 The host time model must not be used as HW6 RTC hardware, wake-latency, current, or physical sleep evidence.
 
@@ -728,15 +737,15 @@ Profile fields should include:
 - reactive input-response latency cap
 - baseline wake/update/yield policy
 - realtime frame budget
-- optional input-lock timeout, route, meaningful-activity, and bounded-deferral limits
-- Start-unlock consumption policy
+- interaction-state timeout, inactive-route, meaningful-activity, and bounded-deferral limits
+- target activation-gesture and consumption policy
 - wake intents and lifecycle wake reasons
 - available input capabilities
 - available sensor capabilities
 - audio capability limits
 - communication capability limits
 - save/storage limits
-- runtime class support
+- system host and package scene-type support
 
 Profiles must be versioned and tied to the Platform contract revision they mirror.
 
@@ -753,21 +762,21 @@ Rules:
 1. digital twin implementation is blocked until required HW6 Platform validation evidence exists.
 2. same package runs through the same Engine host lifecycle on hardware backend and host twin backend.
 3. twin state vector matches contract-visible Platform/Engine states for execution and lifecycle transitions.
-4. `LP_GRAPH` transaction settles, publishes a reactive wait, and yields without an inactivity delay.
+4. `STATE_SCENE` transaction settles, publishes a reactive wait, and yields without an inactivity delay.
 5. input wake resumes the package through the same wake/lifecycle path as the Platform contract.
 6. preferred waiting motion falls back to a reduced sequence or hold when the selected profile does not grant it.
-7. realtime scene reports frame-budget violations and requires a reactive fallback.
+7. sequence/program scene reports budget violations and requires declared inactive/failure routing.
 8. waiting-visual animation capability is available only when measured evidence supports it.
-9. package may disable automatic input locking.
-10. enabled lock suppresses package controls until Start is consumed by unlock and the symbolic unlock event is delivered.
-11. preserve-state, declared-state-transition, and shell-exit lock routes replay deterministically.
-12. bounded lock deferral succeeds; unbounded deferral fails validation.
-13. injected sensor activity refreshes lock only when the active block declares that source as meaningful.
+9. package attempt to disable system inactivity handling fails validation.
+10. `INACTIVE` suppresses package controls until the target-owned activation gesture is consumed and the symbolic active event is delivered.
+11. preserve-scene, declared-scene-transition, and shell-exit inactive routes replay deterministically.
+12. bounded inactivity deferral succeeds; unbounded deferral fails validation.
+13. injected sensor activity refreshes the interaction window only when the active scene declares that source as meaningful.
 14. sensor fault injection triggers Platform/Engine diagnostics and lifecycle policy outside normal gameplay logic.
 15. deterministic replay produces stable frame checksums and final state vector.
 16. injected save write failure preserves package logic safety.
 17. twin evidence is recorded separately from hardware bring-up evidence.
-18. package-authored lock timeout or unlock action fails before twin execution.
+18. package-authored inactivity timeout or physical activation gesture fails before twin execution.
 
 ---
 

@@ -103,14 +103,15 @@ HW6 FW0 LPBAM late-abort evidence (`EV-HW6-20260814-P1-LPBAMABORT-060`) proves t
 
 ## Reactive Backend And Workload Measurement Matrix
 
-Populate one row per tested physical waiting backend or active workload. Runtime class alone does not determine current.
+Populate one row per tested physical waiting backend or active workload. Scene type and execution semantic alone do not determine current.
 
-| Runtime/workload | Physical backend | Armed wake sources | Average current | Wake latency | Resume latency | Failed wakes | Status |
+| Host/scene/workload | Physical backend | Armed wake sources | Average current | Wake latency | Resume latency | Failed wakes | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `SHELL` reactive wait | TBD | system/input policy | TBD | TBD | TBD | TBD | open |
-| `LP_GRAPH` reactive hold wait | TBD | declared event/wake policy | TBD | TBD | TBD | TBD | open |
-| `LP_MODULE` reactive waiting visual | TBD | declared event/wake policy | TBD | TBD | TBD | TBD | open |
-| `RT_SCENE` active -> reactive fallback | active then TBD wait backend | declared activity/wake policy | TBD | TBD | TBD | TBD | open |
+| `STATE_SCENE` reactive held-frame wait | TBD | declared event/wake policy | TBD | TBD | TBD | TBD | open |
+| `STATE_SCENE` reactive autonomous waiting visual | TBD | declared event/wake policy | TBD | TBD | TBD | TBD | open |
+| `SEQUENCE_SCENE` active -> state-scene route | active then TBD wait backend | declared activity/wake policy | TBD | TBD | TBD | TBD | open |
+| `PROGRAM_SCENE` active -> state-scene route | active then TBD wait backend | declared activity/wake policy | TBD | TBD | TBD | TBD | open |
 | `INSTALLER` waiting state | TBD | USB activity, B exit policy | TBD | TBD | TBD | TBD | open |
 | IMU step counter active | TBD | RTC/poll cadence plus optional IMU policy | TBD | TBD | TBD | TBD | open |
 | LPBAM waiting-visual backend | STOP2 + LPBAM | schedule/input/power/fault exit | prepare handshake `EV-HW6-20260814-P1-LPBAMHANDSHAKE-059`; late abort `EV-HW6-20260814-P1-LPBAMABORT-060`; payload TBD | TBD | TBD | TBD | open |

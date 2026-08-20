@@ -24,7 +24,7 @@ The HW6 digital twin stage is blocked until the Platform hardware backend and re
 
 ## Minimum Test Matrix
 
-Per mode (`SHELL`, `LP_GRAPH`, `LP_MODULE`, `RT_SCENE`, `INSTALLER`):
+Per host/scene (`SHELL`, `STATE_SCENE`, `SEQUENCE_SCENE`, `PROGRAM_SCENE`, `INSTALLER`):
 - mode entry/exit
 - owner-thread health
 - display/audio/input behavior
@@ -40,7 +40,7 @@ Per mode (`SHELL`, `LP_GRAPH`, `LP_MODULE`, `RT_SCENE`, `INSTALLER`):
 - masked 1bpp assets render with correct opacity semantics
 - tone5 assets render to deterministic 1-bit coverage output
 - integer-scaled tone5 assets preserve stable coverage phase
-- `UI -> GAME -> BG` layer order matches [[Rendering_API_Contract]]
+- `OVERLAY -> UI -> SCENE -> BACKGROUND` layer order matches [[Rendering_API_Contract]]
 - display payload DMA reads correctly from the approved SRAM4 display buffer region
 - waiting-visual sequence assets resolve to bounded final 1bpp visual states before target-specific compilation or playback
 - continued waiting-visual motion remains unavailable unless the selected measured profile grants `display.waiting_visual_animation`
@@ -83,15 +83,15 @@ Package-facing runtime logic validation must prove the boundary defined by [[Run
 
 Required cases:
 
-1. valid `LP_GRAPH` state graph validates and runs from its declared entry node.
+1. valid `STATE_SCENE` state graph validates and runs from its declared entry node.
 2. missing entry state fails package validation.
-3. transition to undeclared state or undeclared runtime unit fails package validation.
+3. transition to undeclared state or undeclared scene fails package validation.
 4. unbounded action loop fails validation in every build profile.
-5. `LP_GRAPH` high-frequency polling timer fails validation.
+5. `STATE_SCENE` high-frequency polling timer fails validation.
 6. bounded local-calendar schedule and catch-up policy validate through the time contract.
-7. `LP_MODULE` without approved `module_type` fails validation.
-8. `RT_SCENE` without frame budget, meaningful-activity rules, suspend/resume policy, or a reactive fallback route fails validation.
-9. `RT_SCENE` frame overrun emits package diagnostics where profile allows and follows lifecycle policy.
+7. `SEQUENCE_SCENE` with unbounded tracks or no scene-end/inactive route fails validation.
+8. `PROGRAM_SCENE` without instruction/memory/frame budgets, meaningful-activity rules, suspend/resume policy, or inactive/failure routes fails validation.
+9. sequence/program frame overrun emits package diagnostics where profile allows and follows lifecycle policy.
 10. package runtime logic cannot receive hardware owner faults as normal gameplay branches.
 11. suspend/resume preserves or reconstructs package state according to declared persistence classes.
 12. digital twin replay of a fixed input/time/sensor trace produces identical runtime logic state and diagnostics output.
@@ -125,8 +125,8 @@ Required cases:
 1. on a target that grants `sensor.light`, the ambient-light package primitive resolves to level and band without exposing ADC or GPIO; an HW6 profile must reject required light sensing unless the package has an admitted fallback.
 2. step session baseline reset changes package delta only and does not reset the hardware step counter.
 3. IMU event package primitive receives normalized motion/tap/shake/tilt/orientation events without exposing registers.
-4. high-rate motion stream in `LP_GRAPH` fails tool validation.
-5. bounded motion stream in `RT_SCENE` validates only when the target profile grants `sensor.imu_motion_stream`.
+4. high-rate motion stream in `STATE_SCENE` fails tool validation.
+5. bounded motion stream in a sequence/program scene validates only when the target profile grants `sensor.imu_motion_stream`.
 6. per-step MCU wake behavior fails validation for normal packages.
 7. optional sensor feature fails validation if content fallback behavior is missing.
 8. required sensor primitive fault at runtime is logged as Platform degraded capability and handled through Engine lifecycle policy.
@@ -165,15 +165,15 @@ Required cases:
 1. communication profile validates session contexts, role intent, message schema, payload bounds, and rate limits.
 2. package cannot reference BLE, NINA, UART, GAP, GATT, module commands, pins, flow control, or bonding storage.
 3. communication wake intent fails HW6 target-profile validation until measured HW6 evidence grants it.
-4. an `LP_GRAPH` package that depends on receiving communication messages fails HW6 validation while communication wake is blocked.
-5. session-required runtime unit remains in declared admission route when no session exists.
-6. optional communication runtime unit follows declared fallback/route behavior.
+4. a yielded `STATE_SCENE` that depends on receiving communication messages fails HW6 validation while communication wake is blocked.
+5. session-required scene remains in declared admission route when no session exists.
+6. optional communication scene follows declared fallback/route behavior.
 7. peer disconnect and session timeout are delivered as package-visible session events.
 8. BLE owner fault is logged as Platform/Engine diagnostic and not exposed as UART/NINA error to package gameplay code.
 9. digital twin multi-instance communication replay is deterministic for a fixed trace.
 10. digital twin delayed/drop/disconnect/fault injection validates package session behavior without acting as physical BLE bring-up evidence.
 11. interactive peer-wait policy validates only when the target profile grants it and the context declares a wait-expiry route.
-12. keepalive or unbounded communication chatter cannot bypass peer-wait grace, reactive yield, or enabled input-lock policy.
+12. keepalive or unbounded communication chatter cannot bypass peer-wait grace, reactive yield, or system inactivity policy.
 
 ---
 
@@ -189,19 +189,19 @@ Required cases:
 4. delayed and local-calendar schedules produce bounded package events.
 5. long sleep resumes package with elapsed suspended/calendar time and bounded missed-event summary.
 6. unbounded catch-up policy fails validation.
-7. reactive unit with polling or an awake input-wait loop fails validation.
-8. `RT_SCENE` without meaningful-activity rules and a reactive fallback fails validation.
+7. `STATE_SCENE` with polling or an awake input-wait loop fails validation.
+8. sequence/program scene without meaningful-activity rules and inactive routing fails validation.
 9. a settled reactive transaction yields immediately without waiting for an inactivity timeout.
 10. package-authored gameplay inactivity executes as a normal schedule/state transition.
-11. package may disable automatic input locking.
-12. enabled input lock admits only Start for unlock; that press is consumed and followed by a symbolic unlock lifecycle event.
-13. preserve-state, declared-state-transition, and shell-exit lock routes validate.
-14. bounded lock deferral validates; unbounded deferral fails.
-15. declared gyro activity may refresh enabled lock policy only when granted; cosmetic animation may not.
-16. bounded interactive peer-wait behavior cannot bypass reactive yield or enabled input lock.
-17. peer-wait expiry follows the declared session idle, pause, fallback, or reactive route.
+11. package attempt to disable system inactivity handling fails validation.
+12. `INACTIVE` admits only the target-owned activation gesture; that gesture is consumed and followed by a symbolic active lifecycle event.
+13. preserve-scene, declared-scene-transition, and shell-exit inactive routes validate.
+14. bounded inactivity deferral validates; unbounded deferral fails.
+15. declared gyro activity may refresh the interaction window only when granted; cosmetic animation may not.
+16. bounded interactive peer-wait behavior cannot bypass reactive yield or system inactivity policy.
+17. peer-wait expiry follows the declared session idle, pause, fallback, or `STATE_SCENE`/shell route.
 18. HW6 communication wake intent fails validation until a measured HW6 profile grants it.
-19. digital twin deterministic replay produces the same time, schedule, reactive-yield, lock/unlock, wake, lifecycle, and peer-wait sequence for a fixed trace.
+19. digital twin deterministic replay produces the same time, schedule, reactive-yield, inactive/active, wake, lifecycle, and peer-wait sequence for a fixed trace.
 20. digital twin accelerated sleep simulation is not used as physical-target current, wake-latency, RTC, or sleep evidence.
 21. package or authoring content that requests literal clock frequency, voltage scale, or Platform operating point fails validation.
 22. reactive and realtime semantics remain stable while Platform operating-point selection changes behind the Engine boundary.
@@ -217,7 +217,7 @@ Required cases:
 1. package marker emits a bounded timeline record in dev/twin profile.
 2. package counter emits fixed-schema numeric value within rate limits.
 3. package timing scope reports bounded package/runtime timing without hardware callbacks.
-4. shipping profile preserves minimal package fault code and runtime-unit evidence.
+4. shipping profile preserves minimal package fault code and scene evidence.
 5. verbose trace values are rejected or stripped in shipping profile unless release policy allows them.
 6. package diagnostics cannot reference SWD, SWO, UART, USB, BLE, storage regions, hardware registers, RTOS objects, raw pointers, memory dumps, or filesystem paths.
 7. package fault routes through Engine lifecycle policy.
@@ -320,11 +320,11 @@ Required cases:
 
 1. host twin exposes the same contract-visible state vector as the hardware backend.
 2. same package runs through the same Engine lifecycle on host and hardware backends.
-3. host twin simulates `SHELL`, `LP_GRAPH`, `LP_MODULE`, `RT_SCENE`, and `INSTALLER` contract behavior.
-4. host twin yields settled reactive transactions and enforces source-profile cadence, waiting-visual, and optional input-lock bounds.
+3. host twin simulates `SHELL`, `STATE_SCENE`, `SEQUENCE_SCENE`, `PROGRAM_SCENE`, and `INSTALLER` contract behavior.
+4. host twin yields settled reactive transactions and enforces source-profile cadence, waiting-visual, and interaction-state bounds.
 5. host twin simulates committed-frame hold, waiting-visual sequence, and realtime display behavior from the measured Platform profile.
 6. waiting-visual animation capability appears only when measured evidence for the source target profile supports it.
-7. host twin consumes Start on unlock and reproduces symbolic lock/unlock lifecycle ordering.
+7. host twin consumes the target-owned activation gesture and reproduces symbolic inactive/active lifecycle ordering.
 8. host twin provides deterministic input, sensor, communication, and fault-injection traces.
 9. host twin deterministic replay produces stable state-vector and output artifacts.
 10. host twin evidence is recorded separately from hardware bring-up evidence.

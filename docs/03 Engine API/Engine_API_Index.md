@@ -8,6 +8,7 @@ The Engine may understand gameplay concepts abstractly, but it must not depend o
 
 ## Core Notes
 
+- [[Scene_Runtime_and_Interaction_Model]]
 - [[Game_Authoring_API_Contract]]
 - [[Authoring_Project_Schema_Contract]]
 - [[Target_Profile_Schema_Contract]]

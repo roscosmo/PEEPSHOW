@@ -9,7 +9,8 @@ These FSMs sit under the external host lifecycle contract and keep host behavior
 ## Scope
 
 Defines:
-- host-internal state models for `SHELL`, `LP_GRAPH`, `LP_MODULE`, `RT_SCENE`, `INSTALLER`
+- host-internal state models for `SHELL`, `PACKAGE`, and `INSTALLER`
+- package-host scene dispatch for `STATE_SCENE`, `SEQUENCE_SCENE`, and `PROGRAM_SCENE`
 - mapping rules between internal states and external lifecycle
 
 Does not define:
@@ -25,7 +26,7 @@ Does not define:
 
 Lifecycle mapping requirement:
 - `mount/start/suspend/resume/stop/unmount` operations must be valid from internal state context and reject illegal calls.
-- runtime unit transitions must pass through the runtime manager and target declared package runtime units.
+- scene transitions must pass through the package scene manager and target declared package scenes.
 
 ---
 
@@ -49,69 +50,40 @@ Key events:
 
 ---
 
-## 2) LP_GRAPH Host Internal FSM
+## 2) PACKAGE Host Internal FSM
 
 States:
-- `LPG_INT_IDLE`
-- `LPG_INT_LOAD_GRAPH`
-- `LPG_INT_WAIT_EVENT`
-- `LPG_INT_EVALUATE`
-- `LPG_INT_APPLY_ACTIONS`
-- `LPG_INT_RENDER_HINT`
-- `LPG_INT_SLEEP_HINT`
-- `LPG_INT_ERROR`
+- `PKG_INT_IDLE`
+- `PKG_INT_LOAD_PACKAGE`
+- `PKG_INT_ENTER_SCENE`
+- `PKG_INT_STATE_WAIT`
+- `PKG_INT_STATE_TRANSACTION`
+- `PKG_INT_SEQUENCE_PREPARE`
+- `PKG_INT_SEQUENCE_RUNNING`
+- `PKG_INT_PROGRAM_PREPARE`
+- `PKG_INT_PROGRAM_RUNNING`
+- `PKG_INT_TRANSITION`
+- `PKG_INT_SUSPENDED`
+- `PKG_INT_ERROR`
 
 Key events:
-- timer/input/sensor intents
-- graph transition request
-- action execution complete
-- host fault and recover events
-
----
-
-## 3) LP_MODULE Host Internal FSM
-
-States:
-- `LPM_INT_IDLE`
-- `LPM_INT_LOAD_MODULE`
-- `LPM_INT_PREPARE`
-- `LPM_INT_RUNNING`
-- `LPM_INT_PAUSED`
-- `LPM_INT_COMPLETE`
-- `LPM_INT_ERROR`
-
-Key events:
-- module load/prepare complete
-- start/pause/resume/complete
-- module fault
-
----
-
-## 4) RT_SCENE Host Internal FSM
-
-States:
-- `RTS_INT_IDLE`
-- `RTS_INT_LOAD_SCENE`
-- `RTS_INT_PREPARE_FRAME`
-- `RTS_INT_RUNNING`
-- `RTS_INT_PAUSED`
-- `RTS_INT_TRANSITION`
-- `RTS_INT_UNLOAD`
-- `RTS_INT_ERROR`
-
-Key events:
-- scene load/transition requests
-- frame tick/update events
-- pause/resume requests
-- scene fault/asset fault events
+- package mount/start/suspend/resume/stop
+- scene entry and declared transition requests
+- input, schedule, sensor, lifecycle, and completion events
+- sequence or program frame deadlines
+- interaction-state changes
+- scene, asset, sandbox, and capability faults
 
 Rules:
-- frame update loop runs only in `RTS_INT_RUNNING`.
-- scene transition path must be bounded and failure-visible.
+- `STATE_SCENE` transactions run only in `PKG_INT_STATE_TRANSACTION` and return to `PKG_INT_STATE_WAIT` after settling.
+- sequence frame work runs only in `PKG_INT_SEQUENCE_RUNNING`.
+- programmable frame work runs only in `PKG_INT_PROGRAM_RUNNING`.
+- inactivity leaves either realtime state through `PKG_INT_TRANSITION` before the inactive route is established.
+- scene transitions are bounded and failure-visible.
 
 ---
 
-## 5) INSTALLER Host Internal FSM
+## 3) INSTALLER Host Internal FSM
 
 States:
 - `INS_INT_IDLE`
@@ -139,5 +111,5 @@ Key events:
 2. suspend/resume behavior preserves internal state consistency
 3. host errors map cleanly to lifecycle-safe return path
 4. host transition traces reconstruct full internal execution sequence
-5. runtime unit transition to undeclared target is rejected
-6. realtime unit without declared low-power fallback is rejected by package validation
+5. scene transition to an undeclared target is rejected
+6. realtime scene without a declared inactivity route is rejected by package validation

@@ -16,7 +16,7 @@ The package manager owns:
 - package activation state
 - manifest and chunk-table validation results
 - asset ID to chunk mapping
-- runtime-unit asset admission
+- scene asset admission
 - package-safe asset handles
 - cache/preload policy
 - package quarantine and asset-handle invalidation
@@ -41,9 +41,9 @@ Runtime hosts may request package assets only through this contract.
 - Runtime must not read FAT/FileX paths during active package execution.
 - Runtime must not parse editor-native files such as PNG, Aseprite, Tiled, WAV, JSON, or TMX.
 - All reads, decodes, and cache fills are bounded.
-- All asset handles are scoped to an active package and runtime unit.
+- All asset handles are scoped to an active package and scene.
 - Package update, uninstall, quarantine, or activation failure invalidates outstanding handles.
-- Required runtime-unit assets must be validated before the runtime unit starts.
+- Required scene assets must be validated before the scene starts.
 
 ---
 
@@ -57,7 +57,7 @@ Conceptual identifiers:
 
 ```text
 package_id
-runtime_unit_id
+scene_id
 asset_id
 asset_type
 asset_handle
@@ -70,7 +70,7 @@ Rules:
 - `asset_id` is not a filesystem path.
 - `asset_handle` is not persistent across package activation sessions.
 - handles from one package must not be accepted by another package.
-- handles from one runtime unit may access only assets declared for that runtime unit or approved shared assets.
+- handles from one scene may access only assets declared for that scene or approved shared assets.
 
 ---
 
@@ -80,9 +80,9 @@ Every asset record declares a load policy.
 
 | Policy | Meaning |
 |---|---|
-| `preload_on_mount` | load/prepare before runtime unit starts |
-| `runtime_unit_local` | available only while the declaring runtime unit is active |
-| `shared_resident` | may remain cached across runtime-unit transitions in the same package |
+| `preload_on_mount` | load/prepare before the scene starts |
+| `scene_local` | available only while the declaring scene is active |
+| `shared_resident` | may remain cached across scene transitions in the same package |
 | `windowed_read` | read bounded regions on demand through package API |
 | `stream_bounded` | sequential bounded reads through an owner-managed ring/buffer |
 | `prepare_on_demand` | may be prepared lazily outside critical frame/event paths |
@@ -90,9 +90,9 @@ Every asset record declares a load policy.
 
 Rules:
 
-- `RT_SCENE` frame loops may not trigger unbounded storage reads or decodes.
+- sequence/program frame loops may not trigger unbounded storage reads or decodes.
 - low-power/runtime event handlers may not block on long asset loads.
-- `preload_on_mount` failures reject runtime-unit start unless fallback is declared.
+- `preload_on_mount` failures reject scene start unless fallback is declared.
 - optional assets must declare fallback behavior.
 - streaming assets must declare maximum read size, buffer depth, and latency tolerance.
 
@@ -133,7 +133,7 @@ typedef enum {
 
 typedef struct {
     uint32_t package_id;
-    uint32_t runtime_unit_id;
+    uint32_t scene_id;
     uint32_t asset_id;
     pkg_asset_type_t expected_type;
     uint32_t timeout_ms;
@@ -156,7 +156,7 @@ Required API families:
 - asset view acquisition for prepared assets
 - bounded read-window request for large assets
 - streaming request setup for approved streaming assets
-- runtime-unit preload/prepare
+- scene preload/prepare
 - cache release and pressure notification
 - handle invalidation notification
 
@@ -189,20 +189,20 @@ Rules:
 
 ---
 
-## Runtime Unit Preparation
+## Scene Preparation
 
-Before a runtime unit starts, the package manager must:
+Before a scene starts, the package manager must:
 
 1. confirm the package index is ready.
 2. confirm the package is installed and not quarantined.
-3. validate the target runtime unit exists.
-4. validate required capabilities for that runtime unit.
-5. validate required assets for that runtime unit.
+3. validate the target scene exists.
+4. validate compiler-derived required capabilities for that scene.
+5. validate required assets for that scene.
 6. preload or prepare assets marked `preload_on_mount`.
 7. report optional assets that are unavailable and activate declared fallbacks.
-8. hand a prepared package/runtime-unit context to the runtime host.
+8. hand a prepared package/scene context to the runtime host.
 
-`RT_SCENE` units should start only after frame-critical assets are prepared or an explicit loading/fallback route is declared.
+Sequence/program scenes should start only after frame-critical assets are prepared or an explicit loading/fallback route is declared.
 
 ---
 
@@ -225,11 +225,11 @@ States:
 Rules:
 
 - invalid asset IDs fail in `ASSET_REQ_VALIDATE`.
-- undeclared runtime-unit assets fail before read.
+- undeclared scene assets fail before read.
 - chunk integrity failure routes to package fault or optional fallback.
 - reads are issued through the storage owner.
 - decode/prepare has explicit budget.
-- failed required assets prevent runtime-unit start.
+- failed required assets prevent scene start.
 - failed optional assets must activate declared fallback behavior.
 
 ---
@@ -276,7 +276,7 @@ Rules:
 - request size is bounded.
 - request timeout is explicit.
 - storage owner may reject or delay during sleep/install/export/fault policy.
-- `RT_SCENE` may not wait inside its frame budget on a storage read.
+- a sequence/program scene may not wait inside its frame budget on a storage read.
 - streaming audio is owned by the audio subsystem and uses declared ring/buffer policy.
 - windowed tilemap reads must have fallback behavior for cache miss or delayed read.
 
@@ -308,10 +308,10 @@ Package asset failures map to explicit outcomes:
 
 | Failure | Outcome |
 |---|---|
-| missing required asset | reject runtime-unit start |
+| missing required asset | reject scene start |
 | missing optional asset | activate fallback |
 | chunk CRC failure | package fault; quarantine if required chunk |
-| unsupported required asset version | reject package or runtime unit |
+| unsupported required asset version | reject package or scene |
 | unsupported optional asset version | fallback if declared |
 | storage unavailable | safe return or safe mode according to Platform policy |
 | handle use after revoke | runtime fault and safe stop |
@@ -328,20 +328,20 @@ Rules:
 
 - twin uses compiled `PeepPkg` data or a contract-equivalent compiled package representation.
 - twin must not let host filesystem paths become package runtime APIs.
-- twin must enforce handle lifetime, type checks, capability checks, runtime-unit asset scope, and fallback behavior.
+- twin must enforce handle lifetime, type checks, capability checks, scene asset scope, and fallback behavior.
 - twin may inject asset read failures, cache misses, checksum failures, and unavailable optional assets.
 
 ---
 
 ## Validation Cases
 
-1. runtime unit starts only after required assets are validated/prepared.
+1. scene starts only after required assets are validated/prepared.
 2. duplicate or unresolved asset IDs fail package validation.
 3. asset type mismatch is rejected before runtime use.
-4. runtime unit cannot open an asset not declared for that unit.
+4. scene cannot open an asset not declared for that scene.
 5. optional missing asset activates fallback.
 6. required chunk CRC failure quarantines or rejects the package.
-7. `RT_SCENE` frame loop does not block on storage reads.
+7. sequence/program frame loop does not block on storage reads.
 8. suspend/resume invalidates or restores handles according to policy.
 9. package uninstall/update/quarantine invalidates outstanding handles.
 10. digital twin enforces the same handle and asset-scope rules.

@@ -11,6 +11,7 @@ Related:
 - [[Package_Save_Settings_API_Contract]]
 - [[Runtime_Host_Contract]]
 - [[Runtime_Logic_State_API_Contract]]
+- [[Scene_Runtime_and_Interaction_Model]]
 - [[Asset_Pipeline_and_Package_Tooling_Contract]]
 - [[Audio_API_Contract]]
 - [[Communication_API_Contract]]
@@ -25,7 +26,7 @@ Related:
 Packages provide:
 - metadata
 - assets
-- runtime units
+- package scenes and declared transitions
 - state graphs/tables
 - variables and configuration
 - optional host-allowed scripted logic
@@ -46,7 +47,7 @@ Compiled packages do not install those source objects as independent firmware co
 The package compiler lowers authoring reuse into:
 
 - manifest data
-- runtime units
+- package scenes
 - runtime logic references
 - state/action/guard tables
 - scene data
@@ -60,9 +61,8 @@ Rules:
 
 - `Authoring Kit` is the canonical name for reusable gameplay systems.
 - do not use `module` as the general name for gameplay authoring reuse.
-- `LP_MODULE` remains a runtime class token.
-- `module_type` in runtime-unit schemas means an approved Engine host type for an `LP_MODULE` runtime unit. It does not refer to an Authoring Kit, hardware module, firmware module, or arbitrary package code blob.
-- an Authoring Kit may generate or reference one or more runtime units, but each generated unit still declares exactly one runtime class.
+- `module` is reserved for actual hardware or firmware modules and is not a package scene type.
+- an Authoring Kit may generate or reference one or more scenes, but each generated scene declares exactly one canonical scene type.
 
 ---
 
@@ -74,8 +74,8 @@ Every package must declare:
 - `version`
 - `build_profile`
 - `target_profile`
-- `default_runtime_unit`
-- `runtime_units`
+- `entry_scene`
+- `scenes`
 - `required_capabilities`
 - `optional_capabilities`
 - `wake_intents`
@@ -110,8 +110,8 @@ package_manifest:
   package_format_version
   build_profile
   target_profile
-  default_runtime_unit
-  runtime_units[]
+  entry_scene
+  scenes[]
   required_capabilities[]
   optional_capabilities[]
   wake_intents[]
@@ -135,38 +135,41 @@ Rules:
 
 - `build_profile` must be one of the profiles defined in [[Game_Authoring_API_Contract]].
 - `target_profile` must name a profile from [[PeepOS_Capability_Registry]].
-- `default_runtime_unit` must resolve to one entry in `runtime_units`.
-- each runtime unit declares its own `runtime_class`.
+- `entry_scene` must resolve to one entry in `scenes`.
+- each scene declares one `scene_type`: `STATE_SCENE`, `SEQUENCE_SCENE`, or `PROGRAM_SCENE`.
+- required and optional capability declarations are compiler-derived from scene content, service use, and fallback structure; the resolved declarations are serialized in the manifest.
 - required capabilities must be granted by the target profile.
 - optional capabilities must include fallback behavior.
 - `package_blob_ref` must resolve to the installable `PeepPkg` container metadata.
 
 ---
 
-## Runtime Unit Schema Outline
+## Scene Schema Outline
 
-A package may contain multiple runtime units.
+A package may contain multiple scenes.
 
-The package is the installable artifact. A runtime unit is a bounded executable mode inside that package.
+The package is the installable artifact. A scene is a bounded authored experience inside that package. Scene transitions do not remount the package.
 
 Examples:
 
 ```text
-ambient_pet      LP_GRAPH
-dialogue_flow    LP_MODULE
-map_explore      LP_MODULE or RT_SCENE
-microgame        RT_SCENE
+ambient_pet      STATE_SCENE
+dialogue_flow    STATE_SCENE
+intro_sequence   SEQUENCE_SCENE
+microgame        PROGRAM_SCENE
 ```
 
 Conceptual schema:
 
 ```text
-runtime_unit:
-  unit_id
-  runtime_class
-  entry_point
-  module_type
-  runtime_logic_refs[]
+scene:
+  scene_id
+  scene_type
+  entry_ref
+  logic_refs[]
+  object_refs[]
+  presentation_ref
+  interaction_policy_ref
   required_capabilities[]
   optional_capabilities[]
   asset_refs[]
@@ -177,66 +180,61 @@ runtime_unit:
   cadence_hints
   wake_intents[]
   latency_tolerance
-  reactive_wait_policy_ref
+  reactive_wait_policy_ref       # STATE_SCENE only
+  realtime_policy_ref            # SEQUENCE_SCENE or PROGRAM_SCENE
   allowed_transitions[]
-  unit_stack_policy
+  scene_stack_policy
   suspend_resume_policy
   failure_fallback
 ```
 
 Rules:
 
-- `unit_id` must be unique within the package.
-- `runtime_class` must be one of `LP_GRAPH`, `LP_MODULE`, or `RT_SCENE`.
-- `entry_point` must resolve to a state graph, module config, scene, or host entry accepted by that runtime class.
-- `runtime_logic_refs` must resolve to validated state graph, action table, approved `LP_MODULE` host config, or scene logic data accepted by [[Runtime_Logic_State_API_Contract]].
-- `allowed_transitions` must target valid runtime units in the same package or an approved system route such as shell return.
-- runtime unit transitions must use declared transition edges.
-- arbitrary runtime jumps to undeclared unit IDs are invalid.
-- unit-specific required capabilities must be granted by the selected target profile.
-- unit-specific optional capabilities must include fallback behavior.
-- assets, audio contexts, sensor contexts, communication contexts, and save records used by the unit must be declared.
-- lifecycle handlers and unit transition actions must be bounded.
+- `scene_id` must be unique within the package.
+- `scene_type` must be one of `STATE_SCENE`, `SEQUENCE_SCENE`, or `PROGRAM_SCENE`.
+- `entry_ref` and `logic_refs` must resolve to data accepted for that scene type by [[Runtime_Logic_State_API_Contract]].
+- `allowed_transitions` must target valid scenes in the same package or an approved system route such as shell return.
+- scene transitions must use declared transition edges.
+- arbitrary jumps to undeclared scene IDs are invalid.
+- compiler-derived scene capabilities must be granted by the selected target profile; optional capabilities must include fallback behavior.
+- assets, audio contexts, sensor contexts, communication contexts, and save records used by the scene must be declared.
+- lifecycle handlers and scene transition actions must be bounded.
 
-Runtime class requirements:
+Scene type requirements:
 
-| Runtime Class | Required Unit Fields |
-|---|---|
-| `LP_GRAPH` | state graph entry, bounded action table, reactive wait contracts, schedule/wake intent |
-| `LP_MODULE` | approved `module_type`, module config reference, reactive block/wait behavior |
-| `RT_SCENE` | scene entry, frame budget, target FPS, meaningful-activity rules, suspend/resume behavior, reactive fallback runtime unit |
+| Scene Type | Execution | Required Scene Fields |
+|---|---|---|
+| `STATE_SCENE` | `REACTIVE` | state/behavior entry, bounded action tables, settled presentation, reactive wait contracts, schedule/wake intent |
+| `SEQUENCE_SCENE` | `REALTIME` | bounded timeline/tracks, target FPS, duration or end marker, meaningful-activity rules, suspend/resume behavior, inactive and scene-end routes |
+| `PROGRAM_SCENE` | `REALTIME` | sandbox program entry, instruction/memory/frame budgets, meaningful-activity rules, suspend/resume behavior, inactive and failure routes |
 
-`RT_SCENE` units must declare a reactive fallback to an `LP_GRAPH` or `LP_MODULE` unit unless the selected target profile explicitly allows another route.
+Every `SEQUENCE_SCENE` and `PROGRAM_SCENE` must declare an inactivity route to a `STATE_SCENE` or shell. A sequence also declares a scene-end route. A realtime scene may remain active while meaningful user activity or Platform-approved bounded work continues, but it does not select a CPU frequency or clock source. Platform chooses the lowest validated operating point that meets its admitted deadlines.
 
-`RT_SCENE` units do not have a fixed maximum active duration at the package contract level. A realtime unit may remain active while meaningful user activity or Platform-approved work continues, but it must declare meaningful-activity sources, suspend/resume behavior, bounded lock deferrals where required, and reactive fallback routing. If the package enables automatic input locking, lock activation ends or suspends realtime execution before the declared lock route is established.
-
-An interactive communication context may request only the bounded peer-wait grace defined by [[Communication_API_Contract]] and the selected target profile. That policy is bounded where admitted; it is not a package-owned input-lock override, unbounded deferral, or stay-awake grant.
-
-`LP_MODULE` units must name an approved Engine host `module_type`. They are not arbitrary low-power code blobs and are not the same thing as authoring-level Authoring Kits.
+An interactive communication context may request only the bounded peer-wait grace defined by [[Communication_API_Contract]] and the selected target profile. That policy is bounded where admitted; it is not a package-owned inactivity override, unbounded deferral, or stay-awake grant.
 
 ---
 
-## Runtime Unit Transition Model
+## Scene Transition Model
 
-Runtime unit transitions are declared, bounded, and Engine-managed.
+Scene transitions are declared, bounded, and Engine-managed. A transition is a graph/action construct, not a scene.
 
 Allowed transition forms:
 
 ```text
-transition_to(unit_id)
-push_unit(unit_id)
-pop_unit()
+transition_to(scene_id)
+push_scene(scene_id)
+pop_scene()
 exit_to_shell(reason)
 ```
 
 Rules:
 
-- `transition_to` replaces the current runtime unit with a declared target.
-- `push_unit` enters a declared target while preserving a bounded return path.
-- `pop_unit` returns to the previous runtime unit if the stack is non-empty.
+- `transition_to` replaces the current scene with a declared target.
+- `push_scene` enters a declared target while preserving a bounded return path.
+- `pop_scene` returns to the previous scene if the stack is non-empty.
 - stack depth is bounded by target profile and package validation.
 - recursive push loops are invalid unless statically bounded and approved by validation.
-- transition actions must be bounded.
+- transition guards and actions must be bounded.
 - transition targets must be declared in `allowed_transitions`.
 - `exit_to_shell` is an approved system route, not a package-defined shell implementation.
 
@@ -244,9 +242,11 @@ Typical use:
 
 ```text
 map -> push dialogue -> pop map
-idle -> push modal microgame -> pop idle
-realtime microgame -> transition reactive fallback
+ambient state -> play sequence -> return to state
+ambient state -> run program scene -> return to state
 ```
+
+The package remains mounted across these transitions.
 
 ---
 
@@ -296,16 +296,16 @@ runtime_context.realtime_activity_for_minigame
 Rules:
 
 - contexts are declarations, not settings writes.
-- tool-side validation must prove each context is valid for the selected target profile and runtime unit.
+- tool-side validation must prove each context is valid for the selected target profile and scene.
 - Platform may internally clamp, coalesce, substitute, or degrade hardware behavior while preserving the package-facing contract.
 - package gameplay code does not handle hardware-level grant/reject/revoke paths for primitives required from the selected target profile.
 - if a required context cannot be maintained at runtime, Platform/Engine handles fault logging and lifecycle policy.
-- contexts must have bounded duration, declared runtime-unit scope, or explicit release behavior.
+- contexts must have bounded duration, declared scene scope, or explicit release behavior.
 - packages must not directly write Platform knobs, Platform settings, hardware registers, or storage policy.
 
 ---
 
-## Reactive, Waiting-Visual, And Lock Policy Schema
+## Reactive, Presentation, And Interaction Policy Schema
 
 Packages express execution and gameplay intent only. Detailed behavior is defined in [[Time_And_Power_Intent_API_Contract]].
 
@@ -325,12 +325,11 @@ reactive_policy:
   waiting_visual_fallback_table_ref
   wake_intents[]
 
-input_lock_policy:
-  enabled
+interaction_policy:
   meaningful_activity_sources[]
-  lock_route                 # preserve_state, transition_to, exit_to_shell
-  lock_target
-  locked_waiting_visual_ref
+  inactive_route             # preserve_scene, transition_to_scene, exit_to_shell
+  inactive_target_scene
+  inactive_waiting_visual_ref
   bounded_deferral_table_ref
 
 realtime_policy:
@@ -339,8 +338,8 @@ realtime_policy:
   meaningful_activity_sources[]
   suspend_behavior
   resume_behavior
-  reactive_fallback_unit
-  bounded_lock_deferral_table_ref
+  inactive_route
+  bounded_inactivity_deferral_table_ref
 ```
 
 A state wait entry resolves:
@@ -355,7 +354,7 @@ reactive_wait:
   schedule_refs[]
   gameplay_timeout_transitions[]
   wake_intents[]
-  input_lock_context_ref
+  interaction_context_ref
 ```
 
 Rules:
@@ -366,14 +365,13 @@ Rules:
 - the Platform may compile the preferred waiting visual autonomously, use a reduced visual, hold the settled frame, or use another target-profile backend
 - autonomous visual playback cannot mutate package state
 - package gameplay inactivity is represented by a normal schedule and transition
-- packages may enable or disable automatic input locking
-- a reactive wait may select an `input_lock_context_ref` only from the package policy's declared meaningful-activity and bounded-deferral entries; it cannot override timeout, route, or unlock semantics
-- packages do not author the system lock timeout
-- lock routes are limited to preserving current state, transitioning to a declared package state, or exiting to shell
-- the Start press used to unlock is consumed by PeepOS
-- unlock does not select another package route: the state established by the lock route remains authoritative
-- bounded lock deferral must name a statically bounded completion/timeout; unbounded deferral is invalid
-- `RT_SCENE` requires a reactive fallback regardless of whether automatic locking is enabled
+- PeepOS always owns inactivity detection; packages cannot disable it or author its timeout
+- a reactive wait may select an `interaction_context_ref` only from the package policy's declared meaningful-activity and bounded-deferral entries; it cannot override timeout, route, or activation semantics
+- inactive routes are limited to preserving the current scene, transitioning to a declared scene, or exiting to shell
+- the target-owned activation gesture is consumed by PeepOS and is not delivered as a package action
+- activation does not select another package route: the scene established by the inactive route remains authoritative
+- bounded inactivity deferral must name a statically bounded completion/timeout; unbounded deferral is invalid
+- every `SEQUENCE_SCENE` and `PROGRAM_SCENE` requires an inactivity route to a `STATE_SCENE` or shell
 - packages must not implement polling loops to approximate reactive cadence or display animation
 - missed scheduled events use a bounded catch-up policy
 
@@ -404,7 +402,7 @@ asset_table:
     bounds
     chunk_id
     checksum
-    runtime_class_limits
+    scene_type_limits
     required_capability
 ```
 
@@ -497,7 +495,7 @@ Rules:
 - bindings must target package-local actions.
 - focus scope stack depth must be bounded.
 - optional input capabilities require fallback bindings or fallback behavior.
-- runtime unit transitions must release or transfer input focus explicitly.
+- scene transitions must release or transfer input focus explicitly.
 
 ---
 
@@ -529,7 +527,7 @@ audio_profile:
     max_duration_ms
   audio_contexts[]:
     context_id
-    runtime_unit_refs[]
+    scene_refs[]
     active_cue_refs[]
     bbb_pattern_refs[]
     volume_defaults
@@ -544,7 +542,7 @@ Rules:
 - audio profiles must not name SAI, DMA, LPTIM, GPIO, `SD_MODE`, amplifier state, mixer buffers, decoder internals, or filesystem paths.
 - sampled audio assets and BBB patterns must resolve to package assets.
 - BBB pattern frequency, duration, step count, repeat count, curve, and envelope must be bounded.
-- runtime unit audio contexts must be valid for the selected runtime class and target profile.
+- scene audio contexts must be valid for the selected scene type and target profile.
 - PeepOS does not require packages to remain semantically complete when muted.
 - audio-centric package behavior is valid when it remains within bounded package/runtime rules.
 
@@ -560,7 +558,7 @@ Detailed sensor API behavior is defined in [[Sensor_API_Contract]].
 sensor_profile:
   contexts[]:
     context_id
-    runtime_unit_refs[]
+    scene_refs[]
     required_capabilities[]
     optional_capabilities[]
     mode
@@ -576,8 +574,8 @@ Rules:
 
 - sensor contexts use PeepOS capability names only.
 - sensor contexts must not name hardware parts, pins, ADC channels, I2C addresses, EXTI lines, registers, or HAL handles.
-- each sensor context must be referenced by at least one runtime unit.
-- high-rate motion or light streaming must be bounded and valid for the runtime class.
+- each sensor context must be referenced by at least one scene.
+- high-rate motion or light streaming must be bounded and valid for the scene type.
 - step sessions use package baselines and must not reset the hardware step counter.
 - optional sensor features require declared content fallback behavior.
 - required sensor primitive failure at runtime is handled by Platform/Engine lifecycle and diagnostics, not normal gameplay logic.
@@ -639,7 +637,7 @@ Detailed communication API behavior is defined in [[Communication_API_Contract]]
 communication_profile:
   contexts[]:
     context_id
-    runtime_unit_refs[]
+    scene_refs[]
     mode
     role_intent
     session_type
@@ -671,7 +669,7 @@ Rules:
 - message schemas must be versioned and bounded.
 - each communication context must declare `none`, `optional`, or `session_required` behavior.
 - optional communication contexts require fallback/route behavior.
-- session-required runtime units require admission/session routes when no session exists.
+- session-required scenes require admission/session routes when no session exists.
 - HW6 profiles must reject communication wake behavior until measured evidence and the capability registry grant it.
 - peer disconnects and session timeouts are package-visible events.
 - hardware/module faults are Platform/Engine diagnostics, not normal gameplay branches.
@@ -749,10 +747,10 @@ Rules:
 Before package compilation/export, tooling must validate:
 
 1. manifest schema
-2. runtime class compatibility
+2. scene type compatibility
 3. required and optional capability declarations
 4. reactive wait contracts and realtime fallback declarations
-5. optional input-lock enablement, route, meaningful activity, and bounded deferrals
+5. interaction policy, inactive route, meaningful activity, and bounded deferrals
 6. waiting-visual fallback and target compiler admission
 7. asset table bounds
 8. save schema declaration
@@ -763,9 +761,9 @@ At install time, firmware must validate:
 
 1. validate `PeepPkg` header, chunk table, ranges, and integrity metadata
 2. validate manifest schema and signatures/checksums
-3. validate runtime class compatibility
+3. validate scene type compatibility
 4. validate required capability compatibility against the active target profile
-5. validate reactive-wait and input-lock records are structurally valid and bounded
+5. validate reactive-wait and interaction-policy records are structurally valid and bounded
 6. validate asset table bounds
 7. validate save schema declaration
 8. stage package before commit

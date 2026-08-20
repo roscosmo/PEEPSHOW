@@ -24,7 +24,7 @@ Preserve or animate the waiting visual through the best target-profile backend.
 Wake seamlessly for the next admitted event.
 ```
 
-Package authors express gameplay state, event interests, schedules, meaningful activity, lock policy, and waiting-visual intent. Platform owns STOP2, SRAM4, LPBAM, LPDMA, SPI chunking, quiesce, wake wiring, and recovery.
+Package authors express gameplay state, event interests, schedules, meaningful activity, interaction policy, and waiting-visual intent. Platform owns STOP2, SRAM4, LPBAM, LPDMA, SPI chunking, quiesce, wake wiring, and recovery.
 
 Related authoritative contracts:
 
@@ -271,7 +271,7 @@ PeepOS exposes two execution semantics to Engine/package tooling:
 | Semantic | Meaning |
 |---|---|
 | `REACTIVE` | Handle one admitted input, schedule, sensor, lifecycle, or system event through a bounded transaction, then yield immediately. |
-| `REALTIME` | Run a frame-paced active loop while admitted meaningful work continues, with declared budgets and a reactive fallback. |
+| `REALTIME` | Run a frame-paced sequence or program scene while admitted meaningful work continues, with declared budgets and inactive/end/failure routing to a `STATE_SCENE` or shell. |
 
 `STATIC` is not an execution-mode token. Static art, a static frame, or an internal one-shot display update may still use the ordinary adjective where accurate.
 
@@ -307,33 +307,34 @@ Waiting-visual motion is cosmetic presentation. It does not execute package logi
 
 `REALTIME` remains CPU-awake and frame paced. It is used for gameplay or presentation that genuinely needs continuous Engine work.
 
-Every realtime unit declares:
+Every realtime scene declares:
 
 - target cadence and frame budget
 - meaningful-activity sources
 - suspend/resume behavior
-- a reactive fallback
-- any bounded input-lock deferral needed for an indivisible segment
+- an inactive/failure route to a declared `STATE_SCENE` or shell
+- any bounded interaction-state deferral needed for an indivisible segment
 
-When realtime work ends, blocks, or loses admission, the unit follows its declared reactive route. It does not remain awake merely to wait for input.
+When realtime work ends, blocks, or loses admission, the scene follows its declared route to a settled `STATE_SCENE` or shell. It does not remain awake merely to wait for input.
 
-## 4. Input Lock And Gameplay Timeouts
+## 4. System Interaction State And Gameplay Timeouts
 
-Automatic input locking is optional package policy. A package may disable it.
+PeepOS system inactivity handling is mandatory and is independent of physical CPU sleep. Packages cannot disable it or choose its timeout or physical activation gesture.
 
-When enabled:
+While the system interaction state is `INACTIVE`:
 
-- only Start wakes/unlocks normal interaction
-- the Start press is consumed by PeepOS and is not also delivered as a package action
-- Engine receives symbolic lock/unlock lifecycle events after state/focus ordering is valid
-- the package chooses one admitted lock route: preserve current state, transition to a declared package state, or exit to shell
+- only the target-owned activation gesture restores normal interaction
+- HW6 initially uses Start; a future qualified target profile may admit another button or a classified chord such as `L+R`
+- the physical activation gesture is consumed by PeepOS and is not also delivered as a package action
+- Engine receives symbolic `DEVICE_INACTIVE` and `DEVICE_ACTIVE` lifecycle events after scene/focus ordering is valid
+- the package chooses one admitted inactive route: preserve the current scene, transition to a declared package scene, or exit to shell
 - declared meaningful input, including admitted gyro activity where appropriate, may refresh the timer
 - cosmetic animation does not refresh the timer
-- lock deferral must be statically bounded; unbounded deferral is forbidden
+- inactivity deferral must be statically bounded; unbounded deferral is forbidden
 
-Input lock and physical sleep are orthogonal. A reactive package normally sleeps while unlocked whenever it is waiting. Locking changes admitted input/focus policy, not whether low power is allowed.
+Interaction state and physical sleep are orthogonal. An `ACTIVE` `STATE_SCENE` normally enters STOP whenever it is waiting. `INACTIVE` changes admitted input/focus policy, not whether low power is allowed.
 
-A designer-authored inactivity behavior, such as `explore -> pet_idle`, is a normal gameplay schedule and state transition. It is separate from the PeepOS input lock.
+A designer-authored gameplay timeout, such as `explore -> pet_idle`, is a normal package schedule and scene/state transition. It is separate from the PeepOS system interaction-state timer.
 
 ## 5. Display And Memory Model
 
@@ -446,7 +447,7 @@ reactive_block:
   event_interests[]
   schedules[]
   gameplay_timeout_transitions[]
-  input_lock_context_ref
+  interaction_context_ref
   bounds
 ```
 
@@ -494,5 +495,5 @@ The LPBAM experiment answered the architectural question:
 - Platform may realize waiting motion with LPBAM/LPDMA in STOP2 when the target profile grants it.
 - Seeded awake-to-autonomous handoff is the canonical display transition.
 - SRAM4 is a shared display-DMA/autonomous arena whose TX scratch overlays retained payload storage.
-- Package automatic input locking is optional; when enabled, Start-only unlock is consumed and all deferrals are bounded.
-- Realtime remains available for work that genuinely needs continuous CPU execution and always declares a reactive route back.
+- PeepOS system inactivity handling is mandatory; the target-owned activation gesture is consumed, and all package-declared deferrals are bounded.
+- Realtime remains available for work that genuinely needs continuous CPU execution and always declares a route to a settled `STATE_SCENE` or shell.

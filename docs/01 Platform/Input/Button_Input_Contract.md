@@ -267,35 +267,36 @@ Exact payload shape belongs in [[Interface_Control_Document]].
 
 | Button | Wake Policy |
 |---|---|
-| `BTN_START` | normal focus-routed input when admitted; system-owned unlock, shipping, and power intent take precedence |
-| `BTN_A` / `BTN_B` / `BTN_L` / `BTN_R` | normal declared reactive wake/input sources while unlocked |
+| `BTN_START` | normal focus-routed input while admitted; system-owned activation, shipping, and power intent take precedence |
+| `BTN_A` / `BTN_B` / `BTN_L` / `BTN_R` | normal declared package wake/input sources while `ACTIVE`; target policy may classify a supported button or chord as the system activation gesture while `INACTIVE` |
 | `BTN_BOOT` | ROM bootloader before app if sampled high at reset; otherwise application-visible maintenance/recovery only, not normal input |
 
 `BTN_START` shipping intent must be routed to power/save policy early enough for state preservation work.
 
-## PeepOS Input Lock Overlay
+## PeepOS Interaction State Overlay
 
-Automatic input locking is optional package policy enforced by PeepOS. When the overlay is active:
+PeepOS always owns an interaction state that is independent of whether the CPU is awake or in STOP. While `INACTIVE`:
 
-- only `BTN_START` is armed as the normal interaction wake source
-- A/B/L/R, encoder, and joystick interaction are not delivered as package input
-- the Start press that unlocks the device is consumed by the system overlay
-- normal package focus is restored only after wake/resume and unlock routing complete
-- Engine receives symbolic `DEVICE_LOCKED` and `DEVICE_UNLOCKED` lifecycle events rather than the consumed raw unlock press
+- only target-qualified system activation gestures are admitted for normal interaction
+- HW6 initially uses `BTN_START`, while target policy may later admit another button or a classified chord such as `BTN_L + BTN_R`
+- buttons, encoder, and joystick activity not belonging to the admitted activation gesture are not delivered as package input
+- the physical activation gesture is consumed by the system overlay
+- normal package focus is restored only after wake/resume and activation routing complete
+- Engine receives symbolic `DEVICE_INACTIVE` and `DEVICE_ACTIVE` lifecycle events rather than the consumed physical gesture
 - Start long-hold/shipping behavior remains Platform-owned and takes precedence over package bindings
 
-The package chooses whether automatic locking is enabled and chooses its declared lock route. The Platform owns the wake mask, suppression, debounce, and unlock ordering.
+The package chooses a declared inactive route and may style the inactive presentation. It cannot disable system inactivity handling or select the timeout or physical activation gesture. The Platform owns the timer, wake mask, gesture classification, suppression, debounce, and activation ordering.
 
 ## Mode Behavior
 
-| Mode | Button Policy |
+| Context | Button Policy |
 |---|---|
 | `SHELL` | normal Start/A/B/L/R input; maintenance handling for application-visible `BTN_BOOT` |
-| `LP_GRAPH` | declared focus/wake set is armed while unlocked; Start-only behavior applies only under the system lock overlay |
-| `LP_MODULE` | declared focus/wake set and repeat policy while unlocked |
-| `RT_SCENE` | focus-controlled button set; repeats/chords allowed if requested |
+| `STATE_SCENE` | declared focus/wake set is admitted while `ACTIVE`; bounded input work settles and yields again |
+| `SEQUENCE_SCENE` | focus-controlled button set; declared repeats/chords are allowed only when they fit the realtime timeline budget |
+| `PROGRAM_SCENE` | focus-controlled button set; declared repeats/chords are allowed only when they fit the realtime frame budget |
 | `INSTALLER` | local navigation subset only; Start power intent remains active |
-| LOCKED overlay | Start-only wake/unlock; all other normal package interaction suppressed |
+| `INACTIVE` overlay | only target-qualified system activation gestures are admitted; all other normal package interaction is suppressed |
 
 ## Validation Cases
 
@@ -309,8 +310,8 @@ The package chooses whether automatic locking is enabled and chooses its declare
 8. stuck button suppresses repeat spam and emits fault
 9. wake from Start works from supported low-power modes
 10. optional wake buttons obey Platform policy
-11. locked overlay arms only Start for normal interaction wake
-12. unlock Start press is consumed and does not leak into the package action stream
+11. `INACTIVE` admits only the target-owned activation gesture for normal interaction wake; HW6 initially uses Start
+12. the physical activation gesture is consumed and does not leak into the package action stream
 
 Related:
 

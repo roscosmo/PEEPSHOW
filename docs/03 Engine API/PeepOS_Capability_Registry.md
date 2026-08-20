@@ -7,6 +7,7 @@ Capabilities are abstract. They do not name pins, buses, peripherals, DMA channe
 Related:
 
 - [[Game_Authoring_API_Contract]]
+- [[Scene_Runtime_and_Interaction_Model]]
 - [[Target_Profile_Schema_Contract]]
 - [[Digital_Twin_Host_Runtime_Contract]]
 - [[Runtime_Host_Contract]]
@@ -65,15 +66,15 @@ Fallbacks must be validated before package compilation/export.
 
 ## Runtime Capabilities
 
-Runtime class is primarily declared in the manifest, but tools may still use these names in compatibility reports.
+Scene type is declared in the manifest and determines the fixed execution semantic defined by [[Scene_Runtime_and_Interaction_Model]].
 
 | Capability | Status | Meaning |
 |---|---|---|
-| `runtime.lp_graph` | `CONTRACTED` | bounded reactive event/state graph execution |
-| `runtime.lp_module` | `CONTRACTED` | Engine-hosted bounded reactive module execution |
-| `runtime.rt_scene` | `CONTRACTED` | frame-paced realtime scene execution |
+| `runtime.state_scene` | `CONTRACTED` | bounded reactive state/event execution that settles and yields |
+| `runtime.sequence_scene` | `CONTRACTED` | bounded data-driven realtime timeline execution |
+| `runtime.program_scene` | `CONTRACTED` | bounded sandboxed realtime program execution |
 
-`SHELL` and `INSTALLER` are Platform-owned runtime classes, not normal package target capabilities.
+`SHELL`, `PACKAGE`, and `INSTALLER` are system host identities, not package scene capabilities. `SHELL` and `INSTALLER` are Platform-owned.
 
 ---
 
@@ -86,7 +87,9 @@ Runtime class is primarily declared in the manifest, but tools may still use the
 | `logic.guards` | `CONTRACTED` | bounded guard/expression evaluation | no |
 | `logic.lifecycle_events` | `CONTRACTED` | package-visible lifecycle event delivery | no |
 | `logic.calendar_events` | `CONTRACTED` | local-calendar schedule events through time contract | yes if optional |
-| `logic.realtime_frame_tick` | `CONTRACTED` | `RT_SCENE` frame-paced update event with declared budget | yes outside realtime units |
+| `logic.realtime_frame_tick` | `CONTRACTED` | sequence/program frame-paced update event with declared budget | yes outside realtime scenes |
+| `logic.sequence_timeline` | `CONTRACTED` | fixed bounded visual/audio/action tracks with markers and end route | yes if optional |
+| `logic.program_sandbox` | `CONTRACTED` | bounded package instruction model with memory/stack/frame limits | yes if optional |
 | `logic.deterministic_replay` | `CONTRACTED` | deterministic replay of runtime logic in host/digital twin profiles | yes |
 
 Runtime logic capabilities are defined by [[Runtime_Logic_State_API_Contract]]. They do not imply threads, RTOS timers, hardware callbacks, dynamic code loading, or direct Platform access.
@@ -105,7 +108,7 @@ Runtime logic capabilities are defined by [[Runtime_Logic_State_API_Contract]]. 
 
 Display changed-region tracking, transfer selection, DMA, and LPBAM setup are Engine/Platform internals and are not package capabilities.
 
-`display.waiting_visual_animation` has measured HW5 evidence. HW6 support remains pending revalidation. Shipping use still requires a frozen profile for the selected target that grants measured cadence, compiler-admission, wake, and recovery behavior without exposing Platform row/chunk mechanics to normal package tools.
+`display.waiting_visual_animation` has measured HW5 evidence and current HW6 FW0 target evidence for compiled payload playback, repeated STOP2 entry/exit, and cursor animation. Shipping use still requires a frozen profile for the selected target that grants measured cadence, compiler admission, wake, recovery, and current behavior without exposing Platform row/chunk mechanics to normal package tools. The HW6 v1 presentation phase quantum is 250 ms.
 
 ---
 
@@ -113,7 +116,7 @@ Display changed-region tracking, transfer selection, DMA, and LPBAM setup are En
 
 | Capability | Status | Meaning | Fallback Required If Optional |
 |---|---|---|---|
-| `render.layered_compositor` | `CONTRACTED` | bounded `UI -> GAME -> BG` layer compositing | no |
+| `render.layered_compositor` | `CONTRACTED` | bounded `OVERLAY -> UI -> SCENE -> BACKGROUND` retained-layer compositing | no |
 | `render.masked_1bpp` | `CONTRACTED` | black/white sprite or image assets with opacity mask | no |
 | `render.tone5_coverage` | `CONTRACTED` | semantic tone5 assets resolved to 1-bit coverage patterns | yes if optional |
 | `render.integer_scale` | `CONTRACTED` | integer-scaled sprite/tone rendering within target profile limits | yes if optional |
@@ -138,8 +141,8 @@ Display changed-region tracking, transfer selection, DMA, and LPBAM setup are En
 | `input.chords` | `CONTRACTED` | logical button chord bindings through focus policy | yes if optional |
 | `input.hold_repeat` | `CONTRACTED` | logical hold and repeat action delivery where policy allows | yes if optional |
 | `input.low_power_wake_intent` | `CONTRACTED` | package may declare logical input wake intent | yes if optional |
-| `input.optional_auto_lock` | `CONTRACTED` | package may enable or disable PeepOS automatic input locking and choose an admitted lock route | no |
-| `input.start_unlock_consumed` | `CONTRACTED` | Start used to unlock is consumed by PeepOS; Engine emits `DEVICE_UNLOCKED` instead of a package Start action | no |
+| `input.interaction_state` | `CONTRACTED` | PeepOS owns mandatory `ACTIVE`/`INACTIVE` interaction state; package declares an inactive route and presentation | no |
+| `input.activation_gesture_consumed` | `CONTRACTED` | target-owned activation gesture is consumed by PeepOS; Engine emits `DEVICE_ACTIVE` instead of the same package action | no |
 
 `BTN_BOOT` is not a game capability.
 
@@ -211,7 +214,7 @@ Platform settings, calibration, BLE bonding, install metadata, and fault logs ar
 | `time.delayed_event` | `CONTRACTED` | bounded delayed event requests |
 | `time.calendar` | `CONTRACTED` | valid PeepOS local date/time read access for packages |
 | `time.calendar_schedule` | `CONTRACTED` | bounded package schedules against local date/time rules |
-| `time.frame_delta` | `CONTRACTED` | realtime host frame delta for active realtime units |
+| `time.frame_delta` | `CONTRACTED` | realtime host frame delta for active sequence or program scenes |
 | `time.wake_reason` | `CONTRACTED` | normalized package-visible wake reason through lifecycle |
 | `time.catch_up_policy` | `CONTRACTED` | bounded missed-event reconciliation policy |
 | `time.rtc_wake_intent` | `CONTRACTED` | RTC-backed wake/cadence intent without RTC hardware control |
@@ -219,7 +222,7 @@ Platform settings, calibration, BLE bonding, install metadata, and fault logs ar
 | `power.latency_hint` | `CONTRACTED` | package declares acceptable response latency |
 | `power.cadence_request` | `CONTRACTED` | package can request bounded reactive schedule cadence or realtime frame cadence |
 | `power.meaningful_activity` | `CONTRACTED` | package can report activity from an admitted declared source without directly controlling CPU residency |
-| `power.reactive_fallback` | `CONTRACTED` | package can declare fallback routing from realtime work to a bounded reactive unit/state |
+| `power.inactive_route` | `CONTRACTED` | package can declare routing from realtime work to a state scene or shell when interaction becomes inactive |
 
 Packages may read PeepOS calendar time where granted, but may not set, correct, resync, or directly access RTC hardware.
 
@@ -253,12 +256,12 @@ Each validated profile publishes only the sensors physically present on that tar
 | `comm.multiplayer` | `CONTRACTED` | generic multiplayer session and bounded messages | yes if optional |
 | `comm.companion` | `CONTRACTED` | generic companion-app session and bounded messages | yes if optional |
 | `comm.local_loopback` | `PROFILE_OPTIONAL` | host/digital-twin or diagnostic loopback capability | yes |
-| `comm.session_required` | `CONTRACTED` | runtime unit may require an active communication session for admission | no if declared as required |
+| `comm.session_required` | `CONTRACTED` | scene may require an active communication session for admission | no if declared as required |
 | `comm.message_schema` | `CONTRACTED` | bounded versioned package communication message schemas | no |
 
 Communication contexts are transport-agnostic. Packages consume abstract sessions, peers, and bounded messages through [[Communication_API_Contract]].
 
-Each communication runtime unit must declare either fallback/route behavior or session-required admission behavior.
+Each communication scene must declare either fallback/route behavior or session-required admission behavior.
 
 HW5 profiles did not grant communication wake. HW6 profiles must also leave it unavailable until target-qualified measurement explicitly grants it.
 
@@ -304,7 +307,7 @@ Profiles must record:
 
 - capability grant list
 - capability status list
-- runtime classes
+- system hosts and package scene types
 - runtime logic limits
 - event queue and transition stack limits
 - time/calendar profile
@@ -312,7 +315,7 @@ Profiles must record:
 - rendering profile
 - cadence limits
 - reactive-wait contract and immediate-yield requirement
-- optional input-lock bounds and admitted lock routes
+- interaction-state bounds, inactive routes, and target-owned activation gestures
 - reactive scheduled-event cadence cap
 - reactive input-response latency cap
 - baseline wake/update/yield policy

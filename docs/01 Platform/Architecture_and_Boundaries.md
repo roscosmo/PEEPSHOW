@@ -77,8 +77,8 @@ It owns reusable game-development infrastructure:
 
 - runtime host lifecycle
 - `REACTIVE` and `REALTIME` execution semantics
-- scene and state-machine runtime abstractions
-- reactive wait, waiting-visual, meaningful-activity, and optional input-lock intent contracts
+- `STATE_SCENE`, `SEQUENCE_SCENE`, and `PROGRAM_SCENE` runtime abstractions
+- scene transitions, reactive wait, presentation timeline, meaningful activity, and interaction-state contracts
 - rendering abstractions above the display owner
 - input focus and routing abstractions
 - package/content contracts
@@ -100,10 +100,12 @@ Examples of valid Engine concepts:
 - symbolic audio cue
 - capability requirement
 - save schema
-- runtime class
+- system host
+- package scene type
+- execution semantic
 - reactive wait
 - waiting visual
-- input-lock policy
+- interaction state and inactive route
 
 Examples of invalid Engine coupling:
 
@@ -161,6 +163,7 @@ The Reference Game and Engine may request:
 - asset reads
 - save reads/writes through approved APIs
 - logical input actions
+- scene services and validated inactive presentation styles
 
 The Platform decides:
 

@@ -9,6 +9,7 @@ Related:
 - [[Development_Tooling_Index]]
 - [[Game_Authoring_API_Contract]]
 - [[Runtime_Logic_State_API_Contract]]
+- [[Scene_Runtime_and_Interaction_Model]]
 - [[Asset_Pipeline_and_Package_Tooling_Contract]]
 - [[Package_Contract]]
 - [[Package_Blob_Format_Contract]]
@@ -29,7 +30,7 @@ It allows PeepShow tools to:
 - import and customize templates
 - compose reusable Authoring Kits
 - author prefabs
-- author runtime units
+- author package scenes and transitions
 - author hierarchical state machines
 - author behavior graphs and behavior macros
 - author transitions, guards, variables, and actions
@@ -153,7 +154,7 @@ peepshow_authoring_project:
   authoring_kits[]
   prefabs[]
   behavior_macros[]
-  runtime_units[]
+  entry_scene
   graphs[]
   scenes[]
   assets[]
@@ -186,7 +187,7 @@ Every authored object that can be referenced must have a stable ID.
 
 Examples:
 
-- runtime unit ID
+- scene ID
 - template ID
 - Authoring Kit ID
 - prefab ID
@@ -208,7 +209,7 @@ Rules:
 - IDs must be deterministic and unique within their namespace.
 - references must use IDs, not display names.
 - deleted IDs must not be silently reused within the same project history where that would corrupt saves or references.
-- generated runtime IDs must have a deterministic mapping from source IDs.
+- generated scene/runtime IDs must have a deterministic mapping from source IDs.
 
 ---
 
@@ -216,7 +217,7 @@ Rules:
 
 Authoring projects may contain templates, Authoring Kits, prefabs, behavior graphs, and behavior macros.
 
-These objects are editable source concepts. They are not installed as independent firmware objects and are not runtime class names.
+These objects are editable source concepts. They are not installed as independent firmware objects and are not scene type names.
 
 Conceptual schema:
 
@@ -228,8 +229,8 @@ template_ref:
   source_ref
   imported_object_refs[]
   editable_slots[]
-  required_capabilities[]
-  optional_capabilities[]
+  required_service_refs[]
+  optional_service_fallbacks[]
   validation_rules[]
 
 authoring_kit:
@@ -244,11 +245,11 @@ authoring_kit:
   content_parameter_refs[]
   save_schema_refs[]
   package_setting_refs[]
-  required_capabilities[]
-  optional_capabilities[]
+  required_service_refs[]
+  optional_service_fallbacks[]
   diagnostics_refs[]
   validation_rules[]
-  generated_runtime_unit_refs[]
+  generated_scene_refs[]
 
 prefab:
   prefab_id
@@ -272,10 +273,10 @@ behavior_macro:
 Rules:
 
 - `Authoring Kit` is the canonical source-level name for reusable gameplay systems.
-- do not use `module` as the general name for authoring reuse; `LP_MODULE` remains a runtime class token and hardware modules remain Platform/Hardware terminology.
+- do not use `module` as the general name for authoring reuse; hardware and firmware modules remain Platform terminology, not package scene types.
 - templates may import or instantiate Authoring Kits, prefabs, behavior graphs, behavior macros, assets, schemas, and content parameter defaults.
-- Authoring Kits may generate one or more runtime units, but generated units must still declare a valid runtime class.
-- prefabs may attach behavior graph references and local parameter defaults, but they must not bypass runtime-unit validation.
+- Authoring Kits may generate one or more scenes, but generated scenes must still declare a valid scene type.
+- prefabs may attach behavior graph references and local parameter defaults, but they must not bypass scene validation.
 - behavior macros must compile into bounded graph/action data and must not introduce unbounded loops or hidden capability use.
 - imported objects must preserve source/version metadata for validation, compatibility reports, and deterministic rebuilds.
 - editable slots must be explicit so template customization changes package content without silently changing Platform policy.
@@ -296,53 +297,58 @@ Virtual Pet Template
     Feeding Kit
     Sleep/Idle Kit
 
-  generated runtime units:
-    ambient_pet: LP_GRAPH
-    care_interaction: LP_MODULE
-    play_microgame: RT_SCENE
+  generated scenes:
+    ambient_pet: STATE_SCENE
+    care_interaction: STATE_SCENE
+    intro_animation: SEQUENCE_SCENE
+    play_microgame: PROGRAM_SCENE
 ```
 
 ---
 
-## Runtime Units
+## Package Scenes
 
-Authoring projects declare one or more runtime units.
+Authoring projects declare one or more package scenes and one entry scene.
 
 Conceptual schema:
 
 ```text
-runtime_unit:
-  unit_id
+scene:
+  scene_id
   display_name
-  runtime_class          # LP_GRAPH, LP_MODULE, RT_SCENE
+  scene_type             # STATE_SCENE, SEQUENCE_SCENE, PROGRAM_SCENE
   entry_ref
+  object_refs[]
+  presentation_ref
   allowed_transitions[]
-  required_capabilities[]
-  optional_capabilities[]
+  derived_capability_preview
   reactive_wait_default
-  input_lock_policy_ref
+  interaction_policy_ref
   suspend_behavior
   resume_behavior
-  fallback_unit
+  inactive_route
+  failure_route
   budgets
 ```
 
 Rules:
 
-- every project must declare a default runtime unit.
-- every runtime unit must declare exactly one runtime class.
-- `SHELL` and `INSTALLER` are Platform-owned and are not authored package runtime units.
-- transitions between runtime units must be declared.
-- runtime unit push/pop behavior must fit the selected target profile limits.
-- `RT_SCENE` units must declare frame budget, meaningful activity, suspend/resume behavior, bounded lock deferrals where used, and a reactive fallback route.
-- every state/block that can settle must resolve a reactive wait contract.
-- automatic input locking is optional package policy; enabled policies require an admitted route and bounded deferrals.
+- every project must declare an `entry_scene`.
+- every scene must declare exactly one scene type.
+- `SHELL` and `INSTALLER` are Platform-owned hosts and are not authored package scenes.
+- transitions between scenes must be declared and bounded.
+- scene push/pop behavior must fit the selected target profile limits.
+- every `STATE_SCENE` state/block that can settle must resolve a reactive wait contract.
+- every `SEQUENCE_SCENE` must declare bounded tracks, target FPS, scene-end route, suspend/resume behavior, and an inactive route to a `STATE_SCENE` or shell.
+- every `PROGRAM_SCENE` must declare instruction/memory/frame budgets, suspend/resume behavior, and inactive/failure routes.
+- PeepOS inactivity handling cannot be disabled; interaction policies require an admitted inactive route and bounded deferrals.
+- capability declarations shown by tools are compiler-derived from scene content, service use, and fallback structure.
 
 ---
 
-## Reactive Wait And Input Lock Policies
+## Reactive Wait And Interaction Policies
 
-Reactive wait and input-lock records are authoring semantics, not hardware configuration.
+Reactive wait and interaction-policy records are authoring semantics, not hardware configuration.
 
 Conceptual schema:
 
@@ -357,28 +363,28 @@ reactive_wait_policy:
   schedules[]
   gameplay_timeout_transitions[]
   wake_intents[]
-  input_lock_context_ref
+  interaction_context_ref
 
-input_lock_policy:
+interaction_policy:
   policy_id
-  enabled
   meaningful_activity_sources[]
-  lock_route                 # preserve_state, transition_to, exit_to_shell
-  lock_target                # only for transition_to
-  locked_waiting_visual_ref
+  inactive_route             # preserve_scene, transition_to_scene, exit_to_shell
+  inactive_target_scene      # only for transition_to_scene
+  inactive_waiting_visual_ref
   bounded_deferrals[]
 ```
 
 Rules:
 
-- a package may set `enabled = false`; no lock route is then executed.
-- the authoring schema does not expose a lock-timeout field because the active target/system policy owns that timeout.
-- an enabled policy must declare exactly one admitted lock route.
-- Start is reserved for system unlock while locked; the authoring tool must not route that physical press to a package action.
-- the package receives `DEVICE_LOCKED` and `DEVICE_UNLOCKED` lifecycle events according to [[Runtime_Host_Contract]].
-- an `input_lock_context_ref` may select only entries declared by the referenced package policy; it cannot override timeout, route, or unlock semantics.
+- system inactivity handling is always present and has no package-authored `enabled` field.
+- the authoring schema does not expose an inactivity-timeout field because the active target/system policy owns that timeout.
+- every policy must declare exactly one admitted inactive route.
+- the system activation gesture is target-owned; HW6 initially uses Start, while future target profiles may admit another button or a chord such as `L+R`.
+- the authoring tool must not route the physical activation gesture to a package action for the same event.
+- the package receives `DEVICE_INACTIVE` and `DEVICE_ACTIVE` lifecycle events according to [[Runtime_Host_Contract]].
+- an `interaction_context_ref` may select only entries declared by the referenced package policy; it cannot override timeout, route, or activation semantics.
 - every deferral must have a statically provable completion bound or timeout; unbounded deferral is a validation error.
-- gameplay inactivity transitions remain ordinary schedules and do not mutate the system lock timer.
+- gameplay inactivity transitions remain ordinary schedules and do not mutate the system interaction-state timer.
 - neither record exposes STOP, LPBAM, DMA, SRAM4, wake pins, clocks, or display rows.
 
 ---
@@ -468,7 +474,7 @@ Actions must compile to symbolic Engine requests, such as:
 
 - set variable
 - transition state
-- transition runtime unit
+- transition scene
 - request render/update
 - request input focus
 - request audio cue or BBB pattern
@@ -511,7 +517,7 @@ asset_ref:
   source_path
   source_format
   compiler_profile
-  runtime_units[]
+  scenes[]
   required_capability_refs[]
   bounds
 ```
@@ -643,7 +649,7 @@ Initial code families:
 | Family | Examples |
 |---|---|
 | `PROJECT_*` | `PROJECT_SCHEMA_UNSUPPORTED`, `PROJECT_ID_MISSING` |
-| `RUNTIME_*` | `RUNTIME_ENTRY_MISSING`, `RUNTIME_UNIT_UNKNOWN`, `RUNTIME_CLASS_INVALID` |
+| `SCENE_*` | `SCENE_ENTRY_MISSING`, `SCENE_ID_UNKNOWN`, `SCENE_TYPE_INVALID` |
 | `TEMPLATE_*` | `TEMPLATE_SOURCE_MISSING`, `TEMPLATE_SLOT_UNRESOLVED`, `TEMPLATE_VERSION_UNSUPPORTED` |
 | `KIT_*` | `KIT_REF_UNKNOWN`, `KIT_CAPABILITY_FALLBACK_MISSING`, `KIT_RUNTIME_OUTPUT_INVALID` |
 | `PREFAB_*` | `PREFAB_ASSET_MISSING`, `PREFAB_BEHAVIOR_REF_UNKNOWN` |
@@ -698,7 +704,7 @@ The compiler converts authoring source into package/runtime artifacts.
 Expected outputs:
 
 - normalized package manifest
-- compiled runtime unit table
+- compiled scene table
 - compiled state/action/guard/variable tables
 - compiled asset chunks
 - save/settings schema metadata
@@ -768,23 +774,23 @@ Python GUI frameworks should not be assumed as the primary editor direction.
 
 ## Validation Cases
 
-1. project with valid metadata, one runtime unit, one entry graph, and complete reactive-wait contracts validates.
+1. project with valid metadata, one state scene, one entry graph, and complete reactive-wait contracts validates.
 2. graph with missing entry state fails validation.
 3. transition to unknown state fails validation.
-4. transition to undeclared runtime unit fails validation.
+4. transition to undeclared scene fails validation.
 5. editor-only node layout change does not change package output checksum.
 6. source asset path appears in authoring data but not in compiled runtime package data.
 7. placeholder sprite validates in authoring preview where allowed and fails shipping export where disallowed.
 8. waiver for placeholder art appears in compatibility report.
 9. waiver for unbounded action loop is rejected.
-10. `RT_SCENE` without meaningful-activity rules and a reactive fallback fails validation.
+10. sequence or program scene without meaningful-activity rules and an inactive route fails validation.
 11. package requiring a capability still pending on HW6 fails shipping export.
 12. authoring preview mock sensor data does not count as hardware evidence.
 13. generated package build includes schema versions, tool versions, target profile, and compatibility report.
-14. package may disable automatic input locking.
-15. enabled input lock without an admitted route fails validation.
-16. unbounded input-lock deferral fails validation.
-17. Start used to unlock is represented as a consumed system action plus symbolic lifecycle event, not a package action.
+14. package attempt to disable system inactivity handling fails validation.
+15. interaction policy without an admitted inactive route fails validation.
+16. unbounded inactivity deferral fails validation.
+17. the target-owned activation gesture is represented as a consumed system action plus symbolic lifecycle event, not a package action.
 18. package-authored system lock timeout fails validation.
 
 ---

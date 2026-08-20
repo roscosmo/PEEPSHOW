@@ -15,7 +15,7 @@ Recommended baseline owners:
 | `thAudio` | audio bus, audio DMA, amp control; publishes bounded SAI/audio clock intent through `thPower` |
 | `thInput` | raw input capture and logical action routing |
 | `thUI` | shell and shared UX service flow; publishes bounded shell/router reactive clock intent through `thPower` |
-| `thRuntime` | runtime host manager dispatch; tracks active runtime class, execution semantic, lifecycle, shell/installer return context, and symbolic runtime clock intent requests through `thPower` |
+| `thRuntime` | runtime host manager dispatch; tracks system host, active package scene type/ID, execution semantic, lifecycle, shell/installer return context, and symbolic runtime clock intent requests through `thPower` |
 | `thStorage` | flash, filesystem, install pipeline |
 | `thSensor` | sensor bus, sensor policy, health publication |
 | `thComm` | BLE/NINA module, communication UART, communication policy |
@@ -42,7 +42,7 @@ Exact message shapes are defined in [[Interface_Control_Document]].
 ## Event Flag Groups
 
 Recommended groups:
-- `egMode` runtime class and mode state
+- `egMode` system host, package scene, execution semantic, and lifecycle state
 - `egPower` quiesce/resume coordination
 - `egHealth` subsystem health/fault bits
 - `egDebug` debug mode toggles

@@ -106,7 +106,7 @@ Useful snapshot scenarios:
 - audio cue/BBB request path
 - sleep quiesce to STOP entry
 - wake to owner revalidation
-- runtime unit transition
+- scene transition
 - injected fault to safe path
 
 ---

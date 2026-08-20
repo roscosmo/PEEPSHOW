@@ -23,13 +23,13 @@ The first end-to-end implementation is specified by [[HW6_Authoring_Vertical_Sli
 
 Its mode mapping is deliberately small:
 
-| Game behavior | PeepOS runtime class |
-|---|---|
-| ambient slime and yielded waiting visual | `LP_GRAPH` |
-| reactive care menu | `LP_GRAPH` |
-| bounded feed transaction | `LP_MODULE` |
-| short play microgame | `RT_SCENE` |
-| result and return to ambient | `LP_GRAPH` |
+| Game behavior | Package scene type | Execution |
+|---|---|---|
+| ambient slime and yielded waiting visual | `STATE_SCENE` | `REACTIVE` |
+| reactive care menu | `STATE_SCENE` | `REACTIVE` |
+| bounded feed transaction | `STATE_SCENE` | `REACTIVE` |
+| short play microgame | `PROGRAM_SCENE` | `REALTIME` |
+| result and return to ambient | `STATE_SCENE` | `REACTIVE` |
 
 This mapping validates the architecture; it does not constrain the eventual full Reference Game to this exact content flow.
 

@@ -68,7 +68,7 @@ Output format must be deterministic from identical inputs.
 
 The package blob is the installable artifact. Editor-native source files are never runtime assets.
 
-Templates, Authoring Kits, prefabs, behavior graphs, and behavior macros are source-level authoring objects. Tooling must lower them into the package output forms defined by this contract. They must not appear as independent firmware components, direct Platform hooks, or new runtime classes.
+Templates, Authoring Kits, prefabs, behavior graphs, and behavior macros are source-level authoring objects. Tooling must lower them into the package output forms defined by this contract. They must not appear as independent firmware components, direct Platform hooks, or new scene types.
 
 ---
 
@@ -79,7 +79,7 @@ Authoring reuse objects compile as follows:
 | Source Object | Compiled Output |
 |---|---|
 | `Template` | package/project structure, imported kits/prefabs/graphs/assets/schemas, content parameter defaults, validation metadata |
-| `Authoring Kit` | runtime unit declarations where needed, graph/action/guard tables, scene data, asset refs, content parameter schema entries, save/settings schema entries, capability declarations, diagnostics metadata |
+| `Authoring Kit` | scene declarations where needed, graph/action/guard tables, presentation data, asset refs, content parameter schema entries, save/settings schema entries, compiler-derived capability metadata, diagnostics metadata |
 | `Prefab` | actor/entity data, asset refs, local parameter defaults, behavior graph refs, scene bindings |
 | `Behavior Graph` | bounded runtime logic tables accepted by [[Runtime_Logic_State_API_Contract]] |
 | `Behavior Macro` | expanded or referenced bounded graph/action fragments with resolved slots and static bounds |
@@ -88,12 +88,12 @@ Rules:
 
 - `Authoring Kit` is the canonical name for reusable gameplay systems.
 - do not use `module` as the general name for gameplay authoring reuse.
-- an Authoring Kit may emit or reference `LP_MODULE` runtime units, but `LP_MODULE` remains a runtime class token.
-- generated runtime units must declare `LP_GRAPH`, `LP_MODULE`, or `RT_SCENE` and pass normal runtime class validation.
+- an Authoring Kit may emit or reference one or more package scenes.
+- generated scenes must declare `STATE_SCENE`, `SEQUENCE_SCENE`, or `PROGRAM_SCENE` and pass normal scene-type validation.
 - generated capability declarations must be visible in the compatibility report.
 - template/kit/prefab source IDs and versions should be retained as non-authoritative provenance metadata for diagnostics, compatibility reports, and deterministic rebuilds.
 - editable template slots must resolve before dev or shipping package export unless the selected preview profile explicitly allows placeholders.
-- behavior macro expansion must not hide unbounded loops, undeclared capabilities, undeclared save fields, or runtime-unit transitions.
+- behavior macro expansion must not hide unbounded loops, service use absent from capability derivation, undeclared save fields, or scene transitions.
 
 ---
 
@@ -107,16 +107,16 @@ Rules:
 
 ---
 
-## Runtime Unit Compatibility
+## Scene Compatibility
 
-Packages must declare one or more runtime units.
+Packages must declare one or more scenes and one entry scene.
 
-Each runtime unit must declare a runtime class.
+Each scene must declare one scene type.
 
-Tooling must validate declared runtime units against available host capabilities:
-- `LP_GRAPH`
-- `LP_MODULE`
-- `RT_SCENE`
+Tooling must validate declared scenes against available host capabilities:
+- `STATE_SCENE`
+- `SEQUENCE_SCENE`
+- `PROGRAM_SCENE`
 
 Capability names and target profiles are defined in [[PeepOS_Capability_Registry]].
 
@@ -132,18 +132,19 @@ Required package-facing runtime logic artifacts:
 
 | Artifact | Purpose |
 |---|---|
-| `runtime_unit_table` | runtime units, entries, declared transitions, budgets, and lifecycle policy |
+| `scene_table` | scenes, entries, declared transitions, budgets, and lifecycle policy |
 | `state_graph_table` | state/substate nodes, edges, timers, and event bindings |
 | `logic_action_table` | bounded symbolic Engine requests |
 | `logic_guard_expression_table` | bounded transition/action guard expressions |
-| `logic_variable_table` | transient, unit-local, fast-resume, save-backed, and package-setting variables |
-| `scene_logic_table` | `RT_SCENE` frame budget, meaningful-activity rules, reactive fallback, and suspend/resume policy |
+| `logic_variable_table` | `system.*`, `game.*`, `scene.*`, and `entity.*` typed variable/property records and stable IDs |
+| `sequence_scene_table` | bounded data-driven tracks, FPS, markers, end route, inactive route, and suspend/resume policy |
+| `program_scene_table` | sandbox program reference, instruction/memory/frame budgets, inactive/failure routes, and suspend/resume policy |
 
 Rules:
 
 - package authors express events, states, guards, actions, variables, and frame budgets.
 - authored hierarchy, visual scripting, dialogue trees, or scene timelines must compile to bounded runtime logic tables.
-- `RT_SCENE` output must declare frame budget, input focus, asset preparation, meaningful-activity rules, suspend/resume behavior, and a reactive fallback runtime unit.
+- sequence/program output must declare frame budget, input focus, asset preparation, meaningful-activity rules, suspend/resume behavior, and inactive routing to a state scene or shell.
 - reactive graph logic must not use polling loops to approximate realtime behavior.
 - action tables must use symbolic Engine APIs and must be non-blocking.
 - event queues, timers, variable storage, action cost, expression cost, and transition stack depth must be bounded.
@@ -190,7 +191,7 @@ Required package-facing sensor artifacts:
 
 | Artifact | Purpose |
 |---|---|
-| `sensor_context_table` | runtime-unit sensor contexts and bounds |
+| `sensor_context_table` | scene sensor contexts and bounds |
 | `sensor_capability_refs` | PeepOS sensor capabilities used by each context |
 | `event_interest_table` | motion, tap, shake, tilt, orientation, light-band, or step events |
 | `step_session_table` | package step baselines and counters |
@@ -201,7 +202,7 @@ Rules:
 
 - package authors use PeepOS sensor primitives, not hardware sensors.
 - target-profile validation must reject invalid mode/cadence combinations before export.
-- high-rate sensor contexts must be bounded and tied to declared runtime units.
+- high-rate sensor contexts must be bounded and tied to declared scenes.
 - step sessions must use package baselines and must not reset the hardware step counter.
 - optional sensor features must declare content fallback behavior.
 - required sensor primitive failure at runtime is handled by Platform/Engine lifecycle and diagnostics, not game logic.
@@ -219,7 +220,7 @@ Required package-facing audio artifacts:
 | Artifact | Purpose |
 |---|---|
 | `audio_cue_table` | symbolic music/SFX/BBB cue IDs, groups, priorities, loops, fades, and defaults |
-| `audio_context_table` | runtime-unit audio contexts and preload requirements |
+| `audio_context_table` | scene audio contexts and preload requirements |
 | `audio_asset_table` | validated sampled audio references and decode budgets |
 | `bbb_pattern_table` | bounded BBB tone/gap/sweep/repeat steps |
 | `bbb_melody_sources` | RTTTL/Nokia-style melody authoring sources compiled into BBB patterns |
@@ -250,7 +251,7 @@ Required package-facing communication artifacts:
 
 | Artifact | Purpose |
 |---|---|
-| `communication_context_table` | runtime-unit communication contexts, modes, roles, and routes |
+| `communication_context_table` | scene communication contexts, modes, roles, and routes |
 | `message_schema_table` | bounded versioned message types and payload schemas |
 | `session_policy_table` | session-required admission, optional fallback, timeout, and session-end behavior |
 | `comm_rate_limit_table` | send/receive rate and queue limits |
@@ -260,7 +261,7 @@ Rules:
 
 - package authors use sessions, peers, and schema messages, not BLE transport behavior.
 - session-required multiplayer/companion packages are valid when declared and bounded.
-- every communication runtime unit must declare either fallback/route behavior or session-required admission behavior.
+- every communication scene must declare either fallback/route behavior or session-required admission behavior.
 - message size, message queue depth, send rate, receive rate, and processing cost must be bounded.
 - HW6 target profiles must reject communication wake behavior until a future measured profile explicitly grants it.
 - package-visible disconnect/session events are distinct from Platform BLE/NINA faults.
@@ -281,20 +282,20 @@ Required package-facing time/power artifacts:
 | `schedule_table` | bounded delayed and local-calendar schedule rules |
 | `catch_up_policy_table` | bounded missed-event reconciliation behavior |
 | `wake_intent_table` | normalized wake intent declarations |
-| `runtime_cadence_table` | runtime-unit cadence, frame, and latency declarations |
+| `scene_cadence_table` | scene cadence, frame, presentation-phase, and latency declarations |
 | `reactive_wait_policy_table` | per-state waiting visuals, event interests, schedules, wake intents, and fallbacks |
-| `input_lock_policy_table` | optional automatic lock, meaningful activity, admitted routes, and bounded deferrals |
+| `interaction_policy_table` | inactive presentation, meaningful activity, admitted inactive routes, and bounded deferrals |
 
 Rules:
 
 - package authors use PeepOS local calendar/logical time, not RTC hardware.
 - authoring blocks compile event handling, settled views, waiting visuals, and schedules into one reactive contract.
-- automatic input locking is optional package policy; gameplay inactivity remains a normal schedule/transition.
-- unbounded lock deferral is rejected.
+- PeepOS inactivity handling is mandatory; gameplay inactivity remains a normal schedule/transition.
+- unbounded inactivity deferral is rejected.
 - calendar-dependent packages require a target profile that grants `time.calendar`.
 - schedules must have bounded table size, bounded catch-up, and declared stale-event behavior.
-- realtime units must declare frame budget, meaningful activity, suspend/resume behavior, and reactive fallback.
-- reactive units must not poll or remain awake waiting for input; display-only motion belongs in waiting visuals.
+- sequence/program scenes must declare frame budget, meaningful activity, suspend/resume behavior, and inactive routes.
+- state scenes must not poll or remain awake waiting for input; display-only motion belongs in waiting visuals.
 - HW6 target profiles must reject communication wake behavior until a future measured profile explicitly grants it.
 
 Tooling must reject time/power profiles that reference RTC registers, SysTick, hardware timers, STOP modes, PLL/clocks, PMIC registers, wake pins, RTOS scheduler internals, or unbounded catch-up behavior.
@@ -367,7 +368,7 @@ Tooling may store tone5 using compact implementation formats such as color plane
 
 Integer scaling is the v1 package-facing scaling model. Tooling must validate output bounds, collision/placement metadata, animation frame consistency, dither phase stability, and render cost for each declared scale.
 
-Logical authoring layers may exceed the runtime compositor layer count only when tooling can flatten or schedule them into the bounded `UI -> GAME -> BG` runtime compositor model.
+Authoring content targets the bounded `OVERLAY -> UI -> SCENE -> BACKGROUND` retained compositor. `OVERLAY` is Engine/Platform controlled; tools may accept richer source groupings only when they deterministically flatten them into those four runtime layers.
 
 System UI assets are reserved Platform/Engine assets and may remain crisp 1bpp outside package control.
 
@@ -407,7 +408,7 @@ Rules:
 - FW0 USB staging may classify `.peepkg` / `.ppkg` filenames as package candidates after MSC reclaim, then run a read-only minimum-envelope validator that requires the first four bytes to be `PKG1`. This proves only that the staged file begins with the expected package magic; firmware must still validate the actual `PeepPkg` header layout, chunk table, integrity fields, compatibility schema, and install policy before any real commit.
 - FW0 package import scaffolding may present a package-valid prompt and run a storage-owned install stub for one staged package candidate with a valid minimum `PKG1` envelope, but the stub is not an installer. It must not copy, erase, commit, or expose the package to runtime until the real bounded `PeepPkg` validator and install schema exist.
 - chunks are addressed by stable package IDs at authoring level and compact chunk indexes/offsets at runtime level.
-- every chunk has type, format version, offset, size, alignment, capability metadata, runtime-unit references, and integrity metadata.
+- every chunk has type, format version, offset, size, alignment, compiler-derived capability metadata, scene references, and integrity metadata.
 - per-chunk CRC plus whole-package checksum are required for v1 integrity.
 - cryptographic signatures are a future policy placeholder, not a v1 requirement.
 - no runtime path may depend on host/editor source files.
@@ -444,7 +445,7 @@ Tooling must reject any asset whose decode time, expanded size, or memory requir
 1. schema validation
 2. asset bounds and format validation
 3. manifest consistency checks
-4. runtime class and capability validation
+4. scene type and compiler-derived capability validation
 5. input map and focus scope validation
 6. audio profile and context validation
 7. sensor profile and context validation
@@ -461,7 +462,7 @@ Validation failures block package compilation or export.
 
 Warnings that affect runtime safety, determinism, storage integrity, power policy, or capability availability must be treated as errors.
 
-Development profiles may allow placeholders, mocks, warnings, and explicit runtime-safe waivers as defined in [[Game_Authoring_API_Contract]]. They must still block incoherent graphs, unbounded behavior, invalid save schemas, package integrity failures, and unknown runtime classes.
+Development profiles may allow placeholders, mocks, warnings, and explicit runtime-safe waivers as defined in [[Game_Authoring_API_Contract]]. They must still block incoherent graphs, unbounded behavior, invalid save schemas, package integrity failures, and unknown scene types.
 
 ---
 

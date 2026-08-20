@@ -26,7 +26,7 @@ Engine owns:
 - logical bindings
 - action state
 - repeat/chord/hold policy at the package-facing layer
-- runtime-unit input admission
+- scene input admission
 - low-power input intent declarations
 
 Packages consume actions and normalized input values only.
@@ -42,7 +42,7 @@ Packages consume actions and normalized input values only.
 - `BTN_BOOT` is never normal package input.
 - Start shipping intent is power/save policy, not package input.
 - Missing optional input capability must follow declared fallback behavior.
-- Input focus must be explicit during runtime-unit transitions, suspend, resume, and modal overlays.
+- Input focus must be explicit during scene transitions, suspend, resume, system interaction-state changes, and modal overlays.
 
 ---
 
@@ -131,7 +131,7 @@ focus_scope:
 
 Rules:
 
-- one primary package focus scope is active per runtime unit unless a bounded modal stack is declared.
+- one primary package focus scope is active per scene unless a bounded modal stack is declared.
 - modal focus stacks must be bounded.
 - focus changes must publish focus gained/lost events.
 - focus loss must release or cancel active actions according to policy.
@@ -140,26 +140,27 @@ Rules:
 
 ---
 
-## System Input Lock Overlay
+## System Interaction State Overlay
 
-The PeepOS input lock is a system focus overlay above package focus. Packages may enable or disable automatic locking and declare the route followed when locking occurs, but they do not author the system timeout or implement raw input suppression or wake wiring.
+PeepOS owns a system interaction-state overlay above package focus. It is orthogonal to CPU awake/sleep state: an `ACTIVE` device may enter STOP between events, and an `INACTIVE` device may briefly wake to service system work without restoring package focus. Packages cannot disable system inactivity handling or author its timeout.
 
-While locked:
+While `INACTIVE`:
 
 - package focus is suspended
-- only the system `START` unlock action is admitted for normal interaction
-- the physical unlock press is consumed by PeepOS
-- no package `START` action is emitted for that same press
-- on unlock, PeepOS restores focus to the runtime state already established by the declared lock route; `exit_to_shell` remains in shell
-- Engine emits `DEVICE_LOCKED` and `DEVICE_UNLOCKED` through [[Runtime_Host_Contract]] after state/focus ordering is valid; they are not input events
+- only the target-owned system activation gesture is admitted for normal interaction
+- HW6 initially uses Start; target policy may later admit another button or a classified chord such as `L+R`
+- the physical activation gesture is consumed by PeepOS
+- no package action is emitted for that same gesture
+- on activation, PeepOS restores focus to the scene already established by the declared inactive route; `exit_to_shell` remains in shell
+- Engine emits `DEVICE_INACTIVE` and `DEVICE_ACTIVE` through [[Runtime_Host_Contract]] after scene/focus ordering is valid; they are not input events
 
-Allowed package lock routes are:
+Allowed package inactive routes are:
 
-- preserve the current package state
-- transition to a declared package state
+- preserve the current scene
+- transition to a declared scene
 - exit to the PeepOS shell
 
-A package may declare meaningful-activity sources and statically bounded lock deferral. Cosmetic animation and arbitrary activity hints cannot refresh the lock timer. Unbounded deferral is invalid.
+A package may declare meaningful-activity sources and statically bounded inactivity deferral. Cosmetic animation and arbitrary activity hints cannot refresh the inactivity timer. Unbounded deferral is invalid. Packages may not define the physical system activation gesture; that remains target/system policy so wake-capable buttons and chords can evolve without changing package semantics.
 
 ---
 
@@ -298,21 +299,21 @@ Rules:
 - unsupported wake intent is rejected or downgraded by target profile.
 - wake input is delivered through normal resume/lifecycle path.
 - package code must tolerate delayed input after resume.
-- low-power input intent must not bypass an enabled PeepOS input lock or Platform power policy.
+- low-power input intent must not bypass the PeepOS interaction-state overlay or Platform power policy.
 
 ---
 
-## Runtime Mode Rules
+## Scene Type Rules
 
-| Runtime Class | Input Rule |
+| Scene Type Or Host | Input Rule |
 |---|---|
-| `LP_GRAPH` | event/wake driven input; minimal active sampling; declared wake intents only |
-| `LP_MODULE` | focus-driven logical input handled by bounded reactive transactions |
-| `RT_SCENE` | active input focus with explicit frame/update budget and reactive fallback |
+| `STATE_SCENE` | event/wake-driven input handled by bounded reactive transactions; optional target-granted active-window cardinal joystick sampling |
+| `SEQUENCE_SCENE` | active focus only for declared timeline controls; handlers must remain within the realtime frame budget |
+| `PROGRAM_SCENE` | active focus for sandboxed program logic within declared frame and instruction budgets |
 | `SHELL` | Platform-owned shell focus; package focus inactive unless launched |
 | `INSTALLER` | installer/system focus; package input suppressed |
 
-Focus and input requests must match the active runtime unit. Runtime unit transitions must release or transfer focus explicitly.
+Focus and input requests must match the active scene. Scene transitions must release or transfer focus explicitly.
 
 ---
 
@@ -345,7 +346,7 @@ typedef enum {
 
 typedef struct {
     uint32_t package_id;
-    uint32_t runtime_unit_id;
+    uint32_t scene_id;
     uint32_t focus_scope_id;
     uint32_t action_id;
     input_event_type_t event_type;
@@ -358,7 +359,7 @@ typedef struct {
 
 Required API families:
 
-- register runtime-unit input map
+- register scene input map
 - activate focus scope
 - push bounded modal focus scope
 - pop focus scope
@@ -368,7 +369,7 @@ Required API families:
 - request low-power wake intent
 - receive focus preemption notification
 - receive input capability unavailable notification
-- observe focus loss/restoration around the system lock overlay; symbolic `DEVICE_LOCKED`/`DEVICE_UNLOCKED` delivery belongs to [[Runtime_Host_Contract]], not `input_event_type_t`
+- observe focus loss/restoration around the system interaction-state overlay; symbolic `DEVICE_INACTIVE`/`DEVICE_ACTIVE` delivery belongs to [[Runtime_Host_Contract]], not `input_event_type_t`
 
 ---
 
@@ -383,11 +384,12 @@ Tooling and installer validation must reject:
 - duplicate ambiguous bindings without resolution policy
 - required input capability unavailable in target profile
 - optional input capability without fallback
-- `RT_SCENE` input path that blocks frame budget
+- sequence or program scene input path that blocks its realtime frame budget
 - low-power wake intent unsupported by target profile
 - package input map that cannot release focus on suspend/exit
-- package input-lock policy with an undeclared lock route
-- unbounded lock deferral or cosmetic animation declared as meaningful activity
+- package interaction policy with an undeclared inactive route
+- package-authored system activation gesture
+- unbounded inactivity deferral or cosmetic animation declared as meaningful activity
 
 ---
 
@@ -413,18 +415,18 @@ Host keyboard/gamepad bindings are twin/editor adapters only. They are not packa
 1. button binding maps to package action only while focus is active.
 2. `BTN_BOOT` binding fails validation.
 3. Start shipping intent is not delivered as normal package action.
-4. Start used to unlock is consumed and produces no package action.
-5. locked overlay suppresses package focus until unlock routing completes.
+4. the target-owned activation gesture is consumed and produces no package action.
+5. the inactive overlay suppresses package focus until activation routing completes.
 6. chord binding resolves through declared focus policy.
 7. repeat request is clamped or ignored where target profile disallows it.
 8. encoder delta maps to package action without exposing timer counters.
 9. joystick vector/direction maps to package action without exposing raw registers.
-10. runtime unit transition releases or transfers focus explicitly.
+10. scene transition releases or transfers focus explicitly.
 11. shell/system overlay preempts package focus and package receives focus lost.
 12. wake input resumes package through normal lifecycle before action delivery.
 13. optional joystick unavailable path activates declared fallback.
-14. digital twin replay produces deterministic action, lock, unlock, and consumed-input event ordering.
-15. package-authored system lock timeout or unlock action fails validation.
+14. digital twin replay produces deterministic action, inactive, active, and consumed-input event ordering.
+15. package-authored system inactivity timeout or activation gesture fails validation.
 
 ---
 
@@ -437,3 +439,4 @@ Related:
 - [[Game_Authoring_API_Contract]]
 - [[PeepOS_Capability_Registry]]
 - [[Digital_Twin_Host_Runtime_Contract]]
+- [[Scene_Runtime_and_Interaction_Model]]

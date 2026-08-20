@@ -75,7 +75,7 @@ This readiness note can confirm that documentation is prepared, but it does not 
 - Record AT25SL128A JEDEC/device ID bytes, status/config register meanings used by the driver, scratch test range, and deep-power-down wake timing from measured HW5 tests.
 - Confirm ADP5360 uses the public 7-bit I2C address convention from [[Platform_Hardware_Abstraction_Contract]], then record threshold constants, PMIC interrupt polarity/clear behavior, VBUS cross-check behavior, and safe evidence for low/critical battery policy.
 - Record speaker DMA buffer sizing, MAX98357A enable settle timing, BBB frequency/duration bounds, and measured music plus 5 SFX mixer budget.
-- Record sleep-class current, wake latency, resume latency, owner quiesce timeouts, and unknown-wake evidence for every supported runtime class.
+- Record sleep-class current, wake latency, resume latency, owner quiesce timeouts, and unknown-wake evidence for every supported host/scene/execution context.
 - Complete the LIS2DUX12 post-baseline optimization pass so step counting is proven in the lowest-power polling mode, not only the ST 25 Hz/+/-4 g bring-up configuration.
 - Measure TMAG3001 threshold values, hysteresis, sleep interval, axis mapping, and final `JOY_INT` polarity before implementing joystick wake policy.
 - Measure rotary encoder settle time, sign convention, detent ratio, input filtering needs, acceleration knobs, and wake-armed current before finalizing input policy.

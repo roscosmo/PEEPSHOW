@@ -12,6 +12,7 @@ Related:
 - [[Runtime_Host_Contract]]
 - [[Runtime_Host_Internal_State_Machines]]
 - [[Runtime_Logic_State_API_Contract]]
+- [[Scene_Runtime_and_Interaction_Model]]
 - [[Authoring_Project_Schema_Contract]]
 - [[Digital_Twin_Host_Runtime_Contract]]
 - [[PeepOS_Capability_Registry]]
@@ -33,7 +34,7 @@ Defines:
 - the game/tool-facing authoring surface
 - the runtime-safe Engine request surface available to hosted games
 - package validation requirements before compilation/export
-- required capability declaration model
+- compiler-derived capability model
 - safe hooks for rendering, input, audio, assets, saves, time, sensors, communication, power intent, and diagnostics
 - safe hooks for runtime logic, state graphs, action tables, and realtime scene logic
 
@@ -106,7 +107,7 @@ Valid PeepOS content may include, but is not limited to:
 - music and BBB toys
 - utility or diagnostic-style packages where allowed by package policy
 
-Runtime classes describe execution and power behavior, not genre.
+Scene types describe bounded runtime behavior, not genre.
 
 The Reference Game is a proof-of-capability package and showcase. It must be built from the same public PeepOS primitives available to other packages.
 
@@ -120,14 +121,14 @@ Tool UX may include templates for pets, maps, microgames, clocks, dialogue, or o
 
 ## Authoring Reuse Model
 
-PeepOS authoring tools may support reusable source-level systems. These are authoring-source concepts, not firmware objects and not new runtime classes.
+PeepOS authoring tools may support reusable source-level systems. These are authoring-source concepts, not firmware objects and not new scene types.
 
 Canonical authoring terms:
 
 | Term | Meaning |
 |---|---|
 | `Template` | complete starter package or package fragment intended for customization |
-| `Authoring Kit` | reusable gameplay system composed of behavior graphs, prefabs, assets, content parameters, save/schema additions, capability requirements, validation rules, and optional diagnostics |
+| `Authoring Kit` | reusable gameplay system composed of behavior graphs, prefabs, assets, content parameters, save/schema additions, service requirements and fallbacks, validation rules, and optional diagnostics |
 | `Prefab` | reusable actor/entity setup with visual assets, local parameters, and attached behavior graph references |
 | `Behavior Graph` | visual event/state/action logic that compiles into bounded runtime logic tables |
 | `Behavior Macro` | reusable bounded graph fragment used inside behavior graphs |
@@ -142,17 +143,17 @@ Examples:
 | configured merchant actor with sprite, dialogue hook, and shop reference | Merchant Prefab |
 | reusable locked-door interaction branch | Behavior Macro |
 
-Authoring Kits are the canonical name for reusable gameplay systems. Do not use `module` as the general authoring name for gameplay reuse. `LP_MODULE` remains a runtime class token, and hardware modules remain Platform/Hardware terminology.
+Authoring Kits are the canonical name for reusable gameplay systems. Do not use `module` as the general authoring name for gameplay reuse. Hardware and firmware modules remain Platform terminology, not package scene types.
 
 Compile boundary:
 
 - templates, Authoring Kits, prefabs, behavior graphs, and behavior macros exist in authoring source.
 - they may be imported, inspected, customized, parameterized, versioned, and validated by tools.
-- they compile into package manifests, runtime units, state/action/guard tables, scene data, asset tables, content parameter schemas, save/settings schemas, diagnostics, and compatibility reports.
+- they compile into package manifests, scenes, state/action/guard tables, presentation data, asset tables, content parameter schemas, save/settings schemas, diagnostics, and compatibility reports.
 - they do not install as independent firmware components.
 - they must not expose Platform internals, hardware policy, RTOS ownership, raw storage, HAL/LL, DMA, filesystem paths, or Platform knobs.
 
-An Authoring Kit may compile into one or more runtime units. A runtime unit still declares exactly one runtime class, such as `LP_GRAPH`, `LP_MODULE`, or `RT_SCENE`.
+An Authoring Kit may compile into one or more scenes. Every generated scene declares exactly one canonical scene type.
 
 Example:
 
@@ -168,10 +169,11 @@ Virtual Pet Template
     Pet Actor Prefab
     Food Item Prefab
 
-  Compiled runtime units:
-    ambient_pet: LP_GRAPH
-    care_interaction: LP_MODULE
-    play_microgame: RT_SCENE
+  Compiled scenes:
+    ambient_pet: STATE_SCENE
+    care_interaction: STATE_SCENE
+    intro_animation: SEQUENCE_SCENE
+    play_microgame: PROGRAM_SCENE
 ```
 
 This keeps template-driven authoring productive while preserving the Platform -> Engine -> Packages boundary.
@@ -196,7 +198,7 @@ PeepOS game tools may expose and produce:
 - BBB pattern tables
 - save schemas
 - content parameter schemas
-- capability declarations
+- compiler capability-derivation metadata
 - wake-intent declarations
 - cadence hints
 - localized text tables
@@ -243,8 +245,8 @@ It checks:
 - transition targets exist
 - action lists and expressions are bounded
 - asset references resolve or have approved placeholders
-- selected runtime class supports the authored features
-- declared capabilities match authored feature use
+- selected scene type supports the authored features
+- compiler-derived capabilities match authored feature and service use
 - input action map is valid
 - audio cue and BBB pattern bounds are valid
 - save fields have a schema and version
@@ -264,7 +266,7 @@ Compiler validation checks deterministic package generation:
 - stable generated table ordering
 - checksums and integrity metadata
 - package format version
-- runtime class compatibility
+- scene-type and execution-semantic compatibility
 - compatibility report generation
 
 Compiler validation failures block compiled output.
@@ -285,7 +287,7 @@ It verifies:
 
 - package integrity
 - schema compatibility
-- runtime class compatibility
+- scene-type and execution-semantic compatibility
 - required capability compatibility
 - asset table integrity
 - save schema declaration
@@ -340,7 +342,7 @@ Validation policy is profile-aware.
 
 Dev and preview profiles must be productive. They may run unfinished but safe content.
 
-No profile may allow unbounded runtime behavior, missing required entry points, invalid save schema, unknown runtime class, or package integrity failure.
+No profile may allow unbounded runtime behavior, missing required entry points, invalid save schema, unknown scene type, or package integrity failure.
 
 Simulator and digital-twin preview modes use the same PeepOS authoring hooks. The active host digital twin is implemented only after HW6 Platform behavior is validated and documented; before that point, simulator mocks are development conveniences and must not be treated as hardware evidence.
 
@@ -427,49 +429,49 @@ The Engine or Platform may reject invalid package output during validation when 
 
 ---
 
-## Runtime Classes
+## Scene Runtime Model
 
-Authoring tools define runtime units. Each runtime unit targets one runtime class:
+Authoring tools define package scenes. Each scene has one fixed scene type and execution semantic:
 
-| Runtime Class | Authoring Use | Safety Model |
-|---|---|---|
-| `LP_GRAPH` | reactive event/state driven experiences | bounded event transactions that sleep between admitted events |
-| `LP_MODULE` | Engine-hosted reactive blocks with predefined bounded transaction shapes | host-defined event, update, action, and wait limits |
-| `RT_SCENE` | frame-paced realtime scenes | deterministic frame budget, meaningful-activity rules, and explicit reactive fallback |
+| Scene Type | Execution | Authoring Use | Safety Model |
+|---|---|---|---|
+| `STATE_SCENE` | `REACTIVE` | state/event-driven experiences, dialogue, menus, choices, pet rooms, clocks, and turn-based interactions | bounded event transactions that settle and yield between admitted events |
+| `SEQUENCE_SCENE` | `REALTIME` | bounded data-driven animation, cinematics, timed prompts, and audio/visual timelines | fixed tracks, duration/end marker, frame budget, and declared routes |
+| `PROGRAM_SCENE` | `REALTIME` | programmable frame-paced games and interactions | sandbox instruction, memory, stack, event, and frame budgets plus declared routes |
 
-`SHELL` and `INSTALLER` are Platform-owned classes, not normal game package targets.
+`SHELL`, `PACKAGE`, and `INSTALLER` are system host identities. `SHELL` and `INSTALLER` are Platform-owned; package authors define scenes inside the mounted `PACKAGE` host.
 
-Tools must validate that authored content uses only the features allowed by each runtime unit's declared runtime class.
+Tools must validate that authored content uses only the features allowed by each declared scene type.
 
-Packages may contain multiple runtime units.
+Packages may contain multiple scenes.
 
 Example:
 
 ```text
 package:
-  default_runtime_unit: ambient_pet
+  entry_scene: ambient_pet
 
-  runtime_units:
-    ambient_pet:      LP_GRAPH
-    dialogue_flow:    LP_MODULE
-    map_explore:      LP_MODULE
-    battle_microgame: RT_SCENE
+  scenes:
+    ambient_pet:      STATE_SCENE
+    dialogue_flow:    STATE_SCENE
+    intro_animation:  SEQUENCE_SCENE
+    battle_microgame: PROGRAM_SCENE
 ```
 
-The default unit is the package's normal entry point.
+The entry scene is the package's normal entry point.
 
-Transitions between units are Engine-managed and must be declared and validated.
+Transitions between scenes are Engine-managed and must be declared and validated. The package remains mounted across scene transitions.
 
-This keeps frame-paced behavior scoped to the unit that needs it. A package may spend most of its life in reactive `LP_GRAPH`/`LP_MODULE` transactions, briefly enter `RT_SCENE`, then return to a reactive unit.
+This keeps frame-paced behavior scoped to the scene that needs it. A package may spend most of its life in reactive state scenes, briefly enter a sequence or program scene, then return to a settled state scene.
 
-Runtime unit transition forms:
+Scene transition forms:
 
-- replace current unit with a declared target
-- push a declared unit onto a bounded return stack
-- pop back to the previous unit
+- replace the current scene with a declared target
+- push a declared scene onto a bounded return stack
+- pop back to the previous scene
 - exit to PeepOS shell through an approved system route
 
-Tools must not expose arbitrary jumps to undeclared unit IDs.
+Tools must not expose arbitrary jumps to undeclared scene IDs. `TRANSITION` is a bounded graph/action construct, not a scene.
 
 ---
 
@@ -477,7 +479,7 @@ Tools must not expose arbitrary jumps to undeclared unit IDs.
 
 PeepOS authoring blocks express gameplay semantics. They do not expose a separate low-power graph that designers must wire around normal gameplay.
 
-Menus, dialogue, inventory, shops, pet states, turn-based encounters, map inspection, clocks, and similar Authoring Kits compile into reactive blocks. A reactive block performs bounded work when an admitted event arrives, settles its state and presentation, publishes its next wait contract, and yields. PeepOS sleeps automatically between transactions.
+Menus, dialogue, choices, inventory, shops, pet states, turn-based encounters, map inspection, clocks, and similar Authoring Kits normally compile into `STATE_SCENE` blocks. A reactive block performs bounded work when an admitted event arrives, settles its state and presentation, publishes its next wait contract, and yields. PeepOS sleeps automatically between transactions.
 
 A Menu block, for example, compiles the following behavior without exposing hardware mechanics:
 
@@ -497,9 +499,11 @@ The menu remains mounted while waiting. Its cursor/background may continue anima
 | Semantic | Designer Meaning | Runtime Behavior |
 |---|---|---|
 | `REACTIVE` | respond to input, schedules, sensors, and lifecycle events | bounded transaction, then immediate yield/sleep |
-| `REALTIME` | run frame-paced gameplay or presentation | continuous admitted frame loop with declared budget and reactive fallback |
+| `REALTIME` | run a bounded sequence timeline or programmable frame-paced scene | continuous admitted frame loop with declared budgets and inactive/end/failure routes |
 
 `STATIC` is no longer an execution-mode token. The term remains valid for static art, static frames, and one-shot display updates where accurate.
+
+For the HW6 v1 profile, state-scene waiting presentation uses a `250 ms` phase quantum. Authored phase durations are integer multiples of that quantum; a two-frame animation with one quantum per phase has a `500 ms` full cycle. This is presentation timing, not a package logic tick. Awake rendering and autonomous playback consume one shared presentation epoch so changing backend does not restart or duplicate a phase.
 
 ### Reactive Block Output
 
@@ -516,7 +520,7 @@ reactive_block:
   event_interests[]
   schedules[]
   gameplay_timeout_transitions[]
-  input_lock_context_ref
+  interaction_context_ref
   bounds
 ```
 
@@ -525,51 +529,51 @@ Rules:
 - designers do not place sleep, STOP, DMA, LPBAM, or wake-pin blocks
 - custom code handles a bounded event and returns control to PeepOS
 - a designer-authored gameplay inactivity timer is a normal schedule and state transition, such as `explore -> pet_idle`
-- an `input_lock_context_ref` may select only predeclared meaningful-activity sources or bounded deferrals from the package lock policy; it cannot change timeout, route, or unlock semantics
+- an `interaction_context_ref` may select only predeclared meaningful-activity sources or bounded deferrals from the package interaction policy; it cannot change timeout, route, or activation semantics
 - waiting visuals describe intended appearance while the block waits
 - Platform/tooling derive hold, autonomous playback, reduced animation, or another admitted backend
 - visual motion while waiting cannot mutate game variables or advance committed state
 - every preferred waiting visual declares a reduced visual or hold fallback unless the target profile makes the preferred capability mandatory and available
 
-### Automatic Input Lock
+### System Interaction State
 
-Automatic input locking is optional package policy. The package may disable it. When enabled, authoring exposes:
+PeepOS always owns `ACTIVE`/`INACTIVE` interaction state and the inactivity timeout. Authoring exposes only package presentation and routing policy:
 
 ```text
-input_lock:
-  enabled
+interaction_policy:
   meaningful_activity_sources[]
-  lock_route                 # preserve_state, transition_to, exit_to_shell
-  lock_target
-  locked_waiting_visual
+  inactive_route             # preserve_scene, transition_to_scene, exit_to_shell
+  inactive_target_scene
+  inactive_waiting_visual
   bounded_deferrals[]
 ```
 
 Rules:
 
-- lock handling is a PeepOS system overlay, not ordinary package input code
-- packages may disable automatic input locking but do not author the system lock timeout
-- while locked, only Start wakes/unlocks normal interaction
-- the Start press is consumed by PeepOS and does not also activate a package action
-- the package receives symbolic lock/unlock lifecycle events
-- lock routes are limited to preserving current state, transitioning to a declared package state, or exiting to shell
-- bounded cinematics or required sequences may defer locking until completion
+- interaction-state handling is a PeepOS system overlay, not ordinary package input code
+- packages cannot disable inactivity handling or author the timeout
+- while `INACTIVE`, only a target-owned system activation gesture restores normal interaction
+- HW6 initially uses Start; a future target profile may admit another button or a classified chord such as `L+R`
+- the activation gesture is consumed by PeepOS and does not also activate a package action
+- the package receives symbolic `DEVICE_INACTIVE` and `DEVICE_ACTIVE` lifecycle events
+- inactive routes are limited to preserving the current scene, transitioning to a declared scene, or exiting to shell
+- bounded cinematics or required sequences may defer inactivity until completion
 - unbounded deferral is forbidden
 - declared gyro or other admitted control activity may count as meaningful activity
 - passive animation and cosmetic waiting visuals do not count as activity
-- if a lock activates during `RT_SCENE`, the scene follows its declared suspend/reactive-fallback path before the locked wait is established
+- if inactivity fires during a sequence or program scene, the scene follows its declared suspend/inactive route before the inactive wait is established
 
 ### Power Compliance
 
 Rules:
 
-- every runtime unit declares one runtime class
-- every state/block that can settle resolves a reactive wait contract
-- every package declares a default runtime unit
-- reactive units do not poll or remain awake waiting for input
-- `RT_SCENE` declares frame budget, meaningful activity, suspend/resume behavior, and reactive fallback
-- packages may enable or disable automatic input locking
-- lock deferrals are statically bounded
+- every scene declares one scene type
+- every state-scene block that can settle resolves a reactive wait contract
+- every package declares an entry scene
+- state scenes do not poll or remain awake waiting for input
+- sequence and program scenes declare frame budgets, meaningful activity, suspend/resume behavior, and inactive routes
+- PeepOS inactivity handling is always present
+- inactivity deferrals are statically bounded
 - packages express waiting visual, event, schedule, wake, latency, and activity intent only
 - Platform may clamp cadence and select a different admitted waiting-visual backend
 
@@ -580,10 +584,10 @@ Power-facing authoring primitives:
 | `reactive_wait` | declares accepted events, schedules, waiting visual, wake intent, and fallback for a settled state |
 | `waiting_visual` | describes cosmetic display behavior while waiting; never names LPBAM |
 | `gameplay_timeout_transition` | normal designer-authored delayed state transition |
-| `input_lock_policy` | optional PeepOS input lock, meaningful activity, routes, and bounded deferral |
+| `interaction_policy` | inactive presentation, meaningful activity, inactive route, and bounded deferral |
 | `realtime_activity` | declares meaningful active work and frame-paced admission |
 | `latency_tolerance` | requests response characteristics without selecting sleep hardware |
-| `fallback_unit` | declared route from realtime execution to a reactive unit |
+| `inactive_route` | declared route from realtime execution to a state scene or shell |
 | `capability_context` | bounded temporary high-duty behavior; not a hardware command |
 
 Tools must not expose STOP level, clocks, LPBAM setup, RTC programming, DMA, display transfer internals, peripheral power state, SRAM4 placement, or wake-pin configuration.
@@ -596,7 +600,7 @@ Profile-dependent behavior:
 | `HW6_VALIDATED_BASELINE` | compile reactive blocks; use hold or measured wake/update/return waiting visuals |
 | `HW6_VALIDATED_LPBAM` | compile eligible waiting visuals for autonomous playback and enforce measured sequence budgets |
 | `HOST_AUTHORING_PREVIEW` | preview preferred and fallback waiting visuals with explicit compatibility warnings |
-| `HOST_DIGITAL_TWIN_HW6` | mirror measured HW6 reactive, lock, and autonomous-display behavior |
+| `HOST_DIGITAL_TWIN_HW6` | mirror measured HW6 reactive, interaction-state, and autonomous-display behavior |
 
 ---
 
@@ -608,8 +612,8 @@ Every package manifest must declare:
 - name
 - package version
 - package format version
-- default runtime unit
-- runtime units
+- entry scene
+- scenes
 - required capabilities
 - optional capabilities
 - wake intents
@@ -620,13 +624,13 @@ Every package manifest must declare:
 - storage write budget
 - compatibility constraints
 
-The manifest is authoritative for runtime admission. Runtime code may request less than the manifest declares, but it must not request capabilities that were not declared and validated at package or runtime-unit scope.
+The manifest is authoritative for runtime admission. The compiler derives its capability declarations from scene types, nodes, properties, bindings, service use, and fallbacks. Runtime code may request less than the manifest declares, but it must not request capabilities that were not derived and validated at package or scene scope.
 
 ---
 
-## Capability Declaration Model
+## Capability Derivation Model
 
-Capabilities are abstract Engine-visible requirements.
+Capabilities are abstract Engine-visible requirements generated by the compiler. Normal authors choose services and behavior, not capability flags.
 
 Canonical capability names live in [[PeepOS_Capability_Registry]].
 
@@ -650,15 +654,15 @@ Examples:
 | `sensor.imu_motion_stream` | can use bounded higher-rate motion contexts for realtime gameplay |
 | `comm.multiplayer` | can use generic multiplayer sessions and bounded messages |
 | `comm.companion` | can use companion-app sessions and bounded messages |
-| `comm.session_required` | can declare runtime units that require an active communication session |
+| `comm.session_required` | can declare scenes that require an active communication session |
 | `comm.message_schema` | can declare bounded versioned message schemas |
 | `save.records` | can read/write package save records through Engine APIs |
 | `time.calendar` | can read valid PeepOS local date/time where the target profile grants it |
 | `time.delayed_event` | can schedule bounded package events after a duration |
 | `time.calendar_schedule` | can schedule bounded package events against local calendar rules |
-| `time.frame_delta` | can consume runtime host frame delta in realtime units |
+| `time.frame_delta` | can consume runtime host frame delta in sequence or program scenes |
 
-Capability names are not hardware names. They must not include pin numbers, DMA channels, HAL handles, or device register names.
+Capability names are not hardware names. They must not include pin numbers, DMA channels, HAL handles, or device register names. Advanced tools may show why a capability was derived and help authors design an optional fallback, but cannot require manual capability bookkeeping.
 
 ---
 
@@ -696,7 +700,9 @@ Recommended tool families:
 
 | Tool Family | Compiles To | Notes |
 |---|---|---|
-| reactive block/graph editor | state graph, bounded actions, reactive waits, schedules, waiting visuals, and lock behavior | default authoring path for state-based package behavior |
+| state scene/block editor | state graph, bounded actions, reactive waits, schedules, waiting visuals, and interaction behavior | default authoring path for state-based package behavior |
+| sequence editor | bounded visual/audio tracks, markers, controls, and scene-end route | data-driven realtime presentation without arbitrary program logic |
+| program scene editor | sandbox program plus declared memory/instruction/frame budgets and routes | programmable realtime behavior |
 | scene editor | scene graph, draw commands, asset references, input maps | used by reactive settled views and realtime scenes |
 | tile/map importer | bounded tilemap assets, viewport metadata, collision/data tables | may import from tools such as Tiled, but runtime output must be bounded |
 | animation editor | sprite/frame animation tables and optional waiting-visual sequence candidates | continued waiting motion is target-profile gated |
@@ -739,7 +745,7 @@ Runtime rules:
 
 State graphs may express game logic. They may not express hardware policy.
 
-`RT_SCENE` logic may be more expressive than reactive graph logic, but it must declare frame budget, meaningful-activity rules, suspend/resume behavior, bounded lock deferrals where used, and reactive fallback routing before validation can accept it.
+`SEQUENCE_SCENE` accepts bounded timeline tracks and symbolic actions but no arbitrary per-frame program. `PROGRAM_SCENE` may use the approved sandbox instruction model. Both must declare frame budgets, meaningful-activity rules, suspend/resume behavior, bounded inactivity deferrals where used, and inactive routing before validation can accept them.
 
 ---
 
@@ -810,12 +816,28 @@ Rules:
 - no package may control SPI, DMA, EXTCOMIN, display voltage translation, or display sleep policy
 - `tone5` is a semantic coverage model, not native display color
 - integer scaling is the v1 scaling model for package-facing scaled sprites
-- visual layer order is `UI -> GAME -> BG`
-- authoring tools may expose more logical layers only if the compiler can flatten them into the bounded runtime compositor model
-- system UI is reserved and may use baked crisp 1bpp assets outside the package surface
+- visual layer order is `OVERLAY -> UI -> SCENE -> BACKGROUND`
+- `OVERLAY` is Engine/Platform controlled; packages may supply validated style assets but cannot suppress mandatory system information
+- authoring tools place content into the four retained logical layers and validate each target profile's retained-memory/object limits
+- system UI may use baked crisp 1bpp assets outside the package-authored scene surface
 - waiting-visual motion uses validated final visual states only; it does not run arbitrary package rendering or gameplay logic while the reactive host is yielded
 
 For the HW6 target profile, the expected primary display capability is a logical monochrome canvas matching the Platform display contract.
+
+---
+
+## Variable And Property Hooks
+
+Authoring tools expose typed property paths while compiled packages use stable numeric IDs:
+
+| Namespace | Ownership | Examples |
+|---|---|---|
+| `system.*` | PeepOS, read-only | time, uptime, battery state of charge, step count |
+| `game.*` | package | score, health, current room, persistent progress |
+| `scene.*` | active scene | selected item, page, local state |
+| `entity.*` | scene object | position, sprite/frame, visibility, animation state |
+
+Property access compiles to bounded table operations, not runtime string reflection. Service-backed `system.*` reads cause the compiler to derive their capability and event requirements.
 
 ---
 
@@ -858,7 +880,7 @@ Rules:
 - Start shipping intent is power policy, not game input.
 - raw GPIO, EXTI, timer counter, or ADC input is forbidden.
 - raw joystick magnetic readings and encoder hardware counters are forbidden.
-- input focus must be released or transferred during runtime-unit transitions.
+- input focus must be released or transferred during scene transitions.
 - wake input is delivered through normal resume/lifecycle flow before package actions.
 
 ---
@@ -928,7 +950,7 @@ Rules:
 
 - every asset has a type, ID, size, checksum, and compatibility metadata
 - asset references must resolve at validation time
-- asset bounds must match the declared runtime class
+- asset bounds must match the declared scene type and selected target profile
 - missing, corrupt, or incompatible assets must reject install or route to runtime fault handling
 - runtime code must not access host-visible staging paths directly
 - active runtime reads use package-safe asset APIs only
@@ -990,7 +1012,7 @@ Tools may author:
 - symbolic wake intent
 - catch-up policy
 - meaningful-activity sources
-- optional input-lock policy and bounded deferrals
+- interaction policy, inactive route, and bounded inactivity deferrals
 - realtime target cadence and frame budget
 
 Runtime may:
@@ -1010,9 +1032,9 @@ Rules:
 - no package may directly program RTC, SysTick, timers, STOP mode, or clocks
 - no package may set, correct, or resync RTC/calendar time
 - timing knobs must use documented timebase domains
-- realtime scenes must have explicit frame budgets, meaningful-activity rules, and reactive fallbacks
-- reactive graph/module content must tolerate missed or delayed schedules where policy requires it
-- package-authored inactivity is a normal gameplay schedule, not the system input-lock timer
+- sequence and program scenes must have explicit frame budgets, meaningful-activity rules, suspend/resume behavior, and inactive routes
+- state-scene content must tolerate missed or delayed schedules where policy requires it
+- package-authored gameplay inactivity is a normal schedule, not the system interaction-state timer
 - calendar-dependent packages may assume valid PeepOS time after system setup/admission
 - missed schedule catch-up must be bounded
 ---
@@ -1082,7 +1104,7 @@ Rules:
 
 - no package may control BLE hardware, NINA pins, UART, bonding storage, or BLE command protocol
 - messages must have fixed maximum size and schema version
-- each communication runtime unit must declare either fallback/route behavior or session-required admission behavior
+- each communication scene must declare either fallback/route behavior or session-required admission behavior
 - peer disconnects, session closes, and message timeouts are package-visible session events
 - BLE/NINA/UART faults are Platform/Engine diagnostics, not normal gameplay branches
 - pairing/bonding is Platform-owned
@@ -1095,40 +1117,40 @@ Rules:
 
 Detailed time and power intent API behavior is defined in [[Time_And_Power_Intent_API_Contract]].
 
-Games and tools express execution, waiting, activity, and lock intent only.
+Games and tools express scene, waiting, activity, and interaction intent only.
 
 Tools may author:
 
-- runtime class and execution semantic
+- scene type; execution semantic is derived from it
 - reactive wait contracts
 - waiting visuals and reduced/hold fallbacks
 - logical schedules and gameplay-timeout transitions
 - latency tolerance and symbolic wake intents
 - meaningful-activity sources
-- optional input-lock policy and admitted lock route
-- bounded lock deferrals
-- realtime cadence, frame budget, suspend/resume behavior, and reactive fallback
+- interaction policy and admitted inactive route
+- bounded inactivity deferrals
+- realtime cadence, frame budget, suspend/resume behavior, and inactive/failure routing
 
 Runtime may publish:
 
 - the next reactive wait contract
 - meaningful activity from a declared source
 - realtime work pending
-- bounded lock-deferral completion
+- bounded inactivity-deferral completion
 - temporary capability need
 
-Runtime units may declare temporary capability contexts through Engine APIs, such as high-rate sensor sampling, step-counter session behavior, audio activity, communication session activity, or realtime activity. These are validated PeepOS contexts, not direct hardware control.
+Scenes may declare temporary capability contexts through Engine APIs, such as high-rate sensor sampling, step-counter session behavior, audio activity, communication session activity, or realtime activity. These are validated PeepOS contexts, not direct hardware control.
 
 Rules:
 
-- reactive units yield as soon as bounded event work settles
+- state scenes yield as soon as bounded event work settles
 - waiting for input is not an awake runtime mode
-- packages may disable automatic input locking
-- when locking is enabled, only admitted meaningful activity refreshes it
-- Start used to unlock is consumed by PeepOS; the package receives `DEVICE_UNLOCKED`, not the Start action
-- lock routes are preserve current state, transition to a declared package state, or exit to shell
-- lock deferral is always bounded; unbounded deferral is forbidden
-- package-authored gameplay inactivity is a normal schedule/state transition, separate from system lock
+- packages cannot disable system inactivity handling
+- only admitted meaningful activity refreshes the interaction window
+- the target-owned activation gesture is consumed by PeepOS; the package receives `DEVICE_ACTIVE`, not the physical gesture as an action
+- inactive routes preserve the current scene, transition to a declared scene, or exit to shell
+- inactivity deferral is always bounded; unbounded deferral is forbidden
+- package-authored gameplay inactivity is a normal schedule/scene transition, separate from system interaction state
 - Platform chooses sleep class, clock profile, waiting-visual backend, and wake-source wiring
 - Platform owns quiesce/resume sequencing
 - invalid context use is caught before package compilation/export where possible
@@ -1270,7 +1292,7 @@ Every package build must produce:
 - power compliance summary
 - asset inventory and checksums
 - save schema summary
-- runtime class summary
+- scene-type and execution-semantic summary
 - generated package checksum
 
 User-facing reports must use PeepOS authoring terms.
@@ -1285,7 +1307,7 @@ The package compiler must refuse to emit installable output when:
 - save schema is invalid
 - power compliance validation fails
 - forbidden API access is detected
-- runtime class rules are violated
+- scene-type or execution-semantic rules are violated
 - deterministic build checks fail
 - runtime safety warnings remain unresolved
 
@@ -1293,7 +1315,7 @@ The package compiler must refuse to emit installable output when:
 
 ## Validation Cases
 
-1. valid `LP_GRAPH` package validates, compiles, installs, and runs without hardware assumptions.
+1. valid `STATE_SCENE` package validates, compiles, installs, and runs without hardware assumptions.
 2. normal PeepOS authoring UI provides no path to hardware, RTOS, filesystem, or Platform-internal concepts.
 3. generated artifact containing HAL, RTOS, GPIO, DMA, filesystem, or `ps_hw_*` tokens fails internal safety verification.
 4. package requesting undeclared capability at runtime is rejected by Engine.
@@ -1301,23 +1323,23 @@ The package compiler must refuse to emit installable output when:
 6. package with placeholder art can run in `authoring_preview` or `dev_package` profile.
 7. package with unbounded graph loop or action list fails validation in every profile.
 8. package with oversized audio, BBB, save, communication, or render command data fails validation.
-9. runtime class mismatch fails validation before package compilation/export.
+9. scene type/content mismatch fails validation before package compilation/export.
 10. install-time validation rejects a package whose manifest/checksum was corrupted after tool validation.
 11. optional sensor or communication feature validates only when declared fallback behavior exists.
 12. suspend/resume during active package behavior preserves host and package state consistency.
 13. save write failure preserves previous valid save record where possible.
 14. sensor streaming context above the target profile limit fails validation before package compilation/export.
 15. waived warning appears in the compatibility report with reason and removal condition.
-16. `RT_SCENE` package without meaningful-activity rules and a reactive fallback fails power compliance validation.
+16. sequence or program scene without meaningful-activity rules and an inactive route fails power compliance validation.
 17. package requiring `display.waiting_visual_animation` fails shipping validation unless the selected target profile grants it.
-18. package that attempts to keep realtime cadence without admitted meaningful work or through unbounded lock deferral fails power compliance validation.
+18. package that attempts to keep realtime cadence without admitted meaningful work or through unbounded inactivity deferral fails power compliance validation.
 19. package that requires continued waiting-visual motion validates only against a target profile that grants `display.waiting_visual_animation`.
 20. package that exposes or requires display transfer/internal update-region control fails internal safety verification.
-21. package may disable automatic input locking.
-22. enabled input-lock policy without an admitted route fails validation.
-23. Start used to unlock is consumed and cannot also activate a package action.
-24. any unbounded lock deferral fails validation.
-25. package-authored system lock timeout fails validation.
+21. package attempt to disable system inactivity handling fails validation.
+22. interaction policy without an admitted inactive route fails validation.
+23. the target-owned activation gesture is consumed and cannot also activate a package action.
+24. any unbounded inactivity deferral fails validation.
+25. package-authored system inactivity timeout or physical activation gesture fails validation.
 
 ---
 

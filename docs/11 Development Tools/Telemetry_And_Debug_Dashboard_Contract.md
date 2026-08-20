@@ -152,7 +152,7 @@ The dashboard should understand these event classes.
 | `sleep.enter` | attempted sleep entry |
 | `wake.reason` | normalized wake cause and resume route |
 | `runtime.lifecycle` | runtime host mount/start/suspend/resume/stop/unmount |
-| `runtime.logic` | state graph/unit transition and budget events |
+| `runtime.logic` | state-graph and scene-transition budget events |
 | `display.frame` | frame present request/result, checksum, dirty summary |
 | `display.flush` | display transfer begin/end/fault summary |
 | `input.event` | logical input/action summary |
@@ -187,8 +187,10 @@ peepos_state_vector:
   system_mode
   power_state
   sleep_class
-  runtime_class
-  runtime_unit
+  system_host
+  scene_type
+  execution_semantic
+  active_scene_id
   runtime_lifecycle_state
   display_state
   audio_state
@@ -225,7 +227,7 @@ Expected panels:
 | Power/Wake | quiesce, sleep entry, wake reason, resume route, cadence clamps |
 | Owner Threads | owner FSM states, queue summaries, health/fault status |
 | Display | frame/flush timing, dirty rows/regions, checksum, waiting-visual/compiled-slice state |
-| Runtime | runtime class/unit, lifecycle, logic state, frame/budget warnings |
+| Runtime | system host, scene type/ID, execution semantic, lifecycle, logic state, frame/budget warnings |
 | Input | logical actions, focus scope, wake input path |
 | Sensors | normalized sensor events/snapshots, context state, health |
 | Audio | active cues, BBB patterns, queue/decode status, suppression/faults |

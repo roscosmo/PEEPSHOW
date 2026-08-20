@@ -273,7 +273,7 @@ CDC may provide additional telemetry in developer mode.
 Allowed telemetry:
 
 - Platform state vector
-- runtime class and lifecycle state
+- system host, active scene type/ID, execution semantic, and lifecycle state
 - subsystem state transitions
 - wake reason
 - frame timing

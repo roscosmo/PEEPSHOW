@@ -4,18 +4,26 @@ This document defines platform-provided runtime hosts and their lifecycle API.
 
 ---
 
-## Runtime Classes
+## Hosts And Package Scenes
+
+System hosts:
 
 - `SHELL`: built-in OS shell
-- `LP_GRAPH`: reactive event/state transaction runtime
-- `LP_MODULE`: Engine-hosted reactive module with a predefined bounded transaction shape
-- `RT_SCENE`: frame-paced realtime runtime for richer scenes
+- `PACKAGE`: mounted package and active scene dispatcher
 - `INSTALLER`: package staging and install workflow
 
-Runtimes are hosts, not game engines embedded in platform core.
+The `PACKAGE` host executes the canonical scene types from
+[[Scene_Runtime_and_Interaction_Model]]:
+
+- `STATE_SCENE / REACTIVE`
+- `SEQUENCE_SCENE / REALTIME`
+- `PROGRAM_SCENE / REALTIME`
+
+Hosts own lifecycle. Scene transitions occur inside the mounted package and do
+not remount it.
 
 FW0 currently implements a minimal `thRuntime` scaffold for OS lifecycle
-visibility. It tracks the active runtime class, execution semantic, lifecycle
+visibility. The canonical host tracks the system host, active scene type and ID, execution semantic, lifecycle
 state, shell/installer return context, and bounded event counts. HW6 evidence
 `EV-HW6-20260813-P1-RUNTIME-044` validates the first shell/installer path:
 normal boot enters `SHELL / REACTIVE / RUNNING`; package transfer enters
@@ -23,7 +31,9 @@ normal boot enters `SHELL / REACTIVE / RUNNING`; package transfer enters
 `INSTALLER`; and install-stub completion returns to `SHELL` without installer
 error. This proves runtime naming and handoff plumbing only. It does not prove
 final package execution, PeepPkg install commit, realtime admission, suspend/
-resume, or measured power behavior.
+resume, or measured power behavior. Its `LP_GRAPH`, `LP_MODULE`, and `RT_SCENE`
+probe values predate the canonical scene model and are retained only as
+historical evidence until the scaffold is migrated.
 
 HW6 evidence `EV-HW6-20260813-P1-RUNTIMECLOCK-045` adds the first OS clock-intent plumbing proof for `thRuntime`: each admitted runtime command publishes a bounded `REACTIVE_TRANSACTION_ACTIVE` requester update through `thPower`, then releases the runtime requester slot when the command returns. The validated boot capture showed runtime clock request/release `1/1`, reactive/release statuses `0x0/0x0`, requester cap `RT=0x0` after idle settle, and `STOP2 ready=1`. This remains Platform plumbing only; runtime hosts still cannot choose clocks, voltage scale, PLLs, or sleep mode directly.
 
@@ -51,16 +61,16 @@ Lifecycle methods describe host ownership transitions. A mounted runtime may als
 
 | Event | Meaning |
 |---|---|
-| `DEVICE_LOCKED` | PeepOS has suppressed package focus and completed the package's declared lock route |
-| `DEVICE_UNLOCKED` | PeepOS has consumed the Start unlock action and restored the admitted runtime/focus state |
+| `DEVICE_INACTIVE` | PeepOS has settled the declared inactive scene route/presentation and suppressed package focus |
+| `DEVICE_ACTIVE` | PeepOS has consumed an admitted activation gesture and restored the admitted scene/focus state |
 
 Rules:
 
 - these are lifecycle events, not input actions
-- the physical Start press used for unlock is never replayed into the package action stream
-- `DEVICE_UNLOCKED` is the first package-visible event after wake/resume and focus restoration; later physical inputs follow normal routing
-- `DEVICE_LOCKED` is delivered to the resulting mounted package state when the lock route preserves or transitions package state
-- when the lock route exits to shell, the package follows normal suspend/stop/unmount ordering and the shell receives the resulting system lifecycle state
+- the physical activation button or chord is never replayed into the package action stream
+- `DEVICE_ACTIVE` is the first package-visible event after wake/resume and focus restoration; later physical inputs follow normal routing
+- `DEVICE_INACTIVE` is delivered to the resulting mounted package state after its inactive route and presentation are stable
+- when the inactive route exits to shell, the package follows normal suspend/stop/unmount ordering and the shell receives the resulting system lifecycle state
 - event delivery is bounded and deterministic for a fixed trace
 
 ---
@@ -78,7 +88,7 @@ typedef enum {
 
 typedef struct {
     uint32_t package_id;
-    uint32_t runtime_unit_id;
+    uint32_t entry_scene_id;
     uint32_t runtime_flags;
     const void *manifest;
 } host_mount_args_t;
@@ -100,7 +110,9 @@ typedef struct {
 
 Runtime hosts execute validated package logic through [[Runtime_Logic_State_API_Contract]].
 
-Hosts may dispatch package-visible events, evaluate bounded state/action tables, and run approved realtime frame ticks for the active runtime unit.
+Hosts may dispatch package-visible events, evaluate bounded state/action tables,
+run validated sequence timelines, and run approved programmable frame ticks for
+the active scene.
 
 Runtime logic execution must not expose RTOS threads, queues, timers, interrupts, or Platform hardware APIs to packages.
 
@@ -116,14 +128,14 @@ Hosts may request:
 - package asset reads/views through [[Package_Asset_Loading_API_Contract]]
 - communication sessions and bounded messages through [[Communication_API_Contract]]
 - bounded package diagnostics through [[Diagnostics_API_Contract]]
-- transition to another declared runtime unit through the runtime manager
+- transition to another declared package scene through the package scene manager
 
 Hosts may not:
 - touch HAL handles directly
 - change clocks or sleep mode directly
 - mount/unmount storage volumes directly
 - expose RTOS threads, queues, timers, or interrupts to packages
-- transition to undeclared runtime units directly
+- transition to undeclared package scenes directly
 - store package asset chunk offsets or storage addresses directly
 - consume raw GPIO, EXTI, timer, I2C, joystick register, or debounce state directly
 
@@ -131,7 +143,10 @@ Hosts may not:
 
 ## Reactive Host Yield
 
-`LP_GRAPH` and `LP_MODULE` hosts execute bounded reactive transactions. After event dispatch, state transitions, Engine actions, rendering, and required owner requests settle, the host publishes its next reactive wait contract and yields to PeepOS.
+The `PACKAGE` host executes `STATE_SCENE` work as bounded reactive
+transactions. After event dispatch, state transitions, Engine actions,
+rendering, and required owner requests settle, the host publishes its next wait
+and presentation timeline and yields to PeepOS.
 
 The host remains mounted and retains its declared state while the CPU sleeps. A wake does not remount the package; it resumes lifecycle ordering, delivers the admitted symbolic event, executes the next transaction, and yields again.
 
@@ -171,11 +186,18 @@ Runtime expresses intent only:
 - symbolic wake intents
 - latency tolerance
 - declared meaningful-activity sources
-- optional input-lock policy and bounded deferrals
+- interaction-state route, overlay style, meaningful activity, and bounded deferrals
 
-Runtime unit transitions must preserve this model. A realtime unit must return to a declared reactive unit or shell/system route according to its package manifest and power policy. Reactive hosts yield immediately after each bounded event transaction settles; they do not remain awake waiting for input.
+Scene transitions must preserve this model. Every realtime scene must declare an
+inactivity route to a `STATE_SCENE` or shell. Reactive state scenes yield
+immediately after each bounded event transaction settles; they do not remain
+awake waiting for input.
 
-`RT_SCENE` has no fixed maximum active duration at this contract level. It must declare meaningful-activity sources, suspend/resume behavior, bounded lock deferral where needed, and a reactive fallback. If the package enables automatic input locking, lock activation terminates or suspends realtime execution before the declared lock route is established.
+`SEQUENCE_SCENE` and `PROGRAM_SCENE` have no fixed maximum active duration at
+this contract level. They must declare meaningful-activity sources,
+suspend/resume behavior, bounded inactivity deferral where needed, and an
+inactive route. Inactivity terminates or suspends realtime execution before the
+declared `STATE_SCENE` or shell route is established.
 
 Bounded interactive peer-wait treatment is admitted only through [[Communication_API_Contract]] and target-profile policy. Runtime hosts must not treat an active communication session as meaningful local activity, an unlimited lock deferral, or a stay-awake grant.
 

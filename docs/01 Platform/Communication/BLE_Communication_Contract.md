@@ -252,9 +252,9 @@ Invalid transitions must be rejected and logged.
 | Mode | BLE Policy |
 |---|---|
 | `SHELL` | off by default; allowed for pairing, settings, diagnostics, or companion-app flow when explicitly requested |
-| `LP_GRAPH` | off |
-| `LP_MODULE` | off unless an Engine capability request explicitly owns a communication session while awake |
-| `RT_SCENE` | allowed for multiplayer only when transfer latency will not break real-time budgets |
+| `STATE_SCENE` | off unless a declared bounded communication transaction or interactive-session wait is admitted |
+| `SEQUENCE_SCENE` | off unless a declared bounded communication action can meet the realtime timeline budget |
+| `PROGRAM_SCENE` | allowed for multiplayer only when declared capabilities and transfer latency satisfy realtime budgets |
 | `INSTALLER` | disabled unless explicitly used for diagnostics; USB/storage ownership remains primary |
 
 BLE does not wake the device in HW6 unless a future target-qualified profile and hardware contract explicitly grant it.

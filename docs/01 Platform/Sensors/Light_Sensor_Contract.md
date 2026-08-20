@@ -175,9 +175,9 @@ Invalid transitions must be rejected and logged.
 | Mode | Light Sensor Policy |
 |---|---|
 | `SHELL` | low-cadence system sampling allowed for display refresh policy and diagnostics |
-| `LP_GRAPH` | latest snapshot or low-rate periodic only unless explicitly requested while awake |
-| `LP_MODULE` | one-shot, periodic, or clamped streaming based on Engine capability request |
-| `RT_SCENE` | clamped streaming allowed for active gameplay if it does not disturb frame/audio timing |
+| `STATE_SCENE` | latest snapshot, one-shot, or low-rate event sampling; no continuous awake polling while yielded |
+| `SEQUENCE_SCENE` | bounded streaming only when the declared timeline requires it and frame/audio timing remains valid |
+| `PROGRAM_SCENE` | clamped streaming allowed for active gameplay when declared capabilities and frame/audio budgets permit it |
 | `INSTALLER` | disabled unless diagnostics explicitly request it |
 
 The light sensor is not currently a wake source.

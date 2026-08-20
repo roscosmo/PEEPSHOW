@@ -74,7 +74,7 @@ It includes:
 
 - package identity and version
 - build profile and target profile
-- runtime units
+- entry scene and scene table
 - required and optional capabilities
 - package power policy
 - asset table reference
@@ -103,7 +103,7 @@ chunk_entry:
   alignment
   crc32
   required_capability
-  runtime_unit_refs[]
+  scene_refs[]
   load_policy
   flags
 ```
@@ -145,9 +145,11 @@ Initial chunk types:
 |---|---|
 | `manifest` | normalized package manifest |
 | `asset_table` | asset IDs, metadata, and chunk references |
-| `runtime_unit_table` | runtime unit records, entries, transitions, and budgets |
-| `time_power_profile` | calendar requirements, schedules, reactive waits, optional input-lock policy, wake intents, cadence hints, and catch-up policy |
-| `state_graph` | bounded runtime logic, graph, event, action, and scene/module state data |
+| `scene_table` | scene records, types, entries, transitions, and budgets |
+| `time_power_profile` | calendar requirements, schedules, reactive waits, interaction policy, wake intents, cadence hints, and catch-up policy |
+| `state_graph` | bounded state-scene logic, graph, event, action, and state data |
+| `sequence_scene` | bounded realtime tracks, markers, FPS, and scene-end/inactive routes |
+| `program_scene` | bounded sandbox program data and instruction/memory/frame budgets |
 | `input_map` | logical input bindings and focus scopes |
 | `audio_profile` | symbolic cue tables, BBB pattern/melody metadata, audio contexts, and timeline markers |
 | `sensor_profile` | PeepOS sensor contexts, event interests, step sessions, and wake intents |
@@ -186,22 +188,21 @@ time_power_profile:
   wake_intents[]
   catch_up_policy
   reactive_wait_table_ref
-  input_lock_policy:
-    enabled
+  interaction_policy:
     meaningful_activity_sources[]
-    lock_route                 # preserve_state, transition_to, exit_to_shell
-    lock_target
-    locked_waiting_visual_ref
+    inactive_route             # preserve_scene, transition_to_scene, exit_to_shell
+    inactive_target_scene
+    inactive_waiting_visual_ref
     bounded_deferral_table_ref
   realtime_policy_ref
 ```
 
 Rules:
 
-- the package may enable or disable automatic input locking.
-- this chunk does not contain a package-authored lock timeout or unlock action; those are target/system policy.
-- an enabled lock policy must resolve one admitted route and every deferral must be statically bounded.
-- Start unlock consumption and `DEVICE_LOCKED` / `DEVICE_UNLOCKED` ordering are Engine invariants, not package options.
+- PeepOS inactivity handling is mandatory and cannot be disabled by this chunk.
+- this chunk does not contain a package-authored inactivity timeout or physical activation gesture; those are target/system policy.
+- interaction policy must resolve one admitted inactive route and every deferral must be statically bounded.
+- activation-gesture consumption and `DEVICE_INACTIVE` / `DEVICE_ACTIVE` ordering are Engine invariants, not package options.
 - reactive waits carry visual/event/schedule intent only and contain no STOP, LPBAM, DMA, SRAM4, clock, or wake-pin data.
 
 ---
@@ -222,7 +223,7 @@ asset_record:
   bounds
   required_capability
   optional_capability_fallback
-  runtime_unit_refs[]
+  scene_refs[]
   memory_budget
   decode_budget
   checksum
@@ -347,7 +348,7 @@ Runtime flow:
 - runtime reads installed raw package storage or bounded RAM caches only.
 - runtime does not read FAT/FileX staging paths.
 - runtime does not parse JSON, PNG, Aseprite, Tiled, WAV, or other editor-native files.
-- runtime unit activation may load only assets declared for that runtime unit or approved shared assets.
+- scene activation may load only assets declared for that scene or approved shared assets.
 
 ---
 
@@ -361,16 +362,16 @@ Tooling and installer validation must reject:
 - overlapping chunk ranges
 - checksum or CRC mismatch
 - duplicate asset IDs
-- unresolved asset or runtime-unit references
+- unresolved asset or scene references
 - unknown required chunk types
 - unsupported required chunk versions
 - asset bounds that exceed target profile limits
-- runtime unit using assets not declared for that unit
+- scene using assets not declared for that scene
 - missing fallback for optional capabilities
 - package requiring animated waiting visuals without `display.waiting_visual_animation` and without an admitted reduced/hold fallback
-- enabled input-lock record without exactly one admitted route
-- package-authored input-lock timeout or unlock action
-- input-lock deferral without a static completion bound or timeout
+- interaction-policy record without exactly one admitted inactive route
+- package-authored inactivity timeout or physical activation gesture
+- inactivity deferral without a static completion bound or timeout
 - package artifacts containing host paths, hardware addresses, RTOS symbols, filesystem API requirements, SRAM4 addresses, SPI payloads, DMA descriptors, or LPBAM descriptors
 - nondeterministic rebuild output for identical inputs
 
@@ -382,7 +383,7 @@ Every package build must produce a compatibility report.
 
 The report schema, status model, required fields, waiver rules, staleness rules, and digital twin use are defined in [[Package_Compatibility_Report_Contract]].
 
-The package blob may include a `compat_report` chunk for diagnostics, but installer validation must not trust that report as proof of package safety. Firmware install validation must still re-check package integrity, schema compatibility, runtime class compatibility, and required capability compatibility.
+The package blob may include a `compat_report` chunk for diagnostics, but installer validation must not trust that report as proof of package safety. Firmware install validation must still re-check package integrity, schema compatibility, scene type compatibility, and required capability compatibility.
 
 ---
 

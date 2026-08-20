@@ -58,7 +58,7 @@ host tooling, but the HW6 target profile must not grant them.
 | autonomous display | [[LPBAM_Autonomous_Display_Validation_Plan]] | repeat STOP2, wake/abort, memory, cadence, and handoff proof |
 | external flash | [[AT25SL128A_External_Flash_Bring-up_Runbook]] | repeat non-destructive identity then bounded scratch tests |
 | speaker | [[Audio_Output_Bring-up_Runbook]] | run speaker-only subset; BBB steps are not applicable |
-| buttons | [[Button_Input_Bring-up_Runbook]] | repeat levels, EXTI, wake, debounce, lock/unlock, and BOOT0 proof |
+| buttons | [[Button_Input_Bring-up_Runbook]] | repeat levels, EXTI, wake, debounce, interaction activation, and BOOT0 proof |
 | joystick | [[TMAG3001_Joystick_Bring-up_Runbook]] | repeat identity, axes, threshold, interrupt, and current |
 | IMU | [[LIS2DUX12_IMU_Bring-up_Runbook]] | repeat identity, lowest-power mode, events, and current |
 | BLE/NFC | [[NINA_B112_BLE_Bring-up_Runbook]] | repeat UART, flow control, BLE, NFC, sleep, and current |

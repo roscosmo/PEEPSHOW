@@ -7,6 +7,7 @@ Runtime logic is the layer that turns validated game content into bounded state,
 Related:
 
 - [[Engine_API_Index]]
+- [[Scene_Runtime_and_Interaction_Model]]
 - [[Game_Authoring_API_Contract]]
 - [[Runtime_Host_Contract]]
 - [[Runtime_Host_Internal_State_Machines]]
@@ -28,7 +29,7 @@ Defines:
 - runtime logic primitives exposed to packages and authoring tools
 - state graph and action table behavior
 - package-visible event model
-- runtime unit logic requirements
+- package scene logic requirements
 - validation rules for bounded execution
 - digital twin replay expectations
 
@@ -64,7 +65,7 @@ The Platform owns hardware behavior.
 ```text
 game-dev tools
     |
-validated scenes / graphs / modules / scripts
+validated scenes / graphs / timelines / programs
     |
 runtime logic tables
     |
@@ -81,8 +82,8 @@ Runtime logic is organized as:
 
 ```text
 package
-  runtime_units[]
-    scenes / modules / graphs
+  scenes[]
+    state graphs / sequence timelines / bounded programs
       states / substates
         transitions
           guards
@@ -95,7 +96,7 @@ Compiled package output must reduce those forms to bounded PeepOS runtime logic 
 
 Rules:
 
-- every runtime unit has one entry point
+- every package has one entry scene and every scene has one entry point
 - every transition target is declared before package compilation/export
 - every action list has a bounded maximum cost
 - every event queue, timer table, and variable table has bounded size
@@ -104,23 +105,25 @@ Rules:
 
 ---
 
-## Runtime Classes
+## Scene Types And Execution
 
-Runtime classes define execution and power shape, not game genre.
+Scene type defines the package runtime primitive. Execution semantic defines
+whether it yields or remains frame-paced.
 
-| Runtime Class | Logic Shape | Expected Use |
+| Scene Type | Execution | Logic Shape |
 |---|---|---|
-| `LP_GRAPH` | reactive event, schedule, and state transactions | long-running games, clocks, pets, idle toys, and Game & Watch logic that sleep between events |
-| `LP_MODULE` | Engine-hosted bounded reactive block shape | menus, dialogue, map viewers, inventory, and structured modules that yield between interactions |
-| `RT_SCENE` | frame-paced realtime scene | action scenes, microgames, realtime maps, higher-rate interaction |
+| `STATE_SCENE` | `REACTIVE` | event, schedule, state, and bounded action transactions |
+| `SEQUENCE_SCENE` | `REALTIME` | validated data-driven frame and audio timeline |
+| `PROGRAM_SCENE` | `REALTIME` | bounded sandboxed instruction program with per-frame control |
 
-`RT_SCENE` is more demanding than graph/module logic. It may request richer per-frame behavior, but it must declare more constraints before validation can accept it.
+See [[Scene_Runtime_and_Interaction_Model]] for the canonical behavior.
 
 ---
 
 ## Reactive Transaction And Block Contract
 
-`REACTIVE` is the default execution semantic for `LP_GRAPH` and `LP_MODULE`. It is not a separate runtime class.
+`REACTIVE` is the fixed execution semantic for `STATE_SCENE`. It is not a
+scene type.
 
 A reactive transaction begins with one admitted symbolic event and performs bounded state, action, rendering, and owner requests. The transaction yields when its action chain is settled. PeepOS then sleeps immediately until the next admitted event; no package-visible low-power transition or inactivity delay is required.
 
@@ -134,7 +137,7 @@ reactive_wait:
   delayed_or_calendar_schedules[]
   wake_intents[]
   logical_timeout_transitions[]
-  input_lock_context_ref
+  interaction_context_ref
 ```
 
 Rules:
@@ -143,16 +146,16 @@ Rules:
 - holding a frame and animating a waiting visual are both valid reactive waits
 - autonomous display playback is cosmetic and cannot mutate package variables or advance graph state
 - a designer-authored inactivity transition is a normal bounded schedule/transition in the state graph
-- an `input_lock_context_ref` can activate only prevalidated meaningful-activity or bounded-deferral entries from the package lock policy
+- an `interaction_context_ref` can select only prevalidated meaningful-activity, inactive-route, overlay-style, or bounded-deferral entries
 - hardware sleep, display backend selection, and wake-source arming remain Platform policy
 - custom code handles an event and returns; it may not call sleep, start autonomous playback, or busy-wait for input
 - if a waiting visual cannot be admitted, its declared reduced visual or hold fallback is used
 
 ---
 
-## LP_GRAPH Requirements
+## STATE_SCENE Requirements
 
-`LP_GRAPH` is the preferred reactive primitive for long-running packages.
+`STATE_SCENE` is the preferred reactive primitive for long-running packages.
 
 It supports:
 
@@ -166,7 +169,7 @@ It supports:
 - audio timeline events where supported
 - save/settings completion events
 - bounded action tables
-- declared transitions to other runtime units
+- declared transitions to other package scenes
 
 Rules:
 
@@ -177,39 +180,35 @@ Rules:
 - all timers and schedules must tolerate cadence clamp, missed wake, and bounded catch-up
 - every settled state must declare or inherit a reactive wait contract: admitted events/schedules, waiting-visual intent, and fallback
 
-`LP_GRAPH` should be powerful enough for complete games. Its restriction is power and boundedness, not style or genre.
+`STATE_SCENE` should be powerful enough for complete low-rate games. Its
+restriction is power and boundedness, not style or genre. Dialogue, Menu,
+Choice, Inventory, and similar authoring constructs compile into this same
+primitive rather than requiring a separate module class.
 
 ---
 
-## LP_MODULE Requirements
+## SEQUENCE_SCENE Requirements
 
-`LP_MODULE` is an Engine-hosted reactive module with a predefined bounded transaction shape.
-
-Examples:
-
-- dialogue module
-- menu module
-- map inspection module
-- turn-based encounter module
-- inventory/status module
-- clock or schedule module
+`SEQUENCE_SCENE` is a data-driven frame-paced primitive. It declares fixed
+timeline tracks, FPS, duration or bounded loop policy, input routes, audio
+tracks, scene-end route, inactivity route, and suspend/resume behavior. It may
+not execute arbitrary per-frame instructions.
 
 Rules:
 
-- `module_type` must be approved by the Engine contract
-- module config must be validated before package compilation/export
-- host-defined update cadence and action limits apply
-- module must declare reactive wait, suspend/resume, and failure-fallback behavior
-- module must declare allowed runtime-unit transitions
-- module may not contain arbitrary unbounded code
-
-`LP_MODULE` exists to make common structured gameplay easier without exposing RTOS or hardware control.
+- all tracks and loops are statically bounded
+- frame and event work fit the selected target profile
+- a scene-end route is required
+- an inactivity route to `STATE_SCENE` or shell is required
+- changed-region rendering is used where useful
+- Platform selects the lowest measured operating point that meets deadlines
 
 ---
 
-## RT_SCENE Requirements
+## PROGRAM_SCENE Requirements
 
-`RT_SCENE` is the package-facing primitive for active frame-paced scenes.
+`PROGRAM_SCENE` is the package-facing primitive for programmable active
+frame-paced scenes.
 
 It may use:
 
@@ -233,21 +232,23 @@ Required declarations:
 - input focus scope
 - sensor/audio/communication contexts
 - meaningful-activity sources
-- bounded input-lock deferral declarations where used
+- bounded inactivity-deferral declarations where used
 - suspend behavior
 - resume behavior
-- reactive fallback runtime unit
+- inactive `STATE_SCENE` or shell route
 - realtime cadence/power intent
 
 Rules:
 
-- an enabled PeepOS input-lock policy applies according to the package declaration and selected target profile
-- realtime work must stop, suspend, or transition when no meaningful activity remains
+- PeepOS interaction-state policy always applies
+- realtime work must stop, suspend, or transition when inactivity is admitted
 - frame logic must not block on storage, communication, save writes, or hardware completion
 - overruns must be observable through diagnostics where the active profile allows
-- `RT_SCENE` must expose a declared reactive fallback and must leave frame-paced execution when an enabled input lock activates
+- `PROGRAM_SCENE` must expose a declared inactivity route and leave frame-paced execution before `INACTIVE` is established
 
-`RT_SCENE` has no fixed maximum active duration at this contract level. It may remain active while meaningful user activity or Platform-approved active work continues.
+`PROGRAM_SCENE` has no fixed maximum active duration at this contract level. It
+may remain active while meaningful user activity or Platform-approved work
+continues.
 
 ---
 
@@ -267,7 +268,7 @@ state_graph:
   local_variables[]
   action_tables[]
   reactive_wait_tables[]
-  input_lock_policy_ref
+  interaction_policy_ref
   bounds
 ```
 
@@ -282,7 +283,7 @@ Rules:
 - parallel state regions are allowed only if their scheduling and action cost are statically bounded
 - every state that can settle without transitioning must resolve a reactive wait contract
 - gameplay inactivity timers compile as normal delayed events and state transitions, not PeepOS lock settings
-- graph-local variables must declare type, size, reset behavior, and persistence behavior
+- graph-local variables and scene/entity properties must declare type, size, range, reset behavior, and persistence behavior
 
 ---
 
@@ -294,7 +295,7 @@ Allowed event classes:
 
 | Event Class | Source Contract |
 |---|---|
-| lifecycle | runtime host mount/start/suspend/resume/lock/unlock/stop/unmount |
+| lifecycle | runtime host mount/start/suspend/resume/inactive/active/stop/unmount |
 | input action | [[Input_Focus_API_Contract]] |
 | delayed timer | [[Time_And_Power_Intent_API_Contract]] |
 | local calendar schedule | [[Time_And_Power_Intent_API_Contract]] |
@@ -309,7 +310,7 @@ Allowed event classes:
 Rules:
 
 - event payloads are fixed-schema and bounded
-- event queue depth is bounded by runtime class and target profile
+- event queue depth is bounded by scene type and target profile
 - event dispatch order must be deterministic for a fixed input trace
 - overflow behavior must be declared and validated
 - hardware faults are not ordinary gameplay events
@@ -353,7 +354,7 @@ Allowed action categories:
 
 - set or clear graph variable
 - transition state
-- push, pop, or replace runtime unit through declared edges
+- transition package scene through declared edges
 - request draw/update through [[Rendering_API_Contract]]
 - request input focus change through [[Input_Focus_API_Contract]]
 - request audio cue or BBB pattern through [[Audio_API_Contract]]
@@ -382,7 +383,7 @@ Runtime logic may use several variable classes.
 | Variable Class | Purpose | Durability |
 |---|---|---|
 | transient | current state/event calculation | lost on stop/unmount |
-| unit-local | runtime unit state | survives within mounted unit lifecycle |
+| scene-local | active scene state | survives while the scene remains mounted or retained by declared policy |
 | fast-resume | small STOP-resume state where profile supports it | retained only across supported low-power resume |
 | save-backed | durable package state | persisted through save schema |
 | package setting | package-owned user preference | persisted through save/settings schema |
@@ -395,6 +396,8 @@ Rules:
 - retained snapshots must be versioned and integrity checked where used
 - packages must tolerate fast-resume loss by restoring from durable save/default state
 - variables may not contain raw pointers, host paths, hardware addresses, or private struct layouts
+- `system.*` values are read-only consistent Engine snapshots or symbolic event fields
+- `game.*`, `scene.*`, and `entity.*` values compile to stable typed IDs, not runtime string reflection
 
 ---
 
@@ -402,32 +405,32 @@ Rules:
 
 Runtime logic receives work through events and approved ticks.
 
-| Runtime Class | Tick Semantics |
+| Scene Type | Tick Semantics |
 |---|---|
-| `LP_GRAPH` | no free-running tick; reactive event/schedule/wake transactions |
-| `LP_MODULE` | host-defined bounded reactive transactions; yields between admitted events |
-| `RT_SCENE` | frame tick while realtime activity remains valid |
+| `STATE_SCENE` | no free-running logic tick; reactive event/schedule/wake transactions |
+| `SEQUENCE_SCENE` | validated timeline frame tick while the scene remains active |
+| `PROGRAM_SCENE` | sandboxed program frame tick while realtime activity remains valid |
 
 Rules:
 
 - reactive logic must not emulate an awake loop or display animation with high-frequency delayed events
 - repeated timers must declare maximum cadence and catch-up behavior
-- `RT_SCENE` frame delta comes from Engine time model, not hardware timer registers
+- realtime frame delta comes from the Engine time model, not hardware timer registers
 - missed ticks must be handled through bounded catch-up or discard policy
 - Platform may clamp, coalesce, delay, or suppress work according to power policy
 
 ---
 
-## Runtime Unit Transitions
+## Scene Transitions
 
-Runtime unit transitions use the package model defined in [[Package_Contract]].
+Scene transitions use the package model defined in [[Package_Contract]].
 
 Allowed transition forms:
 
 ```text
-transition_to(unit_id)
-push_unit(unit_id)
-pop_unit()
+transition_to(scene_id)
+push_scene(scene_id)
+pop_scene()
 exit_to_shell(reason)
 ```
 
@@ -439,7 +442,7 @@ Rules:
 - transition actions are bounded
 - active contexts must be released, suspended, or transferred according to their contracts
 - input focus must be released or transferred during transition
-- realtime units must declare fallback routing before validation accepts them
+- realtime scenes must declare inactivity routing before validation accepts them
 
 ---
 
@@ -453,7 +456,7 @@ Package logic failures include:
 - action budget exceeded
 - frame budget exceeded
 - missing required asset after validation
-- unhandled runtime unit failure
+- unhandled scene failure
 - package-declared fault code
 
 Platform hardware failures include:
@@ -482,7 +485,7 @@ Required behavior:
 
 - same state graph data
 - same action tables
-- same runtime unit transitions
+- same scene transitions
 - same event ordering for a fixed trace
 - same cadence clamp behavior from the selected target profile
 - same save/schema behavior
@@ -503,8 +506,8 @@ Required checks:
 
 - entry point exists
 - every state/transition/action reference resolves
-- runtime unit declarations are valid
-- runtime class requirements are satisfied
+- scene declarations are valid
+- scene-type requirements are satisfied
 - action table length and cost are bounded
 - expression cost is bounded
 - timer cadence and catch-up policy are valid
@@ -512,7 +515,7 @@ Required checks:
 - event queue bounds are valid
 - capability use is declared
 - power compliance is satisfied
-- `RT_SCENE` frame budget, meaningful-activity sources, bounded lock deferrals, suspend/resume behavior, and reactive fallback unit are declared
+- realtime scene frame/timeline budget, meaningful-activity sources, bounded inactivity deferrals, suspend/resume behavior, and inactive route are declared
 - every reactive state resolves a waiting visual, event interests, and fallback
 - asset, save, input, sensor, audio, communication, time, power, and diagnostics references resolve
 - generated logic contains no hardware, RTOS, filesystem, Platform-internal, or host-path references
@@ -544,19 +547,19 @@ Any generated artifact containing these constructs must fail internal safety ver
 
 ## Validation Cases
 
-1. valid `LP_GRAPH` state graph validates and runs from entry node.
+1. valid `STATE_SCENE` graph validates and runs from its entry node.
 2. missing entry state fails package validation.
 3. transition to undeclared state fails package validation.
-4. transition to undeclared runtime unit fails package validation.
+4. transition to undeclared scene fails package validation.
 5. unbounded action loop fails validation in every build profile.
-6. `LP_GRAPH` high-frequency polling timer fails validation.
-7. `LP_GRAPH` with bounded calendar schedule and catch-up policy validates.
-8. `LP_MODULE` without approved `module_type` fails validation.
-9. `RT_SCENE` without frame budget fails validation.
-10. `RT_SCENE` without a reactive fallback fails validation.
+6. `STATE_SCENE` high-frequency polling timer fails validation.
+7. `STATE_SCENE` with bounded calendar schedule and catch-up policy validates.
+8. `SEQUENCE_SCENE` with an unbounded timeline loop fails validation.
+9. `PROGRAM_SCENE` without frame budget fails validation.
+10. realtime scene without an inactivity route fails validation.
 11. reactive state without a resolvable wait contract fails validation.
-12. unbounded input-lock deferral fails validation.
-13. `RT_SCENE` frame overrun emits diagnostics where profile allows and follows lifecycle policy.
+12. unbounded inactivity deferral fails validation.
+13. `PROGRAM_SCENE` frame overrun emits diagnostics where profile allows and follows lifecycle policy.
 14. suspend/resume during active runtime logic preserves or reconstructs package state according to declared persistence classes.
 15. package logic cannot receive hardware owner faults as normal gameplay branches.
 16. digital twin replay of a fixed input/time/sensor trace produces identical state and diagnostics output.

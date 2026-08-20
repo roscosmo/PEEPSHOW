@@ -97,29 +97,29 @@ At `2x`, `tone5` behaves as a 2x2 virtual-pixel coverage model. Larger integer s
 
 ## Runtime Compositor Layers
 
-The baseline runtime compositor has three fixed physical layers.
+The runtime compositor has four retained logical layers.
 
 Visual order, top to bottom:
 
-1. `UI`
-2. `GAME`
-3. `BG`
+1. `OVERLAY`
+2. `UI`
+3. `SCENE`
+4. `BACKGROUND`
 
-Composition order is implementation-defined as long as the visible result is equivalent to:
+Composition is implementation-defined as long as each owned pixel on a higher
+layer replaces lower-layer output. A transparent pixel does not overwrite lower
+layers.
 
-```text
-BG base
-GAME replaces BG where GAME owns pixels
-UI replaces GAME/BG where UI owns pixels
-```
+Rules:
 
-Each runtime layer has ownership/opacity semantics. A transparent pixel does not overwrite lower layers.
-
-Authoring tools may expose more logical layers, but the compiler must flatten, merge, or schedule those layers into the bounded runtime compositor model.
-
-System UI is Platform/Engine-owned and may use reserved crisp 1bpp assets. Package UI defaults to `masked_1bpp`; `tone5` package UI is allowed only when explicitly authored and within render budget.
-
-System UI is reserved PeepOS behavior for setup, calibration, package management, diagnostics, errors, shipping mode, and related system flows. It is not a package-authored game layer.
+- retained layer planes live outside the Platform autonomous-display SRAM arena
+- `BACKGROUND` may be opaque; transparent layers retain explicit ownership/mask data
+- changed content is tracked per layer and composed into final changed panel rows internally
+- authoring tools may expose more source layers only when tooling can flatten them into this bounded model
+- `OVERLAY` is Engine/Platform controlled
+- packages may provide validated overlay style assets, including inactive-state styling, but may not suppress mandatory system warnings
+- system setup, calibration, package management, diagnostics, faults, shipping state, and interaction-state cues may use the reserved overlay path
+- package UI defaults to `masked_1bpp`; `tone5` UI is allowed only when explicitly authored and within budget
 
 ---
 
@@ -137,7 +137,7 @@ The Engine may expose these package-facing primitives:
 - present scene or frame update
 - request static, realtime, or low-power presentation intent through power policy
 
-The Engine may also support bounded procedural surfaces for advanced packages. Procedural surfaces must declare dimensions, memory budget, operation budget, runtime-class limits, and fallback behavior before package compilation.
+The Engine may also support bounded procedural surfaces for advanced packages. Procedural surfaces must declare dimensions, memory budget, operation budget, scene-type limits, and fallback behavior before package compilation.
 
 ---
 
@@ -159,10 +159,11 @@ Rules:
 
 | Execution Semantic | Rendering Rule |
 |---|---|
-| `REACTIVE` | bounded drawing/presentation occurs during an admitted event transaction; after the settled view and waiting visual are established, the runtime yields |
-| `REALTIME` | frame-paced drawing occurs within the declared frame budget |
+| `STATE_SCENE / REACTIVE` | bounded drawing occurs during an admitted event transaction; after the settled view and waiting presentation are established, the runtime yields |
+| `SEQUENCE_SCENE / REALTIME` | validated timeline frames are composed and presented at the declared FPS |
+| `PROGRAM_SCENE / REALTIME` | sandboxed frame logic submits bounded drawing within the declared frame budget |
 
-A settled reactive state declares a waiting visual:
+A settled `STATE_SCENE` declares a waiting visual:
 
 - `hold`: preserve the committed frame without package drawing
 - `sequence`: bounded cosmetic motion derived from authored frames/sprites/UI elements
@@ -170,6 +171,10 @@ A settled reactive state declares a waiting visual:
 - `hold_fallback`: preserve the settled frame when animation cannot be admitted
 
 Waiting visual intent does not select an autonomous backend. The Platform may compile it for LPBAM/LPDMA, use a measured wake/update/return path, reduce it, or hold the frame according to target-profile grants and declared fallback.
+
+Every waiting presentation also resolves a backend-neutral presentation
+timeline. The timeline owns the epoch, phase index, and next deadline. Changing
+between awake rendering and an autonomous backend must preserve that timeline.
 
 ---
 
@@ -186,6 +191,8 @@ Rules:
 - the Platform may store admitted sequence content as full frames, logical deltas, hardware row deltas, repeated payloads, or another display-owner format
 - SRAM4 placement and LPDMA/LPBAM payload format are Platform internals
 - sequence frame count, cadence, cycle duration, and target-compiler admission are capped by the selected target profile; wake/exit behavior comes from the enclosing reactive wait
+- phase durations are integer multiples of the target presentation quantum; the HW6 v1 quantum is `250 ms`
+- backend handoff starts with the phase after the committed physical frame and must not rebase the presentation epoch
 - packages describe preferred and fallback appearance; tools derive whether `display.waiting_visual_animation` is required or optional
 
 ---
@@ -195,14 +202,15 @@ Rules:
 Rendering validation must check:
 
 - asset pixel model is known and supported by the target profile.
-- sprite, tile, font, and animation bounds fit package and runtime-unit budgets.
+- sprite, tile, font, and animation bounds fit package and scene budgets.
 - tone5 assets have deterministic coverage output.
 - integer scale factors fit output bounds and render budget.
-- draw command count fits the runtime class.
+- draw command count fits the scene type.
 - runtime compositor layer use fits the fixed layer model.
 - tilemap dimensions, viewport bounds, and layer flattening are valid.
 - text layout cannot overflow declared bounds unless clipping/wrapping policy is declared.
-- `RT_SCENE` frame rendering fits frame budget.
+- `SEQUENCE_SCENE` timeline rendering fits its FPS, duration, track, and frame budgets.
+- `PROGRAM_SCENE` rendering fits its program and frame budgets.
 - reactive rendering establishes its next waiting visual and yields after the event transaction settles.
 - waiting visual sequences are precomposed, bounded, and validated against the target profile.
 - no package artifact exposes panel-native framebuffer, changed-row transfer control, SRAM4 placement, SPI, DMA, LPBAM, EXTCOMIN, or display power policy.
@@ -211,7 +219,9 @@ Rendering validation must check:
 
 ## Digital Twin Requirements
 
-The digital twin must use the same package assets, renderer semantics, tone5 coverage rules, layer order, and runtime mode rules as the device contract.
+The digital twin must use the same package assets, renderer semantics, tone5
+coverage rules, layer order, scene rules, presentation epoch, and phase-deadline
+rules as the device contract.
 
 It may render to a host window or image buffer, but screenshots and frame checksums must be derived from the same logical canvas semantics used by the package runtime.
 
@@ -219,6 +229,7 @@ It may render to a host window or image buffer, but screenshots and frame checks
 
 Related:
 
+- [[Scene_Runtime_and_Interaction_Model]]
 - [[Game_Authoring_API_Contract]]
 - [[PeepOS_Capability_Registry]]
 - [[Package_Contract]]

@@ -28,7 +28,7 @@ The report answers:
 - which package was built
 - which target profile it was checked against
 - which schemas and tools produced the result
-- which runtime units exist
+- which scenes exist
 - which templates, Authoring Kits, prefabs, behavior graphs, or behavior macros contributed source content where recorded
 - which capabilities are required, optional, granted, blocked, mocked, or waived
 - which budgets were consumed
@@ -47,7 +47,7 @@ The compatibility report may contain:
 - selected build profile
 - selected target profile identity, version, status, and hash
 - tool and schema versions
-- runtime unit inventory
+- scene inventory
 - authoring source provenance for templates, Authoring Kits, prefabs, behavior graphs, and behavior macros
 - capability admission results
 - budget summaries
@@ -114,14 +114,14 @@ compatibility_report:
       template_version
       source_status              # imported, customized, stale, unresolved
       editable_slot_status
-      generated_runtime_unit_refs[]
+      generated_scene_refs[]
       issue_refs[]
     authoring_kits[]:
       kit_id
       kit_name
       kit_version
       kit_type
-      generated_runtime_unit_refs[]
+      generated_scene_refs[]
       required_capabilities[]
       optional_capabilities[]
       issue_refs[]
@@ -149,19 +149,20 @@ compatibility_report:
     advisory_count
     waived_count
     blocking_count
-  runtime_units[]:
-    unit_id
-    unit_name
-    runtime_class
+  scenes[]:
+    scene_id
+    scene_name
+    scene_type
     entry_ref
-    reactive_fallback_ref
+    inactive_route_ref
+    failure_route_ref
     required_capabilities[]
     optional_capabilities[]
     budget_status
     validation_status
   capabilities[]:
     capability
-    requested_by[]              # package, runtime_unit, asset, schedule, context
+    requested_by[]              # package, scene, asset, schedule, context
     requirement_level           # required, optional, session_required, dev_only
     target_grant_status
     fallback_declared
@@ -181,20 +182,19 @@ compatibility_report:
     communication
     time_power
     waiting_visual_sequences
-  input_lock:
-    enabled
+  interaction_state:
     target_timeout_policy_ref
     meaningful_activity_sources[]
-    lock_route
-    lock_target
-    locked_waiting_visual_ref
+    inactive_route
+    inactive_target_scene
+    inactive_waiting_visual_ref
     bounded_deferral_status
     contexts[]:
       state_path
       meaningful_activity_sources[]
       bounded_deferral_status
-    unlock_action = START
-    unlock_press_consumed = true
+    target_activation_gestures[]
+    activation_gesture_consumed = true
     admission_status
     issue_refs[]
   waiting_visual_admission[]:
@@ -233,7 +233,7 @@ compatibility_report:
     validation_log_ref
 ```
 
-`package_path` is a package/schema path such as a runtime unit, asset ID, schedule ID, or content parameter ID. It must not be a host absolute filesystem path.
+`package_path` is a package/schema path such as a scene, asset ID, schedule ID, or content parameter ID. It must not be a host absolute filesystem path.
 
 ---
 
@@ -245,10 +245,10 @@ Compatibility report categories:
 |---|---|
 | `manifest` | package identity, entry point, schema version |
 | `authoring_source` | template, Authoring Kit, prefab, graph, or macro provenance and customization status |
-| `runtime_units` | runtime class, declared transitions, fallback route |
+| `scenes` | scene type, declared transitions, inactive/end/failure routes |
 | `runtime_logic` | states, guards, actions, queues, bounded execution |
 | `capabilities` | required/optional grants, fallback behavior |
-| `power_time` | reactive waits, optional input lock/routes, cadence, schedules, calendar use |
+| `power_time` | reactive waits, interaction/inactive routes, cadence, schedules, calendar use |
 | `rendering` | logical surface, layers, tone5, waiting-visual assets and fallbacks |
 | `assets` | chunk bounds, decode budget, deterministic conversion |
 | `input` | logical input bindings, focus scopes, wake intents |
@@ -357,7 +357,7 @@ The package blob may include a `compat_report` chunk for diagnostics.
 Rules:
 
 - installer validation must not trust the report as proof of package safety.
-- installer validation must re-check package integrity, schema compatibility, runtime class compatibility, and required capability compatibility.
+- installer validation must re-check package integrity, schema compatibility, scene type compatibility, and required capability compatibility.
 - a report embedded in a package must match the package checksum or be ignored as stale.
 - a sidecar report may include richer authoring detail than an embedded report.
 
@@ -391,10 +391,10 @@ The digital twin must still enforce runtime contracts directly. A compatibility 
 10. user-facing messages do not expose HAL, RTOS, filesystem, flash-offset, SRAM, DMA, register, or debug-transport terms during normal authoring.
 11. compatibility report contains no host absolute paths required by runtime behavior.
 12. digital twin rejects a package whose report targets a different source target profile unless explicitly revalidated.
-13. package with automatic locking disabled validates without a lock route.
-14. enabled input lock without one admitted route fails validation.
-15. package-authored lock timeout or unbounded lock deferral fails validation.
-16. compatibility output records Start as consumed system unlock and never as a simultaneous package action.
+13. package attempt to disable system inactivity handling fails validation.
+14. interaction policy without one admitted inactive route fails validation.
+15. package-authored inactivity timeout or unbounded inactivity deferral fails validation.
+16. compatibility output records the target-owned activation gesture as consumed and never as a simultaneous package action.
 
 ---
 

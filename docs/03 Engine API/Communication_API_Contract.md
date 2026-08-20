@@ -80,7 +80,7 @@ Packages do not own BLE hardware behavior.
 - Packages must not depend on a specific BLE profile, advertising interval, GATT characteristic, UART baud rate, or module command set.
 - Message schemas must be versioned and bounded.
 - Message send/receive behavior must have fixed maximum payload size and rate limits.
-- Communication runtime units must declare either fallback/route behavior or session-required admission behavior.
+- Communication scenes must declare either fallback/route behavior or session-required admission behavior.
 - Multiplayer-only and companion-required package experiences are valid when declared and bounded.
 - Interactive session waits may request only the bounded peer-wait behavior granted by the target profile.
 - BLE hardware faults are Platform health events, not package gameplay logic.
@@ -96,7 +96,7 @@ HW6 BLE behavior is currently defined by [[BLE_Communication_Contract]].
 Package-facing implications:
 
 - communication is an awake-session feature on HW6.
-- `LP_GRAPH` cannot depend on receiving BLE messages.
+- a yielded `STATE_SCENE` cannot depend on receiving communication messages on HW6.
 - packages must not declare BLE-message wake on HW6 profiles.
 - Platform may power the module down when no approved communication context is active.
 - final message payload limits, session limits, latency, and throughput must be updated after NINA bring-up evidence.
@@ -116,7 +116,7 @@ Communication capabilities:
 | `comm.multiplayer` | package may use abstract multiplayer sessions and bounded messages |
 | `comm.companion` | package may use companion-app sessions and bounded messages |
 | `comm.local_loopback` | host/digital-twin or diagnostic loopback session support |
-| `comm.session_required` | runtime unit may require an active communication session for admission |
+| `comm.session_required` | scene may require an active communication session for admission |
 | `comm.message_schema` | package declares bounded versioned message schemas |
 
 Capability names must not include BLE, NINA, UART, GAP, GATT, SPS, AT commands, pins, or bonding storage.
@@ -133,7 +133,7 @@ Conceptual schema:
 communication_profile:
   contexts[]:
     context_id
-    runtime_unit_refs[]
+    scene_refs[]
     mode
     role_intent
     session_type
@@ -152,9 +152,9 @@ Modes:
 
 | Mode | Meaning |
 |---|---|
-| `none` | runtime unit does not use communication |
-| `optional` | runtime unit can use communication but has a declared non-session route |
-| `session_required` | runtime unit requires an active session before entry or meaningful operation |
+| `none` | scene does not use communication |
+| `optional` | scene can use communication but has a declared non-session route |
+| `session_required` | scene requires an active session before entry or meaningful operation |
 
 Role intents:
 
@@ -167,9 +167,9 @@ Role intents:
 
 Rules:
 
-- every communication context must belong to a declared runtime unit.
+- every communication context must belong to a declared scene.
 - every context must reference a message schema unless it uses only built-in session lifecycle events.
-- session-required runtime units must declare an admission route when no session exists.
+- session-required scenes must declare an admission route when no session exists.
 - optional contexts must declare fallback/route behavior.
 - timeout and session-end policy must be explicit.
 - interactive wait policy must be explicit when a context expects the local device to remain awake while a remote peer is taking a turn or supplying the next meaningful session action.
@@ -196,7 +196,7 @@ Rules:
 
 - target profiles decide whether interactive session wait is supported and the maximum awake grace that may be granted.
 - packages may request peer-wait behavior only through a declared communication context.
-- package code does not set the PeepOS input-lock timeout or create an unbounded peer wait.
+- package code does not set the PeepOS inactivity timeout or create an unbounded peer wait.
 - `refresh_message_types[]` may name bounded schema messages that represent meaningful peer progress or input.
 - generic keepalive traffic, presence chatter, and arbitrary high-rate messages must not be used to defeat low-power policy.
 - wait expiry must route through a declared session idle, pause, fallback, or reactive transition.
@@ -302,19 +302,19 @@ Rules:
 
 ---
 
-## Runtime Class Rules
+## Scene Type Rules
 
-| Runtime Class | Communication Behavior |
+| Scene Type | Communication Behavior |
 |---|---|
-| `LP_GRAPH` | no active BLE receive dependency on HW6; local/offline graph behavior only |
-| `LP_MODULE` | optional or session-required contexts allowed while awake if target profile grants capability |
-| `RT_SCENE` | multiplayer contexts allowed only within declared realtime budget and rate limits |
+| `STATE_SCENE` | optional or session-required contexts may run during bounded awake transactions, but yielded HW6 scenes cannot depend on communication receive wake |
+| `SEQUENCE_SCENE` | communication routes allowed only within declared realtime timeline, message, and rate bounds |
+| `PROGRAM_SCENE` | multiplayer contexts allowed only within declared realtime budget and rate limits |
 
 Waiting visuals do not run arbitrary package communication logic.
 
 For HW6, communication cannot be a wake source. A communication session may raise the Platform power floor while admitted, but the reactive host still yields when its bounded transaction settles and Platform remains the sleep authority.
 
-An admitted interactive wait policy may grant bounded peer-wait behavior when the target profile supports it. It cannot bypass an enabled input lock, create unbounded lock deferral, or turn message traffic into a communication wake source.
+An admitted interactive wait policy may grant bounded peer-wait behavior when the target profile supports it. It cannot bypass system inactivity policy, create unbounded inactivity deferral, or turn message traffic into a communication wake source.
 
 ---
 
@@ -330,20 +330,20 @@ Reject:
 - unbounded message queue.
 - unbounded send rate.
 - unknown or unresolved message schema.
-- session-required runtime unit without admission/session route.
+- session-required scene without admission/session route.
 - optional communication context without fallback/route behavior.
 - interactive wait policy when the selected target profile does not support it.
 - interactive wait policy without a declared wait-expiry route.
 - interactive wait policy that depends on keepalive or unbounded chatter to stay awake.
-- `LP_GRAPH` unit depending on BLE receive.
+- yielded `STATE_SCENE` depending on communication receive wake.
 - realtime communication context without declared budget/rate limits.
 - arbitrary byte stream unless a future bounded stream primitive is contracted.
 
 Authoring tools should explain failures in PeepOS terms, such as:
 
 ```text
-This reactive graph waits for a communication message, but HW6 communication cannot wake the device.
-Use an awake session module or provide a local route.
+This state scene waits for a communication message, but HW6 communication cannot wake the device.
+Use an active sequence/program scene or provide a local route.
 ```
 
 They should not expose BLE/NINA implementation terms to normal game authors.
@@ -410,13 +410,13 @@ Rules:
 
 1. package message schema validates max payload size, message types, and rate limits.
 2. package cannot reference BLE/NINA/UART/GATT/GAP/bonding details.
-3. `LP_GRAPH` communication receive dependency fails HW6 validation.
+3. yielded `STATE_SCENE` communication receive dependency fails HW6 validation.
 4. communication wake intent fails HW6 validation.
-5. session-required runtime unit stays in declared admission route when no session exists.
-6. optional communication runtime unit follows declared fallback/route behavior.
+5. session-required scene stays in declared admission route when no session exists.
+6. optional communication scene follows declared fallback/route behavior.
 7. peer disconnect is delivered as package-visible session event.
 8. BLE owner fault is logged as Platform/Engine diagnostic and not exposed as UART/NINA error to package gameplay code.
 9. digital twin multi-instance session replay is deterministic for a fixed trace.
 10. digital twin delayed/drop/disconnect fault injection validates package session behavior without acting as HW6 bring-up evidence.
 11. interactive peer-wait policy validates only when the target profile grants it and the context declares a wait-expiry route.
-12. keepalive or unbounded chatter cannot refresh peer-wait grace, prevent reactive yield, or bypass enabled input lock.
+12. keepalive or unbounded chatter cannot refresh peer-wait grace, prevent reactive yield, or bypass system inactivity policy.

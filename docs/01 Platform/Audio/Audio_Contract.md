@@ -46,8 +46,8 @@ Speaker path:
 - 16 kHz mono output
 - 16-bit PCM DMA output
 - 4-bit IMA ADPCM assets, mono, 16 kHz
-- realtime units may use exactly 1 music voice plus 5 SFX voices
-- reactive units may use bounded SFX bursts only; music is rejected or deferred to a realtime/sustained-audio grant
+- admitted `SEQUENCE_SCENE` and `PROGRAM_SCENE` execution may use exactly 1 music voice plus 5 SFX voices
+- `STATE_SCENE` execution may use bounded SFX bursts only; music is rejected or deferred to a realtime/sustained-audio grant
 - music/SFX mixing to mono PCM where the active target profile grants sustained audio
 - volume, mute, fade, ducking, priority, and preemption
 
@@ -102,7 +102,7 @@ Audio buses:
 - `sfx`
 - `bbb`
 
-Platform may reject requests that exceed validated bounds. On HW6, music requests are valid only while the active unit has a realtime or future sustained-audio grant. Reactive units may request short SFX only; while the SFX is active `thAudio` may keep the MCU awake and hold `SAI_AUDIO_ACTIVE`, but it must release that clock intent when the burst drains so the system can return to its selected reactive waiting backend.
+Platform may reject requests that exceed validated bounds. On HW6, music requests are valid only while the active scene has a realtime or future sustained-audio grant. A `STATE_SCENE` may request short SFX only; while the SFX is active `thAudio` may keep the MCU awake and hold `SAI_AUDIO_ACTIVE`, but it must release that clock intent when the burst drains so the system can return to its selected reactive waiting backend.
 
 ## BBB Pattern Model
 
@@ -213,7 +213,7 @@ BBB rules:
 - Active BBB output may block deep sleep for the duration of the pattern.
 - `thAudio` publishes active/inactive state to `thPower` and requests `SAI_AUDIO_ACTIVE` only while the speaker path genuinely needs the SAI kernel clock.
 - Reactive SFX may hold `SAI_AUDIO_ACTIVE` only for the bounded burst/drain window, then must release it before PeepOS can return to STOP/LPBAM waiting behavior.
-- Realtime audio may hold `SAI_AUDIO_ACTIVE` for the admitted realtime unit lifetime, subject to quiesce/suspend policy.
+- Realtime audio may hold `SAI_AUDIO_ACTIVE` for the admitted realtime scene lifetime, subject to quiesce/suspend policy.
 - FW0 runtime-admission evidence validates only the runtime-side `REALTIME_DEADLINE_ACTIVE` hold/release behavior. It does not by itself grant music or prove mixer load; `thAudio` must still separately request `SAI_AUDIO_ACTIVE` for actual speaker playback.
 - Before deep sleep: drain or stop playback, stop DMA, stop BBB output, place `SD_MODE` low, release audio clock intent, and acknowledge quiesce.
 - Resume must revalidate clocks, SAI, DMA, and LPTIM before accepting requests.

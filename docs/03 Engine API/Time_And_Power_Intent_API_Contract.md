@@ -10,6 +10,7 @@ Related:
 - [[PeepOS_Capability_Registry]]
 - [[Package_Contract]]
 - [[Runtime_Host_Contract]]
+- [[Scene_Runtime_and_Interaction_Model]]
 - [[Digital_Twin_Host_Runtime_Contract]]
 - [[Power_and_Sleep_Policy]]
 - [[PMIC_and_Power_Contract]]
@@ -21,7 +22,7 @@ Related:
 
 Games own logical time and state progression.
 
-PeepOS owns physical timebases, RTC setup, wake scheduling, sleep entry, clock policy, and enforcement of any package-enabled automatic input lock.
+PeepOS owns physical timebases, RTC setup, wake scheduling, sleep entry, clock policy, inactivity timing, and the system `ACTIVE`/`INACTIVE` interaction state.
 
 Package-facing time exists so packages can implement:
 
@@ -50,7 +51,7 @@ The Platform owns:
 - local-time policy
 - sleep class and clock transitions
 - wake-source arming
-- optional automatic input-lock timer and enforcement
+- system inactivity timer and `ACTIVE`/`INACTIVE` enforcement
 - quiesce/resume sequencing
 - PMIC and shipping-mode policy
 
@@ -59,7 +60,7 @@ The Engine owns:
 - package-facing logical time APIs
 - runtime lifecycle event delivery
 - schedule and delayed-event admission
-- runtime-unit cadence validation
+- scene cadence validation
 - power-intent validation
 - digital twin time model contract
 - package-visible wake reason normalization
@@ -71,9 +72,9 @@ Packages own:
 - elapsed-time reconciliation after suspend/resume
 - scheduled package events
 - reactive wait contracts and meaningful-activity declarations
-- declared reactive fallback routing
+- declared scene-end, inactive, and failure routing to a `STATE_SCENE` or shell
 - waiting-visual intent for settled reactive states
-- optional automatic input-lock policy and declared lock route
+- declared inactive route, meaningful-activity sources, and bounded inactivity deferrals
 
 Packages do not own physical time or power policy.
 
@@ -89,10 +90,10 @@ Packages do not own physical time or power policy.
 - `REACTIVE` logic runs in bounded event transactions and yields as soon as the transaction settles.
 - Waiting for input or another event never requires an awake package loop.
 - Waiting-display motion does not run package logic or advance committed game state.
-- Packages may enable or disable automatic input locking and declare one of the supported lock routes.
-- An enabled lock may be deferred only by statically bounded declared work.
-- Realtime execution must declare meaningful activity, suspend/resume behavior, and reactive fallback routing.
-- Runtime lifecycle events are the normal path for sleep/resume and lock/unlock reconciliation.
+- PeepOS always owns inactivity detection; packages cannot disable it or author its timeout.
+- A package declares an inactive route and may defer inactivity only for statically bounded work.
+- `SEQUENCE_SCENE` and `PROGRAM_SCENE` use `REALTIME`; each must declare meaningful activity, suspend/resume behavior, and a route to a settled `STATE_SCENE` or shell.
+- Runtime lifecycle events are the normal path for sleep/resume and active/inactive reconciliation.
 
 ---
 
@@ -148,7 +149,7 @@ resume_event.elapsed_calendar_ms
 
 Rules:
 
-- `runtime_elapsed_ms` advances while a runtime unit is active.
+- `runtime_elapsed_ms` advances while a package scene is active.
 - `frame_dt_ms` is supplied by the realtime host, not hardware timers.
 - elapsed suspended time is delivered through lifecycle/resume context.
 - reactive packages reconcile state from elapsed time instead of running continuously while suspended.
@@ -185,7 +186,7 @@ Rules:
 - Platform/Engine maps schedules onto safe wake/cadence behavior.
 - reactive schedules may be coalesced or delayed according to target profile.
 - tools must reject unbounded schedule tables.
-- high-frequency schedules must be valid for the runtime class and target profile.
+- high-frequency schedules must be valid for the scene type and target profile.
 - package schedules must survive suspend/resume through explicit package state or Engine schedule state.
 - missed events after long sleep are delivered according to declared catch-up policy.
 
@@ -209,22 +210,24 @@ Packages declare execution and cadence intent; Platform chooses physical timing 
 | Intent | Meaning |
 |---|---|
 | `REACTIVE` | bounded work occurs only in response to admitted events; runtime yields after settling |
-| `REALTIME` | frame-paced execution remains active while the realtime unit is admitted |
+| `REALTIME` | frame-paced execution remains active while the sequence or program scene is admitted |
 | `reactive_scheduled_event_hz` | maximum requested cadence for logical scheduled state updates |
-| `realtime_target_fps` | desired frame cadence for a realtime scene |
+| `realtime_target_fps` | desired frame cadence for a sequence or program scene |
 | `latency_tolerance` | acceptable response delay for package-visible work |
 
 Rules:
 
-- execution intent is tied to a runtime unit or authored block
+- execution intent is derived from the active scene type and authored block
 - execution intent and cadence are not requests for literal CPU frequency, voltage scale, PLL, or Platform operating point
 - Platform may change its measured internal operating point without changing the package-visible meaning of `REACTIVE` or `REALTIME`
-- `LP_GRAPH` and `LP_MODULE` are reactive by default
+- `STATE_SCENE` always uses `REACTIVE`
+- `SEQUENCE_SCENE` always uses `REALTIME` and executes a bounded, data-driven presentation timeline
+- `PROGRAM_SCENE` always uses `REALTIME` and executes sandboxed package instructions
 - reactive input work may be serviced promptly, then yields again
 - reactive logic must not poll or request periodic ticks merely to animate the display
 - a logical timer is valid only when game state or Engine behavior must advance
 - waiting visuals are presentation intent and may be implemented autonomously without a package tick
-- `RT_SCENE` frame pacing is valid only while realtime work remains admitted
+- realtime frame pacing is valid only while a sequence or program scene remains admitted
 - target profiles distinguish reactive event latency, scheduled logical cadence, and autonomous waiting-visual cadence
 
 Target profile cadence limits include:
@@ -260,7 +263,7 @@ on_mount(context)
 on_start(context)
 on_suspend(reason)
 on_resume(resume_context)
-on_system_lifecycle(event)  # DEVICE_LOCKED, DEVICE_UNLOCKED
+on_system_lifecycle(event)  # DEVICE_INACTIVE, DEVICE_ACTIVE
 on_stop(reason)
 on_unmount()
 ```
@@ -283,7 +286,7 @@ Rules:
 - `on_suspend` must not block indefinitely.
 - `on_resume` is where reactive packages reconcile elapsed time and wake reason.
 - package code must not assume it ran while suspended.
-- `DEVICE_LOCKED` and `DEVICE_UNLOCKED` follow [[Runtime_Host_Contract]] ordering and are not input actions.
+- `DEVICE_INACTIVE` and `DEVICE_ACTIVE` follow [[Runtime_Host_Contract]] ordering and are not input actions.
 - resume failure routes through Engine lifecycle policy, not partial runtime state.
 
 ---
@@ -324,7 +327,7 @@ Conceptual operations:
 power.publish_reactive_wait(wait_contract_id)
 power.mark_meaningful_activity(activity_source)
 power.realtime_work_pending(reason)
-power.defer_input_lock_until(bounded_completion_id)
+power.defer_inactivity_until(bounded_completion_id)
 ```
 
 A reactive wait contract resolves:
@@ -334,38 +337,40 @@ A reactive wait contract resolves:
 - logical schedules/deadlines
 - symbolic wake intents
 - package gameplay-timeout transitions
-- optional input-lock context reference for predeclared meaningful activity or bounded deferral
+- interaction context reference for predeclared meaningful activity or bounded inactivity deferral
 
 Rules:
 
 - after a reactive transaction settles, the host yields immediately
 - activity declarations do not directly keep hardware awake
-- only declared admitted sources may refresh an enabled input-lock timer
+- only declared admitted sources may refresh the system inactivity timer
 - passive animation, autonomous playback, keepalives, and arbitrary activity hints are not meaningful user activity
 - gyro or another non-button source may be meaningful activity when declared by the active block and granted by the target profile
-- bounded non-interruptible work may defer locking until completion or a validated timeout
-- unbounded lock deferral is invalid
-- `RT_SCENE` must declare meaningful activity, suspend/resume behavior, and a reactive fallback
+- bounded non-interruptible work may defer inactivity until completion or a validated timeout
+- unbounded inactivity deferral is invalid
+- `SEQUENCE_SCENE` and `PROGRAM_SCENE` must declare meaningful activity, suspend/resume behavior, and a route to a settled `STATE_SCENE` or shell
 
-### Automatic Input Lock
+### System Interaction State
 
-A package may enable or disable automatic input locking.
+PeepOS always maintains one system interaction state, independent of whether the CPU is awake or in STOP:
 
-When enabled, the package declares:
+- `ACTIVE`: package focus and admitted package input are available.
+- `INACTIVE`: package focus is suspended and only system-admitted activation gestures are accepted.
+
+The package declares:
 
 ```text
-input_lock_policy:
-  enabled
+interaction_policy:
   meaningful_activity_sources[]
-  lock_route                 # preserve_state, transition_to, exit_to_shell
-  lock_target                # required for transition_to
-  locked_waiting_visual_ref
+  inactive_route             # preserve_scene, transition_to_scene, exit_to_shell
+  inactive_target_scene      # required for transition_to_scene
+  inactive_waiting_visual_ref
   bounded_deferrals[]
 ```
 
-PeepOS owns the system-selected timeout, timer enforcement, input suppression, wake-source arming, and lifecycle ordering. A package may disable the automatic lock but does not author a replacement timeout. While locked, only Start wakes normal interaction. The Start press is consumed by unlock and is not delivered as a package action. Engine emits `DEVICE_LOCKED` after the declared lock route settles and emits `DEVICE_UNLOCKED` after runtime state and focus are ready, following [[Runtime_Host_Contract]].
+PeepOS owns the system-selected timeout, timer enforcement, input suppression, activation gesture, wake-source arming, and lifecycle ordering. The HW6 baseline activation gesture is Start. Target policy may later admit another button or a classified chord such as `L+R`; packages do not choose raw buttons or chords for this system action. The gesture that activates the device is consumed by PeepOS and is not delivered as a package action. Engine emits `DEVICE_INACTIVE` after the declared inactive route settles and emits `DEVICE_ACTIVE` after runtime state and focus are ready, following [[Runtime_Host_Contract]].
 
-Package-authored inactivity, such as leaving explore mode after 30 seconds, is represented by `schedule_after` plus a normal graph transition. It is independent of this system input lock.
+Package-authored inactivity, such as leaving explore mode after 30 seconds, is represented by `schedule_after` plus a normal scene transition. It is independent of the system interaction-state timer.
 
 ---
 
@@ -377,7 +382,7 @@ The communication contract may declare an interactive wait policy for that conte
 
 Rules:
 
-- peer-wait treatment cannot bypass an enabled input lock, create unbounded lock deferral, or prevent a reactive host from yielding.
+- peer-wait treatment cannot bypass system inactivity policy, create unbounded inactivity deferral, or prevent a reactive host from yielding.
 - packages do not author the grace duration through the power API.
 - meaningful remote activity may refresh peer-wait grace only when the communication context and target profile allow it.
 - keepalives, presence chatter, and arbitrary activity hints are not a general stay-awake path.
@@ -386,13 +391,13 @@ Rules:
 
 ---
 
-## Runtime Class Rules
+## Scene Type Rules
 
-| Runtime Class | Time And Power Behavior |
-|---|---|
-| `LP_GRAPH` | reactive event/schedule/input transactions; no polling or awake wait loop |
-| `LP_MODULE` | Engine-hosted bounded reactive transactions; yields between admitted interactions |
-| `RT_SCENE` | frame-paced active loop with meaningful-activity declaration and reactive fallback |
+| Scene Type | Execution | Time And Power Behavior |
+|---|---|---|
+| `STATE_SCENE` | `REACTIVE` | bounded event/schedule/input transactions; no polling or awake wait loop; settled presentation may continue through an admitted autonomous backend |
+| `SEQUENCE_SCENE` | `REALTIME` | frame-paced, data-driven timeline; must declare suspend behavior and a route to a settled state or shell |
+| `PROGRAM_SCENE` | `REALTIME` | frame-paced sandboxed instructions; must declare budgets, suspend behavior, and a route to a settled state or shell |
 
 Settled reactive presentation:
 
@@ -413,14 +418,14 @@ Reject:
 - unbounded schedule tables.
 - unbounded catch-up.
 - polling loops used to approximate reactive schedules or waiting-visual cadence.
-- high-frequency schedules or awake input-wait loops in reactive units.
+- high-frequency schedules or awake input-wait loops in state scenes.
 - reactive state without a waiting visual/event contract.
-- input-lock policy with an undeclared route.
-- package-authored system lock timeout or unlock action.
-- unbounded lock deferral or cosmetic animation declared as meaningful activity.
-- realtime runtime unit without meaningful-activity rules and a reactive fallback.
+- interaction policy with an undeclared inactive route.
+- package-authored system inactivity timeout or activation gesture.
+- unbounded inactivity deferral or cosmetic animation declared as meaningful activity.
+- sequence or program scene without meaningful-activity rules and a route to a settled state or shell.
 - interactive session wait without target-profile support or a declared expiry route.
-- runtime unit that requests cadence above target profile caps.
+- scene that requests cadence above target profile caps.
 - package wake intent unsupported by selected target profile.
 - communication wake intent on HW6 profiles while the capability is blocked.
 - package requiring `time.calendar` on a target profile that does not grant it.
@@ -429,7 +434,7 @@ Reject:
 Authoring tools should explain failures in PeepOS terms, such as:
 
 ```text
-This reactive block requests a 20 Hz schedule. Use RT_SCENE or lower the cadence.
+This state scene requests a 20 Hz logical schedule. Use a sequence or program scene, or lower the cadence.
 ```
 
 They should not expose RTC, STOP, clock, timer, or wake-pin implementation details to normal game authors.
@@ -454,8 +459,8 @@ Optional twin time models:
 Rules:
 
 - calendar time must be controllable in deterministic tests.
-- scheduled events, lifecycle events, wake reasons, cadence clamps, reactive yields, optional input-lock timing, consumed unlock presses, and admitted interactive peer-wait behavior must be replayable.
-- twin profiles must derive cadence caps and input-lock policy bounds from measured/frozen target profiles.
+- scheduled events, lifecycle events, wake reasons, cadence clamps, reactive yields, interaction-state timing, consumed activation gestures, and admitted interactive peer-wait behavior must be replayable.
+- twin profiles must derive cadence caps and interaction-policy bounds from measured/frozen target profiles.
 - twin evidence does not prove RTC hardware, wake latency, current draw, or physical sleep behavior.
 
 ---
@@ -468,18 +473,18 @@ Rules:
 4. `schedule_after` and `schedule_at_local` produce bounded package events.
 5. long sleep resumes package with elapsed suspended/calendar time and bounded missed-event summary.
 6. unbounded catch-up policy fails validation.
-7. reactive unit with polling or an awake input-wait loop fails validation.
-8. `RT_SCENE` without meaningful-activity rules and a reactive fallback fails validation.
+7. state scene with polling or an awake input-wait loop fails validation.
+8. sequence or program scene without meaningful-activity rules and a route to a settled state or shell fails validation.
 9. reactive transaction yields after its bounded state/action/render work settles.
-10. package-authored gameplay inactivity produces a normal scheduled transition and does not mutate the PeepOS lock timer.
-11. package may disable automatic input locking.
-12. enabled input lock suppresses all normal package controls except the system Start unlock action.
-13. a completed lock route emits `DEVICE_LOCKED`; the unlock Start press is consumed and `DEVICE_UNLOCKED` is delivered only after state/focus restoration.
-14. preserve-state, declared-state-transition, and shell-exit lock routes validate.
-15. bounded lock deferral validates; unbounded deferral fails.
-16. admitted gyro activity may refresh the lock timer only when declared and granted.
+10. package-authored gameplay inactivity produces a normal scheduled transition and does not mutate the PeepOS interaction-state timer.
+11. a package cannot disable system inactivity handling or author its timeout.
+12. `INACTIVE` suppresses normal package controls except the target-owned activation gesture.
+13. a completed inactive route emits `DEVICE_INACTIVE`; the activation gesture is consumed and `DEVICE_ACTIVE` is delivered only after state/focus restoration.
+14. preserve-scene, declared-scene-transition, and shell-exit inactive routes validate.
+15. bounded inactivity deferral validates; unbounded deferral fails.
+16. admitted gyro activity may refresh the inactivity timer only when declared and granted.
 17. autonomous waiting visuals do not advance committed package state.
 18. HW6 communication wake intent fails validation until a measured HW6 profile grants it.
-19. digital twin deterministic replay produces the same schedule, reactive-yield, lock/unlock, wake, lifecycle, and event sequence for a fixed trace.
+19. digital twin deterministic replay produces the same schedule, reactive-yield, inactive/active, wake, lifecycle, and event sequence for a fixed trace.
 20. digital twin accelerated sleep simulation is not used as physical-target current, wake-latency, or RTC hardware evidence.
-21. package-authored system lock timeout or unlock action fails validation.
+21. package-authored system inactivity timeout or activation gesture fails validation.

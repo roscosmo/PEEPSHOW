@@ -253,7 +253,7 @@ Target profiles may publish abstract memory limits:
 - content parameter blob bytes
 - save record bytes
 - diagnostics/event rate limits
-- runtime unit count and state/action table limits
+- package scene count and state/action table limits
 
 Target profiles must not publish:
 

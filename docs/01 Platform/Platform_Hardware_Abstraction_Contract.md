@@ -113,7 +113,7 @@ Forbidden consumers:
 - Every peripheral and shared datapath still has exactly one Platform owner as defined by [[HW6_Pin_Ownership_Matrix]] and [[RTOS_Ownership_and_Queue_Topology]].
 - The hardware abstraction performs bounded hardware actions only.
 - Owner threads own policy, sequencing, state machines, retries, capability publication, and user-visible behavior.
-- A hardware abstraction API must not silently start a Platform mode transition, change runtime class, mount storage, launch recovery UI, or publish Engine/Game events.
+- A hardware abstraction API must not silently start a Platform mode transition, change system host/scene/execution state, mount storage, launch recovery UI, or publish Engine/Game events.
 - Cross-thread calls into hardware abstraction APIs are allowed only when the target hardware path is owned by the calling owner or explicitly permitted by a shared-bus contract.
 
 Example:

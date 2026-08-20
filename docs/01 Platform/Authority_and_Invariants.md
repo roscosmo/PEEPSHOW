@@ -62,19 +62,21 @@ A generic subsystem or API contract does not grant physical target support. Targ
 
 ---
 
-## Canonical Runtime Classes
+## Canonical Runtime Vocabulary
 
-Use these exact runtime class tokens until explicitly replaced by a newer Engine contract:
+Use the three separate axes defined by [[Scene_Runtime_and_Interaction_Model]]:
 
-- `SHELL`
-- `LP_GRAPH`
-- `LP_MODULE`
-- `RT_SCENE`
-- `INSTALLER`
+- system hosts: `SHELL`, `PACKAGE`, `INSTALLER`
+- package scene types: `STATE_SCENE`, `SEQUENCE_SCENE`, `PROGRAM_SCENE`
+- execution semantics: `REACTIVE`, `REALTIME`
 
-These are runtime class tokens, not authoring reuse names.
+Mappings are fixed:
 
-Use `Authoring Kit` for reusable gameplay systems such as dialogue, shop, NPC, evolution, inventory, pathing, or quest logic. Do not use `module` as the general authoring name for gameplay reuse. `LP_MODULE` remains a runtime class token, and hardware modules remain Platform/Hardware terminology.
+- `STATE_SCENE` uses `REACTIVE`
+- `SEQUENCE_SCENE` uses `REALTIME`
+- `PROGRAM_SCENE` uses `REALTIME`
+
+Dialogue, Menu, Choice, Authoring Kits, prefabs, and behavior graphs are authoring constructs, not runtime scene types. The retired `LP_GRAPH`, `LP_MODULE`, and `RT_SCENE` tokens may appear in historical FW0 evidence but must not be used by new contracts, schemas, or package output.
 
 ---
 
@@ -127,15 +129,17 @@ Time-domain labels are mandatory for Platform timing knobs:
 
 ---
 
-## Input Lock Invariants
+## Interaction State Invariants
 
-- Automatic input locking is a package policy implemented and enforced by PeepOS. A package may enable or disable automatic locking.
-- The active target/system policy owns the input-lock timeout. A package cannot author a replacement timeout.
-- When automatic locking is enabled and its input-lock timer expires, only `START` may wake and unlock normal package interaction.
-- The physical `START` press used to unlock is consumed by PeepOS and is not delivered as a package action. The Engine receives a symbolic unlock lifecycle event instead.
-- A package may preserve its current state, transition to a declared package state, or exit to the PeepOS shell when locking occurs.
-- A package may defer locking only for statically bounded work. Unbounded lock deferral is forbidden.
-- Package-authored gameplay inactivity timers are normal bounded schedules and state transitions. They are separate from the PeepOS input-lock policy.
+- PeepOS owns the orthogonal interaction states `ACTIVE` and `INACTIVE`; neither state implies that the CPU is awake.
+- The active target/system policy owns the inactivity timeout. A package cannot author a replacement timeout.
+- Inactivity forces realtime work to its declared `STATE_SCENE` or shell route before normal package focus is suppressed.
+- Only target/system-admitted activation gestures may restore normal interaction from `INACTIVE`.
+- The HW6 baseline activation gesture is `START`, but the contract permits future admitted buttons or chords such as `L+R`.
+- The physical activation gesture is consumed by PeepOS and is not delivered as a package action. The Engine receives an ordered symbolic lifecycle event instead.
+- A package may select a declared inactive scene route and validated overlay style. It may not bypass system focus suppression, timeout enforcement, or wake policy.
+- A package may defer inactivity only for statically bounded work. Unbounded deferral is forbidden.
+- Package-authored gameplay timers remain normal bounded schedules and transitions. They are separate from the PeepOS interaction-state timer.
 
 ---
 

@@ -48,8 +48,8 @@ The Platform owns:
 
 The Engine owns:
 
-- package sensor capability declarations
-- runtime-unit sensor context admission
+- compiler-derived package sensor capability declarations
+- scene sensor context admission
 - stable game-facing sensor primitives
 - tool-time validation rules
 - lifecycle behavior when a required sensor primitive cannot be maintained
@@ -57,7 +57,7 @@ The Engine owns:
 
 Packages own:
 
-- declaration of which sensor primitives their runtime units use
+- selection of sensor primitives used by their scenes
 - gameplay use of resolved sensor values and events
 - optional content fallbacks where the package is intentionally portable across profiles
 
@@ -70,7 +70,7 @@ Packages do not own hardware behavior.
 - Game code must not request ADC, GPIO, I2C, register, interrupt, or sensor power behavior.
 - Normal gameplay APIs must not expose hardware rejection, register faults, ADC timeouts, I2C errors, or low-level sensor health codes.
 - Sensor mode and cadence validity is checked before package compilation/export.
-- If a runtime unit declares a sensor context that is valid for the selected target profile, PeepOS is responsible for providing it under nominal hardware conditions.
+- If a scene declares a sensor context that is valid for the selected target profile, PeepOS is responsible for providing it under nominal hardware conditions.
 - If a required sensor primitive fails at runtime, Platform/Engine handles it through fault logging, degraded capability state, and package lifecycle policy.
 - Optional sensor behavior exists for content design and target-profile portability, not as routine hardware-failure handling.
 - Sensor diagnostics may expose detailed fault information to developer tools and logs, but not as normal package gameplay state.
@@ -126,7 +126,7 @@ Conceptual schema:
 sensor_profile:
   contexts[]:
     context_id
-    runtime_unit_ref
+    scene_ref
     required_capabilities[]
     optional_capabilities[]
     mode
@@ -151,8 +151,8 @@ Allowed modes:
 
 Rules:
 
-- each context belongs to one or more declared runtime units.
-- context cadence must be valid for the runtime class and target profile.
+- each context belongs to one or more declared scenes.
+- context cadence must be valid for the scene type and target profile.
 - context duration must be bounded unless the mode is explicitly low-power safe.
 - optional capabilities must declare content fallback behavior.
 - required capability failure at runtime is handled by Platform/Engine lifecycle policy, not gameplay branching.
@@ -237,17 +237,17 @@ Rules:
 
 ---
 
-## Runtime Class Rules
+## Scene Type Rules
 
-| Runtime Class | Sensor Behavior |
+| Scene Type | Sensor Behavior |
 |---|---|
-| `LP_GRAPH` | snapshots, step sessions, low-rate events, and wake intents only; no active high-rate stream |
-| `LP_MODULE` | snapshots, one-shot samples, low-rate periodic contexts, step sessions, and bounded event interests |
-| `RT_SCENE` | bounded motion/light streams allowed when declared and valid for target profile |
+| `STATE_SCENE` | snapshots, one-shot samples, low-rate periodic contexts, step sessions, bounded event interests, and wake intents; no active high-rate stream while yielded |
+| `SEQUENCE_SCENE` | bounded streams allowed only when required by declared timeline tracks and valid for the target profile |
+| `PROGRAM_SCENE` | bounded motion/light streams allowed when declared and valid for the target profile |
 
 Waiting visuals do not execute arbitrary package sensor logic. Platform may keep approved sensor-event or wake policy active if the selected target profile supports it.
 
-Automatic input locking applies when enabled by the package. Declared gyro or other admitted sensor activity may refresh that lock only under the active block policy; a package must not keep realtime sensor streaming or lock deferral alive indefinitely.
+System inactivity policy always applies. Declared gyro or other admitted sensor activity may refresh the interaction window only under the active scene policy; a package must not keep realtime sensor streaming or inactivity deferral alive indefinitely.
 
 ---
 
@@ -259,20 +259,20 @@ Reject:
 
 - raw ADC, GPIO, I2C, EXTI, register, address, or HAL references.
 - direct sensor power, calibration, or wake-pin control.
-- high-rate streaming in `LP_GRAPH`.
+- high-rate streaming in `STATE_SCENE`.
 - unbounded sensor streaming.
 - per-step MCU wake requirements.
 - sensor cadence above the selected target profile limit.
 - required sensor capability not present in the selected target profile.
 - optional sensor feature without declared content fallback.
-- sensor context not tied to a declared runtime unit.
+- sensor context not tied to a declared scene.
 - wake intent unsupported by the selected target profile.
 
 Authoring tools should explain failures in PeepOS terms, such as:
 
 ```text
-Motion stream is not valid in LP_GRAPH.
-Use RT_SCENE for this minigame or lower the sensor mode to event_interest.
+Motion stream is not valid in STATE_SCENE.
+Use SEQUENCE_SCENE or PROGRAM_SCENE for this interaction, or lower the sensor mode to event_interest.
 ```
 
 They should not expose register, ADC, interrupt, or driver details to normal game authors.
@@ -283,7 +283,7 @@ They should not expose register, ADC, interrupt, or driver details to normal gam
 
 Target profiles publish measured sensor contexts.
 
-A target profile sensor context describes what PeepOS can provide to packages for a capability, runtime class, and power class.
+A target profile sensor context describes what PeepOS can provide to packages for a capability, scene type, and power class.
 
 Conceptual shape is defined in [[Target_Profile_Schema_Contract]] and includes:
 
@@ -291,7 +291,7 @@ Conceptual shape is defined in [[Target_Profile_Schema_Contract]] and includes:
 sensor_context:
   context_id
   capability
-  runtime_classes[]
+  scene_types[]
   power_class
   grant_status
   sample_rate_hz_min
@@ -310,7 +310,7 @@ Rules:
 - rates are not sensor-wide facts; they belong to a measured context.
 - Platform sampling cadence and package-visible event cadence are separate.
 - wake-capable sensor behavior must be evidence-backed before shipping profiles grant it.
-- high-duty streaming contexts must be runtime-class bounded and duration bounded.
+- high-duty streaming contexts must be scene-type bounded and duration bounded.
 
 ---
 
@@ -321,9 +321,9 @@ Runtime sensor faults are handled outside normal gameplay APIs.
 If a required sensor primitive cannot be maintained:
 
 1. Platform records the sensor owner fault.
-2. Engine records affected package ID, runtime unit, and sensor context.
+2. Engine records affected package ID, scene, and sensor context.
 3. package state is preserved where possible.
-4. Engine applies lifecycle policy, such as suspend, exit to shell, or route to a declared safe runtime unit.
+4. Engine applies lifecycle policy, such as suspend, exit to shell, or route to a declared safe state scene.
 5. developer diagnostics receive a fault trace.
 
 Normal package gameplay code must not branch on low-level sensor fault causes.
@@ -335,7 +335,7 @@ Normal package gameplay code must not branch on low-level sensor fault causes.
 Diagnostic traces may include:
 
 - package ID
-- runtime unit ID
+- scene ID
 - sensor context ID
 - requested PeepOS capability
 - resolved Platform cadence/mode
@@ -374,8 +374,8 @@ Rules:
 
 1. package using `sensor.light` receives resolved light level and band without ADC/GPIO exposure.
 2. package using step sessions can reset package baseline without resetting hardware counter.
-3. `LP_GRAPH` package with high-rate motion stream fails tool validation.
-4. `RT_SCENE` package with bounded motion stream validates only when target profile grants `sensor.imu_motion_stream`.
+3. `STATE_SCENE` package with high-rate motion stream fails tool validation.
+4. sequence/program scene with bounded motion stream validates only when target profile grants `sensor.imu_motion_stream`.
 5. per-step MCU wake requirement fails validation.
 6. sensor wake intent is accepted only when the target profile supports it.
 7. required sensor primitive fault at runtime is logged and handled through lifecycle policy.

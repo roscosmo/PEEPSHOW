@@ -7,7 +7,7 @@ design and imported IOC.
 |---|---|---|---|---|
 | RTC | internal RTC wake using external source on `PC14` | `thPower` | scheduled low-power wake | pending HW6 proof |
 | Boot button | `PH3 BTN_BOOT`; BOOT0 at reset, EXTI3 after app starts | ROM bootloader, then `thInput` | boot/maintenance | pending HW6 proof |
-| Start | `PA4 BTN_START`, EXTI4, ADP5360 MR path | `thInput` / `thPower` | primary unlock/power intent | pending HW6 proof |
+| Start | `PA4 BTN_START`, EXTI4, ADP5360 MR path | `thInput` / `thPower` | initial system activation gesture and primary power intent | pending HW6 proof |
 | A | `PB5`, EXTI5 | `thInput` | policy-defined input wake | pending HW6 proof |
 | B | `PB6`, EXTI6 | `thInput` | policy-defined input wake | pending HW6 proof |
 | L | `PB7`, EXTI7 | `thInput` | policy-defined input wake | pending HW6 proof |

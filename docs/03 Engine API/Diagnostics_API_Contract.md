@@ -157,7 +157,7 @@ Rules:
 | `authoring_preview` | verbose markers, counters, timing, trace values, warnings, and package faults allowed within bounds |
 | `dev_package` | useful markers/counters/timing allowed within bounds |
 | `release_candidate` | limited diagnostics; warnings must be resolved or waived |
-| `shipping` | minimal package fault codes, package ID/runtime unit, selected bounded counters, and compatibility references only |
+| `shipping` | minimal package fault codes, package ID/scene ID, selected bounded counters, and compatibility references only |
 
 Shipping diagnostics must be low-overhead, deterministic, and rate-limited.
 
@@ -253,7 +253,7 @@ Diagnostic marker table has 600 entries; this profile allows 128.
 1. package marker emits a bounded timeline record in dev/twin profile.
 2. package counter emits fixed-schema numeric value within rate limits.
 3. package timing scope reports bounded package/runtime timing without hardware callbacks.
-4. shipping profile preserves minimal package fault code and runtime unit evidence.
+4. shipping profile preserves minimal package fault code and scene evidence.
 5. verbose trace values are rejected or stripped in shipping profile unless release policy allows them.
 6. package diagnostics cannot reference SWD, SWO, UART, USB, BLE, storage regions, hardware registers, or RTOS objects.
 7. package fault routes through Engine lifecycle policy.

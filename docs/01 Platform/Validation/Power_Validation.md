@@ -8,7 +8,7 @@ Each entry must include:
 - board revision
 - firmware commit
 - knobs/configuration hash or version
-- runtime class, `REACTIVE`/`REALTIME` semantic, and deterministic workload ID
+- system host, scene type/ID, `REACTIVE`/`REALTIME` semantic, and deterministic workload ID
 - physical backend, sleep class, and armed wake sources
 - internal operating-point ID plus SYSCLK/HCLK, voltage scale, flash/cache state, and relevant kernel clocks
 - instrumentation profile and external measurement configuration

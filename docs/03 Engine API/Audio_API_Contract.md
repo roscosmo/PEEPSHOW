@@ -155,7 +155,7 @@ audio_profile:
     max_duration_ms
   audio_contexts[]:
     context_id
-    runtime_unit_refs[]
+    scene_refs[]
     active_cue_refs[]
     bbb_pattern_refs[]
     volume_defaults
@@ -180,7 +180,7 @@ Rules:
 - every cue ID must be package-local and stable.
 - every cue asset reference must resolve at package validation time.
 - cue groups and priorities must be declared, bounded, and deterministic.
-- audio contexts must be tied to declared runtime units.
+- audio contexts must be tied to declared scenes.
 - active audio may raise the Platform power floor, but packages do not choose sleep class.
 - physical output suppression must not corrupt package state.
 
@@ -341,17 +341,17 @@ Rules:
 
 ---
 
-## Runtime Class Rules
+## Scene Type Rules
 
-| Runtime Class | Audio Behavior |
+| Scene Type | Audio Behavior |
 |---|---|
-| `LP_GRAPH` | symbolic cue triggers and short bounded BBB/SFX only; no unbounded active playback requirement |
-| `LP_MODULE` | music/SFX/BBB allowed when declared and bounded by context |
-| `RT_SCENE` | active music/SFX/BBB allowed while realtime activity remains valid |
+| `STATE_SCENE` | symbolic cue triggers and bounded audio contexts; no unbounded active playback requirement while yielded |
+| `SEQUENCE_SCENE` | bounded music/SFX/BBB tracks allowed inside the compiled realtime timeline |
+| `PROGRAM_SCENE` | active music/SFX/BBB allowed while declared realtime activity and budgets remain valid |
 
 Waiting visuals do not execute arbitrary package audio logic. Platform may stop, fade, or suppress audio when a reactive host yields or when system policy requires it.
 
-Automatic input locking applies when enabled by the package. Audio may count as meaningful active work only when declared and accepted by runtime policy; passive looping audio cannot create unbounded lock deferral.
+System inactivity policy always applies. Audio may count as meaningful active work only when declared and accepted by runtime policy; passive looping audio cannot create unbounded inactivity deferral.
 
 ---
 
@@ -370,7 +370,7 @@ Reject:
 - BBB frequency, duration, step count, repeat count, curve, or envelope outside target bounds.
 - cue priority/group definitions that are ambiguous or unbounded.
 - package references to SAI, DMA, LPTIM, GPIO, `SD_MODE`, amplifier state, mixer buffers, decoder internals, FAT paths, host paths, or hardware callbacks.
-- runtime unit audio context that conflicts with power/runtime class rules.
+- scene audio context that conflicts with power/scene-type rules.
 
 Authoring tools should explain failures in PeepOS terms, such as:
 

@@ -84,6 +84,6 @@ Likely Reference Game Authoring Kits include:
 - Encounter Kit
 - Microgame Kit
 
-These kits must compile through the same package contracts, runtime units, content parameters, save/settings schemas, capability requirements, and compatibility reports available to other packages.
+These kits must compile through the same package contracts, scene types, content parameters, save/settings schemas, capability requirements, and compatibility reports available to other packages.
 
 Reference Game-specific content may instantiate or customize these kits, but it must not define private Engine APIs or Platform behavior.

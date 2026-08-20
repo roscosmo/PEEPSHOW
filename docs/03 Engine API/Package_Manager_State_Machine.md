@@ -116,8 +116,8 @@ States:
 - `ASSET_REQ_ERROR`
 
 Rules:
-- asset requests are legal only for the active package/runtime-unit context.
-- required runtime-unit assets must be validated/prepared before runtime start.
+- asset requests are legal only for the active package/scene context.
+- required scene assets must be validated/prepared before scene start.
 - runtime hosts receive handles/views, not chunk offsets or storage addresses.
 - storage reads are issued through the storage owner.
 - asset faults propagate to runtime fallback, safe return, or package quarantine according to fault class.
@@ -140,5 +140,5 @@ Rules:
 3. index rebuild and recovery path correctness
 4. runtime launch and return synchronization
 5. invalid transitions rejected with explicit errors
-6. asset request from inactive package/runtime unit is rejected
+6. asset request from inactive package/scene is rejected
 7. package quarantine invalidates outstanding asset handles

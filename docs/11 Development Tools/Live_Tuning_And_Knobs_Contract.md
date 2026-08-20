@@ -223,7 +223,7 @@ Allowed apply policies:
 | `next_event` | apply before next owner event dispatch |
 | `next_frame` | apply at next frame boundary |
 | `next_static_update` | apply at next static/low-power update boundary |
-| `next_unit_transition` | apply when runtime unit changes |
+| `next_scene_transition` | apply when the active package scene changes |
 | `next_boot` | stage for next boot only |
 | `rebuild_required` | not live-editable |
 

@@ -147,7 +147,7 @@ Power correlation builds should emit bounded Platform markers for:
 | operating point | transition requested, clocks/voltage valid, transition complete, transition failed; payload uses a bounded internal point ID |
 | owner | owner wake, owner idle, owner fault, quiesce begin/ack |
 | display | flush requested, full flush begin/end, partial flush begin/end, LPBAM sequence arm/disarm |
-| input | input wake, focus delivery, meaningful-activity admission, lock timer reset, lock, consumed Start unlock |
+| input | input wake, focus delivery, meaningful-activity admission, inactivity-timer refresh, inactive transition, consumed activation gesture |
 | sensor | IMU sample burst, step session update, and any additional profile-granted sensor sample |
 | audio | speaker stream begin/end, amplifier enable/disable, and target-granted procedural-output markers |
 | communication | NINA wake/sleep, BLE advertise, connected, message TX/RX |
@@ -174,14 +174,14 @@ Baseline scenarios:
 |---|---|
 | boot to shell idle | baseline startup cost and idle plateau |
 | shell idle | steady interactive baseline |
-| reactive hold wait | sleep baseline while an unlocked package waits for input |
+| reactive hold wait | sleep baseline while an `ACTIVE` package waits for input |
 | reactive input transaction | input wake, bounded state/render work, and return-to-wait cost |
 | reactive operating-point sweep | compare identical event-to-yield transactions across valid candidate points |
 | reactive waiting-visual sequence | autonomous waiting motion and fallback cost |
 | `REALTIME` active loop | frame cadence and CPU/display cost |
 | realtime operating-point sweep | compare frame/audio deadline margin and sustained power across valid candidate points |
 | operating-point transition | measure transition latency/charge and establish switching break-even/hysteresis |
-| optional input-lock expiry and Start unlock | lock overlay, consumed unlock press, and lifecycle cost |
+| system inactivity expiry and target-owned activation | inactive route/overlay, consumed activation gesture, and lifecycle cost; HW6 initially uses Start |
 | STOP entry and wake | physical sleep entry cost, STOP current, wake cost |
 | display full flush | worst-case display transfer cost |
 | display partial flush | normal changed-region transfer cost |
@@ -232,7 +232,7 @@ For each scenario, record:
 - duration
 - average current over the scenario window
 - estimated charge cost where practical
-- runtime class, execution semantic, and deterministic workload ID
+- system host, scene type/ID, execution semantic, and deterministic workload ID
 - internal operating-point ID and full clock/voltage configuration
 - instrumentation profile
 
@@ -266,7 +266,7 @@ Intended path:
 PPK2 current traces
   + Tracealyzer/telemetry correlation
   + measured battery capacity/profile
-  + measured runtime-class costs
+  + measured host/scene/execution costs
   -> Platform power model
   -> target-profile budgets and estimates
   -> package validator/runtime compatibility reports
@@ -275,7 +275,7 @@ PPK2 current traces
 Possible future package-facing outputs:
 
 - broad battery state or icon level
-- estimated runtime class cost category
+- estimated scene/execution cost category
 - compatibility warning for expensive contexts
 - package validation report showing power-relevant declarations
 

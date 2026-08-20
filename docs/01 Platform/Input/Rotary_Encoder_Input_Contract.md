@@ -138,9 +138,9 @@ Invalid transitions must be rejected and logged.
 | Mode | Encoder Policy |
 |---|---|
 | `SHELL` | enabled when interactive UI expects rotary navigation |
-| `LP_GRAPH` | off unless Engine capability request or wake policy explicitly arms it |
-| `LP_MODULE` | policy-defined by Engine focus request; wake-armed only by explicit policy |
-| `RT_SCENE` | enabled only while active scene requests encoder focus |
+| `STATE_SCENE` | enabled or wake-armed only while the active focus context and target policy admit it |
+| `SEQUENCE_SCENE` | enabled only while the active sequence requests encoder focus and can meet its realtime budget |
+| `PROGRAM_SCENE` | enabled only while the active program requests encoder focus and can meet its realtime budget |
 | `INSTALLER` | disabled unless installer UI explicitly requires local navigation |
 
 The encoder may enter `ENC_WAKE_ARMED` when requested by input focus, UI, game, or wake policy.

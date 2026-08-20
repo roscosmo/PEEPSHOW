@@ -11,6 +11,7 @@ Related:
 - [[PeepOS_Capability_Registry]]
 - [[Game_Authoring_API_Contract]]
 - [[Package_Contract]]
+- [[Scene_Runtime_and_Interaction_Model]]
 - [[Digital_Twin_Host_Runtime_Contract]]
 - [[HW6_Brought_Up_Tracker]]
 - [[Validation_Plan]]
@@ -27,7 +28,7 @@ Related:
 
 Target profiles allow tools to answer:
 
-- which runtime classes are available
+- which package scene types are available
 - which Engine-visible capabilities are granted
 - which capabilities are optional or blocked
 - what display, cadence, memory, audio, input, sensor, communication, save, and diagnostics limits apply
@@ -119,7 +120,7 @@ capability_grant:
   grant_status
   may_be_required_by_package
   fallback_required_if_used
-  runtime_classes[]
+  scene_types[]
   constraints_ref
   evidence_ref
   notes
@@ -150,13 +151,14 @@ Required runtime fields:
 
 ```text
 runtime:
-  classes[]              # LP_GRAPH, LP_MODULE, RT_SCENE, plus Platform-owned SHELL/INSTALLER where relevant
-  default_package_class
+  system_hosts[]         # SHELL, PACKAGE, INSTALLER
+  package_scene_types[]  # STATE_SCENE, SEQUENCE_SCENE, PROGRAM_SCENE
+  default_package_scene_type = STATE_SCENE
   allowed_transitions[]
   reactive_wait_required
-  runtime_units_max
-  runtime_unit_nesting_depth_max
-  runtime_transition_chain_max
+  scene_count_max
+  scene_nesting_depth_max
+  scene_transition_chain_max
 ```
 
 Required logic fields:
@@ -176,12 +178,12 @@ logic:
 
 Rules:
 
-- `RT_SCENE` units must declare frame budget, meaningful-activity rules, suspend behavior, resume behavior, and a reactive fallback route.
-- `LP_GRAPH` must not request high-frequency polling.
-- `LP_MODULE` must declare an approved module type.
+- `STATE_SCENE` always uses `REACTIVE` and must not request high-frequency polling.
+- `SEQUENCE_SCENE` always uses `REALTIME` and must declare bounded tracks, frame budget, meaningful-activity rules, suspend/resume behavior, a scene-end route, and an inactive route.
+- `PROGRAM_SCENE` always uses `REALTIME` and must declare sandbox budgets, frame budget, meaningful-activity rules, suspend/resume behavior, and inactive/failure routes.
 - `reactive_wait_required` means every state/block that can settle must resolve an event/schedule/waiting-visual contract so the host can yield without an awake input-wait loop.
-- `runtime_unit_nesting_depth_max` limits how many package runtime units may be nested or suspended behind each other.
-- `runtime_transition_chain_max` limits how many state/runtime transitions may execute from one event before the runtime must yield or report validation failure.
+- `scene_nesting_depth_max` limits how many package scenes may be nested or suspended behind each other.
+- `scene_transition_chain_max` limits how many state/scene transitions may execute from one event before the runtime must yield or report validation failure.
 - neither field describes ThreadX stack memory.
 
 ---
@@ -214,13 +216,20 @@ display:
     compatibility_reporting = abstract_utilization
     precomposed_or_tool_resolved_1bpp = true
     evidence_ref
+  presentation_timeline:
+    phase_quantum_ms = 250
+    backend_handoff_preserves_epoch = true
+    autonomous_first_phase_is_next = true
+    wake_resume_uses_elapsed_phase = true
 ```
 
 Required rendering fields:
 
 ```text
 rendering:
-  layer_order_top_to_bottom[] = [UI, GAME, BG]
+  layer_order_top_to_bottom[] = [OVERLAY, UI, SCENE, BACKGROUND]
+  retained_layer_bytes_max
+  retained_object_count_max
   masked_1bpp_supported
   tone5:
     supported
@@ -253,7 +262,9 @@ Rules:
 - `authored_frame_count_max` is a portable authoring bound, not a guarantee that every sequence with that many frames fits the target compiler; admission remains content-dependent.
 - `cycle_duration_ms_max` limits one authored visual loop; it does not limit how long a reactive state may remain waiting or how long an admitted loop may repeat.
 - `compiler_profile_id` selects a versioned Platform-owned admission model. Normal package tools receive pass/fail, abstract utilization, and fallback results; they do not receive panel-row, transfer-chunk, descriptor, SRAM4, or LPBAM limits.
-- system UI is reserved PeepOS behavior for setup, calibration, package management, diagnostics, errors, shipping mode, and related system flows. It is not a package-authored game layer.
+- `phase_quantum_ms` is presentation cadence, not a package logic tick; HW6 v1 uses 250 ms phases and therefore a two-phase one-quantum blink has a 500 ms full cycle.
+- every display backend consumes one presentation epoch; backend handoff must not restart or duplicate a phase.
+- `OVERLAY` is reserved Engine/Platform behavior for interaction state, setup, calibration, package management, diagnostics, errors, shipping mode, and related system flows. Packages may supply validated style assets but cannot suppress mandatory system content.
 
 ---
 
@@ -265,15 +276,14 @@ Required fields:
 power:
   reactive_sleep_immediate = true
   realtime_requires_admitted_work = true
-  input_lock:
-    package_may_disable = true
+  interaction_state:
     timeout_ms_default
     timeout_ms_min
     timeout_ms_max
     bounded_deferral_ms_max
-    unlock_action = START
-    unlock_press_consumed = true
-    lock_routes[] = [preserve_state, transition_to, exit_to_shell]
+    activation_gestures[] = [START]
+    activation_gesture_consumed = true
+    inactive_routes[] = [preserve_scene, transition_to_scene, exit_to_shell]
     meaningful_activity_sources[]
   communication_wake_supported
   interactive_session_wait:
@@ -311,17 +321,19 @@ Rules:
 
 - packages may read valid PeepOS calendar time where granted
 - packages may not set RTC/calendar time
-- reactive runtimes yield immediately after bounded event work settles
-- packages may enable or disable automatic input locking; target profiles do not override this invariant
-- enabled lock policy uses the active target/system timeout, must fit profile deferral bounds, and must use an admitted lock route
-- unlock Start is consumed; Engine emits `DEVICE_UNLOCKED` instead of delivering a package Start action
-- meaningful activity must come from admitted declared sources; cosmetic animation cannot refresh the lock timer
-- package gameplay inactivity is a normal schedule/transition and does not alter system lock policy
-- `RT_SCENE` requires a reactive fallback and bounded deferral declarations where used
+- state scenes yield immediately after bounded event work settles
+- packages cannot disable PeepOS inactivity handling or author its timeout
+- interaction policy must fit profile deferral bounds and use an admitted inactive route
+- the target-owned activation gesture is consumed; Engine emits `DEVICE_ACTIVE` instead of delivering the same physical gesture as a package action
+- HW6 initially admits Start; later evidence-backed target profiles may admit another button or a classified chord such as `L+R`
+- meaningful activity must come from admitted declared sources; cosmetic animation cannot refresh the interaction window
+- package gameplay inactivity is a normal schedule/transition and does not alter system interaction policy
+- sequence and program scenes require inactive routes and bounded deferral declarations where used
 - static/one-shot display terminology does not define CPU residency
 - baseline reactive waits that require MCU wake/update/return are modeled separately from waiting visuals that continue autonomously
 - power estimates are derived from measured Platform profiles and are advisory unless a later contract makes them normative
 - reactive/realtime clock and voltage operating points remain internal Platform facts; profiles publish only derived latency, cadence, workload, compatibility, and estimate limits
+- Platform may add measured intermediate PLL operating points between its baseline and maximum modes without changing package schemas; scene admission selects required service/deadline classes, not MHz
 - a package cannot require a literal operating point, and changing the internal Platform point must not change Engine semantic behavior
 - package tools may consume estimate summaries and compatibility warnings, but not raw power traces or Platform operation-cost tables
 - package wake behavior uses `wake_intents_supported[]`; hardware wake details remain Platform/HW documentation
@@ -339,6 +351,8 @@ input:
   package_inputs[]
   dev_only_inputs[]
   system_override_actions[]
+  interaction_activation_gestures[]
+  interaction_activation_gesture_consumed = true
   encoder_supported
   joystick_vector_supported
   joystick_direction_supported
@@ -356,7 +370,7 @@ sensors:
   sensor_contexts[]:
     context_id
     capability
-    runtime_classes[]
+    scene_types[]
     power_class
     grant_status
     may_be_required_by_package
@@ -391,7 +405,7 @@ communication:
   multiplayer_supported
   companion_supported
   local_loopback_supported
-  session_required_units_supported
+  session_required_scenes_supported
   message_payload_bytes_max
   message_rate_max
   wake_supported = false
@@ -416,7 +430,7 @@ Rules:
 - sensor context IDs are abstract PeepOS names, not hardware part, register, interrupt, ADC, I2C, or pin names.
 - `sample_rate_hz_*` describes Platform sampling cadence; `event_rate_hz_max` describes package-visible event delivery.
 - `wake_capable`, `continuous_in_sleep`, and `mcu_wake_required` must be measured or explicitly marked pending before shipping use.
-- high-duty sensor contexts must declare runtime classes and bounded duration.
+- high-duty sensor contexts must declare scene types and bounded duration.
 - audio-centric packages are allowed; mute is user/platform policy, not package validation failure.
 - communication sessions are abstract and must not expose BLE/NINA/UART terms to packages.
 
@@ -460,7 +474,7 @@ package_limits:
   package_bytes_max
   asset_bytes_max
   runtime_ram_bytes_max
-  runtime_unit_count_max
+  scene_count_max
   save_settings_bytes_max
   diagnostics_table_bytes_max
   content_parameter_count_max
@@ -529,7 +543,7 @@ Profile changes require:
 16. package diagnostics cannot request debug transports, protected storage, or dashboard export ownership.
 17. package limits expose abstract compatibility budgets, not SRAM banks, linker sections, flash offsets, heap regions, or DMA buffers.
 18. interactive communication wait validates against profile peer-wait support and grace limits without granting communication wake.
-19. package-authored input-lock timeout or unlock action fails validation.
+19. package-authored system inactivity timeout or physical activation gesture fails validation.
 20. every HW6 profile blocks `input.encoder`, `sensor.light`, `sensor.light_stream`, and `audio.bbb` regardless of inherited HW5 profile data.
 
 ---

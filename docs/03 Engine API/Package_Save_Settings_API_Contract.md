@@ -191,7 +191,7 @@ typedef enum {
 
 typedef struct {
     uint32_t package_id;
-    uint32_t runtime_unit_id;
+    uint32_t scene_id;
     uint32_t record_id;
     uint32_t schema_version;
     uint32_t max_bytes;

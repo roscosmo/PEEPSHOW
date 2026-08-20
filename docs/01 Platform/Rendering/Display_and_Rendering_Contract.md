@@ -28,7 +28,8 @@ Display is Platform-owned. Engine and Reference Game code request scene/frame pr
 - No direct display HAL/LL calls are allowed outside `thDisplay`.
 - Engine/Reference Game code renders into approved abstractions and requests presentation.
 - Low-level panel code lives in `LS013B7DH05.c` and is limited to Sharp Memory LCD command framing, transfer preparation, DMA/polling flush mechanics, and panel-native clear/present operations.
-- The Platform display renderer lives above the panel driver in `display_renderer.c`; it owns the retained framebuffer, logical-to-native drawing helpers, basic text/shape composition, diagnostic patterns, framebuffer hash, and minimal FW0 UI page rendering.
+- The Platform display renderer lives above the panel driver in `display_renderer.c`; it owns retained logical layers, composition into the committed native framebuffer, logical-to-native drawing helpers, dirty rows, basic text/shape composition, diagnostic patterns, framebuffer hash, and minimal FW0 UI page rendering.
+- The canonical compositor order is `OVERLAY`, `UI`, `SCENE`, `BACKGROUND`. FW0 currently proves one committed framebuffer and incremental cursor rows; retained per-layer storage remains pending.
 
 ## Electrical / Low-Power Rules
 
@@ -99,6 +100,7 @@ HW6 display DMA/LPDMA source data must live in the SRAM4 display-DMA/autonomous 
 | Buffer | Purpose | Placement |
 |---|---|---|
 | committed panel framebuffer | retained `144 x 168` 1bpp recovery/seed truth | retained non-SRAM4 runtime RAM |
+| retained logical compositor layers | `OVERLAY`, `UI`, `SCENE`, `BACKGROUND` pixels plus required ownership masks | retained non-SRAM4 runtime RAM |
 | display transmit scratch | Sharp LCD command/row payload stream, approximately 3,364 B including alignment | SRAM4 overlay arena while awake transfer is active |
 | compiled waiting-visual payload | target-specific autonomous wire payload | same SRAM4 overlay arena after seed transfer completes |
 | LPBAM/LPDMA descriptors and metadata | autonomous linked-list execution | fixed SRAM4 display-owner reservations |
@@ -220,9 +222,9 @@ Required handoff:
 
 ```text
 reactive transaction settles
-  -> committed framebuffer updated in retained runtime RAM
+  -> dirty logical layers composed into committed framebuffer
   -> seed frame presented through SRAM4 TX scratch
-  -> waiting visual compiled against the committed seed
+  -> waiting visual compiled against the committed seed and presentation timeline
   -> SRAM4 scratch overlaid by compiled payload
   -> autonomous slice validated and armed when admitted
   -> display owner acknowledges ready to power owner
@@ -230,6 +232,12 @@ reactive transaction settles
 ```
 
 The first autonomous transition begins from the seeded physical frame. Autonomous playback changes only presentation; it does not mutate committed package state. On wake or abort, the display owner reclaims SPI3/LPDMA/LPBAM and restores a known normal-display state before accepting new presents.
+
+The presentation epoch, current phase, and next deadline are Engine/renderer
+state, not LPBAM state. Awake rendering and autonomous playback consume the same
+timeline. Backend prepare, commit, wake, and abort must not restart the
+animation. On wake, the display owner and Engine reconcile elapsed time and
+resume the correct phase with the remaining interval.
 
 FW0 now has a backend selector for display waiting. `HELD_FRAME` is the default baseline STOP2 backend: a completed successful current-page render may be held through STOP2 without arming LPBAM. If an awake renderer animation is active, `thPower` must suppress that animation and request a bounded cursor-visible handoff from `thDisplay` before STOP2 entry so the held panel image is deterministic. `LPBAM` is the autonomous backend: normal display actions clear `display_lpbam_ready`, and `thPower` asks `thDisplay` for an LPBAM prepare handoff before automatic STOP2 admission may treat LPBAM as ready. `thDisplay` may satisfy STOP2 LPBAM validation only when it later reports a ready page, ready render count, and `HAL_OK` LPBAM status that still match the current UI state. The first real HW6 path now prepares and starts a debug/test cursor-slice LPBAM payload; `UNAVAILABLE` remains the correct result when no validated LPBAM slice exists for the current renderer state or target profile. If entry is abandoned after a successful prepare, `thPower` must send the display abort handoff so normal display ownership is reclaimed. FW0 target evidence validates both the older forced-ready abort shape and the real cursor-slice start/STOP2/wake/abort path.
 
@@ -283,9 +291,9 @@ Current FW0 LPBAM cursor-slice structure:
 
 Current phase-alignment status:
 
-- Awake and LPBAM phase intervals are both nominally `250 ms`: ThreadX runs at `100 Hz` with a `250 ms` blink knob, while LPTIM1 uses the `4 MHz` MSIK source, `/128`, and `ARR=7812`.
+- Awake and LPBAM phase intervals are both nominally `250 ms`: ThreadX runs at `100 Hz` with a `250 ms` blink knob, while the validated LPBAM setup reports LPTIM1 `ARR/CMP=3906/1953` with `/128` at its configured kernel clock.
 - Probe API `48` now preserves the idle window across the cursor blink's display-clock transaction and schedules a direct power-owner recheck after release. Evidence `EV-HW6-20260820-P1-LPBAMREGEN-074` prepared at tick `1373` and committed/WFI at tick `1374`, replacing the earlier `25`-tick heartbeat delay with a one-tick handoff.
-- The user still observes a small visual transition hitch, so seamless phase continuity remains open. Further timing work must preserve the validated SPI/LPTIM clock configuration and the edge-selected sequence order rather than compensating with a different nominal frame period.
+- The user still observes a small visual transition hitch because FW0 independently restarts the awake and LPBAM timing epochs. The target architecture replaces that behavior with the shared presentation timeline in [[Scene_Runtime_and_Interaction_Model]]. Further timing work must preserve the validated SPI/LPTIM clock configuration and queue packing rather than compensating with a different nominal frame period.
 
 LPBAM bring-up timing:
 

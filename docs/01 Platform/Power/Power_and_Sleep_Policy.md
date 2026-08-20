@@ -22,15 +22,15 @@ The package-facing time, cadence, lifecycle, wake, and power-intent API is defin
 
 Packages and runtime hosts may publish:
 
-- runtime unit, runtime class, and `REACTIVE`/`REALTIME` execution intent
+- system host, package scene type, and derived `REACTIVE`/`REALTIME` execution intent
 - reactive wait contract and admitted event interests
 - waiting-visual intent and fallback associated with a settled reactive state
 - realtime cadence/frame budget and declared meaningful work
 - latency tolerance and symbolic wake intents
 - temporary capability context declarations
-- declared reactive fallback route
-- optional automatic input-lock enablement, lock route, and meaningful-activity sources
-- bounded lock deferral for declared non-interruptible work
+- declared inactive/end/failure routes
+- interaction-state inactive route and meaningful-activity sources
+- bounded inactivity deferral for declared non-interruptible work
 
 Packages and runtime hosts must not publish or control:
 
@@ -70,7 +70,7 @@ Inputs to power manager:
 - allowed latency and symbolic wake intents
 - waiting-visual grant/fallback result
 - active capability contexts and owner blockers
-- enabled input-lock state and admitted meaningful activity
+- interaction state and admitted meaningful activity
 
 Outputs from power manager:
 - sleep class
@@ -91,22 +91,22 @@ When [[IMU_Contract|IMU]] step counting is active, power policy must select the 
 - sleeps whenever no system transaction is pending
 - may use a Platform-owned waiting visual
 
-`LP_GRAPH`
-- reactive event/schedule/state transactions
+`STATE_SCENE`
+- `REACTIVE` event/schedule/state transactions
 - no awake wait loop
 - Platform may hold or autonomously animate the settled display while waiting
 
-`LP_MODULE`
-- Engine-hosted reactive transactions with bounded awake work
-- menus, dialogue, inventory, and similar modules yield between admitted events
+`SEQUENCE_SCENE`
+- `REALTIME` bounded data-driven timeline execution
+- explicit FPS/track/end bounds, meaningful-activity rules, suspend/resume behavior, and inactive route
 
-`RT_SCENE`
-- frame-paced active execution
-- explicit meaningful-activity rules, suspend/resume behavior, and reactive fallback
+`PROGRAM_SCENE`
+- `REALTIME` bounded sandbox execution
+- explicit instruction/memory/frame budgets, meaningful-activity rules, suspend/resume behavior, and inactive/failure routes
 
 `INSTALLER`
 - USB/staging ownership mode with strict subsystem isolation
-- reactive by default; it is a Platform-owned runtime class, not normal package gameplay
+- reactive by default; it is a Platform-owned host, not normal package gameplay
 
 ---
 
@@ -117,7 +117,7 @@ The Engine exposes execution semantics and game intent, not hardware power state
 | Semantic | Meaning |
 |---|---|
 | `REACTIVE` | Run a bounded event/state transaction, settle Engine actions and presentation, then yield until an admitted input, schedule, sensor, lifecycle, or system event occurs |
-| `REALTIME` | Keep frame-paced game logic and rendering active while the realtime unit remains admitted |
+| `REALTIME` | Keep a sequence timeline or program scene frame-paced while that scene remains admitted |
 
 `STATIC` is not an Engine execution-mode token. The word remains valid for static frames, static content, and internal one-shot display update classes where that terminology is accurate.
 
@@ -160,8 +160,8 @@ Initial precedence for HW6:
 2. USB MSC/export or installer ownership requests `USB_DEVICE_ACTIVE`: USB `48 MHz` must be valid, STOP2 is blocked, and the internal policy should select the high I/O operating point instead of using an ad hoc USB-only clock override.
 3. Storage/package/external-flash work requests `OCTOSPI_ACTIVE`: OCTOSPI kernel clocks stay valid until the transaction is idle, and SYSCLK/PLL changes are forbidden while the bus is active.
 4. Audio playback requests `SAI_AUDIO_ACTIVE`: SAI kernel clocks remain stable for the sample rate, audio DMA is stopped before sleep, and CPU/SYSCLK policy must not disturb the audio clock.
-5. Runtime/gameplay requests `REALTIME_DEADLINE_ACTIVE`: `thPower` selects the lowest measured realtime operating point with frame/audio/sensor/display margin.
-6. Menu/input/static-display work requests `REACTIVE_TRANSACTION_ACTIVE`: `thPower` selects the lowest measured reactive point that meets response limits and returns to the selected waiting backend efficiently.
+5. `SEQUENCE_SCENE` and `PROGRAM_SCENE` work requests `REALTIME_DEADLINE_ACTIVE`: `thPower` selects the lowest measured realtime operating point with frame/audio/sensor/display margin.
+6. `STATE_SCENE`, shell, menu, input, and bounded display work request `REACTIVE_TRANSACTION_ACTIVE`: `thPower` selects the lowest measured reactive point that meets response limits and returns to the selected waiting backend efficiently.
 
 The first FW0 implementation is split between resolver scaffolding, one validated active USB path, one validated normal-boot cleanup path, a target-validated storage requester wrapper for MSC export/reclaim and explicit flash/staging provisioning, target-validated runtime requester hooks for bounded reactive transactions plus reactive/realtime package-admission scaffolds, a target-validated UI requester hook for bounded shell/router transactions, a target-validated display-transfer requester hook for the boot clear-hold transfer, and a no-sound audio requester scaffold for SAI clock ownership. FW0 reports requested capabilities, selected internal profile, blockers, requester slots, per-requester status, domain readback, and current profile status. Owners request capabilities; `thPower` resolves the profile, storage remains the owner of USB device hardware and MSC media sequencing, `thRuntime`/`thUI` publish symbolic execution intent only, `thDisplay` publishes bounded display-transfer intent only, and `thAudio` publishes SAI clock intent only while audio work genuinely needs the SAI kernel clock. Storage service boundaries use a named storage requester wrapper: MSC export/reclaim request `USB_DEVICE_ACTIVE | OCTOSPI_ACTIVE`, explicit flash/staging provisioning requests `OCTOSPI_ACTIVE`, and release clears the storage requester after cleanup. Runtime command boundaries use a named runtime requester wrapper: bounded shell/runtime transactions and reactive package stubs request `REACTIVE_TRANSACTION_ACTIVE` and release that requester slot after the transaction returns; realtime package stubs request `REALTIME_DEADLINE_ACTIVE` and hold that requester slot until runtime suspend or runtime return clears it, and runtime resume re-requests the saved realtime capability when returning to a suspended realtime unit. UI shell/router boundaries use a named UI requester wrapper: HOME dispatch, deferred router events, and input-driven UI actions request `REACTIVE_TRANSACTION_ACTIVE` and release after the bounded UI transaction returns. Display transfer boundaries use a named display requester wrapper: the validated FW0 boot clear-hold transfer requests `DISPLAY_TRANSFER_ACTIVE` and releases after the bounded display transaction completes; queued UI render calls are wrapped the same way but still need a settled HOME-render target capture. Audio boundaries use a named audio requester wrapper: reactive SFX may request `SAI_AUDIO_ACTIVE` for a bounded burst/drain window, realtime audio may hold it while admitted, and release clears the audio requester before STOP/LPBAM waiting can resume. Power shutdown boundaries now use the system-action admission layer before physical quiesce: START-shutdown, battery-critical, and boot-low-battery shipment prep may suspend an active runtime first; START-cancel is the only automatic resume path, and only for a runtime suspended by START-shutdown admission. STOP2 resident policy is per peripheral: physical quiesce may park a device differently for sleep without changing the logical active mode that higher layers requested. Flash/OCTOSPI and SAI/audio must be off or deep-sleep parked for STOP2; the baseline BLE resident state is NINA `SLEEP_SYSTEM_OFF` via the validated `AT&D4` / DSR path with reset released, while reset-low `RESET_HELD` is only an explicit comparison/fallback mode; TMAG3001 joystick is terminally parked in sleep for baseline STOP2 current work with the interrupt config kept as a policy-selected target for future wake-and-sleep validation; LIS2DUX12 defaults off, with step-counter STOP2 residency reserved until measured and validated.
 
@@ -229,7 +229,7 @@ HW6 evidence `EV-HW6-20260813-P1-DISPLAYCLOCK-047` validates the first `thDispla
 
 HW6 evidence `EV-HW6-20260813-P1-AUDIOCLOCK-048` validates the no-sound audio clock scaffold: `thAudio` requests and releases `SAI_AUDIO_ACTIVE` through the same requester-specific `thPower` ACK path. Request-side evidence showed requester cap `A=0x4`, required/managed domains `0x4/0x4`, SAI kernel `4096000 Hz`, and STOP2 blocked while held. Release-pulse evidence then showed audio request/release `1/1`, release reason/caps/status `3/0x0/0x0`, requester cap `A=0x0`, domains `0x0/0x0`, SAI kernel `0 Hz`, and STOP2 ready again. This is no-sound clock plumbing only; it does not validate PCM playback, reactive SFX duration policy, realtime mixer behavior, current, underrun recovery, or production audio scheduling.
 
-Other clock profiles remain scaffolded. Runtime and UI can now publish and release `REACTIVE_TRANSACTION_ACTIVE`; runtime can also publish, hold, suspend, resume, and return `REALTIME_DEADLINE_ACTIVE`; and display can publish and release `DISPLAY_TRANSFER_ACTIVE` for bounded transfer windows. `CLK_REACTIVE_BURST`, `CLK_REALTIME_BALANCED`, measured current, transition energy, hysteresis, and production PLL2/autonomous-domain policy still must be enabled one at a time after clock readbacks, TraceX timing, and current evidence pass.
+Other clock profiles remain scaffolded. Runtime and UI can now publish and release `REACTIVE_TRANSACTION_ACTIVE`; runtime can also publish, hold, suspend, resume, and return `REALTIME_DEADLINE_ACTIVE`; and display can publish and release `DISPLAY_TRANSFER_ACTIVE` for bounded transfer windows. The validated base `24 MHz` path and high-I/O path do not yet constitute the final workload ladder. `CLK_REACTIVE_BURST`, `CLK_REALTIME_BALANCED`, any intermediate PLL operating points, measured current, transition energy, hysteresis, and production PLL2/autonomous-domain policy still must be enabled one at a time after clock readbacks, TraceX timing, and current evidence pass. Packages and scene types never select those points directly.
 ---
 
 ## Reactive Transaction Policy
@@ -248,36 +248,36 @@ A waiting visual may continue changing while the CPU sleeps. That visual motion 
 
 ---
 
-## Input Lock Policy
+## Interaction State Policy
 
-Automatic input locking protects a keychain device from unintended interaction. It is optional package policy implemented by PeepOS.
+PeepOS always owns an `ACTIVE`/`INACTIVE` interaction state that protects a keychain device from unintended interaction. It is independent of CPU awake/sleep state.
 
-A package declares whether automatic locking is enabled. When enabled, it also declares:
+A package declares:
 
-- meaningful activity sources that reset the lock timer
-- one lock route: preserve current state, transition to a declared package state, or exit to shell
-- locked waiting-visual intent or fallback
-- any statically bounded work that may defer locking until completion
+- meaningful activity sources that refresh the interaction window
+- one inactive route: preserve the current scene, transition to a declared scene, or exit to shell
+- inactive waiting-visual intent or fallback
+- any statically bounded work that may defer inactivity until completion
 
 Rules:
 
-- the active target/system policy owns the lock timeout; a package may disable automatic locking but does not author a replacement timeout
-- while locked, only `START` is armed to wake and unlock normal package interaction
-- A/B/L/R, joystick, and any other profile-granted package input or sensor actions are suppressed while locked unless a future system-owned safety policy explicitly requires otherwise
-- the physical `START` press used to unlock is consumed by PeepOS and is not delivered as a package action
-- the Engine receives symbolic `DEVICE_LOCKED` after the declared lock route settles and `DEVICE_UNLOCKED` after focus and runtime state are valid
-- unlock does not run a second package-selected route: preserved state resumes, a declared lock target remains the active package state, and an `exit_to_shell` route remains in shell
-- a package may disable automatic locking
-- lock deferral must have a statically bounded completion or timeout; unbounded deferral is invalid
-- a bounded cinematic may defer locking until completion
+- the active target/system policy owns the inactivity timeout; a package cannot disable it or author a replacement timeout
+- while `INACTIVE`, only target/system-admitted activation gestures restore normal package interaction
+- HW6 initially admits Start; future measured policy may admit another button or a classified chord such as `L+R`
+- other package input and sensor actions are suppressed while `INACTIVE` unless a system-owned safety policy explicitly requires otherwise
+- the physical activation gesture is consumed by PeepOS and is not delivered as a package action
+- the Engine receives symbolic `DEVICE_INACTIVE` after the declared inactive route settles and `DEVICE_ACTIVE` after focus and scene state are valid
+- activation does not run a second package-selected route: preserved scene state resumes, a declared inactive target remains active, and an `exit_to_shell` route remains in shell
+- inactivity deferral must have a statically bounded completion or timeout; unbounded deferral is invalid
+- a bounded cinematic may defer inactivity until completion
 - admitted gyro or other non-button control events may count as meaningful activity when declared by the active block and supported by the target profile
 - passive animation, cosmetic LPBAM playback, keepalives, and arbitrary activity hints do not count as meaningful user activity
 
-If locking occurs during `REALTIME`, PeepOS suspends/stops frame-paced execution and follows the unit's declared reactive fallback before establishing the locked wait state.
+If inactivity occurs during `REALTIME`, PeepOS suspends/stops frame-paced execution and follows the scene's declared inactive route before establishing the inactive wait state.
 
-Package-authored gameplay inactivity behavior is separate. A designer may schedule a normal bounded event such as `explore -> pet_idle`; that timer causes an ordinary state transition and does not configure the PeepOS input lock.
+Package-authored gameplay inactivity behavior is separate. A designer may schedule a normal bounded event such as `explore -> pet_idle`; that timer causes an ordinary state transition and does not configure PeepOS interaction state.
 
-An admitted interactive communication context may receive only the bounded peer-wait treatment granted by the selected target profile. It cannot create unbounded lock deferral, keep realtime execution alive indefinitely, or turn communication into a wake source on HW6 while that capability is blocked.
+An admitted interactive communication context may receive only the bounded peer-wait treatment granted by the selected target profile. It cannot create unbounded inactivity deferral, keep realtime execution alive indefinitely, or turn communication into a wake source on HW6 while that capability is blocked.
 
 ---
 
@@ -293,9 +293,9 @@ Cadence requests are requests only:
 
 Target profiles must define:
 
-- automatic input-lock default/minimum/maximum timeout when a package enables it
-- maximum bounded lock-deferral duration
-- the system unlock action and whether its physical press is consumed
+- interaction-state default/minimum/maximum inactivity timeout
+- maximum bounded inactivity-deferral duration
+- target-owned activation gestures and whether their physical input is consumed
 - reactive input-response latency cap
 - reactive scheduled-event cadence cap
 - realtime frame budget and target frame rate
@@ -304,7 +304,7 @@ Target profiles must define:
 - supported meaningful-activity sources
 - package-visible wake intents and lifecycle wake reasons
 
-The previous 10-15 second inactivity value is only a provisional UX target for packages that enable automatic locking. It is not a delay before reactive sleep.
+The previous 10-15 second inactivity value is only a provisional interaction-state UX target. It is not a delay before reactive sleep.
 
 Profile-dependent waiting-visual behavior:
 
@@ -357,7 +357,7 @@ Realtime sweeps must record:
 - frame-time distribution, worst-case frame time, deadline misses, and available headroom
 - audio underruns/glitches and required audio/kernel-clock stability
 - sensor, owner, display, and storage deadline behavior under representative contention
-- transition behavior into the declared reactive fallback
+- transition behavior into the declared inactive/end/failure route
 
 Operating-point transition tests must record switch latency, switch charge/energy, failure behavior, and the measured break-even interval used for any hysteresis.
 

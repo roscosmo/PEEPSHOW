@@ -70,7 +70,7 @@ Package install must not be silently reinterpreted as native executable game-ima
 Package install may install:
 
 - manifests
-- runtime unit tables
+- package scene tables
 - state graphs and action tables
 - scene/module data
 - assets

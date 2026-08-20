@@ -32,7 +32,7 @@ Content parameters may control:
 - encounter and table weights
 - dialogue pacing
 - package-local difficulty defaults
-- runtime-unit local constants
+- scene-local constants
 
 Content parameters must not control:
 
@@ -81,7 +81,7 @@ content_parameter:
   max
   units
   precision
-  runtime_unit_scope
+  scene_scope
   target_profile_gate
   package_setting_binding
   save_binding
@@ -132,7 +132,7 @@ Rules:
 Content parameters may be scoped to:
 
 - whole package
-- runtime unit
+- scene
 - template instance
 - Authoring Kit instance
 - prefab instance
