@@ -37,6 +37,14 @@ Required queues:
 
 Exact message shapes are defined in [[Interface_Control_Document]].
 
+In HW6 FW0, `qInputRaw` carries one four-word A/B/L/R edge record per EXTI
+transition. The ISR uses a non-blocking send and returns; `thInput` consumes the
+records in FIFO order, applies ThreadX-tick debounce deadlines, and alone emits
+logical events. A send failure is counted and leaves the raw-level recovery mask
+available to `thInput`. Queue high-water may remain zero when ThreadX delivers a
+message directly to an already-waiting receiver; enqueue/dequeue/drop counts are
+the authoritative loss check.
+
 ---
 
 ## Event Flag Groups
@@ -145,7 +153,9 @@ FW0 probe version 37 and owner probe version 17 add the first real display LPBAM
 FW0 probe version 38 and owner probe version 20 add the awake cursor blink and held-frame STOP2 display handoff. No new thread is added: `thDisplay` owns the cursor-visible render; `thPower` suppresses the periodic blink scheduler, directly applies/releases display-transfer clock capability because it owns the clock-policy resolver, sends a bounded cursor-visible command to `thDisplay`, waits for owner ACK/status, and proceeds with held-frame STOP2 only if the ledger is still clear. This keeps awake diagnostic animation out of the STOP2 entry window without moving panel operations into `thPower`. HW6 evidence `EV-HW6-20260817-P1-AWAKEBLINK-072` reports awake HOME blink visually confirmed, blink request/render `14/14`, dirty rows `8/153/160`, handoff count/status/send/wait/ack/owner `1/0x0/0x0/0x0/0x108/0x0`, no hard blockers, and owner STOP2 `1/594/594/594`.
 FW0 probe version 42 and owner probe version 24 close the first complete-cursor LPBAM transfer framework without changing ownership. `thDisplay` still owns renderer intent, SRAM4 payload/descriptor compilation, SPI3, LPDMA1, and LPTIM1; `thPower` still owns admission, STOP2 entry, and the bounded prepare/abort lifecycle. The display compiler splits each `183`-byte cursor payload into a `180`-byte 32-bit DMA body and `3`-byte byte tail, and SPI3 uses a four-frame FIFO threshold so the word-wide body drains correctly in STOP2. HW6 evidence `EV-HW6-20260818-P1-LPBAMCURSOR32-073` reports payload `4/4/732`, queue nodes `28`, FIFO threshold `4`, all prepare/start/abort statuses `0x0`, owner STOP2 count `2`, visually unified cursor blinking, and successful repeated wake/re-entry.
 FW0 probe version 48 keeps that ownership unchanged while making the implementation survive CubeMX regeneration. `ps_lpbam_display_queue.c` now owns the runtime queue object, SRAM4 descriptors, panel payload nodes, and circular-list construction; `ps_lpbam_dma_node_compat.c` owns the three LPBAM node-helper replacements that explicitly restore `DMA_NORMAL`. CubeMX scenario build/config and overwrite-prone basic common/SPI helpers remain generated scaffolding but are excluded from the target. HW6 evidence `EV-HW6-20260820-P1-LPBAMREGEN-074` reports prepare/commit/abort counts `5/5/5`, queue nodes `28`, all queue/start/reclaim statuses `0x0`, owner STOP2 count `5`, and unchanged visible behavior after regeneration and a clean build.
-The same evidence closes the earlier `25`-tick owner scheduling gap: LPBAM prepared at tick `1373`, committed at `1374`, and reached WFI at `1374`. `thPower` now receives a direct recheck after the display clock is released and preserves accumulated idle time only for the cursor-blink transfer participating in the handoff. A small visual phase hitch remains open; future timing changes must stay within the existing `thPower`/`thDisplay` owner boundary.
+The same evidence closes the earlier `25`-tick owner scheduling gap: LPBAM prepared at tick `1373`, committed at `1374`, and reached WFI at `1374`. `thPower` now receives a direct recheck after the display clock is released and preserves accumulated idle time only for the cursor-blink transfer participating in the handoff.
+
+FW0 probe version 49 and button API version 10 add ordered A/B/L/R edge delivery and a final STOP2 input veto without changing ownership. Immediately before real WFI, after LPBAM commit and owner quiesce, `thPower` masks interrupts and atomically checks all owner queues, raw input enqueue/dequeue counts, input FSM state, and live button GPIO levels. If that check fails, `thPower` refuses STOP2 and recovers the owners/display so `thInput` can consume the event. If an edge arrives after the check, its IRQ remains pending and wakes WFI for normal processing after restore. HW6 evidence `EV-HW6-20260820-P1-REACTIVELPBAM-075` reported raw ISR send/process/drop `32/32/0`, queue enqueue/dequeue/drop `32/32/0`, logical press/policy delivery/UI action `16/16/16`, final check/veto/status `3/0/0x0`, and three successful owner STOP2 entries. The user also found the awake-to-LPBAM cursor transition visually imperceptible. This closes the tested ordered-input and cursor-handoff slice; long/repeat/chord/stuck input and general authored animation remain open.
 
 This is the intended normal boot slice for FW0. It is deliberately smaller than
 the retained-peripheral diagnostic lifecycle: display/audio/sensor/storage/comm

@@ -1643,13 +1643,25 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2WithCursorPhase(ui
   g_ps_hw6_owner_probe.display_lpbam_cursor_column_count =
     cursor_region.column_count;
 
-  status = PS_LpbamDisplay_BuildCursorBlinkBuffersFromFrame(
-    DisplayRenderer_GetBuffer(),
-    cursor_region.start_row,
-    cursor_region.row_count,
-    cursor_region.start_column,
-    cursor_region.column_count,
-    (current_visible == 0UL) ? 0U : 1U);
+  status = HAL_OK;
+  for (frame = 0U; frame < PS_LPBAM_DISPLAY_FRAME_COUNT; ++frame)
+  {
+    if (DisplayRenderer_CopyCursorBlinkFrame(
+          (uint32_t)(frame & 1U),
+          &ps_lpbam_display_frames[frame][0][0],
+          sizeof(ps_lpbam_display_frames[frame])) == 0UL)
+    {
+      status = HAL_ERROR;
+      break;
+    }
+  }
+  if (status == HAL_OK)
+  {
+    status = PS_LpbamDisplay_BuildPreparedAnimationBuffers(
+      cursor_region.start_row,
+      cursor_region.row_count,
+      (current_visible == 0UL) ? 0U : 1U);
+  }
   g_ps_hw6_owner_probe.display_lpbam_fill_status = (uint32_t)status;
   if (status != HAL_OK)
   {

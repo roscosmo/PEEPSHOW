@@ -43,18 +43,9 @@ HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffersForRows(
   uint16_t candidate_row_count);
 HAL_StatusTypeDef PS_LpbamDisplay_BuildPatternBuffers(uint16_t start_row,
                                                       uint16_t row_count);
-HAL_StatusTypeDef PS_LpbamDisplay_BuildCursorBlinkBuffers(
-  const uint8_t *base_frame,
+HAL_StatusTypeDef PS_LpbamDisplay_BuildPreparedAnimationBuffers(
   uint16_t start_row,
   uint16_t row_count,
-  uint16_t start_column,
-  uint16_t column_count);
-HAL_StatusTypeDef PS_LpbamDisplay_BuildCursorBlinkBuffersFromFrame(
-  const uint8_t *base_frame,
-  uint16_t start_row,
-  uint16_t row_count,
-  uint16_t start_column,
-  uint16_t column_count,
   uint16_t sequence_start_frame);
 
 #endif /* PS_LPBAM_DISPLAY_BUFFERS_H */

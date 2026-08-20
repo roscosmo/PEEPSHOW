@@ -301,108 +301,6 @@ static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffers(
     row_count);
 }
 
-static void PS_LpbamDisplay_SetWhitePixel(uint8_t frame[DISPLAY_HEIGHT][LINE_WIDTH],
-                                           uint16_t row_zero_based,
-                                           uint16_t column)
-{
-  uint32_t index;
-  uint8_t mask;
-
-  index = (uint32_t)column >> 3U;
-  mask = (uint8_t)(1U << (column & 7U));
-  frame[row_zero_based][index] |= mask;
-}
-
-static void PS_LpbamDisplay_ClearWhitePixel(uint8_t frame[DISPLAY_HEIGHT][LINE_WIDTH],
-                                             uint16_t row_zero_based,
-                                             uint16_t column)
-{
-  uint32_t index;
-  uint8_t mask;
-
-  index = (uint32_t)column >> 3U;
-  mask = (uint8_t)(1U << (column & 7U));
-  frame[row_zero_based][index] &= (uint8_t)(~mask);
-}
-
-static void PS_LpbamDisplay_ApplyCursorRegion(
-  uint8_t frame[DISPLAY_HEIGHT][LINE_WIDTH],
-  uint16_t start_row,
-  uint16_t row_count,
-  uint16_t start_column,
-  uint16_t column_count,
-  uint8_t visible)
-{
-  uint16_t final_row = (uint16_t)(start_row + row_count - 1U);
-  uint16_t final_column = (uint16_t)(start_column + column_count - 1U);
-
-  for (uint16_t row = (uint16_t)(start_row - 1U);
-       row < final_row;
-       row++)
-  {
-    for (uint16_t column = start_column;
-         column <= final_column;
-         column++)
-    {
-      if (visible != 0U)
-      {
-        PS_LpbamDisplay_SetWhitePixel(frame, row, column);
-      }
-      else
-      {
-        PS_LpbamDisplay_ClearWhitePixel(frame, row, column);
-      }
-    }
-  }
-}
-
-static HAL_StatusTypeDef PS_LpbamDisplay_ComposeCursorBlinkFrames(
-  const uint8_t *base_frame,
-  uint16_t start_row,
-  uint16_t row_count,
-  uint16_t start_column,
-  uint16_t column_count)
-{
-  uint32_t final_row;
-  uint32_t final_column;
-
-  if ((base_frame == NULL) || (start_row < 1U) || (row_count == 0U) ||
-      (start_column >= DISPLAY_WIDTH) || (column_count == 0U))
-  {
-    return HAL_ERROR;
-  }
-
-  final_row = (uint32_t)start_row + (uint32_t)row_count - 1U;
-  final_column = (uint32_t)start_column + (uint32_t)column_count - 1U;
-  if ((final_row > DISPLAY_HEIGHT) || (final_column >= DISPLAY_WIDTH))
-  {
-    return HAL_ERROR;
-  }
-
-  for (uint16_t frame = 0U; frame < PS_LPBAM_DISPLAY_FRAME_COUNT; frame++)
-  {
-    memcpy(ps_lpbam_display_frames[frame], base_frame, BUFFER_LENGTH);
-    PS_LpbamDisplay_ApplyCursorRegion(ps_lpbam_display_frames[frame],
-                                      start_row,
-                                      row_count,
-                                      start_column,
-                                      column_count,
-                                      0U);
-  }
-
-  for (uint16_t frame = 1U; frame < PS_LPBAM_DISPLAY_FRAME_COUNT; frame += 2U)
-  {
-    PS_LpbamDisplay_ApplyCursorRegion(ps_lpbam_display_frames[frame],
-                                      start_row,
-                                      row_count,
-                                      start_column,
-                                      column_count,
-                                      1U);
-  }
-
-  return HAL_OK;
-}
-
 HAL_StatusTypeDef PS_LpbamDisplay_BuildPatternBuffers(uint16_t start_row,
                                                       uint16_t row_count)
 {
@@ -410,45 +308,14 @@ HAL_StatusTypeDef PS_LpbamDisplay_BuildPatternBuffers(uint16_t start_row,
   return PS_LpbamDisplay_BuildPayloadBuffers(start_row, row_count);
 }
 
-HAL_StatusTypeDef PS_LpbamDisplay_BuildCursorBlinkBuffersFromFrame(
-  const uint8_t *base_frame,
+HAL_StatusTypeDef PS_LpbamDisplay_BuildPreparedAnimationBuffers(
   uint16_t start_row,
   uint16_t row_count,
-  uint16_t start_column,
-  uint16_t column_count,
   uint16_t sequence_start_frame)
 {
-  HAL_StatusTypeDef status;
-
   PS_LpbamDisplay_SetSequenceStartFrame(sequence_start_frame);
   PS_LpbamDisplay_SetQueueStartSlot(0U);
   PS_LpbamDisplay_SetExperimentVariant(0xC1U);
-
-  status = PS_LpbamDisplay_ComposeCursorBlinkFrames(base_frame,
-                                                    start_row,
-                                                    row_count,
-                                                    start_column,
-                                                    column_count);
-  if (status != HAL_OK)
-  {
-    return status;
-  }
-
   return PS_LpbamDisplay_BuildPayloadBuffers(start_row, row_count);
-}
-
-HAL_StatusTypeDef PS_LpbamDisplay_BuildCursorBlinkBuffers(
-  const uint8_t *base_frame,
-  uint16_t start_row,
-  uint16_t row_count,
-  uint16_t start_column,
-  uint16_t column_count)
-{
-  return PS_LpbamDisplay_BuildCursorBlinkBuffersFromFrame(base_frame,
-                                                          start_row,
-                                                          row_count,
-                                                          start_column,
-                                                          column_count,
-                                                          0U);
 }
 

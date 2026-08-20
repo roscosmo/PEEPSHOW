@@ -6567,6 +6567,9 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
   uint32_t apb3_div1_test_active = 0UL;
   uint32_t spi_autocr_before = 0UL;
   uint32_t spi_autotrigger_test_active = 0UL;
+  uint32_t final_input_primask = 0UL;
+  uint32_t final_input_critical_active = 0UL;
+  uint32_t final_input_veto = 0UL;
 
   g_ps_hw6_owner_sm_probe.stop2_request_count++;
   g_ps_hw6_owner_sm_probe.stop2_start_tick = (uint32_t)tx_time_get();
@@ -6704,19 +6707,30 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
               __ISB();
               g_ps_hw6_owner_sm_probe.stop2_spi_autocr_forced = SPI3->AUTOCR;
             }
-            __DSB();
-            g_ps_hw6_owner_sm_probe.stop2_wfi_tick =
-              (uint32_t)tx_time_get();
-            HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
-            __ISB();
-            PS_HW6_SM_RecordStop2PostWfiState();
-            if (g_ps_hw6_power_stop2_post_wfi_break_enable != 0UL)
+            final_input_primask = __get_PRIMASK();
+            __disable_irq();
+            final_input_critical_active = 1UL;
+            if (PS_HW6_RTOS_Stop2FinalInputReady() != 0UL)
             {
-              g_ps_hw6_power_stop2_post_wfi_break_enable = 0UL;
-              g_ps_hw6_owner_sm_probe.stop2_post_wfi_break_count++;
               __DSB();
+              g_ps_hw6_owner_sm_probe.stop2_wfi_tick =
+                (uint32_t)tx_time_get();
+              HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
               __ISB();
-              __BKPT(0);
+              stop2_entered = 1UL;
+              PS_HW6_SM_RecordStop2PostWfiState();
+              if (g_ps_hw6_power_stop2_post_wfi_break_enable != 0UL)
+              {
+                g_ps_hw6_power_stop2_post_wfi_break_enable = 0UL;
+                g_ps_hw6_owner_sm_probe.stop2_post_wfi_break_count++;
+                __DSB();
+                __ISB();
+                __BKPT(0);
+              }
+            }
+            else
+            {
+              final_input_veto = 1UL;
             }
             if (spi_autotrigger_test_active != 0UL)
             {
@@ -6748,12 +6762,26 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
               g_ps_hw6_owner_sm_probe.stop2_srdrun_cr2_after = PWR->CR2;
               g_ps_hw6_owner_sm_probe.stop2_srdrun_test_active = 0UL;
             }
-            stop2_entered = 1UL;
-            clock_restore_status = PS_HW6_ClockPolicy_RestoreBase();
+            if (stop2_entered != 0UL)
+            {
+              clock_restore_status = PS_HW6_ClockPolicy_RestoreBase();
+            }
+            else
+            {
+              clock_restore_status = TX_SUCCESS;
+            }
           }
           gpio_restore_status = PS_HW6_SM_RestoreStop2GpioPins();
           PS_HW6_SM_RestoreThreadXSystick(systick_ctrl_before);
           HAL_ResumeTick();
+          if (final_input_critical_active != 0UL)
+          {
+            if (final_input_primask == 0UL)
+            {
+              __enable_irq();
+            }
+            final_input_critical_active = 0UL;
+          }
 
           if (stop2_entered != 0UL)
           {
@@ -6798,6 +6826,10 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
         else
         {
           status = wake_transition_status;
+        }
+        if (final_input_veto != 0UL)
+        {
+          status = HAL_ERROR;
         }
         g_ps_hw6_owner_sm_probe.stop2_recover_status =
           (uint32_t)recover_status;

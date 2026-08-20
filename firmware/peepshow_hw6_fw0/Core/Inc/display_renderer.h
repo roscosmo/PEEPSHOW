@@ -56,6 +56,10 @@ void DisplayRenderer_ClearWhite(void);
 const uint8_t *DisplayRenderer_GetBuffer(void);
 uint32_t DisplayRenderer_GetDirtyRows(const uint16_t **rows);
 void DisplayRenderer_CommitPresentedFrame(void);
+uint32_t DisplayRenderer_CopyCursorBlinkFrame(
+  uint32_t visible,
+  uint8_t *destination,
+  uint32_t destination_size);
 uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
   uint32_t visible,
   display_renderer_stats_t *stats);

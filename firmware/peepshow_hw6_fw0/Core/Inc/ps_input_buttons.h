@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_INPUT_BUTTONS_API_VERSION (9UL)
+#define PS_INPUT_BUTTONS_API_VERSION (10UL)
 #define PS_INPUT_BUTTON_PHYSICAL_COUNT (4UL)
 
 typedef enum
@@ -114,6 +114,12 @@ typedef struct
   uint32_t button_repeat_count;
   uint32_t button_stuck_count;
   uint32_t button_bounce_reject_count;
+  uint32_t raw_edge_send_count;
+  uint32_t raw_edge_drop_count;
+  uint32_t raw_edge_process_count;
+  uint32_t raw_edge_recovery_count;
+  uint32_t raw_edge_last_status;
+  uint32_t raw_edge_last_timestamp;
   uint32_t logical_event_count;
   uint32_t logical_press_count;
   uint32_t logical_release_count;
@@ -153,10 +159,24 @@ typedef struct
   uint32_t start_pending_drop_count;
 } ps_input_buttons_probe_t;
 
+typedef uint32_t (*ps_input_buttons_raw_edge_sink_t)(
+  ps_input_button_id_t button_id,
+  uint32_t active,
+  uint32_t timestamp);
+
 extern volatile ps_input_buttons_probe_t g_ps_input_buttons_probe;
 
 void PS_InputButtons_Init(void);
+void PS_InputButtons_SetRawEdgeSink(
+  ps_input_buttons_raw_edge_sink_t sink);
 void PS_InputButtons_RecordExti(uint16_t gpio_pin, GPIO_PinState level);
+void PS_InputButtons_ProcessRawEdge(ps_input_button_id_t button_id,
+                                    uint32_t active,
+                                    uint32_t timestamp);
+void PS_InputButtons_ReconcileLiveLevels(uint32_t now_tick);
+uint32_t PS_InputButtons_NextWaitTicks(uint32_t now_tick,
+                                      uint32_t maximum_wait_ticks);
+uint32_t PS_InputButtons_Stop2Ready(void);
 uint32_t PS_InputButtons_StartCheckDue(uint32_t now_tick);
 void PS_InputButtons_PollStart(uint32_t now_tick);
 uint32_t PS_InputButtons_ButtonsCheckDue(uint32_t now_tick);

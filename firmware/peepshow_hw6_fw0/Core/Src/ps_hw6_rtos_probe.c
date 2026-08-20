@@ -34,6 +34,10 @@
 #define PS_HW6_RTOS_UI_INPUT_MAGIC        (0x55494221UL)
 #define PS_HW6_RTOS_RUNTIME_INPUT_MAGIC   (0x52494221UL)
 #define PS_HW6_RTOS_POWER_INPUT_MAGIC     (0x50574921UL)
+#define PS_HW6_RTOS_INPUT_RAW_MAGIC       (0x49524157UL)
+#define PS_HW6_RTOS_INPUT_RAW_BUTTON_MASK (0xFFUL)
+#define PS_HW6_RTOS_INPUT_RAW_ACTIVE_SHIFT (8U)
+#define PS_HW6_RTOS_INPUT_RAW_ACTIVE_MASK (0x1UL)
 #define PS_HW6_RTOS_UI_INPUT_PRESS        (1UL)
 #define PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_ID_MASK (0xFFUL)
 #define PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_MASK_SHIFT (8U)
@@ -848,6 +852,10 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.magic = PS_HW6_RTOS_PROBE_MAGIC;
   g_ps_hw6_rtos_probe.version = PS_HW6_RTOS_PROBE_VERSION;
   g_ps_hw6_rtos_probe.phase = PS_HW6_RTOS_PHASE_INIT;
+  g_ps_hw6_rtos_probe.input_raw_last_send_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.stop2_final_input_last_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.input_policy_api_version =
     PS_HW6_RTOS_INPUT_POLICY_API_VERSION;
   g_ps_hw6_rtos_probe.input_policy_last_status =
@@ -1031,6 +1039,34 @@ static uint32_t PS_HW6_RTOS_MessageIsValid(uint32_t owner_id,
           (message[1] == owner_id) &&
           (message[2] == PS_HW6_RTOS_STARTUP_KIND) &&
           (message[3] == (~((ULONG)owner_id)))) ? 1UL : 0UL;
+}
+
+static uint32_t PS_HW6_RTOS_InputRawMessageIsValid(
+  uint32_t owner_id,
+  const ULONG *message)
+{
+  uint32_t packed_edge;
+  uint32_t button_id;
+
+  if ((owner_id != PS_HW6_RTOS_OWNER_INPUT) ||
+      (message[0] != PS_HW6_RTOS_INPUT_RAW_MAGIC) ||
+      (message[1] != PS_HW6_RTOS_OWNER_INPUT))
+  {
+    return 0UL;
+  }
+
+  packed_edge = (uint32_t)message[2];
+  button_id = packed_edge & PS_HW6_RTOS_INPUT_RAW_BUTTON_MASK;
+  if ((button_id < (uint32_t)PS_INPUT_BUTTON_ID_A) ||
+      (button_id > (uint32_t)PS_INPUT_BUTTON_ID_R) ||
+      ((packed_edge & ~(PS_HW6_RTOS_INPUT_RAW_BUTTON_MASK |
+                        (PS_HW6_RTOS_INPUT_RAW_ACTIVE_MASK <<
+                         PS_HW6_RTOS_INPUT_RAW_ACTIVE_SHIFT))) != 0UL))
+  {
+    return 0UL;
+  }
+
+  return 1UL;
 }
 
 static uint32_t PS_HW6_RTOS_ClockProfilePayload(uint32_t requester_id,
@@ -1475,6 +1511,53 @@ static uint32_t PS_HW6_RTOS_RequestJoystickCalibrationCapture(
 static uint32_t PS_HW6_RTOS_CommandCycleIndex(const ULONG *message)
 {
   return (uint32_t)(message[3] ^ PS_HW6_RTOS_COMMAND_TOKEN);
+}
+
+static uint32_t PS_HW6_RTOS_QueueInputRawEdge(
+  ps_input_button_id_t button_id,
+  uint32_t active,
+  uint32_t timestamp)
+{
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+  UINT status;
+  uint32_t enqueued;
+
+  if ((button_id < PS_INPUT_BUTTON_ID_A) ||
+      (button_id > PS_INPUT_BUTTON_ID_R))
+  {
+    return (uint32_t)TX_PTR_ERROR;
+  }
+
+  active = (active != 0UL) ? 1UL : 0UL;
+  message[0] = PS_HW6_RTOS_INPUT_RAW_MAGIC;
+  message[1] = PS_HW6_RTOS_OWNER_INPUT;
+  message[2] = ((ULONG)button_id & PS_HW6_RTOS_INPUT_RAW_BUTTON_MASK) |
+    ((ULONG)active << PS_HW6_RTOS_INPUT_RAW_ACTIVE_SHIFT);
+  message[3] = (ULONG)timestamp;
+
+  status = tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_INPUT],
+                         message,
+                         TX_NO_WAIT);
+  g_ps_hw6_rtos_probe.input_raw_last_send_status = (uint32_t)status;
+  g_ps_hw6_rtos_probe.input_raw_last_button_id = (uint32_t)button_id;
+  g_ps_hw6_rtos_probe.input_raw_last_active = active;
+  g_ps_hw6_rtos_probe.input_raw_last_timestamp = timestamp;
+  if (status == TX_SUCCESS)
+  {
+    g_ps_hw6_rtos_probe.input_raw_enqueue_count++;
+    enqueued = (uint32_t)
+      ps_queues[PS_HW6_RTOS_OWNER_INPUT].tx_queue_enqueued;
+    if (enqueued > g_ps_hw6_rtos_probe.input_raw_queue_high_water)
+    {
+      g_ps_hw6_rtos_probe.input_raw_queue_high_water = enqueued;
+    }
+  }
+  else
+  {
+    g_ps_hw6_rtos_probe.input_raw_drop_count++;
+  }
+
+  return (uint32_t)status;
 }
 
 static UINT PS_HW6_RTOS_SendCommand(uint32_t owner_id,
@@ -3227,6 +3310,50 @@ static uint32_t PS_HW6_RTOS_Stop2AutoQueuePendingMask(void)
   return pending_mask;
 }
 
+uint32_t PS_HW6_RTOS_Stop2FinalInputReady(void)
+{
+  uint32_t owner_id;
+  uint32_t primask;
+  uint32_t queue_mask = 0UL;
+  uint32_t ready;
+
+  primask = __get_PRIMASK();
+  __disable_irq();
+  g_ps_hw6_rtos_probe.stop2_final_input_check_count++;
+  g_ps_hw6_rtos_probe.stop2_final_input_enqueue_count =
+    g_ps_hw6_rtos_probe.input_raw_enqueue_count;
+  g_ps_hw6_rtos_probe.stop2_final_input_dequeue_count =
+    g_ps_hw6_rtos_probe.input_raw_dequeue_count;
+
+  for (owner_id = 0UL; owner_id < PS_HW6_RTOS_QUEUE_COUNT; ++owner_id)
+  {
+    if (ps_queues[owner_id].tx_queue_enqueued != 0U)
+    {
+      queue_mask |= PS_HW6_RTOS_ACK_OWNER(owner_id);
+    }
+  }
+
+  g_ps_hw6_rtos_probe.stop2_final_input_queue_mask = queue_mask;
+  g_ps_hw6_rtos_probe.stop2_final_input_gpioa_idr = GPIOA->IDR;
+  g_ps_hw6_rtos_probe.stop2_final_input_gpiob_idr = GPIOB->IDR;
+  ready = ((g_ps_hw6_rtos_probe.input_raw_enqueue_count ==
+            g_ps_hw6_rtos_probe.input_raw_dequeue_count) &&
+           (queue_mask == 0UL) &&
+           (PS_InputButtons_Stop2Ready() != 0UL)) ? 1UL : 0UL;
+  g_ps_hw6_rtos_probe.stop2_final_input_last_status =
+    (ready != 0UL) ? (uint32_t)HAL_OK : (uint32_t)HAL_ERROR;
+  if (ready == 0UL)
+  {
+    g_ps_hw6_rtos_probe.stop2_final_input_veto_count++;
+  }
+
+  if (primask == 0UL)
+  {
+    __enable_irq();
+  }
+  return ready;
+}
+
 static uint32_t PS_HW6_RTOS_Stop2AutoRuntimeAllowsIdle(void)
 {
   uint32_t runtime_class = g_ps_hw6_rtos_probe.runtime_current_class;
@@ -3301,7 +3428,10 @@ static uint32_t PS_HW6_RTOS_Stop2AutoStorageAllowsIdle(void)
 
 static uint32_t PS_HW6_RTOS_Stop2AutoInputAllowsIdle(void)
 {
-  if ((g_ps_input_buttons_probe.pending_mask != 0UL) ||
+  if ((g_ps_hw6_rtos_probe.input_raw_enqueue_count !=
+       g_ps_hw6_rtos_probe.input_raw_dequeue_count) ||
+      (PS_InputButtons_Stop2Ready() == 0UL) ||
+      (g_ps_input_buttons_probe.pending_mask != 0UL) ||
       (g_ps_input_buttons_probe.start_active != 0UL) ||
       (g_ps_input_buttons_probe.start_pending_event != 0UL) ||
       (g_ps_input_buttons_probe.logical_event_count !=
@@ -5385,6 +5515,13 @@ static ULONG PS_HW6_RTOS_OwnerReceiveWaitTicks(uint32_t owner_id,
   int32_t remaining_ticks;
   ULONG wait_ticks = PS_HW6_RTOS_HEARTBEAT_TICKS;
 
+  if (owner_id == PS_HW6_RTOS_OWNER_INPUT)
+  {
+    return (ULONG)PS_InputButtons_NextWaitTicks(
+      now_tick,
+      (uint32_t)PS_HW6_RTOS_HEARTBEAT_TICKS);
+  }
+
   if ((owner_id != PS_HW6_RTOS_OWNER_DISPLAY) ||
       (ps_display_blink_next_tick == 0UL) ||
       (ps_display_blink_stop2_suppressed != 0UL))
@@ -5480,6 +5617,19 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       if (PS_HW6_RTOS_MessageIsValid(owner_id, message) != 0UL)
       {
         g_ps_hw6_rtos_probe.queue_selftest_mask |= (1UL << owner_id);
+      }
+      else if (PS_HW6_RTOS_InputRawMessageIsValid(owner_id, message) != 0UL)
+      {
+        uint32_t packed_edge = (uint32_t)message[2];
+        ps_input_button_id_t button_id = (ps_input_button_id_t)
+          (packed_edge & PS_HW6_RTOS_INPUT_RAW_BUTTON_MASK);
+        uint32_t active =
+          (packed_edge >> PS_HW6_RTOS_INPUT_RAW_ACTIVE_SHIFT) &
+          PS_HW6_RTOS_INPUT_RAW_ACTIVE_MASK;
+
+        g_ps_hw6_rtos_probe.input_raw_dequeue_count++;
+        PS_InputButtons_ProcessRawEdge(
+          button_id, active, (uint32_t)message[3]);
       }
       else if (PS_HW6_RTOS_CommandIsValid(owner_id, message) != 0UL)
       {
@@ -5985,6 +6135,10 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
+      if (ps_queues[PS_HW6_RTOS_OWNER_INPUT].tx_queue_enqueued == 0U)
+      {
+        PS_InputButtons_ReconcileLiveLevels((uint32_t)now);
+      }
       if (PS_InputButtons_StartCheckDue((uint32_t)now) != 0UL)
       {
         PS_InputButtons_PollStart((uint32_t)now);
@@ -6237,6 +6391,11 @@ UINT PS_HW6_RTOS_Init(TX_BYTE_POOL *pool)
     }
     g_ps_hw6_rtos_probe.queue_selftest_send_status[i] = status;
     PS_HW6_RTOS_RecordFirstError(status, PS_HW6_RTOS_STEP_QUEUE_TEST, i);
+  }
+  if (g_ps_hw6_rtos_probe.queue_create_status[PS_HW6_RTOS_OWNER_INPUT] ==
+      TX_SUCCESS)
+  {
+    PS_InputButtons_SetRawEdgeSink(PS_HW6_RTOS_QueueInputRawEdge);
   }
   g_ps_hw6_rtos_probe.phase = PS_HW6_RTOS_PHASE_OBJECTS_CREATED;
 

@@ -25,6 +25,7 @@ static volatile uint32_t ps_input_button_release_tick[PS_INPUT_BUTTON_COUNT];
 static volatile uint32_t ps_input_button_deadline_tick[PS_INPUT_BUTTON_COUNT];
 static volatile uint32_t ps_input_button_return_state[PS_INPUT_BUTTON_COUNT];
 static volatile uint32_t ps_input_button_return_deadline_tick[PS_INPUT_BUTTON_COUNT];
+static ps_input_buttons_raw_edge_sink_t ps_input_buttons_raw_edge_sink;
 static volatile uint32_t ps_input_start_active;
 static volatile uint32_t ps_input_start_press_pending;
 static volatile uint32_t ps_input_start_release_pending;
@@ -445,6 +446,12 @@ void PS_InputButtons_Init(void)
   g_ps_input_buttons_probe.button_repeat_count = 0UL;
   g_ps_input_buttons_probe.button_stuck_count = 0UL;
   g_ps_input_buttons_probe.button_bounce_reject_count = 0UL;
+  g_ps_input_buttons_probe.raw_edge_send_count = 0UL;
+  g_ps_input_buttons_probe.raw_edge_drop_count = 0UL;
+  g_ps_input_buttons_probe.raw_edge_process_count = 0UL;
+  g_ps_input_buttons_probe.raw_edge_recovery_count = 0UL;
+  g_ps_input_buttons_probe.raw_edge_last_status = 0xFFFFFFFFUL;
+  g_ps_input_buttons_probe.raw_edge_last_timestamp = 0UL;
   g_ps_input_buttons_probe.start_state = PS_INPUT_START_STATE_IDLE;
   g_ps_input_buttons_probe.start_active = 0UL;
   g_ps_input_buttons_probe.start_press_pending = 0UL;
@@ -490,6 +497,7 @@ void PS_InputButtons_Init(void)
     PS_InputButtons_MsToTicks(KNOB_INPUT_BTN_STUCK_MS);
   ps_input_chord_window_ticks =
     PS_InputButtons_MsToTicks(KNOB_INPUT_CHORD_WINDOW_MS);
+  ps_input_buttons_raw_edge_sink = NULL;
   ps_input_start_active = 0UL;
   ps_input_start_press_pending = 0UL;
   ps_input_start_release_pending = 0UL;
@@ -529,6 +537,12 @@ void PS_InputButtons_Init(void)
   }
 }
 
+void PS_InputButtons_SetRawEdgeSink(
+  ps_input_buttons_raw_edge_sink_t sink)
+{
+  ps_input_buttons_raw_edge_sink = sink;
+}
+
 void PS_InputButtons_RecordExti(uint16_t gpio_pin, GPIO_PinState level)
 {
   ps_input_button_id_t button_id;
@@ -536,6 +550,7 @@ void PS_InputButtons_RecordExti(uint16_t gpio_pin, GPIO_PinState level)
   uint32_t debug_tick;
   uint32_t index;
   uint32_t mask;
+  uint32_t status;
 
   if (PS_InputButtons_RecordStartExti(gpio_pin, level) != 0UL)
   {
@@ -544,7 +559,7 @@ void PS_InputButtons_RecordExti(uint16_t gpio_pin, GPIO_PinState level)
 
   mask = PS_InputButtons_MaskForPin(gpio_pin, &button_id);
   active = (level == GPIO_PIN_SET) ? 1UL : 0UL;
-  debug_tick = HAL_GetTick();
+  debug_tick = (uint32_t)tx_time_get();
 
   g_ps_input_buttons_probe.isr_edge_count++;
   g_ps_input_buttons_probe.last_pin = gpio_pin;
@@ -556,6 +571,19 @@ void PS_InputButtons_RecordExti(uint16_t gpio_pin, GPIO_PinState level)
   {
     g_ps_input_buttons_probe.ignored_edge_count++;
     return;
+  }
+
+  if (ps_input_buttons_raw_edge_sink != NULL)
+  {
+    status = ps_input_buttons_raw_edge_sink(button_id, active, debug_tick);
+    g_ps_input_buttons_probe.raw_edge_send_count++;
+    g_ps_input_buttons_probe.raw_edge_last_status = status;
+    g_ps_input_buttons_probe.raw_edge_last_timestamp = debug_tick;
+    if (status == (uint32_t)TX_SUCCESS)
+    {
+      return;
+    }
+    g_ps_input_buttons_probe.raw_edge_drop_count++;
   }
 
   index = (uint32_t)button_id - 1UL;
@@ -799,11 +827,6 @@ void PS_InputButtons_PollButtons(uint32_t now_tick)
   uint32_t release_latched;
   uint32_t state;
 
-  for (i = 0UL; i < PS_INPUT_BUTTON_COUNT; ++i)
-  {
-    live_level[i] = PS_InputButtons_ButtonLiveLevel(i);
-  }
-
   primask = __get_PRIMASK();
   __disable_irq();
   edge_press_mask = ps_input_button_press_edge_mask;
@@ -812,8 +835,8 @@ void PS_InputButtons_PollButtons(uint32_t now_tick)
   ps_input_button_release_edge_mask = 0UL;
   for (i = 0UL; i < PS_INPUT_BUTTON_COUNT; ++i)
   {
+    live_level[i] = ps_input_button_raw_level[i];
     mask = 1UL << i;
-    ps_input_button_raw_level[i] = live_level[i];
     g_ps_input_buttons_probe.button_raw_level[i] = live_level[i];
     state = ps_input_button_state[i];
 
@@ -1051,6 +1074,176 @@ void PS_InputButtons_PollButtons(uint32_t now_tick)
   {
     __enable_irq();
   }
+}
+
+void PS_InputButtons_ProcessRawEdge(ps_input_button_id_t button_id,
+                                    uint32_t active,
+                                    uint32_t timestamp)
+{
+  uint32_t index;
+  uint32_t mask;
+  uint32_t primask;
+
+  if ((button_id < PS_INPUT_BUTTON_ID_A) ||
+      (button_id > PS_INPUT_BUTTON_ID_R))
+  {
+    return;
+  }
+
+  PS_InputButtons_PollButtons(timestamp);
+
+  index = (uint32_t)button_id - 1UL;
+  mask = 1UL << index;
+  active = (active != 0UL) ? 1UL : 0UL;
+
+  primask = __get_PRIMASK();
+  __disable_irq();
+  ps_input_button_raw_level[index] = active;
+  g_ps_input_buttons_probe.button_raw_level[index] = active;
+  if (active != 0UL)
+  {
+    ps_input_button_press_edge_mask |= mask;
+  }
+  else
+  {
+    ps_input_button_release_edge_mask |= mask;
+  }
+  g_ps_input_buttons_probe.raw_edge_process_count++;
+  g_ps_input_buttons_probe.raw_edge_last_timestamp = timestamp;
+  if (primask == 0UL)
+  {
+    __enable_irq();
+  }
+
+  PS_InputButtons_PollButtons(timestamp);
+}
+
+void PS_InputButtons_ReconcileLiveLevels(uint32_t now_tick)
+{
+  uint32_t i;
+
+  for (i = 0UL; i < PS_INPUT_BUTTON_COUNT; ++i)
+  {
+    uint32_t live_level = PS_InputButtons_ButtonLiveLevel(i);
+
+    if (live_level != ps_input_button_raw_level[i])
+    {
+      g_ps_input_buttons_probe.raw_edge_recovery_count++;
+      PS_InputButtons_ProcessRawEdge(
+        PS_InputButtons_ButtonForIndex(i), live_level, now_tick);
+    }
+  }
+}
+
+uint32_t PS_InputButtons_NextWaitTicks(uint32_t now_tick,
+                                      uint32_t maximum_wait_ticks)
+{
+  uint32_t i;
+  uint32_t primask;
+  uint32_t wait_ticks = maximum_wait_ticks;
+
+  primask = __get_PRIMASK();
+  __disable_irq();
+  if ((ps_input_button_press_edge_mask != 0UL) ||
+      (ps_input_button_release_edge_mask != 0UL) ||
+      (ps_input_start_press_pending != 0UL) ||
+      (ps_input_start_release_pending != 0UL))
+  {
+    wait_ticks = 0UL;
+  }
+
+  for (i = 0UL; (i < PS_INPUT_BUTTON_COUNT) && (wait_ticks != 0UL); ++i)
+  {
+    uint32_t deadline_tick = ps_input_button_deadline_tick[i];
+    uint32_t state = ps_input_button_state[i];
+    int32_t remaining_ticks;
+
+    if ((state == (uint32_t)PS_INPUT_BUTTON_STATE_RELEASED) ||
+        (state == (uint32_t)PS_INPUT_BUTTON_STATE_STUCK) ||
+        (deadline_tick == 0UL))
+    {
+      continue;
+    }
+
+    remaining_ticks = (int32_t)(deadline_tick - now_tick);
+    if (remaining_ticks <= 0)
+    {
+      wait_ticks = 0UL;
+    }
+    else if ((uint32_t)remaining_ticks < wait_ticks)
+    {
+      wait_ticks = (uint32_t)remaining_ticks;
+    }
+  }
+
+  if ((wait_ticks != 0UL) && (ps_input_start_armed != 0UL))
+  {
+    int32_t remaining_ticks =
+      (int32_t)(ps_input_start_next_check_tick - now_tick);
+
+    if (remaining_ticks <= 0)
+    {
+      wait_ticks = 0UL;
+    }
+    else if ((uint32_t)remaining_ticks < wait_ticks)
+    {
+      wait_ticks = (uint32_t)remaining_ticks;
+    }
+  }
+
+  if (primask == 0UL)
+  {
+    __enable_irq();
+  }
+  return wait_ticks;
+}
+
+uint32_t PS_InputButtons_Stop2Ready(void)
+{
+  uint32_t i;
+  uint32_t primask;
+  uint32_t ready = 1UL;
+
+  primask = __get_PRIMASK();
+  __disable_irq();
+  if ((ps_input_button_press_edge_mask != 0UL) ||
+      (ps_input_button_release_edge_mask != 0UL) ||
+      (ps_input_button_tap_release_mask != 0UL) ||
+      (ps_input_buttons_pending_mask != 0UL) ||
+      (ps_input_start_active != 0UL) ||
+      (ps_input_start_press_pending != 0UL) ||
+      (ps_input_start_release_pending != 0UL) ||
+      (ps_input_start_pending_event !=
+       (uint32_t)PS_INPUT_START_POWER_EVENT_NONE))
+  {
+    ready = 0UL;
+  }
+
+  for (i = 0UL; (i < PS_INPUT_BUTTON_COUNT) && (ready != 0UL); ++i)
+  {
+    if ((ps_input_button_state[i] !=
+         (uint32_t)PS_INPUT_BUTTON_STATE_RELEASED) ||
+        (ps_input_button_raw_level[i] != 0UL))
+    {
+      ready = 0UL;
+    }
+  }
+
+  if ((ready != 0UL) &&
+      ((PS_InputButtons_ButtonLiveLevel(0UL) != 0UL) ||
+       (PS_InputButtons_ButtonLiveLevel(1UL) != 0UL) ||
+       (PS_InputButtons_ButtonLiveLevel(2UL) != 0UL) ||
+       (PS_InputButtons_ButtonLiveLevel(3UL) != 0UL) ||
+       (PS_InputButtons_StartLiveLevel() == 0UL)))
+  {
+    ready = 0UL;
+  }
+
+  if (primask == 0UL)
+  {
+    __enable_irq();
+  }
+  return ready;
 }
 
 uint32_t PS_InputButtons_TakeLogicalEvent(

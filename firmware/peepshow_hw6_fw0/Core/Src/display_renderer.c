@@ -136,20 +136,30 @@ static uint32_t DisplayRenderer_CountBlackPixels(void)
   return count;
 }
 
-static void DisplayRenderer_SetPanelPixelWhite(uint16_t panel_x,
-                                               uint16_t panel_y)
+static void DisplayRenderer_SetPanelPixelWhiteInBuffer(
+  uint8_t *framebuffer,
+  uint16_t panel_x,
+  uint16_t panel_y)
 {
   uint32_t index;
   uint8_t mask;
 
-  if ((panel_x >= DISPLAY_WIDTH) || (panel_y >= DISPLAY_HEIGHT))
+  if ((framebuffer == NULL) || (panel_x >= DISPLAY_WIDTH) ||
+      (panel_y >= DISPLAY_HEIGHT))
   {
     return;
   }
 
   index = ((uint32_t)panel_y * LINE_WIDTH) + ((uint32_t)panel_x >> 3U);
   mask = (uint8_t)(1U << (panel_x & 7U));
-  s_display_framebuffer[index] |= mask;
+  framebuffer[index] |= mask;
+}
+
+static void DisplayRenderer_SetPanelPixelWhite(uint16_t panel_x,
+                                               uint16_t panel_y)
+{
+  DisplayRenderer_SetPanelPixelWhiteInBuffer(
+    s_display_framebuffer, panel_x, panel_y);
 }
 
 static void DisplayRenderer_ClearPanelRegion(
@@ -178,6 +188,41 @@ static void DisplayRenderer_ClearPanelRegion(
     for (column = region->start_column; column < column_end; ++column)
     {
       DisplayRenderer_SetPanelPixelWhite(column, (uint16_t)(row - 1U));
+    }
+  }
+}
+
+static void DisplayRenderer_HollowPanelRegionInBuffer(
+  uint8_t *framebuffer,
+  const display_renderer_panel_region_t *region)
+{
+  uint16_t row;
+  uint16_t column;
+  uint16_t row_end;
+  uint16_t column_end;
+
+  if ((framebuffer == NULL) || (region == NULL) ||
+      (region->row_count <= 2U) ||
+      (region->column_count <= 2U) || (region->start_row == 0U))
+  {
+    return;
+  }
+
+  row_end = (uint16_t)(region->start_row + region->row_count - 1U);
+  column_end = (uint16_t)(region->start_column + region->column_count);
+  if ((row_end > DISPLAY_HEIGHT) || (column_end > DISPLAY_WIDTH))
+  {
+    return;
+  }
+
+  for (row = (uint16_t)(region->start_row + 1U); row < row_end; ++row)
+  {
+    for (column = (uint16_t)(region->start_column + 1U);
+         column < (uint16_t)(column_end - 1U);
+         ++column)
+    {
+      DisplayRenderer_SetPanelPixelWhiteInBuffer(
+        framebuffer, column, (uint16_t)(row - 1U));
     }
   }
 }
@@ -344,12 +389,39 @@ void DisplayRenderer_CommitPresentedFrame(void)
   s_display_pending_list_invalidates = 0UL;
 }
 
+uint32_t DisplayRenderer_CopyCursorBlinkFrame(
+  uint32_t visible,
+  uint8_t *destination,
+  uint32_t destination_size)
+{
+  if ((destination == NULL) ||
+      (destination_size < DISPLAY_RENDERER_BUFFER_SIZE) ||
+      (s_display_cursor_base_valid == 0UL) ||
+      (s_lpbam_cursor_panel_region_valid == 0UL))
+  {
+    return 0UL;
+  }
+
+  (void)memcpy(destination,
+               s_display_cursor_base_framebuffer,
+               DISPLAY_RENDERER_BUFFER_SIZE);
+  if (visible == 0UL)
+  {
+    DisplayRenderer_HollowPanelRegionInBuffer(
+      destination, &s_lpbam_cursor_panel_region);
+  }
+
+  return 1UL;
+}
+
 uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
   uint32_t visible,
   display_renderer_stats_t *stats)
 {
-  if ((s_display_cursor_base_valid == 0UL) ||
-      (s_lpbam_cursor_panel_region_valid == 0UL))
+  if (DisplayRenderer_CopyCursorBlinkFrame(
+        visible,
+        s_display_framebuffer,
+        sizeof(s_display_framebuffer)) == 0UL)
   {
     DisplayRenderer_ResetDirtyRows();
     DisplayRenderer_FillStats(stats,
@@ -360,14 +432,6 @@ uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
                               DISPLAY_RENDERER_ROW_NONE :
                               s_display_committed_list.selected_row);
     return 0UL;
-  }
-
-  (void)memcpy(s_display_framebuffer,
-               s_display_cursor_base_framebuffer,
-               sizeof(s_display_framebuffer));
-  if (visible == 0UL)
-  {
-    DisplayRenderer_ClearPanelRegion(&s_lpbam_cursor_panel_region);
   }
 
   DisplayRenderer_ComputeDirtyRowsFromCommitted();

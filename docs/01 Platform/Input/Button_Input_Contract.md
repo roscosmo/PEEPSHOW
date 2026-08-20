@@ -43,15 +43,19 @@ edge path and the first UI consumption path:
   missing or invalid
 
 FW0 A/B/L/R handling is now an EXTI-assisted, ThreadX-tick-owned physical FSM.
-The EXTI path only records raw press/release edges and debug timestamps;
-`thInput` owns debounce deadlines, accepted press impulses, release completion,
-and future long/repeat/stuck classification. `HAL_GetTick()` must not be used
-as the authoritative timing source for A/B/L/R classification. Quick taps are
-explicitly supported: if a release edge arrives while press debounce is still
-pending, the release is latched and the tap emits exactly one generic press
-impulse when the debounce interval expires, then returns to released.
+Each A/B/L/R EXTI edge is posted non-blockingly as a four-word ordered message
+to `qInputRaw`; `thInput` consumes those timestamped messages in FIFO order and
+owns debounce deadlines, accepted press impulses, release completion, and future
+long/repeat/stuck classification. If an ISR queue send fails, the existing raw
+mask remains a recovery source rather than silently losing the electrical state.
+`HAL_GetTick()` must not be used as the authoritative timing source for A/B/L/R
+classification. `thInput` waits only until its next physical-FSM deadline, so a
+new edge wakes it immediately. Quick taps are explicitly supported: if a release
+edge arrives while press debounce is still pending, the release is latched and
+the tap emits exactly one generic press impulse when the debounce interval
+expires, then returns to released.
 
-FW0 API version 9 adds the first logical input policy scaffold. `PS_InputButtons_TakeLogicalEvent()` currently emits validated physical A/B/L/R presses as `PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS` records with raw button IDs and masks. `thInput` then records policy context and forwards allowed generic press records to the current focus owner. The default shell policy is unlocked and UI-focused while the runtime host is active; it records suppression reasons for runtime-not-ready, lock-active, unsupported event, invalid button, and queue-send failure. This scaffold does not map A/B/L/R to accept/back/up/down, and it does not yet publish long, repeat, chord, or stuck logical events.
+FW0 API version 10 retains the logical input policy introduced in version 9 and adds ordered raw-edge transport plus STOP2 admission visibility. `PS_InputButtons_TakeLogicalEvent()` currently emits validated physical A/B/L/R presses as `PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS` records with raw button IDs and masks. `thInput` then records policy context and forwards allowed generic press records to the current focus owner. The default shell policy is unlocked and UI-focused while the runtime host is active; it records suppression reasons for runtime-not-ready, lock-active, unsupported event, invalid button, and queue-send failure. This scaffold does not map A/B/L/R to accept/back/up/down, and it does not yet publish long, repeat, chord, or stuck logical events.
 
 RTOS probe version 21 extends this policy with the first focus resolver. Shell and installer classes, plus system overlays such as shutdown and MSC transfer screens, continue to target `thUI`. Package runtime classes `LP_GRAPH`, `LP_MODULE`, and `RT_SCENE` target `thRuntime` through a stub input message that records the generic logical press without assigning game meaning. Unsupported classes, not-ready runtime state, locks, invalid buttons, unsupported events, and queue-send failures remain counted as policy suppressions. Shell-side validation on HW6 unit 001 showed normal menu navigation still delivered all 8 logical presses to `thUI` with `input policy api/event/deliv/supp/lock = 1 / 8 / 8 / 0 / 0`, `input policy ui/runtime/overlay = 8 / 0 / 0`, last target/reason/status `1 / 1 / 0x0`, and runtime input count/button `0 / 0`. Runtime-side validation then queued the reactive package stub, entered `LP_MODULE / REACTIVE / RUNNING` (`runtime class prev/current/return = 1 / 3 / 1`, `runtime exec/lifecycle = 1 / 2`), and a physical A press reported target/reason/status `2 / 8 / 0x0`, `input policy ui/runtime/overlay = 8 / 1 / 0`, `runtime input count/button = 1 / 1`, and last runtime input `event/button/mask/status = 1 / 1 / 0x1 / 0x0`.
 
@@ -73,6 +77,8 @@ on HW6 unit 001, but final product behavior is still governed by
 [[PMIC_and_Power_Contract]].
 
 Validated HW6 unit 001 FW0 evidence `EV-HW6-20260816-P1-BUTTONWAKE-LIST-069` proves A/B/L/R can wake from automatic held-frame STOP2 without swallowing the wake press. The target reported owner STOP2 count `9`, latest wake source/primary `0x2/2` (`BUTTON`), wake counts `start/button/... = 0/9/...`, button edges `22 -> 23`, last button `4` with press event `1`, and input logical/policy counts caught up at `12/12`. Visual testing confirmed brief L/R presses woke the MCU, moved menu focus, and then the system returned to STOP2 on allowed shell pages. Calibration page `4` intentionally remained a UI blocker for auto-idle in this evidence.
+
+Validated HW6 unit 001 FW0 evidence `EV-HW6-20260820-P1-REACTIVELPBAM-075` proves the ordered A/B/L/R path through repeated LPBAM STOP2 cycles. Probe APIs `49/10` reported raw ISR send/process/drop `32/32/0`, raw queue enqueue/dequeue/drop `32/32/0`, and all four physical FSMs returned to `RELEASED`. Sixteen accepted logical presses produced `16` policy deliveries, zero suppressions, and `16` UI button actions. The final pre-WFI input check ran three times with zero vetoes and status `0x0`; its successful snapshot found enqueue/dequeue `4/4` and queue depth `0`. This validates no-loss ordered wake/input delivery for the tested button sequence. Long press, repeat, chords, stuck handling, and their STOP2 races remain open until separately implemented and tested.
 
 ## Start Button / ADP5360 Shipping Mode
 
@@ -231,7 +237,7 @@ Current FW0 scaffolding admits `BTN_START` into the EXTI-backed input path and k
 
 Validated HW6 unit 001 FW0 evidence: a 5 s hold reached `START_SHIP_PREP` with checkpoint/live ticks `500/525`; a 9-10 s hold reached `START_SHIP_WARNING` with `900/1075`; a >11 s hold reached `START_SHIP_IMMINENT` with `1100/1675`; raw/stable PA4 was `0/0` during sustained holds; and `thPower` recorded prep/warning/imminent counters `1/1/1`. A later validated scaffold capture showed the user-visible `PREPARING` and `POWER OFF IN 3/2/1` screens, release before shipment returning to HOME, input prep/warn/imminent/release counters `1/1/1/1`, power prep/warn/imminent/cancel counters `1/1/1/1`, one no-op quiesce hook call, and software shipment remaining gated off with enable/request/skip `0/0/1`. The ADP5360 hardware shipment path was confirmed separately by holding START/MR past the hardware threshold.
 
-The required knob names above are authoritative. HW6 FW0 sources knob values from `firmware/peepshow_hw6_fw0/config/knobs.json`, validates them with `config/knobs.schema.json`, and generates `Core/Inc/knobs_autogen.h` through `tools/gen_knobs.py`. The START overlay scaffold consumes generated START macros. The A/B/L/R physical button FSM consumes the generic debounce, long-press, repeat, stuck, and chord-window knobs. API version 9 adds the logical press record and delivery-policy probe; RTOS probe version 21 adds focus routing between `thUI` and `thRuntime`, but long/repeat/stuck/chord publication remains scaffolded until the classifier emits those logical event types and the focus policy consumes them.
+The required knob names above are authoritative. HW6 FW0 sources knob values from `firmware/peepshow_hw6_fw0/config/knobs.json`, validates them with `config/knobs.schema.json`, and generates `Core/Inc/knobs_autogen.h` through `tools/gen_knobs.py`. The START overlay scaffold consumes generated START macros. The A/B/L/R physical button FSM consumes the generic debounce, long-press, repeat, stuck, and chord-window knobs. API version 10 includes the logical press record, delivery-policy probe, ordered raw-edge transport, and STOP2-admission visibility; RTOS probe version 21 adds focus routing between `thUI` and `thRuntime`, but long/repeat/stuck/chord publication remains scaffolded until the classifier emits those logical event types and the focus policy consumes them.
 
 Current generated defaults preserve the validated START scaffold shape while allowing timing adjustment: generic press/release debounce `20/20 ms`, generic long press `1000 ms`, generic repeat start/period `500/150 ms`, generic stuck threshold `30000 ms`, chord window `80 ms`, START long press `1000 ms`, ship-prep `5000 ms`, warning `9000 ms`, imminent `11000 ms`, START stable-level acceptance `2` samples, and software shipment request enable `false`.
 
