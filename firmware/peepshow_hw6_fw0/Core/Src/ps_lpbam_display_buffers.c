@@ -14,15 +14,16 @@
 uint8_t ps_lpbam_display_frames[PS_LPBAM_DISPLAY_FRAME_COUNT][DISPLAY_HEIGHT][LINE_WIDTH];
 uint8_t ps_lpbam_display_frame_a[DISPLAY_HEIGHT][LINE_WIDTH];
 uint8_t ps_lpbam_display_frame_b[DISPLAY_HEIGHT][LINE_WIDTH];
-uint8_t *ps_lpbam_display_tx[PS_LPBAM_DISPLAY_FRAME_COUNT][PS_LPBAM_DISPLAY_SEQUENCE_CHUNKS];
-uint16_t ps_lpbam_display_tx_len[PS_LPBAM_DISPLAY_FRAME_COUNT][PS_LPBAM_DISPLAY_SEQUENCE_CHUNKS] PS_SRAM4_BUF_ATTR;
-uint16_t ps_lpbam_display_frame_len PS_SRAM4_BUF_ATTR;
-uint16_t ps_lpbam_display_active_frame_count PS_SRAM4_BUF_ATTR;
-uint16_t ps_lpbam_display_active_chunk_count[PS_LPBAM_DISPLAY_FRAME_COUNT] PS_SRAM4_BUF_ATTR;
-uint16_t ps_lpbam_display_dirty_start_row[PS_LPBAM_DISPLAY_FRAME_COUNT] PS_SRAM4_BUF_ATTR;
-uint16_t ps_lpbam_display_dirty_row_count[PS_LPBAM_DISPLAY_FRAME_COUNT] PS_SRAM4_BUF_ATTR;
-uint16_t ps_lpbam_display_sequence_start_frame PS_SRAM4_BUF_ATTR;
-uint16_t ps_lpbam_display_queue_start_slot PS_SRAM4_BUF_ATTR;
+uint8_t *ps_lpbam_display_tx[PS_LPBAM_DISPLAY_MAX_CHUNKS];
+uint16_t ps_lpbam_display_tx_len[PS_LPBAM_DISPLAY_MAX_CHUNKS];
+ps_lpbam_display_sequence_entry_t
+  ps_lpbam_display_sequence[PS_LPBAM_DISPLAY_SEQUENCE_MAX];
+ps_lpbam_display_admission_t ps_lpbam_display_admission;
+uint16_t ps_lpbam_display_active_sequence_count;
+uint16_t ps_lpbam_display_active_chunk_count;
+uint16_t ps_lpbam_display_payload_wire_bytes;
+uint16_t ps_lpbam_display_sequence_start_frame;
+uint16_t ps_lpbam_display_queue_start_slot;
 static uint8_t ps_lpbam_display_payload_arena[PS_LPBAM_DISPLAY_ARENA_SIZE] PS_SRAM4_BUF_ATTR;
 static uint16_t ps_lpbam_display_payload_used PS_SRAM4_BUF_ATTR;
 static uint8_t ps_lpbam_display_experiment_variant;
@@ -127,18 +128,42 @@ static void PS_LpbamDisplay_ResetPayloadState(void)
 {
   memset(ps_lpbam_display_tx, 0, sizeof(ps_lpbam_display_tx));
   memset(ps_lpbam_display_tx_len, 0, sizeof(ps_lpbam_display_tx_len));
-  memset(ps_lpbam_display_active_chunk_count, 0,
-         sizeof(ps_lpbam_display_active_chunk_count));
-  memset(ps_lpbam_display_dirty_start_row, 0,
-         sizeof(ps_lpbam_display_dirty_start_row));
-  memset(ps_lpbam_display_dirty_row_count, 0,
-         sizeof(ps_lpbam_display_dirty_row_count));
+  memset(ps_lpbam_display_sequence, 0,
+         sizeof(ps_lpbam_display_sequence));
+  memset(&ps_lpbam_display_admission, 0,
+         sizeof(ps_lpbam_display_admission));
   memset(ps_lpbam_display_payload_arena, 0,
          sizeof(ps_lpbam_display_payload_arena));
   ps_lpbam_display_payload_used = 0U;
-  ps_lpbam_display_active_frame_count = 0U;
-  ps_lpbam_display_frame_len = 0U;
+  ps_lpbam_display_active_sequence_count = 0U;
+  ps_lpbam_display_active_chunk_count = 0U;
+  ps_lpbam_display_payload_wire_bytes = 0U;
   ps_lpbam_display_queue_start_slot = 0U;
+  ps_lpbam_display_admission.sequence_capacity =
+    PS_LPBAM_DISPLAY_SEQUENCE_MAX;
+  ps_lpbam_display_admission.chunk_capacity =
+    PS_LPBAM_DISPLAY_MAX_CHUNKS;
+  ps_lpbam_display_admission.payload_capacity_bytes =
+    PS_LPBAM_DISPLAY_ARENA_SIZE;
+  ps_lpbam_display_admission.api_version =
+    PS_LPBAM_DISPLAY_ADMISSION_API_VERSION;
+  ps_lpbam_display_admission.status = (uint32_t)HAL_ERROR;
+  ps_lpbam_display_admission.reason = PS_LPBAM_ADMISSION_REASON_NONE;
+}
+
+static HAL_StatusTypeDef PS_LpbamDisplay_AdmissionFailure(uint32_t reason)
+{
+  ps_lpbam_display_admission.sequence_used =
+    ps_lpbam_display_active_sequence_count;
+  ps_lpbam_display_admission.chunk_used =
+    ps_lpbam_display_active_chunk_count;
+  ps_lpbam_display_admission.payload_wire_bytes =
+    ps_lpbam_display_payload_wire_bytes;
+  ps_lpbam_display_admission.payload_used_bytes =
+    ps_lpbam_display_payload_used;
+  ps_lpbam_display_admission.status = (uint32_t)HAL_ERROR;
+  ps_lpbam_display_admission.reason = reason;
+  return HAL_ERROR;
 }
 
 static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffersForRows(
@@ -151,11 +176,16 @@ static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffersForRows(
 
   if ((candidate_rows == NULL) || (candidate_row_count == 0U) ||
       (frame_count == 0U) ||
-      (frame_count > PS_LPBAM_DISPLAY_FRAME_COUNT))
+      (frame_count > PS_LPBAM_DISPLAY_SEQUENCE_MAX))
   {
-    return HAL_ERROR;
+    PS_LpbamDisplay_ResetPayloadState();
+    return PS_LpbamDisplay_AdmissionFailure(
+      (frame_count > PS_LPBAM_DISPLAY_SEQUENCE_MAX) ?
+      PS_LPBAM_ADMISSION_REASON_SEQUENCE :
+      PS_LPBAM_ADMISSION_REASON_ARGUMENT);
   }
 
+  PS_LpbamDisplay_ResetPayloadState();
   memset(ps_lpbam_display_candidate_row_enabled, 0,
          sizeof(ps_lpbam_display_candidate_row_enabled));
 
@@ -164,7 +194,8 @@ static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffersForRows(
     uint16_t row = candidate_rows[i];
     if ((row < 1U) || (row > DISPLAY_HEIGHT))
     {
-      return HAL_ERROR;
+      return PS_LpbamDisplay_AdmissionFailure(
+        PS_LPBAM_ADMISSION_REASON_ARGUMENT);
     }
 
     if (first_candidate_row == 0U)
@@ -174,7 +205,6 @@ static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffersForRows(
     ps_lpbam_display_candidate_row_enabled[row - 1U] = 1U;
   }
 
-  PS_LpbamDisplay_ResetPayloadState();
   ps_lpbam_display_sequence_start_frame =
     (uint16_t)(sequence_start_frame % frame_count);
 
@@ -184,7 +214,7 @@ static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffersForRows(
                                    frame_count);
     uint16_t target = (uint16_t)((previous + 1U) % frame_count);
     uint16_t dirty_rows = 0U;
-    uint16_t chunk_count = 0U;
+    uint16_t first_chunk = ps_lpbam_display_active_chunk_count;
     uint16_t dirty_index = 0U;
 
     memset(ps_lpbam_display_dirty_row_list, 0,
@@ -217,9 +247,11 @@ static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffersForRows(
       uint16_t len = 0U;
       uint16_t last_payload_row;
 
-      if (chunk_count >= PS_LPBAM_DISPLAY_SEQUENCE_CHUNKS)
+      if (ps_lpbam_display_active_chunk_count >=
+          PS_LPBAM_DISPLAY_MAX_CHUNKS)
       {
-        return HAL_ERROR;
+        return PS_LpbamDisplay_AdmissionFailure(
+          PS_LPBAM_ADMISSION_REASON_CHUNKS);
       }
 
       rows_this_payload = (uint16_t)(dirty_rows - dirty_index);
@@ -232,7 +264,8 @@ static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffersForRows(
                                         PS_LPBAM_ROW_WIRE_BYTES) + 2U);
       if (PS_LpbamDisplay_AllocPayload(payload_max_len, &payload) != HAL_OK)
       {
-        return HAL_ERROR;
+        return PS_LpbamDisplay_AdmissionFailure(
+          PS_LPBAM_ADMISSION_REASON_PAYLOAD);
       }
 
       write = payload;
@@ -252,20 +285,25 @@ static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffersForRows(
                                           ps_lpbam_display_frames[target],
                                           &len) != HAL_OK)
       {
-        return HAL_ERROR;
+        return PS_LpbamDisplay_AdmissionFailure(
+          PS_LPBAM_ADMISSION_REASON_BUILD);
       }
 
-      ps_lpbam_display_tx[frame][chunk_count] = payload;
-      ps_lpbam_display_tx_len[frame][chunk_count] = len;
-      ps_lpbam_display_frame_len = (uint16_t)(ps_lpbam_display_frame_len + len);
+      ps_lpbam_display_tx[ps_lpbam_display_active_chunk_count] = payload;
+      ps_lpbam_display_tx_len[ps_lpbam_display_active_chunk_count] = len;
+      ps_lpbam_display_payload_wire_bytes =
+        (uint16_t)(ps_lpbam_display_payload_wire_bytes + len);
       dirty_index = (uint16_t)(dirty_index + rows_this_payload);
-      chunk_count++;
+      ps_lpbam_display_active_chunk_count++;
     }
 
-    ps_lpbam_display_active_chunk_count[frame] = chunk_count;
-    ps_lpbam_display_dirty_start_row[frame] = ps_lpbam_display_dirty_row_list[0];
-    ps_lpbam_display_dirty_row_count[frame] = dirty_rows;
-    ps_lpbam_display_active_frame_count++;
+    ps_lpbam_display_sequence[frame].first_chunk = first_chunk;
+    ps_lpbam_display_sequence[frame].chunk_count =
+      (uint16_t)(ps_lpbam_display_active_chunk_count - first_chunk);
+    ps_lpbam_display_sequence[frame].dirty_start_row =
+      ps_lpbam_display_dirty_row_list[0];
+    ps_lpbam_display_sequence[frame].dirty_row_count = dirty_rows;
+    ps_lpbam_display_active_sequence_count++;
   }
 
   memcpy(ps_lpbam_display_frame_a, ps_lpbam_display_frames[0],
@@ -273,8 +311,23 @@ static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffersForRows(
   memcpy(ps_lpbam_display_frame_b, ps_lpbam_display_frames[1],
          sizeof(ps_lpbam_display_frame_b));
 
-  return (ps_lpbam_display_active_frame_count ==
-          frame_count) ? HAL_OK : HAL_ERROR;
+  if (ps_lpbam_display_active_sequence_count != frame_count)
+  {
+    return PS_LpbamDisplay_AdmissionFailure(
+      PS_LPBAM_ADMISSION_REASON_BUILD);
+  }
+
+  ps_lpbam_display_admission.sequence_used =
+    ps_lpbam_display_active_sequence_count;
+  ps_lpbam_display_admission.chunk_used =
+    ps_lpbam_display_active_chunk_count;
+  ps_lpbam_display_admission.payload_wire_bytes =
+    ps_lpbam_display_payload_wire_bytes;
+  ps_lpbam_display_admission.payload_used_bytes =
+    ps_lpbam_display_payload_used;
+  ps_lpbam_display_admission.status = (uint32_t)HAL_OK;
+  ps_lpbam_display_admission.reason = PS_LPBAM_ADMISSION_REASON_NONE;
+  return HAL_OK;
 }
 
 static HAL_StatusTypeDef PS_LpbamDisplay_BuildPayloadBuffers(

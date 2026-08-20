@@ -10,12 +10,10 @@
 #define PS_LPBAM_DMA_NODE_CBR1_INDEX   2U
 
 static LPBAM_SPI_TxDataDesc_t
-  Queue1_Q_DisplayBuf_Desc[PS_LPBAM_DISPLAY_FRAME_COUNT]
-                              [PS_LPBAM_DISPLAY_SEQUENCE_CHUNKS]
+  Queue1_Q_DisplayBuf_Desc[PS_LPBAM_DISPLAY_MAX_CHUNKS]
     PS_LPBAM_DESC_ATTR;
 static DMA_NodeTypeDef
-  Queue1_Q_DisplayTail_Node[PS_LPBAM_DISPLAY_FRAME_COUNT]
-                               [PS_LPBAM_DISPLAY_SEQUENCE_CHUNKS]
+  Queue1_Q_DisplayTail_Node[PS_LPBAM_DISPLAY_MAX_CHUNKS]
     PS_LPBAM_DESC_ATTR;
 
 /* Kept as a named symbol so existing GDB queue inspection remains valid. */
@@ -132,10 +130,15 @@ static LPBAM_Status_t PS_LpbamDisplayQueue_AppendChunk(
 
 HAL_StatusTypeDef PS_LpbamDisplayQueue_Build(void)
 {
-  uint32_t frame;
+  uint32_t descriptor_index = 0U;
+  uint32_t sequence;
 
-  if ((ps_lpbam_display_active_frame_count == 0U) ||
-      (ps_lpbam_display_active_frame_count > PS_LPBAM_DISPLAY_FRAME_COUNT))
+  if ((ps_lpbam_display_active_sequence_count == 0U) ||
+      (ps_lpbam_display_active_sequence_count >
+       PS_LPBAM_DISPLAY_SEQUENCE_MAX) ||
+      (ps_lpbam_display_active_chunk_count == 0U) ||
+      (ps_lpbam_display_active_chunk_count > PS_LPBAM_DISPLAY_MAX_CHUNKS) ||
+      (ps_lpbam_display_admission.status != (uint32_t)HAL_OK))
   {
     return HAL_ERROR;
   }
@@ -144,39 +147,55 @@ HAL_StatusTypeDef PS_LpbamDisplayQueue_Build(void)
   memset(Queue1_Q_DisplayTail_Node, 0, sizeof(Queue1_Q_DisplayTail_Node));
   memset(&Queue1_Q, 0, sizeof(Queue1_Q));
 
-  for (frame = 0U; frame < ps_lpbam_display_active_frame_count; ++frame)
+  for (sequence = 0U;
+       sequence < ps_lpbam_display_active_sequence_count;
+       ++sequence)
   {
     uint32_t chunk;
     uint32_t slot =
-      (ps_lpbam_display_queue_start_slot + frame) %
-      ps_lpbam_display_active_frame_count;
+      (ps_lpbam_display_queue_start_slot + sequence) %
+      ps_lpbam_display_active_sequence_count;
+    const ps_lpbam_display_sequence_entry_t *entry =
+      &ps_lpbam_display_sequence[slot];
     uint8_t wait_for_frame =
-      ((PS_LPBAM_FIRST_FRAME_IMMEDIATE != 0U) && (frame == 0U)) ? 0U : 1U;
+      ((PS_LPBAM_FIRST_FRAME_IMMEDIATE != 0U) && (sequence == 0U)) ? 0U : 1U;
 
-    if ((ps_lpbam_display_active_chunk_count[slot] == 0U) ||
-        (ps_lpbam_display_active_chunk_count[slot] >
-         PS_LPBAM_DISPLAY_SEQUENCE_CHUNKS))
+    if ((entry->chunk_count == 0U) ||
+        (((uint32_t)entry->first_chunk + (uint32_t)entry->chunk_count) >
+         ps_lpbam_display_active_chunk_count))
     {
       return HAL_ERROR;
     }
 
     for (chunk = 0U;
-         chunk < ps_lpbam_display_active_chunk_count[slot];
+         chunk < entry->chunk_count;
          ++chunk)
     {
+      uint32_t payload_index = (uint32_t)entry->first_chunk + chunk;
       uint8_t wait_for_chunk = (chunk == 0U) ? wait_for_frame : 0U;
 
+      if (descriptor_index >= PS_LPBAM_DISPLAY_MAX_CHUNKS)
+      {
+        return HAL_ERROR;
+      }
+
       if (PS_LpbamDisplayQueue_AppendChunk(
-            ps_lpbam_display_tx[slot][chunk],
-            ps_lpbam_display_tx_len[slot][chunk],
+            ps_lpbam_display_tx[payload_index],
+            ps_lpbam_display_tx_len[payload_index],
             wait_for_chunk,
-            &Queue1_Q_DisplayBuf_Desc[frame][chunk],
-            &Queue1_Q_DisplayTail_Node[frame][chunk],
+            &Queue1_Q_DisplayBuf_Desc[descriptor_index],
+            &Queue1_Q_DisplayTail_Node[descriptor_index],
             &Queue1_Q) != LPBAM_OK)
       {
         return HAL_ERROR;
       }
+      descriptor_index++;
     }
+  }
+
+  if (descriptor_index != ps_lpbam_display_active_chunk_count)
+  {
+    return HAL_ERROR;
   }
 
   return HAL_DMAEx_List_SetCircularMode(&Queue1_Q);

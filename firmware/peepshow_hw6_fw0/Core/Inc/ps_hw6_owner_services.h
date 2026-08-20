@@ -215,6 +215,13 @@ typedef struct
   uint32_t display_lpbam_payload_frame_count;
   uint32_t display_lpbam_payload_chunk_count;
   uint32_t display_lpbam_payload_bytes;
+  uint32_t display_lpbam_admission_api_version;
+  uint32_t display_lpbam_admission_status;
+  uint32_t display_lpbam_admission_reason;
+  uint32_t display_lpbam_admission_sequence_capacity;
+  uint32_t display_lpbam_admission_chunk_capacity;
+  uint32_t display_lpbam_admission_payload_used_bytes;
+  uint32_t display_lpbam_admission_payload_capacity_bytes;
   uint32_t display_lpbam_fill_status;
   uint32_t display_lpbam_clock_status;
   uint32_t display_lpbam_link_status;

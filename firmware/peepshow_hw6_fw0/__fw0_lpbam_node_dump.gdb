@@ -5,11 +5,11 @@ printf "SPI3 live CR1/CR2/CFG1/CFG2/AUTOCR/SR = 0x%08x / 0x%08x / 0x%08x / 0x%08
 printf "SPI3 decoded CFG1.MBR=%u CFG2.SSOE/SSIOP/SSOM=%u/%u/%u AUTOCR=0x%08x\n", (hspi3.Instance->CFG1 >> 28) & 7, (hspi3.Instance->CFG2 >> 29) & 1, (hspi3.Instance->CFG2 >> 28) & 1, (hspi3.Instance->CFG2 >> 30) & 1, hspi3.Instance->AUTOCR
 printf "SPI3 HAL Init Direction/Prescaler/SSIdleness = 0x%08x / 0x%08x / 0x%08x\n", hspi3.Init.Direction, hspi3.Init.BaudRatePrescaler, hspi3.Init.MasterSSIdleness
 printf "LPTIM1 CR/CFGR/CCMR1/ARR/CMP = 0x%08x / 0x%08x / 0x%08x / %u / %u\n", hlptim1.Instance->CR, hlptim1.Instance->CFGR, hlptim1.Instance->CCMR1, hlptim1.Instance->ARR, hlptim1.Instance->CCR1
-printf "cursor chunk len = %u / %u / %u / %u\n", ps_lpbam_display_tx_len[0][0], ps_lpbam_display_tx_len[1][0], ps_lpbam_display_tx_len[2][0], ps_lpbam_display_tx_len[3][0]
+printf "first four chunk lengths = %u / %u / %u / %u\n", ps_lpbam_display_tx_len[0], ps_lpbam_display_tx_len[1], ps_lpbam_display_tx_len[2], ps_lpbam_display_tx_len[3]
 printf "descriptor staged SPI writes, chunk 0 each frame: pReg0=CR1 disable, pReg1=CR2 TSIZE, pReg2=IFCR clear, pReg3=CR1 enable, pReg4=CR1 CSTART\n"
 set $f = 0
 while $f < 4
-  set $d = &Queue1_Q_DisplayBuf_Desc[$f][0]
+  set $d = &Queue1_Q_DisplayBuf_Desc[$f]
   set $cr2 = $d->pReg[1]
   set $cfg2_live = hspi3.Instance->CFG2
   printf "frame %u regs disable/tsize/ifcr/enable/start = 0x%08x / 0x%08x / 0x%08x / 0x%08x / 0x%08x\n", $f, $d->pReg[0], $d->pReg[1], $d->pReg[2], $d->pReg[3], $d->pReg[4]
