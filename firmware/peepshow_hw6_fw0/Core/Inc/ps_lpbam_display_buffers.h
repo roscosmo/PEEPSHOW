@@ -7,11 +7,11 @@
 
 #define PS_LPBAM_DISPLAY_ROWS        LCD_DMA_MAX_ROWS_PER_TRANSFER
 #define PS_LPBAM_DISPLAY_CHUNK_COUNT ((DISPLAY_HEIGHT + PS_LPBAM_DISPLAY_ROWS - 1U) / PS_LPBAM_DISPLAY_ROWS)
-#define PS_LPBAM_DISPLAY_TX_MAX_LEN  (1U + ((PS_LPBAM_DISPLAY_ROWS + 1U) * (1U + LINE_WIDTH + 1U)) + 2U)
-#define PS_LPBAM_DISPLAY_FRAME_COUNT 4U
-#define PS_LPBAM_DISPLAY_SEQUENCE_MAX PS_LPBAM_DISPLAY_FRAME_COUNT
+#define PS_LPBAM_DISPLAY_TRANSACTION_MAX_LEN (1U + ((PS_LPBAM_DISPLAY_ROWS + 1U) * (1U + LINE_WIDTH + 1U)) + 2U)
 #define PS_LPBAM_DISPLAY_MAX_CHUNKS 12U
-#define PS_LPBAM_DISPLAY_ADMISSION_API_VERSION 1U
+#define PS_LPBAM_DISPLAY_SEQUENCE_MAX PS_LPBAM_DISPLAY_MAX_CHUNKS
+#define PS_LPBAM_DISPLAY_PATTERN_SEQUENCE_COUNT 4U
+#define PS_LPBAM_DISPLAY_ADMISSION_API_VERSION 3U
 
 #define PS_LPBAM_ADMISSION_REASON_NONE          0U
 #define PS_LPBAM_ADMISSION_REASON_ARGUMENT      1U
@@ -52,7 +52,6 @@ typedef struct
 } ps_lpbam_display_admission_t;
 
 extern uint8_t *ps_lpbam_display_tx[PS_LPBAM_DISPLAY_MAX_CHUNKS];
-extern uint8_t ps_lpbam_display_frames[PS_LPBAM_DISPLAY_FRAME_COUNT][DISPLAY_HEIGHT][LINE_WIDTH];
 extern uint8_t ps_lpbam_display_frame_a[DISPLAY_HEIGHT][LINE_WIDTH];
 extern uint8_t ps_lpbam_display_frame_b[DISPLAY_HEIGHT][LINE_WIDTH];
 extern uint16_t ps_lpbam_display_tx_len[PS_LPBAM_DISPLAY_MAX_CHUNKS];
@@ -71,10 +70,14 @@ uint8_t PS_LpbamDisplay_GetExperimentVariant(void);
 
 HAL_StatusTypeDef PS_LpbamDisplay_BuildPatternBuffers(uint16_t start_row,
                                                        uint16_t row_count);
-HAL_StatusTypeDef PS_LpbamDisplay_BuildPreparedAnimationBuffers(
+HAL_StatusTypeDef PS_LpbamDisplay_BeginPreparedAnimation(
   const uint16_t *candidate_rows,
   uint16_t candidate_row_count,
-  uint16_t frame_count,
+  uint16_t sequence_count,
   uint16_t sequence_start_frame);
+HAL_StatusTypeDef PS_LpbamDisplay_AppendPreparedTransition(
+  const uint8_t previous_frame[DISPLAY_HEIGHT][LINE_WIDTH],
+  const uint8_t target_frame[DISPLAY_HEIGHT][LINE_WIDTH]);
+HAL_StatusTypeDef PS_LpbamDisplay_FinishPreparedAnimation(void);
 
 #endif /* PS_LPBAM_DISPLAY_BUFFERS_H */

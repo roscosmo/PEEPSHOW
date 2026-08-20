@@ -22,7 +22,8 @@ extern "C" {
   PS_DEV_ADP5360_INTERRUPT_FLAG_REGISTER_COUNT
 #define PS_HW6_OWNER_STATUS_NOT_RUN              (0xFFFFFFFFUL)
 #define PS_HW6_OWNER_STATUS_UNAVAILABLE          (0xFFFFFFFEUL)
-#define PS_HW6_OWNER_LPBAM_SEQUENCE_MAX          (4U)
+#define PS_HW6_OWNER_LPBAM_SEQUENCE_MAX          (12U)
+#define PS_HW6_OWNER_LPBAM_ELEMENT_MAX           (8U)
 
 typedef struct
 {
@@ -196,6 +197,9 @@ typedef struct
   uint32_t display_lpbam_sequence_start_frame;
   uint32_t display_lpbam_candidate_row_count;
   uint32_t display_lpbam_sequence_phase[PS_HW6_OWNER_LPBAM_SEQUENCE_MAX];
+  uint32_t display_lpbam_element_count;
+  uint32_t display_lpbam_element_id[PS_HW6_OWNER_LPBAM_ELEMENT_MAX];
+  uint32_t display_lpbam_element_phase_count[PS_HW6_OWNER_LPBAM_ELEMENT_MAX];
   uint32_t display_lpbam_prepare_count;
   uint32_t display_lpbam_prepare_tick;
   uint32_t display_lpbam_prepare_status;

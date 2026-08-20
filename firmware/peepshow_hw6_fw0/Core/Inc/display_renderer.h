@@ -20,9 +20,15 @@ extern "C" {
 #define DISPLAY_RENDERER_PRIMITIVE_PATTERN      (4UL)
 #define DISPLAY_RENDERER_ANIMATION_NONE         (0UL)
 #define DISPLAY_RENDERER_ANIMATION_CURSOR_BLINK (1UL)
+#define DISPLAY_RENDERER_ANIMATION_COMPOSITE_TEST (2UL)
+#define DISPLAY_RENDERER_ANIMATION_FULL_FRAME_TEST (3UL)
+#define DISPLAY_RENDERER_WAITING_ELEMENT_CURSOR (1UL)
+#define DISPLAY_RENDERER_WAITING_ELEMENT_MULTICHUNK_TEST (2UL)
+#define DISPLAY_RENDERER_WAITING_ELEMENT_FULL_FRAME_TEST (3UL)
 #define DISPLAY_RENDERER_ROW_NONE               (0xFFFFFFFFUL)
-#define DISPLAY_RENDERER_WAITING_PHASE_MAX      (4U)
-#define DISPLAY_RENDERER_WAITING_SEQUENCE_MAX   (4U)
+#define DISPLAY_RENDERER_WAITING_PHASE_MAX      (12U)
+#define DISPLAY_RENDERER_WAITING_SEQUENCE_MAX   (12U)
+#define DISPLAY_RENDERER_WAITING_ELEMENT_MAX    (8U)
 
 typedef struct
 {
@@ -48,6 +54,15 @@ typedef struct
 
 typedef struct
 {
+  uint32_t element_id;
+  uint32_t source_primitive_id;
+  uint32_t phase_count;
+  uint32_t sequence_phase[DISPLAY_RENDERER_WAITING_SEQUENCE_MAX];
+  display_renderer_panel_region_t panel_bounds;
+} display_renderer_waiting_element_t;
+
+typedef struct
+{
   uint32_t animation_id;
   uint32_t source_primitive_id;
   uint32_t focus_row;
@@ -58,10 +73,15 @@ typedef struct
   uint32_t next_deadline_tick;
   uint32_t sequence_start_frame;
   uint32_t sequence_phase[DISPLAY_RENDERER_WAITING_SEQUENCE_MAX];
+  uint32_t element_count;
+  display_renderer_waiting_element_t
+    elements[DISPLAY_RENDERER_WAITING_ELEMENT_MAX];
   const uint16_t *candidate_rows;
   uint16_t candidate_row_count;
   display_renderer_panel_region_t panel_bounds;
 } display_renderer_waiting_animation_t;
+
+extern volatile uint32_t g_display_renderer_waiting_test_variant;
 
 void DisplayRenderer_ClearWhite(void);
 const uint8_t *DisplayRenderer_GetBuffer(void);

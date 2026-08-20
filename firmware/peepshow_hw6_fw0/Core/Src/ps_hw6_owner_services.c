@@ -253,6 +253,7 @@ static void PS_HW6_DisplayOwner_ClearLpbamReadiness(uint32_t reason)
 
 static void PS_HW6_DisplayOwner_ResetLpbamPrepareProbe(void)
 {
+  uint32_t element;
   uint32_t frame;
 
   g_ps_hw6_owner_probe.display_lpbam_prearmed =
@@ -273,6 +274,14 @@ static void PS_HW6_DisplayOwner_ResetLpbamPrepareProbe(void)
   for (frame = 0UL; frame < PS_HW6_OWNER_LPBAM_SEQUENCE_MAX; ++frame)
   {
     g_ps_hw6_owner_probe.display_lpbam_sequence_phase[frame] = 0UL;
+  }
+  g_ps_hw6_owner_probe.display_lpbam_element_count = 0UL;
+  for (element = 0UL;
+       element < PS_HW6_OWNER_LPBAM_ELEMENT_MAX;
+       ++element)
+  {
+    g_ps_hw6_owner_probe.display_lpbam_element_id[element] = 0UL;
+    g_ps_hw6_owner_probe.display_lpbam_element_phase_count[element] = 0UL;
   }
   g_ps_hw6_owner_probe.display_lpbam_cursor_start_row = 0UL;
   g_ps_hw6_owner_probe.display_lpbam_cursor_row_count = 0UL;
@@ -424,7 +433,9 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_EnableLpbamAutonomousClocks(void)
   __HAL_RCC_MSIK_ENABLE();
   __HAL_RCC_MSIKSTOP_ENABLE();
 
-  autonomous.TriggerState = SPI_AUTO_MODE_ENABLE;
+  /* LPDMA gates the first transaction of each logical frame. Continuation
+     transactions must accept their CSTART nodes without another timer edge. */
+  autonomous.TriggerState = SPI_AUTO_MODE_DISABLE;
   autonomous.TriggerSelection = SPI_GRP2_LPTIM1_CH1_TRG;
   autonomous.TriggerPolarity = SPI_TRIG_POLARITY_RISING;
   if (HAL_SPIEx_SetConfigAutonomousMode(&hspi3, &autonomous) != HAL_OK)
@@ -1612,7 +1623,10 @@ PS_HW6_DisplayOwner_PrepareLpbamStop2WithAnimationPhase(
   const display_renderer_waiting_animation_t *animation;
   display_renderer_panel_region_t animation_bounds;
   HAL_StatusTypeDef status;
-  uint16_t frame;
+  uint8_t (*previous_frame)[LINE_WIDTH] = ps_lpbam_display_frame_a;
+  uint8_t (*target_frame)[LINE_WIDTH] = ps_lpbam_display_frame_b;
+  uint16_t sequence_step;
+  uint16_t sequence_frame;
 
   g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_DISPLAY;
   g_ps_hw6_owner_probe.display_lpbam_prepare_count++;
@@ -1655,6 +1669,8 @@ PS_HW6_DisplayOwner_PrepareLpbamStop2WithAnimationPhase(
   if ((animation == NULL) ||
       (animation->phase_count == 0UL) ||
       (animation->phase_count > DISPLAY_RENDERER_WAITING_PHASE_MAX) ||
+      (animation->element_count == 0UL) ||
+      (animation->element_count > DISPLAY_RENDERER_WAITING_ELEMENT_MAX) ||
       (animation->sequence_frame_count == 0UL) ||
       (animation->sequence_frame_count > PS_LPBAM_DISPLAY_SEQUENCE_MAX) ||
       (animation->sequence_start_frame >= animation->sequence_frame_count) ||
@@ -1688,12 +1704,23 @@ PS_HW6_DisplayOwner_PrepareLpbamStop2WithAnimationPhase(
     animation->sequence_start_frame;
   g_ps_hw6_owner_probe.display_lpbam_candidate_row_count =
     animation->candidate_row_count;
-  for (frame = 0U;
-       frame < DISPLAY_RENDERER_WAITING_SEQUENCE_MAX;
-       ++frame)
+  g_ps_hw6_owner_probe.display_lpbam_element_count =
+    animation->element_count;
+  for (sequence_frame = 0U;
+       sequence_frame < animation->element_count;
+       ++sequence_frame)
   {
-    g_ps_hw6_owner_probe.display_lpbam_sequence_phase[frame] =
-      animation->sequence_phase[frame];
+    g_ps_hw6_owner_probe.display_lpbam_element_id[sequence_frame] =
+      animation->elements[sequence_frame].element_id;
+    g_ps_hw6_owner_probe.display_lpbam_element_phase_count[sequence_frame] =
+      animation->elements[sequence_frame].phase_count;
+  }
+  for (sequence_frame = 0U;
+       sequence_frame < DISPLAY_RENDERER_WAITING_SEQUENCE_MAX;
+       ++sequence_frame)
+  {
+    g_ps_hw6_owner_probe.display_lpbam_sequence_phase[sequence_frame] =
+      animation->sequence_phase[sequence_frame];
   }
 
   if ((ps_hw6_display_lpbam_active != 0UL) ||
@@ -1718,28 +1745,50 @@ PS_HW6_DisplayOwner_PrepareLpbamStop2WithAnimationPhase(
   g_ps_hw6_owner_probe.display_lpbam_cursor_column_count =
     animation_bounds.column_count;
 
-  status = HAL_OK;
-  for (frame = 0U;
-       frame < animation->sequence_frame_count;
-       ++frame)
+  status = PS_LpbamDisplay_BeginPreparedAnimation(
+    animation->candidate_rows,
+    animation->candidate_row_count,
+    (uint16_t)animation->sequence_frame_count,
+    (uint16_t)animation->sequence_start_frame);
+  if ((status == HAL_OK) &&
+      (DisplayRenderer_CopyWaitingAnimationFrame(
+         animation,
+         animation->sequence_start_frame,
+         &previous_frame[0][0],
+         sizeof(ps_lpbam_display_frame_a)) == 0UL))
   {
+    status = PS_LpbamDisplay_FinishPreparedAnimation();
+  }
+
+  for (sequence_step = 0U;
+       (status == HAL_OK) &&
+       (sequence_step < animation->sequence_frame_count);
+       ++sequence_step)
+  {
+    uint8_t (*swap_frame)[LINE_WIDTH];
+
+    sequence_frame = (uint16_t)(
+      (animation->sequence_start_frame + sequence_step + 1UL) %
+      animation->sequence_frame_count);
     if (DisplayRenderer_CopyWaitingAnimationFrame(
           animation,
-          frame,
-          &ps_lpbam_display_frames[frame][0][0],
-          sizeof(ps_lpbam_display_frames[frame])) == 0UL)
+          sequence_frame,
+          &target_frame[0][0],
+          sizeof(ps_lpbam_display_frame_b)) == 0UL)
     {
-      status = HAL_ERROR;
+      status = PS_LpbamDisplay_FinishPreparedAnimation();
       break;
     }
+
+    status = PS_LpbamDisplay_AppendPreparedTransition(
+      previous_frame, target_frame);
+    swap_frame = previous_frame;
+    previous_frame = target_frame;
+    target_frame = swap_frame;
   }
   if (status == HAL_OK)
   {
-    status = PS_LpbamDisplay_BuildPreparedAnimationBuffers(
-      animation->candidate_rows,
-      animation->candidate_row_count,
-      (uint16_t)animation->sequence_frame_count,
-      (uint16_t)animation->sequence_start_frame);
+    status = PS_LpbamDisplay_FinishPreparedAnimation();
   }
   g_ps_hw6_owner_probe.display_lpbam_fill_status = (uint32_t)status;
   g_ps_hw6_owner_probe.display_lpbam_admission_api_version =

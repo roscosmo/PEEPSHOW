@@ -16,6 +16,7 @@ printf "display prep count/tick/status/prearm = %u / %u / 0x%x / 0x%x\n", $ow->d
 printf "display commit count/tick/status = %u / %u / 0x%x\n", $ow->display_lpbam_commit_count, $ow->display_lpbam_commit_tick, $ow->display_lpbam_commit_status
 printf "display lpbam animation/source/focus = %u / %u / %u\n", $ow->display_lpbam_animation_id, $ow->display_lpbam_source_primitive_id, $ow->display_lpbam_focus_row
 printf "display lpbam program phases/frames/cadence/current = %u / %u / %u / %u\n", $ow->display_lpbam_phase_count, $ow->display_lpbam_sequence_frame_count, $ow->display_lpbam_cadence_ms, $ow->display_lpbam_current_phase
+printf "display lpbam elements count ids phase counts = %u / %u,%u / %u,%u\n", $ow->display_lpbam_element_count, $ow->display_lpbam_element_id[0], $ow->display_lpbam_element_id[1], $ow->display_lpbam_element_phase_count[0], $ow->display_lpbam_element_phase_count[1]
 printf "display lpbam program deadline/start/candidate rows = %u / %u / %u\n", $ow->display_lpbam_next_deadline_tick, $ow->display_lpbam_sequence_start_frame, $ow->display_lpbam_candidate_row_count
 printf "display lpbam program sequence phases = %u / %u / %u / %u\n", $ow->display_lpbam_sequence_phase[0], $ow->display_lpbam_sequence_phase[1], $ow->display_lpbam_sequence_phase[2], $ow->display_lpbam_sequence_phase[3]
 printf "display cursor row/count col/count = %u / %u / %u / %u\n", $ow->display_lpbam_cursor_start_row, $ow->display_lpbam_cursor_row_count, $ow->display_lpbam_cursor_start_column, $ow->display_lpbam_cursor_column_count

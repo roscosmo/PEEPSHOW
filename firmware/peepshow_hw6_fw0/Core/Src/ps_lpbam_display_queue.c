@@ -96,12 +96,8 @@ static LPBAM_Status_t PS_LpbamDisplayQueue_AppendChunk(
       tail_config.SrcAddress = (uint32_t)&buffer[word_len];
       tail_config.DataSize = tail_len;
 
-      if (HAL_DMAEx_List_BuildNode(&tail_config, tail_node) != HAL_OK)
-      {
-        return LPBAM_ERROR;
-      }
-
-      if (HAL_DMAEx_List_InsertNode_Tail(queue, tail_node) != HAL_OK)
+      if ((HAL_DMAEx_List_BuildNode(&tail_config, tail_node) != HAL_OK) ||
+          (HAL_DMAEx_List_InsertNode_Tail(queue, tail_node) != HAL_OK))
       {
         return LPBAM_ERROR;
       }
@@ -167,9 +163,7 @@ HAL_StatusTypeDef PS_LpbamDisplayQueue_Build(void)
       return HAL_ERROR;
     }
 
-    for (chunk = 0U;
-         chunk < entry->chunk_count;
-         ++chunk)
+    for (chunk = 0U; chunk < entry->chunk_count; ++chunk)
     {
       uint32_t payload_index = (uint32_t)entry->first_chunk + chunk;
       uint8_t wait_for_chunk = (chunk == 0U) ? wait_for_frame : 0U;
