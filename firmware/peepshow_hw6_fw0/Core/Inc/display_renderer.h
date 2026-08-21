@@ -52,6 +52,12 @@ typedef struct
   uint16_t column_count;
 } display_renderer_panel_region_t;
 
+typedef uint32_t (*display_renderer_waiting_phase_composer_t)(
+  const void *context,
+  uint32_t phase,
+  uint8_t *destination,
+  uint32_t destination_size);
+
 typedef struct
 {
   uint32_t element_id;
@@ -59,6 +65,8 @@ typedef struct
   uint32_t phase_count;
   uint32_t sequence_phase[DISPLAY_RENDERER_WAITING_SEQUENCE_MAX];
   display_renderer_panel_region_t panel_bounds;
+  display_renderer_waiting_phase_composer_t compose_phase;
+  const void *compose_context;
 } display_renderer_waiting_element_t;
 
 typedef struct
@@ -94,6 +102,8 @@ uint32_t DisplayRenderer_FramebufferHash(void);
 const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
   uint32_t current_phase,
   uint32_t next_deadline_tick);
+uint32_t DisplayRenderer_ValidateWaitingAnimation(
+  const display_renderer_waiting_animation_t *animation);
 uint32_t DisplayRenderer_CopyWaitingAnimationFrame(
   const display_renderer_waiting_animation_t *animation,
   uint32_t sequence_frame,

@@ -476,10 +476,46 @@ static uint32_t DisplayRenderer_ApplyFullFrameTestPhase(
   return 1UL;
 }
 
+static uint32_t DisplayRenderer_ComposeCursorWaitingPhase(
+  const void *context,
+  uint32_t phase,
+  uint8_t *destination,
+  uint32_t destination_size)
+{
+  (void)context;
+  return DisplayRenderer_ApplyCursorBlinkPhase(
+    phase, destination, destination_size);
+}
+
+static uint32_t DisplayRenderer_ComposeMultichunkTestPhase(
+  const void *context,
+  uint32_t phase,
+  uint8_t *destination,
+  uint32_t destination_size)
+{
+  (void)context;
+  return DisplayRenderer_ApplyMultichunkTestPhase(
+    phase, destination, destination_size);
+}
+
+static uint32_t DisplayRenderer_ComposeFullFrameTestPhase(
+  const void *context,
+  uint32_t phase,
+  uint8_t *destination,
+  uint32_t destination_size)
+{
+  (void)context;
+  return DisplayRenderer_ApplyFullFrameTestPhase(
+    phase, destination, destination_size);
+}
+
 static uint32_t DisplayRenderer_AddWaitingCandidateRow(
   uint16_t row,
   uint16_t *candidate_count)
 {
+  uint16_t insert_at;
+  uint16_t i;
+
   if ((candidate_count == NULL) || (row < 1U) ||
       (row > DISPLAY_HEIGHT) ||
       (*candidate_count >= DISPLAY_RENDERER_DIRTY_ROW_MAX))
@@ -489,8 +525,19 @@ static uint32_t DisplayRenderer_AddWaitingCandidateRow(
 
   if (s_display_waiting_candidate_row_marks[row - 1U] == 0U)
   {
+    insert_at = 0U;
+    while ((insert_at < *candidate_count) &&
+           (s_display_waiting_candidate_rows[insert_at] < row))
+    {
+      ++insert_at;
+    }
+    for (i = *candidate_count; i > insert_at; --i)
+    {
+      s_display_waiting_candidate_rows[i] =
+        s_display_waiting_candidate_rows[i - 1U];
+    }
     s_display_waiting_candidate_row_marks[row - 1U] = 1U;
-    s_display_waiting_candidate_rows[*candidate_count] = row;
+    s_display_waiting_candidate_rows[insert_at] = row;
     (*candidate_count)++;
   }
   return 1UL;
@@ -573,6 +620,9 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
     DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK;
   cursor_element->phase_count = 2UL;
   cursor_element->panel_bounds = s_lpbam_cursor_panel_region;
+  cursor_element->compose_phase =
+    DisplayRenderer_ComposeCursorWaitingPhase;
+  cursor_element->compose_context = NULL;
   cursor_element->sequence_phase[0] = 0UL;
   cursor_element->sequence_phase[1] = 1UL;
   cursor_element->sequence_phase[2] = 0UL;
@@ -614,6 +664,9 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
       (uint16_t)(DISPLAY_HEIGHT - 1U);
     test_element->panel_bounds.start_column = 0U;
     test_element->panel_bounds.column_count = 32U;
+    test_element->compose_phase =
+      DisplayRenderer_ComposeMultichunkTestPhase;
+    test_element->compose_context = NULL;
     test_element->sequence_phase[0] = 0UL;
     test_element->sequence_phase[1] = 1UL;
     test_element->sequence_phase[2] = 2UL;
@@ -629,13 +682,15 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
     }
   }
 
-  if (g_display_renderer_waiting_test_variant == 2UL)
+  if ((g_display_renderer_waiting_test_variant == 2UL) ||
+      (g_display_renderer_waiting_test_variant == 3UL))
   {
     animation->animation_id =
       DISPLAY_RENDERER_ANIMATION_FULL_FRAME_TEST;
     animation->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_PATTERN;
     animation->phase_count = 2UL;
-    animation->sequence_frame_count = 2UL;
+    animation->sequence_frame_count =
+      (g_display_renderer_waiting_test_variant == 3UL) ? 4UL : 2UL;
     animation->element_count = 1UL;
     animation->panel_bounds.start_row = 1U;
     animation->panel_bounds.row_count = DISPLAY_HEIGHT;
@@ -648,8 +703,13 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
       DISPLAY_RENDERER_WAITING_ELEMENT_FULL_FRAME_TEST;
     test_element->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_PATTERN;
     test_element->phase_count = 2UL;
+    test_element->compose_phase =
+      DisplayRenderer_ComposeFullFrameTestPhase;
+    test_element->compose_context = NULL;
     test_element->sequence_phase[0] = 0UL;
     test_element->sequence_phase[1] = 1UL;
+    test_element->sequence_phase[2] = 0UL;
+    test_element->sequence_phase[3] = 1UL;
     test_element->panel_bounds = animation->panel_bounds;
 
     (void)memset(s_display_waiting_candidate_row_marks, 0,
@@ -694,6 +754,85 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
   return animation;
 }
 
+uint32_t DisplayRenderer_ValidateWaitingAnimation(
+  const display_renderer_waiting_animation_t *animation)
+{
+  uint32_t element_index;
+  uint32_t sequence_frame;
+  uint16_t candidate_index;
+  uint16_t previous_row = 0U;
+
+  if ((animation == NULL) ||
+      (animation->phase_count == 0UL) ||
+      (animation->phase_count > DISPLAY_RENDERER_WAITING_PHASE_MAX) ||
+      (animation->sequence_frame_count == 0UL) ||
+      (animation->sequence_frame_count >
+       DISPLAY_RENDERER_WAITING_SEQUENCE_MAX) ||
+      (animation->sequence_start_frame >=
+       animation->sequence_frame_count) ||
+      (animation->current_phase >= animation->phase_count) ||
+      (animation->cadence_ms == 0UL) ||
+      (animation->element_count == 0UL) ||
+      (animation->element_count > DISPLAY_RENDERER_WAITING_ELEMENT_MAX) ||
+      (animation->candidate_rows == NULL) ||
+      (animation->candidate_row_count == 0U) ||
+      (animation->candidate_row_count > DISPLAY_RENDERER_DIRTY_ROW_MAX))
+  {
+    return 0UL;
+  }
+
+  for (candidate_index = 0U;
+       candidate_index < animation->candidate_row_count;
+       ++candidate_index)
+  {
+    uint16_t row = animation->candidate_rows[candidate_index];
+    if ((row < 1U) || (row > DISPLAY_HEIGHT) ||
+        ((candidate_index != 0U) && (row <= previous_row)))
+    {
+      return 0UL;
+    }
+    previous_row = row;
+  }
+
+  for (element_index = 0UL;
+       element_index < animation->element_count;
+       ++element_index)
+  {
+    const display_renderer_waiting_element_t *element =
+      &animation->elements[element_index];
+    uint32_t row_end = (uint32_t)element->panel_bounds.start_row +
+                       (uint32_t)element->panel_bounds.row_count - 1UL;
+    uint32_t column_end =
+      (uint32_t)element->panel_bounds.start_column +
+      (uint32_t)element->panel_bounds.column_count;
+
+    if ((element->element_id == 0UL) ||
+        (element->phase_count == 0UL) ||
+        (element->phase_count > DISPLAY_RENDERER_WAITING_PHASE_MAX) ||
+        (element->compose_phase == NULL) ||
+        (element->panel_bounds.start_row == 0U) ||
+        (element->panel_bounds.row_count == 0U) ||
+        (element->panel_bounds.column_count == 0U) ||
+        (row_end > DISPLAY_HEIGHT) ||
+        (column_end > DISPLAY_WIDTH))
+    {
+      return 0UL;
+    }
+
+    for (sequence_frame = 0UL;
+         sequence_frame < animation->sequence_frame_count;
+         ++sequence_frame)
+    {
+      if (element->sequence_phase[sequence_frame] >= element->phase_count)
+      {
+        return 0UL;
+      }
+    }
+  }
+
+  return 1UL;
+}
+
 uint32_t DisplayRenderer_CopyWaitingAnimationFrame(
   const display_renderer_waiting_animation_t *animation,
   uint32_t sequence_frame,
@@ -703,12 +842,7 @@ uint32_t DisplayRenderer_CopyWaitingAnimationFrame(
   uint32_t element_index;
   uint32_t phase;
 
-  if ((animation == NULL) ||
-      (animation->element_count == 0UL) ||
-      (animation->element_count > DISPLAY_RENDERER_WAITING_ELEMENT_MAX) ||
-      (animation->sequence_frame_count == 0UL) ||
-      (animation->sequence_frame_count >
-       DISPLAY_RENDERER_WAITING_SEQUENCE_MAX) ||
+  if ((DisplayRenderer_ValidateWaitingAnimation(animation) == 0UL) ||
       (sequence_frame >= animation->sequence_frame_count) ||
       (destination == NULL) ||
       (destination_size < DISPLAY_RENDERER_BUFFER_SIZE) ||
@@ -730,38 +864,16 @@ uint32_t DisplayRenderer_CopyWaitingAnimationFrame(
     phase = element->sequence_phase[sequence_frame];
     if ((element->phase_count == 0UL) ||
         (element->phase_count > DISPLAY_RENDERER_WAITING_PHASE_MAX) ||
-        (phase >= element->phase_count))
+        (phase >= element->phase_count) ||
+        (element->compose_phase == NULL))
     {
       return 0UL;
     }
 
-    if (element->element_id == DISPLAY_RENDERER_WAITING_ELEMENT_CURSOR)
-    {
-      if (DisplayRenderer_ApplyCursorBlinkPhase(
-            phase, destination, destination_size) == 0UL)
-      {
-        return 0UL;
-      }
-    }
-    else if (element->element_id ==
-             DISPLAY_RENDERER_WAITING_ELEMENT_MULTICHUNK_TEST)
-    {
-      if (DisplayRenderer_ApplyMultichunkTestPhase(
-            phase, destination, destination_size) == 0UL)
-      {
-        return 0UL;
-      }
-    }
-    else if (element->element_id ==
-             DISPLAY_RENDERER_WAITING_ELEMENT_FULL_FRAME_TEST)
-    {
-      if (DisplayRenderer_ApplyFullFrameTestPhase(
-            phase, destination, destination_size) == 0UL)
-      {
-        return 0UL;
-      }
-    }
-    else
+    if (element->compose_phase(element->compose_context,
+                               phase,
+                               destination,
+                               destination_size) == 0UL)
     {
       return 0UL;
     }

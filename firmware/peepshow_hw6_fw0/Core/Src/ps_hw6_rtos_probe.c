@@ -9,6 +9,7 @@
 #include "ps_hw6_owner_state_machines.h"
 #include "ps_hw6_trace.h"
 #include "ps_input_buttons.h"
+#include "ps_lpbam_display_buffers.h"
 #include "ps_power_state.h"
 #include "ps_storage_filex_levelx.h"
 #include "ps_storage_msc_bridge.h"
@@ -2535,7 +2536,6 @@ static void PS_HW6_RTOS_RequestDisplayLpbamPrepareAtBlinkEdge(
 {
   uint32_t target_tick = ps_display_blink_next_tick;
   uint32_t period_ticks = PS_HW6_RTOS_DisplayCursorBlinkPeriodTicks();
-  uint32_t wake_display = 0UL;
   UINT wake_status = TX_SUCCESS;
 
   if (period_ticks == 0UL)
@@ -2558,8 +2558,12 @@ static void PS_HW6_RTOS_RequestDisplayLpbamPrepareAtBlinkEdge(
   else if (PS_HW6_RTOS_TimeReached(now_tick, target_tick) != 0UL)
   {
     target_tick = now_tick;
-    wake_display = 1UL;
     g_ps_hw6_rtos_probe.stop2_lpbam_edge_miss_count++;
+  }
+  if (ps_display_blink_visible !=
+      PS_HW6_RTOS_LPBAM_HANDOFF_SOURCE_PHASE)
+  {
+    target_tick += period_ticks;
   }
 
   ps_stop2_lpbam_edge_request_pending = 1UL;
@@ -2588,14 +2592,54 @@ static void PS_HW6_RTOS_RequestDisplayLpbamPrepareAtBlinkEdge(
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_wake_send_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
 
-  if (wake_display != 0UL)
+  wake_status = PS_HW6_RTOS_SendCommand(
+    PS_HW6_RTOS_OWNER_DISPLAY,
+    PS_HW6_RTOS_COMMAND_DISPLAY_LPBAM_EDGE_WAKE);
+  g_ps_hw6_rtos_probe.stop2_lpbam_edge_wake_send_status =
+    (uint32_t)wake_status;
+  if (wake_status != TX_SUCCESS)
   {
-    wake_status = PS_HW6_RTOS_SendCommand(
-      PS_HW6_RTOS_OWNER_DISPLAY,
-      PS_HW6_RTOS_COMMAND_DISPLAY_LPBAM_EDGE_WAKE);
-    g_ps_hw6_rtos_probe.stop2_lpbam_edge_wake_send_status =
-      (uint32_t)wake_status;
+    PS_HW6_RTOS_DeferDisplayLpbamRearm(now_tick);
   }
+}
+
+static HAL_StatusTypeDef PS_HW6_RTOS_CompileDisplayLpbamAheadOfEdge(
+  uint32_t now_tick)
+{
+  HAL_StatusTypeDef status;
+  uint32_t period_ticks = PS_HW6_RTOS_DisplayCursorBlinkPeriodTicks();
+
+  if ((period_ticks == 0UL) ||
+      (PS_HW6_RTOS_DisplayLpbamEdgeRequestMatches() == 0UL))
+  {
+    return HAL_ERROR;
+  }
+
+  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_request_count++;
+  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_last_tick = now_tick;
+  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_send_status = TX_SUCCESS;
+  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_wait_status = TX_SUCCESS;
+  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_ack_flags =
+    PS_HW6_RTOS_ACK_OWNER(PS_HW6_RTOS_OWNER_DISPLAY);
+  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_owner_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_ready_after = 0UL;
+  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_display_clear_count =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+
+  status = PS_HW6_DisplayOwner_CompileLpbamStop2ForAnimationPhase(
+    PS_HW6_RTOS_LPBAM_HANDOFF_TARGET_PHASE,
+    ps_stop2_lpbam_edge_target_tick + period_ticks);
+  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_owner_status =
+    g_ps_hw6_owner_probe.display_lpbam_prepare_status;
+  if (status != HAL_OK)
+  {
+    g_ps_hw6_rtos_probe.stop2_lpbam_edge_state =
+      PS_HW6_RTOS_STOP2_LPBAM_EDGE_FAILED;
+    g_ps_hw6_rtos_probe.stop2_lpbam_edge_status = (uint32_t)status;
+  }
+
+  return status;
 }
 
 static HAL_StatusTypeDef PS_HW6_RTOS_RenderDisplayCursorBlinkPhase(
@@ -2657,18 +2701,6 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunDisplayLpbamPrepareAtBlinkEdge(
     return HAL_ERROR;
   }
 
-  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_request_count++;
-  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_last_tick = now_tick;
-  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_send_status = TX_SUCCESS;
-  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_wait_status = TX_SUCCESS;
-  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_ack_flags =
-    PS_HW6_RTOS_ACK_OWNER(PS_HW6_RTOS_OWNER_DISPLAY);
-  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_owner_status =
-    PS_HW6_RTOS_STATUS_NOT_RUN;
-  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_ready_after = 0UL;
-  g_ps_hw6_rtos_probe.stop2_lpbam_prepare_display_clear_count =
-    PS_HW6_RTOS_STATUS_NOT_RUN;
-
   status = PS_HW6_RTOS_RenderDisplayCursorBlinkPhase(next_visible,
                                                       now_tick,
                                                       period_ticks);
@@ -2684,11 +2716,9 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunDisplayLpbamPrepareAtBlinkEdge(
   }
 
   ps_display_blink_stop2_suppressed = 1UL;
-  status = PS_HW6_DisplayOwner_PrepareLpbamStop2ForAnimationPhase(
-    next_visible,
-    ps_display_blink_next_tick);
+  status = PS_HW6_DisplayOwner_PrearmCompiledLpbamStop2();
   g_ps_hw6_rtos_probe.stop2_lpbam_prepare_owner_status =
-    g_ps_hw6_owner_probe.display_lpbam_prepare_status;
+    (uint32_t)status;
   g_ps_hw6_rtos_probe.stop2_lpbam_prepare_ready_after =
     PS_HW6_RTOS_Stop2DisplayLpbamReady();
   if (g_ps_hw6_rtos_probe.stop2_lpbam_prepare_ready_after != 0UL)
@@ -2887,6 +2917,22 @@ static uint32_t PS_HW6_RTOS_Stop2DisplayWaitBackendReady(
   return 0UL;
 }
 
+static uint32_t PS_HW6_RTOS_Stop2DisplayLpbamFallbackEligible(void)
+{
+  if (g_ps_hw6_owner_probe.display_lpbam_prepare_status ==
+      PS_HW6_OWNER_STATUS_UNAVAILABLE)
+  {
+    return 1UL;
+  }
+
+  return ((g_ps_hw6_owner_probe.display_lpbam_prepare_status ==
+           (uint32_t)HAL_ERROR) &&
+          (g_ps_hw6_owner_probe.display_lpbam_admission_status ==
+           (uint32_t)HAL_ERROR) &&
+          (g_ps_hw6_owner_probe.display_lpbam_admission_reason !=
+           PS_LPBAM_ADMISSION_REASON_NONE)) ? 1UL : 0UL;
+}
+
 static uint32_t PS_HW6_RTOS_Stop2ResolveDisplayWaitBackend(void)
 {
   uint32_t requested = PS_HW6_RTOS_Stop2DisplayWaitBackendRequested();
@@ -2900,6 +2946,14 @@ static uint32_t PS_HW6_RTOS_Stop2ResolveDisplayWaitBackend(void)
   {
     selected = PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_NONE;
     ready = 0UL;
+  }
+
+  if ((selected == PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_LPBAM) &&
+      (ready == 0UL) && (held_ready != 0UL) &&
+      (PS_HW6_RTOS_Stop2DisplayLpbamFallbackEligible() != 0UL))
+  {
+    selected = PS_HW6_RTOS_STOP2_DISPLAY_BACKEND_HELD_FRAME;
+    ready = held_ready;
   }
 
   if (ready != 0UL)
@@ -5418,7 +5472,8 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
   else if ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) &&
            (command == PS_HW6_RTOS_COMMAND_DISPLAY_LPBAM_EDGE_WAKE))
   {
-    /* Receiving this command wakes thDisplay; periodic work runs below. */
+    (void)PS_HW6_RTOS_CompileDisplayLpbamAheadOfEdge(
+      (uint32_t)tx_time_get());
   }
   else if ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) &&
            (command == PS_HW6_RTOS_COMMAND_DISPLAY_CURSOR_VISIBLE))

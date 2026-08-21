@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (25UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (27UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -314,6 +314,10 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2ForAnimationPhase(
   uint32_t current_phase,
   uint32_t next_deadline_tick);
+HAL_StatusTypeDef PS_HW6_DisplayOwner_CompileLpbamStop2ForAnimationPhase(
+  uint32_t current_phase,
+  uint32_t next_deadline_tick);
+HAL_StatusTypeDef PS_HW6_DisplayOwner_PrearmCompiledLpbamStop2(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_CommitLpbamStop2(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2(void);
 void PS_HW6_DisplayOwner_DebugForceNextLpbamReady(void);
