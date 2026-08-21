@@ -466,13 +466,25 @@ static uint32_t DisplayRenderer_ApplyFullFrameTestPhase(
 {
   if ((destination == NULL) ||
       (destination_size < DISPLAY_RENDERER_BUFFER_SIZE) ||
-      (phase >= 2UL))
+      (phase >= 3UL))
   {
     return 0UL;
   }
 
-  (void)memset(destination, (phase == 0UL) ? 0x00 : 0xFF,
-               DISPLAY_RENDERER_BUFFER_SIZE);
+  if (phase < 2UL)
+  {
+    (void)memset(destination, (phase == 0UL) ? 0x00 : 0xFF,
+                 DISPLAY_RENDERER_BUFFER_SIZE);
+  }
+  else
+  {
+    for (uint16_t row = 0U; row < DISPLAY_HEIGHT; ++row)
+    {
+      (void)memset(&destination[(uint32_t)row * LINE_WIDTH],
+                   ((row & 1U) == 0U) ? 0xAA : 0x55,
+                   LINE_WIDTH);
+    }
+  }
   return 1UL;
 }
 
@@ -683,14 +695,17 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
   }
 
   if ((g_display_renderer_waiting_test_variant == 2UL) ||
-      (g_display_renderer_waiting_test_variant == 3UL))
+      (g_display_renderer_waiting_test_variant == 3UL) ||
+      (g_display_renderer_waiting_test_variant == 4UL))
   {
     animation->animation_id =
       DISPLAY_RENDERER_ANIMATION_FULL_FRAME_TEST;
     animation->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_PATTERN;
-    animation->phase_count = 2UL;
+    animation->phase_count =
+      (g_display_renderer_waiting_test_variant == 4UL) ? 3UL : 2UL;
     animation->sequence_frame_count =
-      (g_display_renderer_waiting_test_variant == 3UL) ? 4UL : 2UL;
+      (g_display_renderer_waiting_test_variant == 3UL) ? 4UL :
+      ((g_display_renderer_waiting_test_variant == 4UL) ? 3UL : 2UL);
     animation->element_count = 1UL;
     animation->panel_bounds.start_row = 1U;
     animation->panel_bounds.row_count = DISPLAY_HEIGHT;
@@ -702,7 +717,7 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
     test_element->element_id =
       DISPLAY_RENDERER_WAITING_ELEMENT_FULL_FRAME_TEST;
     test_element->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_PATTERN;
-    test_element->phase_count = 2UL;
+    test_element->phase_count = animation->phase_count;
     test_element->compose_phase =
       DisplayRenderer_ComposeFullFrameTestPhase;
     test_element->compose_context = NULL;
@@ -710,6 +725,10 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
     test_element->sequence_phase[1] = 1UL;
     test_element->sequence_phase[2] = 0UL;
     test_element->sequence_phase[3] = 1UL;
+    if (g_display_renderer_waiting_test_variant == 4UL)
+    {
+      test_element->sequence_phase[2] = 2UL;
+    }
     test_element->panel_bounds = animation->panel_bounds;
 
     (void)memset(s_display_waiting_candidate_row_marks, 0,

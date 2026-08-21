@@ -6,12 +6,17 @@
 #include <stdint.h>
 
 #define PS_LPBAM_DISPLAY_ROWS        LCD_DMA_MAX_ROWS_PER_TRANSFER
-#define PS_LPBAM_DISPLAY_CHUNK_COUNT ((DISPLAY_HEIGHT + PS_LPBAM_DISPLAY_ROWS - 1U) / PS_LPBAM_DISPLAY_ROWS)
+#define PS_LPBAM_DISPLAY_SPATIAL_ROWS 28U
+#define PS_LPBAM_DISPLAY_SPATIAL_CHUNK_COUNT \
+  (DISPLAY_HEIGHT / PS_LPBAM_DISPLAY_SPATIAL_ROWS)
 #define PS_LPBAM_DISPLAY_TRANSACTION_MAX_LEN (1U + ((PS_LPBAM_DISPLAY_ROWS + 1U) * (1U + LINE_WIDTH + 1U)) + 2U)
-#define PS_LPBAM_DISPLAY_MAX_CHUNKS 12U
-#define PS_LPBAM_DISPLAY_SEQUENCE_MAX PS_LPBAM_DISPLAY_MAX_CHUNKS
+#define PS_LPBAM_DISPLAY_MAX_CHUNKS 18U
+#define PS_LPBAM_DISPLAY_SEQUENCE_MAX 12U
+#define PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT PS_LPBAM_DISPLAY_MAX_CHUNKS
+#define PS_LPBAM_DISPLAY_GUARANTEED_FRAME_COUNT \
+  (PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT / PS_LPBAM_DISPLAY_SPATIAL_CHUNK_COUNT)
 #define PS_LPBAM_DISPLAY_PATTERN_SEQUENCE_COUNT 4U
-#define PS_LPBAM_DISPLAY_ADMISSION_API_VERSION 3U
+#define PS_LPBAM_DISPLAY_ADMISSION_API_VERSION 4U
 
 #define PS_LPBAM_ADMISSION_REASON_NONE          0U
 #define PS_LPBAM_ADMISSION_REASON_ARGUMENT      1U
@@ -52,9 +57,21 @@ typedef struct
 } ps_lpbam_display_admission_t;
 
 extern uint8_t *ps_lpbam_display_tx[PS_LPBAM_DISPLAY_MAX_CHUNKS];
+extern uint8_t *ps_lpbam_display_payload_slot[
+  PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT];
 extern uint8_t ps_lpbam_display_frame_a[DISPLAY_HEIGHT][LINE_WIDTH];
 extern uint8_t ps_lpbam_display_frame_b[DISPLAY_HEIGHT][LINE_WIDTH];
 extern uint16_t ps_lpbam_display_tx_len[PS_LPBAM_DISPLAY_MAX_CHUNKS];
+extern uint16_t ps_lpbam_display_payload_slot_capacity[
+  PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT];
+extern uint16_t ps_lpbam_display_payload_slot_len[
+  PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT];
+extern uint8_t ps_lpbam_display_payload_slot_band[
+  PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT];
+extern uint8_t ps_lpbam_display_payload_slot_occupied[
+  PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT];
+extern uint8_t ps_lpbam_display_tx_payload_slot[
+  PS_LPBAM_DISPLAY_MAX_CHUNKS];
 extern ps_lpbam_display_sequence_entry_t
   ps_lpbam_display_sequence[PS_LPBAM_DISPLAY_SEQUENCE_MAX];
 extern ps_lpbam_display_admission_t ps_lpbam_display_admission;

@@ -96,7 +96,7 @@
       "type": "integer",
       "minimum": 1,
       "maximum": 30000,
-      "default": 1000,
+      "default": 100,
       "unit": "ms",
       "timebase_domain": "threadx",
       "owner": "thInput",
@@ -779,15 +779,15 @@
     },
     "power_auto_stop2_idle_ms": {
       "type": "integer",
-      "minimum": 100,
+      "minimum": 0,
       "maximum": 600000,
-      "default": 2000,
+      "default": 0,
       "unit": "ms",
       "timebase_domain": "threadx",
       "owner": "thPower",
       "class": "protected_policy",
       "path": "platform.knobs.power.auto_stop2_idle_ms",
-      "description": "Required continuous idle window before automatic STOP2 entry may be attempted."
+      "description": "Optional continuous idle window before automatic STOP2 entry may be attempted; zero relies on queue admission and the final pre-WFI input veto."
     }
   }
 }

@@ -9,5 +9,5 @@ printf "first four chunk lengths = %u / %u / %u / %u\n", ps_lpbam_display_tx_len
 printf "owner payload sequence/chunks/wire bytes = %u / %u / %u\n", g_ps_hw6_owner_probe.display_lpbam_payload_frame_count, g_ps_hw6_owner_probe.display_lpbam_payload_chunk_count, g_ps_hw6_owner_probe.display_lpbam_payload_bytes
 printf "reasons: NONE=0 ARGUMENT=1 SEQUENCE=2 CHUNKS=3 PAYLOAD=4 BUILD=5; HAL_OK=0x0\n"
 printf "scratch A/B addresses and bytes = %p / %p / %u\n", ps_lpbam_display_frame_a, ps_lpbam_display_frame_b, sizeof(ps_lpbam_display_frame_a)
-printf "expected cursor: api/status/reason=3/0/0 sequence=4/12 chunks=4/12 payload=572/575/9216 entries=0/1,1/1,2/1,3/1 lengths=143 each\n"
+printf "expected cursor fixed-band transport: api/status/reason=4/0/0 sequence=4/12 chunks=4/18 payload=2332/1168/10512 entries=0/1,1/1,2/1,3/1 lengths=583 each\n"
 printf "--- end HW6 LPBAM compiler admission ---\n"

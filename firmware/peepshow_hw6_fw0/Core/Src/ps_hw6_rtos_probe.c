@@ -3931,6 +3931,14 @@ static void PS_HW6_RTOS_RunStop2AutoIdlePeriodic(uint32_t now_tick)
     return;
   }
 
+  if ((ps_stop2_lpbam_edge_request_pending != 0UL) ||
+      (g_ps_hw6_rtos_probe.stop2_lpbam_edge_state ==
+       PS_HW6_RTOS_STOP2_LPBAM_EDGE_REQUESTED))
+  {
+    g_ps_hw6_rtos_probe.stop2_auto_next_tick = now_tick + period_ticks;
+    return;
+  }
+
   if (g_ps_hw6_rtos_probe.stop2_auto_next_tick == 0UL)
   {
     g_ps_hw6_rtos_probe.stop2_auto_next_tick = now_tick + period_ticks;

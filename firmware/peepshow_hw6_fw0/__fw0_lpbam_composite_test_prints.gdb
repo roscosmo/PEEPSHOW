@@ -19,6 +19,6 @@ while $step < ps_lpbam_display_active_sequence_count
 end
 printf "queue nodes/start status = %u / 0x%x\n", g_ps_hw6_owner_probe.display_lpbam_queue_node_count, g_ps_hw6_owner_probe.display_lpbam_start_status
 printf "SPI AUTOCR/TRIGEN = 0x%x / %u\n", hspi3.Instance->AUTOCR, (hspi3.Instance->AUTOCR >> 21) & 0x1
-printf "expected: variant/program=1/2 elements=2 ids=1,2 phases=2,4 admission=3/0/0 sequence=4/12 chunks=8/12 payload=7144/7151/9216 queue nodes=56 AUTOCR TRIGEN=0\n"
-printf "expected: every step combines cursor and bar in two transactions of 983 and 803 bytes\n"
+printf "expected: variant/program=1/2 elements=2 ids=1,2 phases=2,4 admission=4/1/3 after three compiled steps, chunks=18/18 payload=10494/10512/10512\n"
+printf "expected: HELD_FRAME fallback because four full six-band steps require 24 transaction references\n"
 printf "--- end HW6 LPBAM composite animation compiler ---\n"

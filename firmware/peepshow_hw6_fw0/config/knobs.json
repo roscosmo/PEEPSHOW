@@ -58,6 +58,6 @@
   "power_stop2_display_wait_backend": 2,
   "power_stop2_gpio_park_group_mask": 30,
   "power_auto_stop2_enable": true,
-  "power_auto_stop2_check_period_ms": 1000,
-  "power_auto_stop2_idle_ms": 2000
+  "power_auto_stop2_check_period_ms": 100,
+  "power_auto_stop2_idle_ms": 0
 }

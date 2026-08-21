@@ -3,7 +3,16 @@
 
 #define PS_LPBAM_MLCD_CMD_WRITE 0x01U
 #define PS_LPBAM_ROW_WIRE_BYTES (1U + LINE_WIDTH + 1U)
-#define PS_LPBAM_DISPLAY_ARENA_SIZE 9216U
+#define PS_LPBAM_ALIGN4(value) (((value) + 3U) & ~3U)
+#define PS_LPBAM_SPATIAL_PAYLOAD_BYTES \
+  (1U + ((PS_LPBAM_DISPLAY_SPATIAL_ROWS + 1U) * \
+         PS_LPBAM_ROW_WIRE_BYTES) + 2U)
+#define PS_LPBAM_SPATIAL_SLOT_BYTES \
+  PS_LPBAM_ALIGN4(PS_LPBAM_SPATIAL_PAYLOAD_BYTES)
+#define PS_LPBAM_DISPLAY_BANK_BYTES \
+  (PS_LPBAM_DISPLAY_SPATIAL_CHUNK_COUNT * PS_LPBAM_SPATIAL_SLOT_BYTES)
+#define PS_LPBAM_DISPLAY_ARENA_SIZE \
+  (PS_LPBAM_DISPLAY_GUARANTEED_FRAME_COUNT * PS_LPBAM_DISPLAY_BANK_BYTES)
 
 #if defined(__GNUC__)
 #define PS_SRAM4_BUF_ATTR __attribute__((section(".sram4"))) __attribute__((aligned(4)))
@@ -14,7 +23,17 @@
 uint8_t ps_lpbam_display_frame_a[DISPLAY_HEIGHT][LINE_WIDTH];
 uint8_t ps_lpbam_display_frame_b[DISPLAY_HEIGHT][LINE_WIDTH];
 uint8_t *ps_lpbam_display_tx[PS_LPBAM_DISPLAY_MAX_CHUNKS];
+uint8_t *ps_lpbam_display_payload_slot[PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT];
 uint16_t ps_lpbam_display_tx_len[PS_LPBAM_DISPLAY_MAX_CHUNKS];
+uint16_t ps_lpbam_display_payload_slot_capacity[
+  PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT];
+uint16_t ps_lpbam_display_payload_slot_len[
+  PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT];
+uint8_t ps_lpbam_display_payload_slot_band[
+  PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT];
+uint8_t ps_lpbam_display_payload_slot_occupied[
+  PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT];
+uint8_t ps_lpbam_display_tx_payload_slot[PS_LPBAM_DISPLAY_MAX_CHUNKS];
 ps_lpbam_display_sequence_entry_t
   ps_lpbam_display_sequence[PS_LPBAM_DISPLAY_SEQUENCE_MAX];
 ps_lpbam_display_admission_t ps_lpbam_display_admission;
@@ -24,7 +43,9 @@ uint16_t ps_lpbam_display_payload_wire_bytes;
 uint16_t ps_lpbam_display_sequence_start_frame;
 uint16_t ps_lpbam_display_queue_start_slot;
 static uint8_t ps_lpbam_display_payload_arena[PS_LPBAM_DISPLAY_ARENA_SIZE] PS_SRAM4_BUF_ATTR;
-static uint16_t ps_lpbam_display_payload_used PS_SRAM4_BUF_ATTR;
+static uint8_t ps_lpbam_display_payload_scratch[
+  PS_LPBAM_DISPLAY_TRANSACTION_MAX_LEN];
+static uint16_t ps_lpbam_display_payload_used;
 static uint8_t ps_lpbam_display_experiment_variant;
 static uint16_t ps_lpbam_display_candidate_rows[DISPLAY_HEIGHT];
 static uint8_t ps_lpbam_display_candidate_row_enabled[DISPLAY_HEIGHT];
@@ -67,24 +88,119 @@ static uint8_t PS_LpbamDisplay_RowIsDirty(
 #endif
 }
 
-static HAL_StatusTypeDef PS_LpbamDisplay_AllocPayload(uint16_t max_len,
-                                                       uint8_t **out_payload)
+static uint16_t PS_LpbamDisplay_BandStartRow(uint8_t band)
 {
-  uint16_t aligned_used;
+  return (uint16_t)(
+    ((uint16_t)band * PS_LPBAM_DISPLAY_SPATIAL_ROWS) + 1U);
+}
 
-  if ((out_payload == NULL) || (max_len == 0U))
+static uint16_t PS_LpbamDisplay_BandRowCount(uint8_t band)
+{
+  uint16_t start_row = PS_LpbamDisplay_BandStartRow(band);
+  uint16_t remaining;
+
+  if (start_row > DISPLAY_HEIGHT)
+  {
+    return 0U;
+  }
+  remaining = (uint16_t)(DISPLAY_HEIGHT - start_row + 1U);
+  return (remaining > PS_LPBAM_DISPLAY_SPATIAL_ROWS) ?
+    PS_LPBAM_DISPLAY_SPATIAL_ROWS : remaining;
+}
+
+static void PS_LpbamDisplay_InitializePayloadSlots(void)
+{
+  uint16_t offset = 0U;
+
+  for (uint16_t slot = 0U;
+       slot < PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT;
+       ++slot)
+  {
+    uint16_t capacity = (uint16_t)PS_LPBAM_SPATIAL_SLOT_BYTES;
+
+    ps_lpbam_display_payload_slot[slot] =
+      &ps_lpbam_display_payload_arena[offset];
+    ps_lpbam_display_payload_slot_capacity[slot] = capacity;
+    offset = (uint16_t)(offset + capacity);
+  }
+}
+
+static int16_t PS_LpbamDisplay_FindPayloadSlot(uint8_t band,
+                                               const uint8_t *payload,
+                                               uint16_t len)
+{
+  int16_t free_preferred = -1;
+  int16_t free_fallback = -1;
+
+  for (uint16_t slot = 0U;
+       slot < PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT;
+       ++slot)
+  {
+    if (ps_lpbam_display_payload_slot_occupied[slot] != 0U)
+    {
+      if ((ps_lpbam_display_payload_slot_band[slot] == band) &&
+          (ps_lpbam_display_payload_slot_len[slot] == len) &&
+          (memcmp(ps_lpbam_display_payload_slot[slot], payload, len) == 0))
+      {
+        return (int16_t)slot;
+      }
+      continue;
+    }
+
+    if (ps_lpbam_display_payload_slot_capacity[slot] < len)
+    {
+      continue;
+    }
+    if ((slot % PS_LPBAM_DISPLAY_SPATIAL_CHUNK_COUNT) == band)
+    {
+      if (free_preferred < 0)
+      {
+        free_preferred = (int16_t)slot;
+      }
+    }
+    else if (free_fallback < 0)
+    {
+      free_fallback = (int16_t)slot;
+    }
+  }
+
+  return (free_preferred >= 0) ? free_preferred : free_fallback;
+}
+
+static HAL_StatusTypeDef PS_LpbamDisplay_StorePayload(
+  uint8_t band,
+  const uint8_t *payload,
+  uint16_t len,
+  uint8_t **out_payload,
+  uint8_t *out_slot)
+{
+  int16_t slot;
+
+  if ((payload == NULL) || (out_payload == NULL) || (out_slot == NULL) ||
+      (len == 0U))
   {
     return HAL_ERROR;
   }
 
-  aligned_used = (uint16_t)((ps_lpbam_display_payload_used + 3U) & ~3U);
-  if (((uint32_t)aligned_used + (uint32_t)max_len) > PS_LPBAM_DISPLAY_ARENA_SIZE)
+  slot = PS_LpbamDisplay_FindPayloadSlot(band, payload, len);
+  if (slot < 0)
   {
     return HAL_ERROR;
   }
 
-  *out_payload = &ps_lpbam_display_payload_arena[aligned_used];
-  ps_lpbam_display_payload_used = (uint16_t)(aligned_used + max_len);
+  if (ps_lpbam_display_payload_slot_occupied[(uint16_t)slot] == 0U)
+  {
+    memcpy(ps_lpbam_display_payload_slot[(uint16_t)slot], payload, len);
+    ps_lpbam_display_payload_slot_occupied[(uint16_t)slot] = 1U;
+    ps_lpbam_display_payload_slot_band[(uint16_t)slot] = band;
+    ps_lpbam_display_payload_slot_len[(uint16_t)slot] = len;
+    ps_lpbam_display_payload_used = (uint16_t)(
+      ps_lpbam_display_payload_used +
+      ps_lpbam_display_payload_slot_capacity[(uint16_t)slot]);
+  }
+
+  *out_payload = ps_lpbam_display_payload_slot[(uint16_t)slot];
+  *out_slot = (uint8_t)slot;
   return HAL_OK;
 }
 
@@ -128,12 +244,21 @@ static void PS_LpbamDisplay_ResetPayloadState(void)
 {
   memset(ps_lpbam_display_tx, 0, sizeof(ps_lpbam_display_tx));
   memset(ps_lpbam_display_tx_len, 0, sizeof(ps_lpbam_display_tx_len));
+  memset(ps_lpbam_display_tx_payload_slot, 0xFF,
+         sizeof(ps_lpbam_display_tx_payload_slot));
+  memset(ps_lpbam_display_payload_slot_len, 0,
+         sizeof(ps_lpbam_display_payload_slot_len));
+  memset(ps_lpbam_display_payload_slot_band, 0xFF,
+         sizeof(ps_lpbam_display_payload_slot_band));
+  memset(ps_lpbam_display_payload_slot_occupied, 0,
+         sizeof(ps_lpbam_display_payload_slot_occupied));
   memset(ps_lpbam_display_sequence, 0,
          sizeof(ps_lpbam_display_sequence));
   memset(&ps_lpbam_display_admission, 0,
          sizeof(ps_lpbam_display_admission));
   memset(ps_lpbam_display_payload_arena, 0,
          sizeof(ps_lpbam_display_payload_arena));
+  PS_LpbamDisplay_InitializePayloadSlots();
   ps_lpbam_display_payload_used = 0U;
   ps_lpbam_display_active_sequence_count = 0U;
   ps_lpbam_display_active_chunk_count = 0U;
@@ -220,7 +345,7 @@ HAL_StatusTypeDef PS_LpbamDisplay_AppendPreparedTransition(
   uint16_t dirty_rows = 0U;
   uint16_t first_chunk = ps_lpbam_display_active_chunk_count;
   uint16_t sequence = ps_lpbam_display_active_sequence_count;
-  uint16_t dirty_index = 0U;
+  uint8_t dirty_band[PS_LPBAM_DISPLAY_SPATIAL_CHUNK_COUNT] = {0};
 
   if ((previous_frame == NULL) || (target_frame == NULL) ||
       (ps_lpbam_display_expected_sequence_count == 0U) ||
@@ -242,6 +367,7 @@ HAL_StatusTypeDef PS_LpbamDisplay_AppendPreparedTransition(
                                     row) != 0U))
     {
       ps_lpbam_display_dirty_row_list[dirty_rows] = (uint8_t)row;
+      dirty_band[(row - 1U) / PS_LPBAM_DISPLAY_SPATIAL_ROWS] = 1U;
       dirty_rows++;
     }
   }
@@ -250,17 +376,27 @@ HAL_StatusTypeDef PS_LpbamDisplay_AppendPreparedTransition(
   {
     ps_lpbam_display_dirty_row_list[0] =
       (uint8_t)ps_lpbam_display_first_candidate_row;
+    dirty_band[(ps_lpbam_display_first_candidate_row - 1U) /
+               PS_LPBAM_DISPLAY_SPATIAL_ROWS] = 1U;
     dirty_rows = 1U;
   }
 
-  while (dirty_index < dirty_rows)
+  for (uint8_t band = 0U;
+       band < PS_LPBAM_DISPLAY_SPATIAL_CHUNK_COUNT;
+       ++band)
   {
-    uint16_t rows_this_chunk = (uint16_t)(dirty_rows - dirty_index);
-    uint16_t payload_max_len;
+    uint16_t rows_this_chunk;
+    uint16_t start_row;
     uint16_t last_row;
     uint8_t *payload = NULL;
     uint8_t *write;
     uint16_t len = 0U;
+    uint8_t payload_slot = 0xFFU;
+
+    if (dirty_band[band] == 0U)
+    {
+      continue;
+    }
 
     if (ps_lpbam_display_active_chunk_count >=
         PS_LPBAM_DISPLAY_MAX_CHUNKS)
@@ -268,53 +404,69 @@ HAL_StatusTypeDef PS_LpbamDisplay_AppendPreparedTransition(
       return PS_LpbamDisplay_AdmissionFailure(
         PS_LPBAM_ADMISSION_REASON_CHUNKS);
     }
-    if (rows_this_chunk > PS_LPBAM_DISPLAY_ROWS)
-    {
-      rows_this_chunk = PS_LPBAM_DISPLAY_ROWS;
-    }
 
-    payload_max_len = (uint16_t)(1U +
-      (((uint32_t)rows_this_chunk + 1U) * PS_LPBAM_ROW_WIRE_BYTES) + 2U);
-    if (PS_LpbamDisplay_AllocPayload(payload_max_len, &payload) != HAL_OK)
-    {
-      return PS_LpbamDisplay_AdmissionFailure(
-        PS_LPBAM_ADMISSION_REASON_PAYLOAD);
-    }
-
-    write = payload;
+    start_row = PS_LpbamDisplay_BandStartRow(band);
+    rows_this_chunk = PS_LpbamDisplay_BandRowCount(band);
+    write = ps_lpbam_display_payload_scratch;
     *write++ = PS_LPBAM_MLCD_CMD_WRITE;
     for (uint16_t i = 0U; i < rows_this_chunk; ++i)
     {
-      uint16_t row =
-        ps_lpbam_display_dirty_row_list[(uint16_t)(dirty_index + i)];
+      uint16_t row = (uint16_t)(start_row + i);
       PS_LpbamDisplay_AppendWireRow(&write, row, target_frame);
     }
 
-    last_row = ps_lpbam_display_dirty_row_list[
-      (uint16_t)(dirty_index + rows_this_chunk - 1U)];
+    last_row = (uint16_t)(start_row + rows_this_chunk - 1U);
     if (PS_LpbamDisplay_FinalizePayload(
-          payload, write, last_row, target_frame, &len) != HAL_OK)
+          ps_lpbam_display_payload_scratch,
+          write,
+          last_row,
+          target_frame,
+          &len) != HAL_OK)
     {
       return PS_LpbamDisplay_AdmissionFailure(
         PS_LPBAM_ADMISSION_REASON_BUILD);
+    }
+    if (PS_LpbamDisplay_StorePayload(
+          band,
+          ps_lpbam_display_payload_scratch,
+          len,
+          &payload,
+          &payload_slot) != HAL_OK)
+    {
+      return PS_LpbamDisplay_AdmissionFailure(
+        PS_LPBAM_ADMISSION_REASON_PAYLOAD);
     }
 
     ps_lpbam_display_tx[ps_lpbam_display_active_chunk_count] =
       payload;
     ps_lpbam_display_tx_len[ps_lpbam_display_active_chunk_count] =
       len;
+    ps_lpbam_display_tx_payload_slot[
+      ps_lpbam_display_active_chunk_count] = payload_slot;
     ps_lpbam_display_payload_wire_bytes =
       (uint16_t)(ps_lpbam_display_payload_wire_bytes + len);
     ps_lpbam_display_active_chunk_count++;
-    dirty_index = (uint16_t)(dirty_index + rows_this_chunk);
   }
 
   ps_lpbam_display_sequence[sequence].first_chunk = first_chunk;
   ps_lpbam_display_sequence[sequence].chunk_count =
     (uint16_t)(ps_lpbam_display_active_chunk_count - first_chunk);
   ps_lpbam_display_sequence[sequence].dirty_start_row =
-    ps_lpbam_display_dirty_row_list[0];
-  ps_lpbam_display_sequence[sequence].dirty_row_count = dirty_rows;
+    PS_LpbamDisplay_BandStartRow((uint8_t)(
+      (ps_lpbam_display_dirty_row_list[0] - 1U) /
+      PS_LPBAM_DISPLAY_SPATIAL_ROWS));
+  ps_lpbam_display_sequence[sequence].dirty_row_count = 0U;
+  for (uint8_t band = 0U;
+       band < PS_LPBAM_DISPLAY_SPATIAL_CHUNK_COUNT;
+       ++band)
+  {
+    if (dirty_band[band] != 0U)
+    {
+      ps_lpbam_display_sequence[sequence].dirty_row_count = (uint16_t)(
+        ps_lpbam_display_sequence[sequence].dirty_row_count +
+        PS_LpbamDisplay_BandRowCount(band));
+    }
+  }
   ps_lpbam_display_active_sequence_count++;
   return HAL_OK;
 }

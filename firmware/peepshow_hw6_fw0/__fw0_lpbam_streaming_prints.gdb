@@ -17,5 +17,5 @@ while $step < ps_lpbam_display_active_sequence_count
 end
 printf "owner phases/steps/cadence/start = %u / %u / %u / %u\n", g_ps_hw6_owner_probe.display_lpbam_phase_count, g_ps_hw6_owner_probe.display_lpbam_sequence_frame_count, g_ps_hw6_owner_probe.display_lpbam_cadence_ms, g_ps_hw6_owner_probe.display_lpbam_sequence_start_frame
 printf "owner elements count/id0/phases0 = %u / %u / %u\n", g_ps_hw6_owner_probe.display_lpbam_element_count, g_ps_hw6_owner_probe.display_lpbam_element_id[0], g_ps_hw6_owner_probe.display_lpbam_element_phase_count[0]
-printf "expected cursor: admission 3/0/0, sequence 4/12, chunks 4/12, payload 575/9216, four one-chunk steps\n"
+printf "expected cursor: admission 4/0/0, sequence 4/12, chunks 4/18, payload 1168/10512, wire 2332, four one-chunk steps\n"
 printf "--- end HW6 LPBAM streaming compiler ---\n"
