@@ -209,6 +209,10 @@ display:
   waiting_visual_animation:
     grant_status           # blocked, pending_validation, granted, experimental
     authored_frame_count_max
+    element_phase_count_max
+    preferred_timeline_step_count_max
+    guaranteed_timeline_step_count
+    guaranteed_reduction_profile_id
     cadence_hz_max
     cycle_duration_ms_max
     compiler_profile_id
@@ -260,6 +264,7 @@ Rules:
 - waiting visual sequences must resolve to bounded final 1bpp visual states before target-specific Platform compilation.
 - waiting visual sequence assets may exist when continued motion while yielded is blocked; tools then require a reduced sequence, hold fallback, or a profile that grants `display.waiting_visual_animation`.
 - `authored_frame_count_max` is a portable authoring bound, not a guarantee that every sequence with that many frames fits the target compiler; admission remains content-dependent.
+- HW6 v1 publishes `element_phase_count_max = 4`, `preferred_timeline_step_count_max = 12`, and `guaranteed_timeline_step_count = 3`. The guaranteed reduction is deterministic and content-independent; normal tools preview it without exposing its six panel bands or eighteen SRAM4 slots.
 - `cycle_duration_ms_max` limits one authored visual loop; it does not limit how long a reactive state may remain waiting or how long an admitted loop may repeat.
 - `compiler_profile_id` selects a versioned Platform-owned admission model. Normal package tools receive pass/fail, abstract utilization, and fallback results; they do not receive panel-row, transfer-chunk, descriptor, SRAM4, or LPBAM limits.
 - `phase_quantum_ms` is presentation cadence, not a package logic tick; HW6 v1 uses 250 ms phases and therefore a two-phase one-quantum blink has a 500 ms full cycle.

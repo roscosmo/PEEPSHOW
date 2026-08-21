@@ -389,6 +389,8 @@ Rules:
 - sequence size, frame count, cadence, cycle duration, and compiler admission must fit the selected target profile; preferred/fallback and wake/exit bindings are validated through the enclosing reactive-wait policy
 - visual playback cannot mutate package variables, fire gameplay transitions, or substitute for logical schedules
 - preferred visuals may declare reduced-sequence and hold fallbacks
+- HW6 v1 tools treat three global steps as the universally supported waiting-animation form. They preview the deterministic mappings `1 -> 1/1/1`, `2 -> 1/2/1`, `3 -> 1/2/3`, and `4 -> 1/2/3`. A fourth phase and mixed preferred timelines up to twelve steps are marked as requiring target admission.
+- export performs one exact preferred admission check and one deterministic guaranteed-mode check. It must not silently pack elements in source order, iteratively remove elements, or expose hardware allocation order as author-visible behavior.
 - tooling derives whether `display.waiting_visual_animation` is required or optional from the authored fallback contract
 - package-facing assets must not encode SRAM4 addresses, LPBAM descriptors, SPI bytes, Sharp LCD commands, dirty rows, or transfer chunks
 - Platform may convert validated content into full frames, logical deltas, hardware row deltas, repeated payloads, or another display-owner format

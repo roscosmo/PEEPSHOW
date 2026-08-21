@@ -172,6 +172,8 @@ A settled `STATE_SCENE` declares a waiting visual:
 
 Waiting visual intent does not select an autonomous backend. The Platform may compile it for LPBAM/LPDMA, use a measured wake/update/return path, reduce it, or hold the frame according to target-profile grants and declared fallback.
 
+For the HW6 v1 compiler profile, authors may use up to four phases per element and twelve combined preferred timeline steps. The target also supplies a guaranteed three-step reduction, so packages do not need to encode a hardware-specific emergency sequence. It maps one-phase elements to `1/1/1`, two-phase elements to `1/2/1`, three-phase elements to `1/2/3`, and four-phase elements to `1/2/3`. Tools must preview this result and warn that a fourth phase or a more complex mixed timeline is preferred-only. An explicitly authored reduced sequence may be stricter, but cannot exceed the target's guaranteed bounds.
+
 Every waiting presentation also resolves a backend-neutral presentation
 timeline. The timeline owns the epoch, phase index, and next deadline. Changing
 between awake rendering and an autonomous backend must preserve that timeline.
@@ -193,6 +195,7 @@ Rules:
 - sequence frame count, cadence, cycle duration, and target-compiler admission are capped by the selected target profile; wake/exit behavior comes from the enclosing reactive wait
 - phase durations are integer multiples of the target presentation quantum; the HW6 v1 quantum is `250 ms`
 - backend handoff starts with the phase after the committed physical frame and must not rebase the presentation epoch
+- wake from a target-generated reduced sequence presents the current reduced phase unchanged, preserves the remaining quantum, and then resumes the preferred timeline at its corresponding next phase
 - packages describe preferred and fallback appearance; tools derive whether `display.waiting_visual_animation` is required or optional
 
 ---

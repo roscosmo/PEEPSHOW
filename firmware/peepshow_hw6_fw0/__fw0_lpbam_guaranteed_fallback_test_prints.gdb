@@ -1,0 +1,15 @@
+set pagination off
+printf "--- HW6 LPBAM deterministic three-step fallback ---\n"
+printf "rtos/owner api = %u / %u\n", g_ps_hw6_rtos_probe.version, g_ps_hw6_owner_probe.version
+printf "variant/compile mode = %u / %u\n", g_display_renderer_waiting_test_variant, g_ps_hw6_owner_probe.display_lpbam_compile_mode
+printf "preferred status/reason sequence/chunks/payload = 0x%x / %u / %u / %u / %u\n", g_ps_hw6_owner_probe.display_lpbam_preferred_status, g_ps_hw6_owner_probe.display_lpbam_preferred_reason, g_ps_hw6_owner_probe.display_lpbam_preferred_sequence_used, g_ps_hw6_owner_probe.display_lpbam_preferred_chunk_used, g_ps_hw6_owner_probe.display_lpbam_preferred_payload_used_bytes
+printf "guaranteed attempt/status = %u / 0x%x\n", g_ps_hw6_owner_probe.display_lpbam_guaranteed_attempt_count, g_ps_hw6_owner_probe.display_lpbam_guaranteed_status
+printf "selected sequence count/start phases = %u / %u / %u,%u,%u\n", g_ps_hw6_owner_probe.display_lpbam_sequence_frame_count, g_ps_hw6_owner_probe.display_lpbam_sequence_start_frame, g_ps_hw6_owner_probe.display_lpbam_sequence_phase[0], g_ps_hw6_owner_probe.display_lpbam_sequence_phase[1], g_ps_hw6_owner_probe.display_lpbam_sequence_phase[2]
+printf "wake selected/preferred frame/count/map = %u / %u / %u / 0x%x\n", g_ps_hw6_owner_probe.display_lpbam_wake_sequence_frame, g_ps_hw6_owner_probe.display_lpbam_wake_preferred_sequence_frame, g_ps_hw6_owner_probe.display_lpbam_wake_preferred_sequence_count, g_ps_hw6_owner_probe.display_lpbam_wake_preferred_map_status
+printf "resume frame/count/phase/status = %u / %u / %u / 0x%x\n", g_ps_hw6_rtos_probe.stop2_lpbam_wake_resume_sequence_frame, g_ps_hw6_rtos_probe.stop2_lpbam_wake_resume_sequence_count, g_ps_hw6_rtos_probe.stop2_lpbam_wake_resume_phase, g_ps_hw6_rtos_probe.stop2_lpbam_wake_resume_status
+printf "final admission status/reason sequence/chunks/payload = 0x%x / %u / %u/%u / %u/%u / %u/%u\n", g_ps_hw6_owner_probe.display_lpbam_admission_status, g_ps_hw6_owner_probe.display_lpbam_admission_reason, ps_lpbam_display_admission.sequence_used, ps_lpbam_display_admission.sequence_capacity, ps_lpbam_display_admission.chunk_used, ps_lpbam_display_admission.chunk_capacity, ps_lpbam_display_admission.payload_used_bytes, ps_lpbam_display_admission.payload_capacity_bytes
+printf "backend requested/selected/status/held = %u / %u / 0x%x / %u\n", g_ps_hw6_rtos_probe.stop2_display_wait_backend_requested, g_ps_hw6_rtos_probe.stop2_display_wait_backend_selected, g_ps_hw6_rtos_probe.stop2_display_wait_backend_status, g_ps_hw6_rtos_probe.stop2_display_wait_backend_held_ready
+printf "ready/active STOP2 count/status = %u / %u / %u / 0x%x\n", g_ps_hw6_owner_probe.display_lpbam_ready, g_ps_hw6_owner_probe.display_lpbam_active, g_ps_hw6_owner_sm_probe.stop2_request_count, g_ps_hw6_owner_sm_probe.stop2_last_status
+printf "expected: rtos/owner api=54/30 variant/mode=3/2 preferred=1/3 (CHUNKS), guaranteed=1/0, selected fallback phases=0,1,0, LPBAM selected\n"
+printf "expected after wake: preferred count=4 map/resume status=0 and awake resumes the preferred four-step timeline\n"
+printf "--- end HW6 LPBAM deterministic fallback ---\n"

@@ -25,9 +25,12 @@ extern "C" {
 #define DISPLAY_RENDERER_WAITING_ELEMENT_CURSOR (1UL)
 #define DISPLAY_RENDERER_WAITING_ELEMENT_MULTICHUNK_TEST (2UL)
 #define DISPLAY_RENDERER_WAITING_ELEMENT_FULL_FRAME_TEST (3UL)
+#define DISPLAY_RENDERER_WAITING_ELEMENT_THREE_PHASE_TEST (4UL)
 #define DISPLAY_RENDERER_ROW_NONE               (0xFFFFFFFFUL)
 #define DISPLAY_RENDERER_WAITING_PHASE_MAX      (12U)
+#define DISPLAY_RENDERER_WAITING_ELEMENT_PHASE_MAX (4U)
 #define DISPLAY_RENDERER_WAITING_SEQUENCE_MAX   (12U)
+#define DISPLAY_RENDERER_WAITING_GUARANTEED_STEPS (3U)
 #define DISPLAY_RENDERER_WAITING_ELEMENT_MAX    (8U)
 
 typedef struct
@@ -100,8 +103,19 @@ uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
   display_renderer_stats_t *stats);
 uint32_t DisplayRenderer_FramebufferHash(void);
 const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
-  uint32_t current_phase,
+  uint32_t sequence_start_frame,
   uint32_t next_deadline_tick);
+const display_renderer_waiting_animation_t *
+DisplayRenderer_GetGuaranteedWaitingAnimation(
+  const display_renderer_waiting_animation_t *preferred);
+uint32_t DisplayRenderer_SelectWaitingAnimation(
+  const display_renderer_waiting_animation_t *animation);
+const display_renderer_waiting_animation_t *
+DisplayRenderer_GetSelectedWaitingAnimation(void);
+uint32_t DisplayRenderer_ResumePreferredWaitingAnimation(
+  uint32_t selected_sequence_frame,
+  uint32_t *preferred_sequence_frame,
+  uint32_t *preferred_sequence_count);
 uint32_t DisplayRenderer_ValidateWaitingAnimation(
   const display_renderer_waiting_animation_t *animation);
 uint32_t DisplayRenderer_CopyWaitingAnimationFrame(

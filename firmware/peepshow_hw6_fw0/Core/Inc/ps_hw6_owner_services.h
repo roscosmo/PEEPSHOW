@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (28UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (30UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -24,6 +24,9 @@ extern "C" {
 #define PS_HW6_OWNER_STATUS_UNAVAILABLE          (0xFFFFFFFEUL)
 #define PS_HW6_OWNER_LPBAM_SEQUENCE_MAX          (12U)
 #define PS_HW6_OWNER_LPBAM_ELEMENT_MAX           (8U)
+#define PS_HW6_OWNER_LPBAM_COMPILE_NONE          (0UL)
+#define PS_HW6_OWNER_LPBAM_COMPILE_PREFERRED     (1UL)
+#define PS_HW6_OWNER_LPBAM_COMPILE_GUARANTEED    (2UL)
 
 typedef struct
 {
@@ -212,6 +215,9 @@ typedef struct
   uint32_t display_lpbam_wake_sequence_index;
   uint32_t display_lpbam_wake_sequence_frame;
   uint32_t display_lpbam_wake_phase;
+  uint32_t display_lpbam_wake_preferred_sequence_frame;
+  uint32_t display_lpbam_wake_preferred_sequence_count;
+  uint32_t display_lpbam_wake_preferred_map_status;
   uint32_t display_lpbam_wake_node_index;
   uint32_t display_lpbam_wake_node_count;
   uint32_t display_lpbam_wake_lptim_count;
@@ -236,6 +242,14 @@ typedef struct
   uint32_t display_lpbam_admission_chunk_capacity;
   uint32_t display_lpbam_admission_payload_used_bytes;
   uint32_t display_lpbam_admission_payload_capacity_bytes;
+  uint32_t display_lpbam_compile_mode;
+  uint32_t display_lpbam_preferred_status;
+  uint32_t display_lpbam_preferred_reason;
+  uint32_t display_lpbam_preferred_sequence_used;
+  uint32_t display_lpbam_preferred_chunk_used;
+  uint32_t display_lpbam_preferred_payload_used_bytes;
+  uint32_t display_lpbam_guaranteed_attempt_count;
+  uint32_t display_lpbam_guaranteed_status;
   uint32_t display_lpbam_fill_status;
   uint32_t display_lpbam_clock_status;
   uint32_t display_lpbam_link_status;
@@ -320,12 +334,14 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   uint32_t shutdown_state,
   uint32_t shutdown_countdown_seconds);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderCursorBlink(uint32_t visible);
+HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderWaitingSequenceFrame(
+  uint32_t sequence_frame);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareLpbamStop2ForAnimationPhase(
-  uint32_t current_phase,
+  uint32_t sequence_start_frame,
   uint32_t next_deadline_tick);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_CompileLpbamStop2ForAnimationPhase(
-  uint32_t current_phase,
+  uint32_t sequence_start_frame,
   uint32_t next_deadline_tick);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_PrearmCompiledLpbamStop2(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_CommitLpbamStop2(void);

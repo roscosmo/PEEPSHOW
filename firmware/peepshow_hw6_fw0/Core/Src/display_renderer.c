@@ -34,6 +34,10 @@ static uint16_t
 static uint8_t
   s_display_waiting_candidate_row_marks[DISPLAY_RENDERER_DIRTY_ROW_MAX];
 static display_renderer_waiting_animation_t s_display_waiting_animation;
+static display_renderer_waiting_animation_t
+  s_display_waiting_guaranteed_animation;
+static const display_renderer_waiting_animation_t
+  *s_display_selected_waiting_animation = &s_display_waiting_animation;
 static uint16_t s_display_dirty_row_count;
 static uint32_t s_display_committed_valid;
 static uint32_t s_display_cursor_base_valid;
@@ -459,6 +463,28 @@ static uint32_t DisplayRenderer_ApplyMultichunkTestPhase(
   return 1UL;
 }
 
+static uint32_t DisplayRenderer_ApplyThreePhaseTestPhase(
+  uint32_t phase,
+  uint8_t *destination,
+  uint32_t destination_size)
+{
+  uint16_t row;
+
+  if ((destination == NULL) ||
+      (destination_size < DISPLAY_RENDERER_BUFFER_SIZE) ||
+      (phase >= 3UL))
+  {
+    return 0UL;
+  }
+
+  for (row = 1U; row <= 8U; ++row)
+  {
+    uint32_t offset = ((uint32_t)(row - 1U) * LINE_WIDTH) + phase;
+    destination[offset] ^= 0xFFU;
+  }
+  return 1UL;
+}
+
 static uint32_t DisplayRenderer_ApplyFullFrameTestPhase(
   uint32_t phase,
   uint8_t *destination,
@@ -507,6 +533,17 @@ static uint32_t DisplayRenderer_ComposeMultichunkTestPhase(
 {
   (void)context;
   return DisplayRenderer_ApplyMultichunkTestPhase(
+    phase, destination, destination_size);
+}
+
+static uint32_t DisplayRenderer_ComposeThreePhaseTestPhase(
+  const void *context,
+  uint32_t phase,
+  uint8_t *destination,
+  uint32_t destination_size)
+{
+  (void)context;
+  return DisplayRenderer_ApplyThreePhaseTestPhase(
     phase, destination, destination_size);
 }
 
@@ -587,7 +624,7 @@ uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
 }
 
 const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
-  uint32_t current_phase,
+  uint32_t sequence_start_frame,
   uint32_t next_deadline_tick)
 {
   display_renderer_waiting_animation_t *animation =
@@ -596,10 +633,10 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
   display_renderer_waiting_element_t *test_element;
   uint16_t candidate_count = 0U;
   uint32_t frame;
-  uint32_t start_found = 0UL;
   uint16_t row;
 
   (void)memset(animation, 0, sizeof(*animation));
+  s_display_selected_waiting_animation = animation;
   (void)memset(s_display_waiting_candidate_row_marks, 0,
                sizeof(s_display_waiting_candidate_row_marks));
 
@@ -607,7 +644,6 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
       (s_display_cursor_base_valid == 0UL) ||
       (s_lpbam_cursor_panel_region_valid == 0UL) ||
       (s_display_committed_list_valid == 0UL) ||
-      (current_phase >= 2UL) ||
       (s_lpbam_cursor_panel_region.row_count == 0U) ||
       (s_lpbam_cursor_panel_region.row_count >
        DISPLAY_RENDERER_DIRTY_ROW_MAX))
@@ -621,7 +657,6 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
   animation->phase_count = 2UL;
   animation->sequence_frame_count = 4UL;
   animation->cadence_ms = (uint32_t)KNOB_DISPLAY_CURSOR_BLINK_PERIOD_MS;
-  animation->current_phase = current_phase;
   animation->next_deadline_tick = next_deadline_tick;
   animation->element_count = 1UL;
   animation->panel_bounds = s_lpbam_cursor_panel_region;
@@ -652,7 +687,7 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
     }
   }
 
-  if (g_display_renderer_waiting_test_variant != 0UL)
+  if (g_display_renderer_waiting_test_variant == 1UL)
   {
     animation->animation_id =
       DISPLAY_RENDERER_ANIMATION_COMPOSITE_TEST;
@@ -694,18 +729,82 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
     }
   }
 
+  if (g_display_renderer_waiting_test_variant == 5UL)
+  {
+    (void)memset(s_display_waiting_candidate_row_marks, 0,
+                 sizeof(s_display_waiting_candidate_row_marks));
+    candidate_count = 0U;
+    animation->animation_id = DISPLAY_RENDERER_ANIMATION_COMPOSITE_TEST;
+    animation->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_PATTERN;
+    animation->phase_count = 6UL;
+    animation->sequence_frame_count = 6UL;
+    animation->element_count = 2UL;
+    animation->panel_bounds.start_row = 1U;
+    animation->panel_bounds.row_count = DISPLAY_HEIGHT;
+    animation->panel_bounds.start_column = 0U;
+    animation->panel_bounds.column_count = DISPLAY_WIDTH;
+
+    cursor_element->sequence_phase[0] = 0UL;
+    cursor_element->sequence_phase[1] = 1UL;
+    cursor_element->sequence_phase[2] = 0UL;
+    cursor_element->sequence_phase[3] = 1UL;
+    cursor_element->sequence_phase[4] = 0UL;
+    cursor_element->sequence_phase[5] = 1UL;
+
+    test_element = &animation->elements[1];
+    test_element->element_id =
+      DISPLAY_RENDERER_WAITING_ELEMENT_THREE_PHASE_TEST;
+    test_element->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_PATTERN;
+    test_element->phase_count = 3UL;
+    test_element->panel_bounds.start_row = 1U;
+    test_element->panel_bounds.row_count = 8U;
+    test_element->panel_bounds.start_column = 0U;
+    test_element->panel_bounds.column_count = 24U;
+    test_element->compose_phase = DisplayRenderer_ComposeThreePhaseTestPhase;
+    test_element->compose_context = NULL;
+    test_element->sequence_phase[0] = 0UL;
+    test_element->sequence_phase[1] = 1UL;
+    test_element->sequence_phase[2] = 2UL;
+    test_element->sequence_phase[3] = 0UL;
+    test_element->sequence_phase[4] = 1UL;
+    test_element->sequence_phase[5] = 2UL;
+
+    for (row = 1U; row <= 8U; ++row)
+    {
+      if (DisplayRenderer_AddWaitingCandidateRow(
+            row, &candidate_count) == 0UL)
+      {
+        return NULL;
+      }
+    }
+    for (row = 0U;
+         row < s_lpbam_cursor_panel_region.row_count;
+         ++row)
+    {
+      if (DisplayRenderer_AddWaitingCandidateRow(
+            (uint16_t)(s_lpbam_cursor_panel_region.start_row + row),
+            &candidate_count) == 0UL)
+      {
+        return NULL;
+      }
+    }
+  }
+
   if ((g_display_renderer_waiting_test_variant == 2UL) ||
       (g_display_renderer_waiting_test_variant == 3UL) ||
-      (g_display_renderer_waiting_test_variant == 4UL))
+      (g_display_renderer_waiting_test_variant == 4UL) ||
+      (g_display_renderer_waiting_test_variant == 6UL))
   {
     animation->animation_id =
       DISPLAY_RENDERER_ANIMATION_FULL_FRAME_TEST;
     animation->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_PATTERN;
     animation->phase_count =
-      (g_display_renderer_waiting_test_variant == 4UL) ? 3UL : 2UL;
+      (g_display_renderer_waiting_test_variant == 4UL) ? 3UL :
+      ((g_display_renderer_waiting_test_variant == 6UL) ? 5UL : 2UL);
     animation->sequence_frame_count =
       (g_display_renderer_waiting_test_variant == 3UL) ? 4UL :
-      ((g_display_renderer_waiting_test_variant == 4UL) ? 3UL : 2UL);
+      ((g_display_renderer_waiting_test_variant == 4UL) ? 3UL :
+      ((g_display_renderer_waiting_test_variant == 6UL) ? 1UL : 2UL));
     animation->element_count = 1UL;
     animation->panel_bounds.start_row = 1U;
     animation->panel_bounds.row_count = DISPLAY_HEIGHT;
@@ -753,22 +852,13 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
       cursor_element->sequence_phase[frame];
   }
 
-  for (frame = 0UL;
-       frame < animation->sequence_frame_count;
-       ++frame)
+  if (sequence_start_frame >= animation->sequence_frame_count)
   {
-    if (cursor_element->sequence_phase[frame] == current_phase)
-    {
-      animation->sequence_start_frame = frame;
-      start_found = 1UL;
-      break;
-    }
+    sequence_start_frame = 0UL;
   }
-  if (start_found == 0UL)
-  {
-    (void)memset(animation, 0, sizeof(*animation));
-    return NULL;
-  }
+  animation->sequence_start_frame = sequence_start_frame;
+  animation->current_phase =
+    cursor_element->sequence_phase[sequence_start_frame];
 
   return animation;
 }
@@ -827,7 +917,8 @@ uint32_t DisplayRenderer_ValidateWaitingAnimation(
 
     if ((element->element_id == 0UL) ||
         (element->phase_count == 0UL) ||
-        (element->phase_count > DISPLAY_RENDERER_WAITING_PHASE_MAX) ||
+        (element->phase_count >
+         DISPLAY_RENDERER_WAITING_ELEMENT_PHASE_MAX) ||
         (element->compose_phase == NULL) ||
         (element->panel_bounds.start_row == 0U) ||
         (element->panel_bounds.row_count == 0U) ||
@@ -850,6 +941,156 @@ uint32_t DisplayRenderer_ValidateWaitingAnimation(
   }
 
   return 1UL;
+}
+
+const display_renderer_waiting_animation_t *
+DisplayRenderer_GetGuaranteedWaitingAnimation(
+  const display_renderer_waiting_animation_t *preferred)
+{
+  display_renderer_waiting_animation_t *guaranteed =
+    &s_display_waiting_guaranteed_animation;
+  uint32_t element_index;
+  uint32_t frame;
+  uint32_t start_found = 0UL;
+
+  if (DisplayRenderer_ValidateWaitingAnimation(preferred) == 0UL)
+  {
+    return NULL;
+  }
+
+  (void)memcpy(guaranteed, preferred, sizeof(*guaranteed));
+  guaranteed->phase_count = DISPLAY_RENDERER_WAITING_GUARANTEED_STEPS;
+  guaranteed->sequence_frame_count =
+    DISPLAY_RENDERER_WAITING_GUARANTEED_STEPS;
+
+  for (element_index = 0UL;
+       element_index < guaranteed->element_count;
+       ++element_index)
+  {
+    display_renderer_waiting_element_t *element =
+      &guaranteed->elements[element_index];
+
+    element->sequence_phase[0] = 0UL;
+    element->sequence_phase[1] =
+      (element->phase_count >= 2UL) ? 1UL : 0UL;
+    element->sequence_phase[2] =
+      (element->phase_count >= 3UL) ? 2UL : 0UL;
+    for (frame = DISPLAY_RENDERER_WAITING_GUARANTEED_STEPS;
+         frame < DISPLAY_RENDERER_WAITING_SEQUENCE_MAX;
+         ++frame)
+    {
+      element->sequence_phase[frame] = 0UL;
+    }
+  }
+
+  for (frame = 0UL;
+       frame < DISPLAY_RENDERER_WAITING_GUARANTEED_STEPS;
+       ++frame)
+  {
+    guaranteed->sequence_phase[frame] =
+      guaranteed->elements[0].sequence_phase[frame];
+    if ((start_found == 0UL) &&
+        (guaranteed->sequence_phase[frame] == preferred->current_phase))
+    {
+      guaranteed->sequence_start_frame = frame;
+      start_found = 1UL;
+    }
+  }
+  for (frame = DISPLAY_RENDERER_WAITING_GUARANTEED_STEPS;
+       frame < DISPLAY_RENDERER_WAITING_SEQUENCE_MAX;
+       ++frame)
+  {
+    guaranteed->sequence_phase[frame] = 0UL;
+  }
+
+  if ((start_found == 0UL) ||
+      (DisplayRenderer_ValidateWaitingAnimation(guaranteed) == 0UL))
+  {
+    (void)memset(guaranteed, 0, sizeof(*guaranteed));
+    return NULL;
+  }
+  return guaranteed;
+}
+
+uint32_t DisplayRenderer_SelectWaitingAnimation(
+  const display_renderer_waiting_animation_t *animation)
+{
+  if (DisplayRenderer_ValidateWaitingAnimation(animation) == 0UL)
+  {
+    return 0UL;
+  }
+  s_display_selected_waiting_animation = animation;
+  return 1UL;
+}
+
+const display_renderer_waiting_animation_t *
+DisplayRenderer_GetSelectedWaitingAnimation(void)
+{
+  return (DisplayRenderer_ValidateWaitingAnimation(
+            s_display_selected_waiting_animation) != 0UL) ?
+         s_display_selected_waiting_animation : NULL;
+}
+
+uint32_t DisplayRenderer_ResumePreferredWaitingAnimation(
+  uint32_t selected_sequence_frame,
+  uint32_t *preferred_sequence_frame,
+  uint32_t *preferred_sequence_count)
+{
+  const display_renderer_waiting_animation_t *selected =
+    s_display_selected_waiting_animation;
+  const display_renderer_waiting_animation_t *preferred =
+    &s_display_waiting_animation;
+  uint32_t candidate_frame;
+  uint32_t element_index;
+
+  if ((preferred_sequence_frame == NULL) ||
+      (preferred_sequence_count == NULL) ||
+      (DisplayRenderer_ValidateWaitingAnimation(selected) == 0UL) ||
+      (DisplayRenderer_ValidateWaitingAnimation(preferred) == 0UL) ||
+      (selected_sequence_frame >= selected->sequence_frame_count) ||
+      (selected->element_count != preferred->element_count))
+  {
+    return 0UL;
+  }
+
+  if (selected == preferred)
+  {
+    *preferred_sequence_frame = selected_sequence_frame;
+    *preferred_sequence_count = preferred->sequence_frame_count;
+    return 1UL;
+  }
+
+  for (candidate_frame = 0UL;
+       candidate_frame < preferred->sequence_frame_count;
+       ++candidate_frame)
+  {
+    uint32_t matches = 1UL;
+
+    for (element_index = 0UL;
+         element_index < preferred->element_count;
+         ++element_index)
+    {
+      if ((selected->elements[element_index].element_id !=
+           preferred->elements[element_index].element_id) ||
+          (selected->elements[element_index].sequence_phase[
+             selected_sequence_frame] !=
+           preferred->elements[element_index].sequence_phase[
+             candidate_frame]))
+      {
+        matches = 0UL;
+        break;
+      }
+    }
+    if (matches != 0UL)
+    {
+      s_display_selected_waiting_animation = preferred;
+      *preferred_sequence_frame = candidate_frame;
+      *preferred_sequence_count = preferred->sequence_frame_count;
+      return 1UL;
+    }
+  }
+
+  return 0UL;
 }
 
 uint32_t DisplayRenderer_CopyWaitingAnimationFrame(
@@ -882,7 +1123,8 @@ uint32_t DisplayRenderer_CopyWaitingAnimationFrame(
 
     phase = element->sequence_phase[sequence_frame];
     if ((element->phase_count == 0UL) ||
-        (element->phase_count > DISPLAY_RENDERER_WAITING_PHASE_MAX) ||
+        (element->phase_count >
+         DISPLAY_RENDERER_WAITING_ELEMENT_PHASE_MAX) ||
         (phase >= element->phase_count) ||
         (element->compose_phase == NULL))
     {
@@ -906,7 +1148,7 @@ uint32_t DisplayRenderer_PrepareWaitingAnimationFrame(
   display_renderer_stats_t *stats)
 {
   const display_renderer_waiting_animation_t *animation =
-    &s_display_waiting_animation;
+    s_display_selected_waiting_animation;
 
   if (DisplayRenderer_CopyWaitingAnimationFrame(
         animation,
@@ -1250,7 +1492,8 @@ static uint32_t DisplayRenderer_ListFocusPrimitiveEligible(
   const display_renderer_list_t *list)
 {
   if ((list == NULL) || (s_display_committed_valid == 0UL) ||
-      (s_display_committed_list_valid == 0UL))
+      (s_display_committed_list_valid == 0UL) ||
+      (s_display_cursor_base_valid == 0UL))
   {
     return 0UL;
   }
@@ -1569,7 +1812,7 @@ void DisplayRenderer_PrepareUIPage(
     primitive_id = DISPLAY_RENDERER_PRIMITIVE_LIST_FOCUS;
     previous_focus_row = s_display_committed_list.selected_row;
     (void)memcpy(s_display_framebuffer,
-                 s_display_committed_framebuffer,
+                 s_display_cursor_base_framebuffer,
                  sizeof(s_display_framebuffer));
     DisplayRenderer_ClearListCursor(previous_focus_row);
     (void)DisplayRenderer_DrawListCursor(list.selected_row, 1UL);

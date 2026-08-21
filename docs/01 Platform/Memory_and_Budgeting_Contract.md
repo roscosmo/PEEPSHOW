@@ -101,7 +101,7 @@ Required categories:
 | Engine runtime RAM | runtime host state, state graph interpreter, package context |
 | package working RAM | package-visible bounded working memory |
 | renderer working RAM | layer planes, compositor scratch, frame state |
-| SRAM4 display-DMA/autonomous arena | awake TX scratch overlay, compiled waiting-visual wire payloads, descriptors, queue, metadata, guard |
+| SRAM4 display-DMA/autonomous arena | compiled waiting-visual wire payloads, descriptors, queue, metadata, guard |
 | retained fast-resume | STOP-class continuity state |
 | trace/telemetry | Tracealyzer buffers, SWO/telemetry rings, dashboard capture staging |
 | install/storage staging | package import and validation buffers |
@@ -139,42 +139,42 @@ SRAM4 remains special only because it is the Platform display-DMA/autonomous LPB
 
 SRAM4 is reserved for the Platform display-DMA/autonomous arena. It is not general retained runtime memory.
 
-The committed logical/panel framebuffer, RTOS continuity state, package state, renderer working planes, and game-resume state live in ordinary retained SRAM outside the SRAM4 display arena. Because HW6 keeps all SRAM banks retained in STOP2, these objects do not need special pre-sleep copying or reconstruction. SRAM4 contains only the memory that must remain DMA-safe and reachable by the validated display/LPBAM path:
+The committed logical/panel framebuffer, RTOS continuity state, package state, renderer working planes, game-resume state, and awake display transmit scratch live in ordinary retained SRAM outside the SRAM4 display arena. Because HW6 keeps all SRAM banks retained in STOP2, these objects do not need special pre-sleep copying or reconstruction. SRAM4 contains only the memory that must remain DMA-safe and reachable by the validated autonomous display/LPBAM path:
 
-- awake SPI transmit scratch
 - autonomous-display wire payload
 - LPBAM/LPDMA linked-list descriptors and queue object
 - autonomous-slice metadata
 - alignment and safety guard
 
-The awake transmit scratch and autonomous payload intentionally share one display-owned arena. They do not need to coexist as independent allocations. The display owner sequences their use:
+Awake display transmit scratch lives in ordinary retained SRAM and uses GPDMA. It does not consume SRAM4 autonomous capacity. The display owner sequences the two hardware paths:
 
 ```text
 render/commit in retained runtime RAM
-  -> use SRAM4 scratch to present the settled seed frame
+  -> use normal-SRAM/GPDMA scratch to present the settled seed frame
   -> wait for awake transfer completion
-  -> overlay/reuse SRAM4 scratch as autonomous payload
+  -> compile fixed-slot autonomous payload in SRAM4
   -> build and validate descriptors
   -> arm autonomous playback
 ```
 
-Once an autonomous slice is armed, no normal display present may use the SRAM4 scratch until the display owner has stopped/aborted and unlinked the slice or rebuilt it afterward.
+Once an autonomous slice is armed, `thDisplay` still exclusively owns SPI3 and the LPBAM SRAM4 structures. Normal presentation resumes only after the display owner has stopped/aborted and unlinked the autonomous slice and restored the awake SPI3/GPDMA path.
 
-Measured HW5 baseline and provisional HW6 allocation contract:
+Validated HW6 allocation contract:
 
-The final HW6 IOC retains the SRAM4/LPDMA/LPBAM architecture, so these values are the initial HW6 admission model. They are not measured HW6 limits. Descriptor size, linker placement, DMA reachability, and usable guard space must be reconfirmed on HW6 before the profile changes from `pending_validation` to a granted autonomous-display budget. SRAM bank retention itself is not an admission variable: all SRAM banks remain powered in STOP2 unless a future measured optimization explicitly changes the policy.
+The HW6 runtime path uses a permanent fixed-slot payload layout. SRAM bank retention itself is not an admission variable: all SRAM banks remain powered in STOP2 unless a future measured optimization explicitly changes the policy.
 
 | Item | Budget |
 |---|---:|
 | total SRAM4 | 16,384 B |
-| safety/alignment reserve | 1,024 B |
-| autonomous metadata reservation | 96 B |
-| LPDMA queue reservation | 32 B |
-| maximum SPI chunk descriptors | 16 x 236 B = 3,776 B |
-| retained wire-payload arena, including reusable TX scratch | 11,456 B |
-| required awake full-screen TX scratch inside that arena | 3,364 B |
+| fixed autonomous wire-payload arena | 10,512 B |
+| payload slots | 18 x 584 B |
+| wire payload per occupied slot | 583 B |
+| spatial bands per whole-panel state | 6 x 28 rows |
+| guaranteed whole-panel states | 3 |
+| measured total SRAM4 linker use | 15,480 B |
+| remaining linker headroom | 904 B |
 
-Retained display formulas, validated on HW5 and pending HW6 revalidation:
+Validated display formulas:
 
 ```text
 panel_width = 144
@@ -182,12 +182,13 @@ panel_height = 168
 line_bytes = panel_width / 8 = 18
 framebuffer_bytes = line_bytes * panel_height = 3024
 wire_bytes_per_row = 20
-chunk_payload_overhead_bytes = 23
-max_rows_per_spi_chunk = 48
-max_spi_chunks_per_slice = 16
+fixed_spatial_band_rows = 28
+fixed_spatial_band_count = 6
+fixed_payload_slot_count = 18
+guaranteed_whole_panel_states = 18 / 6 = 3
 ```
 
-With the initial 16-chunk allocation, the HW5-derived conservative autonomous capacity is approximately 553 changed rows across a compiled waiting-visual slice, subject to chunk boundaries, required overlap/guard rows, alignment, and descriptor admission. This is approximately 3.3 full-display equivalents of changed rows, not a promise of a fixed frame count. HW6 package tooling must treat this limit as `pending_validation` until [[HW6_Brought_Up_Tracker]] records the repeated SRAM4/LPBAM measurements.
+The preferred compiler may admit sparse programs with up to four phases per element and twelve combined timeline steps when their exact unique band states fit. The guaranteed compiler always composes exactly three global whole-screen states and therefore cannot exceed the `18` payload slots. It maps one-phase tracks to `1/1/1`, two-phase tracks to `1/2/1`, three-phase tracks to `1/2/3`, and four-phase tracks to `1/2/3`. If descriptor or queue construction still fails, the Platform uses held-frame STOP2.
 
 Rules:
 
@@ -197,7 +198,7 @@ Rules:
 - normal authoring tools report waiting-visual complexity in PeepOS terms; low-level row/chunk details are advanced diagnostics only.
 - exact linker section names and SRAM4 DMA reachability controls must be recorded before Platform freeze; selective SRAM bank power-down is not part of the HW6 baseline policy.
 - autonomous-display grants and limits are published through measured target profiles.
-- a compiled slice that exceeds the active target budget must use its declared reduced visual or hold fallback; it must not silently keep the CPU awake.
+- a preferred compiled slice that exceeds the active target budget must receive one deterministic guaranteed three-step compile; if that fails, it must use held-frame fallback and must not silently keep the CPU awake.
 
 ---
 
