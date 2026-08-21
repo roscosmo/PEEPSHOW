@@ -882,6 +882,34 @@ uint32_t DisplayRenderer_CopyWaitingAnimationFrame(
   return 1UL;
 }
 
+uint32_t DisplayRenderer_PrepareWaitingAnimationFrame(
+  uint32_t sequence_frame,
+  display_renderer_stats_t *stats)
+{
+  const display_renderer_waiting_animation_t *animation =
+    &s_display_waiting_animation;
+
+  if (DisplayRenderer_CopyWaitingAnimationFrame(
+        animation,
+        sequence_frame,
+        s_display_framebuffer,
+        sizeof(s_display_framebuffer)) == 0UL)
+  {
+    DisplayRenderer_ResetDirtyRows();
+    return 0UL;
+  }
+
+  DisplayRenderer_ComputeDirtyRowsFromCommitted();
+  DisplayRenderer_FillStats(
+    stats,
+    DisplayRenderer_CountBlackPixels(),
+    animation->source_primitive_id,
+    DISPLAY_RENDERER_ROW_NONE,
+    s_display_committed_list_valid == 0UL ?
+      DISPLAY_RENDERER_ROW_NONE : s_display_committed_list.selected_row);
+  return 1UL;
+}
+
 static uint32_t DisplayRenderer_SetBlack(uint16_t x, uint16_t y)
 {
   uint16_t panel_x = x;

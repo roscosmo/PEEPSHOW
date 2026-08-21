@@ -1637,6 +1637,46 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderCursorBlink(uint32_t visible)
   return HAL_ERROR;
 }
 
+static HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderWaitingSequenceFrame(
+  uint32_t sequence_frame)
+{
+  display_renderer_stats_t stats;
+  HAL_StatusTypeDef driver_status;
+
+  if (DisplayRenderer_PrepareWaitingAnimationFrame(
+        sequence_frame, &stats) == 0UL)
+  {
+    return HAL_ERROR;
+  }
+
+  PS_HW6_DisplayOwner_ApplyRendererStats(
+    stats.primitive_id, &stats);
+  g_ps_hw6_owner_probe.display_complete = 0UL;
+  g_ps_hw6_owner_probe.display_success = 0UL;
+  driver_status = PS_HW6_DisplayOwner_PresentRendererRows(
+    &g_ps_hw6_owner_probe.display_init_status,
+    &g_ps_hw6_owner_probe.display_present_status);
+  g_ps_hw6_owner_probe.display_dma_done = LCD_FlushDMA_IsDone() ? 1UL : 0UL;
+  g_ps_hw6_owner_probe.display_spi_state_after = HAL_SPI_GetState(&hspi3);
+  g_ps_hw6_owner_probe.display_spi_error_after = HAL_SPI_GetError(&hspi3);
+  g_ps_hw6_owner_probe.display_dma_state_after =
+    PS_HW6_DisplayOwner_GetAwakeDmaState();
+  g_ps_hw6_owner_probe.display_dma_error_after =
+    PS_HW6_DisplayOwner_GetAwakeDmaError();
+  PS_HW6_UpdateDisplayDriverProbe();
+  g_ps_hw6_owner_probe.display_complete = 1UL;
+
+  if ((driver_status == HAL_OK) &&
+      (g_ps_hw6_owner_probe.display_dma_done != 0UL) &&
+      (g_ps_hw6_owner_probe.display_spi_error_after == HAL_SPI_ERROR_NONE) &&
+      (g_ps_hw6_owner_probe.display_dma_error_after == HAL_DMA_ERROR_NONE))
+  {
+    g_ps_hw6_owner_probe.display_success = 1UL;
+    return HAL_OK;
+  }
+  return HAL_ERROR;
+}
+
 static HAL_StatusTypeDef
 PS_HW6_DisplayOwner_CompileLpbamStop2WithAnimationPhase(
   uint32_t current_phase,
@@ -1967,6 +2007,72 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2(void)
   g_ps_hw6_owner_probe.display_lpbam_abort_status =
     (uint32_t)status;
   return status;
+}
+
+HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2AndResume(void)
+{
+  ps_lpbam_display_progress_t progress;
+  HAL_StatusTypeDef snapshot_status;
+  HAL_StatusTypeDef abort_status;
+  HAL_StatusTypeDef render_status = HAL_ERROR;
+  uint32_t phase = 0UL;
+
+  g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_DISPLAY;
+  g_ps_hw6_owner_probe.display_lpbam_abort_count++;
+  g_ps_hw6_owner_probe.display_lpbam_abort_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_probe.display_lpbam_wake_snapshot_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_wake_progress_state =
+    PS_LPBAM_DISPLAY_PROGRESS_INVALID;
+  g_ps_hw6_owner_probe.display_lpbam_wake_sequence_index = 0UL;
+  g_ps_hw6_owner_probe.display_lpbam_wake_sequence_frame = 0UL;
+  g_ps_hw6_owner_probe.display_lpbam_wake_phase = 0UL;
+  g_ps_hw6_owner_probe.display_lpbam_wake_node_index = 0UL;
+  g_ps_hw6_owner_probe.display_lpbam_wake_node_count = 0UL;
+  g_ps_hw6_owner_probe.display_lpbam_wake_render_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_wake_lptim_count =
+    hlptim1.Instance->CNT;
+  g_ps_hw6_owner_probe.display_lpbam_wake_lptim_period =
+    hlptim1.Instance->ARR + 1UL;
+  snapshot_status = PS_LpbamDisplayQueue_SnapshotProgress(
+    &handle_LPDMA1_Channel0, &progress);
+  g_ps_hw6_owner_probe.display_lpbam_wake_snapshot_status =
+    (uint32_t)snapshot_status;
+
+  if (snapshot_status == HAL_OK)
+  {
+    phase = g_ps_hw6_owner_probe.display_lpbam_sequence_phase[
+      progress.sequence_frame];
+    g_ps_hw6_owner_probe.display_lpbam_wake_progress_state =
+      progress.state;
+    g_ps_hw6_owner_probe.display_lpbam_wake_sequence_index =
+      progress.sequence_index;
+    g_ps_hw6_owner_probe.display_lpbam_wake_sequence_frame =
+      progress.sequence_frame;
+    g_ps_hw6_owner_probe.display_lpbam_wake_phase = phase;
+    g_ps_hw6_owner_probe.display_lpbam_wake_node_index =
+      progress.node_index;
+    g_ps_hw6_owner_probe.display_lpbam_wake_node_count =
+      progress.node_count;
+  }
+
+  abort_status = PS_HW6_DisplayOwner_StopLpbamPlayback();
+  if ((snapshot_status == HAL_OK) && (abort_status == HAL_OK))
+  {
+    render_status = PS_HW6_DisplayOwner_RenderWaitingSequenceFrame(
+      progress.sequence_frame);
+  }
+  PS_HW6_DisplayOwner_ClearLpbamReadiness(
+    PS_HW6_DISPLAY_LPBAM_CLEAR_ABORT);
+  g_ps_hw6_owner_probe.display_lpbam_wake_render_status =
+    (uint32_t)render_status;
+  g_ps_hw6_owner_probe.display_lpbam_abort_status =
+    (uint32_t)abort_status;
+
+  return ((snapshot_status == HAL_OK) && (abort_status == HAL_OK) &&
+          (render_status == HAL_OK)) ? HAL_OK : HAL_ERROR;
 }
 
 HAL_StatusTypeDef PS_HW6_AudioOwner_VerifyIdle(void)

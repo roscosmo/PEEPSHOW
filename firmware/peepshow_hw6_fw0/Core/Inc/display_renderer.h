@@ -109,6 +109,9 @@ uint32_t DisplayRenderer_CopyWaitingAnimationFrame(
   uint32_t sequence_frame,
   uint8_t *destination,
   uint32_t destination_size);
+uint32_t DisplayRenderer_PrepareWaitingAnimationFrame(
+  uint32_t sequence_frame,
+  display_renderer_stats_t *stats);
 void DisplayRenderer_PreparePattern(display_renderer_stats_t *stats);
 void DisplayRenderer_PrepareUIPage(
   uint32_t page,

@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (27UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (28UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -207,6 +207,16 @@ typedef struct
   uint32_t display_lpbam_abort_count;
   uint32_t display_lpbam_abort_tick;
   uint32_t display_lpbam_abort_status;
+  uint32_t display_lpbam_wake_snapshot_status;
+  uint32_t display_lpbam_wake_progress_state;
+  uint32_t display_lpbam_wake_sequence_index;
+  uint32_t display_lpbam_wake_sequence_frame;
+  uint32_t display_lpbam_wake_phase;
+  uint32_t display_lpbam_wake_node_index;
+  uint32_t display_lpbam_wake_node_count;
+  uint32_t display_lpbam_wake_lptim_count;
+  uint32_t display_lpbam_wake_lptim_period;
+  uint32_t display_lpbam_wake_render_status;
   uint32_t display_lpbam_clear_count;
   uint32_t display_lpbam_clear_reason;
   uint32_t display_lpbam_status;
@@ -320,6 +330,7 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_CompileLpbamStop2ForAnimationPhase(
 HAL_StatusTypeDef PS_HW6_DisplayOwner_PrearmCompiledLpbamStop2(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_CommitLpbamStop2(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2(void);
+HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2AndResume(void);
 void PS_HW6_DisplayOwner_DebugForceNextLpbamReady(void);
 HAL_StatusTypeDef PS_HW6_AudioOwner_RunTone(void);
 HAL_StatusTypeDef PS_HW6_AudioOwner_VerifyIdle(void);

@@ -8,6 +8,7 @@
   __attribute__((section(".sram4"))) __attribute__((aligned(32)))
 #define PS_LPBAM_FIRST_FRAME_IMMEDIATE 0U
 #define PS_LPBAM_DMA_NODE_CBR1_INDEX   2U
+#define PS_LPBAM_DMA_NODE_CLLR_INDEX   5U
 
 static LPBAM_SPI_TxDataDesc_t
   Queue1_Q_DisplayBuf_Desc[PS_LPBAM_DISPLAY_MAX_CHUNKS]
@@ -15,6 +16,10 @@ static LPBAM_SPI_TxDataDesc_t
 static DMA_NodeTypeDef
   Queue1_Q_DisplayTail_Node[PS_LPBAM_DISPLAY_MAX_CHUNKS]
     PS_LPBAM_DESC_ATTR;
+static uint16_t
+  ps_lpbam_sequence_first_node[PS_LPBAM_DISPLAY_SEQUENCE_MAX];
+static uint16_t
+  ps_lpbam_sequence_node_count[PS_LPBAM_DISPLAY_SEQUENCE_MAX];
 
 /* Kept as a named symbol so existing GDB queue inspection remains valid. */
 DMA_QListTypeDef Queue1_Q PS_LPBAM_DESC_ATTR;
@@ -142,6 +147,10 @@ HAL_StatusTypeDef PS_LpbamDisplayQueue_Build(void)
   memset(Queue1_Q_DisplayBuf_Desc, 0, sizeof(Queue1_Q_DisplayBuf_Desc));
   memset(Queue1_Q_DisplayTail_Node, 0, sizeof(Queue1_Q_DisplayTail_Node));
   memset(&Queue1_Q, 0, sizeof(Queue1_Q));
+  memset(ps_lpbam_sequence_first_node, 0,
+         sizeof(ps_lpbam_sequence_first_node));
+  memset(ps_lpbam_sequence_node_count, 0,
+         sizeof(ps_lpbam_sequence_node_count));
 
   for (sequence = 0U;
        sequence < ps_lpbam_display_active_sequence_count;
@@ -155,6 +164,8 @@ HAL_StatusTypeDef PS_LpbamDisplayQueue_Build(void)
       &ps_lpbam_display_sequence[slot];
     uint8_t wait_for_frame =
       ((PS_LPBAM_FIRST_FRAME_IMMEDIATE != 0U) && (sequence == 0U)) ? 0U : 1U;
+
+    ps_lpbam_sequence_first_node[sequence] = (uint16_t)Queue1_Q.NodeNumber;
 
     if ((entry->chunk_count == 0U) ||
         (((uint32_t)entry->first_chunk + (uint32_t)entry->chunk_count) >
@@ -185,6 +196,9 @@ HAL_StatusTypeDef PS_LpbamDisplayQueue_Build(void)
       }
       descriptor_index++;
     }
+    ps_lpbam_sequence_node_count[sequence] =
+      (uint16_t)(Queue1_Q.NodeNumber -
+                 ps_lpbam_sequence_first_node[sequence]);
   }
 
   if (descriptor_index != ps_lpbam_display_active_chunk_count)
@@ -208,4 +222,84 @@ HAL_StatusTypeDef PS_LpbamDisplayQueue_Link(DMA_HandleTypeDef *hdma)
 uint32_t PS_LpbamDisplayQueue_GetNodeCount(void)
 {
   return Queue1_Q.NodeNumber;
+}
+
+HAL_StatusTypeDef PS_LpbamDisplayQueue_SnapshotProgress(
+  const DMA_HandleTypeDef *hdma,
+  ps_lpbam_display_progress_t *progress)
+{
+  DMA_NodeTypeDef *node;
+  uint32_t live_next;
+  uint32_t node_index;
+  uint32_t sequence;
+
+  if ((hdma == NULL) || (hdma->Instance == NULL) ||
+      (progress == NULL) || (Queue1_Q.Head == NULL) ||
+      (Queue1_Q.NodeNumber == 0U) ||
+      (ps_lpbam_display_active_sequence_count == 0U))
+  {
+    return HAL_ERROR;
+  }
+
+  memset(progress, 0, sizeof(*progress));
+  progress->state = PS_LPBAM_DISPLAY_PROGRESS_INVALID;
+  progress->live_cllr = hdma->Instance->CLLR;
+  live_next = (hdma->Instance->CLBAR & DMA_CLBAR_LBA) |
+              (progress->live_cllr & DMA_CLLR_LA);
+  node = Queue1_Q.Head;
+
+  for (node_index = 0U;
+       (node != NULL) && (node_index < Queue1_Q.NodeNumber);
+       ++node_index)
+  {
+    uint32_t next = ((uint32_t)node & DMA_CLBAR_LBA) |
+      (node->LinkRegisters[PS_LPBAM_DMA_NODE_CLLR_INDEX] & DMA_CLLR_LA);
+
+    if (next == live_next)
+    {
+      break;
+    }
+    node = (next == (uint32_t)node) ? NULL : (DMA_NodeTypeDef *)next;
+  }
+  if ((node == NULL) || (node_index >= Queue1_Q.NodeNumber))
+  {
+    return HAL_ERROR;
+  }
+
+  for (sequence = 0U;
+       sequence < ps_lpbam_display_active_sequence_count;
+       ++sequence)
+  {
+    uint32_t first = ps_lpbam_sequence_first_node[sequence];
+    uint32_t count = ps_lpbam_sequence_node_count[sequence];
+
+    if ((count != 0U) && (node_index >= first) &&
+        (node_index < (first + count)))
+    {
+      uint32_t visible_sequence = sequence;
+      uint32_t transition_slot;
+
+      progress->state = PS_LPBAM_DISPLAY_PROGRESS_TRANSFERRING;
+      if (node_index == first)
+      {
+        progress->state = PS_LPBAM_DISPLAY_PROGRESS_WAITING;
+        visible_sequence = (sequence == 0U) ?
+          ((uint32_t)ps_lpbam_display_active_sequence_count - 1U) :
+          (sequence - 1U);
+      }
+      transition_slot =
+        ((uint32_t)ps_lpbam_display_queue_start_slot + visible_sequence) %
+        (uint32_t)ps_lpbam_display_active_sequence_count;
+      progress->sequence_index = (uint16_t)visible_sequence;
+      progress->sequence_frame = (uint16_t)(
+        ((uint32_t)ps_lpbam_display_sequence_start_frame +
+         transition_slot + 1U) %
+        (uint32_t)ps_lpbam_display_active_sequence_count);
+      progress->node_index = (uint16_t)node_index;
+      progress->node_count = (uint16_t)Queue1_Q.NodeNumber;
+      return HAL_OK;
+    }
+  }
+
+  return HAL_ERROR;
 }
