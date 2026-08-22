@@ -114,7 +114,6 @@ typedef struct
 } display_renderer_scene_waiting_probe_t;
 
 extern volatile uint32_t g_display_renderer_waiting_test_variant;
-extern volatile uint32_t g_display_renderer_scene_waiting_demo_enable;
 extern volatile display_renderer_scene_waiting_probe_t
   g_display_renderer_scene_waiting_probe;
 
@@ -126,6 +125,9 @@ uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
   uint32_t visible,
   display_renderer_stats_t *stats);
 uint32_t DisplayRenderer_FramebufferHash(void);
+uint32_t DisplayRenderer_GetListCursorLogicalBounds(
+  uint32_t selected_row,
+  ps_scene_waiting_visual_bounds_t *bounds);
 uint32_t DisplayRenderer_PublishSceneWaitingVisual(
   const ps_scene_waiting_visual_t *visual);
 void DisplayRenderer_ClearSceneWaitingVisual(void);

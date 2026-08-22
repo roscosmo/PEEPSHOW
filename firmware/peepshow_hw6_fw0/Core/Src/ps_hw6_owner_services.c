@@ -7,6 +7,7 @@
 #include "ps_dev_audio.h"
 #include "ps_lpbam_display_buffers.h"
 #include "ps_lpbam_display_queue.h"
+#include "ps_scene_runtime.h"
 #include "stm32_lpbam.h"
 #include "stm32u5xx_ll_spi.h"
 #include "main.h"
@@ -971,6 +972,29 @@ static void PS_HW6_DisplayOwner_SnapshotSceneWaitingTimeline(void)
   g_ps_hw6_owner_probe.display_waiting_snapshot_status = (uint32_t)HAL_OK;
 }
 
+static void PS_HW6_DisplayOwner_PublishShellStateWaitingVisual(
+  uint32_t page,
+  uint32_t focus_index)
+{
+  ps_scene_waiting_visual_bounds_t cursor_bounds;
+  const ps_scene_waiting_visual_t *visual;
+
+  if (DisplayRenderer_GetListCursorLogicalBounds(
+        focus_index, &cursor_bounds) == 0UL)
+  {
+    DisplayRenderer_ClearSceneWaitingVisual();
+    return;
+  }
+
+  visual = PS_SceneRuntime_ResolveShellStateWaitingVisual(
+    page, focus_index, &cursor_bounds);
+  if ((visual == NULL) ||
+      (DisplayRenderer_PublishSceneWaitingVisual(visual) == 0UL))
+  {
+    DisplayRenderer_ClearSceneWaitingVisual();
+  }
+}
+
 static uint32_t PS_HW6_PrepareDisplayCursorBlink(uint32_t visible)
 {
   display_renderer_stats_t stats;
@@ -1620,6 +1644,8 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
                               focus_index,
                               shutdown_state,
                               shutdown_countdown_seconds);
+  PS_HW6_DisplayOwner_PublishShellStateWaitingVisual(
+    page, g_ps_hw6_owner_probe.display_ui_current_focus_row);
   driver_status = PS_HW6_DisplayOwner_PresentRendererRows(
     &g_ps_hw6_owner_probe.display_init_status,
     &g_ps_hw6_owner_probe.display_present_status);

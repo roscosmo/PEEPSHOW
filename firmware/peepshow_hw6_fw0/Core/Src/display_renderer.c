@@ -2,7 +2,6 @@
 
 #include <string.h>
 
-#include "knobs_autogen.h"
 #include "ps_ui_router.h"
 
 #define DISPLAY_RENDERER_TEXT_SCALE         (2U)
@@ -37,7 +36,6 @@ static display_renderer_waiting_animation_t s_display_waiting_animation;
 static display_renderer_waiting_animation_t
   s_display_waiting_guaranteed_animation;
 static ps_scene_waiting_visual_t s_display_scene_waiting_visual;
-static ps_scene_waiting_visual_t s_display_shell_waiting_visual;
 static const display_renderer_waiting_animation_t
   *s_display_selected_waiting_animation = &s_display_waiting_animation;
 static uint16_t s_display_dirty_row_count;
@@ -52,7 +50,6 @@ static uint32_t s_rotate_ccw;
 static display_renderer_panel_region_t s_lpbam_cursor_panel_region;
 static uint32_t s_lpbam_cursor_panel_region_valid;
 volatile uint32_t g_display_renderer_waiting_test_variant;
-volatile uint32_t g_display_renderer_scene_waiting_demo_enable;
 volatile display_renderer_scene_waiting_probe_t
   g_display_renderer_scene_waiting_probe =
   {
@@ -2146,76 +2143,24 @@ static uint32_t DisplayRenderer_DrawList(const display_renderer_list_t *list)
   return black_pixels;
 }
 
-static void DisplayRenderer_PublishShellCursorWaitingVisual(
-  uint32_t selected_row)
+uint32_t DisplayRenderer_GetListCursorLogicalBounds(
+  uint32_t selected_row,
+  ps_scene_waiting_visual_bounds_t *bounds)
 {
-  ps_scene_waiting_visual_t *visual = &s_display_shell_waiting_visual;
-  ps_scene_waiting_visual_element_t *cursor;
-  ps_scene_waiting_visual_element_t *marker;
-  uint32_t step;
-
-  if ((selected_row >= DISPLAY_RENDERER_LIST_ROW_COUNT) ||
+  if ((bounds == NULL) ||
+      (selected_row >= DISPLAY_RENDERER_LIST_ROW_COUNT) ||
       (s_lpbam_cursor_panel_region_valid == 0UL))
   {
-    DisplayRenderer_ClearSceneWaitingVisual();
-    return;
+    return 0UL;
   }
 
-  (void)memset(visual, 0, sizeof(*visual));
-  visual->api_version = PS_SCENE_WAITING_VISUAL_API_VERSION;
-  visual->presentation_id =
-    (g_display_renderer_scene_waiting_demo_enable != 0UL) ?
-    DISPLAY_RENDERER_ANIMATION_SCENE_PROOF :
-    DISPLAY_RENDERER_ANIMATION_CURSOR_BLINK;
-  visual->phase_quantum_ms =
-    (uint32_t)KNOB_DISPLAY_CURSOR_BLINK_PERIOD_MS;
-  visual->sequence_step_count =
-    (g_display_renderer_scene_waiting_demo_enable != 0UL) ? 6UL : 4UL;
-  visual->settled_sequence_step = 1UL;
-  visual->cycle_policy = PS_SCENE_WAITING_VISUAL_CYCLE_LOOP;
-  visual->rebase_policy = PS_SCENE_WAITING_VISUAL_REBASE_NEW_STATE;
-  visual->element_count =
-    (g_display_renderer_scene_waiting_demo_enable != 0UL) ? 2UL : 1UL;
-
-  cursor = &visual->elements[0];
-  cursor->element_id = DISPLAY_RENDERER_WAITING_ELEMENT_CURSOR;
-  cursor->visual_source_id =
-    PS_SCENE_WAITING_VISUAL_SOURCE_SHELL_CURSOR;
-  cursor->phase_count = 2UL;
-  cursor->phase_visual_id[0] = 1UL;
-  cursor->phase_visual_id[1] = 2UL;
-  cursor->logical_bounds.x = DISPLAY_RENDERER_LIST_CURSOR_X;
-  cursor->logical_bounds.y =
+  bounds->x = DISPLAY_RENDERER_LIST_CURSOR_X;
+  bounds->y =
     (uint16_t)(DISPLAY_RENDERER_LIST_ROW_Y0 +
                (selected_row * DISPLAY_RENDERER_LIST_ROW_STEP));
-  cursor->logical_bounds.width = DISPLAY_RENDERER_LIST_CURSOR_WIDTH;
-  cursor->logical_bounds.height = DISPLAY_RENDERER_LIST_CURSOR_HEIGHT;
-  for (step = 0UL; step < visual->sequence_step_count; ++step)
-  {
-    cursor->sequence_phase[step] = step & 1UL;
-  }
-
-  if (visual->element_count == 2UL)
-  {
-    marker = &visual->elements[1];
-    marker->element_id = DISPLAY_RENDERER_WAITING_ELEMENT_SCENE_MARKER;
-    marker->visual_source_id =
-      PS_SCENE_WAITING_VISUAL_SOURCE_THREE_PHASE_MARKER;
-    marker->phase_count = 3UL;
-    marker->phase_visual_id[0] = 10UL;
-    marker->phase_visual_id[1] = 11UL;
-    marker->phase_visual_id[2] = 12UL;
-    marker->logical_bounds.x = 160U;
-    marker->logical_bounds.y = 0U;
-    marker->logical_bounds.width = 8U;
-    marker->logical_bounds.height = 24U;
-    for (step = 0UL; step < visual->sequence_step_count; ++step)
-    {
-      marker->sequence_phase[step] = (step + 2UL) % 3UL;
-    }
-  }
-
-  (void)DisplayRenderer_PublishSceneWaitingVisual(visual);
+  bounds->width = DISPLAY_RENDERER_LIST_CURSOR_WIDTH;
+  bounds->height = DISPLAY_RENDERER_LIST_CURSOR_HEIGHT;
+  return 1UL;
 }
 
 void DisplayRenderer_PrepareUIPage(
@@ -2262,7 +2207,6 @@ void DisplayRenderer_PrepareUIPage(
   }
   s_rotate_ccw = 0UL;
   DisplayRenderer_SetPendingList(&list);
-  DisplayRenderer_PublishShellCursorWaitingVisual(list.selected_row);
 
   DisplayRenderer_FillStats(stats,
                             black_pixels,

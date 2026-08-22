@@ -85,6 +85,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/ps_hw_i2c3.c
     Core/Src/ps_input_buttons.c
     Core/Src/ps_input_joystick.c
+    Core/Src/ps_scene_runtime.c
     Core/Src/ps_ui_router.c
     Core/Src/ps_hw6_trace.c
     Core/Src/ps_hw6_clock_policy.c

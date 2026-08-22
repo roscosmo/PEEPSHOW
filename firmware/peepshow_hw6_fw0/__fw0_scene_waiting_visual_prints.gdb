@@ -1,5 +1,7 @@
 set pagination off
 printf "--- HW6 production scene waiting visual ---\n"
+printf "scene runtime api/resolve/reject/type/page/focus/status = %u / %u / %u / %u / %u / %u / 0x%x\n", g_ps_scene_runtime_probe.api_version, g_ps_scene_runtime_probe.resolve_count, g_ps_scene_runtime_probe.reject_count, g_ps_scene_runtime_probe.scene_type, g_ps_scene_runtime_probe.page, g_ps_scene_runtime_probe.focus_index, g_ps_scene_runtime_probe.last_status
+printf "scene runtime presentation/steps/elements = %u / %u / %u\n", g_ps_scene_runtime_probe.presentation_id, g_ps_scene_runtime_probe.sequence_step_count, g_ps_scene_runtime_probe.element_count
 printf "api/publish/reject/clear/resolve = %u / %u / %u / %u / %u\n", g_display_renderer_scene_waiting_probe.api_version, g_display_renderer_scene_waiting_probe.publish_count, g_display_renderer_scene_waiting_probe.reject_count, g_display_renderer_scene_waiting_probe.clear_count, g_display_renderer_scene_waiting_probe.resolve_count
 printf "active/presentation/steps/elements = %u / %u / %u / %u\n", g_display_renderer_scene_waiting_probe.active, g_display_renderer_scene_waiting_probe.presentation_id, g_display_renderer_scene_waiting_probe.sequence_step_count, g_display_renderer_scene_waiting_probe.element_count
 printf "settled step = %u\n", g_display_renderer_scene_waiting_probe.settled_sequence_step
@@ -14,5 +16,5 @@ printf "owner api/snapshot/presentation/steps/settled/cadence/elements = %u / 0x
 printf "owner sequence phases = %u / %u / %u / %u / %u / %u\n", g_ps_hw6_owner_probe.display_waiting_sequence_phase[0], g_ps_hw6_owner_probe.display_waiting_sequence_phase[1], g_ps_hw6_owner_probe.display_waiting_sequence_phase[2], g_ps_hw6_owner_probe.display_waiting_sequence_phase[3], g_ps_hw6_owner_probe.display_waiting_sequence_phase[4], g_ps_hw6_owner_probe.display_waiting_sequence_phase[5]
 printf "awake frame/count/phase/next = %u / %u / %u / %u\n", ps_display_waiting_sequence_frame, ps_display_waiting_sequence_count, ps_display_blink_visible, ps_display_blink_next_tick
 printf "same-presentation preserve/rebase/frame/deadline/status = %u / %u / %u / %u / 0x%x\n", g_ps_hw6_rtos_probe.display_waiting_preserve_count, g_ps_hw6_rtos_probe.display_waiting_rebase_count, g_ps_hw6_rtos_probe.display_waiting_preserve_frame, g_ps_hw6_rtos_probe.display_waiting_preserve_deadline_tick, g_ps_hw6_rtos_probe.display_waiting_preserve_status
-printf "expected default: api=2 presentation=1 steps=4 settled=1 elements=1; proof: presentation=4 steps=6 settled=1 elements=2 cursor=0,1,0,1,0,1 marker=2,0,1,2,0,1; statuses=0\n"
+printf "expected HOME proof: scene runtime api/type/status=1/1/0 presentation=513 steps=6 settled=1 elements=2 cursor=0,1,0,1,0,1 marker=2,0,1,2,0,1; publish/resolve statuses=0\n"
 printf "--- end HW6 production scene waiting visual ---\n"
