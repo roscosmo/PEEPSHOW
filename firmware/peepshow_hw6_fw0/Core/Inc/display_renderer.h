@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "LS013B7DH05.h"
+#include "ps_scene_waiting_visual.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,6 +33,8 @@ extern "C" {
 #define DISPLAY_RENDERER_WAITING_SEQUENCE_MAX   (12U)
 #define DISPLAY_RENDERER_WAITING_GUARANTEED_STEPS (3U)
 #define DISPLAY_RENDERER_WAITING_ELEMENT_MAX    (8U)
+#define DISPLAY_RENDERER_SCENE_WAITING_API_VERSION (1UL)
+#define DISPLAY_RENDERER_SCENE_WAITING_STATUS_NOT_RUN (0xFFFFFFFFUL)
 
 typedef struct
 {
@@ -92,7 +95,24 @@ typedef struct
   display_renderer_panel_region_t panel_bounds;
 } display_renderer_waiting_animation_t;
 
+typedef struct
+{
+  uint32_t api_version;
+  uint32_t publish_count;
+  uint32_t reject_count;
+  uint32_t clear_count;
+  uint32_t resolve_count;
+  uint32_t active;
+  uint32_t presentation_id;
+  uint32_t sequence_step_count;
+  uint32_t element_count;
+  uint32_t last_status;
+  uint32_t last_resolve_status;
+} display_renderer_scene_waiting_probe_t;
+
 extern volatile uint32_t g_display_renderer_waiting_test_variant;
+extern volatile display_renderer_scene_waiting_probe_t
+  g_display_renderer_scene_waiting_probe;
 
 void DisplayRenderer_ClearWhite(void);
 const uint8_t *DisplayRenderer_GetBuffer(void);
@@ -102,6 +122,9 @@ uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
   uint32_t visible,
   display_renderer_stats_t *stats);
 uint32_t DisplayRenderer_FramebufferHash(void);
+uint32_t DisplayRenderer_PublishSceneWaitingVisual(
+  const ps_scene_waiting_visual_t *visual);
+void DisplayRenderer_ClearSceneWaitingVisual(void);
 const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
   uint32_t sequence_start_frame,
   uint32_t next_deadline_tick);
