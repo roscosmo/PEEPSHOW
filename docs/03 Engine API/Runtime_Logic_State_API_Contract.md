@@ -185,6 +185,15 @@ restriction is power and boundedness, not style or genre. Dialogue, Menu,
 Choice, Inventory, and similar authoring constructs compile into this same
 primitive rather than requiring a separate module class.
 
+World-enabled state scenes may add fixed-capacity entity instances, typed
+properties, tag/collection queries, reusable behavior tables, camera state, and
+a bounded turn controller. A single admitted event may resolve one complete
+turn, but all entity visits, world operations, deferred mutations, and render
+work must fit selected target-profile limits. Iteration order, overflow behavior,
+spawn failure, and transaction rollback are deterministic. The canonical world
+model and operation rules are defined in
+[[State_Scene_World_Entity_and_Turn_Contract]].
+
 ---
 
 ## SEQUENCE_SCENE Requirements
@@ -430,7 +439,7 @@ Allowed transition forms:
 ```text
 transition_to(scene_id)
 push_scene(scene_id)
-pop_scene()
+pop_scene(optional_result_record)
 exit_to_shell(reason)
 ```
 
@@ -440,6 +449,8 @@ Rules:
 - transition stack depth is bounded
 - recursive push loops are invalid unless statically bounded and approved by validation
 - transition actions are bounded
+- an optional result record must match a fixed schema declared by the pushed
+  scene and its caller; invalid results follow the declared failure route
 - active contexts must be released, suspended, or transferred according to their contracts
 - input focus must be released or transferred during transition
 - realtime scenes must declare inactivity routing before validation accepts them

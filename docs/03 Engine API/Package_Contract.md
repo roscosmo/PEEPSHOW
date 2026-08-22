@@ -223,7 +223,7 @@ Allowed transition forms:
 ```text
 transition_to(scene_id)
 push_scene(scene_id)
-pop_scene()
+pop_scene(optional_result_record)
 exit_to_shell(reason)
 ```
 
@@ -231,11 +231,16 @@ Rules:
 
 - `transition_to` replaces the current scene with a declared target.
 - `push_scene` enters a declared target while preserving a bounded return path.
-- `pop_scene` returns to the previous scene if the stack is non-empty.
+- `pop_scene` returns to the previous scene if the stack is non-empty and may
+  supply one fixed-schema bounded result declared by both scenes.
 - stack depth is bounded by target profile and package validation.
 - recursive push loops are invalid unless statically bounded and approved by validation.
 - transition guards and actions must be bounded.
 - transition targets must be declared in `allowed_transitions`.
+- result schema, maximum payload size, success/cancel/failure forms, and consumer
+  route must be declared at compile time.
+- an invalid or oversized result follows the declared failure route and cannot
+  partially mutate the resumed scene.
 - `exit_to_shell` is an approved system route, not a package-defined shell implementation.
 
 Typical use:

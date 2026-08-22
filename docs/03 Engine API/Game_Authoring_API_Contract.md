@@ -481,6 +481,14 @@ PeepOS authoring blocks express gameplay semantics. They do not expose a separat
 
 Menus, dialogue, choices, inventory, shops, pet states, turn-based encounters, map inspection, clocks, and similar Authoring Kits normally compile into `STATE_SCENE` blocks. A reactive block performs bounded work when an admitted event arrives, settles its state and presentation, publishes its next wait contract, and yields. PeepOS sleeps automatically between transactions.
 
+A world-oriented Authoring Kit may compile tilemaps, entity definitions and
+instances, tags, reusable behaviors, collision data, camera policy, and a turn
+controller into the same `STATE_SCENE`. Ordinary movement, combat, collection,
+and world-property changes remain inside that scene. A timed interactive action
+may push a declared `PROGRAM_SCENE` and consume its bounded result when the
+state scene resumes. `REALTIME_SCENE` is obsolete terminology and must not be
+emitted by tools. See [[State_Scene_World_Entity_and_Turn_Contract]].
+
 A Menu block, for example, compiles the following behavior without exposing hardware mechanics:
 
 ```text

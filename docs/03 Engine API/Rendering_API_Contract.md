@@ -153,6 +153,14 @@ Rules:
 - tilemap dimensions, layers, collision/data tables, and viewport bounds are validated before package compilation.
 - runtime may draw a tilemap viewport or region; it must not parse JSON or stream arbitrary files.
 
+For a world-enabled `STATE_SCENE`, world entities are not themselves retained
+render elements. The runtime applies camera projection and viewport culling,
+then emits a bounded render model for visible content. A tilemap viewport is a
+bounded region command or prepared surface operation rather than one element per
+tile. One entity may emit zero, one, or several elements according to its visual
+definition. World-entity capacity and render-element capacity are separate
+target-profile limits. See [[State_Scene_World_Entity_and_Turn_Contract]].
+
 ---
 
 ## Execution And Presentation Rules

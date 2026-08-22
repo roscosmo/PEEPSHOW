@@ -176,6 +176,30 @@ logic:
   unbounded_loops_allowed = false
 ```
 
+Optional world-enabled `STATE_SCENE` limits:
+
+```text
+world:
+  world_width_tiles_max
+  world_height_tiles_max
+  entity_definition_count_max
+  entity_instance_count_max
+  visible_entity_count_max
+  entity_property_slots_max
+  tag_count_max
+  collection_count_max
+  inventory_slots_per_entity_max
+  turn_phase_count_max
+  entity_visits_per_event_max
+  world_operations_per_event_max
+  deferred_mutations_per_event_max
+  spawn_destroy_operations_per_event_max
+  path_search_nodes_max
+  path_scratch_bytes_max
+  projected_render_elements_max
+  realtime_result_payload_bytes_max
+```
+
 Rules:
 
 - `STATE_SCENE` always uses `REACTIVE` and must not request high-frequency polling.
@@ -185,6 +209,10 @@ Rules:
 - `scene_nesting_depth_max` limits how many package scenes may be nested or suspended behind each other.
 - `scene_transition_chain_max` limits how many state/scene transitions may execute from one event before the runtime must yield or report validation failure.
 - neither field describes ThreadX stack memory.
+- world limits describe abstract compatibility capacity, not heap size, SRAM
+  banks, clock frequency, or autonomous-display transport details.
+- a target may mark path search or dynamic spawn unsupported while still
+  admitting fixed world/entity scenes.
 
 ---
 
@@ -303,6 +331,12 @@ power:
     reactive_input_response_latency_ms_max
     realtime_target_fps
     realtime_frame_budget_ms
+  reactive_workload_classes[]:
+    class_id
+    logic_operations_max
+    entity_visits_max
+    render_cost_units_max
+    completion_deadline_ms
   estimates:
     supported
     source = measured_platform_profile
@@ -323,6 +357,13 @@ time:
 ```
 
 Rules:
+
+- the compiler derives a reactive workload class from validated scene content;
+  package authors do not select a class, clock frequency, or operating point.
+- Platform policy privately maps each admitted workload class to the lowest
+  measured operating point that satisfies its completion deadline.
+- changing operating point for one bounded transaction does not change a
+  `STATE_SCENE` from `REACTIVE` to `REALTIME`.
 
 - packages may read valid PeepOS calendar time where granted
 - packages may not set RTC/calendar time

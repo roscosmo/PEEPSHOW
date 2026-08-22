@@ -148,6 +148,11 @@ Initial chunk types:
 | `scene_table` | scene records, types, entries, transitions, and budgets |
 | `time_power_profile` | calendar requirements, schedules, reactive waits, interaction policy, wake intents, cadence hints, and catch-up policy |
 | `state_graph` | bounded state-scene logic, graph, event, action, and state data |
+| `world_table` | bounded world descriptors, camera/turn policy, map references, and world budgets |
+| `entity_definition_table` | immutable entity defaults, property schemas, tags, collision, inventory, visual, and behavior references |
+| `entity_instance_table` | stable initial instances, world positions, and bounded property overrides |
+| `world_behavior_table` | reusable bounded entity behaviors, collections, and deterministic turn iteration records |
+| `scene_result_schema` | fixed-schema bounded results returned by pushed sequence/program scenes |
 | `sequence_scene` | bounded realtime tracks, markers, FPS, and scene-end/inactive routes |
 | `program_scene` | bounded sandbox program data and instruction/memory/frame budgets |
 | `input_map` | logical input bindings and focus scopes |
@@ -249,6 +254,8 @@ Rules:
 - `tone5_sprite_bank` stores semantic tone5 content and opacity/ownership metadata.
 - `tileset_bank` declares tile size, pixel model, allowed scale, and layout.
 - `tilemap` declares dimensions, layers, collision/data tables, viewport assumptions, and tileset references.
+- world/entity chunks reference tilemaps and visual assets by validated chunk or
+  asset IDs; they contain no source-format paths, runtime strings, or pointers.
 - `animation_table` declares frame references, frame timing, loop policy, and bounds.
 - `font_bank` declares glyph metrics, supported codepoints or string-table bindings, and layout limits.
 - no rendering chunk may encode panel-native framebuffer addresses, physical LCD row numbers, SRAM4 addresses, SPI bytes, DMA descriptors, or LPBAM descriptors.

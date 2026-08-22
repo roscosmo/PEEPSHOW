@@ -319,6 +319,7 @@ scene:
   scene_type             # STATE_SCENE, SEQUENCE_SCENE, PROGRAM_SCENE
   entry_ref
   object_refs[]
+  world_ref              # optional; STATE_SCENE only
   presentation_ref
   allowed_transitions[]
   derived_capability_preview
@@ -341,8 +342,58 @@ Rules:
 - every `STATE_SCENE` state/block that can settle must resolve a reactive wait contract.
 - every `SEQUENCE_SCENE` must declare bounded tracks, target FPS, scene-end route, suspend/resume behavior, and an inactive route to a `STATE_SCENE` or shell.
 - every `PROGRAM_SCENE` must declare instruction/memory/frame budgets, suspend/resume behavior, and inactive/failure routes.
+- world-enabled `STATE_SCENE` records must satisfy [[State_Scene_World_Entity_and_Turn_Contract]].
+- `REALTIME_SCENE` is obsolete terminology and is rejected as an unknown scene type.
 - PeepOS inactivity handling cannot be disabled; interaction policies require an admitted inactive route and bounded deferrals.
 - capability declarations shown by tools are compiler-derived from scene content, service use, and fallback structure.
+
+### World And Entity Authoring Records
+
+Conceptual source schema:
+
+```text
+world:
+  world_id
+  map_source_ref
+  collision_layer_ref
+  camera_policy_ref
+  entity_definition_refs[]
+  entity_instances[]
+  collection_defs[]
+  turn_controller_ref
+  property_schema_ref
+  budgets
+
+entity_definition:
+  definition_id
+  visual_ref
+  property_schema_ref
+  default_property_values[]
+  tags[]
+  collision_ref
+  behavior_ref
+  inventory_schema_ref
+
+entity_instance:
+  instance_id
+  definition_ref
+  world_x
+  world_y
+  property_overrides[]
+
+turn_controller:
+  controller_id
+  phases[]
+  per_phase_candidate_max
+  per_phase_operation_max
+  failure_route
+```
+
+Source-level names, prefab inheritance, Tiled object records, and tag strings are
+resolved to stable IDs and bounded tables during compilation. Runtime packages
+do not retain authoring graphs, JSON objects, dynamic dictionaries, or arbitrary
+collections. Tools must show target-profile entity, operation, render, journal,
+and result-payload budgets before export.
 
 ---
 

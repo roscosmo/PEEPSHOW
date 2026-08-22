@@ -137,6 +137,11 @@ Required package-facing runtime logic artifacts:
 | `logic_action_table` | bounded symbolic Engine requests |
 | `logic_guard_expression_table` | bounded transition/action guard expressions |
 | `logic_variable_table` | `system.*`, `game.*`, `scene.*`, and `entity.*` typed variable/property records and stable IDs |
+| `world_table` | bounded world descriptors, map/collision references, camera policy, turn controllers, and budgets |
+| `entity_definition_table` | reusable immutable entity defaults, visual/property schemas, tags, collision, inventory, and behavior references |
+| `entity_instance_table` | stable initial instances, world positions, and bounded property overrides |
+| `world_behavior_table` | bounded reusable entity behaviors and deterministic collection/turn iteration records |
+| `scene_result_schema_table` | fixed-schema bounded results returned from pushed sequence/program scenes |
 | `sequence_scene_table` | bounded data-driven tracks, FPS, markers, end route, inactive route, and suspend/resume policy |
 | `program_scene_table` | sandbox program reference, instruction/memory/frame budgets, inactive/failure routes, and suspend/resume policy |
 
@@ -148,6 +153,9 @@ Rules:
 - reactive graph logic must not use polling loops to approximate realtime behavior.
 - action tables must use symbolic Engine APIs and must be non-blocking.
 - event queues, timers, variable storage, action cost, expression cost, and transition stack depth must be bounded.
+- world maps, entities, behaviors, turn phases, collection queries, pathfinding,
+  mutation journals, projection output, and scene-result payloads must fit the
+  selected target profile before export.
 
 Tooling must reject runtime logic that references RTOS objects, threads, interrupts, hardware timers, HAL/LL APIs, Platform internals, filesystem paths, raw pointers, function pointers, dynamic code loading, or unbounded loops.
 

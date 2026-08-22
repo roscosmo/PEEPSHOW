@@ -121,6 +121,12 @@ Virtual pets, Game & Watch style games, clocks, status views, dialogue, menus,
 choices, turn-based interactions, and ambient toys should normally compile to
 `STATE_SCENE` graphs.
 
+A `STATE_SCENE` may own a complete low-rate world containing a tilemap, camera,
+fixed-capacity entity instances, typed properties, reusable behaviors, and a
+bounded turn controller. Entity movement and property changes remain mutations
+inside the active scene; they do not require graph-level scene transitions.
+World-enabled scenes follow [[State_Scene_World_Entity_and_Turn_Contract]].
+
 ### State-Scene Presentation Cadence
 
 The HW6 v1 target profile uses a `250 ms` presentation phase quantum.
@@ -328,16 +334,19 @@ or guard-rejected events do not request rendering. The initial implementation
 supports `EQ/NE/LT/LE/GT/GE` guards and `SET/ADD/SUBTRACT` mutations; richer
 types and service actions remain future schema work.
 
-FW0 scene-runtime API version `6` adds bounded visual-binding records and a
-backend-neutral resolved render model. Each state references a stable numeric
-visual-binding ID; scene admission validates that the binding exists, its text
-IDs and row bounds are valid, and the selected row fits that binding. For each
-accepted render request, `thDisplay` resolves one immutable snapshot containing
-scene/state/visual IDs, content and timeline revisions, numeric text IDs, focus,
-and waiting-timeline policy. Awake list composition and STOP2 waiting-visual
-compilation consume that same snapshot, so they cannot silently render different
-scene revisions. The compiled-in text catalog remains target proof data; package
-serialization and asset-backed visual lookup remain future work.
+FW0 scene-runtime API version `7` adds bounded visual-binding records and a
+backend-neutral resolved retained-element model. Each state references a stable
+numeric visual-binding ID; scene admission validates the binding, unique element
+IDs, element bounds, layer/type/style records, one visible focus element, and
+waiting-timeline policy. A model carries at most twelve elements in the current
+temporary bring-up bound, and each element is assigned to `BACKGROUND`, `SCENE`,
+`UI`, or `OVERLAY`. For each accepted render request, `thDisplay` resolves one
+immutable snapshot containing scene/state/visual IDs, content and timeline
+revisions, retained elements, focus, and waiting policy. Awake composition and
+STOP2 waiting-visual compilation consume that same snapshot, so they cannot
+silently render different scene revisions. Target evidence validates text,
+outline/line, focus, and one static 1bpp sprite element. Package serialization,
+asset-backed catalogs, and authoring-tool output remain future work.
 
 ---
 
