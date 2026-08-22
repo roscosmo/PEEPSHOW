@@ -133,13 +133,22 @@ Rules:
 - slower animation is represented by repeating or extending phases
 - unsupported fractional cadence fails validation or uses a declared fallback
 - the phase quantum drives presentation only; it is not a package logic tick
-- an admitted event may establish a new settled presentation epoch immediately
-  so interaction does not wait for the previous animation deadline
+- entering a different state or presentation establishes a new settled
+  presentation epoch immediately, so interaction does not wait for an old
+  presentation deadline
+- an admitted event that updates content inside the same presentation preserves
+  the current combined step and absolute deadline; the updated settled view is
+  composed at that step rather than restarting its waiting animation
 - the HW6 v1 preferred waiting presentation permits at most four phases per
   element and twelve combined timeline steps
+- elements with different phase counts share one combined timeline; for
+  example, two-phase and three-phase elements repeat over six combined steps
 - the HW6 v1 guaranteed autonomous presentation has three global steps; target
   reduction maps phase counts `1 -> 1/1/1`, `2 -> 1/2/1`, `3 -> 1/2/3`, and
   `4 -> 1/2/3`
+- if the preferred combined timeline exceeds the target's autonomous budget,
+  every element is reduced against the same three global steps; the runtime
+  does not independently drop elements or run mismatched local cycles
 
 ---
 

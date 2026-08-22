@@ -365,6 +365,22 @@ reactive_wait_policy:
   wake_intents[]
   interaction_context_ref
 
+waiting_visual:
+  waiting_visual_id
+  presentation_id
+  phase_quantum_multiple
+  combined_step_count
+  settled_step
+  cycle_policy
+  elements[]
+
+waiting_visual_element:
+  element_id
+  visual_ref
+  logical_bounds
+  phase_visual_refs[]
+  step_phase_indices[]
+
 interaction_policy:
   policy_id
   meaningful_activity_sources[]
@@ -385,6 +401,10 @@ Rules:
 - an `interaction_context_ref` may select only entries declared by the referenced package policy; it cannot override timeout, route, or activation semantics.
 - every deferral must have a statically provable completion bound or timeout; unbounded deferral is a validation error.
 - gameplay inactivity transitions remain ordinary schedules and do not mutate the system interaction-state timer.
+- every waiting-visual element is bounded by the selected target profile's phase and combined-step limits.
+- all elements in one waiting visual provide a phase index for every combined step; elements do not run independent autonomous clocks.
+- same-presentation updates preserve the combined step and deadline, while a different presentation identity starts at its declared settled step.
+- tools must preview the preferred result, deterministic target reduction, and held-frame fallback, and must show a target-derived visual budget without exposing transport implementation details.
 - neither record exposes STOP, LPBAM, DMA, SRAM4, wake pins, clocks, or display rows.
 
 ---

@@ -177,6 +177,9 @@ For the HW6 v1 compiler profile, authors may use up to four phases per element a
 Every waiting presentation also resolves a backend-neutral presentation
 timeline. The timeline owns the epoch, phase index, and next deadline. Changing
 between awake rendering and an autonomous backend must preserve that timeline.
+Re-rendering changed content inside the same presentation also preserves the
+current combined step and deadline. A new scene state or presentation identity
+rebases to its declared settled step.
 
 ---
 
@@ -194,7 +197,11 @@ Rules:
 - SRAM4 placement and LPDMA/LPBAM payload format are Platform internals
 - sequence frame count, cadence, cycle duration, and target-compiler admission are capped by the selected target profile; wake/exit behavior comes from the enclosing reactive wait
 - phase durations are integer multiples of the target presentation quantum; the HW6 v1 quantum is `250 ms`
+- all elements advance on one combined timeline; differing local phase counts
+  are represented by each element's phase index at every combined step
 - backend handoff starts with the phase after the committed physical frame and must not rebase the presentation epoch
+- same-presentation event updates redraw the new settled content at the current
+  combined step and preserve the next deadline
 - wake from a target-generated reduced sequence presents the current reduced phase unchanged, preserves the remaining quantum, and then resumes the preferred timeline at its corresponding next phase
 - packages describe preferred and fallback appearance; tools derive whether `display.waiting_visual_animation` is required or optional
 
