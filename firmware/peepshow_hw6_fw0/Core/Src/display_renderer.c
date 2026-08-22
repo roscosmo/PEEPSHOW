@@ -492,7 +492,7 @@ static uint32_t DisplayRenderer_ApplyFullFrameTestPhase(
 {
   if ((destination == NULL) ||
       (destination_size < DISPLAY_RENDERER_BUFFER_SIZE) ||
-      (phase >= 3UL))
+      (phase >= 4UL))
   {
     return 0UL;
   }
@@ -507,7 +507,9 @@ static uint32_t DisplayRenderer_ApplyFullFrameTestPhase(
     for (uint16_t row = 0U; row < DISPLAY_HEIGHT; ++row)
     {
       (void)memset(&destination[(uint32_t)row * LINE_WIDTH],
-                   ((row & 1U) == 0U) ? 0xAA : 0x55,
+                   (phase == 2UL) ?
+                     (((row & 1U) == 0U) ? 0xAA : 0x55) :
+                     0xF0,
                    LINE_WIDTH);
     }
   }
@@ -800,12 +802,14 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
     animation->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_PATTERN;
     animation->phase_count =
       (g_display_renderer_waiting_test_variant == 4UL) ? 3UL :
-      ((g_display_renderer_waiting_test_variant == 6UL) ? 5UL : 2UL);
+      ((g_display_renderer_waiting_test_variant == 3UL) ? 4UL :
+      ((g_display_renderer_waiting_test_variant == 6UL) ? 5UL : 2UL));
     animation->sequence_frame_count =
       (g_display_renderer_waiting_test_variant == 3UL) ? 4UL :
       ((g_display_renderer_waiting_test_variant == 4UL) ? 3UL :
       ((g_display_renderer_waiting_test_variant == 6UL) ? 1UL : 2UL));
-    animation->element_count = 1UL;
+    animation->element_count =
+      (g_display_renderer_waiting_test_variant == 3UL) ? 2UL : 1UL;
     animation->panel_bounds.start_row = 1U;
     animation->panel_bounds.row_count = DISPLAY_HEIGHT;
     animation->panel_bounds.start_column = 0U;
@@ -824,6 +828,11 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
     test_element->sequence_phase[1] = 1UL;
     test_element->sequence_phase[2] = 0UL;
     test_element->sequence_phase[3] = 1UL;
+    if (g_display_renderer_waiting_test_variant == 3UL)
+    {
+      test_element->sequence_phase[2] = 2UL;
+      test_element->sequence_phase[3] = 3UL;
+    }
     if (g_display_renderer_waiting_test_variant == 4UL)
     {
       test_element->sequence_phase[2] = 2UL;
@@ -842,6 +851,22 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
       }
     }
     cursor_element = test_element;
+    if (g_display_renderer_waiting_test_variant == 3UL)
+    {
+      cursor_element = &animation->elements[1];
+      cursor_element->element_id = DISPLAY_RENDERER_WAITING_ELEMENT_CURSOR;
+      cursor_element->source_primitive_id =
+        DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK;
+      cursor_element->phase_count = 2UL;
+      cursor_element->panel_bounds = s_lpbam_cursor_panel_region;
+      cursor_element->compose_phase =
+        DisplayRenderer_ComposeCursorWaitingPhase;
+      cursor_element->compose_context = NULL;
+      cursor_element->sequence_phase[0] = 0UL;
+      cursor_element->sequence_phase[1] = 1UL;
+      cursor_element->sequence_phase[2] = 0UL;
+      cursor_element->sequence_phase[3] = 1UL;
+    }
   }
 
   animation->candidate_rows = s_display_waiting_candidate_rows;

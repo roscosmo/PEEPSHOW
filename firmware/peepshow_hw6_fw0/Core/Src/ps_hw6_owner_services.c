@@ -342,6 +342,12 @@ static void PS_HW6_DisplayOwner_ResetLpbamPrepareProbe(void)
   g_ps_hw6_owner_probe.display_lpbam_guaranteed_attempt_count = 0UL;
   g_ps_hw6_owner_probe.display_lpbam_guaranteed_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_compiled_sequence_frame_count = 0UL;
+  g_ps_hw6_owner_probe.display_lpbam_compiled_sequence_start_frame = 0UL;
+  for (frame = 0UL; frame < PS_HW6_OWNER_LPBAM_SEQUENCE_MAX; ++frame)
+  {
+    g_ps_hw6_owner_probe.display_lpbam_compiled_sequence_phase[frame] = 0UL;
+  }
   g_ps_hw6_owner_probe.display_lpbam_fill_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.display_lpbam_clock_status =
@@ -1955,6 +1961,17 @@ PS_HW6_DisplayOwner_CompileLpbamStop2WithAnimationPhase(
     ps_lpbam_display_payload_wire_bytes;
 
   PS_HW6_DisplayOwner_RecordWaitingAnimation(selected_animation);
+  g_ps_hw6_owner_probe.display_lpbam_compiled_sequence_frame_count =
+    selected_animation->sequence_frame_count;
+  g_ps_hw6_owner_probe.display_lpbam_compiled_sequence_start_frame =
+    selected_animation->sequence_start_frame;
+  for (uint16_t compiled_frame = 0U;
+       compiled_frame < DISPLAY_RENDERER_WAITING_SEQUENCE_MAX;
+       ++compiled_frame)
+  {
+    g_ps_hw6_owner_probe.display_lpbam_compiled_sequence_phase[
+      compiled_frame] = selected_animation->sequence_phase[compiled_frame];
+  }
   if (DisplayRenderer_SelectWaitingAnimation(selected_animation) == 0UL)
   {
     g_ps_hw6_owner_probe.display_lpbam_status = (uint32_t)HAL_ERROR;

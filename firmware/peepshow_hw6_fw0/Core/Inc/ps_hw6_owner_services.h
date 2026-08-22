@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (30UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (31UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -250,6 +250,10 @@ typedef struct
   uint32_t display_lpbam_preferred_payload_used_bytes;
   uint32_t display_lpbam_guaranteed_attempt_count;
   uint32_t display_lpbam_guaranteed_status;
+  uint32_t display_lpbam_compiled_sequence_frame_count;
+  uint32_t display_lpbam_compiled_sequence_start_frame;
+  uint32_t display_lpbam_compiled_sequence_phase[
+    PS_HW6_OWNER_LPBAM_SEQUENCE_MAX];
   uint32_t display_lpbam_fill_status;
   uint32_t display_lpbam_clock_status;
   uint32_t display_lpbam_link_status;

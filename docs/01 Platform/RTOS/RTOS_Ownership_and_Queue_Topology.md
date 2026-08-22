@@ -171,6 +171,8 @@ RTOS probe version `54` and owner probe version `30` generalize the waiting-anim
 
 The compiler fallback remains one bounded `thDisplay` operation: attempt the preferred descriptor once, then on resource rejection attempt one generated three-step descriptor, then report held-frame fallback if that also fails. No new queue round trip, dynamic allocation, element-priority search, or repeated admission loop is permitted. `thPower` consumes only the final owner result and remains responsible for backend selection and STOP2 entry.
 
+Owner probe version `31` adds an immutable snapshot of the descriptor that actually compiled so a later wake restoration of the preferred descriptor cannot erase fallback evidence. Evidence `EV-HW6-20260822-P1-LPBAMGUARANTEED-086` used a four-state full-panel preferred scene plus the cursor: preferred compilation rejected at `18/18` transactions and `10512/10512` payload bytes with `CHUNKS`, the one guaranteed retry compiled `3/12` global steps with phases `0/1/2`, and STOP2 visibly played all three coherent states. Wake mapped the guaranteed frame into the four-state preferred descriptor with successful map/resume status, and a temporary target-only probe confirmed physical awake presentation of omitted preferred phase `3`. That probe and its scheduling override were removed before the cleaned API `54/31` baseline build and target run. Thread, queue, peripheral ownership, and dynamic-allocation policy are unchanged.
+
 This is the intended normal boot slice for FW0. It is deliberately smaller than
 the retained-peripheral diagnostic lifecycle: display/audio/sensor/storage/comm
 diagnostic cycles are not auto-run, and the retained lifecycle report may show
