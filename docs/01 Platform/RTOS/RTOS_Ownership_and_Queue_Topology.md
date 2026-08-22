@@ -15,7 +15,7 @@ Recommended baseline owners:
 | `thAudio` | audio bus, audio DMA, amp control; publishes bounded SAI/audio clock intent through `thPower` |
 | `thInput` | raw input capture and logical action routing |
 | `thUI` | shell and shared UX service flow; publishes bounded shell/router reactive clock intent through `thPower` |
-| `thRuntime` | runtime host manager dispatch; tracks system host, active package scene type/ID, execution semantic, lifecycle, shell/installer return context, and symbolic runtime clock intent requests through `thPower` |
+| `thRuntime` | runtime host manager dispatch; tracks system host, active package scene type/ID, bounded scene state/actions, execution semantic, lifecycle, shell/installer return context, waiting-presentation publication, and symbolic runtime clock intent requests through `thPower`; it does not own display hardware |
 | `thStorage` | flash, filesystem, install pipeline |
 | `thSensor` | sensor bus, sensor policy, health publication |
 | `thComm` | BLE/NINA module, communication UART, communication policy |
@@ -172,6 +172,21 @@ RTOS probe version `54` and owner probe version `30` generalize the waiting-anim
 The compiler fallback remains one bounded `thDisplay` operation: attempt the preferred descriptor once, then on resource rejection attempt one generated three-step descriptor, then report held-frame fallback if that also fails. No new queue round trip, dynamic allocation, element-priority search, or repeated admission loop is permitted. `thPower` consumes only the final owner result and remains responsible for backend selection and STOP2 entry.
 
 Owner probe version `31` adds an immutable snapshot of the descriptor that actually compiled so a later wake restoration of the preferred descriptor cannot erase fallback evidence. Evidence `EV-HW6-20260822-P1-LPBAMGUARANTEED-086` used a four-state full-panel preferred scene plus the cursor: preferred compilation rejected at `18/18` transactions and `10512/10512` payload bytes with `CHUNKS`, the one guaranteed retry compiled `3/12` global steps with phases `0/1/2`, and STOP2 visibly played all three coherent states. Wake mapped the guaranteed frame into the four-state preferred descriptor with successful map/resume status, and a temporary target-only probe confirmed physical awake presentation of omitted preferred phase `3`. That probe and its scheduling override were removed before the cleaned API `54/31` baseline build and target run. Thread, queue, peripheral ownership, and dynamic-allocation policy are unchanged.
+
+FW0 RTOS probe version `56` and scene-runtime API version `3` add the first
+compiled-in `STATE_SCENE` reactive loop. The package-facing primitive remains
+`STATE_SCENE`; the probe value `LP_GRAPH` is only the current FW0 internal host
+label. `thInput` routes accepted package L/R presses through `qRuntimeEvents`,
+`thRuntime` performs one bounded state update per accepted press and sends a
+render request through `qDisplayCmd`, and `thDisplay` alone composes dirty rows
+and publishes the six-step two-phase/three-phase waiting presentation. Content
+revision advances independently from timeline revision, so compatible state
+updates preserve the current combined frame and absolute deadline rather than
+restarting at phase zero. Evidence `EV-HW6-20260822-P1-STATESCENE-089` recorded
+`17` accepted runtime actions and `17` state changes, content/timeline revisions
+`18/1`, one stable presentation ID, timeline preserve/rebase counts `18/2`, and
+`11` completed STOP2 entries. No thread, queue, peripheral owner, or dynamic
+allocation was added.
 
 This is the intended normal boot slice for FW0. It is deliberately smaller than
 the retained-peripheral diagnostic lifecycle: display/audio/sensor/storage/comm

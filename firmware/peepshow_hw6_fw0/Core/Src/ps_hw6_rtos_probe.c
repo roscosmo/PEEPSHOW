@@ -11,6 +11,7 @@
 #include "ps_input_buttons.h"
 #include "ps_lpbam_display_buffers.h"
 #include "ps_power_state.h"
+#include "ps_scene_runtime.h"
 #include "ps_storage_filex_levelx.h"
 #include "ps_storage_msc_bridge.h"
 #include "ps_storage_state.h"
@@ -318,6 +319,13 @@ static volatile uint32_t ps_stop2_wake_nvic_ispr2_before;
 static volatile uint32_t ps_stop2_wake_nvic_ispr3_before;
 
 static void PS_HW6_RTOS_SendCurrentUiRenderCommand(void);
+static UINT PS_HW6_RTOS_SendDisplayUiRenderCommand(
+  uint32_t page,
+  uint32_t calibration_page,
+  uint32_t focus_index,
+  uint32_t shutdown_state,
+  uint32_t shutdown_countdown_seconds);
+static UINT PS_HW6_RTOS_RequestRuntimeCommand(ULONG command);
 static uint32_t PS_HW6_RTOS_Stop2DisplayLpbamReady(void);
 
 static CHAR *const ps_owner_names[PS_HW6_RTOS_OWNER_COUNT] =
@@ -1401,12 +1409,51 @@ static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
   uint32_t packed_button;
   uint32_t button_id;
   uint32_t button_mask;
+  UINT status = TX_SUCCESS;
 
   event = (uint32_t)message[2];
   packed_button = (uint32_t)message[3];
   button_id = packed_button & PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_ID_MASK;
   button_mask = (packed_button >> PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_MASK_SHIFT) &
                 PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_MASK_MASK;
+
+  if ((g_ps_hw6_rtos_probe.runtime_current_class ==
+       (uint32_t)PS_HW6_RUNTIME_CLASS_LP_GRAPH) &&
+      (PS_SceneRuntime_StateSceneActive() != 0UL))
+  {
+    ps_scene_runtime_action_t action = PS_SCENE_RUNTIME_ACTION_NONE;
+
+    if (button_id == (uint32_t)PS_INPUT_BUTTON_ID_L)
+    {
+      action = PS_SCENE_RUNTIME_ACTION_PREVIOUS;
+    }
+    else if (button_id == (uint32_t)PS_INPUT_BUTTON_ID_R)
+    {
+      action = PS_SCENE_RUNTIME_ACTION_NEXT;
+    }
+    else if (button_id == (uint32_t)PS_INPUT_BUTTON_ID_B)
+    {
+      status = PS_HW6_RTOS_RequestRuntimeCommand(
+        PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_RETURN);
+    }
+
+    if (action != PS_SCENE_RUNTIME_ACTION_NONE)
+    {
+      if (PS_SceneRuntime_HandleStateSceneAction(action) != 0UL)
+      {
+        status = PS_HW6_RTOS_SendDisplayUiRenderCommand(
+          (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF,
+          (uint32_t)PS_UI_ROUTER_CAL_NONE,
+          PS_SceneRuntime_StateIndex(),
+          (uint32_t)PS_UI_ROUTER_SHUTDOWN_NONE,
+          0UL);
+      }
+      else
+      {
+        status = TX_CALLER_ERROR;
+      }
+    }
+  }
 
   g_ps_hw6_rtos_probe.runtime_input_event_count++;
   if (event == (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)
@@ -1416,11 +1463,11 @@ static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
   g_ps_hw6_rtos_probe.runtime_input_last_event = event;
   g_ps_hw6_rtos_probe.runtime_input_last_button_id = button_id;
   g_ps_hw6_rtos_probe.runtime_input_last_mask = button_mask;
-  g_ps_hw6_rtos_probe.runtime_input_last_status = TX_SUCCESS;
+  g_ps_hw6_rtos_probe.runtime_input_last_status = (uint32_t)status;
   g_ps_hw6_rtos_probe.runtime_input_last_tick = (uint32_t)tx_time_get();
   PS_HW6_TraceInputButton(button_id,
                           PS_HW6_RTOS_OWNER_RUNTIME,
-                          TX_SUCCESS,
+                          (uint32_t)status,
                           button_mask);
 }
 
@@ -2436,7 +2483,8 @@ static uint32_t PS_HW6_RTOS_DisplayCursorBlinkEligible(void)
   uint32_t page = g_ps_ui_router_probe.current_page;
 
   if ((page != (uint32_t)PS_UI_ROUTER_PAGE_HOME) &&
-      (page != (uint32_t)PS_UI_ROUTER_PAGE_MENU))
+      (page != (uint32_t)PS_UI_ROUTER_PAGE_MENU) &&
+      (page != (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF))
   {
     return 0UL;
   }
@@ -3757,6 +3805,15 @@ static uint32_t PS_HW6_RTOS_Stop2AutoRuntimeAllowsIdle(void)
     return 1UL;
   }
 
+  if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_LP_GRAPH) &&
+      (runtime_exec == (uint32_t)PS_HW6_RUNTIME_EXEC_REACTIVE) &&
+      (runtime_lifecycle == (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_RUNNING) &&
+      (g_ps_hw6_rtos_probe.runtime_active_capabilities == 0UL) &&
+      (PS_SceneRuntime_StateSceneActive() != 0UL))
+  {
+    return 1UL;
+  }
+
   if ((runtime_lifecycle == (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_SUSPENDED) &&
       (g_ps_hw6_rtos_probe.runtime_active_capabilities == 0UL))
   {
@@ -3792,7 +3849,8 @@ static uint32_t PS_HW6_RTOS_Stop2AutoUiAllowsIdle(void)
   return ((page == (uint32_t)PS_UI_ROUTER_PAGE_HOME) ||
           (page == (uint32_t)PS_UI_ROUTER_PAGE_MENU) ||
           (page == (uint32_t)PS_UI_ROUTER_PAGE_SETTINGS) ||
-          (page == (uint32_t)PS_UI_ROUTER_PAGE_PACKAGE_BROWSER)) ?
+          (page == (uint32_t)PS_UI_ROUTER_PAGE_PACKAGE_BROWSER) ||
+          (page == (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF)) ?
          1UL : 0UL;
 }
 
@@ -5293,6 +5351,14 @@ static void PS_HW6_RTOS_RuntimePackageActivateStub(uint32_t runtime_class,
     runtime_class,
     execution,
     (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_RUNNING);
+  if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_LP_GRAPH) &&
+      (clock_status == TX_SUCCESS))
+  {
+    (void)PS_SceneRuntime_EnterStateScene();
+    g_ps_ui_router_request_event =
+      (uint32_t)PS_UI_ROUTER_EVENT_LAUNCH_RUNTIME;
+    g_ps_ui_router_request = 1UL;
+  }
   PS_HW6_RTOS_RuntimeRecordAdmission(runtime_class,
                                      execution,
                                      capabilities,
@@ -5323,12 +5389,16 @@ static void PS_HW6_RTOS_RuntimePackageReturn(void)
 
   if (release_status == TX_SUCCESS)
   {
+    PS_SceneRuntime_ExitStateScene();
     g_ps_hw6_rtos_probe.runtime_active_package_id = 0UL;
     g_ps_hw6_rtos_probe.runtime_active_unit_id = 0UL;
     PS_HW6_RTOS_RuntimeSetState(
       (uint32_t)PS_HW6_RUNTIME_CLASS_SHELL,
       (uint32_t)PS_HW6_RUNTIME_EXEC_REACTIVE,
       (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_RUNNING);
+    g_ps_ui_router_request_event =
+      (uint32_t)PS_UI_ROUTER_EVENT_RUNTIME_RETURNED;
+    g_ps_ui_router_request = 1UL;
   }
 
   PS_HW6_RTOS_RuntimeRecord(
@@ -5471,7 +5541,7 @@ static void PS_HW6_RTOS_HandleRuntimeCommand(ULONG command)
            (command == PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_REACTIVE_STUB))
   {
     PS_HW6_RTOS_RuntimePackageActivateStub(
-      (uint32_t)PS_HW6_RUNTIME_CLASS_LP_MODULE,
+      (uint32_t)PS_HW6_RUNTIME_CLASS_LP_GRAPH,
       (uint32_t)PS_HW6_RUNTIME_EXEC_REACTIVE,
       capabilities,
       clock_status);

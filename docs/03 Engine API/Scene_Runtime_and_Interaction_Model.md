@@ -133,12 +133,15 @@ Rules:
 - slower animation is represented by repeating or extending phases
 - unsupported fractional cadence fails validation or uses a declared fallback
 - the phase quantum drives presentation only; it is not a package logic tick
-- entering a different state or presentation establishes a new settled
-  presentation epoch immediately, so interaction does not wait for an old
-  presentation deadline
+- entering a different scene or an incompatible presentation establishes a new
+  settled presentation epoch immediately, so interaction does not wait for an
+  unrelated presentation deadline
 - an admitted event that updates content inside the same presentation preserves
   the current combined step and absolute deadline; the updated settled view is
   composed at that step rather than restarting its waiting animation
+- scene content revision and presentation-timeline revision are separate:
+  changing state data does not by itself restart animation, while a changed
+  cadence, step topology, phase map, or explicit authored rebase policy does
 - the HW6 v1 preferred waiting presentation permits at most four phases per
   element and twelve combined timeline steps
 - elements with different phase counts share one combined timeline; for
@@ -289,13 +292,23 @@ Rules:
 - wake from a reduced three-step presentation anchors the preferred timeline to
   the same visible phase; after the remaining interval expires, preferred-only
   phases become available again without restarting at phase one
-- a new settled scene state may deliberately establish a new epoch
+- a new settled scene state may deliberately establish a new epoch only when
+  its authored presentation or rebase policy requires one; an ordinary content
+  update inside a compatible presentation preserves the current epoch
 - input may trigger an authored rebase policy, but the backend handoff may not
 - a missed deadline follows the declared deterministic catch-up policy
 - phase continuity must be testable in the digital twin and on target
 
 This timeline is the contract that makes `REACTIVE <-> LPBAM` presentation
 handoff visually continuous.
+
+HW6 FW0 now exercises this boundary with a compiled-in `STATE_SCENE` vertical
+slice. `thRuntime` owns its bounded state and actions, publishes content changes
+without changing the compatible timeline identity, and requests rendering;
+`thDisplay` owns composition, dirty rows, awake transfer, autonomous compilation,
+and phase-preserving handoff. This is implementation evidence for the scene
+transaction and ownership split, not yet evidence for package-defined scene
+serialization or authoring-tool output.
 
 ---
 

@@ -1973,9 +1973,12 @@ static void DisplayRenderer_UIList(uint32_t page,
       list->rows[2] = "B BACK";
       break;
     case PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF:
-      list->title = "RUNTIME";
-      list->rows[0] = "HANDOFF";
-      list->rows[1] = "WAIT";
+      list->title = "STATE SCENE";
+      list->rows[0] = "STATE 1";
+      list->rows[1] = "STATE 2";
+      list->rows[2] = "STATE 3";
+      list->selected_row = (focus_index >= DISPLAY_RENDERER_LIST_ROW_COUNT) ?
+        0UL : focus_index;
       break;
     case PS_UI_ROUTER_PAGE_ERROR:
       list->title = "ERROR";

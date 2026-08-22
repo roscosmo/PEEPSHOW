@@ -1,0 +1,15 @@
+set pagination off
+printf "--- HW6 STATE_SCENE reactive loop ---\n"
+printf "scene api/type/active/status = %u / %u / %u / 0x%x\n", g_ps_scene_runtime_probe.api_version, g_ps_scene_runtime_probe.scene_type, g_ps_scene_runtime_probe.active, g_ps_scene_runtime_probe.last_status
+printf "scene enter/exit/action/change = %u / %u / %u / %u\n", g_ps_scene_runtime_probe.enter_count, g_ps_scene_runtime_probe.exit_count, g_ps_scene_runtime_probe.action_count, g_ps_scene_runtime_probe.state_change_count
+printf "scene state/content revision/timeline revision/last action = %u / %u / %u / %u\n", g_ps_scene_runtime_probe.state_index, g_ps_scene_runtime_probe.state_revision, g_ps_scene_runtime_probe.timeline_revision, g_ps_scene_runtime_probe.last_action
+printf "runtime class/exec/lifecycle/caps = %u / %u / %u / 0x%x\n", g_ps_hw6_rtos_probe.runtime_current_class, g_ps_hw6_rtos_probe.runtime_execution, g_ps_hw6_rtos_probe.runtime_lifecycle, g_ps_hw6_rtos_probe.runtime_active_capabilities
+printf "input policy runtime deliver/target/status = %u / %u / 0x%x\n", g_ps_hw6_rtos_probe.input_policy_runtime_deliver_count, g_ps_hw6_rtos_probe.input_policy_last_target, g_ps_hw6_rtos_probe.input_policy_last_status
+printf "runtime input event/button/id/status = %u / %u / %u / 0x%x\n", g_ps_hw6_rtos_probe.runtime_input_event_count, g_ps_hw6_rtos_probe.runtime_input_button_count, g_ps_hw6_rtos_probe.runtime_input_last_button_id, g_ps_hw6_rtos_probe.runtime_input_last_status
+printf "ui page/focus = %u / %u\n", g_ps_ui_router_probe.current_page, g_ps_ui_router_probe.focus_index
+printf "display page/focus dirty count/first/last = %u / %u / %u / %u / %u\n", g_ps_hw6_owner_probe.display_ui_page, g_ps_hw6_owner_probe.display_ui_current_focus_row, g_ps_hw6_owner_probe.display_dirty_row_count, g_ps_hw6_owner_probe.display_dirty_first_row, g_ps_hw6_owner_probe.display_dirty_last_row
+printf "waiting presentation/steps/elements/status = %u / %u / %u / 0x%x\n", g_ps_hw6_owner_probe.display_waiting_presentation_id, g_ps_hw6_owner_probe.display_waiting_sequence_frame_count, g_ps_hw6_owner_probe.display_waiting_element_count, g_ps_hw6_owner_probe.display_waiting_snapshot_status
+printf "timeline preserve/rebase/frame/deadline/status = %u / %u / %u / %u / 0x%x\n", g_ps_hw6_rtos_probe.display_waiting_preserve_count, g_ps_hw6_rtos_probe.display_waiting_rebase_count, g_ps_hw6_rtos_probe.display_waiting_preserve_frame, g_ps_hw6_rtos_probe.display_waiting_preserve_deadline_tick, g_ps_hw6_rtos_probe.display_waiting_preserve_status
+printf "LPBAM ready/active STOP2 entries = %u / %u / %u\n", g_ps_hw6_owner_probe.display_lpbam_ready, g_ps_hw6_owner_probe.display_lpbam_active, g_ps_hw6_rtos_probe.stop2_auto_entry_count
+printf "expected active scene: api/type/active/status=3/1/1/0 runtime=2/1/2/0 page=6 input target=2 statuses=0 state changes equal accepted L/R presses; content revision advances while timeline revision and presentation stay stable; waiting steps/elements=6/2 and STOP2 increments\n"
+printf "--- end HW6 STATE_SCENE reactive loop ---\n"

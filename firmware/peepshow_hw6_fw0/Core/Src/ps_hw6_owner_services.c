@@ -972,7 +972,7 @@ static void PS_HW6_DisplayOwner_SnapshotSceneWaitingTimeline(void)
   g_ps_hw6_owner_probe.display_waiting_snapshot_status = (uint32_t)HAL_OK;
 }
 
-static void PS_HW6_DisplayOwner_PublishShellStateWaitingVisual(
+static void PS_HW6_DisplayOwner_PublishStateWaitingVisual(
   uint32_t page,
   uint32_t focus_index)
 {
@@ -986,8 +986,17 @@ static void PS_HW6_DisplayOwner_PublishShellStateWaitingVisual(
     return;
   }
 
-  visual = PS_SceneRuntime_ResolveShellStateWaitingVisual(
-    page, focus_index, &cursor_bounds);
+  if ((page == (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF) &&
+      (PS_SceneRuntime_StateSceneActive() != 0UL))
+  {
+    visual = PS_SceneRuntime_ResolveStateSceneWaitingVisual(
+      focus_index, &cursor_bounds);
+  }
+  else
+  {
+    visual = PS_SceneRuntime_ResolveShellStateWaitingVisual(
+      page, focus_index, &cursor_bounds);
+  }
   if ((visual == NULL) ||
       (DisplayRenderer_PublishSceneWaitingVisual(visual) == 0UL))
   {
@@ -1644,7 +1653,7 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
                               focus_index,
                               shutdown_state,
                               shutdown_countdown_seconds);
-  PS_HW6_DisplayOwner_PublishShellStateWaitingVisual(
+  PS_HW6_DisplayOwner_PublishStateWaitingVisual(
     page, g_ps_hw6_owner_probe.display_ui_current_focus_row);
   driver_status = PS_HW6_DisplayOwner_PresentRendererRows(
     &g_ps_hw6_owner_probe.display_init_status,
