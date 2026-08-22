@@ -52,6 +52,7 @@ static uint32_t s_rotate_ccw;
 static display_renderer_panel_region_t s_lpbam_cursor_panel_region;
 static uint32_t s_lpbam_cursor_panel_region_valid;
 volatile uint32_t g_display_renderer_waiting_test_variant;
+volatile uint32_t g_display_renderer_scene_waiting_demo_enable;
 volatile display_renderer_scene_waiting_probe_t
   g_display_renderer_scene_waiting_probe =
   {
@@ -302,6 +303,33 @@ static uint32_t DisplayRenderer_GetListCursorPanelRegion(
   return 1UL;
 }
 
+static uint32_t DisplayRenderer_LogicalBoundsToPanelRegion(
+  const ps_scene_waiting_visual_bounds_t *bounds,
+  display_renderer_panel_region_t *region)
+{
+  uint32_t logical_x1;
+  uint32_t logical_y1;
+
+  if ((bounds == NULL) || (region == NULL) ||
+      (bounds->width == 0U) || (bounds->height == 0U))
+  {
+    return 0UL;
+  }
+  logical_x1 = (uint32_t)bounds->x + (uint32_t)bounds->width - 1UL;
+  logical_y1 = (uint32_t)bounds->y + (uint32_t)bounds->height - 1UL;
+  if ((logical_x1 >= DISPLAY_RENDERER_WIDTH) ||
+      (logical_y1 >= DISPLAY_RENDERER_HEIGHT))
+  {
+    return 0UL;
+  }
+
+  region->start_row = (uint16_t)(DISPLAY_RENDERER_WIDTH - logical_x1);
+  region->row_count = bounds->width;
+  region->start_column = bounds->y;
+  region->column_count = bounds->height;
+  return 1UL;
+}
+
 static void DisplayRenderer_RecordLpbamCursorRegion(uint32_t row)
 {
   if (DisplayRenderer_GetListCursorPanelRegion(
@@ -494,6 +522,27 @@ static uint32_t DisplayRenderer_ApplyThreePhaseTestPhase(
   return 1UL;
 }
 
+static uint32_t DisplayRenderer_ApplyThreePhaseMarkerPhase(
+  uint32_t phase,
+  uint8_t *destination,
+  uint32_t destination_size)
+{
+  uint16_t row;
+
+  if ((destination == NULL) ||
+      (destination_size < DISPLAY_RENDERER_BUFFER_SIZE) ||
+      (phase >= 3UL))
+  {
+    return 0UL;
+  }
+  for (row = 1U; row <= 8U; ++row)
+  {
+    uint32_t offset = ((uint32_t)(row - 1U) * LINE_WIDTH) + phase;
+    destination[offset] ^= 0xFFU;
+  }
+  return 1UL;
+}
+
 static uint32_t DisplayRenderer_ApplyFullFrameTestPhase(
   uint32_t phase,
   uint8_t *destination,
@@ -558,6 +607,17 @@ static uint32_t DisplayRenderer_ComposeThreePhaseTestPhase(
     phase, destination, destination_size);
 }
 
+static uint32_t DisplayRenderer_ComposeThreePhaseMarkerPhase(
+  const void *context,
+  uint32_t phase,
+  uint8_t *destination,
+  uint32_t destination_size)
+{
+  (void)context;
+  return DisplayRenderer_ApplyThreePhaseMarkerPhase(
+    phase, destination, destination_size);
+}
+
 static uint32_t DisplayRenderer_ComposeFullFrameTestPhase(
   const void *context,
   uint32_t phase,
@@ -616,6 +676,7 @@ static uint32_t DisplayRenderer_ValidateSceneWaitingVisual(
       (visual->sequence_step_count == 0UL) ||
       (visual->sequence_step_count >
        PS_SCENE_WAITING_VISUAL_SEQUENCE_MAX) ||
+      (visual->settled_sequence_step >= visual->sequence_step_count) ||
       (visual->cycle_policy != PS_SCENE_WAITING_VISUAL_CYCLE_LOOP) ||
       (visual->rebase_policy !=
        PS_SCENE_WAITING_VISUAL_REBASE_NEW_STATE) ||
@@ -637,8 +698,10 @@ static uint32_t DisplayRenderer_ValidateSceneWaitingVisual(
                      (uint32_t)element->logical_bounds.height;
 
     if ((element->element_id == 0UL) ||
-        (element->visual_source_id !=
-         PS_SCENE_WAITING_VISUAL_SOURCE_SHELL_CURSOR) ||
+        ((element->visual_source_id !=
+          PS_SCENE_WAITING_VISUAL_SOURCE_SHELL_CURSOR) &&
+         (element->visual_source_id !=
+          PS_SCENE_WAITING_VISUAL_SOURCE_THREE_PHASE_MARKER)) ||
         (element->phase_count == 0UL) ||
         (element->phase_count > PS_SCENE_WAITING_VISUAL_PHASE_MAX) ||
         (element->logical_bounds.width == 0U) ||
@@ -683,6 +746,8 @@ uint32_t DisplayRenderer_PublishSceneWaitingVisual(
     visual->presentation_id;
   g_display_renderer_scene_waiting_probe.sequence_step_count =
     visual->sequence_step_count;
+  g_display_renderer_scene_waiting_probe.settled_sequence_step =
+    visual->settled_sequence_step;
   g_display_renderer_scene_waiting_probe.element_count =
     visual->element_count;
   g_display_renderer_scene_waiting_probe.last_status = 0UL;
@@ -699,10 +764,35 @@ void DisplayRenderer_ClearSceneWaitingVisual(void)
   g_display_renderer_scene_waiting_probe.active = 0UL;
   g_display_renderer_scene_waiting_probe.presentation_id = 0UL;
   g_display_renderer_scene_waiting_probe.sequence_step_count = 0UL;
+  g_display_renderer_scene_waiting_probe.settled_sequence_step = 0UL;
   g_display_renderer_scene_waiting_probe.element_count = 0UL;
   g_display_renderer_scene_waiting_probe.last_status = 0UL;
   g_display_renderer_scene_waiting_probe.last_resolve_status =
     DISPLAY_RENDERER_SCENE_WAITING_STATUS_NOT_RUN;
+}
+
+uint32_t DisplayRenderer_GetSceneWaitingTimeline(
+  uint32_t *presentation_id,
+  uint32_t *sequence_step_count,
+  uint32_t *settled_sequence_step,
+  uint32_t *phase_quantum_ms)
+{
+  const ps_scene_waiting_visual_t *visual =
+    &s_display_scene_waiting_visual;
+
+  if ((presentation_id == NULL) || (sequence_step_count == NULL) ||
+      (settled_sequence_step == NULL) || (phase_quantum_ms == NULL) ||
+      (g_display_renderer_scene_waiting_probe.active == 0UL) ||
+      (DisplayRenderer_ValidateSceneWaitingVisual(visual) == 0UL))
+  {
+    return 0UL;
+  }
+
+  *presentation_id = visual->presentation_id;
+  *sequence_step_count = visual->sequence_step_count;
+  *settled_sequence_step = visual->settled_sequence_step;
+  *phase_quantum_ms = visual->phase_quantum_ms;
+  return 1UL;
 }
 
 static uint32_t DisplayRenderer_ResolveSceneWaitingVisual(
@@ -749,13 +839,51 @@ static uint32_t DisplayRenderer_ResolveSceneWaitingVisual(
     display_renderer_waiting_element_t *target =
       &animation->elements[element_index];
 
+    uint32_t target_row_end;
+    uint32_t target_column_end;
+
     target->element_id = source->element_id;
-    target->source_primitive_id =
-      DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK;
     target->phase_count = source->phase_count;
-    target->panel_bounds = s_lpbam_cursor_panel_region;
-    target->compose_phase = DisplayRenderer_ComposeCursorWaitingPhase;
     target->compose_context = NULL;
+    if (DisplayRenderer_LogicalBoundsToPanelRegion(
+          &source->logical_bounds, &target->panel_bounds) == 0UL)
+    {
+      g_display_renderer_scene_waiting_probe.last_resolve_status = 1UL;
+      return 0UL;
+    }
+    if (source->visual_source_id ==
+        PS_SCENE_WAITING_VISUAL_SOURCE_SHELL_CURSOR)
+    {
+      target->source_primitive_id =
+        DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK;
+      if ((target->panel_bounds.start_row !=
+           s_lpbam_cursor_panel_region.start_row) ||
+          (target->panel_bounds.row_count !=
+           s_lpbam_cursor_panel_region.row_count) ||
+          (target->panel_bounds.start_column !=
+           s_lpbam_cursor_panel_region.start_column) ||
+          (target->panel_bounds.column_count !=
+           s_lpbam_cursor_panel_region.column_count))
+      {
+        g_display_renderer_scene_waiting_probe.last_resolve_status = 1UL;
+        return 0UL;
+      }
+      target->compose_phase = DisplayRenderer_ComposeCursorWaitingPhase;
+    }
+    else if (source->visual_source_id ==
+             PS_SCENE_WAITING_VISUAL_SOURCE_THREE_PHASE_MARKER)
+    {
+      target->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_PATTERN;
+      target->compose_phase =
+        DisplayRenderer_ComposeThreePhaseMarkerPhase;
+      animation->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_PATTERN;
+    }
+    else
+    {
+      g_display_renderer_scene_waiting_probe.last_resolve_status = 1UL;
+      return 0UL;
+    }
+
     for (sequence_step = 0UL;
          sequence_step < visual->sequence_step_count;
          ++sequence_step)
@@ -763,17 +891,59 @@ static uint32_t DisplayRenderer_ResolveSceneWaitingVisual(
       target->sequence_phase[sequence_step] =
         source->sequence_phase[sequence_step];
     }
-  }
 
-  animation->panel_bounds = s_lpbam_cursor_panel_region;
-  for (row = 0U; row < s_lpbam_cursor_panel_region.row_count; ++row)
-  {
-    if (DisplayRenderer_AddWaitingCandidateRow(
-          (uint16_t)(s_lpbam_cursor_panel_region.start_row + row),
-          candidate_count) == 0UL)
+    for (row = 0U; row < target->panel_bounds.row_count; ++row)
     {
-      g_display_renderer_scene_waiting_probe.last_resolve_status = 1UL;
-      return 0UL;
+      if (DisplayRenderer_AddWaitingCandidateRow(
+            (uint16_t)(target->panel_bounds.start_row + row),
+            candidate_count) == 0UL)
+      {
+        g_display_renderer_scene_waiting_probe.last_resolve_status = 1UL;
+        return 0UL;
+      }
+    }
+
+    if (element_index == 0UL)
+    {
+      animation->panel_bounds = target->panel_bounds;
+    }
+    else
+    {
+      uint32_t animation_row_end =
+        (uint32_t)animation->panel_bounds.start_row +
+        (uint32_t)animation->panel_bounds.row_count;
+      uint32_t animation_column_end =
+        (uint32_t)animation->panel_bounds.start_column +
+        (uint32_t)animation->panel_bounds.column_count;
+      uint16_t start_row =
+        (target->panel_bounds.start_row <
+         animation->panel_bounds.start_row) ?
+        target->panel_bounds.start_row : animation->panel_bounds.start_row;
+      uint16_t start_column =
+        (target->panel_bounds.start_column <
+         animation->panel_bounds.start_column) ?
+        target->panel_bounds.start_column :
+        animation->panel_bounds.start_column;
+
+      target_row_end = (uint32_t)target->panel_bounds.start_row +
+                       (uint32_t)target->panel_bounds.row_count;
+      target_column_end =
+        (uint32_t)target->panel_bounds.start_column +
+        (uint32_t)target->panel_bounds.column_count;
+      if (target_row_end > animation_row_end)
+      {
+        animation_row_end = target_row_end;
+      }
+      if (target_column_end > animation_column_end)
+      {
+        animation_column_end = target_column_end;
+      }
+      animation->panel_bounds.start_row = start_row;
+      animation->panel_bounds.row_count =
+        (uint16_t)(animation_row_end - start_row);
+      animation->panel_bounds.start_column = start_column;
+      animation->panel_bounds.column_count =
+        (uint16_t)(animation_column_end - start_column);
     }
   }
 
@@ -1981,6 +2151,7 @@ static void DisplayRenderer_PublishShellCursorWaitingVisual(
 {
   ps_scene_waiting_visual_t *visual = &s_display_shell_waiting_visual;
   ps_scene_waiting_visual_element_t *cursor;
+  ps_scene_waiting_visual_element_t *marker;
   uint32_t step;
 
   if ((selected_row >= DISPLAY_RENDERER_LIST_ROW_COUNT) ||
@@ -1992,13 +2163,19 @@ static void DisplayRenderer_PublishShellCursorWaitingVisual(
 
   (void)memset(visual, 0, sizeof(*visual));
   visual->api_version = PS_SCENE_WAITING_VISUAL_API_VERSION;
-  visual->presentation_id = DISPLAY_RENDERER_ANIMATION_CURSOR_BLINK;
+  visual->presentation_id =
+    (g_display_renderer_scene_waiting_demo_enable != 0UL) ?
+    DISPLAY_RENDERER_ANIMATION_SCENE_PROOF :
+    DISPLAY_RENDERER_ANIMATION_CURSOR_BLINK;
   visual->phase_quantum_ms =
     (uint32_t)KNOB_DISPLAY_CURSOR_BLINK_PERIOD_MS;
-  visual->sequence_step_count = 4UL;
+  visual->sequence_step_count =
+    (g_display_renderer_scene_waiting_demo_enable != 0UL) ? 6UL : 4UL;
+  visual->settled_sequence_step = 1UL;
   visual->cycle_policy = PS_SCENE_WAITING_VISUAL_CYCLE_LOOP;
   visual->rebase_policy = PS_SCENE_WAITING_VISUAL_REBASE_NEW_STATE;
-  visual->element_count = 1UL;
+  visual->element_count =
+    (g_display_renderer_scene_waiting_demo_enable != 0UL) ? 2UL : 1UL;
 
   cursor = &visual->elements[0];
   cursor->element_id = DISPLAY_RENDERER_WAITING_ELEMENT_CURSOR;
@@ -2016,6 +2193,26 @@ static void DisplayRenderer_PublishShellCursorWaitingVisual(
   for (step = 0UL; step < visual->sequence_step_count; ++step)
   {
     cursor->sequence_phase[step] = step & 1UL;
+  }
+
+  if (visual->element_count == 2UL)
+  {
+    marker = &visual->elements[1];
+    marker->element_id = DISPLAY_RENDERER_WAITING_ELEMENT_SCENE_MARKER;
+    marker->visual_source_id =
+      PS_SCENE_WAITING_VISUAL_SOURCE_THREE_PHASE_MARKER;
+    marker->phase_count = 3UL;
+    marker->phase_visual_id[0] = 10UL;
+    marker->phase_visual_id[1] = 11UL;
+    marker->phase_visual_id[2] = 12UL;
+    marker->logical_bounds.x = 160U;
+    marker->logical_bounds.y = 0U;
+    marker->logical_bounds.width = 8U;
+    marker->logical_bounds.height = 24U;
+    for (step = 0UL; step < visual->sequence_step_count; ++step)
+    {
+      marker->sequence_phase[step] = (step + 2UL) % 3UL;
+    }
   }
 
   (void)DisplayRenderer_PublishSceneWaitingVisual(visual);

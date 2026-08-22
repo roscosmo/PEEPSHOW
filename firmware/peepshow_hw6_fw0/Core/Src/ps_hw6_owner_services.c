@@ -919,6 +919,58 @@ static void PS_HW6_PrepareDisplayUIPage(uint32_t page,
     stats.current_focus_row;
 }
 
+static void PS_HW6_DisplayOwner_SnapshotSceneWaitingTimeline(void)
+{
+  const display_renderer_waiting_animation_t *animation;
+  uint32_t presentation_id;
+  uint32_t sequence_count;
+  uint32_t settled_frame;
+  uint32_t cadence_ms;
+  uint32_t frame;
+
+  g_ps_hw6_owner_probe.display_waiting_presentation_id = 0UL;
+  g_ps_hw6_owner_probe.display_waiting_sequence_frame_count = 0UL;
+  g_ps_hw6_owner_probe.display_waiting_settled_sequence_frame = 0UL;
+  g_ps_hw6_owner_probe.display_waiting_cadence_ms = 0UL;
+  g_ps_hw6_owner_probe.display_waiting_element_count = 0UL;
+  for (frame = 0UL; frame < PS_HW6_OWNER_LPBAM_SEQUENCE_MAX; ++frame)
+  {
+    g_ps_hw6_owner_probe.display_waiting_sequence_phase[frame] = 0UL;
+  }
+  g_ps_hw6_owner_probe.display_waiting_snapshot_status =
+    PS_HW6_OWNER_STATUS_UNAVAILABLE;
+
+  if (DisplayRenderer_GetSceneWaitingTimeline(
+        &presentation_id,
+        &sequence_count,
+        &settled_frame,
+        &cadence_ms) == 0UL)
+  {
+    return;
+  }
+  animation = DisplayRenderer_GetWaitingAnimation(settled_frame, 0UL);
+  if ((DisplayRenderer_ValidateWaitingAnimation(animation) == 0UL) ||
+      (animation->sequence_frame_count != sequence_count) ||
+      (settled_frame >= sequence_count))
+  {
+    return;
+  }
+
+  g_ps_hw6_owner_probe.display_waiting_presentation_id = presentation_id;
+  g_ps_hw6_owner_probe.display_waiting_sequence_frame_count = sequence_count;
+  g_ps_hw6_owner_probe.display_waiting_settled_sequence_frame =
+    settled_frame;
+  g_ps_hw6_owner_probe.display_waiting_cadence_ms = cadence_ms;
+  g_ps_hw6_owner_probe.display_waiting_element_count =
+    animation->element_count;
+  for (frame = 0UL; frame < sequence_count; ++frame)
+  {
+    g_ps_hw6_owner_probe.display_waiting_sequence_phase[frame] =
+      animation->sequence_phase[frame];
+  }
+  g_ps_hw6_owner_probe.display_waiting_snapshot_status = (uint32_t)HAL_OK;
+}
+
 static uint32_t PS_HW6_PrepareDisplayCursorBlink(uint32_t visible)
 {
   display_renderer_stats_t stats;
@@ -1592,6 +1644,7 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   {
     g_ps_hw6_owner_probe.display_ui_render_count++;
     g_ps_hw6_owner_probe.display_success = 1UL;
+    PS_HW6_DisplayOwner_SnapshotSceneWaitingTimeline();
     return HAL_OK;
   }
 

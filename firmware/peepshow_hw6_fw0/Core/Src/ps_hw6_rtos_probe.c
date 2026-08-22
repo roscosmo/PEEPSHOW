@@ -868,6 +868,8 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_rearm_pending = 0UL;
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_rearm_count = 0UL;
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_rearm_tick = 0UL;
+  g_ps_hw6_rtos_probe.display_waiting_preserve_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.input_policy_api_version =
     PS_HW6_RTOS_INPUT_POLICY_API_VERSION;
   g_ps_hw6_rtos_probe.input_policy_last_status =
@@ -2461,15 +2463,42 @@ static uint32_t PS_HW6_RTOS_DisplayCursorBlinkEligible(void)
 
 static uint32_t PS_HW6_RTOS_DisplayCursorBlinkPeriodTicks(void)
 {
+  uint32_t cadence_ms =
+    g_ps_hw6_owner_probe.display_waiting_cadence_ms;
+
+  if ((g_ps_hw6_owner_probe.display_waiting_snapshot_status !=
+       (uint32_t)HAL_OK) || (cadence_ms == 0UL))
+  {
+    cadence_ms = (uint32_t)KNOB_DISPLAY_CURSOR_BLINK_PERIOD_MS;
+  }
   return PS_HW6_RTOS_MsToTicks(
-    (uint32_t)KNOB_DISPLAY_CURSOR_BLINK_PERIOD_MS);
+    cadence_ms);
 }
 
 static void PS_HW6_RTOS_ResetDisplayCursorBlink(uint32_t now_tick)
 {
-  ps_display_blink_visible = 1UL;
-  ps_display_waiting_sequence_frame = 0UL;
-  ps_display_waiting_sequence_count = 0UL;
+  uint32_t sequence_count =
+    g_ps_hw6_owner_probe.display_waiting_sequence_frame_count;
+  uint32_t settled_frame =
+    g_ps_hw6_owner_probe.display_waiting_settled_sequence_frame;
+
+  if ((g_ps_hw6_owner_probe.display_waiting_snapshot_status ==
+       (uint32_t)HAL_OK) &&
+      (sequence_count != 0UL) &&
+      (sequence_count <= PS_HW6_OWNER_LPBAM_SEQUENCE_MAX) &&
+      (settled_frame < sequence_count))
+  {
+    ps_display_waiting_sequence_frame = settled_frame;
+    ps_display_waiting_sequence_count = sequence_count;
+    ps_display_blink_visible =
+      g_ps_hw6_owner_probe.display_waiting_sequence_phase[settled_frame];
+  }
+  else
+  {
+    ps_display_blink_visible = 1UL;
+    ps_display_waiting_sequence_frame = 0UL;
+    ps_display_waiting_sequence_count = 0UL;
+  }
   ps_display_blink_next_tick = now_tick +
     PS_HW6_RTOS_DisplayCursorBlinkPeriodTicks();
 }
@@ -2614,10 +2643,12 @@ static void PS_HW6_RTOS_DeferDisplayLpbamRearm(uint32_t now_tick)
 static uint32_t PS_HW6_RTOS_NextDisplayLpbamHandoffSequenceFrame(void)
 {
   uint32_t offset;
+  uint32_t sequence_count =
+    g_ps_hw6_owner_probe.display_waiting_sequence_frame_count;
 
   if ((ps_display_waiting_sequence_count == 0UL) ||
       (ps_display_waiting_sequence_count !=
-       g_ps_hw6_owner_probe.display_lpbam_sequence_frame_count) ||
+       sequence_count) ||
       (ps_display_waiting_sequence_frame >=
        ps_display_waiting_sequence_count))
   {
@@ -2635,9 +2666,9 @@ static uint32_t PS_HW6_RTOS_NextDisplayLpbamHandoffSequenceFrame(void)
       (candidate + ps_display_waiting_sequence_count - 1UL) %
       ps_display_waiting_sequence_count;
 
-    if ((g_ps_hw6_owner_probe.display_lpbam_sequence_phase[previous] ==
+    if ((g_ps_hw6_owner_probe.display_waiting_sequence_phase[previous] ==
          PS_HW6_RTOS_LPBAM_HANDOFF_SOURCE_PHASE) &&
-        (g_ps_hw6_owner_probe.display_lpbam_sequence_phase[candidate] ==
+        (g_ps_hw6_owner_probe.display_waiting_sequence_phase[candidate] ==
          PS_HW6_RTOS_LPBAM_HANDOFF_TARGET_PHASE))
     {
       return candidate;
@@ -2803,7 +2834,7 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RenderDisplayWaitingSequenceFrame(
 {
   HAL_StatusTypeDef status;
   uint32_t sequence_count =
-    g_ps_hw6_owner_probe.display_lpbam_sequence_frame_count;
+    g_ps_hw6_owner_probe.display_waiting_sequence_frame_count;
 
   if ((sequence_count == 0UL) || (sequence_frame >= sequence_count))
   {
@@ -2832,6 +2863,63 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RenderDisplayWaitingSequenceFrame(
     0UL);
   ps_display_blink_transfer_active = 0UL;
   return status;
+}
+
+static void PS_HW6_RTOS_SynchronizeDisplayWaitingTimelineAfterUi(
+  uint32_t previous_page,
+  uint32_t previous_presentation_id,
+  uint32_t previous_sequence_frame,
+  uint32_t previous_sequence_count,
+  uint32_t previous_deadline_tick,
+  uint32_t now_tick)
+{
+  HAL_StatusTypeDef status;
+  uint32_t period_ticks = PS_HW6_RTOS_DisplayCursorBlinkPeriodTicks();
+  uint32_t sequence_frame = previous_sequence_frame;
+  uint32_t deadline_tick = previous_deadline_tick;
+
+  g_ps_hw6_rtos_probe.display_waiting_preserve_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  if ((g_ps_hw6_owner_probe.display_waiting_snapshot_status !=
+       (uint32_t)HAL_OK) ||
+      (previous_page != g_ps_hw6_owner_probe.display_ui_page) ||
+      (previous_presentation_id !=
+       g_ps_hw6_owner_probe.display_waiting_presentation_id) ||
+      (previous_sequence_count == 0UL) ||
+      (previous_sequence_count !=
+       g_ps_hw6_owner_probe.display_waiting_sequence_frame_count) ||
+      (previous_sequence_frame >= previous_sequence_count) ||
+      (previous_deadline_tick == 0UL) ||
+      (period_ticks == 0UL))
+  {
+    g_ps_hw6_rtos_probe.display_waiting_rebase_count++;
+    PS_HW6_RTOS_ResetDisplayCursorBlink(now_tick);
+    return;
+  }
+
+  if (PS_HW6_RTOS_TimeReached(now_tick, deadline_tick) != 0UL)
+  {
+    uint32_t elapsed_steps =
+      1UL + ((now_tick - deadline_tick) / period_ticks);
+
+    sequence_frame = (sequence_frame +
+      (elapsed_steps % previous_sequence_count)) % previous_sequence_count;
+    deadline_tick += elapsed_steps * period_ticks;
+  }
+
+  status = PS_HW6_RTOS_RenderDisplayWaitingSequenceFrame(
+    sequence_frame, now_tick, period_ticks);
+  g_ps_hw6_rtos_probe.display_waiting_preserve_status = (uint32_t)status;
+  if (status != HAL_OK)
+  {
+    g_ps_hw6_rtos_probe.display_waiting_rebase_count++;
+    return;
+  }
+
+  ps_display_blink_next_tick = deadline_tick;
+  g_ps_hw6_rtos_probe.display_waiting_preserve_count++;
+  g_ps_hw6_rtos_probe.display_waiting_preserve_frame = sequence_frame;
+  g_ps_hw6_rtos_probe.display_waiting_preserve_deadline_tick = deadline_tick;
 }
 
 static HAL_StatusTypeDef PS_HW6_RTOS_RunDisplayLpbamPrepareAtBlinkEdge(
@@ -2964,7 +3052,7 @@ static void PS_HW6_RTOS_RunDisplayCursorBlinkPeriodic(uint32_t now_tick)
 
   if ((ps_display_waiting_sequence_count != 0UL) &&
       (ps_display_waiting_sequence_count ==
-       g_ps_hw6_owner_probe.display_lpbam_sequence_frame_count) &&
+       g_ps_hw6_owner_probe.display_waiting_sequence_frame_count) &&
       (ps_display_waiting_sequence_frame <
        ps_display_waiting_sequence_count))
   {
@@ -2972,7 +3060,7 @@ static void PS_HW6_RTOS_RunDisplayCursorBlinkPeriodic(uint32_t now_tick)
     next_sequence_frame =
       (ps_display_waiting_sequence_frame + 1UL) %
       ps_display_waiting_sequence_count;
-    next_visible = g_ps_hw6_owner_probe.display_lpbam_sequence_phase[
+    next_visible = g_ps_hw6_owner_probe.display_waiting_sequence_phase[
       next_sequence_frame];
   }
   else
@@ -6002,10 +6090,20 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       }
       else if (PS_HW6_RTOS_DisplayUiCommandIsValid(owner_id, message) != 0UL)
       {
+        HAL_StatusTypeDef display_status;
+        uint32_t previous_page = g_ps_hw6_owner_probe.display_ui_page;
+        uint32_t previous_presentation_id =
+          g_ps_hw6_owner_probe.display_waiting_presentation_id;
+        uint32_t previous_sequence_frame =
+          ps_display_waiting_sequence_frame;
+        uint32_t previous_sequence_count =
+          ps_display_waiting_sequence_count;
+        uint32_t previous_deadline_tick = ps_display_blink_next_tick;
+
         (void)PS_HW6_RTOS_RequestDisplayClockCapabilities(
           PS_HW6_RTOS_DISPLAY_CLOCK_REASON_TRANSFER,
           PS_HW6_RTOS_DISPLAY_CLOCK_TRANSFER_CAPABILITIES);
-        (void)PS_HW6_DisplayOwner_RenderUI(
+        display_status = PS_HW6_DisplayOwner_RenderUI(
           (uint32_t)message[2],
           PS_HW6_RTOS_DisplayUiPackedCalibration(message[3]),
           PS_HW6_RTOS_DisplayUiPackedFocus(message[3]),
@@ -6014,7 +6112,20 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (void)PS_HW6_RTOS_RequestDisplayClockCapabilities(
           PS_HW6_RTOS_DISPLAY_CLOCK_REASON_RELEASE,
           0UL);
-        PS_HW6_RTOS_ResetDisplayCursorBlink((uint32_t)now);
+        if (display_status == HAL_OK)
+        {
+          PS_HW6_RTOS_SynchronizeDisplayWaitingTimelineAfterUi(
+            previous_page,
+            previous_presentation_id,
+            previous_sequence_frame,
+            previous_sequence_count,
+            previous_deadline_tick,
+            (uint32_t)now);
+        }
+        else
+        {
+          PS_HW6_RTOS_ResetDisplayCursorBlink((uint32_t)now);
+        }
       }
       else if (PS_HW6_RTOS_UiInputCommandIsValid(owner_id, message) != 0UL)
       {

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (54UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (55UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -275,6 +275,11 @@ typedef struct
   uint32_t display_deadline_wait_count;
   uint32_t display_deadline_wait_last_ticks;
   uint32_t display_deadline_due_count;
+  uint32_t display_waiting_preserve_count;
+  uint32_t display_waiting_rebase_count;
+  uint32_t display_waiting_preserve_frame;
+  uint32_t display_waiting_preserve_deadline_tick;
+  uint32_t display_waiting_preserve_status;
   uint32_t stop2_lpbam_power_recheck_request_count;
   uint32_t stop2_lpbam_power_recheck_request_tick;
   uint32_t stop2_lpbam_power_recheck_send_status;

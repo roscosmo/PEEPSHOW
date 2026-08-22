@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (31UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (32UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -186,6 +186,14 @@ typedef struct
   uint32_t display_blink_tick;
   uint32_t display_blink_phase;
   uint32_t display_blink_status;
+  uint32_t display_waiting_presentation_id;
+  uint32_t display_waiting_sequence_frame_count;
+  uint32_t display_waiting_settled_sequence_frame;
+  uint32_t display_waiting_cadence_ms;
+  uint32_t display_waiting_element_count;
+  uint32_t display_waiting_sequence_phase[
+    PS_HW6_OWNER_LPBAM_SEQUENCE_MAX];
+  uint32_t display_waiting_snapshot_status;
   uint32_t display_lpbam_ready;
   uint32_t display_lpbam_ready_page;
   uint32_t display_lpbam_ready_render_count;

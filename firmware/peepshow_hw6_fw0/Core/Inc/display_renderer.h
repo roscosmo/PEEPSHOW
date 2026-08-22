@@ -23,10 +23,12 @@ extern "C" {
 #define DISPLAY_RENDERER_ANIMATION_CURSOR_BLINK (1UL)
 #define DISPLAY_RENDERER_ANIMATION_COMPOSITE_TEST (2UL)
 #define DISPLAY_RENDERER_ANIMATION_FULL_FRAME_TEST (3UL)
+#define DISPLAY_RENDERER_ANIMATION_SCENE_PROOF    (4UL)
 #define DISPLAY_RENDERER_WAITING_ELEMENT_CURSOR (1UL)
 #define DISPLAY_RENDERER_WAITING_ELEMENT_MULTICHUNK_TEST (2UL)
 #define DISPLAY_RENDERER_WAITING_ELEMENT_FULL_FRAME_TEST (3UL)
 #define DISPLAY_RENDERER_WAITING_ELEMENT_THREE_PHASE_TEST (4UL)
+#define DISPLAY_RENDERER_WAITING_ELEMENT_SCENE_MARKER (5UL)
 #define DISPLAY_RENDERER_ROW_NONE               (0xFFFFFFFFUL)
 #define DISPLAY_RENDERER_WAITING_PHASE_MAX      (12U)
 #define DISPLAY_RENDERER_WAITING_ELEMENT_PHASE_MAX (4U)
@@ -105,12 +107,14 @@ typedef struct
   uint32_t active;
   uint32_t presentation_id;
   uint32_t sequence_step_count;
+  uint32_t settled_sequence_step;
   uint32_t element_count;
   uint32_t last_status;
   uint32_t last_resolve_status;
 } display_renderer_scene_waiting_probe_t;
 
 extern volatile uint32_t g_display_renderer_waiting_test_variant;
+extern volatile uint32_t g_display_renderer_scene_waiting_demo_enable;
 extern volatile display_renderer_scene_waiting_probe_t
   g_display_renderer_scene_waiting_probe;
 
@@ -125,6 +129,11 @@ uint32_t DisplayRenderer_FramebufferHash(void);
 uint32_t DisplayRenderer_PublishSceneWaitingVisual(
   const ps_scene_waiting_visual_t *visual);
 void DisplayRenderer_ClearSceneWaitingVisual(void);
+uint32_t DisplayRenderer_GetSceneWaitingTimeline(
+  uint32_t *presentation_id,
+  uint32_t *sequence_step_count,
+  uint32_t *settled_sequence_step,
+  uint32_t *phase_quantum_ms);
 const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
   uint32_t sequence_start_frame,
   uint32_t next_deadline_tick);
