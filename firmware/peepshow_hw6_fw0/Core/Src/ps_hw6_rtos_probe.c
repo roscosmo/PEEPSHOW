@@ -1444,7 +1444,7 @@ static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
         status = PS_HW6_RTOS_SendDisplayUiRenderCommand(
           (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF,
           (uint32_t)PS_UI_ROUTER_CAL_NONE,
-          PS_SceneRuntime_StateIndex(),
+          PS_SceneRuntime_StateFocusIndex(),
           (uint32_t)PS_UI_ROUTER_SHUTDOWN_NONE,
           0UL);
       }
@@ -5326,6 +5326,7 @@ static void PS_HW6_RTOS_RuntimePackageActivateStub(uint32_t runtime_class,
                                                    uint32_t capabilities,
                                                    UINT clock_status)
 {
+  UINT admission_status = clock_status;
   uint32_t event =
     (uint32_t)PS_HW6_RUNTIME_EVENT_PACKAGE_REACTIVE_ACTIVATE_STUB;
 
@@ -5354,17 +5355,27 @@ static void PS_HW6_RTOS_RuntimePackageActivateStub(uint32_t runtime_class,
   if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_LP_GRAPH) &&
       (clock_status == TX_SUCCESS))
   {
-    (void)PS_SceneRuntime_EnterStateScene();
-    g_ps_ui_router_request_event =
-      (uint32_t)PS_UI_ROUTER_EVENT_LAUNCH_RUNTIME;
-    g_ps_ui_router_request = 1UL;
+    if (PS_SceneRuntime_EnterStateScene() == PS_SCENE_RUNTIME_INDEX_INVALID)
+    {
+      admission_status = TX_PTR_ERROR;
+      PS_HW6_RTOS_RuntimeSetState(
+        runtime_class,
+        execution,
+        (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_ERROR);
+    }
+    else
+    {
+      g_ps_ui_router_request_event =
+        (uint32_t)PS_UI_ROUTER_EVENT_LAUNCH_RUNTIME;
+      g_ps_ui_router_request = 1UL;
+    }
   }
   PS_HW6_RTOS_RuntimeRecordAdmission(runtime_class,
                                      execution,
                                      capabilities,
-                                     clock_status);
+                                     admission_status);
   PS_HW6_RTOS_RuntimeRecord(event,
-    (clock_status == TX_SUCCESS) ?
+    (admission_status == TX_SUCCESS) ?
     (uint32_t)PS_STATUS_OK : (uint32_t)PS_STATUS_INTERNAL_ERROR);
 }
 

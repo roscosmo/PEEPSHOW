@@ -188,6 +188,18 @@ restarting at phase zero. Evidence `EV-HW6-20260822-P1-STATESCENE-089` recorded
 `11` completed STOP2 entries. No thread, queue, peripheral owner, or dynamic
 allocation was added.
 
+Scene-runtime API version `4` makes that compiled-in scene table-driven without
+changing RTOS topology. One immutable descriptor declares scene ID `1`, three
+stable state IDs, their visual/focus bindings, and six explicit L/R transitions.
+`thRuntime` validates and interprets those bounded tables; it no longer derives
+next state through wraparound arithmetic. Descriptor failure prevents runtime-page
+launch, while valid transitions continue to request presentation through the
+existing `qDisplayCmd`. Evidence `EV-HW6-20260822-P1-STATETABLE-090` recorded one
+successful descriptor validation, scene/states/transitions `1/3/6`, eight
+accepted actions, eight state changes and transition matches, zero misses, state
+ID/visual/focus `102/1002/1`, preserved presentation status `0x0`, and six
+completed STOP2 entries. Peripheral and display ownership remain unchanged.
+
 This is the intended normal boot slice for FW0. It is deliberately smaller than
 the retained-peripheral diagnostic lifecycle: display/audio/sensor/storage/comm
 diagnostic cycles are not auto-run, and the retained lifecycle report may show

@@ -310,6 +310,15 @@ and phase-preserving handoff. This is implementation evidence for the scene
 transaction and ownership split, not yet evidence for package-defined scene
 serialization or authoring-tool output.
 
+The next FW0 slice replaces arithmetic demo navigation with an immutable,
+pointer-free state-scene descriptor. Stable numeric scene, state, visual-binding,
+and action IDs resolve through bounded state and transition tables. The runtime
+validates table capacities, unique state IDs, entry and transition targets,
+supported actions, and duplicate source/action routes before activation; invalid
+data fails closed without launching the scene. This validates the intended
+compiled-table execution shape, while package loading and schema serialization
+remain separate work.
+
 ---
 
 ## Runtime Compositor Layers
