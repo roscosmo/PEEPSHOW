@@ -238,6 +238,7 @@ One successful build retains:
 - compatibility report
 - deterministic build report and content hashes
 - installable `PeepPkg`
+- canonical installable filename ending in `.egg`
 - tool and schema version manifest
 
 Two builds from identical semantic source, target profile, tool versions, and build profile must produce identical installable output. Editor layout-only changes must not change the package hash.

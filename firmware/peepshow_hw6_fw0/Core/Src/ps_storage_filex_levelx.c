@@ -236,8 +236,7 @@ static uint32_t PS_StorageFxLx_IsPackageCandidate(const CHAR *name,
   {
     return 0UL;
   }
-  if ((PS_StorageFxLx_NameEndsWith(name, ".PEEPKG") != 0UL) ||
-      (PS_StorageFxLx_NameEndsWith(name, ".PPKG") != 0UL))
+  if (PS_StorageFxLx_NameEndsWith(name, ".EGG") != 0UL)
   {
     return 1UL;
   }

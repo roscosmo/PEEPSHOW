@@ -90,6 +90,11 @@ Normal authoring source files may reference host source paths for editor/project
 
 V1 should use a directory project model.
 
+The editable project directory keeps the `.peepproj` suffix. The compiler
+emits the installable PeepPkg blob with the `.egg` suffix. Source and compiled
+artifacts use different suffixes deliberately: tools edit `.peepproj`, while
+PeepOS installs and loads `.egg`.
+
 Conceptual layout:
 
 ```text
@@ -121,6 +126,17 @@ my_game.peepproj/
   validation/
     waivers.json
 ```
+
+The first executable authoring subset is defined by:
+
+- `schemas/authoring/peepshow-project-v1.schema.json`
+- `schemas/authoring/state-scene-v1.schema.json`
+
+This subset covers package identity, target selection, STATE scene source
+references, bounded variables, symbolic input actions, guarded routes,
+retained render elements, reactive wait policy, and waiting visuals. It is a
+strict subset of this contract and does not redefine the future complete
+schema.
 
 Rules:
 

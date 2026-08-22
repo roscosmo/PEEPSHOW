@@ -415,7 +415,14 @@ The `PeepPkg` container defined in [[Package_Blob_Format_Contract]] is the packa
 Rules:
 
 - use `PKG1` as the initial package-container magic/version family in examples.
-- FW0 USB staging may classify `.peepkg` / `.ppkg` filenames as package candidates after MSC reclaim, then run a read-only minimum-envelope validator that requires the first four bytes to be `PKG1`. This proves only that the staged file begins with the expected package magic; firmware must still validate the actual `PeepPkg` header layout, chunk table, integrity fields, compatibility schema, and install policy before any real commit.
+- The canonical installable package filename extension is `.egg`. Editable
+  `.peepproj` directories are authoring source and are never installer input.
+- FW0 USB staging may classify `.egg` filenames as package candidates after
+  MSC reclaim, then run a read-only minimum-envelope validator that requires
+  the first four bytes to be `PKG1`. This proves only that the staged file
+  begins with the expected package magic; firmware must still validate the
+  actual `PeepPkg` header layout, chunk table, integrity fields, compatibility
+  schema, and install policy before any real commit.
 - FW0 package import scaffolding may present a package-valid prompt and run a storage-owned install stub for one staged package candidate with a valid minimum `PKG1` envelope, but the stub is not an installer. It must not copy, erase, commit, or expose the package to runtime until the real bounded `PeepPkg` validator and install schema exist.
 - chunks are addressed by stable package IDs at authoring level and compact chunk indexes/offsets at runtime level.
 - every chunk has type, format version, offset, size, alignment, compiler-derived capability metadata, scene references, and integrity metadata.

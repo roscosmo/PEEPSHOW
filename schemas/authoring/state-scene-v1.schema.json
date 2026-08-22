@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://peepshow.dev/schema/authoring/state-scene-v1.schema.json",
+  "title": "PeepShow STATE Scene Source V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "scene_id",
+    "display_name",
+    "scene_type",
+    "entry_state",
+    "variables",
+    "input_actions",
+    "states",
+    "routes",
+    "render_models",
+    "waiting_visuals",
+    "reactive_wait_default",
+    "interaction_policy"
+  ],
+  "properties": {
+    "schema_id": { "const": "peepshow.authoring.state_scene" },
+    "schema_version": { "const": 1 },
+    "scene_id": { "$ref": "#/$defs/stable_id" },
+    "display_name": { "type": "string", "minLength": 1, "maxLength": 96 },
+    "scene_type": { "const": "STATE_SCENE" },
+    "entry_state": { "$ref": "#/$defs/stable_id" },
+    "variables": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/variable" } },
+    "input_actions": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/input_action" } },
+    "states": { "type": "array", "minItems": 1, "maxItems": 64, "items": { "$ref": "#/$defs/state" } },
+    "routes": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/route" } },
+    "render_models": { "type": "array", "minItems": 1, "maxItems": 64, "items": { "$ref": "#/$defs/render_model" } },
+    "waiting_visuals": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "$ref": "#/$defs/waiting_visual" } },
+    "reactive_wait_default": { "$ref": "#/$defs/reactive_wait" },
+    "interaction_policy": { "$ref": "#/$defs/interaction_policy" }
+  },
+  "$defs": {
+    "stable_id": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$" },
+    "variable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["variable_id", "value_type", "initial", "minimum", "maximum"],
+      "properties": {
+        "variable_id": { "$ref": "#/$defs/stable_id" },
+        "value_type": { "const": "int32" },
+        "initial": { "type": "integer" },
+        "minimum": { "type": "integer" },
+        "maximum": { "type": "integer" }
+      }
+    },
+    "input_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action_id", "logical_source"],
+      "properties": {
+        "action_id": { "$ref": "#/$defs/stable_id" },
+        "logical_source": { "enum": ["BUTTON_A", "BUTTON_B", "BUTTON_L", "BUTTON_R"] }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state_id", "display_name", "render_model_ref", "waiting_visual_ref"],
+      "properties": {
+        "state_id": { "$ref": "#/$defs/stable_id" },
+        "display_name": { "type": "string", "minLength": 1, "maxLength": 96 },
+        "render_model_ref": { "$ref": "#/$defs/stable_id" },
+        "waiting_visual_ref": { "$ref": "#/$defs/stable_id" }
+      }
+    },
+    "guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["variable_ref", "operator", "value"],
+      "properties": {
+        "variable_ref": { "$ref": "#/$defs/stable_id" },
+        "operator": { "enum": ["eq", "ne", "lt", "le", "gt", "ge"] },
+        "value": { "type": "integer" }
+      }
+    },
+    "action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "variable_ref", "operation", "value"],
+          "properties": {
+            "kind": { "const": "set_variable" },
+            "variable_ref": { "$ref": "#/$defs/stable_id" },
+            "operation": { "enum": ["assign", "add"] },
+            "value": { "type": "integer" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "request_render" } }
+        }
+      ]
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["route_id", "action_ref", "from_states", "guards", "actions", "target_state"],
+      "properties": {
+        "route_id": { "$ref": "#/$defs/stable_id" },
+        "action_ref": { "$ref": "#/$defs/stable_id" },
+        "from_states": { "type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": { "$ref": "#/$defs/stable_id" } },
+        "guards": { "type": "array", "maxItems": 8, "items": { "$ref": "#/$defs/guard" } },
+        "actions": { "type": "array", "maxItems": 8, "items": { "$ref": "#/$defs/action" } },
+        "target_state": { "$ref": "#/$defs/stable_id" }
+      }
+    },
+    "render_element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["element_id", "kind", "visual_ref", "x", "y", "width", "height", "z_order"],
+      "properties": {
+        "element_id": { "$ref": "#/$defs/stable_id" },
+        "kind": { "enum": ["sprite", "text", "shape"] },
+        "visual_ref": { "$ref": "#/$defs/stable_id" },
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "z_order": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "focus_role": { "enum": ["none", "focus"] }
+      }
+    },
+    "render_model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["visual_id", "focus_index", "elements"],
+      "properties": {
+        "visual_id": { "$ref": "#/$defs/stable_id" },
+        "focus_index": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "elements": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "$ref": "#/$defs/render_element" } }
+      }
+    },
+    "waiting_element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["element_id", "source_element_ref", "phase_visual_refs", "step_phase_indices"],
+      "properties": {
+        "element_id": { "$ref": "#/$defs/stable_id" },
+        "source_element_ref": { "$ref": "#/$defs/stable_id" },
+        "phase_visual_refs": { "type": "array", "minItems": 1, "maxItems": 4, "items": { "$ref": "#/$defs/stable_id" } },
+        "step_phase_indices": { "type": "array", "minItems": 1, "maxItems": 12, "items": { "type": "integer", "minimum": 0, "maximum": 3 } }
+      }
+    },
+    "waiting_visual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["waiting_visual_id", "presentation_id", "phase_quantum_ms", "combined_step_count", "settled_step", "cycle_policy", "elements"],
+      "properties": {
+        "waiting_visual_id": { "$ref": "#/$defs/stable_id" },
+        "presentation_id": { "$ref": "#/$defs/stable_id" },
+        "phase_quantum_ms": { "type": "integer", "minimum": 1, "maximum": 60000 },
+        "combined_step_count": { "type": "integer", "minimum": 1, "maximum": 12 },
+        "settled_step": { "type": "integer", "minimum": 0, "maximum": 11 },
+        "cycle_policy": { "const": "loop" },
+        "elements": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "$ref": "#/$defs/waiting_element" } }
+      }
+    },
+    "reactive_wait": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy_id", "waiting_visual_ref", "hold_fallback_allowed", "event_interests"],
+      "properties": {
+        "policy_id": { "$ref": "#/$defs/stable_id" },
+        "waiting_visual_ref": { "$ref": "#/$defs/stable_id" },
+        "hold_fallback_allowed": { "type": "boolean" },
+        "event_interests": { "type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": { "$ref": "#/$defs/stable_id" } }
+      }
+    },
+    "interaction_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy_id", "meaningful_activity_actions", "inactive_route", "bounded_deferrals"],
+      "properties": {
+        "policy_id": { "$ref": "#/$defs/stable_id" },
+        "meaningful_activity_actions": { "type": "array", "maxItems": 32, "uniqueItems": true, "items": { "$ref": "#/$defs/stable_id" } },
+        "inactive_route": { "enum": ["preserve_scene", "exit_to_shell"] },
+        "bounded_deferrals": { "type": "array", "maxItems": 0 }
+      }
+    }
+  }
+}

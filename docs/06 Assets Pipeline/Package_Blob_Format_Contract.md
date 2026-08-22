@@ -10,6 +10,12 @@ The package blob format is game/content-facing. It must not encode RTOS objects,
 
 The conceptual container name is `PeepPkg`.
 
+The canonical filename extension for an installable PeepPkg blob is `.egg`.
+The extension is user-facing identity only; the package is admitted by its
+validated container header, schema versions, bounds, and integrity metadata,
+not by its filename. Editable authoring projects remain `.peepproj`
+directories and must never be accepted by the installer as package blobs.
+
 Initial binary format examples use the magic/version family `PKG1`.
 
 `PKG1` is a package-container format marker, not a package API version. Individual schemas and chunk formats still carry their own versions.
