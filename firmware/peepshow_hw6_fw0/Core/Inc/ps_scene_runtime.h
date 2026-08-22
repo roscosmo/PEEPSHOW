@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-#define PS_SCENE_RUNTIME_API_VERSION             (7UL)
+#define PS_SCENE_RUNTIME_API_VERSION             (8UL)
 #define PS_SCENE_RUNTIME_SCENE_TYPE_STATE        (1UL)
 #define PS_SCENE_RUNTIME_STATUS_NOT_RUN          (0xFFFFFFFFUL)
 #define PS_SCENE_RUNTIME_INDEX_INVALID           (0xFFFFFFFFUL)
@@ -63,8 +63,7 @@ typedef struct
   uint32_t visual_binding_id;
   uint32_t element_count;
   ps_scene_render_element_t elements[PS_SCENE_RENDER_MODEL_ELEMENT_MAX];
-  uint32_t waiting_sequence_step_count;
-  uint32_t waiting_marker_enabled;
+  ps_scene_waiting_visual_t waiting_visual;
 } ps_scene_runtime_visual_binding_t;
 
 typedef struct

@@ -28,6 +28,7 @@
     "debug_tracex_buffer_bytes",
     "debug_tracex_registry_entries",
     "display_cursor_blink_period_ms",
+    "runtime_egg_hash_timeout_ms",
     "rtos_default_stack_bytes",
     "rtos_power_stack_bytes",
     "rtos_input_stack_bytes",
@@ -338,6 +339,18 @@
       "class": "protected_policy",
       "path": "platform.knobs.display.cursor_blink_period_ms",
       "description": "Awake cursor waiting-visual blink cadence. Default 250 ms matches the current LPBAM cursor bring-up cadence."
+    },
+    "runtime_egg_hash_timeout_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "default": 100,
+      "unit": "ms",
+      "timebase_domain": "hal_ms",
+      "owner": "thRuntime",
+      "class": "protected_policy",
+      "path": "platform.knobs.runtime.egg_hash_timeout_ms",
+      "description": "Bounded polling timeout for hardware SHA-256 validation of an egg package before runtime activation."
     },
     "rtos_default_stack_bytes": {
       "type": "integer",

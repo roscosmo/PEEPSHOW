@@ -5,10 +5,11 @@ Status: `accepted_design`
 Implementation status: `partial`
 
 The V1 `.peepproj` STATE subset, semantic validator, normalized intermediate,
-deterministic binary `.egg` compiler, and independent host package reader are
-implemented. Firmware package loading, installation, target-profile closure,
-visual editor surfaces, SEQUENCE, PROGRAM, and end-to-end HW6 evidence remain
-open.
+deterministic binary `.egg` compiler, independent host package reader, and the
+first bounded HW6 embedded-package STATE decoder are implemented. The embedded
+reader is pending target validation. External-flash installation and activation,
+target-profile closure, visual editor surfaces, SEQUENCE, PROGRAM, and end-to-end
+HW6 evidence remain open.
 
 Target status: `HW6_PENDING_VALIDATION` until measured HW6 evidence is frozen into a shipping-authoritative target profile.
 

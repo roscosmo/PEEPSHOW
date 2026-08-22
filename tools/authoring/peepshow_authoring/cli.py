@@ -6,7 +6,7 @@ import argparse
 import hashlib
 from pathlib import Path
 
-from .compiler import EggCompileError, write_egg
+from .compiler import EggCompileError, write_egg, write_embedded_egg_c
 from .egg_format import EggFormatError, parse_egg
 from .project import format_issues, load_project
 
@@ -76,6 +76,20 @@ def _inspect(package_path: str) -> int:
     return 0
 
 
+def _embed(project_path: str, output_path: str, symbol: str) -> int:
+    bundle = load_project(project_path)
+    if not bundle.valid:
+        print(format_issues(bundle.issues))
+        return 1
+    try:
+        output = write_embedded_egg_c(bundle, output_path, symbol)
+    except (EggCompileError, OSError) as exc:
+        print(f"EMBED_PACKAGE_INVALID {exc}")
+        return 1
+    print(f"embedded package={bundle.project['package']['package_id']} symbol={symbol} -> {output}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="egg-tool", description="PeepShow authoring project tools")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -94,6 +108,11 @@ def main() -> int:
     inspect = commands.add_parser("inspect", help="validate and summarize a compiled .egg")
     inspect.add_argument("package")
 
+    embed = commands.add_parser("embed", help="compile a .peepproj directory into a firmware C array")
+    embed.add_argument("project")
+    embed.add_argument("--output", required=True)
+    embed.add_argument("--symbol", default="g_ps_embedded_egg")
+
     args = parser.parse_args()
     if args.command == "validate":
         return _validate(args.project)
@@ -101,4 +120,6 @@ def main() -> int:
         return _normalize(args.project, args.output)
     if args.command == "build":
         return _build(args.project, args.output)
-    return _inspect(args.package)
+    if args.command == "inspect":
+        return _inspect(args.package)
+    return _embed(args.project, args.output, args.symbol)

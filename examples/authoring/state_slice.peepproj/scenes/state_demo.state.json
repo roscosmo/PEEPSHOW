@@ -112,7 +112,7 @@
       "focus_index": 0,
       "elements": [
         { "element_id": "cursor", "kind": "shape", "visual_ref": "cursor_outline", "x": 8, "y": 43, "width": 8, "height": 16, "z_order": 10, "focus_role": "focus" },
-        { "element_id": "marker", "kind": "shape", "visual_ref": "marker_left", "x": 1, "y": 1, "width": 12, "height": 12, "z_order": 5 }
+        { "element_id": "marker", "kind": "shape", "visual_ref": "marker_outline", "x": 160, "y": 0, "width": 8, "height": 24, "z_order": 5 }
       ]
     },
     {
@@ -120,7 +120,7 @@
       "focus_index": 1,
       "elements": [
         { "element_id": "cursor", "kind": "shape", "visual_ref": "cursor_outline", "x": 8, "y": 73, "width": 8, "height": 16, "z_order": 10, "focus_role": "focus" },
-        { "element_id": "marker", "kind": "shape", "visual_ref": "marker_center", "x": 1, "y": 1, "width": 12, "height": 12, "z_order": 5 }
+        { "element_id": "marker", "kind": "shape", "visual_ref": "marker_outline", "x": 160, "y": 0, "width": 8, "height": 24, "z_order": 5 }
       ]
     },
     {
@@ -128,7 +128,7 @@
       "focus_index": 2,
       "elements": [
         { "element_id": "cursor", "kind": "shape", "visual_ref": "cursor_outline", "x": 8, "y": 103, "width": 8, "height": 16, "z_order": 10, "focus_role": "focus" },
-        { "element_id": "marker", "kind": "shape", "visual_ref": "marker_right", "x": 1, "y": 1, "width": 12, "height": 12, "z_order": 5 }
+        { "element_id": "marker", "kind": "shape", "visual_ref": "marker_outline", "x": 160, "y": 0, "width": 8, "height": 24, "z_order": 5 }
       ]
     }
   ],

@@ -3,231 +3,21 @@
 #include <string.h>
 
 #include "knobs_autogen.h"
+#include "ps_egg_state_loader.h"
 #include "ps_input_buttons.h"
 
 #define PS_SCENE_RUNTIME_PRESENTATION_SHELL_BASE (0x100UL)
 #define PS_SCENE_RUNTIME_PRESENTATION_PROOF_BASE (0x200UL)
-#define PS_SCENE_RUNTIME_PRESENTATION_STATE_BASE (0x30000000UL)
 #define PS_SCENE_RUNTIME_ELEMENT_CURSOR          (1UL)
 #define PS_SCENE_RUNTIME_ELEMENT_MARKER          (5UL)
-#define PS_SCENE_RUNTIME_DEMO_SCENE_ID            (1UL)
-#define PS_SCENE_RUNTIME_DEMO_STATE_1_ID          (101UL)
-#define PS_SCENE_RUNTIME_DEMO_STATE_2_ID          (102UL)
-#define PS_SCENE_RUNTIME_DEMO_STATE_3_ID          (103UL)
-#define PS_SCENE_RUNTIME_DEMO_VISUAL_1_ID         (1001UL)
-#define PS_SCENE_RUNTIME_DEMO_VISUAL_2_ID         (1002UL)
-#define PS_SCENE_RUNTIME_DEMO_VISUAL_3_ID         (1003UL)
-#define PS_SCENE_RUNTIME_DEMO_EVENT_PREVIOUS      (1UL)
-#define PS_SCENE_RUNTIME_DEMO_EVENT_NEXT          (2UL)
-#define PS_SCENE_RUNTIME_DEMO_VARIABLE_STATE      (1UL)
 
 static ps_scene_waiting_visual_t s_ps_scene_runtime_waiting_visual;
 static ps_scene_render_model_t s_ps_scene_runtime_render_model;
 static int32_t
   s_ps_scene_runtime_variables[PS_SCENE_RUNTIME_VARIABLE_MAX];
 
-static const ps_scene_runtime_state_scene_t s_ps_scene_runtime_state_scene =
-{
-  .api_version = PS_SCENE_RUNTIME_API_VERSION,
-  .scene_id = PS_SCENE_RUNTIME_DEMO_SCENE_ID,
-  .entry_state_id = PS_SCENE_RUNTIME_DEMO_STATE_1_ID,
-  .state_count = 3UL,
-  .visual_binding_count = 3UL,
-  .input_route_count = 2UL,
-  .variable_count = 1UL,
-  .guard_count = 6UL,
-  .action_count = 6UL,
-  .transition_count = 6UL,
-  .states =
-  {
-    { PS_SCENE_RUNTIME_DEMO_STATE_1_ID,
-      PS_SCENE_RUNTIME_DEMO_VISUAL_1_ID, 0UL },
-    { PS_SCENE_RUNTIME_DEMO_STATE_2_ID,
-      PS_SCENE_RUNTIME_DEMO_VISUAL_2_ID, 1UL },
-    { PS_SCENE_RUNTIME_DEMO_STATE_3_ID,
-      PS_SCENE_RUNTIME_DEMO_VISUAL_3_ID, 2UL }
-  },
-  .visual_bindings =
-  {
-    {
-      .visual_binding_id = PS_SCENE_RUNTIME_DEMO_VISUAL_1_ID,
-      .element_count = 8UL,
-      .elements =
-      {
-        { 1UL, PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT, 0UL,
-          PS_SCENE_RENDER_LAYER_BACKGROUND, PS_SCENE_RENDER_STYLE_NONE,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 0U, 0U, 168U, 144U },
-        { 2UL, PS_SCENE_RENDER_ELEMENT_HORIZONTAL_LINE, 0UL,
-          PS_SCENE_RENDER_LAYER_UI, PS_SCENE_RENDER_STYLE_NONE,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 8U, 27U, 152U, 1U },
-        { 3UL, PS_SCENE_RENDER_ELEMENT_TEXT,
-          PS_SCENE_RENDER_TEXT_STATE_SCENE, PS_SCENE_RENDER_LAYER_UI,
-          PS_SCENE_RENDER_STYLE_TEXT_2X_CENTER,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 0U, 7U, 168U, 14U },
-        { 4UL, PS_SCENE_RENDER_ELEMENT_TEXT,
-          PS_SCENE_RENDER_TEXT_STATE_1, PS_SCENE_RENDER_LAYER_SCENE,
-          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 43U, 120U, 14U },
-        { 5UL, PS_SCENE_RENDER_ELEMENT_TEXT,
-          PS_SCENE_RENDER_TEXT_STATE_2, PS_SCENE_RENDER_LAYER_SCENE,
-          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 73U, 120U, 14U },
-        { 6UL, PS_SCENE_RENDER_ELEMENT_TEXT,
-          PS_SCENE_RENDER_TEXT_STATE_3, PS_SCENE_RENDER_LAYER_SCENE,
-          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 103U, 120U, 14U },
-        { 7UL, PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP,
-          PS_SCENE_RENDER_SPRITE_DIAMOND, PS_SCENE_RENDER_LAYER_OVERLAY,
-          PS_SCENE_RENDER_STYLE_NONE, PS_SCENE_RENDER_ANIMATION_NONE,
-          1UL, 150U, 9U, 8U, 8U },
-        { 8UL, PS_SCENE_RENDER_ELEMENT_FOCUS, 0UL,
-          PS_SCENE_RENDER_LAYER_UI, PS_SCENE_RENDER_STYLE_NONE,
-          PS_SCENE_RENDER_ANIMATION_CURSOR, 1UL, 8U, 43U, 8U, 16U }
-      },
-      .waiting_sequence_step_count = 6UL,
-      .waiting_marker_enabled = 1UL
-    },
-    {
-      .visual_binding_id = PS_SCENE_RUNTIME_DEMO_VISUAL_2_ID,
-      .element_count = 8UL,
-      .elements =
-      {
-        { 1UL, PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT, 0UL,
-          PS_SCENE_RENDER_LAYER_BACKGROUND, PS_SCENE_RENDER_STYLE_NONE,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 0U, 0U, 168U, 144U },
-        { 2UL, PS_SCENE_RENDER_ELEMENT_HORIZONTAL_LINE, 0UL,
-          PS_SCENE_RENDER_LAYER_UI, PS_SCENE_RENDER_STYLE_NONE,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 8U, 27U, 152U, 1U },
-        { 3UL, PS_SCENE_RENDER_ELEMENT_TEXT,
-          PS_SCENE_RENDER_TEXT_STATE_SCENE, PS_SCENE_RENDER_LAYER_UI,
-          PS_SCENE_RENDER_STYLE_TEXT_2X_CENTER,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 0U, 7U, 168U, 14U },
-        { 4UL, PS_SCENE_RENDER_ELEMENT_TEXT,
-          PS_SCENE_RENDER_TEXT_STATE_1, PS_SCENE_RENDER_LAYER_SCENE,
-          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 43U, 120U, 14U },
-        { 5UL, PS_SCENE_RENDER_ELEMENT_TEXT,
-          PS_SCENE_RENDER_TEXT_STATE_2, PS_SCENE_RENDER_LAYER_SCENE,
-          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 73U, 120U, 14U },
-        { 6UL, PS_SCENE_RENDER_ELEMENT_TEXT,
-          PS_SCENE_RENDER_TEXT_STATE_3, PS_SCENE_RENDER_LAYER_SCENE,
-          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 103U, 120U, 14U },
-        { 7UL, PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP,
-          PS_SCENE_RENDER_SPRITE_DIAMOND, PS_SCENE_RENDER_LAYER_OVERLAY,
-          PS_SCENE_RENDER_STYLE_NONE, PS_SCENE_RENDER_ANIMATION_NONE,
-          1UL, 150U, 9U, 8U, 8U },
-        { 8UL, PS_SCENE_RENDER_ELEMENT_FOCUS, 0UL,
-          PS_SCENE_RENDER_LAYER_UI, PS_SCENE_RENDER_STYLE_NONE,
-          PS_SCENE_RENDER_ANIMATION_CURSOR, 1UL, 8U, 73U, 8U, 16U }
-      },
-      .waiting_sequence_step_count = 6UL,
-      .waiting_marker_enabled = 1UL
-    },
-    {
-      .visual_binding_id = PS_SCENE_RUNTIME_DEMO_VISUAL_3_ID,
-      .element_count = 8UL,
-      .elements =
-      {
-        { 1UL, PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT, 0UL,
-          PS_SCENE_RENDER_LAYER_BACKGROUND, PS_SCENE_RENDER_STYLE_NONE,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 0U, 0U, 168U, 144U },
-        { 2UL, PS_SCENE_RENDER_ELEMENT_HORIZONTAL_LINE, 0UL,
-          PS_SCENE_RENDER_LAYER_UI, PS_SCENE_RENDER_STYLE_NONE,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 8U, 27U, 152U, 1U },
-        { 3UL, PS_SCENE_RENDER_ELEMENT_TEXT,
-          PS_SCENE_RENDER_TEXT_STATE_SCENE, PS_SCENE_RENDER_LAYER_UI,
-          PS_SCENE_RENDER_STYLE_TEXT_2X_CENTER,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 0U, 7U, 168U, 14U },
-        { 4UL, PS_SCENE_RENDER_ELEMENT_TEXT,
-          PS_SCENE_RENDER_TEXT_STATE_1, PS_SCENE_RENDER_LAYER_SCENE,
-          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 43U, 120U, 14U },
-        { 5UL, PS_SCENE_RENDER_ELEMENT_TEXT,
-          PS_SCENE_RENDER_TEXT_STATE_2, PS_SCENE_RENDER_LAYER_SCENE,
-          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 73U, 120U, 14U },
-        { 6UL, PS_SCENE_RENDER_ELEMENT_TEXT,
-          PS_SCENE_RENDER_TEXT_STATE_3, PS_SCENE_RENDER_LAYER_SCENE,
-          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
-          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 103U, 120U, 14U },
-        { 7UL, PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP,
-          PS_SCENE_RENDER_SPRITE_DIAMOND, PS_SCENE_RENDER_LAYER_OVERLAY,
-          PS_SCENE_RENDER_STYLE_NONE, PS_SCENE_RENDER_ANIMATION_NONE,
-          1UL, 150U, 9U, 8U, 8U },
-        { 8UL, PS_SCENE_RENDER_ELEMENT_FOCUS, 0UL,
-          PS_SCENE_RENDER_LAYER_UI, PS_SCENE_RENDER_STYLE_NONE,
-          PS_SCENE_RENDER_ANIMATION_CURSOR, 1UL, 8U, 103U, 8U, 16U }
-      },
-      .waiting_sequence_step_count = 6UL,
-      .waiting_marker_enabled = 1UL
-    }
-  },
-  .input_routes =
-  {
-    { PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS, PS_INPUT_BUTTON_ID_L,
-      PS_SCENE_RUNTIME_DEMO_EVENT_PREVIOUS },
-    { PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS, PS_INPUT_BUTTON_ID_R,
-      PS_SCENE_RUNTIME_DEMO_EVENT_NEXT }
-  },
-  .variables =
-  {
-    { PS_SCENE_RUNTIME_DEMO_VARIABLE_STATE,
-      PS_SCENE_RUNTIME_VALUE_S32, 0 }
-  },
-  .guards =
-  {
-    { PS_SCENE_RUNTIME_DEMO_VARIABLE_STATE,
-      PS_SCENE_RUNTIME_COMPARE_EQ, 0 },
-    { PS_SCENE_RUNTIME_DEMO_VARIABLE_STATE,
-      PS_SCENE_RUNTIME_COMPARE_EQ, 0 },
-    { PS_SCENE_RUNTIME_DEMO_VARIABLE_STATE,
-      PS_SCENE_RUNTIME_COMPARE_EQ, 1 },
-    { PS_SCENE_RUNTIME_DEMO_VARIABLE_STATE,
-      PS_SCENE_RUNTIME_COMPARE_EQ, 1 },
-    { PS_SCENE_RUNTIME_DEMO_VARIABLE_STATE,
-      PS_SCENE_RUNTIME_COMPARE_EQ, 2 },
-    { PS_SCENE_RUNTIME_DEMO_VARIABLE_STATE,
-      PS_SCENE_RUNTIME_COMPARE_EQ, 2 }
-  },
-  .actions =
-  {
-    { PS_SCENE_RUNTIME_DEMO_VARIABLE_STATE,
-      PS_SCENE_RUNTIME_MUTATION_SET, 2 },
-    { PS_SCENE_RUNTIME_DEMO_VARIABLE_STATE,
-      PS_SCENE_RUNTIME_MUTATION_ADD, 1 },
-    { PS_SCENE_RUNTIME_DEMO_VARIABLE_STATE,
-      PS_SCENE_RUNTIME_MUTATION_SUBTRACT, 1 },
-    { PS_SCENE_RUNTIME_DEMO_VARIABLE_STATE,
-      PS_SCENE_RUNTIME_MUTATION_ADD, 1 },
-    { PS_SCENE_RUNTIME_DEMO_VARIABLE_STATE,
-      PS_SCENE_RUNTIME_MUTATION_SUBTRACT, 1 },
-    { PS_SCENE_RUNTIME_DEMO_VARIABLE_STATE,
-      PS_SCENE_RUNTIME_MUTATION_SET, 0 }
-  },
-  .transitions =
-  {
-    { 1UL, PS_SCENE_RUNTIME_DEMO_STATE_1_ID,
-      PS_SCENE_RUNTIME_DEMO_EVENT_PREVIOUS, 0UL, 1UL, 0UL, 1UL,
-      PS_SCENE_RUNTIME_DEMO_STATE_3_ID },
-    { 2UL, PS_SCENE_RUNTIME_DEMO_STATE_1_ID,
-      PS_SCENE_RUNTIME_DEMO_EVENT_NEXT, 1UL, 1UL, 1UL, 1UL,
-      PS_SCENE_RUNTIME_DEMO_STATE_2_ID },
-    { 3UL, PS_SCENE_RUNTIME_DEMO_STATE_2_ID,
-      PS_SCENE_RUNTIME_DEMO_EVENT_PREVIOUS, 2UL, 1UL, 2UL, 1UL,
-      PS_SCENE_RUNTIME_DEMO_STATE_1_ID },
-    { 4UL, PS_SCENE_RUNTIME_DEMO_STATE_2_ID,
-      PS_SCENE_RUNTIME_DEMO_EVENT_NEXT, 3UL, 1UL, 3UL, 1UL,
-      PS_SCENE_RUNTIME_DEMO_STATE_3_ID },
-    { 5UL, PS_SCENE_RUNTIME_DEMO_STATE_3_ID,
-      PS_SCENE_RUNTIME_DEMO_EVENT_PREVIOUS, 4UL, 1UL, 4UL, 1UL,
-      PS_SCENE_RUNTIME_DEMO_STATE_2_ID },
-    { 6UL, PS_SCENE_RUNTIME_DEMO_STATE_3_ID,
-      PS_SCENE_RUNTIME_DEMO_EVENT_NEXT, 5UL, 1UL, 5UL, 1UL,
-      PS_SCENE_RUNTIME_DEMO_STATE_1_ID }
-  }
-};
+
+static ps_scene_runtime_state_scene_t s_ps_scene_runtime_state_scene;
 
 volatile uint32_t g_ps_scene_runtime_waiting_demo_enable;
 volatile ps_scene_runtime_probe_t g_ps_scene_runtime_probe =
@@ -397,9 +187,14 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
     if ((binding->visual_binding_id == 0UL) ||
         (binding->element_count == 0UL) ||
         (binding->element_count > PS_SCENE_RENDER_MODEL_ELEMENT_MAX) ||
-        (binding->waiting_sequence_step_count == 0UL) ||
-        (binding->waiting_sequence_step_count >
-         PS_SCENE_WAITING_VISUAL_SEQUENCE_MAX))
+        (binding->waiting_visual.api_version !=
+         PS_SCENE_WAITING_VISUAL_API_VERSION) ||
+        (binding->waiting_visual.sequence_step_count == 0UL) ||
+        (binding->waiting_visual.sequence_step_count >
+         PS_SCENE_WAITING_VISUAL_SEQUENCE_MAX) ||
+        (binding->waiting_visual.element_count == 0UL) ||
+        (binding->waiting_visual.element_count >
+         PS_SCENE_WAITING_VISUAL_ELEMENT_MAX))
     {
       return 1UL;
     }
@@ -807,6 +602,14 @@ uint32_t PS_SceneRuntime_EnterStateScene(void)
 
   g_ps_scene_runtime_probe.enter_count++;
   g_ps_scene_runtime_probe.last_status = PS_SCENE_RUNTIME_STATUS_NOT_RUN;
+  if (PS_EggStateLoader_LoadEmbedded(
+        &s_ps_scene_runtime_state_scene) != 0UL)
+  {
+    g_ps_scene_runtime_probe.reject_count++;
+    g_ps_scene_runtime_probe.active = 0UL;
+    g_ps_scene_runtime_probe.last_status = 1UL;
+    return PS_SCENE_RUNTIME_INDEX_INVALID;
+  }
   if (PS_SceneRuntime_ValidateStateScene(
         &s_ps_scene_runtime_state_scene) != 0UL)
   {
@@ -936,8 +739,9 @@ const ps_scene_render_model_t *PS_SceneRuntime_ResolveStateSceneRenderModel(
     }
   }
   model->waiting_sequence_step_count =
-    binding->waiting_sequence_step_count;
-  model->waiting_marker_enabled = binding->waiting_marker_enabled;
+    binding->waiting_visual.sequence_step_count;
+  model->waiting_marker_enabled =
+    (binding->waiting_visual.element_count > 1UL) ? 1UL : 0UL;
 
   g_ps_scene_runtime_probe.render_model_scene_id = model->scene_id;
   g_ps_scene_runtime_probe.render_model_state_id = model->state_id;
@@ -1052,6 +856,12 @@ const ps_scene_waiting_visual_t *PS_SceneRuntime_ResolveStateSceneWaitingVisual(
   const ps_scene_render_model_t *model,
   const ps_scene_waiting_visual_bounds_t *cursor_bounds)
 {
+  const ps_scene_runtime_state_scene_t *scene =
+    &s_ps_scene_runtime_state_scene;
+  const ps_scene_runtime_visual_binding_t *binding;
+  uint32_t binding_index;
+  uint32_t element_index;
+
   g_ps_scene_runtime_probe.resolve_count++;
   g_ps_scene_runtime_probe.last_status = PS_SCENE_RUNTIME_STATUS_NOT_RUN;
   if ((model == NULL) ||
@@ -1073,11 +883,36 @@ const ps_scene_waiting_visual_t *PS_SceneRuntime_ResolveStateSceneWaitingVisual(
     g_ps_scene_runtime_probe.last_status = 1UL;
     return NULL;
   }
-
-  return PS_SceneRuntime_BuildWaitingVisual(
-    PS_SCENE_RUNTIME_PRESENTATION_STATE_BASE |
-      (model->timeline_revision & 0x00FFFFFFUL),
-    model->waiting_sequence_step_count,
-    model->waiting_marker_enabled,
-    cursor_bounds);
+  binding_index = PS_SceneRuntime_FindVisualBindingIndex(
+    scene, model->visual_binding_id);
+  if ((binding_index == PS_SCENE_RUNTIME_INDEX_INVALID) ||
+      (cursor_bounds == NULL))
+  {
+    g_ps_scene_runtime_probe.reject_count++;
+    g_ps_scene_runtime_probe.last_status = 1UL;
+    return NULL;
+  }
+  binding = &scene->visual_bindings[binding_index];
+  (void)memcpy(&s_ps_scene_runtime_waiting_visual,
+               &binding->waiting_visual,
+               sizeof(s_ps_scene_runtime_waiting_visual));
+  for (element_index = 0UL;
+       element_index < s_ps_scene_runtime_waiting_visual.element_count;
+       ++element_index)
+  {
+    if (s_ps_scene_runtime_waiting_visual.elements[element_index].
+          visual_source_id == PS_SCENE_WAITING_VISUAL_SOURCE_SHELL_CURSOR)
+    {
+      s_ps_scene_runtime_waiting_visual.elements[element_index].logical_bounds =
+        *cursor_bounds;
+    }
+  }
+  g_ps_scene_runtime_probe.presentation_id =
+    s_ps_scene_runtime_waiting_visual.presentation_id;
+  g_ps_scene_runtime_probe.sequence_step_count =
+    s_ps_scene_runtime_waiting_visual.sequence_step_count;
+  g_ps_scene_runtime_probe.element_count =
+    s_ps_scene_runtime_waiting_visual.element_count;
+  g_ps_scene_runtime_probe.last_status = 0UL;
+  return &s_ps_scene_runtime_waiting_visual;
 }

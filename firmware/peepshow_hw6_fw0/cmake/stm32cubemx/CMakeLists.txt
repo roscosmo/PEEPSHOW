@@ -79,6 +79,8 @@ target_sources(stm32cubemx INTERFACE
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_lptim.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_spi.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_spi_ex.c
+    ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_hash.c
+    ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_hash_ex.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_uart.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_uart_ex.c
     ../../Drivers/STM32U5xx_HAL_Driver/Src/stm32u5xx_hal_ospi.c

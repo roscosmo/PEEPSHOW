@@ -106,3 +106,24 @@ generation.
 - authored arrays with semantic priority retain source order
 - all padding and reserved fields are zero
 - identical validated semantic input produces identical package bytes
+
+## HW6 Embedded Vertical-Slice Profile
+
+Before external-flash installation is connected, FW0 embeds compiler output as
+an immutable byte array and runs the same container checks before decoding it.
+This is a transport substitution only: the bytes remain a complete `.egg` and
+the firmware does not use a parallel C scene descriptor.
+
+The first target profile deliberately accepts one entry `STATE_SCENE` and the
+current fixed runtime capacities. It validates the header CRC, package SHA-256,
+chunk bounds and CRCs, manifest, scene references, graph records, retained
+render records, and waiting-visual records before exposing the decoded scene to
+`thRuntime`. Unsupported records reject package admission; they are not partly
+executed or silently approximated.
+
+The current render adapter admits the named `cursor_outline`, `marker_outline`,
+and `diamond` primitives only. Cursor and marker phase references must use the
+corresponding V1 names emitted by the example project. A `request_render`
+operation is consumed by the atomic scene-transition commit because that commit
+already schedules the retained render model; variable mutations remain explicit
+runtime actions.

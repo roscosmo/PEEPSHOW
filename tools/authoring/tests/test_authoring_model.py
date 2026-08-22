@@ -15,7 +15,12 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(TOOL_ROOT))
 
 from peepshow_authoring.project import load_project  # noqa: E402
-from peepshow_authoring.compiler import EggCompileError, build_egg, write_egg  # noqa: E402
+from peepshow_authoring.compiler import (  # noqa: E402
+    EggCompileError,
+    build_egg,
+    write_egg,
+    write_embedded_egg_c,
+)
 from peepshow_authoring.egg_format import (  # noqa: E402
     CHUNK_ENTRY,
     FOOTER,
@@ -26,6 +31,14 @@ from peepshow_authoring.egg_format import (  # noqa: E402
 
 
 SAMPLE = WORKSPACE_ROOT / "examples" / "authoring" / "state_slice.peepproj"
+EMBEDDED_SAMPLE = (
+    WORKSPACE_ROOT
+    / "firmware"
+    / "peepshow_hw6_fw0"
+    / "Core"
+    / "Src"
+    / "ps_embedded_egg_autogen.c"
+)
 
 
 def resign_package(blob: bytearray) -> None:
@@ -167,6 +180,40 @@ class AuthoringModelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             with self.assertRaises(EggCompileError):
                 write_egg(bundle, Path(temp_dir) / "state_slice.bin")
+
+    def test_embedded_c_is_deterministic_and_contains_exact_blob(self) -> None:
+        bundle = load_project(SAMPLE)
+        blob = build_egg(bundle)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            first = write_embedded_egg_c(bundle, Path(temp_dir) / "first.c")
+            second = write_embedded_egg_c(bundle, Path(temp_dir) / "second.c")
+            first_text = first.read_text(encoding="ascii")
+            second_text = second.read_text(encoding="ascii")
+        self.assertEqual(first_text, second_text)
+        encoded = bytes(
+            int(token[2:4], 16)
+            for token in first_text.replace(",", " ").split()
+            if token.startswith("0x")
+        )
+        self.assertEqual(blob, encoded)
+
+    def test_embedded_c_rejects_invalid_symbol(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaises(EggCompileError):
+                write_embedded_egg_c(
+                    load_project(SAMPLE),
+                    Path(temp_dir) / "bad.c",
+                    "not-valid",
+                )
+
+    def test_committed_embedded_package_is_current(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            generated = write_embedded_egg_c(
+                load_project(SAMPLE),
+                Path(temp_dir) / "embedded.c",
+            )
+            expected = generated.read_text(encoding="ascii")
+        self.assertEqual(expected, EMBEDDED_SAMPLE.read_text(encoding="ascii"))
 
 
 if __name__ == "__main__":

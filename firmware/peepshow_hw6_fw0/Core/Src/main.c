@@ -381,6 +381,8 @@ typedef struct
 
 /* Private variables ---------------------------------------------------------*/
 
+HASH_HandleTypeDef hhash;
+
 I2C_HandleTypeDef hi2c3;
 
 LPTIM_HandleTypeDef hlptim1;
@@ -418,6 +420,7 @@ void SystemClock_Config(void);
 void PeriphCommonClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_LPDMA1_Init(void);
+static void MX_HASH_Init(void);
 /* USER CODE BEGIN PFP */
 static uint32_t PS_HW6_FW0_ReadOutputMask(void);
 static void PS_HW6_FW0_RecordError(uint32_t phase, uint32_t code);
@@ -1605,6 +1608,7 @@ int main(void)
   MX_LPTIM1_Init();
   MX_SPI3_Init();
   MX_USB_OTG_FS_PCD_Init();
+  MX_HASH_Init();
   /* USER CODE BEGIN 2 */
   /* Keep OTG FS IRQ masked until the storage owner explicitly exports MSC. */
   HAL_NVIC_DisableIRQ(OTG_FS_IRQn);
@@ -1766,6 +1770,32 @@ void MX_GPDMA1_Init(void)
   /* USER CODE BEGIN GPDMA1_Init 2 */
 
   /* USER CODE END GPDMA1_Init 2 */
+
+}
+
+/**
+  * @brief HASH Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_HASH_Init(void)
+{
+
+  /* USER CODE BEGIN HASH_Init 0 */
+
+  /* USER CODE END HASH_Init 0 */
+
+  /* USER CODE BEGIN HASH_Init 1 */
+
+  /* USER CODE END HASH_Init 1 */
+  hhash.Init.DataType = HASH_DATATYPE_8B;
+  if (HAL_HASH_Init(&hhash) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN HASH_Init 2 */
+
+  /* USER CODE END HASH_Init 2 */
 
 }
 

@@ -83,8 +83,11 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/ps_dev_lis2dux12.c
     Core/Src/ps_dev_tmag3001.c
     Core/Src/ps_hw_i2c3.c
+    Core/Src/ps_hw6_hash.c
     Core/Src/ps_input_buttons.c
     Core/Src/ps_input_joystick.c
+    Core/Src/ps_embedded_egg_autogen.c
+    Core/Src/ps_egg_state_loader.c
     Core/Src/ps_scene_runtime.c
     Core/Src/ps_ui_router.c
     Core/Src/ps_hw6_trace.c

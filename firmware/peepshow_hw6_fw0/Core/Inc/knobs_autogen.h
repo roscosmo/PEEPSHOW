@@ -66,5 +66,6 @@
 #define KNOB_RTOS_INPUT_STACK_BYTES                (1536)
 #define KNOB_RTOS_POWER_STACK_BYTES                (4096)
 #define KNOB_RTOS_STORAGE_STACK_BYTES              (2048)
+#define KNOB_RUNTIME_EGG_HASH_TIMEOUT_MS           (100)
 
 #endif /* KNOBS_AUTOGEN_H */
