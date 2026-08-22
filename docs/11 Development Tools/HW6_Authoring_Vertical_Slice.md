@@ -7,9 +7,11 @@ Implementation status: `partial`
 The V1 `.peepproj` STATE subset, semantic validator, normalized intermediate,
 deterministic binary `.egg` compiler, independent host package reader, and the
 first bounded HW6 embedded-package STATE decoder are implemented. The embedded
-reader is pending target validation. External-flash installation and activation,
-target-profile closure, visual editor surfaces, SEQUENCE, PROGRAM, and end-to-end
-HW6 evidence remain open.
+reader, hardware SHA-256 integrity path, sparse retained STATE scene, mixed
+2-phase/3-phase waiting visuals, STOP2 continuity, and input transitions have
+passed initial target validation. External-flash installation and activation,
+target-profile closure, authoring preview/editor surfaces, SEQUENCE, PROGRAM,
+and end-to-end HW6 evidence remain open.
 
 Target status: `HW6_PENDING_VALIDATION` until measured HW6 evidence is frozen into a shipping-authoritative target profile.
 
@@ -18,6 +20,7 @@ This document defines the first end-to-end proof of the PeepShow game-authoring 
 Related:
 
 - [[Development_Tooling_Index]]
+- [[Authoring_Tool_Architecture]]
 - [[Authoring_Project_Schema_Contract]]
 - [[Game_Authoring_API_Contract]]
 - [[Package_Contract]]
@@ -412,7 +415,7 @@ The first vertical slice does not include:
 - multiplayer
 - a complete audio sequencer
 - an Authoring Kit marketplace
-- a full digital twin
+- a measured HW6 digital twin beyond the initial authoring preview
 - final editor visual design
 - production firmware update or bootloader work
 
@@ -429,10 +432,10 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
 5. implement `STATE_SCENE` bounded event/guard/action execution, wait contracts, scene transitions inside one mounted package, and namespace-backed variables
 6. implement mandatory `ACTIVE`/`INACTIVE` interaction state, RTC-backed inactivity, declared inactive routes, and target-owned activation gestures; HW6 starts with Start while the policy remains button/chord capable
 7. implement the headless project loader, normalized model, validator, deterministic package compiler, and compiler-derived capability closure for the state-scene slice
-8. implement the digital-twin preview against the same normalized/compiled scene and presentation semantics
-9. implement `SEQUENCE_SCENE`, then `PROGRAM_SCENE`, with realtime budgets, input routes, suspend/resume behavior, and required state-scene/shell routes
-10. measure representative reactive and realtime workloads, then admit intermediate PLL/clock operating points one at a time behind Platform capability resolution; packages continue to request semantics and deadlines, never MHz
-11. implement only the editor surfaces needed to author this package
-12. build, install, and run the package against the validated HW6 profile, then capture and review the complete power evidence matrix
+8. implement `HOST_AUTHORING_PREVIEW` against the same normalized/compiled scene and presentation semantics using [[Authoring_Tool_Architecture]]; do not label it HW6 evidence
+9. implement only the Electron/React surfaces needed to author, preview, validate, and build the STATE portion of this package, with the Python service remaining authoritative
+10. install and run the authored STATE package against HW6 so editor iteration no longer requires embedding package bytes in firmware
+11. implement `SEQUENCE_SCENE`, then `PROGRAM_SCENE`, with realtime budgets, input routes, suspend/resume behavior, and required state-scene/shell routes; extend the same editor architecture for each type
+12. measure representative reactive and realtime workloads, admit intermediate PLL/clock operating points one at a time behind Platform capability resolution, then capture and review the complete power evidence matrix; packages continue to request semantics and deadlines, never MHz
 
 The slice is not complete merely because the game appears on the display. Completion requires the full author-to-package-to-device path and the associated HW6 evidence.

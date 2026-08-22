@@ -7,6 +7,7 @@ Development tools support bring-up, package authoring, telemetry, live-safe Plat
 ## Core Notes
 
 - [[Dev_Orchestration_CLI_Contract]]
+- [[Authoring_Tool_Architecture]]
 - [[Authoring_Project_Schema_Contract]]
 - [[HW6_Authoring_Vertical_Slice]]
 - [[USB_Development_Mode_Contract]]
@@ -34,6 +35,9 @@ Development tooling is split into four lanes:
 The recommended host entry point for routine workflows is [[Dev_Orchestration_CLI_Contract]].
 
 Visual authoring tools should use [[Authoring_Project_Schema_Contract]] as their editable source model and [[Asset_Pipeline_and_Package_Tooling_Contract]] as the package build boundary.
+
+The V1 desktop process, UI, Python service, authoring preview, and package-build
+boundaries are defined by [[Authoring_Tool_Architecture]].
 
 The first concrete authoring acceptance path is [[HW6_Authoring_Vertical_Slice]]. It proves one authored Reference Game package from project source through deterministic compilation, installation, runtime transitions, and measured HW6 power evidence.
 

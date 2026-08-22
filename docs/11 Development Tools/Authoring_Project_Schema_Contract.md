@@ -7,6 +7,7 @@ The authoring project is the GUI/tool-owned source of truth for content creation
 Related:
 
 - [[Development_Tooling_Index]]
+- [[Authoring_Tool_Architecture]]
 - [[Game_Authoring_API_Contract]]
 - [[Runtime_Logic_State_API_Contract]]
 - [[Scene_Runtime_and_Interaction_Model]]
@@ -837,15 +838,17 @@ Rules:
 
 ## Technology Guidance
 
-The schema does not require a specific GUI framework.
+The schema remains independent of the GUI framework. The accepted V1 process,
+technology, preview, and editor boundaries are defined by
+[[Authoring_Tool_Architecture]].
 
-Recommended direction for the visual editor:
+The visual editor uses a modern reactive UI, typed source models, a graph view
+over node/edge semantic records, and schema-driven property inspectors. The UI
+is a client of the headless toolchain; it is not a second compiler.
 
-- modern reactive UI
-- typed source models
-- graph editor with node/edge data model
-- property inspector driven from schema metadata
-- preview runtime isolated from package compiler
+The authoring preview is isolated from compiler implementation state, but it
+must consume normalized or temporarily compiled semantics produced through the
+same authoritative Python toolchain used for `.egg` export.
 
 Python remains appropriate for:
 

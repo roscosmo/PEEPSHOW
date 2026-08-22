@@ -5,6 +5,7 @@ This document defines how external tools produce package content for runtime hos
 Related:
 
 - [[Game_Authoring_API_Contract]]
+- [[Authoring_Tool_Architecture]]
 - [[Authoring_Project_Schema_Contract]]
 - [[Content_Parameter_Schema_Contract]]
 - [[Target_Profile_Schema_Contract]]
