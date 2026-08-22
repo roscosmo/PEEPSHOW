@@ -50,34 +50,118 @@ static const ps_scene_runtime_state_scene_t s_ps_scene_runtime_state_scene =
   .visual_bindings =
   {
     {
-      PS_SCENE_RUNTIME_DEMO_VISUAL_1_ID,
-      PS_SCENE_RENDER_TEXT_STATE_SCENE,
-      3UL,
-      { PS_SCENE_RENDER_TEXT_STATE_1,
-        PS_SCENE_RENDER_TEXT_STATE_2,
-        PS_SCENE_RENDER_TEXT_STATE_3 },
-      6UL,
-      1UL
+      .visual_binding_id = PS_SCENE_RUNTIME_DEMO_VISUAL_1_ID,
+      .element_count = 8UL,
+      .elements =
+      {
+        { 1UL, PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT, 0UL,
+          PS_SCENE_RENDER_LAYER_BACKGROUND, PS_SCENE_RENDER_STYLE_NONE,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 0U, 0U, 168U, 144U },
+        { 2UL, PS_SCENE_RENDER_ELEMENT_HORIZONTAL_LINE, 0UL,
+          PS_SCENE_RENDER_LAYER_UI, PS_SCENE_RENDER_STYLE_NONE,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 8U, 27U, 152U, 1U },
+        { 3UL, PS_SCENE_RENDER_ELEMENT_TEXT,
+          PS_SCENE_RENDER_TEXT_STATE_SCENE, PS_SCENE_RENDER_LAYER_UI,
+          PS_SCENE_RENDER_STYLE_TEXT_2X_CENTER,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 0U, 7U, 168U, 14U },
+        { 4UL, PS_SCENE_RENDER_ELEMENT_TEXT,
+          PS_SCENE_RENDER_TEXT_STATE_1, PS_SCENE_RENDER_LAYER_SCENE,
+          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 43U, 120U, 14U },
+        { 5UL, PS_SCENE_RENDER_ELEMENT_TEXT,
+          PS_SCENE_RENDER_TEXT_STATE_2, PS_SCENE_RENDER_LAYER_SCENE,
+          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 73U, 120U, 14U },
+        { 6UL, PS_SCENE_RENDER_ELEMENT_TEXT,
+          PS_SCENE_RENDER_TEXT_STATE_3, PS_SCENE_RENDER_LAYER_SCENE,
+          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 103U, 120U, 14U },
+        { 7UL, PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP,
+          PS_SCENE_RENDER_SPRITE_DIAMOND, PS_SCENE_RENDER_LAYER_OVERLAY,
+          PS_SCENE_RENDER_STYLE_NONE, PS_SCENE_RENDER_ANIMATION_NONE,
+          1UL, 150U, 9U, 8U, 8U },
+        { 8UL, PS_SCENE_RENDER_ELEMENT_FOCUS, 0UL,
+          PS_SCENE_RENDER_LAYER_UI, PS_SCENE_RENDER_STYLE_NONE,
+          PS_SCENE_RENDER_ANIMATION_CURSOR, 1UL, 8U, 43U, 8U, 16U }
+      },
+      .waiting_sequence_step_count = 6UL,
+      .waiting_marker_enabled = 1UL
     },
     {
-      PS_SCENE_RUNTIME_DEMO_VISUAL_2_ID,
-      PS_SCENE_RENDER_TEXT_STATE_SCENE,
-      3UL,
-      { PS_SCENE_RENDER_TEXT_STATE_1,
-        PS_SCENE_RENDER_TEXT_STATE_2,
-        PS_SCENE_RENDER_TEXT_STATE_3 },
-      6UL,
-      1UL
+      .visual_binding_id = PS_SCENE_RUNTIME_DEMO_VISUAL_2_ID,
+      .element_count = 8UL,
+      .elements =
+      {
+        { 1UL, PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT, 0UL,
+          PS_SCENE_RENDER_LAYER_BACKGROUND, PS_SCENE_RENDER_STYLE_NONE,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 0U, 0U, 168U, 144U },
+        { 2UL, PS_SCENE_RENDER_ELEMENT_HORIZONTAL_LINE, 0UL,
+          PS_SCENE_RENDER_LAYER_UI, PS_SCENE_RENDER_STYLE_NONE,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 8U, 27U, 152U, 1U },
+        { 3UL, PS_SCENE_RENDER_ELEMENT_TEXT,
+          PS_SCENE_RENDER_TEXT_STATE_SCENE, PS_SCENE_RENDER_LAYER_UI,
+          PS_SCENE_RENDER_STYLE_TEXT_2X_CENTER,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 0U, 7U, 168U, 14U },
+        { 4UL, PS_SCENE_RENDER_ELEMENT_TEXT,
+          PS_SCENE_RENDER_TEXT_STATE_1, PS_SCENE_RENDER_LAYER_SCENE,
+          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 43U, 120U, 14U },
+        { 5UL, PS_SCENE_RENDER_ELEMENT_TEXT,
+          PS_SCENE_RENDER_TEXT_STATE_2, PS_SCENE_RENDER_LAYER_SCENE,
+          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 73U, 120U, 14U },
+        { 6UL, PS_SCENE_RENDER_ELEMENT_TEXT,
+          PS_SCENE_RENDER_TEXT_STATE_3, PS_SCENE_RENDER_LAYER_SCENE,
+          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 103U, 120U, 14U },
+        { 7UL, PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP,
+          PS_SCENE_RENDER_SPRITE_DIAMOND, PS_SCENE_RENDER_LAYER_OVERLAY,
+          PS_SCENE_RENDER_STYLE_NONE, PS_SCENE_RENDER_ANIMATION_NONE,
+          1UL, 150U, 9U, 8U, 8U },
+        { 8UL, PS_SCENE_RENDER_ELEMENT_FOCUS, 0UL,
+          PS_SCENE_RENDER_LAYER_UI, PS_SCENE_RENDER_STYLE_NONE,
+          PS_SCENE_RENDER_ANIMATION_CURSOR, 1UL, 8U, 73U, 8U, 16U }
+      },
+      .waiting_sequence_step_count = 6UL,
+      .waiting_marker_enabled = 1UL
     },
     {
-      PS_SCENE_RUNTIME_DEMO_VISUAL_3_ID,
-      PS_SCENE_RENDER_TEXT_STATE_SCENE,
-      3UL,
-      { PS_SCENE_RENDER_TEXT_STATE_1,
-        PS_SCENE_RENDER_TEXT_STATE_2,
-        PS_SCENE_RENDER_TEXT_STATE_3 },
-      6UL,
-      1UL
+      .visual_binding_id = PS_SCENE_RUNTIME_DEMO_VISUAL_3_ID,
+      .element_count = 8UL,
+      .elements =
+      {
+        { 1UL, PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT, 0UL,
+          PS_SCENE_RENDER_LAYER_BACKGROUND, PS_SCENE_RENDER_STYLE_NONE,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 0U, 0U, 168U, 144U },
+        { 2UL, PS_SCENE_RENDER_ELEMENT_HORIZONTAL_LINE, 0UL,
+          PS_SCENE_RENDER_LAYER_UI, PS_SCENE_RENDER_STYLE_NONE,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 8U, 27U, 152U, 1U },
+        { 3UL, PS_SCENE_RENDER_ELEMENT_TEXT,
+          PS_SCENE_RENDER_TEXT_STATE_SCENE, PS_SCENE_RENDER_LAYER_UI,
+          PS_SCENE_RENDER_STYLE_TEXT_2X_CENTER,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 0U, 7U, 168U, 14U },
+        { 4UL, PS_SCENE_RENDER_ELEMENT_TEXT,
+          PS_SCENE_RENDER_TEXT_STATE_1, PS_SCENE_RENDER_LAYER_SCENE,
+          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 43U, 120U, 14U },
+        { 5UL, PS_SCENE_RENDER_ELEMENT_TEXT,
+          PS_SCENE_RENDER_TEXT_STATE_2, PS_SCENE_RENDER_LAYER_SCENE,
+          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 73U, 120U, 14U },
+        { 6UL, PS_SCENE_RENDER_ELEMENT_TEXT,
+          PS_SCENE_RENDER_TEXT_STATE_3, PS_SCENE_RENDER_LAYER_SCENE,
+          PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT,
+          PS_SCENE_RENDER_ANIMATION_NONE, 1UL, 26U, 103U, 120U, 14U },
+        { 7UL, PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP,
+          PS_SCENE_RENDER_SPRITE_DIAMOND, PS_SCENE_RENDER_LAYER_OVERLAY,
+          PS_SCENE_RENDER_STYLE_NONE, PS_SCENE_RENDER_ANIMATION_NONE,
+          1UL, 150U, 9U, 8U, 8U },
+        { 8UL, PS_SCENE_RENDER_ELEMENT_FOCUS, 0UL,
+          PS_SCENE_RENDER_LAYER_UI, PS_SCENE_RENDER_STYLE_NONE,
+          PS_SCENE_RENDER_ANIMATION_CURSOR, 1UL, 8U, 103U, 8U, 16U }
+      },
+      .waiting_sequence_step_count = 6UL,
+      .waiting_marker_enabled = 1UL
     }
   },
   .input_routes =
@@ -210,6 +294,45 @@ static uint32_t PS_SceneRuntime_RangeValid(uint32_t first,
   return ((first <= total) && (count <= (total - first))) ? 1UL : 0UL;
 }
 
+static uint32_t PS_SceneRuntime_RenderElementValid(
+  const ps_scene_render_element_t *element)
+{
+  uint32_t x_end;
+  uint32_t y_end;
+
+  if ((element == NULL) || (element->element_id == 0UL) ||
+      (element->type <= PS_SCENE_RENDER_ELEMENT_NONE) ||
+      (element->type > PS_SCENE_RENDER_ELEMENT_FOCUS) ||
+      (element->layer >= PS_SCENE_RENDER_LAYER_COUNT) ||
+      (element->visible > 1UL) ||
+      (element->width == 0U) || (element->height == 0U))
+  {
+    return 0UL;
+  }
+  x_end = (uint32_t)element->x + (uint32_t)element->width;
+  y_end = (uint32_t)element->y + (uint32_t)element->height;
+  if ((x_end > PS_SCENE_RENDER_CANVAS_WIDTH) ||
+      (y_end > PS_SCENE_RENDER_CANVAS_HEIGHT))
+  {
+    return 0UL;
+  }
+
+  if (element->type == PS_SCENE_RENDER_ELEMENT_TEXT)
+  {
+    return ((element->asset_id != 0UL) &&
+            ((element->style_id == PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT) ||
+             (element->style_id ==
+              PS_SCENE_RENDER_STYLE_TEXT_2X_CENTER))) ? 1UL : 0UL;
+  }
+  if (element->type == PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP)
+  {
+    return ((element->asset_id != 0UL) &&
+            (element->style_id == PS_SCENE_RENDER_STYLE_NONE)) ? 1UL : 0UL;
+  }
+  return ((element->asset_id == 0UL) &&
+          (element->style_id == PS_SCENE_RENDER_STYLE_NONE)) ? 1UL : 0UL;
+}
+
 static uint32_t PS_SceneRuntime_ValidateStateScene(
   const ps_scene_runtime_state_scene_t *scene)
 {
@@ -247,8 +370,7 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
 
     if ((state->state_id == 0UL) || (state->visual_binding_id == 0UL) ||
         (state_binding_index == PS_SCENE_RUNTIME_INDEX_INVALID) ||
-        (state->focus_index >=
-         scene->visual_bindings[state_binding_index].row_count))
+        (state->focus_index >= scene->state_count))
     {
       return 1UL;
     }
@@ -269,24 +391,52 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
   {
     const ps_scene_runtime_visual_binding_t *binding =
       &scene->visual_bindings[visual_binding_index];
+    uint32_t element_index;
+    uint32_t focus_count = 0UL;
 
     if ((binding->visual_binding_id == 0UL) ||
-        (binding->title_text_id == 0UL) ||
-        (binding->row_count == 0UL) ||
-        (binding->row_count > PS_SCENE_RENDER_MODEL_ROW_MAX) ||
+        (binding->element_count == 0UL) ||
+        (binding->element_count > PS_SCENE_RENDER_MODEL_ELEMENT_MAX) ||
         (binding->waiting_sequence_step_count == 0UL) ||
         (binding->waiting_sequence_step_count >
          PS_SCENE_WAITING_VISUAL_SEQUENCE_MAX))
     {
       return 1UL;
     }
-    for (compare_index = 0UL; compare_index < binding->row_count;
-         ++compare_index)
+    for (element_index = 0UL; element_index < binding->element_count;
+         ++element_index)
     {
-      if (binding->row_text_id[compare_index] == 0UL)
+      const ps_scene_render_element_t *element =
+        &binding->elements[element_index];
+
+      if (PS_SceneRuntime_RenderElementValid(element) == 0UL)
       {
         return 1UL;
       }
+      if (element->type == PS_SCENE_RENDER_ELEMENT_FOCUS)
+      {
+        if ((element->visible == 0UL) ||
+            (element->animation_binding_id !=
+             PS_SCENE_RENDER_ANIMATION_CURSOR))
+        {
+          return 1UL;
+        }
+        focus_count++;
+      }
+      for (compare_index = element_index + 1UL;
+           compare_index < binding->element_count;
+           ++compare_index)
+      {
+        if (element->element_id ==
+            binding->elements[compare_index].element_id)
+        {
+          return 1UL;
+        }
+      }
+    }
+    if (focus_count != 1UL)
+    {
+      return 1UL;
     }
     for (compare_index = visual_binding_index + 1UL;
          compare_index < scene->visual_binding_count;
@@ -736,14 +886,15 @@ const ps_scene_render_model_t *PS_SceneRuntime_ResolveStateSceneRenderModel(
   const ps_scene_runtime_visual_binding_t *binding;
   ps_scene_render_model_t *model = &s_ps_scene_runtime_render_model;
   uint32_t binding_index;
-  uint32_t row;
+  uint32_t element_index;
+  uint32_t focus_element_id = 0UL;
+  uint32_t sprite_count = 0UL;
 
   g_ps_scene_runtime_probe.render_model_resolve_count++;
   g_ps_scene_runtime_probe.render_model_status =
     PS_SCENE_RUNTIME_STATUS_NOT_RUN;
   if ((g_ps_scene_runtime_probe.active == 0UL) ||
-      (g_ps_scene_runtime_probe.focus_index >=
-       PS_SCENE_RENDER_MODEL_ROW_MAX))
+      (g_ps_scene_runtime_probe.focus_index >= scene->state_count))
   {
     g_ps_scene_runtime_probe.reject_count++;
     g_ps_scene_runtime_probe.render_model_status = 1UL;
@@ -767,13 +918,23 @@ const ps_scene_render_model_t *PS_SceneRuntime_ResolveStateSceneRenderModel(
   model->visual_binding_id = g_ps_scene_runtime_probe.visual_binding_id;
   model->content_revision = g_ps_scene_runtime_probe.state_revision;
   model->timeline_revision = g_ps_scene_runtime_probe.timeline_revision;
-  model->title_text_id = binding->title_text_id;
-  model->row_count = binding->row_count;
-  for (row = 0UL; row < binding->row_count; ++row)
+  model->focus_index = g_ps_scene_runtime_probe.focus_index;
+  model->element_count = binding->element_count;
+  for (element_index = 0UL; element_index < binding->element_count;
+       ++element_index)
   {
-    model->row_text_id[row] = binding->row_text_id[row];
+    model->elements[element_index] = binding->elements[element_index];
+    if (binding->elements[element_index].type ==
+        PS_SCENE_RENDER_ELEMENT_FOCUS)
+    {
+      focus_element_id = binding->elements[element_index].element_id;
+    }
+    if (binding->elements[element_index].type ==
+        PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP)
+    {
+      sprite_count++;
+    }
   }
-  model->selected_row = g_ps_scene_runtime_probe.focus_index;
   model->waiting_sequence_step_count =
     binding->waiting_sequence_step_count;
   model->waiting_marker_enabled = binding->waiting_marker_enabled;
@@ -786,7 +947,10 @@ const ps_scene_render_model_t *PS_SceneRuntime_ResolveStateSceneRenderModel(
     model->content_revision;
   g_ps_scene_runtime_probe.render_model_timeline_revision =
     model->timeline_revision;
-  g_ps_scene_runtime_probe.render_model_selected_row = model->selected_row;
+  g_ps_scene_runtime_probe.render_model_focus_index = model->focus_index;
+  g_ps_scene_runtime_probe.render_model_element_count = model->element_count;
+  g_ps_scene_runtime_probe.render_model_focus_element_id = focus_element_id;
+  g_ps_scene_runtime_probe.render_model_sprite_count = sprite_count;
   g_ps_scene_runtime_probe.render_model_status = 0UL;
   return model;
 }
@@ -901,7 +1065,9 @@ const ps_scene_waiting_visual_t *PS_SceneRuntime_ResolveStateSceneWaitingVisual(
        g_ps_scene_runtime_probe.state_revision) ||
       (model->timeline_revision !=
        g_ps_scene_runtime_probe.timeline_revision) ||
-      (model->selected_row != g_ps_scene_runtime_probe.focus_index))
+      (model->focus_index != g_ps_scene_runtime_probe.focus_index) ||
+      (model->element_count == 0UL) ||
+      (model->element_count > PS_SCENE_RENDER_MODEL_ELEMENT_MAX))
   {
     g_ps_scene_runtime_probe.reject_count++;
     g_ps_scene_runtime_probe.last_status = 1UL;

@@ -20,6 +20,7 @@ extern "C" {
 #define DISPLAY_RENDERER_PRIMITIVE_LIST_FOCUS   (2UL)
 #define DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK (3UL)
 #define DISPLAY_RENDERER_PRIMITIVE_PATTERN      (4UL)
+#define DISPLAY_RENDERER_PRIMITIVE_SCENE_MODEL  (5UL)
 #define DISPLAY_RENDERER_ANIMATION_NONE         (0UL)
 #define DISPLAY_RENDERER_ANIMATION_CURSOR_BLINK (1UL)
 #define DISPLAY_RENDERER_ANIMATION_COMPOSITE_TEST (2UL)
@@ -128,6 +129,9 @@ uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
 uint32_t DisplayRenderer_FramebufferHash(void);
 uint32_t DisplayRenderer_GetListCursorLogicalBounds(
   uint32_t selected_row,
+  ps_scene_waiting_visual_bounds_t *bounds);
+uint32_t DisplayRenderer_GetSceneFocusLogicalBounds(
+  const ps_scene_render_model_t *model,
   ps_scene_waiting_visual_bounds_t *bounds);
 uint32_t DisplayRenderer_PublishSceneWaitingVisual(
   const ps_scene_waiting_visual_t *visual);

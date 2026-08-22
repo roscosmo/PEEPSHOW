@@ -46,6 +46,11 @@ static display_renderer_list_t s_display_pending_list;
 static uint32_t s_display_committed_list_valid;
 static uint32_t s_display_pending_list_valid;
 static uint32_t s_display_pending_list_invalidates;
+static uint32_t s_display_committed_focus_index;
+static uint32_t s_display_pending_focus_index;
+static uint32_t s_display_committed_focus_valid;
+static uint32_t s_display_pending_focus_valid;
+static uint32_t s_display_pending_focus_invalidates;
 static uint32_t s_rotate_ccw;
 static display_renderer_panel_region_t s_lpbam_cursor_panel_region;
 static uint32_t s_lpbam_cursor_panel_region_valid;
@@ -338,6 +343,31 @@ static void DisplayRenderer_RecordLpbamCursorRegion(uint32_t row)
   s_lpbam_cursor_panel_region_valid = 1UL;
 }
 
+static uint32_t DisplayRenderer_RecordLpbamCursorBounds(
+  const ps_scene_render_element_t *element)
+{
+  ps_scene_waiting_visual_bounds_t bounds;
+
+  if ((element == NULL) ||
+      (element->type != PS_SCENE_RENDER_ELEMENT_FOCUS))
+  {
+    DisplayRenderer_InvalidateLpbamCursorRegion();
+    return 0UL;
+  }
+  bounds.x = element->x;
+  bounds.y = element->y;
+  bounds.width = element->width;
+  bounds.height = element->height;
+  if (DisplayRenderer_LogicalBoundsToPanelRegion(
+        &bounds, &s_lpbam_cursor_panel_region) == 0UL)
+  {
+    DisplayRenderer_InvalidateLpbamCursorRegion();
+    return 0UL;
+  }
+  s_lpbam_cursor_panel_region_valid = 1UL;
+  return 1UL;
+}
+
 static void DisplayRenderer_ClearListCursor(uint32_t row)
 {
   display_renderer_panel_region_t region;
@@ -396,6 +426,8 @@ void DisplayRenderer_ClearWhite(void)
   s_display_cursor_base_valid = 0UL;
   s_display_pending_list_valid = 0UL;
   s_display_pending_list_invalidates = 1UL;
+  s_display_pending_focus_valid = 0UL;
+  s_display_pending_focus_invalidates = 1UL;
 }
 
 const uint8_t *DisplayRenderer_GetBuffer(void)
@@ -432,6 +464,18 @@ void DisplayRenderer_CommitPresentedFrame(void)
   }
   s_display_pending_list_valid = 0UL;
   s_display_pending_list_invalidates = 0UL;
+  if (s_display_pending_focus_valid != 0UL)
+  {
+    s_display_committed_focus_index = s_display_pending_focus_index;
+    s_display_committed_focus_valid = 1UL;
+  }
+  else if (s_display_pending_focus_invalidates != 0UL)
+  {
+    s_display_committed_focus_index = DISPLAY_RENDERER_ROW_NONE;
+    s_display_committed_focus_valid = 0UL;
+  }
+  s_display_pending_focus_valid = 0UL;
+  s_display_pending_focus_invalidates = 0UL;
 }
 
 static uint32_t DisplayRenderer_ApplyCursorBlinkPhase(
@@ -811,7 +855,7 @@ static uint32_t DisplayRenderer_ResolveSceneWaitingVisual(
       (s_display_committed_valid == 0UL) ||
       (s_display_cursor_base_valid == 0UL) ||
       (s_lpbam_cursor_panel_region_valid == 0UL) ||
-      (s_display_committed_list_valid == 0UL))
+      (s_display_committed_focus_valid == 0UL))
   {
     g_display_renderer_scene_waiting_probe.last_resolve_status = 1UL;
     return 0UL;
@@ -820,7 +864,7 @@ static uint32_t DisplayRenderer_ResolveSceneWaitingVisual(
   animation->animation_id = visual->presentation_id;
   animation->source_primitive_id =
     DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK;
-  animation->focus_row = s_display_committed_list.selected_row;
+  animation->focus_row = s_display_committed_focus_index;
   animation->phase_count = visual->sequence_step_count;
   animation->sequence_frame_count = visual->sequence_step_count;
   animation->cadence_ms = visual->phase_quantum_ms;
@@ -977,9 +1021,9 @@ uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
                             DisplayRenderer_CountBlackPixels(),
                             DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK,
                             DISPLAY_RENDERER_ROW_NONE,
-                            s_display_committed_list_valid == 0UL ?
+                            s_display_committed_focus_valid == 0UL ?
                               DISPLAY_RENDERER_ROW_NONE :
-                              s_display_committed_list.selected_row);
+                              s_display_committed_focus_index);
     return 0UL;
   }
 
@@ -988,9 +1032,9 @@ uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
                             DisplayRenderer_CountBlackPixels(),
                             DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK,
                             DISPLAY_RENDERER_ROW_NONE,
-                            s_display_committed_list_valid == 0UL ?
+                            s_display_committed_focus_valid == 0UL ?
                               DISPLAY_RENDERER_ROW_NONE :
-                              s_display_committed_list.selected_row);
+                              s_display_committed_focus_index);
   return 1UL;
 }
 
@@ -1523,8 +1567,8 @@ uint32_t DisplayRenderer_PrepareWaitingAnimationFrame(
     DisplayRenderer_CountBlackPixels(),
     animation->source_primitive_id,
     DISPLAY_RENDERER_ROW_NONE,
-    s_display_committed_list_valid == 0UL ?
-      DISPLAY_RENDERER_ROW_NONE : s_display_committed_list.selected_row);
+    s_display_committed_focus_valid == 0UL ?
+      DISPLAY_RENDERER_ROW_NONE : s_display_committed_focus_index);
   return 1UL;
 }
 
@@ -1801,39 +1845,202 @@ static const char *DisplayRenderer_SceneText(uint32_t text_id)
   }
 }
 
-static uint32_t DisplayRenderer_ApplySceneModel(
-  const ps_scene_render_model_t *model,
-  display_renderer_list_t *list)
+static uint32_t DisplayRenderer_SceneSpritePixel(uint32_t asset_id,
+                                                 uint16_t x,
+                                                 uint16_t y)
 {
-  uint32_t row;
-  const char *text;
+  static const uint8_t diamond_rows[8] =
+  {
+    0x18U, 0x3CU, 0x7EU, 0xFFU, 0xFFU, 0x7EU, 0x3CU, 0x18U
+  };
 
-  if ((model == NULL) || (list == NULL) ||
+  if ((asset_id != PS_SCENE_RENDER_SPRITE_DIAMOND) ||
+      (x >= 8U) || (y >= 8U))
+  {
+    return 0UL;
+  }
+  return ((diamond_rows[y] & (uint8_t)(0x80U >> x)) != 0U) ? 1UL : 0UL;
+}
+
+static uint32_t DisplayRenderer_ValidateSceneModel(
+  const ps_scene_render_model_t *model)
+{
+  uint32_t index;
+  uint32_t focus_count = 0UL;
+
+  if ((model == NULL) ||
       (model->api_version != PS_SCENE_RENDER_MODEL_API_VERSION) ||
-      (model->row_count == 0UL) ||
-      (model->row_count > DISPLAY_RENDERER_LIST_ROW_COUNT) ||
-      (model->selected_row >= model->row_count))
+      (model->element_count == 0UL) ||
+      (model->element_count > PS_SCENE_RENDER_MODEL_ELEMENT_MAX))
   {
     return 0UL;
   }
 
-  text = DisplayRenderer_SceneText(model->title_text_id);
-  if (text == NULL)
+  for (index = 0UL; index < model->element_count; ++index)
   {
-    return 0UL;
-  }
-  list->title = text;
-  for (row = 0UL; row < model->row_count; ++row)
-  {
-    text = DisplayRenderer_SceneText(model->row_text_id[row]);
-    if (text == NULL)
+    const ps_scene_render_element_t *element = &model->elements[index];
+    uint32_t compare_index;
+    uint32_t x_end = (uint32_t)element->x + (uint32_t)element->width;
+    uint32_t y_end = (uint32_t)element->y + (uint32_t)element->height;
+
+    if ((element->element_id == 0UL) ||
+        (element->type <= PS_SCENE_RENDER_ELEMENT_NONE) ||
+        (element->type > PS_SCENE_RENDER_ELEMENT_FOCUS) ||
+        (element->layer >= PS_SCENE_RENDER_LAYER_COUNT) ||
+        (element->visible > 1UL) ||
+        (element->width == 0U) || (element->height == 0U) ||
+        (x_end > PS_SCENE_RENDER_CANVAS_WIDTH) ||
+        (y_end > PS_SCENE_RENDER_CANVAS_HEIGHT))
     {
       return 0UL;
     }
-    list->rows[row] = text;
+    if ((element->type == PS_SCENE_RENDER_ELEMENT_TEXT) &&
+        ((DisplayRenderer_SceneText(element->asset_id) == NULL) ||
+         ((element->style_id != PS_SCENE_RENDER_STYLE_TEXT_2X_LEFT) &&
+          (element->style_id != PS_SCENE_RENDER_STYLE_TEXT_2X_CENTER))))
+    {
+      return 0UL;
+    }
+    if ((element->type == PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP) &&
+        ((element->asset_id != PS_SCENE_RENDER_SPRITE_DIAMOND) ||
+         (element->width != 8U) || (element->height != 8U)))
+    {
+      return 0UL;
+    }
+    if (element->type == PS_SCENE_RENDER_ELEMENT_FOCUS)
+    {
+      if ((element->visible == 0UL) ||
+          (element->animation_binding_id !=
+           PS_SCENE_RENDER_ANIMATION_CURSOR))
+      {
+        return 0UL;
+      }
+      focus_count++;
+    }
+    for (compare_index = index + 1UL;
+         compare_index < model->element_count;
+         ++compare_index)
+    {
+      if (element->element_id ==
+          model->elements[compare_index].element_id)
+      {
+        return 0UL;
+      }
+    }
   }
-  list->selected_row = model->selected_row;
-  return 1UL;
+  return (focus_count == 1UL) ? 1UL : 0UL;
+}
+
+static uint32_t DisplayRenderer_DrawSceneElement(
+  const ps_scene_render_element_t *element)
+{
+  uint32_t black_pixels = 0UL;
+  uint16_t x;
+  uint16_t y;
+
+  if ((element == NULL) || (element->visible == 0UL))
+  {
+    return 0UL;
+  }
+
+  switch ((ps_scene_render_element_type_t)element->type)
+  {
+    case PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT:
+      black_pixels += DisplayRenderer_HorizontalLine(
+        element->x,
+        (uint16_t)(element->x + element->width - 1U),
+        element->y);
+      black_pixels += DisplayRenderer_HorizontalLine(
+        element->x,
+        (uint16_t)(element->x + element->width - 1U),
+        (uint16_t)(element->y + element->height - 1U));
+      black_pixels += DisplayRenderer_VerticalLine(
+        element->x,
+        element->y,
+        (uint16_t)(element->y + element->height - 1U));
+      black_pixels += DisplayRenderer_VerticalLine(
+        (uint16_t)(element->x + element->width - 1U),
+        element->y,
+        (uint16_t)(element->y + element->height - 1U));
+      break;
+    case PS_SCENE_RENDER_ELEMENT_HORIZONTAL_LINE:
+      black_pixels += DisplayRenderer_HorizontalLine(
+        element->x,
+        (uint16_t)(element->x + element->width - 1U),
+        element->y);
+      break;
+    case PS_SCENE_RENDER_ELEMENT_TEXT:
+    {
+      const char *text = DisplayRenderer_SceneText(element->asset_id);
+      uint16_t text_x = element->x;
+
+      if (element->style_id == PS_SCENE_RENDER_STYLE_TEXT_2X_CENTER)
+      {
+        uint16_t text_width = DisplayRenderer_TextWidth(text, 2U);
+        if (text_width < element->width)
+        {
+          text_x = (uint16_t)(element->x +
+                   ((element->width - text_width) / 2U));
+        }
+      }
+      black_pixels += DisplayRenderer_DrawText(
+        text_x, element->y, text, 2U);
+      break;
+    }
+    case PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP:
+      for (y = 0U; y < element->height; ++y)
+      {
+        for (x = 0U; x < element->width; ++x)
+        {
+          if (DisplayRenderer_SceneSpritePixel(
+                element->asset_id, x, y) != 0UL)
+          {
+            black_pixels += DisplayRenderer_SetBlack(
+              (uint16_t)(element->x + x),
+              (uint16_t)(element->y + y));
+          }
+        }
+      }
+      break;
+    case PS_SCENE_RENDER_ELEMENT_FOCUS:
+      if (DisplayRenderer_RecordLpbamCursorBounds(element) != 0UL)
+      {
+        black_pixels += DisplayRenderer_FilledRect(
+          element->x, element->y, element->width, element->height);
+      }
+      break;
+    default:
+      break;
+  }
+  return black_pixels;
+}
+
+static uint32_t DisplayRenderer_DrawSceneModel(
+  const ps_scene_render_model_t *model)
+{
+  uint32_t black_pixels = 0UL;
+  uint32_t layer;
+  uint32_t index;
+
+  if (DisplayRenderer_ValidateSceneModel(model) == 0UL)
+  {
+    return 0UL;
+  }
+
+  for (layer = PS_SCENE_RENDER_LAYER_BACKGROUND;
+       layer < PS_SCENE_RENDER_LAYER_COUNT;
+       ++layer)
+  {
+    for (index = 0UL; index < model->element_count; ++index)
+    {
+      if (model->elements[index].layer == layer)
+      {
+        black_pixels += DisplayRenderer_DrawSceneElement(
+          &model->elements[index]);
+      }
+    }
+  }
+  return black_pixels;
 }
 
 static void DisplayRenderer_ListInit(display_renderer_list_t *list)
@@ -1894,6 +2101,9 @@ static void DisplayRenderer_SetPendingList(const display_renderer_list_t *list)
     s_display_pending_list = *list;
     s_display_pending_list_valid = 1UL;
     s_display_pending_list_invalidates = 0UL;
+    s_display_pending_focus_index = list->selected_row;
+    s_display_pending_focus_valid = 1UL;
+    s_display_pending_focus_invalidates = 0UL;
   }
 }
 
@@ -2026,12 +2236,10 @@ static void DisplayRenderer_UIList(uint32_t page,
       list->rows[2] = "B BACK";
       break;
     case PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF:
-      if (DisplayRenderer_ApplySceneModel(scene_model, list) == 0UL)
-      {
-        list->title = "SCENE ERROR";
-        list->rows[0] = "NO VISUAL";
-        list->selected_row = 0UL;
-      }
+      (void)scene_model;
+      list->title = "SCENE ERROR";
+      list->rows[0] = "NO VISUAL";
+      list->selected_row = 0UL;
       break;
     case PS_UI_ROUTER_PAGE_ERROR:
       list->title = "ERROR";
@@ -2219,6 +2427,33 @@ uint32_t DisplayRenderer_GetListCursorLogicalBounds(
   return 1UL;
 }
 
+uint32_t DisplayRenderer_GetSceneFocusLogicalBounds(
+  const ps_scene_render_model_t *model,
+  ps_scene_waiting_visual_bounds_t *bounds)
+{
+  uint32_t index;
+
+  if ((DisplayRenderer_ValidateSceneModel(model) == 0UL) ||
+      (bounds == NULL) || (s_lpbam_cursor_panel_region_valid == 0UL))
+  {
+    return 0UL;
+  }
+  for (index = 0UL; index < model->element_count; ++index)
+  {
+    const ps_scene_render_element_t *element = &model->elements[index];
+    if ((element->type == PS_SCENE_RENDER_ELEMENT_FOCUS) &&
+        (element->visible != 0UL))
+    {
+      bounds->x = element->x;
+      bounds->y = element->y;
+      bounds->width = element->width;
+      bounds->height = element->height;
+      return 1UL;
+    }
+  }
+  return 0UL;
+}
+
 void DisplayRenderer_PrepareUIPage(
   uint32_t page,
   uint32_t calibration_page,
@@ -2232,6 +2467,26 @@ void DisplayRenderer_PrepareUIPage(
   uint32_t black_pixels = 0UL;
   uint32_t primitive_id = DISPLAY_RENDERER_PRIMITIVE_LIST_FULL;
   uint32_t previous_focus_row = DISPLAY_RENDERER_ROW_NONE;
+
+  if ((page == (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF) &&
+      (DisplayRenderer_ValidateSceneModel(scene_model) != 0UL))
+  {
+    DisplayRenderer_ClearWhite();
+    s_rotate_ccw = 1UL;
+    black_pixels = DisplayRenderer_DrawSceneModel(scene_model);
+    DisplayRenderer_RecordCursorBaseFrame();
+    DisplayRenderer_ComputeDirtyRowsFromCommitted();
+    s_rotate_ccw = 0UL;
+    s_display_pending_focus_index = scene_model->focus_index;
+    s_display_pending_focus_valid = 1UL;
+    s_display_pending_focus_invalidates = 0UL;
+    DisplayRenderer_FillStats(stats,
+                              black_pixels,
+                              DISPLAY_RENDERER_PRIMITIVE_SCENE_MODEL,
+                              DISPLAY_RENDERER_ROW_NONE,
+                              scene_model->focus_index);
+    return;
+  }
 
   DisplayRenderer_UIList(page,
                          calibration_page,

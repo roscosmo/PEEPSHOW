@@ -982,9 +982,20 @@ static void PS_HW6_DisplayOwner_PublishStateWaitingVisual(
 {
   ps_scene_waiting_visual_bounds_t cursor_bounds;
   const ps_scene_waiting_visual_t *visual;
+  uint32_t bounds_ready;
 
-  if (DisplayRenderer_GetListCursorLogicalBounds(
-        focus_index, &cursor_bounds) == 0UL)
+  if ((page == (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF) &&
+      (PS_SceneRuntime_StateSceneActive() != 0UL))
+  {
+    bounds_ready = DisplayRenderer_GetSceneFocusLogicalBounds(
+      scene_model, &cursor_bounds);
+  }
+  else
+  {
+    bounds_ready = DisplayRenderer_GetListCursorLogicalBounds(
+      focus_index, &cursor_bounds);
+  }
+  if (bounds_ready == 0UL)
   {
     DisplayRenderer_ClearSceneWaitingVisual();
     return;
