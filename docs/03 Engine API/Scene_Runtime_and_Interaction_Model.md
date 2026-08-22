@@ -319,6 +319,15 @@ data fails closed without launching the scene. This validates the intended
 compiled-table execution shape, while package loading and schema serialization
 remain separate work.
 
+FW0 scene-runtime API version `5` extends that descriptor with fixed-capacity
+input routes, signed 32-bit variables, comparisons, and mutation tables. A
+transition first resolves an authored scene event, evaluates all guards against
+the live snapshot, executes all mutations against a bounded staged copy, and
+commits variables plus target state only after every operation succeeds. Ignored
+or guard-rejected events do not request rendering. The initial implementation
+supports `EQ/NE/LT/LE/GT/GE` guards and `SET/ADD/SUBTRACT` mutations; richer
+types and service actions remain future schema work.
+
 ---
 
 ## Runtime Compositor Layers

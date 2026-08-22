@@ -200,6 +200,22 @@ accepted actions, eight state changes and transition matches, zero misses, state
 ID/visual/focus `102/1002/1`, preserved presentation status `0x0`, and six
 completed STOP2 entries. Peripheral and display ownership remain unchanged.
 
+Scene-runtime API version `5` completes the first bounded event transaction on
+that table. The descriptor maps logical L/R presses to scene event IDs, evaluates
+typed guards, stages `SET/ADD/SUBTRACT` mutations in a fixed local array, and
+commits state plus variables atomically before `thRuntime` requests a render.
+Unbound or rejected events return without a `qDisplayCmd` send. Evidence
+`EV-HW6-20260822-P1-SCENETXN-091` recorded `11` routed inputs, guard evaluations
+and passes, action commits, transition matches, and state changes; rejects,
+action errors, and transition misses were all zero. State index and the primary
+scene variable both ended at `1`, timeline revision remained `1`, preservation
+status was `0x0`, and five STOP2 entries completed. A follow-up capture delivered
+`14` runtime inputs: `12` matched L/R routes and committed, while two A presses
+incremented only the route-miss count. State changes, guard passes, action
+commits, and transition matches remained `12`; errors and rejects remained zero,
+and eight STOP2 entries completed. No owner, queue, peripheral access, or dynamic
+allocation changed.
+
 This is the intended normal boot slice for FW0. It is deliberately smaller than
 the retained-peripheral diagnostic lifecycle: display/audio/sensor/storage/comm
 diagnostic cycles are not auto-run, and the retained lifecycle report may show

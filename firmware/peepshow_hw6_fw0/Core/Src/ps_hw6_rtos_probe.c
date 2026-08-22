@@ -1421,25 +1421,18 @@ static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
        (uint32_t)PS_HW6_RUNTIME_CLASS_LP_GRAPH) &&
       (PS_SceneRuntime_StateSceneActive() != 0UL))
   {
-    ps_scene_runtime_action_t action = PS_SCENE_RUNTIME_ACTION_NONE;
+    uint32_t scene_result;
 
-    if (button_id == (uint32_t)PS_INPUT_BUTTON_ID_L)
-    {
-      action = PS_SCENE_RUNTIME_ACTION_PREVIOUS;
-    }
-    else if (button_id == (uint32_t)PS_INPUT_BUTTON_ID_R)
-    {
-      action = PS_SCENE_RUNTIME_ACTION_NEXT;
-    }
-    else if (button_id == (uint32_t)PS_INPUT_BUTTON_ID_B)
+    if ((event == (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS) &&
+        (button_id == (uint32_t)PS_INPUT_BUTTON_ID_B))
     {
       status = PS_HW6_RTOS_RequestRuntimeCommand(
         PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_RETURN);
     }
-
-    if (action != PS_SCENE_RUNTIME_ACTION_NONE)
+    else
     {
-      if (PS_SceneRuntime_HandleStateSceneAction(action) != 0UL)
+      scene_result = PS_SceneRuntime_HandleStateSceneInput(event, button_id);
+      if (scene_result == PS_SCENE_RUNTIME_INPUT_APPLIED)
       {
         status = PS_HW6_RTOS_SendDisplayUiRenderCommand(
           (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF,
@@ -1448,7 +1441,7 @@ static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
           (uint32_t)PS_UI_ROUTER_SHUTDOWN_NONE,
           0UL);
       }
-      else
+      else if (scene_result == PS_SCENE_RUNTIME_INPUT_ERROR)
       {
         status = TX_CALLER_ERROR;
       }
