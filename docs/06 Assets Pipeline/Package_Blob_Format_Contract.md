@@ -22,6 +22,12 @@ Initial binary format examples use the magic/version family `PKG1`.
 
 FW0 USB staging bring-up may use `PKG1` as a minimum-envelope read-only validator after MSC reclaim. That check only proves the staged file begins with the expected package magic; it does not freeze or validate the concrete binary header layout, chunk table, CRC/checksum, compatibility schema, signatures, or install commit policy.
 
+The first concrete host-tool layout is frozen in
+`schemas/package/PeepPkg_V1_Binary_Layout.md`. It defines the deterministic
+header, chunk table, typed STATE chunks, CRCs, and integrity footer. Firmware
+consumption and install commit remain unproven until separately implemented
+and validated on target.
+
 ---
 
 ## Container Shape

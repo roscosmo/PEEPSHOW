@@ -117,6 +117,13 @@ def _stable_id(value: Any, path: str, issues: list[ValidationIssue]) -> bool:
     return True
 
 
+def _text(value: Any, path: str, issues: list[ValidationIssue], maximum: int = 96) -> bool:
+    if not isinstance(value, str) or not 1 <= len(value) <= maximum:
+        _issue(issues, "PROJECT_TEXT_INVALID", path, f"must be text with 1..{maximum} characters")
+        return False
+    return True
+
+
 def _unique_ids(
     records: Any,
     field: str,
@@ -150,6 +157,7 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
     if project.get("schema_id") != "peepshow.authoring.project" or project.get("schema_version") != 1:
         _issue(issues, "PROJECT_SCHEMA_UNSUPPORTED", "project", "expected peepshow.authoring.project version 1")
     _stable_id(project.get("project_id"), "project.project_id", issues)
+    _text(project.get("project_name"), "project.project_name", issues)
     _stable_id(project.get("selected_target_profile"), "project.selected_target_profile", issues)
     _stable_id(project.get("entry_scene"), "project.entry_scene", issues)
 
@@ -160,6 +168,7 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
         expected = {"package_id", "display_name", "version"}
         _check_keys(package, expected, "project.package", issues)
         _stable_id(package.get("package_id"), "project.package.package_id", issues)
+        _text(package.get("display_name"), "project.package.display_name", issues)
         version = package.get("version")
         if not isinstance(version, str) or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None:
             _issue(issues, "PROJECT_VERSION_INVALID", "project.package.version", "must be major.minor.patch")
@@ -169,6 +178,15 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
         _issue(issues, "SCENE_SOURCE_MISSING", "project.scene_sources", "must contain at least one scene source")
     elif len(sources) > 32:
         _issue(issues, "PROJECT_LIMIT_EXCEEDED", "project.scene_sources", "contains more than 32 scene sources")
+    else:
+        seen_sources: set[str] = set()
+        for index, source in enumerate(sources):
+            if not isinstance(source, str) or not source:
+                _issue(issues, "SCENE_SOURCE_INVALID", f"project.scene_sources[{index}]", "must be a non-empty path")
+            elif source in seen_sources:
+                _issue(issues, "SCENE_SOURCE_DUPLICATE", f"project.scene_sources[{index}]", "scene source path is duplicated")
+            else:
+                seen_sources.add(source)
 
     validation = project.get("validation")
     if not isinstance(validation, dict):
@@ -253,6 +271,7 @@ def _check_scene(scene: dict[str, Any], source: str, issues: list[ValidationIssu
     if scene.get("schema_id") != "peepshow.authoring.state_scene" or scene.get("schema_version") != 1:
         _issue(issues, "SCENE_SCHEMA_UNSUPPORTED", base, "expected peepshow.authoring.state_scene version 1")
     _stable_id(scene.get("scene_id"), f"{base}.scene_id", issues)
+    _text(scene.get("display_name"), f"{base}.display_name", issues)
     if scene.get("scene_type") != "STATE_SCENE":
         _issue(issues, "SCENE_TYPE_INVALID", f"{base}.scene_type", "the first authoring subset supports STATE_SCENE only")
 
@@ -302,6 +321,8 @@ def _check_scene(scene: dict[str, Any], source: str, issues: list[ValidationIssu
             _stable_id(element.get("visual_ref"), f"{item_path}.visual_ref", issues)
             if element.get("kind") not in {"sprite", "text", "shape"}:
                 _issue(issues, "RENDER_KIND_INVALID", f"{item_path}.kind", "must be sprite, text, or shape")
+            if element.get("focus_role", "none") not in {"none", "focus"}:
+                _issue(issues, "RENDER_FOCUS_INVALID", f"{item_path}.focus_role", "must be none or focus")
             for field in ("x", "y", "z_order"):
                 value = element.get(field)
                 if not isinstance(value, int) or value < 0:
@@ -310,6 +331,9 @@ def _check_scene(scene: dict[str, Any], source: str, issues: list[ValidationIssu
                 value = element.get(field)
                 if not isinstance(value, int) or value < 1:
                     _issue(issues, "RENDER_BOUNDS_INVALID", f"{item_path}.{field}", "must be a positive integer")
+            z_order = element.get("z_order")
+            if isinstance(z_order, int) and z_order > 255:
+                _issue(issues, "RENDER_BOUNDS_INVALID", f"{item_path}.z_order", "must be in 0..255")
 
     for waiting_id, waiting in waiting_visuals.items():
         _check_waiting_visual(waiting, f"{base}.waiting_visuals[{waiting_id}]", element_ids, issues)
@@ -317,6 +341,7 @@ def _check_scene(scene: dict[str, Any], source: str, issues: list[ValidationIssu
     for state_id, state in states.items():
         path = f"{base}.states[{state_id}]"
         _check_keys(state, {"state_id", "display_name", "render_model_ref", "waiting_visual_ref"}, path, issues)
+        _text(state.get("display_name"), f"{path}.display_name", issues)
         if state.get("render_model_ref") not in render_models:
             _issue(issues, "RENDER_MODEL_UNKNOWN", f"{path}.render_model_ref", "render model does not exist")
         if state.get("waiting_visual_ref") not in waiting_visuals:
@@ -350,6 +375,8 @@ def _check_scene(scene: dict[str, Any], source: str, issues: list[ValidationIssu
                     _issue(issues, "GUARD_VARIABLE_UNKNOWN", f"{guard_path}.variable_ref", "variable does not exist")
                 if guard.get("operator") not in {"eq", "ne", "lt", "le", "gt", "ge"}:
                     _issue(issues, "GUARD_OPERATOR_INVALID", f"{guard_path}.operator", "unsupported comparison")
+                if isinstance(guard.get("value"), bool) or not isinstance(guard.get("value"), int):
+                    _issue(issues, "GUARD_TYPE_MISMATCH", f"{guard_path}.value", "must be an integer")
         actions = route.get("actions")
         if not isinstance(actions, list) or len(actions) > 8:
             _issue(issues, "ACTION_BUDGET_EXCEEDED", f"{path}.actions", "must contain at most 8 actions")
@@ -366,6 +393,8 @@ def _check_scene(scene: dict[str, Any], source: str, issues: list[ValidationIssu
                         _issue(issues, "ACTION_VARIABLE_UNKNOWN", f"{action_path}.variable_ref", "variable does not exist")
                     if action.get("operation") not in {"assign", "add"}:
                         _issue(issues, "ACTION_OPERATION_INVALID", f"{action_path}.operation", "must be assign or add")
+                    if isinstance(action.get("value"), bool) or not isinstance(action.get("value"), int):
+                        _issue(issues, "ACTION_TYPE_INVALID", f"{action_path}.value", "must be an integer")
                 elif kind == "request_render":
                     _check_keys(action, {"kind"}, action_path, issues)
                 else:
@@ -380,6 +409,8 @@ def _check_scene(scene: dict[str, Any], source: str, issues: list[ValidationIssu
         _stable_id(wait_policy.get("policy_id"), f"{path}.policy_id", issues)
         if wait_policy.get("waiting_visual_ref") not in waiting_visuals:
             _issue(issues, "WAIT_VISUAL_UNKNOWN", f"{path}.waiting_visual_ref", "waiting visual does not exist")
+        if not isinstance(wait_policy.get("hold_fallback_allowed"), bool):
+            _issue(issues, "WAIT_FALLBACK_INVALID", f"{path}.hold_fallback_allowed", "must be true or false")
         interests = wait_policy.get("event_interests")
         if not isinstance(interests, list) or not interests:
             _issue(issues, "WAIT_EVENT_INTEREST_MISSING", f"{path}.event_interests", "must contain at least one input action")

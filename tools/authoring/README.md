@@ -19,6 +19,15 @@ Write deterministic normalized authoring data:
 python tools/authoring/egg_tool.py normalize examples/authoring/state_slice.peepproj --output build/state_slice.normalized.json
 ```
 
+Build and independently validate an installable package:
+
+```powershell
+python tools/authoring/egg_tool.py build examples/authoring/state_slice.peepproj --output build/state_slice.egg
+python tools/authoring/egg_tool.py inspect build/state_slice.egg
+```
+
 Normalized JSON is a compiler intermediate, not an installable package. The
-next compiler milestone will emit a bounded `PKG1` PeepPkg container named
-with the `.egg` extension.
+`build` command emits the bounded deterministic `PKG1` PeepPkg container using
+the `.egg` extension. `inspect` reparses the package, validates all container
+bounds, CRCs, SHA-256 integrity, and supported STATE chunk records, then prints
+a semantic summary.

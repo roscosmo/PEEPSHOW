@@ -6,6 +6,8 @@ import argparse
 import hashlib
 from pathlib import Path
 
+from .compiler import EggCompileError, write_egg
+from .egg_format import EggFormatError, parse_egg
 from .project import format_issues, load_project
 
 
@@ -31,6 +33,49 @@ def _normalize(project_path: str, output_path: str) -> int:
     return 0
 
 
+def _build(project_path: str, output_path: str) -> int:
+    bundle = load_project(project_path)
+    if not bundle.valid:
+        print(format_issues(bundle.issues))
+        return 1
+    try:
+        output = write_egg(bundle, output_path)
+        package = parse_egg(output.read_bytes())
+    except (EggCompileError, EggFormatError, OSError) as exc:
+        print(f"BUILD_PACKAGE_INVALID {exc}")
+        return 1
+    print(
+        f"built package={package.manifest['package_id']} scenes={len(package.scenes)} "
+        f"chunks={len(package.chunks)} bytes={output.stat().st_size} sha256={package.sha256} -> {output}"
+    )
+    return 0
+
+
+def _inspect(package_path: str) -> int:
+    path = Path(package_path)
+    if path.suffix.lower() != ".egg":
+        print("PACKAGE_SUFFIX_INVALID installable package must end in .egg")
+        return 1
+    try:
+        package = parse_egg(path.read_bytes())
+    except (EggFormatError, OSError) as exc:
+        print(f"PACKAGE_INVALID {exc}")
+        return 1
+    manifest = package.manifest
+    print(
+        f"valid egg package={manifest['package_id']} version="
+        f"{manifest['version_major']}.{manifest['version_minor']}.{manifest['version_patch']} "
+        f"target={manifest['target_profile']} entry={manifest['entry_scene']} "
+        f"scenes={len(package.scenes)} chunks={len(package.chunks)} sha256={package.sha256}"
+    )
+    for scene in package.scenes:
+        print(
+            f"scene id={scene['scene_id']} type=STATE states={scene['state_count']} "
+            f"routes={scene['route_count']}"
+        )
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="egg-tool", description="PeepShow authoring project tools")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -42,7 +87,18 @@ def main() -> int:
     normalize.add_argument("project")
     normalize.add_argument("--output", required=True)
 
+    build = commands.add_parser("build", help="compile a .peepproj directory into a deterministic .egg")
+    build.add_argument("project")
+    build.add_argument("--output", required=True)
+
+    inspect = commands.add_parser("inspect", help="validate and summarize a compiled .egg")
+    inspect.add_argument("package")
+
     args = parser.parse_args()
     if args.command == "validate":
         return _validate(args.project)
-    return _normalize(args.project, args.output)
+    if args.command == "normalize":
+        return _normalize(args.project, args.output)
+    if args.command == "build":
+        return _build(args.project, args.output)
+    return _inspect(args.package)
