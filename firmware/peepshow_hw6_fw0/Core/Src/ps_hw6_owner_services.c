@@ -901,7 +901,9 @@ static void PS_HW6_PrepareDisplayUIPage(uint32_t page,
                                         uint32_t calibration_page,
                                         uint32_t focus_index,
                                         uint32_t shutdown_state,
-                                        uint32_t shutdown_countdown_seconds)
+                                        uint32_t shutdown_countdown_seconds,
+                                        const ps_scene_render_model_t *
+                                          scene_model)
 {
   display_renderer_stats_t stats;
 
@@ -910,6 +912,7 @@ static void PS_HW6_PrepareDisplayUIPage(uint32_t page,
                                 focus_index,
                                 shutdown_state,
                                 shutdown_countdown_seconds,
+                                scene_model,
                                 &stats);
   PS_HW6_DisplayOwner_ApplyRendererStats(
     PS_HW6_DISPLAY_UI_PATTERN_ID, &stats);
@@ -974,7 +977,8 @@ static void PS_HW6_DisplayOwner_SnapshotSceneWaitingTimeline(void)
 
 static void PS_HW6_DisplayOwner_PublishStateWaitingVisual(
   uint32_t page,
-  uint32_t focus_index)
+  uint32_t focus_index,
+  const ps_scene_render_model_t *scene_model)
 {
   ps_scene_waiting_visual_bounds_t cursor_bounds;
   const ps_scene_waiting_visual_t *visual;
@@ -990,7 +994,7 @@ static void PS_HW6_DisplayOwner_PublishStateWaitingVisual(
       (PS_SceneRuntime_StateSceneActive() != 0UL))
   {
     visual = PS_SceneRuntime_ResolveStateSceneWaitingVisual(
-      focus_index, &cursor_bounds);
+      scene_model, &cursor_bounds);
   }
   else
   {
@@ -1631,6 +1635,7 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   uint32_t shutdown_countdown_seconds)
 {
   HAL_StatusTypeDef driver_status;
+  const ps_scene_render_model_t *scene_model = NULL;
 
   g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_DISPLAY;
   PS_HW6_DisplayOwner_ClearLpbamReadiness(
@@ -1648,13 +1653,22 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   g_ps_hw6_owner_probe.display_rtc_cr = hrtc.Instance->CR;
   g_ps_hw6_owner_probe.display_spi_state_before = HAL_SPI_GetState(&hspi3);
 
+  if ((page == (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF) &&
+      (PS_SceneRuntime_StateSceneActive() != 0UL))
+  {
+    scene_model = PS_SceneRuntime_ResolveStateSceneRenderModel();
+  }
+
   PS_HW6_PrepareDisplayUIPage(page,
                               calibration_page,
                               focus_index,
                               shutdown_state,
-                              shutdown_countdown_seconds);
+                              shutdown_countdown_seconds,
+                              scene_model);
   PS_HW6_DisplayOwner_PublishStateWaitingVisual(
-    page, g_ps_hw6_owner_probe.display_ui_current_focus_row);
+    page,
+    g_ps_hw6_owner_probe.display_ui_current_focus_row,
+    scene_model);
   driver_status = PS_HW6_DisplayOwner_PresentRendererRows(
     &g_ps_hw6_owner_probe.display_init_status,
     &g_ps_hw6_owner_probe.display_present_status);

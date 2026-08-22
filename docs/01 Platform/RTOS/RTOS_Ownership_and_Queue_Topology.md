@@ -216,6 +216,18 @@ commits, and transition matches remained `12`; errors and rejects remained zero,
 and eight STOP2 entries completed. No owner, queue, peripheral access, or dynamic
 allocation changed.
 
+Scene-runtime API version `6` removes scene-content decisions from the runtime
+page switch without changing topology. `thRuntime` retains state, variables,
+transitions, and numeric visual-binding selection. `thDisplay` resolves one
+fixed-size render model for the current content revision and supplies that same
+model to awake composition and waiting-visual publication before using the
+existing GPDMA/LPBAM paths. Evidence `EV-HW6-20260822-P1-SCENERENDER-092`
+recorded model/runtime scene-state-visual-focus agreement
+`1/103/1003/2`, content/timeline agreement `5/1`, render-model status `0x0`,
+six waiting steps with two elements, successful timeline preservation, and five
+completed STOP2 entries. No thread, queue, peripheral owner, or dynamic
+allocation changed.
+
 This is the intended normal boot slice for FW0. It is deliberately smaller than
 the retained-peripheral diagnostic lifecycle: display/audio/sensor/storage/comm
 diagnostic cycles are not auto-run, and the retained lifecycle report may show

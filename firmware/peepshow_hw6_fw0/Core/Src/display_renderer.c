@@ -1784,6 +1784,58 @@ static const char *DisplayRenderer_ShutdownCountdownLine(
   return "PREPARING";
 }
 
+static const char *DisplayRenderer_SceneText(uint32_t text_id)
+{
+  switch (text_id)
+  {
+    case PS_SCENE_RENDER_TEXT_STATE_SCENE:
+      return "STATE SCENE";
+    case PS_SCENE_RENDER_TEXT_STATE_1:
+      return "STATE 1";
+    case PS_SCENE_RENDER_TEXT_STATE_2:
+      return "STATE 2";
+    case PS_SCENE_RENDER_TEXT_STATE_3:
+      return "STATE 3";
+    default:
+      return NULL;
+  }
+}
+
+static uint32_t DisplayRenderer_ApplySceneModel(
+  const ps_scene_render_model_t *model,
+  display_renderer_list_t *list)
+{
+  uint32_t row;
+  const char *text;
+
+  if ((model == NULL) || (list == NULL) ||
+      (model->api_version != PS_SCENE_RENDER_MODEL_API_VERSION) ||
+      (model->row_count == 0UL) ||
+      (model->row_count > DISPLAY_RENDERER_LIST_ROW_COUNT) ||
+      (model->selected_row >= model->row_count))
+  {
+    return 0UL;
+  }
+
+  text = DisplayRenderer_SceneText(model->title_text_id);
+  if (text == NULL)
+  {
+    return 0UL;
+  }
+  list->title = text;
+  for (row = 0UL; row < model->row_count; ++row)
+  {
+    text = DisplayRenderer_SceneText(model->row_text_id[row]);
+    if (text == NULL)
+    {
+      return 0UL;
+    }
+    list->rows[row] = text;
+  }
+  list->selected_row = model->selected_row;
+  return 1UL;
+}
+
 static void DisplayRenderer_ListInit(display_renderer_list_t *list)
 {
   uint32_t i;
@@ -1877,6 +1929,7 @@ static void DisplayRenderer_UIList(uint32_t page,
                                    uint32_t focus_index,
                                    uint32_t shutdown_state,
                                    uint32_t shutdown_countdown_seconds,
+                                   const ps_scene_render_model_t *scene_model,
                                    display_renderer_list_t *list)
 {
   DisplayRenderer_ListInit(list);
@@ -1973,12 +2026,12 @@ static void DisplayRenderer_UIList(uint32_t page,
       list->rows[2] = "B BACK";
       break;
     case PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF:
-      list->title = "STATE SCENE";
-      list->rows[0] = "STATE 1";
-      list->rows[1] = "STATE 2";
-      list->rows[2] = "STATE 3";
-      list->selected_row = (focus_index >= DISPLAY_RENDERER_LIST_ROW_COUNT) ?
-        0UL : focus_index;
+      if (DisplayRenderer_ApplySceneModel(scene_model, list) == 0UL)
+      {
+        list->title = "SCENE ERROR";
+        list->rows[0] = "NO VISUAL";
+        list->selected_row = 0UL;
+      }
       break;
     case PS_UI_ROUTER_PAGE_ERROR:
       list->title = "ERROR";
@@ -2172,6 +2225,7 @@ void DisplayRenderer_PrepareUIPage(
   uint32_t focus_index,
   uint32_t shutdown_state,
   uint32_t shutdown_countdown_seconds,
+  const ps_scene_render_model_t *scene_model,
   display_renderer_stats_t *stats)
 {
   display_renderer_list_t list;
@@ -2184,6 +2238,7 @@ void DisplayRenderer_PrepareUIPage(
                          focus_index,
                          shutdown_state,
                          shutdown_countdown_seconds,
+                         scene_model,
                          &list);
 
   s_rotate_ccw = 1UL;

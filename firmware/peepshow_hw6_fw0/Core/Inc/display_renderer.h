@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "LS013B7DH05.h"
+#include "ps_scene_render_model.h"
 #include "ps_scene_waiting_visual.h"
 
 #ifdef __cplusplus
@@ -167,6 +168,7 @@ void DisplayRenderer_PrepareUIPage(
   uint32_t focus_index,
   uint32_t shutdown_state,
   uint32_t shutdown_countdown_seconds,
+  const ps_scene_render_model_t *scene_model,
   display_renderer_stats_t *stats);
 
 #ifdef __cplusplus

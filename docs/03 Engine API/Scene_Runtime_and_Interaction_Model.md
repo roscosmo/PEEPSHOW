@@ -328,6 +328,17 @@ or guard-rejected events do not request rendering. The initial implementation
 supports `EQ/NE/LT/LE/GT/GE` guards and `SET/ADD/SUBTRACT` mutations; richer
 types and service actions remain future schema work.
 
+FW0 scene-runtime API version `6` adds bounded visual-binding records and a
+backend-neutral resolved render model. Each state references a stable numeric
+visual-binding ID; scene admission validates that the binding exists, its text
+IDs and row bounds are valid, and the selected row fits that binding. For each
+accepted render request, `thDisplay` resolves one immutable snapshot containing
+scene/state/visual IDs, content and timeline revisions, numeric text IDs, focus,
+and waiting-timeline policy. Awake list composition and STOP2 waiting-visual
+compilation consume that same snapshot, so they cannot silently render different
+scene revisions. The compiled-in text catalog remains target proof data; package
+serialization and asset-backed visual lookup remain future work.
+
 ---
 
 ## Runtime Compositor Layers

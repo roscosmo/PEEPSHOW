@@ -215,6 +215,15 @@ presentation identity, allowing the existing awake/LPBAM scheduler to preserve
 the current combined frame and absolute deadline. The proof does not yet define
 the package serialization or authoring-tool schema for that scene.
 
+The next HW6 FW0 slice resolves one bounded render model per scene render. The
+model carries numeric scene, state, visual-binding, text, focus, content-revision,
+timeline-revision, and waiting-policy fields. `thDisplay` translates its numeric
+text IDs through the compiled target catalog, renders the awake list, then uses
+the same model to publish the waiting visual. A missing, invalid, or stale model
+fails closed rather than combining static content and autonomous animation from
+different revisions. This is the package-facing rendering boundary shape; the
+current compiled catalog is not yet a package asset loader.
+
 ---
 
 ## Validation Requirements
