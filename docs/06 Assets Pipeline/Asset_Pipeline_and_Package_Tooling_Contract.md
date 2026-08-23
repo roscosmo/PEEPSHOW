@@ -69,6 +69,22 @@ Output format must be deterministic from identical inputs.
 
 The package blob is the installable artifact. Editor-native source files are never runtime assets.
 
+### Runtime Package Source Boundary
+
+Firmware package decoding accepts an immutable `(blob, size, source,
+generation)` view. The decoder must remain independent of filesystem paths,
+installed-flash offsets, and the embedded development symbol.
+
+The current HW6 vertical slice provides:
+
+- `EMBEDDED`, backed by the generated development `.egg` artifact.
+- `NONE`, which cleanly returns to the shell and displays `EGGLESS`.
+
+Future installed-package support must publish the same immutable view only
+after `thStorage` has validated and atomically committed the package. Active
+STATE, SEQUENCE, and PROGRAM execution must never open or stream from the FAT
+staging filesystem.
+
 Templates, Authoring Kits, prefabs, behavior graphs, and behavior macros are source-level authoring objects. Tooling must lower them into the package output forms defined by this contract. They must not appear as independent firmware components, direct Platform hooks, or new scene types.
 
 ---

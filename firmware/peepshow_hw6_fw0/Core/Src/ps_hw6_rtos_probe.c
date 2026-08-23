@@ -5320,6 +5320,8 @@ static void PS_HW6_RTOS_RuntimePackageActivateStub(uint32_t runtime_class,
                                                    UINT clock_status)
 {
   UINT admission_status = clock_status;
+  uint32_t runtime_status = (clock_status == TX_SUCCESS) ?
+    (uint32_t)PS_STATUS_OK : (uint32_t)PS_STATUS_INTERNAL_ERROR;
   uint32_t event =
     (uint32_t)PS_HW6_RUNTIME_EVENT_PACKAGE_REACTIVE_ACTIVATE_STUB;
 
@@ -5350,11 +5352,45 @@ static void PS_HW6_RTOS_RuntimePackageActivateStub(uint32_t runtime_class,
   {
     if (PS_SceneRuntime_EnterStateScene() == PS_SCENE_RUNTIME_INDEX_INVALID)
     {
-      admission_status = TX_PTR_ERROR;
-      PS_HW6_RTOS_RuntimeSetState(
-        runtime_class,
-        execution,
-        (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_ERROR);
+      if (g_ps_scene_runtime_probe.activation_status ==
+          PS_SCENE_RUNTIME_STATUS_NO_PACKAGE)
+      {
+        UINT release_status = PS_HW6_RTOS_RequestRuntimeClockCapabilities(
+          PS_HW6_RTOS_RUNTIME_CLOCK_REASON_RELEASE,
+          0UL);
+
+        admission_status = TX_NO_INSTANCE;
+        runtime_status = (uint32_t)PS_STATUS_UNSUPPORTED;
+        g_ps_hw6_rtos_probe.runtime_active_package_id = 0UL;
+        g_ps_hw6_rtos_probe.runtime_active_unit_id = 0UL;
+        if (release_status == TX_SUCCESS)
+        {
+          PS_HW6_RTOS_RuntimeSetState(
+            (uint32_t)PS_HW6_RUNTIME_CLASS_SHELL,
+            (uint32_t)PS_HW6_RUNTIME_EXEC_REACTIVE,
+            (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_RUNNING);
+          g_ps_ui_router_request_event =
+            (uint32_t)PS_UI_ROUTER_EVENT_RUNTIME_UNAVAILABLE;
+          g_ps_ui_router_request = 1UL;
+        }
+        else
+        {
+          runtime_status = (uint32_t)PS_STATUS_INTERNAL_ERROR;
+          PS_HW6_RTOS_RuntimeSetState(
+            runtime_class,
+            execution,
+            (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_ERROR);
+        }
+      }
+      else
+      {
+        admission_status = TX_PTR_ERROR;
+        runtime_status = (uint32_t)PS_STATUS_INTERNAL_ERROR;
+        PS_HW6_RTOS_RuntimeSetState(
+          runtime_class,
+          execution,
+          (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_ERROR);
+      }
     }
     else
     {
@@ -5368,8 +5404,7 @@ static void PS_HW6_RTOS_RuntimePackageActivateStub(uint32_t runtime_class,
                                      capabilities,
                                      admission_status);
   PS_HW6_RTOS_RuntimeRecord(event,
-    (admission_status == TX_SUCCESS) ?
-    (uint32_t)PS_STATUS_OK : (uint32_t)PS_STATUS_INTERNAL_ERROR);
+                            runtime_status);
 }
 
 static void PS_HW6_RTOS_RuntimePackageReturn(void)

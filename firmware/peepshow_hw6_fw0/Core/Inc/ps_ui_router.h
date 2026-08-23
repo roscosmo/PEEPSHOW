@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_UI_ROUTER_API_VERSION (8UL)
+#define PS_UI_ROUTER_API_VERSION (9UL)
 #define PS_UI_ROUTER_STATUS_NOT_RUN (0xFFFFFFFFUL)
 
 typedef enum
@@ -124,7 +124,8 @@ typedef enum
   PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_REST,
   PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_SWEEP,
   PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_DONE,
-  PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_ERROR
+  PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_ERROR,
+  PS_UI_ROUTER_EVENT_RUNTIME_UNAVAILABLE
 } ps_ui_router_event_t;
 
 typedef enum
@@ -151,6 +152,7 @@ typedef struct
   uint32_t shutdown_return_page;
   uint32_t package_state;
   uint32_t package_event_count;
+  uint32_t eggless;
   uint32_t last_button_event;
   uint32_t button_event_count;
   uint32_t pending_action;

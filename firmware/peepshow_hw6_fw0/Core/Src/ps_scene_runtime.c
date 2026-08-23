@@ -5,6 +5,7 @@
 #include "knobs_autogen.h"
 #include "ps_egg_state_loader.h"
 #include "ps_input_buttons.h"
+#include "ps_package_source.h"
 
 #define PS_SCENE_RUNTIME_PRESENTATION_SHELL_BASE (0x100UL)
 #define PS_SCENE_RUNTIME_PRESENTATION_PROOF_BASE (0x200UL)
@@ -601,17 +602,50 @@ const ps_scene_waiting_visual_t *PS_SceneRuntime_ResolveShellStateWaitingVisual(
 
 uint32_t PS_SceneRuntime_EnterStateScene(void)
 {
+  ps_package_source_view_t package_view;
   uint32_t entry_index;
   uint32_t variable_index;
 
   g_ps_scene_runtime_probe.enter_count++;
   g_ps_scene_runtime_probe.last_status = PS_SCENE_RUNTIME_STATUS_NOT_RUN;
-  if (PS_EggStateLoader_LoadEmbedded(
-        &s_ps_scene_runtime_state_scene) != 0UL)
+  g_ps_scene_runtime_probe.activation_status =
+    PS_SCENE_RUNTIME_STATUS_NOT_RUN;
+  g_ps_scene_runtime_probe.package_source =
+    (uint32_t)PS_PACKAGE_SOURCE_NONE;
+  g_ps_scene_runtime_probe.package_source_status =
+    PS_PACKAGE_SOURCE_STATUS_NOT_RUN;
+  if (PS_PackageSource_Resolve(&package_view) != 0UL)
+  {
+    g_ps_scene_runtime_probe.package_source_status =
+      g_ps_package_source_probe.last_status;
+    g_ps_scene_runtime_probe.active = 0UL;
+    if (g_ps_package_source_probe.reason ==
+        (uint32_t)PS_PACKAGE_SOURCE_REASON_UNAVAILABLE)
+    {
+      g_ps_scene_runtime_probe.last_status =
+        PS_SCENE_RUNTIME_STATUS_NO_PACKAGE;
+      g_ps_scene_runtime_probe.activation_status =
+        PS_SCENE_RUNTIME_STATUS_NO_PACKAGE;
+      return PS_SCENE_RUNTIME_INDEX_INVALID;
+    }
+    g_ps_scene_runtime_probe.reject_count++;
+    g_ps_scene_runtime_probe.last_status = PS_SCENE_RUNTIME_STATUS_ERROR;
+    g_ps_scene_runtime_probe.activation_status =
+      PS_SCENE_RUNTIME_STATUS_ERROR;
+    return PS_SCENE_RUNTIME_INDEX_INVALID;
+  }
+  g_ps_scene_runtime_probe.package_source = package_view.source;
+  g_ps_scene_runtime_probe.package_source_status =
+    g_ps_package_source_probe.last_status;
+  if (PS_EggStateLoader_Load(package_view.blob,
+                             package_view.size,
+                             &s_ps_scene_runtime_state_scene) != 0UL)
   {
     g_ps_scene_runtime_probe.reject_count++;
     g_ps_scene_runtime_probe.active = 0UL;
-    g_ps_scene_runtime_probe.last_status = 1UL;
+    g_ps_scene_runtime_probe.last_status = PS_SCENE_RUNTIME_STATUS_ERROR;
+    g_ps_scene_runtime_probe.activation_status =
+      PS_SCENE_RUNTIME_STATUS_ERROR;
     return PS_SCENE_RUNTIME_INDEX_INVALID;
   }
   if (PS_SceneRuntime_ValidateStateScene(
@@ -619,7 +653,9 @@ uint32_t PS_SceneRuntime_EnterStateScene(void)
   {
     g_ps_scene_runtime_probe.reject_count++;
     g_ps_scene_runtime_probe.active = 0UL;
-    g_ps_scene_runtime_probe.last_status = 1UL;
+    g_ps_scene_runtime_probe.last_status = PS_SCENE_RUNTIME_STATUS_ERROR;
+    g_ps_scene_runtime_probe.activation_status =
+      PS_SCENE_RUNTIME_STATUS_ERROR;
     return PS_SCENE_RUNTIME_INDEX_INVALID;
   }
 
@@ -659,7 +695,9 @@ uint32_t PS_SceneRuntime_EnterStateScene(void)
   g_ps_scene_runtime_probe.state_revision++;
   g_ps_scene_runtime_probe.timeline_revision++;
   g_ps_scene_runtime_probe.last_action = 0UL;
-  g_ps_scene_runtime_probe.last_status = 0UL;
+  g_ps_scene_runtime_probe.last_status = PS_SCENE_RUNTIME_STATUS_OK;
+  g_ps_scene_runtime_probe.activation_status =
+    PS_SCENE_RUNTIME_STATUS_OK;
   return g_ps_scene_runtime_probe.state_index;
 }
 

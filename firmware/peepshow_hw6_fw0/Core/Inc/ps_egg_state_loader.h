@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_EGG_STATE_LOADER_API_VERSION (3UL)
+#define PS_EGG_STATE_LOADER_API_VERSION (4UL)
 #define PS_EGG_STATE_LOADER_STATUS_NOT_RUN (0xFFFFFFFFUL)
 #define PS_EGG_STATE_LOADER_SPRITE_FRAME_ID_BASE (0x00010000UL)
 
@@ -80,8 +80,6 @@ extern volatile ps_egg_state_loader_probe_t g_ps_egg_state_loader_probe;
 uint32_t PS_EggStateLoader_Load(
   const uint8_t *blob,
   uint32_t size,
-  ps_scene_runtime_state_scene_t *scene);
-uint32_t PS_EggStateLoader_LoadEmbedded(
   ps_scene_runtime_state_scene_t *scene);
 uint32_t PS_EggStateLoader_GetSpriteFrame(
   uint32_t frame_id,

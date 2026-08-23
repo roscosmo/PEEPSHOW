@@ -2368,6 +2368,10 @@ static void DisplayRenderer_UIList(uint32_t page,
   switch (page)
   {
     case PS_UI_ROUTER_PAGE_HOME:
+      if (g_ps_ui_router_probe.eggless != 0UL)
+      {
+        list->title = "EGGLESS";
+      }
       list->selected_row = (focus_index >= DISPLAY_RENDERER_LIST_ROW_COUNT) ?
         1UL : focus_index;
       break;

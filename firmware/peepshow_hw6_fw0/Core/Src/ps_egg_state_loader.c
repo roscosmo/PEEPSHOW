@@ -3,7 +3,6 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "ps_embedded_egg.h"
 #include "ps_hw6_hash.h"
 #include "ps_input_buttons.h"
 
@@ -1701,12 +1700,4 @@ uint32_t PS_EggStateLoader_Load(
   g_ps_egg_state_loader_probe.last_status = 0UL;
   g_ps_egg_state_loader_probe.reason = PS_EGG_STATE_LOADER_REASON_NONE;
   return 0UL;
-}
-
-uint32_t PS_EggStateLoader_LoadEmbedded(
-  ps_scene_runtime_state_scene_t *scene)
-{
-  return PS_EggStateLoader_Load(g_ps_embedded_egg,
-                                g_ps_embedded_egg_size,
-                                scene);
 }

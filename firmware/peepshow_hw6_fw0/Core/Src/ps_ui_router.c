@@ -17,6 +17,7 @@ typedef struct
   uint32_t shutdown_return_page;
   uint32_t package_state;
   uint32_t package_event_count;
+  uint32_t eggless;
   uint32_t last_button_event;
   uint32_t button_event_count;
   uint32_t pending_action;
@@ -57,6 +58,7 @@ static void PS_UIRouter_UpdateProbe(void)
   g_ps_ui_router_probe.package_state = ps_ui_router_state.package_state;
   g_ps_ui_router_probe.package_event_count =
     ps_ui_router_state.package_event_count;
+  g_ps_ui_router_probe.eggless = ps_ui_router_state.eggless;
   g_ps_ui_router_probe.last_button_event =
     ps_ui_router_state.last_button_event;
   g_ps_ui_router_probe.button_event_count =
@@ -385,6 +387,7 @@ void PS_UIRouter_Init(void)
   ps_ui_router_state.shutdown_return_page = PS_UI_ROUTER_PAGE_HOME;
   ps_ui_router_state.package_state = PS_UI_ROUTER_PACKAGE_NONE;
   ps_ui_router_state.package_event_count = 0UL;
+  ps_ui_router_state.eggless = 0UL;
   ps_ui_router_state.last_button_event = 0UL;
   ps_ui_router_state.button_event_count = 0UL;
   ps_ui_router_state.pending_action = PS_UI_ROUTER_ACTION_NONE;
@@ -450,6 +453,10 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
            PS_UI_ROUTER_PAGE_PACKAGE_BROWSER))
       {
         status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF);
+        if (status == PS_STATUS_OK)
+        {
+          ps_ui_router_state.eggless = 0UL;
+        }
       }
       else
       {
@@ -457,6 +464,11 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
       }
       break;
     case PS_UI_ROUTER_EVENT_RUNTIME_RETURNED:
+      ps_ui_router_state.eggless = 0UL;
+      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_HOME);
+      break;
+    case PS_UI_ROUTER_EVENT_RUNTIME_UNAVAILABLE:
+      ps_ui_router_state.eggless = 1UL;
       status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_HOME);
       break;
     case PS_UI_ROUTER_EVENT_SHELL_FAULT:

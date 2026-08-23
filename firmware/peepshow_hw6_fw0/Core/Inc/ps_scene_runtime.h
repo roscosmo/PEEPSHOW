@@ -10,9 +10,12 @@
 extern "C" {
 #endif
 
-#define PS_SCENE_RUNTIME_API_VERSION             (8UL)
+#define PS_SCENE_RUNTIME_API_VERSION             (10UL)
 #define PS_SCENE_RUNTIME_SCENE_TYPE_STATE        (1UL)
 #define PS_SCENE_RUNTIME_STATUS_NOT_RUN          (0xFFFFFFFFUL)
+#define PS_SCENE_RUNTIME_STATUS_OK               (0UL)
+#define PS_SCENE_RUNTIME_STATUS_ERROR            (1UL)
+#define PS_SCENE_RUNTIME_STATUS_NO_PACKAGE       (2UL)
 #define PS_SCENE_RUNTIME_INDEX_INVALID           (0xFFFFFFFFUL)
 #define PS_SCENE_RUNTIME_STATE_MAX               (8U)
 #define PS_SCENE_RUNTIME_VISUAL_BINDING_MAX      (8U)
@@ -142,6 +145,9 @@ typedef struct
   uint32_t sequence_step_count;
   uint32_t element_count;
   uint32_t active;
+  uint32_t package_source;
+  uint32_t package_source_status;
+  uint32_t activation_status;
   uint32_t enter_count;
   uint32_t exit_count;
   uint32_t action_count;

@@ -1,4 +1,5 @@
 set pagination off
+set var g_ps_package_source_override = 0
 set var g_display_renderer_waiting_test_variant = 0
 set var g_ps_scene_runtime_waiting_demo_enable = 0
 set var g_ps_hw6_runtime_reactive_stub_request = 1

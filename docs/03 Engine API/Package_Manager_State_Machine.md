@@ -98,6 +98,37 @@ Rules:
 - Activation state must remain aligned with runtime manager state.
 - Any mismatch routes to `PKG_ACTIVE_ERROR` and safe return to shell path.
 
+### Current HW6 Bring-Up Boundary
+
+HW6 firmware now resolves package activation through an explicit immutable
+package-source view before invoking a scene loader.
+
+Current source states are:
+
+- `NONE`: no package blob is exposed.
+- `EMBEDDED`: the generated development `.egg` blob is exposed.
+
+Rules:
+
+- `EMBEDDED` is the development default until installed raw-blob storage is
+  implemented.
+- `NONE` is a normal `PKG_ACTIVE_NONE` result, not a package fault.
+- a `NONE` activation request releases requested runtime clocks, returns to
+  `SHELL / REACTIVE / RUNNING`, and presents `EGGLESS` on HOME.
+- package loaders consume only the resolved immutable blob view; they do not
+  know whether the source is embedded, installed, or provided by a future
+  bounded development cache.
+- no activation path may read FileX or the staging filesystem.
+- persistent installed-blob selection must not be added until the external
+  flash package region, index, and atomic commit format are defined.
+
+Verified HW6 evidence:
+
+- embedded STATE activation remains functional, including STOP2 waiting
+  visuals and return to HOME.
+- forced `NONE` selection reports no active scene, `TX_NO_INSTANCE`, zero
+  runtime capabilities, HOME with `EGGLESS`, and a responsive shell.
+
 ---
 
 ## 4) Asset Request FSM Summary
