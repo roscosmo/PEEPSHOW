@@ -19,7 +19,12 @@ import {
   StepForward,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  SceneAuthoringInspector,
+  StateGraphView,
+  type SceneSelection,
+} from "./SceneInspection";
 import type {
   Framebuffer,
   PackageBuildResult,
@@ -97,6 +102,7 @@ export default function App() {
   const [project, setProject] = useState<ProjectLoadResult | null>(null);
   const [preview, setPreview] = useState<PreviewSnapshot | null>(null);
   const [selectedScene, setSelectedScene] = useState<string | null>(null);
+  const [sceneSelection, setSceneSelection] = useState<SceneSelection>({ kind: "scene" });
   const [build, setBuild] = useState<PackageBuildResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -132,6 +138,7 @@ export default function App() {
           scene_id: sceneId,
         });
         setSelectedScene(sceneId);
+        setSceneSelection({ kind: "scene" });
         setPreview(result);
         setMessage(null);
       } catch (error) {
@@ -152,6 +159,8 @@ export default function App() {
       setPlaying(false);
       setBuild(null);
       setPreview(null);
+      setSelectedScene(null);
+      setSceneSelection({ kind: "scene" });
       try {
         const result = await bridge.serviceRequest<ProjectLoadResult>("project.load", { path });
         setProject(result);
@@ -270,6 +279,10 @@ export default function App() {
   };
 
   const scenes: SceneDocument[] = project?.document?.scenes ?? [];
+  const selectedSceneDocument = useMemo(
+    () => scenes.find((scene) => scene.scene_id === selectedScene) ?? null,
+    [scenes, selectedScene],
+  );
   const connected = service !== null;
 
   return (
@@ -371,6 +384,7 @@ export default function App() {
             <div className="panel-bezel">
               <FramebufferCanvas framebuffer={preview?.framebuffer ?? null} />
             </div>
+            <div className="surface-label">Scene canvas preview</div>
           </div>
 
           <div className="transport-bar">
@@ -393,6 +407,23 @@ export default function App() {
           </div>
         </section>
 
+        <section className="state-graph-pane">
+          <div className="preview-heading graph-heading">
+            <div>
+              <span className="section-kicker">Per-scene STATE graph</span>
+              <h2>{selectedSceneDocument?.display_name ?? "No STATE scene selected"}</h2>
+            </div>
+            <span className="future-graph-label">Package scene-flow graph: Stage 5</span>
+          </div>
+          <div className="graph-surface">
+            <StateGraphView
+              scene={selectedSceneDocument}
+              selected={sceneSelection}
+              onSelect={setSceneSelection}
+            />
+          </div>
+        </section>
+
         <aside className="inspector-pane">
           <div className="pane-heading">Inspector</div>
 
@@ -410,6 +441,12 @@ export default function App() {
               </dl>
             )}
           </section>
+
+          <SceneAuthoringInspector
+            scene={selectedSceneDocument}
+            selection={sceneSelection}
+            onSelect={setSceneSelection}
+          />
 
           <section className="inspector-section">
             <h3>Variables</h3>

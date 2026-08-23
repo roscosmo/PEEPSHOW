@@ -175,7 +175,11 @@ button:focus-visible {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: 248px minmax(480px, 1fr) 292px;
+  grid-template-areas:
+    "project preview inspector"
+    "project graph inspector";
+  grid-template-columns: 248px minmax(520px, 1fr) 320px;
+  grid-template-rows: minmax(380px, 1.15fr) minmax(260px, 0.85fr);
   min-height: 0;
 }
 
@@ -187,10 +191,12 @@ button:focus-visible {
 }
 
 .project-pane {
+  grid-area: project;
   border-right: 1px solid #cfd5d1;
 }
 
 .inspector-pane {
+  grid-area: inspector;
   border-left: 1px solid #cfd5d1;
 }
 
@@ -337,6 +343,7 @@ button:focus-visible {
 }
 
 .preview-pane {
+  grid-area: preview;
   display: grid;
   grid-template-rows: 63px minmax(0, 1fr) 58px;
   min-width: 0;
@@ -395,6 +402,7 @@ button:focus-visible {
   background-color: #dde2df;
   background-image: linear-gradient(#d2d8d4 1px, transparent 1px), linear-gradient(90deg, #d2d8d4 1px, transparent 1px);
   background-size: 24px 24px;
+  position: relative;
 }
 
 .panel-bezel {
@@ -414,6 +422,16 @@ button:focus-visible {
   height: 100%;
   background: #eef1ed;
   image-rendering: pixelated;
+}
+
+.surface-label {
+  position: absolute;
+  left: 14px;
+  bottom: 12px;
+  color: #69716d;
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
 }
 
 .transport-bar {
@@ -462,6 +480,9 @@ button:focus-visible {
 }
 
 .inspector-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0 0 10px;
   color: #3a423e;
   font-size: 11px;
@@ -478,6 +499,250 @@ button:focus-visible {
 
 .inspector-list {
   margin: 0;
+}
+
+.state-graph-pane {
+  grid-area: graph;
+  display: grid;
+  grid-template-rows: 55px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  border-top: 1px solid #cbd2cd;
+  background: #eef2f0;
+}
+
+.graph-heading {
+  min-width: 0;
+  min-height: 0;
+}
+
+.future-graph-label {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 1px solid #cbd5cf;
+  border-radius: 4px;
+  color: #6d7671;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.graph-surface {
+  min-width: 0;
+  min-height: 0;
+}
+
+.graph-empty {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #75807a;
+  font-size: 12px;
+}
+
+.state-node {
+  min-width: 132px;
+  padding: 7px 9px;
+  border: 1px solid #aeb9b2;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #27302b;
+  box-shadow: 0 6px 14px rgb(55 64 59 / 10%);
+}
+
+.state-node.entry {
+  border-color: #32759a;
+  background: #edf7fb;
+}
+
+.state-node span,
+.state-node small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state-node span {
+  color: #68736d;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.state-node strong {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state-node small {
+  margin-top: 2px;
+  color: #78827c;
+  font-size: 9px;
+}
+
+.react-flow__node {
+  width: auto;
+  border: 0;
+  background: transparent;
+}
+
+.react-flow__node.selected .state-node {
+  border-color: #175f8a;
+  box-shadow: 0 0 0 2px rgb(23 95 138 / 18%);
+}
+
+.react-flow__edge-path,
+.react-flow__connection-path {
+  stroke: #58645e;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #175f8a;
+}
+
+.react-flow__edge-textbg {
+  fill: #f7f9f8;
+}
+
+.react-flow__edge-text {
+  fill: #36403a;
+  font-size: 10px;
+}
+
+.react-flow__controls,
+.react-flow__minimap {
+  border: 1px solid #c9d0cc;
+  border-radius: 5px;
+  box-shadow: none;
+}
+
+.record-list {
+  display: grid;
+  gap: 6px;
+}
+
+.record-row,
+.link-row {
+  width: 100%;
+  border: 1px solid #d2d9d5;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #303833;
+  cursor: pointer;
+  text-align: left;
+}
+
+.record-row {
+  display: block;
+  min-height: 38px;
+  padding: 6px 8px;
+}
+
+.record-row:hover,
+.link-row:hover {
+  border-color: #9aa7a0;
+  background: #f0f4f2;
+}
+
+.record-row strong,
+.record-row small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record-row strong {
+  font-size: 11px;
+}
+
+.record-row small {
+  margin-top: 3px;
+  color: #737c77;
+  font-size: 10px;
+}
+
+.selected-record h4 {
+  margin: 13px 0 7px;
+  color: #59635d;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.ordered-records {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  color: #343d38;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.ordered-records code {
+  color: #174f73;
+  font-size: 10px;
+}
+
+.link-row {
+  display: flex;
+  min-height: 33px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.link-row strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #174f73;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.element-table {
+  display: grid;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.element-table div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  padding: 7px;
+  border: 1px solid #d6ddd9;
+  border-radius: 5px;
+  background: #ffffff;
+}
+
+.element-table strong,
+.element-table span,
+.element-table small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.element-table strong {
+  font-size: 11px;
+}
+
+.element-table span,
+.element-table small {
+  color: #68736d;
+  font-size: 10px;
 }
 
 .success-note {
@@ -554,7 +819,7 @@ button:focus-visible {
 
 @media (max-width: 1180px) {
   .workspace-grid {
-    grid-template-columns: 220px minmax(460px, 1fr) 250px;
+    grid-template-columns: 220px minmax(480px, 1fr) 270px;
   }
 
   .service-state,
@@ -592,7 +857,13 @@ button:focus-visible {
   }
 
   .workspace-grid {
+    grid-template-areas:
+      "project"
+      "preview"
+      "graph"
+      "inspector";
     grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto auto;
   }
 
   .project-pane,
@@ -602,6 +873,14 @@ button:focus-visible {
 
   .preview-pane {
     min-height: 650px;
+  }
+
+  .state-graph-pane {
+    min-height: 460px;
+  }
+
+  .future-graph-label {
+    display: none;
   }
 
   .panel-bezel {

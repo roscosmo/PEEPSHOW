@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "outDir": "dist-test",
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": ["src/stateGraph.ts", "src/types.ts", "tests/**/*.ts"]
+}

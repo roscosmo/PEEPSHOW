@@ -2,7 +2,7 @@
 
 Status: `active_handoff`
 
-Implementation status: `STATE_vertical_slice_connected`
+Implementation status: `Stage_1_read_only_scene_inspection_connected`
 
 This document is the working boundary between Peep Studio development and
 PeepOS/HW6 bring-up. It tells an editor agent what the platform actually
@@ -175,7 +175,11 @@ Python mutation, validation, and revision boundary established in stage 2.
 - keep selected-scene direct preview available;
 - show source IDs and authoritative validation without modifying the project.
 
-This stage extends the current shell and is the next GUI milestone.
+Implementation status: connected in Peep Studio. The editor now presents a
+read-only per-scene STATE graph from normalized service records, keeps the
+direct selected-scene framebuffer preview, and exposes read-only inspectors for
+scene variables, routes, guards, ordered actions, render elements, and waiting
+visuals. Project mutation controls remain deferred to Stage 2.
 
 ### Stage 2: Authoritative Editing Foundation
 

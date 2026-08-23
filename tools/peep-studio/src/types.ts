@@ -19,9 +19,98 @@ export type SceneDocument = {
   scene_id: string;
   display_name: string;
   scene_type: string;
-  states?: unknown[];
-  routes?: unknown[];
-  render_models?: unknown[];
+  entry_state?: string;
+  variables?: StateVariable[];
+  input_actions?: InputAction[];
+  states?: StateRecord[];
+  routes?: StateRoute[];
+  render_models?: RenderModel[];
+  waiting_visuals?: WaitingVisual[];
+  reactive_wait_default?: ReactiveWaitPolicy;
+};
+
+export type StateVariable = {
+  variable_id: string;
+  value_type: string;
+  initial: number;
+  minimum: number;
+  maximum: number;
+};
+
+export type InputAction = {
+  action_id: string;
+  logical_source: string;
+};
+
+export type StateRecord = {
+  state_id: string;
+  display_name: string;
+  render_model_ref: string;
+  waiting_visual_ref: string;
+};
+
+export type StateGuard = {
+  variable_ref: string;
+  operator: string;
+  value: number;
+};
+
+export type StateAction = {
+  kind: string;
+  variable_ref?: string;
+  operation?: string;
+  value?: number;
+};
+
+export type StateRoute = {
+  route_id: string;
+  action_ref: string;
+  from_states: string[];
+  guards: StateGuard[];
+  actions: StateAction[];
+  target_state: string;
+};
+
+export type RenderElement = {
+  element_id: string;
+  kind: string;
+  visual_ref: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  z_order: number;
+  focus_role?: string;
+};
+
+export type RenderModel = {
+  visual_id: string;
+  focus_index: number;
+  elements: RenderElement[];
+};
+
+export type WaitingVisualElement = {
+  element_id: string;
+  source_element_ref: string;
+  phase_visual_refs: string[];
+  step_phase_indices: number[];
+};
+
+export type WaitingVisual = {
+  waiting_visual_id: string;
+  presentation_id: string;
+  phase_quantum_ms: number;
+  combined_step_count: number;
+  settled_step: number;
+  cycle_policy: string;
+  elements: WaitingVisualElement[];
+};
+
+export type ReactiveWaitPolicy = {
+  policy_id: string;
+  waiting_visual_ref: string;
+  hold_fallback_allowed: boolean;
+  event_interests: string[];
 };
 
 export type ProjectLoadResult = {
