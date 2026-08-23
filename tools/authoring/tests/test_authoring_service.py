@@ -4,9 +4,13 @@ import base64
 import hashlib
 import io
 import json
+import shutil
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+
+from PIL import Image
 
 
 TOOL_ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +33,76 @@ SAMPLE = WORKSPACE_ROOT / "examples" / "authoring" / "state_slice.peepproj"
 
 def request(operation: str, params: dict[str, object] | None = None) -> ServiceRequest:
     return ServiceRequest("test", operation, params or {})
+
+
+def make_preview_project(parent: Path) -> Path:
+    project_root = parent / "preview.peepproj"
+    shutil.copytree(SAMPLE, project_root)
+    asset_dir = project_root / "assets"
+    asset_dir.mkdir()
+
+    project_path = project_root / "project.json"
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    project["asset_sources"] = ["assets/catalog.json"]
+    project_path.write_text(json.dumps(project), encoding="utf-8")
+
+    image = Image.new("RGBA", (16, 16), (255, 255, 255, 0))
+    for y in range(16):
+        for x in range(8):
+            if x in {0, 7} or y in {0, 15}:
+                image.putpixel((x, y), (0, 0, 0, 255))
+        for x in range(8, 16):
+            color = (0, 0, 0, 255) if x in {11, 12} else (255, 255, 255, 255)
+            image.putpixel((x, y), color)
+    image.save(asset_dir / "cursor.png", format="PNG")
+    catalog = {
+        "schema_id": "peepshow.authoring.assets",
+        "schema_version": 1,
+        "assets": [
+            {
+                "asset_id": "cursor",
+                "asset_type": "masked_1bpp",
+                "source_path": "assets/cursor.png",
+                "source_format": "png",
+                "frames": [
+                    {
+                        "frame_id": "cursor.phase_a",
+                        "source_rect": {"x": 0, "y": 0, "width": 8, "height": 16},
+                        "pivot_x": 0,
+                        "pivot_y": 0,
+                    },
+                    {
+                        "frame_id": "cursor.phase_b",
+                        "source_rect": {"x": 8, "y": 0, "width": 8, "height": 16},
+                        "pivot_x": 0,
+                        "pivot_y": 0,
+                    },
+                ],
+            }
+        ],
+        "animations": [
+            {
+                "animation_id": "cursor.blink",
+                "frame_refs": ["cursor.phase_a", "cursor.phase_b"],
+                "frame_duration_ms": [250, 250],
+                "loop_policy": "loop",
+            }
+        ],
+    }
+    (asset_dir / "catalog.json").write_text(json.dumps(catalog), encoding="utf-8")
+
+    scene_path = project_root / "scenes" / "state_demo.state.json"
+    scene = json.loads(scene_path.read_text(encoding="utf-8"))
+    for model in scene["render_models"]:
+        cursor = next(element for element in model["elements"] if element["element_id"] == "cursor")
+        cursor["kind"] = "sprite"
+        cursor["visual_ref"] = "cursor.phase_a"
+        model["elements"] = [cursor]
+    cursor_wait = scene["waiting_visuals"][0]["elements"][0]
+    cursor_wait["phase_visual_refs"] = ["cursor.phase_a", "cursor.phase_b"]
+    scene["waiting_visuals"][0]["elements"] = [cursor_wait]
+    scene_path.write_text(json.dumps(scene), encoding="utf-8")
+    return project_root
 
 
 class AuthoringProtocolTests(unittest.TestCase):
@@ -78,12 +152,15 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(2, SERVICE_API_VERSION)
+        self.assertEqual(3, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
         self.assertIn("project.build_package", result["operations"])
         self.assertIn("project.compatibility_report", result["operations"])
+        self.assertIn("project.preview_reset", result["operations"])
+        self.assertIn("project.preview_input", result["operations"])
+        self.assertIn("project.preview_advance", result["operations"])
 
     def test_load_validate_and_normalize_share_one_revision(self) -> None:
         service = AuthoringService()
@@ -158,6 +235,108 @@ class AuthoringServiceTests(unittest.TestCase):
             sort_keys=True,
         ).encode("ascii")
         self.assertEqual(hashlib.sha256(encoded).hexdigest(), checksum)
+
+    def test_selected_scene_preview_runs_compiled_routes_and_exact_sprite_pixels(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_preview_project(Path(temp_dir))
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            reset = service.handle(
+                request(
+                    "project.preview_reset",
+                    {"project_revision": loaded["project_revision"], "scene_id": "state_demo"},
+                )
+            )
+
+            self.assertEqual("center", reset["scene"]["state_id"])
+            self.assertEqual(1, reset["timeline"]["step_index"])
+            self.assertEqual(32, reset["framebuffer"]["black_pixel_count"])
+            framebuffer = base64.b64decode(reset["framebuffer"]["data_base64"], validate=True)
+            self.assertEqual(3024, len(framebuffer))
+
+            advanced = service.handle(
+                request(
+                    "project.preview_advance",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "preview_revision": reset["preview_revision"],
+                        "elapsed_ms": 250,
+                    },
+                )
+            )
+            self.assertEqual(2, advanced["timeline"]["step_index"])
+            self.assertEqual(44, advanced["framebuffer"]["black_pixel_count"])
+            self.assertNotEqual(reset["framebuffer"]["sha256"], advanced["framebuffer"]["sha256"])
+
+            moved = service.handle(
+                request(
+                    "project.preview_input",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "preview_revision": reset["preview_revision"],
+                        "logical_source": "BUTTON_R",
+                    },
+                )
+            )
+            self.assertEqual("right", moved["scene"]["state_id"])
+            self.assertEqual(2, moved["variables"]["selected_index"])
+            self.assertEqual(2, moved["timeline"]["step_index"])
+            self.assertEqual("center_to_right", moved["input"]["route_id"])
+            self.assertTrue(moved["input"]["accepted"])
+
+            ignored = service.handle(
+                request(
+                    "project.preview_input",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "preview_revision": reset["preview_revision"],
+                        "logical_source": "BUTTON_A",
+                    },
+                )
+            )
+            self.assertFalse(ignored["input"]["accepted"])
+            self.assertEqual("right", ignored["scene"]["state_id"])
+
+    def test_preview_rejects_procedural_source_visuals_and_stale_sessions(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        with self.assertRaises(ProtocolError) as raised:
+            service.handle(
+                request(
+                    "project.preview_reset",
+                    {"project_revision": loaded["project_revision"], "scene_id": "state_demo"},
+                )
+            )
+        self.assertEqual("PREVIEW_START_FAILED", raised.exception.code)
+        self.assertIn("package-backed preview requires sprites", raised.exception.message)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_preview_project(Path(temp_dir))
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            first = service.handle(
+                request(
+                    "project.preview_reset",
+                    {"project_revision": loaded["project_revision"], "scene_id": "state_demo"},
+                )
+            )
+            service.handle(
+                request(
+                    "project.preview_reset",
+                    {"project_revision": loaded["project_revision"], "scene_id": "state_demo"},
+                )
+            )
+            with self.assertRaises(ProtocolError) as stale:
+                service.handle(
+                    request(
+                        "project.preview_advance",
+                        {
+                            "project_revision": loaded["project_revision"],
+                            "preview_revision": first["preview_revision"],
+                            "elapsed_ms": 1,
+                        },
+                    )
+                )
+            self.assertEqual("PREVIEW_REVISION_STALE", stale.exception.code)
 
     def test_invalid_project_loads_for_diagnostics_but_cannot_build(self) -> None:
         service = AuthoringService()

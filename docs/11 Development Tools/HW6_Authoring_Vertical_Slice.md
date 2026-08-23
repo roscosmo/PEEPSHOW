@@ -11,9 +11,10 @@ reader, hardware SHA-256 integrity path, sparse retained STATE scene, mixed
 2-phase/3-phase waiting visuals, STOP2 continuity, and input transitions have
 passed initial target validation. The versioned host authoring-service boundary
 now exposes project loading, validation, normalization, deterministic package
-compilation, and V1 compatibility reporting. External-flash installation and
-activation, target-profile closure, authoring preview/editor surfaces,
-SEQUENCE, PROGRAM, and end-to-end HW6 evidence remain open.
+compilation, V1 compatibility reporting, and deterministic selected-STATE-scene
+preview over independently parsed package records. External-flash installation
+and activation, target-profile closure, editor surfaces, SEQUENCE, PROGRAM, and
+end-to-end HW6 evidence remain open.
 
 Target status: `HW6_PENDING_VALIDATION` until measured HW6 evidence is frozen into a shipping-authoritative target profile.
 
@@ -404,7 +405,9 @@ Final current evidence must be repeated with unnecessary trace/debug overhead di
 - the project can be created and edited without raw package-data editing.
 - all authored objects use stable IDs.
 - the required runtime flow is visible in authoring terms.
-- preview uses the same normalized logic representation accepted by the compiler.
+- preview builds and independently parses the same `.egg` representation used
+  for export; it does not read source PNG pixels or raw editor animation rules
+  while executing.
 - removed HW6 capabilities fail validation with clear messages.
 
 ### Compiler Gate

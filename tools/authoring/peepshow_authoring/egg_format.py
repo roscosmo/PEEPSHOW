@@ -98,7 +98,7 @@ class EggPackage:
     manifest_chunk_index: int
     strings: tuple[str, ...]
     manifest: dict[str, int | str]
-    scenes: tuple[dict[str, int | str], ...]
+    scenes: tuple[dict[str, object], ...]
     assets: tuple[dict[str, object], ...]
     animations: tuple[dict[str, object], ...]
     chunks: tuple[EggChunk, ...]
@@ -394,21 +394,44 @@ def _parse_render(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]
     _require(len(payload) == expected, "render chunk size is inconsistent")
     model_offset = RENDER_HEADER.size
     element_offset = model_offset + model_count * RENDER_MODEL_RECORD.size
-    models: list[tuple[int, int]] = []
+    model_records: list[tuple[int, int, int, int]] = []
     for index in range(model_count):
         visual_id, focus, first_element, count = RENDER_MODEL_RECORD.unpack_from(
             payload, model_offset + index * RENDER_MODEL_RECORD.size
         )
         _string(strings, visual_id, "render visual_id")
         _require(first_element + count <= element_count, "render model element range is invalid")
-        models.append((first_element, count))
+        model_records.append((visual_id, focus, first_element, count))
+    elements: list[dict[str, object]] = []
     for index in range(element_count):
         record = RENDER_ELEMENT_RECORD.unpack_from(payload, element_offset + index * RENDER_ELEMENT_RECORD.size)
-        _string(strings, record[0], "render element_id")
-        _string(strings, record[1], "render visual_ref")
+        element_id = _string(strings, record[0], "render element_id")
+        visual_ref = _string(strings, record[1], "render visual_ref")
         _require(record[2] in {1, 2, 3}, "render element kind is invalid")
         _require(record[3] in {0, 1}, "render focus role is invalid")
         _require(record[6] > 0 and record[7] > 0, "render element dimensions are invalid")
+        elements.append(
+            {
+                "element_id": element_id,
+                "visual_ref": visual_ref,
+                "kind": record[2],
+                "focus_role": record[3],
+                "x": record[4],
+                "y": record[5],
+                "width": record[6],
+                "height": record[7],
+                "z_order": record[8],
+            }
+        )
+    models: list[dict[str, object]] = []
+    for visual_id, focus, first_element, count in model_records:
+        models.append(
+            {
+                "visual_id": _string(strings, visual_id, "render visual_id"),
+                "focus_index": focus,
+                "elements": tuple(elements[first_element : first_element + count]),
+            }
+        )
     return {"model_count": model_count, "element_count": element_count, "models": tuple(models)}
 
 
@@ -422,7 +445,7 @@ def _parse_wait(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]:
     phase_offset = element_offset + element_count * WAIT_ELEMENT_RECORD.size
     sequence_offset = phase_offset + phase_count * 2
     _require(sequence_offset + sequence_count == len(payload), "waiting-visual chunk size is inconsistent")
-    waits: list[int] = []
+    wait_records: list[tuple[int, ...]] = []
     for index in range(wait_count):
         record = WAIT_RECORD.unpack_from(payload, wait_offset + index * WAIT_RECORD.size)
         _string(strings, record[0], "waiting_visual_id")
@@ -430,20 +453,56 @@ def _parse_wait(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]:
         _require(record[2] > 0 and 1 <= record[3] <= 12, "waiting cadence or step count is invalid")
         _require(record[4] < record[3] and record[5] == 1, "waiting settled step or cycle policy is invalid")
         _require(record[6] + record[7] <= element_count, "waiting element range is invalid")
-        waits.append(record[3])
+        wait_records.append(record)
     phase_refs = struct.unpack_from(f"<{phase_count}H", payload, phase_offset) if phase_count else ()
     for ref in phase_refs:
         _string(strings, ref, "waiting phase visual")
     sequence = payload[sequence_offset:]
+    elements: list[dict[str, object]] = []
     for index in range(element_count):
         record = WAIT_ELEMENT_RECORD.unpack_from(payload, element_offset + index * WAIT_ELEMENT_RECORD.size)
-        _string(strings, record[0], "waiting element_id")
-        _string(strings, record[1], "waiting source_element_ref")
+        element_id = _string(strings, record[0], "waiting element_id")
+        source_element_ref = _string(strings, record[1], "waiting source_element_ref")
         first_phase, count_phase, first_step, count_step = record[2:6]
         _require(1 <= count_phase <= 4 and first_phase + count_phase <= phase_count, "waiting phase range is invalid")
         _require(first_step + count_step <= sequence_count, "waiting sequence range is invalid")
         _require(all(value < count_phase for value in sequence[first_step : first_step + count_step]), "waiting phase index is invalid")
-    return {"waiting_count": wait_count, "element_count": element_count, "step_counts": tuple(waits)}
+        elements.append(
+            {
+                "element_id": element_id,
+                "source_element_ref": source_element_ref,
+                "phase_visual_refs": tuple(
+                    _string(strings, ref, "waiting phase visual")
+                    for ref in phase_refs[first_phase : first_phase + count_phase]
+                ),
+                "step_phase_indices": tuple(sequence[first_step : first_step + count_step]),
+            }
+        )
+    waits: list[dict[str, object]] = []
+    for record in wait_records:
+        first_element, count = record[6], record[7]
+        selected = tuple(elements[first_element : first_element + count])
+        _require(
+            all(len(element["step_phase_indices"]) == record[3] for element in selected),
+            "waiting element sequence length does not match its visual",
+        )
+        waits.append(
+            {
+                "waiting_visual_id": _string(strings, record[0], "waiting_visual_id"),
+                "presentation_id": _string(strings, record[1], "waiting presentation_id"),
+                "phase_quantum_ms": record[2],
+                "combined_step_count": record[3],
+                "settled_step": record[4],
+                "cycle_policy": record[5],
+                "elements": selected,
+            }
+        )
+    return {
+        "waiting_count": wait_count,
+        "element_count": element_count,
+        "step_counts": tuple(int(wait["combined_step_count"]) for wait in waits),
+        "waiting_visuals": tuple(waits),
+    }
 
 
 def _parse_graph(
@@ -451,7 +510,7 @@ def _parse_graph(
     strings: tuple[str, ...],
     render_count: int,
     waiting_count: int,
-) -> dict[str, int]:
+) -> dict[str, object]:
     _require(len(payload) >= GRAPH_HEADER.size, "state graph is truncated")
     values = GRAPH_HEADER.unpack_from(payload)
     _require(values[0] == b"STG1" and values[1] == 1 and values[2] == GRAPH_HEADER.size, "unsupported state graph")
@@ -493,26 +552,45 @@ def _parse_graph(
         offsets.append(offsets[-1] + size)
     _require(offsets[-1] == len(payload), "state graph size is inconsistent")
 
+    variables: list[dict[str, object]] = []
     for index in range(variable_count):
         record = VARIABLE_RECORD.unpack_from(payload, offsets[0] + index * VARIABLE_RECORD.size)
-        _string(strings, record[0], "variable ID")
+        variable_id = _string(strings, record[0], "variable ID")
         _require(
             record[1] == 1 and record[2] == 0 and record[4] <= record[3] <= record[5],
             "variable record is invalid",
         )
+        variables.append(
+            {
+                "variable_id": variable_id,
+                "initial": record[3],
+                "minimum": record[4],
+                "maximum": record[5],
+            }
+        )
+    inputs: list[dict[str, object]] = []
     for index in range(input_count):
         record = INPUT_RECORD.unpack_from(payload, offsets[1] + index * INPUT_RECORD.size)
-        _string(strings, record[0], "input action ID")
+        action_id = _string(strings, record[0], "input action ID")
         _require(record[1] in {1, 2, 3, 4}, "input source is invalid")
-    state_refs: list[tuple[int, int]] = []
+        inputs.append({"action_id": action_id, "logical_source": record[1]})
+    states: list[dict[str, object]] = []
     for index in range(state_count):
         record = STATE_RECORD.unpack_from(payload, offsets[2] + index * STATE_RECORD.size)
-        _string(strings, record[0], "state ID")
-        _string(strings, record[1], "state display name")
+        state_id = _string(strings, record[0], "state ID")
+        display_name = _string(strings, record[1], "state display name")
         _require(record[2] < render_count and record[3] < waiting_count, "state visual reference is invalid")
-        state_refs.append((record[2], record[3]))
+        states.append(
+            {
+                "state_id": state_id,
+                "display_name": display_name,
+                "render_model_index": record[2],
+                "waiting_visual_index": record[3],
+            }
+        )
     source_states = struct.unpack_from(f"<{source_count}H", payload, offsets[4]) if source_count else ()
     _require(all(ref < state_count for ref in source_states), "route source-state index is invalid")
+    route_records: list[tuple[int, ...]] = []
     for index in range(route_count):
         record = ROUTE_RECORD.unpack_from(payload, offsets[3] + index * ROUTE_RECORD.size)
         _string(strings, record[0], "route ID")
@@ -520,15 +598,39 @@ def _parse_graph(
         _require(record[3] + record[4] <= source_count, "route source range is invalid")
         _require(record[5] + record[6] <= guard_count, "route guard range is invalid")
         _require(record[7] + record[8] <= operation_count, "route operation range is invalid")
+        route_records.append(record)
+    guards: list[dict[str, int]] = []
     for index in range(guard_count):
         record = GUARD_RECORD.unpack_from(payload, offsets[5] + index * GUARD_RECORD.size)
         _require(record[0] < variable_count and record[1] in {1, 2, 3, 4, 5, 6}, "guard record is invalid")
+        guards.append({"variable_index": record[0], "operator": record[1], "value": record[3]})
+    operations: list[dict[str, int]] = []
     for index in range(operation_count):
         record = OPERATION_RECORD.unpack_from(payload, offsets[6] + index * OPERATION_RECORD.size)
         if record[0] == 1:
             _require(record[1] in {1, 2} and record[2] < variable_count, "set-variable operation is invalid")
         else:
             _require(record[0] == 2 and record[1] == 0 and record[2] == 0xFFFF, "operation record is invalid")
+        operations.append(
+            {
+                "kind": record[0],
+                "operation": record[1],
+                "variable_index": record[2],
+                "value": record[5],
+            }
+        )
+    routes: list[dict[str, object]] = []
+    for record in route_records:
+        routes.append(
+            {
+                "route_id": _string(strings, record[0], "route ID"),
+                "action_index": record[1],
+                "target_state_index": record[2],
+                "source_state_indexes": tuple(source_states[record[3] : record[3] + record[4]]),
+                "guards": tuple(guards[record[5] : record[5] + record[6]]),
+                "operations": tuple(operations[record[7] : record[7] + record[8]]),
+            }
+        )
     event_refs = struct.unpack_from(f"<{event_count}H", payload, offsets[7]) if event_count else ()
     meaningful_refs = struct.unpack_from(f"<{meaningful_count}H", payload, offsets[8]) if meaningful_count else ()
     _require(all(ref < input_count for ref in event_refs + meaningful_refs), "policy input-action index is invalid")
@@ -538,6 +640,17 @@ def _parse_graph(
         "input_count": input_count,
         "state_count": state_count,
         "route_count": route_count,
+        "variables": tuple(variables),
+        "inputs": tuple(inputs),
+        "states": tuple(states),
+        "routes": tuple(routes),
+        "wait_policy_id": _string(strings, wait_policy_id, "wait policy ID"),
+        "default_waiting_index": default_waiting,
+        "hold_fallback_allowed": bool(hold_fallback),
+        "event_interest_indexes": tuple(event_refs),
+        "interaction_policy_id": _string(strings, interaction_policy_id, "interaction policy ID"),
+        "inactive_route": inactive_route,
+        "meaningful_action_indexes": tuple(meaningful_refs),
     }
 
 
@@ -617,7 +730,7 @@ def parse_egg(blob: bytes) -> EggPackage:
     _require(scene_header[4] == 0 and len(scene_payload) == SCENE_HEADER.size + scene_count * SCENE_RECORD.size, "scene table size is inconsistent")
     expected_chunk_count = 3 + scene_count * 3 + (3 if asset_indexes else 0)
     _require(scene_count == manifest["scene_count"] and chunk_count == expected_chunk_count, "scene/chunk count is inconsistent")
-    scenes: list[dict[str, int | str]] = []
+    scenes: list[dict[str, object]] = []
     used_scene_chunks: set[int] = set()
     for index in range(scene_count):
         record = SCENE_RECORD.unpack_from(scene_payload, SCENE_HEADER.size + index * SCENE_RECORD.size)
@@ -646,6 +759,9 @@ def parse_egg(blob: bytes) -> EggPackage:
                 "state_count": graph_summary["state_count"],
                 "route_count": graph_summary["route_count"],
                 "flags": flags,
+                "graph": graph_summary,
+                "render_models": render_summary["models"],
+                "waiting_visuals": wait_summary["waiting_visuals"],
             }
         )
     expected_scene_chunks = {index for index, chunk in enumerate(chunks) if chunk.chunk_type in {CHUNK_STATE_GRAPH, CHUNK_RENDER_MODELS, CHUNK_WAITING_VISUALS}}

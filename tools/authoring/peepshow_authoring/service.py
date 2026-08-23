@@ -12,6 +12,7 @@ from .compatibility import build_compatibility_report
 from .compiler import EggCompileError, build_egg
 from .egg_format import EggFormatError, parse_egg
 from .project import ProjectBundle, load_project
+from .preview import PreviewError, StateScenePreview
 from .protocol import (
     PROTOCOL_VERSION,
     ProtocolError,
@@ -23,7 +24,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 2
+SERVICE_API_VERSION = 3
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
     "service.hello",
@@ -33,6 +34,9 @@ SERVICE_OPERATIONS = (
     "project.normalize",
     "project.build_package",
     "project.compatibility_report",
+    "project.preview_reset",
+    "project.preview_input",
+    "project.preview_advance",
 )
 
 
@@ -71,10 +75,16 @@ class AuthoringService:
     def __init__(self) -> None:
         self._bundle: ProjectBundle | None = None
         self._project_revision = 0
+        self._preview: StateScenePreview | None = None
+        self._preview_revision = 0
         self.shutdown_requested = False
 
-    def _current_bundle(self, params: dict[str, Any]) -> ProjectBundle:
-        _require_fields(params, {"project_revision"})
+    def _current_bundle(
+        self,
+        params: dict[str, Any],
+        operation_fields: set[str] | None = None,
+    ) -> ProjectBundle:
+        _require_fields(params, {"project_revision"} | (operation_fields or set()))
         if self._bundle is None:
             raise ProtocolError("PROJECT_NOT_LOADED", "load a project before this operation")
         revision = params["project_revision"]
@@ -112,6 +122,7 @@ class AuthoringService:
         bundle = load_project(Path(path))
         self._bundle = bundle
         self._project_revision += 1
+        self._preview = None
         project = bundle.project
         return {
             "project_revision": self._project_revision,
@@ -198,6 +209,71 @@ class AuthoringService:
             "report": build_compatibility_report(bundle, blob),
         }
 
+    def _preview_result(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "project_revision": self._project_revision,
+            "preview_revision": self._preview_revision,
+            **snapshot,
+        }
+
+    def _current_preview(
+        self,
+        params: dict[str, Any],
+        operation_fields: set[str],
+    ) -> StateScenePreview:
+        self._current_bundle(params, operation_fields | {"preview_revision"})
+        if self._preview is None:
+            raise ProtocolError("PREVIEW_NOT_STARTED", "reset a selected-scene preview before this operation")
+        revision = params["preview_revision"]
+        if not isinstance(revision, int) or isinstance(revision, bool):
+            raise ProtocolError("PREVIEW_REVISION_INVALID", "preview_revision must be an integer")
+        if revision != self._preview_revision:
+            raise ProtocolError(
+                "PREVIEW_REVISION_STALE",
+                "operation targets an outdated preview revision",
+                details={"current_preview_revision": self._preview_revision},
+            )
+        return self._preview
+
+    def _preview_reset(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params, {"scene_id"})
+        scene_id = params["scene_id"]
+        if not isinstance(scene_id, str) or not scene_id:
+            raise ProtocolError("PREVIEW_SCENE_INVALID", "scene_id must be non-empty text")
+        if not bundle.valid:
+            raise ProtocolError(
+                "PROJECT_INVALID",
+                "project must validate before preview",
+                details={"issues": _issues(bundle)},
+            )
+        try:
+            package = parse_egg(build_egg(bundle))
+            preview = StateScenePreview(package, scene_id)
+        except (EggCompileError, EggFormatError, PreviewError) as exc:
+            raise ProtocolError("PREVIEW_START_FAILED", str(exc)) from exc
+        self._preview = preview
+        self._preview_revision += 1
+        return self._preview_result(preview.snapshot())
+
+    def _preview_input(self, params: dict[str, Any]) -> dict[str, Any]:
+        preview = self._current_preview(params, {"logical_source"})
+        logical_source = params["logical_source"]
+        if not isinstance(logical_source, str) or not logical_source:
+            raise ProtocolError("PREVIEW_INPUT_INVALID", "logical_source must be non-empty text")
+        try:
+            result = preview.apply_input(logical_source)
+        except PreviewError as exc:
+            raise ProtocolError("PREVIEW_INPUT_FAILED", str(exc)) from exc
+        return self._preview_result(preview.snapshot(result))
+
+    def _preview_advance(self, params: dict[str, Any]) -> dict[str, Any]:
+        preview = self._current_preview(params, {"elapsed_ms"})
+        try:
+            preview.advance(params["elapsed_ms"])
+        except PreviewError as exc:
+            raise ProtocolError("PREVIEW_ADVANCE_FAILED", str(exc)) from exc
+        return self._preview_result(preview.snapshot())
+
     def handle(self, request: ServiceRequest) -> dict[str, Any]:
         handlers = {
             "service.hello": self._hello,
@@ -207,6 +283,9 @@ class AuthoringService:
             "project.normalize": self._normalize,
             "project.build_package": self._build_package,
             "project.compatibility_report": self._compatibility_report,
+            "project.preview_reset": self._preview_reset,
+            "project.preview_input": self._preview_input,
+            "project.preview_advance": self._preview_advance,
         }
         handler = handlers.get(request.operation)
         if handler is None:

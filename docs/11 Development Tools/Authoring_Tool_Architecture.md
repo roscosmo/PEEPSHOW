@@ -5,10 +5,11 @@ Status: `accepted_design`
 Implementation status: `partial`
 
 The versioned newline-delimited JSON protocol, project revision checks, and
-long-running Python service are implemented. The service currently exposes
-project load, validation, normalization, deterministic in-memory package
-compilation, and a V1 compatibility report. Project mutation, undo/redo,
-preview execution, Electron, and React remain open.
+long-running Python service are implemented. The service exposes project load,
+validation, normalization, deterministic in-memory package compilation, a V1
+compatibility report, and deterministic selected-STATE-scene preview over the
+independently parsed package. Project mutation, undo/redo, Electron, and React
+remain open.
 
 This document defines the host application architecture for the PeepShow game
 authoring tools. The provisional working name for the desktop application is
@@ -180,10 +181,12 @@ project.preview_input
 project.preview_advance
 ```
 
-The three preview operations are the next service milestone. Their payloads
-must identify a selected scene directly, so an author can test any STATE scene
-without playing from the package entry scene. Scene-direct launch is an
+The three preview operations are implemented in service API version 3. Their
+payloads identify a selected scene directly, so an author can test any STATE
+scene without playing from the package entry scene. Scene-direct launch is an
 editor/debug fixture only and is not serialized as package gameplay behavior.
+Reset compiles and independently parses an immutable in-memory `.egg`; input
+and time operations then execute only those parsed records.
 
 Reserved operations must not be advertised by service discovery until their
 semantics and tests are implemented.
@@ -367,8 +370,9 @@ Passing authoring-preview tests does not replace target validation.
    report through the service
 3. implement deterministic masked-1bpp PNG import and compile asset records into
    `asset_table`, `masked_1bpp_sprite_bank`, and `animation_table` chunks
-4. implement selected-STATE-scene reference preview against the compiled
-   package reader, with explicit fake time and A/B/L/R input
+4. selected-STATE-scene reference preview against the compiled package reader,
+   with explicit fake time and A/B/L/R input - implemented for package-backed
+   native-scale masked 1bpp sprites
 5. make firmware consume those same package sprite/frame records instead of a
    compiled-in visual catalog
 6. create the Electron, TypeScript, and React shell with the `168 x 144` panel

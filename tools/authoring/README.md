@@ -113,6 +113,9 @@ Implemented operations:
 - `project.normalize`
 - `project.build_package`
 - `project.compatibility_report`
+- `project.preview_reset`
+- `project.preview_input`
+- `project.preview_advance`
 
 `project.load` starts a new monotonically increasing project revision. Every
 project operation must supply that revision; stale requests are rejected rather
@@ -124,10 +127,20 @@ It does not choose a destination or write an installable file. The V1 report
 marks the current HW6 development profile as `pending_validation` and
 `dev_only`; it does not claim shipping authority before target-profile closure.
 
-Service API version 2 adds asset and animation counts to project and package
-summaries. The newline-delimited JSON protocol remains version 1.
+Service API version 3 adds a deterministic selected-STATE-scene preview. A
+reset names the scene to launch directly, an input operation supplies one
+logical button source, and an advance operation supplies explicit elapsed
+milliseconds. Every response contains the current compiled state, timeline,
+variables, and an exact `168 x 144` packed 1bpp framebuffer. Preview never
+reads source assets after reset: it builds and independently parses the `.egg`,
+then executes those validated package records.
 
-Project editing, save, undo/redo, and preview operations are intentionally not
+The first preview subset accepts package-backed masked 1bpp sprite elements at
+native scale. Procedural shape/text references and runtime scaling fail
+explicitly until they have package formats with matching firmware semantics.
+The newline-delimited JSON protocol remains version 1.
+
+Project editing, save, and undo/redo operations are intentionally not
 advertised yet. Their semantics belong to later authoring milestones.
 
 Run the focused host tests with:
