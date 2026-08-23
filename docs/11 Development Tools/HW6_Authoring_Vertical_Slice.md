@@ -63,6 +63,32 @@ The proof is complete only when the same authored project reaches HW6 without:
 
 The slice demonstrates representative PeepOS execution classes and transitions. It is not intended to demonstrate the full Reference Game.
 
+### Immediate Peep Studio Milestone
+
+The full vertical slice remains the end-to-end target below, but the next
+implementation checkpoint is one package-backed `STATE_SCENE`. Peep Studio is
+the provisional working name for the editor.
+
+This checkpoint must allow an author to:
+
+1. create or open a `.peepproj`
+2. import masked 1bpp PNG frames with binary alpha
+3. place those assets in `BACKGROUND`, `SCENE`, or `UI`
+4. author STATE nodes, input transitions, variables, guards, and actions
+5. author bounded frame animations and the settled waiting presentation
+6. launch any selected STATE scene directly in the host preview
+7. inject A/B/L/R and advance deterministic `250 ms` time
+8. build a deterministic `.egg`
+9. run that same scene and those same compiled pixels on HW6
+
+The selected-scene launch is a preview fixture. It does not alter package entry
+routes or add a runtime bypass to the `.egg`.
+
+The checkpoint intentionally defers tone/dither import, Tiled maps, fractional
+transforms, audio, save data, SEQUENCE, PROGRAM, installation UI, and measured
+digital-twin claims. These remain later parts of the full vertical slice and
+must not block proving the STATE author-to-device path.
+
 ---
 
 ## Proof Package
@@ -200,7 +226,7 @@ This is one package-policy choice for the proof. The generic authoring contract 
 
 ## Authoring Workflow To Prove
 
-The minimum author workflow is:
+The complete vertical-slice author workflow is:
 
 1. create a project from the vertical-slice template
 2. set package identity and select the HW6 target profile
@@ -224,15 +250,17 @@ The GUI and CLI must call the same schema, validator, and compiler operations.
 
 ## Minimum Tool Surfaces
 
-The first visual tool needs only the surfaces required to complete the workflow:
+The first visual tool needs only the surfaces required to complete the
+immediate STATE checkpoint. Later stages extend these same surfaces for the
+complete workflow:
 
 | Surface | Minimum responsibility |
 |---|---|
-| project and asset browser | project metadata, target selection, assets, schemas, and stable IDs |
-| scene/prefab editor | place the slime and bind authored presentation assets |
-| behavior graph | author states, events, guards, actions, waits, and scene transitions |
+| project and asset browser | project metadata, target selection, masked 1bpp assets, schemas, and stable IDs |
+| scene editor | place package-backed retained elements and edit their layer, position, frame, and bounds |
+| behavior graph | author STATE nodes, input routes, guards, ordered actions, and transitions |
 | property inspector | edit typed parameters, bounds, fallbacks, save fields, and service intent; show compiler-derived capabilities |
-| preview/build panel | inject deterministic events, show logical output, validate, build, and display compatibility results |
+| preview/build panel | select a STATE scene, inject deterministic input/time, show exact 1bpp output, validate, build, and display compatibility results |
 
 The first slice does not require a complete general-purpose game IDE. The source schema and headless toolchain remain authoritative over editor convenience.
 
@@ -434,10 +462,20 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
 5. implement `STATE_SCENE` bounded event/guard/action execution, wait contracts, scene transitions inside one mounted package, and namespace-backed variables
 6. implement mandatory `ACTIVE`/`INACTIVE` interaction state, RTC-backed inactivity, declared inactive routes, and target-owned activation gestures; HW6 starts with Start while the policy remains button/chord capable
 7. implement the headless project loader, normalized model, validator, deterministic package compiler, and compiler-derived capability closure for the state-scene slice
-8. implement `HOST_AUTHORING_PREVIEW` against the same normalized/compiled scene and presentation semantics using [[Authoring_Tool_Architecture]]; do not label it HW6 evidence
-9. implement only the Electron/React surfaces needed to author, preview, validate, and build the STATE portion of this package, with the Python service remaining authoritative
-10. install and run the authored STATE package against HW6 so editor iteration no longer requires embedding package bytes in firmware
-11. implement `SEQUENCE_SCENE`, then `PROGRAM_SCENE`, with realtime budgets, input routes, suspend/resume behavior, and required state-scene/shell routes; extend the same editor architecture for each type
-12. measure representative reactive and realtime workloads, admit intermediate PLL/clock operating points one at a time behind Platform capability resolution, then capture and review the complete power evidence matrix; packages continue to request semantics and deadlines, never MHz
+8. compile masked 1bpp source assets into portable asset, sprite-bank, and
+   animation chunks; make both the host package reader and firmware render them
+   through the retained STATE model
+9. implement `HOST_AUTHORING_PREVIEW` with selected-scene launch against those
+   same compiled scene, asset, and presentation records; do not label it HW6
+   evidence
+10. implement only the Electron/React surfaces needed to author, preview,
+    validate, and build that STATE checkpoint, with the Python service remaining
+    authoritative
+11. install and run the authored STATE package against HW6 so editor iteration
+    no longer requires embedding package bytes in firmware
+12. add tone/dither assets, maps, transforms, fonts, audio, and save data only
+    when required by the expanding vertical slice
+13. implement `SEQUENCE_SCENE`, then `PROGRAM_SCENE`, with realtime budgets, input routes, suspend/resume behavior, and required state-scene/shell routes; extend the same editor architecture for each type
+14. measure representative reactive and realtime workloads, admit intermediate PLL/clock operating points one at a time behind Platform capability resolution, then capture and review the complete power evidence matrix; packages continue to request semantics and deadlines, never MHz
 
 The slice is not complete merely because the game appears on the display. Completion requires the full author-to-package-to-device path and the associated HW6 evidence.

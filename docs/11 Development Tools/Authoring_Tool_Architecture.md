@@ -11,8 +11,10 @@ compilation, and a V1 compatibility report. Project mutation, undo/redo,
 preview execution, Electron, and React remain open.
 
 This document defines the host application architecture for the PeepShow game
-authoring tools. It governs the desktop editor, authoring preview, Python
-toolchain boundary, and deterministic `.egg` build path.
+authoring tools. The provisional working name for the desktop application is
+**Peep Studio**. It governs the desktop editor, authoring preview, Python
+toolchain boundary, and deterministic `.egg` build path; the working name does
+not freeze final product naming.
 
 Related:
 
@@ -54,6 +56,30 @@ The desktop UI is reactive presentation. The Python authoring service remains
 the authority for source-project semantics, validation, normalization,
 capability closure, package compilation, and reference preview execution.
 
+### Current STATE Vertical Slice
+
+The immediate editor milestone is deliberately narrower than the complete
+rendering and game-authoring contracts. It must prove this path first:
+
+```text
+masked 1bpp PNG + binary alpha
+        |
+.peepproj STATE scene, states, transitions, placements, and animations
+        |
+Python validation and deterministic .egg compilation
+        |
+selected-scene HOST_AUTHORING_PREVIEW
+        |
+the same .egg asset and scene records on PeepOS
+```
+
+This milestone includes only the asset and runtime behavior needed to author,
+preview, build, and run a package-backed `STATE_SCENE`. It does not require
+tone/dither import, Tiled maps, fractional transforms, SEQUENCE, PROGRAM,
+audio, or the measured HW6 digital twin. Their schema namespaces and contracts
+remain extensible, but none may be implemented as an editor-only shortcut or a
+second package interpretation.
+
 ---
 
 ## Technology Decision
@@ -65,7 +91,7 @@ The V1 desktop application uses:
 | desktop shell | Electron | windows, menus, lifecycle, file dialogs, sidecar lifecycle, device-tool integration |
 | visual UI | TypeScript and React | panels, inspectors, editor interaction, diagnostics, preview presentation |
 | behavior graph | React Flow | node/edge interaction, selection, pan/zoom, connection editing, graph layout metadata |
-| scene and panel preview | HTML Canvas 2D | pixel-accurate `240 x 168` monochrome presentation and retained-element editing |
+| scene and panel preview | HTML Canvas 2D | pixel-accurate `168 x 144` monochrome presentation and retained-element editing |
 | authoring core | Python | `.peepproj` parsing, schema validation, normalization, compilation, compatibility reporting, reference simulation |
 | firmware runtime | C / PeepOS | authoritative target execution of validated `.egg` package data |
 
@@ -153,6 +179,11 @@ project.preview_reset
 project.preview_input
 project.preview_advance
 ```
+
+The three preview operations are the next service milestone. Their payloads
+must identify a selected scene directly, so an author can test any STATE scene
+without playing from the package entry scene. Scene-direct launch is an
+editor/debug fixture only and is not serialized as package gameplay behavior.
 
 Reserved operations must not be advertised by service discovery until their
 semantics and tests are implemented.
@@ -290,7 +321,7 @@ replace the last exported `.egg` package.
 - stale operation results are rejected using project revision IDs.
 - preview advances from an explicit clock and never from uncontrolled wall
   time inside the compiler.
-- the preview framebuffer is a fixed `240 x 168` monochrome image; nearest-
+- the preview framebuffer is a fixed `168 x 144` monochrome image; nearest-
   neighbor scaling preserves panel pixels.
 - compiler or service failure must produce a visible diagnostic and must not
   corrupt the open source project.
@@ -334,19 +365,28 @@ Passing authoring-preview tests does not replace target validation.
 1. freeze the V1 editor-service protocol and project revision rules
 2. expose the existing Python loader, validator, compiler, and compatibility
    report through the service
-3. implement the STATE reference preview against normalized/compiled semantics
-4. create the Electron, TypeScript, and React shell with the panel preview
-5. add project browser, scene canvas, and schema-driven inspector
-6. add the STATE graph and transition inspector
-7. add the animation timeline and target resource-budget presentation
-8. add deterministic `.egg` build/export
+3. implement deterministic masked-1bpp PNG import and compile asset records into
+   `asset_table`, `masked_1bpp_sprite_bank`, and `animation_table` chunks
+4. implement selected-STATE-scene reference preview against the compiled
+   package reader, with explicit fake time and A/B/L/R input
+5. make firmware consume those same package sprite/frame records instead of a
+   compiled-in visual catalog
+6. create the Electron, TypeScript, and React shell with the `168 x 144` panel
+   preview
+7. add the project browser, scene canvas, STATE graph, transition inspector,
+   schema-driven properties, and the minimum animation timeline
+8. add deterministic `.egg` export and compatibility/resource diagnostics
 9. connect package installation and activation for rapid HW6 iteration
-10. extend the same architecture to SEQUENCE, then PROGRAM
-11. admit `HOST_DIGITAL_TWIN_HW6` only after measured conformance closure
+10. extend the asset pipeline with additional fixed tone/dither profiles, maps,
+    transforms, fonts, and richer retained rendering only as vertical-slice
+    requirements demand them
+11. extend the same scene architecture to SEQUENCE, then PROGRAM
+12. admit `HOST_DIGITAL_TWIN_HW6` only after measured conformance closure
 
-The first implementation milestone ends at step 4: a project can be opened,
-validated, simulated with A/B/L/R input, and displayed in the desktop panel
-preview without changing the project or package contracts.
+The current milestone ends at step 5: one selected authored STATE scene uses
+the same compiled masked-1bpp package pixels, state graph, and animation records
+in host preview and on HW6. The desktop shell then exposes that proven path
+rather than defining it.
 
 ---
 

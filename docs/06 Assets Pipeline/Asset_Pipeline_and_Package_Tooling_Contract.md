@@ -346,7 +346,30 @@ Rendering asset output must target [[Rendering_API_Contract]], not a target-spec
 
 Source files may include PNG, Aseprite, Tiled, font sources, or other editor-native inputs. Runtime packages must contain compiled PeepOS assets only.
 
-Required rendering asset classes:
+### Immediate STATE Vertical Slice
+
+The first Peep Studio asset path is intentionally limited to masked 1bpp PNG
+frames. It must produce deterministic `asset_table`,
+`masked_1bpp_sprite_bank`, and `animation_table` records that are consumed by
+both `HOST_AUTHORING_PREVIEW` and PeepOS.
+
+For this slice:
+
+- alpha zero is transparent; every nonzero alpha value is opaque.
+- a PNG without alpha is fully opaque.
+- logical sprite pixels are white or black only.
+- frame dimensions, pivots, source rectangles, ordering, durations, and loop
+  policy are compiled metadata rather than inferred by firmware.
+- waiting visuals are composed from those same assets into final logical 1bpp
+  frames before Platform-specific LPBAM preparation.
+- preview and firmware must not contain substitute procedural art for a package
+  asset that exists in the `.egg`.
+
+Tone/dither inputs, Tiled maps, fonts, fractional transforms, and source-editor
+import helpers remain later extensions. Existing reserved asset classes do not
+make them dependencies of the masked-1bpp STATE milestone.
+
+Rendering asset classes in the complete contract are:
 
 | Asset Class | Purpose |
 |---|---|

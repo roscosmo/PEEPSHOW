@@ -619,6 +619,49 @@ Rules:
 - shipping output must not depend on editor source files.
 - asset compile settings must be deterministic and versioned.
 
+### Initial Masked-1bpp STATE Subset
+
+The first executable Peep Studio subset accepts PNG sources that compile to
+`masked_1bpp` frames. Peep Studio is a provisional working name.
+
+Conceptual source records:
+
+```text
+masked_1bpp_asset:
+  asset_id
+  source_path
+  source_format: png
+  alpha_policy: binary_nonzero_opaque
+  frames[]:
+    frame_id
+    source_rect
+    pivot_x
+    pivot_y
+
+frame_animation:
+  animation_id
+  frame_refs[]
+  frame_duration_ms[]
+  loop_policy
+```
+
+Rules:
+
+- a source without alpha is fully opaque.
+- alpha zero is transparent and any nonzero alpha is opaque.
+- source pixels resolve deterministically to logical white or black; no tone
+  reduction or dither profile is implied by this subset.
+- frame IDs and animation IDs are stable authoring IDs and compile to bounded
+  package indexes.
+- every frame declares dimensions, source bounds, and a pivot.
+- animation durations are positive integer milliseconds and must fit the
+  selected target profile.
+- opaque frames may compile without a stored mask when the package record marks
+  the entire frame owned.
+- package output contains no PNG decoder dependency or source path.
+- pixel-model and compiler-profile fields remain versioned enums so later fixed
+  tone/dither import profiles can be added without changing masked-1bpp meaning.
+
 ---
 
 ## Content Parameters
@@ -782,6 +825,14 @@ Rules:
 - preview mocks must be labeled.
 - preview cannot grant shipping capabilities blocked by the selected target profile.
 - `HOST_DIGITAL_TWIN_HW6` remains blocked until measured HW6 Platform behavior exists.
+
+For the initial STATE subset, preview launch accepts a selected `scene_id` plus
+an explicit initial state or the scene's declared entry state. This is an
+editor-only launch fixture. Preview then consumes compiled package scene,
+sprite, animation, and waiting-visual records; it must not draw from source PNG
+files or use React-only animation rules. Input and time advance only through
+explicit preview operations, and every returned frame is an exact `168 x 144`
+1bpp logical framebuffer plus bounded trace data.
 
 ---
 

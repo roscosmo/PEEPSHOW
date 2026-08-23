@@ -61,6 +61,11 @@ Package assets may use these Engine pixel models:
 
 `tone5` is a semantic coverage model, not native display color and not a color-depth format.
 
+The first Peep Studio STATE vertical slice implements `masked_1bpp` and
+`precomposed_1bpp` only. `tone5_masked` remains a reserved Engine model and is
+not a dependency of that slice. Additional fixed tone/dither import models must
+receive versioned package semantics before tools or firmware advertise them.
+
 `tone5` values:
 
 | Value | Meaning |
@@ -230,7 +235,12 @@ text IDs through the compiled target catalog, renders the awake list, then uses
 the same model to publish the waiting visual. A missing, invalid, or stale model
 fails closed rather than combining static content and autonomous animation from
 different revisions. This is the package-facing rendering boundary shape; the
-current compiled catalog is not yet a package asset loader.
+current compiled catalog is not yet a package asset loader. The next vertical
+slice replaces that visual catalog with validated `asset_table`,
+`masked_1bpp_sprite_bank`, and `animation_table` records. The selected-scene
+host preview and firmware renderer must consume those same package records and
+produce the same logical `168 x 144` 1bpp framebuffer for the same state,
+explicit input, and explicit time.
 
 ---
 

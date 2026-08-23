@@ -272,6 +272,45 @@ Rules:
 - `font_bank` declares glyph metrics, supported codepoints or string-table bindings, and layout limits.
 - no rendering chunk may encode panel-native framebuffer addresses, physical LCD row numbers, SRAM4 addresses, SPI bytes, DMA descriptors, or LPBAM descriptors.
 
+### Masked-1bpp Sprite Bank V1
+
+The first package-backed STATE slice uses one portable logical format:
+
+```text
+masked_1bpp_sprite_record:
+  asset_id
+  frame_id
+  width
+  height
+  row_stride_bytes
+  pivot_x
+  pivot_y
+  pixel_offset
+  pixel_size
+  mask_offset
+  mask_size
+  flags
+```
+
+Rules:
+
+- logical pixel value `1` is black and `0` is white.
+- logical mask value `1` owns/replaces the destination pixel and `0` is
+  transparent.
+- rows are stored top to bottom; bits within each byte are MSB first.
+- `row_stride_bytes` is explicit and padding bits outside `width` are zero.
+- an `OPAQUE` flag may omit mask bytes and means every in-bounds pixel is owned.
+- pixel and mask payload offsets are relative to their containing sprite-bank
+  chunk and must pass bounds and alignment validation before use.
+- records are ordered deterministically by stable asset ID and frame ID before
+  compact indexes are assigned.
+- package data is logical-canvas data. Firmware may cache or transpose it, but
+  the `.egg` never stores panel-native orientation or transfer payloads.
+
+`animation_table` records for this slice contain an animation ID, ordered frame
+indexes, positive integer frame durations, loop policy, and declared bounds.
+Host preview and firmware must interpret the same records.
+
 ---
 
 ## Waiting-Visual Sequence Chunk
