@@ -11,7 +11,7 @@ from typing import Any, TextIO
 from .compatibility import build_compatibility_report
 from .compiler import EggCompileError, build_egg
 from .egg_format import EggFormatError, parse_egg
-from .project import ProjectBundle, load_project
+from .project import ProjectBundle, ProjectCommandError, apply_project_commands, load_project
 from .preview import PreviewError, StateScenePreview
 from .protocol import (
     PROTOCOL_VERSION,
@@ -24,7 +24,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 3
+SERVICE_API_VERSION = 4
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
     "service.hello",
@@ -34,6 +34,7 @@ SERVICE_OPERATIONS = (
     "project.normalize",
     "project.build_package",
     "project.compatibility_report",
+    "project.apply_commands",
     "project.preview_reset",
     "project.preview_input",
     "project.preview_advance",
@@ -56,6 +57,20 @@ def _issues(bundle: ProjectBundle) -> list[dict[str, str]]:
         }
         for issue in bundle.issues
     ]
+
+
+def _project_summary(bundle: ProjectBundle) -> dict[str, Any]:
+    project = bundle.project
+    return {
+        "project_id": project.get("project_id"),
+        "project_name": project.get("project_name"),
+        "package_id": project.get("package", {}).get("package_id"),
+        "target_profile": project.get("selected_target_profile"),
+        "entry_scene": project.get("entry_scene"),
+        "scene_count": len(bundle.scenes),
+        "asset_frame_count": len(bundle.frames),
+        "animation_count": len(bundle.animations),
+    }
 
 
 def _require_fields(params: dict[str, Any], required: set[str]) -> None:
@@ -123,23 +138,13 @@ class AuthoringService:
         self._bundle = bundle
         self._project_revision += 1
         self._preview = None
-        project = bundle.project
         return {
             "project_revision": self._project_revision,
             "source_name": bundle.root.name,
             "valid": bundle.valid,
             "issues": _issues(bundle),
             "document": bundle.normalized() if bundle.valid else None,
-            "summary": {
-                "project_id": project.get("project_id"),
-                "project_name": project.get("project_name"),
-                "package_id": project.get("package", {}).get("package_id"),
-                "target_profile": project.get("selected_target_profile"),
-                "entry_scene": project.get("entry_scene"),
-                "scene_count": len(bundle.scenes),
-                "asset_frame_count": len(bundle.frames),
-                "animation_count": len(bundle.animations),
-            },
+            "summary": _project_summary(bundle),
         }
 
     def _validate(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -207,6 +212,26 @@ class AuthoringService:
         return {
             "project_revision": self._project_revision,
             "report": build_compatibility_report(bundle, blob),
+        }
+
+    def _apply_commands(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params, {"commands"})
+        try:
+            updated, applied = apply_project_commands(bundle, params["commands"])
+        except ProjectCommandError as exc:
+            raise ProtocolError(exc.code, exc.message) from exc
+        self._bundle = updated
+        self._project_revision += 1
+        self._preview = None
+        self._preview_revision += 1
+        return {
+            "project_revision": self._project_revision,
+            "valid": updated.valid,
+            "issues": _issues(updated),
+            "document": updated.normalized() if updated.valid else None,
+            "summary": _project_summary(updated),
+            "applied_commands": list(applied),
+            "dirty": True,
         }
 
     def _preview_result(self, snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -283,6 +308,7 @@ class AuthoringService:
             "project.normalize": self._normalize,
             "project.build_package": self._build_package,
             "project.compatibility_report": self._compatibility_report,
+            "project.apply_commands": self._apply_commands,
             "project.preview_reset": self._preview_reset,
             "project.preview_input": self._preview_input,
             "project.preview_advance": self._preview_advance,

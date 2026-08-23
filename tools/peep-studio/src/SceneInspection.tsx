@@ -8,7 +8,7 @@ import {
   type Node,
 } from "@xyflow/react";
 import { GitBranch, Hourglass, Layers3, Network, Route, Variable } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { buildStateGraphModel } from "./stateGraph";
 import type {
   InputAction,
@@ -176,10 +176,14 @@ export function SceneAuthoringInspector({
   scene,
   selection,
   onSelect,
+  onRenameState,
+  canEdit,
 }: {
   scene: SceneDocument | null;
   selection: SceneSelection;
   onSelect: (selection: SceneSelection) => void;
+  onRenameState: (sceneId: string, stateId: string, displayName: string) => Promise<void>;
+  canEdit: boolean;
 }) {
   const variables = scene?.variables ?? [];
   const inputActions = scene?.input_actions ?? [];
@@ -227,7 +231,17 @@ export function SceneAuthoringInspector({
         )}
       </section>
 
-      {state !== null && <StateInspector state={state} renderModels={renderModels} waitingVisuals={waitingVisuals} onSelect={onSelect} />}
+      {state !== null && scene !== null && (
+        <StateInspector
+          sceneId={scene.scene_id}
+          state={state}
+          renderModels={renderModels}
+          waitingVisuals={waitingVisuals}
+          onSelect={onSelect}
+          onRenameState={onRenameState}
+          canEdit={canEdit}
+        />
+      )}
       {route !== null && <RouteInspector route={route} inputActions={inputActions} />}
       {render !== null && <RenderInspector render={render} />}
       {waiting !== null && <WaitingInspector waiting={waiting} />}
@@ -288,22 +302,57 @@ export function SceneAuthoringInspector({
 }
 
 function StateInspector({
+  sceneId,
   state,
   renderModels,
   waitingVisuals,
   onSelect,
+  onRenameState,
+  canEdit,
 }: {
+  sceneId: string;
   state: StateRecord;
   renderModels: RenderModel[];
   waitingVisuals: WaitingVisual[];
   onSelect: (selection: SceneSelection) => void;
+  onRenameState: (sceneId: string, stateId: string, displayName: string) => Promise<void>;
+  canEdit: boolean;
 }) {
   const render = renderModels.find((item) => item.visual_id === state.render_model_ref);
   const waiting = waitingVisuals.find((item) => item.waiting_visual_id === state.waiting_visual_ref);
+  const [displayName, setDisplayName] = useState(state.display_name);
+
+  useEffect(() => {
+    setDisplayName(state.display_name);
+  }, [state.display_name, state.state_id]);
+
+  const trimmed = displayName.trim();
+  const renameDisabled = !canEdit || trimmed.length === 0 || trimmed === state.display_name;
+
   return (
     <section className="inspector-section selected-record">
       <h3>Selected state</h3>
       <InspectorList rows={[["ID", state.state_id], ["Name", state.display_name]]} />
+      <form
+        className="rename-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!renameDisabled) {
+            void onRenameState(sceneId, state.state_id, trimmed);
+          }
+        }}
+      >
+        <label htmlFor={`state-name-${state.state_id}`}>Display name</label>
+        <div>
+          <input
+            id={`state-name-${state.state_id}`}
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+            disabled={!canEdit}
+          />
+          <button type="submit" disabled={renameDisabled}>Rename</button>
+        </div>
+      </form>
       <button className="link-row" type="button" onClick={() => onSelect({ kind: "render", id: state.render_model_ref })}>
         Render model <strong>{render?.visual_id ?? state.render_model_ref}</strong>
       </button>

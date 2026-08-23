@@ -181,12 +181,13 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(3, SERVICE_API_VERSION)
+        self.assertEqual(4, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
         self.assertIn("project.build_package", result["operations"])
         self.assertIn("project.compatibility_report", result["operations"])
+        self.assertIn("project.apply_commands", result["operations"])
         self.assertIn("project.preview_reset", result["operations"])
         self.assertIn("project.preview_input", result["operations"])
         self.assertIn("project.preview_advance", result["operations"])
@@ -222,6 +223,82 @@ class AuthoringServiceTests(unittest.TestCase):
             )
         self.assertEqual("PROJECT_REVISION_STALE", raised.exception.code)
         self.assertEqual(2, raised.exception.details["current_project_revision"])
+
+    def test_apply_commands_renames_state_and_rejects_stale_revision(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        renamed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "state.rename",
+                            "scene_id": "state_demo",
+                            "state_id": "center",
+                            "display_name": "Ready",
+                        }
+                    ],
+                },
+            )
+        )
+        self.assertEqual(2, renamed["project_revision"])
+        self.assertTrue(renamed["dirty"])
+        self.assertEqual(
+            [
+                {
+                    "kind": "state.rename",
+                    "scene_id": "state_demo",
+                    "state_id": "center",
+                    "display_name": "Ready",
+                }
+            ],
+            renamed["applied_commands"],
+        )
+        states = renamed["document"]["scenes"][0]["states"]
+        self.assertEqual("Ready", next(state for state in states if state["state_id"] == "center")["display_name"])
+
+        with self.assertRaisesRegex(ProtocolError, "outdated project revision") as stale:
+            service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "state.rename",
+                                "scene_id": "state_demo",
+                                "state_id": "center",
+                                "display_name": "Stale",
+                            }
+                        ],
+                    },
+                )
+            )
+        self.assertEqual("PROJECT_REVISION_STALE", stale.exception.code)
+
+    def test_apply_commands_rejects_invalid_state_rename(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        with self.assertRaises(ProtocolError) as raised:
+            service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "state.rename",
+                                "scene_id": "state_demo",
+                                "state_id": "center",
+                                "display_name": "",
+                            }
+                        ],
+                    },
+                )
+            )
+        self.assertEqual("PROJECT_TEXT_INVALID", raised.exception.code)
 
     def test_package_operation_returns_the_existing_compiler_bytes(self) -> None:
         service = AuthoringService()

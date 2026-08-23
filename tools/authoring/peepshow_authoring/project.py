@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -108,8 +109,61 @@ class ProjectBundle:
         ).encode("ascii")
 
 
+class ProjectCommandError(ValueError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
 def _issue(issues: list[ValidationIssue], code: str, path: str, message: str) -> None:
     issues.append(ValidationIssue(code, path, message))
+
+
+def _require_command_fields(command: dict[str, Any], required: set[str], allowed: set[str]) -> None:
+    missing = required - command.keys()
+    unknown = command.keys() - allowed
+    if missing or unknown:
+        raise ProjectCommandError(
+            "COMMAND_SHAPE_INVALID",
+            f"command fields do not match the command API: missing={sorted(missing)} unknown={sorted(unknown)}",
+        )
+
+
+def _apply_state_rename(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "state_id", "display_name"},
+        {"kind", "scene_id", "state_id", "display_name", "command_id"},
+    )
+    issues: list[ValidationIssue] = []
+    scene_id = command.get("scene_id")
+    state_id = command.get("state_id")
+    display_name = command.get("display_name")
+    _stable_id(scene_id, "command.scene_id", issues)
+    _stable_id(state_id, "command.state_id", issues)
+    _text(display_name, "command.display_name", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+
+    for scene in scenes:
+        if scene.get("scene_id") != scene_id:
+            continue
+        for state in scene.get("states", []):
+            if isinstance(state, dict) and state.get("state_id") == state_id:
+                state["display_name"] = display_name
+                return {
+                    "kind": "state.rename",
+                    "scene_id": scene_id,
+                    "state_id": state_id,
+                    "display_name": display_name,
+                }
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown state '{state_id}'")
+    raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
 
 
 def _read_json(path: Path, issues: list[ValidationIssue], code: str) -> dict[str, Any] | None:
@@ -712,6 +766,46 @@ def load_project(project_root: str | Path) -> ProjectBundle:
         tuple(animations),
         tuple(frames),
         tuple(issues),
+    )
+
+
+def apply_project_commands(
+    bundle: ProjectBundle,
+    commands: Any,
+) -> tuple[ProjectBundle, tuple[dict[str, Any], ...]]:
+    if not bundle.valid:
+        raise ProjectCommandError("PROJECT_INVALID", "project must validate before commands can be applied")
+    if not isinstance(commands, list) or not commands:
+        raise ProjectCommandError("COMMAND_LIST_INVALID", "commands must be a non-empty array")
+    if len(commands) > 16:
+        raise ProjectCommandError("COMMAND_LIST_INVALID", "commands must contain at most 16 entries")
+
+    project = deepcopy(bundle.project)
+    scenes = deepcopy(list(bundle.scenes))
+    assets = deepcopy(list(bundle.assets))
+    animations = deepcopy(list(bundle.animations))
+    applied: list[dict[str, Any]] = []
+
+    for command in commands:
+        if not isinstance(command, dict):
+            raise ProjectCommandError("COMMAND_SHAPE_INVALID", "each command must be an object")
+        kind = command.get("kind")
+        if kind == "state.rename":
+            applied.append(_apply_state_rename(scenes, command))
+        else:
+            raise ProjectCommandError("COMMAND_KIND_UNKNOWN", f"unknown command kind '{kind}'")
+
+    return (
+        ProjectBundle(
+            bundle.root,
+            project,
+            tuple(scenes),
+            tuple(assets),
+            tuple(animations),
+            bundle.frames,
+            (),
+        ),
+        tuple(applied),
     )
 
 

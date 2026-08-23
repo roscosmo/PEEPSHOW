@@ -124,6 +124,18 @@ export type ProjectLoadResult = {
   summary: ProjectSummary;
 };
 
+export type ProjectCommandResult = {
+  project_revision: number;
+  valid: boolean;
+  issues: ValidationIssue[];
+  document: {
+    scenes?: SceneDocument[];
+  } | null;
+  summary: ProjectSummary;
+  applied_commands: Array<Record<string, unknown>>;
+  dirty: boolean;
+};
+
 export type Framebuffer = {
   width: number;
   height: number;

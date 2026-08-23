@@ -711,6 +711,54 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+.rename-form {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.rename-form label {
+  color: #59635d;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.rename-form div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px;
+  gap: 6px;
+}
+
+.rename-form input {
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #cbd3ce;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #242c28;
+  font: inherit;
+  font-size: 12px;
+}
+
+.rename-form button {
+  height: 32px;
+  border: 1px solid #1f2a25;
+  border-radius: 5px;
+  background: #26302b;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.rename-form input:disabled,
+.rename-form button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .element-table {
   display: grid;
   gap: 7px;

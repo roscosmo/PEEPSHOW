@@ -28,6 +28,7 @@ import {
 import type {
   Framebuffer,
   PackageBuildResult,
+  ProjectCommandResult,
   PreviewSnapshot,
   ProjectLoadResult,
   SceneDocument,
@@ -104,6 +105,7 @@ export default function App() {
   const [selectedScene, setSelectedScene] = useState<string | null>(null);
   const [sceneSelection, setSceneSelection] = useState<SceneSelection>({ kind: "scene" });
   const [build, setBuild] = useState<PackageBuildResult | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -158,6 +160,7 @@ export default function App() {
       setBusy("Loading project");
       setPlaying(false);
       setBuild(null);
+      setDirty(false);
       setPreview(null);
       setSelectedScene(null);
       setSceneSelection({ kind: "scene" });
@@ -265,6 +268,44 @@ export default function App() {
     }
   };
 
+  const renameState = async (sceneId: string, stateId: string, displayName: string) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy("Renaming state");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [
+          {
+            kind: "state.rename",
+            scene_id: sceneId,
+            state_id: stateId,
+            display_name: displayName,
+          },
+        ],
+      });
+      setProject({
+        ...project,
+        project_revision: result.project_revision,
+        valid: result.valid,
+        issues: result.issues,
+        document: result.document,
+        summary: result.summary,
+      });
+      setPreview(null);
+      setBuild(null);
+      setDirty(result.dirty);
+      setSceneSelection({ kind: "state", id: stateId });
+      setMessage("State renamed. Save is not available yet.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const exportPackage = async () => {
     if (bridge === undefined || build === null) {
       return;
@@ -341,6 +382,7 @@ export default function App() {
               <dl className="project-facts">
                 <div><dt>Package</dt><dd>{project.summary.package_id}</dd></div>
                 <div><dt>Target</dt><dd>{project.summary.target_profile}</dd></div>
+                <div><dt>Edits</dt><dd>{dirty ? "Unsaved" : "Clean"}</dd></div>
                 <div><dt>Frames</dt><dd>{project.summary.asset_frame_count}</dd></div>
                 <div><dt>Animations</dt><dd>{project.summary.animation_count}</dd></div>
               </dl>
@@ -446,6 +488,8 @@ export default function App() {
             scene={selectedSceneDocument}
             selection={sceneSelection}
             onSelect={setSceneSelection}
+            onRenameState={renameState}
+            canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
           />
 
           <section className="inspector-section">

@@ -2,7 +2,7 @@
 
 Status: `active_handoff`
 
-Implementation status: `Stage_1_read_only_scene_inspection_connected`
+Implementation status: `Stage_2_command_foundation_started`
 
 This document is the working boundary between Peep Studio development and
 PeepOS/HW6 bring-up. It tells an editor agent what the platform actually
@@ -190,6 +190,13 @@ visuals. Project mutation controls remain deferred to Stage 2.
 - reject stale revisions rather than silently replaying edits.
 
 No scene-canvas or graph control may directly mutate normalized JSON in React.
+
+Implementation status: started. Service API version 4 exposes
+`project.apply_commands` with the first accepted command,
+`state.rename`. Accepted commands update the in-memory Python-owned project,
+return a new `project_revision`, normalized document, diagnostics, and dirty
+state, and reject stale revisions. Source save and undo/redo remain unavailable
+pending review of the mutation API shape.
 
 ### Stage 3: Scene Canvas And Visual Elements
 
