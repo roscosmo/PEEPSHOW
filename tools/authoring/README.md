@@ -5,7 +5,56 @@ This directory contains the host-side authoring model and compiler pipeline.
 The first implemented subset supports editable `.peepproj` directories with
 one or more `STATE_SCENE` source files. It validates stable IDs, bounded scene
 tables, symbolic input routes, retained render elements, reactive waiting
-visuals, and interaction policy.
+visuals, and interaction policy. Projects may also declare masked 1bpp PNG
+asset catalogs. Those sources compile into deterministic asset-table,
+sprite-bank, and animation-table chunks; the independent package reader
+validates and reconstructs the exact logical pixels and masks.
+
+Install the pinned host dependency before using PNG asset catalogs:
+
+```powershell
+python -m pip install -r tools/authoring/requirements.txt
+```
+
+The initial PNG importer accepts exact black and white visible pixels only.
+Alpha zero is transparent and every nonzero alpha value is opaque. Tone
+reduction and dithering are intentionally deferred.
+
+Add one or more catalogs to `project.json`:
+
+```json
+"asset_sources": ["assets/catalog.json"]
+```
+
+The initial catalog shape is:
+
+```json
+{
+  "schema_id": "peepshow.authoring.assets",
+  "schema_version": 1,
+  "assets": [{
+    "asset_id": "cursor",
+    "asset_type": "masked_1bpp",
+    "source_path": "assets/cursor.png",
+    "source_format": "png",
+    "frames": [{
+      "frame_id": "cursor.phase_a",
+      "source_rect": {"x": 0, "y": 0, "width": 8, "height": 16},
+      "pivot_x": 0,
+      "pivot_y": 0
+    }]
+  }],
+  "animations": [{
+    "animation_id": "cursor.blink",
+    "frame_refs": ["cursor.phase_a"],
+    "frame_duration_ms": [250],
+    "loop_policy": "loop"
+  }]
+}
+```
+
+Asset and catalog paths are project-relative and may not escape the
+`.peepproj` directory.
 
 Validate the example project:
 
@@ -74,6 +123,9 @@ bytes, package metadata, and the matching deterministic compatibility report.
 It does not choose a destination or write an installable file. The V1 report
 marks the current HW6 development profile as `pending_validation` and
 `dev_only`; it does not claim shipping authority before target-profile closure.
+
+Service API version 2 adds asset and animation counts to project and package
+summaries. The newline-delimited JSON protocol remains version 1.
 
 Project editing, save, undo/redo, and preview operations are intentionally not
 advertised yet. Their semantics belong to later authoring milestones.

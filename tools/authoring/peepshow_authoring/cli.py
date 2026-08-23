@@ -17,7 +17,10 @@ def _validate(project_path: str) -> int:
         print(format_issues(bundle.issues))
         return 1
     digest = hashlib.sha256(bundle.canonical_bytes()).hexdigest()
-    print(f"valid project={bundle.project['project_id']} scenes={len(bundle.scenes)} sha256={digest}")
+    print(
+        f"valid project={bundle.project['project_id']} scenes={len(bundle.scenes)} "
+        f"assets={len(bundle.frames)} animations={len(bundle.animations)} sha256={digest}"
+    )
     return 0
 
 
@@ -46,6 +49,7 @@ def _build(project_path: str, output_path: str) -> int:
         return 1
     print(
         f"built package={package.manifest['package_id']} scenes={len(package.scenes)} "
+        f"assets={len(package.assets)} animations={len(package.animations)} "
         f"chunks={len(package.chunks)} bytes={output.stat().st_size} sha256={package.sha256} -> {output}"
     )
     return 0
@@ -66,7 +70,8 @@ def _inspect(package_path: str) -> int:
         f"valid egg package={manifest['package_id']} version="
         f"{manifest['version_major']}.{manifest['version_minor']}.{manifest['version_patch']} "
         f"target={manifest['target_profile']} entry={manifest['entry_scene']} "
-        f"scenes={len(package.scenes)} chunks={len(package.chunks)} sha256={package.sha256}"
+        f"scenes={len(package.scenes)} assets={len(package.assets)} "
+        f"animations={len(package.animations)} chunks={len(package.chunks)} sha256={package.sha256}"
     )
     for scene in package.scenes:
         print(

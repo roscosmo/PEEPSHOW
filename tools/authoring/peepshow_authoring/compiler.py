@@ -8,7 +8,15 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .egg_format import (
+    ANIMATION_HEADER,
+    ANIMATION_RECORD,
+    ASSET_FLAG_OPAQUE,
+    ASSET_HEADER,
+    ASSET_RECORD,
+    CHUNK_ANIMATION_TABLE,
+    CHUNK_ASSET_TABLE,
     CHUNK_MANIFEST,
+    CHUNK_MASKED_1BPP_SPRITE_BANK,
     CHUNK_RENDER_MODELS,
     CHUNK_SCENE_TABLE,
     CHUNK_STATE_GRAPH,
@@ -25,6 +33,7 @@ from .egg_format import (
     ROUTE_RECORD,
     SCENE_HEADER,
     SCENE_RECORD,
+    SPRITE_BANK_HEADER,
     STATE_RECORD,
     STRING_HEADER,
     VARIABLE_RECORD,
@@ -44,6 +53,7 @@ GUARD_OPERATORS = {"eq": 1, "ne": 2, "lt": 3, "le": 4, "gt": 5, "ge": 6}
 VARIABLE_OPERATIONS = {"assign": 1, "add": 2}
 RENDER_KINDS = {"sprite": 1, "text": 2, "shape": 3}
 INACTIVE_ROUTES = {"preserve_scene": 1, "exit_to_shell": 2}
+ANIMATION_LOOPS = {"loop": 1, "once": 2, "hold_last": 3, "ping_pong": 4}
 
 
 class EggCompileError(ValueError):
@@ -95,6 +105,10 @@ def _string_table(bundle: ProjectBundle) -> tuple[tuple[str, ...], dict[str, int
                 values.update(element["phase_visual_refs"])
         values.add(scene["reactive_wait_default"]["policy_id"])
         values.add(scene["interaction_policy"]["policy_id"])
+    for asset in bundle.assets:
+        values.add(asset["asset_id"])
+        values.update(frame["frame_id"] for frame in asset["frames"])
+    values.update(animation["animation_id"] for animation in bundle.animations)
     strings = tuple(sorted(values))
     if len(strings) > 0xFFFF:
         raise EggCompileError("string table contains more than 65535 strings")
@@ -380,6 +394,128 @@ def _compile_scene_table(
     return SCENE_HEADER.pack(b"SCN1", 1, SCENE_HEADER.size, len(scenes), 0) + records
 
 
+def _append_plane(payload: bytearray, plane: bytes, offsets: dict[bytes, int]) -> int:
+    existing = offsets.get(plane)
+    if existing is not None:
+        return existing
+    while len(payload) % 4:
+        payload.append(0)
+    offset = len(payload)
+    payload.extend(plane)
+    offsets[plane] = offset
+    return offset
+
+
+def _compile_asset_chunks(
+    bundle: ProjectBundle,
+    strings: dict[str, int],
+    sprite_chunk_index: int,
+    animation_chunk_index: int,
+) -> tuple[bytes, bytes, bytes]:
+    frames = tuple(sorted(bundle.frames, key=lambda frame: (frame.asset_id, frame.frame_id)))
+    frame_indexes = {frame.frame_id: index for index, frame in enumerate(frames)}
+
+    sprite_payload = bytearray(SPRITE_BANK_HEADER.size)
+    plane_offsets: dict[bytes, int] = {}
+    asset_records = bytearray()
+    for frame in frames:
+        pixel_offset = _append_plane(sprite_payload, frame.pixels, plane_offsets)
+        if frame.opaque:
+            mask_offset = 0
+            mask_size = 0
+            flags = ASSET_FLAG_OPAQUE
+        else:
+            mask_offset = _append_plane(sprite_payload, frame.mask, plane_offsets)
+            mask_size = len(frame.mask)
+            flags = 0
+        asset_records.extend(
+            ASSET_RECORD.pack(
+                strings[frame.asset_id],
+                strings[frame.frame_id],
+                _u16(frame.width, "asset width"),
+                _u16(frame.height, "asset height"),
+                _u16(frame.row_stride_bytes, "asset row stride"),
+                0,
+                _i16(frame.pivot_x, "asset pivot x"),
+                _i16(frame.pivot_y, "asset pivot y"),
+                pixel_offset,
+                len(frame.pixels),
+                mask_offset,
+                mask_size,
+                flags,
+            )
+        )
+    SPRITE_BANK_HEADER.pack_into(
+        sprite_payload,
+        0,
+        b"SPB1",
+        1,
+        SPRITE_BANK_HEADER.size,
+        len(sprite_payload) - SPRITE_BANK_HEADER.size,
+        0,
+    )
+    asset_payload = ASSET_HEADER.pack(
+        b"AST1",
+        1,
+        ASSET_HEADER.size,
+        _u16(len(frames), "asset frame count"),
+        _u16(sprite_chunk_index, "sprite chunk index"),
+        _u16(animation_chunk_index, "animation chunk index"),
+        0,
+        0,
+        0,
+    ) + asset_records
+
+    animation_records = bytearray()
+    animation_frame_refs: list[int] = []
+    animation_durations: list[int] = []
+    for animation in sorted(bundle.animations, key=lambda item: item["animation_id"]):
+        first_frame = len(animation_frame_refs)
+        first_duration = len(animation_durations)
+        selected_frames = [frame_indexes[frame_id] for frame_id in animation["frame_refs"]]
+        animation_frame_refs.extend(selected_frames)
+        animation_durations.extend(animation["frame_duration_ms"])
+        width = max(frames[index].width for index in selected_frames)
+        height = max(frames[index].height for index in selected_frames)
+        animation_records.extend(
+            ANIMATION_RECORD.pack(
+                strings[animation["animation_id"]],
+                _u16(first_frame, "animation first frame"),
+                _u16(len(selected_frames), "animation frame count"),
+                _u16(first_duration, "animation first duration"),
+                ANIMATION_LOOPS[animation["loop_policy"]],
+                _u16(width, "animation width"),
+                _u16(height, "animation height"),
+                0,
+            )
+        )
+    frame_ref_bytes = (
+        struct.pack(f"<{len(animation_frame_refs)}H", *animation_frame_refs)
+        if animation_frame_refs
+        else b""
+    )
+    duration_bytes = (
+        struct.pack(f"<{len(animation_durations)}I", *animation_durations)
+        if animation_durations
+        else b""
+    )
+    animation_payload = (
+        ANIMATION_HEADER.pack(
+            b"ANI1",
+            1,
+            ANIMATION_HEADER.size,
+            _u16(len(bundle.animations), "animation count"),
+            _u16(len(animation_frame_refs), "animation frame-reference count"),
+            _u16(len(animation_durations), "animation duration count"),
+            0,
+        )
+        + animation_records
+        + frame_ref_bytes
+        + duration_bytes
+    )
+    return asset_payload, bytes(sprite_payload), animation_payload
+
+
 def build_egg(bundle: ProjectBundle) -> bytes:
     if not bundle.valid:
         raise EggCompileError("project must validate before package compilation")
@@ -401,6 +537,23 @@ def build_egg(bundle: ProjectBundle) -> bytes:
                 EggChunkSpec(f"state_graph.{scene_id}", CHUNK_STATE_GRAPH, _compile_graph(scene, string_indexes)),
                 EggChunkSpec(f"render_models.{scene_id}", CHUNK_RENDER_MODELS, _compile_render(scene, string_indexes)),
                 EggChunkSpec(f"waiting_visuals.{scene_id}", CHUNK_WAITING_VISUALS, _compile_waiting(scene, string_indexes)),
+            )
+        )
+    if bundle.frames:
+        asset_chunk_index = len(chunks)
+        sprite_chunk_index = asset_chunk_index + 1
+        animation_chunk_index = asset_chunk_index + 2
+        asset_payload, sprite_payload, animation_payload = _compile_asset_chunks(
+            bundle,
+            string_indexes,
+            sprite_chunk_index,
+            animation_chunk_index,
+        )
+        chunks.extend(
+            (
+                EggChunkSpec("assets", CHUNK_ASSET_TABLE, asset_payload),
+                EggChunkSpec("sprites.masked_1bpp", CHUNK_MASKED_1BPP_SPRITE_BANK, sprite_payload),
+                EggChunkSpec("animations", CHUNK_ANIMATION_TABLE, animation_payload),
             )
         )
     try:

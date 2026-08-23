@@ -21,7 +21,7 @@ from peepshow_authoring.protocol import (  # noqa: E402
     ServiceRequest,
     parse_request,
 )
-from peepshow_authoring.service import AuthoringService, run_service  # noqa: E402
+from peepshow_authoring.service import AuthoringService, SERVICE_API_VERSION, run_service  # noqa: E402
 
 
 SAMPLE = WORKSPACE_ROOT / "examples" / "authoring" / "state_slice.peepproj"
@@ -78,6 +78,8 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
+        self.assertEqual(2, SERVICE_API_VERSION)
+        self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
         self.assertIn("project.build_package", result["operations"])

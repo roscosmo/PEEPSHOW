@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
+
+from .image_assets import (
+    ImageAssetError,
+    Masked1bppFrame,
+    import_masked_1bpp,
+    resolve_project_path,
+)
 
 
 STABLE_ID = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
@@ -21,6 +29,7 @@ PROJECT_KEYS = {
     "scene_sources",
     "validation",
 }
+PROJECT_OPTIONAL_KEYS = {"asset_sources"}
 SCENE_KEYS = {
     "schema_id",
     "schema_version",
@@ -51,6 +60,9 @@ class ProjectBundle:
     root: Path
     project: dict[str, Any]
     scenes: tuple[dict[str, Any], ...]
+    assets: tuple[dict[str, Any], ...]
+    animations: tuple[dict[str, Any], ...]
+    frames: tuple[Masked1bppFrame, ...]
     issues: tuple[ValidationIssue, ...]
 
     @property
@@ -65,6 +77,23 @@ class ProjectBundle:
             "format_version": 1,
             "project": self.project,
             "scenes": list(self.scenes),
+            "assets": list(self.assets),
+            "animations": list(self.animations),
+            "compiled_asset_frames": [
+                {
+                    "asset_id": frame.asset_id,
+                    "frame_id": frame.frame_id,
+                    "width": frame.width,
+                    "height": frame.height,
+                    "row_stride_bytes": frame.row_stride_bytes,
+                    "pivot_x": frame.pivot_x,
+                    "pivot_y": frame.pivot_y,
+                    "opaque": frame.opaque,
+                    "pixels_sha256": hashlib.sha256(frame.pixels).hexdigest(),
+                    "mask_sha256": hashlib.sha256(frame.mask).hexdigest(),
+                }
+                for frame in sorted(self.frames, key=lambda item: (item.asset_id, item.frame_id))
+            ],
         }
 
     def canonical_bytes(self) -> bytes:
@@ -103,10 +132,12 @@ def _check_keys(
     required: set[str],
     path: str,
     issues: list[ValidationIssue],
+    allowed: set[str] | None = None,
 ) -> None:
+    allowed_keys = required if allowed is None else allowed
     for key in sorted(required - value.keys()):
         _issue(issues, "PROJECT_FIELD_MISSING", f"{path}.{key}", "required field is missing")
-    for key in sorted(value.keys() - required):
+    for key in sorted(value.keys() - allowed_keys):
         _issue(issues, "PROJECT_FIELD_UNKNOWN", f"{path}.{key}", "field is not part of the V1 subset")
 
 
@@ -153,7 +184,7 @@ def _unique_ids(
 
 
 def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> None:
-    _check_keys(project, PROJECT_KEYS, "project", issues)
+    _check_keys(project, PROJECT_KEYS, "project", issues, PROJECT_KEYS | PROJECT_OPTIONAL_KEYS)
     if project.get("schema_id") != "peepshow.authoring.project" or project.get("schema_version") != 1:
         _issue(issues, "PROJECT_SCHEMA_UNSUPPORTED", "project", "expected peepshow.authoring.project version 1")
     _stable_id(project.get("project_id"), "project.project_id", issues)
@@ -188,6 +219,22 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
             else:
                 seen_sources.add(source)
 
+    asset_sources = project.get("asset_sources", [])
+    if not isinstance(asset_sources, list):
+        _issue(issues, "PROJECT_TYPE_INVALID", "project.asset_sources", "must be an array")
+    elif len(asset_sources) > 16:
+        _issue(issues, "PROJECT_LIMIT_EXCEEDED", "project.asset_sources", "contains more than 16 asset catalogs")
+    else:
+        seen_asset_sources: set[str] = set()
+        for index, source in enumerate(asset_sources):
+            path = f"project.asset_sources[{index}]"
+            if not isinstance(source, str) or not source:
+                _issue(issues, "ASSET_SOURCE_INVALID", path, "must be a non-empty path")
+            elif source in seen_asset_sources:
+                _issue(issues, "ASSET_SOURCE_DUPLICATE", path, "asset catalog path is duplicated")
+            else:
+                seen_asset_sources.add(source)
+
     validation = project.get("validation")
     if not isinstance(validation, dict):
         _issue(issues, "PROJECT_TYPE_INVALID", "project.validation", "must be an object")
@@ -198,6 +245,69 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
         ruleset = validation.get("ruleset_version")
         if not isinstance(ruleset, int) or not 1 <= ruleset <= 65535:
             _issue(issues, "PROJECT_RULESET_INVALID", "project.validation.ruleset_version", "must be in 1..65535")
+
+
+def _check_asset(
+    asset: dict[str, Any],
+    path: str,
+    root: Path,
+    issues: list[ValidationIssue],
+) -> tuple[Masked1bppFrame, ...]:
+    initial_issue_count = len(issues)
+    _check_keys(
+        asset,
+        {"asset_id", "asset_type", "source_path", "source_format", "frames"},
+        path,
+        issues,
+    )
+    _stable_id(asset.get("asset_id"), f"{path}.asset_id", issues)
+    if asset.get("asset_type") != "masked_1bpp":
+        _issue(issues, "ASSET_FORMAT_UNSUPPORTED", f"{path}.asset_type", "must be masked_1bpp")
+    if asset.get("source_format") != "png":
+        _issue(issues, "ASSET_FORMAT_UNSUPPORTED", f"{path}.source_format", "must be png")
+    if not isinstance(asset.get("source_path"), str) or not asset.get("source_path"):
+        _issue(issues, "ASSET_SOURCE_INVALID", f"{path}.source_path", "must be a non-empty relative path")
+
+    frame_records = _unique_ids(asset.get("frames"), "frame_id", f"{path}.frames", issues, 256)
+    if not frame_records:
+        _issue(issues, "ASSET_FRAME_MISSING", f"{path}.frames", "must contain at least one frame")
+    for frame_id, frame in frame_records.items():
+        frame_path = f"{path}.frames[{frame_id}]"
+        _check_keys(frame, {"frame_id", "source_rect", "pivot_x", "pivot_y"}, frame_path, issues)
+
+    if len(issues) == initial_issue_count and frame_records and isinstance(asset.get("source_path"), str):
+        try:
+            compiled = import_masked_1bpp(root, asset)
+        except (ImageAssetError, KeyError) as exc:
+            _issue(issues, "ASSET_SOURCE_INVALID", path, str(exc))
+        else:
+            return compiled
+    return ()
+
+
+def _check_animation(animation: dict[str, Any], path: str, issues: list[ValidationIssue]) -> None:
+    _check_keys(
+        animation,
+        {"animation_id", "frame_refs", "frame_duration_ms", "loop_policy"},
+        path,
+        issues,
+    )
+    _stable_id(animation.get("animation_id"), f"{path}.animation_id", issues)
+    frame_refs = animation.get("frame_refs")
+    durations = animation.get("frame_duration_ms")
+    if not isinstance(frame_refs, list) or not 1 <= len(frame_refs) <= 256:
+        _issue(issues, "ANIMATION_FRAME_COUNT_INVALID", f"{path}.frame_refs", "must contain 1..256 frame IDs")
+    else:
+        for index, frame_ref in enumerate(frame_refs):
+            _stable_id(frame_ref, f"{path}.frame_refs[{index}]", issues)
+    if not isinstance(durations, list) or not isinstance(frame_refs, list) or len(durations) != len(frame_refs):
+        _issue(issues, "ANIMATION_DURATION_INVALID", f"{path}.frame_duration_ms", "must match frame_refs")
+    else:
+        for index, duration in enumerate(durations):
+            if isinstance(duration, bool) or not isinstance(duration, int) or not 1 <= duration <= 60000:
+                _issue(issues, "ANIMATION_DURATION_INVALID", f"{path}.frame_duration_ms[{index}]", "must be in 1..60000 ms")
+    if animation.get("loop_policy") not in {"loop", "once", "hold_last", "ping_pong"}:
+        _issue(issues, "ANIMATION_LOOP_INVALID", f"{path}.loop_policy", "unsupported loop policy")
 
 
 def _check_variable(record: dict[str, Any], path: str, issues: list[ValidationIssue]) -> None:
@@ -214,7 +324,8 @@ def _check_variable(record: dict[str, Any], path: str, issues: list[ValidationIs
 def _check_waiting_visual(
     record: dict[str, Any],
     path: str,
-    element_ids: set[str],
+    element_kinds: dict[str, str],
+    frame_ids: set[str],
     issues: list[ValidationIssue],
 ) -> None:
     required = {
@@ -246,7 +357,7 @@ def _check_waiting_visual(
         required_element = {"element_id", "source_element_ref", "phase_visual_refs", "step_phase_indices"}
         _check_keys(element, required_element, item_path, issues)
         source_ref = element.get("source_element_ref")
-        if source_ref not in element_ids:
+        if source_ref not in element_kinds:
             _issue(issues, "WAIT_ELEMENT_UNKNOWN", f"{item_path}.source_element_ref", f"unknown render element '{source_ref}'")
         phase_refs = element.get("phase_visual_refs")
         if not isinstance(phase_refs, list) or not 1 <= len(phase_refs) <= 4:
@@ -256,6 +367,13 @@ def _check_waiting_visual(
             phase_count = len(phase_refs)
             for index, phase_ref in enumerate(phase_refs):
                 _stable_id(phase_ref, f"{item_path}.phase_visual_refs[{index}]", issues)
+                if element_kinds.get(source_ref) == "sprite" and phase_ref not in frame_ids:
+                    _issue(
+                        issues,
+                        "ASSET_FRAME_UNKNOWN",
+                        f"{item_path}.phase_visual_refs[{index}]",
+                        f"unknown frame '{phase_ref}'",
+                    )
         indices = element.get("step_phase_indices")
         if not isinstance(indices, list) or step_count is None or len(indices) != step_count:
             _issue(issues, "WAIT_SEQUENCE_LENGTH_INVALID", f"{item_path}.step_phase_indices", "must match combined_step_count")
@@ -265,7 +383,13 @@ def _check_waiting_visual(
                     _issue(issues, "WAIT_PHASE_INDEX_INVALID", f"{item_path}.step_phase_indices[{index}]", "does not select an authored phase")
 
 
-def _check_scene(scene: dict[str, Any], source: str, issues: list[ValidationIssue]) -> None:
+def _check_scene(
+    scene: dict[str, Any],
+    source: str,
+    frame_ids: set[str],
+    animation_ids: set[str],
+    issues: list[ValidationIssue],
+) -> None:
     base = f"scene[{source}]"
     _check_keys(scene, SCENE_KEYS, base, issues)
     if scene.get("schema_id") != "peepshow.authoring.state_scene" or scene.get("schema_version") != 1:
@@ -301,7 +425,7 @@ def _check_scene(scene: dict[str, Any], source: str, issues: list[ValidationIssu
     if entry_state not in states:
         _issue(issues, "GRAPH_ENTRY_MISSING", f"{base}.entry_state", f"unknown entry state '{entry_state}'")
 
-    element_ids: set[str] = set()
+    element_kinds: dict[str, str] = {}
     for visual_id, render_model in render_models.items():
         path = f"{base}.render_models[{visual_id}]"
         _check_keys(render_model, {"visual_id", "focus_index", "elements"}, path, issues)
@@ -309,7 +433,6 @@ def _check_scene(scene: dict[str, Any], source: str, issues: list[ValidationIssu
         if not isinstance(focus_index, int) or not 0 <= focus_index <= 255:
             _issue(issues, "RENDER_FOCUS_INVALID", f"{path}.focus_index", "must be in 0..255")
         elements = _unique_ids(render_model.get("elements"), "element_id", f"{path}.elements", issues, 32)
-        element_ids.update(elements)
         for element_id, element in elements.items():
             item_path = f"{path}.elements[{element_id}]"
             required = {"element_id", "kind", "visual_ref", "x", "y", "width", "height", "z_order"}
@@ -319,8 +442,18 @@ def _check_scene(scene: dict[str, Any], source: str, issues: list[ValidationIssu
             for key in sorted(element.keys() - allowed):
                 _issue(issues, "PROJECT_FIELD_UNKNOWN", f"{item_path}.{key}", "field is not part of the V1 subset")
             _stable_id(element.get("visual_ref"), f"{item_path}.visual_ref", issues)
-            if element.get("kind") not in {"sprite", "text", "shape"}:
+            kind = element.get("kind")
+            if kind not in {"sprite", "text", "shape"}:
                 _issue(issues, "RENDER_KIND_INVALID", f"{item_path}.kind", "must be sprite, text, or shape")
+            else:
+                element_kinds[element_id] = kind
+                if kind == "sprite" and element.get("visual_ref") not in frame_ids | animation_ids:
+                    _issue(
+                        issues,
+                        "ASSET_FRAME_UNKNOWN",
+                        f"{item_path}.visual_ref",
+                        "sprite visual_ref must select a compiled frame or animation",
+                    )
             if element.get("focus_role", "none") not in {"none", "focus"}:
                 _issue(issues, "RENDER_FOCUS_INVALID", f"{item_path}.focus_role", "must be none or focus")
             for field in ("x", "y", "z_order"):
@@ -336,7 +469,13 @@ def _check_scene(scene: dict[str, Any], source: str, issues: list[ValidationIssu
                 _issue(issues, "RENDER_BOUNDS_INVALID", f"{item_path}.z_order", "must be in 0..255")
 
     for waiting_id, waiting in waiting_visuals.items():
-        _check_waiting_visual(waiting, f"{base}.waiting_visuals[{waiting_id}]", element_ids, issues)
+        _check_waiting_visual(
+            waiting,
+            f"{base}.waiting_visuals[{waiting_id}]",
+            element_kinds,
+            frame_ids,
+            issues,
+        )
 
     for state_id, state in states.items():
         path = f"{base}.states[{state_id}]"
@@ -463,12 +602,85 @@ def load_project(project_root: str | Path) -> ProjectBundle:
         _issue(issues, "PROJECT_SUFFIX_INVALID", str(root), "editable project directories must end in .peepproj")
     if not root.is_dir():
         _issue(issues, "PROJECT_ROOT_MISSING", str(root), "project directory does not exist")
-        return ProjectBundle(root, {}, (), tuple(issues))
+        return ProjectBundle(root, {}, (), (), (), (), tuple(issues))
 
     project = _read_json(root / "project.json", issues, "PROJECT_MANIFEST_INVALID")
     if project is None:
-        return ProjectBundle(root, {}, (), tuple(issues))
+        return ProjectBundle(root, {}, (), (), (), (), tuple(issues))
     _check_project(project, issues)
+
+    assets: list[dict[str, Any]] = []
+    animations: list[dict[str, Any]] = []
+    frames: list[Masked1bppFrame] = []
+    asset_ids: set[str] = set()
+    frame_ids: set[str] = set()
+    animation_ids: set[str] = set()
+    asset_sources = project.get("asset_sources", [])
+    if isinstance(asset_sources, list):
+        for source in asset_sources:
+            try:
+                path = resolve_project_path(root, source, "asset catalog path")
+            except ImageAssetError as exc:
+                _issue(issues, "ASSET_SOURCE_INVALID", f"project.asset_sources[{source}]", str(exc))
+                continue
+            catalog = _read_json(path, issues, "ASSET_SOURCE_INVALID")
+            if catalog is None:
+                continue
+            base = f"assets[{source}]"
+            _check_keys(catalog, {"schema_id", "schema_version", "assets", "animations"}, base, issues)
+            if catalog.get("schema_id") != "peepshow.authoring.assets" or catalog.get("schema_version") != 1:
+                _issue(issues, "ASSET_SCHEMA_UNSUPPORTED", base, "expected peepshow.authoring.assets version 1")
+
+            catalog_assets = _unique_ids(catalog.get("assets"), "asset_id", f"{base}.assets", issues, 128)
+            for asset_id, asset in catalog_assets.items():
+                asset_path = f"{base}.assets[{asset_id}]"
+                if asset_id in asset_ids:
+                    _issue(issues, "PROJECT_ID_DUPLICATE", f"{asset_path}.asset_id", f"duplicate ID '{asset_id}'")
+                    continue
+                asset_ids.add(asset_id)
+                declared_frames = asset.get("frames")
+                if isinstance(declared_frames, list):
+                    for frame in declared_frames:
+                        if not isinstance(frame, dict) or not isinstance(frame.get("frame_id"), str):
+                            continue
+                        frame_id = frame["frame_id"]
+                        if frame_id in frame_ids:
+                            _issue(issues, "PROJECT_ID_DUPLICATE", f"{asset_path}.frames", f"duplicate frame ID '{frame_id}'")
+                        else:
+                            frame_ids.add(frame_id)
+                frames.extend(_check_asset(asset, asset_path, root, issues))
+                assets.append(asset)
+
+            catalog_animations = _unique_ids(
+                catalog.get("animations"),
+                "animation_id",
+                f"{base}.animations",
+                issues,
+                128,
+            )
+            for animation_id, animation in catalog_animations.items():
+                animation_path = f"{base}.animations[{animation_id}]"
+                if animation_id in animation_ids:
+                    _issue(
+                        issues,
+                        "PROJECT_ID_DUPLICATE",
+                        f"{animation_path}.animation_id",
+                        f"duplicate ID '{animation_id}'",
+                    )
+                    continue
+                animation_ids.add(animation_id)
+                _check_animation(animation, animation_path, issues)
+                animations.append(animation)
+
+    for animation in animations:
+        for index, frame_ref in enumerate(animation.get("frame_refs", [])):
+            if frame_ref not in frame_ids:
+                _issue(
+                    issues,
+                    "ASSET_FRAME_UNKNOWN",
+                    f"animation[{animation.get('animation_id')}].frame_refs[{index}]",
+                    f"unknown frame '{frame_ref}'",
+                )
 
     scenes: list[dict[str, Any]] = []
     scene_ids: set[str] = set()
@@ -481,7 +693,7 @@ def load_project(project_root: str | Path) -> ProjectBundle:
             scene = _read_json(path, issues, "SCENE_SOURCE_INVALID")
             if scene is None:
                 continue
-            _check_scene(scene, str(source), issues)
+            _check_scene(scene, str(source), frame_ids, animation_ids, issues)
             scene_id = scene.get("scene_id")
             if isinstance(scene_id, str):
                 if scene_id in scene_ids:
@@ -492,7 +704,15 @@ def load_project(project_root: str | Path) -> ProjectBundle:
     entry_scene = project.get("entry_scene")
     if isinstance(entry_scene, str) and entry_scene not in scene_ids:
         _issue(issues, "SCENE_ENTRY_MISSING", "project.entry_scene", f"unknown entry scene '{entry_scene}'")
-    return ProjectBundle(root, project, tuple(scenes), tuple(issues))
+    return ProjectBundle(
+        root,
+        project,
+        tuple(scenes),
+        tuple(assets),
+        tuple(animations),
+        tuple(frames),
+        tuple(issues),
+    )
 
 
 def format_issues(issues: Iterable[ValidationIssue]) -> str:

@@ -3,11 +3,15 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import shutil
 import struct
 import sys
 import tempfile
 import unittest
+import zlib
 from pathlib import Path
+
+from PIL import Image
 
 
 TOOL_ROOT = Path(__file__).resolve().parents[1]
@@ -22,7 +26,12 @@ from peepshow_authoring.compiler import (  # noqa: E402
     write_embedded_egg_c,
 )
 from peepshow_authoring.egg_format import (  # noqa: E402
+    ASSET_HEADER,
+    ASSET_RECORD,
+    CHUNK_ANIMATION_TABLE,
+    CHUNK_ASSET_TABLE,
     CHUNK_ENTRY,
+    CHUNK_MASKED_1BPP_SPRITE_BANK,
     FOOTER,
     HEADER,
     EggFormatError,
@@ -49,6 +58,76 @@ def resign_package(blob: bytearray) -> None:
         FOOTER.size,
         hashlib.sha256(blob[:footer_offset]).digest(),
     )
+
+
+def make_asset_project(parent: Path, *, invalid_pixel: bool = False) -> Path:
+    project_root = parent / "asset_slice.peepproj"
+    shutil.copytree(SAMPLE, project_root)
+    asset_dir = project_root / "assets"
+    asset_dir.mkdir()
+
+    project = json.loads((project_root / "project.json").read_text(encoding="utf-8"))
+    project["asset_sources"] = ["assets/catalog.json"]
+    (project_root / "project.json").write_text(json.dumps(project), encoding="utf-8")
+
+    image = Image.new("RGBA", (16, 16), (255, 255, 255, 0))
+    for y in range(16):
+        for x in range(8):
+            if x in {0, 7} or y in {0, 15}:
+                image.putpixel((x, y), (0, 0, 0, 255))
+        for x in range(8, 16):
+            color = (0, 0, 0, 255) if x in {11, 12} else (255, 255, 255, 255)
+            image.putpixel((x, y), color)
+    if invalid_pixel:
+        image.putpixel((1, 1), (127, 127, 127, 255))
+    image.save(asset_dir / "cursor.png", format="PNG")
+
+    catalog = {
+        "schema_id": "peepshow.authoring.assets",
+        "schema_version": 1,
+        "assets": [
+            {
+                "asset_id": "cursor",
+                "asset_type": "masked_1bpp",
+                "source_path": "assets/cursor.png",
+                "source_format": "png",
+                "frames": [
+                    {
+                        "frame_id": "cursor.phase_a",
+                        "source_rect": {"x": 0, "y": 0, "width": 8, "height": 16},
+                        "pivot_x": 0,
+                        "pivot_y": 0,
+                    },
+                    {
+                        "frame_id": "cursor.phase_b",
+                        "source_rect": {"x": 8, "y": 0, "width": 8, "height": 16},
+                        "pivot_x": 0,
+                        "pivot_y": 0,
+                    },
+                ],
+            }
+        ],
+        "animations": [
+            {
+                "animation_id": "cursor.blink",
+                "frame_refs": ["cursor.phase_a", "cursor.phase_b"],
+                "frame_duration_ms": [250, 250],
+                "loop_policy": "loop",
+            }
+        ],
+    }
+    (asset_dir / "catalog.json").write_text(json.dumps(catalog), encoding="utf-8")
+
+    scene_path = project_root / "scenes" / "state_demo.state.json"
+    scene = json.loads(scene_path.read_text(encoding="utf-8"))
+    for model in scene["render_models"]:
+        cursor = next(element for element in model["elements"] if element["element_id"] == "cursor")
+        cursor["kind"] = "sprite"
+        cursor["visual_ref"] = "cursor.phase_a"
+    cursor_wait = scene["waiting_visuals"][0]["elements"][0]
+    cursor_wait["phase_visual_refs"] = ["cursor.phase_a", "cursor.phase_b"]
+    scene_path.write_text(json.dumps(scene), encoding="utf-8")
+    return project_root
 
 
 class AuthoringModelTests(unittest.TestCase):
@@ -130,6 +209,84 @@ class AuthoringModelTests(unittest.TestCase):
             (scene_dir / "renamed.json").write_text(scene, encoding="utf-8")
             renamed = build_egg(load_project(project_root))
         self.assertEqual(original, renamed)
+
+    def test_masked_1bpp_assets_compile_and_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_asset_project(Path(temp_dir))
+            bundle = load_project(project_root)
+            self.assertEqual((), bundle.issues)
+            self.assertEqual(2, len(bundle.frames))
+
+            package = parse_egg(build_egg(bundle))
+            self.assertEqual(9, len(package.chunks))
+            self.assertEqual(
+                [CHUNK_ASSET_TABLE, CHUNK_MASKED_1BPP_SPRITE_BANK, CHUNK_ANIMATION_TABLE],
+                [chunk.chunk_type for chunk in package.chunks[-3:]],
+            )
+            self.assertEqual(("cursor.phase_a", "cursor.phase_b"), tuple(asset["frame_id"] for asset in package.assets))
+            self.assertEqual(0xFF, package.assets[0]["pixels"][0])
+            self.assertEqual(0x81, package.assets[0]["pixels"][1])
+            self.assertEqual(0x81, package.assets[0]["mask"][1])
+            self.assertFalse(package.assets[0]["opaque"])
+            self.assertTrue(package.assets[1]["opaque"])
+            self.assertEqual(b"", package.assets[1]["mask"])
+            self.assertEqual((0, 1), package.animations[0]["frame_indexes"])
+            self.assertEqual((250, 250), package.animations[0]["frame_duration_ms"])
+
+    def test_asset_build_is_independent_of_project_location(self) -> None:
+        with tempfile.TemporaryDirectory() as first_dir, tempfile.TemporaryDirectory() as second_dir:
+            first = build_egg(load_project(make_asset_project(Path(first_dir))))
+            second = build_egg(load_project(make_asset_project(Path(second_dir))))
+        self.assertEqual(first, second)
+
+    def test_normalized_hash_changes_when_compiled_pixels_change(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_asset_project(Path(temp_dir))
+            before = load_project(project_root).canonical_bytes()
+            image_path = project_root / "assets" / "cursor.png"
+            with Image.open(image_path) as opened:
+                image = opened.convert("RGBA")
+            image.putpixel((1, 1), (0, 0, 0, 255))
+            image.save(image_path, format="PNG")
+            after = load_project(project_root).canonical_bytes()
+        self.assertNotEqual(before, after)
+
+    def test_masked_1bpp_import_rejects_visible_gray_pixels(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_asset_project(Path(temp_dir), invalid_pixel=True)
+            bundle = load_project(project_root)
+        self.assertIn("ASSET_SOURCE_INVALID", {issue.code for issue in bundle.issues})
+
+    def test_asset_record_size_is_checked_after_container_integrity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            blob = bytearray(build_egg(load_project(make_asset_project(Path(temp_dir)))))
+        chunk_count = HEADER.unpack_from(blob)[6]
+        for index in range(chunk_count):
+            entry_offset = HEADER.size + index * CHUNK_ENTRY.size
+            entry = list(CHUNK_ENTRY.unpack_from(blob, entry_offset))
+            if entry[0] != CHUNK_ASSET_TABLE:
+                continue
+            record_offset = entry[4] + ASSET_HEADER.size
+            record = list(ASSET_RECORD.unpack_from(blob, record_offset))
+            record[9] += 1
+            ASSET_RECORD.pack_into(blob, record_offset, *record)
+            payload = blob[entry[4] : entry[4] + entry[5]]
+            entry[6] = zlib.crc32(payload) & 0xFFFFFFFF
+            CHUNK_ENTRY.pack_into(blob, entry_offset, *entry)
+            break
+        resign_package(blob)
+        with self.assertRaisesRegex(EggFormatError, "asset pixel size is invalid"):
+            parse_egg(bytes(blob))
+
+    def test_asset_source_path_cannot_escape_project(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_asset_project(Path(temp_dir))
+            catalog_path = project_root / "assets" / "catalog.json"
+            catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+            catalog["assets"][0]["source_path"] = "../outside.png"
+            catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+            bundle = load_project(project_root)
+        self.assertIn("ASSET_SOURCE_INVALID", {issue.code for issue in bundle.issues})
 
     def test_multiple_state_scenes_have_distinct_chunk_sets(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -31,6 +31,11 @@ RENDER_ELEMENT_RECORD = struct.Struct("<HHBBhhHHH")
 WAIT_HEADER = struct.Struct("<4s10H")
 WAIT_RECORD = struct.Struct("<8H")
 WAIT_ELEMENT_RECORD = struct.Struct("<6H")
+ASSET_HEADER = struct.Struct("<4s8H")
+ASSET_RECORD = struct.Struct("<6H2h5I")
+SPRITE_BANK_HEADER = struct.Struct("<4sHHII")
+ANIMATION_HEADER = struct.Struct("<4s6H")
+ANIMATION_RECORD = struct.Struct("<8H")
 HEADER_CRC_OFFSET = 44
 
 CHUNK_MANIFEST = 1
@@ -39,6 +44,9 @@ CHUNK_SCENE_TABLE = 3
 CHUNK_STATE_GRAPH = 4
 CHUNK_RENDER_MODELS = 5
 CHUNK_WAITING_VISUALS = 6
+CHUNK_ASSET_TABLE = 7
+CHUNK_MASKED_1BPP_SPRITE_BANK = 8
+CHUNK_ANIMATION_TABLE = 9
 KNOWN_CHUNK_TYPES = {
     CHUNK_MANIFEST,
     CHUNK_STRING_TABLE,
@@ -46,7 +54,13 @@ KNOWN_CHUNK_TYPES = {
     CHUNK_STATE_GRAPH,
     CHUNK_RENDER_MODELS,
     CHUNK_WAITING_VISUALS,
+    CHUNK_ASSET_TABLE,
+    CHUNK_MASKED_1BPP_SPRITE_BANK,
+    CHUNK_ANIMATION_TABLE,
 }
+
+ASSET_FLAG_OPAQUE = 1
+ANIMATION_LOOP_POLICIES = {1, 2, 3, 4}
 
 
 class EggFormatError(ValueError):
@@ -85,6 +99,8 @@ class EggPackage:
     strings: tuple[str, ...]
     manifest: dict[str, int | str]
     scenes: tuple[dict[str, int | str], ...]
+    assets: tuple[dict[str, object], ...]
+    animations: tuple[dict[str, object], ...]
     chunks: tuple[EggChunk, ...]
     sha256: str
 
@@ -224,6 +240,149 @@ def _parse_manifest(payload: bytes, strings: tuple[str, ...]) -> dict[str, int |
         "scene_count": values[10],
         "flags": values[11],
     }
+
+
+def _plane_bytes(payload: bytes, offset: int, size: int, minimum_offset: int, field: str) -> bytes:
+    _require(size > 0, f"{field} size is zero")
+    _require(offset >= minimum_offset and offset + size <= len(payload), f"{field} is outside sprite-bank bounds")
+    return payload[offset : offset + size]
+
+
+def _require_zero_padding(data: bytes, width: int, height: int, stride: int, field: str) -> None:
+    remainder = width % 8
+    if remainder == 0:
+        return
+    padding_mask = (1 << (8 - remainder)) - 1
+    for row in range(height):
+        _require(data[row * stride + stride - 1] & padding_mask == 0, f"{field} padding bits are not zero")
+
+
+def _parse_assets(
+    chunks: tuple[EggChunk, ...] | list[EggChunk],
+    asset_index: int,
+    sprite_index: int,
+    animation_index: int,
+    strings: tuple[str, ...],
+) -> tuple[tuple[dict[str, object], ...], tuple[dict[str, object], ...]]:
+    asset_payload = chunks[asset_index].payload
+    sprite_payload = chunks[sprite_index].payload
+    animation_payload = chunks[animation_index].payload
+
+    _require(len(sprite_payload) >= SPRITE_BANK_HEADER.size, "sprite bank is truncated")
+    sprite_header = SPRITE_BANK_HEADER.unpack_from(sprite_payload)
+    _require(
+        sprite_header[0] == b"SPB1" and sprite_header[1] == 1 and sprite_header[2] == SPRITE_BANK_HEADER.size,
+        "unsupported sprite bank",
+    )
+    _require(sprite_header[3] == len(sprite_payload) - SPRITE_BANK_HEADER.size and sprite_header[4] == 0, "sprite bank size is inconsistent")
+
+    _require(len(asset_payload) >= ASSET_HEADER.size, "asset table is truncated")
+    asset_header = ASSET_HEADER.unpack_from(asset_payload)
+    _require(
+        asset_header[0] == b"AST1" and asset_header[1] == 1 and asset_header[2] == ASSET_HEADER.size,
+        "unsupported asset table",
+    )
+    frame_count = asset_header[3]
+    _require(asset_header[4] == sprite_index and asset_header[5] == animation_index, "asset table chunk indexes are invalid")
+    _require(asset_header[6:] == (0, 0, 0), "asset table reserved fields are not zero")
+    _require(len(asset_payload) == ASSET_HEADER.size + frame_count * ASSET_RECORD.size, "asset table size is inconsistent")
+
+    assets: list[dict[str, object]] = []
+    frame_names: set[str] = set()
+    for index in range(frame_count):
+        record = ASSET_RECORD.unpack_from(asset_payload, ASSET_HEADER.size + index * ASSET_RECORD.size)
+        (
+            asset_id_index,
+            frame_id_index,
+            width,
+            height,
+            stride,
+            reserved,
+            pivot_x,
+            pivot_y,
+            pixel_offset,
+            pixel_size,
+            mask_offset,
+            mask_size,
+            flags,
+        ) = record
+        asset_id = _string(strings, asset_id_index, "asset ID")
+        frame_id = _string(strings, frame_id_index, "frame ID")
+        _require(frame_id not in frame_names, "frame ID is duplicated")
+        frame_names.add(frame_id)
+        _require(reserved == 0 and flags & ~ASSET_FLAG_OPAQUE == 0, "asset record flags or reserved field are invalid")
+        _require(1 <= width <= 168 and 1 <= height <= 144, "asset frame dimensions are invalid")
+        _require(stride == (width + 7) // 8, "asset frame stride is invalid")
+        expected_size = stride * height
+        _require(pixel_size == expected_size, "asset pixel size is invalid")
+        pixels = _plane_bytes(sprite_payload, pixel_offset, pixel_size, SPRITE_BANK_HEADER.size, "asset pixels")
+        _require_zero_padding(pixels, width, height, stride, "asset pixels")
+        if flags & ASSET_FLAG_OPAQUE:
+            _require(mask_offset == 0 and mask_size == 0, "opaque asset must omit its mask")
+            mask = b""
+        else:
+            _require(mask_size == expected_size, "asset mask size is invalid")
+            mask = _plane_bytes(sprite_payload, mask_offset, mask_size, SPRITE_BANK_HEADER.size, "asset mask")
+            _require_zero_padding(mask, width, height, stride, "asset mask")
+        assets.append(
+            {
+                "asset_id": asset_id,
+                "frame_id": frame_id,
+                "width": width,
+                "height": height,
+                "row_stride_bytes": stride,
+                "pivot_x": pivot_x,
+                "pivot_y": pivot_y,
+                "opaque": bool(flags & ASSET_FLAG_OPAQUE),
+                "pixels": pixels,
+                "mask": mask,
+            }
+        )
+
+    _require(len(animation_payload) >= ANIMATION_HEADER.size, "animation table is truncated")
+    animation_header = ANIMATION_HEADER.unpack_from(animation_payload)
+    _require(
+        animation_header[0] == b"ANI1" and animation_header[1] == 1 and animation_header[2] == ANIMATION_HEADER.size,
+        "unsupported animation table",
+    )
+    animation_count, frame_ref_count, duration_count, animation_reserved = animation_header[3:7]
+    _require(animation_reserved == 0 and frame_ref_count == duration_count, "animation header is invalid")
+    record_offset = ANIMATION_HEADER.size
+    frame_offset = record_offset + animation_count * ANIMATION_RECORD.size
+    duration_offset = frame_offset + frame_ref_count * 2
+    _require(duration_offset + duration_count * 4 == len(animation_payload), "animation table size is inconsistent")
+    frame_refs = struct.unpack_from(f"<{frame_ref_count}H", animation_payload, frame_offset) if frame_ref_count else ()
+    durations = struct.unpack_from(f"<{duration_count}I", animation_payload, duration_offset) if duration_count else ()
+
+    animations: list[dict[str, object]] = []
+    animation_names: set[str] = set()
+    for index in range(animation_count):
+        record = ANIMATION_RECORD.unpack_from(animation_payload, record_offset + index * ANIMATION_RECORD.size)
+        animation_id_index, first_frame, count, first_duration, loop_policy, width, height, reserved = record
+        animation_id = _string(strings, animation_id_index, "animation ID")
+        _require(animation_id not in animation_names, "animation ID is duplicated")
+        animation_names.add(animation_id)
+        _require(reserved == 0 and loop_policy in ANIMATION_LOOP_POLICIES, "animation record is invalid")
+        _require(1 <= count and first_frame + count <= frame_ref_count, "animation frame range is invalid")
+        _require(first_duration + count <= duration_count, "animation duration range is invalid")
+        selected_frames = frame_refs[first_frame : first_frame + count]
+        selected_durations = durations[first_duration : first_duration + count]
+        _require(all(frame < frame_count for frame in selected_frames), "animation references an unknown frame")
+        _require(all(1 <= duration <= 60000 for duration in selected_durations), "animation duration is invalid")
+        expected_width = max(int(assets[frame]["width"]) for frame in selected_frames)
+        expected_height = max(int(assets[frame]["height"]) for frame in selected_frames)
+        _require(width == expected_width and height == expected_height, "animation bounds are invalid")
+        animations.append(
+            {
+                "animation_id": animation_id,
+                "frame_indexes": tuple(selected_frames),
+                "frame_duration_ms": tuple(selected_durations),
+                "loop_policy": loop_policy,
+                "width": width,
+                "height": height,
+            }
+        )
+    return tuple(assets), tuple(animations)
 
 
 def _parse_render(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]:
@@ -441,6 +600,11 @@ def parse_egg(blob: bytes) -> EggPackage:
     manifest_chunks = [chunk for chunk in chunks if chunk.chunk_type == CHUNK_MANIFEST]
     scene_chunks = [chunk for chunk in chunks if chunk.chunk_type == CHUNK_SCENE_TABLE]
     _require(len(string_chunks) == len(manifest_chunks) == len(scene_chunks) == 1, "core chunk cardinality is invalid")
+    asset_indexes = [index for index, chunk in enumerate(chunks) if chunk.chunk_type == CHUNK_ASSET_TABLE]
+    sprite_indexes = [index for index, chunk in enumerate(chunks) if chunk.chunk_type == CHUNK_MASKED_1BPP_SPRITE_BANK]
+    animation_indexes = [index for index, chunk in enumerate(chunks) if chunk.chunk_type == CHUNK_ANIMATION_TABLE]
+    asset_cardinality = (len(asset_indexes), len(sprite_indexes), len(animation_indexes))
+    _require(asset_cardinality in {(0, 0, 0), (1, 1, 1)}, "asset chunk cardinality is invalid")
     strings = _parse_strings(string_chunks[0].payload)
     manifest = _parse_manifest(manifest_chunks[0].payload, strings)
     _require(fnv1a64(str(manifest["package_id"])) == package_id_hash, "package ID hash does not match manifest")
@@ -451,7 +615,8 @@ def parse_egg(blob: bytes) -> EggPackage:
     _require(scene_header[0] == b"SCN1" and scene_header[1] == 1 and scene_header[2] == SCENE_HEADER.size, "unsupported scene table")
     scene_count = scene_header[3]
     _require(scene_header[4] == 0 and len(scene_payload) == SCENE_HEADER.size + scene_count * SCENE_RECORD.size, "scene table size is inconsistent")
-    _require(scene_count == manifest["scene_count"] and chunk_count == 3 + scene_count * 3, "scene/chunk count is inconsistent")
+    expected_chunk_count = 3 + scene_count * 3 + (3 if asset_indexes else 0)
+    _require(scene_count == manifest["scene_count"] and chunk_count == expected_chunk_count, "scene/chunk count is inconsistent")
     scenes: list[dict[str, int | str]] = []
     used_scene_chunks: set[int] = set()
     for index in range(scene_count):
@@ -486,6 +651,16 @@ def parse_egg(blob: bytes) -> EggPackage:
     expected_scene_chunks = {index for index, chunk in enumerate(chunks) if chunk.chunk_type in {CHUNK_STATE_GRAPH, CHUNK_RENDER_MODELS, CHUNK_WAITING_VISUALS}}
     _require(used_scene_chunks == expected_scene_chunks, "unreferenced or multiply purposed scene chunks exist")
     _require(str(manifest["entry_scene"]) in {str(scene["scene_id"]) for scene in scenes}, "manifest entry scene is missing")
+    if asset_indexes:
+        assets, animations = _parse_assets(
+            chunks,
+            asset_indexes[0],
+            sprite_indexes[0],
+            animation_indexes[0],
+            strings,
+        )
+    else:
+        assets, animations = (), ()
     return EggPackage(
         package_id_hash=package_id_hash,
         package_flags=package_flags,
@@ -493,6 +668,8 @@ def parse_egg(blob: bytes) -> EggPackage:
         strings=strings,
         manifest=manifest,
         scenes=tuple(scenes),
+        assets=assets,
+        animations=animations,
         chunks=tuple(chunks),
         sha256=hashlib.sha256(blob).hexdigest(),
     )

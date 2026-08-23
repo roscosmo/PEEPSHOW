@@ -23,7 +23,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 1
+SERVICE_API_VERSION = 2
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
     "service.hello",
@@ -126,6 +126,8 @@ class AuthoringService:
                 "target_profile": project.get("selected_target_profile"),
                 "entry_scene": project.get("entry_scene"),
                 "scene_count": len(bundle.scenes),
+                "asset_frame_count": len(bundle.frames),
+                "animation_count": len(bundle.animations),
             },
         }
 
@@ -175,6 +177,8 @@ class AuthoringService:
                 "target_profile": package.manifest["target_profile"],
                 "entry_scene": package.manifest["entry_scene"],
                 "scene_count": len(package.scenes),
+                "asset_frame_count": len(package.assets),
+                "animation_count": len(package.animations),
                 "chunk_count": len(package.chunks),
                 "size_bytes": len(blob),
                 "sha256": package.sha256,
