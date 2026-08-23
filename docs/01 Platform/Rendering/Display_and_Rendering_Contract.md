@@ -121,6 +121,17 @@ HW6 evidence `EV-HW6-20260822-P1-SCENEWAIT-088` validates the first production s
 
 HW6 evidence `EV-HW6-20260822-P1-SCENEELEMENTS-093` validates the first general retained-element scene model. A pointer-free API v2 model carries at most `12` elements total; each element declares one of four composition layers (`BACKGROUND`, `SCENE`, `UI`, or `OVERLAY`) plus bounded geometry, type, asset/style IDs, visibility, and animation binding. The target scene resolved `8` elements containing text, outline/line primitives, one focus primitive, and one static 1bpp diamond sprite. Probe API `7` reported element/focus-element/sprite counts `8/8/1`, render-model status `0x0`, display primitive `5`, six waiting steps/two waiting elements, timeline preservation status `0x0`, and five completed STOP2 entries. The user confirmed the diamond was visible and the existing scene behavior remained correct. This validates layer-ordered element composition into the committed framebuffer; it does not claim twelve layers or retained per-layer pixel buffers. Asset catalogs, package serialization, additional sprite formats, and authoring-tool output remain open.
 
+The next source-complete STATE slice removes that package-art gap without
+changing the validated transport. Egg loader API v3 accepts either the original
+six required scene chunks or the nine-chunk form containing `asset_table`,
+`masked_1bpp_sprite_bank`, and `animation_table`; it validates frame bounds,
+stride, masks, padding, and immutable package ranges. Render elements and
+waiting-phase references resolve to one-based package frame handles. `thDisplay`
+composes those same masked pixels into the awake framebuffer and the existing
+waiting-animation frames, after which the proven dirty-row and LPBAM compiler
+remain unchanged. This implementation is pending HW6 visual and repeated
+STOP2/wake validation and is not target evidence yet.
+
 ## DMA-Safe Buffer Placement
 
 HW6 display DMA/LPDMA source data must live in the SRAM4 display-DMA/autonomous arena. This allocation model is validated on HW5 and target-proven on HW6. At the current `250 ms` cadence, the eight-row cursor program averages `56 uA` over five minutes and the guaranteed three-full-panel-state program averages `85 uA`. These establish sparse and maximum-guaranteed-coverage average-current endpoints; pulse shape, intermediate coverage, and alternate cadence scaling remain provisional.

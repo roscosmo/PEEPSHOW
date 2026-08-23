@@ -9,7 +9,10 @@ deterministic binary `.egg` compiler, independent host package reader, and the
 first bounded HW6 embedded-package STATE decoder are implemented. The embedded
 reader, hardware SHA-256 integrity path, sparse retained STATE scene, mixed
 2-phase/3-phase waiting visuals, STOP2 continuity, and input transitions have
-passed initial target validation. The versioned host authoring-service boundary
+passed initial target validation. The embedded decoder now also validates the
+portable asset and masked-1bpp sprite chunks and exposes immutable frame views
+to the retained renderer; target validation of those package pixels is still
+pending. The versioned host authoring-service boundary
 now exposes project loading, validation, normalization, deterministic package
 compilation, V1 compatibility reporting, and deterministic selected-STATE-scene
 preview over independently parsed package records. External-flash installation
@@ -467,7 +470,7 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
 7. implement the headless project loader, normalized model, validator, deterministic package compiler, and compiler-derived capability closure for the state-scene slice
 8. compile masked 1bpp source assets into portable asset, sprite-bank, and
    animation chunks; make both the host package reader and firmware render them
-   through the retained STATE model
+   through the retained STATE model (implemented, pending HW6 target proof)
 9. implement `HOST_AUTHORING_PREVIEW` with selected-scene launch against those
    same compiled scene, asset, and presentation records; do not label it HW6
    evidence

@@ -111,24 +111,24 @@
       "visual_id": "view_left",
       "focus_index": 0,
       "elements": [
-        { "element_id": "cursor", "kind": "shape", "visual_ref": "cursor_outline", "x": 8, "y": 43, "width": 8, "height": 16, "z_order": 10, "focus_role": "focus" },
-        { "element_id": "marker", "kind": "shape", "visual_ref": "marker_outline", "x": 160, "y": 0, "width": 8, "height": 24, "z_order": 5 }
+        { "element_id": "cursor", "kind": "sprite", "visual_ref": "cursor.phase_b", "x": 8, "y": 43, "width": 8, "height": 16, "z_order": 10, "focus_role": "focus" },
+        { "element_id": "marker", "kind": "sprite", "visual_ref": "marker.phase_a", "x": 160, "y": 0, "width": 8, "height": 24, "z_order": 5 }
       ]
     },
     {
       "visual_id": "view_center",
       "focus_index": 1,
       "elements": [
-        { "element_id": "cursor", "kind": "shape", "visual_ref": "cursor_outline", "x": 8, "y": 73, "width": 8, "height": 16, "z_order": 10, "focus_role": "focus" },
-        { "element_id": "marker", "kind": "shape", "visual_ref": "marker_outline", "x": 160, "y": 0, "width": 8, "height": 24, "z_order": 5 }
+        { "element_id": "cursor", "kind": "sprite", "visual_ref": "cursor.phase_b", "x": 8, "y": 73, "width": 8, "height": 16, "z_order": 10, "focus_role": "focus" },
+        { "element_id": "marker", "kind": "sprite", "visual_ref": "marker.phase_a", "x": 160, "y": 0, "width": 8, "height": 24, "z_order": 5 }
       ]
     },
     {
       "visual_id": "view_right",
       "focus_index": 2,
       "elements": [
-        { "element_id": "cursor", "kind": "shape", "visual_ref": "cursor_outline", "x": 8, "y": 103, "width": 8, "height": 16, "z_order": 10, "focus_role": "focus" },
-        { "element_id": "marker", "kind": "shape", "visual_ref": "marker_outline", "x": 160, "y": 0, "width": 8, "height": 24, "z_order": 5 }
+        { "element_id": "cursor", "kind": "sprite", "visual_ref": "cursor.phase_b", "x": 8, "y": 103, "width": 8, "height": 16, "z_order": 10, "focus_role": "focus" },
+        { "element_id": "marker", "kind": "sprite", "visual_ref": "marker.phase_a", "x": 160, "y": 0, "width": 8, "height": 24, "z_order": 5 }
       ]
     }
   ],
@@ -144,13 +144,13 @@
         {
           "element_id": "cursor_wait",
           "source_element_ref": "cursor",
-          "phase_visual_refs": ["cursor_phase_a", "cursor_phase_b"],
+          "phase_visual_refs": ["cursor.phase_a", "cursor.phase_b"],
           "step_phase_indices": [0, 1, 0, 1, 0, 1]
         },
         {
           "element_id": "marker_wait",
           "source_element_ref": "marker",
-          "phase_visual_refs": ["marker_phase_a", "marker_phase_b", "marker_phase_c"],
+          "phase_visual_refs": ["marker.phase_a", "marker.phase_b", "marker.phase_c"],
           "step_phase_indices": [2, 0, 1, 2, 0, 1]
         }
       ]

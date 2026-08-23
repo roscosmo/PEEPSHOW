@@ -13,6 +13,9 @@
   "scene_sources": [
     "scenes/state_demo.state.json"
   ],
+  "asset_sources": [
+    "assets/catalog.json"
+  ],
   "validation": {
     "build_profile": "development",
     "ruleset_version": 1

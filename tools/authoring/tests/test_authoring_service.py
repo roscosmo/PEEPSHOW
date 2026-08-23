@@ -39,6 +39,7 @@ def make_preview_project(parent: Path) -> Path:
     project_root = parent / "preview.peepproj"
     shutil.copytree(SAMPLE, project_root)
     asset_dir = project_root / "assets"
+    shutil.rmtree(asset_dir)
     asset_dir.mkdir()
 
     project_path = project_root / "project.json"
@@ -101,6 +102,34 @@ def make_preview_project(parent: Path) -> Path:
     cursor_wait = scene["waiting_visuals"][0]["elements"][0]
     cursor_wait["phase_visual_refs"] = ["cursor.phase_a", "cursor.phase_b"]
     scene["waiting_visuals"][0]["elements"] = [cursor_wait]
+    scene_path.write_text(json.dumps(scene), encoding="utf-8")
+    return project_root
+
+
+def make_procedural_project(parent: Path) -> Path:
+    project_root = parent / "procedural.peepproj"
+    shutil.copytree(SAMPLE, project_root)
+    project_path = project_root / "project.json"
+    project = json.loads(project_path.read_text(encoding="utf-8"))
+    project.pop("asset_sources", None)
+    project_path.write_text(json.dumps(project), encoding="utf-8")
+
+    scene_path = project_root / "scenes" / "state_demo.state.json"
+    scene = json.loads(scene_path.read_text(encoding="utf-8"))
+    for model in scene["render_models"]:
+        cursor = next(element for element in model["elements"] if element["element_id"] == "cursor")
+        marker = next(element for element in model["elements"] if element["element_id"] == "marker")
+        cursor["kind"] = "shape"
+        cursor["visual_ref"] = "cursor_outline"
+        marker["kind"] = "shape"
+        marker["visual_ref"] = "marker_outline"
+    waiting = scene["waiting_visuals"][0]["elements"]
+    waiting[0]["phase_visual_refs"] = ["cursor_phase_a", "cursor_phase_b"]
+    waiting[1]["phase_visual_refs"] = [
+        "marker_phase_a",
+        "marker_phase_b",
+        "marker_phase_c",
+    ]
     scene_path.write_text(json.dumps(scene), encoding="utf-8")
     return project_root
 
@@ -299,16 +328,18 @@ class AuthoringServiceTests(unittest.TestCase):
 
     def test_preview_rejects_procedural_source_visuals_and_stale_sessions(self) -> None:
         service = AuthoringService()
-        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
-        with self.assertRaises(ProtocolError) as raised:
-            service.handle(
-                request(
-                    "project.preview_reset",
-                    {"project_revision": loaded["project_revision"], "scene_id": "state_demo"},
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_procedural_project(Path(temp_dir))
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            with self.assertRaises(ProtocolError) as raised:
+                service.handle(
+                    request(
+                        "project.preview_reset",
+                        {"project_revision": loaded["project_revision"], "scene_id": "state_demo"},
+                    )
                 )
-            )
-        self.assertEqual("PREVIEW_START_FAILED", raised.exception.code)
-        self.assertIn("package-backed preview requires sprites", raised.exception.message)
+            self.assertEqual("PREVIEW_START_FAILED", raised.exception.code)
+            self.assertIn("package-backed preview requires sprites", raised.exception.message)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = make_preview_project(Path(temp_dir))

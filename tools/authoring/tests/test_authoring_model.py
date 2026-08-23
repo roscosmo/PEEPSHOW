@@ -64,6 +64,7 @@ def make_asset_project(parent: Path, *, invalid_pixel: bool = False) -> Path:
     project_root = parent / "asset_slice.peepproj"
     shutil.copytree(SAMPLE, project_root)
     asset_dir = project_root / "assets"
+    shutil.rmtree(asset_dir)
     asset_dir.mkdir()
 
     project = json.loads((project_root / "project.json").read_text(encoding="utf-8"))
@@ -124,8 +125,10 @@ def make_asset_project(parent: Path, *, invalid_pixel: bool = False) -> Path:
         cursor = next(element for element in model["elements"] if element["element_id"] == "cursor")
         cursor["kind"] = "sprite"
         cursor["visual_ref"] = "cursor.phase_a"
+        model["elements"] = [cursor]
     cursor_wait = scene["waiting_visuals"][0]["elements"][0]
     cursor_wait["phase_visual_refs"] = ["cursor.phase_a", "cursor.phase_b"]
+    scene["waiting_visuals"][0]["elements"] = [cursor_wait]
     scene_path.write_text(json.dumps(scene), encoding="utf-8")
     return project_root
 
@@ -191,7 +194,8 @@ class AuthoringModelTests(unittest.TestCase):
         package = parse_egg(first)
         self.assertEqual("dev.peepshow.state_slice", package.manifest["package_id"])
         self.assertEqual("state_demo", package.manifest["entry_scene"])
-        self.assertEqual(6, len(package.chunks))
+        self.assertEqual(9, len(package.chunks))
+        self.assertEqual(5, len(package.assets))
         self.assertEqual(3, package.scenes[0]["state_count"])
         self.assertEqual(6, package.scenes[0]["route_count"])
         self.assertNotIn("scenes/state_demo.state.json", package.strings)
@@ -202,6 +206,7 @@ class AuthoringModelTests(unittest.TestCase):
             project_root = Path(temp_dir) / "renamed.peepproj"
             scene_dir = project_root / "scenes"
             scene_dir.mkdir(parents=True)
+            shutil.copytree(SAMPLE / "assets", project_root / "assets")
             project = json.loads((SAMPLE / "project.json").read_text(encoding="utf-8"))
             project["scene_sources"] = ["scenes/renamed.json"]
             scene = (SAMPLE / "scenes" / "state_demo.state.json").read_text(encoding="utf-8")
@@ -293,6 +298,7 @@ class AuthoringModelTests(unittest.TestCase):
             project_root = Path(temp_dir) / "multiple.peepproj"
             scene_dir = project_root / "scenes"
             scene_dir.mkdir(parents=True)
+            shutil.copytree(SAMPLE / "assets", project_root / "assets")
             project = json.loads((SAMPLE / "project.json").read_text(encoding="utf-8"))
             project["scene_sources"] = ["scenes/state_demo.state.json", "scenes/second.state.json"]
             scene = json.loads((SAMPLE / "scenes" / "state_demo.state.json").read_text(encoding="utf-8"))
@@ -305,7 +311,7 @@ class AuthoringModelTests(unittest.TestCase):
 
             package = parse_egg(build_egg(load_project(project_root)))
             self.assertEqual(("second_scene", "state_demo"), tuple(item["scene_id"] for item in package.scenes))
-            self.assertEqual(9, len(package.chunks))
+            self.assertEqual(12, len(package.chunks))
 
     def test_egg_corruption_and_truncation_are_rejected(self) -> None:
         blob = bytearray(build_egg(load_project(SAMPLE)))

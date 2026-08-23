@@ -119,6 +119,10 @@ static uint32_t PS_SceneRuntime_RenderElementValid(
     return ((element->asset_id != 0UL) &&
             (element->style_id == PS_SCENE_RENDER_STYLE_NONE)) ? 1UL : 0UL;
   }
+  if (element->type == PS_SCENE_RENDER_ELEMENT_FOCUS)
+  {
+    return (element->style_id == PS_SCENE_RENDER_STYLE_NONE) ? 1UL : 0UL;
+  }
   return ((element->asset_id == 0UL) &&
           (element->style_id == PS_SCENE_RENDER_STYLE_NONE)) ? 1UL : 0UL;
 }

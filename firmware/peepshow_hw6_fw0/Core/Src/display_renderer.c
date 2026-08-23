@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "ps_egg_state_loader.h"
 #include "ps_ui_router.h"
 
 #define DISPLAY_RENDERER_TEXT_SCALE         (2U)
@@ -176,6 +177,121 @@ static void DisplayRenderer_SetPanelPixelWhiteInBuffer(
   index = ((uint32_t)panel_y * LINE_WIDTH) + ((uint32_t)panel_x >> 3U);
   mask = (uint8_t)(1U << (panel_x & 7U));
   framebuffer[index] |= mask;
+}
+
+static void DisplayRenderer_SetPanelPixelBlackInBuffer(
+  uint8_t *framebuffer,
+  uint16_t panel_x,
+  uint16_t panel_y)
+{
+  uint32_t index;
+  uint8_t mask;
+
+  if ((framebuffer == NULL) || (panel_x >= DISPLAY_WIDTH) ||
+      (panel_y >= DISPLAY_HEIGHT))
+  {
+    return;
+  }
+
+  index = ((uint32_t)panel_y * LINE_WIDTH) + ((uint32_t)panel_x >> 3U);
+  mask = (uint8_t)(1U << (panel_x & 7U));
+  framebuffer[index] &= (uint8_t)~mask;
+}
+
+static void DisplayRenderer_SetLogicalPixelInBuffer(
+  uint8_t *framebuffer,
+  uint16_t x,
+  uint16_t y,
+  uint32_t black)
+{
+  uint16_t panel_x;
+  uint16_t panel_y;
+
+  if ((framebuffer == NULL) || (x >= DISPLAY_RENDERER_WIDTH) ||
+      (y >= DISPLAY_RENDERER_HEIGHT))
+  {
+    return;
+  }
+  panel_x = y;
+  panel_y = (uint16_t)(DISPLAY_RENDERER_WIDTH - 1U - x);
+  if (black != 0UL)
+  {
+    DisplayRenderer_SetPanelPixelBlackInBuffer(
+      framebuffer, panel_x, panel_y);
+  }
+  else
+  {
+    DisplayRenderer_SetPanelPixelWhiteInBuffer(
+      framebuffer, panel_x, panel_y);
+  }
+}
+
+static uint32_t DisplayRenderer_ApplyPackageSprite(
+  uint32_t frame_id,
+  const ps_scene_waiting_visual_bounds_t *bounds,
+  uint8_t *destination,
+  uint32_t destination_size,
+  uint32_t clear_bounds,
+  uint32_t *black_pixels)
+{
+  ps_egg_state_loader_sprite_frame_t frame;
+  uint32_t count = 0UL;
+  uint16_t x;
+  uint16_t y;
+
+  if ((bounds == NULL) || (destination == NULL) ||
+      (destination_size < DISPLAY_RENDERER_BUFFER_SIZE) ||
+      (PS_EggStateLoader_GetSpriteFrame(frame_id, &frame) == 0UL) ||
+      (frame.width != bounds->width) ||
+      (frame.height != bounds->height) ||
+      (((uint32_t)bounds->x + bounds->width) > DISPLAY_RENDERER_WIDTH) ||
+      (((uint32_t)bounds->y + bounds->height) > DISPLAY_RENDERER_HEIGHT))
+  {
+    return 0UL;
+  }
+
+  if (clear_bounds != 0UL)
+  {
+    for (y = 0U; y < frame.height; ++y)
+    {
+      for (x = 0U; x < frame.width; ++x)
+      {
+        DisplayRenderer_SetLogicalPixelInBuffer(
+          destination,
+          (uint16_t)(bounds->x + x),
+          (uint16_t)(bounds->y + y),
+          0UL);
+      }
+    }
+  }
+
+  for (y = 0U; y < frame.height; ++y)
+  {
+    for (x = 0U; x < frame.width; ++x)
+    {
+      uint8_t bit = (uint8_t)(0x80U >> (x & 7U));
+      uint32_t offset = ((uint32_t)y * frame.row_stride_bytes) +
+                        ((uint32_t)x >> 3U);
+      uint32_t owned = (frame.opaque != 0UL) ? 1UL :
+        (((frame.mask[offset] & bit) != 0U) ? 1UL : 0UL);
+      uint32_t black = ((frame.pixels[offset] & bit) != 0U) ? 1UL : 0UL;
+
+      if (owned != 0UL)
+      {
+        DisplayRenderer_SetLogicalPixelInBuffer(
+          destination,
+          (uint16_t)(bounds->x + x),
+          (uint16_t)(bounds->y + y),
+          black);
+        count += black;
+      }
+    }
+  }
+  if (black_pixels != NULL)
+  {
+    *black_pixels = count;
+  }
+  return 1UL;
 }
 
 static void DisplayRenderer_SetPanelPixelWhite(uint16_t panel_x,
@@ -659,6 +775,28 @@ static uint32_t DisplayRenderer_ComposeThreePhaseMarkerPhase(
     phase, destination, destination_size);
 }
 
+static uint32_t DisplayRenderer_ComposePackageSpritePhase(
+  const void *context,
+  uint32_t phase,
+  uint8_t *destination,
+  uint32_t destination_size)
+{
+  const ps_scene_waiting_visual_element_t *element =
+    (const ps_scene_waiting_visual_element_t *)context;
+
+  if ((element == NULL) || (phase >= element->phase_count))
+  {
+    return 0UL;
+  }
+  return DisplayRenderer_ApplyPackageSprite(
+    element->phase_visual_id[phase],
+    &element->logical_bounds,
+    destination,
+    destination_size,
+    1UL,
+    NULL);
+}
+
 static uint32_t DisplayRenderer_ComposeFullFrameTestPhase(
   const void *context,
   uint32_t phase,
@@ -742,7 +880,9 @@ static uint32_t DisplayRenderer_ValidateSceneWaitingVisual(
         ((element->visual_source_id !=
           PS_SCENE_WAITING_VISUAL_SOURCE_SHELL_CURSOR) &&
          (element->visual_source_id !=
-          PS_SCENE_WAITING_VISUAL_SOURCE_THREE_PHASE_MARKER)) ||
+          PS_SCENE_WAITING_VISUAL_SOURCE_THREE_PHASE_MARKER) &&
+         (element->visual_source_id !=
+          PS_SCENE_WAITING_VISUAL_SOURCE_PACKAGE_SPRITE)) ||
         (element->phase_count == 0UL) ||
         (element->phase_count > PS_SCENE_WAITING_VISUAL_PHASE_MAX) ||
         (element->logical_bounds.width == 0U) ||
@@ -917,6 +1057,31 @@ static uint32_t DisplayRenderer_ResolveSceneWaitingVisual(
       target->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_PATTERN;
       target->compose_phase =
         DisplayRenderer_ComposeThreePhaseMarkerPhase;
+      animation->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_PATTERN;
+    }
+    else if (source->visual_source_id ==
+             PS_SCENE_WAITING_VISUAL_SOURCE_PACKAGE_SPRITE)
+    {
+      uint32_t package_phase;
+
+      for (package_phase = 0UL;
+           package_phase < source->phase_count;
+           ++package_phase)
+      {
+        ps_egg_state_loader_sprite_frame_t frame;
+        if ((PS_EggStateLoader_GetSpriteFrame(
+               source->phase_visual_id[package_phase], &frame) == 0UL) ||
+            (frame.width != source->logical_bounds.width) ||
+            (frame.height != source->logical_bounds.height))
+        {
+          g_display_renderer_scene_waiting_probe.last_resolve_status = 1UL;
+          return 0UL;
+        }
+      }
+      target->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_PATTERN;
+      target->compose_phase =
+        DisplayRenderer_ComposePackageSpritePhase;
+      target->compose_context = source;
       animation->source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_PATTERN;
     }
     else
@@ -1902,16 +2067,31 @@ static uint32_t DisplayRenderer_ValidateSceneModel(
       return 0UL;
     }
     if ((element->type == PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP) &&
-        ((element->asset_id != PS_SCENE_RENDER_SPRITE_DIAMOND) ||
-         (element->width != 8U) || (element->height != 8U)))
+        (element->asset_id != PS_SCENE_RENDER_SPRITE_DIAMOND))
     {
-      return 0UL;
+      ps_egg_state_loader_sprite_frame_t frame;
+      if ((PS_EggStateLoader_GetSpriteFrame(
+             element->asset_id, &frame) == 0UL) ||
+          (frame.width != element->width) ||
+          (frame.height != element->height))
+      {
+        return 0UL;
+      }
     }
     if (element->type == PS_SCENE_RENDER_ELEMENT_FOCUS)
     {
+      ps_egg_state_loader_sprite_frame_t frame;
       if ((element->visible == 0UL) ||
           (element->animation_binding_id !=
            PS_SCENE_RENDER_ANIMATION_CURSOR))
+      {
+        return 0UL;
+      }
+      if ((element->asset_id != 0UL) &&
+          ((PS_EggStateLoader_GetSpriteFrame(
+              element->asset_id, &frame) == 0UL) ||
+           (frame.width != element->width) ||
+           (frame.height != element->height)))
       {
         return 0UL;
       }
@@ -1988,25 +2168,63 @@ static uint32_t DisplayRenderer_DrawSceneElement(
       break;
     }
     case PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP:
-      for (y = 0U; y < element->height; ++y)
+      if (element->asset_id == PS_SCENE_RENDER_SPRITE_DIAMOND)
       {
-        for (x = 0U; x < element->width; ++x)
+        for (y = 0U; y < element->height; ++y)
         {
-          if (DisplayRenderer_SceneSpritePixel(
-                element->asset_id, x, y) != 0UL)
+          for (x = 0U; x < element->width; ++x)
           {
-            black_pixels += DisplayRenderer_SetBlack(
-              (uint16_t)(element->x + x),
-              (uint16_t)(element->y + y));
+            if (DisplayRenderer_SceneSpritePixel(
+                  element->asset_id, x, y) != 0UL)
+            {
+              black_pixels += DisplayRenderer_SetBlack(
+                (uint16_t)(element->x + x),
+                (uint16_t)(element->y + y));
+            }
           }
         }
+      }
+      else
+      {
+        uint32_t sprite_black_pixels = 0UL;
+        ps_scene_waiting_visual_bounds_t bounds =
+        {
+          .x = element->x,
+          .y = element->y,
+          .width = element->width,
+          .height = element->height
+        };
+        (void)DisplayRenderer_ApplyPackageSprite(
+          element->asset_id, &bounds,
+          s_display_framebuffer, sizeof(s_display_framebuffer),
+          0UL, &sprite_black_pixels);
+        black_pixels += sprite_black_pixels;
       }
       break;
     case PS_SCENE_RENDER_ELEMENT_FOCUS:
       if (DisplayRenderer_RecordLpbamCursorBounds(element) != 0UL)
       {
-        black_pixels += DisplayRenderer_FilledRect(
-          element->x, element->y, element->width, element->height);
+        if (element->asset_id == 0UL)
+        {
+          black_pixels += DisplayRenderer_FilledRect(
+            element->x, element->y, element->width, element->height);
+        }
+        else
+        {
+          uint32_t sprite_black_pixels = 0UL;
+          ps_scene_waiting_visual_bounds_t bounds =
+          {
+            .x = element->x,
+            .y = element->y,
+            .width = element->width,
+            .height = element->height
+          };
+          (void)DisplayRenderer_ApplyPackageSprite(
+            element->asset_id, &bounds,
+            s_display_framebuffer, sizeof(s_display_framebuffer),
+            0UL, &sprite_black_pixels);
+          black_pixels += sprite_black_pixels;
+        }
       }
       break;
     default:

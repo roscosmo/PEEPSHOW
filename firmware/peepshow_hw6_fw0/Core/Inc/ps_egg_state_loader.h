@@ -9,8 +9,21 @@
 extern "C" {
 #endif
 
-#define PS_EGG_STATE_LOADER_API_VERSION (2UL)
+#define PS_EGG_STATE_LOADER_API_VERSION (3UL)
 #define PS_EGG_STATE_LOADER_STATUS_NOT_RUN (0xFFFFFFFFUL)
+#define PS_EGG_STATE_LOADER_SPRITE_FRAME_ID_BASE (0x00010000UL)
+
+typedef struct
+{
+  const uint8_t *pixels;
+  const uint8_t *mask;
+  uint16_t width;
+  uint16_t height;
+  uint16_t row_stride_bytes;
+  int16_t pivot_x;
+  int16_t pivot_y;
+  uint32_t opaque;
+} ps_egg_state_loader_sprite_frame_t;
 
 typedef enum
 {
@@ -29,7 +42,8 @@ typedef enum
   PS_EGG_STATE_LOADER_REASON_WAITING,
   PS_EGG_STATE_LOADER_REASON_CAPACITY,
   PS_EGG_STATE_LOADER_REASON_UNSUPPORTED,
-  PS_EGG_STATE_LOADER_REASON_HASH
+  PS_EGG_STATE_LOADER_REASON_HASH,
+  PS_EGG_STATE_LOADER_REASON_ASSET
 } ps_egg_state_loader_reason_t;
 
 typedef struct
@@ -46,6 +60,10 @@ typedef struct
   uint32_t graph_chunk_index;
   uint32_t render_chunk_index;
   uint32_t waiting_chunk_index;
+  uint32_t asset_chunk_index;
+  uint32_t sprite_chunk_index;
+  uint32_t animation_chunk_index;
+  uint32_t sprite_frame_count;
   uint32_t state_count;
   uint32_t input_count;
   uint32_t route_count;
@@ -58,12 +76,16 @@ typedef struct
 
 extern volatile ps_egg_state_loader_probe_t g_ps_egg_state_loader_probe;
 
+/* The package blob must remain immutable while the decoded scene is active. */
 uint32_t PS_EggStateLoader_Load(
   const uint8_t *blob,
   uint32_t size,
   ps_scene_runtime_state_scene_t *scene);
 uint32_t PS_EggStateLoader_LoadEmbedded(
   ps_scene_runtime_state_scene_t *scene);
+uint32_t PS_EggStateLoader_GetSpriteFrame(
+  uint32_t frame_id,
+  ps_egg_state_loader_sprite_frame_t *frame);
 
 #ifdef __cplusplus
 }
