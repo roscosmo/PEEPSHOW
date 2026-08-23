@@ -384,6 +384,9 @@ Passing authoring-preview tests does not replace target validation.
    schema-driven properties, and the minimum animation timeline
    - project browser and read-only runtime inspector implemented; graph,
      properties, and timeline editing remain open
+   - the staged delivery order for inspection, mutation, visual composition,
+     STATE editing, package scene flow, and animation is defined by
+     [[Peep_Studio_PeepOS_Link_Contract]]
 8. add deterministic `.egg` export and compatibility/resource diagnostics
    - deterministic export implemented; dedicated resource diagnostics UI remains open
 9. connect package installation and activation for rapid HW6 iteration

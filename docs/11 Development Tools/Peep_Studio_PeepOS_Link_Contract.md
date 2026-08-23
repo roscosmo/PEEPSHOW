@@ -163,6 +163,121 @@ read-only scene/graph inspector before mutation commands are introduced.
 
 ---
 
+## GUI Delivery Order
+
+Peep Studio development follows this order. Later stages must not bypass the
+Python mutation, validation, and revision boundary established in stage 2.
+
+### Stage 1: Read-Only Scene Inspection
+
+- show normalized STATE nodes, transitions, variables, render elements, and
+  waiting visuals;
+- keep selected-scene direct preview available;
+- show source IDs and authoritative validation without modifying the project.
+
+This stage extends the current shell and is the next GUI milestone.
+
+### Stage 2: Authoritative Editing Foundation
+
+- add typed Python service commands for semantic project changes;
+- return a new `project_revision`, normalized affected records, and diagnostics
+  after every accepted command;
+- add project save, dirty-state handling, and command-based undo/redo;
+- reject stale revisions rather than silently replaying edits.
+
+No scene-canvas or graph control may directly mutate normalized JSON in React.
+
+### Stage 3: Scene Canvas And Visual Elements
+
+- add, remove, select, move, and reorder retained visual elements;
+- edit bounds, platform layer, focus ownership, sprite/frame reference, and
+  animation reference;
+- add an asset browser for the implemented native masked-1bpp PNG subset;
+- add editable text elements that are deterministically rasterized to masked
+  1bpp package pixels at build time;
+- keep spatial placement on the scene canvas rather than the behavior graph.
+
+This is the first stage at which the user can begin laying out real menu
+screens. Build-time text rasterization is the initial menu-label path; it does
+not require or imply an on-device runtime font renderer.
+
+### Stage 4: STATE Graph Editing
+
+- create, remove, rename, and select STATE nodes;
+- edit the one declared entry state;
+- create and remove deterministic state-transition edges;
+- edit logical A/B/L/R routes, guard expressions, ordered actions, and target
+  state through typed inspectors;
+- validate unresolved targets and bounded-capacity limits before save/export.
+
+At the end of this stage, an author can build a complete interactive menu that
+fits within one STATE scene.
+
+### Stage 5: Package Scene Flow
+
+- create and remove package scenes;
+- provide a package-level flow view whose nodes are scenes, not states;
+- author declared scene-transition routes, entry behavior, return behavior,
+  `transition_scene`, and `exit_to_shell` actions;
+- validate every scene target and package entry scene;
+- require corresponding PeepOS multi-scene dispatch support before enabling
+  export of these routes.
+
+At the end of this stage, an author can build a multi-screen menu hierarchy.
+Scene-flow editing must remain separate from the STATE graph inside each scene.
+
+### Stage 6: Animation Timeline
+
+- add and remove authored phase visuals;
+- edit phase selection and the fixed 250 ms authoring quantum;
+- preview combined mixed-phase timelines;
+- show both preferred target admission and the deterministic three-step HW6
+  fallback mapping;
+- expose package/resource diagnostics returned by the Python service.
+
+### Stage 7: Expanded Asset And Scene Support
+
+- add formal font and localization package records when required;
+- add fixed 4-tone and 16-tone dither profiles;
+- add maps, tile layers, scaling, transforms, and richer retained rendering;
+- add SEQUENCE authoring, then PROGRAM authoring, only after their runtime and
+  package contracts are implemented.
+
+### Menu Authoring Availability
+
+| Delivery point | What the user can author |
+|---|---|
+| current shell | inspect, run, validate, build, and export an existing STATE project |
+| after stage 3 | visually compose static menu screens with sprites and build-time text |
+| after stage 4 | create functional interactive menus within one STATE scene |
+| after stage 5 | create complete multi-scene menu and navigation hierarchies |
+| after stage 6 | visually author and budget menu waiting animations |
+
+The firmware shell remains system-owned. Peep Studio may author the same source
+model as a test `.egg`; accepted system-menu sources may later be compiled into
+firmware without making the installed shell package-editable at runtime.
+
+---
+
+## Editor Surface Separation
+
+Peep Studio uses distinct views for distinct semantics:
+
+- the **scene canvas** owns sprites, build-time text, bounds, layer order,
+  focus visuals, and spatial composition;
+- the per-scene **STATE graph** owns the entry marker, states, and deterministic
+  state-transition edges;
+- the package **scene-flow graph** owns scene nodes and declared cross-scene
+  routes;
+- inspectors own route, guard, action, target, and typed property details;
+- the animation timeline owns phase visuals and cadence.
+
+STATE nodes and scene nodes are not interchangeable. Visual elements must not
+be represented as behavior nodes merely because both surfaces support
+selection and connection UI.
+
+---
+
 ## Keeping This Link Current
 
 When PeepOS or the authoring backend adds a capability used by Peep Studio, the
