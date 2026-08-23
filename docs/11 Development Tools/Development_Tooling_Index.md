@@ -8,6 +8,7 @@ Development tools support bring-up, package authoring, telemetry, live-safe Plat
 
 - [[Dev_Orchestration_CLI_Contract]]
 - [[Authoring_Tool_Architecture]]
+- [[Peep_Studio_PeepOS_Link_Contract]]
 - [[Authoring_Project_Schema_Contract]]
 - [[HW6_Authoring_Vertical_Slice]]
 - [[USB_Development_Mode_Contract]]
@@ -38,6 +39,9 @@ Visual authoring tools should use [[Authoring_Project_Schema_Contract]] as their
 
 The V1 desktop process, UI, Python service, authoring preview, and package-build
 boundaries are defined by [[Authoring_Tool_Architecture]].
+
+The live capability boundary and agent handoff between Peep Studio and PeepOS
+bring-up are maintained in [[Peep_Studio_PeepOS_Link_Contract]].
 
 The first concrete authoring acceptance path is [[HW6_Authoring_Vertical_Slice]]. It proves one authored Reference Game package from project source through deterministic compilation, installation, runtime transitions, and measured HW6 power evidence.
 

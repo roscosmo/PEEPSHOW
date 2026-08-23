@@ -1,0 +1,231 @@
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
+import readline from "node:readline";
+
+const PROTOCOL_VERSION = 1;
+const REQUEST_TIMEOUT_MS = 30_000;
+
+type PendingRequest = {
+  resolve: (value: unknown) => void;
+  reject: (reason: Error) => void;
+  timeout: NodeJS.Timeout;
+};
+
+type ServiceResponse = {
+  protocol_version: number;
+  id: string;
+  ok: boolean;
+  result?: unknown;
+  error?: {
+    code?: string;
+    message?: string;
+    details?: unknown;
+  };
+};
+
+class AuthoringSidecar {
+  private process: ChildProcessWithoutNullStreams | null = null;
+  private nextId = 1;
+  private pending = new Map<string, PendingRequest>();
+  private stderrTail: string[] = [];
+
+  constructor(private readonly repositoryRoot: string) {}
+
+  private start(): void {
+    if (this.process !== null) {
+      return;
+    }
+
+    const python = process.env.PEEPSHOW_PYTHON || "python";
+    const tool = path.join(this.repositoryRoot, "tools", "authoring", "egg_tool.py");
+    const child = spawn(python, ["-u", tool, "service"], {
+      cwd: this.repositoryRoot,
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    this.process = child;
+
+    const output = readline.createInterface({ input: child.stdout });
+    output.on("line", (line) => this.handleLine(line));
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      this.stderrTail.push(chunk.trim());
+      this.stderrTail = this.stderrTail.slice(-8);
+    });
+    child.on("error", (error) => this.failAll(error));
+    child.on("exit", (code, signal) => {
+      this.process = null;
+      this.failAll(
+        new Error(
+          `Authoring service exited (${signal ?? code ?? "unknown"}). ${this.stderrTail.join(" ")}`.trim(),
+        ),
+      );
+    });
+  }
+
+  private handleLine(line: string): void {
+    let response: ServiceResponse;
+    try {
+      response = JSON.parse(line) as ServiceResponse;
+    } catch {
+      this.failAll(new Error(`Authoring service returned invalid JSON: ${line.slice(0, 160)}`));
+      return;
+    }
+
+    const pending = this.pending.get(response.id);
+    if (pending === undefined) {
+      return;
+    }
+    clearTimeout(pending.timeout);
+    this.pending.delete(response.id);
+
+    if (response.ok) {
+      pending.resolve(response.result);
+      return;
+    }
+
+    const code = response.error?.code ?? "SERVICE_ERROR";
+    const message = response.error?.message ?? "Authoring service request failed";
+    pending.reject(new Error(`${code}: ${message}`));
+  }
+
+  private failAll(error: Error): void {
+    for (const request of this.pending.values()) {
+      clearTimeout(request.timeout);
+      request.reject(error);
+    }
+    this.pending.clear();
+  }
+
+  request(operation: string, params: Record<string, unknown>): Promise<unknown> {
+    this.start();
+    const child = this.process;
+    if (child === null) {
+      return Promise.reject(new Error("Authoring service did not start"));
+    }
+
+    const id = `studio-${this.nextId++}`;
+    const message = JSON.stringify({
+      protocol_version: PROTOCOL_VERSION,
+      id,
+      operation,
+      params,
+    });
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`Authoring service timed out during ${operation}`));
+      }, REQUEST_TIMEOUT_MS);
+      this.pending.set(id, { resolve, reject, timeout });
+      child.stdin.write(`${message}\n`, (error) => {
+        if (error !== null && error !== undefined) {
+          clearTimeout(timeout);
+          this.pending.delete(id);
+          reject(error);
+        }
+      });
+    });
+  }
+
+  stop(): void {
+    const child = this.process;
+    this.process = null;
+    if (child !== null && !child.killed) {
+      child.kill();
+    }
+  }
+}
+
+const repositoryRoot = path.resolve(__dirname, "..", "..", "..");
+const sidecar = new AuthoringSidecar(repositoryRoot);
+
+function createWindow(): void {
+  const window = new BrowserWindow({
+    width: 1480,
+    height: 940,
+    minWidth: 1040,
+    minHeight: 700,
+    backgroundColor: "#f3f5f4",
+    show: false,
+    title: "Peep Studio",
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  window.setMenuBarVisibility(false);
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.on("will-navigate", (event) => event.preventDefault());
+  window.once("ready-to-show", () => window.show());
+
+  if (app.isPackaged) {
+    void window.loadFile(path.join(__dirname, "..", "dist", "index.html"));
+  } else {
+    void window.loadURL("http://127.0.0.1:5173");
+  }
+}
+
+ipcMain.handle(
+  "peep:service-request",
+  (_event, operation: unknown, params: unknown) => {
+    if (typeof operation !== "string" || params === null || typeof params !== "object") {
+      throw new Error("Invalid service request from renderer");
+    }
+    return sidecar.request(operation, params as Record<string, unknown>);
+  },
+);
+
+ipcMain.handle("peep:open-project", async () => {
+  const result = await dialog.showOpenDialog({
+    title: "Open Peep Studio project",
+    defaultPath: path.join(repositoryRoot, "examples", "authoring", "state_slice.peepproj"),
+    properties: ["openDirectory"],
+  });
+  return result.canceled ? null : result.filePaths[0] ?? null;
+});
+
+ipcMain.handle("peep:open-example", () =>
+  path.join(repositoryRoot, "examples", "authoring", "state_slice.peepproj"),
+);
+
+ipcMain.handle(
+  "peep:export-egg",
+  async (_event, defaultName: unknown, blobBase64: unknown) => {
+    if (typeof defaultName !== "string" || typeof blobBase64 !== "string") {
+      throw new Error("Invalid .egg export request from renderer");
+    }
+    const result = await dialog.showSaveDialog({
+      title: "Export .egg package",
+      defaultPath: defaultName.endsWith(".egg") ? defaultName : `${defaultName}.egg`,
+      filters: [{ name: "PeepShow package", extensions: ["egg"] }],
+    });
+    if (result.canceled || result.filePath === undefined) {
+      return null;
+    }
+    await writeFile(result.filePath, Buffer.from(blobBase64, "base64"));
+    return result.filePath;
+  },
+);
+
+app.whenReady().then(() => {
+  createWindow();
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
+});
+
+app.on("will-quit", () => sidecar.stop());

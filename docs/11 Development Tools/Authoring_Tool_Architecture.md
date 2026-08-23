@@ -8,8 +8,10 @@ The versioned newline-delimited JSON protocol, project revision checks, and
 long-running Python service are implemented. The service exposes project load,
 validation, normalization, deterministic in-memory package compilation, a V1
 compatibility report, and deterministic selected-STATE-scene preview over the
-independently parsed package. Project mutation, undo/redo, Electron, and React
-remain open.
+independently parsed package. The first Electron, TypeScript, and React shell is
+implemented with a sandboxed renderer, selected-scene panel preview, logical
+input controls, runtime inspection, package build, and `.egg` export. Project
+mutation, undo/redo, and visual graph editing remain open.
 
 This document defines the host application architecture for the PeepShow game
 authoring tools. The provisional working name for the desktop application is
@@ -22,6 +24,7 @@ Related:
 - [[Development_Tooling_Index]]
 - [[Authoring_Project_Schema_Contract]]
 - [[HW6_Authoring_Vertical_Slice]]
+- [[Peep_Studio_PeepOS_Link_Contract]]
 - [[Asset_Pipeline_and_Package_Tooling_Contract]]
 - [[Digital_Twin_Host_Runtime_Contract]]
 - [[Target_Profile_Schema_Contract]]
@@ -376,10 +379,13 @@ Passing authoring-preview tests does not replace target validation.
 5. make firmware consume those same package sprite/frame records instead of a
    compiled-in visual catalog
 6. create the Electron, TypeScript, and React shell with the `168 x 144` panel
-   preview
+   preview - implemented
 7. add the project browser, scene canvas, STATE graph, transition inspector,
    schema-driven properties, and the minimum animation timeline
+   - project browser and read-only runtime inspector implemented; graph,
+     properties, and timeline editing remain open
 8. add deterministic `.egg` export and compatibility/resource diagnostics
+   - deterministic export implemented; dedicated resource diagnostics UI remains open
 9. connect package installation and activation for rapid HW6 iteration
 10. extend the asset pipeline with additional fixed tone/dither profiles, maps,
     transforms, fonts, and richer retained rendering only as vertical-slice
@@ -387,10 +393,10 @@ Passing authoring-preview tests does not replace target validation.
 11. extend the same scene architecture to SEQUENCE, then PROGRAM
 12. admit `HOST_DIGITAL_TWIN_HW6` only after measured conformance closure
 
-The current milestone ends at step 5: one selected authored STATE scene uses
-the same compiled masked-1bpp package pixels, state graph, and animation records
-in host preview and on HW6. The desktop shell then exposes that proven path
-rather than defining it.
+The current milestone has reached the first shell portion of steps 6 through 8:
+one selected authored STATE scene uses the same compiled masked-1bpp package
+pixels, state graph, and animation records in Peep Studio preview and on HW6.
+The desktop shell exposes that proven path rather than defining it.
 
 ---
 
