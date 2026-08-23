@@ -113,6 +113,8 @@ def main() -> int:
     embed.add_argument("--output", required=True)
     embed.add_argument("--symbol", default="g_ps_embedded_egg")
 
+    commands.add_parser("service", help="run the versioned authoring service over stdin/stdout")
+
     args = parser.parse_args()
     if args.command == "validate":
         return _validate(args.project)
@@ -122,4 +124,8 @@ def main() -> int:
         return _build(args.project, args.output)
     if args.command == "inspect":
         return _inspect(args.package)
+    if args.command == "service":
+        from .service import main as service_main
+
+        return service_main()
     return _embed(args.project, args.output, args.symbol)

@@ -2,7 +2,13 @@
 
 Status: `accepted_design`
 
-Implementation status: `planned`
+Implementation status: `partial`
+
+The versioned newline-delimited JSON protocol, project revision checks, and
+long-running Python service are implemented. The service currently exposes
+project load, validation, normalization, deterministic in-memory package
+compilation, and a V1 compatibility report. Project mutation, undo/redo,
+preview execution, Electron, and React remain open.
 
 This document defines the host application architecture for the PeepShow game
 authoring tools. It governs the desktop editor, authoring preview, Python
@@ -123,29 +129,42 @@ The main process owns:
 The Python service wraps the existing `peepshow_authoring` package. It owns the
 canonical open project document for a session and exposes versioned operations.
 
-Initial operations are:
+Implemented V1 operations are:
 
 ```text
 service.hello
-project.new
+service.shutdown
 project.load
+project.validate
+project.normalize
+project.build_package
+project.compatibility_report
+```
+
+Reserved operations for later milestones include:
+
+```text
+project.new
 project.save
 project.apply_commands
 project.undo
 project.redo
-project.validate
 project.preview_reset
 project.preview_input
 project.preview_advance
-project.build_package
-project.compatibility_report
 ```
+
+Reserved operations must not be advertised by service discovery until their
+semantics and tests are implemented.
 
 Requests and responses use a versioned newline-delimited JSON protocol over
 standard input/output. Each request has an ID, operation, schema version, and
 typed payload. Service diagnostics and preview frames are explicit events.
 
-No localhost server or dynamically selected network port is required.
+No localhost server or dynamically selected network port is required. Package
+compilation returns deterministic package bytes and their matching compatibility
+report to the privileged desktop process; the service does not choose an export
+path or silently write an installable artifact.
 
 ---
 

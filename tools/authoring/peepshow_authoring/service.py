@@ -1,0 +1,255 @@
+"""Long-running host service for the PeepShow authoring toolchain."""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import sys
+from pathlib import Path
+from typing import Any, TextIO
+
+from .compatibility import build_compatibility_report
+from .compiler import EggCompileError, build_egg
+from .egg_format import EggFormatError, parse_egg
+from .project import ProjectBundle, load_project
+from .protocol import (
+    PROTOCOL_VERSION,
+    ProtocolError,
+    ServiceRequest,
+    encode_message,
+    error_response,
+    parse_request,
+    success_response,
+)
+
+
+SERVICE_API_VERSION = 1
+SERVICE_NAME = "peepshow_authoring"
+SERVICE_OPERATIONS = (
+    "service.hello",
+    "service.shutdown",
+    "project.load",
+    "project.validate",
+    "project.normalize",
+    "project.build_package",
+    "project.compatibility_report",
+)
+
+
+def _safe_issue_path(value: str) -> str:
+    path = Path(value)
+    if path.is_absolute():
+        return path.name or "project"
+    return value
+
+
+def _issues(bundle: ProjectBundle) -> list[dict[str, str]]:
+    return [
+        {
+            "code": issue.code,
+            "path": _safe_issue_path(issue.path),
+            "message": issue.message,
+        }
+        for issue in bundle.issues
+    ]
+
+
+def _require_fields(params: dict[str, Any], required: set[str]) -> None:
+    missing = required - params.keys()
+    unknown = params.keys() - required
+    if missing or unknown:
+        raise ProtocolError(
+            "OPERATION_PARAMS_INVALID",
+            "operation parameters do not match the service API",
+            details={"missing": sorted(missing), "unknown": sorted(unknown)},
+        )
+
+
+class AuthoringService:
+    """Single-session deterministic facade over the headless authoring API."""
+
+    def __init__(self) -> None:
+        self._bundle: ProjectBundle | None = None
+        self._project_revision = 0
+        self.shutdown_requested = False
+
+    def _current_bundle(self, params: dict[str, Any]) -> ProjectBundle:
+        _require_fields(params, {"project_revision"})
+        if self._bundle is None:
+            raise ProtocolError("PROJECT_NOT_LOADED", "load a project before this operation")
+        revision = params["project_revision"]
+        if not isinstance(revision, int) or isinstance(revision, bool):
+            raise ProtocolError("PROJECT_REVISION_INVALID", "project_revision must be an integer")
+        if revision != self._project_revision:
+            raise ProtocolError(
+                "PROJECT_REVISION_STALE",
+                "operation targets an outdated project revision",
+                details={"current_project_revision": self._project_revision},
+            )
+        return self._bundle
+
+    def _hello(self, params: dict[str, Any]) -> dict[str, Any]:
+        _require_fields(params, set())
+        return {
+            "service": SERVICE_NAME,
+            "service_api_version": SERVICE_API_VERSION,
+            "protocol_version": PROTOCOL_VERSION,
+            "operations": list(SERVICE_OPERATIONS),
+            "project_loaded": self._bundle is not None,
+            "project_revision": self._project_revision if self._bundle is not None else None,
+        }
+
+    def _shutdown(self, params: dict[str, Any]) -> dict[str, Any]:
+        _require_fields(params, set())
+        self.shutdown_requested = True
+        return {"shutdown": True}
+
+    def _load(self, params: dict[str, Any]) -> dict[str, Any]:
+        _require_fields(params, {"path"})
+        path = params["path"]
+        if not isinstance(path, str) or not path:
+            raise ProtocolError("PROJECT_PATH_INVALID", "path must be non-empty text")
+        bundle = load_project(Path(path))
+        self._bundle = bundle
+        self._project_revision += 1
+        project = bundle.project
+        return {
+            "project_revision": self._project_revision,
+            "source_name": bundle.root.name,
+            "valid": bundle.valid,
+            "issues": _issues(bundle),
+            "document": bundle.normalized() if bundle.valid else None,
+            "summary": {
+                "project_id": project.get("project_id"),
+                "project_name": project.get("project_name"),
+                "package_id": project.get("package", {}).get("package_id"),
+                "target_profile": project.get("selected_target_profile"),
+                "entry_scene": project.get("entry_scene"),
+                "scene_count": len(bundle.scenes),
+            },
+        }
+
+    def _validate(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params)
+        return {
+            "project_revision": self._project_revision,
+            "valid": bundle.valid,
+            "issues": _issues(bundle),
+            "semantic_sha256": (
+                hashlib.sha256(bundle.canonical_bytes()).hexdigest() if bundle.valid else None
+            ),
+        }
+
+    def _normalize(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params)
+        if not bundle.valid:
+            raise ProtocolError(
+                "PROJECT_INVALID",
+                "project must validate before normalization",
+                details={"issues": _issues(bundle)},
+            )
+        return {
+            "project_revision": self._project_revision,
+            "document": bundle.normalized(),
+            "canonical_sha256": hashlib.sha256(bundle.canonical_bytes()).hexdigest(),
+        }
+
+    def _build_package(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params)
+        if not bundle.valid:
+            raise ProtocolError(
+                "PROJECT_INVALID",
+                "project must validate before package compilation",
+                details={"issues": _issues(bundle)},
+            )
+        try:
+            blob = build_egg(bundle)
+            package = parse_egg(blob)
+        except (EggCompileError, EggFormatError) as exc:
+            raise ProtocolError("PACKAGE_BUILD_FAILED", str(exc)) from exc
+        report = build_compatibility_report(bundle, blob)
+        return {
+            "project_revision": self._project_revision,
+            "package": {
+                "package_id": package.manifest["package_id"],
+                "target_profile": package.manifest["target_profile"],
+                "entry_scene": package.manifest["entry_scene"],
+                "scene_count": len(package.scenes),
+                "chunk_count": len(package.chunks),
+                "size_bytes": len(blob),
+                "sha256": package.sha256,
+                "blob_base64": base64.b64encode(blob).decode("ascii"),
+            },
+            "compatibility_report": report,
+        }
+
+    def _compatibility_report(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params)
+        try:
+            blob = build_egg(bundle) if bundle.valid else None
+        except EggCompileError as exc:
+            raise ProtocolError("PACKAGE_BUILD_FAILED", str(exc)) from exc
+        return {
+            "project_revision": self._project_revision,
+            "report": build_compatibility_report(bundle, blob),
+        }
+
+    def handle(self, request: ServiceRequest) -> dict[str, Any]:
+        handlers = {
+            "service.hello": self._hello,
+            "service.shutdown": self._shutdown,
+            "project.load": self._load,
+            "project.validate": self._validate,
+            "project.normalize": self._normalize,
+            "project.build_package": self._build_package,
+            "project.compatibility_report": self._compatibility_report,
+        }
+        handler = handlers.get(request.operation)
+        if handler is None:
+            raise ProtocolError(
+                "OPERATION_UNKNOWN",
+                f"unknown operation '{request.operation}'",
+                request_id=request.request_id,
+                details={"operations": list(SERVICE_OPERATIONS)},
+            )
+        try:
+            return handler(request.params)
+        except ProtocolError as exc:
+            if exc.request_id is None:
+                exc.request_id = request.request_id
+            raise
+
+
+def run_service(input_stream: TextIO, output_stream: TextIO) -> int:
+    service = AuthoringService()
+    for line in input_stream:
+        if not line.strip():
+            continue
+        request: ServiceRequest | None = None
+        try:
+            request = parse_request(line)
+            result = service.handle(request)
+            response = success_response(request.request_id, result)
+        except ProtocolError as exc:
+            response = error_response(exc)
+        except (KeyError, OSError, TypeError, ValueError) as exc:
+            response = error_response(
+                ProtocolError(
+                    "SERVICE_OPERATION_FAILED",
+                    str(exc),
+                    request_id=request.request_id if request is not None else None,
+                )
+            )
+        output_stream.write(encode_message(response) + "\n")
+        output_stream.flush()
+        if service.shutdown_requested:
+            break
+    return 0
+
+
+def main() -> int:
+    return run_service(sys.stdin, sys.stdout)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

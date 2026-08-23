@@ -9,9 +9,11 @@ deterministic binary `.egg` compiler, independent host package reader, and the
 first bounded HW6 embedded-package STATE decoder are implemented. The embedded
 reader, hardware SHA-256 integrity path, sparse retained STATE scene, mixed
 2-phase/3-phase waiting visuals, STOP2 continuity, and input transitions have
-passed initial target validation. External-flash installation and activation,
-target-profile closure, authoring preview/editor surfaces, SEQUENCE, PROGRAM,
-and end-to-end HW6 evidence remain open.
+passed initial target validation. The versioned host authoring-service boundary
+now exposes project loading, validation, normalization, deterministic package
+compilation, and V1 compatibility reporting. External-flash installation and
+activation, target-profile closure, authoring preview/editor surfaces,
+SEQUENCE, PROGRAM, and end-to-end HW6 evidence remain open.
 
 Target status: `HW6_PENDING_VALIDATION` until measured HW6 evidence is frozen into a shipping-authoritative target profile.
 
