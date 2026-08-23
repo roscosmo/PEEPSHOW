@@ -1,0 +1,71 @@
+set pagination off
+set $discard = g_ps_hw6_owner_sm_probe.version
+set $owner_api = g_ps_hw6_owner_sm_probe.version
+set $discard = g_ps_hw6_owner_sm_probe.package_install_stub_request_count
+set $load_count = g_ps_hw6_owner_sm_probe.package_install_stub_request_count
+set $discard = g_ps_hw6_owner_sm_probe.package_install_stub_last_status
+set $install_status = g_ps_hw6_owner_sm_probe.package_install_stub_last_status
+set $discard = g_ps_hw6_owner_sm_probe.package_install_stub_load_status
+set $load_status = g_ps_hw6_owner_sm_probe.package_install_stub_load_status
+set $discard = g_ps_hw6_owner_sm_probe.package_install_stub_load_reason
+set $load_reason = g_ps_hw6_owner_sm_probe.package_install_stub_load_reason
+set $discard = g_ps_hw6_owner_sm_probe.package_install_stub_capacity
+set $load_capacity = g_ps_hw6_owner_sm_probe.package_install_stub_capacity
+set $discard = g_ps_hw6_owner_sm_probe.package_install_stub_file_size
+set $file_size = g_ps_hw6_owner_sm_probe.package_install_stub_file_size
+set $discard = g_ps_hw6_owner_sm_probe.package_install_stub_bytes_read
+set $bytes_read = g_ps_hw6_owner_sm_probe.package_install_stub_bytes_read
+set $discard = g_ps_hw6_owner_sm_probe.package_install_stub_declared_size
+set $declared_size = g_ps_hw6_owner_sm_probe.package_install_stub_declared_size
+set $discard = g_ps_hw6_owner_sm_probe.package_install_stub_file_close_status
+set $file_close = g_ps_hw6_owner_sm_probe.package_install_stub_file_close_status
+set $discard = g_ps_hw6_owner_sm_probe.package_install_stub_fx_close_status
+set $fx_close = g_ps_hw6_owner_sm_probe.package_install_stub_fx_close_status
+set $discard = g_ps_hw6_owner_sm_probe.package_install_stub_lx_close_status
+set $lx_close = g_ps_hw6_owner_sm_probe.package_install_stub_lx_close_status
+set $discard = g_ps_hw6_owner_sm_probe.package_install_stub_publish_status
+set $publish_status = g_ps_hw6_owner_sm_probe.package_install_stub_publish_status
+set $discard = g_ps_hw6_owner_sm_probe.package_install_stub_source
+set $published_source = g_ps_hw6_owner_sm_probe.package_install_stub_source
+set $discard = g_ps_hw6_owner_sm_probe.package_install_stub_generation
+set $published_generation = g_ps_hw6_owner_sm_probe.package_install_stub_generation
+set $discard = g_ps_hw6_owner_sm_probe.flash_deep_power_down_status
+set $flash_dpd_status = g_ps_hw6_owner_sm_probe.flash_deep_power_down_status
+set $storage_state = g_ps_hw6_owner_sm_probe.current_state[7]
+set $flash_state = g_ps_hw6_owner_sm_probe.current_state[8]
+set $ospi_state = hospi1.State
+set $ospi_error = hospi1.ErrorCode
+set $discard = g_ps_package_source_probe.api_version
+set $source_api = g_ps_package_source_probe.api_version
+set $discard = g_ps_package_source_probe.staged_capacity
+set $source_capacity = g_ps_package_source_probe.staged_capacity
+set $discard = g_ps_package_source_probe.staged_available
+set $source_available = g_ps_package_source_probe.staged_available
+set $discard = g_ps_package_source_probe.staged_publish_count
+set $source_publish_count = g_ps_package_source_probe.staged_publish_count
+set $discard = g_ps_package_source_probe.generation
+set $source_generation = g_ps_package_source_probe.generation
+set $discard = g_ps_package_source_probe.package_size
+set $source_size = g_ps_package_source_probe.package_size
+set $discard = g_ps_scene_runtime_probe.package_source
+set $runtime_source = g_ps_scene_runtime_probe.package_source
+set $discard = g_ps_scene_runtime_probe.activation_status
+set $runtime_activation = g_ps_scene_runtime_probe.activation_status
+set $discard = g_ps_egg_state_loader_probe.last_status
+set $egg_status = g_ps_egg_state_loader_probe.last_status
+set $discard = g_ps_hw6_hash_probe.last_status
+set $hash_status = g_ps_hw6_hash_probe.last_status
+printf "--- HW6 volatile staged egg load ---\n"
+printf "owner api/load/install status = %u / %u / 0x%x\n", $owner_api, $load_count, $install_status
+printf "storage load status/reason/capacity = 0x%x / %u / %u\n", $load_status, $load_reason, $load_capacity
+printf "package file/read/declared bytes = %u / %u / %u\n", $file_size, $bytes_read, $declared_size
+printf "storage file/FileX/LevelX close = 0x%x / 0x%x / 0x%x\n", $file_close, $fx_close, $lx_close
+printf "publish status/source/generation = 0x%x / %u / %u\n", $publish_status, $published_source, $published_generation
+printf "post-load flash DPD/storage/flash = 0x%x / %u / %u\n", $flash_dpd_status, $storage_state, $flash_state
+printf "post-load OSPI state/error = 0x%x / 0x%x\n", $ospi_state, $ospi_error
+printf "source api/capacity/available/publish/generation/bytes = %u / %u / %u / %u / %u / %u\n", $source_api, $source_capacity, $source_available, $source_publish_count, $source_generation, $source_size
+printf "runtime source/activation egg/hash status = %u / 0x%x / 0x%x / 0x%x\n", $runtime_source, $runtime_activation, $egg_status, $hash_status
+printf "expected after load: owner api=59 install/load/publish=0, reason=1, capacity=65536, file=read=declared, close=0/0/0, source=2 available=1\n"
+printf "expected post-load flash: DPD=0 storage=2 flash=8 OSPI error=0\n"
+printf "expected after runtime activation: runtime source=2 and activation/egg/hash status=0\n"
+printf "--- end HW6 volatile staged egg load ---\n"

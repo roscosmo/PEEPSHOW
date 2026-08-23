@@ -182,12 +182,14 @@ VOID tx_application_define(VOID *first_unused_memory)
   if (tx_byte_pool_create(&ux_device_app_byte_pool, "Ux App memory pool", ux_device_byte_pool_buffer, UX_DEVICE_APP_MEM_POOL_SIZE) != TX_SUCCESS)
   {
     /* USER CODE BEGIN UX_Device_Byte_Pool_Error */
+    g_ps_hw6_usbx_byte_pool_create_status = TX_POOL_ERROR;
 
     /* USER CODE END UX_Device_Byte_Pool_Error */
   }
   else
   {
     /* USER CODE BEGIN UX_Device_Byte_Pool_Success */
+    g_ps_hw6_usbx_byte_pool_create_status = TX_SUCCESS;
 
     /* USER CODE END UX_Device_Byte_Pool_Success */
 
@@ -196,10 +198,12 @@ VOID tx_application_define(VOID *first_unused_memory)
     if (status != UX_SUCCESS)
     {
       /* USER CODE BEGIN  MX_USBX_Device_Init_Error */
+      g_ps_hw6_usbx_device_init_status = status;
       /* USBX is diagnostic-only until MSC is routed through thStorage. */
       /* USER CODE END  MX_USBX_Device_Init_Error */
     }
     /* USER CODE BEGIN  MX_USBX_Device_Init_Success */
+    g_ps_hw6_usbx_device_init_status = status;
 
     /* USER CODE END  MX_USBX_Device_Init_Success */
   }

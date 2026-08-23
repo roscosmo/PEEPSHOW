@@ -30,6 +30,7 @@
 #define PS_STORAGE_FXLX_STAGE_SCAN_MAX_ENTRIES (32UL)
 #define PS_STORAGE_FXLX_PACKAGE_HEADER_PROBE_BYTES (64UL)
 #define PS_STORAGE_FXLX_PACKAGE_MAGIC_PKG1   (0x31474B50UL)
+#define PS_STORAGE_FXLX_PACKAGE_MINIMUM_BYTES (104UL)
 
 static ps_storage_flash_block_t *ps_storage_fxlx_block;
 static uint32_t ps_storage_fxlx_start;
@@ -1077,6 +1078,28 @@ static void PS_StorageFxLx_CopyPackageHeaderProbe(
   }
 }
 
+static void PS_StorageFxLx_InitPackageLoadResult(
+  uint32_t destination_capacity,
+  ps_storage_filex_levelx_package_load_result_t *result)
+{
+  (void)memset(result, 0, sizeof(*result));
+  result->status = PS_STATUS_INTERNAL_ERROR;
+  result->api_version = PS_STORAGE_FILEX_LEVELX_PACKAGE_LOAD_API_VERSION;
+  result->reason = (uint32_t)PS_STORAGE_PACKAGE_LOAD_IO_ERROR;
+  result->destination_capacity = destination_capacity;
+  result->first_entry_status = PS_STORAGE_FXLX_NOT_RUN;
+  result->last_entry_status = PS_STORAGE_FXLX_NOT_RUN;
+  result->lx_initialize_status = PS_STORAGE_FXLX_NOT_RUN;
+  result->lx_open_status = PS_STORAGE_FXLX_NOT_RUN;
+  result->fx_open_status = PS_STORAGE_FXLX_NOT_RUN;
+  result->file_open_status = PS_STORAGE_FXLX_NOT_RUN;
+  result->file_seek_status = PS_STORAGE_FXLX_NOT_RUN;
+  result->file_read_status = PS_STORAGE_FXLX_NOT_RUN;
+  result->file_close_status = PS_STORAGE_FXLX_NOT_RUN;
+  result->fx_close_status = PS_STORAGE_FXLX_NOT_RUN;
+  result->lx_close_status = PS_STORAGE_FXLX_NOT_RUN;
+}
+
 static void PS_StorageFxLx_FinalizeStageScanClassification(
   ps_storage_filex_levelx_stage_scan_result_t *result)
 {
@@ -1597,6 +1620,289 @@ validate_close_lx:
   }
 
 validate_done:
+  (void)memset(&ps_storage_fxlx_nor, 0, sizeof(ps_storage_fxlx_nor));
+  (void)memset(&ps_storage_fxlx_media, 0, sizeof(ps_storage_fxlx_media));
+  (void)memset(&ps_storage_fxlx_file, 0, sizeof(ps_storage_fxlx_file));
+  ps_storage_fxlx_block = NULL;
+  ps_storage_fxlx_result = NULL;
+  ps_storage_fxlx_msc_opened = 0UL;
+  return result->status;
+}
+
+ps_status_t ps_storage_filex_levelx_load_usb_staging_package(
+  ps_storage_flash_block_t *block,
+  const ps_storage_region_t *region,
+  uint8_t *destination,
+  uint32_t destination_capacity,
+  ps_storage_filex_levelx_package_load_result_t *result)
+{
+  UINT status;
+  UINT attributes = 0U;
+  ULONG size = 0UL;
+  ULONG actual_read = 0UL;
+  UINT year = 0U;
+  UINT month = 0U;
+  UINT day = 0U;
+  UINT hour = 0U;
+  UINT minute = 0U;
+  UINT second = 0U;
+  uint32_t export_length = 0UL;
+  uint32_t file_opened = 0UL;
+  uint32_t entry_count = 0UL;
+  ps_status_t ps_status;
+
+  if ((block == NULL) || (region == NULL) || (destination == NULL) ||
+      (destination_capacity == 0UL) || (result == NULL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  PS_StorageFxLx_InitPackageLoadResult(destination_capacity, result);
+  ps_status = PS_StorageFxLx_ValidateExport(block, region, &export_length);
+  if (ps_status != PS_STATUS_OK)
+  {
+    result->status = ps_status;
+    return ps_status;
+  }
+  if ((ps_storage_fxlx_msc_opened != 0UL) ||
+      (ps_storage_fxlx_nor.lx_nor_flash_state == LX_NOR_FLASH_OPENED))
+  {
+    result->status = PS_STATUS_BUSY;
+    return PS_STATUS_BUSY;
+  }
+
+  ps_storage_fxlx_block = block;
+  ps_storage_fxlx_start = region->start;
+  ps_storage_fxlx_length = export_length;
+  ps_storage_fxlx_result = NULL;
+  ps_storage_fxlx_msc_opened = 0UL;
+  (void)memset(&ps_storage_fxlx_nor, 0, sizeof(ps_storage_fxlx_nor));
+  (void)memset(&ps_storage_fxlx_media, 0, sizeof(ps_storage_fxlx_media));
+  (void)memset(&ps_storage_fxlx_file, 0, sizeof(ps_storage_fxlx_file));
+  (void)memset(ps_storage_fxlx_media_memory, 0,
+               sizeof(ps_storage_fxlx_media_memory));
+  (void)memset(ps_storage_fxlx_scan_name, 0,
+               sizeof(ps_storage_fxlx_scan_name));
+  (void)memset(ps_storage_fxlx_package_name, 0,
+               sizeof(ps_storage_fxlx_package_name));
+
+  if (ps_storage_fxlx_levelx_initialized == 0UL)
+  {
+    status = lx_nor_flash_initialize();
+    result->lx_initialize_status = status;
+    if (status != LX_SUCCESS)
+    {
+      result->status = PS_STATUS_IO_ERROR;
+      goto load_done;
+    }
+    ps_storage_fxlx_levelx_initialized = 1UL;
+  }
+  else
+  {
+    result->lx_initialize_status = LX_SUCCESS;
+  }
+
+  status = lx_nor_flash_open(&ps_storage_fxlx_nor,
+                             (CHAR *)"at25-usb-stage",
+                             PS_StorageFxLx_NorInit);
+  result->lx_open_status = status;
+  if (status != LX_SUCCESS)
+  {
+    result->status = PS_STATUS_IO_ERROR;
+    goto load_done;
+  }
+
+  status = fx_media_open(&ps_storage_fxlx_media,
+                         (CHAR *)"pshw6-package-load",
+                         PS_StorageFxLx_MediaDriver,
+                         NULL,
+                         ps_storage_fxlx_media_memory,
+                         sizeof(ps_storage_fxlx_media_memory));
+  result->fx_open_status = status;
+  if (status != FX_SUCCESS)
+  {
+    result->status = PS_STATUS_IO_ERROR;
+    goto load_close_lx;
+  }
+
+  status = fx_directory_first_full_entry_find(&ps_storage_fxlx_media,
+                                              ps_storage_fxlx_scan_name,
+                                              &attributes,
+                                              &size,
+                                              &year,
+                                              &month,
+                                              &day,
+                                              &hour,
+                                              &minute,
+                                              &second);
+  result->first_entry_status = status;
+  result->last_entry_status = status;
+  while (status == FX_SUCCESS)
+  {
+    if (PS_StorageFxLx_IsIgnoredDirectoryEntry(
+          ps_storage_fxlx_scan_name) == 0UL)
+    {
+      entry_count++;
+      if ((attributes & FX_DIRECTORY) == 0U)
+      {
+        if (PS_StorageFxLx_IsPackageCandidate(ps_storage_fxlx_scan_name,
+                                              attributes) != 0UL)
+        {
+          result->package_candidate_count++;
+          if (result->package_candidate_count == 1UL)
+          {
+            PS_StorageFxLx_CopyName(ps_storage_fxlx_package_name,
+                                    ps_storage_fxlx_scan_name);
+            result->package_size_bytes = (uint32_t)size;
+          }
+        }
+        else
+        {
+          result->unsupported_count++;
+        }
+      }
+    }
+    if (entry_count >= PS_STORAGE_FXLX_STAGE_SCAN_MAX_ENTRIES)
+    {
+      result->bounded = 1UL;
+      break;
+    }
+    (void)memset(ps_storage_fxlx_scan_name, 0,
+                 sizeof(ps_storage_fxlx_scan_name));
+    status = fx_directory_next_full_entry_find(&ps_storage_fxlx_media,
+                                               ps_storage_fxlx_scan_name,
+                                               &attributes,
+                                               &size,
+                                               &year,
+                                               &month,
+                                               &day,
+                                               &hour,
+                                               &minute,
+                                               &second);
+    result->last_entry_status = status;
+  }
+
+  if ((status != FX_SUCCESS) && (status != FX_NO_MORE_ENTRIES) &&
+      (result->bounded == 0UL))
+  {
+    result->status = PS_STATUS_IO_ERROR;
+    goto load_close_media;
+  }
+  if (result->bounded != 0UL)
+  {
+    result->status = PS_STATUS_UNSUPPORTED;
+    result->reason = (uint32_t)PS_STORAGE_PACKAGE_LOAD_BOUNDED_SCAN;
+    goto load_close_media;
+  }
+  if (result->package_candidate_count == 0UL)
+  {
+    result->status = PS_STATUS_UNSUPPORTED;
+    result->reason = (uint32_t)PS_STORAGE_PACKAGE_LOAD_NO_CANDIDATE;
+    goto load_close_media;
+  }
+  if (result->package_candidate_count > 1UL)
+  {
+    result->status = PS_STATUS_UNSUPPORTED;
+    result->reason =
+      (uint32_t)PS_STORAGE_PACKAGE_LOAD_MULTIPLE_CANDIDATES;
+    goto load_close_media;
+  }
+  if (result->unsupported_count != 0UL)
+  {
+    result->status = PS_STATUS_UNSUPPORTED;
+    result->reason =
+      (uint32_t)PS_STORAGE_PACKAGE_LOAD_UNSUPPORTED_ENTRIES;
+    goto load_close_media;
+  }
+  if (result->package_size_bytes < PS_STORAGE_FXLX_PACKAGE_MINIMUM_BYTES)
+  {
+    result->status = PS_STATUS_UNSUPPORTED;
+    result->reason = (uint32_t)PS_STORAGE_PACKAGE_LOAD_TOO_SMALL;
+    goto load_close_media;
+  }
+  if (result->package_size_bytes > destination_capacity)
+  {
+    result->status = PS_STATUS_UNSUPPORTED;
+    result->reason = (uint32_t)PS_STORAGE_PACKAGE_LOAD_TOO_LARGE;
+    goto load_close_media;
+  }
+
+  status = fx_file_open(&ps_storage_fxlx_media,
+                        &ps_storage_fxlx_file,
+                        ps_storage_fxlx_package_name,
+                        FX_OPEN_FOR_READ);
+  result->file_open_status = status;
+  if (status != FX_SUCCESS)
+  {
+    result->status = PS_STATUS_IO_ERROR;
+    goto load_close_media;
+  }
+  file_opened = 1UL;
+  status = fx_file_seek(&ps_storage_fxlx_file, 0UL);
+  result->file_seek_status = status;
+  if (status != FX_SUCCESS)
+  {
+    result->status = PS_STATUS_IO_ERROR;
+    goto load_close_file;
+  }
+  status = fx_file_read(&ps_storage_fxlx_file,
+                        destination,
+                        result->package_size_bytes,
+                        &actual_read);
+  result->file_read_status = status;
+  result->bytes_read = (uint32_t)actual_read;
+  if ((status != FX_SUCCESS) ||
+      (result->bytes_read != result->package_size_bytes))
+  {
+    result->status = PS_STATUS_IO_ERROR;
+    goto load_close_file;
+  }
+
+  result->magic = PS_StorageFxLx_ReadLe32(destination);
+  if (result->magic != PS_STORAGE_FXLX_PACKAGE_MAGIC_PKG1)
+  {
+    result->status = PS_STATUS_UNSUPPORTED;
+    result->reason = (uint32_t)PS_STORAGE_PACKAGE_LOAD_BAD_MAGIC;
+    goto load_close_file;
+  }
+  result->declared_size_bytes = PS_StorageFxLx_ReadLe32(&destination[8]);
+  if (result->declared_size_bytes != result->package_size_bytes)
+  {
+    result->status = PS_STATUS_UNSUPPORTED;
+    result->reason = (uint32_t)PS_STORAGE_PACKAGE_LOAD_SIZE_MISMATCH;
+    goto load_close_file;
+  }
+  result->status = PS_STATUS_OK;
+  result->reason = (uint32_t)PS_STORAGE_PACKAGE_LOAD_OK;
+
+load_close_file:
+  if (file_opened != 0UL)
+  {
+    result->file_close_status = fx_file_close(&ps_storage_fxlx_file);
+    if ((result->status == PS_STATUS_OK) &&
+        (result->file_close_status != FX_SUCCESS))
+    {
+      result->status = PS_STATUS_IO_ERROR;
+      result->reason = (uint32_t)PS_STORAGE_PACKAGE_LOAD_IO_ERROR;
+    }
+  }
+load_close_media:
+  result->fx_close_status = fx_media_close(&ps_storage_fxlx_media);
+  if ((result->status == PS_STATUS_OK) &&
+      (result->fx_close_status != FX_SUCCESS))
+  {
+    result->status = PS_STATUS_IO_ERROR;
+    result->reason = (uint32_t)PS_STORAGE_PACKAGE_LOAD_IO_ERROR;
+  }
+load_close_lx:
+  result->lx_close_status = lx_nor_flash_close(&ps_storage_fxlx_nor);
+  if ((result->status == PS_STATUS_OK) &&
+      (result->lx_close_status != LX_SUCCESS))
+  {
+    result->status = PS_STATUS_IO_ERROR;
+    result->reason = (uint32_t)PS_STORAGE_PACKAGE_LOAD_IO_ERROR;
+  }
+load_done:
   (void)memset(&ps_storage_fxlx_nor, 0, sizeof(ps_storage_fxlx_nor));
   (void)memset(&ps_storage_fxlx_media, 0, sizeof(ps_storage_fxlx_media));
   (void)memset(&ps_storage_fxlx_file, 0, sizeof(ps_storage_fxlx_file));

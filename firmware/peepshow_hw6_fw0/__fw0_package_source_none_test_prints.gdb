@@ -63,7 +63,7 @@ printf "ui api/page/eggless/status = %u / %u / %u / 0x%x\n", $ui_api, $ui_page, 
 printf "runtime class/exec/lifecycle = %u / %u / %u\n", $runtime_class, $runtime_exec, $runtime_lifecycle
 printf "runtime caps/admission/status = 0x%x / 0x%x / 0x%x\n", $runtime_caps, $runtime_admission, $runtime_status
 printf "display page/render count = %u / %u\n", $display_page, $display_render_count
-printf "expected source: api=1 override=1 selected=0 status=1 reason=2 bytes=0\n"
+printf "expected source: api=2 override=1 selected=0 status=1 reason=2 bytes=0\n"
 printf "expected scene: api=10 active=0 activation=2 source=0 (last status may be 0 after shell rendering)\n"
 printf "expected ui: api=9 page=1 eggless=1 status=0\n"
 printf "expected runtime: SHELL/REACTIVE/RUNNING, capabilities=0, admission=TX_NO_INSTANCE\n"

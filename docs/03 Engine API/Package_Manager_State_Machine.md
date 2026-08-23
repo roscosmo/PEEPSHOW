@@ -107,18 +107,26 @@ Current source states are:
 
 - `NONE`: no package blob is exposed.
 - `EMBEDDED`: the generated development `.egg` blob is exposed.
+- `STAGED_RAM`: one complete, volatile `.egg` copied from FileX by
+  `thStorage` is exposed after every storage handle has closed.
 
 Rules:
 
-- `EMBEDDED` is the development default until installed raw-blob storage is
-  implemented.
+- `STAGED_RAM` is preferred when a completed staged image is available;
+  otherwise `EMBEDDED` remains the development default until installed
+  raw-blob storage is implemented.
 - `NONE` is a normal `PKG_ACTIVE_NONE` result, not a package fault.
 - a `NONE` activation request releases requested runtime clocks, returns to
   `SHELL / REACTIVE / RUNNING`, and presents `EGGLESS` on HOME.
 - package loaders consume only the resolved immutable blob view; they do not
-  know whether the source is embedded, installed, or provided by a future
-  bounded development cache.
+  know whether the source is embedded, staged in RAM, or installed.
 - no activation path may read FileX or the staging filesystem.
+- staged RAM publication proves a complete bounded copy and closed storage,
+  not package validity. `thRuntime` must complete SHA-256, container, chunk,
+  and scene-schema validation before changing `PKG_ACTIVE_NONE` to an active
+  package state.
+- the single staged RAM image is immutable for the active package lifetime;
+  installer admission must exit that package before replacement begins.
 - persistent installed-blob selection must not be added until the external
   flash package region, index, and atomic commit format are defined.
 

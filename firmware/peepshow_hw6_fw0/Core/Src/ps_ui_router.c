@@ -296,6 +296,11 @@ static ps_status_t PS_UIRouter_DispatchButtonA(void)
   }
   if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_PACKAGE_BROWSER)
   {
+    if (ps_ui_router_state.package_state == PS_UI_ROUTER_PACKAGE_INSTALLED)
+    {
+      return PS_UIRouter_RequestAction(
+        PS_UI_ROUTER_ACTION_PACKAGE_LAUNCH);
+    }
     if (ps_ui_router_state.package_state == PS_UI_ROUTER_PACKAGE_VALID)
     {
       ps_status_t status = PS_UIRouter_RequestAction(
@@ -449,6 +454,7 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
       break;
     case PS_UI_ROUTER_EVENT_LAUNCH_RUNTIME:
       if ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_HOME) ||
+          (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_MENU) ||
           (ps_ui_router_state.current_page ==
            PS_UI_ROUTER_PAGE_PACKAGE_BROWSER))
       {

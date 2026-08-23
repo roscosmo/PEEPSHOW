@@ -129,6 +129,8 @@
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE    (4UL)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_ATTACH     (5UL)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_POST_STOP_RESUME (6UL)
+#define PS_HW6_RTOS_STORAGE_CLOCK_REASON_PACKAGE_LOAD (7UL)
+#define PS_HW6_RTOS_STORAGE_CLOCK_REASON_POWER_QUIESCE (8UL)
 #define PS_HW6_RTOS_STORAGE_CLOCK_MSC_CAPABILITIES \
   (PS_HW6_CLOCK_CAP_USB_DEVICE_ACTIVE | PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE)
 #define PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES \
@@ -2516,6 +2518,14 @@ static uint32_t PS_HW6_RTOS_DisplayCursorBlinkPeriodTicks(void)
     cadence_ms);
 }
 
+static uint32_t PS_HW6_RTOS_PowerQuiesceNeedsStorageClock(void)
+{
+  return ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] ==
+           (uint32_t)STORAGE_FLASH_READY) &&
+          (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+           (uint32_t)FLASH_READY)) ? 1UL : 0UL;
+}
+
 static void PS_HW6_RTOS_ResetDisplayCursorBlink(uint32_t now_tick)
 {
   uint32_t sequence_count =
@@ -4542,6 +4552,11 @@ static void PS_HW6_RTOS_HandleUiRouterAction(uint32_t action)
       }
     }
   }
+  else if (action == (uint32_t)PS_UI_ROUTER_ACTION_PACKAGE_LAUNCH)
+  {
+    status = PS_HW6_RTOS_RequestRuntimeCommand(
+      PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_REACTIVE_STUB);
+  }
   else
   {
     g_ps_hw6_rtos_probe.ui_action_unsupported_count++;
@@ -4794,6 +4809,18 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunPowerQuiesceBarrier(uint32_t reason)
     PS_HW6_RTOS_OWNER_DISPLAY
   };
   uint32_t index;
+  uint32_t storage_clock_required;
+  UINT storage_clock_status = TX_SUCCESS;
+  UINT storage_clock_release_status = TX_SUCCESS;
+  HAL_StatusTypeDef barrier_status;
+
+  storage_clock_required = PS_HW6_RTOS_PowerQuiesceNeedsStorageClock();
+  if (storage_clock_required != 0UL)
+  {
+    storage_clock_status = PS_HW6_RTOS_ApplyStorageClockCapabilitiesFromPower(
+      PS_HW6_RTOS_STORAGE_CLOCK_REASON_POWER_QUIESCE,
+      PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES);
+  }
 
   PS_HW6_OwnerStateMachines_BeginPowerQuiesce(reason);
   for (index = 0U;
@@ -4813,20 +4840,46 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunPowerQuiesceBarrier(uint32_t reason)
                              TX_NO_WAIT);
     actual_flags = 0UL;
 
-    send_status = PS_HW6_RTOS_SendPowerQuiesceCommand(owner_id, reason);
-    wait_status = send_status;
-
-    if (send_status == TX_SUCCESS)
+    if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
+        (storage_clock_required != 0UL) &&
+        (storage_clock_status != TX_SUCCESS))
     {
-      wait_status = tx_event_flags_get(
-        &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
-        expected_ack, TX_AND_CLEAR, &actual_flags,
-        PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
+      send_status = storage_clock_status;
+      wait_status = storage_clock_status;
+    }
+    else
+    {
+      send_status = PS_HW6_RTOS_SendPowerQuiesceCommand(owner_id, reason);
+      wait_status = send_status;
+
+      if (send_status == TX_SUCCESS)
+      {
+        wait_status = tx_event_flags_get(
+          &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+          expected_ack, TX_AND_CLEAR, &actual_flags,
+          PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
+      }
     }
     PS_HW6_OwnerStateMachines_RecordPowerQuiesceCommand(
       owner_id, send_status, wait_status, (uint32_t)actual_flags);
   }
-  return PS_HW6_OwnerStateMachines_EndPowerQuiesce();
+  barrier_status = PS_HW6_OwnerStateMachines_EndPowerQuiesce();
+
+  if ((storage_clock_required != 0UL) &&
+      (storage_clock_status == TX_SUCCESS))
+  {
+    storage_clock_release_status =
+      PS_HW6_RTOS_ApplyStorageClockCapabilitiesFromPower(
+        PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE,
+        0UL);
+    if ((barrier_status == HAL_OK) &&
+        (storage_clock_release_status != TX_SUCCESS))
+    {
+      barrier_status = HAL_ERROR;
+    }
+  }
+
+  return barrier_status;
 }
 static HAL_StatusTypeDef PS_HW6_RTOS_RunPostStopResumeBarrier(void)
 {
@@ -5739,9 +5792,21 @@ static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
 
 static void PS_HW6_RTOS_RunStoragePackageInstallStubRequest(void)
 {
-  HAL_StatusTypeDef install_status;
+  UINT clock_status;
+  HAL_StatusTypeDef install_status = HAL_ERROR;
 
-  install_status = PS_HW6_OwnerStateMachines_RunPackageInstallStub();
+  clock_status = PS_HW6_RTOS_RequestStorageClockCapabilities(
+    PS_HW6_RTOS_STORAGE_CLOCK_REASON_PACKAGE_LOAD,
+    PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES);
+  if ((clock_status == TX_SUCCESS) ||
+      (PS_HW6_RTOS_StorageClockCapabilitiesActive(
+         PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES) != 0UL))
+  {
+    install_status = PS_HW6_OwnerStateMachines_RunPackageInstallStub();
+  }
+  (void)PS_HW6_RTOS_RequestStorageClockCapabilities(
+    PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE,
+    0UL);
   (void)PS_HW6_RTOS_RequestRuntimeCommand(
     (install_status == HAL_OK) ?
     PS_HW6_RTOS_COMMAND_RUNTIME_INSTALLER_COMPLETE :

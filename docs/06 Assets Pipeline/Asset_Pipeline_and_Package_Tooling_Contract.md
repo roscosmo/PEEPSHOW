@@ -206,6 +206,21 @@ Rules:
 
 Tooling must reject input maps that reference GPIO, EXTI, timer counters, I2C/register values, raw joystick magnetic readings, debounce internals, wake-pin configuration, or Platform maintenance actions.
 
+### Volatile Device Load
+
+The HW6 development bridge accepts the same complete `.egg` bytes produced by
+the authoritative compiler. It is a transport convenience, not a second
+package format or a persistent installer.
+
+- the generated `.egg` must fit the fixed `65536`-byte staged-RAM capacity;
+- `thStorage` copies it from FileX and closes storage before publication;
+- runtime validates and consumes the immutable RAM bytes through the normal
+  package-source interface;
+- tools must not depend on FAT paths, staging filenames, RAM addresses, or the
+  presence of this development bridge in shipping package semantics;
+- exceeding the bridge capacity is a deterministic load error, not a request
+  for streaming or dynamic allocation.
+
 ---
 
 ## Sensor Profile Pipeline

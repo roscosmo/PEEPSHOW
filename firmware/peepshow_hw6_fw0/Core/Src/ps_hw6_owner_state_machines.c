@@ -24,6 +24,7 @@
 #include "ps_input_events.h"
 #include "ps_input_joystick.h"
 #include "ps_input_state.h"
+#include "ps_package_source.h"
 #include "ps_ui_router.h"
 #include "ps_power_events.h"
 #include "ps_power_state.h"
@@ -1322,10 +1323,14 @@ static ps_storage_filex_levelx_smoke_result_t ps_storage_fxlx_result;
 static ps_storage_filex_levelx_stage_scan_result_t ps_storage_stage_scan_result;
 static ps_storage_filex_levelx_package_validate_result_t
   ps_storage_package_validate_result;
+static ps_storage_filex_levelx_package_load_result_t
+  ps_storage_package_load_result;
 static uint8_t ps_nina_rx_buffer[PS_HW6_NINA_RX_BUFFER_SIZE];
 static ps_status_t PS_HW6_SM_EnsureFlashAwake(void);
 static void PS_HW6_SM_ParkOspiClocksForStop(void);
 static void PS_HW6_SM_RestoreOspiClocksAfterStop(void);
+static HAL_StatusTypeDef PS_HW6_SM_ResumeStorage(uint32_t cycle_index);
+static HAL_StatusTypeDef PS_HW6_SM_QuiesceStorage(uint32_t cycle_index);
 static HAL_StatusTypeDef PS_HW6_SM_ParkUsb(void);
 static void PS_HW6_SM_RecordUsbExportEntryState(void);
 static void PS_HW6_SM_UpdateUsbHostAvailability(uint32_t event);
@@ -3763,6 +3768,12 @@ static HAL_StatusTypeDef PS_HW6_SM_RunUsbStageRescanScaffold(void)
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
 {
   HAL_StatusTypeDef status = HAL_ERROR;
+  HAL_StatusTypeDef park_status = HAL_ERROR;
+  HAL_StatusTypeDef prepare_status = HAL_ERROR;
+  uint8_t *staged_buffer = NULL;
+  uint32_t staged_capacity = 0UL;
+  uint32_t publish_status = 1UL;
+  ps_status_t load_status = PS_STATUS_INTERNAL_ERROR;
 
   g_ps_hw6_owner_sm_probe.package_install_stub_request_count++;
   g_ps_hw6_owner_sm_probe.package_install_stub_start_tick =
@@ -3773,6 +3784,25 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
     g_ps_hw6_owner_sm_probe.usb_stage_rescan_package_candidate_count;
   g_ps_hw6_owner_sm_probe.package_install_stub_unsupported_count =
     g_ps_hw6_owner_sm_probe.usb_stage_rescan_unsupported_count;
+  g_ps_hw6_owner_sm_probe.package_install_stub_load_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_install_stub_load_reason =
+    (uint32_t)PS_STORAGE_PACKAGE_LOAD_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_install_stub_capacity = 0UL;
+  g_ps_hw6_owner_sm_probe.package_install_stub_file_size = 0UL;
+  g_ps_hw6_owner_sm_probe.package_install_stub_bytes_read = 0UL;
+  g_ps_hw6_owner_sm_probe.package_install_stub_declared_size = 0UL;
+  g_ps_hw6_owner_sm_probe.package_install_stub_file_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_install_stub_fx_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_install_stub_lx_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_install_stub_publish_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_install_stub_source =
+    (uint32_t)PS_PACKAGE_SOURCE_NONE;
+  g_ps_hw6_owner_sm_probe.package_install_stub_generation = 0UL;
 
   if ((g_ps_hw6_owner_sm_probe.package_candidate_pending != 0UL) &&
       (g_ps_hw6_owner_sm_probe.usb_stage_rescan_status ==
@@ -3790,8 +3820,78 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
       (g_ps_hw6_owner_sm_probe.package_validate_minimum_envelope_valid !=
        0UL))
   {
-    status = HAL_OK;
-    g_ps_hw6_owner_sm_probe.package_candidate_pending = 0UL;
+    if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] ==
+         (uint32_t)STORAGE_FLASH_READY) &&
+        (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+         (uint32_t)FLASH_READY))
+    {
+      prepare_status = HAL_OK;
+    }
+    else if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] ==
+              (uint32_t)STORAGE_FLASH_READY) &&
+             (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+              (uint32_t)FLASH_DEEP_POWER_DOWN))
+    {
+      prepare_status = PS_HW6_SM_ResumeStorage(
+        PS_HW6_OWNER_SM_CYCLE_COUNT);
+    }
+
+    if ((prepare_status == HAL_OK) &&
+        (PS_PackageSource_BeginStagedWrite(&staged_buffer,
+                                           &staged_capacity) == 0UL))
+    {
+      load_status = ps_storage_filex_levelx_load_usb_staging_package(
+        &ps_flash_block,
+        PS_HW6_SM_FindStorageRegion(PS_STORAGE_REGION_USB_STAGING),
+        staged_buffer,
+        staged_capacity,
+        &ps_storage_package_load_result);
+      g_ps_hw6_owner_sm_probe.package_install_stub_load_status =
+        (uint32_t)load_status;
+      g_ps_hw6_owner_sm_probe.package_install_stub_load_reason =
+        ps_storage_package_load_result.reason;
+      g_ps_hw6_owner_sm_probe.package_install_stub_capacity =
+        ps_storage_package_load_result.destination_capacity;
+      g_ps_hw6_owner_sm_probe.package_install_stub_file_size =
+        ps_storage_package_load_result.package_size_bytes;
+      g_ps_hw6_owner_sm_probe.package_install_stub_bytes_read =
+        ps_storage_package_load_result.bytes_read;
+      g_ps_hw6_owner_sm_probe.package_install_stub_declared_size =
+        ps_storage_package_load_result.declared_size_bytes;
+      g_ps_hw6_owner_sm_probe.package_install_stub_file_close_status =
+        ps_storage_package_load_result.file_close_status;
+      g_ps_hw6_owner_sm_probe.package_install_stub_fx_close_status =
+        ps_storage_package_load_result.fx_close_status;
+      g_ps_hw6_owner_sm_probe.package_install_stub_lx_close_status =
+        ps_storage_package_load_result.lx_close_status;
+
+      if (load_status == PS_STATUS_OK)
+      {
+        park_status = PS_HW6_SM_QuiesceStorage(
+          PS_HW6_OWNER_SM_CYCLE_COUNT);
+        if (park_status == HAL_OK)
+        {
+          publish_status = PS_PackageSource_CommitStagedWrite(
+            ps_storage_package_load_result.bytes_read);
+        }
+      }
+    }
+
+    if ((load_status == PS_STATUS_OK) && (publish_status == 0UL))
+    {
+      status = HAL_OK;
+      g_ps_hw6_owner_sm_probe.package_candidate_pending = 0UL;
+      g_ps_hw6_owner_sm_probe.package_install_stub_source =
+        (uint32_t)PS_PACKAGE_SOURCE_STAGED_RAM;
+      g_ps_hw6_owner_sm_probe.package_install_stub_generation =
+        g_ps_package_source_probe.generation;
+    }
+    else
+    {
+      PS_PackageSource_AbortStagedWrite();
+    }
+    g_ps_hw6_owner_sm_probe.package_install_stub_publish_status =
+      publish_status;
   }
 
   g_ps_hw6_owner_sm_probe.package_install_stub_last_status =
@@ -5381,6 +5481,8 @@ static HAL_StatusTypeDef PS_HW6_SM_QuiesceStorage(uint32_t cycle_index)
     &ps_flash_device,
     &command_result);
   status = PS_HW6_SM_StatusToHal(driver_status);
+  g_ps_hw6_owner_sm_probe.flash_deep_power_down_status =
+    command_result.hal_status;
   if (cycle_index < PS_HW6_OWNER_SM_CYCLE_COUNT)
   {
     g_ps_hw6_owner_sm_probe
@@ -6471,6 +6573,25 @@ void PS_HW6_OwnerStateMachines_Init(void)
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.package_install_stub_candidate_count = 0UL;
   g_ps_hw6_owner_sm_probe.package_install_stub_unsupported_count = 0UL;
+  g_ps_hw6_owner_sm_probe.package_install_stub_load_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_install_stub_load_reason =
+    (uint32_t)PS_STORAGE_PACKAGE_LOAD_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_install_stub_capacity = 0UL;
+  g_ps_hw6_owner_sm_probe.package_install_stub_file_size = 0UL;
+  g_ps_hw6_owner_sm_probe.package_install_stub_bytes_read = 0UL;
+  g_ps_hw6_owner_sm_probe.package_install_stub_declared_size = 0UL;
+  g_ps_hw6_owner_sm_probe.package_install_stub_file_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_install_stub_fx_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_install_stub_lx_close_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_install_stub_publish_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_install_stub_source =
+    (uint32_t)PS_PACKAGE_SOURCE_NONE;
+  g_ps_hw6_owner_sm_probe.package_install_stub_generation = 0UL;
   g_ps_hw6_owner_sm_probe.package_install_stub_last_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.ble_uart_deinit_status =

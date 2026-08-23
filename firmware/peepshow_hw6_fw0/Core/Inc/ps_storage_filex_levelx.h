@@ -15,6 +15,7 @@ extern "C" {
 #define PS_STORAGE_FILEX_LEVELX_MSC_PROBE_API_VERSION (3UL)
 #define PS_STORAGE_FILEX_LEVELX_STAGE_SCAN_API_VERSION (1UL)
 #define PS_STORAGE_FILEX_LEVELX_PACKAGE_VALIDATE_API_VERSION (1UL)
+#define PS_STORAGE_FILEX_LEVELX_PACKAGE_LOAD_API_VERSION (1UL)
 
 typedef enum
 {
@@ -37,6 +38,21 @@ typedef enum
   PS_STORAGE_PACKAGE_VALIDATE_BAD_MAGIC,
   PS_STORAGE_PACKAGE_VALIDATE_IO_ERROR
 } ps_storage_filex_levelx_package_validate_reason_t;
+
+typedef enum
+{
+  PS_STORAGE_PACKAGE_LOAD_NOT_RUN = 0,
+  PS_STORAGE_PACKAGE_LOAD_OK,
+  PS_STORAGE_PACKAGE_LOAD_NO_CANDIDATE,
+  PS_STORAGE_PACKAGE_LOAD_MULTIPLE_CANDIDATES,
+  PS_STORAGE_PACKAGE_LOAD_UNSUPPORTED_ENTRIES,
+  PS_STORAGE_PACKAGE_LOAD_BOUNDED_SCAN,
+  PS_STORAGE_PACKAGE_LOAD_TOO_SMALL,
+  PS_STORAGE_PACKAGE_LOAD_TOO_LARGE,
+  PS_STORAGE_PACKAGE_LOAD_BAD_MAGIC,
+  PS_STORAGE_PACKAGE_LOAD_SIZE_MISMATCH,
+  PS_STORAGE_PACKAGE_LOAD_IO_ERROR
+} ps_storage_filex_levelx_package_load_reason_t;
 
 typedef struct
 {
@@ -191,6 +207,32 @@ typedef struct
   uint32_t header_first16[16];
 } ps_storage_filex_levelx_package_validate_result_t;
 
+typedef struct
+{
+  ps_status_t status;
+  uint32_t api_version;
+  uint32_t reason;
+  uint32_t destination_capacity;
+  uint32_t package_size_bytes;
+  uint32_t bytes_read;
+  uint32_t declared_size_bytes;
+  uint32_t package_candidate_count;
+  uint32_t unsupported_count;
+  uint32_t bounded;
+  uint32_t magic;
+  uint32_t first_entry_status;
+  uint32_t last_entry_status;
+  uint32_t lx_initialize_status;
+  uint32_t lx_open_status;
+  uint32_t fx_open_status;
+  uint32_t file_open_status;
+  uint32_t file_seek_status;
+  uint32_t file_read_status;
+  uint32_t file_close_status;
+  uint32_t fx_close_status;
+  uint32_t lx_close_status;
+} ps_storage_filex_levelx_package_load_result_t;
+
 extern volatile ps_storage_filex_levelx_msc_probe_t
   g_ps_storage_filex_levelx_msc_probe;
 
@@ -210,6 +252,12 @@ ps_status_t ps_storage_filex_levelx_validate_usb_staging_package(
   ps_storage_flash_block_t *block,
   const ps_storage_region_t *region,
   ps_storage_filex_levelx_package_validate_result_t *result);
+ps_status_t ps_storage_filex_levelx_load_usb_staging_package(
+  ps_storage_flash_block_t *block,
+  const ps_storage_region_t *region,
+  uint8_t *destination,
+  uint32_t destination_capacity,
+  ps_storage_filex_levelx_package_load_result_t *result);
 
 ps_status_t ps_storage_filex_levelx_msc_open(
   ps_storage_flash_block_t *block,

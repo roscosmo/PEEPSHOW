@@ -37,8 +37,8 @@ printf "export irq prio before/after devconnect = %lu / %lu / 0x%lx\n", g_ps_hw6
 printf "export pcd/clk/vdd/started = 0x%lx / %lu / %lu / %lu\n", g_ps_hw6_owner_sm_probe.usb_export_pcd_state_after, g_ps_hw6_owner_sm_probe.usb_export_clock_enabled_after, g_ps_hw6_owner_sm_probe.usb_export_vddusb_enabled_after, g_ps_hw6_owner_sm_probe.usb_export_started
 printf "clock SystemCoreClock/SysTick_LOAD/SysTick_CTRL = %lu / 0x%lx / 0x%lx\n", SystemCoreClock, *(unsigned int*)0xE000E014, *(unsigned int*)0xE000E010
 printf "bridge activate/deactivate = %lu / %lu\n", g_ps_storage_msc_bridge_probe.activate_count, g_ps_storage_msc_bridge_probe.deactivate_count
-set $usb_data_host_seen = ((g_usbx_scsi_cbw_count != 0) || (g_ps_storage_msc_bridge_probe.read_count != 0) || (g_ps_storage_msc_bridge_probe.write_count != 0) || (g_ps_storage_msc_bridge_probe.flush_count != 0) || (g_ps_storage_msc_bridge_probe.status_count != 0))
-printf "USB data host seen/cbw/media rd/wr/stat = %lu / %lu / %lu / %lu / %lu\n", $usb_data_host_seen, g_usbx_scsi_cbw_count, g_ps_storage_msc_bridge_probe.read_count, g_ps_storage_msc_bridge_probe.write_count, g_ps_storage_msc_bridge_probe.status_count
+set $usb_data_host_seen = ((g_ps_storage_msc_bridge_probe.read_count != 0) || (g_ps_storage_msc_bridge_probe.write_count != 0) || (g_ps_storage_msc_bridge_probe.flush_count != 0) || (g_ps_storage_msc_bridge_probe.status_count != 0))
+printf "USB data host seen/media rd/wr/stat = %lu / %lu / %lu / %lu\n", $usb_data_host_seen, g_ps_storage_msc_bridge_probe.read_count, g_ps_storage_msc_bridge_probe.write_count, g_ps_storage_msc_bridge_probe.status_count
 printf "bridge submit/done/timeout/busy = %lu / %lu / %lu / %lu\n", g_ps_storage_msc_bridge_probe.submit_count, g_ps_storage_msc_bridge_probe.completed_count, g_ps_storage_msc_bridge_probe.timeout_count, g_ps_storage_msc_bridge_probe.busy_count
 printf "bridge rd/wr/fl/status/fast_status = %lu / %lu / %lu / %lu / %lu\n", g_ps_storage_msc_bridge_probe.read_count, g_ps_storage_msc_bridge_probe.write_count, g_ps_storage_msc_bridge_probe.flush_count, g_ps_storage_msc_bridge_probe.status_count, g_ps_storage_msc_bridge_probe.fast_status_count
 printf "bridge policy/media/write/dirty/init = %lu / %lu / %lu / %lu / %lu\n", g_ps_storage_msc_bridge_probe.export_enabled, g_ps_storage_msc_bridge_probe.media_present, g_ps_storage_msc_bridge_probe.write_enabled, g_ps_storage_msc_bridge_probe.dirty, g_ps_storage_msc_bridge_probe.initialized
@@ -59,20 +59,11 @@ printf "staging class: EMPTY=0 UNSUPPORTED=1 PACKAGE_CANDIDATE=2 MULTIPLE=3 ERRO
 printf "validate reason: NOT_RUN=0 MIN_OK=1 NO_CAND=2 MULTI=3 UNSUP=4 BOUNDED=5 SMALL=6 BAD_MAGIC=7 IO=8; MIN_OK is only FW0 PKG1 envelope proof\n"
 printf "dcd extra timing telemetry = reverted to FW4 transfer_request.c; use endpoint transfer fields below\n\n"
 
-printf "--- USBX storage-thread SCSI trace ---\n"
-printf "live phase/recv ux/cmpl/req/act/len/lun/sig/cblen/op/cmd/csw_send = %lu / 0x%lx / 0x%lx / %lu / %lu / %lu / %lu / 0x%lx / %lu / 0x%lx / 0x%lx / 0x%lx\n", g_usbx_scsi_live_phase, g_usbx_scsi_live_receive_status, g_usbx_scsi_live_receive_completion, g_usbx_scsi_live_receive_requested, g_usbx_scsi_live_receive_actual, g_usbx_scsi_live_length, g_usbx_scsi_live_lun, g_usbx_scsi_live_cbw_signature, g_usbx_scsi_live_cbwcb_length, g_usbx_scsi_live_opcode, g_usbx_scsi_live_cmd_status, g_usbx_scsi_live_csw_send_status
 printf "media callbacks rd/wr/fl/status = %lu / %lu / %lu / %lu\n", g_usbd_storage_read_entry_count, g_usbd_storage_write_entry_count, g_usbd_storage_flush_entry_count, g_usbd_storage_status_entry_count
 printf "media read last lba/blocks/status/media = %lu / %lu / 0x%lx / 0x%lx\n", g_usbd_storage_read_last_lba, g_usbd_storage_read_last_blocks, g_usbd_storage_read_last_status, g_usbd_storage_read_last_media_status
 printf "media write last lba/blocks/status/media = %lu / %lu / 0x%lx / 0x%lx\n", g_usbd_storage_write_last_lba, g_usbd_storage_write_last_blocks, g_usbd_storage_write_last_status, g_usbd_storage_write_last_media_status
 printf "media flush last lba/blocks/status/media = %lu / %lu / 0x%lx / 0x%lx\n", g_usbd_storage_flush_last_lba, g_usbd_storage_flush_last_blocks, g_usbd_storage_flush_last_status, g_usbd_storage_flush_last_media_status
 printf "media status last status/media = 0x%lx / 0x%lx\n", g_usbd_storage_status_last_status, g_usbd_storage_status_last_media_status
-printf "cbw/last_op/flags/host_len/unknown/op/csw = %lu / 0x%lx / 0x%lx / %lu / %lu / 0x%lx / 0x%lx\n", g_usbx_scsi_cbw_count, g_usbx_scsi_last_opcode, g_usbx_scsi_last_cbw_flags, g_usbx_scsi_last_host_length, g_usbx_scsi_unknown_count, g_usbx_scsi_unknown_opcode, g_usbx_scsi_last_csw_status
-printf "trace wr/count = %lu / %lu\n", g_usbx_scsi_trace_wr, g_usbx_scsi_trace_count
-set $i = 0
-while $i < 16
-  printf "trace[%02u] op/host/flags/cmd/csw/send/res/sense/out st/cmpl/req/act = 0x%lx / %lu / 0x%lx / 0x%lx / 0x%lx / 0x%lx / %lu / 0x%lx / 0x%lx / 0x%lx / %lu / %lu\n", $i, g_usbx_scsi_trace_opcode[$i], g_usbx_scsi_trace_host_len[$i], g_usbx_scsi_trace_flags[$i], g_usbx_scsi_trace_cmd_status[$i], g_usbx_scsi_trace_csw_status[$i], g_usbx_scsi_trace_csw_send_status[$i], g_usbx_scsi_trace_residue[$i], g_usbx_scsi_trace_sense[$i], g_usbx_scsi_trace_out_status[$i], g_usbx_scsi_trace_out_completion[$i], g_usbx_scsi_trace_out_requested[$i], g_usbx_scsi_trace_out_actual[$i]
-  set $i = $i + 1
-end
 printf "\n"
 printf "--- ThreadX scheduler state ---\n"
 printf "current/execute/system/preempt/highest = %p / %p / %lu / %u / %u\n", _tx_thread_current_ptr, _tx_thread_execute_ptr, _tx_thread_system_state, _tx_thread_preempt_disable, _tx_thread_highest_priority
