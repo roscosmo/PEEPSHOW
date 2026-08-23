@@ -134,6 +134,10 @@ Verified HW6 evidence:
 
 - embedded STATE activation remains functional, including STOP2 waiting
   visuals and return to HOME.
+- one `.egg` transferred through MSC can be reclaimed, copied completely into
+  the fixed staged-RAM source by `thStorage`, validated by `thRuntime`, and
+  activated as the package-driven STATE scene. The package can return to HOME,
+  and the system can repeatedly enter and wake from STOP2 afterward.
 - forced `NONE` selection reports no active scene, `TX_NO_INSTANCE`, zero
   runtime capabilities, HOME with `EGGLESS`, and a responsive shell.
 
