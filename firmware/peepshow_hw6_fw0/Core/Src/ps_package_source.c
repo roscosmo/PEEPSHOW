@@ -8,8 +8,8 @@ volatile uint32_t g_ps_package_source_override;
 volatile ps_package_source_probe_t g_ps_package_source_probe =
 {
   .api_version = PS_PACKAGE_SOURCE_API_VERSION,
-  .selected_source = PS_PACKAGE_SOURCE_EMBEDDED,
-  .generation = 1UL,
+  .selected_source = PS_PACKAGE_SOURCE_NONE,
+  .generation = 0UL,
   .package_size = 0UL,
   .staged_capacity = PS_PACKAGE_SOURCE_STAGED_CAPACITY_BYTES,
   .last_status = PS_PACKAGE_SOURCE_STATUS_NOT_RUN,
@@ -21,6 +21,7 @@ static uint8_t s_ps_package_source_staged[
 static volatile uint32_t s_ps_package_source_staged_size;
 static volatile uint32_t s_ps_package_source_staged_generation = 1UL;
 static volatile uint32_t s_ps_package_source_staged_available;
+static volatile uint32_t s_ps_package_source_resident_source;
 
 static uint32_t PS_PackageSource_Fail(uint32_t reason)
 {
@@ -56,12 +57,10 @@ uint32_t PS_PackageSource_Resolve(ps_package_source_view_t *view)
             (uint32_t)PS_PACKAGE_SOURCE_OVERRIDE_DEFAULT) &&
            (s_ps_package_source_staged_available != 0UL))
   {
-    selected_source = (uint32_t)PS_PACKAGE_SOURCE_STAGED_RAM;
+    selected_source = s_ps_package_source_resident_source;
   }
-  else if ((g_ps_package_source_override ==
-            (uint32_t)PS_PACKAGE_SOURCE_OVERRIDE_DEFAULT) ||
-           (g_ps_package_source_override ==
-            (uint32_t)PS_PACKAGE_SOURCE_OVERRIDE_EMBEDDED))
+  else if (g_ps_package_source_override ==
+           (uint32_t)PS_PACKAGE_SOURCE_OVERRIDE_EMBEDDED)
   {
     selected_source = (uint32_t)PS_PACKAGE_SOURCE_EMBEDDED;
   }
@@ -69,6 +68,16 @@ uint32_t PS_PackageSource_Resolve(ps_package_source_view_t *view)
            (uint32_t)PS_PACKAGE_SOURCE_OVERRIDE_STAGED_RAM)
   {
     selected_source = (uint32_t)PS_PACKAGE_SOURCE_STAGED_RAM;
+  }
+  else if (g_ps_package_source_override ==
+           (uint32_t)PS_PACKAGE_SOURCE_OVERRIDE_INSTALLED_RAM)
+  {
+    selected_source = (uint32_t)PS_PACKAGE_SOURCE_INSTALLED_RAM;
+  }
+  else if (g_ps_package_source_override ==
+           (uint32_t)PS_PACKAGE_SOURCE_OVERRIDE_DEFAULT)
+  {
+    selected_source = (uint32_t)PS_PACKAGE_SOURCE_NONE;
   }
   else
   {
@@ -85,15 +94,18 @@ uint32_t PS_PackageSource_Resolve(ps_package_source_view_t *view)
     g_ps_package_source_probe.package_size = 0UL;
     return PS_PackageSource_Fail(PS_PACKAGE_SOURCE_REASON_UNAVAILABLE);
   }
-  if ((selected_source == (uint32_t)PS_PACKAGE_SOURCE_STAGED_RAM) &&
-      (s_ps_package_source_staged_available == 0UL))
+  if (((selected_source == (uint32_t)PS_PACKAGE_SOURCE_STAGED_RAM) ||
+       (selected_source == (uint32_t)PS_PACKAGE_SOURCE_INSTALLED_RAM)) &&
+      ((s_ps_package_source_staged_available == 0UL) ||
+       (s_ps_package_source_resident_source != selected_source)))
   {
     g_ps_package_source_probe.unavailable_count++;
     g_ps_package_source_probe.package_size = 0UL;
     return PS_PackageSource_Fail(PS_PACKAGE_SOURCE_REASON_UNAVAILABLE);
   }
 
-  if (selected_source == (uint32_t)PS_PACKAGE_SOURCE_STAGED_RAM)
+  if ((selected_source == (uint32_t)PS_PACKAGE_SOURCE_STAGED_RAM) ||
+      (selected_source == (uint32_t)PS_PACKAGE_SOURCE_INSTALLED_RAM))
   {
     view->blob = s_ps_package_source_staged;
     view->size = s_ps_package_source_staged_size;
@@ -127,7 +139,10 @@ uint32_t PS_PackageSource_BeginStagedWrite(uint8_t **buffer,
   }
   s_ps_package_source_staged_available = 0UL;
   s_ps_package_source_staged_size = 0UL;
+  s_ps_package_source_resident_source = (uint32_t)PS_PACKAGE_SOURCE_NONE;
   g_ps_package_source_probe.staged_available = 0UL;
+  g_ps_package_source_probe.resident_source =
+    (uint32_t)PS_PACKAGE_SOURCE_NONE;
   *buffer = s_ps_package_source_staged;
   *capacity = PS_PACKAGE_SOURCE_STAGED_CAPACITY_BYTES;
   return 0UL;
@@ -143,11 +158,47 @@ uint32_t PS_PackageSource_CommitStagedWrite(uint32_t size)
 
   s_ps_package_source_staged_size = size;
   s_ps_package_source_staged_generation++;
+  s_ps_package_source_resident_source =
+    (uint32_t)PS_PACKAGE_SOURCE_STAGED_RAM;
   s_ps_package_source_staged_available = 1UL;
   g_ps_package_source_probe.staged_publish_count++;
   g_ps_package_source_probe.staged_available = 1UL;
   g_ps_package_source_probe.generation =
     s_ps_package_source_staged_generation;
+  g_ps_package_source_probe.package_size = size;
+  g_ps_package_source_probe.resident_source =
+    (uint32_t)PS_PACKAGE_SOURCE_STAGED_RAM;
+  g_ps_package_source_probe.last_status = 0UL;
+  g_ps_package_source_probe.reason = PS_PACKAGE_SOURCE_REASON_NONE;
+  return 0UL;
+}
+
+uint32_t PS_PackageSource_BeginInstalledWrite(uint8_t **buffer,
+                                              uint32_t *capacity)
+{
+  return PS_PackageSource_BeginStagedWrite(buffer, capacity);
+}
+
+uint32_t PS_PackageSource_CommitInstalledWrite(uint32_t size,
+                                               uint32_t generation)
+{
+  if ((size == 0UL) ||
+      (size > PS_PACKAGE_SOURCE_STAGED_CAPACITY_BYTES) ||
+      (generation == 0UL))
+  {
+    return PS_PackageSource_Fail(PS_PACKAGE_SOURCE_REASON_CAPACITY);
+  }
+
+  s_ps_package_source_staged_size = size;
+  s_ps_package_source_staged_generation = generation;
+  s_ps_package_source_resident_source =
+    (uint32_t)PS_PACKAGE_SOURCE_INSTALLED_RAM;
+  s_ps_package_source_staged_available = 1UL;
+  g_ps_package_source_probe.installed_publish_count++;
+  g_ps_package_source_probe.staged_available = 1UL;
+  g_ps_package_source_probe.resident_source =
+    (uint32_t)PS_PACKAGE_SOURCE_INSTALLED_RAM;
+  g_ps_package_source_probe.generation = generation;
   g_ps_package_source_probe.package_size = size;
   g_ps_package_source_probe.last_status = 0UL;
   g_ps_package_source_probe.reason = PS_PACKAGE_SOURCE_REASON_NONE;
@@ -162,5 +213,8 @@ void PS_PackageSource_AbortStagedWrite(void)
   }
   s_ps_package_source_staged_available = 0UL;
   s_ps_package_source_staged_size = 0UL;
+  s_ps_package_source_resident_source = (uint32_t)PS_PACKAGE_SOURCE_NONE;
   g_ps_package_source_probe.staged_available = 0UL;
+  g_ps_package_source_probe.resident_source =
+    (uint32_t)PS_PACKAGE_SOURCE_NONE;
 }

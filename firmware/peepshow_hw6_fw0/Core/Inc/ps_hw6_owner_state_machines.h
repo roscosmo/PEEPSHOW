@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (59UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (60UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -991,6 +991,22 @@ typedef struct
   uint32_t package_install_stub_source;
   uint32_t package_install_stub_generation;
   uint32_t package_install_stub_last_status;
+  uint32_t persistent_load_request_count;
+  uint32_t persistent_load_start_tick;
+  uint32_t persistent_load_scan_status;
+  uint32_t persistent_load_available;
+  uint32_t persistent_load_record;
+  uint32_t persistent_load_slot;
+  uint32_t persistent_load_generation;
+  uint32_t persistent_load_address;
+  uint32_t persistent_load_size;
+  uint32_t persistent_load_capacity;
+  uint32_t persistent_load_read_status;
+  uint32_t persistent_load_bytes_read;
+  uint32_t persistent_load_park_status;
+  uint32_t persistent_load_publish_status;
+  uint32_t persistent_load_source;
+  uint32_t persistent_load_last_status;
 
   uint32_t ble_nrst_before;
   uint32_t ble_nrst_released;
@@ -1083,6 +1099,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void);
 HAL_StatusTypeDef
 PS_HW6_OwnerStateMachines_RunEmbeddedPersistentPackageInstall(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_LoadPersistentPackage(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ParkUsbForBoot(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSampleProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickLiveProbe(void);

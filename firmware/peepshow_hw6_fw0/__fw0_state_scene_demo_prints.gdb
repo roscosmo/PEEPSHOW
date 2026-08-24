@@ -31,6 +31,6 @@ printf "display UI primitive id = %u\n", g_ps_hw6_owner_probe.display_ui_primiti
 printf "waiting presentation/steps/elements/status = %u / %u / %u / 0x%x\n", g_ps_hw6_owner_probe.display_waiting_presentation_id, g_ps_hw6_owner_probe.display_waiting_sequence_frame_count, g_ps_hw6_owner_probe.display_waiting_element_count, g_ps_hw6_owner_probe.display_waiting_snapshot_status
 printf "timeline preserve/rebase/frame/deadline/status = %u / %u / %u / %u / 0x%x\n", g_ps_hw6_rtos_probe.display_waiting_preserve_count, g_ps_hw6_rtos_probe.display_waiting_rebase_count, g_ps_hw6_rtos_probe.display_waiting_preserve_frame, g_ps_hw6_rtos_probe.display_waiting_preserve_deadline_tick, g_ps_hw6_rtos_probe.display_waiting_preserve_status
 printf "LPBAM ready/active STOP2 entries = %u / %u / %u\n", g_ps_hw6_owner_probe.display_lpbam_ready, g_ps_hw6_owner_probe.display_lpbam_active, g_ps_hw6_rtos_probe.stop2_auto_entry_count
-printf "expected embedded source: api/override/selected/status/reason=1/0/1/0/0; loader api/load/status/reason=4/1/0/0\n"
+printf "expected embedded source: api/override/selected/status/reason=3/2/1/0/0; loader api/load/status/reason=4/1/0/0\n"
 printf "expected active scene: api/type/active/status/activation/source=10/1/1/0/0/1 render model status=0 elements/focus-element/sprites=2/1/1; descriptor scene/states/routes/variables/guards/actions/transitions=1/3/2/1/6/6/6; package cursor and marker animate awake and in STOP2; L/R applies atomically; timeline stays stable and STOP2 increments\n"
 printf "--- end HW6 STATE_SCENE reactive loop ---\n"

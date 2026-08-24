@@ -1,0 +1,16 @@
+set pagination off
+printf "--- HW6 persistent installed egg runtime ---\n"
+printf "rtos/owner/source api = %u / %u / %u\n", g_ps_hw6_rtos_probe.version, g_ps_hw6_owner_sm_probe.version, g_ps_package_source_probe.api_version
+printf "runtime load request/send/wait/owner = %u / 0x%x / 0x%x / 0x%x\n", g_ps_hw6_rtos_probe.runtime_package_load_request_count, g_ps_hw6_rtos_probe.runtime_package_load_send_status, g_ps_hw6_rtos_probe.runtime_package_load_wait_status, g_ps_hw6_rtos_probe.runtime_package_load_owner_status
+printf "storage load request/status scan/available = %u / 0x%x / 0x%x / %u\n", g_ps_hw6_owner_sm_probe.persistent_load_request_count, g_ps_hw6_owner_sm_probe.persistent_load_last_status, g_ps_hw6_owner_sm_probe.persistent_load_scan_status, g_ps_hw6_owner_sm_probe.persistent_load_available
+printf "storage selected record/slot/generation = %u / %u / %u\n", g_ps_hw6_owner_sm_probe.persistent_load_record, g_ps_hw6_owner_sm_probe.persistent_load_slot, g_ps_hw6_owner_sm_probe.persistent_load_generation
+printf "storage address/size/capacity/read/bytes = 0x%x / %u / %u / 0x%x / %u\n", g_ps_hw6_owner_sm_probe.persistent_load_address, g_ps_hw6_owner_sm_probe.persistent_load_size, g_ps_hw6_owner_sm_probe.persistent_load_capacity, g_ps_hw6_owner_sm_probe.persistent_load_read_status, g_ps_hw6_owner_sm_probe.persistent_load_bytes_read
+printf "storage park/publish/source = 0x%x / 0x%x / %u\n", g_ps_hw6_owner_sm_probe.persistent_load_park_status, g_ps_hw6_owner_sm_probe.persistent_load_publish_status, g_ps_hw6_owner_sm_probe.persistent_load_source
+printf "index valid/record/slot/generation/start/size = %u / %u / %u / %u / 0x%x / %u\n", g_ps_storage_package_index_probe.valid_record_count, g_ps_storage_package_index_probe.selected_record, g_ps_storage_package_index_probe.selected_slot, g_ps_storage_package_index_probe.selected_generation, g_ps_storage_package_index_probe.selected_package_start, g_ps_storage_package_index_probe.selected_package_size
+printf "source override/selected/resident/available/generation/bytes = %u / %u / %u / %u / %u / %u\n", g_ps_package_source_override, g_ps_package_source_probe.selected_source, g_ps_package_source_probe.resident_source, g_ps_package_source_probe.staged_available, g_ps_package_source_probe.generation, g_ps_package_source_probe.package_size
+printf "source resolve/success/install publishes/status/reason = %u / %u / %u / 0x%x / %u\n", g_ps_package_source_probe.resolve_count, g_ps_package_source_probe.success_count, g_ps_package_source_probe.installed_publish_count, g_ps_package_source_probe.last_status, g_ps_package_source_probe.reason
+printf "scene active/activation/source/source status = %u / 0x%x / %u / 0x%x\n", g_ps_scene_runtime_probe.active, g_ps_scene_runtime_probe.activation_status, g_ps_scene_runtime_probe.package_source, g_ps_scene_runtime_probe.package_source_status
+printf "egg load/hash status bytes = 0x%x / 0x%x / %u\n", g_ps_egg_state_loader_probe.last_status, g_ps_hw6_hash_probe.last_status, g_ps_egg_state_loader_probe.package_size
+printf "STOP2 entries = %u\n", g_ps_hw6_rtos_probe.stop2_auto_entry_count
+printf "expected installed egg: APIs=57/60/3 load send/wait/owner=0/0/0 storage status/scan/read/park/publish=0 source=3 selected/resident=3 available=1 scene active/activation/source=1/0/3 HASH=0\n"
+printf "--- end HW6 persistent installed egg runtime ---\n"

@@ -10,6 +10,7 @@
 #include "ps_hw6_trace.h"
 #include "ps_input_buttons.h"
 #include "ps_lpbam_display_buffers.h"
+#include "ps_package_source.h"
 #include "ps_power_state.h"
 #include "ps_scene_runtime.h"
 #include "ps_storage_filex_levelx.h"
@@ -83,6 +84,7 @@
 #define PS_HW6_RTOS_COMMAND_DISPLAY_LPBAM_EDGE_WAKE (30UL)
 #define PS_HW6_RTOS_COMMAND_DISPLAY_LPBAM_WAKE_ABORT (31UL)
 #define PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_INSTALL_EMBEDDED (32UL)
+#define PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_LOAD_INSTALLED (33UL)
 #define PS_HW6_RTOS_EVENT_DEBUG_INDEX     (3U)
 #define PS_HW6_RTOS_ACK_OWNER(owner_id)   (1UL << (owner_id))
 #define PS_HW6_RTOS_CLOCK_ACK_SHIFT       (16U)
@@ -329,6 +331,7 @@ static UINT PS_HW6_RTOS_SendDisplayUiRenderCommand(
   uint32_t shutdown_state,
   uint32_t shutdown_countdown_seconds);
 static UINT PS_HW6_RTOS_RequestRuntimeCommand(ULONG command);
+static UINT PS_HW6_RTOS_RequestStoragePackageLoadAndWait(void);
 static uint32_t PS_HW6_RTOS_Stop2DisplayLpbamReady(void);
 
 static CHAR *const ps_owner_names[PS_HW6_RTOS_OWNER_COUNT] =
@@ -1194,6 +1197,8 @@ static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
        (message[2] == PS_HW6_RTOS_COMMAND_STORAGE_ATTACH) ||
        (message[2] ==
         PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_INSTALL_EMBEDDED) ||
+       (message[2] ==
+        PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_LOAD_INSTALLED) ||
        (message[2] == PS_HW6_RTOS_COMMAND_PACKAGE_INSTALL_STUB)) &&
       (message[3] == PS_HW6_RTOS_COMMAND_TOKEN))
   {
@@ -2022,6 +2027,52 @@ UINT PS_HW6_RTOS_DebugRequestStorageAttach(void)
   return PS_HW6_RTOS_SendCommand(
     PS_HW6_RTOS_OWNER_STORAGE,
     PS_HW6_RTOS_COMMAND_STORAGE_ATTACH);
+}
+
+static UINT PS_HW6_RTOS_RequestStoragePackageLoadAndWait(void)
+{
+  ULONG actual_flags = 0UL;
+  UINT status;
+
+  g_ps_hw6_rtos_probe.runtime_package_load_request_count++;
+  (void)tx_event_flags_get(
+    &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+    PS_HW6_RTOS_ACK_OWNER(PS_HW6_RTOS_OWNER_STORAGE),
+    TX_AND_CLEAR,
+    &actual_flags,
+    TX_NO_WAIT);
+
+  status = PS_HW6_RTOS_SendCommand(
+    PS_HW6_RTOS_OWNER_STORAGE,
+    PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_LOAD_INSTALLED);
+  g_ps_hw6_rtos_probe.runtime_package_load_send_status =
+    (uint32_t)status;
+  if (status != TX_SUCCESS)
+  {
+    g_ps_hw6_rtos_probe.runtime_package_load_wait_status =
+      PS_HW6_RTOS_STATUS_NOT_RUN;
+    g_ps_hw6_rtos_probe.runtime_package_load_owner_status =
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+    return status;
+  }
+
+  status = tx_event_flags_get(
+    &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+    PS_HW6_RTOS_ACK_OWNER(PS_HW6_RTOS_OWNER_STORAGE),
+    TX_AND_CLEAR,
+    &actual_flags,
+    PS_HW6_RTOS_STORAGE_STABILIZE_ACK_WAIT_TICKS);
+  g_ps_hw6_rtos_probe.runtime_package_load_wait_status =
+    (uint32_t)status;
+  g_ps_hw6_rtos_probe.runtime_package_load_owner_status =
+    g_ps_hw6_owner_sm_probe.persistent_load_last_status;
+  if ((status == TX_SUCCESS) &&
+      (g_ps_hw6_owner_sm_probe.persistent_load_last_status !=
+       (uint32_t)HAL_OK))
+  {
+    return TX_NOT_AVAILABLE;
+  }
+  return status;
 }
 
 UINT PS_HW6_RTOS_DebugRequestCommBleShutdown(void)
@@ -5394,6 +5445,28 @@ static void PS_HW6_RTOS_RuntimePackageActivateStub(uint32_t runtime_class,
     g_ps_hw6_rtos_probe.runtime_package_reactive_activate_stub_count++;
   }
 
+  if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_LP_GRAPH) &&
+      (clock_status == TX_SUCCESS) &&
+      (g_ps_package_source_override ==
+       (uint32_t)PS_PACKAGE_SOURCE_OVERRIDE_DEFAULT) &&
+      (g_ps_package_source_probe.staged_available == 0UL) &&
+      (PS_HW6_RTOS_RequestStoragePackageLoadAndWait() != TX_SUCCESS))
+  {
+    PS_HW6_RTOS_RuntimeSetState(
+      runtime_class,
+      execution,
+      (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_ERROR);
+    PS_HW6_RTOS_RuntimeRecordAdmission(
+      runtime_class,
+      execution,
+      capabilities,
+      TX_NOT_AVAILABLE);
+    PS_HW6_RTOS_RuntimeRecord(
+      event,
+      (uint32_t)PS_STATUS_INTERNAL_ERROR);
+    return;
+  }
+
   g_ps_hw6_rtos_probe.runtime_return_class =
     PS_HW6_RTOS_RuntimeFallbackClass();
   g_ps_hw6_rtos_probe.runtime_return_page =
@@ -5869,6 +5942,33 @@ static void PS_HW6_RTOS_RunStorageEmbeddedPackageInstallRequest(void)
     0UL);
 }
 
+static void PS_HW6_RTOS_RunStorageInstalledPackageLoadRequest(void)
+{
+  UINT clock_status;
+
+  clock_status = PS_HW6_RTOS_RequestStorageClockCapabilities(
+    PS_HW6_RTOS_STORAGE_CLOCK_REASON_PACKAGE_LOAD,
+    PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES);
+  if ((clock_status == TX_SUCCESS) ||
+      (PS_HW6_RTOS_StorageClockCapabilitiesActive(
+         PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES) != 0UL))
+  {
+    (void)PS_HW6_OwnerStateMachines_LoadPersistentPackage();
+  }
+  else
+  {
+    g_ps_hw6_owner_sm_probe.persistent_load_last_status =
+      (uint32_t)HAL_ERROR;
+  }
+  (void)PS_HW6_RTOS_RequestStorageClockCapabilities(
+    PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE,
+    0UL);
+  (void)tx_event_flags_set(
+    &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+    PS_HW6_RTOS_ACK_OWNER(PS_HW6_RTOS_OWNER_STORAGE),
+    TX_OR);
+}
+
 static void PS_HW6_RTOS_RunStorageAttachRequest(void)
 {
   UINT clock_status;
@@ -5953,6 +6053,12 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
             PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_INSTALL_EMBEDDED))
   {
     PS_HW6_RTOS_RunStorageEmbeddedPackageInstallRequest();
+  }
+  else if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
+           (command ==
+            PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_LOAD_INSTALLED))
+  {
+    PS_HW6_RTOS_RunStorageInstalledPackageLoadRequest();
   }
   else if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
            (command == PS_HW6_RTOS_COMMAND_PACKAGE_INSTALL_STUB))

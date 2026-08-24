@@ -3950,12 +3950,172 @@ PS_HW6_OwnerStateMachines_RunEmbeddedPersistentPackageInstall(void)
       &ps_flash_block,
       g_ps_embedded_egg,
       g_ps_embedded_egg_size);
+    if (install_status == PS_STATUS_OK)
+    {
+      PS_PackageSource_AbortStagedWrite();
+    }
     park_status = PS_HW6_SM_QuiesceStorage(
       PS_HW6_OWNER_SM_CYCLE_COUNT);
   }
   return ((prepare_status == HAL_OK) &&
           (install_status == PS_STATUS_OK) &&
           (park_status == HAL_OK)) ? HAL_OK : HAL_ERROR;
+}
+
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_LoadPersistentPackage(void)
+{
+  HAL_StatusTypeDef prepare_status = HAL_ERROR;
+  HAL_StatusTypeDef park_status = HAL_ERROR;
+  HAL_StatusTypeDef status = HAL_ERROR;
+  ps_status_t scan_status = PS_STATUS_INTERNAL_ERROR;
+  ps_status_t read_status = PS_STATUS_INTERNAL_ERROR;
+  uint8_t *package_buffer = NULL;
+  uint32_t package_capacity = 0UL;
+  uint32_t publish_status = 1UL;
+
+  g_ps_hw6_owner_sm_probe.persistent_load_request_count++;
+  g_ps_hw6_owner_sm_probe.persistent_load_start_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_sm_probe.persistent_load_scan_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.persistent_load_available = 0UL;
+  g_ps_hw6_owner_sm_probe.persistent_load_record =
+    PS_STORAGE_PACKAGE_INDEX_INVALID_SELECTION;
+  g_ps_hw6_owner_sm_probe.persistent_load_slot =
+    PS_STORAGE_PACKAGE_INDEX_INVALID_SELECTION;
+  g_ps_hw6_owner_sm_probe.persistent_load_generation = 0UL;
+  g_ps_hw6_owner_sm_probe.persistent_load_address = 0UL;
+  g_ps_hw6_owner_sm_probe.persistent_load_size = 0UL;
+  g_ps_hw6_owner_sm_probe.persistent_load_capacity = 0UL;
+  g_ps_hw6_owner_sm_probe.persistent_load_read_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.persistent_load_bytes_read = 0UL;
+  g_ps_hw6_owner_sm_probe.persistent_load_park_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.persistent_load_publish_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.persistent_load_source =
+    (uint32_t)PS_PACKAGE_SOURCE_NONE;
+  g_ps_hw6_owner_sm_probe.persistent_load_last_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+
+  if (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] !=
+      (uint32_t)STORAGE_FLASH_READY)
+  {
+    prepare_status = PS_HW6_SM_PrepareStorageForFlashReady(0UL);
+  }
+  else
+  {
+    prepare_status = HAL_OK;
+  }
+
+  if ((prepare_status == HAL_OK) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+       (uint32_t)FLASH_DEEP_POWER_DOWN))
+  {
+    prepare_status = PS_HW6_SM_ResumeStorage(
+      PS_HW6_OWNER_SM_CYCLE_COUNT);
+  }
+
+  if ((prepare_status == HAL_OK) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] ==
+       (uint32_t)STORAGE_FLASH_READY) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+       (uint32_t)FLASH_READY))
+  {
+    scan_status = PS_StoragePackageIndex_Scan(&ps_flash_block);
+    g_ps_hw6_owner_sm_probe.persistent_load_scan_status =
+      (uint32_t)scan_status;
+
+    if (scan_status == PS_STATUS_OK)
+    {
+      g_ps_hw6_owner_sm_probe.persistent_load_available =
+        g_ps_storage_package_index_probe.installed_available;
+      g_ps_hw6_owner_sm_probe.persistent_load_record =
+        g_ps_storage_package_index_probe.selected_record;
+      g_ps_hw6_owner_sm_probe.persistent_load_slot =
+        g_ps_storage_package_index_probe.selected_slot;
+      g_ps_hw6_owner_sm_probe.persistent_load_generation =
+        g_ps_storage_package_index_probe.selected_generation;
+      g_ps_hw6_owner_sm_probe.persistent_load_address =
+        g_ps_storage_package_index_probe.selected_package_start;
+      g_ps_hw6_owner_sm_probe.persistent_load_size =
+        g_ps_storage_package_index_probe.selected_package_size;
+
+      if (g_ps_storage_package_index_probe.installed_available == 0UL)
+      {
+        PS_PackageSource_AbortStagedWrite();
+        read_status = PS_STATUS_OK;
+        publish_status = 0UL;
+      }
+      else if (PS_PackageSource_BeginInstalledWrite(
+                 &package_buffer, &package_capacity) == 0UL)
+      {
+        g_ps_hw6_owner_sm_probe.persistent_load_capacity =
+          package_capacity;
+        if (g_ps_storage_package_index_probe.selected_package_size <=
+            package_capacity)
+        {
+          read_status = ps_storage_flash_block_read(
+            &ps_flash_block,
+            g_ps_storage_package_index_probe.selected_package_start,
+            package_buffer,
+            g_ps_storage_package_index_probe.selected_package_size);
+          if (read_status == PS_STATUS_OK)
+          {
+            g_ps_hw6_owner_sm_probe.persistent_load_bytes_read =
+              g_ps_storage_package_index_probe.selected_package_size;
+          }
+        }
+        else
+        {
+          read_status = PS_STATUS_UNSUPPORTED;
+        }
+      }
+      else
+      {
+        read_status = PS_STATUS_INTERNAL_ERROR;
+      }
+      g_ps_hw6_owner_sm_probe.persistent_load_read_status =
+        (uint32_t)read_status;
+    }
+
+    park_status = PS_HW6_SM_QuiesceStorage(
+      PS_HW6_OWNER_SM_CYCLE_COUNT);
+    g_ps_hw6_owner_sm_probe.persistent_load_park_status =
+      (uint32_t)park_status;
+
+    if ((scan_status == PS_STATUS_OK) &&
+        (g_ps_storage_package_index_probe.installed_available != 0UL) &&
+        (read_status == PS_STATUS_OK) &&
+        (park_status == HAL_OK))
+    {
+      publish_status = PS_PackageSource_CommitInstalledWrite(
+        g_ps_storage_package_index_probe.selected_package_size,
+        g_ps_storage_package_index_probe.selected_generation);
+    }
+
+    if ((scan_status == PS_STATUS_OK) &&
+        (read_status == PS_STATUS_OK) &&
+        (park_status == HAL_OK) &&
+        (publish_status == 0UL))
+    {
+      status = HAL_OK;
+      if (g_ps_storage_package_index_probe.installed_available != 0UL)
+      {
+        g_ps_hw6_owner_sm_probe.persistent_load_source =
+          (uint32_t)PS_PACKAGE_SOURCE_INSTALLED_RAM;
+      }
+    }
+    else
+    {
+      PS_PackageSource_AbortStagedWrite();
+    }
+  }
+
+  g_ps_hw6_owner_sm_probe.persistent_load_publish_status = publish_status;
+  g_ps_hw6_owner_sm_probe.persistent_load_last_status = (uint32_t)status;
+  return status;
 }
 
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_AttachStorage(void)

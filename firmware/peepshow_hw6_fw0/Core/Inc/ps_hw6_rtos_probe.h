@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (56UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (57UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -409,6 +409,10 @@ typedef struct
   uint32_t runtime_package_activate_stub_count;
   uint32_t runtime_package_reactive_activate_stub_count;
   uint32_t runtime_package_realtime_activate_stub_count;
+  uint32_t runtime_package_load_request_count;
+  uint32_t runtime_package_load_send_status;
+  uint32_t runtime_package_load_wait_status;
+  uint32_t runtime_package_load_owner_status;
   uint32_t runtime_package_return_count;
   uint32_t runtime_suspend_count;
   uint32_t runtime_resume_count;
