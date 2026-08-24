@@ -720,6 +720,47 @@ button:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+.action-editor-list {
+  display: grid;
+  gap: 7px;
+}
+
+.action-editor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 64px 70px;
+  gap: 6px;
+}
+
+.action-editor-row select,
+.action-editor-row input {
+  min-width: 0;
+  height: 31px;
+  padding: 0 7px;
+  border: 1px solid #cbd3ce;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #242c28;
+  font: inherit;
+  font-size: 11px;
+}
+
+.action-editor-row input {
+  font-variant-numeric: tabular-nums;
+}
+
+.action-static-note {
+  display: flex;
+  min-width: 0;
+  min-height: 31px;
+  grid-column: span 3;
+  align-items: center;
+  overflow: hidden;
+  color: #68736d;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .link-row {
   display: flex;
   min-height: 33px;

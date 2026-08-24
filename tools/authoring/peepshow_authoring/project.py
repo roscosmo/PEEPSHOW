@@ -20,6 +20,7 @@ from .image_assets import (
 
 STABLE_ID = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
 GUARD_OPERATORS = {"eq", "ne", "lt", "le", "gt", "ge"}
+ACTION_OPERATIONS = {"assign", "add"}
 PROJECT_KEYS = {
     "schema_id",
     "schema_version",
@@ -269,6 +270,90 @@ def _apply_route_set_guard(
                 "variable_ref": variable_ref,
                 "operator": operator,
                 "value": value,
+            }
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown route '{route_id}'")
+    raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
+
+
+def _apply_route_set_action(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "route_id", "action_index", "action"},
+        {"kind", "scene_id", "route_id", "action_index", "action", "command_id"},
+    )
+    issues: list[ValidationIssue] = []
+    scene_id = command.get("scene_id")
+    route_id = command.get("route_id")
+    action_index = command.get("action_index")
+    action = command.get("action")
+    _stable_id(scene_id, "command.scene_id", issues)
+    _stable_id(route_id, "command.route_id", issues)
+    if isinstance(action_index, bool) or not isinstance(action_index, int) or action_index < 0:
+        raise ProjectCommandError("COMMAND_INDEX_INVALID", "action_index must be a non-negative integer")
+    if not isinstance(action, dict):
+        raise ProjectCommandError("ACTION_TYPE_INVALID", "action must be an object")
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+
+    for scene in scenes:
+        if scene.get("scene_id") != scene_id:
+            continue
+        variable_ids = {
+            variable.get("variable_id")
+            for variable in scene.get("variables", [])
+            if isinstance(variable, dict)
+        }
+        normalized_action: dict[str, Any]
+        action_kind = action.get("kind")
+        if action_kind == "set_variable":
+            _require_command_fields(
+                action,
+                {"kind", "variable_ref", "operation", "value"},
+                {"kind", "variable_ref", "operation", "value"},
+            )
+            variable_ref = action.get("variable_ref")
+            operation = action.get("operation")
+            value = action.get("value")
+            action_issues: list[ValidationIssue] = []
+            _stable_id(variable_ref, "command.action.variable_ref", action_issues)
+            if action_issues:
+                issue = action_issues[0]
+                raise ProjectCommandError(issue.code, issue.message)
+            if variable_ref not in variable_ids:
+                raise ProjectCommandError("ACTION_VARIABLE_UNKNOWN", f"unknown variable '{variable_ref}'")
+            if operation not in ACTION_OPERATIONS:
+                raise ProjectCommandError("ACTION_OPERATION_INVALID", "action operation must be assign or add")
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ProjectCommandError("ACTION_TYPE_INVALID", "action value must be an integer")
+            normalized_action = {
+                "kind": "set_variable",
+                "variable_ref": variable_ref,
+                "operation": operation,
+                "value": value,
+            }
+        elif action_kind == "request_render":
+            _require_command_fields(action, {"kind"}, {"kind"})
+            normalized_action = {"kind": "request_render"}
+        else:
+            raise ProjectCommandError("ACTION_KIND_INVALID", "unsupported V1 action")
+
+        for route in scene.get("routes", []):
+            if not isinstance(route, dict) or route.get("route_id") != route_id:
+                continue
+            actions = route.get("actions")
+            if not isinstance(actions, list) or action_index >= len(actions):
+                raise ProjectCommandError("COMMAND_INDEX_INVALID", "action_index does not select an existing action")
+            actions[action_index] = normalized_action
+            return {
+                "kind": "route.set_action",
+                "scene_id": scene_id,
+                "route_id": route_id,
+                "action_index": action_index,
+                "action": normalized_action,
             }
         raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown route '{route_id}'")
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
@@ -907,6 +992,8 @@ def apply_project_commands(
             applied.append(_apply_route_set_target(scenes, command))
         elif kind == "route.set_guard":
             applied.append(_apply_route_set_guard(scenes, command))
+        elif kind == "route.set_action":
+            applied.append(_apply_route_set_action(scenes, command))
         else:
             raise ProjectCommandError("COMMAND_KIND_UNKNOWN", f"unknown command kind '{kind}'")
 

@@ -15,8 +15,8 @@ preview execution, or compilation rules in TypeScript.
 - shows runtime state, variables, validation issues, and package facts;
 - saves opened projects in place or copies them with Save As;
 - supports bounded undo/redo for service-owned edit commands;
-- edits STATE display names, route targets, and existing guard conditions
-  through Python service commands;
+- edits STATE display names, route targets, existing guard conditions, and
+  existing ordered route actions through Python service commands;
 - builds and exports the authoritative `.egg` bytes produced by Python.
 
 Node editing, asset import, project mutation, device installation, SEQUENCE,

@@ -14,7 +14,6 @@ import type {
   InputAction,
   RenderModel,
   SceneDocument,
-  StateAction,
   StateGuard,
   StateRecord,
   StateRoute,
@@ -72,24 +71,7 @@ function GuardList({ guards }: { guards: StateGuard[] }) {
 }
 
 const GUARD_OPERATORS = ["eq", "ne", "lt", "le", "gt", "ge"] as const;
-
-function ActionList({ actions }: { actions: StateAction[] }) {
-  if (actions.length === 0) {
-    return <EmptyInspector>No actions.</EmptyInspector>;
-  }
-  return (
-    <ol className="ordered-records">
-      {actions.map((action, index) => (
-        <li key={`${action.kind}-${index}`}>
-          <code>{action.kind}</code>
-          {action.variable_ref !== undefined && <> {action.variable_ref}</>}
-          {action.operation !== undefined && <> {action.operation}</>}
-          {action.value !== undefined && <> {action.value}</>}
-        </li>
-      ))}
-    </ol>
-  );
-}
+const ACTION_OPERATIONS = ["assign", "add"] as const;
 
 export function StateGraphView({
   scene,
@@ -181,6 +163,7 @@ export function SceneAuthoringInspector({
   onRenameState,
   onSetRouteTarget,
   onSetRouteGuard,
+  onSetRouteAction,
   canEdit,
 }: {
   scene: SceneDocument | null;
@@ -195,6 +178,12 @@ export function SceneAuthoringInspector({
     variableRef: string,
     operator: string,
     value: number,
+  ) => Promise<void>;
+  onSetRouteAction: (
+    sceneId: string,
+    routeId: string,
+    actionIndex: number,
+    action: Record<string, unknown>,
   ) => Promise<void>;
   canEdit: boolean;
 }) {
@@ -264,6 +253,7 @@ export function SceneAuthoringInspector({
           variables={variables}
           onSetRouteTarget={onSetRouteTarget}
           onSetRouteGuard={onSetRouteGuard}
+          onSetRouteAction={onSetRouteAction}
           canEdit={canEdit}
         />
       )}
@@ -395,6 +385,7 @@ function RouteInspector({
   variables,
   onSetRouteTarget,
   onSetRouteGuard,
+  onSetRouteAction,
   canEdit,
 }: {
   sceneId: string;
@@ -410,6 +401,12 @@ function RouteInspector({
     variableRef: string,
     operator: string,
     value: number,
+  ) => Promise<void>;
+  onSetRouteAction: (
+    sceneId: string,
+    routeId: string,
+    actionIndex: number,
+    action: Record<string, unknown>,
   ) => Promise<void>;
   canEdit: boolean;
 }) {
@@ -452,7 +449,13 @@ function RouteInspector({
         onSetRouteGuard={onSetRouteGuard}
       />
       <h4>Ordered actions</h4>
-      <ActionList actions={route.actions} />
+      <EditableActionList
+        sceneId={sceneId}
+        route={route}
+        variables={variables}
+        canEdit={canEdit}
+        onSetRouteAction={onSetRouteAction}
+      />
     </section>
   );
 }
@@ -525,6 +528,107 @@ function EditableGuardList({
                 }
               }}
             />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function EditableActionList({
+  sceneId,
+  route,
+  variables,
+  canEdit,
+  onSetRouteAction,
+}: {
+  sceneId: string;
+  route: StateRoute;
+  variables: StateVariable[];
+  canEdit: boolean;
+  onSetRouteAction: (
+    sceneId: string,
+    routeId: string,
+    actionIndex: number,
+    action: Record<string, unknown>,
+  ) => Promise<void>;
+}) {
+  if (route.actions.length === 0) {
+    return <EmptyInspector>No actions.</EmptyInspector>;
+  }
+  return (
+    <div className="action-editor-list">
+      {route.actions.map((action, index) => {
+        const variableRef = action.variable_ref ?? variables[0]?.variable_id ?? "";
+        const operation = action.operation === "add" ? "add" : "assign";
+        const value = typeof action.value === "number" ? action.value : 0;
+        const commit = (nextAction: Record<string, unknown>) => {
+          void onSetRouteAction(sceneId, route.route_id, index, nextAction);
+        };
+        return (
+          <div className="action-editor-row" key={`${route.route_id}-action-${index}`}>
+            <select
+              aria-label={`Action ${index + 1} kind`}
+              value={action.kind}
+              disabled={!canEdit}
+              onChange={(event) => {
+                if (event.target.value === "request_render") {
+                  commit({ kind: "request_render" });
+                } else {
+                  commit({ kind: "set_variable", variable_ref: variableRef, operation, value });
+                }
+              }}
+            >
+              <option value="set_variable">set_variable</option>
+              <option value="request_render">request_render</option>
+            </select>
+            {action.kind === "set_variable" ? (
+              <>
+                <select
+                  aria-label={`Action ${index + 1} variable`}
+                  value={variableRef}
+                  disabled={!canEdit || variables.length === 0}
+                  onChange={(event) => {
+                    commit({ kind: "set_variable", variable_ref: event.target.value, operation, value });
+                  }}
+                >
+                  {variables.map((variable) => (
+                    <option key={variable.variable_id} value={variable.variable_id}>
+                      {variable.variable_id}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label={`Action ${index + 1} operation`}
+                  value={operation}
+                  disabled={!canEdit}
+                  onChange={(event) => {
+                    commit({ kind: "set_variable", variable_ref: variableRef, operation: event.target.value, value });
+                  }}
+                >
+                  {ACTION_OPERATIONS.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  aria-label={`Action ${index + 1} value`}
+                  type="number"
+                  step={1}
+                  value={value}
+                  disabled={!canEdit}
+                  onChange={(event) => {
+                    const parsed = Number.parseInt(event.target.value, 10);
+                    if (Number.isFinite(parsed)) {
+                      commit({ kind: "set_variable", variable_ref: variableRef, operation, value: parsed });
+                    }
+                  }}
+                />
+              </>
+            ) : (
+              <span className="action-static-note">Requests render refresh.</span>
+            )}
           </div>
         );
       })}

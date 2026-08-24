@@ -464,6 +464,40 @@ export default function App() {
     }
   };
 
+  const setRouteAction = async (
+    sceneId: string,
+    routeId: string,
+    actionIndex: number,
+    action: Record<string, unknown>,
+  ) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy("Updating action");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [
+          {
+            kind: "route.set_action",
+            scene_id: sceneId,
+            route_id: routeId,
+            action_index: actionIndex,
+            action,
+          },
+        ],
+      });
+      applyProjectResult(result);
+      setSceneSelection({ kind: "route", id: routeId });
+      setMessage("Action updated. Save to write it to the project.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const exportPackage = async () => {
     if (bridge === undefined || build === null) {
       return;
@@ -665,6 +699,7 @@ export default function App() {
             onRenameState={renameState}
             onSetRouteTarget={setRouteTarget}
             onSetRouteGuard={setRouteGuard}
+            onSetRouteAction={setRouteAction}
             canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
           />
 
