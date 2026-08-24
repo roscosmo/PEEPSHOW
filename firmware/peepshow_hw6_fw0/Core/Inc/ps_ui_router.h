@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_UI_ROUTER_API_VERSION (10UL)
+#define PS_UI_ROUTER_API_VERSION (11UL)
 #define PS_UI_ROUTER_STATUS_NOT_RUN (0xFFFFFFFFUL)
 
 typedef enum
@@ -131,7 +131,11 @@ typedef enum
   PS_UI_ROUTER_EVENT_RUNTIME_UNAVAILABLE,
   PS_UI_ROUTER_EVENT_CAL_JOYSTICK_UP_ACCEPT,
   PS_UI_ROUTER_EVENT_CAL_JOYSTICK_DOWN_ACCEPT,
-  PS_UI_ROUTER_EVENT_CAL_JOYSTICK_LEFT_ACCEPT
+  PS_UI_ROUTER_EVENT_CAL_JOYSTICK_LEFT_ACCEPT,
+  PS_UI_ROUTER_EVENT_INPUT_JOY_LEFT,
+  PS_UI_ROUTER_EVENT_INPUT_JOY_RIGHT,
+  PS_UI_ROUTER_EVENT_INPUT_JOY_UP,
+  PS_UI_ROUTER_EVENT_INPUT_JOY_DOWN
 } ps_ui_router_event_t;
 
 typedef enum
@@ -162,6 +166,8 @@ typedef struct
   uint32_t eggless;
   uint32_t last_button_event;
   uint32_t button_event_count;
+  uint32_t last_joystick_event;
+  uint32_t joystick_event_count;
   uint32_t pending_action;
   uint32_t last_action;
   uint32_t action_request_count;

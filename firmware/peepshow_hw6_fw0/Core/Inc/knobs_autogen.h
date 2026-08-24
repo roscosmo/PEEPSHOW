@@ -28,6 +28,7 @@
 #define KNOB_INPUT_BTN_REPEAT_START_MS                     (500)
 #define KNOB_INPUT_BTN_STUCK_MS                            (30000)
 #define KNOB_INPUT_CHORD_WINDOW_MS                         (80)
+#define KNOB_INPUT_JOYSTICK_AWAKE_POLL_PERIOD_MS           (50)
 #define KNOB_INPUT_JOYSTICK_CAL_CARDINAL_MS                (700)
 #define KNOB_INPUT_JOYSTICK_CAL_DEADZONE_PAD_PER_MILLE     (40)
 #define KNOB_INPUT_JOYSTICK_CAL_MIN_CARDINAL_SPAN_COUNTS   (4000)

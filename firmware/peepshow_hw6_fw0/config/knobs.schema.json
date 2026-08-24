@@ -23,6 +23,7 @@
     "input_joystick_cal_sample_period_ms",
     "input_joystick_cal_progress_period_ms",
     "input_joystick_cal_review_period_ms",
+    "input_joystick_awake_poll_period_ms",
     "input_joystick_cal_min_cardinal_span_counts",
     "input_joystick_cal_sweep_coverage_per_mille",
     "input_joystick_cal_deadzone_pad_per_mille",
@@ -296,6 +297,18 @@
       "class": "protected_policy",
       "path": "platform.knobs.input.joystick_cal_review_period_ms",
       "description": "Live marker refresh period on the joystick calibration review screen."
+    },
+    "input_joystick_awake_poll_period_ms": {
+      "type": "integer",
+      "minimum": 20,
+      "maximum": 250,
+      "default": 50,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_awake_poll_period_ms",
+      "description": "Bounded joystick direction sampling period while the MCU is already awake."
     },
     "input_joystick_cal_min_cardinal_span_counts": {
       "type": "integer",

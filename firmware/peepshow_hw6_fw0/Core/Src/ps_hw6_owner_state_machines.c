@@ -1151,6 +1151,7 @@ static const PS_HW6_StateTransition ps_joystick_transitions[] =
   {JOY_SLOW_POLL, JOY_EV_QUIESCE, JOY_SUSPENDED},
   {JOY_FAST_POLL, JOY_EV_SLOW_POLL_REQUEST, JOY_SLOW_POLL},
   {JOY_FAST_POLL, JOY_EV_QUIESCE, JOY_SUSPENDED},
+  {JOY_THRESHOLD_ARMED, JOY_EV_QUIESCE, JOY_SUSPENDED},
   {JOY_PROBE, JOY_EV_I2C_ERROR, JOY_ERROR},
   {JOY_CONFIG, JOY_EV_I2C_ERROR, JOY_ERROR},
   {JOY_THRESHOLD_ARMED, JOY_EV_I2C_ERROR, JOY_ERROR},
@@ -1158,6 +1159,8 @@ static const PS_HW6_StateTransition ps_joystick_transitions[] =
   {JOY_DIRECTION_SAMPLE, JOY_EV_I2C_ERROR, JOY_ERROR},
   {JOY_SLOW_POLL, JOY_EV_I2C_ERROR, JOY_ERROR},
   {JOY_FAST_POLL, JOY_EV_I2C_ERROR, JOY_ERROR},
+  {JOY_OFF, JOY_EV_I2C_ERROR, JOY_ERROR},
+  {JOY_SUSPENDED, JOY_EV_I2C_ERROR, JOY_ERROR},
   {JOY_ERROR, JOY_EV_RECOVER_OK, JOY_PROBE}
 };
 static const PS_HW6_StateTransition ps_imu_transitions[] =
@@ -1821,6 +1824,18 @@ static void PS_HW6_SM_ResetJoystickInputProbe(void)
   g_ps_hw6_owner_sm_probe.joystick_cardinal_start_tick = 0UL;
   g_ps_hw6_owner_sm_probe.joystick_cardinal_end_tick = 0UL;
   g_ps_hw6_owner_sm_probe.joystick_cardinal_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_failure_count = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_last_failure_stage =
+    PS_HW6_JOYSTICK_FAILURE_STAGE_NONE;
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_last_driver_status =
+    (uint32_t)PS_STATUS_OK;
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_last_hal_status = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_last_hal_error = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_recovery_attempt_count = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_recovery_success_count = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_recovery_failure_count = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_recovery_last_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.joystick_calibration_capture_request_count = 0UL;
   g_ps_hw6_owner_sm_probe.joystick_calibration_capture_start_tick = 0UL;
@@ -2533,11 +2548,28 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeJoystick(void)
   ps_dev_tmag3001_stabilize_result_t result;
   ps_status_t driver_status;
   HAL_StatusTypeDef status;
+  uint32_t owner_state;
   uint32_t i2c_state_after = 0UL;
   uint32_t i2c_error_after = 0UL;
 
-  (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
-                            JOY_EV_ENABLE_REQUEST, HAL_OK);
+  owner_state =
+    g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK];
+  if (owner_state == (uint32_t)JOY_OFF)
+  {
+    if (PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                             JOY_EV_ENABLE_REQUEST,
+                             HAL_OK) != HAL_OK)
+    {
+      return HAL_ERROR;
+    }
+  }
+  else if ((owner_state != (uint32_t)JOY_ERROR) &&
+           (owner_state != (uint32_t)JOY_PROBE) &&
+           (owner_state != (uint32_t)JOY_SUSPENDED))
+  {
+    return HAL_ERROR;
+  }
+
   driver_status = ps_dev_tmag3001_stabilize_suspended(
     &ps_joystick_device,
     &result);
@@ -2584,10 +2616,28 @@ static HAL_StatusTypeDef PS_HW6_SM_StabilizeJoystick(void)
   PS_HW6_SM_UpdateJoystickDriverProbe();
   if (status == HAL_OK)
   {
-    (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
-                              JOY_EV_PROBE_OK, HAL_OK);
-    (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
-                              JOY_EV_CONFIG_OK, status);
+    if (owner_state == (uint32_t)JOY_ERROR)
+    {
+      status = PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                                    JOY_EV_RECOVER_OK,
+                                    HAL_OK);
+    }
+    if ((status == HAL_OK) &&
+        (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK] ==
+         (uint32_t)JOY_PROBE))
+    {
+      status = PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                                    JOY_EV_PROBE_OK,
+                                    HAL_OK);
+    }
+    if ((status == HAL_OK) &&
+        (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK] ==
+         (uint32_t)JOY_CONFIG))
+    {
+      status = PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                                    JOY_EV_CONFIG_OK,
+                                    HAL_OK);
+    }
   }
   else
   {
@@ -3508,6 +3558,86 @@ static HAL_StatusTypeDef PS_HW6_SM_ApplyJoystickCalibrationCapture(void)
   return status;
 }
 
+static HAL_StatusTypeDef PS_HW6_SM_PrepareJoystickInput(void)
+{
+  ps_dev_tmag3001_suspend_result_t suspend_result;
+  ps_status_t driver_status;
+  HAL_StatusTypeDef status;
+  uint32_t owner_state =
+    g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK];
+
+  if (((owner_state == (uint32_t)JOY_SUSPENDED) ||
+       (owner_state == (uint32_t)JOY_THRESHOLD_ARMED)) &&
+      (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_SUSPENDED))
+  {
+    return HAL_OK;
+  }
+
+  if (((owner_state == (uint32_t)JOY_SLOW_POLL) ||
+       (owner_state == (uint32_t)JOY_FAST_POLL)) &&
+      (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_ACTIVE))
+  {
+    driver_status = ps_dev_tmag3001_suspend(
+      &ps_joystick_device,
+      &suspend_result);
+    status = PS_HW6_SM_StatusToHal(driver_status);
+    if (status == HAL_OK)
+    {
+      status = PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                                    JOY_EV_QUIESCE,
+                                    HAL_OK);
+    }
+    PS_HW6_SM_UpdateJoystickDriverProbe();
+    if (status == HAL_OK)
+    {
+      return HAL_OK;
+    }
+    owner_state =
+      g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK];
+  }
+
+  if ((owner_state != (uint32_t)JOY_OFF) &&
+      (owner_state != (uint32_t)JOY_ERROR) &&
+      (owner_state != (uint32_t)JOY_PROBE) &&
+      (owner_state != (uint32_t)JOY_SUSPENDED))
+  {
+    if (PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                             JOY_EV_I2C_ERROR,
+                             HAL_ERROR) != HAL_OK)
+    {
+      return HAL_ERROR;
+    }
+  }
+
+  g_ps_hw6_owner_sm_probe.joystick_recovery_attempt_count++;
+  if (PS_HW6_SM_StabilizeJoystick() == HAL_OK)
+  {
+    g_ps_hw6_owner_sm_probe.joystick_recovery_success_count++;
+    g_ps_hw6_owner_sm_probe.joystick_recovery_last_status =
+      (uint32_t)HAL_OK;
+    return HAL_OK;
+  }
+
+  g_ps_hw6_owner_sm_probe.joystick_recovery_failure_count++;
+  g_ps_hw6_owner_sm_probe.joystick_recovery_last_status =
+    (uint32_t)HAL_ERROR;
+  return HAL_ERROR;
+}
+
+static void PS_HW6_SM_RecordJoystickCardinalFailure(
+  uint32_t stage,
+  ps_status_t driver_status,
+  uint32_t hal_status,
+  uint32_t hal_error)
+{
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_failure_count++;
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_last_failure_stage = stage;
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_last_driver_status =
+    (uint32_t)driver_status;
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_last_hal_status = hal_status;
+  g_ps_hw6_owner_sm_probe.joystick_cardinal_last_hal_error = hal_error;
+}
+
 static HAL_StatusTypeDef PS_HW6_SM_EndJoystickCalibrationCapture(
   HAL_StatusTypeDef status)
 {
@@ -3549,7 +3679,6 @@ static HAL_StatusTypeDef PS_HW6_SM_EndJoystickCalibrationCapture(
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCalibrationCapture(
   uint32_t calibration_page)
 {
-  ps_dev_tmag3001_stabilize_result_t stabilize_result;
   ps_dev_tmag3001_wake_result_t wake_result;
   ps_status_t driver_status;
   HAL_StatusTypeDef status = HAL_OK;
@@ -3638,13 +3767,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCalibrationCapture(
     return status;
   }
 
-  if (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_READY)
-  {
-    driver_status = ps_dev_tmag3001_stabilize_suspended(
-      &ps_joystick_device,
-      &stabilize_result);
-    status = PS_HW6_SM_StatusToHal(driver_status);
-  }
+  status = PS_HW6_SM_PrepareJoystickInput();
   if (status == HAL_OK)
   {
     PS_HW6_SM_ClearJoystickTerminalSleepProof();
@@ -3838,7 +3961,6 @@ void PS_HW6_OwnerStateMachines_CancelJoystickCalibration(void)
 HAL_StatusTypeDef
 PS_HW6_OwnerStateMachines_RunJoystickCalibrationReviewSample(void)
 {
-  ps_dev_tmag3001_stabilize_result_t stabilize_result;
   ps_dev_tmag3001_wake_result_t wake_result;
   ps_dev_tmag3001_raw_sample_t sample;
   ps_dev_tmag3001_suspend_result_t suspend_result;
@@ -3856,13 +3978,9 @@ PS_HW6_OwnerStateMachines_RunJoystickCalibrationReviewSample(void)
   {
     status = HAL_ERROR;
   }
-  if ((status == HAL_OK) &&
-      (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_READY))
+  if (status == HAL_OK)
   {
-    driver_status = ps_dev_tmag3001_stabilize_suspended(
-      &ps_joystick_device,
-      &stabilize_result);
-    status = PS_HW6_SM_StatusToHal(driver_status);
+    status = PS_HW6_SM_PrepareJoystickInput();
   }
   if (status == HAL_OK)
   {
@@ -4022,12 +4140,12 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickLiveProbe(void)
 
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void)
 {
-  ps_dev_tmag3001_stabilize_result_t stabilize_result;
   ps_dev_tmag3001_wake_result_t wake_result;
   ps_dev_tmag3001_raw_sample_t sample;
   ps_dev_tmag3001_suspend_result_t suspend_result;
-  ps_status_t driver_status;
+  ps_status_t driver_status = PS_STATUS_OK;
   HAL_StatusTypeDef status;
+  uint32_t owner_state;
 
   g_ps_hw6_owner_sm_probe.joystick_cardinal_request_count++;
   g_ps_hw6_owner_sm_probe.joystick_cardinal_start_tick =
@@ -4043,28 +4161,70 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void)
   g_ps_hw6_owner_sm_probe.joystick_calibration_capture_page =
     PS_UI_ROUTER_CAL_NONE;
   PS_HW6_SM_UpdateJoystickCalibrationProbe();
-  status = HAL_OK;
-  if (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_READY)
+  status = PS_HW6_SM_PrepareJoystickInput();
+  if (status != HAL_OK)
   {
-    driver_status = ps_dev_tmag3001_stabilize_suspended(
-      &ps_joystick_device,
-      &stabilize_result);
-    status = PS_HW6_SM_StatusToHal(driver_status);
+    PS_HW6_SM_RecordJoystickCardinalFailure(
+      PS_HW6_JOYSTICK_FAILURE_STAGE_PREPARE,
+      (ps_status_t)ps_joystick_device.last_status,
+      0UL,
+      0UL);
   }
 
   if (status == HAL_OK)
   {
-    (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
-                               JOY_EV_THRESHOLD_ARM_REQUEST,
-                               HAL_OK);
-    (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
-                               JOY_EV_INTERRUPT,
-                               HAL_OK);
+    owner_state =
+      g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK];
+    if (owner_state == (uint32_t)JOY_SUSPENDED)
+    {
+      status = PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                                    JOY_EV_THRESHOLD_ARM_REQUEST,
+                                    HAL_OK);
+    }
+    else if (owner_state != (uint32_t)JOY_THRESHOLD_ARMED)
+    {
+      status = HAL_ERROR;
+    }
+    if (status != HAL_OK)
+    {
+      PS_HW6_SM_RecordJoystickCardinalFailure(
+        PS_HW6_JOYSTICK_FAILURE_STAGE_ARM,
+        PS_STATUS_INVALID_STATE,
+        0UL,
+        0UL);
+    }
+  }
+
+  if (status == HAL_OK)
+  {
+    status = PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                                  JOY_EV_INTERRUPT,
+                                  HAL_OK);
+    if (status != HAL_OK)
+    {
+      PS_HW6_SM_RecordJoystickCardinalFailure(
+        PS_HW6_JOYSTICK_FAILURE_STAGE_INTERRUPT,
+        PS_STATUS_INVALID_STATE,
+        0UL,
+        0UL);
+    }
+  }
+
+  if (status == HAL_OK)
+  {
     PS_HW6_SM_ClearJoystickTerminalSleepProof();
     driver_status = ps_dev_tmag3001_wake_continuous(
       &ps_joystick_device,
       &wake_result);
     status = PS_HW6_SM_StatusToHal(driver_status);
+    if (status != HAL_OK)
+    {
+      PS_HW6_SM_RecordJoystickCardinalFailure(
+        PS_HW6_JOYSTICK_FAILURE_STAGE_WAKE,
+        driver_status,
+        wake_result.last_hal_status,
+        wake_result.last_hal_error);
+    }
   }
 
   if (status == HAL_OK)
@@ -4073,16 +4233,44 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void)
       &ps_joystick_device,
       &sample);
     status = PS_HW6_SM_StatusToHal(driver_status);
+    if (status != HAL_OK)
+    {
+      PS_HW6_SM_RecordJoystickCardinalFailure(
+        PS_HW6_JOYSTICK_FAILURE_STAGE_READ,
+        driver_status,
+        sample.last_hal_status,
+        sample.last_hal_error);
+    }
   }
 
   if (status == HAL_OK)
   {
-    (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
-                               JOY_EV_SAMPLE_DONE,
-                               HAL_OK);
+    status = PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                                  JOY_EV_SAMPLE_DONE,
+                                  HAL_OK);
+    if (status != HAL_OK)
+    {
+      PS_HW6_SM_RecordJoystickCardinalFailure(
+        PS_HW6_JOYSTICK_FAILURE_STAGE_SAMPLE_FSM,
+        PS_STATUS_INVALID_STATE,
+        0UL,
+        0UL);
+    }
+  }
+
+  if (status == HAL_OK)
+  {
     status = PS_HW6_SM_NormalizeJoystickSample(
       &sample,
       PS_INPUT_JOYSTICK_POLICY_DIRECTION_SAMPLE);
+    if (status != HAL_OK)
+    {
+      PS_HW6_SM_RecordJoystickCardinalFailure(
+        PS_HW6_JOYSTICK_FAILURE_STAGE_NORMALIZE,
+        PS_STATUS_INTERNAL_ERROR,
+        0UL,
+        0UL);
+    }
   }
 
   if (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_ACTIVE)
@@ -4093,16 +4281,34 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void)
     if (status == HAL_OK)
     {
       status = PS_HW6_SM_StatusToHal(driver_status);
+      if (status != HAL_OK)
+      {
+        PS_HW6_SM_RecordJoystickCardinalFailure(
+          PS_HW6_JOYSTICK_FAILURE_STAGE_SUSPEND,
+          driver_status,
+          suspend_result.last_hal_status,
+          suspend_result.last_hal_error);
+      }
     }
   }
 
   if (status == HAL_OK)
   {
-    (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
-                               JOY_EV_NORMALIZE_DONE,
-                               HAL_OK);
+    status = PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                                  JOY_EV_NORMALIZE_DONE,
+                                  HAL_OK);
+    if (status != HAL_OK)
+    {
+      PS_HW6_SM_RecordJoystickCardinalFailure(
+        PS_HW6_JOYSTICK_FAILURE_STAGE_FINISH_FSM,
+        PS_STATUS_INVALID_STATE,
+        0UL,
+        0UL);
+    }
   }
-  else
+  if ((status != HAL_OK) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK] !=
+       (uint32_t)JOY_ERROR))
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
                                JOY_EV_I2C_ERROR,

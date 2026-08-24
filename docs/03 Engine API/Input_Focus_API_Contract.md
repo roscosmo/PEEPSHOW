@@ -61,6 +61,25 @@ Package-facing logical sources:
 | `joystick_vector` | normalized deadzone-applied vector and magnitude |
 | `wake_input` | input delivered through normal wake/resume lifecycle path |
 
+The current `.egg` STATE authoring subset uses these stable logical source
+names and wire IDs:
+
+| Name | Wire ID |
+|---|---:|
+| `BUTTON_A` | 1 |
+| `BUTTON_B` | 2 |
+| `BUTTON_L` | 3 |
+| `BUTTON_R` | 4 |
+| `JOY_LEFT` | 6 |
+| `JOY_RIGHT` | 7 |
+| `JOY_UP` | 8 |
+| `JOY_DOWN` | 9 |
+
+Wire ID 5 is reserved for Platform-owned Start handling in the current
+firmware. Joystick direction sources are distinct logical inputs; firmware must
+not translate them into fake L/R button events. The shell may map left/up to
+previous and right/down to next as its own focus policy.
+
 Forbidden package-facing sources:
 
 - GPIO level

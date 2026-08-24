@@ -39,6 +39,10 @@ const INPUT_LABELS: Record<string, string> = {
   BUTTON_B: "Button B",
   BUTTON_L: "Left button",
   BUTTON_R: "Right button",
+  JOY_LEFT: "Joystick left",
+  JOY_RIGHT: "Joystick right",
+  JOY_UP: "Joystick up",
+  JOY_DOWN: "Joystick down",
 };
 
 function inputLabel(inputActions: InputAction[], actionRef: string): string {

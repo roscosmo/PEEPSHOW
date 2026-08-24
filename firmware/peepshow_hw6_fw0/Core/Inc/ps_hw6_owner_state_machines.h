@@ -10,7 +10,18 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (64UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (65UL)
+
+#define PS_HW6_JOYSTICK_FAILURE_STAGE_NONE       (0UL)
+#define PS_HW6_JOYSTICK_FAILURE_STAGE_PREPARE    (1UL)
+#define PS_HW6_JOYSTICK_FAILURE_STAGE_ARM        (2UL)
+#define PS_HW6_JOYSTICK_FAILURE_STAGE_INTERRUPT  (3UL)
+#define PS_HW6_JOYSTICK_FAILURE_STAGE_WAKE       (4UL)
+#define PS_HW6_JOYSTICK_FAILURE_STAGE_READ       (5UL)
+#define PS_HW6_JOYSTICK_FAILURE_STAGE_SAMPLE_FSM (6UL)
+#define PS_HW6_JOYSTICK_FAILURE_STAGE_NORMALIZE  (7UL)
+#define PS_HW6_JOYSTICK_FAILURE_STAGE_SUSPEND    (8UL)
+#define PS_HW6_JOYSTICK_FAILURE_STAGE_FINISH_FSM (9UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -626,6 +637,15 @@ typedef struct
   uint32_t joystick_cardinal_start_tick;
   uint32_t joystick_cardinal_end_tick;
   uint32_t joystick_cardinal_status;
+  uint32_t joystick_cardinal_failure_count;
+  uint32_t joystick_cardinal_last_failure_stage;
+  uint32_t joystick_cardinal_last_driver_status;
+  uint32_t joystick_cardinal_last_hal_status;
+  uint32_t joystick_cardinal_last_hal_error;
+  uint32_t joystick_recovery_attempt_count;
+  uint32_t joystick_recovery_success_count;
+  uint32_t joystick_recovery_failure_count;
+  uint32_t joystick_recovery_last_status;
   uint32_t joystick_calibration_capture_request_count;
   uint32_t joystick_calibration_capture_start_tick;
   uint32_t joystick_calibration_capture_end_tick;

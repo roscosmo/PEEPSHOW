@@ -116,6 +116,15 @@ Current FW0 calibration status:
   enter, release, and orthogonal-axis switch hysteresis are compile-time knobs
 - a held direction remains selected until it falls below the release threshold
   or the orthogonal axis exceeds it by the configured dominance margin
+- normal awake input uses a bounded `thInput` sample every
+  `KNOB_INPUT_JOYSTICK_AWAKE_POLL_PERIOD_MS`; it runs only in
+  `PWR_ACTIVE_LP`/`PWR_ACTIVE_RT`, is disabled throughout calibration and STOP
+  transitions, and emits one logical activation per neutral-to-direction or
+  direction-switch transition
+- awake cardinal sources are published as distinct `JOY_LEFT`, `JOY_RIGHT`,
+  `JOY_UP`, and `JOY_DOWN` actions; holding a direction does not repeat it
+- only a successfully queued direction activation restarts the STOP2 idle
+  window; periodic samples and releases are not meaningful activity
 - A applies the volatile candidate and B restores the previous calibration
 - L/R plus A/B remain the required fallback controls while calibration is
   missing or invalid
@@ -147,9 +156,10 @@ Debugger-only one-position captures are not sufficient calibration evidence for
 this joystick. The accepted path is the on-device guided flow: neutral, four
 confirmed cardinals, full-travel sweep, then live visual review. The calibration
 page must remain awake throughout this sequence. Dominant-axis hysteresis is
-proven through this acquisition-independent review path. Persistence, normal
-awake input routing, and movement-triggered wake remain separate bring-up
-milestones.
+proven through this acquisition-independent review path. Persistence and
+movement-triggered wake remain separate bring-up milestones. The awake routing
+path is implemented but remains provisional until target input-order and STOP2
+regression evidence is captured.
 
 ## Calibration Contract
 

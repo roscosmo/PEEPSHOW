@@ -143,6 +143,21 @@ class AuthoringModelTests(unittest.TestCase):
         self.assertEqual("state_demo", normalized["project"]["entry_scene"])
         self.assertEqual(1, len(normalized["scenes"]))
 
+    def test_joystick_direction_is_a_stable_logical_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "joystick.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            scene_path = project_root / "scenes" / "state_demo.state.json"
+            scene = json.loads(scene_path.read_text(encoding="utf-8"))
+            scene["input_actions"][0]["logical_source"] = "JOY_LEFT"
+            scene_path.write_text(json.dumps(scene), encoding="utf-8")
+
+            bundle = load_project(project_root)
+            self.assertEqual((), bundle.issues)
+            package = parse_egg(build_egg(bundle))
+            source = package.scenes[0]["graph"]["inputs"][0]["logical_source"]
+            self.assertEqual(6, source)
+
     def test_unknown_transition_target_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "broken.peepproj"

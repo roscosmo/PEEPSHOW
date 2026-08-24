@@ -1,0 +1,30 @@
+#ifndef PS_INPUT_LOGICAL_H
+#define PS_INPUT_LOGICAL_H
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define PS_INPUT_LOGICAL_API_VERSION (1UL)
+
+typedef enum
+{
+  PS_INPUT_LOGICAL_SOURCE_NONE = 0,
+  PS_INPUT_LOGICAL_SOURCE_BUTTON_A = 1,
+  PS_INPUT_LOGICAL_SOURCE_BUTTON_B = 2,
+  PS_INPUT_LOGICAL_SOURCE_BUTTON_L = 3,
+  PS_INPUT_LOGICAL_SOURCE_BUTTON_R = 4,
+  PS_INPUT_LOGICAL_SOURCE_START = 5,
+  PS_INPUT_LOGICAL_SOURCE_JOY_LEFT = 6,
+  PS_INPUT_LOGICAL_SOURCE_JOY_RIGHT = 7,
+  PS_INPUT_LOGICAL_SOURCE_JOY_UP = 8,
+  PS_INPUT_LOGICAL_SOURCE_JOY_DOWN = 9
+} ps_input_logical_source_t;
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* PS_INPUT_LOGICAL_H */

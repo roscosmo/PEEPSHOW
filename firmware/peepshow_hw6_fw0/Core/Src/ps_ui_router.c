@@ -20,6 +20,8 @@ typedef struct
   uint32_t eggless;
   uint32_t last_button_event;
   uint32_t button_event_count;
+  uint32_t last_joystick_event;
+  uint32_t joystick_event_count;
   uint32_t pending_action;
   uint32_t last_action;
   uint32_t action_request_count;
@@ -63,6 +65,10 @@ static void PS_UIRouter_UpdateProbe(void)
     ps_ui_router_state.last_button_event;
   g_ps_ui_router_probe.button_event_count =
     ps_ui_router_state.button_event_count;
+  g_ps_ui_router_probe.last_joystick_event =
+    ps_ui_router_state.last_joystick_event;
+  g_ps_ui_router_probe.joystick_event_count =
+    ps_ui_router_state.joystick_event_count;
   g_ps_ui_router_probe.pending_action =
     ps_ui_router_state.pending_action;
   g_ps_ui_router_probe.last_action = ps_ui_router_state.last_action;
@@ -423,6 +429,8 @@ void PS_UIRouter_Init(void)
   ps_ui_router_state.eggless = 0UL;
   ps_ui_router_state.last_button_event = 0UL;
   ps_ui_router_state.button_event_count = 0UL;
+  ps_ui_router_state.last_joystick_event = 0UL;
+  ps_ui_router_state.joystick_event_count = 0UL;
   ps_ui_router_state.pending_action = PS_UI_ROUTER_ACTION_NONE;
   ps_ui_router_state.last_action = PS_UI_ROUTER_ACTION_NONE;
   ps_ui_router_state.action_request_count = 0UL;
@@ -694,6 +702,18 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
     case PS_UI_ROUTER_EVENT_INPUT_BTN_R:
       ps_ui_router_state.last_button_event = event;
       ps_ui_router_state.button_event_count++;
+      status = PS_UIRouter_DispatchButtonR();
+      break;
+    case PS_UI_ROUTER_EVENT_INPUT_JOY_LEFT:
+    case PS_UI_ROUTER_EVENT_INPUT_JOY_UP:
+      ps_ui_router_state.last_joystick_event = event;
+      ps_ui_router_state.joystick_event_count++;
+      status = PS_UIRouter_DispatchButtonL();
+      break;
+    case PS_UI_ROUTER_EVENT_INPUT_JOY_RIGHT:
+    case PS_UI_ROUTER_EVENT_INPUT_JOY_DOWN:
+      ps_ui_router_state.last_joystick_event = event;
+      ps_ui_router_state.joystick_event_count++;
       status = PS_UIRouter_DispatchButtonR();
       break;
     default:

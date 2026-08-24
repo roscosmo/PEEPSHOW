@@ -5,6 +5,7 @@
 
 #include "ps_hw6_hash.h"
 #include "ps_input_buttons.h"
+#include "ps_input_logical.h"
 
 #define PS_EGG_HEADER_SIZE               (64UL)
 #define PS_EGG_CHUNK_ENTRY_SIZE          (40UL)
@@ -1425,8 +1426,10 @@ static uint32_t PS_EggDecodeScene(
       (index * PS_EGG_INPUT_RECORD_SIZE)];
     uint16_t source = PS_EggU16(&record[2]);
     if ((PS_EggU16(record) >= strings->count) ||
-        (source < PS_INPUT_BUTTON_ID_A) ||
-        (source > PS_INPUT_BUTTON_ID_R))
+        (!(((source >= (uint16_t)PS_INPUT_LOGICAL_SOURCE_BUTTON_A) &&
+            (source <= (uint16_t)PS_INPUT_LOGICAL_SOURCE_BUTTON_R)) ||
+           ((source >= (uint16_t)PS_INPUT_LOGICAL_SOURCE_JOY_LEFT) &&
+            (source <= (uint16_t)PS_INPUT_LOGICAL_SOURCE_JOY_DOWN)))))
     {
       return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
     }

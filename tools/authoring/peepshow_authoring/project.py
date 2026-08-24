@@ -656,7 +656,16 @@ def _check_scene(
         path = f"{base}.input_actions[{action_id}]"
         _check_keys(action, {"action_id", "logical_source"}, path, issues)
         source_value = action.get("logical_source")
-        if source_value not in {"BUTTON_A", "BUTTON_B", "BUTTON_L", "BUTTON_R"}:
+        if source_value not in {
+            "BUTTON_A",
+            "BUTTON_B",
+            "BUTTON_L",
+            "BUTTON_R",
+            "JOY_LEFT",
+            "JOY_RIGHT",
+            "JOY_UP",
+            "JOY_DOWN",
+        }:
             _issue(issues, "INPUT_SOURCE_INVALID", f"{path}.logical_source", "unsupported logical source")
         elif source_value in logical_sources:
             _issue(issues, "INPUT_SOURCE_DUPLICATE", f"{path}.logical_source", "logical source is already bound")

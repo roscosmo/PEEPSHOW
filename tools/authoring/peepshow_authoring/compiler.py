@@ -48,7 +48,16 @@ from .egg_format import (
 from .project import ProjectBundle
 
 
-LOGICAL_SOURCES = {"BUTTON_A": 1, "BUTTON_B": 2, "BUTTON_L": 3, "BUTTON_R": 4}
+LOGICAL_SOURCES = {
+    "BUTTON_A": 1,
+    "BUTTON_B": 2,
+    "BUTTON_L": 3,
+    "BUTTON_R": 4,
+    "JOY_LEFT": 6,
+    "JOY_RIGHT": 7,
+    "JOY_UP": 8,
+    "JOY_DOWN": 9,
+}
 GUARD_OPERATORS = {"eq": 1, "ne": 2, "lt": 3, "le": 4, "gt": 5, "ge": 6}
 VARIABLE_OPERATIONS = {"assign": 1, "add": 2}
 RENDER_KINDS = {"sprite": 1, "text": 2, "shape": 3}

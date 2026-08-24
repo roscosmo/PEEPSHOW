@@ -1,7 +1,9 @@
 import {
   AlertTriangle,
+  ArrowDown,
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
   Box,
   Check,
   ChevronRight,
@@ -48,6 +50,10 @@ const INPUTS = [
   { source: "BUTTON_A", label: "A", icon: Circle },
   { source: "BUTTON_B", label: "B", icon: Circle },
   { source: "BUTTON_R", label: "R", icon: ArrowRight },
+  { source: "JOY_LEFT", label: "Joy left", icon: ArrowLeft },
+  { source: "JOY_RIGHT", label: "Joy right", icon: ArrowRight },
+  { source: "JOY_UP", label: "Joy up", icon: ArrowUp },
+  { source: "JOY_DOWN", label: "Joy down", icon: ArrowDown },
 ] as const;
 
 function errorText(error: unknown): string {
