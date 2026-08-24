@@ -360,6 +360,8 @@ function StateInspector({
   const render = renderModels.find((item) => item.visual_id === state.render_model_ref);
   const waiting = waitingVisuals.find((item) => item.waiting_visual_id === state.waiting_visual_ref);
   const [displayName, setDisplayName] = useState(state.display_name);
+  const screenElementCount = render?.elements.length ?? 0;
+  const waitingStepCount = waiting?.combined_step_count ?? 0;
 
   useEffect(() => {
     setDisplayName(state.display_name);
@@ -371,7 +373,20 @@ function StateInspector({
   return (
     <section className="inspector-section selected-record">
       <h3>Selected state</h3>
-      <InspectorList rows={[["ID", state.state_id], ["Name", state.display_name]]} />
+      <div className="state-summary-card">
+        <div>
+          <span>Screen</span>
+          <strong>{state.display_name}</strong>
+        </div>
+        <div>
+          <span>Draws</span>
+          <strong>{screenElementCount} element{screenElementCount === 1 ? "" : "s"}</strong>
+        </div>
+        <div>
+          <span>Waiting</span>
+          <strong>{waiting === undefined ? "Not linked" : `${waitingStepCount} step${waitingStepCount === 1 ? "" : "s"}`}</strong>
+        </div>
+      </div>
       <form
         className="rename-form"
         onSubmit={(event) => {
@@ -381,7 +396,7 @@ function StateInspector({
           }
         }}
       >
-        <label htmlFor={`state-name-${state.state_id}`}>Display name</label>
+        <label htmlFor={`state-name-${state.state_id}`}>State name</label>
         <div>
           <input
             id={`state-name-${state.state_id}`}
@@ -393,11 +408,14 @@ function StateInspector({
         </div>
       </form>
       <button className="link-row" type="button" onClick={() => onSelect({ kind: "render", id: state.render_model_ref })}>
-        Render model <strong>{render?.visual_id ?? state.render_model_ref}</strong>
+        Screen layout <strong>{render === undefined ? "Missing" : `${render.elements.length} element${render.elements.length === 1 ? "" : "s"}`}</strong>
       </button>
       <button className="link-row" type="button" onClick={() => onSelect({ kind: "waiting", id: state.waiting_visual_ref })}>
-        Waiting visual <strong>{waiting?.waiting_visual_id ?? state.waiting_visual_ref}</strong>
+        Waiting animation <strong>{waiting === undefined ? "Missing" : `${waiting.combined_step_count} step${waiting.combined_step_count === 1 ? "" : "s"}`}</strong>
       </button>
+      <div className="internal-ref-note">
+        Internal state ID: <code>{state.state_id}</code>
+      </div>
     </section>
   );
 }
