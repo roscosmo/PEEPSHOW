@@ -1,15 +1,18 @@
 import {
   Background,
   Controls,
+  Handle,
   MarkerType,
   MiniMap,
+  Position,
   ReactFlow,
   type Edge,
   type Node,
+  type NodeProps,
 } from "@xyflow/react";
 import { GitBranch, Hourglass, Layers3, Network, Route, Variable } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { buildStateGraphModel } from "./stateGraph";
+import { buildStateGraphModel, type GraphStateNode } from "./stateGraph";
 import type {
   InputAction,
   RenderModel,
@@ -98,6 +101,61 @@ function displayStateName(states: StateRecord[], stateId: string): string {
   return states.find((state) => state.state_id === stateId)?.display_name ?? stateId;
 }
 
+type StateCardNodeData = {
+  graphNode: GraphStateNode;
+  selectedRouteId: string | null;
+  onSelectState: (stateId: string) => void;
+  onSelectRoute: (routeId: string) => void;
+};
+
+function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
+  const { graphNode, selectedRouteId, onSelectRoute, onSelectState } = data;
+  return (
+    <button
+      className={`state-card-node ${graphNode.isEntry ? "entry" : ""} ${selected ? "selected" : ""}`}
+      type="button"
+      onClick={() => onSelectState(graphNode.id)}
+    >
+      <Handle type="target" position={Position.Left} />
+      <div className="state-card-heading">
+        <span>{graphNode.isEntry ? "Start" : "State"}</span>
+        <strong>{graphNode.label}</strong>
+      </div>
+      <div className="state-output-list">
+        {graphNode.outputs.length === 0 ? (
+          <span className="state-output-empty">No outputs</span>
+        ) : (
+          graphNode.outputs.map((output) => (
+            <span
+              className={`state-output-row ${selectedRouteId === output.routeId ? "selected" : ""}`}
+              key={output.id}
+              role="button"
+              tabIndex={0}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSelectRoute(output.routeId);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onSelectRoute(output.routeId);
+                }
+              }}
+            >
+              <span>{output.label}</span>
+              <small>{output.guardCount} rule{output.guardCount === 1 ? "" : "s"} - {output.actionCount} effect{output.actionCount === 1 ? "" : "s"}</small>
+              <Handle id={output.id} type="source" position={Position.Right} />
+            </span>
+          ))
+        )}
+      </div>
+    </button>
+  );
+}
+
+const STATE_NODE_TYPES = { stateCard: StateCardNode };
+
 export function StateGraphView({
   scene,
   selected,
@@ -112,21 +170,19 @@ export function StateGraphView({
     () =>
       graph.nodes.map((node) => ({
         id: node.id,
+        type: "stateCard",
         position: { x: node.x, y: node.y },
         data: {
-          label: (
-            <div className={`state-node ${node.isEntry ? "entry" : ""}`}>
-              <span>{node.isEntry ? "Entry" : "State"}</span>
-              <strong>{node.label}</strong>
-              <small>{node.id}</small>
-            </div>
-          ),
+          graphNode: node,
+          selectedRouteId: selected.kind === "route" ? selected.id : null,
+          onSelectState: (stateId: string) => onSelect({ kind: "state", id: stateId }),
+          onSelectRoute: (routeId: string) => onSelect({ kind: "route", id: routeId }),
         },
         selected: selected.kind === "state" && selected.id === node.id,
         draggable: false,
         connectable: false,
       })),
-    [graph.nodes, selected],
+    [graph.nodes, onSelect, selected],
   );
   const edges: Edge[] = useMemo(
     () =>
@@ -134,7 +190,7 @@ export function StateGraphView({
         id: edge.id,
         source: edge.source,
         target: edge.target,
-        label: edge.label,
+        sourceHandle: edge.sourceHandle,
         markerEnd: { type: MarkerType.ArrowClosed },
         selected: selected.kind === "route" && selected.id === edge.route.route_id,
         data: { route_id: edge.route.route_id },
@@ -165,6 +221,7 @@ export function StateGraphView({
     <ReactFlow
       nodes={nodes}
       edges={edges}
+      nodeTypes={STATE_NODE_TYPES}
       fitView
       nodesDraggable={false}
       nodesConnectable={false}

@@ -581,60 +581,111 @@ button:focus-visible {
   font-size: 12px;
 }
 
-.state-node {
-  min-width: 132px;
-  padding: 7px 9px;
-  border: 1px solid #aeb9b2;
-  border-radius: 5px;
-  background: #ffffff;
-  color: #27302b;
-  box-shadow: 0 6px 14px rgb(55 64 59 / 10%);
-}
-
-.state-node.entry {
-  border-color: #32759a;
-  background: #edf7fb;
-}
-
-.state-node span,
-.state-node small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.state-node span {
-  color: #68736d;
-  font-size: 9px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.state-node strong {
-  display: block;
-  margin-top: 2px;
-  overflow: hidden;
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.state-node small {
-  margin-top: 2px;
-  color: #78827c;
-  font-size: 9px;
-}
-
 .react-flow__node {
   width: auto;
   border: 0;
   background: transparent;
 }
 
-.react-flow__node.selected .state-node {
+.state-card-node {
+  display: grid;
+  width: 218px;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid #aeb9b2;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #27302b;
+  box-shadow: 0 6px 14px rgb(55 64 59 / 10%);
+  cursor: pointer;
+  text-align: left;
+}
+
+.state-card-node.entry {
+  border-color: #32759a;
+  background: #edf7fb;
+}
+
+.state-card-node.selected {
   border-color: #175f8a;
   box-shadow: 0 0 0 2px rgb(23 95 138 / 18%);
+}
+
+.state-card-heading {
+  min-width: 0;
+}
+
+.state-card-heading span,
+.state-output-empty,
+.state-output-row small {
+  display: block;
+  overflow: hidden;
+  color: #68736d;
+  font-size: 9px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.state-card-heading strong {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: #27302b;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state-output-list {
+  display: grid;
+  gap: 5px;
+}
+
+.state-output-empty,
+.state-output-row {
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid #d4dcd7;
+  border-radius: 5px;
+  background: #f9fbfa;
+}
+
+.state-output-row {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  color: #27302b;
+  cursor: pointer;
+}
+
+.state-output-row:hover,
+.state-output-row.selected {
+  border-color: #8eb0c3;
+  background: #eef7fb;
+}
+
+.state-output-row span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state-output-row small {
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.state-output-row .react-flow__handle {
+  right: -14px;
+  width: 8px;
+  height: 8px;
+  border-color: #6d7a73;
+  background: #ffffff;
 }
 
 .react-flow__edge-path,

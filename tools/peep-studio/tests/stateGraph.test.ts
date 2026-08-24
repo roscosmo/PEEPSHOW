@@ -21,6 +21,12 @@ const scene: SceneDocument = {
       waiting_visual_ref: "armed_wait",
     },
   ],
+  input_actions: [
+    {
+      action_id: "select",
+      logical_source: "BUTTON_A",
+    },
+  ],
   routes: [
     {
       route_id: "press_a",
@@ -38,11 +44,16 @@ const graph = buildStateGraphModel(scene);
 assert.equal(graph.nodes.length, 2);
 assert.equal(graph.nodes[0]?.id, "idle");
 assert.equal(graph.nodes[0]?.isEntry, true);
+assert.equal(graph.nodes[0]?.outputs.length, 1);
+assert.equal(graph.nodes[0]?.outputs[0]?.label, "Button A");
+assert.equal(graph.nodes[0]?.outputs[0]?.guardCount, 1);
+assert.equal(graph.nodes[0]?.outputs[0]?.actionCount, 1);
 assert.equal(graph.nodes[1]?.isEntry, false);
 assert.equal(graph.edges.length, 1);
 assert.equal(graph.edges[0]?.source, "idle");
 assert.equal(graph.edges[0]?.target, "armed");
-assert.equal(graph.edges[0]?.label, "select +1 guard / 1 action");
+assert.equal(graph.edges[0]?.label, "");
+assert.equal(graph.edges[0]?.sourceHandle, "press_a:idle");
 
 const invalidRouteGraph = buildStateGraphModel({
   ...scene,
