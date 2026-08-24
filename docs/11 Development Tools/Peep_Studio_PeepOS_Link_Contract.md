@@ -69,8 +69,8 @@ The following are planned or incomplete and must be labelled unavailable in
 the editor until this document is updated:
 
 - SEQUENCE and PROGRAM scene authoring or execution;
-- editable node graph commands and project mutation;
-- undo/redo command history;
+- editable node graph controls beyond the current `state.rename` inspector command;
+- project mutation commands beyond `state.rename`;
 - 4-tone and 16-tone fixed dither asset import;
 - maps, tile layers, fonts, rotation, or interpolated scaling;
 - package installation or activation on a connected device;
@@ -89,7 +89,7 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `3`.
+protocol is version `1`; the current service API is version `6`.
 
 | Operation | Purpose |
 |---|---|
@@ -100,6 +100,10 @@ protocol is version `1`; the current service API is version `3`.
 | `project.normalize` | return canonical normalized project data |
 | `project.build_package` | compile authoritative `.egg` bytes and compatibility report |
 | `project.compatibility_report` | inspect target/resource compatibility without exporting |
+| `project.apply_commands` | apply typed semantic edit commands and return a new project revision |
+| `project.save` | persist the current in-memory project scene records to authored source files |
+| `project.undo` | undo the last accepted command within the bounded service history |
+| `project.redo` | redo the last undone command within the bounded service history |
 | `project.preview_reset` | start one selected STATE scene directly |
 | `project.preview_input` | inject one logical A/B/L/R input |
 | `project.preview_advance` | advance deterministic preview time by an explicit duration |
@@ -191,7 +195,7 @@ visuals. Project mutation controls remain deferred to Stage 2.
 
 No scene-canvas or graph control may directly mutate normalized JSON in React.
 
-Implementation status: started. Service API version 5 exposes
+Implementation status: started. Service API version 6 exposes
 `project.apply_commands` with the first accepted command,
 `state.rename`. Accepted commands update the in-memory Python-owned project,
 return a new `project_revision`, normalized document, diagnostics, and dirty
@@ -199,8 +203,9 @@ state, and reject stale revisions. `project.save` persists the current
 in-memory scene records back to their authored scene JSON files and clears dirty
 state. Peep Studio also exposes Save As for copying the current `.peepproj`
 directory to a user-chosen location; checked-in examples opened through the
-example button are temporary copies. Undo/redo remain unavailable pending review
-of the mutation API shape.
+example button are temporary copies. `project.undo` and `project.redo` keep a
+bounded 32-step command history in the Python service; new edits clear redo, and
+dirty state is computed against the last saved semantic project hash.
 
 ### Stage 3: Scene Canvas And Visual Elements
 

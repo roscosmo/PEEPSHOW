@@ -16,9 +16,11 @@ import {
   Pause,
   Play,
   RotateCcw,
+  Redo2,
   Save,
   SaveAll,
   StepForward,
+  Undo2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -31,6 +33,7 @@ import type {
   Framebuffer,
   PackageBuildResult,
   ProjectCommandResult,
+  ProjectHistoryResult,
   ProjectSaveResult,
   PreviewSnapshot,
   ProjectLoadResult,
@@ -111,6 +114,8 @@ export default function App() {
   const [sceneSelection, setSceneSelection] = useState<SceneSelection>({ kind: "scene" });
   const [build, setBuild] = useState<PackageBuildResult | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -166,6 +171,8 @@ export default function App() {
       setPlaying(false);
       setBuild(null);
       setDirty(false);
+      setCanUndo(false);
+      setCanRedo(false);
       setProjectPath(path);
       setPreview(null);
       setSelectedScene(null);
@@ -174,6 +181,8 @@ export default function App() {
         const result = await bridge.serviceRequest<ProjectLoadResult>("project.load", { path });
         setProject(result);
         setDirty(result.dirty);
+        setCanUndo(result.can_undo);
+        setCanRedo(result.can_redo);
         setMessage(result.valid ? null : "Project validation failed. Review the issues panel.");
         if (result.valid) {
           await startPreview(result.summary.entry_scene, result.project_revision);
@@ -287,16 +296,48 @@ export default function App() {
       const result = await bridge.serviceRequest<ProjectSaveResult>("project.save", {
         project_revision: project.project_revision,
       });
-      setProject({
-        ...project,
-        project_revision: result.project_revision,
-        valid: result.valid,
-        issues: result.issues,
-        document: result.document,
-        summary: result.summary,
-      });
-      setDirty(result.dirty);
+      applyProjectResult(result);
       setMessage(`Saved ${result.saved_sources.length} scene source${result.saved_sources.length === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const applyProjectResult = (result: ProjectHistoryResult | ProjectCommandResult | ProjectSaveResult) => {
+    setProject((current) => (
+      current === null
+        ? null
+        : {
+            ...current,
+            project_revision: result.project_revision,
+            valid: result.valid,
+            issues: result.issues,
+            document: result.document,
+            summary: result.summary,
+          }
+    ));
+    setDirty(result.dirty);
+    setCanUndo(result.can_undo);
+    setCanRedo(result.can_redo);
+    setPreview(null);
+    setBuild(null);
+  };
+
+  const stepHistory = async (operation: "project.undo" | "project.redo") => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy(operation === "project.undo" ? "Undoing" : "Redoing");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectHistoryResult>(operation, {
+        project_revision: project.project_revision,
+      });
+      applyProjectResult(result);
+      setSceneSelection({ kind: "scene" });
+      setMessage(operation === "project.undo" ? "Undid last edit." : "Redid edit.");
     } catch (error) {
       setMessage(errorText(error));
     } finally {
@@ -314,15 +355,7 @@ export default function App() {
         const saved = await bridge.serviceRequest<ProjectSaveResult>("project.save", {
           project_revision: project.project_revision,
         });
-        setProject({
-          ...project,
-          project_revision: saved.project_revision,
-          valid: saved.valid,
-          issues: saved.issues,
-          document: saved.document,
-          summary: saved.summary,
-        });
-        setDirty(saved.dirty);
+        applyProjectResult(saved);
       }
       const destination = await bridge.saveProjectAs(projectPath, project.source_name);
       if (destination !== null) {
@@ -355,17 +388,7 @@ export default function App() {
           },
         ],
       });
-      setProject({
-        ...project,
-        project_revision: result.project_revision,
-        valid: result.valid,
-        issues: result.issues,
-        document: result.document,
-        summary: result.summary,
-      });
-      setPreview(null);
-      setBuild(null);
-      setDirty(result.dirty);
+      applyProjectResult(result);
       setSceneSelection({ kind: "state", id: stateId });
       setMessage("State renamed. Save to write it to the project.");
     } catch (error) {
@@ -422,6 +445,12 @@ export default function App() {
           <button className="button primary" onClick={buildPackage} disabled={!project?.valid || busy !== null}>
             <Hammer size={16} aria-hidden="true" />
             Build
+          </button>
+          <button className="icon-button" onClick={() => void stepHistory("project.undo")} disabled={!canUndo || project === null || busy !== null || service?.operations.includes("project.undo") !== true} title="Undo">
+            <Undo2 size={18} aria-hidden="true" />
+          </button>
+          <button className="icon-button" onClick={() => void stepHistory("project.redo")} disabled={!canRedo || project === null || busy !== null || service?.operations.includes("project.redo") !== true} title="Redo">
+            <Redo2 size={18} aria-hidden="true" />
           </button>
           <button className="button secondary" onClick={saveProject} disabled={!dirty || project === null || busy !== null || service?.operations.includes("project.save") !== true}>
             <Save size={16} aria-hidden="true" />

@@ -24,7 +24,8 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 5
+SERVICE_API_VERSION = 6
+UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
     "service.hello",
@@ -36,6 +37,8 @@ SERVICE_OPERATIONS = (
     "project.compatibility_report",
     "project.apply_commands",
     "project.save",
+    "project.undo",
+    "project.redo",
     "project.preview_reset",
     "project.preview_input",
     "project.preview_advance",
@@ -74,6 +77,10 @@ def _project_summary(bundle: ProjectBundle) -> dict[str, Any]:
     }
 
 
+def _semantic_sha256(bundle: ProjectBundle) -> str | None:
+    return hashlib.sha256(bundle.canonical_bytes()).hexdigest() if bundle.valid else None
+
+
 def _require_fields(params: dict[str, Any], required: set[str]) -> None:
     missing = required - params.keys()
     unknown = params.keys() - required
@@ -93,8 +100,38 @@ class AuthoringService:
         self._project_revision = 0
         self._preview: StateScenePreview | None = None
         self._preview_revision = 0
-        self._dirty = False
+        self._saved_sha256: str | None = None
+        self._undo_stack: list[ProjectBundle] = []
+        self._redo_stack: list[ProjectBundle] = []
         self.shutdown_requested = False
+
+    def _dirty(self) -> bool:
+        if self._bundle is None:
+            return False
+        return _semantic_sha256(self._bundle) != self._saved_sha256
+
+    def _remember_undo(self, bundle: ProjectBundle) -> None:
+        self._undo_stack.append(bundle)
+        if len(self._undo_stack) > UNDO_LIMIT:
+            del self._undo_stack[0 : len(self._undo_stack) - UNDO_LIMIT]
+        self._redo_stack.clear()
+
+    def _invalidate_preview(self) -> None:
+        self._preview = None
+        self._preview_revision += 1
+
+    def _project_document_result(self, bundle: ProjectBundle) -> dict[str, Any]:
+        return {
+            "project_revision": self._project_revision,
+            "valid": bundle.valid,
+            "issues": _issues(bundle),
+            "document": bundle.normalized() if bundle.valid else None,
+            "summary": _project_summary(bundle),
+            "dirty": self._dirty(),
+            "can_undo": bool(self._undo_stack),
+            "can_redo": bool(self._redo_stack),
+            "undo_limit": UNDO_LIMIT,
+        }
 
     def _current_bundle(
         self,
@@ -140,15 +177,14 @@ class AuthoringService:
         self._bundle = bundle
         self._project_revision += 1
         self._preview = None
-        self._dirty = False
+        self._preview_revision += 1
+        self._saved_sha256 = _semantic_sha256(bundle)
+        self._undo_stack.clear()
+        self._redo_stack.clear()
         return {
             "project_revision": self._project_revision,
             "source_name": bundle.root.name,
-            "valid": bundle.valid,
-            "issues": _issues(bundle),
-            "document": bundle.normalized() if bundle.valid else None,
-            "summary": _project_summary(bundle),
-            "dirty": self._dirty,
+            **self._project_document_result(bundle),
         }
 
     def _validate(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -224,19 +260,13 @@ class AuthoringService:
             updated, applied = apply_project_commands(bundle, params["commands"])
         except ProjectCommandError as exc:
             raise ProtocolError(exc.code, exc.message) from exc
+        self._remember_undo(bundle)
         self._bundle = updated
         self._project_revision += 1
-        self._preview = None
-        self._preview_revision += 1
-        self._dirty = True
+        self._invalidate_preview()
         return {
-            "project_revision": self._project_revision,
-            "valid": updated.valid,
-            "issues": _issues(updated),
-            "document": updated.normalized() if updated.valid else None,
-            "summary": _project_summary(updated),
+            **self._project_document_result(updated),
             "applied_commands": list(applied),
-            "dirty": self._dirty,
         }
 
     def _save(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -245,16 +275,33 @@ class AuthoringService:
             saved_sources = save_project(bundle)
         except ProjectCommandError as exc:
             raise ProtocolError(exc.code, exc.message) from exc
-        self._dirty = False
+        self._saved_sha256 = _semantic_sha256(bundle)
         return {
-            "project_revision": self._project_revision,
-            "valid": bundle.valid,
-            "issues": _issues(bundle),
-            "document": bundle.normalized() if bundle.valid else None,
-            "summary": _project_summary(bundle),
-            "dirty": self._dirty,
+            **self._project_document_result(bundle),
             "saved_sources": list(saved_sources),
         }
+
+    def _undo(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params)
+        if not self._undo_stack:
+            raise ProtocolError("UNDO_UNAVAILABLE", "there is no command to undo")
+        self._redo_stack.append(bundle)
+        self._bundle = self._undo_stack.pop()
+        self._project_revision += 1
+        self._invalidate_preview()
+        return self._project_document_result(self._bundle)
+
+    def _redo(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params)
+        if not self._redo_stack:
+            raise ProtocolError("REDO_UNAVAILABLE", "there is no command to redo")
+        self._undo_stack.append(bundle)
+        if len(self._undo_stack) > UNDO_LIMIT:
+            del self._undo_stack[0 : len(self._undo_stack) - UNDO_LIMIT]
+        self._bundle = self._redo_stack.pop()
+        self._project_revision += 1
+        self._invalidate_preview()
+        return self._project_document_result(self._bundle)
 
     def _preview_result(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -332,6 +379,8 @@ class AuthoringService:
             "project.compatibility_report": self._compatibility_report,
             "project.apply_commands": self._apply_commands,
             "project.save": self._save,
+            "project.undo": self._undo,
+            "project.redo": self._redo,
             "project.preview_reset": self._preview_reset,
             "project.preview_input": self._preview_input,
             "project.preview_advance": self._preview_advance,

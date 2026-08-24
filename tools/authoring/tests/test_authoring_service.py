@@ -181,7 +181,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(5, SERVICE_API_VERSION)
+        self.assertEqual(6, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -189,6 +189,8 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertIn("project.compatibility_report", result["operations"])
         self.assertIn("project.apply_commands", result["operations"])
         self.assertIn("project.save", result["operations"])
+        self.assertIn("project.undo", result["operations"])
+        self.assertIn("project.redo", result["operations"])
         self.assertIn("project.preview_reset", result["operations"])
         self.assertIn("project.preview_input", result["operations"])
         self.assertIn("project.preview_advance", result["operations"])
@@ -246,6 +248,9 @@ class AuthoringServiceTests(unittest.TestCase):
         )
         self.assertEqual(2, renamed["project_revision"])
         self.assertTrue(renamed["dirty"])
+        self.assertTrue(renamed["can_undo"])
+        self.assertFalse(renamed["can_redo"])
+        self.assertEqual(32, renamed["undo_limit"])
         self.assertEqual(
             [
                 {
@@ -300,6 +305,131 @@ class AuthoringServiceTests(unittest.TestCase):
                 )
             )
         self.assertEqual("PROJECT_TEXT_INVALID", raised.exception.code)
+
+    def test_undo_redo_round_trips_state_rename_and_dirty_baseline(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        self.assertFalse(loaded["can_undo"])
+        self.assertFalse(loaded["can_redo"])
+        original_states = loaded["document"]["scenes"][0]["states"]
+        original_name = next(state for state in original_states if state["state_id"] == "center")["display_name"]
+        renamed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "state.rename",
+                            "scene_id": "state_demo",
+                            "state_id": "center",
+                            "display_name": "Undo Name",
+                        }
+                    ],
+                },
+            )
+        )
+        self.assertTrue(renamed["dirty"])
+
+        undone = service.handle(request("project.undo", {"project_revision": renamed["project_revision"]}))
+        states = undone["document"]["scenes"][0]["states"]
+        self.assertEqual(original_name, next(state for state in states if state["state_id"] == "center")["display_name"])
+        self.assertFalse(undone["dirty"])
+        self.assertFalse(undone["can_undo"])
+        self.assertTrue(undone["can_redo"])
+
+        redone = service.handle(request("project.redo", {"project_revision": undone["project_revision"]}))
+        states = redone["document"]["scenes"][0]["states"]
+        self.assertEqual("Undo Name", next(state for state in states if state["state_id"] == "center")["display_name"])
+        self.assertTrue(redone["dirty"])
+        self.assertTrue(redone["can_undo"])
+        self.assertFalse(redone["can_redo"])
+
+    def test_save_updates_dirty_baseline_without_clearing_undo_history(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "undo_save.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            renamed = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "state.rename",
+                                "scene_id": "state_demo",
+                                "state_id": "center",
+                                "display_name": "Saved Undo",
+                            }
+                        ],
+                    },
+                )
+            )
+            saved = service.handle(request("project.save", {"project_revision": renamed["project_revision"]}))
+            self.assertFalse(saved["dirty"])
+            self.assertTrue(saved["can_undo"])
+
+            undone = service.handle(request("project.undo", {"project_revision": saved["project_revision"]}))
+            self.assertTrue(undone["dirty"])
+
+            redone = service.handle(request("project.redo", {"project_revision": undone["project_revision"]}))
+            self.assertFalse(redone["dirty"])
+
+    def test_undo_history_is_bounded_and_new_edit_clears_redo(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        revision = loaded["project_revision"]
+        for index in range(35):
+            result = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": revision,
+                        "commands": [
+                            {
+                                "kind": "state.rename",
+                                "scene_id": "state_demo",
+                                "state_id": "center",
+                                "display_name": f"Name {index}",
+                            }
+                        ],
+                    },
+                )
+            )
+            revision = result["project_revision"]
+            self.assertEqual(32, result["undo_limit"])
+
+        undo_count = 0
+        while True:
+            try:
+                result = service.handle(request("project.undo", {"project_revision": revision}))
+            except ProtocolError as exc:
+                self.assertEqual("UNDO_UNAVAILABLE", exc.code)
+                break
+            undo_count += 1
+            revision = result["project_revision"]
+        self.assertEqual(32, undo_count)
+
+        redone = service.handle(request("project.redo", {"project_revision": revision}))
+        edited = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": redone["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "state.rename",
+                            "scene_id": "state_demo",
+                            "state_id": "center",
+                            "display_name": "Redo Cleared",
+                        }
+                    ],
+                },
+            )
+        )
+        self.assertFalse(edited["can_redo"])
 
     def test_save_persists_renamed_state_source(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

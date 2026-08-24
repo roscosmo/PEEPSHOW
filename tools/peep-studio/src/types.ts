@@ -123,6 +123,9 @@ export type ProjectLoadResult = {
   } | null;
   summary: ProjectSummary;
   dirty: boolean;
+  can_undo: boolean;
+  can_redo: boolean;
+  undo_limit: number;
 };
 
 export type ProjectCommandResult = {
@@ -135,6 +138,9 @@ export type ProjectCommandResult = {
   summary: ProjectSummary;
   applied_commands: Array<Record<string, unknown>>;
   dirty: boolean;
+  can_undo: boolean;
+  can_redo: boolean;
+  undo_limit: number;
 };
 
 export type ProjectSaveResult = {
@@ -146,7 +152,24 @@ export type ProjectSaveResult = {
   } | null;
   summary: ProjectSummary;
   dirty: boolean;
+  can_undo: boolean;
+  can_redo: boolean;
+  undo_limit: number;
   saved_sources: string[];
+};
+
+export type ProjectHistoryResult = {
+  project_revision: number;
+  valid: boolean;
+  issues: ValidationIssue[];
+  document: {
+    scenes?: SceneDocument[];
+  } | null;
+  summary: ProjectSummary;
+  dirty: boolean;
+  can_undo: boolean;
+  can_redo: boolean;
+  undo_limit: number;
 };
 
 export type Framebuffer = {
