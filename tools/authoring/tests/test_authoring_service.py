@@ -399,6 +399,98 @@ class AuthoringServiceTests(unittest.TestCase):
                 next(route for route in routes if route["route_id"] == "center_to_right")["target_state"],
             )
 
+    def test_route_set_guard_updates_existing_guard_and_undo_redo(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "route.set_guard",
+                            "scene_id": "state_demo",
+                            "route_id": "center_to_right",
+                            "guard_index": 0,
+                            "variable_ref": "selected_index",
+                            "operator": "ge",
+                            "value": 1,
+                        }
+                    ],
+                },
+            )
+        )
+        guard = next(route for route in changed["document"]["scenes"][0]["routes"] if route["route_id"] == "center_to_right")["guards"][0]
+        self.assertEqual({"variable_ref": "selected_index", "operator": "ge", "value": 1}, guard)
+
+        undone = service.handle(request("project.undo", {"project_revision": changed["project_revision"]}))
+        guard = next(route for route in undone["document"]["scenes"][0]["routes"] if route["route_id"] == "center_to_right")["guards"][0]
+        self.assertEqual({"variable_ref": "selected_index", "operator": "eq", "value": 1}, guard)
+
+        redone = service.handle(request("project.redo", {"project_revision": undone["project_revision"]}))
+        guard = next(route for route in redone["document"]["scenes"][0]["routes"] if route["route_id"] == "center_to_right")["guards"][0]
+        self.assertEqual({"variable_ref": "selected_index", "operator": "ge", "value": 1}, guard)
+
+    def test_route_set_guard_rejects_invalid_fields(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        base_command = {
+            "kind": "route.set_guard",
+            "scene_id": "state_demo",
+            "route_id": "center_to_right",
+            "guard_index": 0,
+            "variable_ref": "selected_index",
+            "operator": "eq",
+            "value": 1,
+        }
+        cases = [
+            ({**base_command, "variable_ref": "missing"}, "GUARD_VARIABLE_UNKNOWN"),
+            ({**base_command, "operator": "around"}, "GUARD_OPERATOR_INVALID"),
+            ({**base_command, "value": True}, "GUARD_TYPE_MISMATCH"),
+            ({**base_command, "guard_index": 99}, "COMMAND_INDEX_INVALID"),
+        ]
+        revision = loaded["project_revision"]
+        for command, code in cases:
+            with self.assertRaises(ProtocolError) as raised:
+                service.handle(
+                    request(
+                        "project.apply_commands",
+                        {"project_revision": revision, "commands": [command]},
+                    )
+                )
+            self.assertEqual(code, raised.exception.code)
+
+    def test_route_set_guard_persists_on_save(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "route_guard.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            changed = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "route.set_guard",
+                                "scene_id": "state_demo",
+                                "route_id": "center_to_right",
+                                "guard_index": 0,
+                                "variable_ref": "selected_index",
+                                "operator": "le",
+                                "value": 2,
+                            }
+                        ],
+                    },
+                )
+            )
+            service.handle(request("project.save", {"project_revision": changed["project_revision"]}))
+            reloaded = load_project(project_root)
+            guard = next(route for route in reloaded.normalized()["scenes"][0]["routes"] if route["route_id"] == "center_to_right")["guards"][0]
+            self.assertEqual({"variable_ref": "selected_index", "operator": "le", "value": 2}, guard)
+
     def test_undo_redo_round_trips_state_rename_and_dirty_baseline(self) -> None:
         service = AuthoringService()
         loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))

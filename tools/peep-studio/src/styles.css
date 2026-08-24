@@ -692,6 +692,34 @@ button:focus-visible {
   font-size: 10px;
 }
 
+.guard-editor-list {
+  display: grid;
+  gap: 7px;
+}
+
+.guard-editor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px 70px;
+  gap: 6px;
+}
+
+.guard-editor-row select,
+.guard-editor-row input {
+  min-width: 0;
+  height: 31px;
+  padding: 0 7px;
+  border: 1px solid #cbd3ce;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #242c28;
+  font: inherit;
+  font-size: 11px;
+}
+
+.guard-editor-row input {
+  font-variant-numeric: tabular-nums;
+}
+
 .link-row {
   display: flex;
   min-height: 33px;

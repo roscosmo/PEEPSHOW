@@ -70,7 +70,8 @@ the editor until this document is updated:
 
 - SEQUENCE and PROGRAM scene authoring or execution;
 - editable node graph controls beyond the current inspector commands;
-- project mutation commands beyond `state.rename` and `route.set_target`;
+- project mutation commands beyond `state.rename`, `route.set_target`, and
+  `route.set_guard`;
 - 4-tone and 16-tone fixed dither asset import;
 - maps, tile layers, fonts, rotation, or interpolated scaling;
 - package installation or activation on a connected device;
@@ -197,9 +198,10 @@ No scene-canvas or graph control may directly mutate normalized JSON in React.
 
 Implementation status: started. Service API version 6 exposes
 `project.apply_commands` with the first accepted commands,
-`state.rename` and `route.set_target`. Accepted commands update the in-memory
-Python-owned project, return a new `project_revision`, normalized document,
-diagnostics, and dirty state, and reject stale revisions. `project.save` persists the current
+`state.rename`, `route.set_target`, and `route.set_guard`. Accepted commands
+update the in-memory Python-owned project, return a new `project_revision`,
+normalized document, diagnostics, and dirty state, and reject stale revisions.
+`project.save` persists the current
 in-memory scene records back to their authored scene JSON files and clears dirty
 state. Peep Studio also exposes Save As for copying the current `.peepproj`
 directory to a user-chosen location; checked-in examples opened through the

@@ -19,6 +19,7 @@ from .image_assets import (
 
 
 STABLE_ID = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
+GUARD_OPERATORS = {"eq", "ne", "lt", "le", "gt", "ge"}
 PROJECT_KEYS = {
     "schema_id",
     "schema_version",
@@ -206,6 +207,69 @@ def _apply_route_set_target(
                     "route_id": route_id,
                     "target_state": target_state,
                 }
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown route '{route_id}'")
+    raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
+
+
+def _apply_route_set_guard(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "route_id", "guard_index", "variable_ref", "operator", "value"},
+        {"kind", "scene_id", "route_id", "guard_index", "variable_ref", "operator", "value", "command_id"},
+    )
+    issues: list[ValidationIssue] = []
+    scene_id = command.get("scene_id")
+    route_id = command.get("route_id")
+    variable_ref = command.get("variable_ref")
+    operator = command.get("operator")
+    value = command.get("value")
+    guard_index = command.get("guard_index")
+    _stable_id(scene_id, "command.scene_id", issues)
+    _stable_id(route_id, "command.route_id", issues)
+    _stable_id(variable_ref, "command.variable_ref", issues)
+    if operator not in GUARD_OPERATORS:
+        raise ProjectCommandError("GUARD_OPERATOR_INVALID", "unsupported comparison")
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ProjectCommandError("GUARD_TYPE_MISMATCH", "guard value must be an integer")
+    if isinstance(guard_index, bool) or not isinstance(guard_index, int) or guard_index < 0:
+        raise ProjectCommandError("COMMAND_INDEX_INVALID", "guard_index must be a non-negative integer")
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+
+    for scene in scenes:
+        if scene.get("scene_id") != scene_id:
+            continue
+        variable_ids = {
+            variable.get("variable_id")
+            for variable in scene.get("variables", [])
+            if isinstance(variable, dict)
+        }
+        if variable_ref not in variable_ids:
+            raise ProjectCommandError("GUARD_VARIABLE_UNKNOWN", f"unknown variable '{variable_ref}'")
+        for route in scene.get("routes", []):
+            if not isinstance(route, dict) or route.get("route_id") != route_id:
+                continue
+            guards = route.get("guards")
+            if not isinstance(guards, list) or guard_index >= len(guards):
+                raise ProjectCommandError("COMMAND_INDEX_INVALID", "guard_index does not select an existing guard")
+            guards[guard_index] = {
+                "variable_ref": variable_ref,
+                "operator": operator,
+                "value": value,
+            }
+            return {
+                "kind": "route.set_guard",
+                "scene_id": scene_id,
+                "route_id": route_id,
+                "guard_index": guard_index,
+                "variable_ref": variable_ref,
+                "operator": operator,
+                "value": value,
+            }
         raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown route '{route_id}'")
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
 
@@ -841,6 +905,8 @@ def apply_project_commands(
             applied.append(_apply_state_rename(scenes, command))
         elif kind == "route.set_target":
             applied.append(_apply_route_set_target(scenes, command))
+        elif kind == "route.set_guard":
+            applied.append(_apply_route_set_guard(scenes, command))
         else:
             raise ProjectCommandError("COMMAND_KIND_UNKNOWN", f"unknown command kind '{kind}'")
 

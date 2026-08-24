@@ -71,6 +71,8 @@ function GuardList({ guards }: { guards: StateGuard[] }) {
   );
 }
 
+const GUARD_OPERATORS = ["eq", "ne", "lt", "le", "gt", "ge"] as const;
+
 function ActionList({ actions }: { actions: StateAction[] }) {
   if (actions.length === 0) {
     return <EmptyInspector>No actions.</EmptyInspector>;
@@ -178,6 +180,7 @@ export function SceneAuthoringInspector({
   onSelect,
   onRenameState,
   onSetRouteTarget,
+  onSetRouteGuard,
   canEdit,
 }: {
   scene: SceneDocument | null;
@@ -185,6 +188,14 @@ export function SceneAuthoringInspector({
   onSelect: (selection: SceneSelection) => void;
   onRenameState: (sceneId: string, stateId: string, displayName: string) => Promise<void>;
   onSetRouteTarget: (sceneId: string, routeId: string, targetState: string) => Promise<void>;
+  onSetRouteGuard: (
+    sceneId: string,
+    routeId: string,
+    guardIndex: number,
+    variableRef: string,
+    operator: string,
+    value: number,
+  ) => Promise<void>;
   canEdit: boolean;
 }) {
   const variables = scene?.variables ?? [];
@@ -250,7 +261,9 @@ export function SceneAuthoringInspector({
           route={route}
           states={states}
           inputActions={inputActions}
+          variables={variables}
           onSetRouteTarget={onSetRouteTarget}
+          onSetRouteGuard={onSetRouteGuard}
           canEdit={canEdit}
         />
       )}
@@ -379,14 +392,25 @@ function RouteInspector({
   route,
   states,
   inputActions,
+  variables,
   onSetRouteTarget,
+  onSetRouteGuard,
   canEdit,
 }: {
   sceneId: string;
   route: StateRoute;
   states: StateRecord[];
   inputActions: InputAction[];
+  variables: StateVariable[];
   onSetRouteTarget: (sceneId: string, routeId: string, targetState: string) => Promise<void>;
+  onSetRouteGuard: (
+    sceneId: string,
+    routeId: string,
+    guardIndex: number,
+    variableRef: string,
+    operator: string,
+    value: number,
+  ) => Promise<void>;
   canEdit: boolean;
 }) {
   const input = inputActions.find((item) => item.action_id === route.action_ref);
@@ -420,10 +444,91 @@ function RouteInspector({
         </select>
       </label>
       <h4>Guards</h4>
-      <GuardList guards={route.guards} />
+      <EditableGuardList
+        sceneId={sceneId}
+        route={route}
+        variables={variables}
+        canEdit={canEdit}
+        onSetRouteGuard={onSetRouteGuard}
+      />
       <h4>Ordered actions</h4>
       <ActionList actions={route.actions} />
     </section>
+  );
+}
+
+function EditableGuardList({
+  sceneId,
+  route,
+  variables,
+  canEdit,
+  onSetRouteGuard,
+}: {
+  sceneId: string;
+  route: StateRoute;
+  variables: StateVariable[];
+  canEdit: boolean;
+  onSetRouteGuard: (
+    sceneId: string,
+    routeId: string,
+    guardIndex: number,
+    variableRef: string,
+    operator: string,
+    value: number,
+  ) => Promise<void>;
+}) {
+  if (route.guards.length === 0) {
+    return <EmptyInspector>No guards.</EmptyInspector>;
+  }
+  return (
+    <div className="guard-editor-list">
+      {route.guards.map((guard, index) => {
+        const commit = (variableRef: string, operator: string, value: number) => {
+          void onSetRouteGuard(sceneId, route.route_id, index, variableRef, operator, value);
+        };
+        return (
+          <div className="guard-editor-row" key={`${route.route_id}-guard-${index}`}>
+            <select
+              aria-label={`Guard ${index + 1} variable`}
+              value={guard.variable_ref}
+              disabled={!canEdit}
+              onChange={(event) => commit(event.target.value, guard.operator, guard.value)}
+            >
+              {variables.map((variable) => (
+                <option key={variable.variable_id} value={variable.variable_id}>
+                  {variable.variable_id}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label={`Guard ${index + 1} operator`}
+              value={guard.operator}
+              disabled={!canEdit}
+              onChange={(event) => commit(guard.variable_ref, event.target.value, guard.value)}
+            >
+              {GUARD_OPERATORS.map((operator) => (
+                <option key={operator} value={operator}>
+                  {operator}
+                </option>
+              ))}
+            </select>
+            <input
+              aria-label={`Guard ${index + 1} value`}
+              type="number"
+              step={1}
+              value={guard.value}
+              disabled={!canEdit}
+              onChange={(event) => {
+                const parsed = Number.parseInt(event.target.value, 10);
+                if (Number.isFinite(parsed)) {
+                  commit(guard.variable_ref, guard.operator, parsed);
+                }
+              }}
+            />
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
