@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (57UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (58UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -510,6 +510,8 @@ typedef struct
   uint32_t ui_action_msc_exit_count;
   uint32_t ui_action_msc_exit_intercept_count;
   uint32_t ui_action_package_install_stub_count;
+  uint32_t package_install_runtime_complete_send_status;
+  uint32_t package_install_runtime_launch_send_status;
   uint32_t ui_action_unsupported_count;
 } PS_HW6_RTOS_Probe;
 

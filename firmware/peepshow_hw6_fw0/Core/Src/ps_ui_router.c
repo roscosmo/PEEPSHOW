@@ -461,6 +461,11 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
         status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF);
         if (status == PS_STATUS_OK)
         {
+          if (ps_ui_router_state.package_state ==
+              PS_UI_ROUTER_PACKAGE_INSTALLING)
+          {
+            PS_UIRouter_SetPackageState(PS_UI_ROUTER_PACKAGE_INSTALLED);
+          }
           ps_ui_router_state.eggless = 0UL;
         }
       }

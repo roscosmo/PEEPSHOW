@@ -5423,6 +5423,18 @@ static void PS_HW6_RTOS_RuntimeRecordAdmission(uint32_t runtime_class,
   }
 }
 
+static void PS_HW6_RTOS_RequestPackageInstallErrorUi(void)
+{
+  if ((g_ps_ui_router_probe.package_state ==
+       (uint32_t)PS_UI_ROUTER_PACKAGE_INSTALLING) &&
+      (g_ps_ui_router_request == 0UL))
+  {
+    g_ps_ui_router_request_event =
+      (uint32_t)PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_ERROR;
+    g_ps_ui_router_request = 1UL;
+  }
+}
+
 static void PS_HW6_RTOS_RuntimePackageActivateStub(uint32_t runtime_class,
                                                    uint32_t execution,
                                                    uint32_t capabilities,
@@ -5464,6 +5476,7 @@ static void PS_HW6_RTOS_RuntimePackageActivateStub(uint32_t runtime_class,
     PS_HW6_RTOS_RuntimeRecord(
       event,
       (uint32_t)PS_STATUS_INTERNAL_ERROR);
+    PS_HW6_RTOS_RequestPackageInstallErrorUi();
     return;
   }
 
@@ -5500,9 +5513,17 @@ static void PS_HW6_RTOS_RuntimePackageActivateStub(uint32_t runtime_class,
             (uint32_t)PS_HW6_RUNTIME_CLASS_SHELL,
             (uint32_t)PS_HW6_RUNTIME_EXEC_REACTIVE,
             (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_RUNNING);
-          g_ps_ui_router_request_event =
-            (uint32_t)PS_UI_ROUTER_EVENT_RUNTIME_UNAVAILABLE;
-          g_ps_ui_router_request = 1UL;
+          if (g_ps_ui_router_probe.package_state ==
+              (uint32_t)PS_UI_ROUTER_PACKAGE_INSTALLING)
+          {
+            PS_HW6_RTOS_RequestPackageInstallErrorUi();
+          }
+          else
+          {
+            g_ps_ui_router_request_event =
+              (uint32_t)PS_UI_ROUTER_EVENT_RUNTIME_UNAVAILABLE;
+            g_ps_ui_router_request = 1UL;
+          }
         }
         else
         {
@@ -5521,6 +5542,7 @@ static void PS_HW6_RTOS_RuntimePackageActivateStub(uint32_t runtime_class,
           runtime_class,
           execution,
           (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_ERROR);
+        PS_HW6_RTOS_RequestPackageInstallErrorUi();
       }
     }
     else
@@ -5871,7 +5893,14 @@ static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
 static void PS_HW6_RTOS_RunStoragePackageInstallStubRequest(void)
 {
   UINT clock_status;
+  UINT complete_send_status = TX_NOT_AVAILABLE;
+  UINT launch_send_status = TX_NOT_AVAILABLE;
   HAL_StatusTypeDef install_status = HAL_ERROR;
+
+  g_ps_hw6_rtos_probe.package_install_runtime_complete_send_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.package_install_runtime_launch_send_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
 
   clock_status = PS_HW6_RTOS_RequestStorageClockCapabilities(
     PS_HW6_RTOS_STORAGE_CLOCK_REASON_PACKAGE_LOAD,
@@ -5885,16 +5914,29 @@ static void PS_HW6_RTOS_RunStoragePackageInstallStubRequest(void)
   (void)PS_HW6_RTOS_RequestStorageClockCapabilities(
     PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE,
     0UL);
-  (void)PS_HW6_RTOS_RequestRuntimeCommand(
-    (install_status == HAL_OK) ?
-    PS_HW6_RTOS_COMMAND_RUNTIME_INSTALLER_COMPLETE :
-    PS_HW6_RTOS_COMMAND_RUNTIME_INSTALLER_ERROR);
-  if (g_ps_ui_router_request == 0UL)
+
+  if (install_status == HAL_OK)
   {
-    g_ps_ui_router_request_event = (install_status == HAL_OK) ?
-      (uint32_t)PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_DONE :
-      (uint32_t)PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_ERROR;
-    g_ps_ui_router_request = 1UL;
+    complete_send_status = PS_HW6_RTOS_RequestRuntimeCommand(
+      PS_HW6_RTOS_COMMAND_RUNTIME_INSTALLER_COMPLETE);
+    if (complete_send_status == TX_SUCCESS)
+    {
+      launch_send_status = PS_HW6_RTOS_RequestRuntimeCommand(
+        PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_REACTIVE_STUB);
+    }
+    g_ps_hw6_rtos_probe.package_install_runtime_complete_send_status =
+      (uint32_t)complete_send_status;
+    g_ps_hw6_rtos_probe.package_install_runtime_launch_send_status =
+      (uint32_t)launch_send_status;
+  }
+
+  if ((install_status != HAL_OK) ||
+      (complete_send_status != TX_SUCCESS) ||
+      (launch_send_status != TX_SUCCESS))
+  {
+    (void)PS_HW6_RTOS_RequestRuntimeCommand(
+      PS_HW6_RTOS_COMMAND_RUNTIME_INSTALLER_ERROR);
+    PS_HW6_RTOS_RequestPackageInstallErrorUi();
   }
 }
 

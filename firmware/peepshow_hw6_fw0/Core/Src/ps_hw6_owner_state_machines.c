@@ -3790,6 +3790,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
   uint32_t staged_capacity = 0UL;
   uint32_t publish_status = 1UL;
   ps_status_t load_status = PS_STATUS_INTERNAL_ERROR;
+  ps_status_t persistent_status = PS_STATUS_INTERNAL_ERROR;
 
   g_ps_hw6_owner_sm_probe.package_install_stub_request_count++;
   g_ps_hw6_owner_sm_probe.package_install_stub_start_tick =
@@ -3814,6 +3815,13 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.package_install_stub_lx_close_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_install_stub_persistent_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.package_install_stub_target_record =
+    PS_STORAGE_PACKAGE_INDEX_INVALID_SELECTION;
+  g_ps_hw6_owner_sm_probe.package_install_stub_target_slot =
+    PS_STORAGE_PACKAGE_INDEX_INVALID_SELECTION;
+  g_ps_hw6_owner_sm_probe.package_install_stub_target_generation = 0UL;
   g_ps_hw6_owner_sm_probe.package_install_stub_publish_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.package_install_stub_source =
@@ -3853,8 +3861,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
     }
 
     if ((prepare_status == HAL_OK) &&
-        (PS_PackageSource_BeginStagedWrite(&staged_buffer,
-                                           &staged_capacity) == 0UL))
+        (PS_PackageSource_BeginInstalledWrite(&staged_buffer,
+                                              &staged_capacity) == 0UL))
     {
       load_status = ps_storage_filex_levelx_load_usb_staging_package(
         &ps_flash_block,
@@ -3883,22 +3891,44 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
 
       if (load_status == PS_STATUS_OK)
       {
-        park_status = PS_HW6_SM_QuiesceStorage(
-          PS_HW6_OWNER_SM_CYCLE_COUNT);
-        if (park_status == HAL_OK)
+        persistent_status = PS_StoragePackageIndex_InstallValidated(
+          &ps_flash_block,
+          staged_buffer,
+          ps_storage_package_load_result.bytes_read);
+        g_ps_hw6_owner_sm_probe.package_install_stub_persistent_status =
+          (uint32_t)persistent_status;
+        if (persistent_status == PS_STATUS_OK)
         {
-          publish_status = PS_PackageSource_CommitStagedWrite(
-            ps_storage_package_load_result.bytes_read);
+          g_ps_hw6_owner_sm_probe.package_install_stub_target_record =
+            g_ps_storage_package_install_probe.selected_record;
+          g_ps_hw6_owner_sm_probe.package_install_stub_target_slot =
+            g_ps_storage_package_install_probe.selected_slot;
+          g_ps_hw6_owner_sm_probe.package_install_stub_target_generation =
+            g_ps_storage_package_install_probe.selected_generation;
         }
+      }
+
+      park_status = PS_HW6_SM_QuiesceStorage(
+        PS_HW6_OWNER_SM_CYCLE_COUNT);
+      if ((load_status == PS_STATUS_OK) &&
+          (persistent_status == PS_STATUS_OK) &&
+          (park_status == HAL_OK))
+      {
+        publish_status = PS_PackageSource_CommitInstalledWrite(
+          ps_storage_package_load_result.bytes_read,
+          g_ps_storage_package_install_probe.selected_generation);
       }
     }
 
-    if ((load_status == PS_STATUS_OK) && (publish_status == 0UL))
+    if ((load_status == PS_STATUS_OK) &&
+        (persistent_status == PS_STATUS_OK) &&
+        (park_status == HAL_OK) &&
+        (publish_status == 0UL))
     {
       status = HAL_OK;
       g_ps_hw6_owner_sm_probe.package_candidate_pending = 0UL;
       g_ps_hw6_owner_sm_probe.package_install_stub_source =
-        (uint32_t)PS_PACKAGE_SOURCE_STAGED_RAM;
+        (uint32_t)PS_PACKAGE_SOURCE_INSTALLED_RAM;
       g_ps_hw6_owner_sm_probe.package_install_stub_generation =
         g_ps_package_source_probe.generation;
     }

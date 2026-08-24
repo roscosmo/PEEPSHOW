@@ -130,6 +130,23 @@ unless the exact marker and complete CRC-covered body both validate. Cleanup of
 the old slot or old index is deferred until a later replacement needs that
 inactive location.
 
+The HW6 FW0 USB vertical slice now exercises this physical replacement path
+end to end. After firmware reclaims the MSC staging volume, `thStorage` copies
+the one accepted `.egg` into bounded RAM, writes and verifies the inactive
+package slot, commits the inactive index record last, parks flash, publishes
+the selected generation as installed runtime RAM, and requests immediate STATE
+scene activation. The package browser changes from `INSTALLING` to `INSTALLED`
+only after runtime activation succeeds; failure returns it to an explicit error
+state so STOP2 is not permanently vetoed.
+
+The current bring-up admission check before persistent commit is still narrower
+than the production rule in step 4: it checks the bounded `PKG1` envelope and
+footer, then byte-verifies the programmed package. SHA-256, complete container,
+chunk, and scene-schema validation currently runs during the immediate runtime
+activation. Production completion must move the required integrity checks
+before the commit marker so a semantically invalid package can never become the
+selected generation.
+
 The current `65536`-byte staged-RAM source remains a bring-up activation cache,
 not the installed slot size. Persistent layout and index metadata must support
 the full `5 MiB` slot. Runtime metadata and small prepared assets may be cached

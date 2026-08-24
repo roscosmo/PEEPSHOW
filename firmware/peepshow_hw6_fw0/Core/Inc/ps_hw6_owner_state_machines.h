@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (60UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (61UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -987,6 +987,10 @@ typedef struct
   uint32_t package_install_stub_file_close_status;
   uint32_t package_install_stub_fx_close_status;
   uint32_t package_install_stub_lx_close_status;
+  uint32_t package_install_stub_persistent_status;
+  uint32_t package_install_stub_target_record;
+  uint32_t package_install_stub_target_slot;
+  uint32_t package_install_stub_target_generation;
   uint32_t package_install_stub_publish_status;
   uint32_t package_install_stub_source;
   uint32_t package_install_stub_generation;
