@@ -716,6 +716,52 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
+.transition-summary {
+  display: grid;
+  gap: 7px;
+}
+
+.transition-summary div {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid #d6ddd9;
+  border-radius: 5px;
+  background: #ffffff;
+}
+
+.transition-summary span,
+.rule-row-heading,
+.rule-field-grid label,
+.effect-kind-field {
+  color: #68736d;
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.transition-summary strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #26302b;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plain-rule-note {
+  min-height: 32px;
+  padding: 8px;
+  border: 1px solid #d6ddd9;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #59645e;
+  font-size: 11px;
+}
+
 .ordered-records {
   display: grid;
   gap: 5px;
@@ -736,54 +782,34 @@ button:focus-visible {
   gap: 7px;
 }
 
-.guard-editor-row {
+.guard-editor-row,
+.action-editor-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 64px 70px;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #d6ddd9;
+  border-radius: 5px;
+  background: #ffffff;
+}
+
+.rule-row-heading {
+  color: #4c5751;
+}
+
+.rule-field-grid {
+  display: grid;
   gap: 6px;
+  grid-template-columns: minmax(0, 1fr) minmax(94px, 0.9fr) 72px;
+}
+
+.rule-field-grid label,
+.effect-kind-field {
+  display: grid;
+  gap: 4px;
 }
 
 .guard-editor-row select,
-.guard-editor-row input {
-  min-width: 0;
-  height: 31px;
-  padding: 0 7px;
-  border: 1px solid #cbd3ce;
-  border-radius: 5px;
-  background: #ffffff;
-  color: #242c28;
-  font: inherit;
-  font-size: 11px;
-}
-
-.guard-editor-row input {
-  font-variant-numeric: tabular-nums;
-}
-
-.action-editor-list {
-  display: grid;
-  gap: 7px;
-}
-
-.action-editor-row {
-  display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) minmax(0, 1fr) 78px 70px;
-  gap: 6px;
-}
-
-.action-row-label {
-  display: flex;
-  min-width: 0;
-  height: 31px;
-  align-items: center;
-  overflow: hidden;
-  color: #68736d;
-  font-size: 10px;
-  font-weight: 750;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
+.guard-editor-row input,
 .action-editor-row select,
 .action-editor-row input {
   min-width: 0;
@@ -797,21 +823,23 @@ button:focus-visible {
   font-size: 11px;
 }
 
+.guard-editor-row input,
 .action-editor-row input {
   font-variant-numeric: tabular-nums;
+}
+
+.action-editor-list {
+  display: grid;
+  gap: 7px;
 }
 
 .action-static-note {
   display: flex;
   min-width: 0;
   min-height: 31px;
-  grid-column: span 3;
   align-items: center;
-  overflow: hidden;
   color: #68736d;
   font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .link-row {

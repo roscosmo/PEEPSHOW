@@ -72,6 +72,31 @@ function GuardList({ guards }: { guards: StateGuard[] }) {
 
 const GUARD_OPERATORS = ["eq", "ne", "lt", "le", "gt", "ge"] as const;
 const ACTION_OPERATIONS = ["assign", "add"] as const;
+const INPUT_LABELS: Record<string, string> = {
+  BUTTON_A: "Button A",
+  BUTTON_B: "Button B",
+  BUTTON_L: "Left button",
+  BUTTON_R: "Right button",
+};
+const GUARD_OPERATOR_LABELS: Record<string, string> = {
+  eq: "is",
+  ne: "is not",
+  lt: "is less than",
+  le: "is at most",
+  gt: "is greater than",
+  ge: "is at least",
+};
+
+function displayInputLabel(source: string | undefined, fallback: string): string {
+  if (source === undefined) {
+    return fallback;
+  }
+  return INPUT_LABELS[source] ?? source;
+}
+
+function displayStateName(states: StateRecord[], stateId: string): string {
+  return states.find((state) => state.state_id === stateId)?.display_name ?? stateId;
+}
 
 export function StateGraphView({
   scene,
@@ -414,14 +439,20 @@ function RouteInspector({
   return (
     <section className="inspector-section selected-record">
       <h3>Selected transition</h3>
-      <InspectorList
-        rows={[
-          ["Internal ID", route.route_id],
-          ["When", input?.logical_source ?? route.action_ref],
-          ["From", route.from_states.join(", ")],
-          ["Goes to", route.target_state],
-        ]}
-      />
+      <div className="transition-summary">
+        <div>
+          <span>When</span>
+          <strong>{displayInputLabel(input?.logical_source, route.action_ref)}</strong>
+        </div>
+        <div>
+          <span>From</span>
+          <strong>{route.from_states.map((stateId) => displayStateName(states, stateId)).join(", ")}</strong>
+        </div>
+        <div>
+          <span>Go to</span>
+          <strong>{displayStateName(states, route.target_state)}</strong>
+        </div>
+      </div>
       <label className="select-field" htmlFor={`route-target-${route.route_id}`}>
         Go to state
         <select
@@ -480,7 +511,7 @@ function EditableGuardList({
   ) => Promise<void>;
 }) {
   if (route.guards.length === 0) {
-    return <EmptyInspector>No guards.</EmptyInspector>;
+    return <div className="plain-rule-note">Always allowed.</div>;
   }
   return (
     <div className="guard-editor-list">
@@ -490,43 +521,55 @@ function EditableGuardList({
         };
         return (
           <div className="guard-editor-row" key={`${route.route_id}-guard-${index}`}>
-            <select
-              aria-label={`Guard ${index + 1} variable`}
-              value={guard.variable_ref}
-              disabled={!canEdit}
-              onChange={(event) => commit(event.target.value, guard.operator, guard.value)}
-            >
-              {variables.map((variable) => (
-                <option key={variable.variable_id} value={variable.variable_id}>
-                  {variable.variable_id}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label={`Guard ${index + 1} operator`}
-              value={guard.operator}
-              disabled={!canEdit}
-              onChange={(event) => commit(guard.variable_ref, event.target.value, guard.value)}
-            >
-              {GUARD_OPERATORS.map((operator) => (
-                <option key={operator} value={operator}>
-                  {operator}
-                </option>
-              ))}
-            </select>
-            <input
-              aria-label={`Guard ${index + 1} value`}
-              type="number"
-              step={1}
-              value={guard.value}
-              disabled={!canEdit}
-              onChange={(event) => {
-                const parsed = Number.parseInt(event.target.value, 10);
-                if (Number.isFinite(parsed)) {
-                  commit(guard.variable_ref, guard.operator, parsed);
-                }
-              }}
-            />
+            <div className="rule-row-heading">Rule {index + 1}</div>
+            <div className="rule-field-grid">
+              <label>
+                Variable
+                <select
+                  aria-label={`Guard ${index + 1} variable`}
+                  value={guard.variable_ref}
+                  disabled={!canEdit}
+                  onChange={(event) => commit(event.target.value, guard.operator, guard.value)}
+                >
+                  {variables.map((variable) => (
+                    <option key={variable.variable_id} value={variable.variable_id}>
+                      {variable.variable_id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Check
+                <select
+                  aria-label={`Guard ${index + 1} operator`}
+                  value={guard.operator}
+                  disabled={!canEdit}
+                  onChange={(event) => commit(guard.variable_ref, event.target.value, guard.value)}
+                >
+                  {GUARD_OPERATORS.map((operator) => (
+                    <option key={operator} value={operator}>
+                      {GUARD_OPERATOR_LABELS[operator]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Number
+                <input
+                  aria-label={`Guard ${index + 1} value`}
+                  type="number"
+                  step={1}
+                  value={guard.value}
+                  disabled={!canEdit}
+                  onChange={(event) => {
+                    const parsed = Number.parseInt(event.target.value, 10);
+                    if (Number.isFinite(parsed)) {
+                      commit(guard.variable_ref, guard.operator, parsed);
+                    }
+                  }}
+                />
+              </label>
+            </div>
           </div>
         );
       })}
@@ -561,71 +604,84 @@ function EditableActionList({
         const variableRef = action.variable_ref ?? variables[0]?.variable_id ?? "";
         const operation = action.operation === "add" ? "add" : "assign";
         const value = typeof action.value === "number" ? action.value : 0;
+        const isAdd = operation === "add";
         const commit = (nextAction: Record<string, unknown>) => {
           void onSetRouteAction(sceneId, route.route_id, index, nextAction);
         };
         return (
           <div className="action-editor-row" key={`${route.route_id}-action-${index}`}>
-            <span className="action-row-label">Effect {index + 1}</span>
-            <select
-              aria-label={`Action ${index + 1} kind`}
-              value={action.kind}
-              disabled={!canEdit}
-              onChange={(event) => {
-                if (event.target.value === "request_render") {
-                  commit({ kind: "request_render" });
-                } else {
-                  commit({ kind: "set_variable", variable_ref: variableRef, operation, value });
-                }
-              }}
-            >
-              <option value="set_variable">Change variable</option>
-              <option value="request_render">Refresh screen</option>
-            </select>
+            <div className="rule-row-heading">Effect {index + 1}</div>
+            <label className="effect-kind-field">
+              What happens
+              <select
+                aria-label={`Action ${index + 1} kind`}
+                value={action.kind}
+                disabled={!canEdit}
+                onChange={(event) => {
+                  if (event.target.value === "request_render") {
+                    commit({ kind: "request_render" });
+                  } else {
+                    commit({ kind: "set_variable", variable_ref: variableRef, operation, value });
+                  }
+                }}
+              >
+                <option value="set_variable">Change variable</option>
+                <option value="request_render">Refresh screen</option>
+              </select>
+            </label>
             {action.kind === "set_variable" ? (
-              <>
-                <select
-                  aria-label={`Action ${index + 1} variable`}
-                  value={variableRef}
-                  disabled={!canEdit || variables.length === 0}
-                  onChange={(event) => {
-                    commit({ kind: "set_variable", variable_ref: event.target.value, operation, value });
-                  }}
-                >
-                  {variables.map((variable) => (
-                    <option key={variable.variable_id} value={variable.variable_id}>
-                      {variable.variable_id}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label={`Action ${index + 1} operation`}
-                  value={operation}
-                  disabled={!canEdit}
-                  onChange={(event) => {
-                    commit({ kind: "set_variable", variable_ref: variableRef, operation: event.target.value, value });
-                  }}
-                >
-                  {ACTION_OPERATIONS.map((item) => (
-                    <option key={item} value={item}>
-                      {item === "assign" ? "Set to" : "Change by"}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  aria-label={`Action ${index + 1} value`}
-                  type="number"
-                  step={1}
-                  value={value}
-                  disabled={!canEdit}
-                  onChange={(event) => {
-                    const parsed = Number.parseInt(event.target.value, 10);
-                    if (Number.isFinite(parsed)) {
-                      commit({ kind: "set_variable", variable_ref: variableRef, operation, value: parsed });
-                    }
-                  }}
-                />
-              </>
+              <div className="rule-field-grid">
+                <label>
+                  Variable
+                  <select
+                    aria-label={`Action ${index + 1} variable`}
+                    value={variableRef}
+                    disabled={!canEdit || variables.length === 0}
+                    onChange={(event) => {
+                      commit({ kind: "set_variable", variable_ref: event.target.value, operation, value });
+                    }}
+                  >
+                    {variables.map((variable) => (
+                      <option key={variable.variable_id} value={variable.variable_id}>
+                        {variable.variable_id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  How
+                  <select
+                    aria-label={`Action ${index + 1} operation`}
+                    value={operation}
+                    disabled={!canEdit}
+                    onChange={(event) => {
+                      commit({ kind: "set_variable", variable_ref: variableRef, operation: event.target.value, value });
+                    }}
+                  >
+                    {ACTION_OPERATIONS.map((item) => (
+                      <option key={item} value={item}>
+                        {item === "assign" ? "Set to" : "Change by"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  {isAdd ? "Amount" : "Value"}
+                  <input
+                    aria-label={isAdd ? `Effect ${index + 1} change amount` : `Effect ${index + 1} target value`}
+                    type="number"
+                    step={1}
+                    value={value}
+                    disabled={!canEdit}
+                    onChange={(event) => {
+                      const parsed = Number.parseInt(event.target.value, 10);
+                      if (Number.isFinite(parsed)) {
+                        commit({ kind: "set_variable", variable_ref: variableRef, operation, value: parsed });
+                      }
+                    }}
+                  />
+                </label>
+              </div>
             ) : (
               <span className="action-static-note">Refresh the screen.</span>
             )}

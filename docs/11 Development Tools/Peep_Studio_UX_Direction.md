@@ -49,6 +49,13 @@ Normal logic mode:
 - right: wider inspector with screen preview at the top, then selected-state or
   selected-transition controls.
 
+Future scene-flow mode:
+
+- left-to-right storyboard graph for moving between scenes or major screens;
+- nodes should show small screen previews, not raw scene IDs;
+- this mode remains a bring-up target, but authoring/export must stay disabled
+  until PeepOS has corresponding multi-scene dispatch support.
+
 Placement mode:
 
 - left: project and scene list;
