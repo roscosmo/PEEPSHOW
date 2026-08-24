@@ -266,8 +266,8 @@ The editor uses separate views for separate authoring concerns.
 |---|---|
 | project browser | packages, scenes, states, prefabs, assets, and parameters |
 | scene canvas | spatial placement, bounds, retained layers, focus, and visual selection |
-| state graph | STATE nodes and transition edges |
-| transition inspector | input route, guards, ordered actions, and destination |
+| state graph | STATE and prefab node cards with trigger output rows and routable destinations |
+| transition inspector | selected output trigger, guards, ordered actions, and destination |
 | property inspector | schema-driven typed properties and target-derived limits |
 | animation timeline | phase visuals, authored cadence, and combined waiting sequence |
 | authoring preview | pixel-accurate panel output, deterministic controls, and runtime trace |
@@ -278,13 +278,26 @@ Spatial visuals do not belong in the behavior graph. Transition detail does not
 belong on the scene canvas. Animation cadence does not belong in node position
 metadata.
 
-For the initial STATE editor:
+For the initial STATE editor, the first implementation may expose raw state
+nodes and transition edges while the command surface is being proven. The target
+authoring model is more user-facing:
 
-- states are graph nodes
-- transitions are graph edges
-- route, guard, and action order are edited in the edge inspector
-- scene visuals are edited on the scene canvas
-- animation phases are edited on the timeline
+- custom STATE records appear as screen/state node cards;
+- reusable prefabs appear as visually distinct prefab node cards;
+- transition triggers appear as output rows owned by the source node, grouped by
+  trigger type where useful;
+- each output row has one destination to keep the state machine readable;
+- route, guard, action order, and target details are edited through inspectors;
+- prefab internals may be shown read-only for understanding/debugging, but
+  editable prefab behavior flows through declared slots and settings;
+- scene visuals are edited on the scene canvas;
+- animation phases are edited on the timeline.
+
+The node-card graph is a presentation of semantic records. It must lower through
+the Python service into bounded STATE scenes, variables, routes, guards, actions,
+render elements, and package scene records. React may own positions, expansion
+state, hover state, and selected output rows; it must not invent behavior that
+the Python service cannot validate and compile.
 
 SEQUENCE uses a timeline-first editor. PROGRAM may add richer graph surfaces
 only when the bounded runtime contract requires them.

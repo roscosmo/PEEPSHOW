@@ -230,9 +230,14 @@ not require or imply an on-device runtime font renderer.
 
 - create, remove, rename, and select STATE nodes;
 - edit the one declared entry state;
-- create and remove deterministic state-transition edges;
+- present local logic as state/prefab node cards with trigger output rows, not
+  as a UML-first edge editor;
+- create and remove deterministic state-transition outputs and their single
+  destination edges through Python service commands;
 - edit logical A/B/L/R routes, guard expressions, ordered actions, and target
   state through typed inspectors;
+- support prefab-backed menu nodes through declared slots and read-only generated
+  internals before exposing arbitrary custom internals;
 - validate unresolved targets and bounded-capacity limits before save/export.
 
 At the end of this stage, an author can build a complete interactive menu that
@@ -290,8 +295,8 @@ Peep Studio uses distinct views for distinct semantics:
 
 - the **scene canvas** owns sprites, build-time text, bounds, layer order,
   focus visuals, and spatial composition;
-- the per-scene **STATE graph** owns the entry marker, states, and deterministic
-  state-transition edges;
+- the per-scene **STATE graph** owns the entry marker, state/prefab node cards,
+  trigger output rows, and deterministic state-transition destinations;
 - the package **scene-flow graph** owns scene nodes and declared cross-scene
   routes;
 - inspectors own route, guard, action, target, and typed property details;

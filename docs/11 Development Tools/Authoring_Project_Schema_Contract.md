@@ -272,8 +272,11 @@ prefab:
   prefab_id
   display_name
   actor_or_entity_kind
+  editor_node_kind
   asset_refs[]
   local_parameters[]
+  editable_slots[]
+  declared_outputs[]
   behavior_graph_refs[]
   behavior_macro_refs[]
   default_scene_bindings[]
@@ -294,9 +297,29 @@ Rules:
 - templates may import or instantiate Authoring Kits, prefabs, behavior graphs, behavior macros, assets, schemas, and content parameter defaults.
 - Authoring Kits may generate one or more scenes, but generated scenes must still declare a valid scene type.
 - prefabs may attach behavior graph references and local parameter defaults, but they must not bypass scene validation.
+- prefabs may appear as one editor node while compiling into multiple bounded
+  STATE records, variables, routes, guards, actions, render elements, and
+  waiting visuals.
+- prefab nodes must expose declared editable slots rather than arbitrary
+  internal mutation. Generated internals may be displayed read-only for
+  inspection/debugging.
+- prefab nodes may expose declared outputs. Each local STATE output connects to
+  at most one destination state or prefab output target.
 - behavior macros must compile into bounded graph/action data and must not introduce unbounded loops or hidden capability use.
 - imported objects must preserve source/version metadata for validation, compatibility reports, and deterministic rebuilds.
 - editable slots must be explicit so template customization changes package content without silently changing Platform policy.
+
+Menu prefab target:
+
+- a menu prefab is one self-contained prefab node, not a pile of mandatory
+  user-authored graph nodes.
+- it has a default navigation input template.
+- it owns the selection variable and normal up/down navigation logic by default.
+- it exposes editable slots for menu type, item labels, selected-item marker,
+  visuals, and confirm/cancel behavior.
+- it exposes one routable output per item choice.
+- advanced authors may copy or convert a prefab into custom editable source
+  records when they need behavior outside the prefab slots.
 
 Example:
 
