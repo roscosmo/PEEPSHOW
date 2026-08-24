@@ -413,18 +413,17 @@ function RouteInspector({
   const input = inputActions.find((item) => item.action_id === route.action_ref);
   return (
     <section className="inspector-section selected-record">
-      <h3>Selected route</h3>
+      <h3>Selected transition</h3>
       <InspectorList
         rows={[
-          ["ID", route.route_id],
-          ["Action", route.action_ref],
-          ["Logical source", input?.logical_source],
+          ["Internal ID", route.route_id],
+          ["When", input?.logical_source ?? route.action_ref],
           ["From", route.from_states.join(", ")],
-          ["Target", route.target_state],
+          ["Goes to", route.target_state],
         ]}
       />
       <label className="select-field" htmlFor={`route-target-${route.route_id}`}>
-        Target state
+        Go to state
         <select
           id={`route-target-${route.route_id}`}
           value={route.target_state}
@@ -440,7 +439,7 @@ function RouteInspector({
           ))}
         </select>
       </label>
-      <h4>Guards</h4>
+      <h4>Only if</h4>
       <EditableGuardList
         sceneId={sceneId}
         route={route}
@@ -448,7 +447,7 @@ function RouteInspector({
         canEdit={canEdit}
         onSetRouteGuard={onSetRouteGuard}
       />
-      <h4>Ordered actions</h4>
+      <h4>Then</h4>
       <EditableActionList
         sceneId={sceneId}
         route={route}
@@ -567,6 +566,7 @@ function EditableActionList({
         };
         return (
           <div className="action-editor-row" key={`${route.route_id}-action-${index}`}>
+            <span className="action-row-label">Effect {index + 1}</span>
             <select
               aria-label={`Action ${index + 1} kind`}
               value={action.kind}
@@ -579,8 +579,8 @@ function EditableActionList({
                 }
               }}
             >
-              <option value="set_variable">set_variable</option>
-              <option value="request_render">request_render</option>
+              <option value="set_variable">Change variable</option>
+              <option value="request_render">Refresh screen</option>
             </select>
             {action.kind === "set_variable" ? (
               <>
@@ -608,7 +608,7 @@ function EditableActionList({
                 >
                   {ACTION_OPERATIONS.map((item) => (
                     <option key={item} value={item}>
-                      {item}
+                      {item === "assign" ? "Set to" : "Change by"}
                     </option>
                   ))}
                 </select>
@@ -627,7 +627,7 @@ function EditableActionList({
                 />
               </>
             ) : (
-              <span className="action-static-note">Requests render refresh.</span>
+              <span className="action-static-note">Refresh the screen.</span>
             )}
           </div>
         );

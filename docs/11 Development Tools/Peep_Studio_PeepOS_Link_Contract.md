@@ -13,6 +13,7 @@ Related:
 
 - [[Authoring_Tool_Architecture]]
 - [[Authoring_Project_Schema_Contract]]
+- [[Peep_Studio_UX_Direction]]
 - [[HW6_Authoring_Vertical_Slice]]
 - [[Asset_Pipeline_and_Package_Tooling_Contract]]
 - [[Display_and_Rendering_Contract]]

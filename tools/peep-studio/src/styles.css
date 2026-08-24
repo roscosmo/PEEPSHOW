@@ -175,12 +175,14 @@ button:focus-visible {
 
 .workspace-grid {
   display: grid;
-  grid-template-areas:
-    "project preview inspector"
-    "project graph inspector";
-  grid-template-columns: 248px minmax(520px, 1fr) 320px;
-  grid-template-rows: minmax(380px, 1.15fr) minmax(260px, 0.85fr);
+  grid-template-areas: "project graph inspector";
+  grid-template-columns: 248px minmax(520px, 1fr) 390px;
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
+}
+
+.workspace-grid.placement-mode {
+  grid-template-areas: "project placement inspector";
 }
 
 .project-pane,
@@ -343,13 +345,21 @@ button:focus-visible {
 }
 
 .preview-pane {
-  grid-area: preview;
   display: grid;
   grid-template-rows: 63px minmax(0, 1fr) 58px;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   background: #e8ece9;
+}
+
+.preview-pane-compact {
+  height: 420px;
+  border-bottom: 1px solid #dce1de;
+}
+
+.preview-pane-large {
+  height: 100%;
 }
 
 .preview-heading {
@@ -397,8 +407,8 @@ button:focus-visible {
   display: grid;
   min-height: 0;
   place-items: center;
-  overflow: auto;
-  padding: 28px;
+  overflow: hidden;
+  padding: 14px;
   background-color: #dde2df;
   background-image: linear-gradient(#d2d8d4 1px, transparent 1px), linear-gradient(90deg, #d2d8d4 1px, transparent 1px);
   background-size: 24px 24px;
@@ -406,14 +416,24 @@ button:focus-visible {
 }
 
 .panel-bezel {
-  width: min(70vh, calc(100vw - 660px));
-  min-width: 420px;
+  width: min(100%, calc((100vh - 196px) * 1.1667));
+  max-width: 760px;
   aspect-ratio: 168 / 144;
   padding: 12px;
   border: 1px solid #919a95;
   border-radius: 6px;
   background: #252b28;
   box-shadow: 0 14px 34px rgb(37 43 40 / 16%);
+}
+
+.preview-pane-compact .panel-bezel {
+  width: min(100%, 315px);
+  padding: 8px;
+  box-shadow: 0 8px 18px rgb(37 43 40 / 12%);
+}
+
+.preview-pane-large .panel-bezel {
+  width: min(100%, calc((100vh - 224px) * 1.1667));
 }
 
 .preview-canvas {
@@ -440,6 +460,11 @@ button:focus-visible {
   padding: 0 16px;
   border-top: 1px solid #cbd2cd;
   background: #f7f9f8;
+}
+
+.preview-pane-compact .transport-bar {
+  gap: 5px;
+  padding: 0 10px;
 }
 
 .transport-play {
@@ -507,7 +532,15 @@ button:focus-visible {
   grid-template-rows: 55px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-  border-top: 1px solid #cbd2cd;
+  background: #eef2f0;
+}
+
+.placement-pane {
+  grid-area: placement;
+  display: grid;
+  grid-template-rows: 55px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
   background: #eef2f0;
 }
 
@@ -525,6 +558,12 @@ button:focus-visible {
   font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.mode-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .graph-surface {
@@ -727,8 +766,22 @@ button:focus-visible {
 
 .action-editor-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 64px 70px;
+  grid-template-columns: 58px minmax(0, 1fr) minmax(0, 1fr) 78px 70px;
   gap: 6px;
+}
+
+.action-row-label {
+  display: flex;
+  min-width: 0;
+  height: 31px;
+  align-items: center;
+  overflow: hidden;
+  color: #68736d;
+  font-size: 10px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .action-editor-row select,
@@ -956,7 +1009,7 @@ button:focus-visible {
 
 @media (max-width: 1180px) {
   .workspace-grid {
-    grid-template-columns: 220px minmax(480px, 1fr) 270px;
+    grid-template-columns: 220px minmax(480px, 1fr) 340px;
   }
 
   .service-state,
@@ -964,9 +1017,12 @@ button:focus-visible {
     display: none;
   }
 
-  .panel-bezel {
-    width: min(66vh, calc(100vw - 560px));
-    min-width: 380px;
+  .preview-pane-compact {
+    height: 390px;
+  }
+
+  .preview-pane-compact .panel-bezel {
+    width: min(100%, 286px);
   }
 }
 
@@ -996,11 +1052,17 @@ button:focus-visible {
   .workspace-grid {
     grid-template-areas:
       "project"
-      "preview"
       "graph"
       "inspector";
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto auto auto;
+    grid-template-rows: auto auto auto;
+  }
+
+  .workspace-grid.placement-mode {
+    grid-template-areas:
+      "project"
+      "placement"
+      "inspector";
   }
 
   .project-pane,
@@ -1008,11 +1070,12 @@ button:focus-visible {
     border: 0;
   }
 
-  .preview-pane {
-    min-height: 650px;
+  .preview-pane-compact {
+    height: 390px;
   }
 
-  .state-graph-pane {
+  .state-graph-pane,
+  .placement-pane {
     min-height: 460px;
   }
 
@@ -1022,6 +1085,5 @@ button:focus-visible {
 
   .panel-bezel {
     width: min(86vw, 560px);
-    min-width: 0;
   }
 }

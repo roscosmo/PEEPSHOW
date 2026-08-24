@@ -11,7 +11,9 @@ import {
   FolderOpen,
   Hammer,
   LoaderCircle,
+  Maximize2,
   MonitorDot,
+  Network,
   PackageCheck,
   Pause,
   Play,
@@ -118,6 +120,7 @@ export default function App() {
   const [canRedo, setCanRedo] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<"logic" | "placement">("logic");
   const [message, setMessage] = useState<string | null>(null);
   const previewRef = useRef<PreviewSnapshot | null>(null);
   const operationLock = useRef(false);
@@ -517,6 +520,48 @@ export default function App() {
     [scenes, selectedScene],
   );
   const connected = service !== null;
+  const renderPreviewPanel = (variant: "inspector" | "placement") => (
+    <section className={`preview-pane ${variant === "placement" ? "preview-pane-large" : "preview-pane-compact"}`}>
+      <div className="preview-heading">
+        <div>
+          <span className="section-kicker">Screen</span>
+          <h2>{preview?.scene.display_name ?? "Display preview"}</h2>
+        </div>
+        {preview !== null && (
+          <div className="timeline-readout">
+            <span>Step {preview.timeline.step_index + 1}/{preview.timeline.step_count}</span>
+            <strong>{preview.timeline.elapsed_ms} ms</strong>
+          </div>
+        )}
+      </div>
+
+      <div className="display-stage">
+        <div className="panel-bezel">
+          <FramebufferCanvas framebuffer={preview?.framebuffer ?? null} />
+        </div>
+        <div className="surface-label">Scene preview</div>
+      </div>
+
+      <div className="transport-bar">
+        <button className="icon-button" onClick={() => selectedScene !== null && void startPreview(selectedScene)} disabled={preview === null} title="Reset preview">
+          <RotateCcw size={18} aria-hidden="true" />
+        </button>
+        <button className="icon-button transport-play" onClick={() => setPlaying((value) => !value)} disabled={preview === null} title={playing ? "Pause preview" : "Play preview"}>
+          {playing ? <Pause size={19} aria-hidden="true" /> : <Play size={19} aria-hidden="true" />}
+        </button>
+        <button className="icon-button" onClick={() => void advancePreview(250)} disabled={preview === null} title="Advance 250 ms">
+          <StepForward size={18} aria-hidden="true" />
+        </button>
+        <div className="transport-divider" />
+        {INPUTS.map(({ source, label, icon: Icon }) => (
+          <button key={source} className="input-button" onClick={() => void sendInput(source)} disabled={preview === null} title={`Send ${source}`}>
+            <Icon size={16} aria-hidden="true" />
+            {label}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
 
   return (
     <main className="studio-shell">
@@ -566,7 +611,7 @@ export default function App() {
         </div>
       </header>
 
-      <section className="workspace-grid">
+      <section className={`workspace-grid ${workspaceMode === "placement" ? "placement-mode" : "logic-mode"}`}>
         <aside className="project-pane">
           <div className="pane-heading">
             <span>Project</span>
@@ -616,54 +661,36 @@ export default function App() {
           )}
         </aside>
 
-        <section className="preview-pane">
-          <div className="preview-heading">
-            <div>
-              <span className="section-kicker">Selected scene</span>
-              <h2>{preview?.scene.display_name ?? "Display preview"}</h2>
-            </div>
-            {preview !== null && (
-              <div className="timeline-readout">
-                <span>Step {preview.timeline.step_index + 1}/{preview.timeline.step_count}</span>
-                <strong>{preview.timeline.elapsed_ms} ms</strong>
+        {workspaceMode === "placement" && (
+          <section className="placement-pane">
+            <div className="preview-heading graph-heading">
+              <div>
+                <span className="section-kicker">Placement mode</span>
+                <h2>{selectedSceneDocument?.display_name ?? "No scene selected"}</h2>
               </div>
-            )}
-          </div>
-
-          <div className="display-stage">
-            <div className="panel-bezel">
-              <FramebufferCanvas framebuffer={preview?.framebuffer ?? null} />
-            </div>
-            <div className="surface-label">Scene canvas preview</div>
-          </div>
-
-          <div className="transport-bar">
-            <button className="icon-button" onClick={() => selectedScene !== null && void startPreview(selectedScene)} disabled={preview === null} title="Reset preview">
-              <RotateCcw size={18} aria-hidden="true" />
-            </button>
-            <button className="icon-button transport-play" onClick={() => setPlaying((value) => !value)} disabled={preview === null} title={playing ? "Pause preview" : "Play preview"}>
-              {playing ? <Pause size={19} aria-hidden="true" /> : <Play size={19} aria-hidden="true" />}
-            </button>
-            <button className="icon-button" onClick={() => void advancePreview(250)} disabled={preview === null} title="Advance 250 ms">
-              <StepForward size={18} aria-hidden="true" />
-            </button>
-            <div className="transport-divider" />
-            {INPUTS.map(({ source, label, icon: Icon }) => (
-              <button key={source} className="input-button" onClick={() => void sendInput(source)} disabled={preview === null} title={`Send ${source}`}>
-                <Icon size={16} aria-hidden="true" />
-                {label}
+              <button className="button secondary" type="button" onClick={() => setWorkspaceMode("logic")}>
+                <Network size={16} aria-hidden="true" />
+                Logic
               </button>
-            ))}
-          </div>
-        </section>
+            </div>
+            {renderPreviewPanel("placement")}
+          </section>
+        )}
 
+        {workspaceMode === "logic" && (
         <section className="state-graph-pane">
           <div className="preview-heading graph-heading">
             <div>
-              <span className="section-kicker">Per-scene STATE graph</span>
-              <h2>{selectedSceneDocument?.display_name ?? "No STATE scene selected"}</h2>
+              <span className="section-kicker">Logic graph</span>
+              <h2>{selectedSceneDocument?.display_name ?? "No scene selected"}</h2>
             </div>
-            <span className="future-graph-label">Package scene-flow graph: Stage 5</span>
+            <div className="mode-actions">
+              <button className="button secondary" type="button" onClick={() => setWorkspaceMode("placement")}>
+                <Maximize2 size={16} aria-hidden="true" />
+                Placement
+              </button>
+              <span className="future-graph-label">Package flow: Stage 5</span>
+            </div>
           </div>
           <div className="graph-surface">
             <StateGraphView
@@ -673,9 +700,12 @@ export default function App() {
             />
           </div>
         </section>
+        )}
 
         <aside className="inspector-pane">
           <div className="pane-heading">Inspector</div>
+
+          {workspaceMode === "logic" && renderPreviewPanel("inspector")}
 
           <section className="inspector-section">
             <h3>Runtime</h3>
