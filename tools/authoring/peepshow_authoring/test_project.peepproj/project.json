@@ -1,0 +1,23 @@
+{
+  "schema_id": "peepshow.authoring.project",
+  "schema_version": 1,
+  "project_id": "example.state_slice",
+  "project_name": "STATE Scene Vertical Slice",
+  "package": {
+    "package_id": "dev.peepshow.state_slice",
+    "display_name": "State Slice",
+    "version": "0.1.0"
+  },
+  "selected_target_profile": "hw6_fw0_development",
+  "entry_scene": "state_demo",
+  "scene_sources": [
+    "scenes/state_demo.state.json"
+  ],
+  "asset_sources": [
+    "assets/catalog.json"
+  ],
+  "validation": {
+    "build_profile": "development",
+    "ruleset_version": 1
+  }
+}

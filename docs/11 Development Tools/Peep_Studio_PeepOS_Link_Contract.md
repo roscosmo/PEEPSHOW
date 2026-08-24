@@ -191,12 +191,16 @@ visuals. Project mutation controls remain deferred to Stage 2.
 
 No scene-canvas or graph control may directly mutate normalized JSON in React.
 
-Implementation status: started. Service API version 4 exposes
+Implementation status: started. Service API version 5 exposes
 `project.apply_commands` with the first accepted command,
 `state.rename`. Accepted commands update the in-memory Python-owned project,
 return a new `project_revision`, normalized document, diagnostics, and dirty
-state, and reject stale revisions. Source save and undo/redo remain unavailable
-pending review of the mutation API shape.
+state, and reject stale revisions. `project.save` persists the current
+in-memory scene records back to their authored scene JSON files and clears dirty
+state. Peep Studio also exposes Save As for copying the current `.peepproj`
+directory to a user-chosen location; checked-in examples opened through the
+example button are temporary copies. Undo/redo remain unavailable pending review
+of the mutation API shape.
 
 ### Stage 3: Scene Canvas And Visual Elements
 

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { cp, mkdtemp, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 
@@ -141,6 +142,23 @@ class AuthoringSidecar {
 
 const repositoryRoot = path.resolve(__dirname, "..", "..", "..");
 const sidecar = new AuthoringSidecar(repositoryRoot);
+const exampleProject = path.join(repositoryRoot, "examples", "authoring", "state_slice.peepproj");
+
+async function createWritableExampleCopy(): Promise<string> {
+  const parent = await mkdtemp(path.join(os.tmpdir(), "peep-studio-example-"));
+  const destination = path.join(parent, "state_slice.peepproj");
+  await cp(exampleProject, destination, { recursive: true });
+  return destination;
+}
+
+async function pathExists(candidate: string): Promise<boolean> {
+  try {
+    await stat(candidate);
+  } catch {
+    return false;
+  }
+  return true;
+}
 
 function createWindow(): void {
   const window = new BrowserWindow({
@@ -184,15 +202,45 @@ ipcMain.handle(
 ipcMain.handle("peep:open-project", async () => {
   const result = await dialog.showOpenDialog({
     title: "Open Peep Studio project",
-    defaultPath: path.join(repositoryRoot, "examples", "authoring", "state_slice.peepproj"),
+    defaultPath: exampleProject,
     properties: ["openDirectory"],
   });
   return result.canceled ? null : result.filePaths[0] ?? null;
 });
 
-ipcMain.handle("peep:open-example", () =>
-  path.join(repositoryRoot, "examples", "authoring", "state_slice.peepproj"),
-);
+ipcMain.handle("peep:open-example", () => createWritableExampleCopy());
+
+ipcMain.handle("peep:save-project-as", async (_event, sourcePath: unknown, defaultName: unknown) => {
+  if (typeof sourcePath !== "string" || typeof defaultName !== "string") {
+    throw new Error("Invalid Save As request from renderer");
+  }
+  const source = path.resolve(sourcePath);
+  if (!source.endsWith(".peepproj")) {
+    throw new Error("Save As source must be a .peepproj directory");
+  }
+  const result = await dialog.showSaveDialog({
+    title: "Save Peep Studio project as",
+    defaultPath: path.join(
+      app.getPath("documents"),
+      defaultName.endsWith(".peepproj") ? defaultName : `${defaultName}.peepproj`,
+    ),
+    filters: [{ name: "Peep Studio project", extensions: ["peepproj"] }],
+  });
+  if (result.canceled || result.filePath === undefined) {
+    return null;
+  }
+  const destination = path.resolve(
+    result.filePath.endsWith(".peepproj") ? result.filePath : `${result.filePath}.peepproj`,
+  );
+  if (destination === source) {
+    throw new Error("Choose a different project location for Save As");
+  }
+  if (await pathExists(destination)) {
+    throw new Error("Choose a new project location. That path already exists.");
+  }
+  await cp(source, destination, { recursive: true });
+  return destination;
+});
 
 ipcMain.handle(
   "peep:export-egg",

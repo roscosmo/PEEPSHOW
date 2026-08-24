@@ -181,13 +181,14 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(4, SERVICE_API_VERSION)
+        self.assertEqual(5, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
         self.assertIn("project.build_package", result["operations"])
         self.assertIn("project.compatibility_report", result["operations"])
         self.assertIn("project.apply_commands", result["operations"])
+        self.assertIn("project.save", result["operations"])
         self.assertIn("project.preview_reset", result["operations"])
         self.assertIn("project.preview_input", result["operations"])
         self.assertIn("project.preview_advance", result["operations"])
@@ -299,6 +300,68 @@ class AuthoringServiceTests(unittest.TestCase):
                 )
             )
         self.assertEqual("PROJECT_TEXT_INVALID", raised.exception.code)
+
+    def test_save_persists_renamed_state_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "save_test.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            renamed = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "state.rename",
+                                "scene_id": "state_demo",
+                                "state_id": "center",
+                                "display_name": "Saved Name",
+                            }
+                        ],
+                    },
+                )
+            )
+            self.assertTrue(renamed["dirty"])
+            saved = service.handle(
+                request("project.save", {"project_revision": renamed["project_revision"]})
+            )
+            self.assertFalse(saved["dirty"])
+            self.assertEqual(["scenes/state_demo.state.json"], saved["saved_sources"])
+
+            reloaded = load_project(project_root)
+            states = reloaded.normalized()["scenes"][0]["states"]
+            self.assertEqual(
+                "Saved Name",
+                next(state for state in states if state["state_id"] == "center")["display_name"],
+            )
+
+    def test_save_rejects_stale_revision(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "save_stale.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "state.rename",
+                                "scene_id": "state_demo",
+                                "state_id": "center",
+                                "display_name": "Unsaved",
+                            }
+                        ],
+                    },
+                )
+            )
+            with self.assertRaises(ProtocolError) as stale:
+                service.handle(request("project.save", {"project_revision": loaded["project_revision"]}))
+            self.assertEqual("PROJECT_REVISION_STALE", stale.exception.code)
 
     def test_package_operation_returns_the_existing_compiler_bytes(self) -> None:
         service = AuthoringService()

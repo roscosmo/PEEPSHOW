@@ -61,6 +61,7 @@ class ProjectBundle:
     root: Path
     project: dict[str, Any]
     scenes: tuple[dict[str, Any], ...]
+    scene_sources: tuple[str, ...]
     assets: tuple[dict[str, Any], ...]
     animations: tuple[dict[str, Any], ...]
     frames: tuple[Masked1bppFrame, ...]
@@ -656,11 +657,11 @@ def load_project(project_root: str | Path) -> ProjectBundle:
         _issue(issues, "PROJECT_SUFFIX_INVALID", str(root), "editable project directories must end in .peepproj")
     if not root.is_dir():
         _issue(issues, "PROJECT_ROOT_MISSING", str(root), "project directory does not exist")
-        return ProjectBundle(root, {}, (), (), (), (), tuple(issues))
+        return ProjectBundle(root, {}, (), (), (), (), (), tuple(issues))
 
     project = _read_json(root / "project.json", issues, "PROJECT_MANIFEST_INVALID")
     if project is None:
-        return ProjectBundle(root, {}, (), (), (), (), tuple(issues))
+        return ProjectBundle(root, {}, (), (), (), (), (), tuple(issues))
     _check_project(project, issues)
 
     assets: list[dict[str, Any]] = []
@@ -737,6 +738,7 @@ def load_project(project_root: str | Path) -> ProjectBundle:
                 )
 
     scenes: list[dict[str, Any]] = []
+    loaded_scene_sources: list[str] = []
     scene_ids: set[str] = set()
     sources = project.get("scene_sources")
     if isinstance(sources, list):
@@ -754,6 +756,7 @@ def load_project(project_root: str | Path) -> ProjectBundle:
                     _issue(issues, "SCENE_ID_DUPLICATE", str(source), f"duplicate scene ID '{scene_id}'")
                 scene_ids.add(scene_id)
             scenes.append(scene)
+            loaded_scene_sources.append(str(source))
 
     entry_scene = project.get("entry_scene")
     if isinstance(entry_scene, str) and entry_scene not in scene_ids:
@@ -762,6 +765,7 @@ def load_project(project_root: str | Path) -> ProjectBundle:
         root,
         project,
         tuple(scenes),
+        tuple(loaded_scene_sources),
         tuple(assets),
         tuple(animations),
         tuple(frames),
@@ -800,6 +804,7 @@ def apply_project_commands(
             bundle.root,
             project,
             tuple(scenes),
+            bundle.scene_sources,
             tuple(assets),
             tuple(animations),
             bundle.frames,
@@ -807,6 +812,44 @@ def apply_project_commands(
         ),
         tuple(applied),
     )
+
+
+def save_project(bundle: ProjectBundle) -> tuple[str, ...]:
+    if not bundle.valid:
+        raise ProjectCommandError("PROJECT_INVALID", "project must validate before it can be saved")
+    if len(bundle.scene_sources) != len(bundle.scenes):
+        raise ProjectCommandError("PROJECT_SAVE_FAILED", "loaded scene sources do not match scene records")
+
+    written: list[str] = []
+    for source, scene in zip(bundle.scene_sources, bundle.scenes, strict=True):
+        issues: list[ValidationIssue] = []
+        path = _scene_path(bundle.root, source, issues)
+        if path is None or issues:
+            issue = issues[0] if issues else ValidationIssue("SCENE_SOURCE_INVALID", source, "scene source is invalid")
+            raise ProjectCommandError(issue.code, issue.message)
+        if not path.exists():
+            raise ProjectCommandError("PROJECT_SAVE_FAILED", f"scene source '{source}' no longer exists")
+        encoded = (
+            json.dumps(
+                scene,
+                ensure_ascii=True,
+                indent=2,
+                sort_keys=False,
+            )
+            + "\n"
+        )
+        temp_path = path.with_name(f".{path.name}.tmp")
+        try:
+            temp_path.write_text(encoded, encoding="utf-8")
+            temp_path.replace(path)
+        except OSError as exc:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise ProjectCommandError("PROJECT_SAVE_FAILED", f"could not save scene source '{source}': {exc}") from exc
+        written.append(source)
+    return tuple(written)
 
 
 def format_issues(issues: Iterable[ValidationIssue]) -> str:

@@ -33,7 +33,7 @@
     },
     {
       "state_id": "center",
-      "display_name": "Middle",
+      "display_name": "Centre",
       "render_model_ref": "view_center",
       "waiting_visual_ref": "state_wait"
     },

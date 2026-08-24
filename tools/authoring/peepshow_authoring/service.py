@@ -11,7 +11,7 @@ from typing import Any, TextIO
 from .compatibility import build_compatibility_report
 from .compiler import EggCompileError, build_egg
 from .egg_format import EggFormatError, parse_egg
-from .project import ProjectBundle, ProjectCommandError, apply_project_commands, load_project
+from .project import ProjectBundle, ProjectCommandError, apply_project_commands, load_project, save_project
 from .preview import PreviewError, StateScenePreview
 from .protocol import (
     PROTOCOL_VERSION,
@@ -24,7 +24,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 4
+SERVICE_API_VERSION = 5
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
     "service.hello",
@@ -35,6 +35,7 @@ SERVICE_OPERATIONS = (
     "project.build_package",
     "project.compatibility_report",
     "project.apply_commands",
+    "project.save",
     "project.preview_reset",
     "project.preview_input",
     "project.preview_advance",
@@ -92,6 +93,7 @@ class AuthoringService:
         self._project_revision = 0
         self._preview: StateScenePreview | None = None
         self._preview_revision = 0
+        self._dirty = False
         self.shutdown_requested = False
 
     def _current_bundle(
@@ -138,6 +140,7 @@ class AuthoringService:
         self._bundle = bundle
         self._project_revision += 1
         self._preview = None
+        self._dirty = False
         return {
             "project_revision": self._project_revision,
             "source_name": bundle.root.name,
@@ -145,6 +148,7 @@ class AuthoringService:
             "issues": _issues(bundle),
             "document": bundle.normalized() if bundle.valid else None,
             "summary": _project_summary(bundle),
+            "dirty": self._dirty,
         }
 
     def _validate(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -224,6 +228,7 @@ class AuthoringService:
         self._project_revision += 1
         self._preview = None
         self._preview_revision += 1
+        self._dirty = True
         return {
             "project_revision": self._project_revision,
             "valid": updated.valid,
@@ -231,7 +236,24 @@ class AuthoringService:
             "document": updated.normalized() if updated.valid else None,
             "summary": _project_summary(updated),
             "applied_commands": list(applied),
-            "dirty": True,
+            "dirty": self._dirty,
+        }
+
+    def _save(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params)
+        try:
+            saved_sources = save_project(bundle)
+        except ProjectCommandError as exc:
+            raise ProtocolError(exc.code, exc.message) from exc
+        self._dirty = False
+        return {
+            "project_revision": self._project_revision,
+            "valid": bundle.valid,
+            "issues": _issues(bundle),
+            "document": bundle.normalized() if bundle.valid else None,
+            "summary": _project_summary(bundle),
+            "dirty": self._dirty,
+            "saved_sources": list(saved_sources),
         }
 
     def _preview_result(self, snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -309,6 +331,7 @@ class AuthoringService:
             "project.build_package": self._build_package,
             "project.compatibility_report": self._compatibility_report,
             "project.apply_commands": self._apply_commands,
+            "project.save": self._save,
             "project.preview_reset": self._preview_reset,
             "project.preview_input": self._preview_input,
             "project.preview_advance": self._preview_advance,

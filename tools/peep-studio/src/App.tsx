@@ -16,6 +16,8 @@ import {
   Pause,
   Play,
   RotateCcw,
+  Save,
+  SaveAll,
   StepForward,
   X,
 } from "lucide-react";
@@ -29,6 +31,7 @@ import type {
   Framebuffer,
   PackageBuildResult,
   ProjectCommandResult,
+  ProjectSaveResult,
   PreviewSnapshot,
   ProjectLoadResult,
   SceneDocument,
@@ -103,6 +106,8 @@ export default function App() {
   const [project, setProject] = useState<ProjectLoadResult | null>(null);
   const [preview, setPreview] = useState<PreviewSnapshot | null>(null);
   const [selectedScene, setSelectedScene] = useState<string | null>(null);
+  const [projectPath, setProjectPath] = useState<string | null>(null);
+  const [temporaryProject, setTemporaryProject] = useState(false);
   const [sceneSelection, setSceneSelection] = useState<SceneSelection>({ kind: "scene" });
   const [build, setBuild] = useState<PackageBuildResult | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -161,12 +166,14 @@ export default function App() {
       setPlaying(false);
       setBuild(null);
       setDirty(false);
+      setProjectPath(path);
       setPreview(null);
       setSelectedScene(null);
       setSceneSelection({ kind: "scene" });
       try {
         const result = await bridge.serviceRequest<ProjectLoadResult>("project.load", { path });
         setProject(result);
+        setDirty(result.dirty);
         setMessage(result.valid ? null : "Project validation failed. Review the issues panel.");
         if (result.valid) {
           await startPreview(result.summary.entry_scene, result.project_revision);
@@ -186,6 +193,7 @@ export default function App() {
     }
     const path = await bridge.openProject();
     if (path !== null) {
+      setTemporaryProject(false);
       await loadProject(path);
     }
   };
@@ -194,7 +202,9 @@ export default function App() {
     if (bridge === undefined) {
       return;
     }
+    setTemporaryProject(true);
     await loadProject(await bridge.openExampleProject());
+    setMessage("Opened a temporary copy of the example project.");
   };
 
   const advancePreview = useCallback(
@@ -268,6 +278,65 @@ export default function App() {
     }
   };
 
+  const saveProject = async () => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy("Saving project");
+    try {
+      const result = await bridge.serviceRequest<ProjectSaveResult>("project.save", {
+        project_revision: project.project_revision,
+      });
+      setProject({
+        ...project,
+        project_revision: result.project_revision,
+        valid: result.valid,
+        issues: result.issues,
+        document: result.document,
+        summary: result.summary,
+      });
+      setDirty(result.dirty);
+      setMessage(`Saved ${result.saved_sources.length} scene source${result.saved_sources.length === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveProjectAs = async () => {
+    if (bridge === undefined || project === null || projectPath === null || busy !== null) {
+      return;
+    }
+    setBusy("Saving project as");
+    try {
+      if (dirty) {
+        const saved = await bridge.serviceRequest<ProjectSaveResult>("project.save", {
+          project_revision: project.project_revision,
+        });
+        setProject({
+          ...project,
+          project_revision: saved.project_revision,
+          valid: saved.valid,
+          issues: saved.issues,
+          document: saved.document,
+          summary: saved.summary,
+        });
+        setDirty(saved.dirty);
+      }
+      const destination = await bridge.saveProjectAs(projectPath, project.source_name);
+      if (destination !== null) {
+        setTemporaryProject(false);
+        await loadProject(destination);
+        setMessage(`Saved project as ${destination}`);
+      }
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const renameState = async (sceneId: string, stateId: string, displayName: string) => {
     if (bridge === undefined || project === null || busy !== null) {
       return;
@@ -298,7 +367,7 @@ export default function App() {
       setBuild(null);
       setDirty(result.dirty);
       setSceneSelection({ kind: "state", id: stateId });
-      setMessage("State renamed. Save is not available yet.");
+      setMessage("State renamed. Save to write it to the project.");
     } catch (error) {
       setMessage(errorText(error));
     } finally {
@@ -354,6 +423,14 @@ export default function App() {
             <Hammer size={16} aria-hidden="true" />
             Build
           </button>
+          <button className="button secondary" onClick={saveProject} disabled={!dirty || project === null || busy !== null || service?.operations.includes("project.save") !== true}>
+            <Save size={16} aria-hidden="true" />
+            Save
+          </button>
+          <button className="button secondary" onClick={saveProjectAs} disabled={project === null || projectPath === null || busy !== null || service?.operations.includes("project.save") !== true}>
+            <SaveAll size={16} aria-hidden="true" />
+            Save as
+          </button>
           <button className="icon-button" onClick={exportPackage} disabled={build === null} title="Export .egg">
             <Download size={18} aria-hidden="true" />
           </button>
@@ -382,7 +459,9 @@ export default function App() {
               <dl className="project-facts">
                 <div><dt>Package</dt><dd>{project.summary.package_id}</dd></div>
                 <div><dt>Target</dt><dd>{project.summary.target_profile}</dd></div>
+                <div><dt>Source</dt><dd>{temporaryProject ? "Example copy" : "Project"}</dd></div>
                 <div><dt>Edits</dt><dd>{dirty ? "Unsaved" : "Clean"}</dd></div>
+                <div><dt>Path</dt><dd title={projectPath ?? undefined}>{projectPath ?? "-"}</dd></div>
                 <div><dt>Frames</dt><dd>{project.summary.asset_frame_count}</dd></div>
                 <div><dt>Animations</dt><dd>{project.summary.animation_count}</dd></div>
               </dl>

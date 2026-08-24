@@ -7,11 +7,13 @@ preview execution, or compilation rules in TypeScript.
 
 ## Current shell
 
-- opens a `.peepproj` directory or the checked-in STATE example;
+- opens a `.peepproj` directory or a writable temporary copy of the checked-in
+  STATE example;
 - lists authored scenes and starts a selected-scene preview directly;
 - renders the exact 168x144 1bpp framebuffer returned by Python;
 - injects logical A/B/L/R input and advances deterministic preview time;
 - shows runtime state, variables, validation issues, and package facts;
+- saves opened projects in place or copies them with Save As;
 - builds and exports the authoritative `.egg` bytes produced by Python.
 
 Node editing, asset import, project mutation, device installation, SEQUENCE,
