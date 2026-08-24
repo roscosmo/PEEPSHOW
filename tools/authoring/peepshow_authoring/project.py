@@ -167,6 +167,49 @@ def _apply_state_rename(
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
 
 
+def _apply_route_set_target(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "route_id", "target_state"},
+        {"kind", "scene_id", "route_id", "target_state", "command_id"},
+    )
+    issues: list[ValidationIssue] = []
+    scene_id = command.get("scene_id")
+    route_id = command.get("route_id")
+    target_state = command.get("target_state")
+    _stable_id(scene_id, "command.scene_id", issues)
+    _stable_id(route_id, "command.route_id", issues)
+    _stable_id(target_state, "command.target_state", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+
+    for scene in scenes:
+        if scene.get("scene_id") != scene_id:
+            continue
+        state_ids = {
+            state.get("state_id")
+            for state in scene.get("states", [])
+            if isinstance(state, dict)
+        }
+        if target_state not in state_ids:
+            raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown target state '{target_state}'")
+        for route in scene.get("routes", []):
+            if isinstance(route, dict) and route.get("route_id") == route_id:
+                route["target_state"] = target_state
+                return {
+                    "kind": "route.set_target",
+                    "scene_id": scene_id,
+                    "route_id": route_id,
+                    "target_state": target_state,
+                }
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown route '{route_id}'")
+    raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
+
+
 def _read_json(path: Path, issues: list[ValidationIssue], code: str) -> dict[str, Any] | None:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -796,6 +839,8 @@ def apply_project_commands(
         kind = command.get("kind")
         if kind == "state.rename":
             applied.append(_apply_state_rename(scenes, command))
+        elif kind == "route.set_target":
+            applied.append(_apply_route_set_target(scenes, command))
         else:
             raise ProjectCommandError("COMMAND_KIND_UNKNOWN", f"unknown command kind '{kind}'")
 

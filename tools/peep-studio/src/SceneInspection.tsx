@@ -177,12 +177,14 @@ export function SceneAuthoringInspector({
   selection,
   onSelect,
   onRenameState,
+  onSetRouteTarget,
   canEdit,
 }: {
   scene: SceneDocument | null;
   selection: SceneSelection;
   onSelect: (selection: SceneSelection) => void;
   onRenameState: (sceneId: string, stateId: string, displayName: string) => Promise<void>;
+  onSetRouteTarget: (sceneId: string, routeId: string, targetState: string) => Promise<void>;
   canEdit: boolean;
 }) {
   const variables = scene?.variables ?? [];
@@ -242,7 +244,16 @@ export function SceneAuthoringInspector({
           canEdit={canEdit}
         />
       )}
-      {route !== null && <RouteInspector route={route} inputActions={inputActions} />}
+      {route !== null && scene !== null && (
+        <RouteInspector
+          sceneId={scene.scene_id}
+          route={route}
+          states={states}
+          inputActions={inputActions}
+          onSetRouteTarget={onSetRouteTarget}
+          canEdit={canEdit}
+        />
+      )}
       {render !== null && <RenderInspector render={render} />}
       {waiting !== null && <WaitingInspector waiting={waiting} />}
 
@@ -363,7 +374,21 @@ function StateInspector({
   );
 }
 
-function RouteInspector({ route, inputActions }: { route: StateRoute; inputActions: InputAction[] }) {
+function RouteInspector({
+  sceneId,
+  route,
+  states,
+  inputActions,
+  onSetRouteTarget,
+  canEdit,
+}: {
+  sceneId: string;
+  route: StateRoute;
+  states: StateRecord[];
+  inputActions: InputAction[];
+  onSetRouteTarget: (sceneId: string, routeId: string, targetState: string) => Promise<void>;
+  canEdit: boolean;
+}) {
   const input = inputActions.find((item) => item.action_id === route.action_ref);
   return (
     <section className="inspector-section selected-record">
@@ -377,6 +402,23 @@ function RouteInspector({ route, inputActions }: { route: StateRoute; inputActio
           ["Target", route.target_state],
         ]}
       />
+      <label className="select-field" htmlFor={`route-target-${route.route_id}`}>
+        Target state
+        <select
+          id={`route-target-${route.route_id}`}
+          value={route.target_state}
+          disabled={!canEdit}
+          onChange={(event) => {
+            void onSetRouteTarget(sceneId, route.route_id, event.target.value);
+          }}
+        >
+          {states.map((state) => (
+            <option key={state.state_id} value={state.state_id}>
+              {state.display_name} ({state.state_id})
+            </option>
+          ))}
+        </select>
+      </label>
       <h4>Guards</h4>
       <GuardList guards={route.guards} />
       <h4>Ordered actions</h4>

@@ -717,7 +717,8 @@ button:focus-visible {
   margin-top: 12px;
 }
 
-.rename-form label {
+.rename-form label,
+.select-field {
   color: #59635d;
   font-size: 10px;
   font-weight: 800;
@@ -731,6 +732,25 @@ button:focus-visible {
 }
 
 .rename-form input {
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #cbd3ce;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #242c28;
+  font: inherit;
+  font-size: 12px;
+}
+
+.select-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.select-field select {
+  width: 100%;
   min-width: 0;
   height: 32px;
   padding: 0 8px;

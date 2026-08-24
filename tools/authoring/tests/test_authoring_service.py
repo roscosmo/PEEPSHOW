@@ -306,6 +306,99 @@ class AuthoringServiceTests(unittest.TestCase):
             )
         self.assertEqual("PROJECT_TEXT_INVALID", raised.exception.code)
 
+    def test_route_set_target_updates_graph_and_undo_redo(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "route.set_target",
+                            "scene_id": "state_demo",
+                            "route_id": "center_to_right",
+                            "target_state": "left",
+                        }
+                    ],
+                },
+            )
+        )
+        routes = changed["document"]["scenes"][0]["routes"]
+        self.assertEqual(
+            "left",
+            next(route for route in routes if route["route_id"] == "center_to_right")["target_state"],
+        )
+        self.assertTrue(changed["dirty"])
+        self.assertTrue(changed["can_undo"])
+
+        undone = service.handle(request("project.undo", {"project_revision": changed["project_revision"]}))
+        routes = undone["document"]["scenes"][0]["routes"]
+        self.assertEqual(
+            "right",
+            next(route for route in routes if route["route_id"] == "center_to_right")["target_state"],
+        )
+
+        redone = service.handle(request("project.redo", {"project_revision": undone["project_revision"]}))
+        routes = redone["document"]["scenes"][0]["routes"]
+        self.assertEqual(
+            "left",
+            next(route for route in routes if route["route_id"] == "center_to_right")["target_state"],
+        )
+
+    def test_route_set_target_rejects_unknown_target(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        with self.assertRaises(ProtocolError) as raised:
+            service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "route.set_target",
+                                "scene_id": "state_demo",
+                                "route_id": "center_to_right",
+                                "target_state": "missing",
+                            }
+                        ],
+                    },
+                )
+            )
+        self.assertEqual("COMMAND_TARGET_UNKNOWN", raised.exception.code)
+
+    def test_route_set_target_persists_on_save(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "route_target.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            changed = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "route.set_target",
+                                "scene_id": "state_demo",
+                                "route_id": "center_to_right",
+                                "target_state": "left",
+                            }
+                        ],
+                    },
+                )
+            )
+            service.handle(request("project.save", {"project_revision": changed["project_revision"]}))
+            reloaded = load_project(project_root)
+            routes = reloaded.normalized()["scenes"][0]["routes"]
+            self.assertEqual(
+                "left",
+                next(route for route in routes if route["route_id"] == "center_to_right")["target_state"],
+            )
+
     def test_undo_redo_round_trips_state_rename_and_dirty_baseline(self) -> None:
         service = AuthoringService()
         loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
