@@ -397,8 +397,18 @@ Installer flow:
 1. host places package blob into USB staging/export storage.
 2. `thStorage` reclaims and rescans staging/export after host release.
 3. package manager validates the blob, manifest, chunk table, schemas, capabilities, bounds, and checksums.
-4. validated package is committed to installed raw package storage.
-5. installed index/metadata is updated atomically from the package-manager perspective.
+4. validated package is written to the inactive `5 MiB` installed raw slot and
+   read back without modifying the currently indexed slot.
+5. the inactive index record is erased, written, and read-verified.
+6. the new index commit marker is programmed last; only then is the new package
+   generation installed.
+7. the previous package slot and index record remain intact until a later
+   replacement needs them.
+
+The `.egg` bytes stored in a package slot are identical to the compiler output.
+Slot addresses, index records, commit markers, and generations are Platform
+metadata and must not be encoded into the package container or exposed to
+authoring tools.
 
 Runtime flow:
 

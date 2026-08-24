@@ -70,6 +70,21 @@ Key events:
 Rules:
 - Install state machine must preserve last known valid package set on failure.
 - Commit and index update are not complete until both success events are observed.
+- HW6 v1 uses two `5 MiB` raw package slots and two independent index erase
+  sectors. `PKG_INSTALL_COMMIT` writes only the inactive package slot;
+  `PKG_INSTALL_INDEX_UPDATE` writes only the inactive index record.
+- The index commit marker is programmed last. The new package is not installed
+  until the complete index body, CRC32, exact marker, package bounds, and package
+  SHA-256 validate.
+- Reset or power loss before a valid new marker preserves the previous valid
+  generation. Boot may select either index record independently and chooses the
+  newer valid generation.
+- The initial one-package implementation may expose only one active catalog
+  entry even though two physical slots exist. The second slot exists for atomic
+  replacement and rollback, not simultaneous user selection.
+- The current `65536`-byte whole-blob loader is a bring-up cache limit only.
+  Installed-package metadata must describe the full `5 MiB` slot so later
+  bounded asset reads do not require the whole package in SRAM.
 
 ---
 

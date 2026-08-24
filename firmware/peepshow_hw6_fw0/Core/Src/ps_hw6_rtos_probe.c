@@ -82,6 +82,7 @@
 #define PS_HW6_RTOS_COMMAND_POWER_STOP2_RECHECK (29UL)
 #define PS_HW6_RTOS_COMMAND_DISPLAY_LPBAM_EDGE_WAKE (30UL)
 #define PS_HW6_RTOS_COMMAND_DISPLAY_LPBAM_WAKE_ABORT (31UL)
+#define PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_INSTALL_EMBEDDED (32UL)
 #define PS_HW6_RTOS_EVENT_DEBUG_INDEX     (3U)
 #define PS_HW6_RTOS_ACK_OWNER(owner_id)   (1UL << (owner_id))
 #define PS_HW6_RTOS_CLOCK_ACK_SHIFT       (16U)
@@ -1191,6 +1192,8 @@ static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
        (message[2] == PS_HW6_RTOS_COMMAND_USB_BOOT_PARK) ||
        (message[2] == PS_HW6_RTOS_COMMAND_STORAGE_FLASH_INIT) ||
        (message[2] == PS_HW6_RTOS_COMMAND_STORAGE_ATTACH) ||
+       (message[2] ==
+        PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_INSTALL_EMBEDDED) ||
        (message[2] == PS_HW6_RTOS_COMMAND_PACKAGE_INSTALL_STUB)) &&
       (message[3] == PS_HW6_RTOS_COMMAND_TOKEN))
   {
@@ -2020,6 +2023,7 @@ UINT PS_HW6_RTOS_DebugRequestStorageAttach(void)
     PS_HW6_RTOS_OWNER_STORAGE,
     PS_HW6_RTOS_COMMAND_STORAGE_ATTACH);
 }
+
 UINT PS_HW6_RTOS_DebugRequestCommBleShutdown(void)
 {
   return PS_HW6_RTOS_SendModeCommand(
@@ -3866,6 +3870,7 @@ static uint32_t PS_HW6_RTOS_Stop2AutoStorageAllowsIdle(void)
 {
   if ((g_ps_hw6_storage_usb_export_request != 0UL) ||
       (g_ps_hw6_storage_usb_reclaim_request != 0UL) ||
+      (g_ps_hw6_storage_persistent_install_request != 0UL) ||
       ((g_ps_hw6_owner_sm_probe.usb_host_msc_active != 0UL) ||
        (g_ps_storage_msc_bridge_probe.export_enabled != 0UL)) ||
       (g_ps_ui_router_probe.package_state ==
@@ -5846,6 +5851,24 @@ static void PS_HW6_RTOS_RunStorageFlashInitRequest(void)
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_RESET);
 }
 
+static void PS_HW6_RTOS_RunStorageEmbeddedPackageInstallRequest(void)
+{
+  UINT clock_status;
+
+  clock_status = PS_HW6_RTOS_RequestStorageClockCapabilities(
+    PS_HW6_RTOS_STORAGE_CLOCK_REASON_PACKAGE_LOAD,
+    PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES);
+  if ((clock_status == TX_SUCCESS) ||
+      (PS_HW6_RTOS_StorageClockCapabilitiesActive(
+         PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES) != 0UL))
+  {
+    (void)PS_HW6_OwnerStateMachines_RunEmbeddedPersistentPackageInstall();
+  }
+  (void)PS_HW6_RTOS_RequestStorageClockCapabilities(
+    PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE,
+    0UL);
+}
+
 static void PS_HW6_RTOS_RunStorageAttachRequest(void)
 {
   UINT clock_status;
@@ -5924,6 +5947,12 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
            (command == PS_HW6_RTOS_COMMAND_STORAGE_ATTACH))
   {
     PS_HW6_RTOS_RunStorageAttachRequest();
+  }
+  else if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
+           (command ==
+            PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_INSTALL_EMBEDDED))
+  {
+    PS_HW6_RTOS_RunStorageEmbeddedPackageInstallRequest();
   }
   else if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
            (command == PS_HW6_RTOS_COMMAND_PACKAGE_INSTALL_STUB))
@@ -6892,6 +6921,13 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     {
       g_ps_hw6_storage_usb_reclaim_request = 0UL;
       PS_HW6_RTOS_RunStorageUsbReclaimRequest();
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
+        (g_ps_hw6_storage_persistent_install_request != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      g_ps_hw6_storage_persistent_install_request = 0UL;
+      PS_HW6_RTOS_RunStorageEmbeddedPackageInstallRequest();
     }
   }
 }

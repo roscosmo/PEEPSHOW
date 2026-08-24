@@ -15,6 +15,7 @@
 #include "ps_dev_at25sl128a.h"
 #include "ps_dev_lis2dux12.h"
 #include "ps_dev_tmag3001.h"
+#include "ps_embedded_egg.h"
 #include "ps_hw_i2c3.h"
 #include "ps_hw6_owner_services.h"
 #include "ps_hw6_rtos_probe.h"
@@ -35,6 +36,7 @@
 #include "ps_storage_filex_levelx.h"
 #include "ps_storage_layout.h"
 #include "ps_storage_msc_bridge.h"
+#include "ps_storage_package_index.h"
 #include "ps_storage_state.h"
 #include "tx_api.h"
 
@@ -146,6 +148,7 @@ volatile uint32_t g_ps_hw6_power_stop2_post_wfi_break_enable;
 volatile uint32_t g_ps_hw6_power_stop2_spi_autotrigger_test_enable;
 volatile uint32_t g_ps_hw6_storage_usb_export_request;
 volatile uint32_t g_ps_hw6_storage_usb_reclaim_request;
+volatile uint32_t g_ps_hw6_storage_persistent_install_request;
 volatile uint32_t g_ps_hw6_joystick_sample_request;
 volatile uint32_t g_ps_hw6_joystick_live_request;
 volatile uint32_t g_ps_hw6_joystick_cardinal_request;
@@ -3574,6 +3577,19 @@ static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForFlashReady(
     return status;
   }
 
+  driver_status = PS_StoragePackageIndex_Scan(&ps_flash_block);
+  status = PS_HW6_SM_StatusToHal(driver_status);
+  if (status != HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_FLASH,
+                              FLASH_EV_FAULT,
+                              status);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_FAULT,
+                              status);
+    return status;
+  }
+
   PS_StorageMscBridge_SetPolicy(0UL, 1UL, 1UL);
 
   driver_status = ps_dev_at25sl128a_enter_deep_power_down(
@@ -3897,6 +3913,49 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
   g_ps_hw6_owner_sm_probe.package_install_stub_last_status =
     (uint32_t)status;
   return status;
+}
+
+HAL_StatusTypeDef
+PS_HW6_OwnerStateMachines_RunEmbeddedPersistentPackageInstall(void)
+{
+  HAL_StatusTypeDef prepare_status = HAL_ERROR;
+  HAL_StatusTypeDef park_status = HAL_ERROR;
+  ps_status_t install_status = PS_STATUS_INTERNAL_ERROR;
+
+  if (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] !=
+      (uint32_t)STORAGE_FLASH_READY)
+  {
+    prepare_status = PS_HW6_SM_PrepareStorageForFlashReady(0UL);
+  }
+  else
+  {
+    prepare_status = HAL_OK;
+  }
+
+  if ((prepare_status == HAL_OK) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+       (uint32_t)FLASH_DEEP_POWER_DOWN))
+  {
+    prepare_status = PS_HW6_SM_ResumeStorage(
+      PS_HW6_OWNER_SM_CYCLE_COUNT);
+  }
+
+  if ((prepare_status == HAL_OK) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] ==
+       (uint32_t)STORAGE_FLASH_READY) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+       (uint32_t)FLASH_READY))
+  {
+    install_status = PS_StoragePackageIndex_InstallValidated(
+      &ps_flash_block,
+      g_ps_embedded_egg,
+      g_ps_embedded_egg_size);
+    park_status = PS_HW6_SM_QuiesceStorage(
+      PS_HW6_OWNER_SM_CYCLE_COUNT);
+  }
+  return ((prepare_status == HAL_OK) &&
+          (install_status == PS_STATUS_OK) &&
+          (park_status == HAL_OK)) ? HAL_OK : HAL_ERROR;
 }
 
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_AttachStorage(void)
@@ -5974,6 +6033,7 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_power_stop2_spi_autotrigger_test_enable = 0UL;
   g_ps_hw6_storage_usb_export_request = 0UL;
   g_ps_hw6_storage_usb_reclaim_request = 0UL;
+  g_ps_hw6_storage_persistent_install_request = 0UL;
   g_ps_hw6_joystick_sample_request = 0UL;
   g_ps_hw6_joystick_live_request = 0UL;
   g_ps_hw6_joystick_cardinal_request = 0UL;

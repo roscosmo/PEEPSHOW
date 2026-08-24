@@ -1052,6 +1052,7 @@ extern volatile uint32_t g_ps_hw6_power_stop2_post_wfi_break_enable;
 extern volatile uint32_t g_ps_hw6_power_stop2_spi_autotrigger_test_enable;
 extern volatile uint32_t g_ps_hw6_storage_usb_export_request;
 extern volatile uint32_t g_ps_hw6_storage_usb_reclaim_request;
+extern volatile uint32_t g_ps_hw6_storage_persistent_install_request;
 extern volatile uint32_t g_ps_hw6_joystick_sample_request;
 extern volatile uint32_t g_ps_hw6_joystick_live_request;
 extern volatile uint32_t g_ps_hw6_joystick_cardinal_request;
@@ -1080,6 +1081,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(
   uint32_t force_stage_rescan);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void);
+HAL_StatusTypeDef
+PS_HW6_OwnerStateMachines_RunEmbeddedPersistentPackageInstall(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ParkUsbForBoot(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSampleProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickLiveProbe(void);

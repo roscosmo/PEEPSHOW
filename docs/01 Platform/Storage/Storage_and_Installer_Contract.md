@@ -32,7 +32,21 @@ External flash is the only persistent storage besides internal MCU flash.
 
 ## Region Model
 
-External `AT25SL128A` regions must be explicitly defined before firmware implementation.
+External `AT25SL128A` regions use the following fixed HW6 map. All boundaries
+are aligned to the `4096`-byte erase sector.
+
+| Region | Start | Length | Notes |
+|---|---:|---:|---|
+| settings/config | `0x00000000` | `64 KiB` | protected |
+| communication bonding | `0x00010000` | `64 KiB` | protected |
+| calibration | `0x00020000` | `64 KiB` | protected |
+| save data | `0x00030000` | `512 KiB` | protected |
+| installed index/metadata | `0x000B0000` | `64 KiB` | protected |
+| installed package/blob | `0x000C0000` | `10 MiB` | protected; two `5 MiB` slots |
+| USB staging/export | `0x00AC0000` | `5 MiB` | host exposed only during MSC |
+| persistent fault log ring | `0x00FC0000` | `192 KiB` | protected |
+| reserved tail | `0x00FF0000` | `60 KiB` | protected |
+| bring-up scratch | `0x00FFF000` | `4 KiB` | destructive tests only |
 
 Required regions:
 
@@ -59,6 +73,68 @@ Rules:
 - host access must never expose internal storage regions directly.
 - Platform firmware update artifacts may be transferred through staging/export or CDC developer upload in the future, but applying them is a distinct Platform-owned update/recovery flow.
 - package install must not rewrite Platform firmware, bootloader/recovery regions, or native executable app slots.
+
+### Installed Package Slots And Index
+
+The first persistent installer supports one active package with an A/B update
+pair. This is a physical durability mechanism, not a user-visible two-package
+catalog.
+
+- package slot A is `0x000C0000..0x005BFFFF` (`5 MiB`);
+- package slot B is `0x005C0000..0x00ABFFFF` (`5 MiB`);
+- one `.egg` must fit entirely in one slot;
+- package bytes begin at the first byte of the selected slot and remain in the
+  canonical `.egg` format without a storage-specific wrapper;
+- unused bytes after `package_size_bytes` are ignored;
+- the currently indexed slot is never erased or programmed during replacement.
+
+The package-index region begins with two independent erase-sector records:
+
+- index A is `0x000B0000..0x000B0FFF`;
+- index B is `0x000B1000..0x000B1FFF`;
+- `0x000B2000..0x000BFFFF` remains reserved for future catalog expansion;
+- each record contains format version, generation, active slot, package size,
+  package identity hash, package SHA-256, flags, and a record CRC32;
+- each record has an exact commit marker stored separately from its CRC-covered
+  body and programmed only after the body has been read back successfully;
+- a record is valid only when its marker, format, bounds, slot mapping, and
+  CRC32 all validate;
+- boot selects the valid record with the newer generation; one valid record is
+  sufficient, and no valid record means no installed package;
+- generation comparison must remain deterministic across `uint32_t` wrap.
+
+Index v1 uses little-endian fields. Its CRC-covered body is exactly `256`
+bytes: magic `EGI1`, format version `1`, body size, generation, active slot,
+package size, 64-bit package identity hash, zero flags, the package SHA-256,
+CRC32, then erased `0xFF` reserved bytes. The CRC field is treated as zero
+while calculating CRC32. The exact commit marker `CMIT` is stored at sector
+offset `0x100`, outside the body, and the remainder of the `4 KiB` sector stays
+erased. Unknown nonzero flags or programmed reserved bytes invalidate a v1
+record.
+
+Atomic replacement order is mandatory:
+
+1. select the slot not named by the current valid index;
+2. erase only that inactive slot's required sectors;
+3. copy the staged `.egg` into the inactive slot through `thStorage`;
+4. read back and validate the installed bytes, container integrity, and SHA-256;
+5. erase the inactive index sector;
+6. write and read-verify the new index body;
+7. program and verify the commit marker last;
+8. treat the new generation as active without erasing the previous package or
+   previous index record.
+
+Any interruption before step 7 leaves the previous index and package active.
+An interruption during the commit-marker program leaves the new record invalid
+unless the exact marker and complete CRC-covered body both validate. Cleanup of
+the old slot or old index is deferred until a later replacement needs that
+inactive location.
+
+The current `65536`-byte staged-RAM source remains a bring-up activation cache,
+not the installed slot size. Persistent layout and index metadata must support
+the full `5 MiB` slot. Runtime metadata and small prepared assets may be cached
+in normal SRAM; large assets use bounded storage-owner reads through the package
+asset API and are never read through FileX.
 
 ## Persistent Fault Log Region
 
