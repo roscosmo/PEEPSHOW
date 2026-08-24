@@ -135,6 +135,14 @@ Rules:
 - calibration evidence from bring-up must be separated from user calibration records.
 - hardware-dependent calibration flows may remain drafted until measured behavior exists for the active target; HW6 evidence is recorded in [[HW6_Brought_Up_Tracker]].
 
+HW6 joystick calibration currently uses the shell sequence `CENTER -> UP ->
+RIGHT -> DOWN -> LEFT -> FULL SWEEP -> REVIEW`. `thInput` performs each bounded
+capture incrementally and publishes fixed-point progress; the shell renders the
+progress without reading the sensor. Calibration and review veto STOP2. The
+review page provides a live marker against the measured aligned envelope. A
+applies the candidate and B restores the previous calibration. The candidate is
+volatile in FW0 until protected calibration-record persistence is completed.
+
 ---
 
 ## Package Browser And Management

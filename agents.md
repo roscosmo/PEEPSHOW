@@ -6,8 +6,6 @@ unless explicitly overridden by the user.
 
 ---
 
-i lose
-
 ## HELPER / COMMAND DISCIPLINE
 
 Do not guess debugger helpers, command names, or probe aliases.

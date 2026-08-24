@@ -88,6 +88,8 @@ ps_status_t PS_InputJoystick_Normalize(
   uint32_t magnitude_x;
   uint32_t magnitude_y;
   uint32_t direction_mask;
+  int64_t transformed_x;
+  int64_t transformed_y;
 
   if ((calibration == (const ps_input_joystick_calibration_t *)0) ||
       (sample == (const ps_input_joystick_raw_sample_t *)0) ||
@@ -119,10 +121,30 @@ ps_status_t PS_InputJoystick_Normalize(
     return PS_STATUS_INVALID_STATE;
   }
 
-  negative_x_span = calibration->center_x - calibration->min_x;
-  positive_x_span = calibration->max_x - calibration->center_x;
-  negative_y_span = calibration->center_y - calibration->min_y;
-  positive_y_span = calibration->max_y - calibration->center_y;
+  state->delta_x = sample->raw_x - calibration->center_x;
+  state->delta_y = sample->raw_y - calibration->center_y;
+  if (calibration->transform_valid != 0UL)
+  {
+    transformed_x =
+      ((int64_t)calibration->transform_xx_q20 * state->delta_x) +
+      ((int64_t)calibration->transform_xy_q20 * state->delta_y);
+    transformed_y =
+      ((int64_t)calibration->transform_yx_q20 * state->delta_x) +
+      ((int64_t)calibration->transform_yy_q20 * state->delta_y);
+    state->delta_x = (int32_t)(transformed_x >> 20);
+    state->delta_y = (int32_t)(transformed_y >> 20);
+    negative_x_span = -calibration->min_x;
+    positive_x_span = calibration->max_x;
+    negative_y_span = -calibration->min_y;
+    positive_y_span = calibration->max_y;
+  }
+  else
+  {
+    negative_x_span = calibration->center_x - calibration->min_x;
+    positive_x_span = calibration->max_x - calibration->center_x;
+    negative_y_span = calibration->center_y - calibration->min_y;
+    positive_y_span = calibration->max_y - calibration->center_y;
+  }
   if ((negative_x_span <= 0) || (positive_x_span <= 0) ||
       (negative_y_span <= 0) || (positive_y_span <= 0))
   {
@@ -131,8 +153,6 @@ ps_status_t PS_InputJoystick_Normalize(
     return PS_STATUS_INVALID_ARGUMENT;
   }
 
-  state->delta_x = sample->raw_x - calibration->center_x;
-  state->delta_y = sample->raw_y - calibration->center_y;
   state->normalized_x = PS_InputJoystick_NormalizeAxis(
     state->delta_x, negative_x_span, positive_x_span,
     calibration->deadzone_counts);

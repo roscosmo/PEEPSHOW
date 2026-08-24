@@ -3,6 +3,8 @@
 #include <string.h>
 
 #include "ps_egg_state_loader.h"
+#include "ps_hw6_owner_state_machines.h"
+#include "ps_input_joystick.h"
 #include "ps_ui_router.h"
 
 #define DISPLAY_RENDERER_TEXT_SCALE         (2U)
@@ -2396,14 +2398,29 @@ static void DisplayRenderer_UIList(uint32_t page,
         list->rows[0] = "STICK CENTER";
         list->rows[1] = "PRESS A";
       }
-      else if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_RIGHT)
+      else if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_UP)
       {
-        list->rows[0] = "MOVE RIGHT";
+        list->rows[0] = "HOLD UP";
         list->rows[1] = "PRESS A";
       }
-      else if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_CIRCLE)
+      else if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_RIGHT)
       {
-        list->rows[0] = "MAKE CIRCLES";
+        list->rows[0] = "HOLD RIGHT";
+        list->rows[1] = "PRESS A";
+      }
+      else if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_DOWN)
+      {
+        list->rows[0] = "HOLD DOWN";
+        list->rows[1] = "PRESS A";
+      }
+      else if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_LEFT)
+      {
+        list->rows[0] = "HOLD LEFT";
+        list->rows[1] = "PRESS A";
+      }
+      else if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_SWEEP)
+      {
+        list->rows[0] = "FULL SWEEP";
         list->rows[1] = "PRESS A";
       }
       else if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_REVIEW)
@@ -2415,6 +2432,20 @@ static void DisplayRenderer_UIList(uint32_t page,
       {
         list->rows[0] = "INPUT";
         list->rows[1] = "JOYSTICK A";
+      }
+      if ((g_ps_hw6_owner_sm_probe.joystick_calibration_capture_active !=
+           0UL) &&
+          (g_ps_hw6_owner_sm_probe.joystick_calibration_capture_page ==
+           calibration_page))
+      {
+        list->rows[1] = "MEASURING";
+      }
+      else if ((g_ps_hw6_owner_sm_probe.joystick_calibration_capture_page ==
+                calibration_page) &&
+               (g_ps_hw6_owner_sm_probe.joystick_calibration_capture_status ==
+                (uint32_t)HAL_ERROR))
+      {
+        list->rows[1] = "TRY AGAIN";
       }
       list->rows[2] = "B BACK";
       break;
@@ -2676,6 +2707,219 @@ uint32_t DisplayRenderer_GetSceneFocusLogicalBounds(
   return 0UL;
 }
 
+static uint32_t DisplayRenderer_DrawCalibrationEllipse(
+  int32_t center_x,
+  int32_t center_y,
+  int32_t radius_x,
+  int32_t radius_y)
+{
+  uint32_t black_pixels = 0UL;
+  int32_t x = 0;
+  int32_t y = radius_y;
+  int32_t radius_x_squared;
+  int32_t radius_y_squared;
+  int32_t dx;
+  int32_t dy;
+  int32_t decision;
+
+  if ((radius_x <= 0) || (radius_y <= 0))
+  {
+    return 0UL;
+  }
+
+  radius_x_squared = radius_x * radius_x;
+  radius_y_squared = radius_y * radius_y;
+  dx = 0;
+  dy = 2 * radius_x_squared * y;
+  decision = radius_y_squared -
+             (radius_x_squared * radius_y) +
+             (radius_x_squared / 4);
+
+  while (dx < dy)
+  {
+    black_pixels += DisplayRenderer_SetBlack(
+      (uint16_t)(center_x + x),
+      (uint16_t)(center_y + y));
+    black_pixels += DisplayRenderer_SetBlack(
+      (uint16_t)(center_x - x),
+      (uint16_t)(center_y + y));
+    black_pixels += DisplayRenderer_SetBlack(
+      (uint16_t)(center_x + x),
+      (uint16_t)(center_y - y));
+    black_pixels += DisplayRenderer_SetBlack(
+      (uint16_t)(center_x - x),
+      (uint16_t)(center_y - y));
+    ++x;
+    dx += 2 * radius_y_squared;
+    if (decision < 0)
+    {
+      decision += radius_y_squared + dx;
+    }
+    else
+    {
+      --y;
+      dy -= 2 * radius_x_squared;
+      decision += radius_y_squared + dx - dy;
+    }
+  }
+
+  decision = (radius_y_squared * ((x * x) + x)) +
+             (radius_y_squared / 4) +
+             (radius_x_squared * ((y - 1) * (y - 1))) -
+             (radius_x_squared * radius_y_squared);
+  while (y >= 0)
+  {
+    black_pixels += DisplayRenderer_SetBlack(
+      (uint16_t)(center_x + x),
+      (uint16_t)(center_y + y));
+    black_pixels += DisplayRenderer_SetBlack(
+      (uint16_t)(center_x - x),
+      (uint16_t)(center_y + y));
+    black_pixels += DisplayRenderer_SetBlack(
+      (uint16_t)(center_x + x),
+      (uint16_t)(center_y - y));
+    black_pixels += DisplayRenderer_SetBlack(
+      (uint16_t)(center_x - x),
+      (uint16_t)(center_y - y));
+    --y;
+    dy -= 2 * radius_x_squared;
+    if (decision > 0)
+    {
+      decision += radius_x_squared - dy;
+    }
+    else
+    {
+      ++x;
+      dx += 2 * radius_y_squared;
+      decision += radius_x_squared - dy + dx;
+    }
+  }
+  return black_pixels;
+}
+
+static uint32_t DisplayRenderer_DrawCalibrationProgress(uint32_t progress)
+{
+  const uint16_t left = 16U;
+  const uint16_t right = 151U;
+  const uint16_t top = 124U;
+  const uint16_t bottom = 134U;
+  const uint16_t inner_width = 132U;
+  uint16_t fill_width;
+  uint32_t black_pixels = 0UL;
+
+  if (progress > 1000UL)
+  {
+    progress = 1000UL;
+  }
+  fill_width = (uint16_t)((progress * inner_width) / 1000UL);
+  black_pixels += DisplayRenderer_HorizontalLine(left, right, top);
+  black_pixels += DisplayRenderer_HorizontalLine(left, right, bottom);
+  black_pixels += DisplayRenderer_VerticalLine(left, top, bottom);
+  black_pixels += DisplayRenderer_VerticalLine(right, top, bottom);
+  if (fill_width != 0U)
+  {
+    black_pixels += DisplayRenderer_FilledRect(
+      (uint16_t)(left + 2U),
+      (uint16_t)(top + 2U),
+      fill_width,
+      7U);
+  }
+  return black_pixels;
+}
+
+static uint32_t DisplayRenderer_DrawJoystickCalibrationReview(void)
+{
+  const int32_t plot_center_x = 84;
+  const int32_t plot_center_y = 73;
+  const int32_t plot_radius = 40;
+  int32_t min_x = g_ps_hw6_owner_sm_probe.joystick_calibration_sweep_min_x;
+  int32_t max_x = g_ps_hw6_owner_sm_probe.joystick_calibration_sweep_max_x;
+  int32_t min_y = g_ps_hw6_owner_sm_probe.joystick_calibration_sweep_min_y;
+  int32_t max_y = g_ps_hw6_owner_sm_probe.joystick_calibration_sweep_max_y;
+  int32_t max_span = max_x;
+  int32_t ellipse_center_x;
+  int32_t ellipse_center_y;
+  int32_t radius_x;
+  int32_t radius_y;
+  int32_t deadzone_radius;
+  int32_t marker_x;
+  int32_t marker_y;
+  uint32_t black_pixels = 0UL;
+
+  if (-min_x > max_span)
+  {
+    max_span = -min_x;
+  }
+  if (max_y > max_span)
+  {
+    max_span = max_y;
+  }
+  if (-min_y > max_span)
+  {
+    max_span = -min_y;
+  }
+  if (max_span <= 0)
+  {
+    max_span = PS_INPUT_JOYSTICK_AXIS_SCALE;
+  }
+
+  ellipse_center_x = plot_center_x +
+    (((max_x + min_x) * plot_radius) / (2 * max_span));
+  ellipse_center_y = plot_center_y +
+    (((max_y + min_y) * plot_radius) / (2 * max_span));
+  radius_x = ((max_x - min_x) * plot_radius) / (2 * max_span);
+  radius_y = ((max_y - min_y) * plot_radius) / (2 * max_span);
+  deadzone_radius =
+    (g_ps_hw6_owner_sm_probe.joystick_calibration_deadzone_counts *
+     plot_radius) / max_span;
+  if (deadzone_radius < 2)
+  {
+    deadzone_radius = 2;
+  }
+
+  marker_x = plot_center_x +
+    ((g_ps_hw6_owner_sm_probe.joystick_input_delta_x * plot_radius) /
+     max_span);
+  marker_y = plot_center_y +
+    ((g_ps_hw6_owner_sm_probe.joystick_input_delta_y * plot_radius) /
+     max_span);
+  if (marker_x < (plot_center_x - plot_radius))
+  {
+    marker_x = plot_center_x - plot_radius;
+  }
+  if (marker_x > (plot_center_x + plot_radius))
+  {
+    marker_x = plot_center_x + plot_radius;
+  }
+  if (marker_y < (plot_center_y - plot_radius))
+  {
+    marker_y = plot_center_y - plot_radius;
+  }
+  if (marker_y > (plot_center_y + plot_radius))
+  {
+    marker_y = plot_center_y + plot_radius;
+  }
+
+  black_pixels += DisplayRenderer_DrawCenteredText(5U, "JOYSTICK", 1U);
+  black_pixels += DisplayRenderer_HorizontalLine(42U, 126U, 30U);
+  black_pixels += DisplayRenderer_HorizontalLine(42U, 126U, 116U);
+  black_pixels += DisplayRenderer_VerticalLine(42U, 30U, 116U);
+  black_pixels += DisplayRenderer_VerticalLine(126U, 30U, 116U);
+  black_pixels += DisplayRenderer_HorizontalLine(
+    44U, 124U, (uint16_t)plot_center_y);
+  black_pixels += DisplayRenderer_VerticalLine(
+    (uint16_t)plot_center_x, 32U, 114U);
+  black_pixels += DisplayRenderer_DrawCalibrationEllipse(
+    ellipse_center_x, ellipse_center_y, radius_x, radius_y);
+  black_pixels += DisplayRenderer_DrawCalibrationEllipse(
+    plot_center_x, plot_center_y, deadzone_radius, deadzone_radius);
+  black_pixels += DisplayRenderer_FilledRect(
+    (uint16_t)(marker_x - 1), (uint16_t)(marker_y - 1), 3U, 3U);
+  black_pixels += DisplayRenderer_DrawText(18U, 130U, "A APPLY", 1U);
+  black_pixels += DisplayRenderer_DrawText(102U, 130U, "B BACK", 1U);
+  return black_pixels;
+}
+
 void DisplayRenderer_PrepareUIPage(
   uint32_t page,
   uint32_t calibration_page,
@@ -2718,8 +2962,29 @@ void DisplayRenderer_PrepareUIPage(
                          scene_model,
                          &list);
 
+  if ((page == (uint32_t)PS_UI_ROUTER_PAGE_CALIBRATION) &&
+      (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_REVIEW))
+  {
+    DisplayRenderer_ClearWhite();
+    s_rotate_ccw = 1UL;
+    black_pixels = DisplayRenderer_DrawJoystickCalibrationReview();
+    DisplayRenderer_RecordCursorBaseFrame();
+    DisplayRenderer_ComputeDirtyRowsFromCommitted();
+    s_rotate_ccw = 0UL;
+    DisplayRenderer_SetPendingList(&list);
+    DisplayRenderer_FillStats(stats,
+                              black_pixels,
+                              DISPLAY_RENDERER_PRIMITIVE_LIST_FULL,
+                              DISPLAY_RENDERER_ROW_NONE,
+                              DISPLAY_RENDERER_ROW_NONE);
+    return;
+  }
+
   s_rotate_ccw = 1UL;
-  if (DisplayRenderer_ListFocusPrimitiveEligible(&list) != 0UL)
+  if (!((page == (uint32_t)PS_UI_ROUTER_PAGE_CALIBRATION) &&
+        (g_ps_hw6_owner_sm_probe.joystick_calibration_capture_active !=
+         0UL)) &&
+      (DisplayRenderer_ListFocusPrimitiveEligible(&list) != 0UL))
   {
     primitive_id = DISPLAY_RENDERER_PRIMITIVE_LIST_FOCUS;
     previous_focus_row = s_display_committed_list.selected_row;
@@ -2737,6 +3002,13 @@ void DisplayRenderer_PrepareUIPage(
     DisplayRenderer_ClearWhite();
     s_rotate_ccw = 1UL;
     black_pixels += DisplayRenderer_DrawList(&list);
+    if ((page == (uint32_t)PS_UI_ROUTER_PAGE_CALIBRATION) &&
+        (g_ps_hw6_owner_sm_probe.joystick_calibration_capture_active != 0UL))
+    {
+      black_pixels += DisplayRenderer_DrawCalibrationProgress(
+        g_ps_hw6_owner_sm_probe.
+          joystick_calibration_capture_progress_per_mille);
+    }
     DisplayRenderer_RecordCursorBaseFrame();
     DisplayRenderer_ComputeDirtyRowsFromCommitted();
   }

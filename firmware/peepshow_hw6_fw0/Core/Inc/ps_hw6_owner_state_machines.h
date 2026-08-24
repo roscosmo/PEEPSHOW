@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (61UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (63UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -549,6 +549,8 @@ typedef struct
   int32_t joystick_sample_x;
   int32_t joystick_sample_y;
   int32_t joystick_sample_z;
+  int32_t joystick_sample_average_x;
+  int32_t joystick_sample_average_y;
   uint32_t joystick_sample_conv_status;
   uint32_t joystick_xyz_capture_request_count;
   uint32_t joystick_xyz_capture_start_tick;
@@ -624,6 +626,12 @@ typedef struct
   uint32_t joystick_calibration_capture_end_tick;
   uint32_t joystick_calibration_capture_status;
   uint32_t joystick_calibration_capture_page;
+  uint32_t joystick_calibration_capture_active;
+  uint32_t joystick_calibration_capture_progress_per_mille;
+  uint32_t joystick_calibration_capture_sample_count;
+  uint32_t joystick_calibration_capture_error_count;
+  uint32_t joystick_calibration_capture_next_tick;
+  uint32_t joystick_calibration_sweep_coverage_mask;
   uint32_t joystick_calibration_active_valid;
   int32_t joystick_calibration_center_x;
   int32_t joystick_calibration_center_y;
@@ -633,6 +641,23 @@ typedef struct
   int32_t joystick_calibration_max_y;
   int32_t joystick_calibration_deadzone_counts;
   int32_t joystick_calibration_direction_threshold;
+  int32_t joystick_calibration_transform_xx_q20;
+  int32_t joystick_calibration_transform_xy_q20;
+  int32_t joystick_calibration_transform_yx_q20;
+  int32_t joystick_calibration_transform_yy_q20;
+  uint32_t joystick_calibration_transform_valid;
+  uint32_t joystick_calibration_session_active;
+  uint32_t joystick_calibration_commit_count;
+  uint32_t joystick_calibration_cancel_count;
+  int32_t joystick_calibration_cardinal_x[4];
+  int32_t joystick_calibration_cardinal_y[4];
+  int32_t joystick_calibration_sweep_min_x;
+  int32_t joystick_calibration_sweep_max_x;
+  int32_t joystick_calibration_sweep_min_y;
+  int32_t joystick_calibration_sweep_max_y;
+  uint32_t joystick_calibration_review_count;
+  uint32_t joystick_calibration_review_status;
+  uint32_t joystick_calibration_review_tick;
   uint32_t imu_driver_api_version;
   uint32_t imu_driver_init_status;
   uint32_t imu_driver_state;
@@ -1113,6 +1138,12 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickXyzCapture(
   uint32_t capture_mode);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCalibrationCapture(
   uint32_t calibration_page);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StepJoystickCalibrationCapture(void);
+uint32_t PS_HW6_OwnerStateMachines_JoystickCalibrationCaptureActive(void);
+uint32_t PS_HW6_OwnerStateMachines_JoystickCalibrationCaptureNextTick(void);
+HAL_StatusTypeDef
+PS_HW6_OwnerStateMachines_RunJoystickCalibrationReviewSample(void);
+void PS_HW6_OwnerStateMachines_CancelJoystickCalibration(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_SetBleMode(uint32_t mode);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_SetImuMode(uint32_t mode);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandleStartShippingIntent(

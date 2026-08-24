@@ -255,7 +255,14 @@ static ps_status_t PS_UIRouter_DispatchButtonA(void)
     }
     if (ps_ui_router_state.focus_index == 1UL)
     {
-      return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_CALIBRATION);
+      ps_status_t status = PS_UIRouter_GotoPage(
+        PS_UI_ROUTER_PAGE_CALIBRATION);
+      if (status == PS_STATUS_OK)
+      {
+        ps_ui_router_state.calibration_page =
+          PS_UI_ROUTER_CAL_INPUT_ROOT;
+      }
+      return status;
     }
     return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_PACKAGE_BROWSER);
   }
@@ -270,6 +277,13 @@ static ps_status_t PS_UIRouter_DispatchButtonA(void)
     {
       return PS_UIRouter_AdvanceJoystickCalibration(
         PS_UI_ROUTER_CAL_JOYSTICK_NEUTRAL,
+        PS_UI_ROUTER_CAL_JOYSTICK_UP);
+    }
+    if (ps_ui_router_state.calibration_page ==
+        PS_UI_ROUTER_CAL_JOYSTICK_UP)
+    {
+      return PS_UIRouter_AdvanceJoystickCalibration(
+        PS_UI_ROUTER_CAL_JOYSTICK_UP,
         PS_UI_ROUTER_CAL_JOYSTICK_RIGHT);
     }
     if (ps_ui_router_state.calibration_page ==
@@ -277,13 +291,27 @@ static ps_status_t PS_UIRouter_DispatchButtonA(void)
     {
       return PS_UIRouter_AdvanceJoystickCalibration(
         PS_UI_ROUTER_CAL_JOYSTICK_RIGHT,
-        PS_UI_ROUTER_CAL_JOYSTICK_CIRCLE);
+        PS_UI_ROUTER_CAL_JOYSTICK_DOWN);
     }
     if (ps_ui_router_state.calibration_page ==
-        PS_UI_ROUTER_CAL_JOYSTICK_CIRCLE)
+        PS_UI_ROUTER_CAL_JOYSTICK_DOWN)
     {
       return PS_UIRouter_AdvanceJoystickCalibration(
-        PS_UI_ROUTER_CAL_JOYSTICK_CIRCLE,
+        PS_UI_ROUTER_CAL_JOYSTICK_DOWN,
+        PS_UI_ROUTER_CAL_JOYSTICK_LEFT);
+    }
+    if (ps_ui_router_state.calibration_page ==
+        PS_UI_ROUTER_CAL_JOYSTICK_LEFT)
+    {
+      return PS_UIRouter_AdvanceJoystickCalibration(
+        PS_UI_ROUTER_CAL_JOYSTICK_LEFT,
+        PS_UI_ROUTER_CAL_JOYSTICK_SWEEP);
+    }
+    if (ps_ui_router_state.calibration_page ==
+        PS_UI_ROUTER_CAL_JOYSTICK_SWEEP)
+    {
+      return PS_UIRouter_AdvanceJoystickCalibration(
+        PS_UI_ROUTER_CAL_JOYSTICK_SWEEP,
         PS_UI_ROUTER_CAL_JOYSTICK_REVIEW);
     }
     if (ps_ui_router_state.calibration_page ==
@@ -522,16 +550,31 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
     case PS_UI_ROUTER_EVENT_CAL_JOYSTICK_NEUTRAL_ACCEPT:
       status = PS_UIRouter_AdvanceJoystickCalibration(
         PS_UI_ROUTER_CAL_JOYSTICK_NEUTRAL,
+        PS_UI_ROUTER_CAL_JOYSTICK_UP);
+      break;
+    case PS_UI_ROUTER_EVENT_CAL_JOYSTICK_UP_ACCEPT:
+      status = PS_UIRouter_AdvanceJoystickCalibration(
+        PS_UI_ROUTER_CAL_JOYSTICK_UP,
         PS_UI_ROUTER_CAL_JOYSTICK_RIGHT);
       break;
     case PS_UI_ROUTER_EVENT_CAL_JOYSTICK_RIGHT_ACCEPT:
       status = PS_UIRouter_AdvanceJoystickCalibration(
         PS_UI_ROUTER_CAL_JOYSTICK_RIGHT,
-        PS_UI_ROUTER_CAL_JOYSTICK_CIRCLE);
+        PS_UI_ROUTER_CAL_JOYSTICK_DOWN);
       break;
-    case PS_UI_ROUTER_EVENT_CAL_JOYSTICK_CIRCLE_ACCEPT:
+    case PS_UI_ROUTER_EVENT_CAL_JOYSTICK_DOWN_ACCEPT:
       status = PS_UIRouter_AdvanceJoystickCalibration(
-        PS_UI_ROUTER_CAL_JOYSTICK_CIRCLE,
+        PS_UI_ROUTER_CAL_JOYSTICK_DOWN,
+        PS_UI_ROUTER_CAL_JOYSTICK_LEFT);
+      break;
+    case PS_UI_ROUTER_EVENT_CAL_JOYSTICK_LEFT_ACCEPT:
+      status = PS_UIRouter_AdvanceJoystickCalibration(
+        PS_UI_ROUTER_CAL_JOYSTICK_LEFT,
+        PS_UI_ROUTER_CAL_JOYSTICK_SWEEP);
+      break;
+    case PS_UI_ROUTER_EVENT_CAL_JOYSTICK_SWEEP_ACCEPT:
+      status = PS_UIRouter_AdvanceJoystickCalibration(
+        PS_UI_ROUTER_CAL_JOYSTICK_SWEEP,
         PS_UI_ROUTER_CAL_JOYSTICK_REVIEW);
       break;
     case PS_UI_ROUTER_EVENT_CAL_JOYSTICK_REVIEW_ACCEPT:

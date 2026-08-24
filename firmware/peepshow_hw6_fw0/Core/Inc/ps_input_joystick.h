@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_INPUT_JOYSTICK_API_VERSION       (1UL)
+#define PS_INPUT_JOYSTICK_API_VERSION       (2UL)
 #define PS_INPUT_JOYSTICK_AXIS_SCALE        (1000)
 #define PS_INPUT_JOYSTICK_DIRECTION_LEFT    (1UL << 0)
 #define PS_INPUT_JOYSTICK_DIRECTION_RIGHT   (1UL << 1)
@@ -35,6 +35,11 @@ typedef struct
   int32_t max_y;
   int32_t deadzone_counts;
   int32_t direction_threshold;
+  int32_t transform_xx_q20;
+  int32_t transform_xy_q20;
+  int32_t transform_yx_q20;
+  int32_t transform_yy_q20;
+  uint32_t transform_valid;
   uint32_t valid;
 } ps_input_joystick_calibration_t;
 

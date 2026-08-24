@@ -96,20 +96,22 @@ The public joystick API must not expose these raw register values except through
 ## HW6 FW0 Bring-Up Status
 
 On HW6 unit 001, FW0 has proven TMAG3001 identity, driver-backed owner wake and
-sleep cycles, and provisional raw/live sample capture. Raw sweep probes showed
-usable X/Y movement range, but neutral position and deadzone behavior are not
-ready for normal input policy. A later normalized capture reported a nonzero
-cardinal direction while the user had returned the stick to neutral, so the
-current calibration/deadzone state must be treated as invalid for shell/game
-use.
+sleep cycles, raw/live sample capture, and the first complete guided calibration
+path. Calibration remains volatile until the protected-record persistence path
+is implemented, so it is not yet accepted as boot-time production policy.
 
 Current FW0 calibration status:
 
 - raw X/Y/Z diagnostic sampling works through `thInput`
 - bounded REST and full-travel SWEEP raw XYZ CSV capture helpers are target-validated
-- a provisional normalized joystick API exists for diagnostics
-- the calibration flow can be reached from the shell UI
-- the multi-step guided calibration flow is not complete
+- a fixed-point normalized joystick API exists for diagnostics and calibration review
+- the shell flow captures neutral, UP, RIGHT, DOWN, LEFT, and full travel
+- each capture is incremental and owned by `thInput`; progress is published for UI rendering
+- opposite cardinal pairs solve a Q20 axis transform without floating point
+- the full-travel sweep must reproduce all four cardinal directions before it is accepted
+- captured cardinal reach seeds the final envelope so a sparse sweep cannot discard a proven endpoint
+- the review screen displays the measured aligned envelope, deadzone, and live aligned marker
+- A applies the volatile candidate and B restores the previous calibration
 - L/R plus A/B remain the required fallback controls while calibration is
   missing or invalid
 
@@ -137,9 +139,10 @@ diagnostic stack did not fit the current ThreadX byte-pool budget, so input
 stack sizing remains measured but provisional.
 
 Debugger-only one-position captures are not sufficient calibration evidence for
-this joystick. The accepted path is an on-device guided calibration flow that
-lets the user leave neutral, confirm right-side travel, and perform circular
-range capture using the display and buttons.
+this joystick. The accepted path is the on-device guided flow: neutral, four
+confirmed cardinals, full-travel sweep, then live visual review. The calibration
+page must remain awake throughout this sequence. Persistence, dominant-axis
+hysteresis, and movement-triggered wake remain separate bring-up milestones.
 
 ## Calibration Contract
 
