@@ -716,6 +716,48 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
+.scene-overview-card {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.scene-overview-card div {
+  display: grid;
+  gap: 3px;
+  min-height: 48px;
+  padding: 7px 8px;
+  border: 1px solid #d6ddd9;
+  border-radius: 5px;
+  background: #ffffff;
+}
+
+.scene-overview-card span {
+  overflow: hidden;
+  color: #68736d;
+  font-size: 10px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.scene-overview-card strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #26302b;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-overview-prompt {
+  margin: 10px 0 0;
+  color: #68736d;
+  font-size: 11px;
+  line-height: 16px;
+}
+
 .state-summary-card {
   display: grid;
   gap: 7px;

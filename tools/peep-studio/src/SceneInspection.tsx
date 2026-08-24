@@ -225,39 +225,6 @@ export function SceneAuthoringInspector({
 
   return (
     <>
-      <section className="inspector-section">
-        <h3><GitBranch size={14} aria-hidden="true" /> Scene graph</h3>
-        {scene === null ? (
-          <EmptyInspector>No normalized scene selected.</EmptyInspector>
-        ) : (
-          <InspectorList
-            rows={[
-              ["Scene", scene.scene_id],
-              ["Type", scene.scene_type],
-              ["Entry state", scene.entry_state],
-              ["States", states.length],
-              ["Routes", routes.length],
-            ]}
-          />
-        )}
-      </section>
-
-      <section className="inspector-section">
-        <h3><Variable size={14} aria-hidden="true" /> Variables</h3>
-        {variables.length === 0 ? (
-          <EmptyInspector>No authored variables.</EmptyInspector>
-        ) : (
-          <div className="record-list">
-            {variables.map((variable: StateVariable) => (
-              <button key={variable.variable_id} className="record-row" type="button">
-                <strong>{variable.variable_id}</strong>
-                <small>{variable.initial} in {variable.minimum}..{variable.maximum}</small>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-
       {state !== null && scene !== null && (
         <StateInspector
           sceneId={scene.scene_id}
@@ -286,56 +253,143 @@ export function SceneAuthoringInspector({
       {waiting !== null && <WaitingInspector waiting={waiting} />}
 
       {selection.kind === "scene" && (
-        <>
-          <section className="inspector-section">
-            <h3><Route size={14} aria-hidden="true" /> Routes</h3>
-            {routes.length === 0 ? (
-              <EmptyInspector>No routes.</EmptyInspector>
-            ) : (
-              <div className="record-list">
-                {routes.map((item: StateRoute) => (
-                  <button key={item.route_id} className="record-row" type="button" onClick={() => onSelect({ kind: "route", id: item.route_id })}>
-                    <strong>{item.route_id}</strong>
-                    <small>{item.from_states.join(", ")} {">"} {item.target_state}</small>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="inspector-section">
-            <h3><Layers3 size={14} aria-hidden="true" /> Render models</h3>
-            {renderModels.length === 0 ? (
-              <EmptyInspector>No render models.</EmptyInspector>
-            ) : (
-              <div className="record-list">
-                {renderModels.map((item: RenderModel) => (
-                  <button key={item.visual_id} className="record-row" type="button" onClick={() => onSelect({ kind: "render", id: item.visual_id })}>
-                    <strong>{item.visual_id}</strong>
-                    <small>{item.elements.length} elements</small>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="inspector-section">
-            <h3><Hourglass size={14} aria-hidden="true" /> Waiting visuals</h3>
-            {waitingVisuals.length === 0 ? (
-              <EmptyInspector>No waiting visuals.</EmptyInspector>
-            ) : (
-              <div className="record-list">
-                {waitingVisuals.map((item: WaitingVisual) => (
-                  <button key={item.waiting_visual_id} className="record-row" type="button" onClick={() => onSelect({ kind: "waiting", id: item.waiting_visual_id })}>
-                    <strong>{item.waiting_visual_id}</strong>
-                    <small>{item.combined_step_count} steps at {item.phase_quantum_ms} ms</small>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-        </>
+        <SceneOverview
+          scene={scene}
+          states={states}
+          routes={routes}
+          variables={variables}
+          renderModels={renderModels}
+          waitingVisuals={waitingVisuals}
+          onSelect={onSelect}
+        />
       )}
+    </>
+  );
+}
+
+function SceneOverview({
+  scene,
+  states,
+  routes,
+  variables,
+  renderModels,
+  waitingVisuals,
+  onSelect,
+}: {
+  scene: SceneDocument | null;
+  states: StateRecord[];
+  routes: StateRoute[];
+  variables: StateVariable[];
+  renderModels: RenderModel[];
+  waitingVisuals: WaitingVisual[];
+  onSelect: (selection: SceneSelection) => void;
+}) {
+  if (scene === null) {
+    return (
+      <section className="inspector-section">
+        <h3><GitBranch size={14} aria-hidden="true" /> Scene overview</h3>
+        <EmptyInspector>Select a scene to inspect its states and transitions.</EmptyInspector>
+      </section>
+    );
+  }
+  const entryState = states.find((state) => state.state_id === scene.entry_state);
+  const elementCount = renderModels.reduce((total, item) => total + item.elements.length, 0);
+  return (
+    <>
+      <section className="inspector-section">
+        <h3><GitBranch size={14} aria-hidden="true" /> Scene overview</h3>
+        <div className="scene-overview-card">
+          <div>
+            <span>Scene</span>
+            <strong>{scene.display_name}</strong>
+          </div>
+          <div>
+            <span>Starts at</span>
+            <strong>{entryState?.display_name ?? scene.entry_state}</strong>
+          </div>
+          <div>
+            <span>States</span>
+            <strong>{states.length}</strong>
+          </div>
+          <div>
+            <span>Transitions</span>
+            <strong>{routes.length}</strong>
+          </div>
+          <div>
+            <span>Variables</span>
+            <strong>{variables.length}</strong>
+          </div>
+          <div>
+            <span>Screen items</span>
+            <strong>{elementCount}</strong>
+          </div>
+        </div>
+        <p className="scene-overview-prompt">Select a state or transition in the graph to edit it.</p>
+      </section>
+
+      <section className="inspector-section">
+        <h3><Variable size={14} aria-hidden="true" /> Variables</h3>
+        {variables.length === 0 ? (
+          <EmptyInspector>No variables in this scene.</EmptyInspector>
+        ) : (
+          <div className="record-list">
+            {variables.map((variable: StateVariable) => (
+              <button key={variable.variable_id} className="record-row" type="button">
+                <strong>{variable.variable_id}</strong>
+                <small>starts at {variable.initial}; allowed {variable.minimum} to {variable.maximum}</small>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="inspector-section">
+        <h3><Route size={14} aria-hidden="true" /> Transitions</h3>
+        {routes.length === 0 ? (
+          <EmptyInspector>No transitions in this scene.</EmptyInspector>
+        ) : (
+          <div className="record-list">
+            {routes.map((item: StateRoute) => (
+              <button key={item.route_id} className="record-row" type="button" onClick={() => onSelect({ kind: "route", id: item.route_id })}>
+                <strong>{item.from_states.join(", ")} {"->"} {item.target_state}</strong>
+                <small>{item.guards.length === 0 ? "always allowed" : `${item.guards.length} condition${item.guards.length === 1 ? "" : "s"}`}; {item.actions.length} effect{item.actions.length === 1 ? "" : "s"}</small>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="inspector-section">
+        <h3><Layers3 size={14} aria-hidden="true" /> Screen layouts</h3>
+        {renderModels.length === 0 ? (
+          <EmptyInspector>No screen layouts in this scene.</EmptyInspector>
+        ) : (
+          <div className="record-list">
+            {renderModels.map((item: RenderModel) => (
+              <button key={item.visual_id} className="record-row" type="button" onClick={() => onSelect({ kind: "render", id: item.visual_id })}>
+                <strong>{item.elements.length} element{item.elements.length === 1 ? "" : "s"}</strong>
+                <small>{item.visual_id}</small>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="inspector-section">
+        <h3><Hourglass size={14} aria-hidden="true" /> Waiting animations</h3>
+        {waitingVisuals.length === 0 ? (
+          <EmptyInspector>No waiting animations in this scene.</EmptyInspector>
+        ) : (
+          <div className="record-list">
+            {waitingVisuals.map((item: WaitingVisual) => (
+              <button key={item.waiting_visual_id} className="record-row" type="button" onClick={() => onSelect({ kind: "waiting", id: item.waiting_visual_id })}>
+                <strong>{item.combined_step_count} step{item.combined_step_count === 1 ? "" : "s"}</strong>
+                <small>{item.phase_quantum_ms} ms per step; {item.waiting_visual_id}</small>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
     </>
   );
 }
