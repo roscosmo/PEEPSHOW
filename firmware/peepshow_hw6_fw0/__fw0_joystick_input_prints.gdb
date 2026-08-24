@@ -4,7 +4,9 @@ set $sm = &g_ps_hw6_owner_sm_probe
 
 printf "\n--- HW6 joystick normalized input state ---\n"
 printf "input api/policy/status   = %u / %u / 0x%x\n", $sm->joystick_input_api_version, $sm->joystick_input_policy, $sm->joystick_input_last_status
-printf "cal/active/dir/mag       = %u / %u / 0x%x / %u\n", $sm->joystick_input_calibration_valid, $sm->joystick_input_active, $sm->joystick_input_direction_mask, $sm->joystick_input_magnitude
+printf "cal/active/candidate/resolved/mag = %u / %u / 0x%x / 0x%x / %u\n", $sm->joystick_input_calibration_valid, $sm->joystick_input_active, $sm->joystick_input_candidate_direction_mask, $sm->joystick_input_direction_mask, $sm->joystick_input_magnitude
+printf "direction changes/press/release/switch = %u / %u / %u / %u\n", $sm->joystick_input_direction_change_count, $sm->joystick_input_direction_press_count, $sm->joystick_input_direction_release_count, $sm->joystick_input_direction_switch_count
+printf "enter/release/dominance  = %d / %d / %d\n", $sm->joystick_calibration_direction_threshold, $sm->joystick_calibration_direction_release_threshold, $sm->joystick_calibration_dominance_hysteresis
 printf "norm X/Y                 = %d / %d\n", $sm->joystick_input_normalized_x, $sm->joystick_input_normalized_y
 printf "delta X/Y                = %d / %d\n", $sm->joystick_input_delta_x, $sm->joystick_input_delta_y
 printf "raw X/Y/Z conv           = %d / %d / %d / 0x%02x\n", $sm->joystick_input_raw_x, $sm->joystick_input_raw_y, $sm->joystick_input_raw_z, $sm->joystick_input_conv_status

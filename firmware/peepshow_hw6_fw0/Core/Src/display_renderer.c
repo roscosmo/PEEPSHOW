@@ -2842,8 +2842,14 @@ static uint32_t DisplayRenderer_DrawJoystickCalibrationReview(void)
   int32_t radius_x;
   int32_t radius_y;
   int32_t deadzone_radius;
+  int32_t negative_x_threshold;
+  int32_t positive_x_threshold;
+  int32_t negative_y_threshold;
+  int32_t positive_y_threshold;
+  int32_t direction_threshold;
   int32_t marker_x;
   int32_t marker_y;
+  const char *direction_text;
   uint32_t black_pixels = 0UL;
 
   if (-min_x > max_span)
@@ -2877,6 +2883,29 @@ static uint32_t DisplayRenderer_DrawJoystickCalibrationReview(void)
     deadzone_radius = 2;
   }
 
+  direction_threshold =
+    g_ps_hw6_owner_sm_probe.joystick_calibration_direction_threshold;
+  negative_x_threshold =
+    g_ps_hw6_owner_sm_probe.joystick_calibration_deadzone_counts +
+    (((-min_x -
+       g_ps_hw6_owner_sm_probe.joystick_calibration_deadzone_counts) *
+      direction_threshold) / PS_INPUT_JOYSTICK_AXIS_SCALE);
+  positive_x_threshold =
+    g_ps_hw6_owner_sm_probe.joystick_calibration_deadzone_counts +
+    (((max_x -
+       g_ps_hw6_owner_sm_probe.joystick_calibration_deadzone_counts) *
+      direction_threshold) / PS_INPUT_JOYSTICK_AXIS_SCALE);
+  negative_y_threshold =
+    g_ps_hw6_owner_sm_probe.joystick_calibration_deadzone_counts +
+    (((-min_y -
+       g_ps_hw6_owner_sm_probe.joystick_calibration_deadzone_counts) *
+      direction_threshold) / PS_INPUT_JOYSTICK_AXIS_SCALE);
+  positive_y_threshold =
+    g_ps_hw6_owner_sm_probe.joystick_calibration_deadzone_counts +
+    (((max_y -
+       g_ps_hw6_owner_sm_probe.joystick_calibration_deadzone_counts) *
+      direction_threshold) / PS_INPUT_JOYSTICK_AXIS_SCALE);
+
   marker_x = plot_center_x +
     ((g_ps_hw6_owner_sm_probe.joystick_input_delta_x * plot_radius) /
      max_span);
@@ -2900,7 +2929,30 @@ static uint32_t DisplayRenderer_DrawJoystickCalibrationReview(void)
     marker_y = plot_center_y + plot_radius;
   }
 
+  direction_text = "NEUTRAL";
+  if (g_ps_hw6_owner_sm_probe.joystick_input_direction_mask ==
+      PS_INPUT_JOYSTICK_DIRECTION_LEFT)
+  {
+    direction_text = "LEFT";
+  }
+  else if (g_ps_hw6_owner_sm_probe.joystick_input_direction_mask ==
+           PS_INPUT_JOYSTICK_DIRECTION_RIGHT)
+  {
+    direction_text = "RIGHT";
+  }
+  else if (g_ps_hw6_owner_sm_probe.joystick_input_direction_mask ==
+           PS_INPUT_JOYSTICK_DIRECTION_UP)
+  {
+    direction_text = "UP";
+  }
+  else if (g_ps_hw6_owner_sm_probe.joystick_input_direction_mask ==
+           PS_INPUT_JOYSTICK_DIRECTION_DOWN)
+  {
+    direction_text = "DOWN";
+  }
+
   black_pixels += DisplayRenderer_DrawCenteredText(5U, "JOYSTICK", 1U);
+  black_pixels += DisplayRenderer_DrawCenteredText(18U, direction_text, 1U);
   black_pixels += DisplayRenderer_HorizontalLine(42U, 126U, 30U);
   black_pixels += DisplayRenderer_HorizontalLine(42U, 126U, 116U);
   black_pixels += DisplayRenderer_VerticalLine(42U, 30U, 116U);
@@ -2913,6 +2965,26 @@ static uint32_t DisplayRenderer_DrawJoystickCalibrationReview(void)
     ellipse_center_x, ellipse_center_y, radius_x, radius_y);
   black_pixels += DisplayRenderer_DrawCalibrationEllipse(
     plot_center_x, plot_center_y, deadzone_radius, deadzone_radius);
+  black_pixels += DisplayRenderer_VerticalLine(
+    (uint16_t)(plot_center_x -
+      ((negative_x_threshold * plot_radius) / max_span)),
+    (uint16_t)(plot_center_y - 3),
+    (uint16_t)(plot_center_y + 3));
+  black_pixels += DisplayRenderer_VerticalLine(
+    (uint16_t)(plot_center_x +
+      ((positive_x_threshold * plot_radius) / max_span)),
+    (uint16_t)(plot_center_y - 3),
+    (uint16_t)(plot_center_y + 3));
+  black_pixels += DisplayRenderer_HorizontalLine(
+    (uint16_t)(plot_center_x - 3),
+    (uint16_t)(plot_center_x + 3),
+    (uint16_t)(plot_center_y -
+      ((negative_y_threshold * plot_radius) / max_span)));
+  black_pixels += DisplayRenderer_HorizontalLine(
+    (uint16_t)(plot_center_x - 3),
+    (uint16_t)(plot_center_x + 3),
+    (uint16_t)(plot_center_y +
+      ((positive_y_threshold * plot_radius) / max_span)));
   black_pixels += DisplayRenderer_FilledRect(
     (uint16_t)(marker_x - 1), (uint16_t)(marker_y - 1), 3U, 3U);
   black_pixels += DisplayRenderer_DrawText(18U, 130U, "A APPLY", 1U);

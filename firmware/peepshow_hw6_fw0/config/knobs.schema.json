@@ -26,6 +26,9 @@
     "input_joystick_cal_min_cardinal_span_counts",
     "input_joystick_cal_sweep_coverage_per_mille",
     "input_joystick_cal_deadzone_pad_per_mille",
+    "input_joystick_direction_enter_per_mille",
+    "input_joystick_direction_release_per_mille",
+    "input_joystick_dominance_hysteresis_per_mille",
     "input_joystick_xyz_capture_samples",
     "input_joystick_xyz_rest_samples",
     "input_joystick_xyz_sweep_samples",
@@ -329,6 +332,42 @@
       "class": "protected_policy",
       "path": "platform.knobs.input.joystick_cal_deadzone_pad_per_mille",
       "description": "Normalized padding added outside measured neutral motion when deriving the calibration deadzone."
+    },
+    "input_joystick_direction_enter_per_mille": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "default": 450,
+      "unit": "per_mille",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_direction_enter_per_mille",
+      "description": "Normalized dominant-axis magnitude required to enter a logical joystick direction."
+    },
+    "input_joystick_direction_release_per_mille": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 999,
+      "default": 300,
+      "unit": "per_mille",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_direction_release_per_mille",
+      "description": "Normalized magnitude below which the active logical joystick direction is released."
+    },
+    "input_joystick_dominance_hysteresis_per_mille": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000,
+      "default": 100,
+      "unit": "per_mille",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_dominance_hysteresis_per_mille",
+      "description": "Normalized advantage an orthogonal axis must gain before replacing the active dominant direction."
     },
     "input_joystick_xyz_capture_samples": {
       "type": "integer",

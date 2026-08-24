@@ -40,6 +40,11 @@
 #include "ps_storage_state.h"
 #include "tx_api.h"
 
+#if (KNOB_INPUT_JOYSTICK_DIRECTION_RELEASE_PER_MILLE >= \
+     KNOB_INPUT_JOYSTICK_DIRECTION_ENTER_PER_MILLE)
+#error "Joystick direction release threshold must be below enter threshold"
+#endif
+
 #define PS_HW6_SM_PHASE_INIT              (0x6800UL)
 #define PS_HW6_SM_PHASE_RUNNING           (0x6810UL)
 #define PS_HW6_SM_PHASE_COMPLETE          (0x68FFUL)
@@ -1305,7 +1310,9 @@ static const ps_input_joystick_calibration_t ps_joystick_hw6_default_calibration
   -27392,
   19520,
   3500,
-  450,
+  KNOB_INPUT_JOYSTICK_DIRECTION_ENTER_PER_MILLE,
+  KNOB_INPUT_JOYSTICK_DIRECTION_RELEASE_PER_MILLE,
+  KNOB_INPUT_JOYSTICK_DOMINANCE_HYSTERESIS_PER_MILLE,
   0,
   0,
   0,
@@ -1322,7 +1329,9 @@ static ps_input_joystick_calibration_t ps_joystick_active_calibration =
   -27392,
   19520,
   3500,
-  450,
+  KNOB_INPUT_JOYSTICK_DIRECTION_ENTER_PER_MILLE,
+  KNOB_INPUT_JOYSTICK_DIRECTION_RELEASE_PER_MILLE,
+  KNOB_INPUT_JOYSTICK_DOMINANCE_HYSTERESIS_PER_MILLE,
   0,
   0,
   0,
@@ -1527,8 +1536,18 @@ static void PS_HW6_SM_UpdateJoystickInputProbe(void)
     ps_joystick_input_state.calibration_valid;
   g_ps_hw6_owner_sm_probe.joystick_input_active =
     ps_joystick_input_state.active;
+  g_ps_hw6_owner_sm_probe.joystick_input_candidate_direction_mask =
+    ps_joystick_input_state.candidate_direction_mask;
   g_ps_hw6_owner_sm_probe.joystick_input_direction_mask =
     ps_joystick_input_state.direction_mask;
+  g_ps_hw6_owner_sm_probe.joystick_input_direction_change_count =
+    ps_joystick_input_state.direction_change_count;
+  g_ps_hw6_owner_sm_probe.joystick_input_direction_press_count =
+    ps_joystick_input_state.direction_press_count;
+  g_ps_hw6_owner_sm_probe.joystick_input_direction_release_count =
+    ps_joystick_input_state.direction_release_count;
+  g_ps_hw6_owner_sm_probe.joystick_input_direction_switch_count =
+    ps_joystick_input_state.direction_switch_count;
   g_ps_hw6_owner_sm_probe.joystick_input_sample_tick =
     ps_joystick_input_state.sample_tick;
   g_ps_hw6_owner_sm_probe.joystick_input_sample_age_ticks =
@@ -1746,6 +1765,10 @@ static void PS_HW6_SM_UpdateJoystickCalibrationProbe(void)
     ps_joystick_active_calibration.deadzone_counts;
   g_ps_hw6_owner_sm_probe.joystick_calibration_direction_threshold =
     ps_joystick_active_calibration.direction_threshold;
+  g_ps_hw6_owner_sm_probe.joystick_calibration_direction_release_threshold =
+    ps_joystick_active_calibration.direction_release_threshold;
+  g_ps_hw6_owner_sm_probe.joystick_calibration_dominance_hysteresis =
+    ps_joystick_active_calibration.dominance_hysteresis;
   g_ps_hw6_owner_sm_probe.joystick_calibration_transform_xx_q20 =
     ps_joystick_active_calibration.transform_xx_q20;
   g_ps_hw6_owner_sm_probe.joystick_calibration_transform_xy_q20 =

@@ -139,9 +139,10 @@ HW6 joystick calibration currently uses the shell sequence `CENTER -> UP ->
 RIGHT -> DOWN -> LEFT -> FULL SWEEP -> REVIEW`. `thInput` performs each bounded
 capture incrementally and publishes fixed-point progress; the shell renders the
 progress without reading the sensor. Calibration and review veto STOP2. The
-review page provides a live marker against the measured aligned envelope. A
-applies the candidate and B restores the previous calibration. The candidate is
-volatile in FW0 until protected calibration-record persistence is completed.
+review page provides a live marker against the measured aligned envelope,
+deadzone, activation-threshold markers, and current dominant cardinal result.
+A applies the candidate and B restores the previous calibration. The candidate
+is volatile in FW0 until protected calibration-record persistence is completed.
 
 ---
 

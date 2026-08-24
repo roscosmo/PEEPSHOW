@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_INPUT_JOYSTICK_API_VERSION       (2UL)
+#define PS_INPUT_JOYSTICK_API_VERSION       (3UL)
 #define PS_INPUT_JOYSTICK_AXIS_SCALE        (1000)
 #define PS_INPUT_JOYSTICK_DIRECTION_LEFT    (1UL << 0)
 #define PS_INPUT_JOYSTICK_DIRECTION_RIGHT   (1UL << 1)
@@ -35,6 +35,8 @@ typedef struct
   int32_t max_y;
   int32_t deadzone_counts;
   int32_t direction_threshold;
+  int32_t direction_release_threshold;
+  int32_t dominance_hysteresis;
   int32_t transform_xx_q20;
   int32_t transform_xy_q20;
   int32_t transform_yx_q20;
@@ -58,7 +60,12 @@ typedef struct
   uint32_t policy;
   uint32_t calibration_valid;
   uint32_t active;
+  uint32_t candidate_direction_mask;
   uint32_t direction_mask;
+  uint32_t direction_change_count;
+  uint32_t direction_press_count;
+  uint32_t direction_release_count;
+  uint32_t direction_switch_count;
   uint32_t sample_tick;
   uint32_t sample_age_ticks;
   uint32_t update_count;

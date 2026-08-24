@@ -16,10 +16,12 @@ printf "cardinal LEFT X/Y = %d / %d\n", $sm->joystick_calibration_cardinal_x[3],
 printf "transform Q20 xx/xy/yx/yy = %d / %d / %d / %d\n", $sm->joystick_calibration_transform_xx_q20, $sm->joystick_calibration_transform_xy_q20, $sm->joystick_calibration_transform_yx_q20, $sm->joystick_calibration_transform_yy_q20
 printf "sweep aligned X min/max Y min/max = %d / %d / %d / %d\n", $sm->joystick_calibration_sweep_min_x, $sm->joystick_calibration_sweep_max_x, $sm->joystick_calibration_sweep_min_y, $sm->joystick_calibration_sweep_max_y
 printf "sweep coverage mask = 0x%x (expected 0xf)\n", $sm->joystick_calibration_sweep_coverage_mask
-printf "deadzone/threshold = %d / %d\n", $sm->joystick_calibration_deadzone_counts, $sm->joystick_calibration_direction_threshold
+printf "deadzone/enter/release/dominance = %d / %d / %d / %d\n", $sm->joystick_calibration_deadzone_counts, $sm->joystick_calibration_direction_threshold, $sm->joystick_calibration_direction_release_threshold, $sm->joystick_calibration_dominance_hysteresis
 printf "review count/status/tick = %u / 0x%x / %u\n", $sm->joystick_calibration_review_count, $sm->joystick_calibration_review_status, $sm->joystick_calibration_review_tick
 printf "live raw X/Y normalized X/Y = %d / %d / %d / %d\n", $sm->joystick_input_raw_x, $sm->joystick_input_raw_y, $sm->joystick_input_normalized_x, $sm->joystick_input_normalized_y
+printf "live candidate/resolved/active = 0x%x / 0x%x / %u\n", $sm->joystick_input_candidate_direction_mask, $sm->joystick_input_direction_mask, $sm->joystick_input_active
+printf "direction changes/press/release/switch = %u / %u / %u / %u\n", $sm->joystick_input_direction_change_count, $sm->joystick_input_direction_press_count, $sm->joystick_input_direction_release_count, $sm->joystick_input_direction_switch_count
 printf "STOP2 auto entries/block/pending = %u / 0x%x / 0x%x\n", $rt->stop2_auto_entry_count, $rt->stop2_auto_blocker_mask, $rt->stop2_auto_pending_mask
 printf "stages: ROOT=1 NEUTRAL=2 RIGHT=3 SWEEP=4 REVIEW=5 UP=6 DOWN=7 LEFT=8\n"
-printf "expected review: owner api=63 session/valid/transform=1/1/1 coverage=0xf, review count advances, live marker moves, STOP2 entry count remains unchanged while calibration is open\n"
+printf "expected review: owner api=64 session/valid/transform=1/1/1 coverage=0xf, resolved direction is zero or exactly one bit, review count advances, STOP2 entry count remains unchanged while calibration is open\n"
 printf "--- end staged joystick calibration ---\n"

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (63UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (64UL)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -596,7 +596,12 @@ typedef struct
   uint32_t joystick_input_policy;
   uint32_t joystick_input_calibration_valid;
   uint32_t joystick_input_active;
+  uint32_t joystick_input_candidate_direction_mask;
   uint32_t joystick_input_direction_mask;
+  uint32_t joystick_input_direction_change_count;
+  uint32_t joystick_input_direction_press_count;
+  uint32_t joystick_input_direction_release_count;
+  uint32_t joystick_input_direction_switch_count;
   uint32_t joystick_input_sample_tick;
   uint32_t joystick_input_sample_age_ticks;
   uint32_t joystick_input_update_count;
@@ -641,6 +646,8 @@ typedef struct
   int32_t joystick_calibration_max_y;
   int32_t joystick_calibration_deadzone_counts;
   int32_t joystick_calibration_direction_threshold;
+  int32_t joystick_calibration_direction_release_threshold;
+  int32_t joystick_calibration_dominance_hysteresis;
   int32_t joystick_calibration_transform_xx_q20;
   int32_t joystick_calibration_transform_xy_q20;
   int32_t joystick_calibration_transform_yx_q20;

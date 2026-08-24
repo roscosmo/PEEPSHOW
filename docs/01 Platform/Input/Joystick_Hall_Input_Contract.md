@@ -110,7 +110,12 @@ Current FW0 calibration status:
 - opposite cardinal pairs solve a Q20 axis transform without floating point
 - the full-travel sweep must reproduce all four cardinal directions before it is accepted
 - captured cardinal reach seeds the final envelope so a sparse sweep cannot discard a proven endpoint
-- the review screen displays the measured aligned envelope, deadzone, and live aligned marker
+- the review screen displays the measured aligned envelope, deadzone, logical
+  activation-threshold markers, live aligned marker, and resolved cardinal direction
+- normalized cardinal classification is deterministic and dominant-axis only;
+  enter, release, and orthogonal-axis switch hysteresis are compile-time knobs
+- a held direction remains selected until it falls below the release threshold
+  or the orthogonal axis exceeds it by the configured dominance margin
 - A applies the volatile candidate and B restores the previous calibration
 - L/R plus A/B remain the required fallback controls while calibration is
   missing or invalid
@@ -141,8 +146,10 @@ stack sizing remains measured but provisional.
 Debugger-only one-position captures are not sufficient calibration evidence for
 this joystick. The accepted path is the on-device guided flow: neutral, four
 confirmed cardinals, full-travel sweep, then live visual review. The calibration
-page must remain awake throughout this sequence. Persistence, dominant-axis
-hysteresis, and movement-triggered wake remain separate bring-up milestones.
+page must remain awake throughout this sequence. Dominant-axis hysteresis is
+proven through this acquisition-independent review path. Persistence, normal
+awake input routing, and movement-triggered wake remain separate bring-up
+milestones.
 
 ## Calibration Contract
 
