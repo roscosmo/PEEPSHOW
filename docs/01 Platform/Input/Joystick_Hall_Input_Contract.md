@@ -22,7 +22,7 @@ Confirmed configuration:
 - I2C address: `0x34`
 - shared I2C bus: `I2C3` on `PC0` SCL and `PC1` SDA
 - threshold interrupt: `JOY_INT` on `PC11` / `EXTI11`
-- default low-power interrupt policy: absolute magnetic threshold detection through TMAG `INT`
+- low-power bring-up policy: X/Y omnipolar magnetic switch through TMAG `INT`
 
 Per [[Platform_Hardware_Abstraction_Contract]], the joystick driver uses the public 7-bit address `0x34`; STM32 HAL shifted-address handling is hidden inside the `ps_hw_i2c3` layer.
 
@@ -30,7 +30,8 @@ Per [[Platform_Hardware_Abstraction_Contract]], the joystick driver uses the pub
 
 ## Ownership
 
-- `thInput` owns joystick device policy, threshold configuration, calibration use, sample requests, normalization, and logical event publication.
+- `thSensor` owns TMAG state, configuration, I2C transactions, sample acquisition, recovery, normalization, and publication into the ordered input path.
+- `thInput` owns routing policy and delivery of normalized joystick events to Shell or Runtime.
 - I2C transactions must be serialized with other `I2C3` users.
 - ISRs enqueue `JOY_INT` events only.
 - Engine and Reference Game code consume normalized joystick events or snapshots only.
@@ -44,18 +45,51 @@ The joystick is a primary input device, but the Platform must remain usable with
 
 Low-power input model:
 
-1. Configure TMAG absolute magnetic threshold detection.
-2. Enter `JOY_THRESHOLD_ARMED` while the joystick path sleeps between events.
-3. `JOY_INT` wakes/notifies when threshold is crossed.
-4. `thInput` performs a bounded I2C read.
-5. Raw magnetic readings are normalized into cardinal direction bits and a normalized vector.
-6. The joystick returns to threshold-armed or polling mode according to active policy.
+1. Configure TMAG wake-and-sleep mode with X/Y enabled and an omnipolar
+   magnetic switch threshold on both axes.
+2. Enter `JOY_THRESHOLD_ARMED` while the joystick path sleeps between sensor
+   conversions.
+3. The active-low `JOY_INT` wakes/notifies when either X or Y crosses its
+   positive or negative operating threshold.
+4. The ISR latches and queues work only; `thSensor` wakes the TMAG and performs
+   a bounded I2C read before publishing normalized input to the input router.
+5. Raw magnetic readings are normalized through the active calibration into one
+   dominant cardinal direction.
+6. The joystick returns to threshold-armed or polling mode according to active
+   policy.
 
-Wake-on-change is not the default joystick wake policy. TMAG3001 wake-on-change magnetic mode only monitors the first enabled magnetic axis according to `MAG_CH_EN`, which is not a good fit for a two-axis joystick that must wake reliably from X or Y movement.
+TMAG3001 magnetic wake-on-change only monitors the first enabled axis according
+to `MAG_CH_EN`, so it cannot represent arbitrary two-axis joystick movement.
+Angle wake-on-change was also rejected on HW6 because the calculated angle is
+unstable near neutral where X/Y field magnitude is small; an `18 degree` setting
+caused repeated neutral wakes. Omnipolar switch mode monitors both enabled axes,
+uses the same operating point for positive and negative fields, and keeps a
+level output asserted until all enabled axes fall below the release point.
+Firmware still owns calibrated cardinal classification after wake; the hardware
+switch is only a wake request.
 
-Absolute magnetic thresholds are the baseline because they can be configured across multiple axes, then firmware can read the result registers and classify direction using calibration.
+During STOP2 quiesce, `thSensor` clears stale joystick EXTI state, verifies all
+non-terminal TMAG configuration writes, writes wake-and-sleep operating mode
+last, and performs no post-terminal I2C read. The initial tuning values are a
+`20 ms` wake-and-sleep period, field-threshold code `48`, and maximum hardware
+hysteresis code `7`, all supplied through the knobs system. Threshold code `48`
+corresponds to `12288` counts in the 16-bit magnetic result. These remain
+bring-up values until response, neutral residency, and current are measured on
+target.
 
-STOP2 baseline current policy is stricter than the normal low-power input model: until threshold and wake-and-sleep behavior are measured, `thInput` must terminally park TMAG3001 in sleep during STOP2 quiesce, write sleep last, and avoid any post-sleep I2C read that would immediately wake the part. The STOP2 quiesce implementation must keep the `INT_Config_1` target as a policy value, not bake in a permanent no-wake setting, so future wake-and-sleep or threshold-armed STOP2 modes can be selected without changing the driver sequencing.
+2026-08-25 HW6 target testing accepted this configuration as the movement-wake
+baseline. Four-way visual testing confirmed that positive and negative X/Y
+movement each wake the MCU from STOP2 and that neutral returns promptly to
+STOP2. The aggregate proof recorded joystick IRQ/enqueue/dequeue counts of
+`14/14/14` and `14` joystick-classified STOP2 wakes, with zero coalesces, drops,
+or pending events.
+All configuration writes and readbacks passed (`write=0xfff`, `verify=0x7ff`),
+and the `thSensor` stack retained `2340` bytes of lower margin. Long-duration
+neutral false-wake rate and current remain separate measurements.
+
+Final STOP admission must fail if a joystick event is latched in software, the
+input queue is non-empty, or active-low `JOY_INT` on `PC11` is already asserted.
+This closes the interval between arming the TMAG and executing WFI.
 
 Realtime model:
 
@@ -138,10 +172,11 @@ effectively pinned over this capture, with maximum observed absolute delta `48`.
 A follow-up Z-high range diagnostic validated the `Sensor_Config_2` override and
 restore path (`before/active/restore = 0x0/0x1/0x0`, `512/512` samples, no read
 errors), but Z remained pinned at `-32592..-32560` with maximum delta `32`.
-This means Z-based wake-on-change is still not accepted for HW6 FW0; the
-baseline wake strategy remains calibrated X/Y absolute magnetic thresholds unless
-new mechanical or sensor-range evidence changes that. The diagnostic path runs
-inside `thInput`, uses bounded ThreadX sleeps and a hard timeout, and writes CSV
+This means Z-based wake-on-change is still not accepted for HW6 FW0. X/Y CORDIC
+angle wake-on-change was subsequently proven to assert the physical interrupt
+path but was rejected because neutral angle noise repeatedly woke STOP2. The
+current bring-up strategy is the X/Y omnipolar field switch. The diagnostic path runs
+inside `thSensor`, uses bounded ThreadX sleeps and a hard timeout, and writes CSV
 files for offline plotting. This is diagnostic evidence only; it does not
 validate final calibration, threshold interrupt values, production wake policy,
 or joystick current.
@@ -156,10 +191,10 @@ Debugger-only one-position captures are not sufficient calibration evidence for
 this joystick. The accepted path is the on-device guided flow: neutral, four
 confirmed cardinals, full-travel sweep, then live visual review. The calibration
 page must remain awake throughout this sequence. Dominant-axis hysteresis is
-proven through this acquisition-independent review path. Persistence and
-movement-triggered wake remain separate bring-up milestones. The awake routing
-path is implemented but remains provisional until target input-order and STOP2
-regression evidence is captured.
+proven through this acquisition-independent review path. Persistence remains a
+separate bring-up milestone. Awake routing and movement-triggered STOP2 wake use
+the same normalized routing path and remain provisional until target wake,
+ordering, regression, and current evidence is captured.
 
 ## Calibration Contract
 
@@ -214,7 +249,7 @@ Rules:
 
 - `JOY_OFF` is the default unless input policy requests the joystick.
 - `JOY_THRESHOLD_ARMED` is the preferred low-power interactive state.
-- `JOY_THRESHOLD_ARMED` uses absolute magnetic threshold detection, not wake-on-change.
+- `JOY_THRESHOLD_ARMED` uses the X/Y omnipolar field switch; it does not publish a direction directly.
 - `JOY_INT` does not directly publish direction; it schedules a bounded read.
 - `JOY_NORMALIZE` is the only path to public joystick data.
 - Missing calibration enters `JOY_CAL_REQUIRED` or `JOY_SAFE_MODE`, not normal runtime.
@@ -232,29 +267,37 @@ Known identity/status registers:
 - `Conv_Status`: `0x18`
 - `Device_Status`: `0x1C`
 
-Baseline threshold-wake policy:
+Baseline omnipolar field-switch policy:
 
 - `Sensor_Config_1.MAG_CH_EN` enables the axes needed for joystick classification.
 - `Sensor_Config_1.SLEEPTIME` controls wake/sleep interval in `Operating_Mode = 3h`.
-- `Sensor_Config_2` owns interrupt polarity, threshold direction, and range selection.
-- `Sensor_Config_3.THR_SEL = 2h` selects B-field thresholds.
-- `Sensor_Config_3.WOC_SEL = 0h` disables wake-on-change for the default joystick wake policy.
-- `THR_Config_1`, `THR_Config_2`, and `THR_Config_3` hold low thresholds for X/Y/Z.
-- `Sensor_Config_4`, `Sensor_Config_5`, and `Sensor_Config_6` hold high thresholds for X/Y/Z when `THR_SEL = 2h` and angle mode is disabled.
-- `INT_Config_1.Threshold_INT = 1` enables threshold interrupt response.
-- `INT_Config_1.INT_Mode = 1h` routes the interrupt through the TMAG `INT` pin.
+- `Sensor_Config_2` preserves range selection while disabling angle calculation,
+  gain selection, threshold direction override, and active-high polarity.
+- `Sensor_Config_3.THR_SEL = 2h` selects per-axis magnetic field thresholds.
+- `Sensor_Config_3.WOC_SEL = 0h` disables relative wake-on-change.
+- `THR_Config_1` and `THR_Config_2` set the same provisional X/Y operating point.
+- `THR_Config_3 = 0h` disables the Z threshold.
+- `Sensor_Config_4`, `Sensor_Config_5`, and `Sensor_Config_6` are cleared so
+  high/tamper thresholds are disabled.
+- `INT_Config_1.INT_Mode = 6h` selects omnipolar switch mode through `INT`.
+- `Device_Config_2.THR_HYST` sets the release margin; bring-up starts at code `7`.
 
 STOP2 baseline park policy:
 
-- Clear active magnetic channels before terminal sleep.
-- Set the selected STOP2 `INT_Config_1` policy target before terminal sleep.
-- Write `Device_Config_2.Operating_Mode = Sleep` last.
-- Do not read TMAG registers after the sleep write unless deliberately waking it.
-- The current quiet baseline target is `INT_Config_1 = 0x01`; future threshold or wake-and-sleep targets may replace this value after validation.
+- Enable X/Y and select the configured wake-and-sleep period.
+- Configure active-low omnipolar switch output on the `INT` pin.
+- Write `Device_Config_2.Operating_Mode = Wake-and-Sleep` last.
+- Do not read TMAG registers after the terminal write unless deliberately waking it.
+- If calibration is missing, use the non-interactive quiet-sleep fallback and retain L/R plus A/B navigation.
 
-Bring-up should initially use a latched interrupt so a short threshold event cannot be missed while the MCU wakes. Final polarity and edge configuration must be validated against the HW6 `JOY_INT` circuit and CubeMX EXTI settings.
+Switch mode provides a level output, so the event remains observable while the
+MCU wakes. Active-low polarity and the HW6 `JOY_INT` EXTI path must remain
+validated against the board circuit and CubeMX configuration.
 
-The exact threshold counts, range settings, hysteresis, sleep interval, and axis mapping are calibration/bring-up outputs, not assumptions.
+The fixed field threshold is a hardware proof, not final policy. Production must
+derive X/Y operating points from calibration, validate that neutral plus margin
+is below both operating points and that all four cardinal endpoints cross them,
+and fall back to button-only wake if a unit has insufficient field margin.
 
 ---
 

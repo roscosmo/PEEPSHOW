@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (65UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (70UL)
 
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_NONE       (0UL)
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_PREPARE    (1UL)
@@ -492,6 +492,32 @@ typedef struct
   uint32_t joystick_post_sleep_read_omitted;
   uint32_t joystick_i2c_state_after;
   uint32_t joystick_i2c_error_after;
+  uint32_t joystick_wake_sleep_arm_count;
+  uint32_t joystick_wake_sleep_arm_status;
+  uint32_t joystick_wake_sleep_period_ms;
+  uint32_t joystick_wake_sleep_period_code;
+  uint32_t joystick_wake_field_threshold_code;
+  uint32_t joystick_wake_field_hysteresis_code;
+  uint32_t joystick_wake_sensor_config1;
+  uint32_t joystick_wake_sensor_config2;
+  uint32_t joystick_wake_sensor_config3;
+  uint32_t joystick_wake_threshold_x;
+  uint32_t joystick_wake_threshold_y;
+  uint32_t joystick_wake_threshold_z;
+  uint32_t joystick_wake_threshold_x_high;
+  uint32_t joystick_wake_threshold_y_high;
+  uint32_t joystick_wake_threshold_z_high;
+  uint32_t joystick_wake_int_config1;
+  uint32_t joystick_wake_device_config2;
+  uint32_t joystick_wake_write_ok_mask;
+  uint32_t joystick_wake_verify_ok_mask;
+  uint32_t joystick_wake_last_hal_status;
+  uint32_t joystick_wake_last_hal_error;
+  uint32_t joystick_wake_preclear_int_pin_level;
+  uint32_t joystick_wake_preclear_read_status;
+  uint32_t joystick_wake_preclear_device_status;
+  uint32_t joystick_wake_preclear_threshold_cross;
+  uint32_t joystick_wake_preclear_int_readback;
   uint32_t joystick_sleep_audit_request_count;
   uint32_t joystick_sleep_audit_start_tick;
   uint32_t joystick_sleep_audit_end_tick;
@@ -627,6 +653,14 @@ typedef struct
   int32_t joystick_input_normalized_y;
   uint32_t joystick_input_magnitude;
   uint32_t joystick_input_conv_status;
+  uint32_t joystick_cordic_sample_count;
+  uint32_t joystick_cordic_magnitude_result;
+  uint32_t joystick_cordic_magnitude_min;
+  uint32_t joystick_cordic_magnitude_max;
+  uint32_t joystick_cordic_device_status;
+  uint32_t joystick_cordic_threshold_cross_count;
+  uint32_t joystick_cordic_int_readback;
+  uint32_t joystick_cordic_int_pin_level;
   uint32_t joystick_live_request_count;
   uint32_t joystick_live_start_tick;
   uint32_t joystick_live_end_tick;

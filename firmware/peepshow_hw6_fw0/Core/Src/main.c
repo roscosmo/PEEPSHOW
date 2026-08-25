@@ -2419,6 +2419,13 @@ static void PS_Main_RecordButtonExti(uint16_t GPIO_Pin,
       (level == GPIO_PIN_SET) ? 1UL : 0UL);
   }
 
+  if (GPIO_Pin == JOY_INT_Pin)
+  {
+    PS_HW6_RTOS_RecordJoystickExti(
+      GPIO_Pin,
+      (level == GPIO_PIN_SET) ? 1UL : 0UL);
+  }
+
   if ((GPIO_Pin == BTN_START_Pin) ||
       (GPIO_Pin == BTN_A_Pin) ||
       (GPIO_Pin == BTN_B_Pin) ||

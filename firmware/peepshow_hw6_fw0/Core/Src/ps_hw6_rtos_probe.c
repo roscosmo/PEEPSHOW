@@ -23,6 +23,7 @@
 #define PS_HW6_RTOS_DEFAULT_STACK_BYTES  ((ULONG)KNOB_RTOS_DEFAULT_STACK_BYTES)
 #define PS_HW6_RTOS_POWER_STACK_BYTES    ((ULONG)KNOB_RTOS_POWER_STACK_BYTES)
 #define PS_HW6_RTOS_INPUT_STACK_BYTES    ((ULONG)KNOB_RTOS_INPUT_STACK_BYTES)
+#define PS_HW6_RTOS_SENSOR_STACK_BYTES   ((ULONG)KNOB_RTOS_SENSOR_STACK_BYTES)
 #define PS_HW6_RTOS_STORAGE_STACK_BYTES  ((ULONG)KNOB_RTOS_STORAGE_STACK_BYTES)
 #define PS_HW6_RTOS_QUEUE_DEPTH          (8UL)
 #define PS_HW6_RTOS_QUEUE_STORAGE_BYTES  (PS_HW6_RTOS_MESSAGE_WORDS * \
@@ -40,6 +41,7 @@
 #define PS_HW6_RTOS_RUNTIME_INPUT_MAGIC   (0x52494221UL)
 #define PS_HW6_RTOS_POWER_INPUT_MAGIC     (0x50574921UL)
 #define PS_HW6_RTOS_INPUT_RAW_MAGIC       (0x49524157UL)
+#define PS_HW6_RTOS_INPUT_JOYSTICK_MAGIC  (0x4A4F5921UL)
 #define PS_HW6_RTOS_INPUT_RAW_BUTTON_MASK (0xFFUL)
 #define PS_HW6_RTOS_INPUT_RAW_ACTIVE_SHIFT (8U)
 #define PS_HW6_RTOS_INPUT_RAW_ACTIVE_MASK (0x1UL)
@@ -315,7 +317,11 @@ static volatile uint32_t ps_pmic_int_last_pin;
 static volatile uint32_t ps_pmic_int_last_level;
 static volatile uint32_t ps_pmic_int_last_irq_tick;
 static uint32_t ps_pmic_int_consumed_count;
+static volatile uint32_t ps_joystick_int_irq_count;
+static volatile uint32_t ps_joystick_int_pending_count;
+static uint32_t ps_joystick_int_consumed_count;
 static volatile uint32_t ps_stop2_wake_button_edges_before;
+static volatile uint32_t ps_stop2_wake_joystick_edges_before;
 static volatile uint32_t ps_stop2_wake_pmic_edges_before;
 static volatile uint32_t ps_stop2_wake_gpioa_before_idr;
 static volatile uint32_t ps_stop2_wake_gpiob_before_idr;
@@ -370,7 +376,7 @@ static const ULONG ps_owner_stack_bytes[PS_HW6_RTOS_OWNER_COUNT] =
   PS_HW6_RTOS_DEFAULT_STACK_BYTES,
   PS_HW6_RTOS_INPUT_STACK_BYTES,
   PS_HW6_RTOS_DEFAULT_STACK_BYTES,
-  PS_HW6_RTOS_DEFAULT_STACK_BYTES,
+  PS_HW6_RTOS_SENSOR_STACK_BYTES,
   PS_HW6_RTOS_STORAGE_STACK_BYTES,
   PS_HW6_RTOS_DEFAULT_STACK_BYTES,
   PS_HW6_RTOS_DEFAULT_STACK_BYTES,
@@ -480,6 +486,7 @@ void PS_HW6_RTOS_Stop2WakeClassifyBegin(void)
 {
   ps_stop2_wake_button_edges_before =
     g_ps_input_buttons_probe.isr_edge_count;
+  ps_stop2_wake_joystick_edges_before = ps_joystick_int_irq_count;
   ps_stop2_wake_pmic_edges_before = ps_pmic_int_irq_count;
   ps_stop2_wake_gpioa_before_idr = GPIOA->IDR;
   ps_stop2_wake_gpiob_before_idr = GPIOB->IDR;
@@ -570,6 +577,7 @@ void PS_HW6_RTOS_Stop2WakeClassifyAfterWake(void)
   uint32_t gpioa_after;
   uint32_t gpiob_after;
   uint32_t gpioc_after;
+  uint32_t joystick_edges_after;
   uint32_t nvic_iabr0_after;
   uint32_t nvic_iabr1_after;
   uint32_t nvic_iabr2_after;
@@ -592,6 +600,7 @@ void PS_HW6_RTOS_Stop2WakeClassifyAfterWake(void)
   gpiob_after = GPIOB->IDR;
   gpioc_after = GPIOC->IDR;
   button_edges_after = g_ps_input_buttons_probe.isr_edge_count;
+  joystick_edges_after = ps_joystick_int_irq_count;
   pmic_edges_after = ps_pmic_int_irq_count;
   nvic_ispr0_after = NVIC->ISPR[0U];
   nvic_ispr1_after = NVIC->ISPR[1U];
@@ -632,6 +641,7 @@ void PS_HW6_RTOS_Stop2WakeClassifyAfterWake(void)
   }
 
   if (((exti_mask & JOY_INT_Pin) != 0UL) ||
+      (joystick_edges_after != ps_stop2_wake_joystick_edges_before) ||
       (((ps_stop2_wake_gpioc_before_idr ^ gpioc_after) &
         JOY_INT_Pin) != 0UL))
   {
@@ -1085,6 +1095,55 @@ static uint32_t PS_HW6_RTOS_MessageIsValid(uint32_t owner_id,
           (message[3] == (~((ULONG)owner_id)))) ? 1UL : 0UL;
 }
 
+void PS_HW6_RTOS_RecordJoystickExti(uint16_t gpio_pin, uint32_t level)
+{
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+  UINT status = TX_NOT_AVAILABLE;
+  uint32_t enqueue_required;
+
+  if ((gpio_pin != JOY_INT_Pin) || (level != 0UL))
+  {
+    return;
+  }
+
+  enqueue_required =
+    (ps_joystick_int_pending_count == ps_joystick_int_consumed_count) ?
+      1UL : 0UL;
+  ps_joystick_int_irq_count++;
+  ps_joystick_int_pending_count++;
+  g_ps_hw6_joystick_cardinal_request = 1UL;
+  g_ps_hw6_rtos_probe.joystick_irq_count = ps_joystick_int_irq_count;
+  g_ps_hw6_rtos_probe.joystick_irq_pending_count =
+    ps_joystick_int_pending_count - ps_joystick_int_consumed_count;
+  g_ps_hw6_rtos_probe.joystick_irq_last_level = level;
+  g_ps_hw6_rtos_probe.joystick_irq_last_tick = HAL_GetTick();
+
+  if (enqueue_required == 0UL)
+  {
+    g_ps_hw6_rtos_probe.joystick_irq_coalesce_count++;
+    return;
+  }
+
+  if (g_ps_hw6_rtos_probe.init_complete != 0UL)
+  {
+    message[0] = PS_HW6_RTOS_INPUT_JOYSTICK_MAGIC;
+    message[1] = PS_HW6_RTOS_OWNER_INPUT;
+    message[2] = 0UL;
+    message[3] = (ULONG)g_ps_hw6_rtos_probe.joystick_irq_last_tick;
+    status = tx_queue_send(
+      &ps_queues[PS_HW6_RTOS_OWNER_INPUT], message, TX_NO_WAIT);
+  }
+  g_ps_hw6_rtos_probe.joystick_irq_last_send_status = (uint32_t)status;
+  if (status == TX_SUCCESS)
+  {
+    g_ps_hw6_rtos_probe.joystick_irq_enqueue_count++;
+  }
+  else
+  {
+    g_ps_hw6_rtos_probe.joystick_irq_drop_count++;
+  }
+}
+
 static uint32_t PS_HW6_RTOS_InputRawMessageIsValid(
   uint32_t owner_id,
   const ULONG *message)
@@ -1111,6 +1170,16 @@ static uint32_t PS_HW6_RTOS_InputRawMessageIsValid(
   }
 
   return 1UL;
+}
+
+static uint32_t PS_HW6_RTOS_InputJoystickMessageIsValid(
+  uint32_t owner_id,
+  const ULONG *message)
+{
+  return ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
+          (message[0] == PS_HW6_RTOS_INPUT_JOYSTICK_MAGIC) &&
+          (message[1] == PS_HW6_RTOS_OWNER_INPUT) &&
+          (message[2] == 0UL)) ? 1UL : 0UL;
 }
 
 static uint32_t PS_HW6_RTOS_ClockProfilePayload(uint32_t requester_id,
@@ -3901,8 +3970,16 @@ uint32_t PS_HW6_RTOS_Stop2FinalInputReady(void)
   g_ps_hw6_rtos_probe.stop2_final_input_queue_mask = queue_mask;
   g_ps_hw6_rtos_probe.stop2_final_input_gpioa_idr = GPIOA->IDR;
   g_ps_hw6_rtos_probe.stop2_final_input_gpiob_idr = GPIOB->IDR;
+  g_ps_hw6_rtos_probe.stop2_final_input_gpioc_idr = GPIOC->IDR;
+  g_ps_hw6_rtos_probe.stop2_final_joystick_pending_count =
+    ps_joystick_int_pending_count - ps_joystick_int_consumed_count;
   ready = ((g_ps_hw6_rtos_probe.input_raw_enqueue_count ==
             g_ps_hw6_rtos_probe.input_raw_dequeue_count) &&
+           (ps_joystick_int_pending_count ==
+            ps_joystick_int_consumed_count) &&
+           (g_ps_hw6_joystick_cardinal_request == 0UL) &&
+           ((g_ps_hw6_rtos_probe.stop2_final_input_gpioc_idr &
+             (uint32_t)JOY_INT_Pin) != 0UL) &&
            (queue_mask == 0UL) &&
            (PS_InputButtons_Stop2Ready() != 0UL)) ? 1UL : 0UL;
   g_ps_hw6_rtos_probe.stop2_final_input_last_status =
@@ -6711,6 +6788,11 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         PS_InputButtons_ProcessRawEdge(
           button_id, active, (uint32_t)message[3]);
       }
+      else if (PS_HW6_RTOS_InputJoystickMessageIsValid(
+                 owner_id, message) != 0UL)
+      {
+        g_ps_hw6_rtos_probe.joystick_irq_dequeue_count++;
+      }
       else if (PS_HW6_RTOS_CommandIsValid(owner_id, message) != 0UL)
       {
         PS_HW6_RTOS_HandleOwnerCommand(
@@ -7219,6 +7301,8 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
       g_ps_hw6_joystick_cardinal_request = 0UL;
+      ps_joystick_int_consumed_count = ps_joystick_int_pending_count;
+      g_ps_hw6_rtos_probe.joystick_irq_pending_count = 0UL;
       (void)PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe();
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&

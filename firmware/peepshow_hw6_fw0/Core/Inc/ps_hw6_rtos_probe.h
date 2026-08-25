@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (59UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (61UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -235,6 +235,8 @@ typedef struct
   uint32_t stop2_final_input_queue_mask;
   uint32_t stop2_final_input_gpioa_idr;
   uint32_t stop2_final_input_gpiob_idr;
+  uint32_t stop2_final_input_gpioc_idr;
+  uint32_t stop2_final_joystick_pending_count;
   uint32_t stop2_blink_handoff_request_count;
   uint32_t stop2_blink_handoff_last_tick;
   uint32_t stop2_blink_handoff_send_status;
@@ -479,6 +481,15 @@ typedef struct
   uint32_t joystick_awake_poll_error_count;
   uint32_t joystick_awake_poll_next_tick;
   uint32_t joystick_awake_poll_last_status;
+  uint32_t joystick_irq_count;
+  uint32_t joystick_irq_enqueue_count;
+  uint32_t joystick_irq_coalesce_count;
+  uint32_t joystick_irq_dequeue_count;
+  uint32_t joystick_irq_drop_count;
+  uint32_t joystick_irq_pending_count;
+  uint32_t joystick_irq_last_level;
+  uint32_t joystick_irq_last_tick;
+  uint32_t joystick_irq_last_send_status;
   uint32_t joystick_logical_change_count;
   uint32_t joystick_logical_activation_count;
   uint32_t joystick_logical_release_count;
@@ -553,6 +564,7 @@ void PS_HW6_RTOS_LowPowerEnter(void);
 void PS_HW6_RTOS_LowPowerExit(void);
 ULONG PS_HW6_RTOS_LowPowerTimerAdjust(void);
 void PS_HW6_RTOS_RecordPmicIntExti(uint16_t gpio_pin, uint32_t level);
+void PS_HW6_RTOS_RecordJoystickExti(uint16_t gpio_pin, uint32_t level);
 void PS_HW6_RTOS_Stop2WakeClassifyBegin(void);
 void PS_HW6_RTOS_Stop2WakeClassifyAfterWake(void);
 uint32_t PS_HW6_RTOS_Stop2FinalInputReady(void);

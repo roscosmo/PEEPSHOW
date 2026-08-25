@@ -50,6 +50,11 @@ extern "C" {
 #define UX_DEVICE_APP_MEM_POOL_SIZE              1024
 
 /* USER CODE BEGIN EC */
+/* Keep the ThreadX owner pool large enough for dedicated owner stacks and
+ * queue storage. CubeMX may regenerate the default value above. */
+#undef TX_APP_MEM_POOL_SIZE
+#define TX_APP_MEM_POOL_SIZE                     24576
+
 /* Keep USBX byte pool sized for device stack + MSC class.
  * CubeMX may regenerate the default value above. */
 #undef UX_DEVICE_APP_MEM_POOL_SIZE

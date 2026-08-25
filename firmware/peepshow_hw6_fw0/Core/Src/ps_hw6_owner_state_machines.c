@@ -63,7 +63,8 @@
    ~(1UL << PS_HW6_SM_FLASH))
 
 #define PS_HW6_TMAG_ADDRESS               (0x34U)
-#define PS_HW6_TMAG_STOP2_INT_CONFIG1_TARGET (0x01U)
+#define PS_HW6_TMAG_STOP2_INT_CONFIG1_TARGET (0x18U)
+#define PS_HW6_TMAG_QUIET_INT_CONFIG1_TARGET (0x01U)
 #define PS_HW6_IMU_ADDRESS                (0x18U)
 #define PS_HW6_JOYSTICK_SWEEP_DURATION_TICKS (500UL)
 #define PS_HW6_JOYSTICK_SWEEP_PERIOD_TICKS   (5UL)
@@ -79,6 +80,31 @@
 #define PS_HW6_JOYSTICK_CAL_COVERAGE_DOWN         (1UL << 2)
 #define PS_HW6_JOYSTICK_CAL_COVERAGE_LEFT         (1UL << 3)
 #define PS_HW6_JOYSTICK_CAL_COVERAGE_ALL          (0x0FUL)
+
+#if (KNOB_INPUT_JOYSTICK_WAKE_SLEEP_PERIOD_MS != 1) && \
+    (KNOB_INPUT_JOYSTICK_WAKE_SLEEP_PERIOD_MS != 5) && \
+    (KNOB_INPUT_JOYSTICK_WAKE_SLEEP_PERIOD_MS != 10) && \
+    (KNOB_INPUT_JOYSTICK_WAKE_SLEEP_PERIOD_MS != 15) && \
+    (KNOB_INPUT_JOYSTICK_WAKE_SLEEP_PERIOD_MS != 20) && \
+    (KNOB_INPUT_JOYSTICK_WAKE_SLEEP_PERIOD_MS != 30) && \
+    (KNOB_INPUT_JOYSTICK_WAKE_SLEEP_PERIOD_MS != 50) && \
+    (KNOB_INPUT_JOYSTICK_WAKE_SLEEP_PERIOD_MS != 100) && \
+    (KNOB_INPUT_JOYSTICK_WAKE_SLEEP_PERIOD_MS != 500) && \
+    (KNOB_INPUT_JOYSTICK_WAKE_SLEEP_PERIOD_MS != 1000) && \
+    (KNOB_INPUT_JOYSTICK_WAKE_SLEEP_PERIOD_MS != 2000) && \
+    (KNOB_INPUT_JOYSTICK_WAKE_SLEEP_PERIOD_MS != 5000) && \
+    (KNOB_INPUT_JOYSTICK_WAKE_SLEEP_PERIOD_MS != 20000)
+#error "Joystick wake/sleep period must be supported by TMAG3001"
+#endif
+
+#if (KNOB_INPUT_JOYSTICK_WAKE_FIELD_THRESHOLD_CODE < 1) || \
+    (KNOB_INPUT_JOYSTICK_WAKE_FIELD_THRESHOLD_CODE > 127)
+#error "Joystick wake field threshold must fit TMAG3001 threshold magnitude"
+#endif
+
+#if (KNOB_INPUT_JOYSTICK_WAKE_FIELD_HYSTERESIS_CODE > 7)
+#error "Joystick wake field hysteresis must fit TMAG3001 THR_HYST"
+#endif
 
 #define PS_HW6_FLASH_WAKE_SETTLE_TICKS     (1UL)
 #define PS_HW6_FLASH_SCRATCH_ADDRESS       (0x00FFF000UL)
@@ -284,6 +310,26 @@ static uint32_t PS_HW6_SM_MsToTicks(uint32_t ms)
     return 0xFFFFFFFFUL;
   }
   return (uint32_t)scaled;
+}
+
+static uint8_t PS_HW6_SM_JoystickWakeSleepPeriodCode(void)
+{
+  static const uint32_t periods_ms[] =
+  {
+    1UL, 5UL, 10UL, 15UL, 20UL, 30UL, 50UL,
+    100UL, 500UL, 1000UL, 2000UL, 5000UL, 20000UL
+  };
+  uint32_t index;
+
+  for (index = 0UL; index < PS_HW6_ARRAY_COUNT(periods_ms); ++index)
+  {
+    if (periods_ms[index] ==
+        (uint32_t)KNOB_INPUT_JOYSTICK_WAKE_SLEEP_PERIOD_MS)
+    {
+      return (uint8_t)index;
+    }
+  }
+  return 0U;
 }
 
 static uint32_t PS_HW6_SM_GpioTwoBitMask(uint32_t pin_mask)
@@ -504,6 +550,12 @@ static void PS_HW6_SM_ClearStop2ButtonWakePending(void)
   HAL_NVIC_ClearPendingIRQ(BTN_B_EXTI_IRQn);
   HAL_NVIC_ClearPendingIRQ(BTN_L_EXTI_IRQn);
   HAL_NVIC_ClearPendingIRQ(BTN_R_EXTI_IRQn);
+}
+
+static void PS_HW6_SM_ClearStop2JoystickWakePending(void)
+{
+  __HAL_GPIO_EXTI_CLEAR_IT(JOY_INT_Pin);
+  HAL_NVIC_ClearPendingIRQ(JOY_INT_EXTI_IRQn);
 }
 
 static HAL_StatusTypeDef PS_HW6_SM_RestoreStop2GpioPins(void)
@@ -1594,6 +1646,44 @@ static HAL_StatusTypeDef PS_HW6_SM_NormalizeJoystickSample(
     return HAL_ERROR;
   }
 
+  if (g_ps_hw6_owner_sm_probe.joystick_cordic_sample_count == 0UL)
+  {
+    g_ps_hw6_owner_sm_probe.joystick_cordic_magnitude_min =
+      (uint32_t)sample->magnitude_result;
+    g_ps_hw6_owner_sm_probe.joystick_cordic_magnitude_max =
+      (uint32_t)sample->magnitude_result;
+  }
+  else
+  {
+    if ((uint32_t)sample->magnitude_result <
+        g_ps_hw6_owner_sm_probe.joystick_cordic_magnitude_min)
+    {
+      g_ps_hw6_owner_sm_probe.joystick_cordic_magnitude_min =
+        (uint32_t)sample->magnitude_result;
+    }
+    if ((uint32_t)sample->magnitude_result >
+        g_ps_hw6_owner_sm_probe.joystick_cordic_magnitude_max)
+    {
+      g_ps_hw6_owner_sm_probe.joystick_cordic_magnitude_max =
+        (uint32_t)sample->magnitude_result;
+    }
+  }
+  g_ps_hw6_owner_sm_probe.joystick_cordic_sample_count++;
+  g_ps_hw6_owner_sm_probe.joystick_cordic_magnitude_result =
+    (uint32_t)sample->magnitude_result;
+  g_ps_hw6_owner_sm_probe.joystick_cordic_device_status =
+    (uint32_t)sample->device_status;
+  if ((sample->device_status &
+       PS_DEV_TMAG3001_DEVICE_STATUS_THR_CROSS_MASK) != 0U)
+  {
+    g_ps_hw6_owner_sm_probe.joystick_cordic_threshold_cross_count++;
+  }
+  g_ps_hw6_owner_sm_probe.joystick_cordic_int_readback =
+    ((sample->device_status &
+      PS_DEV_TMAG3001_DEVICE_STATUS_INT_RB_MASK) != 0U) ? 1UL : 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_cordic_int_pin_level =
+    (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_11) == GPIO_PIN_SET) ? 1UL : 0UL;
+
   now_tick = (uint32_t)tx_time_get();
   raw_sample.raw_x = (int32_t)sample->x;
   raw_sample.raw_y = (int32_t)sample->y;
@@ -1837,6 +1927,23 @@ static void PS_HW6_SM_ResetJoystickInputProbe(void)
   g_ps_hw6_owner_sm_probe.joystick_recovery_failure_count = 0UL;
   g_ps_hw6_owner_sm_probe.joystick_recovery_last_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.joystick_wake_sleep_arm_count = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_wake_sleep_arm_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.joystick_wake_sleep_period_ms =
+    (uint32_t)KNOB_INPUT_JOYSTICK_WAKE_SLEEP_PERIOD_MS;
+  g_ps_hw6_owner_sm_probe.joystick_wake_sleep_period_code =
+    (uint32_t)PS_HW6_SM_JoystickWakeSleepPeriodCode();
+  g_ps_hw6_owner_sm_probe.joystick_wake_field_threshold_code =
+    (uint32_t)KNOB_INPUT_JOYSTICK_WAKE_FIELD_THRESHOLD_CODE;
+  g_ps_hw6_owner_sm_probe.joystick_wake_field_hysteresis_code =
+    (uint32_t)KNOB_INPUT_JOYSTICK_WAKE_FIELD_HYSTERESIS_CODE;
+  g_ps_hw6_owner_sm_probe.joystick_wake_preclear_int_pin_level = 1UL;
+  g_ps_hw6_owner_sm_probe.joystick_wake_preclear_read_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.joystick_wake_preclear_device_status = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_wake_preclear_threshold_cross = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_wake_preclear_int_readback = 1UL;
   g_ps_hw6_owner_sm_probe.joystick_calibration_capture_request_count = 0UL;
   g_ps_hw6_owner_sm_probe.joystick_calibration_capture_start_tick = 0UL;
   g_ps_hw6_owner_sm_probe.joystick_calibration_capture_end_tick = 0UL;
@@ -2701,6 +2808,14 @@ static void PS_HW6_SM_ClearJoystickTerminalSleepProof(void)
 
 static uint32_t PS_HW6_SM_JoystickTerminalSleepProofValid(void)
 {
+  uint32_t expected_int_config1;
+
+  expected_int_config1 =
+    ((ps_joystick_active_calibration.valid != 0UL) &&
+     (ps_joystick_calibration_session_active == 0UL)) ?
+      PS_HW6_TMAG_STOP2_INT_CONFIG1_TARGET :
+      PS_HW6_TMAG_QUIET_INT_CONFIG1_TARGET;
+
   return ((g_ps_hw6_owner_sm_probe.joystick_sleep_write_status ==
            (uint32_t)PS_STATUS_OK) &&
           (g_ps_hw6_owner_sm_probe.joystick_terminal_sleep_committed !=
@@ -2708,9 +2823,9 @@ static uint32_t PS_HW6_SM_JoystickTerminalSleepProofValid(void)
           (g_ps_hw6_owner_sm_probe.joystick_post_sleep_read_omitted !=
            0UL) &&
           (g_ps_hw6_owner_sm_probe.joystick_sleep_audit_int_config1_target ==
-           PS_HW6_TMAG_STOP2_INT_CONFIG1_TARGET) &&
+           expected_int_config1) &&
           (g_ps_hw6_owner_sm_probe.joystick_sleep_audit_int_config1_after ==
-           PS_HW6_TMAG_STOP2_INT_CONFIG1_TARGET)) ? 1UL : 0UL;
+           expected_int_config1)) ? 1UL : 0UL;
 }
 
 static uint32_t PS_HW6_SM_ImuDeepPowerDownProofValid(void)
@@ -3568,7 +3683,8 @@ static HAL_StatusTypeDef PS_HW6_SM_PrepareJoystickInput(void)
 
   if (((owner_state == (uint32_t)JOY_SUSPENDED) ||
        (owner_state == (uint32_t)JOY_THRESHOLD_ARMED)) &&
-      (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_SUSPENDED))
+      ((ps_joystick_device.state == PS_DEV_TMAG3001_STATE_SUSPENDED) ||
+       (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_WAKE_SLEEP)))
   {
     return HAL_OK;
   }
@@ -4161,6 +4277,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void)
   g_ps_hw6_owner_sm_probe.joystick_calibration_capture_page =
     PS_UI_ROUTER_CAL_NONE;
   PS_HW6_SM_UpdateJoystickCalibrationProbe();
+  (void)memset(&wake_result, 0, sizeof(wake_result));
   status = PS_HW6_SM_PrepareJoystickInput();
   if (status != HAL_OK)
   {
@@ -4175,7 +4292,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void)
   {
     owner_state =
       g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK];
-    if (owner_state == (uint32_t)JOY_SUSPENDED)
+    if ((owner_state == (uint32_t)JOY_SUSPENDED) ||
+        (owner_state == (uint32_t)JOY_SLOW_POLL))
     {
       status = PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
                                     JOY_EV_THRESHOLD_ARM_REQUEST,
@@ -4212,11 +4330,20 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void)
 
   if (status == HAL_OK)
   {
-    PS_HW6_SM_ClearJoystickTerminalSleepProof();
-    driver_status = ps_dev_tmag3001_wake_continuous(
-      &ps_joystick_device,
-      &wake_result);
-    status = PS_HW6_SM_StatusToHal(driver_status);
+    if ((ps_joystick_device.state == PS_DEV_TMAG3001_STATE_SUSPENDED) ||
+        (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_WAKE_SLEEP))
+    {
+      PS_HW6_SM_ClearJoystickTerminalSleepProof();
+      driver_status = ps_dev_tmag3001_wake_continuous(
+        &ps_joystick_device,
+        &wake_result);
+      status = PS_HW6_SM_StatusToHal(driver_status);
+    }
+    else if (ps_joystick_device.state != PS_DEV_TMAG3001_STATE_ACTIVE)
+    {
+      driver_status = PS_STATUS_INVALID_STATE;
+      status = HAL_ERROR;
+    }
     if (status != HAL_OK)
     {
       PS_HW6_SM_RecordJoystickCardinalFailure(
@@ -6335,10 +6462,22 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeJoystick(uint32_t cycle_index)
     return HAL_ERROR;
   }
 
+  g_ps_hw6_owner_sm_probe.joystick_wake_preclear_int_pin_level =
+    (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_11) == GPIO_PIN_SET) ? 1UL : 0UL;
   PS_HW6_SM_ClearJoystickTerminalSleepProof();
   driver_status = ps_dev_tmag3001_wake_continuous(
     &ps_joystick_device,
     &result);
+  g_ps_hw6_owner_sm_probe.joystick_wake_preclear_read_status =
+    (uint32_t)result.preclear_device_status_read_status;
+  g_ps_hw6_owner_sm_probe.joystick_wake_preclear_device_status =
+    (uint32_t)result.preclear_device_status;
+  g_ps_hw6_owner_sm_probe.joystick_wake_preclear_threshold_cross =
+    ((result.preclear_device_status &
+      PS_DEV_TMAG3001_DEVICE_STATUS_THR_CROSS_MASK) != 0U) ? 1UL : 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_wake_preclear_int_readback =
+    ((result.preclear_device_status &
+      PS_DEV_TMAG3001_DEVICE_STATUS_INT_RB_MASK) != 0U) ? 1UL : 0UL;
   status = PS_HW6_SM_StatusToHal(driver_status);
 
   if (cycle_index < PS_HW6_OWNER_SM_CYCLE_COUNT)
@@ -6377,6 +6516,7 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeJoystick(uint32_t cycle_index)
 static HAL_StatusTypeDef PS_HW6_SM_QuiesceJoystick(uint32_t cycle_index)
 {
   ps_dev_tmag3001_sleep_audit_result_t result;
+  ps_dev_tmag3001_wake_sleep_result_t wake_sleep_result;
   ps_status_t driver_status;
   HAL_StatusTypeDef status;
   uint32_t i2c_state_after = 0UL;
@@ -6399,10 +6539,81 @@ static HAL_StatusTypeDef PS_HW6_SM_QuiesceJoystick(uint32_t cycle_index)
     return HAL_OK;
   }
 
-  driver_status = ps_dev_tmag3001_prepare_sleep(
-    &ps_joystick_device,
-    PS_HW6_TMAG_STOP2_INT_CONFIG1_TARGET,
-    &result);
+  (void)memset(&result, 0, sizeof(result));
+  if ((ps_joystick_active_calibration.valid != 0UL) &&
+      (ps_joystick_calibration_session_active == 0UL))
+  {
+    PS_HW6_SM_ClearStop2JoystickWakePending();
+    driver_status = ps_dev_tmag3001_prepare_wake_sleep_omnipolar_xy(
+      &ps_joystick_device,
+      PS_HW6_SM_JoystickWakeSleepPeriodCode(),
+      (uint8_t)KNOB_INPUT_JOYSTICK_WAKE_FIELD_THRESHOLD_CODE,
+      (uint8_t)KNOB_INPUT_JOYSTICK_WAKE_FIELD_HYSTERESIS_CODE,
+      &wake_sleep_result);
+    g_ps_hw6_owner_sm_probe.joystick_wake_sleep_arm_count++;
+    g_ps_hw6_owner_sm_probe.joystick_wake_sleep_arm_status =
+      (uint32_t)driver_status;
+    g_ps_hw6_owner_sm_probe.joystick_wake_sensor_config1 =
+      wake_sleep_result.sensor_config1_after;
+    g_ps_hw6_owner_sm_probe.joystick_wake_sensor_config2 =
+      wake_sleep_result.sensor_config2_after;
+    g_ps_hw6_owner_sm_probe.joystick_wake_sensor_config3 =
+      wake_sleep_result.sensor_config3_after;
+    g_ps_hw6_owner_sm_probe.joystick_wake_threshold_x =
+      wake_sleep_result.threshold_x_after;
+    g_ps_hw6_owner_sm_probe.joystick_wake_threshold_y =
+      wake_sleep_result.threshold_y_after;
+    g_ps_hw6_owner_sm_probe.joystick_wake_threshold_z =
+      wake_sleep_result.threshold_z_after;
+    g_ps_hw6_owner_sm_probe.joystick_wake_threshold_x_high =
+      wake_sleep_result.threshold_x_high_after;
+    g_ps_hw6_owner_sm_probe.joystick_wake_threshold_y_high =
+      wake_sleep_result.threshold_y_high_after;
+    g_ps_hw6_owner_sm_probe.joystick_wake_threshold_z_high =
+      wake_sleep_result.threshold_z_high_after;
+    g_ps_hw6_owner_sm_probe.joystick_wake_int_config1 =
+      wake_sleep_result.int_config1_after;
+    g_ps_hw6_owner_sm_probe.joystick_wake_device_config2 =
+      wake_sleep_result.device_config2_wake_sleep;
+    g_ps_hw6_owner_sm_probe.joystick_wake_write_ok_mask =
+      wake_sleep_result.write_ok_mask;
+    g_ps_hw6_owner_sm_probe.joystick_wake_verify_ok_mask =
+      wake_sleep_result.verify_ok_mask;
+    g_ps_hw6_owner_sm_probe.joystick_wake_last_hal_status =
+      wake_sleep_result.last_hal_status;
+    g_ps_hw6_owner_sm_probe.joystick_wake_last_hal_error =
+      wake_sleep_result.last_hal_error;
+
+    result.ready_status = wake_sleep_result.identity_status;
+    result.identity_status = wake_sleep_result.identity_status;
+    result.device_id = wake_sleep_result.device_id;
+    result.manufacturer_lsb = wake_sleep_result.manufacturer_lsb;
+    result.manufacturer_msb = wake_sleep_result.manufacturer_msb;
+    result.identity_match = wake_sleep_result.identity_match;
+    result.sensor_config1_after = wake_sleep_result.sensor_config1_after;
+    result.int_config1_target = wake_sleep_result.int_config1_target;
+    result.int_config1_after = wake_sleep_result.int_config1_after;
+    result.device_config2_after = wake_sleep_result.device_config2_after;
+    result.device_config2_sleep =
+      wake_sleep_result.device_config2_wake_sleep;
+    result.write_ok_mask = wake_sleep_result.write_ok_mask;
+    result.verify_ok_mask = wake_sleep_result.verify_ok_mask;
+    result.sensor_config1_verify_status = driver_status;
+    result.int_config1_verify_status = driver_status;
+    result.device_config2_verify_status = driver_status;
+    result.sleep_write_status = wake_sleep_result.terminal_write_status;
+    result.terminal_sleep_committed =
+      wake_sleep_result.terminal_write_committed;
+    result.post_sleep_read_omitted =
+      wake_sleep_result.post_terminal_read_omitted;
+  }
+  else
+  {
+    driver_status = ps_dev_tmag3001_prepare_sleep(
+      &ps_joystick_device,
+      PS_HW6_TMAG_QUIET_INT_CONFIG1_TARGET,
+      &result);
+  }
   status = PS_HW6_SM_StatusToHal(driver_status);
 
   if (cycle_index < PS_HW6_OWNER_SM_CYCLE_COUNT)
@@ -7475,7 +7686,7 @@ void PS_HW6_OwnerStateMachines_Init(void)
   g_ps_hw6_owner_sm_probe.stop2_recover_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.stop2_expected_wake_pin =
-    PS_HW6_STOP2_BUTTON_WAKE_EXTI_MASK;
+    PS_HW6_STOP2_BUTTON_WAKE_EXTI_MASK | (uint32_t)JOY_INT_Pin;
   g_ps_hw6_owner_sm_probe.stop2_wake_start_idr = 0UL;
   g_ps_hw6_owner_sm_probe.stop2_wake_end_idr = 0UL;
   g_ps_hw6_owner_sm_probe.stop2_systick_ctrl_before =
@@ -7931,7 +8142,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
   g_ps_hw6_owner_sm_probe.stop2_recover_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.stop2_expected_wake_pin =
-    PS_HW6_STOP2_BUTTON_WAKE_EXTI_MASK;
+    PS_HW6_STOP2_BUTTON_WAKE_EXTI_MASK | (uint32_t)JOY_INT_Pin;
   g_ps_hw6_owner_sm_probe.stop2_wake_start_idr = 0UL;
   g_ps_hw6_owner_sm_probe.stop2_wake_end_idr = 0UL;
   g_ps_hw6_owner_sm_probe.stop2_systick_ctrl_before =
@@ -9131,7 +9342,9 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ResumeForPostStopBarrier(
 
     case PS_HW6_RTOS_OWNER_INPUT:
       state = g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK];
-      if (state == (uint32_t)JOY_OFF)
+      if ((state == (uint32_t)JOY_OFF) ||
+          (state == (uint32_t)JOY_THRESHOLD_ARMED) ||
+          (state == (uint32_t)JOY_SLOW_POLL))
       {
         status = HAL_OK;
       }

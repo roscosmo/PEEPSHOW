@@ -24,6 +24,9 @@
     "input_joystick_cal_progress_period_ms",
     "input_joystick_cal_review_period_ms",
     "input_joystick_awake_poll_period_ms",
+    "input_joystick_wake_sleep_period_ms",
+    "input_joystick_wake_field_threshold_code",
+    "input_joystick_wake_field_hysteresis_code",
     "input_joystick_cal_min_cardinal_span_counts",
     "input_joystick_cal_sweep_coverage_per_mille",
     "input_joystick_cal_deadzone_pad_per_mille",
@@ -45,6 +48,7 @@
     "rtos_default_stack_bytes",
     "rtos_power_stack_bytes",
     "rtos_input_stack_bytes",
+    "rtos_sensor_stack_bytes",
     "rtos_storage_stack_bytes",
     "comm_ble_reset_assert_ms",
     "comm_ble_boot_wait_ms",
@@ -310,6 +314,42 @@
       "path": "platform.knobs.input.joystick_awake_poll_period_ms",
       "description": "Bounded joystick direction sampling period while the MCU is already awake."
     },
+    "input_joystick_wake_sleep_period_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20000,
+      "default": 20,
+      "unit": "ms",
+      "timebase_domain": "tmag3001",
+      "owner": "thSensor",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_wake_sleep_period_ms",
+      "description": "TMAG3001 wake-and-sleep conversion interval used while the MCU is in STOP2; must match a hardware-supported interval."
+    },
+    "input_joystick_wake_field_threshold_code": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 127,
+      "default": 48,
+      "unit": "threshold_code",
+      "timebase_domain": "tmag3001",
+      "owner": "thSensor",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_wake_field_threshold_code",
+      "description": "TMAG3001 omnipolar X/Y switch operating threshold. Each code step equals 256 counts in the 16-bit magnetic result."
+    },
+    "input_joystick_wake_field_hysteresis_code": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 7,
+      "default": 7,
+      "unit": "hysteresis_code",
+      "timebase_domain": "tmag3001",
+      "owner": "thSensor",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_wake_field_hysteresis_code",
+      "description": "TMAG3001 omnipolar X/Y switch release hysteresis code; 7 selects the maximum 256-LSB 12-bit hysteresis."
+    },
     "input_joystick_cal_min_cardinal_span_counts": {
       "type": "integer",
       "minimum": 256,
@@ -559,6 +599,19 @@
       "class": "resource_budget",
       "path": "platform.knobs.rtos.input_stack_bytes",
       "description": "ThreadX stack allocation for thInput. TMAG3001 diagnostics and I2C mutex/HAL calls require more headroom than the default owner stack."
+    },
+    "rtos_sensor_stack_bytes": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 16384,
+      "multipleOf": 8,
+      "default": 3072,
+      "unit": "bytes",
+      "timebase_domain": "threadx",
+      "owner": "thSensor",
+      "class": "resource_budget",
+      "path": "platform.knobs.rtos.sensor_stack_bytes",
+      "description": "ThreadX stack allocation for thSensor while it owns TMAG3001 and IMU sampling, calibration, recovery, and low-power transitions."
     },
     "rtos_storage_stack_bytes": {
       "type": "integer",
