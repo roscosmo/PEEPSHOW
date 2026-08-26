@@ -299,10 +299,12 @@ push/pop, return stacks, or STATE-to-SEQUENCE/PROGRAM transitions yet.
 
 Peep Studio implementation status: first package scene-flow view is
 implemented. It presents scenes as separate package-level nodes and shows
-existing `target_scene` route edges from normalized service data. Existing
-actionless `target_scene` routes can be retargeted to another STATE scene
-through the inspector. Creating or removing scene-flow edges remains deferred
-to a later Stage 5 edit slice.
+existing `target_scene` route edges from normalized service data. Scene cards
+show their existing scene-exit outputs as selectable rows; real scene preview
+thumbnails remain deferred until the Python service exposes side-effect-free
+scene snapshot generation. Existing actionless `target_scene` routes can be
+retargeted to another STATE scene through the inspector. Creating or removing
+scene-flow edges remains deferred to a later Stage 5 edit slice.
 
 ### Stage 6: Animation Timeline
 

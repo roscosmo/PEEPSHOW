@@ -116,6 +116,9 @@ assert.equal(localWithSceneExit.nodes.find((node) => node.id === "idle")?.output
 assert.equal(localWithSceneExit.edges.length, 1);
 assert.equal(sceneFlow.nodes.length, 3);
 assert.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.isEntry, true);
+assert.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.exits.length, 1);
+assert.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.exits[0]?.label, "Button A");
+assert.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.exits[0]?.targetScene, "game");
 assert.equal(sceneFlow.edges.length, 2);
 assert.equal(sceneFlow.edges.some((edge) => edge.source === "menu" && edge.target === "game"), true);
 assert.equal(sceneFlow.edges.some((edge) => edge.source === "summary" && edge.target === "menu"), true);

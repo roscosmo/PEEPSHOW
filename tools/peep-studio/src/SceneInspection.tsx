@@ -164,11 +164,13 @@ const STATE_NODE_TYPES = { stateCard: StateCardNode };
 
 type SceneCardNodeData = {
   graphNode: GraphSceneNode;
+  selectedRouteId: string | null;
   onSelectScene: (sceneId: string) => void;
+  onSelectSceneRoute: (sceneId: string, routeId: string) => void;
 };
 
 function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
-  const { graphNode, onSelectScene } = data;
+  const { graphNode, onSelectScene, onSelectSceneRoute, selectedRouteId } = data;
   return (
     <button
       className={`scene-card-node ${graphNode.isEntry ? "entry" : ""} ${selected ? "selected" : ""}`}
@@ -189,7 +191,35 @@ function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
         <span>{graphNode.routeCount} exit{graphNode.routeCount === 1 ? "" : "s"}</span>
       </div>
       <small>First screen: {graphNode.entryStateLabel}</small>
-      <Handle type="source" position={Position.Right} />
+      <div className="scene-exit-list">
+        {graphNode.exits.length === 0 ? (
+          <span className="scene-exit-empty">No scene exits</span>
+        ) : (
+          graphNode.exits.map((exit) => (
+            <span
+              className={`scene-exit-row ${selectedRouteId === exit.routeId ? "selected" : ""}`}
+              key={exit.id}
+              role="button"
+              tabIndex={0}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSelectSceneRoute(graphNode.id, exit.routeId);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onSelectSceneRoute(graphNode.id, exit.routeId);
+                }
+              }}
+            >
+              <span>{exit.label}</span>
+              <small>Go to {exit.targetScene}</small>
+              <Handle id={exit.id} type="source" position={Position.Right} />
+            </span>
+          ))
+        )}
+      </div>
     </button>
   );
 }
@@ -302,13 +332,15 @@ export function SceneFlowView({
         position: { x: node.x, y: node.y },
         data: {
           graphNode: node,
+          selectedRouteId,
           onSelectScene,
+          onSelectSceneRoute,
         },
         selected: selectedSceneId === node.id,
         draggable: false,
         connectable: false,
       })),
-    [graph.nodes, onSelectScene, selectedSceneId],
+    [graph.nodes, onSelectScene, onSelectSceneRoute, selectedRouteId, selectedSceneId],
   );
   const edges: Edge[] = useMemo(
     () =>
@@ -316,6 +348,7 @@ export function SceneFlowView({
         id: edge.id,
         source: edge.source,
         target: edge.target,
+        sourceHandle: `${edge.source}:${edge.route.route_id}`,
         selected: selectedRouteId === edge.route.route_id,
         data: { route_id: edge.route.route_id, source_scene_id: edge.source },
         markerEnd: { type: MarkerType.ArrowClosed },

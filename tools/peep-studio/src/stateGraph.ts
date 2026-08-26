@@ -42,8 +42,17 @@ export type GraphSceneNode = {
   stateCount: number;
   routeCount: number;
   entryStateLabel: string;
+  exits: GraphSceneExit[];
   x: number;
   y: number;
+};
+
+export type GraphSceneExit = {
+  id: string;
+  routeId: string;
+  label: string;
+  targetScene: string;
+  guardCount: number;
 };
 
 export type GraphSceneEdge = {
@@ -166,6 +175,19 @@ export function buildSceneFlowGraphModel(
   edges.forEach((edge) => {
     outgoingCounts.set(edge.source, (outgoingCounts.get(edge.source) ?? 0) + 1);
   });
+  const exitsByScene = new Map<string, GraphSceneExit[]>();
+  scenes.forEach((scene) => {
+    const exits = (scene.routes ?? [])
+      .filter((route) => route.target_scene !== undefined && sceneIds.has(route.target_scene))
+      .map((route) => ({
+        id: `${scene.scene_id}:${route.route_id}`,
+        routeId: route.route_id,
+        label: routeLabel(route, scene.input_actions ?? []),
+        targetScene: route.target_scene!,
+        guardCount: route.guards.length,
+      }));
+    exitsByScene.set(scene.scene_id, exits);
+  });
 
   const incomingTargets = new Set(edges.map((edge) => edge.target));
   const nodes = scenes.map((scene, index) => {
@@ -180,6 +202,7 @@ export function buildSceneFlowGraphModel(
       stateCount: states.length,
       routeCount: outgoingCounts.get(scene.scene_id) ?? 0,
       entryStateLabel: entryState?.display_name ?? scene.entry_state ?? "No start state",
+      exits: exitsByScene.get(scene.scene_id) ?? [],
       x: column * 300,
       y: index * 154,
     };

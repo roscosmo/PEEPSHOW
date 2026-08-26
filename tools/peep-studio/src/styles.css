@@ -788,6 +788,11 @@ button:focus-visible {
   text-align: left;
 }
 
+.scene-card-node > small,
+.scene-exit-list {
+  grid-column: 1 / -1;
+}
+
 .scene-card-node.entry {
   border-color: #aeb9b2;
   background: #ffffff;
@@ -859,6 +864,69 @@ button:focus-visible {
   border-radius: 4px;
   background: #edf7fb;
   color: #175f8a;
+}
+
+.scene-exit-list {
+  display: grid;
+  gap: 5px;
+}
+
+.scene-exit-empty,
+.scene-exit-row {
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid #d4dcd7;
+  border-radius: 5px;
+  background: #f9fbfa;
+}
+
+.scene-exit-empty {
+  color: #68736d;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.scene-exit-row {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  color: #27302b;
+  cursor: pointer;
+}
+
+.scene-exit-row:hover,
+.scene-exit-row.selected {
+  border-color: #8eb0c3;
+  background: #eef7fb;
+}
+
+.scene-exit-row span,
+.scene-exit-row small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-exit-row span {
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.scene-exit-row small {
+  color: #68736d;
+  font-size: 8px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.scene-exit-row .react-flow__handle {
+  right: -14px;
+  width: 8px;
+  height: 8px;
+  border-color: #6d7a73;
+  background: #ffffff;
 }
 
 .state-card-heading {
