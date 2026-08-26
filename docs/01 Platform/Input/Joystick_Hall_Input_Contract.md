@@ -131,8 +131,9 @@ The public joystick API must not expose these raw register values except through
 
 On HW6 unit 001, FW0 has proven TMAG3001 identity, driver-backed owner wake and
 sleep cycles, raw/live sample capture, and the first complete guided calibration
-path. Calibration remains volatile until the protected-record persistence path
-is implemented, so it is not yet accepted as boot-time production policy.
+path. FW0 now implements the protected A/B calibration-record path and boot
+admission policy; target validation of save, reset reload, and alternate-record
+rollover is the remaining acceptance step.
 
 Current FW0 calibration status:
 
@@ -159,7 +160,12 @@ Current FW0 calibration status:
   `JOY_UP`, and `JOY_DOWN` actions; holding a direction does not repeat it
 - only a successfully queued direction activation restarts the STOP2 idle
   window; periodic samples and releases are not meaningful activity
-- A applies the volatile candidate and B restores the previous calibration
+- A persists the candidate through `thStorage`; it becomes active only after
+  body verification, commit-last publication, and rescan all succeed
+- save failure remains on REVIEW with `TRY AGAIN`; B restores the previous
+  calibration before persistence begins
+- normal joystick polling and routing remain disabled until boot-time record
+  resolution completes
 - L/R plus A/B remain the required fallback controls while calibration is
   missing or invalid
 

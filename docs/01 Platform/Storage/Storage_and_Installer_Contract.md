@@ -376,6 +376,26 @@ Rules:
 
 ## Save and Settings Rules
 
+### Joystick Calibration Records
+
+The protected calibration region begins at `0x00020000` and is not
+host-exposed. FW0 uses its first two 4 KiB sectors as calibration records A and
+B; the rest of the 64 KiB region remains reserved for later Platform
+calibration records.
+
+- each record contains an explicit little-endian format version, generation,
+  fixed joystick payload, CRC32, reserved bytes, and a separate commit marker
+- `thStorage` is the only thread that scans, erases, programs, verifies, or
+  commits these records
+- a save preserves the selected record, erases and verifies the alternate
+  sector, programs and verifies the body, writes the commit marker last, then
+  rescans before publication
+- boot selects the newest valid generation using wrap-safe comparison; an
+  erased region produces no selection, while same-generation records with
+  different payloads are a conflict and are not overwritten automatically
+- normal joystick input is gated until boot resolution completes; no valid
+  selection routes the shell to button-navigable joystick calibration
+
 - Package saves and package-owned settings use [[Package_Save_Settings_API_Contract]].
 - settings writes must be power-fail safe
 - BLE pairing/bonding records must be power-fail safe and preserve the last valid record on failed update

@@ -42,6 +42,7 @@
   "rtos_default_stack_bytes": 1024,
   "rtos_power_stack_bytes": 4096,
   "rtos_input_stack_bytes": 1536,
+  "rtos_display_stack_bytes": 3072,
   "rtos_sensor_stack_bytes": 3072,
   "rtos_storage_stack_bytes": 2048,
   "comm_ble_reset_assert_ms": 20,

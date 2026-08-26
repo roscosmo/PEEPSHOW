@@ -79,6 +79,7 @@
 #define KNOB_POWER_STOP2_DISPLAY_WAIT_BACKEND              (2)
 #define KNOB_POWER_STOP2_GPIO_PARK_GROUP_MASK              (30)
 #define KNOB_RTOS_DEFAULT_STACK_BYTES                      (1024)
+#define KNOB_RTOS_DISPLAY_STACK_BYTES                      (3072)
 #define KNOB_RTOS_INPUT_STACK_BYTES                        (1536)
 #define KNOB_RTOS_POWER_STACK_BYTES                        (4096)
 #define KNOB_RTOS_SENSOR_STACK_BYTES                       (3072)

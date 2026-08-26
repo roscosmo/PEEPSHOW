@@ -1106,6 +1106,8 @@ UINT PS_HW6_OwnerServices_Init(void)
   PS_HW6_DisplayOwner_ResetLpbamPrepareProbe();
   g_ps_hw6_owner_probe.display_lpbam_abort_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.display_lpbam_ui_invalidate_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.audio_start_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.audio_stop_status =
@@ -1646,13 +1648,35 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   uint32_t shutdown_countdown_seconds)
 {
   HAL_StatusTypeDef driver_status;
+  HAL_StatusTypeDef invalidate_status;
   const ps_scene_render_model_t *scene_model = NULL;
 
   g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_DISPLAY;
-  PS_HW6_DisplayOwner_ClearLpbamReadiness(
-    PS_HW6_DISPLAY_LPBAM_CLEAR_UI_RENDER);
   g_ps_hw6_owner_probe.display_complete = 0UL;
   g_ps_hw6_owner_probe.display_success = 0UL;
+  if ((ps_hw6_display_lpbam_prearmed != 0UL) ||
+      (ps_hw6_display_lpbam_active != 0UL))
+  {
+    g_ps_hw6_owner_probe.display_lpbam_ui_invalidate_count++;
+    g_ps_hw6_owner_probe.display_lpbam_ui_invalidate_tick =
+      (uint32_t)tx_time_get();
+    g_ps_hw6_owner_probe.display_lpbam_ui_invalidate_prearmed =
+      ps_hw6_display_lpbam_prearmed;
+    g_ps_hw6_owner_probe.display_lpbam_ui_invalidate_active =
+      ps_hw6_display_lpbam_active;
+    invalidate_status = PS_HW6_DisplayOwner_AbortLpbamStop2();
+    g_ps_hw6_owner_probe.display_lpbam_ui_invalidate_status =
+      (uint32_t)invalidate_status;
+    if (invalidate_status != HAL_OK)
+    {
+      g_ps_hw6_owner_probe.display_complete = 1UL;
+      g_ps_hw6_owner_probe.display_ui_status =
+        (uint32_t)invalidate_status;
+      return invalidate_status;
+    }
+  }
+  PS_HW6_DisplayOwner_ClearLpbamReadiness(
+    PS_HW6_DISPLAY_LPBAM_CLEAR_UI_RENDER);
   g_ps_hw6_owner_probe.display_ui_request_count++;
   g_ps_hw6_owner_probe.display_ui_page = page;
   g_ps_hw6_owner_probe.display_ui_calibration_page = calibration_page;

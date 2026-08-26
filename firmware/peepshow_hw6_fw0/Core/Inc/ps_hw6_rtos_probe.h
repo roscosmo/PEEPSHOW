@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (61UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (64UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -500,6 +500,16 @@ typedef struct
   uint32_t joystick_logical_last_target;
   uint32_t joystick_logical_last_status;
   uint32_t joystick_logical_last_tick;
+  uint32_t joystick_logical_stop2_reset_request_count;
+  uint32_t joystick_logical_stop2_reset_consume_count;
+  uint32_t joystick_logical_stop2_reset_pending;
+  uint32_t joystick_logical_stop2_reset_previous_direction;
+  uint32_t joystick_logical_stop2_reset_tick;
+  uint32_t joystick_logical_wake_capture_available_count;
+  uint32_t joystick_logical_wake_capture_publish_count;
+  uint32_t joystick_logical_wake_capture_direction;
+  uint32_t joystick_logical_wake_capture_status;
+  uint32_t joystick_logical_wake_capture_tick;
   uint32_t runtime_input_event_count;
   uint32_t runtime_input_button_count;
   uint32_t runtime_input_last_event;

@@ -23,6 +23,7 @@
 #define PS_HW6_RTOS_DEFAULT_STACK_BYTES  ((ULONG)KNOB_RTOS_DEFAULT_STACK_BYTES)
 #define PS_HW6_RTOS_POWER_STACK_BYTES    ((ULONG)KNOB_RTOS_POWER_STACK_BYTES)
 #define PS_HW6_RTOS_INPUT_STACK_BYTES    ((ULONG)KNOB_RTOS_INPUT_STACK_BYTES)
+#define PS_HW6_RTOS_DISPLAY_STACK_BYTES  ((ULONG)KNOB_RTOS_DISPLAY_STACK_BYTES)
 #define PS_HW6_RTOS_SENSOR_STACK_BYTES   ((ULONG)KNOB_RTOS_SENSOR_STACK_BYTES)
 #define PS_HW6_RTOS_STORAGE_STACK_BYTES  ((ULONG)KNOB_RTOS_STORAGE_STACK_BYTES)
 #define PS_HW6_RTOS_QUEUE_DEPTH          (8UL)
@@ -89,6 +90,8 @@
 #define PS_HW6_RTOS_COMMAND_DISPLAY_LPBAM_WAKE_ABORT (31UL)
 #define PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_INSTALL_EMBEDDED (32UL)
 #define PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_LOAD_INSTALLED (33UL)
+#define PS_HW6_RTOS_COMMAND_STORAGE_JOYSTICK_CALIBRATION_SAVE (34UL)
+#define PS_HW6_RTOS_COMMAND_INPUT_JOYSTICK_WAKE_PUBLISH (35UL)
 #define PS_HW6_RTOS_EVENT_DEBUG_INDEX     (3U)
 #define PS_HW6_RTOS_ACK_OWNER(owner_id)   (1UL << (owner_id))
 #define PS_HW6_RTOS_CLOCK_ACK_SHIFT       (16U)
@@ -138,6 +141,7 @@
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_POST_STOP_RESUME (6UL)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_PACKAGE_LOAD (7UL)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_POWER_QUIESCE (8UL)
+#define PS_HW6_RTOS_STORAGE_CLOCK_REASON_JOYSTICK_CALIBRATION (9UL)
 #define PS_HW6_RTOS_STORAGE_CLOCK_MSC_CAPABILITIES \
   (PS_HW6_CLOCK_CAP_USB_DEVICE_ACTIVE | PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE)
 #define PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES \
@@ -295,8 +299,12 @@ static uint32_t ps_stop2_lpbam_late_blocker_armed;
 static uint32_t ps_display_blink_next_tick;
 static uint32_t ps_joystick_calibration_review_next_tick;
 static uint32_t ps_joystick_calibration_progress_render_next_tick;
+static uint32_t ps_joystick_calibration_boot_load_started;
+static volatile uint32_t ps_joystick_calibration_apply_pending;
+static volatile uint32_t ps_joystick_calibration_save_completion_pending;
 static uint32_t ps_joystick_awake_poll_next_tick;
 static uint32_t ps_joystick_awake_published_direction_mask;
+static volatile uint32_t ps_joystick_awake_publish_reset_pending;
 static volatile uint32_t ps_input_activity_generation;
 static uint32_t ps_power_input_activity_generation;
 static uint32_t ps_display_blink_visible;
@@ -375,7 +383,7 @@ static const ULONG ps_owner_stack_bytes[PS_HW6_RTOS_OWNER_COUNT] =
   PS_HW6_RTOS_POWER_STACK_BYTES,
   PS_HW6_RTOS_DEFAULT_STACK_BYTES,
   PS_HW6_RTOS_INPUT_STACK_BYTES,
-  PS_HW6_RTOS_DEFAULT_STACK_BYTES,
+  PS_HW6_RTOS_DISPLAY_STACK_BYTES,
   PS_HW6_RTOS_SENSOR_STACK_BYTES,
   PS_HW6_RTOS_STORAGE_STACK_BYTES,
   PS_HW6_RTOS_DEFAULT_STACK_BYTES,
@@ -681,6 +689,9 @@ void PS_HW6_RTOS_Stop2WakeClassifyAfterWake(void)
   if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_JOYSTICK) != 0UL)
   {
     g_ps_hw6_rtos_probe.stop2_wake_joystick_count++;
+    ps_joystick_awake_publish_reset_pending = 1UL;
+    g_ps_hw6_rtos_probe.joystick_logical_stop2_reset_request_count++;
+    g_ps_hw6_rtos_probe.joystick_logical_stop2_reset_pending = 1UL;
   }
   if ((source_mask & PS_HW6_RTOS_WAKE_SOURCE_SENSOR) != 0UL)
   {
@@ -881,7 +892,13 @@ static void PS_HW6_RTOS_ResetProbe(void)
   ps_stop2_lpbam_late_blocker_armed = 0UL;
   ps_display_blink_next_tick = 0UL;
   ps_joystick_awake_poll_next_tick = 0UL;
+  ps_joystick_calibration_boot_load_started = 0UL;
+  ps_joystick_calibration_apply_pending = 0UL;
+  ps_joystick_calibration_save_completion_pending = 0UL;
   ps_joystick_awake_published_direction_mask = 0UL;
+  ps_joystick_awake_publish_reset_pending = 0UL;
+  g_ps_hw6_rtos_probe.joystick_logical_wake_capture_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
   ps_input_activity_generation = 0UL;
   ps_power_input_activity_generation = 0UL;
   ps_display_blink_visible = 1UL;
@@ -1284,6 +1301,8 @@ static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
         PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_INSTALL_EMBEDDED) ||
        (message[2] ==
         PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_LOAD_INSTALLED) ||
+       (message[2] ==
+        PS_HW6_RTOS_COMMAND_STORAGE_JOYSTICK_CALIBRATION_SAVE) ||
        (message[2] == PS_HW6_RTOS_COMMAND_PACKAGE_INSTALL_STUB)) &&
       (message[3] == PS_HW6_RTOS_COMMAND_TOKEN))
   {
@@ -1295,6 +1314,12 @@ static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
        (message[2] == PS_HW6_RTOS_COMMAND_DISPLAY_LPBAM_WAKE_ABORT) ||
        (message[2] == PS_HW6_RTOS_COMMAND_DISPLAY_LPBAM_EDGE_WAKE) ||
        (message[2] == PS_HW6_RTOS_COMMAND_DISPLAY_CURSOR_VISIBLE)) &&
+      (message[3] == PS_HW6_RTOS_COMMAND_TOKEN))
+  {
+    return 1UL;
+  }
+  if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
+      (message[2] == PS_HW6_RTOS_COMMAND_INPUT_JOYSTICK_WAKE_PUBLISH) &&
       (message[3] == PS_HW6_RTOS_COMMAND_TOKEN))
   {
     return 1UL;
@@ -2878,6 +2903,8 @@ static HAL_StatusTypeDef PS_HW6_RTOS_ResumeDisplayTimelineAfterStop2(
 static void PS_HW6_RTOS_DeferDisplayLpbamRearm(uint32_t now_tick)
 {
   PS_HW6_RTOS_ClearDisplayLpbamEdgeRequest((uint32_t)HAL_ERROR);
+  ps_display_blink_stop2_suppressed = 0UL;
+  PS_HW6_RTOS_ResetDisplayCursorBlink(now_tick);
   ps_stop2_lpbam_edge_rearm_needed = 1UL;
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_rearm_pending = 1UL;
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_rearm_count++;
@@ -3465,7 +3492,6 @@ static uint32_t PS_HW6_RTOS_Stop2DisplayLpbamFallbackEligible(void)
   {
     return 1UL;
   }
-
   return ((g_ps_hw6_owner_probe.display_lpbam_prepare_status ==
            (uint32_t)HAL_ERROR) &&
           (g_ps_hw6_owner_probe.display_lpbam_admission_status ==
@@ -4394,6 +4420,12 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2AutoIdleCheck(
     ps_display_blink_stop2_suppressed = 0UL;
     PS_HW6_RTOS_ResetDisplayCursorBlink((uint32_t)tx_time_get());
   }
+  if (ps_joystick_awake_publish_reset_pending != 0UL)
+  {
+    (void)PS_HW6_RTOS_SendCommand(
+      PS_HW6_RTOS_OWNER_INPUT,
+      PS_HW6_RTOS_COMMAND_INPUT_JOYSTICK_WAKE_PUBLISH);
+  }
   g_ps_hw6_rtos_probe.stop2_auto_entry_status = (uint32_t)entry_status;
   g_ps_hw6_rtos_probe.stop2_auto_last_status = (uint32_t)entry_status;
   return entry_status;
@@ -4801,6 +4833,8 @@ static uint32_t PS_HW6_RTOS_JoystickAwakePollingAllowed(void)
     return 0UL;
   }
   if ((g_ps_hw6_rtos_probe.runtime_complete == 0UL) ||
+      (g_ps_hw6_owner_sm_probe
+         .joystick_calibration_persistent_load_available == 0UL) ||
       (g_ps_ui_router_probe.current_page ==
        (uint32_t)PS_UI_ROUTER_PAGE_CALIBRATION) ||
       (g_ps_hw6_owner_sm_probe.joystick_calibration_session_active != 0UL) ||
@@ -4817,6 +4851,8 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
   uint32_t period_ticks;
   uint32_t previous_direction;
   uint32_t direction;
+  uint32_t wake_direction = 0UL;
+  uint32_t wake_direction_available = 0UL;
 
   if (PS_HW6_RTOS_JoystickAwakePollingAllowed() == 0UL)
   {
@@ -4824,6 +4860,46 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
     ps_joystick_awake_published_direction_mask = 0UL;
     g_ps_hw6_rtos_probe.joystick_awake_poll_next_tick = 0UL;
     return;
+  }
+
+  if (ps_joystick_awake_publish_reset_pending != 0UL)
+  {
+    g_ps_hw6_rtos_probe.joystick_logical_stop2_reset_previous_direction =
+      ps_joystick_awake_published_direction_mask;
+    ps_joystick_awake_published_direction_mask = 0UL;
+    ps_joystick_awake_publish_reset_pending = 0UL;
+    g_ps_hw6_rtos_probe.joystick_logical_stop2_reset_pending = 0UL;
+    g_ps_hw6_rtos_probe.joystick_logical_stop2_reset_consume_count++;
+    g_ps_hw6_rtos_probe.joystick_logical_stop2_reset_tick = now_tick;
+    g_ps_hw6_rtos_probe.joystick_logical_wake_capture_direction = 0UL;
+    g_ps_hw6_rtos_probe.joystick_logical_wake_capture_status =
+      PS_HW6_RTOS_STATUS_NOT_RUN;
+    g_ps_hw6_rtos_probe.joystick_logical_wake_capture_tick = now_tick;
+    wake_direction_available =
+      PS_HW6_OwnerStateMachines_TakeJoystickWakeDirection(
+        &wake_direction);
+    if (wake_direction_available != 0UL)
+    {
+      g_ps_hw6_rtos_probe.joystick_logical_wake_capture_available_count++;
+      g_ps_hw6_rtos_probe.joystick_logical_wake_capture_direction =
+        wake_direction;
+      g_ps_hw6_rtos_probe.joystick_logical_wake_capture_tick = now_tick;
+    }
+  }
+
+  if (wake_direction_available != 0UL)
+  {
+    g_ps_hw6_rtos_probe.joystick_logical_change_count++;
+    g_ps_hw6_rtos_probe.joystick_logical_wake_capture_status =
+      (uint32_t)PS_HW6_RTOS_DeliverJoystickDirectionActivation(
+        wake_direction,
+        now_tick);
+    if (g_ps_hw6_rtos_probe.joystick_logical_wake_capture_status ==
+        (uint32_t)TX_SUCCESS)
+    {
+      g_ps_hw6_rtos_probe.joystick_logical_wake_capture_publish_count++;
+    }
+    ps_joystick_awake_published_direction_mask = wake_direction;
   }
 
   if ((ps_joystick_awake_poll_next_tick != 0UL) &&
@@ -6363,6 +6439,46 @@ static void PS_HW6_RTOS_RunStorageAttachRequest(void)
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_RESET);
 }
 
+static void PS_HW6_RTOS_RunStorageJoystickCalibrationLoadRequest(void)
+{
+  UINT clock_status;
+
+  clock_status = PS_HW6_RTOS_RequestStorageClockCapabilities(
+    PS_HW6_RTOS_STORAGE_CLOCK_REASON_JOYSTICK_CALIBRATION,
+    PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES);
+  if ((clock_status == TX_SUCCESS) ||
+      (PS_HW6_RTOS_StorageClockCapabilitiesActive(
+         PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES) != 0UL))
+  {
+    (void)
+      PS_HW6_OwnerStateMachines_LoadPersistentJoystickCalibration();
+  }
+  (void)PS_HW6_RTOS_RequestStorageClockCapabilities(
+    PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE,
+    0UL);
+  ps_joystick_calibration_apply_pending = 1UL;
+}
+
+static void PS_HW6_RTOS_RunStorageJoystickCalibrationSaveRequest(void)
+{
+  UINT clock_status;
+
+  clock_status = PS_HW6_RTOS_RequestStorageClockCapabilities(
+    PS_HW6_RTOS_STORAGE_CLOCK_REASON_JOYSTICK_CALIBRATION,
+    PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES);
+  if ((clock_status == TX_SUCCESS) ||
+      (PS_HW6_RTOS_StorageClockCapabilitiesActive(
+         PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES) != 0UL))
+  {
+    (void)
+      PS_HW6_OwnerStateMachines_SavePersistentJoystickCalibration();
+  }
+  (void)PS_HW6_RTOS_RequestStorageClockCapabilities(
+    PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE,
+    0UL);
+  ps_joystick_calibration_save_completion_pending = 1UL;
+}
+
 static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
                                            ULONG command,
                                            uint32_t cycle_index)
@@ -6435,6 +6551,17 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
             PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_LOAD_INSTALLED))
   {
     PS_HW6_RTOS_RunStorageInstalledPackageLoadRequest();
+  }
+  else if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
+           (command ==
+            PS_HW6_RTOS_COMMAND_STORAGE_JOYSTICK_CALIBRATION_SAVE))
+  {
+    PS_HW6_RTOS_RunStorageJoystickCalibrationSaveRequest();
+  }
+  else if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
+           (command == PS_HW6_RTOS_COMMAND_INPUT_JOYSTICK_WAKE_PUBLISH))
+  {
+    /* Queue arrival wakes thInput; publication runs after command handling. */
   }
   else if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
            (command == PS_HW6_RTOS_COMMAND_PACKAGE_INSTALL_STUB))
@@ -7276,6 +7403,33 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       }
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
+        (ps_joystick_calibration_apply_pending != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      ps_joystick_calibration_apply_pending = 0UL;
+      (void)
+        PS_HW6_OwnerStateMachines_ApplyPersistentJoystickCalibration();
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
+        (ps_joystick_calibration_save_completion_pending != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      HAL_StatusTypeDef save_status;
+
+      ps_joystick_calibration_save_completion_pending = 0UL;
+      save_status =
+        PS_HW6_OwnerStateMachines_CompletePersistentJoystickCalibrationSave();
+      g_ps_hw6_rtos_probe.input_policy_lock_active = 0UL;
+      if ((save_status == HAL_OK) && (g_ps_ui_router_request == 0UL))
+      {
+        g_ps_ui_router_request_event =
+          PS_HW6_RTOS_RouterEventForCalibrationCapture(
+            PS_UI_ROUTER_CAL_JOYSTICK_REVIEW);
+        g_ps_ui_router_request = 1UL;
+      }
+      PS_HW6_RTOS_SendCurrentUiRenderCommand();
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
         (g_ps_hw6_joystick_sleep_audit_request != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
@@ -7300,10 +7454,18 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (g_ps_hw6_joystick_cardinal_request != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
+      HAL_StatusTypeDef cardinal_status;
+
       g_ps_hw6_joystick_cardinal_request = 0UL;
       ps_joystick_int_consumed_count = ps_joystick_int_pending_count;
       g_ps_hw6_rtos_probe.joystick_irq_pending_count = 0UL;
-      (void)PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe();
+      cardinal_status =
+        PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe();
+      if (cardinal_status == HAL_OK)
+      {
+        (void)
+          PS_HW6_OwnerStateMachines_LatchJoystickWakeDirection();
+      }
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
         (g_ps_hw6_joystick_calibration_capture_request != 0UL) &&
@@ -7316,6 +7478,23 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         PS_HW6_OwnerStateMachines_RunJoystickCalibrationCapture(
           calibration_page);
       if ((calibration_status == HAL_OK) &&
+          (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_REVIEW) &&
+          (PS_HW6_OwnerStateMachines_JoystickCalibrationSavePending() !=
+           0UL))
+      {
+        UINT save_send_status;
+
+        g_ps_hw6_rtos_probe.input_policy_lock_active = 1UL;
+        PS_HW6_RTOS_SendCurrentUiRenderCommand();
+        save_send_status = PS_HW6_RTOS_SendCommand(
+          PS_HW6_RTOS_OWNER_STORAGE,
+          PS_HW6_RTOS_COMMAND_STORAGE_JOYSTICK_CALIBRATION_SAVE);
+        if (save_send_status != TX_SUCCESS)
+        {
+          ps_joystick_calibration_save_completion_pending = 1UL;
+        }
+      }
+      else if ((calibration_status == HAL_OK) &&
           (PS_HW6_OwnerStateMachines_JoystickCalibrationCaptureActive() ==
            0UL) &&
           (g_ps_ui_router_request == 0UL))
@@ -7449,6 +7628,8 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     if ((owner_id == PS_HW6_RTOS_OWNER_UI) &&
         (ps_ui_boot_complete_sent == 0UL) &&
         (ps_power_boot_done != 0UL) &&
+        (g_ps_hw6_owner_sm_probe
+           .joystick_calibration_persistent_boot_resolved != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
       (void)PS_HW6_RTOS_RequestUiClockCapabilities(
@@ -7494,6 +7675,17 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
             PS_UI_ROUTER_EVENT_BOOT_COMPLETE);
           if (router_status == PS_STATUS_OK)
           {
+            if (g_ps_hw6_owner_sm_probe
+                  .joystick_calibration_persistent_load_available == 0UL)
+            {
+              router_status = PS_UIRouter_Dispatch(
+                PS_UI_ROUTER_EVENT_NAV_CALIBRATION);
+              if (router_status == PS_STATUS_OK)
+              {
+                router_status = PS_UIRouter_Dispatch(
+                  PS_UI_ROUTER_EVENT_CAL_JOYSTICK_START);
+              }
+            }
             (void)PS_HW6_RTOS_RequestRuntimeCommand(
               PS_HW6_RTOS_COMMAND_RUNTIME_BOOT_SHELL);
             PS_HW6_RTOS_SendCurrentUiRenderCommand();
@@ -7532,6 +7724,14 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       (void)PS_HW6_RTOS_RequestUiClockCapabilities(
         PS_HW6_RTOS_UI_CLOCK_REASON_RELEASE,
         0UL);
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
+        (ps_joystick_calibration_boot_load_started == 0UL) &&
+        (ps_power_boot_done != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      ps_joystick_calibration_boot_load_started = 1UL;
+      PS_HW6_RTOS_RunStorageJoystickCalibrationLoadRequest();
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
         (g_ps_hw6_storage_usb_export_request != 0UL) &&

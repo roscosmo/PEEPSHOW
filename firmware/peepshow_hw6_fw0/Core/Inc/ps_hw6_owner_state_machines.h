@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (70UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (72UL)
 
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_NONE       (0UL)
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_PREPARE    (1UL)
@@ -518,6 +518,16 @@ typedef struct
   uint32_t joystick_wake_preclear_device_status;
   uint32_t joystick_wake_preclear_threshold_cross;
   uint32_t joystick_wake_preclear_int_readback;
+  uint32_t joystick_wake_direction_capture_count;
+  uint32_t joystick_wake_direction_capture_status;
+  uint32_t joystick_wake_direction_capture_tick;
+  uint32_t joystick_wake_direction_capture_mask;
+  uint32_t joystick_wake_direction_capture_pending;
+  uint32_t joystick_wake_direction_capture_consume_count;
+  int32_t joystick_wake_direction_capture_raw_x;
+  int32_t joystick_wake_direction_capture_raw_y;
+  int32_t joystick_wake_direction_capture_normalized_x;
+  int32_t joystick_wake_direction_capture_normalized_y;
   uint32_t joystick_sleep_audit_request_count;
   uint32_t joystick_sleep_audit_start_tick;
   uint32_t joystick_sleep_audit_end_tick;
@@ -719,6 +729,17 @@ typedef struct
   uint32_t joystick_calibration_review_count;
   uint32_t joystick_calibration_review_status;
   uint32_t joystick_calibration_review_tick;
+  uint32_t joystick_calibration_persistent_boot_resolved;
+  uint32_t joystick_calibration_persistent_load_count;
+  uint32_t joystick_calibration_persistent_load_status;
+  uint32_t joystick_calibration_persistent_load_available;
+  uint32_t joystick_calibration_persistent_load_generation;
+  uint32_t joystick_calibration_persistent_apply_count;
+  uint32_t joystick_calibration_persistent_apply_status;
+  uint32_t joystick_calibration_persistent_save_request_count;
+  uint32_t joystick_calibration_persistent_save_pending;
+  uint32_t joystick_calibration_persistent_save_status;
+  uint32_t joystick_calibration_persistent_save_generation;
   uint32_t imu_driver_api_version;
   uint32_t imu_driver_init_status;
   uint32_t imu_driver_state;
@@ -1194,6 +1215,10 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ParkUsbForBoot(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSampleProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickLiveProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void);
+HAL_StatusTypeDef
+PS_HW6_OwnerStateMachines_LatchJoystickWakeDirection(void);
+uint32_t PS_HW6_OwnerStateMachines_TakeJoystickWakeDirection(
+  uint32_t *direction_mask);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSleepAudit(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickXyzCapture(
   uint32_t capture_mode);
@@ -1205,6 +1230,15 @@ uint32_t PS_HW6_OwnerStateMachines_JoystickCalibrationCaptureNextTick(void);
 HAL_StatusTypeDef
 PS_HW6_OwnerStateMachines_RunJoystickCalibrationReviewSample(void);
 void PS_HW6_OwnerStateMachines_CancelJoystickCalibration(void);
+uint32_t PS_HW6_OwnerStateMachines_JoystickCalibrationSavePending(void);
+HAL_StatusTypeDef
+PS_HW6_OwnerStateMachines_LoadPersistentJoystickCalibration(void);
+HAL_StatusTypeDef
+PS_HW6_OwnerStateMachines_ApplyPersistentJoystickCalibration(void);
+HAL_StatusTypeDef
+PS_HW6_OwnerStateMachines_SavePersistentJoystickCalibration(void);
+HAL_StatusTypeDef
+PS_HW6_OwnerStateMachines_CompletePersistentJoystickCalibrationSave(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_SetBleMode(uint32_t mode);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_SetImuMode(uint32_t mode);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_HandleStartShippingIntent(

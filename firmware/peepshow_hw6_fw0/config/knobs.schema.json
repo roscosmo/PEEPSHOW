@@ -48,6 +48,7 @@
     "rtos_default_stack_bytes",
     "rtos_power_stack_bytes",
     "rtos_input_stack_bytes",
+    "rtos_display_stack_bytes",
     "rtos_sensor_stack_bytes",
     "rtos_storage_stack_bytes",
     "comm_ble_reset_assert_ms",
@@ -599,6 +600,19 @@
       "class": "resource_budget",
       "path": "platform.knobs.rtos.input_stack_bytes",
       "description": "ThreadX stack allocation for thInput. TMAG3001 diagnostics and I2C mutex/HAL calls require more headroom than the default owner stack."
+    },
+    "rtos_display_stack_bytes": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 16384,
+      "multipleOf": 8,
+      "default": 3072,
+      "unit": "bytes",
+      "timebase_domain": "threadx",
+      "owner": "thDisplay",
+      "class": "resource_budget",
+      "path": "platform.knobs.rtos.display_stack_bytes",
+      "description": "ThreadX stack allocation for thDisplay. HAL linked-list construction for LPBAM display programs requires more headroom than the default owner stack."
     },
     "rtos_sensor_stack_bytes": {
       "type": "integer",

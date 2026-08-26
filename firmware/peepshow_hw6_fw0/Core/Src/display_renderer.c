@@ -2447,6 +2447,12 @@ static void DisplayRenderer_UIList(uint32_t page,
       {
         list->rows[1] = "TRY AGAIN";
       }
+      if ((calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_REVIEW) &&
+          (g_ps_hw6_owner_sm_probe
+             .joystick_calibration_persistent_save_pending != 0UL))
+      {
+        list->rows[1] = "SAVING";
+      }
       list->rows[2] = "B BACK";
       break;
     case PS_UI_ROUTER_PAGE_PACKAGE_BROWSER:

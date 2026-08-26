@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (32UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (33UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -218,6 +218,11 @@ typedef struct
   uint32_t display_lpbam_abort_count;
   uint32_t display_lpbam_abort_tick;
   uint32_t display_lpbam_abort_status;
+  uint32_t display_lpbam_ui_invalidate_count;
+  uint32_t display_lpbam_ui_invalidate_tick;
+  uint32_t display_lpbam_ui_invalidate_prearmed;
+  uint32_t display_lpbam_ui_invalidate_active;
+  uint32_t display_lpbam_ui_invalidate_status;
   uint32_t display_lpbam_wake_snapshot_status;
   uint32_t display_lpbam_wake_progress_state;
   uint32_t display_lpbam_wake_sequence_index;
