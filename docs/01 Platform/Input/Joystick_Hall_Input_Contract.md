@@ -52,10 +52,15 @@ Low-power input model:
 3. The active-low `JOY_INT` wakes/notifies when either X or Y crosses its
    positive or negative operating threshold.
 4. The ISR latches and queues work only; `thSensor` wakes the TMAG and performs
-   a bounded I2C read before publishing normalized input to the input router.
-5. Raw magnetic readings are normalized through the active calibration into one
+   a bounded confirmation window before publishing normalized input to the
+   input router.
+5. STOP2 wake classification accepts two consecutive matching non-neutral
+   cardinal samples within at most three reads. If stability is not reached,
+   the latest non-neutral sample is the deterministic fallback. Normal awake
+   polling remains a single-sample path.
+6. Raw magnetic readings are normalized through the active calibration into one
    dominant cardinal direction.
-6. The joystick returns to threshold-armed or polling mode according to active
+7. The joystick returns to threshold-armed or polling mode according to active
    policy.
 
 TMAG3001 magnetic wake-on-change only monitors the first enabled axis according
@@ -70,12 +75,12 @@ switch is only a wake request.
 
 During STOP2 quiesce, `thSensor` clears stale joystick EXTI state, verifies all
 non-terminal TMAG configuration writes, writes wake-and-sleep operating mode
-last, and performs no post-terminal I2C read. The initial tuning values are a
+last, and performs no post-terminal I2C read. A bounded wake read and settle
+must precede quiet-sleep preparation because a previous firmware image may
+leave the TMAG in wake-and-sleep mode across an MCU reset. The tuning values are a
 `20 ms` wake-and-sleep period, field-threshold code `48`, and maximum hardware
 hysteresis code `7`, all supplied through the knobs system. Threshold code `48`
-corresponds to `12288` counts in the 16-bit magnetic result. These remain
-bring-up values until response, neutral residency, and current are measured on
-target.
+corresponds to `12288` counts in the 16-bit magnetic result.
 
 2026-08-25 HW6 target testing accepted this configuration as the movement-wake
 baseline. Four-way visual testing confirmed that positive and negative X/Y
@@ -84,8 +89,11 @@ STOP2. The aggregate proof recorded joystick IRQ/enqueue/dequeue counts of
 `14/14/14` and `14` joystick-classified STOP2 wakes, with zero coalesces, drops,
 or pending events.
 All configuration writes and readbacks passed (`write=0xfff`, `verify=0x7ff`),
-and the `thSensor` stack retained `2340` bytes of lower margin. Long-duration
-neutral false-wake rate and current remain separate measurements.
+and the `thSensor` stack retained `2340` bytes of lower margin. Matched five-minute
+STOP2 measurements recorded `55 uA` with joystick W&S disabled and `65 uA` with
+W&S enabled, so movement wake adds approximately `10 uA` and remains inside the
+`100 uA` STOP2 budget. Long-duration neutral false-wake rate remains a separate
+measurement.
 
 Final STOP admission must fail if a joystick event is latched in software, the
 input queue is non-empty, or active-low `JOY_INT` on `PC11` is already asserted.
@@ -156,6 +164,10 @@ Current FW0 calibration status:
   `PWR_ACTIVE_LP`/`PWR_ACTIVE_RT`, is disabled throughout calibration and STOP
   transitions, and emits one logical activation per neutral-to-direction or
   direction-switch transition
+- movement wake uses `KNOB_INPUT_JOYSTICK_WAKE_CONFIRM_SAMPLES` and
+  `KNOB_INPUT_JOYSTICK_WAKE_CONFIRM_STABLE_SAMPLES` to reject the transitional
+  vector that can occur while the stick is still travelling after the hardware
+  threshold crossing; this confirmation is not applied to awake polling
 - awake cardinal sources are published as distinct `JOY_LEFT`, `JOY_RIGHT`,
   `JOY_UP`, and `JOY_DOWN` actions; holding a direction does not repeat it
 - only a successfully queued direction activation restarts the STOP2 idle
@@ -256,7 +268,8 @@ Rules:
 - `JOY_OFF` is the default unless input policy requests the joystick.
 - `JOY_THRESHOLD_ARMED` is the preferred low-power interactive state.
 - `JOY_THRESHOLD_ARMED` uses the X/Y omnipolar field switch; it does not publish a direction directly.
-- `JOY_INT` does not directly publish direction; it schedules a bounded read.
+- `JOY_INT` does not directly publish direction; it schedules a bounded,
+  wake-only stable-direction confirmation window.
 - `JOY_NORMALIZE` is the only path to public joystick data.
 - Missing calibration enters `JOY_CAL_REQUIRED` or `JOY_SAFE_MODE`, not normal runtime.
 - `JOY_ERROR` must preserve fallback navigation.

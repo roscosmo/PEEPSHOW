@@ -765,6 +765,15 @@ ps_status_t ps_dev_tmag3001_prepare_sleep(
   }
   (void)memset(&transport, 0, sizeof(transport));
 
+  /* A prior image may leave the sensor in wake-and-sleep mode across reset. */
+  (void)ps_dev_tmag3001_read(
+    device,
+    &lease,
+    &transport,
+    PS_DEV_TMAG3001_REG_DEVICE_ID,
+    &result->device_id);
+  tx_thread_sleep(PS_DEV_TMAG3001_WAKE_SETTLE_TICKS);
+
   status = ps_dev_tmag3001_probe_identity(
     device,
     &lease,

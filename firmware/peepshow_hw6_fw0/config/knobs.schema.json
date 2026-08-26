@@ -24,7 +24,10 @@
     "input_joystick_cal_progress_period_ms",
     "input_joystick_cal_review_period_ms",
     "input_joystick_awake_poll_period_ms",
+    "input_joystick_stop2_wake_enable",
     "input_joystick_wake_sleep_period_ms",
+    "input_joystick_wake_confirm_samples",
+    "input_joystick_wake_confirm_stable_samples",
     "input_joystick_wake_field_threshold_code",
     "input_joystick_wake_field_hysteresis_code",
     "input_joystick_cal_min_cardinal_span_counts",
@@ -315,6 +318,16 @@
       "path": "platform.knobs.input.joystick_awake_poll_period_ms",
       "description": "Bounded joystick direction sampling period while the MCU is already awake."
     },
+    "input_joystick_stop2_wake_enable": {
+      "type": "boolean",
+      "default": true,
+      "unit": "bool",
+      "timebase_domain": "compile_time",
+      "owner": "thSensor",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_stop2_wake_enable",
+      "description": "Enable TMAG3001 wake-and-sleep sampling and JOY_INT as a STOP2 wake source. Disable only for controlled power-baseline measurement."
+    },
     "input_joystick_wake_sleep_period_ms": {
       "type": "integer",
       "minimum": 1,
@@ -326,6 +339,30 @@
       "class": "protected_policy",
       "path": "platform.knobs.input.joystick_wake_sleep_period_ms",
       "description": "TMAG3001 wake-and-sleep conversion interval used while the MCU is in STOP2; must match a hardware-supported interval."
+    },
+    "input_joystick_wake_confirm_samples": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "default": 3,
+      "unit": "samples",
+      "timebase_domain": "threadx",
+      "owner": "thSensor",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_wake_confirm_samples",
+      "description": "Maximum number of bounded direction samples taken after a joystick STOP2 wake. Awake polling is unaffected."
+    },
+    "input_joystick_wake_confirm_stable_samples": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "default": 2,
+      "unit": "samples",
+      "timebase_domain": "threadx",
+      "owner": "thSensor",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_wake_confirm_stable_samples",
+      "description": "Consecutive matching non-neutral direction samples required to confirm a joystick STOP2 wake action."
     },
     "input_joystick_wake_field_threshold_code": {
       "type": "integer",

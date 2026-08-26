@@ -1118,7 +1118,9 @@ void PS_HW6_RTOS_RecordJoystickExti(uint16_t gpio_pin, uint32_t level)
   UINT status = TX_NOT_AVAILABLE;
   uint32_t enqueue_required;
 
-  if ((gpio_pin != JOY_INT_Pin) || (level != 0UL))
+  if ((KNOB_INPUT_JOYSTICK_STOP2_WAKE_ENABLE == 0) ||
+      (gpio_pin != JOY_INT_Pin) ||
+      (level != 0UL))
   {
     return;
   }
@@ -4004,8 +4006,9 @@ uint32_t PS_HW6_RTOS_Stop2FinalInputReady(void)
            (ps_joystick_int_pending_count ==
             ps_joystick_int_consumed_count) &&
            (g_ps_hw6_joystick_cardinal_request == 0UL) &&
-           ((g_ps_hw6_rtos_probe.stop2_final_input_gpioc_idr &
-             (uint32_t)JOY_INT_Pin) != 0UL) &&
+           ((KNOB_INPUT_JOYSTICK_STOP2_WAKE_ENABLE == 0) ||
+            ((g_ps_hw6_rtos_probe.stop2_final_input_gpioc_idr &
+              (uint32_t)JOY_INT_Pin) != 0UL)) &&
            (queue_mask == 0UL) &&
            (PS_InputButtons_Stop2Ready() != 0UL)) ? 1UL : 0UL;
   g_ps_hw6_rtos_probe.stop2_final_input_last_status =
@@ -7460,7 +7463,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       ps_joystick_int_consumed_count = ps_joystick_int_pending_count;
       g_ps_hw6_rtos_probe.joystick_irq_pending_count = 0UL;
       cardinal_status =
-        PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe();
+        PS_HW6_OwnerStateMachines_RunJoystickWakeCardinalProbe();
       if (cardinal_status == HAL_OK)
       {
         (void)

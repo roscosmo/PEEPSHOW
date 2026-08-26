@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (72UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (73UL)
 
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_NONE       (0UL)
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_PREPARE    (1UL)
@@ -686,6 +686,16 @@ typedef struct
   uint32_t joystick_cardinal_last_driver_status;
   uint32_t joystick_cardinal_last_hal_status;
   uint32_t joystick_cardinal_last_hal_error;
+  uint32_t joystick_wake_confirm_request_count;
+  uint32_t joystick_wake_confirm_sample_count;
+  uint32_t joystick_wake_confirm_stable_count;
+  uint32_t joystick_wake_confirm_fallback_count;
+  uint32_t joystick_wake_confirm_direction_mask;
+  uint32_t joystick_wake_confirm_status;
+  uint32_t joystick_wake_confirm_left_count;
+  uint32_t joystick_wake_confirm_right_count;
+  uint32_t joystick_wake_confirm_up_count;
+  uint32_t joystick_wake_confirm_down_count;
   uint32_t joystick_recovery_attempt_count;
   uint32_t joystick_recovery_success_count;
   uint32_t joystick_recovery_failure_count;
@@ -1215,6 +1225,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ParkUsbForBoot(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSampleProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickLiveProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickWakeCardinalProbe(void);
 HAL_StatusTypeDef
 PS_HW6_OwnerStateMachines_LatchJoystickWakeDirection(void);
 uint32_t PS_HW6_OwnerStateMachines_TakeJoystickWakeDirection(
