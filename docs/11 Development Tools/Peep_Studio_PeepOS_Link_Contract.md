@@ -51,8 +51,8 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | package output | deterministic `.egg` binary with SHA-256 integrity |
 | scene type | STATE |
 | state execution | bounded variables, input routes, guards, actions, and deterministic transitions |
-| package scene flow | direct STATE-to-STATE replacement is implemented in service API 7, PKG1 graph V2, and FW0 runtime API 11; HW6 visual proof is pending |
-| input | logical A, B, L, and R sources |
+| package scene flow | direct STATE-to-STATE replacement is implemented and proven on HW6 through service API 7, PKG1 graph V2, and FW0 runtime API 11 |
+| input | logical A, B, L, R, JOY_LEFT, JOY_RIGHT, JOY_UP, and JOY_DOWN sources |
 | visuals | package-backed native-scale masked 1bpp sprite frames |
 | retained render model | bounded ordered scene elements with binary alpha and four platform planes |
 | waiting animation | authored 250 ms timelines, mixed 2-phase and 3-phase elements, combined timeline compilation, deterministic three-step LPBAM fallback |
@@ -63,6 +63,35 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 Measured hardware behavior, current SRAM4 admission limits, and power figures
 remain hardware evidence. The desktop preview must not claim to reproduce
 current draw or prove STOP2 behavior.
+
+---
+
+## Joystick Integration Boundary
+
+Peep Studio may expose `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`, and `JOY_DOWN` as
+STATE input sources for the HW6 FW0 target profile. The authoring validator,
+compiler, package parser, headless preview, FW0 package loader, and runtime
+input router use the same stable logical IDs `6..9`.
+
+These sources are edge-like logical activations produced after Platform-owned
+calibration, normalization, hysteresis, and direction resolution. The editor
+must not expose raw TMAG readings, calibration records, magnetic thresholds,
+wake-and-sleep configuration, STOP2 wake pins, or power policy as package
+controls. Desktop preview injects the selected logical source directly; it does
+not simulate sensor current, wake latency, or physical threshold behavior.
+
+HW6 has target-proven persistent guided calibration, awake canonical diagonal
+detection, deterministic dominant-axis four-way resolution, and movement wake
+for positive and negative X/Y directions. Movement wake adds approximately
+`10 uA` in the matched five-minute STOP2 comparison (`55 uA` disabled versus
+`65 uA` enabled). This is Platform evidence, not package-authored behavior.
+
+The current STATE authoring subset exposes four cardinal joystick actions only.
+It does not yet expose eight-way diagonal action IDs, normalized vector
+bindings, per-scene four-way/eight-way selection, long-press/repeat policy, or
+PROGRAM-scene vector polling. Those controls must remain unavailable until the
+Engine contract, target profile, package schema, preview, and firmware runtime
+all implement the same semantics.
 
 ---
 
@@ -252,19 +281,20 @@ fits within one STATE scene.
 - author declared scene-transition routes, entry behavior, return behavior,
   `transition_scene`, and `exit_to_shell` actions;
 - validate every scene target and package entry scene;
-- require corresponding PeepOS multi-scene dispatch support before enabling
-  export of these routes.
+- gate route export against the selected target profile. HW6 FW0 may export the
+  proven direct actionless STATE-to-STATE subset; push/pop, return stacks,
+  cross-scene actions, and transitions to other scene types remain disabled.
 
 At the end of this stage, an author can build a multi-screen menu hierarchy.
 Scene-flow editing must remain separate from the STATE graph inside each scene.
 
-Platform foundation status: implemented, pending HW6 proof. Authoring schema
+Platform foundation status: implemented and proven on HW6. Authoring schema
 routes now accept exactly one `target_state` or `target_scene`; service API 7
 can switch an existing actionless route between those targets; selected-scene
 preview follows a scene target; and the compiler emits PKG1 `STG1` version 2.
 Direct replacement enters the destination entry state, resets destination-local
 variables, and starts a new timeline epoch. Peep Studio may expose these exact
-semantics after target proof. It must not expose cross-scene route actions,
+semantics for the HW6 FW0 target profile. It must not expose cross-scene route actions,
 push/pop, return stacks, or STATE-to-SEQUENCE/PROGRAM transitions yet.
 
 ### Stage 6: Animation Timeline

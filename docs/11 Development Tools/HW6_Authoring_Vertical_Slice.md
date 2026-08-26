@@ -302,6 +302,12 @@ Required positive cases:
 - package save records validate within profile limits
 - a granted waiting-visual sequence validates
 
+The current STATE authoring/runtime input boundary includes the four logical
+joystick cardinals `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`, and `JOY_DOWN`. HW6 owns
+calibration, normalization, diagonal detection, dominant-axis resolution, and
+movement-wake policy. Eight-way STATE events, normalized vectors, and authored
+hold/repeat behavior remain later target-profile capabilities.
+
 Required negative or fallback cases:
 
 - `input.encoder` is rejected for every HW6 profile
@@ -468,13 +474,13 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
 5. implement `STATE_SCENE` bounded event/guard/action execution, wait contracts,
    scene transitions inside one mounted package, and namespace-backed variables;
    direct STATE-to-STATE replacement is implemented in the host/compiler and
-   FW0 and awaits the two-scene HW6 proof, while push/pop and other scene types
-   remain later work
+   FW0 and proven with a two-scene HW6 package; push/pop and transitions to
+   other scene types remain later work
 6. implement mandatory `ACTIVE`/`INACTIVE` interaction state, RTC-backed inactivity, declared inactive routes, and target-owned activation gestures; HW6 starts with Start while the policy remains button/chord capable
 7. implement the headless project loader, normalized model, validator, deterministic package compiler, and compiler-derived capability closure for the state-scene slice
 8. compile masked 1bpp source assets into portable asset, sprite-bank, and
    animation chunks; make both the host package reader and firmware render them
-   through the retained STATE model (implemented, pending HW6 target proof)
+   through the retained STATE model (implemented and proven on HW6)
 9. implement `HOST_AUTHORING_PREVIEW` with selected-scene launch against those
    same compiled scene, asset, and presentation records; do not label it HW6
    evidence

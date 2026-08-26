@@ -56,7 +56,18 @@
       "required": ["action_id", "logical_source"],
       "properties": {
         "action_id": { "$ref": "#/$defs/stable_id" },
-        "logical_source": { "enum": ["BUTTON_A", "BUTTON_B", "BUTTON_L", "BUTTON_R"] }
+        "logical_source": {
+          "enum": [
+            "BUTTON_A",
+            "BUTTON_B",
+            "BUTTON_L",
+            "BUTTON_R",
+            "JOY_LEFT",
+            "JOY_RIGHT",
+            "JOY_UP",
+            "JOY_DOWN"
+          ]
+        }
       }
     },
     "state": {

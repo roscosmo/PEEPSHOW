@@ -364,6 +364,12 @@ versions 1 and 2, and resolves version 2 scene targets through the validated
 package scene table. Push/pop behavior and transitions to SEQUENCE or PROGRAM
 remain separate future work.
 
+HW6 target proof confirms repeated direct replacement between two resident
+STATE scenes with no replacement failures. Each replacement selected and
+validated the destination descriptor, entered its authored entry state, reset
+scene-local state, started a new timeline epoch, and retained awake/STOP2
+waiting-animation operation without storage access.
+
 ---
 
 ## Runtime Compositor Layers

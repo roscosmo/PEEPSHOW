@@ -89,6 +89,11 @@ bounds, CRCs, SHA-256 integrity, and supported STATE chunk records, then prints
 a semantic summary. `embed` uses the same compiler and emits a generated array;
 it is not a second package format or a hand-maintained firmware descriptor.
 
+The current STATE logical-source set is `BUTTON_A`, `BUTTON_B`, `BUTTON_L`,
+`BUTTON_R`, `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`, and `JOY_DOWN`. Joystick sources
+are cardinal logical activations. Diagonal action IDs, normalized vectors, and
+authored hold/repeat policy are not available in this subset.
+
 ## Authoring Service
 
 The desktop editor boundary is a long-running, single-session Python service

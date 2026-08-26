@@ -139,6 +139,13 @@ retained render elements, reactive wait policy, and waiting visuals. It is a
 strict subset of this contract and does not redefine the future complete
 schema.
 
+The current executable STATE input-source set is `BUTTON_A`, `BUTTON_B`,
+`BUTTON_L`, `BUTTON_R`, `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`, and `JOY_DOWN`.
+Joystick sources are normalized logical cardinal activations; authored content
+does not receive raw TMAG values, calibration records, wake pins, or hardware
+thresholds. Canonical diagonal events, normalized vector bindings, and authored
+hold/repeat policy are not part of this subset yet.
+
 In the executable STATE subset, every route declares exactly one destination:
 
 - `target_state` names a state in the route's source scene.
