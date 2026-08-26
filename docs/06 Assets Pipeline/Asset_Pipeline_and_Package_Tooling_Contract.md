@@ -78,12 +78,19 @@ installed-flash offsets, and the embedded development symbol.
 The current HW6 vertical slice provides:
 
 - `EMBEDDED`, backed by the generated development `.egg` artifact.
+- `STAGED_RAM`, backed by one complete bounded `.egg` copied from the reclaimed
+  FileX staging volume after every storage handle is closed.
+- `INSTALLED_RAM`, backed by the selected persistent A/B package generation
+  copied from raw package storage by `thStorage` into the current bounded
+  runtime cache.
 - `NONE`, which cleanly returns to the shell and displays `EGGLESS`.
 
-Future installed-package support must publish the same immutable view only
-after `thStorage` has validated and atomically committed the package. Active
-STATE, SEQUENCE, and PROGRAM execution must never open or stream from the FAT
-staging filesystem.
+Installed-package publication uses the same immutable view only after
+`thStorage` has selected a committed index generation, copied the package, and
+parked storage. Active STATE, SEQUENCE, and PROGRAM execution must never open
+or stream from the FAT staging filesystem. Full pre-commit semantic validation
+and bounded installed-asset reads beyond the whole-package cache remain
+production work.
 
 Templates, Authoring Kits, prefabs, behavior graphs, and behavior macros are source-level authoring objects. Tooling must lower them into the package output forms defined by this contract. They must not appear as independent firmware components, direct Platform hooks, or new scene types.
 
@@ -220,6 +227,20 @@ package format or a persistent installer.
   presence of this development bridge in shipping package semantics;
 - exceeding the bridge capacity is a deterministic load error, not a request
   for streaming or dynamic allocation.
+
+### Persistent Device Install
+
+HW6 also accepts that same deterministic `.egg` through the MSC staging path
+and atomically replaces the inactive installed-package slot and index record.
+The index commit marker is programmed last, the previous generation remains
+available until the new record is valid, and the selected generation can be
+loaded and launched through `INSTALLED_RAM` without runtime FileX access.
+
+This does not remove the current `65536`-byte runtime-cache ceiling. The raw
+slots are `5 MiB` each; larger production packages require the bounded asset
+handle and storage-owner read path defined by [[Package_Asset_Loading_API_Contract]].
+Production install must also move complete SHA-256/container/chunk/scene
+validation ahead of the commit marker.
 
 ---
 

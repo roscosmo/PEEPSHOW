@@ -124,12 +124,15 @@ Current source states are:
 - `EMBEDDED`: the generated development `.egg` blob is exposed.
 - `STAGED_RAM`: one complete, volatile `.egg` copied from FileX by
   `thStorage` is exposed after every storage handle has closed.
+- `INSTALLED_RAM`: the selected persistent A/B generation is copied from its
+  raw package slot by `thStorage`, parked, and exposed from the fixed runtime
+  RAM cache with its installed generation.
 
 Rules:
 
-- `STAGED_RAM` is preferred when a completed staged image is available;
-  otherwise `EMBEDDED` remains the development default until installed
-  raw-blob storage is implemented.
+- explicit source override may select `EMBEDDED`, `STAGED_RAM`, or
+  `INSTALLED_RAM`; normal installed-package policy resolves the valid selected
+  A/B generation through `INSTALLED_RAM`.
 - `NONE` is a normal `PKG_ACTIVE_NONE` result, not a package fault.
 - a `NONE` activation request releases requested runtime clocks, returns to
   `SHELL / REACTIVE / RUNNING`, and presents `EGGLESS` on HOME.
@@ -140,10 +143,18 @@ Rules:
   not package validity. `thRuntime` must complete SHA-256, container, chunk,
   and scene-schema validation before changing `PKG_ACTIVE_NONE` to an active
   package state.
-- the single staged RAM image is immutable for the active package lifetime;
-  installer admission must exit that package before replacement begins.
-- persistent installed-blob selection must not be added until the external
-  flash package region, index, and atomic commit format are defined.
+- staged and installed RAM images are immutable for the active package
+  lifetime; installer admission must exit the active package before replacing
+  the shared cache.
+- installed-package selection uses the two `5 MiB` raw slots and independent
+  commit-last index records defined by [[Storage_and_Installer_Contract]]. The
+  current whole-package activation cache still limits runnable bring-up
+  packages to `65536` bytes; this is not the installed-slot limit.
+- production completion still requires full SHA-256, container, chunk, and
+  scene-schema validation before programming the index commit marker. FW0
+  currently performs bounded envelope validation and byte verification before
+  commit, then performs the complete semantic validation during immediate
+  activation.
 
 Verified HW6 evidence:
 
@@ -153,6 +164,15 @@ Verified HW6 evidence:
   the fixed staged-RAM source by `thStorage`, validated by `thRuntime`, and
   activated as the package-driven STATE scene. The package can return to HOME,
   and the system can repeatedly enter and wake from STOP2 afterward.
+- the same staged `.egg` can be written to the inactive raw package slot,
+  byte-verified, committed by programming the inactive index marker last,
+  selected as the newer generation, published as `INSTALLED_RAM`, and launched
+  immediately. A later runtime request can scan the persistent index, copy the
+  selected package through `thStorage`, validate it, and launch it without
+  reading FileX.
+- direct STATE-to-STATE replacement inside one resident package is target
+  proven: the destination entry state and local defaults are restored and a
+  new presentation timeline epoch begins.
 - forced `NONE` selection reports no active scene, `TX_NO_INSTANCE`, zero
   runtime capabilities, HOME with `EGGLESS`, and a responsive shell.
 

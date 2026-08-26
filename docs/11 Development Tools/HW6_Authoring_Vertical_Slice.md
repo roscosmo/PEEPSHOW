@@ -6,18 +6,19 @@ Implementation status: `partial`
 
 The V1 `.peepproj` STATE subset, semantic validator, normalized intermediate,
 deterministic binary `.egg` compiler, independent host package reader, and the
-first bounded HW6 embedded-package STATE decoder are implemented. The embedded
-reader, hardware SHA-256 integrity path, sparse retained STATE scene, mixed
-2-phase/3-phase waiting visuals, STOP2 continuity, and input transitions have
-passed initial target validation. The embedded decoder now also validates the
-portable asset and masked-1bpp sprite chunks and exposes immutable frame views
-to the retained renderer; target validation of those package pixels is still
-pending. The versioned host authoring-service boundary
-now exposes project loading, validation, normalization, deterministic package
-compilation, V1 compatibility reporting, and deterministic selected-STATE-scene
-preview over independently parsed package records. External-flash installation
-and activation, target-profile closure, editor surfaces, SEQUENCE, PROGRAM, and
-end-to-end HW6 evidence remain open.
+bounded HW6 package STATE decoder are implemented. Hardware SHA-256, package
+pixels, sparse retained STATE rendering, mixed 2-phase/3-phase waiting visuals,
+STOP2 continuity, four logical joystick cardinals, and direct STATE-to-STATE
+replacement have passed initial target validation. The versioned host
+authoring-service boundary exposes project loading, validation, normalization,
+deterministic package compilation, V1 compatibility reporting, deterministic
+selected-STATE preview, and read-only package scene flow. USB staging, atomic
+A/B external-flash installation, installed-package loading, immediate launch,
+and return to the shell are also target-proven within the current `65536`-byte
+runtime-cache limit. Production pre-commit validation, boot activation and
+rollback policy, target-profile closure, remaining editor mutation surfaces,
+mandatory system interaction state, SEQUENCE, PROGRAM, and complete end-to-end
+HW6 evidence remain open.
 
 Target status: `HW6_PENDING_VALIDATION` until measured HW6 evidence is frozen into a shipping-authoritative target profile.
 
@@ -488,7 +489,9 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
     validate, and build that STATE checkpoint, with the Python service remaining
     authoritative
 11. install and run the authored STATE package against HW6 so editor iteration
-    no longer requires embedding package bytes in firmware
+    no longer requires embedding package bytes in firmware (implemented and
+    target-proven through USB staging and atomic A/B install/launch; production
+    pre-commit validation and boot policy remain open)
 12. add tone/dither assets, maps, transforms, fonts, audio, and save data only
     when required by the expanding vertical slice
 13. implement `SEQUENCE_SCENE`, then `PROGRAM_SCENE`, with realtime budgets, input routes, suspend/resume behavior, and required state-scene/shell routes; extend the same editor architecture for each type

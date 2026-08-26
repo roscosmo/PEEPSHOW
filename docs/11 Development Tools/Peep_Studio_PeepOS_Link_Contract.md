@@ -58,7 +58,7 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | waiting animation | authored 250 ms timelines, mixed 2-phase and 3-phase elements, combined timeline compilation, deterministic three-step LPBAM fallback |
 | awake preview | exact 168x144 package-backed framebuffer with deterministic fake time |
 | STOP2 | package visuals compiled into LPBAM animation and resumed across wake/STOP2 handoff |
-| firmware package proof | embedded `.egg` loads, validates, resolves STATE content, handles input, and renders the same package pixels as host preview |
+| firmware package proof | embedded and USB-installed `.egg` packages load, validate, resolve STATE content, handle input, render package pixels, replace STATE scenes directly, animate in STOP2, and return to shell; installed packages currently run through a `65536`-byte RAM cache |
 
 Measured hardware behavior, current SRAM4 admission limits, and power figures
 remain hardware evidence. The desktop preview must not claim to reproduce
@@ -138,7 +138,7 @@ protocol is version `1`; the current service API is version `7`.
 | `project.undo` | undo the last accepted command within the bounded service history |
 | `project.redo` | redo the last undone command within the bounded service history |
 | `project.preview_reset` | start one selected STATE scene directly |
-| `project.preview_input` | inject one logical A/B/L/R input |
+| `project.preview_input` | inject one logical A/B/L/R or JOY_LEFT/JOY_RIGHT/JOY_UP/JOY_DOWN input |
 | `project.preview_advance` | advance deterministic preview time by an explicit duration |
 
 Every project operation after load uses `project_revision`. Every preview
@@ -265,8 +265,8 @@ not require or imply an on-device runtime font renderer.
   as a UML-first edge editor;
 - create and remove deterministic state-transition outputs and their single
   destination edges through Python service commands;
-- edit logical A/B/L/R routes, guard expressions, ordered actions, and target
-  state through typed inspectors;
+- edit logical A/B/L/R and JOY_LEFT/JOY_RIGHT/JOY_UP/JOY_DOWN routes, guard
+  expressions, ordered actions, and target state through typed inspectors;
 - support prefab-backed menu nodes through declared slots and read-only generated
   internals before exposing arbitrary custom internals;
 - validate unresolved targets and bounded-capacity limits before save/export.
