@@ -12,7 +12,7 @@ import {
 } from "@xyflow/react";
 import { GitBranch, Hourglass, Layers3, Network, Route, Variable } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { buildStateGraphModel, type GraphStateNode } from "./stateGraph";
+import { buildSceneFlowGraphModel, buildStateGraphModel, type GraphSceneNode, type GraphStateNode } from "./stateGraph";
 import type {
   InputAction,
   RenderModel,
@@ -105,6 +105,13 @@ function displayStateName(states: StateRecord[], stateId: string): string {
   return states.find((state) => state.state_id === stateId)?.display_name ?? stateId;
 }
 
+function routeTargetLabel(route: StateRoute, states: StateRecord[]): string {
+  if (route.target_scene !== undefined) {
+    return `Scene exit: ${route.target_scene}`;
+  }
+  return displayStateName(states, route.target_state ?? "");
+}
+
 type StateCardNodeData = {
   graphNode: GraphStateNode;
   selectedRouteId: string | null;
@@ -148,7 +155,9 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
               }}
             >
               <span>{output.label}</span>
-              <small>{output.guardCount} rule{output.guardCount === 1 ? "" : "s"} - {output.actionCount} effect{output.actionCount === 1 ? "" : "s"}</small>
+              <small>
+                {output.targetScene === undefined ? "Local" : `Scene exit: ${output.targetScene}`} - {output.guardCount} rule{output.guardCount === 1 ? "" : "s"} - {output.actionCount} effect{output.actionCount === 1 ? "" : "s"}
+              </small>
               <Handle id={output.id} type="source" position={Position.Right} />
             </span>
           ))
@@ -159,6 +168,39 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
 }
 
 const STATE_NODE_TYPES = { stateCard: StateCardNode };
+
+type SceneCardNodeData = {
+  graphNode: GraphSceneNode;
+  onSelectScene: (sceneId: string) => void;
+};
+
+function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
+  const { graphNode, onSelectScene } = data;
+  return (
+    <button
+      className={`scene-card-node ${graphNode.isEntry ? "entry" : ""} ${selected ? "selected" : ""}`}
+      type="button"
+      onClick={() => onSelectScene(graphNode.id)}
+    >
+      <Handle type="target" position={Position.Left} />
+      <div className="scene-card-preview" aria-hidden="true">
+        <span>{graphNode.label.slice(0, 2).toUpperCase()}</span>
+      </div>
+      <div className="scene-card-heading">
+        <span>{graphNode.isEntry ? "Starts here" : "Scene"}</span>
+        <strong>{graphNode.label}</strong>
+      </div>
+      <div className="scene-card-facts">
+        <span>{graphNode.stateCount} state{graphNode.stateCount === 1 ? "" : "s"}</span>
+        <span>{graphNode.exitCount} exit{graphNode.exitCount === 1 ? "" : "s"}</span>
+      </div>
+      <small>First screen: {graphNode.entryStateLabel}</small>
+      <Handle type="source" position={Position.Right} />
+    </button>
+  );
+}
+
+const SCENE_NODE_TYPES = { sceneCard: SceneCardNode };
 
 export function StateGraphView({
   scene,
@@ -233,6 +275,72 @@ export function StateGraphView({
       onNodeClick={(_, node) => onSelect({ kind: "state", id: node.id })}
       onEdgeClick={(_, edge) => onSelect({ kind: "route", id: String(edge.data?.route_id ?? edge.id) })}
       onPaneClick={() => onSelect({ kind: "scene" })}
+      proOptions={{ hideAttribution: true }}
+    >
+      <Background gap={18} size={1} />
+      <MiniMap pannable={false} zoomable={false} />
+      <Controls showInteractive={false} />
+    </ReactFlow>
+  );
+}
+
+export function SceneFlowView({
+  scenes,
+  entrySceneId,
+  selectedSceneId,
+  onSelectScene,
+}: {
+  scenes: SceneDocument[];
+  entrySceneId: string | null;
+  selectedSceneId: string | null;
+  onSelectScene: (sceneId: string) => void;
+}) {
+  const graph = useMemo(() => buildSceneFlowGraphModel(scenes, entrySceneId), [entrySceneId, scenes]);
+  const nodes: Node[] = useMemo(
+    () =>
+      graph.nodes.map((node) => ({
+        id: node.id,
+        type: "sceneCard",
+        position: { x: node.x, y: node.y },
+        data: { graphNode: node, onSelectScene },
+        selected: selectedSceneId === node.id,
+        draggable: false,
+        connectable: false,
+      })),
+    [graph.nodes, onSelectScene, selectedSceneId],
+  );
+  const edges: Edge[] = useMemo(
+    () =>
+      graph.edges.map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        label: edge.label,
+        markerEnd: { type: MarkerType.ArrowClosed },
+        style: { strokeWidth: 1.7 },
+      })),
+    [graph.edges],
+  );
+
+  if (scenes.length === 0) {
+    return (
+      <div className="graph-empty">
+        <Network size={22} aria-hidden="true" />
+        <span>Open a project to inspect scene flow.</span>
+      </div>
+    );
+  }
+
+  return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      nodeTypes={SCENE_NODE_TYPES}
+      fitView
+      nodesDraggable={false}
+      nodesConnectable={false}
+      elementsSelectable
+      onNodeClick={(_, node) => onSelectScene(node.id)}
       proOptions={{ hideAttribution: true }}
     >
       <Background gap={18} size={1} />
@@ -412,7 +520,7 @@ function SceneOverview({
           <div className="record-list">
             {routes.map((item: StateRoute) => (
               <button key={item.route_id} className="record-row" type="button" onClick={() => onSelect({ kind: "route", id: item.route_id })}>
-                <strong>{item.from_states.join(", ")} {"->"} {item.target_state}</strong>
+                <strong>{item.from_states.join(", ")} {"->"} {routeTargetLabel(item, states)}</strong>
                 <small>{item.guards.length === 0 ? "always allowed" : `${item.guards.length} condition${item.guards.length === 1 ? "" : "s"}`}; {item.actions.length} effect{item.actions.length === 1 ? "" : "s"}</small>
               </button>
             ))}
@@ -569,6 +677,7 @@ function RouteInspector({
   canEdit: boolean;
 }) {
   const input = inputActions.find((item) => item.action_id === route.action_ref);
+  const exitsScene = route.target_scene !== undefined;
   return (
     <section className="inspector-section selected-record">
       <h3>Selected transition</h3>
@@ -583,26 +692,30 @@ function RouteInspector({
         </div>
         <div>
           <span>Go to</span>
-          <strong>{displayStateName(states, route.target_state)}</strong>
+          <strong>{routeTargetLabel(route, states)}</strong>
         </div>
       </div>
-      <label className="select-field" htmlFor={`route-target-${route.route_id}`}>
-        Go to state
-        <select
-          id={`route-target-${route.route_id}`}
-          value={route.target_state}
-          disabled={!canEdit}
-          onChange={(event) => {
-            void onSetRouteTarget(sceneId, route.route_id, event.target.value);
-          }}
-        >
-          {states.map((state) => (
-            <option key={state.state_id} value={state.state_id}>
-              {state.display_name} ({state.state_id})
-            </option>
-          ))}
-        </select>
-      </label>
+      {exitsScene ? (
+        <p className="plain-rule-note">This output leaves the current scene. Edit controls for scene exits belong in Scene flow.</p>
+      ) : (
+        <label className="select-field" htmlFor={`route-target-${route.route_id}`}>
+          Go to state
+          <select
+            id={`route-target-${route.route_id}`}
+            value={route.target_state}
+            disabled={!canEdit}
+            onChange={(event) => {
+              void onSetRouteTarget(sceneId, route.route_id, event.target.value);
+            }}
+          >
+            {states.map((state) => (
+              <option key={state.state_id} value={state.state_id}>
+                {state.display_name} ({state.state_id})
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <h4>Only if</h4>
       <EditableGuardList
         sceneId={sceneId}

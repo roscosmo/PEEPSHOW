@@ -185,6 +185,10 @@ button:focus-visible {
   grid-template-areas: "project placement inspector";
 }
 
+.workspace-grid.scene-flow-mode {
+  grid-template-areas: "project scene-flow inspector";
+}
+
 .project-pane,
 .inspector-pane {
   min-width: 0;
@@ -544,6 +548,15 @@ button:focus-visible {
   background: #eef2f0;
 }
 
+.scene-flow-pane {
+  grid-area: scene-flow;
+  display: grid;
+  grid-template-rows: 55px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  background: #eef2f0;
+}
+
 .graph-heading {
   min-width: 0;
   min-height: 0;
@@ -609,6 +622,84 @@ button:focus-visible {
 .state-card-node.selected {
   border-color: #175f8a;
   box-shadow: 0 0 0 2px rgb(23 95 138 / 18%);
+}
+
+.scene-card-node {
+  display: grid;
+  width: 228px;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 8px 10px;
+  padding: 9px;
+  border: 1px solid #aeb9b2;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #27302b;
+  box-shadow: 0 6px 14px rgb(55 64 59 / 10%);
+  cursor: pointer;
+  text-align: left;
+}
+
+.scene-card-node.entry {
+  border-color: #32759a;
+  background: #edf7fb;
+}
+
+.scene-card-node.selected {
+  border-color: #175f8a;
+  box-shadow: 0 0 0 2px rgb(23 95 138 / 18%);
+}
+
+.scene-card-preview {
+  display: grid;
+  grid-row: span 3;
+  width: 58px;
+  aspect-ratio: 168 / 144;
+  place-items: center;
+  border: 1px solid #929c96;
+  border-radius: 4px;
+  background: #252b28;
+  color: #dce2de;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scene-card-heading {
+  min-width: 0;
+}
+
+.scene-card-heading span,
+.scene-card-facts span,
+.scene-card-node small {
+  display: block;
+  overflow: hidden;
+  color: #68736d;
+  font-size: 9px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.scene-card-heading strong {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: #27302b;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-card-facts {
+  display: flex;
+  gap: 6px;
+}
+
+.scene-card-facts span {
+  padding: 3px 5px;
+  border: 1px solid #d3dbd6;
+  border-radius: 4px;
+  background: #f7faf8;
 }
 
 .state-card-heading {
@@ -1230,6 +1321,13 @@ button:focus-visible {
       "inspector";
   }
 
+  .workspace-grid.scene-flow-mode {
+    grid-template-areas:
+      "project"
+      "scene-flow"
+      "inspector";
+  }
+
   .project-pane,
   .inspector-pane {
     border: 0;
@@ -1240,7 +1338,8 @@ button:focus-visible {
   }
 
   .state-graph-pane,
-  .placement-pane {
+  .placement-pane,
+  .scene-flow-pane {
     min-height: 460px;
   }
 

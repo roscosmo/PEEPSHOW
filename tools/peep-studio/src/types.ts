@@ -68,7 +68,8 @@ export type StateRoute = {
   from_states: string[];
   guards: StateGuard[];
   actions: StateAction[];
-  target_state: string;
+  target_state?: string;
+  target_scene?: string;
 };
 
 export type RenderElement = {

@@ -30,6 +30,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   SceneAuthoringInspector,
+  SceneFlowView,
   StateGraphView,
   type SceneSelection,
 } from "./SceneInspection";
@@ -126,7 +127,7 @@ export default function App() {
   const [canRedo, setCanRedo] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [workspaceMode, setWorkspaceMode] = useState<"logic" | "placement">("logic");
+  const [workspaceMode, setWorkspaceMode] = useState<"scene-flow" | "logic" | "placement">("logic");
   const [message, setMessage] = useState<string | null>(null);
   const previewRef = useRef<PreviewSnapshot | null>(null);
   const operationLock = useRef(false);
@@ -617,7 +618,7 @@ export default function App() {
         </div>
       </header>
 
-      <section className={`workspace-grid ${workspaceMode === "placement" ? "placement-mode" : "logic-mode"}`}>
+      <section className={`workspace-grid ${workspaceMode === "placement" ? "placement-mode" : workspaceMode === "scene-flow" ? "scene-flow-mode" : "logic-mode"}`}>
         <aside className="project-pane">
           <div className="pane-heading">
             <span>Project</span>
@@ -678,9 +679,42 @@ export default function App() {
                 <Network size={16} aria-hidden="true" />
                 Logic
               </button>
+              <button className="button secondary" type="button" onClick={() => setWorkspaceMode("scene-flow")}>
+                <Network size={16} aria-hidden="true" />
+                Scene flow
+              </button>
             </div>
             {renderPreviewPanel("placement")}
           </section>
+        )}
+
+        {workspaceMode === "scene-flow" && (
+        <section className="scene-flow-pane">
+          <div className="preview-heading graph-heading">
+            <div>
+              <span className="section-kicker">Scene flow</span>
+              <h2>{project?.summary.project_name ?? "No project open"}</h2>
+            </div>
+            <div className="mode-actions">
+              <button className="button secondary" type="button" onClick={() => setWorkspaceMode("logic")}>
+                <Network size={16} aria-hidden="true" />
+                Local logic
+              </button>
+              <button className="button secondary" type="button" onClick={() => setWorkspaceMode("placement")}>
+                <Maximize2 size={16} aria-hidden="true" />
+                Placement
+              </button>
+            </div>
+          </div>
+          <div className="graph-surface">
+            <SceneFlowView
+              scenes={scenes}
+              entrySceneId={project?.summary.entry_scene ?? null}
+              selectedSceneId={selectedScene}
+              onSelectScene={(sceneId) => void startPreview(sceneId)}
+            />
+          </div>
+        </section>
         )}
 
         {workspaceMode === "logic" && (
@@ -691,11 +725,14 @@ export default function App() {
               <h2>{selectedSceneDocument?.display_name ?? "No scene selected"}</h2>
             </div>
             <div className="mode-actions">
+              <button className="button secondary" type="button" onClick={() => setWorkspaceMode("scene-flow")}>
+                <Network size={16} aria-hidden="true" />
+                Scene flow
+              </button>
               <button className="button secondary" type="button" onClick={() => setWorkspaceMode("placement")}>
                 <Maximize2 size={16} aria-hidden="true" />
                 Placement
               </button>
-              <span className="future-graph-label">Package flow: Stage 5</span>
             </div>
           </div>
           <div className="graph-surface">

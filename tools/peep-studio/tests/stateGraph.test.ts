@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildStateGraphModel } from "../src/stateGraph";
+import { buildSceneFlowGraphModel, buildStateGraphModel } from "../src/stateGraph";
 import type { SceneDocument } from "../src/types";
 
 const scene: SceneDocument = {
@@ -61,3 +61,37 @@ const invalidRouteGraph = buildStateGraphModel({
 });
 
 assert.equal(invalidRouteGraph.edges.length, 0);
+
+const menuScene: SceneDocument = {
+  ...scene,
+  routes: [
+    ...scene.routes!,
+    {
+      route_id: "start_game",
+      action_ref: "select",
+      from_states: ["armed"],
+      guards: [],
+      actions: [],
+      target_scene: "game",
+    },
+  ],
+};
+const gameScene: SceneDocument = {
+  ...scene,
+  scene_id: "game",
+  display_name: "Game",
+  routes: [],
+};
+const localWithSceneExit = buildStateGraphModel(menuScene);
+
+assert.equal(localWithSceneExit.nodes.find((node) => node.id === "armed")?.outputs[0]?.targetScene, "game");
+assert.equal(localWithSceneExit.edges.length, 1);
+
+const sceneFlow = buildSceneFlowGraphModel([menuScene, gameScene], "menu");
+
+assert.equal(sceneFlow.nodes.length, 2);
+assert.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.isEntry, true);
+assert.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.exitCount, 1);
+assert.equal(sceneFlow.edges.length, 1);
+assert.equal(sceneFlow.edges[0]?.source, "menu");
+assert.equal(sceneFlow.edges[0]?.target, "game");

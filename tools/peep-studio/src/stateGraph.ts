@@ -6,7 +6,8 @@ export type GraphStateOutput = {
   label: string;
   guardCount: number;
   actionCount: number;
-  targetState: string;
+  targetState?: string;
+  targetScene?: string;
 };
 
 export type GraphStateNode = {
@@ -32,6 +33,30 @@ export type GraphTransitionEdge = {
 export type StateGraphModel = {
   nodes: GraphStateNode[];
   edges: GraphTransitionEdge[];
+};
+
+export type GraphSceneNode = {
+  id: string;
+  label: string;
+  isEntry: boolean;
+  stateCount: number;
+  exitCount: number;
+  entryStateLabel: string;
+  x: number;
+  y: number;
+};
+
+export type GraphSceneEdge = {
+  id: string;
+  source: string;
+  target: string;
+  label: string;
+  route: StateRoute;
+};
+
+export type SceneFlowGraphModel = {
+  nodes: GraphSceneNode[];
+  edges: GraphSceneEdge[];
 };
 
 const INPUT_LABELS: Record<string, string> = {
@@ -73,7 +98,7 @@ export function buildStateGraphModel(scene: SceneDocument | null): StateGraphMod
 
   routes.forEach((route: StateRoute) => {
     route.from_states
-      .filter((source) => stateIds.has(source) && stateIds.has(route.target_state))
+      .filter((source) => stateIds.has(source) && ((route.target_state !== undefined && stateIds.has(route.target_state)) || route.target_scene !== undefined))
       .forEach((source) => {
         const outputs = outputsByState.get(source) ?? [];
         outputs.push({
@@ -83,6 +108,7 @@ export function buildStateGraphModel(scene: SceneDocument | null): StateGraphMod
           guardCount: route.guards.length,
           actionCount: route.actions.length,
           targetState: route.target_state,
+          targetScene: route.target_scene,
         });
         outputsByState.set(source, outputs);
       });
@@ -99,18 +125,59 @@ export function buildStateGraphModel(scene: SceneDocument | null): StateGraphMod
     y: Math.floor(index / columns) * 190,
   }));
 
-  const edges = routes.flatMap((route: StateRoute) =>
-    route.from_states
-      .filter((source) => stateIds.has(source) && stateIds.has(route.target_state))
+  const edges = routes.flatMap((route: StateRoute) => {
+    const targetState = route.target_state;
+    if (targetState === undefined || !stateIds.has(targetState)) {
+      return [];
+    }
+    return route.from_states
+      .filter((source) => stateIds.has(source))
       .map((source) => ({
-        id: `${route.route_id}:${source}->${route.target_state}`,
+        id: `${route.route_id}:${source}->${targetState}`,
         source,
-        target: route.target_state,
+        target: targetState,
         label: "",
         route,
         sourceHandle: `${route.route_id}:${source}`,
+      }));
+  });
+
+  return { nodes, edges };
+}
+
+export function buildSceneFlowGraphModel(
+  scenes: SceneDocument[],
+  entrySceneId: string | null,
+): SceneFlowGraphModel {
+  const sceneIds = new Set(scenes.map((scene) => scene.scene_id));
+  const edges = scenes.flatMap((scene) =>
+    (scene.routes ?? [])
+      .filter((route) => route.target_scene !== undefined && sceneIds.has(route.target_scene))
+      .map((route) => ({
+        id: `${scene.scene_id}:${route.route_id}->${route.target_scene}`,
+        source: scene.scene_id,
+        target: route.target_scene!,
+        label: routeLabel(route, scene.input_actions ?? []),
+        route,
       })),
   );
+  const exitsByScene = new Map<string, number>();
+  edges.forEach((edge) => exitsByScene.set(edge.source, (exitsByScene.get(edge.source) ?? 0) + 1));
+
+  const nodes = scenes.map((scene, index) => {
+    const states = scene.states ?? [];
+    const entryState = states.find((state) => state.state_id === scene.entry_state);
+    return {
+      id: scene.scene_id,
+      label: scene.display_name,
+      isEntry: scene.scene_id === entrySceneId,
+      stateCount: states.length,
+      exitCount: exitsByScene.get(scene.scene_id) ?? 0,
+      entryStateLabel: entryState?.display_name ?? scene.entry_state ?? "No start state",
+      x: index * 300,
+      y: (index % 2) * 170,
+    };
+  });
 
   return { nodes, edges };
 }
