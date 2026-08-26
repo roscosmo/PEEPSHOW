@@ -138,7 +138,7 @@ protocol is version `1`; the current service API is version `7`.
 | `project.undo` | undo the last accepted command within the bounded service history |
 | `project.redo` | redo the last undone command within the bounded service history |
 | `project.preview_reset` | start one selected STATE scene directly |
-| `project.preview_input` | inject one logical A/B/L/R input |
+| `project.preview_input` | inject one supported logical input source |
 | `project.preview_advance` | advance deterministic preview time by an explicit duration |
 
 Every project operation after load uses `project_revision`. Every preview
@@ -265,7 +265,7 @@ not require or imply an on-device runtime font renderer.
   as a UML-first edge editor;
 - create and remove deterministic state-transition outputs and their single
   destination edges through Python service commands;
-- edit logical A/B/L/R routes, guard expressions, ordered actions, and target
+- edit logical button/joystick routes, guard expressions, ordered actions, and target
   state through typed inspectors;
 - support prefab-backed menu nodes through declared slots and read-only generated
   internals before exposing arbitrary custom internals;
@@ -296,6 +296,12 @@ Direct replacement enters the destination entry state, resets destination-local
 variables, and starts a new timeline epoch. Peep Studio may expose these exact
 semantics for the HW6 FW0 target profile. It must not expose cross-scene route actions,
 push/pop, return stacks, or STATE-to-SEQUENCE/PROGRAM transitions yet.
+
+Peep Studio implementation status: first read-only package scene-flow view is
+implemented. It presents scenes as separate package-level nodes and shows
+existing `target_scene` route edges from normalized service data. Creating,
+removing, or retargeting scene-flow edges remains deferred to the Stage 5 edit
+slice.
 
 ### Stage 6: Animation Timeline
 

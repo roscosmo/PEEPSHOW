@@ -2,8 +2,17 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { app, BrowserWindow } = require("electron");
 
-const url = process.argv[2] ?? "http://127.0.0.1:5174/";
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch("disable-gpu");
+app.commandLine.appendSwitch("disable-software-rasterizer", "false");
+
+const url = process.argv[2] ?? "http://127.0.0.1:5173/";
 const outputRoot = path.resolve(process.argv[3] ?? "visual-output");
+const userDataRoot = path.join(outputRoot, "electron-profile");
+
+fs.mkdirSync(userDataRoot, { recursive: true });
+app.setPath("userData", userDataRoot);
+app.commandLine.appendSwitch("user-data-dir", userDataRoot);
 
 const viewports = [
   { name: "desktop", width: 1440, height: 900 },

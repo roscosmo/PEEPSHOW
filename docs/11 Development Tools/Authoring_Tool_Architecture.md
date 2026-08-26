@@ -242,7 +242,7 @@ The first editor simulator is `HOST_AUTHORING_PREVIEW`.
 It provides:
 
 - deterministic fake time at the authored cadence
-- A/B/L/R and declared event injection
+- A/B/L/R, joystick cardinal, and declared event injection
 - STATE execution, variables, routes, guards, and actions
 - retained visual composition
 - waiting-animation preferred and fallback previews
@@ -387,7 +387,7 @@ Passing authoring-preview tests does not replace target validation.
 3. implement deterministic masked-1bpp PNG import and compile asset records into
    `asset_table`, `masked_1bpp_sprite_bank`, and `animation_table` chunks
 4. selected-STATE-scene reference preview against the compiled package reader,
-   with explicit fake time and A/B/L/R input - implemented for package-backed
+   with explicit fake time and logical input injection - implemented for package-backed
    native-scale masked 1bpp sprites
 5. make firmware consume those same package sprite/frame records instead of a
    compiled-in visual catalog

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildStateGraphModel } from "../src/stateGraph";
+import { buildSceneFlowGraphModel, buildStateGraphModel } from "../src/stateGraph";
 import type { SceneDocument } from "../src/types";
 
 const scene: SceneDocument = {
@@ -61,3 +61,56 @@ const invalidRouteGraph = buildStateGraphModel({
 });
 
 assert.equal(invalidRouteGraph.edges.length, 0);
+
+const menuScene: SceneDocument = {
+  ...scene,
+  routes: [
+    {
+      route_id: "menu_to_game",
+      action_ref: "select",
+      from_states: ["idle"],
+      guards: [],
+      actions: [],
+      target_scene: "game",
+    },
+    {
+      route_id: "menu_local",
+      action_ref: "select",
+      from_states: ["idle"],
+      guards: [],
+      actions: [],
+      target_state: "armed",
+    },
+  ],
+};
+
+const sceneFlow = buildSceneFlowGraphModel([
+  menuScene,
+  {
+    ...scene,
+    scene_id: "game",
+    display_name: "Game",
+    routes: [],
+  },
+  {
+    ...scene,
+    scene_id: "summary",
+    display_name: "Summary",
+    routes: [
+      {
+        route_id: "summary_to_menu",
+        action_ref: "select",
+        from_states: ["idle"],
+        guards: [],
+        actions: [],
+        target_scene: "menu",
+      },
+    ],
+  },
+], "menu");
+
+assert.equal(sceneFlow.nodes.length, 3);
+assert.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.isEntry, true);
+assert.equal(sceneFlow.edges.length, 2);
+assert.equal(sceneFlow.edges.some((edge) => edge.source === "menu" && edge.target === "game"), true);
+assert.equal(sceneFlow.edges.some((edge) => edge.source === "summary" && edge.target === "menu"), true);

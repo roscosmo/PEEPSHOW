@@ -27,9 +27,10 @@ import {
   Undo2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import {
   SceneAuthoringInspector,
+  SceneFlowView,
   StateGraphView,
   type SceneSelection,
 } from "./SceneInspection";
@@ -46,14 +47,17 @@ import type {
 } from "./types";
 
 const INPUTS = [
-  { source: "BUTTON_L", label: "L", icon: ArrowLeft },
+  { source: "BUTTON_L", label: "L", icon: Circle },
+  { source: "BUTTON_R", label: "R", icon: Circle },
   { source: "BUTTON_A", label: "A", icon: Circle },
   { source: "BUTTON_B", label: "B", icon: Circle },
-  { source: "BUTTON_R", label: "R", icon: ArrowRight },
-  { source: "JOY_LEFT", label: "Joy left", icon: ArrowLeft },
-  { source: "JOY_RIGHT", label: "Joy right", icon: ArrowRight },
-  { source: "JOY_UP", label: "Joy up", icon: ArrowUp },
-  { source: "JOY_DOWN", label: "Joy down", icon: ArrowDown },
+] as const;
+
+const JOYSTICK_INPUTS = [
+  { source: "JOY_UP", label: "Up", icon: ArrowUp, className: "joy-up" },
+  { source: "JOY_LEFT", label: "Left", icon: ArrowLeft, className: "joy-left" },
+  { source: "JOY_RIGHT", label: "Right", icon: ArrowRight, className: "joy-right" },
+  { source: "JOY_DOWN", label: "Down", icon: ArrowDown, className: "joy-down" },
 ] as const;
 
 function errorText(error: unknown): string {
@@ -126,7 +130,9 @@ export default function App() {
   const [canRedo, setCanRedo] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [workspaceMode, setWorkspaceMode] = useState<"logic" | "placement">("logic");
+  const [workspaceMode, setWorkspaceMode] = useState<"scene-flow" | "logic" | "placement">("logic");
+  const [projectWidth, setProjectWidth] = useState(320);
+  const [inspectorWidth, setInspectorWidth] = useState(390);
   const [message, setMessage] = useState<string | null>(null);
   const previewRef = useRef<PreviewSnapshot | null>(null);
   const operationLock = useRef(false);
@@ -526,45 +532,99 @@ export default function App() {
     [scenes, selectedScene],
   );
   const connected = service !== null;
-  const renderPreviewPanel = (variant: "inspector" | "placement") => (
+  const startProjectResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = projectWidth;
+    const move = (moveEvent: PointerEvent) => {
+      const next = Math.min(520, Math.max(260, startWidth + (moveEvent.clientX - startX)));
+      setProjectWidth(next);
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+  };
+  const startInspectorResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = inspectorWidth;
+    const move = (moveEvent: PointerEvent) => {
+      const next = Math.min(560, Math.max(320, startWidth - (moveEvent.clientX - startX)));
+      setInspectorWidth(next);
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+  };
+  const renderInputControls = () => (
+    <div className="input-controls">
+      <div className="input-control-group">
+        <span className="input-group-label">Joystick</span>
+        <div className="joystick-pad" aria-label="Joystick cardinal inputs">
+          {JOYSTICK_INPUTS.map(({ source, label, icon: Icon, className }) => (
+            <button key={source} className={`joystick-button ${className}`} onClick={() => void sendInput(source)} disabled={preview === null} title={`Send ${source}`}>
+              <Icon size={15} aria-hidden="true" />
+              <span>{label}</span>
+            </button>
+          ))}
+          <button className="joystick-nub" type="button" disabled title="Analog joystick preview is reserved for PROGRAM scenes" aria-label="Analog joystick preview reserved for PROGRAM scenes" />
+        </div>
+      </div>
+      <div className="input-control-group">
+        <span className="input-group-label">Buttons</span>
+        <div className="trigger-buttons" aria-label="Trigger buttons">
+          {INPUTS.map(({ source, label, icon: Icon }) => (
+            <button key={source} className="input-button" onClick={() => void sendInput(source)} disabled={preview === null} title={`Send ${source}`}>
+              <Icon size={13} aria-hidden="true" />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+  const renderPreviewPanel = (variant: "project" | "placement") => (
     <section className={`preview-pane ${variant === "placement" ? "preview-pane-large" : "preview-pane-compact"}`}>
       <div className="preview-heading">
         <div>
           <span className="section-kicker">Screen</span>
           <h2>{preview?.scene.display_name ?? "Display preview"}</h2>
         </div>
-        {preview !== null && (
-          <div className="timeline-readout">
-            <span>Step {preview.timeline.step_index + 1}/{preview.timeline.step_count}</span>
-            <strong>{preview.timeline.elapsed_ms} ms</strong>
+        <div className="preview-heading-tools">
+          {preview !== null && (
+            <div className="timeline-readout">
+              <span>Step {preview.timeline.step_index + 1}/{preview.timeline.step_count}</span>
+              <strong>{preview.timeline.elapsed_ms} ms</strong>
+            </div>
+          )}
+          <div className="playback-controls" aria-label="Preview playback">
+            <button className="icon-button" onClick={() => selectedScene !== null && void startPreview(selectedScene)} disabled={preview === null} title="Reset preview">
+              <RotateCcw size={18} aria-hidden="true" />
+            </button>
+            <button className="icon-button transport-play" onClick={() => setPlaying((value) => !value)} disabled={preview === null} title={playing ? "Pause preview" : "Play preview"}>
+              {playing ? <Pause size={19} aria-hidden="true" /> : <Play size={19} aria-hidden="true" />}
+            </button>
+            <button className="icon-button" onClick={() => void advancePreview(250)} disabled={preview === null} title="Advance 250 ms">
+              <StepForward size={18} aria-hidden="true" />
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
       <div className="display-stage">
         <div className="panel-bezel">
           <FramebufferCanvas framebuffer={preview?.framebuffer ?? null} />
         </div>
-        <div className="surface-label">Scene preview</div>
       </div>
 
       <div className="transport-bar">
-        <button className="icon-button" onClick={() => selectedScene !== null && void startPreview(selectedScene)} disabled={preview === null} title="Reset preview">
-          <RotateCcw size={18} aria-hidden="true" />
-        </button>
-        <button className="icon-button transport-play" onClick={() => setPlaying((value) => !value)} disabled={preview === null} title={playing ? "Pause preview" : "Play preview"}>
-          {playing ? <Pause size={19} aria-hidden="true" /> : <Play size={19} aria-hidden="true" />}
-        </button>
-        <button className="icon-button" onClick={() => void advancePreview(250)} disabled={preview === null} title="Advance 250 ms">
-          <StepForward size={18} aria-hidden="true" />
-        </button>
-        <div className="transport-divider" />
-        {INPUTS.map(({ source, label, icon: Icon }) => (
-          <button key={source} className="input-button" onClick={() => void sendInput(source)} disabled={preview === null} title={`Send ${source}`}>
-            <Icon size={16} aria-hidden="true" />
-            {label}
-          </button>
-        ))}
+        {renderInputControls()}
       </div>
     </section>
   );
@@ -617,7 +677,10 @@ export default function App() {
         </div>
       </header>
 
-      <section className={`workspace-grid ${workspaceMode === "placement" ? "placement-mode" : "logic-mode"}`}>
+      <section
+        className={`workspace-grid ${workspaceMode === "placement" ? "placement-mode" : workspaceMode === "scene-flow" ? "scene-flow-mode" : "logic-mode"}`}
+        style={{ "--project-width": `${projectWidth}px`, "--inspector-width": `${inspectorWidth}px` } as CSSProperties}
+      >
         <aside className="project-pane">
           <div className="pane-heading">
             <span>Project</span>
@@ -627,6 +690,8 @@ export default function App() {
               </span>
             )}
           </div>
+
+          {workspaceMode !== "placement" && renderPreviewPanel("project")}
 
           {project === null ? (
             <div className="empty-pane">
@@ -667,6 +732,15 @@ export default function App() {
           )}
         </aside>
 
+        <div
+          className="project-resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize project bar"
+          title="Drag to resize project bar"
+          onPointerDown={startProjectResize}
+        />
+
         {workspaceMode === "placement" && (
           <section className="placement-pane">
             <div className="preview-heading graph-heading">
@@ -678,9 +752,42 @@ export default function App() {
                 <Network size={16} aria-hidden="true" />
                 Logic
               </button>
+              <button className="button secondary" type="button" onClick={() => setWorkspaceMode("scene-flow")}>
+                <Network size={16} aria-hidden="true" />
+                Scene flow
+              </button>
             </div>
             {renderPreviewPanel("placement")}
           </section>
+        )}
+
+        {workspaceMode === "scene-flow" && (
+        <section className="scene-flow-pane">
+          <div className="preview-heading graph-heading">
+            <div>
+              <span className="section-kicker">Scene flow</span>
+              <h2>{project?.summary.project_name ?? "No project open"}</h2>
+            </div>
+            <div className="mode-actions">
+              <button className="button secondary" type="button" onClick={() => setWorkspaceMode("logic")}>
+                <Network size={16} aria-hidden="true" />
+                Local logic
+              </button>
+              <button className="button secondary" type="button" onClick={() => setWorkspaceMode("placement")}>
+                <Maximize2 size={16} aria-hidden="true" />
+                Placement
+              </button>
+            </div>
+          </div>
+          <div className="graph-surface">
+            <SceneFlowView
+              scenes={scenes}
+              entrySceneId={project?.summary.entry_scene ?? null}
+              selectedSceneId={selectedScene}
+              onSelectScene={(sceneId) => void startPreview(sceneId)}
+            />
+          </div>
+        </section>
         )}
 
         {workspaceMode === "logic" && (
@@ -691,11 +798,14 @@ export default function App() {
               <h2>{selectedSceneDocument?.display_name ?? "No scene selected"}</h2>
             </div>
             <div className="mode-actions">
+              <button className="button secondary" type="button" onClick={() => setWorkspaceMode("scene-flow")}>
+                <Network size={16} aria-hidden="true" />
+                Scene flow
+              </button>
               <button className="button secondary" type="button" onClick={() => setWorkspaceMode("placement")}>
                 <Maximize2 size={16} aria-hidden="true" />
                 Placement
               </button>
-              <span className="future-graph-label">Package flow: Stage 5</span>
             </div>
           </div>
           <div className="graph-surface">
@@ -708,10 +818,17 @@ export default function App() {
         </section>
         )}
 
+        <div
+          className="inspector-resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize inspector"
+          title="Drag to resize inspector"
+          onPointerDown={startInspectorResize}
+        />
+
         <aside className="inspector-pane">
           <div className="pane-heading">Inspector</div>
-
-          {workspaceMode === "logic" && renderPreviewPanel("inspector")}
 
           <section className="inspector-section">
             <h3>Runtime</h3>
