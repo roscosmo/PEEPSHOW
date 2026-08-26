@@ -22,6 +22,18 @@
     {
       "action_id": "move_right",
       "logical_source": "BUTTON_R"
+    },
+    {
+      "action_id": "joy_move_left",
+      "logical_source": "JOY_LEFT"
+    },
+    {
+      "action_id": "joy_move_right",
+      "logical_source": "JOY_RIGHT"
+    },
+    {
+      "action_id": "open_details",
+      "logical_source": "BUTTON_A"
     }
   ],
   "states": [
@@ -33,7 +45,7 @@
     },
     {
       "state_id": "center",
-      "display_name": "Middle",
+      "display_name": "Centre",
       "render_model_ref": "view_center",
       "waiting_visual_ref": "state_wait"
     },
@@ -200,6 +212,174 @@
         }
       ],
       "target_state": "right"
+    },
+    {
+      "route_id": "joy_right_to_center",
+      "action_ref": "joy_move_left",
+      "from_states": [
+        "right"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 2
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 1
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "center"
+    },
+    {
+      "route_id": "joy_center_to_left",
+      "action_ref": "joy_move_left",
+      "from_states": [
+        "center"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 1
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 0
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "left"
+    },
+    {
+      "route_id": "joy_left_to_right",
+      "action_ref": "joy_move_left",
+      "from_states": [
+        "left"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 0
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 2
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "right"
+    },
+    {
+      "route_id": "joy_left_to_center",
+      "action_ref": "joy_move_right",
+      "from_states": [
+        "left"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 0
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 1
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "center"
+    },
+    {
+      "route_id": "joy_center_to_right",
+      "action_ref": "joy_move_right",
+      "from_states": [
+        "center"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 1
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 2
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "right"
+    },
+    {
+      "route_id": "joy_right_to_left",
+      "action_ref": "joy_move_right",
+      "from_states": [
+        "right"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 2
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 0
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "left"
+    },
+    {
+      "route_id": "open_details",
+      "action_ref": "open_details",
+      "from_states": [
+        "left",
+        "center",
+        "right"
+      ],
+      "guards": [],
+      "actions": [],
+      "target_scene": "state_details"
     }
   ],
   "render_models": [
@@ -336,14 +516,20 @@
     "hold_fallback_allowed": true,
     "event_interests": [
       "move_left",
-      "move_right"
+      "move_right",
+      "joy_move_left",
+      "joy_move_right",
+      "open_details"
     ]
   },
   "interaction_policy": {
     "policy_id": "state_interaction",
     "meaningful_activity_actions": [
       "move_left",
-      "move_right"
+      "move_right",
+      "joy_move_left",
+      "joy_move_right",
+      "open_details"
     ],
     "inactive_route": "preserve_scene",
     "bounded_deferrals": []

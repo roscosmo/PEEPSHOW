@@ -147,22 +147,19 @@ class AuthoringModelTests(unittest.TestCase):
         self.assertEqual(first.canonical_bytes(), second.canonical_bytes())
         normalized = json.loads(first.canonical_bytes())
         self.assertEqual("state_demo", normalized["project"]["entry_scene"])
-        self.assertEqual(1, len(normalized["scenes"]))
+        self.assertEqual(2, len(normalized["scenes"]))
 
     def test_joystick_direction_is_a_stable_logical_source(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            project_root = Path(temp_dir) / "joystick.peepproj"
-            shutil.copytree(SAMPLE, project_root)
-            scene_path = project_root / "scenes" / "state_demo.state.json"
-            scene = json.loads(scene_path.read_text(encoding="utf-8"))
-            scene["input_actions"][0]["logical_source"] = "JOY_LEFT"
-            scene_path.write_text(json.dumps(scene), encoding="utf-8")
-
-            bundle = load_project(project_root)
-            self.assertEqual((), bundle.issues)
-            package = parse_egg(build_egg(bundle))
-            source = package.scenes[0]["graph"]["inputs"][0]["logical_source"]
-            self.assertEqual(6, source)
+        bundle = load_project(SAMPLE)
+        self.assertEqual((), bundle.issues)
+        package = parse_egg(build_egg(bundle))
+        scene = package.scenes[0]
+        joy_input = next(
+            item
+            for item in scene["graph"]["inputs"]
+            if item["action_id"] == "joy_move_left"
+        )
+        self.assertEqual(6, joy_input["logical_source"])
 
     def test_unknown_transition_target_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -293,10 +290,13 @@ class AuthoringModelTests(unittest.TestCase):
         package = parse_egg(first)
         self.assertEqual("dev.peepshow.state_slice", package.manifest["package_id"])
         self.assertEqual("state_demo", package.manifest["entry_scene"])
-        self.assertEqual(9, len(package.chunks))
+        self.assertEqual(12, len(package.chunks))
         self.assertEqual(5, len(package.assets))
+        self.assertEqual(2, len(package.scenes))
         self.assertEqual(3, package.scenes[0]["state_count"])
-        self.assertEqual(6, package.scenes[0]["route_count"])
+        self.assertEqual(13, package.scenes[0]["route_count"])
+        self.assertEqual(1, package.scenes[1]["state_count"])
+        self.assertEqual(1, package.scenes[1]["route_count"])
         self.assertNotIn("scenes/state_demo.state.json", package.strings)
 
     def test_editor_source_path_does_not_change_package_bytes(self) -> None:

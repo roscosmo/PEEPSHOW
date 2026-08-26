@@ -148,7 +148,9 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
               }}
             >
               <span>{output.label}</span>
-              <small>{output.guardCount} rule{output.guardCount === 1 ? "" : "s"} - {output.actionCount} effect{output.actionCount === 1 ? "" : "s"}</small>
+              <small>
+                {output.targetScene === undefined ? "Local" : `Scene exit: ${output.targetScene}`} - {output.guardCount} rule{output.guardCount === 1 ? "" : "s"} - {output.actionCount} effect{output.actionCount === 1 ? "" : "s"}
+              </small>
               <Handle id={output.id} type="source" position={Position.Right} />
             </span>
           ))
@@ -178,9 +180,10 @@ function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
         <span>{graphNode.label.slice(0, 2).toUpperCase()}</span>
       </div>
       <div className="scene-card-heading">
-        <span>{graphNode.isEntry ? "Starts here" : "Scene"}</span>
+        <span>Scene</span>
         <strong>{graphNode.label}</strong>
       </div>
+      {graphNode.isEntry && <span className="scene-start-badge">Start</span>}
       <div className="scene-card-facts">
         <span>{graphNode.stateCount} state{graphNode.stateCount === 1 ? "" : "s"}</span>
         <span>{graphNode.routeCount} exit{graphNode.routeCount === 1 ? "" : "s"}</span>
@@ -279,12 +282,16 @@ export function SceneFlowView({
   scenes,
   entrySceneId,
   selectedSceneId,
+  selectedRouteId,
   onSelectScene,
+  onSelectSceneRoute,
 }: {
   scenes: SceneDocument[];
   entrySceneId: string | null;
   selectedSceneId: string | null;
+  selectedRouteId: string | null;
   onSelectScene: (sceneId: string) => void;
+  onSelectSceneRoute: (sceneId: string, routeId: string) => void;
 }) {
   const graph = useMemo(() => buildSceneFlowGraphModel(scenes, entrySceneId), [entrySceneId, scenes]);
   const nodes: Node[] = useMemo(
@@ -309,11 +316,12 @@ export function SceneFlowView({
         id: edge.id,
         source: edge.source,
         target: edge.target,
-        label: edge.label,
+        selected: selectedRouteId === edge.route.route_id,
+        data: { route_id: edge.route.route_id, source_scene_id: edge.source },
         markerEnd: { type: MarkerType.ArrowClosed },
-        style: { strokeWidth: 1.7 },
+        style: { strokeWidth: selectedRouteId === edge.route.route_id ? 2.8 : 1.7 },
       })),
-    [graph.edges],
+    [graph.edges, selectedRouteId],
   );
 
   if (scenes.length === 0) {
@@ -335,6 +343,7 @@ export function SceneFlowView({
       nodesConnectable={false}
       elementsSelectable
       onNodeClick={(_, node) => onSelectScene(node.id)}
+      onEdgeClick={(_, edge) => onSelectSceneRoute(String(edge.data?.source_scene_id ?? ""), String(edge.data?.route_id ?? edge.id))}
       proOptions={{ hideAttribution: true }}
     >
       <Background gap={18} size={1} />
@@ -346,19 +355,23 @@ export function SceneFlowView({
 
 export function SceneAuthoringInspector({
   scene,
+  scenes,
   selection,
   onSelect,
   onRenameState,
   onSetRouteTarget,
+  onSetRouteSceneTarget,
   onSetRouteGuard,
   onSetRouteAction,
   canEdit,
 }: {
   scene: SceneDocument | null;
+  scenes: SceneDocument[];
   selection: SceneSelection;
   onSelect: (selection: SceneSelection) => void;
   onRenameState: (sceneId: string, stateId: string, displayName: string) => Promise<void>;
   onSetRouteTarget: (sceneId: string, routeId: string, targetState: string) => Promise<void>;
+  onSetRouteSceneTarget: (sceneId: string, routeId: string, targetScene: string) => Promise<void>;
   onSetRouteGuard: (
     sceneId: string,
     routeId: string,
@@ -404,9 +417,11 @@ export function SceneAuthoringInspector({
           sceneId={scene.scene_id}
           route={route}
           states={states}
+          scenes={scenes}
           inputActions={inputActions}
           variables={variables}
           onSetRouteTarget={onSetRouteTarget}
+          onSetRouteSceneTarget={onSetRouteSceneTarget}
           onSetRouteGuard={onSetRouteGuard}
           onSetRouteAction={onSetRouteAction}
           canEdit={canEdit}
@@ -641,9 +656,11 @@ function RouteInspector({
   sceneId,
   route,
   states,
+  scenes,
   inputActions,
   variables,
   onSetRouteTarget,
+  onSetRouteSceneTarget,
   onSetRouteGuard,
   onSetRouteAction,
   canEdit,
@@ -651,9 +668,11 @@ function RouteInspector({
   sceneId: string;
   route: StateRoute;
   states: StateRecord[];
+  scenes: SceneDocument[];
   inputActions: InputAction[];
   variables: StateVariable[];
   onSetRouteTarget: (sceneId: string, routeId: string, targetState: string) => Promise<void>;
+  onSetRouteSceneTarget: (sceneId: string, routeId: string, targetScene: string) => Promise<void>;
   onSetRouteGuard: (
     sceneId: string,
     routeId: string,
@@ -674,6 +693,8 @@ function RouteInspector({
   const routeTarget = route.target_scene === undefined
     ? displayStateName(states, route.target_state ?? "")
     : `Scene: ${route.target_scene}`;
+  const sceneTargets = scenes.filter((candidate) => candidate.scene_type === "STATE_SCENE" && candidate.scene_id !== sceneId);
+  const canEditSceneTarget = canEdit && route.actions.length === 0 && sceneTargets.length > 0;
   return (
     <section className="inspector-section selected-record">
       <h3>Selected transition</h3>
@@ -710,7 +731,30 @@ function RouteInspector({
           </select>
         </label>
       ) : (
-        <p className="plain-rule-note">This transition exits to another scene. Scene-flow editing will use the package graph.</p>
+        <>
+          <label className="select-field" htmlFor={`route-scene-target-${route.route_id}`}>
+            Go to scene
+            <select
+              id={`route-scene-target-${route.route_id}`}
+              value={route.target_scene}
+              disabled={!canEditSceneTarget}
+              onChange={(event) => {
+                void onSetRouteSceneTarget(sceneId, route.route_id, event.target.value);
+              }}
+            >
+              {sceneTargets.map((targetScene) => (
+                <option key={targetScene.scene_id} value={targetScene.scene_id}>
+                  {targetScene.display_name} ({targetScene.scene_id})
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="plain-rule-note">
+            {route.actions.length === 0
+              ? "Direct scene change: enters the target scene at its first screen."
+              : "Scene exits with effects are not editable yet."}
+          </p>
+        </>
       )}
       <h4>Only if</h4>
       <EditableGuardList

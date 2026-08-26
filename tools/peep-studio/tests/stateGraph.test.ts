@@ -109,6 +109,11 @@ const sceneFlow = buildSceneFlowGraphModel([
   },
 ], "menu");
 
+const localWithSceneExit = buildStateGraphModel(menuScene);
+
+assert.equal(localWithSceneExit.nodes.find((node) => node.id === "idle")?.outputs.length, 2);
+assert.equal(localWithSceneExit.nodes.find((node) => node.id === "idle")?.outputs.some((output) => output.targetScene === "game"), true);
+assert.equal(localWithSceneExit.edges.length, 1);
 assert.equal(sceneFlow.nodes.length, 3);
 assert.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.isEntry, true);
 assert.equal(sceneFlow.edges.length, 2);

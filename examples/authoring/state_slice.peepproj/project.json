@@ -11,7 +11,8 @@
   "selected_target_profile": "hw6_fw0_development",
   "entry_scene": "state_demo",
   "scene_sources": [
-    "scenes/state_demo.state.json"
+    "scenes/state_demo.state.json",
+    "scenes/state_details.state.json"
   ],
   "asset_sources": [
     "assets/catalog.json"

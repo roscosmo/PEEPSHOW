@@ -297,11 +297,12 @@ variables, and starts a new timeline epoch. Peep Studio may expose these exact
 semantics for the HW6 FW0 target profile. It must not expose cross-scene route actions,
 push/pop, return stacks, or STATE-to-SEQUENCE/PROGRAM transitions yet.
 
-Peep Studio implementation status: first read-only package scene-flow view is
+Peep Studio implementation status: first package scene-flow view is
 implemented. It presents scenes as separate package-level nodes and shows
-existing `target_scene` route edges from normalized service data. Creating,
-removing, or retargeting scene-flow edges remains deferred to the Stage 5 edit
-slice.
+existing `target_scene` route edges from normalized service data. Existing
+actionless `target_scene` routes can be retargeted to another STATE scene
+through the inspector. Creating or removing scene-flow edges remains deferred
+to a later Stage 5 edit slice.
 
 ### Stage 6: Animation Timeline
 

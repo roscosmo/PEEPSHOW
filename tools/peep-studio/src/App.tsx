@@ -130,7 +130,7 @@ export default function App() {
   const [canRedo, setCanRedo] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [workspaceMode, setWorkspaceMode] = useState<"scene-flow" | "logic" | "placement">("logic");
+  const [workspaceMode, setWorkspaceMode] = useState<"scene-flow" | "logic" | "placement">("scene-flow");
   const [projectWidth, setProjectWidth] = useState(320);
   const [inspectorWidth, setInspectorWidth] = useState(390);
   const [message, setMessage] = useState<string | null>(null);
@@ -245,6 +245,10 @@ export default function App() {
           elapsed_ms: elapsedMs,
         });
         setPreview(result);
+        if (result.scene.scene_id !== selectedScene) {
+          setSelectedScene(result.scene.scene_id);
+          setSceneSelection({ kind: "scene" });
+        }
       } catch (error) {
         setPlaying(false);
         setMessage(errorText(error));
@@ -276,6 +280,10 @@ export default function App() {
         logical_source: logicalSource,
       });
       setPreview(result);
+      if (result.scene.scene_id !== selectedScene) {
+        setSelectedScene(result.scene.scene_id);
+        setSceneSelection({ kind: "scene" });
+      }
       setMessage(null);
     } catch (error) {
       setMessage(errorText(error));
@@ -434,6 +442,35 @@ export default function App() {
       applyProjectResult(result);
       setSceneSelection({ kind: "route", id: routeId });
       setMessage("Route target updated. Save to write it to the project.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const setRouteSceneTarget = async (sceneId: string, routeId: string, targetScene: string) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy("Updating scene exit");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [
+          {
+            kind: "route.set_target",
+            scene_id: sceneId,
+            route_id: routeId,
+            target_scene: targetScene,
+          },
+        ],
+      });
+      applyProjectResult(result);
+      setSelectedScene(sceneId);
+      setSceneSelection({ kind: "route", id: routeId });
+      setMessage("Scene exit updated. Save to write it to the project.");
     } catch (error) {
       setMessage(errorText(error));
     } finally {
@@ -784,7 +821,12 @@ export default function App() {
               scenes={scenes}
               entrySceneId={project?.summary.entry_scene ?? null}
               selectedSceneId={selectedScene}
+              selectedRouteId={sceneSelection.kind === "route" ? sceneSelection.id : null}
               onSelectScene={(sceneId) => void startPreview(sceneId)}
+              onSelectSceneRoute={(sceneId, routeId) => {
+                setSelectedScene(sceneId);
+                setSceneSelection({ kind: "route", id: routeId });
+              }}
             />
           </div>
         </section>
@@ -847,10 +889,12 @@ export default function App() {
 
           <SceneAuthoringInspector
             scene={selectedSceneDocument}
+            scenes={scenes}
             selection={sceneSelection}
             onSelect={setSceneSelection}
             onRenameState={renameState}
             onSetRouteTarget={setRouteTarget}
+            onSetRouteSceneTarget={setRouteSceneTarget}
             onSetRouteGuard={setRouteGuard}
             onSetRouteAction={setRouteAction}
             canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}

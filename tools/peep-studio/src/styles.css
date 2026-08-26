@@ -789,8 +789,8 @@ button:focus-visible {
 }
 
 .scene-card-node.entry {
-  border-color: #32759a;
-  background: #edf7fb;
+  border-color: #aeb9b2;
+  background: #ffffff;
 }
 
 .scene-card-node.selected {
@@ -818,6 +818,7 @@ button:focus-visible {
 
 .scene-card-heading span,
 .scene-card-facts span,
+.scene-start-badge,
 .scene-card-node small {
   display: block;
   overflow: hidden;
@@ -849,6 +850,15 @@ button:focus-visible {
   border: 1px solid #d3dbd6;
   border-radius: 4px;
   background: #f7faf8;
+}
+
+.scene-start-badge {
+  justify-self: start;
+  padding: 3px 6px;
+  border: 1px solid #9db9ca;
+  border-radius: 4px;
+  background: #edf7fb;
+  color: #175f8a;
 }
 
 .state-card-heading {

@@ -98,7 +98,7 @@ export function buildStateGraphModel(scene: SceneDocument | null): StateGraphMod
 
   routes.forEach((route: StateRoute) => {
     route.from_states
-      .filter((source) => route.target_state !== undefined && stateIds.has(source) && stateIds.has(route.target_state))
+      .filter((source) => stateIds.has(source) && (route.target_scene !== undefined || (route.target_state !== undefined && stateIds.has(route.target_state))))
       .forEach((source) => {
         const outputs = outputsByState.get(source) ?? [];
         outputs.push({

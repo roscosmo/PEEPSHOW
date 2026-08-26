@@ -1,0 +1,125 @@
+{
+  "schema_id": "peepshow.authoring.state_scene",
+  "schema_version": 1,
+  "scene_id": "state_details",
+  "display_name": "Details Scene",
+  "scene_type": "STATE_SCENE",
+  "entry_state": "details",
+  "variables": [],
+  "input_actions": [
+    {
+      "action_id": "return_demo",
+      "logical_source": "BUTTON_B"
+    }
+  ],
+  "states": [
+    {
+      "state_id": "details",
+      "display_name": "Details",
+      "render_model_ref": "view_details",
+      "waiting_visual_ref": "state_wait"
+    }
+  ],
+  "routes": [
+    {
+      "route_id": "return_demo",
+      "action_ref": "return_demo",
+      "from_states": [
+        "details"
+      ],
+      "guards": [],
+      "actions": [],
+      "target_scene": "state_demo"
+    }
+  ],
+  "render_models": [
+    {
+      "visual_id": "view_details",
+      "focus_index": 0,
+      "elements": [
+        {
+          "element_id": "cursor",
+          "kind": "sprite",
+          "visual_ref": "cursor.phase_b",
+          "x": 8,
+          "y": 73,
+          "width": 8,
+          "height": 16,
+          "z_order": 10,
+          "focus_role": "focus"
+        },
+        {
+          "element_id": "marker",
+          "kind": "sprite",
+          "visual_ref": "marker.phase_c",
+          "x": 160,
+          "y": 0,
+          "width": 8,
+          "height": 24,
+          "z_order": 5
+        }
+      ]
+    }
+  ],
+  "waiting_visuals": [
+    {
+      "waiting_visual_id": "state_wait",
+      "presentation_id": "state_demo_timeline",
+      "phase_quantum_ms": 250,
+      "combined_step_count": 6,
+      "settled_step": 1,
+      "cycle_policy": "loop",
+      "elements": [
+        {
+          "element_id": "cursor_wait",
+          "source_element_ref": "cursor",
+          "phase_visual_refs": [
+            "cursor.phase_a",
+            "cursor.phase_b"
+          ],
+          "step_phase_indices": [
+            0,
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "element_id": "marker_wait",
+          "source_element_ref": "marker",
+          "phase_visual_refs": [
+            "marker.phase_a",
+            "marker.phase_b",
+            "marker.phase_c"
+          ],
+          "step_phase_indices": [
+            2,
+            0,
+            1,
+            2,
+            0,
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "reactive_wait_default": {
+    "policy_id": "details_wait_policy",
+    "waiting_visual_ref": "state_wait",
+    "hold_fallback_allowed": true,
+    "event_interests": [
+      "return_demo"
+    ]
+  },
+  "interaction_policy": {
+    "policy_id": "details_interaction",
+    "meaningful_activity_actions": [
+      "return_demo"
+    ],
+    "inactive_route": "preserve_scene",
+    "bounded_deferrals": []
+  }
+}
