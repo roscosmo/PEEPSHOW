@@ -14,6 +14,7 @@ printf "shutdown state/cd/ret/count = %u / %u / %u / %u\n", $ui->shutdown_state,
 printf "package state/count   = %u / %u\n", $ui->package_state, $ui->package_event_count
 printf "transitions/rejected  = %u / %u\n", $ui->transition_count, $ui->rejected_event_count
 printf "button event/count    = %u / %u\n", $ui->last_button_event, $ui->button_event_count
+printf "joystick event/count/state candidate/resolved = %u / %u / %u / 0x%x / 0x%x\n", $ui->last_joystick_event, $ui->joystick_event_count, $ui->joystick_state_update_count, $ui->joystick_candidate_direction_mask, $ui->joystick_resolved_direction_mask
 printf "router action pend/last/req/take = %u / %u / %u / %u\n", $ui->pending_action, $ui->last_action, $ui->action_request_count, $ui->action_take_count
 printf "rtos ui action last/count/status = %u / %u / 0x%x\n", $rt->ui_action_last, $rt->ui_action_count, $rt->ui_action_send_status
 printf "system admission req/allow/deny/suspend = %u / %u / %u / %u\n", $rt->admission_request_count, $rt->admission_allow_count, $rt->admission_deny_count, $rt->admission_suspend_count

@@ -47,6 +47,14 @@
 #define PS_HW6_RTOS_INPUT_RAW_ACTIVE_SHIFT (8U)
 #define PS_HW6_RTOS_INPUT_RAW_ACTIVE_MASK (0x1UL)
 #define PS_HW6_RTOS_UI_INPUT_PRESS        (1UL)
+#define PS_HW6_RTOS_UI_INPUT_JOYSTICK_STATE (2UL)
+#define PS_HW6_RTOS_UI_INPUT_SOURCE_MASK  (0xFFUL)
+#define PS_HW6_RTOS_UI_INPUT_CANDIDATE_SHIFT (8U)
+#define PS_HW6_RTOS_UI_INPUT_CANDIDATE_MASK (0x0FUL)
+#define PS_HW6_RTOS_UI_INPUT_RESOLVED_SHIFT (12U)
+#define PS_HW6_RTOS_UI_INPUT_RESOLVED_MASK (0x0FUL)
+#define PS_HW6_RTOS_UI_INPUT_DISPATCH_SHIFT (16U)
+#define PS_HW6_RTOS_UI_INPUT_DISPATCH_MASK (0x01UL)
 #define PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_ID_MASK (0xFFUL)
 #define PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_MASK_SHIFT (8U)
 #define PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_MASK_MASK (0xFFUL)
@@ -304,6 +312,7 @@ static volatile uint32_t ps_joystick_calibration_apply_pending;
 static volatile uint32_t ps_joystick_calibration_save_completion_pending;
 static uint32_t ps_joystick_awake_poll_next_tick;
 static uint32_t ps_joystick_awake_published_direction_mask;
+static uint32_t ps_joystick_awake_published_candidate_mask;
 static volatile uint32_t ps_joystick_awake_publish_reset_pending;
 static volatile uint32_t ps_input_activity_generation;
 static uint32_t ps_power_input_activity_generation;
@@ -896,6 +905,7 @@ static void PS_HW6_RTOS_ResetProbe(void)
   ps_joystick_calibration_apply_pending = 0UL;
   ps_joystick_calibration_save_completion_pending = 0UL;
   ps_joystick_awake_published_direction_mask = 0UL;
+  ps_joystick_awake_published_candidate_mask = 0UL;
   ps_joystick_awake_publish_reset_pending = 0UL;
   g_ps_hw6_rtos_probe.joystick_logical_wake_capture_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
@@ -1488,16 +1498,77 @@ static uint32_t PS_HW6_RTOS_LogicalSourceIsJoystickDirection(
           (source <= (uint32_t)PS_INPUT_LOGICAL_SOURCE_JOY_DOWN)) ? 1UL : 0UL;
 }
 
+static uint32_t PS_HW6_RTOS_LogicalSourceForJoystickDirection(
+  uint32_t direction_mask);
+
+static uint32_t PS_HW6_RTOS_JoystickCandidateMaskIsValid(uint32_t mask)
+{
+  return (((mask & ~0x0FUL) == 0UL) &&
+          ((mask & 0x03UL) != 0x03UL) &&
+          ((mask & 0x0CUL) != 0x0CUL)) ? 1UL : 0UL;
+}
+
+static uint32_t PS_HW6_RTOS_JoystickResolvedMaskIsValid(uint32_t mask)
+{
+  return (((mask & ~0x0FUL) == 0UL) &&
+          ((mask == 0UL) || ((mask & (mask - 1UL)) == 0UL))) ? 1UL : 0UL;
+}
+
+static uint32_t PS_HW6_RTOS_UiInputPackedSource(uint32_t packed)
+{
+  return packed & PS_HW6_RTOS_UI_INPUT_SOURCE_MASK;
+}
+
+static uint32_t PS_HW6_RTOS_UiInputPackedCandidate(uint32_t packed)
+{
+  return (packed >> PS_HW6_RTOS_UI_INPUT_CANDIDATE_SHIFT) &
+         PS_HW6_RTOS_UI_INPUT_CANDIDATE_MASK;
+}
+
+static uint32_t PS_HW6_RTOS_UiInputPackedResolved(uint32_t packed)
+{
+  return (packed >> PS_HW6_RTOS_UI_INPUT_RESOLVED_SHIFT) &
+         PS_HW6_RTOS_UI_INPUT_RESOLVED_MASK;
+}
+
+static uint32_t PS_HW6_RTOS_UiInputPackedDispatch(uint32_t packed)
+{
+  return (packed >> PS_HW6_RTOS_UI_INPUT_DISPATCH_SHIFT) &
+         PS_HW6_RTOS_UI_INPUT_DISPATCH_MASK;
+}
+
 static uint32_t PS_HW6_RTOS_UiInputCommandIsValid(uint32_t owner_id,
                                                   const ULONG *message)
 {
+  uint32_t command = (uint32_t)message[2];
+  uint32_t packed = (uint32_t)message[3];
+  uint32_t source = PS_HW6_RTOS_UiInputPackedSource(packed);
+  uint32_t candidate = PS_HW6_RTOS_UiInputPackedCandidate(packed);
+  uint32_t resolved = PS_HW6_RTOS_UiInputPackedResolved(packed);
+  uint32_t dispatch = PS_HW6_RTOS_UiInputPackedDispatch(packed);
+
   if ((owner_id != PS_HW6_RTOS_OWNER_UI) ||
       (message[0] != PS_HW6_RTOS_UI_INPUT_MAGIC) ||
-      (message[1] != PS_HW6_RTOS_OWNER_UI) ||
-      (message[2] != PS_HW6_RTOS_UI_INPUT_PRESS) ||
-      ((PS_HW6_RTOS_LogicalSourceIsButton((uint32_t)message[3]) == 0UL) &&
-       (PS_HW6_RTOS_LogicalSourceIsJoystickDirection(
-          (uint32_t)message[3]) == 0UL)))
+      (message[1] != PS_HW6_RTOS_OWNER_UI))
+  {
+    return 0UL;
+  }
+
+  if (command == PS_HW6_RTOS_UI_INPUT_PRESS)
+  {
+    return ((packed == source) &&
+            (PS_HW6_RTOS_LogicalSourceIsButton(source) != 0UL)) ? 1UL : 0UL;
+  }
+
+  if ((command != PS_HW6_RTOS_UI_INPUT_JOYSTICK_STATE) ||
+      (PS_HW6_RTOS_JoystickCandidateMaskIsValid(candidate) == 0UL) ||
+      (PS_HW6_RTOS_JoystickResolvedMaskIsValid(resolved) == 0UL) ||
+      ((dispatch == 0UL) &&
+       (source != (uint32_t)PS_INPUT_LOGICAL_SOURCE_NONE)) ||
+      ((dispatch != 0UL) &&
+       (PS_HW6_RTOS_LogicalSourceIsJoystickDirection(source) == 0UL)) ||
+      ((dispatch != 0UL) &&
+       (PS_HW6_RTOS_LogicalSourceForJoystickDirection(resolved) != source)))
   {
     return 0UL;
   }
@@ -2697,8 +2768,7 @@ static uint32_t PS_HW6_RTOS_DisplayCursorBlinkEligible(void)
 {
   uint32_t page = g_ps_ui_router_probe.current_page;
 
-  if ((page != (uint32_t)PS_UI_ROUTER_PAGE_HOME) &&
-      (page != (uint32_t)PS_UI_ROUTER_PAGE_MENU) &&
+  if ((page != (uint32_t)PS_UI_ROUTER_PAGE_MENU) &&
       (page != (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF))
   {
     return 0UL;
@@ -4584,6 +4654,52 @@ static UINT PS_HW6_RTOS_SendRuntimeLogicalPress(uint32_t source,
   return status;
 }
 
+static uint32_t PS_HW6_RTOS_UiInputPackedJoystick(
+  uint32_t source,
+  uint32_t candidate_direction_mask,
+  uint32_t resolved_direction_mask,
+  uint32_t dispatch)
+{
+  return ((source & PS_HW6_RTOS_UI_INPUT_SOURCE_MASK) |
+          ((candidate_direction_mask &
+            PS_HW6_RTOS_UI_INPUT_CANDIDATE_MASK) <<
+           PS_HW6_RTOS_UI_INPUT_CANDIDATE_SHIFT) |
+          ((resolved_direction_mask &
+            PS_HW6_RTOS_UI_INPUT_RESOLVED_MASK) <<
+           PS_HW6_RTOS_UI_INPUT_RESOLVED_SHIFT) |
+          (((dispatch != 0UL) ? 1UL : 0UL) <<
+           PS_HW6_RTOS_UI_INPUT_DISPATCH_SHIFT));
+}
+
+static UINT PS_HW6_RTOS_SendUiJoystickState(
+  uint32_t candidate_direction_mask,
+  uint32_t resolved_direction_mask,
+  uint32_t dispatch)
+{
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+  uint32_t source = (dispatch != 0UL) ?
+    PS_HW6_RTOS_LogicalSourceForJoystickDirection(resolved_direction_mask) :
+    (uint32_t)PS_INPUT_LOGICAL_SOURCE_NONE;
+  UINT status;
+
+  message[0] = PS_HW6_RTOS_UI_INPUT_MAGIC;
+  message[1] = PS_HW6_RTOS_OWNER_UI;
+  message[2] = PS_HW6_RTOS_UI_INPUT_JOYSTICK_STATE;
+  message[3] = (ULONG)PS_HW6_RTOS_UiInputPackedJoystick(
+    source,
+    candidate_direction_mask,
+    resolved_direction_mask,
+    dispatch);
+  status = tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_UI],
+                         message,
+                         TX_NO_WAIT);
+  PS_HW6_TraceInputButton(source,
+                          PS_HW6_RTOS_OWNER_UI,
+                          (uint32_t)status,
+                          candidate_direction_mask);
+  return status;
+}
+
 static UINT PS_HW6_RTOS_SendRuntimeInputEvent(
   const ps_input_button_logical_record_t *record)
 {
@@ -4761,12 +4877,13 @@ static uint32_t PS_HW6_RTOS_LogicalSourceForJoystickDirection(
 }
 
 static UINT PS_HW6_RTOS_DeliverJoystickDirectionActivation(
-  uint32_t direction_mask,
+  uint32_t resolved_direction_mask,
+  uint32_t candidate_direction_mask,
   uint32_t timestamp)
 {
   UINT status = (UINT)PS_HW6_RTOS_INPUT_POLICY_STATUS_SUPPRESSED;
   uint32_t source =
-    PS_HW6_RTOS_LogicalSourceForJoystickDirection(direction_mask);
+    PS_HW6_RTOS_LogicalSourceForJoystickDirection(resolved_direction_mask);
   uint32_t target = PS_HW6_RTOS_INPUT_POLICY_TARGET_NONE;
   uint32_t runtime_class = g_ps_hw6_rtos_probe.runtime_current_class;
   uint32_t runtime_lifecycle = g_ps_hw6_rtos_probe.runtime_lifecycle;
@@ -4782,7 +4899,9 @@ static UINT PS_HW6_RTOS_DeliverJoystickDirectionActivation(
   else if (PS_HW6_RTOS_InputPolicySystemOverlayActive() != 0UL)
   {
     target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
-    status = PS_HW6_RTOS_SendUiLogicalPress(source);
+    status = PS_HW6_RTOS_SendUiJoystickState(candidate_direction_mask,
+                                              resolved_direction_mask,
+                                              1UL);
   }
   else if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_NONE) ||
            (runtime_lifecycle !=
@@ -4794,12 +4913,15 @@ static UINT PS_HW6_RTOS_DeliverJoystickDirectionActivation(
            (runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_INSTALLER))
   {
     target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
-    status = PS_HW6_RTOS_SendUiLogicalPress(source);
+    status = PS_HW6_RTOS_SendUiJoystickState(candidate_direction_mask,
+                                              resolved_direction_mask,
+                                              1UL);
   }
   else if (PS_HW6_RTOS_InputPolicyRuntimeClassOwnsInput(runtime_class) != 0UL)
   {
     target = PS_HW6_RTOS_INPUT_POLICY_TARGET_RUNTIME;
-    status = PS_HW6_RTOS_SendRuntimeLogicalPress(source, direction_mask);
+    status = PS_HW6_RTOS_SendRuntimeLogicalPress(source,
+                                                  resolved_direction_mask);
   }
   else
   {
@@ -4817,7 +4939,12 @@ static UINT PS_HW6_RTOS_DeliverJoystickDirectionActivation(
     g_ps_hw6_rtos_probe.joystick_logical_drop_count++;
   }
 
-  g_ps_hw6_rtos_probe.joystick_logical_last_direction_mask = direction_mask;
+  g_ps_hw6_rtos_probe.joystick_logical_last_candidate_mask =
+    candidate_direction_mask;
+  g_ps_hw6_rtos_probe.joystick_logical_last_resolved_mask =
+    resolved_direction_mask;
+  g_ps_hw6_rtos_probe.joystick_logical_last_direction_mask =
+    resolved_direction_mask;
   g_ps_hw6_rtos_probe.joystick_logical_last_source = source;
   g_ps_hw6_rtos_probe.joystick_logical_last_target = target;
   g_ps_hw6_rtos_probe.joystick_logical_last_status = (uint32_t)status;
@@ -4852,7 +4979,9 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
 {
   HAL_StatusTypeDef status;
   uint32_t period_ticks;
+  uint32_t previous_candidate;
   uint32_t previous_direction;
+  uint32_t candidate;
   uint32_t direction;
   uint32_t wake_direction = 0UL;
   uint32_t wake_direction_available = 0UL;
@@ -4861,6 +4990,7 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
   {
     ps_joystick_awake_poll_next_tick = 0UL;
     ps_joystick_awake_published_direction_mask = 0UL;
+    ps_joystick_awake_published_candidate_mask = 0UL;
     g_ps_hw6_rtos_probe.joystick_awake_poll_next_tick = 0UL;
     return;
   }
@@ -4870,6 +5000,7 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
     g_ps_hw6_rtos_probe.joystick_logical_stop2_reset_previous_direction =
       ps_joystick_awake_published_direction_mask;
     ps_joystick_awake_published_direction_mask = 0UL;
+    ps_joystick_awake_published_candidate_mask = 0UL;
     ps_joystick_awake_publish_reset_pending = 0UL;
     g_ps_hw6_rtos_probe.joystick_logical_stop2_reset_pending = 0UL;
     g_ps_hw6_rtos_probe.joystick_logical_stop2_reset_consume_count++;
@@ -4896,6 +5027,7 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
     g_ps_hw6_rtos_probe.joystick_logical_wake_capture_status =
       (uint32_t)PS_HW6_RTOS_DeliverJoystickDirectionActivation(
         wake_direction,
+        wake_direction,
         now_tick);
     if (g_ps_hw6_rtos_probe.joystick_logical_wake_capture_status ==
         (uint32_t)TX_SUCCESS)
@@ -4903,6 +5035,7 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
       g_ps_hw6_rtos_probe.joystick_logical_wake_capture_publish_count++;
     }
     ps_joystick_awake_published_direction_mask = wake_direction;
+    ps_joystick_awake_published_candidate_mask = wake_direction;
   }
 
   if ((ps_joystick_awake_poll_next_tick != 0UL) &&
@@ -4921,6 +5054,7 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
   ps_joystick_awake_poll_next_tick = now_tick + period_ticks;
   g_ps_hw6_rtos_probe.joystick_awake_poll_next_tick =
     ps_joystick_awake_poll_next_tick;
+  previous_candidate = ps_joystick_awake_published_candidate_mask;
   previous_direction = ps_joystick_awake_published_direction_mask;
   status = PS_HW6_OwnerStateMachines_RunJoystickCardinalProbe();
   g_ps_hw6_rtos_probe.joystick_awake_poll_count++;
@@ -4931,30 +5065,50 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
     return;
   }
 
+  candidate =
+    g_ps_hw6_owner_sm_probe.joystick_input_candidate_direction_mask;
   direction = g_ps_hw6_owner_sm_probe.joystick_input_direction_mask;
-  if (direction == previous_direction)
+  if ((candidate == previous_candidate) &&
+      (direction == previous_direction))
   {
     return;
   }
 
-  g_ps_hw6_rtos_probe.joystick_logical_change_count++;
-  if ((previous_direction != 0UL) && (direction != 0UL))
+  if (direction != previous_direction)
   {
-    g_ps_hw6_rtos_probe.joystick_logical_switch_count++;
+    g_ps_hw6_rtos_probe.joystick_logical_change_count++;
+    if ((previous_direction != 0UL) && (direction != 0UL))
+    {
+      g_ps_hw6_rtos_probe.joystick_logical_switch_count++;
+    }
+    if (direction == 0UL)
+    {
+      g_ps_hw6_rtos_probe.joystick_logical_release_count++;
+      g_ps_hw6_rtos_probe.joystick_logical_last_candidate_mask = candidate;
+      g_ps_hw6_rtos_probe.joystick_logical_last_resolved_mask = 0UL;
+      g_ps_hw6_rtos_probe.joystick_logical_last_direction_mask = 0UL;
+      g_ps_hw6_rtos_probe.joystick_logical_last_source =
+        (uint32_t)PS_INPUT_LOGICAL_SOURCE_NONE;
+      g_ps_hw6_rtos_probe.joystick_logical_last_tick = now_tick;
+      if (g_ps_ui_router_probe.current_page ==
+          (uint32_t)PS_UI_ROUTER_PAGE_HOME)
+      {
+        (void)PS_HW6_RTOS_SendUiJoystickState(candidate, 0UL, 0UL);
+      }
+    }
+    else
+    {
+      (void)PS_HW6_RTOS_DeliverJoystickDirectionActivation(direction,
+                                                            candidate,
+                                                            now_tick);
+    }
   }
-  if (direction == 0UL)
+  else if (g_ps_ui_router_probe.current_page ==
+           (uint32_t)PS_UI_ROUTER_PAGE_HOME)
   {
-    g_ps_hw6_rtos_probe.joystick_logical_release_count++;
-    g_ps_hw6_rtos_probe.joystick_logical_last_direction_mask = 0UL;
-    g_ps_hw6_rtos_probe.joystick_logical_last_source =
-      (uint32_t)PS_INPUT_LOGICAL_SOURCE_NONE;
-    g_ps_hw6_rtos_probe.joystick_logical_last_tick = now_tick;
+    (void)PS_HW6_RTOS_SendUiJoystickState(candidate, direction, 0UL);
   }
-  else
-  {
-    (void)PS_HW6_RTOS_DeliverJoystickDirectionActivation(direction,
-                                                          now_tick);
-  }
+  ps_joystick_awake_published_candidate_mask = candidate;
   ps_joystick_awake_published_direction_mask = direction;
 }
 
@@ -6998,15 +7152,38 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       }
       else if (PS_HW6_RTOS_UiInputCommandIsValid(owner_id, message) != 0UL)
       {
-        uint32_t button = (uint32_t)message[3];
+        uint32_t command = (uint32_t)message[2];
+        uint32_t packed_input = (uint32_t)message[3];
+        uint32_t button = PS_HW6_RTOS_UiInputPackedSource(packed_input);
         uint32_t action = (uint32_t)PS_UI_ROUTER_ACTION_NONE;
 
         (void)PS_HW6_RTOS_RequestUiClockCapabilities(
           PS_HW6_RTOS_UI_CLOCK_REASON_REACTIVE_TRANSACTION,
           PS_HW6_RTOS_UI_CLOCK_REACTIVE_CAPABILITIES);
 
-        if ((button == (uint32_t)PS_INPUT_BUTTON_ID_B) &&
-            (PS_HW6_RTOS_UiMscExportActive() != 0UL))
+        if (command == PS_HW6_RTOS_UI_INPUT_JOYSTICK_STATE)
+        {
+          uint32_t candidate =
+            PS_HW6_RTOS_UiInputPackedCandidate(packed_input);
+          uint32_t resolved =
+            PS_HW6_RTOS_UiInputPackedResolved(packed_input);
+          uint32_t dispatch =
+            PS_HW6_RTOS_UiInputPackedDispatch(packed_input);
+
+          router_status = PS_UIRouter_RecordJoystickState(candidate,
+                                                          resolved);
+          if ((router_status == PS_STATUS_OK) && (dispatch != 0UL))
+          {
+            router_status = PS_UIRouter_Dispatch(
+              PS_HW6_RTOS_RouterEventForLogicalSource(button));
+          }
+          if (router_status == PS_STATUS_OK)
+          {
+            PS_HW6_RTOS_SendCurrentUiRenderCommand();
+          }
+        }
+        else if ((button == (uint32_t)PS_INPUT_BUTTON_ID_B) &&
+                 (PS_HW6_RTOS_UiMscExportActive() != 0UL))
         {
           g_ps_hw6_rtos_probe.ui_action_msc_exit_intercept_count++;
           PS_HW6_RTOS_HandleUiRouterAction(

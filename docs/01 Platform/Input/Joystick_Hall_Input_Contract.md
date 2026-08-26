@@ -58,8 +58,10 @@ Low-power input model:
    cardinal samples within at most three reads. If stability is not reached,
    the latest non-neutral sample is the deterministic fallback. Normal awake
    polling remains a single-sample path.
-6. Raw magnetic readings are normalized through the active calibration into one
-   dominant cardinal direction.
+6. Raw magnetic readings are normalized through the active calibration into a
+   canonical direction-bit candidate that may contain one horizontal and one
+   vertical bit. A separate dominant-axis result provides deterministic
+   four-way policy without discarding the canonical diagonal state.
 7. The joystick returns to threshold-armed or polling mode according to active
    policy.
 
@@ -116,14 +118,19 @@ Allowed public fields:
 - normalized X/Y vector
 - deadzone-applied X/Y vector
 - magnitude
-- cardinal direction mask
+- canonical direction mask, including diagonals
+- deterministic dominant-axis direction
 - active/inactive flag
 - calibration-valid flag
 - sample age
 
 Raw magnetic values are diagnostics and calibration inputs only. They must not be normal game-facing API.
 
-Cardinal direction mask may represent diagonals by setting more than one direction bit.
+The canonical direction mask may represent diagonals by setting one horizontal
+and one vertical direction bit. Four-way consumers use the separate resolved
+direction: retain the previous selected axis while it remains valid, otherwise
+select the greater normalized magnitude, with horizontal as the fixed exact-tie
+result. STOP2 wake confirmation remains cardinal-only.
 
 TMAG result registers are read as signed diagnostic values before normalization:
 
@@ -140,8 +147,8 @@ The public joystick API must not expose these raw register values except through
 On HW6 unit 001, FW0 has proven TMAG3001 identity, driver-backed owner wake and
 sleep cycles, raw/live sample capture, and the first complete guided calibration
 path. FW0 now implements the protected A/B calibration-record path and boot
-admission policy; target validation of save, reset reload, and alternate-record
-rollover is the remaining acceptance step.
+admission policy; save, reset reload, and active-calibration restoration are
+target-validated.
 
 Current FW0 calibration status:
 
@@ -155,8 +162,9 @@ Current FW0 calibration status:
 - captured cardinal reach seeds the final envelope so a sparse sweep cannot discard a proven endpoint
 - the review screen displays the measured aligned envelope, deadzone, logical
   activation-threshold markers, live aligned marker, and resolved cardinal direction
-- normalized cardinal classification is deterministic and dominant-axis only;
-  enter, release, and orthogonal-axis switch hysteresis are compile-time knobs
+- normalized classification retains both the canonical four-bit candidate mask
+  and a deterministic one-bit dominant-axis result; enter, release, and
+  orthogonal-axis switch hysteresis are compile-time knobs
 - a held direction remains selected until it falls below the release threshold
   or the orthogonal axis exceeds it by the configured dominance margin
 - normal awake input uses a bounded `thInput` sample every
@@ -170,6 +178,11 @@ Current FW0 calibration status:
   threshold crossing; this confirmation is not applied to awake polling
 - awake cardinal sources are published as distinct `JOY_LEFT`, `JOY_RIGHT`,
   `JOY_UP`, and `JOY_DOWN` actions; holding a direction does not repeat it
+- the shell receives canonical candidate and resolved masks in the same bounded
+  input message; the temporary HOME 3x3 diagnostic renders all eight candidate
+  directions while an outer marker shows the resolved four-way action. HW6
+  target testing visually accepted all four diagonal candidates with zero
+  logical drops.
 - only a successfully queued direction activation restarts the STOP2 idle
   window; periodic samples and releases are not meaningful activity
 - A persists the candidate through `thStorage`; it becomes active only after
@@ -209,10 +222,11 @@ Debugger-only one-position captures are not sufficient calibration evidence for
 this joystick. The accepted path is the on-device guided flow: neutral, four
 confirmed cardinals, full-travel sweep, then live visual review. The calibration
 page must remain awake throughout this sequence. Dominant-axis hysteresis is
-proven through this acquisition-independent review path. Persistence remains a
-separate bring-up milestone. Awake routing and movement-triggered STOP2 wake use
-the same normalized routing path and remain provisional until target wake,
-ordering, regression, and current evidence is captured.
+proven through this acquisition-independent review path. Persistence, awake
+cardinal routing, movement-triggered STOP2 wake, four-direction wake
+classification, and the matched STOP2 current comparison are target-validated.
+Canonical awake diagonal publication and the temporary HOME diagnostic are
+target-validated across all four diagonal directions.
 
 ## Calibration Contract
 

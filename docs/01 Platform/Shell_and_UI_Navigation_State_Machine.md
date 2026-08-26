@@ -120,6 +120,9 @@ On HW6 unit 001, FW0 has a first shell router integrated with `thUI`,
   `BTN_R`); it does not publish universal enter/back actions
 - `thUI` maps those generic events contextually: A selects/advances, B backs
   out, and L/R move focus when joystick navigation is unavailable
+- awake joystick messages preserve the canonical eight-way candidate alongside
+  one deterministic four-way shell action. Diagonals retain the previous valid
+  axis, then use normalized magnitude, then a fixed horizontal tie-break.
 - the FW0 input focus resolver keeps shell, installer, shutdown, and MSC overlay button events on `thUI`; package runtime classes receive the same generic logical presses through `thRuntime` stubs instead of shell navigation
 - display presentation is routed through `thDisplay`; the UI does not touch the
   display peripheral directly
@@ -136,6 +139,12 @@ transaction both requested and released UI reactive clock intent through
 `thPower`, then settled with requester cap `UI=0x0` and `STOP2 ready=1`.
 
 This is an FW0 shell scaffold, not the final renderer or final menu system. The package page is currently a temporary USB transfer scaffold: A requests the normal MSC enter service through `thUI` -> `thStorage`, and B requests MSC exit while an export is active. Package-page MSC reclaim asks `thStorage` to force a staging scan so an existing `.egg` can be recognized even when the bridge dirty flag is false. Valid package, install-stub, and error prompts return to MENU on B after clearing the prompt; successful install-stub completion also returns to MENU. This is a caller of the storage service, not a second USB ownership path. FW0 runtime evidence `EV-HW6-20260813-P1-RUNTIME-044` records this package-transfer flow as an `INSTALLER` runtime overlay that returns to `SHELL`; it is not final package launch or final installer UI.
+The temporary HOME list is replaced during joystick bring-up by a 3x3 direction
+diagnostic. Its filled cell shows neutral or the canonical eight-way candidate;
+an outer marker independently shows the four-way shell resolution. A still
+enters MENU. This is diagnostic shell content, not the final HOME design. HW6
+target testing visually accepted all four diagonal cells with zero logical
+input drops.
 FW0 now has the first input focus split for that handoff: generic A/B/L/R logical presses remain UI-owned while `SHELL` or `INSTALLER` is current, and while a system overlay such as shutdown or MSC is active. `LP_GRAPH`, `LP_MODULE`, and `RT_SCENE` route to a `thRuntime` input stub so package code can later interpret the same generic events contextually. HW6 validation confirmed normal menu navigation still targets `thUI`, and a reactive package stub press targets `thRuntime` without driving shell navigation.
 
 When no validated `.egg` package is installed or selected, the Platform-owned
@@ -146,8 +155,9 @@ path.
 
 FW0 probe version 22 adds a matching system-action admission layer for shell actions that start system overlays. `thUI` still owns the page action, but before MSC enter or package-install-stub actions are queued, the admission layer checks whether another system overlay is active and whether a package runtime must be suspended first. Active package runtime classes are suspended through `thRuntime` with a bounded owner ACK before the action is allowed. MSC exit stays allowed while the MSC overlay is active so the user always has a local escape path. HW6 evidence `EV-HW6-20260814-P1-ADMISSION-053` validates the dry-run path: reactive package stub entered `LP_MODULE / REACTIVE / RUNNING`; MSC-enter admission reported action/result/reason/status `1 / 2 / 3 / 0x0`, counts `request/allow/deny/suspend = 1 / 1 / 0 / 1`, and `thRuntime` moved to `SUSPENDED` with suspend count `1` and zero runtime queue errors.
 
-The joystick calibration page can be entered, but its multi-step calibration
-flow is not complete yet.
+The joystick calibration page now provides the guided neutral, cardinal, sweep,
+review, and protected persistent-save flow. Final product artwork and tuning
+remain separate from the validated control path.
 
 Current FW0 also has a validated START shutdown scaffold: `thPower` accepts input-owned prep/warning/imminent/cancel lifecycle events, `thUI` maps those into a modal `SHUTDOWN` page, and `thDisplay` renders plain text for prep and warning states. HW6 unit 001 showed `PREPARING`, `POWER OFF IN 3/2/1`, then release before shipment returned to HOME with UI/display page `1` and shutdown state `4` (`CANCELLED`). This page is scaffolding only; final animation, sprites, copy, save progress, and product power-off policy remain open.
 

@@ -22,6 +22,9 @@ typedef struct
   uint32_t button_event_count;
   uint32_t last_joystick_event;
   uint32_t joystick_event_count;
+  uint32_t joystick_candidate_direction_mask;
+  uint32_t joystick_resolved_direction_mask;
+  uint32_t joystick_state_update_count;
   uint32_t pending_action;
   uint32_t last_action;
   uint32_t action_request_count;
@@ -69,6 +72,12 @@ static void PS_UIRouter_UpdateProbe(void)
     ps_ui_router_state.last_joystick_event;
   g_ps_ui_router_probe.joystick_event_count =
     ps_ui_router_state.joystick_event_count;
+  g_ps_ui_router_probe.joystick_candidate_direction_mask =
+    ps_ui_router_state.joystick_candidate_direction_mask;
+  g_ps_ui_router_probe.joystick_resolved_direction_mask =
+    ps_ui_router_state.joystick_resolved_direction_mask;
+  g_ps_ui_router_probe.joystick_state_update_count =
+    ps_ui_router_state.joystick_state_update_count;
   g_ps_ui_router_probe.pending_action =
     ps_ui_router_state.pending_action;
   g_ps_ui_router_probe.last_action = ps_ui_router_state.last_action;
@@ -431,6 +440,9 @@ void PS_UIRouter_Init(void)
   ps_ui_router_state.button_event_count = 0UL;
   ps_ui_router_state.last_joystick_event = 0UL;
   ps_ui_router_state.joystick_event_count = 0UL;
+  ps_ui_router_state.joystick_candidate_direction_mask = 0UL;
+  ps_ui_router_state.joystick_resolved_direction_mask = 0UL;
+  ps_ui_router_state.joystick_state_update_count = 0UL;
   ps_ui_router_state.pending_action = PS_UI_ROUTER_ACTION_NONE;
   ps_ui_router_state.last_action = PS_UI_ROUTER_ACTION_NONE;
   ps_ui_router_state.action_request_count = 0UL;
@@ -442,6 +454,29 @@ void PS_UIRouter_Init(void)
   g_ps_ui_router_request = 0UL;
   g_ps_ui_router_request_event = 0UL;
   PS_UIRouter_UpdateProbe();
+}
+
+ps_status_t PS_UIRouter_RecordJoystickState(
+  uint32_t candidate_direction_mask,
+  uint32_t resolved_direction_mask)
+{
+  if (((candidate_direction_mask & ~0x0FUL) != 0UL) ||
+      ((candidate_direction_mask & 0x03UL) == 0x03UL) ||
+      ((candidate_direction_mask & 0x0CUL) == 0x0CUL) ||
+      ((resolved_direction_mask != 0UL) &&
+       ((resolved_direction_mask & (resolved_direction_mask - 1UL)) != 0UL)) ||
+      ((resolved_direction_mask & ~0x0FUL) != 0UL))
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  ps_ui_router_state.joystick_candidate_direction_mask =
+    candidate_direction_mask;
+  ps_ui_router_state.joystick_resolved_direction_mask =
+    resolved_direction_mask;
+  ps_ui_router_state.joystick_state_update_count++;
+  PS_UIRouter_UpdateProbe();
+  return PS_STATUS_OK;
 }
 
 uint32_t PS_UIRouter_TakeAction(void)

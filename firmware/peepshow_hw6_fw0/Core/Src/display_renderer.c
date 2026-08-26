@@ -18,6 +18,12 @@
 #define DISPLAY_RENDERER_LIST_TEXT_X        (26U)
 #define DISPLAY_RENDERER_LIST_CURSOR_WIDTH  (8U)
 #define DISPLAY_RENDERER_LIST_CURSOR_HEIGHT (16U)
+#define DISPLAY_RENDERER_HOME_GRID_X         (36U)
+#define DISPLAY_RENDERER_HOME_GRID_Y         (40U)
+#define DISPLAY_RENDERER_HOME_GRID_CELL      (24U)
+#define DISPLAY_RENDERER_HOME_GRID_GAP       (8U)
+#define DISPLAY_RENDERER_HOME_GRID_INSET     (4U)
+#define DISPLAY_RENDERER_HOME_RESOLVED_MARK  (6U)
 
 typedef struct
 {
@@ -2666,6 +2672,140 @@ static uint32_t DisplayRenderer_DrawList(const display_renderer_list_t *list)
   return black_pixels;
 }
 
+static uint32_t DisplayRenderer_HomeGridIndex(uint32_t direction_mask)
+{
+  uint32_t row = 1UL;
+  uint32_t column = 1UL;
+
+  if ((direction_mask & PS_INPUT_JOYSTICK_DIRECTION_UP) != 0UL)
+  {
+    row = 0UL;
+  }
+  else if ((direction_mask & PS_INPUT_JOYSTICK_DIRECTION_DOWN) != 0UL)
+  {
+    row = 2UL;
+  }
+  if ((direction_mask & PS_INPUT_JOYSTICK_DIRECTION_LEFT) != 0UL)
+  {
+    column = 0UL;
+  }
+  else if ((direction_mask & PS_INPUT_JOYSTICK_DIRECTION_RIGHT) != 0UL)
+  {
+    column = 2UL;
+  }
+
+  return (row * 3UL) + column;
+}
+
+static uint32_t DisplayRenderer_DrawHomeJoystickGrid(void)
+{
+  uint32_t black_pixels = 0UL;
+  uint32_t active_index = DisplayRenderer_HomeGridIndex(
+    g_ps_ui_router_probe.joystick_candidate_direction_mask);
+  uint32_t resolved =
+    g_ps_ui_router_probe.joystick_resolved_direction_mask;
+  uint32_t row;
+  uint32_t column;
+  uint16_t x;
+  uint16_t y;
+  uint16_t grid_center_x = (uint16_t)(DISPLAY_RENDERER_HOME_GRID_X +
+    DISPLAY_RENDERER_HOME_GRID_CELL + DISPLAY_RENDERER_HOME_GRID_GAP +
+    (DISPLAY_RENDERER_HOME_GRID_CELL / 2U));
+  uint16_t grid_center_y = (uint16_t)(DISPLAY_RENDERER_HOME_GRID_Y +
+    DISPLAY_RENDERER_HOME_GRID_CELL + DISPLAY_RENDERER_HOME_GRID_GAP +
+    (DISPLAY_RENDERER_HOME_GRID_CELL / 2U));
+
+  black_pixels += DisplayRenderer_HorizontalLine(
+    0U, (uint16_t)(DISPLAY_RENDERER_WIDTH - 1U), 0U);
+  black_pixels += DisplayRenderer_HorizontalLine(
+    0U, (uint16_t)(DISPLAY_RENDERER_WIDTH - 1U),
+    (uint16_t)(DISPLAY_RENDERER_HEIGHT - 1U));
+  black_pixels += DisplayRenderer_VerticalLine(
+    0U, 0U, (uint16_t)(DISPLAY_RENDERER_HEIGHT - 1U));
+  black_pixels += DisplayRenderer_VerticalLine(
+    (uint16_t)(DISPLAY_RENDERER_WIDTH - 1U), 0U,
+    (uint16_t)(DISPLAY_RENDERER_HEIGHT - 1U));
+  black_pixels += DisplayRenderer_HorizontalLine(
+    8U, (uint16_t)(DISPLAY_RENDERER_WIDTH - 9U),
+    DISPLAY_RENDERER_LIST_DIVIDER_Y);
+  black_pixels += DisplayRenderer_DrawCenteredText(
+    DISPLAY_RENDERER_LIST_TITLE_Y,
+    (g_ps_ui_router_probe.eggless != 0UL) ? "EGGLESS" : "HOME",
+    DISPLAY_RENDERER_TEXT_SCALE);
+
+  for (row = 0UL; row < 3UL; ++row)
+  {
+    for (column = 0UL; column < 3UL; ++column)
+    {
+      x = (uint16_t)(DISPLAY_RENDERER_HOME_GRID_X +
+        (column * (DISPLAY_RENDERER_HOME_GRID_CELL +
+                   DISPLAY_RENDERER_HOME_GRID_GAP)));
+      y = (uint16_t)(DISPLAY_RENDERER_HOME_GRID_Y +
+        (row * (DISPLAY_RENDERER_HOME_GRID_CELL +
+                DISPLAY_RENDERER_HOME_GRID_GAP)));
+      black_pixels += DisplayRenderer_HorizontalLine(
+        x, (uint16_t)(x + DISPLAY_RENDERER_HOME_GRID_CELL - 1U), y);
+      black_pixels += DisplayRenderer_HorizontalLine(
+        x, (uint16_t)(x + DISPLAY_RENDERER_HOME_GRID_CELL - 1U),
+        (uint16_t)(y + DISPLAY_RENDERER_HOME_GRID_CELL - 1U));
+      black_pixels += DisplayRenderer_VerticalLine(
+        x, y, (uint16_t)(y + DISPLAY_RENDERER_HOME_GRID_CELL - 1U));
+      black_pixels += DisplayRenderer_VerticalLine(
+        (uint16_t)(x + DISPLAY_RENDERER_HOME_GRID_CELL - 1U),
+        y, (uint16_t)(y + DISPLAY_RENDERER_HOME_GRID_CELL - 1U));
+      if (((row * 3UL) + column) == active_index)
+      {
+        black_pixels += DisplayRenderer_FilledRect(
+          (uint16_t)(x + DISPLAY_RENDERER_HOME_GRID_INSET),
+          (uint16_t)(y + DISPLAY_RENDERER_HOME_GRID_INSET),
+          (uint16_t)(DISPLAY_RENDERER_HOME_GRID_CELL -
+                     (2U * DISPLAY_RENDERER_HOME_GRID_INSET)),
+          (uint16_t)(DISPLAY_RENDERER_HOME_GRID_CELL -
+                     (2U * DISPLAY_RENDERER_HOME_GRID_INSET)));
+      }
+    }
+  }
+
+  if (resolved == PS_INPUT_JOYSTICK_DIRECTION_LEFT)
+  {
+    black_pixels += DisplayRenderer_FilledRect(
+      (uint16_t)(DISPLAY_RENDERER_HOME_GRID_X - 10U),
+      (uint16_t)(grid_center_y - (DISPLAY_RENDERER_HOME_RESOLVED_MARK / 2U)),
+      DISPLAY_RENDERER_HOME_RESOLVED_MARK,
+      DISPLAY_RENDERER_HOME_RESOLVED_MARK);
+  }
+  else if (resolved == PS_INPUT_JOYSTICK_DIRECTION_RIGHT)
+  {
+    black_pixels += DisplayRenderer_FilledRect(
+      (uint16_t)(DISPLAY_RENDERER_HOME_GRID_X + 3U *
+        DISPLAY_RENDERER_HOME_GRID_CELL + 2U *
+        DISPLAY_RENDERER_HOME_GRID_GAP + 4U),
+      (uint16_t)(grid_center_y - (DISPLAY_RENDERER_HOME_RESOLVED_MARK / 2U)),
+      DISPLAY_RENDERER_HOME_RESOLVED_MARK,
+      DISPLAY_RENDERER_HOME_RESOLVED_MARK);
+  }
+  else if (resolved == PS_INPUT_JOYSTICK_DIRECTION_UP)
+  {
+    black_pixels += DisplayRenderer_FilledRect(
+      (uint16_t)(grid_center_x - (DISPLAY_RENDERER_HOME_RESOLVED_MARK / 2U)),
+      (uint16_t)(DISPLAY_RENDERER_HOME_GRID_Y - 10U),
+      DISPLAY_RENDERER_HOME_RESOLVED_MARK,
+      DISPLAY_RENDERER_HOME_RESOLVED_MARK);
+  }
+  else if (resolved == PS_INPUT_JOYSTICK_DIRECTION_DOWN)
+  {
+    black_pixels += DisplayRenderer_FilledRect(
+      (uint16_t)(grid_center_x - (DISPLAY_RENDERER_HOME_RESOLVED_MARK / 2U)),
+      (uint16_t)(DISPLAY_RENDERER_HOME_GRID_Y + 3U *
+        DISPLAY_RENDERER_HOME_GRID_CELL + 2U *
+        DISPLAY_RENDERER_HOME_GRID_GAP + 4U),
+      DISPLAY_RENDERER_HOME_RESOLVED_MARK,
+      DISPLAY_RENDERER_HOME_RESOLVED_MARK);
+  }
+
+  return black_pixels;
+}
+
 uint32_t DisplayRenderer_GetListCursorLogicalBounds(
   uint32_t selected_row,
   ps_scene_waiting_visual_bounds_t *bounds)
@@ -3046,6 +3186,23 @@ void DisplayRenderer_PrepareUIPage(
     DisplayRenderer_ClearWhite();
     s_rotate_ccw = 1UL;
     black_pixels = DisplayRenderer_DrawJoystickCalibrationReview();
+    DisplayRenderer_RecordCursorBaseFrame();
+    DisplayRenderer_ComputeDirtyRowsFromCommitted();
+    s_rotate_ccw = 0UL;
+    DisplayRenderer_SetPendingList(&list);
+    DisplayRenderer_FillStats(stats,
+                              black_pixels,
+                              DISPLAY_RENDERER_PRIMITIVE_LIST_FULL,
+                              DISPLAY_RENDERER_ROW_NONE,
+                              DISPLAY_RENDERER_ROW_NONE);
+    return;
+  }
+
+  if (page == (uint32_t)PS_UI_ROUTER_PAGE_HOME)
+  {
+    DisplayRenderer_ClearWhite();
+    s_rotate_ccw = 1UL;
+    black_pixels = DisplayRenderer_DrawHomeJoystickGrid();
     DisplayRenderer_RecordCursorBaseFrame();
     DisplayRenderer_ComputeDirtyRowsFromCommitted();
     s_rotate_ccw = 0UL;
