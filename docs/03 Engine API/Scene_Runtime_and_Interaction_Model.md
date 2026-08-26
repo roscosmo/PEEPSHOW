@@ -348,6 +348,22 @@ silently render different scene revisions. Target evidence validates text,
 outline/line, focus, and one static 1bpp sprite element. Package serialization,
 asset-backed catalogs, and authoring-tool output remain future work.
 
+FW0 scene-runtime API version `11` adds direct STATE-to-STATE replacement
+inside one already resident package. A route declares exactly one local target
+state or target scene. Scene guards evaluate against the source scene; the
+initial cross-scene subset does not execute source-scene actions. `thRuntime`
+decodes the destination into an inactive fixed scene slot, validates it, and
+only then changes the active scene pointer. Failure leaves the source scene
+active. Success enters the destination entry state, resets its scene-local
+variables to authored defaults, and establishes a new timeline epoch. Package
+bytes remain resident and no storage access occurs during replacement.
+
+The matching FW0 package loader API version is `6`. It indexes up to eight
+STATE scenes in the current temporary HW6 bring-up bound, accepts `STG1`
+versions 1 and 2, and resolves version 2 scene targets through the validated
+package scene table. Push/pop behavior and transitions to SEQUENCE or PROGRAM
+remain separate future work.
+
 ---
 
 ## Runtime Compositor Layers

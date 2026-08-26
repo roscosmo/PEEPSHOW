@@ -22,7 +22,9 @@ GRAPH_HEADER = struct.Struct("<4s18H")
 VARIABLE_RECORD = struct.Struct("<HBBiii")
 INPUT_RECORD = struct.Struct("<HH")
 STATE_RECORD = struct.Struct("<4H")
-ROUTE_RECORD = struct.Struct("<9H")
+ROUTE_RECORD_V1 = struct.Struct("<9H")
+ROUTE_RECORD_V2 = struct.Struct("<10H")
+ROUTE_RECORD = ROUTE_RECORD_V2
 GUARD_RECORD = struct.Struct("<HBBi")
 OPERATION_RECORD = struct.Struct("<BBHHHi")
 RENDER_HEADER = struct.Struct("<4s6H")
@@ -513,7 +515,12 @@ def _parse_graph(
 ) -> dict[str, object]:
     _require(len(payload) >= GRAPH_HEADER.size, "state graph is truncated")
     values = GRAPH_HEADER.unpack_from(payload)
-    _require(values[0] == b"STG1" and values[1] == 1 and values[2] == GRAPH_HEADER.size, "unsupported state graph")
+    graph_version = values[1]
+    _require(
+        values[0] == b"STG1" and graph_version in {1, 2} and values[2] == GRAPH_HEADER.size,
+        "unsupported state graph",
+    )
+    route_record = ROUTE_RECORD_V1 if graph_version == 1 else ROUTE_RECORD_V2
     (
         entry_state,
         variable_count,
@@ -541,7 +548,7 @@ def _parse_graph(
         variable_count * VARIABLE_RECORD.size,
         input_count * INPUT_RECORD.size,
         state_count * STATE_RECORD.size,
-        route_count * ROUTE_RECORD.size,
+        route_count * route_record.size,
         source_count * 2,
         guard_count * GUARD_RECORD.size,
         operation_count * OPERATION_RECORD.size,
@@ -592,12 +599,24 @@ def _parse_graph(
     _require(all(ref < state_count for ref in source_states), "route source-state index is invalid")
     route_records: list[tuple[int, ...]] = []
     for index in range(route_count):
-        record = ROUTE_RECORD.unpack_from(payload, offsets[3] + index * ROUTE_RECORD.size)
+        record = route_record.unpack_from(payload, offsets[3] + index * route_record.size)
         _string(strings, record[0], "route ID")
-        _require(record[1] < input_count and record[2] < state_count, "route action or target is invalid")
-        _require(record[3] + record[4] <= source_count, "route source range is invalid")
-        _require(record[5] + record[6] <= guard_count, "route guard range is invalid")
-        _require(record[7] + record[8] <= operation_count, "route operation range is invalid")
+        if graph_version == 1:
+            _require(record[1] < input_count and record[2] < state_count, "route action or target is invalid")
+            range_offset = 3
+        else:
+            target_state, target_scene = record[2], record[3]
+            _require(
+                record[1] < input_count
+                and ((target_state < state_count and target_scene == 0xFFFF)
+                     or (target_state == 0xFFFF and target_scene < len(strings)
+                         and record[9] == 0)),
+                "route action or target is invalid",
+            )
+            range_offset = 4
+        _require(record[range_offset] + record[range_offset + 1] <= source_count, "route source range is invalid")
+        _require(record[range_offset + 2] + record[range_offset + 3] <= guard_count, "route guard range is invalid")
+        _require(record[range_offset + 4] + record[range_offset + 5] <= operation_count, "route operation range is invalid")
         route_records.append(record)
     guards: list[dict[str, int]] = []
     for index in range(guard_count):
@@ -621,20 +640,36 @@ def _parse_graph(
         )
     routes: list[dict[str, object]] = []
     for record in route_records:
+        if graph_version == 1:
+            target_state_index = record[2]
+            target_scene = None
+            range_offset = 3
+        else:
+            target_state_index = None if record[2] == 0xFFFF else record[2]
+            target_scene = None if record[3] == 0xFFFF else _string(strings, record[3], "target scene ID")
+            range_offset = 4
         routes.append(
             {
                 "route_id": _string(strings, record[0], "route ID"),
                 "action_index": record[1],
-                "target_state_index": record[2],
-                "source_state_indexes": tuple(source_states[record[3] : record[3] + record[4]]),
-                "guards": tuple(guards[record[5] : record[5] + record[6]]),
-                "operations": tuple(operations[record[7] : record[7] + record[8]]),
+                "target_state_index": target_state_index,
+                "target_scene": target_scene,
+                "source_state_indexes": tuple(
+                    source_states[record[range_offset] : record[range_offset] + record[range_offset + 1]]
+                ),
+                "guards": tuple(
+                    guards[record[range_offset + 2] : record[range_offset + 2] + record[range_offset + 3]]
+                ),
+                "operations": tuple(
+                    operations[record[range_offset + 4] : record[range_offset + 4] + record[range_offset + 5]]
+                ),
             }
         )
     event_refs = struct.unpack_from(f"<{event_count}H", payload, offsets[7]) if event_count else ()
     meaningful_refs = struct.unpack_from(f"<{meaningful_count}H", payload, offsets[8]) if meaningful_count else ()
     _require(all(ref < input_count for ref in event_refs + meaningful_refs), "policy input-action index is invalid")
     return {
+        "format_version": graph_version,
         "entry_state": entry_state,
         "variable_count": variable_count,
         "input_count": input_count,
@@ -766,7 +801,12 @@ def parse_egg(blob: bytes) -> EggPackage:
         )
     expected_scene_chunks = {index for index, chunk in enumerate(chunks) if chunk.chunk_type in {CHUNK_STATE_GRAPH, CHUNK_RENDER_MODELS, CHUNK_WAITING_VISUALS}}
     _require(used_scene_chunks == expected_scene_chunks, "unreferenced or multiply purposed scene chunks exist")
-    _require(str(manifest["entry_scene"]) in {str(scene["scene_id"]) for scene in scenes}, "manifest entry scene is missing")
+    scene_ids = {str(scene["scene_id"]) for scene in scenes}
+    _require(str(manifest["entry_scene"]) in scene_ids, "manifest entry scene is missing")
+    for scene in scenes:
+        for route in scene["graph"]["routes"]:
+            target_scene = route["target_scene"]
+            _require(target_scene is None or str(target_scene) in scene_ids, "route target scene is missing")
     if asset_indexes:
         assets, animations = _parse_assets(
             chunks,

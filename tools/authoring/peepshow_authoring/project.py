@@ -175,20 +175,36 @@ def _apply_route_set_target(
 ) -> dict[str, Any]:
     _require_command_fields(
         command,
-        {"kind", "scene_id", "route_id", "target_state"},
-        {"kind", "scene_id", "route_id", "target_state", "command_id"},
+        {"kind", "scene_id", "route_id"},
+        {"kind", "scene_id", "route_id", "target_state", "target_scene", "command_id"},
     )
     issues: list[ValidationIssue] = []
     scene_id = command.get("scene_id")
     route_id = command.get("route_id")
     target_state = command.get("target_state")
+    target_scene = command.get("target_scene")
+    has_target_state = "target_state" in command
+    has_target_scene = "target_scene" in command
     _stable_id(scene_id, "command.scene_id", issues)
     _stable_id(route_id, "command.route_id", issues)
-    _stable_id(target_state, "command.target_state", issues)
+    if has_target_state == has_target_scene:
+        raise ProjectCommandError(
+            "COMMAND_SHAPE_INVALID",
+            "route.set_target requires exactly one of target_state or target_scene",
+        )
+    if has_target_state:
+        _stable_id(target_state, "command.target_state", issues)
+    else:
+        _stable_id(target_scene, "command.target_scene", issues)
     if issues:
         issue = issues[0]
         raise ProjectCommandError(issue.code, issue.message)
 
+    scene_ids = {
+        scene.get("scene_id")
+        for scene in scenes
+        if isinstance(scene, dict)
+    }
     for scene in scenes:
         if scene.get("scene_id") != scene_id:
             continue
@@ -197,17 +213,31 @@ def _apply_route_set_target(
             for state in scene.get("states", [])
             if isinstance(state, dict)
         }
-        if target_state not in state_ids:
+        if has_target_state and target_state not in state_ids:
             raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown target state '{target_state}'")
+        if has_target_scene and target_scene not in scene_ids:
+            raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown target scene '{target_scene}'")
         for route in scene.get("routes", []):
             if isinstance(route, dict) and route.get("route_id") == route_id:
-                route["target_state"] = target_state
-                return {
+                if has_target_scene and route.get("actions"):
+                    raise ProjectCommandError(
+                        "SCENE_TRANSITION_ACTION_UNSUPPORTED",
+                        "direct scene replacement requires an empty route action list",
+                    )
+                result = {
                     "kind": "route.set_target",
                     "scene_id": scene_id,
                     "route_id": route_id,
-                    "target_state": target_state,
                 }
+                if has_target_state:
+                    route.pop("target_scene", None)
+                    route["target_state"] = target_state
+                    result["target_state"] = target_state
+                else:
+                    route.pop("target_state", None)
+                    route["target_scene"] = target_scene
+                    result["target_scene"] = target_scene
+                return result
         raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown route '{route_id}'")
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
 
@@ -744,7 +774,9 @@ def _check_scene(
 
     for route_id, route in routes.items():
         path = f"{base}.routes[{route_id}]"
-        _check_keys(route, {"route_id", "action_ref", "from_states", "guards", "actions", "target_state"}, path, issues)
+        required = {"route_id", "action_ref", "from_states", "guards", "actions"}
+        allowed = required | {"target_state", "target_scene"}
+        _check_keys(route, required, path, issues, allowed)
         if route.get("action_ref") not in input_actions:
             _issue(issues, "ROUTE_ACTION_UNKNOWN", f"{path}.action_ref", "input action does not exist")
         from_states = route.get("from_states")
@@ -754,8 +786,26 @@ def _check_scene(
             for index, state_ref in enumerate(from_states):
                 if state_ref not in states:
                     _issue(issues, "GRAPH_STATE_UNKNOWN", f"{path}.from_states[{index}]", f"unknown state '{state_ref}'")
-        if route.get("target_state") not in states:
+        has_target_state = "target_state" in route
+        has_target_scene = "target_scene" in route
+        if has_target_state == has_target_scene:
+            _issue(
+                issues,
+                "GRAPH_TRANSITION_TARGET_INVALID",
+                path,
+                "must declare exactly one of target_state or target_scene",
+            )
+        elif has_target_state and route.get("target_state") not in states:
             _issue(issues, "GRAPH_TRANSITION_TARGET_UNKNOWN", f"{path}.target_state", "target state does not exist")
+        elif has_target_scene:
+            _stable_id(route.get("target_scene"), f"{path}.target_scene", issues)
+            if route.get("actions"):
+                _issue(
+                    issues,
+                    "SCENE_TRANSITION_ACTION_UNSUPPORTED",
+                    f"{path}.actions",
+                    "the initial direct scene-replacement slice does not carry scene-local actions across scenes",
+                )
         guards = route.get("guards")
         if not isinstance(guards, list) or len(guards) > 8:
             _issue(issues, "GUARD_LIMIT_EXCEEDED", f"{path}.guards", "must contain at most 8 guards")
@@ -962,6 +1012,18 @@ def load_project(project_root: str | Path) -> ProjectBundle:
     entry_scene = project.get("entry_scene")
     if isinstance(entry_scene, str) and entry_scene not in scene_ids:
         _issue(issues, "SCENE_ENTRY_MISSING", "project.entry_scene", f"unknown entry scene '{entry_scene}'")
+    for scene, source in zip(scenes, loaded_scene_sources):
+        for route in scene.get("routes", []):
+            if not isinstance(route, dict) or "target_scene" not in route:
+                continue
+            target_scene = route.get("target_scene")
+            if isinstance(target_scene, str) and target_scene not in scene_ids:
+                _issue(
+                    issues,
+                    "SCENE_TRANSITION_TARGET_UNKNOWN",
+                    f"scene[{source}].routes[{route.get('route_id')}].target_scene",
+                    f"unknown scene '{target_scene}'",
+                )
     return ProjectBundle(
         root,
         project,

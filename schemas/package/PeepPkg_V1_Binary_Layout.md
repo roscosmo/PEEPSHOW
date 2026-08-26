@@ -86,6 +86,18 @@ states, routes, route source-state indexes, guards, operations, wait event
 interests, and meaningful-activity actions. References are table indexes, not
 pointers. Route order is authored priority order and therefore remains stable.
 
+The container remains `PKG1` version 1 while the `STG1` chunk has its own
+record version:
+
+- `STG1` version 1 routes contain one local target-state index.
+- `STG1` version 2 routes contain exactly one local target-state index or one
+  target-scene string index. The unused target is `0xffff`.
+- a version 2 scene target names another STATE scene in the same package and
+  carries no scene-local operations in the initial direct-replacement subset.
+
+Readers must continue to accept version 1 local routes. Current compilers emit
+version 2.
+
 ## Render Models
 
 `RND1` contains retained render-model records followed by bounded element

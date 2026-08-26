@@ -79,7 +79,7 @@ Generate the exact same package as a firmware-resident C byte array for the
 pre-installation vertical slice:
 
 ```powershell
-python tools/authoring/egg_tool.py embed examples/authoring/state_slice.peepproj --output firmware/peepshow_hw6_fw0/Core/Src/ps_embedded_egg_autogen.c
+python tools/authoring/egg_tool.py embed examples/authoring/state_transition_slice.peepproj --output firmware/peepshow_hw6_fw0/Core/Src/ps_embedded_egg_autogen.c
 ```
 
 Normalized JSON is a compiler intermediate, not an installable package. The
@@ -113,6 +113,10 @@ Implemented operations:
 - `project.normalize`
 - `project.build_package`
 - `project.compatibility_report`
+- `project.apply_commands`
+- `project.save`
+- `project.undo`
+- `project.redo`
 - `project.preview_reset`
 - `project.preview_input`
 - `project.preview_advance`
@@ -127,7 +131,8 @@ It does not choose a destination or write an installable file. The V1 report
 marks the current HW6 development profile as `pending_validation` and
 `dev_only`; it does not claim shipping authority before target-profile closure.
 
-Service API version 3 adds a deterministic selected-STATE-scene preview. A
+Service API version 7 provides deterministic selected-STATE-scene preview and
+direct STATE-to-STATE replacement. A
 reset names the scene to launch directly, an input operation supplies one
 logical button source, and an advance operation supplies explicit elapsed
 milliseconds. Every response contains the current compiled state, timeline,
@@ -135,13 +140,20 @@ variables, and an exact `168 x 144` packed 1bpp framebuffer. Preview never
 reads source assets after reset: it builds and independently parses the `.egg`,
 then executes those validated package records.
 
+STATE routes declare exactly one `target_state` or `target_scene`.
+`route.set_target` accepts the same exclusive fields. A scene target must be an
+existing STATE scene and its route action list must be empty. Preview enters the
+destination entry state, resets destination-local variables, and starts the
+destination timeline at its settled step.
+
 The first preview subset accepts package-backed masked 1bpp sprite elements at
 native scale. Procedural shape/text references and runtime scaling fail
 explicitly until they have package formats with matching firmware semantics.
 The newline-delimited JSON protocol remains version 1.
 
-Project editing, save, and undo/redo operations are intentionally not
-advertised yet. Their semantics belong to later authoring milestones.
+Project editing, save, and undo/redo operations are available through the
+versioned service boundary; use `service.hello` for the authoritative operation
+list.
 
 Run the focused host tests with:
 

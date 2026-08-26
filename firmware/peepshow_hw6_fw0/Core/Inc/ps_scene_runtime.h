@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-#define PS_SCENE_RUNTIME_API_VERSION             (10UL)
+#define PS_SCENE_RUNTIME_API_VERSION             (11UL)
 #define PS_SCENE_RUNTIME_SCENE_TYPE_STATE        (1UL)
 #define PS_SCENE_RUNTIME_STATUS_NOT_RUN          (0xFFFFFFFFUL)
 #define PS_SCENE_RUNTIME_STATUS_OK               (0UL)
@@ -107,6 +107,7 @@ typedef struct
   uint32_t first_action;
   uint32_t action_count;
   uint32_t target_state_id;
+  uint32_t target_scene_id;
 } ps_scene_runtime_transition_t;
 
 typedef struct
@@ -178,6 +179,11 @@ typedef struct
   uint32_t action_error_count;
   uint32_t last_scene_event_id;
   uint32_t last_transition_id;
+  uint32_t scene_replace_count;
+  uint32_t scene_replace_fail_count;
+  uint32_t scene_replace_source_id;
+  uint32_t scene_replace_target_id;
+  uint32_t scene_replace_status;
   int32_t primary_variable_value;
   uint32_t render_model_resolve_count;
   uint32_t render_model_scene_id;

@@ -29,6 +29,12 @@ from peepshow_authoring.service import AuthoringService, SERVICE_API_VERSION, ru
 
 
 SAMPLE = WORKSPACE_ROOT / "examples" / "authoring" / "state_slice.peepproj"
+TRANSITION_SAMPLE = (
+    WORKSPACE_ROOT
+    / "examples"
+    / "authoring"
+    / "state_transition_slice.peepproj"
+)
 
 
 def request(operation: str, params: dict[str, object] | None = None) -> ServiceRequest:
@@ -181,7 +187,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(6, SERVICE_API_VERSION)
+        self.assertEqual(7, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -398,6 +404,57 @@ class AuthoringServiceTests(unittest.TestCase):
                 "left",
                 next(route for route in routes if route["route_id"] == "center_to_right")["target_state"],
             )
+
+    def test_route_set_target_switches_between_state_and_scene_targets(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(TRANSITION_SAMPLE)}))
+        local = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "route.set_target",
+                            "scene_id": "state_demo",
+                            "route_id": "enter_target",
+                            "target_state": "center",
+                        }
+                    ],
+                },
+            )
+        )
+        route = next(
+            route
+            for route in local["document"]["scenes"][0]["routes"]
+            if route["route_id"] == "enter_target"
+        )
+        self.assertEqual("center", route["target_state"])
+        self.assertNotIn("target_scene", route)
+
+        remote = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": local["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "route.set_target",
+                            "scene_id": "state_demo",
+                            "route_id": "enter_target",
+                            "target_scene": "state_target",
+                        }
+                    ],
+                },
+            )
+        )
+        route = next(
+            route
+            for route in remote["document"]["scenes"][0]["routes"]
+            if route["route_id"] == "enter_target"
+        )
+        self.assertEqual("state_target", route["target_scene"])
+        self.assertNotIn("target_state", route)
 
     def test_route_set_guard_updates_existing_guard_and_undo_redo(self) -> None:
         service = AuthoringService()
@@ -905,6 +962,50 @@ class AuthoringServiceTests(unittest.TestCase):
             )
             self.assertFalse(ignored["input"]["accepted"])
             self.assertEqual("right", ignored["scene"]["state_id"])
+
+    def test_preview_replaces_state_scenes_and_resets_destination_epoch(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(TRANSITION_SAMPLE)}))
+        reset = service.handle(
+            request(
+                "project.preview_reset",
+                {"project_revision": loaded["project_revision"], "scene_id": "state_demo"},
+            )
+        )
+        source_hash = reset["framebuffer"]["sha256"]
+
+        target = service.handle(
+            request(
+                "project.preview_input",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "preview_revision": reset["preview_revision"],
+                    "logical_source": "BUTTON_A",
+                },
+            )
+        )
+        self.assertEqual("state_target", target["scene"]["scene_id"])
+        self.assertEqual("center", target["scene"]["state_id"])
+        self.assertEqual(1, target["variables"]["selected_index"])
+        self.assertEqual(0, target["timeline"]["elapsed_ms"])
+        self.assertEqual(1, target["timeline"]["step_index"])
+        self.assertNotEqual(source_hash, target["framebuffer"]["sha256"])
+
+        returned = service.handle(
+            request(
+                "project.preview_input",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "preview_revision": reset["preview_revision"],
+                    "logical_source": "BUTTON_A",
+                },
+            )
+        )
+        self.assertEqual("state_demo", returned["scene"]["scene_id"])
+        self.assertEqual("center", returned["scene"]["state_id"])
+        self.assertEqual(1, returned["variables"]["selected_index"])
+        self.assertEqual(0, returned["timeline"]["elapsed_ms"])
+        self.assertEqual(source_hash, returned["framebuffer"]["sha256"])
 
     def test_preview_rejects_procedural_source_visuals_and_stale_sessions(self) -> None:
         service = AuthoringService()

@@ -1,0 +1,66 @@
+{
+  "schema_id": "peepshow.authoring.assets",
+  "schema_version": 1,
+  "assets": [
+    {
+      "asset_id": "cursor",
+      "asset_type": "masked_1bpp",
+      "source_path": "assets/cursor.png",
+      "source_format": "png",
+      "frames": [
+        {
+          "frame_id": "cursor.phase_a",
+          "source_rect": { "x": 0, "y": 0, "width": 8, "height": 16 },
+          "pivot_x": 0,
+          "pivot_y": 0
+        },
+        {
+          "frame_id": "cursor.phase_b",
+          "source_rect": { "x": 8, "y": 0, "width": 8, "height": 16 },
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "marker",
+      "asset_type": "masked_1bpp",
+      "source_path": "assets/marker.png",
+      "source_format": "png",
+      "frames": [
+        {
+          "frame_id": "marker.phase_a",
+          "source_rect": { "x": 0, "y": 0, "width": 8, "height": 24 },
+          "pivot_x": 0,
+          "pivot_y": 0
+        },
+        {
+          "frame_id": "marker.phase_b",
+          "source_rect": { "x": 8, "y": 0, "width": 8, "height": 24 },
+          "pivot_x": 0,
+          "pivot_y": 0
+        },
+        {
+          "frame_id": "marker.phase_c",
+          "source_rect": { "x": 16, "y": 0, "width": 8, "height": 24 },
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    }
+  ],
+  "animations": [
+    {
+      "animation_id": "cursor.blink",
+      "frame_refs": ["cursor.phase_a", "cursor.phase_b"],
+      "frame_duration_ms": [250, 250],
+      "loop_policy": "loop"
+    },
+    {
+      "animation_id": "marker.cycle",
+      "frame_refs": ["marker.phase_a", "marker.phase_b", "marker.phase_c"],
+      "frame_duration_ms": [250, 250, 250],
+      "loop_policy": "loop"
+    }
+  ]
+}

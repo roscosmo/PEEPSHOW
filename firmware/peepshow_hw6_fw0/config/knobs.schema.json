@@ -54,6 +54,7 @@
     "rtos_display_stack_bytes",
     "rtos_sensor_stack_bytes",
     "rtos_storage_stack_bytes",
+    "rtos_runtime_stack_bytes",
     "comm_ble_reset_assert_ms",
     "comm_ble_boot_wait_ms",
     "comm_ble_boot_drain_ms",
@@ -676,6 +677,19 @@
       "class": "resource_budget",
       "path": "platform.knobs.rtos.storage_stack_bytes",
       "description": "ThreadX stack allocation for thStorage while it owns FileX, LevelX, MSC reclaim, staging scan, and package-validation scaffolds."
+    },
+    "rtos_runtime_stack_bytes": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 16384,
+      "multipleOf": 8,
+      "default": 2048,
+      "unit": "bytes",
+      "timebase_domain": "threadx",
+      "owner": "thRuntime",
+      "class": "resource_budget",
+      "path": "platform.knobs.rtos.runtime_stack_bytes",
+      "description": "ThreadX stack allocation for thRuntime while it validates package hashes, decodes scene graphs, and executes scene transitions."
     },
     "comm_ble_reset_assert_ms": {
       "type": "integer",

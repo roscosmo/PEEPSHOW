@@ -103,6 +103,11 @@ def _string_table(bundle: ProjectBundle) -> tuple[tuple[str, ...], dict[str, int
         for state in scene["states"]:
             values.update((state["state_id"], state["display_name"]))
         values.update(record["route_id"] for record in scene["routes"])
+        values.update(
+            record["target_scene"]
+            for record in scene["routes"]
+            if "target_scene" in record
+        )
         for model in scene["render_models"]:
             values.add(model["visual_id"])
             for element in model["elements"]:
@@ -326,7 +331,8 @@ def _compile_graph(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
             ROUTE_RECORD.pack(
                 strings[route["route_id"]],
                 input_index[route["action_ref"]],
-                state_index[route["target_state"]],
+                state_index[route["target_state"]] if "target_state" in route else 0xFFFF,
+                strings[route["target_scene"]] if "target_scene" in route else 0xFFFF,
                 _u16(first_source, "first route source"),
                 _u16(len(route["from_states"]), "route source count"),
                 _u16(first_guard, "first route guard"),
@@ -342,7 +348,7 @@ def _compile_graph(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
     meaningful = [input_index[value] for value in interaction["meaningful_activity_actions"]]
     header = GRAPH_HEADER.pack(
         b"STG1",
-        1,
+        2,
         GRAPH_HEADER.size,
         state_index[scene["entry_state"]],
         _u16(len(variables), "variable count"),

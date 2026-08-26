@@ -48,6 +48,7 @@
   "rtos_display_stack_bytes": 3072,
   "rtos_sensor_stack_bytes": 3072,
   "rtos_storage_stack_bytes": 2048,
+  "rtos_runtime_stack_bytes": 2048,
   "comm_ble_reset_assert_ms": 20,
   "comm_ble_boot_wait_ms": 750,
   "comm_ble_boot_drain_ms": 200,

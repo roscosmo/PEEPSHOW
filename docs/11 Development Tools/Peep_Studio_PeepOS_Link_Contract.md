@@ -2,7 +2,7 @@
 
 Status: `active_handoff`
 
-Implementation status: `Stage_2_command_foundation_started`
+Implementation status: `Stage_5_platform_foundation_pending_HW6_proof`
 
 This document is the working boundary between Peep Studio development and
 PeepOS/HW6 bring-up. It tells an editor agent what the platform actually
@@ -40,9 +40,10 @@ the service result wins.
 
 ---
 
-## Current Proven Capability
+## Current Capability
 
-The following path is implemented and has been exercised on HW6:
+The following path is implemented. Rows explicitly marked pending still require
+their stated HW6 proof; the remaining rows have been exercised on target.
 
 | Area | Current capability |
 |---|---|
@@ -50,6 +51,7 @@ The following path is implemented and has been exercised on HW6:
 | package output | deterministic `.egg` binary with SHA-256 integrity |
 | scene type | STATE |
 | state execution | bounded variables, input routes, guards, actions, and deterministic transitions |
+| package scene flow | direct STATE-to-STATE replacement is implemented in service API 7, PKG1 graph V2, and FW0 runtime API 11; HW6 visual proof is pending |
 | input | logical A, B, L, and R sources |
 | visuals | package-backed native-scale masked 1bpp sprite frames |
 | retained render model | bounded ordered scene elements with binary alpha and four platform planes |
@@ -91,7 +93,7 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `6`.
+protocol is version `1`; the current service API is version `7`.
 
 | Operation | Purpose |
 |---|---|
@@ -197,7 +199,7 @@ visuals. Project mutation controls remain deferred to Stage 2.
 
 No scene-canvas or graph control may directly mutate normalized JSON in React.
 
-Implementation status: started. Service API version 6 exposes
+Implementation status: started. Service API version 7 exposes
 `project.apply_commands` with the first accepted commands,
 `state.rename`, `route.set_target`, `route.set_guard`, and
 `route.set_action`. `route.set_action` edits existing ordered route actions
@@ -255,6 +257,15 @@ fits within one STATE scene.
 
 At the end of this stage, an author can build a multi-screen menu hierarchy.
 Scene-flow editing must remain separate from the STATE graph inside each scene.
+
+Platform foundation status: implemented, pending HW6 proof. Authoring schema
+routes now accept exactly one `target_state` or `target_scene`; service API 7
+can switch an existing actionless route between those targets; selected-scene
+preview follows a scene target; and the compiler emits PKG1 `STG1` version 2.
+Direct replacement enters the destination entry state, resets destination-local
+variables, and starts a new timeline epoch. Peep Studio may expose these exact
+semantics after target proof. It must not expose cross-scene route actions,
+push/pop, return stacks, or STATE-to-SEQUENCE/PROGRAM transitions yet.
 
 ### Stage 6: Animation Timeline
 

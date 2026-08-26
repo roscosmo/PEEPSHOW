@@ -9,9 +9,10 @@
 extern "C" {
 #endif
 
-#define PS_EGG_STATE_LOADER_API_VERSION (5UL)
+#define PS_EGG_STATE_LOADER_API_VERSION (6UL)
 #define PS_EGG_STATE_LOADER_STATUS_NOT_RUN (0xFFFFFFFFUL)
 #define PS_EGG_STATE_LOADER_SPRITE_FRAME_ID_BASE (0x00010000UL)
+#define PS_EGG_STATE_LOADER_SCENE_MAX (8U)
 
 typedef struct
 {
@@ -57,6 +58,9 @@ typedef struct
   uint32_t package_id_hash_high;
   uint32_t chunk_count;
   uint32_t scene_count;
+  uint32_t entry_scene_id;
+  uint32_t selected_scene_id;
+  uint32_t scene_decode_count;
   uint32_t graph_chunk_index;
   uint32_t render_chunk_index;
   uint32_t waiting_chunk_index;
@@ -81,6 +85,11 @@ uint32_t PS_EggStateLoader_Load(
   const uint8_t *blob,
   uint32_t size,
   ps_scene_runtime_state_scene_t *scene);
+uint32_t PS_EggStateLoader_LoadScene(
+  uint32_t scene_id,
+  ps_scene_runtime_state_scene_t *scene);
+uint32_t PS_EggStateLoader_SceneCount(void);
+uint32_t PS_EggStateLoader_EntrySceneId(void);
 uint32_t PS_EggStateLoader_GetSpriteFrame(
   uint32_t frame_id,
   ps_egg_state_loader_sprite_frame_t *frame);

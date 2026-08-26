@@ -40,22 +40,12 @@ class StateScenePreview:
     """Deterministic selected-scene executor over an independently parsed package."""
 
     def __init__(self, package: EggPackage, scene_id: str) -> None:
-        scenes = [scene for scene in package.scenes if scene["scene_id"] == scene_id]
-        if not scenes:
-            raise PreviewError(f"scene '{scene_id}' is not present in the package")
         self._package = package
-        self._scene = scenes[0]
-        self._graph = self._scene["graph"]
-        self._render_models = self._scene["render_models"]
-        self._waiting_visuals = self._scene["waiting_visuals"]
+        self._scenes = {str(scene["scene_id"]): scene for scene in package.scenes}
         self._frames = {str(frame["frame_id"]): frame for frame in package.assets}
         self._animations = {str(animation["animation_id"]): animation for animation in package.animations}
-        self._state_index = int(self._graph["entry_state"])
-        self._variables = [int(variable["initial"]) for variable in self._graph["variables"]]
         self._elapsed_ms = 0
-        self._step_elapsed_ms = 0
-        self._step_index = int(self._waiting()["settled_step"])
-        self._validate_scene_subset()
+        self._activate_scene(scene_id)
         self._render_framebuffer()
 
     @property
@@ -86,6 +76,21 @@ class StateScenePreview:
             return left >= right
         raise PreviewError("compiled guard operator is unsupported")
 
+    def _activate_scene(self, scene_id: str) -> None:
+        scene = self._scenes.get(scene_id)
+        if scene is None:
+            raise PreviewError(f"scene '{scene_id}' is not present in the package")
+        self._scene = scene
+        self._graph = scene["graph"]
+        self._render_models = scene["render_models"]
+        self._waiting_visuals = scene["waiting_visuals"]
+        self._state_index = int(self._graph["entry_state"])
+        self._variables = [int(variable["initial"]) for variable in self._graph["variables"]]
+        self._elapsed_ms = 0
+        self._step_elapsed_ms = 0
+        self._step_index = int(self._waiting()["settled_step"])
+        self._validate_scene_subset()
+
     def apply_input(self, logical_source: str) -> PreviewInputResult:
         source = LOGICAL_SOURCES.get(logical_source)
         if source is None:
@@ -114,6 +119,14 @@ class StateScenePreview:
         if route is None:
             return PreviewInputResult(logical_source, action_id, False, None)
 
+        target_scene = route["target_scene"]
+        if target_scene is not None:
+            if route["operations"]:
+                raise PreviewError("direct scene replacement cannot execute scene-local actions")
+            self._activate_scene(str(target_scene))
+            self._render_framebuffer()
+            return PreviewInputResult(logical_source, action_id, True, str(route["route_id"]))
+
         prior_waiting = self._waiting()
         variables = list(self._variables)
         definitions = self._graph["variables"]
@@ -133,7 +146,10 @@ class StateScenePreview:
             variables[variable_index] = value
 
         self._variables = variables
-        self._state_index = int(route["target_state_index"])
+        target_state = route["target_state_index"]
+        if target_state is None:
+            raise PreviewError("compiled route has no target")
+        self._state_index = int(target_state)
         next_waiting = self._waiting()
         if not self._compatible_timeline(prior_waiting, next_waiting):
             self._step_index = int(next_waiting["settled_step"])

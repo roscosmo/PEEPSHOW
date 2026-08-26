@@ -1,0 +1,369 @@
+{
+  "schema_id": "peepshow.authoring.state_scene",
+  "schema_version": 1,
+  "scene_id": "state_demo",
+  "display_name": "State Demo",
+  "scene_type": "STATE_SCENE",
+  "entry_state": "center",
+  "variables": [
+    {
+      "variable_id": "selected_index",
+      "value_type": "int32",
+      "initial": 1,
+      "minimum": 0,
+      "maximum": 2
+    }
+  ],
+  "input_actions": [
+    {
+      "action_id": "move_left",
+      "logical_source": "BUTTON_L"
+    },
+    {
+      "action_id": "move_right",
+      "logical_source": "BUTTON_R"
+    },
+    {
+      "action_id": "enter_target",
+      "logical_source": "BUTTON_A"
+    }
+  ],
+  "states": [
+    {
+      "state_id": "left",
+      "display_name": "Left",
+      "render_model_ref": "view_left",
+      "waiting_visual_ref": "state_wait"
+    },
+    {
+      "state_id": "center",
+      "display_name": "Middle",
+      "render_model_ref": "view_center",
+      "waiting_visual_ref": "state_wait"
+    },
+    {
+      "state_id": "right",
+      "display_name": "Right",
+      "render_model_ref": "view_right",
+      "waiting_visual_ref": "state_wait"
+    }
+  ],
+  "routes": [
+    {
+      "route_id": "left_to_center",
+      "action_ref": "move_right",
+      "from_states": [
+        "left"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 0
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 1
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "center"
+    },
+    {
+      "route_id": "center_to_right",
+      "action_ref": "move_right",
+      "from_states": [
+        "center"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 1
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 2
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "right"
+    },
+    {
+      "route_id": "enter_target",
+      "action_ref": "enter_target",
+      "from_states": [
+        "left",
+        "center",
+        "right"
+      ],
+      "guards": [],
+      "actions": [],
+      "target_scene": "state_target"
+    },
+    {
+      "route_id": "right_to_left",
+      "action_ref": "move_right",
+      "from_states": [
+        "right"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 2
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 0
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "left"
+    },
+    {
+      "route_id": "right_to_center",
+      "action_ref": "move_left",
+      "from_states": [
+        "right"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 2
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 1
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "center"
+    },
+    {
+      "route_id": "center_to_left",
+      "action_ref": "move_left",
+      "from_states": [
+        "center"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 1
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 0
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "left"
+    },
+    {
+      "route_id": "left_to_right",
+      "action_ref": "move_left",
+      "from_states": [
+        "left"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 0
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 2
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "right"
+    }
+  ],
+  "render_models": [
+    {
+      "visual_id": "view_left",
+      "focus_index": 0,
+      "elements": [
+        {
+          "element_id": "cursor",
+          "kind": "sprite",
+          "visual_ref": "cursor.phase_b",
+          "x": 8,
+          "y": 43,
+          "width": 8,
+          "height": 16,
+          "z_order": 10,
+          "focus_role": "focus"
+        },
+        {
+          "element_id": "marker",
+          "kind": "sprite",
+          "visual_ref": "marker.phase_a",
+          "x": 160,
+          "y": 0,
+          "width": 8,
+          "height": 24,
+          "z_order": 5
+        }
+      ]
+    },
+    {
+      "visual_id": "view_center",
+      "focus_index": 1,
+      "elements": [
+        {
+          "element_id": "cursor",
+          "kind": "sprite",
+          "visual_ref": "cursor.phase_b",
+          "x": 8,
+          "y": 73,
+          "width": 8,
+          "height": 16,
+          "z_order": 10,
+          "focus_role": "focus"
+        },
+        {
+          "element_id": "marker",
+          "kind": "sprite",
+          "visual_ref": "marker.phase_a",
+          "x": 160,
+          "y": 0,
+          "width": 8,
+          "height": 24,
+          "z_order": 5
+        }
+      ]
+    },
+    {
+      "visual_id": "view_right",
+      "focus_index": 2,
+      "elements": [
+        {
+          "element_id": "cursor",
+          "kind": "sprite",
+          "visual_ref": "cursor.phase_b",
+          "x": 8,
+          "y": 103,
+          "width": 8,
+          "height": 16,
+          "z_order": 10,
+          "focus_role": "focus"
+        },
+        {
+          "element_id": "marker",
+          "kind": "sprite",
+          "visual_ref": "marker.phase_a",
+          "x": 160,
+          "y": 0,
+          "width": 8,
+          "height": 24,
+          "z_order": 5
+        }
+      ]
+    }
+  ],
+  "waiting_visuals": [
+    {
+      "waiting_visual_id": "state_wait",
+      "presentation_id": "state_demo_timeline",
+      "phase_quantum_ms": 250,
+      "combined_step_count": 6,
+      "settled_step": 1,
+      "cycle_policy": "loop",
+      "elements": [
+        {
+          "element_id": "cursor_wait",
+          "source_element_ref": "cursor",
+          "phase_visual_refs": [
+            "cursor.phase_a",
+            "cursor.phase_b"
+          ],
+          "step_phase_indices": [
+            0,
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "element_id": "marker_wait",
+          "source_element_ref": "marker",
+          "phase_visual_refs": [
+            "marker.phase_a",
+            "marker.phase_b",
+            "marker.phase_c"
+          ],
+          "step_phase_indices": [
+            2,
+            0,
+            1,
+            2,
+            0,
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "reactive_wait_default": {
+    "policy_id": "state_wait_policy",
+    "waiting_visual_ref": "state_wait",
+    "hold_fallback_allowed": true,
+    "event_interests": [
+      "move_left",
+      "move_right",
+      "enter_target"
+    ]
+  },
+  "interaction_policy": {
+    "policy_id": "state_interaction",
+    "meaningful_activity_actions": [
+      "move_left",
+      "move_right",
+      "enter_target"
+    ],
+    "inactive_route": "preserve_scene",
+    "bounded_deferrals": []
+  }
+}

@@ -465,7 +465,11 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
 2. migrate the firmware runtime identity to system host, scene type/ID, execution semantic, and lifecycle without changing validated owner boundaries
 3. implement one retained `250 ms` presentation timeline shared by awake rendering, held frames, LPBAM preparation, STOP entry, wake, and resume; use the current cursor as the first continuity proof and preserve the validated SPI/LPDMA queue mechanics
 4. implement the four retained compositor layers and panel-native dirty-row composition above the low-level display driver
-5. implement `STATE_SCENE` bounded event/guard/action execution, wait contracts, scene transitions inside one mounted package, and namespace-backed variables
+5. implement `STATE_SCENE` bounded event/guard/action execution, wait contracts,
+   scene transitions inside one mounted package, and namespace-backed variables;
+   direct STATE-to-STATE replacement is implemented in the host/compiler and
+   FW0 and awaits the two-scene HW6 proof, while push/pop and other scene types
+   remain later work
 6. implement mandatory `ACTIVE`/`INACTIVE` interaction state, RTC-backed inactivity, declared inactive routes, and target-owned activation gestures; HW6 starts with Start while the policy remains button/chord capable
 7. implement the headless project loader, normalized model, validator, deterministic package compiler, and compiler-derived capability closure for the state-scene slice
 8. compile masked 1bpp source assets into portable asset, sprite-bank, and

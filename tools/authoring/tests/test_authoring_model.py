@@ -40,6 +40,12 @@ from peepshow_authoring.egg_format import (  # noqa: E402
 
 
 SAMPLE = WORKSPACE_ROOT / "examples" / "authoring" / "state_slice.peepproj"
+EMBEDDED_PROJECT = (
+    WORKSPACE_ROOT
+    / "examples"
+    / "authoring"
+    / "state_transition_slice.peepproj"
+)
 EMBEDDED_SAMPLE = (
     WORKSPACE_ROOT
     / "firmware"
@@ -172,6 +178,84 @@ class AuthoringModelTests(unittest.TestCase):
 
             bundle = load_project(project_root)
             self.assertIn("GRAPH_TRANSITION_TARGET_UNKNOWN", {issue.code for issue in bundle.issues})
+
+    def test_cross_scene_route_compiles_and_round_trips(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "scene_transition.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            project_path = project_root / "project.json"
+            source_path = project_root / "scenes" / "state_demo.state.json"
+            target_path = project_root / "scenes" / "state_target.state.json"
+            project = json.loads(project_path.read_text(encoding="utf-8"))
+            source = json.loads(source_path.read_text(encoding="utf-8"))
+            target = copy.deepcopy(source)
+
+            project["scene_sources"].append("scenes/state_target.state.json")
+            source["input_actions"].append(
+                {"action_id": "enter_target", "logical_source": "BUTTON_A"}
+            )
+            source["routes"].append(
+                {
+                    "route_id": "enter_target",
+                    "action_ref": "enter_target",
+                    "from_states": ["left", "center", "right"],
+                    "guards": [],
+                    "actions": [],
+                    "target_scene": "state_target",
+                }
+            )
+            source["reactive_wait_default"]["event_interests"].append("enter_target")
+            source["interaction_policy"]["meaningful_activity_actions"].append("enter_target")
+
+            target["scene_id"] = "state_target"
+            target["display_name"] = "State Target"
+            target["input_actions"] = [
+                {"action_id": "return_source", "logical_source": "BUTTON_A"}
+            ]
+            target["routes"] = [
+                {
+                    "route_id": "return_source",
+                    "action_ref": "return_source",
+                    "from_states": ["left", "center", "right"],
+                    "guards": [],
+                    "actions": [],
+                    "target_scene": "state_demo",
+                }
+            ]
+            target["reactive_wait_default"]["event_interests"] = ["return_source"]
+            target["interaction_policy"]["meaningful_activity_actions"] = ["return_source"]
+
+            project_path.write_text(json.dumps(project), encoding="utf-8")
+            source_path.write_text(json.dumps(source), encoding="utf-8")
+            target_path.write_text(json.dumps(target), encoding="utf-8")
+
+            bundle = load_project(project_root)
+            self.assertEqual((), bundle.issues)
+            package = parse_egg(build_egg(bundle))
+            self.assertEqual(2, package.manifest["scene_count"])
+            self.assertEqual(2, len(package.scenes))
+            self.assertTrue(all(scene["graph"]["format_version"] == 2 for scene in package.scenes))
+            targets = {
+                route["target_scene"]
+                for scene in package.scenes
+                for route in scene["graph"]["routes"]
+                if route["target_scene"] is not None
+            }
+            self.assertEqual({"state_demo", "state_target"}, targets)
+
+    def test_unknown_scene_transition_target_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "broken_scene_transition.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            scene_path = project_root / "scenes" / "state_demo.state.json"
+            scene = json.loads(scene_path.read_text(encoding="utf-8"))
+            scene["routes"][0]["target_scene"] = "missing_scene"
+            del scene["routes"][0]["target_state"]
+            scene["routes"][0]["actions"] = []
+            scene_path.write_text(json.dumps(scene), encoding="utf-8")
+
+            bundle = load_project(project_root)
+            self.assertIn("SCENE_TRANSITION_TARGET_UNKNOWN", {issue.code for issue in bundle.issues})
 
     def test_source_path_cannot_escape_project(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -387,7 +471,7 @@ class AuthoringModelTests(unittest.TestCase):
     def test_committed_embedded_package_is_current(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             generated = write_embedded_egg_c(
-                load_project(SAMPLE),
+                load_project(EMBEDDED_PROJECT),
                 Path(temp_dir) / "embedded.c",
             )
             expected = generated.read_text(encoding="ascii")

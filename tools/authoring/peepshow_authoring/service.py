@@ -24,7 +24,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 6
+SERVICE_API_VERSION = 7
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (

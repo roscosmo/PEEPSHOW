@@ -85,6 +85,7 @@
 #define KNOB_RTOS_DISPLAY_STACK_BYTES                      (3072)
 #define KNOB_RTOS_INPUT_STACK_BYTES                        (1536)
 #define KNOB_RTOS_POWER_STACK_BYTES                        (4096)
+#define KNOB_RTOS_RUNTIME_STACK_BYTES                      (2048)
 #define KNOB_RTOS_SENSOR_STACK_BYTES                       (3072)
 #define KNOB_RTOS_STORAGE_STACK_BYTES                      (2048)
 #define KNOB_RUNTIME_EGG_HASH_TIMEOUT_MS                   (100)

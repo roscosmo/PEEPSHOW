@@ -139,6 +139,18 @@ retained render elements, reactive wait policy, and waiting visuals. It is a
 strict subset of this contract and does not redefine the future complete
 schema.
 
+In the executable STATE subset, every route declares exactly one destination:
+
+- `target_state` names a state in the route's source scene.
+- `target_scene` names another STATE scene in the same project/package.
+
+The initial direct scene-replacement subset requires an empty `actions` list
+when `target_scene` is used. Guards still evaluate in the source scene. A
+successful replacement enters the destination entry state, restores its local
+variables to authored initial values, and begins a new presentation epoch.
+Unknown scene targets, both target fields, neither target field, or actions on
+a scene-target route fail validation.
+
 Rules:
 
 - `project.json` is the root manifest.
