@@ -7,6 +7,7 @@ import {
   Position,
   ReactFlow,
   applyNodeChanges,
+  type Connection,
   type Edge,
   type Node,
   type NodeChange,
@@ -101,6 +102,7 @@ const SCENE_EXIT_INPUTS = [
   "JOY_UP",
   "JOY_DOWN",
 ] as const;
+const NEW_SCENE_EXIT_HANDLE = "__new_scene_exit__";
 const GUARD_OPERATOR_LABELS: Record<string, string> = {
   eq: "is",
   ne: "is not",
@@ -255,7 +257,7 @@ type SceneCardNodeData = {
   canEdit: boolean;
   onSelectScene: (sceneId: string) => void;
   onSelectSceneRoute: (sceneId: string, routeId: string) => void;
-  onAddSceneExit: (sceneId: string, logicalSource: string, targetScene: string) => void;
+  onDeleteSceneExit: (sceneId: string, routeId: string) => void;
 };
 
 function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
@@ -265,23 +267,12 @@ function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
     canEdit,
     onSelectScene,
     onSelectSceneRoute,
-    onAddSceneExit,
+    onDeleteSceneExit,
     selectedRouteId,
     thumbnail,
   } = data;
   const availableInputs = SCENE_EXIT_INPUTS.filter((source) => !graphNode.usedLogicalSources.includes(source));
-  const [draftSource, setDraftSource] = useState<string>(availableInputs[0] ?? "");
-  const [draftTarget, setDraftTarget] = useState<string>(targetScenes[0]?.scene_id ?? "");
-  const addDisabled = !canEdit || draftSource === "" || draftTarget === "";
-
-  useEffect(() => {
-    if (draftSource === "" || !availableInputs.includes(draftSource as (typeof SCENE_EXIT_INPUTS)[number])) {
-      setDraftSource(availableInputs[0] ?? "");
-    }
-    if (draftTarget === "" || !targetScenes.some((scene) => scene.scene_id === draftTarget)) {
-      setDraftTarget(targetScenes[0]?.scene_id ?? "");
-    }
-  }, [availableInputs, draftSource, draftTarget, targetScenes]);
+  const canAddExit = canEdit && availableInputs.length > 0 && targetScenes.length > 0;
 
   const handleSelectKey = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -311,7 +302,7 @@ function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
         <FramebufferCanvas framebuffer={thumbnail} />
       </div>
       <div className="scene-entry-row">
-        <Handle type="target" position={Position.Left} />
+        <Handle id="entry" type="target" position={Position.Left} isConnectable={canEdit} />
         <span>{graphNode.isEntry ? "Start scene" : "Scene entry"}</span>
         <small>{graphNode.entryStateLabel}</small>
       </div>
@@ -327,6 +318,7 @@ function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
               tabIndex={0}
               onClick={(event) => {
                 event.stopPropagation();
+                event.currentTarget.focus();
                 onSelectSceneRoute(graphNode.id, exit.routeId);
               }}
               onKeyDown={(event) => {
@@ -334,56 +326,39 @@ function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
                   event.preventDefault();
                   event.stopPropagation();
                   onSelectSceneRoute(graphNode.id, exit.routeId);
+                  return;
+                }
+                if (canEdit && (event.key === "Delete" || event.key === "Backspace")) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onDeleteSceneExit(graphNode.id, exit.routeId);
                 }
               }}
             >
               <span>{exit.label}</span>
               <small>Go to {exit.targetScene}</small>
-              <Handle id={exit.id} type="source" position={Position.Right} />
+              <Handle id={exit.id} type="source" position={Position.Right} isConnectable={canEdit} />
             </span>
           ))
         )}
       </div>
       {targetScenes.length > 0 && (
-        <form
-          className="scene-add-exit-row"
+        <div
+          className={`scene-new-exit-slot ${canAddExit ? "" : "disabled"}`}
+          aria-label={canAddExit ? "Drag to create a new scene exit" : "No available triggers"}
           onClick={(event) => event.stopPropagation()}
-          onSubmit={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            if (!addDisabled) {
-              onAddSceneExit(graphNode.id, draftSource, draftTarget);
-            }
-          }}
         >
-          <select
-            aria-label="Exit trigger"
-            disabled={!canEdit || availableInputs.length === 0}
-            value={draftSource}
-            onChange={(event) => setDraftSource(event.target.value)}
-          >
-            {availableInputs.map((source) => (
-              <option key={source} value={source}>
-                {INPUT_LABELS[source]}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Exit target scene"
-            disabled={!canEdit}
-            value={draftTarget}
-            onChange={(event) => setDraftTarget(event.target.value)}
-          >
-            {targetScenes.map((scene) => (
-              <option key={scene.scene_id} value={scene.scene_id}>
-                {scene.display_name}
-              </option>
-            ))}
-          </select>
-          <button className="icon-button" type="submit" disabled={addDisabled} title="Add scene exit">
-            <Plus size={14} aria-hidden="true" />
-          </button>
-        </form>
+          <Plus size={14} aria-hidden="true" />
+          <span>{availableInputs.length === 0 ? "All triggers used" : "New exit"}</span>
+          {canAddExit && (
+            <Handle
+              id={`${graphNode.id}:${NEW_SCENE_EXIT_HANDLE}`}
+              type="source"
+              position={Position.Right}
+              isConnectable={canEdit}
+            />
+          )}
+        </div>
       )}
     </div>
   );
@@ -496,7 +471,9 @@ export function SceneFlowView({
   onSelectScene,
   onSelectSceneRoute,
   onAddSceneExit,
+  onDeleteSceneExit,
   onMoveSceneNode,
+  onConnectSceneExit,
   canEdit,
 }: {
   scenes: SceneDocument[];
@@ -509,7 +486,9 @@ export function SceneFlowView({
   onSelectScene: (sceneId: string) => void;
   onSelectSceneRoute: (sceneId: string, routeId: string) => void;
   onAddSceneExit: (sceneId: string, logicalSource: string, targetScene: string) => void;
+  onDeleteSceneExit: (sceneId: string, routeId: string) => void;
   onMoveSceneNode: (sceneId: string, x: number, y: number) => void;
+  onConnectSceneExit: (sceneId: string, routeId: string, targetScene: string) => void;
   canEdit: boolean;
 }) {
   const graph = useMemo(() => buildSceneFlowGraphModel(scenes, entrySceneId, editor), [editor, entrySceneId, scenes]);
@@ -517,6 +496,8 @@ export function SceneFlowView({
   const didInitialFit = useRef(false);
   const [viewportText, setViewportText] = useState("viewport not ready");
   const [lastDragText, setLastDragText] = useState("No drag yet");
+  const [lastConnectText, setLastConnectText] = useState("No connect yet");
+  const [pendingNewExit, setPendingNewExit] = useState<{ sourceScene: string; targetScene: string } | null>(null);
   const baseNodes: Node[] = useMemo(
     () =>
       graph.nodes.map((node) => ({
@@ -531,13 +512,13 @@ export function SceneFlowView({
           canEdit,
           onSelectScene,
           onSelectSceneRoute,
-          onAddSceneExit,
+          onDeleteSceneExit,
         },
         selected: selectedSceneId === node.id,
         draggable: canEdit,
         connectable: false,
       })),
-    [canEdit, graph.nodes, onAddSceneExit, onSelectScene, onSelectSceneRoute, scenes, selectedRouteId, selectedSceneId, thumbnails],
+    [canEdit, graph.nodes, onDeleteSceneExit, onSelectScene, onSelectSceneRoute, scenes, selectedRouteId, selectedSceneId, thumbnails],
   );
   const [nodes, setNodes] = useState<Node[]>(baseNodes);
   useEffect(() => {
@@ -589,6 +570,52 @@ export function SceneFlowView({
       })),
     [graph.edges, selectedRouteId],
   );
+  const deleteSelectedSceneExit = () => {
+    if (!canEdit || selectedRouteId === null || selectedSceneId === null) {
+      return;
+    }
+    const selectedExit = graph.edges.find(
+      (edge) => edge.source === selectedSceneId && edge.route.route_id === selectedRouteId,
+    );
+    if (selectedExit === undefined) {
+      return;
+    }
+    onDeleteSceneExit(selectedExit.source, selectedExit.route.route_id);
+  };
+  const handleSceneFlowKeyDown = (event: KeyboardEvent<Element>) => {
+    if (event.key !== "Delete" && event.key !== "Backspace") {
+      return;
+    }
+    const target = event.target as HTMLElement | null;
+    if (target !== null && target.closest("input, select, textarea, button, [contenteditable='true']") !== null) {
+      return;
+    }
+    event.preventDefault();
+    deleteSelectedSceneExit();
+  };
+  const onConnect = (connection: Connection) => {
+    const sourceScene = connection.source;
+    const targetScene = connection.target;
+    const sourceHandle = connection.sourceHandle;
+    if (sourceScene === null || targetScene === null || sourceHandle === null) {
+      setLastConnectText("ignored incomplete connection");
+      return;
+    }
+    const routeId = sourceHandle.startsWith(`${sourceScene}:`)
+      ? sourceHandle.slice(sourceScene.length + 1)
+      : sourceHandle;
+    if (routeId.length === 0 || sourceScene === targetScene) {
+      setLastConnectText(`ignored ${sourceScene}:${routeId || "-"} -> ${targetScene}`);
+      return;
+    }
+    if (routeId === NEW_SCENE_EXIT_HANDLE) {
+      setPendingNewExit({ sourceScene, targetScene });
+      setLastConnectText(`choose trigger for ${sourceScene} -> ${targetScene}`);
+      return;
+    }
+    setLastConnectText(`${sourceScene}:${routeId} -> ${targetScene}`);
+    onConnectSceneExit(sourceScene, routeId, targetScene);
+  };
   const updateViewportText = () => {
     const viewport = flowRef.current?.getViewport();
     if (viewport === undefined) {
@@ -607,6 +634,7 @@ export function SceneFlowView({
     `selected route ${selectedRouteId ?? "-"}`,
     `viewport ${viewportText}`,
     `last drag ${lastDragText}`,
+    `last connect ${lastConnectText}`,
     `layout save ${layoutStatus}`,
     ...nodes.map((node) => {
       const measured = "measured" in node && node.measured !== undefined
@@ -617,6 +645,12 @@ export function SceneFlowView({
     ...edges.map((edge) => `edge ${edge.id}: ${edge.source}:${edge.sourceHandle ?? "-"} -> ${edge.target}:${edge.targetHandle ?? "-"}`),
   ];
   const debugText = debugLines.join("\n");
+  const pendingSource = pendingNewExit === null ? null : graph.nodes.find((node) => node.id === pendingNewExit.sourceScene) ?? null;
+  const pendingTarget = pendingNewExit === null ? null : scenes.find((scene) => scene.scene_id === pendingNewExit.targetScene) ?? null;
+  const pendingInputs =
+    pendingSource === null
+      ? []
+      : SCENE_EXIT_INPUTS.filter((source) => !pendingSource.usedLogicalSources.includes(source));
 
   if (scenes.length === 0) {
     return (
@@ -644,19 +678,26 @@ export function SceneFlowView({
         }
       }}
       nodesDraggable={canEdit}
-      nodesConnectable={false}
+      nodesConnectable={canEdit}
+      edgesReconnectable={false}
       elementsSelectable
       onNodesChange={onNodesChange}
+      onConnect={onConnect}
       onNodeDragStop={(_, node) => onNodeDragStop(node)}
       onMoveEnd={updateViewportText}
+      onKeyDown={handleSceneFlowKeyDown}
+      tabIndex={0}
       onNodeClick={(_, node) => onSelectScene(node.id)}
-      onEdgeClick={(_, edge) => onSelectSceneRoute(String(edge.data?.source_scene_id ?? ""), String(edge.data?.route_id ?? edge.id))}
+      onEdgeClick={(event, edge) => {
+        (event.currentTarget as HTMLElement).focus();
+        onSelectSceneRoute(String(edge.data?.source_scene_id ?? ""), String(edge.data?.route_id ?? edge.id));
+      }}
       proOptions={{ hideAttribution: true }}
     >
       <Background gap={18} size={1} />
       <GraphMiniMap nodes={graph.nodes} edges={graph.edges} selectedId={selectedSceneId} />
       <Panel position="top-left" className="scene-flow-debug">
-        <details open>
+        <details>
           <summary>
             <span>Scene Flow Debug</span>
             <button
@@ -673,6 +714,33 @@ export function SceneFlowView({
           <pre>{debugText}</pre>
         </details>
       </Panel>
+      {pendingNewExit !== null && (
+        <Panel position="top-right" className="scene-exit-picker">
+          <div>
+            <strong>Choose trigger</strong>
+            <span>
+              {pendingSource?.label ?? pendingNewExit.sourceScene} to {pendingTarget?.display_name ?? pendingNewExit.targetScene}
+            </span>
+          </div>
+          <div className="scene-exit-picker-options">
+            {pendingInputs.map((source) => (
+              <button
+                key={source}
+                type="button"
+                onClick={() => {
+                  onAddSceneExit(pendingNewExit.sourceScene, source, pendingNewExit.targetScene);
+                  setPendingNewExit(null);
+                }}
+              >
+                {displayInputLabel(source, source)}
+              </button>
+            ))}
+          </div>
+          <button className="text-button" type="button" onClick={() => setPendingNewExit(null)}>
+            Cancel
+          </button>
+        </Panel>
+      )}
       <Controls showInteractive={false} />
     </ReactFlow>
   );

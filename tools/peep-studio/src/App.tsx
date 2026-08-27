@@ -473,6 +473,34 @@ export default function App() {
     }
   };
 
+  const deleteSceneExit = async (sceneId: string, routeId: string) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy("Deleting scene exit");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [
+          {
+            kind: "route.delete_scene_exit",
+            scene_id: sceneId,
+            route_id: routeId,
+          },
+        ],
+      });
+      applyProjectResult(result);
+      setSelectedScene(sceneId);
+      setSceneSelection({ kind: "scene" });
+      setMessage("Scene exit deleted. Save to write it to the project.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const moveSceneNode = async (sceneId: string, x: number, y: number) => {
     if (bridge === undefined || project === null) {
       return;
@@ -897,8 +925,14 @@ export default function App() {
               onAddSceneExit={(sceneId, logicalSource, targetScene) => {
                 void addSceneExit(sceneId, logicalSource, targetScene);
               }}
+              onDeleteSceneExit={(sceneId, routeId) => {
+                void deleteSceneExit(sceneId, routeId);
+              }}
               onMoveSceneNode={(sceneId, x, y) => {
                 void moveSceneNode(sceneId, x, y);
+              }}
+              onConnectSceneExit={(sceneId, routeId, targetScene) => {
+                void setRouteSceneTarget(sceneId, routeId, targetScene);
               }}
               canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
             />

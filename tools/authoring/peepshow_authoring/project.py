@@ -353,6 +353,72 @@ def _apply_route_add_scene_exit(
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
 
 
+def _apply_route_delete_scene_exit(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "route_id"},
+        {"kind", "scene_id", "route_id", "command_id"},
+    )
+    issues: list[ValidationIssue] = []
+    scene_id = command.get("scene_id")
+    route_id = command.get("route_id")
+    _stable_id(scene_id, "command.scene_id", issues)
+    _stable_id(route_id, "command.route_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+
+    for scene in scenes:
+        if scene.get("scene_id") != scene_id:
+            continue
+        routes = scene.get("routes")
+        if not isinstance(routes, list):
+            raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.routes must be an array")
+        for index, route in enumerate(routes):
+            if not isinstance(route, dict) or route.get("route_id") != route_id:
+                continue
+            if "target_scene" not in route:
+                raise ProjectCommandError("COMMAND_TARGET_INVALID", "route is not a scene exit")
+            if route.get("actions"):
+                raise ProjectCommandError(
+                    "SCENE_TRANSITION_ACTION_UNSUPPORTED",
+                    "only actionless direct scene exits can be deleted in this edit slice",
+                )
+            action_ref = route.get("action_ref")
+            target_scene = route.get("target_scene")
+            routes.pop(index)
+
+            input_actions = scene.get("input_actions")
+            if isinstance(input_actions, list):
+                scene["input_actions"] = [
+                    action
+                    for action in input_actions
+                    if not (isinstance(action, dict) and action.get("action_id") == action_ref)
+                ]
+            wait_policy = scene.get("reactive_wait_default")
+            if isinstance(wait_policy, dict) and isinstance(wait_policy.get("event_interests"), list):
+                wait_policy["event_interests"] = [
+                    item for item in wait_policy["event_interests"] if item != action_ref
+                ]
+            interaction = scene.get("interaction_policy")
+            if isinstance(interaction, dict) and isinstance(interaction.get("meaningful_activity_actions"), list):
+                interaction["meaningful_activity_actions"] = [
+                    item for item in interaction["meaningful_activity_actions"] if item != action_ref
+                ]
+            return {
+                "kind": "route.delete_scene_exit",
+                "scene_id": scene_id,
+                "route_id": route_id,
+                "action_id": action_ref,
+                "target_scene": target_scene,
+            }
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown route '{route_id}'")
+    raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
+
+
 def _layout_coordinate(value: Any, path: str) -> int:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ProjectCommandError("PROJECT_TYPE_INVALID", f"{path} must be a number")
@@ -1268,6 +1334,8 @@ def apply_project_commands(
             applied.append(_apply_route_set_target(scenes, command))
         elif kind == "route.add_scene_exit":
             applied.append(_apply_route_add_scene_exit(scenes, command))
+        elif kind == "route.delete_scene_exit":
+            applied.append(_apply_route_delete_scene_exit(scenes, command))
         elif kind == "editor.scene_flow.set_node_position":
             applied.append(_apply_scene_flow_node_position(project, scenes, command))
         elif kind == "route.set_guard":

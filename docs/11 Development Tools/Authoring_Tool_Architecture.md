@@ -323,6 +323,7 @@ state.create
 state.rename
 transition.create
 route.add_scene_exit
+route.delete_scene_exit
 editor.scene_flow.set_node_position
 transition.set_guard
 element.move

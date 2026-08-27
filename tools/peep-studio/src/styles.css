@@ -988,33 +988,91 @@ button:focus-visible {
   left: -19px;
 }
 
-.scene-add-exit-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px;
-  gap: 6px;
+.scene-new-exit-slot {
+  position: relative;
+  display: flex;
+  min-height: 38px;
   align-items: center;
-  padding: 8px;
-  border: 1px solid #d9e0dc;
-  border-radius: 8px;
-  background: #f7faf8;
-  cursor: default;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 2px dashed #97a49e;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #5e6a64;
+  font-size: 13px;
+  font-weight: 760;
 }
 
-.scene-add-exit-row select {
-  min-width: 0;
-  height: 28px;
+.scene-new-exit-slot.disabled {
+  border-color: #d7ded9;
+  color: #9aa49e;
+}
+
+.scene-new-exit-slot .react-flow__handle {
+  right: -14px;
+  width: 9px;
+  height: 9px;
+  border-color: #6d7a73;
+  background: #ffffff;
+}
+
+.scene-exit-picker {
+  display: grid;
+  width: min(310px, calc(100vw - 48px));
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #cfd8d2;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 32px rgba(39, 48, 43, 0.14);
+}
+
+.scene-exit-picker > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.scene-exit-picker strong {
+  color: #27302b;
+  font-size: 13px;
+}
+
+.scene-exit-picker span {
+  color: #68736d;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.scene-exit-picker-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.scene-exit-picker-options button,
+.scene-exit-picker .text-button {
+  min-height: 30px;
   border: 1px solid #c9d3ce;
   border-radius: 6px;
-  background: #ffffff;
+  background: #f7faf8;
   color: #27302b;
   font-size: 11px;
-  font-weight: 720;
+  font-weight: 740;
+  cursor: pointer;
 }
 
-.scene-add-exit-row .icon-button {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+.scene-exit-picker-options button:hover,
+.scene-exit-picker .text-button:hover {
+  border-color: #8eb0c3;
+  background: #eef7fb;
+}
+
+.scene-exit-picker .text-button {
+  justify-self: end;
+  min-height: 26px;
+  padding: 0 10px;
+  background: #ffffff;
 }
 
 .state-card-heading {

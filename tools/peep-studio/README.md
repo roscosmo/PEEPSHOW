@@ -19,7 +19,7 @@ preview execution, or compilation rules in TypeScript.
 - supports bounded undo/redo for service-owned edit commands;
 - edits STATE display names, route targets, existing guard conditions, and
   existing ordered route actions through Python service commands;
-- adds and retargets actionless scene-flow exits between STATE scenes;
+- adds actionless scene-flow exits by dragging an empty output slot, retargets existing exits by drag, and deletes selected exits from the keyboard;
 - builds and exports the authoritative `.egg` bytes produced by Python.
 
 Node creation, asset import, device installation, SEQUENCE,

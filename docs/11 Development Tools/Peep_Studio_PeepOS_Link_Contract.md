@@ -122,7 +122,7 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `10`.
+protocol is version `1`; the current service API is version `11`.
 
 | Operation | Purpose |
 |---|---|
@@ -229,11 +229,11 @@ visuals. Project mutation controls remain deferred to Stage 2.
 
 No scene-canvas or graph control may directly mutate normalized JSON in React.
 
-Implementation status: started. Service API version 10 exposes
+Implementation status: started. Service API version 11 exposes
 `project.apply_commands` with the first accepted commands,
 `state.rename`, `route.set_target`, `route.set_guard`, and
-`route.set_action`, plus `route.add_scene_exit` for creating an actionless
-direct scene exit from an unused logical input source to another STATE scene,
+`route.set_action`, plus `route.add_scene_exit` and
+`route.delete_scene_exit` for creating/deleting actionless direct scene exits,
 and `editor.scene_flow.set_node_position` for editor-only scene-flow layout.
 `route.set_action` edits existing ordered route actions only; adding, removing,
 and reordering actions remain deferred. Accepted commands update the in-memory
@@ -306,11 +306,12 @@ implemented. It presents scenes as separate package-level nodes and shows
 existing `target_scene` route edges from normalized service data. Scene cards
 show their existing scene-exit outputs as selectable rows and render real
 Python-generated initial scene thumbnails through `project.scene_thumbnails`.
-Existing actionless `target_scene` routes can be
-retargeted to another STATE scene through the inspector. New scene-flow exits
-can be added from scene cards through `route.add_scene_exit`; drag-to-create
-graph wiring remains deferred, but must call the same Python command rather than
-editing JSON in React. Scene-flow cards can be manually rearranged; saved
+Existing actionless `target_scene` routes can be retargeted to another STATE
+scene through the inspector or by dragging an existing exit row to another
+scene's entry row. New scene-flow exits can be added from scene cards through
+an empty output slot that prompts for the trigger before calling
+`route.add_scene_exit`, and deleted through `route.delete_scene_exit`.
+Scene-flow cards can be manually rearranged; saved
 positions live under project editor-only layout metadata and must not affect
 compiled package bytes.
 

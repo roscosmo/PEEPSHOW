@@ -226,7 +226,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(10, SERVICE_API_VERSION)
+        self.assertEqual(11, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -492,6 +492,63 @@ class AuthoringServiceTests(unittest.TestCase):
                 )
             )
         self.assertEqual("INPUT_SOURCE_DUPLICATE", raised.exception.code)
+
+    def test_route_delete_scene_exit_removes_route_and_action_binding(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "route.delete_scene_exit",
+                            "scene_id": "state_demo",
+                            "route_id": "open_details",
+                        }
+                    ],
+                },
+            )
+        )
+
+        demo = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_demo")
+        self.assertNotIn("open_details", [route["route_id"] for route in demo["routes"]])
+        self.assertNotIn("open_details", [action["action_id"] for action in demo["input_actions"]])
+        self.assertNotIn("open_details", demo["reactive_wait_default"]["event_interests"])
+        self.assertNotIn("open_details", demo["interaction_policy"]["meaningful_activity_actions"])
+        self.assertEqual(
+            {
+                "kind": "route.delete_scene_exit",
+                "scene_id": "state_demo",
+                "route_id": "open_details",
+                "action_id": "open_details",
+                "target_scene": "state_details",
+            },
+            changed["applied_commands"][0],
+        )
+        self.assertTrue(changed["dirty"])
+
+    def test_route_delete_scene_exit_rejects_local_route(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        with self.assertRaises(ProtocolError) as raised:
+            service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "route.delete_scene_exit",
+                                "scene_id": "state_demo",
+                                "route_id": "center_to_right",
+                            }
+                        ],
+                    },
+                )
+            )
+        self.assertEqual("COMMAND_TARGET_INVALID", raised.exception.code)
 
     def test_scene_flow_node_position_is_editor_only_and_persists(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
