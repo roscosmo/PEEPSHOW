@@ -241,6 +241,46 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
+.project-heading {
+  display: block;
+  padding: 0;
+}
+
+.project-heading-details {
+  width: 100%;
+}
+
+.project-heading-details summary {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 13px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.project-heading-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.project-heading-details summary::after {
+  content: "▾";
+  color: #88938d;
+  font-size: 10px;
+}
+
+.project-heading-details:not([open]) summary::after {
+  content: "▸";
+}
+
+.project-facts-dropdown {
+  padding-top: 0;
+  border-top: 1px solid #dce1de;
+  background: #ffffff;
+}
+
 .validation-state {
   display: flex;
   align-items: center;
@@ -273,10 +313,42 @@ button:focus-visible {
   color: #3d4541;
 }
 
+.project-section {
+  border-bottom: 1px solid #dce1de;
+}
+
+.project-section summary {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  padding: 0 13px;
+  color: #69736d;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+  list-style: none;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.project-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.project-section summary::before {
+  content: "▸";
+  margin-right: 7px;
+  color: #88938d;
+  font-size: 10px;
+}
+
+.project-section[open] summary::before {
+  content: "▾";
+}
+
 .project-facts {
   margin: 0;
-  padding: 11px 13px 13px;
-  border-bottom: 1px solid #dce1de;
+  padding: 0 13px 13px;
 }
 
 .project-facts div,
@@ -314,16 +386,8 @@ button:focus-visible {
   white-space: nowrap;
 }
 
-.tree-label {
-  padding: 14px 13px 7px;
-  color: #7a837e;
-  font-size: 10px;
-  font-weight: 750;
-  text-transform: uppercase;
-}
-
 .scene-list {
-  padding: 0 7px;
+  padding: 0 7px 9px;
 }
 
 .scene-row {
@@ -393,7 +457,7 @@ button:focus-visible {
 }
 
 .placement-pane .preview-pane-large {
-  grid-template-rows: 63px minmax(0, 1fr) 104px;
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .preview-heading {
@@ -854,7 +918,7 @@ button:focus-visible {
 .placement-view-settings {
   display: grid;
   gap: 8px;
-  margin-bottom: 14px;
+  margin: 0 9px 12px;
   padding: 9px;
   border: 1px solid #d7ded9;
   border-radius: 7px;

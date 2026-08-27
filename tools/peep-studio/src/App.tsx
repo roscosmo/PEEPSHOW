@@ -758,31 +758,33 @@ export default function App() {
   );
   const renderPreviewPanel = (variant: "project" | "placement") => (
     <section className={`preview-pane ${variant === "placement" ? "preview-pane-large" : "preview-pane-compact"}`}>
-      <div className="preview-heading">
-        <div>
-          <span className="section-kicker">Screen</span>
-          <h2>{preview?.scene.display_name ?? "Display preview"}</h2>
-        </div>
-        <div className="preview-heading-tools">
-          {preview !== null && (
-            <div className="timeline-readout">
-              <span>Step {preview.timeline.step_index + 1}/{preview.timeline.step_count}</span>
-              <strong>{preview.timeline.elapsed_ms} ms</strong>
+      {variant === "project" && (
+        <div className="preview-heading">
+          <div>
+            <span className="section-kicker">Screen</span>
+            <h2>{preview?.scene.display_name ?? "Display preview"}</h2>
+          </div>
+          <div className="preview-heading-tools">
+            {preview !== null && (
+              <div className="timeline-readout">
+                <span>Step {preview.timeline.step_index + 1}/{preview.timeline.step_count}</span>
+                <strong>{preview.timeline.elapsed_ms} ms</strong>
+              </div>
+            )}
+            <div className="playback-controls" aria-label="Preview playback">
+              <button className="icon-button" onClick={() => selectedScene !== null && void startPreview(selectedScene)} disabled={preview === null} title="Reset preview">
+                <RotateCcw size={18} aria-hidden="true" />
+              </button>
+              <button className="icon-button transport-play" onClick={() => setPlaying((value) => !value)} disabled={preview === null} title={playing ? "Pause preview" : "Play preview"}>
+                {playing ? <Pause size={19} aria-hidden="true" /> : <Play size={19} aria-hidden="true" />}
+              </button>
+              <button className="icon-button" onClick={() => void advancePreview(250)} disabled={preview === null} title="Advance 250 ms">
+                <StepForward size={18} aria-hidden="true" />
+              </button>
             </div>
-          )}
-          <div className="playback-controls" aria-label="Preview playback">
-            <button className="icon-button" onClick={() => selectedScene !== null && void startPreview(selectedScene)} disabled={preview === null} title="Reset preview">
-              <RotateCcw size={18} aria-hidden="true" />
-            </button>
-            <button className="icon-button transport-play" onClick={() => setPlaying((value) => !value)} disabled={preview === null} title={playing ? "Pause preview" : "Play preview"}>
-              {playing ? <Pause size={19} aria-hidden="true" /> : <Play size={19} aria-hidden="true" />}
-            </button>
-            <button className="icon-button" onClick={() => void advancePreview(250)} disabled={preview === null} title="Advance 250 ms">
-              <StepForward size={18} aria-hidden="true" />
-            </button>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="display-stage">
         <div className="panel-bezel">
@@ -828,9 +830,7 @@ export default function App() {
         </div>
       </div>
 
-      <div className="transport-bar">
-        {renderInputControls()}
-      </div>
+      {variant === "project" && <div className="transport-bar">{renderInputControls()}</div>}
     </section>
   );
   const renderModeTabs = () => (
@@ -861,57 +861,62 @@ export default function App() {
       </button>
     </div>
   );
+  const renderPlacementViewSettings = () => (
+    <details className="project-section placement-view-settings-section" open>
+      <summary>View settings</summary>
+      <div className="placement-view-settings">
+        <label>
+          <input
+            type="checkbox"
+            checked={placementGridVisible}
+            onChange={(event) => setPlacementGridVisible(event.target.checked)}
+          />
+          Pixel grid
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={placementMajorGridVisible}
+            disabled={!placementGridVisible}
+            onChange={(event) => setPlacementMajorGridVisible(event.target.checked)}
+          />
+          Major lines
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={placementOverlayVisible}
+            onChange={(event) => setPlacementOverlayVisible(event.target.checked)}
+          />
+          Object boxes
+        </label>
+        <label>
+          Grid strength
+          <input
+            type="range"
+            min="4"
+            max="30"
+            value={placementGridStrength}
+            disabled={!placementGridVisible}
+            onChange={(event) => setPlacementGridStrength(Number(event.target.value))}
+          />
+        </label>
+        <label>
+          Labels
+          <select value={placementLabelMode} onChange={(event) => setPlacementLabelMode(event.target.value as "hover" | "always" | "off")}>
+            <option value="hover">Hover</option>
+            <option value="always">Always</option>
+            <option value="off">Off</option>
+          </select>
+        </label>
+      </div>
+    </details>
+  );
   const renderPlacementInspector = () => {
     const elements = [...(placementRenderModel?.elements ?? [])].sort((left, right) => left.z_order - right.z_order);
     return (
       <section className="inspector-section placement-inspector">
         <h3><SquareMousePointer size={14} aria-hidden="true" /> Placement</h3>
-        <div className="placement-view-settings">
-          <label>
-            <input
-              type="checkbox"
-              checked={placementGridVisible}
-              onChange={(event) => setPlacementGridVisible(event.target.checked)}
-            />
-            Pixel grid
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={placementMajorGridVisible}
-              disabled={!placementGridVisible}
-              onChange={(event) => setPlacementMajorGridVisible(event.target.checked)}
-            />
-            Major lines
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={placementOverlayVisible}
-              onChange={(event) => setPlacementOverlayVisible(event.target.checked)}
-            />
-            Object boxes
-          </label>
-          <label>
-            Grid strength
-            <input
-              type="range"
-              min="4"
-              max="30"
-              value={placementGridStrength}
-              disabled={!placementGridVisible}
-              onChange={(event) => setPlacementGridStrength(Number(event.target.value))}
-            />
-          </label>
-          <label>
-            Labels
-            <select value={placementLabelMode} onChange={(event) => setPlacementLabelMode(event.target.value as "hover" | "always" | "off")}>
-              <option value="hover">Hover</option>
-              <option value="always">Always</option>
-              <option value="off">Off</option>
-            </select>
-          </label>
-        </div>
         {selectedSceneDocument === null ? (
           <p className="muted">Select a scene to inspect its screen elements.</p>
         ) : placementRenderModel === null ? (
@@ -1007,16 +1012,32 @@ export default function App() {
         style={{ "--project-width": `${projectWidth}px`, "--inspector-width": `${inspectorWidth}px` } as CSSProperties}
       >
         <aside className="project-pane">
-          <div className="pane-heading">
-            <span>Project</span>
-            {project !== null && (
-              <span className={`validation-state ${project.valid ? "valid" : "invalid"}`}>
-                <StatusMark ok={project.valid} /> {project.valid ? "Valid" : "Invalid"}
-              </span>
-            )}
+          <div className="pane-heading project-heading">
+            <details className="project-heading-details">
+              <summary>
+                <span>Project</span>
+                {project !== null && (
+                  <span className={`validation-state ${project.valid ? "valid" : "invalid"}`}>
+                    <StatusMark ok={project.valid} /> {project.valid ? "Valid" : "Invalid"}
+                  </span>
+                )}
+              </summary>
+              {project !== null && (
+                <dl className="project-facts project-facts-dropdown">
+                  <div><dt>Package</dt><dd>{project.summary.package_id}</dd></div>
+                  <div><dt>Target</dt><dd>{project.summary.target_profile}</dd></div>
+                  <div><dt>Source</dt><dd>{temporaryProject ? "Example copy" : "Project"}</dd></div>
+                  <div><dt>Edits</dt><dd>{dirty ? "Unsaved" : "Clean"}</dd></div>
+                  <div><dt>Path</dt><dd title={projectPath ?? undefined}>{projectPath ?? "-"}</dd></div>
+                  <div><dt>Frames</dt><dd>{project.summary.asset_frame_count}</dd></div>
+                  <div><dt>Animations</dt><dd>{project.summary.animation_count}</dd></div>
+                </dl>
+              )}
+            </details>
           </div>
 
-          {workspaceMode !== "placement" && renderPreviewPanel("project")}
+          {renderPreviewPanel("project")}
+          {workspaceMode === "placement" && renderPlacementViewSettings()}
 
           {project === null ? (
             <div className="empty-pane">
@@ -1026,33 +1047,25 @@ export default function App() {
             </div>
           ) : (
             <>
-              <dl className="project-facts">
-                <div><dt>Package</dt><dd>{project.summary.package_id}</dd></div>
-                <div><dt>Target</dt><dd>{project.summary.target_profile}</dd></div>
-                <div><dt>Source</dt><dd>{temporaryProject ? "Example copy" : "Project"}</dd></div>
-                <div><dt>Edits</dt><dd>{dirty ? "Unsaved" : "Clean"}</dd></div>
-                <div><dt>Path</dt><dd title={projectPath ?? undefined}>{projectPath ?? "-"}</dd></div>
-                <div><dt>Frames</dt><dd>{project.summary.asset_frame_count}</dd></div>
-                <div><dt>Animations</dt><dd>{project.summary.animation_count}</dd></div>
-              </dl>
-
-              <div className="tree-label">Scenes</div>
-              <nav className="scene-list" aria-label="Project scenes">
-                {scenes.map((scene) => (
-                  <button
-                    key={scene.scene_id}
-                    className={`scene-row ${selectedScene === scene.scene_id ? "selected" : ""}`}
-                    onClick={() => void startPreview(scene.scene_id)}
-                  >
-                    <FileCode2 size={16} aria-hidden="true" />
-                    <span>
-                      <strong>{scene.display_name}</strong>
-                      <small>{scene.scene_type}</small>
-                    </span>
-                    <ChevronRight size={15} aria-hidden="true" />
-                  </button>
-                ))}
-              </nav>
+              <details className="project-section" open>
+                <summary>Scenes</summary>
+                <nav className="scene-list" aria-label="Project scenes">
+                  {scenes.map((scene) => (
+                    <button
+                      key={scene.scene_id}
+                      className={`scene-row ${selectedScene === scene.scene_id ? "selected" : ""}`}
+                      onClick={() => void startPreview(scene.scene_id)}
+                    >
+                      <FileCode2 size={16} aria-hidden="true" />
+                      <span>
+                        <strong>{scene.display_name}</strong>
+                        <small>{scene.scene_type}</small>
+                      </span>
+                      <ChevronRight size={15} aria-hidden="true" />
+                    </button>
+                  ))}
+                </nav>
+              </details>
             </>
           )}
         </aside>
