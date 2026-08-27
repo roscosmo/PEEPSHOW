@@ -268,7 +268,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(15, SERVICE_API_VERSION)
+        self.assertEqual(16, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -295,6 +295,18 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertEqual(["peepshow.system.8x8.basic.v1"], text["font_ids"])
         self.assertEqual({"width": 8, "height": 8}, text["glyph_cell"])
         self.assertEqual(1, text["frames_per_asset"])
+        element_actions = result["state_scene_presentation"]["element_actions"]
+        self.assertEqual("destination_state_render_model", element_actions["target"])
+        self.assertTrue(element_actions["atomic_with_variable_actions"])
+        self.assertEqual(
+            ["set_element_visibility", "set_element_position", "set_element_frame"],
+            element_actions["kinds"],
+        )
+        self.assertTrue(element_actions["waiting_visual_linkage"]["visibility"])
+        self.assertTrue(element_actions["waiting_visual_linkage"]["position"])
+        self.assertFalse(
+            element_actions["waiting_visual_linkage"]["frame_selection_replaces_animation"]
+        )
         graph = result["state_scene_graph"]
         self.assertEqual(64, graph["command_batch_maximum"])
         self.assertEqual(64, graph["limits"]["states"])
@@ -1911,6 +1923,61 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertEqual(1, returned["variables"]["selected_index"])
         self.assertEqual(0, returned["timeline"]["elapsed_ms"])
         self.assertEqual(source_hash, returned["framebuffer"]["sha256"])
+
+    def test_preview_applies_state_element_actions_atomically(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(TRANSITION_SAMPLE)}))
+        reset = service.handle(
+            request(
+                "project.preview_reset",
+                {"project_revision": loaded["project_revision"], "scene_id": "state_demo"},
+            )
+        )
+        baseline_left = service.handle(
+            request(
+                "project.preview_input",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "preview_revision": reset["preview_revision"],
+                    "logical_source": "BUTTON_L",
+                },
+            )
+        )
+        self.assertEqual("left", baseline_left["scene"]["state_id"])
+
+        reset = service.handle(
+            request(
+                "project.preview_reset",
+                {"project_revision": loaded["project_revision"], "scene_id": "state_demo"},
+            )
+        )
+        moved_right = service.handle(
+            request(
+                "project.preview_input",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "preview_revision": reset["preview_revision"],
+                    "logical_source": "BUTTON_R",
+                },
+            )
+        )
+        changed_left = service.handle(
+            request(
+                "project.preview_input",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "preview_revision": reset["preview_revision"],
+                    "logical_source": "BUTTON_R",
+                },
+            )
+        )
+        self.assertEqual("right", moved_right["scene"]["state_id"])
+        self.assertEqual("left", changed_left["scene"]["state_id"])
+        self.assertEqual(0, changed_left["variables"]["selected_index"])
+        self.assertNotEqual(
+            baseline_left["framebuffer"]["sha256"],
+            changed_left["framebuffer"]["sha256"],
+        )
 
     def test_preview_renders_static_primitives_and_rejects_stale_sessions(self) -> None:
         service = AuthoringService()

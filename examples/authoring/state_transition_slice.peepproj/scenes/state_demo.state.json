@@ -71,6 +71,22 @@
         },
         {
           "kind": "request_render"
+        },
+        {
+          "kind": "set_element_visibility",
+          "element_ref": "primitive_circle",
+          "visible": true
+        },
+        {
+          "kind": "set_element_position",
+          "element_ref": "marker",
+          "x": 160,
+          "y": 0
+        },
+        {
+          "kind": "set_element_frame",
+          "element_ref": "frame_probe",
+          "frame_ref": "marker.phase_a"
         }
       ],
       "target_state": "center"
@@ -97,6 +113,12 @@
         },
         {
           "kind": "request_render"
+        },
+        {
+          "kind": "set_element_position",
+          "element_ref": "marker",
+          "x": 120,
+          "y": 0
         }
       ],
       "target_state": "right"
@@ -135,6 +157,16 @@
         },
         {
           "kind": "request_render"
+        },
+        {
+          "kind": "set_element_visibility",
+          "element_ref": "primitive_circle",
+          "visible": false
+        },
+        {
+          "kind": "set_element_frame",
+          "element_ref": "frame_probe",
+          "frame_ref": "marker.phase_c"
         }
       ],
       "target_state": "left"
@@ -161,6 +193,11 @@
         },
         {
           "kind": "request_render"
+        },
+        {
+          "kind": "set_element_frame",
+          "element_ref": "frame_probe",
+          "frame_ref": "marker.phase_c"
         }
       ],
       "target_state": "center"
@@ -187,6 +224,12 @@
         },
         {
           "kind": "request_render"
+        },
+        {
+          "kind": "set_element_position",
+          "element_ref": "marker",
+          "x": 140,
+          "y": 0
         }
       ],
       "target_state": "left"
@@ -295,6 +338,17 @@
           "width": 31,
           "height": 15,
           "z_order": 1
+        },
+        {
+          "element_id": "frame_probe",
+          "kind": "sprite",
+          "layer": "SCENE",
+          "visual_ref": "marker.phase_a",
+          "x": 140,
+          "y": 100,
+          "width": 8,
+          "height": 24,
+          "z_order": 6
         }
       ]
     },
@@ -374,6 +428,17 @@
           "width": 31,
           "height": 15,
           "z_order": 1
+        },
+        {
+          "element_id": "frame_probe",
+          "kind": "sprite",
+          "layer": "SCENE",
+          "visual_ref": "marker.phase_a",
+          "x": 140,
+          "y": 100,
+          "width": 8,
+          "height": 24,
+          "z_order": 6
         }
       ]
     },

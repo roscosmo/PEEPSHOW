@@ -14,6 +14,7 @@
 
 static ps_scene_waiting_visual_t s_ps_scene_runtime_waiting_visual;
 static ps_scene_render_model_t s_ps_scene_runtime_render_model;
+static ps_scene_runtime_visual_binding_t s_ps_scene_runtime_staged_binding;
 static int32_t
   s_ps_scene_runtime_variables[PS_SCENE_RUNTIME_VARIABLE_MAX];
 
@@ -73,6 +74,23 @@ static uint32_t PS_SceneRuntime_FindVisualBindingIndex(
   for (index = 0UL; index < scene->visual_binding_count; ++index)
   {
     if (scene->visual_bindings[index].visual_binding_id == visual_binding_id)
+    {
+      return index;
+    }
+  }
+
+  return PS_SCENE_RUNTIME_INDEX_INVALID;
+}
+
+static uint32_t PS_SceneRuntime_FindRenderElementIndex(
+  const ps_scene_runtime_visual_binding_t *binding,
+  uint32_t element_id)
+{
+  uint32_t index;
+
+  for (index = 0UL; index < binding->element_count; ++index)
+  {
+    if (binding->elements[index].element_id == element_id)
     {
       return index;
     }
@@ -262,6 +280,21 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
     {
       return 1UL;
     }
+    for (element_index = 0UL;
+         element_index < binding->waiting_visual.element_count;
+         ++element_index)
+    {
+      const ps_scene_waiting_visual_element_t *waiting_element =
+        &binding->waiting_visual.elements[element_index];
+
+      if ((waiting_element->source_element_id == 0UL) ||
+          (PS_SceneRuntime_FindRenderElementIndex(
+             binding, waiting_element->source_element_id) ==
+           PS_SCENE_RUNTIME_INDEX_INVALID))
+      {
+        return 1UL;
+      }
+    }
     for (compare_index = visual_binding_index + 1UL;
          compare_index < scene->visual_binding_count;
          ++compare_index)
@@ -361,13 +394,74 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
   for (action_index = 0UL; action_index < scene->action_count; ++action_index)
   {
     const ps_scene_runtime_action_t *action = &scene->actions[action_index];
+    uint32_t binding_index;
+    uint32_t element_index;
 
-    if ((PS_SceneRuntime_FindVariableIndex(scene, action->variable_id) ==
-         PS_SCENE_RUNTIME_INDEX_INVALID) ||
-        (action->mutation < PS_SCENE_RUNTIME_MUTATION_SET) ||
-        (action->mutation > PS_SCENE_RUNTIME_MUTATION_SUBTRACT))
+    if (action->kind == PS_SCENE_RUNTIME_ACTION_SET_VARIABLE)
+    {
+      if ((PS_SceneRuntime_FindVariableIndex(scene, action->target_id) ==
+           PS_SCENE_RUNTIME_INDEX_INVALID) ||
+          (action->target_element_id != 0UL) ||
+          (action->operation < PS_SCENE_RUNTIME_MUTATION_SET) ||
+          (action->operation > PS_SCENE_RUNTIME_MUTATION_SUBTRACT) ||
+          (action->secondary_value != 0))
+      {
+        return 1UL;
+      }
+      continue;
+    }
+
+    binding_index = PS_SceneRuntime_FindVisualBindingIndex(
+      scene, action->target_id);
+    if ((binding_index == PS_SCENE_RUNTIME_INDEX_INVALID) ||
+        (action->target_element_id == 0UL) ||
+        (action->operation != 0UL))
     {
       return 1UL;
+    }
+    element_index = PS_SceneRuntime_FindRenderElementIndex(
+      &scene->visual_bindings[binding_index], action->target_element_id);
+    if (element_index == PS_SCENE_RUNTIME_INDEX_INVALID)
+    {
+      return 1UL;
+    }
+
+    switch ((ps_scene_runtime_action_kind_t)action->kind)
+    {
+      case PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_VISIBILITY:
+        if (((action->value != 0) && (action->value != 1)) ||
+            (action->secondary_value != 0) ||
+            ((action->value == 0) &&
+             (scene->visual_bindings[binding_index].elements[element_index].
+                type == PS_SCENE_RENDER_ELEMENT_FOCUS)))
+        {
+          return 1UL;
+        }
+        break;
+      case PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_POSITION:
+        if ((action->value < 0) || (action->secondary_value < 0) ||
+            ((uint32_t)action->value +
+             scene->visual_bindings[binding_index].elements[element_index].
+               width > PS_SCENE_RENDER_CANVAS_WIDTH) ||
+            ((uint32_t)action->secondary_value +
+             scene->visual_bindings[binding_index].elements[element_index].
+               height > PS_SCENE_RENDER_CANVAS_HEIGHT))
+        {
+          return 1UL;
+        }
+        break;
+      case PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_FRAME:
+        if ((action->value <= 0) || (action->secondary_value != 0) ||
+            ((scene->visual_bindings[binding_index].elements[element_index].
+                type != PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP) &&
+             (scene->visual_bindings[binding_index].elements[element_index].
+                type != PS_SCENE_RENDER_ELEMENT_FOCUS)))
+        {
+          return 1UL;
+        }
+        break;
+      default:
+        return 1UL;
     }
   }
 
@@ -489,28 +583,105 @@ static uint32_t PS_SceneRuntime_TransitionGuardsPass(
 static uint32_t PS_SceneRuntime_StageActions(
   const ps_scene_runtime_state_scene_t *scene,
   const ps_scene_runtime_transition_t *transition,
-  int32_t *staged_variables)
+  int32_t *staged_variables,
+  ps_scene_runtime_visual_binding_t *staged_binding,
+  uint32_t *target_binding_index)
 {
+  uint32_t target_state_index;
   uint32_t index;
+
+  target_state_index = PS_SceneRuntime_FindStateIndex(
+    scene, transition->target_state_id);
+  if (target_state_index == PS_SCENE_RUNTIME_INDEX_INVALID)
+  {
+    g_ps_scene_runtime_probe.action_error_count++;
+    return 0UL;
+  }
+  *target_binding_index = PS_SceneRuntime_FindVisualBindingIndex(
+    scene, scene->states[target_state_index].visual_binding_id);
+  if (*target_binding_index == PS_SCENE_RUNTIME_INDEX_INVALID)
+  {
+    g_ps_scene_runtime_probe.action_error_count++;
+    return 0UL;
+  }
 
   (void)memcpy(staged_variables,
                s_ps_scene_runtime_variables,
                sizeof(s_ps_scene_runtime_variables));
+  (void)memcpy(staged_binding,
+               &scene->visual_bindings[*target_binding_index],
+               sizeof(*staged_binding));
   for (index = 0UL; index < transition->action_count; ++index)
   {
     const ps_scene_runtime_action_t *action =
       &scene->actions[transition->first_action + index];
-    uint32_t variable_index = PS_SceneRuntime_FindVariableIndex(
-      scene, action->variable_id);
-    int64_t result;
+    uint32_t variable_index;
+    uint32_t element_index;
+    int64_t result = 0;
 
+    if (action->kind != PS_SCENE_RUNTIME_ACTION_SET_VARIABLE)
+    {
+      if (action->target_id != staged_binding->visual_binding_id)
+      {
+        g_ps_scene_runtime_probe.action_error_count++;
+        return 0UL;
+      }
+      element_index = PS_SceneRuntime_FindRenderElementIndex(
+        staged_binding, action->target_element_id);
+      if (element_index == PS_SCENE_RUNTIME_INDEX_INVALID)
+      {
+        g_ps_scene_runtime_probe.action_error_count++;
+        return 0UL;
+      }
+      switch ((ps_scene_runtime_action_kind_t)action->kind)
+      {
+        case PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_VISIBILITY:
+          if ((action->value == 0) &&
+              (staged_binding->elements[element_index].type ==
+               PS_SCENE_RENDER_ELEMENT_FOCUS))
+          {
+            g_ps_scene_runtime_probe.action_error_count++;
+            return 0UL;
+          }
+          staged_binding->elements[element_index].visible =
+            (uint32_t)action->value;
+          break;
+        case PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_POSITION:
+          if ((action->value < 0) || (action->secondary_value < 0) ||
+              ((uint32_t)action->value +
+               staged_binding->elements[element_index].width >
+               PS_SCENE_RENDER_CANVAS_WIDTH) ||
+              ((uint32_t)action->secondary_value +
+               staged_binding->elements[element_index].height >
+               PS_SCENE_RENDER_CANVAS_HEIGHT))
+          {
+            g_ps_scene_runtime_probe.action_error_count++;
+            return 0UL;
+          }
+          staged_binding->elements[element_index].x =
+            (uint16_t)action->value;
+          staged_binding->elements[element_index].y =
+            (uint16_t)action->secondary_value;
+          break;
+        case PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_FRAME:
+          staged_binding->elements[element_index].asset_id =
+            (uint32_t)action->value;
+          break;
+        default:
+          g_ps_scene_runtime_probe.action_error_count++;
+          return 0UL;
+      }
+      continue;
+    }
+
+    variable_index = PS_SceneRuntime_FindVariableIndex(scene,
+                                                       action->target_id);
     if (variable_index == PS_SCENE_RUNTIME_INDEX_INVALID)
     {
       g_ps_scene_runtime_probe.action_error_count++;
       return 0UL;
     }
-
-    switch ((ps_scene_runtime_mutation_t)action->mutation)
+    switch ((ps_scene_runtime_mutation_t)action->operation)
     {
       case PS_SCENE_RUNTIME_MUTATION_SET:
         result = (int64_t)action->value;
@@ -869,6 +1040,7 @@ const ps_scene_render_model_t *PS_SceneRuntime_ResolveStateSceneRenderModel(
   uint32_t element_index;
   uint32_t focus_element_id = 0UL;
   uint32_t sprite_count = 0UL;
+  uint32_t waiting_element_count = 0UL;
 
   g_ps_scene_runtime_probe.render_model_resolve_count++;
   g_ps_scene_runtime_probe.render_model_status =
@@ -917,8 +1089,21 @@ const ps_scene_render_model_t *PS_SceneRuntime_ResolveStateSceneRenderModel(
   }
   model->waiting_sequence_step_count =
     binding->waiting_visual.sequence_step_count;
+  for (element_index = 0UL;
+       element_index < binding->waiting_visual.element_count;
+       ++element_index)
+  {
+    uint32_t source_index = PS_SceneRuntime_FindRenderElementIndex(
+      binding,
+      binding->waiting_visual.elements[element_index].source_element_id);
+    if ((source_index != PS_SCENE_RUNTIME_INDEX_INVALID) &&
+        (binding->elements[source_index].visible != 0UL))
+    {
+      waiting_element_count++;
+    }
+  }
   model->waiting_marker_enabled =
-    (binding->waiting_visual.element_count > 1UL) ? 1UL : 0UL;
+    (waiting_element_count > 1UL) ? 1UL : 0UL;
 
   g_ps_scene_runtime_probe.render_model_scene_id = model->scene_id;
   g_ps_scene_runtime_probe.render_model_state_id = model->state_id;
@@ -944,6 +1129,7 @@ uint32_t PS_SceneRuntime_HandleStateSceneInput(uint32_t logical_event,
   uint32_t route_index;
   uint32_t scene_event_id = 0UL;
   uint32_t transition_index;
+  uint32_t target_binding_index = PS_SCENE_RUNTIME_INDEX_INVALID;
   int32_t staged_variables[PS_SCENE_RUNTIME_VARIABLE_MAX];
 
   if (g_ps_scene_runtime_probe.active == 0UL)
@@ -1005,9 +1191,12 @@ uint32_t PS_SceneRuntime_HandleStateSceneInput(uint32_t logical_event,
         g_ps_scene_runtime_probe.last_status = 0UL;
         return PS_SCENE_RUNTIME_INPUT_IGNORED;
       }
-      if (PS_SceneRuntime_StageActions(scene,
-                                       transition,
-                                       staged_variables) == 0UL)
+      if ((transition->target_scene_id == 0UL) &&
+          (PS_SceneRuntime_StageActions(scene,
+                                        transition,
+                                        staged_variables,
+                                        &s_ps_scene_runtime_staged_binding,
+                                        &target_binding_index) == 0UL))
       {
         g_ps_scene_runtime_probe.last_status = 1UL;
         return PS_SCENE_RUNTIME_INPUT_ERROR;
@@ -1029,10 +1218,39 @@ uint32_t PS_SceneRuntime_HandleStateSceneInput(uint32_t logical_event,
         (void)memcpy(s_ps_scene_runtime_variables,
                      staged_variables,
                      sizeof(s_ps_scene_runtime_variables));
+        (void)memcpy(&s_ps_scene_runtime_state_scene->visual_bindings[
+                       target_binding_index],
+                     &s_ps_scene_runtime_staged_binding,
+                     sizeof(s_ps_scene_runtime_staged_binding));
         PS_SceneRuntime_SelectState(target_index);
         g_ps_scene_runtime_probe.state_revision++;
         g_ps_scene_runtime_probe.primary_variable_value =
           s_ps_scene_runtime_variables[0];
+        {
+          uint32_t action_index;
+          for (action_index = 0UL;
+               action_index < transition->action_count;
+               ++action_index)
+          {
+            const ps_scene_runtime_action_t *action =
+              &scene->actions[transition->first_action + action_index];
+            if (action->kind != PS_SCENE_RUNTIME_ACTION_SET_VARIABLE)
+            {
+              g_ps_scene_runtime_probe.element_action_commit_count++;
+              g_ps_scene_runtime_probe.last_element_action_kind =
+                action->kind;
+              g_ps_scene_runtime_probe.last_element_action_binding_id =
+                action->target_id;
+              g_ps_scene_runtime_probe.last_element_action_id =
+                action->target_element_id;
+              g_ps_scene_runtime_probe.last_element_action_value =
+                action->value;
+              g_ps_scene_runtime_probe.
+                last_element_action_secondary_value =
+                  action->secondary_value;
+            }
+          }
+        }
       }
       g_ps_scene_runtime_probe.transition_match_count++;
       g_ps_scene_runtime_probe.action_commit_count++;
@@ -1058,6 +1276,7 @@ const ps_scene_waiting_visual_t *PS_SceneRuntime_ResolveStateSceneWaitingVisual(
   const ps_scene_runtime_visual_binding_t *binding;
   uint32_t binding_index;
   uint32_t element_index;
+  uint32_t output_count = 0UL;
 
   g_ps_scene_runtime_probe.resolve_count++;
   g_ps_scene_runtime_probe.last_status = PS_SCENE_RUNTIME_STATUS_NOT_RUN;
@@ -1097,13 +1316,32 @@ const ps_scene_waiting_visual_t *PS_SceneRuntime_ResolveStateSceneWaitingVisual(
        element_index < s_ps_scene_runtime_waiting_visual.element_count;
        ++element_index)
   {
-    if (s_ps_scene_runtime_waiting_visual.elements[element_index].
-          visual_source_id == PS_SCENE_WAITING_VISUAL_SOURCE_SHELL_CURSOR)
+    ps_scene_waiting_visual_element_t element =
+      s_ps_scene_runtime_waiting_visual.elements[element_index];
+    uint32_t source_index = PS_SceneRuntime_FindRenderElementIndex(
+      binding, element.source_element_id);
+
+    if ((source_index == PS_SCENE_RUNTIME_INDEX_INVALID) ||
+        (binding->elements[source_index].visible == 0UL))
     {
-      s_ps_scene_runtime_waiting_visual.elements[element_index].logical_bounds =
-        *cursor_bounds;
+      continue;
     }
+    if (element.visual_source_id ==
+        PS_SCENE_WAITING_VISUAL_SOURCE_SHELL_CURSOR)
+    {
+      element.logical_bounds = *cursor_bounds;
+    }
+    else
+    {
+      element.logical_bounds.x = binding->elements[source_index].x;
+      element.logical_bounds.y = binding->elements[source_index].y;
+      element.logical_bounds.width = binding->elements[source_index].width;
+      element.logical_bounds.height = binding->elements[source_index].height;
+    }
+    s_ps_scene_runtime_waiting_visual.elements[output_count] = element;
+    output_count++;
   }
+  s_ps_scene_runtime_waiting_visual.element_count = output_count;
   g_ps_scene_runtime_probe.presentation_id =
     s_ps_scene_runtime_waiting_visual.presentation_id;
   g_ps_scene_runtime_probe.sequence_step_count =

@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-#define PS_SCENE_RUNTIME_API_VERSION             (13UL)
+#define PS_SCENE_RUNTIME_API_VERSION             (14UL)
 #define PS_SCENE_RUNTIME_SCENE_TYPE_STATE        (1UL)
 #define PS_SCENE_RUNTIME_STATUS_NOT_RUN          (0xFFFFFFFFUL)
 #define PS_SCENE_RUNTIME_STATUS_OK               (0UL)
@@ -58,6 +58,15 @@ typedef enum
   PS_SCENE_RUNTIME_MUTATION_SUBTRACT
 } ps_scene_runtime_mutation_t;
 
+typedef enum
+{
+  PS_SCENE_RUNTIME_ACTION_NONE = 0,
+  PS_SCENE_RUNTIME_ACTION_SET_VARIABLE,
+  PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_VISIBILITY,
+  PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_POSITION,
+  PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_FRAME
+} ps_scene_runtime_action_kind_t;
+
 typedef struct
 {
   uint32_t state_id;
@@ -96,9 +105,12 @@ typedef struct
 
 typedef struct
 {
-  uint32_t variable_id;
-  uint32_t mutation;
+  uint32_t kind;
+  uint32_t target_id;
+  uint32_t target_element_id;
+  uint32_t operation;
   int32_t value;
+  int32_t secondary_value;
 } ps_scene_runtime_action_t;
 
 typedef struct
@@ -187,6 +199,12 @@ typedef struct
   uint32_t guard_reject_count;
   uint32_t action_commit_count;
   uint32_t action_error_count;
+  uint32_t element_action_commit_count;
+  uint32_t last_element_action_kind;
+  uint32_t last_element_action_binding_id;
+  uint32_t last_element_action_id;
+  int32_t last_element_action_value;
+  int32_t last_element_action_secondary_value;
   uint32_t last_scene_event_id;
   uint32_t last_transition_id;
   uint32_t scene_replace_count;

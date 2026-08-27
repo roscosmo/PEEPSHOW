@@ -209,6 +209,21 @@ class AuthoringModelTests(unittest.TestCase):
         )
         self.assertEqual(6, joy_input["logical_source"])
 
+    def test_state_element_actions_compile_and_round_trip(self) -> None:
+        package = parse_egg(build_egg(load_project(EMBEDDED_PROJECT)))
+        scene = next(item for item in package.scenes if item["scene_id"] == "state_demo")
+        routes = {item["route_id"]: item for item in scene["graph"]["routes"]}
+
+        center_to_right = routes["center_to_right"]["operations"]
+        moved = next(item for item in center_to_right if item["kind"] == 4)
+        self.assertEqual((120, 0), (moved["x"], moved["y"]))
+
+        right_to_left = routes["right_to_left"]["operations"]
+        hidden = next(item for item in right_to_left if item["kind"] == 3)
+        framed = next(item for item in right_to_left if item["kind"] == 5)
+        self.assertEqual(0, hidden["visible"])
+        self.assertEqual("marker.phase_c", framed["frame_ref"])
+
     def test_unknown_transition_target_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "broken.peepproj"

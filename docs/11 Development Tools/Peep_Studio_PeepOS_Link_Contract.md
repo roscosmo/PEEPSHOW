@@ -57,6 +57,7 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | retained render model | bounded ordered scene elements with binary alpha and four platform planes |
 | package primitives | retained line, outline rectangle, filled rectangle, circle, and ellipse records are compiled, previewed, loaded, and target-proven; private shell/calibration draw helpers remain unavailable |
 | package text | service API 15 rasterizes printable-ASCII menu labels through `peepshow.system.8x8.basic.v1` into ordinary masked 1bpp sprite frames; runtime text remains unavailable |
+| retained element actions | service API 16 and FW0 runtime API 14 implement atomic destination-state show/hide, move, and retained frame selection; host package/preview tests and HW6 awake/STOP2 visual proof pass |
 | package audio | not exposed; HW6 currently proves only a generated diagnostic speaker tone, not `.egg` audio assets or STATE SFX actions |
 | STATE animated elements | bounded repeating sprite phase timelines with 1..4 frames, 1..12 combined steps, explicit cadence, and a settled step; mixed 2-phase and 3-phase composition and deterministic fallback are target-proven |
 | awake preview | exact 168x144 package-backed framebuffer with deterministic fake time and side-effect-free scene thumbnails |
@@ -181,8 +182,11 @@ The STATE-first presentation expansion is:
 3. **Toolchain-implemented:** rasterize initial authored menu text into masked
    1bpp package assets at build time through the frozen 8x8 system font;
    runtime fonts and mutable text remain a later capability;
-4. **Next:** add bounded STATE actions for show/hide, move, frame selection, and animation
-   selection, with dirty-region composition owned by PeepOS;
+4. **Hardware-validated:** bounded destination-state actions can
+   show/hide an element, move it, or select its retained base sprite frame.
+   Variable and element changes commit atomically. Visibility and position also
+   update the linked waiting presentation; retained frame selection does not
+   replace an authored waiting animation. Animation selection remains next;
 5. **Next:** add one symbolic bounded STATE SFX action backed by a compiled sampled-audio
    asset and owned at runtime by `thAudio`.
 
@@ -200,7 +204,7 @@ the editor until this document is updated:
 - SEQUENCE and PROGRAM scene authoring or execution;
 - Peep Studio controls for the backend-ready retained-element, asset-catalog,
   waiting-timeline, and STATE graph mutation commands;
-- arbitrary desktop fonts, runtime text, and runtime element mutation actions;
+- arbitrary desktop fonts, runtime text, and waiting-animation mutation actions;
 - sampled package audio, STATE SFX actions, audio audition, or audio
   compatibility reporting;
 - 4-tone and 16-tone fixed dither asset import;
@@ -358,6 +362,14 @@ existing `asset.upsert`/`asset.delete` commands. Peep Studio discovers the
 exact font ID, glyph cell, character set, scaling bounds, ink/background, and
 one-frame output contract through
 `service.hello.state_scene_presentation.build_time_text`.
+
+Service API version 16 adds ordered `set_element_visibility`,
+`set_element_position`, and `set_element_frame` route actions. Each action
+targets the destination state's retained render model. The service rejects
+unknown elements, hidden focus elements, out-of-panel positions, non-sprite
+frame targets, and frame-size mismatches before package export. Peep Studio
+discovers the exact action set and waiting linkage through
+`service.hello.state_scene_presentation.element_actions`.
 
 ### Stage 3: Scene Canvas And Visual Elements
 

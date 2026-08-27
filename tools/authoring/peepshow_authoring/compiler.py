@@ -317,6 +317,16 @@ def _compile_graph(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
     guard_count = 0
     operation_count = 0
     for route in routes:
+        target_elements: dict[str, int] = {}
+        if "target_state" in route:
+            target_state_record = states[state_index[route["target_state"]]]
+            target_render_model = scene["render_models"][
+                render_index[target_state_record["render_model_ref"]]
+            ]
+            target_elements = {
+                element["element_id"]: index
+                for index, element in enumerate(target_render_model["elements"])
+            }
         first_source = len(source_states)
         source_states.extend(state_index[value] for value in route["from_states"])
         first_guard = guard_count
@@ -343,8 +353,43 @@ def _compile_graph(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
                         _i32(operation["value"], "operation value"),
                     )
                 )
-            else:
+            elif operation["kind"] == "request_render":
                 operation_records.extend(OPERATION_RECORD.pack(2, 0, 0xFFFF, 0, 0, 0))
+            elif operation["kind"] == "set_element_visibility":
+                operation_records.extend(
+                    OPERATION_RECORD.pack(
+                        3,
+                        0,
+                        target_elements[operation["element_ref"]],
+                        0,
+                        0,
+                        1 if operation["visible"] else 0,
+                    )
+                )
+            elif operation["kind"] == "set_element_position":
+                operation_records.extend(
+                    OPERATION_RECORD.pack(
+                        4,
+                        0,
+                        target_elements[operation["element_ref"]],
+                        _u16(operation["x"], "element action x"),
+                        0,
+                        _i32(operation["y"], "element action y"),
+                    )
+                )
+            elif operation["kind"] == "set_element_frame":
+                operation_records.extend(
+                    OPERATION_RECORD.pack(
+                        5,
+                        0,
+                        target_elements[operation["element_ref"]],
+                        strings[operation["frame_ref"]],
+                        0,
+                        0,
+                    )
+                )
+            else:
+                raise EggCompileError("unsupported STATE route action")
             operation_count += 1
         route_records.extend(
             ROUTE_RECORD.pack(

@@ -155,7 +155,11 @@ destination timeline at its settled step.
 The exact preview accepts `RND2` package-backed masked 1bpp sprites plus line,
 outline rectangle, filled rectangle, circle, and ellipse elements. Package
 content may use `BACKGROUND`, `SCENE`, and `UI`; `OVERLAY` is system-owned.
-Runtime text, runtime scaling, and retained element actions remain unavailable.
+Route actions may atomically show/hide a destination element, move it within
+the 168x144 panel, or select a same-sized retained sprite frame. Visibility and
+position flow into linked waiting visuals; frame selection does not replace an
+authored waiting animation. Runtime text, runtime scaling, and waiting-animation
+selection remain unavailable.
 The newline-delimited JSON protocol remains version 1, and loaders retain
 `RND1` compatibility.
 

@@ -100,7 +100,11 @@ compiler/parser/exact-preview tests pass. HW6 visual, scene-replacement, and
 STOP2 validation passed on 2026-08-27: static primitives remained composed and
 both package sprite animations continued in STOP2. Build-time text sprites are
 implemented in the host toolchain and reuse that proven sprite path. Runtime
-retained element actions and sampled SFX are the next STATE gaps.
+retained show/hide, move, and base-frame actions are implemented in service API
+16, the package compiler/parser/exact preview, and FW0. HW6 validation passed on
+2026-08-28 with atomic element/variable commits, direct scene replacement, and
+awake/STOP2 composition. Waiting-animation selection and sampled SFX are the
+next STATE gaps.
 
 The checkpoint intentionally defers tone/dither import, Tiled maps, fractional
 transforms, runtime fonts, music, multi-voice mixing, save data, SEQUENCE,
@@ -518,7 +522,10 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
     implemented; complete single-scene
     STATE graph mutation is implemented in service API 14, including reference-
     safe state/model/variable/input/route CRUD and ordered guard/action editing;
-    Peep Studio controls and runtime show/hide/move/frame-selection actions
+    service API 16 also implements destination-state show/hide, move, and
+    retained base-frame actions with atomic variable/element commit and
+    waiting-loop visibility/position linkage; HW6 target proof passed on
+    2026-08-28, while Peep Studio controls and waiting-animation selection
     remain to complete this step
 13. implement the initial STATE sampled-SFX path: verify the HW6 16 kHz mono
     SAI/MAX98357A path, compile WAV sources to bounded IMA ADPCM package assets,

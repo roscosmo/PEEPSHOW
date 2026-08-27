@@ -663,21 +663,80 @@ def _parse_graph(
         record = GUARD_RECORD.unpack_from(payload, offsets[5] + index * GUARD_RECORD.size)
         _require(record[0] < variable_count and record[1] in {1, 2, 3, 4, 5, 6}, "guard record is invalid")
         guards.append({"variable_index": record[0], "operator": record[1], "value": record[3]})
-    operations: list[dict[str, int]] = []
+    operations: list[dict[str, object]] = []
     for index in range(operation_count):
         record = OPERATION_RECORD.unpack_from(payload, offsets[6] + index * OPERATION_RECORD.size)
         if record[0] == 1:
-            _require(record[1] in {1, 2} and record[2] < variable_count, "set-variable operation is invalid")
+            _require(
+                record[1] in {1, 2}
+                and record[2] < variable_count
+                and record[3] == 0
+                and record[4] == 0,
+                "set-variable operation is invalid",
+            )
+            operations.append(
+                {
+                    "kind": record[0],
+                    "operation": record[1],
+                    "variable_index": record[2],
+                    "value": record[5],
+                }
+            )
+        elif record[0] == 2:
+            _require(
+                record[1] == 0
+                and record[2] == 0xFFFF
+                and record[3] == 0
+                and record[4] == 0
+                and record[5] == 0,
+                "request-render operation is invalid",
+            )
+            operations.append({"kind": record[0]})
+        elif record[0] == 3:
+            _require(
+                record[1] == 0
+                and record[3] == 0
+                and record[4] == 0
+                and record[5] in {0, 1},
+                "set-element-visibility operation is invalid",
+            )
+            operations.append(
+                {
+                    "kind": record[0],
+                    "element_index": record[2],
+                    "visible": record[5],
+                }
+            )
+        elif record[0] == 4:
+            _require(
+                record[1] == 0 and record[4] == 0 and record[5] >= 0,
+                "set-element-position operation is invalid",
+            )
+            operations.append(
+                {
+                    "kind": record[0],
+                    "element_index": record[2],
+                    "x": record[3],
+                    "y": record[5],
+                }
+            )
+        elif record[0] == 5:
+            _require(
+                record[1] == 0
+                and record[3] < len(strings)
+                and record[4] == 0
+                and record[5] == 0,
+                "set-element-frame operation is invalid",
+            )
+            operations.append(
+                {
+                    "kind": record[0],
+                    "element_index": record[2],
+                    "frame_ref": _string(strings, record[3], "element action frame"),
+                }
+            )
         else:
-            _require(record[0] == 2 and record[1] == 0 and record[2] == 0xFFFF, "operation record is invalid")
-        operations.append(
-            {
-                "kind": record[0],
-                "operation": record[1],
-                "variable_index": record[2],
-                "value": record[5],
-            }
-        )
+            raise EggFormatError("operation record is invalid")
     routes: list[dict[str, object]] = []
     for record in route_records:
         if graph_version == 1:

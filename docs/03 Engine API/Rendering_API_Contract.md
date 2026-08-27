@@ -196,6 +196,15 @@ itself create a new presentation identity. Only an incompatible presentation
 identity or an explicit authored rebase policy rebases to its declared settled
 step.
 
+Bounded `STATE_SCENE` actions may mutate the destination state's retained
+presentation as part of the same admitted event transaction. Visibility,
+position, retained sprite-frame, and variable changes validate before commit
+and become visible atomically. A hidden focus element or out-of-panel result is
+invalid. Visibility and position changes propagate to any waiting element
+linked to that retained element. Selecting a retained base frame does not
+replace the phase frames of an authored waiting animation; changing that
+animation binding is a separate capability.
+
 ---
 
 ## Waiting Visual Sequences

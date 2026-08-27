@@ -1453,6 +1453,7 @@ static uint32_t PS_EggBuildBinding(
       return 0UL;
     }
     target->element_id = index + 1UL;
+    target->source_element_id = 0UL;
     target->phase_count = phase_count;
     for (phase = 0UL; phase < phase_count; ++phase)
     {
@@ -1490,6 +1491,7 @@ static uint32_t PS_EggBuildBinding(
       {
         const ps_scene_render_element_t *source =
           &binding->elements[render_element];
+        target->source_element_id = source->element_id;
         target->logical_bounds.x = source->x;
         target->logical_bounds.y = source->y;
         target->logical_bounds.width = source->width;
@@ -1745,17 +1747,107 @@ static uint32_t PS_EggDecodeScene(
         {
           return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
         }
-        scene->actions[action_count].variable_id = variable_index + 1UL;
-        scene->actions[action_count].mutation = record[1];
+        scene->actions[action_count].kind =
+          PS_SCENE_RUNTIME_ACTION_SET_VARIABLE;
+        scene->actions[action_count].target_id = variable_index + 1UL;
+        scene->actions[action_count].target_element_id = 0UL;
+        scene->actions[action_count].operation = record[1];
         scene->actions[action_count].value = PS_EggI32(&record[8]);
+        scene->actions[action_count].secondary_value = 0;
         action_count++;
       }
-      else if ((record[0] != 2U) || (record[1] != 0U) ||
-               (PS_EggU16(&record[2]) != 0xFFFFU) ||
-               (PS_EggU32(&record[4]) != 0UL) ||
-               (PS_EggU32(&record[8]) != 0UL))
+      else if (record[0] == 2U)
       {
-        return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+        if ((record[1] != 0U) ||
+            (PS_EggU16(&record[2]) != 0xFFFFU) ||
+            (PS_EggU32(&record[4]) != 0UL) ||
+            (PS_EggU32(&record[8]) != 0UL))
+        {
+          return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+        }
+      }
+      else
+      {
+        uint16_t element_index = PS_EggU16(&record[2]);
+        ps_scene_runtime_visual_binding_t *target_binding =
+          &scene->visual_bindings[target_state];
+        ps_scene_render_element_t *target_element;
+        ps_scene_runtime_action_t *target_action;
+
+        if ((target_state >= graph.state_count) ||
+            (element_index >= target_binding->element_count) ||
+            (record[1] != 0U) ||
+            (action_count >= PS_SCENE_RUNTIME_ACTION_MAX))
+        {
+          return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+        }
+        target_element = &target_binding->elements[element_index];
+        target_action = &scene->actions[action_count];
+        target_action->target_id = target_binding->visual_binding_id;
+        target_action->target_element_id = target_element->element_id;
+        target_action->operation = 0UL;
+        target_action->secondary_value = 0;
+
+        if (record[0] == 3U)
+        {
+          int32_t visible = PS_EggI32(&record[8]);
+          if ((PS_EggU32(&record[4]) != 0UL) ||
+              ((visible != 0) && (visible != 1)) ||
+              ((visible == 0) &&
+               (target_element->type == PS_SCENE_RENDER_ELEMENT_FOCUS)))
+          {
+            return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+          }
+          target_action->kind =
+            PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_VISIBILITY;
+          target_action->value = visible;
+        }
+        else if (record[0] == 4U)
+        {
+          uint16_t x = PS_EggU16(&record[4]);
+          int32_t y = PS_EggI32(&record[8]);
+          if ((PS_EggU16(&record[6]) != 0U) || (y < 0) ||
+              ((uint32_t)x + target_element->width >
+               PS_SCENE_RENDER_CANVAS_WIDTH) ||
+              ((uint32_t)y + target_element->height >
+               PS_SCENE_RENDER_CANVAS_HEIGHT))
+          {
+            return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+          }
+          target_action->kind =
+            PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_POSITION;
+          target_action->value = (int32_t)x;
+          target_action->secondary_value = y;
+        }
+        else if (record[0] == 5U)
+        {
+          uint16_t frame_ref = PS_EggU16(&record[4]);
+          uint32_t frame_id;
+          if ((PS_EggU16(&record[6]) != 0U) ||
+              (PS_EggU32(&record[8]) != 0UL) ||
+              (frame_ref >= strings->count) ||
+              ((target_element->type !=
+                PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP) &&
+               (target_element->type != PS_SCENE_RENDER_ELEMENT_FOCUS)) ||
+              (PS_EggFindSpriteFrame(frame_ref, &frame_id) == 0UL) ||
+              (PS_EggStateLoader_GetSpriteFrame(
+                 frame_id, &s_ps_egg_sprite_frame_scratch) == 0UL) ||
+              (s_ps_egg_sprite_frame_scratch.width !=
+               target_element->width) ||
+              (s_ps_egg_sprite_frame_scratch.height !=
+               target_element->height))
+          {
+            return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+          }
+          target_action->kind =
+            PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_FRAME;
+          target_action->value = (int32_t)frame_id;
+        }
+        else
+        {
+          return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+        }
+        action_count++;
       }
     }
     for (source = 0UL; source < source_count; ++source)

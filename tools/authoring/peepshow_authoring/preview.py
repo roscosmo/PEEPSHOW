@@ -87,6 +87,7 @@ class StateScenePreview:
         self._waiting_visuals = scene["waiting_visuals"]
         self._state_index = int(self._graph["entry_state"])
         self._variables = [int(variable["initial"]) for variable in self._graph["variables"]]
+        self._element_overrides: dict[tuple[int, int], dict[str, object]] = {}
         self._elapsed_ms = 0
         self._step_elapsed_ms = 0
         self._step_index = int(self._waiting()["settled_step"])
@@ -130,9 +131,50 @@ class StateScenePreview:
 
         prior_waiting = self._waiting()
         variables = list(self._variables)
+        element_overrides = {
+            key: dict(value) for key, value in self._element_overrides.items()
+        }
         definitions = self._graph["variables"]
+        target_state = route["target_state_index"]
+        if target_state is None:
+            raise PreviewError("compiled route has no target")
+        target_model_index = int(
+            self._graph["states"][int(target_state)]["render_model_index"]
+        )
+        target_model = self._render_models[target_model_index]
         for operation in route["operations"]:
-            if int(operation["kind"]) == 2:
+            kind = int(operation["kind"])
+            if kind == 2:
+                continue
+            if kind in {3, 4, 5}:
+                element_index = int(operation["element_index"])
+                if not 0 <= element_index < len(target_model["elements"]):
+                    raise PreviewError("compiled element action target is invalid")
+                element = target_model["elements"][element_index]
+                key = (target_model_index, element_index)
+                override = dict(element_overrides.get(key, {}))
+                if kind == 3:
+                    visible = int(operation["visible"])
+                    if not visible and int(element.get("focus_role", 0)):
+                        raise PreviewError("compiled action cannot hide the focus element")
+                    override["visible"] = visible
+                elif kind == 4:
+                    x = int(operation["x"])
+                    y = int(operation["y"])
+                    if (
+                        x < 0
+                        or y < 0
+                        or x + int(element["width"]) > DISPLAY_WIDTH
+                        or y + int(element["height"]) > DISPLAY_HEIGHT
+                    ):
+                        raise PreviewError("compiled element position is outside the display")
+                    override["x"] = x
+                    override["y"] = y
+                else:
+                    frame_ref = str(operation["frame_ref"])
+                    self._require_native_frame(element, frame_ref)
+                    override["visual_ref"] = frame_ref
+                element_overrides[key] = override
                 continue
             variable_index = int(operation["variable_index"])
             if int(operation["operation"]) == 1:
@@ -147,9 +189,7 @@ class StateScenePreview:
             variables[variable_index] = value
 
         self._variables = variables
-        target_state = route["target_state_index"]
-        if target_state is None:
-            raise PreviewError("compiled route has no target")
+        self._element_overrides = element_overrides
         self._state_index = int(target_state)
         next_waiting = self._waiting()
         if not self._compatible_timeline(prior_waiting, next_waiting):
@@ -184,6 +224,19 @@ class StateScenePreview:
             phase_index = int(element["step_phase_indices"][self._step_index])
             result[str(element["source_element_ref"])] = str(element["phase_visual_refs"][phase_index])
         return result
+
+    def _resolved_element(
+        self,
+        model_index: int,
+        element_index: int,
+        element: dict[str, object],
+    ) -> dict[str, object]:
+        override = self._element_overrides.get((model_index, element_index))
+        if not override:
+            return element
+        resolved = dict(element)
+        resolved.update(override)
+        return resolved
 
     def _resolve_frame(self, visual_ref: str) -> dict[str, object]:
         frame = self._frames.get(visual_ref)
@@ -247,6 +300,26 @@ class StateScenePreview:
                     )
                 for visual_ref in animated["phase_visual_refs"]:
                     self._require_native_frame(source, str(visual_ref))
+        for route in self._graph["routes"]:
+            target_state = route["target_state_index"]
+            if target_state is None:
+                continue
+            model_index = int(
+                self._graph["states"][int(target_state)]["render_model_index"]
+            )
+            model = self._render_models[model_index]
+            for operation in route["operations"]:
+                kind = int(operation["kind"])
+                if kind not in {3, 4, 5}:
+                    continue
+                element_index = int(operation["element_index"])
+                if not 0 <= element_index < len(model["elements"]):
+                    raise PreviewError("compiled element action target is invalid")
+                if kind == 5:
+                    self._require_native_frame(
+                        model["elements"][element_index],
+                        str(operation["frame_ref"]),
+                    )
 
     def _require_native_frame(self, element: dict[str, object], visual_ref: str) -> None:
         frame = self._resolve_frame(visual_ref)
@@ -360,11 +433,15 @@ class StateScenePreview:
 
     def _render_framebuffer(self) -> bytes:
         state = self._state()
-        model = self._render_models[int(state["render_model_index"])]
+        model_index = int(state["render_model_index"])
+        model = self._render_models[model_index]
         overrides = self._visual_overrides()
         framebuffer = bytearray(DISPLAY_BUFFER_SIZE)
         ordered = sorted(
-            enumerate(model["elements"]),
+            (
+                (index, self._resolved_element(model_index, index, element))
+                for index, element in enumerate(model["elements"])
+            ),
             key=lambda item: (int(item[1].get("layer", 1)), int(item[1]["z_order"]), item[0]),
         )
         for _, element in ordered:

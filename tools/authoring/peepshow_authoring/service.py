@@ -24,7 +24,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 15
+SERVICE_API_VERSION = 16
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -233,7 +233,20 @@ class AuthoringService:
                     "frames_per_asset": 1,
                     "commands": ["asset.upsert", "asset.delete"],
                 },
-                "element_actions": False,
+                "element_actions": {
+                    "target": "destination_state_render_model",
+                    "atomic_with_variable_actions": True,
+                    "kinds": [
+                        "set_element_visibility",
+                        "set_element_position",
+                        "set_element_frame",
+                    ],
+                    "waiting_visual_linkage": {
+                        "visibility": True,
+                        "position": True,
+                        "frame_selection_replaces_animation": False,
+                    },
+                },
             },
             "state_scene_graph": {
                 "command_batch_maximum": 64,

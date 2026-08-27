@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define PS_SCENE_WAITING_VISUAL_API_VERSION       (2UL)
+#define PS_SCENE_WAITING_VISUAL_API_VERSION       (3UL)
 #define PS_SCENE_WAITING_VISUAL_PHASE_MAX         (4U)
 #define PS_SCENE_WAITING_VISUAL_SEQUENCE_MAX      (12U)
 #define PS_SCENE_WAITING_VISUAL_ELEMENT_MAX       (8U)
@@ -31,6 +31,7 @@ typedef struct
 typedef struct
 {
   uint32_t element_id;
+  uint32_t source_element_id;
   uint32_t visual_source_id;
   uint32_t phase_count;
   uint32_t phase_visual_id[PS_SCENE_WAITING_VISUAL_PHASE_MAX];

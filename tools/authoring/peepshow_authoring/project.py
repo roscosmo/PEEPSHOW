@@ -1590,7 +1590,50 @@ def _normalize_guard(scene: dict[str, Any], guard: Any) -> dict[str, Any]:
     return {"variable_ref": variable_ref, "operator": operator, "value": value}
 
 
-def _normalize_action(scene: dict[str, Any], action: Any) -> dict[str, Any]:
+def _route_target_elements(
+    scene: dict[str, Any],
+    route: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    target_state = route.get("target_state")
+    state = next(
+        (
+            item
+            for item in scene.get("states", [])
+            if isinstance(item, dict) and item.get("state_id") == target_state
+        ),
+        None,
+    )
+    if state is None:
+        raise ProjectCommandError(
+            "GRAPH_TRANSITION_TARGET_UNKNOWN",
+            "element actions require a valid target_state",
+        )
+    render_model = next(
+        (
+            item
+            for item in scene.get("render_models", [])
+            if isinstance(item, dict)
+            and item.get("visual_id") == state.get("render_model_ref")
+        ),
+        None,
+    )
+    if render_model is None:
+        raise ProjectCommandError(
+            "RENDER_MODEL_UNKNOWN",
+            "target state render model does not exist",
+        )
+    return {
+        str(item.get("element_id")): item
+        for item in render_model.get("elements", [])
+        if isinstance(item, dict) and isinstance(item.get("element_id"), str)
+    }
+
+
+def _normalize_action(
+    scene: dict[str, Any],
+    route: dict[str, Any],
+    action: Any,
+) -> dict[str, Any]:
     if not isinstance(action, dict):
         raise ProjectCommandError("ACTION_TYPE_INVALID", "action must be an object")
     action_kind = action.get("kind")
@@ -1619,6 +1662,98 @@ def _normalize_action(scene: dict[str, Any], action: Any) -> dict[str, Any]:
     if action_kind == "request_render":
         _require_command_fields(action, {"kind"}, {"kind"})
         return {"kind": "request_render"}
+    if action_kind in {
+        "set_element_visibility",
+        "set_element_position",
+        "set_element_frame",
+    }:
+        elements = _route_target_elements(scene, route)
+        element_ref = action.get("element_ref")
+        issues: list[ValidationIssue] = []
+        _stable_id(element_ref, "command.action.element_ref", issues)
+        if issues:
+            issue = issues[0]
+            raise ProjectCommandError(issue.code, issue.message)
+        element = elements.get(element_ref)
+        if element is None:
+            raise ProjectCommandError(
+                "ACTION_ELEMENT_UNKNOWN",
+                f"target state has no element '{element_ref}'",
+            )
+        if action_kind == "set_element_visibility":
+            _require_command_fields(
+                action,
+                {"kind", "element_ref", "visible"},
+                {"kind", "element_ref", "visible"},
+            )
+            visible = action.get("visible")
+            if not isinstance(visible, bool):
+                raise ProjectCommandError(
+                    "ACTION_TYPE_INVALID", "visible must be true or false"
+                )
+            if not visible and element.get("focus_role", "none") == "focus":
+                raise ProjectCommandError(
+                    "RENDER_FOCUS_INVALID", "the focus element must remain visible"
+                )
+            return {
+                "kind": action_kind,
+                "element_ref": element_ref,
+                "visible": visible,
+            }
+        if action_kind == "set_element_position":
+            _require_command_fields(
+                action,
+                {"kind", "element_ref", "x", "y"},
+                {"kind", "element_ref", "x", "y"},
+            )
+            x = action.get("x")
+            y = action.get("y")
+            if (
+                isinstance(x, bool)
+                or not isinstance(x, int)
+                or isinstance(y, bool)
+                or not isinstance(y, int)
+            ):
+                raise ProjectCommandError(
+                    "ACTION_TYPE_INVALID", "position must use integer x and y"
+                )
+            if (
+                x < 0
+                or y < 0
+                or x + int(element.get("width", 0)) > 168
+                or y + int(element.get("height", 0)) > 144
+            ):
+                raise ProjectCommandError(
+                    "RENDER_BOUNDS_INVALID",
+                    "element action would move outside the 168x144 display",
+                )
+            return {
+                "kind": action_kind,
+                "element_ref": element_ref,
+                "x": x,
+                "y": y,
+            }
+        _require_command_fields(
+            action,
+            {"kind", "element_ref", "frame_ref"},
+            {"kind", "element_ref", "frame_ref"},
+        )
+        frame_ref = action.get("frame_ref")
+        issues = []
+        _stable_id(frame_ref, "command.action.frame_ref", issues)
+        if issues:
+            issue = issues[0]
+            raise ProjectCommandError(issue.code, issue.message)
+        if element.get("kind") != "sprite":
+            raise ProjectCommandError(
+                "ACTION_ELEMENT_TYPE_INVALID",
+                "frame selection requires a sprite element",
+            )
+        return {
+            "kind": action_kind,
+            "element_ref": element_ref,
+            "frame_ref": frame_ref,
+        }
     raise ProjectCommandError("ACTION_KIND_INVALID", "unsupported V1 action")
 
 
@@ -1683,7 +1818,7 @@ def _apply_route_action_list(
             raise ProjectCommandError("ACTION_BUDGET_EXCEEDED", "route supports at most 8 actions")
         if action_index > len(actions):
             raise ProjectCommandError("COMMAND_INDEX_INVALID", "action_index must select an insertion position")
-        action = _normalize_action(scene, command.get("action"))
+        action = _normalize_action(scene, route, command.get("action"))
         actions.insert(action_index, action)
         return {"kind": kind, "scene_id": scene.get("scene_id"), "route_id": route.get("route_id"), "action_index": action_index, "action": action}
     source_index = _command_move_index(action_index, "action_index", len(actions))
@@ -1773,11 +1908,10 @@ def _apply_route_set_action(
     for scene in scenes:
         if scene.get("scene_id") != scene_id:
             continue
-        normalized_action = _normalize_action(scene, action)
-
         for route in scene.get("routes", []):
             if not isinstance(route, dict) or route.get("route_id") != route_id:
                 continue
+            normalized_action = _normalize_action(scene, route, action)
             actions = route.get("actions")
             if not isinstance(actions, list) or action_index >= len(actions):
                 raise ProjectCommandError("COMMAND_INDEX_INVALID", "action_index does not select an existing action")
@@ -2277,6 +2411,7 @@ def _check_scene(
 
     for route_id, route in routes.items():
         path = f"{base}.routes[{route_id}]"
+        target_elements: dict[str, dict[str, Any]] = {}
         required = {"route_id", "action_ref", "from_states", "guards", "actions"}
         allowed = required | {"target_state", "target_scene"}
         _check_keys(route, required, path, issues, allowed)
@@ -2300,6 +2435,16 @@ def _check_scene(
             )
         elif has_target_state and route.get("target_state") not in states:
             _issue(issues, "GRAPH_TRANSITION_TARGET_UNKNOWN", f"{path}.target_state", "target state does not exist")
+        elif has_target_state:
+            target_state_record = states[route.get("target_state")]
+            target_model = render_models.get(target_state_record.get("render_model_ref"))
+            if isinstance(target_model, dict):
+                target_elements = {
+                    str(item.get("element_id")): item
+                    for item in target_model.get("elements", [])
+                    if isinstance(item, dict)
+                    and isinstance(item.get("element_id"), str)
+                }
         elif has_target_scene:
             _stable_id(route.get("target_scene"), f"{path}.target_scene", issues)
             if route.get("actions"):
@@ -2345,6 +2490,103 @@ def _check_scene(
                         _issue(issues, "ACTION_TYPE_INVALID", f"{action_path}.value", "must be an integer")
                 elif kind == "request_render":
                     _check_keys(action, {"kind"}, action_path, issues)
+                elif kind in {
+                    "set_element_visibility",
+                    "set_element_position",
+                    "set_element_frame",
+                }:
+                    element_ref = action.get("element_ref")
+                    element = target_elements.get(element_ref)
+                    if kind == "set_element_visibility":
+                        _check_keys(
+                            action,
+                            {"kind", "element_ref", "visible"},
+                            action_path,
+                            issues,
+                        )
+                    elif kind == "set_element_position":
+                        _check_keys(
+                            action,
+                            {"kind", "element_ref", "x", "y"},
+                            action_path,
+                            issues,
+                        )
+                    else:
+                        _check_keys(
+                            action,
+                            {"kind", "element_ref", "frame_ref"},
+                            action_path,
+                            issues,
+                        )
+                    _stable_id(element_ref, f"{action_path}.element_ref", issues)
+                    if element is None:
+                        _issue(
+                            issues,
+                            "ACTION_ELEMENT_UNKNOWN",
+                            f"{action_path}.element_ref",
+                            "target state render model has no matching element",
+                        )
+                        continue
+                    if kind == "set_element_visibility":
+                        visible = action.get("visible")
+                        if not isinstance(visible, bool):
+                            _issue(
+                                issues,
+                                "ACTION_TYPE_INVALID",
+                                f"{action_path}.visible",
+                                "must be true or false",
+                            )
+                        elif not visible and element.get("focus_role", "none") == "focus":
+                            _issue(
+                                issues,
+                                "RENDER_FOCUS_INVALID",
+                                f"{action_path}.visible",
+                                "the focus element must remain visible",
+                            )
+                    elif kind == "set_element_position":
+                        x = action.get("x")
+                        y = action.get("y")
+                        if (
+                            isinstance(x, bool)
+                            or not isinstance(x, int)
+                            or isinstance(y, bool)
+                            or not isinstance(y, int)
+                        ):
+                            _issue(
+                                issues,
+                                "ACTION_TYPE_INVALID",
+                                action_path,
+                                "position must use integer x and y",
+                            )
+                        elif (
+                            x < 0
+                            or y < 0
+                            or x + int(element.get("width", 0)) > 168
+                            or y + int(element.get("height", 0)) > 144
+                        ):
+                            _issue(
+                                issues,
+                                "RENDER_BOUNDS_INVALID",
+                                action_path,
+                                "element action exceeds the 168x144 canvas",
+                            )
+                    else:
+                        frame_ref = action.get("frame_ref")
+                        _stable_id(frame_ref, f"{action_path}.frame_ref", issues)
+                        if element.get("kind") != "sprite":
+                            _issue(
+                                issues,
+                                "ACTION_ELEMENT_TYPE_INVALID",
+                                f"{action_path}.element_ref",
+                                "frame selection requires a sprite element",
+                            )
+                        if frame_ref not in frame_ids:
+                            _issue(
+                                issues,
+                                "ASSET_FRAME_UNKNOWN",
+                                f"{action_path}.frame_ref",
+                                f"unknown frame '{frame_ref}'",
+                            )
                 else:
                     _issue(issues, "ACTION_KIND_INVALID", f"{action_path}.kind", "unsupported V1 action")
 
