@@ -665,6 +665,48 @@ Rules:
 - shipping output must not depend on editor source files.
 - asset compile settings must be deterministic and versioned.
 
+### Retained STATE Presentation Boundary
+
+Authoring elements are retained package records, not calls into the firmware
+renderer. Peep Studio edits records through the Python service; the compiler
+resolves source assets and geometry; host preview and firmware consume the same
+compiled meaning.
+
+The initial package-authorable layers are `BACKGROUND`, `SCENE`, and `UI`.
+`OVERLAY` is system-owned and must be rejected as a package element layer.
+
+Conceptual retained element classes:
+
+```text
+state_render_element:
+  element_id
+  element_type              # sprite, line, outline_rect, filled_rect, circle, ellipse
+  layer                     # background, scene, ui
+  visible
+  order
+  bounds
+  asset_ref                 # sprite only
+  frame_ref                 # sprite only
+  animation_ref             # optional sprite animation
+  primitive_geometry        # primitive only; bounded integer coordinates
+  primitive_ink             # white, black, or none where applicable
+```
+
+Rules:
+
+- coordinates and clipping are panel-native integers.
+- primitive rasterization is deterministic and identical in exact preview and
+  firmware.
+- package elements cannot reference framebuffer addresses, dirty rows, display
+  transfers, DMA, or target-specific driver functions.
+- initial authored text is rasterized by the compiler into masked 1bpp sprite
+  assets; it is not a runtime font or mutable-string facility.
+- STATE actions may later target stable element IDs for bounded `show`, `hide`,
+  `move`, `set_frame`, and `set_animation` operations.
+- shape and text records are not part of the executable HW6 subset until the
+  package compiler, parser, preview, loader, and retained renderer all support
+  the same record version.
+
 ### Initial Masked-1bpp STATE Subset
 
 The first executable Peep Studio subset accepts PNG sources that compile to
@@ -707,6 +749,43 @@ Rules:
 - package output contains no PNG decoder dependency or source path.
 - pixel-model and compiler-profile fields remain versioned enums so later fixed
   tone/dither import profiles can be added without changing masked-1bpp meaning.
+
+### Initial Sampled STATE Audio Subset
+
+This subset is the next STATE authoring milestone and is not executable in the
+current HW6 package format yet.
+
+Conceptual source records:
+
+```text
+sampled_sfx_asset:
+  asset_id
+  source_path
+  source_format: wav
+  compiler_profile: hw6_mono_16k_ima_adpcm
+  priority
+  volume
+
+state_sfx_action:
+  operation: play_sfx
+  asset_ref
+  priority
+  volume
+```
+
+Rules:
+
+- source WAV files are editor/compiler inputs only.
+- compilation deterministically converts accepted input to mono 16 kHz 4-bit
+  IMA ADPCM with bounded decoded size and duration metadata.
+- STATE permits bounded SFX bursts only; music, loops without a proven bound,
+  and sustained-audio grants are not part of this subset.
+- the complete SFX payload is admitted and resident before playback; runtime
+  playback never reads FileX/FAT or host paths.
+- package logic requests a symbolic cue. `thAudio` alone owns decode, PCM
+  buffers, SAI, DMA, amplifier state, clock intent, and error recovery.
+- Peep Studio may audition the source or compiled result, but audition is not
+  HW6 timing, power, or electrical evidence.
 
 ---
 

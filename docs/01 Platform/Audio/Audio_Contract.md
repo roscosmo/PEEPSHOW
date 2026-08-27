@@ -4,6 +4,12 @@ This document defines PeepShow audio ownership, playback architecture, state mac
 
 Audio is owned by Platform. Engine and Reference Game code request only symbolic behavior granted by the selected target profile; they must not control SAI, DMA, LPTIM, GPIO, or amplifier pins directly.
 
+Implementation status on HW6 is `bring-up only`: `thAudio`, SAI DMA ownership,
+MAX98357A shutdown control, and a generated diagnostic tone exist. The current
+`.egg` format does not yet carry sampled-audio assets, and STATE actions cannot
+yet request packaged SFX. A scheduled thread or successful tone proves only the
+hardware scaffold, not the package audio pipeline described below.
+
 ## Target Applicability
 
 - HW6 retains the SAI1/MAX98357A speaker path.
@@ -50,6 +56,26 @@ Speaker path:
 - `STATE_SCENE` execution may use bounded SFX bursts only; music is rejected or deferred to a realtime/sustained-audio grant
 - music/SFX mixing to mono PCM where the active target profile grants sustained audio
 - volume, mute, fade, ducking, priority, and preemption
+
+### Initial HW6 STATE SFX Milestone
+
+The first package-facing audio milestone is deliberately smaller than the full
+mixer contract:
+
+- one bounded sampled SFX voice;
+- source WAV converted by host tooling to mono 16 kHz 4-bit IMA ADPCM;
+- complete compressed payload and bounded decode/playback buffers admitted
+  before playback;
+- one symbolic `AUDIO_PLAY_SFX(id, priority, volume)` request from a STATE
+  action through the Engine-to-`thAudio` queue;
+- no music, streaming, runtime FAT access, arbitrary procedural audio, or HW6
+  BBB support;
+- deterministic completion, amplifier shutdown, clock-intent release, and
+  return to reactive STOP2 admission after the burst drains.
+
+Peep Studio owns source import, deterministic conversion, package metadata,
+audition, and compatibility diagnostics. It never controls SAI, DMA,
+`SD_MODE`, clocks, or playback buffers.
 
 BBB path:
 
@@ -242,17 +268,22 @@ Examples of audio faults:
 ## Validation Cases
 
 1. speaker enable/idle/shutdown drives `SD_MODE` correctly
-2. 16 kHz mono ADPCM SFX decodes and plays correctly
-3. 1 music voice plus 5 overlapping SFX voices mix without underrun
-4. SFX priority/preemption works deterministically
-5. fade, mute, volume, and ducking behave correctly
-6. music ring-buffer path never reads from FileX/FAT during active playback
-7. BBB built-in pattern plays and stops cleanly
-8. BBB procedural tone, sweep, and sequence requests validate bounds
-9. speaker and BBB play concurrently
-10. quiesce/resume leaves no active DMA/LPTIM output stale
-11. injected underrun routes to recovery or audio quarantine
-12. installer mode isolates audio unless explicitly allowed for diagnostics
+2. generated diagnostic tone proves bounded SAI DMA output but is not accepted
+   as package-audio proof
+3. one package-backed 16 kHz mono IMA ADPCM STATE SFX decodes, plays, drains,
+   releases audio clock intent, and permits STOP2 again
+4. invalid format, duration, decoded-size, and missing-asset cases are rejected
+   before playback
+5. 1 music voice plus 5 overlapping SFX voices mix without underrun
+6. SFX priority/preemption works deterministically
+7. fade, mute, volume, and ducking behave correctly
+8. music ring-buffer path never reads from FileX/FAT during active playback
+9. BBB built-in pattern plays and stops cleanly on a target that grants BBB
+10. BBB procedural requests validate bounds on a target that grants BBB
+11. speaker and BBB play concurrently only on a target that grants both
+12. quiesce/resume leaves no active DMA/LPTIM output stale
+13. injected underrun routes to recovery or audio quarantine
+14. installer mode isolates audio unless explicitly allowed for diagnostics
 
 Related:
 

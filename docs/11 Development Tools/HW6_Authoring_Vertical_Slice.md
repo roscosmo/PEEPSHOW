@@ -85,14 +85,19 @@ This checkpoint must allow an author to:
 7. inject A/B/L/R and advance deterministic `250 ms` time
 8. build a deterministic `.egg`
 9. run that same scene and those same compiled pixels on HW6
+10. place bounded retained geometry and build-time-rasterized text without
+    relying on firmware test names or direct draw calls
+11. import one sampled SFX, bind it to a STATE action, and prove bounded
+    playback plus return to reactive STOP2 behavior on HW6
 
 The selected-scene launch is a preview fixture. It does not alter package entry
 routes or add a runtime bypass to the `.egg`.
 
 The checkpoint intentionally defers tone/dither import, Tiled maps, fractional
-transforms, audio, save data, SEQUENCE, PROGRAM, installation UI, and measured
-digital-twin claims. These remain later parts of the full vertical slice and
-must not block proving the STATE author-to-device path.
+transforms, runtime fonts, music, multi-voice mixing, save data, SEQUENCE,
+PROGRAM, installation UI, and measured digital-twin claims. These remain later
+parts of the full vertical slice and must not block completing the STATE
+author-to-device path.
 
 ---
 
@@ -498,9 +503,26 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
     no longer requires embedding package bytes in firmware (implemented and
     target-proven through USB staging and atomic A/B install/launch; production
     pre-commit validation and boot policy remain open)
-12. add tone/dither assets, maps, transforms, fonts, audio, and save data only
-    when required by the expanding vertical slice
-13. implement `SEQUENCE_SCENE`, then `PROGRAM_SCENE`, with realtime budgets, input routes, suspend/resume behavior, and required state-scene/shell routes; extend the same editor architecture for each type
-14. measure representative reactive and realtime workloads, admit intermediate PLL/clock operating points one at a time behind Platform capability resolution, then capture and review the complete power evidence matrix; packages continue to request semantics and deadlines, never MHz
+12. complete the STATE presentation boundary: serialize package layers, remove
+    special proof-name mappings, add retained line/rectangle/circle/ellipse
+    records, compile initial text to masked 1bpp assets, and add bounded element
+    show/hide/move/frame/animation actions across service, package, preview, and
+    firmware
+13. implement the initial STATE sampled-SFX path: verify the HW6 16 kHz mono
+    SAI/MAX98357A path, compile WAV sources to bounded IMA ADPCM package assets,
+    preload one admitted voice, route symbolic `play_sfx` through `thAudio`,
+    release audio clock intent after drain, and prove return to STOP2
+14. close the remaining STATE authoring gaps and publish one target capability
+    report covering visuals, input policies, waiting animation, scene flow,
+    interaction lifecycle, SFX, memory admission, and measured power behavior
+15. add integer scaling, fixed 4-tone and 16-tone dither assets, maps, runtime
+    fonts/localization, transforms, and save data as bounded STATE extensions
+16. implement `SEQUENCE_SCENE`, then `PROGRAM_SCENE`, with realtime budgets,
+    input routes, suspend/resume behavior, and required STATE/shell routes;
+    extend the same editor architecture for each type
+17. measure representative reactive and realtime workloads, admit intermediate
+    PLL/clock operating points one at a time behind Platform capability
+    resolution, then capture and review the complete power evidence matrix;
+    packages continue to request semantics and deadlines, never MHz
 
 The slice is not complete merely because the game appears on the display. Completion requires the full author-to-package-to-device path and the associated HW6 evidence.

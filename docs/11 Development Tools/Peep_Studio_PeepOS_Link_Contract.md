@@ -55,6 +55,9 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | input | logical A, B, L, R, JOY_LEFT, JOY_RIGHT, JOY_UP, and JOY_DOWN sources |
 | visuals | package-backed native-scale masked 1bpp sprite frames |
 | retained render model | bounded ordered scene elements with binary alpha and four platform planes |
+| package primitives | not generally exposed; existing rectangle, line, circle, ellipse, and text helpers are Platform/test implementation details rather than Peep Studio calls |
+| package text | not generally exposed; current proof labels and IDs are not an authored font or arbitrary-text interface |
+| package audio | not exposed; HW6 currently proves only a generated diagnostic speaker tone, not `.egg` audio assets or STATE SFX actions |
 | waiting animation | authored 250 ms timelines, mixed 2-phase and 3-phase elements, combined timeline compilation, deterministic three-step LPBAM fallback |
 | awake preview | exact 168x144 package-backed framebuffer with deterministic fake time |
 | STOP2 | package visuals compiled into LPBAM animation and resumed across wake/STOP2 handoff |
@@ -130,6 +133,47 @@ or wake behavior that the package cannot encode.
 
 ---
 
+## STATE Presentation And Asset Boundary
+
+Peep Studio does not call firmware drawing functions. It authors retained
+elements and source assets, the Python service compiles them into portable
+`.egg` records, and PeepOS validates and composes those records into the native
+168x144 1bpp framebuffer. Immediate commands such as `draw_circle()` or direct
+framebuffer access are not part of the authoring or package API.
+
+The scene canvas owns integer panel-native bounds, package-visible layer,
+visibility, ordering, asset/frame references, and animation bindings. Package
+content may target `BACKGROUND`, `SCENE`, or `UI`; `OVERLAY` remains
+Platform/Engine-owned. Host preview must consume the same compiled records as
+firmware rather than reproducing them with a separate React renderer.
+
+The current generic executable visual record is a native-scale masked 1bpp
+sprite frame. The repository also contains older proof adapters and private
+firmware drawing helpers for cursors, markers, diamonds, calibration graphics,
+and shell text. Their existence does not make arbitrary shapes or text
+available to authored packages. Peep Studio must label such controls
+unavailable until the compiler, package format, exact preview, loader, retained
+model, and display owner implement identical semantics.
+
+The STATE-first presentation expansion is:
+
+1. serialize package layer, visibility, order, bounds, sprite/frame, and
+   animation references without special proof names;
+2. expose bounded retained line, outline rectangle, filled rectangle, circle,
+   and ellipse records with deterministic integer clipping;
+3. rasterize initial authored menu text into masked 1bpp package assets at
+   build time; runtime fonts and mutable text remain a later capability;
+4. add bounded STATE actions for show/hide, move, frame selection, and animation
+   selection, with dirty-region composition owned by PeepOS;
+5. add one symbolic bounded STATE SFX action backed by a compiled sampled-audio
+   asset and owned at runtime by `thAudio`.
+
+Visual assets, primitive records, text-derived sprite assets, and audio assets
+are package data. They must never contain display-driver calls, framebuffer
+pointers, SAI/DMA configuration, source paths, or host-only objects.
+
+---
+
 ## Not Yet Exposed
 
 The following are planned or incomplete and must be labelled unavailable in
@@ -139,6 +183,10 @@ the editor until this document is updated:
 - editable node graph controls beyond the current inspector commands;
 - project mutation commands beyond `state.rename`, `route.set_target`,
   `route.set_guard`, and `route.set_action`;
+- general package-authored primitives, arbitrary text, runtime element
+  mutation, or serialized package layer selection;
+- sampled package audio, STATE SFX actions, audio audition, or audio
+  compatibility reporting;
 - 4-tone and 16-tone fixed dither asset import;
 - maps, tile layers, fonts, rotation, or interpolated scaling;
 - package installation or activation on a connected device;
@@ -284,6 +332,8 @@ dirty state is computed against the last saved semantic project hash.
 - edit bounds, platform layer, focus ownership, sprite/frame reference, and
   animation reference;
 - add an asset browser for the implemented native masked-1bpp PNG subset;
+- expose only visual controls supported by the selected target profile and
+  compiled package schema; do not map canvas tools to firmware draw calls;
 - add editable text elements that are deterministically rasterized to masked
   1bpp package pixels at build time;
 - keep spatial placement on the scene canvas rather than the behavior graph.
@@ -350,11 +400,19 @@ the Stage 5 edit slice.
 
 ### Stage 7: Expanded Asset And Scene Support
 
+- add the bounded STATE sampled-SFX path: WAV import, deterministic conversion,
+  symbolic cue binding, host audition, package validation, and target proof;
+- add retained line, rectangle, circle, and ellipse elements plus bounded
+  element visibility, position, frame, and animation actions;
 - add formal font and localization package records when required;
 - add fixed 4-tone and 16-tone dither profiles;
 - add maps, tile layers, scaling, transforms, and richer retained rendering;
-- add SEQUENCE authoring, then PROGRAM authoring, only after their runtime and
-  package contracts are implemented.
+
+### Stage 8: Later Scene Types
+
+- add SEQUENCE authoring, then PROGRAM authoring, only after the STATE visual,
+  input, waiting, scene-flow, and bounded-SFX surfaces are coherent across
+  Studio, compiler, package, preview, and HW6 runtime.
 
 ### Menu Authoring Availability
 
@@ -365,6 +423,7 @@ the Stage 5 edit slice.
 | after stage 4 | create functional interactive menus within one STATE scene |
 | after stage 5 | create complete multi-scene menu and navigation hierarchies |
 | after stage 6 | visually author and budget menu waiting animations |
+| after stage 7 | author bounded geometry, element updates, and sampled STATE SFX |
 
 The firmware shell remains system-owned. Peep Studio may author the same source
 model as a test `.egg`; accepted system-menu sources may later be compiled into
