@@ -51,12 +51,12 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | package output | deterministic `.egg` binary with SHA-256 integrity |
 | scene type | STATE |
 | state execution | bounded variables, input routes, guards, actions, and deterministic transitions |
-| package scene flow | direct STATE-to-STATE replacement is implemented and proven on HW6 through service API 7, PKG1 graph V2, and FW0 runtime API 11 |
+| package scene flow | direct STATE-to-STATE replacement is implemented and proven on HW6 through service API 8, PKG1 graph V2, and FW0 runtime API 11 |
 | input | logical A, B, L, R, JOY_LEFT, JOY_RIGHT, JOY_UP, and JOY_DOWN sources |
 | visuals | package-backed native-scale masked 1bpp sprite frames |
 | retained render model | bounded ordered scene elements with binary alpha and four platform planes |
 | waiting animation | authored 250 ms timelines, mixed 2-phase and 3-phase elements, combined timeline compilation, deterministic three-step LPBAM fallback |
-| awake preview | exact 168x144 package-backed framebuffer with deterministic fake time |
+| awake preview | exact 168x144 package-backed framebuffer with deterministic fake time and side-effect-free scene thumbnails |
 | STOP2 | package visuals compiled into LPBAM animation and resumed across wake/STOP2 handoff |
 | firmware package proof | embedded `.egg` loads, validates, resolves STATE content, handles input, and renders the same package pixels as host preview |
 
@@ -122,7 +122,7 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `7`.
+protocol is version `1`; the current service API is version `8`.
 
 | Operation | Purpose |
 |---|---|
@@ -137,6 +137,7 @@ protocol is version `1`; the current service API is version `7`.
 | `project.save` | persist the current in-memory project scene records to authored source files |
 | `project.undo` | undo the last accepted command within the bounded service history |
 | `project.redo` | redo the last undone command within the bounded service history |
+| `project.scene_thumbnails` | return one side-effect-free initial framebuffer snapshot per compiled STATE scene |
 | `project.preview_reset` | start one selected STATE scene directly |
 | `project.preview_input` | inject one supported logical input source |
 | `project.preview_advance` | advance deterministic preview time by an explicit duration |
@@ -228,7 +229,7 @@ visuals. Project mutation controls remain deferred to Stage 2.
 
 No scene-canvas or graph control may directly mutate normalized JSON in React.
 
-Implementation status: started. Service API version 7 exposes
+Implementation status: started. Service API version 8 exposes
 `project.apply_commands` with the first accepted commands,
 `state.rename`, `route.set_target`, `route.set_guard`, and
 `route.set_action`. `route.set_action` edits existing ordered route actions
@@ -289,7 +290,7 @@ At the end of this stage, an author can build a multi-screen menu hierarchy.
 Scene-flow editing must remain separate from the STATE graph inside each scene.
 
 Platform foundation status: implemented and proven on HW6. Authoring schema
-routes now accept exactly one `target_state` or `target_scene`; service API 7
+routes now accept exactly one `target_state` or `target_scene`; service API 8
 can switch an existing actionless route between those targets; selected-scene
 preview follows a scene target; and the compiler emits PKG1 `STG1` version 2.
 Direct replacement enters the destination entry state, resets destination-local
@@ -300,9 +301,9 @@ push/pop, return stacks, or STATE-to-SEQUENCE/PROGRAM transitions yet.
 Peep Studio implementation status: first package scene-flow view is
 implemented. It presents scenes as separate package-level nodes and shows
 existing `target_scene` route edges from normalized service data. Scene cards
-show their existing scene-exit outputs as selectable rows; real scene preview
-thumbnails remain deferred until the Python service exposes side-effect-free
-scene snapshot generation. Existing actionless `target_scene` routes can be
+show their existing scene-exit outputs as selectable rows and render real
+Python-generated initial scene thumbnails through `project.scene_thumbnails`.
+Existing actionless `target_scene` routes can be
 retargeted to another STATE scene through the inspector. Creating or removing
 scene-flow edges remains deferred to a later Stage 5 edit slice.
 

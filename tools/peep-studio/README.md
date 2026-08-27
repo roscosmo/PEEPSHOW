@@ -12,7 +12,7 @@ preview execution, or compilation rules in TypeScript.
 - lists authored scenes and starts a selected-scene preview directly;
 - renders the exact 168x144 1bpp framebuffer returned by Python;
 - injects logical A/B/L/R and joystick-cardinal input and advances deterministic preview time;
-- shows a package scene-flow graph separately from each scene's local logic graph;
+- shows a package scene-flow graph with Python-rendered scene thumbnails separately from each scene's local logic graph;
 - shows runtime state, variables, validation issues, and package facts;
 - saves opened projects in place or copies them with Save As;
 - supports bounded undo/redo for service-owned edit commands;

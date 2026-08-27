@@ -194,7 +194,7 @@ export function buildSceneFlowGraphModel(
     const states = scene.states ?? [];
     const entryState = states.find((state) => state.state_id === scene.entry_state);
     const isEntry = scene.scene_id === entrySceneId;
-    const column = isEntry || !incomingTargets.has(scene.scene_id) ? 0 : 1 + (index % 3);
+    const column = isEntry || !incomingTargets.has(scene.scene_id) ? 0 : 1;
     return {
       id: scene.scene_id,
       label: scene.display_name,
@@ -203,8 +203,8 @@ export function buildSceneFlowGraphModel(
       routeCount: outgoingCounts.get(scene.scene_id) ?? 0,
       entryStateLabel: entryState?.display_name ?? scene.entry_state ?? "No start state",
       exits: exitsByScene.get(scene.scene_id) ?? [],
-      x: column * 300,
-      y: index * 154,
+      x: column * 360,
+      y: column === 0 ? index * 330 : Math.max(0, index - 1) * 330,
     };
   });
 

@@ -24,7 +24,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 7
+SERVICE_API_VERSION = 8
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -39,6 +39,7 @@ SERVICE_OPERATIONS = (
     "project.save",
     "project.undo",
     "project.redo",
+    "project.scene_thumbnails",
     "project.preview_reset",
     "project.preview_input",
     "project.preview_advance",
@@ -254,6 +255,30 @@ class AuthoringService:
             "report": build_compatibility_report(bundle, blob),
         }
 
+    def _scene_thumbnails(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params)
+        if not bundle.valid:
+            raise ProtocolError(
+                "PROJECT_INVALID",
+                "project must validate before scene thumbnail generation",
+                details={"issues": _issues(bundle)},
+            )
+        try:
+            package = parse_egg(build_egg(bundle))
+            thumbnails = [
+                {
+                    "scene_id": str(scene["scene_id"]),
+                    "framebuffer": StateScenePreview(package, str(scene["scene_id"])).snapshot()["framebuffer"],
+                }
+                for scene in package.scenes
+            ]
+        except (EggCompileError, EggFormatError, PreviewError) as exc:
+            raise ProtocolError("SCENE_THUMBNAILS_FAILED", str(exc)) from exc
+        return {
+            "project_revision": self._project_revision,
+            "thumbnails": thumbnails,
+        }
+
     def _apply_commands(self, params: dict[str, Any]) -> dict[str, Any]:
         bundle = self._current_bundle(params, {"commands"})
         try:
@@ -381,6 +406,7 @@ class AuthoringService:
             "project.save": self._save,
             "project.undo": self._undo,
             "project.redo": self._redo,
+            "project.scene_thumbnails": self._scene_thumbnails,
             "project.preview_reset": self._preview_reset,
             "project.preview_input": self._preview_input,
             "project.preview_advance": self._preview_advance,

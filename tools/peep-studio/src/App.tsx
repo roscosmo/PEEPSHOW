@@ -28,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { FramebufferCanvas } from "./FramebufferCanvas";
 import {
   SceneAuthoringInspector,
   SceneFlowView,
@@ -39,6 +40,7 @@ import type {
   PackageBuildResult,
   ProjectCommandResult,
   ProjectHistoryResult,
+  ProjectSceneThumbnailsResult,
   ProjectSaveResult,
   PreviewSnapshot,
   ProjectLoadResult,
@@ -64,53 +66,6 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function FramebufferCanvas({ framebuffer }: { framebuffer: Framebuffer | null }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (canvas === null) {
-      return;
-    }
-    const context = canvas.getContext("2d");
-    if (context === null) {
-      return;
-    }
-
-    const width = framebuffer?.width ?? 168;
-    const height = framebuffer?.height ?? 144;
-    canvas.width = width;
-    canvas.height = height;
-    context.fillStyle = "#eef1ed";
-    context.fillRect(0, 0, width, height);
-
-    if (framebuffer === null) {
-      context.fillStyle = "#c7cec9";
-      context.fillRect(12, 12, width - 24, 1);
-      context.fillRect(12, height - 13, width - 24, 1);
-      return;
-    }
-
-    const encoded = atob(framebuffer.data_base64);
-    const image = context.createImageData(width, height);
-    for (let y = 0; y < height; y += 1) {
-      for (let x = 0; x < width; x += 1) {
-        const source = encoded.charCodeAt(y * framebuffer.row_stride_bytes + (x >> 3));
-        const black = (source & (0x80 >> (x & 7))) !== 0;
-        const target = (y * width + x) * 4;
-        const shade = black ? 17 : 242;
-        image.data[target] = shade;
-        image.data[target + 1] = black ? 20 : 244;
-        image.data[target + 2] = black ? 18 : 240;
-        image.data[target + 3] = 255;
-      }
-    }
-    context.putImageData(image, 0, 0);
-  }, [framebuffer]);
-
-  return <canvas ref={canvasRef} className="preview-canvas" aria-label="168 by 144 display preview" />;
-}
-
 function StatusMark({ ok }: { ok: boolean }) {
   return ok ? <Check size={14} aria-hidden="true" /> : <X size={14} aria-hidden="true" />;
 }
@@ -131,6 +86,7 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<"scene-flow" | "logic" | "placement">("scene-flow");
+  const [sceneThumbnails, setSceneThumbnails] = useState<Record<string, Framebuffer>>({});
   const [projectWidth, setProjectWidth] = useState(320);
   const [inspectorWidth, setInspectorWidth] = useState(390);
   const [message, setMessage] = useState<string | null>(null);
@@ -191,6 +147,7 @@ export default function App() {
       setProjectPath(path);
       setPreview(null);
       setSelectedScene(null);
+      setSceneThumbnails({});
       setSceneSelection({ kind: "scene" });
       try {
         const result = await bridge.serviceRequest<ProjectLoadResult>("project.load", { path });
@@ -345,6 +302,7 @@ export default function App() {
     setCanUndo(result.can_undo);
     setCanRedo(result.can_redo);
     setPreview(null);
+    setSceneThumbnails({});
     setBuild(null);
   };
 
@@ -564,6 +522,39 @@ export default function App() {
   };
 
   const scenes: SceneDocument[] = project?.document?.scenes ?? [];
+  const projectRevision = project?.project_revision ?? null;
+  const projectValid = project?.valid ?? false;
+  const thumbnailsSupported = service?.operations.includes("project.scene_thumbnails") === true;
+
+  useEffect(() => {
+    if (bridge === undefined || projectRevision === null || !projectValid || !thumbnailsSupported) {
+      setSceneThumbnails({});
+      return undefined;
+    }
+
+    let cancelled = false;
+    bridge
+      .serviceRequest<ProjectSceneThumbnailsResult>("project.scene_thumbnails", {
+        project_revision: projectRevision,
+      })
+      .then((result) => {
+        if (cancelled || result.project_revision !== projectRevision) {
+          return;
+        }
+        setSceneThumbnails(Object.fromEntries(result.thumbnails.map((item) => [item.scene_id, item.framebuffer])));
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setSceneThumbnails({});
+          setMessage(errorText(error));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge, projectRevision, projectValid, thumbnailsSupported]);
+
   const selectedSceneDocument = useMemo(
     () => scenes.find((scene) => scene.scene_id === selectedScene) ?? null,
     [scenes, selectedScene],
@@ -820,6 +811,7 @@ export default function App() {
             <SceneFlowView
               scenes={scenes}
               entrySceneId={project?.summary.entry_scene ?? null}
+              thumbnails={sceneThumbnails}
               selectedSceneId={selectedScene}
               selectedRouteId={sceneSelection.kind === "route" ? sceneSelection.id : null}
               onSelectScene={(sceneId) => void startPreview(sceneId)}

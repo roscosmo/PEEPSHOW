@@ -88,6 +88,19 @@ def make_asset_project(parent: Path, *, invalid_pixel: bool = False) -> Path:
     if invalid_pixel:
         image.putpixel((1, 1), (127, 127, 127, 255))
     image.save(asset_dir / "cursor.png", format="PNG")
+    marker = Image.new("RGBA", (24, 24), (255, 255, 255, 0))
+    for y in range(24):
+        for x in range(24):
+            phase = x // 8
+            local_x = x % 8
+            if phase == 0:
+                color = (0, 0, 0, 255) if local_x in {0, 7} else (255, 255, 255, 0)
+            elif phase == 1:
+                color = (0, 0, 0, 255) if y in {0, 23} else (255, 255, 255, 0)
+            else:
+                color = (0, 0, 0, 255) if local_x == y % 8 else (255, 255, 255, 0)
+            marker.putpixel((x, y), color)
+    marker.save(asset_dir / "marker.png", format="PNG")
 
     catalog = {
         "schema_id": "peepshow.authoring.assets",
@@ -112,7 +125,33 @@ def make_asset_project(parent: Path, *, invalid_pixel: bool = False) -> Path:
                         "pivot_y": 0,
                     },
                 ],
-            }
+            },
+            {
+                "asset_id": "marker",
+                "asset_type": "masked_1bpp",
+                "source_path": "assets/marker.png",
+                "source_format": "png",
+                "frames": [
+                    {
+                        "frame_id": "marker.phase_a",
+                        "source_rect": {"x": 0, "y": 0, "width": 8, "height": 24},
+                        "pivot_x": 0,
+                        "pivot_y": 0,
+                    },
+                    {
+                        "frame_id": "marker.phase_b",
+                        "source_rect": {"x": 8, "y": 0, "width": 8, "height": 24},
+                        "pivot_x": 0,
+                        "pivot_y": 0,
+                    },
+                    {
+                        "frame_id": "marker.phase_c",
+                        "source_rect": {"x": 16, "y": 0, "width": 8, "height": 24},
+                        "pivot_x": 0,
+                        "pivot_y": 0,
+                    },
+                ],
+            },
         ],
         "animations": [
             {
@@ -189,7 +228,7 @@ class AuthoringModelTests(unittest.TestCase):
 
             project["scene_sources"].append("scenes/state_target.state.json")
             source["input_actions"].append(
-                {"action_id": "enter_target", "logical_source": "BUTTON_A"}
+                {"action_id": "enter_target", "logical_source": "BUTTON_B"}
             )
             source["routes"].append(
                 {
@@ -229,8 +268,8 @@ class AuthoringModelTests(unittest.TestCase):
             bundle = load_project(project_root)
             self.assertEqual((), bundle.issues)
             package = parse_egg(build_egg(bundle))
-            self.assertEqual(2, package.manifest["scene_count"])
-            self.assertEqual(2, len(package.scenes))
+            self.assertEqual(3, package.manifest["scene_count"])
+            self.assertEqual(3, len(package.scenes))
             self.assertTrue(all(scene["graph"]["format_version"] == 2 for scene in package.scenes))
             targets = {
                 route["target_scene"]
@@ -238,7 +277,7 @@ class AuthoringModelTests(unittest.TestCase):
                 for route in scene["graph"]["routes"]
                 if route["target_scene"] is not None
             }
-            self.assertEqual({"state_demo", "state_target"}, targets)
+            self.assertEqual({"state_demo", "state_details", "state_target"}, targets)
 
     def test_unknown_scene_transition_target_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -307,10 +346,12 @@ class AuthoringModelTests(unittest.TestCase):
             scene_dir.mkdir(parents=True)
             shutil.copytree(SAMPLE / "assets", project_root / "assets")
             project = json.loads((SAMPLE / "project.json").read_text(encoding="utf-8"))
-            project["scene_sources"] = ["scenes/renamed.json"]
+            project["scene_sources"] = ["scenes/renamed.json", "scenes/state_details.state.json"]
             scene = (SAMPLE / "scenes" / "state_demo.state.json").read_text(encoding="utf-8")
+            details = (SAMPLE / "scenes" / "state_details.state.json").read_text(encoding="utf-8")
             (project_root / "project.json").write_text(json.dumps(project), encoding="utf-8")
             (scene_dir / "renamed.json").write_text(scene, encoding="utf-8")
+            (scene_dir / "state_details.state.json").write_text(details, encoding="utf-8")
             renamed = build_egg(load_project(project_root))
         self.assertEqual(original, renamed)
 
@@ -319,15 +360,15 @@ class AuthoringModelTests(unittest.TestCase):
             project_root = make_asset_project(Path(temp_dir))
             bundle = load_project(project_root)
             self.assertEqual((), bundle.issues)
-            self.assertEqual(2, len(bundle.frames))
+            self.assertEqual(5, len(bundle.frames))
 
             package = parse_egg(build_egg(bundle))
-            self.assertEqual(9, len(package.chunks))
+            self.assertEqual(12, len(package.chunks))
             self.assertEqual(
                 [CHUNK_ASSET_TABLE, CHUNK_MASKED_1BPP_SPRITE_BANK, CHUNK_ANIMATION_TABLE],
                 [chunk.chunk_type for chunk in package.chunks[-3:]],
             )
-            self.assertEqual(("cursor.phase_a", "cursor.phase_b"), tuple(asset["frame_id"] for asset in package.assets))
+            self.assertEqual(("cursor.phase_a", "cursor.phase_b"), tuple(asset["frame_id"] for asset in package.assets[:2]))
             self.assertEqual(0xFF, package.assets[0]["pixels"][0])
             self.assertEqual(0x81, package.assets[0]["pixels"][1])
             self.assertEqual(0x81, package.assets[0]["mask"][1])
@@ -399,18 +440,27 @@ class AuthoringModelTests(unittest.TestCase):
             scene_dir.mkdir(parents=True)
             shutil.copytree(SAMPLE / "assets", project_root / "assets")
             project = json.loads((SAMPLE / "project.json").read_text(encoding="utf-8"))
-            project["scene_sources"] = ["scenes/state_demo.state.json", "scenes/second.state.json"]
+            project["scene_sources"] = [
+                "scenes/state_demo.state.json",
+                "scenes/state_details.state.json",
+                "scenes/second.state.json",
+            ]
             scene = json.loads((SAMPLE / "scenes" / "state_demo.state.json").read_text(encoding="utf-8"))
+            details = json.loads((SAMPLE / "scenes" / "state_details.state.json").read_text(encoding="utf-8"))
             second = copy.deepcopy(scene)
             second["scene_id"] = "second_scene"
             second["display_name"] = "Second Scene"
             (project_root / "project.json").write_text(json.dumps(project), encoding="utf-8")
             (scene_dir / "state_demo.state.json").write_text(json.dumps(scene), encoding="utf-8")
+            (scene_dir / "state_details.state.json").write_text(json.dumps(details), encoding="utf-8")
             (scene_dir / "second.state.json").write_text(json.dumps(second), encoding="utf-8")
 
             package = parse_egg(build_egg(load_project(project_root)))
-            self.assertEqual(("second_scene", "state_demo"), tuple(item["scene_id"] for item in package.scenes))
-            self.assertEqual(12, len(package.chunks))
+            self.assertEqual(
+                ("second_scene", "state_demo", "state_details"),
+                tuple(item["scene_id"] for item in package.scenes),
+            )
+            self.assertEqual(15, len(package.chunks))
 
     def test_egg_corruption_and_truncation_are_rejected(self) -> None:
         blob = bytearray(build_egg(load_project(SAMPLE)))

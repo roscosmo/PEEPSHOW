@@ -184,6 +184,14 @@ export type Framebuffer = {
   data_base64: string;
 };
 
+export type ProjectSceneThumbnailsResult = {
+  project_revision: number;
+  thumbnails: Array<{
+    scene_id: string;
+    framebuffer: Framebuffer;
+  }>;
+};
+
 export type PreviewSnapshot = {
   project_revision: number;
   preview_revision: number;

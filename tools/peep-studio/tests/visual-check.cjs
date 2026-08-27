@@ -46,7 +46,7 @@ async function capture(viewport) {
         toolbar: pick(".app-toolbar"),
         project: pick(".project-pane"),
         preview: pick(".preview-pane"),
-        graph: pick(".state-graph-pane"),
+        graph: pick(".scene-flow-pane, .state-graph-pane"),
         inspector: pick(".inspector-pane"),
         overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
       };

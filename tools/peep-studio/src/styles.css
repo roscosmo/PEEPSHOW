@@ -775,12 +775,11 @@ button:focus-visible {
 
 .scene-card-node {
   display: grid;
-  width: 228px;
-  grid-template-columns: 58px minmax(0, 1fr);
-  gap: 8px 10px;
-  padding: 9px;
-  border: 1px solid #aeb9b2;
-  border-radius: 6px;
+  width: 300px;
+  gap: 12px;
+  padding: 14px;
+  border: 2px solid #2c312e;
+  border-radius: 18px;
   background: #ffffff;
   color: #27302b;
   box-shadow: 0 6px 14px rgb(55 64 59 / 10%);
@@ -788,7 +787,9 @@ button:focus-visible {
   text-align: left;
 }
 
-.scene-card-node > small,
+.scene-card-heading,
+.scene-card-preview,
+.scene-entry-row,
 .scene-exit-list {
   grid-column: 1 / -1;
 }
@@ -803,27 +804,36 @@ button:focus-visible {
   box-shadow: 0 0 0 2px rgb(23 95 138 / 18%);
 }
 
+.scene-card-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
 .scene-card-preview {
   display: grid;
-  grid-row: span 3;
-  width: 58px;
+  width: 100%;
   aspect-ratio: 168 / 144;
+  overflow: visible;
   place-items: center;
-  border: 1px solid #929c96;
-  border-radius: 4px;
+  border: 2px solid #2c312e;
+  border-radius: 8px;
   background: #252b28;
   color: #dce2de;
   font-size: 12px;
   font-weight: 800;
 }
 
-.scene-card-heading {
-  min-width: 0;
+.scene-card-preview .preview-canvas {
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
 }
 
 .scene-card-heading span,
-.scene-card-facts span,
-.scene-start-badge,
+.scene-count-badge,
+.scene-entry-row small,
 .scene-card-node small {
   display: block;
   overflow: hidden;
@@ -837,46 +847,65 @@ button:focus-visible {
 
 .scene-card-heading strong {
   display: block;
-  margin-top: 2px;
   overflow: hidden;
   color: #27302b;
-  font-size: 13px;
+  font-size: 20px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.scene-count-badge {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 2px solid #2c312e;
+  border-radius: 9px;
+  background: #f7faf8;
+  color: #27302b;
+  font-size: 18px;
+  font-weight: 760;
+}
+
+.scene-entry-row {
+  position: relative;
+  display: grid;
+  min-height: 40px;
+  place-items: center;
+  padding: 7px 10px;
+  border: 2px solid #2c312e;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.scene-entry-row span {
+  overflow: hidden;
+  max-width: 100%;
+  color: #175f8a;
+  font-size: 15px;
+  font-weight: 760;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.scene-card-facts {
-  display: flex;
-  gap: 6px;
-}
-
-.scene-card-facts span {
-  padding: 3px 5px;
-  border: 1px solid #d3dbd6;
-  border-radius: 4px;
-  background: #f7faf8;
-}
-
-.scene-start-badge {
-  justify-self: start;
-  padding: 3px 6px;
-  border: 1px solid #9db9ca;
-  border-radius: 4px;
-  background: #edf7fb;
-  color: #175f8a;
+.scene-entry-row small {
+  margin-top: 2px;
 }
 
 .scene-exit-list {
   display: grid;
-  gap: 5px;
+  gap: 9px;
 }
 
 .scene-exit-empty,
 .scene-exit-row {
-  min-height: 30px;
-  padding: 6px 8px;
-  border: 1px solid #d4dcd7;
-  border-radius: 5px;
+  min-height: 40px;
+  padding: 7px 10px;
+  border: 2px solid #2c312e;
+  border-radius: 10px;
   background: #f9fbfa;
 }
 
@@ -910,8 +939,9 @@ button:focus-visible {
 }
 
 .scene-exit-row span {
-  font-size: 11px;
+  font-size: 15px;
   font-weight: 750;
+  text-align: center;
 }
 
 .scene-exit-row small {
@@ -921,12 +951,18 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
-.scene-exit-row .react-flow__handle {
+.scene-exit-row .react-flow__handle,
+.scene-entry-row .react-flow__handle {
   right: -14px;
   width: 8px;
   height: 8px;
   border-color: #6d7a73;
   background: #ffffff;
+}
+
+.scene-entry-row .react-flow__handle {
+  right: auto;
+  left: -19px;
 }
 
 .state-card-heading {
@@ -1025,10 +1061,46 @@ button:focus-visible {
 }
 
 .react-flow__controls,
-.react-flow__minimap {
+.graph-mini-map {
   border: 1px solid #c9d0cc;
   border-radius: 5px;
   box-shadow: none;
+}
+
+.graph-mini-map {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 4;
+  width: 170px;
+  height: 112px;
+  overflow: hidden;
+  background: rgb(247 249 248 / 92%);
+  pointer-events: none;
+}
+
+.graph-mini-map svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.graph-mini-map line {
+  stroke: #8e9a94;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.graph-mini-map rect {
+  fill: #dfe6e1;
+  stroke: #7d8982;
+  stroke-width: 5;
+}
+
+.graph-mini-map rect.selected {
+  fill: #cfe8f6;
+  stroke: #175f8a;
+  stroke-width: 8;
 }
 
 .record-list {

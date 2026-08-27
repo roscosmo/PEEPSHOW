@@ -62,6 +62,19 @@ def make_preview_project(parent: Path) -> Path:
             color = (0, 0, 0, 255) if x in {11, 12} else (255, 255, 255, 255)
             image.putpixel((x, y), color)
     image.save(asset_dir / "cursor.png", format="PNG")
+    marker = Image.new("RGBA", (24, 24), (255, 255, 255, 0))
+    for y in range(24):
+        for x in range(24):
+            phase = x // 8
+            local_x = x % 8
+            if phase == 0:
+                color = (0, 0, 0, 255) if local_x in {0, 7} else (255, 255, 255, 0)
+            elif phase == 1:
+                color = (0, 0, 0, 255) if y in {0, 23} else (255, 255, 255, 0)
+            else:
+                color = (0, 0, 0, 255) if local_x == y % 8 else (255, 255, 255, 0)
+            marker.putpixel((x, y), color)
+    marker.save(asset_dir / "marker.png", format="PNG")
     catalog = {
         "schema_id": "peepshow.authoring.assets",
         "schema_version": 1,
@@ -85,7 +98,33 @@ def make_preview_project(parent: Path) -> Path:
                         "pivot_y": 0,
                     },
                 ],
-            }
+            },
+            {
+                "asset_id": "marker",
+                "asset_type": "masked_1bpp",
+                "source_path": "assets/marker.png",
+                "source_format": "png",
+                "frames": [
+                    {
+                        "frame_id": "marker.phase_a",
+                        "source_rect": {"x": 0, "y": 0, "width": 8, "height": 24},
+                        "pivot_x": 0,
+                        "pivot_y": 0,
+                    },
+                    {
+                        "frame_id": "marker.phase_b",
+                        "source_rect": {"x": 8, "y": 0, "width": 8, "height": 24},
+                        "pivot_x": 0,
+                        "pivot_y": 0,
+                    },
+                    {
+                        "frame_id": "marker.phase_c",
+                        "source_rect": {"x": 16, "y": 0, "width": 8, "height": 24},
+                        "pivot_x": 0,
+                        "pivot_y": 0,
+                    },
+                ],
+            },
         ],
         "animations": [
             {
@@ -120,23 +159,23 @@ def make_procedural_project(parent: Path) -> Path:
     project.pop("asset_sources", None)
     project_path.write_text(json.dumps(project), encoding="utf-8")
 
-    scene_path = project_root / "scenes" / "state_demo.state.json"
-    scene = json.loads(scene_path.read_text(encoding="utf-8"))
-    for model in scene["render_models"]:
-        cursor = next(element for element in model["elements"] if element["element_id"] == "cursor")
-        marker = next(element for element in model["elements"] if element["element_id"] == "marker")
-        cursor["kind"] = "shape"
-        cursor["visual_ref"] = "cursor_outline"
-        marker["kind"] = "shape"
-        marker["visual_ref"] = "marker_outline"
-    waiting = scene["waiting_visuals"][0]["elements"]
-    waiting[0]["phase_visual_refs"] = ["cursor_phase_a", "cursor_phase_b"]
-    waiting[1]["phase_visual_refs"] = [
-        "marker_phase_a",
-        "marker_phase_b",
-        "marker_phase_c",
-    ]
-    scene_path.write_text(json.dumps(scene), encoding="utf-8")
+    for scene_path in (project_root / "scenes").glob("*.state.json"):
+        scene = json.loads(scene_path.read_text(encoding="utf-8"))
+        for model in scene["render_models"]:
+            cursor = next(element for element in model["elements"] if element["element_id"] == "cursor")
+            marker = next(element for element in model["elements"] if element["element_id"] == "marker")
+            cursor["kind"] = "shape"
+            cursor["visual_ref"] = "cursor_outline"
+            marker["kind"] = "shape"
+            marker["visual_ref"] = "marker_outline"
+        waiting = scene["waiting_visuals"][0]["elements"]
+        waiting[0]["phase_visual_refs"] = ["cursor_phase_a", "cursor_phase_b"]
+        waiting[1]["phase_visual_refs"] = [
+            "marker_phase_a",
+            "marker_phase_b",
+            "marker_phase_c",
+        ]
+        scene_path.write_text(json.dumps(scene), encoding="utf-8")
     return project_root
 
 
@@ -187,7 +226,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(7, SERVICE_API_VERSION)
+        self.assertEqual(8, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -197,6 +236,7 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertIn("project.save", result["operations"])
         self.assertIn("project.undo", result["operations"])
         self.assertIn("project.redo", result["operations"])
+        self.assertIn("project.scene_thumbnails", result["operations"])
         self.assertIn("project.preview_reset", result["operations"])
         self.assertIn("project.preview_input", result["operations"])
         self.assertIn("project.preview_advance", result["operations"])
@@ -825,7 +865,10 @@ class AuthoringServiceTests(unittest.TestCase):
                 request("project.save", {"project_revision": renamed["project_revision"]})
             )
             self.assertFalse(saved["dirty"])
-            self.assertEqual(["scenes/state_demo.state.json"], saved["saved_sources"])
+            self.assertEqual(
+                ["scenes/state_demo.state.json", "scenes/state_details.state.json"],
+                saved["saved_sources"],
+            )
 
             reloaded = load_project(project_root)
             states = reloaded.normalized()["scenes"][0]["states"]
@@ -956,12 +999,50 @@ class AuthoringServiceTests(unittest.TestCase):
                     {
                         "project_revision": loaded["project_revision"],
                         "preview_revision": reset["preview_revision"],
-                        "logical_source": "BUTTON_A",
+                        "logical_source": "BUTTON_B",
                     },
                 )
             )
             self.assertFalse(ignored["input"]["accepted"])
             self.assertEqual("right", ignored["scene"]["state_id"])
+
+    def test_scene_thumbnails_return_package_backed_frames_without_touching_live_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_preview_project(Path(temp_dir))
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            reset = service.handle(
+                request(
+                    "project.preview_reset",
+                    {"project_revision": loaded["project_revision"], "scene_id": "state_demo"},
+                )
+            )
+
+            result = service.handle(
+                request("project.scene_thumbnails", {"project_revision": loaded["project_revision"]})
+            )
+
+            self.assertEqual(loaded["project_revision"], result["project_revision"])
+            thumbnails = {item["scene_id"]: item["framebuffer"] for item in result["thumbnails"]}
+            self.assertEqual({"state_demo", "state_details"}, set(thumbnails))
+            for framebuffer in thumbnails.values():
+                self.assertEqual(168, framebuffer["width"])
+                self.assertEqual(144, framebuffer["height"])
+                self.assertEqual(3024, len(base64.b64decode(framebuffer["data_base64"], validate=True)))
+
+            advanced = service.handle(
+                request(
+                    "project.preview_advance",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "preview_revision": reset["preview_revision"],
+                        "elapsed_ms": 250,
+                    },
+                )
+            )
+            self.assertEqual(reset["preview_revision"], advanced["preview_revision"])
+            self.assertEqual("state_demo", advanced["scene"]["scene_id"])
+            self.assertEqual(250, advanced["timeline"]["elapsed_ms"])
 
     def test_preview_replaces_state_scenes_and_resets_destination_epoch(self) -> None:
         service = AuthoringService()

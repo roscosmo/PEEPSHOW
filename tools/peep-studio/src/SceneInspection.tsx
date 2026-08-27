@@ -3,7 +3,6 @@ import {
   Controls,
   Handle,
   MarkerType,
-  MiniMap,
   Position,
   ReactFlow,
   type Edge,
@@ -11,9 +10,11 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import { GitBranch, Hourglass, Layers3, Network, Route, Variable } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FramebufferCanvas } from "./FramebufferCanvas";
 import { buildSceneFlowGraphModel, buildStateGraphModel, type GraphSceneNode, type GraphStateNode } from "./stateGraph";
 import type {
+  Framebuffer,
   InputAction,
   RenderModel,
   SceneDocument,
@@ -94,6 +95,75 @@ const GUARD_OPERATOR_LABELS: Record<string, string> = {
   ge: "is at least",
 };
 
+type MiniMapNode = {
+  id: string;
+  x: number;
+  y: number;
+};
+
+type MiniMapEdge = {
+  source: string;
+  target: string;
+};
+
+function GraphMiniMap({
+  nodes,
+  edges,
+  selectedId,
+}: {
+  nodes: MiniMapNode[];
+  edges: MiniMapEdge[];
+  selectedId: string | null;
+}) {
+  if (nodes.length === 0) {
+    return null;
+  }
+  const nodeWidth = 220;
+  const nodeHeight = 130;
+  const padding = 80;
+  const minX = Math.min(...nodes.map((node) => node.x));
+  const minY = Math.min(...nodes.map((node) => node.y));
+  const maxX = Math.max(...nodes.map((node) => node.x + nodeWidth));
+  const maxY = Math.max(...nodes.map((node) => node.y + nodeHeight));
+  const width = Math.max(1, maxX - minX + padding * 2);
+  const height = Math.max(1, maxY - minY + padding * 2);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+
+  return (
+    <div className="graph-mini-map" aria-hidden="true">
+      <svg viewBox={`${minX - padding} ${minY - padding} ${width} ${height}`}>
+        {edges.map((edge) => {
+          const source = byId.get(edge.source);
+          const target = byId.get(edge.target);
+          if (source === undefined || target === undefined) {
+            return null;
+          }
+          return (
+            <line
+              key={`${edge.source}->${edge.target}`}
+              x1={source.x + nodeWidth}
+              y1={source.y + nodeHeight / 2}
+              x2={target.x}
+              y2={target.y + nodeHeight / 2}
+            />
+          );
+        })}
+        {nodes.map((node) => (
+          <rect
+            key={node.id}
+            className={selectedId === node.id ? "selected" : undefined}
+            x={node.x}
+            y={node.y}
+            width={nodeWidth}
+            height={nodeHeight}
+            rx="12"
+          />
+        ))}
+      </svg>
+    </div>
+  );
+}
+
 function displayInputLabel(source: string | undefined, fallback: string): string {
   if (source === undefined) {
     return fallback;
@@ -164,33 +234,33 @@ const STATE_NODE_TYPES = { stateCard: StateCardNode };
 
 type SceneCardNodeData = {
   graphNode: GraphSceneNode;
+  thumbnail: Framebuffer | null;
   selectedRouteId: string | null;
   onSelectScene: (sceneId: string) => void;
   onSelectSceneRoute: (sceneId: string, routeId: string) => void;
 };
 
 function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
-  const { graphNode, onSelectScene, onSelectSceneRoute, selectedRouteId } = data;
+  const { graphNode, onSelectScene, onSelectSceneRoute, selectedRouteId, thumbnail } = data;
   return (
     <button
       className={`scene-card-node ${graphNode.isEntry ? "entry" : ""} ${selected ? "selected" : ""}`}
       type="button"
       onClick={() => onSelectScene(graphNode.id)}
     >
-      <Handle type="target" position={Position.Left} />
-      <div className="scene-card-preview" aria-hidden="true">
-        <span>{graphNode.label.slice(0, 2).toUpperCase()}</span>
-      </div>
       <div className="scene-card-heading">
-        <span>Scene</span>
         <strong>{graphNode.label}</strong>
-      </div>
-      {graphNode.isEntry && <span className="scene-start-badge">Start</span>}
-      <div className="scene-card-facts">
         <span>{graphNode.stateCount} state{graphNode.stateCount === 1 ? "" : "s"}</span>
-        <span>{graphNode.routeCount} exit{graphNode.routeCount === 1 ? "" : "s"}</span>
       </div>
-      <small>First screen: {graphNode.entryStateLabel}</small>
+      <span className="scene-count-badge">{graphNode.routeCount}</span>
+      <div className="scene-card-preview" aria-hidden="true">
+        <FramebufferCanvas framebuffer={thumbnail} />
+      </div>
+      <div className="scene-entry-row">
+        <Handle type="target" position={Position.Left} />
+        <span>{graphNode.isEntry ? "Start scene" : "Scene entry"}</span>
+        <small>{graphNode.entryStateLabel}</small>
+      </div>
       <div className="scene-exit-list">
         {graphNode.exits.length === 0 ? (
           <span className="scene-exit-empty">No scene exits</span>
@@ -302,7 +372,11 @@ export function StateGraphView({
       proOptions={{ hideAttribution: true }}
     >
       <Background gap={18} size={1} />
-      <MiniMap pannable={false} zoomable={false} />
+      <GraphMiniMap
+        nodes={graph.nodes}
+        edges={graph.edges}
+        selectedId={selected.kind === "state" ? selected.id : null}
+      />
       <Controls showInteractive={false} />
     </ReactFlow>
   );
@@ -311,6 +385,7 @@ export function StateGraphView({
 export function SceneFlowView({
   scenes,
   entrySceneId,
+  thumbnails,
   selectedSceneId,
   selectedRouteId,
   onSelectScene,
@@ -318,12 +393,14 @@ export function SceneFlowView({
 }: {
   scenes: SceneDocument[];
   entrySceneId: string | null;
+  thumbnails: Record<string, Framebuffer>;
   selectedSceneId: string | null;
   selectedRouteId: string | null;
   onSelectScene: (sceneId: string) => void;
   onSelectSceneRoute: (sceneId: string, routeId: string) => void;
 }) {
   const graph = useMemo(() => buildSceneFlowGraphModel(scenes, entrySceneId), [entrySceneId, scenes]);
+  const flowRef = useRef<{ fitView: (options?: { padding?: number; maxZoom?: number; duration?: number }) => void } | null>(null);
   const nodes: Node[] = useMemo(
     () =>
       graph.nodes.map((node) => ({
@@ -332,6 +409,7 @@ export function SceneFlowView({
         position: { x: node.x, y: node.y },
         data: {
           graphNode: node,
+          thumbnail: thumbnails[node.id] ?? null,
           selectedRouteId,
           onSelectScene,
           onSelectSceneRoute,
@@ -340,7 +418,7 @@ export function SceneFlowView({
         draggable: false,
         connectable: false,
       })),
-    [graph.nodes, onSelectScene, onSelectSceneRoute, selectedRouteId, selectedSceneId],
+    [graph.nodes, onSelectScene, onSelectSceneRoute, selectedRouteId, selectedSceneId, thumbnails],
   );
   const edges: Edge[] = useMemo(
     () =>
@@ -357,6 +435,13 @@ export function SceneFlowView({
     [graph.edges, selectedRouteId],
   );
 
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      flowRef.current?.fitView({ padding: 0.28, maxZoom: 1, duration: 120 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [edges.length, nodes.length, selectedSceneId]);
+
   if (scenes.length === 0) {
     return (
       <div className="graph-empty">
@@ -372,6 +457,11 @@ export function SceneFlowView({
       edges={edges}
       nodeTypes={SCENE_NODE_TYPES}
       fitView
+      fitViewOptions={{ padding: 0.28, maxZoom: 1 }}
+      onInit={(instance) => {
+        flowRef.current = instance;
+        window.requestAnimationFrame(() => instance.fitView({ padding: 0.28, maxZoom: 1 }));
+      }}
       nodesDraggable={false}
       nodesConnectable={false}
       elementsSelectable
@@ -380,7 +470,7 @@ export function SceneFlowView({
       proOptions={{ hideAttribution: true }}
     >
       <Background gap={18} size={1} />
-      <MiniMap pannable={false} zoomable={false} />
+      <GraphMiniMap nodes={graph.nodes} edges={graph.edges} selectedId={selectedSceneId} />
       <Controls showInteractive={false} />
     </ReactFlow>
   );
