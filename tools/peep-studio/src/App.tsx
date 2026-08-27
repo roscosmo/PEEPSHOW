@@ -81,6 +81,7 @@ export default function App() {
   const [projectPath, setProjectPath] = useState<string | null>(null);
   const [temporaryProject, setTemporaryProject] = useState(false);
   const [sceneSelection, setSceneSelection] = useState<SceneSelection>({ kind: "scene" });
+  const [selectedPlacementElement, setSelectedPlacementElement] = useState<string | null>(null);
   const [build, setBuild] = useState<PackageBuildResult | null>(null);
   const [dirty, setDirty] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
@@ -92,6 +93,11 @@ export default function App() {
   const [sceneFlowLayoutStatus, setSceneFlowLayoutStatus] = useState("No layout move yet");
   const [projectWidth, setProjectWidth] = useState(320);
   const [inspectorWidth, setInspectorWidth] = useState(390);
+  const [placementGridVisible, setPlacementGridVisible] = useState(true);
+  const [placementMajorGridVisible, setPlacementMajorGridVisible] = useState(true);
+  const [placementGridStrength, setPlacementGridStrength] = useState(18);
+  const [placementOverlayVisible, setPlacementOverlayVisible] = useState(true);
+  const [placementLabelMode, setPlacementLabelMode] = useState<"hover" | "always" | "off">("hover");
   const [message, setMessage] = useState<string | null>(null);
   const previewRef = useRef<PreviewSnapshot | null>(null);
   const projectRevisionRef = useRef<number | null>(null);
@@ -131,6 +137,7 @@ export default function App() {
         });
         setSelectedScene(sceneId);
         setSceneSelection({ kind: "scene" });
+        setSelectedPlacementElement(null);
         setPreview(result);
         setMessage(null);
       } catch (error) {
@@ -158,6 +165,7 @@ export default function App() {
       setSelectedScene(null);
       setSceneThumbnails({});
       setSceneSelection({ kind: "scene" });
+      setSelectedPlacementElement(null);
       try {
         const result = await bridge.serviceRequest<ProjectLoadResult>("project.load", { path });
         setProject(result);
@@ -214,6 +222,7 @@ export default function App() {
         if (result.scene.scene_id !== selectedScene) {
           setSelectedScene(result.scene.scene_id);
           setSceneSelection({ kind: "scene" });
+          setSelectedPlacementElement(null);
         }
       } catch (error) {
         setPlaying(false);
@@ -681,6 +690,14 @@ export default function App() {
     }
     return (selectedSceneDocument.render_models ?? []).find((model) => model.visual_id === placementState.render_model_ref) ?? null;
   }, [placementState, selectedSceneDocument]);
+  useEffect(() => {
+    if (
+      selectedPlacementElement !== null &&
+      placementRenderModel?.elements.some((element) => element.element_id === selectedPlacementElement) !== true
+    ) {
+      setSelectedPlacementElement(null);
+    }
+  }, [placementRenderModel, selectedPlacementElement]);
   const connected = service !== null;
   const startProjectResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -770,6 +787,44 @@ export default function App() {
       <div className="display-stage">
         <div className="panel-bezel">
           <FramebufferCanvas framebuffer={preview?.framebuffer ?? null} />
+          {variant === "placement" && (
+            <div
+              className={`placement-screen-overlay labels-${placementLabelMode}`}
+              aria-label="Placement selection overlay"
+              style={{
+                "--placement-grid-minor-opacity": placementGridVisible ? placementGridStrength / 100 : 0,
+                "--placement-grid-major-opacity": placementGridVisible && placementMajorGridVisible ? (placementGridStrength + 6) / 100 : 0,
+              } as CSSProperties}
+            >
+              <div className="placement-pixel-grid" aria-hidden="true" />
+              {placementOverlayVisible &&
+                [...(placementRenderModel?.elements ?? [])]
+                  .sort((left, right) => left.z_order - right.z_order)
+                  .map((element) => (
+                    <button
+                      key={element.element_id}
+                      className={`placement-element-box ${selectedPlacementElement === element.element_id ? "selected" : ""}`}
+                      type="button"
+                      style={{
+                        left: `${(element.x / 168) * 100}%`,
+                        top: `${(element.y / 144) * 100}%`,
+                        width: `${(element.width / 168) * 100}%`,
+                        height: `${(element.height / 144) * 100}%`,
+                      }}
+                      title={`${element.element_id}: ${element.x},${element.y} ${element.width}x${element.height}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedPlacementElement(element.element_id);
+                        if (placementRenderModel !== null) {
+                          setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
+                        }
+                      }}
+                    >
+                      <span>{element.element_id}</span>
+                    </button>
+                  ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -811,6 +866,52 @@ export default function App() {
     return (
       <section className="inspector-section placement-inspector">
         <h3><SquareMousePointer size={14} aria-hidden="true" /> Placement</h3>
+        <div className="placement-view-settings">
+          <label>
+            <input
+              type="checkbox"
+              checked={placementGridVisible}
+              onChange={(event) => setPlacementGridVisible(event.target.checked)}
+            />
+            Pixel grid
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={placementMajorGridVisible}
+              disabled={!placementGridVisible}
+              onChange={(event) => setPlacementMajorGridVisible(event.target.checked)}
+            />
+            Major lines
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={placementOverlayVisible}
+              onChange={(event) => setPlacementOverlayVisible(event.target.checked)}
+            />
+            Object boxes
+          </label>
+          <label>
+            Grid strength
+            <input
+              type="range"
+              min="4"
+              max="30"
+              value={placementGridStrength}
+              disabled={!placementGridVisible}
+              onChange={(event) => setPlacementGridStrength(Number(event.target.value))}
+            />
+          </label>
+          <label>
+            Labels
+            <select value={placementLabelMode} onChange={(event) => setPlacementLabelMode(event.target.value as "hover" | "always" | "off")}>
+              <option value="hover">Hover</option>
+              <option value="always">Always</option>
+              <option value="off">Off</option>
+            </select>
+          </label>
+        </div>
         {selectedSceneDocument === null ? (
           <p className="muted">Select a scene to inspect its screen elements.</p>
         ) : placementRenderModel === null ? (
@@ -829,8 +930,12 @@ export default function App() {
                 {elements.map((element: RenderElement) => (
                   <button
                     key={element.element_id}
+                    className={selectedPlacementElement === element.element_id ? "selected" : ""}
                     type="button"
-                    onClick={() => setSceneSelection({ kind: "render", id: placementRenderModel.visual_id })}
+                    onClick={() => {
+                      setSelectedPlacementElement(element.element_id);
+                      setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
+                    }}
                   >
                     <span>
                       <strong>{element.element_id}</strong>

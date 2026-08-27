@@ -263,9 +263,12 @@ not require or imply an on-device runtime font renderer.
 
 Implementation status: placement mode shell is present in Peep Studio. It
 promotes the selected scene preview into the main workspace and lists retained
-render elements for inspection. Visual element add/move/reorder commands remain
-pending and must be implemented through Python service commands before the
-canvas becomes editable.
+render elements for inspection. The placement display has a faint screen-space
+grid and select-only retained-element overlays that highlight the matching
+inspector row. Grid visibility, grid strength, major grid lines, overlay boxes,
+and label display are editor view settings only; they do not affect package
+output. Visual element add/move/reorder commands remain pending and must be
+implemented through Python service commands before the canvas becomes editable.
 
 ### Stage 4: STATE Graph Editing
 

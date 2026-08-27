@@ -478,6 +478,7 @@ button:focus-visible {
 }
 
 .panel-bezel {
+  position: relative;
   width: min(100%, calc((100vh - 196px) * 1.1667));
   max-width: 760px;
   aspect-ratio: 168 / 144;
@@ -503,7 +504,7 @@ button:focus-visible {
 
 .placement-pane .display-stage {
   padding: 24px;
-  background-size: 18px 18px;
+  background-image: none;
 }
 
 .preview-canvas {
@@ -512,6 +513,76 @@ button:focus-visible {
   height: 100%;
   background: #eef1ed;
   image-rendering: pixelated;
+}
+
+.placement-screen-overlay {
+  position: absolute;
+  inset: 14px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.placement-pixel-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgb(23 95 138 / var(--placement-grid-minor-opacity, 0.18)) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(23 95 138 / var(--placement-grid-minor-opacity, 0.18)) 1px, transparent 1px),
+    linear-gradient(rgb(23 95 138 / var(--placement-grid-major-opacity, 0.24)) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(23 95 138 / var(--placement-grid-major-opacity, 0.24)) 1px, transparent 1px);
+  background-size:
+    calc(100% / 168) calc(100% / 144),
+    calc(100% / 168) calc(100% / 144),
+    calc(100% / 21) calc(100% / 18),
+    calc(100% / 21) calc(100% / 18);
+  pointer-events: none;
+}
+
+.placement-element-box {
+  position: absolute;
+  display: grid;
+  min-width: 8px;
+  min-height: 8px;
+  place-items: start;
+  padding: 0;
+  border: 1px solid rgb(23 95 138 / 58%);
+  background: rgb(23 95 138 / 8%);
+  color: #174f70;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.placement-element-box:hover,
+.placement-element-box.selected {
+  border-color: #d6812f;
+  background: rgb(214 129 47 / 14%);
+  box-shadow: 0 0 0 1px rgb(214 129 47 / 30%);
+}
+
+.placement-element-box span {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 1px 2px;
+  background: rgb(255 255 255 / 76%);
+  font-size: 7px;
+  font-weight: 800;
+  line-height: 1.15;
+  opacity: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.placement-element-box:hover span,
+.placement-element-box.selected span {
+  opacity: 1;
+}
+
+.placement-screen-overlay.labels-always .placement-element-box span {
+  opacity: 1;
+}
+
+.placement-screen-overlay.labels-off .placement-element-box span {
+  display: none;
 }
 
 .transport-bar {
@@ -780,6 +851,52 @@ button:focus-visible {
   margin-bottom: 12px;
 }
 
+.placement-view-settings {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 9px;
+  border: 1px solid #d7ded9;
+  border-radius: 7px;
+  background: #f7faf8;
+}
+
+.placement-view-settings label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: #3e4943;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.placement-view-settings label:has(input[type="range"]),
+.placement-view-settings label:has(select) {
+  grid-template-columns: 92px minmax(0, 1fr);
+}
+
+.placement-view-settings input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.placement-view-settings input[type="range"] {
+  width: 100%;
+}
+
+.placement-view-settings select {
+  min-width: 0;
+  height: 28px;
+  border: 1px solid #c9d3ce;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #27302b;
+  font-size: 11px;
+  font-weight: 720;
+}
+
 .placement-element-list {
   display: grid;
   gap: 7px;
@@ -802,6 +919,11 @@ button:focus-visible {
 .placement-element-list button:hover {
   border-color: #8eb0c3;
   background: #eef7fb;
+}
+
+.placement-element-list button.selected {
+  border-color: #d6812f;
+  background: #fff4e8;
 }
 
 .placement-element-list strong,
