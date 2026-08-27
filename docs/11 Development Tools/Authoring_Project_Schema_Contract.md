@@ -768,15 +768,24 @@ editor_data:
       scene_id:
         x
         y
+  state_graph:
+    scenes:
+      scene_id:
+        nodes:
+          state_id:
+            x
+            y
   comments[]
   bookmarks[]
   local_ui_state
 ```
 
 The first executable Peep Studio subset stores scene-flow positions in
-`project.editor.scene_flow.nodes[scene_id] = { x, y }`. These coordinates are
-for author comprehension only; they do not change scene order, entry behavior,
-routes, preview behavior, or compiled package bytes.
+`project.editor.scene_flow.nodes[scene_id] = { x, y }` and per-scene STATE graph
+positions in
+`project.editor.state_graph.scenes[scene_id].nodes[state_id] = { x, y }`. These
+coordinates are for author comprehension only; they do not change scene order,
+entry behavior, routes, preview behavior, or compiled package bytes.
 
 Rules:
 

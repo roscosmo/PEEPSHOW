@@ -236,7 +236,9 @@ Implementation status: started. Service API version 12 exposes
 `route.delete_scene_exit` for creating/deleting actionless direct scene exits,
 `render_element.set_position` for moving retained scene elements within the
 168x144 display bounds, and `editor.scene_flow.set_node_position` for
-editor-only scene-flow layout.
+editor-only scene-flow layout. Local Logic state cards use
+`editor.state_graph.set_node_position`, storing per-scene, per-state editor-only
+layout coordinates that must not affect package bytes.
 `route.set_action` edits existing ordered route actions only; adding, removing,
 and reordering actions remain deferred. Accepted commands update the in-memory
 Python-owned project, return a new `project_revision`, normalized document,
@@ -295,6 +297,12 @@ implemented through Python service commands.
 
 At the end of this stage, an author can build a complete interactive menu that
 fits within one STATE scene.
+
+Implementation status: local logic presentation has been reshaped toward the
+user-facing vocabulary. State graph cards show screen names, entry/output
+badges, and trigger output rows. The primary inspector uses transition,
+condition, and effect language while keeping Python-owned routes, guards, and
+actions as the underlying semantics.
 
 ### Stage 5: Package Scene Flow
 

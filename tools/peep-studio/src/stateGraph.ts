@@ -7,6 +7,7 @@ export type GraphStateOutput = {
   guardCount: number;
   actionCount: number;
   targetState?: string;
+  targetStateLabel?: string;
   targetScene?: string;
 };
 
@@ -92,19 +93,26 @@ function countLabel(count: number, singular: string): string {
   return `${count} ${singular}${count === 1 ? "" : "s"}`;
 }
 
+function visibleActionCount(route: StateRoute): number {
+  return route.actions.filter((action) => action.kind !== "request_render").length;
+}
+
 function routeLabel(route: StateRoute, inputActions: InputAction[]): string {
-  const badges = [countLabel(route.guards.length, "rule"), countLabel(route.actions.length, "effect")].filter(Boolean);
+  const badges = [countLabel(route.guards.length, "rule"), countLabel(visibleActionCount(route), "effect")].filter(Boolean);
   return [inputLabel(inputActions, route.action_ref), ...badges].join(" - ");
 }
 
-export function buildStateGraphModel(scene: SceneDocument | null): StateGraphModel {
+export function buildStateGraphModel(scene: SceneDocument | null, editor?: ProjectEditorData): StateGraphModel {
   const states = scene?.states ?? [];
   const routes = scene?.routes ?? [];
   const inputActions = scene?.input_actions ?? [];
   const entryState = scene?.entry_state ?? null;
   const columns = Math.max(1, Math.ceil(Math.sqrt(states.length)));
   const stateIds = new Set(states.map((state) => state.state_id));
+  const stateLabels = new Map(states.map((state) => [state.state_id, state.display_name]));
   const outputsByState = new Map<string, GraphStateOutput[]>();
+  const savedPositions =
+    scene === null ? undefined : editor?.state_graph?.scenes?.[scene.scene_id]?.nodes;
 
   routes.forEach((route: StateRoute) => {
     route.from_states
@@ -116,8 +124,9 @@ export function buildStateGraphModel(scene: SceneDocument | null): StateGraphMod
           routeId: route.route_id,
           label: inputLabel(inputActions, route.action_ref),
           guardCount: route.guards.length,
-          actionCount: route.actions.length,
+          actionCount: visibleActionCount(route),
           targetState: route.target_state,
+          targetStateLabel: route.target_state === undefined ? undefined : stateLabels.get(route.target_state),
           targetScene: route.target_scene,
         });
         outputsByState.set(source, outputs);
@@ -131,8 +140,8 @@ export function buildStateGraphModel(scene: SceneDocument | null): StateGraphMod
     renderModelRef: state.render_model_ref,
     waitingVisualRef: state.waiting_visual_ref,
     outputs: outputsByState.get(state.state_id) ?? [],
-    x: (index % columns) * 300,
-    y: Math.floor(index / columns) * 190,
+    x: savedPositions?.[state.state_id]?.x ?? (index % columns) * 340,
+    y: savedPositions?.[state.state_id]?.y ?? Math.floor(index / columns) * 270,
   }));
 
   const edges = routes.flatMap((route: StateRoute) => {

@@ -660,6 +660,51 @@ class AuthoringServiceTests(unittest.TestCase):
                 reloaded.normalized()["project"]["editor"]["scene_flow"]["nodes"]["state_details"],
             )
 
+    def test_state_graph_node_position_is_editor_only_and_persists(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "state_layout.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            before = service.handle(
+                request("project.build_package", {"project_revision": loaded["project_revision"]})
+            )
+            moved = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.state_graph.set_node_position",
+                                "scene_id": "state_demo",
+                                "state_id": "right",
+                                "x": -256.5,
+                                "y": 384.2,
+                            }
+                        ],
+                    },
+                )
+            )
+            after = service.handle(
+                request("project.build_package", {"project_revision": moved["project_revision"]})
+            )
+
+            self.assertEqual(before["package"]["sha256"], after["package"]["sha256"])
+            self.assertEqual(
+                {"x": -256, "y": 384},
+                moved["document"]["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["nodes"]["right"],
+            )
+            self.assertTrue(moved["dirty"])
+            saved = service.handle(request("project.save", {"project_revision": moved["project_revision"]}))
+            self.assertIn("project.json", saved["saved_sources"])
+
+            reloaded = load_project(project_root)
+            self.assertEqual(
+                {"x": -256, "y": 384},
+                reloaded.normalized()["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["nodes"]["right"],
+            )
+
     def test_route_set_target_persists_on_save(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "route_target.peepproj"

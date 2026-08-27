@@ -33,13 +33,27 @@ const scene: SceneDocument = {
       action_ref: "select",
       from_states: ["idle"],
       guards: [{ variable_ref: "coins", operator: "gt", value: 0 }],
-      actions: [{ kind: "set_variable", variable_ref: "coins", operation: "add", value: -1 }],
+      actions: [
+        { kind: "set_variable", variable_ref: "coins", operation: "add", value: -1 },
+        { kind: "request_render" },
+      ],
       target_state: "armed",
     },
   ],
 };
 
 const graph = buildStateGraphModel(scene);
+const savedGraph = buildStateGraphModel(scene, {
+  state_graph: {
+    scenes: {
+      menu: {
+        nodes: {
+          armed: { x: -120, y: 220 },
+        },
+      },
+    },
+  },
+});
 
 assert.equal(graph.nodes.length, 2);
 assert.equal(graph.nodes[0]?.id, "idle");
@@ -54,6 +68,8 @@ assert.equal(graph.edges[0]?.source, "idle");
 assert.equal(graph.edges[0]?.target, "armed");
 assert.equal(graph.edges[0]?.label, "");
 assert.equal(graph.edges[0]?.sourceHandle, "press_a:idle");
+assert.equal(savedGraph.nodes.find((node) => node.id === "armed")?.x, -120);
+assert.equal(savedGraph.nodes.find((node) => node.id === "armed")?.y, 220);
 
 const invalidRouteGraph = buildStateGraphModel({
   ...scene,

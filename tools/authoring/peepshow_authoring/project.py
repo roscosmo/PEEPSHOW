@@ -540,6 +540,70 @@ def _apply_scene_flow_node_position(
     }
 
 
+def _apply_state_graph_node_position(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "state_id", "x", "y"},
+        {"kind", "scene_id", "state_id", "x", "y", "command_id"},
+    )
+    issues: list[ValidationIssue] = []
+    scene_id = command.get("scene_id")
+    state_id = command.get("state_id")
+    _stable_id(scene_id, "command.scene_id", issues)
+    _stable_id(state_id, "command.state_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+
+    target_scene = next(
+        (
+            scene
+            for scene in scenes
+            if isinstance(scene, dict) and scene.get("scene_id") == scene_id
+        ),
+        None,
+    )
+    if target_scene is None:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
+    state_ids = {
+        state.get("state_id")
+        for state in target_scene.get("states", [])
+        if isinstance(state, dict)
+    }
+    if state_id not in state_ids:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown state '{state_id}'")
+
+    x = _layout_coordinate(command.get("x"), "command.x")
+    y = _layout_coordinate(command.get("y"), "command.y")
+    editor = project.setdefault("editor", {})
+    if not isinstance(editor, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor must be an object")
+    state_graph = editor.setdefault("state_graph", {})
+    if not isinstance(state_graph, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor.state_graph must be an object")
+    graph_scenes = state_graph.setdefault("scenes", {})
+    if not isinstance(graph_scenes, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor.state_graph.scenes must be an object")
+    scene_layout = graph_scenes.setdefault(scene_id, {})
+    if not isinstance(scene_layout, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", f"project.editor.state_graph.scenes[{scene_id}] must be an object")
+    nodes = scene_layout.setdefault("nodes", {})
+    if not isinstance(nodes, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", f"project.editor.state_graph.scenes[{scene_id}].nodes must be an object")
+    nodes[state_id] = {"x": x, "y": y}
+    return {
+        "kind": "editor.state_graph.set_node_position",
+        "scene_id": scene_id,
+        "state_id": state_id,
+        "x": x,
+        "y": y,
+    }
+
+
 def _apply_route_set_guard(
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
@@ -826,7 +890,7 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
         if not isinstance(editor, dict):
             _issue(issues, "PROJECT_TYPE_INVALID", "project.editor", "must be an object")
         else:
-            _check_keys(editor, set(), "project.editor", issues, {"scene_flow"})
+            _check_keys(editor, set(), "project.editor", issues, {"scene_flow", "state_graph"})
             scene_flow = editor.get("scene_flow")
             if scene_flow is not None:
                 if not isinstance(scene_flow, dict):
@@ -853,6 +917,47 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
                                         _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "must be a number")
                                     elif not -100000 <= value <= 100000:
                                         _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "outside supported editor layout range")
+            state_graph = editor.get("state_graph")
+            if state_graph is not None:
+                if not isinstance(state_graph, dict):
+                    _issue(issues, "PROJECT_TYPE_INVALID", "project.editor.state_graph", "must be an object")
+                else:
+                    _check_keys(state_graph, set(), "project.editor.state_graph", issues, {"scenes"})
+                    graph_scenes = state_graph.get("scenes")
+                    if graph_scenes is not None:
+                        if not isinstance(graph_scenes, dict):
+                            _issue(issues, "PROJECT_TYPE_INVALID", "project.editor.state_graph.scenes", "must be an object")
+                        elif len(graph_scenes) > 128:
+                            _issue(issues, "PROJECT_LIMIT_EXCEEDED", "project.editor.state_graph.scenes", "contains more than 128 scenes")
+                        else:
+                            for scene_id, scene_layout in graph_scenes.items():
+                                scene_path = f"project.editor.state_graph.scenes[{scene_id}]"
+                                _stable_id(scene_id, scene_path, issues)
+                                if not isinstance(scene_layout, dict):
+                                    _issue(issues, "PROJECT_TYPE_INVALID", scene_path, "must be an object")
+                                    continue
+                                _check_keys(scene_layout, set(), scene_path, issues, {"nodes"})
+                                nodes = scene_layout.get("nodes")
+                                if nodes is None:
+                                    continue
+                                if not isinstance(nodes, dict):
+                                    _issue(issues, "PROJECT_TYPE_INVALID", f"{scene_path}.nodes", "must be an object")
+                                elif len(nodes) > 128:
+                                    _issue(issues, "PROJECT_LIMIT_EXCEEDED", f"{scene_path}.nodes", "contains more than 128 nodes")
+                                else:
+                                    for state_id, position in nodes.items():
+                                        path = f"{scene_path}.nodes[{state_id}]"
+                                        _stable_id(state_id, path, issues)
+                                        if not isinstance(position, dict):
+                                            _issue(issues, "PROJECT_TYPE_INVALID", path, "must be an object")
+                                            continue
+                                        _check_keys(position, {"x", "y"}, path, issues)
+                                        for axis in ("x", "y"):
+                                            value = position.get(axis)
+                                            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                                                _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "must be a number")
+                                            elif not -100000 <= value <= 100000:
+                                                _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "outside supported editor layout range")
 
 
 def _check_asset(
@@ -1353,6 +1458,43 @@ def load_project(project_root: str | Path) -> ProjectBundle:
                     f"project.editor.scene_flow.nodes[{scene_id}]",
                     f"unknown scene '{scene_id}'",
                 )
+    state_graph_scenes = project.get("editor", {}).get("state_graph", {}).get("scenes", {}) if isinstance(project.get("editor"), dict) else {}
+    if isinstance(state_graph_scenes, dict):
+        scenes_by_id = {
+            scene.get("scene_id"): scene
+            for scene in scenes
+            if isinstance(scene, dict) and isinstance(scene.get("scene_id"), str)
+        }
+        for scene_id, scene_layout in state_graph_scenes.items():
+            if not isinstance(scene_id, str):
+                continue
+            target_scene = scenes_by_id.get(scene_id)
+            if target_scene is None:
+                _issue(
+                    issues,
+                    "SCENE_ID_UNKNOWN",
+                    f"project.editor.state_graph.scenes[{scene_id}]",
+                    f"unknown scene '{scene_id}'",
+                )
+                continue
+            if not isinstance(scene_layout, dict):
+                continue
+            nodes = scene_layout.get("nodes")
+            if not isinstance(nodes, dict):
+                continue
+            state_ids = {
+                state.get("state_id")
+                for state in target_scene.get("states", [])
+                if isinstance(state, dict)
+            }
+            for state_id in nodes:
+                if isinstance(state_id, str) and state_id not in state_ids:
+                    _issue(
+                        issues,
+                        "GRAPH_STATE_UNKNOWN",
+                        f"project.editor.state_graph.scenes[{scene_id}].nodes[{state_id}]",
+                        f"unknown state '{state_id}'",
+                    )
     for scene, source in zip(scenes, loaded_scene_sources):
         for route in scene.get("routes", []):
             if not isinstance(route, dict) or "target_scene" not in route:
@@ -1410,6 +1552,8 @@ def apply_project_commands(
             applied.append(_apply_render_element_set_position(scenes, command))
         elif kind == "editor.scene_flow.set_node_position":
             applied.append(_apply_scene_flow_node_position(project, scenes, command))
+        elif kind == "editor.state_graph.set_node_position":
+            applied.append(_apply_state_graph_node_position(project, scenes, command))
         elif kind == "route.set_guard":
             applied.append(_apply_route_set_guard(scenes, command))
         elif kind == "route.set_action":

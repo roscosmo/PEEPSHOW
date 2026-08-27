@@ -67,7 +67,7 @@ function EmptyInspector({ children }: { children: string }) {
 
 function GuardList({ guards }: { guards: StateGuard[] }) {
   if (guards.length === 0) {
-    return <EmptyInspector>No guards.</EmptyInspector>;
+    return <EmptyInspector>No conditions.</EmptyInspector>;
   }
   return (
     <ol className="ordered-records">
@@ -192,6 +192,24 @@ function displayStateName(states: StateRecord[], stateId: string): string {
   return states.find((state) => state.state_id === stateId)?.display_name ?? stateId;
 }
 
+function displayVariableName(variableId: string): string {
+  const friendlyNames: Record<string, string> = {
+    selected_index: "Selected item",
+  };
+  if (friendlyNames[variableId] !== undefined) {
+    return friendlyNames[variableId];
+  }
+  return variableId
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function visibleEffectCount(actions: Array<{ kind: string }>): number {
+  return actions.filter((action) => action.kind !== "request_render").length;
+}
+
 type StateCardNodeData = {
   graphNode: GraphStateNode;
   selectedRouteId: string | null;
@@ -201,6 +219,8 @@ type StateCardNodeData = {
 
 function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
   const { graphNode, selectedRouteId, onSelectRoute, onSelectState } = data;
+  const localOutputs = graphNode.outputs.filter((output) => output.targetScene === undefined).length;
+  const sceneOutputs = graphNode.outputs.length - localOutputs;
   return (
     <button
       className={`state-card-node ${graphNode.isEntry ? "entry" : ""} ${selected ? "selected" : ""}`}
@@ -209,12 +229,23 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
     >
       <Handle type="target" position={Position.Left} />
       <div className="state-card-heading">
-        <span>{graphNode.isEntry ? "Start" : "State"}</span>
         <strong>{graphNode.label}</strong>
+        <div className="state-badge-strip" aria-label="State badges">
+          {graphNode.isEntry && <span className="state-card-badge">Start</span>}
+          <span className="state-card-badge">{graphNode.outputs.length}</span>
+        </div>
+      </div>
+      <div className="state-card-screen">
+        <strong>{graphNode.renderModelRef}</strong>
+        <span>screen layout</span>
+      </div>
+      <div className="state-card-counts" aria-label="Transition output summary">
+        <span>{localOutputs} local</span>
+        <span>{sceneOutputs} scene</span>
       </div>
       <div className="state-output-list">
         {graphNode.outputs.length === 0 ? (
-          <span className="state-output-empty">No outputs</span>
+          <span className="state-output-empty">No trigger outputs</span>
         ) : (
           graphNode.outputs.map((output) => (
             <span
@@ -236,7 +267,9 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
             >
               <span>{output.label}</span>
               <small>
-                {output.targetScene === undefined ? "Local" : `Scene exit: ${output.targetScene}`} - {output.guardCount} rule{output.guardCount === 1 ? "" : "s"} - {output.actionCount} effect{output.actionCount === 1 ? "" : "s"}
+                {output.targetScene === undefined ? `Go to ${output.targetStateLabel ?? output.targetState ?? "state"}` : `Open ${output.targetScene}`}
+                {output.guardCount > 0 ? ` - ${output.guardCount} condition${output.guardCount === 1 ? "" : "s"}` : ""}
+                {output.actionCount > 0 ? ` - ${output.actionCount} effect${output.actionCount === 1 ? "" : "s"}` : ""}
               </small>
               <Handle id={output.id} type="source" position={Position.Right} />
             </span>
@@ -376,15 +409,26 @@ function sameNodeSet(left: Node[], right: Node[]) {
 
 export function StateGraphView({
   scene,
+  editor,
+  layoutStatus,
   selected,
   onSelect,
+  onMoveStateNode,
+  canEdit,
 }: {
   scene: SceneDocument | null;
+  editor?: ProjectEditorData;
+  layoutStatus: string;
   selected: SceneSelection;
   onSelect: (selection: SceneSelection) => void;
+  onMoveStateNode: (sceneId: string, stateId: string, x: number, y: number) => void;
+  canEdit: boolean;
 }) {
-  const graph = useMemo(() => buildStateGraphModel(scene), [scene]);
-  const nodes: Node[] = useMemo(
+  const graph = useMemo(() => buildStateGraphModel(scene, editor), [editor, scene]);
+  const flowRef = useRef<ReactFlowInstance | null>(null);
+  const didInitialFit = useRef(false);
+  const previousSceneId = useRef<string | null>(scene?.scene_id ?? null);
+  const baseNodes: Node[] = useMemo(
     () =>
       graph.nodes.map((node) => ({
         id: node.id,
@@ -397,11 +441,84 @@ export function StateGraphView({
           onSelectRoute: (routeId: string) => onSelect({ kind: "route", id: routeId }),
         },
         selected: selected.kind === "state" && selected.id === node.id,
-        draggable: false,
+        draggable: canEdit,
         connectable: false,
       })),
-    [graph.nodes, onSelect, selected],
+    [canEdit, graph.nodes, onSelect, selected],
   );
+  const [nodes, setNodes] = useState<Node[]>(baseNodes);
+  useEffect(() => {
+    const sceneId = scene?.scene_id ?? null;
+    setNodes((current) => {
+      if (previousSceneId.current !== sceneId) {
+        previousSceneId.current = sceneId;
+        return baseNodes;
+      }
+      if (sameNodeSet(current, baseNodes)) {
+        const currentById = new Map(current.map((node) => [node.id, node]));
+        return baseNodes.map((node) => {
+          const currentNode = currentById.get(node.id);
+          if (currentNode === undefined) {
+            return node;
+          }
+          return {
+            ...currentNode,
+            type: node.type,
+            data: node.data,
+            selected: node.selected,
+            draggable: node.draggable,
+            connectable: node.connectable,
+            position: currentNode.position,
+          };
+        });
+      }
+      return baseNodes;
+    });
+  }, [baseNodes, scene?.scene_id]);
+  const onNodesChange = (changes: NodeChange[]) => {
+    setNodes((current) => applyNodeChanges(changes, current));
+  };
+  const onNodeDragStop = (node: Node) => {
+    if (scene === null) {
+      return;
+    }
+    const x = Math.round(node.position.x);
+    const y = Math.round(node.position.y);
+    setNodes((current) =>
+      current.map((item) => (item.id === node.id ? { ...item, position: { x, y } } : item)),
+    );
+    onMoveStateNode(scene.scene_id, node.id, x, y);
+  };
+  useEffect(() => {
+    if (flowRef.current === null) {
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      flowRef.current?.fitView({ padding: 0.22, maxZoom: 1 });
+    });
+  }, [scene?.scene_id]);
+  const selectedTransition = useMemo(() => {
+    if (selected.kind !== "route") {
+      return null;
+    }
+    for (const node of graph.nodes) {
+      const output = node.outputs.find((item) => item.routeId === selected.id);
+      if (output !== undefined) {
+        const targetLabel = output.targetScene === undefined
+          ? output.targetStateLabel ?? output.targetState ?? "state"
+          : output.targetScene;
+        return {
+          from: node.label,
+          trigger: output.label,
+          target: targetLabel,
+          targetKind: output.targetScene === undefined ? "state" : "scene",
+          conditions: output.guardCount,
+          effects: output.actionCount,
+        };
+      }
+    }
+    return null;
+  }, [graph.nodes, selected]);
   const edges: Edge[] = useMemo(
     () =>
       graph.edges.map((edge) => ({
@@ -411,8 +528,10 @@ export function StateGraphView({
         sourceHandle: edge.sourceHandle,
         markerEnd: { type: MarkerType.ArrowClosed },
         selected: selected.kind === "route" && selected.id === edge.route.route_id,
+        className: selected.kind === "route" && selected.id === edge.route.route_id ? "state-transition-edge selected" : "state-transition-edge",
         data: { route_id: edge.route.route_id },
-        style: { strokeWidth: selected.kind === "route" && selected.id === edge.route.route_id ? 2.5 : 1.6 },
+        label: edge.label,
+        style: { strokeWidth: selected.kind === "route" && selected.id === edge.route.route_id ? 3.4 : 1.8 },
       })),
     [graph.edges, selected],
   );
@@ -440,10 +559,21 @@ export function StateGraphView({
       nodes={nodes}
       edges={edges}
       nodeTypes={STATE_NODE_TYPES}
-      fitView
-      nodesDraggable={false}
+      fitViewOptions={{ padding: 0.22, maxZoom: 1 }}
+      onInit={(instance) => {
+        flowRef.current = instance;
+        if (!didInitialFit.current) {
+          didInitialFit.current = true;
+          window.requestAnimationFrame(() => {
+            instance.fitView({ padding: 0.22, maxZoom: 1 });
+          });
+        }
+      }}
+      nodesDraggable={canEdit}
       nodesConnectable={false}
       elementsSelectable
+      onNodesChange={onNodesChange}
+      onNodeDragStop={(_, node) => onNodeDragStop(node)}
       onNodeClick={(_, node) => onSelect({ kind: "state", id: node.id })}
       onEdgeClick={(_, edge) => onSelect({ kind: "route", id: String(edge.data?.route_id ?? edge.id) })}
       onPaneClick={() => onSelect({ kind: "scene" })}
@@ -455,6 +585,27 @@ export function StateGraphView({
         edges={graph.edges}
         selectedId={selected.kind === "state" ? selected.id : null}
       />
+      {selectedTransition !== null && (
+        <Panel position="top-right" className="graph-selection-summary">
+          <span>Selected transition</span>
+          <strong>{selectedTransition.trigger}</strong>
+          <small>
+            {selectedTransition.from} to {selectedTransition.target} {selectedTransition.targetKind}
+          </small>
+          <div>
+            <span>{selectedTransition.conditions} condition{selectedTransition.conditions === 1 ? "" : "s"}</span>
+            <span>{selectedTransition.effects} effect{selectedTransition.effects === 1 ? "" : "s"}</span>
+          </div>
+        </Panel>
+      )}
+      <Panel position="top-left" className="scene-flow-debug state-graph-status">
+        <details>
+          <summary>
+            <span>Logic Layout</span>
+          </summary>
+          <pre>{layoutStatus}</pre>
+        </details>
+      </Panel>
       <Controls showInteractive={false} />
     </ReactFlow>
   );
@@ -923,7 +1074,7 @@ function SceneOverview({
             {routes.map((item: StateRoute) => (
               <button key={item.route_id} className="record-row" type="button" onClick={() => onSelect({ kind: "route", id: item.route_id })}>
                 <strong>{item.from_states.join(", ")} {"->"} {item.target_scene === undefined ? item.target_state : `scene:${item.target_scene}`}</strong>
-                <small>{item.guards.length === 0 ? "always allowed" : `${item.guards.length} condition${item.guards.length === 1 ? "" : "s"}`}; {item.actions.length} effect{item.actions.length === 1 ? "" : "s"}</small>
+                <small>{item.guards.length === 0 ? "always allowed" : `${item.guards.length} condition${item.guards.length === 1 ? "" : "s"}`}; {visibleEffectCount(item.actions)} effect{visibleEffectCount(item.actions) === 1 ? "" : "s"}</small>
               </button>
             ))}
           </div>
@@ -1083,11 +1234,13 @@ function RouteInspector({
   canEdit: boolean;
 }) {
   const input = inputActions.find((item) => item.action_id === route.action_ref);
+  const fromLabels = route.from_states.map((stateId) => displayStateName(states, stateId)).join(", ");
   const routeTarget = route.target_scene === undefined
     ? displayStateName(states, route.target_state ?? "")
-    : `Scene: ${route.target_scene}`;
+    : scenes.find((scene) => scene.scene_id === route.target_scene)?.display_name ?? route.target_scene;
   const sceneTargets = scenes.filter((candidate) => candidate.scene_type === "STATE_SCENE" && candidate.scene_id !== sceneId);
   const canEditSceneTarget = canEdit && route.actions.length === 0 && sceneTargets.length > 0;
+  const targetKind = route.target_scene === undefined ? "state" : "scene";
   return (
     <section className="inspector-section selected-record">
       <h3>Selected transition</h3>
@@ -1098,10 +1251,10 @@ function RouteInspector({
         </div>
         <div>
           <span>From</span>
-          <strong>{route.from_states.map((stateId) => displayStateName(states, stateId)).join(", ")}</strong>
+          <strong>{fromLabels}</strong>
         </div>
         <div>
-          <span>Go to</span>
+          <span>Go to {targetKind}</span>
           <strong>{routeTarget}</strong>
         </div>
       </div>
@@ -1118,7 +1271,7 @@ function RouteInspector({
           >
             {states.map((state) => (
               <option key={state.state_id} value={state.state_id}>
-                {state.display_name} ({state.state_id})
+                {state.display_name}
               </option>
             ))}
           </select>
@@ -1137,7 +1290,7 @@ function RouteInspector({
             >
               {sceneTargets.map((targetScene) => (
                 <option key={targetScene.scene_id} value={targetScene.scene_id}>
-                  {targetScene.display_name} ({targetScene.scene_id})
+                  {targetScene.display_name}
                 </option>
               ))}
             </select>
@@ -1165,6 +1318,9 @@ function RouteInspector({
         canEdit={canEdit}
         onSetRouteAction={onSetRouteAction}
       />
+      <div className="internal-ref-note">
+        Internal transition ID: <code>{route.route_id}</code>
+      </div>
     </section>
   );
 }
@@ -1199,55 +1355,47 @@ function EditableGuardList({
           void onSetRouteGuard(sceneId, route.route_id, index, variableRef, operator, value);
         };
         return (
-          <div className="guard-editor-row" key={`${route.route_id}-guard-${index}`}>
-            <div className="rule-row-heading">Rule {index + 1}</div>
-            <div className="rule-field-grid">
-              <label>
-                Variable
-                <select
-                  aria-label={`Guard ${index + 1} variable`}
-                  value={guard.variable_ref}
-                  disabled={!canEdit}
-                  onChange={(event) => commit(event.target.value, guard.operator, guard.value)}
-                >
-                  {variables.map((variable) => (
-                    <option key={variable.variable_id} value={variable.variable_id}>
-                      {variable.variable_id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Check
-                <select
-                  aria-label={`Guard ${index + 1} operator`}
-                  value={guard.operator}
-                  disabled={!canEdit}
-                  onChange={(event) => commit(guard.variable_ref, event.target.value, guard.value)}
-                >
-                  {GUARD_OPERATORS.map((operator) => (
-                    <option key={operator} value={operator}>
-                      {GUARD_OPERATOR_LABELS[operator]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Number
-                <input
-                  aria-label={`Guard ${index + 1} value`}
-                  type="number"
-                  step={1}
-                  value={guard.value}
-                  disabled={!canEdit}
-                  onChange={(event) => {
-                    const parsed = Number.parseInt(event.target.value, 10);
-                    if (Number.isFinite(parsed)) {
-                      commit(guard.variable_ref, guard.operator, parsed);
-                    }
-                  }}
-                />
-              </label>
+          <div className="logic-sentence-row" key={`${route.route_id}-guard-${index}`}>
+            {route.guards.length > 1 && <span className="logic-row-index">Condition {index + 1}</span>}
+            <div className="logic-sentence">
+              <span>Only if</span>
+              <select
+                aria-label={`Condition ${index + 1} variable`}
+                value={guard.variable_ref}
+                disabled={!canEdit}
+                onChange={(event) => commit(event.target.value, guard.operator, guard.value)}
+              >
+                {variables.map((variable) => (
+                  <option key={variable.variable_id} value={variable.variable_id}>
+                    {displayVariableName(variable.variable_id)}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label={`Condition ${index + 1} operator`}
+                value={guard.operator}
+                disabled={!canEdit}
+                onChange={(event) => commit(guard.variable_ref, event.target.value, guard.value)}
+              >
+                {GUARD_OPERATORS.map((operator) => (
+                  <option key={operator} value={operator}>
+                    {GUARD_OPERATOR_LABELS[operator]}
+                  </option>
+                ))}
+              </select>
+              <input
+                aria-label={`Condition ${index + 1} value`}
+                type="number"
+                step={1}
+                value={guard.value}
+                disabled={!canEdit}
+                onChange={(event) => {
+                  const parsed = Number.parseInt(event.target.value, 10);
+                  if (Number.isFinite(parsed)) {
+                    commit(guard.variable_ref, guard.operator, parsed);
+                  }
+                }}
+              />
             </div>
           </div>
         );
@@ -1274,63 +1422,41 @@ function EditableActionList({
     action: Record<string, unknown>,
   ) => Promise<void>;
 }) {
-  if (route.actions.length === 0) {
-    return <EmptyInspector>No actions.</EmptyInspector>;
+  const visibleActions = route.actions
+    .map((action, actionIndex) => ({ action, actionIndex }))
+    .filter(({ action }) => action.kind !== "request_render");
+  if (visibleActions.length === 0) {
+    return <div className="plain-rule-note">No visible effects.</div>;
   }
   return (
     <div className="action-editor-list">
-      {route.actions.map((action, index) => {
+      {visibleActions.map(({ action, actionIndex }, visibleIndex) => {
         const variableRef = action.variable_ref ?? variables[0]?.variable_id ?? "";
         const operation = action.operation === "add" ? "add" : "assign";
         const value = typeof action.value === "number" ? action.value : 0;
         const isAdd = operation === "add";
         const commit = (nextAction: Record<string, unknown>) => {
-          void onSetRouteAction(sceneId, route.route_id, index, nextAction);
+          void onSetRouteAction(sceneId, route.route_id, actionIndex, nextAction);
         };
         return (
-          <div className="action-editor-row" key={`${route.route_id}-action-${index}`}>
-            <div className="rule-row-heading">Effect {index + 1}</div>
-            <label className="effect-kind-field">
-              What happens
+          <div className="logic-sentence-row" key={`${route.route_id}-action-${actionIndex}`}>
+            {visibleActions.length > 1 && <span className="logic-row-index">Effect {visibleIndex + 1}</span>}
+            <div className="logic-sentence">
+              <span>Then</span>
               <select
-                aria-label={`Action ${index + 1} kind`}
+                aria-label={`Effect ${visibleIndex + 1} kind`}
                 value={action.kind}
                 disabled={!canEdit}
                 onChange={(event) => {
-                  if (event.target.value === "request_render") {
-                    commit({ kind: "request_render" });
-                  } else {
-                    commit({ kind: "set_variable", variable_ref: variableRef, operation, value });
-                  }
+                  commit({ kind: "set_variable", variable_ref: variableRef, operation, value });
                 }}
               >
                 <option value="set_variable">Change variable</option>
-                <option value="request_render">Refresh screen</option>
               </select>
-            </label>
-            {action.kind === "set_variable" ? (
-              <div className="rule-field-grid">
-                <label>
-                  Variable
+              {action.kind === "set_variable" && (
+                <>
                   <select
-                    aria-label={`Action ${index + 1} variable`}
-                    value={variableRef}
-                    disabled={!canEdit || variables.length === 0}
-                    onChange={(event) => {
-                      commit({ kind: "set_variable", variable_ref: event.target.value, operation, value });
-                    }}
-                  >
-                    {variables.map((variable) => (
-                      <option key={variable.variable_id} value={variable.variable_id}>
-                        {variable.variable_id}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  How
-                  <select
-                    aria-label={`Action ${index + 1} operation`}
+                    aria-label={`Effect ${visibleIndex + 1} operation`}
                     value={operation}
                     disabled={!canEdit}
                     onChange={(event) => {
@@ -1339,15 +1465,27 @@ function EditableActionList({
                   >
                     {ACTION_OPERATIONS.map((item) => (
                       <option key={item} value={item}>
-                        {item === "assign" ? "Set to" : "Change by"}
+                        {item === "assign" ? "set" : "change"}
                       </option>
                     ))}
                   </select>
-                </label>
-                <label>
-                  {isAdd ? "Amount" : "Value"}
+                  <select
+                    aria-label={`Effect ${visibleIndex + 1} variable`}
+                    value={variableRef}
+                    disabled={!canEdit || variables.length === 0}
+                    onChange={(event) => {
+                      commit({ kind: "set_variable", variable_ref: event.target.value, operation, value });
+                    }}
+                  >
+                    {variables.map((variable) => (
+                      <option key={variable.variable_id} value={variable.variable_id}>
+                        {displayVariableName(variable.variable_id)}
+                      </option>
+                    ))}
+                  </select>
+                  <span>{isAdd ? "by" : "to"}</span>
                   <input
-                    aria-label={isAdd ? `Effect ${index + 1} change amount` : `Effect ${index + 1} target value`}
+                    aria-label={isAdd ? `Effect ${visibleIndex + 1} change amount` : `Effect ${visibleIndex + 1} target value`}
                     type="number"
                     step={1}
                     value={value}
@@ -1359,11 +1497,9 @@ function EditableActionList({
                       }
                     }}
                   />
-                </label>
-              </div>
-            ) : (
-              <span className="action-static-note">Refresh the screen.</span>
-            )}
+                </>
+              )}
+            </div>
           </div>
         );
       })}
@@ -1374,8 +1510,8 @@ function EditableActionList({
 function RenderInspector({ render }: { render: RenderModel }) {
   return (
     <section className="inspector-section selected-record">
-      <h3>Selected render model</h3>
-      <InspectorList rows={[["ID", render.visual_id], ["Focus index", render.focus_index], ["Elements", render.elements.length]]} />
+      <h3>Screen layout</h3>
+      <InspectorList rows={[["Internal ID", render.visual_id], ["Focus order", render.focus_index], ["Elements", render.elements.length]]} />
       <div className="element-table">
         {render.elements.map((element) => (
           <div key={element.element_id}>
@@ -1393,10 +1529,10 @@ function RenderInspector({ render }: { render: RenderModel }) {
 function WaitingInspector({ waiting }: { waiting: WaitingVisual }) {
   return (
     <section className="inspector-section selected-record">
-      <h3>Selected waiting visual</h3>
+      <h3>Waiting animation</h3>
       <InspectorList
         rows={[
-          ["ID", waiting.waiting_visual_id],
+          ["Internal ID", waiting.waiting_visual_id],
           ["Presentation", waiting.presentation_id],
           ["Quantum", `${waiting.phase_quantum_ms} ms`],
           ["Steps", waiting.combined_step_count],

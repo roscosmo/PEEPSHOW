@@ -1118,21 +1118,21 @@ button:focus-visible {
 
 .state-card-node {
   display: grid;
-  width: 218px;
-  gap: 8px;
-  padding: 9px;
-  border: 1px solid #aeb9b2;
-  border-radius: 6px;
+  width: 280px;
+  gap: 9px;
+  padding: 12px 12px 14px;
+  border: 2px solid #2c312e;
+  border-radius: 10px;
   background: #ffffff;
   color: #27302b;
-  box-shadow: 0 6px 14px rgb(55 64 59 / 10%);
+  box-shadow: 0 5px 12px rgb(55 64 59 / 9%);
   cursor: pointer;
   text-align: left;
 }
 
 .state-card-node.entry {
-  border-color: #32759a;
-  background: #edf7fb;
+  border-color: #175f8a;
+  background: #f7fbfd;
 }
 
 .state-card-node.selected {
@@ -1443,10 +1443,36 @@ button:focus-visible {
 }
 
 .state-card-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 
-.state-card-heading span,
+.state-badge-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.state-card-badge {
+  display: inline-flex;
+  min-width: 28px;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 7px;
+  border: 2px solid #2c312e;
+  border-radius: 8px;
+  background: #f7faf8;
+  color: #27302b;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .state-output-empty,
 .state-output-row small {
   display: block;
@@ -1461,25 +1487,73 @@ button:focus-visible {
 
 .state-card-heading strong {
   display: block;
-  margin-top: 2px;
   overflow: hidden;
   color: #27302b;
-  font-size: 13px;
+  font-size: 18px;
+  font-weight: 760;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.state-card-screen {
+  display: grid;
+  min-height: 50px;
+  gap: 2px;
+  place-items: center;
+  padding: 10px;
+  border: 2px solid #2c312e;
+  border-radius: 8px;
+  background: #f7faf8;
+}
+
+.state-card-screen span {
+  color: #68736d;
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.state-card-screen strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: #27302b;
+  font-size: 13px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state-card-counts {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.state-card-counts span {
+  display: inline-flex;
+  min-height: 18px;
+  align-items: center;
+  padding: 0 7px;
+  border: 1px solid #d6dfda;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #68736d;
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .state-output-list {
   display: grid;
-  gap: 5px;
+  gap: 7px;
 }
 
 .state-output-empty,
 .state-output-row {
-  min-height: 30px;
-  padding: 6px 8px;
-  border: 1px solid #d4dcd7;
-  border-radius: 5px;
+  min-height: 42px;
+  padding: 7px 10px;
+  border: 2px solid #2c312e;
+  border-radius: 8px;
   background: #f9fbfa;
 }
 
@@ -1497,11 +1571,16 @@ button:focus-visible {
   background: #eef7fb;
 }
 
+.state-output-row.selected {
+  box-shadow: inset 0 0 0 1px #175f8a;
+}
+
 .state-output-row span {
   min-width: 0;
   overflow: hidden;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 750;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1519,12 +1598,26 @@ button:focus-visible {
   background: #ffffff;
 }
 
+.state-output-row.selected .react-flow__handle {
+  border-color: #175f8a;
+  background: #175f8a;
+}
+
 .react-flow__edge-path,
 .react-flow__connection-path {
   stroke: #58645e;
 }
 
+.state-transition-edge .react-flow__edge-path {
+  stroke: #5b6761;
+}
+
 .react-flow__edge.selected .react-flow__edge-path {
+  stroke: #175f8a;
+}
+
+.state-transition-edge.selected .react-flow__edge-path {
+  filter: drop-shadow(0 1px 2px rgb(23 95 138 / 28%));
   stroke: #175f8a;
 }
 
@@ -1551,6 +1644,57 @@ button:focus-visible {
   background: rgb(247 249 248 / 94%);
   color: #27302b;
   box-shadow: 0 8px 18px rgb(55 64 59 / 12%);
+}
+
+.graph-selection-summary {
+  display: grid;
+  min-width: 190px;
+  max-width: min(280px, calc(100vw - 48px));
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid #b9c9c0;
+  border-radius: 7px;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 8px 18px rgb(55 64 59 / 12%);
+}
+
+.graph-selection-summary > span {
+  color: #68736d;
+  font-size: 9px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.graph-selection-summary strong {
+  color: #27302b;
+  font-size: 15px;
+  font-weight: 780;
+}
+
+.graph-selection-summary small {
+  color: #4e5b54;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.graph-selection-summary div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.graph-selection-summary div span {
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  padding: 0 7px;
+  border: 1px solid #d6dfda;
+  border-radius: 999px;
+  background: #f7faf8;
+  color: #4e5b54;
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .scene-flow-debug summary {
@@ -1826,7 +1970,7 @@ button:focus-visible {
 
 .guard-editor-list {
   display: grid;
-  gap: 7px;
+  gap: 6px;
 }
 
 .guard-editor-row,
@@ -1878,6 +2022,64 @@ button:focus-visible {
 .action-editor-list {
   display: grid;
   gap: 7px;
+}
+
+.logic-sentence-row {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid #d6ddd9;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.logic-row-index {
+  color: #68736d;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.logic-sentence {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  color: #4e5b54;
+  font-size: 11px;
+  font-weight: 740;
+}
+
+.logic-sentence > span {
+  color: #59645e;
+  font-size: 11px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.logic-sentence select,
+.logic-sentence input {
+  min-width: 62px;
+  max-width: 100%;
+  height: 29px;
+  padding: 0 7px;
+  border: 1px solid #cbd3ce;
+  border-radius: 5px;
+  background: #f9fbfa;
+  color: #242c28;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.logic-sentence select {
+  flex: 1 1 92px;
+}
+
+.logic-sentence input {
+  flex: 0 0 62px;
+  font-variant-numeric: tabular-nums;
 }
 
 .action-static-note {

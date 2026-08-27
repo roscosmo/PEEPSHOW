@@ -123,6 +123,11 @@ export type ProjectEditorData = {
   scene_flow?: {
     nodes?: Record<string, EditorNodePosition>;
   };
+  state_graph?: {
+    scenes?: Record<string, {
+      nodes?: Record<string, EditorNodePosition>;
+    }>;
+  };
 };
 
 export type ProjectDocument = {

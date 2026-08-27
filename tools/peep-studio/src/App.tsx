@@ -91,6 +91,7 @@ export default function App() {
   const [workspaceMode, setWorkspaceMode] = useState<"scene-flow" | "logic" | "placement">("scene-flow");
   const [sceneThumbnails, setSceneThumbnails] = useState<Record<string, Framebuffer>>({});
   const [sceneFlowLayoutStatus, setSceneFlowLayoutStatus] = useState("No layout move yet");
+  const [stateGraphLayoutStatus, setStateGraphLayoutStatus] = useState("No layout move yet");
   const [projectWidth, setProjectWidth] = useState(320);
   const [inspectorWidth, setInspectorWidth] = useState(390);
   const [placementGridVisible, setPlacementGridVisible] = useState(true);
@@ -545,6 +546,43 @@ export default function App() {
       setMessage("Graph layout updated. Save to write it to the project.");
     }).catch((error) => {
       setSceneFlowLayoutStatus(`save failed: ${errorText(error)}`);
+      setMessage(errorText(error));
+    });
+    await layoutSaveChain.current;
+  };
+
+  const moveStateNode = async (sceneId: string, stateId: string, x: number, y: number) => {
+    if (bridge === undefined || project === null) {
+      return;
+    }
+    setStateGraphLayoutStatus(`queued ${sceneId}.${stateId} @ ${Math.round(x)}, ${Math.round(y)}`);
+    layoutSaveChain.current = layoutSaveChain.current.then(async () => {
+      const revision = projectRevisionRef.current;
+      if (revision === null) {
+        setStateGraphLayoutStatus(`skipped ${sceneId}.${stateId}: no project revision`);
+        return;
+      }
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: revision,
+        commands: [
+          {
+            kind: "editor.state_graph.set_node_position",
+            scene_id: sceneId,
+            state_id: stateId,
+            x,
+            y,
+          },
+        ],
+      });
+      projectRevisionRef.current = result.project_revision;
+      applyProjectResult(result);
+      const applied = result.applied_commands[0];
+      setStateGraphLayoutStatus(
+        `saved ${String(applied?.scene_id ?? sceneId)}.${String(applied?.state_id ?? stateId)} @ ${String(applied?.x ?? x)}, ${String(applied?.y ?? y)} rev ${result.project_revision}`,
+      );
+      setMessage("Logic layout updated. Save to write it to the project.");
+    }).catch((error) => {
+      setStateGraphLayoutStatus(`save failed: ${errorText(error)}`);
       setMessage(errorText(error));
     });
     await layoutSaveChain.current;
@@ -1383,8 +1421,14 @@ export default function App() {
           <div className="graph-surface">
             <StateGraphView
               scene={selectedSceneDocument}
+              editor={project?.document?.project?.editor}
+              layoutStatus={stateGraphLayoutStatus}
               selected={sceneSelection}
               onSelect={setSceneSelection}
+              onMoveStateNode={(sceneId, stateId, x, y) => {
+                void moveStateNode(sceneId, stateId, x, y);
+              }}
+              canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
             />
           </div>
         </section>
