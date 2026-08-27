@@ -119,6 +119,13 @@
           "element_ref": "marker",
           "x": 120,
           "y": 0
+        },
+        {
+          "kind": "set_element_waiting_animation",
+          "element_ref": "marker",
+          "waiting_visual_ref": "marker_hold_wait",
+          "waiting_element_ref": "marker_hold",
+          "timeline_policy": "preserve"
         }
       ],
       "target_state": "right"
@@ -167,6 +174,13 @@
           "kind": "set_element_frame",
           "element_ref": "frame_probe",
           "frame_ref": "marker.phase_c"
+        },
+        {
+          "kind": "set_element_waiting_animation",
+          "element_ref": "marker",
+          "waiting_visual_ref": "state_wait",
+          "waiting_element_ref": "marker_wait",
+          "timeline_policy": "rebase"
         }
       ],
       "target_state": "left"
@@ -510,6 +524,33 @@
             2,
             0,
             1
+          ]
+        }
+      ]
+    },
+    {
+      "waiting_visual_id": "marker_hold_wait",
+      "presentation_id": "state_demo_marker_hold_timeline",
+      "phase_quantum_ms": 250,
+      "combined_step_count": 6,
+      "settled_step": 1,
+      "cycle_policy": "loop",
+      "elements": [
+        {
+          "element_id": "marker_hold",
+          "source_element_ref": "marker",
+          "phase_visual_refs": [
+            "marker.phase_a",
+            "marker.phase_b",
+            "marker.phase_c"
+          ],
+          "step_phase_indices": [
+            0,
+            0,
+            1,
+            1,
+            2,
+            2
           ]
         }
       ]

@@ -57,7 +57,7 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | retained render model | bounded ordered scene elements with binary alpha and four platform planes |
 | package primitives | retained line, outline rectangle, filled rectangle, circle, and ellipse records are compiled, previewed, loaded, and target-proven; private shell/calibration draw helpers remain unavailable |
 | package text | service API 15 rasterizes printable-ASCII menu labels through `peepshow.system.8x8.basic.v1` into ordinary masked 1bpp sprite frames; runtime text remains unavailable |
-| retained element actions | service API 16 and FW0 runtime API 14 implement atomic destination-state show/hide, move, and retained frame selection; host package/preview tests and HW6 awake/STOP2 visual proof pass |
+| retained element actions | service API 17 and FW0 runtime API 15 implement atomic destination-state show/hide, move, retained frame selection, and bounded waiting-animation selection; host package/preview tests and HW6 awake/STOP2 visual proof pass |
 | package audio | not exposed; HW6 currently proves only a generated diagnostic speaker tone, not `.egg` audio assets or STATE SFX actions |
 | STATE animated elements | bounded repeating sprite phase timelines with 1..4 frames, 1..12 combined steps, explicit cadence, and a settled step; mixed 2-phase and 3-phase composition and deterministic fallback are target-proven |
 | awake preview | exact 168x144 package-backed framebuffer with deterministic fake time and side-effect-free scene thumbnails |
@@ -186,8 +186,14 @@ The STATE-first presentation expansion is:
    show/hide an element, move it, or select its retained base sprite frame.
    Variable and element changes commit atomically. Visibility and position also
    update the linked waiting presentation; retained frame selection does not
-   replace an authored waiting animation. Animation selection remains next;
-5. **Next:** add one symbolic bounded STATE SFX action backed by a compiled sampled-audio
+   replace an authored waiting animation;
+5. **Hardware-validated:** a destination-state action
+   can select one authored bounded waiting-element track for a retained sprite.
+   The source track must target the same retained element and match the
+   destination waiting visual's cadence and combined step count. `preserve`
+   keeps the shared phase/deadline; `rebase` intentionally starts a new
+   presentation epoch. The action changes no unrelated waiting elements;
+6. **Next:** add one symbolic bounded STATE SFX action backed by a compiled sampled-audio
    asset and owned at runtime by `thAudio`.
 
 Visual assets, primitive records, text-derived sprite assets, and audio assets
@@ -370,6 +376,17 @@ unknown elements, hidden focus elements, out-of-panel positions, non-sprite
 frame targets, and frame-size mismatches before package export. Peep Studio
 discovers the exact action set and waiting linkage through
 `service.hello.state_scene_presentation.element_actions`.
+
+Service API version 17 adds `set_element_waiting_animation`. The command names
+the destination retained `element_ref`, one source `waiting_visual_ref`, one
+`waiting_element_ref` within that visual, and an explicit `timeline_policy` of
+`preserve` or `rebase`. Validation requires the source waiting element to
+target the same retained sprite and requires source cadence plus combined step
+count to match the destination state's waiting visual. The compiled package
+stores only a bounded phase/sequence template; it does not duplicate an entire
+presentation or expose LPBAM details. Peep Studio must discover these rules
+from `service.hello.state_scene_presentation.element_actions` rather than
+assuming that arbitrary animations can be assigned to STATE elements.
 
 ### Stage 3: Scene Canvas And Visual Elements
 

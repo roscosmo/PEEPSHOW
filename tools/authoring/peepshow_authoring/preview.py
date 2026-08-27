@@ -88,6 +88,9 @@ class StateScenePreview:
         self._state_index = int(self._graph["entry_state"])
         self._variables = [int(variable["initial"]) for variable in self._graph["variables"]]
         self._element_overrides: dict[tuple[int, int], dict[str, object]] = {}
+        self._waiting_element_overrides: dict[
+            tuple[int, int], dict[str, object]
+        ] = {}
         self._elapsed_ms = 0
         self._step_elapsed_ms = 0
         self._step_index = int(self._waiting()["settled_step"])
@@ -134,6 +137,11 @@ class StateScenePreview:
         element_overrides = {
             key: dict(value) for key, value in self._element_overrides.items()
         }
+        waiting_element_overrides = {
+            key: dict(value)
+            for key, value in self._waiting_element_overrides.items()
+        }
+        force_timeline_rebase = False
         definitions = self._graph["variables"]
         target_state = route["target_state_index"]
         if target_state is None:
@@ -146,7 +154,7 @@ class StateScenePreview:
             kind = int(operation["kind"])
             if kind == 2:
                 continue
-            if kind in {3, 4, 5}:
+            if kind in {3, 4, 5, 6}:
                 element_index = int(operation["element_index"])
                 if not 0 <= element_index < len(target_model["elements"]):
                     raise PreviewError("compiled element action target is invalid")
@@ -170,10 +178,55 @@ class StateScenePreview:
                         raise PreviewError("compiled element position is outside the display")
                     override["x"] = x
                     override["y"] = y
-                else:
+                elif kind == 5:
                     frame_ref = str(operation["frame_ref"])
                     self._require_native_frame(element, frame_ref)
                     override["visual_ref"] = frame_ref
+                else:
+                    waiting = self._waiting_visuals[
+                        int(operation["waiting_visual_index"])
+                    ]
+                    waiting_element_ref = str(operation["waiting_element_ref"])
+                    waiting_element = next(
+                        (
+                            item
+                            for item in waiting["elements"]
+                            if str(item["element_id"]) == waiting_element_ref
+                        ),
+                        None,
+                    )
+                    if (
+                        waiting_element is None
+                        or str(waiting_element["source_element_ref"])
+                        != str(element["element_id"])
+                    ):
+                        raise PreviewError(
+                            "compiled waiting-animation action target is invalid"
+                        )
+                    if (
+                        int(waiting["phase_quantum_ms"])
+                        != int(self._waiting_visuals[int(
+                            self._graph["states"][int(target_state)][
+                                "waiting_visual_index"
+                            ]
+                        )]["phase_quantum_ms"])
+                        or int(waiting["combined_step_count"])
+                        != int(self._waiting_visuals[int(
+                            self._graph["states"][int(target_state)][
+                                "waiting_visual_index"
+                            ]
+                        )]["combined_step_count"])
+                    ):
+                        raise PreviewError(
+                            "compiled waiting-animation timeline is incompatible"
+                        )
+                    for visual_ref in waiting_element["phase_visual_refs"]:
+                        self._require_native_frame(element, str(visual_ref))
+                    waiting_element_overrides[key] = dict(waiting_element)
+                    force_timeline_rebase = (
+                        force_timeline_rebase
+                        or int(operation["timeline_policy"]) == 2
+                    )
                 element_overrides[key] = override
                 continue
             variable_index = int(operation["variable_index"])
@@ -190,9 +243,12 @@ class StateScenePreview:
 
         self._variables = variables
         self._element_overrides = element_overrides
+        self._waiting_element_overrides = waiting_element_overrides
         self._state_index = int(target_state)
         next_waiting = self._waiting()
-        if not self._compatible_timeline(prior_waiting, next_waiting):
+        if force_timeline_rebase or not self._compatible_timeline(
+            prior_waiting, next_waiting
+        ):
             self._step_index = int(next_waiting["settled_step"])
             self._step_elapsed_ms = 0
         self._render_framebuffer()
@@ -220,7 +276,20 @@ class StateScenePreview:
 
     def _visual_overrides(self) -> dict[str, str]:
         result: dict[str, str] = {}
-        for element in self._waiting()["elements"]:
+        state = self._state()
+        model_index = int(state["render_model_index"])
+        model = self._render_models[model_index]
+        waiting_by_source = {
+            str(element["source_element_ref"]): element
+            for element in self._waiting()["elements"]
+        }
+        for element_index, render_element in enumerate(model["elements"]):
+            element = self._waiting_element_overrides.get(
+                (model_index, element_index),
+                waiting_by_source.get(str(render_element["element_id"])),
+            )
+            if element is None:
+                continue
             phase_index = int(element["step_phase_indices"][self._step_index])
             result[str(element["source_element_ref"])] = str(element["phase_visual_refs"][phase_index])
         return result
@@ -310,7 +379,7 @@ class StateScenePreview:
             model = self._render_models[model_index]
             for operation in route["operations"]:
                 kind = int(operation["kind"])
-                if kind not in {3, 4, 5}:
+                if kind not in {3, 4, 5, 6}:
                     continue
                 element_index = int(operation["element_index"])
                 if not 0 <= element_index < len(model["elements"]):
@@ -320,6 +389,47 @@ class StateScenePreview:
                         model["elements"][element_index],
                         str(operation["frame_ref"]),
                     )
+                elif kind == 6:
+                    waiting = self._waiting_visuals[
+                        int(operation["waiting_visual_index"])
+                    ]
+                    waiting_element = next(
+                        (
+                            item
+                            for item in waiting["elements"]
+                            if str(item["element_id"])
+                            == str(operation["waiting_element_ref"])
+                        ),
+                        None,
+                    )
+                    if waiting_element is None:
+                        raise PreviewError(
+                            "compiled waiting-animation action source is invalid"
+                        )
+                    if str(waiting_element["source_element_ref"]) != str(
+                        model["elements"][element_index]["element_id"]
+                    ):
+                        raise PreviewError(
+                            "compiled waiting-animation action target is invalid"
+                        )
+                    target_waiting = self._waiting_visuals[
+                        int(self._graph["states"][int(target_state)][
+                            "waiting_visual_index"
+                        ])
+                    ]
+                    if (
+                        int(waiting["phase_quantum_ms"])
+                        != int(target_waiting["phase_quantum_ms"])
+                        or int(waiting["combined_step_count"])
+                        != int(target_waiting["combined_step_count"])
+                    ):
+                        raise PreviewError(
+                            "compiled waiting-animation timeline is incompatible"
+                        )
+                    for visual_ref in waiting_element["phase_visual_refs"]:
+                        self._require_native_frame(
+                            model["elements"][element_index], str(visual_ref)
+                        )
 
     def _require_native_frame(self, element: dict[str, object], visual_ref: str) -> None:
         frame = self._resolve_frame(visual_ref)

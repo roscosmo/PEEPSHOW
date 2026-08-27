@@ -24,7 +24,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 16
+SERVICE_API_VERSION = 17
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -240,11 +240,17 @@ class AuthoringService:
                         "set_element_visibility",
                         "set_element_position",
                         "set_element_frame",
+                        "set_element_waiting_animation",
                     ],
                     "waiting_visual_linkage": {
                         "visibility": True,
                         "position": True,
                         "frame_selection_replaces_animation": False,
+                        "animation_selection": {
+                            "source": "waiting_visual_element",
+                            "timeline_policies": ["preserve", "rebase"],
+                            "requires_matching_cadence_and_step_count": True,
+                        },
                     },
                 },
             },

@@ -524,6 +524,12 @@ Rules:
   reactive STATE waits or the target is in STOP2. Arbitrary-duration
   `animation_table` playback belongs to future SEQUENCE authoring and must not
   be exposed as a STATE sprite binding.
+- a STATE route may select a different authored waiting-element track for one
+  retained sprite. Selection is valid only when the source track targets that
+  same sprite and its cadence plus combined step count match the destination
+  state's waiting visual. `preserve` retains the shared phase/deadline;
+  `rebase` explicitly starts a new presentation epoch. This operation selects
+  bounded package data and must not rebuild or parse an animation at runtime.
 - package-facing assets must not encode SRAM4 addresses, LPBAM descriptors, SPI bytes, Sharp LCD commands, dirty rows, or transfer chunks
 - Platform may convert validated content into full frames, logical deltas, hardware row deltas, repeated payloads, or another display-owner format
 - package chunks remain portable PeepOS data; hardware playback payloads are Platform/display-owner internals

@@ -99,6 +99,23 @@ static uint32_t PS_SceneRuntime_FindRenderElementIndex(
   return PS_SCENE_RUNTIME_INDEX_INVALID;
 }
 
+static uint32_t PS_SceneRuntime_FindWaitingElementIndex(
+  const ps_scene_runtime_visual_binding_t *binding,
+  uint32_t source_element_id)
+{
+  uint32_t index;
+
+  for (index = 0UL; index < binding->waiting_visual.element_count; ++index)
+  {
+    if (binding->waiting_visual.elements[index].source_element_id ==
+        source_element_id)
+    {
+      return index;
+    }
+  }
+  return PS_SCENE_RUNTIME_INDEX_INVALID;
+}
+
 static uint32_t PS_SceneRuntime_RangeValid(uint32_t first,
                                            uint32_t count,
                                            uint32_t total)
@@ -172,6 +189,7 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
   uint32_t variable_index;
   uint32_t guard_index;
   uint32_t action_index;
+  uint32_t waiting_animation_index;
   uint32_t transition_index;
 
   g_ps_scene_runtime_probe.descriptor_validate_count++;
@@ -186,6 +204,8 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
       (scene->variable_count > PS_SCENE_RUNTIME_VARIABLE_MAX) ||
       (scene->guard_count > PS_SCENE_RUNTIME_GUARD_MAX) ||
       (scene->action_count > PS_SCENE_RUNTIME_ACTION_MAX) ||
+      (scene->waiting_animation_count >
+       PS_SCENE_RUNTIME_WAITING_ANIMATION_MAX) ||
       (scene->transition_count > PS_SCENE_RUNTIME_TRANSITION_MAX) ||
       ((scene->meaningful_input_mask >> scene->input_route_count) != 0UL) ||
       ((scene->interaction_mode == PS_SCENE_RUNTIME_INTERACTION_CONTINUOUS) &&
@@ -414,8 +434,7 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
     binding_index = PS_SceneRuntime_FindVisualBindingIndex(
       scene, action->target_id);
     if ((binding_index == PS_SCENE_RUNTIME_INDEX_INVALID) ||
-        (action->target_element_id == 0UL) ||
-        (action->operation != 0UL))
+        (action->target_element_id == 0UL))
     {
       return 1UL;
     }
@@ -429,7 +448,8 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
     switch ((ps_scene_runtime_action_kind_t)action->kind)
     {
       case PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_VISIBILITY:
-        if (((action->value != 0) && (action->value != 1)) ||
+        if ((action->operation != 0UL) ||
+            ((action->value != 0) && (action->value != 1)) ||
             (action->secondary_value != 0) ||
             ((action->value == 0) &&
              (scene->visual_bindings[binding_index].elements[element_index].
@@ -439,7 +459,8 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
         }
         break;
       case PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_POSITION:
-        if ((action->value < 0) || (action->secondary_value < 0) ||
+        if ((action->operation != 0UL) ||
+            (action->value < 0) || (action->secondary_value < 0) ||
             ((uint32_t)action->value +
              scene->visual_bindings[binding_index].elements[element_index].
                width > PS_SCENE_RENDER_CANVAS_WIDTH) ||
@@ -451,7 +472,22 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
         }
         break;
       case PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_FRAME:
-        if ((action->value <= 0) || (action->secondary_value != 0) ||
+        if ((action->operation != 0UL) || (action->value <= 0) ||
+            (action->secondary_value != 0) ||
+            ((scene->visual_bindings[binding_index].elements[element_index].
+                type != PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP) &&
+             (scene->visual_bindings[binding_index].elements[element_index].
+                type != PS_SCENE_RENDER_ELEMENT_FOCUS)))
+        {
+          return 1UL;
+        }
+        break;
+      case PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_WAITING_ANIMATION:
+        if ((action->operation < PS_SCENE_RUNTIME_TIMELINE_PRESERVE) ||
+            (action->operation > PS_SCENE_RUNTIME_TIMELINE_REBASE) ||
+            (action->value <= 0) ||
+            ((uint32_t)action->value > scene->waiting_animation_count) ||
+            (action->secondary_value != 0) ||
             ((scene->visual_bindings[binding_index].elements[element_index].
                 type != PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP) &&
              (scene->visual_bindings[binding_index].elements[element_index].
@@ -462,6 +498,41 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
         break;
       default:
         return 1UL;
+    }
+  }
+
+  for (waiting_animation_index = 0UL;
+       waiting_animation_index < scene->waiting_animation_count;
+       ++waiting_animation_index)
+  {
+    const ps_scene_runtime_waiting_animation_t *animation =
+      &scene->waiting_animations[waiting_animation_index];
+    uint32_t phase;
+    uint32_t step;
+
+    if ((animation->animation_id != waiting_animation_index + 1UL) ||
+        (animation->phase_quantum_ms == 0UL) ||
+        (animation->sequence_step_count == 0UL) ||
+        (animation->sequence_step_count >
+         PS_SCENE_WAITING_VISUAL_SEQUENCE_MAX) ||
+        (animation->phase_count == 0UL) ||
+        (animation->phase_count > PS_SCENE_WAITING_VISUAL_PHASE_MAX))
+    {
+      return 1UL;
+    }
+    for (phase = 0UL; phase < animation->phase_count; ++phase)
+    {
+      if (animation->phase_visual_id[phase] == 0UL)
+      {
+        return 1UL;
+      }
+    }
+    for (step = 0UL; step < animation->sequence_step_count; ++step)
+    {
+      if (animation->sequence_phase[step] >= animation->phase_count)
+      {
+        return 1UL;
+      }
     }
   }
 
@@ -667,6 +738,70 @@ static uint32_t PS_SceneRuntime_StageActions(
           staged_binding->elements[element_index].asset_id =
             (uint32_t)action->value;
           break;
+        case PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_WAITING_ANIMATION:
+        {
+          const ps_scene_runtime_waiting_animation_t *animation =
+            &scene->waiting_animations[(uint32_t)action->value - 1UL];
+          uint32_t waiting_index = PS_SceneRuntime_FindWaitingElementIndex(
+            staged_binding, action->target_element_id);
+          ps_scene_waiting_visual_element_t *waiting_element;
+          uint32_t phase;
+          uint32_t step;
+
+          if ((animation->animation_id != (uint32_t)action->value) ||
+              (animation->phase_quantum_ms !=
+               staged_binding->waiting_visual.phase_quantum_ms) ||
+              (animation->sequence_step_count !=
+               staged_binding->waiting_visual.sequence_step_count))
+          {
+            g_ps_scene_runtime_probe.action_error_count++;
+            return 0UL;
+          }
+          if (waiting_index == PS_SCENE_RUNTIME_INDEX_INVALID)
+          {
+            if (staged_binding->waiting_visual.element_count >=
+                PS_SCENE_WAITING_VISUAL_ELEMENT_MAX)
+            {
+              g_ps_scene_runtime_probe.action_error_count++;
+              return 0UL;
+            }
+            waiting_index = staged_binding->waiting_visual.element_count;
+            staged_binding->waiting_visual.element_count++;
+            waiting_element =
+              &staged_binding->waiting_visual.elements[waiting_index];
+            (void)memset(waiting_element, 0, sizeof(*waiting_element));
+            waiting_element->element_id = waiting_index + 1UL;
+            waiting_element->source_element_id = action->target_element_id;
+            waiting_element->visual_source_id =
+              PS_SCENE_WAITING_VISUAL_SOURCE_PACKAGE_SPRITE;
+          }
+          waiting_element =
+            &staged_binding->waiting_visual.elements[waiting_index];
+          waiting_element->phase_count = animation->phase_count;
+          for (phase = 0UL;
+               phase < PS_SCENE_WAITING_VISUAL_PHASE_MAX;
+               ++phase)
+          {
+            waiting_element->phase_visual_id[phase] =
+              animation->phase_visual_id[phase];
+          }
+          for (step = 0UL;
+               step < PS_SCENE_WAITING_VISUAL_SEQUENCE_MAX;
+               ++step)
+          {
+            waiting_element->sequence_phase[step] =
+              animation->sequence_phase[step];
+          }
+          if (action->operation == PS_SCENE_RUNTIME_TIMELINE_REBASE)
+          {
+            staged_binding->waiting_visual.presentation_id++;
+            if (staged_binding->waiting_visual.presentation_id == 0UL)
+            {
+              staged_binding->waiting_visual.presentation_id = 1UL;
+            }
+          }
+          break;
+        }
         default:
           g_ps_scene_runtime_probe.action_error_count++;
           return 0UL;
@@ -826,6 +961,8 @@ static uint32_t PS_SceneRuntime_ActivateDecodedScene(
   g_ps_scene_runtime_probe.descriptor_variable_count = scene->variable_count;
   g_ps_scene_runtime_probe.descriptor_guard_count = scene->guard_count;
   g_ps_scene_runtime_probe.descriptor_action_count = scene->action_count;
+  g_ps_scene_runtime_probe.descriptor_waiting_animation_count =
+    scene->waiting_animation_count;
   g_ps_scene_runtime_probe.descriptor_transition_count =
     scene->transition_count;
   g_ps_scene_runtime_probe.descriptor_interaction_mode =
@@ -1248,6 +1385,16 @@ uint32_t PS_SceneRuntime_HandleStateSceneInput(uint32_t logical_event,
               g_ps_scene_runtime_probe.
                 last_element_action_secondary_value =
                   action->secondary_value;
+              if (action->kind ==
+                  PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_WAITING_ANIMATION)
+              {
+                g_ps_scene_runtime_probe.waiting_animation_commit_count++;
+                if (action->operation ==
+                    PS_SCENE_RUNTIME_TIMELINE_REBASE)
+                {
+                  g_ps_scene_runtime_probe.waiting_animation_rebase_count++;
+                }
+              }
             }
           }
         }

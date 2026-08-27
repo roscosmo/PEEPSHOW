@@ -388,6 +388,25 @@ def _compile_graph(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
                         0,
                     )
                 )
+            elif operation["kind"] == "set_element_waiting_animation":
+                source_waiting = scene["waiting_visuals"][
+                    waiting_index[operation["waiting_visual_ref"]]
+                ]
+                source_element_index = next(
+                    index
+                    for index, element in enumerate(source_waiting["elements"])
+                    if element["element_id"] == operation["waiting_element_ref"]
+                )
+                operation_records.extend(
+                    OPERATION_RECORD.pack(
+                        6,
+                        1 if operation["timeline_policy"] == "preserve" else 2,
+                        target_elements[operation["element_ref"]],
+                        waiting_index[operation["waiting_visual_ref"]],
+                        strings[source_waiting["elements"][source_element_index]["element_id"]],
+                        0,
+                    )
+                )
             else:
                 raise EggCompileError("unsupported STATE route action")
             operation_count += 1

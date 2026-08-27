@@ -1666,6 +1666,7 @@ def _normalize_action(
         "set_element_visibility",
         "set_element_position",
         "set_element_frame",
+        "set_element_waiting_animation",
     }:
         elements = _route_target_elements(scene, route)
         element_ref = action.get("element_ref")
@@ -1732,6 +1733,114 @@ def _normalize_action(
                 "element_ref": element_ref,
                 "x": x,
                 "y": y,
+            }
+        if action_kind == "set_element_waiting_animation":
+            _require_command_fields(
+                action,
+                {
+                    "kind",
+                    "element_ref",
+                    "waiting_visual_ref",
+                    "waiting_element_ref",
+                    "timeline_policy",
+                },
+                {
+                    "kind",
+                    "element_ref",
+                    "waiting_visual_ref",
+                    "waiting_element_ref",
+                    "timeline_policy",
+                },
+            )
+            waiting_visual_ref = action.get("waiting_visual_ref")
+            waiting_element_ref = action.get("waiting_element_ref")
+            timeline_policy = action.get("timeline_policy")
+            issues = []
+            _stable_id(
+                waiting_visual_ref,
+                "command.action.waiting_visual_ref",
+                issues,
+            )
+            _stable_id(
+                waiting_element_ref,
+                "command.action.waiting_element_ref",
+                issues,
+            )
+            if issues:
+                issue = issues[0]
+                raise ProjectCommandError(issue.code, issue.message)
+            waiting_visual = next(
+                (
+                    item
+                    for item in scene.get("waiting_visuals", [])
+                    if isinstance(item, dict)
+                    and item.get("waiting_visual_id") == waiting_visual_ref
+                ),
+                None,
+            )
+            if waiting_visual is None:
+                raise ProjectCommandError(
+                    "WAIT_VISUAL_UNKNOWN",
+                    f"unknown waiting visual '{waiting_visual_ref}'",
+                )
+            waiting_element = next(
+                (
+                    item
+                    for item in waiting_visual.get("elements", [])
+                    if isinstance(item, dict)
+                    and item.get("element_id") == waiting_element_ref
+                ),
+                None,
+            )
+            if waiting_element is None:
+                raise ProjectCommandError(
+                    "WAIT_ELEMENT_UNKNOWN",
+                    f"waiting visual has no element '{waiting_element_ref}'",
+                )
+            if waiting_element.get("source_element_ref") != element_ref:
+                raise ProjectCommandError(
+                    "ACTION_WAIT_ELEMENT_MISMATCH",
+                    "waiting animation must target the same retained element",
+                )
+            target_state = next(
+                item
+                for item in scene.get("states", [])
+                if isinstance(item, dict)
+                and item.get("state_id") == route.get("target_state")
+            )
+            target_waiting = next(
+                item
+                for item in scene.get("waiting_visuals", [])
+                if isinstance(item, dict)
+                and item.get("waiting_visual_id")
+                == target_state.get("waiting_visual_ref")
+            )
+            if (
+                waiting_visual.get("phase_quantum_ms")
+                != target_waiting.get("phase_quantum_ms")
+                or waiting_visual.get("combined_step_count")
+                != target_waiting.get("combined_step_count")
+            ):
+                raise ProjectCommandError(
+                    "ACTION_WAIT_TIMELINE_INCOMPATIBLE",
+                    "waiting animation cadence and step count must match the target state",
+                )
+            if timeline_policy not in {"preserve", "rebase"}:
+                raise ProjectCommandError(
+                    "ACTION_TIMELINE_POLICY_INVALID",
+                    "timeline_policy must be preserve or rebase",
+                )
+            if element.get("kind") != "sprite":
+                raise ProjectCommandError(
+                    "ACTION_ELEMENT_TYPE_INVALID",
+                    "waiting animation selection requires a sprite element",
+                )
+            return {
+                "kind": action_kind,
+                "element_ref": element_ref,
+                "waiting_visual_ref": waiting_visual_ref,
+                "waiting_element_ref": waiting_element_ref,
+                "timeline_policy": timeline_policy,
             }
         _require_command_fields(
             action,
@@ -2494,6 +2603,7 @@ def _check_scene(
                     "set_element_visibility",
                     "set_element_position",
                     "set_element_frame",
+                    "set_element_waiting_animation",
                 }:
                     element_ref = action.get("element_ref")
                     element = target_elements.get(element_ref)
@@ -2511,10 +2621,23 @@ def _check_scene(
                             action_path,
                             issues,
                         )
-                    else:
+                    elif kind == "set_element_frame":
                         _check_keys(
                             action,
                             {"kind", "element_ref", "frame_ref"},
+                            action_path,
+                            issues,
+                        )
+                    else:
+                        _check_keys(
+                            action,
+                            {
+                                "kind",
+                                "element_ref",
+                                "waiting_visual_ref",
+                                "waiting_element_ref",
+                                "timeline_policy",
+                            },
                             action_path,
                             issues,
                         )
@@ -2570,7 +2693,7 @@ def _check_scene(
                                 action_path,
                                 "element action exceeds the 168x144 canvas",
                             )
-                    else:
+                    elif kind == "set_element_frame":
                         frame_ref = action.get("frame_ref")
                         _stable_id(frame_ref, f"{action_path}.frame_ref", issues)
                         if element.get("kind") != "sprite":
@@ -2586,6 +2709,94 @@ def _check_scene(
                                 "ASSET_FRAME_UNKNOWN",
                                 f"{action_path}.frame_ref",
                                 f"unknown frame '{frame_ref}'",
+                            )
+                    else:
+                        waiting_visual_ref = action.get("waiting_visual_ref")
+                        waiting_element_ref = action.get("waiting_element_ref")
+                        waiting_visual = waiting_visuals.get(waiting_visual_ref)
+                        waiting_element = None
+                        _stable_id(
+                            waiting_visual_ref,
+                            f"{action_path}.waiting_visual_ref",
+                            issues,
+                        )
+                        _stable_id(
+                            waiting_element_ref,
+                            f"{action_path}.waiting_element_ref",
+                            issues,
+                        )
+                        if isinstance(waiting_visual, dict):
+                            waiting_element = next(
+                                (
+                                    item
+                                    for item in waiting_visual.get("elements", [])
+                                    if isinstance(item, dict)
+                                    and item.get("element_id")
+                                    == waiting_element_ref
+                                ),
+                                None,
+                            )
+                        else:
+                            _issue(
+                                issues,
+                                "WAIT_VISUAL_UNKNOWN",
+                                f"{action_path}.waiting_visual_ref",
+                                "waiting visual does not exist",
+                            )
+                        if waiting_element is None:
+                            _issue(
+                                issues,
+                                "WAIT_ELEMENT_UNKNOWN",
+                                f"{action_path}.waiting_element_ref",
+                                "waiting visual has no matching element",
+                            )
+                        elif waiting_element.get("source_element_ref") != element_ref:
+                            _issue(
+                                issues,
+                                "ACTION_WAIT_ELEMENT_MISMATCH",
+                                f"{action_path}.waiting_element_ref",
+                                "waiting animation must target the same retained element",
+                            )
+                        if element.get("kind") != "sprite":
+                            _issue(
+                                issues,
+                                "ACTION_ELEMENT_TYPE_INVALID",
+                                f"{action_path}.element_ref",
+                                "waiting animation selection requires a sprite element",
+                            )
+                        if action.get("timeline_policy") not in {
+                            "preserve",
+                            "rebase",
+                        }:
+                            _issue(
+                                issues,
+                                "ACTION_TIMELINE_POLICY_INVALID",
+                                f"{action_path}.timeline_policy",
+                                "must be preserve or rebase",
+                            )
+                        target_state_record = states.get(route.get("target_state"))
+                        target_waiting = (
+                            waiting_visuals.get(
+                                target_state_record.get("waiting_visual_ref")
+                            )
+                            if isinstance(target_state_record, dict)
+                            else None
+                        )
+                        if (
+                            isinstance(waiting_visual, dict)
+                            and isinstance(target_waiting, dict)
+                            and (
+                                waiting_visual.get("phase_quantum_ms")
+                                != target_waiting.get("phase_quantum_ms")
+                                or waiting_visual.get("combined_step_count")
+                                != target_waiting.get("combined_step_count")
+                            )
+                        ):
+                            _issue(
+                                issues,
+                                "ACTION_WAIT_TIMELINE_INCOMPATIBLE",
+                                action_path,
+                                "waiting animation cadence and step count must match the target state",
                             )
                 else:
                     _issue(issues, "ACTION_KIND_INVALID", f"{action_path}.kind", "unsupported V1 action")

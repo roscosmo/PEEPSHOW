@@ -216,7 +216,19 @@ class AuthoringModelTests(unittest.TestCase):
 
         center_to_right = routes["center_to_right"]["operations"]
         moved = next(item for item in center_to_right if item["kind"] == 4)
+        selected_waiting = next(
+            item for item in center_to_right if item["kind"] == 6
+        )
         self.assertEqual((120, 0), (moved["x"], moved["y"]))
+        self.assertEqual(1, selected_waiting["timeline_policy"])
+        self.assertEqual("marker_hold", selected_waiting["waiting_element_ref"])
+
+        right_to_left = routes["right_to_left"]["operations"]
+        restored_waiting = next(
+            item for item in right_to_left if item["kind"] == 6
+        )
+        self.assertEqual(2, restored_waiting["timeline_policy"])
+        self.assertEqual("marker_wait", restored_waiting["waiting_element_ref"])
 
         right_to_left = routes["right_to_left"]["operations"]
         hidden = next(item for item in right_to_left if item["kind"] == 3)

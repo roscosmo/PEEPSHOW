@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-#define PS_SCENE_RUNTIME_API_VERSION             (14UL)
+#define PS_SCENE_RUNTIME_API_VERSION             (15UL)
 #define PS_SCENE_RUNTIME_SCENE_TYPE_STATE        (1UL)
 #define PS_SCENE_RUNTIME_STATUS_NOT_RUN          (0xFFFFFFFFUL)
 #define PS_SCENE_RUNTIME_STATUS_OK               (0UL)
@@ -23,6 +23,7 @@ extern "C" {
 #define PS_SCENE_RUNTIME_VARIABLE_MAX            (8U)
 #define PS_SCENE_RUNTIME_GUARD_MAX               (16U)
 #define PS_SCENE_RUNTIME_ACTION_MAX              (16U)
+#define PS_SCENE_RUNTIME_WAITING_ANIMATION_MAX   (16U)
 #define PS_SCENE_RUNTIME_TRANSITION_MAX          (16U)
 
 #define PS_SCENE_RUNTIME_INPUT_ERROR             (0UL)
@@ -64,8 +65,26 @@ typedef enum
   PS_SCENE_RUNTIME_ACTION_SET_VARIABLE,
   PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_VISIBILITY,
   PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_POSITION,
-  PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_FRAME
+  PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_FRAME,
+  PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_WAITING_ANIMATION
 } ps_scene_runtime_action_kind_t;
+
+typedef enum
+{
+  PS_SCENE_RUNTIME_TIMELINE_NONE = 0,
+  PS_SCENE_RUNTIME_TIMELINE_PRESERVE,
+  PS_SCENE_RUNTIME_TIMELINE_REBASE
+} ps_scene_runtime_timeline_policy_t;
+
+typedef struct
+{
+  uint32_t animation_id;
+  uint32_t phase_quantum_ms;
+  uint32_t sequence_step_count;
+  uint32_t phase_count;
+  uint32_t phase_visual_id[PS_SCENE_WAITING_VISUAL_PHASE_MAX];
+  uint32_t sequence_phase[PS_SCENE_WAITING_VISUAL_SEQUENCE_MAX];
+} ps_scene_runtime_waiting_animation_t;
 
 typedef struct
 {
@@ -137,6 +156,7 @@ typedef struct
   uint32_t variable_count;
   uint32_t guard_count;
   uint32_t action_count;
+  uint32_t waiting_animation_count;
   uint32_t transition_count;
   uint32_t interaction_mode;
   uint32_t inactive_route;
@@ -149,6 +169,8 @@ typedef struct
   ps_scene_runtime_variable_t variables[PS_SCENE_RUNTIME_VARIABLE_MAX];
   ps_scene_runtime_guard_t guards[PS_SCENE_RUNTIME_GUARD_MAX];
   ps_scene_runtime_action_t actions[PS_SCENE_RUNTIME_ACTION_MAX];
+  ps_scene_runtime_waiting_animation_t
+    waiting_animations[PS_SCENE_RUNTIME_WAITING_ANIMATION_MAX];
   ps_scene_runtime_transition_t
     transitions[PS_SCENE_RUNTIME_TRANSITION_MAX];
 } ps_scene_runtime_state_scene_t;
@@ -183,6 +205,7 @@ typedef struct
   uint32_t descriptor_variable_count;
   uint32_t descriptor_guard_count;
   uint32_t descriptor_action_count;
+  uint32_t descriptor_waiting_animation_count;
   uint32_t descriptor_transition_count;
   uint32_t descriptor_interaction_mode;
   uint32_t descriptor_inactive_route;
@@ -200,6 +223,8 @@ typedef struct
   uint32_t action_commit_count;
   uint32_t action_error_count;
   uint32_t element_action_commit_count;
+  uint32_t waiting_animation_commit_count;
+  uint32_t waiting_animation_rebase_count;
   uint32_t last_element_action_kind;
   uint32_t last_element_action_binding_id;
   uint32_t last_element_action_id;

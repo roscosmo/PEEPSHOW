@@ -144,6 +144,7 @@ static uint16_t s_ps_egg_scene_count;
 static uint16_t s_ps_egg_entry_scene_id;
 static ps_egg_sprite_catalog_t s_ps_egg_sprite_catalog;
 static ps_egg_state_loader_sprite_frame_t s_ps_egg_sprite_frame_scratch;
+static ps_scene_runtime_visual_binding_t s_ps_egg_binding_scratch;
 
 volatile ps_egg_state_loader_probe_t g_ps_egg_state_loader_probe =
 {
@@ -1776,7 +1777,7 @@ static uint32_t PS_EggDecodeScene(
 
         if ((target_state >= graph.state_count) ||
             (element_index >= target_binding->element_count) ||
-            (record[1] != 0U) ||
+            ((record[0] != 6U) && (record[1] != 0U)) ||
             (action_count >= PS_SCENE_RUNTIME_ACTION_MAX))
         {
           return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
@@ -1842,6 +1843,105 @@ static uint32_t PS_EggDecodeScene(
           target_action->kind =
             PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_FRAME;
           target_action->value = (int32_t)frame_id;
+        }
+        else if (record[0] == 6U)
+        {
+          const uint8_t *target_state_record =
+            &graph_payload[graph.state_record_offset +
+              ((uint32_t)target_state * PS_EGG_STATE_RECORD_SIZE)];
+          uint16_t render_index = PS_EggU16(&target_state_record[4]);
+          uint16_t waiting_index = PS_EggU16(&record[4]);
+          uint16_t waiting_element_ref = PS_EggU16(&record[6]);
+          const uint8_t *wait_record;
+          uint16_t first_wait_element;
+          uint16_t wait_element_count;
+          uint32_t waiting_element_index;
+          uint32_t waiting_element_found = 0UL;
+          uint32_t focus_index;
+          ps_scene_runtime_waiting_animation_t *animation;
+          const ps_scene_waiting_visual_element_t *source;
+          uint32_t phase;
+          uint32_t step;
+
+          if ((record[1] < PS_SCENE_RUNTIME_TIMELINE_PRESERVE) ||
+              (record[1] > PS_SCENE_RUNTIME_TIMELINE_REBASE) ||
+              (waiting_index >= waiting.waiting_count) ||
+              (waiting_element_ref >= strings->count) ||
+              (PS_EggU32(&record[8]) != 0UL) ||
+              (scene->waiting_animation_count >=
+               PS_SCENE_RUNTIME_WAITING_ANIMATION_MAX) ||
+              ((target_element->type !=
+                PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP) &&
+               (target_element->type != PS_SCENE_RENDER_ELEMENT_FOCUS)) ||
+              (PS_EggBuildBinding(render_payload, &render,
+                                  wait_payload, &waiting, strings,
+                                  render_index, waiting_index,
+                                  target_state + 1UL,
+                                  &s_ps_egg_binding_scratch,
+                                  &focus_index) == 0UL))
+          {
+            return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+          }
+          wait_record = &wait_payload[waiting.record_offset +
+            ((uint32_t)waiting_index * PS_EGG_WAIT_RECORD_SIZE)];
+          first_wait_element = PS_EggU16(&wait_record[12]);
+          wait_element_count = PS_EggU16(&wait_record[14]);
+          for (waiting_element_index = 0UL;
+               waiting_element_index < wait_element_count;
+               ++waiting_element_index)
+          {
+            const uint8_t *wait_element_record =
+              &wait_payload[waiting.element_offset +
+                (((uint32_t)first_wait_element + waiting_element_index) *
+                 PS_EGG_WAIT_ELEMENT_RECORD_SIZE)];
+            if (PS_EggU16(wait_element_record) == waiting_element_ref)
+            {
+              waiting_element_found = 1UL;
+              break;
+            }
+          }
+          if ((waiting_element_found == 0UL) ||
+              (waiting_element_index >=
+               s_ps_egg_binding_scratch.waiting_visual.element_count))
+          {
+            return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+          }
+          source = &s_ps_egg_binding_scratch.waiting_visual.elements[
+            waiting_element_index];
+          if ((source->source_element_id != target_element->element_id) ||
+              (s_ps_egg_binding_scratch.waiting_visual.phase_quantum_ms !=
+               target_binding->waiting_visual.phase_quantum_ms) ||
+              (s_ps_egg_binding_scratch.waiting_visual.sequence_step_count !=
+               target_binding->waiting_visual.sequence_step_count))
+          {
+            return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+          }
+          animation = &scene->waiting_animations[
+            scene->waiting_animation_count];
+          animation->animation_id = scene->waiting_animation_count + 1UL;
+          animation->phase_quantum_ms =
+            s_ps_egg_binding_scratch.waiting_visual.phase_quantum_ms;
+          animation->sequence_step_count =
+            s_ps_egg_binding_scratch.waiting_visual.sequence_step_count;
+          animation->phase_count = source->phase_count;
+          for (phase = 0UL;
+               phase < PS_SCENE_WAITING_VISUAL_PHASE_MAX;
+               ++phase)
+          {
+            animation->phase_visual_id[phase] =
+              source->phase_visual_id[phase];
+          }
+          for (step = 0UL;
+               step < PS_SCENE_WAITING_VISUAL_SEQUENCE_MAX;
+               ++step)
+          {
+            animation->sequence_phase[step] = source->sequence_phase[step];
+          }
+          scene->waiting_animation_count++;
+          target_action->kind =
+            PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_WAITING_ANIMATION;
+          target_action->operation = record[1];
+          target_action->value = (int32_t)animation->animation_id;
         }
         else
         {

@@ -735,6 +735,27 @@ def _parse_graph(
                     "frame_ref": _string(strings, record[3], "element action frame"),
                 }
             )
+        elif record[0] == 6:
+            _require(
+                record[1] in {1, 2}
+                and record[3] < waiting_count
+                and record[4] < len(strings)
+                and record[5] == 0,
+                "set-element-waiting-animation operation is invalid",
+            )
+            operations.append(
+                {
+                    "kind": record[0],
+                    "timeline_policy": record[1],
+                    "element_index": record[2],
+                    "waiting_visual_index": record[3],
+                    "waiting_element_ref": _string(
+                        strings,
+                        record[4],
+                        "element action waiting element",
+                    ),
+                }
+            )
         else:
             raise EggFormatError("operation record is invalid")
     routes: list[dict[str, object]] = []

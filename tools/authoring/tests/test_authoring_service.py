@@ -268,7 +268,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(16, SERVICE_API_VERSION)
+        self.assertEqual(17, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -299,13 +299,27 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertEqual("destination_state_render_model", element_actions["target"])
         self.assertTrue(element_actions["atomic_with_variable_actions"])
         self.assertEqual(
-            ["set_element_visibility", "set_element_position", "set_element_frame"],
+            [
+                "set_element_visibility",
+                "set_element_position",
+                "set_element_frame",
+                "set_element_waiting_animation",
+            ],
             element_actions["kinds"],
         )
         self.assertTrue(element_actions["waiting_visual_linkage"]["visibility"])
         self.assertTrue(element_actions["waiting_visual_linkage"]["position"])
         self.assertFalse(
             element_actions["waiting_visual_linkage"]["frame_selection_replaces_animation"]
+        )
+        animation_selection = element_actions["waiting_visual_linkage"][
+            "animation_selection"
+        ]
+        self.assertEqual(
+            ["preserve", "rebase"], animation_selection["timeline_policies"]
+        )
+        self.assertTrue(
+            animation_selection["requires_matching_cadence_and_step_count"]
         )
         graph = result["state_scene_graph"]
         self.assertEqual(64, graph["command_batch_maximum"])
