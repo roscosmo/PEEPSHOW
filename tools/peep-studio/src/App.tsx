@@ -923,10 +923,7 @@ export default function App() {
                         }}
                         onClick={(event) => {
                           event.stopPropagation();
-                          setSelectedPlacementElement(element.element_id);
-                          if (placementRenderModel !== null) {
-                            setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
-                          }
+                          selectPlacementElement(element.element_id);
                         }}
                       >
                         <span>{element.element_id}</span>
@@ -1020,47 +1017,76 @@ export default function App() {
       </div>
     </details>
   );
+  const placementElements = () => [...(placementRenderModel?.elements ?? [])].sort((left, right) => left.z_order - right.z_order);
+  const selectPlacementElement = (elementId: string) => {
+    setSelectedPlacementElement(elementId);
+    if (placementRenderModel !== null) {
+      setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
+    }
+  };
+  const renderPlacementObjectHierarchy = () => {
+    const elements = placementElements();
+    return (
+      <details className="project-section placement-object-section" open>
+        <summary>Objects</summary>
+        {selectedSceneDocument === null ? (
+          <p className="muted project-section-empty">Select a scene to inspect objects.</p>
+        ) : placementRenderModel === null ? (
+          <p className="muted project-section-empty">No screen model for this state.</p>
+        ) : elements.length === 0 ? (
+          <p className="muted project-section-empty">No screen objects.</p>
+        ) : (
+          <div className="placement-object-tree">
+            <div className="placement-object-root">
+              <strong>{placementState?.display_name ?? selectedSceneDocument.display_name}</strong>
+              <small>{placementRenderModel.visual_id}</small>
+            </div>
+            {elements.map((element: RenderElement) => (
+              <button
+                key={element.element_id}
+                className={selectedPlacementElement === element.element_id ? "selected" : ""}
+                type="button"
+                onClick={() => selectPlacementElement(element.element_id)}
+              >
+                <span>
+                  <strong>{element.element_id}</strong>
+                  <small>{element.kind} - {element.visual_ref}</small>
+                </span>
+                <code>z{element.z_order}</code>
+              </button>
+            ))}
+          </div>
+        )}
+      </details>
+    );
+  };
   const renderPlacementInspector = () => {
     const elements = [...(placementRenderModel?.elements ?? [])].sort((left, right) => left.z_order - right.z_order);
+    const selectedElement = selectedPlacementElement === null
+      ? null
+      : elements.find((element) => element.element_id === selectedPlacementElement) ?? null;
     return (
       <section className="inspector-section placement-inspector">
-        <h3><SquareMousePointer size={14} aria-hidden="true" /> Placement</h3>
+        <h3><SquareMousePointer size={14} aria-hidden="true" /> Object</h3>
         {selectedSceneDocument === null ? (
-          <p className="muted">Select a scene to inspect its screen elements.</p>
+          <p className="muted">Select a scene to inspect placement.</p>
         ) : placementRenderModel === null ? (
           <p className="muted">This state has no retained screen model.</p>
+        ) : selectedElement === null ? (
+          <p className="muted">Select an object from the canvas or object hierarchy.</p>
         ) : (
           <>
             <dl className="inspector-list">
-              <div><dt>State</dt><dd>{placementState?.display_name ?? "-"}</dd></div>
-              <div><dt>Screen model</dt><dd>{placementRenderModel.visual_id}</dd></div>
-              <div><dt>Elements</dt><dd>{elements.length}</dd></div>
+              <div><dt>Name</dt><dd>{selectedElement.element_id}</dd></div>
+              <div><dt>Kind</dt><dd>{selectedElement.kind}</dd></div>
+              <div><dt>Visual</dt><dd>{selectedElement.visual_ref}</dd></div>
+              <div><dt>X</dt><dd>{selectedElement.x}</dd></div>
+              <div><dt>Y</dt><dd>{selectedElement.y}</dd></div>
+              <div><dt>Width</dt><dd>{selectedElement.width}</dd></div>
+              <div><dt>Height</dt><dd>{selectedElement.height}</dd></div>
+              <div><dt>Layer</dt><dd>{selectedElement.z_order}</dd></div>
+              <div><dt>Focus</dt><dd>{selectedElement.focus_role ?? "none"}</dd></div>
             </dl>
-            {elements.length === 0 ? (
-              <p className="muted">No screen elements.</p>
-            ) : (
-              <div className="placement-element-list">
-                {elements.map((element: RenderElement) => (
-                  <button
-                    key={element.element_id}
-                    className={selectedPlacementElement === element.element_id ? "selected" : ""}
-                    type="button"
-                    onClick={() => {
-                      setSelectedPlacementElement(element.element_id);
-                      setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
-                    }}
-                  >
-                    <span>
-                      <strong>{element.element_id}</strong>
-                      <small>{element.kind} - {element.visual_ref}</small>
-                    </span>
-                    <code>
-                      {element.x},{element.y} {element.width}x{element.height} z{element.z_order}
-                    </code>
-                  </button>
-                ))}
-              </div>
-            )}
           </>
         )}
       </section>
@@ -1146,6 +1172,7 @@ export default function App() {
 
           {renderPreviewPanel("project")}
           {workspaceMode === "placement" && renderPlacementViewSettings()}
+          {workspaceMode === "placement" && renderPlacementObjectHierarchy()}
 
           {project === null ? (
             <div className="empty-pane">
@@ -1274,64 +1301,72 @@ export default function App() {
 
           {workspaceMode === "placement" && renderPlacementInspector()}
 
-          <section className="inspector-section">
-            <h3>Runtime</h3>
-            {preview === null ? (
-              <p className="muted">Start a scene preview to inspect its runtime state.</p>
-            ) : (
-              <dl className="inspector-list">
-                <div><dt>Scene</dt><dd>{preview.scene.scene_id}</dd></div>
-                <div><dt>State</dt><dd>{preview.scene.state_id}</dd></div>
-                <div><dt>Presentation</dt><dd>{preview.timeline.presentation_id}</dd></div>
-                <div><dt>Quantum</dt><dd>{preview.timeline.phase_quantum_ms} ms</dd></div>
-                <div><dt>Black pixels</dt><dd>{preview.framebuffer.black_pixel_count}</dd></div>
-              </dl>
-            )}
-          </section>
+          {workspaceMode !== "placement" && (
+            <section className="inspector-section">
+              <h3>Runtime</h3>
+              {preview === null ? (
+                <p className="muted">Start a scene preview to inspect its runtime state.</p>
+              ) : (
+                <dl className="inspector-list">
+                  <div><dt>Scene</dt><dd>{preview.scene.scene_id}</dd></div>
+                  <div><dt>State</dt><dd>{preview.scene.state_id}</dd></div>
+                  <div><dt>Presentation</dt><dd>{preview.timeline.presentation_id}</dd></div>
+                  <div><dt>Quantum</dt><dd>{preview.timeline.phase_quantum_ms} ms</dd></div>
+                  <div><dt>Black pixels</dt><dd>{preview.framebuffer.black_pixel_count}</dd></div>
+                </dl>
+              )}
+            </section>
+          )}
 
-          <SceneAuthoringInspector
-            scene={selectedSceneDocument}
-            scenes={scenes}
-            selection={sceneSelection}
-            onSelect={setSceneSelection}
-            onRenameState={renameState}
-            onSetRouteTarget={setRouteTarget}
-            onSetRouteSceneTarget={setRouteSceneTarget}
-            onSetRouteGuard={setRouteGuard}
-            onSetRouteAction={setRouteAction}
-            canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
-          />
+          {workspaceMode !== "placement" && (
+            <SceneAuthoringInspector
+              scene={selectedSceneDocument}
+              scenes={scenes}
+              selection={sceneSelection}
+              onSelect={setSceneSelection}
+              onRenameState={renameState}
+              onSetRouteTarget={setRouteTarget}
+              onSetRouteSceneTarget={setRouteSceneTarget}
+              onSetRouteGuard={setRouteGuard}
+              onSetRouteAction={setRouteAction}
+              canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
+            />
+          )}
 
-          <section className="inspector-section">
-            <h3>Variables</h3>
-            {preview === null || Object.keys(preview.variables).length === 0 ? (
-              <p className="muted">No runtime variables.</p>
-            ) : (
-              <dl className="inspector-list">
-                {Object.entries(preview.variables).map(([name, value]) => (
-                  <div key={name}><dt>{name}</dt><dd>{value}</dd></div>
-                ))}
-              </dl>
-            )}
-          </section>
+          {workspaceMode !== "placement" && (
+            <section className="inspector-section">
+              <h3>Variables</h3>
+              {preview === null || Object.keys(preview.variables).length === 0 ? (
+                <p className="muted">No runtime variables.</p>
+              ) : (
+                <dl className="inspector-list">
+                  {Object.entries(preview.variables).map(([name, value]) => (
+                    <div key={name}><dt>{name}</dt><dd>{value}</dd></div>
+                  ))}
+                </dl>
+              )}
+            </section>
+          )}
 
-          <section className="inspector-section">
-            <h3>Validation</h3>
-            {project === null ? (
-              <p className="muted">No validation result.</p>
-            ) : project.issues.length === 0 ? (
-              <div className="success-note"><PackageCheck size={17} aria-hidden="true" /> Project is package-ready.</div>
-            ) : (
-              <div className="issue-list">
-                {project.issues.map((issue, index) => (
-                  <div className="issue" key={`${issue.code}-${index}`}>
-                    <AlertTriangle size={16} aria-hidden="true" />
-                    <span><strong>{issue.code}</strong>{issue.message}<small>{issue.path}</small></span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+          {workspaceMode !== "placement" && (
+            <section className="inspector-section">
+              <h3>Validation</h3>
+              {project === null ? (
+                <p className="muted">No validation result.</p>
+              ) : project.issues.length === 0 ? (
+                <div className="success-note"><PackageCheck size={17} aria-hidden="true" /> Project is package-ready.</div>
+              ) : (
+                <div className="issue-list">
+                  {project.issues.map((issue, index) => (
+                    <div className="issue" key={`${issue.code}-${index}`}>
+                      <AlertTriangle size={16} aria-hidden="true" />
+                      <span><strong>{issue.code}</strong>{issue.message}<small>{issue.path}</small></span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
 
           {build !== null && (
             <section className="inspector-section build-result">

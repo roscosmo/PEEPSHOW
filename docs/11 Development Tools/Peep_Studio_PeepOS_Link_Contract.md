@@ -265,16 +265,18 @@ not require or imply an on-device runtime font renderer.
 
 Implementation status: placement mode shell is present in Peep Studio. It
 keeps the fixed project-panel preview available in every mode, promotes the
-selected scene preview into the main workspace for placement, and lists
-retained render elements for inspection. The placement display has a faint
-screen-space grid and select-only retained-element overlays that highlight the
-matching inspector row. Grid visibility, grid strength, major grid lines,
-overlay boxes, and label display are editor view settings in the project panel
-only; they do not affect package output. Existing retained elements can be
-moved on the placement canvas through the Python `render_element.set_position`
-command with pixel snapping and bounds validation. Visual element add, remove,
-resize, reorder, asset assignment, and animation assignment remain pending and
-must be implemented through Python service commands.
+selected scene preview into the main workspace for placement, shows the current
+scene object hierarchy in the project panel, and reserves the inspector for the
+selected object's placement/properties. The placement display has a faint
+screen-space grid and selectable retained-element overlays that highlight the
+matching object hierarchy row. Grid visibility, grid strength, major grid
+lines, overlay boxes, and label display are editor view settings in the project
+panel only; they do not affect package output. Existing retained elements can
+be moved on the placement canvas through the Python
+`render_element.set_position` command with pixel snapping and bounds
+validation. Visual element add, remove, resize, reorder, asset assignment, and
+animation assignment remain pending and must be implemented through Python
+service commands.
 
 ### Stage 4: STATE Graph Editing
 

@@ -966,6 +966,41 @@ button:focus-visible {
   gap: 7px;
 }
 
+.placement-object-tree {
+  display: grid;
+  gap: 7px;
+  padding: 0 9px 12px;
+}
+
+.placement-object-root {
+  display: grid;
+  gap: 2px;
+  padding: 7px 8px;
+  border: 1px solid #d7ded9;
+  border-radius: 6px;
+  background: #f7faf8;
+}
+
+.placement-object-root strong,
+.placement-object-root small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.placement-object-root strong {
+  color: #27302b;
+  font-size: 11px;
+}
+
+.placement-object-root small {
+  color: #68736d;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.placement-object-tree button,
 .placement-element-list button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -980,16 +1015,24 @@ button:focus-visible {
   text-align: left;
 }
 
+.placement-object-tree button {
+  margin-left: 10px;
+}
+
+.placement-object-tree button:hover,
 .placement-element-list button:hover {
   border-color: #8eb0c3;
   background: #eef7fb;
 }
 
+.placement-object-tree button.selected,
 .placement-element-list button.selected {
   border-color: #d6812f;
   background: #fff4e8;
 }
 
+.placement-object-tree strong,
+.placement-object-tree small,
 .placement-element-list strong,
 .placement-element-list small {
   display: block;
@@ -998,10 +1041,12 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+.placement-object-tree strong,
 .placement-element-list strong {
   font-size: 11px;
 }
 
+.placement-object-tree small,
 .placement-element-list small {
   margin-top: 2px;
   color: #68736d;
@@ -1010,9 +1055,14 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
+.placement-object-tree code,
 .placement-element-list code {
   color: #4e5a54;
   font-size: 10px;
+}
+
+.project-section-empty {
+  padding: 0 13px 13px;
 }
 
 .graph-empty {

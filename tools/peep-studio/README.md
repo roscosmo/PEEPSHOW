@@ -13,7 +13,7 @@ preview execution, or compilation rules in TypeScript.
 - renders the exact 168x144 1bpp framebuffer returned by Python;
 - injects logical A/B/L/R and joystick-cardinal input and advances deterministic preview time;
 - shows a package scene-flow graph with Python-rendered scene thumbnails separately from each scene's local logic graph;
-- provides placement editing with a fixed project-panel preview, large editable-area preview, faint display grid, selectable overlays, and Python-backed pixel-snapped element movement;
+- provides placement editing with a fixed project-panel preview, object hierarchy, large editable-area preview, selectable overlays, selected-object inspector, and Python-backed pixel-snapped element movement;
 - saves editor-only scene-flow node positions without changing package behavior;
 - shows runtime state, variables, validation issues, and package facts;
 - saves opened projects in place or copies them with Save As;
