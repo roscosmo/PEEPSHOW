@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_INPUT_BUTTONS_API_VERSION (11UL)
+#define PS_INPUT_BUTTONS_API_VERSION (12UL)
 #define PS_INPUT_BUTTON_PHYSICAL_COUNT (4UL)
 
 typedef enum
@@ -149,6 +149,10 @@ typedef struct
   uint32_t start_press_tick;
   uint32_t start_release_tick;
   uint32_t start_hold_ticks;
+  uint32_t start_short_press_count;
+  uint32_t start_long_press_count;
+  uint32_t start_short_press_pending;
+  uint32_t start_long_press_pending;
   uint32_t start_ship_prep_count;
   uint32_t start_ship_warning_count;
   uint32_t start_ship_imminent_count;
@@ -189,7 +193,10 @@ uint32_t PS_InputButtons_TakeStartPowerEvent(
   ps_input_start_power_event_t *event,
   uint32_t *timestamp,
   uint32_t *hold_ticks);
-uint32_t PS_InputButtons_TakeStartPress(uint32_t *timestamp);
+uint32_t PS_InputButtons_TakeStartPress(uint32_t *timestamp,
+                                        uint32_t *hold_ticks);
+uint32_t PS_InputButtons_TakeStartLongPress(uint32_t *timestamp,
+                                            uint32_t *hold_ticks);
 
 #ifdef __cplusplus
 }

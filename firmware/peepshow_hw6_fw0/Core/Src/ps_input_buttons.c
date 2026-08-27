@@ -40,6 +40,10 @@ static volatile uint32_t ps_input_start_pending_timestamp;
 static volatile uint32_t ps_input_start_pending_hold_ticks;
 static volatile uint32_t ps_input_start_press_event_pending;
 static volatile uint32_t ps_input_start_press_event_timestamp;
+static volatile uint32_t ps_input_start_press_event_hold_ticks;
+static volatile uint32_t ps_input_start_long_event_pending;
+static volatile uint32_t ps_input_start_long_event_timestamp;
+static volatile uint32_t ps_input_start_long_event_hold_ticks;
 static uint32_t ps_input_start_long_ticks;
 static uint32_t ps_input_start_ship_prep_ticks;
 static uint32_t ps_input_start_ship_warn_ticks;
@@ -295,14 +299,13 @@ static void PS_InputButtons_AcceptStartPress(uint32_t now_tick,
   {
     g_ps_input_buttons_probe.start_synth_press_count++;
   }
-  ps_input_start_press_event_pending = 1UL;
-  ps_input_start_press_event_timestamp = now_tick;
   PS_InputButtons_ArmStartCheck(now_tick + ps_input_start_long_ticks);
 }
 
 static void PS_InputButtons_RecordStartRelease(uint32_t now_tick)
 {
   uint32_t hold_ticks;
+  uint32_t start_state;
   uint32_t was_shipping_intent;
 
   hold_ticks = ((ps_input_start_active != 0UL) &&
@@ -311,6 +314,23 @@ static void PS_InputButtons_RecordStartRelease(uint32_t now_tick)
   was_shipping_intent =
     (g_ps_input_buttons_probe.start_state >=
      (uint32_t)PS_INPUT_START_STATE_SHIP_PREP) ? 1UL : 0UL;
+  start_state = g_ps_input_buttons_probe.start_state;
+
+  if (start_state == (uint32_t)PS_INPUT_START_STATE_NORMAL_PRESS)
+  {
+    if (ps_input_start_press_event_pending == 0UL)
+    {
+      ps_input_start_press_event_pending = 1UL;
+      ps_input_start_press_event_timestamp = now_tick;
+      ps_input_start_press_event_hold_ticks = hold_ticks;
+      g_ps_input_buttons_probe.start_short_press_count++;
+      g_ps_input_buttons_probe.start_short_press_pending = 1UL;
+    }
+    else
+    {
+      g_ps_input_buttons_probe.start_pending_drop_count++;
+    }
+  }
 
   ps_input_start_active = 0UL;
   ps_input_start_press_pending = 0UL;
@@ -473,6 +493,10 @@ void PS_InputButtons_Init(void)
   g_ps_input_buttons_probe.start_press_tick = 0UL;
   g_ps_input_buttons_probe.start_release_tick = 0UL;
   g_ps_input_buttons_probe.start_hold_ticks = 0UL;
+  g_ps_input_buttons_probe.start_short_press_count = 0UL;
+  g_ps_input_buttons_probe.start_long_press_count = 0UL;
+  g_ps_input_buttons_probe.start_short_press_pending = 0UL;
+  g_ps_input_buttons_probe.start_long_press_pending = 0UL;
   g_ps_input_buttons_probe.start_ship_prep_count = 0UL;
   g_ps_input_buttons_probe.start_ship_warning_count = 0UL;
   g_ps_input_buttons_probe.start_ship_imminent_count = 0UL;
@@ -516,6 +540,10 @@ void PS_InputButtons_Init(void)
   ps_input_start_pending_hold_ticks = 0UL;
   ps_input_start_press_event_pending = 0UL;
   ps_input_start_press_event_timestamp = 0UL;
+  ps_input_start_press_event_hold_ticks = 0UL;
+  ps_input_start_long_event_pending = 0UL;
+  ps_input_start_long_event_timestamp = 0UL;
+  ps_input_start_long_event_hold_ticks = 0UL;
   ps_input_start_long_ticks =
     PS_InputButtons_MsToTicks(KNOB_INPUT_START_LONG_PRESS_MS);
   ps_input_start_ship_prep_ticks =
@@ -740,6 +768,18 @@ void PS_InputButtons_PollStart(uint32_t now_tick)
   if (state == (uint32_t)PS_INPUT_START_STATE_NORMAL_PRESS)
   {
     g_ps_input_buttons_probe.start_state = PS_INPUT_START_STATE_LONG_PRESS;
+    if (ps_input_start_long_event_pending == 0UL)
+    {
+      ps_input_start_long_event_pending = 1UL;
+      ps_input_start_long_event_timestamp = now_tick;
+      ps_input_start_long_event_hold_ticks = hold_ticks;
+      g_ps_input_buttons_probe.start_long_press_count++;
+      g_ps_input_buttons_probe.start_long_press_pending = 1UL;
+    }
+    else
+    {
+      g_ps_input_buttons_probe.start_pending_drop_count++;
+    }
     PS_InputButtons_ArmStartCheck(
       ps_input_start_press_tick + ps_input_start_ship_prep_ticks);
   }
@@ -1220,6 +1260,7 @@ uint32_t PS_InputButtons_Stop2Ready(void)
       (ps_input_start_press_pending != 0UL) ||
       (ps_input_start_release_pending != 0UL) ||
       (ps_input_start_press_event_pending != 0UL) ||
+      (ps_input_start_long_event_pending != 0UL) ||
       (ps_input_start_pending_event !=
        (uint32_t)PS_INPUT_START_POWER_EVENT_NONE))
   {
@@ -1392,11 +1433,12 @@ uint32_t PS_InputButtons_TakeStartPowerEvent(
   return 1UL;
 }
 
-uint32_t PS_InputButtons_TakeStartPress(uint32_t *timestamp)
+uint32_t PS_InputButtons_TakeStartPress(uint32_t *timestamp,
+                                        uint32_t *hold_ticks)
 {
   uint32_t primask;
 
-  if (timestamp == NULL)
+  if ((timestamp == NULL) || (hold_ticks == NULL))
   {
     return 0UL;
   }
@@ -1411,8 +1453,43 @@ uint32_t PS_InputButtons_TakeStartPress(uint32_t *timestamp)
     return 0UL;
   }
   *timestamp = ps_input_start_press_event_timestamp;
+  *hold_ticks = ps_input_start_press_event_hold_ticks;
   ps_input_start_press_event_pending = 0UL;
   ps_input_start_press_event_timestamp = 0UL;
+  ps_input_start_press_event_hold_ticks = 0UL;
+  g_ps_input_buttons_probe.start_short_press_pending = 0UL;
+  if (primask == 0UL)
+  {
+    __enable_irq();
+  }
+  return 1UL;
+}
+
+uint32_t PS_InputButtons_TakeStartLongPress(uint32_t *timestamp,
+                                            uint32_t *hold_ticks)
+{
+  uint32_t primask;
+
+  if ((timestamp == NULL) || (hold_ticks == NULL))
+  {
+    return 0UL;
+  }
+  primask = __get_PRIMASK();
+  __disable_irq();
+  if (ps_input_start_long_event_pending == 0UL)
+  {
+    if (primask == 0UL)
+    {
+      __enable_irq();
+    }
+    return 0UL;
+  }
+  *timestamp = ps_input_start_long_event_timestamp;
+  *hold_ticks = ps_input_start_long_event_hold_ticks;
+  ps_input_start_long_event_pending = 0UL;
+  ps_input_start_long_event_timestamp = 0UL;
+  ps_input_start_long_event_hold_ticks = 0UL;
+  g_ps_input_buttons_probe.start_long_press_pending = 0UL;
   if (primask == 0UL)
   {
     __enable_irq();

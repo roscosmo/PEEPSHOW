@@ -1515,7 +1515,7 @@ static uint32_t PS_EggDecodeScene(
     uint16_t source = PS_EggU16(&record[2]);
     if ((PS_EggU16(record) >= strings->count) ||
         (!(((source >= (uint16_t)PS_INPUT_LOGICAL_SOURCE_BUTTON_A) &&
-            (source <= (uint16_t)PS_INPUT_LOGICAL_SOURCE_BUTTON_R)) ||
+            (source <= (uint16_t)PS_INPUT_LOGICAL_SOURCE_START)) ||
            ((source >= (uint16_t)PS_INPUT_LOGICAL_SOURCE_JOY_LEFT) &&
             (source <= (uint16_t)PS_INPUT_LOGICAL_SOURCE_JOY_DOWN)))))
     {

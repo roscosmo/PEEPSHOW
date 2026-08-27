@@ -183,13 +183,13 @@
       "type": "integer",
       "minimum": 1,
       "maximum": 30000,
-      "default": 1000,
+      "default": 2000,
       "unit": "ms",
       "timebase_domain": "threadx",
       "owner": "thInput",
       "class": "protected_policy",
       "path": "platform.knobs.input.start_long_press_ms",
-      "description": "START hold duration where firmware leaves the normal-press window."
+      "description": "START hold duration where PeepOS consumes the gesture and enters manual INACTIVE instead of delivering a package START press."
     },
     "input_start_ship_prep_ms": {
       "type": "integer",

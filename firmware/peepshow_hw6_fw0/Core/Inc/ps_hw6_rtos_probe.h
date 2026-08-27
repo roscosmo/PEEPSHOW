@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (68UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (69UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -543,6 +543,12 @@ typedef struct
   uint32_t runtime_interaction_suppressed_input_count;
   uint32_t runtime_interaction_start_count;
   uint32_t runtime_interaction_start_status;
+  uint32_t runtime_interaction_manual_request_count;
+  uint32_t runtime_interaction_manual_request_status;
+  uint32_t runtime_interaction_manual_request_tick;
+  uint32_t runtime_interaction_manual_inactive_count;
+  uint32_t runtime_interaction_package_start_count;
+  uint32_t runtime_interaction_package_start_status;
   uint32_t runtime_interaction_joystick_wake_allowed;
   uint32_t runtime_interaction_epoch;
   uint32_t runtime_interaction_rtc_arm_count;

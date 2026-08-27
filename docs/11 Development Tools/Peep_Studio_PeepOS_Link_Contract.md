@@ -99,7 +99,7 @@ all implement the same semantics.
 
 Peep Studio must expose one package-level interaction mode:
 
-- `CONTINUOUS` keeps package input active indefinitely;
+- `CONTINUOUS` disables automatic inactivity timeout while retaining the system-owned manual-INACTIVE gesture;
 - `TIMEOUT` uses the PeepOS-owned inactivity interval and requires each current
   STATE scene to declare `preserve` or `exit_shell` as its inactive route.
 
@@ -115,6 +115,14 @@ whether or not the `PRESS START` cue is visible, then HW6 shows one bounded
 system-owned eye-opening animation before revealing the active package
 presentation. A/B/L/R remain consumed while inactive and request one bounded
 system `PRESS START` cue before the prior waiting presentation and STOP2 resume.
+
+While `ACTIVE`, Peep Studio may bind a short `START` press like any other
+declared package input. Firmware emits that action only when START is released
+before the target-owned 2-second manual-INACTIVE threshold. Reaching the
+threshold consumes the gesture for PeepOS, enters `INACTIVE` in either package
+mode, and does not emit the package action. Continued hold remains the
+system-owned shipping gesture. `CONTINUOUS` manual inactivity always preserves
+the current scene, so it does not require an authored inactive route.
 
 The compiler emits this policy in PKG1 `STG1` format version 3. Peep Studio may
 edit the normalized source fields now; it must not invent desktop-only timeout

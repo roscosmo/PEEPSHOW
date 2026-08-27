@@ -114,7 +114,7 @@ Timing details:
 | `KNOB_INPUT_BTN_REPEAT_PERIOD_MS` | repeat event cadence |
 | `KNOB_INPUT_BTN_STUCK_MS` | stuck-button fault threshold |
 | `KNOB_INPUT_CHORD_WINDOW_MS` | window for combining button presses into a chord |
-| `KNOB_INPUT_START_LONG_PRESS_MS` | Start-hold duration where firmware leaves the normal-press window |
+| `KNOB_INPUT_START_LONG_PRESS_MS` | Start-hold duration where PeepOS consumes the gesture and enters manual `INACTIVE` instead of delivering package `START` |
 | `KNOB_INPUT_START_STABLE_SAMPLES` | consecutive PA4 live-level samples required before START level is treated as stable |
 | `KNOB_INPUT_START_SHIP_PREP_MS` | Start-hold duration where save/quiesce preparation begins |
 | `KNOB_INPUT_START_SHIP_WARN_MS` | Start-hold duration where visible warning/countdown begins |
@@ -201,6 +201,15 @@ Classifier rules:
 
 `BTN_START` has an additional policy overlay because it shares intent with ADP5360 `MR` behavior.
 
+While package interaction is `ACTIVE`, START is duration-arbitrated by `thInput`:
+
+- release before `KNOB_INPUT_START_LONG_PRESS_MS` publishes exactly one package-visible `START` press on release
+- reaching `KNOB_INPUT_START_LONG_PRESS_MS` publishes no package press and requests system-owned manual `INACTIVE` for either `CONTINUOUS` or `TIMEOUT` packages
+- continued hold advances through the existing shipping-prep, warning, imminent, and hardware-shipping thresholds
+- START never generates repeat events
+
+While interaction is `INACTIVE`, a short START release remains the consumed system activation gesture and runs the target activation presentation before package focus is restored.
+
 | Overlay State | Meaning |
 |---|---|
 | `START_IDLE` | Start not pressed |
@@ -239,7 +248,7 @@ Validated HW6 unit 001 FW0 evidence: a 5 s hold reached `START_SHIP_PREP` with c
 
 The required knob names above are authoritative. HW6 FW0 sources knob values from `firmware/peepshow_hw6_fw0/config/knobs.json`, validates them with `config/knobs.schema.json`, and generates `Core/Inc/knobs_autogen.h` through `tools/gen_knobs.py`. The START overlay scaffold consumes generated START macros. The A/B/L/R physical button FSM consumes the generic debounce, long-press, repeat, stuck, and chord-window knobs. API version 10 includes the logical press record, delivery-policy probe, ordered raw-edge transport, and STOP2-admission visibility; RTOS probe version 21 adds focus routing between `thUI` and `thRuntime`, but long/repeat/stuck/chord publication remains scaffolded until the classifier emits those logical event types and the focus policy consumes them.
 
-Current generated defaults preserve the validated START scaffold shape while allowing timing adjustment: generic press/release debounce `20/20 ms`, generic long press `1000 ms`, generic repeat start/period `500/150 ms`, generic stuck threshold `30000 ms`, chord window `80 ms`, START long press `1000 ms`, ship-prep `5000 ms`, warning `9000 ms`, imminent `11000 ms`, START stable-level acceptance `2` samples, and software shipment request enable `false`.
+Current generated defaults preserve the validated START scaffold shape while allowing timing adjustment: generic press/release debounce `20/20 ms`, generic long press `1000 ms`, generic repeat start/period `500/150 ms`, generic stuck threshold `30000 ms`, chord window `80 ms`, START manual-INACTIVE hold `2000 ms`, ship-prep `5000 ms`, warning `9000 ms`, imminent `11000 ms`, START stable-level acceptance `2` samples, and software shipment request enable `false`.
 
 ## Logical Event Model
 
@@ -298,7 +307,7 @@ The package chooses a declared inactive route and may style the inactive present
 | Context | Button Policy |
 |---|---|
 | `SHELL` | normal Start/A/B/L/R input; maintenance handling for application-visible `BTN_BOOT` |
-| `STATE_SCENE` | declared focus/wake set is admitted while `ACTIVE`; bounded input work settles and yields again |
+| `STATE_SCENE` | declared focus/wake set, including release-qualified short `START`, is admitted while `ACTIVE`; bounded input work settles and yields again |
 | `SEQUENCE_SCENE` | focus-controlled button set; declared repeats/chords are allowed only when they fit the realtime timeline budget |
 | `PROGRAM_SCENE` | focus-controlled button set; declared repeats/chords are allowed only when they fit the realtime frame budget |
 | `INSTALLER` | local navigation subset only; Start power intent remains active |

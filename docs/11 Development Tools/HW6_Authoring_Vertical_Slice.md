@@ -213,7 +213,7 @@ The return is not complete until the ambient presentation and wait backend are s
 
 ### System Interaction State
 
-This proof package chooses `TIMEOUT` interaction mode and `preserve_scene` as its inactive route. A separate `CONTINUOUS` validation case proves that normal joystick wake and package input remain available indefinitely without entering `INACTIVE`.
+This proof package chooses `TIMEOUT` interaction mode and `preserve_scene` as its inactive route. A separate `CONTINUOUS` validation case proves there is no automatic timeout while the system-owned manual-INACTIVE START hold remains available.
 
 For this slice:
 
@@ -227,10 +227,11 @@ For this slice:
 - activation shows one bounded PeepOS-owned eye-opening animation before the
   restored active package presentation is revealed.
 - the physical Start press is not also delivered to package logic.
+- while active, a short Start release may be bound as normal package input; holding Start to the target-owned manual-INACTIVE threshold consumes it instead, and continued hold remains the shipping gesture.
 - the package observes symbolic `DEVICE_INACTIVE` and `DEVICE_ACTIVE` lifecycle events.
 - activation returns to the preserved state scene and establishes its next wait contract.
 
-This is one package-policy choice for the proof. The generic authoring contract also allows `CONTINUOUS`, which never enters the inactive lifecycle, and allows another admitted inactive route for `TIMEOUT`. Packages cannot author the numeric timeout, cue policy, or physical activation gesture.
+This is one package-policy choice for the proof. The generic authoring contract also allows `CONTINUOUS`, which has no automatic timeout but may enter system-owned manual inactivity with preserve-scene behavior, and allows another admitted inactive route for `TIMEOUT`. Packages cannot author the numeric timeout, hold threshold, cue policy, or physical activation gesture.
 
 ---
 

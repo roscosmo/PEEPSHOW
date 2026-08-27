@@ -284,7 +284,7 @@ A waiting visual may continue changing while the CPU sleeps. That visual motion 
 
 PeepOS provides an optional `ACTIVE`/`INACTIVE` interaction state that protects a keychain device from unintended interaction. It is independent of CPU awake/sleep state. Each package selects one system interaction mode:
 
-- `CONTINUOUS`: package interaction remains `ACTIVE`; normal admitted wake sources and package input remain available while the package is mounted.
+- `CONTINUOUS`: PeepOS does not apply an automatic inactivity timeout; normal admitted wake sources and package input remain available until the user invokes the system-owned manual-INACTIVE gesture.
 - `TIMEOUT`: PeepOS moves the package from `ACTIVE` to `INACTIVE` after the target-owned inactivity interval.
 
 A `TIMEOUT` package declares:
@@ -298,11 +298,15 @@ Rules:
 
 - the package selects `CONTINUOUS` or `TIMEOUT`; it does not author a numeric inactivity timeout
 - the active target/system policy owns the timeout value and its enforcement for `TIMEOUT`
-- a `CONTINUOUS` package does not enter `INACTIVE`, does not emit interaction-state lifecycle events, and does not require an inactive route
+- every package mode admits the target-owned manual-INACTIVE gesture; on HW6, holding `START` for the Platform threshold enters `INACTIVE`
+- `CONTINUOUS` disables only automatic timeout; manual inactivity preserves the current package scene and still emits interaction-state lifecycle events
+- a `CONTINUOUS` package does not require an authored inactive route or inactivity deferral because its manual-INACTIVE behavior is system-defined preserve-scene
 - while `INACTIVE`, only target/system-admitted activation gestures restore normal package interaction
 - HW6 initially admits `START`; future measured policy may admit another button or a classified chord such as `L+R`
 - other package input and sensor actions are suppressed while `INACTIVE` unless a system-owned safety policy explicitly requires otherwise
 - the physical activation gesture is consumed by PeepOS and is not delivered as a package action
+- while `ACTIVE`, a `START` release before the manual-INACTIVE threshold is a normal package short-press input; reaching the threshold consumes the gesture, emits no package `START`, and enters manual `INACTIVE`
+- continued `START` hold after manual inactivity remains owned by the existing shipping-prep, warning, imminent, and hardware-shipping progression
 - on HW6, an A/B/L/R button press while `INACTIVE` may wake only long enough to show a bounded system-owned `PRESS START` cue; that button is consumed, does not emit `DEVICE_ACTIVE`, and does not reach package logic
 - after the cue expires, PeepOS restores the inactive waiting presentation and returns to the deepest admitted sleep state; `START` activates from `INACTIVE` whether or not the cue is visible
 - HW6 shows one bounded PeepOS-owned closed/half-open/open eye animation after `START` activation, consumes input while that system overlay is visible, then reveals the restored active presentation

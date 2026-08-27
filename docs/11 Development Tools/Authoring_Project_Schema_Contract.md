@@ -403,7 +403,7 @@ Rules:
 - every `PROGRAM_SCENE` must declare instruction/memory/frame budgets, suspend/resume behavior, and failure routes; a `TIMEOUT` package also requires an inactive route.
 - world-enabled `STATE_SCENE` records must satisfy [[State_Scene_World_Entity_and_Turn_Contract]].
 - `REALTIME_SCENE` is obsolete terminology and is rejected as an unknown scene type.
-- every package selects `CONTINUOUS` or `TIMEOUT`; only `TIMEOUT` requires an admitted inactive route and bounded deferrals.
+- every package selects `CONTINUOUS` or `TIMEOUT`; only `TIMEOUT` requires an admitted automatic-timeout route and bounded deferrals, while both modes admit system-owned manual inactivity.
 - capability declarations shown by tools are compiler-derived from scene content, service use, and fallback structure.
 
 ### World And Entity Authoring Records
@@ -504,11 +504,12 @@ interaction_policy:
 Rules:
 
 - every package declares exactly one interaction mode: `continuous` or `timeout`.
-- `continuous` keeps normal admitted package interaction active and must not declare inactive-route or inactivity-deferral fields.
+- `continuous` disables automatic inactivity timeout and must not declare inactive-route or inactivity-deferral fields; system-owned manual inactivity preserves the current scene.
 - `timeout` enables the system `ACTIVE`/`INACTIVE` lifecycle and must declare exactly one admitted inactive route.
 - the authoring schema does not expose a numeric inactivity-timeout field because the active target/system policy owns that timeout.
 - the system activation gesture is target-owned; HW6 initially uses Start, while future target profiles may admit another button or a chord such as `L+R`.
 - the authoring tool must not route the physical activation gesture to a package action for the same event.
+- while active, the authoring tool may bind short `START`; firmware publishes it only on release before the target-owned manual-INACTIVE threshold, while a hold reaching that threshold is consumed and never reaches package logic.
 - the package receives `DEVICE_INACTIVE` and `DEVICE_ACTIVE` lifecycle events according to [[Runtime_Host_Contract]].
 - in the initial HW6 inactive policy, A/B/L/R are consumed by PeepOS to show a bounded `PRESS START` cue, while `START` activates and joystick movement wake is disarmed; packages cannot restyle or route those physical cue inputs.
 - an `interaction_context_ref` may select only entries declared by the referenced package policy; it cannot override timeout, route, or activation semantics.

@@ -6,7 +6,7 @@
   "input_btn_repeat_period_ms": 150,
   "input_btn_stuck_ms": 30000,
   "input_chord_window_ms": 80,
-  "input_start_long_press_ms": 1000,
+  "input_start_long_press_ms": 2000,
   "input_start_ship_prep_ms": 5000,
   "input_start_ship_warn_ms": 9000,
   "input_start_ship_imminent_ms": 11000,
