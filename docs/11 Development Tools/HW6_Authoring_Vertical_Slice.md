@@ -532,9 +532,13 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
 16. implement `SEQUENCE_SCENE`, then `PROGRAM_SCENE`, with realtime budgets,
     input routes, suspend/resume behavior, and required STATE/shell routes;
     extend the same editor architecture for each type
-17. measure representative reactive and realtime workloads, admit intermediate
-    PLL/clock operating points one at a time behind Platform capability
-    resolution, then capture and review the complete power evidence matrix;
-    packages continue to request semantics and deadlines, never MHz
+17. after the STATE SFX path exists, measure representative STATE/reactive
+    workloads including logic-only changes, retained rendering, text and map
+    composition, waiting-program preparation, installed asset reads, bounded
+    SFX, and combined transactions; admit reactive PLL/clock operating points
+    one at a time behind Platform capability resolution, then characterize
+    realtime operating points only after SEQUENCE and PROGRAM provide
+    representative sustained workloads; packages continue to request semantics
+    and deadlines, never MHz
 
 The slice is not complete merely because the game appears on the display. Completion requires the full author-to-package-to-device path and the associated HW6 evidence.

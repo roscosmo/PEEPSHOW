@@ -37,7 +37,7 @@ code and HW6 LPBAM evidence.
 | Family | Optimization Objective | Status |
 |---|---|---|
 | Boot / recovery | deterministic startup and debugger recovery | pending HW6 validation |
-| Reactive active burst | minimize complete event-to-yield energy subject to response limits | pending HW6 sweep |
+| STATE / reactive active burst | minimize complete event-to-yield energy subject to response limits across light logic, rendering, map composition, storage-backed work, and bounded SFX | pending HW6 sweep |
 | Realtime sustained | lowest sustained power satisfying worst-case frame/audio/sensor/display deadlines | pending HW6 sweep |
 | USB installer | satisfy USB timing with valid 48 MHz kernel | FW0 export/reclaim path validated; current/soak still pending |
 
@@ -53,8 +53,8 @@ The names below are internal policy labels. Any frequency shown is a candidate o
 | Internal profile | Intended use | SYSCLK / HCLK class | Required kernel clocks | Status |
 |---|---|---|---|---|
 | `CLK_BOOT_RECOVERY` | boot, fault handling, debugger-safe recovery | current generated MSI/MSIS baseline: IOC records `24 MHz`; any `25 MHz` MSIS retune must be generated and measured before promotion | I2C3/MSIK for PMIC/input bring-up; LPUART/HSI only if communication owner is admitted | documented policy placeholder |
-| `CLK_REACTIVE_BASE` | menus, input, PMIC monitor, static display hold, non-USB idle-active work | low MSI/MSIS class; FW0 boot/runtime base currently reads `24 MHz` | display/I2C kernels only while their owners are active | boot/HOME baseline observed; response/current characterization still pending |
-| `CLK_REACTIVE_BURST` | bounded UI or shell transaction where racing back to STOP may save energy | mid PLL SYSCLK class, expected `40/48 MHz` candidate range | no extra kernel clocks unless an owner requests them | unmeasured candidate |
+| `CLK_REACTIVE_BASE` | short shell or STATE logic transactions, input handling, PMIC monitor, and light retained-render updates | low MSI/MSIS class; FW0 boot/runtime base currently reads `24 MHz` | display/I2C kernels only while their owners are active | boot/HOME baseline observed; response/current characterization still pending |
+| `CLK_REACTIVE_BURST` | bounded shell or STATE transaction where map composition, multi-element rendering, text, waiting-program preparation, or SFX decode/refill makes racing back to STOP more efficient | mid PLL SYSCLK class, expected `40/48 MHz` candidate range | no extra kernel clocks unless an owner independently requests them | unmeasured candidate |
 | `CLK_REALTIME_BALANCED` | runtime/gameplay with frame, input, sensor, display, and optional audio deadlines | measured realtime PLL class, expected `80 MHz` candidate before any higher point is granted | SAI/OCTOSPI only when their owning threads request those peripherals | unmeasured candidate |
 | `CLK_IO_HIGH` | USB MSC/export, installer windows, and high-throughput storage windows | high PLL SYSCLK class; FW0 currently uses `160 MHz` for active MSC export | USB `48 MHz`; OCTOSPI kernel only if storage is active | target-validated for manual MSC export/reclaim; current and long-soak evidence still pending |
 | `CLK_STOP_PREP` | transition toward STOP2 or software shipment | no active high-speed requirement after owner quiesce | USB clock off, PLL2 off unless a validated autonomous scenario still owns it | STOP2 scaffold exists; USB-off paths validated, PLL2-off/autogate still pending |
@@ -68,7 +68,23 @@ Capability requests are also internal. They describe what must be true, not how 
 | `SAI_AUDIO_ACTIVE` | `thAudio` playback/mixer/DMA state | keep PLL2P/SAI valid; do not vary the audio sample/kernel clock because CPU policy changed |
 | `DISPLAY_TRANSFER_ACTIVE` | `thDisplay` SPI/LPDMA transfer | keep display kernel stable until transfer completion; future LPBAM display ownership must be explicitly validated |
 | `REALTIME_DEADLINE_ACTIVE` | runtime/gameplay admitted by Platform | choose the lowest measured realtime point with deadline margin |
-| `REACTIVE_TRANSACTION_ACTIVE` | shell/menu/input transaction admitted by Platform | choose the lowest measured reactive point that completes the transaction and returns to the selected wait backend efficiently |
+| `REACTIVE_TRANSACTION_ACTIVE` | shell or STATE event transaction admitted by Platform | choose the lowest measured reactive point for the declared bounded work class that completes the transaction and returns to the selected wait backend efficiently |
+
+`STATE_SCENE` does not imply a fixed `24 MHz` CPU clock. A settled STATE runs no
+package logic and should reside in the deepest compatible waiting backend. When
+an event arrives, its bounded transaction may remain at `CLK_REACTIVE_BASE` or
+temporarily use a measured `CLK_REACTIVE_BURST` point. Representative burst
+work includes Tiled-map region composition, multi-element redraw, text
+rasterization results, waiting-program preparation, and bounded ADPCM
+decode/refill. Continuous camera movement or other frame-paced rendering does
+not settle and belongs to `SEQUENCE_SCENE` or `PROGRAM_SCENE`, not to a
+free-running STATE transaction.
+
+Peripheral kernels remain independent of the CPU operating point. A STATE SFX
+holds `SAI_AUDIO_ACTIVE` so PLL2P and the SAI sample clock remain stable while
+CPU decode/refill work may use a measured reactive point. Storage-backed work
+similarly holds `OCTOSPI_ACTIVE`; neither request allows the package to select a
+clock frequency.
 
 PLL2 is not a global always-on clock. PLL2P is justified by active SAI audio, and PLL2Q is justified by active OCTOSPI/storage work. If neither capability is active, the production policy should be able to turn PLL2 off after owner quiesce and clock readback validation.
 
@@ -99,4 +115,3 @@ Related:
 - [[Power_Validation]]
 - [[Power_Measurement_and_Trace_Correlation_Runbook]]
 - [[Pending_Measured_Constants_Register]]
-
