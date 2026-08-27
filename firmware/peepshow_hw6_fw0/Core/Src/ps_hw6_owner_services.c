@@ -984,6 +984,12 @@ static void PS_HW6_DisplayOwner_PublishStateWaitingVisual(
   const ps_scene_waiting_visual_t *visual;
   uint32_t bounds_ready;
 
+  if ((page == (uint32_t)PS_UI_ROUTER_PAGE_INTERACTION_CUE) ||
+      (page == (uint32_t)PS_UI_ROUTER_PAGE_INTERACTION_ACTIVATION))
+  {
+    DisplayRenderer_ClearSceneWaitingVisual();
+    return;
+  }
   if ((page == (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF) &&
       (PS_SceneRuntime_StateSceneActive() != 0UL))
   {
@@ -1688,7 +1694,8 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   g_ps_hw6_owner_probe.display_rtc_cr = hrtc.Instance->CR;
   g_ps_hw6_owner_probe.display_spi_state_before = HAL_SPI_GetState(&hspi3);
 
-  if ((page == (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF) &&
+  if (((page == (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF) ||
+       (page == (uint32_t)PS_UI_ROUTER_PAGE_INTERACTION_CUE)) &&
       (PS_SceneRuntime_StateSceneActive() != 0UL))
   {
     scene_model = PS_SceneRuntime_ResolveStateSceneRenderModel();

@@ -399,11 +399,11 @@ Rules:
 - transitions between scenes must be declared and bounded.
 - scene push/pop behavior must fit the selected target profile limits.
 - every `STATE_SCENE` state/block that can settle must resolve a reactive wait contract.
-- every `SEQUENCE_SCENE` must declare bounded tracks, target FPS, scene-end route, suspend/resume behavior, and an inactive route to a `STATE_SCENE` or shell.
-- every `PROGRAM_SCENE` must declare instruction/memory/frame budgets, suspend/resume behavior, and inactive/failure routes.
+- every `SEQUENCE_SCENE` must declare bounded tracks, target FPS, scene-end route, and suspend/resume behavior; a `TIMEOUT` package also requires an inactive route to a `STATE_SCENE` or shell.
+- every `PROGRAM_SCENE` must declare instruction/memory/frame budgets, suspend/resume behavior, and failure routes; a `TIMEOUT` package also requires an inactive route.
 - world-enabled `STATE_SCENE` records must satisfy [[State_Scene_World_Entity_and_Turn_Contract]].
 - `REALTIME_SCENE` is obsolete terminology and is rejected as an unknown scene type.
-- PeepOS inactivity handling cannot be disabled; interaction policies require an admitted inactive route and bounded deferrals.
+- every package selects `CONTINUOUS` or `TIMEOUT`; only `TIMEOUT` requires an admitted automatic-timeout route and bounded deferrals, while both modes admit system-owned manual inactivity.
 - capability declarations shown by tools are compiler-derived from scene content, service use, and fallback structure.
 
 ### World And Entity Authoring Records
@@ -493,6 +493,7 @@ waiting_visual_element:
 
 interaction_policy:
   policy_id
+  mode                       # continuous, timeout
   meaningful_activity_sources[]
   inactive_route             # preserve_scene, transition_to_scene, exit_to_shell
   inactive_target_scene      # only for transition_to_scene
@@ -502,12 +503,15 @@ interaction_policy:
 
 Rules:
 
-- system inactivity handling is always present and has no package-authored `enabled` field.
-- the authoring schema does not expose an inactivity-timeout field because the active target/system policy owns that timeout.
-- every policy must declare exactly one admitted inactive route.
+- every package declares exactly one interaction mode: `continuous` or `timeout`.
+- `continuous` disables automatic inactivity timeout and must not declare inactive-route or inactivity-deferral fields; system-owned manual inactivity preserves the current scene.
+- `timeout` enables the system `ACTIVE`/`INACTIVE` lifecycle and must declare exactly one admitted inactive route.
+- the authoring schema does not expose a numeric inactivity-timeout field because the active target/system policy owns that timeout.
 - the system activation gesture is target-owned; HW6 initially uses Start, while future target profiles may admit another button or a chord such as `L+R`.
 - the authoring tool must not route the physical activation gesture to a package action for the same event.
+- while active, the authoring tool may bind short `START`; firmware publishes it only on release before the target-owned manual-INACTIVE threshold, while a hold reaching that threshold is consumed and never reaches package logic.
 - the package receives `DEVICE_INACTIVE` and `DEVICE_ACTIVE` lifecycle events according to [[Runtime_Host_Contract]].
+- in the initial HW6 inactive policy, A/B/L/R are consumed by PeepOS to show a bounded `PRESS START` cue, while `START` activates and joystick movement wake is disarmed; packages cannot restyle or route those physical cue inputs.
 - an `interaction_context_ref` may select only entries declared by the referenced package policy; it cannot override timeout, route, or activation semantics.
 - every deferral must have a statically provable completion bound or timeout; unbounded deferral is a validation error.
 - gameplay inactivity transitions remain ordinary schedules and do not mutate the system interaction-state timer.
@@ -661,6 +665,60 @@ Rules:
 - shipping output must not depend on editor source files.
 - asset compile settings must be deterministic and versioned.
 
+### Retained STATE Presentation Boundary
+
+Authoring elements are retained package records, not calls into the firmware
+renderer. Peep Studio edits records through the Python service; the compiler
+resolves source assets and geometry; host preview and firmware consume the same
+compiled meaning.
+
+The initial package-authorable layers are `BACKGROUND`, `SCENE`, and `UI`.
+`OVERLAY` is system-owned and must be rejected as a package element layer.
+
+Conceptual retained element classes:
+
+```text
+state_render_element:
+  element_id
+  element_type              # sprite, line, outline_rect, filled_rect, circle, ellipse
+  layer                     # background, scene, ui
+  visible
+  order
+  bounds
+  asset_ref                 # sprite only
+  frame_ref                 # sprite only
+  animation_ref             # optional sprite animation
+  primitive_geometry        # primitive only; bounded integer coordinates
+  primitive_ink             # fixed black in the initial executable subset
+```
+
+Rules:
+
+- coordinates are panel-native integers; the initial subset rejects elements
+  outside the panel instead of relying on runtime clipping.
+- primitive rasterization is deterministic and identical in exact preview and
+  firmware.
+- package elements cannot reference framebuffer addresses, dirty rows, display
+  transfers, DMA, or target-specific driver functions.
+- initial authored text is rasterized by the compiler into masked 1bpp sprite
+  assets; it is not a runtime font or mutable-string facility.
+- STATE actions may later target stable element IDs for bounded `show`, `hide`,
+  `move`, `set_frame`, and `set_animation` operations.
+- `RND2` is the initial executable retained-presentation record. It carries
+  explicit package layer, visibility, z-order, bounds, and one of `sprite`,
+  `line`, `outline_rect`, `filled_rect`, `circle`, or `ellipse`.
+- `RND1` remains accepted by the package parser and HW6 loader for backward
+  compatibility; new builds emit `RND2`.
+- initial primitives use fixed black ink. White/clear ink is not exposed yet.
+- authored text remains unavailable until the compiler rasterizes it into a
+  masked 1bpp sprite asset; runtime font records are not part of this subset.
+
+The `RND2` checkpoint is hardware-validated. Schema validation, deterministic
+compilation, package parsing, exact host preview, HW6 loading, retained
+composition, scene replacement, and STOP2 presentation were proven together on
+2026-08-27. Static primitives remained composed while both package sprite
+animations continued in STOP2.
+
 ### Initial Masked-1bpp STATE Subset
 
 The first executable Peep Studio subset accepts PNG sources that compile to
@@ -703,6 +761,43 @@ Rules:
 - package output contains no PNG decoder dependency or source path.
 - pixel-model and compiler-profile fields remain versioned enums so later fixed
   tone/dither import profiles can be added without changing masked-1bpp meaning.
+
+### Initial Sampled STATE Audio Subset
+
+This subset is the next STATE authoring milestone and is not executable in the
+current HW6 package format yet.
+
+Conceptual source records:
+
+```text
+sampled_sfx_asset:
+  asset_id
+  source_path
+  source_format: wav
+  compiler_profile: hw6_mono_16k_ima_adpcm
+  priority
+  volume
+
+state_sfx_action:
+  operation: play_sfx
+  asset_ref
+  priority
+  volume
+```
+
+Rules:
+
+- source WAV files are editor/compiler inputs only.
+- compilation deterministically converts accepted input to mono 16 kHz 4-bit
+  IMA ADPCM with bounded decoded size and duration metadata.
+- STATE permits bounded SFX bursts only; music, loops without a proven bound,
+  and sustained-audio grants are not part of this subset.
+- the complete SFX payload is admitted and resident before playback; runtime
+  playback never reads FileX/FAT or host paths.
+- package logic requests a symbolic cue. `thAudio` alone owns decode, PCM
+  buffers, SAI, DMA, amplifier state, clock intent, and error recovery.
+- Peep Studio may audition the source or compiled result, but audition is not
+  HW6 timing, power, or electrical evidence.
 
 ---
 
@@ -984,15 +1079,16 @@ Python GUI frameworks should not be assumed as the primary editor direction.
 7. placeholder sprite validates in authoring preview where allowed and fails shipping export where disallowed.
 8. waiver for placeholder art appears in compatibility report.
 9. waiver for unbounded action loop is rejected.
-10. sequence or program scene without meaningful-activity rules and an inactive route fails validation.
+10. sequence or program scene in a `timeout` package without meaningful-activity rules and an inactive route fails validation.
 11. package requiring a capability still pending on HW6 fails shipping export.
 12. authoring preview mock sensor data does not count as hardware evidence.
 13. generated package build includes schema versions, tool versions, target profile, and compatibility report.
-14. package attempt to disable system inactivity handling fails validation.
-15. interaction policy without an admitted inactive route fails validation.
+14. package interaction mode other than `continuous` or `timeout` fails validation.
+15. `timeout` interaction policy without an admitted inactive route fails validation.
 16. unbounded inactivity deferral fails validation.
 17. the target-owned activation gesture is represented as a consumed system action plus symbolic lifecycle event, not a package action.
 18. package-authored system lock timeout fails validation.
+19. `continuous` interaction policy with inactive-route or inactivity-deferral fields fails validation.
 
 ---
 

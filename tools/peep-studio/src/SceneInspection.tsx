@@ -1235,11 +1235,10 @@ function RouteInspector({
 }) {
   const input = inputActions.find((item) => item.action_id === route.action_ref);
   const fromLabels = route.from_states.map((stateId) => displayStateName(states, stateId)).join(", ");
+  const exitsScene = route.target_scene !== undefined;
   const routeTarget = route.target_scene === undefined
     ? displayStateName(states, route.target_state ?? "")
     : scenes.find((scene) => scene.scene_id === route.target_scene)?.display_name ?? route.target_scene;
-  const sceneTargets = scenes.filter((candidate) => candidate.scene_type === "STATE_SCENE" && candidate.scene_id !== sceneId);
-  const canEditSceneTarget = canEdit && route.actions.length === 0 && sceneTargets.length > 0;
   const targetKind = route.target_scene === undefined ? "state" : "scene";
   return (
     <section className="inspector-section selected-record">
@@ -1258,7 +1257,9 @@ function RouteInspector({
           <strong>{routeTarget}</strong>
         </div>
       </div>
-      {route.target_scene === undefined ? (
+      {exitsScene ? (
+        <p className="plain-rule-note">This output leaves the current scene. Edit controls for scene exits belong in Scene flow.</p>
+      ) : (
         <label className="select-field" htmlFor={`route-target-${route.route_id}`}>
           Go to state
           <select
@@ -1276,31 +1277,6 @@ function RouteInspector({
             ))}
           </select>
         </label>
-      ) : (
-        <>
-          <label className="select-field" htmlFor={`route-scene-target-${route.route_id}`}>
-            Go to scene
-            <select
-              id={`route-scene-target-${route.route_id}`}
-              value={route.target_scene}
-              disabled={!canEditSceneTarget}
-              onChange={(event) => {
-                void onSetRouteSceneTarget(sceneId, route.route_id, event.target.value);
-              }}
-            >
-              {sceneTargets.map((targetScene) => (
-                <option key={targetScene.scene_id} value={targetScene.scene_id}>
-                  {targetScene.display_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p className="plain-rule-note">
-            {route.actions.length === 0
-              ? "Direct scene change: enters the target scene at its first screen."
-              : "Scene exits with effects are not editable yet."}
-          </p>
-        </>
       )}
       <h4>Only if</h4>
       <EditableGuardList

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (65UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (69UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -21,6 +21,9 @@ extern "C" {
 #define PS_HW6_RTOS_STORAGE_MSC_WRITE    (0x102UL)
 #define PS_HW6_RTOS_STORAGE_MSC_FLUSH    (0x103UL)
 #define PS_HW6_RTOS_STORAGE_MSC_STATUS   (0x104UL)
+#define PS_HW6_RUNTIME_INTERACTION_STATE_NONE     (0UL)
+#define PS_HW6_RUNTIME_INTERACTION_STATE_ACTIVE   (1UL)
+#define PS_HW6_RUNTIME_INTERACTION_STATE_INACTIVE (2UL)
 
 typedef enum
 {
@@ -519,6 +522,43 @@ typedef struct
   uint32_t runtime_input_last_mask;
   uint32_t runtime_input_last_status;
   uint32_t runtime_input_last_tick;
+  uint32_t runtime_interaction_mode;
+  uint32_t runtime_interaction_state;
+  uint32_t runtime_interaction_deadline_tick;
+  uint32_t runtime_interaction_activity_refresh_count;
+  uint32_t runtime_interaction_inactive_count;
+  uint32_t runtime_interaction_inactive_tick;
+  uint32_t runtime_interaction_active_count;
+  uint32_t runtime_interaction_active_tick;
+  uint32_t runtime_interaction_cue_active;
+  uint32_t runtime_interaction_cue_show_count;
+  uint32_t runtime_interaction_cue_clear_count;
+  uint32_t runtime_interaction_cue_deadline_tick;
+  uint32_t runtime_interaction_activation_active;
+  uint32_t runtime_interaction_activation_frame;
+  uint32_t runtime_interaction_activation_count;
+  uint32_t runtime_interaction_activation_complete_count;
+  uint32_t runtime_interaction_activation_deadline_tick;
+  uint32_t runtime_interaction_activation_render_status;
+  uint32_t runtime_interaction_suppressed_input_count;
+  uint32_t runtime_interaction_start_count;
+  uint32_t runtime_interaction_start_status;
+  uint32_t runtime_interaction_manual_request_count;
+  uint32_t runtime_interaction_manual_request_status;
+  uint32_t runtime_interaction_manual_request_tick;
+  uint32_t runtime_interaction_manual_inactive_count;
+  uint32_t runtime_interaction_package_start_count;
+  uint32_t runtime_interaction_package_start_status;
+  uint32_t runtime_interaction_joystick_wake_allowed;
+  uint32_t runtime_interaction_epoch;
+  uint32_t runtime_interaction_rtc_arm_count;
+  uint32_t runtime_interaction_rtc_arm_status;
+  uint32_t runtime_interaction_rtc_clock;
+  uint32_t runtime_interaction_rtc_counter;
+  uint32_t runtime_interaction_rtc_remaining_ticks;
+  uint32_t runtime_interaction_rtc_elapsed_ticks;
+  uint32_t runtime_interaction_rtc_expire_count;
+  uint32_t runtime_interaction_rtc_command_status;
   uint32_t admission_api_version;
   uint32_t admission_request_count;
   uint32_t admission_allow_count;
@@ -580,6 +620,8 @@ void PS_HW6_RTOS_RecordJoystickExti(uint16_t gpio_pin, uint32_t level);
 void PS_HW6_RTOS_Stop2WakeClassifyBegin(void);
 void PS_HW6_RTOS_Stop2WakeClassifyAfterWake(void);
 uint32_t PS_HW6_RTOS_Stop2FinalInputReady(void);
+uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void);
+void PS_HW6_RTOS_InteractionStop2TimeoutFinish(void);
 
 #ifdef __cplusplus
 }

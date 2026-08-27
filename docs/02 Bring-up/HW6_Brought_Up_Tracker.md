@@ -5,7 +5,7 @@ This is the active tracker for HW6 hardware and firmware bring-up.
 HW5 is retired. Its evidence is preserved in [[HW5_Brought_Up_Tracker]] and is
 not proof of HW6 behavior.
 
-## Metadata
+## Historical Metadata Snapshot
 
 - Status: fw0_normal_boot_power_display_ui_input_passed; normal boot now initializes owner topology, clears the display into static hold, enables ADP5360 `EN_MR_SD` via `thPower`, takes the PMIC snapshot, then allows UI HOME; A/B/L/R contextual shell navigation is confirmed; START shipping-prep/warning/imminent input-to-power path is target-validated, its FW0 thresholds are now knob-backed, PMIC hardware shipment entry is confirmed, the shutdown UI/release-cancel/default-off software shipment gate scaffold and real owner-ACK quiesce barrier are target-validated, and the guarded ADP5360 `0x36` software shipment primitive is target-validated by explicit manual request; critical-battery policy has been corrected to controlled software shipment with hardware BAT_UV / ISOFET as fallback; the FW0 battery state-machine scaffold and knob set are implemented; target probes validated monitor cadence, the raw-zero VBAT guard, the FW4-derived fuel-gauge active/refresh sequence, runtime warning, runtime critical ship-prep, default-off shipment skip, runtime recovery back to normal, no-VBUS boot/restart blocking below restart-allow, VBUS-present boot charge recovery below restart-allow, and UI/display recovery after VBAT rises above restart-allow; automatic START, critical-battery, and boot-low-battery software shipment gates remain open; charger/VBUS FW0 scaffold now validates ADP5360/PA9 VBUS agreement, conservative boot-applied charger profile readback `0x81/0x82/0x29/0xAC/0x80`, `0x0A=0x80` thermistor bias/readback for the board `100 kOhm` NTC, room-temperature THR OK, and active fast-charge state reporting; PMIC_INT edge routing is event-validated with MCU `PB15` pull-up, early EXTI guard, ADP5360 interrupt enable/read/flag-clear ownership, and `thPower` interrupt snapshot handling; charge current, termination, JEITA substitution, and long-run thermal behavior remain open; normal boot now parks CubeMX-generated USB PCD/clock/VDDUSB/HSI48 through a storage-owned boot-park command without entering MSC or long storage/flash bring-up; USBX MSC host export/reclaim now passes through the power-owned clock-policy path after TraceX CubeMX regeneration; Trace Async/SWO and runtime TraceX static-buffer enable and PeepShow app-marker insertion are target-validated; `thRuntime` reactive package-stub admission, realtime package-stub admission, runtime suspend/resume/return, reactive clock-intent request/release, and `thPower` STOP2 eligibility dry-run blocker reporting, default-off controlled STOP2 entry, controlled START wake classification with debug-low-power off, display-owned LPBAM readiness separation for automatic STOP2, the owner-routed LPBAM prepare handshake with display returning unavailable, and the LPBAM late-blocker abort safety path are target-validated; `thUI` reactive clock-intent request/release plus `thDisplay` display-transfer request/release through `thPower` are target-validated with requester-specific clock ACKs; `thAudio` no-sound SAI clock requester scaffold target-validates request/release through `thPower`, showing `SAI_AUDIO_ACTIVE` holds PLL2 SAI while active, blocks STOP2, then clears requester caps and STOP2 blockers after release; joystick raw/live diagnostics, bounded REST/SWEEP raw XYZ CSV capture, and Z-high range override/restore diagnostics are target-validated; Z remains pinned and guided calibration remains open; formal Phase 0 intake, fault policy, production STOP2 current, reactive/realtime clock-profile evidence, active sensing, current evidence, repeated sleep/wake cycles, and production contracts remain open; HW6 STOP2 memory policy now keeps all SRAM banks powered/retained by default, with SRAM4 special only as the display-DMA/LPBAM arena
 - Last updated: `2026-08-14`
@@ -25,7 +25,36 @@ not proof of HW6 behavior.
 - Full-intent IOC SHA-256: `40801363273BB8ABD0072EFC5FFFF55E6878625B687033E03A6A5259E3DF179A`
 - Maintainer: `pending_record`
 
-## Phase Status
+## Current Capability Reconciliation
+
+Last reconciled: `2026-08-27`
+
+This section supersedes stale capability wording in the historical metadata
+sentence and phase snapshot below. It records target-observed behavior from the
+current HW6 FW0 bring-up sequence. It does not promote a shipping target-profile
+grant until the corresponding evidence artifacts and measured constants have
+completed normal review.
+
+| Area | Current HW6 status | Still open |
+|---|---|---|
+| STOP2 and display | automatic STOP2, ordered button wake, retained held-frame display, renderer-owned LPBAM waiting visuals, mixed 2/3-phase six-step timelines, deterministic three-state resource fallback, phase-preserving wake/resume, and seamless handoff are target-proven | active-transaction wake capture, display fault injection, additional payload/current scaling, final profile promotion |
+| input | A/B/L/R ordered delivery has zero observed drops; guided joystick calibration persists in the protected A/B calibration region; canonical diagonals, deterministic four-way shell resolution, all four logical cardinal events, X/Y omnipolar movement wake, and bounded wake confirmation are target-proven | long neutral false-wake soak, per-scene four/eight-way policy, non-START hold/repeat/chord/stuck policy, PROGRAM vector polling |
+| waiting current | instrumentation-minimized five-minute means include `51.39 uA` held-frame baseline, approximately `56 uA` sparse 250 ms LPBAM, `85 uA` three-full-panel-state LPBAM, `55 uA` with joystick wake disabled, and `65 uA` with joystick wake enabled | matched production-scene matrix, pulse/energy characterization, target-profile adoption |
+| SRAM4 | LPBAM uses a fixed `10512`-byte payload arena in `18` equal slots; six 28-row transactions cover one panel state and guarantee three full-panel autonomous states | release map/profile freeze and later optimization only with fresh evidence |
+| storage and package install | MSC export/reclaim, staging scan, persistent A/B raw package slots, independent commit-last index records, installed generation selection, installed-RAM publication, immediate launch, and later selected-generation load are target-proven | full validation before commit, reset injection at each install stage, boot auto-activation, uninstall, last-known-good fallback/quarantine, removal of the `65536`-byte runtime-cache ceiling |
+| STATE runtime | deterministic package decode, package-backed masked 1bpp pixels, retained render models, waiting animation, routed variables/guards/actions, and direct STATE-to-STATE replacement inside one resident package are target-proven | system `ACTIVE`/`INACTIVE`, scene push/pop/return, SEQUENCE, PROGRAM, service actions, save/audio integration |
+| authoring link | `.peepproj` to deterministic `.egg`, selected-scene host preview, logical A/B/L/R plus JOY cardinal sources, read-only STATE/package-flow inspection, and USB install iteration are implemented | remaining editor mutation surfaces, interaction policy, expanded assets, target-profile closure |
+| audio | owner-routed SAI/DMA diagnostic tone and clean shutdown are target-proven | package SFX, mixer, refill/underrun, volume/fade, current and fault paths |
+| IMU | identity, deep-power-down, low-rate sample, and bounded wake-NACK recovery are target-proven | embedded events, step counter, interrupt wake, streaming limits, retention and current |
+| BLE/NFC | NINA command handshake, reset-held shutdown, and `AT&D4` DSR sleep are target-proven; higher modes remain placeholders | real advertising, pairing, SPS data, bonding, NFC, flow control and current |
+
+## Historical Phase Status Snapshot
+
+The table below is retained to preserve the original phase progression. Where
+it conflicts with the current reconciliation above or a newer domain contract,
+the newer statement wins. Row-level evidence migration remains documentation
+work; historical evidence notes must not be rewritten as if they were captured
+by a later firmware build.
 
 | Phase | Status | Primary Authority | Exit Summary |
 |---|---|---|---|

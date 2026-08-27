@@ -67,6 +67,7 @@ Lifecycle methods describe host ownership transitions. A mounted runtime may als
 Rules:
 
 - these are lifecycle events, not input actions
+- they are emitted only for packages using `TIMEOUT`; `CONTINUOUS` packages remain active and receive neither event
 - the physical activation button or chord is never replayed into the package action stream
 - `DEVICE_ACTIVE` is the first package-visible event after wake/resume and focus restoration; later physical inputs follow normal routing
 - `DEVICE_INACTIVE` is delivered to the resulting mounted package state after its inactive route and presentation are stable
@@ -186,18 +187,19 @@ Runtime expresses intent only:
 - symbolic wake intents
 - latency tolerance
 - declared meaningful-activity sources
-- interaction-state route, overlay style, meaningful activity, and bounded deferrals
+- package interaction mode and, for `TIMEOUT`, its route, overlay style, meaningful activity, and bounded deferrals
 
-Scene transitions must preserve this model. Every realtime scene must declare an
-inactivity route to a `STATE_SCENE` or shell. Reactive state scenes yield
+Scene transitions must preserve this model. Every realtime scene in a `TIMEOUT`
+package must declare an inactivity route to a `STATE_SCENE` or shell. Reactive state scenes yield
 immediately after each bounded event transaction settles; they do not remain
 awake waiting for input.
 
 `SEQUENCE_SCENE` and `PROGRAM_SCENE` have no fixed maximum active duration at
-this contract level. They must declare meaningful-activity sources,
-suspend/resume behavior, bounded inactivity deferral where needed, and an
-inactive route. Inactivity terminates or suspends realtime execution before the
-declared `STATE_SCENE` or shell route is established.
+this contract level. They must declare suspend/resume behavior. In a `TIMEOUT`
+package they also declare meaningful-activity sources, bounded inactivity
+deferral where needed, and an inactive route. Inactivity terminates or suspends
+realtime execution before the declared `STATE_SCENE` or shell route is
+established.
 
 Bounded interactive peer-wait treatment is admitted only through [[Communication_API_Contract]] and target-profile policy. Runtime hosts must not treat an active communication session as meaningful local activity, an unlimited lock deferral, or a stay-awake grant.
 

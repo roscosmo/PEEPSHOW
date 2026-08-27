@@ -78,12 +78,19 @@ installed-flash offsets, and the embedded development symbol.
 The current HW6 vertical slice provides:
 
 - `EMBEDDED`, backed by the generated development `.egg` artifact.
+- `STAGED_RAM`, backed by one complete bounded `.egg` copied from the reclaimed
+  FileX staging volume after every storage handle is closed.
+- `INSTALLED_RAM`, backed by the selected persistent A/B package generation
+  copied from raw package storage by `thStorage` into the current bounded
+  runtime cache.
 - `NONE`, which cleanly returns to the shell and displays `EGGLESS`.
 
-Future installed-package support must publish the same immutable view only
-after `thStorage` has validated and atomically committed the package. Active
-STATE, SEQUENCE, and PROGRAM execution must never open or stream from the FAT
-staging filesystem.
+Installed-package publication uses the same immutable view only after
+`thStorage` has selected a committed index generation, copied the package, and
+parked storage. Active STATE, SEQUENCE, and PROGRAM execution must never open
+or stream from the FAT staging filesystem. Full pre-commit semantic validation
+and bounded installed-asset reads beyond the whole-package cache remain
+production work.
 
 Templates, Authoring Kits, prefabs, behavior graphs, and behavior macros are source-level authoring objects. Tooling must lower them into the package output forms defined by this contract. They must not appear as independent firmware components, direct Platform hooks, or new scene types.
 
@@ -221,6 +228,20 @@ package format or a persistent installer.
 - exceeding the bridge capacity is a deterministic load error, not a request
   for streaming or dynamic allocation.
 
+### Persistent Device Install
+
+HW6 also accepts that same deterministic `.egg` through the MSC staging path
+and atomically replaces the inactive installed-package slot and index record.
+The index commit marker is programmed last, the previous generation remains
+available until the new record is valid, and the selected generation can be
+loaded and launched through `INSTALLED_RAM` without runtime FileX access.
+
+This does not remove the current `65536`-byte runtime-cache ceiling. The raw
+slots are `5 MiB` each; larger production packages require the bounded asset
+handle and storage-owner read path defined by [[Package_Asset_Loading_API_Contract]].
+Production install must also move complete SHA-256/container/chunk/scene
+validation ahead of the commit marker.
+
 ---
 
 ## Sensor Profile Pipeline
@@ -254,6 +275,26 @@ Tooling must reject sensor profiles that reference ADC, GPIO, EXTI, I2C addresse
 ## Audio Profile Pipeline
 
 Audio profile output must target [[Audio_API_Contract]], not Platform audio drivers.
+
+Current HW6 package status: audio records are contractual but not executable.
+The firmware currently has a generated diagnostic tone only. Peep Studio must
+not report sampled package audio as supported until the audio chunks, loader,
+STATE action routing, `thAudio` decode/playback path, and HW6 proof all exist.
+
+### Initial STATE SFX Asset Slice
+
+Before SEQUENCE or PROGRAM audio, the toolchain must implement one bounded HW6
+STATE SFX path:
+
+1. import WAV as source-only authoring data;
+2. deterministically convert to mono 16 kHz 4-bit IMA ADPCM;
+3. emit stable symbolic asset/cue IDs, compressed bytes, sample count, duration,
+   decoded-size bound, and integrity metadata;
+4. reject unsupported formats, excessive duration or memory, looping, music,
+   streaming, and `audio.bbb` for HW6;
+5. let STATE actions request the symbolic SFX without exposing hardware;
+6. support host audition and compatibility reporting while clearly separating
+   them from HW6 power and timing evidence.
 
 Required package-facing audio artifacts:
 
@@ -399,6 +440,22 @@ For this slice:
 Tone/dither inputs, Tiled maps, fonts, fractional transforms, and source-editor
 import helpers remain later extensions. Existing reserved asset classes do not
 make them dependencies of the masked-1bpp STATE milestone.
+
+### Retained Primitive And Text Expansion
+
+Peep Studio authors retained records rather than immediate firmware draw calls.
+The STATE presentation milestone adds package records for line, outline
+rectangle, filled rectangle, circle, and ellipse geometry using bounded native
+integer coordinates. Package content may use `BACKGROUND`, `SCENE`, and `UI`;
+`OVERLAY` remains system-owned.
+
+Exact host preview and firmware must use identical clipping, ink, fill, and
+ordering semantics. Private shell/calibration drawing helpers and historical
+cursor/marker/diamond proof mappings are not package capabilities.
+
+Initial menu text is compiled on the host into masked 1bpp sprite assets. Formal
+runtime font, localization, and mutable-text records remain later extensions.
+The compiler must not emit source font paths or require runtime font parsing.
 
 Rendering asset classes in the complete contract are:
 

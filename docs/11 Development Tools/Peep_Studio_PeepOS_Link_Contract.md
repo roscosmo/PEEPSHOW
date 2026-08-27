@@ -55,10 +55,13 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | input | logical A, B, L, R, JOY_LEFT, JOY_RIGHT, JOY_UP, and JOY_DOWN sources |
 | visuals | package-backed native-scale masked 1bpp sprite frames |
 | retained render model | bounded ordered scene elements with binary alpha and four platform planes |
+| package primitives | not generally exposed; existing rectangle, line, circle, ellipse, and text helpers are Platform/test implementation details rather than Peep Studio calls |
+| package text | not generally exposed; current proof labels and IDs are not an authored font or arbitrary-text interface |
+| package audio | not exposed; HW6 currently proves only a generated diagnostic speaker tone, not `.egg` audio assets or STATE SFX actions |
 | waiting animation | authored 250 ms timelines, mixed 2-phase and 3-phase elements, combined timeline compilation, deterministic three-step LPBAM fallback |
 | awake preview | exact 168x144 package-backed framebuffer with deterministic fake time and side-effect-free scene thumbnails |
 | STOP2 | package visuals compiled into LPBAM animation and resumed across wake/STOP2 handoff |
-| firmware package proof | embedded `.egg` loads, validates, resolves STATE content, handles input, and renders the same package pixels as host preview |
+| firmware package proof | embedded and USB-installed `.egg` packages load, validate, resolve STATE content, handle input, render package pixels, replace STATE scenes directly, animate in STOP2, and return to shell; installed packages currently run through a `65536`-byte RAM cache; the new TIMEOUT interaction lifecycle is implemented but still requires HW6 target proof |
 
 Measured hardware behavior, current SRAM4 admission limits, and power figures
 remain hardware evidence. The desktop preview must not claim to reproduce
@@ -95,6 +98,89 @@ all implement the same semantics.
 
 ---
 
+## Interaction Lifecycle Boundary
+
+Peep Studio must expose one package-level interaction mode:
+
+- `CONTINUOUS` disables automatic inactivity timeout while retaining the system-owned manual-INACTIVE gesture;
+- `TIMEOUT` uses the PeepOS-owned inactivity interval and requires each current
+  STATE scene to declare `preserve` or `exit_shell` as its inactive route.
+
+Authors select the mode, inactive route, and which declared input routes count
+as meaningful activity. Peep Studio must not expose the numeric timeout, RTC
+wake timer, `PRESS START` cue duration, activation-animation timing, joystick
+wake threshold, or wake-pin configuration. Those remain target-owned Platform
+policy.
+
+For the HW6 FW0 target, `TIMEOUT` suppresses package input and joystick movement
+wake after expiry. `START` is consumed by PeepOS to restore `ACTIVE` state
+whether or not the `PRESS START` cue is visible, then HW6 shows one bounded
+system-owned eye-opening animation before revealing the active package
+presentation. A/B/L/R remain consumed while inactive and request one bounded
+system `PRESS START` cue before the prior waiting presentation and STOP2 resume.
+
+While `ACTIVE`, Peep Studio may bind a short `START` press like any other
+declared package input. Firmware emits that action only when START is released
+before the target-owned 2-second manual-INACTIVE threshold. Reaching the
+threshold consumes the gesture for PeepOS, enters `INACTIVE` in either package
+mode, and does not emit the package action. Continued hold remains the
+system-owned shipping gesture. `CONTINUOUS` manual inactivity always preserves
+the current scene, so it does not require an authored inactive route.
+
+The compiler emits this policy in PKG1 `STG1` format version 3. Peep Studio may
+edit the normalized source fields now; it must not invent desktop-only timeout
+or wake behavior that the package cannot encode.
+
+---
+
+## STATE Presentation And Asset Boundary
+
+Peep Studio does not call firmware drawing functions. It authors retained
+elements and source assets, the Python service compiles them into portable
+`.egg` records, and PeepOS validates and composes those records into the native
+168x144 1bpp framebuffer. Immediate commands such as `draw_circle()` or direct
+framebuffer access are not part of the authoring or package API.
+
+The scene canvas owns integer panel-native bounds, package-visible layer,
+visibility, ordering, asset/frame references, and animation bindings. Package
+content may target `BACKGROUND`, `SCENE`, or `UI`; `OVERLAY` remains
+Platform/Engine-owned. Host preview must consume the same compiled records as
+firmware rather than reproducing them with a separate React renderer.
+
+The current generic executable presentation record is `RND2`. It supports
+native-scale masked 1bpp sprite frames plus bounded `line`, `outline_rect`,
+`filled_rect`, `circle`, and `ellipse` primitives. Records carry package layer,
+visibility, z-order, and integer panel-native bounds. The compiler, package
+parser, exact host preview, HW6 loader, retained model, and display owner now
+implement those same semantics. On-target visual, scene-replacement, and STOP2
+proof passed on 2026-08-27. New packages emit `RND2`, while `RND1` remains
+load-compatible.
+
+The repository also contains private firmware drawing helpers for calibration,
+activation, and shell UI. Their existence does not expose those helpers to
+authored packages. Authored text also remains unavailable until it is compiled
+into masked 1bpp sprite assets.
+
+The STATE-first presentation expansion is:
+
+1. **Hardware-validated:** serialize package layer, visibility,
+   order, bounds, and sprite/frame references without special proof names;
+2. **Hardware-validated:** expose bounded retained line, outline
+   rectangle, filled rectangle, circle, and ellipse records with deterministic
+   integer rasterization;
+3. **Next:** rasterize initial authored menu text into masked 1bpp package assets at
+   build time; runtime fonts and mutable text remain a later capability;
+4. **Next:** add bounded STATE actions for show/hide, move, frame selection, and animation
+   selection, with dirty-region composition owned by PeepOS;
+5. **Next:** add one symbolic bounded STATE SFX action backed by a compiled sampled-audio
+   asset and owned at runtime by `thAudio`.
+
+Visual assets, primitive records, text-derived sprite assets, and audio assets
+are package data. They must never contain display-driver calls, framebuffer
+pointers, SAI/DMA configuration, source paths, or host-only objects.
+
+---
+
 ## Not Yet Exposed
 
 The following are planned or incomplete and must be labelled unavailable in
@@ -104,6 +190,10 @@ the editor until this document is updated:
 - editable node graph controls beyond the current inspector commands;
 - project mutation commands beyond `state.rename`, `route.set_target`,
   `route.set_guard`, and `route.set_action`;
+- general package-authored primitives, arbitrary text, runtime element
+  mutation, or serialized package layer selection;
+- sampled package audio, STATE SFX actions, audio audition, or audio
+  compatibility reporting;
 - 4-tone and 16-tone fixed dither asset import;
 - maps, tile layers, fonts, rotation, or interpolated scaling;
 - package installation or activation on a connected device;
@@ -139,7 +229,7 @@ protocol is version `1`; the current service API is version `12`.
 | `project.redo` | redo the last undone command within the bounded service history |
 | `project.scene_thumbnails` | return one side-effect-free initial framebuffer snapshot per compiled STATE scene |
 | `project.preview_reset` | start one selected STATE scene directly |
-| `project.preview_input` | inject one supported logical input source |
+| `project.preview_input` | inject one logical A/B/L/R or JOY_LEFT/JOY_RIGHT/JOY_UP/JOY_DOWN input |
 | `project.preview_advance` | advance deterministic preview time by an explicit duration |
 
 Every project operation after load uses `project_revision`. Every preview
@@ -257,6 +347,8 @@ dirty state is computed against the last saved semantic project hash.
 - edit bounds, platform layer, focus ownership, sprite/frame reference, and
   animation reference;
 - add an asset browser for the implemented native masked-1bpp PNG subset;
+- expose only visual controls supported by the selected target profile and
+  compiled package schema; do not map canvas tools to firmware draw calls;
 - add editable text elements that are deterministically rasterized to masked
   1bpp package pixels at build time;
 - keep spatial placement on the scene canvas rather than the behavior graph.
@@ -289,8 +381,8 @@ implemented through Python service commands.
   as a UML-first edge editor;
 - create and remove deterministic state-transition outputs and their single
   destination edges through Python service commands;
-- edit logical button/joystick routes, guard expressions, ordered actions, and target
-  state through typed inspectors;
+- edit logical A/B/L/R and JOY_LEFT/JOY_RIGHT/JOY_UP/JOY_DOWN routes, guard
+  expressions, ordered actions, and target state through typed inspectors;
 - support prefab-backed menu nodes through declared slots and read-only generated
   internals before exposing arbitrary custom internals;
 - validate unresolved targets and bounded-capacity limits before save/export.
@@ -319,13 +411,14 @@ At the end of this stage, an author can build a multi-screen menu hierarchy.
 Scene-flow editing must remain separate from the STATE graph inside each scene.
 
 Platform foundation status: implemented and proven on HW6. Authoring schema
-routes now accept exactly one `target_state` or `target_scene`; service API 8
-can switch an existing actionless route between those targets; selected-scene
-preview follows a scene target; and the compiler emits PKG1 `STG1` version 2.
-Direct replacement enters the destination entry state, resets destination-local
-variables, and starts a new timeline epoch. Peep Studio may expose these exact
-semantics for the HW6 FW0 target profile. It must not expose cross-scene route actions,
-push/pop, return stacks, or STATE-to-SEQUENCE/PROGRAM transitions yet.
+routes now accept exactly one `target_state` or `target_scene`; the direct
+scene-transition capability introduced by service API 8 is retained in service
+API 12; selected-scene preview follows a scene target; and the compiler emits
+PKG1 `STG1` version 3. Direct replacement enters the destination entry state,
+resets destination-local variables, and starts a new timeline epoch. Peep
+Studio may expose these exact semantics for the HW6 FW0 target profile. It must
+not expose cross-scene route actions, push/pop, return stacks, or
+STATE-to-SEQUENCE/PROGRAM transitions yet.
 
 Peep Studio implementation status: first package scene-flow view is
 implemented. It presents scenes as separate package-level nodes and shows
@@ -352,11 +445,19 @@ compiled package bytes.
 
 ### Stage 7: Expanded Asset And Scene Support
 
+- add the bounded STATE sampled-SFX path: WAV import, deterministic conversion,
+  symbolic cue binding, host audition, package validation, and target proof;
+- add retained line, rectangle, circle, and ellipse elements plus bounded
+  element visibility, position, frame, and animation actions;
 - add formal font and localization package records when required;
 - add fixed 4-tone and 16-tone dither profiles;
 - add maps, tile layers, scaling, transforms, and richer retained rendering;
-- add SEQUENCE authoring, then PROGRAM authoring, only after their runtime and
-  package contracts are implemented.
+
+### Stage 8: Later Scene Types
+
+- add SEQUENCE authoring, then PROGRAM authoring, only after the STATE visual,
+  input, waiting, scene-flow, and bounded-SFX surfaces are coherent across
+  Studio, compiler, package, preview, and HW6 runtime.
 
 ### Menu Authoring Availability
 
@@ -367,6 +468,7 @@ compiled package bytes.
 | after stage 4 | create functional interactive menus within one STATE scene |
 | after stage 5 | create complete multi-scene menu and navigation hierarchies |
 | after stage 6 | visually author and budget menu waiting animations |
+| after stage 7 | author bounded geometry, element updates, and sampled STATE SFX |
 
 The firmware shell remains system-owned. Peep Studio may author the same source
 model as a test `.egg`; accepted system-menu sources may later be compiled into

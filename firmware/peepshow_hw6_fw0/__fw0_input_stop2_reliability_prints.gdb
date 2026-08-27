@@ -14,6 +14,7 @@ printf "FSM state A/B/L/R = %u / %u / %u / %u\n", $b->button_state[0], $b->butto
 printf "FSM raw A/B/L/R = %u / %u / %u / %u\n", $b->button_raw_level[0], $b->button_raw_level[1], $b->button_raw_level[2], $b->button_raw_level[3]
 printf "logical event/press/release/pending = %u / %u / %u / 0x%x\n", $b->logical_event_count, $b->logical_press_count, $b->logical_release_count, $b->pending_mask
 printf "policy event/deliver/suppress last status = %u / %u / %u / 0x%x\n", $rt->input_policy_event_count, $rt->input_policy_deliver_count, $rt->input_policy_suppress_count, $rt->input_policy_last_status
+printf "policy source buttons/START/combined = %u / %u / %u\n", $b->logical_event_count, $rt->runtime_interaction_package_start_count, $b->logical_event_count + $rt->runtime_interaction_package_start_count
 printf "UI page/focus/button events/last event = %u / %u / %u / %u\n", $ui->current_page, $ui->focus_index, $ui->button_event_count, $ui->last_button_event
 printf "display UI req/render blink req/render/phase = %u / %u / %u / %u / %u\n", $ow->display_ui_request_count, $ow->display_ui_render_count, $ow->display_blink_request_count, $ow->display_blink_render_count, $ow->display_blink_phase
 printf "final input check/veto/status = %u / %u / 0x%x\n", $rt->stop2_final_input_check_count, $rt->stop2_final_input_veto_count, $rt->stop2_final_input_last_status

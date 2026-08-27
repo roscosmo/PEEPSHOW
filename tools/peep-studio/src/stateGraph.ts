@@ -181,7 +181,6 @@ export function buildSceneFlowGraphModel(
         route,
       })),
   );
-
   const outgoingCounts = new Map<string, number>();
   edges.forEach((edge) => {
     outgoingCounts.set(edge.source, (outgoingCounts.get(edge.source) ?? 0) + 1);

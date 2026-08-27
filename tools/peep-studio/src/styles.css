@@ -191,6 +191,10 @@ button:focus-visible {
   grid-template-areas: "project project-resize scene-flow inspector-resize inspector";
 }
 
+.workspace-grid.scene-flow-mode {
+  grid-template-areas: "project scene-flow inspector";
+}
+
 .project-pane,
 .inspector-pane {
   min-width: 0;

@@ -116,6 +116,7 @@
   },
   "interaction_policy": {
     "policy_id": "details_interaction",
+    "mode": "timeout",
     "meaningful_activity_actions": [
       "return_demo"
     ],

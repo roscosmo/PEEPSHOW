@@ -6,18 +6,19 @@ Implementation status: `partial`
 
 The V1 `.peepproj` STATE subset, semantic validator, normalized intermediate,
 deterministic binary `.egg` compiler, independent host package reader, and the
-first bounded HW6 embedded-package STATE decoder are implemented. The embedded
-reader, hardware SHA-256 integrity path, sparse retained STATE scene, mixed
-2-phase/3-phase waiting visuals, STOP2 continuity, and input transitions have
-passed initial target validation. The embedded decoder now also validates the
-portable asset and masked-1bpp sprite chunks and exposes immutable frame views
-to the retained renderer; target validation of those package pixels is still
-pending. The versioned host authoring-service boundary
-now exposes project loading, validation, normalization, deterministic package
-compilation, V1 compatibility reporting, and deterministic selected-STATE-scene
-preview over independently parsed package records. External-flash installation
-and activation, target-profile closure, editor surfaces, SEQUENCE, PROGRAM, and
-end-to-end HW6 evidence remain open.
+bounded HW6 package STATE decoder are implemented. Hardware SHA-256, package
+pixels, sparse retained STATE rendering, mixed 2-phase/3-phase waiting visuals,
+STOP2 continuity, four logical joystick cardinals, and direct STATE-to-STATE
+replacement have passed initial target validation. The versioned host
+authoring-service boundary exposes project loading, validation, normalization,
+deterministic package compilation, V1 compatibility reporting, deterministic
+selected-STATE preview, and read-only package scene flow. USB staging, atomic
+A/B external-flash installation, installed-package loading, immediate launch,
+and return to the shell are also target-proven within the current `65536`-byte
+runtime-cache limit. Production pre-commit validation, boot activation and
+rollback policy, target-profile closure, remaining editor mutation surfaces,
+optional system interaction state, SEQUENCE, PROGRAM, and complete end-to-end
+HW6 evidence remain open.
 
 Target status: `HW6_PENDING_VALIDATION` until measured HW6 evidence is frozen into a shipping-authoritative target profile.
 
@@ -84,14 +85,27 @@ This checkpoint must allow an author to:
 7. inject A/B/L/R and advance deterministic `250 ms` time
 8. build a deterministic `.egg`
 9. run that same scene and those same compiled pixels on HW6
+10. place bounded retained geometry and build-time-rasterized text without
+    relying on firmware test names or direct draw calls
+11. import one sampled SFX, bind it to a STATE action, and prove bounded
+    playback plus return to reactive STOP2 behavior on HW6
 
 The selected-scene launch is a preview fixture. It does not alter package entry
 routes or add a runtime bypass to the `.egg`.
 
+Current checkpoint status: `RND2` package records now carry explicit
+`BACKGROUND`, `SCENE`, or `UI` layer, visibility, z-order, bounds, masked 1bpp
+sprites, and bounded line/rectangle/circle/ellipse primitives. Deterministic
+compiler/parser/exact-preview tests pass. HW6 visual, scene-replacement, and
+STOP2 validation passed on 2026-08-27: static primitives remained composed and
+both package sprite animations continued in STOP2. Build-time text sprites,
+retained element actions, and sampled SFX are the next STATE gaps.
+
 The checkpoint intentionally defers tone/dither import, Tiled maps, fractional
-transforms, audio, save data, SEQUENCE, PROGRAM, installation UI, and measured
-digital-twin claims. These remain later parts of the full vertical slice and
-must not block proving the STATE author-to-device path.
+transforms, runtime fonts, music, multi-voice mixing, save data, SEQUENCE,
+PROGRAM, installation UI, and measured digital-twin claims. These remain later
+parts of the full vertical slice and must not block completing the STATE
+author-to-device path.
 
 ---
 
@@ -212,19 +226,25 @@ The return is not complete until the ambient presentation and wait backend are s
 
 ### System Interaction State
 
-This proof package chooses `preserve_scene` as its inactive route.
+This proof package chooses `TIMEOUT` interaction mode and `preserve_scene` as its inactive route. A separate `CONTINUOUS` validation case proves there is no automatic timeout while the system-owned manual-INACTIVE START hold remains available.
 
 For this slice:
 
 - the target/system policy owns the inactivity timeout.
 - the package emits meaningful-activity intent through the public contract.
 - while `INACTIVE`, package actions other than the target-owned activation gesture are not delivered.
-- Start is consumed by PeepOS as the initial HW6 activation gesture.
+- A/B/L/R wake only to show the bounded PeepOS-owned `PRESS START` cue; those presses are consumed and cue expiry returns to the inactive waiting presentation and STOP2.
+- joystick movement wake is disarmed while inactive.
+- Start is consumed by PeepOS as the initial HW6 activation gesture whether or
+  not the `PRESS START` cue is visible.
+- activation shows one bounded PeepOS-owned eye-opening animation before the
+  restored active package presentation is revealed.
 - the physical Start press is not also delivered to package logic.
+- while active, a short Start release may be bound as normal package input; holding Start to the target-owned manual-INACTIVE threshold consumes it instead, and continued hold remains the shipping gesture.
 - the package observes symbolic `DEVICE_INACTIVE` and `DEVICE_ACTIVE` lifecycle events.
 - activation returns to the preserved state scene and establishes its next wait contract.
 
-This is one package-policy choice for the proof. The generic authoring contract allows another admitted inactive route, while target policy may later admit another activation button or chord. Packages cannot disable inactivity handling or choose the physical activation gesture.
+This is one package-policy choice for the proof. The generic authoring contract also allows `CONTINUOUS`, which has no automatic timeout but may enter system-owned manual inactivity with preserve-scene behavior, and allows another admitted inactive route for `TIMEOUT`. Packages cannot author the numeric timeout, hold threshold, cue policy, or physical activation gesture.
 
 ---
 
@@ -314,8 +334,8 @@ Required negative or fallback cases:
 - `sensor.light` and `sensor.light_stream` are rejected for every HW6 profile
 - `audio.bbb` is rejected for every HW6 profile
 - a waiting visual that exceeds the selected profile is rejected or resolves through its declared fallback
-- a sequence or program scene without frame budget, meaningful activity, suspend/resume policy, or inactive route is rejected
-- an interaction policy without an admitted inactive route is rejected
+- a sequence or program scene without frame budget or suspend/resume policy is rejected; in a `TIMEOUT` package, missing meaningful activity or inactive route is also rejected
+- a `TIMEOUT` interaction policy without an admitted inactive route is rejected
 - an unbounded reactive action or inactivity deferral is rejected
 - shipping export against `HW6_PENDING_VALIDATION` is rejected
 
@@ -476,7 +496,7 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
    direct STATE-to-STATE replacement is implemented in the host/compiler and
    FW0 and proven with a two-scene HW6 package; push/pop and transitions to
    other scene types remain later work
-6. implement mandatory `ACTIVE`/`INACTIVE` interaction state, RTC-backed inactivity, declared inactive routes, and target-owned activation gestures; HW6 starts with Start while the policy remains button/chord capable
+6. implement optional `CONTINUOUS`/`TIMEOUT` interaction policy, RTC-backed timeout enforcement, declared inactive routes, target-owned activation gestures, and the bounded inactive-input cue; HW6 starts with `START` activation while the policy remains button/chord capable
 7. implement the headless project loader, normalized model, validator, deterministic package compiler, and compiler-derived capability closure for the state-scene slice
 8. compile masked 1bpp source assets into portable asset, sprite-bank, and
    animation chunks; make both the host package reader and firmware render them
@@ -488,10 +508,29 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
     validate, and build that STATE checkpoint, with the Python service remaining
     authoritative
 11. install and run the authored STATE package against HW6 so editor iteration
-    no longer requires embedding package bytes in firmware
-12. add tone/dither assets, maps, transforms, fonts, audio, and save data only
-    when required by the expanding vertical slice
-13. implement `SEQUENCE_SCENE`, then `PROGRAM_SCENE`, with realtime budgets, input routes, suspend/resume behavior, and required state-scene/shell routes; extend the same editor architecture for each type
-14. measure representative reactive and realtime workloads, admit intermediate PLL/clock operating points one at a time behind Platform capability resolution, then capture and review the complete power evidence matrix; packages continue to request semantics and deadlines, never MHz
+    no longer requires embedding package bytes in firmware (implemented and
+    target-proven through USB staging and atomic A/B install/launch; production
+    pre-commit validation and boot policy remain open)
+12. complete the STATE presentation boundary: serialize package layers, remove
+    special proof-name mappings, add retained line/rectangle/circle/ellipse
+    records, compile initial text to masked 1bpp assets, and add bounded element
+    show/hide/move/frame/animation actions across service, package, preview, and
+    firmware
+13. implement the initial STATE sampled-SFX path: verify the HW6 16 kHz mono
+    SAI/MAX98357A path, compile WAV sources to bounded IMA ADPCM package assets,
+    preload one admitted voice, route symbolic `play_sfx` through `thAudio`,
+    release audio clock intent after drain, and prove return to STOP2
+14. close the remaining STATE authoring gaps and publish one target capability
+    report covering visuals, input policies, waiting animation, scene flow,
+    interaction lifecycle, SFX, memory admission, and measured power behavior
+15. add integer scaling, fixed 4-tone and 16-tone dither assets, maps, runtime
+    fonts/localization, transforms, and save data as bounded STATE extensions
+16. implement `SEQUENCE_SCENE`, then `PROGRAM_SCENE`, with realtime budgets,
+    input routes, suspend/resume behavior, and required STATE/shell routes;
+    extend the same editor architecture for each type
+17. measure representative reactive and realtime workloads, admit intermediate
+    PLL/clock operating points one at a time behind Platform capability
+    resolution, then capture and review the complete power evidence matrix;
+    packages continue to request semantics and deadlines, never MHz
 
 The slice is not complete merely because the game appears on the display. Completion requires the full author-to-package-to-device path and the associated HW6 evidence.

@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define PS_SCENE_RENDER_MODEL_API_VERSION (2UL)
+#define PS_SCENE_RENDER_MODEL_API_VERSION (3UL)
 #define PS_SCENE_RENDER_MODEL_ELEMENT_MAX (12U)
 #define PS_SCENE_RENDER_CANVAS_WIDTH      (168U)
 #define PS_SCENE_RENDER_CANVAS_HEIGHT     (144U)
@@ -28,7 +28,11 @@ typedef enum
   PS_SCENE_RENDER_ELEMENT_HORIZONTAL_LINE,
   PS_SCENE_RENDER_ELEMENT_TEXT,
   PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP,
-  PS_SCENE_RENDER_ELEMENT_FOCUS
+  PS_SCENE_RENDER_ELEMENT_FOCUS,
+  PS_SCENE_RENDER_ELEMENT_LINE,
+  PS_SCENE_RENDER_ELEMENT_FILLED_RECT,
+  PS_SCENE_RENDER_ELEMENT_CIRCLE,
+  PS_SCENE_RENDER_ELEMENT_ELLIPSE
 } ps_scene_render_element_type_t;
 
 typedef enum
@@ -60,6 +64,8 @@ typedef struct
   uint16_t y;
   uint16_t width;
   uint16_t height;
+  uint16_t z_order;
+  uint16_t reserved;
 } ps_scene_render_element_t;
 
 typedef struct

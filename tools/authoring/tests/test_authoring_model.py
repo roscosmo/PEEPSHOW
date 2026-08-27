@@ -34,7 +34,11 @@ from peepshow_authoring.egg_format import (  # noqa: E402
     CHUNK_MASKED_1BPP_SPRITE_BANK,
     FOOTER,
     HEADER,
+    RENDER_ELEMENT_RECORD_V1,
+    RENDER_HEADER,
+    RENDER_MODEL_RECORD,
     EggFormatError,
+    _parse_render,
     parse_egg,
 )
 
@@ -270,7 +274,7 @@ class AuthoringModelTests(unittest.TestCase):
             package = parse_egg(build_egg(bundle))
             self.assertEqual(3, package.manifest["scene_count"])
             self.assertEqual(3, len(package.scenes))
-            self.assertTrue(all(scene["graph"]["format_version"] == 2 for scene in package.scenes))
+            self.assertTrue(all(scene["graph"]["format_version"] == 3 for scene in package.scenes))
             targets = {
                 route["target_scene"]
                 for scene in package.scenes
@@ -336,7 +340,29 @@ class AuthoringModelTests(unittest.TestCase):
         self.assertEqual(13, package.scenes[0]["route_count"])
         self.assertEqual(1, package.scenes[1]["state_count"])
         self.assertEqual(1, package.scenes[1]["route_count"])
+        self.assertEqual(2, package.scenes[0]["render_format_version"])
+        first_model = package.scenes[0]["render_models"][0]
+        self.assertEqual(2, first_model["elements"][0]["layer"])
+        self.assertTrue(first_model["elements"][0]["visible"])
+        self.assertEqual(1, first_model["elements"][0]["kind"])
+        self.assertEqual(1, first_model["elements"][1]["layer"])
         self.assertNotIn("scenes/state_demo.state.json", package.strings)
+
+    def test_rnd1_render_payload_remains_load_compatible(self) -> None:
+        strings = ("view", "cursor", "cursor.phase_a")
+        payload = b"".join(
+            (
+                RENDER_HEADER.pack(b"RND1", 1, RENDER_HEADER.size, 1, 1, 0, 0),
+                RENDER_MODEL_RECORD.pack(0, 1, 0, 1),
+                RENDER_ELEMENT_RECORD_V1.pack(1, 2, 1, 1, 8, 12, 8, 16, 3),
+            )
+        )
+        parsed = _parse_render(payload, strings)
+        element = parsed["models"][0]["elements"][0]
+        self.assertEqual(1, parsed["format_version"])
+        self.assertEqual(2, element["layer"])
+        self.assertEqual(1, element["visible"])
+        self.assertEqual(3, element["z_order"])
 
     def test_editor_source_path_does_not_change_package_bytes(self) -> None:
         original = build_egg(load_project(SAMPLE))

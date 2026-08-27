@@ -52,7 +52,7 @@
 #define KNOB_INPUT_JOYSTICK_XYZ_CAPTURE_TIMEOUT_MS         (15000)
 #define KNOB_INPUT_JOYSTICK_XYZ_REST_SAMPLES               (256)
 #define KNOB_INPUT_JOYSTICK_XYZ_SWEEP_SAMPLES              (512)
-#define KNOB_INPUT_START_LONG_PRESS_MS                     (1000)
+#define KNOB_INPUT_START_LONG_PRESS_MS                     (2000)
 #define KNOB_INPUT_START_SHIP_IMMINENT_MS                  (11000)
 #define KNOB_INPUT_START_SHIP_PREP_MS                      (5000)
 #define KNOB_INPUT_START_SHIP_WARN_MS                      (9000)
@@ -78,6 +78,7 @@
 #define KNOB_POWER_CRITICAL_SOFTWARE_SHIP_ENABLE           (0)
 #define KNOB_POWER_PMIC_INTERRUPT_ENABLE1                  (3)
 #define KNOB_POWER_PMIC_INTERRUPT_ENABLE2                  (0)
+#define KNOB_POWER_RTC_WAKE_IRQ_PRIORITY                   (5)
 #define KNOB_POWER_START_SOFTWARE_SHIP_ENABLE              (0)
 #define KNOB_POWER_STOP2_DISPLAY_WAIT_BACKEND              (2)
 #define KNOB_POWER_STOP2_GPIO_PARK_GROUP_MASK              (30)
@@ -88,6 +89,9 @@
 #define KNOB_RTOS_RUNTIME_STACK_BYTES                      (2048)
 #define KNOB_RTOS_SENSOR_STACK_BYTES                       (3072)
 #define KNOB_RTOS_STORAGE_STACK_BYTES                      (2048)
+#define KNOB_RUNTIME_ACTIVATION_EYE_FRAME_MS               (100)
 #define KNOB_RUNTIME_EGG_HASH_TIMEOUT_MS                   (100)
+#define KNOB_RUNTIME_INACTIVE_CUE_MS                       (1000)
+#define KNOB_RUNTIME_INTERACTION_TIMEOUT_MS                (10000)
 
 #endif /* KNOBS_AUTOGEN_H */
