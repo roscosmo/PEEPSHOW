@@ -27,6 +27,7 @@ export type SceneDocument = {
   render_models?: RenderModel[];
   waiting_visuals?: WaitingVisual[];
   reactive_wait_default?: ReactiveWaitPolicy;
+  interaction_policy?: InteractionPolicy;
 };
 
 export type StateVariable = {
@@ -114,6 +115,14 @@ export type ReactiveWaitPolicy = {
   waiting_visual_ref: string;
   hold_fallback_allowed: boolean;
   event_interests: string[];
+};
+
+export type InteractionPolicy = {
+  policy_id: string;
+  mode: "continuous" | "timeout";
+  meaningful_activity_actions: string[];
+  inactive_route?: "preserve_scene" | "exit_to_shell";
+  bounded_deferrals?: never[];
 };
 
 export type EditorNodePosition = {
@@ -287,6 +296,27 @@ export type ServiceHello = {
     logical_inputs: string[];
     runtime_text: boolean;
     element_actions: boolean;
+  };
+  state_scene_graph: {
+    command_batch_maximum: number;
+    limits: {
+      states: number;
+      render_models: number;
+      variables: number;
+      input_actions: number;
+      routes: number;
+      guards_per_route: number;
+      actions_per_route: number;
+    };
+    state_commands: string[];
+    render_model_commands: string[];
+    variable_commands: string[];
+    input_action_commands: string[];
+    route_commands: string[];
+    guard_commands: string[];
+    action_commands: string[];
+    policy_commands: string[];
+    generic_delete_policy: string;
   };
   project_loaded: boolean;
   project_revision: number | null;

@@ -146,6 +146,408 @@ def _require_command_fields(command: dict[str, Any], required: set[str], allowed
         )
 
 
+def _command_scene(scenes: list[dict[str, Any]], scene_id: Any) -> dict[str, Any]:
+    issues: list[ValidationIssue] = []
+    _stable_id(scene_id, "command.scene_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    for scene in scenes:
+        if isinstance(scene, dict) and scene.get("scene_id") == scene_id:
+            return scene
+    raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
+
+
+def _command_record(
+    scene: dict[str, Any],
+    collection: str,
+    id_field: str,
+    record_id: Any,
+) -> dict[str, Any]:
+    records = scene.get(collection)
+    if not isinstance(records, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", f"scene.{collection} must be an array")
+    for record in records:
+        if isinstance(record, dict) and record.get(id_field) == record_id:
+            return record
+    raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown {id_field} '{record_id}'")
+
+
+def _command_index(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ProjectCommandError("COMMAND_INDEX_INVALID", f"{field} must be a non-negative integer")
+    return value
+
+
+def _command_move_index(value: Any, field: str, length: int) -> int:
+    index = _command_index(value, field)
+    if index >= length:
+        raise ProjectCommandError("COMMAND_INDEX_INVALID", f"{field} does not select an existing entry")
+    return index
+
+
+def _apply_state_add(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "state"},
+        {"kind", "scene_id", "state", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    state = command.get("state")
+    if not isinstance(state, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "state must be an object")
+    states = scene.get("states")
+    if not isinstance(states, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.states must be an array")
+    if len(states) >= 64:
+        raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "scene supports at most 64 states")
+    state_id = state.get("state_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(state_id, "command.state.state_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    if any(isinstance(item, dict) and item.get("state_id") == state_id for item in states):
+        raise ProjectCommandError("PROJECT_ID_DUPLICATE", f"state '{state_id}' already exists")
+    normalized = deepcopy(state)
+    states.append(normalized)
+    return {"kind": "state.add", "scene_id": scene.get("scene_id"), "state": normalized}
+
+
+def _apply_state_delete(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "state_id"},
+        {"kind", "scene_id", "state_id", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    state_id = command.get("state_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(state_id, "command.state_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    states = scene.get("states")
+    if not isinstance(states, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.states must be an array")
+    if len(states) <= 1:
+        raise ProjectCommandError("COMMAND_TARGET_IN_USE", "the last state cannot be deleted")
+    if scene.get("entry_state") == state_id:
+        raise ProjectCommandError("COMMAND_TARGET_IN_USE", "entry state must be changed before deletion")
+    for route in scene.get("routes", []):
+        if not isinstance(route, dict):
+            continue
+        if route.get("target_state") == state_id or state_id in route.get("from_states", []):
+            raise ProjectCommandError("COMMAND_TARGET_IN_USE", f"state '{state_id}' is referenced by route '{route.get('route_id')}'")
+    for index, state in enumerate(states):
+        if isinstance(state, dict) and state.get("state_id") == state_id:
+            states.pop(index)
+            editor = project.get("editor")
+            if isinstance(editor, dict):
+                graph = editor.get("state_graph")
+                graph_scenes = graph.get("scenes") if isinstance(graph, dict) else None
+                layout = graph_scenes.get(scene.get("scene_id")) if isinstance(graph_scenes, dict) else None
+                nodes = layout.get("nodes") if isinstance(layout, dict) else None
+                if isinstance(nodes, dict):
+                    nodes.pop(state_id, None)
+            return {"kind": "state.delete", "scene_id": scene.get("scene_id"), "state_id": state_id}
+    raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown state '{state_id}'")
+
+
+def _apply_state_set_reference(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    kind = command.get("kind")
+    if kind == "state.set_entry":
+        _require_command_fields(command, {"kind", "scene_id", "state_id"}, {"kind", "scene_id", "state_id", "command_id"})
+        scene = _command_scene(scenes, command.get("scene_id"))
+        state = _command_record(scene, "states", "state_id", command.get("state_id"))
+        scene["entry_state"] = state.get("state_id")
+        return {"kind": kind, "scene_id": scene.get("scene_id"), "state_id": state.get("state_id")}
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "state_id", "render_model_ref"},
+        {"kind", "scene_id", "state_id", "render_model_ref", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    state = _command_record(scene, "states", "state_id", command.get("state_id"))
+    model = _command_record(scene, "render_models", "visual_id", command.get("render_model_ref"))
+    state["render_model_ref"] = model.get("visual_id")
+    return {
+        "kind": kind,
+        "scene_id": scene.get("scene_id"),
+        "state_id": state.get("state_id"),
+        "render_model_ref": model.get("visual_id"),
+    }
+
+
+def _apply_render_model_add(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(command, {"kind", "scene_id", "render_model"}, {"kind", "scene_id", "render_model", "command_id"})
+    scene = _command_scene(scenes, command.get("scene_id"))
+    model = command.get("render_model")
+    if not isinstance(model, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "render_model must be an object")
+    models = scene.get("render_models")
+    if not isinstance(models, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.render_models must be an array")
+    if len(models) >= 64:
+        raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "scene supports at most 64 render models")
+    visual_id = model.get("visual_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(visual_id, "command.render_model.visual_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    if any(isinstance(item, dict) and item.get("visual_id") == visual_id for item in models):
+        raise ProjectCommandError("PROJECT_ID_DUPLICATE", f"render model '{visual_id}' already exists")
+    normalized = deepcopy(model)
+    models.append(normalized)
+    return {"kind": "render_model.add", "scene_id": scene.get("scene_id"), "render_model": normalized}
+
+
+def _apply_render_model_delete(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(command, {"kind", "scene_id", "visual_id"}, {"kind", "scene_id", "visual_id", "command_id"})
+    scene = _command_scene(scenes, command.get("scene_id"))
+    visual_id = command.get("visual_id")
+    for state in scene.get("states", []):
+        if isinstance(state, dict) and state.get("render_model_ref") == visual_id:
+            raise ProjectCommandError("COMMAND_TARGET_IN_USE", f"render model '{visual_id}' is referenced by state '{state.get('state_id')}'")
+    models = scene.get("render_models")
+    if not isinstance(models, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.render_models must be an array")
+    for index, model in enumerate(models):
+        if isinstance(model, dict) and model.get("visual_id") == visual_id:
+            models.pop(index)
+            return {"kind": "render_model.delete", "scene_id": scene.get("scene_id"), "visual_id": visual_id}
+    raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown render model '{visual_id}'")
+
+
+def _apply_render_model_set_focus(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(command, {"kind", "scene_id", "visual_id", "focus_index"}, {"kind", "scene_id", "visual_id", "focus_index", "command_id"})
+    scene = _command_scene(scenes, command.get("scene_id"))
+    model = _command_record(scene, "render_models", "visual_id", command.get("visual_id"))
+    focus_index = command.get("focus_index")
+    if isinstance(focus_index, bool) or not isinstance(focus_index, int) or not 0 <= focus_index <= 255:
+        raise ProjectCommandError("RENDER_FOCUS_INVALID", "focus_index must be in 0..255")
+    model["focus_index"] = focus_index
+    return {"kind": "render_model.set_focus_index", "scene_id": scene.get("scene_id"), "visual_id": model.get("visual_id"), "focus_index": focus_index}
+
+
+def _apply_variable_upsert(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    kind = command.get("kind")
+    _require_command_fields(command, {"kind", "scene_id", "variable"}, {"kind", "scene_id", "variable", "command_id"})
+    scene = _command_scene(scenes, command.get("scene_id"))
+    variable = command.get("variable")
+    if not isinstance(variable, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "variable must be an object")
+    variables = scene.get("variables")
+    if not isinstance(variables, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.variables must be an array")
+    variable_id = variable.get("variable_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(variable_id, "command.variable.variable_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    existing = next((item for item in variables if isinstance(item, dict) and item.get("variable_id") == variable_id), None)
+    normalized = deepcopy(variable)
+    if kind == "variable.add":
+        if existing is not None:
+            raise ProjectCommandError("PROJECT_ID_DUPLICATE", f"variable '{variable_id}' already exists")
+        if len(variables) >= 32:
+            raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "scene supports at most 32 variables")
+        variables.append(normalized)
+    else:
+        if existing is None:
+            raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown variable '{variable_id}'")
+        variables[variables.index(existing)] = normalized
+    return {"kind": kind, "scene_id": scene.get("scene_id"), "variable": normalized}
+
+
+def _apply_variable_delete(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(command, {"kind", "scene_id", "variable_id"}, {"kind", "scene_id", "variable_id", "command_id"})
+    scene = _command_scene(scenes, command.get("scene_id"))
+    variable_id = command.get("variable_id")
+    for route in scene.get("routes", []):
+        if not isinstance(route, dict):
+            continue
+        used = any(isinstance(guard, dict) and guard.get("variable_ref") == variable_id for guard in route.get("guards", []))
+        used = used or any(isinstance(action, dict) and action.get("variable_ref") == variable_id for action in route.get("actions", []))
+        if used:
+            raise ProjectCommandError("COMMAND_TARGET_IN_USE", f"variable '{variable_id}' is referenced by route '{route.get('route_id')}'")
+    variables = scene.get("variables")
+    if not isinstance(variables, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.variables must be an array")
+    for index, variable in enumerate(variables):
+        if isinstance(variable, dict) and variable.get("variable_id") == variable_id:
+            variables.pop(index)
+            return {"kind": "variable.delete", "scene_id": scene.get("scene_id"), "variable_id": variable_id}
+    raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown variable '{variable_id}'")
+
+
+def _apply_input_action_upsert(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    kind = command.get("kind")
+    _require_command_fields(command, {"kind", "scene_id", "input_action"}, {"kind", "scene_id", "input_action", "command_id"})
+    scene = _command_scene(scenes, command.get("scene_id"))
+    action = command.get("input_action")
+    if not isinstance(action, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "input_action must be an object")
+    actions = scene.get("input_actions")
+    if not isinstance(actions, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.input_actions must be an array")
+    action_id = action.get("action_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(action_id, "command.input_action.action_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    existing = next((item for item in actions if isinstance(item, dict) and item.get("action_id") == action_id), None)
+    normalized = deepcopy(action)
+    if kind == "input_action.add":
+        if existing is not None:
+            raise ProjectCommandError("PROJECT_ID_DUPLICATE", f"input action '{action_id}' already exists")
+        if len(actions) >= 32:
+            raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "scene supports at most 32 input actions")
+        actions.append(normalized)
+    else:
+        if existing is None:
+            raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown input action '{action_id}'")
+        actions[actions.index(existing)] = normalized
+    return {"kind": kind, "scene_id": scene.get("scene_id"), "input_action": normalized}
+
+
+def _apply_input_action_delete(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(command, {"kind", "scene_id", "action_id"}, {"kind", "scene_id", "action_id", "command_id"})
+    scene = _command_scene(scenes, command.get("scene_id"))
+    action_id = command.get("action_id")
+    for route in scene.get("routes", []):
+        if isinstance(route, dict) and route.get("action_ref") == action_id:
+            raise ProjectCommandError("COMMAND_TARGET_IN_USE", f"input action '{action_id}' is referenced by route '{route.get('route_id')}'")
+    wait_policy = scene.get("reactive_wait_default")
+    if isinstance(wait_policy, dict) and action_id in wait_policy.get("event_interests", []):
+        raise ProjectCommandError("COMMAND_TARGET_IN_USE", f"input action '{action_id}' is a reactive wait interest")
+    interaction = scene.get("interaction_policy")
+    if isinstance(interaction, dict) and action_id in interaction.get("meaningful_activity_actions", []):
+        raise ProjectCommandError("COMMAND_TARGET_IN_USE", f"input action '{action_id}' is meaningful activity")
+    actions = scene.get("input_actions")
+    if not isinstance(actions, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.input_actions must be an array")
+    for index, action in enumerate(actions):
+        if isinstance(action, dict) and action.get("action_id") == action_id:
+            actions.pop(index)
+            return {"kind": "input_action.delete", "scene_id": scene.get("scene_id"), "action_id": action_id}
+    raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown input action '{action_id}'")
+
+
+def _apply_route_add(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(command, {"kind", "scene_id", "route"}, {"kind", "scene_id", "route", "command_id"})
+    scene = _command_scene(scenes, command.get("scene_id"))
+    route = command.get("route")
+    if not isinstance(route, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "route must be an object")
+    routes = scene.get("routes")
+    if not isinstance(routes, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.routes must be an array")
+    if len(routes) >= 128:
+        raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "scene supports at most 128 routes")
+    route_id = route.get("route_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(route_id, "command.route.route_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    if any(isinstance(item, dict) and item.get("route_id") == route_id for item in routes):
+        raise ProjectCommandError("PROJECT_ID_DUPLICATE", f"route '{route_id}' already exists")
+    normalized = deepcopy(route)
+    routes.append(normalized)
+    return {"kind": "route.add", "scene_id": scene.get("scene_id"), "route": normalized}
+
+
+def _apply_route_delete(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(command, {"kind", "scene_id", "route_id"}, {"kind", "scene_id", "route_id", "command_id"})
+    scene = _command_scene(scenes, command.get("scene_id"))
+    route_id = command.get("route_id")
+    routes = scene.get("routes")
+    if not isinstance(routes, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.routes must be an array")
+    for index, route in enumerate(routes):
+        if isinstance(route, dict) and route.get("route_id") == route_id:
+            routes.pop(index)
+            return {"kind": "route.delete", "scene_id": scene.get("scene_id"), "route_id": route_id}
+    raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown route '{route_id}'")
+
+
+def _apply_route_set_binding(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    kind = command.get("kind")
+    field = "from_states" if kind == "route.set_sources" else "action_ref"
+    _require_command_fields(command, {"kind", "scene_id", "route_id", field}, {"kind", "scene_id", "route_id", field, "command_id"})
+    scene = _command_scene(scenes, command.get("scene_id"))
+    route = _command_record(scene, "routes", "route_id", command.get("route_id"))
+    value = command.get(field)
+    if field == "from_states":
+        if not isinstance(value, list) or not value:
+            raise ProjectCommandError("ROUTE_SOURCE_MISSING", "from_states must be a non-empty array")
+        value = list(value)
+    else:
+        _command_record(scene, "input_actions", "action_id", value)
+    route[field] = value
+    return {"kind": kind, "scene_id": scene.get("scene_id"), "route_id": route.get("route_id"), field: value}
+
+
+def _apply_scene_policy(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    kind = command.get("kind")
+    field = "reactive_wait_default" if kind == "scene.set_reactive_wait_default" else "interaction_policy"
+    _require_command_fields(command, {"kind", "scene_id", field}, {"kind", "scene_id", field, "command_id"})
+    scene = _command_scene(scenes, command.get("scene_id"))
+    policy = command.get(field)
+    if not isinstance(policy, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", f"{field} must be an object")
+    normalized = deepcopy(policy)
+    scene[field] = normalized
+    return {"kind": kind, "scene_id": scene.get("scene_id"), field: normalized}
+
+
 def _apply_state_rename(
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
@@ -1161,6 +1563,138 @@ def _apply_state_graph_node_position(
     }
 
 
+def _normalize_guard(scene: dict[str, Any], guard: Any) -> dict[str, Any]:
+    if not isinstance(guard, dict):
+        raise ProjectCommandError("GUARD_TYPE_MISMATCH", "guard must be an object")
+    _require_command_fields(guard, {"variable_ref", "operator", "value"}, {"variable_ref", "operator", "value"})
+    variable_ref = guard.get("variable_ref")
+    operator = guard.get("operator")
+    value = guard.get("value")
+    issues: list[ValidationIssue] = []
+    _stable_id(variable_ref, "command.guard.variable_ref", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    variable_ids = {
+        variable.get("variable_id")
+        for variable in scene.get("variables", [])
+        if isinstance(variable, dict)
+    }
+    if variable_ref not in variable_ids:
+        raise ProjectCommandError("GUARD_VARIABLE_UNKNOWN", f"unknown variable '{variable_ref}'")
+    if operator not in GUARD_OPERATORS:
+        raise ProjectCommandError("GUARD_OPERATOR_INVALID", "unsupported comparison")
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ProjectCommandError("GUARD_TYPE_MISMATCH", "guard value must be an integer")
+    return {"variable_ref": variable_ref, "operator": operator, "value": value}
+
+
+def _normalize_action(scene: dict[str, Any], action: Any) -> dict[str, Any]:
+    if not isinstance(action, dict):
+        raise ProjectCommandError("ACTION_TYPE_INVALID", "action must be an object")
+    action_kind = action.get("kind")
+    if action_kind == "set_variable":
+        _require_command_fields(action, {"kind", "variable_ref", "operation", "value"}, {"kind", "variable_ref", "operation", "value"})
+        variable_ref = action.get("variable_ref")
+        operation = action.get("operation")
+        value = action.get("value")
+        issues: list[ValidationIssue] = []
+        _stable_id(variable_ref, "command.action.variable_ref", issues)
+        if issues:
+            issue = issues[0]
+            raise ProjectCommandError(issue.code, issue.message)
+        variable_ids = {
+            variable.get("variable_id")
+            for variable in scene.get("variables", [])
+            if isinstance(variable, dict)
+        }
+        if variable_ref not in variable_ids:
+            raise ProjectCommandError("ACTION_VARIABLE_UNKNOWN", f"unknown variable '{variable_ref}'")
+        if operation not in ACTION_OPERATIONS:
+            raise ProjectCommandError("ACTION_OPERATION_INVALID", "action operation must be assign or add")
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ProjectCommandError("ACTION_TYPE_INVALID", "action value must be an integer")
+        return {"kind": "set_variable", "variable_ref": variable_ref, "operation": operation, "value": value}
+    if action_kind == "request_render":
+        _require_command_fields(action, {"kind"}, {"kind"})
+        return {"kind": "request_render"}
+    raise ProjectCommandError("ACTION_KIND_INVALID", "unsupported V1 action")
+
+
+def _apply_route_guard_list(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    kind = command.get("kind")
+    required = {"kind", "scene_id", "route_id", "guard_index"}
+    allowed = required | {"guard", "target_index", "command_id"}
+    if kind == "route.guard.add":
+        required.add("guard")
+    elif kind == "route.guard.move":
+        required.add("target_index")
+    _require_command_fields(command, required, allowed)
+    scene = _command_scene(scenes, command.get("scene_id"))
+    route = _command_record(scene, "routes", "route_id", command.get("route_id"))
+    guards = route.get("guards")
+    if not isinstance(guards, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "route.guards must be an array")
+    guard_index = _command_index(command.get("guard_index"), "guard_index")
+    if kind == "route.guard.add":
+        if len(guards) >= 8:
+            raise ProjectCommandError("GUARD_LIMIT_EXCEEDED", "route supports at most 8 guards")
+        if guard_index > len(guards):
+            raise ProjectCommandError("COMMAND_INDEX_INVALID", "guard_index must select an insertion position")
+        guard = _normalize_guard(scene, command.get("guard"))
+        guards.insert(guard_index, guard)
+        return {"kind": kind, "scene_id": scene.get("scene_id"), "route_id": route.get("route_id"), "guard_index": guard_index, "guard": guard}
+    source_index = _command_move_index(guard_index, "guard_index", len(guards))
+    if kind == "route.guard.delete":
+        guard = guards.pop(source_index)
+        return {"kind": kind, "scene_id": scene.get("scene_id"), "route_id": route.get("route_id"), "guard_index": source_index, "guard": guard}
+    target_index = _command_move_index(command.get("target_index"), "target_index", len(guards))
+    guard = guards.pop(source_index)
+    guards.insert(target_index, guard)
+    return {"kind": kind, "scene_id": scene.get("scene_id"), "route_id": route.get("route_id"), "guard_index": source_index, "target_index": target_index}
+
+
+def _apply_route_action_list(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    kind = command.get("kind")
+    required = {"kind", "scene_id", "route_id", "action_index"}
+    allowed = required | {"action", "target_index", "command_id"}
+    if kind == "route.action.add":
+        required.add("action")
+    elif kind == "route.action.move":
+        required.add("target_index")
+    _require_command_fields(command, required, allowed)
+    scene = _command_scene(scenes, command.get("scene_id"))
+    route = _command_record(scene, "routes", "route_id", command.get("route_id"))
+    if "target_scene" in route:
+        raise ProjectCommandError("SCENE_TRANSITION_ACTION_UNSUPPORTED", "direct scene replacement requires an empty route action list")
+    actions = route.get("actions")
+    if not isinstance(actions, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "route.actions must be an array")
+    action_index = _command_index(command.get("action_index"), "action_index")
+    if kind == "route.action.add":
+        if len(actions) >= 8:
+            raise ProjectCommandError("ACTION_BUDGET_EXCEEDED", "route supports at most 8 actions")
+        if action_index > len(actions):
+            raise ProjectCommandError("COMMAND_INDEX_INVALID", "action_index must select an insertion position")
+        action = _normalize_action(scene, command.get("action"))
+        actions.insert(action_index, action)
+        return {"kind": kind, "scene_id": scene.get("scene_id"), "route_id": route.get("route_id"), "action_index": action_index, "action": action}
+    source_index = _command_move_index(action_index, "action_index", len(actions))
+    if kind == "route.action.delete":
+        action = actions.pop(source_index)
+        return {"kind": kind, "scene_id": scene.get("scene_id"), "route_id": route.get("route_id"), "action_index": source_index, "action": action}
+    target_index = _command_move_index(command.get("target_index"), "target_index", len(actions))
+    action = actions.pop(source_index)
+    actions.insert(target_index, action)
+    return {"kind": kind, "scene_id": scene.get("scene_id"), "route_id": route.get("route_id"), "action_index": source_index, "target_index": target_index}
+
+
 def _apply_route_set_guard(
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
@@ -1173,17 +1707,9 @@ def _apply_route_set_guard(
     issues: list[ValidationIssue] = []
     scene_id = command.get("scene_id")
     route_id = command.get("route_id")
-    variable_ref = command.get("variable_ref")
-    operator = command.get("operator")
-    value = command.get("value")
     guard_index = command.get("guard_index")
     _stable_id(scene_id, "command.scene_id", issues)
     _stable_id(route_id, "command.route_id", issues)
-    _stable_id(variable_ref, "command.variable_ref", issues)
-    if operator not in GUARD_OPERATORS:
-        raise ProjectCommandError("GUARD_OPERATOR_INVALID", "unsupported comparison")
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ProjectCommandError("GUARD_TYPE_MISMATCH", "guard value must be an integer")
     if isinstance(guard_index, bool) or not isinstance(guard_index, int) or guard_index < 0:
         raise ProjectCommandError("COMMAND_INDEX_INVALID", "guard_index must be a non-negative integer")
     if issues:
@@ -1193,32 +1719,27 @@ def _apply_route_set_guard(
     for scene in scenes:
         if scene.get("scene_id") != scene_id:
             continue
-        variable_ids = {
-            variable.get("variable_id")
-            for variable in scene.get("variables", [])
-            if isinstance(variable, dict)
-        }
-        if variable_ref not in variable_ids:
-            raise ProjectCommandError("GUARD_VARIABLE_UNKNOWN", f"unknown variable '{variable_ref}'")
+        normalized_guard = _normalize_guard(
+            scene,
+            {
+                "variable_ref": command.get("variable_ref"),
+                "operator": command.get("operator"),
+                "value": command.get("value"),
+            },
+        )
         for route in scene.get("routes", []):
             if not isinstance(route, dict) or route.get("route_id") != route_id:
                 continue
             guards = route.get("guards")
             if not isinstance(guards, list) or guard_index >= len(guards):
                 raise ProjectCommandError("COMMAND_INDEX_INVALID", "guard_index does not select an existing guard")
-            guards[guard_index] = {
-                "variable_ref": variable_ref,
-                "operator": operator,
-                "value": value,
-            }
+            guards[guard_index] = normalized_guard
             return {
                 "kind": "route.set_guard",
                 "scene_id": scene_id,
                 "route_id": route_id,
                 "guard_index": guard_index,
-                "variable_ref": variable_ref,
-                "operator": operator,
-                "value": value,
+                **normalized_guard,
             }
         raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown route '{route_id}'")
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
@@ -1251,44 +1772,7 @@ def _apply_route_set_action(
     for scene in scenes:
         if scene.get("scene_id") != scene_id:
             continue
-        variable_ids = {
-            variable.get("variable_id")
-            for variable in scene.get("variables", [])
-            if isinstance(variable, dict)
-        }
-        normalized_action: dict[str, Any]
-        action_kind = action.get("kind")
-        if action_kind == "set_variable":
-            _require_command_fields(
-                action,
-                {"kind", "variable_ref", "operation", "value"},
-                {"kind", "variable_ref", "operation", "value"},
-            )
-            variable_ref = action.get("variable_ref")
-            operation = action.get("operation")
-            value = action.get("value")
-            action_issues: list[ValidationIssue] = []
-            _stable_id(variable_ref, "command.action.variable_ref", action_issues)
-            if action_issues:
-                issue = action_issues[0]
-                raise ProjectCommandError(issue.code, issue.message)
-            if variable_ref not in variable_ids:
-                raise ProjectCommandError("ACTION_VARIABLE_UNKNOWN", f"unknown variable '{variable_ref}'")
-            if operation not in ACTION_OPERATIONS:
-                raise ProjectCommandError("ACTION_OPERATION_INVALID", "action operation must be assign or add")
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise ProjectCommandError("ACTION_TYPE_INVALID", "action value must be an integer")
-            normalized_action = {
-                "kind": "set_variable",
-                "variable_ref": variable_ref,
-                "operation": operation,
-                "value": value,
-            }
-        elif action_kind == "request_render":
-            _require_command_fields(action, {"kind"}, {"kind"})
-            normalized_action = {"kind": "request_render"}
-        else:
-            raise ProjectCommandError("ACTION_KIND_INVALID", "unsupported V1 action")
+        normalized_action = _normalize_action(scene, action)
 
         for route in scene.get("routes", []):
             if not isinstance(route, dict) or route.get("route_id") != route_id:
@@ -2196,8 +2680,8 @@ def apply_project_commands(
         raise ProjectCommandError("PROJECT_INVALID", "project must validate before commands can be applied")
     if not isinstance(commands, list) or not commands:
         raise ProjectCommandError("COMMAND_LIST_INVALID", "commands must be a non-empty array")
-    if len(commands) > 16:
-        raise ProjectCommandError("COMMAND_LIST_INVALID", "commands must contain at most 16 entries")
+    if len(commands) > 64:
+        raise ProjectCommandError("COMMAND_LIST_INVALID", "commands must contain at most 64 entries")
 
     project = deepcopy(bundle.project)
     scenes = deepcopy(list(bundle.scenes))
@@ -2212,8 +2696,34 @@ def apply_project_commands(
         if not isinstance(command, dict):
             raise ProjectCommandError("COMMAND_SHAPE_INVALID", "each command must be an object")
         kind = command.get("kind")
-        if kind == "state.rename":
+        if kind == "state.add":
+            applied.append(_apply_state_add(scenes, command))
+        elif kind == "state.delete":
+            applied.append(_apply_state_delete(project, scenes, command))
+        elif kind in {"state.set_entry", "state.set_render_model"}:
+            applied.append(_apply_state_set_reference(scenes, command))
+        elif kind == "state.rename":
             applied.append(_apply_state_rename(scenes, command))
+        elif kind == "render_model.add":
+            applied.append(_apply_render_model_add(scenes, command))
+        elif kind == "render_model.delete":
+            applied.append(_apply_render_model_delete(scenes, command))
+        elif kind == "render_model.set_focus_index":
+            applied.append(_apply_render_model_set_focus(scenes, command))
+        elif kind in {"variable.add", "variable.update"}:
+            applied.append(_apply_variable_upsert(scenes, command))
+        elif kind == "variable.delete":
+            applied.append(_apply_variable_delete(scenes, command))
+        elif kind in {"input_action.add", "input_action.update"}:
+            applied.append(_apply_input_action_upsert(scenes, command))
+        elif kind == "input_action.delete":
+            applied.append(_apply_input_action_delete(scenes, command))
+        elif kind == "route.add":
+            applied.append(_apply_route_add(scenes, command))
+        elif kind == "route.delete":
+            applied.append(_apply_route_delete(scenes, command))
+        elif kind in {"route.set_sources", "route.set_action_ref"}:
+            applied.append(_apply_route_set_binding(scenes, command))
         elif kind == "route.set_target":
             applied.append(_apply_route_set_target(scenes, command))
         elif kind == "route.add_scene_exit":
@@ -2271,8 +2781,14 @@ def apply_project_commands(
             applied.append(_apply_state_graph_node_position(project, scenes, command))
         elif kind == "route.set_guard":
             applied.append(_apply_route_set_guard(scenes, command))
+        elif kind in {"route.guard.add", "route.guard.delete", "route.guard.move"}:
+            applied.append(_apply_route_guard_list(scenes, command))
         elif kind == "route.set_action":
             applied.append(_apply_route_set_action(scenes, command))
+        elif kind in {"route.action.add", "route.action.delete", "route.action.move"}:
+            applied.append(_apply_route_action_list(scenes, command))
+        elif kind in {"scene.set_reactive_wait_default", "scene.set_interaction_policy"}:
+            applied.append(_apply_scene_policy(scenes, command))
         else:
             raise ProjectCommandError("COMMAND_KIND_UNKNOWN", f"unknown command kind '{kind}'")
 

@@ -319,17 +319,26 @@ Semantic edits use typed commands rather than arbitrary object mutation.
 Examples:
 
 ```text
-state.create
+state.add
+state.delete
 state.rename
-transition.create
+state.set_entry
+render_model.add
+variable.add
+input_action.add
+route.add
+route.delete
 route.add_scene_exit
 route.delete_scene_exit
+route.guard.add
+route.guard.move
+route.action.add
+route.action.move
 render_element.set_position
 editor.scene_flow.set_node_position
 editor.state_graph.set_node_position
-transition.set_guard
-element.set_layer
-animation.set_phase_visual
+scene.set_reactive_wait_default
+scene.set_interaction_policy
 ```
 
 The Python service applies commands, validates affected records, and returns a

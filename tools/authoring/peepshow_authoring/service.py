@@ -24,7 +24,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 13
+SERVICE_API_VERSION = 14
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -223,6 +223,67 @@ class AuthoringService:
                 ],
                 "runtime_text": False,
                 "element_actions": False,
+            },
+            "state_scene_graph": {
+                "command_batch_maximum": 64,
+                "limits": {
+                    "states": 64,
+                    "render_models": 64,
+                    "variables": 32,
+                    "input_actions": 32,
+                    "routes": 128,
+                    "guards_per_route": 8,
+                    "actions_per_route": 8,
+                },
+                "state_commands": [
+                    "state.add",
+                    "state.delete",
+                    "state.rename",
+                    "state.set_entry",
+                    "state.set_render_model",
+                    "state.set_waiting_visual",
+                ],
+                "render_model_commands": [
+                    "render_model.add",
+                    "render_model.delete",
+                    "render_model.set_focus_index",
+                ],
+                "variable_commands": [
+                    "variable.add",
+                    "variable.update",
+                    "variable.delete",
+                ],
+                "input_action_commands": [
+                    "input_action.add",
+                    "input_action.update",
+                    "input_action.delete",
+                ],
+                "route_commands": [
+                    "route.add",
+                    "route.delete",
+                    "route.set_action_ref",
+                    "route.set_sources",
+                    "route.set_target",
+                    "route.add_scene_exit",
+                    "route.delete_scene_exit",
+                ],
+                "guard_commands": [
+                    "route.guard.add",
+                    "route.guard.delete",
+                    "route.guard.move",
+                    "route.set_guard",
+                ],
+                "action_commands": [
+                    "route.action.add",
+                    "route.action.delete",
+                    "route.action.move",
+                    "route.set_action",
+                ],
+                "policy_commands": [
+                    "scene.set_reactive_wait_default",
+                    "scene.set_interaction_policy",
+                ],
+                "generic_delete_policy": "reject_if_referenced",
             },
             "project_loaded": self._bundle is not None,
             "project_revision": self._project_revision if self._bundle is not None else None,

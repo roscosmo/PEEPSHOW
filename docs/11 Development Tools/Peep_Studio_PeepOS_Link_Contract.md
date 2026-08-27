@@ -197,9 +197,8 @@ The following are planned or incomplete and must be labelled unavailable in
 the editor until this document is updated:
 
 - SEQUENCE and PROGRAM scene authoring or execution;
-- complete STATE graph CRUD, variable CRUD, and ordered guard/action CRUD;
 - Peep Studio controls for the backend-ready retained-element, asset-catalog,
-  and waiting-timeline mutation commands;
+  waiting-timeline, and STATE graph mutation commands;
 - arbitrary text and runtime element mutation actions;
 - sampled package audio, STATE SFX actions, audio audition, or audio
   compatibility reporting;
@@ -221,7 +220,7 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `13`.
+protocol is version `1`; the current service API is version `14`.
 
 | Operation | Purpose |
 |---|---|
@@ -295,8 +294,9 @@ Initial shell location: `tools/peep-studio/`.
 
 The current shell can open a project, select and run a STATE scene, inject
 buttons, advance or play deterministic time, inspect runtime state, build, and
-export `.egg`. The next GUI milestone is editor-owned project navigation and a
-read-only scene/graph inspector before mutation commands are introduced.
+export `.egg`. Service API 14 now supplies the semantic mutation boundary for
+complete single-scene STATE graph authorship; the GUI branch may add controls
+without directly editing normalized JSON in React.
 
 ---
 
@@ -328,23 +328,22 @@ visuals. Project mutation controls remain deferred to Stage 2.
 
 No scene-canvas or graph control may directly mutate normalized JSON in React.
 
-Implementation status: active. Service API version 13 exposes
-`project.apply_commands` with the first accepted commands,
-`state.rename`, `route.set_target`, `route.set_guard`, and
-`route.set_action`, plus `route.add_scene_exit` and
-`route.delete_scene_exit` for creating/deleting actionless direct scene exits,
-retained-element `add`, `delete`, `set_position`, `set_bounds`, `set_layer`,
-`set_visibility`, `set_z_order`, and `set_visual_ref`; complete waiting-visual
-upsert/deletion and per-state waiting-visual selection; and masked-1bpp asset
-record upsert/deletion. Catalog animation edits persist for future SEQUENCE
-work but are explicitly not STATE-placeable. `editor.scene_flow.set_node_position`
+Implementation status: complete for the authoritative editing foundation.
+Service API version 14 exposes `project.apply_commands` for bounded state,
+render-model, variable, input-action, route, guard/action-list, wait-policy,
+interaction-policy, retained-element, waiting-visual, and masked-1bpp asset
+mutation. Generic deletes reject referenced records; callers detach references
+explicitly in an ordered command batch before deletion. Batches contain at
+most 64 commands, while `service.hello.state_scene_graph` publishes command
+families and schema limits for feature detection. Catalog animation edits
+persist for future SEQUENCE work but are explicitly not STATE-placeable.
+`editor.scene_flow.set_node_position`
 owns editor-only scene-flow layout. Local Logic state cards use
 `editor.state_graph.set_node_position`, storing per-scene, per-state editor-only
 layout coordinates that must not affect package bytes.
-`route.set_action` edits existing ordered route actions only; adding, removing,
-and reordering actions remain deferred. Accepted commands update the in-memory
-Python-owned project, return a new `project_revision`, normalized document,
-diagnostics, and dirty state, and reject stale revisions.
+Accepted commands update the in-memory Python-owned project, return a new
+`project_revision`, normalized document, diagnostics, and dirty state, and
+reject stale revisions.
 `project.save` persists the current in-memory project manifest, scene records,
 and asset catalogs back to their authored JSON files and clears dirty state. Peep Studio also
 exposes Save As for copying the current `.peepproj`
@@ -381,7 +380,7 @@ panel only; they do not affect package output. Existing retained elements can
 be moved on the placement canvas through the Python
 `render_element.set_position` command with pixel snapping and bounds
 validation. Peep Studio also exposes exact selected-object X/Y fields and
-arrow-key nudging using that same command. Service API 13 now provides the
+arrow-key nudging using that same command. Service API 14 provides the
 remaining retained-element CRUD/property commands and bounded STATE
 waiting-loop commands. React controls for add/remove/resize/reorder, frame
 assignment, layer/visibility, asset records, and the phase timeline are the
@@ -409,7 +408,13 @@ Implementation status: local logic presentation has been reshaped toward the
 user-facing vocabulary. State graph cards show screen names, entry/output
 badges, and trigger output rows. The primary inspector uses transition,
 condition, and effect language while keeping Python-owned routes, guards, and
-actions as the underlying semantics.
+actions as the underlying semantics. The Python backend is complete for one
+STATE scene: it can create/delete states and render models, choose the entry
+state, create/update/delete variables and logical inputs, create/delete and
+retarget routes, edit route sources and input bindings, and add/delete/reorder
+guards and actions. Reactive-wait and interaction policies are also replaceable
+through typed commands. The next GUI work is to expose these API 14 commands
+through the existing node-card and inspector model.
 
 ### Stage 5: Package Scene Flow
 

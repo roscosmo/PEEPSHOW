@@ -513,7 +513,9 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
     pre-commit validation and boot policy remain open)
 12. complete the STATE presentation boundary: package layers, generic retained
     primitives, element/asset authoring commands, catalog persistence, and
-    bounded STATE waiting-loop commands are implemented in service API 13;
+    bounded STATE waiting-loop commands are implemented; complete single-scene
+    STATE graph mutation is implemented in service API 14, including reference-
+    safe state/model/variable/input/route CRUD and ordered guard/action editing;
     Peep Studio controls, build-time text sprites, and runtime
     show/hide/move/frame-selection actions remain to complete this step
 13. implement the initial STATE sampled-SFX path: verify the HW6 16 kHz mono

@@ -267,7 +267,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(13, SERVICE_API_VERSION)
+        self.assertEqual(14, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -289,6 +289,14 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertNotIn("OVERLAY", result["state_scene_presentation"]["package_layers"])
         self.assertIn("ellipse", result["state_scene_presentation"]["element_kinds"])
         self.assertFalse(result["state_scene_presentation"]["runtime_text"])
+        graph = result["state_scene_graph"]
+        self.assertEqual(64, graph["command_batch_maximum"])
+        self.assertEqual(64, graph["limits"]["states"])
+        self.assertIn("state.add", graph["state_commands"])
+        self.assertIn("render_model.add", graph["render_model_commands"])
+        self.assertIn("route.guard.move", graph["guard_commands"])
+        self.assertIn("route.action.move", graph["action_commands"])
+        self.assertEqual("reject_if_referenced", graph["generic_delete_policy"])
 
     def test_load_validate_and_normalize_share_one_revision(self) -> None:
         service = AuthoringService()
@@ -400,6 +408,220 @@ class AuthoringServiceTests(unittest.TestCase):
                 )
             )
         self.assertEqual("PROJECT_TEXT_INVALID", raised.exception.code)
+
+    def test_graph_commands_build_and_compile_a_complete_menu_state(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "render_model.add",
+                            "scene_id": "state_demo",
+                            "render_model": {
+                                "visual_id": "view_options",
+                                "focus_index": 3,
+                                "elements": [
+                                    {
+                                        "element_id": "cursor",
+                                        "kind": "sprite",
+                                        "visual_ref": "cursor.phase_b",
+                                        "x": 8,
+                                        "y": 118,
+                                        "width": 8,
+                                        "height": 16,
+                                        "z_order": 10,
+                                        "focus_role": "focus",
+                                    },
+                                    {
+                                        "element_id": "marker",
+                                        "kind": "sprite",
+                                        "visual_ref": "marker.phase_a",
+                                        "x": 160,
+                                        "y": 0,
+                                        "width": 8,
+                                        "height": 24,
+                                        "z_order": 5,
+                                    },
+                                ],
+                            },
+                        },
+                        {
+                            "kind": "state.add",
+                            "scene_id": "state_demo",
+                            "state": {
+                                "state_id": "options",
+                                "display_name": "Options",
+                                "render_model_ref": "view_center",
+                                "waiting_visual_ref": "state_wait",
+                            },
+                        },
+                        {"kind": "state.set_render_model", "scene_id": "state_demo", "state_id": "options", "render_model_ref": "view_options"},
+                        {"kind": "state.set_entry", "scene_id": "state_demo", "state_id": "options"},
+                        {"kind": "render_model.set_focus_index", "scene_id": "state_demo", "visual_id": "view_options", "focus_index": 4},
+                        {
+                            "kind": "variable.add",
+                            "scene_id": "state_demo",
+                            "variable": {"variable_id": "option_index", "value_type": "int32", "initial": 0, "minimum": 0, "maximum": 1},
+                        },
+                        {
+                            "kind": "variable.update",
+                            "scene_id": "state_demo",
+                            "variable": {"variable_id": "option_index", "value_type": "int32", "initial": 1, "minimum": 0, "maximum": 2},
+                        },
+                        {
+                            "kind": "input_action.add",
+                            "scene_id": "state_demo",
+                            "input_action": {"action_id": "open_options", "logical_source": "BUTTON_B"},
+                        },
+                        {
+                            "kind": "input_action.update",
+                            "scene_id": "state_demo",
+                            "input_action": {"action_id": "open_options", "logical_source": "BUTTON_START"},
+                        },
+                        {
+                            "kind": "route.add",
+                            "scene_id": "state_demo",
+                            "route": {
+                                "route_id": "options_to_center",
+                                "action_ref": "open_options",
+                                "from_states": ["options"],
+                                "guards": [],
+                                "actions": [],
+                                "target_state": "center",
+                            },
+                        },
+                        {
+                            "kind": "route.guard.add",
+                            "scene_id": "state_demo",
+                            "route_id": "options_to_center",
+                            "guard_index": 0,
+                            "guard": {"variable_ref": "option_index", "operator": "ge", "value": 0},
+                        },
+                        {
+                            "kind": "route.guard.add",
+                            "scene_id": "state_demo",
+                            "route_id": "options_to_center",
+                            "guard_index": 1,
+                            "guard": {"variable_ref": "option_index", "operator": "le", "value": 2},
+                        },
+                        {"kind": "route.guard.move", "scene_id": "state_demo", "route_id": "options_to_center", "guard_index": 1, "target_index": 0},
+                        {
+                            "kind": "route.action.add",
+                            "scene_id": "state_demo",
+                            "route_id": "options_to_center",
+                            "action_index": 0,
+                            "action": {"kind": "set_variable", "variable_ref": "option_index", "operation": "assign", "value": 0},
+                        },
+                        {
+                            "kind": "route.action.add",
+                            "scene_id": "state_demo",
+                            "route_id": "options_to_center",
+                            "action_index": 1,
+                            "action": {"kind": "request_render"},
+                        },
+                        {"kind": "route.action.move", "scene_id": "state_demo", "route_id": "options_to_center", "action_index": 1, "target_index": 0},
+                        {
+                            "kind": "scene.set_reactive_wait_default",
+                            "scene_id": "state_demo",
+                            "reactive_wait_default": {
+                                "policy_id": "state_wait_policy",
+                                "waiting_visual_ref": "state_wait",
+                                "hold_fallback_allowed": True,
+                                "event_interests": ["move_left", "move_right", "joy_move_left", "joy_move_right", "open_details", "open_options"],
+                            },
+                        },
+                        {
+                            "kind": "scene.set_interaction_policy",
+                            "scene_id": "state_demo",
+                            "interaction_policy": {
+                                "policy_id": "state_interaction",
+                                "mode": "timeout",
+                                "meaningful_activity_actions": ["move_left", "move_right", "joy_move_left", "joy_move_right", "open_details", "open_options"],
+                                "inactive_route": "preserve_scene",
+                                "bounded_deferrals": [],
+                            },
+                        },
+                    ],
+                },
+            )
+        )
+        scene = changed["document"]["scenes"][0]
+        self.assertEqual("options", scene["entry_state"])
+        self.assertEqual(4, next(model for model in scene["render_models"] if model["visual_id"] == "view_options")["focus_index"])
+        route = next(route for route in scene["routes"] if route["route_id"] == "options_to_center")
+        self.assertEqual(["le", "ge"], [guard["operator"] for guard in route["guards"]])
+        self.assertEqual(["request_render", "set_variable"], [action["kind"] for action in route["actions"]])
+        built = service.handle(request("project.build_package", {"project_revision": changed["project_revision"]}))
+        self.assertGreater(built["package"]["size_bytes"], 0)
+
+    def test_graph_deletes_reject_referenced_records(self) -> None:
+        cases = [
+            ({"kind": "state.delete", "scene_id": "state_demo", "state_id": "center"}, "entry state"),
+            ({"kind": "render_model.delete", "scene_id": "state_demo", "visual_id": "view_center"}, "referenced by state"),
+            ({"kind": "variable.delete", "scene_id": "state_demo", "variable_id": "selected_index"}, "referenced by route"),
+            ({"kind": "input_action.delete", "scene_id": "state_demo", "action_id": "move_right"}, "referenced by route"),
+        ]
+        for command, message in cases:
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+            with self.subTest(kind=command["kind"]), self.assertRaises(ProtocolError) as raised:
+                service.handle(request("project.apply_commands", {"project_revision": loaded["project_revision"], "commands": [command]}))
+            self.assertEqual("COMMAND_TARGET_IN_USE", raised.exception.code)
+            self.assertIn(message, raised.exception.message)
+
+    def test_graph_delete_batch_succeeds_after_references_are_detached(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        added = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {"kind": "render_model.add", "scene_id": "state_demo", "render_model": {"visual_id": "unused_model", "focus_index": 0, "elements": []}},
+                        {"kind": "variable.add", "scene_id": "state_demo", "variable": {"variable_id": "unused_variable", "value_type": "int32", "initial": 0, "minimum": 0, "maximum": 1}},
+                        {"kind": "input_action.add", "scene_id": "state_demo", "input_action": {"action_id": "unused_input", "logical_source": "BUTTON_START"}},
+                        {"kind": "state.add", "scene_id": "state_demo", "state": {"state_id": "unused_state", "display_name": "Unused", "render_model_ref": "view_center", "waiting_visual_ref": "state_wait"}},
+                        {
+                            "kind": "route.add",
+                            "scene_id": "state_demo",
+                            "route": {"route_id": "unused_route", "action_ref": "unused_input", "from_states": ["unused_state"], "guards": [], "actions": [], "target_state": "center"},
+                        },
+                        {"kind": "route.guard.add", "scene_id": "state_demo", "route_id": "unused_route", "guard_index": 0, "guard": {"variable_ref": "unused_variable", "operator": "eq", "value": 0}},
+                        {"kind": "route.guard.delete", "scene_id": "state_demo", "route_id": "unused_route", "guard_index": 0},
+                        {"kind": "route.action.add", "scene_id": "state_demo", "route_id": "unused_route", "action_index": 0, "action": {"kind": "request_render"}},
+                        {"kind": "route.action.delete", "scene_id": "state_demo", "route_id": "unused_route", "action_index": 0},
+                        {"kind": "route.set_sources", "scene_id": "state_demo", "route_id": "unused_route", "from_states": ["left"]},
+                        {"kind": "route.set_action_ref", "scene_id": "state_demo", "route_id": "unused_route", "action_ref": "move_left"},
+                    ],
+                },
+            )
+        )
+        removed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": added["project_revision"],
+                    "commands": [
+                        {"kind": "route.delete", "scene_id": "state_demo", "route_id": "unused_route"},
+                        {"kind": "state.delete", "scene_id": "state_demo", "state_id": "unused_state"},
+                        {"kind": "render_model.delete", "scene_id": "state_demo", "visual_id": "unused_model"},
+                        {"kind": "variable.delete", "scene_id": "state_demo", "variable_id": "unused_variable"},
+                        {"kind": "input_action.delete", "scene_id": "state_demo", "action_id": "unused_input"},
+                    ],
+                },
+            )
+        )
+        scene = removed["document"]["scenes"][0]
+        self.assertNotIn("unused_model", {model["visual_id"] for model in scene["render_models"]})
+        self.assertNotIn("unused_variable", {variable["variable_id"] for variable in scene["variables"]})
+        self.assertNotIn("unused_input", {action["action_id"] for action in scene["input_actions"]})
+        self.assertNotIn("unused_state", {state["state_id"] for state in scene["states"]})
+        self.assertNotIn("unused_route", {route["route_id"] for route in scene["routes"]})
 
     def test_route_set_target_updates_graph_and_undo_redo(self) -> None:
         service = AuthoringService()
