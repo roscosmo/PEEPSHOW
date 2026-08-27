@@ -24,6 +24,7 @@ import {
   Save,
   SaveAll,
   StepForward,
+  SquareMousePointer,
   Undo2,
   X,
 } from "lucide-react";
@@ -47,6 +48,7 @@ import type {
   SceneDocument,
   ServiceHello,
 } from "./types";
+import type { RenderElement, RenderModel, StateRecord } from "./types";
 
 const INPUTS = [
   { source: "BUTTON_L", label: "L", icon: Circle },
@@ -660,6 +662,25 @@ export default function App() {
     () => scenes.find((scene) => scene.scene_id === selectedScene) ?? null,
     [scenes, selectedScene],
   );
+  const placementState = useMemo<StateRecord | null>(() => {
+    if (selectedSceneDocument === null) {
+      return null;
+    }
+    const states = selectedSceneDocument.states ?? [];
+    const previewStateId = preview?.scene.scene_id === selectedSceneDocument.scene_id ? preview.scene.state_id : null;
+    return (
+      states.find((state) => state.state_id === previewStateId) ??
+      states.find((state) => state.state_id === selectedSceneDocument.entry_state) ??
+      states[0] ??
+      null
+    );
+  }, [preview?.scene.scene_id, preview?.scene.state_id, selectedSceneDocument]);
+  const placementRenderModel = useMemo<RenderModel | null>(() => {
+    if (selectedSceneDocument === null || placementState === null) {
+      return null;
+    }
+    return (selectedSceneDocument.render_models ?? []).find((model) => model.visual_id === placementState.render_model_ref) ?? null;
+  }, [placementState, selectedSceneDocument]);
   const connected = service !== null;
   const startProjectResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -757,6 +778,76 @@ export default function App() {
       </div>
     </section>
   );
+  const renderModeTabs = () => (
+    <div className="mode-tabs" aria-label="Workspace mode">
+      <button
+        className={workspaceMode === "scene-flow" ? "active" : ""}
+        type="button"
+        onClick={() => setWorkspaceMode("scene-flow")}
+      >
+        <Network size={15} aria-hidden="true" />
+        Scene flow
+      </button>
+      <button
+        className={workspaceMode === "logic" ? "active" : ""}
+        type="button"
+        onClick={() => setWorkspaceMode("logic")}
+      >
+        <Network size={15} aria-hidden="true" />
+        Local logic
+      </button>
+      <button
+        className={workspaceMode === "placement" ? "active" : ""}
+        type="button"
+        onClick={() => setWorkspaceMode("placement")}
+      >
+        <Maximize2 size={15} aria-hidden="true" />
+        Placement
+      </button>
+    </div>
+  );
+  const renderPlacementInspector = () => {
+    const elements = [...(placementRenderModel?.elements ?? [])].sort((left, right) => left.z_order - right.z_order);
+    return (
+      <section className="inspector-section placement-inspector">
+        <h3><SquareMousePointer size={14} aria-hidden="true" /> Placement</h3>
+        {selectedSceneDocument === null ? (
+          <p className="muted">Select a scene to inspect its screen elements.</p>
+        ) : placementRenderModel === null ? (
+          <p className="muted">This state has no retained screen model.</p>
+        ) : (
+          <>
+            <dl className="inspector-list">
+              <div><dt>State</dt><dd>{placementState?.display_name ?? "-"}</dd></div>
+              <div><dt>Screen model</dt><dd>{placementRenderModel.visual_id}</dd></div>
+              <div><dt>Elements</dt><dd>{elements.length}</dd></div>
+            </dl>
+            {elements.length === 0 ? (
+              <p className="muted">No screen elements.</p>
+            ) : (
+              <div className="placement-element-list">
+                {elements.map((element: RenderElement) => (
+                  <button
+                    key={element.element_id}
+                    type="button"
+                    onClick={() => setSceneSelection({ kind: "render", id: placementRenderModel.visual_id })}
+                  >
+                    <span>
+                      <strong>{element.element_id}</strong>
+                      <small>{element.kind} - {element.visual_ref}</small>
+                    </span>
+                    <code>
+                      {element.x},{element.y} {element.width}x{element.height} z{element.z_order}
+                    </code>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </section>
+    );
+  };
 
   return (
     <main className="studio-shell">
@@ -877,14 +968,7 @@ export default function App() {
                 <span className="section-kicker">Placement mode</span>
                 <h2>{selectedSceneDocument?.display_name ?? "No scene selected"}</h2>
               </div>
-              <button className="button secondary" type="button" onClick={() => setWorkspaceMode("logic")}>
-                <Network size={16} aria-hidden="true" />
-                Logic
-              </button>
-              <button className="button secondary" type="button" onClick={() => setWorkspaceMode("scene-flow")}>
-                <Network size={16} aria-hidden="true" />
-                Scene flow
-              </button>
+              {renderModeTabs()}
             </div>
             {renderPreviewPanel("placement")}
           </section>
@@ -897,16 +981,7 @@ export default function App() {
               <span className="section-kicker">Scene flow</span>
               <h2>{project?.summary.project_name ?? "No project open"}</h2>
             </div>
-            <div className="mode-actions">
-              <button className="button secondary" type="button" onClick={() => setWorkspaceMode("logic")}>
-                <Network size={16} aria-hidden="true" />
-                Local logic
-              </button>
-              <button className="button secondary" type="button" onClick={() => setWorkspaceMode("placement")}>
-                <Maximize2 size={16} aria-hidden="true" />
-                Placement
-              </button>
-            </div>
+            {renderModeTabs()}
           </div>
           <div className="graph-surface">
             <SceneFlowView
@@ -947,16 +1022,7 @@ export default function App() {
               <span className="section-kicker">Logic graph</span>
               <h2>{selectedSceneDocument?.display_name ?? "No scene selected"}</h2>
             </div>
-            <div className="mode-actions">
-              <button className="button secondary" type="button" onClick={() => setWorkspaceMode("scene-flow")}>
-                <Network size={16} aria-hidden="true" />
-                Scene flow
-              </button>
-              <button className="button secondary" type="button" onClick={() => setWorkspaceMode("placement")}>
-                <Maximize2 size={16} aria-hidden="true" />
-                Placement
-              </button>
-            </div>
+            {renderModeTabs()}
           </div>
           <div className="graph-surface">
             <StateGraphView
@@ -979,6 +1045,8 @@ export default function App() {
 
         <aside className="inspector-pane">
           <div className="pane-heading">Inspector</div>
+
+          {workspaceMode === "placement" && renderPlacementInspector()}
 
           <section className="inspector-section">
             <h3>Runtime</h3>

@@ -261,6 +261,12 @@ This is the first stage at which the user can begin laying out real menu
 screens. Build-time text rasterization is the initial menu-label path; it does
 not require or imply an on-device runtime font renderer.
 
+Implementation status: placement mode shell is present in Peep Studio. It
+promotes the selected scene preview into the main workspace and lists retained
+render elements for inspection. Visual element add/move/reorder commands remain
+pending and must be implemented through Python service commands before the
+canvas becomes editable.
+
 ### Stage 4: STATE Graph Editing
 
 - create, remove, rename, and select STATE nodes;
