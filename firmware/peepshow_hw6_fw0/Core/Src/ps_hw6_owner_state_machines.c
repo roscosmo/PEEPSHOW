@@ -259,6 +259,8 @@ static const uint32_t
   BTN_BOOT_Pin
 };
 
+static volatile uint32_t ps_joystick_stop2_wake_allowed = 1UL;
+
 static const uint32_t
   ps_hw6_stop2_gpio_retain_masks[PS_HW6_OWNER_SM_STOP2_GPIO_PORT_COUNT] =
 {
@@ -433,7 +435,8 @@ static void PS_HW6_SM_RecalculateStop2GpioParkMasks(void)
       g_ps_hw6_owner_sm_probe.stop2_gpio_park_candidate_mask[port];
   }
 
-  if (KNOB_INPUT_JOYSTICK_STOP2_WAKE_ENABLE == 0)
+  if ((KNOB_INPUT_JOYSTICK_STOP2_WAKE_ENABLE == 0) ||
+      (ps_joystick_stop2_wake_allowed == 0UL))
   {
     g_ps_hw6_owner_sm_probe.stop2_gpio_park_mask[
       PS_HW6_STOP2_GPIO_PORT_C] |= (uint32_t)JOY_INT_Pin;
@@ -459,8 +462,14 @@ static void PS_HW6_SM_ResetStop2GpioAudit(void)
        ++index)
   {
     const uint32_t used_mask = ps_hw6_stop2_gpio_used_masks[index];
-    const uint32_t wake_mask = ps_hw6_stop2_gpio_wake_masks[index];
+    uint32_t wake_mask = ps_hw6_stop2_gpio_wake_masks[index];
     const uint32_t retain_mask = ps_hw6_stop2_gpio_retain_masks[index];
+
+    if ((index == PS_HW6_STOP2_GPIO_PORT_C) &&
+        (ps_joystick_stop2_wake_allowed == 0UL))
+    {
+      wake_mask &= ~(uint32_t)JOY_INT_Pin;
+    }
 
     g_ps_hw6_owner_sm_probe.stop2_gpio_used_mask[index] = used_mask;
     g_ps_hw6_owner_sm_probe.stop2_gpio_wake_mask[index] = wake_mask;
@@ -1820,6 +1829,28 @@ uint32_t PS_HW6_OwnerStateMachines_TakeJoystickWakeDirection(
   return 1UL;
 }
 
+void PS_HW6_OwnerStateMachines_SetJoystickStop2WakeAllowed(uint32_t allowed)
+{
+  ps_joystick_stop2_wake_allowed = (allowed != 0UL) ? 1UL : 0UL;
+  ps_joystick_wake_direction_pending = 0UL;
+  ps_joystick_wake_direction_mask = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_wake_direction_capture_pending = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_sleep_write_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.joystick_terminal_sleep_committed = 0UL;
+  g_ps_hw6_owner_sm_probe.joystick_post_sleep_read_omitted = 0UL;
+  g_ps_hw6_owner_sm_probe.stop2_expected_wake_pin =
+    PS_HW6_STOP2_BUTTON_WAKE_EXTI_MASK |
+    (((KNOB_INPUT_JOYSTICK_STOP2_WAKE_ENABLE != 0) &&
+      (ps_joystick_stop2_wake_allowed != 0UL)) ?
+      (uint32_t)JOY_INT_Pin : 0UL);
+}
+
+uint32_t PS_HW6_OwnerStateMachines_JoystickStop2WakeAllowed(void)
+{
+  return ps_joystick_stop2_wake_allowed;
+}
+
 static int32_t PS_HW6_SM_Abs32(int32_t value)
 {
   return (value < 0) ? -value : value;
@@ -2960,6 +2991,7 @@ static uint32_t PS_HW6_SM_JoystickTerminalSleepProofValid(void)
 
   expected_int_config1 =
     ((KNOB_INPUT_JOYSTICK_STOP2_WAKE_ENABLE != 0) &&
+     (ps_joystick_stop2_wake_allowed != 0UL) &&
      (ps_joystick_active_calibration.valid != 0UL) &&
      (ps_joystick_calibration_session_active == 0UL)) ?
       PS_HW6_TMAG_STOP2_INT_CONFIG1_TARGET :
@@ -7024,6 +7056,7 @@ static HAL_StatusTypeDef PS_HW6_SM_QuiesceJoystick(uint32_t cycle_index)
 
   (void)memset(&result, 0, sizeof(result));
   if ((KNOB_INPUT_JOYSTICK_STOP2_WAKE_ENABLE != 0) &&
+      (ps_joystick_stop2_wake_allowed != 0UL) &&
       (ps_joystick_active_calibration.valid != 0UL) &&
       (ps_joystick_calibration_session_active == 0UL))
   {
@@ -7905,6 +7938,7 @@ void PS_HW6_OwnerStateMachines_Init(void)
   ps_joystick_calibration_load_available = 0UL;
   ps_joystick_wake_direction_pending = 0UL;
   ps_joystick_wake_direction_mask = 0UL;
+  ps_joystick_stop2_wake_allowed = 1UL;
   (void)memset(&ps_joystick_calibration_save_candidate,
                0,
                sizeof(ps_joystick_calibration_save_candidate));
@@ -8183,7 +8217,8 @@ void PS_HW6_OwnerStateMachines_Init(void)
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.stop2_expected_wake_pin =
     PS_HW6_STOP2_BUTTON_WAKE_EXTI_MASK |
-    ((KNOB_INPUT_JOYSTICK_STOP2_WAKE_ENABLE != 0) ?
+    (((KNOB_INPUT_JOYSTICK_STOP2_WAKE_ENABLE != 0) &&
+      (ps_joystick_stop2_wake_allowed != 0UL)) ?
       (uint32_t)JOY_INT_Pin : 0UL);
   g_ps_hw6_owner_sm_probe.stop2_wake_start_idr = 0UL;
   g_ps_hw6_owner_sm_probe.stop2_wake_end_idr = 0UL;
@@ -8611,6 +8646,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
   HAL_StatusTypeDef recover_status = HAL_ERROR;
   HAL_StatusTypeDef gpio_park_status = HAL_ERROR;
   HAL_StatusTypeDef gpio_restore_status = HAL_ERROR;
+  HAL_StatusTypeDef interaction_timeout_prepare_status = HAL_OK;
   UINT clock_restore_status = TX_NOT_DONE;
   uint32_t systick_ctrl_before = 0UL;
   uint32_t stop2_entered = 0UL;
@@ -8641,7 +8677,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.stop2_expected_wake_pin =
     PS_HW6_STOP2_BUTTON_WAKE_EXTI_MASK |
-    ((KNOB_INPUT_JOYSTICK_STOP2_WAKE_ENABLE != 0) ?
+    (((KNOB_INPUT_JOYSTICK_STOP2_WAKE_ENABLE != 0) &&
+      (ps_joystick_stop2_wake_allowed != 0UL)) ?
       (uint32_t)JOY_INT_Pin : 0UL);
   g_ps_hw6_owner_sm_probe.stop2_wake_start_idr = 0UL;
   g_ps_hw6_owner_sm_probe.stop2_wake_end_idr = 0UL;
@@ -8709,9 +8746,24 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
                           (uint32_t)PS_HW6_POWER_QUIESCE_REASON_SLEEP_PREP,
                           g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_POWER],
                           (uint32_t)enter_transition_status);
-        PS_HW6_SM_RecordStop2GpioSnapshot(PS_HW6_STOP2_GPIO_SNAPSHOT_BEFORE);
-        gpio_park_status = PS_HW6_SM_ParkStop2GpioPins();
-        PS_HW6_SM_RecordStop2GpioSnapshot(PS_HW6_STOP2_GPIO_SNAPSHOT_SLEEP);
+        if (g_ps_hw6_power_stop2_pre_wfi_hold_enable == 0UL)
+        {
+          interaction_timeout_prepare_status =
+            (HAL_StatusTypeDef)
+              PS_HW6_RTOS_InteractionStop2TimeoutPrepare();
+        }
+        if (interaction_timeout_prepare_status == HAL_OK)
+        {
+          PS_HW6_SM_RecordStop2GpioSnapshot(
+            PS_HW6_STOP2_GPIO_SNAPSHOT_BEFORE);
+          gpio_park_status = PS_HW6_SM_ParkStop2GpioPins();
+          PS_HW6_SM_RecordStop2GpioSnapshot(
+            PS_HW6_STOP2_GPIO_SNAPSHOT_SLEEP);
+        }
+        else
+        {
+          gpio_park_status = interaction_timeout_prepare_status;
+        }
         if (gpio_park_status == HAL_OK)
         {
           HAL_SuspendTick();
@@ -8837,6 +8889,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
             }
             final_input_critical_active = 0UL;
           }
+
+          PS_HW6_RTOS_InteractionStop2TimeoutFinish();
 
           if (stop2_entered != 0UL)
           {

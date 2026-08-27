@@ -155,7 +155,15 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
       (scene->variable_count > PS_SCENE_RUNTIME_VARIABLE_MAX) ||
       (scene->guard_count > PS_SCENE_RUNTIME_GUARD_MAX) ||
       (scene->action_count > PS_SCENE_RUNTIME_ACTION_MAX) ||
-      (scene->transition_count > PS_SCENE_RUNTIME_TRANSITION_MAX))
+      (scene->transition_count > PS_SCENE_RUNTIME_TRANSITION_MAX) ||
+      ((scene->meaningful_input_mask >> scene->input_route_count) != 0UL) ||
+      ((scene->interaction_mode == PS_SCENE_RUNTIME_INTERACTION_CONTINUOUS) &&
+       (scene->inactive_route != 0UL)) ||
+      ((scene->interaction_mode == PS_SCENE_RUNTIME_INTERACTION_TIMEOUT) &&
+       ((scene->inactive_route < PS_SCENE_RUNTIME_INACTIVE_PRESERVE) ||
+        (scene->inactive_route > PS_SCENE_RUNTIME_INACTIVE_EXIT_SHELL))) ||
+      ((scene->interaction_mode != PS_SCENE_RUNTIME_INTERACTION_CONTINUOUS) &&
+       (scene->interaction_mode != PS_SCENE_RUNTIME_INTERACTION_TIMEOUT)))
   {
     return 1UL;
   }
@@ -636,6 +644,11 @@ static uint32_t PS_SceneRuntime_ActivateDecodedScene(
   g_ps_scene_runtime_probe.descriptor_action_count = scene->action_count;
   g_ps_scene_runtime_probe.descriptor_transition_count =
     scene->transition_count;
+  g_ps_scene_runtime_probe.descriptor_interaction_mode =
+    scene->interaction_mode;
+  g_ps_scene_runtime_probe.descriptor_inactive_route = scene->inactive_route;
+  g_ps_scene_runtime_probe.descriptor_meaningful_input_mask =
+    scene->meaningful_input_mask;
   g_ps_scene_runtime_probe.scene_id = scene->scene_id;
   (void)memset(s_ps_scene_runtime_variables,
                0,
@@ -746,7 +759,9 @@ uint32_t PS_SceneRuntime_EnterStateScene(void)
       continue;
     }
     if ((PS_EggStateLoader_LoadScene(scene_index, validation_scene) != 0UL) ||
-        (PS_SceneRuntime_ValidateStateScene(validation_scene) != 0UL))
+        (PS_SceneRuntime_ValidateStateScene(validation_scene) != 0UL) ||
+        (validation_scene->interaction_mode !=
+         entry_scene->interaction_mode))
     {
       g_ps_scene_runtime_probe.reject_count++;
       g_ps_scene_runtime_probe.active = 0UL;
@@ -792,6 +807,42 @@ uint32_t PS_SceneRuntime_StateIndex(void)
 uint32_t PS_SceneRuntime_StateFocusIndex(void)
 {
   return g_ps_scene_runtime_probe.focus_index;
+}
+
+uint32_t PS_SceneRuntime_InteractionMode(void)
+{
+  return (s_ps_scene_runtime_state_scene != NULL) ?
+    s_ps_scene_runtime_state_scene->interaction_mode : 0UL;
+}
+
+uint32_t PS_SceneRuntime_InactiveRoute(void)
+{
+  return (s_ps_scene_runtime_state_scene != NULL) ?
+    s_ps_scene_runtime_state_scene->inactive_route : 0UL;
+}
+
+uint32_t PS_SceneRuntime_InputIsMeaningful(uint32_t logical_event,
+                                           uint32_t input_id)
+{
+  const ps_scene_runtime_state_scene_t *scene =
+    s_ps_scene_runtime_state_scene;
+  uint32_t route_index;
+
+  if (scene == NULL)
+  {
+    return 0UL;
+  }
+  for (route_index = 0UL; route_index < scene->input_route_count;
+       ++route_index)
+  {
+    if ((scene->input_routes[route_index].logical_event == logical_event) &&
+        (scene->input_routes[route_index].input_id == input_id))
+    {
+      return ((scene->meaningful_input_mask & (1UL << route_index)) != 0UL) ?
+        1UL : 0UL;
+    }
+  }
+  return 0UL;
 }
 
 const ps_scene_render_model_t *PS_SceneRuntime_ResolveStateSceneRenderModel(

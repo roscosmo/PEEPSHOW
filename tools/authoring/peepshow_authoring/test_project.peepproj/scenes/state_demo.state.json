@@ -341,6 +341,7 @@
   },
   "interaction_policy": {
     "policy_id": "state_interaction",
+    "mode": "timeout",
     "meaningful_activity_actions": [
       "move_left",
       "move_right"

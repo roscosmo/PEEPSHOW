@@ -38,6 +38,8 @@ static volatile uint32_t ps_input_start_next_check_tick;
 static volatile uint32_t ps_input_start_pending_event;
 static volatile uint32_t ps_input_start_pending_timestamp;
 static volatile uint32_t ps_input_start_pending_hold_ticks;
+static volatile uint32_t ps_input_start_press_event_pending;
+static volatile uint32_t ps_input_start_press_event_timestamp;
 static uint32_t ps_input_start_long_ticks;
 static uint32_t ps_input_start_ship_prep_ticks;
 static uint32_t ps_input_start_ship_warn_ticks;
@@ -293,6 +295,8 @@ static void PS_InputButtons_AcceptStartPress(uint32_t now_tick,
   {
     g_ps_input_buttons_probe.start_synth_press_count++;
   }
+  ps_input_start_press_event_pending = 1UL;
+  ps_input_start_press_event_timestamp = now_tick;
   PS_InputButtons_ArmStartCheck(now_tick + ps_input_start_long_ticks);
 }
 
@@ -510,6 +514,8 @@ void PS_InputButtons_Init(void)
   ps_input_start_pending_event = PS_INPUT_START_POWER_EVENT_NONE;
   ps_input_start_pending_timestamp = 0UL;
   ps_input_start_pending_hold_ticks = 0UL;
+  ps_input_start_press_event_pending = 0UL;
+  ps_input_start_press_event_timestamp = 0UL;
   ps_input_start_long_ticks =
     PS_InputButtons_MsToTicks(KNOB_INPUT_START_LONG_PRESS_MS);
   ps_input_start_ship_prep_ticks =
@@ -1213,6 +1219,7 @@ uint32_t PS_InputButtons_Stop2Ready(void)
       (ps_input_start_active != 0UL) ||
       (ps_input_start_press_pending != 0UL) ||
       (ps_input_start_release_pending != 0UL) ||
+      (ps_input_start_press_event_pending != 0UL) ||
       (ps_input_start_pending_event !=
        (uint32_t)PS_INPUT_START_POWER_EVENT_NONE))
   {
@@ -1378,6 +1385,34 @@ uint32_t PS_InputButtons_TakeStartPowerEvent(
     PS_INPUT_START_POWER_EVENT_NONE;
   g_ps_input_buttons_probe.start_pending_timestamp = 0UL;
   g_ps_input_buttons_probe.start_pending_hold_ticks = 0UL;
+  if (primask == 0UL)
+  {
+    __enable_irq();
+  }
+  return 1UL;
+}
+
+uint32_t PS_InputButtons_TakeStartPress(uint32_t *timestamp)
+{
+  uint32_t primask;
+
+  if (timestamp == NULL)
+  {
+    return 0UL;
+  }
+  primask = __get_PRIMASK();
+  __disable_irq();
+  if (ps_input_start_press_event_pending == 0UL)
+  {
+    if (primask == 0UL)
+    {
+      __enable_irq();
+    }
+    return 0UL;
+  }
+  *timestamp = ps_input_start_press_event_timestamp;
+  ps_input_start_press_event_pending = 0UL;
+  ps_input_start_press_event_timestamp = 0UL;
   if (primask == 0UL)
   {
     __enable_irq();

@@ -17,7 +17,7 @@ A/B external-flash installation, installed-package loading, immediate launch,
 and return to the shell are also target-proven within the current `65536`-byte
 runtime-cache limit. Production pre-commit validation, boot activation and
 rollback policy, target-profile closure, remaining editor mutation surfaces,
-mandatory system interaction state, SEQUENCE, PROGRAM, and complete end-to-end
+optional system interaction state, SEQUENCE, PROGRAM, and complete end-to-end
 HW6 evidence remain open.
 
 Target status: `HW6_PENDING_VALIDATION` until measured HW6 evidence is frozen into a shipping-authoritative target profile.
@@ -213,19 +213,24 @@ The return is not complete until the ambient presentation and wait backend are s
 
 ### System Interaction State
 
-This proof package chooses `preserve_scene` as its inactive route.
+This proof package chooses `TIMEOUT` interaction mode and `preserve_scene` as its inactive route. A separate `CONTINUOUS` validation case proves that normal joystick wake and package input remain available indefinitely without entering `INACTIVE`.
 
 For this slice:
 
 - the target/system policy owns the inactivity timeout.
 - the package emits meaningful-activity intent through the public contract.
 - while `INACTIVE`, package actions other than the target-owned activation gesture are not delivered.
-- Start is consumed by PeepOS as the initial HW6 activation gesture.
+- A/B/L/R wake only to show the bounded PeepOS-owned `PRESS START` cue; those presses are consumed and cue expiry returns to the inactive waiting presentation and STOP2.
+- joystick movement wake is disarmed while inactive.
+- Start is consumed by PeepOS as the initial HW6 activation gesture whether or
+  not the `PRESS START` cue is visible.
+- activation shows one bounded PeepOS-owned eye-opening animation before the
+  restored active package presentation is revealed.
 - the physical Start press is not also delivered to package logic.
 - the package observes symbolic `DEVICE_INACTIVE` and `DEVICE_ACTIVE` lifecycle events.
 - activation returns to the preserved state scene and establishes its next wait contract.
 
-This is one package-policy choice for the proof. The generic authoring contract allows another admitted inactive route, while target policy may later admit another activation button or chord. Packages cannot disable inactivity handling or choose the physical activation gesture.
+This is one package-policy choice for the proof. The generic authoring contract also allows `CONTINUOUS`, which never enters the inactive lifecycle, and allows another admitted inactive route for `TIMEOUT`. Packages cannot author the numeric timeout, cue policy, or physical activation gesture.
 
 ---
 
@@ -315,8 +320,8 @@ Required negative or fallback cases:
 - `sensor.light` and `sensor.light_stream` are rejected for every HW6 profile
 - `audio.bbb` is rejected for every HW6 profile
 - a waiting visual that exceeds the selected profile is rejected or resolves through its declared fallback
-- a sequence or program scene without frame budget, meaningful activity, suspend/resume policy, or inactive route is rejected
-- an interaction policy without an admitted inactive route is rejected
+- a sequence or program scene without frame budget or suspend/resume policy is rejected; in a `TIMEOUT` package, missing meaningful activity or inactive route is also rejected
+- a `TIMEOUT` interaction policy without an admitted inactive route is rejected
 - an unbounded reactive action or inactivity deferral is rejected
 - shipping export against `HW6_PENDING_VALIDATION` is rejected
 
@@ -477,7 +482,7 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
    direct STATE-to-STATE replacement is implemented in the host/compiler and
    FW0 and proven with a two-scene HW6 package; push/pop and transitions to
    other scene types remain later work
-6. implement mandatory `ACTIVE`/`INACTIVE` interaction state, RTC-backed inactivity, declared inactive routes, and target-owned activation gestures; HW6 starts with Start while the policy remains button/chord capable
+6. implement optional `CONTINUOUS`/`TIMEOUT` interaction policy, RTC-backed timeout enforcement, declared inactive routes, target-owned activation gestures, and the bounded inactive-input cue; HW6 starts with `START` activation while the policy remains button/chord capable
 7. implement the headless project loader, normalized model, validator, deterministic package compiler, and compiler-derived capability closure for the state-scene slice
 8. compile masked 1bpp source assets into portable asset, sprite-bank, and
    animation chunks; make both the host package reader and firmware render them

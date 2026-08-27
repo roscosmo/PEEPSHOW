@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-#define PS_SCENE_RUNTIME_API_VERSION             (11UL)
+#define PS_SCENE_RUNTIME_API_VERSION             (12UL)
 #define PS_SCENE_RUNTIME_SCENE_TYPE_STATE        (1UL)
 #define PS_SCENE_RUNTIME_STATUS_NOT_RUN          (0xFFFFFFFFUL)
 #define PS_SCENE_RUNTIME_STATUS_OK               (0UL)
@@ -28,6 +28,10 @@ extern "C" {
 #define PS_SCENE_RUNTIME_INPUT_ERROR             (0UL)
 #define PS_SCENE_RUNTIME_INPUT_APPLIED           (1UL)
 #define PS_SCENE_RUNTIME_INPUT_IGNORED           (2UL)
+#define PS_SCENE_RUNTIME_INTERACTION_CONTINUOUS  (1UL)
+#define PS_SCENE_RUNTIME_INTERACTION_TIMEOUT     (2UL)
+#define PS_SCENE_RUNTIME_INACTIVE_PRESERVE       (1UL)
+#define PS_SCENE_RUNTIME_INACTIVE_EXIT_SHELL     (2UL)
 
 typedef enum
 {
@@ -122,6 +126,9 @@ typedef struct
   uint32_t guard_count;
   uint32_t action_count;
   uint32_t transition_count;
+  uint32_t interaction_mode;
+  uint32_t inactive_route;
+  uint32_t meaningful_input_mask;
   ps_scene_runtime_state_t states[PS_SCENE_RUNTIME_STATE_MAX];
   ps_scene_runtime_visual_binding_t
     visual_bindings[PS_SCENE_RUNTIME_VISUAL_BINDING_MAX];
@@ -165,6 +172,9 @@ typedef struct
   uint32_t descriptor_guard_count;
   uint32_t descriptor_action_count;
   uint32_t descriptor_transition_count;
+  uint32_t descriptor_interaction_mode;
+  uint32_t descriptor_inactive_route;
+  uint32_t descriptor_meaningful_input_mask;
   uint32_t scene_id;
   uint32_t state_id;
   uint32_t visual_binding_id;
@@ -211,6 +221,10 @@ void PS_SceneRuntime_ExitStateScene(void);
 uint32_t PS_SceneRuntime_StateSceneActive(void);
 uint32_t PS_SceneRuntime_StateIndex(void);
 uint32_t PS_SceneRuntime_StateFocusIndex(void);
+uint32_t PS_SceneRuntime_InteractionMode(void);
+uint32_t PS_SceneRuntime_InactiveRoute(void);
+uint32_t PS_SceneRuntime_InputIsMeaningful(uint32_t logical_event,
+                                           uint32_t input_id);
 const ps_scene_render_model_t *PS_SceneRuntime_ResolveStateSceneRenderModel(
   void);
 uint32_t PS_SceneRuntime_HandleStateSceneInput(

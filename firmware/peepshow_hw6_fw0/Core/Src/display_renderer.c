@@ -1822,6 +1822,24 @@ static uint32_t DisplayRenderer_FilledRect(uint16_t x0,
   return count;
 }
 
+static void DisplayRenderer_WhiteRect(uint16_t x0,
+                                      uint16_t y0,
+                                      uint16_t width,
+                                      uint16_t height)
+{
+  uint16_t x;
+  uint16_t y;
+
+  for (y = y0; y < (uint16_t)(y0 + height); ++y)
+  {
+    for (x = x0; x < (uint16_t)(x0 + width); ++x)
+    {
+      DisplayRenderer_SetLogicalPixelInBuffer(
+        s_display_framebuffer, x, y, 0UL);
+    }
+  }
+}
+
 uint32_t DisplayRenderer_FramebufferHash(void)
 {
   uint32_t hash = 2166136261UL;
@@ -2943,6 +2961,27 @@ static uint32_t DisplayRenderer_DrawCalibrationEllipse(
   return black_pixels;
 }
 
+static uint32_t DisplayRenderer_DrawActivationEye(uint32_t frame)
+{
+  uint32_t black_pixels = 0UL;
+
+  if (frame == 0UL)
+  {
+    return DisplayRenderer_HorizontalLine(50U, 118U, 72U);
+  }
+
+  if (frame == 1UL)
+  {
+    black_pixels += DisplayRenderer_DrawCalibrationEllipse(84, 72, 32, 6);
+    black_pixels += DisplayRenderer_FilledRect(82U, 70U, 5U, 5U);
+    return black_pixels;
+  }
+
+  black_pixels += DisplayRenderer_DrawCalibrationEllipse(84, 72, 36, 14);
+  black_pixels += DisplayRenderer_FilledRect(80U, 66U, 9U, 13U);
+  return black_pixels;
+}
+
 static uint32_t DisplayRenderer_DrawCalibrationProgress(uint32_t progress)
 {
   const uint16_t left = 16U;
@@ -3152,12 +3191,48 @@ void DisplayRenderer_PrepareUIPage(
   uint32_t primitive_id = DISPLAY_RENDERER_PRIMITIVE_LIST_FULL;
   uint32_t previous_focus_row = DISPLAY_RENDERER_ROW_NONE;
 
-  if ((page == (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF) &&
+  if (page == (uint32_t)PS_UI_ROUTER_PAGE_INTERACTION_ACTIVATION)
+  {
+    DisplayRenderer_ClearWhite();
+    s_rotate_ccw = 1UL;
+    black_pixels = DisplayRenderer_DrawActivationEye(focus_index);
+    DisplayRenderer_RecordCursorBaseFrame();
+    DisplayRenderer_ComputeDirtyRowsFromCommitted();
+    s_rotate_ccw = 0UL;
+    s_display_pending_focus_index = DISPLAY_RENDERER_ROW_NONE;
+    s_display_pending_focus_valid = 0UL;
+    s_display_pending_focus_invalidates = 1UL;
+    DisplayRenderer_FillStats(
+      stats,
+      black_pixels,
+      DISPLAY_RENDERER_PRIMITIVE_INTERACTION_ACTIVATION,
+      DISPLAY_RENDERER_ROW_NONE,
+      DISPLAY_RENDERER_ROW_NONE);
+    return;
+  }
+
+  if (((page == (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF) ||
+       (page == (uint32_t)PS_UI_ROUTER_PAGE_INTERACTION_CUE)) &&
       (DisplayRenderer_ValidateSceneModel(scene_model) != 0UL))
   {
     DisplayRenderer_ClearWhite();
     s_rotate_ccw = 1UL;
     black_pixels = DisplayRenderer_DrawSceneModel(scene_model);
+    if (page == (uint32_t)PS_UI_ROUTER_PAGE_INTERACTION_CUE)
+    {
+      DisplayRenderer_WhiteRect(27U, 62U, 106U, 36U);
+      black_pixels = DisplayRenderer_CountBlackPixels();
+      black_pixels += DisplayRenderer_HorizontalLine(27U, 132U, 62U);
+      black_pixels += DisplayRenderer_HorizontalLine(27U, 132U, 97U);
+      black_pixels += DisplayRenderer_VerticalLine(27U, 62U, 97U);
+      black_pixels += DisplayRenderer_VerticalLine(132U, 62U, 97U);
+      black_pixels += DisplayRenderer_DrawText(45U, 76U, "PRESS START", 1U);
+      primitive_id = DISPLAY_RENDERER_PRIMITIVE_INTERACTION_CUE;
+    }
+    else
+    {
+      primitive_id = DISPLAY_RENDERER_PRIMITIVE_SCENE_MODEL;
+    }
     DisplayRenderer_RecordCursorBaseFrame();
     DisplayRenderer_ComputeDirtyRowsFromCommitted();
     s_rotate_ccw = 0UL;
@@ -3166,7 +3241,7 @@ void DisplayRenderer_PrepareUIPage(
     s_display_pending_focus_invalidates = 0UL;
     DisplayRenderer_FillStats(stats,
                               black_pixels,
-                              DISPLAY_RENDERER_PRIMITIVE_SCENE_MODEL,
+                              primitive_id,
                               DISPLAY_RENDERER_ROW_NONE,
                               scene_model->focus_index);
     return;

@@ -869,10 +869,23 @@ def _check_scene(
         _issue(issues, "POWER_IDLE_ROUTE_MISSING", f"{base}.interaction_policy", "must be an object")
     else:
         path = f"{base}.interaction_policy"
-        _check_keys(interaction, {"policy_id", "meaningful_activity_actions", "inactive_route", "bounded_deferrals"}, path, issues)
+        required = {"policy_id", "mode", "meaningful_activity_actions"}
+        allowed = required | {"inactive_route", "bounded_deferrals"}
+        _check_keys(interaction, required, path, issues, allowed)
         _stable_id(interaction.get("policy_id"), f"{path}.policy_id", issues)
-        if interaction.get("inactive_route") not in {"preserve_scene", "exit_to_shell"}:
-            _issue(issues, "POWER_IDLE_ROUTE_MISSING", f"{path}.inactive_route", "must preserve_scene or exit_to_shell")
+        mode = interaction.get("mode")
+        if mode not in {"continuous", "timeout"}:
+            _issue(issues, "POWER_INTERACTION_MODE_INVALID", f"{path}.mode", "must be continuous or timeout")
+        if mode == "timeout":
+            if interaction.get("inactive_route") not in {"preserve_scene", "exit_to_shell"}:
+                _issue(issues, "POWER_IDLE_ROUTE_MISSING", f"{path}.inactive_route", "must preserve_scene or exit_to_shell")
+            if interaction.get("bounded_deferrals", []) != []:
+                _issue(issues, "POWER_DEFERRAL_UNSUPPORTED", f"{path}.bounded_deferrals", "the V1 subset does not support deferrals")
+        elif mode == "continuous":
+            if "inactive_route" in interaction:
+                _issue(issues, "POWER_CONTINUOUS_ROUTE_INVALID", f"{path}.inactive_route", "continuous mode must not declare an inactive route")
+            if "bounded_deferrals" in interaction:
+                _issue(issues, "POWER_CONTINUOUS_DEFERRAL_INVALID", f"{path}.bounded_deferrals", "continuous mode must not declare inactivity deferrals")
         meaningful = interaction.get("meaningful_activity_actions")
         if not isinstance(meaningful, list):
             _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.meaningful_activity_actions", "must be an array")
@@ -880,8 +893,6 @@ def _check_scene(
             for index, action_ref in enumerate(meaningful):
                 if action_ref not in input_actions:
                     _issue(issues, "INPUT_ACTION_UNKNOWN", f"{path}.meaningful_activity_actions[{index}]", "input action does not exist")
-        if interaction.get("bounded_deferrals") != []:
-            _issue(issues, "POWER_DEFERRAL_UNSUPPORTED", f"{path}.bounded_deferrals", "the V1 subset does not support deferrals")
 
 
 def _scene_path(root: Path, source: Any, issues: list[ValidationIssue]) -> Path | None:
@@ -1024,6 +1035,18 @@ def load_project(project_root: str | Path) -> ProjectBundle:
                     f"scene[{source}].routes[{route.get('route_id')}].target_scene",
                     f"unknown scene '{target_scene}'",
                 )
+    interaction_modes = {
+        scene.get("interaction_policy", {}).get("mode")
+        for scene in scenes
+        if isinstance(scene.get("interaction_policy"), dict)
+    }
+    if len(interaction_modes) > 1:
+        _issue(
+            issues,
+            "POWER_INTERACTION_MODE_CONFLICT",
+            "project.scene_sources",
+            "all scenes in one package must use the same interaction mode",
+        )
     return ProjectBundle(
         root,
         project,

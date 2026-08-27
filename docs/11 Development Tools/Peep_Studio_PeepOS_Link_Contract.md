@@ -58,7 +58,7 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | waiting animation | authored 250 ms timelines, mixed 2-phase and 3-phase elements, combined timeline compilation, deterministic three-step LPBAM fallback |
 | awake preview | exact 168x144 package-backed framebuffer with deterministic fake time |
 | STOP2 | package visuals compiled into LPBAM animation and resumed across wake/STOP2 handoff |
-| firmware package proof | embedded and USB-installed `.egg` packages load, validate, resolve STATE content, handle input, render package pixels, replace STATE scenes directly, animate in STOP2, and return to shell; installed packages currently run through a `65536`-byte RAM cache |
+| firmware package proof | embedded and USB-installed `.egg` packages load, validate, resolve STATE content, handle input, render package pixels, replace STATE scenes directly, animate in STOP2, and return to shell; installed packages currently run through a `65536`-byte RAM cache; the new TIMEOUT interaction lifecycle is implemented but still requires HW6 target proof |
 
 Measured hardware behavior, current SRAM4 admission limits, and power figures
 remain hardware evidence. The desktop preview must not claim to reproduce
@@ -92,6 +92,33 @@ bindings, per-scene four-way/eight-way selection, long-press/repeat policy, or
 PROGRAM-scene vector polling. Those controls must remain unavailable until the
 Engine contract, target profile, package schema, preview, and firmware runtime
 all implement the same semantics.
+
+---
+
+## Interaction Lifecycle Boundary
+
+Peep Studio must expose one package-level interaction mode:
+
+- `CONTINUOUS` keeps package input active indefinitely;
+- `TIMEOUT` uses the PeepOS-owned inactivity interval and requires each current
+  STATE scene to declare `preserve` or `exit_shell` as its inactive route.
+
+Authors select the mode, inactive route, and which declared input routes count
+as meaningful activity. Peep Studio must not expose the numeric timeout, RTC
+wake timer, `PRESS START` cue duration, activation-animation timing, joystick
+wake threshold, or wake-pin configuration. Those remain target-owned Platform
+policy.
+
+For the HW6 FW0 target, `TIMEOUT` suppresses package input and joystick movement
+wake after expiry. `START` is consumed by PeepOS to restore `ACTIVE` state
+whether or not the `PRESS START` cue is visible, then HW6 shows one bounded
+system-owned eye-opening animation before revealing the active package
+presentation. A/B/L/R remain consumed while inactive and request one bounded
+system `PRESS START` cue before the prior waiting presentation and STOP2 resume.
+
+The compiler emits this policy in PKG1 `STG1` format version 3. Peep Studio may
+edit the normalized source fields now; it must not invent desktop-only timeout
+or wake behavior that the package cannot encode.
 
 ---
 
@@ -291,7 +318,7 @@ Scene-flow editing must remain separate from the STATE graph inside each scene.
 Platform foundation status: implemented and proven on HW6. Authoring schema
 routes now accept exactly one `target_state` or `target_scene`; service API 7
 can switch an existing actionless route between those targets; selected-scene
-preview follows a scene target; and the compiler emits PKG1 `STG1` version 2.
+preview follows a scene target; and the compiler emits PKG1 `STG1` version 3.
 Direct replacement enters the destination entry state, resets destination-local
 variables, and starts a new timeline epoch. Peep Studio may expose these exact
 semantics for the HW6 FW0 target profile. It must not expose cross-scene route actions,

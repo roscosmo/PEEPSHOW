@@ -161,7 +161,7 @@ Rules:
 
 ## System Interaction State Overlay
 
-PeepOS owns a system interaction-state overlay above package focus. It is orthogonal to CPU awake/sleep state: an `ACTIVE` device may enter STOP between events, and an `INACTIVE` device may briefly wake to service system work without restoring package focus. Packages cannot disable system inactivity handling or author its timeout.
+PeepOS owns an optional system interaction-state overlay above package focus. It is orthogonal to CPU awake/sleep state: an `ACTIVE` device may enter STOP between events, and an `INACTIVE` device may briefly wake to service system work without restoring package focus. A package selects `CONTINUOUS` or `TIMEOUT`; only `TIMEOUT` enables the inactive overlay. PeepOS owns the numeric timeout.
 
 While `INACTIVE`:
 
@@ -170,6 +170,10 @@ While `INACTIVE`:
 - HW6 initially uses Start; target policy may later admit another button or a classified chord such as `L+R`
 - the physical activation gesture is consumed by PeepOS
 - no package action is emitted for that same gesture
+- target-admitted non-activation buttons may be consumed to show a bounded system cue without restoring package focus; HW6 uses A/B/L/R for `PRESS START`
+- cue expiry restores the inactive waiting presentation and sleep eligibility; `START` follows normal activation ordering whether or not the cue is visible
+- the HW6 activation ordering includes one bounded PeepOS-owned eye-opening overlay; input remains system-owned until that overlay completes and the active presentation is revealed
+- joystick movement wake is disarmed under the initial HW6 inactive policy
 - on activation, PeepOS restores focus to the scene already established by the declared inactive route; `exit_to_shell` remains in shell
 - Engine emits `DEVICE_INACTIVE` and `DEVICE_ACTIVE` through [[Runtime_Host_Contract]] after scene/focus ordering is valid; they are not input events
 
@@ -179,7 +183,7 @@ Allowed package inactive routes are:
 - transition to a declared scene
 - exit to the PeepOS shell
 
-A package may declare meaningful-activity sources and statically bounded inactivity deferral. Cosmetic animation and arbitrary activity hints cannot refresh the inactivity timer. Unbounded deferral is invalid. Packages may not define the physical system activation gesture; that remains target/system policy so wake-capable buttons and chords can evolve without changing package semantics.
+A `TIMEOUT` package declares meaningful-activity sources, one admitted inactive route, and any statically bounded inactivity deferral. A `CONTINUOUS` package does not require these inactive-policy fields. Cosmetic animation and arbitrary activity hints cannot refresh a `TIMEOUT` interaction timer. Unbounded deferral is invalid. Packages may not define the numeric timeout, physical system activation gesture, or system cue behavior; those remain target/system policy so wake-capable buttons and chords can evolve without changing package semantics.
 
 ---
 
@@ -406,7 +410,7 @@ Tooling and installer validation must reject:
 - sequence or program scene input path that blocks its realtime frame budget
 - low-power wake intent unsupported by target profile
 - package input map that cannot release focus on suspend/exit
-- package interaction policy with an undeclared inactive route
+- `TIMEOUT` interaction policy with an undeclared inactive route
 - package-authored system activation gesture
 - unbounded inactivity deferral or cosmetic animation declared as meaningful activity
 
@@ -446,6 +450,8 @@ Host keyboard/gamepad bindings are twin/editor adapters only. They are not packa
 13. optional joystick unavailable path activates declared fallback.
 14. digital twin replay produces deterministic action, inactive, active, and consumed-input event ordering.
 15. package-authored system inactivity timeout or activation gesture fails validation.
+16. `CONTINUOUS` leaves package focus active and emits no inactive/active lifecycle pair.
+17. while `INACTIVE`, A/B/L/R produce only the bounded system cue, while `START` activates and joystick movement does not wake the target.
 
 ---
 

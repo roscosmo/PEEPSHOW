@@ -90,9 +90,9 @@ Packages do not own physical time or power policy.
 - `REACTIVE` logic runs in bounded event transactions and yields as soon as the transaction settles.
 - Waiting for input or another event never requires an awake package loop.
 - Waiting-display motion does not run package logic or advance committed game state.
-- PeepOS always owns inactivity detection; packages cannot disable it or author its timeout.
-- A package declares an inactive route and may defer inactivity only for statically bounded work.
-- `SEQUENCE_SCENE` and `PROGRAM_SCENE` use `REALTIME`; each must declare meaningful activity, suspend/resume behavior, and a route to a settled `STATE_SCENE` or shell.
+- A package selects `CONTINUOUS` or `TIMEOUT`; PeepOS owns inactivity detection and the numeric timeout for `TIMEOUT`.
+- A `TIMEOUT` package declares an inactive route and may defer inactivity only for statically bounded work.
+- `SEQUENCE_SCENE` and `PROGRAM_SCENE` use `REALTIME`; each must declare suspend/resume behavior, and each in a `TIMEOUT` package must also declare meaningful activity and a route to a settled `STATE_SCENE` or shell.
 - Runtime lifecycle events are the normal path for sleep/resume and active/inactive reconciliation.
 
 ---
@@ -348,11 +348,11 @@ Rules:
 - gyro or another non-button source may be meaningful activity when declared by the active block and granted by the target profile
 - bounded non-interruptible work may defer inactivity until completion or a validated timeout
 - unbounded inactivity deferral is invalid
-- `SEQUENCE_SCENE` and `PROGRAM_SCENE` must declare meaningful activity, suspend/resume behavior, and a route to a settled `STATE_SCENE` or shell
+- `SEQUENCE_SCENE` and `PROGRAM_SCENE` must declare suspend/resume behavior; in a `TIMEOUT` package they also declare meaningful activity and a route to a settled `STATE_SCENE` or shell
 
 ### System Interaction State
 
-PeepOS always maintains one system interaction state, independent of whether the CPU is awake or in STOP:
+PeepOS provides a system interaction policy independent of whether the CPU is awake or in STOP. A package selects `CONTINUOUS` or `TIMEOUT`; `CONTINUOUS` remains `ACTIVE`, while `TIMEOUT` uses:
 
 - `ACTIVE`: package focus and admitted package input are available.
 - `INACTIVE`: package focus is suspended and only system-admitted activation gestures are accepted.
@@ -361,6 +361,7 @@ The package declares:
 
 ```text
 interaction_policy:
+  mode                       # continuous, timeout
   meaningful_activity_sources[]
   inactive_route             # preserve_scene, transition_to_scene, exit_to_shell
   inactive_target_scene      # required for transition_to_scene
@@ -368,7 +369,7 @@ interaction_policy:
   bounded_deferrals[]
 ```
 
-PeepOS owns the system-selected timeout, timer enforcement, input suppression, activation gesture, wake-source arming, and lifecycle ordering. The HW6 baseline activation gesture is Start. Target policy may later admit another button or a classified chord such as `L+R`; packages do not choose raw buttons or chords for this system action. The gesture that activates the device is consumed by PeepOS and is not delivered as a package action. Engine emits `DEVICE_INACTIVE` after the declared inactive route settles and emits `DEVICE_ACTIVE` after runtime state and focus are ready, following [[Runtime_Host_Contract]].
+PeepOS owns the `TIMEOUT` interval, timer enforcement, input suppression, activation gesture, wake-source arming, system cue, activation animation, and lifecycle ordering. The HW6 baseline activation gesture is `START`. Target policy may later admit another button or a classified chord such as `L+R`; packages do not choose raw buttons or chords for this system action. The gesture that activates the device is consumed by PeepOS and is not delivered as a package action. While inactive, HW6 may consume A/B/L/R to show a bounded `PRESS START` cue without activating the package; cue expiry restores the inactive waiting presentation and STOP eligibility, and joystick movement wake remains disarmed. `START` activates directly whether or not that cue is visible; HW6 then shows one bounded PeepOS-owned eye-opening overlay before revealing the restored active presentation. Engine emits `DEVICE_INACTIVE` after the declared inactive route settles and emits `DEVICE_ACTIVE` after runtime state and focus are ready, following [[Runtime_Host_Contract]].
 
 Package-authored inactivity, such as leaving explore mode after 30 seconds, is represented by `schedule_after` plus a normal scene transition. It is independent of the system interaction-state timer.
 
@@ -423,7 +424,7 @@ Reject:
 - interaction policy with an undeclared inactive route.
 - package-authored system inactivity timeout or activation gesture.
 - unbounded inactivity deferral or cosmetic animation declared as meaningful activity.
-- sequence or program scene without meaningful-activity rules and a route to a settled state or shell.
+- sequence or program scene in a `TIMEOUT` package without meaningful-activity rules and a route to a settled state or shell.
 - interactive session wait without target-profile support or a declared expiry route.
 - scene that requests cadence above target profile caps.
 - package wake intent unsupported by selected target profile.
@@ -474,10 +475,10 @@ Rules:
 5. long sleep resumes package with elapsed suspended/calendar time and bounded missed-event summary.
 6. unbounded catch-up policy fails validation.
 7. state scene with polling or an awake input-wait loop fails validation.
-8. sequence or program scene without meaningful-activity rules and a route to a settled state or shell fails validation.
+8. sequence or program scene in a `TIMEOUT` package without meaningful-activity rules and a route to a settled state or shell fails validation.
 9. reactive transaction yields after its bounded state/action/render work settles.
 10. package-authored gameplay inactivity produces a normal scheduled transition and does not mutate the PeepOS interaction-state timer.
-11. a package cannot disable system inactivity handling or author its timeout.
+11. `CONTINUOUS` remains active; `TIMEOUT` enters the system inactive lifecycle; neither mode authors the numeric timeout.
 12. `INACTIVE` suppresses normal package controls except the target-owned activation gesture.
 13. a completed inactive route emits `DEVICE_INACTIVE`; the activation gesture is consumed and `DEVICE_ACTIVE` is delivered only after state/focus restoration.
 14. preserve-scene, declared-scene-transition, and shell-exit inactive routes validate.

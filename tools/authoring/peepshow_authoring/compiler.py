@@ -62,6 +62,7 @@ GUARD_OPERATORS = {"eq": 1, "ne": 2, "lt": 3, "le": 4, "gt": 5, "ge": 6}
 VARIABLE_OPERATIONS = {"assign": 1, "add": 2}
 RENDER_KINDS = {"sprite": 1, "text": 2, "shape": 3}
 INACTIVE_ROUTES = {"preserve_scene": 1, "exit_to_shell": 2}
+INTERACTION_MODES = {"continuous": 1, "timeout": 2}
 ANIMATION_LOOPS = {"loop": 1, "once": 2, "hold_last": 3, "ping_pong": 4}
 
 
@@ -346,9 +347,11 @@ def _compile_graph(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
     interaction = scene["interaction_policy"]
     event_interests = [input_index[value] for value in wait_policy["event_interests"]]
     meaningful = [input_index[value] for value in interaction["meaningful_activity_actions"]]
+    interaction_mode = INTERACTION_MODES[interaction["mode"]]
+    inactive_route = INACTIVE_ROUTES.get(interaction.get("inactive_route"), 0)
     header = GRAPH_HEADER.pack(
         b"STG1",
-        2,
+        3,
         GRAPH_HEADER.size,
         state_index[scene["entry_state"]],
         _u16(len(variables), "variable count"),
@@ -363,9 +366,9 @@ def _compile_graph(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
         1 if wait_policy["hold_fallback_allowed"] else 0,
         _u16(len(event_interests), "event-interest count"),
         strings[interaction["policy_id"]],
-        INACTIVE_ROUTES[interaction["inactive_route"]],
+        inactive_route,
         _u16(len(meaningful), "meaningful-action count"),
-        0,
+        interaction_mode,
     )
     sources = struct.pack(f"<{len(source_states)}H", *source_states) if source_states else b""
     events = struct.pack(f"<{len(event_interests)}H", *event_interests) if event_interests else b""

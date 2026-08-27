@@ -48,6 +48,9 @@
     "debug_tracex_registry_entries",
     "display_cursor_blink_period_ms",
     "runtime_egg_hash_timeout_ms",
+    "runtime_interaction_timeout_ms",
+    "runtime_inactive_cue_ms",
+    "runtime_activation_eye_frame_ms",
     "rtos_default_stack_bytes",
     "rtos_power_stack_bytes",
     "rtos_input_stack_bytes",
@@ -65,6 +68,7 @@
     "comm_ble_rx_byte_timeout_ms",
     "comm_ble_tx_timeout_ms",
     "comm_ble_rx_buffer_bytes",
+    "power_rtc_wake_irq_priority",
     "power_battery_monitor_period_ms",
     "power_battery_warning_mv",
     "power_battery_critical_ship_mv",
@@ -600,6 +604,42 @@
       "path": "platform.knobs.runtime.egg_hash_timeout_ms",
       "description": "Bounded polling timeout for hardware SHA-256 validation of an egg package before runtime activation."
     },
+    "runtime_interaction_timeout_ms": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 300000,
+      "default": 10000,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thRuntime",
+      "class": "protected_policy",
+      "path": "platform.knobs.runtime.interaction_timeout_ms",
+      "description": "Target-owned inactivity interval used when an egg selects TIMEOUT interaction policy. Meaningful package activity refreshes this deadline."
+    },
+    "runtime_inactive_cue_ms": {
+      "type": "integer",
+      "minimum": 250,
+      "maximum": 5000,
+      "default": 1000,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thRuntime",
+      "class": "protected_policy",
+      "path": "platform.knobs.runtime.inactive_cue_ms",
+      "description": "Bounded duration of the PeepOS-owned PRESS START cue after a non-START button wakes an inactive package."
+    },
+    "runtime_activation_eye_frame_ms": {
+      "type": "integer",
+      "minimum": 50,
+      "maximum": 500,
+      "default": 100,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thRuntime",
+      "class": "protected_policy",
+      "path": "platform.knobs.runtime.activation_eye_frame_ms",
+      "description": "Duration of each frame in the PeepOS-owned closed, half-open, open eye animation shown after START activates an inactive package."
+    },
     "rtos_default_stack_bytes": {
       "type": "integer",
       "minimum": 512,
@@ -811,6 +851,18 @@
       "class": "resource_budget",
       "path": "platform.knobs.comm.ble_rx_buffer_bytes",
       "description": "Static response buffer used by thComm while reading NINA-B112 AT command replies."
+    },
+    "power_rtc_wake_irq_priority": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 15,
+      "default": 5,
+      "unit": "nvic_priority",
+      "timebase_domain": "none",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.rtc_wake_irq_priority",
+      "description": "ThreadX-safe NVIC priority used by the RTC wake timer that enforces package interaction deadlines through STOP2."
     },
     "power_battery_monitor_period_ms": {
       "type": "integer",

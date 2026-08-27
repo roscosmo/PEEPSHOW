@@ -399,11 +399,11 @@ Rules:
 - transitions between scenes must be declared and bounded.
 - scene push/pop behavior must fit the selected target profile limits.
 - every `STATE_SCENE` state/block that can settle must resolve a reactive wait contract.
-- every `SEQUENCE_SCENE` must declare bounded tracks, target FPS, scene-end route, suspend/resume behavior, and an inactive route to a `STATE_SCENE` or shell.
-- every `PROGRAM_SCENE` must declare instruction/memory/frame budgets, suspend/resume behavior, and inactive/failure routes.
+- every `SEQUENCE_SCENE` must declare bounded tracks, target FPS, scene-end route, and suspend/resume behavior; a `TIMEOUT` package also requires an inactive route to a `STATE_SCENE` or shell.
+- every `PROGRAM_SCENE` must declare instruction/memory/frame budgets, suspend/resume behavior, and failure routes; a `TIMEOUT` package also requires an inactive route.
 - world-enabled `STATE_SCENE` records must satisfy [[State_Scene_World_Entity_and_Turn_Contract]].
 - `REALTIME_SCENE` is obsolete terminology and is rejected as an unknown scene type.
-- PeepOS inactivity handling cannot be disabled; interaction policies require an admitted inactive route and bounded deferrals.
+- every package selects `CONTINUOUS` or `TIMEOUT`; only `TIMEOUT` requires an admitted inactive route and bounded deferrals.
 - capability declarations shown by tools are compiler-derived from scene content, service use, and fallback structure.
 
 ### World And Entity Authoring Records
@@ -493,6 +493,7 @@ waiting_visual_element:
 
 interaction_policy:
   policy_id
+  mode                       # continuous, timeout
   meaningful_activity_sources[]
   inactive_route             # preserve_scene, transition_to_scene, exit_to_shell
   inactive_target_scene      # only for transition_to_scene
@@ -502,12 +503,14 @@ interaction_policy:
 
 Rules:
 
-- system inactivity handling is always present and has no package-authored `enabled` field.
-- the authoring schema does not expose an inactivity-timeout field because the active target/system policy owns that timeout.
-- every policy must declare exactly one admitted inactive route.
+- every package declares exactly one interaction mode: `continuous` or `timeout`.
+- `continuous` keeps normal admitted package interaction active and must not declare inactive-route or inactivity-deferral fields.
+- `timeout` enables the system `ACTIVE`/`INACTIVE` lifecycle and must declare exactly one admitted inactive route.
+- the authoring schema does not expose a numeric inactivity-timeout field because the active target/system policy owns that timeout.
 - the system activation gesture is target-owned; HW6 initially uses Start, while future target profiles may admit another button or a chord such as `L+R`.
 - the authoring tool must not route the physical activation gesture to a package action for the same event.
 - the package receives `DEVICE_INACTIVE` and `DEVICE_ACTIVE` lifecycle events according to [[Runtime_Host_Contract]].
+- in the initial HW6 inactive policy, A/B/L/R are consumed by PeepOS to show a bounded `PRESS START` cue, while `START` activates and joystick movement wake is disarmed; packages cannot restyle or route those physical cue inputs.
 - an `interaction_context_ref` may select only entries declared by the referenced package policy; it cannot override timeout, route, or activation semantics.
 - every deferral must have a statically provable completion bound or timeout; unbounded deferral is a validation error.
 - gameplay inactivity transitions remain ordinary schedules and do not mutate the system interaction-state timer.
@@ -966,15 +969,16 @@ Python GUI frameworks should not be assumed as the primary editor direction.
 7. placeholder sprite validates in authoring preview where allowed and fails shipping export where disallowed.
 8. waiver for placeholder art appears in compatibility report.
 9. waiver for unbounded action loop is rejected.
-10. sequence or program scene without meaningful-activity rules and an inactive route fails validation.
+10. sequence or program scene in a `timeout` package without meaningful-activity rules and an inactive route fails validation.
 11. package requiring a capability still pending on HW6 fails shipping export.
 12. authoring preview mock sensor data does not count as hardware evidence.
 13. generated package build includes schema versions, tool versions, target profile, and compatibility report.
-14. package attempt to disable system inactivity handling fails validation.
-15. interaction policy without an admitted inactive route fails validation.
+14. package interaction mode other than `continuous` or `timeout` fails validation.
+15. `timeout` interaction policy without an admitted inactive route fails validation.
 16. unbounded inactivity deferral fails validation.
 17. the target-owned activation gesture is represented as a consumed system action plus symbolic lifecycle event, not a package action.
 18. package-authored system lock timeout fails validation.
+19. `continuous` interaction policy with inactive-route or inactivity-deferral fields fails validation.
 
 ---
 

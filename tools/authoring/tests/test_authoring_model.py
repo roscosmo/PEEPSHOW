@@ -234,7 +234,7 @@ class AuthoringModelTests(unittest.TestCase):
             package = parse_egg(build_egg(bundle))
             self.assertEqual(2, package.manifest["scene_count"])
             self.assertEqual(2, len(package.scenes))
-            self.assertTrue(all(scene["graph"]["format_version"] == 2 for scene in package.scenes))
+            self.assertTrue(all(scene["graph"]["format_version"] == 3 for scene in package.scenes))
             targets = {
                 route["target_scene"]
                 for scene in package.scenes

@@ -517,7 +517,7 @@ def _parse_graph(
     values = GRAPH_HEADER.unpack_from(payload)
     graph_version = values[1]
     _require(
-        values[0] == b"STG1" and graph_version in {1, 2} and values[2] == GRAPH_HEADER.size,
+        values[0] == b"STG1" and graph_version in {1, 2, 3} and values[2] == GRAPH_HEADER.size,
         "unsupported state graph",
     )
     route_record = ROUTE_RECORD_V1 if graph_version == 1 else ROUTE_RECORD_V2
@@ -537,9 +537,16 @@ def _parse_graph(
         interaction_policy_id,
         inactive_route,
         meaningful_count,
-        reserved,
+        interaction_mode_field,
     ) = values[3:]
-    _require(reserved == 0 and hold_fallback in {0, 1} and inactive_route in {1, 2}, "state policy fields are invalid")
+    interaction_mode = 2 if graph_version < 3 else interaction_mode_field
+    _require(
+        hold_fallback in {0, 1}
+        and interaction_mode in {1, 2}
+        and ((interaction_mode == 1 and inactive_route == 0) or (interaction_mode == 2 and inactive_route in {1, 2}))
+        and (graph_version >= 3 or interaction_mode_field == 0),
+        "state policy fields are invalid",
+    )
     _string(strings, wait_policy_id, "wait policy ID")
     _string(strings, interaction_policy_id, "interaction policy ID")
     _require(entry_state < state_count and default_waiting < waiting_count, "state graph entry or wait reference is invalid")
@@ -684,6 +691,7 @@ def _parse_graph(
         "hold_fallback_allowed": bool(hold_fallback),
         "event_interest_indexes": tuple(event_refs),
         "interaction_policy_id": _string(strings, interaction_policy_id, "interaction policy ID"),
+        "interaction_mode": interaction_mode,
         "inactive_route": inactive_route,
         "meaningful_action_indexes": tuple(meaningful_refs),
     }

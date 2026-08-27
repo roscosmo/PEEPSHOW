@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_INPUT_BUTTONS_API_VERSION (10UL)
+#define PS_INPUT_BUTTONS_API_VERSION (11UL)
 #define PS_INPUT_BUTTON_PHYSICAL_COUNT (4UL)
 
 typedef enum
@@ -189,6 +189,7 @@ uint32_t PS_InputButtons_TakeStartPowerEvent(
   ps_input_start_power_event_t *event,
   uint32_t *timestamp,
   uint32_t *hold_ticks);
+uint32_t PS_InputButtons_TakeStartPress(uint32_t *timestamp);
 
 #ifdef __cplusplus
 }

@@ -77,6 +77,7 @@ typedef struct
   uint32_t source_offset;
   uint32_t guard_offset;
   uint32_t operation_offset;
+  uint32_t meaningful_offset;
   uint16_t entry_state;
   uint16_t variable_count;
   uint16_t input_count;
@@ -88,6 +89,9 @@ typedef struct
   uint16_t default_waiting;
   uint16_t format_version;
   uint16_t route_record_size;
+  uint16_t meaningful_count;
+  uint16_t interaction_mode;
+  uint16_t inactive_route;
 } ps_egg_graph_view_t;
 
 typedef struct
@@ -851,7 +855,8 @@ static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
   }
   format_version = PS_EggU16(&payload[4]);
   if ((memcmp(payload, "STG1", 4UL) != 0) ||
-      ((format_version != 1U) && (format_version != 2U)) ||
+      ((format_version != 1U) && (format_version != 2U) &&
+       (format_version != 3U)) ||
       (PS_EggU16(&payload[6]) != PS_EGG_GRAPH_HEADER_SIZE))
   {
     return 0UL;
@@ -871,6 +876,11 @@ static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
     (uint16_t)PS_EGG_ROUTE_RECORD_V2_SIZE;
   event_count = PS_EggU16(&payload[30]);
   meaningful_count = PS_EggU16(&payload[36]);
+  view->meaningful_count = meaningful_count;
+  view->interaction_mode = (format_version < 3U) ?
+    (uint16_t)PS_SCENE_RUNTIME_INTERACTION_TIMEOUT :
+    PS_EggU16(&payload[38]);
+  view->inactive_route = PS_EggU16(&payload[34]);
   if ((view->state_count == 0U) ||
       (view->state_count > PS_SCENE_RUNTIME_STATE_MAX) ||
       (view->entry_state >= view->state_count) ||
@@ -882,9 +892,17 @@ static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
       (PS_EggU16(&payload[24]) >= strings->count) ||
       (PS_EggU16(&payload[28]) > 1U) ||
       (PS_EggU16(&payload[32]) >= strings->count) ||
-      (PS_EggU16(&payload[34]) < 1U) ||
-      (PS_EggU16(&payload[34]) > 2U) ||
-      (PS_EggU16(&payload[38]) != 0U))
+      ((view->interaction_mode ==
+        (uint16_t)PS_SCENE_RUNTIME_INTERACTION_CONTINUOUS) &&
+       (view->inactive_route != 0U)) ||
+      ((view->interaction_mode ==
+        (uint16_t)PS_SCENE_RUNTIME_INTERACTION_TIMEOUT) &&
+       ((view->inactive_route < 1U) || (view->inactive_route > 2U))) ||
+      ((view->interaction_mode !=
+        (uint16_t)PS_SCENE_RUNTIME_INTERACTION_CONTINUOUS) &&
+       (view->interaction_mode !=
+        (uint16_t)PS_SCENE_RUNTIME_INTERACTION_TIMEOUT)) ||
+      ((format_version < 3U) && (PS_EggU16(&payload[38]) != 0U)))
   {
     return 0UL;
   }
@@ -915,6 +933,7 @@ static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
   event_offset = offset;
   offset += (uint32_t)event_count * 2UL;
   meaningful_offset = offset;
+  view->meaningful_offset = meaningful_offset;
   offset += (uint32_t)meaningful_count * 2UL;
   if (offset != chunk->size)
   {
@@ -1469,6 +1488,15 @@ static uint32_t PS_EggDecodeScene(
   scene->visual_binding_count = graph.state_count;
   scene->input_route_count = graph.input_count;
   scene->variable_count = graph.variable_count;
+  scene->interaction_mode = graph.interaction_mode;
+  scene->inactive_route = graph.inactive_route;
+  scene->meaningful_input_mask = 0UL;
+  for (index = 0UL; index < graph.meaningful_count; ++index)
+  {
+    uint16_t input_index = PS_EggU16(
+      &graph_payload[graph.meaningful_offset + (index * 2UL)]);
+    scene->meaningful_input_mask |= (1UL << input_index);
+  }
 
   for (index = 0UL; index < graph.variable_count; ++index)
   {
@@ -1642,6 +1670,10 @@ static uint32_t PS_EggDecodeScene(
   g_ps_egg_state_loader_probe.render_element_count = render.element_count;
   g_ps_egg_state_loader_probe.waiting_visual_count = waiting.waiting_count;
   g_ps_egg_state_loader_probe.waiting_element_count = waiting.element_count;
+  g_ps_egg_state_loader_probe.interaction_mode = graph.interaction_mode;
+  g_ps_egg_state_loader_probe.inactive_route = graph.inactive_route;
+  g_ps_egg_state_loader_probe.meaningful_input_mask =
+    scene->meaningful_input_mask;
   return 0UL;
 }
 

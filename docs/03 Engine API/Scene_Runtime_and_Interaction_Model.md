@@ -453,7 +453,7 @@ Examples:
 
 ## Interaction State
 
-PeepOS has a system-owned interaction state independent of CPU sleep:
+PeepOS provides a system-owned interaction-state policy independent of CPU sleep. A package selects `CONTINUOUS` or `TIMEOUT`:
 
 | State | Meaning |
 |---|---|
@@ -465,12 +465,14 @@ does not mean the CPU must remain awake.
 
 Rules:
 
-- PeepOS owns the inactivity timeout and its RTC-backed enforcement
+- `CONTINUOUS` keeps package interaction `ACTIVE` and does not require an inactive route
+- `TIMEOUT` enables the `ACTIVE`/`INACTIVE` lifecycle; PeepOS owns the timeout value and its RTC-backed enforcement
 - meaningful admitted user activity refreshes the active interaction window
 - passive animation, autonomous playback, and keepalives do not refresh it
-- every `SEQUENCE_SCENE` and `PROGRAM_SCENE` declares an inactivity route to a
-  `STATE_SCENE` or shell
-- a `STATE_SCENE` declares the view preserved or selected when inactivity fires
+- every `SEQUENCE_SCENE` and `PROGRAM_SCENE` in a `TIMEOUT` package declares an
+  inactivity route to a `STATE_SCENE` or shell
+- a `STATE_SCENE` in a `TIMEOUT` package declares the view preserved or selected
+  when inactivity fires
 - inactivity may update the `OVERLAY` and waiting presentation
 - joystick vector polling is stopped in `INACTIVE`
 - when an active state scene needs cardinal joystick actions, Platform may arm
@@ -483,14 +485,23 @@ Rules:
 - the contract allows future admitted buttons or chords such as `L+R`
 - the physical activation gesture is consumed by PeepOS and is not replayed as a
   package action
+- target-admitted non-activation buttons may wake only for a bounded system cue;
+  on HW6, A/B/L/R show `PRESS START`, remain consumed, and return to the inactive
+  waiting presentation and STOP2 when the cue expires
+- `START` activates directly from any inactive presentation, independent of whether
+  the cue is visible; HW6 shows one bounded system-owned eye-opening animation
+  before revealing the restored active scene
+- joystick movement wake is disarmed while `INACTIVE` under the initial HW6
+  `TIMEOUT` policy
 - packages receive ordered `DEVICE_INACTIVE` and `DEVICE_ACTIVE` lifecycle
   events after scene, focus, and presentation state are valid
 - bounded non-interruptible work may defer inactivity only through a validated
   completion bound
 
-Packages may style their inactive presentation and choose among declared
-inactive scene routes. They do not choose the timeout, physical wake wiring, or
-raw activation-gesture detection.
+`TIMEOUT` packages may style their inactive presentation and choose among
+declared inactive scene routes. Packages choose the interaction mode, but do not
+choose the numeric timeout, physical wake wiring, cue duration, or raw
+activation-gesture detection.
 
 ---
 
@@ -503,7 +514,7 @@ Tools must validate:
 - `STATE_SCENE` reactive yield and waiting-presentation completeness
 - `SEQUENCE_SCENE` timeline, FPS, duration, track, and scene-end bounds
 - `PROGRAM_SCENE` instruction, stack, memory, frame, service, and fallback bounds
-- inactivity routes for every realtime scene
+- inactivity routes for every realtime scene in a `TIMEOUT` package
 - target-admitted activation and input behavior
 - compositor layer and retained-memory budgets
 - waiting-animation phase quantum, cycle, fallback, and autonomous admission

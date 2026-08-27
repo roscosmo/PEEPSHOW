@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (73UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (74UL)
 
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_NONE       (0UL)
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_PREPARE    (1UL)
@@ -1230,6 +1230,8 @@ HAL_StatusTypeDef
 PS_HW6_OwnerStateMachines_LatchJoystickWakeDirection(void);
 uint32_t PS_HW6_OwnerStateMachines_TakeJoystickWakeDirection(
   uint32_t *direction_mask);
+void PS_HW6_OwnerStateMachines_SetJoystickStop2WakeAllowed(uint32_t allowed);
+uint32_t PS_HW6_OwnerStateMachines_JoystickStop2WakeAllowed(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSleepAudit(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickXyzCapture(
   uint32_t capture_mode);
