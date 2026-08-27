@@ -98,6 +98,7 @@ export default function App() {
   const [placementGridStrength, setPlacementGridStrength] = useState(18);
   const [placementOverlayVisible, setPlacementOverlayVisible] = useState(true);
   const [placementLabelMode, setPlacementLabelMode] = useState<"hover" | "always" | "off">("hover");
+  const [placementDraftPositions, setPlacementDraftPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [message, setMessage] = useState<string | null>(null);
   const previewRef = useRef<PreviewSnapshot | null>(null);
   const projectRevisionRef = useRef<number | null>(null);
@@ -321,6 +322,7 @@ export default function App() {
     setCanRedo(result.can_redo);
     setPreview(null);
     setSceneThumbnails({});
+    setPlacementDraftPositions({});
     setBuild(null);
   };
 
@@ -620,6 +622,52 @@ export default function App() {
     }
   };
 
+  const setRenderElementPosition = async (
+    sceneId: string,
+    renderModelId: string,
+    elementId: string,
+    x: number,
+    y: number,
+  ) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy("Moving element");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [
+          {
+            kind: "render_element.set_position",
+            scene_id: sceneId,
+            render_model_id: renderModelId,
+            element_id: elementId,
+            x,
+            y,
+          },
+        ],
+      });
+      applyProjectResult(result);
+      setSelectedScene(sceneId);
+      setSelectedPlacementElement(elementId);
+      setSceneSelection({ kind: "render", id: renderModelId });
+      if (result.valid) {
+        const previewResult = await bridge.serviceRequest<PreviewSnapshot>("project.preview_reset", {
+          project_revision: result.project_revision,
+          scene_id: sceneId,
+        });
+        setPreview(previewResult);
+      }
+      setMessage("Element moved. Save to write it to the project.");
+    } catch (error) {
+      setPlacementDraftPositions({});
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const exportPackage = async () => {
     if (bridge === undefined || build === null) {
       return;
@@ -756,6 +804,56 @@ export default function App() {
       </div>
     </div>
   );
+  const placementDraftKey = (renderModelId: string, elementId: string) => `${renderModelId}:${elementId}`;
+  const startPlacementDrag = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    element: RenderElement,
+    renderModelId: string,
+  ) => {
+    if (selectedSceneDocument === null || busy !== null) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const overlay = event.currentTarget.closest(".placement-screen-overlay");
+    if (!(overlay instanceof HTMLElement)) {
+      return;
+    }
+    const rect = overlay.getBoundingClientRect();
+    const startClientX = event.clientX;
+    const startClientY = event.clientY;
+    const key = placementDraftKey(renderModelId, element.element_id);
+    const startX = element.x;
+    const startY = element.y;
+    const maxX = Math.max(0, 168 - element.width);
+    const maxY = Math.max(0, 144 - element.height);
+    let latestX = startX;
+    let latestY = startY;
+    setSelectedPlacementElement(element.element_id);
+    setSceneSelection({ kind: "render", id: renderModelId });
+
+    const move = (moveEvent: PointerEvent) => {
+      const dx = Math.round(((moveEvent.clientX - startClientX) / rect.width) * 168);
+      const dy = Math.round(((moveEvent.clientY - startClientY) / rect.height) * 144);
+      latestX = Math.min(maxX, Math.max(0, startX + dx));
+      latestY = Math.min(maxY, Math.max(0, startY + dy));
+      setPlacementDraftPositions((current) => ({ ...current, [key]: { x: latestX, y: latestY } }));
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      setPlacementDraftPositions((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+      if (latestX !== startX || latestY !== startY) {
+        void setRenderElementPosition(selectedSceneDocument.scene_id, renderModelId, element.element_id, latestX, latestY);
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+  };
   const renderPreviewPanel = (variant: "project" | "placement") => (
     <section className={`preview-pane ${variant === "placement" ? "preview-pane-large" : "preview-pane-compact"}`}>
       {variant === "project" && (
@@ -802,29 +900,39 @@ export default function App() {
               {placementOverlayVisible &&
                 [...(placementRenderModel?.elements ?? [])]
                   .sort((left, right) => left.z_order - right.z_order)
-                  .map((element) => (
-                    <button
-                      key={element.element_id}
-                      className={`placement-element-box ${selectedPlacementElement === element.element_id ? "selected" : ""}`}
-                      type="button"
-                      style={{
-                        left: `${(element.x / 168) * 100}%`,
-                        top: `${(element.y / 144) * 100}%`,
-                        width: `${(element.width / 168) * 100}%`,
-                        height: `${(element.height / 144) * 100}%`,
-                      }}
-                      title={`${element.element_id}: ${element.x},${element.y} ${element.width}x${element.height}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setSelectedPlacementElement(element.element_id);
-                        if (placementRenderModel !== null) {
-                          setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
-                        }
-                      }}
-                    >
-                      <span>{element.element_id}</span>
-                    </button>
-                  ))}
+                  .map((element) => {
+                    const draft = placementDraftPositions[placementDraftKey(placementRenderModel?.visual_id ?? "", element.element_id)];
+                    const x = draft?.x ?? element.x;
+                    const y = draft?.y ?? element.y;
+                    return (
+                      <button
+                        key={element.element_id}
+                        className={`placement-element-box ${selectedPlacementElement === element.element_id ? "selected" : ""}`}
+                        type="button"
+                        style={{
+                          left: `${(x / 168) * 100}%`,
+                          top: `${(y / 144) * 100}%`,
+                          width: `${(element.width / 168) * 100}%`,
+                          height: `${(element.height / 144) * 100}%`,
+                        }}
+                        title={`${element.element_id}: ${x},${y} ${element.width}x${element.height}`}
+                        onPointerDown={(event) => {
+                          if (placementRenderModel !== null) {
+                            startPlacementDrag(event, element, placementRenderModel.visual_id);
+                          }
+                        }}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedPlacementElement(element.element_id);
+                          if (placementRenderModel !== null) {
+                            setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
+                          }
+                        }}
+                      >
+                        <span>{element.element_id}</span>
+                      </button>
+                    );
+                  })}
             </div>
           )}
         </div>

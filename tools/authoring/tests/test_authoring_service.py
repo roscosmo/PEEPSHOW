@@ -226,7 +226,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(11, SERVICE_API_VERSION)
+        self.assertEqual(12, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -549,6 +549,72 @@ class AuthoringServiceTests(unittest.TestCase):
                 )
             )
         self.assertEqual("COMMAND_TARGET_INVALID", raised.exception.code)
+
+    def test_render_element_set_position_updates_existing_element(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "render_element.set_position",
+                            "scene_id": "state_demo",
+                            "render_model_id": "view_center",
+                            "element_id": "cursor",
+                            "x": 31,
+                            "y": 42,
+                        }
+                    ],
+                },
+            )
+        )
+
+        demo = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_demo")
+        screen = next(model for model in demo["render_models"] if model["visual_id"] == "view_center")
+        cursor = next(element for element in screen["elements"] if element["element_id"] == "cursor")
+        self.assertEqual(31, cursor["x"])
+        self.assertEqual(42, cursor["y"])
+        self.assertEqual(
+            {
+                "kind": "render_element.set_position",
+                "scene_id": "state_demo",
+                "render_model_id": "view_center",
+                "element_id": "cursor",
+                "previous_x": 8,
+                "previous_y": 73,
+                "x": 31,
+                "y": 42,
+            },
+            changed["applied_commands"][0],
+        )
+        self.assertTrue(changed["dirty"])
+
+    def test_render_element_set_position_rejects_out_of_bounds(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        with self.assertRaises(ProtocolError) as raised:
+            service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "render_element.set_position",
+                                "scene_id": "state_demo",
+                                "render_model_id": "view_center",
+                                "element_id": "cursor",
+                                "x": 168,
+                                "y": 0,
+                            }
+                        ],
+                    },
+                )
+            )
+        self.assertEqual("RENDER_BOUNDS_INVALID", raised.exception.code)
 
     def test_scene_flow_node_position_is_editor_only_and_persists(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

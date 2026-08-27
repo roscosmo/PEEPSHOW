@@ -324,9 +324,9 @@ state.rename
 transition.create
 route.add_scene_exit
 route.delete_scene_exit
+render_element.set_position
 editor.scene_flow.set_node_position
 transition.set_guard
-element.move
 element.set_layer
 animation.set_phase_visual
 ```

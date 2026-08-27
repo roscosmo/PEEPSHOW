@@ -419,6 +419,76 @@ def _apply_route_delete_scene_exit(
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
 
 
+def _render_coordinate(value: Any, path: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ProjectCommandError("RENDER_BOUNDS_INVALID", f"{path} must be an integer")
+    if value < 0:
+        raise ProjectCommandError("RENDER_BOUNDS_INVALID", f"{path} must be non-negative")
+    return value
+
+
+def _apply_render_element_set_position(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "render_model_id", "element_id", "x", "y"},
+        {"kind", "scene_id", "render_model_id", "element_id", "x", "y", "command_id"},
+    )
+    issues: list[ValidationIssue] = []
+    scene_id = command.get("scene_id")
+    render_model_id = command.get("render_model_id")
+    element_id = command.get("element_id")
+    _stable_id(scene_id, "command.scene_id", issues)
+    _stable_id(render_model_id, "command.render_model_id", issues)
+    _stable_id(element_id, "command.element_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    x = _render_coordinate(command.get("x"), "command.x")
+    y = _render_coordinate(command.get("y"), "command.y")
+
+    for scene in scenes:
+        if scene.get("scene_id") != scene_id:
+            continue
+        render_models = scene.get("render_models")
+        if not isinstance(render_models, list):
+            raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.render_models must be an array")
+        for render_model in render_models:
+            if not isinstance(render_model, dict) or render_model.get("visual_id") != render_model_id:
+                continue
+            elements = render_model.get("elements")
+            if not isinstance(elements, list):
+                raise ProjectCommandError("PROJECT_TYPE_INVALID", "render_model.elements must be an array")
+            for element in elements:
+                if not isinstance(element, dict) or element.get("element_id") != element_id:
+                    continue
+                width = element.get("width")
+                height = element.get("height")
+                if not isinstance(width, int) or width < 1 or not isinstance(height, int) or height < 1:
+                    raise ProjectCommandError("RENDER_BOUNDS_INVALID", "element size is invalid")
+                if x + width > 168 or y + height > 144:
+                    raise ProjectCommandError("RENDER_BOUNDS_INVALID", "element would be outside the 168x144 display")
+                previous_x = element.get("x")
+                previous_y = element.get("y")
+                element["x"] = x
+                element["y"] = y
+                return {
+                    "kind": "render_element.set_position",
+                    "scene_id": scene_id,
+                    "render_model_id": render_model_id,
+                    "element_id": element_id,
+                    "previous_x": previous_x,
+                    "previous_y": previous_y,
+                    "x": x,
+                    "y": y,
+                }
+            raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown render element '{element_id}'")
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown render model '{render_model_id}'")
+    raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
+
+
 def _layout_coordinate(value: Any, path: str) -> int:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ProjectCommandError("PROJECT_TYPE_INVALID", f"{path} must be a number")
@@ -1336,6 +1406,8 @@ def apply_project_commands(
             applied.append(_apply_route_add_scene_exit(scenes, command))
         elif kind == "route.delete_scene_exit":
             applied.append(_apply_route_delete_scene_exit(scenes, command))
+        elif kind == "render_element.set_position":
+            applied.append(_apply_render_element_set_position(scenes, command))
         elif kind == "editor.scene_flow.set_node_position":
             applied.append(_apply_scene_flow_node_position(project, scenes, command))
         elif kind == "route.set_guard":

@@ -122,7 +122,7 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `11`.
+protocol is version `1`; the current service API is version `12`.
 
 | Operation | Purpose |
 |---|---|
@@ -229,12 +229,14 @@ visuals. Project mutation controls remain deferred to Stage 2.
 
 No scene-canvas or graph control may directly mutate normalized JSON in React.
 
-Implementation status: started. Service API version 11 exposes
+Implementation status: started. Service API version 12 exposes
 `project.apply_commands` with the first accepted commands,
 `state.rename`, `route.set_target`, `route.set_guard`, and
 `route.set_action`, plus `route.add_scene_exit` and
 `route.delete_scene_exit` for creating/deleting actionless direct scene exits,
-and `editor.scene_flow.set_node_position` for editor-only scene-flow layout.
+`render_element.set_position` for moving retained scene elements within the
+168x144 display bounds, and `editor.scene_flow.set_node_position` for
+editor-only scene-flow layout.
 `route.set_action` edits existing ordered route actions only; adding, removing,
 and reordering actions remain deferred. Accepted commands update the in-memory
 Python-owned project, return a new `project_revision`, normalized document,
@@ -268,9 +270,11 @@ retained render elements for inspection. The placement display has a faint
 screen-space grid and select-only retained-element overlays that highlight the
 matching inspector row. Grid visibility, grid strength, major grid lines,
 overlay boxes, and label display are editor view settings in the project panel
-only; they do not affect package output. Visual element add/move/reorder
-commands remain pending and must be implemented through Python service commands
-before the canvas becomes editable.
+only; they do not affect package output. Existing retained elements can be
+moved on the placement canvas through the Python `render_element.set_position`
+command with pixel snapping and bounds validation. Visual element add, remove,
+resize, reorder, asset assignment, and animation assignment remain pending and
+must be implemented through Python service commands.
 
 ### Stage 4: STATE Graph Editing
 
