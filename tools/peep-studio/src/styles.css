@@ -915,6 +915,41 @@ button:focus-visible {
   margin-bottom: 12px;
 }
 
+.placement-position-editor {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid #d7ded9;
+  border-radius: 7px;
+  background: #f7faf8;
+}
+
+.placement-position-editor label {
+  display: grid;
+  gap: 5px;
+  color: #68736d;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.placement-position-editor input {
+  width: 100%;
+  height: 32px;
+  border: 1px solid #c9d3ce;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #27302b;
+  font-size: 13px;
+  font-weight: 740;
+  text-align: right;
+}
+
+.placement-position-editor .muted {
+  grid-column: 1 / -1;
+}
+
 .placement-view-settings {
   display: grid;
   gap: 8px;

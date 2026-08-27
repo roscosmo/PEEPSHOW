@@ -274,9 +274,10 @@ lines, overlay boxes, and label display are editor view settings in the project
 panel only; they do not affect package output. Existing retained elements can
 be moved on the placement canvas through the Python
 `render_element.set_position` command with pixel snapping and bounds
-validation. Visual element add, remove, resize, reorder, asset assignment, and
-animation assignment remain pending and must be implemented through Python
-service commands.
+validation. Peep Studio also exposes exact selected-object X/Y fields and
+arrow-key nudging using that same command. Visual element add, remove, resize,
+reorder, asset assignment, and animation assignment remain pending and must be
+implemented through Python service commands.
 
 ### Stage 4: STATE Graph Editing
 

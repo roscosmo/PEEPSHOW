@@ -28,7 +28,7 @@ import {
   Undo2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { FramebufferCanvas } from "./FramebufferCanvas";
 import {
   SceneAuthoringInspector,
@@ -667,6 +667,22 @@ export default function App() {
       setBusy(null);
     }
   };
+  const movePlacementElement = (
+    element: RenderElement,
+    renderModelId: string,
+    x: number,
+    y: number,
+  ) => {
+    if (selectedSceneDocument === null) {
+      return;
+    }
+    const nextX = Math.min(Math.max(0, 168 - element.width), Math.max(0, Math.round(x)));
+    const nextY = Math.min(Math.max(0, 144 - element.height), Math.max(0, Math.round(y)));
+    if (nextX === element.x && nextY === element.y) {
+      return;
+    }
+    void setRenderElementPosition(selectedSceneDocument.scene_id, renderModelId, element.element_id, nextX, nextY);
+  };
 
   const exportPackage = async () => {
     if (bridge === undefined || build === null) {
@@ -738,6 +754,12 @@ export default function App() {
     }
     return (selectedSceneDocument.render_models ?? []).find((model) => model.visual_id === placementState.render_model_ref) ?? null;
   }, [placementState, selectedSceneDocument]);
+  const selectedPlacementRenderElement = useMemo<RenderElement | null>(() => {
+    if (placementRenderModel === null || selectedPlacementElement === null) {
+      return null;
+    }
+    return placementRenderModel.elements.find((element) => element.element_id === selectedPlacementElement) ?? null;
+  }, [placementRenderModel, selectedPlacementElement]);
   useEffect(() => {
     if (
       selectedPlacementElement !== null &&
@@ -805,6 +827,36 @@ export default function App() {
     </div>
   );
   const placementDraftKey = (renderModelId: string, elementId: string) => `${renderModelId}:${elementId}`;
+  const handlePlacementKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (placementRenderModel === null || selectedPlacementRenderElement === null || busy !== null) {
+      return;
+    }
+    const target = event.target as HTMLElement | null;
+    if (target !== null && target.closest("input, select, textarea, [contenteditable='true']") !== null) {
+      return;
+    }
+    const step = event.shiftKey ? 8 : 1;
+    let dx = 0;
+    let dy = 0;
+    if (event.key === "ArrowLeft") {
+      dx = -step;
+    } else if (event.key === "ArrowRight") {
+      dx = step;
+    } else if (event.key === "ArrowUp") {
+      dy = -step;
+    } else if (event.key === "ArrowDown") {
+      dy = step;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    movePlacementElement(
+      selectedPlacementRenderElement,
+      placementRenderModel.visual_id,
+      selectedPlacementRenderElement.x + dx,
+      selectedPlacementRenderElement.y + dy,
+    );
+  };
   const startPlacementDrag = (
     event: ReactPointerEvent<HTMLButtonElement>,
     element: RenderElement,
@@ -891,6 +943,8 @@ export default function App() {
             <div
               className={`placement-screen-overlay labels-${placementLabelMode}`}
               aria-label="Placement selection overlay"
+              tabIndex={0}
+              onKeyDown={handlePlacementKeyDown}
               style={{
                 "--placement-grid-minor-opacity": placementGridVisible ? placementGridStrength / 100 : 0,
                 "--placement-grid-major-opacity": placementGridVisible && placementMajorGridVisible ? (placementGridStrength + 6) / 100 : 0,
@@ -923,6 +977,7 @@ export default function App() {
                         }}
                         onClick={(event) => {
                           event.stopPropagation();
+                          event.currentTarget.focus();
                           selectPlacementElement(element.element_id);
                         }}
                       >
@@ -1065,6 +1120,21 @@ export default function App() {
     const selectedElement = selectedPlacementElement === null
       ? null
       : elements.find((element) => element.element_id === selectedPlacementElement) ?? null;
+    const commitPositionInput = (axis: "x" | "y", value: string) => {
+      if (selectedElement === null || placementRenderModel === null) {
+        return;
+      }
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed)) {
+        return;
+      }
+      movePlacementElement(
+        selectedElement,
+        placementRenderModel.visual_id,
+        axis === "x" ? parsed : selectedElement.x,
+        axis === "y" ? parsed : selectedElement.y,
+      );
+    };
     return (
       <section className="inspector-section placement-inspector">
         <h3><SquareMousePointer size={14} aria-hidden="true" /> Object</h3>
@@ -1080,13 +1150,46 @@ export default function App() {
               <div><dt>Name</dt><dd>{selectedElement.element_id}</dd></div>
               <div><dt>Kind</dt><dd>{selectedElement.kind}</dd></div>
               <div><dt>Visual</dt><dd>{selectedElement.visual_ref}</dd></div>
-              <div><dt>X</dt><dd>{selectedElement.x}</dd></div>
-              <div><dt>Y</dt><dd>{selectedElement.y}</dd></div>
               <div><dt>Width</dt><dd>{selectedElement.width}</dd></div>
               <div><dt>Height</dt><dd>{selectedElement.height}</dd></div>
               <div><dt>Layer</dt><dd>{selectedElement.z_order}</dd></div>
               <div><dt>Focus</dt><dd>{selectedElement.focus_role ?? "none"}</dd></div>
             </dl>
+            <div className="placement-position-editor">
+              <label>
+                X
+                <input
+                  key={`${selectedElement.element_id}-x-${selectedElement.x}`}
+                  type="number"
+                  min="0"
+                  max={Math.max(0, 168 - selectedElement.width)}
+                  defaultValue={selectedElement.x}
+                  onBlur={(event) => commitPositionInput("x", event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.currentTarget.blur();
+                    }
+                  }}
+                />
+              </label>
+              <label>
+                Y
+                <input
+                  key={`${selectedElement.element_id}-y-${selectedElement.y}`}
+                  type="number"
+                  min="0"
+                  max={Math.max(0, 144 - selectedElement.height)}
+                  defaultValue={selectedElement.y}
+                  onBlur={(event) => commitPositionInput("y", event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.currentTarget.blur();
+                    }
+                  }}
+                />
+              </label>
+              <p className="muted">Arrow keys nudge 1 px. Shift + arrow nudges 8 px.</p>
+            </div>
           </>
         )}
       </section>
