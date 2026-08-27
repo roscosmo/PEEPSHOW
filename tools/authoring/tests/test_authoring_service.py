@@ -226,7 +226,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(8, SERVICE_API_VERSION)
+        self.assertEqual(10, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -414,6 +414,128 @@ class AuthoringServiceTests(unittest.TestCase):
                 )
             )
         self.assertEqual("COMMAND_TARGET_UNKNOWN", raised.exception.code)
+
+    def test_route_add_scene_exit_creates_valid_direct_transition(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "route.add_scene_exit",
+                            "scene_id": "state_details",
+                            "logical_source": "BUTTON_A",
+                            "target_scene": "state_demo",
+                        }
+                    ],
+                },
+            )
+        )
+
+        applied = changed["applied_commands"][0]
+        route_id = applied["route_id"]
+        details = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_details")
+        route = next(route for route in details["routes"] if route["route_id"] == route_id)
+        self.assertEqual("route.add_scene_exit", applied["kind"])
+        self.assertEqual(route_id, applied["action_id"])
+        self.assertEqual("BUTTON_A", applied["logical_source"])
+        self.assertEqual("state_demo", route["target_scene"])
+        self.assertEqual(route_id, route["action_ref"])
+        self.assertEqual([], route["guards"])
+        self.assertEqual([], route["actions"])
+        self.assertEqual([state["state_id"] for state in details["states"]], route["from_states"])
+        self.assertIn({"action_id": route_id, "logical_source": "BUTTON_A"}, details["input_actions"])
+        self.assertIn(route_id, details["reactive_wait_default"]["event_interests"])
+        self.assertIn(route_id, details["interaction_policy"]["meaningful_activity_actions"])
+
+        reset = service.handle(
+            request(
+                "project.preview_reset",
+                {"project_revision": changed["project_revision"], "scene_id": "state_details"},
+            )
+        )
+        preview = service.handle(
+            request(
+                "project.preview_input",
+                {
+                    "project_revision": changed["project_revision"],
+                    "preview_revision": reset["preview_revision"],
+                    "logical_source": "BUTTON_A",
+                },
+            )
+        )
+        self.assertEqual("state_demo", preview["scene"]["scene_id"])
+        self.assertTrue(changed["dirty"])
+        self.assertTrue(changed["can_undo"])
+
+    def test_route_add_scene_exit_rejects_duplicate_source(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        with self.assertRaises(ProtocolError) as raised:
+            service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "route.add_scene_exit",
+                                "scene_id": "state_demo",
+                                "logical_source": "BUTTON_A",
+                                "target_scene": "state_details",
+                            }
+                        ],
+                    },
+                )
+            )
+        self.assertEqual("INPUT_SOURCE_DUPLICATE", raised.exception.code)
+
+    def test_scene_flow_node_position_is_editor_only_and_persists(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "layout.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            before = service.handle(
+                request("project.build_package", {"project_revision": loaded["project_revision"]})
+            )
+            moved = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.scene_flow.set_node_position",
+                                "scene_id": "state_details",
+                                "x": 512.4,
+                                "y": -48.2,
+                            }
+                        ],
+                    },
+                )
+            )
+            after = service.handle(
+                request("project.build_package", {"project_revision": moved["project_revision"]})
+            )
+
+            self.assertEqual(before["package"]["sha256"], after["package"]["sha256"])
+            self.assertEqual(
+                {"x": 512, "y": -48},
+                moved["document"]["project"]["editor"]["scene_flow"]["nodes"]["state_details"],
+            )
+            self.assertTrue(moved["dirty"])
+            saved = service.handle(request("project.save", {"project_revision": moved["project_revision"]}))
+            self.assertIn("project.json", saved["saved_sources"])
+
+            reloaded = load_project(project_root)
+            self.assertEqual(
+                {"x": 512, "y": -48},
+                reloaded.normalized()["project"]["editor"]["scene_flow"]["nodes"]["state_details"],
+            )
 
     def test_route_set_target_persists_on_save(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -866,7 +988,7 @@ class AuthoringServiceTests(unittest.TestCase):
             )
             self.assertFalse(saved["dirty"])
             self.assertEqual(
-                ["scenes/state_demo.state.json", "scenes/state_details.state.json"],
+                ["project.json", "scenes/state_demo.state.json", "scenes/state_details.state.json"],
                 saved["saved_sources"],
             )
 

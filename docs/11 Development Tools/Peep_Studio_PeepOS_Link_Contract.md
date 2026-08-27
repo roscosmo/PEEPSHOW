@@ -122,7 +122,7 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `8`.
+protocol is version `1`; the current service API is version `10`.
 
 | Operation | Purpose |
 |---|---|
@@ -134,7 +134,7 @@ protocol is version `1`; the current service API is version `8`.
 | `project.build_package` | compile authoritative `.egg` bytes and compatibility report |
 | `project.compatibility_report` | inspect target/resource compatibility without exporting |
 | `project.apply_commands` | apply typed semantic edit commands and return a new project revision |
-| `project.save` | persist the current in-memory project scene records to authored source files |
+| `project.save` | persist the current in-memory project manifest and scene records to authored source files |
 | `project.undo` | undo the last accepted command within the bounded service history |
 | `project.redo` | redo the last undone command within the bounded service history |
 | `project.scene_thumbnails` | return one side-effect-free initial framebuffer snapshot per compiled STATE scene |
@@ -229,16 +229,19 @@ visuals. Project mutation controls remain deferred to Stage 2.
 
 No scene-canvas or graph control may directly mutate normalized JSON in React.
 
-Implementation status: started. Service API version 8 exposes
+Implementation status: started. Service API version 10 exposes
 `project.apply_commands` with the first accepted commands,
 `state.rename`, `route.set_target`, `route.set_guard`, and
-`route.set_action`. `route.set_action` edits existing ordered route actions
-only; adding, removing, and reordering actions remain deferred. Accepted commands
-update the in-memory Python-owned project, return a new `project_revision`,
-normalized document, diagnostics, and dirty state, and reject stale revisions.
-`project.save` persists the current
-in-memory scene records back to their authored scene JSON files and clears dirty
-state. Peep Studio also exposes Save As for copying the current `.peepproj`
+`route.set_action`, plus `route.add_scene_exit` for creating an actionless
+direct scene exit from an unused logical input source to another STATE scene,
+and `editor.scene_flow.set_node_position` for editor-only scene-flow layout.
+`route.set_action` edits existing ordered route actions only; adding, removing,
+and reordering actions remain deferred. Accepted commands update the in-memory
+Python-owned project, return a new `project_revision`, normalized document,
+diagnostics, and dirty state, and reject stale revisions.
+`project.save` persists the current in-memory project manifest and scene records
+back to their authored JSON files and clears dirty state. Peep Studio also
+exposes Save As for copying the current `.peepproj`
 directory to a user-chosen location; checked-in examples opened through the
 example button are temporary copies. `project.undo` and `project.redo` keep a
 bounded 32-step command history in the Python service; new edits clear redo, and
@@ -304,8 +307,12 @@ existing `target_scene` route edges from normalized service data. Scene cards
 show their existing scene-exit outputs as selectable rows and render real
 Python-generated initial scene thumbnails through `project.scene_thumbnails`.
 Existing actionless `target_scene` routes can be
-retargeted to another STATE scene through the inspector. Creating or removing
-scene-flow edges remains deferred to a later Stage 5 edit slice.
+retargeted to another STATE scene through the inspector. New scene-flow exits
+can be added from scene cards through `route.add_scene_exit`; drag-to-create
+graph wiring remains deferred, but must call the same Python command rather than
+editing JSON in React. Scene-flow cards can be manually rearranged; saved
+positions live under project editor-only layout metadata and must not affect
+compiled package bytes.
 
 ### Stage 6: Animation Timeline
 

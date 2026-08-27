@@ -13,15 +13,16 @@ preview execution, or compilation rules in TypeScript.
 - renders the exact 168x144 1bpp framebuffer returned by Python;
 - injects logical A/B/L/R and joystick-cardinal input and advances deterministic preview time;
 - shows a package scene-flow graph with Python-rendered scene thumbnails separately from each scene's local logic graph;
+- saves editor-only scene-flow node positions without changing package behavior;
 - shows runtime state, variables, validation issues, and package facts;
 - saves opened projects in place or copies them with Save As;
 - supports bounded undo/redo for service-owned edit commands;
 - edits STATE display names, route targets, existing guard conditions, and
   existing ordered route actions through Python service commands;
-- retargets existing actionless scene-flow exits between STATE scenes;
+- adds and retargets actionless scene-flow exits between STATE scenes;
 - builds and exports the authoritative `.egg` bytes produced by Python.
 
-Node editing, asset import, project mutation, device installation, SEQUENCE,
+Node creation, asset import, device installation, SEQUENCE,
 and PROGRAM authoring are deliberately outside this first shell.
 
 ## Run

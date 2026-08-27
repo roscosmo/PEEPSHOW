@@ -87,15 +87,22 @@ export default function App() {
   const [playing, setPlaying] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<"scene-flow" | "logic" | "placement">("scene-flow");
   const [sceneThumbnails, setSceneThumbnails] = useState<Record<string, Framebuffer>>({});
+  const [sceneFlowLayoutStatus, setSceneFlowLayoutStatus] = useState("No layout move yet");
   const [projectWidth, setProjectWidth] = useState(320);
   const [inspectorWidth, setInspectorWidth] = useState(390);
   const [message, setMessage] = useState<string | null>(null);
   const previewRef = useRef<PreviewSnapshot | null>(null);
+  const projectRevisionRef = useRef<number | null>(null);
+  const layoutSaveChain = useRef(Promise.resolve());
   const operationLock = useRef(false);
 
   useEffect(() => {
     previewRef.current = preview;
   }, [preview]);
+
+  useEffect(() => {
+    projectRevisionRef.current = project?.project_revision ?? null;
+  }, [project?.project_revision]);
 
   useEffect(() => {
     if (bridge === undefined) {
@@ -277,7 +284,7 @@ export default function App() {
         project_revision: project.project_revision,
       });
       applyProjectResult(result);
-      setMessage(`Saved ${result.saved_sources.length} scene source${result.saved_sources.length === 1 ? "" : "s"}.`);
+      setMessage(`Saved ${result.saved_sources.length} source file${result.saved_sources.length === 1 ? "" : "s"}.`);
     } catch (error) {
       setMessage(errorText(error));
     } finally {
@@ -434,6 +441,72 @@ export default function App() {
     } finally {
       setBusy(null);
     }
+  };
+
+  const addSceneExit = async (sceneId: string, logicalSource: string, targetScene: string) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy("Adding scene exit");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [
+          {
+            kind: "route.add_scene_exit",
+            scene_id: sceneId,
+            logical_source: logicalSource,
+            target_scene: targetScene,
+          },
+        ],
+      });
+      const applied = result.applied_commands[0];
+      applyProjectResult(result);
+      setSelectedScene(sceneId);
+      setSceneSelection({ kind: "route", id: String(applied?.route_id ?? "") });
+      setMessage("Scene exit added. Save to write it to the project.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const moveSceneNode = async (sceneId: string, x: number, y: number) => {
+    if (bridge === undefined || project === null) {
+      return;
+    }
+    setSceneFlowLayoutStatus(`queued ${sceneId} @ ${Math.round(x)}, ${Math.round(y)}`);
+    layoutSaveChain.current = layoutSaveChain.current.then(async () => {
+      const revision = projectRevisionRef.current;
+      if (revision === null) {
+        setSceneFlowLayoutStatus(`skipped ${sceneId}: no project revision`);
+        return;
+      }
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: revision,
+        commands: [
+          {
+            kind: "editor.scene_flow.set_node_position",
+            scene_id: sceneId,
+            x,
+            y,
+          },
+        ],
+      });
+      projectRevisionRef.current = result.project_revision;
+      applyProjectResult(result);
+      const applied = result.applied_commands[0];
+      setSceneFlowLayoutStatus(
+        `saved ${String(applied?.scene_id ?? sceneId)} @ ${String(applied?.x ?? x)}, ${String(applied?.y ?? y)} rev ${result.project_revision}`,
+      );
+      setMessage("Graph layout updated. Save to write it to the project.");
+    }).catch((error) => {
+      setSceneFlowLayoutStatus(`save failed: ${errorText(error)}`);
+      setMessage(errorText(error));
+    });
+    await layoutSaveChain.current;
   };
 
   const setRouteGuard = async (
@@ -812,6 +885,8 @@ export default function App() {
               scenes={scenes}
               entrySceneId={project?.summary.entry_scene ?? null}
               thumbnails={sceneThumbnails}
+              editor={project?.document?.project?.editor}
+              layoutStatus={sceneFlowLayoutStatus}
               selectedSceneId={selectedScene}
               selectedRouteId={sceneSelection.kind === "route" ? sceneSelection.id : null}
               onSelectScene={(sceneId) => void startPreview(sceneId)}
@@ -819,6 +894,13 @@ export default function App() {
                 setSelectedScene(sceneId);
                 setSceneSelection({ kind: "route", id: routeId });
               }}
+              onAddSceneExit={(sceneId, logicalSource, targetScene) => {
+                void addSceneExit(sceneId, logicalSource, targetScene);
+              }}
+              onMoveSceneNode={(sceneId, x, y) => {
+                void moveSceneNode(sceneId, x, y);
+              }}
+              canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
             />
           </div>
         </section>

@@ -763,11 +763,20 @@ Conceptual schema:
 ```text
 editor_data:
   layout_version
-  graph_layouts[]
+  scene_flow:
+    nodes:
+      scene_id:
+        x
+        y
   comments[]
   bookmarks[]
   local_ui_state
 ```
+
+The first executable Peep Studio subset stores scene-flow positions in
+`project.editor.scene_flow.nodes[scene_id] = { x, y }`. These coordinates are
+for author comprehension only; they do not change scene order, entry behavior,
+routes, preview behavior, or compiled package bytes.
 
 Rules:
 

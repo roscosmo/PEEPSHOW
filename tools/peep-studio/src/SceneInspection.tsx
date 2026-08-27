@@ -3,19 +3,24 @@ import {
   Controls,
   Handle,
   MarkerType,
+  Panel,
   Position,
   ReactFlow,
+  applyNodeChanges,
   type Edge,
   type Node,
+  type NodeChange,
   type NodeProps,
+  type ReactFlowInstance,
 } from "@xyflow/react";
-import { GitBranch, Hourglass, Layers3, Network, Route, Variable } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { GitBranch, Hourglass, Layers3, Network, Plus, Route, Variable } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { FramebufferCanvas } from "./FramebufferCanvas";
 import { buildSceneFlowGraphModel, buildStateGraphModel, type GraphSceneNode, type GraphStateNode } from "./stateGraph";
 import type {
   Framebuffer,
   InputAction,
+  ProjectEditorData,
   RenderModel,
   SceneDocument,
   StateGuard,
@@ -86,6 +91,16 @@ const INPUT_LABELS: Record<string, string> = {
   JOY_UP: "Joystick up",
   JOY_DOWN: "Joystick down",
 };
+const SCENE_EXIT_INPUTS = [
+  "BUTTON_A",
+  "BUTTON_B",
+  "BUTTON_L",
+  "BUTTON_R",
+  "JOY_LEFT",
+  "JOY_RIGHT",
+  "JOY_UP",
+  "JOY_DOWN",
+] as const;
 const GUARD_OPERATOR_LABELS: Record<string, string> = {
   eq: "is",
   ne: "is not",
@@ -235,24 +250,63 @@ const STATE_NODE_TYPES = { stateCard: StateCardNode };
 type SceneCardNodeData = {
   graphNode: GraphSceneNode;
   thumbnail: Framebuffer | null;
+  targetScenes: SceneDocument[];
   selectedRouteId: string | null;
+  canEdit: boolean;
   onSelectScene: (sceneId: string) => void;
   onSelectSceneRoute: (sceneId: string, routeId: string) => void;
+  onAddSceneExit: (sceneId: string, logicalSource: string, targetScene: string) => void;
 };
 
 function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
-  const { graphNode, onSelectScene, onSelectSceneRoute, selectedRouteId, thumbnail } = data;
+  const {
+    graphNode,
+    targetScenes,
+    canEdit,
+    onSelectScene,
+    onSelectSceneRoute,
+    onAddSceneExit,
+    selectedRouteId,
+    thumbnail,
+  } = data;
+  const availableInputs = SCENE_EXIT_INPUTS.filter((source) => !graphNode.usedLogicalSources.includes(source));
+  const [draftSource, setDraftSource] = useState<string>(availableInputs[0] ?? "");
+  const [draftTarget, setDraftTarget] = useState<string>(targetScenes[0]?.scene_id ?? "");
+  const addDisabled = !canEdit || draftSource === "" || draftTarget === "";
+
+  useEffect(() => {
+    if (draftSource === "" || !availableInputs.includes(draftSource as (typeof SCENE_EXIT_INPUTS)[number])) {
+      setDraftSource(availableInputs[0] ?? "");
+    }
+    if (draftTarget === "" || !targetScenes.some((scene) => scene.scene_id === draftTarget)) {
+      setDraftTarget(targetScenes[0]?.scene_id ?? "");
+    }
+  }, [availableInputs, draftSource, draftTarget, targetScenes]);
+
+  const handleSelectKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onSelectScene(graphNode.id);
+    }
+  };
+
   return (
-    <button
+    <div
       className={`scene-card-node ${graphNode.isEntry ? "entry" : ""} ${selected ? "selected" : ""}`}
-      type="button"
+      role="button"
+      tabIndex={0}
       onClick={() => onSelectScene(graphNode.id)}
+      onKeyDown={handleSelectKey}
     >
       <div className="scene-card-heading">
         <strong>{graphNode.label}</strong>
-        <span>{graphNode.stateCount} state{graphNode.stateCount === 1 ? "" : "s"}</span>
+        <div className="scene-badge-strip" aria-label="Scene badges">
+          <span className="scene-card-badge" title="Internal states">
+            <strong>{graphNode.stateCount}</strong>
+            <small>states</small>
+          </span>
+        </div>
       </div>
-      <span className="scene-count-badge">{graphNode.routeCount}</span>
       <div className="scene-card-preview" aria-hidden="true">
         <FramebufferCanvas framebuffer={thumbnail} />
       </div>
@@ -290,11 +344,60 @@ function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
           ))
         )}
       </div>
-    </button>
+      {targetScenes.length > 0 && (
+        <form
+          className="scene-add-exit-row"
+          onClick={(event) => event.stopPropagation()}
+          onSubmit={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!addDisabled) {
+              onAddSceneExit(graphNode.id, draftSource, draftTarget);
+            }
+          }}
+        >
+          <select
+            aria-label="Exit trigger"
+            disabled={!canEdit || availableInputs.length === 0}
+            value={draftSource}
+            onChange={(event) => setDraftSource(event.target.value)}
+          >
+            {availableInputs.map((source) => (
+              <option key={source} value={source}>
+                {INPUT_LABELS[source]}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Exit target scene"
+            disabled={!canEdit}
+            value={draftTarget}
+            onChange={(event) => setDraftTarget(event.target.value)}
+          >
+            {targetScenes.map((scene) => (
+              <option key={scene.scene_id} value={scene.scene_id}>
+                {scene.display_name}
+              </option>
+            ))}
+          </select>
+          <button className="icon-button" type="submit" disabled={addDisabled} title="Add scene exit">
+            <Plus size={14} aria-hidden="true" />
+          </button>
+        </form>
+      )}
+    </div>
   );
 }
 
 const SCENE_NODE_TYPES = { sceneCard: SceneCardNode };
+
+function sameNodeSet(left: Node[], right: Node[]) {
+  if (left.length !== right.length) {
+    return false;
+  }
+  const rightIds = new Set(right.map((node) => node.id));
+  return left.every((node) => rightIds.has(node.id));
+}
 
 export function StateGraphView({
   scene,
@@ -386,22 +489,35 @@ export function SceneFlowView({
   scenes,
   entrySceneId,
   thumbnails,
+  editor,
+  layoutStatus,
   selectedSceneId,
   selectedRouteId,
   onSelectScene,
   onSelectSceneRoute,
+  onAddSceneExit,
+  onMoveSceneNode,
+  canEdit,
 }: {
   scenes: SceneDocument[];
   entrySceneId: string | null;
   thumbnails: Record<string, Framebuffer>;
+  editor?: ProjectEditorData;
+  layoutStatus: string;
   selectedSceneId: string | null;
   selectedRouteId: string | null;
   onSelectScene: (sceneId: string) => void;
   onSelectSceneRoute: (sceneId: string, routeId: string) => void;
+  onAddSceneExit: (sceneId: string, logicalSource: string, targetScene: string) => void;
+  onMoveSceneNode: (sceneId: string, x: number, y: number) => void;
+  canEdit: boolean;
 }) {
-  const graph = useMemo(() => buildSceneFlowGraphModel(scenes, entrySceneId), [entrySceneId, scenes]);
-  const flowRef = useRef<{ fitView: (options?: { padding?: number; maxZoom?: number; duration?: number }) => void } | null>(null);
-  const nodes: Node[] = useMemo(
+  const graph = useMemo(() => buildSceneFlowGraphModel(scenes, entrySceneId, editor), [editor, entrySceneId, scenes]);
+  const flowRef = useRef<ReactFlowInstance | null>(null);
+  const didInitialFit = useRef(false);
+  const [viewportText, setViewportText] = useState("viewport not ready");
+  const [lastDragText, setLastDragText] = useState("No drag yet");
+  const baseNodes: Node[] = useMemo(
     () =>
       graph.nodes.map((node) => ({
         id: node.id,
@@ -410,16 +526,55 @@ export function SceneFlowView({
         data: {
           graphNode: node,
           thumbnail: thumbnails[node.id] ?? null,
+          targetScenes: scenes.filter((scene) => scene.scene_type === "STATE_SCENE" && scene.scene_id !== node.id),
           selectedRouteId,
+          canEdit,
           onSelectScene,
           onSelectSceneRoute,
+          onAddSceneExit,
         },
         selected: selectedSceneId === node.id,
-        draggable: false,
+        draggable: canEdit,
         connectable: false,
       })),
-    [graph.nodes, onSelectScene, onSelectSceneRoute, selectedRouteId, selectedSceneId, thumbnails],
+    [canEdit, graph.nodes, onAddSceneExit, onSelectScene, onSelectSceneRoute, scenes, selectedRouteId, selectedSceneId, thumbnails],
   );
+  const [nodes, setNodes] = useState<Node[]>(baseNodes);
+  useEffect(() => {
+    setNodes((current) => {
+      if (sameNodeSet(current, baseNodes)) {
+        const currentById = new Map(current.map((node) => [node.id, node]));
+        return baseNodes.map((node) => {
+          const currentNode = currentById.get(node.id);
+          if (currentNode === undefined) {
+            return node;
+          }
+          return {
+            ...currentNode,
+            type: node.type,
+            data: node.data,
+            selected: node.selected,
+            draggable: node.draggable,
+            connectable: node.connectable,
+            position: currentNode.position,
+          };
+        });
+      }
+      return baseNodes;
+    });
+  }, [baseNodes]);
+  const onNodesChange = (changes: NodeChange[]) => {
+    setNodes((current) => applyNodeChanges(changes, current));
+  };
+  const onNodeDragStop = (node: Node) => {
+    const x = Math.round(node.position.x);
+    const y = Math.round(node.position.y);
+    setLastDragText(`${node.id} dropped @ ${x}, ${y}`);
+    setNodes((current) =>
+      current.map((item) => (item.id === node.id ? { ...item, position: { x, y } } : item)),
+    );
+    onMoveSceneNode(node.id, x, y);
+  };
   const edges: Edge[] = useMemo(
     () =>
       graph.edges.map((edge) => ({
@@ -434,13 +589,34 @@ export function SceneFlowView({
       })),
     [graph.edges, selectedRouteId],
   );
-
+  const updateViewportText = () => {
+    const viewport = flowRef.current?.getViewport();
+    if (viewport === undefined) {
+      setViewportText("viewport unavailable");
+      return;
+    }
+    setViewportText(`x ${viewport.x.toFixed(1)}, y ${viewport.y.toFixed(1)}, zoom ${viewport.zoom.toFixed(3)}`);
+  };
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      flowRef.current?.fitView({ padding: 0.28, maxZoom: 1, duration: 120 });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [edges.length, nodes.length, selectedSceneId]);
+    updateViewportText();
+  }, [nodes.length, edges.length, selectedSceneId, selectedRouteId]);
+  const debugLines = [
+    `nodes ${nodes.length} / graph ${graph.nodes.length}`,
+    `edges ${edges.length} / graph ${graph.edges.length}`,
+    `selected scene ${selectedSceneId ?? "-"}`,
+    `selected route ${selectedRouteId ?? "-"}`,
+    `viewport ${viewportText}`,
+    `last drag ${lastDragText}`,
+    `layout save ${layoutStatus}`,
+    ...nodes.map((node) => {
+      const measured = "measured" in node && node.measured !== undefined
+        ? `${Math.round(node.measured.width ?? 0)}x${Math.round(node.measured.height ?? 0)}`
+        : "unmeasured";
+      return `node ${node.id} @ ${Math.round(node.position.x)}, ${Math.round(node.position.y)} ${measured}`;
+    }),
+    ...edges.map((edge) => `edge ${edge.id}: ${edge.source}:${edge.sourceHandle ?? "-"} -> ${edge.target}:${edge.targetHandle ?? "-"}`),
+  ];
+  const debugText = debugLines.join("\n");
 
   if (scenes.length === 0) {
     return (
@@ -456,21 +632,47 @@ export function SceneFlowView({
       nodes={nodes}
       edges={edges}
       nodeTypes={SCENE_NODE_TYPES}
-      fitView
       fitViewOptions={{ padding: 0.28, maxZoom: 1 }}
       onInit={(instance) => {
         flowRef.current = instance;
-        window.requestAnimationFrame(() => instance.fitView({ padding: 0.28, maxZoom: 1 }));
+        if (!didInitialFit.current) {
+          didInitialFit.current = true;
+          window.requestAnimationFrame(() => {
+            instance.fitView({ padding: 0.28, maxZoom: 1 });
+            updateViewportText();
+          });
+        }
       }}
-      nodesDraggable={false}
+      nodesDraggable={canEdit}
       nodesConnectable={false}
       elementsSelectable
+      onNodesChange={onNodesChange}
+      onNodeDragStop={(_, node) => onNodeDragStop(node)}
+      onMoveEnd={updateViewportText}
       onNodeClick={(_, node) => onSelectScene(node.id)}
       onEdgeClick={(_, edge) => onSelectSceneRoute(String(edge.data?.source_scene_id ?? ""), String(edge.data?.route_id ?? edge.id))}
       proOptions={{ hideAttribution: true }}
     >
       <Background gap={18} size={1} />
       <GraphMiniMap nodes={graph.nodes} edges={graph.edges} selectedId={selectedSceneId} />
+      <Panel position="top-left" className="scene-flow-debug">
+        <details open>
+          <summary>
+            <span>Scene Flow Debug</span>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void navigator.clipboard.writeText(debugText);
+              }}
+            >
+              Copy
+            </button>
+          </summary>
+          <pre>{debugText}</pre>
+        </details>
+      </Panel>
       <Controls showInteractive={false} />
     </ReactFlow>
   );

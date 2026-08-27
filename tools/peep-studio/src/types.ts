@@ -114,14 +114,30 @@ export type ReactiveWaitPolicy = {
   event_interests: string[];
 };
 
+export type EditorNodePosition = {
+  x: number;
+  y: number;
+};
+
+export type ProjectEditorData = {
+  scene_flow?: {
+    nodes?: Record<string, EditorNodePosition>;
+  };
+};
+
+export type ProjectDocument = {
+  project?: {
+    editor?: ProjectEditorData;
+  };
+  scenes?: SceneDocument[];
+};
+
 export type ProjectLoadResult = {
   project_revision: number;
   source_name: string;
   valid: boolean;
   issues: ValidationIssue[];
-  document: {
-    scenes?: SceneDocument[];
-  } | null;
+  document: ProjectDocument | null;
   summary: ProjectSummary;
   dirty: boolean;
   can_undo: boolean;
@@ -133,9 +149,7 @@ export type ProjectCommandResult = {
   project_revision: number;
   valid: boolean;
   issues: ValidationIssue[];
-  document: {
-    scenes?: SceneDocument[];
-  } | null;
+  document: ProjectDocument | null;
   summary: ProjectSummary;
   applied_commands: Array<Record<string, unknown>>;
   dirty: boolean;
@@ -148,9 +162,7 @@ export type ProjectSaveResult = {
   project_revision: number;
   valid: boolean;
   issues: ValidationIssue[];
-  document: {
-    scenes?: SceneDocument[];
-  } | null;
+  document: ProjectDocument | null;
   summary: ProjectSummary;
   dirty: boolean;
   can_undo: boolean;

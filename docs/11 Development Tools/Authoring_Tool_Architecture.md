@@ -11,7 +11,9 @@ compatibility report, and deterministic selected-STATE-scene preview over the
 independently parsed package. The first Electron, TypeScript, and React shell is
 implemented with a sandboxed renderer, selected-scene panel preview, logical
 input controls, runtime inspection, package build, and `.egg` export. Project
-mutation, undo/redo, and visual graph editing remain open.
+mutation, dirty tracking, bounded undo/redo, and the first scene-flow exit
+authoring slice are implemented through Python service commands. Rich visual
+graph editing remains open.
 
 This document defines the host application architecture for the PeepShow game
 authoring tools. The provisional working name for the desktop application is
@@ -171,17 +173,23 @@ project.build_package
 project.compatibility_report
 ```
 
-Reserved operations for later milestones include:
+Implemented operations for current Peep Studio milestones include:
 
 ```text
-project.new
 project.save
 project.apply_commands
 project.undo
 project.redo
+project.scene_thumbnails
 project.preview_reset
 project.preview_input
 project.preview_advance
+```
+
+Reserved operations for later milestones include:
+
+```text
+project.new
 ```
 
 The three preview operations are implemented in service API version 3. Their
@@ -314,6 +322,8 @@ Examples:
 state.create
 state.rename
 transition.create
+route.add_scene_exit
+editor.scene_flow.set_node_position
 transition.set_guard
 element.move
 element.set_layer

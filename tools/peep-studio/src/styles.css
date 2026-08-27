@@ -790,7 +790,8 @@ button:focus-visible {
 .scene-card-heading,
 .scene-card-preview,
 .scene-entry-row,
-.scene-exit-list {
+.scene-exit-list,
+.scene-add-exit-row {
   grid-column: 1 / -1;
 }
 
@@ -832,7 +833,7 @@ button:focus-visible {
 }
 
 .scene-card-heading span,
-.scene-count-badge,
+.scene-card-badge,
 .scene-entry-row small,
 .scene-card-node small {
   display: block;
@@ -852,22 +853,44 @@ button:focus-visible {
   font-size: 20px;
   font-weight: 760;
   text-overflow: ellipsis;
-  text-align: center;
+  text-align: left;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
-.scene-count-badge {
+.scene-badge-strip {
+  display: flex;
+  max-width: 116px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.scene-card-badge {
   display: grid;
-  width: 34px;
-  height: 34px;
+  min-width: 38px;
+  min-height: 34px;
   place-items: center;
+  padding: 3px 7px;
   border: 2px solid #2c312e;
   border-radius: 9px;
   background: #f7faf8;
   color: #27302b;
-  font-size: 18px;
   font-weight: 760;
+}
+
+.scene-card-badge strong {
+  color: #27302b;
+  font-size: 17px;
+  line-height: 1;
+  text-align: center;
+}
+
+.scene-card-badge small {
+  color: #68736d;
+  font-size: 7px;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .scene-entry-row {
@@ -963,6 +986,35 @@ button:focus-visible {
 .scene-entry-row .react-flow__handle {
   right: auto;
   left: -19px;
+}
+
+.scene-add-exit-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px;
+  gap: 6px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid #d9e0dc;
+  border-radius: 8px;
+  background: #f7faf8;
+  cursor: default;
+}
+
+.scene-add-exit-row select {
+  min-width: 0;
+  height: 28px;
+  border: 1px solid #c9d3ce;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #27302b;
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.scene-add-exit-row .icon-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
 }
 
 .state-card-heading {
@@ -1065,6 +1117,49 @@ button:focus-visible {
   border: 1px solid #c9d0cc;
   border-radius: 5px;
   box-shadow: none;
+}
+
+.scene-flow-debug {
+  max-width: min(520px, calc(100vw - 48px));
+  border: 1px solid #c9d0cc;
+  border-radius: 6px;
+  background: rgb(247 249 248 / 94%);
+  color: #27302b;
+  box-shadow: 0 8px 18px rgb(55 64 59 / 12%);
+}
+
+.scene-flow-debug summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 9px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.scene-flow-debug summary button {
+  border: 1px solid #c9d0cc;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #27302b;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.scene-flow-debug pre {
+  max-height: 260px;
+  margin: 0;
+  overflow: auto;
+  padding: 0 9px 9px;
+  font-size: 10px;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 .graph-mini-map {

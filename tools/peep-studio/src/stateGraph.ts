@@ -1,4 +1,4 @@
-import type { InputAction, SceneDocument, StateRecord, StateRoute } from "./types";
+import type { InputAction, ProjectEditorData, SceneDocument, StateRecord, StateRoute } from "./types";
 
 export type GraphStateOutput = {
   id: string;
@@ -43,6 +43,7 @@ export type GraphSceneNode = {
   routeCount: number;
   entryStateLabel: string;
   exits: GraphSceneExit[];
+  usedLogicalSources: string[];
   x: number;
   y: number;
 };
@@ -157,6 +158,7 @@ export function buildStateGraphModel(scene: SceneDocument | null): StateGraphMod
 export function buildSceneFlowGraphModel(
   scenes: SceneDocument[],
   entrySceneId: string | null,
+  editor?: ProjectEditorData,
 ): SceneFlowGraphModel {
   const sceneIds = new Set(scenes.map((scene) => scene.scene_id));
   const edges = scenes.flatMap((scene) =>
@@ -190,11 +192,16 @@ export function buildSceneFlowGraphModel(
   });
 
   const incomingTargets = new Set(edges.map((edge) => edge.target));
+  const columnY = new Map<number, number>();
   const nodes = scenes.map((scene, index) => {
     const states = scene.states ?? [];
     const entryState = states.find((state) => state.state_id === scene.entry_state);
     const isEntry = scene.scene_id === entrySceneId;
     const column = isEntry || !incomingTargets.has(scene.scene_id) ? 0 : 1;
+    const exits = exitsByScene.get(scene.scene_id) ?? [];
+    const y = columnY.get(column) ?? 0;
+    columnY.set(column, y + 430 + exits.length * 58);
+    const savedPosition = editor?.scene_flow?.nodes?.[scene.scene_id];
     return {
       id: scene.scene_id,
       label: scene.display_name,
@@ -202,9 +209,10 @@ export function buildSceneFlowGraphModel(
       stateCount: states.length,
       routeCount: outgoingCounts.get(scene.scene_id) ?? 0,
       entryStateLabel: entryState?.display_name ?? scene.entry_state ?? "No start state",
-      exits: exitsByScene.get(scene.scene_id) ?? [],
-      x: column * 360,
-      y: column === 0 ? index * 330 : Math.max(0, index - 1) * 330,
+      exits,
+      usedLogicalSources: (scene.input_actions ?? []).map((action) => action.logical_source),
+      x: savedPosition?.x ?? column * 360,
+      y: savedPosition?.y ?? y,
     };
   });
 
