@@ -295,6 +295,17 @@ export type ServiceHello = {
     };
     logical_inputs: string[];
     runtime_text: boolean;
+    build_time_text: {
+      source_format: string;
+      font_ids: string[];
+      character_set: string;
+      glyph_cell: { width: number; height: number };
+      scale: { minimum: number; maximum: number; integer_only: boolean };
+      ink: string;
+      background: string;
+      frames_per_asset: number;
+      commands: string[];
+    };
     element_actions: boolean;
   };
   state_scene_graph: {

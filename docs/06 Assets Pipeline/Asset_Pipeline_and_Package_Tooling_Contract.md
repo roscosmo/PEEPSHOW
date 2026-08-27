@@ -420,8 +420,9 @@ Source files may include PNG, Aseprite, Tiled, font sources, or other editor-nat
 
 ### Immediate STATE Vertical Slice
 
-The first Peep Studio asset path is intentionally limited to masked 1bpp PNG
-frames. It must produce deterministic `asset_table`,
+The first Peep Studio asset path accepts masked 1bpp PNG frames and frozen
+system-font text records that rasterize to the same frame type. It must produce
+deterministic `asset_table`,
 `masked_1bpp_sprite_bank`, and `animation_table` records that are consumed by
 both `HOST_AUTHORING_PREVIEW` and PeepOS.
 
@@ -437,9 +438,10 @@ For this slice:
 - preview and firmware must not contain substitute procedural art for a package
   asset that exists in the `.egg`.
 
-Tone/dither inputs, Tiled maps, fonts, fractional transforms, and source-editor
-import helpers remain later extensions. Existing reserved asset classes do not
-make them dependencies of the masked-1bpp STATE milestone.
+Tone/dither inputs, Tiled maps, runtime fonts, arbitrary desktop-font import,
+fractional transforms, and source-editor import helpers remain later
+extensions. Existing reserved asset classes do not make them dependencies of
+the masked-1bpp STATE milestone.
 
 ### Retained Primitive And Text Expansion
 
@@ -453,9 +455,13 @@ Exact host preview and firmware must use identical clipping, ink, fill, and
 ordering semantics. Private shell/calibration drawing helpers and historical
 cursor/marker/diamond proof mappings are not package capabilities.
 
-Initial menu text is compiled on the host into masked 1bpp sprite assets. Formal
-runtime font, localization, and mutable-text records remain later extensions.
-The compiler must not emit source font paths or require runtime font parsing.
+Initial menu text is compiled on the host into masked 1bpp sprite assets using
+the frozen `peepshow.system.8x8.basic.v1` glyph resource. The initial record
+supports printable ASCII plus newline, integer scale `1..8`, black ink, a
+transparent background, and exactly one output frame bounded to `168x144`.
+Formal runtime fonts, arbitrary desktop-font import, localization, and mutable
+text remain later extensions. The compiler must not emit source font paths or
+require runtime font parsing.
 
 Rendering asset classes in the complete contract are:
 

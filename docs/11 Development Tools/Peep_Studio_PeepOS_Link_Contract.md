@@ -56,7 +56,7 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | visuals | package-backed native-scale masked 1bpp sprite frames |
 | retained render model | bounded ordered scene elements with binary alpha and four platform planes |
 | package primitives | retained line, outline rectangle, filled rectangle, circle, and ellipse records are compiled, previewed, loaded, and target-proven; private shell/calibration draw helpers remain unavailable |
-| package text | not generally exposed; current proof labels and IDs are not an authored font or arbitrary-text interface |
+| package text | service API 15 rasterizes printable-ASCII menu labels through `peepshow.system.8x8.basic.v1` into ordinary masked 1bpp sprite frames; runtime text remains unavailable |
 | package audio | not exposed; HW6 currently proves only a generated diagnostic speaker tone, not `.egg` audio assets or STATE SFX actions |
 | STATE animated elements | bounded repeating sprite phase timelines with 1..4 frames, 1..12 combined steps, explicit cadence, and a settled step; mixed 2-phase and 3-phase composition and deterministic fallback are target-proven |
 | awake preview | exact 168x144 package-backed framebuffer with deterministic fake time and side-effect-free scene thumbnails |
@@ -158,8 +158,8 @@ load-compatible.
 
 The repository also contains private firmware drawing helpers for calibration,
 activation, and shell UI. Their existence does not expose those helpers to
-authored packages. Authored text also remains unavailable until it is compiled
-into masked 1bpp sprite assets.
+authored packages. Authored text is compiled into ordinary masked 1bpp sprite
+assets and does not call those private helpers.
 
 STATE animation terminology is strict:
 
@@ -178,8 +178,9 @@ The STATE-first presentation expansion is:
 2. **Hardware-validated:** expose bounded retained line, outline
    rectangle, filled rectangle, circle, and ellipse records with deterministic
    integer rasterization;
-3. **Next:** rasterize initial authored menu text into masked 1bpp package assets at
-   build time; runtime fonts and mutable text remain a later capability;
+3. **Toolchain-implemented:** rasterize initial authored menu text into masked
+   1bpp package assets at build time through the frozen 8x8 system font;
+   runtime fonts and mutable text remain a later capability;
 4. **Next:** add bounded STATE actions for show/hide, move, frame selection, and animation
    selection, with dirty-region composition owned by PeepOS;
 5. **Next:** add one symbolic bounded STATE SFX action backed by a compiled sampled-audio
@@ -199,11 +200,11 @@ the editor until this document is updated:
 - SEQUENCE and PROGRAM scene authoring or execution;
 - Peep Studio controls for the backend-ready retained-element, asset-catalog,
   waiting-timeline, and STATE graph mutation commands;
-- arbitrary text and runtime element mutation actions;
+- arbitrary desktop fonts, runtime text, and runtime element mutation actions;
 - sampled package audio, STATE SFX actions, audio audition, or audio
   compatibility reporting;
 - 4-tone and 16-tone fixed dither asset import;
-- maps, tile layers, fonts, rotation, or interpolated scaling;
+- maps, tile layers, runtime fonts, rotation, or interpolated scaling;
 - package installation or activation on a connected device;
 - external storage package discovery and the production eggless shell path;
 - a conformance-qualified HW6 digital twin;
@@ -220,7 +221,7 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `14`.
+protocol is version `1`; the current service API is version `15`.
 
 | Operation | Purpose |
 |---|---|
@@ -352,6 +353,12 @@ example button are temporary copies. `project.undo` and `project.redo` keep a
 bounded 32-step command history in the Python service; new edits clear redo, and
 dirty state is computed against the last saved semantic project hash.
 
+Service API version 15 adds deterministic build-time text assets through the
+existing `asset.upsert`/`asset.delete` commands. Peep Studio discovers the
+exact font ID, glyph cell, character set, scaling bounds, ink/background, and
+one-frame output contract through
+`service.hello.state_scene_presentation.build_time_text`.
+
 ### Stage 3: Scene Canvas And Visual Elements
 
 - add, remove, select, move, and reorder retained visual elements;
@@ -383,9 +390,11 @@ validation. Peep Studio also exposes exact selected-object X/Y fields and
 arrow-key nudging using that same command. Service API 14 provides the
 remaining retained-element CRUD/property commands and bounded STATE
 waiting-loop commands. React controls for add/remove/resize/reorder, frame
-assignment, layer/visibility, asset records, and the phase timeline are the
-next GUI-branch work. The GUI must not offer general `frame_animation` binding
-in STATE; it edits `waiting_visual` phases instead.
+assignment, layer/visibility, asset records, build-time text labels, and the
+phase timeline are the next GUI-branch work. Text controls author a
+`system_font_text` asset and place its compiled frame as a normal sprite; they
+must not imply runtime text editing. The GUI must not offer general
+`frame_animation` binding in STATE; it edits `waiting_visual` phases instead.
 
 ### Stage 4: STATE Graph Editing
 

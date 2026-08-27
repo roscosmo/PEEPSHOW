@@ -24,7 +24,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 14
+SERVICE_API_VERSION = 15
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -222,6 +222,17 @@ class AuthoringService:
                     "JOY_DOWN",
                 ],
                 "runtime_text": False,
+                "build_time_text": {
+                    "source_format": "system_font_text",
+                    "font_ids": ["peepshow.system.8x8.basic.v1"],
+                    "character_set": "printable_ascii_plus_newline",
+                    "glyph_cell": {"width": 8, "height": 8},
+                    "scale": {"minimum": 1, "maximum": 8, "integer_only": True},
+                    "ink": "black",
+                    "background": "transparent",
+                    "frames_per_asset": 1,
+                    "commands": ["asset.upsert", "asset.delete"],
+                },
                 "element_actions": False,
             },
             "state_scene_graph": {

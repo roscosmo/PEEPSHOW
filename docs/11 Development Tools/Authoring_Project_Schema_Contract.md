@@ -700,7 +700,8 @@ Rules:
 - package elements cannot reference framebuffer addresses, dirty rows, display
   transfers, DMA, or target-specific driver functions.
 - initial authored text is rasterized by the compiler into masked 1bpp sprite
-  assets; it is not a runtime font or mutable-string facility.
+  assets through the frozen `peepshow.system.8x8.basic.v1` font; it is not a
+  runtime font or mutable-string facility.
 - STATE sprite records select compiled frame IDs only. They do not bind general
   frame animations; bounded repeating STATE motion is declared by the waiting
   presentation below.
@@ -712,8 +713,8 @@ Rules:
 - `RND1` remains accepted by the package parser and HW6 loader for backward
   compatibility; new builds emit `RND2`.
 - initial primitives use fixed black ink. White/clear ink is not exposed yet.
-- authored text remains unavailable until the compiler rasterizes it into a
-  masked 1bpp sprite asset; runtime font records are not part of this subset.
+- authored text records compile to ordinary masked 1bpp sprite frames; runtime
+  font records are not part of this subset.
 
 The `RND2` checkpoint is hardware-validated. Schema validation, deterministic
 compilation, package parsing, exact host preview, HW6 loading, retained
@@ -740,6 +741,18 @@ masked_1bpp_asset:
     pivot_x
     pivot_y
 
+system_font_text_asset:
+  asset_id
+  asset_type: masked_1bpp
+  source_format: system_font_text
+  font_id: peepshow.system.8x8.basic.v1
+  text                         # printable ASCII plus newline
+  scale                        # integer 1..8
+  frames[1]:
+    frame_id
+    pivot_x
+    pivot_y
+
 frame_animation:
   animation_id
   frame_refs[]
@@ -749,6 +762,14 @@ frame_animation:
 
 `frame_animation` is the general asset-timeline record intended for future
 SEQUENCE authoring. It is not the STOP2-capable STATE animation contract.
+
+The initial system-font contract is fixed-cell 8x8, black ink on a transparent
+background, printable ASCII `0x20..0x7e`, newline line breaks, and integer
+nearest-neighbor scaling. Rasterized output must fit `168x144` and emits exactly
+one `masked_1bpp` frame. The frozen glyph table is derived from
+`firmware/peepshow_hw4_fw1/Core/Src/font8x8_basic.c`; the authoring backend must
+not read that legacy firmware source at build time. A future 16x16 font requires
+a new stable `font_id` and explicit provenance rather than changing this ID.
 
 A STATE animated element is authored through the scene `waiting_visual`:
 

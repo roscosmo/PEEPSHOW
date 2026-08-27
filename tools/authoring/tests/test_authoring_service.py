@@ -18,6 +18,7 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(TOOL_ROOT))
 
 from peepshow_authoring.compiler import build_egg  # noqa: E402
+from peepshow_authoring.egg_format import parse_egg  # noqa: E402
 from peepshow_authoring.project import load_project  # noqa: E402
 from peepshow_authoring.protocol import (  # noqa: E402
     PROTOCOL_VERSION,
@@ -267,7 +268,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(14, SERVICE_API_VERSION)
+        self.assertEqual(15, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -289,6 +290,11 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertNotIn("OVERLAY", result["state_scene_presentation"]["package_layers"])
         self.assertIn("ellipse", result["state_scene_presentation"]["element_kinds"])
         self.assertFalse(result["state_scene_presentation"]["runtime_text"])
+        text = result["state_scene_presentation"]["build_time_text"]
+        self.assertEqual("system_font_text", text["source_format"])
+        self.assertEqual(["peepshow.system.8x8.basic.v1"], text["font_ids"])
+        self.assertEqual({"width": 8, "height": 8}, text["glyph_cell"])
+        self.assertEqual(1, text["frames_per_asset"])
         graph = result["state_scene_graph"]
         self.assertEqual(64, graph["command_batch_maximum"])
         self.assertEqual(64, graph["limits"]["states"])
@@ -954,6 +960,53 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertEqual("BACKGROUND", element["layer"])
         self.assertFalse(element["visible"])
         self.assertEqual(7, element["z_order"])
+
+    def test_text_asset_command_rasterizes_and_builds_as_state_sprite(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "asset.upsert",
+                            "asset": {
+                                "asset_id": "menu_title",
+                                "asset_type": "masked_1bpp",
+                                "source_format": "system_font_text",
+                                "font_id": "peepshow.system.8x8.basic.v1",
+                                "text": "EGGLESS",
+                                "scale": 1,
+                                "frames": [{"frame_id": "menu_title.frame", "pivot_x": 0, "pivot_y": 0}],
+                            },
+                        },
+                        {
+                            "kind": "render_element.add",
+                            "scene_id": "state_demo",
+                            "render_model_id": "view_center",
+                            "element": {
+                                "element_id": "menu_title",
+                                "kind": "sprite",
+                                "visual_ref": "menu_title.frame",
+                                "x": 48,
+                                "y": 20,
+                                "width": 56,
+                                "height": 8,
+                                "z_order": 20,
+                                "layer": "UI",
+                                "visible": True,
+                            },
+                        },
+                    ],
+                },
+            )
+        )
+        built = service.handle(request("project.build_package", {"project_revision": changed["project_revision"]}))
+        package = parse_egg(base64.b64decode(built["package"]["blob_base64"]))
+        title = next(frame for frame in package.assets if frame["frame_id"] == "menu_title.frame")
+        self.assertEqual((56, 8), (title["width"], title["height"]))
 
     def test_state_sprite_rejects_general_frame_animation_binding(self) -> None:
         service = AuthoringService()

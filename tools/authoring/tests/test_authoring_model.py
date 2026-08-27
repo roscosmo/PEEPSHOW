@@ -19,6 +19,11 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(TOOL_ROOT))
 
 from peepshow_authoring.project import load_project  # noqa: E402
+from peepshow_authoring.system_fonts import (  # noqa: E402
+    SYSTEM_FONT_8X8_BASIC_ID,
+    SystemFontError,
+    rasterize_system_font_text,
+)
 from peepshow_authoring.compiler import (  # noqa: E402
     EggCompileError,
     build_egg,
@@ -380,6 +385,95 @@ class AuthoringModelTests(unittest.TestCase):
             (scene_dir / "state_details.state.json").write_text(details, encoding="utf-8")
             renamed = build_egg(load_project(project_root))
         self.assertEqual(original, renamed)
+
+    def test_system_font_text_rasterizes_exact_hw4_glyph_bits(self) -> None:
+        frame = rasterize_system_font_text(
+            {
+                "asset_id": "label",
+                "font_id": SYSTEM_FONT_8X8_BASIC_ID,
+                "text": "A",
+                "scale": 1,
+                "frames": [{"frame_id": "label.a", "pivot_x": 0, "pivot_y": 0}],
+            }
+        )
+        self.assertEqual((8, 8, 1), (frame.width, frame.height, frame.row_stride_bytes))
+        self.assertEqual(bytes.fromhex("30 78 cc cc fc cc cc 00"), frame.pixels)
+        self.assertEqual(frame.pixels, frame.mask)
+        self.assertFalse(frame.opaque)
+
+    def test_system_font_text_supports_newlines_and_integer_scaling(self) -> None:
+        frame = rasterize_system_font_text(
+            {
+                "asset_id": "label",
+                "font_id": SYSTEM_FONT_8X8_BASIC_ID,
+                "text": "A\nB",
+                "scale": 2,
+                "frames": [{"frame_id": "label.ab", "pivot_x": -1, "pivot_y": 2}],
+            }
+        )
+        self.assertEqual((16, 32, 2), (frame.width, frame.height, frame.row_stride_bytes))
+        self.assertEqual((-1, 2), (frame.pivot_x, frame.pivot_y))
+
+    def test_system_font_text_rejects_unsupported_or_oversized_content(self) -> None:
+        base = {
+            "asset_id": "label",
+            "font_id": SYSTEM_FONT_8X8_BASIC_ID,
+            "text": "A",
+            "scale": 1,
+            "frames": [{"frame_id": "label.a", "pivot_x": 0, "pivot_y": 0}],
+        }
+        cases = [
+            ({**base, "text": "caf\u00e9"}, "printable ASCII"),
+            ({**base, "text": "A" * 22}, "must fit 168x144"),
+            ({**base, "font_id": "unknown"}, "font_id must be"),
+            ({**base, "scale": 0}, "scale must be"),
+            ({**base, "text": "   "}, "visible glyph"),
+        ]
+        for asset, message in cases:
+            with self.subTest(message=message), self.assertRaisesRegex(SystemFontError, message):
+                rasterize_system_font_text(asset)
+
+    def test_system_font_text_compiles_as_an_ordinary_sprite_frame(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "text.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            catalog_path = project_root / "assets" / "catalog.json"
+            catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+            catalog["assets"].append(
+                {
+                    "asset_id": "eggless_label",
+                    "asset_type": "masked_1bpp",
+                    "source_format": "system_font_text",
+                    "font_id": SYSTEM_FONT_8X8_BASIC_ID,
+                    "text": "EGGLESS",
+                    "scale": 1,
+                    "frames": [{"frame_id": "eggless_label.frame", "pivot_x": 0, "pivot_y": 0}],
+                }
+            )
+            catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+            scene_path = project_root / "scenes" / "state_demo.state.json"
+            scene = json.loads(scene_path.read_text(encoding="utf-8"))
+            scene["render_models"][0]["elements"].append(
+                {
+                    "element_id": "eggless_label",
+                    "kind": "sprite",
+                    "visual_ref": "eggless_label.frame",
+                    "x": 48,
+                    "y": 20,
+                    "width": 56,
+                    "height": 8,
+                    "z_order": 1,
+                    "layer": "UI",
+                }
+            )
+            scene_path.write_text(json.dumps(scene), encoding="utf-8")
+
+            bundle = load_project(project_root)
+            self.assertEqual((), bundle.issues)
+            package = parse_egg(build_egg(bundle))
+        label = next(asset for asset in package.assets if asset["frame_id"] == "eggless_label.frame")
+        self.assertEqual((56, 8), (label["width"], label["height"]))
+        self.assertFalse(label["opaque"])
 
     def test_masked_1bpp_assets_compile_and_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

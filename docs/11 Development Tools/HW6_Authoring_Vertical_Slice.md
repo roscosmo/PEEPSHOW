@@ -98,8 +98,9 @@ Current checkpoint status: `RND2` package records now carry explicit
 sprites, and bounded line/rectangle/circle/ellipse primitives. Deterministic
 compiler/parser/exact-preview tests pass. HW6 visual, scene-replacement, and
 STOP2 validation passed on 2026-08-27: static primitives remained composed and
-both package sprite animations continued in STOP2. Build-time text sprites,
-retained element actions, and sampled SFX are the next STATE gaps.
+both package sprite animations continued in STOP2. Build-time text sprites are
+implemented in the host toolchain and reuse that proven sprite path. Runtime
+retained element actions and sampled SFX are the next STATE gaps.
 
 The checkpoint intentionally defers tone/dither import, Tiled maps, fractional
 transforms, runtime fonts, music, multi-voice mixing, save data, SEQUENCE,
@@ -512,12 +513,13 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
     target-proven through USB staging and atomic A/B install/launch; production
     pre-commit validation and boot policy remain open)
 12. complete the STATE presentation boundary: package layers, generic retained
-    primitives, element/asset authoring commands, catalog persistence, and
-    bounded STATE waiting-loop commands are implemented; complete single-scene
+    primitives, element/asset authoring commands, catalog persistence, bounded
+    STATE waiting-loop commands, and build-time 8x8 text sprites are
+    implemented; complete single-scene
     STATE graph mutation is implemented in service API 14, including reference-
     safe state/model/variable/input/route CRUD and ordered guard/action editing;
-    Peep Studio controls, build-time text sprites, and runtime
-    show/hide/move/frame-selection actions remain to complete this step
+    Peep Studio controls and runtime show/hide/move/frame-selection actions
+    remain to complete this step
 13. implement the initial STATE sampled-SFX path: verify the HW6 16 kHz mono
     SAI/MAX98357A path, compile WAV sources to bounded IMA ADPCM package assets,
     preload one admitted voice, route symbolic `play_sfx` through `thAudio`,

@@ -16,6 +16,7 @@ from .image_assets import (
     import_masked_1bpp,
     resolve_project_path,
 )
+from .system_fonts import SystemFontError, rasterize_system_font_text
 
 
 STABLE_ID = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
@@ -2008,18 +2009,20 @@ def _check_asset(
     issues: list[ValidationIssue],
 ) -> tuple[Masked1bppFrame, ...]:
     initial_issue_count = len(issues)
-    _check_keys(
-        asset,
-        {"asset_id", "asset_type", "source_path", "source_format", "frames"},
-        path,
-        issues,
-    )
+    source_format = asset.get("source_format")
+    if source_format == "png":
+        required = {"asset_id", "asset_type", "source_path", "source_format", "frames"}
+    elif source_format == "system_font_text":
+        required = {"asset_id", "asset_type", "source_format", "font_id", "text", "scale", "frames"}
+    else:
+        required = {"asset_id", "asset_type", "source_format", "frames"}
+    _check_keys(asset, required, path, issues)
     _stable_id(asset.get("asset_id"), f"{path}.asset_id", issues)
     if asset.get("asset_type") != "masked_1bpp":
         _issue(issues, "ASSET_FORMAT_UNSUPPORTED", f"{path}.asset_type", "must be masked_1bpp")
-    if asset.get("source_format") != "png":
-        _issue(issues, "ASSET_FORMAT_UNSUPPORTED", f"{path}.source_format", "must be png")
-    if not isinstance(asset.get("source_path"), str) or not asset.get("source_path"):
+    if source_format not in {"png", "system_font_text"}:
+        _issue(issues, "ASSET_FORMAT_UNSUPPORTED", f"{path}.source_format", "must be png or system_font_text")
+    if source_format == "png" and (not isinstance(asset.get("source_path"), str) or not asset.get("source_path")):
         _issue(issues, "ASSET_SOURCE_INVALID", f"{path}.source_path", "must be a non-empty relative path")
 
     frame_records = _unique_ids(asset.get("frames"), "frame_id", f"{path}.frames", issues, 256)
@@ -2027,12 +2030,17 @@ def _check_asset(
         _issue(issues, "ASSET_FRAME_MISSING", f"{path}.frames", "must contain at least one frame")
     for frame_id, frame in frame_records.items():
         frame_path = f"{path}.frames[{frame_id}]"
-        _check_keys(frame, {"frame_id", "source_rect", "pivot_x", "pivot_y"}, frame_path, issues)
+        frame_keys = {"frame_id", "source_rect", "pivot_x", "pivot_y"} if source_format == "png" else {"frame_id", "pivot_x", "pivot_y"}
+        _check_keys(frame, frame_keys, frame_path, issues)
 
-    if len(issues) == initial_issue_count and frame_records and isinstance(asset.get("source_path"), str):
+    if len(issues) == initial_issue_count and frame_records:
         try:
-            compiled = import_masked_1bpp(root, asset)
-        except (ImageAssetError, KeyError) as exc:
+            compiled = (
+                import_masked_1bpp(root, asset)
+                if source_format == "png"
+                else (rasterize_system_font_text(asset),)
+            )
+        except (ImageAssetError, SystemFontError, KeyError) as exc:
             _issue(issues, "ASSET_SOURCE_INVALID", path, str(exc))
         else:
             return compiled
