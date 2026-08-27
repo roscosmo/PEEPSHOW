@@ -93,6 +93,14 @@ This checkpoint must allow an author to:
 The selected-scene launch is a preview fixture. It does not alter package entry
 routes or add a runtime bypass to the `.egg`.
 
+Current checkpoint status: `RND2` package records now carry explicit
+`BACKGROUND`, `SCENE`, or `UI` layer, visibility, z-order, bounds, masked 1bpp
+sprites, and bounded line/rectangle/circle/ellipse primitives. Deterministic
+compiler/parser/exact-preview tests pass. HW6 visual, scene-replacement, and
+STOP2 validation passed on 2026-08-27: static primitives remained composed and
+both package sprite animations continued in STOP2. Build-time text sprites,
+retained element actions, and sampled SFX are the next STATE gaps.
+
 The checkpoint intentionally defers tone/dither import, Tiled maps, fractional
 transforms, runtime fonts, music, multi-voice mixing, save data, SEQUENCE,
 PROGRAM, installation UI, and measured digital-twin claims. These remain later

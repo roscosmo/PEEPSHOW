@@ -689,12 +689,13 @@ state_render_element:
   frame_ref                 # sprite only
   animation_ref             # optional sprite animation
   primitive_geometry        # primitive only; bounded integer coordinates
-  primitive_ink             # white, black, or none where applicable
+  primitive_ink             # fixed black in the initial executable subset
 ```
 
 Rules:
 
-- coordinates and clipping are panel-native integers.
+- coordinates are panel-native integers; the initial subset rejects elements
+  outside the panel instead of relying on runtime clipping.
 - primitive rasterization is deterministic and identical in exact preview and
   firmware.
 - package elements cannot reference framebuffer addresses, dirty rows, display
@@ -703,9 +704,20 @@ Rules:
   assets; it is not a runtime font or mutable-string facility.
 - STATE actions may later target stable element IDs for bounded `show`, `hide`,
   `move`, `set_frame`, and `set_animation` operations.
-- shape and text records are not part of the executable HW6 subset until the
-  package compiler, parser, preview, loader, and retained renderer all support
-  the same record version.
+- `RND2` is the initial executable retained-presentation record. It carries
+  explicit package layer, visibility, z-order, bounds, and one of `sprite`,
+  `line`, `outline_rect`, `filled_rect`, `circle`, or `ellipse`.
+- `RND1` remains accepted by the package parser and HW6 loader for backward
+  compatibility; new builds emit `RND2`.
+- initial primitives use fixed black ink. White/clear ink is not exposed yet.
+- authored text remains unavailable until the compiler rasterizes it into a
+  masked 1bpp sprite asset; runtime font records are not part of this subset.
+
+The `RND2` checkpoint is hardware-validated. Schema validation, deterministic
+compilation, package parsing, exact host preview, HW6 loading, retained
+composition, scene replacement, and STOP2 presentation were proven together on
+2026-08-27. Static primitives remained composed while both package sprite
+animations continued in STOP2.
 
 ### Initial Masked-1bpp STATE Subset
 

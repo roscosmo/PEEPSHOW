@@ -133,18 +133,26 @@
     "render_element": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["element_id", "kind", "visual_ref", "x", "y", "width", "height", "z_order"],
+      "required": ["element_id", "kind", "x", "y", "width", "height", "z_order"],
       "properties": {
         "element_id": { "$ref": "#/$defs/stable_id" },
-        "kind": { "enum": ["sprite", "text", "shape"] },
+        "kind": { "enum": ["sprite", "line", "outline_rect", "filled_rect", "circle", "ellipse"] },
+        "layer": { "enum": ["BACKGROUND", "SCENE", "UI"] },
         "visual_ref": { "$ref": "#/$defs/stable_id" },
         "x": { "type": "integer", "minimum": 0 },
         "y": { "type": "integer", "minimum": 0 },
         "width": { "type": "integer", "minimum": 1 },
         "height": { "type": "integer", "minimum": 1 },
         "z_order": { "type": "integer", "minimum": 0, "maximum": 255 },
-        "focus_role": { "enum": ["none", "focus"] }
-      }
+        "focus_role": { "enum": ["none", "focus"] },
+        "visible": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "sprite" } } },
+          "then": { "required": ["visual_ref"] }
+        }
+      ]
     },
     "render_model": {
       "type": "object",

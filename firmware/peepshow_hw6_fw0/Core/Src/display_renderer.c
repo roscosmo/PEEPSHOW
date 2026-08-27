@@ -1806,6 +1806,48 @@ static uint32_t DisplayRenderer_VerticalLine(uint16_t x,
   return count;
 }
 
+static uint32_t DisplayRenderer_Line(uint16_t x0,
+                                     uint16_t y0,
+                                     uint16_t x1,
+                                     uint16_t y1)
+{
+  uint32_t count = 0UL;
+  int32_t current_x = (int32_t)x0;
+  int32_t current_y = (int32_t)y0;
+  int32_t delta_x = (current_x < (int32_t)x1) ?
+                    ((int32_t)x1 - current_x) :
+                    (current_x - (int32_t)x1);
+  int32_t step_x = (current_x < (int32_t)x1) ? 1 : -1;
+  int32_t delta_y = (current_y < (int32_t)y1) ?
+                    (current_y - (int32_t)y1) :
+                    ((int32_t)y1 - current_y);
+  int32_t step_y = (current_y < (int32_t)y1) ? 1 : -1;
+  int32_t error = delta_x + delta_y;
+
+  for (;;)
+  {
+    int32_t doubled;
+    count += DisplayRenderer_SetBlack(
+      (uint16_t)current_x, (uint16_t)current_y);
+    if ((current_x == (int32_t)x1) && (current_y == (int32_t)y1))
+    {
+      break;
+    }
+    doubled = error * 2;
+    if (doubled >= delta_y)
+    {
+      error += delta_y;
+      current_x += step_x;
+    }
+    if (doubled <= delta_x)
+    {
+      error += delta_x;
+      current_y += step_y;
+    }
+  }
+  return count;
+}
+
 static uint32_t DisplayRenderer_FilledRect(uint16_t x0,
                                            uint16_t y0,
                                            uint16_t width,
@@ -2053,6 +2095,11 @@ static uint32_t DisplayRenderer_SceneSpritePixel(uint32_t asset_id,
   return ((diamond_rows[y] & (uint8_t)(0x80U >> x)) != 0U) ? 1UL : 0UL;
 }
 
+static uint32_t DisplayRenderer_DrawEllipse(int32_t center_x,
+                                            int32_t center_y,
+                                            int32_t radius_x,
+                                            int32_t radius_y);
+
 static uint32_t DisplayRenderer_ValidateSceneModel(
   const ps_scene_render_model_t *model)
 {
@@ -2076,12 +2123,23 @@ static uint32_t DisplayRenderer_ValidateSceneModel(
 
     if ((element->element_id == 0UL) ||
         (element->type <= PS_SCENE_RENDER_ELEMENT_NONE) ||
-        (element->type > PS_SCENE_RENDER_ELEMENT_FOCUS) ||
+        (element->type > PS_SCENE_RENDER_ELEMENT_ELLIPSE) ||
         (element->layer >= PS_SCENE_RENDER_LAYER_COUNT) ||
         (element->visible > 1UL) ||
+        (element->z_order > 255U) || (element->reserved != 0U) ||
         (element->width == 0U) || (element->height == 0U) ||
         (x_end > PS_SCENE_RENDER_CANVAS_WIDTH) ||
         (y_end > PS_SCENE_RENDER_CANVAS_HEIGHT))
+    {
+      return 0UL;
+    }
+    if (((element->type == PS_SCENE_RENDER_ELEMENT_CIRCLE) ||
+         (element->type == PS_SCENE_RENDER_ELEMENT_ELLIPSE)) &&
+        ((element->width < 3U) || (element->height < 3U) ||
+         ((element->width & 1U) == 0U) ||
+         ((element->height & 1U) == 0U) ||
+         ((element->type == PS_SCENE_RENDER_ELEMENT_CIRCLE) &&
+          (element->width != element->height))))
     {
       return 0UL;
     }
@@ -2175,6 +2233,25 @@ static uint32_t DisplayRenderer_DrawSceneElement(
         (uint16_t)(element->x + element->width - 1U),
         element->y);
       break;
+    case PS_SCENE_RENDER_ELEMENT_LINE:
+      black_pixels += DisplayRenderer_Line(
+        element->x,
+        element->y,
+        (uint16_t)(element->x + element->width - 1U),
+        (uint16_t)(element->y + element->height - 1U));
+      break;
+    case PS_SCENE_RENDER_ELEMENT_FILLED_RECT:
+      black_pixels += DisplayRenderer_FilledRect(
+        element->x, element->y, element->width, element->height);
+      break;
+    case PS_SCENE_RENDER_ELEMENT_CIRCLE:
+    case PS_SCENE_RENDER_ELEMENT_ELLIPSE:
+      black_pixels += DisplayRenderer_DrawEllipse(
+        (int32_t)element->x + ((int32_t)element->width / 2),
+        (int32_t)element->y + ((int32_t)element->height / 2),
+        (int32_t)element->width / 2,
+        (int32_t)element->height / 2);
+      break;
     case PS_SCENE_RENDER_ELEMENT_TEXT:
     {
       const char *text = DisplayRenderer_SceneText(element->asset_id);
@@ -2264,7 +2341,7 @@ static uint32_t DisplayRenderer_DrawSceneModel(
 {
   uint32_t black_pixels = 0UL;
   uint32_t layer;
-  uint32_t index;
+  uint32_t emitted_mask = 0UL;
 
   if (DisplayRenderer_ValidateSceneModel(model) == 0UL)
   {
@@ -2275,13 +2352,29 @@ static uint32_t DisplayRenderer_DrawSceneModel(
        layer < PS_SCENE_RENDER_LAYER_COUNT;
        ++layer)
   {
-    for (index = 0UL; index < model->element_count; ++index)
+    uint32_t emitted;
+    for (emitted = 0UL; emitted < model->element_count; ++emitted)
     {
-      if (model->elements[index].layer == layer)
+      uint32_t index;
+      uint32_t selected = model->element_count;
+      for (index = 0UL; index < model->element_count; ++index)
       {
-        black_pixels += DisplayRenderer_DrawSceneElement(
-          &model->elements[index]);
+        if (((emitted_mask & (1UL << index)) == 0UL) &&
+            (model->elements[index].layer == layer) &&
+            ((selected == model->element_count) ||
+             (model->elements[index].z_order <
+              model->elements[selected].z_order)))
+        {
+          selected = index;
+        }
       }
+      if (selected == model->element_count)
+      {
+        break;
+      }
+      emitted_mask |= 1UL << selected;
+      black_pixels += DisplayRenderer_DrawSceneElement(
+        &model->elements[selected]);
     }
   }
   return black_pixels;
@@ -2871,7 +2964,7 @@ uint32_t DisplayRenderer_GetSceneFocusLogicalBounds(
   return 0UL;
 }
 
-static uint32_t DisplayRenderer_DrawCalibrationEllipse(
+static uint32_t DisplayRenderer_DrawEllipse(
   int32_t center_x,
   int32_t center_y,
   int32_t radius_x,
@@ -2972,12 +3065,12 @@ static uint32_t DisplayRenderer_DrawActivationEye(uint32_t frame)
 
   if (frame == 1UL)
   {
-    black_pixels += DisplayRenderer_DrawCalibrationEllipse(84, 72, 32, 6);
+    black_pixels += DisplayRenderer_DrawEllipse(84, 72, 32, 6);
     black_pixels += DisplayRenderer_FilledRect(82U, 70U, 5U, 5U);
     return black_pixels;
   }
 
-  black_pixels += DisplayRenderer_DrawCalibrationEllipse(84, 72, 36, 14);
+  black_pixels += DisplayRenderer_DrawEllipse(84, 72, 36, 14);
   black_pixels += DisplayRenderer_FilledRect(80U, 66U, 9U, 13U);
   return black_pixels;
 }
@@ -3146,9 +3239,9 @@ static uint32_t DisplayRenderer_DrawJoystickCalibrationReview(void)
     44U, 124U, (uint16_t)plot_center_y);
   black_pixels += DisplayRenderer_VerticalLine(
     (uint16_t)plot_center_x, 32U, 114U);
-  black_pixels += DisplayRenderer_DrawCalibrationEllipse(
+  black_pixels += DisplayRenderer_DrawEllipse(
     ellipse_center_x, ellipse_center_y, radius_x, radius_y);
-  black_pixels += DisplayRenderer_DrawCalibrationEllipse(
+  black_pixels += DisplayRenderer_DrawEllipse(
     plot_center_x, plot_center_y, deadzone_radius, deadzone_radius);
   black_pixels += DisplayRenderer_VerticalLine(
     (uint16_t)(plot_center_x -

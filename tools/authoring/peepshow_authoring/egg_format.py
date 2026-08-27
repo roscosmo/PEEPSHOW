@@ -29,7 +29,9 @@ GUARD_RECORD = struct.Struct("<HBBi")
 OPERATION_RECORD = struct.Struct("<BBHHHi")
 RENDER_HEADER = struct.Struct("<4s6H")
 RENDER_MODEL_RECORD = struct.Struct("<4H")
-RENDER_ELEMENT_RECORD = struct.Struct("<HHBBhhHHH")
+RENDER_ELEMENT_RECORD_V1 = struct.Struct("<HHBBhhHHH")
+RENDER_ELEMENT_RECORD_V2 = struct.Struct("<HHBBBBhhHHHH")
+RENDER_ELEMENT_RECORD = RENDER_ELEMENT_RECORD_V2
 WAIT_HEADER = struct.Struct("<4s10H")
 WAIT_RECORD = struct.Struct("<8H")
 WAIT_ELEMENT_RECORD = struct.Struct("<6H")
@@ -390,9 +392,14 @@ def _parse_assets(
 def _parse_render(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]:
     _require(len(payload) >= RENDER_HEADER.size, "render chunk is truncated")
     values = RENDER_HEADER.unpack_from(payload)
-    _require(values[0] == b"RND1" and values[1] == 1 and values[2] == RENDER_HEADER.size, "unsupported render chunk")
+    version = values[1]
+    _require(
+        values[0] == b"RND1" and version in {1, 2} and values[2] == RENDER_HEADER.size,
+        "unsupported render chunk",
+    )
+    element_record = RENDER_ELEMENT_RECORD_V1 if version == 1 else RENDER_ELEMENT_RECORD_V2
     model_count, element_count = values[3], values[4]
-    expected = RENDER_HEADER.size + model_count * RENDER_MODEL_RECORD.size + element_count * RENDER_ELEMENT_RECORD.size
+    expected = RENDER_HEADER.size + model_count * RENDER_MODEL_RECORD.size + element_count * element_record.size
     _require(len(payload) == expected, "render chunk size is inconsistent")
     model_offset = RENDER_HEADER.size
     element_offset = model_offset + model_count * RENDER_MODEL_RECORD.size
@@ -406,23 +413,49 @@ def _parse_render(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]
         model_records.append((visual_id, focus, first_element, count))
     elements: list[dict[str, object]] = []
     for index in range(element_count):
-        record = RENDER_ELEMENT_RECORD.unpack_from(payload, element_offset + index * RENDER_ELEMENT_RECORD.size)
+        record = element_record.unpack_from(payload, element_offset + index * element_record.size)
         element_id = _string(strings, record[0], "render element_id")
-        visual_ref = _string(strings, record[1], "render visual_ref")
-        _require(record[2] in {1, 2, 3}, "render element kind is invalid")
-        _require(record[3] in {0, 1}, "render focus role is invalid")
-        _require(record[6] > 0 and record[7] > 0, "render element dimensions are invalid")
+        if version == 1:
+            visual_ref = _string(strings, record[1], "render visual_ref")
+            _require(record[2] in {1, 2, 3}, "render element kind is invalid")
+            _require(record[3] in {0, 1}, "render focus role is invalid")
+            _require(record[6] > 0 and record[7] > 0, "render element dimensions are invalid")
+            layer = 2 if record[3] else 1
+            visible = 1
+            focus_role = record[3]
+            x, y, width, height, z_order = record[4:9]
+        else:
+            visual_ref = None if record[1] == 0xFFFF else _string(strings, record[1], "render visual_ref")
+            _require(record[2] in {1, 2, 3, 4, 5, 6}, "render element kind is invalid")
+            _require(record[3] in {0, 1, 2}, "render package layer is invalid")
+            _require(record[4] & ~0x03 == 0 and record[5] == 0 and record[11] == 0, "render flags or reserved fields are invalid")
+            _require(not (record[4] & 0x01) or (record[2] == 1 and record[3] == 2 and record[4] & 0x02), "render focus element is invalid")
+            _require((record[2] == 1 and visual_ref is not None) or (record[2] != 1 and visual_ref is None), "render visual reference is invalid")
+            _require(record[8] > 0 and record[9] > 0, "render element dimensions are invalid")
+            layer = record[3]
+            visible = 1 if record[4] & 0x02 else 0
+            focus_role = 1 if record[4] & 0x01 else 0
+            x, y, width, height, z_order = record[6:11]
+            if record[2] in {5, 6}:
+                _require(width >= 3 and height >= 3 and width % 2 == 1 and height % 2 == 1, "ellipse bounds must be odd and at least 3")
+            if record[2] == 5:
+                _require(width == height, "circle bounds must be square")
+        _require(x >= 0 and y >= 0 and x + width <= 168 and y + height <= 144, "render element exceeds the canvas")
+        _require(z_order <= 255, "render z-order is invalid")
         elements.append(
             {
+                "format_version": version,
                 "element_id": element_id,
                 "visual_ref": visual_ref,
                 "kind": record[2],
-                "focus_role": record[3],
-                "x": record[4],
-                "y": record[5],
-                "width": record[6],
-                "height": record[7],
-                "z_order": record[8],
+                "layer": layer,
+                "visible": visible,
+                "focus_role": focus_role,
+                "x": x,
+                "y": y,
+                "width": width,
+                "height": height,
+                "z_order": z_order,
             }
         )
     models: list[dict[str, object]] = []
@@ -434,7 +467,7 @@ def _parse_render(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]
                 "elements": tuple(elements[first_element : first_element + count]),
             }
         )
-    return {"model_count": model_count, "element_count": element_count, "models": tuple(models)}
+    return {"format_version": version, "model_count": model_count, "element_count": element_count, "models": tuple(models)}
 
 
 def _parse_wait(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]:
@@ -803,6 +836,7 @@ def parse_egg(blob: bytes) -> EggPackage:
                 "route_count": graph_summary["route_count"],
                 "flags": flags,
                 "graph": graph_summary,
+                "render_format_version": render_summary["format_version"],
                 "render_models": render_summary["models"],
                 "waiting_visuals": wait_summary["waiting_visuals"],
             }

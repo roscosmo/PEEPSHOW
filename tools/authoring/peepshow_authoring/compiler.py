@@ -60,7 +60,15 @@ LOGICAL_SOURCES = {
 }
 GUARD_OPERATORS = {"eq": 1, "ne": 2, "lt": 3, "le": 4, "gt": 5, "ge": 6}
 VARIABLE_OPERATIONS = {"assign": 1, "add": 2}
-RENDER_KINDS = {"sprite": 1, "text": 2, "shape": 3}
+RENDER_KINDS = {
+    "sprite": 1,
+    "line": 2,
+    "outline_rect": 3,
+    "filled_rect": 4,
+    "circle": 5,
+    "ellipse": 6,
+}
+RENDER_LAYERS = {"BACKGROUND": 0, "SCENE": 1, "UI": 2}
 INACTIVE_ROUTES = {"preserve_scene": 1, "exit_to_shell": 2}
 INTERACTION_MODES = {"continuous": 1, "timeout": 2}
 ANIMATION_LOOPS = {"loop": 1, "once": 2, "hold_last": 3, "ping_pong": 4}
@@ -112,7 +120,9 @@ def _string_table(bundle: ProjectBundle) -> tuple[tuple[str, ...], dict[str, int
         for model in scene["render_models"]:
             values.add(model["visual_id"])
             for element in model["elements"]:
-                values.update((element["element_id"], element["visual_ref"]))
+                values.add(element["element_id"])
+                if element["kind"] == "sprite":
+                    values.add(element["visual_ref"])
         for waiting in scene["waiting_visuals"]:
             values.update((waiting["waiting_visual_id"], waiting["presentation_id"]))
             for element in waiting["elements"]:
@@ -171,14 +181,21 @@ def _compile_render(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
             element_records.extend(
                 RENDER_ELEMENT_RECORD.pack(
                     strings[element["element_id"]],
-                    strings[element["visual_ref"]],
+                    strings[element["visual_ref"]] if element["kind"] == "sprite" else 0xFFFF,
                     RENDER_KINDS[element["kind"]],
-                    1 if element.get("focus_role", "none") == "focus" else 0,
+                    RENDER_LAYERS[element.get(
+                        "layer",
+                        "UI" if element.get("focus_role", "none") == "focus" else "SCENE",
+                    )],
+                    (1 if element.get("focus_role", "none") == "focus" else 0)
+                    | (2 if element.get("visible", True) else 0),
+                    0,
                     _i16(element["x"], "render x"),
                     _i16(element["y"], "render y"),
                     _u16(element["width"], "render width"),
                     _u16(element["height"], "render height"),
                     _u16(element["z_order"], "render z_order"),
+                    0,
                 )
             )
             element_count += 1
@@ -192,7 +209,7 @@ def _compile_render(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
         )
     header = RENDER_HEADER.pack(
         b"RND1",
-        1,
+        2,
         RENDER_HEADER.size,
         _u16(len(scene["render_models"]), "render model count"),
         _u16(element_count, "render element count"),

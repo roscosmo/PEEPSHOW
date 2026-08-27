@@ -43,7 +43,8 @@
 #define PS_EGG_OPERATION_RECORD_SIZE     (12UL)
 #define PS_EGG_RENDER_HEADER_SIZE        (16UL)
 #define PS_EGG_RENDER_MODEL_RECORD_SIZE  (8UL)
-#define PS_EGG_RENDER_ELEMENT_RECORD_SIZE (16UL)
+#define PS_EGG_RENDER_ELEMENT_V1_RECORD_SIZE (16UL)
+#define PS_EGG_RENDER_ELEMENT_V2_RECORD_SIZE (20UL)
 #define PS_EGG_WAIT_HEADER_SIZE          (24UL)
 #define PS_EGG_WAIT_RECORD_SIZE          (16UL)
 #define PS_EGG_WAIT_ELEMENT_RECORD_SIZE  (12UL)
@@ -109,6 +110,8 @@ typedef struct
   uint32_t element_offset;
   uint16_t model_count;
   uint16_t element_count;
+  uint16_t format_version;
+  uint16_t element_record_size;
 } ps_egg_render_view_t;
 
 typedef struct
@@ -981,16 +984,25 @@ static uint32_t PS_EggParseRender(const ps_egg_chunk_t *chunk,
   const uint8_t *payload = &blob[chunk->offset];
   uint32_t expected;
   uint32_t index;
+  uint16_t version;
 
   if ((chunk->size < PS_EGG_RENDER_HEADER_SIZE) ||
       (memcmp(payload, "RND1", 4UL) != 0) ||
-      (PS_EggU16(&payload[4]) != 1U) ||
       (PS_EggU16(&payload[6]) != PS_EGG_RENDER_HEADER_SIZE) ||
       (PS_EggU16(&payload[12]) != 0U) ||
       (PS_EggU16(&payload[14]) != 0U))
   {
     return 0UL;
   }
+  version = PS_EggU16(&payload[4]);
+  if ((version != 1U) && (version != 2U))
+  {
+    return 0UL;
+  }
+  view->format_version = version;
+  view->element_record_size = (version == 1U) ?
+                              PS_EGG_RENDER_ELEMENT_V1_RECORD_SIZE :
+                              PS_EGG_RENDER_ELEMENT_V2_RECORD_SIZE;
   view->model_count = PS_EggU16(&payload[8]);
   view->element_count = PS_EggU16(&payload[10]);
   view->model_offset = PS_EGG_RENDER_HEADER_SIZE;
@@ -999,7 +1011,7 @@ static uint32_t PS_EggParseRender(const ps_egg_chunk_t *chunk,
                           PS_EGG_RENDER_MODEL_RECORD_SIZE);
   expected = view->element_offset +
              ((uint32_t)view->element_count *
-              PS_EGG_RENDER_ELEMENT_RECORD_SIZE);
+              view->element_record_size);
   if ((view->model_count == 0U) || (expected != chunk->size))
   {
     return 0UL;
@@ -1018,16 +1030,57 @@ static uint32_t PS_EggParseRender(const ps_egg_chunk_t *chunk,
   for (index = 0UL; index < view->element_count; ++index)
   {
     const uint8_t *record = &payload[view->element_offset +
-      (index * PS_EGG_RENDER_ELEMENT_RECORD_SIZE)];
-    int16_t x = PS_EggI16(&record[6]);
-    int16_t y = PS_EggI16(&record[8]);
-    uint16_t width = PS_EggU16(&record[10]);
-    uint16_t height = PS_EggU16(&record[12]);
-    if ((PS_EggU16(record) >= strings->count) ||
-        (PS_EggU16(&record[2]) >= strings->count) ||
-        (record[4] < 1U) || (record[4] > 3U) ||
-        (record[5] > 1U) || (x < 0) || (y < 0) ||
-        (width == 0U) || (height == 0U) ||
+      (index * view->element_record_size)];
+    int16_t x;
+    int16_t y;
+    uint16_t width;
+    uint16_t height;
+
+    if (PS_EggU16(record) >= strings->count)
+    {
+      return 0UL;
+    }
+    if (version == 1U)
+    {
+      x = PS_EggI16(&record[6]);
+      y = PS_EggI16(&record[8]);
+      width = PS_EggU16(&record[10]);
+      height = PS_EggU16(&record[12]);
+      if ((PS_EggU16(&record[2]) >= strings->count) ||
+          (record[4] < 1U) || (record[4] > 3U) ||
+          (record[5] > 1U))
+      {
+        return 0UL;
+      }
+    }
+    else
+    {
+      uint8_t type = record[4];
+      uint8_t layer = record[5];
+      uint8_t flags = record[6];
+      uint16_t visual_ref = PS_EggU16(&record[2]);
+      x = PS_EggI16(&record[8]);
+      y = PS_EggI16(&record[10]);
+      width = PS_EggU16(&record[12]);
+      height = PS_EggU16(&record[14]);
+      if ((type < 1U) || (type > 6U) || (layer > 2U) ||
+          ((flags & (uint8_t)~0x03U) != 0U) ||
+          (record[7] != 0U) || (PS_EggU16(&record[18]) != 0U) ||
+          (PS_EggU16(&record[16]) > 255U) ||
+          (PS_EggU16(&record[16]) > 255U) ||
+          (((flags & 0x01U) != 0U) &&
+           ((type != 1U) || (layer != 2U) || ((flags & 0x02U) == 0U))) ||
+          ((type == 1U) && (visual_ref >= strings->count)) ||
+          ((type != 1U) && (visual_ref != 0xFFFFU)) ||
+          (((type == 5U) || (type == 6U)) &&
+           ((width < 3U) || (height < 3U) ||
+            ((width & 1U) == 0U) || ((height & 1U) == 0U))) ||
+          ((type == 5U) && (width != height)))
+      {
+        return 0UL;
+      }
+    }
+    if ((x < 0) || (y < 0) || (width == 0U) || (height == 0U) ||
         ((uint32_t)x + width > PS_SCENE_RENDER_CANVAS_WIDTH) ||
         ((uint32_t)y + height > PS_SCENE_RENDER_CANVAS_HEIGHT))
     {
@@ -1133,16 +1186,86 @@ static uint32_t PS_EggParseWaiting(const ps_egg_chunk_t *chunk,
 
 static uint32_t PS_EggMapRenderElement(
   const uint8_t *record,
+  uint16_t format_version,
   const ps_egg_strings_t *strings,
   ps_scene_render_element_t *element)
 {
   uint16_t visual_ref = PS_EggU16(&record[2]);
   uint8_t kind = record[4];
-  uint8_t focus = record[5];
-  int16_t x = PS_EggI16(&record[6]);
-  int16_t y = PS_EggI16(&record[8]);
+  uint8_t focus;
+  int16_t x;
+  int16_t y;
   uint32_t sprite_frame_id = 0UL;
 
+  if (format_version == 2U)
+  {
+    uint8_t flags = record[6];
+    focus = ((flags & 0x01U) != 0U) ? 1U : 0U;
+    x = PS_EggI16(&record[8]);
+    y = PS_EggI16(&record[10]);
+    if ((PS_EggU16(record) >= strings->count) || (x < 0) || (y < 0) ||
+        (PS_EggU16(&record[12]) == 0U) ||
+        (PS_EggU16(&record[14]) == 0U))
+    {
+      return 0UL;
+    }
+    (void)memset(element, 0, sizeof(*element));
+    element->visible = ((flags & 0x02U) != 0U) ? 1UL : 0UL;
+    element->layer = record[5];
+    element->x = (uint16_t)x;
+    element->y = (uint16_t)y;
+    element->width = PS_EggU16(&record[12]);
+    element->height = PS_EggU16(&record[14]);
+    element->z_order = PS_EggU16(&record[16]);
+    if (kind == 1U)
+    {
+      if ((visual_ref >= strings->count) ||
+          (PS_EggFindSpriteFrame(visual_ref, &sprite_frame_id) == 0UL) ||
+          (PS_EggStateLoader_GetSpriteFrame(
+             sprite_frame_id, &s_ps_egg_sprite_frame_scratch) == 0UL) ||
+          (s_ps_egg_sprite_frame_scratch.width != element->width) ||
+          (s_ps_egg_sprite_frame_scratch.height != element->height))
+      {
+        return 0UL;
+      }
+      element->asset_id = sprite_frame_id;
+      if (focus != 0U)
+      {
+        element->type = PS_SCENE_RENDER_ELEMENT_FOCUS;
+        element->animation_binding_id = PS_SCENE_RENDER_ANIMATION_CURSOR;
+      }
+      else
+      {
+        element->type = PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP;
+      }
+      return 1UL;
+    }
+    switch (kind)
+    {
+      case 2U:
+        element->type = PS_SCENE_RENDER_ELEMENT_LINE;
+        break;
+      case 3U:
+        element->type = PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT;
+        break;
+      case 4U:
+        element->type = PS_SCENE_RENDER_ELEMENT_FILLED_RECT;
+        break;
+      case 5U:
+        element->type = PS_SCENE_RENDER_ELEMENT_CIRCLE;
+        break;
+      case 6U:
+        element->type = PS_SCENE_RENDER_ELEMENT_ELLIPSE;
+        break;
+      default:
+        return 0UL;
+    }
+    return 1UL;
+  }
+
+  focus = record[5];
+  x = PS_EggI16(&record[6]);
+  y = PS_EggI16(&record[8]);
   if ((PS_EggU16(record) >= strings->count) ||
       (visual_ref >= strings->count) || (x < 0) || (y < 0) ||
       (PS_EggU16(&record[10]) == 0U) ||
@@ -1156,6 +1279,7 @@ static uint32_t PS_EggMapRenderElement(
   element->y = (uint16_t)y;
   element->width = PS_EggU16(&record[10]);
   element->height = PS_EggU16(&record[12]);
+  element->z_order = PS_EggU16(&record[14]);
   if ((kind == 1U) &&
       (PS_EggFindSpriteFrame(visual_ref, &sprite_frame_id) != 0UL) &&
       (PS_EggStateLoader_GetSpriteFrame(
@@ -1252,8 +1376,8 @@ static uint32_t PS_EggBuildBinding(
   for (index = 0UL; index < element_count; ++index)
   {
     const uint8_t *record = &render_payload[render->element_offset +
-      (((uint32_t)first_element + index) * PS_EGG_RENDER_ELEMENT_RECORD_SIZE)];
-    if (PS_EggMapRenderElement(record, strings,
+      (((uint32_t)first_element + index) * render->element_record_size)];
+    if (PS_EggMapRenderElement(record, render->format_version, strings,
                                &binding->elements[index]) == 0UL)
     {
       return 0UL;
@@ -1361,7 +1485,7 @@ static uint32_t PS_EggBuildBinding(
     {
       const uint8_t *source_record = &render_payload[render->element_offset +
         (((uint32_t)first_element + render_element) *
-         PS_EGG_RENDER_ELEMENT_RECORD_SIZE)];
+         render->element_record_size)];
       if (PS_EggU16(source_record) == source_ref)
       {
         const ps_scene_render_element_t *source =

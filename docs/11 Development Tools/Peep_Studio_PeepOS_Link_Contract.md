@@ -147,25 +147,32 @@ content may target `BACKGROUND`, `SCENE`, or `UI`; `OVERLAY` remains
 Platform/Engine-owned. Host preview must consume the same compiled records as
 firmware rather than reproducing them with a separate React renderer.
 
-The current generic executable visual record is a native-scale masked 1bpp
-sprite frame. The repository also contains older proof adapters and private
-firmware drawing helpers for cursors, markers, diamonds, calibration graphics,
-and shell text. Their existence does not make arbitrary shapes or text
-available to authored packages. Peep Studio must label such controls
-unavailable until the compiler, package format, exact preview, loader, retained
-model, and display owner implement identical semantics.
+The current generic executable presentation record is `RND2`. It supports
+native-scale masked 1bpp sprite frames plus bounded `line`, `outline_rect`,
+`filled_rect`, `circle`, and `ellipse` primitives. Records carry package layer,
+visibility, z-order, and integer panel-native bounds. The compiler, package
+parser, exact host preview, HW6 loader, retained model, and display owner now
+implement those same semantics. On-target visual, scene-replacement, and STOP2
+proof passed on 2026-08-27. New packages emit `RND2`, while `RND1` remains
+load-compatible.
+
+The repository also contains private firmware drawing helpers for calibration,
+activation, and shell UI. Their existence does not expose those helpers to
+authored packages. Authored text also remains unavailable until it is compiled
+into masked 1bpp sprite assets.
 
 The STATE-first presentation expansion is:
 
-1. serialize package layer, visibility, order, bounds, sprite/frame, and
-   animation references without special proof names;
-2. expose bounded retained line, outline rectangle, filled rectangle, circle,
-   and ellipse records with deterministic integer clipping;
-3. rasterize initial authored menu text into masked 1bpp package assets at
+1. **Hardware-validated:** serialize package layer, visibility,
+   order, bounds, and sprite/frame references without special proof names;
+2. **Hardware-validated:** expose bounded retained line, outline
+   rectangle, filled rectangle, circle, and ellipse records with deterministic
+   integer rasterization;
+3. **Next:** rasterize initial authored menu text into masked 1bpp package assets at
    build time; runtime fonts and mutable text remain a later capability;
-4. add bounded STATE actions for show/hide, move, frame selection, and animation
+4. **Next:** add bounded STATE actions for show/hide, move, frame selection, and animation
    selection, with dirty-region composition owned by PeepOS;
-5. add one symbolic bounded STATE SFX action backed by a compiled sampled-audio
+5. **Next:** add one symbolic bounded STATE SFX action backed by a compiled sampled-audio
    asset and owned at runtime by `thAudio`.
 
 Visual assets, primitive records, text-derived sprite assets, and audio assets
@@ -311,7 +318,8 @@ visuals. Project mutation controls remain deferred to Stage 2.
 
 No scene-canvas or graph control may directly mutate normalized JSON in React.
 
-Implementation status: started. Service API version 7 exposes
+Implementation status: started. Service API version 8 retains the editing
+commands introduced by version 7 and exposes
 `project.apply_commands` with the first accepted commands,
 `state.rename`, `route.set_target`, `route.set_guard`, and
 `route.set_action`. `route.set_action` edits existing ordered route actions

@@ -115,27 +115,63 @@ def make_preview_project(parent: Path) -> Path:
 def make_procedural_project(parent: Path) -> Path:
     project_root = parent / "procedural.peepproj"
     shutil.copytree(SAMPLE, project_root)
-    project_path = project_root / "project.json"
-    project = json.loads(project_path.read_text(encoding="utf-8"))
-    project.pop("asset_sources", None)
-    project_path.write_text(json.dumps(project), encoding="utf-8")
-
     scene_path = project_root / "scenes" / "state_demo.state.json"
     scene = json.loads(scene_path.read_text(encoding="utf-8"))
     for model in scene["render_models"]:
-        cursor = next(element for element in model["elements"] if element["element_id"] == "cursor")
-        marker = next(element for element in model["elements"] if element["element_id"] == "marker")
-        cursor["kind"] = "shape"
-        cursor["visual_ref"] = "cursor_outline"
-        marker["kind"] = "shape"
-        marker["visual_ref"] = "marker_outline"
-    waiting = scene["waiting_visuals"][0]["elements"]
-    waiting[0]["phase_visual_refs"] = ["cursor_phase_a", "cursor_phase_b"]
-    waiting[1]["phase_visual_refs"] = [
-        "marker_phase_a",
-        "marker_phase_b",
-        "marker_phase_c",
-    ]
+        model["elements"].extend(
+            [
+                {
+                    "element_id": "fill",
+                    "kind": "filled_rect",
+                    "layer": "BACKGROUND",
+                    "x": 20,
+                    "y": 20,
+                    "width": 9,
+                    "height": 7,
+                    "z_order": 0,
+                },
+                {
+                    "element_id": "line",
+                    "kind": "line",
+                    "layer": "SCENE",
+                    "x": 32,
+                    "y": 20,
+                    "width": 9,
+                    "height": 7,
+                    "z_order": 1,
+                },
+                {
+                    "element_id": "outline",
+                    "kind": "outline_rect",
+                    "layer": "SCENE",
+                    "x": 44,
+                    "y": 20,
+                    "width": 9,
+                    "height": 7,
+                    "z_order": 2,
+                },
+                {
+                    "element_id": "circle",
+                    "kind": "circle",
+                    "layer": "UI",
+                    "x": 56,
+                    "y": 20,
+                    "width": 9,
+                    "height": 9,
+                    "z_order": 3,
+                },
+                {
+                    "element_id": "ellipse",
+                    "kind": "ellipse",
+                    "layer": "UI",
+                    "x": 68,
+                    "y": 20,
+                    "width": 11,
+                    "height": 7,
+                    "z_order": 4,
+                },
+            ]
+        )
     scene_path.write_text(json.dumps(scene), encoding="utf-8")
     return project_root
 
@@ -187,7 +223,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(7, SERVICE_API_VERSION)
+        self.assertEqual(8, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -200,6 +236,14 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertIn("project.preview_reset", result["operations"])
         self.assertIn("project.preview_input", result["operations"])
         self.assertIn("project.preview_advance", result["operations"])
+        self.assertEqual("RND2", result["state_scene_presentation"]["record_format"])
+        self.assertEqual(
+            ["BACKGROUND", "SCENE", "UI"],
+            result["state_scene_presentation"]["package_layers"],
+        )
+        self.assertNotIn("OVERLAY", result["state_scene_presentation"]["package_layers"])
+        self.assertIn("ellipse", result["state_scene_presentation"]["element_kinds"])
+        self.assertFalse(result["state_scene_presentation"]["runtime_text"])
 
     def test_load_validate_and_normalize_share_one_revision(self) -> None:
         service = AuthoringService()
@@ -1007,20 +1051,33 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertEqual(0, returned["timeline"]["elapsed_ms"])
         self.assertEqual(source_hash, returned["framebuffer"]["sha256"])
 
-    def test_preview_rejects_procedural_source_visuals_and_stale_sessions(self) -> None:
+    def test_preview_renders_static_primitives_and_rejects_stale_sessions(self) -> None:
         service = AuthoringService()
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = make_procedural_project(Path(temp_dir))
             loaded = service.handle(request("project.load", {"path": str(project_root)}))
-            with self.assertRaises(ProtocolError) as raised:
-                service.handle(
-                    request(
-                        "project.preview_reset",
-                        {"project_revision": loaded["project_revision"], "scene_id": "state_demo"},
-                    )
+            reset = service.handle(
+                request(
+                    "project.preview_reset",
+                    {"project_revision": loaded["project_revision"], "scene_id": "state_demo"},
                 )
-            self.assertEqual("PREVIEW_START_FAILED", raised.exception.code)
-            self.assertIn("package-backed preview requires sprites", raised.exception.message)
+            )
+            self.assertGreater(reset["framebuffer"]["black_pixel_count"], 0)
+            framebuffer = base64.b64decode(reset["framebuffer"]["data_base64"], validate=True)
+
+            def pixel(x: int, y: int) -> int:
+                return (framebuffer[y * 21 + x // 8] >> (7 - (x % 8))) & 1
+
+            for point in (
+                (20, 20), (28, 26),
+                (32, 20), (36, 23), (40, 26),
+                (44, 20), (52, 26),
+                (60, 20), (64, 24), (60, 28), (56, 24),
+                (73, 20), (78, 23), (73, 26), (68, 23),
+            ):
+                self.assertEqual(1, pixel(*point), point)
+            self.assertEqual(0, pixel(48, 23))
+            self.assertEqual(0, pixel(60, 24))
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = make_preview_project(Path(temp_dir))

@@ -136,8 +136,9 @@ It does not choose a destination or write an installable file. The V1 report
 marks the current HW6 development profile as `pending_validation` and
 `dev_only`; it does not claim shipping authority before target-profile closure.
 
-Service API version 7 provides deterministic selected-STATE-scene preview and
-direct STATE-to-STATE replacement. A
+Service API version 8 provides deterministic selected-STATE-scene preview,
+direct STATE-to-STATE replacement, and a `state_scene_presentation` capability
+block in `service.hello`. A
 reset names the scene to launch directly, an input operation supplies one
 logical button source, and an advance operation supplies explicit elapsed
 milliseconds. Every response contains the current compiled state, timeline,
@@ -151,10 +152,12 @@ existing STATE scene and its route action list must be empty. Preview enters the
 destination entry state, resets destination-local variables, and starts the
 destination timeline at its settled step.
 
-The first preview subset accepts package-backed masked 1bpp sprite elements at
-native scale. Procedural shape/text references and runtime scaling fail
-explicitly until they have package formats with matching firmware semantics.
-The newline-delimited JSON protocol remains version 1.
+The exact preview accepts `RND2` package-backed masked 1bpp sprites plus line,
+outline rectangle, filled rectangle, circle, and ellipse elements. Package
+content may use `BACKGROUND`, `SCENE`, and `UI`; `OVERLAY` is system-owned.
+Runtime text, runtime scaling, and retained element actions remain unavailable.
+The newline-delimited JSON protocol remains version 1, and loaders retain
+`RND1` compatibility.
 
 Project editing, save, and undo/redo operations are available through the
 versioned service boundary; use `service.hello` for the authoritative operation

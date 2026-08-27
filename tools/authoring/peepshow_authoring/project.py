@@ -636,6 +636,8 @@ def _check_waiting_visual(
         source_ref = element.get("source_element_ref")
         if source_ref not in element_kinds:
             _issue(issues, "WAIT_ELEMENT_UNKNOWN", f"{item_path}.source_element_ref", f"unknown render element '{source_ref}'")
+        elif element_kinds[source_ref] != "sprite":
+            _issue(issues, "WAIT_ELEMENT_TYPE_INVALID", f"{item_path}.source_element_ref", "waiting animation currently requires a sprite element")
         phase_refs = element.get("phase_visual_refs")
         if not isinstance(phase_refs, list) or not 1 <= len(phase_refs) <= 4:
             _issue(issues, "WAIT_PHASE_COUNT_INVALID", f"{item_path}.phase_visual_refs", "must contain 1..4 phases")
@@ -721,27 +723,41 @@ def _check_scene(
         elements = _unique_ids(render_model.get("elements"), "element_id", f"{path}.elements", issues, 32)
         for element_id, element in elements.items():
             item_path = f"{path}.elements[{element_id}]"
-            required = {"element_id", "kind", "visual_ref", "x", "y", "width", "height", "z_order"}
-            allowed = required | {"focus_role"}
+            required = {"element_id", "kind", "x", "y", "width", "height", "z_order"}
+            allowed = required | {"visual_ref", "focus_role", "layer", "visible"}
             for key in sorted(required - element.keys()):
                 _issue(issues, "PROJECT_FIELD_MISSING", f"{item_path}.{key}", "required field is missing")
             for key in sorted(element.keys() - allowed):
                 _issue(issues, "PROJECT_FIELD_UNKNOWN", f"{item_path}.{key}", "field is not part of the V1 subset")
-            _stable_id(element.get("visual_ref"), f"{item_path}.visual_ref", issues)
             kind = element.get("kind")
-            if kind not in {"sprite", "text", "shape"}:
-                _issue(issues, "RENDER_KIND_INVALID", f"{item_path}.kind", "must be sprite, text, or shape")
+            if kind not in {"sprite", "line", "outline_rect", "filled_rect", "circle", "ellipse"}:
+                _issue(issues, "RENDER_KIND_INVALID", f"{item_path}.kind", "unsupported retained element type")
             else:
                 element_kinds[element_id] = kind
-                if kind == "sprite" and element.get("visual_ref") not in frame_ids | animation_ids:
-                    _issue(
-                        issues,
-                        "ASSET_FRAME_UNKNOWN",
-                        f"{item_path}.visual_ref",
-                        "sprite visual_ref must select a compiled frame or animation",
-                    )
-            if element.get("focus_role", "none") not in {"none", "focus"}:
+                if kind == "sprite":
+                    _stable_id(element.get("visual_ref"), f"{item_path}.visual_ref", issues)
+                    if element.get("visual_ref") not in frame_ids | animation_ids:
+                        _issue(
+                            issues,
+                            "ASSET_FRAME_UNKNOWN",
+                            f"{item_path}.visual_ref",
+                            "sprite visual_ref must select a compiled frame or animation",
+                        )
+                elif "visual_ref" in element:
+                    _issue(issues, "RENDER_VISUAL_REF_INVALID", f"{item_path}.visual_ref", "primitives do not reference assets")
+            layer = element.get(
+                "layer",
+                "UI" if element.get("focus_role", "none") == "focus" else "SCENE",
+            )
+            if layer not in {"BACKGROUND", "SCENE", "UI"}:
+                _issue(issues, "RENDER_LAYER_INVALID", f"{item_path}.layer", "must be BACKGROUND, SCENE, or UI")
+            focus_role = element.get("focus_role", "none")
+            if focus_role not in {"none", "focus"}:
                 _issue(issues, "RENDER_FOCUS_INVALID", f"{item_path}.focus_role", "must be none or focus")
+            elif focus_role == "focus" and (kind != "sprite" or layer != "UI" or element.get("visible", True) is not True):
+                _issue(issues, "RENDER_FOCUS_INVALID", f"{item_path}.focus_role", "focus must be a visible UI sprite")
+            if not isinstance(element.get("visible", True), bool):
+                _issue(issues, "RENDER_VISIBILITY_INVALID", f"{item_path}.visible", "must be boolean")
             for field in ("x", "y", "z_order"):
                 value = element.get(field)
                 if not isinstance(value, int) or value < 0:
@@ -753,6 +769,17 @@ def _check_scene(
             z_order = element.get("z_order")
             if isinstance(z_order, int) and z_order > 255:
                 _issue(issues, "RENDER_BOUNDS_INVALID", f"{item_path}.z_order", "must be in 0..255")
+            x = element.get("x")
+            y = element.get("y")
+            width = element.get("width")
+            height = element.get("height")
+            if all(isinstance(value, int) and not isinstance(value, bool) for value in (x, y, width, height)):
+                if x + width > 168 or y + height > 144:
+                    _issue(issues, "RENDER_BOUNDS_INVALID", item_path, "element exceeds the 168x144 canvas")
+                if kind in {"circle", "ellipse"} and (width < 3 or height < 3 or width % 2 == 0 or height % 2 == 0):
+                    _issue(issues, "RENDER_GEOMETRY_INVALID", item_path, "circle and ellipse bounds must be odd and at least 3")
+                if kind == "circle" and width != height:
+                    _issue(issues, "RENDER_GEOMETRY_INVALID", item_path, "circle bounds must be square")
 
     for waiting_id, waiting in waiting_visuals.items():
         _check_waiting_visual(

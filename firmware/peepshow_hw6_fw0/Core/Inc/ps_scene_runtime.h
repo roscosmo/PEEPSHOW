@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-#define PS_SCENE_RUNTIME_API_VERSION             (12UL)
+#define PS_SCENE_RUNTIME_API_VERSION             (13UL)
 #define PS_SCENE_RUNTIME_SCENE_TYPE_STATE        (1UL)
 #define PS_SCENE_RUNTIME_STATUS_NOT_RUN          (0xFFFFFFFFUL)
 #define PS_SCENE_RUNTIME_STATUS_OK               (0UL)

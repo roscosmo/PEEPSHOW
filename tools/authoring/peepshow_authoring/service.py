@@ -24,7 +24,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 7
+SERVICE_API_VERSION = 8
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -159,6 +159,24 @@ class AuthoringService:
             "service_api_version": SERVICE_API_VERSION,
             "protocol_version": PROTOCOL_VERSION,
             "operations": list(SERVICE_OPERATIONS),
+            "state_scene_presentation": {
+                "record_format": "RND2",
+                "load_compatible_formats": ["RND1", "RND2"],
+                "package_layers": ["BACKGROUND", "SCENE", "UI"],
+                "system_layers": ["OVERLAY"],
+                "element_kinds": [
+                    "sprite",
+                    "line",
+                    "outline_rect",
+                    "filled_rect",
+                    "circle",
+                    "ellipse",
+                ],
+                "visibility": True,
+                "z_order": True,
+                "runtime_text": False,
+                "element_actions": False,
+            },
             "project_loaded": self._bundle is not None,
             "project_revision": self._project_revision if self._bundle is not None else None,
         }

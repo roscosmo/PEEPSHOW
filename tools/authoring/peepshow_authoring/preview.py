@@ -222,18 +222,27 @@ class StateScenePreview:
             waiting = self._waiting_visuals[int(state["waiting_visual_index"])]
             elements = {str(element["element_id"]): element for element in model["elements"]}
             for element in model["elements"]:
-                if int(element["kind"]) != 1:
+                version = int(element.get("format_version", 1))
+                kind = int(element["kind"])
+                if version == 1 and kind != 1:
                     raise PreviewError(
                         f"element '{element['element_id']}' uses a procedural visual; "
                         "the package-backed preview requires sprites"
                     )
-                self._require_native_frame(element, str(element["visual_ref"]))
+                if version == 2 and kind not in {1, 2, 3, 4, 5, 6}:
+                    raise PreviewError(f"element '{element['element_id']}' has an unsupported retained type")
+                if kind == 1:
+                    self._require_native_frame(element, str(element["visual_ref"]))
             for animated in waiting["elements"]:
                 source_id = str(animated["source_element_ref"])
                 source = elements.get(source_id)
                 if source is None:
                     raise PreviewError(
                         f"waiting visual '{waiting['waiting_visual_id']}' references missing element '{source_id}'"
+                    )
+                if int(source["kind"]) != 1:
+                    raise PreviewError(
+                        f"waiting visual '{waiting['waiting_visual_id']}' requires a sprite source element"
                     )
                 for visual_ref in animated["phase_visual_refs"]:
                     self._require_native_frame(source, str(visual_ref))
@@ -256,13 +265,113 @@ class StateScenePreview:
         else:
             framebuffer[offset] &= ~mask
 
+    @classmethod
+    def _draw_line(cls, framebuffer: bytearray, x0: int, y0: int, x1: int, y1: int) -> None:
+        dx = abs(x1 - x0)
+        sx = 1 if x0 < x1 else -1
+        dy = -abs(y1 - y0)
+        sy = 1 if y0 < y1 else -1
+        error = dx + dy
+        while True:
+            cls._write_bit(framebuffer, x0, y0, 1)
+            if x0 == x1 and y0 == y1:
+                return
+            doubled = error * 2
+            if doubled >= dy:
+                error += dy
+                x0 += sx
+            if doubled <= dx:
+                error += dx
+                y0 += sy
+
+    @classmethod
+    def _draw_ellipse(cls, framebuffer: bytearray, center_x: int, center_y: int, radius_x: int, radius_y: int) -> None:
+        x = 0
+        y = radius_y
+        radius_x_squared = radius_x * radius_x
+        radius_y_squared = radius_y * radius_y
+        dx = 0
+        dy = 2 * radius_x_squared * y
+        decision = radius_y_squared - radius_x_squared * radius_y + radius_x_squared // 4
+        while dx < dy:
+            for point_x, point_y in (
+                (center_x + x, center_y + y),
+                (center_x - x, center_y + y),
+                (center_x + x, center_y - y),
+                (center_x - x, center_y - y),
+            ):
+                cls._write_bit(framebuffer, point_x, point_y, 1)
+            x += 1
+            dx += 2 * radius_y_squared
+            if decision < 0:
+                decision += radius_y_squared + dx
+            else:
+                y -= 1
+                dy -= 2 * radius_x_squared
+                decision += radius_y_squared + dx - dy
+
+        decision = (
+            radius_y_squared * (x * x + x)
+            + radius_y_squared // 4
+            + radius_x_squared * ((y - 1) * (y - 1))
+            - radius_x_squared * radius_y_squared
+        )
+        while y >= 0:
+            for point_x, point_y in (
+                (center_x + x, center_y + y),
+                (center_x - x, center_y + y),
+                (center_x + x, center_y - y),
+                (center_x - x, center_y - y),
+            ):
+                cls._write_bit(framebuffer, point_x, point_y, 1)
+            y -= 1
+            dy -= 2 * radius_x_squared
+            if decision > 0:
+                decision += radius_x_squared - dy
+            else:
+                x += 1
+                dx += 2 * radius_y_squared
+                decision += radius_x_squared - dy + dx
+
+    @classmethod
+    def _draw_primitive(cls, framebuffer: bytearray, element: dict[str, object]) -> None:
+        kind = int(element["kind"])
+        x = int(element["x"])
+        y = int(element["y"])
+        width = int(element["width"])
+        height = int(element["height"])
+        right = x + width - 1
+        bottom = y + height - 1
+        if kind == 2:
+            cls._draw_line(framebuffer, x, y, right, bottom)
+        elif kind == 3:
+            cls._draw_line(framebuffer, x, y, right, y)
+            cls._draw_line(framebuffer, x, bottom, right, bottom)
+            cls._draw_line(framebuffer, x, y, x, bottom)
+            cls._draw_line(framebuffer, right, y, right, bottom)
+        elif kind == 4:
+            for row in range(y, bottom + 1):
+                cls._draw_line(framebuffer, x, row, right, row)
+        elif kind in {5, 6}:
+            cls._draw_ellipse(framebuffer, x + width // 2, y + height // 2, width // 2, height // 2)
+        else:
+            raise PreviewError(f"element '{element['element_id']}' has an unsupported retained type")
+
     def _render_framebuffer(self) -> bytes:
         state = self._state()
         model = self._render_models[int(state["render_model_index"])]
         overrides = self._visual_overrides()
         framebuffer = bytearray(DISPLAY_BUFFER_SIZE)
-        ordered = sorted(enumerate(model["elements"]), key=lambda item: (int(item[1]["z_order"]), item[0]))
+        ordered = sorted(
+            enumerate(model["elements"]),
+            key=lambda item: (int(item[1].get("layer", 1)), int(item[1]["z_order"]), item[0]),
+        )
         for _, element in ordered:
+            if not int(element.get("visible", 1)):
+                continue
+            if int(element["kind"]) != 1:
+                self._draw_primitive(framebuffer, element)
+                continue
             visual_ref = overrides.get(str(element["element_id"]), str(element["visual_ref"]))
             frame = self._resolve_frame(visual_ref)
             width = int(frame["width"])

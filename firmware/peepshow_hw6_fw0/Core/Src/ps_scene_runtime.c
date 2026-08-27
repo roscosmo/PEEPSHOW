@@ -96,9 +96,10 @@ static uint32_t PS_SceneRuntime_RenderElementValid(
 
   if ((element == NULL) || (element->element_id == 0UL) ||
       (element->type <= PS_SCENE_RENDER_ELEMENT_NONE) ||
-      (element->type > PS_SCENE_RENDER_ELEMENT_FOCUS) ||
+      (element->type > PS_SCENE_RENDER_ELEMENT_ELLIPSE) ||
       (element->layer >= PS_SCENE_RENDER_LAYER_COUNT) ||
       (element->visible > 1UL) ||
+      (element->z_order > 255U) || (element->reserved != 0U) ||
       (element->width == 0U) || (element->height == 0U))
   {
     return 0UL;
@@ -126,6 +127,18 @@ static uint32_t PS_SceneRuntime_RenderElementValid(
   if (element->type == PS_SCENE_RENDER_ELEMENT_FOCUS)
   {
     return (element->style_id == PS_SCENE_RENDER_STYLE_NONE) ? 1UL : 0UL;
+  }
+  if ((element->type == PS_SCENE_RENDER_ELEMENT_CIRCLE) ||
+      (element->type == PS_SCENE_RENDER_ELEMENT_ELLIPSE))
+  {
+    if ((element->width < 3U) || (element->height < 3U) ||
+        ((element->width & 1U) == 0U) ||
+        ((element->height & 1U) == 0U) ||
+        ((element->type == PS_SCENE_RENDER_ELEMENT_CIRCLE) &&
+         (element->width != element->height)))
+    {
+      return 0UL;
+    }
   }
   return ((element->asset_id == 0UL) &&
           (element->style_id == PS_SCENE_RENDER_STYLE_NONE)) ? 1UL : 0UL;
