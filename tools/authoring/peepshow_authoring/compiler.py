@@ -53,6 +53,7 @@ LOGICAL_SOURCES = {
     "BUTTON_B": 2,
     "BUTTON_L": 3,
     "BUTTON_R": 4,
+    "BUTTON_START": 5,
     "JOY_LEFT": 6,
     "JOY_RIGHT": 7,
     "JOY_UP": 8,

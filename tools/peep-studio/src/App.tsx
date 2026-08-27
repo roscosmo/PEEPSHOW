@@ -55,6 +55,7 @@ const INPUTS = [
   { source: "BUTTON_R", label: "R", icon: Circle },
   { source: "BUTTON_A", label: "A", icon: Circle },
   { source: "BUTTON_B", label: "B", icon: Circle },
+  { source: "BUTTON_START", label: "Start", icon: Circle },
 ] as const;
 
 const JOYSTICK_INPUTS = [

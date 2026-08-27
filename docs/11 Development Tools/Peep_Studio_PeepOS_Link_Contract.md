@@ -2,7 +2,7 @@
 
 Status: `active_handoff`
 
-Implementation status: `Stage_5_platform_foundation_pending_HW6_proof`
+Implementation status: `Stage_3_STATE_presentation_backend_ready_GUI_pending`
 
 This document is the working boundary between Peep Studio development and
 PeepOS/HW6 bring-up. It tells an editor agent what the platform actually
@@ -52,16 +52,16 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | scene type | STATE |
 | state execution | bounded variables, input routes, guards, actions, and deterministic transitions |
 | package scene flow | direct STATE-to-STATE replacement is implemented and proven on HW6 through service API 8, PKG1 graph V2, and FW0 runtime API 11 |
-| input | logical A, B, L, R, JOY_LEFT, JOY_RIGHT, JOY_UP, and JOY_DOWN sources |
+| input | logical A, B, L, R, short START, JOY_LEFT, JOY_RIGHT, JOY_UP, and JOY_DOWN sources |
 | visuals | package-backed native-scale masked 1bpp sprite frames |
 | retained render model | bounded ordered scene elements with binary alpha and four platform planes |
-| package primitives | not generally exposed; existing rectangle, line, circle, ellipse, and text helpers are Platform/test implementation details rather than Peep Studio calls |
+| package primitives | retained line, outline rectangle, filled rectangle, circle, and ellipse records are compiled, previewed, loaded, and target-proven; private shell/calibration draw helpers remain unavailable |
 | package text | not generally exposed; current proof labels and IDs are not an authored font or arbitrary-text interface |
 | package audio | not exposed; HW6 currently proves only a generated diagnostic speaker tone, not `.egg` audio assets or STATE SFX actions |
-| waiting animation | authored 250 ms timelines, mixed 2-phase and 3-phase elements, combined timeline compilation, deterministic three-step LPBAM fallback |
+| STATE animated elements | bounded repeating sprite phase timelines with 1..4 frames, 1..12 combined steps, explicit cadence, and a settled step; mixed 2-phase and 3-phase composition and deterministic fallback are target-proven |
 | awake preview | exact 168x144 package-backed framebuffer with deterministic fake time and side-effect-free scene thumbnails |
 | STOP2 | package visuals compiled into LPBAM animation and resumed across wake/STOP2 handoff |
-| firmware package proof | embedded and USB-installed `.egg` packages load, validate, resolve STATE content, handle input, render package pixels, replace STATE scenes directly, animate in STOP2, and return to shell; installed packages currently run through a `65536`-byte RAM cache; the new TIMEOUT interaction lifecycle is implemented but still requires HW6 target proof |
+| firmware package proof | embedded and USB-installed `.egg` packages load, validate, resolve STATE content, handle input, render package pixels, replace STATE scenes directly, animate in STOP2, and return to shell; installed packages currently run through a `65536`-byte RAM cache; CONTINUOUS/TIMEOUT interaction lifecycle and manual inactivity are target-proven |
 
 Measured hardware behavior, current SRAM4 admission limits, and power figures
 remain hardware evidence. The desktop preview must not claim to reproduce
@@ -161,6 +161,16 @@ activation, and shell UI. Their existence does not expose those helpers to
 authored packages. Authored text also remains unavailable until it is compiled
 into masked 1bpp sprite assets.
 
+STATE animation terminology is strict:
+
+- a retained STATE sprite selects one compiled frame for its settled/base presentation;
+- a STATE animated element adds a bounded repeating `waiting_visual` phase map
+  to that sprite, and this is the only package animation that may run while a
+  reactive scene waits or the MCU is in STOP2;
+- a general `frame_animation` may have arbitrary authored length and timing,
+  but it is not STATE-placeable and is reserved for SEQUENCE authoring;
+- static primitives remain valid STATE elements, but their geometry is not animated.
+
 The STATE-first presentation expansion is:
 
 1. **Hardware-validated:** serialize package layer, visibility,
@@ -187,11 +197,10 @@ The following are planned or incomplete and must be labelled unavailable in
 the editor until this document is updated:
 
 - SEQUENCE and PROGRAM scene authoring or execution;
-- editable node graph controls beyond the current inspector commands;
-- project mutation commands beyond `state.rename`, `route.set_target`,
-  `route.set_guard`, and `route.set_action`;
-- general package-authored primitives, arbitrary text, runtime element
-  mutation, or serialized package layer selection;
+- complete STATE graph CRUD, variable CRUD, and ordered guard/action CRUD;
+- Peep Studio controls for the backend-ready retained-element, asset-catalog,
+  and waiting-timeline mutation commands;
+- arbitrary text and runtime element mutation actions;
 - sampled package audio, STATE SFX actions, audio audition, or audio
   compatibility reporting;
 - 4-tone and 16-tone fixed dither asset import;
@@ -212,7 +221,7 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `12`.
+protocol is version `1`; the current service API is version `13`.
 
 | Operation | Purpose |
 |---|---|
@@ -224,12 +233,12 @@ protocol is version `1`; the current service API is version `12`.
 | `project.build_package` | compile authoritative `.egg` bytes and compatibility report |
 | `project.compatibility_report` | inspect target/resource compatibility without exporting |
 | `project.apply_commands` | apply typed semantic edit commands and return a new project revision |
-| `project.save` | persist the current in-memory project manifest and scene records to authored source files |
+| `project.save` | persist the current in-memory project manifest, scene records, and asset catalogs to authored source files |
 | `project.undo` | undo the last accepted command within the bounded service history |
 | `project.redo` | redo the last undone command within the bounded service history |
 | `project.scene_thumbnails` | return one side-effect-free initial framebuffer snapshot per compiled STATE scene |
 | `project.preview_reset` | start one selected STATE scene directly |
-| `project.preview_input` | inject one logical A/B/L/R or JOY_LEFT/JOY_RIGHT/JOY_UP/JOY_DOWN input |
+| `project.preview_input` | inject one logical A/B/L/R, short START, or JOY_LEFT/JOY_RIGHT/JOY_UP/JOY_DOWN input |
 | `project.preview_advance` | advance deterministic preview time by an explicit duration |
 
 Every project operation after load uses `project_revision`. Every preview
@@ -319,22 +328,25 @@ visuals. Project mutation controls remain deferred to Stage 2.
 
 No scene-canvas or graph control may directly mutate normalized JSON in React.
 
-Implementation status: started. Service API version 12 exposes
+Implementation status: active. Service API version 13 exposes
 `project.apply_commands` with the first accepted commands,
 `state.rename`, `route.set_target`, `route.set_guard`, and
 `route.set_action`, plus `route.add_scene_exit` and
 `route.delete_scene_exit` for creating/deleting actionless direct scene exits,
-`render_element.set_position` for moving retained scene elements within the
-168x144 display bounds, and `editor.scene_flow.set_node_position` for
-editor-only scene-flow layout. Local Logic state cards use
+retained-element `add`, `delete`, `set_position`, `set_bounds`, `set_layer`,
+`set_visibility`, `set_z_order`, and `set_visual_ref`; complete waiting-visual
+upsert/deletion and per-state waiting-visual selection; and masked-1bpp asset
+record upsert/deletion. Catalog animation edits persist for future SEQUENCE
+work but are explicitly not STATE-placeable. `editor.scene_flow.set_node_position`
+owns editor-only scene-flow layout. Local Logic state cards use
 `editor.state_graph.set_node_position`, storing per-scene, per-state editor-only
 layout coordinates that must not affect package bytes.
 `route.set_action` edits existing ordered route actions only; adding, removing,
 and reordering actions remain deferred. Accepted commands update the in-memory
 Python-owned project, return a new `project_revision`, normalized document,
 diagnostics, and dirty state, and reject stale revisions.
-`project.save` persists the current in-memory project manifest and scene records
-back to their authored JSON files and clears dirty state. Peep Studio also
+`project.save` persists the current in-memory project manifest, scene records,
+and asset catalogs back to their authored JSON files and clears dirty state. Peep Studio also
 exposes Save As for copying the current `.peepproj`
 directory to a user-chosen location; checked-in examples opened through the
 example button are temporary copies. `project.undo` and `project.redo` keep a
@@ -345,7 +357,7 @@ dirty state is computed against the last saved semantic project hash.
 
 - add, remove, select, move, and reorder retained visual elements;
 - edit bounds, platform layer, focus ownership, sprite/frame reference, and
-  animation reference;
+  bounded STATE waiting-phase binding;
 - add an asset browser for the implemented native masked-1bpp PNG subset;
 - expose only visual controls supported by the selected target profile and
   compiled package schema; do not map canvas tools to firmware draw calls;
@@ -369,9 +381,12 @@ panel only; they do not affect package output. Existing retained elements can
 be moved on the placement canvas through the Python
 `render_element.set_position` command with pixel snapping and bounds
 validation. Peep Studio also exposes exact selected-object X/Y fields and
-arrow-key nudging using that same command. Visual element add, remove, resize,
-reorder, asset assignment, and animation assignment remain pending and must be
-implemented through Python service commands.
+arrow-key nudging using that same command. Service API 13 now provides the
+remaining retained-element CRUD/property commands and bounded STATE
+waiting-loop commands. React controls for add/remove/resize/reorder, frame
+assignment, layer/visibility, asset records, and the phase timeline are the
+next GUI-branch work. The GUI must not offer general `frame_animation` binding
+in STATE; it edits `waiting_visual` phases instead.
 
 ### Stage 4: STATE Graph Editing
 
@@ -487,7 +502,9 @@ Peep Studio uses distinct views for distinct semantics:
 - the package **scene-flow graph** owns scene nodes and declared cross-scene
   routes;
 - inspectors own route, guard, action, target, and typed property details;
-- the animation timeline owns phase visuals and cadence.
+- the STATE waiting timeline owns bounded repeating phase visuals, combined
+  steps, cadence, and settled step; the future SEQUENCE timeline owns
+  arbitrary-duration animation.
 
 STATE nodes and scene nodes are not interchangeable. Visual elements must not
 be represented as behavior nodes merely because both surfaces support

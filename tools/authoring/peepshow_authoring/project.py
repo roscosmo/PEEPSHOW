@@ -26,6 +26,7 @@ LOGICAL_INPUT_SOURCES = {
     "BUTTON_B",
     "BUTTON_L",
     "BUTTON_R",
+    "BUTTON_START",
     "JOY_LEFT",
     "JOY_RIGHT",
     "JOY_UP",
@@ -74,6 +75,8 @@ class ProjectBundle:
     project: dict[str, Any]
     scenes: tuple[dict[str, Any], ...]
     scene_sources: tuple[str, ...]
+    asset_catalogs: tuple[dict[str, Any], ...]
+    asset_catalog_sources: tuple[str, ...]
     assets: tuple[dict[str, Any], ...]
     animations: tuple[dict[str, Any], ...]
     frames: tuple[Masked1bppFrame, ...]
@@ -427,6 +430,253 @@ def _render_coordinate(value: Any, path: str) -> int:
     return value
 
 
+def _render_dimension(value: Any, path: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ProjectCommandError("RENDER_BOUNDS_INVALID", f"{path} must be a positive integer")
+    return value
+
+
+def _render_z_order(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 255:
+        raise ProjectCommandError("RENDER_BOUNDS_INVALID", "command.z_order must be in 0..255")
+    return value
+
+
+def _target_render_model(
+    scenes: list[dict[str, Any]],
+    scene_id: Any,
+    render_model_id: Any,
+) -> dict[str, Any]:
+    issues: list[ValidationIssue] = []
+    _stable_id(scene_id, "command.scene_id", issues)
+    _stable_id(render_model_id, "command.render_model_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    scene = next((item for item in scenes if item.get("scene_id") == scene_id), None)
+    if scene is None:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
+    render_models = scene.get("render_models")
+    if not isinstance(render_models, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.render_models must be an array")
+    render_model = next(
+        (
+            item
+            for item in render_models
+            if isinstance(item, dict) and item.get("visual_id") == render_model_id
+        ),
+        None,
+    )
+    if render_model is None:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown render model '{render_model_id}'")
+    return render_model
+
+
+def _target_render_element(render_model: dict[str, Any], element_id: Any) -> dict[str, Any]:
+    issues: list[ValidationIssue] = []
+    _stable_id(element_id, "command.element_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    elements = render_model.get("elements")
+    if not isinstance(elements, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "render_model.elements must be an array")
+    element = next(
+        (
+            item
+            for item in elements
+            if isinstance(item, dict) and item.get("element_id") == element_id
+        ),
+        None,
+    )
+    if element is None:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown render element '{element_id}'")
+    return element
+
+
+def _validate_render_bounds(x: int, y: int, width: int, height: int) -> None:
+    if x + width > 168 or y + height > 144:
+        raise ProjectCommandError("RENDER_BOUNDS_INVALID", "element would be outside the 168x144 display")
+
+
+def _apply_render_element_add(
+    scenes: list[dict[str, Any]],
+    frames: list[Masked1bppFrame],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "render_model_id", "element"},
+        {"kind", "scene_id", "render_model_id", "element", "command_id"},
+    )
+    element = command.get("element")
+    if not isinstance(element, dict):
+        raise ProjectCommandError("COMMAND_SHAPE_INVALID", "command.element must be an object")
+    required = {"element_id", "kind", "x", "y", "width", "height", "z_order"}
+    allowed = required | {"visual_ref", "focus_role", "layer", "visible"}
+    _require_command_fields(element, required, allowed)
+    element_id = element.get("element_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(element_id, "command.element.element_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    kind = element.get("kind")
+    if kind not in {"sprite", "line", "outline_rect", "filled_rect", "circle", "ellipse"}:
+        raise ProjectCommandError("RENDER_KIND_INVALID", "unsupported retained element type")
+    x = _render_coordinate(element.get("x"), "command.element.x")
+    y = _render_coordinate(element.get("y"), "command.element.y")
+    width = _render_dimension(element.get("width"), "command.element.width")
+    height = _render_dimension(element.get("height"), "command.element.height")
+    _validate_render_bounds(x, y, width, height)
+    _render_z_order(element.get("z_order"))
+    layer = element.get("layer", "UI" if element.get("focus_role", "none") == "focus" else "SCENE")
+    visible = element.get("visible", True)
+    focus_role = element.get("focus_role", "none")
+    if layer not in {"BACKGROUND", "SCENE", "UI"}:
+        raise ProjectCommandError("RENDER_LAYER_INVALID", "layer must be BACKGROUND, SCENE, or UI")
+    if not isinstance(visible, bool):
+        raise ProjectCommandError("RENDER_VISIBILITY_INVALID", "visible must be boolean")
+    if focus_role not in {"none", "focus"}:
+        raise ProjectCommandError("RENDER_FOCUS_INVALID", "focus_role must be none or focus")
+    visual_ref = element.get("visual_ref")
+    available_visuals = {frame.frame_id for frame in frames}
+    if kind == "sprite":
+        if visual_ref not in available_visuals:
+            raise ProjectCommandError("ASSET_FRAME_UNKNOWN", f"unknown sprite visual '{visual_ref}'")
+    elif "visual_ref" in element:
+        raise ProjectCommandError("RENDER_VISUAL_REF_INVALID", "primitives do not reference assets")
+    if focus_role == "focus" and (kind != "sprite" or layer != "UI" or not visible):
+        raise ProjectCommandError("RENDER_FOCUS_INVALID", "focus must be a visible UI sprite")
+
+    render_model = _target_render_model(
+        scenes,
+        command.get("scene_id"),
+        command.get("render_model_id"),
+    )
+    elements = render_model.setdefault("elements", [])
+    if any(isinstance(item, dict) and item.get("element_id") == element_id for item in elements):
+        raise ProjectCommandError("PROJECT_ID_DUPLICATE", f"render element '{element_id}' already exists")
+    elements.append(deepcopy(element))
+    return {
+        "kind": "render_element.add",
+        "scene_id": command.get("scene_id"),
+        "render_model_id": command.get("render_model_id"),
+        "element_id": element_id,
+    }
+
+
+def _apply_render_element_delete(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "render_model_id", "element_id"},
+        {"kind", "scene_id", "render_model_id", "element_id", "command_id"},
+    )
+    scene_id = command.get("scene_id")
+    element_id = command.get("element_id")
+    render_model = _target_render_model(scenes, scene_id, command.get("render_model_id"))
+    element = _target_render_element(render_model, element_id)
+    if element.get("focus_role", "none") == "focus":
+        raise ProjectCommandError("RENDER_FOCUS_INVALID", "the focus element cannot be deleted")
+    scene = next(item for item in scenes if item.get("scene_id") == scene_id)
+    for waiting in scene.get("waiting_visuals", []):
+        for animated in waiting.get("elements", []):
+            if animated.get("source_element_ref") == element_id:
+                raise ProjectCommandError(
+                    "WAIT_ELEMENT_IN_USE",
+                    f"render element '{element_id}' is used by waiting visual '{waiting.get('waiting_visual_id')}'",
+                )
+    render_model["elements"].remove(element)
+    return {
+        "kind": "render_element.delete",
+        "scene_id": scene_id,
+        "render_model_id": command.get("render_model_id"),
+        "element_id": element_id,
+    }
+
+
+def _apply_render_element_set_bounds(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "render_model_id", "element_id", "x", "y", "width", "height"},
+        {"kind", "scene_id", "render_model_id", "element_id", "x", "y", "width", "height", "command_id"},
+    )
+    x = _render_coordinate(command.get("x"), "command.x")
+    y = _render_coordinate(command.get("y"), "command.y")
+    width = _render_dimension(command.get("width"), "command.width")
+    height = _render_dimension(command.get("height"), "command.height")
+    _validate_render_bounds(x, y, width, height)
+    render_model = _target_render_model(scenes, command.get("scene_id"), command.get("render_model_id"))
+    element = _target_render_element(render_model, command.get("element_id"))
+    previous = {key: element.get(key) for key in ("x", "y", "width", "height")}
+    element.update({"x": x, "y": y, "width": width, "height": height})
+    return {
+        "kind": "render_element.set_bounds",
+        "scene_id": command.get("scene_id"),
+        "render_model_id": command.get("render_model_id"),
+        "element_id": command.get("element_id"),
+        "previous": previous,
+        "bounds": {"x": x, "y": y, "width": width, "height": height},
+    }
+
+
+def _apply_render_element_set_property(
+    scenes: list[dict[str, Any]],
+    frames: list[Masked1bppFrame],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    kind = command.get("kind")
+    property_by_kind = {
+        "render_element.set_layer": "layer",
+        "render_element.set_visibility": "visible",
+        "render_element.set_z_order": "z_order",
+        "render_element.set_visual_ref": "visual_ref",
+    }
+    property_name = property_by_kind[kind]
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "render_model_id", "element_id", property_name},
+        {"kind", "scene_id", "render_model_id", "element_id", property_name, "command_id"},
+    )
+    render_model = _target_render_model(scenes, command.get("scene_id"), command.get("render_model_id"))
+    element = _target_render_element(render_model, command.get("element_id"))
+    value = command.get(property_name)
+    if property_name == "layer":
+        if value not in {"BACKGROUND", "SCENE", "UI"}:
+            raise ProjectCommandError("RENDER_LAYER_INVALID", "layer must be BACKGROUND, SCENE, or UI")
+        if element.get("focus_role", "none") == "focus" and value != "UI":
+            raise ProjectCommandError("RENDER_FOCUS_INVALID", "the focus element must remain on UI")
+    elif property_name == "visible":
+        if not isinstance(value, bool):
+            raise ProjectCommandError("RENDER_VISIBILITY_INVALID", "visible must be boolean")
+        if element.get("focus_role", "none") == "focus" and not value:
+            raise ProjectCommandError("RENDER_FOCUS_INVALID", "the focus element must remain visible")
+    elif property_name == "z_order":
+        value = _render_z_order(value)
+    elif property_name == "visual_ref":
+        if element.get("kind") != "sprite":
+            raise ProjectCommandError("RENDER_VISUAL_REF_INVALID", "only sprites reference visuals")
+        available_visuals = {frame.frame_id for frame in frames}
+        if value not in available_visuals:
+            raise ProjectCommandError("ASSET_FRAME_UNKNOWN", f"unknown sprite visual '{value}'")
+    previous = element.get(property_name)
+    element[property_name] = value
+    return {
+        "kind": kind,
+        "scene_id": command.get("scene_id"),
+        "render_model_id": command.get("render_model_id"),
+        "element_id": command.get("element_id"),
+        "previous": previous,
+        property_name: value,
+    }
+
+
 def _apply_render_element_set_position(
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
@@ -487,6 +737,313 @@ def _apply_render_element_set_position(
             raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown render element '{element_id}'")
         raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown render model '{render_model_id}'")
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
+
+
+def _apply_waiting_visual_upsert(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "waiting_visual"},
+        {"kind", "scene_id", "waiting_visual", "command_id"},
+    )
+    scene_id = command.get("scene_id")
+    waiting_visual = command.get("waiting_visual")
+    issues: list[ValidationIssue] = []
+    _stable_id(scene_id, "command.scene_id", issues)
+    if not isinstance(waiting_visual, dict):
+        raise ProjectCommandError("COMMAND_SHAPE_INVALID", "command.waiting_visual must be an object")
+    waiting_visual_id = waiting_visual.get("waiting_visual_id")
+    _stable_id(waiting_visual_id, "command.waiting_visual.waiting_visual_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    scene = next((item for item in scenes if item.get("scene_id") == scene_id), None)
+    if scene is None:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
+    waiting_visuals = scene.setdefault("waiting_visuals", [])
+    existing = next(
+        (
+            item
+            for item in waiting_visuals
+            if isinstance(item, dict) and item.get("waiting_visual_id") == waiting_visual_id
+        ),
+        None,
+    )
+    created = existing is None
+    if created:
+        if len(waiting_visuals) >= 32:
+            raise ProjectCommandError("PROJECT_COUNT_INVALID", "scene already has 32 waiting visuals")
+        waiting_visuals.append(deepcopy(waiting_visual))
+    else:
+        waiting_visuals[waiting_visuals.index(existing)] = deepcopy(waiting_visual)
+    return {
+        "kind": "waiting_visual.upsert",
+        "scene_id": scene_id,
+        "waiting_visual_id": waiting_visual_id,
+        "created": created,
+    }
+
+
+def _apply_waiting_visual_delete(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "waiting_visual_id"},
+        {"kind", "scene_id", "waiting_visual_id", "command_id"},
+    )
+    scene_id = command.get("scene_id")
+    waiting_visual_id = command.get("waiting_visual_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(scene_id, "command.scene_id", issues)
+    _stable_id(waiting_visual_id, "command.waiting_visual_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    scene = next((item for item in scenes if item.get("scene_id") == scene_id), None)
+    if scene is None:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
+    if any(state.get("waiting_visual_ref") == waiting_visual_id for state in scene.get("states", [])):
+        raise ProjectCommandError("WAIT_VISUAL_IN_USE", "waiting visual is referenced by a state")
+    wait_default = scene.get("reactive_wait_default")
+    if isinstance(wait_default, dict) and wait_default.get("waiting_visual_ref") == waiting_visual_id:
+        raise ProjectCommandError("WAIT_VISUAL_IN_USE", "waiting visual is the reactive wait default")
+    waiting_visuals = scene.get("waiting_visuals")
+    if not isinstance(waiting_visuals, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.waiting_visuals must be an array")
+    target = next(
+        (
+            item
+            for item in waiting_visuals
+            if isinstance(item, dict) and item.get("waiting_visual_id") == waiting_visual_id
+        ),
+        None,
+    )
+    if target is None:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown waiting visual '{waiting_visual_id}'")
+    waiting_visuals.remove(target)
+    return {
+        "kind": "waiting_visual.delete",
+        "scene_id": scene_id,
+        "waiting_visual_id": waiting_visual_id,
+    }
+
+
+def _apply_state_set_waiting_visual(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "state_id", "waiting_visual_id"},
+        {"kind", "scene_id", "state_id", "waiting_visual_id", "command_id"},
+    )
+    scene_id = command.get("scene_id")
+    state_id = command.get("state_id")
+    waiting_visual_id = command.get("waiting_visual_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(scene_id, "command.scene_id", issues)
+    _stable_id(state_id, "command.state_id", issues)
+    _stable_id(waiting_visual_id, "command.waiting_visual_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    scene = next((item for item in scenes if item.get("scene_id") == scene_id), None)
+    if scene is None:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
+    if waiting_visual_id not in {
+        item.get("waiting_visual_id")
+        for item in scene.get("waiting_visuals", [])
+        if isinstance(item, dict)
+    }:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown waiting visual '{waiting_visual_id}'")
+    state = next(
+        (
+            item
+            for item in scene.get("states", [])
+            if isinstance(item, dict) and item.get("state_id") == state_id
+        ),
+        None,
+    )
+    if state is None:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown state '{state_id}'")
+    previous = state.get("waiting_visual_ref")
+    state["waiting_visual_ref"] = waiting_visual_id
+    return {
+        "kind": "state.set_waiting_visual",
+        "scene_id": scene_id,
+        "state_id": state_id,
+        "previous": previous,
+        "waiting_visual_id": waiting_visual_id,
+    }
+
+
+def _primary_asset_catalog(
+    project: dict[str, Any],
+    catalogs: list[dict[str, Any]],
+    sources: list[str],
+) -> dict[str, Any]:
+    if catalogs:
+        return catalogs[0]
+    source = "assets/catalog.json"
+    catalog = {
+        "schema_id": "peepshow.authoring.assets",
+        "schema_version": 1,
+        "assets": [],
+        "animations": [],
+    }
+    catalogs.append(catalog)
+    sources.append(source)
+    project.setdefault("asset_sources", []).append(source)
+    return catalog
+
+
+def _catalog_record(
+    catalogs: list[dict[str, Any]],
+    collection: str,
+    id_field: str,
+    record_id: Any,
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    for catalog in catalogs:
+        records = catalog.get(collection)
+        if not isinstance(records, list):
+            continue
+        for record in records:
+            if isinstance(record, dict) and record.get(id_field) == record_id:
+                return catalog, record
+    return None
+
+
+def _apply_asset_upsert(
+    project: dict[str, Any],
+    catalogs: list[dict[str, Any]],
+    sources: list[str],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(command, {"kind", "asset"}, {"kind", "asset", "command_id"})
+    asset = command.get("asset")
+    if not isinstance(asset, dict):
+        raise ProjectCommandError("COMMAND_SHAPE_INVALID", "command.asset must be an object")
+    asset_id = asset.get("asset_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(asset_id, "command.asset.asset_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    located = _catalog_record(catalogs, "assets", "asset_id", asset_id)
+    created = located is None
+    if located is None:
+        catalog = _primary_asset_catalog(project, catalogs, sources)
+        records = catalog.setdefault("assets", [])
+        if len(records) >= 128:
+            raise ProjectCommandError("PROJECT_COUNT_INVALID", "asset catalog already has 128 assets")
+        records.append(deepcopy(asset))
+    else:
+        catalog, previous = located
+        records = catalog["assets"]
+        records[records.index(previous)] = deepcopy(asset)
+    return {"kind": "asset.upsert", "asset_id": asset_id, "created": created}
+
+
+def _apply_asset_delete(
+    catalogs: list[dict[str, Any]],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(command, {"kind", "asset_id"}, {"kind", "asset_id", "command_id"})
+    asset_id = command.get("asset_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(asset_id, "command.asset_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    located = _catalog_record(catalogs, "assets", "asset_id", asset_id)
+    if located is None:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown asset '{asset_id}'")
+    catalog, asset = located
+    frame_ids = {
+        frame.get("frame_id")
+        for frame in asset.get("frames", [])
+        if isinstance(frame, dict)
+    }
+    for animation_catalog in catalogs:
+        for animation in animation_catalog.get("animations", []):
+            if frame_ids.intersection(animation.get("frame_refs", [])):
+                raise ProjectCommandError("ASSET_IN_USE", "asset frames are referenced by an animation")
+    for scene in scenes:
+        for model in scene.get("render_models", []):
+            for element in model.get("elements", []):
+                if element.get("visual_ref") in frame_ids:
+                    raise ProjectCommandError("ASSET_IN_USE", "asset frame is referenced by a render element")
+        for waiting in scene.get("waiting_visuals", []):
+            for element in waiting.get("elements", []):
+                if frame_ids.intersection(element.get("phase_visual_refs", [])):
+                    raise ProjectCommandError("ASSET_IN_USE", "asset frame is referenced by a waiting visual")
+    catalog["assets"].remove(asset)
+    return {"kind": "asset.delete", "asset_id": asset_id}
+
+
+def _apply_animation_upsert(
+    project: dict[str, Any],
+    catalogs: list[dict[str, Any]],
+    sources: list[str],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(command, {"kind", "animation"}, {"kind", "animation", "command_id"})
+    animation = command.get("animation")
+    if not isinstance(animation, dict):
+        raise ProjectCommandError("COMMAND_SHAPE_INVALID", "command.animation must be an object")
+    animation_id = animation.get("animation_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(animation_id, "command.animation.animation_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    located = _catalog_record(catalogs, "animations", "animation_id", animation_id)
+    created = located is None
+    if located is None:
+        catalog = _primary_asset_catalog(project, catalogs, sources)
+        records = catalog.setdefault("animations", [])
+        if len(records) >= 128:
+            raise ProjectCommandError("PROJECT_COUNT_INVALID", "asset catalog already has 128 animations")
+        records.append(deepcopy(animation))
+    else:
+        catalog, previous = located
+        records = catalog["animations"]
+        records[records.index(previous)] = deepcopy(animation)
+    return {"kind": "animation.upsert", "animation_id": animation_id, "created": created}
+
+
+def _apply_animation_delete(
+    catalogs: list[dict[str, Any]],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "animation_id"},
+        {"kind", "animation_id", "command_id"},
+    )
+    animation_id = command.get("animation_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(animation_id, "command.animation_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    located = _catalog_record(catalogs, "animations", "animation_id", animation_id)
+    if located is None:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown animation '{animation_id}'")
+    for scene in scenes:
+        for model in scene.get("render_models", []):
+            for element in model.get("elements", []):
+                if element.get("visual_ref") == animation_id:
+                    raise ProjectCommandError("ASSET_IN_USE", "animation is referenced by a render element")
+    catalog, animation = located
+    catalog["animations"].remove(animation)
+    return {"kind": "animation.delete", "animation_id": animation_id}
 
 
 def _layout_coordinate(value: Any, path: str) -> int:
@@ -1124,16 +1681,7 @@ def _check_scene(
         path = f"{base}.input_actions[{action_id}]"
         _check_keys(action, {"action_id", "logical_source"}, path, issues)
         source_value = action.get("logical_source")
-        if source_value not in {
-            "BUTTON_A",
-            "BUTTON_B",
-            "BUTTON_L",
-            "BUTTON_R",
-            "JOY_LEFT",
-            "JOY_RIGHT",
-            "JOY_UP",
-            "JOY_DOWN",
-        }:
+        if source_value not in LOGICAL_INPUT_SOURCES:
             _issue(issues, "INPUT_SOURCE_INVALID", f"{path}.logical_source", "unsupported logical source")
         elif source_value in logical_sources:
             _issue(issues, "INPUT_SOURCE_DUPLICATE", f"{path}.logical_source", "logical source is already bound")
@@ -1172,12 +1720,12 @@ def _check_scene(
                 element_kinds[element_id] = kind
                 if kind == "sprite":
                     _stable_id(element.get("visual_ref"), f"{item_path}.visual_ref", issues)
-                    if element.get("visual_ref") not in frame_ids | animation_ids:
+                    if element.get("visual_ref") not in frame_ids:
                         _issue(
                             issues,
                             "ASSET_FRAME_UNKNOWN",
                             f"{item_path}.visual_ref",
-                            "sprite visual_ref must select a compiled frame or animation",
+                            "STATE sprite visual_ref must select a compiled frame; STOP2 loops use waiting_visual phases",
                         )
                 elif "visual_ref" in element:
                     _issue(issues, "RENDER_VISUAL_REF_INVALID", f"{item_path}.visual_ref", "primitives do not reference assets")
@@ -1375,6 +1923,71 @@ def _scene_path(root: Path, source: Any, issues: list[ValidationIssue]) -> Path 
     return path
 
 
+def _compile_asset_catalogs(
+    root: Path,
+    catalogs: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[Masked1bppFrame], list[ValidationIssue]]:
+    issues: list[ValidationIssue] = []
+    assets: list[dict[str, Any]] = []
+    animations: list[dict[str, Any]] = []
+    frames: list[Masked1bppFrame] = []
+    asset_ids: set[str] = set()
+    frame_ids: set[str] = set()
+    animation_ids: set[str] = set()
+    for catalog_index, catalog in enumerate(catalogs):
+        base = f"asset_catalogs[{catalog_index}]"
+        _check_keys(catalog, {"schema_id", "schema_version", "assets", "animations"}, base, issues)
+        if catalog.get("schema_id") != "peepshow.authoring.assets" or catalog.get("schema_version") != 1:
+            _issue(issues, "ASSET_SCHEMA_UNSUPPORTED", base, "expected peepshow.authoring.assets version 1")
+        catalog_assets = _unique_ids(catalog.get("assets"), "asset_id", f"{base}.assets", issues, 128)
+        for asset_id, asset in catalog_assets.items():
+            asset_path = f"{base}.assets[{asset_id}]"
+            if asset_id in asset_ids:
+                _issue(issues, "PROJECT_ID_DUPLICATE", f"{asset_path}.asset_id", f"duplicate ID '{asset_id}'")
+                continue
+            asset_ids.add(asset_id)
+            for frame in asset.get("frames", []) if isinstance(asset.get("frames"), list) else []:
+                if not isinstance(frame, dict) or not isinstance(frame.get("frame_id"), str):
+                    continue
+                frame_id = frame["frame_id"]
+                if frame_id in frame_ids:
+                    _issue(issues, "PROJECT_ID_DUPLICATE", f"{asset_path}.frames", f"duplicate ID '{frame_id}'")
+                else:
+                    frame_ids.add(frame_id)
+            frames.extend(_check_asset(asset, asset_path, root, issues))
+            assets.append(asset)
+        catalog_animations = _unique_ids(
+            catalog.get("animations"),
+            "animation_id",
+            f"{base}.animations",
+            issues,
+            128,
+        )
+        for animation_id, animation in catalog_animations.items():
+            animation_path = f"{base}.animations[{animation_id}]"
+            if animation_id in animation_ids:
+                _issue(
+                    issues,
+                    "PROJECT_ID_DUPLICATE",
+                    f"{animation_path}.animation_id",
+                    f"duplicate ID '{animation_id}'",
+                )
+                continue
+            animation_ids.add(animation_id)
+            _check_animation(animation, animation_path, issues)
+            animations.append(animation)
+    for animation in animations:
+        for index, frame_ref in enumerate(animation.get("frame_refs", [])):
+            if frame_ref not in frame_ids:
+                _issue(
+                    issues,
+                    "ASSET_FRAME_UNKNOWN",
+                    f"animation[{animation.get('animation_id')}].frame_refs[{index}]",
+                    f"unknown frame '{frame_ref}'",
+                )
+    return assets, animations, frames, issues
+
+
 def load_project(project_root: str | Path) -> ProjectBundle:
     root = Path(project_root)
     issues: list[ValidationIssue] = []
@@ -1382,16 +1995,18 @@ def load_project(project_root: str | Path) -> ProjectBundle:
         _issue(issues, "PROJECT_SUFFIX_INVALID", str(root), "editable project directories must end in .peepproj")
     if not root.is_dir():
         _issue(issues, "PROJECT_ROOT_MISSING", str(root), "project directory does not exist")
-        return ProjectBundle(root, {}, (), (), (), (), (), tuple(issues))
+        return ProjectBundle(root, {}, (), (), (), (), (), (), (), tuple(issues))
 
     project = _read_json(root / "project.json", issues, "PROJECT_MANIFEST_INVALID")
     if project is None:
-        return ProjectBundle(root, {}, (), (), (), (), (), tuple(issues))
+        return ProjectBundle(root, {}, (), (), (), (), (), (), (), tuple(issues))
     _check_project(project, issues)
 
     assets: list[dict[str, Any]] = []
     animations: list[dict[str, Any]] = []
     frames: list[Masked1bppFrame] = []
+    asset_catalogs: list[dict[str, Any]] = []
+    loaded_asset_sources: list[str] = []
     asset_ids: set[str] = set()
     frame_ids: set[str] = set()
     animation_ids: set[str] = set()
@@ -1406,6 +2021,8 @@ def load_project(project_root: str | Path) -> ProjectBundle:
             catalog = _read_json(path, issues, "ASSET_SOURCE_INVALID")
             if catalog is None:
                 continue
+            asset_catalogs.append(catalog)
+            loaded_asset_sources.append(str(source))
             base = f"assets[{source}]"
             _check_keys(catalog, {"schema_id", "schema_version", "assets", "animations"}, base, issues)
             if catalog.get("schema_id") != "peepshow.authoring.assets" or catalog.get("schema_version") != 1:
@@ -1562,6 +2179,8 @@ def load_project(project_root: str | Path) -> ProjectBundle:
         project,
         tuple(scenes),
         tuple(loaded_scene_sources),
+        tuple(asset_catalogs),
+        tuple(loaded_asset_sources),
         tuple(assets),
         tuple(animations),
         tuple(frames),
@@ -1582,8 +2201,11 @@ def apply_project_commands(
 
     project = deepcopy(bundle.project)
     scenes = deepcopy(list(bundle.scenes))
+    asset_catalogs = deepcopy(list(bundle.asset_catalogs))
+    asset_catalog_sources = list(bundle.asset_catalog_sources)
     assets = deepcopy(list(bundle.assets))
     animations = deepcopy(list(bundle.animations))
+    frames = list(bundle.frames)
     applied: list[dict[str, Any]] = []
 
     for command in commands:
@@ -1600,6 +2222,49 @@ def apply_project_commands(
             applied.append(_apply_route_delete_scene_exit(scenes, command))
         elif kind == "render_element.set_position":
             applied.append(_apply_render_element_set_position(scenes, command))
+        elif kind == "render_element.add":
+            applied.append(_apply_render_element_add(scenes, frames, command))
+        elif kind == "render_element.delete":
+            applied.append(_apply_render_element_delete(scenes, command))
+        elif kind == "render_element.set_bounds":
+            applied.append(_apply_render_element_set_bounds(scenes, command))
+        elif kind in {
+            "render_element.set_layer",
+            "render_element.set_visibility",
+            "render_element.set_z_order",
+            "render_element.set_visual_ref",
+        }:
+            applied.append(_apply_render_element_set_property(scenes, frames, command))
+        elif kind == "waiting_visual.upsert":
+            applied.append(_apply_waiting_visual_upsert(scenes, command))
+        elif kind == "waiting_visual.delete":
+            applied.append(_apply_waiting_visual_delete(scenes, command))
+        elif kind == "state.set_waiting_visual":
+            applied.append(_apply_state_set_waiting_visual(scenes, command))
+        elif kind == "asset.upsert":
+            applied.append(_apply_asset_upsert(project, asset_catalogs, asset_catalog_sources, command))
+            assets, animations, frames, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            if catalog_issues:
+                issue = catalog_issues[0]
+                raise ProjectCommandError(issue.code, issue.message)
+        elif kind == "asset.delete":
+            applied.append(_apply_asset_delete(asset_catalogs, scenes, command))
+            assets, animations, frames, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            if catalog_issues:
+                issue = catalog_issues[0]
+                raise ProjectCommandError(issue.code, issue.message)
+        elif kind == "animation.upsert":
+            applied.append(_apply_animation_upsert(project, asset_catalogs, asset_catalog_sources, command))
+            assets, animations, frames, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            if catalog_issues:
+                issue = catalog_issues[0]
+                raise ProjectCommandError(issue.code, issue.message)
+        elif kind == "animation.delete":
+            applied.append(_apply_animation_delete(asset_catalogs, scenes, command))
+            assets, animations, frames, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            if catalog_issues:
+                issue = catalog_issues[0]
+                raise ProjectCommandError(issue.code, issue.message)
         elif kind == "editor.scene_flow.set_node_position":
             applied.append(_apply_scene_flow_node_position(project, scenes, command))
         elif kind == "editor.state_graph.set_node_position":
@@ -1611,15 +2276,30 @@ def apply_project_commands(
         else:
             raise ProjectCommandError("COMMAND_KIND_UNKNOWN", f"unknown command kind '{kind}'")
 
+    frame_ids = {frame.frame_id for frame in frames}
+    animation_ids = {
+        animation.get("animation_id")
+        for animation in animations
+        if isinstance(animation.get("animation_id"), str)
+    }
+    validation_issues: list[ValidationIssue] = []
+    for index, scene in enumerate(scenes):
+        _check_scene(scene, f"scenes[{index}]", frame_ids, animation_ids, validation_issues)
+    if validation_issues:
+        issue = validation_issues[0]
+        raise ProjectCommandError(issue.code, f"{issue.path}: {issue.message}")
+
     return (
         ProjectBundle(
             bundle.root,
             project,
             tuple(scenes),
             bundle.scene_sources,
+            tuple(asset_catalogs),
+            tuple(asset_catalog_sources),
             tuple(assets),
             tuple(animations),
-            bundle.frames,
+            tuple(frames),
             (),
         ),
         tuple(applied),
@@ -1674,6 +2354,7 @@ def save_project(bundle: ProjectBundle) -> tuple[str, ...]:
         )
         temp_path = path.with_name(f".{path.name}.tmp")
         try:
+            path.parent.mkdir(parents=True, exist_ok=True)
             temp_path.write_text(encoded, encoding="utf-8")
             temp_path.replace(path)
         except OSError as exc:
@@ -1682,6 +2363,35 @@ def save_project(bundle: ProjectBundle) -> tuple[str, ...]:
             except OSError:
                 pass
             raise ProjectCommandError("PROJECT_SAVE_FAILED", f"could not save scene source '{source}': {exc}") from exc
+        written.append(source)
+
+    if len(bundle.asset_catalog_sources) != len(bundle.asset_catalogs):
+        raise ProjectCommandError("PROJECT_SAVE_FAILED", "loaded asset sources do not match asset catalogs")
+    for source, catalog in zip(bundle.asset_catalog_sources, bundle.asset_catalogs, strict=True):
+        try:
+            path = resolve_project_path(bundle.root, source, "asset catalog path")
+        except ImageAssetError as exc:
+            raise ProjectCommandError("ASSET_SOURCE_INVALID", str(exc)) from exc
+        encoded = (
+            json.dumps(
+                catalog,
+                ensure_ascii=True,
+                indent=2,
+                sort_keys=False,
+            )
+            + "\n"
+        )
+        temp_path = path.with_name(f".{path.name}.tmp")
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temp_path.write_text(encoded, encoding="utf-8")
+            temp_path.replace(path)
+        except OSError as exc:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise ProjectCommandError("PROJECT_SAVE_FAILED", f"could not save asset source '{source}': {exc}") from exc
         written.append(source)
     return tuple(written)
 

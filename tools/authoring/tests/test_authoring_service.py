@@ -267,7 +267,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(12, SERVICE_API_VERSION)
+        self.assertEqual(13, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -664,6 +664,211 @@ class AuthoringServiceTests(unittest.TestCase):
                 )
             )
         self.assertEqual("RENDER_BOUNDS_INVALID", raised.exception.code)
+
+    def test_state_presentation_commands_add_and_edit_retained_element(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "render_element.add",
+                            "scene_id": "state_demo",
+                            "render_model_id": "view_center",
+                            "element": {
+                                "element_id": "menu_box",
+                                "kind": "outline_rect",
+                                "x": 20,
+                                "y": 20,
+                                "width": 40,
+                                "height": 16,
+                                "z_order": 2,
+                                "layer": "SCENE",
+                                "visible": True,
+                            },
+                        },
+                        {
+                            "kind": "render_element.set_bounds",
+                            "scene_id": "state_demo",
+                            "render_model_id": "view_center",
+                            "element_id": "menu_box",
+                            "x": 24,
+                            "y": 22,
+                            "width": 48,
+                            "height": 18,
+                        },
+                        {
+                            "kind": "render_element.set_layer",
+                            "scene_id": "state_demo",
+                            "render_model_id": "view_center",
+                            "element_id": "menu_box",
+                            "layer": "BACKGROUND",
+                        },
+                        {
+                            "kind": "render_element.set_visibility",
+                            "scene_id": "state_demo",
+                            "render_model_id": "view_center",
+                            "element_id": "menu_box",
+                            "visible": False,
+                        },
+                        {
+                            "kind": "render_element.set_z_order",
+                            "scene_id": "state_demo",
+                            "render_model_id": "view_center",
+                            "element_id": "menu_box",
+                            "z_order": 7,
+                        },
+                    ],
+                },
+            )
+        )
+        demo = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_demo")
+        model = next(item for item in demo["render_models"] if item["visual_id"] == "view_center")
+        element = next(item for item in model["elements"] if item["element_id"] == "menu_box")
+        self.assertEqual((24, 22, 48, 18), (element["x"], element["y"], element["width"], element["height"]))
+        self.assertEqual("BACKGROUND", element["layer"])
+        self.assertFalse(element["visible"])
+        self.assertEqual(7, element["z_order"])
+
+    def test_state_sprite_rejects_general_frame_animation_binding(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        with self.assertRaises(ProtocolError) as raised:
+            service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "render_element.set_visual_ref",
+                                "scene_id": "state_demo",
+                                "render_model_id": "view_center",
+                                "element_id": "cursor",
+                                "visual_ref": "cursor.blink",
+                            }
+                        ],
+                    },
+                )
+            )
+        self.assertEqual("ASSET_FRAME_UNKNOWN", raised.exception.code)
+
+    def test_waiting_visual_upsert_authors_bounded_state_loop(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "waiting_visual.upsert",
+                            "scene_id": "state_demo",
+                            "waiting_visual": {
+                                "waiting_visual_id": "menu_wait",
+                                "presentation_id": "menu.presentation",
+                                "phase_quantum_ms": 125,
+                                "combined_step_count": 4,
+                                "settled_step": 1,
+                                "cycle_policy": "loop",
+                                "elements": [
+                                    {
+                                        "element_id": "cursor_loop",
+                                        "source_element_ref": "cursor",
+                                        "phase_visual_refs": ["cursor.phase_a", "cursor.phase_b"],
+                                        "step_phase_indices": [0, 1, 0, 1],
+                                    }
+                                ],
+                            },
+                        },
+                        {
+                            "kind": "state.set_waiting_visual",
+                            "scene_id": "state_demo",
+                            "state_id": "center",
+                            "waiting_visual_id": "menu_wait",
+                        },
+                    ],
+                },
+            )
+        )
+        demo = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_demo")
+        waiting = next(item for item in demo["waiting_visuals"] if item["waiting_visual_id"] == "menu_wait")
+        self.assertEqual(125, waiting["phase_quantum_ms"])
+        self.assertEqual([0, 1, 0, 1], waiting["elements"][0]["step_phase_indices"])
+        center = next(item for item in demo["states"] if item["state_id"] == "center")
+        self.assertEqual("menu_wait", center["waiting_visual_ref"])
+
+    def test_animation_catalog_edit_survives_project_save(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "animation_edit.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            changed = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "animation.upsert",
+                                "animation": {
+                                    "animation_id": "cursor.blink",
+                                    "frame_refs": ["cursor.phase_a", "cursor.phase_b"],
+                                    "frame_duration_ms": [100, 300],
+                                    "loop_policy": "loop",
+                                },
+                            }
+                        ],
+                    },
+                )
+            )
+            service.handle(request("project.save", {"project_revision": changed["project_revision"]}))
+            reloaded = load_project(project_root)
+            cursor = next(item for item in reloaded.animations if item["animation_id"] == "cursor.blink")
+            self.assertEqual([100, 300], cursor["frame_duration_ms"])
+
+    def test_short_start_can_be_authored_compiled_and_previewed(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "route.add_scene_exit",
+                            "scene_id": "state_demo",
+                            "logical_source": "BUTTON_START",
+                            "target_scene": "state_details",
+                        }
+                    ],
+                },
+            )
+        )
+        service.handle(request("project.build_package", {"project_revision": changed["project_revision"]}))
+        preview = service.handle(
+            request(
+                "project.preview_reset",
+                {"project_revision": changed["project_revision"], "scene_id": "state_demo"},
+            )
+        )
+        advanced = service.handle(
+            request(
+                "project.preview_input",
+                {
+                    "project_revision": changed["project_revision"],
+                    "preview_revision": preview["preview_revision"],
+                    "logical_source": "BUTTON_START",
+                },
+            )
+        )
+        self.assertEqual("state_details", advanced["scene"]["scene_id"])
 
     def test_scene_flow_node_position_is_editor_only_and_persists(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1205,7 +1410,12 @@ class AuthoringServiceTests(unittest.TestCase):
             )
             self.assertFalse(saved["dirty"])
             self.assertEqual(
-                ["project.json", "scenes/state_demo.state.json", "scenes/state_details.state.json"],
+            [
+                "project.json",
+                "scenes/state_demo.state.json",
+                "scenes/state_details.state.json",
+                "assets/catalog.json",
+            ],
                 saved["saved_sources"],
             )
 

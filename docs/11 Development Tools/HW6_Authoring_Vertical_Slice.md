@@ -511,11 +511,11 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
     no longer requires embedding package bytes in firmware (implemented and
     target-proven through USB staging and atomic A/B install/launch; production
     pre-commit validation and boot policy remain open)
-12. complete the STATE presentation boundary: serialize package layers, remove
-    special proof-name mappings, add retained line/rectangle/circle/ellipse
-    records, compile initial text to masked 1bpp assets, and add bounded element
-    show/hide/move/frame/animation actions across service, package, preview, and
-    firmware
+12. complete the STATE presentation boundary: package layers, generic retained
+    primitives, element/asset authoring commands, catalog persistence, and
+    bounded STATE waiting-loop commands are implemented in service API 13;
+    Peep Studio controls, build-time text sprites, and runtime
+    show/hide/move/frame-selection actions remain to complete this step
 13. implement the initial STATE sampled-SFX path: verify the HW6 16 kHz mono
     SAI/MAX98357A path, compile WAV sources to bounded IMA ADPCM package assets,
     preload one admitted voice, route symbolic `play_sfx` through `thAudio`,

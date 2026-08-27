@@ -619,7 +619,7 @@ def _parse_graph(
     for index in range(input_count):
         record = INPUT_RECORD.unpack_from(payload, offsets[1] + index * INPUT_RECORD.size)
         action_id = _string(strings, record[0], "input action ID")
-        _require(record[1] in {1, 2, 3, 4, 6, 7, 8, 9}, "input source is invalid")
+        _require(record[1] in {1, 2, 3, 4, 5, 6, 7, 8, 9}, "input source is invalid")
         inputs.append({"action_id": action_id, "logical_source": record[1]})
     states: list[dict[str, object]] = []
     for index in range(state_count):

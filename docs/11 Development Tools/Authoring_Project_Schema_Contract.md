@@ -687,7 +687,6 @@ state_render_element:
   bounds
   asset_ref                 # sprite only
   frame_ref                 # sprite only
-  animation_ref             # optional sprite animation
   primitive_geometry        # primitive only; bounded integer coordinates
   primitive_ink             # fixed black in the initial executable subset
 ```
@@ -702,6 +701,9 @@ Rules:
   transfers, DMA, or target-specific driver functions.
 - initial authored text is rasterized by the compiler into masked 1bpp sprite
   assets; it is not a runtime font or mutable-string facility.
+- STATE sprite records select compiled frame IDs only. They do not bind general
+  frame animations; bounded repeating STATE motion is declared by the waiting
+  presentation below.
 - STATE actions may later target stable element IDs for bounded `show`, `hide`,
   `move`, `set_frame`, and `set_animation` operations.
 - `RND2` is the initial executable retained-presentation record. It carries
@@ -744,6 +746,30 @@ frame_animation:
   frame_duration_ms[]
   loop_policy
 ```
+
+`frame_animation` is the general asset-timeline record intended for future
+SEQUENCE authoring. It is not the STOP2-capable STATE animation contract.
+
+A STATE animated element is authored through the scene `waiting_visual`:
+
+```text
+state_waiting_visual:
+  waiting_visual_id
+  presentation_id
+  phase_quantum_ms          # 1..60000
+  combined_step_count       # 1..12
+  settled_step
+  cycle_policy: loop
+  elements[]:               # at most 32 declared sprite elements
+    element_id
+    source_element_ref
+    phase_visual_refs[]     # 1..4 compiled frame IDs
+    step_phase_indices[]    # one phase index per combined step
+```
+
+The waiting timeline is shared by awake waiting presentation and admitted
+STOP2 playback. A static sprite may use one phase; static primitives remain in
+the retained model but do not receive phase animation in this version.
 
 Rules:
 

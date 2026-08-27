@@ -75,13 +75,15 @@ export type StateRoute = {
 export type RenderElement = {
   element_id: string;
   kind: string;
-  visual_ref: string;
+  visual_ref?: string;
   x: number;
   y: number;
   width: number;
   height: number;
   z_order: number;
   focus_role?: string;
+  layer?: "BACKGROUND" | "SCENE" | "UI";
+  visible?: boolean;
 };
 
 export type RenderModel = {
@@ -258,6 +260,34 @@ export type ServiceHello = {
   service_api_version: number;
   protocol_version: number;
   operations: string[];
+  state_scene_presentation: {
+    record_format: string;
+    load_compatible_formats: string[];
+    package_layers: string[];
+    system_layers: string[];
+    element_kinds: string[];
+    visibility: boolean;
+    z_order: boolean;
+    element_commands: string[];
+    asset_commands: string[];
+    general_frame_animation: {
+      state_placeable: boolean;
+      purpose: string;
+      commands: string[];
+    };
+    waiting_animation: {
+      sprite_only: boolean;
+      phase_count: { minimum: number; maximum: number };
+      combined_step_count: { minimum: number; maximum: number };
+      element_count_maximum: number;
+      quantum_ms: { minimum: number; maximum: number };
+      cycle_policies: string[];
+      commands: string[];
+    };
+    logical_inputs: string[];
+    runtime_text: boolean;
+    element_actions: boolean;
+  };
   project_loaded: boolean;
   project_revision: number | null;
 };

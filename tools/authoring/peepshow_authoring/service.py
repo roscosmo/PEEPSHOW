@@ -24,7 +24,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 12
+SERVICE_API_VERSION = 13
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -175,6 +175,52 @@ class AuthoringService:
                 ],
                 "visibility": True,
                 "z_order": True,
+                "element_commands": [
+                    "render_element.add",
+                    "render_element.delete",
+                    "render_element.set_position",
+                    "render_element.set_bounds",
+                    "render_element.set_layer",
+                    "render_element.set_visibility",
+                    "render_element.set_z_order",
+                    "render_element.set_visual_ref",
+                ],
+                "asset_commands": [
+                    "asset.upsert",
+                    "asset.delete",
+                ],
+                "general_frame_animation": {
+                    "state_placeable": False,
+                    "purpose": "reserved for future SEQUENCE authoring",
+                    "commands": [
+                    "animation.upsert",
+                    "animation.delete",
+                    ],
+                },
+                "waiting_animation": {
+                    "sprite_only": True,
+                    "phase_count": {"minimum": 1, "maximum": 4},
+                    "combined_step_count": {"minimum": 1, "maximum": 12},
+                    "element_count_maximum": 32,
+                    "quantum_ms": {"minimum": 1, "maximum": 60000},
+                    "cycle_policies": ["loop"],
+                    "commands": [
+                        "waiting_visual.upsert",
+                        "waiting_visual.delete",
+                        "state.set_waiting_visual",
+                    ],
+                },
+                "logical_inputs": [
+                    "BUTTON_A",
+                    "BUTTON_B",
+                    "BUTTON_L",
+                    "BUTTON_R",
+                    "BUTTON_START",
+                    "JOY_LEFT",
+                    "JOY_RIGHT",
+                    "JOY_UP",
+                    "JOY_DOWN",
+                ],
                 "runtime_text": False,
                 "element_actions": False,
             },

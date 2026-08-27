@@ -72,6 +72,7 @@ export type SceneFlowGraphModel = {
 
 const INPUT_LABELS: Record<string, string> = {
   BUTTON_A: "Button A",
+  BUTTON_START: "Start",
   BUTTON_B: "Button B",
   BUTTON_L: "Left button",
   BUTTON_R: "Right button",

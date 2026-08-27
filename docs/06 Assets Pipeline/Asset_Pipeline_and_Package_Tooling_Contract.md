@@ -512,6 +512,12 @@ Rules:
 - HW6 v1 tools treat three global steps as the universally supported waiting-animation form. They preview the deterministic mappings `1 -> 1/1/1`, `2 -> 1/2/1`, `3 -> 1/2/3`, and `4 -> 1/2/3`. A fourth phase and mixed preferred timelines up to twelve steps are marked as requiring target admission.
 - export performs one exact preferred admission check and one deterministic guaranteed-mode check. It must not silently pack elements in source order, iteratively remove elements, or expose hardware allocation order as author-visible behavior.
 - tooling derives whether `display.waiting_visual_animation` is required or optional from the authored fallback contract
+- STATE waiting animation and general animation are separate outputs. A STATE
+  sprite loop is a bounded repeating phase map with 1..4 compiled frames and
+  1..12 combined steps; it is the only authored animation admitted while a
+  reactive STATE waits or the target is in STOP2. Arbitrary-duration
+  `animation_table` playback belongs to future SEQUENCE authoring and must not
+  be exposed as a STATE sprite binding.
 - package-facing assets must not encode SRAM4 addresses, LPBAM descriptors, SPI bytes, Sharp LCD commands, dirty rows, or transfer chunks
 - Platform may convert validated content into full frames, logical deltas, hardware row deltas, repeated payloads, or another display-owner format
 - package chunks remain portable PeepOS data; hardware playback payloads are Platform/display-owner internals

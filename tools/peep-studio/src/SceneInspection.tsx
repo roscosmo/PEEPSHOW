@@ -84,6 +84,7 @@ const GUARD_OPERATORS = ["eq", "ne", "lt", "le", "gt", "ge"] as const;
 const ACTION_OPERATIONS = ["assign", "add"] as const;
 const INPUT_LABELS: Record<string, string> = {
   BUTTON_A: "Button A",
+  BUTTON_START: "Start",
   BUTTON_B: "Button B",
   BUTTON_L: "Left button",
   BUTTON_R: "Right button",
@@ -94,6 +95,7 @@ const INPUT_LABELS: Record<string, string> = {
 };
 const SCENE_EXIT_INPUTS = [
   "BUTTON_A",
+  "BUTTON_START",
   "BUTTON_B",
   "BUTTON_L",
   "BUTTON_R",
