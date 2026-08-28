@@ -119,6 +119,8 @@ export default function App() {
   const [temporaryProject, setTemporaryProject] = useState(false);
   const [sceneSelection, setSceneSelection] = useState<SceneSelection>({ kind: "scene" });
   const [placementStateId, setPlacementStateId] = useState<string | null>(null);
+  const [placementEditAllStates, setPlacementEditAllStates] = useState(false);
+  const [placementEditStateIds, setPlacementEditStateIds] = useState<string[]>([]);
   const [selectedPlacementElement, setSelectedPlacementElement] = useState<string | null>(null);
   const [build, setBuild] = useState<PackageBuildResult | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -1111,6 +1113,44 @@ export default function App() {
       setBusy(null);
     }
   };
+  const applyPlacementCommandBatch = async (
+    busyLabel: string,
+    sceneId: string,
+    renderModelId: string,
+    elementId: string,
+    commands: Record<string, unknown>[],
+    successMessage: string,
+    nextSelection: SceneSelection = { kind: "render", id: renderModelId },
+  ) => {
+    if (bridge === undefined || project === null || busy !== null || commands.length === 0) {
+      return;
+    }
+    setBusy(busyLabel);
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands,
+      });
+      applyProjectResult(result);
+      setSelectedScene(sceneId);
+      setSelectedPlacementElement(elementId);
+      setSceneSelection(nextSelection);
+      if (result.valid) {
+        const previewResult = await bridge.serviceRequest<PreviewSnapshot>("project.preview_reset", {
+          project_revision: result.project_revision,
+          scene_id: sceneId,
+        });
+        setPreview(previewResult);
+      }
+      setMessage(successMessage);
+    } catch (error) {
+      setPlacementDraftPositions({});
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
   const applyStatePlacementOverride = async (
     busyLabel: string,
     sceneId: string,
@@ -1158,28 +1198,169 @@ export default function App() {
       setBusy(null);
     }
   };
+  const placementEditStateTargets = () => {
+    const states = selectedSceneDocument?.states ?? [];
+    const validIds = new Set(states.map((state) => state.state_id));
+    const checked = placementEditStateIds.filter((stateId) => validIds.has(stateId));
+    if (checked.length > 0) {
+      return checked;
+    }
+    return placementState === null ? [] : [placementState.state_id];
+  };
+  const placementBaseElement = (elementId: string) => (
+    placementRenderModel?.elements.find((element) => element.element_id === elementId) ?? null
+  );
+  const statePlacementOverride = (state: StateRecord, elementId: string) => (
+    state.placement_overrides?.find((override) => override.element_ref === elementId) ?? null
+  );
+  const placementEditTargetLabel = () => {
+    if (placementEditAllStates) {
+      return "all states";
+    }
+    const count = placementEditStateTargets().length;
+    return count === 1 ? "1 state" : `${count} states`;
+  };
+  const scopedPositionCommands = (
+    element: RenderElement,
+    renderModelId: string,
+    x: number,
+    y: number,
+  ) => {
+    if (selectedSceneDocument === null) {
+      return [];
+    }
+    const baseElement = placementBaseElement(element.element_id) ?? element;
+    const states = selectedSceneDocument.states ?? [];
+    if (placementEditAllStates) {
+      const hasStatePositionOverride = states.some((state) => {
+        const override = statePlacementOverride(state, element.element_id);
+        return override?.x !== undefined || override?.y !== undefined;
+      });
+      if (baseElement.x === x && baseElement.y === y && !hasStatePositionOverride) {
+        return [];
+      }
+      return [
+        {
+          kind: "render_element.set_position",
+          scene_id: selectedSceneDocument.scene_id,
+          render_model_id: renderModelId,
+          element_id: element.element_id,
+          x,
+          y,
+        },
+        ...states.map((state) => ({
+          kind: "state_placement.set_override",
+          scene_id: selectedSceneDocument.scene_id,
+          state_id: state.state_id,
+          render_model_id: renderModelId,
+          element_id: element.element_id,
+          x,
+          y,
+        })),
+      ];
+    }
+    const targetStateIds = placementEditStateTargets();
+    const unchanged = targetStateIds.every((stateId) => {
+      const state = states.find((item) => item.state_id === stateId);
+      if (state === undefined) {
+        return true;
+      }
+      const override = statePlacementOverride(state, element.element_id);
+      return (override?.x ?? baseElement.x) === x && (override?.y ?? baseElement.y) === y;
+    });
+    if (unchanged) {
+      return [];
+    }
+    return targetStateIds.map((stateId) => ({
+      kind: "state_placement.set_override",
+      scene_id: selectedSceneDocument.scene_id,
+      state_id: stateId,
+      render_model_id: renderModelId,
+      element_id: element.element_id,
+      x,
+      y,
+    }));
+  };
+  const scopedVisibilityCommands = (
+    element: RenderElement,
+    renderModelId: string,
+    visible: boolean,
+  ) => {
+    if (selectedSceneDocument === null) {
+      return [];
+    }
+    const baseElement = placementBaseElement(element.element_id) ?? element;
+    const states = selectedSceneDocument.states ?? [];
+    if (placementEditAllStates) {
+      const hasStateVisibilityOverride = states.some((state) => (
+        statePlacementOverride(state, element.element_id)?.visible !== undefined
+      ));
+      if ((baseElement.visible ?? true) === visible && !hasStateVisibilityOverride) {
+        return [];
+      }
+      return [
+        {
+          kind: "render_element.set_visibility",
+          scene_id: selectedSceneDocument.scene_id,
+          render_model_id: renderModelId,
+          element_id: element.element_id,
+          visible,
+        },
+        ...states.map((state) => ({
+          kind: "state_placement.set_override",
+          scene_id: selectedSceneDocument.scene_id,
+          state_id: state.state_id,
+          render_model_id: renderModelId,
+          element_id: element.element_id,
+          visible,
+        })),
+      ];
+    }
+    const targetStateIds = placementEditStateTargets();
+    const unchanged = targetStateIds.every((stateId) => {
+      const state = states.find((item) => item.state_id === stateId);
+      if (state === undefined) {
+        return true;
+      }
+      const override = statePlacementOverride(state, element.element_id);
+      return (override?.visible ?? baseElement.visible ?? true) === visible;
+    });
+    if (unchanged) {
+      return [];
+    }
+    return targetStateIds.map((stateId) => ({
+      kind: "state_placement.set_override",
+      scene_id: selectedSceneDocument.scene_id,
+      state_id: stateId,
+      render_model_id: renderModelId,
+      element_id: element.element_id,
+      visible,
+    }));
+  };
   const movePlacementElement = (
     element: RenderElement,
     renderModelId: string,
     x: number,
     y: number,
   ) => {
-    if (selectedSceneDocument === null || placementState === null) {
+    if (selectedSceneDocument === null) {
       return;
     }
     const nextX = Math.min(Math.max(0, 168 - element.width), Math.max(0, Math.round(x)));
     const nextY = Math.min(Math.max(0, 144 - element.height), Math.max(0, Math.round(y)));
-    if (nextX === element.x && nextY === element.y) {
+    const commands = scopedPositionCommands(element, renderModelId, nextX, nextY);
+    if (commands.length === 0) {
       return;
     }
-    void applyStatePlacementOverride(
-      "Moving element",
+    const targetStateIds = placementEditAllStates ? [] : placementEditStateTargets();
+    void applyPlacementCommandBatch(
+      "Moving object",
       selectedSceneDocument.scene_id,
-      placementState.state_id,
       renderModelId,
       element.element_id,
-      { x: nextX, y: nextY },
-      "State position updated. Save to write it to the project.",
+      commands,
+      `Position updated for ${placementEditTargetLabel()}. Save to write it to the project.`,
+      targetStateIds.length === 1 ? { kind: "state", id: targetStateIds[0] } : { kind: "render", id: renderModelId },
     );
   };
   const oddDimension = (value: number, maximum: number) => {
@@ -1490,6 +1671,31 @@ export default function App() {
     );
     setSelectedPlacementElement(null);
   }, [placementStateId, selectedSceneDocument]);
+  useEffect(() => {
+    if (selectedSceneDocument === null) {
+      if (placementEditAllStates) {
+        setPlacementEditAllStates(false);
+      }
+      if (placementEditStateIds.length > 0) {
+        setPlacementEditStateIds([]);
+      }
+      return;
+    }
+    const states = selectedSceneDocument.states ?? [];
+    const validIds = new Set(states.map((state) => state.state_id));
+    const fallbackStateId =
+      (placementStateId !== null && validIds.has(placementStateId) ? placementStateId : null) ??
+      states.find((state) => state.state_id === selectedSceneDocument.entry_state)?.state_id ??
+      states[0]?.state_id ??
+      null;
+    setPlacementEditStateIds((current) => {
+      const next = current.filter((stateId) => validIds.has(stateId));
+      const resolved = next.length > 0 ? next : fallbackStateId === null ? [] : [fallbackStateId];
+      return resolved.length === current.length && resolved.every((stateId, index) => stateId === current[index])
+        ? current
+        : resolved;
+    });
+  }, [placementEditAllStates, placementEditStateIds.length, placementStateId, selectedSceneDocument]);
   const selectedPlacementRenderElement = useMemo<RenderElement | null>(() => {
     if (selectedPlacementElement === null) {
       return null;
@@ -2579,10 +2785,86 @@ export default function App() {
   const selectPlacementState = (stateId: string) => {
     const state = (selectedSceneDocument?.states ?? []).find((item) => item.state_id === stateId) ?? null;
     setPlacementStateId(stateId);
-    setSelectedPlacementElement(null);
     if (state !== null && placementRenderModel !== null) {
-      setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
+      setSceneSelection({ kind: "state", id: state.state_id });
     }
+  };
+  const setAllPlacementStatesTargeted = (targeted: boolean) => {
+    setPlacementEditAllStates(targeted);
+    if (!targeted && placementEditStateTargets().length === 0 && placementState !== null) {
+      setPlacementEditStateIds([placementState.state_id]);
+    }
+  };
+  const togglePlacementEditState = (stateId: string) => {
+    const currentlyChecked = placementEditStateIds.includes(stateId);
+    setPlacementEditAllStates(false);
+    if (!currentlyChecked) {
+      setPlacementStateId(stateId);
+    }
+    setPlacementEditStateIds((current) => {
+      if (current.includes(stateId)) {
+        return current.length <= 1 ? current : current.filter((item) => item !== stateId);
+      }
+      return [...current, stateId];
+    });
+  };
+  const renderPlacementEditScope = () => {
+    const editStateIds = new Set(placementEditStateIds);
+    return (
+      <section className="inspector-section placement-edit-scope-section">
+        <h3><SquareMousePointer size={14} aria-hidden="true" /> Edit target</h3>
+        {selectedSceneDocument === null ? (
+          <p className="muted">Select a scene to choose where placement edits apply.</p>
+        ) : (
+          <div className="placement-edit-scope">
+            <div className="placement-scope-header">
+              <span>Applying edits to</span>
+              <code>{placementEditAllStates ? "All states" : placementEditTargetLabel()}</code>
+            </div>
+            <label className="placement-scope-all">
+              <input
+                type="checkbox"
+                checked={placementEditAllStates}
+                disabled={busy !== null}
+                onChange={(event) => setAllPlacementStatesTargeted(event.target.checked)}
+              />
+              <span>All states</span>
+            </label>
+            <div className="placement-state-scope-list">
+              {(selectedSceneDocument.states ?? []).map((state) => (
+                <div
+                  key={state.state_id}
+                  className={`placement-state-scope-row ${placementState?.state_id === state.state_id ? "previewing" : ""}`}
+                >
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={placementEditAllStates || editStateIds.has(state.state_id)}
+                      disabled={busy !== null || placementEditAllStates}
+                      onChange={() => togglePlacementEditState(state.state_id)}
+                    />
+                    <span>
+                      <strong>{state.display_name}</strong>
+                      <small>{state.state_id}</small>
+                    </span>
+                  </label>
+                  <button
+                    className="placement-state-preview-button"
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => selectPlacementState(state.state_id)}
+                    title="Preview this state"
+                  >
+                    {placementState?.state_id === state.state_id ? "Preview" : "View"}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="muted">Previewing {placementState?.display_name ?? "no state"}.</p>
+          </div>
+        )}
+      </section>
+    );
   };
   const renderPlacementObjectHierarchy = () => {
     const elements = placementElements();
@@ -2600,23 +2882,6 @@ export default function App() {
           <p className="muted project-section-empty">Select a scene to inspect objects.</p>
         ) : (
           <div className="placement-object-tree">
-            <div className="placement-state-selector">
-              <label>
-                State
-                <select
-                  value={placementState?.state_id ?? ""}
-                  disabled={busy !== null}
-                  onChange={(event) => selectPlacementState(event.target.value)}
-                >
-                  {(selectedSceneDocument.states ?? []).map((state) => (
-                    <option key={state.state_id} value={state.state_id}>
-                      {state.display_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <span>{selectedSceneDocument.display_name}</span>
-            </div>
             {placementRenderModel === null ? (
               <p className="muted project-section-empty">No placed-object view for this state.</p>
             ) : elements.length === 0 ? (
@@ -2722,21 +2987,28 @@ export default function App() {
       );
     };
     const setElementVisibility = (visible: boolean) => {
-      if (selectedSceneDocument === null || selectedElement === null || placementRenderModel === null || placementState === null) {
+      if (selectedSceneDocument === null || selectedElement === null || placementRenderModel === null) {
         return;
       }
-      void applyStatePlacementOverride(
+      const commands = scopedVisibilityCommands(selectedElement, placementRenderModel.visual_id, visible);
+      if (commands.length === 0) {
+        return;
+      }
+      const targetStateIds = placementEditAllStates ? [] : placementEditStateTargets();
+      void applyPlacementCommandBatch(
         "Changing visibility",
         selectedSceneDocument.scene_id,
-        placementState.state_id,
         placementRenderModel.visual_id,
         selectedElement.element_id,
-        { visible },
-        "State visibility updated. Save to write it to the project.",
+        commands,
+        `Visibility updated for ${placementEditTargetLabel()}. Save to write it to the project.`,
+        targetStateIds.length === 1 ? { kind: "state", id: targetStateIds[0] } : { kind: "render", id: placementRenderModel.visual_id },
       );
     };
     return (
-      <section className="inspector-section placement-inspector">
+      <>
+        {renderPlacementEditScope()}
+        <section className="inspector-section placement-inspector">
         <h3><Layers3 size={14} aria-hidden="true" /> Object</h3>
         {selectedSceneDocument === null ? (
           <p className="muted">Select a scene to inspect placement.</p>
@@ -2929,7 +3201,8 @@ export default function App() {
             </div>
           </>
         )}
-      </section>
+        </section>
+      </>
     );
   };
 
@@ -3011,7 +3284,6 @@ export default function App() {
           </div>
 
           {renderPreviewPanel("project")}
-          {workspaceMode === "placement" && renderPlacementObjectHierarchy()}
 
           {project === null ? (
             <div className="empty-pane">
@@ -3042,6 +3314,8 @@ export default function App() {
               </details>
             </>
           )}
+
+          {workspaceMode === "placement" && renderPlacementObjectHierarchy()}
         </aside>
 
         <div

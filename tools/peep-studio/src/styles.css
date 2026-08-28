@@ -2004,7 +2004,7 @@ button:focus-visible {
   padding: 0 9px 12px;
 }
 
-.placement-state-selector {
+.placement-edit-scope {
   display: grid;
   gap: 7px;
   padding: 8px;
@@ -2013,34 +2013,106 @@ button:focus-visible {
   background: #f7faf8;
 }
 
-.placement-state-selector label {
-  display: grid;
-  gap: 5px;
+.placement-scope-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   color: #68736d;
   font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
 }
 
-.placement-state-selector select {
-  width: 100%;
-  height: 32px;
+.placement-scope-all,
+.placement-state-scope-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #27302b;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.placement-scope-all input,
+.placement-state-scope-row input {
+  flex: 0 0 auto;
+}
+
+.placement-state-scope-list {
+  display: grid;
+  gap: 5px;
+}
+
+.placement-state-scope-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 7px;
   border: 1px solid #c9d3ce;
   border-radius: 6px;
   background: #ffffff;
-  color: #27302b;
-  font-size: 12px;
-  font-weight: 740;
 }
 
-.placement-state-selector span {
+.placement-state-scope-row.previewing {
+  border-color: #8fb9cc;
+  background: #eef8fc;
+}
+
+.placement-state-scope-row label span,
+.placement-edit-scope .muted {
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.placement-state-scope-row strong,
+.placement-state-scope-row small {
+  display: block;
+}
+
+.placement-state-scope-row strong {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.placement-state-scope-row small {
+  margin-top: 1px;
   color: #68736d;
   font-size: 9px;
-  font-weight: 760;
-  text-overflow: ellipsis;
+  font-weight: 700;
   text-transform: uppercase;
-  white-space: nowrap;
+}
+
+.placement-state-preview-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  height: 26px;
+  margin-left: 0;
+  padding: 0 8px;
+  border: 1px solid #c9d3ce;
+  border-radius: 6px;
+  background: #f8fbf9;
+  color: #425049;
+  font-size: 10px;
+  font-weight: 760;
+  text-align: center;
+}
+
+.placement-state-scope-row.previewing .placement-state-preview-button {
+  border-color: #6f9eb5;
+  background: #ffffff;
+  color: #255a74;
+}
+
+.placement-edit-scope .muted {
+  font-size: 10px;
 }
 
 .placement-object-children {
