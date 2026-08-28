@@ -8,6 +8,7 @@ import json
 import re
 from copy import deepcopy
 from dataclasses import dataclass
+from math import gcd
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -34,6 +35,7 @@ LOGICAL_INPUT_SOURCES = {
     "JOY_UP",
     "JOY_DOWN",
 }
+STATE_WAITING_ANIMATION_QUANTUM_MS = 250
 PROJECT_KEYS = {
     "schema_id",
     "schema_version",
@@ -270,27 +272,13 @@ def _apply_state_set_reference(
     command: dict[str, Any],
 ) -> dict[str, Any]:
     kind = command.get("kind")
-    if kind == "state.set_entry":
-        _require_command_fields(command, {"kind", "scene_id", "state_id"}, {"kind", "scene_id", "state_id", "command_id"})
-        scene = _command_scene(scenes, command.get("scene_id"))
-        state = _command_record(scene, "states", "state_id", command.get("state_id"))
-        scene["entry_state"] = state.get("state_id")
-        return {"kind": kind, "scene_id": scene.get("scene_id"), "state_id": state.get("state_id")}
-    _require_command_fields(
-        command,
-        {"kind", "scene_id", "state_id", "render_model_ref"},
-        {"kind", "scene_id", "state_id", "render_model_ref", "command_id"},
-    )
+    if kind != "state.set_entry":
+        raise ProjectCommandError("COMMAND_KIND_UNKNOWN", f"unknown command kind '{kind}'")
+    _require_command_fields(command, {"kind", "scene_id", "state_id"}, {"kind", "scene_id", "state_id", "command_id"})
     scene = _command_scene(scenes, command.get("scene_id"))
     state = _command_record(scene, "states", "state_id", command.get("state_id"))
-    model = _command_record(scene, "render_models", "visual_id", command.get("render_model_ref"))
-    state["render_model_ref"] = model.get("visual_id")
-    return {
-        "kind": kind,
-        "scene_id": scene.get("scene_id"),
-        "state_id": state.get("state_id"),
-        "render_model_ref": model.get("visual_id"),
-    }
+    scene["entry_state"] = state.get("state_id")
+    return {"kind": kind, "scene_id": scene.get("scene_id"), "state_id": state.get("state_id")}
 
 
 def _apply_render_model_add(
@@ -327,12 +315,11 @@ def _apply_render_model_delete(
     _require_command_fields(command, {"kind", "scene_id", "visual_id"}, {"kind", "scene_id", "visual_id", "command_id"})
     scene = _command_scene(scenes, command.get("scene_id"))
     visual_id = command.get("visual_id")
-    for state in scene.get("states", []):
-        if isinstance(state, dict) and state.get("render_model_ref") == visual_id:
-            raise ProjectCommandError("COMMAND_TARGET_IN_USE", f"render model '{visual_id}' is referenced by state '{state.get('state_id')}'")
     models = scene.get("render_models")
     if not isinstance(models, list):
         raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.render_models must be an array")
+    if len(models) <= 1:
+        raise ProjectCommandError("COMMAND_TARGET_IN_USE", "STATE_SCENE must keep one scene placement model")
     for index, model in enumerate(models):
         if isinstance(model, dict) and model.get("visual_id") == visual_id:
             models.pop(index)
@@ -900,6 +887,42 @@ def _target_render_element(render_model: dict[str, Any], element_id: Any) -> dic
     return element
 
 
+def _scene_placement_model(scene: dict[str, Any]) -> dict[str, Any]:
+    render_models = scene.get("render_models")
+    if not isinstance(render_models, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.render_models must be an array")
+    if len(render_models) != 1 or not isinstance(render_models[0], dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "STATE_SCENE must have exactly one placement render model")
+    return render_models[0]
+
+
+def _state_placement_overrides(state: dict[str, Any]) -> list[dict[str, Any]]:
+    overrides = state.setdefault("placement_overrides", [])
+    if not isinstance(overrides, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "state.placement_overrides must be an array")
+    return overrides
+
+
+def _validate_state_override_visual_ref(
+    frames: list[Masked1bppFrame],
+    element: dict[str, Any],
+    visual_ref: Any,
+) -> str:
+    issues: list[ValidationIssue] = []
+    _stable_id(visual_ref, "command.visual_ref", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    if element.get("kind") != "sprite":
+        raise ProjectCommandError("RENDER_VISUAL_REF_INVALID", "only sprites can override visual_ref")
+    frame = _frame_map(frames).get(str(visual_ref))
+    if frame is None:
+        raise ProjectCommandError("ASSET_FRAME_UNKNOWN", f"unknown sprite visual '{visual_ref}'")
+    if frame.width != element.get("width") or frame.height != element.get("height"):
+        raise ProjectCommandError("RENDER_VISUAL_REF_INVALID", "override frame must match the placed sprite size")
+    return str(visual_ref)
+
+
 def _validate_render_bounds(x: int, y: int, width: int, height: int) -> None:
     if x + width > 168 or y + height > 144:
         raise ProjectCommandError("RENDER_BOUNDS_INVALID", "element would be outside the 168x144 display")
@@ -985,16 +1008,26 @@ def _apply_render_element_delete(
     element_id = command.get("element_id")
     render_model = _target_render_model(scenes, scene_id, command.get("render_model_id"))
     element = _target_render_element(render_model, element_id)
-    if element.get("focus_role", "none") == "focus":
-        raise ProjectCommandError("RENDER_FOCUS_INVALID", "the focus element cannot be deleted")
     scene = next(item for item in scenes if item.get("scene_id") == scene_id)
     for waiting in scene.get("waiting_visuals", []):
-        for animated in waiting.get("elements", []):
-            if animated.get("source_element_ref") == element_id:
-                raise ProjectCommandError(
-                    "WAIT_ELEMENT_IN_USE",
-                    f"render element '{element_id}' is used by waiting visual '{waiting.get('waiting_visual_id')}'",
-                )
+        elements = waiting.get("elements")
+        if isinstance(elements, list):
+            elements[:] = [
+                animated
+                for animated in elements
+                if not (isinstance(animated, dict) and animated.get("source_element_ref") == element_id)
+            ]
+            _rebuild_waiting_visual_steps(waiting)
+    for state in scene.get("states", []):
+        if not isinstance(state, dict):
+            continue
+        overrides = state.get("placement_overrides")
+        if isinstance(overrides, list):
+            overrides[:] = [
+                override
+                for override in overrides
+                if not (isinstance(override, dict) and override.get("element_ref") == element_id)
+            ]
     render_model["elements"].remove(element)
     return {
         "kind": "render_element.delete",
@@ -1145,6 +1178,103 @@ def _apply_render_element_set_position(
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
 
 
+def _apply_state_placement_set_override(
+    scenes: list[dict[str, Any]],
+    frames: list[Masked1bppFrame],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    allowed = {
+        "kind",
+        "scene_id",
+        "state_id",
+        "render_model_id",
+        "element_id",
+        "x",
+        "y",
+        "visible",
+        "visual_ref",
+        "command_id",
+    }
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "state_id", "render_model_id", "element_id"},
+        allowed,
+    )
+    supplied = {key for key in ("x", "y", "visible", "visual_ref") if key in command}
+    if not supplied:
+        raise ProjectCommandError("COMMAND_SHAPE_INVALID", "state placement override must set at least one field")
+    if ("x" in supplied) != ("y" in supplied):
+        raise ProjectCommandError("RENDER_BOUNDS_INVALID", "position overrides must set both x and y")
+
+    scene = _command_scene(scenes, command.get("scene_id"))
+    state = _command_record(scene, "states", "state_id", command.get("state_id"))
+    render_model = _target_render_model(scenes, command.get("scene_id"), command.get("render_model_id"))
+    placement_model = _scene_placement_model(scene)
+    if render_model.get("visual_id") != placement_model.get("visual_id"):
+        raise ProjectCommandError("COMMAND_TARGET_INVALID", "state placement overrides must target the scene placement model")
+    element = _target_render_element(render_model, command.get("element_id"))
+    element_id = str(element["element_id"])
+    overrides = _state_placement_overrides(state)
+    existing = next(
+        (
+            item
+            for item in overrides
+            if isinstance(item, dict) and item.get("element_ref") == element_id
+        ),
+        None,
+    )
+    override = deepcopy(existing) if isinstance(existing, dict) else {"element_ref": element_id}
+
+    if "x" in supplied:
+        x = _render_coordinate(command.get("x"), "command.x")
+        y = _render_coordinate(command.get("y"), "command.y")
+        width = _render_dimension(element.get("width"), "element.width")
+        height = _render_dimension(element.get("height"), "element.height")
+        _validate_render_bounds(x, y, width, height)
+        if x == element.get("x") and y == element.get("y"):
+            override.pop("x", None)
+            override.pop("y", None)
+        else:
+            override["x"] = x
+            override["y"] = y
+    if "visible" in supplied:
+        visible = command.get("visible")
+        if not isinstance(visible, bool):
+            raise ProjectCommandError("RENDER_VISIBILITY_INVALID", "visible must be boolean")
+        if visible == element.get("visible", True):
+            override.pop("visible", None)
+        else:
+            override["visible"] = visible
+    if "visual_ref" in supplied:
+        visual_ref = _validate_state_override_visual_ref(frames, element, command.get("visual_ref"))
+        if visual_ref == element.get("visual_ref"):
+            override.pop("visual_ref", None)
+        else:
+            override["visual_ref"] = visual_ref
+
+    if set(override.keys()) == {"element_ref"}:
+        if existing is not None:
+            overrides.remove(existing)
+        removed = True
+    elif existing is None:
+        if len(overrides) >= 32:
+            raise ProjectCommandError("PROJECT_COUNT_INVALID", "state already has 32 placement overrides")
+        overrides.append(override)
+        removed = False
+    else:
+        overrides[overrides.index(existing)] = override
+        removed = False
+
+    return {
+        "kind": "state_placement.set_override",
+        "scene_id": command.get("scene_id"),
+        "state_id": command.get("state_id"),
+        "render_model_id": command.get("render_model_id"),
+        "element_id": element_id,
+        "removed": removed,
+    }
+
+
 def _apply_waiting_visual_upsert(
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
@@ -1284,6 +1414,277 @@ def _apply_state_set_waiting_visual(
         "state_id": state_id,
         "previous": previous,
         "waiting_visual_id": waiting_visual_id,
+    }
+
+
+def _lcm(left: int, right: int) -> int:
+    return abs(left * right) // gcd(left, right)
+
+
+def _generated_waiting_visual_id(scene: dict[str, Any], state_id: str) -> str:
+    waiting_visuals = scene.get("waiting_visuals")
+    if not isinstance(waiting_visuals, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.waiting_visuals must be an array")
+    existing = {
+        item.get("waiting_visual_id")
+        for item in waiting_visuals
+        if isinstance(item, dict)
+    }
+    base = f"{state_id}_wait"
+    if len(base) > 64:
+        base = f"{state_id[:59]}_wait"
+    candidate = base
+    index = 2
+    while candidate in existing:
+        suffix = f"_{index}"
+        candidate = f"{base[:64 - len(suffix)]}{suffix}"
+        index += 1
+    return candidate
+
+
+def _waiting_visual_is_private_to_state(scene: dict[str, Any], state_id: str, waiting_visual_id: Any) -> bool:
+    users = [
+        state.get("state_id")
+        for state in scene.get("states", [])
+        if isinstance(state, dict) and state.get("waiting_visual_ref") == waiting_visual_id
+    ]
+    wait_default = scene.get("reactive_wait_default")
+    default_uses_wait = isinstance(wait_default, dict) and wait_default.get("waiting_visual_ref") == waiting_visual_id
+    return users == [state_id] and not default_uses_wait
+
+
+def _waiting_visual_for_state_edit(scene: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    waiting_visuals = scene.get("waiting_visuals")
+    if not isinstance(waiting_visuals, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.waiting_visuals must be an array")
+    state_id = str(state.get("state_id"))
+    waiting_visual_id = state.get("waiting_visual_ref")
+    current = next(
+        (
+            item
+            for item in waiting_visuals
+            if isinstance(item, dict) and item.get("waiting_visual_id") == waiting_visual_id
+        ),
+        None,
+    )
+    if current is not None and _waiting_visual_is_private_to_state(scene, state_id, waiting_visual_id):
+        return current
+
+    cloned = deepcopy(current) if current is not None else {"elements": []}
+    cloned_id = _generated_waiting_visual_id(scene, state_id)
+    cloned.update(
+        {
+            "waiting_visual_id": cloned_id,
+            "presentation_id": f"{scene.get('scene_id')}.{state_id}.waiting",
+        }
+    )
+    cloned.setdefault("phase_quantum_ms", STATE_WAITING_ANIMATION_QUANTUM_MS)
+    cloned.setdefault("combined_step_count", 1)
+    cloned.setdefault("settled_step", 0)
+    cloned.setdefault("cycle_policy", "loop")
+    cloned.setdefault("elements", [])
+    if len(waiting_visuals) >= 32:
+        raise ProjectCommandError("PROJECT_COUNT_INVALID", "scene already has 32 waiting visuals")
+    waiting_visuals.append(cloned)
+    state["waiting_visual_ref"] = cloned_id
+    return cloned
+
+
+def _waiting_element_id(waiting_visual: dict[str, Any], element_id: str) -> str:
+    elements = waiting_visual.get("elements")
+    if not isinstance(elements, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "waiting_visual.elements must be an array")
+    base = f"{element_id}_wait"
+    if len(base) > 64:
+        base = f"{element_id[:59]}_wait"
+    existing = {
+        item.get("element_id")
+        for item in elements
+        if isinstance(item, dict)
+    }
+    candidate = base
+    index = 2
+    while candidate in existing:
+        suffix = f"_{index}"
+        candidate = f"{base[:64 - len(suffix)]}{suffix}"
+        index += 1
+    return candidate
+
+
+def _frame_map(frames: list[Masked1bppFrame]) -> dict[str, Masked1bppFrame]:
+    return {frame.frame_id: frame for frame in frames}
+
+
+def _command_phase_visual_refs(
+    frames: list[Masked1bppFrame],
+    value: Any,
+    element: dict[str, Any],
+) -> list[str]:
+    if not isinstance(value, list) or not 2 <= len(value) <= 4:
+        raise ProjectCommandError("WAIT_PHASE_COUNT_INVALID", "STATE sprite animation must use 2..4 frames")
+    lookup = _frame_map(frames)
+    result: list[str] = []
+    issues: list[ValidationIssue] = []
+    for index, frame_id in enumerate(value):
+        _stable_id(frame_id, f"command.phase_visual_refs[{index}]", issues)
+        if issues:
+            issue = issues[0]
+            raise ProjectCommandError(issue.code, issue.message)
+        frame = lookup.get(frame_id)
+        if frame is None:
+            raise ProjectCommandError("ASSET_FRAME_UNKNOWN", f"unknown frame '{frame_id}'")
+        if frame.width != element.get("width") or frame.height != element.get("height"):
+            raise ProjectCommandError("WAIT_FRAME_SIZE_INVALID", "all animation frames must match the placed sprite size")
+        if frame_id in result:
+            raise ProjectCommandError("WAIT_PHASE_DUPLICATE", "animation frames must be unique")
+        result.append(frame_id)
+    return result
+
+
+def _rebuild_waiting_visual_steps(
+    waiting_visual: dict[str, Any],
+    desired_phase_by_source: dict[str, int] | None = None,
+) -> None:
+    elements = waiting_visual.get("elements")
+    if not isinstance(elements, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "waiting_visual.elements must be an array")
+    phase_counts: list[int] = []
+    for element in elements:
+        if not isinstance(element, dict):
+            raise ProjectCommandError("PROJECT_TYPE_INVALID", "waiting_visual.elements entries must be objects")
+        refs = element.get("phase_visual_refs")
+        if not isinstance(refs, list) or not 1 <= len(refs) <= 4:
+            raise ProjectCommandError("WAIT_PHASE_COUNT_INVALID", "waiting visual phases must contain 1..4 frames")
+        phase_counts.append(len(refs))
+
+    combined_step_count = 1
+    for phase_count in phase_counts:
+        combined_step_count = _lcm(combined_step_count, phase_count)
+    if combined_step_count > 12:
+        raise ProjectCommandError("WAIT_STEP_COUNT_INVALID", "combined waiting animation would exceed 12 steps")
+
+    previous_settled = waiting_visual.get("settled_step")
+    settled_step = previous_settled if isinstance(previous_settled, int) and 0 <= previous_settled < combined_step_count else 0
+    desired_phase_by_source = desired_phase_by_source or {}
+    for element in elements:
+        refs = element["phase_visual_refs"]
+        phase_count = len(refs)
+        source_ref = str(element["source_element_ref"])
+        desired_phase = desired_phase_by_source.get(source_ref)
+        old_indices = element.get("step_phase_indices")
+        if desired_phase is None and isinstance(old_indices, list) and isinstance(previous_settled, int) and 0 <= previous_settled < len(old_indices):
+            previous_phase = old_indices[previous_settled]
+            if isinstance(previous_phase, int) and 0 <= previous_phase < phase_count:
+                desired_phase = previous_phase
+        if desired_phase is None:
+            desired_phase = 0
+        offset = (desired_phase - settled_step) % phase_count
+        element["step_phase_indices"] = [(step + offset) % phase_count for step in range(combined_step_count)]
+
+    waiting_visual["phase_quantum_ms"] = STATE_WAITING_ANIMATION_QUANTUM_MS
+    waiting_visual["combined_step_count"] = combined_step_count
+    waiting_visual["settled_step"] = settled_step
+    waiting_visual["cycle_policy"] = "loop"
+
+
+def _apply_render_element_bind_waiting_animation(
+    scenes: list[dict[str, Any]],
+    frames: list[Masked1bppFrame],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "state_id", "render_model_id", "element_id", "phase_visual_refs"},
+        {"kind", "scene_id", "state_id", "render_model_id", "element_id", "phase_visual_refs", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    state = _command_record(scene, "states", "state_id", command.get("state_id"))
+    render_model = _target_render_model(scenes, command.get("scene_id"), command.get("render_model_id"))
+    placement_model = _scene_placement_model(scene)
+    if render_model.get("visual_id") != placement_model.get("visual_id"):
+        raise ProjectCommandError("COMMAND_TARGET_INVALID", "animations must target the scene placement model")
+    element = _target_render_element(render_model, command.get("element_id"))
+    if element.get("kind") != "sprite":
+        raise ProjectCommandError("WAIT_ELEMENT_TYPE_INVALID", "only placed sprites can be animated")
+    phase_visual_refs = _command_phase_visual_refs(frames, command.get("phase_visual_refs"), element)
+    waiting_visual = _waiting_visual_for_state_edit(scene, state)
+    elements = waiting_visual.get("elements")
+    if not isinstance(elements, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "waiting_visual.elements must be an array")
+    element_id = str(element["element_id"])
+    previous_visual_ref = element.get("visual_ref")
+    desired_phase = phase_visual_refs.index(previous_visual_ref) if previous_visual_ref in phase_visual_refs else 0
+    existing = next(
+        (
+            item
+            for item in elements
+            if isinstance(item, dict) and item.get("source_element_ref") == element_id
+        ),
+        None,
+    )
+    waiting_element = {
+        "element_id": existing.get("element_id") if isinstance(existing, dict) else _waiting_element_id(waiting_visual, element_id),
+        "source_element_ref": element_id,
+        "phase_visual_refs": phase_visual_refs,
+        "step_phase_indices": [],
+    }
+    if existing is None:
+        elements.append(waiting_element)
+    else:
+        elements[elements.index(existing)] = waiting_element
+    if previous_visual_ref not in phase_visual_refs:
+        element["visual_ref"] = phase_visual_refs[0]
+    _rebuild_waiting_visual_steps(waiting_visual, {element_id: desired_phase})
+    return {
+        "kind": "render_element.bind_waiting_animation",
+        "scene_id": command.get("scene_id"),
+        "state_id": command.get("state_id"),
+        "render_model_id": command.get("render_model_id"),
+        "element_id": command.get("element_id"),
+        "waiting_visual_id": waiting_visual["waiting_visual_id"],
+        "phase_count": len(phase_visual_refs),
+        "combined_step_count": waiting_visual["combined_step_count"],
+    }
+
+
+def _apply_render_element_clear_waiting_animation(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "state_id", "render_model_id", "element_id"},
+        {"kind", "scene_id", "state_id", "render_model_id", "element_id", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    state = _command_record(scene, "states", "state_id", command.get("state_id"))
+    render_model = _target_render_model(scenes, command.get("scene_id"), command.get("render_model_id"))
+    placement_model = _scene_placement_model(scene)
+    if render_model.get("visual_id") != placement_model.get("visual_id"):
+        raise ProjectCommandError("COMMAND_TARGET_INVALID", "animations must target the scene placement model")
+    element = _target_render_element(render_model, command.get("element_id"))
+    if element.get("kind") != "sprite":
+        raise ProjectCommandError("WAIT_ELEMENT_TYPE_INVALID", "only placed sprites can have sprite animation")
+    waiting_visual = _waiting_visual_for_state_edit(scene, state)
+    elements = waiting_visual.get("elements")
+    if not isinstance(elements, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "waiting_visual.elements must be an array")
+    before = len(elements)
+    element_id = str(element["element_id"])
+    elements[:] = [
+        item
+        for item in elements
+        if not (isinstance(item, dict) and item.get("source_element_ref") == element_id)
+    ]
+    _rebuild_waiting_visual_steps(waiting_visual)
+    return {
+        "kind": "render_element.clear_waiting_animation",
+        "scene_id": command.get("scene_id"),
+        "state_id": command.get("state_id"),
+        "render_model_id": command.get("render_model_id"),
+        "element_id": command.get("element_id"),
+        "waiting_visual_id": waiting_visual["waiting_visual_id"],
+        "removed": before != len(elements),
     }
 
 
@@ -2154,14 +2555,73 @@ def _check_waiting_visual(
                     _issue(issues, "WAIT_PHASE_INDEX_INVALID", f"{item_path}.step_phase_indices[{index}]", "does not select an authored phase")
 
 
+def _check_state_placement_overrides(
+    state: dict[str, Any],
+    path: str,
+    elements: dict[str, dict[str, Any]],
+    frame_lookup: dict[str, Masked1bppFrame],
+    issues: list[ValidationIssue],
+) -> None:
+    overrides = state.get("placement_overrides", [])
+    if not isinstance(overrides, list):
+        _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.placement_overrides", "must be an array")
+        return
+    if len(overrides) > 32:
+        _issue(issues, "PROJECT_COUNT_INVALID", f"{path}.placement_overrides", "must contain at most 32 overrides")
+    seen: set[str] = set()
+    for index, override in enumerate(overrides):
+        item_path = f"{path}.placement_overrides[{index}]"
+        if not isinstance(override, dict):
+            _issue(issues, "PROJECT_TYPE_INVALID", item_path, "must be an object")
+            continue
+        _check_keys(override, {"element_ref"}, item_path, issues, {"element_ref", "x", "y", "visible", "visual_ref"})
+        element_ref = override.get("element_ref")
+        _stable_id(element_ref, f"{item_path}.element_ref", issues)
+        if isinstance(element_ref, str):
+            if element_ref in seen:
+                _issue(issues, "PROJECT_ID_DUPLICATE", f"{item_path}.element_ref", f"duplicate override for '{element_ref}'")
+            seen.add(element_ref)
+        element = elements.get(element_ref) if isinstance(element_ref, str) else None
+        if element is None:
+            _issue(issues, "RENDER_ELEMENT_UNKNOWN", f"{item_path}.element_ref", "state override must target a scene object")
+            continue
+        has_x = "x" in override
+        has_y = "y" in override
+        if has_x != has_y:
+            _issue(issues, "RENDER_BOUNDS_INVALID", item_path, "position overrides must include both x and y")
+        elif has_x and has_y:
+            x = override.get("x")
+            y = override.get("y")
+            width = element.get("width")
+            height = element.get("height")
+            if any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in (x, y)):
+                _issue(issues, "RENDER_BOUNDS_INVALID", item_path, "override x and y must be non-negative integers")
+            elif all(isinstance(value, int) for value in (width, height)) and (x + width > 168 or y + height > 144):
+                _issue(issues, "RENDER_BOUNDS_INVALID", item_path, "override position places the object outside the 168x144 canvas")
+        if "visible" in override and not isinstance(override.get("visible"), bool):
+            _issue(issues, "RENDER_VISIBILITY_INVALID", f"{item_path}.visible", "must be boolean")
+        if "visual_ref" in override:
+            visual_ref = override.get("visual_ref")
+            _stable_id(visual_ref, f"{item_path}.visual_ref", issues)
+            if element.get("kind") != "sprite":
+                _issue(issues, "RENDER_VISUAL_REF_INVALID", f"{item_path}.visual_ref", "only sprites can override visual_ref")
+            elif isinstance(visual_ref, str):
+                frame = frame_lookup.get(visual_ref)
+                if frame is None:
+                    _issue(issues, "ASSET_FRAME_UNKNOWN", f"{item_path}.visual_ref", f"unknown frame '{visual_ref}'")
+                elif frame.width != element.get("width") or frame.height != element.get("height"):
+                    _issue(issues, "RENDER_VISUAL_REF_INVALID", f"{item_path}.visual_ref", "override frame must match the placed sprite size")
+
+
 def _check_scene(
     scene: dict[str, Any],
     source: str,
-    frame_ids: set[str],
+    frame_lookup: dict[str, Masked1bppFrame],
     animation_ids: set[str],
     issues: list[ValidationIssue],
 ) -> None:
     base = f"scene[{source}]"
+    frame_ids = set(frame_lookup)
     _check_keys(scene, SCENE_KEYS, base, issues)
     if scene.get("schema_id") != "peepshow.authoring.state_scene" or scene.get("schema_version") != 1:
         _issue(issues, "SCENE_SCHEMA_UNSUPPORTED", base, "expected peepshow.authoring.state_scene version 1")
@@ -2191,12 +2651,15 @@ def _check_scene(
     render_models = _unique_ids(scene.get("render_models"), "visual_id", f"{base}.render_models", issues, 64)
     waiting_visuals = _unique_ids(scene.get("waiting_visuals"), "waiting_visual_id", f"{base}.waiting_visuals", issues, 32)
     routes = _unique_ids(scene.get("routes"), "route_id", f"{base}.routes", issues, 128)
+    if len(render_models) != 1:
+        _issue(issues, "SCENE_PLACEMENT_INVALID", f"{base}.render_models", "STATE_SCENE must declare exactly one placement render model")
 
     entry_state = scene.get("entry_state")
     if entry_state not in states:
         _issue(issues, "GRAPH_ENTRY_MISSING", f"{base}.entry_state", f"unknown entry state '{entry_state}'")
 
     element_kinds: dict[str, str] = {}
+    placement_elements: dict[str, dict[str, Any]] = {}
     for visual_id, render_model in render_models.items():
         path = f"{base}.render_models[{visual_id}]"
         _check_keys(render_model, {"visual_id", "focus_index", "elements"}, path, issues)
@@ -2217,6 +2680,7 @@ def _check_scene(
                 _issue(issues, "RENDER_KIND_INVALID", f"{item_path}.kind", "unsupported retained element type")
             else:
                 element_kinds[element_id] = kind
+                placement_elements[element_id] = element
                 if kind == "sprite":
                     _stable_id(element.get("visual_ref"), f"{item_path}.visual_ref", issues)
                     if element.get("visual_ref") not in frame_ids:
@@ -2275,12 +2739,26 @@ def _check_scene(
 
     for state_id, state in states.items():
         path = f"{base}.states[{state_id}]"
-        _check_keys(state, {"state_id", "display_name", "render_model_ref", "waiting_visual_ref"}, path, issues)
+        _check_keys(
+            state,
+            {"state_id", "display_name", "waiting_visual_ref"},
+            path,
+            issues,
+            {"state_id", "display_name", "waiting_visual_ref", "placement_overrides", "render_model_ref"},
+        )
         _text(state.get("display_name"), f"{path}.display_name", issues)
-        if state.get("render_model_ref") not in render_models:
-            _issue(issues, "RENDER_MODEL_UNKNOWN", f"{path}.render_model_ref", "render model does not exist")
+        if "render_model_ref" in state:
+            only_render_model = next(iter(render_models), None)
+            if state.get("render_model_ref") != only_render_model:
+                _issue(
+                    issues,
+                    "STATE_RENDER_MODEL_INVALID",
+                    f"{path}.render_model_ref",
+                    "logic states must not select independent screen layouts",
+                )
         if state.get("waiting_visual_ref") not in waiting_visuals:
             _issue(issues, "WAIT_VISUAL_UNKNOWN", f"{path}.waiting_visual_ref", "waiting visual does not exist")
+        _check_state_placement_overrides(state, path, placement_elements, frame_lookup, issues)
 
     for route_id, route in routes.items():
         path = f"{base}.routes[{route_id}]"
@@ -2590,7 +3068,7 @@ def load_project(project_root: str | Path) -> ProjectBundle:
             scene = _read_json(path, issues, "SCENE_SOURCE_INVALID")
             if scene is None:
                 continue
-            _check_scene(scene, str(source), frame_ids, animation_ids, issues)
+            _check_scene(scene, str(source), {frame.frame_id: frame for frame in frames}, animation_ids, issues)
             scene_id = scene.get("scene_id")
             if isinstance(scene_id, str):
                 if scene_id in scene_ids:
@@ -2715,7 +3193,7 @@ def apply_project_commands(
             applied.append(_apply_state_add(scenes, command))
         elif kind == "state.delete":
             applied.append(_apply_state_delete(project, scenes, command))
-        elif kind in {"state.set_entry", "state.set_render_model"}:
+        elif kind == "state.set_entry":
             applied.append(_apply_state_set_reference(scenes, command))
         elif kind == "state.rename":
             applied.append(_apply_state_rename(scenes, command))
@@ -2747,12 +3225,18 @@ def apply_project_commands(
             applied.append(_apply_route_delete_scene_exit(scenes, command))
         elif kind == "render_element.set_position":
             applied.append(_apply_render_element_set_position(scenes, command))
+        elif kind == "state_placement.set_override":
+            applied.append(_apply_state_placement_set_override(scenes, frames, command))
         elif kind == "render_element.add":
             applied.append(_apply_render_element_add(scenes, frames, command))
         elif kind == "render_element.delete":
             applied.append(_apply_render_element_delete(scenes, command))
         elif kind == "render_element.set_bounds":
             applied.append(_apply_render_element_set_bounds(scenes, command))
+        elif kind == "render_element.bind_waiting_animation":
+            applied.append(_apply_render_element_bind_waiting_animation(scenes, frames, command))
+        elif kind == "render_element.clear_waiting_animation":
+            applied.append(_apply_render_element_clear_waiting_animation(scenes, command))
         elif kind in {
             "render_element.set_layer",
             "render_element.set_visibility",
@@ -2807,7 +3291,8 @@ def apply_project_commands(
         else:
             raise ProjectCommandError("COMMAND_KIND_UNKNOWN", f"unknown command kind '{kind}'")
 
-    frame_ids = {frame.frame_id for frame in frames}
+    frame_lookup = {frame.frame_id: frame for frame in frames}
+    frame_ids = set(frame_lookup)
     animation_ids = {
         animation.get("animation_id")
         for animation in animations
@@ -2815,7 +3300,7 @@ def apply_project_commands(
     }
     validation_issues: list[ValidationIssue] = []
     for index, scene in enumerate(scenes):
-        _check_scene(scene, f"scenes[{index}]", frame_ids, animation_ids, validation_issues)
+        _check_scene(scene, f"scenes[{index}]", frame_lookup, animation_ids, validation_issues)
     if validation_issues:
         issue = validation_issues[0]
         raise ProjectCommandError(issue.code, f"{issue.path}: {issue.message}")

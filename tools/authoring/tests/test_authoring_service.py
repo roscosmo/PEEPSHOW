@@ -217,6 +217,8 @@ def make_procedural_project(parent: Path) -> Path:
             ]
         for waiting in scene["waiting_visuals"]:
             waiting["elements"] = []
+        for state in scene["states"]:
+            state["placement_overrides"] = []
         scene_path.write_text(json.dumps(scene), encoding="utf-8")
     return project_root
 
@@ -268,7 +270,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(15, SERVICE_API_VERSION)
+        self.assertEqual(18, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -298,11 +300,16 @@ class AuthoringServiceTests(unittest.TestCase):
         graph = result["state_scene_graph"]
         self.assertEqual(64, graph["command_batch_maximum"])
         self.assertEqual(64, graph["limits"]["states"])
+        self.assertEqual(1, graph["limits"]["render_models"])
         self.assertIn("state.add", graph["state_commands"])
-        self.assertIn("render_model.add", graph["render_model_commands"])
+        self.assertNotIn("state.set_render_model", graph["state_commands"])
+        self.assertIn("state_placement.set_override", graph["state_placement_commands"])
         self.assertIn("route.guard.move", graph["guard_commands"])
         self.assertIn("route.action.move", graph["action_commands"])
         self.assertEqual("reject_if_referenced", graph["generic_delete_policy"])
+        waiting_animation = result["state_scene_presentation"]["waiting_animation"]
+        self.assertIn("render_element.bind_waiting_animation", waiting_animation["commands"])
+        self.assertIn("render_element.clear_waiting_animation", waiting_animation["commands"])
 
     def test_load_validate_and_normalize_share_one_revision(self) -> None:
         service = AuthoringService()
@@ -425,49 +432,17 @@ class AuthoringServiceTests(unittest.TestCase):
                     "project_revision": loaded["project_revision"],
                     "commands": [
                         {
-                            "kind": "render_model.add",
-                            "scene_id": "state_demo",
-                            "render_model": {
-                                "visual_id": "view_options",
-                                "focus_index": 3,
-                                "elements": [
-                                    {
-                                        "element_id": "cursor",
-                                        "kind": "sprite",
-                                        "visual_ref": "cursor.phase_b",
-                                        "x": 8,
-                                        "y": 118,
-                                        "width": 8,
-                                        "height": 16,
-                                        "z_order": 10,
-                                        "focus_role": "focus",
-                                    },
-                                    {
-                                        "element_id": "marker",
-                                        "kind": "sprite",
-                                        "visual_ref": "marker.phase_a",
-                                        "x": 160,
-                                        "y": 0,
-                                        "width": 8,
-                                        "height": 24,
-                                        "z_order": 5,
-                                    },
-                                ],
-                            },
-                        },
-                        {
                             "kind": "state.add",
                             "scene_id": "state_demo",
                             "state": {
                                 "state_id": "options",
                                 "display_name": "Options",
-                                "render_model_ref": "view_center",
                                 "waiting_visual_ref": "state_wait",
+                                "placement_overrides": [{"element_ref": "cursor", "x": 8, "y": 118}],
                             },
                         },
-                        {"kind": "state.set_render_model", "scene_id": "state_demo", "state_id": "options", "render_model_ref": "view_options"},
                         {"kind": "state.set_entry", "scene_id": "state_demo", "state_id": "options"},
-                        {"kind": "render_model.set_focus_index", "scene_id": "state_demo", "visual_id": "view_options", "focus_index": 4},
+                        {"kind": "render_model.set_focus_index", "scene_id": "state_demo", "visual_id": "scene_placement", "focus_index": 4},
                         {
                             "kind": "variable.add",
                             "scene_id": "state_demo",
@@ -557,7 +532,9 @@ class AuthoringServiceTests(unittest.TestCase):
         )
         scene = changed["document"]["scenes"][0]
         self.assertEqual("options", scene["entry_state"])
-        self.assertEqual(4, next(model for model in scene["render_models"] if model["visual_id"] == "view_options")["focus_index"])
+        self.assertEqual(4, next(model for model in scene["render_models"] if model["visual_id"] == "scene_placement")["focus_index"])
+        options = next(state for state in scene["states"] if state["state_id"] == "options")
+        self.assertEqual([{"element_ref": "cursor", "x": 8, "y": 118}], options["placement_overrides"])
         route = next(route for route in scene["routes"] if route["route_id"] == "options_to_center")
         self.assertEqual(["le", "ge"], [guard["operator"] for guard in route["guards"]])
         self.assertEqual(["request_render", "set_variable"], [action["kind"] for action in route["actions"]])
@@ -567,7 +544,7 @@ class AuthoringServiceTests(unittest.TestCase):
     def test_graph_deletes_reject_referenced_records(self) -> None:
         cases = [
             ({"kind": "state.delete", "scene_id": "state_demo", "state_id": "center"}, "entry state"),
-            ({"kind": "render_model.delete", "scene_id": "state_demo", "visual_id": "view_center"}, "referenced by state"),
+            ({"kind": "render_model.delete", "scene_id": "state_demo", "visual_id": "scene_placement"}, "one scene placement model"),
             ({"kind": "variable.delete", "scene_id": "state_demo", "variable_id": "selected_index"}, "referenced by route"),
             ({"kind": "input_action.delete", "scene_id": "state_demo", "action_id": "move_right"}, "referenced by route"),
         ]
@@ -588,10 +565,9 @@ class AuthoringServiceTests(unittest.TestCase):
                 {
                     "project_revision": loaded["project_revision"],
                     "commands": [
-                        {"kind": "render_model.add", "scene_id": "state_demo", "render_model": {"visual_id": "unused_model", "focus_index": 0, "elements": []}},
                         {"kind": "variable.add", "scene_id": "state_demo", "variable": {"variable_id": "unused_variable", "value_type": "int32", "initial": 0, "minimum": 0, "maximum": 1}},
                         {"kind": "input_action.add", "scene_id": "state_demo", "input_action": {"action_id": "unused_input", "logical_source": "BUTTON_START"}},
-                        {"kind": "state.add", "scene_id": "state_demo", "state": {"state_id": "unused_state", "display_name": "Unused", "render_model_ref": "view_center", "waiting_visual_ref": "state_wait"}},
+                        {"kind": "state.add", "scene_id": "state_demo", "state": {"state_id": "unused_state", "display_name": "Unused", "waiting_visual_ref": "state_wait"}},
                         {
                             "kind": "route.add",
                             "scene_id": "state_demo",
@@ -615,7 +591,6 @@ class AuthoringServiceTests(unittest.TestCase):
                     "commands": [
                         {"kind": "route.delete", "scene_id": "state_demo", "route_id": "unused_route"},
                         {"kind": "state.delete", "scene_id": "state_demo", "state_id": "unused_state"},
-                        {"kind": "render_model.delete", "scene_id": "state_demo", "visual_id": "unused_model"},
                         {"kind": "variable.delete", "scene_id": "state_demo", "variable_id": "unused_variable"},
                         {"kind": "input_action.delete", "scene_id": "state_demo", "action_id": "unused_input"},
                     ],
@@ -623,7 +598,6 @@ class AuthoringServiceTests(unittest.TestCase):
             )
         )
         scene = removed["document"]["scenes"][0]
-        self.assertNotIn("unused_model", {model["visual_id"] for model in scene["render_models"]})
         self.assertNotIn("unused_variable", {variable["variable_id"] for variable in scene["variables"]})
         self.assertNotIn("unused_input", {action["action_id"] for action in scene["input_actions"]})
         self.assertNotIn("unused_state", {state["state_id"] for state in scene["states"]})
@@ -839,7 +813,7 @@ class AuthoringServiceTests(unittest.TestCase):
                         {
                             "kind": "render_element.set_position",
                             "scene_id": "state_demo",
-                            "render_model_id": "view_center",
+                            "render_model_id": "scene_placement",
                             "element_id": "cursor",
                             "x": 31,
                             "y": 42,
@@ -850,7 +824,7 @@ class AuthoringServiceTests(unittest.TestCase):
         )
 
         demo = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_demo")
-        screen = next(model for model in demo["render_models"] if model["visual_id"] == "view_center")
+        screen = next(model for model in demo["render_models"] if model["visual_id"] == "scene_placement")
         cursor = next(element for element in screen["elements"] if element["element_id"] == "cursor")
         self.assertEqual(31, cursor["x"])
         self.assertEqual(42, cursor["y"])
@@ -858,7 +832,7 @@ class AuthoringServiceTests(unittest.TestCase):
             {
                 "kind": "render_element.set_position",
                 "scene_id": "state_demo",
-                "render_model_id": "view_center",
+                "render_model_id": "scene_placement",
                 "element_id": "cursor",
                 "previous_x": 8,
                 "previous_y": 73,
@@ -882,7 +856,7 @@ class AuthoringServiceTests(unittest.TestCase):
                             {
                                 "kind": "render_element.set_position",
                                 "scene_id": "state_demo",
-                                "render_model_id": "view_center",
+                                "render_model_id": "scene_placement",
                                 "element_id": "cursor",
                                 "x": 168,
                                 "y": 0,
@@ -892,6 +866,49 @@ class AuthoringServiceTests(unittest.TestCase):
                 )
             )
         self.assertEqual("RENDER_BOUNDS_INVALID", raised.exception.code)
+
+    def test_state_placement_override_moves_one_state_without_duplication(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "state_placement.set_override",
+                            "scene_id": "state_demo",
+                            "state_id": "center",
+                            "render_model_id": "scene_placement",
+                            "element_id": "cursor",
+                            "x": 31,
+                            "y": 42,
+                        }
+                    ],
+                },
+            )
+        )
+
+        demo = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_demo")
+        self.assertEqual(["scene_placement"], [model["visual_id"] for model in demo["render_models"]])
+        scene_cursor = demo["render_models"][0]["elements"][0]
+        self.assertEqual((8, 73), (scene_cursor["x"], scene_cursor["y"]))
+        center = next(state for state in demo["states"] if state["state_id"] == "center")
+        self.assertEqual([{"element_ref": "cursor", "x": 31, "y": 42}], center["placement_overrides"])
+
+        built = service.handle(request("project.build_package", {"project_revision": changed["project_revision"]}))
+        package = parse_egg(base64.b64decode(built["package"]["blob_base64"]))
+        package_scene = next(scene for scene in package.scenes if scene["scene_id"] == "state_demo")
+        graph_states = package_scene["graph"]["states"]
+        center_state = next(state for state in graph_states if state["state_id"] == "center")
+        left_state = next(state for state in graph_states if state["state_id"] == "left")
+        center_model = package_scene["render_models"][center_state["render_model_index"]]
+        left_model = package_scene["render_models"][left_state["render_model_index"]]
+        center_cursor = next(element for element in center_model["elements"] if element["element_id"] == "cursor")
+        left_cursor = next(element for element in left_model["elements"] if element["element_id"] == "cursor")
+        self.assertEqual((31, 42), (center_cursor["x"], center_cursor["y"]))
+        self.assertEqual((8, 43), (left_cursor["x"], left_cursor["y"]))
 
     def test_state_presentation_commands_add_and_edit_retained_element(self) -> None:
         service = AuthoringService()
@@ -905,7 +922,7 @@ class AuthoringServiceTests(unittest.TestCase):
                         {
                             "kind": "render_element.add",
                             "scene_id": "state_demo",
-                            "render_model_id": "view_center",
+                            "render_model_id": "scene_placement",
                             "element": {
                                 "element_id": "menu_box",
                                 "kind": "outline_rect",
@@ -921,7 +938,7 @@ class AuthoringServiceTests(unittest.TestCase):
                         {
                             "kind": "render_element.set_bounds",
                             "scene_id": "state_demo",
-                            "render_model_id": "view_center",
+                            "render_model_id": "scene_placement",
                             "element_id": "menu_box",
                             "x": 24,
                             "y": 22,
@@ -931,21 +948,21 @@ class AuthoringServiceTests(unittest.TestCase):
                         {
                             "kind": "render_element.set_layer",
                             "scene_id": "state_demo",
-                            "render_model_id": "view_center",
+                            "render_model_id": "scene_placement",
                             "element_id": "menu_box",
                             "layer": "BACKGROUND",
                         },
                         {
                             "kind": "render_element.set_visibility",
                             "scene_id": "state_demo",
-                            "render_model_id": "view_center",
+                            "render_model_id": "scene_placement",
                             "element_id": "menu_box",
                             "visible": False,
                         },
                         {
                             "kind": "render_element.set_z_order",
                             "scene_id": "state_demo",
-                            "render_model_id": "view_center",
+                            "render_model_id": "scene_placement",
                             "element_id": "menu_box",
                             "z_order": 7,
                         },
@@ -954,7 +971,7 @@ class AuthoringServiceTests(unittest.TestCase):
             )
         )
         demo = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_demo")
-        model = next(item for item in demo["render_models"] if item["visual_id"] == "view_center")
+        model = next(item for item in demo["render_models"] if item["visual_id"] == "scene_placement")
         element = next(item for item in model["elements"] if item["element_id"] == "menu_box")
         self.assertEqual((24, 22, 48, 18), (element["x"], element["y"], element["width"], element["height"]))
         self.assertEqual("BACKGROUND", element["layer"])
@@ -985,7 +1002,7 @@ class AuthoringServiceTests(unittest.TestCase):
                         {
                             "kind": "render_element.add",
                             "scene_id": "state_demo",
-                            "render_model_id": "view_center",
+                            "render_model_id": "scene_placement",
                             "element": {
                                 "element_id": "menu_title",
                                 "kind": "sprite",
@@ -1021,7 +1038,7 @@ class AuthoringServiceTests(unittest.TestCase):
                             {
                                 "kind": "render_element.set_visual_ref",
                                 "scene_id": "state_demo",
-                                "render_model_id": "view_center",
+                                "render_model_id": "scene_placement",
                                 "element_id": "cursor",
                                 "visual_ref": "cursor.blink",
                             }
@@ -1030,6 +1047,121 @@ class AuthoringServiceTests(unittest.TestCase):
                 )
             )
         self.assertEqual("ASSET_FRAME_UNKNOWN", raised.exception.code)
+
+    def test_render_element_bind_waiting_animation_clones_shared_wait(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        added = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "render_element.add",
+                            "scene_id": "state_demo",
+                            "render_model_id": "scene_placement",
+                            "element": {
+                                "element_id": "extra_cursor",
+                                "kind": "sprite",
+                                "visual_ref": "cursor.phase_a",
+                                "x": 48,
+                                "y": 40,
+                                "width": 8,
+                                "height": 16,
+                                "z_order": 99,
+                                "layer": "SCENE",
+                                "visible": True,
+                            },
+                        },
+                    ],
+                },
+            )
+        )
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": added["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "render_element.bind_waiting_animation",
+                            "scene_id": "state_demo",
+                            "state_id": "center",
+                            "render_model_id": "scene_placement",
+                            "element_id": "extra_cursor",
+                            "phase_visual_refs": ["cursor.phase_a", "cursor.phase_b"],
+                        },
+                    ],
+                },
+            )
+        )
+        demo = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_demo")
+        center = next(state for state in demo["states"] if state["state_id"] == "center")
+        left = next(state for state in demo["states"] if state["state_id"] == "left")
+        right = next(state for state in demo["states"] if state["state_id"] == "right")
+        self.assertEqual("state_wait", left["waiting_visual_ref"])
+        self.assertEqual("state_wait", right["waiting_visual_ref"])
+        self.assertNotEqual("state_wait", center["waiting_visual_ref"])
+        state_wait = next(wait for wait in demo["waiting_visuals"] if wait["waiting_visual_id"] == "state_wait")
+        self.assertEqual(2, len(state_wait["elements"]))
+        center_wait = next(wait for wait in demo["waiting_visuals"] if wait["waiting_visual_id"] == center["waiting_visual_ref"])
+        self.assertEqual(250, center_wait["phase_quantum_ms"])
+        self.assertEqual(6, center_wait["combined_step_count"])
+        self.assertEqual(1, center_wait["settled_step"])
+        extra = next(item for item in center_wait["elements"] if item["source_element_ref"] == "extra_cursor")
+        self.assertEqual(["cursor.phase_a", "cursor.phase_b"], extra["phase_visual_refs"])
+        self.assertEqual([1, 0, 1, 0, 1, 0], extra["step_phase_indices"])
+
+    def test_render_element_bind_waiting_animation_rejects_wrong_size_frames(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        with self.assertRaises(ProtocolError) as raised:
+            service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "render_element.bind_waiting_animation",
+                                "scene_id": "state_demo",
+                                "state_id": "center",
+                                "render_model_id": "scene_placement",
+                                "element_id": "cursor",
+                                "phase_visual_refs": ["marker.phase_a", "marker.phase_b"],
+                            },
+                        ],
+                    },
+                )
+            )
+        self.assertEqual("WAIT_FRAME_SIZE_INVALID", raised.exception.code)
+
+    def test_render_element_clear_waiting_animation_removes_state_binding(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "render_element.clear_waiting_animation",
+                            "scene_id": "state_demo",
+                            "state_id": "center",
+                            "render_model_id": "scene_placement",
+                            "element_id": "cursor",
+                        },
+                    ],
+                },
+            )
+        )
+        demo = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_demo")
+        center = next(state for state in demo["states"] if state["state_id"] == "center")
+        center_wait = next(wait for wait in demo["waiting_visuals"] if wait["waiting_visual_id"] == center["waiting_visual_ref"])
+        self.assertTrue(all(item["source_element_ref"] != "cursor" for item in center_wait["elements"]))
+        self.assertEqual(3, center_wait["combined_step_count"])
 
     def test_waiting_visual_upsert_authors_bounded_state_loop(self) -> None:
         service = AuthoringService()
@@ -1829,6 +1961,48 @@ class AuthoringServiceTests(unittest.TestCase):
             )
             self.assertFalse(ignored["input"]["accepted"])
             self.assertEqual("right", ignored["scene"]["state_id"])
+
+    def test_preview_state_renders_exact_state_without_touching_live_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_preview_project(Path(temp_dir))
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            reset = service.handle(
+                request(
+                    "project.preview_reset",
+                    {"project_revision": loaded["project_revision"], "scene_id": "state_demo"},
+                )
+            )
+
+            selected = service.handle(
+                request(
+                    "project.preview_state",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "scene_id": "state_demo",
+                        "state_id": "right",
+                    },
+                )
+            )
+
+            self.assertEqual(reset["preview_revision"], selected["preview_revision"])
+            self.assertEqual("state_demo", selected["scene"]["scene_id"])
+            self.assertEqual("right", selected["scene"]["state_id"])
+            self.assertEqual(0, selected["timeline"]["elapsed_ms"])
+            self.assertNotEqual(reset["framebuffer"]["sha256"], selected["framebuffer"]["sha256"])
+
+            advanced = service.handle(
+                request(
+                    "project.preview_advance",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "preview_revision": reset["preview_revision"],
+                        "elapsed_ms": 250,
+                    },
+                )
+            )
+            self.assertEqual("center", advanced["scene"]["state_id"])
+            self.assertEqual(250, advanced["timeline"]["elapsed_ms"])
 
     def test_scene_thumbnails_return_package_backed_frames_without_touching_live_preview(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

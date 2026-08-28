@@ -57,6 +57,7 @@ import type {
   ProjectLoadResult,
   SceneDocument,
   ServiceHello,
+  WaitingVisual,
 } from "./types";
 import type { RenderElement, RenderModel, StateRecord } from "./types";
 
@@ -65,7 +66,6 @@ const INPUTS = [
   { source: "BUTTON_R", label: "R", icon: Circle },
   { source: "BUTTON_A", label: "A", icon: Circle },
   { source: "BUTTON_B", label: "B", icon: Circle },
-  { source: "BUTTON_START", label: "Start", icon: Circle },
 ] as const;
 
 const JOYSTICK_INPUTS = [
@@ -85,7 +85,18 @@ const PLACEMENT_PRIMITIVES = [
 
 type PlacementPrimitiveKind = (typeof PLACEMENT_PRIMITIVES)[number]["kind"];
 type WorkspaceMode = "scene-flow" | "logic" | "placement" | "assets";
+type PlacementInspectorTab = "object" | "settings";
 const SYSTEM_FONT_8X8_BASIC_ID = "peepshow.system.8x8.basic.v1";
+
+type PendingSpriteImport = {
+  assetId: string;
+  displayName: string;
+  sourcePath: string;
+  width: number;
+  height: number;
+  frameWidth: number;
+  frameHeight: number;
+};
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -100,10 +111,14 @@ export default function App() {
   const [service, setService] = useState<ServiceHello | null>(null);
   const [project, setProject] = useState<ProjectLoadResult | null>(null);
   const [preview, setPreview] = useState<PreviewSnapshot | null>(null);
+  const [placementPreview, setPlacementPreview] = useState<PreviewSnapshot | null>(null);
+  const [placementPreviewLoading, setPlacementPreviewLoading] = useState(false);
+  const [placementPreviewError, setPlacementPreviewError] = useState<string | null>(null);
   const [selectedScene, setSelectedScene] = useState<string | null>(null);
   const [projectPath, setProjectPath] = useState<string | null>(null);
   const [temporaryProject, setTemporaryProject] = useState(false);
   const [sceneSelection, setSceneSelection] = useState<SceneSelection>({ kind: "scene" });
+  const [placementStateId, setPlacementStateId] = useState<string | null>(null);
   const [selectedPlacementElement, setSelectedPlacementElement] = useState<string | null>(null);
   const [build, setBuild] = useState<PackageBuildResult | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -112,8 +127,11 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("scene-flow");
+  const [placementInspectorTab, setPlacementInspectorTab] = useState<PlacementInspectorTab>("object");
   const [sceneThumbnails, setSceneThumbnails] = useState<Record<string, Framebuffer>>({});
   const [selectedAssetFrameId, setSelectedAssetFrameId] = useState<string | null>(null);
+  const [assetPreviewPlaying, setAssetPreviewPlaying] = useState(false);
+  const [assetPreviewStep, setAssetPreviewStep] = useState(0);
   const [sceneFlowLayoutStatus, setSceneFlowLayoutStatus] = useState("No layout move yet");
   const [stateGraphLayoutStatus, setStateGraphLayoutStatus] = useState("No layout move yet");
   const [projectWidth, setProjectWidth] = useState(320);
@@ -126,8 +144,12 @@ export default function App() {
   const [spritePickerOpen, setSpritePickerOpen] = useState(false);
   const [placementDraftPositions, setPlacementDraftPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [placementDraftBounds, setPlacementDraftBounds] = useState<Record<string, { x: number; y: number; width: number; height: number }>>({});
+  const [pendingSpriteImport, setPendingSpriteImport] = useState<PendingSpriteImport | null>(null);
+  const [assetImportDebug, setAssetImportDebug] = useState("No import attempted.");
   const [message, setMessage] = useState<string | null>(null);
   const previewRef = useRef<PreviewSnapshot | null>(null);
+  const selectedSceneRef = useRef<string | null>(null);
+  const workspaceModeRef = useRef<WorkspaceMode>(workspaceMode);
   const projectRevisionRef = useRef<number | null>(null);
   const layoutSaveChain = useRef(Promise.resolve());
   const operationLock = useRef(false);
@@ -135,6 +157,14 @@ export default function App() {
   useEffect(() => {
     previewRef.current = preview;
   }, [preview]);
+
+  useEffect(() => {
+    selectedSceneRef.current = selectedScene;
+  }, [selectedScene]);
+
+  useEffect(() => {
+    workspaceModeRef.current = workspaceMode;
+  }, [workspaceMode]);
 
   useEffect(() => {
     projectRevisionRef.current = project?.project_revision ?? null;
@@ -190,7 +220,11 @@ export default function App() {
       setCanRedo(false);
       setProjectPath(path);
       setPreview(null);
+      setPlacementPreview(null);
+      setPlacementPreviewLoading(false);
+      setPlacementPreviewError(null);
       setSelectedScene(null);
+      setPlacementStateId(null);
       setSceneThumbnails({});
       setSceneSelection({ kind: "scene" });
       setSelectedPlacementElement(null);
@@ -247,7 +281,7 @@ export default function App() {
           elapsed_ms: elapsedMs,
         });
         setPreview(result);
-        if (result.scene.scene_id !== selectedScene) {
+        if (result.scene.scene_id !== selectedSceneRef.current && workspaceModeRef.current !== "placement") {
           setSelectedScene(result.scene.scene_id);
           setSceneSelection({ kind: "scene" });
           setSelectedPlacementElement(null);
@@ -348,6 +382,9 @@ export default function App() {
     setCanUndo(result.can_undo);
     setCanRedo(result.can_redo);
     setPreview(null);
+    setPlacementPreview(null);
+    setPlacementPreviewLoading(false);
+    setPlacementPreviewError(null);
     setSceneThumbnails({});
     setPlacementDraftPositions({});
     setBuild(null);
@@ -400,48 +437,155 @@ export default function App() {
     return `label_${existing.size + 1}`;
   };
 
-  const importSpriteAsset = async () => {
+  const parseImportFrameSize = (
+    sourceWidth: number,
+    sourceHeight: number,
+    value: string,
+  ): { frameWidth: number; frameHeight: number; error?: string } => {
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      if (sourceWidth > 168 || sourceHeight > 144) {
+        return {
+          frameWidth: sourceWidth,
+          frameHeight: sourceHeight,
+          error: "This PNG is larger than the screen. Enter the size of one sprite frame.",
+        };
+      }
+      return { frameWidth: sourceWidth, frameHeight: sourceHeight };
+    }
+    const match = trimmed.match(/^(\d+)\s*[x, ]\s*(\d+)$/i);
+    if (match === null) {
+      return { frameWidth: sourceWidth, frameHeight: sourceHeight, error: "Use a frame size like 16x16." };
+    }
+    const frameWidth = Number(match[1]);
+    const frameHeight = Number(match[2]);
+    if (!Number.isInteger(frameWidth) || !Number.isInteger(frameHeight) || frameWidth < 1 || frameHeight < 1) {
+      return { frameWidth, frameHeight, error: "Frame size must use positive whole pixels." };
+    }
+    if (frameWidth > 168 || frameHeight > 144) {
+      return { frameWidth, frameHeight, error: "Each sprite frame must fit inside 168x144." };
+    }
+    if (sourceWidth % frameWidth !== 0 || sourceHeight % frameHeight !== 0) {
+      return { frameWidth, frameHeight, error: "Frame size must divide the PNG evenly." };
+    }
+    const frameCount = (sourceWidth / frameWidth) * (sourceHeight / frameHeight);
+    if (frameCount > 256) {
+      return { frameWidth, frameHeight, error: "A sprite asset can contain at most 256 frames." };
+    }
+    return { frameWidth, frameHeight };
+  };
+
+  const createGridFrames = (assetId: string, sourceWidth: number, sourceHeight: number, frameWidth: number, frameHeight: number): AssetFrameRecord[] => {
+    const columns = sourceWidth / frameWidth;
+    const rows = sourceHeight / frameHeight;
+    const frameCount = columns * rows;
+    const frames: AssetFrameRecord[] = [];
+    for (let row = 0; row < rows; row += 1) {
+      for (let column = 0; column < columns; column += 1) {
+        const index = frames.length + 1;
+        frames.push({
+          frame_id: frameCount === 1 ? `${assetId}.frame` : `${assetId}.frame_${index}`,
+          display_name: frameCount === 1 ? "Frame" : `Frame ${index}`,
+          source_rect: {
+            x: column * frameWidth,
+            y: row * frameHeight,
+            width: frameWidth,
+            height: frameHeight,
+          },
+          pivot_x: 0,
+          pivot_y: 0,
+        });
+      }
+    }
+    return frames;
+  };
+
+  const chooseSpritePng = async () => {
     if (bridge === undefined || project === null || projectPath === null || busy !== null) {
+      return;
+    }
+    setBusy("Choosing sprite");
+    setPlaying(false);
+    try {
+      const imported = await bridge.importSpritePng(projectPath);
+      if (imported === null) {
+        setAssetImportDebug("PNG picker cancelled.");
+        setMessage("Sprite import cancelled.");
+        return;
+      }
+      const assetId = uniqueImportedAssetId(imported.assetId);
+      const defaultFrameSize = imported.width > 168 || imported.height > 144
+        ? (imported.width % 16 === 0 && imported.height % 16 === 0 ? "16x16" : "")
+        : "";
+      const parsed = parseImportFrameSize(imported.width, imported.height, defaultFrameSize);
+      setPendingSpriteImport({
+        ...imported,
+        assetId,
+        frameWidth: parsed.error === undefined ? parsed.frameWidth : Math.min(imported.width, 168),
+        frameHeight: parsed.error === undefined ? parsed.frameHeight : Math.min(imported.height, 144),
+      });
+      setWorkspaceMode("assets");
+      setAssetImportDebug(`Picked ${imported.sourcePath} (${imported.width}x${imported.height}).`);
+      setMessage("Choose frame size, then import the sprite.");
+    } catch (error) {
+      const text = errorText(error);
+      setAssetImportDebug(`PNG picker failed: ${text}`);
+      setMessage(text);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const confirmSpriteImport = async () => {
+    if (bridge === undefined || project === null || pendingSpriteImport === null || busy !== null) {
       return;
     }
     setBusy("Importing sprite");
     setPlaying(false);
     try {
-      const imported = await bridge.importSpritePng(projectPath);
-      if (imported === null) {
+      const parsed = parseImportFrameSize(
+        pendingSpriteImport.width,
+        pendingSpriteImport.height,
+        `${pendingSpriteImport.frameWidth}x${pendingSpriteImport.frameHeight}`,
+      );
+      if (parsed.error !== undefined) {
+        setAssetImportDebug(`Import blocked: ${parsed.error}`);
+        setMessage(parsed.error);
         return;
       }
-      const assetId = uniqueImportedAssetId(imported.assetId);
+      const frames = createGridFrames(
+        pendingSpriteImport.assetId,
+        pendingSpriteImport.width,
+        pendingSpriteImport.height,
+        parsed.frameWidth,
+        parsed.frameHeight,
+      );
       const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
         project_revision: project.project_revision,
         commands: [
           {
             kind: "asset.upsert",
             asset: {
-              asset_id: assetId,
-              display_name: imported.displayName,
+              asset_id: pendingSpriteImport.assetId,
+              display_name: pendingSpriteImport.displayName,
               asset_type: "masked_1bpp",
-              source_path: imported.sourcePath,
+              source_path: pendingSpriteImport.sourcePath,
               source_format: "png",
-              frames: [
-                {
-                  frame_id: `${assetId}.frame`,
-                  display_name: "Frame",
-                  source_rect: { x: 0, y: 0, width: imported.width, height: imported.height },
-                  pivot_x: 0,
-                  pivot_y: 0,
-                },
-              ],
+              frames,
             },
           },
         ],
       });
       applyProjectResult(result);
-      setSelectedAssetFrameId(`${assetId}.frame`);
+      setSelectedAssetFrameId(frames[0]?.frame_id ?? null);
       setWorkspaceMode("assets");
-      setMessage(`Imported ${assetId}. Save to write it to the project.`);
+      setPendingSpriteImport(null);
+      setAssetImportDebug(`Imported ${pendingSpriteImport.sourcePath}: ${frames.length} frame${frames.length === 1 ? "" : "s"} at ${parsed.frameWidth}x${parsed.frameHeight}.`);
+      setMessage(`Imported ${pendingSpriteImport.assetId} with ${frames.length} frame${frames.length === 1 ? "" : "s"}. Save to write it to the project.`);
     } catch (error) {
-      setMessage(errorText(error));
+      const text = errorText(error);
+      setAssetImportDebug(`Import failed: ${text}`);
+      setMessage(text);
     } finally {
       setBusy(null);
     }
@@ -568,6 +712,39 @@ export default function App() {
       applyProjectResult(result);
       setSelectedAssetFrameId(asset.frames[0]?.frame_id ?? null);
       setMessage("Text sprite updated. Save to write it to the project.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const updateAssetFrameRecord = async (
+    asset: AssetRecord,
+    frameId: string,
+    nextFrame: AssetFrameRecord,
+  ) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    const currentFrame = asset.frames.find((frame) => frame.frame_id === frameId);
+    if (currentFrame === undefined || JSON.stringify(currentFrame) === JSON.stringify(nextFrame)) {
+      return;
+    }
+    const updated: AssetRecord = {
+      ...asset,
+      frames: asset.frames.map((frame) => (frame.frame_id === frameId ? nextFrame : frame)),
+    };
+    setBusy("Updating frame");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{ kind: "asset.upsert", asset: updated }],
+      });
+      applyProjectResult(result);
+      setSelectedAssetFrameId(frameId);
+      setMessage("Frame updated. Save to write it to the project.");
     } catch (error) {
       setMessage(errorText(error));
     } finally {
@@ -888,51 +1065,6 @@ export default function App() {
     }
   };
 
-  const setRenderElementPosition = async (
-    sceneId: string,
-    renderModelId: string,
-    elementId: string,
-    x: number,
-    y: number,
-  ) => {
-    if (bridge === undefined || project === null || busy !== null) {
-      return;
-    }
-    setBusy("Moving element");
-    setPlaying(false);
-    try {
-      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
-        project_revision: project.project_revision,
-        commands: [
-          {
-            kind: "render_element.set_position",
-            scene_id: sceneId,
-            render_model_id: renderModelId,
-            element_id: elementId,
-            x,
-            y,
-          },
-        ],
-      });
-      applyProjectResult(result);
-      setSelectedScene(sceneId);
-      setSelectedPlacementElement(elementId);
-      setSceneSelection({ kind: "render", id: renderModelId });
-      if (result.valid) {
-        const previewResult = await bridge.serviceRequest<PreviewSnapshot>("project.preview_reset", {
-          project_revision: result.project_revision,
-          scene_id: sceneId,
-        });
-        setPreview(previewResult);
-      }
-      setMessage("Element moved. Save to write it to the project.");
-    } catch (error) {
-      setPlacementDraftPositions({});
-      setMessage(errorText(error));
-    } finally {
-      setBusy(null);
-    }
-  };
   const applyRenderElementCommand = async (
     busyLabel: string,
     sceneId: string,
@@ -979,13 +1111,60 @@ export default function App() {
       setBusy(null);
     }
   };
+  const applyStatePlacementOverride = async (
+    busyLabel: string,
+    sceneId: string,
+    stateId: string,
+    renderModelId: string,
+    elementId: string,
+    override: Record<string, unknown>,
+    successMessage: string,
+  ) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy(busyLabel);
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [
+          {
+            kind: "state_placement.set_override",
+            scene_id: sceneId,
+            state_id: stateId,
+            render_model_id: renderModelId,
+            element_id: elementId,
+            ...override,
+          },
+        ],
+      });
+      applyProjectResult(result);
+      setSelectedScene(sceneId);
+      setSelectedPlacementElement(elementId);
+      setSceneSelection({ kind: "state", id: stateId });
+      if (result.valid) {
+        const previewResult = await bridge.serviceRequest<PreviewSnapshot>("project.preview_reset", {
+          project_revision: result.project_revision,
+          scene_id: sceneId,
+        });
+        setPreview(previewResult);
+      }
+      setMessage(successMessage);
+    } catch (error) {
+      setPlacementDraftPositions({});
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
   const movePlacementElement = (
     element: RenderElement,
     renderModelId: string,
     x: number,
     y: number,
   ) => {
-    if (selectedSceneDocument === null) {
+    if (selectedSceneDocument === null || placementState === null) {
       return;
     }
     const nextX = Math.min(Math.max(0, 168 - element.width), Math.max(0, Math.round(x)));
@@ -993,7 +1172,15 @@ export default function App() {
     if (nextX === element.x && nextY === element.y) {
       return;
     }
-    void setRenderElementPosition(selectedSceneDocument.scene_id, renderModelId, element.element_id, nextX, nextY);
+    void applyStatePlacementOverride(
+      "Moving element",
+      selectedSceneDocument.scene_id,
+      placementState.state_id,
+      renderModelId,
+      element.element_id,
+      { x: nextX, y: nextY },
+      "State position updated. Save to write it to the project.",
+    );
   };
   const oddDimension = (value: number, maximum: number) => {
     const bounded = Math.min(maximum, Math.max(3, Math.round(value)));
@@ -1123,9 +1310,20 @@ export default function App() {
   const selectedAssetFrame = selectedAssetFrameId === null
     ? compiledAssetFrames[0] ?? null
     : compiledAssetFrameById.get(selectedAssetFrameId) ?? compiledAssetFrames[0] ?? null;
+  const selectedAssetFrames = selectedAssetFrame === null
+    ? []
+    : compiledAssetFrameGroups.find((group) => group.assetId === selectedAssetFrame.asset_id)?.frames ?? [];
+  const animatedAssetPreviewFrame = selectedAssetFrames.length === 0
+    ? selectedAssetFrame
+    : selectedAssetFrames[assetPreviewPlaying ? assetPreviewStep % selectedAssetFrames.length : selectedAssetFrames.findIndex((frame) => frame.frame_id === selectedAssetFrame?.frame_id)] ?? selectedAssetFrame;
   const projectRevision = project?.project_revision ?? null;
   const projectValid = project?.valid ?? false;
   const thumbnailsSupported = service?.operations.includes("project.scene_thumbnails") === true;
+  const placementPreviewSupported = service?.operations.includes("project.preview_state") === true;
+  const waitingAnimationCommands = service?.state_scene_presentation.waiting_animation.commands ?? [];
+  const placementAnimationSupported =
+    waitingAnimationCommands.includes("render_element.bind_waiting_animation") &&
+    waitingAnimationCommands.includes("render_element.clear_waiting_animation");
 
   useEffect(() => {
     if (bridge === undefined || projectRevision === null || !projectValid || !thumbnailsSupported) {
@@ -1155,7 +1353,6 @@ export default function App() {
       cancelled = true;
     };
   }, [bridge, projectRevision, projectValid, thumbnailsSupported]);
-
   const selectedSceneDocument = useMemo(
     () => scenes.find((scene) => scene.scene_id === selectedScene) ?? null,
     [scenes, selectedScene],
@@ -1165,37 +1362,148 @@ export default function App() {
       return null;
     }
     const states = selectedSceneDocument.states ?? [];
-    const previewStateId = preview?.scene.scene_id === selectedSceneDocument.scene_id ? preview.scene.state_id : null;
     return (
-      states.find((state) => state.state_id === previewStateId) ??
+      states.find((state) => state.state_id === placementStateId) ??
       states.find((state) => state.state_id === selectedSceneDocument.entry_state) ??
       states[0] ??
       null
     );
-  }, [preview?.scene.scene_id, preview?.scene.state_id, selectedSceneDocument]);
+  }, [placementStateId, selectedSceneDocument]);
   const placementRenderModel = useMemo<RenderModel | null>(() => {
-    if (selectedSceneDocument === null || placementState === null) {
+    if (selectedSceneDocument === null) {
       return null;
     }
-    return (selectedSceneDocument.render_models ?? []).find((model) => model.visual_id === placementState.render_model_ref) ?? null;
-  }, [placementState, selectedSceneDocument]);
+    return selectedSceneDocument.render_models?.[0] ?? null;
+  }, [selectedSceneDocument]);
+  const placementOverrideByElement = useMemo(() => {
+    const overrides = new Map<string, NonNullable<StateRecord["placement_overrides"]>[number]>();
+    for (const override of placementState?.placement_overrides ?? []) {
+      overrides.set(override.element_ref, override);
+    }
+    return overrides;
+  }, [placementState?.placement_overrides]);
+  const effectivePlacementElements = useMemo<RenderElement[]>(() => {
+    if (placementRenderModel === null) {
+      return [];
+    }
+    return placementRenderModel.elements.map((element) => {
+      const override = placementOverrideByElement.get(element.element_id);
+      if (override === undefined) {
+        return element;
+      }
+      return {
+        ...element,
+        x: override.x ?? element.x,
+        y: override.y ?? element.y,
+        visible: override.visible ?? element.visible,
+        visual_ref: override.visual_ref ?? element.visual_ref,
+      };
+    });
+  }, [placementOverrideByElement, placementRenderModel]);
+  useEffect(() => {
+    const sceneId = selectedSceneDocument?.scene_id ?? null;
+    const stateId = placementState?.state_id ?? null;
+    const readyForPlacementPreview =
+      bridge !== undefined &&
+      projectRevision !== null &&
+      projectValid &&
+      workspaceMode === "placement" &&
+      sceneId !== null &&
+      stateId !== null;
+    if (
+      !readyForPlacementPreview ||
+      !placementPreviewSupported ||
+      projectRevision === null ||
+      sceneId === null ||
+      stateId === null
+    ) {
+      setPlacementPreview(null);
+      setPlacementPreviewLoading(false);
+      setPlacementPreviewError(
+        readyForPlacementPreview && !placementPreviewSupported
+          ? `Placement preview needs Service API 16. Restart Peep Studio if the top bar still shows Service API ${service?.service_api_version ?? "unknown"}.`
+          : null,
+      );
+      return undefined;
+    }
+
+    let cancelled = false;
+    setPlacementPreviewLoading(true);
+    setPlacementPreviewError(null);
+    bridge
+      .serviceRequest<PreviewSnapshot>("project.preview_state", {
+        project_revision: projectRevision,
+        scene_id: sceneId,
+        state_id: stateId,
+      })
+      .then((result) => {
+        if (
+          cancelled ||
+          result.project_revision !== projectRevision ||
+          result.scene.scene_id !== sceneId ||
+          result.scene.state_id !== stateId
+        ) {
+          return;
+        }
+        setPlacementPreview(result);
+        setPlacementPreviewLoading(false);
+        setPlacementPreviewError(null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          const text = errorText(error);
+          setPlacementPreview(null);
+          setPlacementPreviewLoading(false);
+          setMessage(text);
+          setPlacementPreviewError(text);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    bridge,
+    placementPreviewSupported,
+    placementState?.state_id,
+    projectRevision,
+    projectValid,
+    selectedSceneDocument?.scene_id,
+    service?.service_api_version,
+    workspaceMode,
+  ]);
+  useEffect(() => {
+    if (selectedSceneDocument === null) {
+      if (placementStateId !== null) {
+        setPlacementStateId(null);
+      }
+      return;
+    }
+    const states = selectedSceneDocument.states ?? [];
+    if (placementStateId !== null && states.some((state) => state.state_id === placementStateId)) {
+      return;
+    }
+    setPlacementStateId(
+      states.find((state) => state.state_id === selectedSceneDocument.entry_state)?.state_id ??
+      states[0]?.state_id ??
+      null,
+    );
+    setSelectedPlacementElement(null);
+  }, [placementStateId, selectedSceneDocument]);
   const selectedPlacementRenderElement = useMemo<RenderElement | null>(() => {
-    if (placementRenderModel === null || selectedPlacementElement === null) {
+    if (selectedPlacementElement === null) {
       return null;
     }
-    return placementRenderModel.elements.find((element) => element.element_id === selectedPlacementElement) ?? null;
-  }, [placementRenderModel, selectedPlacementElement]);
+    return effectivePlacementElements.find((element) => element.element_id === selectedPlacementElement) ?? null;
+  }, [effectivePlacementElements, selectedPlacementElement]);
   useEffect(() => {
     if (
       selectedPlacementElement !== null &&
-      placementRenderModel?.elements.some((element) => element.element_id === selectedPlacementElement) !== true
+      effectivePlacementElements.some((element) => element.element_id === selectedPlacementElement) !== true
     ) {
       setSelectedPlacementElement(null);
     }
-  }, [placementRenderModel, selectedPlacementElement]);
-  useEffect(() => {
-    setSpritePickerOpen(false);
-  }, [selectedScene, workspaceMode]);
+  }, [effectivePlacementElements, selectedPlacementElement]);
   useEffect(() => {
     if (compiledAssetFrames.length === 0) {
       setSelectedAssetFrameId(null);
@@ -1205,6 +1513,22 @@ export default function App() {
       setSelectedAssetFrameId(compiledAssetFrames[0].frame_id);
     }
   }, [compiledAssetFrameById, compiledAssetFrames, selectedAssetFrameId]);
+  useEffect(() => {
+    setAssetPreviewStep(0);
+    setAssetPreviewPlaying(false);
+  }, [selectedAssetFrame?.asset_id]);
+  useEffect(() => {
+    if (!assetPreviewPlaying || workspaceMode !== "assets" || selectedAssetFrames.length <= 1) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      setAssetPreviewStep((step) => step + 1);
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [assetPreviewPlaying, selectedAssetFrames.length, workspaceMode]);
+  useEffect(() => {
+    setSpritePickerOpen(false);
+  }, [selectedScene, workspaceMode]);
   const connected = service !== null;
   const startProjectResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -1249,6 +1573,13 @@ export default function App() {
           ))}
           <button className="joystick-nub" type="button" disabled title="Analog joystick preview is reserved for PROGRAM scenes" aria-label="Analog joystick preview reserved for PROGRAM scenes" />
         </div>
+      </div>
+      <div className="input-control-group start-control-group">
+        <span className="input-group-label">Start</span>
+        <button className="input-button start-button" onClick={() => void sendInput("BUTTON_START")} disabled={preview === null} title="Send BUTTON_START">
+          <Circle size={13} aria-hidden="true" />
+          Start
+        </button>
       </div>
       <div className="input-control-group">
         <span className="input-group-label">Buttons</span>
@@ -1324,6 +1655,7 @@ export default function App() {
     let latestX = startX;
     let latestY = startY;
     setSelectedPlacementElement(element.element_id);
+    setPlacementInspectorTab("object");
     setSceneSelection({ kind: "render", id: renderModelId });
 
     const move = (moveEvent: PointerEvent) => {
@@ -1342,7 +1674,7 @@ export default function App() {
         return next;
       });
       if (latestX !== startX || latestY !== startY) {
-        void setRenderElementPosition(selectedSceneDocument.scene_id, renderModelId, element.element_id, latestX, latestY);
+        movePlacementElement(element, renderModelId, latestX, latestY);
       }
     };
     window.addEventListener("pointermove", move);
@@ -1375,6 +1707,7 @@ export default function App() {
     };
     let latestBounds = startBounds;
     setSelectedPlacementElement(element.element_id);
+    setPlacementInspectorTab("object");
     setSceneSelection({ kind: "render", id: renderModelId });
 
     const move = (moveEvent: PointerEvent) => {
@@ -1424,7 +1757,7 @@ export default function App() {
         type="button"
         disabled={busy !== null || selectedSceneDocument === null || placementRenderModel === null || compiledAssetFrames.length === 0}
         onClick={() => setSpritePickerOpen((open) => !open)}
-        title={compiledAssetFrames.length === 0 ? "No sprite frames available" : "Choose sprite"}
+        title={compiledAssetFrames.length === 0 ? "No sprite assets available" : "Add sprite"}
         aria-label="Add sprite"
       >
         <Image size={18} aria-hidden="true" />
@@ -1445,24 +1778,27 @@ export default function App() {
     </div>
   );
   const renderSpritePicker = () => (
-    <div className="placement-sprite-picker" role="dialog" aria-label="Choose sprite frame">
+    <div className="placement-sprite-picker" role="dialog" aria-label="Choose sprite">
       <div className="placement-sprite-picker-heading">
-        <strong>Choose Sprite</strong>
+        <strong>Choose sprite</strong>
         <button type="button" onClick={() => setSpritePickerOpen(false)} title="Close sprite picker" aria-label="Close sprite picker">
           <X size={14} aria-hidden="true" />
         </button>
       </div>
       <div className="placement-sprite-picker-groups">
         {compiledAssetFrameGroups.map((group) => (
-          <div className="placement-sprite-picker-group" key={group.assetId}>
-            <span>{group.assetId}</span>
+          <section className="placement-sprite-picker-group" key={group.assetId}>
             <div>
+              <strong>{assetDisplayName(group.assetId)}</strong>
+              <span>{group.frames.length} frame{group.frames.length === 1 ? "" : "s"}</span>
+            </div>
+            <div className="placement-sprite-picker-frames">
               {group.frames.map((frame) => (
                 <button
                   key={frame.frame_id}
                   type="button"
                   disabled={busy !== null || selectedSceneDocument === null || placementRenderModel === null}
-                  title={`${frame.frame_id} (${frame.width}x${frame.height})`}
+                  title={`${placementFrameLabel(frame)} (${frame.width}x${frame.height})`}
                   onClick={() => void addPlacementSprite(frame)}
                 >
                   <span className="frame-preview-box">
@@ -1473,26 +1809,35 @@ export default function App() {
                 </button>
               ))}
             </div>
-          </div>
+          </section>
         ))}
       </div>
     </div>
   );
-  const renderPreviewPanel = (variant: "project" | "placement") => (
+  const renderPreviewPanel = (variant: "project" | "placement") => {
+    const placementFramebuffer = placementPreview?.project_revision === projectRevision &&
+      placementPreview.scene.scene_id === selectedSceneDocument?.scene_id &&
+      placementPreview.scene.state_id === placementState?.state_id
+      ? placementPreview.framebuffer
+      : null;
+    const matchingLiveFramebuffer = preview?.project_revision === projectRevision &&
+      preview.scene.scene_id === selectedSceneDocument?.scene_id &&
+      preview.scene.state_id === placementState?.state_id
+      ? preview.framebuffer
+      : null;
+    const framebuffer = variant === "placement" ? placementFramebuffer ?? matchingLiveFramebuffer : preview?.framebuffer ?? null;
+    const placementPreviewNotice =
+      variant !== "placement" || placementFramebuffer !== null || matchingLiveFramebuffer !== null
+        ? null
+        : placementPreviewError ?? (placementPreviewLoading ? "Loading selected state preview..." : "No selected state preview available.");
+    return (
     <section className={`preview-pane ${variant === "placement" ? "preview-pane-large" : "preview-pane-compact"}`}>
-      {variant === "project" && (
-        <div className="preview-heading">
-          <div>
-            <span className="section-kicker">Screen</span>
-            <h2>{preview?.scene.display_name ?? "Display preview"}</h2>
-          </div>
-          <div className="preview-heading-tools">
-            {preview !== null && (
-              <div className="timeline-readout">
-                <span>Step {preview.timeline.step_index + 1}/{preview.timeline.step_count}</span>
-                <strong>{preview.timeline.elapsed_ms} ms</strong>
-              </div>
-            )}
+        {variant === "project" && (
+          <div className="preview-heading emulator-heading">
+            <div className="preview-title">
+              <span className="section-kicker">State</span>
+              <h2>{preview?.scene.display_name ?? "State preview"}</h2>
+            </div>
             <div className="playback-controls" aria-label="Preview playback">
               <button className="icon-button" onClick={() => selectedScene !== null && void startPreview(selectedScene)} disabled={preview === null} title="Reset preview">
                 <RotateCcw size={18} aria-hidden="true" />
@@ -1504,15 +1849,27 @@ export default function App() {
                 <StepForward size={18} aria-hidden="true" />
               </button>
             </div>
+            {preview !== null ? (
+              <div className="timeline-readout">
+                <span>Step {preview.timeline.step_index + 1}/{preview.timeline.step_count}</span>
+                <strong>{preview.timeline.elapsed_ms} ms</strong>
+              </div>
+            ) : (
+              <div className="timeline-readout timeline-readout-empty" aria-hidden="true" />
+            )}
           </div>
-        </div>
-      )}
+        )}
 
-      <div className="display-stage">
-        {variant === "placement" && renderPlacementToolPalette()}
-        {variant === "placement" && spritePickerOpen && renderSpritePicker()}
-        <div className="panel-bezel">
-          <FramebufferCanvas framebuffer={preview?.framebuffer ?? null} />
+        <div className="display-stage">
+          {variant === "placement" && renderPlacementToolPalette()}
+          {variant === "placement" && spritePickerOpen && renderSpritePicker()}
+          <div className="panel-bezel">
+            <FramebufferCanvas framebuffer={framebuffer} />
+          {placementPreviewNotice !== null && (
+            <div className="preview-status-card" role="status">
+              {placementPreviewNotice}
+            </div>
+          )}
           {variant === "placement" && (
             <div
               className={`placement-screen-overlay labels-${placementLabelMode}`}
@@ -1526,7 +1883,7 @@ export default function App() {
             >
               <div className="placement-pixel-grid" aria-hidden="true" />
               {placementOverlayVisible &&
-                [...(placementRenderModel?.elements ?? [])]
+                [...effectivePlacementElements]
                   .sort((left, right) => left.z_order - right.z_order)
                   .map((element) => {
                     const key = placementDraftKey(placementRenderModel?.visual_id ?? "", element.element_id);
@@ -1590,7 +1947,8 @@ export default function App() {
 
       {variant === "project" && <div className="transport-bar">{renderInputControls()}</div>}
     </section>
-  );
+    );
+  };
   const renderModeTabs = () => (
     <div className="mode-tabs" aria-label="Workspace mode">
       <button
@@ -1627,6 +1985,84 @@ export default function App() {
       </button>
     </div>
   );
+  const renderSpriteImportPanel = (canEditAssets: boolean) => {
+    const importCheck = pendingSpriteImport === null
+      ? null
+      : parseImportFrameSize(
+        pendingSpriteImport.width,
+        pendingSpriteImport.height,
+        `${pendingSpriteImport.frameWidth}x${pendingSpriteImport.frameHeight}`,
+      );
+    const frameCount = pendingSpriteImport === null || importCheck === null || importCheck.error !== undefined
+      ? 0
+      : (pendingSpriteImport.width / importCheck.frameWidth) * (pendingSpriteImport.height / importCheck.frameHeight);
+    return (
+      <div className="asset-import-panel">
+        {pendingSpriteImport === null ? (
+          <div>
+            <strong>PNG import</strong>
+            <span>Choose a PNG, then set the frame size if it is a sprite sheet.</span>
+          </div>
+        ) : (
+          <>
+            <div className="asset-import-heading">
+              <div>
+                <strong>{pendingSpriteImport.displayName}</strong>
+                <span>{pendingSpriteImport.sourcePath} - {pendingSpriteImport.width}x{pendingSpriteImport.height}</span>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setPendingSpriteImport(null)} title="Cancel import" aria-label="Cancel import">
+                <X size={14} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="asset-import-controls">
+              <label>
+                Frame width
+                <input
+                  type="number"
+                  min={1}
+                  max={168}
+                  step={1}
+                  value={pendingSpriteImport.frameWidth}
+                  disabled={!canEditAssets}
+                  onChange={(event) => {
+                    const value = Math.max(1, Math.round(Number(event.target.value)));
+                    setPendingSpriteImport((current) => current === null ? null : { ...current, frameWidth: value });
+                  }}
+                />
+              </label>
+              <label>
+                Frame height
+                <input
+                  type="number"
+                  min={1}
+                  max={144}
+                  step={1}
+                  value={pendingSpriteImport.frameHeight}
+                  disabled={!canEditAssets}
+                  onChange={(event) => {
+                    const value = Math.max(1, Math.round(Number(event.target.value)));
+                    setPendingSpriteImport((current) => current === null ? null : { ...current, frameHeight: value });
+                  }}
+                />
+              </label>
+              <div className={`asset-import-result ${importCheck?.error !== undefined ? "error" : ""}`}>
+                {importCheck?.error ?? `${frameCount} frame${frameCount === 1 ? "" : "s"}`}
+              </div>
+              <button
+                className="button primary"
+                type="button"
+                disabled={!canEditAssets || importCheck?.error !== undefined}
+                onClick={() => void confirmSpriteImport()}
+              >
+                Import
+              </button>
+            </div>
+          </>
+        )}
+        <div className="asset-import-debug">{assetImportDebug}</div>
+      </div>
+    );
+  };
   const renderAssetsWorkspace = () => {
     const canEditAssets = bridge !== undefined && project !== null && busy === null && service?.operations.includes("project.apply_commands") === true;
     return (
@@ -1639,28 +2075,37 @@ export default function App() {
           {renderModeTabs()}
         </div>
         {compiledAssetFrameGroups.length === 0 ? (
-          <div className="asset-workspace-empty">
-            <Image size={28} aria-hidden="true" />
-            <strong>No sprite assets</strong>
-            <div className="asset-workspace-actions">
-              <button
-                className="button secondary"
-                type="button"
-                disabled={!canEditAssets || projectPath === null}
-                onClick={() => void importSpriteAsset()}
-              >
-                <Image size={15} aria-hidden="true" />
-                Import PNG
-              </button>
-              <button
-                className="button secondary"
-                type="button"
-                disabled={!canEditAssets}
-                onClick={() => void createTextSpriteAsset()}
-              >
-                <Type size={15} aria-hidden="true" />
-                Text sprite
-              </button>
+          <div className="asset-workspace">
+            <div className="asset-workspace-summary">
+              <div>
+                <strong>Sprites</strong>
+                <span>No compiled frames</span>
+              </div>
+              <div className="asset-workspace-actions">
+                <button
+                  className="button secondary"
+                  type="button"
+                  disabled={!canEditAssets || projectPath === null}
+                  onClick={() => void chooseSpritePng()}
+                >
+                  <Image size={15} aria-hidden="true" />
+                  Choose PNG
+                </button>
+                <button
+                  className="button secondary"
+                  type="button"
+                  disabled={!canEditAssets}
+                  onClick={() => void createTextSpriteAsset()}
+                >
+                  <Type size={15} aria-hidden="true" />
+                  Text sprite
+                </button>
+              </div>
+            </div>
+            {renderSpriteImportPanel(canEditAssets)}
+            <div className="asset-workspace-empty">
+              <Image size={28} aria-hidden="true" />
+              <strong>No sprite assets</strong>
             </div>
           </div>
         ) : (
@@ -1675,10 +2120,10 @@ export default function App() {
                   className="button secondary"
                   type="button"
                   disabled={!canEditAssets || projectPath === null}
-                  onClick={() => void importSpriteAsset()}
+                  onClick={() => void chooseSpritePng()}
                 >
                   <Image size={15} aria-hidden="true" />
-                  Import PNG
+                  Choose PNG
                 </button>
                 <button
                   className="button secondary"
@@ -1691,6 +2136,7 @@ export default function App() {
                 </button>
               </div>
             </div>
+            {renderSpriteImportPanel(canEditAssets)}
             <div className="asset-group-stack">
               {compiledAssetFrameGroups.map((group) => (
                 <section className="asset-group-panel" key={group.assetId}>
@@ -1707,6 +2153,7 @@ export default function App() {
                       className={selectedAssetFrame?.frame_id === frame.frame_id ? "selected" : ""}
                       type="button"
                       onClick={() => setSelectedAssetFrameId(frame.frame_id)}
+                      title="Edit this frame"
                     >
                       <span className="asset-frame-preview">
                         <FramePreviewCanvas frame={frame} />
@@ -1726,9 +2173,9 @@ export default function App() {
   };
   const renderAssetInspector = () => (
     <section className="inspector-section asset-inspector">
-      <h3><Image size={14} aria-hidden="true" /> Sprite Frame</h3>
+      <h3><Image size={14} aria-hidden="true" /> Sprite</h3>
       {selectedAssetFrame === null ? (
-        <p className="muted">Select a sprite frame to inspect it.</p>
+        <p className="muted">Select a sprite to inspect its frames.</p>
       ) : (
         (() => {
           const source = sourceFrameById.get(selectedAssetFrame.frame_id);
@@ -1736,7 +2183,24 @@ export default function App() {
           return (
             <>
               <div className="asset-inspector-preview">
-                <FramePreviewCanvas frame={selectedAssetFrame} />
+                <FramePreviewCanvas frame={animatedAssetPreviewFrame} />
+                {selectedAssetFrames.length > 1 && (
+                  <div className="asset-preview-controls">
+                    <button
+                      className="icon-button"
+                      type="button"
+                      onClick={() => setAssetPreviewPlaying((playingNow) => !playingNow)}
+                      title={assetPreviewPlaying ? "Pause animation preview" : "Play animation preview"}
+                      aria-label={assetPreviewPlaying ? "Pause animation preview" : "Play animation preview"}
+                    >
+                      {assetPreviewPlaying ? <Pause size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
+                    </button>
+                    <span>
+                      Frame {(assetPreviewPlaying ? assetPreviewStep % selectedAssetFrames.length : Math.max(0, selectedAssetFrames.findIndex((frame) => frame.frame_id === selectedAssetFrame.frame_id))) + 1}
+                      /{selectedAssetFrames.length}
+                    </span>
+                  </div>
+                )}
               </div>
               {sourceAsset !== null && (
                 <div className="asset-name-editor">
@@ -1758,26 +2222,49 @@ export default function App() {
                       }}
                     />
                   </label>
-                  {source !== undefined && (
-                    <label>
-                      Frame name
-                      <input
-                        key={`${source.frame.frame_id}-frame-${source.frame.display_name ?? ""}`}
-                        type="text"
-                        maxLength={64}
-                        defaultValue={source.frame.display_name ?? placementFrameLabel(selectedAssetFrame)}
-                        disabled={busy !== null}
-                        onBlur={(event) => {
-                          void updateAssetDisplayNames(source.asset, source.asset.display_name ?? source.asset.asset_id, event.target.value, source.frame.frame_id);
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.currentTarget.blur();
-                          }
-                        }}
-                      />
-                    </label>
-                  )}
+                </div>
+              )}
+              {source !== undefined && (
+                <div className="asset-frame-strip-panel">
+                  <div className="asset-frame-strip-heading">
+                    <strong>Frames</strong>
+                    <span>{selectedAssetFrames.length} total</span>
+                  </div>
+                  <div className="asset-frame-strip">
+                    {selectedAssetFrames.map((frame, index) => (
+                      <button
+                        key={frame.frame_id}
+                        className={frame.frame_id === selectedAssetFrame.frame_id ? "selected" : ""}
+                        type="button"
+                        onClick={() => setSelectedAssetFrameId(frame.frame_id)}
+                        title={placementFrameLabel(frame)}
+                      >
+                        <FramePreviewCanvas frame={frame} />
+                        <span>{index + 1}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <label className="asset-selected-frame-name">
+                    Selected frame label
+                    <input
+                      key={`${source.frame.frame_id}-frame-${source.frame.display_name ?? ""}`}
+                      type="text"
+                      maxLength={64}
+                      defaultValue={source.frame.display_name ?? placementFrameLabel(selectedAssetFrame)}
+                      disabled={busy !== null}
+                      onBlur={(event) => {
+                        void updateAssetFrameRecord(source.asset, source.frame.frame_id, {
+                          ...source.frame,
+                          display_name: event.target.value.trim(),
+                        });
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.currentTarget.blur();
+                        }
+                      }}
+                    />
+                  </label>
                 </div>
               )}
               {sourceAsset?.source_format === "system_font_text" && (
@@ -1819,11 +2306,11 @@ export default function App() {
               )}
               <dl className="inspector-list">
                 <div><dt>Asset</dt><dd>{assetDisplayName(selectedAssetFrame.asset_id)}</dd></div>
-                <div><dt>Frame</dt><dd>{placementFrameLabel(selectedAssetFrame)}</dd></div>
+                <div><dt>Frames</dt><dd>{selectedAssetFrames.length}</dd></div>
+                <div><dt>Selected</dt><dd>{placementFrameLabel(selectedAssetFrame)}</dd></div>
                 <div><dt>Size</dt><dd>{selectedAssetFrame.width}x{selectedAssetFrame.height}</dd></div>
-                <div><dt>Pivot</dt><dd>{selectedAssetFrame.pivot_x}, {selectedAssetFrame.pivot_y}</dd></div>
                 <div><dt>Mask</dt><dd>{selectedAssetFrame.opaque ? "Opaque" : "Transparent"}</dd></div>
-                <div><dt>Stride</dt><dd>{selectedAssetFrame.row_stride_bytes} bytes</dd></div>
+                <div><dt>Source</dt><dd>{sourceAsset?.source_format === "system_font_text" ? "Text sprite" : "PNG sprite"}</dd></div>
                 {sourceAsset?.source_format === "system_font_text" && <div><dt>Font</dt><dd>8x8 system</dd></div>}
                 <div><dt>Asset ID</dt><dd>{selectedAssetFrame.asset_id}</dd></div>
                 <div><dt>Frame ID</dt><dd>{selectedAssetFrame.frame_id}</dd></div>
@@ -1835,8 +2322,8 @@ export default function App() {
     </section>
   );
   const renderPlacementViewSettings = () => (
-    <details className="project-section placement-view-settings-section" open>
-      <summary>View settings</summary>
+    <section className="inspector-section placement-view-settings-section">
+      <h3>Settings</h3>
       <div className="placement-view-settings">
         <label>
           <input
@@ -1883,9 +2370,9 @@ export default function App() {
           </select>
         </label>
       </div>
-    </details>
+    </section>
   );
-  const placementElements = () => [...(placementRenderModel?.elements ?? [])].sort((left, right) => left.z_order - right.z_order);
+  const placementElements = () => [...effectivePlacementElements].sort((left, right) => left.z_order - right.z_order);
   const placementKindLabel = (kind: string) => {
     switch (kind) {
       case "sprite":
@@ -1942,8 +2429,11 @@ export default function App() {
     }
     return `${prefix}_${elements.length + 1}`;
   };
-  const addPlacementSprite = async (frame: CompiledAssetFrame | null = compiledAssetFrames[0] ?? null) => {
+  const addPlacementSprite = async (frame: CompiledAssetFrame | null) => {
     if (selectedSceneDocument === null || placementRenderModel === null || frame === null) {
+      if (frame === null) {
+        setMessage("Create or import a sprite asset first.");
+      }
       return;
     }
     const element: RenderElement = {
@@ -1958,67 +2448,97 @@ export default function App() {
       layer: "SCENE",
       visible: true,
     };
-    await applyRenderElementCommand(
-      "Adding sprite",
-      selectedSceneDocument.scene_id,
-      placementRenderModel.visual_id,
-      null,
+    const animationFrames = compiledAssetFrameGroups.find((group) => group.assetId === frame.asset_id)?.frames ?? [];
+    const canAutoAnimate =
+      placementAnimationSupported &&
+      placementState !== null &&
+      animationFrames.length >= 2 &&
+      animationFrames.length <= 4 &&
+      animationFrames.every((item) => item.width === frame.width && item.height === frame.height);
+    const commands: Record<string, unknown>[] = [
       {
         kind: "render_element.add",
+        scene_id: selectedSceneDocument.scene_id,
+        render_model_id: placementRenderModel.visual_id,
         element,
       },
-      "Sprite added. Save to write it to the project.",
-    );
-    setSelectedPlacementElement(element.element_id);
-    setSpritePickerOpen(false);
-  };
-  const setPlacementSpriteFrame = (element: RenderElement, renderModelId: string, frameId: string) => {
-    const frame = compiledAssetFrameById.get(frameId);
-    if (bridge === undefined || project === null || busy !== null || selectedSceneDocument === null || frame === undefined) {
+    ];
+    if (canAutoAnimate) {
+      commands.push({
+        kind: "render_element.bind_waiting_animation",
+        scene_id: selectedSceneDocument.scene_id,
+        state_id: placementState.state_id,
+        render_model_id: placementRenderModel.visual_id,
+        element_id: element.element_id,
+        phase_visual_refs: animationFrames.map((item) => item.frame_id),
+      });
+    }
+    if (bridge === undefined || project === null || busy !== null) {
       return;
     }
-    const nextX = Math.min(Math.max(0, 168 - frame.width), element.x);
-    const nextY = Math.min(Math.max(0, 144 - frame.height), element.y);
-    setBusy("Changing sprite");
+    setBusy("Adding sprite");
     setPlaying(false);
-    void bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
-      project_revision: project.project_revision,
-      commands: [
-        {
-          kind: "render_element.set_visual_ref",
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands,
+      });
+      applyProjectResult(result);
+      setSelectedScene(selectedSceneDocument.scene_id);
+      setSelectedPlacementElement(element.element_id);
+      setPlacementInspectorTab("object");
+      setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
+      if (result.valid) {
+        const previewResult = await bridge.serviceRequest<PreviewSnapshot>("project.preview_reset", {
+          project_revision: result.project_revision,
           scene_id: selectedSceneDocument.scene_id,
-          render_model_id: renderModelId,
-          element_id: element.element_id,
-          visual_ref: frame.frame_id,
-        },
-        {
-          kind: "render_element.set_bounds",
-          scene_id: selectedSceneDocument.scene_id,
-          render_model_id: renderModelId,
-          element_id: element.element_id,
-          x: nextX,
-          y: nextY,
-          width: frame.width,
-          height: frame.height,
-        },
-      ],
-    })
-      .then(async (result) => {
-        applyProjectResult(result);
-        setSelectedScene(selectedSceneDocument.scene_id);
-        setSelectedPlacementElement(element.element_id);
-        setSceneSelection({ kind: "render", id: renderModelId });
-        if (result.valid) {
-          const previewResult = await bridge.serviceRequest<PreviewSnapshot>("project.preview_reset", {
-            project_revision: result.project_revision,
-            scene_id: selectedSceneDocument.scene_id,
-          });
-          setPreview(previewResult);
-        }
-        setMessage("Sprite frame updated. Save to write it to the project.");
-      })
-      .catch((error: unknown) => setMessage(errorText(error)))
-      .finally(() => setBusy(null));
+        });
+        setPreview(previewResult);
+      }
+      setMessage(`${canAutoAnimate ? "Animated sprite" : "Sprite"} added. Save to write it to the project.`);
+      setSpritePickerOpen(false);
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const bindPlacementSpriteAnimation = async (
+    element: RenderElement,
+    renderModelId: string,
+    frames: CompiledAssetFrame[],
+  ) => {
+    if (selectedSceneDocument === null || placementState === null || frames.length < 2) {
+      return;
+    }
+    await applyRenderElementCommand(
+      "Adding animation",
+      selectedSceneDocument.scene_id,
+      renderModelId,
+      element.element_id,
+      {
+        kind: "render_element.bind_waiting_animation",
+        state_id: placementState.state_id,
+        phase_visual_refs: frames.map((frame) => frame.frame_id),
+      },
+      "Sprite animation enabled. Save to write it to the project.",
+    );
+  };
+  const clearPlacementSpriteAnimation = async (element: RenderElement, renderModelId: string) => {
+    if (selectedSceneDocument === null || placementState === null) {
+      return;
+    }
+    await applyRenderElementCommand(
+      "Removing animation",
+      selectedSceneDocument.scene_id,
+      renderModelId,
+      element.element_id,
+      {
+        kind: "render_element.clear_waiting_animation",
+        state_id: placementState.state_id,
+      },
+      "Sprite animation removed. Save to write it to the project.",
+    );
   };
   const addPlacementPrimitive = async (kind: PlacementPrimitiveKind) => {
     if (selectedSceneDocument === null || placementRenderModel === null) {
@@ -2047,32 +2567,62 @@ export default function App() {
       "Object added. Save to write it to the project.",
     );
     setSelectedPlacementElement(element.element_id);
+    setPlacementInspectorTab("object");
   };
   const selectPlacementElement = (elementId: string) => {
     setSelectedPlacementElement(elementId);
+    setPlacementInspectorTab("object");
     if (placementRenderModel !== null) {
+      setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
+    }
+  };
+  const selectPlacementState = (stateId: string) => {
+    const state = (selectedSceneDocument?.states ?? []).find((item) => item.state_id === stateId) ?? null;
+    setPlacementStateId(stateId);
+    setSelectedPlacementElement(null);
+    if (state !== null && placementRenderModel !== null) {
       setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
     }
   };
   const renderPlacementObjectHierarchy = () => {
     const elements = placementElements();
+    const activeWaitingVisual = selectedSceneDocument?.waiting_visuals?.find(
+      (waiting) => waiting.waiting_visual_id === placementState?.waiting_visual_ref,
+    ) ?? null;
+    const animatedSourceIds = new Set(
+      activeWaitingVisual?.elements.map((element) => element.source_element_ref) ?? [],
+    );
+    const changedSourceIds = new Set((placementState?.placement_overrides ?? []).map((override) => override.element_ref));
     return (
       <details className="project-section placement-object-section" open>
-        <summary>Objects</summary>
+        <summary>Hierarchy</summary>
         {selectedSceneDocument === null ? (
           <p className="muted project-section-empty">Select a scene to inspect objects.</p>
-        ) : placementRenderModel === null ? (
-          <p className="muted project-section-empty">No screen model for this state.</p>
         ) : (
-          <>
-            {elements.length === 0 ? (
-              <p className="muted project-section-empty">No screen objects.</p>
+          <div className="placement-object-tree">
+            <div className="placement-state-selector">
+              <label>
+                State
+                <select
+                  value={placementState?.state_id ?? ""}
+                  disabled={busy !== null}
+                  onChange={(event) => selectPlacementState(event.target.value)}
+                >
+                  {(selectedSceneDocument.states ?? []).map((state) => (
+                    <option key={state.state_id} value={state.state_id}>
+                      {state.display_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span>{selectedSceneDocument.display_name}</span>
+            </div>
+            {placementRenderModel === null ? (
+              <p className="muted project-section-empty">No placed-object view for this state.</p>
+            ) : elements.length === 0 ? (
+              <p className="muted project-section-empty">No placed objects.</p>
             ) : (
-              <div className="placement-object-tree">
-                <div className="placement-object-root">
-                  <strong>{placementState?.display_name ?? selectedSceneDocument.display_name}</strong>
-                  <small>{placementRenderModel.visual_id}</small>
-                </div>
+              <div className="placement-object-children">
                 {elements.map((element: RenderElement) => (
                   <button
                     key={element.element_id}
@@ -2089,6 +2639,8 @@ export default function App() {
                     </span>
                     <span className="placement-object-badges">
                       <code>{placementLayerLabel(element)}</code>
+                      {changedSourceIds.has(element.element_id) && <code>Changed</code>}
+                      {animatedSourceIds.has(element.element_id) && <code>Anim</code>}
                       {element.visible === false && <code>Hidden</code>}
                       <code>z{element.z_order}</code>
                     </span>
@@ -2096,26 +2648,34 @@ export default function App() {
                 ))}
               </div>
             )}
-          </>
+          </div>
         )}
       </details>
     );
   };
   const renderPlacementInspector = () => {
-    const elements = [...(placementRenderModel?.elements ?? [])].sort((left, right) => left.z_order - right.z_order);
+    const elements = [...effectivePlacementElements].sort((left, right) => left.z_order - right.z_order);
     const selectedElement = selectedPlacementElement === null
       ? null
       : elements.find((element) => element.element_id === selectedPlacementElement) ?? null;
     const selectedElementIsShape = selectedElement !== null && selectedElement.kind !== "sprite";
-    const selectedSpriteFrame = selectedElement?.visual_ref === undefined
-      ? undefined
-      : compiledAssetFrameById.get(selectedElement.visual_ref);
-    const selectedSpriteAssetId = selectedElement?.kind === "sprite"
-      ? selectedSpriteFrame?.asset_id ?? selectedElement.visual_ref?.split(".")[0] ?? null
+    const selectedSpriteFrame = selectedElement?.kind === "sprite" && selectedElement.visual_ref !== undefined
+      ? compiledAssetFrameById.get(selectedElement.visual_ref) ?? null
       : null;
-    const selectedSpriteFrames = selectedSpriteAssetId === null
+    const selectedSpriteFrames = selectedSpriteFrame === null
       ? []
-      : compiledAssetFrames.filter((frame) => frame.asset_id === selectedSpriteAssetId);
+      : compiledAssetFrameGroups.find((group) => group.assetId === selectedSpriteFrame.asset_id)?.frames ?? [];
+    const selectedSpriteFramesFit =
+      selectedElement !== null &&
+      selectedSpriteFrames.length >= 2 &&
+      selectedSpriteFrames.length <= 4 &&
+      selectedSpriteFrames.every((frame) => frame.width === selectedElement.width && frame.height === selectedElement.height);
+    const selectedStateWaitingVisual: WaitingVisual | null = selectedSceneDocument?.waiting_visuals?.find(
+      (waiting) => waiting.waiting_visual_id === placementState?.waiting_visual_ref,
+    ) ?? null;
+    const selectedSpriteAnimation = selectedElement === null
+      ? null
+      : selectedStateWaitingVisual?.elements.find((element) => element.source_element_ref === selectedElement.element_id) ?? null;
     const commitPositionInput = (axis: "x" | "y", value: string) => {
       if (selectedElement === null || placementRenderModel === null) {
         return;
@@ -2162,16 +2722,17 @@ export default function App() {
       );
     };
     const setElementVisibility = (visible: boolean) => {
-      if (selectedSceneDocument === null || selectedElement === null || placementRenderModel === null) {
+      if (selectedSceneDocument === null || selectedElement === null || placementRenderModel === null || placementState === null) {
         return;
       }
-      void applyRenderElementCommand(
+      void applyStatePlacementOverride(
         "Changing visibility",
         selectedSceneDocument.scene_id,
+        placementState.state_id,
         placementRenderModel.visual_id,
         selectedElement.element_id,
-        { kind: "render_element.set_visibility", visible },
-        "Visibility updated. Save to write it to the project.",
+        { visible },
+        "State visibility updated. Save to write it to the project.",
       );
     };
     return (
@@ -2180,7 +2741,7 @@ export default function App() {
         {selectedSceneDocument === null ? (
           <p className="muted">Select a scene to inspect placement.</p>
         ) : placementRenderModel === null ? (
-          <p className="muted">This state has no retained screen model.</p>
+          <p className="muted">This state has no placed-object view.</p>
         ) : selectedElement === null ? (
           <p className="muted">Select an object from the canvas or object hierarchy.</p>
         ) : (
@@ -2193,7 +2754,6 @@ export default function App() {
               <div><dt>Width</dt><dd>{selectedElement.width}</dd></div>
               <div><dt>Height</dt><dd>{selectedElement.height}</dd></div>
               <div><dt>Draw order</dt><dd>{selectedElement.z_order}</dd></div>
-              <div><dt>Focus</dt><dd>{selectedElement.focus_role ?? "none"}</dd></div>
               <div><dt>Internal ID</dt><dd>{selectedElement.element_id}</dd></div>
             </dl>
             <div className="placement-position-editor">
@@ -2267,33 +2827,6 @@ export default function App() {
                   </label>
                 </>
               )}
-              {selectedElement.kind === "sprite" && (
-                <div className="placement-frame-picker">
-                  <span>Sprite frame</span>
-                  {selectedSpriteFrames.length === 0 ? (
-                    <p className="muted">No frames found for this sprite.</p>
-                  ) : (
-                    <div>
-                      {selectedSpriteFrames.map((frame) => (
-                        <button
-                          key={frame.frame_id}
-                          className={selectedElement.visual_ref === frame.frame_id ? "selected" : ""}
-                          type="button"
-                          disabled={busy !== null}
-                          title={`${frame.frame_id} (${frame.width}x${frame.height})`}
-                          onClick={() => setPlacementSpriteFrame(selectedElement, placementRenderModel.visual_id, frame.frame_id)}
-                        >
-                          <span className="frame-preview-box">
-                            <FramePreviewCanvas frame={frame} />
-                          </span>
-                          <strong>{placementFrameLabel(frame)}</strong>
-                          <small>{frame.width}x{frame.height}</small>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
               <label>
                 Layer
                 <select
@@ -2340,16 +2873,59 @@ export default function App() {
               </label>
               <p className="muted">Arrow keys nudge 1 px. Shift + arrow nudges 8 px.</p>
             </div>
+            {selectedElement.kind === "sprite" && (
+              <div className="placement-animation-editor">
+                <div className="placement-animation-heading">
+                  <span>Animation</span>
+                  <code>{selectedSpriteAnimation === null ? "Static" : "Animated"}</code>
+                </div>
+                {selectedSpriteFrames.length > 0 && (
+                  <div className="placement-animation-strip" aria-label="Sprite frames">
+                    {selectedSpriteFrames.map((frame) => (
+                      <span key={frame.frame_id} title={`${placementFrameLabel(frame)} (${frame.width}x${frame.height})`}>
+                        <FramePreviewCanvas frame={frame} />
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {selectedSpriteFrame === null ? (
+                  <p className="muted">This sprite's frame is not available.</p>
+                ) : !placementAnimationSupported ? (
+                  <p className="muted">Restart Peep Studio for sprite animation editing.</p>
+                ) : selectedSpriteFrames.length <= 1 ? (
+                  <p className="muted">This sprite asset has one frame.</p>
+                ) : selectedSpriteFrames.length > 4 ? (
+                  <p className="muted">STATE sprite animation supports 2 to 4 frames for now.</p>
+                ) : !selectedSpriteFramesFit ? (
+                  <p className="muted">All animation frames must match this object's size.</p>
+                ) : (
+                  <label className="placement-animation-toggle">
+                    <input
+                      type="checkbox"
+                      checked={selectedSpriteAnimation !== null}
+                      disabled={busy !== null}
+                      onChange={(event) => {
+                        if (event.target.checked) {
+                          void bindPlacementSpriteAnimation(selectedElement, placementRenderModel.visual_id, selectedSpriteFrames);
+                        } else {
+                          void clearPlacementSpriteAnimation(selectedElement, placementRenderModel.visual_id);
+                        }
+                      }}
+                    />
+                    Animated
+                  </label>
+                )}
+              </div>
+            )}
             <div className="placement-danger-zone">
               <button
                 type="button"
-                disabled={busy !== null || selectedElement.focus_role === "focus"}
+                disabled={busy !== null}
                 onClick={() => deletePlacementElement(selectedElement, placementRenderModel.visual_id)}
               >
                 <Trash2 size={14} aria-hidden="true" />
                 Delete object
               </button>
-              {selectedElement.focus_role === "focus" && <p className="muted">The focus sprite cannot be deleted.</p>}
             </div>
           </>
         )}
@@ -2435,7 +3011,6 @@ export default function App() {
           </div>
 
           {renderPreviewPanel("project")}
-          {workspaceMode === "placement" && renderPlacementViewSettings()}
           {workspaceMode === "placement" && renderPlacementObjectHierarchy()}
 
           {project === null ? (
@@ -2483,7 +3058,11 @@ export default function App() {
             <div className="preview-heading graph-heading">
               <div>
                 <span className="section-kicker">Placement mode</span>
-                <h2>{selectedSceneDocument?.display_name ?? "No scene selected"}</h2>
+                <h2>
+                  {selectedSceneDocument === null
+                    ? "No scene selected"
+                    : `${selectedSceneDocument.display_name} / ${placementState?.display_name ?? "No state"}`}
+                </h2>
               </div>
               {renderModeTabs()}
             </div>
@@ -2569,9 +3148,29 @@ export default function App() {
         />
 
         <aside className="inspector-pane">
-          <div className="pane-heading">Inspector</div>
+          <div className="pane-heading inspector-heading">
+            <span>Inspector</span>
+            {workspaceMode === "placement" && (
+              <div className="inspector-tabs" aria-label="Placement inspector tabs">
+                <button
+                  type="button"
+                  className={placementInspectorTab === "object" ? "active" : ""}
+                  onClick={() => setPlacementInspectorTab("object")}
+                >
+                  Object
+                </button>
+                <button
+                  type="button"
+                  className={placementInspectorTab === "settings" ? "active" : ""}
+                  onClick={() => setPlacementInspectorTab("settings")}
+                >
+                  Settings
+                </button>
+              </div>
+            )}
+          </div>
 
-          {workspaceMode === "placement" && renderPlacementInspector()}
+          {workspaceMode === "placement" && (placementInspectorTab === "settings" ? renderPlacementViewSettings() : renderPlacementInspector())}
           {workspaceMode === "assets" && renderAssetInspector()}
 
           {workspaceMode !== "placement" && workspaceMode !== "assets" && (

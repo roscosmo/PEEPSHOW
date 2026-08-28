@@ -273,10 +273,10 @@ The editor uses separate views for separate authoring concerns.
 | Surface | Purpose |
 |---|---|
 | project browser | packages, scenes, states, prefabs, assets, and parameters |
-| scene canvas | spatial placement, bounds, retained layers, focus, and visual selection |
-| state graph | STATE and prefab node cards with trigger output rows and routable destinations |
+| scene canvas | one `STATE_SCENE` placement surface: scene-owned objects, bounds, retained layers, focus, and base visual selection |
+| state graph | STATE and prefab node cards with trigger output rows, routable destinations, and per-state object-variation links |
 | transition inspector | selected output trigger, guards, ordered actions, and destination |
-| property inspector | schema-driven typed properties and target-derived limits |
+| property inspector | schema-driven typed properties, selected-state placement overrides, and target-derived limits |
 | animation timeline | phase visuals, authored cadence, and combined waiting sequence |
 | authoring preview | pixel-accurate panel output, deterministic controls, and runtime trace |
 | build panel | validation errors, warnings, compatibility, resource budget, and `.egg` output |
@@ -290,7 +290,7 @@ For the initial STATE editor, the first implementation may expose raw state
 nodes and transition edges while the command surface is being proven. The target
 authoring model is more user-facing:
 
-- custom STATE records appear as screen/state node cards;
+- custom STATE records appear as logic-state cards;
 - reusable prefabs appear as visually distinct prefab node cards;
 - transition triggers appear as output rows owned by the source node, grouped by
   trigger type where useful;

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import struct
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -75,6 +76,63 @@ INTERACTION_MODES = {"continuous": 1, "timeout": 2}
 ANIMATION_LOOPS = {"loop": 1, "once": 2, "hold_last": 3, "ping_pong": 4}
 
 
+def _generated_render_model_id(base_id: str, state_id: str, used: set[str]) -> str:
+    base = f"{base_id}.{state_id}"
+    if len(base) > 64:
+        digest = hashlib.sha1(base.encode("utf-8")).hexdigest()[:8]
+        base = f"{base[:55]}.{digest}"
+    candidate = base[:64]
+    index = 2
+    while candidate in used:
+        suffix = f".{index}"
+        candidate = f"{base[:64 - len(suffix)]}{suffix}"
+        index += 1
+    used.add(candidate)
+    return candidate
+
+
+def _state_override_map(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        str(override["element_ref"]): override
+        for override in state.get("placement_overrides", [])
+        if isinstance(override, dict) and isinstance(override.get("element_ref"), str)
+    }
+
+
+def _apply_state_override(element: dict[str, Any], override: dict[str, Any] | None) -> dict[str, Any]:
+    result = deepcopy(element)
+    if override is None:
+        return result
+    if "x" in override and "y" in override:
+        result["x"] = override["x"]
+        result["y"] = override["y"]
+    if "visible" in override:
+        result["visible"] = override["visible"]
+    if "visual_ref" in override:
+        result["visual_ref"] = override["visual_ref"]
+    return result
+
+
+def _package_scene(scene: dict[str, Any]) -> dict[str, Any]:
+    packaged = deepcopy(scene)
+    base_model = scene["render_models"][0]
+    used_model_ids: set[str] = set()
+    render_models: list[dict[str, Any]] = []
+    for state in packaged["states"]:
+        state_id = str(state["state_id"])
+        overrides = _state_override_map(state)
+        model = deepcopy(base_model)
+        model["visual_id"] = _generated_render_model_id(str(base_model["visual_id"]), state_id, used_model_ids)
+        model["elements"] = [
+            _apply_state_override(element, overrides.get(str(element["element_id"])))
+            for element in base_model["elements"]
+        ]
+        state["render_model_ref"] = model["visual_id"]
+        render_models.append(model)
+    packaged["render_models"] = render_models
+    return packaged
+
+
 class EggCompileError(ValueError):
     """Raised when validated source cannot fit the frozen binary schema."""
 
@@ -97,16 +155,17 @@ def _i32(value: int, field: str) -> int:
     return value
 
 
-def _string_table(bundle: ProjectBundle) -> tuple[tuple[str, ...], dict[str, int], bytes]:
+def _string_table(bundle: ProjectBundle, scenes: tuple[dict[str, Any], ...] | None = None) -> tuple[tuple[str, ...], dict[str, int], bytes]:
     project = bundle.project
     package = project["package"]
+    source_scenes = bundle.scenes if scenes is None else scenes
     values: set[str] = {
         package["package_id"],
         package["display_name"],
         project["selected_target_profile"],
         project["entry_scene"],
     }
-    for scene in bundle.scenes:
+    for scene in source_scenes:
         values.update((scene["scene_id"], scene["display_name"]))
         values.update(record["variable_id"] for record in scene["variables"])
         values.update(record["action_id"] for record in scene["input_actions"])
@@ -555,8 +614,8 @@ def _compile_asset_chunks(
 def build_egg(bundle: ProjectBundle) -> bytes:
     if not bundle.valid:
         raise EggCompileError("project must validate before package compilation")
-    scenes = tuple(sorted(bundle.scenes, key=lambda scene: scene["scene_id"]))
-    _, string_indexes, string_payload = _string_table(bundle)
+    scenes = tuple(_package_scene(scene) for scene in sorted(bundle.scenes, key=lambda scene: scene["scene_id"]))
+    _, string_indexes, string_payload = _string_table(bundle, scenes)
     chunk_indexes = {
         scene["scene_id"]: (3 + index * 3, 4 + index * 3, 5 + index * 3)
         for index, scene in enumerate(scenes)

@@ -32,20 +32,38 @@
     {
       "state_id": "left",
       "display_name": "Left",
-      "render_model_ref": "view_left",
-      "waiting_visual_ref": "state_wait"
+      "waiting_visual_ref": "state_wait",
+      "placement_overrides": [
+        {
+          "element_ref": "cursor",
+          "x": 80,
+          "y": 43
+        }
+      ]
     },
     {
       "state_id": "center",
       "display_name": "Middle",
-      "render_model_ref": "view_center",
-      "waiting_visual_ref": "state_wait"
+      "waiting_visual_ref": "state_wait",
+      "placement_overrides": [
+        {
+          "element_ref": "cursor",
+          "x": 80,
+          "y": 73
+        }
+      ]
     },
     {
       "state_id": "right",
       "display_name": "Right",
-      "render_model_ref": "view_right",
-      "waiting_visual_ref": "state_wait"
+      "waiting_visual_ref": "state_wait",
+      "placement_overrides": [
+        {
+          "element_ref": "cursor",
+          "x": 80,
+          "y": 103
+        }
+      ]
     }
   ],
   "routes": [
@@ -220,34 +238,7 @@
   ],
   "render_models": [
     {
-      "visual_id": "view_left",
-      "focus_index": 0,
-      "elements": [
-        {
-          "element_id": "cursor",
-          "kind": "sprite",
-          "visual_ref": "cursor.phase_b",
-          "x": 80,
-          "y": 43,
-          "width": 8,
-          "height": 16,
-          "z_order": 10,
-          "focus_role": "focus"
-        },
-        {
-          "element_id": "marker",
-          "kind": "sprite",
-          "visual_ref": "marker.phase_a",
-          "x": 0,
-          "y": 0,
-          "width": 8,
-          "height": 24,
-          "z_order": 5
-        }
-      ]
-    },
-    {
-      "visual_id": "view_center",
+      "visual_id": "scene_placement",
       "focus_index": 1,
       "elements": [
         {
@@ -256,33 +247,6 @@
           "visual_ref": "cursor.phase_b",
           "x": 80,
           "y": 73,
-          "width": 8,
-          "height": 16,
-          "z_order": 10,
-          "focus_role": "focus"
-        },
-        {
-          "element_id": "marker",
-          "kind": "sprite",
-          "visual_ref": "marker.phase_a",
-          "x": 0,
-          "y": 0,
-          "width": 8,
-          "height": 24,
-          "z_order": 5
-        }
-      ]
-    },
-    {
-      "visual_id": "view_right",
-      "focus_index": 2,
-      "elements": [
-        {
-          "element_id": "cursor",
-          "kind": "sprite",
-          "visual_ref": "cursor.phase_b",
-          "x": 80,
-          "y": 103,
           "width": 8,
           "height": 16,
           "z_order": 10,

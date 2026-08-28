@@ -2,7 +2,7 @@
 
 Status: `active_handoff`
 
-Implementation status: `Stage_3_STATE_presentation_backend_ready_GUI_pending`
+Implementation status: `Stage_3_STATE_presentation_GUI_in_progress`
 
 This document is the working boundary between Peep Studio development and
 PeepOS/HW6 bring-up. It tells an editor agent what the platform actually
@@ -221,7 +221,7 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `15`.
+protocol is version `1`; the current service API is version `17`.
 
 | Operation | Purpose |
 |---|---|
@@ -238,12 +238,16 @@ protocol is version `1`; the current service API is version `15`.
 | `project.redo` | redo the last undone command within the bounded service history |
 | `project.scene_thumbnails` | return one side-effect-free initial framebuffer snapshot per compiled STATE scene |
 | `project.preview_reset` | start one selected STATE scene directly |
+| `project.preview_state` | render one exact STATE scene/state framebuffer for placement editing without touching the live preview session |
 | `project.preview_input` | inject one logical A/B/L/R, short START, or JOY_LEFT/JOY_RIGHT/JOY_UP/JOY_DOWN input |
 | `project.preview_advance` | advance deterministic preview time by an explicit duration |
 
-Every project operation after load uses `project_revision`. Every preview
-operation after reset also uses `preview_revision`. Stale revisions must be
-surfaced to the user; the UI must not silently retry them against newer state.
+Every project operation after load uses `project_revision`. Live preview
+operations after reset also use `preview_revision`. `project.preview_state`
+returns the current preview revision for renderer type compatibility but must not
+create, replace, advance, or invalidate the live preview session. Stale revisions
+must be surfaced to the user; the UI must not silently retry them against newer
+state.
 
 The framebuffer returned by preview is `168 x 144`, row-major,
 MSB-first 1bpp, where a set bit is black. Peep Studio must render those bytes
@@ -306,6 +310,63 @@ without directly editing normalized JSON in React.
 Peep Studio development follows this order. Later stages must not bypass the
 Python mutation, validation, and revision boundary established in stage 2.
 
+### Peep Studio Authoring Model
+
+Peep Studio must present author-facing game concepts first and keep raw package
+records as advanced/debug information. The checked-in example project is only a
+feature demonstration. The GUI must not hard-code special behavior for example
+IDs, display names, cursor assets, marker assets, or focus-role records. Example
+objects are ordinary project records; if an author deletes or edits them, the
+Python service decides whether the resulting project is valid.
+
+The default workspaces expose these concepts:
+
+- **Scene Flow:** game-level storyboard flow between scenes.
+- **Local Logic:** per-scene behavior as state cards, prefab cards, trigger
+  output rows, conditions, effects, and destinations.
+- **Placement:** panel-native scene composition plus the selected state's object
+  variations.
+- **Assets:** sprites, build-time text sprites, future audio assets, frame
+  strips, and author-facing animation definitions.
+- **Debug/Advanced:** stable IDs, generated records, backend-only fields, and
+  raw validation details.
+
+Raw fields such as `source_rect`, row stride, generated refresh actions,
+`focus_role`, `waiting_visual.combined_step_count`, and raw
+`waiting_visual.step_phase_indices` must not be primary author controls. If the
+GUI needs to explain them, it should do so in Debug/Advanced views with plain
+labels and links back to the author-facing concept.
+
+Placement must not silently follow the emulator's current runtime state while an
+author is editing. A `STATE_SCENE` owns one placed-object surface. Individual
+logic states may override selected object presentation, such as position,
+visibility, sprite frame, or waiting animation, but they do not own separate
+screen layouts. The object hierarchy shows the scene-owned objects first, with
+clear badges when the selected logic state changes an object. Runtime preview may
+still step through scene logic, but it must not make the placement target
+ambiguous.
+
+Objects are deletable from the GUI unless the Python service rejects the command
+because the project would become invalid. The renderer must not block deletion
+because an object is named `cursor`, named `marker`, or has `focus_role: focus`.
+If a future prefab or generated system needs protected internals, that
+protection must come from typed service-owned ownership/slot metadata, not
+renderer-side ID policy.
+
+Logic-controlled visuals, such as a menu cursor moved by state routes, must be
+shown as normal placement objects with clear badges and navigation back to the
+logic that controls them. For example, an object may be labeled "Moved by Local
+Logic" and link to the relevant trigger outputs or actions. If the normalized
+service data does not expose these relationships directly, add a typed service
+operation or field before inventing UI-side inference.
+
+Sprite assets should be presented as one asset with a frame strip. The normal
+PNG-sheet path imports an evenly divided same-size grid so a two-frame sprite is
+understood as one animated sprite, not as unrelated crop records. Frame
+rectangles and pivots remain deterministic import/compiler metadata. Variable
+frame sizing, atlases, pivots, and slicing adjustments require an explicit
+future asset-import design before becoming normal controls.
+
 ### Stage 1: Read-Only Scene Inspection
 
 - show normalized STATE nodes, transitions, variables, render elements, and
@@ -362,8 +423,8 @@ one-frame output contract through
 ### Stage 3: Scene Canvas And Visual Elements
 
 - add, remove, select, move, and reorder retained visual elements;
-- edit bounds, platform layer, focus ownership, sprite/frame reference, and
-  bounded STATE waiting-phase binding;
+- edit bounds, platform layer, sprite/frame reference, and bounded STATE
+  waiting-phase binding;
 - add an asset browser for the implemented native masked-1bpp PNG subset;
 - expose only visual controls supported by the selected target profile and
   compiled package schema; do not map canvas tools to firmware draw calls;
@@ -375,41 +436,66 @@ This is the first stage at which the user can begin laying out real menu
 screens. Build-time text rasterization is the initial menu-label path; it does
 not require or imply an on-device runtime font renderer.
 
-Implementation status: placement mode shell is present in Peep Studio. It
-keeps the fixed project-panel preview available in every mode, promotes the
-selected scene preview into the main workspace for placement, shows the current
-scene object hierarchy in the project panel, and reserves the inspector for the
-selected object's placement/properties. The placement display has a faint
-screen-space grid, selectable retained-element overlays, a floating primitive
-tool palette, drag movement, shape resize handles, line endpoint handles,
-sprite placement from compiled asset frames,
-inspector sprite-frame selection,
-inspector X/Y fields, layer/visibility controls, forward/back draw-order
-buttons, and inspector-level selected-object deletion. These controls call the
-Python service commands (`render_element.add`, `render_element.delete`,
-`render_element.set_position`, `render_element.set_bounds`,
-`render_element.set_layer`, `render_element.set_visibility`,
-`render_element.set_z_order`, and `render_element.set_visual_ref`) rather than
-directly editing normalized JSON in React. The Assets workspace now lists
-compiled sprite assets, shows frame previews, and can import a PNG as one
-full-image masked 1bpp sprite frame through Electron filesystem ownership and
-the Python `asset.upsert` command. Imported PNGs are sanitized before catalog
-creation: fully transparent pixels remain transparent, and visible pixels are
-thresholded to pure black or pure white. Sprite assets and frames may also carry
-optional author-facing `display_name` labels; stable asset/frame IDs remain the
-service, package, and firmware references. Sprite-sheet slicing and audio
-controls remain future Assets workspace work. The Assets workspace can create and
-edit `system_font_text` assets; those labels are rasterized by the Python
+Implementation status: placement mode shell is present in Peep Studio. It keeps
+the fixed project-panel preview available in every mode, promotes the selected
+scene preview into the main workspace for placement, shows a scene object
+hierarchy in the project panel, and reserves the inspector for the selected
+object's placement/properties. The placement display has a faint screen-space
+grid, selectable retained-element overlays, a floating primitive tool palette,
+drag movement, shape resize handles, line endpoint handles, sprite placement
+from a picker of compiled asset frames, inspector X/Y fields, layer/visibility
+controls, forward/back draw-order buttons, and inspector-level selected-object
+deletion. Placement is being corrected to keep one scene-owned placement surface
+and store per-state object changes as state placement overrides; the compiler
+may still flatten those overrides into target package records. Selected placed
+sprites can bind or clear a STATE-compatible waiting animation when their source
+asset has 2..4 same-sized frames; Peep Studio asks Python to derive the
+waiting-visual timing and does not expose raw phase-step internals to the
+author. Placing a compatible multi-frame sprite defaults to animated, and the
+inspector exposes this as a Static/Animated toggle rather than a backend update
+command. These controls call the Python service commands
+(`render_element.add`, `render_element.delete`,
+`render_element.set_bounds`, `render_element.set_layer`,
+`render_element.set_z_order`, `state_placement.set_override`,
+`render_element.bind_waiting_animation`, and
+`render_element.clear_waiting_animation`) rather than directly editing
+normalized JSON in React. `state_placement.set_override` is the authoring path
+for selected-state position, visibility, and static sprite-frame changes.
+
+Known Stage 3 UX debt: The object hierarchy must continue moving away from raw
+demo scaffolding and toward authored object names, type icons, layer/order
+badges, and logic/prefab ownership badges. Demo focus objects must not be
+special-cased or made undeletable in the renderer.
+
+The Assets workspace lists compiled sprite assets, shows frame previews, can
+preview a multi-frame sprite loop, and can import a PNG as either one full-image
+masked 1bpp frame or an evenly divided same-size frame grid through Electron
+filesystem ownership and the Python `asset.upsert` command. Imported PNGs are
+sanitized before catalog creation: fully transparent pixels remain transparent,
+and visible pixels are thresholded to pure black or pure white. Sprite assets
+and frames may also carry optional author-facing `display_name` labels; stable
+asset/frame IDs remain the service, package, and firmware references. Audio
+controls remain future Assets workspace work. The Assets workspace can create
+and edit `system_font_text` assets; those labels are rasterized by the Python
 service into ordinary sprite frames and must not imply runtime text editing.
-Circle and ellipse editing preserves
-the current RND2 constraints: odd-sized bounds of at least 3 pixels, with
-circles remaining square. Filled circle and filled ellipse controls remain
-deferred until the package/service and firmware expose those primitive
-semantics. Grid visibility, grid strength, major grid lines, overlay boxes, and
-label display are editor view settings in the project panel only; they do not
-affect package output. React controls for the phase timeline are the next
-GUI-branch work. The GUI must not offer general
-`frame_animation` binding in STATE; it edits `waiting_visual` phases instead.
+Circle and ellipse editing preserves the current RND2 constraints: odd-sized
+bounds of at least 3 pixels, with circles remaining square. Filled circle and
+filled ellipse controls remain deferred until the package/service and firmware
+expose those primitive semantics. Grid visibility, grid strength, major grid
+lines, overlay boxes, and label display are editor view settings in the project
+panel only; they do not affect package output.
+
+The animation GUI pass must keep author-facing frame and animation setup in the
+Assets workspace. Placement may assign an existing STATE-compatible asset frame
+strip to a sprite object, but it must not expose `combined_step_count`, raw
+`step_phase_indices`, or arbitrary waiting-visual internals. Service API 18
+adds `render_element.bind_waiting_animation` and
+`render_element.clear_waiting_animation` so Python derives the
+STATE-compatible `waiting_visual` from asset frame choices and the other
+animated objects in the state. The GUI must not offer general
+`frame_animation` binding in STATE; general `frame_animation` remains reserved
+for future SEQUENCE authoring unless
+the backend contract changes.
 
 ### Stage 4: STATE Graph Editing
 

@@ -15,7 +15,7 @@ export type GraphStateNode = {
   id: string;
   label: string;
   isEntry: boolean;
-  renderModelRef: string;
+  placementOverrideCount: number;
   waitingVisualRef: string;
   outputs: GraphStateOutput[];
   x: number;
@@ -138,7 +138,7 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
     id: state.state_id,
     label: state.display_name,
     isEntry: state.state_id === entryState,
-    renderModelRef: state.render_model_ref,
+    placementOverrideCount: state.placement_overrides?.length ?? 0,
     waitingVisualRef: state.waiting_visual_ref,
     outputs: outputsByState.get(state.state_id) ?? [],
     x: savedPositions?.[state.state_id]?.x ?? (index % columns) * 340,

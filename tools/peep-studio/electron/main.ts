@@ -7,6 +7,7 @@ import readline from "node:readline";
 
 const PROTOCOL_VERSION = 1;
 const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_SOURCE_IMAGE_DIMENSION = 4096;
 
 type PendingRequest = {
   resolve: (value: unknown) => void;
@@ -286,8 +287,8 @@ ipcMain.handle("peep:import-sprite-png", async (_event, projectPath: unknown) =>
   if (image.isEmpty() || size.width <= 0 || size.height <= 0) {
     throw new Error("Selected PNG could not be loaded");
   }
-  if (size.width > 168 || size.height > 144) {
-    throw new Error("First-pass sprite import only supports full-image frames up to 168x144");
+  if (size.width > MAX_SOURCE_IMAGE_DIMENSION || size.height > MAX_SOURCE_IMAGE_DIMENSION) {
+    throw new Error(`Sprite source PNG must be no larger than ${MAX_SOURCE_IMAGE_DIMENSION}x${MAX_SOURCE_IMAGE_DIMENSION}`);
   }
   const destination = await uniqueAssetPath(projectRoot, sourcePath);
   await writeFile(destination.destinationPath, sanitizeSpriteImage(image));

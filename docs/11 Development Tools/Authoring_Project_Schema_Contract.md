@@ -762,10 +762,36 @@ frame_animation:
   frame_refs[]
   frame_duration_ms[]
   loop_policy
+
+state_scene_placement:
+  render_models[1]            # one scene-owned placed-object surface
+    visual_id
+    focus_index
+    elements[]                # scene-owned placed objects
+
+state:
+  state_id
+  display_name
+  waiting_visual_ref
+  placement_overrides[]       # optional per-state changes to scene objects
+
+state_placement_override:
+  element_ref                 # must name a scene-owned placed object
+  x                           # optional state-specific position
+  y                           # optional state-specific position
+  visible                     # optional state-specific visibility
+  visual_ref                  # optional state-specific sprite frame
 ```
 
 `frame_animation` is the general asset-timeline record intended for future
 SEQUENCE authoring. It is not the STOP2-capable STATE animation contract.
+
+A `STATE_SCENE` has one spatial placement surface. Logic states do not own
+independent render models. When a state needs the cursor, marker, or another
+object to appear differently, it declares a bounded placement override against
+the scene-owned object. Package compilation may flatten those overrides into
+target-specific retained records, but authored source must keep the scene object
+identity stable.
 
 The initial system-font contract is fixed-cell 8x8, black ink on a transparent
 background, printable ASCII `0x20..0x7e`, newline line breaks, and integer

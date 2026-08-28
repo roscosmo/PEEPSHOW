@@ -40,13 +40,33 @@ class PreviewInputResult:
 class StateScenePreview:
     """Deterministic selected-scene executor over an independently parsed package."""
 
-    def __init__(self, package: EggPackage, scene_id: str) -> None:
+    def __init__(self, package: EggPackage, scene_id: str, state_id: str | None = None) -> None:
         self._package = package
         self._scenes = {str(scene["scene_id"]): scene for scene in package.scenes}
         self._frames = {str(frame["frame_id"]): frame for frame in package.assets}
         self._animations = {str(animation["animation_id"]): animation for animation in package.animations}
         self._elapsed_ms = 0
         self._activate_scene(scene_id)
+        if state_id is not None:
+            self.select_state(state_id)
+        else:
+            self._render_framebuffer()
+
+    def select_state(self, state_id: str) -> None:
+        state_index = next(
+            (
+                index
+                for index, state in enumerate(self._graph["states"])
+                if str(state["state_id"]) == state_id
+            ),
+            None,
+        )
+        if state_index is None:
+            raise PreviewError(f"state '{state_id}' is not present in scene '{self.scene_id}'")
+        self._state_index = state_index
+        self._elapsed_ms = 0
+        self._step_elapsed_ms = 0
+        self._step_index = int(self._waiting()["settled_step"])
         self._render_framebuffer()
 
     @property

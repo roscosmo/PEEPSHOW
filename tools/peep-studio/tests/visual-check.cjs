@@ -5,6 +5,7 @@ const { app, BrowserWindow } = require("electron");
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch("disable-gpu");
 app.commandLine.appendSwitch("disable-software-rasterizer", "false");
+app.on("window-all-closed", () => {});
 
 const url = process.argv[2] ?? "http://127.0.0.1:5173/";
 const outputRoot = path.resolve(process.argv[3] ?? "visual-output");

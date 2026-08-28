@@ -46,8 +46,17 @@ export type InputAction = {
 export type StateRecord = {
   state_id: string;
   display_name: string;
-  render_model_ref: string;
   waiting_visual_ref: string;
+  render_model_ref?: string;
+  placement_overrides?: StatePlacementOverride[];
+};
+
+export type StatePlacementOverride = {
+  element_ref: string;
+  x?: number;
+  y?: number;
+  visible?: boolean;
+  visual_ref?: string;
 };
 
 export type StateGuard = {
@@ -313,6 +322,7 @@ export type ServiceHello = {
     visibility: boolean;
     z_order: boolean;
     element_commands: string[];
+    state_override_commands: string[];
     asset_commands: string[];
     general_frame_animation: {
       state_placeable: boolean;
@@ -355,6 +365,7 @@ export type ServiceHello = {
       actions_per_route: number;
     };
     state_commands: string[];
+    state_placement_commands: string[];
     render_model_commands: string[];
     variable_commands: string[];
     input_action_commands: string[];

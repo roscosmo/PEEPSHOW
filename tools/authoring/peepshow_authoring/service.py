@@ -24,7 +24,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 15
+SERVICE_API_VERSION = 18
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -41,6 +41,7 @@ SERVICE_OPERATIONS = (
     "project.redo",
     "project.scene_thumbnails",
     "project.preview_reset",
+    "project.preview_state",
     "project.preview_input",
     "project.preview_advance",
 )
@@ -178,12 +179,12 @@ class AuthoringService:
                 "element_commands": [
                     "render_element.add",
                     "render_element.delete",
-                    "render_element.set_position",
                     "render_element.set_bounds",
                     "render_element.set_layer",
-                    "render_element.set_visibility",
                     "render_element.set_z_order",
-                    "render_element.set_visual_ref",
+                ],
+                "state_override_commands": [
+                    "state_placement.set_override",
                 ],
                 "asset_commands": [
                     "asset.upsert",
@@ -208,6 +209,8 @@ class AuthoringService:
                         "waiting_visual.upsert",
                         "waiting_visual.delete",
                         "state.set_waiting_visual",
+                        "render_element.bind_waiting_animation",
+                        "render_element.clear_waiting_animation",
                     ],
                 },
                 "logical_inputs": [
@@ -239,7 +242,7 @@ class AuthoringService:
                 "command_batch_maximum": 64,
                 "limits": {
                     "states": 64,
-                    "render_models": 64,
+                    "render_models": 1,
                     "variables": 32,
                     "input_actions": 32,
                     "routes": 128,
@@ -251,12 +254,12 @@ class AuthoringService:
                     "state.delete",
                     "state.rename",
                     "state.set_entry",
-                    "state.set_render_model",
                     "state.set_waiting_visual",
                 ],
+                "state_placement_commands": [
+                    "state_placement.set_override",
+                ],
                 "render_model_commands": [
-                    "render_model.add",
-                    "render_model.delete",
                     "render_model.set_focus_index",
                 ],
                 "variable_commands": [
@@ -510,6 +513,27 @@ class AuthoringService:
         self._preview_revision += 1
         return self._preview_result(preview.snapshot())
 
+    def _preview_state(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params, {"scene_id", "state_id"})
+        scene_id = params["scene_id"]
+        state_id = params["state_id"]
+        if not isinstance(scene_id, str) or not scene_id:
+            raise ProtocolError("PREVIEW_SCENE_INVALID", "scene_id must be non-empty text")
+        if not isinstance(state_id, str) or not state_id:
+            raise ProtocolError("PREVIEW_STATE_INVALID", "state_id must be non-empty text")
+        if not bundle.valid:
+            raise ProtocolError(
+                "PROJECT_INVALID",
+                "project must validate before preview",
+                details={"issues": _issues(bundle)},
+            )
+        try:
+            package = parse_egg(build_egg(bundle))
+            preview = StateScenePreview(package, scene_id, state_id)
+        except (EggCompileError, EggFormatError, PreviewError) as exc:
+            raise ProtocolError("PREVIEW_STATE_FAILED", str(exc)) from exc
+        return self._preview_result(preview.snapshot())
+
     def _preview_input(self, params: dict[str, Any]) -> dict[str, Any]:
         preview = self._current_preview(params, {"logical_source"})
         logical_source = params["logical_source"]
@@ -544,6 +568,7 @@ class AuthoringService:
             "project.redo": self._redo,
             "project.scene_thumbnails": self._scene_thumbnails,
             "project.preview_reset": self._preview_reset,
+            "project.preview_state": self._preview_state,
             "project.preview_input": self._preview_input,
             "project.preview_advance": self._preview_advance,
         }

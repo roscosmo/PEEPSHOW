@@ -16,7 +16,6 @@
     {
       "state_id": "details",
       "display_name": "Details",
-      "render_model_ref": "view_details",
       "waiting_visual_ref": "state_wait"
     }
   ],
@@ -34,7 +33,7 @@
   ],
   "render_models": [
     {
-      "visual_id": "view_details",
+      "visual_id": "scene_placement",
       "focus_index": 0,
       "elements": [
         {

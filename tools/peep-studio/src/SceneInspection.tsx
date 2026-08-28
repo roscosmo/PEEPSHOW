@@ -223,6 +223,7 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
   const { graphNode, selectedRouteId, onSelectRoute, onSelectState } = data;
   const localOutputs = graphNode.outputs.filter((output) => output.targetScene === undefined).length;
   const sceneOutputs = graphNode.outputs.length - localOutputs;
+  const objectChangeLabel = `${graphNode.placementOverrideCount} object change${graphNode.placementOverrideCount === 1 ? "" : "s"}`;
   return (
     <button
       className={`state-card-node ${graphNode.isEntry ? "entry" : ""} ${selected ? "selected" : ""}`}
@@ -238,8 +239,8 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
         </div>
       </div>
       <div className="state-card-screen">
-        <strong>{graphNode.renderModelRef}</strong>
-        <span>screen layout</span>
+        <strong>{objectChangeLabel}</strong>
+        <span>state variation</span>
       </div>
       <div className="state-card-counts" aria-label="Transition output summary">
         <span>{localOutputs} local</span>
@@ -1135,10 +1136,11 @@ function StateInspector({
   onRenameState: (sceneId: string, stateId: string, displayName: string) => Promise<void>;
   canEdit: boolean;
 }) {
-  const render = renderModels.find((item) => item.visual_id === state.render_model_ref);
+  const render = renderModels[0];
   const waiting = waitingVisuals.find((item) => item.waiting_visual_id === state.waiting_visual_ref);
   const [displayName, setDisplayName] = useState(state.display_name);
   const screenElementCount = render?.elements.length ?? 0;
+  const placementOverrideCount = state.placement_overrides?.length ?? 0;
   const waitingStepCount = waiting?.combined_step_count ?? 0;
 
   useEffect(() => {
@@ -1153,12 +1155,12 @@ function StateInspector({
       <h3>Selected state</h3>
       <div className="state-summary-card">
         <div>
-          <span>Screen</span>
+          <span>State</span>
           <strong>{state.display_name}</strong>
         </div>
         <div>
-          <span>Draws</span>
-          <strong>{screenElementCount} element{screenElementCount === 1 ? "" : "s"}</strong>
+          <span>Object changes</span>
+          <strong>{placementOverrideCount}</strong>
         </div>
         <div>
           <span>Waiting</span>
@@ -1185,9 +1187,11 @@ function StateInspector({
           <button type="submit" disabled={renameDisabled}>Rename</button>
         </div>
       </form>
-      <button className="link-row" type="button" onClick={() => onSelect({ kind: "render", id: state.render_model_ref })}>
-        Screen layout <strong>{render === undefined ? "Missing" : `${render.elements.length} element${render.elements.length === 1 ? "" : "s"}`}</strong>
-      </button>
+      {render !== undefined && (
+        <button className="link-row" type="button" onClick={() => onSelect({ kind: "render", id: render.visual_id })}>
+          Scene placement <strong>{screenElementCount} object{screenElementCount === 1 ? "" : "s"}</strong>
+        </button>
+      )}
       <button className="link-row" type="button" onClick={() => onSelect({ kind: "waiting", id: state.waiting_visual_ref })}>
         Waiting animation <strong>{waiting === undefined ? "Missing" : `${waiting.combined_step_count} step${waiting.combined_step_count === 1 ? "" : "s"}`}</strong>
       </button>
