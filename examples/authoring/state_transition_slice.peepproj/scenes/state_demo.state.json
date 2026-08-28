@@ -126,6 +126,10 @@
           "waiting_visual_ref": "marker_hold_wait",
           "waiting_element_ref": "marker_hold",
           "timeline_policy": "preserve"
+        },
+        {
+          "kind": "play_sfx",
+          "cue_ref": "ui.select.cue"
         }
       ],
       "target_state": "right"

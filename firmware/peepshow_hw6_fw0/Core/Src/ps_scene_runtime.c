@@ -23,6 +23,8 @@ static ps_scene_runtime_state_scene_t s_ps_scene_runtime_scene_slots[2];
 static ps_scene_runtime_state_scene_t *s_ps_scene_runtime_state_scene =
   &s_ps_scene_runtime_scene_slots[0];
 static uint32_t s_ps_scene_runtime_active_slot;
+static uint32_t s_ps_scene_runtime_pending_sfx_cue =
+  PS_SCENE_RUNTIME_INDEX_INVALID;
 
 volatile uint32_t g_ps_scene_runtime_waiting_demo_enable;
 volatile ps_scene_runtime_probe_t g_ps_scene_runtime_probe =
@@ -431,6 +433,19 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
       continue;
     }
 
+    if (action->kind == PS_SCENE_RUNTIME_ACTION_PLAY_SFX)
+    {
+      if ((action->target_id != 0UL) ||
+          (action->target_element_id != 0UL) ||
+          (action->operation != 0UL) ||
+          (action->value < 0) ||
+          (action->secondary_value != 0))
+      {
+        return 1UL;
+      }
+      continue;
+    }
+
     binding_index = PS_SceneRuntime_FindVisualBindingIndex(
       scene, action->target_id);
     if ((binding_index == PS_SCENE_RUNTIME_INDEX_INVALID) ||
@@ -689,6 +704,20 @@ static uint32_t PS_SceneRuntime_StageActions(
     uint32_t variable_index;
     uint32_t element_index;
     int64_t result = 0;
+
+    if (action->kind == PS_SCENE_RUNTIME_ACTION_PLAY_SFX)
+    {
+      if ((action->target_id != 0UL) ||
+          (action->target_element_id != 0UL) ||
+          (action->operation != 0UL) ||
+          (action->value < 0) ||
+          (action->secondary_value != 0))
+      {
+        g_ps_scene_runtime_probe.action_error_count++;
+        return 0UL;
+      }
+      continue;
+    }
 
     if (action->kind != PS_SCENE_RUNTIME_ACTION_SET_VARIABLE)
     {
@@ -1036,6 +1065,7 @@ uint32_t PS_SceneRuntime_EnterStateScene(void)
     (uint32_t)PS_PACKAGE_SOURCE_NONE;
   g_ps_scene_runtime_probe.package_source_status =
     PS_PACKAGE_SOURCE_STATUS_NOT_RUN;
+  s_ps_scene_runtime_pending_sfx_cue = PS_SCENE_RUNTIME_INDEX_INVALID;
   if (PS_PackageSource_Resolve(&package_view) != 0UL)
   {
     g_ps_scene_runtime_probe.package_source_status =
@@ -1113,6 +1143,7 @@ void PS_SceneRuntime_ExitStateScene(void)
   g_ps_scene_runtime_probe.exit_count++;
   g_ps_scene_runtime_probe.active = 0UL;
   g_ps_scene_runtime_probe.last_status = 0UL;
+  s_ps_scene_runtime_pending_sfx_cue = PS_SCENE_RUNTIME_INDEX_INVALID;
 }
 
 uint32_t PS_SceneRuntime_StateSceneActive(void)
@@ -1371,7 +1402,15 @@ uint32_t PS_SceneRuntime_HandleStateSceneInput(uint32_t logical_event,
           {
             const ps_scene_runtime_action_t *action =
               &scene->actions[transition->first_action + action_index];
-            if (action->kind != PS_SCENE_RUNTIME_ACTION_SET_VARIABLE)
+            if (action->kind == PS_SCENE_RUNTIME_ACTION_PLAY_SFX)
+            {
+              s_ps_scene_runtime_pending_sfx_cue =
+                (uint32_t)action->value;
+              g_ps_scene_runtime_probe.sfx_action_commit_count++;
+              g_ps_scene_runtime_probe.last_sfx_cue_index =
+                (uint32_t)action->value;
+            }
+            else if (action->kind != PS_SCENE_RUNTIME_ACTION_SET_VARIABLE)
             {
               g_ps_scene_runtime_probe.element_action_commit_count++;
               g_ps_scene_runtime_probe.last_element_action_kind =
@@ -1412,6 +1451,20 @@ uint32_t PS_SceneRuntime_HandleStateSceneInput(uint32_t logical_event,
   g_ps_scene_runtime_probe.transition_miss_count++;
   g_ps_scene_runtime_probe.last_status = 0UL;
   return PS_SCENE_RUNTIME_INPUT_IGNORED;
+}
+
+uint32_t PS_SceneRuntime_TakeSfxRequest(uint32_t *cue_index)
+{
+  if ((cue_index == NULL) ||
+      (s_ps_scene_runtime_pending_sfx_cue ==
+       PS_SCENE_RUNTIME_INDEX_INVALID))
+  {
+    return 0UL;
+  }
+  *cue_index = s_ps_scene_runtime_pending_sfx_cue;
+  s_ps_scene_runtime_pending_sfx_cue = PS_SCENE_RUNTIME_INDEX_INVALID;
+  g_ps_scene_runtime_probe.sfx_request_take_count++;
+  return 1UL;
 }
 
 const ps_scene_waiting_visual_t *PS_SceneRuntime_ResolveStateSceneWaitingVisual(

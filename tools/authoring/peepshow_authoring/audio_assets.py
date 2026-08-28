@@ -146,6 +146,20 @@ def _decode_nibble(nibble: int, predictor: int, step_index: int) -> tuple[int, i
     return predictor, step_index
 
 
+def _initial_step_index(block: tuple[int, ...]) -> int:
+    delta_count = min(len(block) - 1, 16)
+    if delta_count <= 0:
+        return 0
+    average_delta = (
+        sum(abs(block[index + 1] - block[index]) for index in range(delta_count))
+        + delta_count // 2
+    ) // delta_count
+    return min(
+        range(len(_STEP_TABLE)),
+        key=lambda index: (abs(_STEP_TABLE[index] - average_delta), index),
+    )
+
+
 def encode_ima_adpcm(samples: Iterable[int]) -> tuple[bytes, int]:
     source = tuple(_clamp_pcm(int(sample)) for sample in samples)
     if not source:
@@ -155,7 +169,7 @@ def encode_ima_adpcm(samples: Iterable[int]) -> tuple[bytes, int]:
     for first in range(0, len(source), AUDIO_BLOCK_SAMPLES):
         block = source[first : first + AUDIO_BLOCK_SAMPLES]
         predictor = block[0]
-        step_index = 0
+        step_index = _initial_step_index(block)
         encoded.extend(_BLOCK_HEADER.pack(predictor, step_index, 0, len(block)))
         pending = 0
         low_ready = False

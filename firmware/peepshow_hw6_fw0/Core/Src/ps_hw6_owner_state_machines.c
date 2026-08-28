@@ -1191,6 +1191,7 @@ static const PS_HW6_StateTransition ps_audio_transitions[] =
   {AUDIO_OFF, AUDIO_EV_INIT_REQ, AUDIO_INIT},
   {AUDIO_INIT, AUDIO_EV_INIT_OK, AUDIO_IDLE},
   {AUDIO_IDLE, AUDIO_EV_TONE_REQ, AUDIO_ACTIVE},
+  {AUDIO_IDLE, AUDIO_EV_SFX_REQ, AUDIO_ACTIVE},
   {AUDIO_ACTIVE, AUDIO_EV_PLAYBACK_DONE, AUDIO_IDLE},
   {AUDIO_INIT, AUDIO_EV_DMA_ERROR, AUDIO_ERROR},
   {AUDIO_ACTIVE, AUDIO_EV_DMA_ERROR, AUDIO_ERROR},
@@ -2779,6 +2780,50 @@ static HAL_StatusTypeDef PS_HW6_SM_RunAudioTone(void)
                             SPK_EV_DMA_START_OK, HAL_OK);
 
   status = PS_HW6_AudioOwner_RunTone();
+  if (status == HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_SPEAKER,
+                              SPK_EV_PLAYBACK_DONE, status);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_SPEAKER,
+                              SPK_EV_DRAINED, status);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_AUDIO,
+                              AUDIO_EV_PLAYBACK_DONE, status);
+  }
+  else
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_SPEAKER,
+                              SPK_EV_FAULT, status);
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_AUDIO,
+                              AUDIO_EV_DMA_ERROR, status);
+  }
+  return status;
+}
+
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunAudioSfx(
+  uint32_t cue_index)
+{
+  HAL_StatusTypeDef status;
+
+  if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_AUDIO] !=
+       (uint32_t)AUDIO_IDLE) ||
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_SPEAKER] !=
+       (uint32_t)SPK_OFF))
+  {
+    return HAL_BUSY;
+  }
+
+  (void)PS_HW6_SM_Transition(PS_HW6_SM_SPEAKER,
+                            SPK_EV_ENABLE_REQUEST, HAL_OK);
+  (void)PS_HW6_SM_Transition(PS_HW6_SM_SPEAKER,
+                            SPK_EV_ENABLED, HAL_OK);
+  (void)PS_HW6_SM_Transition(PS_HW6_SM_SPEAKER,
+                            SPK_EV_PRELOAD, HAL_OK);
+  (void)PS_HW6_SM_Transition(PS_HW6_SM_AUDIO,
+                            AUDIO_EV_SFX_REQ, HAL_OK);
+  (void)PS_HW6_SM_Transition(PS_HW6_SM_SPEAKER,
+                            SPK_EV_DMA_START_OK, HAL_OK);
+
+  status = PS_HW6_AudioOwner_RunSfx(cue_index);
   if (status == HAL_OK)
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_SPEAKER,

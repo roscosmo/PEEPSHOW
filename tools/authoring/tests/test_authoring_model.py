@@ -250,6 +250,28 @@ class AuthoringModelTests(unittest.TestCase):
         self.assertEqual(len(samples), len(decoded))
         self.assertEqual(samples[0], decoded[0])
 
+    def test_ima_adpcm_block_headers_avoid_repeated_convergence_artifacts(self) -> None:
+        with wave.open(str(EMBEDDED_PROJECT / "assets" / "select.wav"), "rb") as wav:
+            self.assertEqual(1, wav.getnchannels())
+            self.assertEqual(2, wav.getsampwidth())
+            self.assertEqual(AUDIO_SAMPLE_RATE_HZ, wav.getframerate())
+            raw = wav.readframes(wav.getnframes())
+        samples = struct.unpack(f"<{len(raw) // 2}h", raw)
+        encoded, block_count = encode_ima_adpcm(samples)
+        decoded = decode_ima_adpcm(encoded, len(samples), block_count)
+        signal_energy = sum(sample * sample for sample in samples)
+        error_energy = sum(
+            (source - result) * (source - result)
+            for source, result in zip(samples, decoded)
+        )
+
+        self.assertGreater(signal_energy, error_energy * 400)
+        for block_offset in range(0, len(samples), AUDIO_BLOCK_SAMPLES):
+            if block_offset == 0:
+                continue
+            boundary_error = abs(samples[block_offset + 1] - decoded[block_offset + 1])
+            self.assertLess(boundary_error, 512)
+
     def test_sampled_sfx_compiles_into_optional_audio_chunks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = make_audio_project(Path(temp_dir))

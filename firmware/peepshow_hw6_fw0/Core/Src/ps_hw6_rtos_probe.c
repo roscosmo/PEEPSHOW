@@ -13,6 +13,7 @@
 #include "ps_input_joystick.h"
 #include "ps_input_logical.h"
 #include "ps_lpbam_display_buffers.h"
+#include "ps_egg_state_loader.h"
 #include "ps_package_source.h"
 #include "ps_power_state.h"
 #include "ps_scene_runtime.h"
@@ -108,6 +109,7 @@ extern RTC_HandleTypeDef hrtc;
 #define PS_HW6_RTOS_COMMAND_RUNTIME_INTERACTION_START (37UL)
 #define PS_HW6_RTOS_COMMAND_RUNTIME_INTERACTION_TIMEOUT (38UL)
 #define PS_HW6_RTOS_COMMAND_RUNTIME_INTERACTION_INACTIVE (39UL)
+#define PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX (40UL)
 #define PS_HW6_RTOS_INTERACTION_ACTIVATION_FRAME_COUNT (3UL)
 #define PS_HW6_RTOS_RTC_UNITS_PER_SECOND (256UL)
 #define PS_HW6_RTOS_RTC_UNITS_PER_DAY \
@@ -352,6 +354,7 @@ static uint32_t ps_power_input_activity_generation;
 static uint32_t ps_display_blink_visible;
 static uint32_t ps_display_waiting_sequence_frame;
 static uint32_t ps_display_waiting_sequence_count;
+static volatile uint32_t ps_audio_sfx_pending;
 static uint32_t ps_display_blink_stop2_suppressed;
 static volatile uint32_t ps_display_blink_transfer_active;
 static uint32_t ps_stop2_lpbam_edge_request_pending;
@@ -406,6 +409,9 @@ static UINT PS_HW6_RTOS_SendDisplayUiRenderCommand(
   uint32_t shutdown_state,
   uint32_t shutdown_countdown_seconds);
 static UINT PS_HW6_RTOS_RequestRuntimeCommand(ULONG command);
+static UINT PS_HW6_RTOS_SendModeCommand(uint32_t owner_id,
+                                         ULONG command,
+                                         uint32_t mode);
 static UINT PS_HW6_RTOS_RequestStoragePackageLoadAndWait(void);
 static uint32_t PS_HW6_RTOS_Stop2DisplayLpbamReady(void);
 
@@ -981,6 +987,7 @@ static void PS_HW6_RTOS_ResetProbe(void)
   ps_display_blink_visible = 1UL;
   ps_display_waiting_sequence_frame = 0UL;
   ps_display_waiting_sequence_count = 0UL;
+  ps_audio_sfx_pending = 0UL;
   ps_display_blink_stop2_suppressed = 0UL;
   ps_stop2_lpbam_edge_request_pending = 0UL;
   ps_stop2_lpbam_edge_rearm_needed = 0UL;
@@ -1049,6 +1056,16 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.audio_clock_realtime_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.audio_clock_release_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_send_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_owner_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_clock_request_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_clock_release_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_last_cue_index =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.storage_clock_last_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
@@ -1437,6 +1454,12 @@ static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
     return 1UL;
   }
   cycle_index = (uint32_t)(message[3] ^ PS_HW6_RTOS_COMMAND_TOKEN);
+  if ((owner_id == PS_HW6_RTOS_OWNER_AUDIO) &&
+      (message[2] == PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX) &&
+      (cycle_index < PS_EGG_STATE_LOADER_AUDIO_CUE_MAX))
+  {
+    return 1UL;
+  }
   if ((owner_id == PS_HW6_RTOS_OWNER_COMM) &&
       (message[2] == PS_HW6_RTOS_COMMAND_COMM_BLE_MODE) &&
       (cycle_index <= (uint32_t)PS_HW6_COMM_BLE_MODE_CONNECTED))
@@ -1726,9 +1749,36 @@ static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
       scene_result = PS_SceneRuntime_HandleStateSceneInput(event, button_id);
       if (scene_result == PS_SCENE_RUNTIME_INPUT_APPLIED)
       {
+        uint32_t cue_index;
+
         PS_HW6_RTOS_RuntimeInteractionRefresh(event,
                                                button_id,
                                                (uint32_t)tx_time_get());
+        if (PS_SceneRuntime_TakeSfxRequest(&cue_index) != 0UL)
+        {
+          UINT sfx_status;
+
+          g_ps_hw6_rtos_probe.audio_sfx_dispatch_count++;
+          g_ps_hw6_rtos_probe.audio_sfx_last_cue_index = cue_index;
+          if (ps_audio_sfx_pending == 0UL)
+          {
+            ps_audio_sfx_pending = 1UL;
+            sfx_status = PS_HW6_RTOS_SendModeCommand(
+              PS_HW6_RTOS_OWNER_AUDIO,
+              PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX,
+              cue_index);
+            if (sfx_status != TX_SUCCESS)
+            {
+              ps_audio_sfx_pending = 0UL;
+            }
+          }
+          else
+          {
+            sfx_status = TX_QUEUE_FULL;
+          }
+          g_ps_hw6_rtos_probe.audio_sfx_send_status =
+            (uint32_t)sfx_status;
+        }
         status = PS_HW6_RTOS_SendDisplayUiRenderCommand(
           (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF,
           (uint32_t)PS_UI_ROUTER_CAL_NONE,
@@ -7538,6 +7588,38 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
       &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
       PS_HW6_RTOS_ACK_OWNER(PS_HW6_RTOS_OWNER_SENSOR),
       TX_OR);
+  }
+  else if ((owner_id == PS_HW6_RTOS_OWNER_AUDIO) &&
+           (command == PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX))
+  {
+    HAL_StatusTypeDef sfx_status = HAL_ERROR;
+    UINT clock_status;
+    UINT release_status;
+
+    g_ps_hw6_rtos_probe.audio_sfx_owner_count++;
+    g_ps_hw6_rtos_probe.audio_sfx_last_cue_index = cycle_index;
+    clock_status = PS_HW6_RTOS_RequestAudioClockCapabilities(
+      PS_HW6_RTOS_AUDIO_CLOCK_REASON_REACTIVE_SFX,
+      PS_HW6_RTOS_AUDIO_CLOCK_SAI_CAPABILITIES);
+    g_ps_hw6_rtos_probe.audio_sfx_clock_request_status =
+      (uint32_t)clock_status;
+    if (clock_status == TX_SUCCESS)
+    {
+      sfx_status = PS_HW6_OwnerStateMachines_Stabilize(
+        PS_HW6_RTOS_OWNER_AUDIO);
+      if (sfx_status == HAL_OK)
+      {
+        sfx_status = PS_HW6_OwnerStateMachines_RunAudioSfx(cycle_index);
+      }
+    }
+    release_status = PS_HW6_RTOS_RequestAudioClockCapabilities(
+      PS_HW6_RTOS_AUDIO_CLOCK_REASON_RELEASE,
+      0UL);
+    g_ps_hw6_rtos_probe.audio_sfx_clock_release_status =
+      (uint32_t)release_status;
+    g_ps_hw6_rtos_probe.audio_sfx_owner_status =
+      (uint32_t)sfx_status;
+    ps_audio_sfx_pending = 0UL;
   }
   else if (owner_id == PS_HW6_RTOS_OWNER_RUNTIME)
   {

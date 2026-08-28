@@ -58,7 +58,7 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | package primitives | retained line, outline rectangle, filled rectangle, circle, and ellipse records are compiled, previewed, loaded, and target-proven; private shell/calibration draw helpers remain unavailable |
 | package text | service API 15 rasterizes printable-ASCII menu labels through `peepshow.system.8x8.basic.v1` into ordinary masked 1bpp sprite frames; runtime text remains unavailable |
 | retained element actions | service API 17 and FW0 runtime API 15 implement atomic destination-state show/hide, move, retained frame selection, and bounded waiting-animation selection; host package/preview tests and HW6 awake/STOP2 visual proof pass |
-| package audio | service API 18 imports PCM WAV, deterministically compiles mono 16 kHz 4-bit IMA ADPCM, emits symbolic sampled-SFX assets/cues and `play_sfx` STATE actions, previews cue emission, and auditions the exact packaged bytes; HW6 package playback remains pending |
+| package audio | service API 18 imports PCM WAV, deterministically compiles mono 16 kHz 4-bit IMA ADPCM, emits symbolic sampled-SFX assets/cues and `play_sfx` STATE actions, previews cue emission, and auditions the exact packaged bytes; HW6 one-voice bounded STATE playback, drain, clock release, and return to STOP2 are target-proven |
 | STATE animated elements | bounded repeating sprite phase timelines with 1..4 frames, 1..12 combined steps, explicit cadence, and a settled step; mixed 2-phase and 3-phase composition and deterministic fallback are target-proven |
 | awake preview | exact 168x144 package-backed framebuffer with deterministic fake time and side-effect-free scene thumbnails |
 | STOP2 | package visuals compiled into LPBAM animation and resumed across wake/STOP2 handoff |
@@ -397,8 +397,11 @@ audio to mono 16 kHz 4-bit IMA ADPCM in fixed 256-sample blocks and emits the
 optional `AUD1`, `ADB1`, and `ACU1` package chunks. `project.preview_input`
 reports emitted cue events, while `project.audio_audition` returns a WAV decoded
 from the compiled package bytes. `service.hello.state_scene_audio` publishes
-the exact limits and explicitly reports target playback as pending firmware
-bringup. Peep Studio must not represent host audition as HW6 playback proof.
+the exact limits and reports the bounded one-voice HW6 STATE subset as target-
+available through `target_playback_status = available_bounded_state_sfx`.
+Peep Studio must keep host audition distinct from device proof and
+must report music, arbitrary-length audio, mixing, and production fidelity as
+unsupported or pending.
 
 ### Stage 3: Scene Canvas And Visual Elements
 
@@ -515,9 +518,10 @@ compiled package bytes.
 
 ### Stage 7: Expanded Asset And Scene Support
 
-- complete the bounded STATE sampled-SFX path: host import, conversion, cue
-  binding, audition, and package validation are implemented; HW6 target
-  loading/playback and power proof remain;
+- expose the completed bounded STATE sampled-SFX path: host import, conversion,
+  cue binding, audition, package validation, HW6 loading/playback, drain, clock
+  release, and return to STOP2 are implemented; known-reference fidelity and
+  measured playback energy remain;
 - add retained line, rectangle, circle, and ellipse elements plus bounded
   element visibility, position, frame, and animation actions;
 - add formal font and localization package records when required;

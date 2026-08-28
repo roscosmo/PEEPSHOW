@@ -331,7 +331,7 @@ class AuthoringService:
             },
             "state_scene_audio": {
                 "host_package_support": True,
-                "target_playback_status": "pending_firmware_bringup",
+                "target_playback_status": "available_bounded_state_sfx",
                 "source_format": "wav_pcm",
                 "compiled_format": "ima_adpcm_4bit",
                 "sample_rate_hz": AUDIO_SAMPLE_RATE_HZ,

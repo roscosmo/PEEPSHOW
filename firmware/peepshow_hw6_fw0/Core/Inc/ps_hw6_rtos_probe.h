@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (69UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (70UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -382,6 +382,13 @@ typedef struct
   uint32_t audio_clock_reactive_sfx_status;
   uint32_t audio_clock_realtime_status;
   uint32_t audio_clock_release_status;
+  uint32_t audio_sfx_dispatch_count;
+  uint32_t audio_sfx_send_status;
+  uint32_t audio_sfx_owner_count;
+  uint32_t audio_sfx_owner_status;
+  uint32_t audio_sfx_clock_request_status;
+  uint32_t audio_sfx_clock_release_status;
+  uint32_t audio_sfx_last_cue_index;
 
   uint32_t storage_clock_request_count;
   uint32_t storage_clock_release_count;

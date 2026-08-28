@@ -369,7 +369,9 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertEqual(64, graph["command_batch_maximum"])
         audio = result["state_scene_audio"]
         self.assertTrue(audio["host_package_support"])
-        self.assertEqual("pending_firmware_bringup", audio["target_playback_status"])
+        self.assertEqual(
+            "available_bounded_state_sfx", audio["target_playback_status"]
+        )
         self.assertEqual("play_sfx", audio["route_action"])
         self.assertEqual(1, audio["voice_limit"])
         self.assertEqual(64, graph["limits"]["states"])

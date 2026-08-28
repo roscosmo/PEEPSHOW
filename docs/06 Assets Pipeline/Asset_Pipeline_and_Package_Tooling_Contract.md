@@ -279,10 +279,11 @@ Audio profile output must target [[Audio_API_Contract]], not Platform audio driv
 Current status: the host authoring/package half is executable. Service API 18
 imports WAV, emits the optional audio chunks, validates symbolic `play_sfx`
 STATE actions, previews cue emission, and auditions decoded package bytes.
-The firmware still has only its generated diagnostic tone. Peep Studio may
-report host authoring and audition support, but must report HW6 playback as
-pending until the loader, `thAudio` decode/playback path, completion, and
-return-to-STOP2 proof exist.
+HW6 now loads those chunks and routes one bounded STATE voice through `thAudio`;
+audible playback, completion, clock release, and return to STOP2 are target-
+proven. Peep Studio may report this bounded HW6 playback capability, but must
+not imply support for arbitrary-length audio, music, runtime FAT streaming,
+mixing, or accepted production fidelity.
 
 ### Initial STATE SFX Asset Slice
 

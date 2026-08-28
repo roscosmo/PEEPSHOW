@@ -4,11 +4,13 @@ This document defines PeepShow audio ownership, playback architecture, state mac
 
 Audio is owned by Platform. Engine and Reference Game code request only symbolic behavior granted by the selected target profile; they must not control SAI, DMA, LPTIM, GPIO, or amplifier pins directly.
 
-Implementation status on HW6 is `bring-up only`: `thAudio`, SAI DMA ownership,
-MAX98357A shutdown control, and a generated diagnostic tone exist. The current
-`.egg` format does not yet carry sampled-audio assets, and STATE actions cannot
-yet request packaged SFX. A scheduled thread or successful tone proves only the
-hardware scaffold, not the package audio pipeline described below.
+Implementation status on HW6 includes one target-proven bounded STATE sampled-
+SFX path. The `.egg` format carries sampled-audio asset, ADPCM-bank, and cue
+chunks; STATE actions can request a symbolic cue through `qAudioCmd`; and
+`thAudio` owns bounded decode, SAI DMA playback, MAX98357A shutdown, clock-intent
+release, and return to STOP2. Music, sustained/ring-buffer playback, mixing,
+preemption, fades, underrun recovery, fidelity acceptance against a known
+reference asset, and measured audio energy remain open.
 
 ## Target Applicability
 
@@ -80,8 +82,21 @@ audition, and compatibility diagnostics. It never controls SAI, DMA,
 Host/package status as of service API 18: implemented and covered by
 deterministic compiler/parser/preview tests. The optional PKG1 audio asset,
 ADPCM bank, and cue chunks plus symbolic `play_sfx` action are available to
-Peep Studio. HW6 loader routing and `thAudio` playback are not yet implemented
-or target-proven, so `audio.sampled_sfx` remains pending target validation.
+Peep Studio. HW6 loader routing and one-voice `thAudio` playback are target-
+proven, including audible output, deterministic drain, clock release, and
+subsequent STOP2 entry. This grants only the bounded `audio.sampled_sfx` subset
+described here, not music or the future mixer.
+
+The initial executable bounds are:
+
+- source WAV: uncompressed mono or stereo PCM, 8/16/24/32-bit, 8..96 kHz;
+- compiled output: mono 16 kHz 4-bit IMA ADPCM in independent 256-sample blocks;
+- maximum 2000 ms and 32000 decoded samples per SFX;
+- maximum 32 sampled-SFX assets, 64 cues, and 48 KiB compiled ADPCM bank;
+- exactly one admitted STATE SFX voice, fully resident and decoded before DMA;
+- the current HW6 whole-package runtime cache remains 65536 bytes.
+
+These are Platform/toolchain limits, not promises of arbitrary-length audio.
 
 BBB path:
 
@@ -106,9 +121,12 @@ Rules:
 
 - no FileX/FAT reads during active playback
 - SFX are fully loaded into RAM before playback
-- music is fully preloaded or read from raw installed blob storage into a bounded ring buffer
+- music is fully preloaded or read from the installed package's raw flash asset
+  region into a bounded ring buffer through `thStorage`
 - ADPCM decode writes into bounded PCM buffers
 - no runtime heap dependency in playback paths
+- FileX/FAT is transport and staging only; music and dialogue never stream from
+  the host-visible FAT volume during runtime
 
 ## Public Request Model
 
@@ -290,6 +308,12 @@ Examples of audio faults:
 12. quiesce/resume leaves no active DMA/LPTIM output stale
 13. injected underrun routes to recovery or audio quarantine
 14. installer mode isolates audio unless explicitly allowed for diagnostics
+
+HW6 validation status: case 3 is functionally target-proven with one packaged
+STATE cue. The operator heard the decoded SFX on two units; loader, action,
+queue, decode, DMA start/stop, completion, clock release, and later STOP2
+telemetry all succeeded. Subjective fidelity remains pending comparison using a
+known-reference source asset; the synthetic fixture is not a shipping sound.
 
 Related:
 

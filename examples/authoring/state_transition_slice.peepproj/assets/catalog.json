@@ -62,5 +62,21 @@
       "frame_duration_ms": [250, 250, 250],
       "loop_policy": "loop"
     }
+  ],
+  "audio_assets": [
+    {
+      "asset_id": "ui.select",
+      "asset_type": "sampled_sfx",
+      "source_path": "assets/select.wav",
+      "source_format": "wav"
+    }
+  ],
+  "audio_cues": [
+    {
+      "cue_id": "ui.select.cue",
+      "asset_ref": "ui.select",
+      "priority": 96,
+      "volume": 224
+    }
   ]
 }

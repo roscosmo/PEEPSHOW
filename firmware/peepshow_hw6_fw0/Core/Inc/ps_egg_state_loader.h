@@ -9,10 +9,15 @@
 extern "C" {
 #endif
 
-#define PS_EGG_STATE_LOADER_API_VERSION (11UL)
+#define PS_EGG_STATE_LOADER_API_VERSION (12UL)
 #define PS_EGG_STATE_LOADER_STATUS_NOT_RUN (0xFFFFFFFFUL)
 #define PS_EGG_STATE_LOADER_SPRITE_FRAME_ID_BASE (0x00010000UL)
 #define PS_EGG_STATE_LOADER_SCENE_MAX (8U)
+#define PS_EGG_STATE_LOADER_AUDIO_ASSET_MAX (32U)
+#define PS_EGG_STATE_LOADER_AUDIO_CUE_MAX (64U)
+#define PS_EGG_STATE_LOADER_AUDIO_SAMPLE_RATE_HZ (16000UL)
+#define PS_EGG_STATE_LOADER_AUDIO_BLOCK_SAMPLES (256UL)
+#define PS_EGG_STATE_LOADER_AUDIO_SAMPLE_MAX (32000UL)
 
 typedef struct
 {
@@ -25,6 +30,19 @@ typedef struct
   int16_t pivot_y;
   uint32_t opaque;
 } ps_egg_state_loader_sprite_frame_t;
+
+typedef struct
+{
+  const uint8_t *adpcm;
+  uint32_t adpcm_size;
+  uint32_t sample_count;
+  uint32_t duration_ms;
+  uint32_t block_count;
+  uint32_t cue_index;
+  uint32_t asset_index;
+  uint32_t priority;
+  uint32_t volume;
+} ps_egg_state_loader_audio_cue_t;
 
 typedef enum
 {
@@ -44,7 +62,8 @@ typedef enum
   PS_EGG_STATE_LOADER_REASON_CAPACITY,
   PS_EGG_STATE_LOADER_REASON_UNSUPPORTED,
   PS_EGG_STATE_LOADER_REASON_HASH,
-  PS_EGG_STATE_LOADER_REASON_ASSET
+  PS_EGG_STATE_LOADER_REASON_ASSET,
+  PS_EGG_STATE_LOADER_REASON_AUDIO
 } ps_egg_state_loader_reason_t;
 
 typedef struct
@@ -67,7 +86,13 @@ typedef struct
   uint32_t asset_chunk_index;
   uint32_t sprite_chunk_index;
   uint32_t animation_chunk_index;
+  uint32_t audio_asset_chunk_index;
+  uint32_t audio_bank_chunk_index;
+  uint32_t audio_cue_chunk_index;
   uint32_t sprite_frame_count;
+  uint32_t audio_asset_count;
+  uint32_t audio_cue_count;
+  uint32_t audio_adpcm_bytes;
   uint32_t state_count;
   uint32_t input_count;
   uint32_t route_count;
@@ -96,6 +121,9 @@ uint32_t PS_EggStateLoader_EntrySceneId(void);
 uint32_t PS_EggStateLoader_GetSpriteFrame(
   uint32_t frame_id,
   ps_egg_state_loader_sprite_frame_t *frame);
+uint32_t PS_EggStateLoader_GetAudioCue(
+  uint32_t cue_index,
+  ps_egg_state_loader_audio_cue_t *cue);
 
 #ifdef __cplusplus
 }

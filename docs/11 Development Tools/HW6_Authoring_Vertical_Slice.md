@@ -108,7 +108,9 @@ implemented and target-proven awake and in STOP2. Service API 18 now completes
 the host/package half of sampled STATE SFX: WAV import, deterministic mono
 16 kHz IMA ADPCM conversion, symbolic cue/action records, exact package-backed
 audition, and compatibility reporting. HW6 loader and `thAudio` playback proof
-are the remaining STATE SFX gap.
+passed on 2026-08-28 with one packaged cue: audible output, bounded decode and
+DMA, clean completion, clock release, and later STOP2 entry all succeeded.
+Known-reference fidelity and measured playback energy remain open.
 
 The checkpoint intentionally defers tone/dither import, Tiled maps, fractional
 transforms, runtime fonts, music, multi-voice mixing, save data, SEQUENCE,
@@ -531,10 +533,11 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
     waiting-loop visibility/position linkage; HW6 target proof passed on
     2026-08-28, while Peep Studio controls and waiting-animation selection
     remain to complete this step
-13. implement the initial STATE sampled-SFX path: verify the HW6 16 kHz mono
-    SAI/MAX98357A path, compile WAV sources to bounded IMA ADPCM package assets,
-    preload one admitted voice, route symbolic `play_sfx` through `thAudio`,
-    release audio clock intent after drain, and prove return to STOP2
+13. completed 2026-08-28: the initial STATE sampled-SFX path verifies the HW6
+    16 kHz mono SAI/MAX98357A path, compiles WAV sources to bounded IMA ADPCM
+    package assets, preloads one admitted voice, routes symbolic `play_sfx`
+    through `thAudio`, releases audio clock intent after drain, and returns to
+    STOP2; known-reference fidelity and measured playback energy remain open
 14. close the remaining STATE authoring gaps and publish one target capability
     report covering visuals, input policies, waiting animation, scene flow,
     interaction lifecycle, SFX, memory admission, and measured power behavior

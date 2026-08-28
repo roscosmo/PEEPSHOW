@@ -5,6 +5,7 @@
 #include "display_renderer.h"
 #include "LS013B7DH05.h"
 #include "ps_dev_audio.h"
+#include "ps_egg_state_loader.h"
 #include "ps_lpbam_display_buffers.h"
 #include "ps_lpbam_display_queue.h"
 #include "ps_scene_runtime.h"
@@ -44,8 +45,13 @@
 #define PS_HW6_AUDIO_TONE_HZ                (1000UL)
 #define PS_HW6_AUDIO_DURATION_MS            (750UL)
 #define PS_HW6_AUDIO_AMPLITUDE              (3000)
-#define PS_HW6_AUDIO_BUFFER_FRAMES          (1024U)
-#define PS_HW6_AUDIO_BUFFER_HALFWORDS       (PS_HW6_AUDIO_BUFFER_FRAMES * 2U)
+#define PS_HW6_AUDIO_TONE_BUFFER_FRAMES     (1024U)
+#define PS_HW6_AUDIO_TONE_BUFFER_HALFWORDS  \
+  (PS_HW6_AUDIO_TONE_BUFFER_FRAMES * 2U)
+#define PS_HW6_AUDIO_DECODED_SAMPLE_MAX \
+  ((uint32_t)PS_EGG_STATE_LOADER_AUDIO_SAMPLE_MAX)
+#define PS_HW6_AUDIO_BUFFER_HALFWORDS \
+  (PS_HW6_AUDIO_DECODED_SAMPLE_MAX * 2UL)
 #define PS_HW6_AUDIO_AMP_SETTLE_TICKS       (2UL)
 #define PS_HW6_AUDIO_DURATION_TICKS \
   ((PS_HW6_AUDIO_DURATION_MS * TX_TIMER_TICKS_PER_SECOND + 999UL) / 1000UL)
@@ -82,6 +88,23 @@ static const int16_t ps_hw6_sine_16[16] =
 {
   0, 1148, 2121, 2772, 3000, 2772, 2121, 1148,
   0, -1148, -2121, -2772, -3000, -2772, -2121, -1148
+};
+
+static const int8_t ps_hw6_ima_index_table[8] =
+{
+  -1, -1, -1, -1, 2, 4, 6, 8
+};
+
+static const int16_t ps_hw6_ima_step_table[89] =
+{
+  7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31,
+  34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130,
+  143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449,
+  494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282, 1411,
+  1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660,
+  4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493,
+  10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385,
+  24623, 27086, 29794, 32767
 };
 
 static void PS_HW6_UpdateDisplayDriverProbe(void)
@@ -1048,7 +1071,7 @@ static void PS_HW6_PrepareAudioTone(void)
 {
   uint32_t frame;
 
-  for (frame = 0UL; frame < PS_HW6_AUDIO_BUFFER_FRAMES; ++frame)
+  for (frame = 0UL; frame < PS_HW6_AUDIO_TONE_BUFFER_FRAMES; ++frame)
   {
     int16_t sample = ps_hw6_sine_16[frame & 15UL];
     ps_hw6_audio_buffer[(frame * 2UL) + 0UL] = sample;
@@ -1059,7 +1082,8 @@ static void PS_HW6_PrepareAudioTone(void)
   g_ps_hw6_owner_probe.audio_tone_hz = PS_HW6_AUDIO_TONE_HZ;
   g_ps_hw6_owner_probe.audio_duration_ms = PS_HW6_AUDIO_DURATION_MS;
   g_ps_hw6_owner_probe.audio_amplitude = PS_HW6_AUDIO_AMPLITUDE;
-  g_ps_hw6_owner_probe.audio_buffer_halfwords = PS_HW6_AUDIO_BUFFER_HALFWORDS;
+  g_ps_hw6_owner_probe.audio_buffer_halfwords =
+    PS_HW6_AUDIO_TONE_BUFFER_HALFWORDS;
 }
 
 UINT PS_HW6_OwnerServices_Init(void)
@@ -1119,6 +1143,12 @@ UINT PS_HW6_OwnerServices_Init(void)
   g_ps_hw6_owner_probe.audio_stop_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.audio_ack_set_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.audio_sfx_cue_index =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.audio_sfx_asset_index =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.audio_sfx_decode_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.power_driver_mr_shipping_mode_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
@@ -2362,6 +2392,122 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2AndResume(void)
           (preferred_map_status != 0UL)) ? HAL_OK : HAL_ERROR;
 }
 
+static int32_t PS_HW6_AudioClampPcm(int32_t sample)
+{
+  if (sample > 32767)
+  {
+    return 32767;
+  }
+  if (sample < -32768)
+  {
+    return -32768;
+  }
+  return sample;
+}
+
+static HAL_StatusTypeDef PS_HW6_AudioDecodeSfx(
+  const ps_egg_state_loader_audio_cue_t *cue,
+  uint32_t *decoded_samples)
+{
+  uint32_t source_offset = 0UL;
+  uint32_t output_offset = 0UL;
+  uint32_t block_index;
+
+  if ((cue == NULL) || (decoded_samples == NULL) ||
+      (cue->adpcm == NULL) || (cue->sample_count == 0UL) ||
+      (cue->sample_count > PS_HW6_AUDIO_DECODED_SAMPLE_MAX) ||
+      (cue->block_count == 0UL))
+  {
+    return HAL_ERROR;
+  }
+
+  for (block_index = 0UL; block_index < cue->block_count; ++block_index)
+  {
+    int32_t predictor;
+    int32_t step_index;
+    uint32_t block_sample_count;
+    uint32_t nibble_count;
+    uint32_t packed_count;
+    uint32_t nibble_index;
+
+    if ((source_offset + 6UL) > cue->adpcm_size)
+    {
+      return HAL_ERROR;
+    }
+    predictor = (int32_t)(int16_t)(
+      ((uint16_t)cue->adpcm[source_offset]) |
+      ((uint16_t)cue->adpcm[source_offset + 1UL] << 8U));
+    step_index = (int32_t)cue->adpcm[source_offset + 2UL];
+    block_sample_count =
+      (uint32_t)cue->adpcm[source_offset + 4UL] |
+      ((uint32_t)cue->adpcm[source_offset + 5UL] << 8U);
+    source_offset += 6UL;
+    if ((cue->adpcm[source_offset - 3UL] != 0U) ||
+        (step_index > 88) || (block_sample_count == 0UL) ||
+        (block_sample_count > PS_EGG_STATE_LOADER_AUDIO_BLOCK_SAMPLES) ||
+        ((output_offset + block_sample_count) > cue->sample_count))
+    {
+      return HAL_ERROR;
+    }
+
+    ps_hw6_audio_buffer[output_offset++] = (int16_t)PS_HW6_AudioClampPcm(
+      (predictor * (int32_t)cue->volume) / 255);
+    nibble_count = block_sample_count - 1UL;
+    packed_count = (nibble_count + 1UL) / 2UL;
+    if ((source_offset + packed_count) > cue->adpcm_size)
+    {
+      return HAL_ERROR;
+    }
+
+    for (nibble_index = 0UL; nibble_index < nibble_count; ++nibble_index)
+    {
+      uint8_t packed = cue->adpcm[source_offset + (nibble_index / 2UL)];
+      uint32_t nibble = ((nibble_index & 1UL) == 0UL) ?
+                        ((uint32_t)packed & 0x0FUL) :
+                        ((uint32_t)packed >> 4U);
+      int32_t step = (int32_t)ps_hw6_ima_step_table[step_index];
+      int32_t delta = step >> 3U;
+
+      if ((nibble & 4UL) != 0UL)
+      {
+        delta += step;
+      }
+      if ((nibble & 2UL) != 0UL)
+      {
+        delta += step >> 1U;
+      }
+      if ((nibble & 1UL) != 0UL)
+      {
+        delta += step >> 2U;
+      }
+      predictor = ((nibble & 8UL) != 0UL) ?
+                  (predictor - delta) : (predictor + delta);
+      predictor = PS_HW6_AudioClampPcm(predictor);
+      step_index += (int32_t)ps_hw6_ima_index_table[nibble & 7UL];
+      if (step_index < 0)
+      {
+        step_index = 0;
+      }
+      else if (step_index > 88)
+      {
+        step_index = 88;
+      }
+      ps_hw6_audio_buffer[output_offset++] =
+        (int16_t)PS_HW6_AudioClampPcm(
+          (predictor * (int32_t)cue->volume) / 255);
+    }
+    source_offset += packed_count;
+  }
+
+  if ((source_offset != cue->adpcm_size) ||
+      (output_offset != cue->sample_count))
+  {
+    return HAL_ERROR;
+  }
+  *decoded_samples = output_offset;
+  return HAL_OK;
+}
+
 HAL_StatusTypeDef PS_HW6_AudioOwner_VerifyIdle(void)
 {
   ps_dev_audio_play_result_t result;
@@ -2396,10 +2542,11 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_RunTone(void)
   g_ps_hw6_owner_probe.audio_complete = 0UL;
   g_ps_hw6_owner_probe.audio_success = 0UL;
 
+  PS_HW6_PrepareAudioTone();
   driver_status = ps_dev_audio_play_dma(
     &ps_hw6_audio,
     ps_hw6_audio_buffer,
-    PS_HW6_AUDIO_BUFFER_HALFWORDS,
+    PS_HW6_AUDIO_TONE_BUFFER_HALFWORDS,
     PS_HW6_AUDIO_AMP_SETTLE_TICKS,
     PS_HW6_AUDIO_DURATION_TICKS,
     4096000UL,
@@ -2424,6 +2571,90 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_RunTone(void)
     return HAL_OK;
   }
 
+  return HAL_ERROR;
+}
+
+HAL_StatusTypeDef PS_HW6_AudioOwner_RunSfx(uint32_t cue_index)
+{
+  ps_egg_state_loader_audio_cue_t cue;
+  ps_dev_audio_play_result_t result;
+  ps_status_t driver_status;
+  HAL_StatusTypeDef decode_status;
+  uint32_t decoded_samples = 0UL;
+  uint32_t duration_ticks;
+  uint32_t sample_index;
+
+  g_ps_hw6_owner_probe.phase = PS_HW6_OWNER_PHASE_AUDIO;
+  g_ps_hw6_owner_probe.audio_complete = 0UL;
+  g_ps_hw6_owner_probe.audio_success = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_request_count++;
+  g_ps_hw6_owner_probe.audio_sfx_cue_index = cue_index;
+
+  if (PS_EggStateLoader_GetAudioCue(cue_index, &cue) == 0UL)
+  {
+    g_ps_hw6_owner_probe.audio_sfx_decode_status = (uint32_t)HAL_ERROR;
+    return HAL_ERROR;
+  }
+  g_ps_hw6_owner_probe.audio_sfx_asset_index = cue.asset_index;
+  g_ps_hw6_owner_probe.audio_sfx_priority = cue.priority;
+  g_ps_hw6_owner_probe.audio_sfx_volume = cue.volume;
+  g_ps_hw6_owner_probe.audio_sfx_adpcm_bytes = cue.adpcm_size;
+  g_ps_hw6_owner_probe.audio_sfx_sample_count = cue.sample_count;
+  g_ps_hw6_owner_probe.audio_sfx_block_count = cue.block_count;
+
+  decode_status = PS_HW6_AudioDecodeSfx(&cue, &decoded_samples);
+  g_ps_hw6_owner_probe.audio_sfx_decode_status = (uint32_t)decode_status;
+  g_ps_hw6_owner_probe.audio_sfx_decoded_samples = decoded_samples;
+  if (decode_status != HAL_OK)
+  {
+    return HAL_ERROR;
+  }
+
+  /* Expand backward so the mono decode becomes proven two-slot I2S PCM. */
+  for (sample_index = decoded_samples; sample_index > 0UL; --sample_index)
+  {
+    int16_t sample = ps_hw6_audio_buffer[sample_index - 1UL];
+    uint32_t destination = (sample_index - 1UL) * 2UL;
+
+    ps_hw6_audio_buffer[destination] = sample;
+    ps_hw6_audio_buffer[destination + 1UL] = sample;
+  }
+
+  duration_ticks =
+    ((decoded_samples * TX_TIMER_TICKS_PER_SECOND) +
+     PS_EGG_STATE_LOADER_AUDIO_SAMPLE_RATE_HZ - 1UL) /
+    PS_EGG_STATE_LOADER_AUDIO_SAMPLE_RATE_HZ;
+  if (duration_ticks == 0UL)
+  {
+    duration_ticks = 1UL;
+  }
+
+  driver_status = ps_dev_audio_play_dma(
+    &ps_hw6_audio,
+    ps_hw6_audio_buffer,
+    decoded_samples * 2UL,
+    PS_HW6_AUDIO_AMP_SETTLE_TICKS,
+    duration_ticks,
+    4096000UL,
+    &result);
+
+  g_ps_hw6_owner_probe.audio_sai_kernel_hz = result.sai_kernel_hz;
+  g_ps_hw6_owner_probe.audio_sd_state_before = result.sd_state_before;
+  g_ps_hw6_owner_probe.audio_sd_state_enabled = result.sd_state_enabled;
+  g_ps_hw6_owner_probe.audio_start_status = result.start_hal_status;
+  g_ps_hw6_owner_probe.audio_stop_status = result.stop_hal_status;
+  g_ps_hw6_owner_probe.audio_sd_state_after = result.sd_state_after;
+  g_ps_hw6_owner_probe.audio_sai_state_after = result.sai_state_after;
+  g_ps_hw6_owner_probe.audio_sai_error_after = result.sai_error_after;
+  g_ps_hw6_owner_probe.audio_dma_state_after = result.dma_state_after;
+  g_ps_hw6_owner_probe.audio_dma_error_after = result.dma_error_after;
+  PS_HW6_UpdateAudioDriverProbe();
+  g_ps_hw6_owner_probe.audio_complete = 1UL;
+  if (driver_status == PS_STATUS_OK)
+  {
+    g_ps_hw6_owner_probe.audio_success = 1UL;
+    return HAL_OK;
+  }
   return HAL_ERROR;
 }
 
