@@ -103,8 +103,12 @@ implemented in the host toolchain and reuse that proven sprite path. Runtime
 retained show/hide, move, and base-frame actions are implemented in service API
 16, the package compiler/parser/exact preview, and FW0. HW6 validation passed on
 2026-08-28 with atomic element/variable commits, direct scene replacement, and
-awake/STOP2 composition. Waiting-animation selection and sampled SFX are the
-next STATE gaps.
+awake/STOP2 composition. Service API 17 waiting-animation selection is also
+implemented and target-proven awake and in STOP2. Service API 18 now completes
+the host/package half of sampled STATE SFX: WAV import, deterministic mono
+16 kHz IMA ADPCM conversion, symbolic cue/action records, exact package-backed
+audition, and compatibility reporting. HW6 loader and `thAudio` playback proof
+are the remaining STATE SFX gap.
 
 The checkpoint intentionally defers tone/dither import, Tiled maps, fractional
 transforms, runtime fonts, music, multi-voice mixing, save data, SEQUENCE,

@@ -276,10 +276,13 @@ Tooling must reject sensor profiles that reference ADC, GPIO, EXTI, I2C addresse
 
 Audio profile output must target [[Audio_API_Contract]], not Platform audio drivers.
 
-Current HW6 package status: audio records are contractual but not executable.
-The firmware currently has a generated diagnostic tone only. Peep Studio must
-not report sampled package audio as supported until the audio chunks, loader,
-STATE action routing, `thAudio` decode/playback path, and HW6 proof all exist.
+Current status: the host authoring/package half is executable. Service API 18
+imports WAV, emits the optional audio chunks, validates symbolic `play_sfx`
+STATE actions, previews cue emission, and auditions decoded package bytes.
+The firmware still has only its generated diagnostic tone. Peep Studio may
+report host authoring and audition support, but must report HW6 playback as
+pending until the loader, `thAudio` decode/playback path, completion, and
+return-to-STOP2 proof exist.
 
 ### Initial STATE SFX Asset Slice
 
@@ -297,6 +300,22 @@ STATE SFX path:
    them from HW6 power and timing evidence.
 
 Required package-facing audio artifacts:
+
+The initial STATE subset emits exactly these optional PKG1 chunks as one
+all-or-none group:
+
+| Chunk | Purpose |
+|---|---|
+| `AUD1` / type 10 | sampled-SFX asset IDs, sample/duration/decode bounds, block count, bank ranges, and per-asset CRC |
+| `ADB1` / type 11 | aligned 4-bit IMA ADPCM payload bank using fixed 256-sample independently decodable blocks |
+| `ACU1` / type 12 | symbolic cue ID to asset index, priority, and volume |
+
+The initial host limits are 32 assets, 64 cues, 2000 ms per source, and 48 KiB
+of compiled ADPCM bank data. Source WAV may be mono or stereo uncompressed PCM
+at 8..96 kHz and 8/16/24/32-bit depth; it is deterministically downmixed and
+resampled. Looping, music, streaming, procedural audio, and HW6 BBB are rejected.
+
+The broader future audio model may add these artifacts:
 
 | Artifact | Purpose |
 |---|---|

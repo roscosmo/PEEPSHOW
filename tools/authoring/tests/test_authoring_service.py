@@ -5,9 +5,11 @@ import hashlib
 import io
 import json
 import shutil
+import struct
 import sys
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 
 from PIL import Image
@@ -40,6 +42,47 @@ TRANSITION_SAMPLE = (
 
 def request(operation: str, params: dict[str, object] | None = None) -> ServiceRequest:
     return ServiceRequest("test", operation, params or {})
+
+
+def make_audio_project(parent: Path) -> Path:
+    project_root = parent / "audio_preview.peepproj"
+    shutil.copytree(SAMPLE, project_root)
+    audio_path = project_root / "assets" / "select.wav"
+    with wave.open(str(audio_path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        wav.writeframes(
+            b"".join(
+                struct.pack("<h", 10000 if (index // 40) % 2 == 0 else -10000)
+                for index in range(1600)
+            )
+        )
+    catalog_path = project_root / "assets" / "catalog.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    catalog["audio_assets"] = [
+        {
+            "asset_id": "ui.select",
+            "asset_type": "sampled_sfx",
+            "source_path": "assets/select.wav",
+            "source_format": "wav",
+        }
+    ]
+    catalog["audio_cues"] = [
+        {
+            "cue_id": "ui.select.cue",
+            "asset_ref": "ui.select",
+            "priority": 96,
+            "volume": 224,
+        }
+    ]
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+    scene_path = project_root / "scenes" / "state_demo.state.json"
+    scene = json.loads(scene_path.read_text(encoding="utf-8"))
+    route = next(item for item in scene["routes"] if item["route_id"] == "center_to_right")
+    route["actions"].append({"kind": "play_sfx", "cue_ref": "ui.select.cue"})
+    scene_path.write_text(json.dumps(scene), encoding="utf-8")
+    return project_root
 
 
 def make_preview_project(parent: Path) -> Path:
@@ -268,7 +311,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(17, SERVICE_API_VERSION)
+        self.assertEqual(18, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -279,6 +322,7 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertIn("project.undo", result["operations"])
         self.assertIn("project.redo", result["operations"])
         self.assertIn("project.scene_thumbnails", result["operations"])
+        self.assertIn("project.audio_audition", result["operations"])
         self.assertIn("project.preview_reset", result["operations"])
         self.assertIn("project.preview_input", result["operations"])
         self.assertIn("project.preview_advance", result["operations"])
@@ -323,12 +367,107 @@ class AuthoringServiceTests(unittest.TestCase):
         )
         graph = result["state_scene_graph"]
         self.assertEqual(64, graph["command_batch_maximum"])
+        audio = result["state_scene_audio"]
+        self.assertTrue(audio["host_package_support"])
+        self.assertEqual("pending_firmware_bringup", audio["target_playback_status"])
+        self.assertEqual("play_sfx", audio["route_action"])
+        self.assertEqual(1, audio["voice_limit"])
         self.assertEqual(64, graph["limits"]["states"])
         self.assertIn("state.add", graph["state_commands"])
         self.assertIn("render_model.add", graph["render_model_commands"])
         self.assertIn("route.guard.move", graph["guard_commands"])
         self.assertIn("route.action.move", graph["action_commands"])
         self.assertEqual("reject_if_referenced", graph["generic_delete_policy"])
+
+    def test_state_sfx_package_preview_and_audition_use_compiled_audio(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = AuthoringService()
+            loaded = service.handle(
+                request("project.load", {"path": str(make_audio_project(Path(temp_dir)))})
+            )
+            revision = loaded["project_revision"]
+            self.assertTrue(loaded["valid"])
+            self.assertEqual(1, loaded["summary"]["audio_asset_count"])
+            self.assertEqual(1, loaded["summary"]["audio_cue_count"])
+
+            changed = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": revision,
+                        "commands": [
+                            {
+                                "kind": "audio_asset.upsert",
+                                "audio_asset": {
+                                    "asset_id": "ui.select",
+                                    "asset_type": "sampled_sfx",
+                                    "source_path": "assets/select.wav",
+                                    "source_format": "wav",
+                                },
+                            },
+                            {
+                                "kind": "audio_cue.upsert",
+                                "audio_cue": {
+                                    "cue_id": "ui.select.cue",
+                                    "asset_ref": "ui.select",
+                                    "priority": 96,
+                                    "volume": 200,
+                                },
+                            },
+                            {
+                                "kind": "route.set_action",
+                                "scene_id": "state_demo",
+                                "route_id": "center_to_right",
+                                "action_index": 2,
+                                "action": {
+                                    "kind": "play_sfx",
+                                    "cue_ref": "ui.select.cue",
+                                },
+                            },
+                        ],
+                    },
+                )
+            )
+            revision = changed["project_revision"]
+
+            built = service.handle(
+                request("project.build_package", {"project_revision": revision})
+            )
+            self.assertEqual(1, built["package"]["audio_asset_count"])
+            self.assertEqual(1, built["package"]["audio_cue_count"])
+            capabilities = built["compatibility_report"]["capabilities"]
+            self.assertIn("audio.sampled_sfx", {item["capability"] for item in capabilities})
+
+            reset = service.handle(
+                request(
+                    "project.preview_reset",
+                    {"project_revision": revision, "scene_id": "state_demo"},
+                )
+            )
+            preview = service.handle(
+                request(
+                    "project.preview_input",
+                    {
+                        "project_revision": revision,
+                        "preview_revision": reset["preview_revision"],
+                        "logical_source": "BUTTON_R",
+                    },
+                )
+            )
+            self.assertEqual("ui.select.cue", preview["input"]["audio_events"][0]["cue_id"])
+            self.assertEqual(200, preview["input"]["audio_events"][0]["volume"])
+
+            audition = service.handle(
+                request(
+                    "project.audio_audition",
+                    {"project_revision": revision, "cue_id": "ui.select.cue"},
+                )
+            )
+            wav_bytes = base64.b64decode(audition["audio"]["wav_base64"])
+            with wave.open(io.BytesIO(wav_bytes), "rb") as wav:
+                self.assertEqual(16000, wav.getframerate())
+                self.assertEqual(1, wav.getnchannels())
+                self.assertEqual(1600, wav.getnframes())
 
     def test_load_validate_and_normalize_share_one_revision(self) -> None:
         service = AuthoringService()

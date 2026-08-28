@@ -122,6 +122,8 @@ Implemented operations:
 - `project.save`
 - `project.undo`
 - `project.redo`
+- `project.scene_thumbnails`
+- `project.audio_audition`
 - `project.preview_reset`
 - `project.preview_input`
 - `project.preview_advance`
@@ -158,8 +160,18 @@ content may use `BACKGROUND`, `SCENE`, and `UI`; `OVERLAY` is system-owned.
 Route actions may atomically show/hide a destination element, move it within
 the 168x144 panel, or select a same-sized retained sprite frame. Visibility and
 position flow into linked waiting visuals; frame selection does not replace an
-authored waiting animation. Runtime text, runtime scaling, and waiting-animation
-selection remain unavailable.
+authored waiting animation. Service API 17 also allows a route to select one
+compatible bounded waiting-element track with explicit preserve/rebase policy.
+Runtime text and runtime scaling remain unavailable.
+
+Service API 18 adds host/package support for one-shot STATE sampled SFX. Asset
+catalogs can import PCM WAV sources and define symbolic cues; local STATE route
+actions can emit `play_sfx`. Package compilation produces optional `AUD1`,
+`ADB1`, and `ACU1` chunks containing mono 16 kHz 4-bit IMA ADPCM in fixed
+256-sample blocks. Preview reports emitted cue events and
+`project.audio_audition` returns a WAV decoded from the exact packaged bytes.
+This does not claim HW6 playback support; target loading and `thAudio` playback
+remain pending firmware bringup.
 The newline-delimited JSON protocol remains version 1, and loaders retain
 `RND1` compatibility.
 

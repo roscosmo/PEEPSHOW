@@ -77,6 +77,12 @@ Peep Studio owns source import, deterministic conversion, package metadata,
 audition, and compatibility diagnostics. It never controls SAI, DMA,
 `SD_MODE`, clocks, or playback buffers.
 
+Host/package status as of service API 18: implemented and covered by
+deterministic compiler/parser/preview tests. The optional PKG1 audio asset,
+ADPCM bank, and cue chunks plus symbolic `play_sfx` action are available to
+Peep Studio. HW6 loader routing and `thAudio` playback are not yet implemented
+or target-proven, so `audio.sampled_sfx` remains pending target validation.
+
 BBB path:
 
 - built-in system BBB patterns

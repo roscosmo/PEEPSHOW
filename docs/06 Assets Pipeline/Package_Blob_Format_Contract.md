@@ -193,6 +193,12 @@ Initial chunk types:
 
 Chunk type names are conceptual. Final binary IDs live in the schema files.
 
+The current PKG1 STATE sampled-SFX subset reserves concrete chunk type IDs
+`10`, `11`, and `12` for `AUD1` sampled-SFX assets, the `ADB1` IMA ADPCM bank,
+and `ACU1` symbolic cues respectively. The three chunks are optional but must
+appear as an all-or-none group. Their presence does not imply that a target
+profile grants `audio.sampled_sfx`; target admission remains separate.
+
 ---
 
 ## Time And Power Profile Chunk

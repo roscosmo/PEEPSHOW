@@ -35,6 +35,7 @@ class PreviewInputResult:
     action_id: str | None
     accepted: bool
     route_id: str | None
+    audio_events: tuple[dict[str, object], ...] = ()
 
 
 class StateScenePreview:
@@ -45,6 +46,7 @@ class StateScenePreview:
         self._scenes = {str(scene["scene_id"]): scene for scene in package.scenes}
         self._frames = {str(frame["frame_id"]): frame for frame in package.assets}
         self._animations = {str(animation["animation_id"]): animation for animation in package.animations}
+        self._audio_cues = package.audio_cues
         self._elapsed_ms = 0
         self._activate_scene(scene_id)
         self._render_framebuffer()
@@ -142,6 +144,7 @@ class StateScenePreview:
             for key, value in self._waiting_element_overrides.items()
         }
         force_timeline_rebase = False
+        audio_events: list[dict[str, object]] = []
         definitions = self._graph["variables"]
         target_state = route["target_state_index"]
         if target_state is None:
@@ -153,6 +156,21 @@ class StateScenePreview:
         for operation in route["operations"]:
             kind = int(operation["kind"])
             if kind == 2:
+                continue
+            if kind == 7:
+                cue_index = int(operation["cue_index"])
+                if not 0 <= cue_index < len(self._audio_cues):
+                    raise PreviewError("compiled SFX action cue is invalid")
+                cue = self._audio_cues[cue_index]
+                audio_events.append(
+                    {
+                        "kind": "play_sfx",
+                        "cue_id": cue["cue_id"],
+                        "asset_id": cue["asset_id"],
+                        "priority": cue["priority"],
+                        "volume": cue["volume"],
+                    }
+                )
                 continue
             if kind in {3, 4, 5, 6}:
                 element_index = int(operation["element_index"])
@@ -252,7 +270,13 @@ class StateScenePreview:
             self._step_index = int(next_waiting["settled_step"])
             self._step_elapsed_ms = 0
         self._render_framebuffer()
-        return PreviewInputResult(logical_source, action_id, True, str(route["route_id"]))
+        return PreviewInputResult(
+            logical_source,
+            action_id,
+            True,
+            str(route["route_id"]),
+            tuple(audio_events),
+        )
 
     @staticmethod
     def _compatible_timeline(first: dict[str, object], second: dict[str, object]) -> bool:
@@ -602,6 +626,7 @@ class StateScenePreview:
                 "action_id": input_result.action_id,
                 "accepted": input_result.accepted,
                 "route_id": input_result.route_id,
+                "audio_events": list(input_result.audio_events),
             }
         return {
             "scene": {

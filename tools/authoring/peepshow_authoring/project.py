@@ -10,6 +10,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+from .audio_assets import (
+    AUDIO_MAX_ASSETS,
+    AUDIO_MAX_BANK_BYTES,
+    AUDIO_MAX_CUES,
+    AudioAssetError,
+    CompiledAudioAsset,
+    import_sampled_sfx,
+)
 from .image_assets import (
     ImageAssetError,
     Masked1bppFrame,
@@ -81,6 +89,8 @@ class ProjectBundle:
     assets: tuple[dict[str, Any], ...]
     animations: tuple[dict[str, Any], ...]
     frames: tuple[Masked1bppFrame, ...]
+    audio_assets: tuple[CompiledAudioAsset, ...]
+    audio_cues: tuple[dict[str, Any], ...]
     issues: tuple[ValidationIssue, ...]
 
     @property
@@ -97,6 +107,25 @@ class ProjectBundle:
             "scenes": list(self.scenes),
             "assets": list(self.assets),
             "animations": list(self.animations),
+            "audio_assets": [
+                {
+                    "asset_id": asset.asset_id,
+                    "source_path": asset.source_path,
+                    "source_sample_rate_hz": asset.source_sample_rate_hz,
+                    "source_channels": asset.source_channels,
+                    "sample_rate_hz": asset.sample_rate_hz,
+                    "channels": asset.channels,
+                    "sample_count": asset.sample_count,
+                    "duration_ms": asset.duration_ms,
+                    "decoded_pcm_bytes": asset.decoded_pcm_bytes,
+                    "block_samples": asset.block_samples,
+                    "block_count": asset.block_count,
+                    "adpcm_bytes": len(asset.adpcm),
+                    "adpcm_sha256": hashlib.sha256(asset.adpcm).hexdigest(),
+                }
+                for asset in self.audio_assets
+            ],
+            "audio_cues": list(self.audio_cues),
             "compiled_asset_frames": [
                 {
                     "asset_id": frame.asset_id,
@@ -1297,6 +1326,8 @@ def _primary_asset_catalog(
         "schema_version": 1,
         "assets": [],
         "animations": [],
+        "audio_assets": [],
+        "audio_cues": [],
     }
     catalogs.append(catalog)
     sources.append(source)
@@ -1447,6 +1478,148 @@ def _apply_animation_delete(
     catalog, animation = located
     catalog["animations"].remove(animation)
     return {"kind": "animation.delete", "animation_id": animation_id}
+
+
+def _apply_audio_asset_upsert(
+    project: dict[str, Any],
+    catalogs: list[dict[str, Any]],
+    sources: list[str],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "audio_asset"},
+        {"kind", "audio_asset", "command_id"},
+    )
+    asset = command.get("audio_asset")
+    if not isinstance(asset, dict):
+        raise ProjectCommandError(
+            "COMMAND_SHAPE_INVALID", "command.audio_asset must be an object"
+        )
+    asset_id = asset.get("asset_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(asset_id, "command.audio_asset.asset_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    located = _catalog_record(catalogs, "audio_assets", "asset_id", asset_id)
+    created = located is None
+    if located is None:
+        catalog = _primary_asset_catalog(project, catalogs, sources)
+        records = catalog.setdefault("audio_assets", [])
+        if len(records) >= AUDIO_MAX_ASSETS:
+            raise ProjectCommandError(
+                "PROJECT_COUNT_INVALID",
+                f"asset catalog already has {AUDIO_MAX_ASSETS} audio assets",
+            )
+        records.append(deepcopy(asset))
+    else:
+        catalog, previous = located
+        records = catalog.setdefault("audio_assets", [])
+        records[records.index(previous)] = deepcopy(asset)
+    return {
+        "kind": "audio_asset.upsert",
+        "asset_id": asset_id,
+        "created": created,
+    }
+
+
+def _apply_audio_asset_delete(
+    catalogs: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "asset_id"},
+        {"kind", "asset_id", "command_id"},
+    )
+    asset_id = command.get("asset_id")
+    located = _catalog_record(catalogs, "audio_assets", "asset_id", asset_id)
+    if located is None:
+        raise ProjectCommandError(
+            "COMMAND_TARGET_UNKNOWN", f"unknown audio asset '{asset_id}'"
+        )
+    for catalog in catalogs:
+        for cue in catalog.get("audio_cues", []):
+            if isinstance(cue, dict) and cue.get("asset_ref") == asset_id:
+                raise ProjectCommandError(
+                    "ASSET_IN_USE", "audio asset is referenced by an audio cue"
+                )
+    catalog, asset = located
+    catalog["audio_assets"].remove(asset)
+    return {"kind": "audio_asset.delete", "asset_id": asset_id}
+
+
+def _apply_audio_cue_upsert(
+    project: dict[str, Any],
+    catalogs: list[dict[str, Any]],
+    sources: list[str],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "audio_cue"},
+        {"kind", "audio_cue", "command_id"},
+    )
+    cue = command.get("audio_cue")
+    if not isinstance(cue, dict):
+        raise ProjectCommandError(
+            "COMMAND_SHAPE_INVALID", "command.audio_cue must be an object"
+        )
+    cue_id = cue.get("cue_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(cue_id, "command.audio_cue.cue_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    located = _catalog_record(catalogs, "audio_cues", "cue_id", cue_id)
+    created = located is None
+    if located is None:
+        catalog = _primary_asset_catalog(project, catalogs, sources)
+        records = catalog.setdefault("audio_cues", [])
+        if len(records) >= AUDIO_MAX_CUES:
+            raise ProjectCommandError(
+                "PROJECT_COUNT_INVALID",
+                f"asset catalog already has {AUDIO_MAX_CUES} audio cues",
+            )
+        records.append(deepcopy(cue))
+    else:
+        catalog, previous = located
+        records = catalog.setdefault("audio_cues", [])
+        records[records.index(previous)] = deepcopy(cue)
+    return {"kind": "audio_cue.upsert", "cue_id": cue_id, "created": created}
+
+
+def _apply_audio_cue_delete(
+    catalogs: list[dict[str, Any]],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "cue_id"},
+        {"kind", "cue_id", "command_id"},
+    )
+    cue_id = command.get("cue_id")
+    located = _catalog_record(catalogs, "audio_cues", "cue_id", cue_id)
+    if located is None:
+        raise ProjectCommandError(
+            "COMMAND_TARGET_UNKNOWN", f"unknown audio cue '{cue_id}'"
+        )
+    for scene in scenes:
+        for route in scene.get("routes", []):
+            for action in route.get("actions", []):
+                if (
+                    isinstance(action, dict)
+                    and action.get("kind") == "play_sfx"
+                    and action.get("cue_ref") == cue_id
+                ):
+                    raise ProjectCommandError(
+                        "ASSET_IN_USE", "audio cue is referenced by a STATE action"
+                    )
+    catalog, cue = located
+    catalog["audio_cues"].remove(cue)
+    return {"kind": "audio_cue.delete", "cue_id": cue_id}
 
 
 def _layout_coordinate(value: Any, path: str) -> int:
@@ -1662,6 +1835,19 @@ def _normalize_action(
     if action_kind == "request_render":
         _require_command_fields(action, {"kind"}, {"kind"})
         return {"kind": "request_render"}
+    if action_kind == "play_sfx":
+        _require_command_fields(
+            action,
+            {"kind", "cue_ref"},
+            {"kind", "cue_ref"},
+        )
+        cue_ref = action.get("cue_ref")
+        issues: list[ValidationIssue] = []
+        _stable_id(cue_ref, "command.action.cue_ref", issues)
+        if issues:
+            issue = issues[0]
+            raise ProjectCommandError(issue.code, issue.message)
+        return {"kind": "play_sfx", "cue_ref": cue_ref}
     if action_kind in {
         "set_element_visibility",
         "set_element_position",
@@ -2395,6 +2581,7 @@ def _check_scene(
     source: str,
     frame_ids: set[str],
     animation_ids: set[str],
+    audio_cue_ids: set[str],
     issues: list[ValidationIssue],
 ) -> None:
     base = f"scene[{source}]"
@@ -2599,6 +2786,17 @@ def _check_scene(
                         _issue(issues, "ACTION_TYPE_INVALID", f"{action_path}.value", "must be an integer")
                 elif kind == "request_render":
                     _check_keys(action, {"kind"}, action_path, issues)
+                elif kind == "play_sfx":
+                    _check_keys(action, {"kind", "cue_ref"}, action_path, issues)
+                    cue_ref = action.get("cue_ref")
+                    _stable_id(cue_ref, f"{action_path}.cue_ref", issues)
+                    if cue_ref not in audio_cue_ids:
+                        _issue(
+                            issues,
+                            "AUDIO_CUE_UNKNOWN",
+                            f"{action_path}.cue_ref",
+                            f"unknown audio cue '{cue_ref}'",
+                        )
                 elif kind in {
                     "set_element_visibility",
                     "set_element_position",
@@ -2871,17 +3069,41 @@ def _scene_path(root: Path, source: Any, issues: list[ValidationIssue]) -> Path 
 def _compile_asset_catalogs(
     root: Path,
     catalogs: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[Masked1bppFrame], list[ValidationIssue]]:
+) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[Masked1bppFrame],
+    list[CompiledAudioAsset],
+    list[dict[str, Any]],
+    list[ValidationIssue],
+]:
     issues: list[ValidationIssue] = []
     assets: list[dict[str, Any]] = []
     animations: list[dict[str, Any]] = []
     frames: list[Masked1bppFrame] = []
+    audio_assets: list[CompiledAudioAsset] = []
+    audio_cues: list[dict[str, Any]] = []
     asset_ids: set[str] = set()
     frame_ids: set[str] = set()
     animation_ids: set[str] = set()
+    audio_asset_ids: set[str] = set()
+    audio_cue_ids: set[str] = set()
     for catalog_index, catalog in enumerate(catalogs):
         base = f"asset_catalogs[{catalog_index}]"
-        _check_keys(catalog, {"schema_id", "schema_version", "assets", "animations"}, base, issues)
+        _check_keys(
+            catalog,
+            {"schema_id", "schema_version", "assets", "animations"},
+            base,
+            issues,
+            {
+                "schema_id",
+                "schema_version",
+                "assets",
+                "animations",
+                "audio_assets",
+                "audio_cues",
+            },
+        )
         if catalog.get("schema_id") != "peepshow.authoring.assets" or catalog.get("schema_version") != 1:
             _issue(issues, "ASSET_SCHEMA_UNSUPPORTED", base, "expected peepshow.authoring.assets version 1")
         catalog_assets = _unique_ids(catalog.get("assets"), "asset_id", f"{base}.assets", issues, 128)
@@ -2921,6 +3143,87 @@ def _compile_asset_catalogs(
             animation_ids.add(animation_id)
             _check_animation(animation, animation_path, issues)
             animations.append(animation)
+        catalog_audio_assets = _unique_ids(
+            catalog.get("audio_assets", []),
+            "asset_id",
+            f"{base}.audio_assets",
+            issues,
+            AUDIO_MAX_ASSETS,
+        )
+        for audio_asset_id, audio_asset in catalog_audio_assets.items():
+            audio_path = f"{base}.audio_assets[{audio_asset_id}]"
+            if audio_asset_id in audio_asset_ids:
+                _issue(
+                    issues,
+                    "PROJECT_ID_DUPLICATE",
+                    f"{audio_path}.asset_id",
+                    f"duplicate ID '{audio_asset_id}'",
+                )
+                continue
+            audio_asset_ids.add(audio_asset_id)
+            before = len(issues)
+            _check_keys(
+                audio_asset,
+                {"asset_id", "asset_type", "source_path", "source_format"},
+                audio_path,
+                issues,
+            )
+            _stable_id(audio_asset_id, f"{audio_path}.asset_id", issues)
+            if audio_asset.get("asset_type") != "sampled_sfx":
+                _issue(
+                    issues,
+                    "AUDIO_ASSET_TYPE_INVALID",
+                    f"{audio_path}.asset_type",
+                    "must be sampled_sfx",
+                )
+            if audio_asset.get("source_format") != "wav":
+                _issue(
+                    issues,
+                    "AUDIO_SOURCE_FORMAT_INVALID",
+                    f"{audio_path}.source_format",
+                    "must be wav",
+                )
+            if len(issues) == before:
+                try:
+                    audio_assets.append(import_sampled_sfx(root, audio_asset))
+                except (AudioAssetError, KeyError) as exc:
+                    _issue(issues, "AUDIO_SOURCE_INVALID", audio_path, str(exc))
+        catalog_audio_cues = _unique_ids(
+            catalog.get("audio_cues", []),
+            "cue_id",
+            f"{base}.audio_cues",
+            issues,
+            AUDIO_MAX_CUES,
+        )
+        for cue_id, cue in catalog_audio_cues.items():
+            cue_path = f"{base}.audio_cues[{cue_id}]"
+            if cue_id in audio_cue_ids:
+                _issue(
+                    issues,
+                    "PROJECT_ID_DUPLICATE",
+                    f"{cue_path}.cue_id",
+                    f"duplicate ID '{cue_id}'",
+                )
+                continue
+            audio_cue_ids.add(cue_id)
+            _check_keys(
+                cue,
+                {"cue_id", "asset_ref", "priority", "volume"},
+                cue_path,
+                issues,
+            )
+            _stable_id(cue_id, f"{cue_path}.cue_id", issues)
+            _stable_id(cue.get("asset_ref"), f"{cue_path}.asset_ref", issues)
+            for field in ("priority", "volume"):
+                value = cue.get(field)
+                if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 255:
+                    _issue(
+                        issues,
+                        "AUDIO_CUE_VALUE_INVALID",
+                        f"{cue_path}.{field}",
+                        "must be an integer in 0..255",
+                    )
+            audio_cues.append(cue)
     for animation in animations:
         for index, frame_ref in enumerate(animation.get("frame_refs", [])):
             if frame_ref not in frame_ids:
@@ -2930,7 +3233,22 @@ def _compile_asset_catalogs(
                     f"animation[{animation.get('animation_id')}].frame_refs[{index}]",
                     f"unknown frame '{frame_ref}'",
                 )
-    return assets, animations, frames, issues
+    for cue in audio_cues:
+        if cue.get("asset_ref") not in audio_asset_ids:
+            _issue(
+                issues,
+                "AUDIO_ASSET_UNKNOWN",
+                f"audio_cues[{cue.get('cue_id')}].asset_ref",
+                f"unknown audio asset '{cue.get('asset_ref')}'",
+            )
+    if sum(len(asset.adpcm) for asset in audio_assets) > AUDIO_MAX_BANK_BYTES:
+        _issue(
+            issues,
+            "AUDIO_BANK_BUDGET_EXCEEDED",
+            "audio_assets",
+            f"compiled audio exceeds the {AUDIO_MAX_BANK_BYTES}-byte STATE bank limit",
+        )
+    return assets, animations, frames, audio_assets, audio_cues, issues
 
 
 def load_project(project_root: str | Path) -> ProjectBundle:
@@ -2940,21 +3258,15 @@ def load_project(project_root: str | Path) -> ProjectBundle:
         _issue(issues, "PROJECT_SUFFIX_INVALID", str(root), "editable project directories must end in .peepproj")
     if not root.is_dir():
         _issue(issues, "PROJECT_ROOT_MISSING", str(root), "project directory does not exist")
-        return ProjectBundle(root, {}, (), (), (), (), (), (), (), tuple(issues))
+        return ProjectBundle(root, {}, (), (), (), (), (), (), (), (), (), tuple(issues))
 
     project = _read_json(root / "project.json", issues, "PROJECT_MANIFEST_INVALID")
     if project is None:
-        return ProjectBundle(root, {}, (), (), (), (), (), (), (), tuple(issues))
+        return ProjectBundle(root, {}, (), (), (), (), (), (), (), (), (), tuple(issues))
     _check_project(project, issues)
 
-    assets: list[dict[str, Any]] = []
-    animations: list[dict[str, Any]] = []
-    frames: list[Masked1bppFrame] = []
     asset_catalogs: list[dict[str, Any]] = []
     loaded_asset_sources: list[str] = []
-    asset_ids: set[str] = set()
-    frame_ids: set[str] = set()
-    animation_ids: set[str] = set()
     asset_sources = project.get("asset_sources", [])
     if isinstance(asset_sources, list):
         for source in asset_sources:
@@ -2968,61 +3280,26 @@ def load_project(project_root: str | Path) -> ProjectBundle:
                 continue
             asset_catalogs.append(catalog)
             loaded_asset_sources.append(str(source))
-            base = f"assets[{source}]"
-            _check_keys(catalog, {"schema_id", "schema_version", "assets", "animations"}, base, issues)
-            if catalog.get("schema_id") != "peepshow.authoring.assets" or catalog.get("schema_version") != 1:
-                _issue(issues, "ASSET_SCHEMA_UNSUPPORTED", base, "expected peepshow.authoring.assets version 1")
-
-            catalog_assets = _unique_ids(catalog.get("assets"), "asset_id", f"{base}.assets", issues, 128)
-            for asset_id, asset in catalog_assets.items():
-                asset_path = f"{base}.assets[{asset_id}]"
-                if asset_id in asset_ids:
-                    _issue(issues, "PROJECT_ID_DUPLICATE", f"{asset_path}.asset_id", f"duplicate ID '{asset_id}'")
-                    continue
-                asset_ids.add(asset_id)
-                declared_frames = asset.get("frames")
-                if isinstance(declared_frames, list):
-                    for frame in declared_frames:
-                        if not isinstance(frame, dict) or not isinstance(frame.get("frame_id"), str):
-                            continue
-                        frame_id = frame["frame_id"]
-                        if frame_id in frame_ids:
-                            _issue(issues, "PROJECT_ID_DUPLICATE", f"{asset_path}.frames", f"duplicate frame ID '{frame_id}'")
-                        else:
-                            frame_ids.add(frame_id)
-                frames.extend(_check_asset(asset, asset_path, root, issues))
-                assets.append(asset)
-
-            catalog_animations = _unique_ids(
-                catalog.get("animations"),
-                "animation_id",
-                f"{base}.animations",
-                issues,
-                128,
-            )
-            for animation_id, animation in catalog_animations.items():
-                animation_path = f"{base}.animations[{animation_id}]"
-                if animation_id in animation_ids:
-                    _issue(
-                        issues,
-                        "PROJECT_ID_DUPLICATE",
-                        f"{animation_path}.animation_id",
-                        f"duplicate ID '{animation_id}'",
-                    )
-                    continue
-                animation_ids.add(animation_id)
-                _check_animation(animation, animation_path, issues)
-                animations.append(animation)
-
-    for animation in animations:
-        for index, frame_ref in enumerate(animation.get("frame_refs", [])):
-            if frame_ref not in frame_ids:
-                _issue(
-                    issues,
-                    "ASSET_FRAME_UNKNOWN",
-                    f"animation[{animation.get('animation_id')}].frame_refs[{index}]",
-                    f"unknown frame '{frame_ref}'",
-                )
+    (
+        assets,
+        animations,
+        frames,
+        audio_assets,
+        audio_cues,
+        catalog_issues,
+    ) = _compile_asset_catalogs(root, asset_catalogs)
+    issues.extend(catalog_issues)
+    frame_ids = {frame.frame_id for frame in frames}
+    animation_ids = {
+        str(animation["animation_id"])
+        for animation in animations
+        if isinstance(animation.get("animation_id"), str)
+    }
+    audio_cue_ids = {
+        str(cue["cue_id"])
+        for cue in audio_cues
+        if isinstance(cue.get("cue_id"), str)
+    }
 
     scenes: list[dict[str, Any]] = []
     loaded_scene_sources: list[str] = []
@@ -3036,7 +3313,14 @@ def load_project(project_root: str | Path) -> ProjectBundle:
             scene = _read_json(path, issues, "SCENE_SOURCE_INVALID")
             if scene is None:
                 continue
-            _check_scene(scene, str(source), frame_ids, animation_ids, issues)
+            _check_scene(
+                scene,
+                str(source),
+                frame_ids,
+                animation_ids,
+                audio_cue_ids,
+                issues,
+            )
             scene_id = scene.get("scene_id")
             if isinstance(scene_id, str):
                 if scene_id in scene_ids:
@@ -3129,6 +3413,8 @@ def load_project(project_root: str | Path) -> ProjectBundle:
         tuple(assets),
         tuple(animations),
         tuple(frames),
+        tuple(audio_assets),
+        tuple(audio_cues),
         tuple(issues),
     )
 
@@ -3151,6 +3437,8 @@ def apply_project_commands(
     assets = deepcopy(list(bundle.assets))
     animations = deepcopy(list(bundle.animations))
     frames = list(bundle.frames)
+    audio_assets = list(bundle.audio_assets)
+    audio_cues = deepcopy(list(bundle.audio_cues))
     applied: list[dict[str, Any]] = []
 
     for command in commands:
@@ -3214,25 +3502,57 @@ def apply_project_commands(
             applied.append(_apply_state_set_waiting_visual(scenes, command))
         elif kind == "asset.upsert":
             applied.append(_apply_asset_upsert(project, asset_catalogs, asset_catalog_sources, command))
-            assets, animations, frames, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
             if catalog_issues:
                 issue = catalog_issues[0]
                 raise ProjectCommandError(issue.code, issue.message)
         elif kind == "asset.delete":
             applied.append(_apply_asset_delete(asset_catalogs, scenes, command))
-            assets, animations, frames, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
             if catalog_issues:
                 issue = catalog_issues[0]
                 raise ProjectCommandError(issue.code, issue.message)
         elif kind == "animation.upsert":
             applied.append(_apply_animation_upsert(project, asset_catalogs, asset_catalog_sources, command))
-            assets, animations, frames, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
             if catalog_issues:
                 issue = catalog_issues[0]
                 raise ProjectCommandError(issue.code, issue.message)
         elif kind == "animation.delete":
             applied.append(_apply_animation_delete(asset_catalogs, scenes, command))
-            assets, animations, frames, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            if catalog_issues:
+                issue = catalog_issues[0]
+                raise ProjectCommandError(issue.code, issue.message)
+        elif kind == "audio_asset.upsert":
+            applied.append(
+                _apply_audio_asset_upsert(
+                    project, asset_catalogs, asset_catalog_sources, command
+                )
+            )
+            assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            if catalog_issues:
+                issue = catalog_issues[0]
+                raise ProjectCommandError(issue.code, issue.message)
+        elif kind == "audio_asset.delete":
+            applied.append(_apply_audio_asset_delete(asset_catalogs, command))
+            assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            if catalog_issues:
+                issue = catalog_issues[0]
+                raise ProjectCommandError(issue.code, issue.message)
+        elif kind == "audio_cue.upsert":
+            applied.append(
+                _apply_audio_cue_upsert(
+                    project, asset_catalogs, asset_catalog_sources, command
+                )
+            )
+            assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            if catalog_issues:
+                issue = catalog_issues[0]
+                raise ProjectCommandError(issue.code, issue.message)
+        elif kind == "audio_cue.delete":
+            applied.append(_apply_audio_cue_delete(asset_catalogs, scenes, command))
+            assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
             if catalog_issues:
                 issue = catalog_issues[0]
                 raise ProjectCommandError(issue.code, issue.message)
@@ -3259,9 +3579,21 @@ def apply_project_commands(
         for animation in animations
         if isinstance(animation.get("animation_id"), str)
     }
+    audio_cue_ids = {
+        cue.get("cue_id")
+        for cue in audio_cues
+        if isinstance(cue.get("cue_id"), str)
+    }
     validation_issues: list[ValidationIssue] = []
     for index, scene in enumerate(scenes):
-        _check_scene(scene, f"scenes[{index}]", frame_ids, animation_ids, validation_issues)
+        _check_scene(
+            scene,
+            f"scenes[{index}]",
+            frame_ids,
+            animation_ids,
+            audio_cue_ids,
+            validation_issues,
+        )
     if validation_issues:
         issue = validation_issues[0]
         raise ProjectCommandError(issue.code, f"{issue.path}: {issue.message}")
@@ -3277,6 +3609,8 @@ def apply_project_commands(
             tuple(assets),
             tuple(animations),
             tuple(frames),
+            tuple(audio_assets),
+            tuple(audio_cues),
             (),
         ),
         tuple(applied),

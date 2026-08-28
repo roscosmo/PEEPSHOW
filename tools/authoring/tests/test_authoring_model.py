@@ -8,6 +8,7 @@ import struct
 import sys
 import tempfile
 import unittest
+import wave
 import zlib
 from pathlib import Path
 
@@ -19,6 +20,12 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(TOOL_ROOT))
 
 from peepshow_authoring.project import load_project  # noqa: E402
+from peepshow_authoring.audio_assets import (  # noqa: E402
+    AUDIO_BLOCK_SAMPLES,
+    AUDIO_SAMPLE_RATE_HZ,
+    decode_ima_adpcm,
+    encode_ima_adpcm,
+)
 from peepshow_authoring.system_fonts import (  # noqa: E402
     SYSTEM_FONT_8X8_BASIC_ID,
     SystemFontError,
@@ -187,7 +194,104 @@ def make_asset_project(parent: Path, *, invalid_pixel: bool = False) -> Path:
     return project_root
 
 
+def make_audio_project(parent: Path) -> Path:
+    project_root = parent / "audio_slice.peepproj"
+    shutil.copytree(SAMPLE, project_root)
+    audio_path = project_root / "assets" / "select.wav"
+    source_samples = [
+        12000 if (index // 20) % 2 == 0 else -12000
+        for index in range(1600)
+    ]
+    with wave.open(str(audio_path), "wb") as wav:
+        wav.setnchannels(2)
+        wav.setsampwidth(2)
+        wav.setframerate(8000)
+        wav.writeframes(
+            b"".join(struct.pack("<hh", sample, sample // 2) for sample in source_samples)
+        )
+
+    catalog_path = project_root / "assets" / "catalog.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    catalog["audio_assets"] = [
+        {
+            "asset_id": "ui.select",
+            "asset_type": "sampled_sfx",
+            "source_path": "assets/select.wav",
+            "source_format": "wav",
+        }
+    ]
+    catalog["audio_cues"] = [
+        {
+            "cue_id": "ui.select.cue",
+            "asset_ref": "ui.select",
+            "priority": 96,
+            "volume": 224,
+        }
+    ]
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+
+    scene_path = project_root / "scenes" / "state_demo.state.json"
+    scene = json.loads(scene_path.read_text(encoding="utf-8"))
+    route = next(item for item in scene["routes"] if item["route_id"] == "center_to_right")
+    route["actions"].append({"kind": "play_sfx", "cue_ref": "ui.select.cue"})
+    scene_path.write_text(json.dumps(scene), encoding="utf-8")
+    return project_root
+
+
 class AuthoringModelTests(unittest.TestCase):
+    def test_ima_adpcm_codec_is_deterministic_and_block_bounded(self) -> None:
+        samples = tuple((index % 257 - 128) * 200 for index in range(777))
+        first, block_count = encode_ima_adpcm(samples)
+        second, second_count = encode_ima_adpcm(samples)
+        decoded = decode_ima_adpcm(first, len(samples), block_count)
+        self.assertEqual(first, second)
+        self.assertEqual(block_count, second_count)
+        self.assertEqual(4, block_count)
+        self.assertEqual(len(samples), len(decoded))
+        self.assertEqual(samples[0], decoded[0])
+
+    def test_sampled_sfx_compiles_into_optional_audio_chunks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_audio_project(Path(temp_dir))
+            bundle = load_project(project_root)
+            self.assertEqual((), bundle.issues)
+            self.assertEqual(1, len(bundle.audio_assets))
+            self.assertEqual(AUDIO_SAMPLE_RATE_HZ, bundle.audio_assets[0].sample_rate_hz)
+            self.assertEqual(AUDIO_BLOCK_SAMPLES, bundle.audio_assets[0].block_samples)
+
+            first = build_egg(bundle)
+            self.assertEqual(first, build_egg(load_project(project_root)))
+            package = parse_egg(first)
+            self.assertEqual(15, len(package.chunks))
+            self.assertEqual({10, 11, 12}, {chunk.chunk_type for chunk in package.chunks[-3:]})
+            self.assertEqual("ui.select", package.audio_assets[0]["asset_id"])
+            self.assertEqual("ui.select.cue", package.audio_cues[0]["cue_id"])
+            route = next(
+                item
+                for item in package.scenes[0]["graph"]["routes"]
+                if item["route_id"] == "center_to_right"
+            )
+            operation = next(item for item in route["operations"] if item["kind"] == 7)
+            self.assertEqual(0, operation["cue_index"])
+
+    def test_sampled_sfx_rejects_excess_duration_and_unknown_cue(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_audio_project(Path(temp_dir))
+            with wave.open(str(project_root / "assets" / "select.wav"), "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(16000)
+                wav.writeframes(struct.pack("<h", 0) * 32001)
+            scene_path = project_root / "scenes" / "state_demo.state.json"
+            scene = json.loads(scene_path.read_text(encoding="utf-8"))
+            route = next(item for item in scene["routes"] if item["route_id"] == "center_to_right")
+            route["actions"][-1]["cue_ref"] = "missing.cue"
+            scene_path.write_text(json.dumps(scene), encoding="utf-8")
+
+            issue_codes = {issue.code for issue in load_project(project_root).issues}
+            self.assertIn("AUDIO_SOURCE_INVALID", issue_codes)
+            self.assertIn("AUDIO_CUE_UNKNOWN", issue_codes)
+
     def test_sample_is_valid_and_normalization_is_deterministic(self) -> None:
         first = load_project(SAMPLE)
         second = load_project(SAMPLE)

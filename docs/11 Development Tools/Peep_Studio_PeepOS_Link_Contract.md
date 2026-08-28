@@ -58,7 +58,7 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | package primitives | retained line, outline rectangle, filled rectangle, circle, and ellipse records are compiled, previewed, loaded, and target-proven; private shell/calibration draw helpers remain unavailable |
 | package text | service API 15 rasterizes printable-ASCII menu labels through `peepshow.system.8x8.basic.v1` into ordinary masked 1bpp sprite frames; runtime text remains unavailable |
 | retained element actions | service API 17 and FW0 runtime API 15 implement atomic destination-state show/hide, move, retained frame selection, and bounded waiting-animation selection; host package/preview tests and HW6 awake/STOP2 visual proof pass |
-| package audio | not exposed; HW6 currently proves only a generated diagnostic speaker tone, not `.egg` audio assets or STATE SFX actions |
+| package audio | service API 18 imports PCM WAV, deterministically compiles mono 16 kHz 4-bit IMA ADPCM, emits symbolic sampled-SFX assets/cues and `play_sfx` STATE actions, previews cue emission, and auditions the exact packaged bytes; HW6 package playback remains pending |
 | STATE animated elements | bounded repeating sprite phase timelines with 1..4 frames, 1..12 combined steps, explicit cadence, and a settled step; mixed 2-phase and 3-phase composition and deterministic fallback are target-proven |
 | awake preview | exact 168x144 package-backed framebuffer with deterministic fake time and side-effect-free scene thumbnails |
 | STOP2 | package visuals compiled into LPBAM animation and resumed across wake/STOP2 handoff |
@@ -193,8 +193,9 @@ The STATE-first presentation expansion is:
    destination waiting visual's cadence and combined step count. `preserve`
    keeps the shared phase/deadline; `rebase` intentionally starts a new
    presentation epoch. The action changes no unrelated waiting elements;
-6. **Next:** add one symbolic bounded STATE SFX action backed by a compiled sampled-audio
-   asset and owned at runtime by `thAudio`.
+6. **Host/package implemented:** one symbolic bounded `play_sfx` STATE action
+   backed by a compiled sampled-audio asset. HW6 loading, `thAudio` decode/DMA
+   playback, completion, and STOP2 return remain the next target milestone.
 
 Visual assets, primitive records, text-derived sprite assets, and audio assets
 are package data. They must never contain display-driver calls, framebuffer
@@ -211,8 +212,8 @@ the editor until this document is updated:
 - Peep Studio controls for the backend-ready retained-element, asset-catalog,
   waiting-timeline, and STATE graph mutation commands;
 - arbitrary desktop fonts, runtime text, and waiting-animation mutation actions;
-- sampled package audio, STATE SFX actions, audio audition, or audio
-  compatibility reporting;
+- HW6 loading and playback of sampled package audio, including `thAudio`
+  completion and return-to-STOP2 proof;
 - 4-tone and 16-tone fixed dither asset import;
 - maps, tile layers, runtime fonts, rotation, or interpolated scaling;
 - package installation or activation on a connected device;
@@ -231,7 +232,7 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `15`.
+protocol is version `1`; the current service API is version `18`.
 
 | Operation | Purpose |
 |---|---|
@@ -247,6 +248,7 @@ protocol is version `1`; the current service API is version `15`.
 | `project.undo` | undo the last accepted command within the bounded service history |
 | `project.redo` | redo the last undone command within the bounded service history |
 | `project.scene_thumbnails` | return one side-effect-free initial framebuffer snapshot per compiled STATE scene |
+| `project.audio_audition` | decode one compiled sampled-SFX cue and return the exact packaged sound as mono 16 kHz PCM WAV |
 | `project.preview_reset` | start one selected STATE scene directly |
 | `project.preview_input` | inject one logical A/B/L/R, short START, or JOY_LEFT/JOY_RIGHT/JOY_UP/JOY_DOWN input |
 | `project.preview_advance` | advance deterministic preview time by an explicit duration |
@@ -388,6 +390,16 @@ presentation or expose LPBAM details. Peep Studio must discover these rules
 from `service.hello.state_scene_presentation.element_actions` rather than
 assuming that arbitrary animations can be assigned to STATE elements.
 
+Service API version 18 adds the bounded host/package STATE SFX subset. Asset
+catalogs may contain `sampled_sfx` WAV sources and symbolic cues; route actions
+may use `{"kind":"play_sfx","cue_ref":"..."}`. The compiler converts source
+audio to mono 16 kHz 4-bit IMA ADPCM in fixed 256-sample blocks and emits the
+optional `AUD1`, `ADB1`, and `ACU1` package chunks. `project.preview_input`
+reports emitted cue events, while `project.audio_audition` returns a WAV decoded
+from the compiled package bytes. `service.hello.state_scene_audio` publishes
+the exact limits and explicitly reports target playback as pending firmware
+bringup. Peep Studio must not represent host audition as HW6 playback proof.
+
 ### Stage 3: Scene Canvas And Visual Elements
 
 - add, remove, select, move, and reorder retained visual elements;
@@ -503,8 +515,9 @@ compiled package bytes.
 
 ### Stage 7: Expanded Asset And Scene Support
 
-- add the bounded STATE sampled-SFX path: WAV import, deterministic conversion,
-  symbolic cue binding, host audition, package validation, and target proof;
+- complete the bounded STATE sampled-SFX path: host import, conversion, cue
+  binding, audition, and package validation are implemented; HW6 target
+  loading/playback and power proof remain;
 - add retained line, rectangle, circle, and ellipse elements plus bounded
   element visibility, position, frame, and animation actions;
 - add formal font and localization package records when required;

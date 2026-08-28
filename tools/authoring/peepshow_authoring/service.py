@@ -8,6 +8,17 @@ import sys
 from pathlib import Path
 from typing import Any, TextIO
 
+from .audio_assets import (
+    AUDIO_BLOCK_SAMPLES,
+    AUDIO_MAX_ASSETS,
+    AUDIO_MAX_BANK_BYTES,
+    AUDIO_MAX_CUES,
+    AUDIO_MAX_DURATION_MS,
+    AUDIO_SAMPLE_RATE_HZ,
+    AudioAssetError,
+    decode_ima_adpcm,
+    pcm16_wav,
+)
 from .compatibility import build_compatibility_report
 from .compiler import EggCompileError, build_egg
 from .egg_format import EggFormatError, parse_egg
@@ -24,7 +35,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 17
+SERVICE_API_VERSION = 18
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -40,6 +51,7 @@ SERVICE_OPERATIONS = (
     "project.undo",
     "project.redo",
     "project.scene_thumbnails",
+    "project.audio_audition",
     "project.preview_reset",
     "project.preview_input",
     "project.preview_advance",
@@ -75,6 +87,8 @@ def _project_summary(bundle: ProjectBundle) -> dict[str, Any]:
         "scene_count": len(bundle.scenes),
         "asset_frame_count": len(bundle.frames),
         "animation_count": len(bundle.animations),
+        "audio_asset_count": len(bundle.audio_assets),
+        "audio_cue_count": len(bundle.audio_cues),
     }
 
 
@@ -315,6 +329,25 @@ class AuthoringService:
                 ],
                 "generic_delete_policy": "reject_if_referenced",
             },
+            "state_scene_audio": {
+                "host_package_support": True,
+                "target_playback_status": "pending_firmware_bringup",
+                "source_format": "wav_pcm",
+                "compiled_format": "ima_adpcm_4bit",
+                "sample_rate_hz": AUDIO_SAMPLE_RATE_HZ,
+                "channels": 1,
+                "block_samples": AUDIO_BLOCK_SAMPLES,
+                "maximum_duration_ms": AUDIO_MAX_DURATION_MS,
+                "maximum_assets": AUDIO_MAX_ASSETS,
+                "maximum_cues": AUDIO_MAX_CUES,
+                "maximum_bank_bytes": AUDIO_MAX_BANK_BYTES,
+                "voice_limit": 1,
+                "route_action": "play_sfx",
+                "asset_commands": ["audio_asset.upsert", "audio_asset.delete"],
+                "cue_commands": ["audio_cue.upsert", "audio_cue.delete"],
+                "audition_operation": "project.audio_audition",
+                "unsupported": ["looping", "music", "streaming", "procedural_audio"],
+            },
             "project_loaded": self._bundle is not None,
             "project_revision": self._project_revision if self._bundle is not None else None,
         }
@@ -391,6 +424,8 @@ class AuthoringService:
                 "scene_count": len(package.scenes),
                 "asset_frame_count": len(package.assets),
                 "animation_count": len(package.animations),
+                "audio_asset_count": len(package.audio_assets),
+                "audio_cue_count": len(package.audio_cues),
                 "chunk_count": len(package.chunks),
                 "size_bytes": len(blob),
                 "sha256": package.sha256,
@@ -432,6 +467,53 @@ class AuthoringService:
         return {
             "project_revision": self._project_revision,
             "thumbnails": thumbnails,
+        }
+
+    def _audio_audition(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params, {"cue_id"})
+        cue_id = params["cue_id"]
+        if not isinstance(cue_id, str) or not cue_id:
+            raise ProtocolError("AUDIO_CUE_INVALID", "cue_id must be non-empty text")
+        if not bundle.valid:
+            raise ProtocolError(
+                "PROJECT_INVALID",
+                "project must validate before audio audition",
+                details={"issues": _issues(bundle)},
+            )
+        try:
+            package = parse_egg(build_egg(bundle))
+            cue = next(
+                (item for item in package.audio_cues if item["cue_id"] == cue_id),
+                None,
+            )
+            if cue is None:
+                raise ProtocolError("AUDIO_CUE_NOT_FOUND", f"audio cue '{cue_id}' is not present")
+            asset = package.audio_assets[int(cue["asset_index"])]
+            samples = decode_ima_adpcm(
+                asset["adpcm"],
+                int(asset["sample_count"]),
+                int(asset["block_count"]),
+                int(asset["block_samples"]),
+            )
+            wav = pcm16_wav(samples)
+        except (EggCompileError, EggFormatError, AudioAssetError) as exc:
+            raise ProtocolError("AUDIO_AUDITION_FAILED", str(exc)) from exc
+        return {
+            "project_revision": self._project_revision,
+            "cue": {
+                "cue_id": cue["cue_id"],
+                "asset_id": cue["asset_id"],
+                "priority": cue["priority"],
+                "volume": cue["volume"],
+            },
+            "audio": {
+                "encoding": "wav_pcm_s16le",
+                "sample_rate_hz": asset["sample_rate_hz"],
+                "channels": asset["channels"],
+                "sample_count": asset["sample_count"],
+                "duration_ms": asset["duration_ms"],
+                "wav_base64": base64.b64encode(wav).decode("ascii"),
+            },
         }
 
     def _apply_commands(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -562,6 +644,7 @@ class AuthoringService:
             "project.undo": self._undo,
             "project.redo": self._redo,
             "project.scene_thumbnails": self._scene_thumbnails,
+            "project.audio_audition": self._audio_audition,
             "project.preview_reset": self._preview_reset,
             "project.preview_input": self._preview_input,
             "project.preview_advance": self._preview_advance,
