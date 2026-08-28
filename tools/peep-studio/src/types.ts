@@ -141,11 +141,27 @@ export type ProjectEditorData = {
   };
 };
 
+export type CompiledAssetFrame = {
+  asset_id: string;
+  frame_id: string;
+  width: number;
+  height: number;
+  row_stride_bytes: number;
+  pivot_x: number;
+  pivot_y: number;
+  opaque: boolean;
+  pixels_base64: string;
+  mask_base64: string;
+  pixels_sha256: string;
+  mask_sha256: string;
+};
+
 export type ProjectDocument = {
   project?: {
     editor?: ProjectEditorData;
   };
   scenes?: SceneDocument[];
+  compiled_asset_frames?: CompiledAssetFrame[];
 };
 
 export type ProjectLoadResult = {
@@ -191,9 +207,7 @@ export type ProjectHistoryResult = {
   project_revision: number;
   valid: boolean;
   issues: ValidationIssue[];
-  document: {
-    scenes?: SceneDocument[];
-  } | null;
+  document: ProjectDocument | null;
   summary: ProjectSummary;
   dirty: boolean;
   can_undo: boolean;

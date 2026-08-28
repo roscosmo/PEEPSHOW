@@ -380,18 +380,27 @@ keeps the fixed project-panel preview available in every mode, promotes the
 selected scene preview into the main workspace for placement, shows the current
 scene object hierarchy in the project panel, and reserves the inspector for the
 selected object's placement/properties. The placement display has a faint
-screen-space grid and selectable retained-element overlays that highlight the
-matching object hierarchy row. Grid visibility, grid strength, major grid
-lines, overlay boxes, and label display are editor view settings in the project
-panel only; they do not affect package output. Existing retained elements can
-be moved on the placement canvas through the Python
-`render_element.set_position` command with pixel snapping and bounds
-validation. Peep Studio also exposes exact selected-object X/Y fields and
-arrow-key nudging using that same command. Service API 14 provides the
-remaining retained-element CRUD/property commands and bounded STATE
-waiting-loop commands. React controls for add/remove/resize/reorder, frame
-assignment, layer/visibility, asset records, build-time text labels, and the
-phase timeline are the next GUI-branch work. Text controls author a
+screen-space grid, selectable retained-element overlays, a floating primitive
+tool palette, drag movement, shape resize handles, line endpoint handles,
+sprite placement from compiled asset frames,
+inspector sprite-frame selection,
+inspector X/Y fields, layer/visibility controls, forward/back draw-order
+buttons, and inspector-level selected-object deletion. These controls call the
+Python service commands (`render_element.add`, `render_element.delete`,
+`render_element.set_position`, `render_element.set_bounds`,
+`render_element.set_layer`, `render_element.set_visibility`,
+`render_element.set_z_order`, and `render_element.set_visual_ref`) rather than
+directly editing normalized JSON in React. A read-only Assets workspace now
+lists compiled sprite assets, shows frame previews, and reserves future import
+and audio controls outside Placement mode. Circle and ellipse editing preserves
+the current RND2 constraints: odd-sized bounds of at least 3 pixels, with
+circles remaining square. Filled circle and filled ellipse controls remain
+deferred until the package/service and firmware expose those primitive
+semantics. Grid visibility, grid strength, major grid lines, overlay boxes, and
+label display are editor view settings in the project panel only; they do not
+affect package output. React controls for asset records, build-time text
+labels, and the phase timeline are the next GUI-branch work. Text controls
+author a
 `system_font_text` asset and place its compiled frame as a normal sprite; they
 must not imply runtime text editing. The GUI must not offer general
 `frame_animation` binding in STATE; it edits `waiting_visual` phases instead.

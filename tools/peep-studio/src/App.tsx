@@ -8,28 +8,34 @@ import {
   Check,
   ChevronRight,
   Circle,
+  CircleDot,
   Download,
   FileCode2,
   FolderOpen,
   Hammer,
+  Image,
+  Layers3,
   LoaderCircle,
   Maximize2,
+  Minus,
   MonitorDot,
   Network,
   PackageCheck,
   Pause,
   Play,
+  RectangleHorizontal,
   RotateCcw,
   Redo2,
   Save,
   SaveAll,
   StepForward,
   SquareMousePointer,
+  Trash2,
   Undo2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { FramebufferCanvas } from "./FramebufferCanvas";
+import { FramebufferCanvas, FramePreviewCanvas } from "./FramebufferCanvas";
 import {
   SceneAuthoringInspector,
   SceneFlowView,
@@ -37,6 +43,7 @@ import {
   type SceneSelection,
 } from "./SceneInspection";
 import type {
+  CompiledAssetFrame,
   Framebuffer,
   PackageBuildResult,
   ProjectCommandResult,
@@ -65,6 +72,17 @@ const JOYSTICK_INPUTS = [
   { source: "JOY_DOWN", label: "Down", icon: ArrowDown, className: "joy-down" },
 ] as const;
 
+const PLACEMENT_PRIMITIVES = [
+  { kind: "line", label: "Line" },
+  { kind: "outline_rect", label: "Outline rectangle" },
+  { kind: "filled_rect", label: "Filled rectangle" },
+  { kind: "circle", label: "Circle" },
+  { kind: "ellipse", label: "Ellipse" },
+] as const;
+
+type PlacementPrimitiveKind = (typeof PLACEMENT_PRIMITIVES)[number]["kind"];
+type WorkspaceMode = "scene-flow" | "logic" | "placement" | "assets";
+
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -89,8 +107,9 @@ export default function App() {
   const [canRedo, setCanRedo] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [workspaceMode, setWorkspaceMode] = useState<"scene-flow" | "logic" | "placement">("scene-flow");
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("scene-flow");
   const [sceneThumbnails, setSceneThumbnails] = useState<Record<string, Framebuffer>>({});
+  const [selectedAssetFrameId, setSelectedAssetFrameId] = useState<string | null>(null);
   const [sceneFlowLayoutStatus, setSceneFlowLayoutStatus] = useState("No layout move yet");
   const [stateGraphLayoutStatus, setStateGraphLayoutStatus] = useState("No layout move yet");
   const [projectWidth, setProjectWidth] = useState(320);
@@ -100,7 +119,9 @@ export default function App() {
   const [placementGridStrength, setPlacementGridStrength] = useState(18);
   const [placementOverlayVisible, setPlacementOverlayVisible] = useState(true);
   const [placementLabelMode, setPlacementLabelMode] = useState<"hover" | "always" | "off">("hover");
+  const [spritePickerOpen, setSpritePickerOpen] = useState(false);
   const [placementDraftPositions, setPlacementDraftPositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [placementDraftBounds, setPlacementDraftBounds] = useState<Record<string, { x: number; y: number; width: number; height: number }>>({});
   const [message, setMessage] = useState<string | null>(null);
   const previewRef = useRef<PreviewSnapshot | null>(null);
   const projectRevisionRef = useRef<number | null>(null);
@@ -706,6 +727,52 @@ export default function App() {
       setBusy(null);
     }
   };
+  const applyRenderElementCommand = async (
+    busyLabel: string,
+    sceneId: string,
+    renderModelId: string,
+    elementId: string | null,
+    command: Record<string, unknown>,
+    successMessage: string,
+    nextSelectedElementId: string | null | undefined = elementId,
+  ) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy(busyLabel);
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [
+          {
+            scene_id: sceneId,
+            render_model_id: renderModelId,
+            ...(elementId === null ? {} : { element_id: elementId }),
+            ...command,
+          },
+        ],
+      });
+      applyProjectResult(result);
+      setSelectedScene(sceneId);
+      if (nextSelectedElementId !== undefined) {
+        setSelectedPlacementElement(nextSelectedElementId);
+      }
+      setSceneSelection({ kind: "render", id: renderModelId });
+      if (result.valid) {
+        const previewResult = await bridge.serviceRequest<PreviewSnapshot>("project.preview_reset", {
+          project_revision: result.project_revision,
+          scene_id: sceneId,
+        });
+        setPreview(previewResult);
+      }
+      setMessage(successMessage);
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
   const movePlacementElement = (
     element: RenderElement,
     renderModelId: string,
@@ -722,6 +789,90 @@ export default function App() {
     }
     void setRenderElementPosition(selectedSceneDocument.scene_id, renderModelId, element.element_id, nextX, nextY);
   };
+  const oddDimension = (value: number, maximum: number) => {
+    const bounded = Math.min(maximum, Math.max(3, Math.round(value)));
+    if (bounded % 2 === 1) {
+      return bounded;
+    }
+    return bounded < maximum ? bounded + 1 : bounded - 1;
+  };
+  const normalizePrimitiveBounds = (
+    element: Pick<RenderElement, "kind">,
+    bounds: { x: number; y: number; width: number; height: number },
+  ) => {
+    const nextX = Math.min(167, Math.max(0, Math.round(bounds.x)));
+    const nextY = Math.min(143, Math.max(0, Math.round(bounds.y)));
+    if (element.kind === "circle") {
+      const maximum = Math.min(168 - nextX, 144 - nextY);
+      const size = oddDimension(Math.max(bounds.width, bounds.height), maximum);
+      return { x: nextX, y: nextY, width: size, height: size };
+    }
+    const nextWidth = element.kind === "ellipse"
+      ? oddDimension(bounds.width, 168 - nextX)
+      : Math.min(168 - nextX, Math.max(1, Math.round(bounds.width)));
+    const nextHeight = element.kind === "ellipse"
+      ? oddDimension(bounds.height, 144 - nextY)
+      : Math.min(144 - nextY, Math.max(1, Math.round(bounds.height)));
+    return { x: nextX, y: nextY, width: nextWidth, height: nextHeight };
+  };
+  const resizePlacementElement = (
+    element: RenderElement,
+    renderModelId: string,
+    bounds: { x: number; y: number; width: number; height: number },
+  ) => {
+    if (selectedSceneDocument === null) {
+      return;
+    }
+    const { x: nextX, y: nextY, width: nextWidth, height: nextHeight } = normalizePrimitiveBounds(element, bounds);
+    if (nextX === element.x && nextY === element.y && nextWidth === element.width && nextHeight === element.height) {
+      return;
+    }
+    void applyRenderElementCommand(
+      "Resizing element",
+      selectedSceneDocument.scene_id,
+      renderModelId,
+      element.element_id,
+      {
+        kind: "render_element.set_bounds",
+        x: nextX,
+        y: nextY,
+        width: nextWidth,
+        height: nextHeight,
+      },
+      "Element resized. Save to write it to the project.",
+    );
+  };
+  const deletePlacementElement = (element: RenderElement, renderModelId: string) => {
+    if (selectedSceneDocument === null) {
+      return;
+    }
+    void applyRenderElementCommand(
+      "Deleting object",
+      selectedSceneDocument.scene_id,
+      renderModelId,
+      element.element_id,
+      { kind: "render_element.delete" },
+      "Object deleted. Save to write it to the project.",
+      null,
+    );
+  };
+  const setPlacementElementZOrder = (element: RenderElement, renderModelId: string, zOrder: number) => {
+    if (selectedSceneDocument === null) {
+      return;
+    }
+    const nextZOrder = Math.min(255, Math.max(0, Math.round(zOrder)));
+    if (nextZOrder === element.z_order) {
+      return;
+    }
+    void applyRenderElementCommand(
+      "Changing draw order",
+      selectedSceneDocument.scene_id,
+      renderModelId,
+      element.element_id,
+      { kind: "render_element.set_z_order", z_order: nextZOrder },
+      "Draw order updated. Save to write it to the project.",
+    );
+  };
 
   const exportPackage = async () => {
     if (bridge === undefined || build === null) {
@@ -737,6 +888,21 @@ export default function App() {
   };
 
   const scenes: SceneDocument[] = project?.document?.scenes ?? [];
+  const compiledAssetFrames: CompiledAssetFrame[] = project?.document?.compiled_asset_frames ?? [];
+  const compiledAssetFrameById = useMemo(
+    () => new Map(compiledAssetFrames.map((frame) => [frame.frame_id, frame])),
+    [compiledAssetFrames],
+  );
+  const compiledAssetFrameGroups = useMemo(() => {
+    const groups = new Map<string, CompiledAssetFrame[]>();
+    for (const frame of compiledAssetFrames) {
+      groups.set(frame.asset_id, [...(groups.get(frame.asset_id) ?? []), frame]);
+    }
+    return [...groups.entries()].map(([assetId, frames]) => ({ assetId, frames }));
+  }, [compiledAssetFrames]);
+  const selectedAssetFrame = selectedAssetFrameId === null
+    ? compiledAssetFrames[0] ?? null
+    : compiledAssetFrameById.get(selectedAssetFrameId) ?? compiledAssetFrames[0] ?? null;
   const projectRevision = project?.project_revision ?? null;
   const projectValid = project?.valid ?? false;
   const thumbnailsSupported = service?.operations.includes("project.scene_thumbnails") === true;
@@ -807,6 +973,18 @@ export default function App() {
       setSelectedPlacementElement(null);
     }
   }, [placementRenderModel, selectedPlacementElement]);
+  useEffect(() => {
+    setSpritePickerOpen(false);
+  }, [selectedScene, workspaceMode]);
+  useEffect(() => {
+    if (compiledAssetFrames.length === 0) {
+      setSelectedAssetFrameId(null);
+      return;
+    }
+    if (selectedAssetFrameId === null || !compiledAssetFrameById.has(selectedAssetFrameId)) {
+      setSelectedAssetFrameId(compiledAssetFrames[0].frame_id);
+    }
+  }, [compiledAssetFrameById, compiledAssetFrames, selectedAssetFrameId]);
   const connected = service !== null;
   const startProjectResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -872,6 +1050,11 @@ export default function App() {
     }
     const target = event.target as HTMLElement | null;
     if (target !== null && target.closest("input, select, textarea, [contenteditable='true']") !== null) {
+      return;
+    }
+    if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault();
+      deletePlacementElement(selectedPlacementRenderElement, placementRenderModel.visual_id);
       return;
     }
     const step = event.shiftKey ? 8 : 1;
@@ -945,6 +1128,136 @@ export default function App() {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop);
   };
+  const startPlacementResize = (
+    event: ReactPointerEvent<HTMLElement>,
+    element: RenderElement,
+    renderModelId: string,
+    handle: "nw" | "ne" | "sw" | "se",
+  ) => {
+    if (selectedSceneDocument === null || busy !== null || element.kind === "sprite") {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const overlay = event.currentTarget.closest(".placement-screen-overlay");
+    if (!(overlay instanceof HTMLElement)) {
+      return;
+    }
+    const rect = overlay.getBoundingClientRect();
+    const startClientX = event.clientX;
+    const startClientY = event.clientY;
+    const key = placementDraftKey(renderModelId, element.element_id);
+    const startBounds = {
+      x: element.x,
+      y: element.y,
+      width: element.width,
+      height: element.height,
+    };
+    let latestBounds = startBounds;
+    setSelectedPlacementElement(element.element_id);
+    setSceneSelection({ kind: "render", id: renderModelId });
+
+    const move = (moveEvent: PointerEvent) => {
+      const dx = Math.round(((moveEvent.clientX - startClientX) / rect.width) * 168);
+      const dy = Math.round(((moveEvent.clientY - startClientY) / rect.height) * 144);
+      let nextX = startBounds.x;
+      let nextY = startBounds.y;
+      let nextWidth = startBounds.width;
+      let nextHeight = startBounds.height;
+
+      if (handle.includes("w")) {
+        nextX = Math.min(startBounds.x + startBounds.width - 1, Math.max(0, startBounds.x + dx));
+        nextWidth = startBounds.x + startBounds.width - nextX;
+      } else {
+        nextWidth = Math.min(168 - startBounds.x, Math.max(1, startBounds.width + dx));
+      }
+
+      if (handle.includes("n")) {
+        nextY = Math.min(startBounds.y + startBounds.height - 1, Math.max(0, startBounds.y + dy));
+        nextHeight = startBounds.y + startBounds.height - nextY;
+      } else {
+        nextHeight = Math.min(144 - startBounds.y, Math.max(1, startBounds.height + dy));
+      }
+
+      latestBounds = normalizePrimitiveBounds(element, { x: nextX, y: nextY, width: nextWidth, height: nextHeight });
+      setPlacementDraftBounds((current) => ({ ...current, [key]: latestBounds }));
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      setPlacementDraftBounds((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+      resizePlacementElement(element, renderModelId, latestBounds);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+  };
+  const renderPlacementToolPalette = () => (
+    <div className="placement-tool-palette" aria-label="Placement tools">
+      <button type="button" className="active" title="Select and move objects" aria-label="Select and move objects">
+        <SquareMousePointer size={18} aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        disabled={busy !== null || selectedSceneDocument === null || placementRenderModel === null || compiledAssetFrames.length === 0}
+        onClick={() => setSpritePickerOpen((open) => !open)}
+        title={compiledAssetFrames.length === 0 ? "No sprite frames available" : "Choose sprite"}
+        aria-label="Add sprite"
+      >
+        <Image size={18} aria-hidden="true" />
+      </button>
+      {PLACEMENT_PRIMITIVES.map((primitive) => (
+        <button
+          key={primitive.kind}
+          className={`primitive-${primitive.kind}`}
+          type="button"
+          disabled={busy !== null || selectedSceneDocument === null || placementRenderModel === null}
+          onClick={() => void addPlacementPrimitive(primitive.kind)}
+          title={`Add ${primitive.label.toLowerCase()}`}
+          aria-label={`Add ${primitive.label.toLowerCase()}`}
+        >
+          {placementKindIcon(primitive.kind)}
+        </button>
+      ))}
+    </div>
+  );
+  const renderSpritePicker = () => (
+    <div className="placement-sprite-picker" role="dialog" aria-label="Choose sprite frame">
+      <div className="placement-sprite-picker-heading">
+        <strong>Choose Sprite</strong>
+        <button type="button" onClick={() => setSpritePickerOpen(false)} title="Close sprite picker" aria-label="Close sprite picker">
+          <X size={14} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="placement-sprite-picker-groups">
+        {compiledAssetFrameGroups.map((group) => (
+          <div className="placement-sprite-picker-group" key={group.assetId}>
+            <span>{group.assetId}</span>
+            <div>
+              {group.frames.map((frame) => (
+                <button
+                  key={frame.frame_id}
+                  type="button"
+                  disabled={busy !== null || selectedSceneDocument === null || placementRenderModel === null}
+                  title={`${frame.frame_id} (${frame.width}x${frame.height})`}
+                  onClick={() => void addPlacementSprite(frame)}
+                >
+                  <span className="frame-preview-box">
+                    <FramePreviewCanvas frame={frame} />
+                  </span>
+                  <strong>{placementFrameLabel(frame)}</strong>
+                  <small>{frame.width}x{frame.height}</small>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
   const renderPreviewPanel = (variant: "project" | "placement") => (
     <section className={`preview-pane ${variant === "placement" ? "preview-pane-large" : "preview-pane-compact"}`}>
       {variant === "project" && (
@@ -976,6 +1289,8 @@ export default function App() {
       )}
 
       <div className="display-stage">
+        {variant === "placement" && renderPlacementToolPalette()}
+        {variant === "placement" && spritePickerOpen && renderSpritePicker()}
         <div className="panel-bezel">
           <FramebufferCanvas framebuffer={preview?.framebuffer ?? null} />
           {variant === "placement" && (
@@ -994,9 +1309,15 @@ export default function App() {
                 [...(placementRenderModel?.elements ?? [])]
                   .sort((left, right) => left.z_order - right.z_order)
                   .map((element) => {
-                    const draft = placementDraftPositions[placementDraftKey(placementRenderModel?.visual_id ?? "", element.element_id)];
-                    const x = draft?.x ?? element.x;
-                    const y = draft?.y ?? element.y;
+                    const key = placementDraftKey(placementRenderModel?.visual_id ?? "", element.element_id);
+                    const positionDraft = placementDraftPositions[key];
+                    const boundsDraft = placementDraftBounds[key];
+                    const x = boundsDraft?.x ?? positionDraft?.x ?? element.x;
+                    const y = boundsDraft?.y ?? positionDraft?.y ?? element.y;
+                    const width = boundsDraft?.width ?? element.width;
+                    const height = boundsDraft?.height ?? element.height;
+                    const canResize = selectedPlacementElement === element.element_id && element.kind !== "sprite" && placementRenderModel !== null;
+                    const isLine = element.kind === "line";
                     return (
                       <button
                         key={element.element_id}
@@ -1005,10 +1326,10 @@ export default function App() {
                         style={{
                           left: `${(x / 168) * 100}%`,
                           top: `${(y / 144) * 100}%`,
-                          width: `${(element.width / 168) * 100}%`,
-                          height: `${(element.height / 144) * 100}%`,
+                          width: `${(width / 168) * 100}%`,
+                          height: `${(height / 144) * 100}%`,
                         }}
-                        title={`${element.element_id}: ${x},${y} ${element.width}x${element.height}`}
+                        title={`${element.element_id}: ${x},${y} ${width}x${height}`}
                         onPointerDown={(event) => {
                           if (placementRenderModel !== null) {
                             startPlacementDrag(event, element, placementRenderModel.visual_id);
@@ -1021,6 +1342,24 @@ export default function App() {
                         }}
                       >
                         <span>{element.element_id}</span>
+                        {canResize && (
+                          <>
+                            <i
+                              className={`placement-resize-handle ${isLine ? "handle-line-start" : "handle-nw"}`}
+                              onPointerDown={(event) => startPlacementResize(event, element, placementRenderModel.visual_id, "nw")}
+                            />
+                            {!isLine && (
+                              <>
+                                <i className="placement-resize-handle handle-ne" onPointerDown={(event) => startPlacementResize(event, element, placementRenderModel.visual_id, "ne")} />
+                                <i className="placement-resize-handle handle-sw" onPointerDown={(event) => startPlacementResize(event, element, placementRenderModel.visual_id, "sw")} />
+                              </>
+                            )}
+                            <i
+                              className={`placement-resize-handle ${isLine ? "handle-line-end" : "handle-se"}`}
+                              onPointerDown={(event) => startPlacementResize(event, element, placementRenderModel.visual_id, "se")}
+                            />
+                          </>
+                        )}
                       </button>
                     );
                   })}
@@ -1058,7 +1397,117 @@ export default function App() {
         <Maximize2 size={15} aria-hidden="true" />
         Placement
       </button>
+      <button
+        className={workspaceMode === "assets" ? "active" : ""}
+        type="button"
+        onClick={() => setWorkspaceMode("assets")}
+      >
+        <Image size={15} aria-hidden="true" />
+        Assets
+      </button>
     </div>
+  );
+  const renderAssetLibraryList = () => (
+    <details className="project-section asset-library-section" open>
+      <summary>Assets</summary>
+      {compiledAssetFrameGroups.length === 0 ? (
+        <p className="muted project-section-empty">No compiled sprites.</p>
+      ) : (
+        <nav className="asset-library-list" aria-label="Project sprite assets">
+          {compiledAssetFrameGroups.map((group) => {
+            const groupSelected = group.frames.some((frame) => frame.frame_id === selectedAssetFrame?.frame_id);
+            return (
+              <button
+                key={group.assetId}
+                className={groupSelected ? "selected" : ""}
+                type="button"
+                onClick={() => setSelectedAssetFrameId(group.frames[0]?.frame_id ?? null)}
+              >
+                <Image size={15} aria-hidden="true" />
+                <span>
+                  <strong>{group.assetId}</strong>
+                  <small>{group.frames.length} frame{group.frames.length === 1 ? "" : "s"}</small>
+                </span>
+                <ChevronRight size={15} aria-hidden="true" />
+              </button>
+            );
+          })}
+        </nav>
+      )}
+    </details>
+  );
+  const renderAssetsWorkspace = () => {
+    const selectedGroup = selectedAssetFrame === null
+      ? null
+      : compiledAssetFrameGroups.find((group) => group.assetId === selectedAssetFrame.asset_id) ?? null;
+    return (
+      <section className="asset-workspace-pane">
+        <div className="preview-heading graph-heading">
+          <div>
+            <span className="section-kicker">Assets</span>
+            <h2>{selectedGroup?.assetId ?? "Project library"}</h2>
+          </div>
+          {renderModeTabs()}
+        </div>
+        {compiledAssetFrameGroups.length === 0 ? (
+          <div className="asset-workspace-empty">
+            <Image size={28} aria-hidden="true" />
+            <strong>No sprite assets</strong>
+            <span>PNG import will live here when the service import flow is exposed.</span>
+          </div>
+        ) : (
+          <div className="asset-workspace">
+            {selectedGroup !== null && (
+              <>
+                <div className="asset-workspace-summary">
+                  <strong>{selectedGroup.assetId}</strong>
+                  <span>{selectedGroup.frames.length} compiled frame{selectedGroup.frames.length === 1 ? "" : "s"}</span>
+                </div>
+                <div className="asset-frame-gallery">
+                  {selectedGroup.frames.map((frame) => (
+                    <button
+                      key={frame.frame_id}
+                      className={selectedAssetFrame?.frame_id === frame.frame_id ? "selected" : ""}
+                      type="button"
+                      onClick={() => setSelectedAssetFrameId(frame.frame_id)}
+                    >
+                      <span className="asset-frame-preview">
+                        <FramePreviewCanvas frame={frame} />
+                      </span>
+                      <strong>{placementFrameLabel(frame)}</strong>
+                      <small>{frame.width}x{frame.height}</small>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </section>
+    );
+  };
+  const renderAssetInspector = () => (
+    <section className="inspector-section asset-inspector">
+      <h3><Image size={14} aria-hidden="true" /> Sprite Frame</h3>
+      {selectedAssetFrame === null ? (
+        <p className="muted">Select a sprite frame to inspect it.</p>
+      ) : (
+        <>
+          <div className="asset-inspector-preview">
+            <FramePreviewCanvas frame={selectedAssetFrame} />
+          </div>
+          <dl className="inspector-list">
+            <div><dt>Asset</dt><dd>{selectedAssetFrame.asset_id}</dd></div>
+            <div><dt>Frame</dt><dd>{placementFrameLabel(selectedAssetFrame)}</dd></div>
+            <div><dt>Size</dt><dd>{selectedAssetFrame.width}x{selectedAssetFrame.height}</dd></div>
+            <div><dt>Pivot</dt><dd>{selectedAssetFrame.pivot_x}, {selectedAssetFrame.pivot_y}</dd></div>
+            <div><dt>Mask</dt><dd>{selectedAssetFrame.opaque ? "Opaque" : "Transparent"}</dd></div>
+            <div><dt>Stride</dt><dd>{selectedAssetFrame.row_stride_bytes} bytes</dd></div>
+            <div><dt>Frame ID</dt><dd>{selectedAssetFrame.frame_id}</dd></div>
+          </dl>
+        </>
+      )}
+    </section>
   );
   const renderPlacementViewSettings = () => (
     <details className="project-section placement-view-settings-section" open>
@@ -1112,6 +1561,163 @@ export default function App() {
     </details>
   );
   const placementElements = () => [...(placementRenderModel?.elements ?? [])].sort((left, right) => left.z_order - right.z_order);
+  const placementKindLabel = (kind: string) => {
+    switch (kind) {
+      case "sprite":
+        return "Sprite";
+      case "line":
+        return "Line";
+      case "outline_rect":
+        return "Outline rectangle";
+      case "filled_rect":
+        return "Filled rectangle";
+      case "circle":
+        return "Circle";
+      case "ellipse":
+        return "Ellipse";
+      default:
+        return kind.replaceAll("_", " ");
+    }
+  };
+  const placementKindIcon = (kind: string) => {
+    switch (kind) {
+      case "sprite":
+        return <Image size={15} aria-hidden="true" />;
+      case "line":
+        return <Minus size={15} aria-hidden="true" />;
+      case "outline_rect":
+      case "filled_rect":
+        return <RectangleHorizontal size={15} aria-hidden="true" />;
+      case "circle":
+      case "ellipse":
+        return <CircleDot size={15} aria-hidden="true" />;
+      default:
+        return <SquareMousePointer size={15} aria-hidden="true" />;
+    }
+  };
+  const placementLayerLabel = (element: RenderElement) => element.layer ?? "SCENE";
+  const placementSourceLabel = (element: RenderElement) => element.visual_ref ?? "Native shape";
+  const placementFrameLabel = (frame: CompiledAssetFrame) => {
+    const prefixedName = `${frame.asset_id}.`;
+    return frame.frame_id.startsWith(prefixedName) ? frame.frame_id.slice(prefixedName.length) : frame.frame_id;
+  };
+  const nextPlacementElementId = (kind: string, elements: RenderElement[]) => {
+    const prefix = kind.replaceAll("-", "_");
+    const existing = new Set(elements.map((element) => element.element_id));
+    for (let index = 1; index < 1000; index += 1) {
+      const candidate = `${prefix}_${index}`;
+      if (!existing.has(candidate)) {
+        return candidate;
+      }
+    }
+    return `${prefix}_${elements.length + 1}`;
+  };
+  const addPlacementSprite = async (frame: CompiledAssetFrame | null = compiledAssetFrames[0] ?? null) => {
+    if (selectedSceneDocument === null || placementRenderModel === null || frame === null) {
+      return;
+    }
+    const element: RenderElement = {
+      element_id: nextPlacementElementId(frame.asset_id, placementRenderModel.elements),
+      kind: "sprite",
+      visual_ref: frame.frame_id,
+      x: 48,
+      y: 40,
+      width: frame.width,
+      height: frame.height,
+      z_order: Math.max(0, ...placementRenderModel.elements.map((item) => item.z_order)) + 1,
+      layer: "SCENE",
+      visible: true,
+    };
+    await applyRenderElementCommand(
+      "Adding sprite",
+      selectedSceneDocument.scene_id,
+      placementRenderModel.visual_id,
+      null,
+      {
+        kind: "render_element.add",
+        element,
+      },
+      "Sprite added. Save to write it to the project.",
+    );
+    setSelectedPlacementElement(element.element_id);
+    setSpritePickerOpen(false);
+  };
+  const setPlacementSpriteFrame = (element: RenderElement, renderModelId: string, frameId: string) => {
+    const frame = compiledAssetFrameById.get(frameId);
+    if (bridge === undefined || project === null || busy !== null || selectedSceneDocument === null || frame === undefined) {
+      return;
+    }
+    const nextX = Math.min(Math.max(0, 168 - frame.width), element.x);
+    const nextY = Math.min(Math.max(0, 144 - frame.height), element.y);
+    setBusy("Changing sprite");
+    setPlaying(false);
+    void bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+      project_revision: project.project_revision,
+      commands: [
+        {
+          kind: "render_element.set_visual_ref",
+          scene_id: selectedSceneDocument.scene_id,
+          render_model_id: renderModelId,
+          element_id: element.element_id,
+          visual_ref: frame.frame_id,
+        },
+        {
+          kind: "render_element.set_bounds",
+          scene_id: selectedSceneDocument.scene_id,
+          render_model_id: renderModelId,
+          element_id: element.element_id,
+          x: nextX,
+          y: nextY,
+          width: frame.width,
+          height: frame.height,
+        },
+      ],
+    })
+      .then(async (result) => {
+        applyProjectResult(result);
+        setSelectedScene(selectedSceneDocument.scene_id);
+        setSelectedPlacementElement(element.element_id);
+        setSceneSelection({ kind: "render", id: renderModelId });
+        if (result.valid) {
+          const previewResult = await bridge.serviceRequest<PreviewSnapshot>("project.preview_reset", {
+            project_revision: result.project_revision,
+            scene_id: selectedSceneDocument.scene_id,
+          });
+          setPreview(previewResult);
+        }
+        setMessage("Sprite frame updated. Save to write it to the project.");
+      })
+      .catch((error: unknown) => setMessage(errorText(error)))
+      .finally(() => setBusy(null));
+  };
+  const addPlacementPrimitive = async (kind: PlacementPrimitiveKind) => {
+    if (selectedSceneDocument === null || placementRenderModel === null) {
+      return;
+    }
+    const element: RenderElement = {
+      element_id: nextPlacementElementId(kind, placementRenderModel.elements),
+      kind,
+      x: 48,
+      y: 40,
+      width: kind === "line" ? 48 : kind === "circle" ? 31 : kind === "ellipse" ? 33 : 32,
+      height: kind === "line" ? 1 : kind === "circle" ? 31 : kind === "ellipse" ? 25 : 24,
+      z_order: Math.max(0, ...placementRenderModel.elements.map((item) => item.z_order)) + 1,
+      layer: "SCENE",
+      visible: true,
+    };
+    await applyRenderElementCommand(
+      "Adding object",
+      selectedSceneDocument.scene_id,
+      placementRenderModel.visual_id,
+      null,
+      {
+        kind: "render_element.add",
+        element,
+      },
+      "Object added. Save to write it to the project.",
+    );
+    setSelectedPlacementElement(element.element_id);
+  };
   const selectPlacementElement = (elementId: string) => {
     setSelectedPlacementElement(elementId);
     if (placementRenderModel !== null) {
@@ -1127,29 +1733,40 @@ export default function App() {
           <p className="muted project-section-empty">Select a scene to inspect objects.</p>
         ) : placementRenderModel === null ? (
           <p className="muted project-section-empty">No screen model for this state.</p>
-        ) : elements.length === 0 ? (
-          <p className="muted project-section-empty">No screen objects.</p>
         ) : (
-          <div className="placement-object-tree">
-            <div className="placement-object-root">
-              <strong>{placementState?.display_name ?? selectedSceneDocument.display_name}</strong>
-              <small>{placementRenderModel.visual_id}</small>
-            </div>
-            {elements.map((element: RenderElement) => (
-              <button
-                key={element.element_id}
-                className={selectedPlacementElement === element.element_id ? "selected" : ""}
-                type="button"
-                onClick={() => selectPlacementElement(element.element_id)}
-              >
-                <span>
-                  <strong>{element.element_id}</strong>
-                  <small>{element.kind} - {element.visual_ref}</small>
-                </span>
-                <code>z{element.z_order}</code>
-              </button>
-            ))}
-          </div>
+          <>
+            {elements.length === 0 ? (
+              <p className="muted project-section-empty">No screen objects.</p>
+            ) : (
+              <div className="placement-object-tree">
+                <div className="placement-object-root">
+                  <strong>{placementState?.display_name ?? selectedSceneDocument.display_name}</strong>
+                  <small>{placementRenderModel.visual_id}</small>
+                </div>
+                {elements.map((element: RenderElement) => (
+                  <button
+                    key={element.element_id}
+                    className={selectedPlacementElement === element.element_id ? "selected" : ""}
+                    type="button"
+                    onClick={() => selectPlacementElement(element.element_id)}
+                  >
+                    <span className="placement-object-kind">
+                      {placementKindIcon(element.kind)}
+                      <span>
+                        <strong>{placementKindLabel(element.kind)}</strong>
+                        <small>{placementSourceLabel(element)}</small>
+                      </span>
+                    </span>
+                    <span className="placement-object-badges">
+                      <code>{placementLayerLabel(element)}</code>
+                      {element.visible === false && <code>Hidden</code>}
+                      <code>z{element.z_order}</code>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </details>
     );
@@ -1159,6 +1776,16 @@ export default function App() {
     const selectedElement = selectedPlacementElement === null
       ? null
       : elements.find((element) => element.element_id === selectedPlacementElement) ?? null;
+    const selectedElementIsShape = selectedElement !== null && selectedElement.kind !== "sprite";
+    const selectedSpriteFrame = selectedElement?.visual_ref === undefined
+      ? undefined
+      : compiledAssetFrameById.get(selectedElement.visual_ref);
+    const selectedSpriteAssetId = selectedElement?.kind === "sprite"
+      ? selectedSpriteFrame?.asset_id ?? selectedElement.visual_ref?.split(".")[0] ?? null
+      : null;
+    const selectedSpriteFrames = selectedSpriteAssetId === null
+      ? []
+      : compiledAssetFrames.filter((frame) => frame.asset_id === selectedSpriteAssetId);
     const commitPositionInput = (axis: "x" | "y", value: string) => {
       if (selectedElement === null || placementRenderModel === null) {
         return;
@@ -1174,9 +1801,52 @@ export default function App() {
         axis === "y" ? parsed : selectedElement.y,
       );
     };
+    const commitBoundsInput = (axis: "width" | "height", value: string) => {
+      if (selectedSceneDocument === null || selectedElement === null || placementRenderModel === null) {
+        return;
+      }
+      const parsed = Math.round(Number(value));
+      if (!Number.isFinite(parsed)) {
+        return;
+      }
+      const nextWidth = axis === "width" ? parsed : selectedElement.width;
+      const nextHeight = axis === "height" ? parsed : selectedElement.height;
+      resizePlacementElement(selectedElement, placementRenderModel.visual_id, {
+        x: selectedElement.x,
+        y: selectedElement.y,
+        width: nextWidth,
+        height: nextHeight,
+      });
+    };
+    const setElementLayer = (layer: "BACKGROUND" | "SCENE" | "UI") => {
+      if (selectedSceneDocument === null || selectedElement === null || placementRenderModel === null) {
+        return;
+      }
+      void applyRenderElementCommand(
+        "Changing layer",
+        selectedSceneDocument.scene_id,
+        placementRenderModel.visual_id,
+        selectedElement.element_id,
+        { kind: "render_element.set_layer", layer },
+        "Layer updated. Save to write it to the project.",
+      );
+    };
+    const setElementVisibility = (visible: boolean) => {
+      if (selectedSceneDocument === null || selectedElement === null || placementRenderModel === null) {
+        return;
+      }
+      void applyRenderElementCommand(
+        "Changing visibility",
+        selectedSceneDocument.scene_id,
+        placementRenderModel.visual_id,
+        selectedElement.element_id,
+        { kind: "render_element.set_visibility", visible },
+        "Visibility updated. Save to write it to the project.",
+      );
+    };
     return (
       <section className="inspector-section placement-inspector">
-        <h3><SquareMousePointer size={14} aria-hidden="true" /> Object</h3>
+        <h3><Layers3 size={14} aria-hidden="true" /> Object</h3>
         {selectedSceneDocument === null ? (
           <p className="muted">Select a scene to inspect placement.</p>
         ) : placementRenderModel === null ? (
@@ -1186,13 +1856,15 @@ export default function App() {
         ) : (
           <>
             <dl className="inspector-list">
-              <div><dt>Name</dt><dd>{selectedElement.element_id}</dd></div>
-              <div><dt>Kind</dt><dd>{selectedElement.kind}</dd></div>
-              <div><dt>Visual</dt><dd>{selectedElement.visual_ref}</dd></div>
+              <div><dt>Object</dt><dd>{placementKindLabel(selectedElement.kind)}</dd></div>
+              <div><dt>Layer</dt><dd>{placementLayerLabel(selectedElement)}</dd></div>
+              <div><dt>Visible</dt><dd>{selectedElement.visible === false ? "No" : "Yes"}</dd></div>
+              <div><dt>Source</dt><dd>{placementSourceLabel(selectedElement)}</dd></div>
               <div><dt>Width</dt><dd>{selectedElement.width}</dd></div>
               <div><dt>Height</dt><dd>{selectedElement.height}</dd></div>
-              <div><dt>Layer</dt><dd>{selectedElement.z_order}</dd></div>
+              <div><dt>Draw order</dt><dd>{selectedElement.z_order}</dd></div>
               <div><dt>Focus</dt><dd>{selectedElement.focus_role ?? "none"}</dd></div>
+              <div><dt>Internal ID</dt><dd>{selectedElement.element_id}</dd></div>
             </dl>
             <div className="placement-position-editor">
               <label>
@@ -1227,7 +1899,127 @@ export default function App() {
                   }}
                 />
               </label>
+              {selectedElementIsShape && (
+                <>
+                  <label>
+                    Width
+                    <input
+                      key={`${selectedElement.element_id}-width-${selectedElement.width}`}
+                      type="number"
+                      min="1"
+                      max={168 - selectedElement.x}
+                      defaultValue={selectedElement.width}
+                      disabled={busy !== null}
+                      onBlur={(event) => commitBoundsInput("width", event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.currentTarget.blur();
+                        }
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Height
+                    <input
+                      key={`${selectedElement.element_id}-height-${selectedElement.height}`}
+                      type="number"
+                      min="1"
+                      max={144 - selectedElement.y}
+                      defaultValue={selectedElement.height}
+                      disabled={busy !== null}
+                      onBlur={(event) => commitBoundsInput("height", event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.currentTarget.blur();
+                        }
+                      }}
+                    />
+                  </label>
+                </>
+              )}
+              {selectedElement.kind === "sprite" && (
+                <div className="placement-frame-picker">
+                  <span>Sprite frame</span>
+                  {selectedSpriteFrames.length === 0 ? (
+                    <p className="muted">No frames found for this sprite.</p>
+                  ) : (
+                    <div>
+                      {selectedSpriteFrames.map((frame) => (
+                        <button
+                          key={frame.frame_id}
+                          className={selectedElement.visual_ref === frame.frame_id ? "selected" : ""}
+                          type="button"
+                          disabled={busy !== null}
+                          title={`${frame.frame_id} (${frame.width}x${frame.height})`}
+                          onClick={() => setPlacementSpriteFrame(selectedElement, placementRenderModel.visual_id, frame.frame_id)}
+                        >
+                          <span className="frame-preview-box">
+                            <FramePreviewCanvas frame={frame} />
+                          </span>
+                          <strong>{placementFrameLabel(frame)}</strong>
+                          <small>{frame.width}x{frame.height}</small>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <label>
+                Layer
+                <select
+                  value={placementLayerLabel(selectedElement)}
+                  disabled={busy !== null}
+                  onChange={(event) => setElementLayer(event.target.value as "BACKGROUND" | "SCENE" | "UI")}
+                >
+                  <option value="BACKGROUND">Background</option>
+                  <option value="SCENE">Scene</option>
+                  <option value="UI">UI</option>
+                </select>
+              </label>
+              <div className="placement-order-controls">
+                <span>Draw order</span>
+                <div>
+                  <button
+                    type="button"
+                    disabled={busy !== null || selectedElement.z_order <= 0}
+                    onClick={() => setPlacementElementZOrder(selectedElement, placementRenderModel.visual_id, selectedElement.z_order - 1)}
+                    title="Send backward"
+                  >
+                    <ArrowDown size={14} aria-hidden="true" />
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy !== null || selectedElement.z_order >= 255}
+                    onClick={() => setPlacementElementZOrder(selectedElement, placementRenderModel.visual_id, selectedElement.z_order + 1)}
+                    title="Bring forward"
+                  >
+                    <ArrowUp size={14} aria-hidden="true" />
+                    Forward
+                  </button>
+                </div>
+              </div>
+              <label className="placement-toggle-row">
+                <input
+                  type="checkbox"
+                  checked={selectedElement.visible !== false}
+                  disabled={busy !== null}
+                  onChange={(event) => setElementVisibility(event.target.checked)}
+                />
+                Visible
+              </label>
               <p className="muted">Arrow keys nudge 1 px. Shift + arrow nudges 8 px.</p>
+            </div>
+            <div className="placement-danger-zone">
+              <button
+                type="button"
+                disabled={busy !== null || selectedElement.focus_role === "focus"}
+                onClick={() => deletePlacementElement(selectedElement, placementRenderModel.visual_id)}
+              >
+                <Trash2 size={14} aria-hidden="true" />
+                Delete object
+              </button>
+              {selectedElement.focus_role === "focus" && <p className="muted">The focus sprite cannot be deleted.</p>}
             </div>
           </>
         )}
@@ -1284,7 +2076,7 @@ export default function App() {
       </header>
 
       <section
-        className={`workspace-grid ${workspaceMode === "placement" ? "placement-mode" : workspaceMode === "scene-flow" ? "scene-flow-mode" : "logic-mode"}`}
+        className={`workspace-grid ${workspaceMode === "placement" ? "placement-mode" : workspaceMode === "scene-flow" ? "scene-flow-mode" : workspaceMode === "assets" ? "assets-mode" : "logic-mode"}`}
         style={{ "--project-width": `${projectWidth}px`, "--inspector-width": `${inspectorWidth}px` } as CSSProperties}
       >
         <aside className="project-pane">
@@ -1315,6 +2107,7 @@ export default function App() {
           {renderPreviewPanel("project")}
           {workspaceMode === "placement" && renderPlacementViewSettings()}
           {workspaceMode === "placement" && renderPlacementObjectHierarchy()}
+          {workspaceMode === "assets" && renderAssetLibraryList()}
 
           {project === null ? (
             <div className="empty-pane">
@@ -1435,6 +2228,8 @@ export default function App() {
         </section>
         )}
 
+        {workspaceMode === "assets" && renderAssetsWorkspace()}
+
         <div
           className="inspector-resize-handle"
           role="separator"
@@ -1448,8 +2243,9 @@ export default function App() {
           <div className="pane-heading">Inspector</div>
 
           {workspaceMode === "placement" && renderPlacementInspector()}
+          {workspaceMode === "assets" && renderAssetInspector()}
 
-          {workspaceMode !== "placement" && (
+          {workspaceMode !== "placement" && workspaceMode !== "assets" && (
             <section className="inspector-section">
               <h3>Runtime</h3>
               {preview === null ? (
@@ -1466,7 +2262,7 @@ export default function App() {
             </section>
           )}
 
-          {workspaceMode !== "placement" && (
+          {workspaceMode !== "placement" && workspaceMode !== "assets" && (
             <SceneAuthoringInspector
               scene={selectedSceneDocument}
               scenes={scenes}
@@ -1481,7 +2277,7 @@ export default function App() {
             />
           )}
 
-          {workspaceMode !== "placement" && (
+          {workspaceMode !== "placement" && workspaceMode !== "assets" && (
             <section className="inspector-section">
               <h3>Variables</h3>
               {preview === null || Object.keys(preview.variables).length === 0 ? (
@@ -1496,7 +2292,7 @@ export default function App() {
             </section>
           )}
 
-          {workspaceMode !== "placement" && (
+          {workspaceMode !== "placement" && workspaceMode !== "assets" && (
             <section className="inspector-section">
               <h3>Validation</h3>
               {project === null ? (

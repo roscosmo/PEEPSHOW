@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import re
@@ -107,6 +108,8 @@ class ProjectBundle:
                     "pivot_x": frame.pivot_x,
                     "pivot_y": frame.pivot_y,
                     "opaque": frame.opaque,
+                    "pixels_base64": base64.b64encode(frame.pixels).decode("ascii"),
+                    "mask_base64": base64.b64encode(frame.mask).decode("ascii"),
                     "pixels_sha256": hashlib.sha256(frame.pixels).hexdigest(),
                     "mask_sha256": hashlib.sha256(frame.mask).hexdigest(),
                 }
