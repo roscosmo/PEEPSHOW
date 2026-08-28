@@ -1,5 +1,6 @@
 import {
   Background,
+  BaseEdge,
   Controls,
   Handle,
   MarkerType,
@@ -9,15 +10,29 @@ import {
   applyNodeChanges,
   type Connection,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeChange,
   type NodeProps,
   type ReactFlowInstance,
+  useUpdateNodeInternals,
 } from "@xyflow/react";
 import { GitBranch, Hourglass, Layers3, Network, Plus, Route, Variable } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { FramebufferCanvas } from "./FramebufferCanvas";
-import { buildSceneFlowGraphModel, buildStateGraphModel, type GraphSceneNode, type GraphStateNode } from "./stateGraph";
+import {
+  buildSceneFlowGraphModel,
+  buildStateGraphModel,
+  buildStateTransitionRoute,
+  planStateTransitionRoutes,
+  resolveStateEntryHandle,
+  resolveStateExitSide,
+  type GraphSceneNode,
+  type GraphStateNode,
+  type StateGraphEntrySide,
+  type StateGraphExitSide,
+  type StateTransitionLayout,
+} from "./stateGraph";
 import type {
   Framebuffer,
   InputAction,
@@ -213,24 +228,90 @@ function visibleEffectCount(actions: Array<{ kind: string }>): number {
 }
 
 type StateCardNodeData = {
-  graphNode: GraphStateNode;
+  graphNode: RoutedGraphStateNode;
   selectedRouteId: string | null;
   onSelectState: (stateId: string) => void;
   onSelectRoute: (routeId: string) => void;
 };
 
+type RoutedStateOutput = GraphStateNode["outputs"][number] & {
+  exitSide: StateGraphExitSide;
+};
+
+type RoutedGraphStateNode = Omit<GraphStateNode, "outputs"> & {
+  outputs: RoutedStateOutput[];
+};
+
+type StateNodePosition = {
+  x: number;
+  y: number;
+};
+
+const STATE_ENTRY_HANDLES = [
+  { id: "entry-top-left", position: Position.Top },
+  { id: "entry-top-mid-left", position: Position.Top },
+  { id: "entry-top-center", position: Position.Top },
+  { id: "entry-top-mid-right", position: Position.Top },
+  { id: "entry-top-right", position: Position.Top },
+  { id: "entry-bottom-left", position: Position.Bottom },
+  { id: "entry-bottom-mid-left", position: Position.Bottom },
+  { id: "entry-bottom-center", position: Position.Bottom },
+  { id: "entry-bottom-mid-right", position: Position.Bottom },
+  { id: "entry-bottom-right", position: Position.Bottom },
+] as const;
+
+function statePositionMap(graphNodes: GraphStateNode[], flowNodes: Node[]): Map<string, StateNodePosition> {
+  const positions = new Map(graphNodes.map((node) => [node.id, { x: node.x, y: node.y }]));
+  flowNodes.forEach((node) => {
+    positions.set(node.id, { x: node.position.x, y: node.position.y });
+  });
+  return positions;
+}
+
+function routeStateNode(
+  graphNode: GraphStateNode,
+  positions: Map<string, StateNodePosition>,
+  transitionLayouts: Record<string, StateTransitionLayout>,
+): RoutedGraphStateNode {
+  const sourcePosition = positions.get(graphNode.id) ?? { x: graphNode.x, y: graphNode.y };
+  return {
+    ...graphNode,
+    outputs: graphNode.outputs.map((output) => ({
+      ...output,
+      exitSide: transitionLayouts[output.id]?.sourceSide ?? resolveStateExitSide(
+        sourcePosition,
+        output.targetState === undefined ? undefined : positions.get(output.targetState),
+      ),
+    })),
+  };
+}
+
 function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
   const { graphNode, selectedRouteId, onSelectRoute, onSelectState } = data;
+  const updateNodeInternals = useUpdateNodeInternals();
   const localOutputs = graphNode.outputs.filter((output) => output.targetScene === undefined).length;
   const sceneOutputs = graphNode.outputs.length - localOutputs;
   const objectChangeLabel = `${graphNode.placementOverrideCount} object change${graphNode.placementOverrideCount === 1 ? "" : "s"}`;
+  const outputSideKey = graphNode.outputs.map((output) => `${output.id}:${output.exitSide}`).join("|");
+  useEffect(() => {
+    updateNodeInternals(graphNode.id);
+  }, [graphNode.id, outputSideKey, updateNodeInternals]);
+
   return (
     <button
       className={`state-card-node ${graphNode.isEntry ? "entry" : ""} ${selected ? "selected" : ""}`}
       type="button"
       onClick={() => onSelectState(graphNode.id)}
     >
-      <Handle type="target" position={Position.Left} />
+      {STATE_ENTRY_HANDLES.map((handle) => (
+        <Handle
+          key={handle.id}
+          id={handle.id}
+          className={`state-entry-zone ${handle.id}`}
+          type="target"
+          position={handle.position}
+        />
+      ))}
       <div className="state-card-heading">
         <strong>{graphNode.label}</strong>
         <div className="state-badge-strip" aria-label="State badges">
@@ -252,7 +333,7 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
         ) : (
           graphNode.outputs.map((output) => (
             <span
-              className={`state-output-row ${selectedRouteId === output.routeId ? "selected" : ""}`}
+              className={`state-output-row exit-${output.exitSide} ${selectedRouteId === output.routeId ? "selected" : ""}`}
               key={output.id}
               role="button"
               tabIndex={0}
@@ -274,7 +355,7 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
                 {output.guardCount > 0 ? ` - ${output.guardCount} condition${output.guardCount === 1 ? "" : "s"}` : ""}
                 {output.actionCount > 0 ? ` - ${output.actionCount} effect${output.actionCount === 1 ? "" : "s"}` : ""}
               </small>
-              <Handle id={output.id} type="source" position={Position.Right} />
+              <Handle id={output.id} type="source" position={output.exitSide === "left" ? Position.Left : Position.Right} />
             </span>
           ))
         )}
@@ -284,6 +365,58 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
 }
 
 const STATE_NODE_TYPES = { stateCard: StateCardNode };
+
+function edgeSourceSide(position: Position): StateGraphExitSide {
+  return position === Position.Left ? "left" : "right";
+}
+
+function edgeTargetSide(position: Position): StateGraphEntrySide {
+  return position === Position.Bottom ? "bottom" : "top";
+}
+
+function StateTransitionEdge({
+  data,
+  id,
+  markerEnd,
+  selected,
+  sourcePosition,
+  sourceX,
+  sourceY,
+  style,
+  targetPosition,
+  targetX,
+  targetY,
+}: EdgeProps) {
+  const laneX = typeof data?.laneX === "number" ? data.laneX : undefined;
+  const route = buildStateTransitionRoute({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourceSide: edgeSourceSide(sourcePosition),
+    targetSide: edgeTargetSide(targetPosition),
+    laneX,
+  });
+  const gradientId = `state-transition-gradient-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+  const edgeStyle = {
+    ...style,
+    stroke: `url(#${gradientId})`,
+  };
+
+  return (
+    <>
+      <defs>
+        <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}>
+          <stop offset="0%" stopColor={selected ? "#7f8e87" : "#9da9a3"} />
+          <stop offset="100%" stopColor={selected ? "#175f8a" : "#4f5f58"} />
+        </linearGradient>
+      </defs>
+      <BaseEdge id={id} markerEnd={markerEnd} path={route.path} style={edgeStyle} />
+    </>
+  );
+}
+
+const STATE_EDGE_TYPES = { stateTransition: StateTransitionEdge };
 
 type SceneCardNodeData = {
   graphNode: GraphSceneNode;
@@ -428,17 +561,18 @@ export function StateGraphView({
   canEdit: boolean;
 }) {
   const graph = useMemo(() => buildStateGraphModel(scene, editor), [editor, scene]);
-  const flowRef = useRef<ReactFlowInstance | null>(null);
+  const flowRef = useRef<ReactFlowInstance<Node<StateCardNodeData>, Edge> | null>(null);
   const didInitialFit = useRef(false);
   const previousSceneId = useRef<string | null>(scene?.scene_id ?? null);
-  const baseNodes: Node[] = useMemo(
+  const defaultPositionById = useMemo(() => statePositionMap(graph.nodes, []), [graph.nodes]);
+  const baseNodes: Node<StateCardNodeData>[] = useMemo(
     () =>
       graph.nodes.map((node) => ({
         id: node.id,
         type: "stateCard",
         position: { x: node.x, y: node.y },
         data: {
-          graphNode: node,
+          graphNode: routeStateNode(node, defaultPositionById, {}),
           selectedRouteId: selected.kind === "route" ? selected.id : null,
           onSelectState: (stateId: string) => onSelect({ kind: "state", id: stateId }),
           onSelectRoute: (routeId: string) => onSelect({ kind: "route", id: routeId }),
@@ -447,9 +581,54 @@ export function StateGraphView({
         draggable: canEdit,
         connectable: false,
       })),
-    [canEdit, graph.nodes, onSelect, selected],
+    [canEdit, defaultPositionById, graph.nodes, onSelect, selected],
   );
-  const [nodes, setNodes] = useState<Node[]>(baseNodes);
+  const [nodes, setNodes] = useState<Node<StateCardNodeData>[]>(baseNodes);
+  const graphNodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
+  const positionById = useMemo(() => statePositionMap(graph.nodes, nodes), [graph.nodes, nodes]);
+  const layoutNodes = useMemo(
+    () => [...positionById.entries()].map(([id, position]) => ({ id, x: position.x, y: position.y })),
+    [positionById],
+  );
+  const transitionLayouts = useMemo(
+    () =>
+      planStateTransitionRoutes(
+        graph.edges.map((edge) => {
+          const sourceNode = graphNodeById.get(edge.source);
+          const sourceOutputIndex = sourceNode?.outputs.findIndex((output) => output.id === edge.sourceHandle) ?? 0;
+          return {
+            id: edge.sourceHandle,
+            source: edge.source,
+            target: edge.target,
+            sourceOutputIndex: Math.max(0, sourceOutputIndex),
+          };
+        }),
+        layoutNodes,
+      ),
+    [graph.edges, graphNodeById, layoutNodes],
+  );
+  const flowNodes: Node<StateCardNodeData>[] = useMemo(
+    () =>
+      nodes.map((node) => {
+        const graphNode = graphNodeById.get(node.id);
+        if (graphNode === undefined) {
+          return node;
+        }
+        return {
+          ...node,
+          data: {
+            graphNode: routeStateNode(graphNode, positionById, transitionLayouts),
+            selectedRouteId: selected.kind === "route" ? selected.id : null,
+            onSelectState: (stateId: string) => onSelect({ kind: "state", id: stateId }),
+            onSelectRoute: (routeId: string) => onSelect({ kind: "route", id: routeId }),
+          },
+          selected: selected.kind === "state" && selected.id === node.id,
+          draggable: canEdit,
+          connectable: false,
+        };
+      }),
+    [canEdit, graphNodeById, nodes, onSelect, positionById, selected, transitionLayouts],
+  );
   useEffect(() => {
     const sceneId = scene?.scene_id ?? null;
     setNodes((current) => {
@@ -479,7 +658,7 @@ export function StateGraphView({
     });
   }, [baseNodes, scene?.scene_id]);
   const onNodesChange = (changes: NodeChange[]) => {
-    setNodes((current) => applyNodeChanges(changes, current));
+    setNodes((current) => applyNodeChanges(changes, current) as Node<StateCardNodeData>[]);
   };
   const onNodeDragStop = (node: Node) => {
     if (scene === null) {
@@ -524,19 +703,24 @@ export function StateGraphView({
   }, [graph.nodes, selected]);
   const edges: Edge[] = useMemo(
     () =>
-      graph.edges.map((edge) => ({
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: edge.sourceHandle,
-        markerEnd: { type: MarkerType.ArrowClosed },
-        selected: selected.kind === "route" && selected.id === edge.route.route_id,
-        className: selected.kind === "route" && selected.id === edge.route.route_id ? "state-transition-edge selected" : "state-transition-edge",
-        data: { route_id: edge.route.route_id },
-        label: edge.label,
-        style: { strokeWidth: selected.kind === "route" && selected.id === edge.route.route_id ? 3.4 : 1.8 },
-      })),
-    [graph.edges, selected],
+      graph.edges.map((edge) => {
+        const transitionLayout = transitionLayouts[edge.sourceHandle];
+        return {
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          sourceHandle: edge.sourceHandle,
+          targetHandle: transitionLayout?.targetHandle ?? resolveStateEntryHandle(positionById.get(edge.source) ?? { x: 0, y: 0 }, positionById.get(edge.target)),
+          markerEnd: { type: MarkerType.ArrowClosed },
+          selected: selected.kind === "route" && selected.id === edge.route.route_id,
+          className: selected.kind === "route" && selected.id === edge.route.route_id ? "state-transition-edge selected" : "state-transition-edge",
+          data: { route_id: edge.route.route_id, laneX: transitionLayout?.laneX },
+          label: edge.label,
+          type: "stateTransition",
+          style: { strokeWidth: selected.kind === "route" && selected.id === edge.route.route_id ? 3.4 : 1.8 },
+        };
+      }),
+    [graph.edges, positionById, selected, transitionLayouts],
   );
 
   if (scene === null) {
@@ -559,8 +743,9 @@ export function StateGraphView({
 
   return (
     <ReactFlow
-      nodes={nodes}
+      nodes={flowNodes}
       edges={edges}
+      edgeTypes={STATE_EDGE_TYPES}
       nodeTypes={STATE_NODE_TYPES}
       fitViewOptions={{ padding: 0.22, maxZoom: 1 }}
       onInit={(instance) => {

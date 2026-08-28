@@ -2228,6 +2228,7 @@ button:focus-visible {
 }
 
 .state-card-node {
+  position: relative;
   display: grid;
   width: 280px;
   gap: 9px;
@@ -2606,6 +2607,56 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+.state-card-node .state-entry-zone {
+  width: 1px;
+  height: 1px;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.state-card-node .entry-top-left,
+.state-card-node .entry-bottom-left {
+  left: 10%;
+}
+
+.state-card-node .entry-top-mid-left,
+.state-card-node .entry-bottom-mid-left {
+  left: 30%;
+}
+
+.state-card-node .entry-top-center,
+.state-card-node .entry-bottom-center {
+  left: 50%;
+}
+
+.state-card-node .entry-top-mid-right,
+.state-card-node .entry-bottom-mid-right {
+  left: 70%;
+}
+
+.state-card-node .entry-top-right,
+.state-card-node .entry-bottom-right {
+  left: 90%;
+}
+
+.state-card-node .entry-top-left,
+.state-card-node .entry-top-mid-left,
+.state-card-node .entry-top-center,
+.state-card-node .entry-top-mid-right,
+.state-card-node .entry-top-right {
+  top: 0;
+}
+
+.state-card-node .entry-bottom-left,
+.state-card-node .entry-bottom-mid-left,
+.state-card-node .entry-bottom-center,
+.state-card-node .entry-bottom-mid-right,
+.state-card-node .entry-bottom-right {
+  bottom: 0;
+}
+
 .state-card-screen {
   display: grid;
   min-height: 50px;
@@ -2701,8 +2752,18 @@ button:focus-visible {
   font-weight: 750;
 }
 
-.state-output-row .react-flow__handle {
+.state-output-row.exit-right .react-flow__handle {
   right: -14px;
+  left: auto;
+  width: 8px;
+  height: 8px;
+  border-color: #6d7a73;
+  background: #ffffff;
+}
+
+.state-output-row.exit-left .react-flow__handle {
+  right: auto;
+  left: -14px;
   width: 8px;
   height: 8px;
   border-color: #6d7a73;
@@ -2721,6 +2782,8 @@ button:focus-visible {
 
 .state-transition-edge .react-flow__edge-path {
   stroke: #5b6761;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .react-flow__edge.selected .react-flow__edge-path {

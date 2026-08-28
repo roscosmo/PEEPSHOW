@@ -1,4 +1,47 @@
-import type { InputAction, ProjectEditorData, SceneDocument, StateRecord, StateRoute } from "./types";
+import type { EditorNodePosition, InputAction, ProjectEditorData, SceneDocument, StateRecord, StateRoute } from "./types";
+
+export type StateGraphExitSide = "left" | "right";
+export type StateGraphEntrySide = "top" | "bottom";
+export type StateGraphEntryHandle =
+  | "entry-top-left"
+  | "entry-top-mid-left"
+  | "entry-top-center"
+  | "entry-top-mid-right"
+  | "entry-top-right"
+  | "entry-bottom-left"
+  | "entry-bottom-mid-left"
+  | "entry-bottom-center"
+  | "entry-bottom-mid-right"
+  | "entry-bottom-right";
+
+export type StateTransitionRoutePoint = {
+  x: number;
+  y: number;
+};
+
+export type StateTransitionRoute = {
+  path: string;
+  points: StateTransitionRoutePoint[];
+};
+
+export type StateGraphLayoutNode = {
+  id: string;
+  x: number;
+  y: number;
+};
+
+export type StateTransitionLayoutRequest = {
+  id: string;
+  source: string;
+  target: string;
+  sourceOutputIndex: number;
+};
+
+export type StateTransitionLayout = {
+  sourceSide: StateGraphExitSide;
+  targetHandle: StateGraphEntryHandle;
+  laneX: number;
+};
 
 export type GraphStateOutput = {
   id: string;
@@ -103,6 +146,400 @@ function routeLabel(route: StateRoute, inputActions: InputAction[]): string {
   return [inputLabel(inputActions, route.action_ref), ...badges].join(" - ");
 }
 
+function statePosition(
+  state: StateRecord,
+  index: number,
+  columns: number,
+  savedPositions: Record<string, EditorNodePosition> | undefined,
+) {
+  return {
+    x: savedPositions?.[state.state_id]?.x ?? (index % columns) * 340,
+    y: savedPositions?.[state.state_id]?.y ?? Math.floor(index / columns) * 270,
+  };
+}
+
+const STATE_CARD_ROUTING_WIDTH = 280;
+const STATE_CARD_ROUTING_HEIGHT = 210;
+const STATE_CARD_ROUTE_CLEARANCE = 72;
+const STATE_CARD_ROUTE_LANE_STEP = 36;
+const STATE_OUTPUT_FIRST_Y = 158;
+const STATE_OUTPUT_STEP_Y = 49;
+
+function centerX(position: EditorNodePosition): number {
+  return position.x + STATE_CARD_ROUTING_WIDTH / 2;
+}
+
+function centerY(position: EditorNodePosition): number {
+  return position.y + STATE_CARD_ROUTING_HEIGHT / 2;
+}
+
+export function resolveStateExitSide(
+  sourcePosition: EditorNodePosition,
+  targetPosition: EditorNodePosition | undefined,
+): StateGraphExitSide {
+  if (targetPosition === undefined) {
+    return "right";
+  }
+  return centerX(targetPosition) < centerX(sourcePosition) ? "left" : "right";
+}
+
+export function resolveStateEntryHandle(
+  sourcePosition: EditorNodePosition,
+  targetPosition: EditorNodePosition | undefined,
+): StateGraphEntryHandle {
+  if (targetPosition === undefined) {
+    return "entry-top-center";
+  }
+  return resolveStateEntryHandleFromPoint(
+    { x: centerX(sourcePosition), y: centerY(sourcePosition) },
+    targetPosition,
+  );
+}
+
+function resolveStateEntryHandleFromPoint(
+  sourcePoint: StateTransitionRoutePoint,
+  targetPosition: EditorNodePosition,
+): StateGraphEntryHandle {
+  const verticalSide = sourcePoint.y > centerY(targetPosition) ? "bottom" : "top";
+  const sourceRelativeX = sourcePoint.x - targetPosition.x;
+  let horizontalSlot = "center";
+  if (sourceRelativeX < STATE_CARD_ROUTING_WIDTH * 0.2) {
+    horizontalSlot = "left";
+  } else if (sourceRelativeX < STATE_CARD_ROUTING_WIDTH * 0.4) {
+    horizontalSlot = "mid-left";
+  } else if (sourceRelativeX > STATE_CARD_ROUTING_WIDTH * 0.8) {
+    horizontalSlot = "right";
+  } else if (sourceRelativeX > STATE_CARD_ROUTING_WIDTH * 0.6) {
+    horizontalSlot = "mid-right";
+  }
+  return `entry-${verticalSide}-${horizontalSlot}` as StateGraphEntryHandle;
+}
+
+function stateEntryHandleSide(handle: StateGraphEntryHandle): StateGraphEntrySide {
+  return handle.startsWith("entry-bottom") ? "bottom" : "top";
+}
+
+function stateEntryHandlePoint(position: EditorNodePosition, handle: StateGraphEntryHandle): StateTransitionRoutePoint {
+  let ratio = 0.5;
+  if (handle.endsWith("-left")) {
+    ratio = 0.1;
+  } else if (handle.endsWith("-mid-left")) {
+    ratio = 0.3;
+  } else if (handle.endsWith("-mid-right")) {
+    ratio = 0.7;
+  } else if (handle.endsWith("-right")) {
+    ratio = 0.9;
+  }
+  return {
+    x: position.x + STATE_CARD_ROUTING_WIDTH * ratio,
+    y: stateEntryHandleSide(handle) === "bottom" ? position.y + STATE_CARD_ROUTING_HEIGHT : position.y,
+  };
+}
+
+function stateOutputPoint(
+  position: EditorNodePosition,
+  sourceSide: StateGraphExitSide,
+  outputIndex: number,
+): StateTransitionRoutePoint {
+  return {
+    x: sourceSide === "left" ? position.x : position.x + STATE_CARD_ROUTING_WIDTH,
+    y: position.y + STATE_OUTPUT_FIRST_Y + outputIndex * STATE_OUTPUT_STEP_Y,
+  };
+}
+
+function defaultStateLaneX(
+  sourceX: number,
+  targetX: number,
+  sourceSide: StateGraphExitSide,
+): number {
+  const sameColumn = Math.abs(sourceX - targetX) < 180;
+  const naturallySeparated = sourceSide === "right"
+    ? sourceX < targetX - 48
+    : sourceX > targetX + 48;
+  if (!sameColumn && naturallySeparated) {
+    return sourceX + (targetX - sourceX) / 2;
+  }
+  return sourceSide === "left"
+    ? Math.min(sourceX, targetX) - STATE_CARD_ROUTE_CLEARANCE
+    : Math.max(sourceX, targetX) + STATE_CARD_ROUTE_CLEARANCE;
+}
+
+function candidateLaneXs(
+  sourceX: number,
+  targetX: number,
+  sourceSide: StateGraphExitSide,
+): number[] {
+  const outsideLane = sourceSide === "left"
+    ? Math.min(sourceX, targetX) - STATE_CARD_ROUTE_CLEARANCE
+    : Math.max(sourceX, targetX) + STATE_CARD_ROUTE_CLEARANCE;
+  const lanes = new Set<number>([defaultStateLaneX(sourceX, targetX, sourceSide)]);
+  for (let index = 0; index < 6; index += 1) {
+    lanes.add(outsideLane + (sourceSide === "left" ? -1 : 1) * index * STATE_CARD_ROUTE_LANE_STEP);
+  }
+  return [...lanes];
+}
+
+function roundedPolylinePath(points: StateTransitionRoutePoint[], radius: number): string {
+  if (points.length === 0) {
+    return "";
+  }
+  if (points.length === 1) {
+    return `M ${points[0].x} ${points[0].y}`;
+  }
+  const commands = [`M ${points[0].x} ${points[0].y}`];
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const next = points[index + 1];
+    const previousDistance = Math.hypot(current.x - previous.x, current.y - previous.y);
+    const nextDistance = Math.hypot(next.x - current.x, next.y - current.y);
+    const cornerRadius = Math.min(radius, previousDistance / 2, nextDistance / 2);
+
+    if (cornerRadius <= 0) {
+      commands.push(`L ${current.x} ${current.y}`);
+      continue;
+    }
+
+    const before = {
+      x: current.x - ((current.x - previous.x) / previousDistance) * cornerRadius,
+      y: current.y - ((current.y - previous.y) / previousDistance) * cornerRadius,
+    };
+    const after = {
+      x: current.x + ((next.x - current.x) / nextDistance) * cornerRadius,
+      y: current.y + ((next.y - current.y) / nextDistance) * cornerRadius,
+    };
+    commands.push(`L ${before.x} ${before.y}`);
+    commands.push(`Q ${current.x} ${current.y} ${after.x} ${after.y}`);
+  }
+  const last = points[points.length - 1];
+  commands.push(`L ${last.x} ${last.y}`);
+  return commands.join(" ");
+}
+
+function compactRoutePoints(points: StateTransitionRoutePoint[]): StateTransitionRoutePoint[] {
+  return points.filter((point, index) => {
+    const previous = points[index - 1];
+    const next = points[index + 1];
+    if (previous !== undefined && point.x === previous.x && point.y === previous.y) {
+      return false;
+    }
+    if (previous === undefined || next === undefined) {
+      return true;
+    }
+    return !(previous.x === point.x && point.x === next.x) && !(previous.y === point.y && point.y === next.y);
+  });
+}
+
+export function buildStateTransitionRoute({
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourceSide,
+  targetSide,
+  laneX,
+}: {
+  sourceX: number;
+  sourceY: number;
+  targetX: number;
+  targetY: number;
+  sourceSide: StateGraphExitSide;
+  targetSide: StateGraphEntrySide;
+  laneX?: number;
+}): StateTransitionRoute {
+  const sourceOutset = sourceSide === "left" ? -28 : 28;
+  const entryOutset = targetSide === "top" ? -36 : 36;
+  const resolvedLaneX = laneX ?? defaultStateLaneX(sourceX, targetX, sourceSide);
+  const entryY = targetY + entryOutset;
+  const points = compactRoutePoints([
+    { x: sourceX, y: sourceY },
+    { x: sourceX + sourceOutset, y: sourceY },
+    { x: resolvedLaneX, y: sourceY },
+    { x: resolvedLaneX, y: entryY },
+    { x: targetX, y: entryY },
+    { x: targetX, y: targetY },
+  ]);
+  return {
+    path: roundedPolylinePath(points, 14),
+    points,
+  };
+}
+
+type StateTransitionSegment = {
+  orientation: "horizontal" | "vertical";
+  min: number;
+  max: number;
+  fixed: number;
+};
+
+type StateTransitionCandidate = {
+  layout: StateTransitionLayout;
+  segments: StateTransitionSegment[];
+  score: number;
+};
+
+function routeSegments(points: StateTransitionRoutePoint[]): StateTransitionSegment[] {
+  const segments: StateTransitionSegment[] = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    if (previous.x === current.x) {
+      segments.push({
+        orientation: "vertical",
+        min: Math.min(previous.y, current.y),
+        max: Math.max(previous.y, current.y),
+        fixed: previous.x,
+      });
+    } else if (previous.y === current.y) {
+      segments.push({
+        orientation: "horizontal",
+        min: Math.min(previous.x, current.x),
+        max: Math.max(previous.x, current.x),
+        fixed: previous.y,
+      });
+    }
+  }
+  return segments;
+}
+
+function intervalOverlap(leftMin: number, leftMax: number, rightMin: number, rightMax: number): number {
+  return Math.max(0, Math.min(leftMax, rightMax) - Math.max(leftMin, rightMin));
+}
+
+function overlappingSegmentScore(candidate: StateTransitionSegment[], placed: StateTransitionSegment[]): number {
+  let score = 0;
+  candidate.forEach((candidateSegment) => {
+    placed.forEach((placedSegment) => {
+      if (candidateSegment.orientation === placedSegment.orientation) {
+        const fixedDistance = Math.abs(candidateSegment.fixed - placedSegment.fixed);
+        if (fixedDistance <= 18) {
+          const overlap = intervalOverlap(candidateSegment.min, candidateSegment.max, placedSegment.min, placedSegment.max);
+          score += overlap * (22 - fixedDistance);
+        }
+        return;
+      }
+
+      const horizontal = candidateSegment.orientation === "horizontal" ? candidateSegment : placedSegment;
+      const vertical = candidateSegment.orientation === "vertical" ? candidateSegment : placedSegment;
+      const crosses = vertical.fixed >= horizontal.min
+        && vertical.fixed <= horizontal.max
+        && horizontal.fixed >= vertical.min
+        && horizontal.fixed <= vertical.max;
+      if (crosses) {
+        score += 18;
+      }
+    });
+  });
+  return score;
+}
+
+function nodeCrossingScore(
+  candidate: StateTransitionSegment[],
+  nodes: StateGraphLayoutNode[],
+  source: string,
+  target: string,
+): number {
+  let score = 0;
+  nodes
+    .filter((node) => node.id !== source && node.id !== target)
+    .forEach((node) => {
+      const left = node.x - 10;
+      const right = node.x + STATE_CARD_ROUTING_WIDTH + 10;
+      const top = node.y - 10;
+      const bottom = node.y + STATE_CARD_ROUTING_HEIGHT + 10;
+      candidate.forEach((segment) => {
+        if (segment.orientation === "horizontal") {
+          const crosses = segment.fixed >= top
+            && segment.fixed <= bottom
+            && intervalOverlap(segment.min, segment.max, left, right) > 0;
+          if (crosses) {
+            score += 5000;
+          }
+          return;
+        }
+        const crosses = segment.fixed >= left
+          && segment.fixed <= right
+          && intervalOverlap(segment.min, segment.max, top, bottom) > 0;
+        if (crosses) {
+          score += 5000;
+        }
+      });
+    });
+  return score;
+}
+
+export function planStateTransitionRoutes(
+  requests: StateTransitionLayoutRequest[],
+  nodes: StateGraphLayoutNode[],
+): Record<string, StateTransitionLayout> {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const placedSegments: StateTransitionSegment[] = [];
+  const planned: Record<string, StateTransitionLayout> = {};
+  const sortedRequests = [...requests].sort((left, right) => {
+    const leftSource = nodeById.get(left.source);
+    const leftTarget = nodeById.get(left.target);
+    const rightSource = nodeById.get(right.source);
+    const rightTarget = nodeById.get(right.target);
+    const leftDistance = leftSource === undefined || leftTarget === undefined
+      ? 0
+      : Math.abs(centerX(leftSource) - centerX(leftTarget)) + Math.abs(centerY(leftSource) - centerY(leftTarget));
+    const rightDistance = rightSource === undefined || rightTarget === undefined
+      ? 0
+      : Math.abs(centerX(rightSource) - centerX(rightTarget)) + Math.abs(centerY(rightSource) - centerY(rightTarget));
+    return rightDistance - leftDistance || left.id.localeCompare(right.id);
+  });
+
+  sortedRequests.forEach((request) => {
+    const sourcePosition = nodeById.get(request.source);
+    const targetPosition = nodeById.get(request.target);
+    if (sourcePosition === undefined || targetPosition === undefined) {
+      return;
+    }
+    const preferredSide = resolveStateExitSide(sourcePosition, targetPosition);
+    const candidateSides: StateGraphExitSide[] = preferredSide === "right" ? ["right", "left"] : ["left", "right"];
+    let best: StateTransitionCandidate | undefined;
+
+    candidateSides.forEach((sourceSide) => {
+      const sourcePoint = stateOutputPoint(sourcePosition, sourceSide, request.sourceOutputIndex);
+      const targetHandle = resolveStateEntryHandleFromPoint(sourcePoint, targetPosition);
+      const targetPoint = stateEntryHandlePoint(targetPosition, targetHandle);
+      const baseLaneX = defaultStateLaneX(sourcePoint.x, targetPoint.x, sourceSide);
+      candidateLaneXs(sourcePoint.x, targetPoint.x, sourceSide).forEach((laneX) => {
+        const route = buildStateTransitionRoute({
+          sourceX: sourcePoint.x,
+          sourceY: sourcePoint.y,
+          targetX: targetPoint.x,
+          targetY: targetPoint.y,
+          sourceSide,
+          targetSide: stateEntryHandleSide(targetHandle),
+          laneX,
+        });
+        const segments = routeSegments(route.points);
+        const sidePenalty = sourceSide === preferredSide ? 0 : 24;
+        const distancePenalty = Math.abs(laneX - baseLaneX) * 0.08;
+        const score = sidePenalty
+          + distancePenalty
+          + overlappingSegmentScore(segments, placedSegments)
+          + nodeCrossingScore(segments, nodes, request.source, request.target);
+        if (best === undefined || score < best.score) {
+          best = {
+            layout: { sourceSide, targetHandle, laneX },
+            segments,
+            score,
+          };
+        }
+      });
+    });
+
+    if (best !== undefined) {
+      planned[request.id] = best.layout;
+      placedSegments.push(...best.segments);
+    }
+  });
+
+  return planned;
+}
+
 export function buildStateGraphModel(scene: SceneDocument | null, editor?: ProjectEditorData): StateGraphModel {
   const states = scene?.states ?? [];
   const routes = scene?.routes ?? [];
@@ -134,16 +571,19 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
       });
   });
 
-  const nodes = states.map((state: StateRecord, index: number) => ({
-    id: state.state_id,
-    label: state.display_name,
-    isEntry: state.state_id === entryState,
-    placementOverrideCount: state.placement_overrides?.length ?? 0,
-    waitingVisualRef: state.waiting_visual_ref,
-    outputs: outputsByState.get(state.state_id) ?? [],
-    x: savedPositions?.[state.state_id]?.x ?? (index % columns) * 340,
-    y: savedPositions?.[state.state_id]?.y ?? Math.floor(index / columns) * 270,
-  }));
+  const nodes = states.map((state: StateRecord, index: number) => {
+    const position = statePosition(state, index, columns, savedPositions);
+    return {
+      id: state.state_id,
+      label: state.display_name,
+      isEntry: state.state_id === entryState,
+      placementOverrideCount: state.placement_overrides?.length ?? 0,
+      waitingVisualRef: state.waiting_visual_ref,
+      outputs: outputsByState.get(state.state_id) ?? [],
+      x: position.x,
+      y: position.y,
+    };
+  });
 
   const edges = routes.flatMap((route: StateRoute) => {
     const targetState = route.target_state;
