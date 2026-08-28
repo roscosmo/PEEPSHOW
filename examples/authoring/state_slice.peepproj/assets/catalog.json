@@ -3,46 +3,169 @@
   "schema_version": 1,
   "assets": [
     {
-      "asset_id": "cursor",
+      "asset_id": "selector",
+      "display_name": "Selector cursor",
       "asset_type": "masked_1bpp",
       "source_path": "assets/cursor.png",
       "source_format": "png",
       "frames": [
         {
-          "frame_id": "cursor.phase_a",
-          "source_rect": { "x": 0, "y": 0, "width": 8, "height": 16 },
+          "frame_id": "selector.dim",
+          "display_name": "Dim selector",
+          "source_rect": {
+            "x": 0,
+            "y": 0,
+            "width": 8,
+            "height": 16
+          },
           "pivot_x": 0,
           "pivot_y": 0
         },
         {
-          "frame_id": "cursor.phase_b",
-          "source_rect": { "x": 8, "y": 0, "width": 8, "height": 16 },
+          "frame_id": "selector.bright",
+          "display_name": "Bright selector",
+          "source_rect": {
+            "x": 8,
+            "y": 0,
+            "width": 8,
+            "height": 16
+          },
           "pivot_x": 0,
           "pivot_y": 0
         }
       ]
     },
     {
-      "asset_id": "marker",
+      "asset_id": "menu_title",
+      "display_name": "Menu title",
       "asset_type": "masked_1bpp",
-      "source_path": "assets/marker.png",
-      "source_format": "png",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "PEEP MENU",
+      "scale": 1,
       "frames": [
         {
-          "frame_id": "marker.phase_a",
-          "source_rect": { "x": 0, "y": 0, "width": 8, "height": 24 },
+          "frame_id": "menu_title.frame",
+          "display_name": "PEEP MENU",
           "pivot_x": 0,
           "pivot_y": 0
-        },
+        }
+      ]
+    },
+    {
+      "asset_id": "label_start",
+      "display_name": "Start label",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "START",
+      "scale": 1,
+      "frames": [
         {
-          "frame_id": "marker.phase_b",
-          "source_rect": { "x": 8, "y": 0, "width": 8, "height": 24 },
+          "frame_id": "label_start.frame",
+          "display_name": "START",
           "pivot_x": 0,
           "pivot_y": 0
-        },
+        }
+      ]
+    },
+    {
+      "asset_id": "label_settings",
+      "display_name": "Settings label",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "SETTINGS",
+      "scale": 1,
+      "frames": [
         {
-          "frame_id": "marker.phase_c",
-          "source_rect": { "x": 16, "y": 0, "width": 8, "height": 24 },
+          "frame_id": "label_settings.frame",
+          "display_name": "SETTINGS",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "label_credits",
+      "display_name": "Credits label",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "CREDITS",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "label_credits.frame",
+          "display_name": "CREDITS",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "title_start",
+      "display_name": "Start scene title",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "START GAME",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "title_start.frame",
+          "display_name": "START GAME",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "title_settings",
+      "display_name": "Settings scene title",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "SETTINGS",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "title_settings.frame",
+          "display_name": "SETTINGS",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "title_credits",
+      "display_name": "Credits scene title",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "CREDITS",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "title_credits.frame",
+          "display_name": "CREDITS",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "hint_back",
+      "display_name": "Back hint",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "B: BACK",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "hint_back.frame",
+          "display_name": "B: BACK",
           "pivot_x": 0,
           "pivot_y": 0
         }
@@ -51,15 +174,15 @@
   ],
   "animations": [
     {
-      "animation_id": "cursor.blink",
-      "frame_refs": ["cursor.phase_a", "cursor.phase_b"],
-      "frame_duration_ms": [250, 250],
-      "loop_policy": "loop"
-    },
-    {
-      "animation_id": "marker.cycle",
-      "frame_refs": ["marker.phase_a", "marker.phase_b", "marker.phase_c"],
-      "frame_duration_ms": [250, 250, 250],
+      "animation_id": "selector.blink",
+      "frame_refs": [
+        "selector.dim",
+        "selector.bright"
+      ],
+      "frame_duration_ms": [
+        250,
+        250
+      ],
       "loop_policy": "loop"
     }
   ]

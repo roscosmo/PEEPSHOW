@@ -29,7 +29,8 @@ from peepshow_authoring.protocol import (  # noqa: E402
 from peepshow_authoring.service import AuthoringService, SERVICE_API_VERSION, run_service  # noqa: E402
 
 
-SAMPLE = WORKSPACE_ROOT / "examples" / "authoring" / "state_slice.peepproj"
+SAMPLE = WORKSPACE_ROOT / "tools" / "authoring" / "peepshow_authoring" / "test_project.peepproj"
+PUBLIC_EXAMPLE = WORKSPACE_ROOT / "examples" / "authoring" / "state_slice.peepproj"
 TRANSITION_SAMPLE = (
     WORKSPACE_ROOT
     / "examples"
@@ -316,7 +317,7 @@ class AuthoringServiceTests(unittest.TestCase):
         loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
         self.assertTrue(loaded["valid"])
         self.assertEqual(1, loaded["project_revision"])
-        self.assertEqual("state_slice.peepproj", loaded["source_name"])
+        self.assertEqual("test_project.peepproj", loaded["source_name"])
         self.assertEqual("example.state_slice", loaded["summary"]["project_id"])
         self.assertNotIn(str(WORKSPACE_ROOT), json.dumps(loaded))
 
@@ -330,6 +331,61 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertTrue(validated["valid"])
         self.assertEqual(hashlib.sha256(expected.canonical_bytes()).hexdigest(), validated["semantic_sha256"])
         self.assertEqual(expected.normalized(), normalized["document"])
+
+    def test_public_example_is_a_menu_selection_flow(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(PUBLIC_EXAMPLE)}))
+        self.assertTrue(loaded["valid"])
+        self.assertEqual("example.menu_selection", loaded["summary"]["project_id"])
+        self.assertEqual("Menu Selection Demo", loaded["summary"]["project_name"])
+
+        reset = service.handle(
+            request(
+                "project.preview_reset",
+                {"project_revision": loaded["project_revision"], "scene_id": "main_menu"},
+            )
+        )
+        self.assertEqual("main_menu", reset["scene"]["scene_id"])
+        self.assertEqual("select_start", reset["scene"]["state_id"])
+        self.assertEqual(0, reset["variables"]["selected_index"])
+
+        moved = service.handle(
+            request(
+                "project.preview_input",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "preview_revision": reset["preview_revision"],
+                    "logical_source": "JOY_DOWN",
+                },
+            )
+        )
+        self.assertEqual("select_settings", moved["scene"]["state_id"])
+        self.assertEqual(1, moved["variables"]["selected_index"])
+
+        chosen = service.handle(
+            request(
+                "project.preview_input",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "preview_revision": reset["preview_revision"],
+                    "logical_source": "BUTTON_A",
+                },
+            )
+        )
+        self.assertEqual("settings", chosen["scene"]["scene_id"])
+
+        returned = service.handle(
+            request(
+                "project.preview_input",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "preview_revision": reset["preview_revision"],
+                    "logical_source": "BUTTON_B",
+                },
+            )
+        )
+        self.assertEqual("main_menu", returned["scene"]["scene_id"])
+        self.assertEqual("select_start", returned["scene"]["state_id"])
 
     def test_reloading_invalidates_prior_revision(self) -> None:
         service = AuthoringService()

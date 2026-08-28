@@ -48,7 +48,7 @@ from peepshow_authoring.egg_format import (  # noqa: E402
 )
 
 
-SAMPLE = WORKSPACE_ROOT / "examples" / "authoring" / "state_slice.peepproj"
+SAMPLE = WORKSPACE_ROOT / "tools" / "authoring" / "peepshow_authoring" / "test_project.peepproj"
 EMBEDDED_PROJECT = (
     WORKSPACE_ROOT
     / "examples"

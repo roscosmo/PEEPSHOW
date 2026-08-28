@@ -1,0 +1,401 @@
+{
+  "schema_id": "peepshow.authoring.state_scene",
+  "schema_version": 1,
+  "scene_id": "main_menu",
+  "display_name": "Main Menu",
+  "scene_type": "STATE_SCENE",
+  "entry_state": "select_start",
+  "variables": [
+    {
+      "variable_id": "selected_index",
+      "value_type": "int32",
+      "initial": 0,
+      "minimum": 0,
+      "maximum": 2
+    }
+  ],
+  "input_actions": [
+    {
+      "action_id": "move_up",
+      "logical_source": "JOY_UP"
+    },
+    {
+      "action_id": "move_down",
+      "logical_source": "JOY_DOWN"
+    },
+    {
+      "action_id": "choose_item",
+      "logical_source": "BUTTON_A"
+    }
+  ],
+  "states": [
+    {
+      "state_id": "select_start",
+      "display_name": "Start Game",
+      "waiting_visual_ref": "menu_wait",
+      "placement_overrides": [
+        {
+          "element_ref": "selector",
+          "x": 30,
+          "y": 48
+        },
+        {
+          "element_ref": "selection_box",
+          "x": 42,
+          "y": 47
+        }
+      ]
+    },
+    {
+      "state_id": "select_settings",
+      "display_name": "Settings",
+      "waiting_visual_ref": "menu_wait",
+      "placement_overrides": [
+        {
+          "element_ref": "selector",
+          "x": 30,
+          "y": 72
+        },
+        {
+          "element_ref": "selection_box",
+          "x": 42,
+          "y": 71
+        }
+      ]
+    },
+    {
+      "state_id": "select_credits",
+      "display_name": "Credits",
+      "waiting_visual_ref": "menu_wait",
+      "placement_overrides": [
+        {
+          "element_ref": "selector",
+          "x": 30,
+          "y": 96
+        },
+        {
+          "element_ref": "selection_box",
+          "x": 42,
+          "y": 95
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "route_id": "start_down_to_settings",
+      "action_ref": "move_down",
+      "from_states": [
+        "select_start"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 0
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 1
+        }
+      ],
+      "target_state": "select_settings"
+    },
+    {
+      "route_id": "settings_down_to_credits",
+      "action_ref": "move_down",
+      "from_states": [
+        "select_settings"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 1
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 2
+        }
+      ],
+      "target_state": "select_credits"
+    },
+    {
+      "route_id": "credits_down_to_start",
+      "action_ref": "move_down",
+      "from_states": [
+        "select_credits"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 2
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 0
+        }
+      ],
+      "target_state": "select_start"
+    },
+    {
+      "route_id": "start_up_to_credits",
+      "action_ref": "move_up",
+      "from_states": [
+        "select_start"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 0
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 2
+        }
+      ],
+      "target_state": "select_credits"
+    },
+    {
+      "route_id": "settings_up_to_start",
+      "action_ref": "move_up",
+      "from_states": [
+        "select_settings"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 1
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 0
+        }
+      ],
+      "target_state": "select_start"
+    },
+    {
+      "route_id": "credits_up_to_settings",
+      "action_ref": "move_up",
+      "from_states": [
+        "select_credits"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 2
+        }
+      ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 1
+        }
+      ],
+      "target_state": "select_settings"
+    },
+    {
+      "route_id": "choose_start",
+      "action_ref": "choose_item",
+      "from_states": [
+        "select_start"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 0
+        }
+      ],
+      "actions": [],
+      "target_scene": "start_game"
+    },
+    {
+      "route_id": "choose_settings",
+      "action_ref": "choose_item",
+      "from_states": [
+        "select_settings"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 1
+        }
+      ],
+      "actions": [],
+      "target_scene": "settings"
+    },
+    {
+      "route_id": "choose_credits",
+      "action_ref": "choose_item",
+      "from_states": [
+        "select_credits"
+      ],
+      "guards": [
+        {
+          "variable_ref": "selected_index",
+          "operator": "eq",
+          "value": 2
+        }
+      ],
+      "actions": [],
+      "target_scene": "credits"
+    }
+  ],
+  "render_models": [
+    {
+      "visual_id": "scene_placement",
+      "focus_index": 0,
+      "elements": [
+        {
+          "element_id": "menu_border",
+          "kind": "outline_rect",
+          "layer": "BACKGROUND",
+          "x": 6,
+          "y": 8,
+          "width": 156,
+          "height": 128,
+          "z_order": 0
+        },
+        {
+          "element_id": "menu_title",
+          "kind": "sprite",
+          "layer": "UI",
+          "visual_ref": "menu_title.frame",
+          "x": 48,
+          "y": 20,
+          "width": 72,
+          "height": 8,
+          "z_order": 1
+        },
+        {
+          "element_id": "selection_box",
+          "kind": "outline_rect",
+          "layer": "UI",
+          "x": 42,
+          "y": 47,
+          "width": 88,
+          "height": 18,
+          "z_order": 2
+        },
+        {
+          "element_id": "selector",
+          "kind": "sprite",
+          "layer": "UI",
+          "visual_ref": "selector.bright",
+          "x": 30,
+          "y": 48,
+          "width": 8,
+          "height": 16,
+          "z_order": 3,
+          "focus_role": "focus"
+        },
+        {
+          "element_id": "label_start",
+          "kind": "sprite",
+          "layer": "UI",
+          "visual_ref": "label_start.frame",
+          "x": 56,
+          "y": 52,
+          "width": 40,
+          "height": 8,
+          "z_order": 4
+        },
+        {
+          "element_id": "label_settings",
+          "kind": "sprite",
+          "layer": "UI",
+          "visual_ref": "label_settings.frame",
+          "x": 56,
+          "y": 76,
+          "width": 64,
+          "height": 8,
+          "z_order": 4
+        },
+        {
+          "element_id": "label_credits",
+          "kind": "sprite",
+          "layer": "UI",
+          "visual_ref": "label_credits.frame",
+          "x": 56,
+          "y": 100,
+          "width": 56,
+          "height": 8,
+          "z_order": 4
+        }
+      ]
+    }
+  ],
+  "waiting_visuals": [
+    {
+      "waiting_visual_id": "menu_wait",
+      "presentation_id": "main_menu_wait",
+      "phase_quantum_ms": 250,
+      "combined_step_count": 2,
+      "settled_step": 1,
+      "cycle_policy": "loop",
+      "elements": [
+        {
+          "element_id": "selector_blink",
+          "source_element_ref": "selector",
+          "phase_visual_refs": [
+            "selector.dim",
+            "selector.bright"
+          ],
+          "step_phase_indices": [
+            0,
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "reactive_wait_default": {
+    "policy_id": "main_menu_wait_policy",
+    "waiting_visual_ref": "menu_wait",
+    "hold_fallback_allowed": true,
+    "event_interests": [
+      "move_up",
+      "move_down",
+      "choose_item"
+    ]
+  },
+  "interaction_policy": {
+    "policy_id": "main_menu_interaction",
+    "mode": "timeout",
+    "meaningful_activity_actions": [
+      "move_up",
+      "move_down",
+      "choose_item"
+    ],
+    "inactive_route": "preserve_scene",
+    "bounded_deferrals": []
+  }
+}

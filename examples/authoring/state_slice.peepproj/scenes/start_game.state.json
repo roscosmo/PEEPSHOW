@@ -1,0 +1,102 @@
+{
+  "schema_id": "peepshow.authoring.state_scene",
+  "schema_version": 1,
+  "scene_id": "start_game",
+  "display_name": "Start Game",
+  "scene_type": "STATE_SCENE",
+  "entry_state": "shown",
+  "variables": [],
+  "input_actions": [
+    {
+      "action_id": "back_to_menu",
+      "logical_source": "BUTTON_B"
+    }
+  ],
+  "states": [
+    {
+      "state_id": "shown",
+      "display_name": "Start Game",
+      "waiting_visual_ref": "static_wait"
+    }
+  ],
+  "routes": [
+    {
+      "route_id": "back_to_menu",
+      "action_ref": "back_to_menu",
+      "from_states": [
+        "shown"
+      ],
+      "guards": [],
+      "actions": [],
+      "target_scene": "main_menu"
+    }
+  ],
+  "render_models": [
+    {
+      "visual_id": "scene_placement",
+      "focus_index": 0,
+      "elements": [
+        {
+          "element_id": "scene_border",
+          "kind": "outline_rect",
+          "layer": "BACKGROUND",
+          "x": 6,
+          "y": 8,
+          "width": 156,
+          "height": 128,
+          "z_order": 0
+        },
+        {
+          "element_id": "scene_title",
+          "kind": "sprite",
+          "layer": "UI",
+          "visual_ref": "title_start.frame",
+          "x": 44,
+          "y": 52,
+          "width": 80,
+          "height": 8,
+          "z_order": 1
+        },
+        {
+          "element_id": "back_hint",
+          "kind": "sprite",
+          "layer": "UI",
+          "visual_ref": "hint_back.frame",
+          "x": 56,
+          "y": 118,
+          "width": 56,
+          "height": 8,
+          "z_order": 2
+        }
+      ]
+    }
+  ],
+  "waiting_visuals": [
+    {
+      "waiting_visual_id": "static_wait",
+      "presentation_id": "start_game_static",
+      "phase_quantum_ms": 250,
+      "combined_step_count": 1,
+      "settled_step": 0,
+      "cycle_policy": "loop",
+      "elements": []
+    }
+  ],
+  "reactive_wait_default": {
+    "policy_id": "start_game_wait_policy",
+    "waiting_visual_ref": "static_wait",
+    "hold_fallback_allowed": true,
+    "event_interests": [
+      "back_to_menu"
+    ]
+  },
+  "interaction_policy": {
+    "policy_id": "start_game_interaction",
+    "mode": "timeout",
+    "meaningful_activity_actions": [
+      "back_to_menu"
+    ],
+    "inactive_route": "preserve_scene",
+    "bounded_deferrals": []
+  }
+}

@@ -1,18 +1,20 @@
 {
   "schema_id": "peepshow.authoring.project",
   "schema_version": 1,
-  "project_id": "example.state_slice",
-  "project_name": "STATE Scene Vertical Slice",
+  "project_id": "example.menu_selection",
+  "project_name": "Menu Selection Demo",
   "package": {
-    "package_id": "dev.peepshow.state_slice",
-    "display_name": "State Slice",
+    "package_id": "dev.peepshow.menu_selection",
+    "display_name": "Menu Selection Demo",
     "version": "0.1.0"
   },
   "selected_target_profile": "hw6_fw0_development",
-  "entry_scene": "state_demo",
+  "entry_scene": "main_menu",
   "scene_sources": [
-    "scenes/state_demo.state.json",
-    "scenes/state_details.state.json"
+    "scenes/main_menu.state.json",
+    "scenes/start_game.state.json",
+    "scenes/settings.state.json",
+    "scenes/credits.state.json"
   ],
   "asset_sources": [
     "assets/catalog.json"
