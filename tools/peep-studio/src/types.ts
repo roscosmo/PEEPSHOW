@@ -156,11 +156,29 @@ export type CompiledAssetFrame = {
   mask_sha256: string;
 };
 
+export type AssetFrameRecord = {
+  frame_id: string;
+  display_name?: string;
+  source_rect?: { x: number; y: number; width: number; height: number };
+  pivot_x: number;
+  pivot_y: number;
+};
+
+export type AssetRecord = {
+  asset_id: string;
+  display_name?: string;
+  asset_type: string;
+  source_path?: string;
+  source_format: string;
+  frames: AssetFrameRecord[];
+};
+
 export type ProjectDocument = {
   project?: {
     editor?: ProjectEditorData;
   };
   scenes?: SceneDocument[];
+  assets?: AssetRecord[];
   compiled_asset_frames?: CompiledAssetFrame[];
 };
 

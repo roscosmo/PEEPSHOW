@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld("peepStudio", {
     ipcRenderer.invoke("peep:service-request", operation, params),
   openProject: () => ipcRenderer.invoke("peep:open-project"),
   openExampleProject: () => ipcRenderer.invoke("peep:open-example"),
+  importSpritePng: (projectPath: string) => ipcRenderer.invoke("peep:import-sprite-png", projectPath),
   saveProjectAs: (sourcePath: string, defaultName: string) =>
     ipcRenderer.invoke("peep:save-project-as", sourcePath, defaultName),
   exportEgg: (defaultName: string, blobBase64: string) =>

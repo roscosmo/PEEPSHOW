@@ -390,17 +390,22 @@ Python service commands (`render_element.add`, `render_element.delete`,
 `render_element.set_position`, `render_element.set_bounds`,
 `render_element.set_layer`, `render_element.set_visibility`,
 `render_element.set_z_order`, and `render_element.set_visual_ref`) rather than
-directly editing normalized JSON in React. A read-only Assets workspace now
-lists compiled sprite assets, shows frame previews, and reserves future import
-and audio controls outside Placement mode. Circle and ellipse editing preserves
+directly editing normalized JSON in React. The Assets workspace now lists
+compiled sprite assets, shows frame previews, and can import a PNG as one
+full-image masked 1bpp sprite frame through Electron filesystem ownership and
+the Python `asset.upsert` command. Imported PNGs are sanitized before catalog
+creation: fully transparent pixels remain transparent, and visible pixels are
+thresholded to pure black or pure white. Sprite assets and frames may also carry
+optional author-facing `display_name` labels; stable asset/frame IDs remain the
+service, package, and firmware references. Sprite-sheet slicing and audio
+controls remain future Assets workspace work. Circle and ellipse editing preserves
 the current RND2 constraints: odd-sized bounds of at least 3 pixels, with
 circles remaining square. Filled circle and filled ellipse controls remain
 deferred until the package/service and firmware expose those primitive
 semantics. Grid visibility, grid strength, major grid lines, overlay boxes, and
 label display are editor view settings in the project panel only; they do not
-affect package output. React controls for asset records, build-time text
-labels, and the phase timeline are the next GUI-branch work. Text controls
-author a
+affect package output. React controls for build-time text labels and the phase
+timeline are the next GUI-branch work. Text controls author a
 `system_font_text` asset and place its compiled frame as a normal sprite; they
 must not imply runtime text editing. The GUI must not offer general
 `frame_animation` binding in STATE; it edits `waiting_visual` phases instead.

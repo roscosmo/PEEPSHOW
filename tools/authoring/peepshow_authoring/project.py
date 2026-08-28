@@ -2019,7 +2019,7 @@ def _check_asset(
         required = {"asset_id", "asset_type", "source_format", "font_id", "text", "scale", "frames"}
     else:
         required = {"asset_id", "asset_type", "source_format", "frames"}
-    _check_keys(asset, required, path, issues)
+    _check_keys(asset, required, path, issues, required | {"display_name"})
     _stable_id(asset.get("asset_id"), f"{path}.asset_id", issues)
     if asset.get("asset_type") != "masked_1bpp":
         _issue(issues, "ASSET_FORMAT_UNSUPPORTED", f"{path}.asset_type", "must be masked_1bpp")
@@ -2027,6 +2027,8 @@ def _check_asset(
         _issue(issues, "ASSET_FORMAT_UNSUPPORTED", f"{path}.source_format", "must be png or system_font_text")
     if source_format == "png" and (not isinstance(asset.get("source_path"), str) or not asset.get("source_path")):
         _issue(issues, "ASSET_SOURCE_INVALID", f"{path}.source_path", "must be a non-empty relative path")
+    if "display_name" in asset:
+        _text(asset.get("display_name"), f"{path}.display_name", issues, 64)
 
     frame_records = _unique_ids(asset.get("frames"), "frame_id", f"{path}.frames", issues, 256)
     if not frame_records:
@@ -2034,7 +2036,9 @@ def _check_asset(
     for frame_id, frame in frame_records.items():
         frame_path = f"{path}.frames[{frame_id}]"
         frame_keys = {"frame_id", "source_rect", "pivot_x", "pivot_y"} if source_format == "png" else {"frame_id", "pivot_x", "pivot_y"}
-        _check_keys(frame, frame_keys, frame_path, issues)
+        _check_keys(frame, frame_keys, frame_path, issues, frame_keys | {"display_name"})
+        if "display_name" in frame:
+            _text(frame.get("display_name"), f"{frame_path}.display_name", issues, 64)
 
     if len(issues) == initial_issue_count and frame_records:
         try:

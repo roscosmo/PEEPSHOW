@@ -732,17 +732,20 @@ Conceptual source records:
 ```text
 masked_1bpp_asset:
   asset_id
+  display_name                 # optional author-facing label, not packaged
   source_path
   source_format: png
   alpha_policy: binary_nonzero_opaque
   frames[]:
     frame_id
+    display_name               # optional author-facing label, not packaged
     source_rect
     pivot_x
     pivot_y
 
 system_font_text_asset:
   asset_id
+  display_name                 # optional author-facing label, not packaged
   asset_type: masked_1bpp
   source_format: system_font_text
   font_id: peepshow.system.8x8.basic.v1
@@ -750,6 +753,7 @@ system_font_text_asset:
   scale                        # integer 1..8
   frames[1]:
     frame_id
+    display_name               # optional author-facing label, not packaged
     pivot_x
     pivot_y
 

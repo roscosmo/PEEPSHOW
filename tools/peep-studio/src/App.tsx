@@ -43,6 +43,8 @@ import {
   type SceneSelection,
 } from "./SceneInspection";
 import type {
+  AssetFrameRecord,
+  AssetRecord,
   CompiledAssetFrame,
   Framebuffer,
   PackageBuildResult,
@@ -362,6 +364,118 @@ export default function App() {
       applyProjectResult(result);
       setSceneSelection({ kind: "scene" });
       setMessage(operation === "project.undo" ? "Undid last edit." : "Redid edit.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const existingAssetIds = () => new Set(compiledAssetFrameGroups.map((group) => group.assetId));
+
+  const uniqueImportedAssetId = (baseAssetId: string) => {
+    const existing = existingAssetIds();
+    if (!existing.has(baseAssetId)) {
+      return baseAssetId;
+    }
+    for (let index = 2; index < 1000; index += 1) {
+      const candidate = `${baseAssetId}_${index}`;
+      if (!existing.has(candidate)) {
+        return candidate;
+      }
+    }
+    return `${baseAssetId}_${existing.size + 1}`;
+  };
+
+  const importSpriteAsset = async () => {
+    if (bridge === undefined || project === null || projectPath === null || busy !== null) {
+      return;
+    }
+    setBusy("Importing sprite");
+    setPlaying(false);
+    try {
+      const imported = await bridge.importSpritePng(projectPath);
+      if (imported === null) {
+        return;
+      }
+      const assetId = uniqueImportedAssetId(imported.assetId);
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [
+          {
+            kind: "asset.upsert",
+            asset: {
+              asset_id: assetId,
+              display_name: imported.displayName,
+              asset_type: "masked_1bpp",
+              source_path: imported.sourcePath,
+              source_format: "png",
+              frames: [
+                {
+                  frame_id: `${assetId}.frame`,
+                  display_name: "Frame",
+                  source_rect: { x: 0, y: 0, width: imported.width, height: imported.height },
+                  pivot_x: 0,
+                  pivot_y: 0,
+                },
+              ],
+            },
+          },
+        ],
+      });
+      applyProjectResult(result);
+      setSelectedAssetFrameId(`${assetId}.frame`);
+      setWorkspaceMode("assets");
+      setMessage(`Imported ${assetId}. Save to write it to the project.`);
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const updateAssetDisplayNames = async (
+    asset: AssetRecord,
+    nextAssetDisplayName: string,
+    nextFrameDisplayName: string | null,
+    frameId: string | null,
+  ) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    const assetDisplayName = nextAssetDisplayName.trim();
+    const frameDisplayName = nextFrameDisplayName?.trim() ?? null;
+    if (assetDisplayName.length === 0 || assetDisplayName.length > 64 || (frameDisplayName !== null && (frameDisplayName.length === 0 || frameDisplayName.length > 64))) {
+      setMessage("Display names must be 1 to 64 characters.");
+      return;
+    }
+    const currentAssetDisplayName = asset.display_name ?? asset.asset_id;
+    const targetFrame = frameId === null ? null : asset.frames.find((frame) => frame.frame_id === frameId) ?? null;
+    const currentFrameDisplayName = targetFrame === null ? null : targetFrame.display_name ?? targetFrame.frame_id;
+    if (assetDisplayName === currentAssetDisplayName && (frameDisplayName === null || frameDisplayName === currentFrameDisplayName)) {
+      return;
+    }
+    const renamed: AssetRecord = {
+      ...asset,
+      display_name: assetDisplayName,
+      frames: asset.frames.map((frame) => (
+        frame.frame_id === frameId && frameDisplayName !== null
+          ? { ...frame, display_name: frameDisplayName }
+          : frame
+      )),
+    };
+    setBusy("Renaming asset");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{ kind: "asset.upsert", asset: renamed }],
+      });
+      applyProjectResult(result);
+      if (frameId !== null) {
+        setSelectedAssetFrameId(frameId);
+      }
+      setMessage("Asset label updated. Save to write it to the project.");
     } catch (error) {
       setMessage(errorText(error));
     } finally {
@@ -888,11 +1002,25 @@ export default function App() {
   };
 
   const scenes: SceneDocument[] = project?.document?.scenes ?? [];
+  const assets: AssetRecord[] = project?.document?.assets ?? [];
   const compiledAssetFrames: CompiledAssetFrame[] = project?.document?.compiled_asset_frames ?? [];
   const compiledAssetFrameById = useMemo(
     () => new Map(compiledAssetFrames.map((frame) => [frame.frame_id, frame])),
     [compiledAssetFrames],
   );
+  const assetById = useMemo(
+    () => new Map(assets.map((asset) => [asset.asset_id, asset])),
+    [assets],
+  );
+  const sourceFrameById = useMemo(() => {
+    const frames = new Map<string, { asset: AssetRecord; frame: AssetFrameRecord }>();
+    for (const asset of assets) {
+      for (const frame of asset.frames ?? []) {
+        frames.set(frame.frame_id, { asset, frame });
+      }
+    }
+    return frames;
+  }, [assets]);
   const compiledAssetFrameGroups = useMemo(() => {
     const groups = new Map<string, CompiledAssetFrame[]>();
     for (const frame of compiledAssetFrames) {
@@ -1407,45 +1535,13 @@ export default function App() {
       </button>
     </div>
   );
-  const renderAssetLibraryList = () => (
-    <details className="project-section asset-library-section" open>
-      <summary>Assets</summary>
-      {compiledAssetFrameGroups.length === 0 ? (
-        <p className="muted project-section-empty">No compiled sprites.</p>
-      ) : (
-        <nav className="asset-library-list" aria-label="Project sprite assets">
-          {compiledAssetFrameGroups.map((group) => {
-            const groupSelected = group.frames.some((frame) => frame.frame_id === selectedAssetFrame?.frame_id);
-            return (
-              <button
-                key={group.assetId}
-                className={groupSelected ? "selected" : ""}
-                type="button"
-                onClick={() => setSelectedAssetFrameId(group.frames[0]?.frame_id ?? null)}
-              >
-                <Image size={15} aria-hidden="true" />
-                <span>
-                  <strong>{group.assetId}</strong>
-                  <small>{group.frames.length} frame{group.frames.length === 1 ? "" : "s"}</small>
-                </span>
-                <ChevronRight size={15} aria-hidden="true" />
-              </button>
-            );
-          })}
-        </nav>
-      )}
-    </details>
-  );
   const renderAssetsWorkspace = () => {
-    const selectedGroup = selectedAssetFrame === null
-      ? null
-      : compiledAssetFrameGroups.find((group) => group.assetId === selectedAssetFrame.asset_id) ?? null;
     return (
       <section className="asset-workspace-pane">
         <div className="preview-heading graph-heading">
           <div>
             <span className="section-kicker">Assets</span>
-            <h2>{selectedGroup?.assetId ?? "Project library"}</h2>
+            <h2>Project library</h2>
           </div>
           {renderModeTabs()}
         </div>
@@ -1453,18 +1549,42 @@ export default function App() {
           <div className="asset-workspace-empty">
             <Image size={28} aria-hidden="true" />
             <strong>No sprite assets</strong>
-            <span>PNG import will live here when the service import flow is exposed.</span>
+            <button
+              className="button secondary"
+              type="button"
+              disabled={bridge === undefined || project === null || projectPath === null || busy !== null || service?.operations.includes("project.apply_commands") !== true}
+              onClick={() => void importSpriteAsset()}
+            >
+              <Image size={15} aria-hidden="true" />
+              Import PNG
+            </button>
           </div>
         ) : (
           <div className="asset-workspace">
-            {selectedGroup !== null && (
-              <>
-                <div className="asset-workspace-summary">
-                  <strong>{selectedGroup.assetId}</strong>
-                  <span>{selectedGroup.frames.length} compiled frame{selectedGroup.frames.length === 1 ? "" : "s"}</span>
-                </div>
+            <div className="asset-workspace-summary">
+              <div>
+                <strong>Sprites</strong>
+                <span>{compiledAssetFrames.length} compiled frame{compiledAssetFrames.length === 1 ? "" : "s"}</span>
+              </div>
+              <button
+                className="button secondary"
+                type="button"
+                disabled={bridge === undefined || project === null || projectPath === null || busy !== null || service?.operations.includes("project.apply_commands") !== true}
+                onClick={() => void importSpriteAsset()}
+              >
+                <Image size={15} aria-hidden="true" />
+                Import PNG
+              </button>
+            </div>
+            <div className="asset-group-stack">
+              {compiledAssetFrameGroups.map((group) => (
+                <section className="asset-group-panel" key={group.assetId}>
+                  <div className="asset-group-heading">
+                    <strong>{assetDisplayName(group.assetId)}</strong>
+                    <span>{group.frames.length} frame{group.frames.length === 1 ? "" : "s"}</span>
+                  </div>
                 <div className="asset-frame-gallery">
-                  {selectedGroup.frames.map((frame) => (
+                  {group.frames.map((frame) => (
                     <button
                       key={frame.frame_id}
                       className={selectedAssetFrame?.frame_id === frame.frame_id ? "selected" : ""}
@@ -1479,8 +1599,9 @@ export default function App() {
                     </button>
                   ))}
                 </div>
-              </>
-            )}
+                </section>
+              ))}
+            </div>
           </div>
         )}
       </section>
@@ -1492,20 +1613,69 @@ export default function App() {
       {selectedAssetFrame === null ? (
         <p className="muted">Select a sprite frame to inspect it.</p>
       ) : (
-        <>
-          <div className="asset-inspector-preview">
-            <FramePreviewCanvas frame={selectedAssetFrame} />
-          </div>
-          <dl className="inspector-list">
-            <div><dt>Asset</dt><dd>{selectedAssetFrame.asset_id}</dd></div>
-            <div><dt>Frame</dt><dd>{placementFrameLabel(selectedAssetFrame)}</dd></div>
-            <div><dt>Size</dt><dd>{selectedAssetFrame.width}x{selectedAssetFrame.height}</dd></div>
-            <div><dt>Pivot</dt><dd>{selectedAssetFrame.pivot_x}, {selectedAssetFrame.pivot_y}</dd></div>
-            <div><dt>Mask</dt><dd>{selectedAssetFrame.opaque ? "Opaque" : "Transparent"}</dd></div>
-            <div><dt>Stride</dt><dd>{selectedAssetFrame.row_stride_bytes} bytes</dd></div>
-            <div><dt>Frame ID</dt><dd>{selectedAssetFrame.frame_id}</dd></div>
-          </dl>
-        </>
+        (() => {
+          const source = sourceFrameById.get(selectedAssetFrame.frame_id);
+          const sourceAsset = source?.asset ?? assetById.get(selectedAssetFrame.asset_id) ?? null;
+          return (
+            <>
+              <div className="asset-inspector-preview">
+                <FramePreviewCanvas frame={selectedAssetFrame} />
+              </div>
+              {sourceAsset !== null && (
+                <div className="asset-name-editor">
+                  <label>
+                    Sprite name
+                    <input
+                      key={`${sourceAsset.asset_id}-asset-${sourceAsset.display_name ?? ""}`}
+                      type="text"
+                      maxLength={64}
+                      defaultValue={sourceAsset.display_name ?? sourceAsset.asset_id}
+                      disabled={busy !== null}
+                      onBlur={(event) => {
+                        void updateAssetDisplayNames(sourceAsset, event.target.value, null, null);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.currentTarget.blur();
+                        }
+                      }}
+                    />
+                  </label>
+                  {source !== undefined && (
+                    <label>
+                      Frame name
+                      <input
+                        key={`${source.frame.frame_id}-frame-${source.frame.display_name ?? ""}`}
+                        type="text"
+                        maxLength={64}
+                        defaultValue={source.frame.display_name ?? placementFrameLabel(selectedAssetFrame)}
+                        disabled={busy !== null}
+                        onBlur={(event) => {
+                          void updateAssetDisplayNames(source.asset, source.asset.display_name ?? source.asset.asset_id, event.target.value, source.frame.frame_id);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.currentTarget.blur();
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
+              <dl className="inspector-list">
+                <div><dt>Asset</dt><dd>{assetDisplayName(selectedAssetFrame.asset_id)}</dd></div>
+                <div><dt>Frame</dt><dd>{placementFrameLabel(selectedAssetFrame)}</dd></div>
+                <div><dt>Size</dt><dd>{selectedAssetFrame.width}x{selectedAssetFrame.height}</dd></div>
+                <div><dt>Pivot</dt><dd>{selectedAssetFrame.pivot_x}, {selectedAssetFrame.pivot_y}</dd></div>
+                <div><dt>Mask</dt><dd>{selectedAssetFrame.opaque ? "Opaque" : "Transparent"}</dd></div>
+                <div><dt>Stride</dt><dd>{selectedAssetFrame.row_stride_bytes} bytes</dd></div>
+                <div><dt>Asset ID</dt><dd>{selectedAssetFrame.asset_id}</dd></div>
+                <div><dt>Frame ID</dt><dd>{selectedAssetFrame.frame_id}</dd></div>
+              </dl>
+            </>
+          );
+        })()
       )}
     </section>
   );
@@ -1598,9 +1768,14 @@ export default function App() {
   const placementLayerLabel = (element: RenderElement) => element.layer ?? "SCENE";
   const placementSourceLabel = (element: RenderElement) => element.visual_ref ?? "Native shape";
   const placementFrameLabel = (frame: CompiledAssetFrame) => {
+    const source = sourceFrameById.get(frame.frame_id);
+    if (source?.frame.display_name !== undefined) {
+      return source.frame.display_name;
+    }
     const prefixedName = `${frame.asset_id}.`;
     return frame.frame_id.startsWith(prefixedName) ? frame.frame_id.slice(prefixedName.length) : frame.frame_id;
   };
+  const assetDisplayName = (assetId: string) => assetById.get(assetId)?.display_name ?? assetId;
   const nextPlacementElementId = (kind: string, elements: RenderElement[]) => {
     const prefix = kind.replaceAll("-", "_");
     const existing = new Set(elements.map((element) => element.element_id));
@@ -2107,7 +2282,6 @@ export default function App() {
           {renderPreviewPanel("project")}
           {workspaceMode === "placement" && renderPlacementViewSettings()}
           {workspaceMode === "placement" && renderPlacementObjectHierarchy()}
-          {workspaceMode === "assets" && renderAssetLibraryList()}
 
           {project === null ? (
             <div className="empty-pane">

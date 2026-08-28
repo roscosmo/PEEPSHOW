@@ -498,6 +498,24 @@ class AuthoringModelTests(unittest.TestCase):
             self.assertEqual((0, 1), package.animations[0]["frame_indexes"])
             self.assertEqual((250, 250), package.animations[0]["frame_duration_ms"])
 
+    def test_asset_display_names_are_authoring_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_asset_project(Path(temp_dir))
+            catalog_path = project_root / "assets" / "catalog.json"
+            catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+            catalog["assets"][0]["display_name"] = "Cursor Sprite"
+            catalog["assets"][0]["frames"][0]["display_name"] = "Cursor Open"
+            catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+
+            bundle = load_project(project_root)
+            self.assertEqual((), bundle.issues)
+            normalized = bundle.normalized()
+            self.assertEqual("Cursor Sprite", normalized["assets"][0]["display_name"])
+            self.assertEqual("Cursor Open", normalized["assets"][0]["frames"][0]["display_name"])
+
+            package = parse_egg(build_egg(bundle))
+            self.assertEqual("cursor.phase_a", package.assets[0]["frame_id"])
+
     def test_asset_build_is_independent_of_project_location(self) -> None:
         with tempfile.TemporaryDirectory() as first_dir, tempfile.TemporaryDirectory() as second_dir:
             first = build_egg(load_project(make_asset_project(Path(first_dir))))

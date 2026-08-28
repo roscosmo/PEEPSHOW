@@ -1022,16 +1022,21 @@ button:focus-visible {
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 18px;
+  padding: 20px;
 }
 
 .asset-workspace-summary {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 18px;
   color: #27302b;
+}
+
+.asset-workspace-summary div {
+  display: grid;
+  gap: 3px;
 }
 
 .asset-workspace-summary strong {
@@ -1045,16 +1050,45 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
+.asset-group-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.asset-group-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.asset-group-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: #27302b;
+}
+
+.asset-group-heading strong {
+  font-size: 14px;
+}
+
+.asset-group-heading span {
+  color: #68736d;
+  font-size: 10px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
 .asset-frame-gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
   gap: 12px;
 }
 
 .asset-frame-gallery button {
   display: grid;
   gap: 8px;
-  min-height: 132px;
+  min-height: 174px;
   padding: 10px;
   border: 1px solid #d3dcd6;
   border-radius: 7px;
@@ -1076,7 +1110,7 @@ button:focus-visible {
 
 .asset-frame-preview {
   display: flex;
-  min-height: 78px;
+  min-height: 120px;
   align-items: center;
   justify-content: center;
   border: 1px solid #d6ded9;
@@ -1092,8 +1126,10 @@ button:focus-visible {
 }
 
 .asset-frame-preview .frame-preview-canvas {
-  max-width: 96px;
-  max-height: 72px;
+  width: 136px;
+  height: 104px;
+  max-width: 100%;
+  object-fit: contain;
 }
 
 .asset-frame-gallery strong,
@@ -1121,6 +1157,10 @@ button:focus-visible {
   gap: 8px;
   color: #68736d;
   text-align: center;
+}
+
+.asset-workspace-empty .button {
+  margin-top: 4px;
 }
 
 .asset-workspace-empty strong {
@@ -1154,6 +1194,41 @@ button:focus-visible {
 .asset-inspector-preview .frame-preview-canvas {
   max-width: 180px;
   max-height: 104px;
+}
+
+.asset-name-editor {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid #d7ded9;
+  border-radius: 7px;
+  background: #f7faf8;
+}
+
+.asset-name-editor label {
+  display: grid;
+  gap: 5px;
+  color: #68736d;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.asset-name-editor input {
+  width: 100%;
+  height: 32px;
+  border: 1px solid #c9d3ce;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #27302b;
+  font-size: 13px;
+  font-weight: 740;
+}
+
+.asset-name-editor input:disabled {
+  color: #818b85;
+  background: #eef3f0;
 }
 
 .placement-inspector .inspector-list {
