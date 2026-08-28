@@ -31,6 +31,7 @@ import {
   StepForward,
   SquareMousePointer,
   Trash2,
+  Type,
   Undo2,
   X,
 } from "lucide-react";
@@ -84,6 +85,7 @@ const PLACEMENT_PRIMITIVES = [
 
 type PlacementPrimitiveKind = (typeof PLACEMENT_PRIMITIVES)[number]["kind"];
 type WorkspaceMode = "scene-flow" | "logic" | "placement" | "assets";
+const SYSTEM_FONT_8X8_BASIC_ID = "peepshow.system.8x8.basic.v1";
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -371,7 +373,7 @@ export default function App() {
     }
   };
 
-  const existingAssetIds = () => new Set(compiledAssetFrameGroups.map((group) => group.assetId));
+  const existingAssetIds = () => new Set([...assets.map((asset) => asset.asset_id), ...compiledAssetFrameGroups.map((group) => group.assetId)]);
 
   const uniqueImportedAssetId = (baseAssetId: string) => {
     const existing = existingAssetIds();
@@ -385,6 +387,17 @@ export default function App() {
       }
     }
     return `${baseAssetId}_${existing.size + 1}`;
+  };
+
+  const uniqueTextAssetId = () => {
+    const existing = existingAssetIds();
+    for (let index = 1; index < 1000; index += 1) {
+      const candidate = index === 1 ? "label" : `label_${index}`;
+      if (!existing.has(candidate)) {
+        return candidate;
+      }
+    }
+    return `label_${existing.size + 1}`;
   };
 
   const importSpriteAsset = async () => {
@@ -434,6 +447,46 @@ export default function App() {
     }
   };
 
+  const createTextSpriteAsset = async () => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    const assetId = uniqueTextAssetId();
+    const asset: AssetRecord = {
+      asset_id: assetId,
+      display_name: "Label",
+      asset_type: "masked_1bpp",
+      source_format: "system_font_text",
+      font_id: SYSTEM_FONT_8X8_BASIC_ID,
+      text: "LABEL",
+      scale: 1,
+      frames: [
+        {
+          frame_id: `${assetId}.frame`,
+          display_name: "Frame",
+          pivot_x: 0,
+          pivot_y: 0,
+        },
+      ],
+    };
+    setBusy("Creating text sprite");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{ kind: "asset.upsert", asset }],
+      });
+      applyProjectResult(result);
+      setSelectedAssetFrameId(`${assetId}.frame`);
+      setWorkspaceMode("assets");
+      setMessage("Text sprite created. Save to write it to the project.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const updateAssetDisplayNames = async (
     asset: AssetRecord,
     nextAssetDisplayName: string,
@@ -476,6 +529,45 @@ export default function App() {
         setSelectedAssetFrameId(frameId);
       }
       setMessage("Asset label updated. Save to write it to the project.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const updateTextSpriteAsset = async (asset: AssetRecord, nextText: string, nextScale: number) => {
+    if (bridge === undefined || project === null || busy !== null || asset.source_format !== "system_font_text") {
+      return;
+    }
+    const text = nextText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    if (text.length === 0 || text.length > 96) {
+      setMessage("Text must be 1 to 96 characters.");
+      return;
+    }
+    if (!Number.isInteger(nextScale) || nextScale < 1 || nextScale > 8) {
+      setMessage("Text scale must be 1 to 8.");
+      return;
+    }
+    if (text === (asset.text ?? "") && nextScale === (asset.scale ?? 1)) {
+      return;
+    }
+    const updated: AssetRecord = {
+      ...asset,
+      font_id: asset.font_id ?? SYSTEM_FONT_8X8_BASIC_ID,
+      text,
+      scale: nextScale,
+    };
+    setBusy("Updating text sprite");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{ kind: "asset.upsert", asset: updated }],
+      });
+      applyProjectResult(result);
+      setSelectedAssetFrameId(asset.frames[0]?.frame_id ?? null);
+      setMessage("Text sprite updated. Save to write it to the project.");
     } catch (error) {
       setMessage(errorText(error));
     } finally {
@@ -1536,6 +1628,7 @@ export default function App() {
     </div>
   );
   const renderAssetsWorkspace = () => {
+    const canEditAssets = bridge !== undefined && project !== null && busy === null && service?.operations.includes("project.apply_commands") === true;
     return (
       <section className="asset-workspace-pane">
         <div className="preview-heading graph-heading">
@@ -1549,15 +1642,26 @@ export default function App() {
           <div className="asset-workspace-empty">
             <Image size={28} aria-hidden="true" />
             <strong>No sprite assets</strong>
-            <button
-              className="button secondary"
-              type="button"
-              disabled={bridge === undefined || project === null || projectPath === null || busy !== null || service?.operations.includes("project.apply_commands") !== true}
-              onClick={() => void importSpriteAsset()}
-            >
-              <Image size={15} aria-hidden="true" />
-              Import PNG
-            </button>
+            <div className="asset-workspace-actions">
+              <button
+                className="button secondary"
+                type="button"
+                disabled={!canEditAssets || projectPath === null}
+                onClick={() => void importSpriteAsset()}
+              >
+                <Image size={15} aria-hidden="true" />
+                Import PNG
+              </button>
+              <button
+                className="button secondary"
+                type="button"
+                disabled={!canEditAssets}
+                onClick={() => void createTextSpriteAsset()}
+              >
+                <Type size={15} aria-hidden="true" />
+                Text sprite
+              </button>
+            </div>
           </div>
         ) : (
           <div className="asset-workspace">
@@ -1566,22 +1670,35 @@ export default function App() {
                 <strong>Sprites</strong>
                 <span>{compiledAssetFrames.length} compiled frame{compiledAssetFrames.length === 1 ? "" : "s"}</span>
               </div>
-              <button
-                className="button secondary"
-                type="button"
-                disabled={bridge === undefined || project === null || projectPath === null || busy !== null || service?.operations.includes("project.apply_commands") !== true}
-                onClick={() => void importSpriteAsset()}
-              >
-                <Image size={15} aria-hidden="true" />
-                Import PNG
-              </button>
+              <div className="asset-workspace-actions">
+                <button
+                  className="button secondary"
+                  type="button"
+                  disabled={!canEditAssets || projectPath === null}
+                  onClick={() => void importSpriteAsset()}
+                >
+                  <Image size={15} aria-hidden="true" />
+                  Import PNG
+                </button>
+                <button
+                  className="button secondary"
+                  type="button"
+                  disabled={!canEditAssets}
+                  onClick={() => void createTextSpriteAsset()}
+                >
+                  <Type size={15} aria-hidden="true" />
+                  Text sprite
+                </button>
+              </div>
             </div>
             <div className="asset-group-stack">
               {compiledAssetFrameGroups.map((group) => (
                 <section className="asset-group-panel" key={group.assetId}>
                   <div className="asset-group-heading">
                     <strong>{assetDisplayName(group.assetId)}</strong>
-                    <span>{group.frames.length} frame{group.frames.length === 1 ? "" : "s"}</span>
+                    <span>
+                      {assetById.get(group.assetId)?.source_format === "system_font_text" ? "Text sprite" : `${group.frames.length} frame${group.frames.length === 1 ? "" : "s"}`}
+                    </span>
                   </div>
                 <div className="asset-frame-gallery">
                   {group.frames.map((frame) => (
@@ -1663,6 +1780,43 @@ export default function App() {
                   )}
                 </div>
               )}
+              {sourceAsset?.source_format === "system_font_text" && (
+                <div className="asset-text-editor">
+                  <label>
+                    Text
+                    <textarea
+                      key={`${sourceAsset.asset_id}-text-${sourceAsset.text ?? ""}`}
+                      maxLength={96}
+                      rows={3}
+                      defaultValue={sourceAsset.text ?? ""}
+                      disabled={busy !== null}
+                      onBlur={(event) => {
+                        void updateTextSpriteAsset(sourceAsset, event.target.value, sourceAsset.scale ?? 1);
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Scale
+                    <input
+                      key={`${sourceAsset.asset_id}-scale-${sourceAsset.scale ?? 1}`}
+                      type="number"
+                      min={1}
+                      max={8}
+                      step={1}
+                      defaultValue={sourceAsset.scale ?? 1}
+                      disabled={busy !== null}
+                      onBlur={(event) => {
+                        void updateTextSpriteAsset(sourceAsset, sourceAsset.text ?? "", Number(event.target.value));
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.currentTarget.blur();
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
               <dl className="inspector-list">
                 <div><dt>Asset</dt><dd>{assetDisplayName(selectedAssetFrame.asset_id)}</dd></div>
                 <div><dt>Frame</dt><dd>{placementFrameLabel(selectedAssetFrame)}</dd></div>
@@ -1670,6 +1824,7 @@ export default function App() {
                 <div><dt>Pivot</dt><dd>{selectedAssetFrame.pivot_x}, {selectedAssetFrame.pivot_y}</dd></div>
                 <div><dt>Mask</dt><dd>{selectedAssetFrame.opaque ? "Opaque" : "Transparent"}</dd></div>
                 <div><dt>Stride</dt><dd>{selectedAssetFrame.row_stride_bytes} bytes</dd></div>
+                {sourceAsset?.source_format === "system_font_text" && <div><dt>Font</dt><dd>8x8 system</dd></div>}
                 <div><dt>Asset ID</dt><dd>{selectedAssetFrame.asset_id}</dd></div>
                 <div><dt>Frame ID</dt><dd>{selectedAssetFrame.frame_id}</dd></div>
               </dl>

@@ -170,6 +170,9 @@ export type AssetRecord = {
   asset_type: string;
   source_path?: string;
   source_format: string;
+  font_id?: string;
+  text?: string;
+  scale?: number;
   frames: AssetFrameRecord[];
 };
 

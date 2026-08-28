@@ -1050,6 +1050,13 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
+.asset-workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .asset-group-stack {
   display: grid;
   gap: 18px;
@@ -1227,6 +1234,55 @@ button:focus-visible {
 }
 
 .asset-name-editor input:disabled {
+  color: #818b85;
+  background: #eef3f0;
+}
+
+.asset-text-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid #d7ded9;
+  border-radius: 7px;
+  background: #f7faf8;
+}
+
+.asset-text-editor label {
+  display: grid;
+  gap: 5px;
+  color: #68736d;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.asset-text-editor textarea,
+.asset-text-editor input {
+  width: 100%;
+  border: 1px solid #c9d3ce;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #27302b;
+  font-size: 13px;
+  font-weight: 740;
+}
+
+.asset-text-editor textarea {
+  min-height: 74px;
+  padding: 8px;
+  resize: vertical;
+  line-height: 1.35;
+}
+
+.asset-text-editor input {
+  height: 32px;
+  padding: 0 8px;
+}
+
+.asset-text-editor textarea:disabled,
+.asset-text-editor input:disabled {
   color: #818b85;
   background: #eef3f0;
 }
