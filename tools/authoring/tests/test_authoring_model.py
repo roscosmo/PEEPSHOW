@@ -8,6 +8,7 @@ import struct
 import sys
 import tempfile
 import unittest
+import wave
 import zlib
 from pathlib import Path
 
@@ -19,6 +20,12 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(TOOL_ROOT))
 
 from peepshow_authoring.project import load_project  # noqa: E402
+from peepshow_authoring.audio_assets import (  # noqa: E402
+    AUDIO_BLOCK_SAMPLES,
+    AUDIO_SAMPLE_RATE_HZ,
+    decode_ima_adpcm,
+    encode_ima_adpcm,
+)
 from peepshow_authoring.system_fonts import (  # noqa: E402
     SYSTEM_FONT_8X8_BASIC_ID,
     SystemFontError,
@@ -187,7 +194,126 @@ def make_asset_project(parent: Path, *, invalid_pixel: bool = False) -> Path:
     return project_root
 
 
+def make_audio_project(parent: Path) -> Path:
+    project_root = parent / "audio_slice.peepproj"
+    shutil.copytree(SAMPLE, project_root)
+    audio_path = project_root / "assets" / "select.wav"
+    source_samples = [
+        12000 if (index // 20) % 2 == 0 else -12000
+        for index in range(1600)
+    ]
+    with wave.open(str(audio_path), "wb") as wav:
+        wav.setnchannels(2)
+        wav.setsampwidth(2)
+        wav.setframerate(8000)
+        wav.writeframes(
+            b"".join(struct.pack("<hh", sample, sample // 2) for sample in source_samples)
+        )
+
+    catalog_path = project_root / "assets" / "catalog.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    catalog["audio_assets"] = [
+        {
+            "asset_id": "ui.select",
+            "asset_type": "sampled_sfx",
+            "source_path": "assets/select.wav",
+            "source_format": "wav",
+        }
+    ]
+    catalog["audio_cues"] = [
+        {
+            "cue_id": "ui.select.cue",
+            "asset_ref": "ui.select",
+            "priority": 96,
+            "volume": 224,
+        }
+    ]
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+
+    scene_path = project_root / "scenes" / "state_demo.state.json"
+    scene = json.loads(scene_path.read_text(encoding="utf-8"))
+    route = next(item for item in scene["routes"] if item["route_id"] == "center_to_right")
+    route["actions"].append({"kind": "play_sfx", "cue_ref": "ui.select.cue"})
+    scene_path.write_text(json.dumps(scene), encoding="utf-8")
+    return project_root
+
+
 class AuthoringModelTests(unittest.TestCase):
+    def test_ima_adpcm_codec_is_deterministic_and_block_bounded(self) -> None:
+        samples = tuple((index % 257 - 128) * 200 for index in range(777))
+        first, block_count = encode_ima_adpcm(samples)
+        second, second_count = encode_ima_adpcm(samples)
+        decoded = decode_ima_adpcm(first, len(samples), block_count)
+        self.assertEqual(first, second)
+        self.assertEqual(block_count, second_count)
+        self.assertEqual(4, block_count)
+        self.assertEqual(len(samples), len(decoded))
+        self.assertEqual(samples[0], decoded[0])
+
+    def test_ima_adpcm_block_headers_avoid_repeated_convergence_artifacts(self) -> None:
+        with wave.open(str(EMBEDDED_PROJECT / "assets" / "select.wav"), "rb") as wav:
+            self.assertEqual(1, wav.getnchannels())
+            self.assertEqual(2, wav.getsampwidth())
+            self.assertEqual(AUDIO_SAMPLE_RATE_HZ, wav.getframerate())
+            raw = wav.readframes(wav.getnframes())
+        samples = struct.unpack(f"<{len(raw) // 2}h", raw)
+        encoded, block_count = encode_ima_adpcm(samples)
+        decoded = decode_ima_adpcm(encoded, len(samples), block_count)
+        signal_energy = sum(sample * sample for sample in samples)
+        error_energy = sum(
+            (source - result) * (source - result)
+            for source, result in zip(samples, decoded)
+        )
+
+        self.assertGreater(signal_energy, error_energy * 400)
+        for block_offset in range(0, len(samples), AUDIO_BLOCK_SAMPLES):
+            if block_offset == 0:
+                continue
+            boundary_error = abs(samples[block_offset + 1] - decoded[block_offset + 1])
+            self.assertLess(boundary_error, 512)
+
+    def test_sampled_sfx_compiles_into_optional_audio_chunks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_audio_project(Path(temp_dir))
+            bundle = load_project(project_root)
+            self.assertEqual((), bundle.issues)
+            self.assertEqual(1, len(bundle.audio_assets))
+            self.assertEqual(AUDIO_SAMPLE_RATE_HZ, bundle.audio_assets[0].sample_rate_hz)
+            self.assertEqual(AUDIO_BLOCK_SAMPLES, bundle.audio_assets[0].block_samples)
+
+            first = build_egg(bundle)
+            self.assertEqual(first, build_egg(load_project(project_root)))
+            package = parse_egg(first)
+            self.assertEqual(15, len(package.chunks))
+            self.assertEqual({10, 11, 12}, {chunk.chunk_type for chunk in package.chunks[-3:]})
+            self.assertEqual("ui.select", package.audio_assets[0]["asset_id"])
+            self.assertEqual("ui.select.cue", package.audio_cues[0]["cue_id"])
+            route = next(
+                item
+                for item in package.scenes[0]["graph"]["routes"]
+                if item["route_id"] == "center_to_right"
+            )
+            operation = next(item for item in route["operations"] if item["kind"] == 7)
+            self.assertEqual(0, operation["cue_index"])
+
+    def test_sampled_sfx_rejects_excess_duration_and_unknown_cue(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_audio_project(Path(temp_dir))
+            with wave.open(str(project_root / "assets" / "select.wav"), "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(16000)
+                wav.writeframes(struct.pack("<h", 0) * 32001)
+            scene_path = project_root / "scenes" / "state_demo.state.json"
+            scene = json.loads(scene_path.read_text(encoding="utf-8"))
+            route = next(item for item in scene["routes"] if item["route_id"] == "center_to_right")
+            route["actions"][-1]["cue_ref"] = "missing.cue"
+            scene_path.write_text(json.dumps(scene), encoding="utf-8")
+
+            issue_codes = {issue.code for issue in load_project(project_root).issues}
+            self.assertIn("AUDIO_SOURCE_INVALID", issue_codes)
+            self.assertIn("AUDIO_CUE_UNKNOWN", issue_codes)
+
     def test_sample_is_valid_and_normalization_is_deterministic(self) -> None:
         first = load_project(SAMPLE)
         second = load_project(SAMPLE)
@@ -208,6 +334,33 @@ class AuthoringModelTests(unittest.TestCase):
             if item["action_id"] == "joy_move_left"
         )
         self.assertEqual(6, joy_input["logical_source"])
+
+    def test_state_element_actions_compile_and_round_trip(self) -> None:
+        package = parse_egg(build_egg(load_project(EMBEDDED_PROJECT)))
+        scene = next(item for item in package.scenes if item["scene_id"] == "state_demo")
+        routes = {item["route_id"]: item for item in scene["graph"]["routes"]}
+
+        center_to_right = routes["center_to_right"]["operations"]
+        moved = next(item for item in center_to_right if item["kind"] == 4)
+        selected_waiting = next(
+            item for item in center_to_right if item["kind"] == 6
+        )
+        self.assertEqual((120, 0), (moved["x"], moved["y"]))
+        self.assertEqual(1, selected_waiting["timeline_policy"])
+        self.assertEqual("marker_hold", selected_waiting["waiting_element_ref"])
+
+        right_to_left = routes["right_to_left"]["operations"]
+        restored_waiting = next(
+            item for item in right_to_left if item["kind"] == 6
+        )
+        self.assertEqual(2, restored_waiting["timeline_policy"])
+        self.assertEqual("marker_wait", restored_waiting["waiting_element_ref"])
+
+        right_to_left = routes["right_to_left"]["operations"]
+        hidden = next(item for item in right_to_left if item["kind"] == 3)
+        framed = next(item for item in right_to_left if item["kind"] == 5)
+        self.assertEqual(0, hidden["visible"])
+        self.assertEqual("marker.phase_c", framed["frame_ref"])
 
     def test_unknown_transition_target_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -279,7 +432,7 @@ class AuthoringModelTests(unittest.TestCase):
             package = parse_egg(build_egg(bundle))
             self.assertEqual(3, package.manifest["scene_count"])
             self.assertEqual(3, len(package.scenes))
-            self.assertTrue(all(scene["graph"]["format_version"] == 3 for scene in package.scenes))
+            self.assertTrue(all(scene["graph"]["format_version"] == 4 for scene in package.scenes))
             targets = {
                 route["target_scene"]
                 for scene in package.scenes
@@ -287,6 +440,49 @@ class AuthoringModelTests(unittest.TestCase):
                 if route["target_scene"] is not None
             }
             self.assertEqual({"state_demo", "state_details", "state_target"}, targets)
+
+    def test_graph_v4_round_trips_joystick_policy_and_input_lifecycle(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "input_lifecycle.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            scene_path = project_root / "scenes" / "state_demo.state.json"
+            scene = json.loads(scene_path.read_text(encoding="utf-8"))
+            scene["joystick_policy"] = "eight_way"
+            scene["input_actions"][1]["logical_source"] = "JOY_DOWN_RIGHT"
+            scene["input_actions"][1]["event_kind"] = "repeat"
+            scene_path.write_text(json.dumps(scene), encoding="utf-8")
+
+            bundle = load_project(project_root)
+            self.assertEqual((), bundle.issues)
+            package = parse_egg(build_egg(bundle))
+            graph = next(
+                item["graph"]
+                for item in package.scenes
+                if item["scene_id"] == "state_demo"
+            )
+            self.assertEqual(4, graph["format_version"])
+            self.assertEqual(2, graph["joystick_policy"])
+            binding = next(
+                item for item in graph["inputs"] if item["action_id"] == "move_right"
+            )
+            self.assertEqual(13, binding["logical_source"])
+            self.assertEqual(4, binding["logical_event"])
+
+    def test_diagonal_and_start_lifecycle_policy_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "invalid_input_policy.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            scene_path = project_root / "scenes" / "state_demo.state.json"
+            scene = json.loads(scene_path.read_text(encoding="utf-8"))
+            scene["input_actions"][0]["logical_source"] = "JOY_UP_LEFT"
+            scene["input_actions"][1]["logical_source"] = "BUTTON_START"
+            scene["input_actions"][1]["event_kind"] = "hold"
+            scene_path.write_text(json.dumps(scene), encoding="utf-8")
+
+            bundle = load_project(project_root)
+            codes = {issue.code for issue in bundle.issues}
+            self.assertIn("JOYSTICK_POLICY_REQUIRED", codes)
+            self.assertIn("INPUT_EVENT_SYSTEM_OWNED", codes)
 
     def test_unknown_scene_transition_target_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

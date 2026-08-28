@@ -193,6 +193,22 @@ Initial chunk types:
 
 Chunk type names are conceptual. Final binary IDs live in the schema files.
 
+The current PKG1 STATE sampled-SFX subset reserves concrete chunk type IDs
+`10`, `11`, and `12` for `AUD1` sampled-SFX assets, the `ADB1` IMA ADPCM bank,
+and `ACU1` symbolic cues respectively. The three chunks are optional but must
+appear as an all-or-none group. Their presence does not imply that a target
+profile grants `audio.sampled_sfx`; target admission remains separate.
+
+The current STATE graph chunk is `STG1` version `4`. Its four-byte input record
+stores the logical source ID in the low byte and the event kind in the high
+byte. Event kinds are `PRESS=1`, `RELEASE=2`, `HOLD=3`, and `REPEAT=4`.
+The scene interaction-policy word stores the interaction mode in its low byte
+and the joystick policy in its high byte; joystick policies are `FOUR_WAY=1`
+and `EIGHT_WAY=2`. `STG1` versions `1` through `3` decode as `PRESS` plus
+`FOUR_WAY` for compatibility. Unknown event or joystick-policy values fail
+validation. `BUTTON_START` may only bind `PRESS`; its long gesture remains
+system-owned.
+
 ---
 
 ## Time And Power Profile Chunk

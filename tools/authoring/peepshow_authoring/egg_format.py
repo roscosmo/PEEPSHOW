@@ -8,6 +8,13 @@ import zlib
 from dataclasses import dataclass
 from typing import Iterable
 
+from .audio_assets import (
+    AUDIO_BLOCK_SAMPLES,
+    AUDIO_CHANNELS,
+    AUDIO_SAMPLE_RATE_HZ,
+    AudioAssetError,
+    decode_ima_adpcm,
+)
 
 ALIGNMENT = 4
 CONTAINER_VERSION = 1
@@ -40,6 +47,11 @@ ASSET_RECORD = struct.Struct("<6H2h5I")
 SPRITE_BANK_HEADER = struct.Struct("<4sHHII")
 ANIMATION_HEADER = struct.Struct("<4s6H")
 ANIMATION_RECORD = struct.Struct("<8H")
+AUDIO_ASSET_HEADER = struct.Struct("<4s8H")
+AUDIO_ASSET_RECORD = struct.Struct("<HH8I")
+AUDIO_BANK_HEADER = struct.Struct("<4sHHII")
+AUDIO_CUE_HEADER = struct.Struct("<4s6H")
+AUDIO_CUE_RECORD = struct.Struct("<6H")
 HEADER_CRC_OFFSET = 44
 
 CHUNK_MANIFEST = 1
@@ -51,6 +63,9 @@ CHUNK_WAITING_VISUALS = 6
 CHUNK_ASSET_TABLE = 7
 CHUNK_MASKED_1BPP_SPRITE_BANK = 8
 CHUNK_ANIMATION_TABLE = 9
+CHUNK_AUDIO_ASSET_TABLE = 10
+CHUNK_AUDIO_ADPCM_BANK = 11
+CHUNK_AUDIO_CUE_TABLE = 12
 KNOWN_CHUNK_TYPES = {
     CHUNK_MANIFEST,
     CHUNK_STRING_TABLE,
@@ -61,6 +76,9 @@ KNOWN_CHUNK_TYPES = {
     CHUNK_ASSET_TABLE,
     CHUNK_MASKED_1BPP_SPRITE_BANK,
     CHUNK_ANIMATION_TABLE,
+    CHUNK_AUDIO_ASSET_TABLE,
+    CHUNK_AUDIO_ADPCM_BANK,
+    CHUNK_AUDIO_CUE_TABLE,
 }
 
 ASSET_FLAG_OPAQUE = 1
@@ -105,6 +123,8 @@ class EggPackage:
     scenes: tuple[dict[str, object], ...]
     assets: tuple[dict[str, object], ...]
     animations: tuple[dict[str, object], ...]
+    audio_assets: tuple[dict[str, object], ...]
+    audio_cues: tuple[dict[str, object], ...]
     chunks: tuple[EggChunk, ...]
     sha256: str
 
@@ -389,6 +409,157 @@ def _parse_assets(
     return tuple(assets), tuple(animations)
 
 
+def _parse_audio(
+    chunks: list[EggChunk],
+    asset_index: int,
+    bank_index: int,
+    cue_index: int,
+    strings: tuple[str, ...],
+) -> tuple[tuple[dict[str, object], ...], tuple[dict[str, object], ...]]:
+    asset_payload = chunks[asset_index].payload
+    bank_payload = chunks[bank_index].payload
+    cue_payload = chunks[cue_index].payload
+    _require(len(asset_payload) >= AUDIO_ASSET_HEADER.size, "audio asset table is truncated")
+    header = AUDIO_ASSET_HEADER.unpack_from(asset_payload)
+    _require(
+        header[0] == b"AUD1"
+        and header[1] == 1
+        and header[2] == AUDIO_ASSET_HEADER.size,
+        "unsupported audio asset table",
+    )
+    asset_count, selected_bank, sample_rate, channels, block_samples, reserved = header[3:9]
+    _require(
+        selected_bank == bank_index
+        and sample_rate == AUDIO_SAMPLE_RATE_HZ
+        and channels == AUDIO_CHANNELS
+        and block_samples == AUDIO_BLOCK_SAMPLES
+        and reserved == 0,
+        "audio asset header is invalid",
+    )
+    _require(
+        len(asset_payload) == AUDIO_ASSET_HEADER.size + asset_count * AUDIO_ASSET_RECORD.size,
+        "audio asset table size is inconsistent",
+    )
+    _require(len(bank_payload) >= AUDIO_BANK_HEADER.size, "audio ADPCM bank is truncated")
+    bank_header = AUDIO_BANK_HEADER.unpack_from(bank_payload)
+    _require(
+        bank_header[0] == b"ADB1"
+        and bank_header[1] == 1
+        and bank_header[2] == AUDIO_BANK_HEADER.size
+        and bank_header[3] == len(bank_payload) - AUDIO_BANK_HEADER.size
+        and bank_header[4] == 0,
+        "audio ADPCM bank header is invalid",
+    )
+
+    assets: list[dict[str, object]] = []
+    asset_ids: set[str] = set()
+    ranges: list[tuple[int, int]] = []
+    for index in range(asset_count):
+        record = AUDIO_ASSET_RECORD.unpack_from(
+            asset_payload, AUDIO_ASSET_HEADER.size + index * AUDIO_ASSET_RECORD.size
+        )
+        (
+            asset_id_index,
+            flags,
+            sample_count,
+            duration_ms,
+            decoded_pcm_bytes,
+            data_offset,
+            data_size,
+            block_count,
+            payload_crc,
+            record_reserved,
+        ) = record
+        asset_id = _string(strings, asset_id_index, "audio asset ID")
+        _require(asset_id not in asset_ids, "audio asset ID is duplicated")
+        asset_ids.add(asset_id)
+        _require(flags == 0 and record_reserved == 0, "audio asset flags are invalid")
+        _require(
+            sample_count > 0
+            and duration_ms == (sample_count * 1000 + AUDIO_SAMPLE_RATE_HZ // 2) // AUDIO_SAMPLE_RATE_HZ
+            and decoded_pcm_bytes == sample_count * 2
+            and block_count == (sample_count + AUDIO_BLOCK_SAMPLES - 1) // AUDIO_BLOCK_SAMPLES,
+            "audio asset metadata is invalid",
+        )
+        _require(
+            data_offset >= AUDIO_BANK_HEADER.size
+            and data_size > 0
+            and data_offset + data_size <= len(bank_payload),
+            "audio asset payload is outside the ADPCM bank",
+        )
+        adpcm = bank_payload[data_offset : data_offset + data_size]
+        _require((zlib.crc32(adpcm) & 0xFFFFFFFF) == payload_crc, "audio asset CRC mismatch")
+        try:
+            decode_ima_adpcm(adpcm, sample_count, block_count, AUDIO_BLOCK_SAMPLES)
+        except AudioAssetError as exc:
+            raise EggFormatError(f"audio asset ADPCM is invalid: {exc}") from exc
+        ranges.append((data_offset, data_offset + data_size))
+        assets.append(
+            {
+                "asset_id": asset_id,
+                "sample_rate_hz": sample_rate,
+                "channels": channels,
+                "sample_count": sample_count,
+                "duration_ms": duration_ms,
+                "decoded_pcm_bytes": decoded_pcm_bytes,
+                "block_samples": block_samples,
+                "block_count": block_count,
+                "adpcm": adpcm,
+            }
+        )
+    ordered = sorted(ranges)
+    _require(
+        all(ordered[index][1] <= ordered[index + 1][0] for index in range(len(ordered) - 1)),
+        "audio asset payloads overlap",
+    )
+
+    _require(len(cue_payload) >= AUDIO_CUE_HEADER.size, "audio cue table is truncated")
+    cue_header = AUDIO_CUE_HEADER.unpack_from(cue_payload)
+    _require(
+        cue_header[0] == b"ACU1"
+        and cue_header[1] == 1
+        and cue_header[2] == AUDIO_CUE_HEADER.size,
+        "unsupported audio cue table",
+    )
+    cue_count, cue_asset_count, cue_reserved, cue_reserved2 = cue_header[3:7]
+    _require(
+        cue_asset_count == asset_count
+        and cue_reserved == 0
+        and cue_reserved2 == 0
+        and len(cue_payload) == AUDIO_CUE_HEADER.size + cue_count * AUDIO_CUE_RECORD.size,
+        "audio cue table size is inconsistent",
+    )
+    cues: list[dict[str, object]] = []
+    cue_ids: set[str] = set()
+    for index in range(cue_count):
+        cue_id_index, selected_asset, priority, volume, flags, record_reserved = (
+            AUDIO_CUE_RECORD.unpack_from(
+                cue_payload, AUDIO_CUE_HEADER.size + index * AUDIO_CUE_RECORD.size
+            )
+        )
+        cue_id = _string(strings, cue_id_index, "audio cue ID")
+        _require(cue_id not in cue_ids, "audio cue ID is duplicated")
+        cue_ids.add(cue_id)
+        _require(
+            selected_asset < asset_count
+            and priority <= 255
+            and volume <= 255
+            and flags == 0
+            and record_reserved == 0,
+            "audio cue record is invalid",
+        )
+        cues.append(
+            {
+                "cue_id": cue_id,
+                "asset_index": selected_asset,
+                "asset_id": assets[selected_asset]["asset_id"],
+                "priority": priority,
+                "volume": volume,
+            }
+        )
+    return tuple(assets), tuple(cues)
+
+
 def _parse_render(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]:
     _require(len(payload) >= RENDER_HEADER.size, "render chunk is truncated")
     values = RENDER_HEADER.unpack_from(payload)
@@ -545,12 +716,13 @@ def _parse_graph(
     strings: tuple[str, ...],
     render_count: int,
     waiting_count: int,
+    audio_cue_count: int,
 ) -> dict[str, object]:
     _require(len(payload) >= GRAPH_HEADER.size, "state graph is truncated")
     values = GRAPH_HEADER.unpack_from(payload)
     graph_version = values[1]
     _require(
-        values[0] == b"STG1" and graph_version in {1, 2, 3} and values[2] == GRAPH_HEADER.size,
+        values[0] == b"STG1" and graph_version in {1, 2, 3, 4} and values[2] == GRAPH_HEADER.size,
         "unsupported state graph",
     )
     route_record = ROUTE_RECORD_V1 if graph_version == 1 else ROUTE_RECORD_V2
@@ -572,10 +744,12 @@ def _parse_graph(
         meaningful_count,
         interaction_mode_field,
     ) = values[3:]
-    interaction_mode = 2 if graph_version < 3 else interaction_mode_field
+    interaction_mode = 2 if graph_version < 3 else (interaction_mode_field & 0x00FF)
+    joystick_policy = 1 if graph_version < 4 else ((interaction_mode_field >> 8) & 0x00FF)
     _require(
         hold_fallback in {0, 1}
         and interaction_mode in {1, 2}
+        and joystick_policy in {1, 2}
         and ((interaction_mode == 1 and inactive_route == 0) or (interaction_mode == 2 and inactive_route in {1, 2}))
         and (graph_version >= 3 or interaction_mode_field == 0),
         "state policy fields are invalid",
@@ -619,8 +793,11 @@ def _parse_graph(
     for index in range(input_count):
         record = INPUT_RECORD.unpack_from(payload, offsets[1] + index * INPUT_RECORD.size)
         action_id = _string(strings, record[0], "input action ID")
-        _require(record[1] in {1, 2, 3, 4, 5, 6, 7, 8, 9}, "input source is invalid")
-        inputs.append({"action_id": action_id, "logical_source": record[1]})
+        logical_source = record[1] if graph_version < 4 else (record[1] & 0x00FF)
+        logical_event = 1 if graph_version < 4 else ((record[1] >> 8) & 0x00FF)
+        _require(logical_source in set(range(1, 14)), "input source is invalid")
+        _require(logical_event in {1, 2, 3, 4}, "input event is invalid")
+        inputs.append({"action_id": action_id, "logical_source": logical_source, "logical_event": logical_event})
     states: list[dict[str, object]] = []
     for index in range(state_count):
         record = STATE_RECORD.unpack_from(payload, offsets[2] + index * STATE_RECORD.size)
@@ -663,21 +840,111 @@ def _parse_graph(
         record = GUARD_RECORD.unpack_from(payload, offsets[5] + index * GUARD_RECORD.size)
         _require(record[0] < variable_count and record[1] in {1, 2, 3, 4, 5, 6}, "guard record is invalid")
         guards.append({"variable_index": record[0], "operator": record[1], "value": record[3]})
-    operations: list[dict[str, int]] = []
+    operations: list[dict[str, object]] = []
     for index in range(operation_count):
         record = OPERATION_RECORD.unpack_from(payload, offsets[6] + index * OPERATION_RECORD.size)
         if record[0] == 1:
-            _require(record[1] in {1, 2} and record[2] < variable_count, "set-variable operation is invalid")
+            _require(
+                record[1] in {1, 2}
+                and record[2] < variable_count
+                and record[3] == 0
+                and record[4] == 0,
+                "set-variable operation is invalid",
+            )
+            operations.append(
+                {
+                    "kind": record[0],
+                    "operation": record[1],
+                    "variable_index": record[2],
+                    "value": record[5],
+                }
+            )
+        elif record[0] == 2:
+            _require(
+                record[1] == 0
+                and record[2] == 0xFFFF
+                and record[3] == 0
+                and record[4] == 0
+                and record[5] == 0,
+                "request-render operation is invalid",
+            )
+            operations.append({"kind": record[0]})
+        elif record[0] == 3:
+            _require(
+                record[1] == 0
+                and record[3] == 0
+                and record[4] == 0
+                and record[5] in {0, 1},
+                "set-element-visibility operation is invalid",
+            )
+            operations.append(
+                {
+                    "kind": record[0],
+                    "element_index": record[2],
+                    "visible": record[5],
+                }
+            )
+        elif record[0] == 4:
+            _require(
+                record[1] == 0 and record[4] == 0 and record[5] >= 0,
+                "set-element-position operation is invalid",
+            )
+            operations.append(
+                {
+                    "kind": record[0],
+                    "element_index": record[2],
+                    "x": record[3],
+                    "y": record[5],
+                }
+            )
+        elif record[0] == 5:
+            _require(
+                record[1] == 0
+                and record[3] < len(strings)
+                and record[4] == 0
+                and record[5] == 0,
+                "set-element-frame operation is invalid",
+            )
+            operations.append(
+                {
+                    "kind": record[0],
+                    "element_index": record[2],
+                    "frame_ref": _string(strings, record[3], "element action frame"),
+                }
+            )
+        elif record[0] == 6:
+            _require(
+                record[1] in {1, 2}
+                and record[3] < waiting_count
+                and record[4] < len(strings)
+                and record[5] == 0,
+                "set-element-waiting-animation operation is invalid",
+            )
+            operations.append(
+                {
+                    "kind": record[0],
+                    "timeline_policy": record[1],
+                    "element_index": record[2],
+                    "waiting_visual_index": record[3],
+                    "waiting_element_ref": _string(
+                        strings,
+                        record[4],
+                        "element action waiting element",
+                    ),
+                }
+            )
+        elif record[0] == 7:
+            _require(
+                record[1] == 0
+                and record[2] < audio_cue_count
+                and record[3] == 0
+                and record[4] == 0
+                and record[5] == 0,
+                "play-SFX operation is invalid",
+            )
+            operations.append({"kind": record[0], "cue_index": record[2]})
         else:
-            _require(record[0] == 2 and record[1] == 0 and record[2] == 0xFFFF, "operation record is invalid")
-        operations.append(
-            {
-                "kind": record[0],
-                "operation": record[1],
-                "variable_index": record[2],
-                "value": record[5],
-            }
-        )
+            raise EggFormatError("operation record is invalid")
     routes: list[dict[str, object]] = []
     for record in route_records:
         if graph_version == 1:
@@ -725,6 +992,7 @@ def _parse_graph(
         "event_interest_indexes": tuple(event_refs),
         "interaction_policy_id": _string(strings, interaction_policy_id, "interaction policy ID"),
         "interaction_mode": interaction_mode,
+        "joystick_policy": joystick_policy,
         "inactive_route": inactive_route,
         "meaningful_action_indexes": tuple(meaningful_refs),
     }
@@ -794,9 +1062,24 @@ def parse_egg(blob: bytes) -> EggPackage:
     animation_indexes = [index for index, chunk in enumerate(chunks) if chunk.chunk_type == CHUNK_ANIMATION_TABLE]
     asset_cardinality = (len(asset_indexes), len(sprite_indexes), len(animation_indexes))
     _require(asset_cardinality in {(0, 0, 0), (1, 1, 1)}, "asset chunk cardinality is invalid")
+    audio_asset_indexes = [index for index, chunk in enumerate(chunks) if chunk.chunk_type == CHUNK_AUDIO_ASSET_TABLE]
+    audio_bank_indexes = [index for index, chunk in enumerate(chunks) if chunk.chunk_type == CHUNK_AUDIO_ADPCM_BANK]
+    audio_cue_indexes = [index for index, chunk in enumerate(chunks) if chunk.chunk_type == CHUNK_AUDIO_CUE_TABLE]
+    audio_cardinality = (len(audio_asset_indexes), len(audio_bank_indexes), len(audio_cue_indexes))
+    _require(audio_cardinality in {(0, 0, 0), (1, 1, 1)}, "audio chunk cardinality is invalid")
     strings = _parse_strings(string_chunks[0].payload)
     manifest = _parse_manifest(manifest_chunks[0].payload, strings)
     _require(fnv1a64(str(manifest["package_id"])) == package_id_hash, "package ID hash does not match manifest")
+    if audio_asset_indexes:
+        audio_assets, audio_cues = _parse_audio(
+            chunks,
+            audio_asset_indexes[0],
+            audio_bank_indexes[0],
+            audio_cue_indexes[0],
+            strings,
+        )
+    else:
+        audio_assets, audio_cues = (), ()
 
     scene_payload = scene_chunks[0].payload
     _require(len(scene_payload) >= SCENE_HEADER.size, "scene table is truncated")
@@ -804,7 +1087,12 @@ def parse_egg(blob: bytes) -> EggPackage:
     _require(scene_header[0] == b"SCN1" and scene_header[1] == 1 and scene_header[2] == SCENE_HEADER.size, "unsupported scene table")
     scene_count = scene_header[3]
     _require(scene_header[4] == 0 and len(scene_payload) == SCENE_HEADER.size + scene_count * SCENE_RECORD.size, "scene table size is inconsistent")
-    expected_chunk_count = 3 + scene_count * 3 + (3 if asset_indexes else 0)
+    expected_chunk_count = (
+        3
+        + scene_count * 3
+        + (3 if asset_indexes else 0)
+        + (3 if audio_asset_indexes else 0)
+    )
     _require(scene_count == manifest["scene_count"] and chunk_count == expected_chunk_count, "scene/chunk count is inconsistent")
     scenes: list[dict[str, object]] = []
     used_scene_chunks: set[int] = set()
@@ -824,6 +1112,7 @@ def parse_egg(blob: bytes) -> EggPackage:
             strings,
             int(render_summary["model_count"]),
             int(wait_summary["waiting_count"]),
+            len(audio_cues),
         )
         _require(entry_state == graph_summary["entry_state"], "scene entry state does not match graph")
         scenes.append(
@@ -868,6 +1157,8 @@ def parse_egg(blob: bytes) -> EggPackage:
         scenes=tuple(scenes),
         assets=assets,
         animations=animations,
+        audio_assets=audio_assets,
+        audio_cues=audio_cues,
         chunks=tuple(chunks),
         sha256=hashlib.sha256(blob).hexdigest(),
     )

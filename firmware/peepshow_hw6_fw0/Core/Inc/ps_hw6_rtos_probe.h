@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (69UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (71UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -382,6 +382,13 @@ typedef struct
   uint32_t audio_clock_reactive_sfx_status;
   uint32_t audio_clock_realtime_status;
   uint32_t audio_clock_release_status;
+  uint32_t audio_sfx_dispatch_count;
+  uint32_t audio_sfx_send_status;
+  uint32_t audio_sfx_owner_count;
+  uint32_t audio_sfx_owner_status;
+  uint32_t audio_sfx_clock_request_status;
+  uint32_t audio_sfx_clock_release_status;
+  uint32_t audio_sfx_last_cue_index;
 
   uint32_t storage_clock_request_count;
   uint32_t storage_clock_release_count;
@@ -496,8 +503,17 @@ typedef struct
   uint32_t joystick_logical_change_count;
   uint32_t joystick_logical_activation_count;
   uint32_t joystick_logical_release_count;
+  uint32_t joystick_logical_hold_count;
+  uint32_t joystick_logical_repeat_count;
   uint32_t joystick_logical_switch_count;
   uint32_t joystick_logical_drop_count;
+  uint32_t joystick_logical_policy;
+  uint32_t joystick_logical_active_direction_mask;
+  uint32_t joystick_logical_active_source;
+  uint32_t joystick_logical_press_tick;
+  uint32_t joystick_logical_next_repeat_tick;
+  uint32_t joystick_logical_hold_sent;
+  uint32_t joystick_logical_last_event;
   uint32_t joystick_logical_last_candidate_mask;
   uint32_t joystick_logical_last_resolved_mask;
   uint32_t joystick_logical_last_direction_mask;
@@ -611,6 +627,7 @@ UINT PS_HW6_RTOS_DebugRequestImuLowRate(void);
 UINT PS_HW6_RTOS_DebugRequestImuEventArmed(void);
 UINT PS_HW6_RTOS_DebugRequestImuStepCounter(void);
 UINT PS_HW6_RTOS_DebugRequestImuStreaming(void);
+UINT PS_HW6_RTOS_DebugRequestInputDiagnostic(void);
 void PS_HW6_RTOS_LowPowerTimerSetup(ULONG count);
 void PS_HW6_RTOS_LowPowerEnter(void);
 void PS_HW6_RTOS_LowPowerExit(void);

@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (33UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (34UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -330,6 +330,16 @@ typedef struct
   uint32_t audio_dma_state_after;
   uint32_t audio_dma_error_after;
   uint32_t audio_ack_set_status;
+  uint32_t audio_sfx_request_count;
+  uint32_t audio_sfx_cue_index;
+  uint32_t audio_sfx_asset_index;
+  uint32_t audio_sfx_priority;
+  uint32_t audio_sfx_volume;
+  uint32_t audio_sfx_adpcm_bytes;
+  uint32_t audio_sfx_sample_count;
+  uint32_t audio_sfx_block_count;
+  uint32_t audio_sfx_decode_status;
+  uint32_t audio_sfx_decoded_samples;
 } PS_HW6_OwnerProbe;
 
 extern volatile PS_HW6_OwnerProbe g_ps_hw6_owner_probe;
@@ -366,6 +376,7 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2AndResume(void);
 void PS_HW6_DisplayOwner_DebugForceNextLpbamReady(void);
 HAL_StatusTypeDef PS_HW6_AudioOwner_RunTone(void);
+HAL_StatusTypeDef PS_HW6_AudioOwner_RunSfx(uint32_t cue_index);
 HAL_StatusTypeDef PS_HW6_AudioOwner_VerifyIdle(void);
 void PS_HW6_OwnerServices_MarkComplete(void);
 

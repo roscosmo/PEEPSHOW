@@ -523,6 +523,9 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
     case PS_UI_ROUTER_EVENT_NAV_PACKAGES:
       status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_PACKAGE_BROWSER);
       break;
+    case PS_UI_ROUTER_EVENT_NAV_INPUT_DIAGNOSTIC:
+      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC);
+      break;
     case PS_UI_ROUTER_EVENT_LAUNCH_RUNTIME:
       if ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_HOME) ||
           (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_MENU) ||
@@ -722,34 +725,46 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
     case PS_UI_ROUTER_EVENT_INPUT_BTN_A:
       ps_ui_router_state.last_button_event = event;
       ps_ui_router_state.button_event_count++;
-      status = PS_UIRouter_DispatchButtonA();
+      status = (ps_ui_router_state.current_page ==
+                PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC) ?
+               PS_STATUS_OK : PS_UIRouter_DispatchButtonA();
       break;
     case PS_UI_ROUTER_EVENT_INPUT_BTN_B:
       ps_ui_router_state.last_button_event = event;
       ps_ui_router_state.button_event_count++;
-      status = PS_UIRouter_DispatchButtonB();
+      status = (ps_ui_router_state.current_page ==
+                PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC) ?
+               PS_STATUS_OK : PS_UIRouter_DispatchButtonB();
       break;
     case PS_UI_ROUTER_EVENT_INPUT_BTN_L:
       ps_ui_router_state.last_button_event = event;
       ps_ui_router_state.button_event_count++;
-      status = PS_UIRouter_DispatchButtonL();
+      status = (ps_ui_router_state.current_page ==
+                PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC) ?
+               PS_STATUS_OK : PS_UIRouter_DispatchButtonL();
       break;
     case PS_UI_ROUTER_EVENT_INPUT_BTN_R:
       ps_ui_router_state.last_button_event = event;
       ps_ui_router_state.button_event_count++;
-      status = PS_UIRouter_DispatchButtonR();
+      status = (ps_ui_router_state.current_page ==
+                PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC) ?
+               PS_STATUS_OK : PS_UIRouter_DispatchButtonR();
       break;
     case PS_UI_ROUTER_EVENT_INPUT_JOY_LEFT:
     case PS_UI_ROUTER_EVENT_INPUT_JOY_UP:
       ps_ui_router_state.last_joystick_event = event;
       ps_ui_router_state.joystick_event_count++;
-      status = PS_UIRouter_DispatchButtonL();
+      status = (ps_ui_router_state.current_page ==
+                PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC) ?
+               PS_STATUS_OK : PS_UIRouter_DispatchButtonL();
       break;
     case PS_UI_ROUTER_EVENT_INPUT_JOY_RIGHT:
     case PS_UI_ROUTER_EVENT_INPUT_JOY_DOWN:
       ps_ui_router_state.last_joystick_event = event;
       ps_ui_router_state.joystick_event_count++;
-      status = PS_UIRouter_DispatchButtonR();
+      status = (ps_ui_router_state.current_page ==
+                PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC) ?
+               PS_STATUS_OK : PS_UIRouter_DispatchButtonR();
       break;
     default:
       status = PS_STATUS_UNSUPPORTED;

@@ -5,17 +5,27 @@ from __future__ import annotations
 import hashlib
 import struct
 from copy import deepcopy
+import zlib
 from pathlib import Path
 from typing import Any, Iterable
 
+from .audio_assets import AUDIO_BLOCK_SAMPLES, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE_HZ
 from .egg_format import (
     ANIMATION_HEADER,
     ANIMATION_RECORD,
+    AUDIO_ASSET_HEADER,
+    AUDIO_ASSET_RECORD,
+    AUDIO_BANK_HEADER,
+    AUDIO_CUE_HEADER,
+    AUDIO_CUE_RECORD,
     ASSET_FLAG_OPAQUE,
     ASSET_HEADER,
     ASSET_RECORD,
     CHUNK_ANIMATION_TABLE,
     CHUNK_ASSET_TABLE,
+    CHUNK_AUDIO_ADPCM_BANK,
+    CHUNK_AUDIO_ASSET_TABLE,
+    CHUNK_AUDIO_CUE_TABLE,
     CHUNK_MANIFEST,
     CHUNK_MASKED_1BPP_SPRITE_BANK,
     CHUNK_RENDER_MODELS,
@@ -59,7 +69,13 @@ LOGICAL_SOURCES = {
     "JOY_RIGHT": 7,
     "JOY_UP": 8,
     "JOY_DOWN": 9,
+    "JOY_UP_LEFT": 10,
+    "JOY_UP_RIGHT": 11,
+    "JOY_DOWN_LEFT": 12,
+    "JOY_DOWN_RIGHT": 13,
 }
+LOGICAL_EVENTS = {"press": 1, "release": 2, "hold": 3, "repeat": 4}
+JOYSTICK_POLICIES = {"four_way": 1, "eight_way": 2}
 GUARD_OPERATORS = {"eq": 1, "ne": 2, "lt": 3, "le": 4, "gt": 5, "ge": 6}
 VARIABLE_OPERATIONS = {"assign": 1, "add": 2}
 RENDER_KINDS = {
@@ -194,6 +210,8 @@ def _string_table(bundle: ProjectBundle, scenes: tuple[dict[str, Any], ...] | No
         values.add(asset["asset_id"])
         values.update(frame["frame_id"] for frame in asset["frames"])
     values.update(animation["animation_id"] for animation in bundle.animations)
+    values.update(asset.asset_id for asset in bundle.audio_assets)
+    values.update(cue["cue_id"] for cue in bundle.audio_cues)
     strings = tuple(sorted(values))
     if len(strings) > 0xFFFF:
         raise EggCompileError("string table contains more than 65535 strings")
@@ -332,7 +350,11 @@ def _compile_waiting(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
     return header + wait_records + element_records + phases + sequence_values
 
 
-def _compile_graph(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
+def _compile_graph(
+    scene: dict[str, Any],
+    strings: dict[str, int],
+    audio_cue_indexes: dict[str, int],
+) -> bytes:
     variables = scene["variables"]
     inputs = scene["input_actions"]
     states = scene["states"]
@@ -356,7 +378,11 @@ def _compile_graph(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
             )
         )
     input_records = b"".join(
-        INPUT_RECORD.pack(strings[record["action_id"]], LOGICAL_SOURCES[record["logical_source"]])
+        INPUT_RECORD.pack(
+            strings[record["action_id"]],
+            LOGICAL_SOURCES[record["logical_source"]]
+            | (LOGICAL_EVENTS[record.get("event_kind", "press")] << 8),
+        )
         for record in inputs
     )
     state_records = b"".join(
@@ -376,6 +402,16 @@ def _compile_graph(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
     guard_count = 0
     operation_count = 0
     for route in routes:
+        target_elements: dict[str, int] = {}
+        if "target_state" in route:
+            target_state_record = states[state_index[route["target_state"]]]
+            target_render_model = scene["render_models"][
+                render_index[target_state_record["render_model_ref"]]
+            ]
+            target_elements = {
+                element["element_id"]: index
+                for index, element in enumerate(target_render_model["elements"])
+            }
         first_source = len(source_states)
         source_states.extend(state_index[value] for value in route["from_states"])
         first_guard = guard_count
@@ -402,8 +438,73 @@ def _compile_graph(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
                         _i32(operation["value"], "operation value"),
                     )
                 )
-            else:
+            elif operation["kind"] == "request_render":
                 operation_records.extend(OPERATION_RECORD.pack(2, 0, 0xFFFF, 0, 0, 0))
+            elif operation["kind"] == "set_element_visibility":
+                operation_records.extend(
+                    OPERATION_RECORD.pack(
+                        3,
+                        0,
+                        target_elements[operation["element_ref"]],
+                        0,
+                        0,
+                        1 if operation["visible"] else 0,
+                    )
+                )
+            elif operation["kind"] == "set_element_position":
+                operation_records.extend(
+                    OPERATION_RECORD.pack(
+                        4,
+                        0,
+                        target_elements[operation["element_ref"]],
+                        _u16(operation["x"], "element action x"),
+                        0,
+                        _i32(operation["y"], "element action y"),
+                    )
+                )
+            elif operation["kind"] == "set_element_frame":
+                operation_records.extend(
+                    OPERATION_RECORD.pack(
+                        5,
+                        0,
+                        target_elements[operation["element_ref"]],
+                        strings[operation["frame_ref"]],
+                        0,
+                        0,
+                    )
+                )
+            elif operation["kind"] == "set_element_waiting_animation":
+                source_waiting = scene["waiting_visuals"][
+                    waiting_index[operation["waiting_visual_ref"]]
+                ]
+                source_element_index = next(
+                    index
+                    for index, element in enumerate(source_waiting["elements"])
+                    if element["element_id"] == operation["waiting_element_ref"]
+                )
+                operation_records.extend(
+                    OPERATION_RECORD.pack(
+                        6,
+                        1 if operation["timeline_policy"] == "preserve" else 2,
+                        target_elements[operation["element_ref"]],
+                        waiting_index[operation["waiting_visual_ref"]],
+                        strings[source_waiting["elements"][source_element_index]["element_id"]],
+                        0,
+                    )
+                )
+            elif operation["kind"] == "play_sfx":
+                operation_records.extend(
+                    OPERATION_RECORD.pack(
+                        7,
+                        0,
+                        audio_cue_indexes[operation["cue_ref"]],
+                        0,
+                        0,
+                        0,
+                    )
+                )
+            else:
+                raise EggCompileError("unsupported STATE route action")
             operation_count += 1
         route_records.extend(
             ROUTE_RECORD.pack(
@@ -428,7 +529,7 @@ def _compile_graph(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
     inactive_route = INACTIVE_ROUTES.get(interaction.get("inactive_route"), 0)
     header = GRAPH_HEADER.pack(
         b"STG1",
-        3,
+        4,
         GRAPH_HEADER.size,
         state_index[scene["entry_state"]],
         _u16(len(variables), "variable count"),
@@ -445,7 +546,7 @@ def _compile_graph(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
         strings[interaction["policy_id"]],
         inactive_route,
         _u16(len(meaningful), "meaningful-action count"),
-        interaction_mode,
+        interaction_mode | (JOYSTICK_POLICIES[scene.get("joystick_policy", "four_way")] << 8),
     )
     sources = struct.pack(f"<{len(source_states)}H", *source_states) if source_states else b""
     events = struct.pack(f"<{len(event_interests)}H", *event_interests) if event_interests else b""
@@ -611,11 +712,89 @@ def _compile_asset_chunks(
     return asset_payload, bytes(sprite_payload), animation_payload
 
 
+def _compile_audio_chunks(
+    bundle: ProjectBundle,
+    strings: dict[str, int],
+    bank_chunk_index: int,
+) -> tuple[bytes, bytes, bytes]:
+    assets = tuple(sorted(bundle.audio_assets, key=lambda asset: asset.asset_id))
+    asset_indexes = {asset.asset_id: index for index, asset in enumerate(assets)}
+    bank_payload = bytearray(AUDIO_BANK_HEADER.size)
+    asset_records = bytearray()
+    for asset in assets:
+        while len(bank_payload) % 4:
+            bank_payload.append(0)
+        data_offset = len(bank_payload)
+        bank_payload.extend(asset.adpcm)
+        asset_records.extend(
+            AUDIO_ASSET_RECORD.pack(
+                strings[asset.asset_id],
+                0,
+                asset.sample_count,
+                asset.duration_ms,
+                asset.decoded_pcm_bytes,
+                data_offset,
+                len(asset.adpcm),
+                asset.block_count,
+                zlib.crc32(asset.adpcm) & 0xFFFFFFFF,
+                0,
+            )
+        )
+    AUDIO_BANK_HEADER.pack_into(
+        bank_payload,
+        0,
+        b"ADB1",
+        1,
+        AUDIO_BANK_HEADER.size,
+        len(bank_payload) - AUDIO_BANK_HEADER.size,
+        0,
+    )
+    asset_payload = AUDIO_ASSET_HEADER.pack(
+        b"AUD1",
+        1,
+        AUDIO_ASSET_HEADER.size,
+        _u16(len(assets), "audio asset count"),
+        _u16(bank_chunk_index, "audio bank chunk index"),
+        AUDIO_SAMPLE_RATE_HZ,
+        AUDIO_CHANNELS,
+        AUDIO_BLOCK_SAMPLES,
+        0,
+    ) + asset_records
+
+    cue_records = bytearray()
+    cues = tuple(sorted(bundle.audio_cues, key=lambda cue: cue["cue_id"]))
+    for cue in cues:
+        cue_records.extend(
+            AUDIO_CUE_RECORD.pack(
+                strings[cue["cue_id"]],
+                asset_indexes[cue["asset_ref"]],
+                _u16(cue["priority"], "audio cue priority"),
+                _u16(cue["volume"], "audio cue volume"),
+                0,
+                0,
+            )
+        )
+    cue_payload = AUDIO_CUE_HEADER.pack(
+        b"ACU1",
+        1,
+        AUDIO_CUE_HEADER.size,
+        _u16(len(cues), "audio cue count"),
+        _u16(len(assets), "audio cue asset count"),
+        0,
+        0,
+    ) + cue_records
+    return asset_payload, bytes(bank_payload), cue_payload
+
+
 def build_egg(bundle: ProjectBundle) -> bytes:
     if not bundle.valid:
         raise EggCompileError("project must validate before package compilation")
     scenes = tuple(_package_scene(scene) for scene in sorted(bundle.scenes, key=lambda scene: scene["scene_id"]))
     _, string_indexes, string_payload = _string_table(bundle, scenes)
+    audio_cue_indexes = {
+        cue["cue_id"]: index
+        for index, cue in enumerate(sorted(bundle.audio_cues, key=lambda cue: cue["cue_id"]))
+    }
     chunk_indexes = {
         scene["scene_id"]: (3 + index * 3, 4 + index * 3, 5 + index * 3)
         for index, scene in enumerate(scenes)
@@ -629,7 +808,11 @@ def build_egg(bundle: ProjectBundle) -> bytes:
         scene_id = scene["scene_id"]
         chunks.extend(
             (
-                EggChunkSpec(f"state_graph.{scene_id}", CHUNK_STATE_GRAPH, _compile_graph(scene, string_indexes)),
+                EggChunkSpec(
+                    f"state_graph.{scene_id}",
+                    CHUNK_STATE_GRAPH,
+                    _compile_graph(scene, string_indexes, audio_cue_indexes),
+                ),
                 EggChunkSpec(f"render_models.{scene_id}", CHUNK_RENDER_MODELS, _compile_render(scene, string_indexes)),
                 EggChunkSpec(f"waiting_visuals.{scene_id}", CHUNK_WAITING_VISUALS, _compile_waiting(scene, string_indexes)),
             )
@@ -649,6 +832,21 @@ def build_egg(bundle: ProjectBundle) -> bytes:
                 EggChunkSpec("assets", CHUNK_ASSET_TABLE, asset_payload),
                 EggChunkSpec("sprites.masked_1bpp", CHUNK_MASKED_1BPP_SPRITE_BANK, sprite_payload),
                 EggChunkSpec("animations", CHUNK_ANIMATION_TABLE, animation_payload),
+            )
+        )
+    if bundle.audio_assets:
+        audio_asset_chunk_index = len(chunks)
+        audio_bank_chunk_index = audio_asset_chunk_index + 1
+        audio_asset_payload, audio_bank_payload, audio_cue_payload = _compile_audio_chunks(
+            bundle,
+            string_indexes,
+            audio_bank_chunk_index,
+        )
+        chunks.extend(
+            (
+                EggChunkSpec("audio.assets", CHUNK_AUDIO_ASSET_TABLE, audio_asset_payload),
+                EggChunkSpec("audio.adpcm", CHUNK_AUDIO_ADPCM_BANK, audio_bank_payload),
+                EggChunkSpec("audio.cues", CHUNK_AUDIO_CUE_TABLE, audio_cue_payload),
             )
         )
     try:

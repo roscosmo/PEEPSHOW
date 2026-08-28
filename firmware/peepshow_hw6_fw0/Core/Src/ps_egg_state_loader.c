@@ -12,10 +12,12 @@
 #define PS_EGG_FOOTER_SIZE               (40UL)
 #define PS_EGG_CHUNK_COUNT_CORE          (3U)
 #define PS_EGG_CHUNK_COUNT_ASSET         (3U)
+#define PS_EGG_CHUNK_COUNT_AUDIO         (3U)
 #define PS_EGG_CHUNK_COUNT_MAX           \
   (PS_EGG_CHUNK_COUNT_CORE +             \
    (PS_EGG_STATE_LOADER_SCENE_MAX * 3U) + \
-   PS_EGG_CHUNK_COUNT_ASSET)
+   PS_EGG_CHUNK_COUNT_ASSET +            \
+   PS_EGG_CHUNK_COUNT_AUDIO)
 #define PS_EGG_ALIGNMENT                 (4UL)
 #define PS_EGG_PACKAGE_SIZE_MAX          (65536UL)
 #define PS_EGG_STRING_COUNT_MAX          (256U)
@@ -29,6 +31,9 @@
 #define PS_EGG_CHUNK_ASSETS              (7U)
 #define PS_EGG_CHUNK_SPRITES             (8U)
 #define PS_EGG_CHUNK_ANIMATIONS          (9U)
+#define PS_EGG_CHUNK_AUDIO_ASSETS        (10U)
+#define PS_EGG_CHUNK_AUDIO_BANK          (11U)
+#define PS_EGG_CHUNK_AUDIO_CUES          (12U)
 #define PS_EGG_STRING_HEADER_SIZE        (12UL)
 #define PS_EGG_MANIFEST_SIZE             (28UL)
 #define PS_EGG_SCENE_HEADER_SIZE         (12UL)
@@ -52,6 +57,12 @@
 #define PS_EGG_ASSET_RECORD_SIZE         (36UL)
 #define PS_EGG_SPRITE_HEADER_SIZE        (16UL)
 #define PS_EGG_ASSET_FLAG_OPAQUE         (1UL)
+#define PS_EGG_AUDIO_ASSET_HEADER_SIZE   (20UL)
+#define PS_EGG_AUDIO_ASSET_RECORD_SIZE   (36UL)
+#define PS_EGG_AUDIO_BANK_HEADER_SIZE    (16UL)
+#define PS_EGG_AUDIO_CUE_HEADER_SIZE     (16UL)
+#define PS_EGG_AUDIO_CUE_RECORD_SIZE     (12UL)
+#define PS_EGG_AUDIO_BLOCK_HEADER_SIZE   (6UL)
 #define PS_EGG_PRESENTATION_BASE         (0x30000000UL)
 
 typedef struct
@@ -93,6 +104,7 @@ typedef struct
   uint16_t meaningful_count;
   uint16_t interaction_mode;
   uint16_t inactive_route;
+  uint16_t joystick_policy;
 } ps_egg_graph_view_t;
 
 typedef struct
@@ -134,6 +146,22 @@ typedef struct
   uint16_t frame_count;
 } ps_egg_sprite_catalog_t;
 
+typedef struct
+{
+  const uint8_t *adpcm;
+  uint32_t adpcm_size;
+  uint32_t sample_count;
+  uint32_t duration_ms;
+  uint32_t block_count;
+} ps_egg_audio_asset_t;
+
+typedef struct
+{
+  uint16_t asset_index;
+  uint16_t priority;
+  uint16_t volume;
+} ps_egg_audio_cue_t;
+
 static ps_egg_chunk_t s_ps_egg_chunks[PS_EGG_CHUNK_COUNT_MAX];
 static uint16_t s_ps_egg_chunk_count;
 static ps_egg_scene_catalog_entry_t
@@ -144,6 +172,13 @@ static uint16_t s_ps_egg_scene_count;
 static uint16_t s_ps_egg_entry_scene_id;
 static ps_egg_sprite_catalog_t s_ps_egg_sprite_catalog;
 static ps_egg_state_loader_sprite_frame_t s_ps_egg_sprite_frame_scratch;
+static ps_egg_audio_asset_t
+  s_ps_egg_audio_assets[PS_EGG_STATE_LOADER_AUDIO_ASSET_MAX];
+static ps_egg_audio_cue_t
+  s_ps_egg_audio_cues[PS_EGG_STATE_LOADER_AUDIO_CUE_MAX];
+static uint16_t s_ps_egg_audio_asset_count;
+static uint16_t s_ps_egg_audio_cue_count;
+static ps_scene_runtime_visual_binding_t s_ps_egg_binding_scratch;
 
 volatile ps_egg_state_loader_probe_t g_ps_egg_state_loader_probe =
 {
@@ -514,7 +549,7 @@ static uint32_t PS_EggValidateContainer(const uint8_t *blob,
     chunk->size = PS_EggU32(&entry[20]);
     chunk->crc32 = PS_EggU32(&entry[24]);
     if ((chunk->type < PS_EGG_CHUNK_MANIFEST) ||
-        (chunk->type > PS_EGG_CHUNK_ANIMATIONS) ||
+        (chunk->type > PS_EGG_CHUNK_AUDIO_CUES) ||
         (PS_EggU16(&entry[2]) != 1U) ||
         (PS_EggU32(&entry[4]) != 0UL) ||
         (chunk->size == 0UL) ||
@@ -702,6 +737,42 @@ uint32_t PS_EggStateLoader_GetSpriteFrame(
   return 1UL;
 }
 
+uint32_t PS_EggStateLoader_GetAudioCue(
+  uint32_t cue_index,
+  ps_egg_state_loader_audio_cue_t *cue)
+{
+  const ps_egg_audio_cue_t *source_cue;
+  const ps_egg_audio_asset_t *asset;
+
+  if ((cue == NULL) || (cue_index >= s_ps_egg_audio_cue_count))
+  {
+    return 0UL;
+  }
+  source_cue = &s_ps_egg_audio_cues[cue_index];
+  if (source_cue->asset_index >= s_ps_egg_audio_asset_count)
+  {
+    return 0UL;
+  }
+  asset = &s_ps_egg_audio_assets[source_cue->asset_index];
+  if ((asset->adpcm == NULL) || (asset->adpcm_size == 0UL) ||
+      (asset->sample_count == 0UL) ||
+      (asset->sample_count > PS_EGG_STATE_LOADER_AUDIO_SAMPLE_MAX))
+  {
+    return 0UL;
+  }
+
+  cue->adpcm = asset->adpcm;
+  cue->adpcm_size = asset->adpcm_size;
+  cue->sample_count = asset->sample_count;
+  cue->duration_ms = asset->duration_ms;
+  cue->block_count = asset->block_count;
+  cue->cue_index = cue_index;
+  cue->asset_index = source_cue->asset_index;
+  cue->priority = source_cue->priority;
+  cue->volume = source_cue->volume;
+  return 1UL;
+}
+
 static uint32_t PS_EggFindSpriteFrame(uint16_t frame_string_index,
                                       uint32_t *frame_id)
 {
@@ -838,6 +909,216 @@ static uint32_t PS_EggValidateSpriteCatalog(
   return 1UL;
 }
 
+static uint32_t PS_EggValidateAudioAdpcm(const uint8_t *payload,
+                                         uint32_t payload_size,
+                                         uint32_t sample_count,
+                                         uint32_t block_count)
+{
+  uint32_t offset = 0UL;
+  uint32_t decoded_samples = 0UL;
+  uint32_t block;
+
+  if ((payload == NULL) || (payload_size == 0UL) ||
+      (sample_count == 0UL) || (block_count == 0UL))
+  {
+    return 0UL;
+  }
+
+  for (block = 0UL; block < block_count; ++block)
+  {
+    uint32_t block_sample_count;
+    uint32_t nibble_count;
+    uint32_t encoded_bytes;
+
+    if (PS_EggRangeValid(payload_size, offset,
+                         PS_EGG_AUDIO_BLOCK_HEADER_SIZE) == 0UL)
+    {
+      return 0UL;
+    }
+    if ((payload[offset + 2UL] > 88U) ||
+        (payload[offset + 3UL] != 0U))
+    {
+      return 0UL;
+    }
+    block_sample_count = PS_EggU16(&payload[offset + 4UL]);
+    if ((block_sample_count == 0UL) ||
+        (block_sample_count > PS_EGG_STATE_LOADER_AUDIO_BLOCK_SAMPLES) ||
+        ((block + 1UL < block_count) &&
+         (block_sample_count !=
+          PS_EGG_STATE_LOADER_AUDIO_BLOCK_SAMPLES)))
+    {
+      return 0UL;
+    }
+    offset += PS_EGG_AUDIO_BLOCK_HEADER_SIZE;
+    nibble_count = block_sample_count - 1UL;
+    encoded_bytes = (nibble_count + 1UL) / 2UL;
+    if (PS_EggRangeValid(payload_size, offset, encoded_bytes) == 0UL)
+    {
+      return 0UL;
+    }
+    if (((nibble_count & 1UL) != 0UL) && (encoded_bytes != 0UL) &&
+        ((payload[offset + encoded_bytes - 1UL] & 0xF0U) != 0U))
+    {
+      return 0UL;
+    }
+    offset += encoded_bytes;
+    decoded_samples += block_sample_count;
+  }
+
+  return ((offset == payload_size) &&
+          (decoded_samples == sample_count)) ? 1UL : 0UL;
+}
+
+static uint32_t PS_EggValidateAudioCatalog(
+  const ps_egg_chunk_t *asset_chunk,
+  const ps_egg_chunk_t *bank_chunk,
+  const ps_egg_chunk_t *cue_chunk,
+  const uint8_t *blob,
+  const ps_egg_strings_t *strings,
+  uint16_t bank_chunk_index)
+{
+  const uint8_t *assets = &blob[asset_chunk->offset];
+  const uint8_t *bank = &blob[bank_chunk->offset];
+  const uint8_t *cues = &blob[cue_chunk->offset];
+  uint32_t asset_count;
+  uint32_t cue_count;
+  uint32_t index;
+
+  if ((asset_chunk->size < PS_EGG_AUDIO_ASSET_HEADER_SIZE) ||
+      (memcmp(assets, "AUD1", 4UL) != 0) ||
+      (PS_EggU16(&assets[4]) != 1U) ||
+      (PS_EggU16(&assets[6]) != PS_EGG_AUDIO_ASSET_HEADER_SIZE) ||
+      (PS_EggU16(&assets[10]) != bank_chunk_index) ||
+      (PS_EggU16(&assets[12]) !=
+       PS_EGG_STATE_LOADER_AUDIO_SAMPLE_RATE_HZ) ||
+      (PS_EggU16(&assets[14]) != 1U) ||
+      (PS_EggU16(&assets[16]) !=
+       PS_EGG_STATE_LOADER_AUDIO_BLOCK_SAMPLES) ||
+      (PS_EggU16(&assets[18]) != 0U) ||
+      (bank_chunk->size < PS_EGG_AUDIO_BANK_HEADER_SIZE) ||
+      (memcmp(bank, "ADB1", 4UL) != 0) ||
+      (PS_EggU16(&bank[4]) != 1U) ||
+      (PS_EggU16(&bank[6]) != PS_EGG_AUDIO_BANK_HEADER_SIZE) ||
+      (PS_EggU32(&bank[8]) !=
+       (bank_chunk->size - PS_EGG_AUDIO_BANK_HEADER_SIZE)) ||
+      (PS_EggU32(&bank[12]) != 0UL) ||
+      (cue_chunk->size < PS_EGG_AUDIO_CUE_HEADER_SIZE) ||
+      (memcmp(cues, "ACU1", 4UL) != 0) ||
+      (PS_EggU16(&cues[4]) != 1U) ||
+      (PS_EggU16(&cues[6]) != PS_EGG_AUDIO_CUE_HEADER_SIZE))
+  {
+    return 0UL;
+  }
+
+  asset_count = PS_EggU16(&assets[8]);
+  cue_count = PS_EggU16(&cues[8]);
+  if ((asset_count == 0UL) ||
+      (asset_count > PS_EGG_STATE_LOADER_AUDIO_ASSET_MAX) ||
+      (cue_count == 0UL) ||
+      (cue_count > PS_EGG_STATE_LOADER_AUDIO_CUE_MAX) ||
+      (PS_EggU16(&cues[10]) != asset_count) ||
+      (PS_EggU16(&cues[12]) != 0U) ||
+      (PS_EggU16(&cues[14]) != 0U) ||
+      (asset_chunk->size != (PS_EGG_AUDIO_ASSET_HEADER_SIZE +
+       (asset_count * PS_EGG_AUDIO_ASSET_RECORD_SIZE))) ||
+      (cue_chunk->size != (PS_EGG_AUDIO_CUE_HEADER_SIZE +
+       (cue_count * PS_EGG_AUDIO_CUE_RECORD_SIZE))))
+  {
+    return 0UL;
+  }
+
+  for (index = 0UL; index < asset_count; ++index)
+  {
+    const uint8_t *record = &assets[PS_EGG_AUDIO_ASSET_HEADER_SIZE +
+      (index * PS_EGG_AUDIO_ASSET_RECORD_SIZE)];
+    uint32_t sample_count = PS_EggU32(&record[4]);
+    uint32_t duration_ms = PS_EggU32(&record[8]);
+    uint32_t data_offset = PS_EggU32(&record[16]);
+    uint32_t data_size = PS_EggU32(&record[20]);
+    uint32_t block_count = PS_EggU32(&record[24]);
+    uint32_t compare;
+
+    if ((PS_EggU16(record) >= strings->count) ||
+        (PS_EggU16(&record[2]) != 0U) ||
+        (sample_count == 0UL) ||
+        (sample_count > PS_EGG_STATE_LOADER_AUDIO_SAMPLE_MAX) ||
+        (duration_ms != ((sample_count * 1000UL +
+          (PS_EGG_STATE_LOADER_AUDIO_SAMPLE_RATE_HZ / 2UL)) /
+          PS_EGG_STATE_LOADER_AUDIO_SAMPLE_RATE_HZ)) ||
+        (PS_EggU32(&record[12]) != (sample_count * 2UL)) ||
+        ((data_offset & (PS_EGG_ALIGNMENT - 1UL)) != 0UL) ||
+        (data_offset < PS_EGG_AUDIO_BANK_HEADER_SIZE) ||
+        (data_size == 0UL) ||
+        (PS_EggRangeValid(bank_chunk->size, data_offset,
+                          data_size) == 0UL) ||
+        (block_count != ((sample_count +
+          PS_EGG_STATE_LOADER_AUDIO_BLOCK_SAMPLES - 1UL) /
+          PS_EGG_STATE_LOADER_AUDIO_BLOCK_SAMPLES)) ||
+        (PS_EggU32(&record[32]) != 0UL) ||
+        (PS_EggCrc32(&bank[data_offset], data_size) !=
+         PS_EggU32(&record[28])) ||
+        (PS_EggValidateAudioAdpcm(&bank[data_offset], data_size,
+                                  sample_count, block_count) == 0UL))
+    {
+      return 0UL;
+    }
+    for (compare = 0UL; compare < index; ++compare)
+    {
+      const uint8_t *other = &assets[PS_EGG_AUDIO_ASSET_HEADER_SIZE +
+        (compare * PS_EGG_AUDIO_ASSET_RECORD_SIZE)];
+      uint32_t other_offset = PS_EggU32(&other[16]);
+      uint32_t other_size = PS_EggU32(&other[20]);
+      if ((PS_EggU16(record) == PS_EggU16(other)) ||
+          !(((data_offset + data_size) <= other_offset) ||
+            ((other_offset + other_size) <= data_offset)))
+      {
+        return 0UL;
+      }
+    }
+    s_ps_egg_audio_assets[index].adpcm = &bank[data_offset];
+    s_ps_egg_audio_assets[index].adpcm_size = data_size;
+    s_ps_egg_audio_assets[index].sample_count = sample_count;
+    s_ps_egg_audio_assets[index].duration_ms = duration_ms;
+    s_ps_egg_audio_assets[index].block_count = block_count;
+  }
+
+  for (index = 0UL; index < cue_count; ++index)
+  {
+    const uint8_t *record = &cues[PS_EGG_AUDIO_CUE_HEADER_SIZE +
+      (index * PS_EGG_AUDIO_CUE_RECORD_SIZE)];
+    uint32_t compare;
+    if ((PS_EggU16(record) >= strings->count) ||
+        (PS_EggU16(&record[2]) >= asset_count) ||
+        (PS_EggU16(&record[4]) > 255U) ||
+        (PS_EggU16(&record[6]) > 255U) ||
+        (PS_EggU16(&record[8]) != 0U) ||
+        (PS_EggU16(&record[10]) != 0U))
+    {
+      return 0UL;
+    }
+    for (compare = 0UL; compare < index; ++compare)
+    {
+      const uint8_t *other = &cues[PS_EGG_AUDIO_CUE_HEADER_SIZE +
+        (compare * PS_EGG_AUDIO_CUE_RECORD_SIZE)];
+      if (PS_EggU16(record) == PS_EggU16(other))
+      {
+        return 0UL;
+      }
+    }
+    s_ps_egg_audio_cues[index].asset_index = PS_EggU16(&record[2]);
+    s_ps_egg_audio_cues[index].priority = PS_EggU16(&record[4]);
+    s_ps_egg_audio_cues[index].volume = PS_EggU16(&record[6]);
+  }
+
+  s_ps_egg_audio_asset_count = (uint16_t)asset_count;
+  s_ps_egg_audio_cue_count = (uint16_t)cue_count;
+  g_ps_egg_state_loader_probe.audio_asset_count = asset_count;
+  g_ps_egg_state_loader_probe.audio_cue_count = cue_count;
+  g_ps_egg_state_loader_probe.audio_adpcm_bytes =
+    bank_chunk->size - PS_EGG_AUDIO_BANK_HEADER_SIZE;
+  return 1UL;
+}
+
 static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
                                  const uint8_t *blob,
                                  const ps_egg_strings_t *strings,
@@ -859,7 +1140,7 @@ static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
   format_version = PS_EggU16(&payload[4]);
   if ((memcmp(payload, "STG1", 4UL) != 0) ||
       ((format_version != 1U) && (format_version != 2U) &&
-       (format_version != 3U)) ||
+       (format_version != 3U) && (format_version != 4U)) ||
       (PS_EggU16(&payload[6]) != PS_EGG_GRAPH_HEADER_SIZE))
   {
     return 0UL;
@@ -882,7 +1163,10 @@ static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
   view->meaningful_count = meaningful_count;
   view->interaction_mode = (format_version < 3U) ?
     (uint16_t)PS_SCENE_RUNTIME_INTERACTION_TIMEOUT :
-    PS_EggU16(&payload[38]);
+    (PS_EggU16(&payload[38]) & 0x00FFU);
+  view->joystick_policy = (format_version < 4U) ?
+    (uint16_t)PS_SCENE_RUNTIME_JOYSTICK_FOUR_WAY :
+    ((PS_EggU16(&payload[38]) >> 8U) & 0x00FFU);
   view->inactive_route = PS_EggU16(&payload[34]);
   if ((view->state_count == 0U) ||
       (view->state_count > PS_SCENE_RUNTIME_STATE_MAX) ||
@@ -905,6 +1189,10 @@ static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
         (uint16_t)PS_SCENE_RUNTIME_INTERACTION_CONTINUOUS) &&
        (view->interaction_mode !=
         (uint16_t)PS_SCENE_RUNTIME_INTERACTION_TIMEOUT)) ||
+      ((view->joystick_policy !=
+        (uint16_t)PS_SCENE_RUNTIME_JOYSTICK_FOUR_WAY) &&
+       (view->joystick_policy !=
+        (uint16_t)PS_SCENE_RUNTIME_JOYSTICK_EIGHT_WAY)) ||
       ((format_version < 3U) && (PS_EggU16(&payload[38]) != 0U)))
   {
     return 0UL;
@@ -1453,6 +1741,7 @@ static uint32_t PS_EggBuildBinding(
       return 0UL;
     }
     target->element_id = index + 1UL;
+    target->source_element_id = 0UL;
     target->phase_count = phase_count;
     for (phase = 0UL; phase < phase_count; ++phase)
     {
@@ -1490,6 +1779,7 @@ static uint32_t PS_EggBuildBinding(
       {
         const ps_scene_render_element_t *source =
           &binding->elements[render_element];
+        target->source_element_id = source->element_id;
         target->logical_bounds.x = source->x;
         target->logical_bounds.y = source->y;
         target->logical_bounds.width = source->width;
@@ -1614,6 +1904,7 @@ static uint32_t PS_EggDecodeScene(
   scene->variable_count = graph.variable_count;
   scene->interaction_mode = graph.interaction_mode;
   scene->inactive_route = graph.inactive_route;
+  scene->joystick_policy = graph.joystick_policy;
   scene->meaningful_input_mask = 0UL;
   for (index = 0UL; index < graph.meaningful_count; ++index)
   {
@@ -1636,17 +1927,26 @@ static uint32_t PS_EggDecodeScene(
       PS_EGG_GRAPH_HEADER_SIZE +
       ((uint32_t)graph.variable_count * PS_EGG_VARIABLE_RECORD_SIZE) +
       (index * PS_EGG_INPUT_RECORD_SIZE)];
-    uint16_t source = PS_EggU16(&record[2]);
+    uint16_t packed_input = PS_EggU16(&record[2]);
+    uint16_t source = (graph.format_version < 4U) ?
+      packed_input : (packed_input & 0x00FFU);
+    uint16_t logical_event = (graph.format_version < 4U) ?
+      (uint16_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS :
+      ((packed_input >> 8U) & 0x00FFU);
     if ((PS_EggU16(record) >= strings->count) ||
         (!(((source >= (uint16_t)PS_INPUT_LOGICAL_SOURCE_BUTTON_A) &&
             (source <= (uint16_t)PS_INPUT_LOGICAL_SOURCE_START)) ||
            ((source >= (uint16_t)PS_INPUT_LOGICAL_SOURCE_JOY_LEFT) &&
-            (source <= (uint16_t)PS_INPUT_LOGICAL_SOURCE_JOY_DOWN)))))
+            (source <= (uint16_t)PS_INPUT_LOGICAL_SOURCE_JOY_DOWN_RIGHT)))) ||
+        (logical_event < (uint16_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS) ||
+        (logical_event > (uint16_t)PS_INPUT_BUTTON_LOGICAL_EVENT_REPEAT) ||
+        ((source == (uint16_t)PS_INPUT_LOGICAL_SOURCE_START) &&
+         (logical_event != (uint16_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)))
     {
       return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
     }
     scene->input_routes[index].logical_event =
-      PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS;
+      logical_event;
     scene->input_routes[index].input_id = source;
     scene->input_routes[index].scene_event_id = index + 1UL;
   }
@@ -1745,17 +2045,226 @@ static uint32_t PS_EggDecodeScene(
         {
           return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
         }
-        scene->actions[action_count].variable_id = variable_index + 1UL;
-        scene->actions[action_count].mutation = record[1];
+        scene->actions[action_count].kind =
+          PS_SCENE_RUNTIME_ACTION_SET_VARIABLE;
+        scene->actions[action_count].target_id = variable_index + 1UL;
+        scene->actions[action_count].target_element_id = 0UL;
+        scene->actions[action_count].operation = record[1];
         scene->actions[action_count].value = PS_EggI32(&record[8]);
+        scene->actions[action_count].secondary_value = 0;
         action_count++;
       }
-      else if ((record[0] != 2U) || (record[1] != 0U) ||
-               (PS_EggU16(&record[2]) != 0xFFFFU) ||
-               (PS_EggU32(&record[4]) != 0UL) ||
-               (PS_EggU32(&record[8]) != 0UL))
+      else if (record[0] == 2U)
       {
-        return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+        if ((record[1] != 0U) ||
+            (PS_EggU16(&record[2]) != 0xFFFFU) ||
+            (PS_EggU32(&record[4]) != 0UL) ||
+            (PS_EggU32(&record[8]) != 0UL))
+        {
+          return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+        }
+      }
+      else if (record[0] == 7U)
+      {
+        uint16_t cue_index = PS_EggU16(&record[2]);
+        if ((record[1] != 0U) ||
+            (cue_index >= s_ps_egg_audio_cue_count) ||
+            (PS_EggU32(&record[4]) != 0UL) ||
+            (PS_EggU32(&record[8]) != 0UL) ||
+            (action_count >= PS_SCENE_RUNTIME_ACTION_MAX))
+        {
+          return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+        }
+        scene->actions[action_count].kind =
+          PS_SCENE_RUNTIME_ACTION_PLAY_SFX;
+        scene->actions[action_count].target_id = 0UL;
+        scene->actions[action_count].target_element_id = 0UL;
+        scene->actions[action_count].operation = 0UL;
+        scene->actions[action_count].value = (int32_t)cue_index;
+        scene->actions[action_count].secondary_value = 0;
+        action_count++;
+      }
+      else
+      {
+        uint16_t element_index = PS_EggU16(&record[2]);
+        ps_scene_runtime_visual_binding_t *target_binding =
+          &scene->visual_bindings[target_state];
+        ps_scene_render_element_t *target_element;
+        ps_scene_runtime_action_t *target_action;
+
+        if ((target_state >= graph.state_count) ||
+            (element_index >= target_binding->element_count) ||
+            ((record[0] != 6U) && (record[1] != 0U)) ||
+            (action_count >= PS_SCENE_RUNTIME_ACTION_MAX))
+        {
+          return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+        }
+        target_element = &target_binding->elements[element_index];
+        target_action = &scene->actions[action_count];
+        target_action->target_id = target_binding->visual_binding_id;
+        target_action->target_element_id = target_element->element_id;
+        target_action->operation = 0UL;
+        target_action->secondary_value = 0;
+
+        if (record[0] == 3U)
+        {
+          int32_t visible = PS_EggI32(&record[8]);
+          if ((PS_EggU32(&record[4]) != 0UL) ||
+              ((visible != 0) && (visible != 1)) ||
+              ((visible == 0) &&
+               (target_element->type == PS_SCENE_RENDER_ELEMENT_FOCUS)))
+          {
+            return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+          }
+          target_action->kind =
+            PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_VISIBILITY;
+          target_action->value = visible;
+        }
+        else if (record[0] == 4U)
+        {
+          uint16_t x = PS_EggU16(&record[4]);
+          int32_t y = PS_EggI32(&record[8]);
+          if ((PS_EggU16(&record[6]) != 0U) || (y < 0) ||
+              ((uint32_t)x + target_element->width >
+               PS_SCENE_RENDER_CANVAS_WIDTH) ||
+              ((uint32_t)y + target_element->height >
+               PS_SCENE_RENDER_CANVAS_HEIGHT))
+          {
+            return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+          }
+          target_action->kind =
+            PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_POSITION;
+          target_action->value = (int32_t)x;
+          target_action->secondary_value = y;
+        }
+        else if (record[0] == 5U)
+        {
+          uint16_t frame_ref = PS_EggU16(&record[4]);
+          uint32_t frame_id;
+          if ((PS_EggU16(&record[6]) != 0U) ||
+              (PS_EggU32(&record[8]) != 0UL) ||
+              (frame_ref >= strings->count) ||
+              ((target_element->type !=
+                PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP) &&
+               (target_element->type != PS_SCENE_RENDER_ELEMENT_FOCUS)) ||
+              (PS_EggFindSpriteFrame(frame_ref, &frame_id) == 0UL) ||
+              (PS_EggStateLoader_GetSpriteFrame(
+                 frame_id, &s_ps_egg_sprite_frame_scratch) == 0UL) ||
+              (s_ps_egg_sprite_frame_scratch.width !=
+               target_element->width) ||
+              (s_ps_egg_sprite_frame_scratch.height !=
+               target_element->height))
+          {
+            return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+          }
+          target_action->kind =
+            PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_FRAME;
+          target_action->value = (int32_t)frame_id;
+        }
+        else if (record[0] == 6U)
+        {
+          const uint8_t *target_state_record =
+            &graph_payload[graph.state_record_offset +
+              ((uint32_t)target_state * PS_EGG_STATE_RECORD_SIZE)];
+          uint16_t render_index = PS_EggU16(&target_state_record[4]);
+          uint16_t waiting_index = PS_EggU16(&record[4]);
+          uint16_t waiting_element_ref = PS_EggU16(&record[6]);
+          const uint8_t *wait_record;
+          uint16_t first_wait_element;
+          uint16_t wait_element_count;
+          uint32_t waiting_element_index;
+          uint32_t waiting_element_found = 0UL;
+          uint32_t focus_index;
+          ps_scene_runtime_waiting_animation_t *animation;
+          const ps_scene_waiting_visual_element_t *source;
+          uint32_t phase;
+          uint32_t step;
+
+          if ((record[1] < PS_SCENE_RUNTIME_TIMELINE_PRESERVE) ||
+              (record[1] > PS_SCENE_RUNTIME_TIMELINE_REBASE) ||
+              (waiting_index >= waiting.waiting_count) ||
+              (waiting_element_ref >= strings->count) ||
+              (PS_EggU32(&record[8]) != 0UL) ||
+              (scene->waiting_animation_count >=
+               PS_SCENE_RUNTIME_WAITING_ANIMATION_MAX) ||
+              ((target_element->type !=
+                PS_SCENE_RENDER_ELEMENT_SPRITE_1BPP) &&
+               (target_element->type != PS_SCENE_RENDER_ELEMENT_FOCUS)) ||
+              (PS_EggBuildBinding(render_payload, &render,
+                                  wait_payload, &waiting, strings,
+                                  render_index, waiting_index,
+                                  target_state + 1UL,
+                                  &s_ps_egg_binding_scratch,
+                                  &focus_index) == 0UL))
+          {
+            return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+          }
+          wait_record = &wait_payload[waiting.record_offset +
+            ((uint32_t)waiting_index * PS_EGG_WAIT_RECORD_SIZE)];
+          first_wait_element = PS_EggU16(&wait_record[12]);
+          wait_element_count = PS_EggU16(&wait_record[14]);
+          for (waiting_element_index = 0UL;
+               waiting_element_index < wait_element_count;
+               ++waiting_element_index)
+          {
+            const uint8_t *wait_element_record =
+              &wait_payload[waiting.element_offset +
+                (((uint32_t)first_wait_element + waiting_element_index) *
+                 PS_EGG_WAIT_ELEMENT_RECORD_SIZE)];
+            if (PS_EggU16(wait_element_record) == waiting_element_ref)
+            {
+              waiting_element_found = 1UL;
+              break;
+            }
+          }
+          if ((waiting_element_found == 0UL) ||
+              (waiting_element_index >=
+               s_ps_egg_binding_scratch.waiting_visual.element_count))
+          {
+            return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+          }
+          source = &s_ps_egg_binding_scratch.waiting_visual.elements[
+            waiting_element_index];
+          if ((source->source_element_id != target_element->element_id) ||
+              (s_ps_egg_binding_scratch.waiting_visual.phase_quantum_ms !=
+               target_binding->waiting_visual.phase_quantum_ms) ||
+              (s_ps_egg_binding_scratch.waiting_visual.sequence_step_count !=
+               target_binding->waiting_visual.sequence_step_count))
+          {
+            return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+          }
+          animation = &scene->waiting_animations[
+            scene->waiting_animation_count];
+          animation->animation_id = scene->waiting_animation_count + 1UL;
+          animation->phase_quantum_ms =
+            s_ps_egg_binding_scratch.waiting_visual.phase_quantum_ms;
+          animation->sequence_step_count =
+            s_ps_egg_binding_scratch.waiting_visual.sequence_step_count;
+          animation->phase_count = source->phase_count;
+          for (phase = 0UL;
+               phase < PS_SCENE_WAITING_VISUAL_PHASE_MAX;
+               ++phase)
+          {
+            animation->phase_visual_id[phase] =
+              source->phase_visual_id[phase];
+          }
+          for (step = 0UL;
+               step < PS_SCENE_WAITING_VISUAL_SEQUENCE_MAX;
+               ++step)
+          {
+            animation->sequence_phase[step] = source->sequence_phase[step];
+          }
+          scene->waiting_animation_count++;
+          target_action->kind =
+            PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_WAITING_ANIMATION;
+          target_action->operation = record[1];
+          target_action->value = (int32_t)animation->animation_id;
+        }
+        else
+        {
+          return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+        }
+        action_count++;
       }
     }
     for (source = 0UL; source < source_count; ++source)
@@ -1796,6 +2305,7 @@ static uint32_t PS_EggDecodeScene(
   g_ps_egg_state_loader_probe.waiting_element_count = waiting.element_count;
   g_ps_egg_state_loader_probe.interaction_mode = graph.interaction_mode;
   g_ps_egg_state_loader_probe.inactive_route = graph.inactive_route;
+  g_ps_egg_state_loader_probe.joystick_policy = graph.joystick_policy;
   g_ps_egg_state_loader_probe.meaningful_input_mask =
     scene->meaningful_input_mask;
   return 0UL;
@@ -1867,10 +2377,16 @@ uint32_t PS_EggStateLoader_Load(
   uint32_t asset_count;
   uint32_t sprite_count;
   uint32_t animation_count;
+  uint32_t audio_asset_count;
+  uint32_t audio_bank_count;
+  uint32_t audio_cue_count;
   uint32_t expected_chunk_count;
   uint16_t asset_index = 0U;
   uint16_t sprite_index = 0U;
   uint16_t animation_index = 0U;
+  uint16_t audio_asset_index = 0U;
+  uint16_t audio_bank_index = 0U;
+  uint16_t audio_cue_index = 0U;
   uint16_t entry_scene_string;
   uint32_t load_count = g_ps_egg_state_loader_probe.load_count + 1UL;
 
@@ -1883,12 +2399,18 @@ uint32_t PS_EggStateLoader_Load(
     PS_EGG_STATE_LOADER_STATUS_NOT_RUN;
   (void)memset(&s_ps_egg_sprite_catalog, 0,
                sizeof(s_ps_egg_sprite_catalog));
+  (void)memset(s_ps_egg_audio_assets, 0,
+               sizeof(s_ps_egg_audio_assets));
+  (void)memset(s_ps_egg_audio_cues, 0,
+               sizeof(s_ps_egg_audio_cues));
   (void)memset(s_ps_egg_scene_catalog, 0,
                sizeof(s_ps_egg_scene_catalog));
   (void)memset(&s_ps_egg_strings, 0, sizeof(s_ps_egg_strings));
   s_ps_egg_blob = NULL;
   s_ps_egg_scene_count = 0U;
   s_ps_egg_entry_scene_id = 0U;
+  s_ps_egg_audio_asset_count = 0U;
+  s_ps_egg_audio_cue_count = 0U;
   if (scene == NULL)
   {
     return PS_EggFail(PS_EGG_STATE_LOADER_REASON_ARGUMENT);
@@ -1934,6 +2456,9 @@ uint32_t PS_EggStateLoader_Load(
   asset_count = PS_EggCountChunks(PS_EGG_CHUNK_ASSETS);
   sprite_count = PS_EggCountChunks(PS_EGG_CHUNK_SPRITES);
   animation_count = PS_EggCountChunks(PS_EGG_CHUNK_ANIMATIONS);
+  audio_asset_count = PS_EggCountChunks(PS_EGG_CHUNK_AUDIO_ASSETS);
+  audio_bank_count = PS_EggCountChunks(PS_EGG_CHUNK_AUDIO_BANK);
+  audio_cue_count = PS_EggCountChunks(PS_EGG_CHUNK_AUDIO_CUES);
   if (!(((asset_count == 0UL) && (sprite_count == 0UL) &&
          (animation_count == 0UL)) ||
         ((asset_count == 1UL) && (sprite_count == 1UL) &&
@@ -1941,8 +2466,16 @@ uint32_t PS_EggStateLoader_Load(
   {
     return PS_EggFail(PS_EGG_STATE_LOADER_REASON_ASSET);
   }
+  if (!(((audio_asset_count == 0UL) && (audio_bank_count == 0UL) &&
+         (audio_cue_count == 0UL)) ||
+        ((audio_asset_count == 1UL) && (audio_bank_count == 1UL) &&
+         (audio_cue_count == 1UL))))
+  {
+    return PS_EggFail(PS_EGG_STATE_LOADER_REASON_AUDIO);
+  }
   expected_chunk_count = PS_EGG_CHUNK_COUNT_CORE + (scene_count * 3UL) +
-    ((asset_count != 0UL) ? PS_EGG_CHUNK_COUNT_ASSET : 0UL);
+    ((asset_count != 0UL) ? PS_EGG_CHUNK_COUNT_ASSET : 0UL) +
+    ((audio_asset_count != 0UL) ? PS_EGG_CHUNK_COUNT_AUDIO : 0UL);
   if ((s_ps_egg_chunk_count != expected_chunk_count) ||
       (PS_EggCountChunks(PS_EGG_CHUNK_GRAPH) != scene_count) ||
       (PS_EggCountChunks(PS_EGG_CHUNK_RENDER) != scene_count) ||
@@ -1967,6 +2500,27 @@ uint32_t PS_EggStateLoader_Load(
     g_ps_egg_state_loader_probe.asset_chunk_index = asset_index;
     g_ps_egg_state_loader_probe.sprite_chunk_index = sprite_index;
     g_ps_egg_state_loader_probe.animation_chunk_index = animation_index;
+  }
+  if (audio_asset_count != 0UL)
+  {
+    if ((PS_EggFindSingleChunk(PS_EGG_CHUNK_AUDIO_ASSETS,
+                               &audio_asset_index) == 0UL) ||
+        (PS_EggFindSingleChunk(PS_EGG_CHUNK_AUDIO_BANK,
+                               &audio_bank_index) == 0UL) ||
+        (PS_EggFindSingleChunk(PS_EGG_CHUNK_AUDIO_CUES,
+                               &audio_cue_index) == 0UL) ||
+        (PS_EggValidateAudioCatalog(
+           &s_ps_egg_chunks[audio_asset_index],
+           &s_ps_egg_chunks[audio_bank_index],
+           &s_ps_egg_chunks[audio_cue_index],
+           blob, &strings, audio_bank_index) == 0UL))
+    {
+      return PS_EggFail(PS_EGG_STATE_LOADER_REASON_AUDIO);
+    }
+    g_ps_egg_state_loader_probe.audio_asset_chunk_index =
+      audio_asset_index;
+    g_ps_egg_state_loader_probe.audio_bank_chunk_index = audio_bank_index;
+    g_ps_egg_state_loader_probe.audio_cue_chunk_index = audio_cue_index;
   }
 
   scene_table = &blob[s_ps_egg_chunks[scenes_index].offset];

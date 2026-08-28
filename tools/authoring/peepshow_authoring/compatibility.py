@@ -95,6 +95,12 @@ def _pending_profile_result(build_profile: str) -> dict[str, Any]:
 
 def _scene_report(scene: dict[str, Any], valid: bool) -> dict[str, Any]:
     has_waiting = bool(scene.get("waiting_visuals"))
+    has_sfx = any(
+        action.get("kind") == "play_sfx"
+        for route in scene.get("routes", [])
+        for action in route.get("actions", [])
+        if isinstance(action, dict)
+    )
     interaction = scene.get("interaction_policy")
     if not isinstance(interaction, dict):
         interaction = {}
@@ -105,7 +111,7 @@ def _scene_report(scene: dict[str, Any], valid: bool) -> dict[str, Any]:
         "entry_ref": scene.get("entry_state"),
         "inactive_route_ref": interaction.get("inactive_route"),
         "failure_route_ref": None,
-        "required_capabilities": [],
+        "required_capabilities": ["audio.sampled_sfx"] if has_sfx else [],
         "optional_capabilities": ["display.waiting_visual_animation"] if has_waiting else [],
         "budget_status": "pending_validation" if valid else "blocked",
         "validation_status": "passed" if valid else "failed",
@@ -234,6 +240,28 @@ def build_compatibility_report(
                 "requirement_level": "optional" if fallback_declared else "required",
                 "target_grant_status": "pending_validation",
                 "fallback_declared": fallback_declared,
+                "admission_status": "pending_validation",
+                "issue_refs": ["target-profile-pending"],
+            }
+        )
+    sfx_scenes = [
+        scene
+        for scene in bundle.scenes
+        if any(
+            action.get("kind") == "play_sfx"
+            for route in scene.get("routes", [])
+            for action in route.get("actions", [])
+            if isinstance(action, dict)
+        )
+    ]
+    if sfx_scenes:
+        capability_reports.append(
+            {
+                "capability": "audio.sampled_sfx",
+                "requested_by": [scene.get("scene_id") for scene in sfx_scenes],
+                "requirement_level": "required",
+                "target_grant_status": "pending_validation",
+                "fallback_declared": False,
                 "admission_status": "pending_validation",
                 "issue_refs": ["target-profile-pending"],
             }

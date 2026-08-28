@@ -398,6 +398,17 @@ Reactive sweeps must record:
 - resulting STOP/wait residency and steady waiting current
 - transaction, owner, DMA, wake, and resume failures
 
+The reactive sweep matrix must include representative STATE workloads, not only
+shell navigation: logic-only state changes, retained-element updates, text and
+Tiled-map region composition, full and partial display preparation, waiting-
+program compilation, installed-package or asset reads, one bounded STATE SFX,
+and a combined input/render/display/SFX transaction. For SFX, record CPU
+decode/refill timing separately from the invariant SAI kernel clock and verify
+that `SAI_AUDIO_ACTIVE` and the reactive CPU request both release after drain.
+These tests decide whether each bounded work class stays at
+`CLK_REACTIVE_BASE` or uses `CLK_REACTIVE_BURST`; scene code never selects the
+frequency directly.
+
 Realtime sweeps must record:
 
 - sustained average and peak current plus charge/energy per frame where practical

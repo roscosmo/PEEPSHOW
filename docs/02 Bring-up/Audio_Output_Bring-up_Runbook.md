@@ -108,7 +108,7 @@ Populate this table during bring-up. The current values are placeholders until m
 | BBB sweep | bounded sweep | sweep generated and stopped cleanly | `PB2` / `LPTIM1_CH1` generated a rising sweep from `800 Hz` to `4000 Hz` over `24` steps at `35 ms` per step; GDB readback showed all `24` steps completed, no failed step, start/stop/final step statuses `0`, and user heard the sweep | pass |
 | BBB melody | bounded sequence | pattern completes and PAM idles | Six-step BBB melody/gap pattern completed in firmware with `6` requested and `6` completed steps, no failed step, and clean start/stop statuses; user heard the melody but perceived it closer to five tones, likely due to timing or piezo response masking one step | pass_with_note |
 | concurrent output | speaker plus BBB | both paths active without ownership conflict | TBD | open |
-| ADPCM SFX | decoded asset | valid SFX playback without FAT runtime reads | TBD | open |
+| ADPCM SFX | decoded package asset | one audible bounded STATE SFX, no FAT runtime reads, clean drain and STOP2 return | 2026-08-28 FW0 package path: optional `AUD1`/`ADB1`/`ACU1` chunks loaded; symbolic action, `qAudioCmd`, one-voice decode, SAI DMA start/stop, completion, clock release, and later STOP2 all reported success; operator heard output on two HW6 units | pass_with_note |
 | mixer budget | music plus 5 SFX | no underrun at target load | TBD | open |
 | fault injection | underrun/invalid asset | bounded recovery or audio quarantine | TBD | open |
 
@@ -149,4 +149,10 @@ Audio failure is major but non-fatal according to [[Audio_Contract]].
 
 `EV-HW6-20260801-P5-AUDIO-009` validates the current driver-backed speaker path on `HW6-UNIT-001`: `ps_dev_audio` drove `SD_MODE`, started SAI1/GPDMA playback, waited the bounded tone duration, stopped DMA, and verified final idle/off state through `thAudio`. The probe reported audio driver API/init/state/ops/last `1 / 0x0 / 3 / 3 / 0x0`, SAI/sample/tone `4096000 / 16000 / 1000`, duration/amplitude/buffer `750 ms / 3000 / 2048 halfwords`, `SD_MODE` `0 / 1 / 0`, start/stop `0x0 / 0x0`, SAI state/error `0x1 / 0x0`, and DMA state/error `0x1 / 0x0`. The operator heard the expected three tones.
 
-This closes only the owner-routed diagnostic speaker DMA path. Refill/underrun behavior, mixer/SFX playback, ADPCM asset handling, volume/fade/mute policy, current measurement, STOP2 quiesce current, and fault injection remain open.
+The initial package-backed STATE SFX path is also functionally closed: one
+resident IMA ADPCM cue decodes and plays through `thAudio`, drains, releases its
+clock intent, and permits STOP2 again without runtime FAT reads. The synthetic
+fixture is not a fidelity reference, so known-reference listening remains
+open. Music/ring-buffer playback from installed package flash, refill/underrun
+behavior, multi-voice mixing, volume/fade/mute policy, current measurement, and
+fault injection remain open.

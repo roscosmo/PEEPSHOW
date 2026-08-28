@@ -4,6 +4,7 @@
   "scene_id": "state_demo",
   "display_name": "State Demo",
   "scene_type": "STATE_SCENE",
+  "joystick_policy": "eight_way",
   "entry_state": "center",
   "variables": [
     {
@@ -26,6 +27,37 @@
     {
       "action_id": "enter_target",
       "logical_source": "BUTTON_A"
+    },
+    {
+      "action_id": "repeat_button_right",
+      "logical_source": "BUTTON_R",
+      "event_kind": "repeat"
+    },
+    {
+      "action_id": "repeat_joystick_right",
+      "logical_source": "JOY_RIGHT",
+      "event_kind": "repeat"
+    },
+    {
+      "action_id": "hold_button_left",
+      "logical_source": "BUTTON_L",
+      "event_kind": "hold"
+    },
+    {
+      "action_id": "diagonal_up_left",
+      "logical_source": "JOY_UP_LEFT"
+    },
+    {
+      "action_id": "diagonal_up_right",
+      "logical_source": "JOY_UP_RIGHT"
+    },
+    {
+      "action_id": "diagonal_down_left",
+      "logical_source": "JOY_DOWN_LEFT"
+    },
+    {
+      "action_id": "diagonal_down_right",
+      "logical_source": "JOY_DOWN_RIGHT"
     }
   ],
   "states": [
@@ -89,6 +121,22 @@
         },
         {
           "kind": "request_render"
+        },
+        {
+          "kind": "set_element_visibility",
+          "element_ref": "primitive_circle",
+          "visible": true
+        },
+        {
+          "kind": "set_element_position",
+          "element_ref": "marker",
+          "x": 160,
+          "y": 0
+        },
+        {
+          "kind": "set_element_frame",
+          "element_ref": "frame_probe",
+          "frame_ref": "marker.phase_a"
         }
       ],
       "target_state": "center"
@@ -115,6 +163,23 @@
         },
         {
           "kind": "request_render"
+        },
+        {
+          "kind": "set_element_position",
+          "element_ref": "marker",
+          "x": 120,
+          "y": 0
+        },
+        {
+          "kind": "set_element_waiting_animation",
+          "element_ref": "marker",
+          "waiting_visual_ref": "marker_hold_wait",
+          "waiting_element_ref": "marker_hold",
+          "timeline_policy": "preserve"
+        },
+        {
+          "kind": "play_sfx",
+          "cue_ref": "ui.select.cue"
         }
       ],
       "target_state": "right"
@@ -153,6 +218,23 @@
         },
         {
           "kind": "request_render"
+        },
+        {
+          "kind": "set_element_visibility",
+          "element_ref": "primitive_circle",
+          "visible": false
+        },
+        {
+          "kind": "set_element_frame",
+          "element_ref": "frame_probe",
+          "frame_ref": "marker.phase_c"
+        },
+        {
+          "kind": "set_element_waiting_animation",
+          "element_ref": "marker",
+          "waiting_visual_ref": "state_wait",
+          "waiting_element_ref": "marker_wait",
+          "timeline_policy": "rebase"
         }
       ],
       "target_state": "left"
@@ -179,6 +261,11 @@
         },
         {
           "kind": "request_render"
+        },
+        {
+          "kind": "set_element_frame",
+          "element_ref": "frame_probe",
+          "frame_ref": "marker.phase_c"
         }
       ],
       "target_state": "center"
@@ -205,6 +292,12 @@
         },
         {
           "kind": "request_render"
+        },
+        {
+          "kind": "set_element_position",
+          "element_ref": "marker",
+          "x": 140,
+          "y": 0
         }
       ],
       "target_state": "left"
@@ -222,6 +315,146 @@
           "value": 0
         }
       ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 2
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "right"
+    },
+    {
+      "route_id": "repeat_button_right_to_left",
+      "action_ref": "repeat_button_right",
+      "from_states": [
+        "right"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 0
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "left"
+    },
+    {
+      "route_id": "repeat_joystick_right_to_left",
+      "action_ref": "repeat_joystick_right",
+      "from_states": [
+        "center"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 0
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "left"
+    },
+    {
+      "route_id": "hold_button_left_to_right",
+      "action_ref": "hold_button_left",
+      "from_states": [
+        "left"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 2
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "right"
+    },
+    {
+      "route_id": "diagonal_up_left_to_left",
+      "action_ref": "diagonal_up_left",
+      "from_states": [
+        "center"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 0
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "left"
+    },
+    {
+      "route_id": "diagonal_up_right_to_right",
+      "action_ref": "diagonal_up_right",
+      "from_states": [
+        "center"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 2
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "right"
+    },
+    {
+      "route_id": "diagonal_down_left_to_left",
+      "action_ref": "diagonal_down_left",
+      "from_states": [
+        "center"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 0
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "left"
+    },
+    {
+      "route_id": "diagonal_down_right_to_right",
+      "action_ref": "diagonal_down_right",
+      "from_states": [
+        "center"
+      ],
+      "guards": [],
       "actions": [
         {
           "kind": "set_variable",
@@ -313,6 +546,17 @@
           "width": 31,
           "height": 15,
           "z_order": 1
+        },
+        {
+          "element_id": "frame_probe",
+          "kind": "sprite",
+          "layer": "SCENE",
+          "visual_ref": "marker.phase_a",
+          "x": 140,
+          "y": 100,
+          "width": 8,
+          "height": 24,
+          "z_order": 6
         }
       ]
     }
@@ -360,6 +604,33 @@
           ]
         }
       ]
+    },
+    {
+      "waiting_visual_id": "marker_hold_wait",
+      "presentation_id": "state_demo_marker_hold_timeline",
+      "phase_quantum_ms": 250,
+      "combined_step_count": 6,
+      "settled_step": 1,
+      "cycle_policy": "loop",
+      "elements": [
+        {
+          "element_id": "marker_hold",
+          "source_element_ref": "marker",
+          "phase_visual_refs": [
+            "marker.phase_a",
+            "marker.phase_b",
+            "marker.phase_c"
+          ],
+          "step_phase_indices": [
+            0,
+            0,
+            1,
+            1,
+            2,
+            2
+          ]
+        }
+      ]
     }
   ],
   "reactive_wait_default": {
@@ -369,7 +640,14 @@
     "event_interests": [
       "move_left",
       "move_right",
-      "enter_target"
+      "enter_target",
+      "repeat_button_right",
+      "repeat_joystick_right",
+      "hold_button_left",
+      "diagonal_up_left",
+      "diagonal_up_right",
+      "diagonal_down_left",
+      "diagonal_down_right"
     ]
   },
   "interaction_policy": {
@@ -378,7 +656,14 @@
     "meaningful_activity_actions": [
       "move_left",
       "move_right",
-      "enter_target"
+      "enter_target",
+      "repeat_button_right",
+      "repeat_joystick_right",
+      "hold_button_left",
+      "diagonal_up_left",
+      "diagonal_up_right",
+      "diagonal_down_left",
+      "diagonal_down_right"
     ],
     "inactive_route": "preserve_scene",
     "bounded_deferrals": []

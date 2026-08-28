@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_INPUT_BUTTONS_API_VERSION (12UL)
+#define PS_INPUT_BUTTONS_API_VERSION (13UL)
 #define PS_INPUT_BUTTON_PHYSICAL_COUNT (4UL)
 
 typedef enum
@@ -127,6 +127,10 @@ typedef struct
   uint32_t logical_repeat_count;
   uint32_t logical_chord_count;
   uint32_t logical_stuck_count;
+  uint32_t logical_press_pending_mask;
+  uint32_t logical_release_pending_mask;
+  uint32_t logical_long_pending_mask;
+  uint32_t logical_repeat_pending_mask;
   uint32_t logical_last_event;
   uint32_t logical_last_button_id;
   uint32_t logical_last_mask;

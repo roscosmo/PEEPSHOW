@@ -123,6 +123,22 @@ HW6 evidence `EV-HW6-20260822-P1-SCENEELEMENTS-093` validates the first general 
 
 HW6 target proof on 2026-08-27 validates authored `RND2` presentation records end to end. The deterministic `3492`-byte embedded package loaded through loader API `9` with status/reason `0/0`, decoded two scenes and `3/16` render models/elements for the source scene, and activated runtime API `13` with status `0`. The active center model resolved seven elements: one masked 1bpp focus sprite, one animated marker sprite, and package-authored filled rectangle, diagonal line, outline rectangle, circle, and ellipse records. Two STATE scene replacements completed with zero failures, and eleven STOP2 entries completed. The user confirmed the shapes rendered correctly, scene replacement was visible, static primitives remained composed in STOP2, and both sprite animations continued there. This closes the initial package serialization, exact-preview, loader, retained-compositor, and STOP2 proof for black-ink static primitives on package layers `BACKGROUND`, `SCENE`, and `UI`; `OVERLAY` remains system-owned.
 
+HW6 target proof on 2026-08-28 validates atomic bounded waiting-animation
+selection for retained STATE sprites through service API `17`, egg loader API
+`11`, and runtime API `15`. The deterministic `3780`-byte package decoded two
+waiting visuals and three waiting elements with loader status/reason `0/0`.
+The active source descriptor contained sixteen actions and two compact waiting
+templates. Repeated route traversal produced eight waiting-animation commits,
+including four explicit rebases, with zero action errors. The user confirmed
+that `preserve` changed the right-edge marker from one position per `250 ms`
+tick to two ticks per position without disturbing the cursor cadence, while
+`rebase` restored the original track with an intentional timeline restart.
+Both forms remained correct in STOP2; two direct scene replacements completed
+with zero failures and the run reached twenty-one STOP2 entries. The runtime
+thread retained `1276` bytes of lower stack margin. This proves that
+`thRuntime` can select one structurally compatible element track atomically
+while `thDisplay` remains the sole compositor and LPBAM owner.
+
 HW6 target proof on 2026-08-27 validates authored `RND2` presentation records end to end. The deterministic `3492`-byte embedded package loaded through loader API `9` with status/reason `0/0`, decoded two scenes and `3/16` render models/elements for the source scene, and activated runtime API `13` with status `0`. The active center model resolved seven elements: one masked 1bpp focus sprite, one animated marker sprite, and package-authored filled rectangle, diagonal line, outline rectangle, circle, and ellipse records. Two STATE scene replacements completed with zero failures, and eleven STOP2 entries completed. The user confirmed the shapes rendered correctly, scene replacement was visible, static primitives remained composed in STOP2, and both sprite animations continued there. This closes the initial package serialization, exact-preview, loader, retained-compositor, and STOP2 proof for black-ink static primitives on package layers `BACKGROUND`, `SCENE`, and `UI`; `OVERLAY` remains system-owned.
 
 The next source-complete STATE slice removes that package-art gap without

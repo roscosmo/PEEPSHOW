@@ -876,6 +876,15 @@ Tools may author:
 - low-power wake input intents
 - fallback bindings for unavailable optional inputs
 
+The current bounded STATE subset exposes `BUTTON_A`, `BUTTON_B`, `BUTTON_L`,
+`BUTTON_R`, `BUTTON_START`, `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`, `JOY_DOWN`,
+`JOY_UP_LEFT`, `JOY_UP_RIGHT`, `JOY_DOWN_LEFT`, and `JOY_DOWN_RIGHT`. Each
+binding may select `press`, `release`, `hold`, or `repeat`; omitted event kind
+means `press`. A STATE scene declares `joystick_policy` as `four_way` or
+`eight_way`. `BUTTON_START` accepts `press` only because its long gesture is
+owned by PeepOS. Normalized-vector consumption remains a PROGRAM capability,
+not a STATE binding.
+
 Runtime may consume:
 
 - action pressed/released

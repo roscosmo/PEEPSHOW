@@ -12,6 +12,14 @@ from math import gcd
 from pathlib import Path
 from typing import Any, Iterable
 
+from .audio_assets import (
+    AUDIO_MAX_ASSETS,
+    AUDIO_MAX_BANK_BYTES,
+    AUDIO_MAX_CUES,
+    AudioAssetError,
+    CompiledAudioAsset,
+    import_sampled_sfx,
+)
 from .image_assets import (
     ImageAssetError,
     Masked1bppFrame,
@@ -34,8 +42,14 @@ LOGICAL_INPUT_SOURCES = {
     "JOY_RIGHT",
     "JOY_UP",
     "JOY_DOWN",
+    "JOY_UP_LEFT",
+    "JOY_UP_RIGHT",
+    "JOY_DOWN_LEFT",
+    "JOY_DOWN_RIGHT",
 }
 STATE_WAITING_ANIMATION_QUANTUM_MS = 250
+LOGICAL_INPUT_EVENT_KINDS = {"press", "release", "hold", "repeat"}
+JOYSTICK_POLICIES = {"four_way", "eight_way"}
 PROJECT_KEYS = {
     "schema_id",
     "schema_version",
@@ -64,6 +78,7 @@ SCENE_KEYS = {
     "reactive_wait_default",
     "interaction_policy",
 }
+SCENE_OPTIONAL_KEYS = {"joystick_policy"}
 
 
 @dataclass(frozen=True)
@@ -84,6 +99,8 @@ class ProjectBundle:
     assets: tuple[dict[str, Any], ...]
     animations: tuple[dict[str, Any], ...]
     frames: tuple[Masked1bppFrame, ...]
+    audio_assets: tuple[CompiledAudioAsset, ...]
+    audio_cues: tuple[dict[str, Any], ...]
     issues: tuple[ValidationIssue, ...]
 
     @property
@@ -100,6 +117,25 @@ class ProjectBundle:
             "scenes": list(self.scenes),
             "assets": list(self.assets),
             "animations": list(self.animations),
+            "audio_assets": [
+                {
+                    "asset_id": asset.asset_id,
+                    "source_path": asset.source_path,
+                    "source_sample_rate_hz": asset.source_sample_rate_hz,
+                    "source_channels": asset.source_channels,
+                    "sample_rate_hz": asset.sample_rate_hz,
+                    "channels": asset.channels,
+                    "sample_count": asset.sample_count,
+                    "duration_ms": asset.duration_ms,
+                    "decoded_pcm_bytes": asset.decoded_pcm_bytes,
+                    "block_samples": asset.block_samples,
+                    "block_count": asset.block_count,
+                    "adpcm_bytes": len(asset.adpcm),
+                    "adpcm_sha256": hashlib.sha256(asset.adpcm).hexdigest(),
+                }
+                for asset in self.audio_assets
+            ],
+            "audio_cues": list(self.audio_cues),
             "compiled_asset_frames": [
                 {
                     "asset_id": frame.asset_id,
@@ -528,11 +564,19 @@ def _apply_scene_policy(
     command: dict[str, Any],
 ) -> dict[str, Any]:
     kind = command.get("kind")
-    field = "reactive_wait_default" if kind == "scene.set_reactive_wait_default" else "interaction_policy"
+    if kind == "scene.set_reactive_wait_default":
+        field = "reactive_wait_default"
+    elif kind == "scene.set_interaction_policy":
+        field = "interaction_policy"
+    else:
+        field = "joystick_policy"
     _require_command_fields(command, {"kind", "scene_id", field}, {"kind", "scene_id", field, "command_id"})
     scene = _command_scene(scenes, command.get("scene_id"))
     policy = command.get(field)
-    if not isinstance(policy, dict):
+    if field == "joystick_policy":
+        if policy not in JOYSTICK_POLICIES:
+            raise ProjectCommandError("JOYSTICK_POLICY_INVALID", "joystick_policy must be four_way or eight_way")
+    elif not isinstance(policy, dict):
         raise ProjectCommandError("PROJECT_TYPE_INVALID", f"{field} must be an object")
     normalized = deepcopy(policy)
     scene[field] = normalized
@@ -710,7 +754,11 @@ def _apply_route_add_scene_exit(
         if not states:
             raise ProjectCommandError("COMMAND_TARGET_INVALID", "scene has no states to exit from")
         for action in scene.get("input_actions", []):
-            if isinstance(action, dict) and action.get("logical_source") == logical_source:
+            if (
+                isinstance(action, dict)
+                and action.get("logical_source") == logical_source
+                and action.get("event_kind", "press") == "press"
+            ):
                 raise ProjectCommandError("INPUT_SOURCE_DUPLICATE", "logical source is already bound")
 
         route_id = _unique_generated_route_id(scene, logical_source, target_scene)
@@ -1701,6 +1749,8 @@ def _primary_asset_catalog(
         "schema_version": 1,
         "assets": [],
         "animations": [],
+        "audio_assets": [],
+        "audio_cues": [],
     }
     catalogs.append(catalog)
     sources.append(source)
@@ -1853,6 +1903,148 @@ def _apply_animation_delete(
     return {"kind": "animation.delete", "animation_id": animation_id}
 
 
+def _apply_audio_asset_upsert(
+    project: dict[str, Any],
+    catalogs: list[dict[str, Any]],
+    sources: list[str],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "audio_asset"},
+        {"kind", "audio_asset", "command_id"},
+    )
+    asset = command.get("audio_asset")
+    if not isinstance(asset, dict):
+        raise ProjectCommandError(
+            "COMMAND_SHAPE_INVALID", "command.audio_asset must be an object"
+        )
+    asset_id = asset.get("asset_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(asset_id, "command.audio_asset.asset_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    located = _catalog_record(catalogs, "audio_assets", "asset_id", asset_id)
+    created = located is None
+    if located is None:
+        catalog = _primary_asset_catalog(project, catalogs, sources)
+        records = catalog.setdefault("audio_assets", [])
+        if len(records) >= AUDIO_MAX_ASSETS:
+            raise ProjectCommandError(
+                "PROJECT_COUNT_INVALID",
+                f"asset catalog already has {AUDIO_MAX_ASSETS} audio assets",
+            )
+        records.append(deepcopy(asset))
+    else:
+        catalog, previous = located
+        records = catalog.setdefault("audio_assets", [])
+        records[records.index(previous)] = deepcopy(asset)
+    return {
+        "kind": "audio_asset.upsert",
+        "asset_id": asset_id,
+        "created": created,
+    }
+
+
+def _apply_audio_asset_delete(
+    catalogs: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "asset_id"},
+        {"kind", "asset_id", "command_id"},
+    )
+    asset_id = command.get("asset_id")
+    located = _catalog_record(catalogs, "audio_assets", "asset_id", asset_id)
+    if located is None:
+        raise ProjectCommandError(
+            "COMMAND_TARGET_UNKNOWN", f"unknown audio asset '{asset_id}'"
+        )
+    for catalog in catalogs:
+        for cue in catalog.get("audio_cues", []):
+            if isinstance(cue, dict) and cue.get("asset_ref") == asset_id:
+                raise ProjectCommandError(
+                    "ASSET_IN_USE", "audio asset is referenced by an audio cue"
+                )
+    catalog, asset = located
+    catalog["audio_assets"].remove(asset)
+    return {"kind": "audio_asset.delete", "asset_id": asset_id}
+
+
+def _apply_audio_cue_upsert(
+    project: dict[str, Any],
+    catalogs: list[dict[str, Any]],
+    sources: list[str],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "audio_cue"},
+        {"kind", "audio_cue", "command_id"},
+    )
+    cue = command.get("audio_cue")
+    if not isinstance(cue, dict):
+        raise ProjectCommandError(
+            "COMMAND_SHAPE_INVALID", "command.audio_cue must be an object"
+        )
+    cue_id = cue.get("cue_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(cue_id, "command.audio_cue.cue_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    located = _catalog_record(catalogs, "audio_cues", "cue_id", cue_id)
+    created = located is None
+    if located is None:
+        catalog = _primary_asset_catalog(project, catalogs, sources)
+        records = catalog.setdefault("audio_cues", [])
+        if len(records) >= AUDIO_MAX_CUES:
+            raise ProjectCommandError(
+                "PROJECT_COUNT_INVALID",
+                f"asset catalog already has {AUDIO_MAX_CUES} audio cues",
+            )
+        records.append(deepcopy(cue))
+    else:
+        catalog, previous = located
+        records = catalog.setdefault("audio_cues", [])
+        records[records.index(previous)] = deepcopy(cue)
+    return {"kind": "audio_cue.upsert", "cue_id": cue_id, "created": created}
+
+
+def _apply_audio_cue_delete(
+    catalogs: list[dict[str, Any]],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "cue_id"},
+        {"kind", "cue_id", "command_id"},
+    )
+    cue_id = command.get("cue_id")
+    located = _catalog_record(catalogs, "audio_cues", "cue_id", cue_id)
+    if located is None:
+        raise ProjectCommandError(
+            "COMMAND_TARGET_UNKNOWN", f"unknown audio cue '{cue_id}'"
+        )
+    for scene in scenes:
+        for route in scene.get("routes", []):
+            for action in route.get("actions", []):
+                if (
+                    isinstance(action, dict)
+                    and action.get("kind") == "play_sfx"
+                    and action.get("cue_ref") == cue_id
+                ):
+                    raise ProjectCommandError(
+                        "ASSET_IN_USE", "audio cue is referenced by a STATE action"
+                    )
+    catalog, cue = located
+    catalog["audio_cues"].remove(cue)
+    return {"kind": "audio_cue.delete", "cue_id": cue_id}
+
+
 def _layout_coordinate(value: Any, path: str) -> int:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ProjectCommandError("PROJECT_TYPE_INVALID", f"{path} must be a number")
@@ -1994,7 +2186,50 @@ def _normalize_guard(scene: dict[str, Any], guard: Any) -> dict[str, Any]:
     return {"variable_ref": variable_ref, "operator": operator, "value": value}
 
 
-def _normalize_action(scene: dict[str, Any], action: Any) -> dict[str, Any]:
+def _route_target_elements(
+    scene: dict[str, Any],
+    route: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    target_state = route.get("target_state")
+    state = next(
+        (
+            item
+            for item in scene.get("states", [])
+            if isinstance(item, dict) and item.get("state_id") == target_state
+        ),
+        None,
+    )
+    if state is None:
+        raise ProjectCommandError(
+            "GRAPH_TRANSITION_TARGET_UNKNOWN",
+            "element actions require a valid target_state",
+        )
+    render_model = next(
+        (
+            item
+            for item in scene.get("render_models", [])
+            if isinstance(item, dict)
+            and item.get("visual_id") == state.get("render_model_ref")
+        ),
+        None,
+    )
+    if render_model is None:
+        raise ProjectCommandError(
+            "RENDER_MODEL_UNKNOWN",
+            "target state render model does not exist",
+        )
+    return {
+        str(item.get("element_id")): item
+        for item in render_model.get("elements", [])
+        if isinstance(item, dict) and isinstance(item.get("element_id"), str)
+    }
+
+
+def _normalize_action(
+    scene: dict[str, Any],
+    route: dict[str, Any],
+    action: Any,
+) -> dict[str, Any]:
     if not isinstance(action, dict):
         raise ProjectCommandError("ACTION_TYPE_INVALID", "action must be an object")
     action_kind = action.get("kind")
@@ -2023,6 +2258,220 @@ def _normalize_action(scene: dict[str, Any], action: Any) -> dict[str, Any]:
     if action_kind == "request_render":
         _require_command_fields(action, {"kind"}, {"kind"})
         return {"kind": "request_render"}
+    if action_kind == "play_sfx":
+        _require_command_fields(
+            action,
+            {"kind", "cue_ref"},
+            {"kind", "cue_ref"},
+        )
+        cue_ref = action.get("cue_ref")
+        issues: list[ValidationIssue] = []
+        _stable_id(cue_ref, "command.action.cue_ref", issues)
+        if issues:
+            issue = issues[0]
+            raise ProjectCommandError(issue.code, issue.message)
+        return {"kind": "play_sfx", "cue_ref": cue_ref}
+    if action_kind in {
+        "set_element_visibility",
+        "set_element_position",
+        "set_element_frame",
+        "set_element_waiting_animation",
+    }:
+        elements = _route_target_elements(scene, route)
+        element_ref = action.get("element_ref")
+        issues: list[ValidationIssue] = []
+        _stable_id(element_ref, "command.action.element_ref", issues)
+        if issues:
+            issue = issues[0]
+            raise ProjectCommandError(issue.code, issue.message)
+        element = elements.get(element_ref)
+        if element is None:
+            raise ProjectCommandError(
+                "ACTION_ELEMENT_UNKNOWN",
+                f"target state has no element '{element_ref}'",
+            )
+        if action_kind == "set_element_visibility":
+            _require_command_fields(
+                action,
+                {"kind", "element_ref", "visible"},
+                {"kind", "element_ref", "visible"},
+            )
+            visible = action.get("visible")
+            if not isinstance(visible, bool):
+                raise ProjectCommandError(
+                    "ACTION_TYPE_INVALID", "visible must be true or false"
+                )
+            if not visible and element.get("focus_role", "none") == "focus":
+                raise ProjectCommandError(
+                    "RENDER_FOCUS_INVALID", "the focus element must remain visible"
+                )
+            return {
+                "kind": action_kind,
+                "element_ref": element_ref,
+                "visible": visible,
+            }
+        if action_kind == "set_element_position":
+            _require_command_fields(
+                action,
+                {"kind", "element_ref", "x", "y"},
+                {"kind", "element_ref", "x", "y"},
+            )
+            x = action.get("x")
+            y = action.get("y")
+            if (
+                isinstance(x, bool)
+                or not isinstance(x, int)
+                or isinstance(y, bool)
+                or not isinstance(y, int)
+            ):
+                raise ProjectCommandError(
+                    "ACTION_TYPE_INVALID", "position must use integer x and y"
+                )
+            if (
+                x < 0
+                or y < 0
+                or x + int(element.get("width", 0)) > 168
+                or y + int(element.get("height", 0)) > 144
+            ):
+                raise ProjectCommandError(
+                    "RENDER_BOUNDS_INVALID",
+                    "element action would move outside the 168x144 display",
+                )
+            return {
+                "kind": action_kind,
+                "element_ref": element_ref,
+                "x": x,
+                "y": y,
+            }
+        if action_kind == "set_element_waiting_animation":
+            _require_command_fields(
+                action,
+                {
+                    "kind",
+                    "element_ref",
+                    "waiting_visual_ref",
+                    "waiting_element_ref",
+                    "timeline_policy",
+                },
+                {
+                    "kind",
+                    "element_ref",
+                    "waiting_visual_ref",
+                    "waiting_element_ref",
+                    "timeline_policy",
+                },
+            )
+            waiting_visual_ref = action.get("waiting_visual_ref")
+            waiting_element_ref = action.get("waiting_element_ref")
+            timeline_policy = action.get("timeline_policy")
+            issues = []
+            _stable_id(
+                waiting_visual_ref,
+                "command.action.waiting_visual_ref",
+                issues,
+            )
+            _stable_id(
+                waiting_element_ref,
+                "command.action.waiting_element_ref",
+                issues,
+            )
+            if issues:
+                issue = issues[0]
+                raise ProjectCommandError(issue.code, issue.message)
+            waiting_visual = next(
+                (
+                    item
+                    for item in scene.get("waiting_visuals", [])
+                    if isinstance(item, dict)
+                    and item.get("waiting_visual_id") == waiting_visual_ref
+                ),
+                None,
+            )
+            if waiting_visual is None:
+                raise ProjectCommandError(
+                    "WAIT_VISUAL_UNKNOWN",
+                    f"unknown waiting visual '{waiting_visual_ref}'",
+                )
+            waiting_element = next(
+                (
+                    item
+                    for item in waiting_visual.get("elements", [])
+                    if isinstance(item, dict)
+                    and item.get("element_id") == waiting_element_ref
+                ),
+                None,
+            )
+            if waiting_element is None:
+                raise ProjectCommandError(
+                    "WAIT_ELEMENT_UNKNOWN",
+                    f"waiting visual has no element '{waiting_element_ref}'",
+                )
+            if waiting_element.get("source_element_ref") != element_ref:
+                raise ProjectCommandError(
+                    "ACTION_WAIT_ELEMENT_MISMATCH",
+                    "waiting animation must target the same retained element",
+                )
+            target_state = next(
+                item
+                for item in scene.get("states", [])
+                if isinstance(item, dict)
+                and item.get("state_id") == route.get("target_state")
+            )
+            target_waiting = next(
+                item
+                for item in scene.get("waiting_visuals", [])
+                if isinstance(item, dict)
+                and item.get("waiting_visual_id")
+                == target_state.get("waiting_visual_ref")
+            )
+            if (
+                waiting_visual.get("phase_quantum_ms")
+                != target_waiting.get("phase_quantum_ms")
+                or waiting_visual.get("combined_step_count")
+                != target_waiting.get("combined_step_count")
+            ):
+                raise ProjectCommandError(
+                    "ACTION_WAIT_TIMELINE_INCOMPATIBLE",
+                    "waiting animation cadence and step count must match the target state",
+                )
+            if timeline_policy not in {"preserve", "rebase"}:
+                raise ProjectCommandError(
+                    "ACTION_TIMELINE_POLICY_INVALID",
+                    "timeline_policy must be preserve or rebase",
+                )
+            if element.get("kind") != "sprite":
+                raise ProjectCommandError(
+                    "ACTION_ELEMENT_TYPE_INVALID",
+                    "waiting animation selection requires a sprite element",
+                )
+            return {
+                "kind": action_kind,
+                "element_ref": element_ref,
+                "waiting_visual_ref": waiting_visual_ref,
+                "waiting_element_ref": waiting_element_ref,
+                "timeline_policy": timeline_policy,
+            }
+        _require_command_fields(
+            action,
+            {"kind", "element_ref", "frame_ref"},
+            {"kind", "element_ref", "frame_ref"},
+        )
+        frame_ref = action.get("frame_ref")
+        issues = []
+        _stable_id(frame_ref, "command.action.frame_ref", issues)
+        if issues:
+            issue = issues[0]
+            raise ProjectCommandError(issue.code, issue.message)
+        if element.get("kind") != "sprite":
+            raise ProjectCommandError(
+                "ACTION_ELEMENT_TYPE_INVALID",
+                "frame selection requires a sprite element",
+            )
+        return {
+            "kind": action_kind,
+            "element_ref": element_ref,
+            "frame_ref": frame_ref,
+        }
     raise ProjectCommandError("ACTION_KIND_INVALID", "unsupported V1 action")
 
 
@@ -2087,7 +2536,7 @@ def _apply_route_action_list(
             raise ProjectCommandError("ACTION_BUDGET_EXCEEDED", "route supports at most 8 actions")
         if action_index > len(actions):
             raise ProjectCommandError("COMMAND_INDEX_INVALID", "action_index must select an insertion position")
-        action = _normalize_action(scene, command.get("action"))
+        action = _normalize_action(scene, route, command.get("action"))
         actions.insert(action_index, action)
         return {"kind": kind, "scene_id": scene.get("scene_id"), "route_id": route.get("route_id"), "action_index": action_index, "action": action}
     source_index = _command_move_index(action_index, "action_index", len(actions))
@@ -2177,11 +2626,10 @@ def _apply_route_set_action(
     for scene in scenes:
         if scene.get("scene_id") != scene_id:
             continue
-        normalized_action = _normalize_action(scene, action)
-
         for route in scene.get("routes", []):
             if not isinstance(route, dict) or route.get("route_id") != route_id:
                 continue
+            normalized_action = _normalize_action(scene, route, action)
             actions = route.get("actions")
             if not isinstance(actions, list) or action_index >= len(actions):
                 raise ProjectCommandError("COMMAND_INDEX_INVALID", "action_index does not select an existing action")
@@ -2618,11 +3066,12 @@ def _check_scene(
     source: str,
     frame_lookup: dict[str, Masked1bppFrame],
     animation_ids: set[str],
+    audio_cue_ids: set[str],
     issues: list[ValidationIssue],
 ) -> None:
     base = f"scene[{source}]"
     frame_ids = set(frame_lookup)
-    _check_keys(scene, SCENE_KEYS, base, issues)
+    _check_keys(scene, SCENE_KEYS, base, issues, SCENE_KEYS | SCENE_OPTIONAL_KEYS)
     if scene.get("schema_id") != "peepshow.authoring.state_scene" or scene.get("schema_version") != 1:
         _issue(issues, "SCENE_SCHEMA_UNSUPPORTED", base, "expected peepshow.authoring.state_scene version 1")
     _stable_id(scene.get("scene_id"), f"{base}.scene_id", issues)
@@ -2635,17 +3084,41 @@ def _check_scene(
         _check_variable(variable, f"{base}.variables[{variable_id}]", issues)
 
     input_actions = _unique_ids(scene.get("input_actions"), "action_id", f"{base}.input_actions", issues, 32)
-    logical_sources: set[str] = set()
+    logical_bindings: set[tuple[str, str]] = set()
     for action_id, action in input_actions.items():
         path = f"{base}.input_actions[{action_id}]"
-        _check_keys(action, {"action_id", "logical_source"}, path, issues)
+        _check_keys(
+            action,
+            {"action_id", "logical_source"},
+            path,
+            issues,
+            {"action_id", "logical_source", "event_kind"},
+        )
         source_value = action.get("logical_source")
+        event_kind = action.get("event_kind", "press")
         if source_value not in LOGICAL_INPUT_SOURCES:
             _issue(issues, "INPUT_SOURCE_INVALID", f"{path}.logical_source", "unsupported logical source")
-        elif source_value in logical_sources:
-            _issue(issues, "INPUT_SOURCE_DUPLICATE", f"{path}.logical_source", "logical source is already bound")
+        if event_kind not in LOGICAL_INPUT_EVENT_KINDS:
+            _issue(issues, "INPUT_EVENT_INVALID", f"{path}.event_kind", "must be press, release, hold, or repeat")
+        elif source_value == "BUTTON_START" and event_kind != "press":
+            _issue(issues, "INPUT_EVENT_SYSTEM_OWNED", f"{path}.event_kind", "START supports package press only")
+        binding = (str(source_value), str(event_kind))
+        if binding in logical_bindings:
+            _issue(issues, "INPUT_BINDING_DUPLICATE", path, "logical source and event kind are already bound")
         else:
-            logical_sources.add(source_value)
+            logical_bindings.add(binding)
+
+    joystick_policy = scene.get("joystick_policy", "four_way")
+    if joystick_policy not in JOYSTICK_POLICIES:
+        _issue(issues, "JOYSTICK_POLICY_INVALID", f"{base}.joystick_policy", "must be four_way or eight_way")
+    diagonal_sources = {
+        "JOY_UP_LEFT", "JOY_UP_RIGHT", "JOY_DOWN_LEFT", "JOY_DOWN_RIGHT"
+    }
+    if joystick_policy != "eight_way" and any(
+        action.get("logical_source") in diagonal_sources
+        for action in input_actions.values()
+    ):
+        _issue(issues, "JOYSTICK_POLICY_REQUIRED", f"{base}.joystick_policy", "diagonal bindings require eight_way")
 
     states = _unique_ids(scene.get("states"), "state_id", f"{base}.states", issues, 64)
     render_models = _unique_ids(scene.get("render_models"), "visual_id", f"{base}.render_models", issues, 64)
@@ -2762,6 +3235,7 @@ def _check_scene(
 
     for route_id, route in routes.items():
         path = f"{base}.routes[{route_id}]"
+        target_elements: dict[str, dict[str, Any]] = {}
         required = {"route_id", "action_ref", "from_states", "guards", "actions"}
         allowed = required | {"target_state", "target_scene"}
         _check_keys(route, required, path, issues, allowed)
@@ -2785,6 +3259,17 @@ def _check_scene(
             )
         elif has_target_state and route.get("target_state") not in states:
             _issue(issues, "GRAPH_TRANSITION_TARGET_UNKNOWN", f"{path}.target_state", "target state does not exist")
+        elif has_target_state:
+            target_state_record = states[route.get("target_state")]
+            only_render_model = next(iter(render_models), None)
+            target_model = render_models.get(target_state_record.get("render_model_ref") or only_render_model)
+            if isinstance(target_model, dict):
+                target_elements = {
+                    str(item.get("element_id")): item
+                    for item in target_model.get("elements", [])
+                    if isinstance(item, dict)
+                    and isinstance(item.get("element_id"), str)
+                }
         elif has_target_scene:
             _stable_id(route.get("target_scene"), f"{path}.target_scene", issues)
             if route.get("actions"):
@@ -2830,6 +3315,216 @@ def _check_scene(
                         _issue(issues, "ACTION_TYPE_INVALID", f"{action_path}.value", "must be an integer")
                 elif kind == "request_render":
                     _check_keys(action, {"kind"}, action_path, issues)
+                elif kind == "play_sfx":
+                    _check_keys(action, {"kind", "cue_ref"}, action_path, issues)
+                    cue_ref = action.get("cue_ref")
+                    _stable_id(cue_ref, f"{action_path}.cue_ref", issues)
+                    if cue_ref not in audio_cue_ids:
+                        _issue(
+                            issues,
+                            "AUDIO_CUE_UNKNOWN",
+                            f"{action_path}.cue_ref",
+                            f"unknown audio cue '{cue_ref}'",
+                        )
+                elif kind in {
+                    "set_element_visibility",
+                    "set_element_position",
+                    "set_element_frame",
+                    "set_element_waiting_animation",
+                }:
+                    element_ref = action.get("element_ref")
+                    element = target_elements.get(element_ref)
+                    if kind == "set_element_visibility":
+                        _check_keys(
+                            action,
+                            {"kind", "element_ref", "visible"},
+                            action_path,
+                            issues,
+                        )
+                    elif kind == "set_element_position":
+                        _check_keys(
+                            action,
+                            {"kind", "element_ref", "x", "y"},
+                            action_path,
+                            issues,
+                        )
+                    elif kind == "set_element_frame":
+                        _check_keys(
+                            action,
+                            {"kind", "element_ref", "frame_ref"},
+                            action_path,
+                            issues,
+                        )
+                    else:
+                        _check_keys(
+                            action,
+                            {
+                                "kind",
+                                "element_ref",
+                                "waiting_visual_ref",
+                                "waiting_element_ref",
+                                "timeline_policy",
+                            },
+                            action_path,
+                            issues,
+                        )
+                    _stable_id(element_ref, f"{action_path}.element_ref", issues)
+                    if element is None:
+                        _issue(
+                            issues,
+                            "ACTION_ELEMENT_UNKNOWN",
+                            f"{action_path}.element_ref",
+                            "target state render model has no matching element",
+                        )
+                        continue
+                    if kind == "set_element_visibility":
+                        visible = action.get("visible")
+                        if not isinstance(visible, bool):
+                            _issue(
+                                issues,
+                                "ACTION_TYPE_INVALID",
+                                f"{action_path}.visible",
+                                "must be true or false",
+                            )
+                        elif not visible and element.get("focus_role", "none") == "focus":
+                            _issue(
+                                issues,
+                                "RENDER_FOCUS_INVALID",
+                                f"{action_path}.visible",
+                                "the focus element must remain visible",
+                            )
+                    elif kind == "set_element_position":
+                        x = action.get("x")
+                        y = action.get("y")
+                        if (
+                            isinstance(x, bool)
+                            or not isinstance(x, int)
+                            or isinstance(y, bool)
+                            or not isinstance(y, int)
+                        ):
+                            _issue(
+                                issues,
+                                "ACTION_TYPE_INVALID",
+                                action_path,
+                                "position must use integer x and y",
+                            )
+                        elif (
+                            x < 0
+                            or y < 0
+                            or x + int(element.get("width", 0)) > 168
+                            or y + int(element.get("height", 0)) > 144
+                        ):
+                            _issue(
+                                issues,
+                                "RENDER_BOUNDS_INVALID",
+                                action_path,
+                                "element action exceeds the 168x144 canvas",
+                            )
+                    elif kind == "set_element_frame":
+                        frame_ref = action.get("frame_ref")
+                        _stable_id(frame_ref, f"{action_path}.frame_ref", issues)
+                        if element.get("kind") != "sprite":
+                            _issue(
+                                issues,
+                                "ACTION_ELEMENT_TYPE_INVALID",
+                                f"{action_path}.element_ref",
+                                "frame selection requires a sprite element",
+                            )
+                        if frame_ref not in frame_ids:
+                            _issue(
+                                issues,
+                                "ASSET_FRAME_UNKNOWN",
+                                f"{action_path}.frame_ref",
+                                f"unknown frame '{frame_ref}'",
+                            )
+                    else:
+                        waiting_visual_ref = action.get("waiting_visual_ref")
+                        waiting_element_ref = action.get("waiting_element_ref")
+                        waiting_visual = waiting_visuals.get(waiting_visual_ref)
+                        waiting_element = None
+                        _stable_id(
+                            waiting_visual_ref,
+                            f"{action_path}.waiting_visual_ref",
+                            issues,
+                        )
+                        _stable_id(
+                            waiting_element_ref,
+                            f"{action_path}.waiting_element_ref",
+                            issues,
+                        )
+                        if isinstance(waiting_visual, dict):
+                            waiting_element = next(
+                                (
+                                    item
+                                    for item in waiting_visual.get("elements", [])
+                                    if isinstance(item, dict)
+                                    and item.get("element_id")
+                                    == waiting_element_ref
+                                ),
+                                None,
+                            )
+                        else:
+                            _issue(
+                                issues,
+                                "WAIT_VISUAL_UNKNOWN",
+                                f"{action_path}.waiting_visual_ref",
+                                "waiting visual does not exist",
+                            )
+                        if waiting_element is None:
+                            _issue(
+                                issues,
+                                "WAIT_ELEMENT_UNKNOWN",
+                                f"{action_path}.waiting_element_ref",
+                                "waiting visual has no matching element",
+                            )
+                        elif waiting_element.get("source_element_ref") != element_ref:
+                            _issue(
+                                issues,
+                                "ACTION_WAIT_ELEMENT_MISMATCH",
+                                f"{action_path}.waiting_element_ref",
+                                "waiting animation must target the same retained element",
+                            )
+                        if element.get("kind") != "sprite":
+                            _issue(
+                                issues,
+                                "ACTION_ELEMENT_TYPE_INVALID",
+                                f"{action_path}.element_ref",
+                                "waiting animation selection requires a sprite element",
+                            )
+                        if action.get("timeline_policy") not in {
+                            "preserve",
+                            "rebase",
+                        }:
+                            _issue(
+                                issues,
+                                "ACTION_TIMELINE_POLICY_INVALID",
+                                f"{action_path}.timeline_policy",
+                                "must be preserve or rebase",
+                            )
+                        target_state_record = states.get(route.get("target_state"))
+                        target_waiting = (
+                            waiting_visuals.get(
+                                target_state_record.get("waiting_visual_ref")
+                            )
+                            if isinstance(target_state_record, dict)
+                            else None
+                        )
+                        if (
+                            isinstance(waiting_visual, dict)
+                            and isinstance(target_waiting, dict)
+                            and (
+                                waiting_visual.get("phase_quantum_ms")
+                                != target_waiting.get("phase_quantum_ms")
+                                or waiting_visual.get("combined_step_count")
+                                != target_waiting.get("combined_step_count")
+                            )
+                        ):
+                            _issue(
+                                issues,
+                                "ACTION_WAIT_TIMELINE_INCOMPATIBLE",
+                                action_path,
+                                "waiting animation cadence and step count must match the target state",
+                            )
                 else:
                     _issue(issues, "ACTION_KIND_INVALID", f"{action_path}.kind", "unsupported V1 action")
 
@@ -2903,17 +3598,41 @@ def _scene_path(root: Path, source: Any, issues: list[ValidationIssue]) -> Path 
 def _compile_asset_catalogs(
     root: Path,
     catalogs: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[Masked1bppFrame], list[ValidationIssue]]:
+) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[Masked1bppFrame],
+    list[CompiledAudioAsset],
+    list[dict[str, Any]],
+    list[ValidationIssue],
+]:
     issues: list[ValidationIssue] = []
     assets: list[dict[str, Any]] = []
     animations: list[dict[str, Any]] = []
     frames: list[Masked1bppFrame] = []
+    audio_assets: list[CompiledAudioAsset] = []
+    audio_cues: list[dict[str, Any]] = []
     asset_ids: set[str] = set()
     frame_ids: set[str] = set()
     animation_ids: set[str] = set()
+    audio_asset_ids: set[str] = set()
+    audio_cue_ids: set[str] = set()
     for catalog_index, catalog in enumerate(catalogs):
         base = f"asset_catalogs[{catalog_index}]"
-        _check_keys(catalog, {"schema_id", "schema_version", "assets", "animations"}, base, issues)
+        _check_keys(
+            catalog,
+            {"schema_id", "schema_version", "assets", "animations"},
+            base,
+            issues,
+            {
+                "schema_id",
+                "schema_version",
+                "assets",
+                "animations",
+                "audio_assets",
+                "audio_cues",
+            },
+        )
         if catalog.get("schema_id") != "peepshow.authoring.assets" or catalog.get("schema_version") != 1:
             _issue(issues, "ASSET_SCHEMA_UNSUPPORTED", base, "expected peepshow.authoring.assets version 1")
         catalog_assets = _unique_ids(catalog.get("assets"), "asset_id", f"{base}.assets", issues, 128)
@@ -2953,6 +3672,87 @@ def _compile_asset_catalogs(
             animation_ids.add(animation_id)
             _check_animation(animation, animation_path, issues)
             animations.append(animation)
+        catalog_audio_assets = _unique_ids(
+            catalog.get("audio_assets", []),
+            "asset_id",
+            f"{base}.audio_assets",
+            issues,
+            AUDIO_MAX_ASSETS,
+        )
+        for audio_asset_id, audio_asset in catalog_audio_assets.items():
+            audio_path = f"{base}.audio_assets[{audio_asset_id}]"
+            if audio_asset_id in audio_asset_ids:
+                _issue(
+                    issues,
+                    "PROJECT_ID_DUPLICATE",
+                    f"{audio_path}.asset_id",
+                    f"duplicate ID '{audio_asset_id}'",
+                )
+                continue
+            audio_asset_ids.add(audio_asset_id)
+            before = len(issues)
+            _check_keys(
+                audio_asset,
+                {"asset_id", "asset_type", "source_path", "source_format"},
+                audio_path,
+                issues,
+            )
+            _stable_id(audio_asset_id, f"{audio_path}.asset_id", issues)
+            if audio_asset.get("asset_type") != "sampled_sfx":
+                _issue(
+                    issues,
+                    "AUDIO_ASSET_TYPE_INVALID",
+                    f"{audio_path}.asset_type",
+                    "must be sampled_sfx",
+                )
+            if audio_asset.get("source_format") != "wav":
+                _issue(
+                    issues,
+                    "AUDIO_SOURCE_FORMAT_INVALID",
+                    f"{audio_path}.source_format",
+                    "must be wav",
+                )
+            if len(issues) == before:
+                try:
+                    audio_assets.append(import_sampled_sfx(root, audio_asset))
+                except (AudioAssetError, KeyError) as exc:
+                    _issue(issues, "AUDIO_SOURCE_INVALID", audio_path, str(exc))
+        catalog_audio_cues = _unique_ids(
+            catalog.get("audio_cues", []),
+            "cue_id",
+            f"{base}.audio_cues",
+            issues,
+            AUDIO_MAX_CUES,
+        )
+        for cue_id, cue in catalog_audio_cues.items():
+            cue_path = f"{base}.audio_cues[{cue_id}]"
+            if cue_id in audio_cue_ids:
+                _issue(
+                    issues,
+                    "PROJECT_ID_DUPLICATE",
+                    f"{cue_path}.cue_id",
+                    f"duplicate ID '{cue_id}'",
+                )
+                continue
+            audio_cue_ids.add(cue_id)
+            _check_keys(
+                cue,
+                {"cue_id", "asset_ref", "priority", "volume"},
+                cue_path,
+                issues,
+            )
+            _stable_id(cue_id, f"{cue_path}.cue_id", issues)
+            _stable_id(cue.get("asset_ref"), f"{cue_path}.asset_ref", issues)
+            for field in ("priority", "volume"):
+                value = cue.get(field)
+                if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 255:
+                    _issue(
+                        issues,
+                        "AUDIO_CUE_VALUE_INVALID",
+                        f"{cue_path}.{field}",
+                        "must be an integer in 0..255",
+                    )
+            audio_cues.append(cue)
     for animation in animations:
         for index, frame_ref in enumerate(animation.get("frame_refs", [])):
             if frame_ref not in frame_ids:
@@ -2962,7 +3762,22 @@ def _compile_asset_catalogs(
                     f"animation[{animation.get('animation_id')}].frame_refs[{index}]",
                     f"unknown frame '{frame_ref}'",
                 )
-    return assets, animations, frames, issues
+    for cue in audio_cues:
+        if cue.get("asset_ref") not in audio_asset_ids:
+            _issue(
+                issues,
+                "AUDIO_ASSET_UNKNOWN",
+                f"audio_cues[{cue.get('cue_id')}].asset_ref",
+                f"unknown audio asset '{cue.get('asset_ref')}'",
+            )
+    if sum(len(asset.adpcm) for asset in audio_assets) > AUDIO_MAX_BANK_BYTES:
+        _issue(
+            issues,
+            "AUDIO_BANK_BUDGET_EXCEEDED",
+            "audio_assets",
+            f"compiled audio exceeds the {AUDIO_MAX_BANK_BYTES}-byte STATE bank limit",
+        )
+    return assets, animations, frames, audio_assets, audio_cues, issues
 
 
 def load_project(project_root: str | Path) -> ProjectBundle:
@@ -2972,21 +3787,15 @@ def load_project(project_root: str | Path) -> ProjectBundle:
         _issue(issues, "PROJECT_SUFFIX_INVALID", str(root), "editable project directories must end in .peepproj")
     if not root.is_dir():
         _issue(issues, "PROJECT_ROOT_MISSING", str(root), "project directory does not exist")
-        return ProjectBundle(root, {}, (), (), (), (), (), (), (), tuple(issues))
+        return ProjectBundle(root, {}, (), (), (), (), (), (), (), (), (), tuple(issues))
 
     project = _read_json(root / "project.json", issues, "PROJECT_MANIFEST_INVALID")
     if project is None:
-        return ProjectBundle(root, {}, (), (), (), (), (), (), (), tuple(issues))
+        return ProjectBundle(root, {}, (), (), (), (), (), (), (), (), (), tuple(issues))
     _check_project(project, issues)
 
-    assets: list[dict[str, Any]] = []
-    animations: list[dict[str, Any]] = []
-    frames: list[Masked1bppFrame] = []
     asset_catalogs: list[dict[str, Any]] = []
     loaded_asset_sources: list[str] = []
-    asset_ids: set[str] = set()
-    frame_ids: set[str] = set()
-    animation_ids: set[str] = set()
     asset_sources = project.get("asset_sources", [])
     if isinstance(asset_sources, list):
         for source in asset_sources:
@@ -3000,61 +3809,26 @@ def load_project(project_root: str | Path) -> ProjectBundle:
                 continue
             asset_catalogs.append(catalog)
             loaded_asset_sources.append(str(source))
-            base = f"assets[{source}]"
-            _check_keys(catalog, {"schema_id", "schema_version", "assets", "animations"}, base, issues)
-            if catalog.get("schema_id") != "peepshow.authoring.assets" or catalog.get("schema_version") != 1:
-                _issue(issues, "ASSET_SCHEMA_UNSUPPORTED", base, "expected peepshow.authoring.assets version 1")
-
-            catalog_assets = _unique_ids(catalog.get("assets"), "asset_id", f"{base}.assets", issues, 128)
-            for asset_id, asset in catalog_assets.items():
-                asset_path = f"{base}.assets[{asset_id}]"
-                if asset_id in asset_ids:
-                    _issue(issues, "PROJECT_ID_DUPLICATE", f"{asset_path}.asset_id", f"duplicate ID '{asset_id}'")
-                    continue
-                asset_ids.add(asset_id)
-                declared_frames = asset.get("frames")
-                if isinstance(declared_frames, list):
-                    for frame in declared_frames:
-                        if not isinstance(frame, dict) or not isinstance(frame.get("frame_id"), str):
-                            continue
-                        frame_id = frame["frame_id"]
-                        if frame_id in frame_ids:
-                            _issue(issues, "PROJECT_ID_DUPLICATE", f"{asset_path}.frames", f"duplicate frame ID '{frame_id}'")
-                        else:
-                            frame_ids.add(frame_id)
-                frames.extend(_check_asset(asset, asset_path, root, issues))
-                assets.append(asset)
-
-            catalog_animations = _unique_ids(
-                catalog.get("animations"),
-                "animation_id",
-                f"{base}.animations",
-                issues,
-                128,
-            )
-            for animation_id, animation in catalog_animations.items():
-                animation_path = f"{base}.animations[{animation_id}]"
-                if animation_id in animation_ids:
-                    _issue(
-                        issues,
-                        "PROJECT_ID_DUPLICATE",
-                        f"{animation_path}.animation_id",
-                        f"duplicate ID '{animation_id}'",
-                    )
-                    continue
-                animation_ids.add(animation_id)
-                _check_animation(animation, animation_path, issues)
-                animations.append(animation)
-
-    for animation in animations:
-        for index, frame_ref in enumerate(animation.get("frame_refs", [])):
-            if frame_ref not in frame_ids:
-                _issue(
-                    issues,
-                    "ASSET_FRAME_UNKNOWN",
-                    f"animation[{animation.get('animation_id')}].frame_refs[{index}]",
-                    f"unknown frame '{frame_ref}'",
-                )
+    (
+        assets,
+        animations,
+        frames,
+        audio_assets,
+        audio_cues,
+        catalog_issues,
+    ) = _compile_asset_catalogs(root, asset_catalogs)
+    issues.extend(catalog_issues)
+    frame_ids = {frame.frame_id for frame in frames}
+    animation_ids = {
+        str(animation["animation_id"])
+        for animation in animations
+        if isinstance(animation.get("animation_id"), str)
+    }
+    audio_cue_ids = {
+        str(cue["cue_id"])
+        for cue in audio_cues
+        if isinstance(cue.get("cue_id"), str)
+    }
 
     scenes: list[dict[str, Any]] = []
     loaded_scene_sources: list[str] = []
@@ -3068,7 +3842,14 @@ def load_project(project_root: str | Path) -> ProjectBundle:
             scene = _read_json(path, issues, "SCENE_SOURCE_INVALID")
             if scene is None:
                 continue
-            _check_scene(scene, str(source), {frame.frame_id: frame for frame in frames}, animation_ids, issues)
+            _check_scene(
+                scene,
+                str(source),
+                {frame.frame_id: frame for frame in frames},
+                animation_ids,
+                audio_cue_ids,
+                issues,
+            )
             scene_id = scene.get("scene_id")
             if isinstance(scene_id, str):
                 if scene_id in scene_ids:
@@ -3161,6 +3942,8 @@ def load_project(project_root: str | Path) -> ProjectBundle:
         tuple(assets),
         tuple(animations),
         tuple(frames),
+        tuple(audio_assets),
+        tuple(audio_cues),
         tuple(issues),
     )
 
@@ -3183,6 +3966,8 @@ def apply_project_commands(
     assets = deepcopy(list(bundle.assets))
     animations = deepcopy(list(bundle.animations))
     frames = list(bundle.frames)
+    audio_assets = list(bundle.audio_assets)
+    audio_cues = deepcopy(list(bundle.audio_cues))
     applied: list[dict[str, Any]] = []
 
     for command in commands:
@@ -3252,25 +4037,57 @@ def apply_project_commands(
             applied.append(_apply_state_set_waiting_visual(scenes, command))
         elif kind == "asset.upsert":
             applied.append(_apply_asset_upsert(project, asset_catalogs, asset_catalog_sources, command))
-            assets, animations, frames, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
             if catalog_issues:
                 issue = catalog_issues[0]
                 raise ProjectCommandError(issue.code, issue.message)
         elif kind == "asset.delete":
             applied.append(_apply_asset_delete(asset_catalogs, scenes, command))
-            assets, animations, frames, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
             if catalog_issues:
                 issue = catalog_issues[0]
                 raise ProjectCommandError(issue.code, issue.message)
         elif kind == "animation.upsert":
             applied.append(_apply_animation_upsert(project, asset_catalogs, asset_catalog_sources, command))
-            assets, animations, frames, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
             if catalog_issues:
                 issue = catalog_issues[0]
                 raise ProjectCommandError(issue.code, issue.message)
         elif kind == "animation.delete":
             applied.append(_apply_animation_delete(asset_catalogs, scenes, command))
-            assets, animations, frames, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            if catalog_issues:
+                issue = catalog_issues[0]
+                raise ProjectCommandError(issue.code, issue.message)
+        elif kind == "audio_asset.upsert":
+            applied.append(
+                _apply_audio_asset_upsert(
+                    project, asset_catalogs, asset_catalog_sources, command
+                )
+            )
+            assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            if catalog_issues:
+                issue = catalog_issues[0]
+                raise ProjectCommandError(issue.code, issue.message)
+        elif kind == "audio_asset.delete":
+            applied.append(_apply_audio_asset_delete(asset_catalogs, command))
+            assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            if catalog_issues:
+                issue = catalog_issues[0]
+                raise ProjectCommandError(issue.code, issue.message)
+        elif kind == "audio_cue.upsert":
+            applied.append(
+                _apply_audio_cue_upsert(
+                    project, asset_catalogs, asset_catalog_sources, command
+                )
+            )
+            assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
+            if catalog_issues:
+                issue = catalog_issues[0]
+                raise ProjectCommandError(issue.code, issue.message)
+        elif kind == "audio_cue.delete":
+            applied.append(_apply_audio_cue_delete(asset_catalogs, scenes, command))
+            assets, animations, frames, audio_assets, audio_cues, catalog_issues = _compile_asset_catalogs(bundle.root, asset_catalogs)
             if catalog_issues:
                 issue = catalog_issues[0]
                 raise ProjectCommandError(issue.code, issue.message)
@@ -3286,7 +4103,7 @@ def apply_project_commands(
             applied.append(_apply_route_set_action(scenes, command))
         elif kind in {"route.action.add", "route.action.delete", "route.action.move"}:
             applied.append(_apply_route_action_list(scenes, command))
-        elif kind in {"scene.set_reactive_wait_default", "scene.set_interaction_policy"}:
+        elif kind in {"scene.set_reactive_wait_default", "scene.set_interaction_policy", "scene.set_joystick_policy"}:
             applied.append(_apply_scene_policy(scenes, command))
         else:
             raise ProjectCommandError("COMMAND_KIND_UNKNOWN", f"unknown command kind '{kind}'")
@@ -3298,9 +4115,21 @@ def apply_project_commands(
         for animation in animations
         if isinstance(animation.get("animation_id"), str)
     }
+    audio_cue_ids = {
+        cue.get("cue_id")
+        for cue in audio_cues
+        if isinstance(cue.get("cue_id"), str)
+    }
     validation_issues: list[ValidationIssue] = []
     for index, scene in enumerate(scenes):
-        _check_scene(scene, f"scenes[{index}]", frame_lookup, animation_ids, validation_issues)
+        _check_scene(
+            scene,
+            f"scenes[{index}]",
+            frame_lookup,
+            animation_ids,
+            audio_cue_ids,
+            validation_issues,
+        )
     if validation_issues:
         issue = validation_issues[0]
         raise ProjectCommandError(issue.code, f"{issue.path}: {issue.message}")
@@ -3316,6 +4145,8 @@ def apply_project_commands(
             tuple(assets),
             tuple(animations),
             tuple(frames),
+            tuple(audio_assets),
+            tuple(audio_cues),
             (),
         ),
         tuple(applied),

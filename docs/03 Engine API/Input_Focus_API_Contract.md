@@ -74,11 +74,24 @@ names and wire IDs:
 | `JOY_RIGHT` | 7 |
 | `JOY_UP` | 8 |
 | `JOY_DOWN` | 9 |
+| `JOY_UP_LEFT` | 10 |
+| `JOY_UP_RIGHT` | 11 |
+| `JOY_DOWN_LEFT` | 12 |
+| `JOY_DOWN_RIGHT` | 13 |
 
-Wire ID 5 is reserved for Platform-owned Start handling in the current
-firmware. Joystick direction sources are distinct logical inputs; firmware must
+Wire ID 5 is `BUTTON_START`. Packages may bind only its release-qualified short
+`press`; long START gestures remain Platform-owned and START never publishes
+release, hold, or repeat package events. Joystick direction sources are distinct logical inputs; firmware must
 not translate them into fake L/R button events. The shell may map left/up to
 previous and right/down to next as its own focus policy.
+
+The current STATE wire event IDs are `press=1`, `release=2`, `hold=3`, and
+`repeat=4`. Bindings are unique by `(logical_source, event_kind)`, so one source
+may declare separate routes for its press, release, hold, and repeat lifecycle.
+Each STATE declares `joystick_policy: four_way | eight_way`; diagonal bindings
+are valid only under `eight_way`. Platform owns calibration, hysteresis, wake
+confirmation, and repeat timing. Package focus decides which published events
+have meaning.
 
 Forbidden package-facing sources:
 

@@ -100,7 +100,17 @@ compiler/parser/exact-preview tests pass. HW6 visual, scene-replacement, and
 STOP2 validation passed on 2026-08-27: static primitives remained composed and
 both package sprite animations continued in STOP2. Build-time text sprites are
 implemented in the host toolchain and reuse that proven sprite path. Runtime
-retained element actions and sampled SFX are the next STATE gaps.
+retained show/hide, move, and base-frame actions are implemented in service API
+16, the package compiler/parser/exact preview, and FW0. HW6 validation passed on
+2026-08-28 with atomic element/variable commits, direct scene replacement, and
+awake/STOP2 composition. Service API 17 waiting-animation selection is also
+implemented and target-proven awake and in STOP2. Service API 18 now completes
+the host/package half of sampled STATE SFX: WAV import, deterministic mono
+16 kHz IMA ADPCM conversion, symbolic cue/action records, exact package-backed
+audition, and compatibility reporting. HW6 loader and `thAudio` playback proof
+passed on 2026-08-28 with one packaged cue: audible output, bounded decode and
+DMA, clean completion, clock release, and later STOP2 entry all succeeded.
+Known-reference fidelity and measured playback energy remain open.
 
 The checkpoint intentionally defers tone/dither import, Tiled maps, fractional
 transforms, runtime fonts, music, multi-voice mixing, save data, SEQUENCE,
@@ -323,11 +333,20 @@ Required positive cases:
 - package save records validate within profile limits
 - a granted waiting-visual sequence validates
 
-The current STATE authoring/runtime input boundary includes the four logical
-joystick cardinals `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`, and `JOY_DOWN`. HW6 owns
-calibration, normalization, diagonal detection, dominant-axis resolution, and
-movement-wake policy. Eight-way STATE events, normalized vectors, and authored
-hold/repeat behavior remain later target-profile capabilities.
+The current STATE authoring/runtime input boundary includes A/B/L/R, package
+START short-press, four joystick cardinals, and four canonical joystick
+diagonals. STATE routes can bind `press`, `release`, `hold`, or `repeat` events
+for A/B/L/R and joystick sources; START supports package `press` only. HW6 owns
+calibration, normalization, movement wake, long START manual-INACTIVE/shipping
+gestures, and the deterministic four-way shell fallback. Normalized vector
+bindings remain a later PROGRAM-facing target-profile capability.
+
+The embedded transition slice now uses its target STATE scene as a visible
+package input proof. Press A from the source scene to enter `INPUT PROOF`; B
+press/release, START short press, L hold, R repeat, joystick left/right,
+joystick up hold, joystick down repeat, and all four diagonals move the marker
+through labeled positions. A returns to the source scene. This proves package
+routes, not just the shell diagnostic page.
 
 Required negative or fallback cases:
 
@@ -518,12 +537,16 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
     implemented; complete single-scene
     STATE graph mutation is implemented in service API 14, including reference-
     safe state/model/variable/input/route CRUD and ordered guard/action editing;
-    Peep Studio controls and runtime show/hide/move/frame-selection actions
+    service API 16 also implements destination-state show/hide, move, and
+    retained base-frame actions with atomic variable/element commit and
+    waiting-loop visibility/position linkage; HW6 target proof passed on
+    2026-08-28, while Peep Studio controls and waiting-animation selection
     remain to complete this step
-13. implement the initial STATE sampled-SFX path: verify the HW6 16 kHz mono
-    SAI/MAX98357A path, compile WAV sources to bounded IMA ADPCM package assets,
-    preload one admitted voice, route symbolic `play_sfx` through `thAudio`,
-    release audio clock intent after drain, and prove return to STOP2
+13. completed 2026-08-28: the initial STATE sampled-SFX path verifies the HW6
+    16 kHz mono SAI/MAX98357A path, compiles WAV sources to bounded IMA ADPCM
+    package assets, preloads one admitted voice, routes symbolic `play_sfx`
+    through `thAudio`, releases audio clock intent after drain, and returns to
+    STOP2; known-reference fidelity and measured playback energy remain open
 14. close the remaining STATE authoring gaps and publish one target capability
     report covering visuals, input policies, waiting animation, scene flow,
     interaction lifecycle, SFX, memory admission, and measured power behavior
@@ -532,9 +555,13 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
 16. implement `SEQUENCE_SCENE`, then `PROGRAM_SCENE`, with realtime budgets,
     input routes, suspend/resume behavior, and required STATE/shell routes;
     extend the same editor architecture for each type
-17. measure representative reactive and realtime workloads, admit intermediate
-    PLL/clock operating points one at a time behind Platform capability
-    resolution, then capture and review the complete power evidence matrix;
-    packages continue to request semantics and deadlines, never MHz
+17. after the STATE SFX path exists, measure representative STATE/reactive
+    workloads including logic-only changes, retained rendering, text and map
+    composition, waiting-program preparation, installed asset reads, bounded
+    SFX, and combined transactions; admit reactive PLL/clock operating points
+    one at a time behind Platform capability resolution, then characterize
+    realtime operating points only after SEQUENCE and PROGRAM provide
+    representative sustained workloads; packages continue to request semantics
+    and deadlines, never MHz
 
 The slice is not complete merely because the game appears on the display. Completion requires the full author-to-package-to-device path and the associated HW6 evidence.

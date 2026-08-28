@@ -140,11 +140,16 @@ strict subset of this contract and does not redefine the future complete
 schema.
 
 The current executable STATE input-source set is `BUTTON_A`, `BUTTON_B`,
-`BUTTON_L`, `BUTTON_R`, `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`, and `JOY_DOWN`.
-Joystick sources are normalized logical cardinal activations; authored content
-does not receive raw TMAG values, calibration records, wake pins, or hardware
-thresholds. Canonical diagonal events, normalized vector bindings, and authored
-hold/repeat policy are not part of this subset yet.
+`BUTTON_L`, `BUTTON_R`, `BUTTON_START`, `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`,
+`JOY_DOWN`, `JOY_UP_LEFT`, `JOY_UP_RIGHT`, `JOY_DOWN_LEFT`, and
+`JOY_DOWN_RIGHT`. Each input action may bind one `event_kind`: `press`,
+`release`, `hold`, or `repeat`; omitted `event_kind` remains backward-compatible
+`press`. START permits package `press` only because long START gestures are
+system-owned for manual `INACTIVE` and shipping-entry behavior. Joystick
+sources are normalized logical activations; authored content does not receive
+raw TMAG values, calibration records, wake pins, or hardware thresholds.
+Diagonal joystick bindings require `joystick_policy: "eight_way"`. Normalized
+vector bindings are not part of this subset yet.
 
 In the executable STATE subset, every route declares exactly one destination:
 
@@ -157,6 +162,30 @@ successful replacement enters the destination entry state, restores its local
 variables to authored initial values, and begins a new presentation epoch.
 Unknown scene targets, both target fields, neither target field, or actions on
 a scene-target route fail validation.
+
+The executable STATE sampled-SFX source subset uses optional records in an
+asset catalog:
+
+```text
+audio_assets[]:
+  asset_id
+  asset_type = sampled_sfx
+  source_path
+  source_format = wav
+
+audio_cues[]:
+  cue_id
+  asset_ref
+  priority       # 0..255
+  volume         # 0..255
+```
+
+A local STATE route may include
+`{"kind":"play_sfx","cue_ref":"stable.cue.id"}` in its ordered action list.
+The cue must exist. Direct `target_scene` routes remain actionless. WAV paths
+are source-only; packages contain compiled audio IDs, metadata, and ADPCM bytes,
+never host paths. The current subset is one-shot only and rejects looping,
+music, streaming, and procedural audio.
 
 Rules:
 

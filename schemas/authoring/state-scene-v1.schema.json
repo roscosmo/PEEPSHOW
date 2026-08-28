@@ -109,6 +109,15 @@
           "additionalProperties": false,
           "required": ["kind"],
           "properties": { "kind": { "const": "request_render" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "cue_ref"],
+          "properties": {
+            "kind": { "const": "play_sfx" },
+            "cue_ref": { "$ref": "#/$defs/stable_id" }
+          }
         }
       ]
     },

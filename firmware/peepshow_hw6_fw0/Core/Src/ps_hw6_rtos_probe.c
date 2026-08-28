@@ -13,6 +13,7 @@
 #include "ps_input_joystick.h"
 #include "ps_input_logical.h"
 #include "ps_lpbam_display_buffers.h"
+#include "ps_egg_state_loader.h"
 #include "ps_package_source.h"
 #include "ps_power_state.h"
 #include "ps_scene_runtime.h"
@@ -108,6 +109,7 @@ extern RTC_HandleTypeDef hrtc;
 #define PS_HW6_RTOS_COMMAND_RUNTIME_INTERACTION_START (37UL)
 #define PS_HW6_RTOS_COMMAND_RUNTIME_INTERACTION_TIMEOUT (38UL)
 #define PS_HW6_RTOS_COMMAND_RUNTIME_INTERACTION_INACTIVE (39UL)
+#define PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX (40UL)
 #define PS_HW6_RTOS_INTERACTION_ACTIVATION_FRAME_COUNT (3UL)
 #define PS_HW6_RTOS_RTC_UNITS_PER_SECOND (256UL)
 #define PS_HW6_RTOS_RTC_UNITS_PER_DAY \
@@ -190,7 +192,7 @@ extern RTC_HandleTypeDef hrtc;
 #define PS_HW6_RTOS_LPBAM_HANDOFF_SOURCE_PHASE (1UL)
 #define PS_HW6_RTOS_LPBAM_HANDOFF_TARGET_PHASE (0UL)
 
-#define PS_HW6_RTOS_INPUT_POLICY_API_VERSION (1UL)
+#define PS_HW6_RTOS_INPUT_POLICY_API_VERSION (2UL)
 #define PS_HW6_RTOS_INPUT_POLICY_TARGET_NONE (0UL)
 #define PS_HW6_RTOS_INPUT_POLICY_TARGET_UI   (1UL)
 #define PS_HW6_RTOS_INPUT_POLICY_TARGET_RUNTIME (2UL)
@@ -314,6 +316,8 @@ static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_imu_low_rate_anchor;
 static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_imu_event_armed_anchor;
 static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_imu_step_counter_anchor;
 static volatile PS_HW6_RTOS_DebugCommandFn ps_debug_imu_streaming_anchor;
+static volatile PS_HW6_RTOS_DebugCommandFn
+  ps_debug_input_diagnostic_anchor;
 static uint32_t ps_ui_boot_complete_sent;
 static uint32_t ps_power_boot_done;
 static uint32_t ps_power_boot_idle_peripheral_park_done;
@@ -329,6 +333,10 @@ static volatile uint32_t ps_joystick_calibration_save_completion_pending;
 static uint32_t ps_joystick_awake_poll_next_tick;
 static uint32_t ps_joystick_awake_published_direction_mask;
 static uint32_t ps_joystick_awake_published_candidate_mask;
+static uint32_t ps_joystick_logical_active_direction_mask;
+static uint32_t ps_joystick_logical_press_tick;
+static uint32_t ps_joystick_logical_next_repeat_tick;
+static uint32_t ps_joystick_logical_hold_sent;
 static volatile uint32_t ps_joystick_awake_publish_reset_pending;
 static volatile uint32_t ps_input_activity_generation;
 static volatile uint32_t ps_runtime_interaction_state;
@@ -352,6 +360,7 @@ static uint32_t ps_power_input_activity_generation;
 static uint32_t ps_display_blink_visible;
 static uint32_t ps_display_waiting_sequence_frame;
 static uint32_t ps_display_waiting_sequence_count;
+static volatile uint32_t ps_audio_sfx_pending;
 static uint32_t ps_display_blink_stop2_suppressed;
 static volatile uint32_t ps_display_blink_transfer_active;
 static uint32_t ps_stop2_lpbam_edge_request_pending;
@@ -406,6 +415,9 @@ static UINT PS_HW6_RTOS_SendDisplayUiRenderCommand(
   uint32_t shutdown_state,
   uint32_t shutdown_countdown_seconds);
 static UINT PS_HW6_RTOS_RequestRuntimeCommand(ULONG command);
+static UINT PS_HW6_RTOS_SendModeCommand(uint32_t owner_id,
+                                         ULONG command,
+                                         uint32_t mode);
 static UINT PS_HW6_RTOS_RequestStoragePackageLoadAndWait(void);
 static uint32_t PS_HW6_RTOS_Stop2DisplayLpbamReady(void);
 
@@ -956,6 +968,10 @@ static void PS_HW6_RTOS_ResetProbe(void)
   ps_joystick_calibration_save_completion_pending = 0UL;
   ps_joystick_awake_published_direction_mask = 0UL;
   ps_joystick_awake_published_candidate_mask = 0UL;
+  ps_joystick_logical_active_direction_mask = 0UL;
+  ps_joystick_logical_press_tick = 0UL;
+  ps_joystick_logical_next_repeat_tick = 0UL;
+  ps_joystick_logical_hold_sent = 0UL;
   ps_joystick_awake_publish_reset_pending = 0UL;
   g_ps_hw6_rtos_probe.joystick_logical_wake_capture_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
@@ -981,6 +997,7 @@ static void PS_HW6_RTOS_ResetProbe(void)
   ps_display_blink_visible = 1UL;
   ps_display_waiting_sequence_frame = 0UL;
   ps_display_waiting_sequence_count = 0UL;
+  ps_audio_sfx_pending = 0UL;
   ps_display_blink_stop2_suppressed = 0UL;
   ps_stop2_lpbam_edge_request_pending = 0UL;
   ps_stop2_lpbam_edge_rearm_needed = 0UL;
@@ -1049,6 +1066,16 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.audio_clock_realtime_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.audio_clock_release_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_send_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_owner_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_clock_request_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_clock_release_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_last_cue_index =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.storage_clock_last_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
@@ -1437,6 +1464,12 @@ static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
     return 1UL;
   }
   cycle_index = (uint32_t)(message[3] ^ PS_HW6_RTOS_COMMAND_TOKEN);
+  if ((owner_id == PS_HW6_RTOS_OWNER_AUDIO) &&
+      (message[2] == PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX) &&
+      (cycle_index < PS_EGG_STATE_LOADER_AUDIO_CUE_MAX))
+  {
+    return 1UL;
+  }
   if ((owner_id == PS_HW6_RTOS_OWNER_COMM) &&
       (message[2] == PS_HW6_RTOS_COMMAND_COMM_BLE_MODE) &&
       (cycle_index <= (uint32_t)PS_HW6_COMM_BLE_MODE_CONNECTED))
@@ -1556,7 +1589,7 @@ static uint32_t PS_HW6_RTOS_DisplayUiCommandIsValid(uint32_t owner_id,
   if ((owner_id != PS_HW6_RTOS_OWNER_DISPLAY) ||
       (message[0] != PS_HW6_RTOS_DISPLAY_UI_MAGIC) ||
       (message[1] != PS_HW6_RTOS_OWNER_DISPLAY) ||
-      (page > PS_UI_ROUTER_PAGE_INTERACTION_ACTIVATION) ||
+      (page > PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC) ||
       (PS_HW6_RTOS_DisplayUiPackedCalibration(message[3]) >
        PS_UI_ROUTER_CAL_JOYSTICK_LEFT) ||
       (focus > focus_max) ||
@@ -1580,7 +1613,8 @@ static uint32_t PS_HW6_RTOS_LogicalSourceIsJoystickDirection(
   uint32_t source)
 {
   return ((source >= (uint32_t)PS_INPUT_LOGICAL_SOURCE_JOY_LEFT) &&
-          (source <= (uint32_t)PS_INPUT_LOGICAL_SOURCE_JOY_DOWN)) ? 1UL : 0UL;
+          (source <=
+           (uint32_t)PS_INPUT_LOGICAL_SOURCE_JOY_DOWN_RIGHT)) ? 1UL : 0UL;
 }
 
 static uint32_t PS_HW6_RTOS_LogicalSourceForJoystickDirection(
@@ -1683,9 +1717,12 @@ static uint32_t PS_HW6_RTOS_RuntimeInputCommandIsValid(
   button_mask = (packed_button >> PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_MASK_SHIFT) &
                 PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_MASK_MASK;
 
-  if ((event != (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS) ||
+  if ((event < (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS) ||
+      (event > (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_REPEAT) ||
       ((PS_HW6_RTOS_LogicalSourceIsButton(button_id) == 0UL) &&
        (PS_HW6_RTOS_LogicalSourceIsJoystickDirection(button_id) == 0UL)) ||
+      ((button_id == (uint32_t)PS_INPUT_LOGICAL_SOURCE_START) &&
+       (event != (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)) ||
       (button_mask == 0UL) ||
       ((button_mask & ~0x1FUL) != 0UL))
   {
@@ -1726,9 +1763,36 @@ static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
       scene_result = PS_SceneRuntime_HandleStateSceneInput(event, button_id);
       if (scene_result == PS_SCENE_RUNTIME_INPUT_APPLIED)
       {
+        uint32_t cue_index;
+
         PS_HW6_RTOS_RuntimeInteractionRefresh(event,
                                                button_id,
                                                (uint32_t)tx_time_get());
+        if (PS_SceneRuntime_TakeSfxRequest(&cue_index) != 0UL)
+        {
+          UINT sfx_status;
+
+          g_ps_hw6_rtos_probe.audio_sfx_dispatch_count++;
+          g_ps_hw6_rtos_probe.audio_sfx_last_cue_index = cue_index;
+          if (ps_audio_sfx_pending == 0UL)
+          {
+            ps_audio_sfx_pending = 1UL;
+            sfx_status = PS_HW6_RTOS_SendModeCommand(
+              PS_HW6_RTOS_OWNER_AUDIO,
+              PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX,
+              cue_index);
+            if (sfx_status != TX_SUCCESS)
+            {
+              ps_audio_sfx_pending = 0UL;
+            }
+          }
+          else
+          {
+            sfx_status = TX_QUEUE_FULL;
+          }
+          g_ps_hw6_rtos_probe.audio_sfx_send_status =
+            (uint32_t)sfx_status;
+        }
         status = PS_HW6_RTOS_SendDisplayUiRenderCommand(
           (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF,
           (uint32_t)PS_UI_ROUTER_CAL_NONE,
@@ -2481,6 +2545,17 @@ UINT PS_HW6_RTOS_DebugRequestImuStreaming(void)
     (uint32_t)PS_HW6_IMU_MODE_STREAMING);
 }
 
+UINT PS_HW6_RTOS_DebugRequestInputDiagnostic(void)
+{
+  if (g_ps_ui_router_request != 0UL)
+  {
+    return TX_QUEUE_FULL;
+  }
+  g_ps_ui_router_request_event = PS_UI_ROUTER_EVENT_NAV_INPUT_DIAGNOSTIC;
+  g_ps_ui_router_request = 1UL;
+  return TX_SUCCESS;
+}
+
 static void PS_HW6_RTOS_PrimeDebugCommandAnchors(void)
 {
   ps_debug_usb_export_anchor = PS_HW6_RTOS_DebugRequestUsbExport;
@@ -2504,6 +2579,7 @@ static void PS_HW6_RTOS_PrimeDebugCommandAnchors(void)
   ps_debug_imu_step_counter_anchor =
     PS_HW6_RTOS_DebugRequestImuStepCounter;
   ps_debug_imu_streaming_anchor = PS_HW6_RTOS_DebugRequestImuStreaming;
+  ps_debug_input_diagnostic_anchor = PS_HW6_RTOS_DebugRequestInputDiagnostic;
 }
 
 
@@ -4747,7 +4823,8 @@ static uint32_t PS_HW6_RTOS_RuntimeInputPackedButton(
            PS_HW6_RTOS_RUNTIME_INPUT_BUTTON_MASK_SHIFT));
 }
 
-static UINT PS_HW6_RTOS_SendRuntimeLogicalPress(uint32_t source,
+static UINT PS_HW6_RTOS_SendRuntimeLogicalEvent(uint32_t event,
+                                                uint32_t source,
                                                 uint32_t source_mask)
 {
   ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
@@ -4755,7 +4832,7 @@ static UINT PS_HW6_RTOS_SendRuntimeLogicalPress(uint32_t source,
 
   message[0] = PS_HW6_RTOS_RUNTIME_INPUT_MAGIC;
   message[1] = PS_HW6_RTOS_OWNER_RUNTIME;
-  message[2] = (ULONG)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS;
+  message[2] = (ULONG)event;
   message[3] = (ULONG)PS_HW6_RTOS_RuntimeInputPackedButton(source,
                                                            source_mask);
   status = tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_RUNTIME],
@@ -4817,7 +4894,8 @@ static UINT PS_HW6_RTOS_SendUiJoystickState(
 static UINT PS_HW6_RTOS_SendRuntimeInputEvent(
   const ps_input_button_logical_record_t *record)
 {
-  return PS_HW6_RTOS_SendRuntimeLogicalPress((uint32_t)record->button_id,
+  return PS_HW6_RTOS_SendRuntimeLogicalEvent((uint32_t)record->event,
+                                              (uint32_t)record->button_id,
                                               record->button_mask);
 }
 
@@ -4882,18 +4960,34 @@ static UINT PS_HW6_RTOS_DeliverInputLogicalEvent(
   {
     reason = PS_HW6_RTOS_INPUT_POLICY_REASON_INVALID_BUTTON;
   }
-  else if (record->event != PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)
+  else if ((record->event < PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS) ||
+           (record->event > PS_INPUT_BUTTON_LOGICAL_EVENT_REPEAT))
   {
     reason = PS_HW6_RTOS_INPUT_POLICY_REASON_UNSUPPORTED_EVENT;
   }
-  else if ((record->button_id < PS_INPUT_BUTTON_ID_A) ||
-           (record->button_id > PS_INPUT_BUTTON_ID_START))
+  else if ((PS_HW6_RTOS_LogicalSourceIsButton(button_id) == 0UL) &&
+           (PS_HW6_RTOS_LogicalSourceIsJoystickDirection(button_id) == 0UL))
   {
     reason = PS_HW6_RTOS_INPUT_POLICY_REASON_INVALID_BUTTON;
+  }
+  else if ((button_id == (uint32_t)PS_INPUT_LOGICAL_SOURCE_START) &&
+           (event != (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS))
+  {
+    reason = PS_HW6_RTOS_INPUT_POLICY_REASON_UNSUPPORTED_EVENT;
   }
   else if (g_ps_hw6_rtos_probe.input_policy_lock_active != 0UL)
   {
     reason = PS_HW6_RTOS_INPUT_POLICY_REASON_LOCKED;
+  }
+  else if (g_ps_ui_router_probe.current_page ==
+           (uint32_t)PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC)
+  {
+    target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
+    reason = PS_HW6_RTOS_INPUT_POLICY_REASON_UI_FOCUS;
+    PS_HW6_RTOS_SendCurrentUiRenderCommand();
+    status = TX_SUCCESS;
+    g_ps_hw6_rtos_probe.input_policy_deliver_count++;
+    g_ps_hw6_rtos_probe.input_policy_ui_deliver_count++;
   }
   else if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_LP_GRAPH) &&
            (runtime_lifecycle ==
@@ -4902,25 +4996,31 @@ static UINT PS_HW6_RTOS_DeliverInputLogicalEvent(
             PS_HW6_RUNTIME_INTERACTION_STATE_INACTIVE))
   {
     reason = PS_HW6_RTOS_INPUT_POLICY_REASON_RUNTIME_INACTIVE;
-    status = PS_HW6_RTOS_RequestRuntimeCommand(
-      PS_HW6_RTOS_COMMAND_RUNTIME_INTERACTION_CUE);
-    g_ps_hw6_rtos_probe.runtime_interaction_suppressed_input_count++;
+    if (event == (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)
+    {
+      status = PS_HW6_RTOS_RequestRuntimeCommand(
+        PS_HW6_RTOS_COMMAND_RUNTIME_INTERACTION_CUE);
+      g_ps_hw6_rtos_probe.runtime_interaction_suppressed_input_count++;
+    }
   }
   else if (PS_HW6_RTOS_InputPolicySystemOverlayActive() != 0UL)
   {
-    target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
     reason = PS_HW6_RTOS_INPUT_POLICY_REASON_SYSTEM_OVERLAY;
-    status = PS_HW6_RTOS_SendUiLogicalPress((uint32_t)record->button_id);
-    if (status == TX_SUCCESS)
+    if (event == (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)
     {
-      g_ps_hw6_rtos_probe.input_policy_deliver_count++;
-      g_ps_hw6_rtos_probe.input_policy_ui_deliver_count++;
-      g_ps_hw6_rtos_probe.input_policy_overlay_deliver_count++;
-    }
-    else
-    {
-      reason = PS_HW6_RTOS_INPUT_POLICY_REASON_SEND_FAILED;
-      g_ps_hw6_rtos_probe.input_policy_suppress_count++;
+      target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
+      status = PS_HW6_RTOS_SendUiLogicalPress(button_id);
+      if (status == TX_SUCCESS)
+      {
+        g_ps_hw6_rtos_probe.input_policy_deliver_count++;
+        g_ps_hw6_rtos_probe.input_policy_ui_deliver_count++;
+        g_ps_hw6_rtos_probe.input_policy_overlay_deliver_count++;
+      }
+      else
+      {
+        reason = PS_HW6_RTOS_INPUT_POLICY_REASON_SEND_FAILED;
+        g_ps_hw6_rtos_probe.input_policy_suppress_count++;
+      }
     }
   }
   else if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_NONE) ||
@@ -4932,18 +5032,21 @@ static UINT PS_HW6_RTOS_DeliverInputLogicalEvent(
   else if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_SHELL) ||
            (runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_INSTALLER))
   {
-    target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
     reason = PS_HW6_RTOS_INPUT_POLICY_REASON_UI_FOCUS;
-    status = PS_HW6_RTOS_SendUiLogicalPress((uint32_t)record->button_id);
-    if (status == TX_SUCCESS)
+    if (event == (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)
     {
-      g_ps_hw6_rtos_probe.input_policy_deliver_count++;
-      g_ps_hw6_rtos_probe.input_policy_ui_deliver_count++;
-    }
-    else
-    {
-      reason = PS_HW6_RTOS_INPUT_POLICY_REASON_SEND_FAILED;
-      g_ps_hw6_rtos_probe.input_policy_suppress_count++;
+      target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
+      status = PS_HW6_RTOS_SendUiLogicalPress(button_id);
+      if (status == TX_SUCCESS)
+      {
+        g_ps_hw6_rtos_probe.input_policy_deliver_count++;
+        g_ps_hw6_rtos_probe.input_policy_ui_deliver_count++;
+      }
+      else
+      {
+        reason = PS_HW6_RTOS_INPUT_POLICY_REASON_SEND_FAILED;
+        g_ps_hw6_rtos_probe.input_policy_suppress_count++;
+      }
     }
   }
   else if (PS_HW6_RTOS_InputPolicyRuntimeClassOwnsInput(
@@ -4998,28 +5101,119 @@ static uint32_t PS_HW6_RTOS_LogicalSourceForJoystickDirection(
   {
     return (uint32_t)PS_INPUT_LOGICAL_SOURCE_JOY_DOWN;
   }
+  if (direction_mask == (PS_INPUT_JOYSTICK_DIRECTION_UP |
+                         PS_INPUT_JOYSTICK_DIRECTION_LEFT))
+  {
+    return (uint32_t)PS_INPUT_LOGICAL_SOURCE_JOY_UP_LEFT;
+  }
+  if (direction_mask == (PS_INPUT_JOYSTICK_DIRECTION_UP |
+                         PS_INPUT_JOYSTICK_DIRECTION_RIGHT))
+  {
+    return (uint32_t)PS_INPUT_LOGICAL_SOURCE_JOY_UP_RIGHT;
+  }
+  if (direction_mask == (PS_INPUT_JOYSTICK_DIRECTION_DOWN |
+                         PS_INPUT_JOYSTICK_DIRECTION_LEFT))
+  {
+    return (uint32_t)PS_INPUT_LOGICAL_SOURCE_JOY_DOWN_LEFT;
+  }
+  if (direction_mask == (PS_INPUT_JOYSTICK_DIRECTION_DOWN |
+                         PS_INPUT_JOYSTICK_DIRECTION_RIGHT))
+  {
+    return (uint32_t)PS_INPUT_LOGICAL_SOURCE_JOY_DOWN_RIGHT;
+  }
   return (uint32_t)PS_INPUT_LOGICAL_SOURCE_NONE;
 }
 
-static UINT PS_HW6_RTOS_DeliverJoystickDirectionActivation(
-  uint32_t resolved_direction_mask,
+static uint32_t PS_HW6_RTOS_JoystickLogicalPolicy(void)
+{
+  uint32_t policy = PS_SCENE_RUNTIME_JOYSTICK_FOUR_WAY;
+
+  if ((g_ps_hw6_rtos_probe.runtime_current_class ==
+       (uint32_t)PS_HW6_RUNTIME_CLASS_LP_GRAPH) &&
+      (g_ps_hw6_rtos_probe.runtime_lifecycle ==
+       (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_RUNNING) &&
+      (PS_SceneRuntime_StateSceneActive() != 0UL))
+  {
+    policy = PS_SceneRuntime_JoystickPolicy();
+  }
+  g_ps_hw6_rtos_probe.joystick_logical_policy = policy;
+  return policy;
+}
+
+static uint32_t PS_HW6_RTOS_JoystickLogicalDirection(
   uint32_t candidate_direction_mask,
+  uint32_t resolved_direction_mask)
+{
+  return (PS_HW6_RTOS_JoystickLogicalPolicy() ==
+          PS_SCENE_RUNTIME_JOYSTICK_EIGHT_WAY) ?
+         candidate_direction_mask : resolved_direction_mask;
+}
+
+static void PS_HW6_RTOS_ResetJoystickLogicalLifecycle(void)
+{
+  ps_joystick_logical_active_direction_mask = 0UL;
+  ps_joystick_logical_press_tick = 0UL;
+  ps_joystick_logical_next_repeat_tick = 0UL;
+  ps_joystick_logical_hold_sent = 0UL;
+  g_ps_hw6_rtos_probe.joystick_logical_active_direction_mask = 0UL;
+  g_ps_hw6_rtos_probe.joystick_logical_active_source =
+    (uint32_t)PS_INPUT_LOGICAL_SOURCE_NONE;
+  g_ps_hw6_rtos_probe.joystick_logical_press_tick = 0UL;
+  g_ps_hw6_rtos_probe.joystick_logical_next_repeat_tick = 0UL;
+  g_ps_hw6_rtos_probe.joystick_logical_hold_sent = 0UL;
+}
+
+static void PS_HW6_RTOS_StartJoystickLogicalLifecycle(
+  uint32_t direction_mask,
+  uint32_t timestamp)
+{
+  uint32_t repeat_start_ticks = PS_HW6_RTOS_MsToTicks(
+    (uint32_t)KNOB_INPUT_BTN_REPEAT_START_MS);
+
+  ps_joystick_logical_active_direction_mask = direction_mask;
+  ps_joystick_logical_press_tick = timestamp;
+  ps_joystick_logical_next_repeat_tick = timestamp + repeat_start_ticks;
+  ps_joystick_logical_hold_sent = 0UL;
+  g_ps_hw6_rtos_probe.joystick_logical_active_direction_mask = direction_mask;
+  g_ps_hw6_rtos_probe.joystick_logical_active_source =
+    PS_HW6_RTOS_LogicalSourceForJoystickDirection(direction_mask);
+  g_ps_hw6_rtos_probe.joystick_logical_press_tick = timestamp;
+  g_ps_hw6_rtos_probe.joystick_logical_next_repeat_tick =
+    ps_joystick_logical_next_repeat_tick;
+  g_ps_hw6_rtos_probe.joystick_logical_hold_sent = 0UL;
+}
+
+static UINT PS_HW6_RTOS_DeliverJoystickLogicalEvent(
+  uint32_t event,
+  uint32_t logical_direction_mask,
+  uint32_t candidate_direction_mask,
+  uint32_t resolved_direction_mask,
   uint32_t timestamp)
 {
   UINT status = (UINT)PS_HW6_RTOS_INPUT_POLICY_STATUS_SUPPRESSED;
   uint32_t source =
-    PS_HW6_RTOS_LogicalSourceForJoystickDirection(resolved_direction_mask);
+    PS_HW6_RTOS_LogicalSourceForJoystickDirection(logical_direction_mask);
   uint32_t target = PS_HW6_RTOS_INPUT_POLICY_TARGET_NONE;
   uint32_t runtime_class = g_ps_hw6_rtos_probe.runtime_current_class;
   uint32_t runtime_lifecycle = g_ps_hw6_rtos_probe.runtime_lifecycle;
 
-  if (source == (uint32_t)PS_INPUT_LOGICAL_SOURCE_NONE)
+  if ((source == (uint32_t)PS_INPUT_LOGICAL_SOURCE_NONE) ||
+      (event < (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS) ||
+      (event > (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_REPEAT))
   {
     g_ps_hw6_rtos_probe.joystick_logical_drop_count++;
   }
   else if (g_ps_hw6_rtos_probe.input_policy_lock_active != 0UL)
   {
     g_ps_hw6_rtos_probe.joystick_logical_drop_count++;
+  }
+  else if (g_ps_ui_router_probe.current_page ==
+           (uint32_t)PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC)
+  {
+    target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
+    status = PS_HW6_RTOS_SendUiJoystickState(candidate_direction_mask,
+                                             resolved_direction_mask,
+                                             0UL);
   }
   else if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_LP_GRAPH) &&
            (runtime_lifecycle ==
@@ -5031,10 +5225,13 @@ static UINT PS_HW6_RTOS_DeliverJoystickDirectionActivation(
   }
   else if (PS_HW6_RTOS_InputPolicySystemOverlayActive() != 0UL)
   {
-    target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
-    status = PS_HW6_RTOS_SendUiJoystickState(candidate_direction_mask,
-                                              resolved_direction_mask,
-                                              1UL);
+    if (event == (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)
+    {
+      target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
+      status = PS_HW6_RTOS_SendUiJoystickState(candidate_direction_mask,
+                                                resolved_direction_mask,
+                                                1UL);
+    }
   }
   else if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_NONE) ||
            (runtime_lifecycle !=
@@ -5045,16 +5242,20 @@ static UINT PS_HW6_RTOS_DeliverJoystickDirectionActivation(
   else if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_SHELL) ||
            (runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_INSTALLER))
   {
-    target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
-    status = PS_HW6_RTOS_SendUiJoystickState(candidate_direction_mask,
-                                              resolved_direction_mask,
-                                              1UL);
+    if (event == (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)
+    {
+      target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
+      status = PS_HW6_RTOS_SendUiJoystickState(candidate_direction_mask,
+                                                resolved_direction_mask,
+                                                1UL);
+    }
   }
   else if (PS_HW6_RTOS_InputPolicyRuntimeClassOwnsInput(runtime_class) != 0UL)
   {
     target = PS_HW6_RTOS_INPUT_POLICY_TARGET_RUNTIME;
-    status = PS_HW6_RTOS_SendRuntimeLogicalPress(source,
-                                                  resolved_direction_mask);
+    status = PS_HW6_RTOS_SendRuntimeLogicalEvent(event,
+                                                  source,
+                                                  logical_direction_mask);
   }
   else
   {
@@ -5063,8 +5264,14 @@ static UINT PS_HW6_RTOS_DeliverJoystickDirectionActivation(
 
   if (status == TX_SUCCESS)
   {
-    g_ps_hw6_rtos_probe.joystick_logical_activation_count++;
-    ps_input_activity_generation++;
+    if (event == (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)
+    {
+      g_ps_hw6_rtos_probe.joystick_logical_activation_count++;
+    }
+    if (event != (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_RELEASE)
+    {
+      ps_input_activity_generation++;
+    }
     PS_HW6_RTOS_RequestStop2AutoCheckNow(timestamp);
   }
   else if (target != PS_HW6_RTOS_INPUT_POLICY_TARGET_NONE)
@@ -5077,8 +5284,9 @@ static UINT PS_HW6_RTOS_DeliverJoystickDirectionActivation(
   g_ps_hw6_rtos_probe.joystick_logical_last_resolved_mask =
     resolved_direction_mask;
   g_ps_hw6_rtos_probe.joystick_logical_last_direction_mask =
-    resolved_direction_mask;
+    logical_direction_mask;
   g_ps_hw6_rtos_probe.joystick_logical_last_source = source;
+  g_ps_hw6_rtos_probe.joystick_logical_last_event = event;
   g_ps_hw6_rtos_probe.joystick_logical_last_target = target;
   g_ps_hw6_rtos_probe.joystick_logical_last_status = (uint32_t)status;
   g_ps_hw6_rtos_probe.joystick_logical_last_tick = timestamp;
@@ -5118,7 +5326,13 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
   uint32_t previous_direction;
   uint32_t candidate;
   uint32_t direction;
+  uint32_t logical_direction;
+  uint32_t logical_changed;
+  uint32_t long_press_ticks;
+  uint32_t repeat_period_ticks;
   uint32_t wake_direction = 0UL;
+  uint32_t wake_candidate = 0UL;
+  uint32_t wake_logical_direction = 0UL;
   uint32_t wake_direction_available = 0UL;
 
   if (PS_HW6_RTOS_JoystickAwakePollingAllowed() == 0UL)
@@ -5126,6 +5340,7 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
     ps_joystick_awake_poll_next_tick = 0UL;
     ps_joystick_awake_published_direction_mask = 0UL;
     ps_joystick_awake_published_candidate_mask = 0UL;
+    PS_HW6_RTOS_ResetJoystickLogicalLifecycle();
     g_ps_hw6_rtos_probe.joystick_awake_poll_next_tick = 0UL;
     return;
   }
@@ -5136,6 +5351,7 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
       ps_joystick_awake_published_direction_mask;
     ps_joystick_awake_published_direction_mask = 0UL;
     ps_joystick_awake_published_candidate_mask = 0UL;
+    PS_HW6_RTOS_ResetJoystickLogicalLifecycle();
     ps_joystick_awake_publish_reset_pending = 0UL;
     g_ps_hw6_rtos_probe.joystick_logical_stop2_reset_pending = 0UL;
     g_ps_hw6_rtos_probe.joystick_logical_stop2_reset_consume_count++;
@@ -5149,6 +5365,13 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
         &wake_direction);
     if (wake_direction_available != 0UL)
     {
+      wake_candidate =
+        g_ps_hw6_owner_sm_probe.joystick_input_candidate_direction_mask;
+      if ((PS_HW6_RTOS_JoystickCandidateMaskIsValid(wake_candidate) == 0UL) ||
+          (wake_candidate == 0UL))
+      {
+        wake_candidate = wake_direction;
+      }
       g_ps_hw6_rtos_probe.joystick_logical_wake_capture_available_count++;
       g_ps_hw6_rtos_probe.joystick_logical_wake_capture_direction =
         wake_direction;
@@ -5158,10 +5381,15 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
 
   if (wake_direction_available != 0UL)
   {
+    wake_logical_direction = PS_HW6_RTOS_JoystickLogicalDirection(
+      wake_candidate,
+      wake_direction);
     g_ps_hw6_rtos_probe.joystick_logical_change_count++;
     g_ps_hw6_rtos_probe.joystick_logical_wake_capture_status =
-      (uint32_t)PS_HW6_RTOS_DeliverJoystickDirectionActivation(
-        wake_direction,
+      (uint32_t)PS_HW6_RTOS_DeliverJoystickLogicalEvent(
+        (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS,
+        wake_logical_direction,
+        wake_candidate,
         wake_direction,
         now_tick);
     if (g_ps_hw6_rtos_probe.joystick_logical_wake_capture_status ==
@@ -5170,7 +5398,9 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
       g_ps_hw6_rtos_probe.joystick_logical_wake_capture_publish_count++;
     }
     ps_joystick_awake_published_direction_mask = wake_direction;
-    ps_joystick_awake_published_candidate_mask = wake_direction;
+    ps_joystick_awake_published_candidate_mask = wake_candidate;
+    PS_HW6_RTOS_StartJoystickLogicalLifecycle(wake_logical_direction,
+                                               now_tick);
   }
 
   if ((ps_joystick_awake_poll_next_tick != 0UL) &&
@@ -5203,43 +5433,92 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
   candidate =
     g_ps_hw6_owner_sm_probe.joystick_input_candidate_direction_mask;
   direction = g_ps_hw6_owner_sm_probe.joystick_input_direction_mask;
-  if ((candidate == previous_candidate) &&
-      (direction == previous_direction))
-  {
-    return;
-  }
-
-  if (direction != previous_direction)
+  logical_direction = PS_HW6_RTOS_JoystickLogicalDirection(candidate,
+                                                            direction);
+  logical_changed = (logical_direction !=
+                     ps_joystick_logical_active_direction_mask) ? 1UL : 0UL;
+  if (logical_changed != 0UL)
   {
     g_ps_hw6_rtos_probe.joystick_logical_change_count++;
-    if ((previous_direction != 0UL) && (direction != 0UL))
+    if ((ps_joystick_logical_active_direction_mask != 0UL) &&
+        (logical_direction != 0UL))
     {
       g_ps_hw6_rtos_probe.joystick_logical_switch_count++;
     }
-    if (direction == 0UL)
+    if (ps_joystick_logical_active_direction_mask != 0UL)
     {
       g_ps_hw6_rtos_probe.joystick_logical_release_count++;
-      g_ps_hw6_rtos_probe.joystick_logical_last_candidate_mask = candidate;
-      g_ps_hw6_rtos_probe.joystick_logical_last_resolved_mask = 0UL;
-      g_ps_hw6_rtos_probe.joystick_logical_last_direction_mask = 0UL;
-      g_ps_hw6_rtos_probe.joystick_logical_last_source =
-        (uint32_t)PS_INPUT_LOGICAL_SOURCE_NONE;
-      g_ps_hw6_rtos_probe.joystick_logical_last_tick = now_tick;
-      if (g_ps_ui_router_probe.current_page ==
-          (uint32_t)PS_UI_ROUTER_PAGE_HOME)
-      {
-        (void)PS_HW6_RTOS_SendUiJoystickState(candidate, 0UL, 0UL);
-      }
+      (void)PS_HW6_RTOS_DeliverJoystickLogicalEvent(
+        (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_RELEASE,
+        ps_joystick_logical_active_direction_mask,
+        candidate,
+        direction,
+        now_tick);
+    }
+    if (logical_direction != 0UL)
+    {
+      g_ps_hw6_rtos_probe.joystick_logical_hold_count++;
+      (void)PS_HW6_RTOS_DeliverJoystickLogicalEvent(
+        (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS,
+        logical_direction,
+        candidate,
+        direction,
+        now_tick);
+      PS_HW6_RTOS_StartJoystickLogicalLifecycle(logical_direction,
+                                                 now_tick);
     }
     else
     {
-      (void)PS_HW6_RTOS_DeliverJoystickDirectionActivation(direction,
-                                                            candidate,
-                                                            now_tick);
+      PS_HW6_RTOS_ResetJoystickLogicalLifecycle();
     }
   }
-  else if (g_ps_ui_router_probe.current_page ==
-           (uint32_t)PS_UI_ROUTER_PAGE_HOME)
+  else if (logical_direction != 0UL)
+  {
+    long_press_ticks = PS_HW6_RTOS_MsToTicks(
+      (uint32_t)KNOB_INPUT_BTN_LONG_PRESS_MS);
+    if ((ps_joystick_logical_hold_sent == 0UL) &&
+        (PS_HW6_RTOS_TimeReached(
+           now_tick,
+           ps_joystick_logical_press_tick + long_press_ticks) != 0UL))
+    {
+      g_ps_hw6_rtos_probe.joystick_logical_repeat_count++;
+      (void)PS_HW6_RTOS_DeliverJoystickLogicalEvent(
+        (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_LONG_PRESS,
+        logical_direction,
+        candidate,
+        direction,
+        now_tick);
+      ps_joystick_logical_hold_sent = 1UL;
+      g_ps_hw6_rtos_probe.joystick_logical_hold_sent = 1UL;
+    }
+    if ((ps_joystick_logical_hold_sent != 0UL) &&
+        (PS_HW6_RTOS_TimeReached(
+           now_tick,
+           ps_joystick_logical_next_repeat_tick) != 0UL))
+    {
+      (void)PS_HW6_RTOS_DeliverJoystickLogicalEvent(
+        (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_REPEAT,
+        logical_direction,
+        candidate,
+        direction,
+        now_tick);
+      repeat_period_ticks = PS_HW6_RTOS_MsToTicks(
+        (uint32_t)KNOB_INPUT_BTN_REPEAT_PERIOD_MS);
+      if (repeat_period_ticks == 0UL)
+      {
+        repeat_period_ticks = 1UL;
+      }
+      ps_joystick_logical_next_repeat_tick = now_tick + repeat_period_ticks;
+      g_ps_hw6_rtos_probe.joystick_logical_next_repeat_tick =
+        ps_joystick_logical_next_repeat_tick;
+    }
+  }
+
+  if ((g_ps_ui_router_probe.current_page ==
+       (uint32_t)PS_UI_ROUTER_PAGE_HOME) &&
+      ((candidate != previous_candidate) ||
+       (direction != previous_direction)) &&
+      ((logical_changed == 0UL) || (logical_direction == 0UL)))
   {
     (void)PS_HW6_RTOS_SendUiJoystickState(candidate, direction, 0UL);
   }
@@ -7539,6 +7818,38 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
       PS_HW6_RTOS_ACK_OWNER(PS_HW6_RTOS_OWNER_SENSOR),
       TX_OR);
   }
+  else if ((owner_id == PS_HW6_RTOS_OWNER_AUDIO) &&
+           (command == PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX))
+  {
+    HAL_StatusTypeDef sfx_status = HAL_ERROR;
+    UINT clock_status;
+    UINT release_status;
+
+    g_ps_hw6_rtos_probe.audio_sfx_owner_count++;
+    g_ps_hw6_rtos_probe.audio_sfx_last_cue_index = cycle_index;
+    clock_status = PS_HW6_RTOS_RequestAudioClockCapabilities(
+      PS_HW6_RTOS_AUDIO_CLOCK_REASON_REACTIVE_SFX,
+      PS_HW6_RTOS_AUDIO_CLOCK_SAI_CAPABILITIES);
+    g_ps_hw6_rtos_probe.audio_sfx_clock_request_status =
+      (uint32_t)clock_status;
+    if (clock_status == TX_SUCCESS)
+    {
+      sfx_status = PS_HW6_OwnerStateMachines_Stabilize(
+        PS_HW6_RTOS_OWNER_AUDIO);
+      if (sfx_status == HAL_OK)
+      {
+        sfx_status = PS_HW6_OwnerStateMachines_RunAudioSfx(cycle_index);
+      }
+    }
+    release_status = PS_HW6_RTOS_RequestAudioClockCapabilities(
+      PS_HW6_RTOS_AUDIO_CLOCK_REASON_RELEASE,
+      0UL);
+    g_ps_hw6_rtos_probe.audio_sfx_clock_release_status =
+      (uint32_t)release_status;
+    g_ps_hw6_rtos_probe.audio_sfx_owner_status =
+      (uint32_t)sfx_status;
+    ps_audio_sfx_pending = 0UL;
+  }
   else if (owner_id == PS_HW6_RTOS_OWNER_RUNTIME)
   {
     PS_HW6_RTOS_HandleRuntimeCommand(command);
@@ -8620,7 +8931,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         }
       }
       for (button_drain_count = 0UL;
-           button_drain_count < 4UL;
+           button_drain_count < 16UL;
            ++button_drain_count)
       {
         if (PS_InputButtons_TakeLogicalEvent(&button_record) == 0UL)

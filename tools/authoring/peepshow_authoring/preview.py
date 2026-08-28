@@ -22,7 +22,12 @@ LOGICAL_SOURCES = {
     "JOY_RIGHT": 7,
     "JOY_UP": 8,
     "JOY_DOWN": 9,
+    "JOY_UP_LEFT": 10,
+    "JOY_UP_RIGHT": 11,
+    "JOY_DOWN_LEFT": 12,
+    "JOY_DOWN_RIGHT": 13,
 }
+LOGICAL_EVENTS = {"press": 1, "release": 2, "hold": 3, "repeat": 4}
 
 
 class PreviewError(ValueError):
@@ -32,9 +37,11 @@ class PreviewError(ValueError):
 @dataclass(frozen=True)
 class PreviewInputResult:
     logical_source: str
+    event_kind: str
     action_id: str | None
     accepted: bool
     route_id: str | None
+    audio_events: tuple[dict[str, object], ...] = ()
 
 
 class StateScenePreview:
@@ -45,6 +52,7 @@ class StateScenePreview:
         self._scenes = {str(scene["scene_id"]): scene for scene in package.scenes}
         self._frames = {str(frame["frame_id"]): frame for frame in package.assets}
         self._animations = {str(animation["animation_id"]): animation for animation in package.animations}
+        self._audio_cues = package.audio_cues
         self._elapsed_ms = 0
         self._activate_scene(scene_id)
         if state_id is not None:
@@ -107,25 +115,33 @@ class StateScenePreview:
         self._waiting_visuals = scene["waiting_visuals"]
         self._state_index = int(self._graph["entry_state"])
         self._variables = [int(variable["initial"]) for variable in self._graph["variables"]]
+        self._element_overrides: dict[tuple[int, int], dict[str, object]] = {}
+        self._waiting_element_overrides: dict[
+            tuple[int, int], dict[str, object]
+        ] = {}
         self._elapsed_ms = 0
         self._step_elapsed_ms = 0
         self._step_index = int(self._waiting()["settled_step"])
         self._validate_scene_subset()
 
-    def apply_input(self, logical_source: str) -> PreviewInputResult:
+    def apply_input(self, logical_source: str, event_kind: str = "press") -> PreviewInputResult:
         source = LOGICAL_SOURCES.get(logical_source)
         if source is None:
             raise PreviewError(f"logical source '{logical_source}' is unsupported")
+        event = LOGICAL_EVENTS.get(event_kind)
+        if event is None:
+            raise PreviewError(f"logical event '{event_kind}' is unsupported")
         action_index = next(
             (
                 index
                 for index, action in enumerate(self._graph["inputs"])
                 if int(action["logical_source"]) == source
+                and int(action.get("logical_event", 1)) == event
             ),
             None,
         )
         if action_index is None:
-            return PreviewInputResult(logical_source, None, False, None)
+            return PreviewInputResult(logical_source, event_kind, None, False, None)
         action_id = str(self._graph["inputs"][action_index]["action_id"])
         route = next(
             (
@@ -138,7 +154,7 @@ class StateScenePreview:
             None,
         )
         if route is None:
-            return PreviewInputResult(logical_source, action_id, False, None)
+            return PreviewInputResult(logical_source, event_kind, action_id, False, None)
 
         target_scene = route["target_scene"]
         if target_scene is not None:
@@ -146,13 +162,120 @@ class StateScenePreview:
                 raise PreviewError("direct scene replacement cannot execute scene-local actions")
             self._activate_scene(str(target_scene))
             self._render_framebuffer()
-            return PreviewInputResult(logical_source, action_id, True, str(route["route_id"]))
+            return PreviewInputResult(logical_source, event_kind, action_id, True, str(route["route_id"]))
 
         prior_waiting = self._waiting()
         variables = list(self._variables)
+        element_overrides = {
+            key: dict(value) for key, value in self._element_overrides.items()
+        }
+        waiting_element_overrides = {
+            key: dict(value)
+            for key, value in self._waiting_element_overrides.items()
+        }
+        force_timeline_rebase = False
+        audio_events: list[dict[str, object]] = []
         definitions = self._graph["variables"]
+        target_state = route["target_state_index"]
+        if target_state is None:
+            raise PreviewError("compiled route has no target")
+        target_model_index = int(
+            self._graph["states"][int(target_state)]["render_model_index"]
+        )
+        target_model = self._render_models[target_model_index]
         for operation in route["operations"]:
-            if int(operation["kind"]) == 2:
+            kind = int(operation["kind"])
+            if kind == 2:
+                continue
+            if kind == 7:
+                cue_index = int(operation["cue_index"])
+                if not 0 <= cue_index < len(self._audio_cues):
+                    raise PreviewError("compiled SFX action cue is invalid")
+                cue = self._audio_cues[cue_index]
+                audio_events.append(
+                    {
+                        "kind": "play_sfx",
+                        "cue_id": cue["cue_id"],
+                        "asset_id": cue["asset_id"],
+                        "priority": cue["priority"],
+                        "volume": cue["volume"],
+                    }
+                )
+                continue
+            if kind in {3, 4, 5, 6}:
+                element_index = int(operation["element_index"])
+                if not 0 <= element_index < len(target_model["elements"]):
+                    raise PreviewError("compiled element action target is invalid")
+                element = target_model["elements"][element_index]
+                key = (target_model_index, element_index)
+                override = dict(element_overrides.get(key, {}))
+                if kind == 3:
+                    visible = int(operation["visible"])
+                    if not visible and int(element.get("focus_role", 0)):
+                        raise PreviewError("compiled action cannot hide the focus element")
+                    override["visible"] = visible
+                elif kind == 4:
+                    x = int(operation["x"])
+                    y = int(operation["y"])
+                    if (
+                        x < 0
+                        or y < 0
+                        or x + int(element["width"]) > DISPLAY_WIDTH
+                        or y + int(element["height"]) > DISPLAY_HEIGHT
+                    ):
+                        raise PreviewError("compiled element position is outside the display")
+                    override["x"] = x
+                    override["y"] = y
+                elif kind == 5:
+                    frame_ref = str(operation["frame_ref"])
+                    self._require_native_frame(element, frame_ref)
+                    override["visual_ref"] = frame_ref
+                else:
+                    waiting = self._waiting_visuals[
+                        int(operation["waiting_visual_index"])
+                    ]
+                    waiting_element_ref = str(operation["waiting_element_ref"])
+                    waiting_element = next(
+                        (
+                            item
+                            for item in waiting["elements"]
+                            if str(item["element_id"]) == waiting_element_ref
+                        ),
+                        None,
+                    )
+                    if (
+                        waiting_element is None
+                        or str(waiting_element["source_element_ref"])
+                        != str(element["element_id"])
+                    ):
+                        raise PreviewError(
+                            "compiled waiting-animation action target is invalid"
+                        )
+                    if (
+                        int(waiting["phase_quantum_ms"])
+                        != int(self._waiting_visuals[int(
+                            self._graph["states"][int(target_state)][
+                                "waiting_visual_index"
+                            ]
+                        )]["phase_quantum_ms"])
+                        or int(waiting["combined_step_count"])
+                        != int(self._waiting_visuals[int(
+                            self._graph["states"][int(target_state)][
+                                "waiting_visual_index"
+                            ]
+                        )]["combined_step_count"])
+                    ):
+                        raise PreviewError(
+                            "compiled waiting-animation timeline is incompatible"
+                        )
+                    for visual_ref in waiting_element["phase_visual_refs"]:
+                        self._require_native_frame(element, str(visual_ref))
+                    waiting_element_overrides[key] = dict(waiting_element)
+                    force_timeline_rebase = (
+                        force_timeline_rebase
+                        or int(operation["timeline_policy"]) == 2
+                    )
+                element_overrides[key] = override
                 continue
             variable_index = int(operation["variable_index"])
             if int(operation["operation"]) == 1:
@@ -167,16 +290,24 @@ class StateScenePreview:
             variables[variable_index] = value
 
         self._variables = variables
-        target_state = route["target_state_index"]
-        if target_state is None:
-            raise PreviewError("compiled route has no target")
+        self._element_overrides = element_overrides
+        self._waiting_element_overrides = waiting_element_overrides
         self._state_index = int(target_state)
         next_waiting = self._waiting()
-        if not self._compatible_timeline(prior_waiting, next_waiting):
+        if force_timeline_rebase or not self._compatible_timeline(
+            prior_waiting, next_waiting
+        ):
             self._step_index = int(next_waiting["settled_step"])
             self._step_elapsed_ms = 0
         self._render_framebuffer()
-        return PreviewInputResult(logical_source, action_id, True, str(route["route_id"]))
+        return PreviewInputResult(
+            logical_source,
+            event_kind,
+            action_id,
+            True,
+            str(route["route_id"]),
+            tuple(audio_events),
+        )
 
     @staticmethod
     def _compatible_timeline(first: dict[str, object], second: dict[str, object]) -> bool:
@@ -200,10 +331,36 @@ class StateScenePreview:
 
     def _visual_overrides(self) -> dict[str, str]:
         result: dict[str, str] = {}
-        for element in self._waiting()["elements"]:
+        state = self._state()
+        model_index = int(state["render_model_index"])
+        model = self._render_models[model_index]
+        waiting_by_source = {
+            str(element["source_element_ref"]): element
+            for element in self._waiting()["elements"]
+        }
+        for element_index, render_element in enumerate(model["elements"]):
+            element = self._waiting_element_overrides.get(
+                (model_index, element_index),
+                waiting_by_source.get(str(render_element["element_id"])),
+            )
+            if element is None:
+                continue
             phase_index = int(element["step_phase_indices"][self._step_index])
             result[str(element["source_element_ref"])] = str(element["phase_visual_refs"][phase_index])
         return result
+
+    def _resolved_element(
+        self,
+        model_index: int,
+        element_index: int,
+        element: dict[str, object],
+    ) -> dict[str, object]:
+        override = self._element_overrides.get((model_index, element_index))
+        if not override:
+            return element
+        resolved = dict(element)
+        resolved.update(override)
+        return resolved
 
     def _resolve_frame(self, visual_ref: str) -> dict[str, object]:
         frame = self._frames.get(visual_ref)
@@ -267,6 +424,67 @@ class StateScenePreview:
                     )
                 for visual_ref in animated["phase_visual_refs"]:
                     self._require_native_frame(source, str(visual_ref))
+        for route in self._graph["routes"]:
+            target_state = route["target_state_index"]
+            if target_state is None:
+                continue
+            model_index = int(
+                self._graph["states"][int(target_state)]["render_model_index"]
+            )
+            model = self._render_models[model_index]
+            for operation in route["operations"]:
+                kind = int(operation["kind"])
+                if kind not in {3, 4, 5, 6}:
+                    continue
+                element_index = int(operation["element_index"])
+                if not 0 <= element_index < len(model["elements"]):
+                    raise PreviewError("compiled element action target is invalid")
+                if kind == 5:
+                    self._require_native_frame(
+                        model["elements"][element_index],
+                        str(operation["frame_ref"]),
+                    )
+                elif kind == 6:
+                    waiting = self._waiting_visuals[
+                        int(operation["waiting_visual_index"])
+                    ]
+                    waiting_element = next(
+                        (
+                            item
+                            for item in waiting["elements"]
+                            if str(item["element_id"])
+                            == str(operation["waiting_element_ref"])
+                        ),
+                        None,
+                    )
+                    if waiting_element is None:
+                        raise PreviewError(
+                            "compiled waiting-animation action source is invalid"
+                        )
+                    if str(waiting_element["source_element_ref"]) != str(
+                        model["elements"][element_index]["element_id"]
+                    ):
+                        raise PreviewError(
+                            "compiled waiting-animation action target is invalid"
+                        )
+                    target_waiting = self._waiting_visuals[
+                        int(self._graph["states"][int(target_state)][
+                            "waiting_visual_index"
+                        ])
+                    ]
+                    if (
+                        int(waiting["phase_quantum_ms"])
+                        != int(target_waiting["phase_quantum_ms"])
+                        or int(waiting["combined_step_count"])
+                        != int(target_waiting["combined_step_count"])
+                    ):
+                        raise PreviewError(
+                            "compiled waiting-animation timeline is incompatible"
+                        )
+                    for visual_ref in waiting_element["phase_visual_refs"]:
+                        self._require_native_frame(
+                            model["elements"][element_index], str(visual_ref)
+                        )
 
     def _require_native_frame(self, element: dict[str, object], visual_ref: str) -> None:
         frame = self._resolve_frame(visual_ref)
@@ -380,11 +598,15 @@ class StateScenePreview:
 
     def _render_framebuffer(self) -> bytes:
         state = self._state()
-        model = self._render_models[int(state["render_model_index"])]
+        model_index = int(state["render_model_index"])
+        model = self._render_models[model_index]
         overrides = self._visual_overrides()
         framebuffer = bytearray(DISPLAY_BUFFER_SIZE)
         ordered = sorted(
-            enumerate(model["elements"]),
+            (
+                (index, self._resolved_element(model_index, index, element))
+                for index, element in enumerate(model["elements"])
+            ),
             key=lambda item: (int(item[1].get("layer", 1)), int(item[1]["z_order"]), item[0]),
         )
         for _, element in ordered:
@@ -432,9 +654,11 @@ class StateScenePreview:
         if input_result is not None:
             event = {
                 "logical_source": input_result.logical_source,
+                "event_kind": input_result.event_kind,
                 "action_id": input_result.action_id,
                 "accepted": input_result.accepted,
                 "route_id": input_result.route_id,
+                "audio_events": list(input_result.audio_events),
             }
         return {
             "scene": {

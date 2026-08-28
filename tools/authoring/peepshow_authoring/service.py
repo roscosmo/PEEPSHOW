@@ -8,6 +8,17 @@ import sys
 from pathlib import Path
 from typing import Any, TextIO
 
+from .audio_assets import (
+    AUDIO_BLOCK_SAMPLES,
+    AUDIO_MAX_ASSETS,
+    AUDIO_MAX_BANK_BYTES,
+    AUDIO_MAX_CUES,
+    AUDIO_MAX_DURATION_MS,
+    AUDIO_SAMPLE_RATE_HZ,
+    AudioAssetError,
+    decode_ima_adpcm,
+    pcm16_wav,
+)
 from .compatibility import build_compatibility_report
 from .compiler import EggCompileError, build_egg
 from .egg_format import EggFormatError, parse_egg
@@ -24,7 +35,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 18
+SERVICE_API_VERSION = 19
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -40,6 +51,7 @@ SERVICE_OPERATIONS = (
     "project.undo",
     "project.redo",
     "project.scene_thumbnails",
+    "project.audio_audition",
     "project.preview_reset",
     "project.preview_state",
     "project.preview_input",
@@ -76,6 +88,8 @@ def _project_summary(bundle: ProjectBundle) -> dict[str, Any]:
         "scene_count": len(bundle.scenes),
         "asset_frame_count": len(bundle.frames),
         "animation_count": len(bundle.animations),
+        "audio_asset_count": len(bundle.audio_assets),
+        "audio_cue_count": len(bundle.audio_cues),
     }
 
 
@@ -223,7 +237,13 @@ class AuthoringService:
                     "JOY_RIGHT",
                     "JOY_UP",
                     "JOY_DOWN",
+                    "JOY_UP_LEFT",
+                    "JOY_UP_RIGHT",
+                    "JOY_DOWN_LEFT",
+                    "JOY_DOWN_RIGHT",
                 ],
+                "logical_input_events": ["press", "release", "hold", "repeat"],
+                "joystick_policies": ["four_way", "eight_way"],
                 "runtime_text": False,
                 "build_time_text": {
                     "source_format": "system_font_text",
@@ -236,7 +256,26 @@ class AuthoringService:
                     "frames_per_asset": 1,
                     "commands": ["asset.upsert", "asset.delete"],
                 },
-                "element_actions": False,
+                "element_actions": {
+                    "target": "destination_state_render_model",
+                    "atomic_with_variable_actions": True,
+                    "kinds": [
+                        "set_element_visibility",
+                        "set_element_position",
+                        "set_element_frame",
+                        "set_element_waiting_animation",
+                    ],
+                    "waiting_visual_linkage": {
+                        "visibility": True,
+                        "position": True,
+                        "frame_selection_replaces_animation": False,
+                        "animation_selection": {
+                            "source": "waiting_visual_element",
+                            "timeline_policies": ["preserve", "rebase"],
+                            "requires_matching_cadence_and_step_count": True,
+                        },
+                    },
+                },
             },
             "state_scene_graph": {
                 "command_batch_maximum": 64,
@@ -296,8 +335,28 @@ class AuthoringService:
                 "policy_commands": [
                     "scene.set_reactive_wait_default",
                     "scene.set_interaction_policy",
+                    "scene.set_joystick_policy",
                 ],
                 "generic_delete_policy": "reject_if_referenced",
+            },
+            "state_scene_audio": {
+                "host_package_support": True,
+                "target_playback_status": "available_bounded_state_sfx",
+                "source_format": "wav_pcm",
+                "compiled_format": "ima_adpcm_4bit",
+                "sample_rate_hz": AUDIO_SAMPLE_RATE_HZ,
+                "channels": 1,
+                "block_samples": AUDIO_BLOCK_SAMPLES,
+                "maximum_duration_ms": AUDIO_MAX_DURATION_MS,
+                "maximum_assets": AUDIO_MAX_ASSETS,
+                "maximum_cues": AUDIO_MAX_CUES,
+                "maximum_bank_bytes": AUDIO_MAX_BANK_BYTES,
+                "voice_limit": 1,
+                "route_action": "play_sfx",
+                "asset_commands": ["audio_asset.upsert", "audio_asset.delete"],
+                "cue_commands": ["audio_cue.upsert", "audio_cue.delete"],
+                "audition_operation": "project.audio_audition",
+                "unsupported": ["looping", "music", "streaming", "procedural_audio"],
             },
             "project_loaded": self._bundle is not None,
             "project_revision": self._project_revision if self._bundle is not None else None,
@@ -375,6 +434,8 @@ class AuthoringService:
                 "scene_count": len(package.scenes),
                 "asset_frame_count": len(package.assets),
                 "animation_count": len(package.animations),
+                "audio_asset_count": len(package.audio_assets),
+                "audio_cue_count": len(package.audio_cues),
                 "chunk_count": len(package.chunks),
                 "size_bytes": len(blob),
                 "sha256": package.sha256,
@@ -416,6 +477,53 @@ class AuthoringService:
         return {
             "project_revision": self._project_revision,
             "thumbnails": thumbnails,
+        }
+
+    def _audio_audition(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params, {"cue_id"})
+        cue_id = params["cue_id"]
+        if not isinstance(cue_id, str) or not cue_id:
+            raise ProtocolError("AUDIO_CUE_INVALID", "cue_id must be non-empty text")
+        if not bundle.valid:
+            raise ProtocolError(
+                "PROJECT_INVALID",
+                "project must validate before audio audition",
+                details={"issues": _issues(bundle)},
+            )
+        try:
+            package = parse_egg(build_egg(bundle))
+            cue = next(
+                (item for item in package.audio_cues if item["cue_id"] == cue_id),
+                None,
+            )
+            if cue is None:
+                raise ProtocolError("AUDIO_CUE_NOT_FOUND", f"audio cue '{cue_id}' is not present")
+            asset = package.audio_assets[int(cue["asset_index"])]
+            samples = decode_ima_adpcm(
+                asset["adpcm"],
+                int(asset["sample_count"]),
+                int(asset["block_count"]),
+                int(asset["block_samples"]),
+            )
+            wav = pcm16_wav(samples)
+        except (EggCompileError, EggFormatError, AudioAssetError) as exc:
+            raise ProtocolError("AUDIO_AUDITION_FAILED", str(exc)) from exc
+        return {
+            "project_revision": self._project_revision,
+            "cue": {
+                "cue_id": cue["cue_id"],
+                "asset_id": cue["asset_id"],
+                "priority": cue["priority"],
+                "volume": cue["volume"],
+            },
+            "audio": {
+                "encoding": "wav_pcm_s16le",
+                "sample_rate_hz": asset["sample_rate_hz"],
+                "channels": asset["channels"],
+                "sample_count": asset["sample_count"],
+                "duration_ms": asset["duration_ms"],
+                "wav_base64": base64.b64encode(wav).decode("ascii"),
+            },
         }
 
     def _apply_commands(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -535,12 +643,16 @@ class AuthoringService:
         return self._preview_result(preview.snapshot())
 
     def _preview_input(self, params: dict[str, Any]) -> dict[str, Any]:
-        preview = self._current_preview(params, {"logical_source"})
+        fields = {"logical_source"}
+        if "event_kind" in params:
+            fields.add("event_kind")
+        preview = self._current_preview(params, fields)
         logical_source = params["logical_source"]
+        event_kind = params.get("event_kind", "press")
         if not isinstance(logical_source, str) or not logical_source:
             raise ProtocolError("PREVIEW_INPUT_INVALID", "logical_source must be non-empty text")
         try:
-            result = preview.apply_input(logical_source)
+            result = preview.apply_input(logical_source, event_kind)
         except PreviewError as exc:
             raise ProtocolError("PREVIEW_INPUT_FAILED", str(exc)) from exc
         return self._preview_result(preview.snapshot(result))
@@ -567,6 +679,7 @@ class AuthoringService:
             "project.undo": self._undo,
             "project.redo": self._redo,
             "project.scene_thumbnails": self._scene_thumbnails,
+            "project.audio_audition": self._audio_audition,
             "project.preview_reset": self._preview_reset,
             "project.preview_state": self._preview_state,
             "project.preview_input": self._preview_input,

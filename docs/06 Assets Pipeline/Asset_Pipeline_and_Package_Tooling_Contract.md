@@ -276,10 +276,14 @@ Tooling must reject sensor profiles that reference ADC, GPIO, EXTI, I2C addresse
 
 Audio profile output must target [[Audio_API_Contract]], not Platform audio drivers.
 
-Current HW6 package status: audio records are contractual but not executable.
-The firmware currently has a generated diagnostic tone only. Peep Studio must
-not report sampled package audio as supported until the audio chunks, loader,
-STATE action routing, `thAudio` decode/playback path, and HW6 proof all exist.
+Current status: the host authoring/package half is executable. Service API 18
+imports WAV, emits the optional audio chunks, validates symbolic `play_sfx`
+STATE actions, previews cue emission, and auditions decoded package bytes.
+HW6 now loads those chunks and routes one bounded STATE voice through `thAudio`;
+audible playback, completion, clock release, and return to STOP2 are target-
+proven. Peep Studio may report this bounded HW6 playback capability, but must
+not imply support for arbitrary-length audio, music, runtime FAT streaming,
+mixing, or accepted production fidelity.
 
 ### Initial STATE SFX Asset Slice
 
@@ -297,6 +301,22 @@ STATE SFX path:
    them from HW6 power and timing evidence.
 
 Required package-facing audio artifacts:
+
+The initial STATE subset emits exactly these optional PKG1 chunks as one
+all-or-none group:
+
+| Chunk | Purpose |
+|---|---|
+| `AUD1` / type 10 | sampled-SFX asset IDs, sample/duration/decode bounds, block count, bank ranges, and per-asset CRC |
+| `ADB1` / type 11 | aligned 4-bit IMA ADPCM payload bank using fixed 256-sample independently decodable blocks |
+| `ACU1` / type 12 | symbolic cue ID to asset index, priority, and volume |
+
+The initial host limits are 32 assets, 64 cues, 2000 ms per source, and 48 KiB
+of compiled ADPCM bank data. Source WAV may be mono or stereo uncompressed PCM
+at 8..96 kHz and 8/16/24/32-bit depth; it is deterministically downmixed and
+resampled. Looping, music, streaming, procedural audio, and HW6 BBB are rejected.
+
+The broader future audio model may add these artifacts:
 
 | Artifact | Purpose |
 |---|---|
@@ -524,6 +544,12 @@ Rules:
   reactive STATE waits or the target is in STOP2. Arbitrary-duration
   `animation_table` playback belongs to future SEQUENCE authoring and must not
   be exposed as a STATE sprite binding.
+- a STATE route may select a different authored waiting-element track for one
+  retained sprite. Selection is valid only when the source track targets that
+  same sprite and its cadence plus combined step count match the destination
+  state's waiting visual. `preserve` retains the shared phase/deadline;
+  `rebase` explicitly starts a new presentation epoch. This operation selects
+  bounded package data and must not rebuild or parse an animation at runtime.
 - package-facing assets must not encode SRAM4 addresses, LPBAM descriptors, SPI bytes, Sharp LCD commands, dirty rows, or transfer chunks
 - Platform may convert validated content into full frames, logical deltas, hardware row deltas, repeated payloads, or another display-owner format
 - package chunks remain portable PeepOS data; hardware playback payloads are Platform/display-owner internals
