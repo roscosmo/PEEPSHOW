@@ -96,7 +96,9 @@ for positive and negative X/Y directions. Movement wake adds approximately
 STATE input actions bind one logical source plus `event_kind: press | release |
 hold | repeat`; omitted `event_kind` remains backward-compatible `press`.
 A/B/L/R and joystick directions share those lifecycle meanings and target-owned
-timing. START permits package `press` only. Normalized vector bindings and
+timing. STATE scenes may choose four-way or eight-way joystick policy; diagonal
+bindings require eight-way policy. START permits package `press` only because
+long START gestures remain system-owned. Normalized vector bindings and
 PROGRAM-scene vector polling remain unavailable.
 
 ---

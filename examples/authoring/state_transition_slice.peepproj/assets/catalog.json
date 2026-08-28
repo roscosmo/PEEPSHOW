@@ -47,6 +47,66 @@
           "pivot_y": 0
         }
       ]
+    },
+    {
+      "asset_id": "input_title",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "INPUT PROOF",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "input_title.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "input_button_label",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "BTN B START L-H R-R",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "input_button_label.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "input_joystick_label",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "JOY L R U-H D-R",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "input_joystick_label.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "input_diagonal_label",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "DIAG UL UR DL DR",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "input_diagonal_label.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
     }
   ],
   "animations": [

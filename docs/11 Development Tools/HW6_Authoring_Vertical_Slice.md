@@ -333,11 +333,20 @@ Required positive cases:
 - package save records validate within profile limits
 - a granted waiting-visual sequence validates
 
-The current STATE authoring/runtime input boundary includes the four logical
-joystick cardinals `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`, and `JOY_DOWN`. HW6 owns
-calibration, normalization, diagonal detection, dominant-axis resolution, and
-movement-wake policy. Eight-way STATE events, normalized vectors, and authored
-hold/repeat behavior remain later target-profile capabilities.
+The current STATE authoring/runtime input boundary includes A/B/L/R, package
+START short-press, four joystick cardinals, and four canonical joystick
+diagonals. STATE routes can bind `press`, `release`, `hold`, or `repeat` events
+for A/B/L/R and joystick sources; START supports package `press` only. HW6 owns
+calibration, normalization, movement wake, long START manual-INACTIVE/shipping
+gestures, and the deterministic four-way shell fallback. Normalized vector
+bindings remain a later PROGRAM-facing target-profile capability.
+
+The embedded transition slice now uses its target STATE scene as a visible
+package input proof. Press A from the source scene to enter `INPUT PROOF`; B
+press/release, START short press, L hold, R repeat, joystick left/right,
+joystick up hold, joystick down repeat, and all four diagonals move the marker
+through labeled positions. A returns to the source scene. This proves package
+routes, not just the shell diagnostic page.
 
 Required negative or fallback cases:
 
