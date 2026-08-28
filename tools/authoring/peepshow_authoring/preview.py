@@ -22,7 +22,12 @@ LOGICAL_SOURCES = {
     "JOY_RIGHT": 7,
     "JOY_UP": 8,
     "JOY_DOWN": 9,
+    "JOY_UP_LEFT": 10,
+    "JOY_UP_RIGHT": 11,
+    "JOY_DOWN_LEFT": 12,
+    "JOY_DOWN_RIGHT": 13,
 }
+LOGICAL_EVENTS = {"press": 1, "release": 2, "hold": 3, "repeat": 4}
 
 
 class PreviewError(ValueError):
@@ -32,6 +37,7 @@ class PreviewError(ValueError):
 @dataclass(frozen=True)
 class PreviewInputResult:
     logical_source: str
+    event_kind: str
     action_id: str | None
     accepted: bool
     route_id: str | None
@@ -98,20 +104,24 @@ class StateScenePreview:
         self._step_index = int(self._waiting()["settled_step"])
         self._validate_scene_subset()
 
-    def apply_input(self, logical_source: str) -> PreviewInputResult:
+    def apply_input(self, logical_source: str, event_kind: str = "press") -> PreviewInputResult:
         source = LOGICAL_SOURCES.get(logical_source)
         if source is None:
             raise PreviewError(f"logical source '{logical_source}' is unsupported")
+        event = LOGICAL_EVENTS.get(event_kind)
+        if event is None:
+            raise PreviewError(f"logical event '{event_kind}' is unsupported")
         action_index = next(
             (
                 index
                 for index, action in enumerate(self._graph["inputs"])
                 if int(action["logical_source"]) == source
+                and int(action.get("logical_event", 1)) == event
             ),
             None,
         )
         if action_index is None:
-            return PreviewInputResult(logical_source, None, False, None)
+            return PreviewInputResult(logical_source, event_kind, None, False, None)
         action_id = str(self._graph["inputs"][action_index]["action_id"])
         route = next(
             (
@@ -124,7 +134,7 @@ class StateScenePreview:
             None,
         )
         if route is None:
-            return PreviewInputResult(logical_source, action_id, False, None)
+            return PreviewInputResult(logical_source, event_kind, action_id, False, None)
 
         target_scene = route["target_scene"]
         if target_scene is not None:
@@ -132,7 +142,7 @@ class StateScenePreview:
                 raise PreviewError("direct scene replacement cannot execute scene-local actions")
             self._activate_scene(str(target_scene))
             self._render_framebuffer()
-            return PreviewInputResult(logical_source, action_id, True, str(route["route_id"]))
+            return PreviewInputResult(logical_source, event_kind, action_id, True, str(route["route_id"]))
 
         prior_waiting = self._waiting()
         variables = list(self._variables)
@@ -272,6 +282,7 @@ class StateScenePreview:
         self._render_framebuffer()
         return PreviewInputResult(
             logical_source,
+            event_kind,
             action_id,
             True,
             str(route["route_id"]),
@@ -623,6 +634,7 @@ class StateScenePreview:
         if input_result is not None:
             event = {
                 "logical_source": input_result.logical_source,
+                "event_kind": input_result.event_kind,
                 "action_id": input_result.action_id,
                 "accepted": input_result.accepted,
                 "route_id": input_result.route_id,

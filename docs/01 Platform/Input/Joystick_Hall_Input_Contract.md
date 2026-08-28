@@ -176,8 +176,17 @@ Current FW0 calibration status:
   `KNOB_INPUT_JOYSTICK_WAKE_CONFIRM_STABLE_SAMPLES` to reject the transitional
   vector that can occur while the stick is still travelling after the hardware
   threshold crossing; this confirmation is not applied to awake polling
-- awake cardinal sources are published as distinct `JOY_LEFT`, `JOY_RIGHT`,
-  `JOY_UP`, and `JOY_DOWN` actions; holding a direction does not repeat it
+- awake direction sources are published as `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`,
+  `JOY_DOWN`, `JOY_UP_LEFT`, `JOY_UP_RIGHT`, `JOY_DOWN_LEFT`, and
+  `JOY_DOWN_RIGHT`; each STATE declares deterministic `four_way` or canonical
+  `eight_way` resolution
+- joystick directions use the same `PRESS`, `RELEASE`, one-shot `HOLD`, and
+  bounded `REPEAT` lifecycle and timing knobs as A/B/L/R; the shell remains
+  deterministic four-way and press-only
+- after movement wake, the confirmed canonical candidate and dominant-axis
+  result are both retained; the active STATE policy selects the first package
+  direction event, so an eight-way STATE does not receive a temporary cardinal
+  event before its diagonal
 - the shell receives canonical candidate and resolved masks in the same bounded
   input message; the temporary HOME 3x3 diagnostic renders all eight candidate
   directions while an outer marker shows the resolved four-way action. HW6

@@ -432,7 +432,7 @@ class AuthoringModelTests(unittest.TestCase):
             package = parse_egg(build_egg(bundle))
             self.assertEqual(3, package.manifest["scene_count"])
             self.assertEqual(3, len(package.scenes))
-            self.assertTrue(all(scene["graph"]["format_version"] == 3 for scene in package.scenes))
+            self.assertTrue(all(scene["graph"]["format_version"] == 4 for scene in package.scenes))
             targets = {
                 route["target_scene"]
                 for scene in package.scenes
@@ -440,6 +440,49 @@ class AuthoringModelTests(unittest.TestCase):
                 if route["target_scene"] is not None
             }
             self.assertEqual({"state_demo", "state_details", "state_target"}, targets)
+
+    def test_graph_v4_round_trips_joystick_policy_and_input_lifecycle(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "input_lifecycle.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            scene_path = project_root / "scenes" / "state_demo.state.json"
+            scene = json.loads(scene_path.read_text(encoding="utf-8"))
+            scene["joystick_policy"] = "eight_way"
+            scene["input_actions"][1]["logical_source"] = "JOY_DOWN_RIGHT"
+            scene["input_actions"][1]["event_kind"] = "repeat"
+            scene_path.write_text(json.dumps(scene), encoding="utf-8")
+
+            bundle = load_project(project_root)
+            self.assertEqual((), bundle.issues)
+            package = parse_egg(build_egg(bundle))
+            graph = next(
+                item["graph"]
+                for item in package.scenes
+                if item["scene_id"] == "state_demo"
+            )
+            self.assertEqual(4, graph["format_version"])
+            self.assertEqual(2, graph["joystick_policy"])
+            binding = next(
+                item for item in graph["inputs"] if item["action_id"] == "move_right"
+            )
+            self.assertEqual(13, binding["logical_source"])
+            self.assertEqual(4, binding["logical_event"])
+
+    def test_diagonal_and_start_lifecycle_policy_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "invalid_input_policy.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            scene_path = project_root / "scenes" / "state_demo.state.json"
+            scene = json.loads(scene_path.read_text(encoding="utf-8"))
+            scene["input_actions"][0]["logical_source"] = "JOY_UP_LEFT"
+            scene["input_actions"][1]["logical_source"] = "BUTTON_START"
+            scene["input_actions"][1]["event_kind"] = "hold"
+            scene_path.write_text(json.dumps(scene), encoding="utf-8")
+
+            bundle = load_project(project_root)
+            codes = {issue.code for issue in bundle.issues}
+            self.assertIn("JOYSTICK_POLICY_REQUIRED", codes)
+            self.assertIn("INPUT_EVENT_SYSTEM_OWNED", codes)
 
     def test_unknown_scene_transition_target_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

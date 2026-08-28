@@ -90,9 +90,12 @@ a semantic summary. `embed` uses the same compiler and emits a generated array;
 it is not a second package format or a hand-maintained firmware descriptor.
 
 The current STATE logical-source set is `BUTTON_A`, `BUTTON_B`, `BUTTON_L`,
-`BUTTON_R`, `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`, and `JOY_DOWN`. Joystick sources
-are cardinal logical activations. Diagonal action IDs, normalized vectors, and
-authored hold/repeat policy are not available in this subset.
+`BUTTON_R`, `BUTTON_START`, `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`, `JOY_DOWN`,
+`JOY_UP_LEFT`, `JOY_UP_RIGHT`, `JOY_DOWN_LEFT`, and `JOY_DOWN_RIGHT`. Bindings
+may select `press`, `release`, `hold`, or `repeat`; omitted event kind means
+`press`. Each STATE scene selects `four_way` or `eight_way` joystick policy.
+`BUTTON_START` supports package `press` only because PeepOS owns its long
+gesture. Normalized joystick vectors remain deferred to PROGRAM scenes.
 
 ## Authoring Service
 
@@ -138,11 +141,11 @@ It does not choose a destination or write an installable file. The V1 report
 marks the current HW6 development profile as `pending_validation` and
 `dev_only`; it does not claim shipping authority before target-profile closure.
 
-Service API version 8 provides deterministic selected-STATE-scene preview,
+Service API version 19 provides deterministic selected-STATE-scene preview,
 direct STATE-to-STATE replacement, and a `state_scene_presentation` capability
 block in `service.hello`. A
 reset names the scene to launch directly, an input operation supplies one
-logical button source, and an advance operation supplies explicit elapsed
+logical source plus an optional lifecycle event kind, and an advance operation supplies explicit elapsed
 milliseconds. Every response contains the current compiled state, timeline,
 variables, and an exact `168 x 144` packed 1bpp framebuffer. Preview never
 reads source assets after reset: it builds and independently parses the `.egg`,
@@ -171,7 +174,7 @@ actions can emit `play_sfx`. Package compilation produces optional `AUD1`,
 256-sample blocks. Preview reports emitted cue events and
 `project.audio_audition` returns a WAV decoded from the exact packaged bytes.
 This does not claim HW6 playback support; target loading and `thAudio` playback
-remain pending firmware bringup.
+are now brought up for the bounded STATE sampled-SFX subset.
 The newline-delimited JSON protocol remains version 1, and loaders retain
 `RND1` compatibility.
 

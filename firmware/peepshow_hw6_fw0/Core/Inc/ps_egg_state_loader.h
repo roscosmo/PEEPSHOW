@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_EGG_STATE_LOADER_API_VERSION (12UL)
+#define PS_EGG_STATE_LOADER_API_VERSION (13UL)
 #define PS_EGG_STATE_LOADER_STATUS_NOT_RUN (0xFFFFFFFFUL)
 #define PS_EGG_STATE_LOADER_SPRITE_FRAME_ID_BASE (0x00010000UL)
 #define PS_EGG_STATE_LOADER_SCENE_MAX (8U)
@@ -103,6 +103,7 @@ typedef struct
   uint32_t waiting_element_count;
   uint32_t interaction_mode;
   uint32_t inactive_route;
+  uint32_t joystick_policy;
   uint32_t meaningful_input_mask;
 } ps_egg_state_loader_probe_t;
 

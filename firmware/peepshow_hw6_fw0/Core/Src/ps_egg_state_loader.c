@@ -104,6 +104,7 @@ typedef struct
   uint16_t meaningful_count;
   uint16_t interaction_mode;
   uint16_t inactive_route;
+  uint16_t joystick_policy;
 } ps_egg_graph_view_t;
 
 typedef struct
@@ -1139,7 +1140,7 @@ static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
   format_version = PS_EggU16(&payload[4]);
   if ((memcmp(payload, "STG1", 4UL) != 0) ||
       ((format_version != 1U) && (format_version != 2U) &&
-       (format_version != 3U)) ||
+       (format_version != 3U) && (format_version != 4U)) ||
       (PS_EggU16(&payload[6]) != PS_EGG_GRAPH_HEADER_SIZE))
   {
     return 0UL;
@@ -1162,7 +1163,10 @@ static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
   view->meaningful_count = meaningful_count;
   view->interaction_mode = (format_version < 3U) ?
     (uint16_t)PS_SCENE_RUNTIME_INTERACTION_TIMEOUT :
-    PS_EggU16(&payload[38]);
+    (PS_EggU16(&payload[38]) & 0x00FFU);
+  view->joystick_policy = (format_version < 4U) ?
+    (uint16_t)PS_SCENE_RUNTIME_JOYSTICK_FOUR_WAY :
+    ((PS_EggU16(&payload[38]) >> 8U) & 0x00FFU);
   view->inactive_route = PS_EggU16(&payload[34]);
   if ((view->state_count == 0U) ||
       (view->state_count > PS_SCENE_RUNTIME_STATE_MAX) ||
@@ -1185,6 +1189,10 @@ static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
         (uint16_t)PS_SCENE_RUNTIME_INTERACTION_CONTINUOUS) &&
        (view->interaction_mode !=
         (uint16_t)PS_SCENE_RUNTIME_INTERACTION_TIMEOUT)) ||
+      ((view->joystick_policy !=
+        (uint16_t)PS_SCENE_RUNTIME_JOYSTICK_FOUR_WAY) &&
+       (view->joystick_policy !=
+        (uint16_t)PS_SCENE_RUNTIME_JOYSTICK_EIGHT_WAY)) ||
       ((format_version < 3U) && (PS_EggU16(&payload[38]) != 0U)))
   {
     return 0UL;
@@ -1896,6 +1904,7 @@ static uint32_t PS_EggDecodeScene(
   scene->variable_count = graph.variable_count;
   scene->interaction_mode = graph.interaction_mode;
   scene->inactive_route = graph.inactive_route;
+  scene->joystick_policy = graph.joystick_policy;
   scene->meaningful_input_mask = 0UL;
   for (index = 0UL; index < graph.meaningful_count; ++index)
   {
@@ -1918,17 +1927,26 @@ static uint32_t PS_EggDecodeScene(
       PS_EGG_GRAPH_HEADER_SIZE +
       ((uint32_t)graph.variable_count * PS_EGG_VARIABLE_RECORD_SIZE) +
       (index * PS_EGG_INPUT_RECORD_SIZE)];
-    uint16_t source = PS_EggU16(&record[2]);
+    uint16_t packed_input = PS_EggU16(&record[2]);
+    uint16_t source = (graph.format_version < 4U) ?
+      packed_input : (packed_input & 0x00FFU);
+    uint16_t logical_event = (graph.format_version < 4U) ?
+      (uint16_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS :
+      ((packed_input >> 8U) & 0x00FFU);
     if ((PS_EggU16(record) >= strings->count) ||
         (!(((source >= (uint16_t)PS_INPUT_LOGICAL_SOURCE_BUTTON_A) &&
             (source <= (uint16_t)PS_INPUT_LOGICAL_SOURCE_START)) ||
            ((source >= (uint16_t)PS_INPUT_LOGICAL_SOURCE_JOY_LEFT) &&
-            (source <= (uint16_t)PS_INPUT_LOGICAL_SOURCE_JOY_DOWN)))))
+            (source <= (uint16_t)PS_INPUT_LOGICAL_SOURCE_JOY_DOWN_RIGHT)))) ||
+        (logical_event < (uint16_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS) ||
+        (logical_event > (uint16_t)PS_INPUT_BUTTON_LOGICAL_EVENT_REPEAT) ||
+        ((source == (uint16_t)PS_INPUT_LOGICAL_SOURCE_START) &&
+         (logical_event != (uint16_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)))
     {
       return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
     }
     scene->input_routes[index].logical_event =
-      PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS;
+      logical_event;
     scene->input_routes[index].input_id = source;
     scene->input_routes[index].scene_event_id = index + 1UL;
   }
@@ -2287,6 +2305,7 @@ static uint32_t PS_EggDecodeScene(
   g_ps_egg_state_loader_probe.waiting_element_count = waiting.element_count;
   g_ps_egg_state_loader_probe.interaction_mode = graph.interaction_mode;
   g_ps_egg_state_loader_probe.inactive_route = graph.inactive_route;
+  g_ps_egg_state_loader_probe.joystick_policy = graph.joystick_policy;
   g_ps_egg_state_loader_probe.meaningful_input_mask =
     scene->meaningful_input_mask;
   return 0UL;

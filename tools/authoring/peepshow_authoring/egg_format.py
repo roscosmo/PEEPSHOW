@@ -722,7 +722,7 @@ def _parse_graph(
     values = GRAPH_HEADER.unpack_from(payload)
     graph_version = values[1]
     _require(
-        values[0] == b"STG1" and graph_version in {1, 2, 3} and values[2] == GRAPH_HEADER.size,
+        values[0] == b"STG1" and graph_version in {1, 2, 3, 4} and values[2] == GRAPH_HEADER.size,
         "unsupported state graph",
     )
     route_record = ROUTE_RECORD_V1 if graph_version == 1 else ROUTE_RECORD_V2
@@ -744,10 +744,12 @@ def _parse_graph(
         meaningful_count,
         interaction_mode_field,
     ) = values[3:]
-    interaction_mode = 2 if graph_version < 3 else interaction_mode_field
+    interaction_mode = 2 if graph_version < 3 else (interaction_mode_field & 0x00FF)
+    joystick_policy = 1 if graph_version < 4 else ((interaction_mode_field >> 8) & 0x00FF)
     _require(
         hold_fallback in {0, 1}
         and interaction_mode in {1, 2}
+        and joystick_policy in {1, 2}
         and ((interaction_mode == 1 and inactive_route == 0) or (interaction_mode == 2 and inactive_route in {1, 2}))
         and (graph_version >= 3 or interaction_mode_field == 0),
         "state policy fields are invalid",
@@ -791,8 +793,11 @@ def _parse_graph(
     for index in range(input_count):
         record = INPUT_RECORD.unpack_from(payload, offsets[1] + index * INPUT_RECORD.size)
         action_id = _string(strings, record[0], "input action ID")
-        _require(record[1] in {1, 2, 3, 4, 5, 6, 7, 8, 9}, "input source is invalid")
-        inputs.append({"action_id": action_id, "logical_source": record[1]})
+        logical_source = record[1] if graph_version < 4 else (record[1] & 0x00FF)
+        logical_event = 1 if graph_version < 4 else ((record[1] >> 8) & 0x00FF)
+        _require(logical_source in set(range(1, 14)), "input source is invalid")
+        _require(logical_event in {1, 2, 3, 4}, "input event is invalid")
+        inputs.append({"action_id": action_id, "logical_source": logical_source, "logical_event": logical_event})
     states: list[dict[str, object]] = []
     for index in range(state_count):
         record = STATE_RECORD.unpack_from(payload, offsets[2] + index * STATE_RECORD.size)
@@ -987,6 +992,7 @@ def _parse_graph(
         "event_interest_indexes": tuple(event_refs),
         "interaction_policy_id": _string(strings, interaction_policy_id, "interaction policy ID"),
         "interaction_mode": interaction_mode,
+        "joystick_policy": joystick_policy,
         "inactive_route": inactive_route,
         "meaningful_action_indexes": tuple(meaningful_refs),
     }

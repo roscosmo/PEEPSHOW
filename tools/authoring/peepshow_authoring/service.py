@@ -35,7 +35,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 18
+SERVICE_API_VERSION = 19
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -234,7 +234,13 @@ class AuthoringService:
                     "JOY_RIGHT",
                     "JOY_UP",
                     "JOY_DOWN",
+                    "JOY_UP_LEFT",
+                    "JOY_UP_RIGHT",
+                    "JOY_DOWN_LEFT",
+                    "JOY_DOWN_RIGHT",
                 ],
+                "logical_input_events": ["press", "release", "hold", "repeat"],
+                "joystick_policies": ["four_way", "eight_way"],
                 "runtime_text": False,
                 "build_time_text": {
                     "source_format": "system_font_text",
@@ -326,6 +332,7 @@ class AuthoringService:
                 "policy_commands": [
                     "scene.set_reactive_wait_default",
                     "scene.set_interaction_policy",
+                    "scene.set_joystick_policy",
                 ],
                 "generic_delete_policy": "reject_if_referenced",
             },
@@ -612,12 +619,16 @@ class AuthoringService:
         return self._preview_result(preview.snapshot())
 
     def _preview_input(self, params: dict[str, Any]) -> dict[str, Any]:
-        preview = self._current_preview(params, {"logical_source"})
+        fields = {"logical_source"}
+        if "event_kind" in params:
+            fields.add("event_kind")
+        preview = self._current_preview(params, fields)
         logical_source = params["logical_source"]
+        event_kind = params.get("event_kind", "press")
         if not isinstance(logical_source, str) or not logical_source:
             raise ProtocolError("PREVIEW_INPUT_INVALID", "logical_source must be non-empty text")
         try:
-            result = preview.apply_input(logical_source)
+            result = preview.apply_input(logical_source, event_kind)
         except PreviewError as exc:
             raise ProtocolError("PREVIEW_INPUT_FAILED", str(exc)) from exc
         return self._preview_result(preview.snapshot(result))

@@ -4,6 +4,7 @@
   "scene_id": "state_demo",
   "display_name": "State Demo",
   "scene_type": "STATE_SCENE",
+  "joystick_policy": "eight_way",
   "entry_state": "center",
   "variables": [
     {
@@ -26,6 +27,37 @@
     {
       "action_id": "enter_target",
       "logical_source": "BUTTON_A"
+    },
+    {
+      "action_id": "repeat_button_right",
+      "logical_source": "BUTTON_R",
+      "event_kind": "repeat"
+    },
+    {
+      "action_id": "repeat_joystick_right",
+      "logical_source": "JOY_RIGHT",
+      "event_kind": "repeat"
+    },
+    {
+      "action_id": "hold_button_left",
+      "logical_source": "BUTTON_L",
+      "event_kind": "hold"
+    },
+    {
+      "action_id": "diagonal_up_left",
+      "logical_source": "JOY_UP_LEFT"
+    },
+    {
+      "action_id": "diagonal_up_right",
+      "logical_source": "JOY_UP_RIGHT"
+    },
+    {
+      "action_id": "diagonal_down_left",
+      "logical_source": "JOY_DOWN_LEFT"
+    },
+    {
+      "action_id": "diagonal_down_right",
+      "logical_source": "JOY_DOWN_RIGHT"
     }
   ],
   "states": [
@@ -265,6 +297,146 @@
           "value": 0
         }
       ],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 2
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "right"
+    },
+    {
+      "route_id": "repeat_button_right_to_left",
+      "action_ref": "repeat_button_right",
+      "from_states": [
+        "right"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 0
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "left"
+    },
+    {
+      "route_id": "repeat_joystick_right_to_left",
+      "action_ref": "repeat_joystick_right",
+      "from_states": [
+        "center"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 0
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "left"
+    },
+    {
+      "route_id": "hold_button_left_to_right",
+      "action_ref": "hold_button_left",
+      "from_states": [
+        "left"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 2
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "right"
+    },
+    {
+      "route_id": "diagonal_up_left_to_left",
+      "action_ref": "diagonal_up_left",
+      "from_states": [
+        "center"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 0
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "left"
+    },
+    {
+      "route_id": "diagonal_up_right_to_right",
+      "action_ref": "diagonal_up_right",
+      "from_states": [
+        "center"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 2
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "right"
+    },
+    {
+      "route_id": "diagonal_down_left_to_left",
+      "action_ref": "diagonal_down_left",
+      "from_states": [
+        "center"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "set_variable",
+          "variable_ref": "selected_index",
+          "operation": "assign",
+          "value": 0
+        },
+        {
+          "kind": "request_render"
+        }
+      ],
+      "target_state": "left"
+    },
+    {
+      "route_id": "diagonal_down_right_to_right",
+      "action_ref": "diagonal_down_right",
+      "from_states": [
+        "center"
+      ],
+      "guards": [],
       "actions": [
         {
           "kind": "set_variable",
@@ -567,7 +739,14 @@
     "event_interests": [
       "move_left",
       "move_right",
-      "enter_target"
+      "enter_target",
+      "repeat_button_right",
+      "repeat_joystick_right",
+      "hold_button_left",
+      "diagonal_up_left",
+      "diagonal_up_right",
+      "diagonal_down_left",
+      "diagonal_down_right"
     ]
   },
   "interaction_policy": {
@@ -576,7 +755,14 @@
     "meaningful_activity_actions": [
       "move_left",
       "move_right",
-      "enter_target"
+      "enter_target",
+      "repeat_button_right",
+      "repeat_joystick_right",
+      "hold_button_left",
+      "diagonal_up_left",
+      "diagonal_up_right",
+      "diagonal_down_left",
+      "diagonal_down_right"
     ],
     "inactive_route": "preserve_scene",
     "bounded_deferrals": []

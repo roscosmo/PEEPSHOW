@@ -40,7 +40,13 @@ LOGICAL_INPUT_SOURCES = {
     "JOY_RIGHT",
     "JOY_UP",
     "JOY_DOWN",
+    "JOY_UP_LEFT",
+    "JOY_UP_RIGHT",
+    "JOY_DOWN_LEFT",
+    "JOY_DOWN_RIGHT",
 }
+LOGICAL_INPUT_EVENT_KINDS = {"press", "release", "hold", "repeat"}
+JOYSTICK_POLICIES = {"four_way", "eight_way"}
 PROJECT_KEYS = {
     "schema_id",
     "schema_version",
@@ -69,6 +75,7 @@ SCENE_KEYS = {
     "reactive_wait_default",
     "interaction_policy",
 }
+SCENE_OPTIONAL_KEYS = {"joystick_policy"}
 
 
 @dataclass(frozen=True)
@@ -567,11 +574,19 @@ def _apply_scene_policy(
     command: dict[str, Any],
 ) -> dict[str, Any]:
     kind = command.get("kind")
-    field = "reactive_wait_default" if kind == "scene.set_reactive_wait_default" else "interaction_policy"
+    if kind == "scene.set_reactive_wait_default":
+        field = "reactive_wait_default"
+    elif kind == "scene.set_interaction_policy":
+        field = "interaction_policy"
+    else:
+        field = "joystick_policy"
     _require_command_fields(command, {"kind", "scene_id", field}, {"kind", "scene_id", field, "command_id"})
     scene = _command_scene(scenes, command.get("scene_id"))
     policy = command.get(field)
-    if not isinstance(policy, dict):
+    if field == "joystick_policy":
+        if policy not in JOYSTICK_POLICIES:
+            raise ProjectCommandError("JOYSTICK_POLICY_INVALID", "joystick_policy must be four_way or eight_way")
+    elif not isinstance(policy, dict):
         raise ProjectCommandError("PROJECT_TYPE_INVALID", f"{field} must be an object")
     normalized = deepcopy(policy)
     scene[field] = normalized
@@ -749,7 +764,11 @@ def _apply_route_add_scene_exit(
         if not states:
             raise ProjectCommandError("COMMAND_TARGET_INVALID", "scene has no states to exit from")
         for action in scene.get("input_actions", []):
-            if isinstance(action, dict) and action.get("logical_source") == logical_source:
+            if (
+                isinstance(action, dict)
+                and action.get("logical_source") == logical_source
+                and action.get("event_kind", "press") == "press"
+            ):
                 raise ProjectCommandError("INPUT_SOURCE_DUPLICATE", "logical source is already bound")
 
         route_id = _unique_generated_route_id(scene, logical_source, target_scene)
@@ -2585,7 +2604,7 @@ def _check_scene(
     issues: list[ValidationIssue],
 ) -> None:
     base = f"scene[{source}]"
-    _check_keys(scene, SCENE_KEYS, base, issues)
+    _check_keys(scene, SCENE_KEYS, base, issues, SCENE_KEYS | SCENE_OPTIONAL_KEYS)
     if scene.get("schema_id") != "peepshow.authoring.state_scene" or scene.get("schema_version") != 1:
         _issue(issues, "SCENE_SCHEMA_UNSUPPORTED", base, "expected peepshow.authoring.state_scene version 1")
     _stable_id(scene.get("scene_id"), f"{base}.scene_id", issues)
@@ -2598,17 +2617,41 @@ def _check_scene(
         _check_variable(variable, f"{base}.variables[{variable_id}]", issues)
 
     input_actions = _unique_ids(scene.get("input_actions"), "action_id", f"{base}.input_actions", issues, 32)
-    logical_sources: set[str] = set()
+    logical_bindings: set[tuple[str, str]] = set()
     for action_id, action in input_actions.items():
         path = f"{base}.input_actions[{action_id}]"
-        _check_keys(action, {"action_id", "logical_source"}, path, issues)
+        _check_keys(
+            action,
+            {"action_id", "logical_source"},
+            path,
+            issues,
+            {"action_id", "logical_source", "event_kind"},
+        )
         source_value = action.get("logical_source")
+        event_kind = action.get("event_kind", "press")
         if source_value not in LOGICAL_INPUT_SOURCES:
             _issue(issues, "INPUT_SOURCE_INVALID", f"{path}.logical_source", "unsupported logical source")
-        elif source_value in logical_sources:
-            _issue(issues, "INPUT_SOURCE_DUPLICATE", f"{path}.logical_source", "logical source is already bound")
+        if event_kind not in LOGICAL_INPUT_EVENT_KINDS:
+            _issue(issues, "INPUT_EVENT_INVALID", f"{path}.event_kind", "must be press, release, hold, or repeat")
+        elif source_value == "BUTTON_START" and event_kind != "press":
+            _issue(issues, "INPUT_EVENT_SYSTEM_OWNED", f"{path}.event_kind", "START supports package press only")
+        binding = (str(source_value), str(event_kind))
+        if binding in logical_bindings:
+            _issue(issues, "INPUT_BINDING_DUPLICATE", path, "logical source and event kind are already bound")
         else:
-            logical_sources.add(source_value)
+            logical_bindings.add(binding)
+
+    joystick_policy = scene.get("joystick_policy", "four_way")
+    if joystick_policy not in JOYSTICK_POLICIES:
+        _issue(issues, "JOYSTICK_POLICY_INVALID", f"{base}.joystick_policy", "must be four_way or eight_way")
+    diagonal_sources = {
+        "JOY_UP_LEFT", "JOY_UP_RIGHT", "JOY_DOWN_LEFT", "JOY_DOWN_RIGHT"
+    }
+    if joystick_policy != "eight_way" and any(
+        action.get("logical_source") in diagonal_sources
+        for action in input_actions.values()
+    ):
+        _issue(issues, "JOYSTICK_POLICY_REQUIRED", f"{base}.joystick_policy", "diagonal bindings require eight_way")
 
     states = _unique_ids(scene.get("states"), "state_id", f"{base}.states", issues, 64)
     render_models = _unique_ids(scene.get("render_models"), "visual_id", f"{base}.render_models", issues, 64)
@@ -3568,7 +3611,7 @@ def apply_project_commands(
             applied.append(_apply_route_set_action(scenes, command))
         elif kind in {"route.action.add", "route.action.delete", "route.action.move"}:
             applied.append(_apply_route_action_list(scenes, command))
-        elif kind in {"scene.set_reactive_wait_default", "scene.set_interaction_policy"}:
+        elif kind in {"scene.set_reactive_wait_default", "scene.set_interaction_policy", "scene.set_joystick_policy"}:
             applied.append(_apply_scene_policy(scenes, command))
         else:
             raise ProjectCommandError("COMMAND_KIND_UNKNOWN", f"unknown command kind '{kind}'")

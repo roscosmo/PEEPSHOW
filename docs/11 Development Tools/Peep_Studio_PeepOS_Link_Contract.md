@@ -52,7 +52,7 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | scene type | STATE |
 | state execution | bounded variables, input routes, guards, actions, and deterministic transitions |
 | package scene flow | direct STATE-to-STATE replacement is implemented and proven on HW6 through service API 8, PKG1 graph V2, and FW0 runtime API 11 |
-| input | logical A, B, L, R, short START, JOY_LEFT, JOY_RIGHT, JOY_UP, and JOY_DOWN sources |
+| input | service API 19 / PKG1 `STG1` v4 supports A/B/L/R lifecycle bindings (`press`, `release`, `hold`, `repeat`), short START press, eight cardinal/diagonal joystick sources, and per-STATE `four_way` / `eight_way` policy; firmware support is implemented and awaiting the focused HW6 lifecycle proof |
 | visuals | package-backed native-scale masked 1bpp sprite frames |
 | retained render model | bounded ordered scene elements with binary alpha and four platform planes |
 | package primitives | retained line, outline rectangle, filled rectangle, circle, and ellipse records are compiled, previewed, loaded, and target-proven; private shell/calibration draw helpers remain unavailable |
@@ -72,10 +72,13 @@ current draw or prove STOP2 behavior.
 
 ## Joystick Integration Boundary
 
-Peep Studio may expose `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`, and `JOY_DOWN` as
-STATE input sources for the HW6 FW0 target profile. The authoring validator,
-compiler, package parser, headless preview, FW0 package loader, and runtime
-input router use the same stable logical IDs `6..9`.
+Peep Studio may expose `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`, `JOY_DOWN`,
+`JOY_UP_LEFT`, `JOY_UP_RIGHT`, `JOY_DOWN_LEFT`, and `JOY_DOWN_RIGHT` as STATE
+input sources. The authoring validator, compiler, package parser, headless
+preview, FW0 package loader, and runtime input router use stable logical IDs
+`6..13`. Each STATE selects `four_way` or `eight_way`; diagonal bindings require
+`eight_way`. The shell remains deterministic four-way regardless of package
+policy.
 
 These sources are edge-like logical activations produced after Platform-owned
 calibration, normalization, hysteresis, and direction resolution. The editor
@@ -90,12 +93,11 @@ for positive and negative X/Y directions. Movement wake adds approximately
 `10 uA` in the matched five-minute STOP2 comparison (`55 uA` disabled versus
 `65 uA` enabled). This is Platform evidence, not package-authored behavior.
 
-The current STATE authoring subset exposes four cardinal joystick actions only.
-It does not yet expose eight-way diagonal action IDs, normalized vector
-bindings, per-scene four-way/eight-way selection, long-press/repeat policy, or
-PROGRAM-scene vector polling. Those controls must remain unavailable until the
-Engine contract, target profile, package schema, preview, and firmware runtime
-all implement the same semantics.
+STATE input actions bind one logical source plus `event_kind: press | release |
+hold | repeat`; omitted `event_kind` remains backward-compatible `press`.
+A/B/L/R and joystick directions share those lifecycle meanings and target-owned
+timing. START permits package `press` only. Normalized vector bindings and
+PROGRAM-scene vector polling remain unavailable.
 
 ---
 
@@ -250,7 +252,7 @@ protocol is version `1`; the current service API is version `18`.
 | `project.scene_thumbnails` | return one side-effect-free initial framebuffer snapshot per compiled STATE scene |
 | `project.audio_audition` | decode one compiled sampled-SFX cue and return the exact packaged sound as mono 16 kHz PCM WAV |
 | `project.preview_reset` | start one selected STATE scene directly |
-| `project.preview_input` | inject one logical A/B/L/R, short START, or JOY_LEFT/JOY_RIGHT/JOY_UP/JOY_DOWN input |
+| `project.preview_input` | inject one logical source plus optional `event_kind`; supports A/B/L/R, short START press, and cardinal/diagonal joystick STATE events |
 | `project.preview_advance` | advance deterministic preview time by an explicit duration |
 
 Every project operation after load uses `project_revision`. Every preview
@@ -487,7 +489,7 @@ Platform foundation status: implemented and proven on HW6. Authoring schema
 routes now accept exactly one `target_state` or `target_scene`; the direct
 scene-transition capability introduced by service API 8 is retained in service
 API 12; selected-scene preview follows a scene target; and the compiler emits
-PKG1 `STG1` version 3. Direct replacement enters the destination entry state,
+PKG1 `STG1` version 4. Direct replacement enters the destination entry state,
 resets destination-local variables, and starts a new timeline epoch. Peep
 Studio may expose these exact semantics for the HW6 FW0 target profile. It must
 not expose cross-scene route actions, push/pop, return stacks, or

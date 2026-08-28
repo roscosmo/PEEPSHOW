@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-#define PS_SCENE_RUNTIME_API_VERSION             (16UL)
+#define PS_SCENE_RUNTIME_API_VERSION             (17UL)
 #define PS_SCENE_RUNTIME_SCENE_TYPE_STATE        (1UL)
 #define PS_SCENE_RUNTIME_STATUS_NOT_RUN          (0xFFFFFFFFUL)
 #define PS_SCENE_RUNTIME_STATUS_OK               (0UL)
@@ -19,7 +19,7 @@ extern "C" {
 #define PS_SCENE_RUNTIME_INDEX_INVALID           (0xFFFFFFFFUL)
 #define PS_SCENE_RUNTIME_STATE_MAX               (8U)
 #define PS_SCENE_RUNTIME_VISUAL_BINDING_MAX      (8U)
-#define PS_SCENE_RUNTIME_INPUT_ROUTE_MAX         (8U)
+#define PS_SCENE_RUNTIME_INPUT_ROUTE_MAX         (16U)
 #define PS_SCENE_RUNTIME_VARIABLE_MAX            (8U)
 #define PS_SCENE_RUNTIME_GUARD_MAX               (16U)
 #define PS_SCENE_RUNTIME_ACTION_MAX              (32U)
@@ -33,6 +33,8 @@ extern "C" {
 #define PS_SCENE_RUNTIME_INTERACTION_TIMEOUT     (2UL)
 #define PS_SCENE_RUNTIME_INACTIVE_PRESERVE       (1UL)
 #define PS_SCENE_RUNTIME_INACTIVE_EXIT_SHELL     (2UL)
+#define PS_SCENE_RUNTIME_JOYSTICK_FOUR_WAY       (1UL)
+#define PS_SCENE_RUNTIME_JOYSTICK_EIGHT_WAY      (2UL)
 
 typedef enum
 {
@@ -161,6 +163,7 @@ typedef struct
   uint32_t transition_count;
   uint32_t interaction_mode;
   uint32_t inactive_route;
+  uint32_t joystick_policy;
   uint32_t meaningful_input_mask;
   ps_scene_runtime_state_t states[PS_SCENE_RUNTIME_STATE_MAX];
   ps_scene_runtime_visual_binding_t
@@ -210,6 +213,7 @@ typedef struct
   uint32_t descriptor_transition_count;
   uint32_t descriptor_interaction_mode;
   uint32_t descriptor_inactive_route;
+  uint32_t descriptor_joystick_policy;
   uint32_t descriptor_meaningful_input_mask;
   uint32_t scene_id;
   uint32_t state_id;
@@ -270,6 +274,7 @@ uint32_t PS_SceneRuntime_StateIndex(void);
 uint32_t PS_SceneRuntime_StateFocusIndex(void);
 uint32_t PS_SceneRuntime_InteractionMode(void);
 uint32_t PS_SceneRuntime_InactiveRoute(void);
+uint32_t PS_SceneRuntime_JoystickPolicy(void);
 uint32_t PS_SceneRuntime_InputIsMeaningful(uint32_t logical_event,
                                            uint32_t input_id);
 const ps_scene_render_model_t *PS_SceneRuntime_ResolveStateSceneRenderModel(

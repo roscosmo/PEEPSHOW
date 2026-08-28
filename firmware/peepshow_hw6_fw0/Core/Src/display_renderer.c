@@ -4,7 +4,10 @@
 
 #include "ps_egg_state_loader.h"
 #include "ps_hw6_owner_state_machines.h"
+#include "ps_hw6_rtos_probe.h"
+#include "ps_input_buttons.h"
 #include "ps_input_joystick.h"
+#include "ps_input_logical.h"
 #include "ps_ui_router.h"
 
 #define DISPLAY_RENDERER_TEXT_SCALE         (2U)
@@ -2808,6 +2811,157 @@ static uint32_t DisplayRenderer_HomeGridIndex(uint32_t direction_mask)
   return (row * 3UL) + column;
 }
 
+static const char *DisplayRenderer_DirectionText(uint32_t direction_mask)
+{
+  switch (direction_mask)
+  {
+    case 0UL:
+      return "NONE";
+    case PS_INPUT_JOYSTICK_DIRECTION_LEFT:
+      return "LEFT";
+    case PS_INPUT_JOYSTICK_DIRECTION_RIGHT:
+      return "RIGHT";
+    case PS_INPUT_JOYSTICK_DIRECTION_UP:
+      return "UP";
+    case PS_INPUT_JOYSTICK_DIRECTION_DOWN:
+      return "DOWN";
+    case (PS_INPUT_JOYSTICK_DIRECTION_UP |
+          PS_INPUT_JOYSTICK_DIRECTION_LEFT):
+      return "UP LEFT";
+    case (PS_INPUT_JOYSTICK_DIRECTION_UP |
+          PS_INPUT_JOYSTICK_DIRECTION_RIGHT):
+      return "UP RIGHT";
+    case (PS_INPUT_JOYSTICK_DIRECTION_DOWN |
+          PS_INPUT_JOYSTICK_DIRECTION_LEFT):
+      return "DOWN LEFT";
+    case (PS_INPUT_JOYSTICK_DIRECTION_DOWN |
+          PS_INPUT_JOYSTICK_DIRECTION_RIGHT):
+      return "DOWN RIGHT";
+    default:
+      return "INVALID";
+  }
+}
+
+static const char *DisplayRenderer_InputSourceText(uint32_t source)
+{
+  switch (source)
+  {
+    case PS_INPUT_LOGICAL_SOURCE_BUTTON_A:
+      return "A";
+    case PS_INPUT_LOGICAL_SOURCE_BUTTON_B:
+      return "B";
+    case PS_INPUT_LOGICAL_SOURCE_BUTTON_L:
+      return "L";
+    case PS_INPUT_LOGICAL_SOURCE_BUTTON_R:
+      return "R";
+    case PS_INPUT_LOGICAL_SOURCE_START:
+      return "START";
+    case PS_INPUT_LOGICAL_SOURCE_JOY_LEFT:
+      return "JOY LEFT";
+    case PS_INPUT_LOGICAL_SOURCE_JOY_RIGHT:
+      return "JOY RIGHT";
+    case PS_INPUT_LOGICAL_SOURCE_JOY_UP:
+      return "JOY UP";
+    case PS_INPUT_LOGICAL_SOURCE_JOY_DOWN:
+      return "JOY DOWN";
+    case PS_INPUT_LOGICAL_SOURCE_JOY_UP_LEFT:
+      return "JOY UP LEFT";
+    case PS_INPUT_LOGICAL_SOURCE_JOY_UP_RIGHT:
+      return "JOY UP RIGHT";
+    case PS_INPUT_LOGICAL_SOURCE_JOY_DOWN_LEFT:
+      return "JOY DOWN LEFT";
+    case PS_INPUT_LOGICAL_SOURCE_JOY_DOWN_RIGHT:
+      return "JOY DOWN RIGHT";
+    default:
+      return "NONE";
+  }
+}
+
+static const char *DisplayRenderer_InputEventText(uint32_t event)
+{
+  switch (event)
+  {
+    case PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS:
+      return "PRESS";
+    case PS_INPUT_BUTTON_LOGICAL_EVENT_RELEASE:
+      return "RELEASE";
+    case PS_INPUT_BUTTON_LOGICAL_EVENT_LONG_PRESS:
+      return "HOLD";
+    case PS_INPUT_BUTTON_LOGICAL_EVENT_REPEAT:
+      return "REPEAT";
+    default:
+      return "NONE";
+  }
+}
+
+static uint32_t DisplayRenderer_LatestInputSource(void)
+{
+  if (g_ps_hw6_rtos_probe.joystick_logical_last_tick >=
+      g_ps_hw6_rtos_probe.input_policy_last_timestamp)
+  {
+    return g_ps_hw6_rtos_probe.joystick_logical_last_source;
+  }
+  return g_ps_hw6_rtos_probe.input_policy_last_button_id;
+}
+
+static uint32_t DisplayRenderer_LatestInputEvent(void)
+{
+  if (g_ps_hw6_rtos_probe.joystick_logical_last_tick >=
+      g_ps_hw6_rtos_probe.input_policy_last_timestamp)
+  {
+    return g_ps_hw6_rtos_probe.joystick_logical_last_event;
+  }
+  return g_ps_hw6_rtos_probe.input_policy_last_event;
+}
+
+static uint32_t DisplayRenderer_DrawInputDiagnosticPage(void)
+{
+  uint32_t black_pixels = 0UL;
+  uint32_t source = DisplayRenderer_LatestInputSource();
+  uint32_t event = DisplayRenderer_LatestInputEvent();
+  uint32_t candidate =
+    g_ps_ui_router_probe.joystick_candidate_direction_mask;
+  uint32_t resolved =
+    g_ps_ui_router_probe.joystick_resolved_direction_mask;
+
+  black_pixels += DisplayRenderer_HorizontalLine(
+    0U, (uint16_t)(DISPLAY_RENDERER_WIDTH - 1U), 0U);
+  black_pixels += DisplayRenderer_HorizontalLine(
+    0U, (uint16_t)(DISPLAY_RENDERER_WIDTH - 1U),
+    (uint16_t)(DISPLAY_RENDERER_HEIGHT - 1U));
+  black_pixels += DisplayRenderer_VerticalLine(
+    0U, 0U, (uint16_t)(DISPLAY_RENDERER_HEIGHT - 1U));
+  black_pixels += DisplayRenderer_VerticalLine(
+    (uint16_t)(DISPLAY_RENDERER_WIDTH - 1U), 0U,
+    (uint16_t)(DISPLAY_RENDERER_HEIGHT - 1U));
+  black_pixels += DisplayRenderer_DrawCenteredText(5U, "INPUT TEST", 1U);
+  black_pixels += DisplayRenderer_HorizontalLine(
+    8U, (uint16_t)(DISPLAY_RENDERER_WIDTH - 9U), 18U);
+  black_pixels += DisplayRenderer_DrawText(8U, 27U, "SRC", 1U);
+  black_pixels += DisplayRenderer_DrawText(
+    44U, 27U, DisplayRenderer_InputSourceText(source), 1U);
+  black_pixels += DisplayRenderer_DrawText(8U, 42U, "EV", 1U);
+  black_pixels += DisplayRenderer_DrawText(
+    44U, 42U, DisplayRenderer_InputEventText(event), 1U);
+  black_pixels += DisplayRenderer_DrawText(8U, 57U, "RAW", 1U);
+  black_pixels += DisplayRenderer_DrawText(
+    44U, 57U, DisplayRenderer_DirectionText(candidate), 1U);
+  black_pixels += DisplayRenderer_DrawText(8U, 72U, "4WAY", 1U);
+  black_pixels += DisplayRenderer_DrawText(
+    44U, 72U, DisplayRenderer_DirectionText(resolved), 1U);
+  black_pixels += DisplayRenderer_DrawText(8U, 91U, "BTN", 1U);
+  black_pixels += DisplayRenderer_DrawText(
+    44U, 91U, DisplayRenderer_InputEventText(
+      g_ps_hw6_rtos_probe.input_policy_last_event), 1U);
+  black_pixels += DisplayRenderer_DrawText(92U, 91U, "JOY", 1U);
+  black_pixels += DisplayRenderer_DrawText(
+    128U, 91U, DisplayRenderer_InputEventText(
+      g_ps_hw6_rtos_probe.joystick_logical_last_event), 1U);
+  black_pixels += DisplayRenderer_DrawText(8U, 112U, "USE ANY INPUT", 1U);
+  black_pixels += DisplayRenderer_DrawText(8U, 127U, "NO SCRIPT", 1U);
+  return black_pixels;
+}
+
 static uint32_t DisplayRenderer_DrawHomeJoystickGrid(void)
 {
   uint32_t black_pixels = 0UL;
@@ -3354,6 +3508,23 @@ void DisplayRenderer_PrepareUIPage(
     DisplayRenderer_ClearWhite();
     s_rotate_ccw = 1UL;
     black_pixels = DisplayRenderer_DrawJoystickCalibrationReview();
+    DisplayRenderer_RecordCursorBaseFrame();
+    DisplayRenderer_ComputeDirtyRowsFromCommitted();
+    s_rotate_ccw = 0UL;
+    DisplayRenderer_SetPendingList(&list);
+    DisplayRenderer_FillStats(stats,
+                              black_pixels,
+                              DISPLAY_RENDERER_PRIMITIVE_LIST_FULL,
+                              DISPLAY_RENDERER_ROW_NONE,
+                              DISPLAY_RENDERER_ROW_NONE);
+    return;
+  }
+
+  if (page == (uint32_t)PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC)
+  {
+    DisplayRenderer_ClearWhite();
+    s_rotate_ccw = 1UL;
+    black_pixels = DisplayRenderer_DrawInputDiagnosticPage();
     DisplayRenderer_RecordCursorBaseFrame();
     DisplayRenderer_ComputeDirtyRowsFromCommitted();
     s_rotate_ccw = 0UL;

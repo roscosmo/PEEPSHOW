@@ -216,7 +216,9 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
        ((scene->inactive_route < PS_SCENE_RUNTIME_INACTIVE_PRESERVE) ||
         (scene->inactive_route > PS_SCENE_RUNTIME_INACTIVE_EXIT_SHELL))) ||
       ((scene->interaction_mode != PS_SCENE_RUNTIME_INTERACTION_CONTINUOUS) &&
-       (scene->interaction_mode != PS_SCENE_RUNTIME_INTERACTION_TIMEOUT)))
+       (scene->interaction_mode != PS_SCENE_RUNTIME_INTERACTION_TIMEOUT)) ||
+      ((scene->joystick_policy != PS_SCENE_RUNTIME_JOYSTICK_FOUR_WAY) &&
+       (scene->joystick_policy != PS_SCENE_RUNTIME_JOYSTICK_EIGHT_WAY)))
   {
     return 1UL;
   }
@@ -997,6 +999,8 @@ static uint32_t PS_SceneRuntime_ActivateDecodedScene(
   g_ps_scene_runtime_probe.descriptor_interaction_mode =
     scene->interaction_mode;
   g_ps_scene_runtime_probe.descriptor_inactive_route = scene->inactive_route;
+  g_ps_scene_runtime_probe.descriptor_joystick_policy =
+    scene->joystick_policy;
   g_ps_scene_runtime_probe.descriptor_meaningful_input_mask =
     scene->meaningful_input_mask;
   g_ps_scene_runtime_probe.scene_id = scene->scene_id;
@@ -1171,6 +1175,13 @@ uint32_t PS_SceneRuntime_InactiveRoute(void)
 {
   return (s_ps_scene_runtime_state_scene != NULL) ?
     s_ps_scene_runtime_state_scene->inactive_route : 0UL;
+}
+
+uint32_t PS_SceneRuntime_JoystickPolicy(void)
+{
+  return (s_ps_scene_runtime_state_scene != NULL) ?
+    s_ps_scene_runtime_state_scene->joystick_policy :
+    PS_SCENE_RUNTIME_JOYSTICK_FOUR_WAY;
 }
 
 uint32_t PS_SceneRuntime_InputIsMeaningful(uint32_t logical_event,

@@ -68,7 +68,13 @@ LOGICAL_SOURCES = {
     "JOY_RIGHT": 7,
     "JOY_UP": 8,
     "JOY_DOWN": 9,
+    "JOY_UP_LEFT": 10,
+    "JOY_UP_RIGHT": 11,
+    "JOY_DOWN_LEFT": 12,
+    "JOY_DOWN_RIGHT": 13,
 }
+LOGICAL_EVENTS = {"press": 1, "release": 2, "hold": 3, "repeat": 4}
+JOYSTICK_POLICIES = {"four_way": 1, "eight_way": 2}
 GUARD_OPERATORS = {"eq": 1, "ne": 2, "lt": 3, "le": 4, "gt": 5, "ge": 6}
 VARIABLE_OPERATIONS = {"assign": 1, "add": 2}
 RENDER_KINDS = {
@@ -313,7 +319,11 @@ def _compile_graph(
             )
         )
     input_records = b"".join(
-        INPUT_RECORD.pack(strings[record["action_id"]], LOGICAL_SOURCES[record["logical_source"]])
+        INPUT_RECORD.pack(
+            strings[record["action_id"]],
+            LOGICAL_SOURCES[record["logical_source"]]
+            | (LOGICAL_EVENTS[record.get("event_kind", "press")] << 8),
+        )
         for record in inputs
     )
     state_records = b"".join(
@@ -460,7 +470,7 @@ def _compile_graph(
     inactive_route = INACTIVE_ROUTES.get(interaction.get("inactive_route"), 0)
     header = GRAPH_HEADER.pack(
         b"STG1",
-        3,
+        4,
         GRAPH_HEADER.size,
         state_index[scene["entry_state"]],
         _u16(len(variables), "variable count"),
@@ -477,7 +487,7 @@ def _compile_graph(
         strings[interaction["policy_id"]],
         inactive_route,
         _u16(len(meaningful), "meaningful-action count"),
-        interaction_mode,
+        interaction_mode | (JOYSTICK_POLICIES[scene.get("joystick_policy", "four_way")] << 8),
     )
     sources = struct.pack(f"<{len(source_states)}H", *source_states) if source_states else b""
     events = struct.pack(f"<{len(event_interests)}H", *event_interests) if event_interests else b""

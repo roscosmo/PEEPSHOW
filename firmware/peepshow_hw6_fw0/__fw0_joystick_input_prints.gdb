@@ -19,13 +19,14 @@ printf "recovery attempt/success/fail/status = %u / %u / %u / 0x%x\n", $sm->joys
 printf "owner/driver state       = %u / %u\n", $sm->current_state[5], $sm->joystick_driver_state
 printf "awake poll count/error/next/status = %u / %u / %u / 0x%x\n", $rt->joystick_awake_poll_count, $rt->joystick_awake_poll_error_count, $rt->joystick_awake_poll_next_tick, $rt->joystick_awake_poll_last_status
 printf "logical change/activate/release/switch/drop = %u / %u / %u / %u / %u\n", $rt->joystick_logical_change_count, $rt->joystick_logical_activation_count, $rt->joystick_logical_release_count, $rt->joystick_logical_switch_count, $rt->joystick_logical_drop_count
+printf "logical policy/active/source hold/repeat/hold-sent = %u / 0x%x / %u / %u / %u / %u\n", $rt->joystick_logical_policy, $rt->joystick_logical_active_direction_mask, $rt->joystick_logical_active_source, $rt->joystick_logical_hold_count, $rt->joystick_logical_repeat_count, $rt->joystick_logical_hold_sent
 printf "logical candidate/resolved = 0x%x / 0x%x\n", $rt->joystick_logical_last_candidate_mask, $rt->joystick_logical_last_resolved_mask
-printf "logical last direction/source/target/status/tick = 0x%x / %u / %u / 0x%x / %u\n", $rt->joystick_logical_last_direction_mask, $rt->joystick_logical_last_source, $rt->joystick_logical_last_target, $rt->joystick_logical_last_status, $rt->joystick_logical_last_tick
+printf "logical last event/direction/source/target/status/tick = %u / 0x%x / %u / %u / 0x%x / %u\n", $rt->joystick_logical_last_event, $rt->joystick_logical_last_direction_mask, $rt->joystick_logical_last_source, $rt->joystick_logical_last_target, $rt->joystick_logical_last_status, $rt->joystick_logical_last_tick
 printf "UI api joystick event/count/state updates = %u / %u / %u / %u\n", g_ps_ui_router_probe.api_version, g_ps_ui_router_probe.last_joystick_event, g_ps_ui_router_probe.joystick_event_count, g_ps_ui_router_probe.joystick_state_update_count
 printf "UI joystick candidate/resolved = 0x%x / 0x%x\n", g_ps_ui_router_probe.joystick_candidate_direction_mask, g_ps_ui_router_probe.joystick_resolved_direction_mask
 printf "request flags live/card  = %u / %u\n", g_ps_hw6_joystick_live_request, g_ps_hw6_joystick_cardinal_request
 printf "failure stages: PREPARE=1 ARM=2 INTERRUPT=3 WAKE=4 READ=5 SAMPLE_FSM=6 NORMALIZE=7 SUSPEND=8 FINISH_FSM=9\n"
 printf "dir bits: LEFT=0x1 RIGHT=0x2 UP=0x4 DOWN=0x8\n"
-printf "logical IDs: JOY_LEFT=6 JOY_RIGHT=7 JOY_UP=8 JOY_DOWN=9; targets NONE=0 UI=1 RUNTIME=2\n"
+printf "logical IDs: LEFT/RIGHT/UP/DOWN=6/7/8/9 diagonals UL/UR/DL/DR=10/11/12/13; events press/release/hold/repeat=1/2/3/4\n"
 printf "expected HOME grid: center=neutral; eight surrounding cells show canonical candidate; outer marker shows deterministic four-way shell result\n"
 printf "expected steady awake: owner/driver=5/3, poll status=0, resolved direction zero or one bit; a recovered transient increments failure and recovery success without leaving owner=14 or driver=4\n"
