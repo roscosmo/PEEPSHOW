@@ -658,7 +658,7 @@
       "minimum": 1024,
       "maximum": 16384,
       "multipleOf": 8,
-      "default": 4096,
+      "default": 6144,
       "unit": "bytes",
       "timebase_domain": "threadx",
       "owner": "thPower",

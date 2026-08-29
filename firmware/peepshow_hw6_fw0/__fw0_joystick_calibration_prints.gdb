@@ -25,5 +25,5 @@ printf "live candidate/resolved/active = 0x%x / 0x%x / %u\n", $sm->joystick_inpu
 printf "direction changes/press/release/switch = %u / %u / %u / %u\n", $sm->joystick_input_direction_change_count, $sm->joystick_input_direction_press_count, $sm->joystick_input_direction_release_count, $sm->joystick_input_direction_switch_count
 printf "STOP2 auto entries/block/pending = %u / 0x%x / 0x%x\n", $rt->stop2_auto_entry_count, $rt->stop2_auto_blocker_mask, $rt->stop2_auto_pending_mask
 printf "stages: ROOT=1 NEUTRAL=2 RIGHT=3 SWEEP=4 REVIEW=5 UP=6 DOWN=7 LEFT=8\n"
-printf "expected review: owner api=71 session/valid/transform=1/1/1 coverage=0xf, resolved direction is zero or exactly one bit, review count advances, STOP2 entry count remains unchanged while calibration is open\n"
+printf "expected review before save: session/valid/transform=1/1/1 coverage=0xf, resolved direction is zero or exactly one bit, review count advances, STOP2 entry count remains unchanged while calibration is open\n"
 printf "--- end staged joystick calibration ---\n"

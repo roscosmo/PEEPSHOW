@@ -46,7 +46,7 @@
   "runtime_inactive_cue_ms": 1000,
   "runtime_activation_eye_frame_ms": 100,
   "rtos_default_stack_bytes": 1024,
-  "rtos_power_stack_bytes": 4096,
+  "rtos_power_stack_bytes": 6144,
   "rtos_input_stack_bytes": 1536,
   "rtos_display_stack_bytes": 3072,
   "rtos_sensor_stack_bytes": 3072,

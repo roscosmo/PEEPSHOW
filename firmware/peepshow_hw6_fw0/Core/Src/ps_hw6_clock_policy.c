@@ -554,17 +554,20 @@ static UINT PS_HW6_ClockPolicy_ApplyBase(uint32_t selected_profile)
 
   (void)selected_profile;
   g_ps_hw6_clock_policy_probe.last_stage =
-    PS_HW6_CLOCK_STAGE_RESTORE_BASE;
-  SystemClock_Config();
-  PeriphCommonClock_Config();
-
-  g_ps_hw6_clock_policy_probe.last_stage =
     PS_HW6_CLOCK_STAGE_USB_DOMAIN_OFF;
   status = PS_HW6_ClockPolicy_UsbDomainSet(0U);
   if (status != TX_SUCCESS)
   {
     return status;
   }
+
+  g_ps_hw6_clock_policy_probe.last_stage =
+    PS_HW6_CLOCK_STAGE_RESTORE_BASE;
+  /*
+   * Runtime clock release must not re-run Cube's global clock setup. USB
+   * reclaim can call this path while middleware teardown is still unwinding;
+   * keep the release bounded to owned domains and leave full restore to boot.
+   */
 
   g_ps_hw6_clock_policy_probe.last_stage =
     PS_HW6_CLOCK_STAGE_SYSTICK;

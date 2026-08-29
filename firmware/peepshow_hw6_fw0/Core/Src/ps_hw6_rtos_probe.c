@@ -420,6 +420,8 @@ static UINT PS_HW6_RTOS_SendModeCommand(uint32_t owner_id,
                                          uint32_t mode);
 static UINT PS_HW6_RTOS_RequestStoragePackageLoadAndWait(void);
 static uint32_t PS_HW6_RTOS_Stop2DisplayLpbamReady(void);
+static uint32_t PS_HW6_RTOS_UiMscExportActive(void);
+static void PS_HW6_RTOS_HandleUiRouterAction(uint32_t action);
 
 static CHAR *const ps_owner_names[PS_HW6_RTOS_OWNER_COUNT] =
 {
@@ -4979,6 +4981,28 @@ static UINT PS_HW6_RTOS_DeliverInputLogicalEvent(
   {
     reason = PS_HW6_RTOS_INPUT_POLICY_REASON_LOCKED;
   }
+  else if ((button_id == (uint32_t)PS_INPUT_LOGICAL_SOURCE_BUTTON_B) &&
+           (event == (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS) &&
+           (PS_HW6_RTOS_UiMscExportActive() != 0UL))
+  {
+    target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
+    reason = PS_HW6_RTOS_INPUT_POLICY_REASON_SYSTEM_OVERLAY;
+    g_ps_hw6_rtos_probe.ui_action_msc_exit_intercept_count++;
+    PS_HW6_RTOS_HandleUiRouterAction(
+      (uint32_t)PS_UI_ROUTER_ACTION_MSC_EXIT);
+    status = (UINT)g_ps_hw6_rtos_probe.ui_action_send_status;
+    if (status == TX_SUCCESS)
+    {
+      g_ps_hw6_rtos_probe.input_policy_deliver_count++;
+      g_ps_hw6_rtos_probe.input_policy_ui_deliver_count++;
+      g_ps_hw6_rtos_probe.input_policy_overlay_deliver_count++;
+    }
+    else
+    {
+      reason = PS_HW6_RTOS_INPUT_POLICY_REASON_SEND_FAILED;
+      g_ps_hw6_rtos_probe.input_policy_suppress_count++;
+    }
+  }
   else if (g_ps_ui_router_probe.current_page ==
            (uint32_t)PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC)
   {
@@ -5566,7 +5590,14 @@ static void PS_HW6_RTOS_HandleUiRouterAction(uint32_t action)
   else if (action == (uint32_t)PS_UI_ROUTER_ACTION_MSC_EXIT)
   {
     g_ps_hw6_rtos_probe.ui_action_msc_exit_count++;
-    status = PS_HW6_RTOS_RequestUsbMscExit();
+    if (PS_HW6_RTOS_UiMscExportActive() != 0UL)
+    {
+      status = PS_HW6_RTOS_RequestUsbMscExit();
+    }
+    else
+    {
+      status = TX_NO_INSTANCE;
+    }
   }
   else if (action ==
            (uint32_t)PS_UI_ROUTER_ACTION_PACKAGE_INSTALL_STUB)
@@ -7390,20 +7421,13 @@ static void PS_HW6_RTOS_RunStorageUsbExportRequest(void)
 
 static uint32_t PS_HW6_RTOS_ShouldForceUsbStageRescan(void)
 {
-  uint32_t current_page = g_ps_ui_router_probe.current_page;
-  uint32_t return_page = g_ps_ui_router_probe.shutdown_return_page;
-
-  return ((current_page ==
-           (uint32_t)PS_UI_ROUTER_PAGE_PACKAGE_BROWSER) ||
-          ((current_page == (uint32_t)PS_UI_ROUTER_PAGE_SHUTDOWN) &&
-           (return_page ==
-            (uint32_t)PS_UI_ROUTER_PAGE_PACKAGE_BROWSER))) ?
-         1UL : 0UL;
+  return 0UL;
 }
 
 static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
 {
   UINT clock_status;
+  UINT clock_release_status = TX_SUCCESS;
   HAL_StatusTypeDef reclaim_status = HAL_ERROR;
   uint32_t force_stage_rescan;
 
@@ -7422,34 +7446,24 @@ static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
     reclaim_status = PS_HW6_OwnerStateMachines_ReclaimUsbExport(
       force_stage_rescan);
   }
-  (void)PS_HW6_RTOS_RequestStorageClockCapabilities(
+  clock_release_status = PS_HW6_RTOS_RequestStorageClockCapabilities(
     PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE,
     0UL);
+  if ((reclaim_status == HAL_OK) && (clock_release_status == TX_SUCCESS))
+  {
+    reclaim_status =
+      PS_HW6_OwnerStateMachines_FinalizeUsbReclaimAfterClockRelease(
+        force_stage_rescan);
+  }
+  else if (reclaim_status == HAL_OK)
+  {
+    reclaim_status = HAL_ERROR;
+  }
   if (reclaim_status == HAL_OK)
   {
-    if ((g_ps_hw6_owner_sm_probe.package_candidate_pending != 0UL) &&
-        (g_ps_ui_router_request == 0UL))
-    {
-      g_ps_ui_router_request_event =
-        PS_UI_ROUTER_EVENT_PACKAGE_VALID_FOUND;
-      g_ps_ui_router_request = 1UL;
-    }
-    else if ((g_ps_hw6_owner_sm_probe.package_validate_status !=
-              PS_HW6_OWNER_SM_STATUS_NOT_RUN) &&
-             (g_ps_ui_router_request == 0UL))
-    {
-      (void)PS_HW6_RTOS_RequestRuntimeCommand(
-        PS_HW6_RTOS_COMMAND_RUNTIME_INSTALLER_ERROR);
-      g_ps_ui_router_request_event =
-        PS_UI_ROUTER_EVENT_PACKAGE_VALIDATE_ERROR;
-      g_ps_ui_router_request = 1UL;
-    }
-    else
-    {
-      (void)PS_HW6_RTOS_RequestRuntimeCommand(
-        PS_HW6_RTOS_COMMAND_RUNTIME_INSTALLER_COMPLETE);
-      PS_HW6_RTOS_SendCurrentUiRenderCommand();
-    }
+    (void)PS_HW6_RTOS_RequestRuntimeCommand(
+      PS_HW6_RTOS_COMMAND_RUNTIME_INSTALLER_COMPLETE);
+    PS_HW6_RTOS_SendCurrentUiRenderCommand();
   }
   else
   {

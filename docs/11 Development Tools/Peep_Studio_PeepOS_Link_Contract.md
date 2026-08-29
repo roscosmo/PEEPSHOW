@@ -38,6 +38,20 @@ Authority order:
 If the UI disagrees with a service validation result or compatibility report,
 the service result wins.
 
+## Branch And Merge Boundary
+
+Peep Studio branches may freely change desktop UI, Electron integration,
+authoring-service presentation, examples, and authoring documentation. They
+must not change HW6 firmware behavior, generated embedded package C, GDB
+helpers, Platform knobs, or Platform contracts as incidental GUI work.
+
+When a GUI branch needs firmware-visible behavior, the handoff must be explicit:
+update this contract or the relevant package/schema contract first, then let
+the firmware bring-up branch implement and prove the Platform side. Merges into
+`main` must treat firmware files under `firmware/peepshow_hw6_fw0/` as
+firmware-owned unless the merge is only regenerating an agreed artifact from a
+validated authoring example.
+
 ---
 
 ## Current Capability
@@ -52,7 +66,7 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | scene type | STATE |
 | state execution | bounded variables, input routes, guards, actions, and deterministic transitions |
 | package scene flow | direct STATE-to-STATE replacement is implemented and proven on HW6 through service API 8, PKG1 graph V2, and FW0 runtime API 11 |
-| input | service API 19 / PKG1 `STG1` v4 supports A/B/L/R lifecycle bindings (`press`, `release`, `hold`, `repeat`), short START press, eight cardinal/diagonal joystick sources, and per-STATE `four_way` / `eight_way` policy; firmware support is implemented and awaiting the focused HW6 lifecycle proof |
+| input | service API 19 / PKG1 `STG1` v4 supports A/B/L/R lifecycle bindings (`press`, `release`, `hold`, `repeat`), short START press, eight cardinal/diagonal joystick sources, and per-STATE `four_way` / `eight_way` policy; firmware support and HW6 lifecycle diagnostic proof are complete |
 | visuals | package-backed native-scale masked 1bpp sprite frames |
 | retained render model | bounded ordered scene elements with binary alpha and four platform planes |
 | package primitives | retained line, outline rectangle, filled rectangle, circle, and ellipse records are compiled, previewed, loaded, and target-proven; private shell/calibration draw helpers remain unavailable |
@@ -197,9 +211,11 @@ The STATE-first presentation expansion is:
    destination waiting visual's cadence and combined step count. `preserve`
    keeps the shared phase/deadline; `rebase` intentionally starts a new
    presentation epoch. The action changes no unrelated waiting elements;
-6. **Host/package implemented:** one symbolic bounded `play_sfx` STATE action
-   backed by a compiled sampled-audio asset. HW6 loading, `thAudio` decode/DMA
-   playback, completion, and STOP2 return remain the next target milestone.
+6. **Hardware-validated:** one symbolic bounded `play_sfx` STATE action backed
+   by a compiled sampled-audio asset. HW6 loading, `thAudio` decode/DMA
+   playback, completion, and STOP2 return are target-proven. Audio quality,
+   mixing, music streaming from package flash, and full asset policy remain
+   later work.
 
 Visual assets, primitive records, text-derived sprite assets, and audio assets
 are package data. They must never contain display-driver calls, framebuffer
@@ -216,8 +232,6 @@ the editor until this document is updated:
 - Peep Studio controls for the backend-ready retained-element, asset-catalog,
   waiting-timeline, and STATE graph mutation commands;
 - arbitrary desktop fonts, runtime text, and waiting-animation mutation actions;
-- HW6 loading and playback of sampled package audio, including `thAudio`
-  completion and return-to-STOP2 proof;
 - 4-tone and 16-tone fixed dither asset import;
 - maps, tile layers, runtime fonts, rotation, or interpolated scaling;
 - package installation or activation on a connected device;

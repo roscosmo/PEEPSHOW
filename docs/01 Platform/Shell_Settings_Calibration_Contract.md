@@ -144,7 +144,8 @@ deadzone, activation-threshold markers, and current dominant cardinal result.
 A starts a bounded owner-routed save while REVIEW displays `SAVING`; the
 candidate becomes active only after `thStorage` verifies the record body,
 writes the commit marker last, and rescans the protected calibration region.
-A failed save remains on REVIEW with `TRY AGAIN`. B restores the previous
+A successful save exits calibration to HOME. A failed save remains on REVIEW with
+`TRY AGAIN`. B restores the previous
 calibration before a save starts. At boot, normal joystick routing remains
 disabled until the protected records are scanned and applied. Missing,
 conflicting, or invalid records route directly to the button-navigable joystick

@@ -279,7 +279,15 @@ static ps_status_t PS_UIRouter_DispatchButtonA(void)
       }
       return status;
     }
-    return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_PACKAGE_BROWSER);
+    {
+      ps_status_t status = PS_UIRouter_GotoPage(
+        PS_UI_ROUTER_PAGE_PACKAGE_BROWSER);
+      if (status != PS_STATUS_OK)
+      {
+        return status;
+      }
+      return PS_UIRouter_RequestAction(PS_UI_ROUTER_ACTION_MSC_ENTER);
+    }
   }
   if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_CALIBRATION)
   {
@@ -388,6 +396,10 @@ static ps_status_t PS_UIRouter_DispatchButtonB(void)
     }
     PS_UIRouter_SetPackageState(PS_UI_ROUTER_PACKAGE_NONE);
     return PS_STATUS_OK;
+  }
+  if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_PACKAGE_BROWSER)
+  {
+    return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
   }
   return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
 }
@@ -624,9 +636,17 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
         PS_UI_ROUTER_CAL_JOYSTICK_REVIEW);
       break;
     case PS_UI_ROUTER_EVENT_CAL_JOYSTICK_REVIEW_ACCEPT:
-      status = PS_UIRouter_AdvanceJoystickCalibration(
-        PS_UI_ROUTER_CAL_JOYSTICK_REVIEW,
-        PS_UI_ROUTER_CAL_INPUT_ROOT);
+      if ((ps_ui_router_state.current_page ==
+           PS_UI_ROUTER_PAGE_CALIBRATION) &&
+          (ps_ui_router_state.calibration_page ==
+           PS_UI_ROUTER_CAL_JOYSTICK_REVIEW))
+      {
+        status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_HOME);
+      }
+      else
+      {
+        status = PS_STATUS_INVALID_STATE;
+      }
       break;
     case PS_UI_ROUTER_EVENT_PAGE_TRANSITION_END:
       ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_FOCUS;

@@ -24,6 +24,6 @@ printf "UI page/calibration/session input lock = %u / %u / %u / %u\n", g_ps_ui_r
 printf "reasons: NONE=0 ARGUMENT=1 LAYOUT=2 READ=3 UNCOMMITTED=4 FORMAT=5 CRC=6 BOUNDS=7 RESERVED=8 CONFLICT=9\n"
 printf "save stages: IDLE=0 VALIDATE=1 SCAN=2 ERASE=3 PROGRAM=4 VERIFY=5 COMMIT=6 RESCAN=7 COMPLETE=8\n"
 printf "expected erased boot: resolved=1 load/apply status=0 available=0 active valid=0 records reason=4 and UI enters joystick CENTER\n"
-printf "expected first save: display stack bytes=3072; save status=0 stage=8 target=0 generation=1 valid/available=1/1 selected=0; after reset load/apply status=0 and active equals selected\n"
-printf "expected second save: source=0 target=1 generation=2 valid=2 selected=1; input lock and save pending return to zero\n"
+printf "expected first save: display stack bytes=3072; save status=0 stage=8 target=0 generation=1 valid/available=1/1 selected=0; UI returns HOME/CAL_NONE with session/input lock=0/0; after reset load/apply status=0 and active equals selected\n"
+printf "expected second save: source=0 target=1 generation=2 valid=2 selected=1; UI returns HOME/CAL_NONE, input lock and save pending return to zero\n"
 printf "--- end persistent joystick calibration ---\n"

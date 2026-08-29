@@ -6094,7 +6094,6 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(uint32_t force_stag
   ps_status_t storage_status;
   UINT usb_status;
   uint32_t normalized_force_rescan;
-  uint32_t rescan_required;
 
   g_ps_hw6_owner_sm_probe.usb_reclaim_request_count++;
   g_ps_hw6_owner_sm_probe.usb_reclaim_start_tick = (uint32_t)tx_time_get();
@@ -6188,8 +6187,38 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(uint32_t force_stag
     (__HAL_RCC_USB_IS_CLK_ENABLED() != 0U) ? 1UL : 0UL;
   g_ps_hw6_owner_sm_probe.usb_reclaim_vddusb_enabled_after =
     (READ_BIT(PWR->SVMCR, PWR_SVMCR_USV) != 0U) ? 1UL : 0UL;
+  g_ps_hw6_owner_sm_probe.usb_reclaim_parked = 0UL;
+
+  if (status != HAL_OK)
+  {
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_FAULT, status);
+    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
+    PS_HW6_SM_UpdateUsbHostAvailability(
+      (uint32_t)PS_HW6_USB_HOST_EVENT_MSC_RECLAIM);
+  }
+
+  return status;
+}
+
+HAL_StatusTypeDef
+PS_HW6_OwnerStateMachines_FinalizeUsbReclaimAfterClockRelease(
+  uint32_t force_stage_rescan)
+{
+  HAL_StatusTypeDef status = HAL_OK;
+  uint32_t normalized_force_rescan =
+    (force_stage_rescan != 0UL) ? 1UL : 0UL;
+  uint32_t rescan_required;
+
+  g_ps_hw6_owner_sm_probe.usb_reclaim_pcd_state_after =
+    (uint32_t)HAL_PCD_GetState(&hpcd_USB_OTG_FS);
+  g_ps_hw6_owner_sm_probe.usb_reclaim_clock_enabled_after =
+    (__HAL_RCC_USB_IS_CLK_ENABLED() != 0U) ? 1UL : 0UL;
+  g_ps_hw6_owner_sm_probe.usb_reclaim_vddusb_enabled_after =
+    (READ_BIT(PWR->SVMCR, PWR_SVMCR_USV) != 0U) ? 1UL : 0UL;
   g_ps_hw6_owner_sm_probe.usb_reclaim_parked =
-    ((status == HAL_OK) &&
+    ((g_ps_hw6_owner_sm_probe.usb_reclaim_fxlx_close_status ==
+      (uint32_t)PS_STATUS_OK) &&
      (g_ps_hw6_owner_sm_probe.usb_reclaim_clock_enabled_after == 0UL) &&
      (g_ps_hw6_owner_sm_probe.usb_reclaim_vddusb_enabled_after == 0UL)) ?
     1UL : 0UL;
@@ -6206,24 +6235,16 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(uint32_t force_stag
       g_ps_hw6_owner_sm_probe.usb_stage_rescan_start_tick =
         (uint32_t)tx_time_get();
       g_ps_hw6_owner_sm_probe.usb_stage_rescan_pending = 1UL;
+      (void)PS_HW6_SM_RunUsbStageRescanScaffold();
     }
-    status = PS_HW6_SM_RunUsbStageRescanScaffold();
-    if (status == HAL_OK)
-    {
-      (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
-                                STORAGE_EV_USB_RESCAN_OK,
-                                HAL_OK);
-      PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_MSC_RECLAIM_DONE);
-    }
-    else
-    {
-      (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
-                                STORAGE_EV_FAULT, status);
-      PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);
-    }
+    (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
+                              STORAGE_EV_USB_RESCAN_OK,
+                              HAL_OK);
+    PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_MSC_RECLAIM_DONE);
   }
   else
   {
+    status = HAL_ERROR;
     (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
                               STORAGE_EV_FAULT, status);
     PS_HW6_TraceSwoLifecycle(PS_HW6_TRACE_SWO_ERROR);

@@ -19,44 +19,6 @@ static ULONG ps_hw6_usb_device_stop_ok_count;
 static ULONG ps_hw6_usb_device_stop_fail_count;
 static LONG ps_hw6_usb_device_last_error;
 
-static UINT PS_HW6_UsbExport_Clock48Set(uint32_t hsi48_state)
-{
-  RCC_OscInitTypeDef osc = {0};
-  HAL_StatusTypeDef hal_status;
-
-  osc.OscillatorType = RCC_OSCILLATORTYPE_HSI48;
-  osc.HSI48State = hsi48_state;
-  osc.PLL.PLLState = RCC_PLL_NONE;
-
-  hal_status = HAL_RCC_OscConfig(&osc);
-  return (hal_status == HAL_OK) ? TX_SUCCESS : TX_NOT_DONE;
-}
-
-static void PS_HW6_UsbExport_VddUsbSet(UINT enabled)
-{
-  UINT pwr_clock_was_disabled =
-    (__HAL_RCC_PWR_IS_CLK_DISABLED() != 0U) ? 1U : 0U;
-
-  if (pwr_clock_was_disabled != 0U)
-  {
-    __HAL_RCC_PWR_CLK_ENABLE();
-  }
-
-  if (enabled != 0U)
-  {
-    HAL_PWREx_EnableVddUSB();
-  }
-  else
-  {
-    HAL_PWREx_DisableVddUSB();
-  }
-
-  if (pwr_clock_was_disabled != 0U)
-  {
-    __HAL_RCC_PWR_CLK_DISABLE();
-  }
-}
-
 static UINT PS_HW6_UsbExport_DeviceHardwareOff(void)
 {
   HAL_StatusTypeDef hal_status = HAL_OK;
@@ -81,33 +43,19 @@ static UINT PS_HW6_UsbExport_DeviceHardwareOff(void)
   }
   __HAL_RCC_USB_CLK_DISABLE();
 
-  PS_HW6_UsbExport_VddUsbSet(0U);
-  if (PS_HW6_UsbExport_Clock48Set(RCC_HSI48_OFF) != TX_SUCCESS)
-  {
-    had_error = 1U;
-  }
-
   return (had_error == 0U) ? TX_SUCCESS : TX_NOT_DONE;
 }
 
 static UINT PS_HW6_UsbExport_DeviceHardwareOffInactive(void)
 {
-  uint8_t had_error = 0U;
-
   HAL_NVIC_DisableIRQ(OTG_FS_IRQn);
   NVIC_ClearPendingIRQ(OTG_FS_IRQn);
   __HAL_RCC_USB_CLK_DISABLE();
 
-  PS_HW6_UsbExport_VddUsbSet(0U);
-  if (PS_HW6_UsbExport_Clock48Set(RCC_HSI48_OFF) != TX_SUCCESS)
-  {
-    had_error = 1U;
-  }
-
   hpcd_USB_OTG_FS.ErrorCode = 0U;
   hpcd_USB_OTG_FS.State = HAL_PCD_STATE_RESET;
 
-  return (had_error == 0U) ? TX_SUCCESS : TX_NOT_DONE;
+  return TX_SUCCESS;
 }
 
 static UINT PS_HW6_UsbExport_StopDeviceWithGrace(ULONG disconnect_grace_ticks)
@@ -198,13 +146,6 @@ static UINT PS_HW6_UsbExport_DeviceHardwareInit(void)
   {
     return TX_NOT_DONE;
   }
-
-  if (PS_HW6_UsbExport_Clock48Set(RCC_HSI48_ON) != TX_SUCCESS)
-  {
-    return TX_NOT_DONE;
-  }
-
-  PS_HW6_UsbExport_VddUsbSet(1U);
 
   hal_status = HAL_PCD_Init(&hpcd_USB_OTG_FS);
   g_ps_hw6_owner_sm_probe.usb_export_pcd_init_status =

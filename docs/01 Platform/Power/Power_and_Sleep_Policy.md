@@ -157,7 +157,7 @@ Rules:
 Initial precedence for HW6:
 
 1. STOP2, shipment, and forced-sleep preparation win once admitted: owners quiesce, active DMA/bus work drains, USB clock is disabled, and PLL2 is disabled unless a separately validated autonomous scenario owns it.
-2. USB MSC/export or installer ownership requests `USB_DEVICE_ACTIVE`: USB `48 MHz` must be valid, STOP2 is blocked, and the internal policy should select the high I/O operating point instead of using an ad hoc USB-only clock override.
+2. USB MSC/export or installer ownership requests `USB_DEVICE_ACTIVE`: USB `48 MHz` must be valid, STOP2 is blocked, and the internal policy should select the high I/O operating point instead of using an ad hoc USB-only clock override. Runtime release from a USB-owning profile parks the USB device domain with a bounded policy path; full Cube global clock setup is boot/recovery-only, not part of normal USB reclaim.
 3. Storage/package/external-flash work requests `OCTOSPI_ACTIVE`: OCTOSPI kernel clocks stay valid until the transaction is idle, and SYSCLK/PLL changes are forbidden while the bus is active. Physical flash wake/revalidation and deep-power-down commands are storage transactions too; STOP2 resume or quiesce must temporarily acquire `OCTOSPI_ACTIVE` before requesting them and release it only after the storage owner reports completion.
 4. Audio playback requests `SAI_AUDIO_ACTIVE`: SAI kernel clocks remain stable for the sample rate, audio DMA is stopped before sleep, and CPU/SYSCLK policy must not disturb the audio clock.
 5. `SEQUENCE_SCENE` and `PROGRAM_SCENE` work requests `REALTIME_DEADLINE_ACTIVE`: `thPower` selects the lowest measured realtime operating point with frame/audio/sensor/display margin.
