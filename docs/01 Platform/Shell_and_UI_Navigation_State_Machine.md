@@ -46,6 +46,8 @@ Key events:
 Rules:
 - Runtime launch requests are legal only from `SHELL_PACKAGE_BROWSER` or `SHELL_HOME`.
 - Returning from runtime always routes through `SHELL_RUNTIME_HANDOFF` before `SHELL_HOME`.
+- While a STATE package is active, `B` is offered to the package graph first. An
+  unhandled `B` press is the PeepOS fallback for returning from runtime.
 
 ---
 
@@ -138,7 +140,7 @@ adds target validation that HOME dispatch and a helper-queued `NAV_MENU`
 transaction both requested and released UI reactive clock intent through
 `thPower`, then settled with requester cap `UI=0x0` and `STOP2 ready=1`.
 
-This is an FW0 shell scaffold, not the final renderer or final menu system. The menu's USB MSC entry first routes into the package/MSC context, then requests the normal MSC enter service through `thUI` -> `thStorage`. The package page is currently a temporary package-status scaffold: A requests install/launch when a validated or installed package prompt is active, and B requests MSC exit while an export is active. Package-page MSC reclaim asks `thStorage` to force a staging scan so an existing `.egg` can be recognized even when the bridge dirty flag is false. Valid package, install-stub, and error prompts return to MENU on B after clearing the prompt; successful install-stub completion also returns to MENU. This is a caller of the storage service, not a second USB ownership path. FW0 runtime evidence `EV-HW6-20260813-P1-RUNTIME-044` records this package-transfer flow as an `INSTALLER` runtime overlay that returns to `SHELL`; it is not final package launch or final installer UI.
+This is an FW0 shell scaffold, not the final renderer or final menu system. The PACKAGE menu currently has two explicit items: `USB FLASH` and `PACKAGE INSTALL`. `USB FLASH` requests the normal MSC enter/exit service through `thUI` -> `thStorage`; when MSC exits, the user returns to the PACKAGE menu. `PACKAGE INSTALL` explicitly asks `thStorage` to scan the reclaimed staging volume. A on a valid package prompt installs the staged `.egg` into the persistent A/B store. A on an installed prompt launches the installed STATE scene. Reclaim itself must not scan, install, launch, or prompt just because files were copied. This is a caller of the storage service, not a second USB ownership path. FW0 runtime evidence `EV-HW6-20260813-P1-RUNTIME-044` records the earlier package-transfer flow as an `INSTALLER` runtime overlay that returns to `SHELL`; product behavior now keeps MSC transport, package scan, package install, and package launch as separate user decisions.
 The temporary HOME list is replaced during joystick bring-up by a 3x3 direction
 diagnostic. Its filled cell shows neutral or the canonical eight-way candidate;
 an outer marker independently shows the four-way shell resolution. A still

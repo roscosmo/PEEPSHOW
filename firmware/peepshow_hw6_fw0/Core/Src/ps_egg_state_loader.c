@@ -1676,7 +1676,7 @@ static uint32_t PS_EggBuildBinding(
       focus_count++;
     }
   }
-  if (focus_count != 1UL)
+  if (focus_count > 1UL)
   {
     return 0UL;
   }
@@ -1692,7 +1692,6 @@ static uint32_t PS_EggBuildBinding(
       (PS_EggU16(&wait_record[6]) > PS_SCENE_WAITING_VISUAL_SEQUENCE_MAX) ||
       (PS_EggU16(&wait_record[8]) >= PS_EggU16(&wait_record[6])) ||
       (PS_EggU16(&wait_record[10]) != 1U) ||
-      (wait_element_count == 0U) ||
       (wait_element_count > PS_SCENE_WAITING_VISUAL_ELEMENT_MAX) ||
       ((uint32_t)first_wait_element + wait_element_count >
        waiting->element_count))

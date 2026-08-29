@@ -298,6 +298,11 @@ timeline. Backend prepare, commit, wake, and abort must not restart the
 animation. On wake, the display owner and Engine reconcile elapsed time and
 resume the correct phase with the remaining interval.
 
+A retained `STATE_SCENE` does not require a focus element or an animated waiting
+element. When the selected state has no waiting elements, `thDisplay` keeps the
+committed static framebuffer and publishes no LPBAM waiting program. This is a
+valid held-frame STOP2 case, not a render or package-admission failure.
+
 FW0 now has a backend selector for display waiting. `HELD_FRAME` is the default baseline STOP2 backend: a completed successful current-page render may be held through STOP2 without arming LPBAM. If an awake renderer animation is active, `thPower` must suppress that animation and request a bounded cursor-visible handoff from `thDisplay` before STOP2 entry so the held panel image is deterministic. `LPBAM` is the autonomous backend: normal display actions clear `display_lpbam_ready`, and `thPower` asks `thDisplay` for an LPBAM prepare handoff before automatic STOP2 admission may treat LPBAM as ready. `thDisplay` may satisfy STOP2 LPBAM validation only when it later reports a ready page, ready render count, and `HAL_OK` LPBAM status that still match the current UI state. The first real HW6 path now prepares and starts a debug/test cursor-slice LPBAM payload; `UNAVAILABLE` remains the correct result when no validated LPBAM slice exists for the current renderer state or target profile. If entry is abandoned after a successful prepare, `thPower` must send the display abort handoff so normal display ownership is reclaimed. FW0 target evidence validates both the older forced-ready abort shape and the real cursor-slice start/STOP2/wake/abort path.
 
 If the preferred waiting visual does not fit the measured target budget, the display owner/compiler uses the package-declared reduced visual or hold fallback. Compilation failure must not silently convert a reactive wait into an awake polling loop.

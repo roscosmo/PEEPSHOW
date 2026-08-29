@@ -131,13 +131,18 @@ the old slot or old index is deferred until a later replacement needs that
 inactive location.
 
 The HW6 FW0 USB vertical slice now exercises this physical replacement path
-end to end. After firmware reclaims the MSC staging volume, `thStorage` copies
-the one accepted `.egg` into bounded RAM, writes and verifies the inactive
-package slot, commits the inactive index record last, parks flash, publishes
-the selected generation as installed runtime RAM, and requests immediate STATE
-scene activation. The package browser changes from `INSTALLING` to `INSTALLED`
-only after runtime activation succeeds; failure returns it to an explicit error
-state so STOP2 is not permanently vetoed.
+end to end. MSC reclaim is transport-only: it closes the host-exported
+filesystem path and parks ownership without automatically installing,
+launching, or publishing package prompts. The PACKAGE menu separates `USB
+FLASH` from `PACKAGE INSTALL`; only the package-install path explicitly asks
+`thStorage` to scan the reclaimed staging volume. A valid single `.egg` then
+enables an explicit install action that copies the package into
+bounded RAM, writes and verifies the inactive package slot, commits the inactive
+index record last, parks flash, and publishes the selected generation as
+installed runtime RAM. The package browser changes from `INSTALLING` to
+`INSTALLED` after the persistent install succeeds. A separate explicit launch
+action activates the installed STATE scene; failure returns the browser to an
+explicit error state so STOP2 is not permanently vetoed.
 
 The current bring-up admission check before persistent commit is still narrower
 than the production rule in step 4: it checks the bounded `PKG1` envelope and
@@ -270,8 +275,9 @@ USB export rules:
 - MSC UI is an overlay: successful reclaim restores the UI page/state underneath the MSC cue; error and recovery states may remain on the MSC overlay until handled.
 - FW0 reclaim may run a bounded staging/export root-directory classifier for diagnostics: it opens FileX/LevelX only under `thStorage`, classifies the reclaimed volume as `EMPTY`, `UNSUPPORTED`, `PACKAGE_CANDIDATE`, `MULTIPLE`, or `ERROR`, closes FileX/LevelX before returning, and performs no package import or install writes. This classifier must not decide whether MSC reclaim itself succeeded; safe USB teardown/parking is the transport completion condition. Directories are counted for diagnostics but do not make a single package file unsupported, because host operating systems may create metadata directories. `PACKAGE_CANDIDATE` is a filename-level hint only for exactly one `.egg` file, not an automatic install prompt.
 - FW0 runs a read-only minimum package-envelope validator for one clean package candidate. This validator reopens the staging/export volume under `thStorage`, opens the package file for read, reads at most the first 64 bytes, requires the first four bytes to be `PKG1`, records the first 16 bytes and FileX/LevelX statuses for GDB evidence, and closes FileX/LevelX before returning. This is prompt admission only; it is not complete package validation.
-- Pressing `A` asks `thStorage` to reopen the single staged `.egg`, reject files outside the current fixed `65536`-byte runtime-cache capacity, read the complete file, verify the bounded envelope and declared size, and close FileX/LevelX. The accepted image is then written and byte-verified in the inactive A/B raw package slot, followed by the inactive index body and commit marker last.
-- After commit, `thStorage` publishes the selected generation through `INSTALLED_RAM` and queues immediate activation. `thRuntime` performs SHA-256, header CRC, chunk CRC, graph/render/waiting-schema validation, and STATE activation before the browser reports `INSTALLED`.
+- Selecting `PACKAGE INSTALL` from the PACKAGE menu asks `thStorage` to scan the reclaimed staging volume. This is the first point where product UI decides whether copied files should be considered for package install.
+- Pressing `A` on a valid package prompt asks `thStorage` to reopen the single staged `.egg`, reject files outside the current fixed `65536`-byte runtime-cache capacity, read the complete file, verify the bounded envelope and declared size, and close FileX/LevelX. The accepted image is then written and byte-verified in the inactive A/B raw package slot, followed by the inactive index body and commit marker last.
+- After commit, `thStorage` publishes the selected generation through `INSTALLED_RAM` and reports `INSTALLED` to the package browser. Pressing `A` on the installed prompt then asks `thRuntime` to perform SHA-256, header CRC, chunk CRC, graph/render/waiting-schema validation, and STATE activation. Install and launch are separate user actions.
 - Runtime never reads FAT/FileX. A package must be exited before installer admission replaces the shared runtime cache. The persistent A/B write/index/select/launch path is implemented and target-proven; full validation before commit, reset injection at every install stage, automatic boot activation, uninstall, last-known-good fallback policy, and package quarantine remain open.
 - HW6 evidence `EV-HW6-20260813-P1-PKGMSC-043` validates the earlier package-page force-rescan path that auto-prompted after reclaim. That behavior is now classified as bring-up scaffolding only; product MSC remains transport-only, and package selection/install belongs to the package browser. HW6 evidence `EV-HW6-20260813-P1-RUNTIME-044` validates the runtime-host installer overlay around that earlier scaffold; it does not define final package-browser UX.
 - if MSC export detects an unformatted or invalid LevelX/FileX staging volume, it reports recovery-required state and leaves formatting to the explicit provisioning command

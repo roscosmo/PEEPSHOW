@@ -146,6 +146,11 @@ mode, and does not emit the package action. Continued hold remains the
 system-owned shipping gesture. `CONTINUOUS` manual inactivity always preserves
 the current scene, so it does not require an authored inactive route.
 
+While a STATE package is active, a `BUTTON_B` press is routed through the
+package graph before PeepOS applies shell fallback behavior. A handled `B` route
+may therefore return from a child scene to the package's own menu. An unhandled
+`B` press returns from the package runtime to PeepOS HOME.
+
 The compiler emits this policy in PKG1 `STG1` format version 3. Peep Studio may
 edit the normalized source fields now; it must not invent desktop-only timeout
 or wake behavior that the package cannot encode.
@@ -382,6 +387,14 @@ because an object is named `cursor`, named `marker`, or has `focus_role: focus`.
 If a future prefab or generated system needs protected internals, that
 protection must come from typed service-owned ownership/slot metadata, not
 renderer-side ID policy.
+
+A `STATE_SCENE` render model may contain zero or one focus element. Its waiting
+visual may contain zero animated elements. A focusless, static STATE remains a
+valid retained scene: PeepOS presents its committed framebuffer, publishes no
+LPBAM waiting program, and may enter STOP2 using held-frame behavior. Peep
+Studio may warn that a fully static scene can appear unresponsive, but it must
+not reject the scene or synthesize a cursor or animation solely to satisfy the
+runtime.
 
 Logic-controlled visuals, such as a menu cursor moved by state routes, must be
 shown as normal placement objects with clear badges and navigation back to the

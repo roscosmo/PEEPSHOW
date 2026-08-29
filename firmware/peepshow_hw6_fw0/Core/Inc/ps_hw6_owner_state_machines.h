@@ -1221,6 +1221,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReclaimUsbExport(
 HAL_StatusTypeDef
 PS_HW6_OwnerStateMachines_FinalizeUsbReclaimAfterClockRelease(
   uint32_t force_stage_rescan);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ScanUsbStagingPackage(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void);
 HAL_StatusTypeDef
 PS_HW6_OwnerStateMachines_RunEmbeddedPersistentPackageInstall(void);

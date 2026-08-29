@@ -602,6 +602,7 @@ typedef struct
   uint32_t ui_action_msc_enter_count;
   uint32_t ui_action_msc_exit_count;
   uint32_t ui_action_msc_exit_intercept_count;
+  uint32_t ui_action_package_scan_count;
   uint32_t ui_action_package_install_stub_count;
   uint32_t package_install_runtime_complete_send_status;
   uint32_t package_install_runtime_launch_send_status;

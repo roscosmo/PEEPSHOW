@@ -280,13 +280,7 @@ static ps_status_t PS_UIRouter_DispatchButtonA(void)
       return status;
     }
     {
-      ps_status_t status = PS_UIRouter_GotoPage(
-        PS_UI_ROUTER_PAGE_PACKAGE_BROWSER);
-      if (status != PS_STATUS_OK)
-      {
-        return status;
-      }
-      return PS_UIRouter_RequestAction(PS_UI_ROUTER_ACTION_MSC_ENTER);
+      return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_PACKAGE_BROWSER);
     }
   }
   if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_CALIBRATION)
@@ -347,6 +341,24 @@ static ps_status_t PS_UIRouter_DispatchButtonA(void)
   }
   if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_PACKAGE_BROWSER)
   {
+    if (ps_ui_router_state.package_state == PS_UI_ROUTER_PACKAGE_NONE)
+    {
+      if (ps_ui_router_state.focus_index == 0UL)
+      {
+        return PS_UIRouter_RequestAction(PS_UI_ROUTER_ACTION_MSC_ENTER);
+      }
+      if (ps_ui_router_state.focus_index == 1UL)
+      {
+        ps_status_t status = PS_UIRouter_RequestAction(
+          PS_UI_ROUTER_ACTION_PACKAGE_SCAN);
+        if (status == PS_STATUS_OK)
+        {
+          PS_UIRouter_SetPackageState(PS_UI_ROUTER_PACKAGE_CANDIDATE);
+        }
+        return status;
+      }
+      return PS_STATUS_INVALID_STATE;
+    }
     if (ps_ui_router_state.package_state == PS_UI_ROUTER_PACKAGE_INSTALLED)
     {
       return PS_UIRouter_RequestAction(
@@ -366,7 +378,7 @@ static ps_status_t PS_UIRouter_DispatchButtonA(void)
     {
       return PS_STATUS_BUSY;
     }
-    return PS_UIRouter_RequestAction(PS_UI_ROUTER_ACTION_MSC_ENTER);
+    return PS_STATUS_INVALID_STATE;
   }
   return PS_STATUS_INVALID_STATE;
 }
@@ -392,7 +404,7 @@ static ps_status_t PS_UIRouter_DispatchButtonB(void)
         (ps_ui_router_state.package_state == PS_UI_ROUTER_PACKAGE_ERROR))
     {
       PS_UIRouter_SetPackageState(PS_UI_ROUTER_PACKAGE_NONE);
-      return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
+      return PS_STATUS_OK;
     }
     PS_UIRouter_SetPackageState(PS_UI_ROUTER_PACKAGE_NONE);
     return PS_STATUS_OK;
@@ -407,13 +419,23 @@ static ps_status_t PS_UIRouter_DispatchButtonB(void)
 static ps_status_t PS_UIRouter_DispatchButtonL(void)
 {
   if ((ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_HOME) &&
-      (ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_MENU))
+      (ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_MENU) &&
+      ((ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_PACKAGE_BROWSER) ||
+       (ps_ui_router_state.package_state != PS_UI_ROUTER_PACKAGE_NONE)))
   {
     return PS_STATUS_INVALID_STATE;
   }
-  ps_ui_router_state.focus_index =
-    (ps_ui_router_state.focus_index == 0UL) ? 2UL :
-    (ps_ui_router_state.focus_index - 1UL);
+  if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_PACKAGE_BROWSER)
+  {
+    ps_ui_router_state.focus_index =
+      (ps_ui_router_state.focus_index == 0UL) ? 1UL : 0UL;
+  }
+  else
+  {
+    ps_ui_router_state.focus_index =
+      (ps_ui_router_state.focus_index == 0UL) ? 2UL :
+      (ps_ui_router_state.focus_index - 1UL);
+  }
   ps_ui_router_state.transition_count++;
   return PS_STATUS_OK;
 }
@@ -421,13 +443,23 @@ static ps_status_t PS_UIRouter_DispatchButtonL(void)
 static ps_status_t PS_UIRouter_DispatchButtonR(void)
 {
   if ((ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_HOME) &&
-      (ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_MENU))
+      (ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_MENU) &&
+      ((ps_ui_router_state.current_page != PS_UI_ROUTER_PAGE_PACKAGE_BROWSER) ||
+       (ps_ui_router_state.package_state != PS_UI_ROUTER_PACKAGE_NONE)))
   {
     return PS_STATUS_INVALID_STATE;
   }
-  ps_ui_router_state.focus_index =
-    (ps_ui_router_state.focus_index >= 2UL) ? 0UL :
-    (ps_ui_router_state.focus_index + 1UL);
+  if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_PACKAGE_BROWSER)
+  {
+    ps_ui_router_state.focus_index =
+      (ps_ui_router_state.focus_index == 0UL) ? 1UL : 0UL;
+  }
+  else
+  {
+    ps_ui_router_state.focus_index =
+      (ps_ui_router_state.focus_index >= 2UL) ? 0UL :
+      (ps_ui_router_state.focus_index + 1UL);
+  }
   ps_ui_router_state.transition_count++;
   return PS_STATUS_OK;
 }

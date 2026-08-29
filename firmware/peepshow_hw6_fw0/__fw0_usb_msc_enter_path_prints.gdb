@@ -1,7 +1,7 @@
 set pagination off
 
 printf "\n--- HW6 USB MSC enter path ---\n"
-printf "Use while halted after selecting USB MSC from MENU or pressing A on the package browser when MSC did not enumerate. Read-only; do not reset first.\n"
+printf "Use while halted after opening PACKAGES, selecting USB FLASH, pressing B to exit MSC, or selecting PACKAGE INSTALL to scan staging. Read-only; do not reset first.\n"
 
 printf "\nUI router:\n"
 printf "page previous/requested/package = %u / %u / %u / %u\n", g_ps_ui_router_probe.current_page, g_ps_ui_router_probe.previous_page, g_ps_ui_router_probe.requested_page, g_ps_ui_router_probe.package_state
@@ -10,7 +10,7 @@ printf "button event/count/last focus = %u / %u / %u / %u\n", g_ps_ui_router_pro
 printf "router status/rejected/taken/transitions = 0x%x / %u / %u / %u\n", g_ps_ui_router_probe.last_status, g_ps_ui_router_probe.rejected_event_count, g_ps_ui_router_probe.action_take_count, g_ps_ui_router_probe.transition_count
 
 printf "\nRTOS UI action dispatch:\n"
-printf "ui action last/count/status msc enter/exit = %u / %u / 0x%x / %u / %u\n", g_ps_hw6_rtos_probe.ui_action_last, g_ps_hw6_rtos_probe.ui_action_count, g_ps_hw6_rtos_probe.ui_action_send_status, g_ps_hw6_rtos_probe.ui_action_msc_enter_count, g_ps_hw6_rtos_probe.ui_action_msc_exit_count
+printf "ui action last/count/status msc enter/exit scan = %u / %u / 0x%x / %u / %u / %u\n", g_ps_hw6_rtos_probe.ui_action_last, g_ps_hw6_rtos_probe.ui_action_count, g_ps_hw6_rtos_probe.ui_action_send_status, g_ps_hw6_rtos_probe.ui_action_msc_enter_count, g_ps_hw6_rtos_probe.ui_action_msc_exit_count, g_ps_hw6_rtos_probe.ui_action_package_scan_count
 printf "msc exit intercept count = %u\n", g_ps_hw6_rtos_probe.ui_action_msc_exit_intercept_count
 printf "admission action/result/reason/status = %u / %u / %u / 0x%x\n", g_ps_hw6_rtos_probe.admission_last_action, g_ps_hw6_rtos_probe.admission_last_result, g_ps_hw6_rtos_probe.admission_last_reason, g_ps_hw6_rtos_probe.admission_last_status
 printf "admission runtime class/lifecycle ui page/package/shutdown/overlay = %u / %u / %u / %u / %u / %u\n", g_ps_hw6_rtos_probe.admission_last_runtime_class, g_ps_hw6_rtos_probe.admission_last_runtime_lifecycle, g_ps_hw6_rtos_probe.admission_last_ui_page, g_ps_hw6_rtos_probe.admission_last_package_state, g_ps_hw6_rtos_probe.admission_last_shutdown_state, g_ps_hw6_rtos_probe.admission_last_overlay_active
@@ -24,8 +24,10 @@ printf "fxlx msc api/status/stage/active open/close = %u / 0x%x / %u / %u / %u /
 printf "\nUSB availability:\n"
 printf "state/event/update/tick ext/data/avail/active = %u / %u / %u / %u / %u / %u / %u / %u\n", g_ps_hw6_owner_sm_probe.usb_host_availability_state, g_ps_hw6_owner_sm_probe.usb_host_availability_event, g_ps_hw6_owner_sm_probe.usb_host_availability_update_count, g_ps_hw6_owner_sm_probe.usb_host_availability_tick, g_ps_hw6_owner_sm_probe.usb_host_external_power_present, g_ps_hw6_owner_sm_probe.usb_host_data_seen, g_ps_hw6_owner_sm_probe.usb_host_msc_available, g_ps_hw6_owner_sm_probe.usb_host_msc_active
 
-printf "\nexpected after selecting USB MSC from MENU or pressing A on package browser: page=PACKAGE_BROWSER, button last=17, action MSC_ENTER=1, ui action msc enter increments, admission status=0, usb export request becomes nonzero, and export policy/dcd/init/start leave 0xffffffff once storage runs.\n"
+printf "\nexpected after opening PACKAGES from MENU: page=PACKAGE_BROWSER, package=0, and no MSC action until USB FLASH is selected.\n"
+printf "expected after selecting USB FLASH: action MSC_ENTER=1, ui action msc enter increments, admission status=0, usb export request becomes nonzero, and export policy/dcd/init/start leave 0xffffffff once storage runs.\n"
 printf "expected after pressing B while MSC is active: action MSC_EXIT=2, ui action msc exit increments, reclaim request becomes nonzero.\n"
-printf "actions: NONE=0 MSC_ENTER=1 MSC_EXIT=2 PACKAGE_INSTALL=3 PACKAGE_LAUNCH=4\n"
+printf "expected after selecting PACKAGE INSTALL from PACKAGES: action PACKAGE_SCAN=3, scan count increments, and package state becomes VALID if exactly one valid .egg is present.\n"
+printf "actions: NONE=0 MSC_ENTER=1 MSC_EXIT=2 PACKAGE_SCAN=3 PACKAGE_INSTALL=4 PACKAGE_LAUNCH=5\n"
 printf "admission results: DENY=0 ALLOW=1 ALLOW_AFTER_SUSPEND=2; reasons include UI_SHELL=1 SYSTEM_BUSY=2 RUNTIME_SUSPENDED=3 SEND_FAILED=4 UNSUPPORTED=5\n"
 printf "--- end USB MSC enter path ---\n"

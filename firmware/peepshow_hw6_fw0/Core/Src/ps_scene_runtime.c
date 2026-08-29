@@ -263,7 +263,6 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
         (binding->waiting_visual.sequence_step_count == 0UL) ||
         (binding->waiting_visual.sequence_step_count >
          PS_SCENE_WAITING_VISUAL_SEQUENCE_MAX) ||
-        (binding->waiting_visual.element_count == 0UL) ||
         (binding->waiting_visual.element_count >
          PS_SCENE_WAITING_VISUAL_ELEMENT_MAX))
     {
@@ -300,7 +299,7 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
         }
       }
     }
-    if (focus_count != 1UL)
+    if (focus_count > 1UL)
     {
       return 1UL;
     }

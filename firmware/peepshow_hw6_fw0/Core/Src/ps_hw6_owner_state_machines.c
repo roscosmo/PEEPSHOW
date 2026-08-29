@@ -6206,9 +6206,8 @@ PS_HW6_OwnerStateMachines_FinalizeUsbReclaimAfterClockRelease(
   uint32_t force_stage_rescan)
 {
   HAL_StatusTypeDef status = HAL_OK;
-  uint32_t normalized_force_rescan =
-    (force_stage_rescan != 0UL) ? 1UL : 0UL;
-  uint32_t rescan_required;
+
+  (void)force_stage_rescan;
 
   g_ps_hw6_owner_sm_probe.usb_reclaim_pcd_state_after =
     (uint32_t)HAL_PCD_GetState(&hpcd_USB_OTG_FS);
@@ -6226,17 +6225,8 @@ PS_HW6_OwnerStateMachines_FinalizeUsbReclaimAfterClockRelease(
   if (g_ps_hw6_owner_sm_probe.usb_reclaim_parked != 0UL)
   {
     g_ps_hw6_owner_sm_probe.usb_parked = 1UL;
-    rescan_required =
-      ((g_ps_hw6_owner_sm_probe.usb_reclaim_dirty_seen != 0UL) ||
-       (normalized_force_rescan != 0UL)) ? 1UL : 0UL;
-    if (rescan_required != 0UL)
-    {
-      g_ps_hw6_owner_sm_probe.usb_stage_rescan_request_count++;
-      g_ps_hw6_owner_sm_probe.usb_stage_rescan_start_tick =
-        (uint32_t)tx_time_get();
-      g_ps_hw6_owner_sm_probe.usb_stage_rescan_pending = 1UL;
-      (void)PS_HW6_SM_RunUsbStageRescanScaffold();
-    }
+    g_ps_hw6_owner_sm_probe.usb_stage_rescan_pending = 0UL;
+    g_ps_hw6_owner_sm_probe.package_candidate_pending = 0UL;
     (void)PS_HW6_SM_Transition(PS_HW6_SM_STORAGE,
                               STORAGE_EV_USB_RESCAN_OK,
                               HAL_OK);
@@ -6256,6 +6246,58 @@ PS_HW6_OwnerStateMachines_FinalizeUsbReclaimAfterClockRelease(
   return (g_ps_hw6_owner_sm_probe.usb_reclaim_parked != 0UL) ?
          HAL_OK : status;
 }
+
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ScanUsbStagingPackage(void)
+{
+  HAL_StatusTypeDef prepare_status = HAL_ERROR;
+  HAL_StatusTypeDef scan_status = HAL_ERROR;
+  HAL_StatusTypeDef park_status = HAL_ERROR;
+
+  g_ps_hw6_owner_sm_probe.usb_stage_rescan_request_count++;
+  g_ps_hw6_owner_sm_probe.usb_stage_rescan_start_tick =
+    (uint32_t)tx_time_get();
+  g_ps_hw6_owner_sm_probe.usb_stage_rescan_dirty_seen =
+    g_ps_storage_msc_bridge_probe.dirty;
+  g_ps_hw6_owner_sm_probe.usb_stage_rescan_forced = 1UL;
+  g_ps_hw6_owner_sm_probe.usb_stage_rescan_pending = 1UL;
+
+  if (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] !=
+      (uint32_t)STORAGE_FLASH_READY)
+  {
+    prepare_status = PS_HW6_SM_PrepareStorageForFlashReady(0UL);
+  }
+  else
+  {
+    prepare_status = HAL_OK;
+  }
+
+  if ((prepare_status == HAL_OK) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+       (uint32_t)FLASH_DEEP_POWER_DOWN))
+  {
+    prepare_status = PS_HW6_SM_ResumeStorage(
+      PS_HW6_OWNER_SM_CYCLE_COUNT);
+  }
+
+  if ((prepare_status == HAL_OK) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] ==
+       (uint32_t)STORAGE_FLASH_READY) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+       (uint32_t)FLASH_READY))
+  {
+    scan_status = PS_HW6_SM_RunUsbStageRescanScaffold();
+    park_status = PS_HW6_SM_QuiesceStorage(
+      PS_HW6_OWNER_SM_CYCLE_COUNT);
+  }
+  else
+  {
+    g_ps_hw6_owner_sm_probe.usb_stage_rescan_pending = 0UL;
+  }
+
+  return ((scan_status == HAL_OK) && (park_status == HAL_OK)) ?
+         HAL_OK : HAL_ERROR;
+}
+
 static HAL_StatusTypeDef PS_HW6_SM_ParkUsb(void)
 {
   HAL_StatusTypeDef status;

@@ -2195,7 +2195,7 @@ static uint32_t DisplayRenderer_ValidateSceneModel(
       }
     }
   }
-  return (focus_count == 1UL) ? 1UL : 0UL;
+  return (focus_count <= 1UL) ? 1UL : 0UL;
 }
 
 static uint32_t DisplayRenderer_DrawSceneElement(
@@ -2576,10 +2576,19 @@ static void DisplayRenderer_UIList(uint32_t page,
       list->rows[2] = "B BACK";
       break;
     case PS_UI_ROUTER_PAGE_PACKAGE_BROWSER:
-      if (focus_index == PS_UI_ROUTER_PACKAGE_CANDIDATE)
+      if (focus_index >= PS_UI_ROUTER_PACKAGE_MENU_FOCUS_BASE)
+      {
+        uint32_t package_focus =
+          focus_index - PS_UI_ROUTER_PACKAGE_MENU_FOCUS_BASE;
+        list->title = "PACKAGES";
+        list->rows[0] = "USB FLASH";
+        list->rows[1] = "PACKAGE INSTALL";
+        list->selected_row = (package_focus >= 2UL) ? 0UL : package_focus;
+      }
+      else if (focus_index == PS_UI_ROUTER_PACKAGE_CANDIDATE)
       {
         list->title = "PACKAGE";
-        list->rows[0] = "FOUND";
+        list->rows[0] = "SCANNING";
         list->rows[1] = "WAIT";
       }
       else if (focus_index == PS_UI_ROUTER_PACKAGE_VALID)
@@ -2608,9 +2617,10 @@ static void DisplayRenderer_UIList(uint32_t page,
       }
       else
       {
-        list->title = "USB";
-        list->rows[0] = "TRANSFER";
-        list->rows[1] = "START A";
+        list->title = "PACKAGES";
+        list->rows[0] = "USB FLASH";
+        list->rows[1] = "PACKAGE INSTALL";
+        list->selected_row = 0UL;
       }
       list->rows[2] = "B BACK";
       break;

@@ -506,6 +506,25 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertEqual("example.menu_selection", loaded["summary"]["project_id"])
         self.assertEqual("Menu Selection Demo", loaded["summary"]["project_name"])
 
+        package = parse_egg(build_egg(load_project(PUBLIC_EXAMPLE)))
+        scenes = {scene["scene_id"]: scene for scene in package.scenes}
+        for scene_id in ("credits", "settings", "start_game"):
+            scene = scenes[scene_id]
+            self.assertTrue(
+                all(
+                    not any(element["focus_role"] for element in model["elements"])
+                    for model in scene["render_models"]
+                )
+            )
+            self.assertTrue(all(not visual["elements"] for visual in scene["waiting_visuals"]))
+        self.assertTrue(
+            all(
+                sum(element["focus_role"] for element in model["elements"]) == 1
+                for model in scenes["main_menu"]["render_models"]
+            )
+        )
+        self.assertTrue(any(visual["elements"] for visual in scenes["main_menu"]["waiting_visuals"]))
+
         reset = service.handle(
             request(
                 "project.preview_reset",
