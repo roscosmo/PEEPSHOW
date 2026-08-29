@@ -147,9 +147,9 @@ system-owned shipping gesture. `CONTINUOUS` manual inactivity always preserves
 the current scene, so it does not require an authored inactive route.
 
 While a STATE package is active, a `BUTTON_B` press is routed through the
-package graph before PeepOS applies shell fallback behavior. A handled `B` route
-may therefore return from a child scene to the package's own menu. An unhandled
-`B` press returns from the package runtime to PeepOS HOME.
+package graph. A handled `B` route may therefore return from a child scene to
+the package's own menu. An unhandled `B` press remains ignored and does not exit
+the package runtime.
 
 The compiler emits this policy in PKG1 `STG1` format version 3. Peep Studio may
 edit the normalized source fields now; it must not invent desktop-only timeout

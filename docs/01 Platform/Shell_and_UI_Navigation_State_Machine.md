@@ -46,8 +46,8 @@ Key events:
 Rules:
 - Runtime launch requests are legal only from `SHELL_PACKAGE_BROWSER` or `SHELL_HOME`.
 - Returning from runtime always routes through `SHELL_RUNTIME_HANDOFF` before `SHELL_HOME`.
-- While a STATE package is active, `B` is offered to the package graph first. An
-  unhandled `B` press is the PeepOS fallback for returning from runtime.
+- While a STATE package is active, `B` belongs to the package graph. An
+  unhandled `B` press remains ignored; it does not implicitly exit runtime.
 
 ---
 

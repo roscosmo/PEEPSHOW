@@ -1801,12 +1801,6 @@ static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
     {
       status = TX_CALLER_ERROR;
     }
-    else if ((event == (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS) &&
-             (button_id == (uint32_t)PS_INPUT_BUTTON_ID_B))
-    {
-      status = PS_HW6_RTOS_RequestRuntimeCommand(
-        PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_RETURN);
-    }
   }
 
   g_ps_hw6_rtos_probe.runtime_input_event_count++;
