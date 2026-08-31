@@ -725,6 +725,10 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
            PS_UI_ROUTER_SHUTDOWN_MSC_RECOVERY))
       {
         status = PS_UIRouter_CancelShutdown();
+        if (status == PS_STATUS_OK)
+        {
+          ps_ui_router_state.shutdown_state = PS_UI_ROUTER_SHUTDOWN_NONE;
+        }
       }
       else
       {

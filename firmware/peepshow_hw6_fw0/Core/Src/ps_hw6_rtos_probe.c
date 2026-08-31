@@ -367,6 +367,9 @@ static uint32_t ps_display_waiting_sequence_count;
 static volatile uint32_t ps_audio_sfx_pending;
 static uint32_t ps_display_blink_stop2_suppressed;
 static volatile uint32_t ps_display_blink_transfer_active;
+static volatile uint32_t ps_display_clock_wait_active;
+static volatile uint32_t ps_display_power_barrier_active;
+static uint32_t ps_display_power_barrier_drop_clock_request;
 static uint32_t ps_stop2_lpbam_edge_request_pending;
 static uint32_t ps_stop2_lpbam_edge_rearm_needed;
 static uint32_t ps_stop2_lpbam_edge_target_tick;
@@ -1008,6 +1011,9 @@ static void PS_HW6_RTOS_ResetProbe(void)
   ps_display_waiting_sequence_count = 0UL;
   ps_audio_sfx_pending = 0UL;
   ps_display_blink_stop2_suppressed = 0UL;
+  ps_display_clock_wait_active = 0UL;
+  ps_display_power_barrier_active = 0UL;
+  ps_display_power_barrier_drop_clock_request = 0UL;
   ps_stop2_lpbam_edge_request_pending = 0UL;
   ps_stop2_lpbam_edge_rearm_needed = 0UL;
   ps_stop2_lpbam_edge_target_tick = 0UL;
@@ -2059,6 +2065,23 @@ static UINT PS_HW6_RTOS_SendCommand(uint32_t owner_id,
   return tx_queue_send(&ps_queues[owner_id], message, TX_NO_WAIT);
 }
 
+static UINT PS_HW6_RTOS_SendCommandFront(uint32_t owner_id,
+                                          ULONG command)
+{
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+
+  if (owner_id >= PS_HW6_RTOS_QUEUE_COUNT)
+  {
+    return TX_QUEUE_ERROR;
+  }
+
+  message[0] = PS_HW6_RTOS_COMMAND_MAGIC;
+  message[1] = (ULONG)owner_id;
+  message[2] = command;
+  message[3] = PS_HW6_RTOS_COMMAND_TOKEN;
+  return tx_queue_front_send(&ps_queues[owner_id], message, TX_NO_WAIT);
+}
+
 static UINT PS_HW6_RTOS_SendCycleCommand(uint32_t owner_id,
                                           ULONG command,
                                           uint32_t cycle_index)
@@ -2694,12 +2717,22 @@ static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t requester_id,
     return TX_QUEUE_ERROR;
   }
 
+  if ((requester_id == PS_HW6_RTOS_OWNER_DISPLAY) &&
+      (ps_display_power_barrier_active != 0UL))
+  {
+    return (UINT)g_ps_hw6_clock_policy_probe.requester_status[requester_id];
+  }
+
   (void)tx_event_flags_get(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
                            ack_flag,
                            TX_AND_CLEAR,
                            &actual_flags,
                            TX_NO_WAIT);
 
+  if (requester_id == PS_HW6_RTOS_OWNER_DISPLAY)
+  {
+    ps_display_clock_wait_active = 1UL;
+  }
   send_status = PS_HW6_RTOS_SendClockProfileCommand(requester_id,
                                                     profile,
                                                     capabilities);
@@ -2714,6 +2747,11 @@ static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t requester_id,
       PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
   }
 
+  if (requester_id == PS_HW6_RTOS_OWNER_DISPLAY)
+  {
+    ps_display_clock_wait_active = 0UL;
+  }
+
   if ((send_status == TX_SUCCESS) &&
       (wait_status == TX_SUCCESS) &&
       ((actual_flags & ack_flag) != 0UL))
@@ -2722,6 +2760,24 @@ static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t requester_id,
   }
 
   return wait_status;
+}
+
+static void PS_HW6_RTOS_BeginPowerDisplayBarrier(void)
+{
+  ps_display_power_barrier_active = 1UL;
+  if (ps_display_clock_wait_active != 0UL)
+  {
+    ps_display_power_barrier_drop_clock_request = 1UL;
+    (void)tx_event_flags_set(
+      &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+      PS_HW6_RTOS_ClockAckFlag(PS_HW6_RTOS_OWNER_DISPLAY),
+      TX_OR);
+  }
+}
+
+static void PS_HW6_RTOS_EndPowerDisplayBarrier(void)
+{
+  ps_display_power_barrier_active = 0UL;
 }
 
 static void PS_HW6_RTOS_ScheduleClockReleaseStop2Recheck(
@@ -3901,7 +3957,8 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RequestDisplayCursorVisibleForStop2(void)
   wait_status = clock_status;
   if (clock_status == TX_SUCCESS)
   {
-    send_status = PS_HW6_RTOS_SendCommand(
+    PS_HW6_RTOS_BeginPowerDisplayBarrier();
+    send_status = PS_HW6_RTOS_SendCommandFront(
       PS_HW6_RTOS_OWNER_DISPLAY,
       PS_HW6_RTOS_COMMAND_DISPLAY_CURSOR_VISIBLE);
     wait_status = send_status;
@@ -3919,6 +3976,7 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RequestDisplayCursorVisibleForStop2(void)
   (void)PS_HW6_RTOS_ApplyDisplayClockCapabilitiesDirect(
     PS_HW6_RTOS_DISPLAY_CLOCK_REASON_RELEASE,
     0UL);
+  PS_HW6_RTOS_EndPowerDisplayBarrier();
 
   g_ps_hw6_rtos_probe.stop2_blink_handoff_send_status =
     (uint32_t)send_status;
@@ -4058,7 +4116,8 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RequestDisplayLpbamAbort(
   wait_status = clock_status;
   if (clock_status == TX_SUCCESS)
   {
-    send_status = PS_HW6_RTOS_SendCommand(
+    PS_HW6_RTOS_BeginPowerDisplayBarrier();
+    send_status = PS_HW6_RTOS_SendCommandFront(
       PS_HW6_RTOS_OWNER_DISPLAY,
       (resume_stop2_timeline != 0UL) ?
         PS_HW6_RTOS_COMMAND_DISPLAY_LPBAM_WAKE_ABORT :
@@ -4078,6 +4137,7 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RequestDisplayLpbamAbort(
   (void)PS_HW6_RTOS_ApplyDisplayClockCapabilitiesDirect(
     PS_HW6_RTOS_DISPLAY_CLOCK_REASON_RELEASE,
     0UL);
+  PS_HW6_RTOS_EndPowerDisplayBarrier();
 
   g_ps_hw6_rtos_probe.stop2_lpbam_abort_send_status =
     (uint32_t)send_status;
@@ -7978,6 +8038,13 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
     uint32_t capabilities =
       PS_HW6_RTOS_ClockPayloadCapabilities(cycle_index);
     ULONG ack_flag = PS_HW6_RTOS_ClockAckFlag(requester_id);
+
+    if ((requester_id == PS_HW6_RTOS_OWNER_DISPLAY) &&
+        (ps_display_power_barrier_drop_clock_request != 0UL))
+    {
+      capabilities = 0UL;
+      ps_display_power_barrier_drop_clock_request = 0UL;
+    }
 
     status = PS_HW6_ClockPolicy_ApplyRequesterProfile(
       requester_id,
