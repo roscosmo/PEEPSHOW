@@ -389,6 +389,14 @@ static ps_status_t PS_UIRouter_DispatchButtonB(void)
   {
     return PS_STATUS_OK;
   }
+  if ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_SHUTDOWN) &&
+      ((ps_ui_router_state.shutdown_state ==
+        PS_UI_ROUTER_SHUTDOWN_MSC_ERROR) ||
+       (ps_ui_router_state.shutdown_state ==
+        PS_UI_ROUTER_SHUTDOWN_MSC_RECOVERY)))
+  {
+    return PS_UIRouter_CancelShutdown();
+  }
   if ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_CALIBRATION) &&
       (ps_ui_router_state.calibration_page != PS_UI_ROUTER_CAL_INPUT_ROOT))
   {
@@ -696,6 +704,40 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
       break;
     case PS_UI_ROUTER_EVENT_SHUTDOWN_CANCEL:
       status = PS_UIRouter_CancelShutdown();
+      break;
+    case PS_UI_ROUTER_EVENT_MSC_EXPORT:
+      status = PS_UIRouter_ShowShutdown(
+        PS_UI_ROUTER_SHUTDOWN_MSC_EXPORT, 0UL);
+      break;
+    case PS_UI_ROUTER_EVENT_MSC_ACTIVE:
+      status = PS_UIRouter_ShowShutdown(
+        PS_UI_ROUTER_SHUTDOWN_MSC_ACTIVE, 0UL);
+      break;
+    case PS_UI_ROUTER_EVENT_MSC_RECLAIM:
+      status = PS_UIRouter_ShowShutdown(
+        PS_UI_ROUTER_SHUTDOWN_MSC_RECLAIM, 0UL);
+      break;
+    case PS_UI_ROUTER_EVENT_MSC_DONE:
+      if ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_SHUTDOWN) &&
+          (ps_ui_router_state.shutdown_state >=
+           PS_UI_ROUTER_SHUTDOWN_MSC_EXPORT) &&
+          (ps_ui_router_state.shutdown_state <=
+           PS_UI_ROUTER_SHUTDOWN_MSC_RECOVERY))
+      {
+        status = PS_UIRouter_CancelShutdown();
+      }
+      else
+      {
+        status = PS_STATUS_OK;
+      }
+      break;
+    case PS_UI_ROUTER_EVENT_MSC_ERROR:
+      status = PS_UIRouter_ShowShutdown(
+        PS_UI_ROUTER_SHUTDOWN_MSC_ERROR, 0UL);
+      break;
+    case PS_UI_ROUTER_EVENT_MSC_RECOVERY:
+      status = PS_UIRouter_ShowShutdown(
+        PS_UI_ROUTER_SHUTDOWN_MSC_RECOVERY, 0UL);
       break;
     case PS_UI_ROUTER_EVENT_LOW_BATTERY_BOOT_BLOCK:
       status = PS_UIRouter_ShowLowBatteryBootBlock();

@@ -3275,6 +3275,12 @@ button:focus-visible {
   gap: 7px;
 }
 
+.action-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
 .logic-sentence-row {
   display: grid;
   gap: 5px;

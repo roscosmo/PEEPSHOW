@@ -45,6 +45,7 @@ extern RTC_HandleTypeDef hrtc;
 #define PS_HW6_RTOS_COMMAND_TOKEN         (0xC0DEC0DEUL)
 #define PS_HW6_RTOS_DISPLAY_UI_MAGIC      (0x44554921UL)
 #define PS_HW6_RTOS_UI_INPUT_MAGIC        (0x55494221UL)
+#define PS_HW6_RTOS_UI_LIFECYCLE_MAGIC    (0x554C4621UL)
 #define PS_HW6_RTOS_RUNTIME_INPUT_MAGIC   (0x52494221UL)
 #define PS_HW6_RTOS_POWER_INPUT_MAGIC     (0x50574921UL)
 #define PS_HW6_RTOS_INPUT_RAW_MAGIC       (0x49524157UL)
@@ -1706,6 +1707,20 @@ static uint32_t PS_HW6_RTOS_UiInputCommandIsValid(uint32_t owner_id,
   }
 
   return 1UL;
+}
+
+static uint32_t PS_HW6_RTOS_UiLifecycleCommandIsValid(
+  uint32_t owner_id,
+  const ULONG *message)
+{
+  uint32_t event = (uint32_t)message[2];
+
+  return ((owner_id == PS_HW6_RTOS_OWNER_UI) &&
+          (message[0] == PS_HW6_RTOS_UI_LIFECYCLE_MAGIC) &&
+          (message[1] == PS_HW6_RTOS_OWNER_UI) &&
+          (message[3] == 0UL) &&
+          (event >= (uint32_t)PS_UI_ROUTER_EVENT_MSC_EXPORT) &&
+          (event <= (uint32_t)PS_UI_ROUTER_EVENT_MSC_RECOVERY)) ? 1UL : 0UL;
 }
 
 static uint32_t PS_HW6_RTOS_RuntimeInputCommandIsValid(
@@ -4902,6 +4917,25 @@ static UINT PS_HW6_RTOS_SendRuntimeLogicalEvent(uint32_t event,
   return status;
 }
 
+static UINT PS_HW6_RTOS_SendUiLifecycleEvent(uint32_t event)
+{
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+
+  if ((event < (uint32_t)PS_UI_ROUTER_EVENT_MSC_EXPORT) ||
+      (event > (uint32_t)PS_UI_ROUTER_EVENT_MSC_RECOVERY))
+  {
+    return TX_QUEUE_ERROR;
+  }
+
+  message[0] = PS_HW6_RTOS_UI_LIFECYCLE_MAGIC;
+  message[1] = PS_HW6_RTOS_OWNER_UI;
+  message[2] = (ULONG)event;
+  message[3] = 0UL;
+  return tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_UI],
+                       message,
+                       TX_NO_WAIT);
+}
+
 static uint32_t PS_HW6_RTOS_UiInputPackedJoystick(
   uint32_t source,
   uint32_t candidate_direction_mask,
@@ -7471,8 +7505,8 @@ static void PS_HW6_RTOS_RunStorageUsbExportRequest(void)
   HAL_StatusTypeDef export_status = HAL_ERROR;
 
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_SET);
-  PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
-    PS_UI_ROUTER_SHUTDOWN_MSC_EXPORT);
+  (void)PS_HW6_RTOS_SendUiLifecycleEvent(
+    PS_UI_ROUTER_EVENT_MSC_EXPORT);
   clock_status = PS_HW6_RTOS_RequestStorageClockCapabilities(
     PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_EXPORT,
     PS_HW6_RTOS_STORAGE_CLOCK_MSC_CAPABILITIES);
@@ -7489,13 +7523,13 @@ static void PS_HW6_RTOS_RunStorageUsbExportRequest(void)
     if (g_ps_hw6_owner_sm_probe.usb_export_fxlx_open_status ==
         (uint32_t)PS_STATUS_RECOVERY_REQUIRED)
     {
-      PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
-        PS_UI_ROUTER_SHUTDOWN_MSC_RECOVERY);
+      (void)PS_HW6_RTOS_SendUiLifecycleEvent(
+        PS_UI_ROUTER_EVENT_MSC_RECOVERY);
     }
     else
     {
-      PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
-        PS_UI_ROUTER_SHUTDOWN_MSC_ERROR);
+      (void)PS_HW6_RTOS_SendUiLifecycleEvent(
+        PS_UI_ROUTER_EVENT_MSC_ERROR);
     }
     (void)PS_HW6_RTOS_RequestStorageClockCapabilities(
       PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE,
@@ -7503,8 +7537,8 @@ static void PS_HW6_RTOS_RunStorageUsbExportRequest(void)
   }
   else
   {
-    PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
-      PS_UI_ROUTER_SHUTDOWN_MSC_ACTIVE);
+    (void)PS_HW6_RTOS_SendUiLifecycleEvent(
+      PS_UI_ROUTER_EVENT_MSC_ACTIVE);
   }
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_RESET);
 }
@@ -7524,8 +7558,8 @@ static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
   force_stage_rescan = PS_HW6_RTOS_ShouldForceUsbStageRescan();
 
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_SET);
-  PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
-    PS_UI_ROUTER_SHUTDOWN_MSC_RECLAIM);
+  (void)PS_HW6_RTOS_SendUiLifecycleEvent(
+    PS_UI_ROUTER_EVENT_MSC_RECLAIM);
   clock_status = PS_HW6_RTOS_RequestStorageClockCapabilities(
     PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_RECLAIM,
     PS_HW6_RTOS_STORAGE_CLOCK_MSC_CAPABILITIES);
@@ -7553,14 +7587,16 @@ static void PS_HW6_RTOS_RunStorageUsbReclaimRequest(void)
   {
     (void)PS_HW6_RTOS_RequestRuntimeCommand(
       PS_HW6_RTOS_COMMAND_RUNTIME_INSTALLER_COMPLETE);
+    (void)PS_HW6_RTOS_SendUiLifecycleEvent(
+      PS_UI_ROUTER_EVENT_MSC_DONE);
     PS_HW6_RTOS_SendCurrentUiRenderCommand();
   }
   else
   {
     (void)PS_HW6_RTOS_RequestRuntimeCommand(
       PS_HW6_RTOS_COMMAND_RUNTIME_INSTALLER_ERROR);
-    PS_HW6_RTOS_SendStorageLifecycleDisplayCue(
-      PS_UI_ROUTER_SHUTDOWN_MSC_ERROR);
+    (void)PS_HW6_RTOS_SendUiLifecycleEvent(
+      PS_UI_ROUTER_EVENT_MSC_ERROR);
   }
   PS_HW6_RTOS_SetPowerDebug(GPIO_PIN_RESET);
 }
@@ -8577,6 +8613,21 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         {
           PS_HW6_RTOS_ResetDisplayCursorBlink((uint32_t)now);
         }
+      }
+      else if (PS_HW6_RTOS_UiLifecycleCommandIsValid(owner_id, message) !=
+               0UL)
+      {
+        (void)PS_HW6_RTOS_RequestUiClockCapabilities(
+          PS_HW6_RTOS_UI_CLOCK_REASON_REACTIVE_TRANSACTION,
+          PS_HW6_RTOS_UI_CLOCK_REACTIVE_CAPABILITIES);
+        router_status = PS_UIRouter_Dispatch((uint32_t)message[2]);
+        if (router_status == PS_STATUS_OK)
+        {
+          PS_HW6_RTOS_SendCurrentUiRenderCommand();
+        }
+        (void)PS_HW6_RTOS_RequestUiClockCapabilities(
+          PS_HW6_RTOS_UI_CLOCK_REASON_RELEASE,
+          0UL);
       }
       else if (PS_HW6_RTOS_UiInputCommandIsValid(owner_id, message) != 0UL)
       {

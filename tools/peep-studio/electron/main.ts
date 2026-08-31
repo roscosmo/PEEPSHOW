@@ -164,7 +164,11 @@ async function pathExists(candidate: string): Promise<boolean> {
 function assetIdFromFilename(filename: string, fallback: string): string {
   const stem = path.basename(filename, path.extname(filename)).toLowerCase();
   const normalized = stem.replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
-  return normalized === "" ? fallback : normalized.slice(0, 48);
+  if (normalized === "") {
+    return fallback;
+  }
+  const stable = /^[a-z]/.test(normalized) ? normalized : `${fallback}_${normalized}`;
+  return stable.slice(0, 48);
 }
 
 function displayNameFromFilename(filename: string): string {

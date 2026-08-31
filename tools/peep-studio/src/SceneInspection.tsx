@@ -34,6 +34,7 @@ import {
   type StateTransitionLayout,
 } from "./stateGraph";
 import type {
+  AudioCueRecord,
   Framebuffer,
   InputAction,
   ProjectEditorData,
@@ -1095,6 +1096,8 @@ export function SceneAuthoringInspector({
   onSetRouteSceneTarget,
   onSetRouteGuard,
   onSetRouteAction,
+  onAddRouteAction,
+  audioCues,
   canEdit,
 }: {
   scene: SceneDocument | null;
@@ -1118,6 +1121,13 @@ export function SceneAuthoringInspector({
     actionIndex: number,
     action: Record<string, unknown>,
   ) => Promise<void>;
+  onAddRouteAction: (
+    sceneId: string,
+    routeId: string,
+    actionIndex: number,
+    action: Record<string, unknown>,
+  ) => Promise<void>;
+  audioCues: AudioCueRecord[];
   canEdit: boolean;
 }) {
   const variables = scene?.variables ?? [];
@@ -1152,10 +1162,12 @@ export function SceneAuthoringInspector({
           scenes={scenes}
           inputActions={inputActions}
           variables={variables}
+          audioCues={audioCues}
           onSetRouteTarget={onSetRouteTarget}
           onSetRouteSceneTarget={onSetRouteSceneTarget}
           onSetRouteGuard={onSetRouteGuard}
           onSetRouteAction={onSetRouteAction}
+          onAddRouteAction={onAddRouteAction}
           canEdit={canEdit}
         />
       )}
@@ -1394,10 +1406,12 @@ function RouteInspector({
   scenes,
   inputActions,
   variables,
+  audioCues,
   onSetRouteTarget,
   onSetRouteSceneTarget,
   onSetRouteGuard,
   onSetRouteAction,
+  onAddRouteAction,
   canEdit,
 }: {
   sceneId: string;
@@ -1406,6 +1420,7 @@ function RouteInspector({
   scenes: SceneDocument[];
   inputActions: InputAction[];
   variables: StateVariable[];
+  audioCues: AudioCueRecord[];
   onSetRouteTarget: (sceneId: string, routeId: string, targetState: string) => Promise<void>;
   onSetRouteSceneTarget: (sceneId: string, routeId: string, targetScene: string) => Promise<void>;
   onSetRouteGuard: (
@@ -1417,6 +1432,12 @@ function RouteInspector({
     value: number,
   ) => Promise<void>;
   onSetRouteAction: (
+    sceneId: string,
+    routeId: string,
+    actionIndex: number,
+    action: Record<string, unknown>,
+  ) => Promise<void>;
+  onAddRouteAction: (
     sceneId: string,
     routeId: string,
     actionIndex: number,
@@ -1482,8 +1503,11 @@ function RouteInspector({
         sceneId={sceneId}
         route={route}
         variables={variables}
+        audioCues={audioCues}
+        canAddActions={!exitsScene}
         canEdit={canEdit}
         onSetRouteAction={onSetRouteAction}
+        onAddRouteAction={onAddRouteAction}
       />
       <div className="internal-ref-note">
         Internal transition ID: <code>{route.route_id}</code>
@@ -1575,14 +1599,25 @@ function EditableActionList({
   sceneId,
   route,
   variables,
+  audioCues,
+  canAddActions,
   canEdit,
   onSetRouteAction,
+  onAddRouteAction,
 }: {
   sceneId: string;
   route: StateRoute;
   variables: StateVariable[];
+  audioCues: AudioCueRecord[];
+  canAddActions: boolean;
   canEdit: boolean;
   onSetRouteAction: (
+    sceneId: string,
+    routeId: string,
+    actionIndex: number,
+    action: Record<string, unknown>,
+  ) => Promise<void>;
+  onAddRouteAction: (
     sceneId: string,
     routeId: string,
     actionIndex: number,
@@ -1592,8 +1627,52 @@ function EditableActionList({
   const visibleActions = route.actions
     .map((action, actionIndex) => ({ action, actionIndex }))
     .filter(({ action }) => action.kind !== "request_render");
+  const addActionIndex = route.actions.length;
+  const addVariableAction = variables[0] === undefined ? null : {
+    kind: "set_variable",
+    variable_ref: variables[0].variable_id,
+    operation: "assign",
+    value: 0,
+  };
+  const addSfxAction = audioCues[0] === undefined ? null : {
+    kind: "play_sfx",
+    cue_ref: audioCues[0].cue_id,
+  };
+  const addEffectButtons = canAddActions && (addVariableAction !== null || addSfxAction !== null) ? (
+    <div className="action-add-row">
+      {addVariableAction !== null && (
+        <button
+          className="button secondary"
+          type="button"
+          disabled={!canEdit}
+          onClick={() => {
+            void onAddRouteAction(sceneId, route.route_id, addActionIndex, addVariableAction);
+          }}
+        >
+          Add variable
+        </button>
+      )}
+      {addSfxAction !== null && (
+        <button
+          className="button secondary"
+          type="button"
+          disabled={!canEdit}
+          onClick={() => {
+            void onAddRouteAction(sceneId, route.route_id, addActionIndex, addSfxAction);
+          }}
+        >
+          Add SFX
+        </button>
+      )}
+    </div>
+  ) : null;
   if (visibleActions.length === 0) {
-    return <div className="plain-rule-note">No visible effects.</div>;
+    return (
+      <div className="action-editor-list">
+        <div className="plain-rule-note">No visible effects.</div>
+        {addEffectButtons}
+      </div>
+    );
   }
   return (
     <div className="action-editor-list">
@@ -1602,6 +1681,7 @@ function EditableActionList({
         const operation = action.operation === "add" ? "add" : "assign";
         const value = typeof action.value === "number" ? action.value : 0;
         const isAdd = operation === "add";
+        const cueRef = action.cue_ref ?? audioCues[0]?.cue_id ?? "";
         const commit = (nextAction: Record<string, unknown>) => {
           void onSetRouteAction(sceneId, route.route_id, actionIndex, nextAction);
         };
@@ -1615,10 +1695,17 @@ function EditableActionList({
                 value={action.kind}
                 disabled={!canEdit}
                 onChange={(event) => {
+                  if (event.target.value === "play_sfx") {
+                    if (cueRef !== "") {
+                      commit({ kind: "play_sfx", cue_ref: cueRef });
+                    }
+                    return;
+                  }
                   commit({ kind: "set_variable", variable_ref: variableRef, operation, value });
                 }}
               >
                 <option value="set_variable">Change variable</option>
+                <option value="play_sfx" disabled={audioCues.length === 0}>Play SFX</option>
               </select>
               {action.kind === "set_variable" && (
                 <>
@@ -1666,10 +1753,30 @@ function EditableActionList({
                   />
                 </>
               )}
+              {action.kind === "play_sfx" && (
+                <select
+                  aria-label={`Effect ${visibleIndex + 1} SFX cue`}
+                  value={cueRef}
+                  disabled={!canEdit || audioCues.length === 0}
+                  onChange={(event) => {
+                    commit({ kind: "play_sfx", cue_ref: event.target.value });
+                  }}
+                >
+                  {audioCues.map((cue) => (
+                    <option key={cue.cue_id} value={cue.cue_id}>
+                      {cue.cue_id}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
+            {action.kind === "play_sfx" && audioCues.length === 0 && (
+              <div className="plain-rule-note">Import a WAV SFX before assigning this effect.</div>
+            )}
           </div>
         );
       })}
+      {addEffectButtons}
     </div>
   );
 }

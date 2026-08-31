@@ -1168,6 +1168,40 @@ export default function App() {
     }
   };
 
+  const addRouteAction = async (
+    sceneId: string,
+    routeId: string,
+    actionIndex: number,
+    action: Record<string, unknown>,
+  ) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy("Adding action");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [
+          {
+            kind: "route.action.add",
+            scene_id: sceneId,
+            route_id: routeId,
+            action_index: actionIndex,
+            action,
+          },
+        ],
+      });
+      applyProjectResult(result);
+      setSceneSelection({ kind: "route", id: routeId });
+      setMessage("Action added. Save to write it to the project.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const applyRenderElementCommand = async (
     busyLabel: string,
     sceneId: string,
@@ -3672,6 +3706,8 @@ export default function App() {
               onSetRouteSceneTarget={setRouteSceneTarget}
               onSetRouteGuard={setRouteGuard}
               onSetRouteAction={setRouteAction}
+              onAddRouteAction={addRouteAction}
+              audioCues={audioCues}
               canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
             />
           )}
