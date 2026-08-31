@@ -5,6 +5,7 @@ interface PeepStudioBridge {
   openProject(): Promise<string | null>;
   openExampleProject(): Promise<string>;
   importSpritePng(projectPath: string): Promise<{ assetId: string; displayName: string; sourcePath: string; width: number; height: number } | null>;
+  importAudioWav(projectPath: string): Promise<{ assetId: string; sourcePath: string } | null>;
   saveProjectAs(sourcePath: string, defaultName: string): Promise<string | null>;
   exportEgg(defaultName: string, blobBase64: string): Promise<string | null>;
 }

@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("peepStudio", {
   openProject: () => ipcRenderer.invoke("peep:open-project"),
   openExampleProject: () => ipcRenderer.invoke("peep:open-example"),
   importSpritePng: (projectPath: string) => ipcRenderer.invoke("peep:import-sprite-png", projectPath),
+  importAudioWav: (projectPath: string) => ipcRenderer.invoke("peep:import-audio-wav", projectPath),
   saveProjectAs: (sourcePath: string, defaultName: string) =>
     ipcRenderer.invoke("peep:save-project-as", sourcePath, defaultName),
   exportEgg: (defaultName: string, blobBase64: string) =>

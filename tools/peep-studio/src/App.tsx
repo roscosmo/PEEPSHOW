@@ -33,6 +33,7 @@ import {
   Trash2,
   Type,
   Undo2,
+  Volume2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
@@ -46,6 +47,9 @@ import {
 import type {
   AssetFrameRecord,
   AssetRecord,
+  AudioAssetRecord,
+  AudioAuditionResult,
+  AudioCueRecord,
   CompiledAssetFrame,
   Framebuffer,
   PackageBuildResult,
@@ -132,6 +136,8 @@ export default function App() {
   const [placementInspectorTab, setPlacementInspectorTab] = useState<PlacementInspectorTab>("object");
   const [sceneThumbnails, setSceneThumbnails] = useState<Record<string, Framebuffer>>({});
   const [selectedAssetFrameId, setSelectedAssetFrameId] = useState<string | null>(null);
+  const [selectedAudioCueId, setSelectedAudioCueId] = useState<string | null>(null);
+  const [audioAuditionStatus, setAudioAuditionStatus] = useState("No cue auditioned.");
   const [assetPreviewPlaying, setAssetPreviewPlaying] = useState(false);
   const [assetPreviewStep, setAssetPreviewStep] = useState(0);
   const [sceneFlowLayoutStatus, setSceneFlowLayoutStatus] = useState("No layout move yet");
@@ -412,7 +418,11 @@ export default function App() {
     }
   };
 
-  const existingAssetIds = () => new Set([...assets.map((asset) => asset.asset_id), ...compiledAssetFrameGroups.map((group) => group.assetId)]);
+  const existingAssetIds = () => new Set([
+    ...assets.map((asset) => asset.asset_id),
+    ...audioAssets.map((asset) => asset.asset_id),
+    ...compiledAssetFrameGroups.map((group) => group.assetId),
+  ]);
 
   const uniqueImportedAssetId = (baseAssetId: string) => {
     const existing = existingAssetIds();
@@ -437,6 +447,20 @@ export default function App() {
       }
     }
     return `label_${existing.size + 1}`;
+  };
+
+  const uniqueAudioCueId = (baseCueId: string) => {
+    const existing = new Set(audioCues.map((cue) => cue.cue_id));
+    if (!existing.has(baseCueId)) {
+      return baseCueId;
+    }
+    for (let index = 2; index < 1000; index += 1) {
+      const candidate = `${baseCueId}_${index}`;
+      if (!existing.has(candidate)) {
+        return candidate;
+      }
+    }
+    return `${baseCueId}_${existing.size + 1}`;
   };
 
   const parseImportFrameSize = (
@@ -628,6 +652,83 @@ export default function App() {
       setMessage("Text sprite created. Save to write it to the project.");
     } catch (error) {
       setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const chooseAudioWav = async () => {
+    if (bridge === undefined || project === null || projectPath === null || busy !== null) {
+      return;
+    }
+    setBusy("Importing audio");
+    setPlaying(false);
+    try {
+      const imported = await bridge.importAudioWav(projectPath);
+      if (imported === null) {
+        setAudioAuditionStatus("WAV picker cancelled.");
+        setMessage("Audio import cancelled.");
+        return;
+      }
+      const assetId = uniqueImportedAssetId(imported.assetId);
+      const cueId = uniqueAudioCueId(`${assetId}.cue`);
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [
+          {
+            kind: "audio_asset.upsert",
+            audio_asset: {
+              asset_id: assetId,
+              asset_type: "sampled_sfx",
+              source_path: imported.sourcePath,
+              source_format: "wav",
+            },
+          },
+          {
+            kind: "audio_cue.upsert",
+            audio_cue: {
+              cue_id: cueId,
+              asset_ref: assetId,
+              priority: 96,
+              volume: 200,
+            },
+          },
+        ],
+      });
+      applyProjectResult(result);
+      setSelectedAudioCueId(cueId);
+      setWorkspaceMode("assets");
+      setAudioAuditionStatus(`Imported ${imported.sourcePath}.`);
+      setMessage(`Imported ${assetId} as ${cueId}. Save to write it to the project.`);
+    } catch (error) {
+      const text = errorText(error);
+      setAudioAuditionStatus(`Import failed: ${text}`);
+      setMessage(text);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const auditionAudioCue = async (cueId: string) => {
+    if (bridge === undefined || project === null || busy !== null || service?.operations.includes("project.audio_audition") !== true) {
+      return;
+    }
+    setBusy("Auditioning audio");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<AudioAuditionResult>("project.audio_audition", {
+        project_revision: project.project_revision,
+        cue_id: cueId,
+      });
+      const audio = new Audio(`data:audio/wav;base64,${result.audio.wav_base64}`);
+      await audio.play();
+      setSelectedAudioCueId(cueId);
+      setAudioAuditionStatus(`Played packaged ${result.audio.duration_ms} ms cue at ${result.audio.sample_rate_hz} Hz.`);
+      setMessage(`Auditioned ${cueId} from packaged ADPCM bytes.`);
+    } catch (error) {
+      const text = errorText(error);
+      setAudioAuditionStatus(`Audition failed: ${text}`);
+      setMessage(text);
     } finally {
       setBusy(null);
     }
@@ -1463,6 +1564,8 @@ export default function App() {
 
   const scenes: SceneDocument[] = project?.document?.scenes ?? [];
   const assets: AssetRecord[] = project?.document?.assets ?? [];
+  const audioAssets: AudioAssetRecord[] = project?.document?.audio_assets ?? [];
+  const audioCues: AudioCueRecord[] = project?.document?.audio_cues ?? [];
   const compiledAssetFrames: CompiledAssetFrame[] = project?.document?.compiled_asset_frames ?? [];
   const compiledAssetFrameById = useMemo(
     () => new Map(compiledAssetFrames.map((frame) => [frame.frame_id, frame])),
@@ -1488,6 +1591,14 @@ export default function App() {
     }
     return [...groups.entries()].map(([assetId, frames]) => ({ assetId, frames }));
   }, [compiledAssetFrames]);
+  const audioAssetById = useMemo(
+    () => new Map(audioAssets.map((asset) => [asset.asset_id, asset])),
+    [audioAssets],
+  );
+  const selectedAudioCue = selectedAudioCueId === null
+    ? audioCues[0] ?? null
+    : audioCues.find((cue) => cue.cue_id === selectedAudioCueId) ?? audioCues[0] ?? null;
+  const selectedAudioAsset = selectedAudioCue === null ? null : audioAssetById.get(selectedAudioCue.asset_ref) ?? null;
   const selectedAssetFrame = selectedAssetFrameId === null
     ? compiledAssetFrames[0] ?? null
     : compiledAssetFrameById.get(selectedAssetFrameId) ?? compiledAssetFrames[0] ?? null;
@@ -1534,6 +1645,16 @@ export default function App() {
       cancelled = true;
     };
   }, [bridge, projectRevision, projectValid, thumbnailsSupported]);
+
+  useEffect(() => {
+    if (audioCues.length === 0) {
+      setSelectedAudioCueId(null);
+      return;
+    }
+    if (selectedAudioCueId === null || !audioCues.some((cue) => cue.cue_id === selectedAudioCueId)) {
+      setSelectedAudioCueId(audioCues[0].cue_id);
+    }
+  }, [audioCues, selectedAudioCueId]);
   const selectedSceneDocument = useMemo(
     () => scenes.find((scene) => scene.scene_id === selectedScene) ?? null,
     [scenes, selectedScene],
@@ -2271,6 +2392,9 @@ export default function App() {
   };
   const renderAssetsWorkspace = () => {
     const canEditAssets = bridge !== undefined && project !== null && busy === null && service?.operations.includes("project.apply_commands") === true;
+    const audioSupported = service?.state_scene_audio.host_package_support === true;
+    const auditionSupported = service?.operations.includes("project.audio_audition") === true;
+    const hasAnyAssets = compiledAssetFrameGroups.length > 0 || audioCues.length > 0;
     return (
       <section className="asset-workspace-pane">
         <div className="preview-heading graph-heading">
@@ -2280,80 +2404,54 @@ export default function App() {
           </div>
           {renderModeTabs()}
         </div>
-        {compiledAssetFrameGroups.length === 0 ? (
-          <div className="asset-workspace">
-            <div className="asset-workspace-summary">
-              <div>
-                <strong>Sprites</strong>
-                <span>No compiled frames</span>
-              </div>
-              <div className="asset-workspace-actions">
-                <button
-                  className="button secondary"
-                  type="button"
-                  disabled={!canEditAssets || projectPath === null}
-                  onClick={() => void chooseSpritePng()}
-                >
-                  <Image size={15} aria-hidden="true" />
-                  Choose PNG
-                </button>
-                <button
-                  className="button secondary"
-                  type="button"
-                  disabled={!canEditAssets}
-                  onClick={() => void createTextSpriteAsset()}
-                >
-                  <Type size={15} aria-hidden="true" />
-                  Text sprite
-                </button>
-              </div>
+        <div className="asset-workspace">
+          <div className="asset-workspace-summary">
+            <div>
+              <strong>Project library</strong>
+              <span>
+                {compiledAssetFrames.length} frame{compiledAssetFrames.length === 1 ? "" : "s"} / {audioCues.length} SFX cue{audioCues.length === 1 ? "" : "s"}
+              </span>
             </div>
-            {renderSpriteImportPanel(canEditAssets)}
-            <div className="asset-workspace-empty">
-              <Image size={28} aria-hidden="true" />
-              <strong>No sprite assets</strong>
+            <div className="asset-workspace-actions">
+              <button
+                className="button secondary"
+                type="button"
+                disabled={!canEditAssets || projectPath === null}
+                onClick={() => void chooseSpritePng()}
+              >
+                <Image size={15} aria-hidden="true" />
+                Choose PNG
+              </button>
+              <button
+                className="button secondary"
+                type="button"
+                disabled={!canEditAssets}
+                onClick={() => void createTextSpriteAsset()}
+              >
+                <Type size={15} aria-hidden="true" />
+                Text sprite
+              </button>
+              <button
+                className="button secondary"
+                type="button"
+                disabled={!canEditAssets || projectPath === null || !audioSupported}
+                onClick={() => void chooseAudioWav()}
+              >
+                <Volume2 size={15} aria-hidden="true" />
+                WAV SFX
+              </button>
             </div>
           </div>
-        ) : (
-          <div className="asset-workspace">
-            <div className="asset-workspace-summary">
-              <div>
-                <strong>Sprites</strong>
-                <span>{compiledAssetFrames.length} compiled frame{compiledAssetFrames.length === 1 ? "" : "s"}</span>
-              </div>
-              <div className="asset-workspace-actions">
-                <button
-                  className="button secondary"
-                  type="button"
-                  disabled={!canEditAssets || projectPath === null}
-                  onClick={() => void chooseSpritePng()}
-                >
-                  <Image size={15} aria-hidden="true" />
-                  Choose PNG
-                </button>
-                <button
-                  className="button secondary"
-                  type="button"
-                  disabled={!canEditAssets}
-                  onClick={() => void createTextSpriteAsset()}
-                >
-                  <Type size={15} aria-hidden="true" />
-                  Text sprite
-                </button>
-              </div>
-            </div>
-            {renderSpriteImportPanel(canEditAssets)}
-            <div className="asset-group-stack">
-              {compiledAssetFrameGroups.map((group) => (
-                <section className="asset-group-panel" key={group.assetId}>
-                  <div className="asset-group-heading">
-                    <strong>{assetDisplayName(group.assetId)}</strong>
-                    <span>
-                      {assetById.get(group.assetId)?.source_format === "system_font_text" ? "Text sprite" : `${group.frames.length} frame${group.frames.length === 1 ? "" : "s"}`}
-                    </span>
-                  </div>
+          {renderSpriteImportPanel(canEditAssets)}
+          <div className="asset-group-stack">
+            {compiledAssetFrameGroups.length > 0 && (
+              <section className="asset-group-panel">
+                <div className="asset-group-heading">
+                  <strong>Sprites</strong>
+                  <span>{compiledAssetFrames.length} compiled frame{compiledAssetFrames.length === 1 ? "" : "s"}</span>
+                </div>
                 <div className="asset-frame-gallery">
-                  {group.frames.map((frame) => (
+                  {compiledAssetFrameGroups.flatMap((group) => group.frames.map((frame) => (
                     <button
                       key={frame.frame_id}
                       className={selectedAssetFrame?.frame_id === frame.frame_id ? "selected" : ""}
@@ -2364,20 +2462,72 @@ export default function App() {
                       <span className="asset-frame-preview">
                         <FramePreviewCanvas frame={frame} />
                       </span>
-                      <strong>{placementFrameLabel(frame)}</strong>
-                      <small>{frame.width}x{frame.height}</small>
+                      <strong>{assetDisplayName(frame.asset_id)}</strong>
+                      <small>{placementFrameLabel(frame)} / {frame.width}x{frame.height}</small>
                     </button>
-                  ))}
+                  )))}
                 </div>
-                </section>
-              ))}
-            </div>
+              </section>
+            )}
+            {audioCues.length > 0 && (
+              <section className="asset-group-panel">
+                <div className="asset-group-heading">
+                  <strong>Sampled SFX</strong>
+                  <span>{audioCues.length} cue{audioCues.length === 1 ? "" : "s"}</span>
+                </div>
+                <div className="audio-cue-gallery">
+                  {audioCues.map((cue) => {
+                    const asset = audioAssetById.get(cue.asset_ref);
+                    return (
+                      <div
+                        key={cue.cue_id}
+                        className={selectedAudioCue?.cue_id === cue.cue_id ? "selected" : ""}
+                      >
+                        <button
+                          className="audio-cue-select"
+                          type="button"
+                          onClick={() => setSelectedAudioCueId(cue.cue_id)}
+                          title="Select this SFX cue"
+                        >
+                          <Volume2 size={18} aria-hidden="true" />
+                          <span>
+                            <strong>{cue.cue_id}</strong>
+                            <small>
+                              {asset === undefined ? cue.asset_ref : `${asset.duration_ms} ms / ${asset.adpcm_bytes} ADPCM bytes`}
+                            </small>
+                          </span>
+                        </button>
+                        <button
+                          className="icon-button"
+                          type="button"
+                          disabled={!auditionSupported || busy !== null || !project?.valid}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void auditionAudioCue(cue.cue_id);
+                          }}
+                          title="Audition packaged cue"
+                          aria-label={`Audition ${cue.cue_id}`}
+                        >
+                          <Play size={15} aria-hidden="true" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+            {!hasAnyAssets && (
+              <div className="asset-workspace-empty">
+                <Box size={28} aria-hidden="true" />
+                <strong>No project assets</strong>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </section>
     );
   };
-  const renderAssetInspector = () => (
+  const renderSpriteInspector = () => (
     <section className="inspector-section asset-inspector">
       <h3><Image size={14} aria-hidden="true" /> Sprite</h3>
       {selectedAssetFrame === null ? (
@@ -2526,6 +2676,52 @@ export default function App() {
         })()
       )}
     </section>
+  );
+  const renderAudioInspector = () => (
+    <section className="inspector-section asset-inspector">
+      <h3><Volume2 size={14} aria-hidden="true" /> Sampled SFX</h3>
+      {selectedAudioCue === null ? (
+        <p className="muted">Import a WAV to create a bounded STATE SFX cue.</p>
+      ) : (
+        <>
+          <div className="audio-inspector-controls">
+            <button
+              className="button primary"
+              type="button"
+              disabled={busy !== null || !project?.valid || service?.operations.includes("project.audio_audition") !== true}
+              onClick={() => void auditionAudioCue(selectedAudioCue.cue_id)}
+            >
+              <Play size={15} aria-hidden="true" />
+              Audition
+            </button>
+            <span>{audioAuditionStatus}</span>
+          </div>
+          <dl className="inspector-list">
+            <div><dt>Cue</dt><dd>{selectedAudioCue.cue_id}</dd></div>
+            <div><dt>Asset</dt><dd>{selectedAudioCue.asset_ref}</dd></div>
+            <div><dt>Priority</dt><dd>{selectedAudioCue.priority}</dd></div>
+            <div><dt>Volume</dt><dd>{selectedAudioCue.volume}</dd></div>
+            {selectedAudioAsset !== null && (
+              <>
+                <div><dt>Source</dt><dd title={selectedAudioAsset.source_path}>{selectedAudioAsset.source_path}</dd></div>
+                <div><dt>Source rate</dt><dd>{selectedAudioAsset.source_sample_rate_hz} Hz</dd></div>
+                <div><dt>Compiled</dt><dd>{selectedAudioAsset.sample_rate_hz} Hz mono ADPCM</dd></div>
+                <div><dt>Duration</dt><dd>{selectedAudioAsset.duration_ms} ms</dd></div>
+                <div><dt>Samples</dt><dd>{selectedAudioAsset.sample_count}</dd></div>
+                <div><dt>Blocks</dt><dd>{selectedAudioAsset.block_count}</dd></div>
+                <div><dt>ADPCM</dt><dd>{selectedAudioAsset.adpcm_bytes} bytes</dd></div>
+              </>
+            )}
+          </dl>
+        </>
+      )}
+    </section>
+  );
+  const renderAssetInspector = () => (
+    <>
+      {renderSpriteInspector()}
+      {renderAudioInspector()}
+    </>
   );
   const renderPlacementViewSettings = () => (
     <section className="inspector-section placement-view-settings-section">
@@ -3278,6 +3474,7 @@ export default function App() {
                   <div><dt>Path</dt><dd title={projectPath ?? undefined}>{projectPath ?? "-"}</dd></div>
                   <div><dt>Frames</dt><dd>{project.summary.asset_frame_count}</dd></div>
                   <div><dt>Animations</dt><dd>{project.summary.animation_count}</dd></div>
+                  <div><dt>SFX</dt><dd>{project.summary.audio_cue_count}</dd></div>
                 </dl>
               )}
             </details>

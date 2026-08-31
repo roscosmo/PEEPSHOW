@@ -161,10 +161,10 @@ async function pathExists(candidate: string): Promise<boolean> {
   return true;
 }
 
-function assetIdFromFilename(filename: string): string {
+function assetIdFromFilename(filename: string, fallback: string): string {
   const stem = path.basename(filename, path.extname(filename)).toLowerCase();
   const normalized = stem.replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
-  return normalized === "" ? "sprite" : normalized.slice(0, 48);
+  return normalized === "" ? fallback : normalized.slice(0, 48);
 }
 
 function displayNameFromFilename(filename: string): string {
@@ -173,9 +173,9 @@ function displayNameFromFilename(filename: string): string {
   return (normalized === "" ? "Sprite" : normalized).slice(0, 64);
 }
 
-async function uniqueAssetPath(projectPath: string, sourcePath: string): Promise<{ assetId: string; relativePath: string; destinationPath: string }> {
+async function uniqueAssetPath(projectPath: string, sourcePath: string, fallbackAssetId: string): Promise<{ assetId: string; relativePath: string; destinationPath: string }> {
   const assetsRoot = path.join(projectPath, "assets");
-  const baseAssetId = assetIdFromFilename(sourcePath);
+  const baseAssetId = assetIdFromFilename(sourcePath, fallbackAssetId);
   const extension = path.extname(sourcePath).toLowerCase() || ".png";
   await mkdir(assetsRoot, { recursive: true });
   for (let index = 0; index < 1000; index += 1) {
@@ -290,7 +290,7 @@ ipcMain.handle("peep:import-sprite-png", async (_event, projectPath: unknown) =>
   if (size.width > MAX_SOURCE_IMAGE_DIMENSION || size.height > MAX_SOURCE_IMAGE_DIMENSION) {
     throw new Error(`Sprite source PNG must be no larger than ${MAX_SOURCE_IMAGE_DIMENSION}x${MAX_SOURCE_IMAGE_DIMENSION}`);
   }
-  const destination = await uniqueAssetPath(projectRoot, sourcePath);
+  const destination = await uniqueAssetPath(projectRoot, sourcePath, "sprite");
   await writeFile(destination.destinationPath, sanitizeSpriteImage(image));
   return {
     assetId: destination.assetId,
@@ -298,6 +298,32 @@ ipcMain.handle("peep:import-sprite-png", async (_event, projectPath: unknown) =>
     sourcePath: destination.relativePath,
     width: size.width,
     height: size.height,
+  };
+});
+
+ipcMain.handle("peep:import-audio-wav", async (_event, projectPath: unknown) => {
+  if (typeof projectPath !== "string") {
+    throw new Error("Invalid audio import request from renderer");
+  }
+  const projectRoot = path.resolve(projectPath);
+  if (!projectRoot.endsWith(".peepproj")) {
+    throw new Error("Audio import target must be a .peepproj directory");
+  }
+  const result = await dialog.showOpenDialog({
+    title: "Import sampled SFX WAV",
+    defaultPath: projectRoot,
+    properties: ["openFile"],
+    filters: [{ name: "PCM WAV audio", extensions: ["wav"] }],
+  });
+  if (result.canceled || result.filePaths[0] === undefined) {
+    return null;
+  }
+  const sourcePath = path.resolve(result.filePaths[0]);
+  const destination = await uniqueAssetPath(projectRoot, sourcePath, "audio");
+  await cp(sourcePath, destination.destinationPath);
+  return {
+    assetId: destination.assetId,
+    sourcePath: destination.relativePath,
   };
 });
 

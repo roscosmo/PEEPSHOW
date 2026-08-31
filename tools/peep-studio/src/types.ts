@@ -13,6 +13,8 @@ export type ProjectSummary = {
   scene_count: number;
   asset_frame_count: number;
   animation_count: number;
+  audio_asset_count: number;
+  audio_cue_count: number;
 };
 
 export type SceneDocument = {
@@ -70,6 +72,7 @@ export type StateAction = {
   variable_ref?: string;
   operation?: string;
   value?: number;
+  cue_ref?: string;
 };
 
 export type StateRoute = {
@@ -185,12 +188,37 @@ export type AssetRecord = {
   frames: AssetFrameRecord[];
 };
 
+export type AudioAssetRecord = {
+  asset_id: string;
+  source_path: string;
+  source_sample_rate_hz: number;
+  source_channels: number;
+  sample_rate_hz: number;
+  channels: number;
+  sample_count: number;
+  duration_ms: number;
+  decoded_pcm_bytes: number;
+  block_samples: number;
+  block_count: number;
+  adpcm_bytes: number;
+  adpcm_sha256: string;
+};
+
+export type AudioCueRecord = {
+  cue_id: string;
+  asset_ref: string;
+  priority: number;
+  volume: number;
+};
+
 export type ProjectDocument = {
   project?: {
     editor?: ProjectEditorData;
   };
   scenes?: SceneDocument[];
   assets?: AssetRecord[];
+  audio_assets?: AudioAssetRecord[];
+  audio_cues?: AudioCueRecord[];
   compiled_asset_frames?: CompiledAssetFrame[];
 };
 
@@ -287,6 +315,11 @@ export type PreviewSnapshot = {
     action_id: string;
     accepted: boolean;
     route_id: string | null;
+    audio_events?: Array<{
+      cue_id: string;
+      priority: number;
+      volume: number;
+    }>;
   } | null;
   framebuffer: Framebuffer;
 };
@@ -300,6 +333,8 @@ export type PackageBuildResult = {
     scene_count: number;
     asset_frame_count: number;
     animation_count: number;
+    audio_asset_count: number;
+    audio_cue_count: number;
     chunk_count: number;
     size_bytes: number;
     sha256: string;
@@ -375,6 +410,43 @@ export type ServiceHello = {
     policy_commands: string[];
     generic_delete_policy: string;
   };
+  state_scene_audio: {
+    host_package_support: boolean;
+    target_playback_status: string;
+    source_format: string;
+    compiled_format: string;
+    sample_rate_hz: number;
+    channels: number;
+    block_samples: number;
+    maximum_duration_ms: number;
+    maximum_assets: number;
+    maximum_cues: number;
+    maximum_bank_bytes: number;
+    voice_limit: number;
+    route_action: string;
+    asset_commands: string[];
+    cue_commands: string[];
+    audition_operation: string;
+    unsupported: string[];
+  };
   project_loaded: boolean;
   project_revision: number | null;
+};
+
+export type AudioAuditionResult = {
+  project_revision: number;
+  cue: {
+    cue_id: string;
+    asset_id: string;
+    priority: number;
+    volume: number;
+  };
+  audio: {
+    encoding: string;
+    sample_rate_hz: number;
+    channels: number;
+    sample_count: number;
+    duration_ms: number;
+    wav_base64: string;
+  };
 };

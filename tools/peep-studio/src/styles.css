@@ -1276,6 +1276,62 @@ button:focus-visible {
   background: #fff4e8;
 }
 
+.audio-cue-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
+  gap: 10px;
+}
+
+.audio-cue-gallery > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #d3dcd6;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.audio-cue-gallery > div.selected {
+  border-color: #d6812f;
+  background: #fff4e8;
+}
+
+.audio-cue-select {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #27302b;
+  cursor: pointer;
+  text-align: left;
+}
+
+.audio-cue-select strong,
+.audio-cue-select small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audio-cue-select strong {
+  font-size: 12px;
+}
+
+.audio-cue-select small {
+  margin-top: 2px;
+  color: #68736d;
+  font-size: 10px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
 .asset-frame-preview {
   display: flex;
   min-height: 120px;
@@ -1380,6 +1436,27 @@ button:focus-visible {
   color: #3e4943;
   font-size: 11px;
   font-weight: 800;
+}
+
+.audio-inspector-controls {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid #d7ded9;
+  border-radius: 7px;
+  background: #f7faf8;
+}
+
+.audio-inspector-controls .button {
+  justify-self: start;
+}
+
+.audio-inspector-controls span {
+  color: #68736d;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.35;
 }
 
 .asset-name-editor {
