@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-#define PS_SCENE_RUNTIME_API_VERSION             (17UL)
+#define PS_SCENE_RUNTIME_API_VERSION             (18UL)
 #define PS_SCENE_RUNTIME_SCENE_TYPE_STATE        (1UL)
 #define PS_SCENE_RUNTIME_STATUS_NOT_RUN          (0xFFFFFFFFUL)
 #define PS_SCENE_RUNTIME_STATUS_OK               (0UL)
@@ -69,7 +69,8 @@ typedef enum
   PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_POSITION,
   PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_FRAME,
   PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_WAITING_ANIMATION,
-  PS_SCENE_RUNTIME_ACTION_PLAY_SFX
+  PS_SCENE_RUNTIME_ACTION_PLAY_SFX,
+  PS_SCENE_RUNTIME_ACTION_EXIT_TO_SHELL
 } ps_scene_runtime_action_kind_t;
 
 typedef enum
@@ -232,6 +233,8 @@ typedef struct
   uint32_t waiting_animation_rebase_count;
   uint32_t sfx_action_commit_count;
   uint32_t sfx_request_take_count;
+  uint32_t shell_exit_action_commit_count;
+  uint32_t shell_exit_request_take_count;
   uint32_t last_sfx_cue_index;
   uint32_t last_element_action_kind;
   uint32_t last_element_action_binding_id;
@@ -283,6 +286,7 @@ uint32_t PS_SceneRuntime_HandleStateSceneInput(
   uint32_t logical_event,
   uint32_t input_id);
 uint32_t PS_SceneRuntime_TakeSfxRequest(uint32_t *cue_index);
+uint32_t PS_SceneRuntime_TakeShellExitRequest(void);
 const ps_scene_waiting_visual_t *PS_SceneRuntime_ResolveStateSceneWaitingVisual(
   const ps_scene_render_model_t *model,
   const ps_scene_waiting_visual_bounds_t *cursor_bounds);

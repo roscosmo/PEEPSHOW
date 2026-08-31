@@ -30,6 +30,7 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "knobs_autogen.h"
 
 /* USER CODE END Includes */
 
@@ -53,7 +54,7 @@ extern "C" {
 /* Keep the ThreadX owner pool large enough for dedicated owner stacks and
  * queue storage. CubeMX may regenerate the default value above. */
 #undef TX_APP_MEM_POOL_SIZE
-#define TX_APP_MEM_POOL_SIZE                     24576
+#define TX_APP_MEM_POOL_SIZE                     KNOB_RTOS_APP_POOL_BYTES
 
 /* Keep USBX byte pool sized for device stack + MSC class.
  * CubeMX may regenerate the default value above. */

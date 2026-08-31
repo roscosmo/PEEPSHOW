@@ -2271,6 +2271,9 @@ def _normalize_action(
             issue = issues[0]
             raise ProjectCommandError(issue.code, issue.message)
         return {"kind": "play_sfx", "cue_ref": cue_ref}
+    if action_kind == "exit_to_shell":
+        _require_command_fields(action, {"kind"}, {"kind"})
+        return {"kind": "exit_to_shell"}
     if action_kind in {
         "set_element_visibility",
         "set_element_position",
@@ -3326,6 +3329,8 @@ def _check_scene(
                             f"{action_path}.cue_ref",
                             f"unknown audio cue '{cue_ref}'",
                         )
+                elif kind == "exit_to_shell":
+                    _check_keys(action, {"kind"}, action_path, issues)
                 elif kind in {
                     "set_element_visibility",
                     "set_element_position",

@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (34UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (39UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -311,6 +311,11 @@ typedef struct
   uint32_t audio_driver_state;
   uint32_t audio_driver_operation_count;
   uint32_t audio_driver_last_status;
+  uint32_t audio_post_stop_resume_mark_count;
+  uint32_t audio_post_stop_recovery_pending;
+  uint32_t audio_post_stop_recovery_attempt_count;
+  uint32_t audio_post_stop_recovery_success_count;
+  uint32_t audio_post_stop_recovery_status;
   uint32_t audio_command_tick;
   uint32_t audio_complete;
   uint32_t audio_success;
@@ -322,7 +327,33 @@ typedef struct
   uint32_t audio_buffer_halfwords;
   uint32_t audio_sd_state_before;
   uint32_t audio_sd_state_enabled;
+  uint32_t audio_rearm_status;
   uint32_t audio_start_status;
+  uint32_t audio_completion_wait_status;
+  uint32_t audio_completion_callback_status;
+  uint32_t audio_pre_cleanup_dma_irq_delta;
+  uint32_t audio_pre_cleanup_tx_callback_delta;
+  uint32_t audio_pre_cleanup_error_callback_delta;
+  uint32_t audio_pre_cleanup_sai_kernel_hz;
+  uint32_t audio_pre_cleanup_sai_state;
+  uint32_t audio_pre_cleanup_sai_error;
+  uint32_t audio_pre_cleanup_sai_cr1;
+  uint32_t audio_pre_cleanup_sai_cr2;
+  uint32_t audio_pre_cleanup_sai_frcr;
+  uint32_t audio_pre_cleanup_sai_slotr;
+  uint32_t audio_pre_cleanup_sai_imr;
+  uint32_t audio_pre_cleanup_sai_sr;
+  uint32_t audio_pre_cleanup_sai_gcr;
+  uint32_t audio_pre_cleanup_dma_state;
+  uint32_t audio_pre_cleanup_dma_error;
+  uint32_t audio_pre_cleanup_dma_ccr;
+  uint32_t audio_pre_cleanup_dma_csr;
+  uint32_t audio_pre_cleanup_dma_cbr1;
+  uint32_t audio_pre_cleanup_dma_ctr1;
+  uint32_t audio_pre_cleanup_dma_ctr2;
+  uint32_t audio_pre_cleanup_dma_csar;
+  uint32_t audio_pre_cleanup_dma_cdar;
+  uint32_t audio_pre_cleanup_dma_cllr;
   uint32_t audio_stop_status;
   uint32_t audio_sd_state_after;
   uint32_t audio_sai_state_after;
@@ -378,6 +409,7 @@ void PS_HW6_DisplayOwner_DebugForceNextLpbamReady(void);
 HAL_StatusTypeDef PS_HW6_AudioOwner_RunTone(void);
 HAL_StatusTypeDef PS_HW6_AudioOwner_RunSfx(uint32_t cue_index);
 HAL_StatusTypeDef PS_HW6_AudioOwner_VerifyIdle(void);
+HAL_StatusTypeDef PS_HW6_AudioOwner_MarkPostStopResume(void);
 void PS_HW6_OwnerServices_MarkComplete(void);
 
 #ifdef __cplusplus

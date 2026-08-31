@@ -1,0 +1,8 @@
+set pagination off
+printf "--- HW6 authored STATE shell exit ---\n"
+printf "loader api/status/reason package bytes = %u / 0x%x / %u / %u\n", g_ps_egg_state_loader_probe.api_version, g_ps_egg_state_loader_probe.last_status, g_ps_egg_state_loader_probe.reason, g_ps_egg_state_loader_probe.package_size
+printf "scene api/active/status exit commit/take = %u / %u / 0x%x / %u / %u\n", g_ps_scene_runtime_probe.api_version, g_ps_scene_runtime_probe.active, g_ps_scene_runtime_probe.last_status, g_ps_scene_runtime_probe.shell_exit_action_commit_count, g_ps_scene_runtime_probe.shell_exit_request_take_count
+printf "runtime api/class/lifecycle boot/reject return count/event/status/clock = %u / %u / %u / %u / %u / %u / %u / 0x%x / 0x%x\n", g_ps_hw6_rtos_probe.version, g_ps_hw6_rtos_probe.runtime_current_class, g_ps_hw6_rtos_probe.runtime_lifecycle, g_ps_hw6_rtos_probe.runtime_boot_shell_count, g_ps_hw6_rtos_probe.runtime_boot_shell_reject_count, g_ps_hw6_rtos_probe.runtime_package_return_count, g_ps_hw6_rtos_probe.runtime_last_event, g_ps_hw6_rtos_probe.runtime_last_status, g_ps_hw6_rtos_probe.runtime_return_clock_release_status
+printf "UI api/page/status display page/render count = %u / %u / 0x%x / %u / %u\n", g_ps_ui_router_probe.api_version, g_ps_ui_router_probe.current_page, g_ps_ui_router_probe.last_status, g_ps_hw6_owner_probe.display_ui_page, g_ps_hw6_owner_probe.display_ui_render_count
+printf "expected: loader=14/0/0, scene=18/0/0 exit commit/take=1/1, runtime=72 class=1 boot/reject=0/0 return count>=1 event=8 status=0, UI/display page=2 MENU\n"
+printf "--- end HW6 authored STATE shell exit ---\n"

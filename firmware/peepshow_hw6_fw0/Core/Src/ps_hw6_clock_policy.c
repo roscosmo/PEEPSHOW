@@ -21,6 +21,10 @@ extern void PeriphCommonClock_Config(void);
 #define PS_HW6_CLOCK_STAGE_RESOLVE          (9UL)
 #define PS_HW6_CLOCK_STAGE_PLL2_DOMAIN_ON  (10UL)
 #define PS_HW6_CLOCK_STAGE_PLL2_DOMAIN_OFF (11UL)
+#define PS_HW6_CLOCK_STAGE_PLL2_REARM       (12UL)
+#define PS_HW6_CLOCK_STAGE_SAI_DOMAIN_ON    (13UL)
+#define PS_HW6_CLOCK_STAGE_SAI_DOMAIN_OFF   (14UL)
+#define PS_HW6_CLOCK_STAGE_STOP2_VERIFY     (15UL)
 
 #define PS_HW6_CLOCK_PROFILE_BIT(profile) \
   (1UL << ((uint32_t)(profile)))
@@ -87,6 +91,14 @@ static void PS_HW6_ClockPolicy_PrimeProbe(void)
     g_ps_hw6_clock_policy_probe.last_status =
       PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
     g_ps_hw6_clock_policy_probe.pll2_domain_last_status =
+      PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
+    g_ps_hw6_clock_policy_probe.pll2_post_stop_rearm_status =
+      PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
+    g_ps_hw6_clock_policy_probe.sai_mux_handoff_status =
+      PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
+    g_ps_hw6_clock_policy_probe.sai_domain_last_status =
+      PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
+    g_ps_hw6_clock_policy_probe.stop2_prepare_status =
       PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
     PS_HW6_ClockPolicy_ClearRequesterStatus();
   }
@@ -164,6 +176,7 @@ static uint32_t PS_HW6_ClockPolicy_ReadbackDomainMask(void)
     domain_mask |= PS_HW6_CLOCK_DOMAIN_PLL2_OCTOSPI;
   }
   if ((g_ps_hw6_clock_policy_probe.pll2_ready != 0UL) &&
+      (g_ps_hw6_clock_policy_probe.sai_clock_enabled != 0UL) &&
       (g_ps_hw6_clock_policy_probe.sai1_kernel_hz != 0UL))
   {
     domain_mask |= PS_HW6_CLOCK_DOMAIN_PLL2_SAI;
@@ -192,20 +205,41 @@ static void PS_HW6_ClockPolicy_RecordSnapshot(void)
     (READ_BIT(PWR->SVMCR, PWR_SVMCR_USV) != 0U) ? 1UL : 0UL;
   g_ps_hw6_clock_policy_probe.hsi48_ready =
     (__HAL_RCC_GET_FLAG(RCC_FLAG_HSI48RDY) != 0U) ? 1UL : 0UL;
+  g_ps_hw6_clock_policy_probe.shsi_ready =
+    (__HAL_RCC_GET_FLAG(RCC_FLAG_SHSIRDY) != 0U) ? 1UL : 0UL;
   g_ps_hw6_clock_policy_probe.pll1_ready =
     (__HAL_RCC_GET_FLAG(RCC_FLAG_PLL1RDY) != 0U) ? 1UL : 0UL;
   g_ps_hw6_clock_policy_probe.pll2_ready =
     (__HAL_RCC_GET_FLAG(RCC_FLAG_PLL2RDY) != 0U) ? 1UL : 0UL;
+  g_ps_hw6_clock_policy_probe.pll3_ready =
+    (__HAL_RCC_GET_FLAG(RCC_FLAG_PLL3RDY) != 0U) ? 1UL : 0UL;
   g_ps_hw6_clock_policy_probe.pll2_output_enabled_mask =
     READ_BIT(RCC->PLL2CFGR,
              RCC_PLL2CFGR_PLL2PEN | RCC_PLL2CFGR_PLL2QEN |
              RCC_PLL2CFGR_PLL2REN);
+  g_ps_hw6_clock_policy_probe.sai_clock_enabled =
+    (__HAL_RCC_SAI1_IS_CLK_ENABLED() != 0U) ? 1UL : 0UL;
+  g_ps_hw6_clock_policy_probe.sai_reset_asserted =
+    (READ_BIT(RCC->APB2RSTR, RCC_APB2RSTR_SAI1RST) != 0U) ? 1UL : 0UL;
+  g_ps_hw6_clock_policy_probe.sai_domain_active =
+    ((g_ps_hw6_clock_policy_probe.sai_clock_enabled != 0UL) &&
+     (g_ps_hw6_clock_policy_probe.sai_reset_asserted == 0UL) &&
+     (g_ps_hw6_clock_policy_probe.pll2_ready != 0UL) &&
+     ((g_ps_hw6_clock_policy_probe.pll2_output_enabled_mask &
+       RCC_PLL2_DIVP) != 0UL)) ? 1UL : 0UL;
   g_ps_hw6_clock_policy_probe.usb_kernel_hz =
-    HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_ICLK);
+    ((g_ps_hw6_clock_policy_probe.usb_clock_enabled != 0UL) &&
+     (g_ps_hw6_clock_policy_probe.vddusb_enabled != 0UL) &&
+     (g_ps_hw6_clock_policy_probe.hsi48_ready != 0UL)) ?
+    HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_ICLK) : 0UL;
   g_ps_hw6_clock_policy_probe.sai1_kernel_hz =
-    HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SAI1);
+    (g_ps_hw6_clock_policy_probe.sai_domain_active != 0UL) ?
+    HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SAI1) : 0UL;
   g_ps_hw6_clock_policy_probe.ospi_kernel_hz =
-    HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_OSPI);
+    ((g_ps_hw6_clock_policy_probe.pll2_ready != 0UL) &&
+     ((g_ps_hw6_clock_policy_probe.pll2_output_enabled_mask &
+       RCC_PLL2_DIVQ) != 0UL)) ?
+    HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_OSPI) : 0UL;
   g_ps_hw6_clock_policy_probe.readback_domain_mask =
     PS_HW6_ClockPolicy_ReadbackDomainMask();
 }
@@ -262,8 +296,8 @@ static void PS_HW6_ClockPolicy_UpdatePostSnapshotProbe(void)
   if ((g_ps_hw6_clock_policy_probe.pll2_autogate_enabled == 0UL) &&
       ((g_ps_hw6_clock_policy_probe.required_domain_mask &
         PS_HW6_CLOCK_PLL2_DOMAIN_MASK) == 0UL) &&
-      ((g_ps_hw6_clock_policy_probe.readback_domain_mask &
-        PS_HW6_CLOCK_PLL2_DOMAIN_MASK) != 0UL))
+      ((g_ps_hw6_clock_policy_probe.pll2_ready != 0UL) ||
+       (g_ps_hw6_clock_policy_probe.pll2_output_enabled_mask != 0UL)))
   {
     g_ps_hw6_clock_policy_probe.pll2_autogate_skip_count++;
   }
@@ -399,46 +433,350 @@ static void PS_HW6_ClockPolicy_FillPll2Config(
   pll2->PLL2ClockOut = output_mask;
 }
 
+static HAL_StatusTypeDef PS_HW6_ClockPolicy_SaiMuxParkOnHsi(void)
+{
+  HAL_StatusTypeDef status = HAL_OK;
+
+  g_ps_hw6_clock_policy_probe.sai_mux_handoff_count++;
+  g_ps_hw6_clock_policy_probe.sai_mux_handoff_status =
+    PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
+
+  if ((__HAL_RCC_SAI1_IS_CLK_ENABLED() != 0U) ||
+      (__HAL_RCC_GET_FLAG(RCC_FLAG_HSIRDY) == 0U))
+  {
+    status = HAL_ERROR;
+  }
+  if (status == HAL_OK)
+  {
+    __HAL_RCC_SAI1_RELEASE_RESET();
+    __DSB();
+    __ISB();
+    __HAL_RCC_SAI1_CONFIG(RCC_SAI1CLKSOURCE_HSI);
+    __DSB();
+    __ISB();
+    g_ps_hw6_clock_policy_probe.sai_mux_park_clock_enabled =
+      (__HAL_RCC_SAI1_IS_CLK_ENABLED() != 0U) ? 1UL : 0UL;
+    g_ps_hw6_clock_policy_probe.sai_mux_park_reset_asserted =
+      (READ_BIT(RCC->APB2RSTR, RCC_APB2RSTR_SAI1RST) != 0U) ? 1UL : 0UL;
+    g_ps_hw6_clock_policy_probe.sai_mux_park_source =
+      __HAL_RCC_GET_SAI1_SOURCE();
+    g_ps_hw6_clock_policy_probe.sai_mux_park_kernel_hz =
+      HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SAI1);
+    if ((g_ps_hw6_clock_policy_probe.sai_mux_park_clock_enabled != 0UL) ||
+        (g_ps_hw6_clock_policy_probe.sai_mux_park_reset_asserted != 0UL) ||
+        (g_ps_hw6_clock_policy_probe.sai_mux_park_source !=
+         RCC_SAI1CLKSOURCE_HSI) ||
+        (g_ps_hw6_clock_policy_probe.sai_mux_park_kernel_hz == 0UL))
+    {
+      status = HAL_ERROR;
+    }
+  }
+
+  if (status != HAL_OK)
+  {
+    g_ps_hw6_clock_policy_probe.sai_mux_handoff_status =
+      (uint32_t)TX_NOT_DONE;
+  }
+  return status;
+}
+
+static HAL_StatusTypeDef PS_HW6_ClockPolicy_VerifySaiMuxPll2(void)
+{
+  HAL_StatusTypeDef status = HAL_OK;
+
+  g_ps_hw6_clock_policy_probe.sai_mux_restore_clock_enabled =
+    (__HAL_RCC_SAI1_IS_CLK_ENABLED() != 0U) ? 1UL : 0UL;
+  g_ps_hw6_clock_policy_probe.sai_mux_restore_reset_asserted =
+    (READ_BIT(RCC->APB2RSTR, RCC_APB2RSTR_SAI1RST) != 0U) ? 1UL : 0UL;
+  g_ps_hw6_clock_policy_probe.sai_mux_restore_source =
+    __HAL_RCC_GET_SAI1_SOURCE();
+  g_ps_hw6_clock_policy_probe.sai_mux_restore_kernel_hz =
+    HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SAI1);
+  if ((g_ps_hw6_clock_policy_probe.sai_mux_restore_clock_enabled != 0UL) ||
+      (g_ps_hw6_clock_policy_probe.sai_mux_restore_reset_asserted != 0UL) ||
+      (g_ps_hw6_clock_policy_probe.sai_mux_restore_source !=
+       RCC_SAI1CLKSOURCE_PLL2) ||
+      (g_ps_hw6_clock_policy_probe.sai_mux_restore_kernel_hz == 0UL))
+  {
+    status = HAL_ERROR;
+    g_ps_hw6_clock_policy_probe.sai_mux_handoff_status =
+      (uint32_t)TX_NOT_DONE;
+  }
+  return status;
+}
+
+static HAL_StatusTypeDef PS_HW6_ClockPolicy_EnablePll2ForDomains(
+  const RCC_PLL2InitTypeDef *pll2,
+  uint32_t output_mask)
+{
+  RCC_PeriphCLKInitTypeDef peripheral_clock = {0};
+
+  if ((output_mask & RCC_PLL2_DIVP) == 0UL)
+  {
+    return HAL_RCCEx_EnablePLL2(pll2);
+  }
+
+  /* Use the same PLL2P bring-up path that establishes SAI1 at boot. */
+  peripheral_clock.PeriphClockSelection = RCC_PERIPHCLK_SAI1;
+  peripheral_clock.Sai1ClockSelection = RCC_SAI1CLKSOURCE_PLL2;
+  peripheral_clock.PLL2 = *pll2;
+  return HAL_RCCEx_PeriphCLKConfig(&peripheral_clock);
+}
+
+static UINT PS_HW6_ClockPolicy_SaiDomainSet(UINT enabled,
+                                             UINT reset_on_enable)
+{
+  UINT status = TX_SUCCESS;
+  UINT clock_was_enabled =
+    (__HAL_RCC_SAI1_IS_CLK_ENABLED() != 0U) ? 1U : 0U;
+
+  if (enabled != 0U)
+  {
+    g_ps_hw6_clock_policy_probe.last_stage =
+      PS_HW6_CLOCK_STAGE_SAI_DOMAIN_ON;
+    if ((__HAL_RCC_GET_FLAG(RCC_FLAG_PLL2RDY) == 0U) ||
+        ((READ_BIT(RCC->PLL2CFGR, RCC_PLL2CFGR_PLL2PEN)) == 0U) ||
+        (HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SAI1) == 0UL))
+    {
+      status = TX_NOT_DONE;
+    }
+    if ((status == TX_SUCCESS) && (clock_was_enabled == 0U))
+    {
+      __HAL_RCC_SAI1_CLK_ENABLE();
+      __DSB();
+      __ISB();
+    }
+    if ((status == TX_SUCCESS) &&
+        ((clock_was_enabled == 0U) || (reset_on_enable != 0U)))
+    {
+      __HAL_RCC_SAI1_FORCE_RESET();
+      __DSB();
+      __ISB();
+      __HAL_RCC_SAI1_RELEASE_RESET();
+      __DSB();
+      __ISB();
+      g_ps_hw6_clock_policy_probe.sai_reset_count++;
+      g_ps_hw6_clock_policy_probe.sai_grant_epoch++;
+    }
+    if ((status == TX_SUCCESS) &&
+        ((__HAL_RCC_SAI1_IS_CLK_ENABLED() == 0U) ||
+         (READ_BIT(RCC->APB2RSTR, RCC_APB2RSTR_SAI1RST) != 0U)))
+    {
+      status = TX_NOT_DONE;
+    }
+    if (status == TX_SUCCESS)
+    {
+      if ((clock_was_enabled == 0U) || (reset_on_enable != 0U))
+      {
+        g_ps_hw6_clock_policy_probe.sai_domain_on_count++;
+      }
+      g_ps_hw6_clock_policy_probe.sai_domain_active = 1UL;
+      g_ps_hw6_clock_policy_probe.managed_domain_mask |=
+        PS_HW6_CLOCK_DOMAIN_PLL2_SAI;
+    }
+  }
+  else
+  {
+    g_ps_hw6_clock_policy_probe.last_stage =
+      PS_HW6_CLOCK_STAGE_SAI_DOMAIN_OFF;
+    if (clock_was_enabled != 0U)
+    {
+      __HAL_RCC_SAI1_CLK_DISABLE();
+      __DSB();
+      __ISB();
+      g_ps_hw6_clock_policy_probe.sai_domain_off_count++;
+    }
+    if (__HAL_RCC_SAI1_IS_CLK_ENABLED() != 0U)
+    {
+      status = TX_NOT_DONE;
+    }
+    else
+    {
+      g_ps_hw6_clock_policy_probe.sai_domain_active = 0UL;
+    }
+  }
+
+  g_ps_hw6_clock_policy_probe.sai_domain_last_status = (uint32_t)status;
+  return status;
+}
+
 static UINT PS_HW6_ClockPolicy_Pll2DomainSet(
-  uint32_t required_domain_mask)
+  uint32_t required_domain_mask,
+  UINT force_disable_when_unused)
 {
   RCC_PLL2InitTypeDef pll2 = {0};
   HAL_StatusTypeDef hal_status = HAL_OK;
+  UINT sai_status;
   uint32_t output_mask = PS_HW6_ClockPolicy_Pll2OutputMaskForDomains(
     required_domain_mask);
+  uint32_t enabled_output_mask = READ_BIT(
+    RCC->PLL2CFGR,
+    RCC_PLL2CFGR_PLL2PEN | RCC_PLL2CFGR_PLL2QEN |
+    RCC_PLL2CFGR_PLL2REN);
+  uint32_t outputs_are_active =
+    ((__HAL_RCC_GET_FLAG(RCC_FLAG_PLL2RDY) != 0U) &&
+     (enabled_output_mask == output_mask)) ? 1UL : 0UL;
+  uint32_t post_stop_stale_domain_mask =
+    required_domain_mask &
+    g_ps_hw6_clock_policy_probe.pll2_post_stop_rearm_pending_domain_mask &
+    PS_HW6_CLOCK_PLL2_DOMAIN_MASK;
+  uint32_t force_post_stop_rearm =
+    ((output_mask != 0UL) && (post_stop_stale_domain_mask != 0UL)) ?
+    1UL : 0UL;
+  uint32_t sai_mux_parked = 0UL;
 
   g_ps_hw6_clock_policy_probe.pll2_required_output_mask = output_mask;
+
+  if ((output_mask != 0UL) &&
+      (force_post_stop_rearm == 0UL) &&
+      (outputs_are_active != 0UL) &&
+      (((output_mask & RCC_PLL2_DIVP) == 0UL) ||
+       (HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SAI1) != 0UL)) &&
+      (((output_mask & RCC_PLL2_DIVQ) == 0UL) ||
+       (HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_OSPI) != 0UL)))
+  {
+    sai_status = PS_HW6_ClockPolicy_SaiDomainSet(
+      ((required_domain_mask & PS_HW6_CLOCK_DOMAIN_PLL2_SAI) != 0UL) ?
+      1U : 0U,
+      0U);
+    if (sai_status != TX_SUCCESS)
+    {
+      g_ps_hw6_clock_policy_probe.pll2_domain_last_status =
+        (uint32_t)TX_NOT_DONE;
+      return TX_NOT_DONE;
+    }
+    g_ps_hw6_clock_policy_probe.pll2_fast_path_count++;
+    g_ps_hw6_clock_policy_probe.managed_domain_mask |=
+      required_domain_mask & PS_HW6_CLOCK_PLL2_DOMAIN_MASK;
+    g_ps_hw6_clock_policy_probe.pll2_domain_last_status =
+      (uint32_t)TX_SUCCESS;
+    return TX_SUCCESS;
+  }
+
+  sai_status = PS_HW6_ClockPolicy_SaiDomainSet(0U, 0U);
+  if (sai_status != TX_SUCCESS)
+  {
+    g_ps_hw6_clock_policy_probe.pll2_domain_last_status =
+      (uint32_t)TX_NOT_DONE;
+    return TX_NOT_DONE;
+  }
 
   if (output_mask != 0UL)
   {
     PS_HW6_ClockPolicy_FillPll2Config(&pll2, output_mask);
-    g_ps_hw6_clock_policy_probe.last_stage =
-      PS_HW6_CLOCK_STAGE_PLL2_DOMAIN_ON;
-    hal_status = HAL_RCCEx_DisablePLL2();
+    if (force_post_stop_rearm != 0UL)
+    {
+      g_ps_hw6_clock_policy_probe.last_stage =
+        PS_HW6_CLOCK_STAGE_PLL2_REARM;
+      g_ps_hw6_clock_policy_probe.pll2_post_stop_rearm_attempt_count++;
+      g_ps_hw6_clock_policy_probe.pll2_post_stop_rearm_status =
+        PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
+    }
+    else
+    {
+      g_ps_hw6_clock_policy_probe.last_stage =
+        PS_HW6_CLOCK_STAGE_PLL2_DOMAIN_ON;
+    }
+    if ((force_post_stop_rearm != 0UL) &&
+        ((post_stop_stale_domain_mask &
+          PS_HW6_CLOCK_DOMAIN_PLL2_SAI) != 0UL) &&
+        ((output_mask & RCC_PLL2_DIVP) != 0UL))
+    {
+      hal_status = PS_HW6_ClockPolicy_SaiMuxParkOnHsi();
+      if (hal_status == HAL_OK)
+      {
+        sai_mux_parked = 1UL;
+      }
+    }
+    if ((hal_status == HAL_OK) &&
+        ((output_mask & RCC_PLL2_DIVP) == 0UL))
+    {
+      hal_status = HAL_RCCEx_DisablePLL2();
+    }
     if (hal_status == HAL_OK)
     {
-      hal_status = HAL_RCCEx_EnablePLL2(&pll2);
+      hal_status = PS_HW6_ClockPolicy_EnablePll2ForDomains(&pll2,
+                                                           output_mask);
     }
     if (hal_status == HAL_OK)
     {
       if ((output_mask & RCC_PLL2_DIVP) != 0UL)
       {
-        __HAL_RCC_SAI1_CONFIG(RCC_SAI1CLKSOURCE_PLL2);
+        hal_status = PS_HW6_ClockPolicy_VerifySaiMuxPll2();
       }
-      if ((output_mask & RCC_PLL2_DIVQ) != 0UL)
+      if ((hal_status == HAL_OK) &&
+          ((output_mask & RCC_PLL2_DIVQ) != 0UL))
       {
         __HAL_RCC_OSPI_CONFIG(RCC_OSPICLKSOURCE_PLL2);
+      }
+      if (hal_status == HAL_OK)
+      {
+        enabled_output_mask = READ_BIT(
+          RCC->PLL2CFGR,
+          RCC_PLL2CFGR_PLL2PEN | RCC_PLL2CFGR_PLL2QEN |
+          RCC_PLL2CFGR_PLL2REN);
+        if ((__HAL_RCC_GET_FLAG(RCC_FLAG_PLL2RDY) == 0U) ||
+            (enabled_output_mask != output_mask) ||
+            (((output_mask & RCC_PLL2_DIVP) != 0UL) &&
+             (HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SAI1) == 0UL)) ||
+            (((output_mask & RCC_PLL2_DIVQ) != 0UL) &&
+             (HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_OSPI) == 0UL)))
+        {
+          hal_status = HAL_ERROR;
+        }
+      }
+    }
+    if ((hal_status == HAL_OK) &&
+        ((required_domain_mask & PS_HW6_CLOCK_DOMAIN_PLL2_SAI) != 0UL) &&
+        (PS_HW6_ClockPolicy_SaiDomainSet(1U, 1U) != TX_SUCCESS))
+    {
+      hal_status = HAL_ERROR;
+    }
+    if (hal_status == HAL_OK)
+    {
+      if (sai_mux_parked != 0UL)
+      {
+        g_ps_hw6_clock_policy_probe.sai_mux_handoff_success_count++;
+        g_ps_hw6_clock_policy_probe.sai_mux_handoff_status =
+          (uint32_t)TX_SUCCESS;
       }
       g_ps_hw6_clock_policy_probe.pll2_domain_on_count++;
       g_ps_hw6_clock_policy_probe.managed_domain_mask |=
         required_domain_mask & PS_HW6_CLOCK_PLL2_DOMAIN_MASK;
+      if (force_post_stop_rearm != 0UL)
+      {
+        g_ps_hw6_clock_policy_probe.pll2_post_stop_rearm_pending_domain_mask &=
+          ~post_stop_stale_domain_mask;
+        g_ps_hw6_clock_policy_probe.pll2_post_stop_rearm_pending =
+          (g_ps_hw6_clock_policy_probe.pll2_post_stop_rearm_pending_domain_mask !=
+           0UL) ? 1UL : 0UL;
+        g_ps_hw6_clock_policy_probe.pll2_post_stop_rearm_success_count++;
+        g_ps_hw6_clock_policy_probe.pll2_post_stop_rearm_status =
+          (uint32_t)TX_SUCCESS;
+      }
+    }
+    else if (force_post_stop_rearm != 0UL)
+    {
+      g_ps_hw6_clock_policy_probe.pll2_post_stop_rearm_status =
+        (uint32_t)TX_NOT_DONE;
+      g_ps_hw6_clock_policy_probe.sai_mux_handoff_status =
+        (uint32_t)TX_NOT_DONE;
     }
   }
-  else if (g_ps_hw6_clock_policy_probe.pll2_autogate_enabled != 0UL)
+  else if ((g_ps_hw6_clock_policy_probe.pll2_autogate_enabled != 0UL) ||
+           (force_disable_when_unused != 0U))
   {
     g_ps_hw6_clock_policy_probe.last_stage =
       PS_HW6_CLOCK_STAGE_PLL2_DOMAIN_OFF;
     hal_status = HAL_RCCEx_DisablePLL2();
+    if ((hal_status == HAL_OK) &&
+        ((__HAL_RCC_GET_FLAG(RCC_FLAG_PLL2RDY) != 0U) ||
+         (READ_BIT(RCC->PLL2CFGR,
+                   RCC_PLL2CFGR_PLL2PEN | RCC_PLL2CFGR_PLL2QEN |
+                   RCC_PLL2CFGR_PLL2REN) != 0U)))
+    {
+      hal_status = HAL_ERROR;
+    }
     if (hal_status == HAL_OK)
     {
       g_ps_hw6_clock_policy_probe.pll2_domain_off_count++;
@@ -546,6 +884,73 @@ static UINT PS_HW6_ClockPolicy_ApplyIoHigh(uint32_t required_domain_mask)
   g_ps_hw6_clock_policy_probe.last_stage =
     PS_HW6_CLOCK_STAGE_USB_DOMAIN_OFF;
   return PS_HW6_ClockPolicy_UsbDomainSet(0U);
+}
+
+static UINT PS_HW6_ClockPolicy_RestorePostStopBaseClocks(void)
+{
+  RCC_OscInitTypeDef oscillator = {0};
+  RCC_ClkInitTypeDef clock = {0};
+  HAL_StatusTypeDef hal_status;
+
+  if ((uint32_t)KNOB_POWER_CLOCK_REACTIVE_BASE_HZ != 24000000UL)
+  {
+    return TX_NOT_DONE;
+  }
+
+  g_ps_hw6_clock_policy_probe.last_stage =
+    PS_HW6_CLOCK_STAGE_RESTORE_BASE;
+
+  g_ps_hw6_clock_policy_probe.post_stop_vosr_before = PWR->VOSR;
+  g_ps_hw6_clock_policy_probe.post_stop_svmsr_before = PWR->SVMSR;
+  hal_status = HAL_PWREx_ControlVoltageScaling(
+    PWR_REGULATOR_VOLTAGE_SCALE3);
+  g_ps_hw6_clock_policy_probe.post_stop_voltage_scale_status =
+    (uint32_t)hal_status;
+  g_ps_hw6_clock_policy_probe.post_stop_vosr_after = PWR->VOSR;
+  g_ps_hw6_clock_policy_probe.post_stop_svmsr_after = PWR->SVMSR;
+  if ((hal_status != HAL_OK) ||
+      (HAL_PWREx_GetVoltageRange() != PWR_REGULATOR_VOLTAGE_SCALE3) ||
+      (HAL_IS_BIT_CLR(PWR->VOSR, PWR_VOSR_VOSRDY)) ||
+      (HAL_IS_BIT_CLR(PWR->SVMSR, PWR_SVMSR_ACTVOSRDY)))
+  {
+    return TX_NOT_DONE;
+  }
+
+  oscillator.OscillatorType = RCC_OSCILLATORTYPE_HSI |
+                              RCC_OSCILLATORTYPE_MSI |
+                              RCC_OSCILLATORTYPE_MSIK;
+  oscillator.HSIState = RCC_HSI_ON;
+  oscillator.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  oscillator.MSIState = RCC_MSI_ON;
+  oscillator.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
+  oscillator.MSIClockRange = RCC_MSIRANGE_1;
+  oscillator.MSIKClockRange = RCC_MSIKRANGE_4;
+  oscillator.MSIKState = RCC_MSIK_ON;
+  oscillator.PLL.PLLState = RCC_PLL_NONE;
+  hal_status = HAL_RCC_OscConfig(&oscillator);
+  if (hal_status != HAL_OK)
+  {
+    return TX_NOT_DONE;
+  }
+
+  clock.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |
+                    RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2 |
+                    RCC_CLOCKTYPE_PCLK3;
+  clock.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
+  clock.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  clock.APB1CLKDivider = RCC_HCLK_DIV2;
+  clock.APB2CLKDivider = RCC_HCLK_DIV2;
+  clock.APB3CLKDivider = RCC_HCLK_DIV8;
+  hal_status = HAL_RCC_ClockConfig(&clock, FLASH_LATENCY_0);
+  if (hal_status != HAL_OK)
+  {
+    return TX_NOT_DONE;
+  }
+
+  __HAL_RCC_MSIKSTOP_ENABLE();
+  return (HAL_RCC_GetSysClockFreq() ==
+          (uint32_t)KNOB_POWER_CLOCK_REACTIVE_BASE_HZ) ?
+         TX_SUCCESS : TX_NOT_DONE;
 }
 
 static UINT PS_HW6_ClockPolicy_ApplyBase(uint32_t selected_profile)
@@ -658,7 +1063,10 @@ static UINT PS_HW6_ClockPolicy_ApplyResolvedProfile(
 
   if (status == TX_SUCCESS)
   {
-    status = PS_HW6_ClockPolicy_Pll2DomainSet(required_domain_mask);
+    status = PS_HW6_ClockPolicy_Pll2DomainSet(
+      required_domain_mask,
+      (selected_profile == (uint32_t)PS_HW6_CLOCK_PROFILE_STOP_PREP) ?
+      1U : 0U);
   }
 
   g_ps_hw6_clock_policy_probe.last_status = (uint32_t)status;
@@ -704,6 +1112,14 @@ void PS_HW6_ClockPolicy_Reset(void)
   g_ps_hw6_clock_policy_probe.last_status =
     PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
   g_ps_hw6_clock_policy_probe.pll2_domain_last_status =
+    PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
+  g_ps_hw6_clock_policy_probe.pll2_post_stop_rearm_status =
+    PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
+  g_ps_hw6_clock_policy_probe.sai_mux_handoff_status =
+    PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
+  g_ps_hw6_clock_policy_probe.sai_domain_last_status =
+    PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
+  g_ps_hw6_clock_policy_probe.stop2_prepare_status =
     PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
   PS_HW6_ClockPolicy_ClearRequesterStatus();
   PS_HW6_ClockPolicy_RecordSnapshot();
@@ -797,7 +1213,7 @@ UINT PS_HW6_ClockPolicy_ApplyBootIdleDomains(void)
     status = PS_HW6_ClockPolicy_UsbDomainSet(0U);
     if (status == TX_SUCCESS)
     {
-      status = PS_HW6_ClockPolicy_Pll2DomainSet(0UL);
+      status = PS_HW6_ClockPolicy_Pll2DomainSet(0UL, 1U);
     }
   }
 
@@ -857,9 +1273,122 @@ UINT PS_HW6_ClockPolicy_ApplyRequesterProfile(
   return status;
 }
 
+static uint32_t PS_HW6_ClockPolicy_Stop2PhysicalFailureMask(void)
+{
+  uint32_t failure_mask = 0UL;
+
+  if (g_ps_hw6_clock_policy_probe.sai_clock_enabled != 0UL)
+  {
+    failure_mask |= PS_HW6_CLOCK_STOP2_FAIL_SAI_GATE;
+  }
+  if (g_ps_hw6_clock_policy_probe.sai_reset_asserted != 0UL)
+  {
+    failure_mask |= PS_HW6_CLOCK_STOP2_FAIL_SAI_RESET;
+  }
+  if (g_ps_hw6_clock_policy_probe.pll2_ready != 0UL)
+  {
+    failure_mask |= PS_HW6_CLOCK_STOP2_FAIL_PLL2_READY;
+  }
+  if (g_ps_hw6_clock_policy_probe.pll2_output_enabled_mask != 0UL)
+  {
+    failure_mask |= PS_HW6_CLOCK_STOP2_FAIL_PLL2_OUTPUT;
+  }
+  if (g_ps_hw6_clock_policy_probe.pll3_ready != 0UL)
+  {
+    failure_mask |= PS_HW6_CLOCK_STOP2_FAIL_PLL3_READY;
+  }
+  if (g_ps_hw6_clock_policy_probe.hsi48_ready != 0UL)
+  {
+    failure_mask |= PS_HW6_CLOCK_STOP2_FAIL_HSI48_READY;
+  }
+  if (g_ps_hw6_clock_policy_probe.shsi_ready != 0UL)
+  {
+    failure_mask |= PS_HW6_CLOCK_STOP2_FAIL_SHSI_READY;
+  }
+  if (g_ps_hw6_clock_policy_probe.usb_clock_enabled != 0UL)
+  {
+    failure_mask |= PS_HW6_CLOCK_STOP2_FAIL_USB_GATE;
+  }
+  if (g_ps_hw6_clock_policy_probe.vddusb_enabled != 0UL)
+  {
+    failure_mask |= PS_HW6_CLOCK_STOP2_FAIL_VDDUSB;
+  }
+
+  return failure_mask;
+}
+
+UINT PS_HW6_ClockPolicy_PrepareStop2(void)
+{
+  uint32_t capabilities;
+  uint32_t failure_mask = 0UL;
+  UINT status;
+
+  PS_HW6_ClockPolicy_PrimeProbe();
+  g_ps_hw6_clock_policy_probe.stop2_prepare_count++;
+  g_ps_hw6_clock_policy_probe.stop2_prepare_status =
+    PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
+  g_ps_hw6_clock_policy_probe.stop2_physical_ready = 0UL;
+  g_ps_hw6_clock_policy_probe.stop2_physical_failure_mask = 0UL;
+
+  capabilities = PS_HW6_ClockPolicy_AggregateRequesterCapabilities();
+  PS_HW6_ClockPolicy_UpdateResolverProbe(
+    capabilities,
+    (uint32_t)PS_HW6_CLOCK_PROFILE_STOP_PREP);
+  if ((capabilities & PS_HW6_CLOCK_STOP2_BLOCKER_CAP_MASK) != 0UL)
+  {
+    failure_mask |= PS_HW6_CLOCK_STOP2_FAIL_REQUESTERS_ACTIVE;
+    status = TX_NOT_DONE;
+    PS_HW6_ClockPolicy_RecordSnapshot();
+    failure_mask |= PS_HW6_ClockPolicy_Stop2PhysicalFailureMask();
+  }
+  else
+  {
+    status = PS_HW6_ClockPolicy_ApplyResolvedProfile(
+      (uint32_t)PS_HW6_CLOCK_PROFILE_STOP_PREP,
+      capabilities);
+    PS_HW6_ClockPolicy_RecordSnapshot();
+    failure_mask |= PS_HW6_ClockPolicy_Stop2PhysicalFailureMask();
+    if (failure_mask != 0UL)
+    {
+      status = TX_NOT_DONE;
+    }
+  }
+
+  g_ps_hw6_clock_policy_probe.last_stage =
+    PS_HW6_CLOCK_STAGE_STOP2_VERIFY;
+  g_ps_hw6_clock_policy_probe.stop2_physical_failure_mask = failure_mask;
+  g_ps_hw6_clock_policy_probe.stop2_physical_ready =
+    ((status == TX_SUCCESS) && (failure_mask == 0UL)) ? 1UL : 0UL;
+  g_ps_hw6_clock_policy_probe.stop2_ready =
+    g_ps_hw6_clock_policy_probe.stop2_physical_ready;
+  g_ps_hw6_clock_policy_probe.lpbam_stop2_ready =
+    (((capabilities & PS_HW6_CLOCK_CAP_LPBAM_DISPLAY_AUTONOMOUS) != 0UL) &&
+     (g_ps_hw6_clock_policy_probe.stop2_physical_ready != 0UL)) ? 1UL : 0UL;
+  g_ps_hw6_clock_policy_probe.stop2_prepare_status = (uint32_t)status;
+  g_ps_hw6_clock_policy_probe.last_status = (uint32_t)status;
+  g_ps_hw6_clock_policy_probe.last_tick = (uint32_t)tx_time_get();
+  return status;
+}
+
 UINT PS_HW6_ClockPolicy_RestoreBase(void)
 {
+  UINT status;
+
   PS_HW6_ClockPolicy_PrimeProbe();
+  g_ps_hw6_clock_policy_probe.pll2_post_stop_rearm_pending = 1UL;
+  g_ps_hw6_clock_policy_probe.pll2_post_stop_rearm_pending_domain_mask =
+    PS_HW6_CLOCK_PLL2_DOMAIN_MASK;
+  g_ps_hw6_clock_policy_probe.pll2_post_stop_invalidate_count++;
+  g_ps_hw6_clock_policy_probe.pll2_post_stop_rearm_status =
+    PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN;
+  status = PS_HW6_ClockPolicy_RestorePostStopBaseClocks();
+  if (status != TX_SUCCESS)
+  {
+    g_ps_hw6_clock_policy_probe.last_status = (uint32_t)status;
+    g_ps_hw6_clock_policy_probe.last_tick = (uint32_t)tx_time_get();
+    PS_HW6_ClockPolicy_RecordSnapshot();
+    return status;
+  }
   PS_HW6_ClockPolicy_ClearRequesterCapabilities();
   return PS_HW6_ClockPolicy_ApplyResolvedProfile(
     (uint32_t)PS_HW6_CLOCK_PROFILE_REACTIVE_BASE,

@@ -8319,6 +8319,8 @@ void PS_HW6_OwnerStateMachines_Init(void)
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.stop2_enter_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.stop2_clock_prepare_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.stop2_clock_restore_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.stop2_recover_status =
@@ -8755,6 +8757,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
   HAL_StatusTypeDef gpio_park_status = HAL_ERROR;
   HAL_StatusTypeDef gpio_restore_status = HAL_ERROR;
   HAL_StatusTypeDef interaction_timeout_prepare_status = HAL_OK;
+  UINT clock_prepare_status = TX_NOT_DONE;
   UINT clock_restore_status = TX_NOT_DONE;
   uint32_t systick_ctrl_before = 0UL;
   uint32_t stop2_entered = 0UL;
@@ -8778,6 +8781,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
   g_ps_hw6_owner_sm_probe.stop2_quiesce_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.stop2_enter_status =
+    PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_owner_sm_probe.stop2_clock_prepare_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
   g_ps_hw6_owner_sm_probe.stop2_clock_restore_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
@@ -8862,6 +8867,13 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
         }
         if (interaction_timeout_prepare_status == HAL_OK)
         {
+          clock_prepare_status = PS_HW6_ClockPolicy_PrepareStop2();
+          g_ps_hw6_owner_sm_probe.stop2_clock_prepare_status =
+            (uint32_t)clock_prepare_status;
+        }
+        if ((interaction_timeout_prepare_status == HAL_OK) &&
+            (clock_prepare_status == TX_SUCCESS))
+        {
           PS_HW6_SM_RecordStop2GpioSnapshot(
             PS_HW6_STOP2_GPIO_SNAPSHOT_BEFORE);
           gpio_park_status = PS_HW6_SM_ParkStop2GpioPins();
@@ -8870,7 +8882,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
         }
         else
         {
-          gpio_park_status = interaction_timeout_prepare_status;
+          gpio_park_status = HAL_ERROR;
         }
         if (gpio_park_status == HAL_OK)
         {
@@ -9012,7 +9024,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
         }
         else
         {
-          status = gpio_park_status;
+          status = (clock_prepare_status == TX_SUCCESS) ?
+                   gpio_park_status : HAL_ERROR;
         }
         g_ps_hw6_owner_sm_probe.stop2_clock_restore_status =
           (clock_restore_status == TX_SUCCESS) ?
@@ -9998,7 +10011,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ResumeForPostStopBarrier(
            (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_SPEAKER] ==
             (uint32_t)SPK_OFF)))
       {
-        status = HAL_OK;
+        action_required = 1UL;
+        status = PS_HW6_AudioOwner_MarkPostStopResume();
       }
       break;
 

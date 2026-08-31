@@ -41,6 +41,7 @@
     "input_joystick_xyz_sweep_samples",
     "input_joystick_xyz_capture_period_ms",
     "input_joystick_xyz_capture_timeout_ms",
+    "audio_dma_completion_margin_ms",
     "debug_tracex_enable",
     "debug_tracex_user_events_enable",
     "debug_swo_lifecycle_enable",
@@ -51,7 +52,9 @@
     "runtime_interaction_timeout_ms",
     "runtime_inactive_cue_ms",
     "runtime_activation_eye_frame_ms",
+    "rtos_app_pool_bytes",
     "rtos_default_stack_bytes",
+    "rtos_audio_stack_bytes",
     "rtos_power_stack_bytes",
     "rtos_input_stack_bytes",
     "rtos_display_stack_bytes",
@@ -525,6 +528,18 @@
       "path": "platform.knobs.input.joystick_xyz_capture_timeout_ms",
       "description": "Hard elapsed-time limit for a TMAG3001 raw XYZ diagnostic capture. This prevents a slow or wedged read path from leaving the display stuck on the capture cue."
     },
+    "audio_dma_completion_margin_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "default": 20,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thAudio",
+      "class": "protected_policy",
+      "path": "platform.knobs.audio.dma_completion_margin_ms",
+      "description": "Bounded margin added to the calculated one-shot SFX duration while thAudio waits for the real DMA completion callback."
+    },
     "debug_tracex_enable": {
       "type": "boolean",
       "default": true,
@@ -640,6 +655,19 @@
       "path": "platform.knobs.runtime.activation_eye_frame_ms",
       "description": "Duration of each frame in the PeepOS-owned closed, half-open, open eye animation shown after START activates an inactive package."
     },
+    "rtos_app_pool_bytes": {
+      "type": "integer",
+      "minimum": 24576,
+      "maximum": 131072,
+      "multipleOf": 8,
+      "default": 40960,
+      "unit": "bytes",
+      "timebase_domain": "threadx",
+      "owner": "kernel",
+      "class": "resource_budget",
+      "path": "platform.knobs.rtos.app_pool_bytes",
+      "description": "Static ThreadX application byte-pool capacity for deterministic owner stacks and queue storage. This pool is allocated from main SRAM, not SRAM4."
+    },
     "rtos_default_stack_bytes": {
       "type": "integer",
       "minimum": 512,
@@ -652,6 +680,19 @@
       "class": "resource_budget",
       "path": "platform.knobs.rtos.default_stack_bytes",
       "description": "Default ThreadX owner-thread stack allocation for FW0 owner threads without a dedicated stack budget."
+    },
+    "rtos_audio_stack_bytes": {
+      "type": "integer",
+      "minimum": 2048,
+      "maximum": 16384,
+      "multipleOf": 8,
+      "default": 4096,
+      "unit": "bytes",
+      "timebase_domain": "threadx",
+      "owner": "thAudio",
+      "class": "resource_budget",
+      "path": "platform.knobs.rtos.audio_stack_bytes",
+      "description": "ThreadX stack allocation for thAudio, including sampled-SFX decode, DMA completion handling, and future bounded multi-voice and music control paths. Audio sample and mix buffers remain statically allocated outside this stack."
     },
     "rtos_power_stack_bytes": {
       "type": "integer",

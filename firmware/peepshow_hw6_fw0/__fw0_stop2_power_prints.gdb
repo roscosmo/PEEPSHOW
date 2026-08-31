@@ -3,7 +3,8 @@ set $sm = &g_ps_hw6_owner_sm_probe
 printf "--- HW6 STOP2 START-wake scaffold ---\n"
 printf "api/status          = %u / 0x%x\n", $sm->version, $sm->stop2_last_status
 printf "stop2 count/start/wake/end = %u / %u / %u / %u\n", $sm->stop2_request_count, $sm->stop2_start_tick, $sm->stop2_wake_tick, $sm->stop2_end_tick
-printf "stop2 quiesce/enter/clock/recover = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_quiesce_status, $sm->stop2_enter_status, $sm->stop2_clock_restore_status, $sm->stop2_recover_status
+printf "stop2 quiesce/enter/clock prepare/restore/recover = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->stop2_quiesce_status, $sm->stop2_enter_status, $sm->stop2_clock_prepare_status, $sm->stop2_clock_restore_status, $sm->stop2_recover_status
+printf "clock STOP2 prepare count/status/physical/fail = %u / 0x%x / %u / 0x%x\n", g_ps_hw6_clock_policy_probe.stop2_prepare_count, g_ps_hw6_clock_policy_probe.stop2_prepare_status, g_ps_hw6_clock_policy_probe.stop2_physical_ready, g_ps_hw6_clock_policy_probe.stop2_physical_failure_mask
 printf "stop2 expected wake pin = 0x%x\n", $sm->stop2_expected_wake_pin
 printf "stop2 IDR before/after = 0x%x / 0x%x\n", $sm->stop2_wake_start_idr, $sm->stop2_wake_end_idr
 printf "power state/last event = %u / %u\n", $sm->current_state[PS_HW6_SM_POWER], $sm->last_event[PS_HW6_SM_POWER]

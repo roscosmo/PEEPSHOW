@@ -66,7 +66,7 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | scene type | STATE |
 | state execution | bounded variables, input routes, guards, actions, and deterministic transitions |
 | package scene flow | direct STATE-to-STATE replacement is implemented and proven on HW6 through service API 8, PKG1 graph V2, and FW0 runtime API 11 |
-| input | service API 19 / PKG1 `STG1` v4 supports A/B/L/R lifecycle bindings (`press`, `release`, `hold`, `repeat`), short START press, eight cardinal/diagonal joystick sources, and per-STATE `four_way` / `eight_way` policy; firmware support and HW6 lifecycle diagnostic proof are complete |
+| input | service API 20 / PKG1 `STG1` v4 supports A/B/L/R lifecycle bindings (`press`, `release`, `hold`, `repeat`), short START press, eight cardinal/diagonal joystick sources, per-STATE `four_way` / `eight_way` policy, and the explicit `exit_to_shell` route action; firmware input support and HW6 lifecycle diagnostic proof are complete, while shell-exit target proof remains pending |
 | visuals | package-backed native-scale masked 1bpp sprite frames |
 | retained render model | bounded ordered scene elements with binary alpha and four platform planes |
 | package primitives | retained line, outline rectangle, filled rectangle, circle, and ellipse records are compiled, previewed, loaded, and target-proven; private shell/calibration draw helpers remain unavailable |
@@ -255,7 +255,7 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `19`.
+protocol is version `1`; the current service API is version `20`.
 
 | Operation | Purpose |
 |---|---|
@@ -614,6 +614,13 @@ through the existing node-card and inspector model.
 
 At the end of this stage, an author can build a multi-screen menu hierarchy.
 Scene-flow editing must remain separate from the STATE graph inside each scene.
+
+`exit_to_shell` is an explicit route action owned by the package author. When
+committed, it asks the runtime host to end the active package and enter the
+PeepOS shell root. It is not an implicit consequence of an unhandled `B`, and
+it is not tied to a physical system-button gesture. Installed packages normally
+boot into their declared entry scene; the shell is entered for recovery,
+eggless operation, package failure, or this explicit action.
 
 Platform foundation status: implemented and proven on HW6. Authoring schema
 routes now accept exactly one `target_state` or `target_scene`; the direct

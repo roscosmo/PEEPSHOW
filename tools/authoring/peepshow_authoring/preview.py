@@ -42,6 +42,7 @@ class PreviewInputResult:
     accepted: bool
     route_id: str | None
     audio_events: tuple[dict[str, object], ...] = ()
+    system_action: str | None = None
 
 
 class StateScenePreview:
@@ -175,6 +176,7 @@ class StateScenePreview:
         }
         force_timeline_rebase = False
         audio_events: list[dict[str, object]] = []
+        system_action: str | None = None
         definitions = self._graph["variables"]
         target_state = route["target_state_index"]
         if target_state is None:
@@ -201,6 +203,9 @@ class StateScenePreview:
                         "volume": cue["volume"],
                     }
                 )
+                continue
+            if kind == 8:
+                system_action = "exit_to_shell"
                 continue
             if kind in {3, 4, 5, 6}:
                 element_index = int(operation["element_index"])
@@ -307,6 +312,7 @@ class StateScenePreview:
             True,
             str(route["route_id"]),
             tuple(audio_events),
+            system_action,
         )
 
     @staticmethod

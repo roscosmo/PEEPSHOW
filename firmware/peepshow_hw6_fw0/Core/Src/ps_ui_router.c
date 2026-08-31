@@ -144,7 +144,7 @@ static ps_status_t PS_UIRouter_CancelShutdown(void)
       (return_page == PS_UI_ROUTER_PAGE_ERROR) ||
       (return_page == PS_UI_ROUTER_PAGE_SHUTDOWN))
   {
-    return_page = PS_UI_ROUTER_PAGE_HOME;
+    return_page = PS_UI_ROUTER_PAGE_MENU;
   }
 
   ps_ui_router_state.previous_page = ps_ui_router_state.current_page;
@@ -476,7 +476,7 @@ void PS_UIRouter_Init(void)
   ps_ui_router_state.shutdown_state = PS_UI_ROUTER_SHUTDOWN_NONE;
   ps_ui_router_state.shutdown_countdown_seconds = 0UL;
   ps_ui_router_state.shutdown_event_count = 0UL;
-  ps_ui_router_state.shutdown_return_page = PS_UI_ROUTER_PAGE_HOME;
+  ps_ui_router_state.shutdown_return_page = PS_UI_ROUTER_PAGE_MENU;
   ps_ui_router_state.package_state = PS_UI_ROUTER_PACKAGE_NONE;
   ps_ui_router_state.package_event_count = 0UL;
   ps_ui_router_state.eggless = 0UL;
@@ -545,7 +545,7 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
   switch (event)
   {
     case PS_UI_ROUTER_EVENT_BOOT_COMPLETE:
-      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_HOME);
+      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
       break;
     case PS_UI_ROUTER_EVENT_NAV_HOME:
       status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_HOME);
@@ -571,7 +571,8 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
       status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC);
       break;
     case PS_UI_ROUTER_EVENT_LAUNCH_RUNTIME:
-      if ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_HOME) ||
+      if ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_BOOTSTRAP) ||
+          (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_HOME) ||
           (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_MENU) ||
           (ps_ui_router_state.current_page ==
            PS_UI_ROUTER_PAGE_PACKAGE_BROWSER))
@@ -594,11 +595,11 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
       break;
     case PS_UI_ROUTER_EVENT_RUNTIME_RETURNED:
       ps_ui_router_state.eggless = 0UL;
-      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_HOME);
+      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
       break;
     case PS_UI_ROUTER_EVENT_RUNTIME_UNAVAILABLE:
       ps_ui_router_state.eggless = 1UL;
-      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_HOME);
+      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
       break;
     case PS_UI_ROUTER_EVENT_SHELL_FAULT:
       ps_ui_router_state.previous_page = ps_ui_router_state.current_page;
@@ -618,8 +619,8 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
              PS_UI_ROUTER_SHUTDOWN_LOW_BATTERY_CHARGE))))
       {
         ps_ui_router_state.previous_page = ps_ui_router_state.current_page;
-        ps_ui_router_state.requested_page = PS_UI_ROUTER_PAGE_HOME;
-        ps_ui_router_state.current_page = PS_UI_ROUTER_PAGE_HOME;
+        ps_ui_router_state.requested_page = PS_UI_ROUTER_PAGE_BOOTSTRAP;
+        ps_ui_router_state.current_page = PS_UI_ROUTER_PAGE_BOOTSTRAP;
         ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_FOCUS;
         ps_ui_router_state.modal_state = PS_UI_ROUTER_MODAL_NONE;
         ps_ui_router_state.calibration_page = PS_UI_ROUTER_CAL_NONE;
@@ -673,7 +674,7 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
           (ps_ui_router_state.calibration_page ==
            PS_UI_ROUTER_CAL_JOYSTICK_REVIEW))
       {
-        status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_HOME);
+        status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
       }
       else
       {

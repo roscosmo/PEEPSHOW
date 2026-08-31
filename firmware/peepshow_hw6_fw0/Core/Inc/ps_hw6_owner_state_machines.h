@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (75UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (76UL)
 
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_NONE       (0UL)
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_PREPARE    (1UL)
@@ -282,6 +282,7 @@ typedef struct
   uint32_t stop2_last_status;
   uint32_t stop2_quiesce_status;
   uint32_t stop2_enter_status;
+  uint32_t stop2_clock_prepare_status;
   uint32_t stop2_clock_restore_status;
   uint32_t stop2_recover_status;
   uint32_t stop2_expected_wake_pin;

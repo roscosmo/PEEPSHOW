@@ -55,6 +55,9 @@
 #define PS_HW6_AUDIO_AMP_SETTLE_TICKS       (2UL)
 #define PS_HW6_AUDIO_DURATION_TICKS \
   ((PS_HW6_AUDIO_DURATION_MS * TX_TIMER_TICKS_PER_SECOND + 999UL) / 1000UL)
+#define PS_HW6_AUDIO_COMPLETION_MARGIN_TICKS \
+  ((KNOB_AUDIO_DMA_COMPLETION_MARGIN_MS * TX_TIMER_TICKS_PER_SECOND + 999UL) / \
+   1000UL)
 
 extern I2C_HandleTypeDef hi2c3;
 extern RTC_HandleTypeDef hrtc;
@@ -263,6 +266,16 @@ static void PS_HW6_UpdateAudioDriverProbe(void)
   g_ps_hw6_owner_probe.audio_driver_operation_count =
     ps_hw6_audio.operation_count;
   g_ps_hw6_owner_probe.audio_driver_last_status = ps_hw6_audio.last_status;
+  g_ps_hw6_owner_probe.audio_post_stop_resume_mark_count =
+    ps_hw6_audio.post_stop_resume_mark_count;
+  g_ps_hw6_owner_probe.audio_post_stop_recovery_pending =
+    ps_hw6_audio.post_stop_recovery_pending;
+  g_ps_hw6_owner_probe.audio_post_stop_recovery_attempt_count =
+    ps_hw6_audio.post_stop_recovery_attempt_count;
+  g_ps_hw6_owner_probe.audio_post_stop_recovery_success_count =
+    ps_hw6_audio.post_stop_recovery_success_count;
+  g_ps_hw6_owner_probe.audio_post_stop_recovery_status =
+    ps_hw6_audio.post_stop_recovery_status;
 }
 
 static void PS_HW6_DisplayOwner_ClearLpbamReadiness(uint32_t reason)
@@ -1139,6 +1152,12 @@ UINT PS_HW6_OwnerServices_Init(void)
   g_ps_hw6_owner_probe.display_lpbam_ui_invalidate_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.audio_start_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.audio_rearm_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.audio_completion_wait_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.audio_completion_callback_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.audio_stop_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
@@ -2533,6 +2552,15 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_VerifyIdle(void)
   return HAL_ERROR;
 }
 
+HAL_StatusTypeDef PS_HW6_AudioOwner_MarkPostStopResume(void)
+{
+  ps_status_t driver_status;
+
+  driver_status = ps_dev_audio_mark_post_stop_resume(&ps_hw6_audio);
+  PS_HW6_UpdateAudioDriverProbe();
+  return (driver_status == PS_STATUS_OK) ? HAL_OK : HAL_ERROR;
+}
+
 HAL_StatusTypeDef PS_HW6_AudioOwner_RunTone(void)
 {
   ps_dev_audio_play_result_t result;
@@ -2548,14 +2576,65 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_RunTone(void)
     ps_hw6_audio_buffer,
     PS_HW6_AUDIO_TONE_BUFFER_HALFWORDS,
     PS_HW6_AUDIO_AMP_SETTLE_TICKS,
-    PS_HW6_AUDIO_DURATION_TICKS,
+    PS_HW6_AUDIO_DURATION_TICKS + PS_HW6_AUDIO_COMPLETION_MARGIN_TICKS,
     4096000UL,
     &result);
 
   g_ps_hw6_owner_probe.audio_sai_kernel_hz = result.sai_kernel_hz;
   g_ps_hw6_owner_probe.audio_sd_state_before = result.sd_state_before;
   g_ps_hw6_owner_probe.audio_sd_state_enabled = result.sd_state_enabled;
+  g_ps_hw6_owner_probe.audio_rearm_status = result.rearm_status;
   g_ps_hw6_owner_probe.audio_start_status = result.start_hal_status;
+  g_ps_hw6_owner_probe.audio_completion_wait_status =
+    result.completion_wait_status;
+  g_ps_hw6_owner_probe.audio_completion_callback_status =
+    result.completion_callback_status;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_irq_delta =
+    result.pre_cleanup_dma_irq_delta;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_tx_callback_delta =
+    result.pre_cleanup_tx_callback_delta;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_error_callback_delta =
+    result.pre_cleanup_error_callback_delta;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_kernel_hz =
+    result.pre_cleanup_sai_kernel_hz;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_state =
+    result.pre_cleanup_sai_state;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_error =
+    result.pre_cleanup_sai_error;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_cr1 =
+    result.pre_cleanup_sai_cr1;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_cr2 =
+    result.pre_cleanup_sai_cr2;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_frcr =
+    result.pre_cleanup_sai_frcr;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_slotr =
+    result.pre_cleanup_sai_slotr;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_imr =
+    result.pre_cleanup_sai_imr;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_sr =
+    result.pre_cleanup_sai_sr;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_gcr =
+    result.pre_cleanup_sai_gcr;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_state =
+    result.pre_cleanup_dma_state;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_error =
+    result.pre_cleanup_dma_error;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_ccr =
+    result.pre_cleanup_dma_ccr;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_csr =
+    result.pre_cleanup_dma_csr;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_cbr1 =
+    result.pre_cleanup_dma_cbr1;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_ctr1 =
+    result.pre_cleanup_dma_ctr1;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_ctr2 =
+    result.pre_cleanup_dma_ctr2;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_csar =
+    result.pre_cleanup_dma_csar;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_cdar =
+    result.pre_cleanup_dma_cdar;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_cllr =
+    result.pre_cleanup_dma_cllr;
   g_ps_hw6_owner_probe.audio_stop_status = result.stop_hal_status;
   g_ps_hw6_owner_probe.audio_sd_state_after = result.sd_state_after;
   g_ps_hw6_owner_probe.audio_sai_state_after = result.sai_state_after;
@@ -2634,14 +2713,65 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_RunSfx(uint32_t cue_index)
     ps_hw6_audio_buffer,
     decoded_samples * 2UL,
     PS_HW6_AUDIO_AMP_SETTLE_TICKS,
-    duration_ticks,
+    duration_ticks + PS_HW6_AUDIO_COMPLETION_MARGIN_TICKS,
     4096000UL,
     &result);
 
   g_ps_hw6_owner_probe.audio_sai_kernel_hz = result.sai_kernel_hz;
   g_ps_hw6_owner_probe.audio_sd_state_before = result.sd_state_before;
   g_ps_hw6_owner_probe.audio_sd_state_enabled = result.sd_state_enabled;
+  g_ps_hw6_owner_probe.audio_rearm_status = result.rearm_status;
   g_ps_hw6_owner_probe.audio_start_status = result.start_hal_status;
+  g_ps_hw6_owner_probe.audio_completion_wait_status =
+    result.completion_wait_status;
+  g_ps_hw6_owner_probe.audio_completion_callback_status =
+    result.completion_callback_status;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_irq_delta =
+    result.pre_cleanup_dma_irq_delta;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_tx_callback_delta =
+    result.pre_cleanup_tx_callback_delta;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_error_callback_delta =
+    result.pre_cleanup_error_callback_delta;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_kernel_hz =
+    result.pre_cleanup_sai_kernel_hz;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_state =
+    result.pre_cleanup_sai_state;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_error =
+    result.pre_cleanup_sai_error;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_cr1 =
+    result.pre_cleanup_sai_cr1;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_cr2 =
+    result.pre_cleanup_sai_cr2;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_frcr =
+    result.pre_cleanup_sai_frcr;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_slotr =
+    result.pre_cleanup_sai_slotr;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_imr =
+    result.pre_cleanup_sai_imr;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_sr =
+    result.pre_cleanup_sai_sr;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_sai_gcr =
+    result.pre_cleanup_sai_gcr;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_state =
+    result.pre_cleanup_dma_state;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_error =
+    result.pre_cleanup_dma_error;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_ccr =
+    result.pre_cleanup_dma_ccr;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_csr =
+    result.pre_cleanup_dma_csr;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_cbr1 =
+    result.pre_cleanup_dma_cbr1;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_ctr1 =
+    result.pre_cleanup_dma_ctr1;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_ctr2 =
+    result.pre_cleanup_dma_ctr2;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_csar =
+    result.pre_cleanup_dma_csar;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_cdar =
+    result.pre_cleanup_dma_cdar;
+  g_ps_hw6_owner_probe.audio_pre_cleanup_dma_cllr =
+    result.pre_cleanup_dma_cllr;
   g_ps_hw6_owner_probe.audio_stop_status = result.stop_hal_status;
   g_ps_hw6_owner_probe.audio_sd_state_after = result.sd_state_after;
   g_ps_hw6_owner_probe.audio_sai_state_after = result.sai_state_after;

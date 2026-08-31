@@ -503,6 +503,10 @@ def _compile_graph(
                         0,
                     )
                 )
+            elif operation["kind"] == "exit_to_shell":
+                operation_records.extend(
+                    OPERATION_RECORD.pack(8, 0, 0, 0, 0, 0)
+                )
             else:
                 raise EggCompileError("unsupported STATE route action")
             operation_count += 1

@@ -314,7 +314,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(19, SERVICE_API_VERSION)
+        self.assertEqual(20, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -367,6 +367,10 @@ class AuthoringServiceTests(unittest.TestCase):
         )
         self.assertTrue(
             animation_selection["requires_matching_cadence_and_step_count"]
+        )
+        self.assertEqual(
+            ["exit_to_shell"],
+            result["state_scene_presentation"]["system_actions"],
         )
         graph = result["state_scene_graph"]
         self.assertEqual(64, graph["command_batch_maximum"])

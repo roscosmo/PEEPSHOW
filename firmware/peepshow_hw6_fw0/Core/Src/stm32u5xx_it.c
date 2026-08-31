@@ -22,6 +22,8 @@
 #include "stm32u5xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "ps_dev_audio.h"
+
 extern volatile unsigned int g_ps_hw6_usbx_byte_pool_create_status;
 extern volatile unsigned int g_ps_hw6_usbx_device_init_status;
 extern volatile unsigned int g_ps_hw6_usbx_init_stage;
@@ -324,7 +326,7 @@ void GPDMA1_Channel0_IRQHandler(void)
 void GPDMA1_Channel3_IRQHandler(void)
 {
   /* USER CODE BEGIN GPDMA1_Channel3_IRQn 0 */
-
+  ps_dev_audio_record_dma_irq();
   /* USER CODE END GPDMA1_Channel3_IRQn 0 */
   HAL_DMA_IRQHandler(&handle_GPDMA1_Channel3);
   /* USER CODE BEGIN GPDMA1_Channel3_IRQn 1 */

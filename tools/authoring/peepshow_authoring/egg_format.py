@@ -943,6 +943,16 @@ def _parse_graph(
                 "play-SFX operation is invalid",
             )
             operations.append({"kind": record[0], "cue_index": record[2]})
+        elif record[0] == 8:
+            _require(
+                record[1] == 0
+                and record[2] == 0
+                and record[3] == 0
+                and record[4] == 0
+                and record[5] == 0,
+                "exit-to-shell operation is invalid",
+            )
+            operations.append({"kind": record[0]})
         else:
             raise EggFormatError("operation record is invalid")
     routes: list[dict[str, object]] = []

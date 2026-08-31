@@ -44,10 +44,19 @@ Key events:
 - `EV_RECOVER_OK`
 
 Rules:
-- Runtime launch requests are legal only from `SHELL_PACKAGE_BROWSER` or `SHELL_HOME`.
-- Returning from runtime always routes through `SHELL_RUNTIME_HANDOFF` before `SHELL_HOME`.
+- When a valid installed package is available, normal boot launches its declared
+  entry scene. The PeepOS shell is not the default landing experience.
+- Eggless boot, package-load failure, and an explicit package `exit_to_shell`
+  action may enter the PeepOS shell. Low-battery recovery retries normal boot
+  package arbitration.
+- Runtime launch requests are legal from boot arbitration, the shell root, or
+  `SHELL_PACKAGE_BROWSER`.
+- Explicit runtime exit routes through `SHELL_RUNTIME_HANDOFF` before the shell
+  root. It must not route through diagnostic HOME content.
 - While a STATE package is active, `B` belongs to the package graph. An
   unhandled `B` press remains ignored; it does not implicitly exit runtime.
+- No physical button gesture is assigned to shell entry by this contract yet.
+  That system-owned gesture remains a separate product decision.
 
 ---
 
@@ -128,12 +137,14 @@ On HW6 unit 001, FW0 has a first shell router integrated with `thUI`,
 - the FW0 input focus resolver keeps shell, installer, shutdown, and MSC overlay button events on `thUI`; package runtime classes receive the same generic logical presses through `thRuntime` stubs instead of shell navigation
 - display presentation is routed through `thDisplay`; the UI does not touch the
   display peripheral directly
-- HOME dispatch is gated until normal boot power work is complete
+- product HOME is the installed package entry scene; boot keeps the bootstrap
+  presentation until that scene is active, and enters the shell only when the
+  package is unavailable
 - bounded shell/router work publishes `REACTIVE_TRANSACTION_ACTIVE` through
   `thPower` and releases it after the UI transaction returns
 
-The measured UI router prints showed HOME reached from BOOT, display render
-requests completed, and later button navigation reached the calibration page
+The measured UI router prints showed the earlier diagnostic HOME reached from
+BOOT, display render requests completed, and later button navigation reached the calibration page
 with nonzero generic button counts. The user also physically confirmed A/B/L/R
 navigation on the display. FW0 evidence `EV-HW6-20260813-P1-UICLOCK-046`
 adds target validation that HOME dispatch and a helper-queued `NAV_MENU`
@@ -141,12 +152,9 @@ transaction both requested and released UI reactive clock intent through
 `thPower`, then settled with requester cap `UI=0x0` and `STOP2 ready=1`.
 
 This is an FW0 shell scaffold, not the final renderer or final menu system. The PACKAGE menu currently has two explicit items: `USB FLASH` and `PACKAGE INSTALL`. `USB FLASH` requests the normal MSC enter/exit service through `thUI` -> `thStorage`; when MSC exits, the user returns to the PACKAGE menu. `PACKAGE INSTALL` explicitly asks `thStorage` to scan the reclaimed staging volume. A on a valid package prompt installs the staged `.egg` into the persistent A/B store. A on an installed prompt launches the installed STATE scene. Reclaim itself must not scan, install, launch, or prompt just because files were copied. This is a caller of the storage service, not a second USB ownership path. FW0 runtime evidence `EV-HW6-20260813-P1-RUNTIME-044` records the earlier package-transfer flow as an `INSTALLER` runtime overlay that returns to `SHELL`; product behavior now keeps MSC transport, package scan, package install, and package launch as separate user decisions.
-The temporary HOME list is replaced during joystick bring-up by a 3x3 direction
-diagnostic. Its filled cell shows neutral or the canonical eight-way candidate;
-an outer marker independently shows the four-way shell resolution. A still
-enters MENU. This is diagnostic shell content, not the final HOME design. HW6
-target testing visually accepted all four diagonal cells with zero logical
-input drops.
+The former router `HOME` page is a 3x3 joystick diagnostic retained only for
+explicit bring-up. It is not product HOME and is not part of normal boot.
+Product HOME is always the active package's declared entry scene.
 FW0 now has the first input focus split for that handoff: generic A/B/L/R logical presses remain UI-owned while `SHELL` or `INSTALLER` is current, and while a system overlay such as shutdown or MSC is active. `LP_GRAPH`, `LP_MODULE`, and `RT_SCENE` route to a `thRuntime` input stub so package code can later interpret the same generic events contextually. HW6 validation confirmed normal menu navigation still targets `thUI`, and a reactive package stub press targets `thRuntime` without driving shell navigation.
 
 When no validated `.egg` package is installed or selected, the Platform-owned

@@ -20,6 +20,7 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(TOOL_ROOT))
 
 from peepshow_authoring.project import load_project  # noqa: E402
+from peepshow_authoring.preview import StateScenePreview  # noqa: E402
 from peepshow_authoring.audio_assets import (  # noqa: E402
     AUDIO_BLOCK_SAMPLES,
     AUDIO_SAMPLE_RATE_HZ,
@@ -361,6 +362,30 @@ class AuthoringModelTests(unittest.TestCase):
         framed = next(item for item in right_to_left if item["kind"] == 5)
         self.assertEqual(0, hidden["visible"])
         self.assertEqual("marker.phase_c", framed["frame_ref"])
+
+    def test_exit_to_shell_action_compiles_and_round_trips(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "shell_exit.peepproj"
+            shutil.copytree(EMBEDDED_PROJECT, project_root)
+            scene_path = project_root / "scenes" / "state_demo.state.json"
+            scene = json.loads(scene_path.read_text(encoding="utf-8"))
+            scene["routes"][0]["guards"] = []
+            scene["routes"][0]["actions"] = [{"kind": "exit_to_shell"}]
+            scene_path.write_text(json.dumps(scene), encoding="utf-8")
+
+            bundle = load_project(project_root)
+            self.assertEqual((), bundle.issues)
+            package = parse_egg(build_egg(bundle))
+            compiled_scene = next(
+                item for item in package.scenes
+                if item["scene_id"] == "state_demo"
+            )
+            operations = compiled_scene["graph"]["routes"][0]["operations"]
+            self.assertEqual(({"kind": 8},), operations)
+            preview = StateScenePreview(package, "state_demo", "left")
+            result = preview.apply_input("BUTTON_R")
+            self.assertTrue(result.accepted)
+            self.assertEqual("exit_to_shell", result.system_action)
 
     def test_unknown_transition_target_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

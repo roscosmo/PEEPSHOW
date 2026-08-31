@@ -174,10 +174,7 @@
       "guards": [],
       "actions": [
         {
-          "kind": "set_element_position",
-          "element_ref": "marker",
-          "x": 144,
-          "y": 34
+          "kind": "exit_to_shell"
         }
       ],
       "target_state": "center"

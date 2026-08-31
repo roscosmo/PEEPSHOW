@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_HW6_CLOCK_POLICY_API_VERSION (4UL)
+#define PS_HW6_CLOCK_POLICY_API_VERSION (11UL)
 #define PS_HW6_CLOCK_POLICY_STATUS_NOT_RUN (0xFFFFFFFFUL)
 #define PS_HW6_CLOCK_REQUESTER_COUNT (9U)
 
@@ -62,6 +62,17 @@ typedef enum
 #define PS_HW6_CLOCK_DOMAIN_LPBAM_DISPLAY_AUTONOMOUS \
   (1UL << 6)
 
+#define PS_HW6_CLOCK_STOP2_FAIL_REQUESTERS_ACTIVE (1UL << 0)
+#define PS_HW6_CLOCK_STOP2_FAIL_SAI_GATE          (1UL << 1)
+#define PS_HW6_CLOCK_STOP2_FAIL_SAI_RESET         (1UL << 2)
+#define PS_HW6_CLOCK_STOP2_FAIL_PLL2_READY        (1UL << 3)
+#define PS_HW6_CLOCK_STOP2_FAIL_PLL2_OUTPUT       (1UL << 4)
+#define PS_HW6_CLOCK_STOP2_FAIL_PLL3_READY        (1UL << 5)
+#define PS_HW6_CLOCK_STOP2_FAIL_HSI48_READY       (1UL << 6)
+#define PS_HW6_CLOCK_STOP2_FAIL_SHSI_READY        (1UL << 7)
+#define PS_HW6_CLOCK_STOP2_FAIL_USB_GATE          (1UL << 8)
+#define PS_HW6_CLOCK_STOP2_FAIL_VDDUSB            (1UL << 9)
+
 typedef struct
 {
   uint32_t api_version;
@@ -103,13 +114,50 @@ typedef struct
   uint32_t usb_clock_enabled;
   uint32_t vddusb_enabled;
   uint32_t hsi48_ready;
+  uint32_t shsi_ready;
   uint32_t pll1_ready;
   uint32_t pll2_ready;
+  uint32_t pll3_ready;
   uint32_t pll2_output_enabled_mask;
   uint32_t pll2_required_output_mask;
   uint32_t pll2_domain_on_count;
   uint32_t pll2_domain_off_count;
   uint32_t pll2_domain_last_status;
+  uint32_t pll2_fast_path_count;
+  uint32_t pll2_post_stop_rearm_pending;
+  uint32_t pll2_post_stop_rearm_pending_domain_mask;
+  uint32_t pll2_post_stop_invalidate_count;
+  uint32_t pll2_post_stop_rearm_attempt_count;
+  uint32_t pll2_post_stop_rearm_success_count;
+  uint32_t pll2_post_stop_rearm_status;
+  uint32_t post_stop_vosr_before;
+  uint32_t post_stop_svmsr_before;
+  uint32_t post_stop_voltage_scale_status;
+  uint32_t post_stop_vosr_after;
+  uint32_t post_stop_svmsr_after;
+  uint32_t sai_mux_handoff_count;
+  uint32_t sai_mux_handoff_success_count;
+  uint32_t sai_mux_handoff_status;
+  uint32_t sai_mux_park_clock_enabled;
+  uint32_t sai_mux_park_reset_asserted;
+  uint32_t sai_mux_park_source;
+  uint32_t sai_mux_park_kernel_hz;
+  uint32_t sai_mux_restore_clock_enabled;
+  uint32_t sai_mux_restore_reset_asserted;
+  uint32_t sai_mux_restore_source;
+  uint32_t sai_mux_restore_kernel_hz;
+  uint32_t sai_domain_active;
+  uint32_t sai_clock_enabled;
+  uint32_t sai_reset_asserted;
+  uint32_t sai_domain_on_count;
+  uint32_t sai_domain_off_count;
+  uint32_t sai_reset_count;
+  uint32_t sai_grant_epoch;
+  uint32_t sai_domain_last_status;
+  uint32_t stop2_prepare_count;
+  uint32_t stop2_prepare_status;
+  uint32_t stop2_physical_ready;
+  uint32_t stop2_physical_failure_mask;
   uint32_t usb_kernel_hz;
   uint32_t sai1_kernel_hz;
   uint32_t ospi_kernel_hz;
@@ -131,6 +179,7 @@ UINT PS_HW6_ClockPolicy_ApplyRequesterProfile(
   uint32_t requester_id,
   uint32_t requested_profile,
   uint32_t capabilities);
+UINT PS_HW6_ClockPolicy_PrepareStop2(void);
 UINT PS_HW6_ClockPolicy_RestoreBase(void);
 
 #ifdef __cplusplus

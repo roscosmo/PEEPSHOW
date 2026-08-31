@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (71UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (75UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -79,6 +79,79 @@ typedef enum
   PS_HW6_RUNTIME_EVENT_SUSPEND,
   PS_HW6_RUNTIME_EVENT_RESUME
 } ps_hw6_runtime_event_t;
+
+typedef struct
+{
+  uint32_t valid;
+  uint32_t capture_tick;
+  uint32_t stop2_entry_count;
+  uint32_t owner_status;
+  uint32_t clock_apply_count_before;
+  uint32_t clock_apply_count_after;
+  uint32_t clock_pll2_on_count_before;
+  uint32_t clock_pll2_on_count_after;
+  uint32_t clock_pll2_off_count_before;
+  uint32_t clock_pll2_off_count_after;
+  uint32_t grant_policy_status;
+  uint32_t grant_policy_stage;
+  uint32_t grant_required_domains;
+  uint32_t grant_managed_domains;
+  uint32_t grant_readback_domains;
+  uint32_t grant_pll2_ready;
+  uint32_t grant_pll2_outputs;
+  uint32_t grant_sai_kernel_hz;
+  uint32_t final_requester_active_mask;
+  uint32_t final_aggregated_capabilities;
+  uint32_t final_required_domains;
+  uint32_t final_managed_domains;
+  uint32_t final_readback_domains;
+  uint32_t final_pll2_ready;
+  uint32_t final_pll2_outputs;
+  uint32_t final_sai_kernel_hz;
+  uint32_t audio_sai_kernel_hz_start;
+  uint32_t audio_sai_kernel_hz_end;
+  uint32_t audio_rearm_status;
+  uint32_t audio_start_status;
+  uint32_t audio_wait_status;
+  uint32_t audio_callback_status;
+  uint32_t audio_stop_status;
+  uint32_t dma_irq_delta;
+  uint32_t tx_callback_delta;
+  uint32_t error_callback_delta;
+  uint32_t sai_state;
+  uint32_t sai_error;
+  uint32_t sai_cr1;
+  uint32_t sai_cr2;
+  uint32_t sai_frcr;
+  uint32_t sai_slotr;
+  uint32_t sai_imr;
+  uint32_t sai_sr;
+  uint32_t sai_gcr;
+  uint32_t dma_state;
+  uint32_t dma_error;
+  uint32_t dma_ccr;
+  uint32_t dma_csr;
+  uint32_t dma_cbr1;
+  uint32_t dma_ctr1;
+  uint32_t dma_ctr2;
+  uint32_t dma_csar;
+  uint32_t dma_cdar;
+  uint32_t dma_cllr;
+  uint32_t rcc_ahb1enr;
+  uint32_t rcc_ahb2enr1;
+  uint32_t rcc_apb2enr;
+  uint32_t rcc_apb2rstr;
+  uint32_t rcc_apb2smenr;
+  uint32_t rcc_ccipr2;
+  uint32_t gpioa_moder;
+  uint32_t gpioa_afrh;
+  uint32_t gpiob_moder;
+  uint32_t gpiob_afrh;
+  uint32_t stop2_gpioa_moder_before;
+  uint32_t stop2_gpioa_moder_after;
+  uint32_t stop2_gpiob_moder_before;
+  uint32_t stop2_gpiob_moder_after;
+} PS_HW6_RTOS_AudioSfxCapture;
 
 typedef struct
 {
@@ -388,7 +461,17 @@ typedef struct
   uint32_t audio_sfx_owner_status;
   uint32_t audio_sfx_clock_request_status;
   uint32_t audio_sfx_clock_release_status;
+  uint32_t audio_sfx_grant_policy_status;
+  uint32_t audio_sfx_grant_policy_stage;
+  uint32_t audio_sfx_grant_required_domains;
+  uint32_t audio_sfx_grant_managed_domains;
+  uint32_t audio_sfx_grant_readback_domains;
+  uint32_t audio_sfx_grant_pll2_ready;
+  uint32_t audio_sfx_grant_pll2_outputs;
+  uint32_t audio_sfx_grant_sai_kernel_hz;
   uint32_t audio_sfx_last_cue_index;
+  PS_HW6_RTOS_AudioSfxCapture audio_sfx_first_success_capture;
+  PS_HW6_RTOS_AudioSfxCapture audio_sfx_first_post_stop_failure_capture;
 
   uint32_t storage_clock_request_count;
   uint32_t storage_clock_release_count;
@@ -415,6 +498,7 @@ typedef struct
   uint32_t runtime_active_unit_id;
   uint32_t runtime_return_page;
   uint32_t runtime_boot_shell_count;
+  uint32_t runtime_boot_shell_reject_count;
   uint32_t runtime_installer_enter_count;
   uint32_t runtime_installer_complete_count;
   uint32_t runtime_installer_error_count;

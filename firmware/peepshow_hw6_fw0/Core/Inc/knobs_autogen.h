@@ -5,6 +5,7 @@
 #ifndef KNOBS_AUTOGEN_H
 #define KNOBS_AUTOGEN_H
 
+#define KNOB_AUDIO_DMA_COMPLETION_MARGIN_MS                (20)
 #define KNOB_COMM_BLE_BOOT_DRAIN_MS                        (200)
 #define KNOB_COMM_BLE_BOOT_WAIT_MS                         (750)
 #define KNOB_COMM_BLE_RESET_ASSERT_MS                      (20)
@@ -82,6 +83,8 @@
 #define KNOB_POWER_START_SOFTWARE_SHIP_ENABLE              (0)
 #define KNOB_POWER_STOP2_DISPLAY_WAIT_BACKEND              (2)
 #define KNOB_POWER_STOP2_GPIO_PARK_GROUP_MASK              (30)
+#define KNOB_RTOS_APP_POOL_BYTES                           (40960)
+#define KNOB_RTOS_AUDIO_STACK_BYTES                        (4096)
 #define KNOB_RTOS_DEFAULT_STACK_BYTES                      (1024)
 #define KNOB_RTOS_DISPLAY_STACK_BYTES                      (3072)
 #define KNOB_RTOS_INPUT_STACK_BYTES                        (1536)

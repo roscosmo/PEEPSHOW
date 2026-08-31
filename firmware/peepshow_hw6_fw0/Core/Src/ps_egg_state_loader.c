@@ -2083,6 +2083,25 @@ static uint32_t PS_EggDecodeScene(
         scene->actions[action_count].secondary_value = 0;
         action_count++;
       }
+      else if (record[0] == 8U)
+      {
+        if ((record[1] != 0U) ||
+            (PS_EggU32(&record[2]) != 0UL) ||
+            (PS_EggU16(&record[6]) != 0U) ||
+            (PS_EggU32(&record[8]) != 0UL) ||
+            (action_count >= PS_SCENE_RUNTIME_ACTION_MAX))
+        {
+          return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+        }
+        scene->actions[action_count].kind =
+          PS_SCENE_RUNTIME_ACTION_EXIT_TO_SHELL;
+        scene->actions[action_count].target_id = 0UL;
+        scene->actions[action_count].target_element_id = 0UL;
+        scene->actions[action_count].operation = 0UL;
+        scene->actions[action_count].value = 0;
+        scene->actions[action_count].secondary_value = 0;
+        action_count++;
+      }
       else
       {
         uint16_t element_index = PS_EggU16(&record[2]);

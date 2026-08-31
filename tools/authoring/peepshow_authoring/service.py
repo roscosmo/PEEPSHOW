@@ -35,7 +35,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 19
+SERVICE_API_VERSION = 20
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -276,6 +276,7 @@ class AuthoringService:
                         },
                     },
                 },
+                "system_actions": ["exit_to_shell"],
             },
             "state_scene_graph": {
                 "command_batch_maximum": 64,

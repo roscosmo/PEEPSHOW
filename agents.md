@@ -142,12 +142,42 @@ The agent must STOP after DIAGNOSIS and wait for confirmation.
 
 Do NOT produce code changes yet.
 
-The user must confirm:
-- "Diagnosis correct"
-or
-- request more investigation.
+The user must either approve the diagnosis or request more investigation.
 
-Only then may the agent propose a code change.
+For this approval gate, `GO`, `proceed`, `Diagnosis correct`, or an equivalent
+clear instruction both:
+- confirms the diagnosis
+- authorizes the directly scoped firmware fix described by that diagnosis
+
+## SINGLE-APPROVAL FLOW (MANDATORY)
+
+The required flow is:
+
+1. agent provides `DIAGNOSIS` and stops
+2. user replies `GO`, `proceed`, `Diagnosis correct`, or equivalent
+3. agent performs any required doc, freshness, or targeted implementation reads
+4. agent posts `BEFORE I CHANGE CODE` as a non-blocking status update
+5. agent immediately implements the directly scoped fix
+
+The user's approval is not consumed or invalidated by bootstrap reads,
+freshness checks, investigation needed to locate the diagnosed code, context
+compaction, or the `BEFORE I CHANGE CODE` summary.
+
+The following sequence is forbidden:
+
+`DIAGNOSIS -> GO -> BEFORE I CHANGE CODE -> wait for another GO`
+
+Before asking for approval, the agent must inspect the messages after its most
+recent diagnosis. If approval is already present, it must not ask again or end
+the turn at the approval summary.
+
+Do not stop for a second approval unless:
+- the root cause changes
+- the implementation scope expands materially
+- a new architectural or hardware risk is discovered
+
+If one of those conditions occurs, explain the changed scope plainly before
+requesting new approval.
 
 ## WHEN DIAGNOSIS IS REQUIRED
 
@@ -320,7 +350,21 @@ Do not produce a long PLAN unless code modification is imminent.
 
 ## REQUIRED APPROVAL FORMAT
 
-Default format:
+First determine whether the user has already approved the diagnosed fix.
+
+If it is already approved, use this non-blocking format and continue directly
+into implementation in the same turn:
+
+### BEFORE I CHANGE CODE
+- Problem:
+- Fix:
+- Check:
+- Risk:
+- Status: Proceeding now.
+
+Do not write `Wait for GO`, ask for confirmation, or pause after this version.
+
+If approval has not yet been given, use:
 
 ### BEFORE I CHANGE CODE
 - Problem:
@@ -352,7 +396,7 @@ For larger/riskier changes, you may expand to:
 - How we verify:
 - Docs referenced:
 - Invariants touched:
-- Wait for GO.
+- Status: Proceeding now if already approved; otherwise wait for GO.
 
 Use this expanded version only when actually needed.
 
