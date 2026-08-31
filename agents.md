@@ -418,6 +418,7 @@ If the user provides a compiler/build error:
 - If architectural impact is unclear, ask before proceeding.
 - When replacing a function, provide the complete function body.
 - Do not provide partial snippets that require searching for insertion points.
+- DO NOT EVER ask for "GO" after already receiving explicit commands to proceed. 
 
 ---
 
@@ -570,7 +571,7 @@ Optional:
 
 # TOOLING / BUILD RULES (MANDATORY)
 
-- Agents must **NOT** run `cmake --build`, `ninja`, Cube build steps, or any full project build.
+- Agents can run `cmake --build`, `ninja`, Cube build steps, or any full project build.
 - Agents must **NOT** run long-running commands unless explicitly requested.
 
 Allowed alternatives:
