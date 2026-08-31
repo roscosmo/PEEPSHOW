@@ -72,7 +72,7 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | package primitives | retained line, outline rectangle, filled rectangle, circle, and ellipse records are compiled, previewed, loaded, and target-proven; private shell/calibration draw helpers remain unavailable |
 | package text | service API 15 rasterizes printable-ASCII menu labels through `peepshow.system.8x8.basic.v1` into ordinary masked 1bpp sprite frames; runtime text remains unavailable |
 | retained element actions | service API 17 and FW0 runtime API 15 implement atomic destination-state show/hide, move, retained frame selection, and bounded waiting-animation selection; host package/preview tests and HW6 awake/STOP2 visual proof pass |
-| package audio | service API 18 imports PCM WAV, deterministically compiles mono 16 kHz 4-bit IMA ADPCM, emits symbolic sampled-SFX assets/cues and `play_sfx` STATE actions, previews cue emission, and auditions the exact packaged bytes; HW6 one-voice bounded STATE playback, drain, clock release, and return to STOP2 are target-proven |
+| package audio | service API 18 imports PCM WAV, deterministically compiles mono 16 kHz 4-bit IMA ADPCM, emits symbolic sampled-SFX assets/cues and `play_sfx` STATE actions, previews cue emission, and auditions the exact packaged bytes; HW6 one-voice bounded STATE playback before and after real STOP2, drain, clock release, and return to STOP2 are target-proven |
 | STATE animated elements | bounded repeating sprite phase timelines with 1..4 frames, 1..12 combined steps, explicit cadence, and a settled step; mixed 2-phase and 3-phase composition and deterministic fallback are target-proven |
 | awake preview | exact 168x144 package-backed framebuffer with deterministic fake time and side-effect-free scene thumbnails |
 | STOP2 | package visuals compiled into LPBAM animation and resumed across wake/STOP2 handoff |
@@ -218,9 +218,10 @@ The STATE-first presentation expansion is:
    presentation epoch. The action changes no unrelated waiting elements;
 6. **Hardware-validated:** one symbolic bounded `play_sfx` STATE action backed
    by a compiled sampled-audio asset. HW6 loading, `thAudio` decode/DMA
-   playback, completion, and STOP2 return are target-proven. Audio quality,
-   mixing, music streaming from package flash, and full asset policy remain
-   later work.
+   playback, completion, post-STOP replay, and STOP2 return are target-proven.
+   Voltage, PLL2P, and SAI clock/reset restoration remain Platform-owned and do
+   not expand the authoring surface. Audio quality, mixing, music streaming
+   from package flash, and full asset policy remain later work.
 
 Visual assets, primitive records, text-derived sprite assets, and audio assets
 are package data. They must never contain display-driver calls, framebuffer

@@ -8,9 +8,13 @@ Implementation status on HW6 includes one target-proven bounded STATE sampled-
 SFX path. The `.egg` format carries sampled-audio asset, ADPCM-bank, and cue
 chunks; STATE actions can request a symbolic cue through `qAudioCmd`; and
 `thAudio` owns bounded decode, SAI DMA playback, MAX98357A shutdown, clock-intent
-release, and return to STOP2. Music, sustained/ring-buffer playback, mixing,
-preemption, fades, underrun recovery, fidelity acceptance against a known
-reference asset, and measured audio energy remain open.
+release, and return to STOP2. The same cue is target-proven both before and
+after a real STOP2 cycle. Post-STOP restoration is power-owned: `thPower`
+restores and verifies the voltage scale, re-arms the PLL2P epoch, hands the SAI
+kernel mux back to PLL2P, and grants `SAI_AUDIO_ACTIVE` before playback starts.
+Music, sustained/ring-buffer playback, mixing, preemption, fades, underrun
+recovery, fidelity acceptance against a known reference asset, and measured
+audio energy remain open.
 
 ## Target Applicability
 
@@ -33,7 +37,8 @@ The PAM8904 path auto-shuts down when no DIN signal is present.
 
 ## Ownership
 
-- `thAudio` is the sole owner of SAI1, audio DMA, `SD_MODE`, mixer state, decoder state, and audio fault recovery.
+- `thAudio` is the sole owner of audio playback state, SAI1 data-path operation, audio DMA, `SD_MODE`, mixer state, decoder state, and audio fault recovery.
+- `thPower` is the sole owner of PWR voltage-scale transitions, RCC/PLL2 configuration, the SAI kernel-clock mux, and SAI clock/reset gating. `thAudio` requests the symbolic `SAI_AUDIO_ACTIVE` capability and never changes those power/clock registers directly.
 - On a target that grants `audio.bbb`, `thAudio` also owns that target's procedural-output peripheral and signal. HW6 grants no such path.
 - Other threads submit commands through `qAudioCmd`.
 - Clock profile requests flow through `thPower` only.
@@ -266,7 +271,8 @@ BBB rules:
 - Realtime audio may hold `SAI_AUDIO_ACTIVE` for the admitted realtime scene lifetime, subject to quiesce/suspend policy.
 - FW0 runtime-admission evidence validates only the runtime-side `REALTIME_DEADLINE_ACTIVE` hold/release behavior. It does not by itself grant music or prove mixer load; `thAudio` must still separately request `SAI_AUDIO_ACTIVE` for actual speaker playback.
 - Before deep sleep: drain or stop playback, stop DMA, stop BBB output, place `SD_MODE` low, release audio clock intent, and acknowledge quiesce.
-- Resume must revalidate clocks, SAI, DMA, and LPTIM before accepting requests.
+- After STOP2, `thPower` must restore the active voltage scale and wait for both voltage-ready indications before it restarts PLL2P or grants SAI ownership. It then revalidates the PLL2 epoch, performs the bounded SAI mux handoff, and reports the resulting kernel clock through the requester ACK.
+- After that power grant, `thAudio` must revalidate and re-arm the SAI data path and DMA before accepting playback. A stale pre-STOP HAL/DMA state is never sufficient evidence that the hardware is ready.
 
 ## Failure Policy
 
@@ -295,7 +301,8 @@ Examples of audio faults:
 2. generated diagnostic tone proves bounded SAI DMA output but is not accepted
    as package-audio proof
 3. one package-backed 16 kHz mono IMA ADPCM STATE SFX decodes, plays, drains,
-   releases audio clock intent, and permits STOP2 again
+   releases audio clock intent, permits STOP2, and plays again after a real
+   STOP2 wake
 4. invalid format, duration, decoded-size, and missing-asset cases are rejected
    before playback
 5. 1 music voice plus 5 overlapping SFX voices mix without underrun
@@ -310,10 +317,13 @@ Examples of audio faults:
 14. installer mode isolates audio unless explicitly allowed for diagnostics
 
 HW6 validation status: case 3 is functionally target-proven with one packaged
-STATE cue. The operator heard the decoded SFX on two units; loader, action,
-queue, decode, DMA start/stop, completion, clock release, and later STOP2
-telemetry all succeeded. Subjective fidelity remains pending comparison using a
-known-reference source asset; the synthetic fixture is not a shipping sound.
+STATE cue. The operator heard the decoded SFX before and after STOP2. The final
+post-STOP capture showed successful voltage-scale restoration, PLL2P re-arm,
+SAI mux handoff, `4.096 MHz` SAI grant, DMA completion with IRQ/callback
+activity and no remaining transfer bytes, clean speaker shutdown, released SAI
+clock/reset ownership, and a physically ready STOP2 ledger with no failure
+mask. Subjective fidelity remains pending comparison using a known-reference
+source asset; the synthetic fixture is not a shipping sound.
 
 Related:
 
