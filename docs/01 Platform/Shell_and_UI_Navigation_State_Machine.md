@@ -55,8 +55,14 @@ Rules:
   root. It must not route through diagnostic HOME content.
 - While a STATE package is active, `B` belongs to the package graph. An
   unhandled `B` press remains ignored; it does not implicitly exit runtime.
-- No physical button gesture is assigned to shell entry by this contract yet.
-  That system-owned gesture remains a separate product decision.
+- Holding `START` for the system-menu threshold enters PeepOS without
+  resetting the package. `thRuntime` suspends the package state in RAM, then
+  the system root exposes `RESUME`, system navigation, and package management.
+  `B` at that root and the explicit `RESUME` action both resume the suspended
+  package.
+- MSC entry and package installation discard a suspended package before storage
+  may replace package bytes. Package scanning is non-destructive and may leave
+  the resume action available.
 
 ---
 

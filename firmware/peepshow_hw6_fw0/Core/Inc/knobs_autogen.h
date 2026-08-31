@@ -6,6 +6,7 @@
 #define KNOBS_AUTOGEN_H
 
 #define KNOB_AUDIO_DMA_COMPLETION_MARGIN_MS                (20)
+#define KNOB_AUDIO_PCM_DMA_FRAMES                          (1024)
 #define KNOB_COMM_BLE_BOOT_DRAIN_MS                        (200)
 #define KNOB_COMM_BLE_BOOT_WAIT_MS                         (750)
 #define KNOB_COMM_BLE_RESET_ASSERT_MS                      (20)
@@ -53,11 +54,12 @@
 #define KNOB_INPUT_JOYSTICK_XYZ_CAPTURE_TIMEOUT_MS         (15000)
 #define KNOB_INPUT_JOYSTICK_XYZ_REST_SAMPLES               (256)
 #define KNOB_INPUT_JOYSTICK_XYZ_SWEEP_SAMPLES              (512)
-#define KNOB_INPUT_START_LONG_PRESS_MS                     (2000)
+#define KNOB_INPUT_START_SHIP_DISPLAY_CLEAR_MS             (11900)
 #define KNOB_INPUT_START_SHIP_IMMINENT_MS                  (11000)
 #define KNOB_INPUT_START_SHIP_PREP_MS                      (5000)
 #define KNOB_INPUT_START_SHIP_WARN_MS                      (9000)
 #define KNOB_INPUT_START_STABLE_SAMPLES                    (2)
+#define KNOB_INPUT_START_SYSTEM_MENU_HOLD_MS               (2000)
 #define KNOB_POWER_AUTO_STOP2_CHECK_PERIOD_MS              (100)
 #define KNOB_POWER_AUTO_STOP2_ENABLE                       (1)
 #define KNOB_POWER_AUTO_STOP2_IDLE_MS                      (0)

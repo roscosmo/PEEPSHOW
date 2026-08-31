@@ -47,13 +47,14 @@ static volatile uint32_t ps_input_start_pending_hold_ticks;
 static volatile uint32_t ps_input_start_press_event_pending;
 static volatile uint32_t ps_input_start_press_event_timestamp;
 static volatile uint32_t ps_input_start_press_event_hold_ticks;
-static volatile uint32_t ps_input_start_long_event_pending;
-static volatile uint32_t ps_input_start_long_event_timestamp;
-static volatile uint32_t ps_input_start_long_event_hold_ticks;
-static uint32_t ps_input_start_long_ticks;
+static volatile uint32_t ps_input_start_system_menu_event_pending;
+static volatile uint32_t ps_input_start_system_menu_event_timestamp;
+static volatile uint32_t ps_input_start_system_menu_event_hold_ticks;
+static uint32_t ps_input_start_system_menu_ticks;
 static uint32_t ps_input_start_ship_prep_ticks;
 static uint32_t ps_input_start_ship_warn_ticks;
 static uint32_t ps_input_start_ship_imminent_ticks;
+static uint32_t ps_input_start_ship_display_clear_ticks;
 static uint32_t ps_input_button_debounce_press_ticks;
 static uint32_t ps_input_button_debounce_release_ticks;
 static uint32_t ps_input_button_long_press_ticks;
@@ -321,6 +322,10 @@ static void PS_InputButtons_PublishStartPowerEvent(
   {
     g_ps_input_buttons_probe.start_ship_imminent_count++;
   }
+  else if (event == PS_INPUT_START_POWER_EVENT_SHIP_DISPLAY_CLEAR)
+  {
+    g_ps_input_buttons_probe.start_ship_display_clear_count++;
+  }
   else if (event == PS_INPUT_START_POWER_EVENT_RELEASED_BEFORE_SHIP)
   {
     g_ps_input_buttons_probe.start_release_before_ship_count++;
@@ -349,7 +354,8 @@ static void PS_InputButtons_AcceptStartPress(uint32_t now_tick,
   {
     g_ps_input_buttons_probe.start_synth_press_count++;
   }
-  PS_InputButtons_ArmStartCheck(now_tick + ps_input_start_long_ticks);
+  PS_InputButtons_ArmStartCheck(
+    now_tick + ps_input_start_system_menu_ticks);
 }
 
 static void PS_InputButtons_RecordStartRelease(uint32_t now_tick)
@@ -548,12 +554,13 @@ void PS_InputButtons_Init(void)
   g_ps_input_buttons_probe.start_release_tick = 0UL;
   g_ps_input_buttons_probe.start_hold_ticks = 0UL;
   g_ps_input_buttons_probe.start_short_press_count = 0UL;
-  g_ps_input_buttons_probe.start_long_press_count = 0UL;
+  g_ps_input_buttons_probe.start_system_menu_count = 0UL;
   g_ps_input_buttons_probe.start_short_press_pending = 0UL;
-  g_ps_input_buttons_probe.start_long_press_pending = 0UL;
+  g_ps_input_buttons_probe.start_system_menu_pending = 0UL;
   g_ps_input_buttons_probe.start_ship_prep_count = 0UL;
   g_ps_input_buttons_probe.start_ship_warning_count = 0UL;
   g_ps_input_buttons_probe.start_ship_imminent_count = 0UL;
+  g_ps_input_buttons_probe.start_ship_display_clear_count = 0UL;
   g_ps_input_buttons_probe.start_release_before_ship_count = 0UL;
   g_ps_input_buttons_probe.start_pending_event =
     PS_INPUT_START_POWER_EVENT_NONE;
@@ -598,17 +605,19 @@ void PS_InputButtons_Init(void)
   ps_input_start_press_event_pending = 0UL;
   ps_input_start_press_event_timestamp = 0UL;
   ps_input_start_press_event_hold_ticks = 0UL;
-  ps_input_start_long_event_pending = 0UL;
-  ps_input_start_long_event_timestamp = 0UL;
-  ps_input_start_long_event_hold_ticks = 0UL;
-  ps_input_start_long_ticks =
-    PS_InputButtons_MsToTicks(KNOB_INPUT_START_LONG_PRESS_MS);
+  ps_input_start_system_menu_event_pending = 0UL;
+  ps_input_start_system_menu_event_timestamp = 0UL;
+  ps_input_start_system_menu_event_hold_ticks = 0UL;
+  ps_input_start_system_menu_ticks =
+    PS_InputButtons_MsToTicks(KNOB_INPUT_START_SYSTEM_MENU_HOLD_MS);
   ps_input_start_ship_prep_ticks =
     PS_InputButtons_MsToTicks(KNOB_INPUT_START_SHIP_PREP_MS);
   ps_input_start_ship_warn_ticks =
     PS_InputButtons_MsToTicks(KNOB_INPUT_START_SHIP_WARN_MS);
   ps_input_start_ship_imminent_ticks =
     PS_InputButtons_MsToTicks(KNOB_INPUT_START_SHIP_IMMINENT_MS);
+  ps_input_start_ship_display_clear_ticks =
+    PS_InputButtons_MsToTicks(KNOB_INPUT_START_SHIP_DISPLAY_CLEAR_MS);
 
   for (i = 0UL; i < PS_INPUT_BUTTON_COUNT; ++i)
   {
@@ -827,14 +836,15 @@ void PS_InputButtons_PollStart(uint32_t now_tick)
   state = g_ps_input_buttons_probe.start_state;
   if (state == (uint32_t)PS_INPUT_START_STATE_NORMAL_PRESS)
   {
-    g_ps_input_buttons_probe.start_state = PS_INPUT_START_STATE_LONG_PRESS;
-    if (ps_input_start_long_event_pending == 0UL)
+    g_ps_input_buttons_probe.start_state =
+      PS_INPUT_START_STATE_SYSTEM_MENU;
+    if (ps_input_start_system_menu_event_pending == 0UL)
     {
-      ps_input_start_long_event_pending = 1UL;
-      ps_input_start_long_event_timestamp = now_tick;
-      ps_input_start_long_event_hold_ticks = hold_ticks;
-      g_ps_input_buttons_probe.start_long_press_count++;
-      g_ps_input_buttons_probe.start_long_press_pending = 1UL;
+      ps_input_start_system_menu_event_pending = 1UL;
+      ps_input_start_system_menu_event_timestamp = now_tick;
+      ps_input_start_system_menu_event_hold_ticks = hold_ticks;
+      g_ps_input_buttons_probe.start_system_menu_count++;
+      g_ps_input_buttons_probe.start_system_menu_pending = 1UL;
     }
     else
     {
@@ -843,7 +853,7 @@ void PS_InputButtons_PollStart(uint32_t now_tick)
     PS_InputButtons_ArmStartCheck(
       ps_input_start_press_tick + ps_input_start_ship_prep_ticks);
   }
-  else if (state == (uint32_t)PS_INPUT_START_STATE_LONG_PRESS)
+  else if (state == (uint32_t)PS_INPUT_START_STATE_SYSTEM_MENU)
   {
     g_ps_input_buttons_probe.start_state = PS_INPUT_START_STATE_SHIP_PREP;
     PS_InputButtons_PublishStartPowerEvent(
@@ -868,6 +878,17 @@ void PS_InputButtons_PollStart(uint32_t now_tick)
     g_ps_input_buttons_probe.start_state = PS_INPUT_START_STATE_SHIP_IMMINENT;
     PS_InputButtons_PublishStartPowerEvent(
       PS_INPUT_START_POWER_EVENT_SHIP_IMMINENT,
+      now_tick,
+      hold_ticks);
+    PS_InputButtons_ArmStartCheck(
+      ps_input_start_press_tick + ps_input_start_ship_display_clear_ticks);
+  }
+  else if (state == (uint32_t)PS_INPUT_START_STATE_SHIP_IMMINENT)
+  {
+    g_ps_input_buttons_probe.start_state =
+      PS_INPUT_START_STATE_SHIP_DISPLAY_CLEAR;
+    PS_InputButtons_PublishStartPowerEvent(
+      PS_INPUT_START_POWER_EVENT_SHIP_DISPLAY_CLEAR,
       now_tick,
       hold_ticks);
     PS_InputButtons_DisarmStartCheck();
@@ -1347,7 +1368,7 @@ uint32_t PS_InputButtons_Stop2Ready(void)
       (ps_input_start_press_pending != 0UL) ||
       (ps_input_start_release_pending != 0UL) ||
       (ps_input_start_press_event_pending != 0UL) ||
-      (ps_input_start_long_event_pending != 0UL) ||
+      (ps_input_start_system_menu_event_pending != 0UL) ||
       (ps_input_start_pending_event !=
        (uint32_t)PS_INPUT_START_POWER_EVENT_NONE))
   {
@@ -1594,8 +1615,8 @@ uint32_t PS_InputButtons_TakeStartPress(uint32_t *timestamp,
   return 1UL;
 }
 
-uint32_t PS_InputButtons_TakeStartLongPress(uint32_t *timestamp,
-                                            uint32_t *hold_ticks)
+uint32_t PS_InputButtons_TakeStartSystemMenuRequest(uint32_t *timestamp,
+                                                    uint32_t *hold_ticks)
 {
   uint32_t primask;
 
@@ -1605,7 +1626,7 @@ uint32_t PS_InputButtons_TakeStartLongPress(uint32_t *timestamp,
   }
   primask = __get_PRIMASK();
   __disable_irq();
-  if (ps_input_start_long_event_pending == 0UL)
+  if (ps_input_start_system_menu_event_pending == 0UL)
   {
     if (primask == 0UL)
     {
@@ -1613,12 +1634,12 @@ uint32_t PS_InputButtons_TakeStartLongPress(uint32_t *timestamp,
     }
     return 0UL;
   }
-  *timestamp = ps_input_start_long_event_timestamp;
-  *hold_ticks = ps_input_start_long_event_hold_ticks;
-  ps_input_start_long_event_pending = 0UL;
-  ps_input_start_long_event_timestamp = 0UL;
-  ps_input_start_long_event_hold_ticks = 0UL;
-  g_ps_input_buttons_probe.start_long_press_pending = 0UL;
+  *timestamp = ps_input_start_system_menu_event_timestamp;
+  *hold_ticks = ps_input_start_system_menu_event_hold_ticks;
+  ps_input_start_system_menu_event_pending = 0UL;
+  ps_input_start_system_menu_event_timestamp = 0UL;
+  ps_input_start_system_menu_event_hold_ticks = 0UL;
+  g_ps_input_buttons_probe.start_system_menu_pending = 0UL;
   if (primask == 0UL)
   {
     __enable_irq();

@@ -2490,7 +2490,14 @@ static void DisplayRenderer_UIList(uint32_t page,
   switch (page)
   {
     case PS_UI_ROUTER_PAGE_HOME:
-      if (g_ps_ui_router_probe.eggless != 0UL)
+      if (g_ps_ui_router_probe.resume_available != 0UL)
+      {
+        list->title = "SYSTEM";
+        list->rows[0] = "RESUME";
+        list->rows[1] = "SYSTEM";
+        list->rows[2] = "PACKAGES";
+      }
+      else if (g_ps_ui_router_probe.eggless != 0UL)
       {
         list->title = "EGGLESS";
       }
@@ -3547,7 +3554,8 @@ void DisplayRenderer_PrepareUIPage(
     return;
   }
 
-  if (page == (uint32_t)PS_UI_ROUTER_PAGE_HOME)
+  if ((page == (uint32_t)PS_UI_ROUTER_PAGE_HOME) &&
+      (g_ps_ui_router_probe.resume_available == 0UL))
   {
     DisplayRenderer_ClearWhite();
     s_rotate_ccw = 1UL;

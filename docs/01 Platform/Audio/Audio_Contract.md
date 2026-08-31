@@ -4,17 +4,17 @@ This document defines PeepShow audio ownership, playback architecture, state mac
 
 Audio is owned by Platform. Engine and Reference Game code request only symbolic behavior granted by the selected target profile; they must not control SAI, DMA, LPTIM, GPIO, or amplifier pins directly.
 
-Implementation status on HW6 includes one target-proven bounded STATE sampled-
-SFX path. The `.egg` format carries sampled-audio asset, ADPCM-bank, and cue
+Implementation status on HW6 includes one target-proven STATE sampled-SFX
+path. The `.egg` format carries sampled-audio asset, ADPCM-bank, and cue
 chunks; STATE actions can request a symbolic cue through `qAudioCmd`; and
-`thAudio` owns bounded decode, SAI DMA playback, MAX98357A shutdown, clock-intent
-release, and return to STOP2. The same cue is target-proven both before and
-after a real STOP2 cycle. Post-STOP restoration is power-owned: `thPower`
+`thAudio` owns bounded package-backed ADPCM decode, fixed-ring SAI DMA playback,
+MAX98357A shutdown, clock-intent release, and return to STOP2. The same cue is
+target-proven both before and after a real STOP2 cycle. Post-STOP restoration is power-owned: `thPower`
 restores and verifies the voltage scale, re-arms the PLL2P epoch, hands the SAI
 kernel mux back to PLL2P, and grants `SAI_AUDIO_ACTIVE` before playback starts.
-Music, sustained/ring-buffer playback, mixing, preemption, fades, underrun
-recovery, fidelity acceptance against a known reference asset, and measured
-audio energy remain open.
+Music, sustained playback, mixing, preemption, fades, and measured audio energy
+remain open. Package SFX streaming has fixed buffers and underrun telemetry, but
+still requires target evidence with a cue longer than the two DMA halves.
 
 ## Target Applicability
 
@@ -71,12 +71,11 @@ mixer contract:
 
 - one bounded sampled SFX voice;
 - source WAV converted by host tooling to mono 16 kHz 4-bit IMA ADPCM;
-- complete compressed payload and bounded decode/playback buffers admitted
-  before playback;
+- complete compressed payload validated before playback, with ADPCM retained in
+  the installed package blob and decoded into fixed PCM DMA halves as needed;
 - one symbolic `AUDIO_PLAY_SFX(id, priority, volume)` request from a STATE
   action through the Engine-to-`thAudio` queue;
-- no music, streaming, runtime FAT access, arbitrary procedural audio, or HW6
-  BBB support;
+- no music, runtime FAT access, arbitrary procedural audio, or HW6 BBB support;
 - deterministic completion, amplifier shutdown, clock-intent release, and
   return to reactive STOP2 admission after the burst drains.
 
@@ -96,9 +95,11 @@ The initial executable bounds are:
 
 - source WAV: uncompressed mono or stereo PCM, 8/16/24/32-bit, 8..96 kHz;
 - compiled output: mono 16 kHz 4-bit IMA ADPCM in independent 256-sample blocks;
-- maximum 2000 ms and 32000 decoded samples per SFX;
+- decoded SFX length is bounded by the 65536-byte whole-package limit and the
+  loader's 131072-sample hard ceiling, not by a full decoded PCM allocation;
 - maximum 32 sampled-SFX assets, 64 cues, and 48 KiB compiled ADPCM bank;
-- exactly one admitted STATE SFX voice, fully resident and decoded before DMA;
+- exactly one admitted STATE SFX voice, with two fixed PCM DMA halves refilled
+  by `thAudio` from the resident installed-package blob;
 - the current HW6 whole-package runtime cache remains 65536 bytes.
 
 These are Platform/toolchain limits, not promises of arbitrary-length audio.
@@ -125,7 +126,8 @@ Audio runtime sources are limited to:
 Rules:
 
 - no FileX/FAT reads during active playback
-- SFX are fully loaded into RAM before playback
+- SFX ADPCM remains in the validated installed-package blob; `thAudio` decodes
+  it into a fixed PCM DMA ring during playback
 - music is fully preloaded or read from the installed package's raw flash asset
   region into a bounded ring buffer through `thStorage`
 - ADPCM decode writes into bounded PCM buffers
@@ -303,27 +305,28 @@ Examples of audio faults:
 3. one package-backed 16 kHz mono IMA ADPCM STATE SFX decodes, plays, drains,
    releases audio clock intent, permits STOP2, and plays again after a real
    STOP2 wake
-4. invalid format, duration, decoded-size, and missing-asset cases are rejected
+4. a package-backed SFX longer than the two DMA halves refills without an
+   underrun, then drains and releases the audio clock intent
+5. invalid format, decoded-size, and missing-asset cases are rejected
    before playback
-5. 1 music voice plus 5 overlapping SFX voices mix without underrun
-6. SFX priority/preemption works deterministically
-7. fade, mute, volume, and ducking behave correctly
-8. music ring-buffer path never reads from FileX/FAT during active playback
-9. BBB built-in pattern plays and stops cleanly on a target that grants BBB
-10. BBB procedural requests validate bounds on a target that grants BBB
-11. speaker and BBB play concurrently only on a target that grants both
-12. quiesce/resume leaves no active DMA/LPTIM output stale
-13. injected underrun routes to recovery or audio quarantine
-14. installer mode isolates audio unless explicitly allowed for diagnostics
+6. 1 music voice plus 5 overlapping SFX voices mix without underrun
+7. SFX priority/preemption works deterministically
+8. fade, mute, volume, and ducking behave correctly
+9. music ring-buffer path never reads from FileX/FAT during active playback
+10. BBB built-in pattern plays and stops cleanly on a target that grants BBB
+11. BBB procedural requests validate bounds on a target that grants BBB
+12. speaker and BBB play concurrently only on a target that grants both
+13. quiesce/resume leaves no active DMA/LPTIM output stale
+14. injected underrun routes to recovery or audio quarantine
+15. installer mode isolates audio unless explicitly allowed for diagnostics
 
-HW6 validation status: case 3 is functionally target-proven with one packaged
-STATE cue. The operator heard the decoded SFX before and after STOP2. The final
-post-STOP capture showed successful voltage-scale restoration, PLL2P re-arm,
-SAI mux handoff, `4.096 MHz` SAI grant, DMA completion with IRQ/callback
-activity and no remaining transfer bytes, clean speaker shutdown, released SAI
-clock/reset ownership, and a physically ready STOP2 ledger with no failure
-mask. Subjective fidelity remains pending comparison using a known-reference
-source asset; the synthetic fixture is not a shipping sound.
+HW6 validation status: case 3 is target-proven with one Peep Studio-imported
+STATE cue. The operator accepted the packaged cue's subjective fidelity and
+heard it before and after STOP2. The final post-STOP capture showed successful
+voltage-scale restoration, PLL2P re-arm, SAI mux handoff, `4.096 MHz` SAI grant,
+DMA completion with IRQ/callback activity and no remaining transfer bytes,
+clean speaker shutdown, released SAI clock/reset ownership, and a physically
+ready STOP2 ledger with no failure mask. Case 4 remains pending target evidence.
 
 Related:
 

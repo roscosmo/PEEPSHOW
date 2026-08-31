@@ -19,7 +19,7 @@
    PS_EGG_CHUNK_COUNT_ASSET +            \
    PS_EGG_CHUNK_COUNT_AUDIO)
 #define PS_EGG_ALIGNMENT                 (4UL)
-#define PS_EGG_PACKAGE_SIZE_MAX          (65536UL)
+#define PS_EGG_PACKAGE_SIZE_MAX          PS_EGG_STATE_LOADER_PACKAGE_SIZE_MAX
 #define PS_EGG_STRING_COUNT_MAX          (256U)
 #define PS_EGG_HEADER_CRC_OFFSET         (44UL)
 #define PS_EGG_CHUNK_MANIFEST            (1U)

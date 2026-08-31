@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_INPUT_BUTTONS_API_VERSION (13UL)
+#define PS_INPUT_BUTTONS_API_VERSION (14UL)
 #define PS_INPUT_BUTTON_PHYSICAL_COUNT (4UL)
 
 typedef enum
@@ -57,10 +57,11 @@ typedef enum
 {
   PS_INPUT_START_STATE_IDLE = 0,
   PS_INPUT_START_STATE_NORMAL_PRESS,
-  PS_INPUT_START_STATE_LONG_PRESS,
+  PS_INPUT_START_STATE_SYSTEM_MENU,
   PS_INPUT_START_STATE_SHIP_PREP,
   PS_INPUT_START_STATE_SHIP_WARNING,
   PS_INPUT_START_STATE_SHIP_IMMINENT,
+  PS_INPUT_START_STATE_SHIP_DISPLAY_CLEAR,
   PS_INPUT_START_STATE_RELEASED
 } ps_input_start_state_t;
 
@@ -70,6 +71,7 @@ typedef enum
   PS_INPUT_START_POWER_EVENT_SHIP_PREP,
   PS_INPUT_START_POWER_EVENT_SHIP_WARNING,
   PS_INPUT_START_POWER_EVENT_SHIP_IMMINENT,
+  PS_INPUT_START_POWER_EVENT_SHIP_DISPLAY_CLEAR,
   PS_INPUT_START_POWER_EVENT_RELEASED_BEFORE_SHIP
 } ps_input_start_power_event_t;
 
@@ -154,12 +156,13 @@ typedef struct
   uint32_t start_release_tick;
   uint32_t start_hold_ticks;
   uint32_t start_short_press_count;
-  uint32_t start_long_press_count;
+  uint32_t start_system_menu_count;
   uint32_t start_short_press_pending;
-  uint32_t start_long_press_pending;
+  uint32_t start_system_menu_pending;
   uint32_t start_ship_prep_count;
   uint32_t start_ship_warning_count;
   uint32_t start_ship_imminent_count;
+  uint32_t start_ship_display_clear_count;
   uint32_t start_release_before_ship_count;
   uint32_t start_pending_event;
   uint32_t start_pending_timestamp;
@@ -199,8 +202,8 @@ uint32_t PS_InputButtons_TakeStartPowerEvent(
   uint32_t *hold_ticks);
 uint32_t PS_InputButtons_TakeStartPress(uint32_t *timestamp,
                                         uint32_t *hold_ticks);
-uint32_t PS_InputButtons_TakeStartLongPress(uint32_t *timestamp,
-                                            uint32_t *hold_ticks);
+uint32_t PS_InputButtons_TakeStartSystemMenuRequest(uint32_t *timestamp,
+                                                    uint32_t *hold_ticks);
 
 #ifdef __cplusplus
 }

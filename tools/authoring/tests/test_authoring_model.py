@@ -297,7 +297,22 @@ class AuthoringModelTests(unittest.TestCase):
             operation = next(item for item in route["operations"] if item["kind"] == 7)
             self.assertEqual(0, operation["cue_index"])
 
-    def test_sampled_sfx_rejects_excess_duration_and_unknown_cue(self) -> None:
+    def test_sampled_sfx_longer_than_legacy_limit_compiles(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_audio_project(Path(temp_dir))
+            with wave.open(str(project_root / "assets" / "select.wav"), "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(16000)
+                wav.writeframes(struct.pack("<h", 12000) * 48000)
+
+            bundle = load_project(project_root)
+            self.assertEqual((), bundle.issues)
+            package = parse_egg(build_egg(bundle))
+            self.assertEqual(48000, package.audio_assets[0]["sample_count"])
+            self.assertGreater(package.audio_assets[0]["duration_ms"], 2000)
+
+    def test_sampled_sfx_accepts_streaming_duration_and_rejects_unknown_cue(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = make_audio_project(Path(temp_dir))
             with wave.open(str(project_root / "assets" / "select.wav"), "wb") as wav:
@@ -312,7 +327,7 @@ class AuthoringModelTests(unittest.TestCase):
             scene_path.write_text(json.dumps(scene), encoding="utf-8")
 
             issue_codes = {issue.code for issue in load_project(project_root).issues}
-            self.assertIn("AUDIO_SOURCE_INVALID", issue_codes)
+            self.assertNotIn("AUDIO_SOURCE_INVALID", issue_codes)
             self.assertIn("AUDIO_CUE_UNKNOWN", issue_codes)
 
     def test_sample_is_valid_and_normalization_is_deterministic(self) -> None:

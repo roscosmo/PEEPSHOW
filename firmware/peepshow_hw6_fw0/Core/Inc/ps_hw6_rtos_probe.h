@@ -512,6 +512,7 @@ typedef struct
   uint32_t runtime_package_return_count;
   uint32_t runtime_suspend_count;
   uint32_t runtime_resume_count;
+  uint32_t runtime_resume_render_status;
   uint32_t runtime_owner_request_count;
   uint32_t runtime_owner_request_status;
   uint32_t runtime_admission_request_count;
@@ -551,6 +552,16 @@ typedef struct
   uint32_t display_clock_last_status;
   uint32_t display_clock_transfer_status;
   uint32_t display_clock_release_status;
+  uint32_t start_system_menu_request_count;
+  uint32_t start_system_menu_send_status;
+  uint32_t start_system_menu_last_tick;
+  uint32_t start_shipping_display_clear_request_count;
+  uint32_t start_shipping_display_clear_send_status;
+  uint32_t start_shipping_display_clear_wait_status;
+  uint32_t start_shipping_display_clear_ack_flags;
+  uint32_t start_shipping_display_clear_owner_status;
+  uint32_t start_shipping_display_clear_status;
+  uint32_t start_shipping_display_clear_tick;
   uint32_t input_policy_api_version;
   uint32_t input_policy_event_count;
   uint32_t input_policy_deliver_count;
@@ -688,6 +699,8 @@ typedef struct
   uint32_t ui_action_msc_exit_intercept_count;
   uint32_t ui_action_package_scan_count;
   uint32_t ui_action_package_install_stub_count;
+  uint32_t ui_action_system_menu_enter_count;
+  uint32_t ui_action_runtime_resume_count;
   uint32_t package_install_runtime_complete_send_status;
   uint32_t package_install_runtime_launch_send_status;
   uint32_t ui_action_unsupported_count;

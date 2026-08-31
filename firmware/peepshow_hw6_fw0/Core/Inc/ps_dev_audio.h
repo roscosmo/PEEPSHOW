@@ -10,7 +10,9 @@
 extern "C" {
 #endif
 
-#define PS_DEV_AUDIO_API_VERSION (8UL)
+#define PS_DEV_AUDIO_API_VERSION (9UL)
+#define PS_DEV_AUDIO_STREAM_EVENT_FIRST_HALF (1UL)
+#define PS_DEV_AUDIO_STREAM_EVENT_SECOND_HALF (2UL)
 
 typedef enum
 {
@@ -80,6 +82,11 @@ typedef struct
   uint32_t sai_error_after;
   uint32_t dma_state_after;
   uint32_t dma_error_after;
+  uint32_t stream_wait_status;
+  uint32_t stream_first_half_callback_count;
+  uint32_t stream_second_half_callback_count;
+  uint32_t stream_underrun_count;
+  uint32_t stream_pending_event_mask;
 } ps_dev_audio_play_result_t;
 
 ps_status_t ps_dev_audio_init(ps_dev_audio_t *device,
@@ -95,6 +102,25 @@ ps_status_t ps_dev_audio_play_dma(ps_dev_audio_t *device,
                                   uint32_t completion_timeout_ticks,
                                   uint32_t expected_sai_kernel_hz,
                                   ps_dev_audio_play_result_t *result);
+
+ps_status_t ps_dev_audio_stream_start(ps_dev_audio_t *device,
+                                      int16_t *samples,
+                                      uint32_t sample_halfwords,
+                                      uint32_t amp_settle_ticks,
+                                      uint32_t expected_sai_kernel_hz,
+                                      ps_dev_audio_play_result_t *result);
+
+ps_status_t ps_dev_audio_stream_wait(ps_dev_audio_t *device,
+                                     uint32_t timeout_ticks,
+                                     uint32_t *event_mask,
+                                     ps_dev_audio_play_result_t *result);
+
+ps_status_t ps_dev_audio_stream_release_half(ps_dev_audio_t *device,
+                                             uint32_t event_mask);
+
+ps_status_t ps_dev_audio_stream_stop(ps_dev_audio_t *device,
+                                     ps_status_t playback_status,
+                                     ps_dev_audio_play_result_t *result);
 
 ps_status_t ps_dev_audio_verify_idle(ps_dev_audio_t *device,
                                      ps_dev_audio_play_result_t *result);

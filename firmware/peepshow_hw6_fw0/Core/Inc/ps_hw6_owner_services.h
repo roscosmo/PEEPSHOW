@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (39UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (40UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -181,6 +181,9 @@ typedef struct
   uint32_t display_ui_primitive_id;
   uint32_t display_ui_previous_focus_row;
   uint32_t display_ui_current_focus_row;
+  uint32_t display_shipping_clear_count;
+  uint32_t display_shipping_clear_status;
+  uint32_t display_shipping_clear_tick;
   uint32_t display_blink_request_count;
   uint32_t display_blink_render_count;
   uint32_t display_blink_tick;
@@ -371,6 +374,15 @@ typedef struct
   uint32_t audio_sfx_block_count;
   uint32_t audio_sfx_decode_status;
   uint32_t audio_sfx_decoded_samples;
+  uint32_t audio_sfx_stream_buffer_frames;
+  uint32_t audio_sfx_stream_half_frames;
+  uint32_t audio_sfx_stream_refill_count;
+  uint32_t audio_sfx_stream_first_half_callback_count;
+  uint32_t audio_sfx_stream_second_half_callback_count;
+  uint32_t audio_sfx_stream_underrun_count;
+  uint32_t audio_sfx_stream_silence_frames;
+  uint32_t audio_sfx_stream_wait_status;
+  uint32_t audio_sfx_stream_status;
 } PS_HW6_OwnerProbe;
 
 extern volatile PS_HW6_OwnerProbe g_ps_hw6_owner_probe;
@@ -385,6 +397,7 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_EnterSoftwareShipmentMode(void);
 HAL_StatusTypeDef PS_HW6_PowerOwner_RunSnapshot(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RunPattern(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearBootHold(void);
+HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearForShipping(void);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   uint32_t page,
   uint32_t calibration_page,

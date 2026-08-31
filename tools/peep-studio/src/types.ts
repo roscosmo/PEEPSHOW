@@ -418,7 +418,7 @@ export type ServiceHello = {
     sample_rate_hz: number;
     channels: number;
     block_samples: number;
-    maximum_duration_ms: number;
+    maximum_duration_ms: number | null;
     maximum_assets: number;
     maximum_cues: number;
     maximum_bank_bytes: number;

@@ -55,9 +55,9 @@ edge arrives while press debounce is still pending, the release is latched and
 the tap emits exactly one generic press impulse when the debounce interval
 expires, then returns to released.
 
-FW0 button API version 13 emits validated A/B/L/R `PRESS`, `RELEASE`, one-shot `HOLD`, and bounded `REPEAT` records from the physical FSM. `thInput` drains those records in lifecycle order and applies focus policy. Shell, installer, and system overlays remain press-only; non-press lifecycle records are consumed without becoming duplicate UI commands. An active package runtime receives all four event kinds and assigns meaning through declared STATE bindings. START remains separate: a release-qualified short press may reach the package, while manual-INACTIVE and shipping holds remain system-owned and START never repeats.
+FW0 button API version 14 emits validated A/B/L/R `PRESS`, `RELEASE`, one-shot `HOLD`, and bounded `REPEAT` records from the physical FSM. `thInput` drains those records in lifecycle order and applies focus policy. Shell, installer, system overlays, and a resumable system root remain press-only UI focus; non-press lifecycle records are consumed without becoming duplicate UI commands. An active package runtime receives all four event kinds and assigns meaning through declared STATE bindings. START remains separate: a release-qualified short press may reach the package, a two-second hold opens the system menu, and shipping holds remain system-owned. START never repeats.
 
-RTOS probe version 21 extends this policy with the first focus resolver. Shell and installer classes, plus system overlays such as shutdown and MSC transfer screens, continue to target `thUI`. Package runtime classes `LP_GRAPH`, `LP_MODULE`, and `RT_SCENE` target `thRuntime` through a stub input message that records the generic logical press without assigning game meaning. Unsupported classes, not-ready runtime state, locks, invalid buttons, unsupported events, and queue-send failures remain counted as policy suppressions. Shell-side validation on HW6 unit 001 showed normal menu navigation still delivered all 8 logical presses to `thUI` with `input policy api/event/deliv/supp/lock = 1 / 8 / 8 / 0 / 0`, `input policy ui/runtime/overlay = 8 / 0 / 0`, last target/reason/status `1 / 1 / 0x0`, and runtime input count/button `0 / 0`. Runtime-side validation then queued the reactive package stub, entered `LP_MODULE / REACTIVE / RUNNING` (`runtime class prev/current/return = 1 / 3 / 1`, `runtime exec/lifecycle = 1 / 2`), and a physical A press reported target/reason/status `2 / 8 / 0x0`, `input policy ui/runtime/overlay = 8 / 1 / 0`, `runtime input count/button = 1 / 1`, and last runtime input `event/button/mask/status = 1 / 1 / 0x1 / 0x0`.
+RTOS probe version 21 extends this policy with the first focus resolver. Shell and installer classes, system overlays such as shutdown and MSC transfer screens, and the resumable system root all target `thUI`. The resumable root is explicit: `resume_available=1` plus `SUSPENDED` lifecycle gives `thUI` focus while the retained package owns no input. Package runtime classes `LP_GRAPH`, `LP_MODULE`, and `RT_SCENE` target `thRuntime` through a stub input message that records the generic logical press without assigning game meaning. Unsupported classes, not-ready runtime state, locks, invalid buttons, unsupported events, and queue-send failures remain counted as policy suppressions. Shell-side validation on HW6 unit 001 showed normal menu navigation still delivered all 8 logical presses to `thUI` with `input policy api/event/deliv/supp/lock = 1 / 8 / 8 / 0 / 0`, `input policy ui/runtime/overlay = 8 / 0 / 0`, last target/reason/status `1 / 1 / 0x0`, and runtime input count/button `0 / 0`. Runtime-side validation then queued the reactive package stub, entered `LP_MODULE / REACTIVE / RUNNING` (`runtime class prev/current/return = 1 / 3 / 1`, `runtime exec/lifecycle = 1 / 2`), and a physical A press reported target/reason/status `2 / 8 / 0x0`, `input policy ui/runtime/overlay = 8 / 1 / 0`, `runtime input count/button = 1 / 1`, and last runtime input `event/button/mask/status = 1 / 1 / 0x1 / 0x0`.
 
 RTOS probe version 22 adds the first system-action admission scaffold above the input focus split. Menu actions that enter MSC or package-install overlays now run through one admission point before they start. If a package runtime class is active, the admission point requests a bounded `thRuntime` suspend and waits for the runtime owner ACK before allowing the system action to proceed. If another system overlay is already active, new overlay-entry actions are denied while MSC exit remains allowed. This is OS routing policy only; A/B/L/R still remain generic button impulses and final package meaning is still owned by the active focus context. HW6 evidence `EV-HW6-20260814-P1-ADMISSION-053` validates the dry-run path: reactive package stub entered `LP_MODULE / REACTIVE / RUNNING`; MSC-enter admission reported action/result/reason/status `1 / 2 / 3 / 0x0`, counts `request/allow/deny/suspend = 1 / 1 / 0 / 1`, and `thRuntime` moved to `SUSPENDED` with suspend count `1` and zero runtime queue errors.
 
@@ -115,9 +115,10 @@ Timing details:
 | `KNOB_INPUT_BTN_REPEAT_PERIOD_MS` | repeat event cadence |
 | `KNOB_INPUT_BTN_STUCK_MS` | stuck-button fault threshold |
 | `KNOB_INPUT_CHORD_WINDOW_MS` | window for combining button presses into a chord |
-| `KNOB_INPUT_START_LONG_PRESS_MS` | Start-hold duration where PeepOS consumes the gesture and enters manual `INACTIVE` instead of delivering package `START` |
+| `KNOB_INPUT_START_SYSTEM_MENU_HOLD_MS` | Start-hold duration where PeepOS consumes the gesture and opens the system menu instead of delivering package `START` |
 | `KNOB_INPUT_START_STABLE_SAMPLES` | consecutive PA4 live-level samples required before START level is treated as stable |
 | `KNOB_INPUT_START_SHIP_PREP_MS` | Start-hold duration where save/quiesce preparation begins |
+| `KNOB_INPUT_START_SHIP_DISPLAY_CLEAR_MS` | Start-hold duration where `thPower` asks `thDisplay` to clear before hardware shipping |
 | `KNOB_INPUT_START_SHIP_WARN_MS` | Start-hold duration where visible warning/countdown begins |
 | `KNOB_INPUT_START_SHIP_IMMINENT_MS` | Start-hold duration where shipping-mode entry is considered imminent |
 
@@ -204,30 +205,34 @@ Classifier rules:
 
 While package interaction is `ACTIVE`, START is duration-arbitrated by `thInput`:
 
-- release before `KNOB_INPUT_START_LONG_PRESS_MS` publishes exactly one package-visible `START` press on release
-- reaching `KNOB_INPUT_START_LONG_PRESS_MS` publishes no package press and requests system-owned manual `INACTIVE` for either `CONTINUOUS` or `TIMEOUT` packages
-- continued hold advances through the existing shipping-prep, warning, imminent, and hardware-shipping thresholds
+- release before `KNOB_INPUT_START_SYSTEM_MENU_HOLD_MS` publishes exactly one package-visible `START` press on release
+- reaching `KNOB_INPUT_START_SYSTEM_MENU_HOLD_MS` publishes no package press and requests the PeepOS system menu; the package is suspended in RAM only after `thRuntime` acknowledges the bounded suspend request
+- continued hold advances through shipping preparation, warning, imminent, panel-clear, and hardware-shipping thresholds without requiring a release after the menu opens
 - START never generates repeat events
 
-While interaction is `INACTIVE`, a short START release remains the consumed system activation gesture and runs the target activation presentation before package focus is restored.
+While interaction is `INACTIVE`, a short START release remains the temporary
+legacy activation gesture. It will be removed once packages declare and Peep
+Studio can author a valid inactive-exit binding.
 
 | Overlay State | Meaning |
 |---|---|
 | `START_IDLE` | Start not pressed |
 | `START_NORMAL_PRESS` | normal press window |
-| `START_LONG_PRESS` | normal long-press window |
+| `START_SYSTEM_MENU` | system-menu hold window |
 | `START_SHIP_PREP` | firmware should begin save/quiesce preparation |
 | `START_SHIP_WARNING` | firmware should present warning/countdown if display policy allows |
 | `START_SHIP_IMMINENT` | hardware shipping-mode threshold is approaching |
+| `START_SHIP_DISPLAY_CLEAR` | `thPower` has asked `thDisplay` to clear the panel before hardware shipping |
 | `START_RELEASED` | Start released before hardware shipping-mode entry |
 
 Overlay events:
 
 - `EV_START_PRESS`
-- `EV_START_LONG_THRESHOLD`
+- `EV_START_SYSTEM_MENU_THRESHOLD`
 - `EV_START_SHIP_PREP_THRESHOLD`
 - `EV_START_SHIP_WARN_THRESHOLD`
 - `EV_START_SHIP_IMMINENT_THRESHOLD`
+- `EV_START_SHIP_DISPLAY_CLEAR_THRESHOLD`
 - `EV_START_RELEASE`
 
 Published events:
@@ -241,15 +246,15 @@ These events are power/save intent. They are not game input.
 
 ### HW6 FW0 Start Overlay Scaffold Status
 
-Current FW0 scaffolding admits `BTN_START` into the EXTI-backed input path and keeps it out of the ordinary A/B/L/R UI button queue. The EXTI handler only latches press/release edges; `thInput` consumes those latches on its ThreadX tick and also samples the live PA4 level on the bounded input-owner heartbeat. START press acceptance is edge-assisted when PA4 is raw low, missed press edges are recovered from a debounced stable-low PA4 sample, and release is accepted only after the debounced stable-high PA4 level confirms it. `thInput` arms START hold checkpoints from the same ThreadX tick domain, tracks the `START_*` overlay states, and publishes shipping-prep, warning, imminent, and release-before-ship events to `thPower`. `HAL_GetTick()` may be used for debug timestamps on edges, but it is not authoritative for START hold classification.
+Current FW0 scaffolding admits `BTN_START` into the EXTI-backed input path and keeps it out of the ordinary A/B/L/R UI button queue. The EXTI handler only latches press/release edges; `thInput` consumes those latches on its ThreadX tick and also samples the live PA4 level on the bounded input-owner heartbeat. START press acceptance is edge-assisted when PA4 is raw low, missed press edges are recovered from a debounced stable-low PA4 sample, and release is accepted only after the debounced stable-high PA4 level confirms it. `thInput` arms START hold checkpoints from the same ThreadX tick domain, requests the system menu at the first threshold, and publishes shipping-prep, warning, imminent, display-clear, and release-before-ship events. `thPower` owns shipping while `thUI` owns the menu request. `HAL_GetTick()` may be used for debug timestamps on edges, but it is not authoritative for START hold classification.
 
-`thPower` treats those events as lifecycle intent: it records debugger-visible counters, enters existing `PWR_SHIP_PREP` / `PMIC_SHIP_PENDING` scaffold states, calls a no-op save/quiesce placeholder on ship-prep, and cancels back toward the prior active power state on release before hardware shipment entry. `thUI` now has a scaffold `SHUTDOWN` page for prep/warning/imminent states and release-cancel routing back to the prior page. This is not final product behavior: it does not yet save real state, persist settings, enter STOP, prove first-boot policy, or automatically enter ADP5360 software shipment unless the protected power knob explicitly enables that request.
+`thPower` treats the shipping events as lifecycle intent: it records debugger-visible counters, enters existing `PWR_SHIP_PREP` / `PMIC_SHIP_PENDING` scaffold states, calls a no-op save/quiesce placeholder on ship-prep, asks the display owner to clear the panel at the pre-shipping threshold, and cancels back toward the prior active power state on release before hardware shipment entry. `thUI` owns the system root and suspends/resumes a package only through bounded runtime-owner requests. While that package is suspended and `resume_available=1`, `thInput` routes A/B/L/R and joystick presses to `thUI`; it never routes them to the retained package. This is not final product behavior: it does not yet save real state, persist settings, enter STOP, prove first-boot policy, or automatically enter ADP5360 software shipment unless the protected power knob explicitly enables that request.
 
 Validated HW6 unit 001 FW0 evidence: a 5 s hold reached `START_SHIP_PREP` with checkpoint/live ticks `500/525`; a 9-10 s hold reached `START_SHIP_WARNING` with `900/1075`; a >11 s hold reached `START_SHIP_IMMINENT` with `1100/1675`; raw/stable PA4 was `0/0` during sustained holds; and `thPower` recorded prep/warning/imminent counters `1/1/1`. A later validated scaffold capture showed the user-visible `PREPARING` and `POWER OFF IN 3/2/1` screens, release before shipment returning to HOME, input prep/warn/imminent/release counters `1/1/1/1`, power prep/warn/imminent/cancel counters `1/1/1/1`, one no-op quiesce hook call, and software shipment remaining gated off with enable/request/skip `0/0/1`. The ADP5360 hardware shipment path was confirmed separately by holding START/MR past the hardware threshold.
 
-The required knob names above are authoritative. HW6 FW0 sources knob values from `firmware/peepshow_hw6_fw0/config/knobs.json`, validates them with `config/knobs.schema.json`, and generates `Core/Inc/knobs_autogen.h` through `tools/gen_knobs.py`. The START overlay scaffold consumes generated START macros. The A/B/L/R physical button FSM and joystick lifecycle consume the same generic long-press, repeat-start, and repeat-period knobs. Button API version 13 and RTOS probe version 71 publish and focus-route A/B/L/R press/release/hold/repeat records. Chord and stuck publication remain scaffolded.
+The required knob names above are authoritative. HW6 FW0 sources knob values from `firmware/peepshow_hw6_fw0/config/knobs.json`, validates them with `config/knobs.schema.json`, and generates `Core/Inc/knobs_autogen.h` through `tools/gen_knobs.py`. The START overlay scaffold consumes generated START macros. The A/B/L/R physical button FSM and joystick lifecycle consume the same generic long-press, repeat-start, and repeat-period knobs. Button API version 14 and RTOS probe version 71 publish and focus-route A/B/L/R press/release/hold/repeat records. Chord and stuck publication remain scaffolded.
 
-Current generated defaults preserve the validated START scaffold shape while allowing timing adjustment: generic press/release debounce `20/20 ms`, generic long press `1000 ms`, generic repeat start/period `500/150 ms`, generic stuck threshold `30000 ms`, chord window `80 ms`, START manual-INACTIVE hold `2000 ms`, ship-prep `5000 ms`, warning `9000 ms`, imminent `11000 ms`, START stable-level acceptance `2` samples, and software shipment request enable `false`.
+Current generated defaults preserve the validated START scaffold shape while allowing timing adjustment: generic press/release debounce `20/20 ms`, generic long press `1000 ms`, generic repeat start/period `500/150 ms`, generic stuck threshold `30000 ms`, chord window `80 ms`, START system-menu hold `2000 ms`, ship-prep `5000 ms`, warning `9000 ms`, imminent `11000 ms`, display clear `11900 ms`, START stable-level acceptance `2` samples, and software shipment request enable `false`.
 
 ## Logical Event Model
 

@@ -12,10 +12,11 @@
     "input_btn_repeat_period_ms",
     "input_btn_stuck_ms",
     "input_chord_window_ms",
-    "input_start_long_press_ms",
+    "input_start_system_menu_hold_ms",
     "input_start_ship_prep_ms",
     "input_start_ship_warn_ms",
     "input_start_ship_imminent_ms",
+    "input_start_ship_display_clear_ms",
     "input_start_stable_samples",
     "input_joystick_cal_neutral_ms",
     "input_joystick_cal_cardinal_ms",
@@ -41,6 +42,7 @@
     "input_joystick_xyz_sweep_samples",
     "input_joystick_xyz_capture_period_ms",
     "input_joystick_xyz_capture_timeout_ms",
+    "audio_pcm_dma_frames",
     "audio_dma_completion_margin_ms",
     "debug_tracex_enable",
     "debug_tracex_user_events_enable",
@@ -182,7 +184,7 @@
       "path": "platform.knobs.input.chord_window_ms",
       "description": "Window for combining multiple physical button presses into a raw chord mask."
     },
-    "input_start_long_press_ms": {
+    "input_start_system_menu_hold_ms": {
       "type": "integer",
       "minimum": 1,
       "maximum": 30000,
@@ -191,8 +193,8 @@
       "timebase_domain": "threadx",
       "owner": "thInput",
       "class": "protected_policy",
-      "path": "platform.knobs.input.start_long_press_ms",
-      "description": "START hold duration where PeepOS consumes the gesture and enters manual INACTIVE instead of delivering a package START press."
+      "path": "platform.knobs.input.start_system_menu_hold_ms",
+      "description": "START hold duration where PeepOS consumes the gesture and opens the system menu without delivering a package START press."
     },
     "input_start_ship_prep_ms": {
       "type": "integer",
@@ -229,6 +231,18 @@
       "class": "protected_policy",
       "path": "platform.knobs.input.start_ship_imminent_ms",
       "description": "START hold duration where hardware shipping-mode entry is considered imminent."
+    },
+    "input_start_ship_display_clear_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 30000,
+      "default": 11900,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.start_ship_display_clear_ms",
+      "description": "START hold duration where thPower asks thDisplay to clear the panel before the hardware shipping threshold."
     },
     "input_start_stable_samples": {
       "type": "integer",
@@ -528,6 +542,18 @@
       "path": "platform.knobs.input.joystick_xyz_capture_timeout_ms",
       "description": "Hard elapsed-time limit for a TMAG3001 raw XYZ diagnostic capture. This prevents a slow or wedged read path from leaving the display stuck on the capture cue."
     },
+    "audio_pcm_dma_frames": {
+      "type": "integer",
+      "minimum": 256,
+      "maximum": 4096,
+      "default": 1024,
+      "unit": "frames",
+      "timebase_domain": "audio_clock",
+      "owner": "thAudio",
+      "class": "resource_budget",
+      "path": "platform.knobs.audio.pcm_dma_frames",
+      "description": "Total interleaved stereo PCM frame capacity for the fixed circular DMA buffer. The value must be even so thAudio can refill one complete half after each DMA callback."
+    },
     "audio_dma_completion_margin_ms": {
       "type": "integer",
       "minimum": 1,
@@ -538,7 +564,7 @@
       "owner": "thAudio",
       "class": "protected_policy",
       "path": "platform.knobs.audio.dma_completion_margin_ms",
-      "description": "Bounded margin added to the calculated one-shot SFX duration while thAudio waits for the real DMA completion callback."
+      "description": "Bounded margin added to the calculated DMA callback deadline while thAudio waits for one-shot completion or a circular-stream refill event."
     },
     "debug_tracex_enable": {
       "type": "boolean",

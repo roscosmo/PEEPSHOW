@@ -13,7 +13,6 @@ from typing import Iterable
 AUDIO_SAMPLE_RATE_HZ = 16000
 AUDIO_CHANNELS = 1
 AUDIO_BLOCK_SAMPLES = 256
-AUDIO_MAX_DURATION_MS = 2000
 AUDIO_MAX_ASSETS = 32
 AUDIO_MAX_CUES = 64
 AUDIO_MAX_BANK_BYTES = 48 * 1024
@@ -271,22 +270,11 @@ def import_sampled_sfx(project_root: Path, record: dict[str, object]) -> Compile
                 raise AudioAssetError("sampled SFX WAV must use 8, 16, 24, or 32-bit PCM")
             if not 8000 <= source_rate_hz <= 96000:
                 raise AudioAssetError("sampled SFX WAV rate must be in 8000..96000 Hz")
-            source_duration_ms = (
-                frame_count * 1000 + source_rate_hz - 1
-            ) // source_rate_hz
-            if source_duration_ms > AUDIO_MAX_DURATION_MS:
-                raise AudioAssetError(
-                    f"sampled SFX exceeds the {AUDIO_MAX_DURATION_MS} ms STATE limit"
-                )
             raw = wav.readframes(frame_count)
     except (FileNotFoundError, OSError, EOFError, wave.Error) as exc:
         raise AudioAssetError(f"could not read sampled SFX WAV: {exc}") from exc
     samples = _resample_linear(_decode_pcm(raw, sample_width, channels), source_rate_hz)
     duration_ms = (len(samples) * 1000 + AUDIO_SAMPLE_RATE_HZ // 2) // AUDIO_SAMPLE_RATE_HZ
-    if duration_ms > AUDIO_MAX_DURATION_MS:
-        raise AudioAssetError(
-            f"converted SFX exceeds the {AUDIO_MAX_DURATION_MS} ms STATE limit"
-        )
     adpcm, block_count = encode_ima_adpcm(samples)
     return CompiledAudioAsset(
         asset_id=str(record["asset_id"]),

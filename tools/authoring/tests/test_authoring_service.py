@@ -377,7 +377,7 @@ class AuthoringServiceTests(unittest.TestCase):
         audio = result["state_scene_audio"]
         self.assertTrue(audio["host_package_support"])
         self.assertEqual(
-            "available_bounded_state_sfx", audio["target_playback_status"]
+            "available_package_streamed_state_sfx", audio["target_playback_status"]
         )
         self.assertEqual("play_sfx", audio["route_action"])
         self.assertEqual(1, audio["voice_limit"])

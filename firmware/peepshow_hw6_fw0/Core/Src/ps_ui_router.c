@@ -18,6 +18,7 @@ typedef struct
   uint32_t package_state;
   uint32_t package_event_count;
   uint32_t eggless;
+  uint32_t resume_available;
   uint32_t last_button_event;
   uint32_t button_event_count;
   uint32_t last_joystick_event;
@@ -64,6 +65,8 @@ static void PS_UIRouter_UpdateProbe(void)
   g_ps_ui_router_probe.package_event_count =
     ps_ui_router_state.package_event_count;
   g_ps_ui_router_probe.eggless = ps_ui_router_state.eggless;
+  g_ps_ui_router_probe.resume_available =
+    ps_ui_router_state.resume_available;
   g_ps_ui_router_probe.last_button_event =
     ps_ui_router_state.last_button_event;
   g_ps_ui_router_probe.button_event_count =
@@ -260,6 +263,19 @@ static ps_status_t PS_UIRouter_DispatchButtonA(void)
 {
   if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_HOME)
   {
+    if (ps_ui_router_state.resume_available != 0UL)
+    {
+      if (ps_ui_router_state.focus_index == 0UL)
+      {
+        return PS_UIRouter_RequestAction(
+          PS_UI_ROUTER_ACTION_RUNTIME_RESUME);
+      }
+      if (ps_ui_router_state.focus_index == 1UL)
+      {
+        return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
+      }
+      return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_PACKAGE_BROWSER);
+    }
     return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
   }
   if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_MENU)
@@ -387,6 +403,11 @@ static ps_status_t PS_UIRouter_DispatchButtonB(void)
 {
   if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_HOME)
   {
+    if (ps_ui_router_state.resume_available != 0UL)
+    {
+      return PS_UIRouter_RequestAction(
+        PS_UI_ROUTER_ACTION_RUNTIME_RESUME);
+    }
     return PS_STATUS_OK;
   }
   if ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_SHUTDOWN) &&
@@ -419,7 +440,14 @@ static ps_status_t PS_UIRouter_DispatchButtonB(void)
   }
   if (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_PACKAGE_BROWSER)
   {
-    return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
+    return PS_UIRouter_GotoPage(
+      (ps_ui_router_state.resume_available != 0UL) ?
+      PS_UI_ROUTER_PAGE_HOME : PS_UI_ROUTER_PAGE_MENU);
+  }
+  if ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_MENU) &&
+      (ps_ui_router_state.resume_available != 0UL))
+  {
+    return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_HOME);
   }
   return PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
 }
@@ -488,6 +516,7 @@ void PS_UIRouter_Init(void)
   ps_ui_router_state.package_state = PS_UI_ROUTER_PACKAGE_NONE;
   ps_ui_router_state.package_event_count = 0UL;
   ps_ui_router_state.eggless = 0UL;
+  ps_ui_router_state.resume_available = 0UL;
   ps_ui_router_state.last_button_event = 0UL;
   ps_ui_router_state.button_event_count = 0UL;
   ps_ui_router_state.last_joystick_event = 0UL;
@@ -594,6 +623,7 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
             PS_UIRouter_SetPackageState(PS_UI_ROUTER_PACKAGE_INSTALLED);
           }
           ps_ui_router_state.eggless = 0UL;
+          ps_ui_router_state.resume_available = 0UL;
         }
       }
       else
@@ -603,11 +633,46 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
       break;
     case PS_UI_ROUTER_EVENT_RUNTIME_RETURNED:
       ps_ui_router_state.eggless = 0UL;
+      ps_ui_router_state.resume_available = 0UL;
       status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
       break;
     case PS_UI_ROUTER_EVENT_RUNTIME_UNAVAILABLE:
       ps_ui_router_state.eggless = 1UL;
+      ps_ui_router_state.resume_available = 0UL;
       status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
+      break;
+    case PS_UI_ROUTER_EVENT_SYSTEM_MENU_REQUEST:
+      status = PS_UIRouter_RequestAction(
+        PS_UI_ROUTER_ACTION_SYSTEM_MENU_ENTER);
+      break;
+    case PS_UI_ROUTER_EVENT_SYSTEM_MENU_ACTIVE:
+      ps_ui_router_state.resume_available = 1UL;
+      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_HOME);
+      if (status == PS_STATUS_OK)
+      {
+        ps_ui_router_state.focus_index = 0UL;
+      }
+      break;
+    case PS_UI_ROUTER_EVENT_SYSTEM_MENU_SHELL:
+      ps_ui_router_state.resume_available = 0UL;
+      status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_MENU);
+      break;
+    case PS_UI_ROUTER_EVENT_SYSTEM_MENU_DISCARD:
+      ps_ui_router_state.resume_available = 0UL;
+      ps_ui_router_state.transition_count++;
+      status = PS_STATUS_OK;
+      break;
+    case PS_UI_ROUTER_EVENT_SYSTEM_MENU_RESUMED:
+      if (ps_ui_router_state.resume_available != 0UL)
+      {
+        ps_ui_router_state.resume_available = 0UL;
+        status = PS_UIRouter_GotoPage(
+          PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF);
+      }
+      else
+      {
+        status = PS_STATUS_INVALID_STATE;
+      }
       break;
     case PS_UI_ROUTER_EVENT_SHELL_FAULT:
       ps_ui_router_state.previous_page = ps_ui_router_state.current_page;
