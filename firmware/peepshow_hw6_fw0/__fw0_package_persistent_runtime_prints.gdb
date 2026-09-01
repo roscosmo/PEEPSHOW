@@ -12,5 +12,5 @@ printf "source resolve/success/install publishes/status/reason = %u / %u / %u / 
 printf "scene active/activation/source/source status = %u / 0x%x / %u / 0x%x\n", g_ps_scene_runtime_probe.active, g_ps_scene_runtime_probe.activation_status, g_ps_scene_runtime_probe.package_source, g_ps_scene_runtime_probe.package_source_status
 printf "egg load/hash status bytes = 0x%x / 0x%x / %u\n", g_ps_egg_state_loader_probe.last_status, g_ps_hw6_hash_probe.last_status, g_ps_egg_state_loader_probe.package_size
 printf "STOP2 entries = %u\n", g_ps_hw6_rtos_probe.stop2_auto_entry_count
-printf "expected installed egg: APIs=57/60/3 load send/wait/owner=0/0/0 storage status/scan/read/park/publish=0 source=3 selected/resident=3 available=1 scene active/activation/source=1/0/3 HASH=0\n"
+printf "expected installed egg: APIs=76/76/3 load send/wait/owner=0/0/0 storage status/scan/read/park/publish=0 source=3 selected/resident=3 available=1 scene active/activation/source=1/0/3 HASH=0\n"
 printf "--- end HW6 persistent installed egg runtime ---\n"
