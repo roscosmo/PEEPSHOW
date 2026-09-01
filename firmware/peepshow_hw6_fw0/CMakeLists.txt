@@ -88,6 +88,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/ps_input_joystick.c
     Core/Src/ps_embedded_egg_autogen.c
     Core/Src/ps_package_source.c
+    Core/Src/ps_package_reader.c
     Core/Src/ps_egg_state_loader.c
     Core/Src/ps_scene_runtime.c
     Core/Src/ps_ui_router.c

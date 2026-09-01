@@ -25,6 +25,7 @@
 #include "ps_input_events.h"
 #include "ps_input_joystick.h"
 #include "ps_input_state.h"
+#include "ps_package_reader.h"
 #include "ps_package_source.h"
 #include "ps_ui_router.h"
 #include "ps_power_events.h"
@@ -5651,6 +5652,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_LoadPersistentPackage(void)
   uint8_t *package_buffer = NULL;
   uint32_t package_capacity = 0UL;
   uint32_t publish_status = 1UL;
+  uint32_t package_offset;
 
   g_ps_hw6_owner_sm_probe.persistent_load_request_count++;
   g_ps_hw6_owner_sm_probe.persistent_load_start_tick =
@@ -5677,6 +5679,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_LoadPersistentPackage(void)
     (uint32_t)PS_PACKAGE_SOURCE_NONE;
   g_ps_hw6_owner_sm_probe.persistent_load_last_status =
     PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  PS_PackageReader_StorageClear();
 
   if (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] !=
       (uint32_t)STORAGE_FLASH_READY)
@@ -5727,6 +5730,14 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_LoadPersistentPackage(void)
         read_status = PS_STATUS_OK;
         publish_status = 0UL;
       }
+      else if (PS_PackageReader_StorageMount(
+                 g_ps_storage_package_index_probe.selected_package_start,
+                 g_ps_storage_package_index_probe.selected_package_size,
+                 g_ps_storage_package_index_probe.selected_generation) !=
+               PS_STATUS_OK)
+      {
+        read_status = PS_STATUS_INTERNAL_ERROR;
+      }
       else if (PS_PackageSource_BeginInstalledWrite(
                  &package_buffer, &package_capacity) == 0UL)
       {
@@ -5735,11 +5746,26 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_LoadPersistentPackage(void)
         if (g_ps_storage_package_index_probe.selected_package_size <=
             package_capacity)
         {
-          read_status = ps_storage_flash_block_read(
-            &ps_flash_block,
-            g_ps_storage_package_index_probe.selected_package_start,
-            package_buffer,
-            g_ps_storage_package_index_probe.selected_package_size);
+          read_status = PS_STATUS_OK;
+          for (package_offset = 0UL;
+               (package_offset <
+                g_ps_storage_package_index_probe.selected_package_size) &&
+               (read_status == PS_STATUS_OK);
+               package_offset += PS_PACKAGE_READER_WINDOW_BYTES)
+          {
+            uint32_t window_length =
+              g_ps_storage_package_index_probe.selected_package_size -
+              package_offset;
+            if (window_length > PS_PACKAGE_READER_WINDOW_BYTES)
+            {
+              window_length = PS_PACKAGE_READER_WINDOW_BYTES;
+            }
+            read_status = PS_PackageReader_StorageReadWindow(
+              &ps_flash_block,
+              package_offset,
+              &package_buffer[package_offset],
+              window_length);
+          }
           if (read_status == PS_STATUS_OK)
           {
             g_ps_hw6_owner_sm_probe.persistent_load_bytes_read =
@@ -5789,6 +5815,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_LoadPersistentPackage(void)
     else
     {
       PS_PackageSource_AbortStagedWrite();
+      PS_PackageReader_StorageClear();
     }
   }
 
