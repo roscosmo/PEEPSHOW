@@ -25,11 +25,32 @@ The Platform storage owner owns:
 
 - external flash
 - raw installed package storage
+- protected firmware-update staging
+- protected project-namespaced game data
 - staging/export storage
 - filesystem and flash translation layers
 - physical read/program/erase operations
 
 Runtime hosts may request package assets only through this contract.
+
+---
+
+## Single-Active-Package Lifecycle
+
+The product has one active installed package, not an A/B runtime catalog. A
+package handle is scoped to that active package identity and activation
+generation; package replacement, package quarantine, or a pending install
+transaction invalidates every outstanding handle.
+
+The active package slot is `5 MiB`. It is not copied into a megabyte-scale RAM
+cache. Package metadata may be prepared in fixed RAM, but large package content
+is served by bounded `thStorage` reads into fixed owner-managed buffers.
+
+The former B package region is not available to package handles. Its fixed
+subregions are reserved for firmware-update staging and project-namespaced game
+data. Package code cannot address either region directly. Game data must use a
+separate Platform-owned data API; firmware-update staging is inaccessible to
+packages and the normal package manager.
 
 ---
 
@@ -276,6 +297,8 @@ Rules:
 - request size is bounded.
 - request timeout is explicit.
 - storage owner may reject or delay during sleep/install/export/fault policy.
+- `thAudio` requests approved audio windows or stream refills but does not read
+  raw package storage itself.
 - a sequence/program scene may not wait inside its frame budget on a storage read.
 - streaming audio is owned by the audio subsystem and uses declared ring/buffer policy.
 - windowed tilemap reads must have fallback behavior for cache miss or delayed read.

@@ -42,7 +42,8 @@ are aligned to the `4096`-byte erase sector.
 | calibration | `0x00020000` | `64 KiB` | protected |
 | save data | `0x00030000` | `512 KiB` | protected |
 | installed index/metadata | `0x000B0000` | `64 KiB` | protected |
-| installed package/blob | `0x000C0000` | `10 MiB` | protected; two `5 MiB` slots |
+| active installed package/blob | `0x000C0000` | `5 MiB` | protected; the only launchable game package |
+| firmware update staging + game data | `0x005C0000` | `5 MiB` | protected; dedicated firmware-update staging plus project-namespaced game data; exact split is reserved before implementation |
 | USB staging/export | `0x00AC0000` | `5 MiB` | host exposed only during MSC |
 | persistent fault log ring | `0x00FC0000` | `192 KiB` | protected |
 | reserved tail | `0x00FF0000` | `60 KiB` | protected |
@@ -55,10 +56,11 @@ Required regions:
 | settings/config | Platform settings | No | `thStorage` |
 | communication bonding | BLE pairing/bonding data | No | `thStorage` through `thComm` request |
 | calibration | joystick/input/display/sensor calibration | No | `thStorage` |
-| save data | Reference Game and package saves | No | `thStorage` through save API |
-| installed package/blob | installed game/content raw blob storage | No | `thStorage` / Engine package API |
+| save data | Platform and Reference Game compatibility saves | No | `thStorage` through save API |
+| active installed package/blob | one installed game/content raw blob | No | `thStorage` / Engine package API |
 | installed index/metadata | active package index, versions, integrity data | No | `thStorage` / package manager |
-| Platform update staging metadata | staged Platform update artifact state, if implemented | No | Platform update flow / `thStorage` |
+| firmware update staging | private staged Platform update artifact and update transaction records | No | Platform update flow / `thStorage` |
+| game data | remaining protected content-reserve capacity, namespaced by stable project ID | No | `thStorage` through game-data API |
 | persistent fault log ring | boot/fault records, reset evidence, crash summaries | No | `thStorage` through fault supervisor request |
 | USB staging/export | package staging, host transfer, debug export surface | Yes | host while exported, `thStorage` otherwise |
 | logs/screenshots/debug export | copied/exported diagnostic artifacts | Indirect only | `thStorage` |
@@ -74,75 +76,88 @@ Rules:
 - Platform firmware update artifacts may be transferred through staging/export or CDC developer upload in the future, but applying them is a distinct Platform-owned update/recovery flow.
 - package install must not rewrite Platform firmware, bootloader/recovery regions, or native executable app slots.
 
-### Installed Package Slots And Index
+### Active Package And Transaction Record
 
-The first persistent installer supports one active package with an A/B update
-pair. This is a physical durability mechanism, not a user-visible two-package
-catalog.
+Product lifecycle supports exactly one active game package. The former A/B
+layout is a FW0 bring-up durability mechanism, not the product package model
+and not a user-visible package catalog.
 
-- package slot A is `0x000C0000..0x005BFFFF` (`5 MiB`);
-- package slot B is `0x005C0000..0x00ABFFFF` (`5 MiB`);
-- one `.egg` must fit entirely in one slot;
-- package bytes begin at the first byte of the selected slot and remain in the
+- the active package slot is `0x000C0000..0x005BFFFF` (`5 MiB`);
+- one `.egg` must fit entirely in that slot;
+- package bytes begin at the first byte of the active slot and remain in the
   canonical `.egg` format without a storage-specific wrapper;
 - unused bytes after `package_size_bytes` are ignored;
-- the currently indexed slot is never erased or programmed during replacement.
+- only a complete, validated transaction record may authorize package launch;
+- a pending, interrupted, invalid, or absent package transaction routes boot to
+  the shell. It must never launch partially programmed package bytes.
+
+The second former package slot, `0x005C0000..0x00ABFFFF`, is a protected
+content reserve. Before implementation it must be split into:
+
+- a dedicated raw firmware-update staging region, large enough for the maximum
+  accepted signed update artifact and its transaction records; and
+- the remaining project-namespaced game-data region.
+
+The exact split is deferred until the firmware artifact maximum, bootloader
+apply model, and update record format are defined. It must be fixed in the
+flash map before either game-data allocation or firmware update support is
+implemented. Package install, package runtime, MSC, and packages themselves
+must not access firmware-update staging as game data.
+
+Additional packages are retained as transferable `.egg` library artifacts in
+the host-visible staging/export volume and installed into the active slot only
+when selected. They are never boot candidates, runtime asset sources, or raw
+installed package slots.
 
 The package-index region begins with two independent erase-sector records:
 
 - index A is `0x000B0000..0x000B0FFF`;
 - index B is `0x000B1000..0x000B1FFF`;
-- `0x000B2000..0x000BFFFF` remains reserved for future catalog expansion;
-- each record contains format version, generation, active slot, package size,
-  package identity hash, package SHA-256, flags, and a record CRC32;
+- `0x000B2000..0x000BFFFF` remains reserved for future transaction and
+  package-metadata expansion;
+- each record contains format version, generation, transaction state, package
+  size, package identity hash, package SHA-256, flags, and a record CRC32;
 - each record has an exact commit marker stored separately from its CRC-covered
   body and programmed only after the body has been read back successfully;
-- a record is valid only when its marker, format, bounds, slot mapping, and
-  CRC32 all validate;
-- boot selects the valid record with the newer generation; one valid record is
-  sufficient, and no valid record means no installed package;
+- a record is valid only when its marker, format, bounds, transaction state,
+  and CRC32 all validate;
+- boot selects the newer complete record. A newer pending or failed
+  transaction blocks package activation and enters the shell; no complete
+  record means no installed package;
 - generation comparison must remain deterministic across `uint32_t` wrap.
 
-Index v1 uses little-endian fields. Its CRC-covered body is exactly `256`
-bytes: magic `EGI1`, format version `1`, body size, generation, active slot,
-package size, 64-bit package identity hash, zero flags, the package SHA-256,
-CRC32, then erased `0xFF` reserved bytes. The CRC field is treated as zero
-while calculating CRC32. The exact commit marker `CMIT` is stored at sector
-offset `0x100`, outside the body, and the remainder of the `4 KiB` sector stays
-erased. Unknown nonzero flags or programmed reserved bytes invalidate a v1
-record.
+The current FW0 index v1 still records an active A/B slot. It is migration
+debt. The product transaction record retains the two protected index sectors as
+a small redundant journal, but records package identity and transaction state
+rather than selecting between two package images.
 
-Atomic replacement order is mandatory:
+Single-slot replacement order is mandatory:
 
-1. select the slot not named by the current valid index;
-2. erase only that inactive slot's required sectors;
-3. copy the staged `.egg` into the inactive slot through `thStorage`;
-4. read back and validate the installed bytes, container integrity, and SHA-256;
-5. erase the inactive index sector;
-6. write and read-verify the new index body;
-7. program and verify the commit marker last;
-8. treat the new generation as active without erasing the previous package or
-   previous index record.
+1. fully validate the staged source artifact before erasing the active slot;
+2. publish a newer `PENDING` transaction state that blocks package launch and
+   routes boot to the shell;
+3. erase and chunk-program only the active package slot through `thStorage`;
+4. read back and validate the installed bytes, container integrity, SHA-256,
+   and required package semantics;
+5. write and read-verify a complete `VALID` transaction record last.
 
-Any interruption before step 7 leaves the previous index and package active.
-An interruption during the commit-marker program leaves the new record invalid
-unless the exact marker and complete CRC-covered body both validate. Cleanup of
-the old slot or old index is deferred until a later replacement needs that
-inactive location.
+An interruption after `PENDING` is published may lose the previous game
+package, but it must leave the device recoverable through the shell. Reinstall
+is then required. Automatic rollback to the previous package is deliberately
+not a product guarantee. Game data and firmware-update staging are not erased,
+programmed, or selected by package replacement.
 
-The HW6 FW0 USB vertical slice now exercises this physical replacement path
-end to end. MSC reclaim is transport-only: it closes the host-exported
-filesystem path and parks ownership without automatically installing,
-launching, or publishing package prompts. The PACKAGE menu separates `USB
-FLASH` from `PACKAGE INSTALL`; only the package-install path explicitly asks
-`thStorage` to scan the reclaimed staging volume. A valid single `.egg` then
-enables an explicit install action that copies the package into
-bounded RAM, writes and verifies the inactive package slot, commits the inactive
-index record last, parks flash, and publishes the selected generation as
-installed runtime RAM. The package browser changes from `INSTALLING` to
-`INSTALLED` after the persistent install succeeds. A separate explicit launch
-action activates the installed STATE scene; failure returns the browser to an
-explicit error state so STOP2 is not permanently vetoed.
+The HW6 FW0 USB vertical slice currently exercises the superseded A/B physical
+replacement path. MSC reclaim remains transport-only: it closes the
+host-exported filesystem path and parks ownership without automatically
+installing, launching, or publishing package prompts. The PACKAGE menu keeps
+`USB FLASH` separate from `PACKAGE INSTALL`.
+
+The product installer must scan and validate a reclaimed staged `.egg`, publish
+the single-slot transaction state, chunk-program and verify the active slot,
+then publish `VALID`. Package install and launch remain separate user actions.
+Until that migration lands, the FW0 A/B path is bring-up-only behavior and must
+not be extended as a product package catalog.
 
 The current bring-up admission check before persistent commit is still narrower
 than the production rule in step 4: it checks the bounded `PKG1` envelope and
@@ -153,10 +168,11 @@ before the commit marker so a semantically invalid package can never become the
 selected generation.
 
 The current `65536`-byte staged-RAM source remains a bring-up activation cache,
-not the installed slot size. Persistent layout and index metadata must support
-the full `5 MiB` slot. Runtime metadata and small prepared assets may be cached
-in normal SRAM; large assets use bounded storage-owner reads through the package
-asset API and are never read through FileX.
+not the installed slot size or the product package limit. The product installer
+must stream source bytes in bounded chunks and support the full `5 MiB` active
+slot. Runtime metadata and small prepared assets may be cached in normal SRAM;
+large assets use bounded storage-owner reads through the package asset API and
+are never read through FileX.
 
 ## Persistent Fault Log Region
 
@@ -231,7 +247,8 @@ Storage rules:
 - storage failure routes to safe mode, not normal shell
 - all local clients must be blocked before USB export
 - firmware must reclaim and rescan staging/export after USB release
-- install commit must preserve last known valid package/index state
+- install commit must never authorize a partial package; an interrupted
+  single-slot replacement routes boot to the shell for recovery and reinstall
 
 ## USB Staging / Export FSM
 
@@ -276,9 +293,9 @@ USB export rules:
 - FW0 reclaim may run a bounded staging/export root-directory classifier for diagnostics: it opens FileX/LevelX only under `thStorage`, classifies the reclaimed volume as `EMPTY`, `UNSUPPORTED`, `PACKAGE_CANDIDATE`, `MULTIPLE`, or `ERROR`, closes FileX/LevelX before returning, and performs no package import or install writes. This classifier must not decide whether MSC reclaim itself succeeded; safe USB teardown/parking is the transport completion condition. Directories are counted for diagnostics but do not make a single package file unsupported, because host operating systems may create metadata directories. `PACKAGE_CANDIDATE` is a filename-level hint only for exactly one `.egg` file, not an automatic install prompt.
 - FW0 runs a read-only minimum package-envelope validator for one clean package candidate. This validator reopens the staging/export volume under `thStorage`, opens the package file for read, reads at most the first 64 bytes, requires the first four bytes to be `PKG1`, records the first 16 bytes and FileX/LevelX statuses for GDB evidence, and closes FileX/LevelX before returning. This is prompt admission only; it is not complete package validation.
 - Selecting `PACKAGE INSTALL` from the PACKAGE menu asks `thStorage` to scan the reclaimed staging volume. This is the first point where product UI decides whether copied files should be considered for package install.
-- Pressing `A` on a valid package prompt asks `thStorage` to reopen the single staged `.egg`, reject files outside the current fixed `65536`-byte runtime-cache capacity, read the complete file, verify the bounded envelope and declared size, and close FileX/LevelX. The accepted image is then written and byte-verified in the inactive A/B raw package slot, followed by the inactive index body and commit marker last.
-- After commit, `thStorage` publishes the selected generation through `INSTALLED_RAM` and reports `INSTALLED` to the package browser. Pressing `A` on the installed prompt then asks `thRuntime` to perform SHA-256, header CRC, chunk CRC, graph/render/waiting-schema validation, and STATE activation. Install and launch are separate user actions.
-- Runtime never reads FAT/FileX. A package must be exited before installer admission replaces the shared runtime cache. The persistent A/B write/index/select/launch path is implemented and target-proven; full validation before commit, reset injection at every install stage, automatic boot activation, uninstall, last-known-good fallback policy, and package quarantine remain open.
+- Pressing `A` on a valid package prompt currently uses the bounded `65536`-byte bring-up path. The product replacement reopens the staged `.egg` under `thStorage`, validates it without a full-RAM copy, publishes `PENDING`, chunk-writes and verifies the active package slot, then commits `VALID` last.
+- After a product commit, `thStorage` publishes an installed-package handle source rather than a complete installed-RAM copy and reports `INSTALLED` to the package browser. Pressing `A` then asks `thRuntime` to validate required metadata and activate the package. Install and launch remain separate user actions.
+- Runtime never reads FAT/FileX. A package must be exited before installer admission replaces its active package context. The persistent A/B write/index/select/launch path is target-proven bring-up behavior; full pre-commit validation, reset injection at every single-slot install stage, automatic boot activation, uninstall, package quarantine, and the bounded installed-package reader remain open.
 - HW6 evidence `EV-HW6-20260813-P1-PKGMSC-043` validates the earlier package-page force-rescan path that auto-prompted after reclaim. That behavior is now classified as bring-up scaffolding only; product MSC remains transport-only, and package selection/install belongs to the package browser. HW6 evidence `EV-HW6-20260813-P1-RUNTIME-044` validates the runtime-host installer overlay around that earlier scaffold; it does not define final package-browser UX.
 - if MSC export detects an unformatted or invalid LevelX/FileX staging volume, it reports recovery-required state and leaves formatting to the explicit provisioning command
 - normal boot may ask `thStorage` to run a USB boot-park cleanup command; this command only parks generated USB device hardware and refreshes clock readback, and must not mount FileX/LevelX, initialize package storage, expose MSC, or prove storage readiness
@@ -443,7 +460,7 @@ If external flash is unavailable:
 8. settings/saves/installed blobs are never host-writable
 9. host write/read/delete smoke succeeds on staging/export volume; HW6 evidence `EV-HW6-20260812-P1-MSCSMOKE-041` validates create/read persistence across eject/reclaim/export and delete followed by clean reclaim on the freshly provisioned staging volume
 10. firmware reclaim safely returns staging ownership to firmware; any staging classifier is diagnostic/package-browser input and must not auto-install or auto-launch on MSC exit
-11. package install preserves last known valid installed index on interruption
+11. package install never launches a partial image; interruption after the pending marker enters the shell and requires reinstall
 12. runtime asset reads use [[Package_Asset_Loading_API_Contract]] over raw installed blob storage, not FAT/FileX
 13. installer/export mode keeps display static and only minimal input active
 14. logs/screenshots/debug exports are copied into staging/export without exposing internal regions directly
@@ -451,7 +468,7 @@ If external flash is unavailable:
 16. v1 USB personalities are mutually exclusive: MSC mode exposes no CDC developer control, and CDC developer mode exposes no MSC staging volume
 17. CDC package upload routes through firmware-owned staging and package validation
 18. package install rejects Platform update artifacts and never rewrites Platform firmware regions
-19. future Platform update staging, if implemented, routes through Platform-owned update validation rather than package-manager commit
+19. future Platform update staging uses its dedicated protected raw region and routes through Platform-owned update validation rather than package-manager commit
 
 Related:
 

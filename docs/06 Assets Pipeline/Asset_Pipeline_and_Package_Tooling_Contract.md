@@ -80,17 +80,21 @@ The current HW6 vertical slice provides:
 - `EMBEDDED`, backed by the generated development `.egg` artifact.
 - `STAGED_RAM`, backed by one complete bounded `.egg` copied from the reclaimed
   FileX staging volume after every storage handle is closed.
-- `INSTALLED_RAM`, backed by the selected persistent A/B package generation
-  copied from raw package storage by `thStorage` into the current bounded
-  runtime cache.
+- `INSTALLED_RAM`, the current FW0 bring-up source backed by the selected
+  persistent A/B package generation copied from raw package storage by
+  `thStorage` into the bounded runtime cache.
 - `NONE`, which cleanly returns to the shell and displays `EGGLESS`.
 
-Installed-package publication uses the same immutable view only after
-`thStorage` has selected a committed index generation, copied the package, and
-parked storage. Active STATE, SEQUENCE, and PROGRAM execution must never open
-or stream from the FAT staging filesystem. Full pre-commit semantic validation
-and bounded installed-asset reads beyond the whole-package cache remain
-production work.
+Installed-package publication currently uses the same immutable view only after
+`thStorage` has selected a committed A/B index generation, copied the package,
+and parked storage. This is bring-up behavior, not the product package model.
+
+The product replacement has one active raw package slot. Package metadata is
+prepared in bounded RAM, while large assets are exposed through scoped package
+asset handles and bounded reads issued by `thStorage`. Active STATE, SEQUENCE,
+and PROGRAM execution must never open or stream from the FAT staging filesystem.
+Full pre-commit semantic validation and the bounded installed-asset reader are
+required before production package capacity is exposed.
 
 Templates, Authoring Kits, prefabs, behavior graphs, and behavior macros are source-level authoring objects. Tooling must lower them into the package output forms defined by this contract. They must not appear as independent firmware components, direct Platform hooks, or new scene types.
 
@@ -230,17 +234,24 @@ package format or a persistent installer.
 
 ### Persistent Device Install
 
-HW6 also accepts that same deterministic `.egg` through the MSC staging path
-and atomically replaces the inactive installed-package slot and index record.
-The index commit marker is programmed last, the previous generation remains
-available until the new record is valid, and the selected generation can be
-loaded and launched through `INSTALLED_RAM` without runtime FileX access.
+The current HW6 installer accepts a deterministic `.egg` through MSC staging
+and uses an A/B replacement path. That path is retained only as bring-up
+behavior while the product single-slot installer is implemented.
 
-This does not remove the current `65536`-byte runtime-cache ceiling. The raw
-slots are `5 MiB` each; larger production packages require the bounded asset
-handle and storage-owner read path defined by [[Package_Asset_Loading_API_Contract]].
-Production install must also move complete SHA-256/container/chunk/scene
-validation ahead of the commit marker.
+The product lifecycle has one `5 MiB` active package slot. It validates the
+staged package, publishes a transaction state that blocks package activation,
+chunk-programs and verifies the active slot, then commits a valid transaction
+record last. A failed replacement routes to the shell for reinstall; automatic
+rollback to the previous game package is not a product guarantee.
+
+The `65536`-byte staged-RAM bridge is a development convenience only. It is not
+the installed-package limit. Production install and activation require the
+bounded asset-handle and storage-owner read path defined by
+[[Package_Asset_Loading_API_Contract]], including streamed installation without
+a full-RAM package copy. Package tooling must reject a production package above
+the active slot capacity and report its total, audio, and non-audio byte use.
+Production install must complete SHA-256, container, chunk, and required scene
+validation before publishing the valid transaction record.
 
 ---
 

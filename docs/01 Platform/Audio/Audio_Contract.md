@@ -87,22 +87,29 @@ Host/package status as of service API 18: implemented and covered by
 deterministic compiler/parser/preview tests. The optional PKG1 audio asset,
 ADPCM bank, and cue chunks plus symbolic `play_sfx` action are available to
 Peep Studio. HW6 loader routing and one-voice `thAudio` playback are target-
-proven, including audible output, deterministic drain, clock release, and
-subsequent STOP2 entry. This grants only the bounded `audio.sampled_sfx` subset
-described here, not music or the future mixer.
+proven for a streamed multi-second cue, including audible output across natural
+STOP2 cycles, deterministic drain, and clock release. This grants only the
+one-voice `audio.sampled_sfx` subset described here, not music or the future
+mixer.
 
-The initial executable bounds are:
+Current FW0 bring-up bounds are:
 
 - source WAV: uncompressed mono or stereo PCM, 8/16/24/32-bit, 8..96 kHz;
 - compiled output: mono 16 kHz 4-bit IMA ADPCM in independent 256-sample blocks;
-- decoded SFX length is bounded by the 65536-byte whole-package limit and the
-  loader's 131072-sample hard ceiling, not by a full decoded PCM allocation;
 - maximum 32 sampled-SFX assets, 64 cues, and 48 KiB compiled ADPCM bank;
 - exactly one admitted STATE SFX voice, with two fixed PCM DMA halves refilled
-  by `thAudio` from the resident installed-package blob;
-- the current HW6 whole-package runtime cache remains 65536 bytes.
+  by `thAudio` from the resident installed-package RAM blob;
+- the `65536`-byte whole-package cache remains the bring-up package-source
+  limit, not an audio architecture limit.
 
-These are Platform/toolchain limits, not promises of arbitrary-length audio.
+The approved production package profile is a `5 MiB` active package with a
+maximum `4 MiB` compiled audio bank, approximately 8.3 minutes of this ADPCM
+format. There is no separate duration limit per audio asset beyond the audio
+bank and total package budgets. Reaching that profile requires the bounded
+installed-package asset reader and chunked installer: `thStorage` owns raw
+package reads, `thAudio` owns decode and playback buffers, and neither accesses
+FAT during runtime. Music, multi-voice mixing, fades, ducking, priority, mute,
+and sustained-playback energy characterization remain later milestones.
 
 BBB path:
 

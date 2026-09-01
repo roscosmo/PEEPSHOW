@@ -113,6 +113,14 @@ Required boundary rules:
 - failed update handling must preserve a documented recovery path.
 - exact bootloader layout, update slot model, secure verification chain, and rollback model are deferred until flash layout and Platform lifecycle are stable.
 
+External-flash reservation is nevertheless decided now: firmware update staging
+must occupy a dedicated protected raw subregion, separate from the active
+package, project-namespaced game data, and host-exposed MSC storage. The former
+second package slot is a shared protected content reserve for this staging
+region and game data; its exact byte split must be fixed from the maximum
+accepted firmware artifact before either feature is implemented. Firmware
+staging is never a package asset, save-data namespace, or host-mounted volume.
+
 ---
 
 ## Future Update Transfer Paths
@@ -136,7 +144,10 @@ CDC developer mode
     -> Platform update flow validates and applies
 ```
 
-Both paths should feed the same staged update artifact format and Platform-owned update apply logic.
+Both paths should feed the same staged update artifact format and Platform-owned
+update apply logic. After ingress validation, the artifact must be placed in
+the dedicated protected firmware-update staging region before apply; it must
+not be applied from MSC storage or a package-install buffer.
 
 Rules:
 
