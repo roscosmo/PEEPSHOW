@@ -1227,6 +1227,10 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void);
 HAL_StatusTypeDef
 PS_HW6_OwnerStateMachines_RunEmbeddedPersistentPackageInstall(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_LoadPersistentPackage(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReadPersistentPackageWindow(
+  uint32_t package_offset,
+  uint8_t *destination,
+  uint32_t length);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ParkUsbForBoot(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSampleProbe(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickLiveProbe(void);

@@ -5824,6 +5824,53 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_LoadPersistentPackage(void)
   return status;
 }
 
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ReadPersistentPackageWindow(
+  uint32_t package_offset,
+  uint8_t *destination,
+  uint32_t length)
+{
+  HAL_StatusTypeDef prepare_status = HAL_ERROR;
+  HAL_StatusTypeDef park_status = HAL_ERROR;
+  ps_status_t read_status = PS_STATUS_INTERNAL_ERROR;
+
+  if (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] !=
+      (uint32_t)STORAGE_FLASH_READY)
+  {
+    prepare_status = PS_HW6_SM_PrepareStorageForFlashReady(0UL);
+  }
+  else
+  {
+    prepare_status = HAL_OK;
+  }
+
+  if ((prepare_status == HAL_OK) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+       (uint32_t)FLASH_DEEP_POWER_DOWN))
+  {
+    prepare_status = PS_HW6_SM_ResumeStorage(
+      PS_HW6_OWNER_SM_CYCLE_COUNT);
+  }
+
+  if ((prepare_status == HAL_OK) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_STORAGE] ==
+       (uint32_t)STORAGE_FLASH_READY) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
+       (uint32_t)FLASH_READY))
+  {
+    read_status = PS_PackageReader_StorageReadWindow(
+      &ps_flash_block,
+      package_offset,
+      destination,
+      length);
+    park_status = PS_HW6_SM_QuiesceStorage(
+      PS_HW6_OWNER_SM_CYCLE_COUNT);
+  }
+
+  return ((prepare_status == HAL_OK) &&
+          (read_status == PS_STATUS_OK) &&
+          (park_status == HAL_OK)) ? HAL_OK : HAL_ERROR;
+}
+
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_AttachStorage(void)
 {
   HAL_StatusTypeDef status;
