@@ -22,5 +22,19 @@
   "validation": {
     "build_profile": "development",
     "ruleset_version": 1
+  },
+  "editor": {
+    "state_graph": {
+      "scenes": {
+        "main_menu": {
+          "nodes": {
+            "select_credits": {
+              "x": 12,
+              "y": 542
+            }
+          }
+        }
+      }
+    }
   }
 }

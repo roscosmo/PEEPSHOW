@@ -32,7 +32,7 @@
     {
       "state_id": "select_start",
       "display_name": "Start Game",
-      "waiting_visual_ref": "menu_wait",
+      "waiting_visual_ref": "select_start_wait",
       "placement_overrides": [
         {
           "element_ref": "selector",
@@ -43,13 +43,18 @@
           "element_ref": "selection_box",
           "x": 42,
           "y": 47
+        },
+        {
+          "element_ref": "slime2frame_1",
+          "x": 133,
+          "y": 51
         }
       ]
     },
     {
       "state_id": "select_settings",
       "display_name": "Settings",
-      "waiting_visual_ref": "menu_wait",
+      "waiting_visual_ref": "select_settings_wait",
       "placement_overrides": [
         {
           "element_ref": "selector",
@@ -60,13 +65,18 @@
           "element_ref": "selection_box",
           "x": 42,
           "y": 71
+        },
+        {
+          "element_ref": "slime2frame_1",
+          "x": 134,
+          "y": 75
         }
       ]
     },
     {
       "state_id": "select_credits",
       "display_name": "Credits",
-      "waiting_visual_ref": "menu_wait",
+      "waiting_visual_ref": "select_credits_wait",
       "placement_overrides": [
         {
           "element_ref": "selector",
@@ -77,6 +87,11 @@
           "element_ref": "selection_box",
           "x": 42,
           "y": 95
+        },
+        {
+          "element_ref": "slime2frame_1",
+          "x": 135,
+          "y": 99
         }
       ]
     }
@@ -101,6 +116,10 @@
           "variable_ref": "selected_index",
           "operation": "assign",
           "value": 1
+        },
+        {
+          "kind": "play_sfx",
+          "cue_ref": "foghorn_bo.cue"
         }
       ],
       "target_state": "select_settings"
@@ -124,6 +143,10 @@
           "variable_ref": "selected_index",
           "operation": "assign",
           "value": 2
+        },
+        {
+          "kind": "play_sfx",
+          "cue_ref": "foghorn_bo.cue"
         }
       ],
       "target_state": "select_credits"
@@ -147,6 +170,10 @@
           "variable_ref": "selected_index",
           "operation": "assign",
           "value": 0
+        },
+        {
+          "kind": "play_sfx",
+          "cue_ref": "foghorn_bo.cue"
         }
       ],
       "target_state": "select_start"
@@ -170,6 +197,10 @@
           "variable_ref": "selected_index",
           "operation": "assign",
           "value": 2
+        },
+        {
+          "kind": "play_sfx",
+          "cue_ref": "foghorn_bo.cue"
         }
       ],
       "target_state": "select_credits"
@@ -193,6 +224,10 @@
           "variable_ref": "selected_index",
           "operation": "assign",
           "value": 0
+        },
+        {
+          "kind": "play_sfx",
+          "cue_ref": "foghorn_bo.cue"
         }
       ],
       "target_state": "select_start"
@@ -216,6 +251,10 @@
           "variable_ref": "selected_index",
           "operation": "assign",
           "value": 1
+        },
+        {
+          "kind": "play_sfx",
+          "cue_ref": "foghorn_bo.cue"
         }
       ],
       "target_state": "select_settings"
@@ -349,6 +388,18 @@
           "width": 56,
           "height": 8,
           "z_order": 4
+        },
+        {
+          "element_id": "slime2frame_1",
+          "kind": "sprite",
+          "visual_ref": "slime2frame.frame_1",
+          "x": 48,
+          "y": 40,
+          "width": 12,
+          "height": 10,
+          "z_order": 5,
+          "layer": "SCENE",
+          "visible": true
         }
       ]
     }
@@ -372,6 +423,108 @@
           "step_phase_indices": [
             0,
             1
+          ]
+        }
+      ]
+    },
+    {
+      "waiting_visual_id": "select_start_wait",
+      "presentation_id": "main_menu.select_start.waiting",
+      "phase_quantum_ms": 250,
+      "combined_step_count": 2,
+      "settled_step": 1,
+      "cycle_policy": "loop",
+      "elements": [
+        {
+          "element_id": "selector_blink",
+          "source_element_ref": "selector",
+          "phase_visual_refs": [
+            "selector.dim",
+            "selector.bright"
+          ],
+          "step_phase_indices": [
+            0,
+            1
+          ]
+        },
+        {
+          "element_id": "slime2frame_1_wait",
+          "source_element_ref": "slime2frame_1",
+          "phase_visual_refs": [
+            "slime2frame.frame_1",
+            "slime2frame.frame_2"
+          ],
+          "step_phase_indices": [
+            1,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "waiting_visual_id": "select_credits_wait",
+      "presentation_id": "main_menu.select_credits.waiting",
+      "phase_quantum_ms": 250,
+      "combined_step_count": 2,
+      "settled_step": 1,
+      "cycle_policy": "loop",
+      "elements": [
+        {
+          "element_id": "selector_blink",
+          "source_element_ref": "selector",
+          "phase_visual_refs": [
+            "selector.dim",
+            "selector.bright"
+          ],
+          "step_phase_indices": [
+            0,
+            1
+          ]
+        },
+        {
+          "element_id": "slime2frame_1_wait",
+          "source_element_ref": "slime2frame_1",
+          "phase_visual_refs": [
+            "slime2frame.frame_1",
+            "slime2frame.frame_2"
+          ],
+          "step_phase_indices": [
+            1,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "waiting_visual_id": "select_settings_wait",
+      "presentation_id": "main_menu.select_settings.waiting",
+      "phase_quantum_ms": 250,
+      "combined_step_count": 2,
+      "settled_step": 1,
+      "cycle_policy": "loop",
+      "elements": [
+        {
+          "element_id": "selector_blink",
+          "source_element_ref": "selector",
+          "phase_visual_refs": [
+            "selector.dim",
+            "selector.bright"
+          ],
+          "step_phase_indices": [
+            0,
+            1
+          ]
+        },
+        {
+          "element_id": "slime2frame_1_wait",
+          "source_element_ref": "slime2frame_1",
+          "phase_visual_refs": [
+            "slime2frame.frame_1",
+            "slime2frame.frame_2"
+          ],
+          "step_phase_indices": [
+            1,
+            0
           ]
         }
       ]

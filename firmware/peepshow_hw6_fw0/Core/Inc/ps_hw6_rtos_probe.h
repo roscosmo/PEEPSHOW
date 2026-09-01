@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (76UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (77UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -77,7 +77,8 @@ typedef enum
   PS_HW6_RUNTIME_EVENT_PACKAGE_REALTIME_ACTIVATE_STUB,
   PS_HW6_RUNTIME_EVENT_PACKAGE_RETURN,
   PS_HW6_RUNTIME_EVENT_SUSPEND,
-  PS_HW6_RUNTIME_EVENT_RESUME
+  PS_HW6_RUNTIME_EVENT_RESUME,
+  PS_HW6_RUNTIME_EVENT_PACKAGE_REPLACE
 } ps_hw6_runtime_event_t;
 
 typedef struct
@@ -515,6 +516,13 @@ typedef struct
   uint32_t runtime_package_reader_result_status;
   uint32_t runtime_package_reader_verify_status;
   uint32_t runtime_package_return_count;
+  uint32_t runtime_package_replace_request_count;
+  uint32_t runtime_package_replace_deferred_audio_count;
+  uint32_t runtime_package_replace_active_count;
+  uint32_t runtime_package_replace_waiting_for_audio;
+  uint32_t runtime_package_replace_status;
+  uint32_t runtime_package_replace_trigger_send_status;
+  uint32_t runtime_package_replace_render_status;
   uint32_t runtime_suspend_count;
   uint32_t runtime_resume_count;
   uint32_t runtime_resume_render_status;

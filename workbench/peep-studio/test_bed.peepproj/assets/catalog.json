@@ -170,6 +170,39 @@
           "pivot_y": 0
         }
       ]
+    },
+    {
+      "asset_id": "slime2frame",
+      "display_name": "slime2frame",
+      "asset_type": "masked_1bpp",
+      "source_path": "assets/slime2frame.png",
+      "source_format": "png",
+      "frames": [
+        {
+          "frame_id": "slime2frame.frame_1",
+          "display_name": "Frame 1",
+          "source_rect": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 10
+          },
+          "pivot_x": 0,
+          "pivot_y": 0
+        },
+        {
+          "frame_id": "slime2frame.frame_2",
+          "display_name": "Frame 2",
+          "source_rect": {
+            "x": 12,
+            "y": 0,
+            "width": 12,
+            "height": 10
+          },
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
     }
   ],
   "animations": [

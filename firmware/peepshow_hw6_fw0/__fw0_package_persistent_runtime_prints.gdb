@@ -1,6 +1,8 @@
 set pagination off
 printf "--- HW6 persistent installed egg runtime ---\n"
 printf "rtos/owner/source api = %u / %u / %u\n", g_ps_hw6_rtos_probe.version, g_ps_hw6_owner_sm_probe.version, g_ps_package_source_probe.api_version
+printf "replacement request/deferred/active/waiting = %u / %u / %u / %u\n", g_ps_hw6_rtos_probe.runtime_package_replace_request_count, g_ps_hw6_rtos_probe.runtime_package_replace_deferred_audio_count, g_ps_hw6_rtos_probe.runtime_package_replace_active_count, g_ps_hw6_rtos_probe.runtime_package_replace_waiting_for_audio
+printf "replacement status/trigger/render = 0x%x / 0x%x / 0x%x\n", g_ps_hw6_rtos_probe.runtime_package_replace_status, g_ps_hw6_rtos_probe.runtime_package_replace_trigger_send_status, g_ps_hw6_rtos_probe.runtime_package_replace_render_status
 printf "runtime load request/send/wait/owner = %u / 0x%x / 0x%x / 0x%x\n", g_ps_hw6_rtos_probe.runtime_package_load_request_count, g_ps_hw6_rtos_probe.runtime_package_load_send_status, g_ps_hw6_rtos_probe.runtime_package_load_wait_status, g_ps_hw6_rtos_probe.runtime_package_load_owner_status
 printf "storage load request/status scan/available = %u / 0x%x / 0x%x / %u\n", g_ps_hw6_owner_sm_probe.persistent_load_request_count, g_ps_hw6_owner_sm_probe.persistent_load_last_status, g_ps_hw6_owner_sm_probe.persistent_load_scan_status, g_ps_hw6_owner_sm_probe.persistent_load_available
 printf "storage selected record/slot/generation = %u / %u / %u\n", g_ps_hw6_owner_sm_probe.persistent_load_record, g_ps_hw6_owner_sm_probe.persistent_load_slot, g_ps_hw6_owner_sm_probe.persistent_load_generation
@@ -12,5 +14,5 @@ printf "source resolve/success/install publishes/status/reason = %u / %u / %u / 
 printf "scene active/activation/source/source status = %u / 0x%x / %u / 0x%x\n", g_ps_scene_runtime_probe.active, g_ps_scene_runtime_probe.activation_status, g_ps_scene_runtime_probe.package_source, g_ps_scene_runtime_probe.package_source_status
 printf "egg load/hash status bytes = 0x%x / 0x%x / %u\n", g_ps_egg_state_loader_probe.last_status, g_ps_hw6_hash_probe.last_status, g_ps_egg_state_loader_probe.package_size
 printf "STOP2 entries = %u\n", g_ps_hw6_rtos_probe.stop2_auto_entry_count
-printf "expected installed egg: APIs=76/76/3 load send/wait/owner=0/0/0 storage status/scan/read/park/publish=0 source=3 selected/resident=3 available=1 scene active/activation/source=1/0/3 HASH=0\n"
+printf "expected replacement: APIs=77/76/3 trigger=0 replacement status=0; active replacement reports active=1 and render=0; an SFX overlap also reports deferred=1. Load/read/source/scene/HASH remain 0/0/3/1/0/3/0.\n"
 printf "--- end HW6 persistent installed egg runtime ---\n"
