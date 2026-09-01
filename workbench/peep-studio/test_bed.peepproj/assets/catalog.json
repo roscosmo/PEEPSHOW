@@ -185,21 +185,5 @@
       ],
       "loop_policy": "loop"
     }
-  ],
-  "audio_assets": [
-    {
-      "asset_id": "foghorn_bo",
-      "asset_type": "sampled_sfx",
-      "source_path": "assets/foghorn_bo.wav",
-      "source_format": "wav"
-    }
-  ],
-  "audio_cues": [
-    {
-      "cue_id": "foghorn_bo.cue",
-      "asset_ref": "foghorn_bo",
-      "priority": 96,
-      "volume": 200
-    }
   ]
 }

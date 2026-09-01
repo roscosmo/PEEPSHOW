@@ -652,7 +652,7 @@
   },
   "interaction_policy": {
     "policy_id": "state_interaction",
-    "mode": "timeout",
+    "mode": "continuous",
     "meaningful_activity_actions": [
       "move_left",
       "move_right",
@@ -664,8 +664,6 @@
       "diagonal_up_right",
       "diagonal_down_left",
       "diagonal_down_right"
-    ],
-    "inactive_route": "preserve_scene",
-    "bounded_deferrals": []
+    ]
   }
 }

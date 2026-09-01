@@ -101,10 +101,6 @@
           "variable_ref": "selected_index",
           "operation": "assign",
           "value": 1
-        },
-        {
-          "kind": "play_sfx",
-          "cue_ref": "foghorn_bo.cue"
         }
       ],
       "target_state": "select_settings"
@@ -128,10 +124,6 @@
           "variable_ref": "selected_index",
           "operation": "assign",
           "value": 2
-        },
-        {
-          "kind": "play_sfx",
-          "cue_ref": "foghorn_bo.cue"
         }
       ],
       "target_state": "select_credits"
@@ -155,10 +147,6 @@
           "variable_ref": "selected_index",
           "operation": "assign",
           "value": 0
-        },
-        {
-          "kind": "play_sfx",
-          "cue_ref": "foghorn_bo.cue"
         }
       ],
       "target_state": "select_start"
@@ -182,10 +170,6 @@
           "variable_ref": "selected_index",
           "operation": "assign",
           "value": 2
-        },
-        {
-          "kind": "play_sfx",
-          "cue_ref": "foghorn_bo.cue"
         }
       ],
       "target_state": "select_credits"
@@ -209,10 +193,6 @@
           "variable_ref": "selected_index",
           "operation": "assign",
           "value": 0
-        },
-        {
-          "kind": "play_sfx",
-          "cue_ref": "foghorn_bo.cue"
         }
       ],
       "target_state": "select_start"
@@ -236,10 +216,6 @@
           "variable_ref": "selected_index",
           "operation": "assign",
           "value": 1
-        },
-        {
-          "kind": "play_sfx",
-          "cue_ref": "foghorn_bo.cue"
         }
       ],
       "target_state": "select_settings"

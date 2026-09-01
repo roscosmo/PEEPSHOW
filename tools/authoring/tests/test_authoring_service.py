@@ -512,6 +512,12 @@ class AuthoringServiceTests(unittest.TestCase):
 
         package = parse_egg(build_egg(load_project(PUBLIC_EXAMPLE)))
         scenes = {scene["scene_id"]: scene for scene in package.scenes}
+        self.assertTrue(
+            all(
+                scene["interaction_mode"] == 1 and scene["inactive_route"] == 0
+                for scene in scenes.values()
+            )
+        )
         for scene_id in ("credits", "settings", "start_game"):
             scene = scenes[scene_id]
             self.assertTrue(

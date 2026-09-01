@@ -2858,9 +2858,13 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_RunSfx(uint32_t cue_index)
     return HAL_ERROR;
   }
 
-  final_event = (second_half_decoded != 0UL) ?
-    PS_DEV_AUDIO_STREAM_EVENT_SECOND_HALF :
-    PS_DEV_AUDIO_STREAM_EVENT_FIRST_HALF;
+  final_event = 0UL;
+  if (source_finished != 0UL)
+  {
+    final_event = (second_half_decoded != 0UL) ?
+      PS_DEV_AUDIO_STREAM_EVENT_SECOND_HALF :
+      PS_DEV_AUDIO_STREAM_EVENT_FIRST_HALF;
+  }
   driver_status = ps_dev_audio_stream_start(
     &ps_hw6_audio,
     ps_hw6_audio_stream_buffer,

@@ -457,7 +457,7 @@
   },
   "interaction_policy": {
     "policy_id": "target_interaction",
-    "mode": "timeout",
+    "mode": "continuous",
     "meaningful_activity_actions": [
       "return_source",
       "button_b_press",
@@ -473,8 +473,6 @@
       "joy_up_right_press",
       "joy_down_left_press",
       "joy_down_right_press"
-    ],
-    "inactive_route": "preserve_scene",
-    "bounded_deferrals": []
+    ]
   }
 }
