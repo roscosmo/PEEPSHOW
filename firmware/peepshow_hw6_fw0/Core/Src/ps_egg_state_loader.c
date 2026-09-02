@@ -1065,7 +1065,7 @@ static uint32_t PS_EggValidateAudioCatalog(
       (PS_EggU16(&assets[10]) != bank_chunk_index) ||
       (PS_EggU16(&assets[12]) !=
        PS_EGG_STATE_LOADER_AUDIO_SAMPLE_RATE_HZ) ||
-      (PS_EggU16(&assets[14]) != 1U) ||
+      (PS_EggU16(&assets[14]) != PS_TARGET_PROFILE_AUDIO_CHANNELS) ||
       (PS_EggU16(&assets[16]) !=
        PS_EGG_STATE_LOADER_AUDIO_BLOCK_SAMPLES) ||
       (PS_EggU16(&assets[18]) != 0U) ||
@@ -2542,7 +2542,7 @@ uint32_t PS_EggStateLoader_Load(
       (PS_EggU16(&manifest[10]) >= strings.count) ||
       (PS_EggU16(&manifest[12]) >= strings.count) ||
       (PS_EggStringEquals(&strings, PS_EggU16(&manifest[12]),
-                          "hw6_fw0_development") == 0UL) ||
+                          PS_TARGET_PROFILE_ID) == 0UL) ||
       (PS_EggU16(&manifest[20]) >= strings.count) ||
       (PS_EggU32(&manifest[24]) != 0UL) ||
       (PS_EggStringRange(&strings, PS_EggU16(&manifest[8]),

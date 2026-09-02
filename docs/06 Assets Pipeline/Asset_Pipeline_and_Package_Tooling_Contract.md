@@ -287,7 +287,7 @@ Tooling must reject sensor profiles that reference ADC, GPIO, EXTI, I2C addresse
 
 Audio profile output must target [[Audio_API_Contract]], not Platform audio drivers.
 
-Current status: the host authoring/package half is executable. Service API 21
+Current status: the host authoring/package half is executable. Service API 22
 imports WAV, emits the optional audio chunks, validates symbolic `play_sfx`
 STATE actions, previews cue emission, and auditions decoded package bytes.
 HW6 now loads those chunks and routes one package-backed streamed STATE voice
@@ -338,6 +338,14 @@ package at or below the 64 KiB resident cache uses the complete-cache path;
 larger packages require the audio-tail ordering above, with non-audio metadata
 and assets contained in the resident prefix. Looping, music, procedural audio,
 and HW6 BBB are rejected.
+
+The machine-readable authority for these HW6 development limits is
+`tools/authoring/peepshow_authoring/target_profiles/hw6_fw0_development.json`.
+Authoring loads that profile directly; `tools/authoring/gen_target_profile.py`
+generates `Core/Inc/ps_target_profile_autogen.h` for firmware. The generated
+header is checked by host tests. Numeric limits must not be duplicated outside
+that source profile, and its `pending_validation` status continues to block any
+claim of shipping authority.
 
 The broader future audio model may add these artifacts:
 

@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://peepshow.dev/schemas/target_profile.schema.json",
+  "title": "PeepShow target profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "profile_id",
+    "profile_version",
+    "profile_status",
+    "package",
+    "audio"
+  ],
+  "properties": {
+    "schema_id": {
+      "const": "peepshow.target_profile"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "profile_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]{0,63}$"
+    },
+    "profile_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "profile_status": {
+      "enum": [
+        "pending_validation",
+        "shipping"
+      ]
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maximum_bytes",
+        "resident_prefix_bytes"
+      ],
+      "properties": {
+        "maximum_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "resident_prefix_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sampled_sfx"
+      ],
+      "properties": {
+        "sampled_sfx": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target_playback_status",
+            "compiled_format",
+            "sample_rate_hz",
+            "channels",
+            "block_samples",
+            "maximum_duration_ms",
+            "maximum_assets",
+            "maximum_cues",
+            "maximum_bank_bytes",
+            "voice_limit",
+            "package_window_bytes",
+            "package_window_count",
+            "route_action",
+            "survives_same_package_scene_replacement",
+            "unsupported"
+          ],
+          "properties": {
+            "target_playback_status": {
+              "const": "available_package_streamed_state_sfx"
+            },
+            "compiled_format": {
+              "const": "ima_adpcm_4bit"
+            },
+            "sample_rate_hz": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "channels": {
+              "const": 1
+            },
+            "block_samples": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "maximum_duration_ms": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "maximum_assets": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "maximum_cues": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "maximum_bank_bytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4294967295
+            },
+            "voice_limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "package_window_bytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4294967295
+            },
+            "package_window_count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "route_action": {
+              "const": "play_sfx"
+            },
+            "survives_same_package_scene_replacement": {
+              "const": true
+            },
+            "unsupported": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          }
+        }
+      }
+    }
+  }
+}

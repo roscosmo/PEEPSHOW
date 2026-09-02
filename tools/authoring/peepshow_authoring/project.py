@@ -27,6 +27,7 @@ from .image_assets import (
     resolve_project_path,
 )
 from .system_fonts import SystemFontError, rasterize_system_font_text
+from .target_profile import SUPPORTED_TARGET_PROFILE_IDS
 
 
 STABLE_ID = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
@@ -2734,7 +2735,19 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
         _issue(issues, "PROJECT_SCHEMA_UNSUPPORTED", "project", "expected peepshow.authoring.project version 1")
     _stable_id(project.get("project_id"), "project.project_id", issues)
     _text(project.get("project_name"), "project.project_name", issues)
-    _stable_id(project.get("selected_target_profile"), "project.selected_target_profile", issues)
+    selected_target_profile = project.get("selected_target_profile")
+    _stable_id(selected_target_profile, "project.selected_target_profile", issues)
+    if (
+        isinstance(selected_target_profile, str)
+        and STABLE_ID.fullmatch(selected_target_profile) is not None
+        and selected_target_profile not in SUPPORTED_TARGET_PROFILE_IDS
+    ):
+        _issue(
+            issues,
+            "TARGET_PROFILE_UNSUPPORTED",
+            "project.selected_target_profile",
+            f"unsupported target profile: {selected_target_profile}",
+        )
     _stable_id(project.get("entry_scene"), "project.entry_scene", issues)
 
     package = project.get("package")

@@ -32,6 +32,11 @@ from peepshow_authoring.system_fonts import (  # noqa: E402
     SystemFontError,
     rasterize_system_font_text,
 )
+from peepshow_authoring.target_profile import (  # noqa: E402
+    TARGET_PROFILE_HEADER_PATH,
+    TARGET_PROFILE_ID,
+    render_firmware_header,
+)
 from peepshow_authoring.compiler import (  # noqa: E402
     EggCompileError,
     build_egg,
@@ -247,6 +252,28 @@ def make_audio_project(parent: Path) -> Path:
 
 
 class AuthoringModelTests(unittest.TestCase):
+    def test_target_profile_firmware_header_is_current(self) -> None:
+        self.assertEqual(
+            render_firmware_header(),
+            TARGET_PROFILE_HEADER_PATH.read_text(encoding="ascii"),
+        )
+
+    def test_unknown_target_profile_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "unknown_profile.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            project_path = project_root / "project.json"
+            project = json.loads(project_path.read_text(encoding="utf-8"))
+            project["selected_target_profile"] = "hw6_unknown"
+            project_path.write_text(json.dumps(project), encoding="utf-8")
+
+            bundle = load_project(project_root)
+
+        self.assertEqual(TARGET_PROFILE_ID, "hw6_fw0_development")
+        self.assertIn(
+            "TARGET_PROFILE_UNSUPPORTED", {issue.code for issue in bundle.issues}
+        )
+
     def test_ima_adpcm_codec_is_deterministic_and_block_bounded(self) -> None:
         samples = tuple((index % 257 - 128) * 200 for index in range(777))
         first, block_count = encode_ima_adpcm(samples)

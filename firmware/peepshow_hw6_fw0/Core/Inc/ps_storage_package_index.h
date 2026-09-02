@@ -5,6 +5,7 @@
 
 #include "ps_status.h"
 #include "ps_storage_flash_block.h"
+#include "ps_target_profile_autogen.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -17,7 +18,8 @@ extern "C" {
 #define PS_STORAGE_PACKAGE_INDEX_READ_SIZE         (260UL)
 #define PS_STORAGE_PACKAGE_INDEX_SECTOR_SIZE       (0x00001000UL)
 #define PS_STORAGE_PACKAGE_SLOT_COUNT              (2UL)
-#define PS_STORAGE_PACKAGE_SLOT_SIZE               (0x00500000UL)
+#define PS_STORAGE_PACKAGE_SLOT_SIZE \
+  PS_TARGET_PROFILE_PACKAGE_MAX_BYTES
 #define PS_STORAGE_PACKAGE_INDEX_INVALID_SELECTION (0xFFFFFFFFUL)
 
 typedef enum

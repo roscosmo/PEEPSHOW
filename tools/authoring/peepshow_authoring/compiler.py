@@ -57,6 +57,7 @@ from .egg_format import (
     parse_egg,
 )
 from .project import ProjectBundle
+from .target_profile import TargetProfileError, target_profile_for_id
 
 
 LOGICAL_SOURCES = {
@@ -795,6 +796,12 @@ def _compile_audio_chunks(
 def build_egg(bundle: ProjectBundle) -> bytes:
     if not bundle.valid:
         raise EggCompileError("project must validate before package compilation")
+    try:
+        target_profile = target_profile_for_id(
+            bundle.project["selected_target_profile"]
+        )
+    except (KeyError, TargetProfileError) as exc:
+        raise EggCompileError(f"target profile is unavailable: {exc}") from exc
     scenes = tuple(_package_scene(scene) for scene in sorted(bundle.scenes, key=lambda scene: scene["scene_id"]))
     _, string_indexes, string_payload = _string_table(bundle, scenes)
     audio_cue_indexes = {
@@ -857,6 +864,12 @@ def build_egg(bundle: ProjectBundle) -> bytes:
         )
     try:
         blob = build_container(bundle.project["package"]["package_id"], chunks, manifest_chunk_index=1)
+        package_limit = int(target_profile["package"]["maximum_bytes"])
+        if len(blob) > package_limit:
+            raise EggCompileError(
+                "compiled package exceeds the "
+                f"{package_limit}-byte {target_profile['profile_id']} limit"
+            )
         parse_egg(blob)
         return blob
     except (KeyError, struct.error, EggFormatError) as exc:

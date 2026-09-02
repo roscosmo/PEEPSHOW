@@ -141,7 +141,8 @@ It does not choose a destination or write an installable file. The V1 report
 marks the current HW6 development profile as `pending_validation` and
 `dev_only`; it does not claim shipping authority before target-profile closure.
 
-Service API version 21 provides deterministic selected-STATE-scene preview,
+Service API version 22 exposes the selected HW6 profile and its deterministic
+hash in `service.hello`, and provides deterministic selected-STATE-scene preview,
 direct STATE-to-STATE replacement, and a `state_scene_presentation` capability
 block in `service.hello`. A
 reset names the scene to launch directly, an input operation supplies one
@@ -150,6 +151,15 @@ milliseconds. Every response contains the current compiled state, timeline,
 variables, and an exact `168 x 144` packed 1bpp framebuffer. Preview never
 reads source assets after reset: it builds and independently parses the `.egg`,
 then executes those validated package records.
+
+The canonical HW6 development limits live in
+`peepshow_authoring/target_profiles/hw6_fw0_development.json`. After changing
+that file, regenerate and verify the firmware header with:
+
+```powershell
+python tools/authoring/gen_target_profile.py
+python tools/authoring/gen_target_profile.py --check
+```
 
 STATE routes declare exactly one `target_state` or `target_scene`.
 `route.set_target` accepts the same exclusive fields. A scene target must be an

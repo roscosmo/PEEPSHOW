@@ -5,13 +5,15 @@
 
 #include "ps_status.h"
 #include "ps_storage_flash_block.h"
+#include "ps_target_profile_autogen.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #define PS_PACKAGE_READER_API_VERSION (2UL)
-#define PS_PACKAGE_READER_WINDOW_BYTES (4096UL)
+#define PS_PACKAGE_READER_WINDOW_BYTES \
+  PS_TARGET_PROFILE_AUDIO_PACKAGE_WINDOW_BYTES
 #define PS_PACKAGE_READER_STATUS_NOT_RUN (0xFFFFFFFFUL)
 
 typedef enum

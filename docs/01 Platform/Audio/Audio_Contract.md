@@ -113,6 +113,12 @@ Current FW0 bring-up bounds are:
 - `thStorage` owns each package-window read, while `thAudio` owns decode, PCM
   buffering, SAI, DMA, amplifier control, drain, and playback telemetry.
 
+These values come from the versioned
+`tools/authoring/peepshow_authoring/target_profiles/hw6_fw0_development.json`
+profile. Peep Studio consumes the JSON directly and firmware consumes its
+generated `ps_target_profile_autogen.h`; changing either consumer without
+changing and regenerating the profile is invalid.
+
 The approved active-package profile is `5 MiB` with a maximum `4 MiB` compiled
 audio bank, approximately 8.3 minutes of this ADPCM format. There is no
 separate duration limit per audio asset beyond the audio-bank and total-package

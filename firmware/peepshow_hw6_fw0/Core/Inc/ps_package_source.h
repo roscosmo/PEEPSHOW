@@ -3,13 +3,16 @@
 
 #include <stdint.h>
 
+#include "ps_target_profile_autogen.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #define PS_PACKAGE_SOURCE_API_VERSION    (4UL)
 #define PS_PACKAGE_SOURCE_STATUS_NOT_RUN (0xFFFFFFFFUL)
-#define PS_PACKAGE_SOURCE_STAGED_CAPACITY_BYTES (65536UL)
+#define PS_PACKAGE_SOURCE_STAGED_CAPACITY_BYTES \
+  PS_TARGET_PROFILE_PACKAGE_RESIDENT_BYTES
 
 typedef enum
 {

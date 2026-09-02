@@ -9,15 +9,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from .target_profile import TARGET_SAMPLED_SFX
 
-AUDIO_SAMPLE_RATE_HZ = 16000
-AUDIO_CHANNELS = 1
-AUDIO_BLOCK_SAMPLES = 256
-AUDIO_MAX_ASSETS = 32
-AUDIO_MAX_CUES = 64
-# The installed HW6 package profile reserves up to 4 MiB for the final ADPCM
-# bank. Large banks are served by the bounded package reader, not FAT.
-AUDIO_MAX_BANK_BYTES = 4 * 1024 * 1024
+
+AUDIO_SAMPLE_RATE_HZ = int(TARGET_SAMPLED_SFX["sample_rate_hz"])
+AUDIO_CHANNELS = int(TARGET_SAMPLED_SFX["channels"])
+AUDIO_BLOCK_SAMPLES = int(TARGET_SAMPLED_SFX["block_samples"])
+AUDIO_MAX_ASSETS = int(TARGET_SAMPLED_SFX["maximum_assets"])
+AUDIO_MAX_CUES = int(TARGET_SAMPLED_SFX["maximum_cues"])
+AUDIO_MAX_BANK_BYTES = int(TARGET_SAMPLED_SFX["maximum_bank_bytes"])
 
 _BLOCK_HEADER = struct.Struct("<hBBH")
 _INDEX_TABLE = (-1, -1, -1, -1, 2, 4, 6, 8)

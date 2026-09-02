@@ -314,7 +314,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(21, SERVICE_API_VERSION)
+        self.assertEqual(22, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -329,6 +329,13 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertIn("project.preview_reset", result["operations"])
         self.assertIn("project.preview_input", result["operations"])
         self.assertIn("project.preview_advance", result["operations"])
+        profiles = result["target_profiles"]
+        self.assertEqual("hw6_fw0_development", profiles["default_profile_id"])
+        self.assertEqual(1, len(profiles["available"]))
+        profile = profiles["available"][0]
+        self.assertEqual(5242880, profile["package"]["maximum_bytes"])
+        self.assertEqual(65536, profile["package"]["resident_prefix_bytes"])
+        self.assertEqual(64, len(profile["profile_hash"]))
         self.assertEqual("RND2", result["state_scene_presentation"]["record_format"])
         self.assertEqual(
             ["BACKGROUND", "SCENE", "UI"],
@@ -2260,6 +2267,13 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual("dev_only", first["report_status"])
         self.assertEqual("pending_validation", first["target_profile"]["profile_status"])
+        self.assertEqual(64, len(first["target_profile"]["profile_hash"]))
+        self.assertEqual(
+            5242880, first["budgets"]["package_size"]["limit_bytes"]
+        )
+        self.assertEqual("passed", first["budgets"]["package_size"]["status"])
+        self.assertEqual(4194304, first["budgets"]["audio"]["limit_bytes"])
+        self.assertEqual("passed", first["budgets"]["audio"]["status"])
         self.assertEqual(0, first["result_summary"]["blocking_count"])
         self.assertEqual(1, first["result_summary"]["advisory_count"])
         self.assertEqual("pending_validation", first["capabilities"][0]["admission_status"])

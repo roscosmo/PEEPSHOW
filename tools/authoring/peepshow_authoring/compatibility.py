@@ -9,6 +9,12 @@ from typing import Any
 
 from .egg_format import parse_egg
 from .project import ProjectBundle, ValidationIssue
+from .target_profile import (
+    TARGET_PROFILE_HASH,
+    TARGET_PROFILE_SOURCE_REF,
+    TargetProfileError,
+    target_profile_for_id,
+)
 
 
 REPORT_SCHEMA_VERSION = 1
@@ -218,10 +224,20 @@ def build_compatibility_report(
         report_status = "dev_only"
 
     profile_id = bundle.project.get("selected_target_profile")
+    try:
+        target_profile = target_profile_for_id(profile_id)
+    except TargetProfileError:
+        target_profile = None
     profile_descriptor = {
         "profile_id": profile_id,
-        "profile_version": 1,
-        "profile_status": "pending_validation",
+        "profile_version": (
+            target_profile["profile_version"] if target_profile is not None else None
+        ),
+        "profile_status": (
+            target_profile["profile_status"]
+            if target_profile is not None
+            else "unsupported"
+        ),
     }
     has_waiting = any(scene.get("waiting_visuals") for scene in bundle.scenes)
     capability_reports = []
@@ -282,10 +298,36 @@ def build_compatibility_report(
         "waiting_visual_sequences",
     )
     budgets = {name: {"status": "pending_validation"} for name in budget_names}
+    package_limit = (
+        int(target_profile["package"]["maximum_bytes"])
+        if target_profile is not None
+        else None
+    )
+    audio_limit = (
+        int(target_profile["audio"]["sampled_sfx"]["maximum_bank_bytes"])
+        if target_profile is not None
+        else None
+    )
+    audio_bytes = sum(len(asset.adpcm) for asset in bundle.audio_assets)
+    budgets["audio"] = {
+        "used_bytes": audio_bytes,
+        "limit_bytes": audio_limit,
+        "status": (
+            "passed"
+            if bundle.valid and audio_limit is not None and audio_bytes <= audio_limit
+            else "blocked" if bundle.issues else "pending_validation"
+        ),
+    }
     budgets["package_size"] = {
         "used_bytes": package_bytes,
-        "limit_bytes": None,
-        "status": "pending_validation",
+        "limit_bytes": package_limit,
+        "status": (
+            "passed"
+            if package is not None
+            and package_limit is not None
+            and package_bytes <= package_limit
+            else "blocked" if bundle.issues else "pending_validation"
+        ),
     }
 
     project_package = bundle.project.get("package", {})
@@ -319,8 +361,12 @@ def build_compatibility_report(
         },
         "target_profile": {
             **profile_descriptor,
-            "profile_hash": _canonical_sha256(profile_descriptor),
-            "source_evidence_refs": [],
+            "profile_hash": (
+                TARGET_PROFILE_HASH if target_profile is not None else None
+            ),
+            "source_evidence_refs": (
+                [TARGET_PROFILE_SOURCE_REF] if target_profile is not None else []
+            ),
         },
         "capability_registry": {"registry_version": 0, "registry_hash": EMPTY_SHA256},
         "result_summary": {

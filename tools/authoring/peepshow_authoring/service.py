@@ -23,6 +23,11 @@ from .compiler import EggCompileError, build_egg
 from .egg_format import EggFormatError, parse_egg
 from .project import ProjectBundle, ProjectCommandError, apply_project_commands, load_project, save_project
 from .preview import PreviewError, StateScenePreview
+from .target_profile import (
+    TARGET_PROFILE_ID,
+    TARGET_SAMPLED_SFX,
+    public_target_profile,
+)
 from .protocol import (
     PROTOCOL_VERSION,
     ProtocolError,
@@ -34,7 +39,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 21
+SERVICE_API_VERSION = 22
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -174,6 +179,10 @@ class AuthoringService:
             "service_api_version": SERVICE_API_VERSION,
             "protocol_version": PROTOCOL_VERSION,
             "operations": list(SERVICE_OPERATIONS),
+            "target_profiles": {
+                "default_profile_id": TARGET_PROFILE_ID,
+                "available": [public_target_profile()],
+            },
             "state_scene_presentation": {
                 "record_format": "RND2",
                 "load_compatible_formats": ["RND1", "RND2"],
@@ -342,23 +351,29 @@ class AuthoringService:
             },
             "state_scene_audio": {
                 "host_package_support": True,
-                "target_playback_status": "available_package_streamed_state_sfx",
+                "target_playback_status": TARGET_SAMPLED_SFX[
+                    "target_playback_status"
+                ],
                 "source_format": "wav_pcm",
-                "compiled_format": "ima_adpcm_4bit",
+                "compiled_format": TARGET_SAMPLED_SFX["compiled_format"],
                 "sample_rate_hz": AUDIO_SAMPLE_RATE_HZ,
-                "channels": 1,
+                "channels": int(TARGET_SAMPLED_SFX["channels"]),
                 "block_samples": AUDIO_BLOCK_SAMPLES,
-                "maximum_duration_ms": None,
+                "maximum_duration_ms": TARGET_SAMPLED_SFX[
+                    "maximum_duration_ms"
+                ],
                 "maximum_assets": AUDIO_MAX_ASSETS,
                 "maximum_cues": AUDIO_MAX_CUES,
                 "maximum_bank_bytes": AUDIO_MAX_BANK_BYTES,
-                "voice_limit": 1,
-                "route_action": "play_sfx",
-                "survives_same_package_scene_replacement": True,
+                "voice_limit": int(TARGET_SAMPLED_SFX["voice_limit"]),
+                "route_action": TARGET_SAMPLED_SFX["route_action"],
+                "survives_same_package_scene_replacement": TARGET_SAMPLED_SFX[
+                    "survives_same_package_scene_replacement"
+                ],
                 "asset_commands": ["audio_asset.upsert", "audio_asset.delete"],
                 "cue_commands": ["audio_cue.upsert", "audio_cue.delete"],
                 "audition_operation": "project.audio_audition",
-                "unsupported": ["looping", "music", "procedural_audio"],
+                "unsupported": list(TARGET_SAMPLED_SFX["unsupported"]),
             },
             "project_loaded": self._bundle is not None,
             "project_revision": self._project_revision if self._bundle is not None else None,
