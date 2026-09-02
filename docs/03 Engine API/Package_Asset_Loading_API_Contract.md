@@ -207,6 +207,12 @@ Rules:
 - byte-order and alignment conversion is an Engine/package-loader concern.
 - package code must not cast asset data to arbitrary structs outside the approved view.
 - view lifetime ends when the handle is closed, revoked, or package is deactivated.
+- an installed package larger than the resident prefix may expose only a final
+  `audio_bank` through bounded storage-owner reads; all scene metadata and all
+  non-audio assets remain resident before that bank.
+- the installer validates the complete package. The partial loader validates
+  the resident metadata and the decoder validates ADPCM block headers as source
+  windows arrive; a package-backed audio view never grants direct flash access.
 
 ---
 

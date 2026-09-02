@@ -42,6 +42,7 @@
     "input_joystick_xyz_sweep_samples",
     "input_joystick_xyz_capture_period_ms",
     "input_joystick_xyz_capture_timeout_ms",
+    "input_rtos_irq_priority",
     "audio_pcm_dma_frames",
     "audio_dma_completion_margin_ms",
     "debug_tracex_enable",
@@ -541,6 +542,18 @@
       "class": "debug_visibility",
       "path": "platform.knobs.input.joystick_xyz_capture_timeout_ms",
       "description": "Hard elapsed-time limit for a TMAG3001 raw XYZ diagnostic capture. This prevents a slow or wedged read path from leaving the display stuck on the capture cue."
+    },
+    "input_rtos_irq_priority": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 15,
+      "default": 5,
+      "unit": "nvic_priority",
+      "timebase_domain": "none",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.rtos_irq_priority",
+      "description": "ThreadX-safe NVIC priority for input EXTI handlers that enqueue button or joystick work. It must remain maskable by TX_PORT_BASEPRI."
     },
     "audio_pcm_dma_frames": {
       "type": "integer",

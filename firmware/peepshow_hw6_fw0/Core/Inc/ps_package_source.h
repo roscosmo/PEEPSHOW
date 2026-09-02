@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define PS_PACKAGE_SOURCE_API_VERSION    (3UL)
+#define PS_PACKAGE_SOURCE_API_VERSION    (4UL)
 #define PS_PACKAGE_SOURCE_STATUS_NOT_RUN (0xFFFFFFFFUL)
 #define PS_PACKAGE_SOURCE_STAGED_CAPACITY_BYTES (65536UL)
 
@@ -41,6 +41,7 @@ typedef struct
 {
   const uint8_t *blob;
   uint32_t size;
+  uint32_t resident_size;
   uint32_t source;
   uint32_t generation;
 } ps_package_source_view_t;
@@ -54,6 +55,7 @@ typedef struct
   uint32_t selected_source;
   uint32_t generation;
   uint32_t package_size;
+  uint32_t resident_size;
   uint32_t staged_capacity;
   uint32_t staged_available;
   uint32_t staged_publish_count;
@@ -73,7 +75,8 @@ uint32_t PS_PackageSource_BeginStagedWrite(uint8_t **buffer,
 uint32_t PS_PackageSource_CommitStagedWrite(uint32_t size);
 uint32_t PS_PackageSource_BeginInstalledWrite(uint8_t **buffer,
                                               uint32_t *capacity);
-uint32_t PS_PackageSource_CommitInstalledWrite(uint32_t size,
+uint32_t PS_PackageSource_CommitInstalledWrite(uint32_t resident_size,
+                                               uint32_t package_size,
                                                uint32_t generation);
 void PS_PackageSource_AbortStagedWrite(void);
 

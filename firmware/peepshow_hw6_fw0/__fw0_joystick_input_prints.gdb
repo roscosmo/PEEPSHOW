@@ -25,6 +25,7 @@ printf "logical last event/direction/source/target/status/tick = %u / 0x%x / %u 
 printf "UI api joystick event/count/state updates = %u / %u / %u / %u\n", g_ps_ui_router_probe.api_version, g_ps_ui_router_probe.last_joystick_event, g_ps_ui_router_probe.joystick_event_count, g_ps_ui_router_probe.joystick_state_update_count
 printf "UI joystick candidate/resolved = 0x%x / 0x%x\n", g_ps_ui_router_probe.joystick_candidate_direction_mask, g_ps_ui_router_probe.joystick_resolved_direction_mask
 printf "request flags live/card  = %u / %u\n", g_ps_hw6_joystick_live_request, g_ps_hw6_joystick_cardinal_request
+printf "cal capture runtime/request/page active/count/status/progress/samples/errors = %u / %u / %u / %u / %u / 0x%x / %u / %u / %u\n", $rt->runtime_complete, g_ps_hw6_joystick_calibration_capture_request, g_ps_hw6_joystick_calibration_capture_page, $sm->joystick_calibration_capture_active, $sm->joystick_calibration_capture_request_count, $sm->joystick_calibration_capture_status, $sm->joystick_calibration_capture_progress_per_mille, $sm->joystick_calibration_capture_sample_count, $sm->joystick_calibration_capture_error_count
 printf "failure stages: PREPARE=1 ARM=2 INTERRUPT=3 WAKE=4 READ=5 SAMPLE_FSM=6 NORMALIZE=7 SUSPEND=8 FINISH_FSM=9\n"
 printf "dir bits: LEFT=0x1 RIGHT=0x2 UP=0x4 DOWN=0x8\n"
 printf "logical IDs: LEFT/RIGHT/UP/DOWN=6/7/8/9 diagonals UL/UR/DL/DR=10/11/12/13; events press/release/hold/repeat=1/2/3/4\n"

@@ -96,20 +96,25 @@ Current FW0 bring-up bounds are:
 
 - source WAV: uncompressed mono or stereo PCM, 8/16/24/32-bit, 8..96 kHz;
 - compiled output: mono 16 kHz 4-bit IMA ADPCM in independent 256-sample blocks;
-- maximum 32 sampled-SFX assets, 64 cues, and 48 KiB compiled ADPCM bank;
+- maximum 32 sampled-SFX assets, 64 cues, and 4 MiB compiled ADPCM bank;
 - exactly one admitted STATE SFX voice, with two fixed PCM DMA halves refilled
-  by `thAudio` from the resident installed-package RAM blob;
-- the `65536`-byte whole-package cache remains the bring-up package-source
-  limit, not an audio architecture limit.
+  by `thAudio` from a resident package prefix or fixed 4 KiB package windows;
+- packages at or below `65536` bytes retain their complete existing cache
+  path. Larger packages retain the leading `65536` bytes and may expose only
+  a final ADPCM bank through package-backed audio windows;
+- `thStorage` owns each package-window read, while `thAudio` owns decode, PCM
+  buffering, SAI, DMA, amplifier control, drain, and playback telemetry.
 
-The approved production package profile is a `5 MiB` active package with a
-maximum `4 MiB` compiled audio bank, approximately 8.3 minutes of this ADPCM
-format. There is no separate duration limit per audio asset beyond the audio
-bank and total package budgets. Reaching that profile requires the bounded
-installed-package asset reader and chunked installer: `thStorage` owns raw
-package reads, `thAudio` owns decode and playback buffers, and neither accesses
-FAT during runtime. Music, multi-voice mixing, fades, ducking, priority, mute,
-and sustained-playback energy characterization remain later milestones.
+The approved active-package profile is `5 MiB` with a maximum `4 MiB` compiled
+audio bank, approximately 8.3 minutes of this ADPCM format. There is no
+separate duration limit per audio asset beyond the audio-bank and total-package
+budgets. The compiler places `AUD1` and `ACU1` before the final `ADB1` bank so
+the loader can validate all resident metadata before exposing package-backed
+audio. The installer verifies the full package; the partial runtime loader
+validates the resident table and metadata, and the decoder validates each ADPCM
+block as it is read. Neither runtime path accesses FAT. Music, multi-voice
+mixing, fades, ducking, priority, mute, and sustained-playback energy
+characterization remain later milestones.
 
 BBB path:
 

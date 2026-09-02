@@ -119,7 +119,7 @@
         },
         {
           "kind": "play_sfx",
-          "cue_ref": "foghorn_bo.cue"
+          "cue_ref": "megaman.cue"
         }
       ],
       "target_state": "select_settings"

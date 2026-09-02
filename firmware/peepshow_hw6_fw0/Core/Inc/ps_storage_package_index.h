@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-#define PS_STORAGE_PACKAGE_INDEX_API_VERSION       (1UL)
+#define PS_STORAGE_PACKAGE_INDEX_API_VERSION       (2UL)
 #define PS_STORAGE_PACKAGE_INDEX_RECORD_COUNT      (2UL)
 #define PS_STORAGE_PACKAGE_INDEX_RECORD_BODY_SIZE  (256UL)
 #define PS_STORAGE_PACKAGE_INDEX_COMMIT_OFFSET     (256UL)
@@ -109,6 +109,13 @@ typedef struct
   uint32_t package_erase_status;
   uint32_t package_erase_poll_count;
   uint32_t package_program_status;
+  uint32_t package_program_bytes;
+  uint32_t package_program_page_count;
+  uint32_t package_program_failure_offset;
+  uint32_t package_program_block_initialized;
+  uint32_t package_program_device_initialized;
+  uint32_t package_program_device_state;
+  uint32_t package_program_device_status;
   uint32_t package_verify_status;
   uint32_t package_verify_bytes;
   uint32_t package_verify_mismatches;

@@ -5566,6 +5566,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
       {
         publish_status = PS_PackageSource_CommitInstalledWrite(
           ps_storage_package_load_result.bytes_read,
+          ps_storage_package_load_result.bytes_read,
           g_ps_storage_package_install_probe.selected_generation);
       }
     }
@@ -5651,6 +5652,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_LoadPersistentPackage(void)
   ps_status_t read_status = PS_STATUS_INTERNAL_ERROR;
   uint8_t *package_buffer = NULL;
   uint32_t package_capacity = 0UL;
+  uint32_t resident_size = 0UL;
   uint32_t publish_status = 1UL;
   uint32_t package_offset;
 
@@ -5743,19 +5745,22 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_LoadPersistentPackage(void)
       {
         g_ps_hw6_owner_sm_probe.persistent_load_capacity =
           package_capacity;
-        if (g_ps_storage_package_index_probe.selected_package_size <=
-            package_capacity)
+        resident_size =
+          g_ps_storage_package_index_probe.selected_package_size;
+        if (resident_size > package_capacity)
+        {
+          resident_size = package_capacity;
+        }
+        if (resident_size != 0UL)
         {
           read_status = PS_STATUS_OK;
           for (package_offset = 0UL;
-               (package_offset <
-                g_ps_storage_package_index_probe.selected_package_size) &&
+               (package_offset < resident_size) &&
                (read_status == PS_STATUS_OK);
                package_offset += PS_PACKAGE_READER_WINDOW_BYTES)
           {
             uint32_t window_length =
-              g_ps_storage_package_index_probe.selected_package_size -
-              package_offset;
+              resident_size - package_offset;
             if (window_length > PS_PACKAGE_READER_WINDOW_BYTES)
             {
               window_length = PS_PACKAGE_READER_WINDOW_BYTES;
@@ -5769,7 +5774,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_LoadPersistentPackage(void)
           if (read_status == PS_STATUS_OK)
           {
             g_ps_hw6_owner_sm_probe.persistent_load_bytes_read =
-              g_ps_storage_package_index_probe.selected_package_size;
+              resident_size;
           }
         }
         else
@@ -5796,6 +5801,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_LoadPersistentPackage(void)
         (park_status == HAL_OK))
     {
       publish_status = PS_PackageSource_CommitInstalledWrite(
+        resident_size,
         g_ps_storage_package_index_probe.selected_package_size,
         g_ps_storage_package_index_probe.selected_generation);
     }

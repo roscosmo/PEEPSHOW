@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define PS_EGG_STATE_LOADER_API_VERSION (15UL)
+#define PS_EGG_STATE_LOADER_API_VERSION (16UL)
 #define PS_EGG_STATE_LOADER_STATUS_NOT_RUN (0xFFFFFFFFUL)
 #define PS_EGG_STATE_LOADER_SPRITE_FRAME_ID_BASE (0x00010000UL)
 #define PS_EGG_STATE_LOADER_SCENE_MAX (8U)
@@ -17,10 +17,10 @@ extern "C" {
 #define PS_EGG_STATE_LOADER_AUDIO_CUE_MAX (64U)
 #define PS_EGG_STATE_LOADER_AUDIO_SAMPLE_RATE_HZ (16000UL)
 #define PS_EGG_STATE_LOADER_AUDIO_BLOCK_SAMPLES (256UL)
-#define PS_EGG_STATE_LOADER_PACKAGE_SIZE_MAX (65536UL)
+#define PS_EGG_STATE_LOADER_PACKAGE_SIZE_MAX (UINT32_MAX)
 /* A 4-bit sample needs at least one package byte for every two samples. */
 #define PS_EGG_STATE_LOADER_AUDIO_SAMPLE_MAX \
-  (PS_EGG_STATE_LOADER_PACKAGE_SIZE_MAX * 2UL)
+  (UINT32_MAX / 2UL)
 
 typedef struct
 {
@@ -37,6 +37,8 @@ typedef struct
 typedef struct
 {
   const uint8_t *adpcm;
+  uint32_t package_offset;
+  uint32_t package_backed;
   uint32_t adpcm_size;
   uint32_t sample_count;
   uint32_t duration_ms;
@@ -76,6 +78,7 @@ typedef struct
   uint32_t last_status;
   uint32_t reason;
   uint32_t package_size;
+  uint32_t resident_size;
   uint32_t package_id_hash_low;
   uint32_t package_id_hash_high;
   uint32_t chunk_count;
@@ -96,6 +99,7 @@ typedef struct
   uint32_t audio_asset_count;
   uint32_t audio_cue_count;
   uint32_t audio_adpcm_bytes;
+  uint32_t audio_package_backed;
   uint32_t state_count;
   uint32_t input_count;
   uint32_t route_count;
@@ -112,10 +116,14 @@ typedef struct
 
 extern volatile ps_egg_state_loader_probe_t g_ps_egg_state_loader_probe;
 
-/* The package blob must remain immutable while the decoded scene is active. */
+/*
+ * The package blob must remain immutable while the decoded scene is active.
+ * resident_size is the number of leading package bytes present at blob.
+ */
 uint32_t PS_EggStateLoader_Load(
   const uint8_t *blob,
-  uint32_t size,
+  uint32_t package_size,
+  uint32_t resident_size,
   ps_scene_runtime_state_scene_t *scene);
 uint32_t PS_EggStateLoader_LoadScene(
   uint32_t scene_id,

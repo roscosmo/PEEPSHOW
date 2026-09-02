@@ -744,6 +744,8 @@ def _compile_audio_chunks(
                 0,
             )
         )
+    while len(bank_payload) % 4:
+        bank_payload.append(0)
     AUDIO_BANK_HEADER.pack_into(
         bank_payload,
         0,
@@ -840,7 +842,7 @@ def build_egg(bundle: ProjectBundle) -> bytes:
         )
     if bundle.audio_assets:
         audio_asset_chunk_index = len(chunks)
-        audio_bank_chunk_index = audio_asset_chunk_index + 1
+        audio_bank_chunk_index = audio_asset_chunk_index + 2
         audio_asset_payload, audio_bank_payload, audio_cue_payload = _compile_audio_chunks(
             bundle,
             string_indexes,
@@ -849,8 +851,8 @@ def build_egg(bundle: ProjectBundle) -> bytes:
         chunks.extend(
             (
                 EggChunkSpec("audio.assets", CHUNK_AUDIO_ASSET_TABLE, audio_asset_payload),
-                EggChunkSpec("audio.adpcm", CHUNK_AUDIO_ADPCM_BANK, audio_bank_payload),
                 EggChunkSpec("audio.cues", CHUNK_AUDIO_CUE_TABLE, audio_cue_payload),
+                EggChunkSpec("audio.adpcm", CHUNK_AUDIO_ADPCM_BANK, audio_bank_payload),
             )
         )
     try:

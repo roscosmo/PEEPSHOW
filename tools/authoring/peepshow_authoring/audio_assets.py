@@ -15,7 +15,9 @@ AUDIO_CHANNELS = 1
 AUDIO_BLOCK_SAMPLES = 256
 AUDIO_MAX_ASSETS = 32
 AUDIO_MAX_CUES = 64
-AUDIO_MAX_BANK_BYTES = 48 * 1024
+# The installed HW6 package profile reserves up to 4 MiB for the final ADPCM
+# bank. Large banks are served by the bounded package reader, not FAT.
+AUDIO_MAX_BANK_BYTES = 4 * 1024 * 1024
 
 _BLOCK_HEADER = struct.Struct("<hBBH")
 _INDEX_TABLE = (-1, -1, -1, -1, 2, 4, 6, 8)

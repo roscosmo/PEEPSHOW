@@ -3,10 +3,12 @@
 #include <string.h>
 
 #include "tx_api.h"
+#include "tx_thread.h"
 
 #define PS_DEV_AUDIO_CALLBACK_NOT_RUN (0xFFFFFFFFUL)
 #define PS_DEV_AUDIO_STREAM_EVENT_MASK \
   (PS_DEV_AUDIO_STREAM_EVENT_FIRST_HALF | PS_DEV_AUDIO_STREAM_EVENT_SECOND_HALF)
+#define PS_DEV_AUDIO_STREAM_NOTIFICATION_CAPACITY (2UL)
 
 static TX_SEMAPHORE ps_dev_audio_completion_semaphore;
 static uint32_t ps_dev_audio_completion_semaphore_created;
@@ -23,6 +25,22 @@ static volatile uint32_t ps_dev_audio_stream_underrun_count;
 static uint32_t ps_dev_audio_stream_dma_irq_before;
 static uint32_t ps_dev_audio_stream_tx_callback_before;
 static uint32_t ps_dev_audio_stream_error_callback_before;
+
+static void ps_dev_audio_drain_stream_notifications(void)
+{
+  uint32_t notification_index;
+
+  for (notification_index = 0UL;
+       notification_index < PS_DEV_AUDIO_STREAM_NOTIFICATION_CAPACITY;
+       notification_index++)
+  {
+    if (tx_semaphore_get(&ps_dev_audio_completion_semaphore,
+                         TX_NO_WAIT) != TX_SUCCESS)
+    {
+      break;
+    }
+  }
+}
 
 void ps_dev_audio_record_dma_irq(void)
 {
@@ -144,7 +162,10 @@ static ps_status_t ps_dev_audio_rearm(ps_dev_audio_t *device,
   device->sai->State = HAL_SAI_STATE_READY;
   device->sai->ErrorCode = HAL_SAI_ERROR_NONE;
   device->sai->Lock = HAL_UNLOCKED;
-  if (HAL_SAI_Init(device->sai) != HAL_OK)
+  if (HAL_SAI_InitProtocol(device->sai,
+                           SAI_I2S_STANDARD,
+                           SAI_PROTOCOL_DATASIZE_16BIT,
+                           2U) != HAL_OK)
   {
     return PS_STATUS_IO_ERROR;
   }
@@ -152,7 +173,10 @@ static ps_status_t ps_dev_audio_rearm(ps_dev_audio_t *device,
   if ((HAL_SAI_GetState(device->sai) != HAL_SAI_STATE_READY) ||
       (HAL_SAI_GetError(device->sai) != HAL_SAI_ERROR_NONE) ||
       (HAL_DMA_GetState(device->dma) != HAL_DMA_STATE_READY) ||
-      (HAL_DMA_GetError(device->dma) != HAL_DMA_ERROR_NONE))
+      (HAL_DMA_GetError(device->dma) != HAL_DMA_ERROR_NONE) ||
+      (READ_BIT(device->sai->Instance->FRCR,
+                SAI_xFRCR_FRL | SAI_xFRCR_FSALL) == 0UL) ||
+      (READ_BIT(device->sai->Instance->SLOTR, SAI_xSLOTR_SLOTEN) == 0UL))
   {
     return PS_STATUS_VERIFY_FAILED;
   }
@@ -292,7 +316,7 @@ ps_status_t ps_dev_audio_play_dma(ps_dev_audio_t *device,
       HAL_GPIO_ReadPin(device->sd_gpio_port, device->sd_gpio_pin);
     tx_thread_sleep(amp_settle_ticks);
 
-    (void)tx_semaphore_get(&ps_dev_audio_completion_semaphore, TX_NO_WAIT);
+    ps_dev_audio_drain_stream_notifications();
     dma_irq_before = ps_dev_audio_dma_irq_count;
     tx_callback_before = ps_dev_audio_tx_callback_count;
     error_callback_before = ps_dev_audio_error_callback_count;
@@ -460,7 +484,7 @@ ps_status_t ps_dev_audio_stream_start(ps_dev_audio_t *device,
       HAL_GPIO_ReadPin(device->sd_gpio_port, device->sd_gpio_pin);
     tx_thread_sleep(amp_settle_ticks);
 
-    (void)tx_semaphore_get(&ps_dev_audio_completion_semaphore, TX_NO_WAIT);
+    ps_dev_audio_drain_stream_notifications();
     ps_dev_audio_stream_dma_irq_before = ps_dev_audio_dma_irq_count;
     ps_dev_audio_stream_tx_callback_before = ps_dev_audio_tx_callback_count;
     ps_dev_audio_stream_error_callback_before =
@@ -474,6 +498,33 @@ ps_status_t ps_dev_audio_stream_start(ps_dev_audio_t *device,
     start_status = HAL_SAI_Transmit_DMA(device->sai,
                                         (uint8_t *)samples,
                                         sample_halfwords);
+    result->pre_cleanup_dma_irq_delta =
+      ps_dev_audio_dma_irq_count - ps_dev_audio_stream_dma_irq_before;
+    result->pre_cleanup_tx_callback_delta =
+      ps_dev_audio_tx_callback_count - ps_dev_audio_stream_tx_callback_before;
+    result->pre_cleanup_error_callback_delta =
+      ps_dev_audio_error_callback_count -
+      ps_dev_audio_stream_error_callback_before;
+    result->pre_cleanup_sai_kernel_hz = expected_sai_kernel_hz;
+    result->pre_cleanup_sai_state = (uint32_t)HAL_SAI_GetState(device->sai);
+    result->pre_cleanup_sai_error = HAL_SAI_GetError(device->sai);
+    result->pre_cleanup_sai_cr1 = device->sai->Instance->CR1;
+    result->pre_cleanup_sai_cr2 = device->sai->Instance->CR2;
+    result->pre_cleanup_sai_frcr = device->sai->Instance->FRCR;
+    result->pre_cleanup_sai_slotr = device->sai->Instance->SLOTR;
+    result->pre_cleanup_sai_imr = device->sai->Instance->IMR;
+    result->pre_cleanup_sai_sr = device->sai->Instance->SR;
+    result->pre_cleanup_sai_gcr = SAI1->GCR;
+    result->pre_cleanup_dma_state = (uint32_t)HAL_DMA_GetState(device->dma);
+    result->pre_cleanup_dma_error = HAL_DMA_GetError(device->dma);
+    result->pre_cleanup_dma_ccr = device->dma->Instance->CCR;
+    result->pre_cleanup_dma_csr = device->dma->Instance->CSR;
+    result->pre_cleanup_dma_cbr1 = device->dma->Instance->CBR1;
+    result->pre_cleanup_dma_ctr1 = device->dma->Instance->CTR1;
+    result->pre_cleanup_dma_ctr2 = device->dma->Instance->CTR2;
+    result->pre_cleanup_dma_csar = device->dma->Instance->CSAR;
+    result->pre_cleanup_dma_cdar = device->dma->Instance->CDAR;
+    result->pre_cleanup_dma_cllr = device->dma->Instance->CLLR;
     if (start_status != HAL_OK)
     {
       ps_dev_audio_stream_active = 0UL;
@@ -522,14 +573,15 @@ ps_status_t ps_dev_audio_stream_wait(ps_dev_audio_t *device,
     return PS_STATUS_INVALID_STATE;
   }
 
-  events = ps_dev_audio_stream_pending_event_mask &
-    PS_DEV_AUDIO_STREAM_EVENT_MASK;
-  if ((events == 0UL) && (ps_dev_audio_stream_active != 0UL))
-  {
-    wait_status = tx_semaphore_get(&ps_dev_audio_completion_semaphore,
-                                   timeout_ticks);
-    result->completion_wait_status = (uint32_t)wait_status;
-  }
+  result->stream_wait_preempt_disable_before =
+    (uint32_t)_tx_thread_preempt_disable;
+  result->stream_wait_system_state_before =
+    (uint32_t)TX_THREAD_GET_SYSTEM_STATE();
+  result->stream_wait_current_thread_before =
+    (uint32_t)(uintptr_t)_tx_thread_current_ptr;
+  wait_status = tx_semaphore_get(&ps_dev_audio_completion_semaphore,
+                                 timeout_ticks);
+  result->completion_wait_status = (uint32_t)wait_status;
   if (wait_status != TX_SUCCESS)
   {
     result->stream_wait_status = PS_STATUS_TIMEOUT;
@@ -654,6 +706,7 @@ ps_status_t ps_dev_audio_stream_stop(ps_dev_audio_t *device,
   ps_dev_audio_stream_active = 0UL;
   ps_dev_audio_active_sai = NULL;
   stop_status = HAL_SAI_DMAStop(device->sai);
+  ps_dev_audio_drain_stream_notifications();
   result->stop_hal_status = (uint32_t)stop_status;
 
   HAL_GPIO_WritePin(device->sd_gpio_port, device->sd_gpio_pin, GPIO_PIN_RESET);
@@ -700,10 +753,13 @@ void HAL_SAI_TxHalfCpltCallback(SAI_HandleTypeDef *hsai)
     {
       ps_dev_audio_stream_underrun_count++;
     }
-    ps_dev_audio_stream_pending_event_mask |=
-      PS_DEV_AUDIO_STREAM_EVENT_FIRST_HALF;
-    ps_dev_audio_callback_status = (uint32_t)HAL_OK;
-    (void)tx_semaphore_put(&ps_dev_audio_completion_semaphore);
+    else
+    {
+      ps_dev_audio_stream_pending_event_mask |=
+        PS_DEV_AUDIO_STREAM_EVENT_FIRST_HALF;
+      ps_dev_audio_callback_status = (uint32_t)HAL_OK;
+      (void)tx_semaphore_put(&ps_dev_audio_completion_semaphore);
+    }
   }
 }
 
@@ -720,10 +776,13 @@ void HAL_SAI_TxCpltCallback(SAI_HandleTypeDef *hsai)
       {
         ps_dev_audio_stream_underrun_count++;
       }
-      ps_dev_audio_stream_pending_event_mask |=
-        PS_DEV_AUDIO_STREAM_EVENT_SECOND_HALF;
-      ps_dev_audio_callback_status = (uint32_t)HAL_OK;
-      (void)tx_semaphore_put(&ps_dev_audio_completion_semaphore);
+      else
+      {
+        ps_dev_audio_stream_pending_event_mask |=
+          PS_DEV_AUDIO_STREAM_EVENT_SECOND_HALF;
+        ps_dev_audio_callback_status = (uint32_t)HAL_OK;
+        (void)tx_semaphore_put(&ps_dev_audio_completion_semaphore);
+      }
     }
     else
     {

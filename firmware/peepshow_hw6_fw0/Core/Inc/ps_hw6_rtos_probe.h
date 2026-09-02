@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (77UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (79UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -518,11 +518,15 @@ typedef struct
   uint32_t runtime_package_return_count;
   uint32_t runtime_package_replace_request_count;
   uint32_t runtime_package_replace_deferred_audio_count;
+  uint32_t runtime_package_replace_deferred_install_count;
   uint32_t runtime_package_replace_active_count;
   uint32_t runtime_package_replace_waiting_for_audio;
+  uint32_t runtime_package_replace_waiting_for_install;
   uint32_t runtime_package_replace_status;
   uint32_t runtime_package_replace_trigger_send_status;
   uint32_t runtime_package_replace_render_status;
+  uint32_t storage_embedded_package_install_active;
+  uint32_t storage_embedded_package_install_status;
   uint32_t runtime_suspend_count;
   uint32_t runtime_resume_count;
   uint32_t runtime_resume_render_status;
@@ -739,6 +743,14 @@ UINT PS_HW6_RTOS_DebugRequestImuEventArmed(void);
 UINT PS_HW6_RTOS_DebugRequestImuStepCounter(void);
 UINT PS_HW6_RTOS_DebugRequestImuStreaming(void);
 UINT PS_HW6_RTOS_DebugRequestInputDiagnostic(void);
+UINT PS_HW6_RTOS_ReadAudioPackageWindow(uint32_t package_offset,
+                                        uint8_t *destination,
+                                        uint32_t length);
+UINT PS_HW6_RTOS_BeginAudioPackageWindowRead(uint32_t package_offset,
+                                             uint8_t *destination,
+                                             uint32_t length);
+UINT PS_HW6_RTOS_TryFinishAudioPackageWindowRead(void);
+UINT PS_HW6_RTOS_WaitFinishAudioPackageWindowRead(void);
 void PS_HW6_RTOS_LowPowerTimerSetup(ULONG count);
 void PS_HW6_RTOS_LowPowerEnter(void);
 void PS_HW6_RTOS_LowPowerExit(void);

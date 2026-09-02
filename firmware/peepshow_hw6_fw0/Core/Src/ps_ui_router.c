@@ -608,11 +608,14 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
       status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC);
       break;
     case PS_UI_ROUTER_EVENT_LAUNCH_RUNTIME:
-      if ((ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_BOOTSTRAP) ||
+      if ((ps_ui_router_state.shutdown_state ==
+           PS_UI_ROUTER_SHUTDOWN_NONE) &&
+          ((ps_ui_router_state.current_page ==
+            PS_UI_ROUTER_PAGE_BOOTSTRAP) ||
           (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_HOME) ||
           (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_MENU) ||
           (ps_ui_router_state.current_page ==
-           PS_UI_ROUTER_PAGE_PACKAGE_BROWSER))
+           PS_UI_ROUTER_PAGE_PACKAGE_BROWSER)))
       {
         status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF);
         if (status == PS_STATUS_OK)
@@ -864,6 +867,18 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
       ps_ui_router_state.shutdown_state = PS_UI_ROUTER_SHUTDOWN_NONE;
       ps_ui_router_state.shutdown_countdown_seconds = 0UL;
       PS_UIRouter_SetPackageState(PS_UI_ROUTER_PACKAGE_ERROR);
+      status = PS_STATUS_OK;
+      break;
+    case PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_BEGIN:
+      ps_ui_router_state.previous_page = ps_ui_router_state.current_page;
+      ps_ui_router_state.current_page = PS_UI_ROUTER_PAGE_PACKAGE_BROWSER;
+      ps_ui_router_state.requested_page = PS_UI_ROUTER_PAGE_PACKAGE_BROWSER;
+      ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_FOCUS;
+      ps_ui_router_state.modal_state = PS_UI_ROUTER_MODAL_NONE;
+      ps_ui_router_state.calibration_page = PS_UI_ROUTER_CAL_NONE;
+      ps_ui_router_state.shutdown_state = PS_UI_ROUTER_SHUTDOWN_NONE;
+      ps_ui_router_state.shutdown_countdown_seconds = 0UL;
+      PS_UIRouter_SetPackageState(PS_UI_ROUTER_PACKAGE_INSTALLING);
       status = PS_STATUS_OK;
       break;
     case PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_DONE:

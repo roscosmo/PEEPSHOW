@@ -36,6 +36,7 @@
   "input_joystick_xyz_sweep_samples": 512,
   "input_joystick_xyz_capture_period_ms": 10,
   "input_joystick_xyz_capture_timeout_ms": 15000,
+  "input_rtos_irq_priority": 5,
   "audio_pcm_dma_frames": 1024,
   "audio_dma_completion_margin_ms": 20,
   "debug_tracex_enable": true,

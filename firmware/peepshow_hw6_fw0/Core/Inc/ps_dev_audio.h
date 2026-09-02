@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-#define PS_DEV_AUDIO_API_VERSION (9UL)
+#define PS_DEV_AUDIO_API_VERSION (11UL)
 #define PS_DEV_AUDIO_STREAM_EVENT_FIRST_HALF (1UL)
 #define PS_DEV_AUDIO_STREAM_EVENT_SECOND_HALF (2UL)
 
@@ -83,6 +83,9 @@ typedef struct
   uint32_t dma_state_after;
   uint32_t dma_error_after;
   uint32_t stream_wait_status;
+  uint32_t stream_wait_preempt_disable_before;
+  uint32_t stream_wait_system_state_before;
+  uint32_t stream_wait_current_thread_before;
   uint32_t stream_first_half_callback_count;
   uint32_t stream_second_half_callback_count;
   uint32_t stream_underrun_count;

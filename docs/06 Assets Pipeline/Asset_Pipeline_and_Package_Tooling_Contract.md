@@ -314,7 +314,8 @@ STATE SFX path:
 Required package-facing audio artifacts:
 
 The initial STATE subset emits exactly these optional PKG1 chunks as one
-all-or-none group:
+all-or-none group. For the package-backed profile, `AUD1` and `ACU1` must
+precede the final `ADB1` chunk; no later chunks are permitted.
 
 | Chunk | Purpose |
 |---|---|
@@ -322,10 +323,14 @@ all-or-none group:
 | `ADB1` / type 11 | aligned 4-bit IMA ADPCM payload bank using fixed 256-sample independently decodable blocks |
 | `ACU1` / type 12 | symbolic cue ID to asset index, priority, and volume |
 
-The initial host limits are 32 assets, 64 cues, 2000 ms per source, and 48 KiB
-of compiled ADPCM bank data. Source WAV may be mono or stereo uncompressed PCM
-at 8..96 kHz and 8/16/24/32-bit depth; it is deterministically downmixed and
-resampled. Looping, music, streaming, procedural audio, and HW6 BBB are rejected.
+Current host limits are 32 assets, 64 cues, no per-source duration limit, and
+4 MiB of compiled ADPCM bank data. Source WAV may be mono or stereo
+uncompressed PCM at 8..96 kHz and 8/16/24/32-bit depth; it is deterministically
+downmixed and resampled. The target active-package slot remains 5 MiB. A
+package at or below the 64 KiB resident cache uses the complete-cache path;
+larger packages require the audio-tail ordering above, with non-audio metadata
+and assets contained in the resident prefix. Looping, music, procedural audio,
+and HW6 BBB are rejected.
 
 The broader future audio model may add these artifacts:
 

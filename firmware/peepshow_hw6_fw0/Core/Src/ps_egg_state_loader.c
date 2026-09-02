@@ -149,6 +149,8 @@ typedef struct
 typedef struct
 {
   const uint8_t *adpcm;
+  uint32_t package_offset;
+  uint32_t package_backed;
   uint32_t adpcm_size;
   uint32_t sample_count;
   uint32_t duration_ms;
@@ -191,6 +193,16 @@ static uint32_t PS_EggRangeValid(uint32_t size,
                                  uint32_t length)
 {
   return ((offset <= size) && (length <= (size - offset))) ? 1UL : 0UL;
+}
+
+static uint32_t PS_EggAudioDurationMs(uint32_t sample_count)
+{
+  return ((sample_count / PS_EGG_STATE_LOADER_AUDIO_SAMPLE_RATE_HZ) *
+          1000UL) +
+    ((((sample_count % PS_EGG_STATE_LOADER_AUDIO_SAMPLE_RATE_HZ) *
+       1000UL) +
+      (PS_EGG_STATE_LOADER_AUDIO_SAMPLE_RATE_HZ / 2UL)) /
+     PS_EGG_STATE_LOADER_AUDIO_SAMPLE_RATE_HZ);
 }
 
 static uint16_t PS_EggU16(const uint8_t *bytes)
@@ -455,7 +467,8 @@ static uint32_t PS_EggValidateStrings(const ps_egg_chunk_t *chunk,
 }
 
 static uint32_t PS_EggValidateContainer(const uint8_t *blob,
-                                        uint32_t size,
+                                        uint32_t package_size,
+                                        uint32_t resident_size,
                                         uint16_t *manifest_index)
 {
   uint8_t header[PS_EGG_HEADER_SIZE];
@@ -463,21 +476,27 @@ static uint32_t PS_EggValidateContainer(const uint8_t *blob,
   uint32_t table_offset;
   uint32_t footer_offset;
   uint32_t index;
+  uint32_t audio_bank_count = 0UL;
+  uint16_t audio_bank_index = 0U;
+  uint32_t full_package;
   uint64_t package_hash;
   uint16_t chunk_count;
 
   if ((blob == NULL) ||
-      (size < (PS_EGG_HEADER_SIZE + PS_EGG_FOOTER_SIZE)))
+      (package_size < (PS_EGG_HEADER_SIZE + PS_EGG_FOOTER_SIZE)) ||
+      (resident_size < PS_EGG_HEADER_SIZE) ||
+      (resident_size > package_size))
   {
     return PS_EggFail(PS_EGG_STATE_LOADER_REASON_CONTAINER);
   }
+  full_package = (resident_size == package_size) ? 1UL : 0UL;
   chunk_count = PS_EggU16(&blob[20]);
 
-  if ((size > PS_EGG_PACKAGE_SIZE_MAX) ||
+  if ((package_size > PS_EGG_PACKAGE_SIZE_MAX) ||
       (memcmp(blob, "PKG1", 4UL) != 0) ||
       (PS_EggU16(&blob[4]) != 1U) ||
       (PS_EggU16(&blob[6]) != PS_EGG_HEADER_SIZE) ||
-      (PS_EggU32(&blob[8]) != size) ||
+      (PS_EggU32(&blob[8]) != package_size) ||
       (chunk_count < (PS_EGG_CHUNK_COUNT_CORE + 3U)) ||
       (chunk_count > PS_EGG_CHUNK_COUNT_MAX) ||
       (PS_EggU16(&blob[22]) != PS_EGG_CHUNK_ENTRY_SIZE) ||
@@ -500,13 +519,19 @@ static uint32_t PS_EggValidateContainer(const uint8_t *blob,
   *manifest_index = PS_EggU16(&blob[24]);
   if ((table_offset != PS_EGG_HEADER_SIZE) ||
       (*manifest_index >= chunk_count) ||
-      (footer_offset + PS_EGG_FOOTER_SIZE != size) ||
+      (footer_offset != (package_size - PS_EGG_FOOTER_SIZE)) ||
       (table_offset + ((uint32_t)chunk_count *
                        PS_EGG_CHUNK_ENTRY_SIZE) >
        footer_offset) ||
-      (memcmp(&blob[footer_offset], "END1", 4UL) != 0) ||
-      (PS_EggU16(&blob[footer_offset + 4UL]) != 1U) ||
-      (PS_EggU16(&blob[footer_offset + 6UL]) != PS_EGG_FOOTER_SIZE))
+      (table_offset + ((uint32_t)chunk_count *
+                       PS_EGG_CHUNK_ENTRY_SIZE) > resident_size))
+  {
+    return PS_EggFail(PS_EGG_STATE_LOADER_REASON_CONTAINER);
+  }
+  if ((full_package != 0UL) &&
+      ((memcmp(&blob[footer_offset], "END1", 4UL) != 0) ||
+       (PS_EggU16(&blob[footer_offset + 4UL]) != 1U) ||
+       (PS_EggU16(&blob[footer_offset + 6UL]) != PS_EGG_FOOTER_SIZE)))
   {
     return PS_EggFail(PS_EGG_STATE_LOADER_REASON_CONTAINER);
   }
@@ -519,17 +544,20 @@ static uint32_t PS_EggValidateContainer(const uint8_t *blob,
     return PS_EggFail(PS_EGG_STATE_LOADER_REASON_HEADER_CRC);
   }
 
-  if (PS_HW6_HASH_Sha256(blob, footer_offset, digest) != 0UL)
+  if ((full_package != 0UL) &&
+      (PS_HW6_HASH_Sha256(blob, footer_offset, digest) != 0UL))
   {
     return PS_EggFail(PS_EGG_STATE_LOADER_REASON_HASH);
   }
-  if (memcmp(digest, &blob[footer_offset + 8UL], sizeof(digest)) != 0)
+  if ((full_package != 0UL) &&
+      (memcmp(digest, &blob[footer_offset + 8UL], sizeof(digest)) != 0))
   {
     return PS_EggFail(PS_EGG_STATE_LOADER_REASON_PACKAGE_DIGEST);
   }
 
   package_hash = PS_EggU64(&blob[36]);
-  g_ps_egg_state_loader_probe.package_size = size;
+  g_ps_egg_state_loader_probe.package_size = package_size;
+  g_ps_egg_state_loader_probe.resident_size = resident_size;
   g_ps_egg_state_loader_probe.package_id_hash_low =
     (uint32_t)package_hash;
   g_ps_egg_state_loader_probe.package_id_hash_high =
@@ -559,10 +587,24 @@ static uint32_t PS_EggValidateContainer(const uint8_t *blob,
         ((chunk->offset & (PS_EGG_ALIGNMENT - 1UL)) != 0UL) ||
         (chunk->offset < (table_offset +
           ((uint32_t)chunk_count * PS_EGG_CHUNK_ENTRY_SIZE))) ||
-        (PS_EggRangeValid(footer_offset, chunk->offset, chunk->size) == 0UL) ||
-        (PS_EggCrc32(&blob[chunk->offset], chunk->size) != chunk->crc32))
+        (PS_EggRangeValid(footer_offset, chunk->offset, chunk->size) == 0UL))
     {
-      return PS_EggFail(PS_EGG_STATE_LOADER_REASON_CHUNK_CRC);
+      return PS_EggFail(PS_EGG_STATE_LOADER_REASON_CHUNK);
+    }
+    if (chunk->type == PS_EGG_CHUNK_AUDIO_BANK)
+    {
+      audio_bank_index = (uint16_t)index;
+      audio_bank_count++;
+    }
+    if ((full_package != 0UL) ||
+        (chunk->type != PS_EGG_CHUNK_AUDIO_BANK))
+    {
+      if ((PS_EggRangeValid(resident_size, chunk->offset,
+                            chunk->size) == 0UL) ||
+          (PS_EggCrc32(&blob[chunk->offset], chunk->size) != chunk->crc32))
+      {
+        return PS_EggFail(PS_EGG_STATE_LOADER_REASON_CHUNK_CRC);
+      }
     }
     for (compare = 0UL; compare < index; ++compare)
     {
@@ -579,29 +621,56 @@ static uint32_t PS_EggValidateContainer(const uint8_t *blob,
       }
     }
   }
-  for (index = table_offset +
-               ((uint32_t)chunk_count * PS_EGG_CHUNK_ENTRY_SIZE);
-       index < footer_offset;
-       ++index)
+  if (full_package != 0UL)
   {
-    uint32_t chunk_index;
-    uint32_t occupied = 0UL;
-
-    for (chunk_index = 0UL;
-         chunk_index < chunk_count;
-         ++chunk_index)
+    for (index = table_offset +
+                 ((uint32_t)chunk_count * PS_EGG_CHUNK_ENTRY_SIZE);
+         index < footer_offset;
+         ++index)
     {
-      const ps_egg_chunk_t *chunk = &s_ps_egg_chunks[chunk_index];
-      if ((index >= chunk->offset) &&
-          (index < (chunk->offset + chunk->size)))
+      uint32_t chunk_index;
+      uint32_t occupied = 0UL;
+
+      for (chunk_index = 0UL;
+           chunk_index < chunk_count;
+           ++chunk_index)
       {
-        occupied = 1UL;
-        break;
+        const ps_egg_chunk_t *chunk = &s_ps_egg_chunks[chunk_index];
+        if ((index >= chunk->offset) &&
+            (index < (chunk->offset + chunk->size)))
+        {
+          occupied = 1UL;
+          break;
+        }
+      }
+      if ((occupied == 0UL) && (blob[index] != 0U))
+      {
+        return PS_EggFail(PS_EGG_STATE_LOADER_REASON_CHUNK);
       }
     }
-    if ((occupied == 0UL) && (blob[index] != 0U))
+  }
+  else
+  {
+    const ps_egg_chunk_t *audio_bank;
+
+    if (audio_bank_count != 1UL)
     {
-      return PS_EggFail(PS_EGG_STATE_LOADER_REASON_CHUNK);
+      return PS_EggFail(PS_EGG_STATE_LOADER_REASON_AUDIO);
+    }
+    audio_bank = &s_ps_egg_chunks[audio_bank_index];
+    if ((audio_bank->offset + audio_bank->size) != footer_offset)
+    {
+      return PS_EggFail(PS_EGG_STATE_LOADER_REASON_AUDIO);
+    }
+    for (index = 0UL; index < chunk_count; ++index)
+    {
+      const ps_egg_chunk_t *chunk = &s_ps_egg_chunks[index];
+
+      if ((index != audio_bank_index) &&
+          ((chunk->offset + chunk->size) > audio_bank->offset))
+      {
+        return PS_EggFail(PS_EGG_STATE_LOADER_REASON_AUDIO);
+      }
     }
   }
   if (s_ps_egg_chunks[*manifest_index].type != PS_EGG_CHUNK_MANIFEST)
@@ -754,7 +823,8 @@ uint32_t PS_EggStateLoader_GetAudioCue(
     return 0UL;
   }
   asset = &s_ps_egg_audio_assets[source_cue->asset_index];
-  if ((asset->adpcm == NULL) || (asset->adpcm_size == 0UL) ||
+  if (((asset->package_backed == 0UL) && (asset->adpcm == NULL)) ||
+      (asset->adpcm_size == 0UL) ||
       (asset->sample_count == 0UL) ||
       (asset->sample_count > PS_EGG_STATE_LOADER_AUDIO_SAMPLE_MAX))
   {
@@ -762,6 +832,8 @@ uint32_t PS_EggStateLoader_GetAudioCue(
   }
 
   cue->adpcm = asset->adpcm;
+  cue->package_offset = asset->package_offset;
+  cue->package_backed = asset->package_backed;
   cue->adpcm_size = asset->adpcm_size;
   cue->sample_count = asset->sample_count;
   cue->duration_ms = asset->duration_ms;
@@ -975,10 +1047,12 @@ static uint32_t PS_EggValidateAudioCatalog(
   const ps_egg_chunk_t *cue_chunk,
   const uint8_t *blob,
   const ps_egg_strings_t *strings,
-  uint16_t bank_chunk_index)
+  uint16_t bank_chunk_index,
+  uint32_t package_backed)
 {
   const uint8_t *assets = &blob[asset_chunk->offset];
-  const uint8_t *bank = &blob[bank_chunk->offset];
+  const uint8_t *bank = (package_backed == 0UL) ?
+    &blob[bank_chunk->offset] : NULL;
   const uint8_t *cues = &blob[cue_chunk->offset];
   uint32_t asset_count;
   uint32_t cue_count;
@@ -995,17 +1069,21 @@ static uint32_t PS_EggValidateAudioCatalog(
       (PS_EggU16(&assets[16]) !=
        PS_EGG_STATE_LOADER_AUDIO_BLOCK_SAMPLES) ||
       (PS_EggU16(&assets[18]) != 0U) ||
-      (bank_chunk->size < PS_EGG_AUDIO_BANK_HEADER_SIZE) ||
-      (memcmp(bank, "ADB1", 4UL) != 0) ||
-      (PS_EggU16(&bank[4]) != 1U) ||
-      (PS_EggU16(&bank[6]) != PS_EGG_AUDIO_BANK_HEADER_SIZE) ||
-      (PS_EggU32(&bank[8]) !=
-       (bank_chunk->size - PS_EGG_AUDIO_BANK_HEADER_SIZE)) ||
-      (PS_EggU32(&bank[12]) != 0UL) ||
       (cue_chunk->size < PS_EGG_AUDIO_CUE_HEADER_SIZE) ||
       (memcmp(cues, "ACU1", 4UL) != 0) ||
       (PS_EggU16(&cues[4]) != 1U) ||
       (PS_EggU16(&cues[6]) != PS_EGG_AUDIO_CUE_HEADER_SIZE))
+  {
+    return 0UL;
+  }
+  if ((package_backed == 0UL) &&
+      ((bank_chunk->size < PS_EGG_AUDIO_BANK_HEADER_SIZE) ||
+       (memcmp(bank, "ADB1", 4UL) != 0) ||
+       (PS_EggU16(&bank[4]) != 1U) ||
+       (PS_EggU16(&bank[6]) != PS_EGG_AUDIO_BANK_HEADER_SIZE) ||
+       (PS_EggU32(&bank[8]) !=
+        (bank_chunk->size - PS_EGG_AUDIO_BANK_HEADER_SIZE)) ||
+       (PS_EggU32(&bank[12]) != 0UL)))
   {
     return 0UL;
   }
@@ -1042,9 +1120,7 @@ static uint32_t PS_EggValidateAudioCatalog(
         (PS_EggU16(&record[2]) != 0U) ||
         (sample_count == 0UL) ||
         (sample_count > PS_EGG_STATE_LOADER_AUDIO_SAMPLE_MAX) ||
-        (duration_ms != ((sample_count * 1000UL +
-          (PS_EGG_STATE_LOADER_AUDIO_SAMPLE_RATE_HZ / 2UL)) /
-          PS_EGG_STATE_LOADER_AUDIO_SAMPLE_RATE_HZ)) ||
+        (duration_ms != PS_EggAudioDurationMs(sample_count)) ||
         (PS_EggU32(&record[12]) != (sample_count * 2UL)) ||
         ((data_offset & (PS_EGG_ALIGNMENT - 1UL)) != 0UL) ||
         (data_offset < PS_EGG_AUDIO_BANK_HEADER_SIZE) ||
@@ -1055,10 +1131,11 @@ static uint32_t PS_EggValidateAudioCatalog(
           PS_EGG_STATE_LOADER_AUDIO_BLOCK_SAMPLES - 1UL) /
           PS_EGG_STATE_LOADER_AUDIO_BLOCK_SAMPLES)) ||
         (PS_EggU32(&record[32]) != 0UL) ||
-        (PS_EggCrc32(&bank[data_offset], data_size) !=
-         PS_EggU32(&record[28])) ||
-        (PS_EggValidateAudioAdpcm(&bank[data_offset], data_size,
-                                  sample_count, block_count) == 0UL))
+        ((package_backed == 0UL) &&
+         ((PS_EggCrc32(&bank[data_offset], data_size) !=
+           PS_EggU32(&record[28])) ||
+          (PS_EggValidateAudioAdpcm(&bank[data_offset], data_size,
+                                    sample_count, block_count) == 0UL))))
     {
       return 0UL;
     }
@@ -1075,7 +1152,11 @@ static uint32_t PS_EggValidateAudioCatalog(
         return 0UL;
       }
     }
-    s_ps_egg_audio_assets[index].adpcm = &bank[data_offset];
+    s_ps_egg_audio_assets[index].adpcm = (package_backed == 0UL) ?
+      &bank[data_offset] : NULL;
+    s_ps_egg_audio_assets[index].package_offset =
+      bank_chunk->offset + data_offset;
+    s_ps_egg_audio_assets[index].package_backed = package_backed;
     s_ps_egg_audio_assets[index].adpcm_size = data_size;
     s_ps_egg_audio_assets[index].sample_count = sample_count;
     s_ps_egg_audio_assets[index].duration_ms = duration_ms;
@@ -1116,6 +1197,7 @@ static uint32_t PS_EggValidateAudioCatalog(
   g_ps_egg_state_loader_probe.audio_cue_count = cue_count;
   g_ps_egg_state_loader_probe.audio_adpcm_bytes =
     bank_chunk->size - PS_EGG_AUDIO_BANK_HEADER_SIZE;
+  g_ps_egg_state_loader_probe.audio_package_backed = package_backed;
   return 1UL;
 }
 
@@ -2378,7 +2460,8 @@ uint32_t PS_EggStateLoader_EntrySceneId(void)
 
 uint32_t PS_EggStateLoader_Load(
   const uint8_t *blob,
-  uint32_t size,
+  uint32_t package_size,
+  uint32_t resident_size,
   ps_scene_runtime_state_scene_t *scene)
 {
   ps_egg_strings_t strings;
@@ -2433,7 +2516,8 @@ uint32_t PS_EggStateLoader_Load(
   {
     return PS_EggFail(PS_EGG_STATE_LOADER_REASON_ARGUMENT);
   }
-  if (PS_EggValidateContainer(blob, size, &manifest_index) != 0UL)
+  if (PS_EggValidateContainer(blob, package_size, resident_size,
+                              &manifest_index) != 0UL)
   {
     return 1UL;
   }
@@ -2531,7 +2615,8 @@ uint32_t PS_EggStateLoader_Load(
            &s_ps_egg_chunks[audio_asset_index],
            &s_ps_egg_chunks[audio_bank_index],
            &s_ps_egg_chunks[audio_cue_index],
-           blob, &strings, audio_bank_index) == 0UL))
+           blob, &strings, audio_bank_index,
+           (resident_size < package_size) ? 1UL : 0UL) == 0UL))
     {
       return PS_EggFail(PS_EGG_STATE_LOADER_REASON_AUDIO);
     }

@@ -164,6 +164,9 @@ extern RTC_HandleTypeDef hrtc;
 #define PS_HW6_RTOS_AUDIO_CLOCK_REASON_RELEASE    (3UL)
 #define PS_HW6_RTOS_AUDIO_CLOCK_SAI_CAPABILITIES \
   (PS_HW6_CLOCK_CAP_SAI_AUDIO_ACTIVE)
+#define PS_HW6_RTOS_AUDIO_CLOCK_PACKAGE_SFX_CAPABILITIES \
+  (PS_HW6_RTOS_AUDIO_CLOCK_SAI_CAPABILITIES | \
+   PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_NONE       (0UL)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_EXPORT (1UL)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_RECLAIM (2UL)
@@ -373,6 +376,8 @@ static uint32_t ps_display_waiting_sequence_frame;
 static uint32_t ps_display_waiting_sequence_count;
 static volatile uint32_t ps_audio_sfx_pending;
 static volatile uint32_t ps_runtime_package_replace_waiting_for_audio;
+static volatile uint32_t ps_runtime_package_replace_waiting_for_install;
+static volatile uint32_t ps_storage_embedded_package_install_active;
 static uint8_t ps_runtime_package_reader_header[64U];
 static uint32_t ps_display_blink_stop2_suppressed;
 static volatile uint32_t ps_display_blink_transfer_active;
@@ -1021,6 +1026,8 @@ static void PS_HW6_RTOS_ResetProbe(void)
   ps_display_waiting_sequence_count = 0UL;
   ps_audio_sfx_pending = 0UL;
   ps_runtime_package_replace_waiting_for_audio = 0UL;
+  ps_runtime_package_replace_waiting_for_install = 0UL;
+  ps_storage_embedded_package_install_active = 0UL;
   ps_display_blink_stop2_suppressed = 0UL;
   ps_display_clock_wait_active = 0UL;
   ps_display_power_barrier_active = 0UL;
@@ -1127,6 +1134,8 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.runtime_package_replace_trigger_send_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.runtime_package_replace_render_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.storage_embedded_package_install_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.runtime_owner_request_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
@@ -1760,7 +1769,10 @@ static uint32_t PS_HW6_RTOS_UiLifecycleCommandIsValid(
           (message[3] == 0UL) &&
           (((event >= (uint32_t)PS_UI_ROUTER_EVENT_MSC_EXPORT) &&
             (event <= (uint32_t)PS_UI_ROUTER_EVENT_MSC_RECOVERY)) ||
-           (event == (uint32_t)PS_UI_ROUTER_EVENT_SYSTEM_MENU_REQUEST))) ?
+           (event == (uint32_t)PS_UI_ROUTER_EVENT_SYSTEM_MENU_REQUEST) ||
+           (event == (uint32_t)PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_BEGIN) ||
+           (event == (uint32_t)PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_DONE) ||
+           (event == (uint32_t)PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_ERROR))) ?
          1UL : 0UL;
 }
 
@@ -2633,31 +2645,38 @@ static UINT PS_HW6_RTOS_RequestStoragePackageLoadAndWait(void)
   return status;
 }
 
-static UINT PS_HW6_RTOS_RequestRuntimePackageReaderWindow(
+static UINT PS_HW6_RTOS_BeginPackageReaderWindow(
   uint32_t package_offset,
   uint8_t *destination,
-  uint32_t length)
+  uint32_t length,
+  uint32_t record_runtime_probe)
 {
   const ULONG expected_ack = PS_HW6_RTOS_PACKAGE_READER_ACK;
   ULONG actual_flags = 0UL;
   ps_status_t reader_status;
   UINT status;
 
-  g_ps_hw6_rtos_probe.runtime_package_reader_request_count++;
-  g_ps_hw6_rtos_probe.runtime_package_reader_send_status =
-    PS_HW6_RTOS_STATUS_NOT_RUN;
-  g_ps_hw6_rtos_probe.runtime_package_reader_wait_status =
-    PS_HW6_RTOS_STATUS_NOT_RUN;
-  g_ps_hw6_rtos_probe.runtime_package_reader_result_status =
-    PS_PACKAGE_READER_STATUS_NOT_RUN;
+  if (record_runtime_probe != 0UL)
+  {
+    g_ps_hw6_rtos_probe.runtime_package_reader_request_count++;
+    g_ps_hw6_rtos_probe.runtime_package_reader_send_status =
+      PS_HW6_RTOS_STATUS_NOT_RUN;
+    g_ps_hw6_rtos_probe.runtime_package_reader_wait_status =
+      PS_HW6_RTOS_STATUS_NOT_RUN;
+    g_ps_hw6_rtos_probe.runtime_package_reader_result_status =
+      PS_PACKAGE_READER_STATUS_NOT_RUN;
+  }
   reader_status = PS_PackageReader_RuntimeBeginWindowRead(
     package_offset,
     destination,
     length);
   if (reader_status != PS_STATUS_OK)
   {
-    g_ps_hw6_rtos_probe.runtime_package_reader_result_status =
-      (uint32_t)reader_status;
+    if (record_runtime_probe != 0UL)
+    {
+      g_ps_hw6_rtos_probe.runtime_package_reader_result_status =
+        (uint32_t)reader_status;
+    }
     return TX_NOT_AVAILABLE;
   }
 
@@ -2669,33 +2688,115 @@ static UINT PS_HW6_RTOS_RequestRuntimePackageReaderWindow(
   status = PS_HW6_RTOS_SendCommand(
     PS_HW6_RTOS_OWNER_STORAGE,
     PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_READ_WINDOW);
-  g_ps_hw6_rtos_probe.runtime_package_reader_send_status = (uint32_t)status;
+  if (record_runtime_probe != 0UL)
+  {
+    g_ps_hw6_rtos_probe.runtime_package_reader_send_status =
+      (uint32_t)status;
+  }
   if (status != TX_SUCCESS)
   {
     PS_PackageReader_RuntimeCancelWindowRead();
-    g_ps_hw6_rtos_probe.runtime_package_reader_result_status =
-      PS_STATUS_INTERNAL_ERROR;
+    if (record_runtime_probe != 0UL)
+    {
+      g_ps_hw6_rtos_probe.runtime_package_reader_result_status =
+        PS_STATUS_INTERNAL_ERROR;
+    }
     return status;
   }
+
+  return TX_SUCCESS;
+}
+
+static UINT PS_HW6_RTOS_FinishPackageReaderWindow(
+  uint32_t record_runtime_probe,
+  ULONG wait_ticks)
+{
+  const ULONG expected_ack = PS_HW6_RTOS_PACKAGE_READER_ACK;
+  ULONG actual_flags = 0UL;
+  ps_status_t reader_status;
+  UINT status;
 
   status = tx_event_flags_get(
     &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
     expected_ack,
     TX_AND_CLEAR,
     &actual_flags,
-    PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
-  g_ps_hw6_rtos_probe.runtime_package_reader_wait_status = (uint32_t)status;
+    wait_ticks);
+  if (record_runtime_probe != 0UL)
+  {
+    g_ps_hw6_rtos_probe.runtime_package_reader_wait_status =
+      (uint32_t)status;
+  }
   if ((status != TX_SUCCESS) || ((actual_flags & expected_ack) == 0UL))
   {
-    g_ps_hw6_rtos_probe.runtime_package_reader_result_status =
-      PS_STATUS_INTERNAL_ERROR;
+    if (record_runtime_probe != 0UL)
+    {
+      g_ps_hw6_rtos_probe.runtime_package_reader_result_status =
+        PS_STATUS_INTERNAL_ERROR;
+    }
     return (status == TX_SUCCESS) ? TX_NOT_AVAILABLE : status;
   }
 
   reader_status = PS_PackageReader_RuntimeFinishWindowRead();
-  g_ps_hw6_rtos_probe.runtime_package_reader_result_status =
-    (uint32_t)reader_status;
+  if (record_runtime_probe != 0UL)
+  {
+    g_ps_hw6_rtos_probe.runtime_package_reader_result_status =
+      (uint32_t)reader_status;
+  }
   return (reader_status == PS_STATUS_OK) ? TX_SUCCESS : TX_NOT_AVAILABLE;
+}
+
+static UINT PS_HW6_RTOS_RequestPackageReaderWindow(
+  uint32_t package_offset,
+  uint8_t *destination,
+  uint32_t length,
+  uint32_t record_runtime_probe)
+{
+  UINT status = PS_HW6_RTOS_BeginPackageReaderWindow(
+    package_offset,
+    destination,
+    length,
+    record_runtime_probe);
+
+  if (status != TX_SUCCESS)
+  {
+    return status;
+  }
+  return PS_HW6_RTOS_FinishPackageReaderWindow(
+    record_runtime_probe,
+    PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
+}
+
+UINT PS_HW6_RTOS_ReadAudioPackageWindow(uint32_t package_offset,
+                                        uint8_t *destination,
+                                        uint32_t length)
+{
+  return PS_HW6_RTOS_RequestPackageReaderWindow(package_offset,
+                                                 destination,
+                                                 length,
+                                                 0UL);
+}
+
+UINT PS_HW6_RTOS_BeginAudioPackageWindowRead(uint32_t package_offset,
+                                             uint8_t *destination,
+                                             uint32_t length)
+{
+  return PS_HW6_RTOS_BeginPackageReaderWindow(package_offset,
+                                               destination,
+                                               length,
+                                               0UL);
+}
+
+UINT PS_HW6_RTOS_TryFinishAudioPackageWindowRead(void)
+{
+  return PS_HW6_RTOS_FinishPackageReaderWindow(0UL, TX_NO_WAIT);
+}
+
+UINT PS_HW6_RTOS_WaitFinishAudioPackageWindowRead(void)
+{
+  return PS_HW6_RTOS_FinishPackageReaderWindow(
+    0UL,
+    PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
 }
 
 static UINT PS_HW6_RTOS_RuntimeVerifyInstalledPackageReader(void)
@@ -2731,10 +2832,11 @@ static UINT PS_HW6_RTOS_RuntimeVerifyInstalledPackageReader(void)
     return TX_NOT_AVAILABLE;
   }
 
-  status = PS_HW6_RTOS_RequestRuntimePackageReaderWindow(
+  status = PS_HW6_RTOS_RequestPackageReaderWindow(
     0UL,
     ps_runtime_package_reader_header,
-    sizeof(ps_runtime_package_reader_header));
+    sizeof(ps_runtime_package_reader_header),
+    1UL);
   if ((status != TX_SUCCESS) ||
       (memcmp(ps_runtime_package_reader_header,
               package_view.blob,
@@ -5250,7 +5352,10 @@ static UINT PS_HW6_RTOS_SendUiLifecycleEvent(uint32_t event)
 
   if (((event < (uint32_t)PS_UI_ROUTER_EVENT_MSC_EXPORT) ||
        (event > (uint32_t)PS_UI_ROUTER_EVENT_MSC_RECOVERY)) &&
-      (event != (uint32_t)PS_UI_ROUTER_EVENT_SYSTEM_MENU_REQUEST))
+      (event != (uint32_t)PS_UI_ROUTER_EVENT_SYSTEM_MENU_REQUEST) &&
+      (event != (uint32_t)PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_BEGIN) &&
+      (event != (uint32_t)PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_DONE) &&
+      (event != (uint32_t)PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_ERROR))
   {
     return TX_QUEUE_ERROR;
   }
@@ -5438,6 +5543,26 @@ static UINT PS_HW6_RTOS_DeliverInputLogicalEvent(
     status = TX_SUCCESS;
     g_ps_hw6_rtos_probe.input_policy_deliver_count++;
     g_ps_hw6_rtos_probe.input_policy_ui_deliver_count++;
+  }
+  else if (g_ps_ui_router_probe.current_page ==
+           (uint32_t)PS_UI_ROUTER_PAGE_CALIBRATION)
+  {
+    reason = PS_HW6_RTOS_INPUT_POLICY_REASON_UI_FOCUS;
+    if (event == (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)
+    {
+      target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
+      status = PS_HW6_RTOS_SendUiLogicalPress(button_id);
+      if (status == TX_SUCCESS)
+      {
+        g_ps_hw6_rtos_probe.input_policy_deliver_count++;
+        g_ps_hw6_rtos_probe.input_policy_ui_deliver_count++;
+      }
+      else
+      {
+        reason = PS_HW6_RTOS_INPUT_POLICY_REASON_SEND_FAILED;
+        g_ps_hw6_rtos_probe.input_policy_suppress_count++;
+      }
+    }
   }
   else if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_LP_GRAPH) &&
            (runtime_lifecycle ==
@@ -6905,9 +7030,7 @@ static void PS_HW6_RTOS_RuntimeEnterInstaller(void)
     PS_SceneRuntime_ExitStateScene();
   }
   g_ps_hw6_rtos_probe.runtime_return_class =
-    (discard_package != 0UL) ?
-    (uint32_t)PS_HW6_RUNTIME_CLASS_SHELL :
-    PS_HW6_RTOS_RuntimeFallbackClass();
+    (uint32_t)PS_HW6_RUNTIME_CLASS_SHELL;
   g_ps_hw6_rtos_probe.runtime_return_page =
     PS_HW6_RTOS_RuntimeReturnPage();
   g_ps_hw6_rtos_probe.runtime_active_package_id = 0UL;
@@ -7242,7 +7365,15 @@ static void PS_HW6_RTOS_RuntimePackageReplace(uint32_t capabilities,
   g_ps_hw6_rtos_probe.runtime_package_replace_request_count++;
   g_ps_hw6_rtos_probe.runtime_package_replace_render_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
-  if (g_ps_package_source_override !=
+  if ((ps_storage_embedded_package_install_active != 0UL) ||
+      (g_ps_hw6_storage_persistent_install_request != 0UL))
+  {
+    ps_runtime_package_replace_waiting_for_install = 1UL;
+    g_ps_hw6_rtos_probe.runtime_package_replace_waiting_for_install = 1UL;
+    g_ps_hw6_rtos_probe.runtime_package_replace_deferred_install_count++;
+    runtime_status = (uint32_t)PS_STATUS_BUSY;
+  }
+  else if (g_ps_package_source_override !=
       (uint32_t)PS_PACKAGE_SOURCE_OVERRIDE_DEFAULT)
   {
     runtime_status = (uint32_t)PS_STATUS_UNSUPPORTED;
@@ -8309,7 +8440,7 @@ static void PS_HW6_RTOS_RunStoragePackageInstallStubRequest(void)
 
   if (install_status == HAL_OK)
   {
-    complete_send_status = PS_HW6_RTOS_RequestRuntimeCommand(
+    complete_send_status = PS_HW6_RTOS_RequestRuntimeCommandAndWait(
       PS_HW6_RTOS_COMMAND_RUNTIME_INSTALLER_COMPLETE);
     launch_send_status = TX_SUCCESS;
     g_ps_hw6_rtos_probe.package_install_runtime_complete_send_status =
@@ -8365,19 +8496,82 @@ static void PS_HW6_RTOS_RunStorageFlashInitRequest(void)
 static void PS_HW6_RTOS_RunStorageEmbeddedPackageInstallRequest(void)
 {
   UINT clock_status;
+  UINT workflow_status;
+  uint32_t installer_entered = 0UL;
+  HAL_StatusTypeDef install_status = HAL_ERROR;
 
-  clock_status = PS_HW6_RTOS_RequestStorageClockCapabilities(
-    PS_HW6_RTOS_STORAGE_CLOCK_REASON_PACKAGE_LOAD,
-    PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES);
-  if ((clock_status == TX_SUCCESS) ||
-      (PS_HW6_RTOS_StorageClockCapabilitiesActive(
-         PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES) != 0UL))
+  ps_storage_embedded_package_install_active = 1UL;
+  g_ps_hw6_rtos_probe.storage_embedded_package_install_active = 1UL;
+  g_ps_hw6_rtos_probe.storage_embedded_package_install_status =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+
+  workflow_status = PS_HW6_RTOS_RequestRuntimeCommandAndWait(
+    PS_HW6_RTOS_COMMAND_RUNTIME_INSTALLER_ENTER);
+  if (workflow_status == TX_SUCCESS)
   {
-    (void)PS_HW6_OwnerStateMachines_RunEmbeddedPersistentPackageInstall();
+    installer_entered = 1UL;
+    workflow_status = PS_HW6_RTOS_SendUiLifecycleEvent(
+      PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_BEGIN);
   }
-  (void)PS_HW6_RTOS_RequestStorageClockCapabilities(
-    PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE,
-    0UL);
+  if (workflow_status == TX_SUCCESS)
+  {
+    workflow_status = PS_HW6_RTOS_SendDisplayUiRenderCommand(
+      PS_UI_ROUTER_PAGE_PACKAGE_BROWSER,
+      PS_UI_ROUTER_CAL_NONE,
+      PS_UI_ROUTER_PACKAGE_INSTALLING,
+      PS_UI_ROUTER_SHUTDOWN_NONE,
+      0UL);
+  }
+  if (workflow_status == TX_SUCCESS)
+  {
+    clock_status = PS_HW6_RTOS_RequestStorageClockCapabilities(
+      PS_HW6_RTOS_STORAGE_CLOCK_REASON_PACKAGE_LOAD,
+      PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES);
+    if ((clock_status == TX_SUCCESS) ||
+        (PS_HW6_RTOS_StorageClockCapabilitiesActive(
+           PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES) != 0UL))
+    {
+      install_status =
+        PS_HW6_OwnerStateMachines_RunEmbeddedPersistentPackageInstall();
+    }
+    (void)PS_HW6_RTOS_RequestStorageClockCapabilities(
+      PS_HW6_RTOS_STORAGE_CLOCK_REASON_RELEASE,
+      0UL);
+  }
+  if ((workflow_status == TX_SUCCESS) && (install_status == HAL_OK))
+  {
+    workflow_status = PS_HW6_RTOS_RequestRuntimeCommandAndWait(
+      PS_HW6_RTOS_COMMAND_RUNTIME_INSTALLER_COMPLETE);
+    if (workflow_status == TX_SUCCESS)
+    {
+      workflow_status = PS_HW6_RTOS_SendUiLifecycleEvent(
+        PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_DONE);
+    }
+  }
+  if ((workflow_status != TX_SUCCESS) || (install_status != HAL_OK))
+  {
+    install_status = HAL_ERROR;
+    if (installer_entered != 0UL)
+    {
+      (void)PS_HW6_RTOS_RequestRuntimeCommand(
+        PS_HW6_RTOS_COMMAND_RUNTIME_INSTALLER_ERROR);
+    }
+    (void)PS_HW6_RTOS_SendUiLifecycleEvent(
+      PS_UI_ROUTER_EVENT_PACKAGE_INSTALL_STUB_ERROR);
+  }
+  g_ps_hw6_rtos_probe.storage_embedded_package_install_status =
+    (uint32_t)install_status;
+  ps_storage_embedded_package_install_active = 0UL;
+  g_ps_hw6_rtos_probe.storage_embedded_package_install_active = 0UL;
+  if (ps_runtime_package_replace_waiting_for_install != 0UL)
+  {
+    ps_runtime_package_replace_waiting_for_install = 0UL;
+    g_ps_hw6_rtos_probe.runtime_package_replace_waiting_for_install = 0UL;
+    if (install_status == HAL_OK)
+    {
+      g_ps_hw6_runtime_persistent_replace_request = 1UL;
+    }
+  }
 }
 
 static void PS_HW6_RTOS_RunStorageInstalledPackageLoadRequest(void)
@@ -8856,7 +9050,7 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
     g_ps_hw6_rtos_probe.audio_sfx_last_cue_index = cycle_index;
     clock_status = PS_HW6_RTOS_RequestAudioClockCapabilities(
       PS_HW6_RTOS_AUDIO_CLOCK_REASON_REACTIVE_SFX,
-      PS_HW6_RTOS_AUDIO_CLOCK_SAI_CAPABILITIES);
+      PS_HW6_RTOS_AUDIO_CLOCK_PACKAGE_SFX_CAPABILITIES);
     g_ps_hw6_rtos_probe.audio_sfx_clock_request_status =
       (uint32_t)clock_status;
     if (clock_status == TX_SUCCESS)
@@ -10176,6 +10370,8 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (g_ps_hw6_storage_persistent_install_request != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
+      ps_storage_embedded_package_install_active = 1UL;
+      g_ps_hw6_rtos_probe.storage_embedded_package_install_active = 1UL;
       g_ps_hw6_storage_persistent_install_request = 0UL;
       PS_HW6_RTOS_RunStorageEmbeddedPackageInstallRequest();
     }

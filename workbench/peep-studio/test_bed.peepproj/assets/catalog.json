@@ -203,6 +203,63 @@
           "pivot_y": 0
         }
       ]
+    },
+    {
+      "asset_id": "frame1_crop_2",
+      "display_name": "FRAME1 crop",
+      "asset_type": "masked_1bpp",
+      "source_path": "assets/frame1_crop_2.png",
+      "source_format": "png",
+      "frames": [
+        {
+          "frame_id": "frame1_crop_2.frame_1",
+          "display_name": "Frame 1",
+          "source_rect": {
+            "x": 0,
+            "y": 0,
+            "width": 78,
+            "height": 96
+          },
+          "pivot_x": 0,
+          "pivot_y": 0
+        },
+        {
+          "frame_id": "frame1_crop_2.frame_2",
+          "display_name": "Frame 2",
+          "source_rect": {
+            "x": 78,
+            "y": 0,
+            "width": 78,
+            "height": 96
+          },
+          "pivot_x": 0,
+          "pivot_y": 0
+        },
+        {
+          "frame_id": "frame1_crop_2.frame_3",
+          "display_name": "Frame 3",
+          "source_rect": {
+            "x": 156,
+            "y": 0,
+            "width": 78,
+            "height": 96
+          },
+          "pivot_x": 0,
+          "pivot_y": 0
+        },
+        {
+          "frame_id": "frame1_crop_2.frame_4",
+          "display_name": "Frame 4",
+          "source_rect": {
+            "x": 234,
+            "y": 0,
+            "width": 78,
+            "height": 96
+          },
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
     }
   ],
   "animations": [
@@ -225,12 +282,24 @@
       "asset_type": "sampled_sfx",
       "source_path": "assets/foghorn_bo.wav",
       "source_format": "wav"
+    },
+    {
+      "asset_id": "megaman",
+      "asset_type": "sampled_sfx",
+      "source_path": "assets/megaman.wav",
+      "source_format": "wav"
     }
   ],
   "audio_cues": [
     {
       "cue_id": "foghorn_bo.cue",
       "asset_ref": "foghorn_bo",
+      "priority": 96,
+      "volume": 200
+    },
+    {
+      "cue_id": "megaman.cue",
+      "asset_ref": "megaman",
       "priority": 96,
       "volume": 200
     }

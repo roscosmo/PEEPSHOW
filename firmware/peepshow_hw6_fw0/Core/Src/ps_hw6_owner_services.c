@@ -6,8 +6,10 @@
 #include "LS013B7DH05.h"
 #include "ps_dev_audio.h"
 #include "ps_egg_state_loader.h"
+#include "ps_hw6_rtos_probe.h"
 #include "ps_lpbam_display_buffers.h"
 #include "ps_lpbam_display_queue.h"
+#include "ps_package_reader.h"
 #include "ps_scene_runtime.h"
 #include "stm32_lpbam.h"
 #include "stm32u5xx_ll_spi.h"
@@ -55,6 +57,8 @@
   (PS_HW6_AUDIO_STREAM_BUFFER_FRAMES / 2UL)
 #define PS_HW6_AUDIO_STREAM_BUFFER_HALFWORDS \
   (PS_HW6_AUDIO_STREAM_BUFFER_FRAMES * 2UL)
+#define PS_HW6_AUDIO_STREAM_SOURCE_WINDOW_COUNT (2UL)
+#define PS_HW6_AUDIO_ADPCM_BLOCK_HEADER_BYTES (6UL)
 #define PS_HW6_AUDIO_AMP_SETTLE_TICKS       (2UL)
 #define PS_HW6_AUDIO_DURATION_TICKS \
   ((PS_HW6_AUDIO_DURATION_MS * TX_TIMER_TICKS_PER_SECOND + 999UL) / 1000UL)
@@ -102,6 +106,9 @@ static int16_t ps_hw6_audio_tone_buffer[PS_HW6_AUDIO_TONE_BUFFER_HALFWORDS]
 static int16_t ps_hw6_audio_stream_buffer[
   PS_HW6_AUDIO_STREAM_BUFFER_HALFWORDS]
   __attribute__((aligned(4)));
+static uint8_t ps_hw6_audio_stream_source_windows[
+  PS_HW6_AUDIO_STREAM_SOURCE_WINDOW_COUNT][PS_PACKAGE_READER_WINDOW_BYTES]
+  __attribute__((aligned(4)));
 
 typedef struct
 {
@@ -114,6 +121,22 @@ typedef struct
   uint32_t decoded_sample_count;
   int32_t predictor;
   int32_t step_index;
+  uint32_t source_window_offset;
+  uint32_t source_window_length;
+  uint32_t source_window_valid;
+  uint32_t source_window_index;
+  uint32_t source_window_read_count;
+  uint32_t source_window_failure_count;
+  uint32_t source_window_bytes;
+  uint32_t source_window_last_status;
+  uint32_t source_prefetch_offset;
+  uint32_t source_prefetch_length;
+  uint32_t source_prefetch_index;
+  uint32_t source_prefetch_pending;
+  uint32_t source_prefetch_start_count;
+  uint32_t source_prefetch_complete_count;
+  uint32_t source_prefetch_miss_count;
+  uint32_t source_prefetch_cleanup_status;
 } ps_hw6_audio_stream_decoder_t;
 
 static const int16_t ps_hw6_sine_16[16] =
@@ -1202,7 +1225,19 @@ UINT PS_HW6_OwnerServices_Init(void)
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.audio_sfx_stream_wait_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.audio_sfx_stream_wait_preempt_disable_before =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.audio_sfx_stream_wait_system_state_before =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.audio_sfx_stream_wait_current_thread_before =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.audio_sfx_stream_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.audio_sfx_package_backed = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_source_window_read_count = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_source_window_failure_count = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_source_window_bytes = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_source_window_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.power_driver_mr_shipping_mode_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
@@ -2480,6 +2515,211 @@ static int32_t PS_HW6_AudioClampPcm(int32_t sample)
   return sample;
 }
 
+static HAL_StatusTypeDef PS_HW6_AudioStreamStartPrefetch(
+  ps_hw6_audio_stream_decoder_t *decoder)
+{
+  const ps_egg_state_loader_audio_cue_t *cue;
+  uint32_t next_offset;
+  uint32_t window_length;
+  uint32_t window_index;
+  UINT read_status;
+
+  if ((decoder == NULL) || (decoder->cue == NULL))
+  {
+    return HAL_ERROR;
+  }
+  cue = decoder->cue;
+  if (cue->package_backed == 0UL)
+  {
+    return HAL_OK;
+  }
+  if ((cue->package_backed != 1UL) ||
+      (decoder->source_window_valid == 0UL) ||
+      (decoder->source_prefetch_pending != 0UL) ||
+      (decoder->source_window_offset >
+       (UINT32_MAX - decoder->source_window_length)))
+  {
+    return HAL_ERROR;
+  }
+
+  next_offset = decoder->source_window_offset +
+    decoder->source_window_length;
+  if (next_offset >= cue->adpcm_size)
+  {
+    return HAL_OK;
+  }
+  if (cue->package_offset > (UINT32_MAX - next_offset))
+  {
+    return HAL_ERROR;
+  }
+
+  window_length = cue->adpcm_size - next_offset;
+  if (window_length > PS_PACKAGE_READER_WINDOW_BYTES)
+  {
+    window_length = PS_PACKAGE_READER_WINDOW_BYTES;
+  }
+  window_index = (decoder->source_window_index + 1UL) %
+    PS_HW6_AUDIO_STREAM_SOURCE_WINDOW_COUNT;
+  read_status = PS_HW6_RTOS_BeginAudioPackageWindowRead(
+    cue->package_offset + next_offset,
+    ps_hw6_audio_stream_source_windows[window_index],
+    window_length);
+  decoder->source_window_last_status = (uint32_t)read_status;
+  if (read_status != TX_SUCCESS)
+  {
+    decoder->source_window_failure_count++;
+    return HAL_ERROR;
+  }
+
+  decoder->source_prefetch_offset = next_offset;
+  decoder->source_prefetch_length = window_length;
+  decoder->source_prefetch_index = window_index;
+  decoder->source_prefetch_pending = 1UL;
+  decoder->source_prefetch_start_count++;
+  return HAL_OK;
+}
+
+static HAL_StatusTypeDef PS_HW6_AudioStreamFinishPrefetch(
+  ps_hw6_audio_stream_decoder_t *decoder,
+  uint32_t wait_for_completion)
+{
+  UINT read_status;
+
+  if ((decoder == NULL) || (decoder->source_prefetch_pending == 0UL))
+  {
+    return HAL_ERROR;
+  }
+
+  read_status = (wait_for_completion != 0UL) ?
+    PS_HW6_RTOS_WaitFinishAudioPackageWindowRead() :
+    PS_HW6_RTOS_TryFinishAudioPackageWindowRead();
+  decoder->source_window_last_status = (uint32_t)read_status;
+  if (read_status != TX_SUCCESS)
+  {
+    decoder->source_window_failure_count++;
+    return HAL_ERROR;
+  }
+
+  decoder->source_prefetch_pending = 0UL;
+  decoder->source_prefetch_complete_count++;
+  decoder->source_window_read_count++;
+  decoder->source_window_bytes += decoder->source_prefetch_length;
+  return HAL_OK;
+}
+
+static HAL_StatusTypeDef PS_HW6_AudioStreamDrainPrefetch(
+  ps_hw6_audio_stream_decoder_t *decoder)
+{
+  HAL_StatusTypeDef status = HAL_OK;
+
+  if (decoder == NULL)
+  {
+    return HAL_ERROR;
+  }
+  if (decoder->source_prefetch_pending != 0UL)
+  {
+    status = PS_HW6_AudioStreamFinishPrefetch(decoder, 1UL);
+  }
+  decoder->source_prefetch_cleanup_status =
+    (status == HAL_OK) ? (uint32_t)TX_SUCCESS :
+    decoder->source_window_last_status;
+  return status;
+}
+
+static HAL_StatusTypeDef PS_HW6_AudioStreamReadByte(
+  ps_hw6_audio_stream_decoder_t *decoder,
+  uint32_t source_offset,
+  uint8_t *value)
+{
+  const ps_egg_state_loader_audio_cue_t *cue;
+
+  if ((decoder == NULL) || (decoder->cue == NULL) || (value == NULL))
+  {
+    return HAL_ERROR;
+  }
+  cue = decoder->cue;
+  if (source_offset >= cue->adpcm_size)
+  {
+    return HAL_ERROR;
+  }
+  if (cue->package_backed == 0UL)
+  {
+    if (cue->adpcm == NULL)
+    {
+      return HAL_ERROR;
+    }
+    *value = cue->adpcm[source_offset];
+    return HAL_OK;
+  }
+  if (cue->package_backed != 1UL)
+  {
+    return HAL_ERROR;
+  }
+
+  if (decoder->source_window_valid == 0UL)
+  {
+    uint32_t window_length = cue->adpcm_size - source_offset;
+    UINT read_status;
+
+    if ((cue->package_offset > (UINT32_MAX - source_offset)) ||
+        (window_length == 0UL))
+    {
+      return HAL_ERROR;
+    }
+    if (window_length > PS_PACKAGE_READER_WINDOW_BYTES)
+    {
+      window_length = PS_PACKAGE_READER_WINDOW_BYTES;
+    }
+    decoder->source_window_index = 0UL;
+    read_status = PS_HW6_RTOS_ReadAudioPackageWindow(
+      cue->package_offset + source_offset,
+      ps_hw6_audio_stream_source_windows[decoder->source_window_index],
+      window_length);
+    decoder->source_window_last_status = (uint32_t)read_status;
+    if (read_status != TX_SUCCESS)
+    {
+      decoder->source_window_failure_count++;
+      return HAL_ERROR;
+    }
+    decoder->source_window_offset = source_offset;
+    decoder->source_window_length = window_length;
+    decoder->source_window_valid = 1UL;
+    decoder->source_window_read_count++;
+    decoder->source_window_bytes += window_length;
+  }
+  else if ((source_offset < decoder->source_window_offset) ||
+           ((source_offset - decoder->source_window_offset) >=
+           decoder->source_window_length))
+  {
+    if ((decoder->source_prefetch_pending == 0UL) ||
+        (source_offset < decoder->source_prefetch_offset) ||
+        ((source_offset - decoder->source_prefetch_offset) >=
+         decoder->source_prefetch_length))
+    {
+      decoder->source_window_last_status = (uint32_t)TX_NOT_AVAILABLE;
+      decoder->source_window_failure_count++;
+      decoder->source_prefetch_miss_count++;
+      return HAL_ERROR;
+    }
+    if (PS_HW6_AudioStreamFinishPrefetch(decoder, 0UL) != HAL_OK)
+    {
+      decoder->source_prefetch_miss_count++;
+      return HAL_ERROR;
+    }
+    decoder->source_window_offset = decoder->source_prefetch_offset;
+    decoder->source_window_length = decoder->source_prefetch_length;
+    decoder->source_window_index = decoder->source_prefetch_index;
+    if (PS_HW6_AudioStreamStartPrefetch(decoder) != HAL_OK)
+    {
+      return HAL_ERROR;
+    }
+  }
+
+  *value = ps_hw6_audio_stream_source_windows[decoder->source_window_index][
+    source_offset - decoder->source_window_offset];
+  return HAL_OK;
+}
+
 static HAL_StatusTypeDef PS_HW6_AudioStreamLoadBlock(
   ps_hw6_audio_stream_decoder_t *decoder)
 {
@@ -2487,6 +2727,8 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamLoadBlock(
   uint32_t source_offset;
   uint32_t block_sample_count;
   uint32_t packed_count;
+  uint8_t header[PS_HW6_AUDIO_ADPCM_BLOCK_HEADER_BYTES];
+  uint32_t index;
 
   if ((decoder == NULL) || (decoder->cue == NULL) ||
       (decoder->block_index >= decoder->cue->block_count))
@@ -2496,17 +2738,25 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamLoadBlock(
 
   cue = decoder->cue;
   source_offset = decoder->source_offset;
-  if ((source_offset + 6UL) > cue->adpcm_size)
+  if ((source_offset + PS_HW6_AUDIO_ADPCM_BLOCK_HEADER_BYTES) >
+      cue->adpcm_size)
   {
     return HAL_ERROR;
   }
+  for (index = 0UL; index < sizeof(header); ++index)
+  {
+    if (PS_HW6_AudioStreamReadByte(decoder, source_offset + index,
+                                   &header[index]) != HAL_OK)
+    {
+      return HAL_ERROR;
+    }
+  }
   decoder->predictor = (int32_t)(int16_t)(
-    ((uint16_t)cue->adpcm[source_offset]) |
-    ((uint16_t)cue->adpcm[source_offset + 1UL] << 8U));
-  decoder->step_index = (int32_t)cue->adpcm[source_offset + 2UL];
-  block_sample_count = (uint32_t)cue->adpcm[source_offset + 4UL] |
-    ((uint32_t)cue->adpcm[source_offset + 5UL] << 8U);
-  if ((cue->adpcm[source_offset + 3UL] != 0U) ||
+    ((uint16_t)header[0]) | ((uint16_t)header[1] << 8U));
+  decoder->step_index = (int32_t)header[2];
+  block_sample_count = (uint32_t)header[4] |
+    ((uint32_t)header[5] << 8U);
+  if ((header[3] != 0U) ||
       (decoder->step_index > 88) || (block_sample_count == 0UL) ||
       (block_sample_count > PS_EGG_STATE_LOADER_AUDIO_BLOCK_SAMPLES) ||
       ((decoder->decoded_sample_count + block_sample_count) >
@@ -2532,7 +2782,10 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamDecoderInit(
   ps_hw6_audio_stream_decoder_t *decoder,
   const ps_egg_state_loader_audio_cue_t *cue)
 {
-  if ((decoder == NULL) || (cue == NULL) || (cue->adpcm == NULL) ||
+  if ((decoder == NULL) || (cue == NULL) ||
+      ((cue->package_backed == 0UL) && (cue->adpcm == NULL)) ||
+      ((cue->package_backed == 1UL) && (cue->package_offset == 0UL)) ||
+      (cue->package_backed > 1UL) ||
       (cue->adpcm_size == 0UL) || (cue->sample_count == 0UL) ||
       (cue->sample_count > PS_EGG_STATE_LOADER_AUDIO_SAMPLE_MAX) ||
       (cue->block_count == 0UL))
@@ -2542,6 +2795,8 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamDecoderInit(
 
   (void)memset(decoder, 0, sizeof(*decoder));
   decoder->cue = cue;
+  decoder->source_window_last_status = PS_HW6_OWNER_STATUS_NOT_RUN;
+  decoder->source_prefetch_cleanup_status = PS_HW6_OWNER_STATUS_NOT_RUN;
   return HAL_OK;
 }
 
@@ -2585,13 +2840,20 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamDecodeFrames(
     else
     {
       uint32_t nibble_index = decoder->block_sample_index - 1UL;
-      uint8_t packed = cue->adpcm[decoder->block_payload_offset +
-        (nibble_index / 2UL)];
-      uint32_t nibble = ((nibble_index & 1UL) == 0UL) ?
-        ((uint32_t)packed & 0x0FUL) : ((uint32_t)packed >> 4U);
+      uint8_t packed;
+      uint32_t nibble;
       int32_t step = ps_hw6_ima_step_table[decoder->step_index];
       int32_t delta = step >> 3U;
 
+      if (PS_HW6_AudioStreamReadByte(
+            decoder,
+            decoder->block_payload_offset + (nibble_index / 2UL),
+            &packed) != HAL_OK)
+      {
+        return HAL_ERROR;
+      }
+      nibble = ((nibble_index & 1UL) == 0UL) ?
+        ((uint32_t)packed & 0x0FUL) : ((uint32_t)packed >> 4U);
       if ((nibble & 4UL) != 0UL)
       {
         delta += step;
@@ -2778,6 +3040,7 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_RunSfx(uint32_t cue_index)
   ps_status_t driver_status;
   ps_status_t playback_status;
   HAL_StatusTypeDef decode_status;
+  HAL_StatusTypeDef prefetch_cleanup_status;
   uint32_t first_half_decoded = 0UL;
   uint32_t second_half_decoded = 0UL;
   uint32_t decoded_frames = 0UL;
@@ -2819,6 +3082,18 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_RunSfx(uint32_t cue_index)
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.audio_sfx_stream_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.audio_sfx_package_backed = cue.package_backed;
+  g_ps_hw6_owner_probe.audio_sfx_source_window_read_count = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_source_window_failure_count = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_source_window_bytes = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_source_window_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.audio_sfx_source_prefetch_start_count = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_source_prefetch_complete_count = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_source_prefetch_miss_count = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_source_prefetch_pending = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_source_prefetch_cleanup_status =
+    PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.audio_sample_rate_hz =
     PS_EGG_STATE_LOADER_AUDIO_SAMPLE_RATE_HZ;
   g_ps_hw6_owner_probe.audio_buffer_halfwords =
@@ -2848,6 +3123,10 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_RunSfx(uint32_t cue_index)
       &second_half_decoded,
       &source_finished);
     silence_frames += PS_HW6_AUDIO_STREAM_HALF_FRAMES - second_half_decoded;
+  }
+  if ((decode_status == HAL_OK) && (source_finished == 0UL))
+  {
+    decode_status = PS_HW6_AudioStreamStartPrefetch(&decoder);
   }
   g_ps_hw6_owner_probe.audio_sfx_decode_status = (uint32_t)decode_status;
   g_ps_hw6_owner_probe.audio_sfx_decoded_samples =
@@ -2919,6 +3198,12 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_RunSfx(uint32_t cue_index)
     driver_status = ps_dev_audio_stream_stop(&ps_hw6_audio,
                                              playback_status,
                                              &result);
+  }
+  prefetch_cleanup_status = PS_HW6_AudioStreamDrainPrefetch(&decoder);
+  if ((driver_status == PS_STATUS_OK) &&
+      (prefetch_cleanup_status != HAL_OK))
+  {
+    driver_status = PS_STATUS_IO_ERROR;
   }
 
   g_ps_hw6_owner_probe.audio_sai_kernel_hz = result.sai_kernel_hz;
@@ -2994,7 +3279,31 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_RunSfx(uint32_t cue_index)
     result.stream_underrun_count;
   g_ps_hw6_owner_probe.audio_sfx_stream_silence_frames = silence_frames;
   g_ps_hw6_owner_probe.audio_sfx_stream_wait_status = result.stream_wait_status;
+  g_ps_hw6_owner_probe.audio_sfx_stream_wait_preempt_disable_before =
+    result.stream_wait_preempt_disable_before;
+  g_ps_hw6_owner_probe.audio_sfx_stream_wait_system_state_before =
+    result.stream_wait_system_state_before;
+  g_ps_hw6_owner_probe.audio_sfx_stream_wait_current_thread_before =
+    result.stream_wait_current_thread_before;
   g_ps_hw6_owner_probe.audio_sfx_stream_status = (uint32_t)driver_status;
+  g_ps_hw6_owner_probe.audio_sfx_source_window_read_count =
+    decoder.source_window_read_count;
+  g_ps_hw6_owner_probe.audio_sfx_source_window_failure_count =
+    decoder.source_window_failure_count;
+  g_ps_hw6_owner_probe.audio_sfx_source_window_bytes =
+    decoder.source_window_bytes;
+  g_ps_hw6_owner_probe.audio_sfx_source_window_status =
+    decoder.source_window_last_status;
+  g_ps_hw6_owner_probe.audio_sfx_source_prefetch_start_count =
+    decoder.source_prefetch_start_count;
+  g_ps_hw6_owner_probe.audio_sfx_source_prefetch_complete_count =
+    decoder.source_prefetch_complete_count;
+  g_ps_hw6_owner_probe.audio_sfx_source_prefetch_miss_count =
+    decoder.source_prefetch_miss_count;
+  g_ps_hw6_owner_probe.audio_sfx_source_prefetch_pending =
+    decoder.source_prefetch_pending;
+  g_ps_hw6_owner_probe.audio_sfx_source_prefetch_cleanup_status =
+    decoder.source_prefetch_cleanup_status;
   PS_HW6_UpdateAudioDriverProbe();
   g_ps_hw6_owner_probe.audio_complete = 1UL;
   if (driver_status == PS_STATUS_OK)

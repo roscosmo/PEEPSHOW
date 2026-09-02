@@ -2607,13 +2607,13 @@ static void DisplayRenderer_UIList(uint32_t page,
       else if (focus_index == PS_UI_ROUTER_PACKAGE_INSTALLING)
       {
         list->title = "PACKAGE";
-        list->rows[0] = "LOAD EGG";
+        list->rows[0] = "INSTALLING";
         list->rows[1] = "WAIT";
       }
       else if (focus_index == PS_UI_ROUTER_PACKAGE_INSTALLED)
       {
         list->title = "PACKAGE";
-        list->rows[0] = "LOADED RAM";
+        list->rows[0] = "INSTALLED";
         list->rows[1] = "A PLAY";
       }
       else if (focus_index == PS_UI_ROUTER_PACKAGE_ERROR)

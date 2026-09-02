@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <ps_hw6_peripheral_probe.h>
+#include "knobs_autogen.h"
 #include "ps_input_buttons.h"
 #include "ps_hw6_rtos_probe.h"
 
@@ -1613,6 +1614,14 @@ int main(void)
   /* Keep OTG FS IRQ masked until the storage owner explicitly exports MSC. */
   HAL_NVIC_DisableIRQ(OTG_FS_IRQn);
   NVIC_ClearPendingIRQ(OTG_FS_IRQn);
+
+  /* Input EXTI handlers enqueue ThreadX work, so they must be BASEPRI-maskable. */
+  HAL_NVIC_SetPriority(EXTI4_IRQn, KNOB_INPUT_RTOS_IRQ_PRIORITY, 0U);
+  HAL_NVIC_SetPriority(EXTI5_IRQn, KNOB_INPUT_RTOS_IRQ_PRIORITY, 0U);
+  HAL_NVIC_SetPriority(EXTI6_IRQn, KNOB_INPUT_RTOS_IRQ_PRIORITY, 0U);
+  HAL_NVIC_SetPriority(EXTI7_IRQn, KNOB_INPUT_RTOS_IRQ_PRIORITY, 0U);
+  HAL_NVIC_SetPriority(EXTI8_IRQn, KNOB_INPUT_RTOS_IRQ_PRIORITY, 0U);
+  HAL_NVIC_SetPriority(EXTI11_IRQn, KNOB_INPUT_RTOS_IRQ_PRIORITY, 0U);
 
   g_ps_hw6_fw0_probe.output_mask = PS_HW6_FW0_ReadOutputMask();
   g_ps_hw6_fw0_probe.phase = PS_HW6_FW0_PHASE_GPIO_READY;

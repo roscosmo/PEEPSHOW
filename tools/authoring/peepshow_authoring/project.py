@@ -3780,7 +3780,7 @@ def _compile_asset_catalogs(
             issues,
             "AUDIO_BANK_BUDGET_EXCEEDED",
             "audio_assets",
-            f"compiled audio exceeds the {AUDIO_MAX_BANK_BYTES}-byte STATE bank limit",
+            f"compiled audio exceeds the {AUDIO_MAX_BANK_BYTES}-byte active-package audio limit",
         )
     return assets, animations, frames, audio_assets, audio_cues, issues
 

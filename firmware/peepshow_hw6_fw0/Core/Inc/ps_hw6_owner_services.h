@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (40UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (42UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -382,7 +382,20 @@ typedef struct
   uint32_t audio_sfx_stream_underrun_count;
   uint32_t audio_sfx_stream_silence_frames;
   uint32_t audio_sfx_stream_wait_status;
+  uint32_t audio_sfx_stream_wait_preempt_disable_before;
+  uint32_t audio_sfx_stream_wait_system_state_before;
+  uint32_t audio_sfx_stream_wait_current_thread_before;
   uint32_t audio_sfx_stream_status;
+  uint32_t audio_sfx_package_backed;
+  uint32_t audio_sfx_source_window_read_count;
+  uint32_t audio_sfx_source_window_failure_count;
+  uint32_t audio_sfx_source_window_bytes;
+  uint32_t audio_sfx_source_window_status;
+  uint32_t audio_sfx_source_prefetch_start_count;
+  uint32_t audio_sfx_source_prefetch_complete_count;
+  uint32_t audio_sfx_source_prefetch_miss_count;
+  uint32_t audio_sfx_source_prefetch_pending;
+  uint32_t audio_sfx_source_prefetch_cleanup_status;
 } PS_HW6_OwnerProbe;
 
 extern volatile PS_HW6_OwnerProbe g_ps_hw6_owner_probe;

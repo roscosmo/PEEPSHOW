@@ -1123,6 +1123,7 @@ uint32_t PS_SceneRuntime_EnterStateScene(void)
     g_ps_package_source_probe.last_status;
   if (PS_EggStateLoader_Load(package_view.blob,
                              package_view.size,
+                             package_view.resident_size,
                              entry_scene) != 0UL)
   {
     g_ps_scene_runtime_probe.reject_count++;

@@ -217,6 +217,8 @@ static void PS_StoragePackageIndex_ResetInstallProbe(void)
     (uint32_t)PS_STATUS_NOT_INITIALIZED;
   g_ps_storage_package_install_probe.package_program_status =
     (uint32_t)PS_STATUS_NOT_INITIALIZED;
+  g_ps_storage_package_install_probe.package_program_failure_offset =
+    PS_STORAGE_PACKAGE_INDEX_INVALID_SELECTION;
   g_ps_storage_package_install_probe.package_verify_status =
     (uint32_t)PS_STATUS_NOT_INITIALIZED;
   g_ps_storage_package_install_probe.index_erase_status =
@@ -540,6 +542,7 @@ ps_status_t PS_StoragePackageIndex_InstallValidated(
   uint32_t erase_index;
   uint32_t erase_count;
   uint32_t poll_count;
+  uint32_t program_offset;
   uint32_t verified_bytes;
   uint32_t mismatches;
   uint8_t marker[4];
@@ -644,16 +647,51 @@ ps_status_t PS_StoragePackageIndex_InstallValidated(
 
   g_ps_storage_package_install_probe.stage =
     PS_STORAGE_PACKAGE_INSTALL_STAGE_PROGRAM_PACKAGE;
-  status = ps_storage_flash_block_program(block,
-                                          target_package_start,
-                                          package,
-                                          package_size);
-  g_ps_storage_package_install_probe.package_program_status =
-    (uint32_t)status;
-  if (status != PS_STATUS_OK)
+  for (program_offset = 0UL;
+       program_offset < package_size;
+       program_offset += block->geometry.program_page_size)
   {
-    g_ps_storage_package_install_probe.status = (uint32_t)status;
-    return status;
+    uint32_t program_length = package_size - program_offset;
+
+    if (program_length > block->geometry.program_page_size)
+    {
+      program_length = block->geometry.program_page_size;
+    }
+    g_ps_storage_package_install_probe.package_program_block_initialized =
+      block->initialized;
+    g_ps_storage_package_install_probe.package_program_device_initialized =
+      (block->flash != NULL) ? block->flash->initialized : 0UL;
+    g_ps_storage_package_install_probe.package_program_device_state =
+      (block->flash != NULL) ? (uint32_t)block->flash->state : 0UL;
+    g_ps_storage_package_install_probe.package_program_device_status =
+      (block->flash != NULL) ? block->flash->last_status :
+      (uint32_t)PS_STATUS_INVALID_ARGUMENT;
+    status = ps_storage_flash_block_program(
+      block,
+      target_package_start + program_offset,
+      &package[program_offset],
+      program_length);
+    g_ps_storage_package_install_probe.package_program_status =
+      (uint32_t)status;
+    if (status != PS_STATUS_OK)
+    {
+      g_ps_storage_package_install_probe.package_program_failure_offset =
+        program_offset;
+      g_ps_storage_package_install_probe.package_program_block_initialized =
+        block->initialized;
+      g_ps_storage_package_install_probe.package_program_device_initialized =
+        (block->flash != NULL) ? block->flash->initialized : 0UL;
+      g_ps_storage_package_install_probe.package_program_device_state =
+        (block->flash != NULL) ? (uint32_t)block->flash->state : 0UL;
+      g_ps_storage_package_install_probe.package_program_device_status =
+        (block->flash != NULL) ? block->flash->last_status :
+        (uint32_t)PS_STATUS_INVALID_ARGUMENT;
+      g_ps_storage_package_install_probe.status = (uint32_t)status;
+      return status;
+    }
+    g_ps_storage_package_install_probe.package_program_bytes +=
+      program_length;
+    g_ps_storage_package_install_probe.package_program_page_count++;
   }
 
   g_ps_storage_package_install_probe.stage =

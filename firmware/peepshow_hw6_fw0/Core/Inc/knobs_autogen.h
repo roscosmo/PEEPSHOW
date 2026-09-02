@@ -54,6 +54,7 @@
 #define KNOB_INPUT_JOYSTICK_XYZ_CAPTURE_TIMEOUT_MS         (15000)
 #define KNOB_INPUT_JOYSTICK_XYZ_REST_SAMPLES               (256)
 #define KNOB_INPUT_JOYSTICK_XYZ_SWEEP_SAMPLES              (512)
+#define KNOB_INPUT_RTOS_IRQ_PRIORITY                       (5)
 #define KNOB_INPUT_START_SHIP_DISPLAY_CLEAR_MS             (11900)
 #define KNOB_INPUT_START_SHIP_IMMINENT_MS                  (11000)
 #define KNOB_INPUT_START_SHIP_PREP_MS                      (5000)

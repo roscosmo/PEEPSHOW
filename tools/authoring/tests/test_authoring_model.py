@@ -41,6 +41,7 @@ from peepshow_authoring.compiler import (  # noqa: E402
 from peepshow_authoring.egg_format import (  # noqa: E402
     ASSET_HEADER,
     ASSET_RECORD,
+    CHUNK_AUDIO_ADPCM_BANK,
     CHUNK_ANIMATION_TABLE,
     CHUNK_ASSET_TABLE,
     CHUNK_ENTRY,
@@ -286,7 +287,16 @@ class AuthoringModelTests(unittest.TestCase):
             self.assertEqual(first, build_egg(load_project(project_root)))
             package = parse_egg(first)
             self.assertEqual(15, len(package.chunks))
-            self.assertEqual({10, 11, 12}, {chunk.chunk_type for chunk in package.chunks[-3:]})
+            self.assertEqual([10, 12, 11], [chunk.chunk_type for chunk in package.chunks[-3:]])
+            audio_bank = next(
+                chunk
+                for chunk in package.chunks
+                if chunk.chunk_type == CHUNK_AUDIO_ADPCM_BANK
+            )
+            self.assertEqual(
+                HEADER.unpack_from(first)[5],
+                audio_bank.offset + audio_bank.size,
+            )
             self.assertEqual("ui.select", package.audio_assets[0]["asset_id"])
             self.assertEqual("ui.select.cue", package.audio_cues[0]["cue_id"])
             route = next(
@@ -297,19 +307,21 @@ class AuthoringModelTests(unittest.TestCase):
             operation = next(item for item in route["operations"] if item["kind"] == 7)
             self.assertEqual(0, operation["cue_index"])
 
-    def test_sampled_sfx_longer_than_legacy_limit_compiles(self) -> None:
+    def test_sampled_sfx_larger_than_resident_cache_compiles(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = make_audio_project(Path(temp_dir))
             with wave.open(str(project_root / "assets" / "select.wav"), "wb") as wav:
                 wav.setnchannels(1)
                 wav.setsampwidth(2)
                 wav.setframerate(16000)
-                wav.writeframes(struct.pack("<h", 12000) * 48000)
+                wav.writeframes(struct.pack("<h", 12000) * 192000)
 
             bundle = load_project(project_root)
             self.assertEqual((), bundle.issues)
-            package = parse_egg(build_egg(bundle))
-            self.assertEqual(48000, package.audio_assets[0]["sample_count"])
+            egg = build_egg(bundle)
+            package = parse_egg(egg)
+            self.assertGreater(len(egg), 65536)
+            self.assertEqual(192000, package.audio_assets[0]["sample_count"])
             self.assertGreater(package.audio_assets[0]["duration_ms"], 2000)
 
     def test_sampled_sfx_accepts_streaming_duration_and_rejects_unknown_cue(self) -> None:

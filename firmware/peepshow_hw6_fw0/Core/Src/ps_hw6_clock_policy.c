@@ -677,10 +677,8 @@ static UINT PS_HW6_ClockPolicy_Pll2DomainSet(
       g_ps_hw6_clock_policy_probe.last_stage =
         PS_HW6_CLOCK_STAGE_PLL2_DOMAIN_ON;
     }
-    if ((force_post_stop_rearm != 0UL) &&
-        ((post_stop_stale_domain_mask &
-          PS_HW6_CLOCK_DOMAIN_PLL2_SAI) != 0UL) &&
-        ((output_mask & RCC_PLL2_DIVP) != 0UL))
+    if ((__HAL_RCC_GET_FLAG(RCC_FLAG_PLL2RDY) != 0U) &&
+        (__HAL_RCC_GET_SAI1_SOURCE() == RCC_SAI1CLKSOURCE_PLL2))
     {
       hal_status = PS_HW6_ClockPolicy_SaiMuxParkOnHsi();
       if (hal_status == HAL_OK)
@@ -688,10 +686,24 @@ static UINT PS_HW6_ClockPolicy_Pll2DomainSet(
         sai_mux_parked = 1UL;
       }
     }
+    /* PLL2 output-enable bits change only while PLL2 is stopped. */
     if ((hal_status == HAL_OK) &&
-        ((output_mask & RCC_PLL2_DIVP) == 0UL))
+        ((__HAL_RCC_GET_FLAG(RCC_FLAG_PLL2RDY) != 0U) ||
+         (enabled_output_mask != 0UL)))
     {
       hal_status = HAL_RCCEx_DisablePLL2();
+    }
+    if (hal_status == HAL_OK)
+    {
+      enabled_output_mask = READ_BIT(
+        RCC->PLL2CFGR,
+        RCC_PLL2CFGR_PLL2PEN | RCC_PLL2CFGR_PLL2QEN |
+        RCC_PLL2CFGR_PLL2REN);
+      if ((__HAL_RCC_GET_FLAG(RCC_FLAG_PLL2RDY) != 0U) ||
+          (enabled_output_mask != 0UL))
+      {
+        hal_status = HAL_ERROR;
+      }
     }
     if (hal_status == HAL_OK)
     {
