@@ -1,17 +1,11 @@
-import type { EditorNodePosition, InputAction, ProjectEditorData, SceneDocument, StateRecord, StateRoute } from "./types";
+import type { EditorNodePosition, InputAction, ProjectEditorData, SceneDocument, StateAction, StateRecord, StateRoute } from "./types";
 
-export type StateGraphExitSide = "left" | "right";
+export type StateGraphExitSide = "left" | "right" | "top" | "bottom";
 export type StateGraphEntrySide = "top" | "bottom";
 export type StateGraphEntryHandle =
   | "entry-top-left"
-  | "entry-top-mid-left"
-  | "entry-top-center"
-  | "entry-top-mid-right"
   | "entry-top-right"
   | "entry-bottom-left"
-  | "entry-bottom-mid-left"
-  | "entry-bottom-center"
-  | "entry-bottom-mid-right"
   | "entry-bottom-right";
 
 export type StateTransitionRoutePoint = {
@@ -28,6 +22,7 @@ export type StateGraphLayoutNode = {
   id: string;
   x: number;
   y: number;
+  platformOutputCount?: number;
 };
 
 export type StateTransitionLayoutRequest = {
@@ -35,6 +30,8 @@ export type StateTransitionLayoutRequest = {
   source: string;
   target: string;
   sourceOutputIndex: number;
+  sourceSide?: StateGraphExitSide;
+  sourceRatio?: number;
 };
 
 export type StateTransitionLayout = {
@@ -49,6 +46,11 @@ export type GraphStateOutput = {
   label: string;
   guardCount: number;
   actionCount: number;
+  effectLabels: string[];
+  logicalSource: string;
+  triggerKind: "physical" | "platform";
+  preferredExitSide?: StateGraphExitSide;
+  exitRatio?: number;
   targetState?: string;
   targetStateLabel?: string;
   targetScene?: string;
@@ -58,7 +60,9 @@ export type GraphStateNode = {
   id: string;
   label: string;
   isEntry: boolean;
+  variableTouchCount: number;
   placementOverrideCount: number;
+  platformOutputCount: number;
   waitingVisualRef: string;
   outputs: GraphStateOutput[];
   x: number;
@@ -72,6 +76,7 @@ export type GraphTransitionEdge = {
   label: string;
   route: StateRoute;
   sourceHandle: string;
+  effectLabels: string[];
 };
 
 export type StateGraphModel = {
@@ -130,6 +135,31 @@ function inputLabel(inputActions: InputAction[], actionRef: string): string {
   return INPUT_LABELS[input?.logical_source ?? ""] ?? input?.logical_source ?? actionRef;
 }
 
+function inputKind(inputActions: InputAction[], actionRef: string): "physical" | "platform" {
+  const source = inputActions.find((item) => item.action_id === actionRef)?.logical_source ?? "";
+  return source.startsWith("BUTTON_") || source.startsWith("JOY_") ? "physical" : "platform";
+}
+
+function inputSource(inputActions: InputAction[], actionRef: string): string {
+  return inputActions.find((item) => item.action_id === actionRef)?.logical_source ?? actionRef;
+}
+
+const PHYSICAL_TRIGGER_EXITS: Record<string, { side: StateGraphExitSide; ratio: number }> = {
+  BUTTON_L: { side: "top", ratio: 0.183 },
+  BUTTON_R: { side: "top", ratio: 0.817 },
+  JOY_UP: { side: "left", ratio: 0.63 },
+  JOY_UP_LEFT: { side: "left", ratio: 0.69 },
+  JOY_UP_RIGHT: { side: "right", ratio: 0.72 },
+  JOY_LEFT: { side: "left", ratio: 0.75 },
+  JOY_RIGHT: { side: "bottom", ratio: 0.363 },
+  JOY_DOWN: { side: "bottom", ratio: 0.24 },
+  JOY_DOWN_LEFT: { side: "bottom", ratio: 0.16 },
+  JOY_DOWN_RIGHT: { side: "bottom", ratio: 0.4 },
+  BUTTON_START: { side: "bottom", ratio: 0.533 },
+  BUTTON_A: { side: "right", ratio: 0.67 },
+  BUTTON_B: { side: "bottom", ratio: 0.713 },
+};
+
 function countLabel(count: number, singular: string): string {
   if (count === 0) {
     return "";
@@ -137,8 +167,55 @@ function countLabel(count: number, singular: string): string {
   return `${count} ${singular}${count === 1 ? "" : "s"}`;
 }
 
+function displayRefName(ref: string | undefined, fallback: string): string {
+  if (ref === undefined || ref.length === 0) {
+    return fallback;
+  }
+  const label = ref.replaceAll("_", " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function signedValue(value: number | undefined): string {
+  if (value === undefined) {
+    return "";
+  }
+  return value > 0 ? `+${value}` : String(value);
+}
+
+function actionEffectLabel(action: StateAction): string | null {
+  if (action.kind === "request_render") {
+    return null;
+  }
+  if (action.kind === "set_variable") {
+    const variableName = displayRefName(action.variable_ref, "variable");
+    if (action.operation === "add") {
+      return `${variableName}${action.value === undefined ? "" : ` ${signedValue(action.value)}`}`;
+    }
+    if (action.operation === "assign" || action.operation === "set") {
+      return `${variableName}${action.value === undefined ? "" : ` = ${action.value}`}`;
+    }
+    return variableName;
+  }
+  if (action.kind === "play_sfx") {
+    return "Play sound";
+  }
+  if (action.kind === "exit_to_shell") {
+    return "Exit package";
+  }
+  if (action.kind === "transition_scene") {
+    return "Open scene";
+  }
+  return "Advanced effect";
+}
+
+function routeEffectLabels(route: StateRoute): string[] {
+  return route.actions
+    .map(actionEffectLabel)
+    .filter((label): label is string => label !== null);
+}
+
 function visibleActionCount(route: StateRoute): number {
-  return route.actions.filter((action) => action.kind !== "request_render").length;
+  return routeEffectLabels(route).length;
 }
 
 function routeLabel(route: StateRoute, inputActions: InputAction[]): string {
@@ -158,19 +235,23 @@ function statePosition(
   };
 }
 
-const STATE_CARD_ROUTING_WIDTH = 280;
-const STATE_CARD_ROUTING_HEIGHT = 210;
+const STATE_CARD_ROUTING_WIDTH = 300;
+const STATE_CARD_BASE_HEIGHT = 268;
 const STATE_CARD_ROUTE_CLEARANCE = 72;
 const STATE_CARD_ROUTE_LANE_STEP = 36;
-const STATE_OUTPUT_FIRST_Y = 158;
-const STATE_OUTPUT_STEP_Y = 49;
+const STATE_PLATFORM_OUTPUT_FIRST_Y = 104;
+const STATE_OUTPUT_STEP_Y = 52;
+
+function stateCardHeight(platformOutputCount?: number): number {
+  return STATE_CARD_BASE_HEIGHT + (platformOutputCount ?? 0) * STATE_OUTPUT_STEP_Y;
+}
 
 function centerX(position: EditorNodePosition): number {
   return position.x + STATE_CARD_ROUTING_WIDTH / 2;
 }
 
-function centerY(position: EditorNodePosition): number {
-  return position.y + STATE_CARD_ROUTING_HEIGHT / 2;
+function centerY(position: EditorNodePosition & { platformOutputCount?: number }): number {
+  return position.y + stateCardHeight(position.platformOutputCount) / 2;
 }
 
 export function resolveStateExitSide(
@@ -188,7 +269,7 @@ export function resolveStateEntryHandle(
   targetPosition: EditorNodePosition | undefined,
 ): StateGraphEntryHandle {
   if (targetPosition === undefined) {
-    return "entry-top-center";
+    return "entry-top-left";
   }
   return resolveStateEntryHandleFromPoint(
     { x: centerX(sourcePosition), y: centerY(sourcePosition) },
@@ -201,17 +282,7 @@ function resolveStateEntryHandleFromPoint(
   targetPosition: EditorNodePosition,
 ): StateGraphEntryHandle {
   const verticalSide = sourcePoint.y > centerY(targetPosition) ? "bottom" : "top";
-  const sourceRelativeX = sourcePoint.x - targetPosition.x;
-  let horizontalSlot = "center";
-  if (sourceRelativeX < STATE_CARD_ROUTING_WIDTH * 0.2) {
-    horizontalSlot = "left";
-  } else if (sourceRelativeX < STATE_CARD_ROUTING_WIDTH * 0.4) {
-    horizontalSlot = "mid-left";
-  } else if (sourceRelativeX > STATE_CARD_ROUTING_WIDTH * 0.8) {
-    horizontalSlot = "right";
-  } else if (sourceRelativeX > STATE_CARD_ROUTING_WIDTH * 0.6) {
-    horizontalSlot = "mid-right";
-  }
+  const horizontalSlot = sourcePoint.x < centerX(targetPosition) ? "left" : "right";
   return `entry-${verticalSide}-${horizontalSlot}` as StateGraphEntryHandle;
 }
 
@@ -219,39 +290,61 @@ function stateEntryHandleSide(handle: StateGraphEntryHandle): StateGraphEntrySid
   return handle.startsWith("entry-bottom") ? "bottom" : "top";
 }
 
-function stateEntryHandlePoint(position: EditorNodePosition, handle: StateGraphEntryHandle): StateTransitionRoutePoint {
-  let ratio = 0.5;
-  if (handle.endsWith("-left")) {
-    ratio = 0.1;
-  } else if (handle.endsWith("-mid-left")) {
-    ratio = 0.3;
-  } else if (handle.endsWith("-mid-right")) {
-    ratio = 0.7;
-  } else if (handle.endsWith("-right")) {
-    ratio = 0.9;
-  }
+function stateEntryHandlePoint(
+  position: EditorNodePosition & { platformOutputCount?: number },
+  handle: StateGraphEntryHandle,
+): StateTransitionRoutePoint {
+  const ratio = handle.endsWith("-left") ? 0.08 : 0.92;
   return {
     x: position.x + STATE_CARD_ROUTING_WIDTH * ratio,
-    y: stateEntryHandleSide(handle) === "bottom" ? position.y + STATE_CARD_ROUTING_HEIGHT : position.y,
+    y: stateEntryHandleSide(handle) === "bottom" ? position.y + stateCardHeight(position.platformOutputCount) : position.y,
   };
 }
 
 function stateOutputPoint(
-  position: EditorNodePosition,
+  position: EditorNodePosition & { platformOutputCount?: number },
   sourceSide: StateGraphExitSide,
   outputIndex: number,
+  sourceRatio?: number,
 ): StateTransitionRoutePoint {
+  const height = stateCardHeight(position.platformOutputCount);
+  if (sourceRatio !== undefined) {
+    if (sourceSide === "top" || sourceSide === "bottom") {
+      return {
+        x: position.x + STATE_CARD_ROUTING_WIDTH * sourceRatio,
+        y: sourceSide === "top" ? position.y : position.y + height,
+      };
+    }
+    return {
+      x: sourceSide === "left" ? position.x : position.x + STATE_CARD_ROUTING_WIDTH,
+      y: position.y + height * sourceRatio,
+    };
+  }
   return {
     x: sourceSide === "left" ? position.x : position.x + STATE_CARD_ROUTING_WIDTH,
-    y: position.y + STATE_OUTPUT_FIRST_Y + outputIndex * STATE_OUTPUT_STEP_Y,
+    y: position.y + STATE_PLATFORM_OUTPUT_FIRST_Y + outputIndex * STATE_OUTPUT_STEP_Y,
   };
 }
 
-function defaultStateLaneX(
+function defaultStateLane(
   sourceX: number,
+  sourceY: number,
   targetX: number,
+  targetY: number,
   sourceSide: StateGraphExitSide,
 ): number {
+  if (sourceSide === "top" || sourceSide === "bottom") {
+    const sameRow = Math.abs(sourceY - targetY) < 180;
+    const naturallySeparated = sourceSide === "top"
+      ? sourceY > targetY + 48
+      : sourceY < targetY - 48;
+    if (!sameRow && naturallySeparated) {
+      return sourceY + (targetY - sourceY) / 2;
+    }
+    return sourceSide === "top"
+      ? Math.min(sourceY, targetY) - STATE_CARD_ROUTE_CLEARANCE
+      : Math.max(sourceY, targetY) + STATE_CARD_ROUTE_CLEARANCE;
+  }
   const sameColumn = Math.abs(sourceX - targetX) < 180;
   const naturallySeparated = sourceSide === "right"
     ? sourceX < targetX - 48
@@ -266,15 +359,23 @@ function defaultStateLaneX(
 
 function candidateLaneXs(
   sourceX: number,
+  sourceY: number,
   targetX: number,
+  targetY: number,
   sourceSide: StateGraphExitSide,
 ): number[] {
-  const outsideLane = sourceSide === "left"
-    ? Math.min(sourceX, targetX) - STATE_CARD_ROUTE_CLEARANCE
-    : Math.max(sourceX, targetX) + STATE_CARD_ROUTE_CLEARANCE;
-  const lanes = new Set<number>([defaultStateLaneX(sourceX, targetX, sourceSide)]);
+  const verticalExit = sourceSide === "top" || sourceSide === "bottom";
+  const outsideLane = verticalExit
+    ? sourceSide === "top"
+      ? Math.min(sourceY, targetY) - STATE_CARD_ROUTE_CLEARANCE
+      : Math.max(sourceY, targetY) + STATE_CARD_ROUTE_CLEARANCE
+    : sourceSide === "left"
+      ? Math.min(sourceX, targetX) - STATE_CARD_ROUTE_CLEARANCE
+      : Math.max(sourceX, targetX) + STATE_CARD_ROUTE_CLEARANCE;
+  const lanes = new Set<number>([defaultStateLane(sourceX, sourceY, targetX, targetY, sourceSide)]);
   for (let index = 0; index < 6; index += 1) {
-    lanes.add(outsideLane + (sourceSide === "left" ? -1 : 1) * index * STATE_CARD_ROUTE_LANE_STEP);
+    const negativeDirection = sourceSide === "left" || sourceSide === "top";
+    lanes.add(outsideLane + (negativeDirection ? -1 : 1) * index * STATE_CARD_ROUTE_LANE_STEP);
   }
   return [...lanes];
 }
@@ -347,18 +448,28 @@ export function buildStateTransitionRoute({
   targetSide: StateGraphEntrySide;
   laneX?: number;
 }): StateTransitionRoute {
-  const sourceOutset = sourceSide === "left" ? -28 : 28;
+  const horizontalExit = sourceSide === "left" || sourceSide === "right";
+  const sourceOutset = sourceSide === "left" || sourceSide === "top" ? -28 : 28;
   const entryOutset = targetSide === "top" ? -36 : 36;
-  const resolvedLaneX = laneX ?? defaultStateLaneX(sourceX, targetX, sourceSide);
+  const resolvedLane = laneX ?? defaultStateLane(sourceX, sourceY, targetX, targetY, sourceSide);
   const entryY = targetY + entryOutset;
-  const points = compactRoutePoints([
-    { x: sourceX, y: sourceY },
-    { x: sourceX + sourceOutset, y: sourceY },
-    { x: resolvedLaneX, y: sourceY },
-    { x: resolvedLaneX, y: entryY },
-    { x: targetX, y: entryY },
-    { x: targetX, y: targetY },
-  ]);
+  const points = compactRoutePoints(horizontalExit
+    ? [
+        { x: sourceX, y: sourceY },
+        { x: sourceX + sourceOutset, y: sourceY },
+        { x: resolvedLane, y: sourceY },
+        { x: resolvedLane, y: entryY },
+        { x: targetX, y: entryY },
+        { x: targetX, y: targetY },
+      ]
+    : [
+        { x: sourceX, y: sourceY },
+        { x: sourceX, y: sourceY + sourceOutset },
+        { x: sourceX, y: resolvedLane },
+        { x: targetX, y: resolvedLane },
+        { x: targetX, y: entryY },
+        { x: targetX, y: targetY },
+      ]);
   return {
     path: roundedPolylinePath(points, 14),
     points,
@@ -446,7 +557,7 @@ function nodeCrossingScore(
       const left = node.x - 10;
       const right = node.x + STATE_CARD_ROUTING_WIDTH + 10;
       const top = node.y - 10;
-      const bottom = node.y + STATE_CARD_ROUTING_HEIGHT + 10;
+      const bottom = node.y + stateCardHeight(node.platformOutputCount) + 10;
       candidate.forEach((segment) => {
         if (segment.orientation === "horizontal") {
           const crosses = segment.fixed >= top
@@ -495,16 +606,35 @@ export function planStateTransitionRoutes(
     if (sourcePosition === undefined || targetPosition === undefined) {
       return;
     }
-    const preferredSide = resolveStateExitSide(sourcePosition, targetPosition);
-    const candidateSides: StateGraphExitSide[] = preferredSide === "right" ? ["right", "left"] : ["left", "right"];
+    const preferredSide = request.sourceSide ?? resolveStateExitSide(sourcePosition, targetPosition);
+    const candidateSides: StateGraphExitSide[] = request.sourceSide !== undefined
+      ? [request.sourceSide]
+      : preferredSide === "right" ? ["right", "left"] : ["left", "right"];
     let best: StateTransitionCandidate | undefined;
 
     candidateSides.forEach((sourceSide) => {
-      const sourcePoint = stateOutputPoint(sourcePosition, sourceSide, request.sourceOutputIndex);
+      const sourcePoint = stateOutputPoint(
+        sourcePosition,
+        sourceSide,
+        request.sourceOutputIndex,
+        request.sourceRatio,
+      );
       const targetHandle = resolveStateEntryHandleFromPoint(sourcePoint, targetPosition);
       const targetPoint = stateEntryHandlePoint(targetPosition, targetHandle);
-      const baseLaneX = defaultStateLaneX(sourcePoint.x, targetPoint.x, sourceSide);
-      candidateLaneXs(sourcePoint.x, targetPoint.x, sourceSide).forEach((laneX) => {
+      const baseLaneX = defaultStateLane(
+        sourcePoint.x,
+        sourcePoint.y,
+        targetPoint.x,
+        targetPoint.y,
+        sourceSide,
+      );
+      candidateLaneXs(
+        sourcePoint.x,
+        sourcePoint.y,
+        targetPoint.x,
+        targetPoint.y,
+        sourceSide,
+      ).forEach((laneX) => {
         const route = buildStateTransitionRoute({
           sourceX: sourcePoint.x,
           sourceY: sourcePoint.y,
@@ -549,37 +679,57 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
   const stateIds = new Set(states.map((state) => state.state_id));
   const stateLabels = new Map(states.map((state) => [state.state_id, state.display_name]));
   const outputsByState = new Map<string, GraphStateOutput[]>();
+  const variableRefsByState = new Map<string, Set<string>>();
   const savedPositions =
     scene === null ? undefined : editor?.state_graph?.scenes?.[scene.scene_id]?.nodes;
 
   routes.forEach((route: StateRoute) => {
+    const effectLabels = routeEffectLabels(route);
     route.from_states
       .filter((source) => stateIds.has(source) && (route.target_scene !== undefined || (route.target_state !== undefined && stateIds.has(route.target_state))))
       .forEach((source) => {
         const outputs = outputsByState.get(source) ?? [];
+        const variableRefs = variableRefsByState.get(source) ?? new Set<string>();
+        const logicalSource = inputSource(inputActions, route.action_ref);
+        const physicalExit = PHYSICAL_TRIGGER_EXITS[logicalSource];
+        route.guards.forEach((guard) => variableRefs.add(guard.variable_ref));
+        route.actions.forEach((action) => {
+          if (action.kind === "set_variable" && action.variable_ref !== undefined) {
+            variableRefs.add(action.variable_ref);
+          }
+        });
         outputs.push({
           id: `${route.route_id}:${source}`,
           routeId: route.route_id,
           label: inputLabel(inputActions, route.action_ref),
           guardCount: route.guards.length,
-          actionCount: visibleActionCount(route),
+          actionCount: effectLabels.length,
+          effectLabels,
+          logicalSource,
+          triggerKind: inputKind(inputActions, route.action_ref),
+          preferredExitSide: physicalExit?.side,
+          exitRatio: physicalExit?.ratio,
           targetState: route.target_state,
           targetStateLabel: route.target_state === undefined ? undefined : stateLabels.get(route.target_state),
           targetScene: route.target_scene,
         });
         outputsByState.set(source, outputs);
+        variableRefsByState.set(source, variableRefs);
       });
   });
 
   const nodes = states.map((state: StateRecord, index: number) => {
     const position = statePosition(state, index, columns, savedPositions);
+    const outputs = outputsByState.get(state.state_id) ?? [];
     return {
       id: state.state_id,
       label: state.display_name,
       isEntry: state.state_id === entryState,
+      variableTouchCount: variableRefsByState.get(state.state_id)?.size ?? 0,
       placementOverrideCount: state.placement_overrides?.length ?? 0,
+      platformOutputCount: outputs.filter((output) => output.triggerKind === "platform").length,
       waitingVisualRef: state.waiting_visual_ref,
-      outputs: outputsByState.get(state.state_id) ?? [],
+      outputs,
       x: position.x,
       y: position.y,
     };
@@ -599,6 +749,7 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
         label: "",
         route,
         sourceHandle: `${route.route_id}:${source}`,
+        effectLabels: routeEffectLabels(route),
       }));
   });
 

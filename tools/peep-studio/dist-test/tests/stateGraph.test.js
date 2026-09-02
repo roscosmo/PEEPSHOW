@@ -63,18 +63,24 @@ strict_1.default.equal(graph.nodes[0]?.outputs.length, 1);
 strict_1.default.equal(graph.nodes[0]?.outputs[0]?.label, "Button A");
 strict_1.default.equal(graph.nodes[0]?.outputs[0]?.guardCount, 1);
 strict_1.default.equal(graph.nodes[0]?.outputs[0]?.actionCount, 1);
+strict_1.default.equal(graph.nodes[0]?.outputs[0]?.effectLabels[0], "Coins -1");
+strict_1.default.equal(graph.nodes[0]?.outputs[0]?.triggerKind, "physical");
+strict_1.default.equal(graph.nodes[0]?.outputs[0]?.preferredExitSide, "right");
+strict_1.default.equal(graph.nodes[0]?.outputs[0]?.exitRatio, 0.67);
+strict_1.default.equal(graph.nodes[0]?.variableTouchCount, 1);
 strict_1.default.equal(graph.nodes[1]?.isEntry, false);
 strict_1.default.equal(graph.edges.length, 1);
 strict_1.default.equal(graph.edges[0]?.source, "idle");
 strict_1.default.equal(graph.edges[0]?.target, "armed");
 strict_1.default.equal(graph.edges[0]?.label, "");
 strict_1.default.equal(graph.edges[0]?.sourceHandle, "press_a:idle");
+strict_1.default.equal(graph.edges[0]?.effectLabels[0], "Coins -1");
 strict_1.default.equal(savedGraph.nodes.find((node) => node.id === "armed")?.x, -120);
 strict_1.default.equal(savedGraph.nodes.find((node) => node.id === "armed")?.y, 220);
 strict_1.default.equal((0, stateGraph_1.resolveStateExitSide)({ x: 0, y: 0 }, { x: 340, y: 0 }), "right");
 strict_1.default.equal((0, stateGraph_1.resolveStateExitSide)({ x: 0, y: 0 }, { x: -120, y: 220 }), "left");
 strict_1.default.equal((0, stateGraph_1.resolveStateEntryHandle)({ x: 0, y: 0 }, { x: 340, y: 0 }), "entry-top-left");
-strict_1.default.equal((0, stateGraph_1.resolveStateEntryHandle)({ x: 0, y: 400 }, { x: 0, y: 0 }), "entry-bottom-center");
+strict_1.default.equal((0, stateGraph_1.resolveStateEntryHandle)({ x: 0, y: 400 }, { x: 0, y: 0 }), "entry-bottom-right");
 const verticalStackRoute = (0, stateGraph_1.buildStateTransitionRoute)({
     sourceX: 280,
     sourceY: 160,
@@ -96,6 +102,16 @@ const verticalReturnRoute = (0, stateGraph_1.buildStateTransitionRoute)({
 });
 strict_1.default.equal(verticalReturnRoute.points.some((point) => point.x > 340), true);
 strict_1.default.equal(verticalReturnRoute.points.at(-2)?.y, 246);
+const topTriggerRoute = (0, stateGraph_1.buildStateTransitionRoute)({
+    sourceX: 66,
+    sourceY: 0,
+    targetX: 360,
+    targetY: 300,
+    sourceSide: "top",
+    targetSide: "top",
+});
+strict_1.default.equal(topTriggerRoute.points[1]?.x, 66);
+strict_1.default.equal((topTriggerRoute.points[1]?.y ?? 0) < 0, true);
 const lanePlan = (0, stateGraph_1.planStateTransitionRoutes)([
     { id: "first", source: "top", target: "bottom", sourceOutputIndex: 0 },
     { id: "second", source: "top", target: "bottom", sourceOutputIndex: 1 },
@@ -106,6 +122,12 @@ const lanePlan = (0, stateGraph_1.planStateTransitionRoutes)([
 strict_1.default.notEqual(lanePlan.first?.laneX, lanePlan.second?.laneX);
 strict_1.default.equal(lanePlan.first?.sourceSide, "right");
 strict_1.default.equal(lanePlan.second?.targetHandle.startsWith("entry-top"), true);
+const fixedTriggerPlan = (0, stateGraph_1.planStateTransitionRoutes)([{ id: "shoulder", source: "top", target: "bottom", sourceOutputIndex: 0, sourceSide: "top", sourceRatio: 0.22 }], [
+    { id: "top", x: 0, y: 0, platformOutputCount: 0 },
+    { id: "bottom", x: 0, y: 420, platformOutputCount: 0 },
+]);
+strict_1.default.equal(fixedTriggerPlan.shoulder?.sourceSide, "top");
+strict_1.default.equal(fixedTriggerPlan.shoulder?.targetHandle.startsWith("entry-top"), true);
 const invalidRouteGraph = (0, stateGraph_1.buildStateGraphModel)({
     ...scene,
     routes: [{ ...scene.routes[0], target_state: "missing" }],

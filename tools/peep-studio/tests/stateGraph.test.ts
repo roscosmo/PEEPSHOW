@@ -69,18 +69,24 @@ assert.equal(graph.nodes[0]?.outputs.length, 1);
 assert.equal(graph.nodes[0]?.outputs[0]?.label, "Button A");
 assert.equal(graph.nodes[0]?.outputs[0]?.guardCount, 1);
 assert.equal(graph.nodes[0]?.outputs[0]?.actionCount, 1);
+assert.equal(graph.nodes[0]?.outputs[0]?.effectLabels[0], "Coins -1");
+assert.equal(graph.nodes[0]?.outputs[0]?.triggerKind, "physical");
+assert.equal(graph.nodes[0]?.outputs[0]?.preferredExitSide, "right");
+assert.equal(graph.nodes[0]?.outputs[0]?.exitRatio, 0.67);
+assert.equal(graph.nodes[0]?.variableTouchCount, 1);
 assert.equal(graph.nodes[1]?.isEntry, false);
 assert.equal(graph.edges.length, 1);
 assert.equal(graph.edges[0]?.source, "idle");
 assert.equal(graph.edges[0]?.target, "armed");
 assert.equal(graph.edges[0]?.label, "");
 assert.equal(graph.edges[0]?.sourceHandle, "press_a:idle");
+assert.equal(graph.edges[0]?.effectLabels[0], "Coins -1");
 assert.equal(savedGraph.nodes.find((node) => node.id === "armed")?.x, -120);
 assert.equal(savedGraph.nodes.find((node) => node.id === "armed")?.y, 220);
 assert.equal(resolveStateExitSide({ x: 0, y: 0 }, { x: 340, y: 0 }), "right");
 assert.equal(resolveStateExitSide({ x: 0, y: 0 }, { x: -120, y: 220 }), "left");
 assert.equal(resolveStateEntryHandle({ x: 0, y: 0 }, { x: 340, y: 0 }), "entry-top-left");
-assert.equal(resolveStateEntryHandle({ x: 0, y: 400 }, { x: 0, y: 0 }), "entry-bottom-center");
+assert.equal(resolveStateEntryHandle({ x: 0, y: 400 }, { x: 0, y: 0 }), "entry-bottom-right");
 
 const verticalStackRoute = buildStateTransitionRoute({
   sourceX: 280,
@@ -105,6 +111,17 @@ const verticalReturnRoute = buildStateTransitionRoute({
 assert.equal(verticalReturnRoute.points.some((point) => point.x > 340), true);
 assert.equal(verticalReturnRoute.points.at(-2)?.y, 246);
 
+const topTriggerRoute = buildStateTransitionRoute({
+  sourceX: 66,
+  sourceY: 0,
+  targetX: 360,
+  targetY: 300,
+  sourceSide: "top",
+  targetSide: "top",
+});
+assert.equal(topTriggerRoute.points[1]?.x, 66);
+assert.equal((topTriggerRoute.points[1]?.y ?? 0) < 0, true);
+
 const lanePlan = planStateTransitionRoutes(
   [
     { id: "first", source: "top", target: "bottom", sourceOutputIndex: 0 },
@@ -118,6 +135,16 @@ const lanePlan = planStateTransitionRoutes(
 assert.notEqual(lanePlan.first?.laneX, lanePlan.second?.laneX);
 assert.equal(lanePlan.first?.sourceSide, "right");
 assert.equal(lanePlan.second?.targetHandle.startsWith("entry-top"), true);
+
+const fixedTriggerPlan = planStateTransitionRoutes(
+  [{ id: "shoulder", source: "top", target: "bottom", sourceOutputIndex: 0, sourceSide: "top", sourceRatio: 0.22 }],
+  [
+    { id: "top", x: 0, y: 0, platformOutputCount: 0 },
+    { id: "bottom", x: 0, y: 420, platformOutputCount: 0 },
+  ],
+);
+assert.equal(fixedTriggerPlan.shoulder?.sourceSide, "top");
+assert.equal(fixedTriggerPlan.shoulder?.targetHandle.startsWith("entry-top"), true);
 
 const invalidRouteGraph = buildStateGraphModel({
   ...scene,

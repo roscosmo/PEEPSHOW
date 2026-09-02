@@ -2307,26 +2307,25 @@ button:focus-visible {
 .state-card-node {
   position: relative;
   display: grid;
-  width: 280px;
-  gap: 9px;
-  padding: 12px 12px 14px;
+  width: 300px;
+  gap: 10px;
+  padding: 14px;
   border: 2px solid #2c312e;
-  border-radius: 10px;
-  background: #ffffff;
+  border-radius: 12px;
+  background: #e9ecef;
   color: #27302b;
-  box-shadow: 0 5px 12px rgb(55 64 59 / 9%);
+  box-shadow: 0 4px 10px rgb(55 64 59 / 8%);
   cursor: pointer;
   text-align: left;
 }
 
 .state-card-node.entry {
-  border-color: #175f8a;
-  background: #f7fbfd;
+  background: #e9ecef;
 }
 
 .state-card-node.selected {
-  border-color: #175f8a;
-  box-shadow: 0 0 0 2px rgb(23 95 138 / 18%);
+  border-color: #2c312e;
+  box-shadow: 0 0 0 3px #175f8a, 0 5px 12px rgb(55 64 59 / 12%);
 }
 
 .scene-card-node {
@@ -2631,35 +2630,54 @@ button:focus-visible {
   background: #ffffff;
 }
 
-.state-card-heading {
+.state-card-topline {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 78px minmax(0, 1fr) 78px;
   align-items: center;
   gap: 8px;
+  min-height: 36px;
   min-width: 0;
 }
 
 .state-badge-strip {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 4px;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
 }
 
-.state-card-badge {
+.state-summary-badge {
+  position: relative;
   display: inline-flex;
-  min-width: 28px;
-  min-height: 26px;
+  width: 38px;
+  height: 30px;
   align-items: center;
   justify-content: center;
-  padding: 0 7px;
-  border: 2px solid #2c312e;
-  border-radius: 8px;
+  border: 1.5px solid #2c312e;
+  border-radius: 7px;
   background: #f7faf8;
   color: #27302b;
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.state-summary-badge strong {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid #2c312e;
+  border-radius: 5px;
+  background: #a5d8ff;
+  color: #27302b;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
 }
 
 .state-output-empty,
@@ -2674,151 +2692,124 @@ button:focus-visible {
   white-space: nowrap;
 }
 
-.state-card-heading strong {
+.state-card-name {
   display: block;
   overflow: hidden;
   color: #27302b;
-  font-size: 18px;
-  font-weight: 760;
+  font-size: 17px;
+  font-weight: 800;
+  text-align: center;
   text-overflow: ellipsis;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
 .state-card-node .state-entry-zone {
-  width: 1px;
-  height: 1px;
-  border: 0;
-  background: transparent;
-  opacity: 0;
+  z-index: 6;
+  width: 20px;
+  height: 29px;
+  border: 1.5px solid #2c312e;
+  border-radius: 999px;
+  background: #b2f2bb;
+  opacity: 1;
   pointer-events: none;
 }
 
 .state-card-node .entry-top-left,
 .state-card-node .entry-bottom-left {
-  left: 10%;
-}
-
-.state-card-node .entry-top-mid-left,
-.state-card-node .entry-bottom-mid-left {
-  left: 30%;
-}
-
-.state-card-node .entry-top-center,
-.state-card-node .entry-bottom-center {
-  left: 50%;
-}
-
-.state-card-node .entry-top-mid-right,
-.state-card-node .entry-bottom-mid-right {
-  left: 70%;
+  left: 2.7%;
 }
 
 .state-card-node .entry-top-right,
 .state-card-node .entry-bottom-right {
-  left: 90%;
+  left: 97.3%;
 }
 
-.state-card-node .entry-top-left,
-.state-card-node .entry-top-mid-left,
-.state-card-node .entry-top-center,
-.state-card-node .entry-top-mid-right,
+.state-card-node .entry-top-left {
+  top: -5px;
+  transform: translateX(-50%) rotate(30deg);
+}
+
 .state-card-node .entry-top-right {
-  top: 0;
+  top: -5px;
+  transform: translateX(-50%) rotate(-30deg);
 }
 
-.state-card-node .entry-bottom-left,
-.state-card-node .entry-bottom-mid-left,
-.state-card-node .entry-bottom-center,
-.state-card-node .entry-bottom-mid-right,
+.state-card-node .entry-bottom-left {
+  top: auto;
+  bottom: -4px;
+  transform: translateX(-50%) rotate(-30deg);
+}
+
 .state-card-node .entry-bottom-right {
-  bottom: 0;
+  top: auto;
+  bottom: -4px;
+  transform: translateX(-50%) rotate(30deg);
 }
 
-.state-card-screen {
-  display: grid;
-  min-height: 50px;
-  gap: 2px;
-  place-items: center;
-  padding: 10px;
-  border: 2px solid #2c312e;
-  border-radius: 8px;
-  background: #f7faf8;
-}
-
-.state-card-screen span {
-  color: #68736d;
-  font-size: 8px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.state-card-screen strong {
-  max-width: 100%;
-  overflow: hidden;
-  color: #27302b;
-  font-size: 13px;
-  font-weight: 760;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.state-card-counts {
-  display: flex;
-  justify-content: center;
-  gap: 6px;
-}
-
-.state-card-counts span {
-  display: inline-flex;
-  min-height: 18px;
-  align-items: center;
-  padding: 0 7px;
-  border: 1px solid #d6dfda;
-  border-radius: 999px;
-  background: #ffffff;
-  color: #68736d;
-  font-size: 8px;
-  font-weight: 800;
-  text-transform: uppercase;
+.state-card-node .state-entry-zone.active {
+  background: #40c057;
 }
 
 .state-output-list {
   display: grid;
-  gap: 7px;
+  gap: 8px;
 }
 
 .state-output-empty,
 .state-output-row {
-  min-height: 42px;
-  padding: 7px 10px;
+  min-height: 44px;
+  padding: 7px 12px;
   border: 2px solid #2c312e;
   border-radius: 8px;
-  background: #f9fbfa;
+  background: #ffd8a8;
 }
 
 .state-output-row {
   position: relative;
   display: grid;
+  align-content: center;
   gap: 2px;
   color: #27302b;
   cursor: pointer;
 }
 
+.state-output-row::before {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  border-top: 1.5px solid #2c312e;
+  content: "";
+}
+
+.state-output-row.exit-left::before {
+  left: -16px;
+}
+
+.state-output-row.exit-right::before {
+  right: -16px;
+}
+
+.state-output-row.trigger-platform {
+  background: #fab005;
+}
+
 .state-output-row:hover,
 .state-output-row.selected {
-  border-color: #8eb0c3;
-  background: #eef7fb;
+  border-color: #2c312e;
+  background: #fd7e14;
 }
 
-.state-output-row.selected {
-  box-shadow: inset 0 0 0 1px #175f8a;
+.state-output-row.trigger-platform:hover,
+.state-output-row.trigger-platform.selected {
+  background: #f59f00;
 }
 
-.state-output-row span {
+.state-output-row .state-trigger-label {
   min-width: 0;
   overflow: hidden;
-  font-size: 14px;
-  font-weight: 750;
+  font-size: 13px;
+  font-weight: 800;
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2830,26 +2821,340 @@ button:focus-visible {
 }
 
 .state-output-row.exit-right .react-flow__handle {
-  right: -14px;
+  right: -18px;
   left: auto;
-  width: 8px;
-  height: 8px;
-  border-color: #6d7a73;
-  background: #ffffff;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid #2c312e;
+  background: #ffc9c9;
 }
 
 .state-output-row.exit-left .react-flow__handle {
   right: auto;
-  left: -14px;
-  width: 8px;
-  height: 8px;
-  border-color: #6d7a73;
-  background: #ffffff;
+  left: -18px;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid #2c312e;
+  background: #ffc9c9;
 }
 
 .state-output-row.selected .react-flow__handle {
-  border-color: #175f8a;
-  background: #175f8a;
+  border-color: #2c312e;
+  background: #fa5252;
+}
+
+.state-add-trigger-row {
+  position: relative;
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 2px dotted #2c312e;
+  border-radius: 8px;
+  background: #fff9db;
+  color: #27302b;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.state-add-trigger-row:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.state-add-trigger-row::before,
+.state-add-trigger-row::after {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  border-top: 1.5px solid #2c312e;
+  content: "";
+}
+
+.state-add-trigger-row::before {
+  left: -16px;
+}
+
+.state-add-trigger-row::after {
+  right: -16px;
+}
+
+.state-add-trigger-socket {
+  position: absolute;
+  top: 50%;
+  z-index: 5;
+  display: block;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid #2c312e;
+  border-radius: 50%;
+  background: #ffc9c9;
+  transform: translateY(-50%);
+}
+
+.state-add-trigger-socket.left {
+  left: -23px;
+}
+
+.state-add-trigger-socket.right {
+  right: -23px;
+}
+
+.state-controller-map {
+  position: relative;
+  display: block;
+  height: 98px;
+}
+
+.state-physical-trigger {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1.5px solid #2c312e;
+  border-radius: 50%;
+  background: #ffd8a8;
+  color: #27302b;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.state-physical-trigger:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.state-physical-trigger.active {
+  background: #fd7e14;
+  cursor: pointer;
+}
+
+.state-physical-trigger.active:hover,
+.state-physical-trigger.selected {
+  box-shadow: 0 0 0 2px rgb(23 95 138 / 30%);
+}
+
+.state-physical-trigger.trigger-button-l,
+.state-physical-trigger.trigger-button-r {
+  width: 58px;
+  height: 30px;
+  justify-self: center;
+  border-radius: 999px;
+}
+
+.state-physical-trigger.trigger-button-start {
+  position: absolute;
+  top: 18px;
+  left: 144px;
+  width: 68px;
+  height: 30px;
+  border-radius: 7px;
+  transform: translate(-50%, -50%);
+  text-transform: uppercase;
+}
+
+.state-joystick-triggers {
+  position: absolute;
+  inset: 0;
+}
+
+.state-joystick-triggers .state-physical-trigger {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  transform: translate(-50%, -50%);
+}
+
+.state-physical-trigger.trigger-joy-up {
+  top: 18px;
+  left: 56px;
+}
+
+.state-physical-trigger.trigger-joy-left {
+  top: 50px;
+  left: 21px;
+}
+
+.state-physical-trigger.trigger-joy-right {
+  top: 50px;
+  left: 93px;
+}
+
+.state-physical-trigger.trigger-joy-down {
+  top: 82px;
+  left: 56px;
+}
+
+.state-physical-trigger.trigger-joy-up-left {
+  top: 18px;
+  left: 21px;
+}
+
+.state-physical-trigger.trigger-joy-up-right {
+  top: 18px;
+  left: 93px;
+}
+
+.state-physical-trigger.trigger-joy-down-left {
+  top: 82px;
+  left: 21px;
+}
+
+.state-physical-trigger.trigger-joy-down-right {
+  top: 82px;
+  left: 93px;
+}
+
+.state-face-triggers {
+  position: absolute;
+  inset: 0;
+}
+
+.state-face-triggers .trigger-button-a {
+  position: absolute;
+  top: 29px;
+  left: 240px;
+  transform: translate(-50%, -50%);
+}
+
+.state-face-triggers .trigger-button-b {
+  position: absolute;
+  top: 70px;
+  left: 198px;
+  transform: translate(-50%, -50%);
+}
+
+.state-card-node .state-physical-socket {
+  position: absolute;
+  z-index: 5;
+  display: block;
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  border: 1.5px solid #2c312e;
+  border-radius: 50%;
+  background: #ffc9c9;
+}
+
+.state-trigger-stem-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.state-trigger-stem-layer line {
+  stroke: #2c312e;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.state-card-topline,
+.state-card-name,
+.state-output-list,
+.state-add-trigger-row,
+.state-controller-map {
+  position: relative;
+  z-index: 2;
+}
+
+.state-card-node .state-physical-socket.active {
+  background: #fa5252;
+}
+
+.state-card-node .state-physical-socket.selected {
+  box-shadow: 0 0 0 2px rgb(23 95 138 / 30%);
+}
+
+.state-card-node .socket-button-l,
+.state-card-node .socket-button-r {
+  top: -7px;
+  transform: translateX(-50%);
+}
+
+.state-card-node .socket-button-l {
+  left: 22%;
+}
+
+.state-card-node .socket-button-r {
+  left: 78%;
+}
+
+.state-card-node .socket-joy-up,
+.state-card-node .socket-joy-up-left,
+.state-card-node .socket-joy-left {
+  right: auto;
+  left: -7px;
+  transform: translateY(-50%);
+}
+
+.state-card-node .socket-joy-up {
+  top: 66%;
+}
+
+.state-card-node .socket-joy-up-left {
+  top: 72%;
+}
+
+.state-card-node .socket-joy-left {
+  top: 80%;
+}
+
+.state-card-node .socket-button-a,
+.state-card-node .socket-joy-up-right {
+  right: -7px;
+  left: auto;
+  transform: translateY(-50%);
+}
+
+.state-card-node .socket-button-a {
+  top: 70%;
+}
+
+.state-card-node .socket-joy-up-right {
+  top: 76%;
+}
+
+.state-card-node .socket-joy-right,
+.state-card-node .socket-joy-down,
+.state-card-node .socket-joy-down-left,
+.state-card-node .socket-joy-down-right,
+.state-card-node .socket-button-start,
+.state-card-node .socket-button-b {
+  top: auto;
+  bottom: -7px;
+  transform: translateX(-50%);
+}
+
+.state-card-node .socket-joy-down-left {
+  left: 16%;
+}
+
+.state-card-node .socket-joy-down {
+  left: 24%;
+}
+
+.state-card-node .socket-joy-right {
+  left: 34%;
+}
+
+.state-card-node .socket-joy-down-right {
+  left: 40%;
+}
+
+.state-card-node .socket-button-start {
+  left: 50%;
+}
+
+.state-card-node .socket-button-b {
+  left: 68%;
 }
 
 .react-flow__edge-path,
@@ -2870,6 +3175,50 @@ button:focus-visible {
 .state-transition-edge.selected .react-flow__edge-path {
   filter: drop-shadow(0 1px 2px rgb(23 95 138 / 28%));
   stroke: #175f8a;
+}
+
+.state-transition-effect-anchor {
+  position: absolute;
+  z-index: 6;
+  pointer-events: all;
+}
+
+.state-transition-effect-chip {
+  display: flex;
+  width: 58px;
+  height: 58px;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  border: 1.5px solid #2c312e;
+  border-radius: 8px;
+  background: #e9ecef;
+  box-shadow: 0 2px 7px rgb(39 48 43 / 12%);
+  color: #27302b;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.1;
+  pointer-events: all;
+  transform: rotate(45deg);
+  cursor: pointer;
+}
+
+.state-transition-effect-chip span {
+  display: -webkit-box;
+  max-width: 50px;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  transform: rotate(-45deg);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.state-transition-effect-chip:hover,
+.state-transition-effect-chip.selected {
+  border-color: #175f8a;
+  background: #dcebf4;
 }
 
 .react-flow__edge-textbg {

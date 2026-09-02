@@ -2,6 +2,7 @@ import {
   Background,
   BaseEdge,
   Controls,
+  EdgeLabelRenderer,
   Handle,
   MarkerType,
   Panel,
@@ -17,7 +18,7 @@ import {
   type ReactFlowInstance,
   useUpdateNodeInternals,
 } from "@xyflow/react";
-import { GitBranch, Hourglass, Layers3, Network, Plus, Route, Variable } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, GitBranch, Hourglass, Layers3, Network, Plus, Route, Variable } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { FramebufferCanvas } from "./FramebufferCanvas";
 import {
@@ -29,6 +30,7 @@ import {
   resolveStateExitSide,
   type GraphSceneNode,
   type GraphStateNode,
+  type StateGraphEntryHandle,
   type StateGraphEntrySide,
   type StateGraphExitSide,
   type StateTransitionLayout,
@@ -230,9 +232,18 @@ function visibleEffectCount(actions: Array<{ kind: string }>): number {
 
 type StateCardNodeData = {
   graphNode: RoutedGraphStateNode;
+  activeEntryHandles: string[];
+  canEdit: boolean;
   selectedRouteId: string | null;
   onSelectState: (stateId: string) => void;
   onSelectRoute: (routeId: string) => void;
+};
+
+type StateTriggerStemLayout = {
+  width: number;
+  height: number;
+  lines: Array<{ slot: string; x1: number; y1: number; x2: number; y2: number }>;
+  sockets: Record<string, { x: number; y: number }>;
 };
 
 type RoutedStateOutput = GraphStateNode["outputs"][number] & {
@@ -246,25 +257,90 @@ type RoutedGraphStateNode = Omit<GraphStateNode, "outputs"> & {
 type StateNodePosition = {
   x: number;
   y: number;
+  platformOutputCount?: number;
 };
 
 const STATE_ENTRY_HANDLES = [
   { id: "entry-top-left", position: Position.Top },
-  { id: "entry-top-mid-left", position: Position.Top },
-  { id: "entry-top-center", position: Position.Top },
-  { id: "entry-top-mid-right", position: Position.Top },
   { id: "entry-top-right", position: Position.Top },
   { id: "entry-bottom-left", position: Position.Bottom },
-  { id: "entry-bottom-mid-left", position: Position.Bottom },
-  { id: "entry-bottom-center", position: Position.Bottom },
-  { id: "entry-bottom-mid-right", position: Position.Bottom },
   { id: "entry-bottom-right", position: Position.Bottom },
 ] as const;
 
+const PHYSICAL_TRIGGER_CONTROLS = [
+  { source: "BUTTON_L", label: "L", slot: "button-l", side: "top" },
+  { source: "BUTTON_R", label: "R", slot: "button-r", side: "top" },
+  { source: "JOY_UP", label: "up", slot: "joy-up", side: "left" },
+  { source: "JOY_LEFT", label: "left", slot: "joy-left", side: "left" },
+  { source: "JOY_RIGHT", label: "right", slot: "joy-right", side: "bottom" },
+  { source: "JOY_DOWN", label: "down", slot: "joy-down", side: "bottom" },
+  { source: "BUTTON_START", label: "Start", slot: "button-start", side: "bottom" },
+  { source: "BUTTON_A", label: "A", slot: "button-a", side: "right" },
+  { source: "BUTTON_B", label: "B", slot: "button-b", side: "bottom" },
+] as const;
+
+const OPTIONAL_DIAGONAL_CONTROLS = [
+  { source: "JOY_UP_LEFT", label: "up left", slot: "joy-up-left", side: "left" },
+  { source: "JOY_UP_RIGHT", label: "up right", slot: "joy-up-right", side: "right" },
+  { source: "JOY_DOWN_LEFT", label: "down left", slot: "joy-down-left", side: "bottom" },
+  { source: "JOY_DOWN_RIGHT", label: "down right", slot: "joy-down-right", side: "bottom" },
+] as const;
+
+function triggerPosition(side: StateGraphExitSide): Position {
+  if (side === "left") {
+    return Position.Left;
+  }
+  if (side === "top") {
+    return Position.Top;
+  }
+  if (side === "bottom") {
+    return Position.Bottom;
+  }
+  return Position.Right;
+}
+
+function PhysicalTriggerGlyph({ label }: { label: string }) {
+  if (label === "up") {
+    return <ArrowUp size={16} aria-hidden="true" />;
+  }
+  if (label === "down") {
+    return <ArrowDown size={16} aria-hidden="true" />;
+  }
+  if (label === "left") {
+    return <ArrowLeft size={16} aria-hidden="true" />;
+  }
+  if (label === "right") {
+    return <ArrowRight size={16} aria-hidden="true" />;
+  }
+  if (label === "up left") {
+    return <span aria-hidden="true">&#8598;</span>;
+  }
+  if (label === "up right") {
+    return <span aria-hidden="true">&#8599;</span>;
+  }
+  if (label === "down left") {
+    return <span aria-hidden="true">&#8601;</span>;
+  }
+  if (label === "down right") {
+    return <span aria-hidden="true">&#8600;</span>;
+  }
+  return <span>{label}</span>;
+}
+
 function statePositionMap(graphNodes: GraphStateNode[], flowNodes: Node[]): Map<string, StateNodePosition> {
-  const positions = new Map(graphNodes.map((node) => [node.id, { x: node.x, y: node.y }]));
+  const positions = new Map<string, StateNodePosition>(
+    graphNodes.map((node) => [node.id, {
+      x: node.x,
+      y: node.y,
+      platformOutputCount: node.platformOutputCount,
+    }]),
+  );
   flowNodes.forEach((node) => {
-    positions.set(node.id, { x: node.position.x, y: node.position.y });
+    positions.set(node.id, {
+      x: node.position.x,
+      y: node.position.y,
+      platformOutputCount: positions.get(node.id)?.platformOutputCount,
+    });
   });
   return positions;
 }
@@ -279,7 +355,7 @@ function routeStateNode(
     ...graphNode,
     outputs: graphNode.outputs.map((output) => ({
       ...output,
-      exitSide: transitionLayouts[output.id]?.sourceSide ?? resolveStateExitSide(
+      exitSide: transitionLayouts[output.id]?.sourceSide ?? output.preferredExitSide ?? resolveStateExitSide(
         sourcePosition,
         output.targetState === undefined ? undefined : positions.get(output.targetState),
       ),
@@ -288,53 +364,197 @@ function routeStateNode(
 }
 
 function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
-  const { graphNode, selectedRouteId, onSelectRoute, onSelectState } = data;
+  const { activeEntryHandles, canEdit, graphNode, selectedRouteId, onSelectRoute, onSelectState } = data;
   const updateNodeInternals = useUpdateNodeInternals();
-  const localOutputs = graphNode.outputs.filter((output) => output.targetScene === undefined).length;
-  const sceneOutputs = graphNode.outputs.length - localOutputs;
-  const objectChangeLabel = `${graphNode.placementOverrideCount} object change${graphNode.placementOverrideCount === 1 ? "" : "s"}`;
-  const outputSideKey = graphNode.outputs.map((output) => `${output.id}:${output.exitSide}`).join("|");
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [stemLayout, setStemLayout] = useState<StateTriggerStemLayout>({
+    width: 0,
+    height: 0,
+    lines: [],
+    sockets: {},
+  });
+  const physicalOutputBySource = new Map(
+    graphNode.outputs
+      .filter((output) => output.triggerKind === "physical")
+      .map((output) => [output.logicalSource, output]),
+  );
+  const physicalSources = new Set<string>([
+    ...PHYSICAL_TRIGGER_CONTROLS.map((control) => control.source),
+    ...OPTIONAL_DIAGONAL_CONTROLS.map((control) => control.source),
+  ]);
+  const dynamicOutputs = graphNode.outputs.filter(
+    (output) => output.triggerKind === "platform" || !physicalSources.has(output.logicalSource),
+  );
+  const physicalControls = [
+    ...PHYSICAL_TRIGGER_CONTROLS,
+    ...OPTIONAL_DIAGONAL_CONTROLS.filter((control) => physicalOutputBySource.has(control.source)),
+  ];
+  const outputSideKey = graphNode.outputs
+    .map((output) => `${output.id}:${output.logicalSource}:${output.exitSide}`)
+    .join("|");
   useEffect(() => {
     updateNodeInternals(graphNode.id);
   }, [graphNode.id, outputSideKey, updateNodeInternals]);
 
+  useEffect(() => {
+    const card = cardRef.current;
+    if (card === null) {
+      return;
+    }
+    const measure = () => {
+      const cardRect = card.getBoundingClientRect();
+      const borderWidth = card.offsetWidth;
+      const borderHeight = card.offsetHeight;
+      const width = card.clientWidth;
+      const height = card.clientHeight;
+      if (borderWidth === 0 || borderHeight === 0 || width === 0 || height === 0 || cardRect.width === 0 || cardRect.height === 0) {
+        return;
+      }
+      const scaleX = cardRect.width / borderWidth;
+      const scaleY = cardRect.height / borderHeight;
+      const originX = cardRect.left + card.clientLeft * scaleX;
+      const originY = cardRect.top + card.clientTop * scaleY;
+      const sockets: Record<string, { x: number; y: number }> = {};
+      const lines = physicalControls.flatMap((control) => {
+        const trigger = card.querySelector<HTMLElement>(`[data-trigger-slot="${control.slot}"]`);
+        if (trigger === null) {
+          return [];
+        }
+        const triggerRect = trigger.getBoundingClientRect();
+        const x1 = (triggerRect.left - originX + triggerRect.width / 2) / scaleX;
+        const y1 = (triggerRect.top - originY + triggerRect.height / 2) / scaleY;
+        const output = physicalOutputBySource.get(control.source);
+        const side = output?.exitSide ?? control.side;
+        const endpoint = {
+          x: side === "left" ? 0 : side === "right" ? width : x1,
+          y: side === "top" ? 0 : side === "bottom" ? height : y1,
+        };
+        sockets[control.slot] = endpoint;
+        return [{
+          slot: control.slot,
+          x1,
+          y1,
+          x2: endpoint.x,
+          y2: endpoint.y,
+        }];
+      });
+      setStemLayout({ width, height, lines, sockets });
+    };
+    const frame = window.requestAnimationFrame(measure);
+    const observer = new ResizeObserver(measure);
+    observer.observe(card);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [graphNode.id, outputSideKey]);
+
+  const renderPhysicalControl = (source: string, label: string, slot: string) => {
+    const output = physicalOutputBySource.get(source);
+    const isActive = output !== undefined;
+    const isSelected = output !== undefined && selectedRouteId === output.routeId;
+    return (
+      <button
+        className={`state-physical-trigger trigger-${slot} nodrag nopan ${isActive ? "active" : "inactive"} ${isSelected ? "selected" : ""}`}
+        type="button"
+        disabled={!isActive}
+        aria-label={`${label} trigger${isActive ? ", configured" : ", unused"}`}
+        title={`${label}${isActive ? " trigger" : " unused"}`}
+        data-trigger-slot={slot}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (output !== undefined) {
+            onSelectRoute(output.routeId);
+          }
+        }}
+      >
+        <PhysicalTriggerGlyph label={label} />
+      </button>
+    );
+  };
+
   return (
-    <button
+    <div
+      ref={cardRef}
       className={`state-card-node ${graphNode.isEntry ? "entry" : ""} ${selected ? "selected" : ""}`}
-      type="button"
+      role="button"
+      tabIndex={0}
       onClick={() => onSelectState(graphNode.id)}
+      onKeyDown={(event) => {
+        if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          onSelectState(graphNode.id);
+        }
+      }}
     >
       {STATE_ENTRY_HANDLES.map((handle) => (
         <Handle
           key={handle.id}
           id={handle.id}
-          className={`state-entry-zone ${handle.id}`}
+          className={`state-entry-zone ${handle.id} ${activeEntryHandles.includes(handle.id) ? "active" : ""}`}
           type="target"
           position={handle.position}
         />
       ))}
-      <div className="state-card-heading">
-        <strong>{graphNode.label}</strong>
-        <div className="state-badge-strip" aria-label="State badges">
-          {graphNode.isEntry && <span className="state-card-badge">Start</span>}
-          <span className="state-card-badge">{graphNode.outputs.length}</span>
+      {physicalControls.map((control) => {
+        const output = physicalOutputBySource.get(control.source);
+        const side = output?.exitSide ?? control.side;
+        const className = `state-physical-socket socket-${control.slot} ${output === undefined ? "inactive" : "active"} ${selectedRouteId === output?.routeId ? "selected" : ""}`;
+        const socket = stemLayout.sockets[control.slot];
+        const socketStyle = socket === undefined ? undefined : {
+          left: socket.x,
+          top: socket.y,
+          right: "auto",
+          bottom: "auto",
+          transform: "translate(-50%, -50%)",
+        };
+        if (output === undefined) {
+          return <span aria-hidden="true" className={className} data-socket-slot={control.slot} key={control.source} style={socketStyle} />;
+        }
+        return (
+          <Handle
+            className={className}
+            data-socket-slot={control.slot}
+            id={output.id}
+            key={control.source}
+            style={socketStyle}
+            type="source"
+            position={triggerPosition(side)}
+          />
+        );
+      })}
+      {stemLayout.width > 0 && stemLayout.height > 0 && (
+        <svg
+          aria-hidden="true"
+          className="state-trigger-stem-layer"
+          viewBox={`0 0 ${stemLayout.width} ${stemLayout.height}`}
+          preserveAspectRatio="none"
+        >
+          {stemLayout.lines.map((line) => (
+            <line key={line.slot} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
+          ))}
+        </svg>
+      )}
+      <div className="state-card-topline">
+        {renderPhysicalControl("BUTTON_L", "L", "button-l")}
+        <div className="state-badge-strip" aria-label="State summary">
+          <span className="state-summary-badge" title="Variables used by this state">
+            <span>Xy</span>
+            <strong>{graphNode.variableTouchCount}</strong>
+          </span>
+          <span className="state-summary-badge" title="Objects changed by this state">
+            <span>Obj</span>
+            <strong>{graphNode.placementOverrideCount}</strong>
+          </span>
         </div>
+        {renderPhysicalControl("BUTTON_R", "R", "button-r")}
       </div>
-      <div className="state-card-screen">
-        <strong>{objectChangeLabel}</strong>
-        <span>state variation</span>
-      </div>
-      <div className="state-card-counts" aria-label="Transition output summary">
-        <span>{localOutputs} local</span>
-        <span>{sceneOutputs} scene</span>
-      </div>
-      <div className="state-output-list">
-        {graphNode.outputs.length === 0 ? (
-          <span className="state-output-empty">No trigger outputs</span>
-        ) : (
-          graphNode.outputs.map((output) => (
+      <strong className="state-card-name">{graphNode.label}</strong>
+      {dynamicOutputs.length > 0 && (
+        <div className="state-output-list">
+          {dynamicOutputs.map((output) => (
             <span
-              className={`state-output-row exit-${output.exitSide} ${selectedRouteId === output.routeId ? "selected" : ""}`}
+              className={`state-output-row trigger-${output.triggerKind} exit-${output.exitSide} ${selectedRouteId === output.routeId ? "selected" : ""}`}
               key={output.id}
               role="button"
               tabIndex={0}
@@ -350,29 +570,103 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
                 }
               }}
             >
-              <span>{output.label}</span>
-              <small>
-                {output.targetScene === undefined ? `Go to ${output.targetStateLabel ?? output.targetState ?? "state"}` : `Open ${output.targetScene}`}
-                {output.guardCount > 0 ? ` - ${output.guardCount} condition${output.guardCount === 1 ? "" : "s"}` : ""}
-                {output.actionCount > 0 ? ` - ${output.actionCount} effect${output.actionCount === 1 ? "" : "s"}` : ""}
-              </small>
+              <span className="state-trigger-label">{output.label}</span>
+              {output.guardCount > 0 && (
+                <small>{output.guardCount} condition{output.guardCount === 1 ? "" : "s"}</small>
+              )}
               <Handle id={output.id} type="source" position={output.exitSide === "left" ? Position.Left : Position.Right} />
             </span>
-          ))
-        )}
+          ))}
+        </div>
+      )}
+      <button
+        className="state-add-trigger-row nodrag nopan"
+        type="button"
+        disabled
+        title={canEdit ? "PeepOS trigger creation is not exposed yet" : "Project is read-only"}
+      >
+        <span className="state-add-trigger-socket left" aria-hidden="true" />
+        <Plus size={13} aria-hidden="true" />
+        <span>Add new trigger</span>
+        <span className="state-add-trigger-socket right" aria-hidden="true" />
+      </button>
+      <div className="state-controller-map" aria-label="Physical triggers">
+        <div className="state-joystick-triggers">
+          {OPTIONAL_DIAGONAL_CONTROLS
+            .filter((control) => physicalOutputBySource.has(control.source))
+            .map((control) => renderPhysicalControl(control.source, control.label, control.slot))}
+          {renderPhysicalControl("JOY_UP", "up", "joy-up")}
+          {renderPhysicalControl("JOY_LEFT", "left", "joy-left")}
+          {renderPhysicalControl("JOY_RIGHT", "right", "joy-right")}
+          {renderPhysicalControl("JOY_DOWN", "down", "joy-down")}
+        </div>
+        {renderPhysicalControl("BUTTON_START", "Start", "button-start")}
+        <div className="state-face-triggers">
+          {renderPhysicalControl("BUTTON_A", "A", "button-a")}
+          {renderPhysicalControl("BUTTON_B", "B", "button-b")}
+        </div>
       </div>
-    </button>
+    </div>
   );
 }
 
 const STATE_NODE_TYPES = { stateCard: StateCardNode };
 
+type StateTransitionEdgeData = {
+  route_id?: string;
+  laneX?: number;
+  effectLabels?: string[];
+  onSelectRoute?: (routeId: string) => void;
+};
+
 function edgeSourceSide(position: Position): StateGraphExitSide {
-  return position === Position.Left ? "left" : "right";
+  if (position === Position.Left) {
+    return "left";
+  }
+  if (position === Position.Top) {
+    return "top";
+  }
+  if (position === Position.Bottom) {
+    return "bottom";
+  }
+  return "right";
 }
 
 function edgeTargetSide(position: Position): StateGraphEntrySide {
   return position === Position.Bottom ? "bottom" : "top";
+}
+
+function routeLabelPoint(points: Array<{ x: number; y: number }>, fraction = 0.5): { x: number; y: number } {
+  if (points.length === 0) {
+    return { x: 0, y: 0 };
+  }
+  if (points.length === 1) {
+    return points[0];
+  }
+  const lengths: number[] = [];
+  let totalLength = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const length = Math.hypot(current.x - previous.x, current.y - previous.y);
+    lengths.push(length);
+    totalLength += length;
+  }
+  let remaining = totalLength * fraction;
+  for (let index = 1; index < points.length; index += 1) {
+    const length = lengths[index - 1] ?? 0;
+    const previous = points[index - 1];
+    const current = points[index];
+    if (remaining <= length || index === points.length - 1) {
+      const ratio = length === 0 ? 0 : remaining / length;
+      return {
+        x: previous.x + (current.x - previous.x) * ratio,
+        y: previous.y + (current.y - previous.y) * ratio,
+      };
+    }
+    remaining -= length;
+  }
+  return points[points.length - 1];
 }
 
 function StateTransitionEdge({
@@ -388,7 +682,8 @@ function StateTransitionEdge({
   targetX,
   targetY,
 }: EdgeProps) {
-  const laneX = typeof data?.laneX === "number" ? data.laneX : undefined;
+  const edgeData = data as StateTransitionEdgeData | undefined;
+  const laneX = typeof edgeData?.laneX === "number" ? edgeData.laneX : undefined;
   const route = buildStateTransitionRoute({
     sourceX,
     sourceY,
@@ -403,6 +698,8 @@ function StateTransitionEdge({
     ...style,
     stroke: `url(#${gradientId})`,
   };
+  const effectLabels = Array.isArray(edgeData?.effectLabels) ? edgeData.effectLabels : [];
+  const routeId = typeof edgeData?.route_id === "string" ? edgeData.route_id : id;
 
   return (
     <>
@@ -413,6 +710,34 @@ function StateTransitionEdge({
         </linearGradient>
       </defs>
       <BaseEdge id={id} markerEnd={markerEnd} path={route.path} style={edgeStyle} />
+      {effectLabels.map((effectLabel, index) => {
+        const spacing = Math.min(0.11, 0.28 / Math.max(1, effectLabels.length - 1));
+        const fraction = 0.5 + (index - (effectLabels.length - 1) / 2) * spacing;
+        const labelPoint = routeLabelPoint(route.points, fraction);
+        return (
+          <EdgeLabelRenderer key={`${routeId}:${index}`}>
+            <div
+              className="state-transition-effect-anchor"
+              style={{
+                transform: `translate(-50%, -50%) translate(${labelPoint.x}px, ${labelPoint.y}px)`,
+              }}
+            >
+              <button
+                className={`state-transition-effect-chip nodrag nopan ${selected ? "selected" : ""}`}
+                type="button"
+                title={effectLabel}
+                aria-label={`Transition change: ${effectLabel}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  edgeData?.onSelectRoute?.(routeId);
+                }}
+              >
+                <span>{effectLabel}</span>
+              </button>
+            </div>
+          </EdgeLabelRenderer>
+        );
+      })}
     </>
   );
 }
@@ -574,6 +899,8 @@ export function StateGraphView({
         position: { x: node.x, y: node.y },
         data: {
           graphNode: routeStateNode(node, defaultPositionById, {}),
+          activeEntryHandles: node.isEntry ? ["entry-top-left"] : [],
+          canEdit,
           selectedRouteId: selected.kind === "route" ? selected.id : null,
           onSelectState: (stateId: string) => onSelect({ kind: "state", id: stateId }),
           onSelectRoute: (routeId: string) => onSelect({ kind: "route", id: routeId }),
@@ -588,20 +915,30 @@ export function StateGraphView({
   const graphNodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
   const positionById = useMemo(() => statePositionMap(graph.nodes, nodes), [graph.nodes, nodes]);
   const layoutNodes = useMemo(
-    () => [...positionById.entries()].map(([id, position]) => ({ id, x: position.x, y: position.y })),
-    [positionById],
+    () => [...positionById.entries()].map(([id, position]) => ({
+      id,
+      x: position.x,
+      y: position.y,
+      platformOutputCount: graphNodeById.get(id)?.platformOutputCount ?? 0,
+    })),
+    [graphNodeById, positionById],
   );
   const transitionLayouts = useMemo(
     () =>
       planStateTransitionRoutes(
         graph.edges.map((edge) => {
           const sourceNode = graphNodeById.get(edge.source);
-          const sourceOutputIndex = sourceNode?.outputs.findIndex((output) => output.id === edge.sourceHandle) ?? 0;
+          const sourceOutput = sourceNode?.outputs.find((output) => output.id === edge.sourceHandle);
+          const sourceOutputIndex = sourceNode?.outputs
+            .filter((output) => output.triggerKind === "platform")
+            .findIndex((output) => output.id === edge.sourceHandle) ?? 0;
           return {
             id: edge.sourceHandle,
             source: edge.source,
             target: edge.target,
             sourceOutputIndex: Math.max(0, sourceOutputIndex),
+            sourceSide: sourceOutput?.preferredExitSide,
+            sourceRatio: sourceOutput?.exitRatio,
           };
         }),
         layoutNodes,
@@ -619,6 +956,14 @@ export function StateGraphView({
           ...node,
           data: {
             graphNode: routeStateNode(graphNode, positionById, transitionLayouts),
+            activeEntryHandles: [
+              ...(graphNode.isEntry ? ["entry-top-left"] : []),
+              ...graph.edges
+                .filter((edge) => edge.target === graphNode.id)
+                .map((edge) => transitionLayouts[edge.sourceHandle]?.targetHandle)
+                .filter((handle): handle is StateGraphEntryHandle => handle !== undefined),
+            ],
+            canEdit,
             selectedRouteId: selected.kind === "route" ? selected.id : null,
             onSelectState: (stateId: string) => onSelect({ kind: "state", id: stateId }),
             onSelectRoute: (routeId: string) => onSelect({ kind: "route", id: routeId }),
@@ -628,7 +973,7 @@ export function StateGraphView({
           connectable: false,
         };
       }),
-    [canEdit, graphNodeById, nodes, onSelect, positionById, selected, transitionLayouts],
+    [canEdit, graph.edges, graphNodeById, nodes, onSelect, positionById, selected, transitionLayouts],
   );
   useEffect(() => {
     const sceneId = scene?.scene_id ?? null;
@@ -715,13 +1060,18 @@ export function StateGraphView({
           markerEnd: { type: MarkerType.ArrowClosed },
           selected: selected.kind === "route" && selected.id === edge.route.route_id,
           className: selected.kind === "route" && selected.id === edge.route.route_id ? "state-transition-edge selected" : "state-transition-edge",
-          data: { route_id: edge.route.route_id, laneX: transitionLayout?.laneX },
+          data: {
+            route_id: edge.route.route_id,
+            laneX: transitionLayout?.laneX,
+            effectLabels: edge.effectLabels,
+            onSelectRoute: (routeId: string) => onSelect({ kind: "route", id: routeId }),
+          },
           label: edge.label,
           type: "stateTransition",
           style: { strokeWidth: selected.kind === "route" && selected.id === edge.route.route_id ? 3.4 : 1.8 },
         };
       }),
-    [graph.edges, positionById, selected, transitionLayouts],
+    [graph.edges, onSelect, positionById, selected, transitionLayouts],
   );
 
   if (scene === null) {
