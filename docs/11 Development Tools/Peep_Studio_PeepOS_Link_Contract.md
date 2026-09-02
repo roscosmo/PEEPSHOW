@@ -256,7 +256,7 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `20`.
+protocol is version `1`; the current service API is version `22`.
 
 | Operation | Purpose |
 |---|---|
@@ -579,6 +579,18 @@ the backend contract changes.
 - edit the one declared entry state;
 - present local logic as state/prefab node cards with trigger output rows, not
   as a UML-first edge editor;
+- show entry as a card-level arrival affordance, not as a separate editable
+  entry row. The visual design may use green oval entry handles around
+  top/bottom/corner entry zones, but those handles must not become separate
+  semantic records;
+- keep side edges for trigger exit rows. Exit side should be chosen
+  automatically to reduce line overlap first, with manual route layout
+  refinement deferred until the service exposes typed editor-only metadata;
+- present route actions as transition-effect chips/nodes on the transition line
+  where useful, so authors can distinguish the trigger from the changes caused
+  while moving to the next state. These chips remain presentation of
+  service-owned route actions unless the Python service later exposes a typed
+  visual layout record;
 - create and remove deterministic state-transition outputs and their single
   destination edges through Python service commands;
 - edit logical A/B/L/R and JOY_LEFT/JOY_RIGHT/JOY_UP/JOY_DOWN routes, guard
@@ -645,7 +657,11 @@ an empty output slot that prompts for the trigger before calling
 `route.add_scene_exit`, and deleted through `route.delete_scene_exit`.
 Scene-flow cards can be manually rearranged; saved
 positions live under project editor-only layout metadata and must not affect
-compiled package bytes.
+compiled package bytes. Scene-flow exits and Local Logic scene-exit rows are
+the same authored link viewed from two workspaces: creating one must create or
+expose the matching counterpart, and deleting one must remove or detach the
+matching counterpart through the Python service rather than a renderer-only
+shortcut.
 
 ### Stage 6: Animation Timeline
 
@@ -667,6 +683,45 @@ compiled package bytes.
 - add formal font and localization package records when required;
 - add fixed 4-tone and 16-tone dither profiles;
 - add maps, tile layers, scaling, transforms, and richer retained rendering;
+
+Upcoming Peep Studio work for the implemented STATE sampled-SFX subset:
+
+- present audio assets as author-facing **Sounds**, while keeping `sampled_sfx`
+  IDs available only in advanced/debug details;
+- show sound cards with display name, cue count, duration, packaged size,
+  volume, and an audition button that plays the exact compiled package bytes;
+- support sound import, rename, cue edit, cue delete, and asset delete through
+  `audio_asset.*` and `audio_cue.*` service commands;
+- present route actions as **Play sound** effects rather than backend
+  `play_sfx` records;
+- allow package-global **Play sound** effects on direct scene-flow exits, which
+  the service and package contracts now allow for `target_scene` routes;
+- surface preview-emitted sound events beside the emulator controls so authors
+  can see which cue fired during host preview;
+- show target-profile audio budgets in plain language: sounds used, cues used,
+  packaged audio storage used, total package size, and one-voice STATE limit;
+- label unsupported audio modes as unavailable: music, looping, procedural
+  audio, arbitrary mixing, and production-fidelity/device-power proof from host
+  audition alone.
+
+Upcoming node-workspace refinement:
+
+- use
+  `docs/11 Development Tools/Peep Studio Design/Peep-Studio_Design-notes.excalidraw`
+  as the current live visual reference for graph-node direction;
+- treat prefab/menu nodes in that drawing as an intended abstraction direction,
+  not as immediate editable behavior until Python exposes typed prefab/slot
+  records and generated-internal ownership metadata;
+- update graph presentation toward the agreed node-card anatomy: title on the
+  left, summary badges on the right, optional green entry handles around card
+  entry zones, side-mounted trigger exits, and transition-effect chips on lines;
+- use author-facing badges for **Variables** and **Objects** when summarizing
+  how much local state or retained scene content a node/transition touches.
+  Counts must come from normalized service data or future service-provided
+  summary fields, not renderer-side semantic guesses;
+- keep scene-flow graph semantics separate from local STATE graph semantics:
+  scene flow remains storyboard-like, while local logic remains a freeform
+  state-machine graph with trigger output rows.
 
 ### Stage 8: Later Scene Types
 
