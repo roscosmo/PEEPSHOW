@@ -287,14 +287,15 @@ Tooling must reject sensor profiles that reference ADC, GPIO, EXTI, I2C addresse
 
 Audio profile output must target [[Audio_API_Contract]], not Platform audio drivers.
 
-Current status: the host authoring/package half is executable. Service API 18
+Current status: the host authoring/package half is executable. Service API 21
 imports WAV, emits the optional audio chunks, validates symbolic `play_sfx`
 STATE actions, previews cue emission, and auditions decoded package bytes.
-HW6 now loads those chunks and routes one bounded STATE voice through `thAudio`;
+HW6 now loads those chunks and routes one package-backed streamed STATE voice
+through `thAudio`;
 audible playback, completion, clock release, and return to STOP2 are target-
-proven. Peep Studio may report this bounded HW6 playback capability, but must
-not imply support for arbitrary-length audio, music, runtime FAT streaming,
-mixing, or accepted production fidelity.
+proven. Peep Studio may report this HW6 playback capability, but must not imply
+support for music, runtime FAT streaming, mixing, or accepted production
+fidelity.
 
 ### Initial STATE SFX Asset Slice
 
@@ -305,11 +306,17 @@ STATE SFX path:
 2. deterministically convert to mono 16 kHz 4-bit IMA ADPCM;
 3. emit stable symbolic asset/cue IDs, compressed bytes, sample count, duration,
    decoded-size bound, and integrity metadata;
-4. reject unsupported formats, excessive duration or memory, looping, music,
-   streaming, and `audio.bbb` for HW6;
+4. reject unsupported formats, package-budget overflow, looping, music,
+   runtime FAT streaming, and `audio.bbb` for HW6;
 5. let STATE actions request the symbolic SFX without exposing hardware;
 6. support host audition and compatibility reporting while clearly separating
    them from HW6 power and timing evidence.
+
+In the current STATE subset, a direct `target_scene` route may carry only
+`play_sfx`. The cue is package-global, is committed only when the destination
+scene loads successfully, and may finish after that scene becomes active.
+Scene-local variable, render, element, and system actions are invalid on that
+route.
 
 Required package-facing audio artifacts:
 

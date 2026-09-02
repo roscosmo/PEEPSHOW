@@ -669,10 +669,13 @@ def _apply_route_set_target(
             raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown target scene '{target_scene}'")
         for route in scene.get("routes", []):
             if isinstance(route, dict) and route.get("route_id") == route_id:
-                if has_target_scene and route.get("actions"):
+                if has_target_scene and any(
+                    not isinstance(action, dict) or action.get("kind") != "play_sfx"
+                    for action in route.get("actions", [])
+                ):
                     raise ProjectCommandError(
                         "SCENE_TRANSITION_ACTION_UNSUPPORTED",
-                        "direct scene replacement requires an empty route action list",
+                        "direct scene replacement supports only play_sfx actions",
                     )
                 result = {
                     "kind": "route.set_target",
@@ -826,11 +829,6 @@ def _apply_route_delete_scene_exit(
                 continue
             if "target_scene" not in route:
                 raise ProjectCommandError("COMMAND_TARGET_INVALID", "route is not a scene exit")
-            if route.get("actions"):
-                raise ProjectCommandError(
-                    "SCENE_TRANSITION_ACTION_UNSUPPORTED",
-                    "only actionless direct scene exits can be deleted in this edit slice",
-                )
             action_ref = route.get("action_ref")
             target_scene = route.get("target_scene")
             routes.pop(index)
@@ -2528,8 +2526,6 @@ def _apply_route_action_list(
     _require_command_fields(command, required, allowed)
     scene = _command_scene(scenes, command.get("scene_id"))
     route = _command_record(scene, "routes", "route_id", command.get("route_id"))
-    if "target_scene" in route:
-        raise ProjectCommandError("SCENE_TRANSITION_ACTION_UNSUPPORTED", "direct scene replacement requires an empty route action list")
     actions = route.get("actions")
     if not isinstance(actions, list):
         raise ProjectCommandError("PROJECT_TYPE_INVALID", "route.actions must be an array")
@@ -2540,6 +2536,11 @@ def _apply_route_action_list(
         if action_index > len(actions):
             raise ProjectCommandError("COMMAND_INDEX_INVALID", "action_index must select an insertion position")
         action = _normalize_action(scene, route, command.get("action"))
+        if "target_scene" in route and action.get("kind") != "play_sfx":
+            raise ProjectCommandError(
+                "SCENE_TRANSITION_ACTION_UNSUPPORTED",
+                "direct scene replacement supports only play_sfx actions",
+            )
         actions.insert(action_index, action)
         return {"kind": kind, "scene_id": scene.get("scene_id"), "route_id": route.get("route_id"), "action_index": action_index, "action": action}
     source_index = _command_move_index(action_index, "action_index", len(actions))
@@ -2633,6 +2634,14 @@ def _apply_route_set_action(
             if not isinstance(route, dict) or route.get("route_id") != route_id:
                 continue
             normalized_action = _normalize_action(scene, route, action)
+            if (
+                "target_scene" in route
+                and normalized_action.get("kind") != "play_sfx"
+            ):
+                raise ProjectCommandError(
+                    "SCENE_TRANSITION_ACTION_UNSUPPORTED",
+                    "direct scene replacement supports only play_sfx actions",
+                )
             actions = route.get("actions")
             if not isinstance(actions, list) or action_index >= len(actions):
                 raise ProjectCommandError("COMMAND_INDEX_INVALID", "action_index does not select an existing action")
@@ -3275,12 +3284,16 @@ def _check_scene(
                 }
         elif has_target_scene:
             _stable_id(route.get("target_scene"), f"{path}.target_scene", issues)
-            if route.get("actions"):
+            route_actions = route.get("actions")
+            if isinstance(route_actions, list) and any(
+                not isinstance(action, dict) or action.get("kind") != "play_sfx"
+                for action in route_actions
+            ):
                 _issue(
                     issues,
                     "SCENE_TRANSITION_ACTION_UNSUPPORTED",
                     f"{path}.actions",
-                    "the initial direct scene-replacement slice does not carry scene-local actions across scenes",
+                    "direct scene replacement supports only play_sfx actions",
                 )
         guards = route.get("guards")
         if not isinstance(guards, list) or len(guards) > 8:

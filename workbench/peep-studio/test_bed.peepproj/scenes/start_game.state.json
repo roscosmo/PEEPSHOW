@@ -34,7 +34,12 @@
         "shown"
       ],
       "guards": [],
-      "actions": [],
+      "actions": [
+        {
+          "kind": "play_sfx",
+          "cue_ref": "foghorn_bo.cue"
+        }
+      ],
       "target_scene": "main_menu"
     }
   ],

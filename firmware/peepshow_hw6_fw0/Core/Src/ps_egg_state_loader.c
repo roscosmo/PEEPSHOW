@@ -2082,8 +2082,7 @@ static uint32_t PS_EggDecodeScene(
         (!(((target_state < graph.state_count) &&
             (target_scene_string == 0xFFFFU)) ||
            ((target_state == 0xFFFFU) &&
-            (target_scene_id != 0UL) &&
-            (route_operation_count == 0U)))) ||
+            (target_scene_id != 0UL)))) ||
         ((uint32_t)first_source + source_count > graph.source_count) ||
         ((uint32_t)first_guard + route_guard_count > graph.guard_count) ||
         ((uint32_t)first_operation + route_operation_count >
@@ -2114,6 +2113,10 @@ static uint32_t PS_EggDecodeScene(
       const uint8_t *record = &graph_payload[graph.operation_offset +
         (((uint32_t)first_operation + operation) *
          PS_EGG_OPERATION_RECORD_SIZE)];
+      if ((target_scene_id != 0UL) && (record[0] != 7U))
+      {
+        return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+      }
       if (record[0] == 1U)
       {
         uint16_t variable_index = PS_EggU16(&record[2]);

@@ -272,7 +272,12 @@
           "value": 0
         }
       ],
-      "actions": [],
+      "actions": [
+        {
+          "kind": "play_sfx",
+          "cue_ref": "foghorn_bo.cue"
+        }
+      ],
       "target_scene": "start_game"
     },
     {
@@ -288,7 +293,12 @@
           "value": 1
         }
       ],
-      "actions": [],
+      "actions": [
+        {
+          "kind": "play_sfx",
+          "cue_ref": "foghorn_bo.cue"
+        }
+      ],
       "target_scene": "settings"
     },
     {
@@ -304,7 +314,12 @@
           "value": 2
         }
       ],
-      "actions": [],
+      "actions": [
+        {
+          "kind": "play_sfx",
+          "cue_ref": "foghorn_bo.cue"
+        }
+      ],
       "target_scene": "credits"
     }
   ],

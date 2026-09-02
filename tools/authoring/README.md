@@ -141,7 +141,7 @@ It does not choose a destination or write an installable file. The V1 report
 marks the current HW6 development profile as `pending_validation` and
 `dev_only`; it does not claim shipping authority before target-profile closure.
 
-Service API version 19 provides deterministic selected-STATE-scene preview,
+Service API version 21 provides deterministic selected-STATE-scene preview,
 direct STATE-to-STATE replacement, and a `state_scene_presentation` capability
 block in `service.hello`. A
 reset names the scene to launch directly, an input operation supplies one
@@ -153,9 +153,11 @@ then executes those validated package records.
 
 STATE routes declare exactly one `target_state` or `target_scene`.
 `route.set_target` accepts the same exclusive fields. A scene target must be an
-existing STATE scene and its route action list must be empty. Preview enters the
-destination entry state, resets destination-local variables, and starts the
-destination timeline at its settled step.
+existing STATE scene and may carry only package-global `play_sfx` actions;
+scene-local variable, render, element, and system actions remain invalid on a
+direct scene replacement. Preview emits the cue event, enters the destination
+entry state, resets destination-local variables, and starts the destination
+timeline at its settled step.
 
 The exact preview accepts `RND2` package-backed masked 1bpp sprites plus line,
 outline rectangle, filled rectangle, circle, and ellipse elements. Package
@@ -173,8 +175,10 @@ actions can emit `play_sfx`. Package compilation produces optional `AUD1`,
 `ADB1`, and `ACU1` chunks containing mono 16 kHz 4-bit IMA ADPCM in fixed
 256-sample blocks. Preview reports emitted cue events and
 `project.audio_audition` returns a WAV decoded from the exact packaged bytes.
-This does not claim HW6 playback support; target loading and `thAudio` playback
-are now brought up for the bounded STATE sampled-SFX subset.
+HW6 target loading and `thAudio` playback are brought up for one package-backed
+streamed STATE sampled-SFX voice, including SFX that survive a scene replacement
+inside the active package. Package suspension, exit, replacement, and unmount
+remain audio ownership boundaries.
 The newline-delimited JSON protocol remains version 1, and loaders retain
 `RND1` compatibility.
 

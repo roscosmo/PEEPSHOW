@@ -34,7 +34,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 20
+SERVICE_API_VERSION = 21
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -279,6 +279,7 @@ class AuthoringService:
             },
             "state_scene_graph": {
                 "command_batch_maximum": 64,
+                "target_scene_actions": ["play_sfx"],
                 "limits": {
                     "states": 64,
                     "render_models": 1,
@@ -353,6 +354,7 @@ class AuthoringService:
                 "maximum_bank_bytes": AUDIO_MAX_BANK_BYTES,
                 "voice_limit": 1,
                 "route_action": "play_sfx",
+                "survives_same_package_scene_replacement": True,
                 "asset_commands": ["audio_asset.upsert", "audio_asset.delete"],
                 "cue_commands": ["audio_cue.upsert", "audio_cue.delete"],
                 "audition_operation": "project.audio_audition",

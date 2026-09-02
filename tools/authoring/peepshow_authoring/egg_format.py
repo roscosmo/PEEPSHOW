@@ -826,8 +826,7 @@ def _parse_graph(
             _require(
                 record[1] < input_count
                 and ((target_state < state_count and target_scene == 0xFFFF)
-                     or (target_state == 0xFFFF and target_scene < len(strings)
-                         and record[9] == 0)),
+                     or (target_state == 0xFFFF and target_scene < len(strings))),
                 "route action or target is invalid",
             )
             range_offset = 4
@@ -965,6 +964,17 @@ def _parse_graph(
             target_state_index = None if record[2] == 0xFFFF else record[2]
             target_scene = None if record[3] == 0xFFFF else _string(strings, record[3], "target scene ID")
             range_offset = 4
+        route_operations = tuple(
+            operations[
+                record[range_offset + 4] :
+                record[range_offset + 4] + record[range_offset + 5]
+            ]
+        )
+        if target_scene is not None:
+            _require(
+                all(int(operation["kind"]) == 7 for operation in route_operations),
+                "direct scene replacement operation is invalid",
+            )
         routes.append(
             {
                 "route_id": _string(strings, record[0], "route ID"),
@@ -977,9 +987,7 @@ def _parse_graph(
                 "guards": tuple(
                     guards[record[range_offset + 2] : record[range_offset + 2] + record[range_offset + 3]]
                 ),
-                "operations": tuple(
-                    operations[record[range_offset + 4] : record[range_offset + 4] + record[range_offset + 5]]
-                ),
+                "operations": route_operations,
             }
         )
     event_refs = struct.unpack_from(f"<{event_count}H", payload, offsets[7]) if event_count else ()

@@ -156,12 +156,14 @@ In the executable STATE subset, every route declares exactly one destination:
 - `target_state` names a state in the route's source scene.
 - `target_scene` names another STATE scene in the same project/package.
 
-The initial direct scene-replacement subset requires an empty `actions` list
-when `target_scene` is used. Guards still evaluate in the source scene. A
-successful replacement enters the destination entry state, restores its local
-variables to authored initial values, and begins a new presentation epoch.
-Unknown scene targets, both target fields, neither target field, or actions on
-a scene-target route fail validation.
+When `target_scene` is used, `actions` may be empty or contain only
+package-global `play_sfx` actions. Guards still evaluate in the source scene.
+The cue request is committed only after the destination loads successfully and
+may finish while that destination is active. A successful replacement enters
+the destination entry state, restores its local variables to authored initial
+values, and begins a new presentation epoch. Unknown scene targets, both
+target fields, neither target field, or scene-local variable, render, element,
+or system actions on a scene-target route fail validation.
 
 The executable STATE sampled-SFX source subset uses optional records in an
 asset catalog:

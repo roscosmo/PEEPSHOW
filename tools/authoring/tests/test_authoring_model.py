@@ -64,6 +64,12 @@ EMBEDDED_PROJECT = (
     / "authoring"
     / "state_transition_slice.peepproj"
 )
+COMMITTED_EMBEDDED_PROJECT = (
+    WORKSPACE_ROOT
+    / "workbench"
+    / "peep-studio"
+    / "test_bed.peepproj"
+)
 EMBEDDED_SAMPLE = (
     WORKSPACE_ROOT
     / "firmware"
@@ -907,7 +913,7 @@ class AuthoringModelTests(unittest.TestCase):
     def test_committed_embedded_package_is_current(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             generated = write_embedded_egg_c(
-                load_project(EMBEDDED_PROJECT),
+                load_project(COMMITTED_EMBEDDED_PROJECT),
                 Path(temp_dir) / "embedded.c",
             )
             expected = generated.read_text(encoding="ascii")

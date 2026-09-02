@@ -314,7 +314,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(20, SERVICE_API_VERSION)
+        self.assertEqual(21, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -374,12 +374,14 @@ class AuthoringServiceTests(unittest.TestCase):
         )
         graph = result["state_scene_graph"]
         self.assertEqual(64, graph["command_batch_maximum"])
+        self.assertEqual(["play_sfx"], graph["target_scene_actions"])
         audio = result["state_scene_audio"]
         self.assertTrue(audio["host_package_support"])
         self.assertEqual(
             "available_package_streamed_state_sfx", audio["target_playback_status"]
         )
         self.assertEqual("play_sfx", audio["route_action"])
+        self.assertTrue(audio["survives_same_package_scene_replacement"])
         self.assertEqual(1, audio["voice_limit"])
         self.assertEqual(64, graph["limits"]["states"])
         self.assertEqual(1, graph["limits"]["render_models"])
@@ -514,7 +516,8 @@ class AuthoringServiceTests(unittest.TestCase):
         scenes = {scene["scene_id"]: scene for scene in package.scenes}
         self.assertTrue(
             all(
-                scene["interaction_mode"] == 1 and scene["inactive_route"] == 0
+                scene["graph"]["interaction_mode"] == 1
+                and scene["graph"]["inactive_route"] == 0
                 for scene in scenes.values()
             )
         )
@@ -973,6 +976,126 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertEqual("state_demo", preview["scene"]["scene_id"])
         self.assertTrue(changed["dirty"])
         self.assertTrue(changed["can_undo"])
+
+    def test_scene_exit_play_sfx_compiles_previews_and_can_be_deleted(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_audio_project(Path(temp_dir))
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            changed = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "route.action.add",
+                                "scene_id": "state_demo",
+                                "route_id": "open_details",
+                                "action_index": 0,
+                                "action": {
+                                    "kind": "play_sfx",
+                                    "cue_ref": "ui.select.cue",
+                                },
+                            }
+                        ],
+                    },
+                )
+            )
+            source = next(
+                scene
+                for scene in changed["document"]["scenes"]
+                if scene["scene_id"] == "state_demo"
+            )
+            route = next(
+                item for item in source["routes"] if item["route_id"] == "open_details"
+            )
+            self.assertEqual(
+                [{"kind": "play_sfx", "cue_ref": "ui.select.cue"}],
+                route["actions"],
+            )
+
+            service.handle(
+                request(
+                    "project.build_package",
+                    {"project_revision": changed["project_revision"]},
+                )
+            )
+            reset = service.handle(
+                request(
+                    "project.preview_reset",
+                    {
+                        "project_revision": changed["project_revision"],
+                        "scene_id": "state_demo",
+                    },
+                )
+            )
+            preview = service.handle(
+                request(
+                    "project.preview_input",
+                    {
+                        "project_revision": changed["project_revision"],
+                        "preview_revision": reset["preview_revision"],
+                        "logical_source": "BUTTON_A",
+                    },
+                )
+            )
+            self.assertEqual("state_details", preview["scene"]["scene_id"])
+            self.assertEqual(
+                "ui.select.cue",
+                preview["input"]["audio_events"][0]["cue_id"],
+            )
+
+            deleted = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": changed["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "route.delete_scene_exit",
+                                "scene_id": "state_demo",
+                                "route_id": "open_details",
+                            }
+                        ],
+                    },
+                )
+            )
+            source = next(
+                scene
+                for scene in deleted["document"]["scenes"]
+                if scene["scene_id"] == "state_demo"
+            )
+            self.assertNotIn(
+                "open_details",
+                {route["route_id"] for route in source["routes"]},
+            )
+
+    def test_scene_exit_rejects_scene_local_action(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        with self.assertRaises(ProtocolError) as raised:
+            service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "route.action.add",
+                                "scene_id": "state_demo",
+                                "route_id": "open_details",
+                                "action_index": 0,
+                                "action": {"kind": "request_render"},
+                            }
+                        ],
+                    },
+                )
+            )
+        self.assertEqual(
+            "SCENE_TRANSITION_ACTION_UNSUPPORTED",
+            raised.exception.code,
+        )
 
     def test_route_add_scene_exit_rejects_duplicate_source(self) -> None:
         service = AuthoringService()

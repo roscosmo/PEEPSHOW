@@ -148,8 +148,9 @@ Rules:
 - renaming source files must not silently change stable package IDs unless tooling reports it.
 - a direct STATE route resolves exactly one local state ID or package-local
   STATE scene ID before package admission.
-- the initial direct scene-replacement record carries no source-scene actions;
-  destination state and local variables come from the destination descriptor.
+- a direct scene-replacement record may carry only package-global `play_sfx`
+  operations; destination state and local variables come from the destination
+  descriptor, and the cue is published only after that descriptor loads.
 
 ---
 

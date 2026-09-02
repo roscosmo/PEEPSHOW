@@ -159,11 +159,35 @@ class StateScenePreview:
 
         target_scene = route["target_scene"]
         if target_scene is not None:
-            if route["operations"]:
-                raise PreviewError("direct scene replacement cannot execute scene-local actions")
+            audio_events: list[dict[str, object]] = []
+            for operation in route["operations"]:
+                if int(operation["kind"]) != 7:
+                    raise PreviewError(
+                        "direct scene replacement can execute only play_sfx actions"
+                    )
+                cue_index = int(operation["cue_index"])
+                if not 0 <= cue_index < len(self._audio_cues):
+                    raise PreviewError("compiled SFX action cue is invalid")
+                cue = self._audio_cues[cue_index]
+                audio_events.append(
+                    {
+                        "kind": "play_sfx",
+                        "cue_id": cue["cue_id"],
+                        "asset_id": cue["asset_id"],
+                        "priority": cue["priority"],
+                        "volume": cue["volume"],
+                    }
+                )
             self._activate_scene(str(target_scene))
             self._render_framebuffer()
-            return PreviewInputResult(logical_source, event_kind, action_id, True, str(route["route_id"]))
+            return PreviewInputResult(
+                logical_source,
+                event_kind,
+                action_id,
+                True,
+                str(route["route_id"]),
+                tuple(audio_events),
+            )
 
         prior_waiting = self._waiting()
         variables = list(self._variables)

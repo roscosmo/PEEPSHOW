@@ -69,7 +69,7 @@ Speaker path:
 The first package-facing audio milestone is deliberately smaller than the full
 mixer contract:
 
-- one bounded sampled SFX voice;
+- one package-backed streamed sampled-SFX voice;
 - source WAV converted by host tooling to mono 16 kHz 4-bit IMA ADPCM;
 - complete compressed payload validated before playback, with ADPCM retained in
   the installed package blob and decoded into fixed PCM DMA halves as needed;
@@ -83,7 +83,7 @@ Peep Studio owns source import, deterministic conversion, package metadata,
 audition, and compatibility diagnostics. It never controls SAI, DMA,
 `SD_MODE`, clocks, or playback buffers.
 
-Host/package status as of service API 18: implemented and covered by
+Host/package status as of service API 21: implemented and covered by
 deterministic compiler/parser/preview tests. The optional PKG1 audio asset,
 ADPCM bank, and cue chunks plus symbolic `play_sfx` action are available to
 Peep Studio. HW6 loader routing and one-voice `thAudio` playback are target-
@@ -91,6 +91,14 @@ proven for a streamed multi-second cue, including audible output across natural
 STOP2 cycles, deterministic drain, and clock release. This grants only the
 one-voice `audio.sampled_sfx` subset described here, not music or the future
 mixer.
+
+The audio lifetime boundary is the active package, not an individual STATE
+scene. A package-global `play_sfx` action may be committed with a successful
+same-package scene replacement and continue while the destination scene is
+active. Package suspension, exit to shell, replacement, or unmount must stop
+and drain package-owned voices before their source bytes can become invalid.
+PeepOS-owned shell and package-loading sounds use OS-owned assets and are not
+package voices.
 
 Current FW0 bring-up bounds are:
 
