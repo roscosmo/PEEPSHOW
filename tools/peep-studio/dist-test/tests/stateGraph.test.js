@@ -88,6 +88,9 @@ const legacyRouteGraph = (0, stateGraph_1.buildStateGraphModel)(scene, {
     },
 });
 strict_1.default.equal(graph.nodes.length, 2);
+strict_1.default.equal(graph.endpoints.length, 1);
+strict_1.default.equal(graph.endpoints[0]?.kind, "entry");
+strict_1.default.equal(graph.entryEdge?.target, "idle");
 strict_1.default.equal(graph.nodes[0]?.id, "idle");
 strict_1.default.equal(graph.nodes[0]?.isEntry, true);
 strict_1.default.equal(graph.nodes[0]?.outputs.length, 1);
@@ -316,6 +319,13 @@ const invalidRouteGraph = (0, stateGraph_1.buildStateGraphModel)({
 strict_1.default.equal(invalidRouteGraph.edges.length, 0);
 const menuScene = {
     ...scene,
+    scene_exits: [
+        {
+            scene_exit_id: "to_game",
+            display_name: "Game",
+            target_scene: "game",
+        },
+    ],
     routes: [
         {
             route_id: "menu_to_game",
@@ -323,6 +333,7 @@ const menuScene = {
             from_states: ["idle"],
             guards: [],
             actions: [],
+            scene_exit_ref: "to_game",
             target_scene: "game",
         },
         {
@@ -362,11 +373,13 @@ const sceneFlow = (0, stateGraph_1.buildSceneFlowGraphModel)([
 const localWithSceneExit = (0, stateGraph_1.buildStateGraphModel)(menuScene);
 strict_1.default.equal(localWithSceneExit.nodes.find((node) => node.id === "idle")?.outputs.length, 2);
 strict_1.default.equal(localWithSceneExit.nodes.find((node) => node.id === "idle")?.outputs.some((output) => output.targetScene === "game"), true);
-strict_1.default.equal(localWithSceneExit.edges.length, 1);
+strict_1.default.equal(localWithSceneExit.endpoints.some((endpoint) => endpoint.sceneExitId === "to_game"), true);
+strict_1.default.equal(localWithSceneExit.edges.length, 2);
+strict_1.default.equal(localWithSceneExit.edges.some((edge) => edge.target === "scene-exit-to_game"), true);
 strict_1.default.equal(sceneFlow.nodes.length, 3);
 strict_1.default.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.isEntry, true);
 strict_1.default.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.exits.length, 1);
-strict_1.default.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.exits[0]?.label, "Button A");
+strict_1.default.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.exits[0]?.label, "Game");
 strict_1.default.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.exits[0]?.targetScene, "game");
 strict_1.default.equal(sceneFlow.edges.length, 2);
 strict_1.default.equal(sceneFlow.edges.some((edge) => edge.source === "menu" && edge.target === "game"), true);

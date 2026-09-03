@@ -664,6 +664,11 @@ for subsequent scene, state, route, placement, and asset work is to recreate the
 checked-in `state_slice.peepproj` example from this starter using only Peep
 Studio, then validate and build it through the same service path.
 
+Service API version 28 removes the authored `BUTTON_B -> exit_to_shell` route
+from new-project starters. Long START access to the PeepOS shell is system-owned
+and needs no package route. `exit_to_shell` remains available as an optional,
+explicit package action rather than starter behavior.
+
 Service API version 27 adds `scene.add` through `project.apply_commands`.
 Python derives a collision-safe stable ID and `scenes/<id>.state.json` source,
 updates the manifest and in-memory source mapping together, and creates the
@@ -704,14 +709,20 @@ STATE-to-SEQUENCE/PROGRAM transitions yet.
 
 Peep Studio implementation status: first package scene-flow view is
 implemented. It presents scenes as separate package-level nodes and shows
-existing `target_scene` route edges from normalized service data. Scene cards
+declared `scene_exits` as storyboard edges, with legacy direct `target_scene`
+routes retained as a compatibility fallback. Scene cards
 show their existing scene-exit outputs as selectable rows and render real
 Python-generated initial scene thumbnails through `project.scene_thumbnails`.
 Existing actionless `target_scene` routes can be retargeted to another STATE
 scene through the inspector or by dragging an existing exit row to another
-scene's entry row. New scene-flow exits can be added from scene cards through
-an empty output slot that prompts for the trigger before calling
-`route.add_scene_exit`, and deleted through `route.delete_scene_exit`.
+scene's entry row. Service API 28 separates the scene-flow declaration from the
+local route that reaches it. New scene-flow exits are added without choosing an
+input through `scene_exit.add`; the matching unconnected Scene Exit node appears
+inside Local Logic. A movable Scene Entry node points to the destination
+scene's declared entry state. Existing local routes can be wired to an exit and
+retain the proven executable `target_scene` behavior. Exit retargeting and
+deletion use `scene_exit.set_target` and `scene_exit.delete`; deletion is
+rejected while local routes still reference the endpoint.
 Scene-flow cards can be manually rearranged; saved
 positions live under project editor-only layout metadata and must not affect
 compiled package bytes. Scene-flow exits and Local Logic scene-exit rows are

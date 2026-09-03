@@ -60,6 +60,7 @@ import {
   STATE_GRAPH_ENTRY_HANDLES,
   STATE_GRAPH_ENTRY_PORTS,
   type GraphSceneNode,
+  type GraphSceneEndpointNode,
   type GraphStateNode,
   type StateGraphEntryHandle,
   type StateGraphEntrySide,
@@ -75,6 +76,7 @@ import type {
   ProjectEditorData,
   RenderModel,
   SceneDocument,
+  SceneExitRecord,
   StateAction,
   StateGuard,
   StateRecord,
@@ -85,6 +87,7 @@ import type {
 
 export type SceneSelection =
   | { kind: "scene" }
+  | { kind: "sceneExit"; id: string }
   | { kind: "state"; id: string }
   | { kind: "route"; id: string; sourceState?: string }
   | { kind: "render"; id: string }
@@ -145,17 +148,6 @@ const INPUT_LABELS: Record<string, string> = {
   JOY_UP: "Joystick up",
   JOY_DOWN: "Joystick down",
 };
-const SCENE_EXIT_INPUTS = [
-  "BUTTON_A",
-  "BUTTON_START",
-  "BUTTON_B",
-  "BUTTON_L",
-  "BUTTON_R",
-  "JOY_LEFT",
-  "JOY_RIGHT",
-  "JOY_UP",
-  "JOY_DOWN",
-] as const;
 const NEW_SCENE_EXIT_HANDLE = "__new_scene_exit__";
 const GUARD_OPERATOR_LABELS: Record<string, string> = {
   eq: "is",
@@ -659,7 +651,40 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
   );
 }
 
-const STATE_NODE_TYPES = { stateCard: StateCardNode };
+type SceneEndpointNodeData = {
+  endpoint: GraphSceneEndpointNode;
+  canEdit: boolean;
+  onSelect: (endpoint: GraphSceneEndpointNode) => void;
+};
+
+function SceneEndpointNode({ data, selected }: NodeProps<Node<SceneEndpointNodeData>>) {
+  const { endpoint, canEdit, onSelect } = data;
+  return (
+    <div
+      className={`state-scene-endpoint ${endpoint.kind} ${selected ? "selected" : ""}`}
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect(endpoint)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect(endpoint);
+        }
+      }}
+    >
+      {endpoint.kind === "entry" ? (
+        <Handle id="scene-entry-out" type="source" position={Position.Right} isConnectable={false} />
+      ) : (
+        <Handle id="scene-exit-in" type="target" position={Position.Left} isConnectable={canEdit} />
+      )}
+      <span>{endpoint.kind === "entry" ? "Scene entry" : "Scene exit"}</span>
+      <strong>{endpoint.label}</strong>
+      <small>{endpoint.detail}</small>
+    </div>
+  );
+}
+
+const STATE_NODE_TYPES = { stateCard: StateCardNode, sceneEndpoint: SceneEndpointNode };
 
 type StateTransitionEdgeData = {
   route_id?: string;
@@ -1177,11 +1202,14 @@ type SceneCardNodeData = {
   graphNode: GraphSceneNode;
   thumbnail: Framebuffer | null;
   targetScenes: SceneDocument[];
+  selectedSceneExitId: string | null;
   selectedRouteId: string | null;
   canEdit: boolean;
   onSelectScene: (sceneId: string) => void;
   onSelectSceneRoute: (sceneId: string, routeId: string) => void;
-  onDeleteSceneExit: (sceneId: string, routeId: string) => void;
+  onSelectSceneExit: (sceneId: string, sceneExitId: string) => void;
+  onDeleteSceneExit: (sceneId: string, sceneExitId: string) => void;
+  onDeleteLegacyRoute: (sceneId: string, routeId: string) => void;
 };
 
 function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
@@ -1191,12 +1219,14 @@ function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
     canEdit,
     onSelectScene,
     onSelectSceneRoute,
+    onSelectSceneExit,
     onDeleteSceneExit,
+    onDeleteLegacyRoute,
+    selectedSceneExitId,
     selectedRouteId,
     thumbnail,
   } = data;
-  const availableInputs = SCENE_EXIT_INPUTS.filter((source) => !graphNode.usedLogicalSources.includes(source));
-  const canAddExit = canEdit && availableInputs.length > 0 && targetScenes.length > 0;
+  const canAddExit = canEdit && targetScenes.length > 0;
 
   const handleSelectKey = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -1236,26 +1266,42 @@ function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
         ) : (
           graphNode.exits.map((exit) => (
             <span
-              className={`scene-exit-row ${selectedRouteId === exit.routeId ? "selected" : ""}`}
+              className={`scene-exit-row ${
+                (exit.sceneExitId !== undefined
+                  ? selectedSceneExitId === exit.sceneExitId
+                  : selectedRouteId === exit.routeId)
+                  ? "selected" : ""}`}
               key={exit.id}
               role="button"
               tabIndex={0}
               onClick={(event) => {
                 event.stopPropagation();
                 event.currentTarget.focus();
-                onSelectSceneRoute(graphNode.id, exit.routeId);
+                if (exit.sceneExitId !== undefined) {
+                  onSelectSceneExit(graphNode.id, exit.sceneExitId);
+                } else if (exit.routeId !== undefined) {
+                  onSelectSceneRoute(graphNode.id, exit.routeId);
+                }
               }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
                   event.stopPropagation();
-                  onSelectSceneRoute(graphNode.id, exit.routeId);
+                  if (exit.sceneExitId !== undefined) {
+                    onSelectSceneExit(graphNode.id, exit.sceneExitId);
+                  } else if (exit.routeId !== undefined) {
+                    onSelectSceneRoute(graphNode.id, exit.routeId);
+                  }
                   return;
                 }
                 if (canEdit && (event.key === "Delete" || event.key === "Backspace")) {
                   event.preventDefault();
                   event.stopPropagation();
-                  onDeleteSceneExit(graphNode.id, exit.routeId);
+                  if (exit.sceneExitId !== undefined) {
+                    onDeleteSceneExit(graphNode.id, exit.sceneExitId);
+                  } else if (exit.routeId !== undefined) {
+                    onDeleteLegacyRoute(graphNode.id, exit.routeId);
+                  }
                 }
               }}
             >
@@ -1269,11 +1315,11 @@ function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
       {targetScenes.length > 0 && (
         <div
           className={`scene-new-exit-slot ${canAddExit ? "" : "disabled"}`}
-          aria-label={canAddExit ? "Drag to create a new scene exit" : "No available triggers"}
+          aria-label={canAddExit ? "Drag to create a new scene exit" : "No destination scenes available"}
           onClick={(event) => event.stopPropagation()}
         >
           <Plus size={14} aria-hidden="true" />
-          <span>{availableInputs.length === 0 ? "All triggers used" : "New exit"}</span>
+          <span>New exit</span>
           {canAddExit && (
             <Handle
               id={`${graphNode.id}:${NEW_SCENE_EXIT_HANDLE}`}
@@ -1306,6 +1352,7 @@ export function StateGraphView({
   onSelect,
   onMoveStateNode,
   onSetRouteLayout,
+  onConnectRouteToSceneExit,
   canEdit,
 }: {
   scene: SceneDocument | null;
@@ -1322,16 +1369,22 @@ export function StateGraphView({
     targetHandle: StateGraphEntryHandle | null,
     targetSide: StateGraphEntrySide | null,
   ) => void;
+  onConnectRouteToSceneExit: (
+    sceneId: string,
+    routeId: string,
+    sceneExitId: string,
+    targetScene: string,
+  ) => void;
   canEdit: boolean;
 }) {
   const graph = useMemo(() => buildStateGraphModel(scene, editor), [editor, scene]);
-  const flowRef = useRef<ReactFlowInstance<Node<StateCardNodeData>, Edge> | null>(null);
+  const flowRef = useRef<ReactFlowInstance | null>(null);
   const didInitialFit = useRef(false);
   const previousSceneId = useRef<string | null>(scene?.scene_id ?? null);
   const defaultPositionById = useMemo(() => statePositionMap(graph.nodes, []), [graph.nodes]);
-  const baseNodes: Node<StateCardNodeData>[] = useMemo(
-    () =>
-      graph.nodes.map((node) => ({
+  const baseNodes: Node[] = useMemo(
+    () => [
+      ...graph.nodes.map((node) => ({
         id: node.id,
         type: "stateCard",
         position: { x: node.x, y: node.y },
@@ -1347,11 +1400,32 @@ export function StateGraphView({
         },
         selected: selected.kind === "state" && selected.id === node.id,
         draggable: canEdit,
-        connectable: false,
+        connectable: canEdit,
       })),
-    [canEdit, defaultPositionById, graph.nodes, onSelect, selected],
+      ...graph.endpoints.map((endpoint) => ({
+        id: endpoint.id,
+        type: "sceneEndpoint",
+        position: { x: endpoint.x, y: endpoint.y },
+        data: {
+          endpoint,
+          canEdit,
+          onSelect: (selectedEndpoint: GraphSceneEndpointNode) => {
+            onSelect(selectedEndpoint.kind === "exit" && selectedEndpoint.sceneExitId !== undefined
+              ? { kind: "sceneExit", id: selectedEndpoint.sceneExitId }
+              : { kind: "scene" });
+          },
+        },
+        selected: endpoint.kind === "exit"
+          && endpoint.sceneExitId !== undefined
+          && selected.kind === "sceneExit"
+          && selected.id === endpoint.sceneExitId,
+        draggable: canEdit && endpoint.declared,
+        connectable: canEdit,
+      })),
+    ],
+    [canEdit, defaultPositionById, graph.endpoints, graph.nodes, onSelect, selected],
   );
-  const [nodes, setNodes] = useState<Node<StateCardNodeData>[]>(baseNodes);
+  const [nodes, setNodes] = useState<Node[]>(baseNodes);
   const graphNodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
   const positionById = useMemo(() => statePositionMap(graph.nodes, nodes), [graph.nodes, nodes]);
   const layoutNodes = useMemo(
@@ -1366,7 +1440,7 @@ export function StateGraphView({
   const transitionLayouts = useMemo(
     () =>
       planStateTransitionRoutes(
-        graph.edges.map((edge) => {
+        graph.edges.filter((edge) => edge.targetKind !== "scene_exit").map((edge) => {
           const sourceNode = graphNodeById.get(edge.source);
           const sourceOutput = sourceNode?.outputs.find((output) => output.id === edge.sourceHandle);
           const sourceOutputIndex = sourceNode?.outputs
@@ -1384,11 +1458,11 @@ export function StateGraphView({
             rails: edge.rails,
           };
         }),
-        layoutNodes,
+        layoutNodes.filter((node) => graphNodeById.has(node.id)),
       ),
     [graph.edges, graphNodeById, layoutNodes],
   );
-  const flowNodes: Node<StateCardNodeData>[] = useMemo(
+  const flowNodes: Node[] = useMemo(
     () =>
       nodes.map((node) => {
         const graphNode = graphNodeById.get(node.id);
@@ -1415,7 +1489,7 @@ export function StateGraphView({
           },
           selected: selected.kind === "state" && selected.id === node.id,
           draggable: canEdit,
-          connectable: false,
+          connectable: canEdit,
         };
       }),
     [canEdit, graph.edges, graphNodeById, nodes, onSelect, positionById, selected, transitionLayouts],
@@ -1449,7 +1523,7 @@ export function StateGraphView({
     });
   }, [baseNodes, scene?.scene_id]);
   const onNodesChange = (changes: NodeChange[]) => {
-    setNodes((current) => applyNodeChanges(changes, current) as Node<StateCardNodeData>[]);
+    setNodes((current) => applyNodeChanges(changes, current));
   };
   const onNodeDragStop = (node: Node) => {
     if (scene === null) {
@@ -1461,6 +1535,26 @@ export function StateGraphView({
       current.map((item) => (item.id === node.id ? { ...item, position: { x, y } } : item)),
     );
     onMoveStateNode(scene.scene_id, node.id, x, y);
+  };
+  const onConnect = (connection: Connection) => {
+    if (scene === null || connection.source === null || connection.target === null || connection.sourceHandle === null) {
+      return;
+    }
+    const endpoint = graph.endpoints.find((item) => item.id === connection.target);
+    if (endpoint?.kind !== "exit" || endpoint.sceneExitId === undefined || endpoint.targetScene === undefined) {
+      return;
+    }
+    const sourceNode = graph.nodes.find((item) => item.id === connection.source);
+    const output = sourceNode?.outputs.find((item) => item.id === connection.sourceHandle);
+    if (output === undefined) {
+      return;
+    }
+    onConnectRouteToSceneExit(
+      scene.scene_id,
+      output.routeId,
+      endpoint.sceneExitId,
+      endpoint.targetScene,
+    );
   };
   useEffect(() => {
     if (flowRef.current === null) {
@@ -1496,12 +1590,12 @@ export function StateGraphView({
     return null;
   }, [graph.nodes, selected]);
   const edges: Edge[] = useMemo(
-    () =>
-      graph.edges.map((edge) => {
+    () => {
+      const transitionEdges = graph.edges.map((edge) => {
         const transitionLayout = transitionLayouts[edge.sourceHandle];
         const targetNode = graphNodeById.get(edge.target);
         const targetNodePosition = positionById.get(edge.target);
-        const targetEntryPorts = targetNode === undefined || targetNodePosition === undefined
+        const targetEntryPorts = edge.targetKind === "scene_exit" || targetNode === undefined || targetNodePosition === undefined
           ? undefined
           : STATE_GRAPH_ENTRY_PORTS.map((port) => ({
               handle: port.handle,
@@ -1521,7 +1615,7 @@ export function StateGraphView({
           target: edge.target,
           sourceHandle: edge.sourceHandle,
           targetHandle: transitionLayout === undefined
-            ? undefined
+            ? edge.targetKind === "scene_exit" ? "scene-exit-in" : undefined
             : stateEntryPortId(transitionLayout.targetHandle, transitionLayout.targetSide),
           selected: isSelected,
           className: isSelected ? "state-transition-edge selected" : "state-transition-edge",
@@ -1532,8 +1626,8 @@ export function StateGraphView({
             guards: edge.guards,
             actions: edge.actions,
             rails: edge.rails,
-            targetHandle: transitionLayout?.targetHandle,
-            targetSide: transitionLayout?.targetSide,
+            targetHandle: edge.targetKind === "scene_exit" ? undefined : transitionLayout?.targetHandle,
+            targetSide: edge.targetKind === "scene_exit" ? "left" : transitionLayout?.targetSide,
             targetEntryPorts,
             canEdit,
             showSectionHandles: isSelected && selected.kind === "route" && selected.sourceState !== undefined,
@@ -1554,7 +1648,21 @@ export function StateGraphView({
           type: "stateTransition",
           style: { strokeWidth: isSelected ? 3.4 : 1.8 },
         };
-      }),
+      });
+      const entryEdge = graph.entryEdge === undefined ? [] : [{
+        id: `${graph.entryEdge.source}->${graph.entryEdge.target}`,
+        source: graph.entryEdge.source,
+        target: graph.entryEdge.target,
+        sourceHandle: "scene-entry-out",
+        targetHandle: stateEntryPortId("entry-top-left", "left"),
+        type: "smoothstep",
+        selectable: false,
+        focusable: false,
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#2f9e44" },
+        style: { stroke: "#2f9e44", strokeWidth: 2 },
+      }];
+      return [...transitionEdges, ...entryEdge];
+    },
     [canEdit, graph.edges, graphNodeById, onSelect, onSetRouteLayout, positionById, scene, selected, transitionLayouts],
   );
 
@@ -1593,22 +1701,38 @@ export function StateGraphView({
         }
       }}
       nodesDraggable={canEdit}
-      nodesConnectable={false}
+      nodesConnectable={canEdit}
       elementsSelectable
       onNodesChange={onNodesChange}
+      onConnect={onConnect}
       onNodeDragStop={(_, node) => onNodeDragStop(node)}
-      onNodeClick={(_, node) => onSelect({ kind: "state", id: node.id })}
-      onEdgeClick={(_, edge) => onSelect({
-        kind: "route",
-        id: String(edge.data?.route_id ?? edge.id),
-        sourceState: String(edge.data?.source_state ?? edge.source),
-      })}
+      onNodeClick={(_, node) => {
+        if (node.type === "stateCard") {
+          onSelect({ kind: "state", id: node.id });
+          return;
+        }
+        const endpoint = (node.data as SceneEndpointNodeData | undefined)?.endpoint;
+        onSelect(endpoint?.kind === "exit" && endpoint.sceneExitId !== undefined
+          ? { kind: "sceneExit", id: endpoint.sceneExitId }
+          : { kind: "scene" });
+      }}
+      onEdgeClick={(_, edge) => {
+        if (edge.data?.route_id === undefined) {
+          onSelect({ kind: "scene" });
+          return;
+        }
+        onSelect({
+          kind: "route",
+          id: String(edge.data.route_id),
+          sourceState: String(edge.data?.source_state ?? edge.source),
+        });
+      }}
       onPaneClick={() => onSelect({ kind: "scene" })}
       proOptions={{ hideAttribution: true }}
     >
       <Background gap={18} size={1} />
       <GraphMiniMap
-        nodes={graph.nodes}
+        nodes={[...graph.nodes, ...graph.endpoints]}
         edges={graph.edges}
         selectedId={selected.kind === "state" ? selected.id : null}
       />
@@ -1645,12 +1769,16 @@ export function SceneFlowView({
   editor,
   layoutStatus,
   selectedSceneId,
+  selectedSceneExitId,
   selectedRouteId,
   onSelectScene,
+  onSelectSceneExit,
   onSelectSceneRoute,
   onAddSceneExit,
   onDeleteSceneExit,
+  onDeleteLegacyRoute,
   onMoveSceneNode,
+  onSetSceneExitTarget,
   onConnectSceneExit,
   canEdit,
 }: {
@@ -1660,12 +1788,16 @@ export function SceneFlowView({
   editor?: ProjectEditorData;
   layoutStatus: string;
   selectedSceneId: string | null;
+  selectedSceneExitId: string | null;
   selectedRouteId: string | null;
   onSelectScene: (sceneId: string) => void;
+  onSelectSceneExit: (sceneId: string, sceneExitId: string) => void;
   onSelectSceneRoute: (sceneId: string, routeId: string) => void;
-  onAddSceneExit: (sceneId: string, logicalSource: string, targetScene: string) => void;
-  onDeleteSceneExit: (sceneId: string, routeId: string) => void;
+  onAddSceneExit: (sceneId: string, targetScene: string) => void;
+  onDeleteSceneExit: (sceneId: string, sceneExitId: string) => void;
+  onDeleteLegacyRoute: (sceneId: string, routeId: string) => void;
   onMoveSceneNode: (sceneId: string, x: number, y: number) => void;
+  onSetSceneExitTarget: (sceneId: string, sceneExitId: string, targetScene: string) => void;
   onConnectSceneExit: (sceneId: string, routeId: string, targetScene: string) => void;
   canEdit: boolean;
 }) {
@@ -1675,7 +1807,6 @@ export function SceneFlowView({
   const [viewportText, setViewportText] = useState("viewport not ready");
   const [lastDragText, setLastDragText] = useState("No drag yet");
   const [lastConnectText, setLastConnectText] = useState("No connect yet");
-  const [pendingNewExit, setPendingNewExit] = useState<{ sourceScene: string; targetScene: string } | null>(null);
   const baseNodes: Node[] = useMemo(
     () =>
       graph.nodes.map((node) => ({
@@ -1686,17 +1817,20 @@ export function SceneFlowView({
           graphNode: node,
           thumbnail: thumbnails[node.id] ?? null,
           targetScenes: scenes.filter((scene) => scene.scene_type === "STATE_SCENE" && scene.scene_id !== node.id),
+          selectedSceneExitId,
           selectedRouteId,
           canEdit,
           onSelectScene,
+          onSelectSceneExit,
           onSelectSceneRoute,
           onDeleteSceneExit,
+          onDeleteLegacyRoute,
         },
         selected: selectedSceneId === node.id,
         draggable: canEdit,
         connectable: false,
       })),
-    [canEdit, graph.nodes, onDeleteSceneExit, onSelectScene, onSelectSceneRoute, scenes, selectedRouteId, selectedSceneId, thumbnails],
+    [canEdit, graph.nodes, onDeleteLegacyRoute, onDeleteSceneExit, onSelectScene, onSelectSceneExit, onSelectSceneRoute, scenes, selectedRouteId, selectedSceneExitId, selectedSceneId, thumbnails],
   );
   const [nodes, setNodes] = useState<Node[]>(baseNodes);
   useEffect(() => {
@@ -1740,25 +1874,41 @@ export function SceneFlowView({
         id: edge.id,
         source: edge.source,
         target: edge.target,
-        sourceHandle: `${edge.source}:${edge.route.route_id}`,
-        selected: selectedRouteId === edge.route.route_id,
-        data: { route_id: edge.route.route_id, source_scene_id: edge.source },
+        sourceHandle: edge.sceneExit.id,
+        selected: edge.sceneExit.sceneExitId !== undefined
+          ? selectedSceneExitId === edge.sceneExit.sceneExitId
+          : selectedRouteId === edge.sceneExit.routeId,
+        data: {
+          route_id: edge.sceneExit.routeId,
+          scene_exit_id: edge.sceneExit.sceneExitId,
+          source_scene_id: edge.source,
+        },
         markerEnd: { type: MarkerType.ArrowClosed },
-        style: { strokeWidth: selectedRouteId === edge.route.route_id ? 2.8 : 1.7 },
+        style: {
+          strokeWidth: (edge.sceneExit.sceneExitId !== undefined
+            ? selectedSceneExitId === edge.sceneExit.sceneExitId
+            : selectedRouteId === edge.sceneExit.routeId) ? 2.8 : 1.7,
+        },
       })),
-    [graph.edges, selectedRouteId],
+    [graph.edges, selectedRouteId, selectedSceneExitId],
   );
   const deleteSelectedSceneExit = () => {
-    if (!canEdit || selectedRouteId === null || selectedSceneId === null) {
+    if (!canEdit || selectedSceneId === null) {
       return;
     }
-    const selectedExit = graph.edges.find(
-      (edge) => edge.source === selectedSceneId && edge.route.route_id === selectedRouteId,
+    const selectedExit = graph.nodes.find((node) => node.id === selectedSceneId)?.exits.find(
+      (exit) => exit.sceneExitId !== undefined
+        ? exit.sceneExitId === selectedSceneExitId
+        : exit.routeId === selectedRouteId,
     );
     if (selectedExit === undefined) {
       return;
     }
-    onDeleteSceneExit(selectedExit.source, selectedExit.route.route_id);
+    if (selectedExit.sceneExitId !== undefined) {
+      onDeleteSceneExit(selectedSceneId, selectedExit.sceneExitId);
+    } else if (selectedExit.routeId !== undefined) {
+      onDeleteLegacyRoute(selectedSceneId, selectedExit.routeId);
+    }
   };
   const handleSceneFlowKeyDown = (event: KeyboardEvent<Element>) => {
     if (event.key !== "Delete" && event.key !== "Backspace") {
@@ -1779,20 +1929,23 @@ export function SceneFlowView({
       setLastConnectText("ignored incomplete connection");
       return;
     }
-    const routeId = sourceHandle.startsWith(`${sourceScene}:`)
-      ? sourceHandle.slice(sourceScene.length + 1)
-      : sourceHandle;
-    if (routeId.length === 0 || sourceScene === targetScene) {
-      setLastConnectText(`ignored ${sourceScene}:${routeId || "-"} -> ${targetScene}`);
+    if (sourceScene === targetScene) {
+      setLastConnectText(`ignored ${sourceScene} -> ${targetScene}`);
       return;
     }
-    if (routeId === NEW_SCENE_EXIT_HANDLE) {
-      setPendingNewExit({ sourceScene, targetScene });
-      setLastConnectText(`choose trigger for ${sourceScene} -> ${targetScene}`);
+    if (sourceHandle === `${sourceScene}:${NEW_SCENE_EXIT_HANDLE}`) {
+      setLastConnectText(`created exit ${sourceScene} -> ${targetScene}`);
+      onAddSceneExit(sourceScene, targetScene);
       return;
     }
-    setLastConnectText(`${sourceScene}:${routeId} -> ${targetScene}`);
-    onConnectSceneExit(sourceScene, routeId, targetScene);
+    const sourceExit = graph.nodes.find((node) => node.id === sourceScene)?.exits.find((exit) => exit.id === sourceHandle);
+    if (sourceExit?.sceneExitId !== undefined) {
+      setLastConnectText(`${sourceScene}:${sourceExit.sceneExitId} -> ${targetScene}`);
+      onSetSceneExitTarget(sourceScene, sourceExit.sceneExitId, targetScene);
+    } else if (sourceExit?.routeId !== undefined) {
+      setLastConnectText(`${sourceScene}:${sourceExit.routeId} -> ${targetScene}`);
+      onConnectSceneExit(sourceScene, sourceExit.routeId, targetScene);
+    }
   };
   const updateViewportText = () => {
     const viewport = flowRef.current?.getViewport();
@@ -1804,11 +1957,12 @@ export function SceneFlowView({
   };
   useEffect(() => {
     updateViewportText();
-  }, [nodes.length, edges.length, selectedSceneId, selectedRouteId]);
+  }, [nodes.length, edges.length, selectedSceneId, selectedRouteId, selectedSceneExitId]);
   const debugLines = [
     `nodes ${nodes.length} / graph ${graph.nodes.length}`,
     `edges ${edges.length} / graph ${graph.edges.length}`,
     `selected scene ${selectedSceneId ?? "-"}`,
+    `selected scene exit ${selectedSceneExitId ?? "-"}`,
     `selected route ${selectedRouteId ?? "-"}`,
     `viewport ${viewportText}`,
     `last drag ${lastDragText}`,
@@ -1823,12 +1977,6 @@ export function SceneFlowView({
     ...edges.map((edge) => `edge ${edge.id}: ${edge.source}:${edge.sourceHandle ?? "-"} -> ${edge.target}:${edge.targetHandle ?? "-"}`),
   ];
   const debugText = debugLines.join("\n");
-  const pendingSource = pendingNewExit === null ? null : graph.nodes.find((node) => node.id === pendingNewExit.sourceScene) ?? null;
-  const pendingTarget = pendingNewExit === null ? null : scenes.find((scene) => scene.scene_id === pendingNewExit.targetScene) ?? null;
-  const pendingInputs =
-    pendingSource === null
-      ? []
-      : SCENE_EXIT_INPUTS.filter((source) => !pendingSource.usedLogicalSources.includes(source));
 
   if (scenes.length === 0) {
     return (
@@ -1868,7 +2016,12 @@ export function SceneFlowView({
       onNodeClick={(_, node) => onSelectScene(node.id)}
       onEdgeClick={(event, edge) => {
         (event.currentTarget as HTMLElement).focus();
-        onSelectSceneRoute(String(edge.data?.source_scene_id ?? ""), String(edge.data?.route_id ?? edge.id));
+        const sourceScene = String(edge.data?.source_scene_id ?? "");
+        if (typeof edge.data?.scene_exit_id === "string") {
+          onSelectSceneExit(sourceScene, edge.data.scene_exit_id);
+        } else if (typeof edge.data?.route_id === "string") {
+          onSelectSceneRoute(sourceScene, edge.data.route_id);
+        }
       }}
       proOptions={{ hideAttribution: true }}
     >
@@ -1892,33 +2045,6 @@ export function SceneFlowView({
           <pre>{debugText}</pre>
         </details>
       </Panel>
-      {pendingNewExit !== null && (
-        <Panel position="top-right" className="scene-exit-picker">
-          <div>
-            <strong>Choose trigger</strong>
-            <span>
-              {pendingSource?.label ?? pendingNewExit.sourceScene} to {pendingTarget?.display_name ?? pendingNewExit.targetScene}
-            </span>
-          </div>
-          <div className="scene-exit-picker-options">
-            {pendingInputs.map((source) => (
-              <button
-                key={source}
-                type="button"
-                onClick={() => {
-                  onAddSceneExit(pendingNewExit.sourceScene, source, pendingNewExit.targetScene);
-                  setPendingNewExit(null);
-                }}
-              >
-                {displayInputLabel(source, source)}
-              </button>
-            ))}
-          </div>
-          <button className="text-button" type="button" onClick={() => setPendingNewExit(null)}>
-            Cancel
-          </button>
-        </Panel>
-      )}
       <Controls showInteractive={false} />
     </ReactFlow>
   );
@@ -1933,6 +2059,7 @@ export function SceneAuthoringInspector({
   onRenameState,
   onSetRouteTarget,
   onSetRouteSceneTarget,
+  onSetSceneExitTarget,
   onSetRouteGuard,
   onSetRouteAction,
   onAddRouteAction,
@@ -1947,7 +2074,8 @@ export function SceneAuthoringInspector({
   onSelect: (selection: SceneSelection) => void;
   onRenameState: (sceneId: string, stateId: string, displayName: string) => Promise<void>;
   onSetRouteTarget: (sceneId: string, routeId: string, targetState: string) => Promise<void>;
-  onSetRouteSceneTarget: (sceneId: string, routeId: string, targetScene: string) => Promise<void>;
+  onSetRouteSceneTarget: (sceneId: string, routeId: string, targetScene: string, sceneExitRef?: string) => Promise<void>;
+  onSetSceneExitTarget: (sceneId: string, sceneExitId: string, targetScene: string) => Promise<void>;
   onSetRouteGuard: (
     sceneId: string,
     routeId: string,
@@ -1980,6 +2108,9 @@ export function SceneAuthoringInspector({
   const waitingVisuals = scene?.waiting_visuals ?? [];
   const state = selection.kind === "state" ? states.find((item) => item.state_id === selection.id) ?? null : null;
   const route = selection.kind === "route" ? routes.find((item) => item.route_id === selection.id) ?? null : null;
+  const sceneExit = selection.kind === "sceneExit"
+    ? (scene?.scene_exits ?? []).find((item) => item.scene_exit_id === selection.id) ?? null
+    : null;
   const render = selection.kind === "render" ? renderModels.find((item) => item.visual_id === selection.id) ?? null : null;
   const waiting = selection.kind === "waiting" ? waitingVisuals.find((item) => item.waiting_visual_id === selection.id) ?? null : null;
 
@@ -2006,6 +2137,7 @@ export function SceneAuthoringInspector({
               || editor?.state_graph?.scenes?.[scene.scene_id]?.routes?.[route.route_id]?.sources?.[selection.sourceState]?.target_handle !== undefined)}
           states={states}
           scenes={scenes}
+          sceneExits={scene.scene_exits ?? []}
           inputActions={inputActions}
           variables={variables}
           audioCues={audioCues}
@@ -2015,6 +2147,15 @@ export function SceneAuthoringInspector({
           onSetRouteAction={onSetRouteAction}
           onAddRouteAction={onAddRouteAction}
           onResetRouteLayout={onResetRouteLayout}
+          canEdit={canEdit}
+        />
+      )}
+      {sceneExit !== null && scene !== null && (
+        <SceneExitInspector
+          scene={scene}
+          scenes={scenes}
+          sceneExit={sceneExit}
+          onSetSceneExitTarget={onSetSceneExitTarget}
           canEdit={canEdit}
         />
       )}
@@ -2246,6 +2387,45 @@ function StateInspector({
   );
 }
 
+function SceneExitInspector({
+  scene,
+  scenes,
+  sceneExit,
+  onSetSceneExitTarget,
+  canEdit,
+}: {
+  scene: SceneDocument;
+  scenes: SceneDocument[];
+  sceneExit: SceneExitRecord;
+  onSetSceneExitTarget: (sceneId: string, sceneExitId: string, targetScene: string) => Promise<void>;
+  canEdit: boolean;
+}) {
+  return (
+    <section className="inspector-section selected-record">
+      <h3>Scene exit</h3>
+      <label className="field-block">
+        <span>Destination</span>
+        <select
+          value={sceneExit.target_scene}
+          disabled={!canEdit}
+          onChange={(event) => {
+            void onSetSceneExitTarget(scene.scene_id, sceneExit.scene_exit_id, event.target.value);
+          }}
+        >
+          {scenes
+            .filter((candidate) => candidate.scene_type === "STATE_SCENE" && candidate.scene_id !== scene.scene_id)
+            .map((candidate) => (
+              <option key={candidate.scene_id} value={candidate.scene_id}>{candidate.display_name}</option>
+            ))}
+        </select>
+      </label>
+      <div className="internal-ref-note">
+        Internal scene exit ID: <code>{sceneExit.scene_exit_id}</code>
+      </div>
+    </section>
+  );
+}
+
 function RouteInspector({
   sceneId,
   route,
@@ -2253,6 +2433,7 @@ function RouteInspector({
   hasManualRoute,
   states,
   scenes,
+  sceneExits,
   inputActions,
   variables,
   audioCues,
@@ -2270,11 +2451,12 @@ function RouteInspector({
   hasManualRoute: boolean;
   states: StateRecord[];
   scenes: SceneDocument[];
+  sceneExits: SceneExitRecord[];
   inputActions: InputAction[];
   variables: StateVariable[];
   audioCues: AudioCueRecord[];
   onSetRouteTarget: (sceneId: string, routeId: string, targetState: string) => Promise<void>;
-  onSetRouteSceneTarget: (sceneId: string, routeId: string, targetScene: string) => Promise<void>;
+  onSetRouteSceneTarget: (sceneId: string, routeId: string, targetScene: string, sceneExitRef?: string) => Promise<void>;
   onSetRouteGuard: (
     sceneId: string,
     routeId: string,
@@ -2301,10 +2483,12 @@ function RouteInspector({
   const input = inputActions.find((item) => item.action_id === route.action_ref);
   const fromLabels = route.from_states.map((stateId) => displayStateName(states, stateId)).join(", ");
   const exitsScene = route.target_scene !== undefined;
+  const routeSceneExit = sceneExits.find((sceneExit) => sceneExit.scene_exit_id === route.scene_exit_ref)
+    ?? sceneExits.find((sceneExit) => sceneExit.target_scene === route.target_scene);
   const routeTarget = route.target_scene === undefined
     ? displayStateName(states, route.target_state ?? "")
-    : scenes.find((scene) => scene.scene_id === route.target_scene)?.display_name ?? route.target_scene;
-  const targetKind = route.target_scene === undefined ? "state" : "scene";
+    : routeSceneExit?.display_name ?? scenes.find((scene) => scene.scene_id === route.target_scene)?.display_name ?? route.target_scene;
+  const targetKind = route.target_scene === undefined ? "state" : "scene exit";
   return (
     <section className="inspector-section selected-record">
       <h3>Selected transition</h3>
@@ -2323,7 +2507,32 @@ function RouteInspector({
         </div>
       </div>
       {exitsScene ? (
-        <p className="plain-rule-note">This output leaves the current scene. Edit controls for scene exits belong in Scene flow.</p>
+        <label className="select-field" htmlFor={`route-scene-exit-${route.route_id}`}>
+          Scene exit
+          <select
+            id={`route-scene-exit-${route.route_id}`}
+            value={routeSceneExit?.scene_exit_id ?? ""}
+            disabled={!canEdit || sceneExits.length === 0}
+            onChange={(event) => {
+              const sceneExit = sceneExits.find((item) => item.scene_exit_id === event.target.value);
+              if (sceneExit !== undefined) {
+                void onSetRouteSceneTarget(
+                  sceneId,
+                  route.route_id,
+                  sceneExit.target_scene,
+                  sceneExit.scene_exit_id,
+                );
+              }
+            }}
+          >
+            {routeSceneExit === undefined && <option value="">Legacy direct scene target</option>}
+            {sceneExits.map((sceneExit) => (
+              <option key={sceneExit.scene_exit_id} value={sceneExit.scene_exit_id}>
+                {sceneExit.display_name}
+              </option>
+            ))}
+          </select>
+        </label>
       ) : (
         <label className="select-field" htmlFor={`route-target-${route.route_id}`}>
           Go to state

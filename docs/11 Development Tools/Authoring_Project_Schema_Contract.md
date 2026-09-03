@@ -156,6 +156,23 @@ In the executable STATE subset, every route declares exactly one destination:
 - `target_state` names a state in the route's source scene.
 - `target_scene` names another STATE scene in the same project/package.
 
+An authoring scene may also declare bounded semantic scene exits:
+
+```text
+scene_exits[]:
+  scene_exit_id
+  display_name
+  target_scene
+```
+
+A scene exit declares a destination endpoint; it is not an input binding or an
+executable transition by itself. Local STATE routes may identify the endpoint
+with `scene_exit_ref` while retaining the corresponding `target_scene` used by
+the executable subset. The service owns keeping those two fields consistent.
+Creating an exit must not create an input action, choose a trigger, add a route,
+or attach the exit to every state. The destination scene's declared
+`entry_state` is the corresponding scene-entry endpoint.
+
 When `target_scene` is used, `actions` may be empty or contain only
 package-global `play_sfx` actions. Guards still evaluate in the source scene.
 The cue request is committed only after the destination loads successfully and
@@ -1000,7 +1017,9 @@ editor_data:
 The first executable Peep Studio subset stores scene-flow positions in
 `project.editor.scene_flow.nodes[scene_id] = { x, y }` and per-scene STATE graph
 positions in
-`project.editor.state_graph.scenes[scene_id].nodes[state_id] = { x, y }`. These
+`project.editor.state_graph.scenes[scene_id].nodes[node_id] = { x, y }`. State
+IDs are used for state cards; `scene-entry` and
+`scene-exit-<scene_exit_id>` identify the semantic endpoint nodes. These
 coordinates are for author comprehension only; they do not change scene order,
 entry behavior, routes, preview behavior, or compiled package bytes.
 

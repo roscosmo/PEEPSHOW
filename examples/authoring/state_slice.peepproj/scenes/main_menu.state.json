@@ -20,6 +20,23 @@
       "logical_source": "BUTTON_A"
     }
   ],
+  "scene_exits": [
+    {
+      "scene_exit_id": "to_start_game",
+      "display_name": "Start Game",
+      "target_scene": "start_game"
+    },
+    {
+      "scene_exit_id": "to_settings",
+      "display_name": "Settings",
+      "target_scene": "settings"
+    },
+    {
+      "scene_exit_id": "to_credits",
+      "display_name": "Credits",
+      "target_scene": "credits"
+    }
+  ],
   "states": [
     {
       "state_id": "select_start",
@@ -172,6 +189,7 @@
       ],
       "guards": [],
       "actions": [],
+      "scene_exit_ref": "to_start_game",
       "target_scene": "start_game"
     },
     {
@@ -182,6 +200,7 @@
       ],
       "guards": [],
       "actions": [],
+      "scene_exit_ref": "to_settings",
       "target_scene": "settings"
     },
     {
@@ -192,6 +211,7 @@
       ],
       "guards": [],
       "actions": [],
+      "scene_exit_ref": "to_credits",
       "target_scene": "credits"
     }
   ],

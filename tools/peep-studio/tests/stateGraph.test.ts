@@ -100,6 +100,9 @@ const legacyRouteGraph = buildStateGraphModel(scene, {
 });
 
 assert.equal(graph.nodes.length, 2);
+assert.equal(graph.endpoints.length, 1);
+assert.equal(graph.endpoints[0]?.kind, "entry");
+assert.equal(graph.entryEdge?.target, "idle");
 assert.equal(graph.nodes[0]?.id, "idle");
 assert.equal(graph.nodes[0]?.isEntry, true);
 assert.equal(graph.nodes[0]?.outputs.length, 1);
@@ -392,6 +395,13 @@ assert.equal(invalidRouteGraph.edges.length, 0);
 
 const menuScene: SceneDocument = {
   ...scene,
+  scene_exits: [
+    {
+      scene_exit_id: "to_game",
+      display_name: "Game",
+      target_scene: "game",
+    },
+  ],
   routes: [
     {
       route_id: "menu_to_game",
@@ -399,6 +409,7 @@ const menuScene: SceneDocument = {
       from_states: ["idle"],
       guards: [],
       actions: [],
+      scene_exit_ref: "to_game",
       target_scene: "game",
     },
     {
@@ -441,11 +452,13 @@ const localWithSceneExit = buildStateGraphModel(menuScene);
 
 assert.equal(localWithSceneExit.nodes.find((node) => node.id === "idle")?.outputs.length, 2);
 assert.equal(localWithSceneExit.nodes.find((node) => node.id === "idle")?.outputs.some((output) => output.targetScene === "game"), true);
-assert.equal(localWithSceneExit.edges.length, 1);
+assert.equal(localWithSceneExit.endpoints.some((endpoint) => endpoint.sceneExitId === "to_game"), true);
+assert.equal(localWithSceneExit.edges.length, 2);
+assert.equal(localWithSceneExit.edges.some((edge) => edge.target === "scene-exit-to_game"), true);
 assert.equal(sceneFlow.nodes.length, 3);
 assert.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.isEntry, true);
 assert.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.exits.length, 1);
-assert.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.exits[0]?.label, "Button A");
+assert.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.exits[0]?.label, "Game");
 assert.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.exits[0]?.targetScene, "game");
 assert.equal(sceneFlow.edges.length, 2);
 assert.equal(sceneFlow.edges.some((edge) => edge.source === "menu" && edge.target === "game"), true);

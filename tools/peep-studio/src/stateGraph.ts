@@ -1,4 +1,4 @@
-import type { EditorNodePosition, EditorRouteRail, InputAction, ProjectEditorData, SceneDocument, StateAction, StateGuard, StateRecord, StateRoute } from "./types";
+import type { EditorNodePosition, EditorRouteRail, InputAction, ProjectEditorData, SceneDocument, SceneExitRecord, StateAction, StateGuard, StateRecord, StateRoute } from "./types";
 
 export type StateGraphExitSide = "left" | "right" | "top" | "bottom";
 export type StateGraphEntrySide = "left" | "right" | "top" | "bottom";
@@ -102,11 +102,27 @@ export type GraphTransitionEdge = {
   rails: EditorRouteRail[];
   targetHandle?: StateGraphEntryHandle;
   targetSide?: StateGraphEntrySide;
+  targetKind?: "state" | "scene_exit";
+};
+
+export type GraphSceneEndpointNode = {
+  id: string;
+  kind: "entry" | "exit";
+  label: string;
+  detail: string;
+  sceneExitId?: string;
+  targetState?: string;
+  targetScene?: string;
+  declared: boolean;
+  x: number;
+  y: number;
 };
 
 export type StateGraphModel = {
   nodes: GraphStateNode[];
+  endpoints: GraphSceneEndpointNode[];
   edges: GraphTransitionEdge[];
+  entryEdge?: { source: string; target: string };
 };
 
 export type GraphSceneNode = {
@@ -117,17 +133,18 @@ export type GraphSceneNode = {
   routeCount: number;
   entryStateLabel: string;
   exits: GraphSceneExit[];
-  usedLogicalSources: string[];
   x: number;
   y: number;
 };
 
 export type GraphSceneExit = {
   id: string;
-  routeId: string;
+  sceneExitId?: string;
+  routeId?: string;
   label: string;
   targetScene: string;
   guardCount: number;
+  declared: boolean;
 };
 
 export type GraphSceneEdge = {
@@ -135,7 +152,8 @@ export type GraphSceneEdge = {
   source: string;
   target: string;
   label: string;
-  route: StateRoute;
+  sceneExit: GraphSceneExit;
+  route?: StateRoute;
 };
 
 export type SceneFlowGraphModel = {
@@ -225,7 +243,7 @@ export function stateActionDescription(action: StateAction): string | null {
     return `Play sound${action.cue_ref === undefined ? "" : `: ${displayRefName(action.cue_ref, "sound")}`}`;
   }
   if (action.kind === "exit_to_shell") {
-    return "Exit package";
+    return "Exit to shell";
   }
   if (action.kind === "transition_scene") {
     return "Open scene";
@@ -1211,6 +1229,7 @@ export function planStateTransitionRoutes(
 export function buildStateGraphModel(scene: SceneDocument | null, editor?: ProjectEditorData): StateGraphModel {
   const states = scene?.states ?? [];
   const routes = scene?.routes ?? [];
+  const declaredSceneExits = scene?.scene_exits ?? [];
   const inputActions = scene?.input_actions ?? [];
   const entryState = scene?.entry_state ?? null;
   const columns = Math.max(1, Math.ceil(Math.sqrt(states.length)));
@@ -1222,6 +1241,28 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
     scene === null ? undefined : editor?.state_graph?.scenes?.[scene.scene_id]?.nodes;
   const savedRouteLayouts =
     scene === null ? undefined : editor?.state_graph?.scenes?.[scene.scene_id]?.routes;
+  const exitForRoute = (route: StateRoute): SceneExitRecord | undefined => {
+    if (route.scene_exit_ref !== undefined) {
+      return declaredSceneExits.find((sceneExit) => sceneExit.scene_exit_id === route.scene_exit_ref);
+    }
+    return declaredSceneExits.find((sceneExit) => sceneExit.target_scene === route.target_scene);
+  };
+  const legacySceneExits: GraphSceneEndpointNode[] = routes
+    .filter((route) => route.target_scene !== undefined && exitForRoute(route) === undefined)
+    .map((route, index) => {
+      const id = `scene-exit-legacy-${route.route_id}`;
+      const savedPosition = savedPositions?.[id];
+      return {
+        id,
+        kind: "exit" as const,
+        label: route.target_scene ?? "Scene exit",
+        detail: "Legacy scene transition",
+        targetScene: route.target_scene,
+        declared: false,
+        x: savedPosition?.x ?? columns * 340 + 180,
+        y: savedPosition?.y ?? index * 104,
+      };
+    });
 
   routes.forEach((route: StateRoute) => {
     const effectLabels = routeEffectLabels(route);
@@ -1275,9 +1316,57 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
     };
   });
 
+  const statePositions = new Map(nodes.map((node) => [node.id, { x: node.x, y: node.y }]));
+  const leftmostX = nodes.length === 0 ? 0 : Math.min(...nodes.map((node) => node.x));
+  const topmostY = nodes.length === 0 ? 0 : Math.min(...nodes.map((node) => node.y));
+  const rightmostX = nodes.length === 0 ? 0 : Math.max(...nodes.map((node) => node.x));
+  const entryNodeId = "scene-entry";
+  const entryPosition = savedPositions?.[entryNodeId] ?? { x: leftmostX - 220, y: topmostY + 96 };
+  const declaredEndpoints: GraphSceneEndpointNode[] = declaredSceneExits.map((sceneExit, index) => {
+    const id = `scene-exit-${sceneExit.scene_exit_id}`;
+    const savedPosition = savedPositions?.[id];
+    return {
+      id,
+      kind: "exit",
+      label: sceneExit.display_name,
+      detail: `Go to ${sceneExit.target_scene}`,
+      sceneExitId: sceneExit.scene_exit_id,
+      targetScene: sceneExit.target_scene,
+      declared: true,
+      x: savedPosition?.x ?? rightmostX + 440,
+      y: savedPosition?.y ?? topmostY + index * 104,
+    };
+  });
+  const entryEndpoint: GraphSceneEndpointNode = {
+    id: entryNodeId,
+    kind: "entry",
+    label: "Scene entry",
+    detail: stateLabels.get(entryState ?? "") ?? entryState ?? "No entry state",
+    targetState: entryState ?? undefined,
+    declared: true,
+    x: entryPosition.x,
+    y: entryPosition.y,
+  };
+  const endpoints = [entryEndpoint, ...declaredEndpoints, ...legacySceneExits];
+  const endpointByExitId = new Map(
+    declaredEndpoints
+      .filter((endpoint) => endpoint.sceneExitId !== undefined)
+      .map((endpoint) => [endpoint.sceneExitId!, endpoint]),
+  );
+  const legacyEndpointByRoute = new Map(
+    legacySceneExits.map((endpoint) => [endpoint.id.replace("scene-exit-legacy-", ""), endpoint]),
+  );
+
   const edges = routes.flatMap((route: StateRoute) => {
     const targetState = route.target_state;
-    if (targetState === undefined || !stateIds.has(targetState)) {
+    const declaredExit = exitForRoute(route);
+    const targetEndpoint = declaredExit === undefined
+      ? legacyEndpointByRoute.get(route.route_id)
+      : endpointByExitId.get(declaredExit.scene_exit_id);
+    const target = targetState !== undefined && stateIds.has(targetState)
+      ? targetState
+      : targetEndpoint?.id;
+    if (target === undefined) {
       return [];
     }
     return route.from_states
@@ -1286,9 +1375,9 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
         const savedLayout = savedRouteLayouts?.[route.route_id]?.sources?.[source];
         const currentLayout = savedLayout?.routing_version === 3 ? savedLayout : undefined;
         return {
-          id: `${route.route_id}:${source}->${targetState}`,
+          id: `${route.route_id}:${source}->${target}`,
           source,
-          target: targetState,
+          target,
           label: "",
           route,
           sourceHandle: `${route.route_id}:${source}`,
@@ -1298,11 +1387,19 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
           rails: currentLayout?.rails ?? [],
           targetHandle: currentLayout?.target_handle,
           targetSide: currentLayout?.target_side,
+          targetKind: targetState === undefined ? "scene_exit" as const : "state" as const,
         };
       });
   });
 
-  return { nodes, edges };
+  return {
+    nodes,
+    endpoints,
+    edges,
+    entryEdge: entryState !== null && statePositions.has(entryState)
+      ? { source: entryNodeId, target: entryState }
+      : undefined,
+  };
 }
 
 export function buildSceneFlowGraphModel(
@@ -1311,35 +1408,53 @@ export function buildSceneFlowGraphModel(
   editor?: ProjectEditorData,
 ): SceneFlowGraphModel {
   const sceneIds = new Set(scenes.map((scene) => scene.scene_id));
-  const edges = scenes.flatMap((scene) =>
-    (scene.routes ?? [])
-      .filter((route) => route.target_scene !== undefined && sceneIds.has(route.target_scene))
+  const exitsByScene = new Map<string, GraphSceneExit[]>();
+  scenes.forEach((scene) => {
+    const declared = (scene.scene_exits ?? [])
+      .filter((sceneExit) => sceneIds.has(sceneExit.target_scene))
+      .map((sceneExit) => ({
+        id: `${scene.scene_id}:scene-exit-${sceneExit.scene_exit_id}`,
+        sceneExitId: sceneExit.scene_exit_id,
+        label: sceneExit.display_name,
+        targetScene: sceneExit.target_scene,
+        guardCount: 0,
+        declared: true,
+      }));
+    const coveredTargets = new Set(declared.map((sceneExit) => sceneExit.targetScene));
+    const legacy = (scene.routes ?? [])
+      .filter((route) => route.target_scene !== undefined
+        && sceneIds.has(route.target_scene)
+        && route.scene_exit_ref === undefined
+        && !coveredTargets.has(route.target_scene))
       .map((route) => ({
-        id: `${scene.scene_id}:${route.route_id}->${route.target_scene}`,
-        source: scene.scene_id,
-        target: route.target_scene!,
+        id: `${scene.scene_id}:legacy-${route.route_id}`,
+        routeId: route.route_id,
         label: routeLabel(route, scene.input_actions ?? []),
+        targetScene: route.target_scene!,
+        guardCount: route.guards.length,
+        declared: false,
+      }));
+    exitsByScene.set(scene.scene_id, [...declared, ...legacy]);
+  });
+  const edges = scenes.flatMap((scene) =>
+    (exitsByScene.get(scene.scene_id) ?? []).map((sceneExit) => {
+      const route = sceneExit.routeId === undefined
+        ? undefined
+        : (scene.routes ?? []).find((item) => item.route_id === sceneExit.routeId);
+      return {
+        id: `${sceneExit.id}->${sceneExit.targetScene}`,
+        source: scene.scene_id,
+        target: sceneExit.targetScene,
+        label: sceneExit.label,
+        sceneExit,
         route,
-      })),
+      };
+    }),
   );
   const outgoingCounts = new Map<string, number>();
   edges.forEach((edge) => {
     outgoingCounts.set(edge.source, (outgoingCounts.get(edge.source) ?? 0) + 1);
   });
-  const exitsByScene = new Map<string, GraphSceneExit[]>();
-  scenes.forEach((scene) => {
-    const exits = (scene.routes ?? [])
-      .filter((route) => route.target_scene !== undefined && sceneIds.has(route.target_scene))
-      .map((route) => ({
-        id: `${scene.scene_id}:${route.route_id}`,
-        routeId: route.route_id,
-        label: routeLabel(route, scene.input_actions ?? []),
-        targetScene: route.target_scene!,
-        guardCount: route.guards.length,
-      }));
-    exitsByScene.set(scene.scene_id, exits);
-  });
-
   const incomingTargets = new Set(edges.map((edge) => edge.target));
   const columnY = new Map<number, number>();
   const nodes = scenes.map((scene, index) => {
@@ -1359,7 +1474,6 @@ export function buildSceneFlowGraphModel(
       routeCount: outgoingCounts.get(scene.scene_id) ?? 0,
       entryStateLabel: entryState?.display_name ?? scene.entry_state ?? "No start state",
       exits,
-      usedLogicalSources: (scene.input_actions ?? []).map((action) => action.logical_source),
       x: savedPosition?.x ?? column * 360,
       y: savedPosition?.y ?? y,
     };

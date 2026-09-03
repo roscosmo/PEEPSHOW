@@ -29,6 +29,7 @@
     "entry_state": { "$ref": "#/$defs/stable_id" },
     "variables": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/variable" } },
     "input_actions": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/input_action" } },
+    "scene_exits": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/scene_exit" } },
     "states": { "type": "array", "minItems": 1, "maxItems": 64, "items": { "$ref": "#/$defs/state" } },
     "routes": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/route" } },
     "render_models": { "type": "array", "minItems": 1, "maxItems": 64, "items": { "$ref": "#/$defs/render_model" } },
@@ -81,6 +82,16 @@
         "waiting_visual_ref": { "$ref": "#/$defs/stable_id" }
       }
     },
+    "scene_exit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene_exit_id", "display_name", "target_scene"],
+      "properties": {
+        "scene_exit_id": { "$ref": "#/$defs/stable_id" },
+        "display_name": { "type": "string", "minLength": 1, "maxLength": 96 },
+        "target_scene": { "$ref": "#/$defs/stable_id" }
+      }
+    },
     "guard": {
       "type": "object",
       "additionalProperties": false,
@@ -129,6 +140,12 @@
         { "required": ["target_state"], "not": { "required": ["target_scene"] } },
         { "required": ["target_scene"], "not": { "required": ["target_state"] } }
       ],
+      "allOf": [
+        {
+          "if": { "required": ["scene_exit_ref"] },
+          "then": { "required": ["target_scene"] }
+        }
+      ],
       "properties": {
         "route_id": { "$ref": "#/$defs/stable_id" },
         "action_ref": { "$ref": "#/$defs/stable_id" },
@@ -136,7 +153,8 @@
         "guards": { "type": "array", "maxItems": 8, "items": { "$ref": "#/$defs/guard" } },
         "actions": { "type": "array", "maxItems": 8, "items": { "$ref": "#/$defs/action" } },
         "target_state": { "$ref": "#/$defs/stable_id" },
-        "target_scene": { "$ref": "#/$defs/stable_id" }
+        "target_scene": { "$ref": "#/$defs/stable_id" },
+        "scene_exit_ref": { "$ref": "#/$defs/stable_id" }
       }
     },
     "render_element": {

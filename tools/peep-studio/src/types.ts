@@ -24,12 +24,19 @@ export type SceneDocument = {
   entry_state?: string;
   variables?: StateVariable[];
   input_actions?: InputAction[];
+  scene_exits?: SceneExitRecord[];
   states?: StateRecord[];
   routes?: StateRoute[];
   render_models?: RenderModel[];
   waiting_visuals?: WaitingVisual[];
   reactive_wait_default?: ReactiveWaitPolicy;
   interaction_policy?: InteractionPolicy;
+};
+
+export type SceneExitRecord = {
+  scene_exit_id: string;
+  display_name: string;
+  target_scene: string;
 };
 
 export type StateVariable = {
@@ -91,6 +98,7 @@ export type StateRoute = {
   actions: StateAction[];
   target_state?: string;
   target_scene?: string;
+  scene_exit_ref?: string;
 };
 
 export type RenderElement = {
@@ -420,6 +428,7 @@ export type ServiceHello = {
       render_models: number;
       variables: number;
       input_actions: number;
+      scene_exits: number;
       routes: number;
       guards_per_route: number;
       actions_per_route: number;
@@ -430,6 +439,7 @@ export type ServiceHello = {
     variable_commands: string[];
     input_action_commands: string[];
     route_commands: string[];
+    scene_exit_commands: string[];
     guard_commands: string[];
     action_commands: string[];
     policy_commands: string[];

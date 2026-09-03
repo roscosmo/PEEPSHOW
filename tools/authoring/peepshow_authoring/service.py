@@ -46,7 +46,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 27
+SERVICE_API_VERSION = 28
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -303,6 +303,7 @@ class AuthoringService:
                     "render_models": 1,
                     "variables": 32,
                     "input_actions": 32,
+                    "scene_exits": 32,
                     "routes": 128,
                     "guards_per_route": 8,
                     "actions_per_route": 8,
@@ -342,8 +343,11 @@ class AuthoringService:
                     "route.set_action_ref",
                     "route.set_sources",
                     "route.set_target",
-                    "route.add_scene_exit",
-                    "route.delete_scene_exit",
+                ],
+                "scene_exit_commands": [
+                    "scene_exit.add",
+                    "scene_exit.set_target",
+                    "scene_exit.delete",
                 ],
                 "guard_commands": [
                     "route.guard.add",

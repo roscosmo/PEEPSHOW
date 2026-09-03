@@ -328,8 +328,9 @@ variable.add
 input_action.add
 route.add
 route.delete
-route.add_scene_exit
-route.delete_scene_exit
+scene_exit.add
+scene_exit.set_target
+scene_exit.delete
 route.guard.add
 route.guard.move
 route.action.add

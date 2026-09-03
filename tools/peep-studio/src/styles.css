@@ -2360,6 +2360,65 @@ button:focus-visible {
   box-shadow: 0 0 0 3px #175f8a, 0 5px 12px rgb(55 64 59 / 12%);
 }
 
+.state-scene-endpoint {
+  position: relative;
+  display: grid;
+  width: 148px;
+  min-height: 64px;
+  align-content: center;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 2px solid #303733;
+  border-radius: 6px;
+  background: #f8faf9;
+  color: #17201b;
+  cursor: move;
+  text-align: left;
+  box-shadow: 0 3px 8px rgb(55 64 59 / 10%);
+}
+
+.state-scene-endpoint.entry {
+  border-color: #2b8a3e;
+  background: #ebfbee;
+}
+
+.state-scene-endpoint.exit {
+  border-color: #d97706;
+  background: #fff9db;
+}
+
+.state-scene-endpoint.selected {
+  box-shadow: 0 0 0 3px #175f8a, 0 3px 8px rgb(55 64 59 / 10%);
+}
+
+.state-scene-endpoint > span,
+.state-scene-endpoint > small {
+  color: #59645e;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.state-scene-endpoint > strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.state-scene-endpoint .react-flow__handle {
+  width: 11px;
+  height: 11px;
+  border: 2px solid #303733;
+  background: #fff;
+}
+
+.state-scene-endpoint.entry .react-flow__handle {
+  background: #40c057;
+}
+
+.state-scene-endpoint.exit .react-flow__handle {
+  background: #ff922b;
+}
+
 .scene-card-node {
   display: grid;
   width: 300px;

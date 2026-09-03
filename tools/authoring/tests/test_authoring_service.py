@@ -314,7 +314,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(27, SERVICE_API_VERSION)
+        self.assertEqual(28, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -404,6 +404,8 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertIn("state_placement.set_override", graph["state_placement_commands"])
         self.assertIn("route.guard.move", graph["guard_commands"])
         self.assertIn("route.action.move", graph["action_commands"])
+        self.assertIn("scene_exit.add", graph["scene_exit_commands"])
+        self.assertNotIn("route.add_scene_exit", graph["route_commands"])
         self.assertEqual("reject_if_referenced", graph["generic_delete_policy"])
         waiting_animation = result["state_scene_presentation"]["waiting_animation"]
         self.assertIn("render_element.bind_waiting_animation", waiting_animation["commands"])
@@ -441,7 +443,7 @@ class AuthoringServiceTests(unittest.TestCase):
                     {"project_revision": revision, "scene_id": "main"},
                 )
             )
-            exited = service.handle(
+            ignored = service.handle(
                 request(
                     "project.preview_input",
                     {
@@ -451,8 +453,11 @@ class AuthoringServiceTests(unittest.TestCase):
                     },
                 )
             )
-            self.assertTrue(exited["input"]["accepted"])
-            self.assertEqual("exit_project", exited["input"]["route_id"])
+            self.assertFalse(ignored["input"]["accepted"])
+            main_scene = created["document"]["scenes"][0]
+            self.assertEqual([], main_scene["input_actions"])
+            self.assertEqual([], main_scene["routes"])
+            self.assertEqual([], main_scene["scene_exits"])
 
             changed = service.handle(
                 request(
@@ -1090,7 +1095,6 @@ class AuthoringServiceTests(unittest.TestCase):
         )
         self.assertTrue(changed["dirty"])
         self.assertTrue(changed["can_undo"])
-
         undone = service.handle(request("project.undo", {"project_revision": changed["project_revision"]}))
         routes = undone["document"]["scenes"][0]["routes"]
         self.assertEqual(
@@ -1127,9 +1131,13 @@ class AuthoringServiceTests(unittest.TestCase):
             )
         self.assertEqual("COMMAND_TARGET_UNKNOWN", raised.exception.code)
 
-    def test_route_add_scene_exit_creates_valid_direct_transition(self) -> None:
+    def test_scene_exit_add_creates_unwired_semantic_endpoint(self) -> None:
         service = AuthoringService()
         loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        details_before = next(
+            scene for scene in loaded["document"]["scenes"]
+            if scene["scene_id"] == "state_details"
+        )
         changed = service.handle(
             request(
                 "project.apply_commands",
@@ -1137,9 +1145,8 @@ class AuthoringServiceTests(unittest.TestCase):
                     "project_revision": loaded["project_revision"],
                     "commands": [
                         {
-                            "kind": "route.add_scene_exit",
+                            "kind": "scene_exit.add",
                             "scene_id": "state_details",
-                            "logical_source": "BUTTON_A",
                             "target_scene": "state_demo",
                         }
                     ],
@@ -1148,40 +1155,46 @@ class AuthoringServiceTests(unittest.TestCase):
         )
 
         applied = changed["applied_commands"][0]
-        route_id = applied["route_id"]
         details = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_details")
-        route = next(route for route in details["routes"] if route["route_id"] == route_id)
-        self.assertEqual("route.add_scene_exit", applied["kind"])
-        self.assertEqual(route_id, applied["action_id"])
-        self.assertEqual("BUTTON_A", applied["logical_source"])
-        self.assertEqual("state_demo", route["target_scene"])
-        self.assertEqual(route_id, route["action_ref"])
-        self.assertEqual([], route["guards"])
-        self.assertEqual([], route["actions"])
-        self.assertEqual([state["state_id"] for state in details["states"]], route["from_states"])
-        self.assertIn({"action_id": route_id, "logical_source": "BUTTON_A"}, details["input_actions"])
-        self.assertIn(route_id, details["reactive_wait_default"]["event_interests"])
-        self.assertIn(route_id, details["interaction_policy"]["meaningful_activity_actions"])
-
-        reset = service.handle(
-            request(
-                "project.preview_reset",
-                {"project_revision": changed["project_revision"], "scene_id": "state_details"},
-            )
+        self.assertEqual("scene_exit.add", applied["kind"])
+        self.assertEqual(
+            {
+                "scene_exit_id": "to_state_demo_2",
+                "display_name": "State Demo",
+                "target_scene": "state_demo",
+            },
+            applied["scene_exit"],
         )
-        preview = service.handle(
+        self.assertIn(applied["scene_exit"], details["scene_exits"])
+        self.assertEqual(details_before["input_actions"], details["input_actions"])
+        self.assertEqual(details_before["routes"], details["routes"])
+        self.assertEqual(
+            details_before["reactive_wait_default"],
+            details["reactive_wait_default"],
+        )
+        self.assertTrue(changed["dirty"])
+        self.assertTrue(changed["can_undo"])
+
+        positioned = service.handle(
             request(
-                "project.preview_input",
+                "project.apply_commands",
                 {
                     "project_revision": changed["project_revision"],
-                    "preview_revision": reset["preview_revision"],
-                    "logical_source": "BUTTON_A",
+                    "commands": [{
+                        "kind": "editor.state_graph.set_node_position",
+                        "scene_id": "state_details",
+                        "node_id": "scene-exit-to_state_demo_2",
+                        "x": 480,
+                        "y": 120,
+                    }],
                 },
             )
         )
-        self.assertEqual("state_demo", preview["scene"]["scene_id"])
-        self.assertTrue(changed["dirty"])
-        self.assertTrue(changed["can_undo"])
+        self.assertEqual(
+            {"x": 480, "y": 120},
+            positioned["document"]["project"]["editor"]["state_graph"]["scenes"]
+            ["state_details"]["nodes"]["scene-exit-to_state_demo_2"],
+        )
 
     def test_scene_exit_play_sfx_compiles_previews_and_can_be_deleted(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1259,7 +1272,7 @@ class AuthoringServiceTests(unittest.TestCase):
                         "project_revision": changed["project_revision"],
                         "commands": [
                             {
-                                "kind": "route.delete_scene_exit",
+                                "kind": "route.delete",
                                 "scene_id": "state_demo",
                                 "route_id": "open_details",
                             }
@@ -1303,31 +1316,9 @@ class AuthoringServiceTests(unittest.TestCase):
             raised.exception.code,
         )
 
-    def test_route_add_scene_exit_rejects_duplicate_source(self) -> None:
+    def test_scene_exit_set_target_updates_referencing_routes(self) -> None:
         service = AuthoringService()
-        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
-        with self.assertRaises(ProtocolError) as raised:
-            service.handle(
-                request(
-                    "project.apply_commands",
-                    {
-                        "project_revision": loaded["project_revision"],
-                        "commands": [
-                            {
-                                "kind": "route.add_scene_exit",
-                                "scene_id": "state_demo",
-                                "logical_source": "BUTTON_A",
-                                "target_scene": "state_details",
-                            }
-                        ],
-                    },
-                )
-            )
-        self.assertEqual("INPUT_SOURCE_DUPLICATE", raised.exception.code)
-
-    def test_route_delete_scene_exit_removes_route_and_action_binding(self) -> None:
-        service = AuthoringService()
-        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        loaded = service.handle(request("project.load", {"path": str(PUBLIC_EXAMPLE)}))
         changed = service.handle(
             request(
                 "project.apply_commands",
@@ -1335,33 +1326,72 @@ class AuthoringServiceTests(unittest.TestCase):
                     "project_revision": loaded["project_revision"],
                     "commands": [
                         {
-                            "kind": "route.delete_scene_exit",
-                            "scene_id": "state_demo",
-                            "route_id": "open_details",
+                            "kind": "scene_exit.set_target",
+                            "scene_id": "main_menu",
+                            "scene_exit_id": "to_settings",
+                            "target_scene": "credits",
                         }
                     ],
                 },
             )
         )
 
-        demo = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_demo")
-        self.assertNotIn("open_details", [route["route_id"] for route in demo["routes"]])
-        self.assertNotIn("open_details", [action["action_id"] for action in demo["input_actions"]])
-        self.assertNotIn("open_details", demo["reactive_wait_default"]["event_interests"])
-        self.assertNotIn("open_details", demo["interaction_policy"]["meaningful_activity_actions"])
-        self.assertEqual(
-            {
-                "kind": "route.delete_scene_exit",
-                "scene_id": "state_demo",
-                "route_id": "open_details",
-                "action_id": "open_details",
-                "target_scene": "state_details",
-            },
-            changed["applied_commands"][0],
-        )
-        self.assertTrue(changed["dirty"])
+        menu = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "main_menu")
+        scene_exit = next(item for item in menu["scene_exits"] if item["scene_exit_id"] == "to_settings")
+        route = next(item for item in menu["routes"] if item["route_id"] == "choose_settings")
+        self.assertEqual("credits", scene_exit["target_scene"])
+        self.assertEqual("credits", route["target_scene"])
 
-    def test_route_delete_scene_exit_rejects_local_route(self) -> None:
+    def test_scene_exit_delete_rejects_connected_endpoint_and_removes_unused_endpoint(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        with self.assertRaises(ProtocolError) as raised:
+            service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [{
+                            "kind": "scene_exit.delete",
+                            "scene_id": "state_demo",
+                            "scene_exit_id": "to_state_details",
+                        }],
+                    },
+                )
+            )
+        self.assertEqual("COMMAND_TARGET_IN_USE", raised.exception.code)
+
+        added = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [{
+                        "kind": "scene_exit.add",
+                        "scene_id": "state_details",
+                        "target_scene": "state_demo",
+                    }],
+                },
+            )
+        )
+        added_exit_id = added["applied_commands"][0]["scene_exit"]["scene_exit_id"]
+        deleted = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": added["project_revision"],
+                    "commands": [{
+                        "kind": "scene_exit.delete",
+                        "scene_id": "state_details",
+                        "scene_exit_id": added_exit_id,
+                    }],
+                },
+            )
+        )
+        details = next(scene for scene in deleted["document"]["scenes"] if scene["scene_id"] == "state_details")
+        self.assertNotIn(added_exit_id, {item["scene_exit_id"] for item in details["scene_exits"]})
+
+    def test_scene_exit_rejects_unknown_target(self) -> None:
         service = AuthoringService()
         loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
         with self.assertRaises(ProtocolError) as raised:
@@ -1372,15 +1402,15 @@ class AuthoringServiceTests(unittest.TestCase):
                         "project_revision": loaded["project_revision"],
                         "commands": [
                             {
-                                "kind": "route.delete_scene_exit",
+                                "kind": "scene_exit.add",
                                 "scene_id": "state_demo",
-                                "route_id": "center_to_right",
+                                "target_scene": "missing",
                             }
                         ],
                     },
                 )
             )
-        self.assertEqual("COMMAND_TARGET_INVALID", raised.exception.code)
+        self.assertEqual("COMMAND_TARGET_UNKNOWN", raised.exception.code)
 
     def test_render_element_set_position_updates_existing_element(self) -> None:
         service = AuthoringService()
@@ -1823,6 +1853,17 @@ class AuthoringServiceTests(unittest.TestCase):
     def test_short_start_can_be_authored_compiled_and_previewed(self) -> None:
         service = AuthoringService()
         loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        source = next(
+            scene for scene in loaded["document"]["scenes"]
+            if scene["scene_id"] == "state_demo"
+        )
+        wait_policy = dict(source["reactive_wait_default"])
+        wait_policy["event_interests"] = [*wait_policy["event_interests"], "open_details_start"]
+        interaction_policy = dict(source["interaction_policy"])
+        interaction_policy["meaningful_activity_actions"] = [
+            *interaction_policy["meaningful_activity_actions"],
+            "open_details_start",
+        ]
         changed = service.handle(
             request(
                 "project.apply_commands",
@@ -1830,11 +1871,36 @@ class AuthoringServiceTests(unittest.TestCase):
                     "project_revision": loaded["project_revision"],
                     "commands": [
                         {
-                            "kind": "route.add_scene_exit",
+                            "kind": "input_action.add",
                             "scene_id": "state_demo",
-                            "logical_source": "BUTTON_START",
-                            "target_scene": "state_details",
-                        }
+                            "input_action": {
+                                "action_id": "open_details_start",
+                                "logical_source": "BUTTON_START",
+                            },
+                        },
+                        {
+                            "kind": "route.add",
+                            "scene_id": "state_demo",
+                            "route": {
+                                "route_id": "open_details_start",
+                                "action_ref": "open_details_start",
+                                "from_states": ["center"],
+                                "guards": [],
+                                "actions": [],
+                                "scene_exit_ref": "to_state_details",
+                                "target_scene": "state_details",
+                            },
+                        },
+                        {
+                            "kind": "scene.set_reactive_wait_default",
+                            "scene_id": "state_demo",
+                            "reactive_wait_default": wait_policy,
+                        },
+                        {
+                            "kind": "scene.set_interaction_policy",
+                            "scene_id": "state_demo",
+                            "interaction_policy": interaction_policy,
+                        },
                     ],
                 },
             )

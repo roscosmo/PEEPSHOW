@@ -60,6 +60,13 @@
       "logical_source": "JOY_DOWN_RIGHT"
     }
   ],
+  "scene_exits": [
+    {
+      "scene_exit_id": "to_state_target",
+      "display_name": "Input Proof",
+      "target_scene": "state_target"
+    }
+  ],
   "states": [
     {
       "state_id": "left",
@@ -194,6 +201,7 @@
       ],
       "guards": [],
       "actions": [],
+      "scene_exit_ref": "to_state_target",
       "target_scene": "state_target"
     },
     {
