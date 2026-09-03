@@ -3937,6 +3937,8 @@ export default function App() {
               editor={project?.document?.project?.editor}
               layoutStatus={stateGraphLayoutStatus}
               selected={sceneSelection}
+              physicalEventKinds={service?.state_scene_presentation.logical_input_events ?? ["press"]}
+              peepOSTriggers={service?.state_scene_graph.peepos_trigger_catalog ?? []}
               onSelect={setSceneSelection}
               onMoveStateNode={(sceneId, stateId, x, y) => {
                 void moveStateNode(sceneId, stateId, x, y);

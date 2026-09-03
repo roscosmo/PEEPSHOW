@@ -20,13 +20,16 @@ import {
   useUpdateNodeInternals,
 } from "@xyflow/react";
 import {
+  Activity,
   ArrowDown,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
+  CalendarClock,
   ExternalLink,
   Eye,
   Filter,
+  Footprints,
   GitBranch,
   Hourglass,
   Image,
@@ -42,7 +45,7 @@ import {
   Volume2,
   Variable,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { FramebufferCanvas } from "./FramebufferCanvas";
 import {
   buildSceneFlowGraphModel,
@@ -74,6 +77,7 @@ import type {
   EditorRouteRail,
   Framebuffer,
   InputAction,
+  PeepOSTriggerCapability,
   ProjectEditorData,
   RenderModel,
   SceneDocument,
@@ -96,6 +100,8 @@ export type SceneSelection =
 
 export type StateTriggerEventKind = "press" | "release" | "hold" | "repeat";
 
+const PHYSICAL_TRIGGER_EVENT_KINDS: StateTriggerEventKind[] = ["press", "hold", "release", "repeat"];
+
 export type NewStateTransitionTarget =
   | {
       kind: "state";
@@ -104,6 +110,15 @@ export type NewStateTransitionTarget =
       targetSide: StateGraphEntrySide;
     }
   | { kind: "sceneExit"; sceneExitId: string };
+
+type PendingPhysicalTriggerConnection = {
+  sceneId: string;
+  sourceState: string;
+  logicalSource: string;
+  target: NewStateTransitionTarget;
+  eventKinds: StateTriggerEventKind[];
+  eventKind: StateTriggerEventKind;
+};
 
 function fieldText(value: unknown): string {
   if (value === undefined || value === null) {
@@ -299,8 +314,12 @@ type StateCardNodeData = {
   canEdit: boolean;
   selectedRouteId: string | null;
   joystickPolicy: "four_way" | "eight_way";
+  physicalEventKinds: StateTriggerEventKind[];
+  hasPeepOSTriggers: boolean;
+  peepOSTriggerOpen: boolean;
   onSelectState: (stateId: string) => void;
   onSelectRoute: (routeId: string, sourceState: string) => void;
+  onOpenPeepOSTriggers: (stateId: string) => void;
 };
 
 type StateTriggerStemLayout = {
@@ -353,6 +372,70 @@ const OPTIONAL_DIAGONAL_CONTROLS = [
   { source: "JOY_DOWN_LEFT", label: "down left", slot: "joy-down-left", side: "bottom" },
   { source: "JOY_DOWN_RIGHT", label: "down right", slot: "joy-down-right", side: "bottom" },
 ] as const;
+
+function physicalEventKindsForSource(
+  source: string,
+  advertisedKinds: StateTriggerEventKind[],
+): StateTriggerEventKind[] {
+  if (source === "BUTTON_START") {
+    return advertisedKinds.includes("press") ? ["press"] : [];
+  }
+  return PHYSICAL_TRIGGER_EVENT_KINDS.filter((eventKind) => advertisedKinds.includes(eventKind));
+}
+
+function availablePhysicalEventKinds(
+  graphNode: GraphStateNode,
+  source: string,
+  advertisedKinds: StateTriggerEventKind[],
+): StateTriggerEventKind[] {
+  const usedKinds = new Set(
+    graphNode.outputs
+      .filter((output) => output.triggerKind === "physical" && output.logicalSource === source)
+      .map((output) => output.eventKind),
+  );
+  return physicalEventKindsForSource(source, advertisedKinds).filter((eventKind) => !usedKinds.has(eventKind));
+}
+
+function physicalEventBadge(eventKind: StateTriggerEventKind): string | null {
+  if (eventKind === "hold") {
+    return "H";
+  }
+  if (eventKind === "release") {
+    return "U";
+  }
+  if (eventKind === "repeat") {
+    return "R";
+  }
+  return null;
+}
+
+function PeepOSTriggerGlyph({ kind }: { kind: string }) {
+  if (kind === "step_count") {
+    return <Footprints size={17} aria-hidden="true" />;
+  }
+  if (kind === "delay_elapsed") {
+    return <Hourglass size={17} aria-hidden="true" />;
+  }
+  if (kind === "local_schedule") {
+    return <CalendarClock size={17} aria-hidden="true" />;
+  }
+  if (kind === "device_active") {
+    return <Play size={17} aria-hidden="true" />;
+  }
+  if (kind === "device_inactive") {
+    return <LogOut size={17} aria-hidden="true" />;
+  }
+  if (kind === "wake_resume") {
+    return <RotateCcw size={17} aria-hidden="true" />;
+  }
+  if (kind === "animation_complete") {
+    return <Image size={17} aria-hidden="true" />;
+  }
+  if (kind === "audio_marker") {
+    return <Volume2 size={17} aria-hidden="true" />;
+  }
+  return <Activity size={17} aria-hidden="true" />;
+}
 
 function triggerPosition(side: StateGraphExitSide): Position {
   if (side === "left") {
@@ -432,51 +515,48 @@ function routeStateNode(
 }
 
 function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
-  const { activeEntryHandles, canEdit, graphNode, joystickPolicy, selectedRouteId, onSelectRoute, onSelectState } = data;
+  const {
+    activeEntryHandles,
+    canEdit,
+    graphNode,
+    hasPeepOSTriggers,
+    joystickPolicy,
+    peepOSTriggerOpen,
+    physicalEventKinds,
+    selectedRouteId,
+    onOpenPeepOSTriggers,
+    onSelectRoute,
+    onSelectState,
+  } = data;
   const updateNodeInternals = useUpdateNodeInternals();
   const cardRef = useRef<HTMLDivElement>(null);
-  const [triggerCreatorOpen, setTriggerCreatorOpen] = useState(false);
-  const [customTriggerValue, setCustomTriggerValue] = useState("");
   const [stemLayout, setStemLayout] = useState<StateTriggerStemLayout>({
     width: 0,
     height: 0,
     lines: [],
     sockets: {},
   });
-  const physicalOutputBySource = new Map(
-    graphNode.outputs
-      .filter((output) => output.triggerKind === "physical" && output.eventKind === "press")
-      .map((output) => [output.logicalSource, output]),
-  );
+  const physicalOutputsBySource = new Map<string, RoutedStateOutput[]>();
+  graphNode.outputs
+    .filter((output) => output.triggerKind === "physical")
+    .forEach((output) => {
+      const outputs = physicalOutputsBySource.get(output.logicalSource) ?? [];
+      outputs.push(output);
+      physicalOutputsBySource.set(output.logicalSource, outputs);
+    });
   const physicalSources = new Set<string>([
     ...PHYSICAL_TRIGGER_CONTROLS.map((control) => control.source),
     ...OPTIONAL_DIAGONAL_CONTROLS.map((control) => control.source),
   ]);
   const dynamicOutputs = graphNode.outputs.filter(
-    (output) => output.triggerKind === "platform" || output.eventKind !== "press" || !physicalSources.has(output.logicalSource),
+    (output) => output.triggerKind === "platform" || !physicalSources.has(output.logicalSource),
   );
   const physicalControls = [
     ...PHYSICAL_TRIGGER_CONTROLS,
     ...OPTIONAL_DIAGONAL_CONTROLS.filter(
-      (control) => joystickPolicy === "eight_way" || physicalOutputBySource.has(control.source),
+      (control) => joystickPolicy === "eight_way" || physicalOutputsBySource.has(control.source),
     ),
   ];
-  const usedTriggerBindings = new Set(
-    graphNode.outputs.map((output) => `${output.logicalSource}:${output.eventKind}`),
-  );
-  const customTriggerOptions = physicalControls.flatMap((control) =>
-    (["release", "hold", "repeat"] as const)
-      .filter(() => control.source !== "BUTTON_START")
-      .filter((eventKind) => !usedTriggerBindings.has(`${control.source}:${eventKind}`))
-      .map((eventKind) => ({
-        value: `${control.source}:${eventKind}`,
-        source: control.source,
-        eventKind,
-        label: `${INPUT_LABELS[control.source] ?? control.label} - ${TRIGGER_EVENT_LABELS[eventKind]}`,
-      })),
-  );
-  const selectedCustomTrigger = customTriggerOptions.find((option) => option.value === customTriggerValue)
-    ?? customTriggerOptions[0];
   const outputSideKey = graphNode.outputs
     .map((output) => `${output.id}:${output.logicalSource}:${output.exitSide}`)
     .join("|");
@@ -486,10 +566,6 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
   useEffect(() => {
     updateNodeInternals(graphNode.id);
   }, [graphNode.id, outputSideKey, stemSocketKey, updateNodeInternals]);
-
-  useEffect(() => {
-    setTriggerCreatorOpen(false);
-  }, [graphNode.outputs.length]);
 
   useEffect(() => {
     const card = cardRef.current;
@@ -518,8 +594,9 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
         const triggerRect = trigger.getBoundingClientRect();
         const x1 = (triggerRect.left - originX + triggerRect.width / 2) / scaleX;
         const y1 = (triggerRect.top - originY + triggerRect.height / 2) / scaleY;
-        const output = physicalOutputBySource.get(control.source);
-        const side = output?.exitSide ?? control.side;
+        const outputs = physicalOutputsBySource.get(control.source) ?? [];
+        const primaryOutput = outputs.find((output) => output.eventKind === "press") ?? outputs[0];
+        const side = primaryOutput?.exitSide ?? control.side;
         const endpoint = {
           x: side === "left" ? 0 : side === "right" ? width : x1,
           y: side === "top" ? 0 : side === "bottom" ? height : y1,
@@ -545,9 +622,13 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
   }, [graphNode.id, outputSideKey]);
 
   const renderPhysicalControl = (source: string, label: string, slot: string) => {
-    const output = physicalOutputBySource.get(source);
-    const isActive = output !== undefined;
-    const isSelected = output !== undefined && selectedRouteId === output.routeId;
+    const outputs = physicalOutputsBySource.get(source) ?? [];
+    const primaryOutput = outputs.find((output) => output.eventKind === "press") ?? outputs[0];
+    const isActive = outputs.length > 0;
+    const isSelected = outputs.some((output) => selectedRouteId === output.routeId);
+    const lifecycleBadges = outputs
+      .map((output) => ({ eventKind: output.eventKind, label: physicalEventBadge(output.eventKind) }))
+      .filter((badge): badge is { eventKind: StateTriggerEventKind; label: string } => badge.label !== null);
     return (
       <button
         className={`state-physical-trigger trigger-${slot} nodrag nopan ${isActive ? "active" : "inactive"} ${isSelected ? "selected" : ""}`}
@@ -558,12 +639,19 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
         data-trigger-slot={slot}
         onClick={(event) => {
           event.stopPropagation();
-          if (output !== undefined) {
-            onSelectRoute(output.routeId, graphNode.id);
+          if (primaryOutput !== undefined) {
+            onSelectRoute(primaryOutput.routeId, graphNode.id);
           }
         }}
       >
         <PhysicalTriggerGlyph label={label} />
+        {lifecycleBadges.length > 0 && (
+          <span className="state-physical-event-badges" aria-label={lifecycleBadges.map((badge) => TRIGGER_EVENT_LABELS[badge.eventKind]).join(", ")}>
+            {lifecycleBadges.map((badge) => (
+              <small key={badge.eventKind} title={TRIGGER_EVENT_LABELS[badge.eventKind]}>{badge.label}</small>
+            ))}
+          </span>
+        )}
       </button>
     );
   };
@@ -600,9 +688,12 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
         />
       ))}
       {physicalControls.map((control) => {
-        const output = physicalOutputBySource.get(control.source);
-        const side = output?.exitSide ?? control.side;
-        const className = `state-physical-socket socket-${control.slot} ${output === undefined ? "inactive" : "active"} ${selectedRouteId === output?.routeId ? "selected" : ""}`;
+        const outputs = physicalOutputsBySource.get(control.source) ?? [];
+        const primaryOutput = outputs.find((output) => output.eventKind === "press") ?? outputs[0];
+        const side = primaryOutput?.exitSide ?? control.side;
+        const availableEventKinds = availablePhysicalEventKinds(graphNode, control.source, physicalEventKinds);
+        const canCreate = canEdit && availableEventKinds.length > 0;
+        const className = `state-physical-socket socket-${control.slot} ${outputs.length === 0 ? "inactive" : "active"} ${outputs.some((output) => selectedRouteId === output.routeId) ? "selected" : ""}`;
         const socket = stemLayout.sockets[control.slot];
         const socketStyle = socket === undefined ? undefined : {
           left: socket.x,
@@ -611,31 +702,34 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
           bottom: "auto",
           transform: "translate(-50%, -50%)",
         };
-        if (output === undefined) {
-          return (
+        return (
+          <Fragment key={control.source}>
+            {outputs.map((output) => (
+              <Handle
+                className="state-physical-route-anchor"
+                id={output.id}
+                isConnectable={false}
+                key={output.id}
+                position={triggerPosition(side)}
+                style={socketStyle}
+                type="source"
+              />
+            ))}
+            {canCreate ? (
             <Handle
               className={className}
               data-socket-slot={control.slot}
-              id={`new-trigger:press:${control.source}:${side}`}
-              isConnectable={canEdit}
-              key={control.source}
+              id={`new-physical-trigger:${control.source}`}
+              isConnectable
               position={triggerPosition(side)}
               style={socketStyle}
-              title={`Create ${INPUT_LABELS[control.source] ?? control.label} transition`}
+              title={`Create ${INPUT_LABELS[control.source] ?? control.label} transition (${availableEventKinds.map((eventKind) => TRIGGER_EVENT_LABELS[eventKind]).join(", ")})`}
               type="source"
             />
-          );
-        }
-        return (
-          <Handle
-            className={className}
-            data-socket-slot={control.slot}
-            id={output.id}
-            key={control.source}
-            style={socketStyle}
-            type="source"
-            position={triggerPosition(side)}
-          />
+            ) : (
+              <span className={className} data-socket-slot={control.slot} style={socketStyle} aria-hidden="true" />
+            )}
+          </Fragment>
         );
       })}
       {stemLayout.width > 0 && stemLayout.height > 0 && (
@@ -696,75 +790,26 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
       )}
       <div className="state-add-trigger nodrag nopan">
         <button
-          aria-expanded={triggerCreatorOpen}
+          aria-expanded={peepOSTriggerOpen}
           className="state-add-trigger-row"
           type="button"
-          disabled={!canEdit || customTriggerOptions.length === 0}
-          title={canEdit ? "Add a release, hold, or repeat trigger" : "Project is read-only"}
+          disabled={!hasPeepOSTriggers}
+          title="Browse PeepOS triggers"
           onClick={(event) => {
             event.stopPropagation();
-            setTriggerCreatorOpen((open) => !open);
+            onOpenPeepOSTriggers(graphNode.id);
           }}
         >
           <Plus size={13} aria-hidden="true" />
           <span>Add new trigger</span>
         </button>
-        {triggerCreatorOpen && selectedCustomTrigger !== undefined ? (
-          <>
-            <Handle
-              className="state-add-trigger-socket left"
-              id={`new-trigger:${selectedCustomTrigger.eventKind}:${selectedCustomTrigger.source}:left`}
-              isConnectable={canEdit}
-              position={Position.Left}
-              title={`Create ${selectedCustomTrigger.label} transition`}
-              type="source"
-            />
-            <Handle
-              className="state-add-trigger-socket right"
-              id={`new-trigger:${selectedCustomTrigger.eventKind}:${selectedCustomTrigger.source}:right`}
-              isConnectable={canEdit}
-              position={Position.Right}
-              title={`Create ${selectedCustomTrigger.label} transition`}
-              type="source"
-            />
-            <div className="state-trigger-creator" onClick={(event) => event.stopPropagation()}>
-              <div className="state-trigger-creator-heading">
-                <strong>New trigger</strong>
-                <button
-                  aria-label="Close trigger editor"
-                  className="icon-button"
-                  title="Close"
-                  type="button"
-                  onClick={() => setTriggerCreatorOpen(false)}
-                >
-                  <X size={14} aria-hidden="true" />
-                </button>
-              </div>
-              <label htmlFor={`new-trigger-${graphNode.id}`}>
-                Input event
-                <select
-                  id={`new-trigger-${graphNode.id}`}
-                  value={selectedCustomTrigger.value}
-                  onChange={(event) => setCustomTriggerValue(event.target.value)}
-                >
-                  {customTriggerOptions.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </>
-        ) : (
-          <>
-            <span className="state-add-trigger-socket left" aria-hidden="true" />
-            <span className="state-add-trigger-socket right" aria-hidden="true" />
-          </>
-        )}
+        <span className="state-add-trigger-socket left" aria-hidden="true" />
+        <span className="state-add-trigger-socket right" aria-hidden="true" />
       </div>
       <div className="state-controller-map" aria-label="Physical triggers">
         <div className="state-joystick-triggers">
           {OPTIONAL_DIAGONAL_CONTROLS
-            .filter((control) => physicalOutputBySource.has(control.source))
+            .filter((control) => physicalOutputsBySource.has(control.source))
             .map((control) => renderPhysicalControl(control.source, control.label, control.slot))}
           {renderPhysicalControl("JOY_UP", "up", "joy-up")}
           {renderPhysicalControl("JOY_LEFT", "left", "joy-left")}
@@ -1479,6 +1524,8 @@ export function StateGraphView({
   editor,
   layoutStatus,
   selected,
+  physicalEventKinds,
+  peepOSTriggers,
   onSelect,
   onMoveStateNode,
   onSetRouteLayout,
@@ -1490,6 +1537,8 @@ export function StateGraphView({
   editor?: ProjectEditorData;
   layoutStatus: string;
   selected: SceneSelection;
+  physicalEventKinds: StateTriggerEventKind[];
+  peepOSTriggers: PeepOSTriggerCapability[];
   onSelect: (selection: SceneSelection) => void;
   onMoveStateNode: (sceneId: string, stateId: string, x: number, y: number) => void;
   onSetRouteLayout: (
@@ -1519,6 +1568,8 @@ export function StateGraphView({
   const flowRef = useRef<ReactFlowInstance | null>(null);
   const didInitialFit = useRef(false);
   const previousSceneId = useRef<string | null>(scene?.scene_id ?? null);
+  const [pendingPhysicalConnection, setPendingPhysicalConnection] = useState<PendingPhysicalTriggerConnection | null>(null);
+  const [peepOSTriggerStateId, setPeepOSTriggerStateId] = useState<string | null>(null);
   const defaultPositionById = useMemo(() => statePositionMap(graph.nodes, []), [graph.nodes]);
   const baseNodes: Node[] = useMemo(
     () => [
@@ -1531,9 +1582,16 @@ export function StateGraphView({
           activeEntryHandles: node.isEntry ? ["entry-top-left"] : [],
           canEdit,
           joystickPolicy: scene?.joystick_policy ?? "four_way",
+          physicalEventKinds,
+          hasPeepOSTriggers: peepOSTriggers.length > 0,
+          peepOSTriggerOpen: peepOSTriggerStateId === node.id,
           selectedRouteId: selected.kind === "route" && (selected.sourceState === undefined || selected.sourceState === node.id)
             ? selected.id
             : null,
+          onOpenPeepOSTriggers: (stateId: string) => {
+            setPendingPhysicalConnection(null);
+            setPeepOSTriggerStateId((current) => current === stateId ? null : stateId);
+          },
           onSelectState: (stateId: string) => onSelect({ kind: "state", id: stateId }),
           onSelectRoute: (routeId: string, sourceState: string) => onSelect({ kind: "route", id: routeId, sourceState }),
         },
@@ -1562,7 +1620,7 @@ export function StateGraphView({
         connectable: canEdit,
       })),
     ],
-    [canEdit, defaultPositionById, graph.endpoints, graph.nodes, onSelect, scene?.joystick_policy, selected],
+    [canEdit, defaultPositionById, graph.endpoints, graph.nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, scene?.joystick_policy, selected],
   );
   const [nodes, setNodes] = useState<Node[]>(baseNodes);
   const graphNodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
@@ -1583,7 +1641,7 @@ export function StateGraphView({
           const sourceNode = graphNodeById.get(edge.source);
           const sourceOutput = sourceNode?.outputs.find((output) => output.id === edge.sourceHandle);
           const sourceOutputIndex = sourceNode?.outputs
-            .filter((output) => output.triggerKind === "platform" || output.eventKind !== "press")
+            .filter((output) => output.triggerKind === "platform")
             .findIndex((output) => output.id === edge.sourceHandle) ?? 0;
           return {
             id: edge.sourceHandle,
@@ -1621,9 +1679,16 @@ export function StateGraphView({
             ],
             canEdit,
             joystickPolicy: scene?.joystick_policy ?? "four_way",
+            physicalEventKinds,
+            hasPeepOSTriggers: peepOSTriggers.length > 0,
+            peepOSTriggerOpen: peepOSTriggerStateId === graphNode.id,
             selectedRouteId: selected.kind === "route" && (selected.sourceState === undefined || selected.sourceState === graphNode.id)
               ? selected.id
               : null,
+            onOpenPeepOSTriggers: (stateId: string) => {
+              setPendingPhysicalConnection(null);
+              setPeepOSTriggerStateId((current) => current === stateId ? null : stateId);
+            },
             onSelectState: (stateId: string) => onSelect({ kind: "state", id: stateId }),
             onSelectRoute: (routeId: string, sourceState: string) => onSelect({ kind: "route", id: routeId, sourceState }),
           },
@@ -1632,8 +1697,12 @@ export function StateGraphView({
           connectable: canEdit,
         };
       }),
-    [canEdit, graph.edges, graphNodeById, nodes, onSelect, positionById, scene?.joystick_policy, selected, transitionLayouts],
+    [canEdit, graph.edges, graphNodeById, nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, positionById, scene?.joystick_policy, selected, transitionLayouts],
   );
+  useEffect(() => {
+    setPendingPhysicalConnection(null);
+    setPeepOSTriggerStateId(null);
+  }, [scene?.scene_id]);
   useEffect(() => {
     const sceneId = scene?.scene_id ?? null;
     setNodes((current) => {
@@ -1684,15 +1753,9 @@ export function StateGraphView({
     if (sourceNode === undefined) {
       return;
     }
-    if (connection.sourceHandle.startsWith("new-trigger:")) {
-      const [, eventKindValue, logicalSource] = connection.sourceHandle.split(":");
-      if (
-        logicalSource === undefined
-        || !(["press", "release", "hold", "repeat"] as string[]).includes(eventKindValue)
-      ) {
-        return;
-      }
-      const eventKind = eventKindValue as StateTriggerEventKind;
+    if (connection.sourceHandle.startsWith("new-physical-trigger:")) {
+      const logicalSource = connection.sourceHandle.slice("new-physical-trigger:".length);
+      let target: NewStateTransitionTarget | null = null;
       const targetState = graph.nodes.find((item) => item.id === connection.target);
       if (targetState !== undefined) {
         const [targetHandleValue, targetSideValue] = (connection.targetHandle ?? "").split(":");
@@ -1702,19 +1765,32 @@ export function StateGraphView({
         if (targetPort === undefined) {
           return;
         }
-        onCreateTriggerRoute(scene.scene_id, sourceNode.id, logicalSource, eventKind, {
+        target = {
           kind: "state",
           stateId: targetState.id,
           targetHandle: targetPort.handle,
           targetSide: targetPort.side,
-        });
-        return;
+        };
       }
-      const newRouteEndpoint = graph.endpoints.find((item) => item.id === connection.target);
-      if (newRouteEndpoint?.kind === "exit" && newRouteEndpoint.sceneExitId !== undefined) {
-        onCreateTriggerRoute(scene.scene_id, sourceNode.id, logicalSource, eventKind, {
+      if (target === null) {
+        const newRouteEndpoint = graph.endpoints.find((item) => item.id === connection.target);
+        if (newRouteEndpoint?.kind === "exit" && newRouteEndpoint.sceneExitId !== undefined) {
+          target = {
           kind: "sceneExit",
           sceneExitId: newRouteEndpoint.sceneExitId,
+          };
+        }
+      }
+      const eventKinds = availablePhysicalEventKinds(sourceNode, logicalSource, physicalEventKinds);
+      if (target !== null && eventKinds.length > 0) {
+        setPeepOSTriggerStateId(null);
+        setPendingPhysicalConnection({
+          sceneId: scene.scene_id,
+          sourceState: sourceNode.id,
+          logicalSource,
+          target,
+          eventKinds,
+          eventKind: eventKinds[0],
         });
       }
       return;
@@ -1767,6 +1843,22 @@ export function StateGraphView({
     }
     return null;
   }, [graph.nodes, selected]);
+  const pendingPhysicalSourceLabel = pendingPhysicalConnection === null
+    ? ""
+    : INPUT_LABELS[pendingPhysicalConnection.logicalSource] ?? pendingPhysicalConnection.logicalSource;
+  const pendingPhysicalTargetLabel = (() => {
+    const target = pendingPhysicalConnection?.target;
+    if (target === undefined) {
+      return "";
+    }
+    if (target.kind === "state") {
+      const stateId = target.stateId;
+      return graph.nodes.find((node) => node.id === stateId)?.label ?? stateId;
+    }
+    const sceneExitId = target.sceneExitId;
+    return graph.endpoints.find((endpoint) => endpoint.sceneExitId === sceneExitId)?.label ?? sceneExitId;
+  })();
+  const peepOSTriggerStateLabel = graph.nodes.find((node) => node.id === peepOSTriggerStateId)?.label ?? "State";
   const edges: Edge[] = useMemo(
     () => {
       const transitionEdges = graph.edges.map((edge) => {
@@ -1914,6 +2006,103 @@ export function StateGraphView({
         edges={graph.edges}
         selectedId={selected.kind === "state" ? selected.id : null}
       />
+      {pendingPhysicalConnection !== null && (
+        <Panel
+          position="top-center"
+          className="state-graph-trigger-panel"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="state-graph-trigger-heading">
+            <div>
+              <span>Physical trigger</span>
+              <strong>{pendingPhysicalSourceLabel} to {pendingPhysicalTargetLabel}</strong>
+            </div>
+            <button
+              aria-label="Cancel transition"
+              className="icon-button"
+              title="Cancel"
+              type="button"
+              onClick={() => setPendingPhysicalConnection(null)}
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
+          </div>
+          <div className="state-trigger-event-picker" role="group" aria-label="Input event">
+            {pendingPhysicalConnection.eventKinds.map((eventKind) => (
+              <button
+                className={pendingPhysicalConnection.eventKind === eventKind ? "active" : ""}
+                key={eventKind}
+                type="button"
+                onClick={() => setPendingPhysicalConnection((current) => current === null ? null : { ...current, eventKind })}
+              >
+                {TRIGGER_EVENT_LABELS[eventKind]}
+              </button>
+            ))}
+          </div>
+          <div className="state-graph-trigger-actions">
+            <button className="button secondary" type="button" onClick={() => setPendingPhysicalConnection(null)}>
+              Cancel
+            </button>
+            <button
+              className="button primary"
+              type="button"
+              onClick={() => {
+                const pending = pendingPhysicalConnection;
+                setPendingPhysicalConnection(null);
+                onCreateTriggerRoute(
+                  pending.sceneId,
+                  pending.sourceState,
+                  pending.logicalSource,
+                  pending.eventKind,
+                  pending.target,
+                );
+              }}
+            >
+              Create transition
+            </button>
+          </div>
+        </Panel>
+      )}
+      {peepOSTriggerStateId !== null && pendingPhysicalConnection === null && (
+        <Panel
+          position="top-center"
+          className="state-graph-trigger-panel peepos-trigger-panel"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="state-graph-trigger-heading">
+            <div>
+              <span>PeepOS triggers</span>
+              <strong>{peepOSTriggerStateLabel}</strong>
+            </div>
+            <button
+              aria-label="Close PeepOS triggers"
+              className="icon-button"
+              title="Close"
+              type="button"
+              onClick={() => setPeepOSTriggerStateId(null)}
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
+          </div>
+          <div className="peepos-trigger-list">
+            {peepOSTriggers.map((trigger) => (
+              <button
+                disabled
+                key={trigger.kind}
+                title={`${trigger.detail}. Requires ${trigger.requires.join(", ")}.`}
+                type="button"
+              >
+                <PeepOSTriggerGlyph kind={trigger.kind} />
+                <span>
+                  <strong>{trigger.label}</strong>
+                  <small>{trigger.detail}</small>
+                </span>
+                <em>Not exposed</em>
+              </button>
+            ))}
+          </div>
+        </Panel>
+      )}
       {selectedTransition !== null && (
         <Panel position="top-right" className="graph-selection-summary">
           <span>Selected transition</span>

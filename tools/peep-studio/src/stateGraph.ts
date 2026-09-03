@@ -1326,7 +1326,7 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
       isEntry: state.state_id === entryState,
       variableTouchCount: variableRefsByState.get(state.state_id)?.size ?? 0,
       placementOverrideCount: state.placement_overrides?.length ?? 0,
-      platformOutputCount: outputs.filter((output) => output.triggerKind === "platform" || output.eventKind !== "press").length,
+      platformOutputCount: outputs.filter((output) => output.triggerKind === "platform").length,
       waitingVisualRef: state.waiting_visual_ref,
       outputs,
       x: position.x,

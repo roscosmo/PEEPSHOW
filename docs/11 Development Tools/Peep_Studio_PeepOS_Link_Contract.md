@@ -631,11 +631,14 @@ STATE scene: it can create/delete states and render models, choose the entry
 state, create/update/delete variables and logical inputs, create/delete and
 retarget routes, edit route sources and input bindings, and add/delete/reorder
 guards and actions. Reactive-wait and interaction policies are also replaceable
-through typed commands. Peep Studio can create a press transition by dragging
-an unused physical-control socket to a state entry or declared Scene Exit. The
-**Add new trigger** row exposes release, hold, and repeat bindings through the
-same drag-to-connect flow. State creation, deletion, and entry selection remain
-the next GUI lifecycle work.
+through typed commands. Dragging an available physical-control socket to a
+state entry or declared Scene Exit opens a lifecycle choice owned by that
+physical control. `press` is the default; `hold`, `release`, and `repeat` are
+available when advertised by the service, and non-default bindings are marked
+on the physical-control node. START remains package-press-only. The **Add new
+trigger** row is reserved for PeepOS events and must not duplicate physical
+buttons or joystick directions. State creation, deletion, and entry selection
+remain the next GUI lifecycle work.
 
 Service API version 29 adds the high-level `route.create_trigger` command.
 Python creates or reuses the scene-level logical input binding, creates the
@@ -644,6 +647,30 @@ to reactive-wait and meaningful-activity policy lists. An optional destination
 entry socket is stored as editor-only route layout. React supplies the author's
 source, lifecycle, source state, and dropped destination; it does not generate
 record IDs or modify power-policy internals.
+
+Service API version 30 separates physical input lifecycles from the future
+PeepOS trigger surface. `state_scene_graph.peepos_trigger_catalog` advertises
+the initial author-facing event classes: step-count thresholds, bounded timers,
+local date/time schedules, device active/inactive, wake/resume, animation
+completion, audio markers, and capability-gated peripheral events. The catalog
+currently marks every class `contract_only`, and
+`state_scene_graph.peepos_trigger_commands` is empty. Peep Studio may show
+these entries as unavailable bring-up targets, but it must not synthesize input
+records or routes for them.
+
+Making those PeepOS triggers executable requires all of the following:
+
+- typed authoring records for event kind, source identity, threshold/schedule,
+  payload shape, and catch-up/coalescing policy where applicable;
+- deterministic compiler/package records and validator limits;
+- deterministic preview injection for time, step-count, completion, and sensor
+  events;
+- PeepOS-owned event dispatch into package logic. Firmware retains ownership of
+  clocks, step derivation, sensors, audio, animation completion, wake reasons,
+  filtering, and power policy; packages receive bounded normalized events and
+  never poll or control peripherals directly;
+- target capability reporting for step counting and other peripheral-derived
+  events, so unsupported hardware cannot produce a valid deployable binding.
 
 Service API version 23 adds `editor.state_graph.set_route_waypoints`. It accepts
 one route ID, one source state from that route, and an ordered array of zero to

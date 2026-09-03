@@ -153,7 +153,8 @@ const lifecycleGraph = buildStateGraphModel({
 const holdOutput = lifecycleGraph.nodes[0]?.outputs.find((output) => output.routeId === "hold_b");
 assert.equal(holdOutput?.label, "Button B held");
 assert.equal(holdOutput?.eventKind, "hold");
-assert.equal(lifecycleGraph.nodes[0]?.platformOutputCount, 1);
+assert.equal(holdOutput?.triggerKind, "physical");
+assert.equal(lifecycleGraph.nodes[0]?.platformOutputCount, 0);
 
 assert.equal(resolveStateExitSide({ x: 0, y: 0 }, { x: 340, y: 0 }), "right");
 assert.equal(resolveStateExitSide({ x: 0, y: 0 }, { x: -120, y: 220 }), "left");

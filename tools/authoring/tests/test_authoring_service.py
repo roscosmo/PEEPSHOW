@@ -314,7 +314,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(29, SERVICE_API_VERSION)
+        self.assertEqual(30, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -349,6 +349,14 @@ class AuthoringServiceTests(unittest.TestCase):
         )
         self.assertNotIn("OVERLAY", result["state_scene_presentation"]["package_layers"])
         self.assertIn("ellipse", result["state_scene_presentation"]["element_kinds"])
+        self.assertEqual(
+            ["press", "release", "hold", "repeat"],
+            result["state_scene_presentation"]["logical_input_events"],
+        )
+        self.assertEqual(
+            ["four_way", "eight_way"],
+            result["state_scene_presentation"]["joystick_policies"],
+        )
         self.assertFalse(result["state_scene_presentation"]["runtime_text"])
         text = result["state_scene_presentation"]["build_time_text"]
         self.assertEqual("system_font_text", text["source_format"])
@@ -389,6 +397,32 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertEqual(["scene.add"], graph["scene_commands"])
         self.assertEqual(64, graph["command_batch_maximum"])
         self.assertEqual(["play_sfx"], graph["target_scene_actions"])
+        self.assertEqual([], graph["peepos_trigger_commands"])
+        peepos_triggers = graph["peepos_trigger_catalog"]
+        self.assertEqual(
+            [
+                "step_count",
+                "delay_elapsed",
+                "local_schedule",
+                "device_active",
+                "device_inactive",
+                "wake_resume",
+                "animation_complete",
+                "audio_marker",
+                "peripheral_event",
+            ],
+            [trigger["kind"] for trigger in peepos_triggers],
+        )
+        self.assertTrue(
+            all(trigger["support"] == "contract_only" for trigger in peepos_triggers)
+        )
+        self.assertIn("target_capability", peepos_triggers[0]["requires"])
+        self.assertTrue(
+            all(
+                "firmware_event_dispatch" in trigger["requires"]
+                for trigger in peepos_triggers
+            )
+        )
         audio = result["state_scene_audio"]
         self.assertTrue(audio["host_package_support"])
         self.assertEqual(

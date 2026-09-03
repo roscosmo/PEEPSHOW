@@ -140,7 +140,8 @@ const lifecycleGraph = (0, stateGraph_1.buildStateGraphModel)({
 const holdOutput = lifecycleGraph.nodes[0]?.outputs.find((output) => output.routeId === "hold_b");
 strict_1.default.equal(holdOutput?.label, "Button B held");
 strict_1.default.equal(holdOutput?.eventKind, "hold");
-strict_1.default.equal(lifecycleGraph.nodes[0]?.platformOutputCount, 1);
+strict_1.default.equal(holdOutput?.triggerKind, "physical");
+strict_1.default.equal(lifecycleGraph.nodes[0]?.platformOutputCount, 0);
 strict_1.default.equal((0, stateGraph_1.resolveStateExitSide)({ x: 0, y: 0 }, { x: 340, y: 0 }), "right");
 strict_1.default.equal((0, stateGraph_1.resolveStateExitSide)({ x: 0, y: 0 }, { x: -120, y: 220 }), "left");
 strict_1.default.equal((0, stateGraph_1.resolveStateEntryHandle)({ x: 0, y: 0 }, { x: 340, y: 0 }), "entry-top-left");

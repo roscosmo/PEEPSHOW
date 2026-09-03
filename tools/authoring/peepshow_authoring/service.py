@@ -46,7 +46,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 29
+SERVICE_API_VERSION = 30
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -298,6 +298,78 @@ class AuthoringService:
                 "command_batch_maximum": 64,
                 "target_scene_actions": ["play_sfx"],
                 "scene_commands": ["scene.add"],
+                "peepos_trigger_commands": [],
+                "peepos_trigger_catalog": [
+                    {
+                        "kind": "step_count",
+                        "label": "Step count",
+                        "detail": "Daily step count reached a configured value",
+                        "support": "contract_only",
+                        "requires": [
+                            "authoring_schema",
+                            "compiler",
+                            "preview",
+                            "firmware_event_dispatch",
+                            "target_capability",
+                        ],
+                    },
+                    {
+                        "kind": "delay_elapsed",
+                        "label": "Timer",
+                        "detail": "Bounded delay elapsed",
+                        "support": "contract_only",
+                        "requires": ["authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                    },
+                    {
+                        "kind": "local_schedule",
+                        "label": "Date and time",
+                        "detail": "Local calendar schedule matched",
+                        "support": "contract_only",
+                        "requires": ["authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                    },
+                    {
+                        "kind": "device_active",
+                        "label": "Device active",
+                        "detail": "PeepOS activated the package",
+                        "support": "contract_only",
+                        "requires": ["authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                    },
+                    {
+                        "kind": "device_inactive",
+                        "label": "Device inactive",
+                        "detail": "PeepOS suspended active interaction",
+                        "support": "contract_only",
+                        "requires": ["authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                    },
+                    {
+                        "kind": "wake_resume",
+                        "label": "Wake or resume",
+                        "detail": "A declared wake or resume reason occurred",
+                        "support": "contract_only",
+                        "requires": ["authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                    },
+                    {
+                        "kind": "animation_complete",
+                        "label": "Animation complete",
+                        "detail": "A bounded animation reached completion",
+                        "support": "contract_only",
+                        "requires": ["authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                    },
+                    {
+                        "kind": "audio_marker",
+                        "label": "Audio marker",
+                        "detail": "A cue marker or completion event occurred",
+                        "support": "contract_only",
+                        "requires": ["authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                    },
+                    {
+                        "kind": "peripheral_event",
+                        "label": "Peripheral event",
+                        "detail": "A capability-approved sensor or peripheral event occurred",
+                        "support": "contract_only",
+                        "requires": ["target_capability", "authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                    },
+                ],
                 "limits": {
                     "states": 64,
                     "render_models": 1,

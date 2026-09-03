@@ -377,6 +377,14 @@ export type PackageBuildResult = {
   compatibility_report: Record<string, unknown>;
 };
 
+export type PeepOSTriggerCapability = {
+  kind: string;
+  label: string;
+  detail: string;
+  support: "available" | "contract_only";
+  requires: string[];
+};
+
 export type ServiceHello = {
   service: string;
   service_api_version: number;
@@ -408,6 +416,8 @@ export type ServiceHello = {
       commands: string[];
     };
     logical_inputs: string[];
+    logical_input_events: Array<"press" | "release" | "hold" | "repeat">;
+    joystick_policies: Array<"four_way" | "eight_way">;
     runtime_text: boolean;
     build_time_text: {
       source_format: string;
@@ -425,6 +435,8 @@ export type ServiceHello = {
   state_scene_graph: {
     command_batch_maximum: number;
     scene_commands: string[];
+    peepos_trigger_commands: string[];
+    peepos_trigger_catalog: PeepOSTriggerCapability[];
     limits: {
       states: number;
       render_models: number;
