@@ -68,6 +68,7 @@ export type GraphStateOutput = {
   actionCount: number;
   effectLabels: string[];
   logicalSource: string;
+  eventKind: "press" | "release" | "hold" | "repeat";
   triggerKind: "physical" | "platform";
   preferredExitSide?: StateGraphExitSide;
   exitRatio?: number;
@@ -171,11 +172,26 @@ const INPUT_LABELS: Record<string, string> = {
   JOY_RIGHT: "Joystick right",
   JOY_UP: "Joystick up",
   JOY_DOWN: "Joystick down",
+  JOY_UP_LEFT: "Joystick up left",
+  JOY_UP_RIGHT: "Joystick up right",
+  JOY_DOWN_LEFT: "Joystick down left",
+  JOY_DOWN_RIGHT: "Joystick down right",
 };
 
 function inputLabel(inputActions: InputAction[], actionRef: string): string {
   const input = inputActions.find((item) => item.action_id === actionRef);
-  return INPUT_LABELS[input?.logical_source ?? ""] ?? input?.logical_source ?? actionRef;
+  const sourceLabel = INPUT_LABELS[input?.logical_source ?? ""] ?? input?.logical_source ?? actionRef;
+  const eventKind = input?.event_kind ?? "press";
+  if (eventKind === "release") {
+    return `${sourceLabel} released`;
+  }
+  if (eventKind === "hold") {
+    return `${sourceLabel} held`;
+  }
+  if (eventKind === "repeat") {
+    return `${sourceLabel} repeat`;
+  }
+  return sourceLabel;
 }
 
 function inputKind(inputActions: InputAction[], actionRef: string): "physical" | "platform" {
@@ -1272,6 +1288,7 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
         const outputs = outputsByState.get(source) ?? [];
         const variableRefs = variableRefsByState.get(source) ?? new Set<string>();
         const logicalSource = inputSource(inputActions, route.action_ref);
+        const eventKind = inputActions.find((item) => item.action_id === route.action_ref)?.event_kind ?? "press";
         const physicalExit = PHYSICAL_TRIGGER_EXITS[logicalSource];
         route.guards.forEach((guard) => variableRefs.add(guard.variable_ref));
         route.actions.forEach((action) => {
@@ -1287,6 +1304,7 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
           actionCount: effectLabels.length,
           effectLabels,
           logicalSource,
+          eventKind,
           triggerKind: inputKind(inputActions, route.action_ref),
           preferredExitSide: physicalExit?.side,
           exitRatio: physicalExit?.ratio,
@@ -1308,7 +1326,7 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
       isEntry: state.state_id === entryState,
       variableTouchCount: variableRefsByState.get(state.state_id)?.size ?? 0,
       placementOverrideCount: state.placement_overrides?.length ?? 0,
-      platformOutputCount: outputs.filter((output) => output.triggerKind === "platform").length,
+      platformOutputCount: outputs.filter((output) => output.triggerKind === "platform" || output.eventKind !== "press").length,
       waitingVisualRef: state.waiting_visual_ref,
       outputs,
       x: position.x,

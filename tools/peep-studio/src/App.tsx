@@ -44,7 +44,9 @@ import {
   SceneAuthoringInspector,
   SceneFlowView,
   StateGraphView,
+  type NewStateTransitionTarget,
   type SceneSelection,
+  type StateTriggerEventKind,
 } from "./SceneInspection";
 import type { StateGraphEntryHandle, StateGraphEntrySide } from "./stateGraph";
 import type {
@@ -987,6 +989,54 @@ export default function App() {
       applyProjectResult(result);
       setSceneSelection({ kind: "state", id: stateId });
       setMessage("State renamed. Save to write it to the project.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const createTriggerRoute = async (
+    sceneId: string,
+    sourceState: string,
+    logicalSource: string,
+    eventKind: StateTriggerEventKind,
+    target: NewStateTransitionTarget,
+  ) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy("Adding transition");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [
+          {
+            kind: "route.create_trigger",
+            scene_id: sceneId,
+            source_state: sourceState,
+            logical_source: logicalSource,
+            event_kind: eventKind,
+            ...(target.kind === "state"
+              ? {
+                  target_state: target.stateId,
+                  target_handle: target.targetHandle,
+                  target_side: target.targetSide,
+                }
+              : { scene_exit_ref: target.sceneExitId }),
+          },
+        ],
+      });
+      const applied = result.applied_commands[0];
+      const route = applied?.route as { route_id?: unknown } | undefined;
+      const routeId = typeof route?.route_id === "string" ? route.route_id : null;
+      applyProjectResult(result);
+      setSelectedScene(sceneId);
+      setSceneSelection(routeId === null
+        ? { kind: "state", id: sourceState }
+        : { kind: "route", id: routeId, sourceState });
+      setMessage("Transition added. Save to write it to the project.");
     } catch (error) {
       setMessage(errorText(error));
     } finally {
@@ -3893,6 +3943,9 @@ export default function App() {
               }}
               onSetRouteLayout={(sceneId, routeId, sourceState, rails, targetHandle, targetSide) => {
                 void setStateRouteLayout(sceneId, routeId, sourceState, rails, targetHandle, targetSide);
+              }}
+              onCreateTriggerRoute={(sceneId, sourceState, logicalSource, eventKind, target) => {
+                void createTriggerRoute(sceneId, sourceState, logicalSource, eventKind, target);
               }}
               onConnectRouteToSceneExit={(sceneId, routeId, sceneExitId, targetScene) => {
                 void setRouteSceneTarget(sceneId, routeId, targetScene, sceneExitId);

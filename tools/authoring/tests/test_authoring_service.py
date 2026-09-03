@@ -314,7 +314,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(28, SERVICE_API_VERSION)
+        self.assertEqual(29, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -405,6 +405,7 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertIn("route.guard.move", graph["guard_commands"])
         self.assertIn("route.action.move", graph["action_commands"])
         self.assertIn("scene_exit.add", graph["scene_exit_commands"])
+        self.assertIn("route.create_trigger", graph["route_commands"])
         self.assertNotIn("route.add_scene_exit", graph["route_commands"])
         self.assertEqual("reject_if_referenced", graph["generic_delete_policy"])
         waiting_animation = result["state_scene_presentation"]["waiting_animation"]
@@ -1195,6 +1196,167 @@ class AuthoringServiceTests(unittest.TestCase):
             positioned["document"]["project"]["editor"]["state_graph"]["scenes"]
             ["state_details"]["nodes"]["scene-exit-to_state_demo_2"],
         )
+
+    def test_route_create_trigger_owns_input_policies_and_entry_socket_layout(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "Trigger Game.peepproj"
+            service = AuthoringService()
+            created = service.handle(
+                request("project.create", {"path": str(project_root)})
+            )
+            changed = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": created["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "route.create_trigger",
+                                "scene_id": "main",
+                                "source_state": "start",
+                                "logical_source": "BUTTON_A",
+                                "event_kind": "press",
+                                "target_state": "start",
+                                "target_handle": "entry-bottom-right",
+                                "target_side": "right",
+                            }
+                        ],
+                    },
+                )
+            )
+
+            applied = changed["applied_commands"][0]
+            scene = changed["document"]["scenes"][0]
+            self.assertTrue(applied["input_action_created"])
+            self.assertEqual(
+                {
+                    "action_id": "button_a_press",
+                    "logical_source": "BUTTON_A",
+                    "event_kind": "press",
+                },
+                applied["input_action"],
+            )
+            self.assertEqual("start_button_a_press", applied["route"]["route_id"])
+            self.assertEqual("start", applied["route"]["target_state"])
+            self.assertEqual(["button_a_press"], scene["reactive_wait_default"]["event_interests"])
+            self.assertEqual(["button_a_press"], scene["interaction_policy"]["meaningful_activity_actions"])
+            layout = changed["document"]["project"]["editor"]["state_graph"]["scenes"]["main"]["routes"]
+            self.assertEqual(
+                {
+                    "routing_version": 3,
+                    "rails": [],
+                    "target_handle": "entry-bottom-right",
+                    "target_side": "right",
+                },
+                layout["start_button_a_press"]["sources"]["start"],
+            )
+            self.assertTrue(changed["valid"])
+
+    def test_route_create_trigger_reuses_scene_input_and_rejects_duplicate_source_route(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "Trigger Reuse.peepproj"
+            service = AuthoringService()
+            created = service.handle(
+                request("project.create", {"path": str(project_root)})
+            )
+            with_second_state = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": created["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "state.add",
+                                "scene_id": "main",
+                                "state": {
+                                    "state_id": "second",
+                                    "display_name": "Second",
+                                    "waiting_visual_ref": "static_wait",
+                                },
+                            },
+                            {
+                                "kind": "route.create_trigger",
+                                "scene_id": "main",
+                                "source_state": "start",
+                                "logical_source": "JOY_DOWN",
+                                "event_kind": "repeat",
+                                "target_state": "second",
+                            },
+                        ],
+                    },
+                )
+            )
+            reused = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": with_second_state["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "route.create_trigger",
+                                "scene_id": "main",
+                                "source_state": "second",
+                                "logical_source": "JOY_DOWN",
+                                "event_kind": "repeat",
+                                "target_state": "start",
+                            }
+                        ],
+                    },
+                )
+            )
+            self.assertFalse(reused["applied_commands"][0]["input_action_created"])
+            self.assertEqual(1, len(reused["document"]["scenes"][0]["input_actions"]))
+
+            with self.assertRaises(ProtocolError) as raised:
+                service.handle(
+                    request(
+                        "project.apply_commands",
+                        {
+                            "project_revision": reused["project_revision"],
+                            "commands": [
+                                {
+                                    "kind": "route.create_trigger",
+                                    "scene_id": "main",
+                                    "source_state": "second",
+                                    "logical_source": "JOY_DOWN",
+                                    "event_kind": "repeat",
+                                    "target_state": "second",
+                                }
+                            ],
+                        },
+                    )
+                )
+            self.assertEqual("ROUTE_TRIGGER_IN_USE", raised.exception.code)
+
+    def test_route_create_trigger_wires_a_declared_scene_exit_without_input_prompt(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        details = next(
+            scene for scene in loaded["document"]["scenes"]
+            if scene["scene_id"] == "state_details"
+        )
+        scene_exit = details["scene_exits"][0]
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "route.create_trigger",
+                            "scene_id": "state_details",
+                            "source_state": details["entry_state"],
+                            "logical_source": "BUTTON_L",
+                            "scene_exit_ref": scene_exit["scene_exit_id"],
+                        }
+                    ],
+                },
+            )
+        )
+        route = changed["applied_commands"][0]["route"]
+        self.assertEqual(scene_exit["scene_exit_id"], route["scene_exit_ref"])
+        self.assertEqual(scene_exit["target_scene"], route["target_scene"])
+        self.assertNotIn("target_state", route)
 
     def test_scene_exit_play_sfx_compiles_previews_and_can_be_deleted(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

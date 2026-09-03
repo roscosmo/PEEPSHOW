@@ -110,6 +110,7 @@ assert.equal(graph.nodes[0]?.outputs[0]?.label, "Button A");
 assert.equal(graph.nodes[0]?.outputs[0]?.guardCount, 1);
 assert.equal(graph.nodes[0]?.outputs[0]?.actionCount, 1);
 assert.equal(graph.nodes[0]?.outputs[0]?.effectLabels[0], "Coins -1");
+assert.equal(graph.nodes[0]?.outputs[0]?.eventKind, "press");
 assert.equal(graph.nodes[0]?.outputs[0]?.triggerKind, "physical");
 assert.equal(graph.nodes[0]?.outputs[0]?.preferredExitSide, "right");
 assert.equal(graph.nodes[0]?.outputs[0]?.exitRatio, 0.67);
@@ -130,6 +131,30 @@ assert.deepEqual(legacyRouteGraph.edges[0]?.rails, []);
 assert.equal(legacyRouteGraph.edges[0]?.targetHandle, undefined);
 assert.equal(savedGraph.nodes.find((node) => node.id === "armed")?.x, -120);
 assert.equal(savedGraph.nodes.find((node) => node.id === "armed")?.y, 220);
+
+const lifecycleGraph = buildStateGraphModel({
+  ...scene,
+  input_actions: [
+    ...scene.input_actions!,
+    { action_id: "hold_b", logical_source: "BUTTON_B", event_kind: "hold" },
+  ],
+  routes: [
+    ...scene.routes!,
+    {
+      route_id: "hold_b",
+      action_ref: "hold_b",
+      from_states: ["idle"],
+      guards: [],
+      actions: [],
+      target_state: "armed",
+    },
+  ],
+});
+const holdOutput = lifecycleGraph.nodes[0]?.outputs.find((output) => output.routeId === "hold_b");
+assert.equal(holdOutput?.label, "Button B held");
+assert.equal(holdOutput?.eventKind, "hold");
+assert.equal(lifecycleGraph.nodes[0]?.platformOutputCount, 1);
+
 assert.equal(resolveStateExitSide({ x: 0, y: 0 }, { x: 340, y: 0 }), "right");
 assert.equal(resolveStateExitSide({ x: 0, y: 0 }, { x: -120, y: 220 }), "left");
 assert.equal(resolveStateEntryHandle({ x: 0, y: 0 }, { x: 340, y: 0 }), "entry-top-left");

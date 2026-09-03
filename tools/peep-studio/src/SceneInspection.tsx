@@ -38,6 +38,7 @@ import {
   Plus,
   Route,
   RotateCcw,
+  X,
   Volume2,
   Variable,
 } from "lucide-react";
@@ -93,6 +94,17 @@ export type SceneSelection =
   | { kind: "render"; id: string }
   | { kind: "waiting"; id: string };
 
+export type StateTriggerEventKind = "press" | "release" | "hold" | "repeat";
+
+export type NewStateTransitionTarget =
+  | {
+      kind: "state";
+      stateId: string;
+      targetHandle: StateGraphEntryHandle;
+      targetSide: StateGraphEntrySide;
+    }
+  | { kind: "sceneExit"; sceneExitId: string };
+
 function fieldText(value: unknown): string {
   if (value === undefined || value === null) {
     return "-";
@@ -147,6 +159,16 @@ const INPUT_LABELS: Record<string, string> = {
   JOY_RIGHT: "Joystick right",
   JOY_UP: "Joystick up",
   JOY_DOWN: "Joystick down",
+  JOY_UP_LEFT: "Joystick up left",
+  JOY_UP_RIGHT: "Joystick up right",
+  JOY_DOWN_LEFT: "Joystick down left",
+  JOY_DOWN_RIGHT: "Joystick down right",
+};
+const TRIGGER_EVENT_LABELS: Record<StateTriggerEventKind, string> = {
+  press: "Press",
+  release: "Release",
+  hold: "Hold",
+  repeat: "Repeat",
 };
 const NEW_SCENE_EXIT_HANDLE = "__new_scene_exit__";
 const GUARD_OPERATOR_LABELS: Record<string, string> = {
@@ -234,6 +256,21 @@ function displayInputLabel(source: string | undefined, fallback: string): string
   return INPUT_LABELS[source] ?? source;
 }
 
+function displayInputTrigger(input: InputAction | undefined, fallback: string): string {
+  const label = displayInputLabel(input?.logical_source, fallback);
+  const eventKind = input?.event_kind ?? "press";
+  if (eventKind === "release") {
+    return `${label} released`;
+  }
+  if (eventKind === "hold") {
+    return `${label} held`;
+  }
+  if (eventKind === "repeat") {
+    return `${label} repeat`;
+  }
+  return label;
+}
+
 function displayStateName(states: StateRecord[], stateId: string): string {
   return states.find((state) => state.state_id === stateId)?.display_name ?? stateId;
 }
@@ -261,6 +298,7 @@ type StateCardNodeData = {
   activeEntryHandles: string[];
   canEdit: boolean;
   selectedRouteId: string | null;
+  joystickPolicy: "four_way" | "eight_way";
   onSelectState: (stateId: string) => void;
   onSelectRoute: (routeId: string, sourceState: string) => void;
 };
@@ -394,9 +432,11 @@ function routeStateNode(
 }
 
 function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
-  const { activeEntryHandles, canEdit, graphNode, selectedRouteId, onSelectRoute, onSelectState } = data;
+  const { activeEntryHandles, canEdit, graphNode, joystickPolicy, selectedRouteId, onSelectRoute, onSelectState } = data;
   const updateNodeInternals = useUpdateNodeInternals();
   const cardRef = useRef<HTMLDivElement>(null);
+  const [triggerCreatorOpen, setTriggerCreatorOpen] = useState(false);
+  const [customTriggerValue, setCustomTriggerValue] = useState("");
   const [stemLayout, setStemLayout] = useState<StateTriggerStemLayout>({
     width: 0,
     height: 0,
@@ -405,7 +445,7 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
   });
   const physicalOutputBySource = new Map(
     graphNode.outputs
-      .filter((output) => output.triggerKind === "physical")
+      .filter((output) => output.triggerKind === "physical" && output.eventKind === "press")
       .map((output) => [output.logicalSource, output]),
   );
   const physicalSources = new Set<string>([
@@ -413,12 +453,30 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
     ...OPTIONAL_DIAGONAL_CONTROLS.map((control) => control.source),
   ]);
   const dynamicOutputs = graphNode.outputs.filter(
-    (output) => output.triggerKind === "platform" || !physicalSources.has(output.logicalSource),
+    (output) => output.triggerKind === "platform" || output.eventKind !== "press" || !physicalSources.has(output.logicalSource),
   );
   const physicalControls = [
     ...PHYSICAL_TRIGGER_CONTROLS,
-    ...OPTIONAL_DIAGONAL_CONTROLS.filter((control) => physicalOutputBySource.has(control.source)),
+    ...OPTIONAL_DIAGONAL_CONTROLS.filter(
+      (control) => joystickPolicy === "eight_way" || physicalOutputBySource.has(control.source),
+    ),
   ];
+  const usedTriggerBindings = new Set(
+    graphNode.outputs.map((output) => `${output.logicalSource}:${output.eventKind}`),
+  );
+  const customTriggerOptions = physicalControls.flatMap((control) =>
+    (["release", "hold", "repeat"] as const)
+      .filter(() => control.source !== "BUTTON_START")
+      .filter((eventKind) => !usedTriggerBindings.has(`${control.source}:${eventKind}`))
+      .map((eventKind) => ({
+        value: `${control.source}:${eventKind}`,
+        source: control.source,
+        eventKind,
+        label: `${INPUT_LABELS[control.source] ?? control.label} - ${TRIGGER_EVENT_LABELS[eventKind]}`,
+      })),
+  );
+  const selectedCustomTrigger = customTriggerOptions.find((option) => option.value === customTriggerValue)
+    ?? customTriggerOptions[0];
   const outputSideKey = graphNode.outputs
     .map((output) => `${output.id}:${output.logicalSource}:${output.exitSide}`)
     .join("|");
@@ -428,6 +486,10 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
   useEffect(() => {
     updateNodeInternals(graphNode.id);
   }, [graphNode.id, outputSideKey, stemSocketKey, updateNodeInternals]);
+
+  useEffect(() => {
+    setTriggerCreatorOpen(false);
+  }, [graphNode.outputs.length]);
 
   useEffect(() => {
     const card = cardRef.current;
@@ -550,7 +612,19 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
           transform: "translate(-50%, -50%)",
         };
         if (output === undefined) {
-          return <span aria-hidden="true" className={className} data-socket-slot={control.slot} key={control.source} style={socketStyle} />;
+          return (
+            <Handle
+              className={className}
+              data-socket-slot={control.slot}
+              id={`new-trigger:press:${control.source}:${side}`}
+              isConnectable={canEdit}
+              key={control.source}
+              position={triggerPosition(side)}
+              style={socketStyle}
+              title={`Create ${INPUT_LABELS[control.source] ?? control.label} transition`}
+              type="source"
+            />
+          );
         }
         return (
           <Handle
@@ -620,17 +694,73 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
           ))}
         </div>
       )}
-      <button
-        className="state-add-trigger-row nodrag nopan"
-        type="button"
-        disabled
-        title={canEdit ? "PeepOS trigger creation is not exposed yet" : "Project is read-only"}
-      >
-        <span className="state-add-trigger-socket left" aria-hidden="true" />
-        <Plus size={13} aria-hidden="true" />
-        <span>Add new trigger</span>
-        <span className="state-add-trigger-socket right" aria-hidden="true" />
-      </button>
+      <div className="state-add-trigger nodrag nopan">
+        <button
+          aria-expanded={triggerCreatorOpen}
+          className="state-add-trigger-row"
+          type="button"
+          disabled={!canEdit || customTriggerOptions.length === 0}
+          title={canEdit ? "Add a release, hold, or repeat trigger" : "Project is read-only"}
+          onClick={(event) => {
+            event.stopPropagation();
+            setTriggerCreatorOpen((open) => !open);
+          }}
+        >
+          <Plus size={13} aria-hidden="true" />
+          <span>Add new trigger</span>
+        </button>
+        {triggerCreatorOpen && selectedCustomTrigger !== undefined ? (
+          <>
+            <Handle
+              className="state-add-trigger-socket left"
+              id={`new-trigger:${selectedCustomTrigger.eventKind}:${selectedCustomTrigger.source}:left`}
+              isConnectable={canEdit}
+              position={Position.Left}
+              title={`Create ${selectedCustomTrigger.label} transition`}
+              type="source"
+            />
+            <Handle
+              className="state-add-trigger-socket right"
+              id={`new-trigger:${selectedCustomTrigger.eventKind}:${selectedCustomTrigger.source}:right`}
+              isConnectable={canEdit}
+              position={Position.Right}
+              title={`Create ${selectedCustomTrigger.label} transition`}
+              type="source"
+            />
+            <div className="state-trigger-creator" onClick={(event) => event.stopPropagation()}>
+              <div className="state-trigger-creator-heading">
+                <strong>New trigger</strong>
+                <button
+                  aria-label="Close trigger editor"
+                  className="icon-button"
+                  title="Close"
+                  type="button"
+                  onClick={() => setTriggerCreatorOpen(false)}
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </div>
+              <label htmlFor={`new-trigger-${graphNode.id}`}>
+                Input event
+                <select
+                  id={`new-trigger-${graphNode.id}`}
+                  value={selectedCustomTrigger.value}
+                  onChange={(event) => setCustomTriggerValue(event.target.value)}
+                >
+                  {customTriggerOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </>
+        ) : (
+          <>
+            <span className="state-add-trigger-socket left" aria-hidden="true" />
+            <span className="state-add-trigger-socket right" aria-hidden="true" />
+          </>
+        )}
+      </div>
       <div className="state-controller-map" aria-label="Physical triggers">
         <div className="state-joystick-triggers">
           {OPTIONAL_DIAGONAL_CONTROLS
@@ -1352,6 +1482,7 @@ export function StateGraphView({
   onSelect,
   onMoveStateNode,
   onSetRouteLayout,
+  onCreateTriggerRoute,
   onConnectRouteToSceneExit,
   canEdit,
 }: {
@@ -1368,6 +1499,13 @@ export function StateGraphView({
     rails: EditorRouteRail[],
     targetHandle: StateGraphEntryHandle | null,
     targetSide: StateGraphEntrySide | null,
+  ) => void;
+  onCreateTriggerRoute: (
+    sceneId: string,
+    sourceState: string,
+    logicalSource: string,
+    eventKind: StateTriggerEventKind,
+    target: NewStateTransitionTarget,
   ) => void;
   onConnectRouteToSceneExit: (
     sceneId: string,
@@ -1392,6 +1530,7 @@ export function StateGraphView({
           graphNode: routeStateNode(node, defaultPositionById, {}),
           activeEntryHandles: node.isEntry ? ["entry-top-left"] : [],
           canEdit,
+          joystickPolicy: scene?.joystick_policy ?? "four_way",
           selectedRouteId: selected.kind === "route" && (selected.sourceState === undefined || selected.sourceState === node.id)
             ? selected.id
             : null,
@@ -1423,7 +1562,7 @@ export function StateGraphView({
         connectable: canEdit,
       })),
     ],
-    [canEdit, defaultPositionById, graph.endpoints, graph.nodes, onSelect, selected],
+    [canEdit, defaultPositionById, graph.endpoints, graph.nodes, onSelect, scene?.joystick_policy, selected],
   );
   const [nodes, setNodes] = useState<Node[]>(baseNodes);
   const graphNodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
@@ -1444,7 +1583,7 @@ export function StateGraphView({
           const sourceNode = graphNodeById.get(edge.source);
           const sourceOutput = sourceNode?.outputs.find((output) => output.id === edge.sourceHandle);
           const sourceOutputIndex = sourceNode?.outputs
-            .filter((output) => output.triggerKind === "platform")
+            .filter((output) => output.triggerKind === "platform" || output.eventKind !== "press")
             .findIndex((output) => output.id === edge.sourceHandle) ?? 0;
           return {
             id: edge.sourceHandle,
@@ -1481,6 +1620,7 @@ export function StateGraphView({
                 .filter((handle): handle is StateGraphEntryHandle => handle !== undefined),
             ],
             canEdit,
+            joystickPolicy: scene?.joystick_policy ?? "four_way",
             selectedRouteId: selected.kind === "route" && (selected.sourceState === undefined || selected.sourceState === graphNode.id)
               ? selected.id
               : null,
@@ -1492,7 +1632,7 @@ export function StateGraphView({
           connectable: canEdit,
         };
       }),
-    [canEdit, graph.edges, graphNodeById, nodes, onSelect, positionById, selected, transitionLayouts],
+    [canEdit, graph.edges, graphNodeById, nodes, onSelect, positionById, scene?.joystick_policy, selected, transitionLayouts],
   );
   useEffect(() => {
     const sceneId = scene?.scene_id ?? null;
@@ -1540,12 +1680,50 @@ export function StateGraphView({
     if (scene === null || connection.source === null || connection.target === null || connection.sourceHandle === null) {
       return;
     }
+    const sourceNode = graph.nodes.find((item) => item.id === connection.source);
+    if (sourceNode === undefined) {
+      return;
+    }
+    if (connection.sourceHandle.startsWith("new-trigger:")) {
+      const [, eventKindValue, logicalSource] = connection.sourceHandle.split(":");
+      if (
+        logicalSource === undefined
+        || !(["press", "release", "hold", "repeat"] as string[]).includes(eventKindValue)
+      ) {
+        return;
+      }
+      const eventKind = eventKindValue as StateTriggerEventKind;
+      const targetState = graph.nodes.find((item) => item.id === connection.target);
+      if (targetState !== undefined) {
+        const [targetHandleValue, targetSideValue] = (connection.targetHandle ?? "").split(":");
+        const targetPort = STATE_GRAPH_ENTRY_PORTS.find(
+          (port) => port.handle === targetHandleValue && port.side === targetSideValue,
+        );
+        if (targetPort === undefined) {
+          return;
+        }
+        onCreateTriggerRoute(scene.scene_id, sourceNode.id, logicalSource, eventKind, {
+          kind: "state",
+          stateId: targetState.id,
+          targetHandle: targetPort.handle,
+          targetSide: targetPort.side,
+        });
+        return;
+      }
+      const newRouteEndpoint = graph.endpoints.find((item) => item.id === connection.target);
+      if (newRouteEndpoint?.kind === "exit" && newRouteEndpoint.sceneExitId !== undefined) {
+        onCreateTriggerRoute(scene.scene_id, sourceNode.id, logicalSource, eventKind, {
+          kind: "sceneExit",
+          sceneExitId: newRouteEndpoint.sceneExitId,
+        });
+      }
+      return;
+    }
     const endpoint = graph.endpoints.find((item) => item.id === connection.target);
     if (endpoint?.kind !== "exit" || endpoint.sceneExitId === undefined || endpoint.targetScene === undefined) {
       return;
     }
-    const sourceNode = graph.nodes.find((item) => item.id === connection.source);
-    const output = sourceNode?.outputs.find((item) => item.id === connection.sourceHandle);
+    const output = sourceNode.outputs.find((item) => item.id === connection.sourceHandle);
     if (output === undefined) {
       return;
     }
@@ -2495,7 +2673,7 @@ function RouteInspector({
       <div className="transition-summary">
         <div>
           <span>When</span>
-          <strong>{displayInputLabel(input?.logical_source, route.action_ref)}</strong>
+          <strong>{displayInputTrigger(input, route.action_ref)}</strong>
         </div>
         <div>
           <span>From</span>

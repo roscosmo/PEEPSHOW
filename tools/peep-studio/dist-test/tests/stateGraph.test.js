@@ -98,6 +98,7 @@ strict_1.default.equal(graph.nodes[0]?.outputs[0]?.label, "Button A");
 strict_1.default.equal(graph.nodes[0]?.outputs[0]?.guardCount, 1);
 strict_1.default.equal(graph.nodes[0]?.outputs[0]?.actionCount, 1);
 strict_1.default.equal(graph.nodes[0]?.outputs[0]?.effectLabels[0], "Coins -1");
+strict_1.default.equal(graph.nodes[0]?.outputs[0]?.eventKind, "press");
 strict_1.default.equal(graph.nodes[0]?.outputs[0]?.triggerKind, "physical");
 strict_1.default.equal(graph.nodes[0]?.outputs[0]?.preferredExitSide, "right");
 strict_1.default.equal(graph.nodes[0]?.outputs[0]?.exitRatio, 0.67);
@@ -118,6 +119,28 @@ strict_1.default.deepEqual(legacyRouteGraph.edges[0]?.rails, []);
 strict_1.default.equal(legacyRouteGraph.edges[0]?.targetHandle, undefined);
 strict_1.default.equal(savedGraph.nodes.find((node) => node.id === "armed")?.x, -120);
 strict_1.default.equal(savedGraph.nodes.find((node) => node.id === "armed")?.y, 220);
+const lifecycleGraph = (0, stateGraph_1.buildStateGraphModel)({
+    ...scene,
+    input_actions: [
+        ...scene.input_actions,
+        { action_id: "hold_b", logical_source: "BUTTON_B", event_kind: "hold" },
+    ],
+    routes: [
+        ...scene.routes,
+        {
+            route_id: "hold_b",
+            action_ref: "hold_b",
+            from_states: ["idle"],
+            guards: [],
+            actions: [],
+            target_state: "armed",
+        },
+    ],
+});
+const holdOutput = lifecycleGraph.nodes[0]?.outputs.find((output) => output.routeId === "hold_b");
+strict_1.default.equal(holdOutput?.label, "Button B held");
+strict_1.default.equal(holdOutput?.eventKind, "hold");
+strict_1.default.equal(lifecycleGraph.nodes[0]?.platformOutputCount, 1);
 strict_1.default.equal((0, stateGraph_1.resolveStateExitSide)({ x: 0, y: 0 }, { x: 340, y: 0 }), "right");
 strict_1.default.equal((0, stateGraph_1.resolveStateExitSide)({ x: 0, y: 0 }, { x: -120, y: 220 }), "left");
 strict_1.default.equal((0, stateGraph_1.resolveStateEntryHandle)({ x: 0, y: 0 }, { x: 340, y: 0 }), "entry-top-left");

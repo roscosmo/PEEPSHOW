@@ -631,8 +631,19 @@ STATE scene: it can create/delete states and render models, choose the entry
 state, create/update/delete variables and logical inputs, create/delete and
 retarget routes, edit route sources and input bindings, and add/delete/reorder
 guards and actions. Reactive-wait and interaction policies are also replaceable
-through typed commands. The next GUI work is to expose these API 14 commands
-through the existing node-card and inspector model.
+through typed commands. Peep Studio can create a press transition by dragging
+an unused physical-control socket to a state entry or declared Scene Exit. The
+**Add new trigger** row exposes release, hold, and repeat bindings through the
+same drag-to-connect flow. State creation, deletion, and entry selection remain
+the next GUI lifecycle work.
+
+Service API version 29 adds the high-level `route.create_trigger` command.
+Python creates or reuses the scene-level logical input binding, creates the
+single-source route, resolves declared Scene Exit targets, and adds the input
+to reactive-wait and meaningful-activity policy lists. An optional destination
+entry socket is stored as editor-only route layout. React supplies the author's
+source, lifecycle, source state, and dropped destination; it does not generate
+record IDs or modify power-policy internals.
 
 Service API version 23 adds `editor.state_graph.set_route_waypoints`. It accepts
 one route ID, one source state from that route, and an ordered array of zero to

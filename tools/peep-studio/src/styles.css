@@ -2950,9 +2950,14 @@ button:focus-visible {
   background: #fa5252;
 }
 
+.state-add-trigger {
+  position: relative;
+}
+
 .state-add-trigger-row {
   position: relative;
   display: flex;
+  width: 100%;
   min-height: 42px;
   align-items: center;
   justify-content: center;
@@ -2969,6 +2974,15 @@ button:focus-visible {
 .state-add-trigger-row:disabled {
   opacity: 1;
   cursor: default;
+}
+
+.state-add-trigger-row:not(:disabled) {
+  cursor: pointer;
+}
+
+.state-add-trigger-row:not(:disabled):hover,
+.state-add-trigger-row[aria-expanded="true"] {
+  background: #ffec99;
 }
 
 .state-add-trigger-row::before,
@@ -3007,6 +3021,55 @@ button:focus-visible {
 
 .state-add-trigger-socket.right {
   right: -23px;
+}
+
+.state-trigger-creator {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 18px);
+  z-index: 20;
+  display: grid;
+  width: 220px;
+  gap: 8px;
+  padding: 10px;
+  border: 1.5px solid #2c312e;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 5px 14px rgb(39 48 43 / 18%);
+}
+
+.state-trigger-creator-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.state-trigger-creator-heading .icon-button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+}
+
+.state-trigger-creator label {
+  display: grid;
+  gap: 4px;
+  color: #4f5f58;
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.state-trigger-creator select {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px solid #aebbb5;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #27302b;
+  font-size: 12px;
+  text-transform: none;
 }
 
 .state-controller-map {
@@ -3166,7 +3229,7 @@ button:focus-visible {
 .state-card-topline,
 .state-card-name,
 .state-output-list,
-.state-add-trigger-row,
+.state-add-trigger,
 .state-controller-map {
   position: relative;
   z-index: 2;

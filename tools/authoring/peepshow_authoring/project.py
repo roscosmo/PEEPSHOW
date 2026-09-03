@@ -575,6 +575,213 @@ def _apply_input_action_delete(
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown input action '{action_id}'")
 
 
+def _unique_generated_record_id(
+    records: list[dict[str, Any]],
+    id_field: str,
+    base: str,
+) -> str:
+    normalized = _route_id_component(base)[:64].rstrip("_.-")
+    existing = {
+        record.get(id_field)
+        for record in records
+        if isinstance(record, dict)
+    }
+    if normalized not in existing:
+        return normalized
+    for suffix in range(2, len(records) + 3):
+        suffix_text = f"_{suffix}"
+        candidate = f"{normalized[:64 - len(suffix_text)].rstrip('_.-')}{suffix_text}"
+        if candidate not in existing:
+            return candidate
+    raise ProjectCommandError("COMMAND_TARGET_INVALID", f"could not generate a unique {id_field}")
+
+
+def _append_input_policy_reference(
+    scene: dict[str, Any],
+    policy_field: str,
+    references_field: str,
+    action_id: str,
+) -> None:
+    policy = scene.get(policy_field)
+    references = policy.get(references_field) if isinstance(policy, dict) else None
+    if not isinstance(references, list):
+        raise ProjectCommandError(
+            "PROJECT_TYPE_INVALID",
+            f"scene.{policy_field}.{references_field} must be an array",
+        )
+    if action_id not in references:
+        references.append(action_id)
+
+
+def _apply_route_create_trigger(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "source_state", "logical_source"},
+        {
+            "kind",
+            "scene_id",
+            "source_state",
+            "logical_source",
+            "event_kind",
+            "target_state",
+            "scene_exit_ref",
+            "target_handle",
+            "target_side",
+            "command_id",
+        },
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    source_state = command.get("source_state")
+    _command_record(scene, "states", "state_id", source_state)
+
+    logical_source = command.get("logical_source")
+    event_kind = command.get("event_kind", "press")
+    if logical_source not in LOGICAL_INPUT_SOURCES:
+        raise ProjectCommandError("INPUT_SOURCE_INVALID", "unsupported logical source")
+    if event_kind not in LOGICAL_INPUT_EVENT_KINDS:
+        raise ProjectCommandError("INPUT_EVENT_INVALID", "event_kind must be press, release, hold, or repeat")
+    if logical_source == "BUTTON_START" and event_kind != "press":
+        raise ProjectCommandError("INPUT_EVENT_SYSTEM_OWNED", "START supports package press only")
+    if logical_source in {
+        "JOY_UP_LEFT",
+        "JOY_UP_RIGHT",
+        "JOY_DOWN_LEFT",
+        "JOY_DOWN_RIGHT",
+    } and scene.get("joystick_policy", "four_way") != "eight_way":
+        raise ProjectCommandError("JOYSTICK_POLICY_REQUIRED", "diagonal bindings require eight_way")
+
+    has_target_state = "target_state" in command
+    has_scene_exit = "scene_exit_ref" in command
+    if has_target_state == has_scene_exit:
+        raise ProjectCommandError(
+            "COMMAND_SHAPE_INVALID",
+            "route.create_trigger requires exactly one of target_state or scene_exit_ref",
+        )
+
+    route_target: dict[str, str]
+    if has_target_state:
+        target_state = command.get("target_state")
+        _command_record(scene, "states", "state_id", target_state)
+        route_target = {"target_state": str(target_state)}
+    else:
+        scene_exit = _command_record(
+            scene,
+            "scene_exits",
+            "scene_exit_id",
+            command.get("scene_exit_ref"),
+        )
+        route_target = {
+            "scene_exit_ref": str(scene_exit.get("scene_exit_id")),
+            "target_scene": str(scene_exit.get("target_scene")),
+        }
+
+    input_actions = scene.get("input_actions")
+    routes = scene.get("routes")
+    if not isinstance(input_actions, list) or not isinstance(routes, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene input actions and routes must be arrays")
+    input_action = next(
+        (
+            action
+            for action in input_actions
+            if isinstance(action, dict)
+            and action.get("logical_source") == logical_source
+            and action.get("event_kind", "press") == event_kind
+        ),
+        None,
+    )
+    input_action_created = input_action is None
+    if input_action is None:
+        if len(input_actions) >= 32:
+            raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "scene supports at most 32 input actions")
+        action_id = _unique_generated_record_id(
+            input_actions,
+            "action_id",
+            f"{str(logical_source).lower()}_{event_kind}",
+        )
+        input_action = {
+            "action_id": action_id,
+            "logical_source": logical_source,
+            "event_kind": event_kind,
+        }
+        input_actions.append(input_action)
+    else:
+        action_id = str(input_action.get("action_id"))
+
+    if any(
+        isinstance(route, dict)
+        and route.get("action_ref") == action_id
+        and source_state in route.get("from_states", [])
+        for route in routes
+    ):
+        raise ProjectCommandError(
+            "ROUTE_TRIGGER_IN_USE",
+            f"{logical_source} {event_kind} already has a transition from state '{source_state}'",
+        )
+    if len(routes) >= 128:
+        raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "scene supports at most 128 routes")
+
+    route_id = _unique_generated_record_id(
+        routes,
+        "route_id",
+        f"{source_state}_{action_id}",
+    )
+    route = {
+        "route_id": route_id,
+        "action_ref": action_id,
+        "from_states": [source_state],
+        "guards": [],
+        "actions": [],
+        **route_target,
+    }
+    routes.append(route)
+    _append_input_policy_reference(
+        scene,
+        "reactive_wait_default",
+        "event_interests",
+        action_id,
+    )
+    _append_input_policy_reference(
+        scene,
+        "interaction_policy",
+        "meaningful_activity_actions",
+        action_id,
+    )
+
+    result: dict[str, Any] = {
+        "kind": "route.create_trigger",
+        "scene_id": scene.get("scene_id"),
+        "source_state": source_state,
+        "input_action": deepcopy(input_action),
+        "input_action_created": input_action_created,
+        "route": deepcopy(route),
+    }
+    if "target_handle" in command or "target_side" in command:
+        if not has_target_state:
+            raise ProjectCommandError(
+                "COMMAND_SHAPE_INVALID",
+                "scene-exit transitions cannot select a state entry socket",
+            )
+        layout = _apply_state_graph_route_layout(
+            project,
+            scenes,
+            {
+                "kind": "editor.state_graph.set_route_layout",
+                "scene_id": scene.get("scene_id"),
+                "route_id": route_id,
+                "source_state": source_state,
+                "rails": [],
+                "target_handle": command.get("target_handle"),
+                "target_side": command.get("target_side"),
+            },
+        )
+        result["route_layout"] = layout
+    return result
+
+
 def _apply_route_add(
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
@@ -4742,6 +4949,8 @@ def apply_project_commands(
             applied.append(_apply_input_action_upsert(scenes, command))
         elif kind == "input_action.delete":
             applied.append(_apply_input_action_delete(scenes, command))
+        elif kind == "route.create_trigger":
+            applied.append(_apply_route_create_trigger(project, scenes, command))
         elif kind == "route.add":
             applied.append(_apply_route_add(scenes, command))
         elif kind == "route.delete":

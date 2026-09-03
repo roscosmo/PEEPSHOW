@@ -46,7 +46,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 28
+SERVICE_API_VERSION = 29
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -338,6 +338,7 @@ class AuthoringService:
                     "input_action.delete",
                 ],
                 "route_commands": [
+                    "route.create_trigger",
                     "route.add",
                     "route.delete",
                     "route.set_action_ref",

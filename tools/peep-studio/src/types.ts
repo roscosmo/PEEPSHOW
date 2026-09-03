@@ -31,6 +31,7 @@ export type SceneDocument = {
   waiting_visuals?: WaitingVisual[];
   reactive_wait_default?: ReactiveWaitPolicy;
   interaction_policy?: InteractionPolicy;
+  joystick_policy?: "four_way" | "eight_way";
 };
 
 export type SceneExitRecord = {
@@ -50,6 +51,7 @@ export type StateVariable = {
 export type InputAction = {
   action_id: string;
   logical_source: string;
+  event_kind?: "press" | "release" | "hold" | "repeat";
 };
 
 export type StateRecord = {
