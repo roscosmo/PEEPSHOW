@@ -1162,6 +1162,7 @@ Rules:
 Any GUI or CLI should call the toolchain through stable operations:
 
 ```text
+project.create
 project.load
 project.save
 project.import_template
@@ -1177,6 +1178,10 @@ project.clean_generated
 Rules:
 
 - operation results are schema-versioned.
+- new projects are created from ordinary editable schema records, not copied
+  examples or UI-protected templates.
+- new project source references are relative to the `.peepproj` root, and
+  creation must reject an existing destination rather than overwrite it.
 - validation results use stable codes.
 - package builds record selected target profile, tool versions, schema versions, and content hashes.
 - the GUI must not bypass validation when exporting installable artifacts.

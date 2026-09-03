@@ -11,6 +11,7 @@ import {
   CircleDot,
   Download,
   FileCode2,
+  FilePlus2,
   FolderOpen,
   Hammer,
   Image,
@@ -195,7 +196,7 @@ export default function App() {
   const startPreview = useCallback(
     async (sceneId: string, revision = project?.project_revision) => {
       if (bridge === undefined || revision === undefined) {
-        return;
+        return false;
       }
       setBusy("Starting preview");
       setPlaying(false);
@@ -209,8 +210,10 @@ export default function App() {
         setSelectedPlacementElement(null);
         setPreview(result);
         setMessage(null);
+        return true;
       } catch (error) {
         setMessage(errorText(error));
+        return false;
       } finally {
         setBusy(null);
       }
@@ -266,6 +269,48 @@ export default function App() {
     if (path !== null) {
       setTemporaryProject(false);
       await loadProject(path);
+    }
+  };
+
+  const newProject = async () => {
+    if (bridge === undefined || busy !== null) {
+      return;
+    }
+    const path = await bridge.chooseNewProjectPath();
+    if (path === null) {
+      return;
+    }
+    setBusy("Creating project");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectLoadResult>("project.create", { path });
+      setBuild(null);
+      setPreview(null);
+      setPlacementPreview(null);
+      setPlacementPreviewLoading(false);
+      setPlacementPreviewError(null);
+      setSelectedScene(null);
+      setPlacementStateId(null);
+      setSceneThumbnails({});
+      setSceneSelection({ kind: "scene" });
+      setSelectedPlacementElement(null);
+      setProjectPath(path);
+      setTemporaryProject(false);
+      setWorkspaceMode("scene-flow");
+      setProject(result);
+      setDirty(result.dirty);
+      setCanUndo(result.can_undo);
+      setCanRedo(result.can_redo);
+      setMessage(result.valid ? `Created ${result.summary.project_name}.` : "Project validation failed. Review the issues panel.");
+      if (result.valid) {
+        if (await startPreview(result.summary.entry_scene, result.project_revision)) {
+          setMessage(`Created ${result.summary.project_name}.`);
+        }
+      }
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -3501,7 +3546,11 @@ export default function App() {
             <MonitorDot size={15} aria-hidden="true" />
             {connected ? `Service API ${service.service_api_version}` : "Service offline"}
           </span>
-          <button className="button secondary" onClick={openExample} disabled={bridge === undefined || busy !== null}>
+          <button className="button secondary" onClick={newProject} disabled={bridge === undefined || busy !== null || service?.operations.includes("project.create") !== true}>
+            <FilePlus2 size={16} aria-hidden="true" />
+            New project
+          </button>
+          <button className="button secondary example-button" onClick={openExample} disabled={bridge === undefined || busy !== null}>
             <FileCode2 size={16} aria-hidden="true" />
             Open example
           </button>

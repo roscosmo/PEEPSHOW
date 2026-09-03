@@ -266,6 +266,22 @@ ipcMain.handle("peep:open-project", async () => {
   return result.canceled ? null : result.filePaths[0] ?? null;
 });
 
+ipcMain.handle("peep:choose-new-project-path", async () => {
+  const result = await dialog.showSaveDialog({
+    title: "Create Peep Studio project",
+    defaultPath: path.join(app.getPath("documents"), "New Project.peepproj"),
+    filters: [{ name: "Peep Studio project", extensions: ["peepproj"] }],
+  });
+  if (result.canceled || result.filePath === undefined) {
+    return null;
+  }
+  return path.resolve(
+    result.filePath.endsWith(".peepproj")
+      ? result.filePath
+      : `${result.filePath}.peepproj`,
+  );
+});
+
 ipcMain.handle("peep:open-example", () => createWritableExampleCopy());
 
 ipcMain.handle("peep:import-sprite-png", async (_event, projectPath: unknown) => {

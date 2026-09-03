@@ -21,7 +21,14 @@ from .audio_assets import (
 from .compatibility import build_compatibility_report
 from .compiler import EggCompileError, build_egg
 from .egg_format import EggFormatError, parse_egg
-from .project import ProjectBundle, ProjectCommandError, apply_project_commands, load_project, save_project
+from .project import (
+    ProjectBundle,
+    ProjectCommandError,
+    apply_project_commands,
+    create_project,
+    load_project,
+    save_project,
+)
 from .preview import PreviewError, StateScenePreview
 from .target_profile import (
     TARGET_PROFILE_ID,
@@ -39,12 +46,13 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 25
+SERVICE_API_VERSION = 26
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
     "service.hello",
     "service.shutdown",
+    "project.create",
     "project.load",
     "project.validate",
     "project.normalize",
@@ -390,12 +398,7 @@ class AuthoringService:
         self.shutdown_requested = True
         return {"shutdown": True}
 
-    def _load(self, params: dict[str, Any]) -> dict[str, Any]:
-        _require_fields(params, {"path"})
-        path = params["path"]
-        if not isinstance(path, str) or not path:
-            raise ProtocolError("PROJECT_PATH_INVALID", "path must be non-empty text")
-        bundle = load_project(Path(path))
+    def _activate_bundle(self, bundle: ProjectBundle) -> dict[str, Any]:
         self._bundle = bundle
         self._project_revision += 1
         self._preview = None
@@ -408,6 +411,25 @@ class AuthoringService:
             "source_name": bundle.root.name,
             **self._project_document_result(bundle),
         }
+
+    def _create(self, params: dict[str, Any]) -> dict[str, Any]:
+        _require_fields(params, {"path"})
+        path = params["path"]
+        if not isinstance(path, str) or not path:
+            raise ProtocolError("PROJECT_PATH_INVALID", "path must be non-empty text")
+        try:
+            bundle = create_project(Path(path))
+        except ProjectCommandError as exc:
+            raise ProtocolError(exc.code, exc.message) from exc
+        return self._activate_bundle(bundle)
+
+    def _load(self, params: dict[str, Any]) -> dict[str, Any]:
+        _require_fields(params, {"path"})
+        path = params["path"]
+        if not isinstance(path, str) or not path:
+            raise ProtocolError("PROJECT_PATH_INVALID", "path must be non-empty text")
+        bundle = load_project(Path(path))
+        return self._activate_bundle(bundle)
 
     def _validate(self, params: dict[str, Any]) -> dict[str, Any]:
         bundle = self._current_bundle(params)
@@ -692,6 +714,7 @@ class AuthoringService:
         handlers = {
             "service.hello": self._hello,
             "service.shutdown": self._shutdown,
+            "project.create": self._create,
             "project.load": self._load,
             "project.validate": self._validate,
             "project.normalize": self._normalize,

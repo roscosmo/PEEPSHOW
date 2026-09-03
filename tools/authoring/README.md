@@ -116,6 +116,7 @@ Implemented operations:
 
 - `service.hello`
 - `service.shutdown`
+- `project.create`
 - `project.load`
 - `project.validate`
 - `project.normalize`
@@ -131,7 +132,9 @@ Implemented operations:
 - `project.preview_input`
 - `project.preview_advance`
 
-`project.load` starts a new monotonically increasing project revision. Every
+`project.create` writes and loads a new `.peepproj` with one ordinary STATE
+scene, one entry state, and a Button B exit-to-shell route. The destination
+must not already exist. `project.load` starts a new monotonically increasing project revision. Every
 project operation must supply that revision; stale requests are rejected rather
 than being applied to a newer document.
 
@@ -141,7 +144,7 @@ It does not choose a destination or write an installable file. The V1 report
 marks the current HW6 development profile as `pending_validation` and
 `dev_only`; it does not claim shipping authority before target-profile closure.
 
-Service API version 22 exposes the selected HW6 profile and its deterministic
+Service API version 26 exposes the selected HW6 profile and its deterministic
 hash in `service.hello`, and provides deterministic selected-STATE-scene preview,
 direct STATE-to-STATE replacement, and a `state_scene_presentation` capability
 block in `service.hello`. A

@@ -7,7 +7,8 @@ preview execution, or compilation rules in TypeScript.
 
 ## Current shell
 
-- opens a `.peepproj` directory or a writable temporary copy of the checked-in
+- creates a valid writable `.peepproj` with one starter STATE scene, or opens a
+  `.peepproj` directory or a writable temporary copy of the checked-in
   STATE example;
 - lists authored scenes and starts a selected-scene preview directly;
 - renders the exact 168x144 1bpp framebuffer returned by Python;
@@ -23,8 +24,8 @@ preview execution, or compilation rules in TypeScript.
 - adds actionless scene-flow exits by dragging an empty output slot, retargets existing exits by drag, and deletes selected exits from the keyboard;
 - builds and exports the authoritative `.egg` bytes produced by Python.
 
-Node creation, asset import, device installation, SEQUENCE,
-and PROGRAM authoring are deliberately outside this first shell.
+Device installation, SEQUENCE, and PROGRAM authoring remain outside the current
+shell.
 
 ## Run
 

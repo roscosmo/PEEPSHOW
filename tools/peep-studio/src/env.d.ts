@@ -2,6 +2,7 @@
 
 interface PeepStudioBridge {
   serviceRequest<T>(operation: string, params: Record<string, unknown>): Promise<T>;
+  chooseNewProjectPath(): Promise<string | null>;
   openProject(): Promise<string | null>;
   openExampleProject(): Promise<string>;
   importSpritePng(projectPath: string): Promise<{ assetId: string; displayName: string; sourcePath: string; width: number; height: number } | null>;

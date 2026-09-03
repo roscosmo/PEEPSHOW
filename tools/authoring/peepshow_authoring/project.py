@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import re
+import shutil
 from copy import deepcopy
 from dataclasses import dataclass
 from math import gcd
@@ -27,7 +28,7 @@ from .image_assets import (
     resolve_project_path,
 )
 from .system_fonts import SystemFontError, rasterize_system_font_text
-from .target_profile import SUPPORTED_TARGET_PROFILE_IDS
+from .target_profile import SUPPORTED_TARGET_PROFILE_IDS, TARGET_PROFILE_ID
 
 
 STABLE_ID = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
@@ -4151,6 +4152,157 @@ def _compile_asset_catalogs(
             f"compiled audio exceeds the {AUDIO_MAX_BANK_BYTES}-byte active-package audio limit",
         )
     return assets, animations, frames, audio_assets, audio_cues, issues
+
+
+def _new_project_slug(project_name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", project_name.lower()).strip("_")
+    if not slug:
+        slug = "project"
+    if not slug[0].isalpha():
+        slug = f"project_{slug}"
+    return slug[:48].rstrip("_")
+
+
+def create_project(project_root: str | Path) -> ProjectBundle:
+    root = Path(project_root)
+    if not root.is_absolute():
+        raise ProjectCommandError("PROJECT_PATH_INVALID", "new project path must be absolute")
+    if root.suffix != ".peepproj":
+        raise ProjectCommandError(
+            "PROJECT_SUFFIX_INVALID",
+            "editable project directories must end in .peepproj",
+        )
+    if root.exists():
+        raise ProjectCommandError(
+            "PROJECT_CREATE_TARGET_EXISTS",
+            "choose a new project location; that path already exists",
+        )
+    if not root.parent.is_dir():
+        raise ProjectCommandError(
+            "PROJECT_CREATE_PARENT_MISSING",
+            "the selected project parent directory does not exist",
+        )
+
+    project_name = root.stem.strip()
+    if not 1 <= len(project_name) <= 96:
+        raise ProjectCommandError(
+            "PROJECT_TEXT_INVALID",
+            "project name must contain 1..96 characters",
+        )
+    slug = _new_project_slug(project_name)
+    scene_source = "scenes/main.state.json"
+    project = {
+        "schema_id": "peepshow.authoring.project",
+        "schema_version": 1,
+        "project_id": f"project.{slug}",
+        "project_name": project_name,
+        "package": {
+            "package_id": f"dev.peepshow.{slug}",
+            "display_name": project_name,
+            "version": "0.1.0",
+        },
+        "selected_target_profile": TARGET_PROFILE_ID,
+        "entry_scene": "main",
+        "scene_sources": [scene_source],
+        "validation": {
+            "build_profile": "development",
+            "ruleset_version": 1,
+        },
+    }
+    scene = {
+        "schema_id": "peepshow.authoring.state_scene",
+        "schema_version": 1,
+        "scene_id": "main",
+        "display_name": "Main",
+        "scene_type": "STATE_SCENE",
+        "entry_state": "start",
+        "variables": [],
+        "input_actions": [
+            {
+                "action_id": "exit_project",
+                "logical_source": "BUTTON_B",
+            }
+        ],
+        "states": [
+            {
+                "state_id": "start",
+                "display_name": "Start",
+                "waiting_visual_ref": "static_wait",
+            }
+        ],
+        "routes": [
+            {
+                "route_id": "exit_project",
+                "action_ref": "exit_project",
+                "from_states": ["start"],
+                "guards": [],
+                "actions": [{"kind": "exit_to_shell"}],
+                "target_state": "start",
+            }
+        ],
+        "render_models": [
+            {
+                "visual_id": "scene_placement",
+                "focus_index": 0,
+                "elements": [],
+            }
+        ],
+        "waiting_visuals": [
+            {
+                "waiting_visual_id": "static_wait",
+                "presentation_id": "main_static",
+                "phase_quantum_ms": 250,
+                "combined_step_count": 1,
+                "settled_step": 0,
+                "cycle_policy": "loop",
+                "elements": [],
+            }
+        ],
+        "reactive_wait_default": {
+            "policy_id": "main_wait_policy",
+            "waiting_visual_ref": "static_wait",
+            "hold_fallback_allowed": True,
+            "event_interests": ["exit_project"],
+        },
+        "interaction_policy": {
+            "policy_id": "main_interaction",
+            "mode": "continuous",
+            "meaningful_activity_actions": ["exit_project"],
+        },
+    }
+
+    staging_root = root.with_name(f".{root.stem}.creating.peepproj")
+    if staging_root.exists():
+        raise ProjectCommandError(
+            "PROJECT_CREATE_STAGING_EXISTS",
+            f"remove the incomplete creation directory '{staging_root.name}' and try again",
+        )
+    try:
+        (staging_root / "scenes").mkdir(parents=True)
+        (staging_root / "project.json").write_text(
+            json.dumps(project, ensure_ascii=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        (staging_root / scene_source).write_text(
+            json.dumps(scene, ensure_ascii=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        staged_bundle = load_project(staging_root)
+        if not staged_bundle.valid:
+            issue = staged_bundle.issues[0]
+            raise ProjectCommandError(issue.code, f"{issue.path}: {issue.message}")
+        staging_root.replace(root)
+    except ProjectCommandError:
+        shutil.rmtree(staging_root, ignore_errors=True)
+        raise
+    except OSError as exc:
+        shutil.rmtree(staging_root, ignore_errors=True)
+        raise ProjectCommandError(
+            "PROJECT_CREATE_FAILED",
+            f"could not create project: {exc}",
+        ) from exc
+
+    return load_project(root)
 
 
 def load_project(project_root: str | Path) -> ProjectBundle:

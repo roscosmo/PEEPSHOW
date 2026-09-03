@@ -256,12 +256,13 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `22`.
+protocol is version `1`; the current service API is version `26`.
 
 | Operation | Purpose |
 |---|---|
 | `service.hello` | discover service/API versions and supported operations |
 | `service.shutdown` | request orderly sidecar shutdown |
+| `project.create` | create, validate, persist, and load a new minimal `.peepproj` at a previously unused path |
 | `project.load` | load and validate one `.peepproj` directory |
 | `project.validate` | return authoritative issues and semantic hash |
 | `project.normalize` | return canonical normalized project data |
@@ -458,6 +459,13 @@ example button are temporary copies. `project.undo` and `project.redo` keep a
 bounded 32-step command history in the Python service; new edits clear redo, and
 dirty state is computed against the last saved semantic project hash.
 
+Service API version 26 adds `project.create`. Python derives stable project and
+package IDs from the selected `.peepproj` directory name, writes only relative
+source references, validates the authored files, and loads the result as the
+active clean project. The starter scene, state, Button B binding, and
+exit-to-shell route are ordinary editable records. Peep Studio must not protect
+them or attach example-specific behavior to them.
+
 Service API version 15 adds deterministic build-time text assets through the
 existing `asset.upsert`/`asset.delete` commands. Peep Studio discovers the
 exact font ID, glyph cell, character set, scaling bounds, ink/background, and
@@ -647,6 +655,14 @@ advertises route layout version 3.
 Generated joins and arrow geometry remain renderer-only, version 2 waypoints
 are ignored by Peep Studio, and editor routing remains excluded from compiled
 package bytes.
+
+Service API version 26 adds first-class project creation. The Python service,
+not Electron or React, owns starter records, IDs, validation, and source writes.
+Electron only selects a new `.peepproj` path, and React activates the returned
+normalized document in Scene Flow. The authoring-completeness acceptance target
+for subsequent scene, state, route, placement, and asset work is to recreate the
+checked-in `state_slice.peepproj` example from this starter using only Peep
+Studio, then validate and build it through the same service path.
 
 ### Stage 5: Package Scene Flow
 

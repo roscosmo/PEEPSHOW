@@ -314,10 +314,11 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(25, SERVICE_API_VERSION)
+        self.assertEqual(26, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
+        self.assertIn("project.create", result["operations"])
         self.assertIn("project.build_package", result["operations"])
         self.assertIn("project.compatibility_report", result["operations"])
         self.assertIn("project.apply_commands", result["operations"])
@@ -406,6 +407,96 @@ class AuthoringServiceTests(unittest.TestCase):
         waiting_animation = result["state_scene_presentation"]["waiting_animation"]
         self.assertIn("render_element.bind_waiting_animation", waiting_animation["commands"])
         self.assertIn("render_element.clear_waiting_animation", waiting_animation["commands"])
+
+    def test_create_project_is_valid_buildable_previewable_and_reopenable(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "My First Game.peepproj"
+            service = AuthoringService()
+            created = service.handle(
+                request("project.create", {"path": str(project_root)})
+            )
+
+            self.assertTrue(created["valid"])
+            self.assertFalse(created["dirty"])
+            self.assertEqual("My First Game.peepproj", created["source_name"])
+            self.assertEqual("My First Game", created["summary"]["project_name"])
+            self.assertEqual("main", created["summary"]["entry_scene"])
+            self.assertEqual(1, created["summary"]["scene_count"])
+            self.assertTrue((project_root / "project.json").is_file())
+            self.assertTrue((project_root / "scenes" / "main.state.json").is_file())
+            manifest = json.loads(
+                (project_root / "project.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(["scenes/main.state.json"], manifest["scene_sources"])
+
+            revision = created["project_revision"]
+            built = service.handle(
+                request("project.build_package", {"project_revision": revision})
+            )
+            self.assertGreater(built["package"]["size_bytes"], 0)
+            preview = service.handle(
+                request(
+                    "project.preview_reset",
+                    {"project_revision": revision, "scene_id": "main"},
+                )
+            )
+            exited = service.handle(
+                request(
+                    "project.preview_input",
+                    {
+                        "project_revision": revision,
+                        "preview_revision": preview["preview_revision"],
+                        "logical_source": "BUTTON_B",
+                    },
+                )
+            )
+            self.assertTrue(exited["input"]["accepted"])
+            self.assertEqual("exit_project", exited["input"]["route_id"])
+
+            changed = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": revision,
+                        "commands": [
+                            {
+                                "kind": "state.rename",
+                                "scene_id": "main",
+                                "state_id": "start",
+                                "display_name": "Ready",
+                            }
+                        ],
+                    },
+                )
+            )
+            self.assertTrue(changed["dirty"])
+            saved = service.handle(
+                request(
+                    "project.save",
+                    {"project_revision": changed["project_revision"]},
+                )
+            )
+            self.assertFalse(saved["dirty"])
+
+            reopened = AuthoringService().handle(
+                request("project.load", {"path": str(project_root)})
+            )
+            self.assertTrue(reopened["valid"])
+            self.assertEqual(saved["document"], reopened["document"])
+
+    def test_create_project_never_overwrites_an_existing_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "Existing.peepproj"
+            project_root.mkdir()
+            marker = project_root / "keep.txt"
+            marker.write_text("keep", encoding="utf-8")
+
+            with self.assertRaises(ProtocolError) as raised:
+                AuthoringService().handle(
+                    request("project.create", {"path": str(project_root)})
+                )
+            self.assertEqual("PROJECT_CREATE_TARGET_EXISTS", raised.exception.code)
+            self.assertEqual("keep", marker.read_text(encoding="utf-8"))
 
     def test_state_sfx_package_preview_and_audition_use_compiled_audio(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

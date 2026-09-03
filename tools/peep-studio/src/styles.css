@@ -4063,7 +4063,7 @@ button:focus-visible {
   }
 
   .service-state,
-  .button.secondary:first-of-type {
+  .example-button {
     display: none;
   }
 
