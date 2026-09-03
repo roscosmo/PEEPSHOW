@@ -52,6 +52,37 @@ const savedGraph = (0, stateGraph_1.buildStateGraphModel)(scene, {
                 nodes: {
                     armed: { x: -120, y: 220 },
                 },
+                routes: {
+                    press_a: {
+                        sources: {
+                            idle: {
+                                routing_version: 3,
+                                target_handle: "entry-bottom-right",
+                                target_side: "right",
+                                rails: [{ axis: "x", value: 180 }, { axis: "y", value: 90 }],
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    },
+});
+const legacyRouteGraph = (0, stateGraph_1.buildStateGraphModel)(scene, {
+    state_graph: {
+        scenes: {
+            menu: {
+                nodes: {},
+                routes: {
+                    press_a: {
+                        sources: {
+                            idle: {
+                                routing_version: 2,
+                                waypoints: [{ x: 900, y: 900 }, { x: 920, y: 940 }],
+                            },
+                        },
+                    },
+                },
             },
         },
     },
@@ -75,12 +106,21 @@ strict_1.default.equal(graph.edges[0]?.target, "armed");
 strict_1.default.equal(graph.edges[0]?.label, "");
 strict_1.default.equal(graph.edges[0]?.sourceHandle, "press_a:idle");
 strict_1.default.equal(graph.edges[0]?.effectLabels[0], "Coins -1");
+strict_1.default.equal(graph.edges[0]?.guards[0]?.variable_ref, "coins");
+strict_1.default.equal(graph.edges[0]?.actions[0]?.kind, "set_variable");
+strict_1.default.deepEqual(savedGraph.edges[0]?.rails, [{ axis: "x", value: 180 }, { axis: "y", value: 90 }]);
+strict_1.default.equal(savedGraph.edges[0]?.targetHandle, "entry-bottom-right");
+strict_1.default.equal(savedGraph.edges[0]?.targetSide, "right");
+strict_1.default.deepEqual(legacyRouteGraph.edges[0]?.rails, []);
+strict_1.default.equal(legacyRouteGraph.edges[0]?.targetHandle, undefined);
 strict_1.default.equal(savedGraph.nodes.find((node) => node.id === "armed")?.x, -120);
 strict_1.default.equal(savedGraph.nodes.find((node) => node.id === "armed")?.y, 220);
 strict_1.default.equal((0, stateGraph_1.resolveStateExitSide)({ x: 0, y: 0 }, { x: 340, y: 0 }), "right");
 strict_1.default.equal((0, stateGraph_1.resolveStateExitSide)({ x: 0, y: 0 }, { x: -120, y: 220 }), "left");
 strict_1.default.equal((0, stateGraph_1.resolveStateEntryHandle)({ x: 0, y: 0 }, { x: 340, y: 0 }), "entry-top-left");
 strict_1.default.equal((0, stateGraph_1.resolveStateEntryHandle)({ x: 0, y: 400 }, { x: 0, y: 0 }), "entry-bottom-right");
+strict_1.default.deepEqual((0, stateGraph_1.stateEntryPortPoint)({ x: 100, y: 200 }, "entry-top-left", "top"), { x: 108, y: 200 });
+strict_1.default.deepEqual((0, stateGraph_1.stateEntryPortPoint)({ x: 100, y: 200 }, "entry-top-left", "left"), { x: 100, y: 209 });
 const verticalStackRoute = (0, stateGraph_1.buildStateTransitionRoute)({
     sourceX: 280,
     sourceY: 160,
@@ -90,7 +130,7 @@ const verticalStackRoute = (0, stateGraph_1.buildStateTransitionRoute)({
     targetSide: "top",
 });
 strict_1.default.equal(verticalStackRoute.points.some((point) => point.x > 340), true);
-strict_1.default.equal(verticalStackRoute.points.at(-2)?.y, 264);
+strict_1.default.equal(verticalStackRoute.points.at(-2)?.y, 252);
 strict_1.default.equal(verticalStackRoute.path.startsWith("M 280 160"), true);
 const verticalReturnRoute = (0, stateGraph_1.buildStateTransitionRoute)({
     sourceX: 280,
@@ -101,7 +141,7 @@ const verticalReturnRoute = (0, stateGraph_1.buildStateTransitionRoute)({
     targetSide: "bottom",
 });
 strict_1.default.equal(verticalReturnRoute.points.some((point) => point.x > 340), true);
-strict_1.default.equal(verticalReturnRoute.points.at(-2)?.y, 246);
+strict_1.default.equal(verticalReturnRoute.points.at(-2)?.y, 258);
 const topTriggerRoute = (0, stateGraph_1.buildStateTransitionRoute)({
     sourceX: 66,
     sourceY: 0,
@@ -112,6 +152,134 @@ const topTriggerRoute = (0, stateGraph_1.buildStateTransitionRoute)({
 });
 strict_1.default.equal(topTriggerRoute.points[1]?.x, 66);
 strict_1.default.equal((topTriggerRoute.points[1]?.y ?? 0) < 0, true);
+const sideEntryRoute = (0, stateGraph_1.buildStateTransitionRoute)({
+    sourceX: 40,
+    sourceY: 100,
+    targetX: 300,
+    targetY: 200,
+    sourceSide: "bottom",
+    targetSide: "left",
+});
+strict_1.default.deepEqual(sideEntryRoute.points.at(-1), { x: 300, y: 200 });
+strict_1.default.equal(sideEntryRoute.points.at(-2)?.y, 200);
+strict_1.default.equal((sideEntryRoute.points.at(-2)?.x ?? 300) < 300, true);
+strict_1.default.deepEqual(sideEntryRoute.rails, [{ axis: "y", value: 272 }, { axis: "x", value: 252 }]);
+const movedSideEntryRails = (0, stateGraph_1.moveStateTransitionRouteSection)(sideEntryRoute.controlPoints, sideEntryRoute.controlPoints.length - 2, { x: 280, y: 140 }, "bottom", "left");
+strict_1.default.notEqual(movedSideEntryRails, null);
+const movedSideEntryRoute = (0, stateGraph_1.buildStateTransitionRoute)({
+    sourceX: 40,
+    sourceY: 100,
+    targetX: 300,
+    targetY: 200,
+    sourceSide: "bottom",
+    targetSide: "left",
+    rails: movedSideEntryRails ?? undefined,
+});
+strict_1.default.equal(movedSideEntryRoute.points.some((point) => point.y === 140), true);
+strict_1.default.deepEqual(movedSideEntryRoute.points.at(-1), { x: 300, y: 200 });
+const manualRoute = (0, stateGraph_1.buildStateTransitionRoute)({
+    sourceX: 280,
+    sourceY: 160,
+    targetX: 140,
+    targetY: 300,
+    sourceSide: "right",
+    targetSide: "top",
+    rails: [{ axis: "x", value: 410 }, { axis: "y", value: 264 }],
+});
+strict_1.default.equal(manualRoute.points.some((point) => point.x === 410 && point.y === 160), true);
+strict_1.default.equal(manualRoute.points.some((point) => point.x === 410 && point.y === 264), true);
+strict_1.default.equal(manualRoute.path.startsWith("M 280 160"), true);
+strict_1.default.deepEqual(verticalStackRoute.rails, [{ axis: "x", value: 352 }, { axis: "y", value: 252 }]);
+strict_1.default.equal(manualRoute.controlPoints.length, 5);
+const automaticSections = (0, stateGraph_1.stateTransitionRouteSections)(verticalStackRoute.controlPoints);
+strict_1.default.equal(automaticSections.length, 4);
+strict_1.default.deepEqual(automaticSections.map((section) => section.orientation), ["horizontal", "vertical", "horizontal", "vertical"]);
+const movedSourceRails = (0, stateGraph_1.moveStateTransitionRouteSection)(verticalStackRoute.controlPoints, 0, { x: 330, y: 110 }, "right", "top");
+strict_1.default.notEqual(movedSourceRails, null);
+const movedSourceRoute = (0, stateGraph_1.buildStateTransitionRoute)({
+    sourceX: 280,
+    sourceY: 160,
+    targetX: 140,
+    targetY: 300,
+    sourceSide: "right",
+    targetSide: "top",
+    rails: movedSourceRails ?? undefined,
+});
+strict_1.default.equal(movedSourceRoute.points.some((point) => point.y === 110), true);
+strict_1.default.equal(movedSourceRoute.points.slice(1).every((point, index) => {
+    const previous = movedSourceRoute.points[index];
+    return previous.x === point.x || previous.y === point.y;
+}), true);
+const movedTargetRails = (0, stateGraph_1.moveStateTransitionRouteSection)(verticalStackRoute.controlPoints, verticalStackRoute.controlPoints.length - 2, { x: 240, y: 330 }, "right", "top");
+strict_1.default.notEqual(movedTargetRails, null);
+const movedTargetSectionRoute = (0, stateGraph_1.buildStateTransitionRoute)({
+    sourceX: 280,
+    sourceY: 160,
+    targetX: 140,
+    targetY: 300,
+    sourceSide: "right",
+    targetSide: "top",
+    rails: movedTargetRails ?? undefined,
+});
+strict_1.default.equal(movedTargetSectionRoute.points.some((point) => point.x === 240), true);
+strict_1.default.deepEqual(movedTargetSectionRoute.points.at(-1), { x: 140, y: 300 });
+const movedMiddleRails = (0, stateGraph_1.moveStateTransitionRouteSection)(verticalStackRoute.controlPoints, 1, { x: 460, y: 220 }, "right", "top");
+strict_1.default.deepEqual(movedMiddleRails, [{ axis: "x", value: 460 }, { axis: "y", value: 252 }]);
+const insertedSection = (0, stateGraph_1.insertStateTransitionRouteSection)(verticalStackRoute.controlPoints, 1, { x: 352, y: 212 }, "top");
+strict_1.default.notEqual(insertedSection, null);
+const insertedRoute = (0, stateGraph_1.buildStateTransitionRoute)({
+    sourceX: 280,
+    sourceY: 160,
+    targetX: 140,
+    targetY: 300,
+    sourceSide: "right",
+    targetSide: "top",
+    rails: insertedSection ?? undefined,
+});
+strict_1.default.equal((0, stateGraph_1.stateTransitionRouteSections)(insertedRoute.controlPoints).length > automaticSections.length, true);
+strict_1.default.equal((0, stateGraph_1.insertStateTransitionRouteSection)(verticalStackRoute.controlPoints, 1, { x: 352, y: 212 }, "top", 2), null);
+const movedCardRoute = (0, stateGraph_1.buildStateTransitionRoute)({
+    sourceX: 520,
+    sourceY: 90,
+    targetX: 180,
+    targetY: 360,
+    sourceSide: "right",
+    targetSide: "top",
+    rails: manualRoute.rails,
+});
+strict_1.default.equal((movedCardRoute.points[1]?.x ?? 0) > 520, true);
+strict_1.default.equal(movedCardRoute.points.slice(1).every((point, index) => {
+    const previous = movedCardRoute.points[index];
+    return previous.x === point.x || previous.y === point.y;
+}), true);
+const movedTargetRoute = (0, stateGraph_1.buildStateTransitionRoute)({
+    sourceX: 280,
+    sourceY: 160,
+    targetX: 140,
+    targetY: 100,
+    sourceSide: "right",
+    targetSide: "top",
+    rails: manualRoute.rails,
+});
+strict_1.default.equal((movedTargetRoute.points.at(-2)?.y ?? 100) <= 76, true);
+const selfCrossingRoute = (0, stateGraph_1.buildStateTransitionRoute)({
+    sourceX: 0,
+    sourceY: 0,
+    targetX: 100,
+    targetY: 100,
+    sourceSide: "right",
+    targetSide: "top",
+    rails: [
+        { axis: "x", value: 200 },
+        { axis: "y", value: 200 },
+        { axis: "x", value: -100 },
+        { axis: "y", value: 0 },
+    ],
+});
+strict_1.default.deepEqual(selfCrossingRoute.points, [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }]);
+strict_1.default.equal((0, stateGraph_1.stateGuardDescription)(scene.routes[0].guards[0]), "Coins is greater than 0");
+strict_1.default.equal((0, stateGraph_1.stateActionDescription)(scene.routes[0].actions[0]), "Coins -1");
+strict_1.default.equal((0, stateGraph_1.stateActionDescription)(scene.routes[0].actions[1]), null);
 const lanePlan = (0, stateGraph_1.planStateTransitionRoutes)([
     { id: "first", source: "top", target: "bottom", sourceOutputIndex: 0 },
     { id: "second", source: "top", target: "bottom", sourceOutputIndex: 1 },
@@ -128,6 +296,19 @@ const fixedTriggerPlan = (0, stateGraph_1.planStateTransitionRoutes)([{ id: "sho
 ]);
 strict_1.default.equal(fixedTriggerPlan.shoulder?.sourceSide, "top");
 strict_1.default.equal(fixedTriggerPlan.shoulder?.targetHandle.startsWith("entry-top"), true);
+const pinnedEntryPlan = (0, stateGraph_1.planStateTransitionRoutes)([{
+        id: "pinned",
+        source: "top",
+        target: "bottom",
+        sourceOutputIndex: 0,
+        targetHandle: "entry-bottom-right",
+        targetSide: "right",
+    }], [
+    { id: "top", x: 0, y: 0 },
+    { id: "bottom", x: 0, y: 420 },
+]);
+strict_1.default.equal(pinnedEntryPlan.pinned?.targetHandle, "entry-bottom-right");
+strict_1.default.equal(pinnedEntryPlan.pinned?.targetSide, "right");
 const invalidRouteGraph = (0, stateGraph_1.buildStateGraphModel)({
     ...scene,
     routes: [{ ...scene.routes[0], target_state: "missing" }],

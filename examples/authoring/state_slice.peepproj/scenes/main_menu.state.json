@@ -5,15 +5,7 @@
   "display_name": "Main Menu",
   "scene_type": "STATE_SCENE",
   "entry_state": "select_start",
-  "variables": [
-    {
-      "variable_id": "selected_index",
-      "value_type": "int32",
-      "initial": 0,
-      "minimum": 0,
-      "maximum": 2
-    }
-  ],
+  "variables": [],
   "input_actions": [
     {
       "action_id": "move_up",
@@ -88,20 +80,8 @@
       "from_states": [
         "select_start"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 0
-        }
-      ],
+      "guards": [],
       "actions": [
-        {
-          "kind": "set_variable",
-          "variable_ref": "selected_index",
-          "operation": "assign",
-          "value": 1
-        },
         {
           "kind": "play_sfx",
           "cue_ref": "foghorn_bo.cue"
@@ -115,20 +95,8 @@
       "from_states": [
         "select_settings"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 1
-        }
-      ],
+      "guards": [],
       "actions": [
-        {
-          "kind": "set_variable",
-          "variable_ref": "selected_index",
-          "operation": "assign",
-          "value": 2
-        },
         {
           "kind": "play_sfx",
           "cue_ref": "foghorn_bo.cue"
@@ -142,20 +110,8 @@
       "from_states": [
         "select_credits"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 2
-        }
-      ],
+      "guards": [],
       "actions": [
-        {
-          "kind": "set_variable",
-          "variable_ref": "selected_index",
-          "operation": "assign",
-          "value": 0
-        },
         {
           "kind": "play_sfx",
           "cue_ref": "foghorn_bo.cue"
@@ -169,20 +125,8 @@
       "from_states": [
         "select_start"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 0
-        }
-      ],
+      "guards": [],
       "actions": [
-        {
-          "kind": "set_variable",
-          "variable_ref": "selected_index",
-          "operation": "assign",
-          "value": 2
-        },
         {
           "kind": "play_sfx",
           "cue_ref": "foghorn_bo.cue"
@@ -196,20 +140,8 @@
       "from_states": [
         "select_settings"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 1
-        }
-      ],
+      "guards": [],
       "actions": [
-        {
-          "kind": "set_variable",
-          "variable_ref": "selected_index",
-          "operation": "assign",
-          "value": 0
-        },
         {
           "kind": "play_sfx",
           "cue_ref": "foghorn_bo.cue"
@@ -223,20 +155,8 @@
       "from_states": [
         "select_credits"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 2
-        }
-      ],
+      "guards": [],
       "actions": [
-        {
-          "kind": "set_variable",
-          "variable_ref": "selected_index",
-          "operation": "assign",
-          "value": 1
-        },
         {
           "kind": "play_sfx",
           "cue_ref": "foghorn_bo.cue"
@@ -250,13 +170,7 @@
       "from_states": [
         "select_start"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 0
-        }
-      ],
+      "guards": [],
       "actions": [],
       "target_scene": "start_game"
     },
@@ -266,13 +180,7 @@
       "from_states": [
         "select_settings"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 1
-        }
-      ],
+      "guards": [],
       "actions": [],
       "target_scene": "settings"
     },
@@ -282,13 +190,7 @@
       "from_states": [
         "select_credits"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 2
-        }
-      ],
+      "guards": [],
       "actions": [],
       "target_scene": "credits"
     }

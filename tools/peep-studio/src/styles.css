@@ -2705,7 +2705,9 @@ button:focus-visible {
 }
 
 .state-card-node .state-entry-zone {
+  position: absolute;
   z-index: 6;
+  display: block;
   width: 20px;
   height: 29px;
   border: 1.5px solid #2c312e;
@@ -2717,38 +2719,52 @@ button:focus-visible {
 
 .state-card-node .entry-top-left,
 .state-card-node .entry-bottom-left {
-  left: 2.7%;
+  left: 8px;
 }
 
 .state-card-node .entry-top-right,
 .state-card-node .entry-bottom-right {
-  left: 97.3%;
+  left: calc(100% - 8px);
 }
 
 .state-card-node .entry-top-left {
-  top: -5px;
-  transform: translateX(-50%) rotate(30deg);
+  top: 9px;
+  transform: translate(-50%, -50%) rotate(30deg);
 }
 
 .state-card-node .entry-top-right {
-  top: -5px;
-  transform: translateX(-50%) rotate(-30deg);
+  top: 9px;
+  transform: translate(-50%, -50%) rotate(-30deg);
 }
 
 .state-card-node .entry-bottom-left {
   top: auto;
-  bottom: -4px;
-  transform: translateX(-50%) rotate(-30deg);
+  bottom: 9px;
+  transform: translate(-50%, 50%) rotate(-30deg);
 }
 
 .state-card-node .entry-bottom-right {
   top: auto;
-  bottom: -4px;
-  transform: translateX(-50%) rotate(30deg);
+  bottom: 9px;
+  transform: translate(-50%, 50%) rotate(30deg);
 }
 
 .state-card-node .state-entry-zone.active {
   background: #40c057;
+}
+
+.state-card-node .state-entry-port {
+  right: auto;
+  bottom: auto;
+  z-index: 5;
+  width: 8px;
+  height: 8px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
 }
 
 .state-output-list {
@@ -3177,48 +3193,199 @@ button:focus-visible {
   stroke: #175f8a;
 }
 
-.state-transition-effect-anchor {
+.state-transition-hit-path {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 18;
+  pointer-events: stroke;
+  cursor: crosshair;
+}
+
+.state-transition-token-anchor {
   position: absolute;
   z-index: 6;
   pointer-events: all;
 }
 
-.state-transition-effect-chip {
-  display: flex;
-  width: 58px;
-  height: 58px;
+.state-transition-token {
+  position: relative;
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
   align-items: center;
   justify-content: center;
-  padding: 5px;
-  border: 1.5px solid #2c312e;
-  border-radius: 8px;
-  background: #e9ecef;
-  box-shadow: 0 2px 7px rgb(39 48 43 / 12%);
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: #27302b;
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0;
-  line-height: 1.1;
   pointer-events: all;
-  transform: rotate(45deg);
   cursor: pointer;
 }
 
-.state-transition-effect-chip span {
-  display: -webkit-box;
-  max-width: 50px;
-  overflow: hidden;
-  text-align: center;
-  text-overflow: ellipsis;
-  transform: rotate(-45deg);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+.state-transition-token::before {
+  position: absolute;
+  inset: 5px;
+  border: 1.5px solid #2c312e;
+  border-radius: 4px;
+  background: #e9ecef;
+  box-shadow: 0 2px 5px rgb(39 48 43 / 12%);
+  content: "";
+  transform: rotate(45deg);
 }
 
-.state-transition-effect-chip:hover,
-.state-transition-effect-chip.selected {
+.state-transition-condition::before {
+  background: #ffec99;
+}
+
+.state-transition-token:hover::before,
+.state-transition-token.selected::before {
   border-color: #175f8a;
   background: #dcebf4;
+}
+
+.state-transition-token-symbol {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.state-transition-xy-icon {
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.state-transition-token-count {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  z-index: 3;
+  display: inline-flex;
+  min-width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  border: 1px solid #2c312e;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #27302b;
+  font-size: 8px;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.state-transition-token-tooltip {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  z-index: 10;
+  width: max-content;
+  max-width: 220px;
+  padding: 5px 7px;
+  border-radius: 4px;
+  background: #202824;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.25;
+  opacity: 0;
+  pointer-events: none;
+  text-align: left;
+  transform: translateX(-50%) translateY(2px);
+  transition: opacity 100ms ease, transform 100ms ease;
+  white-space: normal;
+}
+
+.state-transition-token:hover .state-transition-token-tooltip,
+.state-transition-token:focus-visible .state-transition-token-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.state-transition-arrow {
+  fill: #4f5f58;
+  paint-order: stroke fill;
+  pointer-events: all;
+  stroke: transparent;
+  stroke-width: 12px;
+}
+
+.state-transition-arrow.selected,
+.state-transition-arrow:hover {
+  fill: #175f8a;
+}
+
+.state-transition-arrow.editable {
+  cursor: grab;
+}
+
+.state-transition-arrow.editable:active {
+  cursor: grabbing;
+}
+
+.state-route-section {
+  position: absolute;
+  z-index: 5;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  pointer-events: all;
+}
+
+.state-route-section::after {
+  position: absolute;
+  border-radius: 2px;
+  background: rgb(23 95 138 / 34%);
+  content: "";
+  opacity: 0;
+  transition: opacity 80ms ease, background-color 80ms ease;
+}
+
+.state-route-section-horizontal {
+  cursor: ns-resize;
+}
+
+.state-route-section-horizontal::after {
+  right: 3px;
+  left: 3px;
+  top: 6px;
+  height: 4px;
+}
+
+.state-route-section-vertical {
+  cursor: ew-resize;
+}
+
+.state-route-section-vertical::after {
+  top: 3px;
+  bottom: 3px;
+  left: 6px;
+  width: 4px;
+}
+
+.state-route-section:hover::after,
+.state-route-section:focus-visible::after {
+  background: #1681b8;
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 88%);
+  opacity: 1;
+}
+
+.state-route-section:focus-visible {
+  outline: 2px solid #175f8a;
+  outline-offset: 1px;
+}
+
+.state-route-section:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.route-layout-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .react-flow__edge-textbg {

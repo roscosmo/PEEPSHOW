@@ -16,18 +16,49 @@ import {
   type NodeChange,
   type NodeProps,
   type ReactFlowInstance,
+  useReactFlow,
   useUpdateNodeInternals,
 } from "@xyflow/react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, GitBranch, Hourglass, Layers3, Network, Plus, Route, Variable } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  ExternalLink,
+  Eye,
+  Filter,
+  GitBranch,
+  Hourglass,
+  Image,
+  Layers3,
+  LogOut,
+  Move,
+  Network,
+  Play,
+  Plus,
+  Route,
+  RotateCcw,
+  Volume2,
+  Variable,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { FramebufferCanvas } from "./FramebufferCanvas";
 import {
   buildSceneFlowGraphModel,
   buildStateGraphModel,
   buildStateTransitionRoute,
+  insertStateTransitionRouteSection,
+  moveStateTransitionRouteSection,
   planStateTransitionRoutes,
-  resolveStateEntryHandle,
+  removeStateTransitionRouteSection,
   resolveStateExitSide,
+  stateActionDescription,
+  stateEntryPortId,
+  stateEntryPortPoint,
+  stateGuardDescription,
+  stateTransitionRouteSections,
+  STATE_GRAPH_ENTRY_HANDLES,
+  STATE_GRAPH_ENTRY_PORTS,
   type GraphSceneNode,
   type GraphStateNode,
   type StateGraphEntryHandle,
@@ -37,11 +68,14 @@ import {
 } from "./stateGraph";
 import type {
   AudioCueRecord,
+  EditorNodePosition,
+  EditorRouteRail,
   Framebuffer,
   InputAction,
   ProjectEditorData,
   RenderModel,
   SceneDocument,
+  StateAction,
   StateGuard,
   StateRecord,
   StateRoute,
@@ -52,7 +86,7 @@ import type {
 export type SceneSelection =
   | { kind: "scene" }
   | { kind: "state"; id: string }
-  | { kind: "route"; id: string }
+  | { kind: "route"; id: string; sourceState?: string }
   | { kind: "render"; id: string }
   | { kind: "waiting"; id: string };
 
@@ -236,7 +270,7 @@ type StateCardNodeData = {
   canEdit: boolean;
   selectedRouteId: string | null;
   onSelectState: (stateId: string) => void;
-  onSelectRoute: (routeId: string) => void;
+  onSelectRoute: (routeId: string, sourceState: string) => void;
 };
 
 type StateTriggerStemLayout = {
@@ -260,11 +294,15 @@ type StateNodePosition = {
   platformOutputCount?: number;
 };
 
-const STATE_ENTRY_HANDLES = [
-  { id: "entry-top-left", position: Position.Top },
-  { id: "entry-top-right", position: Position.Top },
-  { id: "entry-bottom-left", position: Position.Bottom },
-  { id: "entry-bottom-right", position: Position.Bottom },
+const STATE_ENTRY_PORT_HANDLES = [
+  { handle: "entry-top-left", side: "top", position: Position.Top, style: { left: 8, top: 0 } },
+  { handle: "entry-top-left", side: "left", position: Position.Left, style: { left: 0, top: 9 } },
+  { handle: "entry-top-right", side: "top", position: Position.Top, style: { left: "calc(100% - 8px)", top: 0 } },
+  { handle: "entry-top-right", side: "right", position: Position.Right, style: { left: "100%", top: 9 } },
+  { handle: "entry-bottom-left", side: "bottom", position: Position.Bottom, style: { left: 8, top: "100%" } },
+  { handle: "entry-bottom-left", side: "left", position: Position.Left, style: { left: 0, top: "calc(100% - 9px)" } },
+  { handle: "entry-bottom-right", side: "bottom", position: Position.Bottom, style: { left: "calc(100% - 8px)", top: "100%" } },
+  { handle: "entry-bottom-right", side: "right", position: Position.Right, style: { left: "100%", top: "calc(100% - 9px)" } },
 ] as const;
 
 const PHYSICAL_TRIGGER_CONTROLS = [
@@ -392,9 +430,12 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
   const outputSideKey = graphNode.outputs
     .map((output) => `${output.id}:${output.logicalSource}:${output.exitSide}`)
     .join("|");
+  const stemSocketKey = Object.entries(stemLayout.sockets)
+    .map(([slot, point]) => `${slot}:${point.x}:${point.y}`)
+    .join("|");
   useEffect(() => {
     updateNodeInternals(graphNode.id);
-  }, [graphNode.id, outputSideKey, updateNodeInternals]);
+  }, [graphNode.id, outputSideKey, stemSocketKey, updateNodeInternals]);
 
   useEffect(() => {
     const card = cardRef.current;
@@ -464,7 +505,7 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
         onClick={(event) => {
           event.stopPropagation();
           if (output !== undefined) {
-            onSelectRoute(output.routeId);
+            onSelectRoute(output.routeId, graphNode.id);
           }
         }}
       >
@@ -487,13 +528,21 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
         }
       }}
     >
-      {STATE_ENTRY_HANDLES.map((handle) => (
+      {STATE_GRAPH_ENTRY_HANDLES.map((handle) => (
+        <span
+          aria-hidden="true"
+          className={`state-entry-zone ${handle} ${activeEntryHandles.includes(handle) ? "active" : ""}`}
+          key={handle}
+        />
+      ))}
+      {STATE_ENTRY_PORT_HANDLES.map((port) => (
         <Handle
-          key={handle.id}
-          id={handle.id}
-          className={`state-entry-zone ${handle.id} ${activeEntryHandles.includes(handle.id) ? "active" : ""}`}
+          key={stateEntryPortId(port.handle, port.side)}
+          id={stateEntryPortId(port.handle, port.side)}
+          className="state-entry-port"
+          style={port.style}
           type="target"
-          position={handle.position}
+          position={port.position}
         />
       ))}
       {physicalControls.map((control) => {
@@ -560,13 +609,13 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
               tabIndex={0}
               onClick={(event) => {
                 event.stopPropagation();
-                onSelectRoute(output.routeId);
+                onSelectRoute(output.routeId, graphNode.id);
               }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
                   event.stopPropagation();
-                  onSelectRoute(output.routeId);
+                  onSelectRoute(output.routeId, graphNode.id);
                 }
               }}
             >
@@ -614,9 +663,28 @@ const STATE_NODE_TYPES = { stateCard: StateCardNode };
 
 type StateTransitionEdgeData = {
   route_id?: string;
+  source_state?: string;
   laneX?: number;
-  effectLabels?: string[];
-  onSelectRoute?: (routeId: string) => void;
+  guards?: StateGuard[];
+  actions?: StateAction[];
+  rails?: EditorRouteRail[];
+  targetHandle?: StateGraphEntryHandle;
+  targetSide?: StateGraphEntrySide;
+  targetEntryPorts?: Array<{
+    handle: StateGraphEntryHandle;
+    side: StateGraphEntrySide;
+    point: EditorNodePosition;
+  }>;
+  canEdit?: boolean;
+  showSectionHandles?: boolean;
+  onSelectRoute?: (routeId: string, sourceState: string) => void;
+  onSetRouteLayout?: (
+    routeId: string,
+    sourceState: string,
+    rails: EditorRouteRail[],
+    targetHandle: StateGraphEntryHandle | null,
+    targetSide: StateGraphEntrySide | null,
+  ) => void;
 };
 
 function edgeSourceSide(position: Position): StateGraphExitSide {
@@ -633,6 +701,12 @@ function edgeSourceSide(position: Position): StateGraphExitSide {
 }
 
 function edgeTargetSide(position: Position): StateGraphEntrySide {
+  if (position === Position.Left) {
+    return "left";
+  }
+  if (position === Position.Right) {
+    return "right";
+  }
   return position === Position.Bottom ? "bottom" : "top";
 }
 
@@ -669,10 +743,60 @@ function routeLabelPoint(points: Array<{ x: number; y: number }>, fraction = 0.5
   return points[points.length - 1];
 }
 
+function closestRouteSegment(points: EditorNodePosition[], point: EditorNodePosition): number {
+  let closestIndex = 0;
+  let closestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const lengthSquared = dx * dx + dy * dy;
+    const fraction = lengthSquared === 0
+      ? 0
+      : Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+    const projectedX = start.x + dx * fraction;
+    const projectedY = start.y + dy * fraction;
+    const distance = Math.hypot(point.x - projectedX, point.y - projectedY);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestIndex = index;
+    }
+  }
+  return closestIndex;
+}
+
+function TransitionActionIcon({ action }: { action: StateAction }) {
+  if (action.kind === "set_variable") {
+    return <span className="state-transition-xy-icon">Xy</span>;
+  }
+  if (action.kind === "play_sfx") {
+    return <Volume2 size={15} aria-hidden="true" />;
+  }
+  if (action.kind === "set_element_visibility") {
+    return <Eye size={15} aria-hidden="true" />;
+  }
+  if (action.kind === "set_element_position") {
+    return <Move size={15} aria-hidden="true" />;
+  }
+  if (action.kind === "set_element_frame") {
+    return <Image size={15} aria-hidden="true" />;
+  }
+  if (action.kind === "set_element_waiting_animation") {
+    return <Play size={15} aria-hidden="true" />;
+  }
+  if (action.kind === "transition_scene") {
+    return <ExternalLink size={15} aria-hidden="true" />;
+  }
+  if (action.kind === "exit_to_shell") {
+    return <LogOut size={15} aria-hidden="true" />;
+  }
+  return <Route size={15} aria-hidden="true" />;
+}
+
 function StateTransitionEdge({
   data,
   id,
-  markerEnd,
   selected,
   sourcePosition,
   sourceX,
@@ -683,59 +807,364 @@ function StateTransitionEdge({
   targetY,
 }: EdgeProps) {
   const edgeData = data as StateTransitionEdgeData | undefined;
-  const laneX = typeof edgeData?.laneX === "number" ? edgeData.laneX : undefined;
-  const route = buildStateTransitionRoute({
+  const { screenToFlowPosition } = useReactFlow();
+  const persistedRails = Array.isArray(edgeData?.rails) ? edgeData.rails : [];
+  const persistedRailKey = persistedRails.map((rail) => `${rail.axis}:${rail.value}`).join("|");
+  const persistedTargetHandle = edgeData?.targetHandle;
+  const persistedTargetSide = edgeData?.targetSide;
+  const [draftRails, setDraftRails] = useState<EditorRouteRail[]>(persistedRails);
+  const draftRailsRef = useRef<EditorRouteRail[]>(persistedRails);
+  const [draftTargetHandle, setDraftTargetHandle] = useState<StateGraphEntryHandle | undefined>(persistedTargetHandle);
+  const draftTargetHandleRef = useRef<StateGraphEntryHandle | undefined>(persistedTargetHandle);
+  const [draftTargetSide, setDraftTargetSide] = useState<StateGraphEntrySide | undefined>(persistedTargetSide);
+  const draftTargetSideRef = useRef<StateGraphEntrySide | undefined>(persistedTargetSide);
+  const [selectedSection, setSelectedSection] = useState<number | null>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const next = persistedRails.map((rail) => ({ ...rail }));
+    draftRailsRef.current = next;
+    setDraftRails(next);
+    draftTargetHandleRef.current = persistedTargetHandle;
+    setDraftTargetHandle(persistedTargetHandle);
+    draftTargetSideRef.current = persistedTargetSide;
+    setDraftTargetSide(persistedTargetSide);
+    setSelectedSection(null);
+  }, [persistedRailKey, persistedTargetHandle, persistedTargetSide]);
+  useEffect(() => () => dragCleanupRef.current?.(), []);
+
+  const routeId = typeof edgeData?.route_id === "string" ? edgeData.route_id : id;
+  const sourceState = typeof edgeData?.source_state === "string" ? edgeData.source_state : "";
+  const canEdit = edgeData?.canEdit === true;
+  const showSectionHandles = edgeData?.showSectionHandles === true;
+  const effectiveTargetHandle = draftTargetHandle ?? persistedTargetHandle;
+  const effectiveTargetSide = draftTargetSide ?? persistedTargetSide ?? edgeTargetSide(targetPosition);
+  const targetPort = edgeData?.targetEntryPorts?.find((port) => (
+    port.handle === effectiveTargetHandle && port.side === effectiveTargetSide
+  ));
+  const usesReactFlowTarget = effectiveTargetHandle === persistedTargetHandle
+    && effectiveTargetSide === persistedTargetSide;
+  const arrowTip = usesReactFlowTarget
+    ? { x: targetX, y: targetY }
+    : targetPort?.point ?? { x: targetX, y: targetY };
+  const laneX = usesReactFlowTarget && typeof edgeData?.laneX === "number"
+    ? edgeData.laneX
+    : undefined;
+  const automaticRoute = buildStateTransitionRoute({
     sourceX,
     sourceY,
-    targetX,
-    targetY,
+    targetX: arrowTip.x,
+    targetY: arrowTip.y,
     sourceSide: edgeSourceSide(sourcePosition),
-    targetSide: edgeTargetSide(targetPosition),
+    targetSide: effectiveTargetSide,
     laneX,
   });
+  const route = draftRails.length === 0
+    ? automaticRoute
+    : buildStateTransitionRoute({
+        sourceX,
+        sourceY,
+        targetX: arrowTip.x,
+        targetY: arrowTip.y,
+        sourceSide: edgeSourceSide(sourcePosition),
+        targetSide: effectiveTargetSide,
+        rails: draftRails,
+      });
+  const routeSections = stateTransitionRouteSections(route.controlPoints);
   const gradientId = `state-transition-gradient-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
   const edgeStyle = {
     ...style,
     stroke: `url(#${gradientId})`,
   };
-  const effectLabels = Array.isArray(edgeData?.effectLabels) ? edgeData.effectLabels : [];
-  const routeId = typeof edgeData?.route_id === "string" ? edgeData.route_id : id;
+  const guards = Array.isArray(edgeData?.guards) ? edgeData.guards : [];
+  const actions = Array.isArray(edgeData?.actions) ? edgeData.actions : [];
+  const tokens = [
+    ...(guards.length === 0 ? [] : [{
+      key: "condition",
+      kind: "condition" as const,
+      description: `Only if ${guards.map(stateGuardDescription).join(" and ")}`,
+      count: guards.length,
+    }]),
+    ...actions.map((action, index) => ({
+      key: `action-${index}`,
+      kind: "action" as const,
+      description: stateActionDescription(action) ?? "Background screen update",
+      action,
+    })),
+  ];
+
+  const commitLayout = (
+    rails: EditorRouteRail[],
+    targetHandle: StateGraphEntryHandle | null,
+    targetSide: StateGraphEntrySide | null,
+  ) => {
+    const rounded = rails.map((rail) => ({ axis: rail.axis, value: Math.round(rail.value) }));
+    draftRailsRef.current = rounded;
+    setDraftRails(rounded);
+    draftTargetHandleRef.current = targetHandle ?? undefined;
+    setDraftTargetHandle(targetHandle ?? undefined);
+    draftTargetSideRef.current = targetSide ?? undefined;
+    setDraftTargetSide(targetSide ?? undefined);
+    edgeData?.onSetRouteLayout?.(routeId, sourceState, rounded, targetHandle, targetSide);
+  };
+
+  useEffect(() => {
+    if (!showSectionHandles || selectedSection === null || !canEdit) {
+      return;
+    }
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Delete" && event.key !== "Backspace") {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target !== null && target.closest("input, select, textarea, [contenteditable='true']") !== null) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const next = removeStateTransitionRouteSection(route.controlPoints, selectedSection, effectiveTargetSide);
+      if (next === null) {
+        return;
+      }
+      setSelectedSection(null);
+      commitLayout(next, effectiveTargetHandle ?? null, effectiveTargetSide);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [canEdit, effectiveTargetHandle, effectiveTargetSide, route, routeId, selectedSection, showSectionHandles, sourceState]);
+
+  const addRouteSection = (clientX: number, clientY: number) => {
+    if (!canEdit) {
+      return;
+    }
+    const point = screenToFlowPosition({ x: clientX, y: clientY });
+    const segmentIndex = closestRouteSegment(route.controlPoints, point);
+    const inserted = insertStateTransitionRouteSection(route.controlPoints, segmentIndex, point, effectiveTargetSide);
+    if (inserted === null) {
+      return;
+    }
+    setSelectedSection(null);
+    commitLayout(inserted, effectiveTargetHandle ?? null, effectiveTargetSide);
+  };
+
+  const arrowPath = effectiveTargetSide === "top"
+    ? `M ${arrowTip.x} ${arrowTip.y} L ${arrowTip.x - 6} ${arrowTip.y - 9} L ${arrowTip.x + 6} ${arrowTip.y - 9} Z`
+    : effectiveTargetSide === "bottom"
+      ? `M ${arrowTip.x} ${arrowTip.y} L ${arrowTip.x - 6} ${arrowTip.y + 9} L ${arrowTip.x + 6} ${arrowTip.y + 9} Z`
+      : effectiveTargetSide === "left"
+        ? `M ${arrowTip.x} ${arrowTip.y} L ${arrowTip.x - 9} ${arrowTip.y - 6} L ${arrowTip.x - 9} ${arrowTip.y + 6} Z`
+        : `M ${arrowTip.x} ${arrowTip.y} L ${arrowTip.x + 9} ${arrowTip.y - 6} L ${arrowTip.x + 9} ${arrowTip.y + 6} Z`;
+
+  const closestEntryPort = (point: EditorNodePosition): {
+    handle: StateGraphEntryHandle;
+    side: StateGraphEntrySide;
+    distance: number;
+  } | null => {
+    let closest: { handle: StateGraphEntryHandle; side: StateGraphEntrySide; distance: number } | null = null;
+    for (const port of edgeData?.targetEntryPorts ?? []) {
+      const distance = Math.hypot(point.x - port.point.x, point.y - port.point.y);
+      if (closest === null || distance < closest.distance) {
+        closest = { handle: port.handle, side: port.side, distance };
+      }
+    }
+    return closest;
+  };
 
   return (
     <>
       <defs>
-        <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}>
+        <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={arrowTip.x} y2={arrowTip.y}>
           <stop offset="0%" stopColor={selected ? "#7f8e87" : "#9da9a3"} />
           <stop offset="100%" stopColor={selected ? "#175f8a" : "#4f5f58"} />
         </linearGradient>
       </defs>
-      <BaseEdge id={id} markerEnd={markerEnd} path={route.path} style={edgeStyle} />
-      {effectLabels.map((effectLabel, index) => {
-        const spacing = Math.min(0.11, 0.28 / Math.max(1, effectLabels.length - 1));
-        const fraction = 0.5 + (index - (effectLabels.length - 1) / 2) * spacing;
+      <BaseEdge id={id} path={route.path} style={edgeStyle} />
+      <path
+        className="state-transition-hit-path"
+        d={route.path}
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          edgeData?.onSelectRoute?.(routeId, sourceState);
+          addRouteSection(event.clientX, event.clientY);
+        }}
+      />
+      <path
+        className={`state-transition-arrow ${selected ? "selected" : ""} ${canEdit ? "editable" : ""}`}
+        d={arrowPath}
+        onClick={(event) => {
+          event.stopPropagation();
+          edgeData?.onSelectRoute?.(routeId, sourceState);
+        }}
+        onPointerDown={(event) => {
+          if (!canEdit) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          edgeData?.onSelectRoute?.(routeId, sourceState);
+          dragCleanupRef.current?.();
+          const pointerId = event.pointerId;
+          const originalHandle = effectiveTargetHandle;
+          const originalSide = effectiveTargetSide;
+          const onPointerMove = (pointerEvent: globalThis.PointerEvent) => {
+            if (pointerEvent.pointerId !== pointerId) {
+              return;
+            }
+            pointerEvent.preventDefault();
+            const point = screenToFlowPosition({ x: pointerEvent.clientX, y: pointerEvent.clientY });
+            const closest = closestEntryPort(point);
+            if (closest !== null && closest.distance <= 72) {
+              draftTargetHandleRef.current = closest.handle;
+              setDraftTargetHandle(closest.handle);
+              draftTargetSideRef.current = closest.side;
+              setDraftTargetSide(closest.side);
+            }
+          };
+          const finishDrag = (pointerEvent: globalThis.PointerEvent) => {
+            if (pointerEvent.pointerId !== pointerId) {
+              return;
+            }
+            const point = screenToFlowPosition({ x: pointerEvent.clientX, y: pointerEvent.clientY });
+            const closest = closestEntryPort(point);
+            dragCleanupRef.current?.();
+            dragCleanupRef.current = null;
+            if (closest !== null && closest.distance <= 72) {
+              commitLayout(draftRailsRef.current, closest.handle, closest.side);
+            } else {
+              draftTargetHandleRef.current = originalHandle;
+              setDraftTargetHandle(originalHandle);
+              draftTargetSideRef.current = originalSide;
+              setDraftTargetSide(originalSide);
+            }
+          };
+          const cancelDrag = (pointerEvent: globalThis.PointerEvent) => {
+            if (pointerEvent.pointerId !== pointerId) {
+              return;
+            }
+            dragCleanupRef.current?.();
+            dragCleanupRef.current = null;
+            draftTargetHandleRef.current = originalHandle;
+            setDraftTargetHandle(originalHandle);
+            draftTargetSideRef.current = originalSide;
+            setDraftTargetSide(originalSide);
+          };
+          window.addEventListener("pointermove", onPointerMove, true);
+          window.addEventListener("pointerup", finishDrag, true);
+          window.addEventListener("pointercancel", cancelDrag, true);
+          dragCleanupRef.current = () => {
+            window.removeEventListener("pointermove", onPointerMove, true);
+            window.removeEventListener("pointerup", finishDrag, true);
+            window.removeEventListener("pointercancel", cancelDrag, true);
+          };
+        }}
+      />
+      {tokens.map((token, index) => {
+        const spacing = Math.min(0.12, 0.7 / Math.max(1, tokens.length - 1));
+        const fraction = 0.5 + (index - (tokens.length - 1) / 2) * spacing;
         const labelPoint = routeLabelPoint(route.points, fraction);
         return (
-          <EdgeLabelRenderer key={`${routeId}:${index}`}>
+          <EdgeLabelRenderer key={`${routeId}:${sourceState}:${token.key}`}>
             <div
-              className="state-transition-effect-anchor"
+              className="state-transition-token-anchor"
               style={{
                 transform: `translate(-50%, -50%) translate(${labelPoint.x}px, ${labelPoint.y}px)`,
               }}
             >
               <button
-                className={`state-transition-effect-chip nodrag nopan ${selected ? "selected" : ""}`}
+                className={`state-transition-token state-transition-${token.kind} nodrag nopan ${selected ? "selected" : ""}`}
                 type="button"
-                title={effectLabel}
-                aria-label={`Transition change: ${effectLabel}`}
+                aria-label={token.description}
                 onClick={(event) => {
                   event.stopPropagation();
-                  edgeData?.onSelectRoute?.(routeId);
+                  edgeData?.onSelectRoute?.(routeId, sourceState);
                 }}
               >
-                <span>{effectLabel}</span>
+                <span className="state-transition-token-symbol">
+                  {token.kind === "condition" ? <Filter size={15} aria-hidden="true" /> : <TransitionActionIcon action={token.action} />}
+                </span>
+                {token.kind === "condition" && (
+                  <span className="state-transition-token-count">{token.count}</span>
+                )}
+                <span className="state-transition-token-tooltip" role="tooltip">{token.description}</span>
               </button>
             </div>
           </EdgeLabelRenderer>
+        );
+      })}
+      {showSectionHandles && routeSections.map((section) => {
+        const sectionIsSelected = selectedSection === section.controlSegmentIndex;
+        return (
+        <EdgeLabelRenderer key={`${routeId}:${sourceState}:section-${section.controlSegmentIndex}`}>
+          <button
+            className={`state-route-section state-route-section-${section.orientation} nodrag nopan ${sectionIsSelected ? "selected" : ""}`}
+            type="button"
+            aria-label={`Move ${section.orientation} transition section`}
+            title={section.orientation === "horizontal" ? "Drag up or down" : "Drag left or right"}
+            style={{
+              width: section.orientation === "horizontal" ? `${Math.max(22, section.length)}px` : "16px",
+              height: section.orientation === "vertical" ? `${Math.max(22, section.length)}px` : "16px",
+              transform: `translate(-50%, -50%) translate(${section.center.x}px, ${section.center.y}px)`,
+            }}
+            disabled={!canEdit}
+            onClick={(event) => {
+              event.stopPropagation();
+            }}
+            onPointerDown={(event) => {
+              if (!canEdit) {
+                return;
+              }
+              event.preventDefault();
+              event.stopPropagation();
+              dragCleanupRef.current?.();
+              const basePoints = route.controlPoints.map((point) => ({ ...point }));
+              setSelectedSection(section.controlSegmentIndex);
+              const pointerId = event.pointerId;
+              const onPointerMove = (pointerEvent: globalThis.PointerEvent) => {
+                if (pointerEvent.pointerId !== pointerId) {
+                  return;
+                }
+                pointerEvent.preventDefault();
+                const point = screenToFlowPosition({ x: pointerEvent.clientX, y: pointerEvent.clientY });
+                const next = moveStateTransitionRouteSection(
+                  basePoints,
+                  section.controlSegmentIndex,
+                  point,
+                  edgeSourceSide(sourcePosition),
+                  effectiveTargetSide,
+                );
+                if (next !== null) {
+                  draftRailsRef.current = next;
+                  setDraftRails(next);
+                }
+              };
+              const finishDrag = (pointerEvent: globalThis.PointerEvent) => {
+                if (pointerEvent.pointerId !== pointerId) {
+                  return;
+                }
+                dragCleanupRef.current?.();
+                dragCleanupRef.current = null;
+                commitLayout(draftRailsRef.current, effectiveTargetHandle ?? null, effectiveTargetSide);
+              };
+              const cancelDrag = (pointerEvent: globalThis.PointerEvent) => {
+                if (pointerEvent.pointerId !== pointerId) {
+                  return;
+                }
+                dragCleanupRef.current?.();
+                dragCleanupRef.current = null;
+                const restored = persistedRails.map((rail) => ({ ...rail }));
+                draftRailsRef.current = restored;
+                setDraftRails(restored);
+              };
+              window.addEventListener("pointermove", onPointerMove, true);
+              window.addEventListener("pointerup", finishDrag, true);
+              window.addEventListener("pointercancel", cancelDrag, true);
+              dragCleanupRef.current = () => {
+                window.removeEventListener("pointermove", onPointerMove, true);
+                window.removeEventListener("pointerup", finishDrag, true);
+                window.removeEventListener("pointercancel", cancelDrag, true);
+              };
+            }}
+          />
+        </EdgeLabelRenderer>
         );
       })}
     </>
@@ -876,6 +1305,7 @@ export function StateGraphView({
   selected,
   onSelect,
   onMoveStateNode,
+  onSetRouteLayout,
   canEdit,
 }: {
   scene: SceneDocument | null;
@@ -884,6 +1314,14 @@ export function StateGraphView({
   selected: SceneSelection;
   onSelect: (selection: SceneSelection) => void;
   onMoveStateNode: (sceneId: string, stateId: string, x: number, y: number) => void;
+  onSetRouteLayout: (
+    sceneId: string,
+    routeId: string,
+    sourceState: string,
+    rails: EditorRouteRail[],
+    targetHandle: StateGraphEntryHandle | null,
+    targetSide: StateGraphEntrySide | null,
+  ) => void;
   canEdit: boolean;
 }) {
   const graph = useMemo(() => buildStateGraphModel(scene, editor), [editor, scene]);
@@ -901,9 +1339,11 @@ export function StateGraphView({
           graphNode: routeStateNode(node, defaultPositionById, {}),
           activeEntryHandles: node.isEntry ? ["entry-top-left"] : [],
           canEdit,
-          selectedRouteId: selected.kind === "route" ? selected.id : null,
+          selectedRouteId: selected.kind === "route" && (selected.sourceState === undefined || selected.sourceState === node.id)
+            ? selected.id
+            : null,
           onSelectState: (stateId: string) => onSelect({ kind: "state", id: stateId }),
-          onSelectRoute: (routeId: string) => onSelect({ kind: "route", id: routeId }),
+          onSelectRoute: (routeId: string, sourceState: string) => onSelect({ kind: "route", id: routeId, sourceState }),
         },
         selected: selected.kind === "state" && selected.id === node.id,
         draggable: canEdit,
@@ -939,6 +1379,9 @@ export function StateGraphView({
             sourceOutputIndex: Math.max(0, sourceOutputIndex),
             sourceSide: sourceOutput?.preferredExitSide,
             sourceRatio: sourceOutput?.exitRatio,
+            targetHandle: edge.targetHandle,
+            targetSide: edge.targetSide,
+            rails: edge.rails,
           };
         }),
         layoutNodes,
@@ -964,9 +1407,11 @@ export function StateGraphView({
                 .filter((handle): handle is StateGraphEntryHandle => handle !== undefined),
             ],
             canEdit,
-            selectedRouteId: selected.kind === "route" ? selected.id : null,
+            selectedRouteId: selected.kind === "route" && (selected.sourceState === undefined || selected.sourceState === graphNode.id)
+              ? selected.id
+              : null,
             onSelectState: (stateId: string) => onSelect({ kind: "state", id: stateId }),
-            onSelectRoute: (routeId: string) => onSelect({ kind: "route", id: routeId }),
+            onSelectRoute: (routeId: string, sourceState: string) => onSelect({ kind: "route", id: routeId, sourceState }),
           },
           selected: selected.kind === "state" && selected.id === node.id,
           draggable: canEdit,
@@ -1030,6 +1475,9 @@ export function StateGraphView({
       return null;
     }
     for (const node of graph.nodes) {
+      if (selected.sourceState !== undefined && selected.sourceState !== node.id) {
+        continue;
+      }
       const output = node.outputs.find((item) => item.routeId === selected.id);
       if (output !== undefined) {
         const targetLabel = output.targetScene === undefined
@@ -1051,27 +1499,63 @@ export function StateGraphView({
     () =>
       graph.edges.map((edge) => {
         const transitionLayout = transitionLayouts[edge.sourceHandle];
+        const targetNode = graphNodeById.get(edge.target);
+        const targetNodePosition = positionById.get(edge.target);
+        const targetEntryPorts = targetNode === undefined || targetNodePosition === undefined
+          ? undefined
+          : STATE_GRAPH_ENTRY_PORTS.map((port) => ({
+              handle: port.handle,
+              side: port.side,
+              point: stateEntryPortPoint(
+                  { ...targetNodePosition, platformOutputCount: targetNode.platformOutputCount },
+                  port.handle,
+                  port.side,
+                ),
+            }));
+        const isSelected = selected.kind === "route"
+          && selected.id === edge.route.route_id
+          && (selected.sourceState === undefined || selected.sourceState === edge.source);
         return {
           id: edge.id,
           source: edge.source,
           target: edge.target,
           sourceHandle: edge.sourceHandle,
-          targetHandle: transitionLayout?.targetHandle ?? resolveStateEntryHandle(positionById.get(edge.source) ?? { x: 0, y: 0 }, positionById.get(edge.target)),
-          markerEnd: { type: MarkerType.ArrowClosed },
-          selected: selected.kind === "route" && selected.id === edge.route.route_id,
-          className: selected.kind === "route" && selected.id === edge.route.route_id ? "state-transition-edge selected" : "state-transition-edge",
+          targetHandle: transitionLayout === undefined
+            ? undefined
+            : stateEntryPortId(transitionLayout.targetHandle, transitionLayout.targetSide),
+          selected: isSelected,
+          className: isSelected ? "state-transition-edge selected" : "state-transition-edge",
           data: {
             route_id: edge.route.route_id,
+            source_state: edge.source,
             laneX: transitionLayout?.laneX,
-            effectLabels: edge.effectLabels,
-            onSelectRoute: (routeId: string) => onSelect({ kind: "route", id: routeId }),
+            guards: edge.guards,
+            actions: edge.actions,
+            rails: edge.rails,
+            targetHandle: transitionLayout?.targetHandle,
+            targetSide: transitionLayout?.targetSide,
+            targetEntryPorts,
+            canEdit,
+            showSectionHandles: isSelected && selected.kind === "route" && selected.sourceState !== undefined,
+            onSelectRoute: (routeId: string, sourceState: string) => onSelect({ kind: "route", id: routeId, sourceState }),
+            onSetRouteLayout: (
+              routeId: string,
+              sourceState: string,
+              rails: EditorRouteRail[],
+              targetHandle: StateGraphEntryHandle | null,
+              targetSide: StateGraphEntrySide | null,
+            ) => {
+              if (scene !== null) {
+                onSetRouteLayout(scene.scene_id, routeId, sourceState, rails, targetHandle, targetSide);
+              }
+            },
           },
           label: edge.label,
           type: "stateTransition",
-          style: { strokeWidth: selected.kind === "route" && selected.id === edge.route.route_id ? 3.4 : 1.8 },
+          style: { strokeWidth: isSelected ? 3.4 : 1.8 },
         };
       }),
-    [graph.edges, onSelect, positionById, selected, transitionLayouts],
+    [canEdit, graph.edges, graphNodeById, onSelect, onSetRouteLayout, positionById, scene, selected, transitionLayouts],
   );
 
   if (scene === null) {
@@ -1114,7 +1598,11 @@ export function StateGraphView({
       onNodesChange={onNodesChange}
       onNodeDragStop={(_, node) => onNodeDragStop(node)}
       onNodeClick={(_, node) => onSelect({ kind: "state", id: node.id })}
-      onEdgeClick={(_, edge) => onSelect({ kind: "route", id: String(edge.data?.route_id ?? edge.id) })}
+      onEdgeClick={(_, edge) => onSelect({
+        kind: "route",
+        id: String(edge.data?.route_id ?? edge.id),
+        sourceState: String(edge.data?.source_state ?? edge.source),
+      })}
       onPaneClick={() => onSelect({ kind: "scene" })}
       proOptions={{ hideAttribution: true }}
     >
@@ -1439,6 +1927,7 @@ export function SceneFlowView({
 export function SceneAuthoringInspector({
   scene,
   scenes,
+  editor,
   selection,
   onSelect,
   onRenameState,
@@ -1447,11 +1936,13 @@ export function SceneAuthoringInspector({
   onSetRouteGuard,
   onSetRouteAction,
   onAddRouteAction,
+  onResetRouteLayout,
   audioCues,
   canEdit,
 }: {
   scene: SceneDocument | null;
   scenes: SceneDocument[];
+  editor?: ProjectEditorData;
   selection: SceneSelection;
   onSelect: (selection: SceneSelection) => void;
   onRenameState: (sceneId: string, stateId: string, displayName: string) => Promise<void>;
@@ -1477,6 +1968,7 @@ export function SceneAuthoringInspector({
     actionIndex: number,
     action: Record<string, unknown>,
   ) => Promise<void>;
+  onResetRouteLayout: (sceneId: string, routeId: string, sourceState: string) => Promise<void>;
   audioCues: AudioCueRecord[];
   canEdit: boolean;
 }) {
@@ -1508,6 +2000,10 @@ export function SceneAuthoringInspector({
         <RouteInspector
           sceneId={scene.scene_id}
           route={route}
+          sourceState={selection.kind === "route" ? selection.sourceState : undefined}
+          hasManualRoute={selection.kind === "route" && selection.sourceState !== undefined
+            && ((editor?.state_graph?.scenes?.[scene.scene_id]?.routes?.[route.route_id]?.sources?.[selection.sourceState]?.rails?.length ?? 0) > 0
+              || editor?.state_graph?.scenes?.[scene.scene_id]?.routes?.[route.route_id]?.sources?.[selection.sourceState]?.target_handle !== undefined)}
           states={states}
           scenes={scenes}
           inputActions={inputActions}
@@ -1518,6 +2014,7 @@ export function SceneAuthoringInspector({
           onSetRouteGuard={onSetRouteGuard}
           onSetRouteAction={onSetRouteAction}
           onAddRouteAction={onAddRouteAction}
+          onResetRouteLayout={onResetRouteLayout}
           canEdit={canEdit}
         />
       )}
@@ -1752,6 +2249,8 @@ function StateInspector({
 function RouteInspector({
   sceneId,
   route,
+  sourceState,
+  hasManualRoute,
   states,
   scenes,
   inputActions,
@@ -1762,10 +2261,13 @@ function RouteInspector({
   onSetRouteGuard,
   onSetRouteAction,
   onAddRouteAction,
+  onResetRouteLayout,
   canEdit,
 }: {
   sceneId: string;
   route: StateRoute;
+  sourceState?: string;
+  hasManualRoute: boolean;
   states: StateRecord[];
   scenes: SceneDocument[];
   inputActions: InputAction[];
@@ -1793,6 +2295,7 @@ function RouteInspector({
     actionIndex: number,
     action: Record<string, unknown>,
   ) => Promise<void>;
+  onResetRouteLayout: (sceneId: string, routeId: string, sourceState: string) => Promise<void>;
   canEdit: boolean;
 }) {
   const input = inputActions.find((item) => item.action_id === route.action_ref);
@@ -1839,6 +2342,22 @@ function RouteInspector({
             ))}
           </select>
         </label>
+      )}
+      {sourceState !== undefined && (
+        <div className="route-layout-actions">
+          <button
+            className="button secondary"
+            type="button"
+            disabled={!canEdit || !hasManualRoute}
+            title="Return this transition line to automatic routing"
+            onClick={() => {
+              void onResetRouteLayout(sceneId, route.route_id, sourceState);
+            }}
+          >
+            <RotateCcw size={14} aria-hidden="true" />
+            Reset route
+          </button>
+        </div>
       )}
       <h4>Only if</h4>
       <EditableGuardList

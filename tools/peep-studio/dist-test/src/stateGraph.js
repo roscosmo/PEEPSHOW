@@ -1,8 +1,22 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.STATE_GRAPH_ENTRY_PORTS = exports.STATE_GRAPH_ENTRY_HANDLES = void 0;
+exports.stateActionDescription = stateActionDescription;
+exports.visibleStateActions = visibleStateActions;
+exports.stateGuardDescription = stateGuardDescription;
 exports.resolveStateExitSide = resolveStateExitSide;
 exports.resolveStateEntryHandle = resolveStateEntryHandle;
+exports.stateEntryHandleSide = stateEntryHandleSide;
+exports.stateEntryHandleSides = stateEntryHandleSides;
+exports.stateEntryPortId = stateEntryPortId;
+exports.stateEntryPortPoint = stateEntryPortPoint;
+exports.stateEntryHandlePoint = stateEntryHandlePoint;
+exports.routeRailsFromPoints = routeRailsFromPoints;
 exports.buildStateTransitionRoute = buildStateTransitionRoute;
+exports.stateTransitionRouteSections = stateTransitionRouteSections;
+exports.moveStateTransitionRouteSection = moveStateTransitionRouteSection;
+exports.insertStateTransitionRouteSection = insertStateTransitionRouteSection;
+exports.removeStateTransitionRouteSection = removeStateTransitionRouteSection;
 exports.planStateTransitionRoutes = planStateTransitionRoutes;
 exports.buildStateGraphModel = buildStateGraphModel;
 exports.buildSceneFlowGraphModel = buildSceneFlowGraphModel;
@@ -62,7 +76,7 @@ function signedValue(value) {
     }
     return value > 0 ? `+${value}` : String(value);
 }
-function actionEffectLabel(action) {
+function stateActionDescription(action) {
     if (action.kind === "request_render") {
         return null;
     }
@@ -77,7 +91,7 @@ function actionEffectLabel(action) {
         return variableName;
     }
     if (action.kind === "play_sfx") {
-        return "Play sound";
+        return `Play sound${action.cue_ref === undefined ? "" : `: ${displayRefName(action.cue_ref, "sound")}`}`;
     }
     if (action.kind === "exit_to_shell") {
         return "Exit package";
@@ -85,11 +99,39 @@ function actionEffectLabel(action) {
     if (action.kind === "transition_scene") {
         return "Open scene";
     }
+    if (action.kind === "set_element_visibility") {
+        return `${action.visible === false ? "Hide" : "Show"} ${displayRefName(action.element_ref, "object")}`;
+    }
+    if (action.kind === "set_element_position") {
+        const target = displayRefName(action.element_ref, "object");
+        return action.x === undefined || action.y === undefined ? `Move ${target}` : `Move ${target} to ${action.x}, ${action.y}`;
+    }
+    if (action.kind === "set_element_frame") {
+        return `Change ${displayRefName(action.element_ref, "object")} frame${action.frame_ref === undefined ? "" : ` to ${displayRefName(action.frame_ref, "frame")}`}`;
+    }
+    if (action.kind === "set_element_waiting_animation") {
+        return `Animate ${displayRefName(action.element_ref, "object")}`;
+    }
     return "Advanced effect";
 }
+function visibleStateActions(route) {
+    return route.actions.filter((action) => action.kind !== "request_render");
+}
+const GUARD_DESCRIPTION_OPERATORS = {
+    eq: "is",
+    ne: "is not",
+    lt: "is less than",
+    le: "is at most",
+    gt: "is greater than",
+    ge: "is at least",
+};
+function stateGuardDescription(guard) {
+    const operator = GUARD_DESCRIPTION_OPERATORS[guard.operator] ?? guard.operator;
+    return `${displayRefName(guard.variable_ref, "variable")} ${operator} ${guard.value}`;
+}
 function routeEffectLabels(route) {
-    return route.actions
-        .map(actionEffectLabel)
+    return visibleStateActions(route)
+        .map(stateActionDescription)
         .filter((label) => label !== null);
 }
 function visibleActionCount(route) {
@@ -111,6 +153,24 @@ const STATE_CARD_ROUTE_CLEARANCE = 72;
 const STATE_CARD_ROUTE_LANE_STEP = 36;
 const STATE_PLATFORM_OUTPUT_FIRST_Y = 104;
 const STATE_OUTPUT_STEP_Y = 52;
+const STATE_ENTRY_HANDLE_INSET = 8;
+const STATE_ENTRY_HANDLE_EDGE_INSET = 9;
+exports.STATE_GRAPH_ENTRY_HANDLES = [
+    "entry-top-left",
+    "entry-top-right",
+    "entry-bottom-left",
+    "entry-bottom-right",
+];
+exports.STATE_GRAPH_ENTRY_PORTS = [
+    { handle: "entry-top-left", side: "top" },
+    { handle: "entry-top-left", side: "left" },
+    { handle: "entry-top-right", side: "top" },
+    { handle: "entry-top-right", side: "right" },
+    { handle: "entry-bottom-left", side: "bottom" },
+    { handle: "entry-bottom-left", side: "left" },
+    { handle: "entry-bottom-right", side: "bottom" },
+    { handle: "entry-bottom-right", side: "right" },
+];
 function stateCardHeight(platformOutputCount) {
     return STATE_CARD_BASE_HEIGHT + (platformOutputCount ?? 0) * STATE_OUTPUT_STEP_Y;
 }
@@ -140,12 +200,44 @@ function resolveStateEntryHandleFromPoint(sourcePoint, targetPosition) {
 function stateEntryHandleSide(handle) {
     return handle.startsWith("entry-bottom") ? "bottom" : "top";
 }
-function stateEntryHandlePoint(position, handle) {
-    const ratio = handle.endsWith("-left") ? 0.08 : 0.92;
+function stateEntryHandleSides(handle) {
+    return [
+        handle.startsWith("entry-bottom") ? "bottom" : "top",
+        handle.endsWith("-left") ? "left" : "right",
+    ];
+}
+function stateEntryPortId(handle, side) {
+    return `${handle}:${side}`;
+}
+function stateEntryPortPoint(position, handle, side) {
+    const height = stateCardHeight(position.platformOutputCount);
+    const left = handle.endsWith("-left");
+    const top = handle.startsWith("entry-top");
+    if (side === "top" || side === "bottom") {
+        return {
+            x: position.x + (left ? STATE_ENTRY_HANDLE_INSET : STATE_CARD_ROUTING_WIDTH - STATE_ENTRY_HANDLE_INSET),
+            y: side === "top" ? position.y : position.y + height,
+        };
+    }
     return {
-        x: position.x + STATE_CARD_ROUTING_WIDTH * ratio,
-        y: stateEntryHandleSide(handle) === "bottom" ? position.y + stateCardHeight(position.platformOutputCount) : position.y,
+        x: side === "left" ? position.x : position.x + STATE_CARD_ROUTING_WIDTH,
+        y: position.y + (top ? STATE_ENTRY_HANDLE_EDGE_INSET : height - STATE_ENTRY_HANDLE_EDGE_INSET),
     };
+}
+function stateEntryHandlePoint(position, handle) {
+    return stateEntryPortPoint(position, handle, stateEntryHandleSide(handle));
+}
+function resolveStateEntryPortFromPoint(sourcePoint, targetPosition, handle) {
+    const candidates = handle === undefined
+        ? exports.STATE_GRAPH_ENTRY_PORTS
+        : exports.STATE_GRAPH_ENTRY_PORTS.filter((port) => port.handle === handle);
+    return candidates.reduce((closest, candidate) => {
+        const closestPoint = stateEntryPortPoint(targetPosition, closest.handle, closest.side);
+        const candidatePoint = stateEntryPortPoint(targetPosition, candidate.handle, candidate.side);
+        const closestDistance = Math.hypot(sourcePoint.x - closestPoint.x, sourcePoint.y - closestPoint.y);
+        const candidateDistance = Math.hypot(sourcePoint.x - candidatePoint.x, sourcePoint.y - candidatePoint.y);
+        return candidateDistance < closestDistance ? candidate : closest;
+    });
 }
 function stateOutputPoint(position, sourceSide, outputIndex, sourceRatio) {
     const height = stateCardHeight(position.platformOutputCount);
@@ -241,45 +333,366 @@ function roundedPolylinePath(points, radius) {
     return commands.join(" ");
 }
 function compactRoutePoints(points) {
-    return points.filter((point, index) => {
-        const previous = points[index - 1];
-        const next = points[index + 1];
-        if (previous !== undefined && point.x === previous.x && point.y === previous.y) {
-            return false;
+    const compacted = [];
+    points.forEach((point) => {
+        const previous = compacted[compacted.length - 1];
+        if (previous?.x === point.x && previous.y === point.y) {
+            return;
         }
-        if (previous === undefined || next === undefined) {
-            return true;
+        compacted.push({ ...point });
+        while (compacted.length >= 3) {
+            const start = compacted[compacted.length - 3];
+            const middle = compacted[compacted.length - 2];
+            const end = compacted[compacted.length - 1];
+            if (!((start.x === middle.x && middle.x === end.x) || (start.y === middle.y && middle.y === end.y))) {
+                break;
+            }
+            compacted.splice(compacted.length - 2, 1);
         }
-        return !(previous.x === point.x && point.x === next.x) && !(previous.y === point.y && point.y === next.y);
     });
+    return compacted;
 }
-function buildStateTransitionRoute({ sourceX, sourceY, targetX, targetY, sourceSide, targetSide, laneX, }) {
+function routeIntersection(firstStart, firstEnd, secondStart, secondEnd) {
+    const firstHorizontal = firstStart.y === firstEnd.y;
+    const secondHorizontal = secondStart.y === secondEnd.y;
+    if (firstHorizontal === secondHorizontal) {
+        return null;
+    }
+    const horizontalStart = firstHorizontal ? firstStart : secondStart;
+    const horizontalEnd = firstHorizontal ? firstEnd : secondEnd;
+    const verticalStart = firstHorizontal ? secondStart : firstStart;
+    const verticalEnd = firstHorizontal ? secondEnd : firstEnd;
+    const x = verticalStart.x;
+    const y = horizontalStart.y;
+    const onHorizontal = x >= Math.min(horizontalStart.x, horizontalEnd.x)
+        && x <= Math.max(horizontalStart.x, horizontalEnd.x);
+    const onVertical = y >= Math.min(verticalStart.y, verticalEnd.y)
+        && y <= Math.max(verticalStart.y, verticalEnd.y);
+    return onHorizontal && onVertical ? { x, y } : null;
+}
+function simplifyRoutePoints(points) {
+    let simplified = compactRoutePoints(points);
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (let first = 0; first < simplified.length - 1 && !changed; first += 1) {
+            for (let second = first + 2; second < simplified.length - 1; second += 1) {
+                const intersection = routeIntersection(simplified[first], simplified[first + 1], simplified[second], simplified[second + 1]);
+                if (intersection === null) {
+                    continue;
+                }
+                simplified = compactRoutePoints([
+                    ...simplified.slice(0, first + 1),
+                    intersection,
+                    ...simplified.slice(second + 1),
+                ]);
+                changed = true;
+                break;
+            }
+        }
+    }
+    return simplified;
+}
+function canonicalRails(rails) {
+    const result = [];
+    rails.forEach((rail) => {
+        const rounded = { axis: rail.axis, value: Math.round(rail.value) };
+        if (result[result.length - 1]?.axis === rounded.axis) {
+            result[result.length - 1] = rounded;
+        }
+        else {
+            result.push(rounded);
+        }
+    });
+    return result;
+}
+function routeRailsFromPoints(points, targetSide) {
+    const simplified = simplifyRoutePoints(points);
+    const target = simplified[simplified.length - 1];
+    const targetAxis = targetSide === "left" || targetSide === "right" ? "x" : "y";
+    const rails = [];
+    for (let index = 1; index < simplified.length - 1; index += 1) {
+        const previous = simplified[index - 1];
+        const point = simplified[index];
+        const next = simplified[index + 1];
+        const finalSegmentUsesTargetAxis = targetAxis === "x"
+            ? point.y === target.y && next.y === target.y
+            : point.x === target.x && next.x === target.x;
+        if (index === simplified.length - 2 && finalSegmentUsesTargetAxis) {
+            continue;
+        }
+        if (point.x !== previous.x) {
+            rails.push({ axis: "x", value: point.x });
+        }
+        else if (point.y !== previous.y) {
+            rails.push({ axis: "y", value: point.y });
+        }
+    }
+    return canonicalRails(rails);
+}
+function manualRoutePoints(source, target, sourceSide, targetSide, rails) {
+    const resolvedRails = canonicalRails(rails);
+    const sourceAxis = sourceSide === "left" || sourceSide === "right" ? "x" : "y";
+    const sourceValue = sourceAxis === "x" ? source.x : source.y;
+    const sourceDirection = sourceSide === "left" || sourceSide === "top" ? -1 : 1;
+    const firstRail = resolvedRails[0];
+    if (firstRail?.axis !== sourceAxis) {
+        resolvedRails.unshift({ axis: sourceAxis, value: sourceValue + sourceDirection * 24 });
+    }
+    else if ((firstRail.value - sourceValue) * sourceDirection < 10) {
+        firstRail.value = sourceValue + sourceDirection * 24;
+    }
+    const targetAxis = targetSide === "left" || targetSide === "right" ? "x" : "y";
+    const targetValue = targetAxis === "x" ? target.x : target.y;
+    const targetDirection = targetSide === "left" || targetSide === "top" ? -1 : 1;
+    const requiredApproachValue = targetValue + targetDirection * 48;
+    if (sourceAxis === targetAxis && resolvedRails.length === 1) {
+        const bridgeAxis = targetAxis === "x" ? "y" : "x";
+        const bridgeValue = bridgeAxis === "x" ? source.x + 48 : source.y + 48;
+        resolvedRails.push({ axis: bridgeAxis, value: bridgeValue });
+        resolvedRails.push({ axis: targetAxis, value: requiredApproachValue });
+    }
+    let finalTargetRailIndex = -1;
+    for (let index = resolvedRails.length - 1; index >= 0; index -= 1) {
+        if (resolvedRails[index].axis === targetAxis) {
+            finalTargetRailIndex = index;
+            break;
+        }
+    }
+    if (finalTargetRailIndex < 0) {
+        resolvedRails.push({ axis: targetAxis, value: requiredApproachValue });
+    }
+    else {
+        const finalTargetRail = resolvedRails[finalTargetRailIndex];
+        const approachIsClear = targetDirection < 0
+            ? finalTargetRail.value <= targetValue - 24
+            : finalTargetRail.value >= targetValue + 24;
+        if (!approachIsClear) {
+            finalTargetRail.value = requiredApproachValue;
+        }
+    }
+    const points = [{ ...source }];
+    canonicalRails(resolvedRails).forEach((rail) => {
+        const current = points[points.length - 1];
+        points.push(rail.axis === "x"
+            ? { x: rail.value, y: current.y }
+            : { x: current.x, y: rail.value });
+    });
+    const current = points[points.length - 1];
+    if (targetAxis === "y" && current.x !== target.x) {
+        points.push({ x: target.x, y: current.y });
+    }
+    else if (targetAxis === "x" && current.y !== target.y) {
+        points.push({ x: current.x, y: target.y });
+    }
+    points.push({ ...target });
+    return simplifyRoutePoints(points);
+}
+function buildStateTransitionRoute({ sourceX, sourceY, targetX, targetY, sourceSide, targetSide, laneX, rails, }) {
     const horizontalExit = sourceSide === "left" || sourceSide === "right";
-    const sourceOutset = sourceSide === "left" || sourceSide === "top" ? -28 : 28;
-    const entryOutset = targetSide === "top" ? -36 : 36;
     const resolvedLane = laneX ?? defaultStateLane(sourceX, sourceY, targetX, targetY, sourceSide);
-    const entryY = targetY + entryOutset;
-    const points = compactRoutePoints(horizontalExit
-        ? [
+    if (rails !== undefined && rails.length > 0) {
+        const controlPoints = manualRoutePoints({ x: sourceX, y: sourceY }, { x: targetX, y: targetY }, sourceSide, targetSide, rails);
+        return {
+            path: roundedPolylinePath(controlPoints, 14),
+            points: controlPoints,
+            controlPoints,
+            rails: routeRailsFromPoints(controlPoints, targetSide),
+        };
+    }
+    const targetHorizontal = targetSide === "left" || targetSide === "right";
+    const targetDirection = targetSide === "left" || targetSide === "top" ? -1 : 1;
+    const approach = targetHorizontal
+        ? { x: targetX + targetDirection * 48, y: targetY }
+        : { x: targetX, y: targetY + targetDirection * 48 };
+    let rawPoints;
+    if (horizontalExit && !targetHorizontal) {
+        rawPoints = [
             { x: sourceX, y: sourceY },
-            { x: sourceX + sourceOutset, y: sourceY },
             { x: resolvedLane, y: sourceY },
-            { x: resolvedLane, y: entryY },
-            { x: targetX, y: entryY },
+            { x: resolvedLane, y: approach.y },
+            approach,
             { x: targetX, y: targetY },
-        ]
-        : [
+        ];
+    }
+    else if (!horizontalExit && targetHorizontal) {
+        rawPoints = [
             { x: sourceX, y: sourceY },
-            { x: sourceX, y: sourceY + sourceOutset },
             { x: sourceX, y: resolvedLane },
-            { x: targetX, y: resolvedLane },
-            { x: targetX, y: entryY },
+            { x: approach.x, y: resolvedLane },
+            approach,
             { x: targetX, y: targetY },
-        ]);
+        ];
+    }
+    else if (horizontalExit) {
+        const bridgeY = Math.abs(sourceY - targetY) >= 48
+            ? sourceY + (targetY - sourceY) / 2
+            : Math.min(sourceY, targetY) - STATE_CARD_ROUTE_CLEARANCE;
+        rawPoints = [
+            { x: sourceX, y: sourceY },
+            { x: resolvedLane, y: sourceY },
+            { x: resolvedLane, y: bridgeY },
+            { x: approach.x, y: bridgeY },
+            approach,
+            { x: targetX, y: targetY },
+        ];
+    }
+    else {
+        const bridgeX = Math.abs(sourceX - targetX) >= 48
+            ? sourceX + (targetX - sourceX) / 2
+            : Math.min(sourceX, targetX) - STATE_CARD_ROUTE_CLEARANCE;
+        rawPoints = [
+            { x: sourceX, y: sourceY },
+            { x: sourceX, y: resolvedLane },
+            { x: bridgeX, y: resolvedLane },
+            { x: bridgeX, y: approach.y },
+            approach,
+            { x: targetX, y: targetY },
+        ];
+    }
+    const controlPoints = simplifyRoutePoints(rawPoints);
     return {
-        path: roundedPolylinePath(points, 14),
-        points,
+        path: roundedPolylinePath(controlPoints, 14),
+        points: controlPoints,
+        controlPoints,
+        rails: routeRailsFromPoints(controlPoints, targetSide),
     };
+}
+function stateTransitionRouteSections(controlPoints) {
+    const sections = [];
+    for (let index = 0; index < controlPoints.length - 1; index += 1) {
+        const start = controlPoints[index];
+        const end = controlPoints[index + 1];
+        const horizontal = start.y === end.y && start.x !== end.x;
+        const vertical = start.x === end.x && start.y !== end.y;
+        if (!horizontal && !vertical) {
+            continue;
+        }
+        sections.push({
+            controlSegmentIndex: index,
+            orientation: horizontal ? "horizontal" : "vertical",
+            start,
+            end,
+            center: {
+                x: start.x + (end.x - start.x) / 2,
+                y: start.y + (end.y - start.y) / 2,
+            },
+            length: Math.abs(horizontal ? end.x - start.x : end.y - start.y),
+        });
+    }
+    return sections;
+}
+function moveStateTransitionRouteSection(controlPoints, controlSegmentIndex, position, sourceSide, targetSide, maximumRails = 8) {
+    if (controlSegmentIndex < 0 || controlSegmentIndex >= controlPoints.length - 1) {
+        return null;
+    }
+    const next = controlPoints.map((point) => ({ ...point }));
+    const start = next[controlSegmentIndex];
+    const end = next[controlSegmentIndex + 1];
+    const lastSegmentIndex = controlPoints.length - 2;
+    if (controlSegmentIndex === 0) {
+        const horizontal = start.y === end.y;
+        const distance = Math.abs(horizontal ? end.x - start.x : end.y - start.y);
+        const departure = Math.min(24, Math.max(10, distance / 3));
+        const direction = horizontal
+            ? sourceSide === "left" ? -1 : 1
+            : sourceSide === "top" ? -1 : 1;
+        const firstCorner = horizontal
+            ? { x: start.x + direction * departure, y: start.y }
+            : { x: start.x, y: start.y + direction * departure };
+        const secondCorner = horizontal
+            ? { x: firstCorner.x, y: position.y }
+            : { x: position.x, y: firstCorner.y };
+        const movedEnd = horizontal ? { x: end.x, y: position.y } : { x: position.x, y: end.y };
+        next.splice(1, 1, firstCorner, secondCorner, movedEnd);
+    }
+    else if (controlSegmentIndex === lastSegmentIndex) {
+        const horizontal = start.y === end.y;
+        const distance = Math.abs(horizontal ? end.x - start.x : end.y - start.y);
+        const arrival = Math.min(40, Math.max(28, distance / 3));
+        const direction = targetSide === "left" || targetSide === "top" ? -1 : 1;
+        const movedStart = horizontal ? { x: start.x, y: position.y } : { x: position.x, y: start.y };
+        const firstCorner = horizontal
+            ? { x: end.x + direction * arrival, y: position.y }
+            : { x: position.x, y: end.y + direction * arrival };
+        const secondCorner = horizontal
+            ? { x: firstCorner.x, y: end.y }
+            : { x: end.x, y: firstCorner.y };
+        next.splice(controlSegmentIndex, 1, movedStart, firstCorner, secondCorner);
+    }
+    else if (start.y === end.y && start.x !== end.x) {
+        next[controlSegmentIndex].y = position.y;
+        next[controlSegmentIndex + 1].y = position.y;
+    }
+    else if (start.x === end.x && start.y !== end.y) {
+        next[controlSegmentIndex].x = position.x;
+        next[controlSegmentIndex + 1].x = position.x;
+    }
+    else {
+        return null;
+    }
+    const rails = routeRailsFromPoints(next, targetSide);
+    return rails.length <= maximumRails ? rails : null;
+}
+function insertStateTransitionRouteSection(controlPoints, segmentIndex, position, targetSide, maximumRails = 8) {
+    if (segmentIndex < 0 || segmentIndex >= controlPoints.length - 1) {
+        return null;
+    }
+    const start = controlPoints[segmentIndex];
+    const end = controlPoints[segmentIndex + 1];
+    if (start === undefined || end === undefined) {
+        return null;
+    }
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.hypot(dx, dy);
+    if (length < 18 || (dx !== 0 && dy !== 0)) {
+        return null;
+    }
+    const unitX = dx / length;
+    const unitY = dy / length;
+    const halfSpan = Math.min(24, Math.max(6, length / 4));
+    const projected = (position.x - start.x) * unitX + (position.y - start.y) * unitY;
+    const center = Math.max(halfSpan + 2, Math.min(length - halfSpan - 2, projected));
+    const first = {
+        x: Math.round(start.x + unitX * (center - halfSpan)),
+        y: Math.round(start.y + unitY * (center - halfSpan)),
+    };
+    const second = {
+        x: Math.round(start.x + unitX * (center + halfSpan)),
+        y: Math.round(start.y + unitY * (center + halfSpan)),
+    };
+    const offset = 32;
+    const offsetFirst = dx === 0
+        ? { x: first.x + offset, y: first.y }
+        : { x: first.x, y: first.y + offset };
+    const offsetSecond = dx === 0
+        ? { x: second.x + offset, y: second.y }
+        : { x: second.x, y: second.y + offset };
+    const next = controlPoints.map((point) => ({ ...point }));
+    next.splice(segmentIndex + 1, 0, first, offsetFirst, offsetSecond, second);
+    const rails = routeRailsFromPoints(next, targetSide);
+    return rails.length <= maximumRails ? rails : null;
+}
+function removeStateTransitionRouteSection(controlPoints, segmentIndex, targetSide, maximumRails = 8) {
+    if (segmentIndex <= 0 || segmentIndex >= controlPoints.length - 2) {
+        return null;
+    }
+    const before = controlPoints[segmentIndex - 1];
+    const after = controlPoints[segmentIndex + 2];
+    if (before === undefined || after === undefined) {
+        return null;
+    }
+    const bridge = before.x === after.x || before.y === after.y
+        ? []
+        : [{ x: after.x, y: before.y }];
+    const next = [
+        ...controlPoints.slice(0, segmentIndex),
+        ...bridge,
+        ...controlPoints.slice(segmentIndex + 2),
+    ];
+    const rails = routeRailsFromPoints(next, targetSide);
+    return rails.length <= maximumRails ? rails : null;
 }
 function routeSegments(points) {
     const segments = [];
@@ -367,6 +780,10 @@ function planStateTransitionRoutes(requests, nodes) {
     const placedSegments = [];
     const planned = {};
     const sortedRequests = [...requests].sort((left, right) => {
+        const manualDifference = Number((right.rails?.length ?? 0) > 0) - Number((left.rails?.length ?? 0) > 0);
+        if (manualDifference !== 0) {
+            return manualDifference;
+        }
         const leftSource = nodeById.get(left.source);
         const leftTarget = nodeById.get(left.target);
         const rightSource = nodeById.get(right.source);
@@ -386,39 +803,79 @@ function planStateTransitionRoutes(requests, nodes) {
             return;
         }
         const preferredSide = request.sourceSide ?? resolveStateExitSide(sourcePosition, targetPosition);
+        if ((request.rails?.length ?? 0) > 0) {
+            const sourcePoint = stateOutputPoint(sourcePosition, preferredSide, request.sourceOutputIndex, request.sourceRatio);
+            const targetHandle = request.targetHandle ?? resolveStateEntryHandleFromPoint(sourcePoint, targetPosition);
+            const targetPort = request.targetSide === undefined
+                ? resolveStateEntryPortFromPoint(sourcePoint, targetPosition, targetHandle)
+                : { handle: targetHandle, side: request.targetSide };
+            const targetPoint = stateEntryPortPoint(targetPosition, targetPort.handle, targetPort.side);
+            const route = buildStateTransitionRoute({
+                sourceX: sourcePoint.x,
+                sourceY: sourcePoint.y,
+                targetX: targetPoint.x,
+                targetY: targetPoint.y,
+                sourceSide: preferredSide,
+                targetSide: targetPort.side,
+                rails: request.rails,
+            });
+            planned[request.id] = {
+                sourceSide: preferredSide,
+                targetHandle: targetPort.handle,
+                targetSide: targetPort.side,
+                laneX: defaultStateLane(sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y, preferredSide),
+            };
+            placedSegments.push(...routeSegments(route.points));
+            return;
+        }
         const candidateSides = request.sourceSide !== undefined
             ? [request.sourceSide]
             : preferredSide === "right" ? ["right", "left"] : ["left", "right"];
         let best;
         candidateSides.forEach((sourceSide) => {
             const sourcePoint = stateOutputPoint(sourcePosition, sourceSide, request.sourceOutputIndex, request.sourceRatio);
-            const targetHandle = resolveStateEntryHandleFromPoint(sourcePoint, targetPosition);
-            const targetPoint = stateEntryHandlePoint(targetPosition, targetHandle);
-            const baseLaneX = defaultStateLane(sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y, sourceSide);
-            candidateLaneXs(sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y, sourceSide).forEach((laneX) => {
-                const route = buildStateTransitionRoute({
-                    sourceX: sourcePoint.x,
-                    sourceY: sourcePoint.y,
-                    targetX: targetPoint.x,
-                    targetY: targetPoint.y,
-                    sourceSide,
-                    targetSide: stateEntryHandleSide(targetHandle),
-                    laneX,
+            const preferredPort = resolveStateEntryPortFromPoint(sourcePoint, targetPosition);
+            const candidatePorts = exports.STATE_GRAPH_ENTRY_PORTS.filter((port) => ((request.targetHandle === undefined || request.targetHandle === port.handle)
+                && (request.targetSide === undefined || request.targetSide === port.side))).sort((left, right) => {
+                const leftPreferred = left.handle === preferredPort.handle && left.side === preferredPort.side;
+                const rightPreferred = right.handle === preferredPort.handle && right.side === preferredPort.side;
+                return Number(rightPreferred) - Number(leftPreferred);
+            });
+            candidatePorts.forEach((targetPort) => {
+                const targetPoint = stateEntryPortPoint(targetPosition, targetPort.handle, targetPort.side);
+                const baseLaneX = defaultStateLane(sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y, sourceSide);
+                candidateLaneXs(sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y, sourceSide).forEach((laneX) => {
+                    const route = buildStateTransitionRoute({
+                        sourceX: sourcePoint.x,
+                        sourceY: sourcePoint.y,
+                        targetX: targetPoint.x,
+                        targetY: targetPoint.y,
+                        sourceSide,
+                        targetSide: targetPort.side,
+                        laneX,
+                    });
+                    const segments = routeSegments(route.points);
+                    const sidePenalty = sourceSide === preferredSide ? 0 : 24;
+                    const handlePenalty = targetPort.handle === preferredPort.handle && targetPort.side === preferredPort.side ? 0 : 16;
+                    const distancePenalty = Math.abs(laneX - baseLaneX) * 0.08;
+                    const score = sidePenalty
+                        + handlePenalty
+                        + distancePenalty
+                        + overlappingSegmentScore(segments, placedSegments)
+                        + nodeCrossingScore(segments, nodes, request.source, request.target);
+                    if (best === undefined || score < best.score) {
+                        best = {
+                            layout: {
+                                sourceSide,
+                                targetHandle: targetPort.handle,
+                                targetSide: targetPort.side,
+                                laneX,
+                            },
+                            segments,
+                            score,
+                        };
+                    }
                 });
-                const segments = routeSegments(route.points);
-                const sidePenalty = sourceSide === preferredSide ? 0 : 24;
-                const distancePenalty = Math.abs(laneX - baseLaneX) * 0.08;
-                const score = sidePenalty
-                    + distancePenalty
-                    + overlappingSegmentScore(segments, placedSegments)
-                    + nodeCrossingScore(segments, nodes, request.source, request.target);
-                if (best === undefined || score < best.score) {
-                    best = {
-                        layout: { sourceSide, targetHandle, laneX },
-                        segments,
-                        score,
-                    };
-                }
             });
         });
         if (best !== undefined) {
@@ -439,6 +896,7 @@ function buildStateGraphModel(scene, editor) {
     const outputsByState = new Map();
     const variableRefsByState = new Map();
     const savedPositions = scene === null ? undefined : editor?.state_graph?.scenes?.[scene.scene_id]?.nodes;
+    const savedRouteLayouts = scene === null ? undefined : editor?.state_graph?.scenes?.[scene.scene_id]?.routes;
     routes.forEach((route) => {
         const effectLabels = routeEffectLabels(route);
         route.from_states
@@ -496,15 +954,24 @@ function buildStateGraphModel(scene, editor) {
         }
         return route.from_states
             .filter((source) => stateIds.has(source))
-            .map((source) => ({
-            id: `${route.route_id}:${source}->${targetState}`,
-            source,
-            target: targetState,
-            label: "",
-            route,
-            sourceHandle: `${route.route_id}:${source}`,
-            effectLabels: routeEffectLabels(route),
-        }));
+            .map((source) => {
+            const savedLayout = savedRouteLayouts?.[route.route_id]?.sources?.[source];
+            const currentLayout = savedLayout?.routing_version === 3 ? savedLayout : undefined;
+            return {
+                id: `${route.route_id}:${source}->${targetState}`,
+                source,
+                target: targetState,
+                label: "",
+                route,
+                sourceHandle: `${route.route_id}:${source}`,
+                guards: route.guards,
+                actions: visibleStateActions(route),
+                effectLabels: routeEffectLabels(route),
+                rails: currentLayout?.rails ?? [],
+                targetHandle: currentLayout?.target_handle,
+                targetSide: currentLayout?.target_side,
+            };
+        });
     });
     return { nodes, edges };
 }

@@ -44,6 +44,7 @@ import {
   StateGraphView,
   type SceneSelection,
 } from "./SceneInspection";
+import type { StateGraphEntryHandle, StateGraphEntrySide } from "./stateGraph";
 import type {
   AssetFrameRecord,
   AssetRecord,
@@ -51,6 +52,8 @@ import type {
   AudioAuditionResult,
   AudioCueRecord,
   CompiledAssetFrame,
+  EditorNodePosition,
+  EditorRouteRail,
   Framebuffer,
   PackageBuildResult,
   ProjectCommandResult,
@@ -1089,6 +1092,52 @@ export default function App() {
         `saved ${String(applied?.scene_id ?? sceneId)}.${String(applied?.state_id ?? stateId)} @ ${String(applied?.x ?? x)}, ${String(applied?.y ?? y)} rev ${result.project_revision}`,
       );
       setMessage("Logic layout updated. Save to write it to the project.");
+    }).catch((error) => {
+      setStateGraphLayoutStatus(`save failed: ${errorText(error)}`);
+      setMessage(errorText(error));
+    });
+    await layoutSaveChain.current;
+  };
+
+  const setStateRouteLayout = async (
+    sceneId: string,
+    routeId: string,
+    sourceState: string,
+    rails: EditorRouteRail[],
+    targetHandle: StateGraphEntryHandle | null,
+    targetSide: StateGraphEntrySide | null,
+  ) => {
+    if (bridge === undefined || project === null) {
+      return;
+    }
+    const action = rails.length === 0 && targetHandle === null ? "reset" : "manual routing";
+    setStateGraphLayoutStatus(`queued ${sceneId}.${routeId}.${sourceState}: ${action}`);
+    layoutSaveChain.current = layoutSaveChain.current.then(async () => {
+      const revision = projectRevisionRef.current;
+      if (revision === null) {
+        setStateGraphLayoutStatus(`skipped ${sceneId}.${routeId}: no project revision`);
+        return;
+      }
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: revision,
+        commands: [
+          {
+            kind: "editor.state_graph.set_route_layout",
+            scene_id: sceneId,
+            route_id: routeId,
+            source_state: sourceState,
+            rails,
+            target_handle: targetHandle,
+            target_side: targetSide,
+          },
+        ],
+      });
+      projectRevisionRef.current = result.project_revision;
+      applyProjectResult(result);
+      setStateGraphLayoutStatus(`saved ${sceneId}.${routeId}.${sourceState}: ${action} rev ${result.project_revision}`);
+      setMessage(rails.length === 0 && targetHandle === null
+        ? "Transition returned to automatic routing. Save to write it to the project."
+        : "Transition layout updated. Save to write it to the project.");
     }).catch((error) => {
       setStateGraphLayoutStatus(`save failed: ${errorText(error)}`);
       setMessage(errorText(error));
@@ -3635,6 +3684,9 @@ export default function App() {
               onMoveStateNode={(sceneId, stateId, x, y) => {
                 void moveStateNode(sceneId, stateId, x, y);
               }}
+              onSetRouteLayout={(sceneId, routeId, sourceState, rails, targetHandle, targetSide) => {
+                void setStateRouteLayout(sceneId, routeId, sourceState, rails, targetHandle, targetSide);
+              }}
               canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
             />
           </div>
@@ -3699,6 +3751,7 @@ export default function App() {
             <SceneAuthoringInspector
               scene={selectedSceneDocument}
               scenes={scenes}
+              editor={project?.document?.project?.editor}
               selection={sceneSelection}
               onSelect={setSceneSelection}
               onRenameState={renameState}
@@ -3707,6 +3760,8 @@ export default function App() {
               onSetRouteGuard={setRouteGuard}
               onSetRouteAction={setRouteAction}
               onAddRouteAction={addRouteAction}
+              onResetRouteLayout={(sceneId, routeId, sourceState) =>
+                setStateRouteLayout(sceneId, routeId, sourceState, [], null, null)}
               audioCues={audioCues}
               canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
             />

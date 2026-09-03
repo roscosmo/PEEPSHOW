@@ -314,7 +314,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(22, SERVICE_API_VERSION)
+        self.assertEqual(25, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -329,6 +329,11 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertIn("project.preview_reset", result["operations"])
         self.assertIn("project.preview_input", result["operations"])
         self.assertIn("project.preview_advance", result["operations"])
+        self.assertIn(
+            "editor.state_graph.set_route_layout",
+            result["state_scene_graph"]["editor_layout_commands"],
+        )
+        self.assertEqual(3, result["state_scene_graph"]["route_layout_version"])
         profiles = result["target_profiles"]
         self.assertEqual("hw6_fw0_development", profiles["default_profile_id"])
         self.assertEqual(1, len(profiles["available"]))
@@ -553,7 +558,7 @@ class AuthoringServiceTests(unittest.TestCase):
         )
         self.assertEqual("main_menu", reset["scene"]["scene_id"])
         self.assertEqual("select_start", reset["scene"]["state_id"])
-        self.assertEqual(0, reset["variables"]["selected_index"])
+        self.assertEqual({}, reset["variables"])
 
         moved = service.handle(
             request(
@@ -566,7 +571,7 @@ class AuthoringServiceTests(unittest.TestCase):
             )
         )
         self.assertEqual("select_settings", moved["scene"]["state_id"])
-        self.assertEqual(1, moved["variables"]["selected_index"])
+        self.assertEqual({}, moved["variables"])
 
         chosen = service.handle(
             request(
@@ -1747,6 +1752,252 @@ class AuthoringServiceTests(unittest.TestCase):
                 {"x": -256, "y": 384},
                 reloaded.normalized()["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["nodes"]["right"],
             )
+
+    def test_state_graph_route_waypoints_are_editor_only_and_persist(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "route_layout.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            before = service.handle(
+                request("project.build_package", {"project_revision": loaded["project_revision"]})
+            )
+            routed = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.state_graph.set_route_layout",
+                                "scene_id": "state_demo",
+                                "route_id": "center_to_right",
+                                "source_state": "center",
+                                "rails": [
+                                    {"axis": "x", "value": 144.4},
+                                    {"axis": "y", "value": -64.6},
+                                ],
+                                "target_handle": "entry-bottom-right",
+                                "target_side": "right",
+                            }
+                        ],
+                    },
+                )
+            )
+            expected = [{"axis": "x", "value": 144}, {"axis": "y", "value": -65}]
+            route_layout = routed["document"]["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["routes"]["center_to_right"]
+            self.assertEqual(3, route_layout["sources"]["center"]["routing_version"])
+            self.assertEqual(expected, route_layout["sources"]["center"]["rails"])
+            self.assertEqual("entry-bottom-right", route_layout["sources"]["center"]["target_handle"])
+            self.assertEqual("right", route_layout["sources"]["center"]["target_side"])
+            after = service.handle(
+                request("project.build_package", {"project_revision": routed["project_revision"]})
+            )
+            self.assertEqual(before["package"]["sha256"], after["package"]["sha256"])
+
+            undone = service.handle(request("project.undo", {"project_revision": routed["project_revision"]}))
+            undone_routes = undone["document"]["project"].get("editor", {}).get("state_graph", {}).get("scenes", {}).get("state_demo", {}).get("routes", {})
+            self.assertNotIn("center_to_right", undone_routes)
+            redone = service.handle(request("project.redo", {"project_revision": undone["project_revision"]}))
+            redone_route = redone["document"]["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["routes"]["center_to_right"]
+            self.assertEqual(3, redone_route["sources"]["center"]["routing_version"])
+            self.assertEqual(expected, redone_route["sources"]["center"]["rails"])
+            self.assertEqual("entry-bottom-right", redone_route["sources"]["center"]["target_handle"])
+            self.assertEqual("right", redone_route["sources"]["center"]["target_side"])
+
+            saved = service.handle(request("project.save", {"project_revision": redone["project_revision"]}))
+            self.assertIn("project.json", saved["saved_sources"])
+            reloaded = load_project(project_root)
+            persisted = reloaded.normalized()["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["routes"]["center_to_right"]
+            self.assertEqual(3, persisted["sources"]["center"]["routing_version"])
+            self.assertEqual(expected, persisted["sources"]["center"]["rails"])
+            self.assertEqual("entry-bottom-right", persisted["sources"]["center"]["target_handle"])
+            self.assertEqual("right", persisted["sources"]["center"]["target_side"])
+
+            reset = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": saved["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.state_graph.set_route_layout",
+                                "scene_id": "state_demo",
+                                "route_id": "center_to_right",
+                                "source_state": "center",
+                                "rails": [],
+                                "target_handle": None,
+                                "target_side": None,
+                            }
+                        ],
+                    },
+                )
+            )
+            reset_routes = reset["document"]["project"]["editor"]["state_graph"]["scenes"]["state_demo"].get("routes", {})
+            self.assertNotIn("center_to_right", reset_routes)
+
+    def test_state_graph_target_socket_persists_without_manual_rails(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "editor.state_graph.set_route_layout",
+                            "scene_id": "state_demo",
+                            "route_id": "center_to_right",
+                            "source_state": "center",
+                            "rails": [],
+                            "target_handle": "entry-bottom-left",
+                            "target_side": "left",
+                        }
+                    ],
+                },
+            )
+        )
+        source_layout = changed["document"]["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["routes"]["center_to_right"]["sources"]["center"]
+        self.assertEqual(3, source_layout["routing_version"])
+        self.assertEqual([], source_layout["rails"])
+        self.assertEqual("entry-bottom-left", source_layout["target_handle"])
+        self.assertEqual("left", source_layout["target_side"])
+
+    def test_state_graph_route_layout_rejects_unknown_routes_and_excess_rails(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        cases = [
+            (
+                {
+                    "kind": "editor.state_graph.set_route_layout",
+                    "scene_id": "state_demo",
+                    "route_id": "missing",
+                    "source_state": "center",
+                    "rails": [{"axis": "x", "value": 0}],
+                    "target_handle": "entry-top-left",
+                    "target_side": "top",
+                },
+                "COMMAND_TARGET_UNKNOWN",
+            ),
+            (
+                {
+                    "kind": "editor.state_graph.set_route_layout",
+                    "scene_id": "state_demo",
+                    "route_id": "center_to_right",
+                    "source_state": "left",
+                    "rails": [{"axis": "x", "value": 0}],
+                    "target_handle": "entry-top-left",
+                    "target_side": "top",
+                },
+                "COMMAND_TARGET_UNKNOWN",
+            ),
+            (
+                {
+                    "kind": "editor.state_graph.set_route_layout",
+                    "scene_id": "state_demo",
+                    "route_id": "center_to_right",
+                    "source_state": "center",
+                    "rails": [
+                        {"axis": "x" if index % 2 == 0 else "y", "value": index}
+                        for index in range(9)
+                    ],
+                    "target_handle": "entry-top-left",
+                    "target_side": "top",
+                },
+                "PROJECT_LIMIT_EXCEEDED",
+            ),
+            (
+                {
+                    "kind": "editor.state_graph.set_route_layout",
+                    "scene_id": "state_demo",
+                    "route_id": "center_to_right",
+                    "source_state": "center",
+                    "rails": [],
+                    "target_handle": "entry-left",
+                    "target_side": "top",
+                },
+                "PROJECT_VALUE_INVALID",
+            ),
+            (
+                {
+                    "kind": "editor.state_graph.set_route_layout",
+                    "scene_id": "state_demo",
+                    "route_id": "center_to_right",
+                    "source_state": "center",
+                    "rails": [{"axis": "x", "value": 10}, {"axis": "x", "value": 20}],
+                    "target_handle": "entry-top-left",
+                    "target_side": "top",
+                },
+                "PROJECT_VALUE_INVALID",
+            ),
+            (
+                {
+                    "kind": "editor.state_graph.set_route_layout",
+                    "scene_id": "state_demo",
+                    "route_id": "center_to_right",
+                    "source_state": "center",
+                    "rails": [],
+                    "target_handle": "entry-top-left",
+                    "target_side": "right",
+                },
+                "PROJECT_VALUE_INVALID",
+            ),
+        ]
+        for command, code in cases:
+            with self.subTest(code=code):
+                with self.assertRaises(ProtocolError) as raised:
+                    service.handle(
+                        request(
+                            "project.apply_commands",
+                            {
+                                "project_revision": loaded["project_revision"],
+                                "commands": [command],
+                            },
+                        )
+                    )
+                self.assertEqual(code, raised.exception.code)
+
+    def test_state_graph_route_layout_is_removed_with_a_route_source(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        routed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "editor.state_graph.set_route_layout",
+                            "scene_id": "state_demo",
+                            "route_id": "center_to_right",
+                            "source_state": "center",
+                            "rails": [{"axis": "x", "value": 100}],
+                            "target_handle": "entry-top-left",
+                            "target_side": "top",
+                        }
+                    ],
+                },
+            )
+        )
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": routed["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "route.set_sources",
+                            "scene_id": "state_demo",
+                            "route_id": "center_to_right",
+                            "from_states": ["left"],
+                        }
+                    ],
+                },
+            )
+        )
+        routes = changed["document"]["project"]["editor"]["state_graph"]["scenes"]["state_demo"].get("routes", {})
+        self.assertNotIn("center_to_right", routes)
 
     def test_route_set_target_persists_on_save(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

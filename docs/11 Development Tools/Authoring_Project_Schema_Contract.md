@@ -978,6 +978,16 @@ editor_data:
           state_id:
             x
             y
+        routes:
+          route_id:
+            sources:
+              state_id:
+                routing_version
+                target_handle
+                target_side
+                rails[]:
+                  axis
+                  value
   comments[]
   bookmarks[]
   local_ui_state
@@ -990,12 +1000,36 @@ positions in
 coordinates are for author comprehension only; they do not change scene order,
 entry behavior, routes, preview behavior, or compiled package bytes.
 
+Manual STATE-transition routing stores zero to eight alternating horizontal or
+vertical rail coordinates per visible route branch in
+`project.editor.state_graph.scenes[scene_id].routes[route_id].sources[state_id].rails`.
+Each rail has `axis: x|y` and a numeric `value`. Version 3 layouts may also save
+one `target_handle` chosen from the four corner entry zones plus one
+`target_side`. Each corner exposes two valid directional ports: top and left,
+top and right, bottom and left, or bottom and right. The port choice is
+presentation-only and does not change the route's semantic target state.
+
+Peep Studio derives right-angle intersections and endpoint joins from the saved
+rails. Generated corners, hover controls, card-relative endpoints, and arrow
+geometry must never be persisted. Moving a card updates only those derived
+joins while preserving the author's middle rails. Every straight section,
+including the outgoing and incoming sections, is draggable; Peep Studio derives
+the required right-angle endpoint joins. Dragging the arrow selects a
+destination corner and approach side, and double-clicking a route adds a movable
+jog. Clearing the rails, target handle, and target side restores fully automatic
+routing. Version 2 waypoint layouts and older
+unversioned bring-up layouts remain readable project data but Peep Studio must
+ignore them rather than carrying obsolete helper geometry into the rail router.
+Route layouts are editor-only and must not alter action order, transition
+behavior, preview behavior, or compiled package bytes.
+
 Rules:
 
 - editor-only data must be clearly namespaced.
 - editor-only data must not affect package runtime behavior.
 - package builds must be deterministic when editor-only data changes.
 - editor-only data must not be installed to the device except where a future debug artifact explicitly records it as tooling metadata.
+- stale node and route layout records must be removed when their semantic records are deleted.
 
 ---
 

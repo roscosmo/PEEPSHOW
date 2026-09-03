@@ -584,13 +584,25 @@ the backend contract changes.
   top/bottom/corner entry zones, but those handles must not become separate
   semantic records;
 - keep side edges for trigger exit rows. Exit side should be chosen
-  automatically to reduce line overlap first, with manual route layout
-  refinement deferred until the service exposes typed editor-only metadata;
-- present route actions as transition-effect chips/nodes on the transition line
-  where useful, so authors can distinguish the trigger from the changes caused
-  while moving to the next state. These chips remain presentation of
-  service-owned route actions unless the Python service later exposes a typed
-  visual layout record;
+  automatically to reduce line overlap first. Selected transitions expose up
+  to eight editor-only routing rails through draggable straight sections.
+  Horizontal sections move vertically, vertical sections move horizontally,
+  and every outgoing, middle, and incoming section is directly draggable. Each
+  corner entry zone exposes one horizontal and one vertical directional port,
+  and the incoming arrow can be dragged onto any of those eight ports on the
+  same semantic target state. Peep Studio creates the required right-angle
+  endpoint joins automatically.
+  Moving a card must recalculate its terminal connection without creating
+  diagonals, fixed-offset loops, or changing the manually arranged middle. A
+  double-click adds another movable jog. Manual routing and the selected entry
+  socket are stored per route and source state through
+  `editor.state_graph.set_route_layout`; empty rails plus a null target handle
+  and null target side restore automatic routing for that visible branch;
+- present guards as one compact condition diamond with a count badge, followed
+  by one compact action diamond per author-visible route action. Action diamonds
+  preserve service-owned execution order, use fixed symbols rather than dense
+  labels, expose plain-language hover descriptions, and select the owning route
+  for full inspection. Backend-only `request_render` actions remain hidden;
 - create and remove deterministic state-transition outputs and their single
   destination edges through Python service commands;
 - edit logical A/B/L/R and JOY_LEFT/JOY_RIGHT/JOY_UP/JOY_DOWN routes, guard
@@ -603,7 +615,7 @@ At the end of this stage, an author can build a complete interactive menu that
 fits within one STATE scene.
 
 Implementation status: local logic presentation has been reshaped toward the
-user-facing vocabulary. State graph cards show screen names, entry/output
+user-facing vocabulary. State graph cards show state names, entry/output
 badges, and trigger output rows. The primary inspector uses transition,
 condition, and effect language while keeping Python-owned routes, guards, and
 actions as the underlying semantics. The Python backend is complete for one
@@ -613,6 +625,28 @@ retarget routes, edit route sources and input bindings, and add/delete/reorder
 guards and actions. Reactive-wait and interaction policies are also replaceable
 through typed commands. The next GUI work is to expose these API 14 commands
 through the existing node-card and inspector model.
+
+Service API version 23 adds `editor.state_graph.set_route_waypoints`. It accepts
+one route ID, one source state from that route, and an ordered array of zero to
+eight `{ x, y }` graph points. It validates all three references, participates
+in project undo/redo and save, removes stale layout when the route or source is
+deleted, and remains excluded from compiled package bytes.
+
+Service API version 24 writes canonical route layouts with
+`routing_version: 2` and advertises that value as
+`state_scene_graph.route_layout_version`. Peep Studio ignores earlier unversioned
+bring-up routes so obsolete generated corners cannot be carried into the clean
+section editor. Version 2 persists only the simplified author route; hover
+controls and calculated endpoint joins remain renderer-only.
+
+Service API version 25 replaces point-based route layouts with alternating
+`x`/`y` rail coordinates and an optional explicit corner entry plus directional
+`target_side` through `editor.state_graph.set_route_layout`. The four corner
+entry zones each expose their adjacent horizontal and vertical sides. It
+advertises route layout version 3.
+Generated joins and arrow geometry remain renderer-only, version 2 waypoints
+are ignored by Peep Studio, and editor routing remains excluded from compiled
+package bytes.
 
 ### Stage 5: Package Scene Flow
 

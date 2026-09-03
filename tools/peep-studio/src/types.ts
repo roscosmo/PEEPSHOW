@@ -73,6 +73,14 @@ export type StateAction = {
   operation?: string;
   value?: number;
   cue_ref?: string;
+  element_ref?: string;
+  visible?: boolean;
+  x?: number;
+  y?: number;
+  frame_ref?: string;
+  waiting_visual_ref?: string;
+  waiting_element_ref?: string;
+  timeline_policy?: string;
 };
 
 export type StateRoute = {
@@ -142,6 +150,21 @@ export type EditorNodePosition = {
   y: number;
 };
 
+export type EditorRouteRail = {
+  axis: "x" | "y";
+  value: number;
+};
+
+export type EditorRouteLayout = {
+  sources?: Record<string, {
+    routing_version?: number;
+    target_handle?: "entry-top-left" | "entry-top-right" | "entry-bottom-left" | "entry-bottom-right";
+    target_side?: "left" | "right" | "top" | "bottom";
+    rails?: EditorRouteRail[];
+    waypoints?: EditorNodePosition[];
+  }>;
+};
+
 export type ProjectEditorData = {
   scene_flow?: {
     nodes?: Record<string, EditorNodePosition>;
@@ -149,6 +172,7 @@ export type ProjectEditorData = {
   state_graph?: {
     scenes?: Record<string, {
       nodes?: Record<string, EditorNodePosition>;
+      routes?: Record<string, EditorRouteLayout>;
     }>;
   };
 };

@@ -39,7 +39,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 22
+SERVICE_API_VERSION = 25
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -297,7 +297,13 @@ class AuthoringService:
                     "routes": 128,
                     "guards_per_route": 8,
                     "actions_per_route": 8,
+                    "route_waypoints": 8,
                 },
+                "route_layout_version": 3,
+                "editor_layout_commands": [
+                    "editor.state_graph.set_node_position",
+                    "editor.state_graph.set_route_layout",
+                ],
                 "state_commands": [
                     "state.add",
                     "state.delete",
