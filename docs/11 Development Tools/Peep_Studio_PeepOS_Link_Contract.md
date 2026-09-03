@@ -65,18 +65,18 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | package output | deterministic `.egg` binary with SHA-256 integrity |
 | scene type | STATE |
 | state execution | bounded variables, input routes, guards, actions, and deterministic transitions |
-| package scene flow | direct STATE-to-STATE replacement is implemented and proven on HW6 through service API 8, PKG1 graph V2, and FW0 runtime API 11 |
+| package scene flow | direct STATE-to-STATE replacement is implemented and proven on HW6 through service API 8, PKG1 graph V2, and FW0 runtime API 11; route actions run before replacement and same-package SFX may drain across that scene boundary |
 | input | service API 20 / PKG1 `STG1` v4 supports A/B/L/R lifecycle bindings (`press`, `release`, `hold`, `repeat`), short START press, eight cardinal/diagonal joystick sources, per-STATE `four_way` / `eight_way` policy, and the explicit `exit_to_shell` route action; firmware input support and HW6 lifecycle diagnostic proof are complete, while shell-exit target proof remains pending |
 | visuals | package-backed native-scale masked 1bpp sprite frames |
 | retained render model | bounded ordered scene elements with binary alpha and four platform planes |
 | package primitives | retained line, outline rectangle, filled rectangle, circle, and ellipse records are compiled, previewed, loaded, and target-proven; private shell/calibration draw helpers remain unavailable |
 | package text | service API 15 rasterizes printable-ASCII menu labels through `peepshow.system.8x8.basic.v1` into ordinary masked 1bpp sprite frames; runtime text remains unavailable |
 | retained element actions | service API 17 and FW0 runtime API 15 implement atomic destination-state show/hide, move, retained frame selection, and bounded waiting-animation selection; host package/preview tests and HW6 awake/STOP2 visual proof pass |
-| package audio | service API 18 imports PCM WAV, deterministically compiles mono 16 kHz 4-bit IMA ADPCM, emits symbolic sampled-SFX assets/cues and `play_sfx` STATE actions, previews cue emission, and auditions the exact packaged bytes; HW6 one-voice bounded STATE playback before and after real STOP2, drain, clock release, and return to STOP2 are target-proven |
-| STATE animated elements | bounded repeating sprite phase timelines with 1..4 frames, 1..12 combined steps, explicit cadence, and a settled step; mixed 2-phase and 3-phase composition and deterministic fallback are target-proven |
+| package audio | service API 18 imports PCM WAV, deterministically compiles mono 16 kHz 4-bit IMA ADPCM, emits symbolic sampled-SFX assets/cues and `play_sfx` STATE actions, previews cue emission, and auditions the exact packaged bytes; HW6 multi-second package-backed playback across STOP2 and clean five-voice overlap at `80 MHz` and the audio-only `48 MHz` candidate are target-proven; strict higher-priority preemption and concurrent display margin remain open |
+| STATE animated elements | bounded repeating sprite phase timelines with 1..4 frames, 1..12 combined steps, explicit cadence, and a settled step; mixed 2/3-phase composition, focusless four-frame package motion, and deterministic fallback are target-proven; a scene may also contain zero animated elements |
 | awake preview | exact 168x144 package-backed framebuffer with deterministic fake time and side-effect-free scene thumbnails |
 | STOP2 | package visuals compiled into LPBAM animation and resumed across wake/STOP2 handoff |
-| firmware package proof | embedded and USB-installed `.egg` packages load, validate, resolve STATE content, handle input, render package pixels, replace STATE scenes directly, animate in STOP2, and return to shell; installed packages currently run through a `65536`-byte RAM cache; CONTINUOUS/TIMEOUT interaction lifecycle and manual inactivity are target-proven |
+| firmware package proof | embedded and USB-installed `.egg` packages load, validate, resolve STATE content, handle input, render package pixels, replace STATE scenes directly, animate in STOP2, boot from the selected installed generation, and return to shell; installed runtime keeps a bounded resident prefix and uses storage-owner reader windows for nonresident audio, while the current MSC source bridge remains limited to `65536` bytes; CONTINUOUS/TIMEOUT interaction lifecycle and manual inactivity are target-proven |
 
 Measured hardware behavior, current SRAM4 admission limits, and power figures
 remain hardware evidence. The desktop preview must not claim to reproduce
@@ -483,18 +483,20 @@ presentation or expose LPBAM details. Peep Studio must discover these rules
 from `service.hello.state_scene_presentation.element_actions` rather than
 assuming that arbitrary animations can be assigned to STATE elements.
 
-Service API version 18 adds the bounded host/package STATE SFX subset. Asset
+Service API version 18 introduced the host/package STATE SFX subset. Asset
 catalogs may contain `sampled_sfx` WAV sources and symbolic cues; route actions
 may use `{"kind":"play_sfx","cue_ref":"..."}`. The compiler converts source
 audio to mono 16 kHz 4-bit IMA ADPCM in fixed 256-sample blocks and emits the
 optional `AUD1`, `ADB1`, and `ACU1` package chunks. `project.preview_input`
 reports emitted cue events, while `project.audio_audition` returns a WAV decoded
 from the compiled package bytes. `service.hello.state_scene_audio` publishes
-the exact limits and reports the bounded one-voice HW6 STATE subset as target-
-available through `target_playback_status = available_bounded_state_sfx`.
-Peep Studio must keep host audition distinct from device proof and
-must report music, arbitrary-length audio, mixing, and production fidelity as
-unsupported or pending.
+the current profile limits and reports package-streamed STATE SFX through
+`target_playback_status = available_package_streamed_state_sfx`. The HW6 FW0
+development profile exposes five SFX voices, bounded raw-package reader windows,
+and continuation across same-package scene replacement. Peep Studio must keep
+host audition distinct from device proof and report looping, music, and
+procedural audio as unsupported; strict higher-priority preemption, concurrent
+display margin, production fidelity, and energy remain pending target proof.
 
 ### Stage 3: Scene Canvas And Visual Elements
 

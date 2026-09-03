@@ -22,12 +22,14 @@ verified audio-idle state after a playback fault. A subsequent `48 MHz` run
 completed eight requests with five simultaneous voices and no underrun, but
 exposed audible summed-output overload. The mixer now applies deterministic
 per-voice de-click ramps, a weighted aggregate-volume budget, and a fixed-point
-look-ahead peak limiter. Five-voice overlap is target-proven clean at the
-candidate `80 MHz` point. The optimized path decodes sequentially from resident
-package windows directly into the mix accumulator; its measured worst mixer
-time is `469417` cycles (`5.87 ms`) and its worst complete refill is `967382`
-cycles (`12.09 ms`) against a `32 ms` deadline. Strict higher-priority
-preemption remains open.
+look-ahead peak limiter. The optimized path decodes sequentially from resident
+package windows directly into the mix accumulator. Five-voice overlap is
+target-proven clean at both `80 MHz` and the audio-only `48 MHz` candidate. At
+`80 MHz`, measured worst mixer/refill time is `5.87/12.09 ms`; at `48 MHz`, it
+is `22.15/22.20 ms`. Both are below the `32 ms` refill deadline, but the
+`48 MHz` result has not yet included a concurrent production display workload.
+Strict higher-priority preemption, concurrent display margin, and final
+clock/energy selection remain open.
 
 ## Target Applicability
 
@@ -259,7 +261,7 @@ Rejected BBB requests:
 | Knob | Purpose |
 |---|---|
 | `KNOB_AUDIO_SAMPLE_RATE_HZ` | target PCM output rate, initially 16000 |
-| `KNOB_AUDIO_MIXER_SFX_VOICES` | target-profile SFX voice count; HW6 development profile grants 5 pending target validation |
+| `KNOB_AUDIO_MIXER_SFX_VOICES` | target-profile SFX voice count; the HW6 development profile grants 5 and five-voice overlap is target-proven |
 | `KNOB_AUDIO_PCM_DMA_FRAMES` | PCM DMA buffer frame count |
 | `KNOB_AUDIO_SFX_MIX_CEILING_PER_MILLE` | target-safe peak ceiling for the final SFX mix bus |
 | `KNOB_AUDIO_SFX_MIX_VOLUME_BUDGET` | maximum aggregate authored cue volume before proportional bus attenuation |
@@ -419,9 +421,22 @@ simultaneous voices cleanly at `80 MHz`: all `183335` samples decoded, all five
 voices completed, DMA callbacks were `50/49`, and underrun, opposite-half,
 source-failure, prefetch-miss, and residual-clip counts remained zero. Worst
 mixer and complete-refill times were `5.87 ms` and `12.09 ms`, leaving `62.2%`
-of the `32 ms` refill deadline. Case 6 is therefore target-proven; music plus
-five SFX, strict higher-priority preemption, and realtime display contention
-remain open.
+of the `32 ms` refill deadline.
+
+HW6 evidence `EV-HW6-20260903-P3-SFXMIX48-096` validates the same optimized
+five-voice path at the audio-only `48 MHz` candidate. The operator again heard
+clean overlap without pops or cracks. Seven requests were admitted and
+completed, seven equal/lower-priority overflow requests were rejected, peak
+concurrency reached five, and `256669` samples were decoded. DMA half/full
+callbacks reached `82/81`; underrun, opposite-half, source-window failure,
+prefetch miss, request leak, and residual clip counts remained zero. Worst
+mixer and refill costs were `1063265/1065648` cycles, or `22.15/22.20 ms`,
+leaving approximately `9.80 ms` (`30.6%`) of the `32 ms` deadline. Playback
+drained, SYSCLK returned to `24 MHz`, STOP2 resumed, and the audio stack retained
+`3172` bytes of lower margin. Case 6 is therefore target-proven for audio-only
+five-voice overlap at both points. Music plus five SFX, strict higher-priority
+preemption, concurrent production display work, fault injection, and final
+clock/energy selection remain open.
 
 Related:
 

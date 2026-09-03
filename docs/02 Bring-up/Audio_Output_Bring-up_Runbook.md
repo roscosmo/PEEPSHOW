@@ -147,7 +147,7 @@ Populate this table during bring-up. The current values are placeholders until m
 | BBB melody | bounded sequence | pattern completes and PAM idles | Six-step BBB melody/gap pattern completed in firmware with `6` requested and `6` completed steps, no failed step, and clean start/stop statuses; user heard the melody but perceived it closer to five tones, likely due to timing or piezo response masking one step | pass_with_note |
 | concurrent output | speaker plus BBB | both paths active without ownership conflict | TBD | open |
 | ADPCM SFX | decoded package asset | one audible bounded STATE SFX before and after STOP2, no FAT runtime reads, clean drain and STOP2 return | `EV-HW6-20260831-P3-SFXSTOP2-094`: packaged cue was audible before and after STOP2; voltage restoration, PLL2P re-arm, SAI mux handoff, DMA completion/callback, clock release, and physical STOP2 readiness all passed | pass_with_note |
-| STATE SFX mixer | five overlapping package-backed SFX | clean output, no refill underrun, bounded CPU cost, clean drain | `EV-HW6-20260903-P3-SFXMIX80-095`: five voices played cleanly at `80 MHz`; worst mixer/refill times were `5.87/12.09 ms` against `32 ms`, with zero underruns, opposite-half events, source failures, prefetch misses, or residual clips | pass |
+| STATE SFX mixer | five overlapping package-backed SFX | clean output, no refill underrun, bounded CPU cost, clean drain | `EV-HW6-20260903-P3-SFXMIX80-095` and `EV-HW6-20260903-P3-SFXMIX48-096`: five voices played cleanly at `80 MHz` and in the audio-only `48 MHz` candidate; worst mixer/refill times were `5.87/12.09 ms` and `22.15/22.20 ms` against `32 ms`, with zero underruns, opposite-half events, source failures, prefetch misses, or residual clips | pass_with_note |
 | mixer budget | music plus 5 SFX | no underrun at target load | TBD | open |
 | fault injection | underrun/invalid asset | bounded recovery or audio quarantine | TBD | open |
 
@@ -213,3 +213,16 @@ and STOP2 physical readiness reported no failure mask. This closes five-voice
 STATE overlap and equal/lower-priority overflow rejection; music plus five SFX,
 strict higher-priority preemption, realtime display contention, and final
 shipping clock selection remain open.
+
+`EV-HW6-20260903-P3-SFXMIX48-096` validates that optimized path at the
+audio-only `48 MHz` candidate. The operator again heard clean five-voice
+overlap without pops or cracks. Seven requests were admitted and completed,
+seven equal/lower-priority overflow requests were rejected, peak concurrency
+reached five, and `256669` samples were decoded. DMA half/full callbacks reached
+`82/81`; underrun, opposite-half, source-window failure, prefetch miss, request
+leak, and residual clip counts remained zero. Worst mixer/refill costs were
+`1063265/1065648` cycles, or `22.15/22.20 ms`, leaving approximately `9.80 ms`
+of the `32 ms` deadline. Playback drained, SYSCLK returned to `24 MHz`, STOP2
+resumed, and the audio stack retained `3172` bytes of lower margin. This does
+not select `48 MHz` for production: concurrent display work, strict
+higher-priority preemption, energy comparison, and injected faults remain open.

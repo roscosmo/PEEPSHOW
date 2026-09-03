@@ -7,18 +7,20 @@ Implementation status: `partial`
 The V1 `.peepproj` STATE subset, semantic validator, normalized intermediate,
 deterministic binary `.egg` compiler, independent host package reader, and the
 bounded HW6 package STATE decoder are implemented. Hardware SHA-256, package
-pixels, sparse retained STATE rendering, mixed 2-phase/3-phase waiting visuals,
-STOP2 continuity, four logical joystick cardinals, and direct STATE-to-STATE
-replacement have passed initial target validation. The versioned host
+pixels, retained focusless STATE rendering, mixed waiting visuals, STOP2
+continuity, per-scene four/eight-way joystick policy, direct STATE-to-STATE
+replacement, scene-transition SFX, multi-second package-backed SFX, and five
+simultaneous SFX voices have passed target validation. The versioned host
 authoring-service boundary exposes project loading, validation, normalization,
 deterministic package compilation, V1 compatibility reporting, deterministic
-selected-STATE preview, and read-only package scene flow. USB staging, atomic
-A/B external-flash installation, installed-package loading, immediate launch,
-and return to the shell are also target-proven within the current `65536`-byte
-runtime-cache limit. Production pre-commit validation, boot activation and
-rollback policy, target-profile closure, remaining editor mutation surfaces,
-optional system interaction state, SEQUENCE, PROGRAM, and complete end-to-end
-HW6 evidence remain open.
+selected-STATE preview, sampled-SFX import/audition, and package scene flow.
+USB staging, atomic A/B external-flash installation, installed-package boot and
+in-place launch, return to the shell, a bounded resident prefix, and raw-package
+audio reader windows are target-proven. Product single-slot installation,
+streamed MSC install beyond the `65536`-byte development bridge, full
+pre-commit validation, strict SFX preemption, concurrent display/audio margin,
+target-profile closure, remaining editor mutation surfaces, SEQUENCE, PROGRAM,
+and complete end-to-end HW6 evidence remain open.
 
 Target status: `HW6_PENDING_VALIDATION` until measured HW6 evidence is frozen into a shipping-authoritative target profile.
 
@@ -529,8 +531,9 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
     authoritative
 11. install and run the authored STATE package against HW6 so editor iteration
     no longer requires embedding package bytes in firmware (implemented and
-    target-proven through USB staging and atomic A/B install/launch; production
-    pre-commit validation and boot policy remain open)
+    target-proven through USB staging, atomic A/B install, boot activation, and
+    in-place launch; product single-slot migration, streamed MSC install, and
+    pre-commit validation remain open)
 12. complete the STATE presentation boundary: package layers, generic retained
     primitives, element/asset authoring commands, catalog persistence, bounded
     STATE waiting-loop commands, and build-time 8x8 text sprites are
@@ -540,13 +543,16 @@ These exclusions keep the proof focused on the authoring/runtime/power architect
     service API 16 also implements destination-state show/hide, move, and
     retained base-frame actions with atomic variable/element commit and
     waiting-loop visibility/position linkage; HW6 target proof passed on
-    2026-08-28, while Peep Studio controls and waiting-animation selection
-    remain to complete this step
-13. completed 2026-08-28: the initial STATE sampled-SFX path verifies the HW6
-    16 kHz mono SAI/MAX98357A path, compiles WAV sources to bounded IMA ADPCM
-    package assets, preloads one admitted voice, routes symbolic `play_sfx`
-    through `thAudio`, releases audio clock intent after drain, and returns to
-    STOP2; known-reference fidelity and measured playback energy remain open
+    2026-08-28, and later package proof covers a focusless four-frame visual in
+    both awake and autonomous STOP2 presentation
+13. completed initial slice 2026-08-28 and extended 2026-09-03: STATE sampled
+    SFX verifies the HW6 16 kHz mono SAI/MAX98357A path, compiles WAV sources to
+    IMA ADPCM package assets, streams nonresident package windows, routes
+    symbolic `play_sfx` through `thAudio`, survives scene replacement, mixes
+    five fixed voices cleanly at `80 MHz` and in an audio-only `48 MHz` run,
+    releases audio clock intent after drain, and returns to STOP2; strict
+    higher-priority preemption, concurrent display margin, and measured
+    playback energy remain open
 14. close the remaining STATE authoring gaps and publish one target capability
     report covering visuals, input policies, waiting animation, scene flow,
     interaction lifecycle, SFX, memory admission, and measured power behavior

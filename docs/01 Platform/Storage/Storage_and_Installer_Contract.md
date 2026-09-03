@@ -167,12 +167,13 @@ activation. Production completion must move the required integrity checks
 before the commit marker so a semantically invalid package can never become the
 selected generation.
 
-The current `65536`-byte staged-RAM source remains a bring-up activation cache,
+The current `65536`-byte staged-RAM source remains a bring-up MSC source bridge,
 not the installed slot size or the product package limit. The product installer
 must stream source bytes in bounded chunks and support the full `5 MiB` active
-slot. Runtime metadata and small prepared assets may be cached in normal SRAM;
-large assets use bounded storage-owner reads through the package asset API and
-are never read through FileX.
+slot. The current installed-package runtime keeps a bounded resident prefix and
+uses target-proven storage-owner reader windows for nonresident audio ranges.
+Generalized large-asset coverage remains open. Runtime never reads through
+FileX.
 
 ## Persistent Fault Log Region
 
@@ -295,7 +296,7 @@ USB export rules:
 - Selecting `PACKAGE INSTALL` from the PACKAGE menu asks `thStorage` to scan the reclaimed staging volume. This is the first point where product UI decides whether copied files should be considered for package install.
 - Pressing `A` on a valid package prompt currently uses the bounded `65536`-byte bring-up path. The product replacement reopens the staged `.egg` under `thStorage`, validates it without a full-RAM copy, publishes `PENDING`, chunk-writes and verifies the active package slot, then commits `VALID` last.
 - After a product commit, `thStorage` publishes an installed-package handle source rather than a complete installed-RAM copy and reports `INSTALLED` to the package browser. Pressing `A` then asks `thRuntime` to validate required metadata and activate the package. Install and launch remain separate user actions.
-- Runtime never reads FAT/FileX. A package must be exited before installer admission replaces its active package context. The persistent A/B write/index/select/launch path is target-proven bring-up behavior; full pre-commit validation, reset injection at every single-slot install stage, automatic boot activation, uninstall, package quarantine, and the bounded installed-package reader remain open.
+- Runtime never reads FAT/FileX. A package must be exited before installer admission replaces its active package context. The persistent A/B write/index/select/boot-launch path and bounded installed-package audio reader are target-proven bring-up behavior. Single-slot migration, streamed MSC installation without the complete staged-RAM bridge, full pre-commit validation, reset injection at every install stage, uninstall, package quarantine, and generalized installed-asset coverage remain open.
 - HW6 evidence `EV-HW6-20260813-P1-PKGMSC-043` validates the earlier package-page force-rescan path that auto-prompted after reclaim. That behavior is now classified as bring-up scaffolding only; product MSC remains transport-only, and package selection/install belongs to the package browser. HW6 evidence `EV-HW6-20260813-P1-RUNTIME-044` validates the runtime-host installer overlay around that earlier scaffold; it does not define final package-browser UX.
 - if MSC export detects an unformatted or invalid LevelX/FileX staging volume, it reports recovery-required state and leaves formatting to the explicit provisioning command
 - normal boot may ask `thStorage` to run a USB boot-park cleanup command; this command only parks generated USB device hardware and refreshes clock readback, and must not mount FileX/LevelX, initialize package storage, expose MSC, or prove storage readiness

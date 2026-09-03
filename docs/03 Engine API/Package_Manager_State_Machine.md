@@ -124,9 +124,10 @@ Current source states are:
 - `EMBEDDED`: the generated development `.egg` blob is exposed.
 - `STAGED_RAM`: one complete, volatile `.egg` copied from FileX by
   `thStorage` is exposed after every storage handle has closed.
-- `INSTALLED_RAM`: the selected persistent A/B generation is copied from its
-  raw package slot by `thStorage`, parked, and exposed from the fixed runtime
-  RAM cache with its installed generation.
+- `INSTALLED_RAM`: a bounded resident prefix of the selected persistent A/B
+  generation is copied from its raw package slot by `thStorage`, parked, and
+  exposed with the complete package size and installed generation. Approved
+  nonresident audio ranges use bounded package-reader requests to `thStorage`.
 
 Rules:
 
@@ -143,13 +144,15 @@ Rules:
   not package validity. `thRuntime` must complete SHA-256, container, chunk,
   and scene-schema validation before changing `PKG_ACTIVE_NONE` to an active
   package state.
-- staged and installed RAM images are immutable for the active package
+- staged and installed resident images are immutable for the active package
   lifetime; installer admission must exit the active package before replacing
-  the shared cache.
-- installed-package selection uses the two `5 MiB` raw slots and independent
-  commit-last index records defined by [[Storage_and_Installer_Contract]]. The
-  current whole-package activation cache still limits runnable bring-up
-  packages to `65536` bytes; this is not the installed-slot limit.
+  the resident prefix or its backing raw package generation.
+- installed-package selection currently uses the two `5 MiB` raw slots and
+  independent commit-last index records defined by
+  [[Storage_and_Installer_Contract]]. Runtime metadata remains bounded by the
+  `65536`-byte resident prefix, while the target-proven audio-tail reader allows
+  a larger package to run without copying the complete blob into RAM. This is
+  bring-up behavior pending the product single-slot migration.
 - production completion still requires full SHA-256, container, chunk, and
   scene-schema validation before programming the index commit marker. FW0
   currently performs bounded envelope validation and byte verification before
@@ -167,9 +170,10 @@ Verified HW6 evidence:
 - the same staged `.egg` can be written to the inactive raw package slot,
   byte-verified, committed by programming the inactive index marker last,
   selected as the newer generation, published as `INSTALLED_RAM`, and launched
-  immediately. A later runtime request can scan the persistent index, copy the
-  selected package through `thStorage`, validate it, and launch it without
-  reading FileX.
+  immediately or at normal boot. A later runtime request can scan the
+  persistent index, copy the selected resident prefix through `thStorage`,
+  validate it, and launch it without reading FileX. Larger package-backed audio
+  is fetched only through bounded raw-package reader windows.
 - direct STATE-to-STATE replacement inside one resident package is target
   proven: the destination entry state and local defaults are restored and a
   new presentation timeline epoch begins.

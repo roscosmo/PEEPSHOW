@@ -169,7 +169,33 @@ The no-sound audio requester named in the first-implementation inventory above i
 
 STOP2 GPIO wake/park policy is staged. FW0 records a GPIO policy ledger before it changes pin modes: assigned pins are classified as used, wake-retained, hard-retained, or park candidates for ports A/B/C/H. Wake-retained pins are the validated or planned wake inputs from [[HW6_Wake_Sources]]; hard-retained pins cover debug, LSE/RTC/display timing, NINA sleep control, speaker shutdown, and the development power marker. Park candidates are non-wake peripheral pins that may be moved to analog/no-pull only after owner quiesce and target current evidence prove the change is safe. Parking is controlled by `power_stop2_gpio_park_group_mask` and debug override. Group bits are `0x1` OSPI, `0x2` SAI, `0x4` USB, `0x8` display SPI, and `0x10` I2C. The validated default is `0x1e`: park SAI, USB, display SPI, and I2C, while retaining OSPI pins. OSPI analog parking remains a diagnostic override only because HW6 PPK2 target evidence showed the OSPI group adds passive STOP2 current when moved to analog/high-Z. The STOP2 sequence snapshots GPIO `MODER`, `PUPDR`, `ODR`, and `IDR` before parking, during the parked sleep window, and after wake restore. Sensor terminal sleep writes must complete before the I2C group may be parked, because TMAG3001 I2C traffic can wake the sensor from sleep; future TMAG wake-and-sleep residency must use a separate owner-selected policy rather than this baseline deep-sleep parking path.
 
-STOP2 entry boundaries are now split into explicit decision and entry steps. `thPower` first runs the STOP2 eligibility dry-run and records the blocker mask without sleeping; the controlled-entry helper may enter STOP2 only when that ledger is clear, then reuses the validated owner-quiesce, STOP2, physical START wake, clock-restore, and owner-recovery scaffold. HW6 STOP2 keeps all SRAM banks powered/retained; the sleep path must not depend on selective SRAM bank shutdown, pre-sleep copying into a special retained bank, or post-wake reconstruction of ordinary RAM state. The automatic idle admission path is enabled by default for the held-frame baseline: `thPower` periodically checks the same STOP2 ledger plus runtime, UI/router, display-stable state, storage/USB, input, owner-queue, and required-idle-window conditions before calling controlled entry. Display-stable state means the display owner reports a completed, successful operation whose displayed page matches the UI router. FW0 now separates display waiting into selected backends: `HELD_FRAME` is the default baseline backend for STOP2/current bring-up, and treats a stable current-page frame as display-ready without arming LPBAM; if an awake renderer animation such as the cursor blink is active, `thPower` suppresses it and asks `thDisplay` to present one cursor-visible held frame before entry so STOP2 does not inherit a mid-blink image or keep the blink scheduler alive. `LPBAM` remains the autonomous-display backend and must be selected only by knob/test/profile policy until HW6 payloads are visually validated, current-measured, and integrated with renderer dirty-row tracking. LPBAM display residency is a separate display-owned readiness signal: normal display updates clear `display_lpbam_ready`, `thPower` must request an LPBAM prepare handoff from `thDisplay`, and `thDisplay` may satisfy STOP2 LPBAM validation only after a real autonomous handoff is prepared and the ready page/status/render-count still match the current UI state. When the LPBAM backend is selected but no validated LPBAM slice exists for the current renderer state or target profile, `thDisplay` intentionally answers `UNAVAILABLE` and `thPower` records the missing readiness as a hard `LPBAM_NOT_READY` blocker. If a successful LPBAM prepare is followed by a late hard blocker, input, UI/router, display, storage, or queue change before entry, `thPower` must abort the display LPBAM handoff before refusing entry. FW0 has target-validated both the older debug-only forced-ready late-abort shape and the first real cursor-slice LPBAM prepare/start/STOP2/wake/abort path. If any hard blocker is present, the helper refuses entry and records the blocker instead of sleeping.
+STOP2 entry boundaries are split into explicit decision and entry steps.
+`thPower` first runs the STOP2 eligibility dry-run and records the blocker mask
+without sleeping. Controlled entry is allowed only when that ledger is clear,
+then reuses the validated owner-quiesce, STOP2, physical wake, clock-restore,
+and owner-recovery path. HW6 STOP2 keeps all SRAM banks powered and retained;
+the sleep path must not depend on selective SRAM shutdown, pre-sleep copying,
+or reconstruction of ordinary RAM state after wake.
+
+Automatic idle admission is enabled by default. `thPower` periodically checks
+the same ledger plus runtime, UI/router, display, storage/USB, input, owner
+queues, and the configured idle condition before controlled entry. The
+protected backend knob currently selects `LPBAM`; `HELD_FRAME` remains the
+deterministic fallback when a scene has no waiting motion or its preferred and
+guaranteed autonomous programs cannot be admitted. Package scenes do not need
+a cursor or focus element. A stable focusless scene with zero animated elements
+may enter STOP2 while holding its committed framebuffer.
+
+LPBAM residency remains a separate display-owned readiness signal. Normal
+display updates clear `display_lpbam_ready`; `thPower` requests preparation from
+`thDisplay`; and `thDisplay` reports ready only after compiling and prearming a
+bounded program whose page, render count, and presentation still match current
+state. `thPower` waits for the selected authored frame edge, rechecks all hard
+blockers, and commits only the current prepared program. A late input, UI,
+storage, queue, or display change aborts the handoff before entry. If no valid
+LPBAM program or held-frame fallback is available, `LPBAM_NOT_READY` blocks
+STOP2. The cursor-specific captures remain historical first proofs; current
+target evidence covers general package-authored, focusless multi-frame motion.
 FW0 now treats STOP2 as an idle-residency target, not a late parking operation. After normal boot has brought up the shell/runtime and completed boot power cleanup, `thPower` sends one bounded boot-idle park command to `thComm` and `thSensor`: NINA enters DSR `SLEEP_SYSTEM_OFF` and LIS enters deep-power-down. Later STOP2 eligibility records `stop2_eligibility_idle_peripheral_park_ready`; if BLE/LIS are not already in their resident states, `IDLE_PARK` (`0x4000`) blocks STOP2 instead of using STOP2 entry to do first-time module bring-up. Owner quiesce still handles deliberate active modes through per-owner policy, so TMAG wake-and-sleep and LIS step-counter STOP2 states remain possible once separately measured and validated.
 
 2026-08-26 HW6 target evidence supersedes the earlier terminal-sleep baseline wording in this section. The production joystick STOP2 resident policy uses TMAG3001 X/Y omnipolar wake-and-sleep with active-low `JOY_INT` retained as a wake source. Matched five-minute STOP2 measurements recorded `55 uA` with joystick W&S disabled and `65 uA` with W&S enabled, establishing an approximately `10 uA` movement-wake cost and `35 uA` remaining margin under the `100 uA` target. Quiet-sleep preparation retains a bounded wake-read and settle path so firmware can recover a TMAG left in W&S across MCU reset.
@@ -251,6 +277,18 @@ HW6 evidence `EV-HW6-20260822-P1-LPBAMGUARANTEED-086` validates bounded resource
 
 HW6 evidence `EV-HW6-20260822-P1-LPBAMCURRENTFULL-087` establishes the average-current endpoint for that maximum guaranteed program. With debug-in-low-power disabled and SWD detached, three coherent full-panel states at `250 ms` cadence averaged `85 uA` over five minutes. The same cadence averaged `56 uA` for the sparse cursor program, while the earlier held-frame STOP2 mean was `51.39 uA`; maximum guaranteed visual coverage therefore adds `29 uA` over cursor LPBAM and approximately `33.61 uA` over held-frame STOP2. This closes representative sparse and maximum-guaranteed average-current measurement. It does not replace pulse-shape capture or establish scaling for intermediate coverage and other cadences.
 
+HW6 evidence `EV-HW6-20260903-P1-STATEWAITGENERAL-097` validates the current
+general package-to-STOP2 waiting path without a focus or cursor element. One
+authored four-phase sprite advanced on a four-step `250 ms` timeline while
+awake, then compiled into four LPBAM frames spanning `78` candidate rows and
+`13` transactions. Preferred compilation used `7592/10512` payload bytes and
+constructed `91` queue nodes; fill, clock, link, start, DMA, and reclaim all
+reported `0x0`. The authored handoff advanced frame `1 -> 2`, edge request/run
+reached `2/2` without misses or deferrals, DMA completed with `CBR1=0`, and two
+real STOP2 entries completed. The operator confirmed autonomous animation in
+STOP2. This proves actual display/DMA work, not merely that `thDisplay` was
+scheduled.
+
 The automatic STOP2 idle-window knob is optional and is currently zero. Input correctness must never depend on that delay: ordered input queues and the final atomic pre-WFI check are authoritative. `thPower` must allow only one LPBAM edge request at a time; periodic admission checks may not restart a request that is pending or already requested. The selected phase handoff may intentionally wait for its next matching edge to preserve visual continuity. The validated `4 MHz` MSIK, LPTIM `/128`, `ARR/CMP=7813/7812`, and normal APB3 `/8` policy must remain unchanged unless new target evidence contradicts them.
 
 LPBAM resource fallback is bounded and must not extend awake residence indefinitely. `thDisplay` attempts the preferred program once; on resource rejection it attempts the deterministic three-global-step guaranteed program once. If that compile or queue build fails, `thPower` selects the validated held-frame backend and may still enter STOP2. It must not iteratively remove elements, retry allocation in different orders, or keep the CPU awake because preferred motion could not be admitted.
@@ -265,18 +303,27 @@ HW6 evidence `EV-HW6-20260813-P1-AUDIOCLOCK-048` validates the no-sound audio cl
 
 HW6 evidence `EV-HW6-20260831-P3-SFXSTOP2-094` supersedes that scaffold as the current bounded-SFX proof. The operator heard the same packaged STATE SFX before and after a real STOP2 cycle. The final capture reported pre-restore `VOSR/SVMSR = 0x8000/0x8000`, post-restore `0x18000/0x18000`, and voltage-scale status `0x0`; PLL2 post-STOP re-arm attempts/successes `6/6` with status `0x0`; SAI mux handoff count/success `3/3` with status `0x0`; and a granted `4096000 Hz` SAI kernel. Completed playback reached DMA `CBR1=0`, observed DMA IRQ and SAI completion callback activity, and reported no callback error. After drain, power-owned SAI active/gate/reset state returned to `0/0/0`; STOP2 physical readiness was `1` with failure mask `0x0`; and the audio stack retained `3180` bytes of lower margin. This validates one bounded voice and the physical post-STOP recovery sequence. It does not validate known-reference fidelity, sustained refill, music, mixing, underrun recovery, or audio energy.
 
-HW6 now implements a development PLL1 ladder at `80`, `120`, and `160 MHz` for
-audio/workload characterization. A sampled STATE mix publishes
+HW6 implements a development PLL1 ladder at `48`, `80`, `120`, and `160 MHz`
+for audio/workload characterization. A sampled STATE mix publishes
 `AUDIO_MIX_ACTIVE` with its required SAI/OCTOSPI/reactive capabilities;
 `thPower` selects one point before granting playback and pins that point until
-the mix drains. The default remains `160 MHz`. Initial `80/120/160 MHz`
-comparison keeps VOS1 constant to isolate frequency; lower-voltage operation is
-a separate candidate requiring its own timing and current evidence. Release
-physically returns PLL1/SYSCLK to MSI `24 MHz`, while the independent PLL2P SAI
+the mix drains. The current generated `CLK_REACTIVE_BURST` point is `48 MHz`.
+The `48/80/120/160 MHz` comparison keeps VOS1 constant to isolate frequency;
+lower-voltage operation is a separate candidate requiring its own timing and
+current evidence. Release physically returns PLL1/SYSCLK to MSI `24 MHz`, while
+the independent PLL2P SAI
 kernel remains fixed during playback. None of the intermediate points is
-production-validated until clock readback, refill and display margin, STOP2
-return, transition behavior, and current evidence pass. Packages and scene
+production-selected until clock readback, refill and display margin, STOP2
+return, transition behavior, and energy evidence pass. Packages and scene
 types never select frequencies directly.
+
+HW6 evidence `EV-HW6-20260903-P3-SFXMIX80-095` and
+`EV-HW6-20260903-P3-SFXMIX48-096` validate clean audio-only five-voice
+operation at `80` and `48 MHz`. At `48 MHz`, worst mixer/refill time was
+`22.15/22.20 ms` against the `32 ms` deadline; the mix drained, SYSCLK returned
+to `24 MHz`, and STOP2 resumed. This validates the clock transition and
+audio-only timing at that candidate. It does not prove concurrent display
+margin, energy superiority, or final profile selection.
 ---
 
 ## Reactive Transaction Policy
