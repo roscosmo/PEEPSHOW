@@ -1210,7 +1210,7 @@ static const PS_HW6_StateTransition ps_speaker_transitions[] =
   {SPK_ENABLE, SPK_EV_FAULT, SPK_ERROR},
   {SPK_PRELOAD, SPK_EV_FAULT, SPK_ERROR},
   {SPK_PLAYING, SPK_EV_FAULT, SPK_ERROR},
-  {SPK_ERROR, SPK_EV_RECOVER_OK, SPK_ENABLE}
+  {SPK_ERROR, SPK_EV_RECOVER_OK, SPK_OFF}
 };
 
 static const PS_HW6_StateTransition ps_joystick_transitions[] =
@@ -2800,15 +2800,70 @@ static HAL_StatusTypeDef PS_HW6_SM_RunAudioTone(void)
   return status;
 }
 
+static HAL_StatusTypeDef PS_HW6_SM_RecoverAudioSfxFault(void)
+{
+  if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_AUDIO] !=
+       (uint32_t)AUDIO_ERROR) ||
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_SPEAKER] !=
+       (uint32_t)SPK_ERROR) ||
+      (PS_HW6_AudioOwner_VerifyIdle() != HAL_OK))
+  {
+    return HAL_ERROR;
+  }
+  if (PS_HW6_SM_Transition(PS_HW6_SM_SPEAKER,
+                           SPK_EV_RECOVER_OK, HAL_OK) != HAL_OK)
+  {
+    return HAL_ERROR;
+  }
+  if (PS_HW6_SM_Transition(PS_HW6_SM_AUDIO,
+                           AUDIO_EV_RECOVER_OK, HAL_OK) != HAL_OK)
+  {
+    return HAL_ERROR;
+  }
+  return PS_HW6_SM_Transition(PS_HW6_SM_AUDIO,
+                              AUDIO_EV_INIT_OK, HAL_OK);
+}
+
+static void PS_HW6_SM_RecordAndRecoverAudioSfxFault(
+  HAL_StatusTypeDef fault_status)
+{
+  (void)PS_HW6_SM_Transition(PS_HW6_SM_SPEAKER,
+                            SPK_EV_FAULT, fault_status);
+  (void)PS_HW6_SM_Transition(PS_HW6_SM_AUDIO,
+                            AUDIO_EV_DMA_ERROR, fault_status);
+  (void)PS_HW6_SM_RecoverAudioSfxFault();
+}
+
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunAudioSfx(
-  uint32_t cue_index)
+  uint32_t cue_index,
+  uint32_t *request_owned)
 {
   HAL_StatusTypeDef status;
+  uint32_t audio_state =
+    g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_AUDIO];
+  uint32_t speaker_state =
+    g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_SPEAKER];
 
-  if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_AUDIO] !=
-       (uint32_t)AUDIO_IDLE) ||
-      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_SPEAKER] !=
-       (uint32_t)SPK_OFF))
+  if (request_owned == NULL)
+  {
+    return HAL_ERROR;
+  }
+  *request_owned = 0UL;
+
+  if ((audio_state == (uint32_t)AUDIO_ACTIVE) &&
+      (speaker_state == (uint32_t)SPK_PLAYING))
+  {
+    *request_owned = 1UL;
+    status = PS_HW6_AudioOwner_RunSfx(cue_index);
+    if (status == HAL_ERROR)
+    {
+      (void)PS_HW6_AudioOwner_StopSfx();
+      PS_HW6_SM_RecordAndRecoverAudioSfxFault(status);
+    }
+    return status;
+  }
+  if ((audio_state != (uint32_t)AUDIO_IDLE) ||
+      (speaker_state != (uint32_t)SPK_OFF))
   {
     return HAL_BUSY;
   }
@@ -2824,7 +2879,19 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunAudioSfx(
   (void)PS_HW6_SM_Transition(PS_HW6_SM_SPEAKER,
                             SPK_EV_DMA_START_OK, HAL_OK);
 
+  *request_owned = 1UL;
   status = PS_HW6_AudioOwner_RunSfx(cue_index);
+  if (status != HAL_OK)
+  {
+    PS_HW6_SM_RecordAndRecoverAudioSfxFault(status);
+  }
+  return status;
+}
+
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ServiceAudioSfx(void)
+{
+  HAL_StatusTypeDef status = PS_HW6_AudioOwner_ServiceSfx();
+
   if (status == HAL_OK)
   {
     (void)PS_HW6_SM_Transition(PS_HW6_SM_SPEAKER,
@@ -2834,12 +2901,38 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunAudioSfx(
     (void)PS_HW6_SM_Transition(PS_HW6_SM_AUDIO,
                               AUDIO_EV_PLAYBACK_DONE, status);
   }
-  else
+  else if (status == HAL_ERROR)
   {
-    (void)PS_HW6_SM_Transition(PS_HW6_SM_SPEAKER,
-                              SPK_EV_FAULT, status);
-    (void)PS_HW6_SM_Transition(PS_HW6_SM_AUDIO,
-                              AUDIO_EV_DMA_ERROR, status);
+    PS_HW6_SM_RecordAndRecoverAudioSfxFault(status);
+  }
+  return status;
+}
+
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StopAudioSfx(void)
+{
+  HAL_StatusTypeDef status = PS_HW6_AudioOwner_StopSfx();
+
+  if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_AUDIO] ==
+       (uint32_t)AUDIO_ACTIVE) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_SPEAKER] ==
+       (uint32_t)SPK_PLAYING))
+  {
+    if (status == HAL_OK)
+    {
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_SPEAKER,
+                                SPK_EV_PLAYBACK_DONE, status);
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_SPEAKER,
+                                SPK_EV_DRAINED, status);
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_AUDIO,
+                                AUDIO_EV_PLAYBACK_DONE, status);
+    }
+    else
+    {
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_SPEAKER,
+                                SPK_EV_FAULT, status);
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_AUDIO,
+                                AUDIO_EV_DMA_ERROR, status);
+    }
   }
   return status;
 }
@@ -7137,6 +7230,14 @@ static HAL_StatusTypeDef PS_HW6_SM_ResumeAudio(void)
 
 static HAL_StatusTypeDef PS_HW6_SM_QuiesceAudio(void)
 {
+  if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_AUDIO] ==
+       (uint32_t)AUDIO_ACTIVE) &&
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_SPEAKER] ==
+       (uint32_t)SPK_PLAYING) &&
+      (PS_HW6_OwnerStateMachines_StopAudioSfx() != HAL_OK))
+  {
+    return HAL_ERROR;
+  }
   if ((g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_AUDIO] ==
        (uint32_t)AUDIO_IDLE) &&
       (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_SPEAKER] ==

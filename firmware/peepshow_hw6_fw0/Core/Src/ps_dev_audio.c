@@ -22,6 +22,12 @@ static volatile uint32_t ps_dev_audio_stream_pending_event_mask;
 static volatile uint32_t ps_dev_audio_stream_first_half_callback_count;
 static volatile uint32_t ps_dev_audio_stream_second_half_callback_count;
 static volatile uint32_t ps_dev_audio_stream_underrun_count;
+static volatile uint32_t ps_dev_audio_stream_first_half_callback_cycle;
+static volatile uint32_t ps_dev_audio_stream_second_half_callback_cycle;
+static volatile uint32_t ps_dev_audio_stream_refill_opposite_event_count;
+static volatile uint32_t ps_dev_audio_stream_last_refill_cycles;
+static volatile uint32_t ps_dev_audio_stream_max_refill_cycles;
+static volatile uint32_t ps_dev_audio_stream_last_release_pending_event_mask;
 static uint32_t ps_dev_audio_stream_dma_irq_before;
 static uint32_t ps_dev_audio_stream_tx_callback_before;
 static uint32_t ps_dev_audio_stream_error_callback_before;
@@ -493,6 +499,12 @@ ps_status_t ps_dev_audio_stream_start(ps_dev_audio_t *device,
     ps_dev_audio_stream_first_half_callback_count = 0UL;
     ps_dev_audio_stream_second_half_callback_count = 0UL;
     ps_dev_audio_stream_underrun_count = 0UL;
+    ps_dev_audio_stream_first_half_callback_cycle = 0UL;
+    ps_dev_audio_stream_second_half_callback_cycle = 0UL;
+    ps_dev_audio_stream_refill_opposite_event_count = 0UL;
+    ps_dev_audio_stream_last_refill_cycles = 0UL;
+    ps_dev_audio_stream_max_refill_cycles = 0UL;
+    ps_dev_audio_stream_last_release_pending_event_mask = 0UL;
     ps_dev_audio_active_sai = device->sai;
     ps_dev_audio_stream_active = 1UL;
     start_status = HAL_SAI_Transmit_DMA(device->sai,
@@ -623,7 +635,10 @@ ps_status_t ps_dev_audio_stream_wait(ps_dev_audio_t *device,
 ps_status_t ps_dev_audio_stream_release_half(ps_dev_audio_t *device,
                                              uint32_t event_mask)
 {
+  uint32_t callback_cycle;
+  uint32_t pending_event_mask;
   uint32_t primask;
+  uint32_t refill_cycles;
   ps_status_t status = PS_STATUS_OK;
 
   if ((device == NULL) ||
@@ -635,15 +650,33 @@ ps_status_t ps_dev_audio_stream_release_half(ps_dev_audio_t *device,
 
   primask = __get_PRIMASK();
   __disable_irq();
+  pending_event_mask = ps_dev_audio_stream_pending_event_mask &
+    PS_DEV_AUDIO_STREAM_EVENT_MASK;
   if ((device->initialized == 0U) ||
       (ps_dev_audio_active_sai != device->sai) ||
       (ps_dev_audio_stream_active == 0UL) ||
-      ((ps_dev_audio_stream_pending_event_mask & event_mask) == 0UL))
+      ((pending_event_mask & event_mask) == 0UL))
   {
     status = PS_STATUS_INVALID_STATE;
   }
   else
   {
+    callback_cycle =
+      (event_mask == PS_DEV_AUDIO_STREAM_EVENT_FIRST_HALF) ?
+      ps_dev_audio_stream_first_half_callback_cycle :
+      ps_dev_audio_stream_second_half_callback_cycle;
+    refill_cycles = DWT->CYCCNT - callback_cycle;
+    ps_dev_audio_stream_last_refill_cycles = refill_cycles;
+    if (refill_cycles > ps_dev_audio_stream_max_refill_cycles)
+    {
+      ps_dev_audio_stream_max_refill_cycles = refill_cycles;
+    }
+    ps_dev_audio_stream_last_release_pending_event_mask = pending_event_mask;
+    if ((pending_event_mask &
+         (PS_DEV_AUDIO_STREAM_EVENT_MASK ^ event_mask)) != 0UL)
+    {
+      ps_dev_audio_stream_refill_opposite_event_count++;
+    }
     ps_dev_audio_stream_pending_event_mask &= ~event_mask;
   }
   __set_PRIMASK(primask);
@@ -748,6 +781,7 @@ void HAL_SAI_TxHalfCpltCallback(SAI_HandleTypeDef *hsai)
       (ps_dev_audio_stream_active != 0UL))
   {
     ps_dev_audio_stream_first_half_callback_count++;
+    ps_dev_audio_stream_first_half_callback_cycle = DWT->CYCCNT;
     if ((ps_dev_audio_stream_pending_event_mask &
          PS_DEV_AUDIO_STREAM_EVENT_FIRST_HALF) != 0UL)
     {
@@ -771,6 +805,7 @@ void HAL_SAI_TxCpltCallback(SAI_HandleTypeDef *hsai)
     if (ps_dev_audio_stream_active != 0UL)
     {
       ps_dev_audio_stream_second_half_callback_count++;
+      ps_dev_audio_stream_second_half_callback_cycle = DWT->CYCCNT;
       if ((ps_dev_audio_stream_pending_event_mask &
            PS_DEV_AUDIO_STREAM_EVENT_SECOND_HALF) != 0UL)
       {

@@ -265,7 +265,15 @@ HW6 evidence `EV-HW6-20260813-P1-AUDIOCLOCK-048` validates the no-sound audio cl
 
 HW6 evidence `EV-HW6-20260831-P3-SFXSTOP2-094` supersedes that scaffold as the current bounded-SFX proof. The operator heard the same packaged STATE SFX before and after a real STOP2 cycle. The final capture reported pre-restore `VOSR/SVMSR = 0x8000/0x8000`, post-restore `0x18000/0x18000`, and voltage-scale status `0x0`; PLL2 post-STOP re-arm attempts/successes `6/6` with status `0x0`; SAI mux handoff count/success `3/3` with status `0x0`; and a granted `4096000 Hz` SAI kernel. Completed playback reached DMA `CBR1=0`, observed DMA IRQ and SAI completion callback activity, and reported no callback error. After drain, power-owned SAI active/gate/reset state returned to `0/0/0`; STOP2 physical readiness was `1` with failure mask `0x0`; and the audio stack retained `3180` bytes of lower margin. This validates one bounded voice and the physical post-STOP recovery sequence. It does not validate known-reference fidelity, sustained refill, music, mixing, underrun recovery, or audio energy.
 
-Other clock profiles remain scaffolded. Runtime and UI can now publish and release `REACTIVE_TRANSACTION_ACTIVE`; runtime can also publish, hold, suspend, resume, and return `REALTIME_DEADLINE_ACTIVE`; and display can publish and release `DISPLAY_TRANSFER_ACTIVE` for bounded transfer windows. The validated base `24 MHz` path and high-I/O path do not yet constitute the final workload ladder. `CLK_REACTIVE_BURST`, `CLK_REALTIME_BALANCED`, any intermediate PLL operating points, measured current, transition energy, hysteresis, and production PLL2/autonomous-domain policy still must be enabled one at a time after clock readbacks, TraceX timing, and current evidence pass. Packages and scene types never select those points directly.
+`CLK_REACTIVE_BURST` is enabled as a development operating point for bounded
+HW6 STATE SFX: `thAudio` requests reactive work plus the required SAI/OCTOSPI
+capabilities, and `thPower` changes MSI from the `24 MHz` base range to `48 MHz`
+before granting the request. Release returns MSI to `24 MHz`; the independent
+PLL2P SAI kernel remains fixed. This point is not production-validated until
+clock readback, refill margin, STOP2 return, and current evidence pass.
+`CLK_REALTIME_BALANCED` and other intermediate points remain scaffolded. The
+validated base and high-I/O paths do not yet constitute the final workload
+ladder, and packages or scene types never select frequencies directly.
 ---
 
 ## Reactive Transaction Policy

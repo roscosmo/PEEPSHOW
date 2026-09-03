@@ -166,7 +166,8 @@ extern RTC_HandleTypeDef hrtc;
   (PS_HW6_CLOCK_CAP_SAI_AUDIO_ACTIVE)
 #define PS_HW6_RTOS_AUDIO_CLOCK_PACKAGE_SFX_CAPABILITIES \
   (PS_HW6_RTOS_AUDIO_CLOCK_SAI_CAPABILITIES | \
-   PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE)
+   PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE | \
+   PS_HW6_CLOCK_CAP_REACTIVE_TRANSACTION_ACTIVE)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_NONE       (0UL)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_EXPORT (1UL)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_RECLAIM (2UL)
@@ -375,6 +376,10 @@ static uint32_t ps_display_blink_visible;
 static uint32_t ps_display_waiting_sequence_frame;
 static uint32_t ps_display_waiting_sequence_count;
 static volatile uint32_t ps_audio_sfx_pending;
+static uint32_t ps_audio_sfx_clock_held;
+static uint32_t ps_audio_sfx_clock_apply_count_before;
+static uint32_t ps_audio_sfx_clock_pll2_on_count_before;
+static uint32_t ps_audio_sfx_clock_pll2_off_count_before;
 static volatile uint32_t ps_runtime_package_replace_waiting_for_audio;
 static volatile uint32_t ps_runtime_package_replace_waiting_for_install;
 static volatile uint32_t ps_storage_embedded_package_install_active;
@@ -1025,6 +1030,10 @@ static void PS_HW6_RTOS_ResetProbe(void)
   ps_display_waiting_sequence_frame = 0UL;
   ps_display_waiting_sequence_count = 0UL;
   ps_audio_sfx_pending = 0UL;
+  ps_audio_sfx_clock_held = 0UL;
+  ps_audio_sfx_clock_apply_count_before = 0UL;
+  ps_audio_sfx_clock_pll2_on_count_before = 0UL;
+  ps_audio_sfx_clock_pll2_off_count_before = 0UL;
   ps_runtime_package_replace_waiting_for_audio = 0UL;
   ps_runtime_package_replace_waiting_for_install = 0UL;
   ps_storage_embedded_package_install_active = 0UL;
@@ -1100,6 +1109,8 @@ static void PS_HW6_RTOS_ResetProbe(void)
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.audio_clock_release_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_outstanding_count = 0UL;
+  g_ps_hw6_rtos_probe.audio_sfx_clock_held = 0UL;
   g_ps_hw6_rtos_probe.audio_sfx_send_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.audio_sfx_owner_status =
@@ -1111,6 +1122,18 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.audio_sfx_grant_policy_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.audio_sfx_grant_policy_stage =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_grant_selected_profile =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_grant_current_profile =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_grant_sysclk_hz =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_grant_hclk_hz =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_grant_voltage_scale =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_grant_flash_latency =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.audio_sfx_last_cue_index =
     PS_HW6_RTOS_STATUS_NOT_RUN;
@@ -1818,6 +1841,42 @@ static uint32_t PS_HW6_RTOS_RuntimeInputCommandIsValid(
   return 1UL;
 }
 
+static void PS_HW6_RTOS_AudioSfxRequestQueued(void)
+{
+  uint32_t primask = __get_PRIMASK();
+
+  __disable_irq();
+  if (ps_audio_sfx_pending != UINT32_MAX)
+  {
+    ps_audio_sfx_pending++;
+  }
+  g_ps_hw6_rtos_probe.audio_sfx_outstanding_count = ps_audio_sfx_pending;
+  __set_PRIMASK(primask);
+}
+
+void PS_HW6_RTOS_AudioSfxRequestComplete(void)
+{
+  uint32_t primask = __get_PRIMASK();
+  uint32_t remaining;
+
+  __disable_irq();
+  if (ps_audio_sfx_pending != 0UL)
+  {
+    ps_audio_sfx_pending--;
+  }
+  remaining = ps_audio_sfx_pending;
+  g_ps_hw6_rtos_probe.audio_sfx_outstanding_count = remaining;
+  __set_PRIMASK(primask);
+
+  if ((remaining == 0UL) &&
+      (ps_runtime_package_replace_waiting_for_audio != 0UL))
+  {
+    ps_runtime_package_replace_waiting_for_audio = 0UL;
+    g_ps_hw6_rtos_probe.runtime_package_replace_waiting_for_audio = 0UL;
+    g_ps_hw6_runtime_persistent_replace_request = 1UL;
+  }
+}
+
 static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
 {
   uint32_t event;
@@ -1859,21 +1918,14 @@ static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
 
         g_ps_hw6_rtos_probe.audio_sfx_dispatch_count++;
         g_ps_hw6_rtos_probe.audio_sfx_last_cue_index = cue_index;
-        if (ps_audio_sfx_pending == 0UL)
+        PS_HW6_RTOS_AudioSfxRequestQueued();
+        sfx_status = PS_HW6_RTOS_SendModeCommand(
+          PS_HW6_RTOS_OWNER_AUDIO,
+          PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX,
+          cue_index);
+        if (sfx_status != TX_SUCCESS)
         {
-          ps_audio_sfx_pending = 1UL;
-          sfx_status = PS_HW6_RTOS_SendModeCommand(
-            PS_HW6_RTOS_OWNER_AUDIO,
-            PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX,
-            cue_index);
-          if (sfx_status != TX_SUCCESS)
-          {
-            ps_audio_sfx_pending = 0UL;
-          }
-        }
-        else
-        {
-          sfx_status = TX_QUEUE_FULL;
+          PS_HW6_RTOS_AudioSfxRequestComplete();
         }
         g_ps_hw6_rtos_probe.audio_sfx_send_status =
           (uint32_t)sfx_status;
@@ -3097,11 +3149,18 @@ static UINT PS_HW6_RTOS_RequestAudioClockCapabilities(
   uint32_t reason,
   uint32_t capabilities)
 {
+  uint32_t requested_profile =
+    (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN;
   UINT status;
 
+  if ((reason == PS_HW6_RTOS_AUDIO_CLOCK_REASON_REACTIVE_SFX) &&
+      (capabilities != 0UL))
+  {
+    requested_profile = (uint32_t)PS_HW6_CLOCK_PROFILE_IO_HIGH;
+  }
   status = PS_HW6_RTOS_RequestPowerClockProfile(
     PS_HW6_RTOS_OWNER_AUDIO,
-    (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
+    requested_profile,
     capabilities);
 
   g_ps_hw6_rtos_probe.audio_clock_last_reason = reason;
@@ -8812,6 +8871,55 @@ static void PS_HW6_RTOS_CaptureAudioSfx(
   capture->valid = 1UL;
 }
 
+static void PS_HW6_RTOS_FinalizeAudioSfx(HAL_StatusTypeDef owner_status)
+{
+  UINT release_status;
+
+  if (ps_audio_sfx_clock_held == 0UL)
+  {
+    return;
+  }
+  if ((owner_status == HAL_OK) &&
+      (g_ps_hw6_rtos_probe.audio_sfx_first_success_capture.valid == 0UL))
+  {
+    PS_HW6_RTOS_CaptureAudioSfx(
+      &g_ps_hw6_rtos_probe.audio_sfx_first_success_capture,
+      owner_status,
+      ps_audio_sfx_clock_apply_count_before,
+      ps_audio_sfx_clock_pll2_on_count_before,
+      ps_audio_sfx_clock_pll2_off_count_before);
+  }
+  else if ((owner_status != HAL_OK) &&
+           (g_ps_hw6_rtos_probe
+              .audio_sfx_first_post_stop_failure_capture.valid == 0UL) &&
+           (((g_ps_hw6_rtos_probe.audio_sfx_first_success_capture.valid !=
+              0UL) &&
+             (g_ps_hw6_rtos_probe.stop2_auto_entry_count >
+              g_ps_hw6_rtos_probe
+                .audio_sfx_first_success_capture.stop2_entry_count)) ||
+            ((g_ps_hw6_rtos_probe.audio_sfx_first_success_capture.valid ==
+              0UL) &&
+             (g_ps_hw6_rtos_probe.stop2_auto_entry_count != 0UL))))
+  {
+    PS_HW6_RTOS_CaptureAudioSfx(
+      &g_ps_hw6_rtos_probe.audio_sfx_first_post_stop_failure_capture,
+      owner_status,
+      ps_audio_sfx_clock_apply_count_before,
+      ps_audio_sfx_clock_pll2_on_count_before,
+      ps_audio_sfx_clock_pll2_off_count_before);
+  }
+
+  release_status = PS_HW6_RTOS_RequestAudioClockCapabilities(
+    PS_HW6_RTOS_AUDIO_CLOCK_REASON_RELEASE,
+    0UL);
+  g_ps_hw6_rtos_probe.audio_sfx_clock_release_status =
+    (uint32_t)release_status;
+  g_ps_hw6_rtos_probe.audio_sfx_owner_status =
+    (uint32_t)owner_status;
+  ps_audio_sfx_clock_held = 0UL;
+  g_ps_hw6_rtos_probe.audio_sfx_clock_held = 0UL;
+}
+
 static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
                                            ULONG command,
                                            uint32_t cycle_index)
@@ -8868,6 +8976,18 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
         g_ps_hw6_clock_policy_probe.pll2_output_enabled_mask;
       g_ps_hw6_rtos_probe.audio_sfx_grant_sai_kernel_hz =
         g_ps_hw6_clock_policy_probe.sai1_kernel_hz;
+      g_ps_hw6_rtos_probe.audio_sfx_grant_selected_profile =
+        g_ps_hw6_clock_policy_probe.selected_profile;
+      g_ps_hw6_rtos_probe.audio_sfx_grant_current_profile =
+        g_ps_hw6_clock_policy_probe.current_profile;
+      g_ps_hw6_rtos_probe.audio_sfx_grant_sysclk_hz =
+        HAL_RCC_GetSysClockFreq();
+      g_ps_hw6_rtos_probe.audio_sfx_grant_hclk_hz =
+        HAL_RCC_GetHCLKFreq();
+      g_ps_hw6_rtos_probe.audio_sfx_grant_voltage_scale =
+        HAL_PWREx_GetVoltageRange();
+      g_ps_hw6_rtos_probe.audio_sfx_grant_flash_latency =
+        __HAL_FLASH_GET_LATENCY();
     }
     PS_HW6_RTOS_ScheduleClockReleaseStop2Recheck(requester_id,
                                                  capabilities,
@@ -9040,77 +9160,56 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
            (command == PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX))
   {
     HAL_StatusTypeDef sfx_status = HAL_ERROR;
-    UINT clock_status;
-    UINT release_status;
-    uint32_t clock_apply_count_before = 0UL;
-    uint32_t clock_pll2_on_count_before = 0UL;
-    uint32_t clock_pll2_off_count_before = 0UL;
+    uint32_t request_handed_to_owner = 0UL;
 
     g_ps_hw6_rtos_probe.audio_sfx_owner_count++;
     g_ps_hw6_rtos_probe.audio_sfx_last_cue_index = cycle_index;
-    clock_status = PS_HW6_RTOS_RequestAudioClockCapabilities(
-      PS_HW6_RTOS_AUDIO_CLOCK_REASON_REACTIVE_SFX,
-      PS_HW6_RTOS_AUDIO_CLOCK_PACKAGE_SFX_CAPABILITIES);
-    g_ps_hw6_rtos_probe.audio_sfx_clock_request_status =
-      (uint32_t)clock_status;
-    if (clock_status == TX_SUCCESS)
+    if (ps_audio_sfx_clock_held == 0UL)
     {
-      sfx_status = PS_HW6_OwnerStateMachines_Stabilize(
-        PS_HW6_RTOS_OWNER_AUDIO);
-      if (sfx_status == HAL_OK)
+      UINT clock_status = PS_HW6_RTOS_RequestAudioClockCapabilities(
+        PS_HW6_RTOS_AUDIO_CLOCK_REASON_REACTIVE_SFX,
+        PS_HW6_RTOS_AUDIO_CLOCK_PACKAGE_SFX_CAPABILITIES);
+
+      g_ps_hw6_rtos_probe.audio_sfx_clock_request_status =
+        (uint32_t)clock_status;
+      if (clock_status == TX_SUCCESS)
       {
-        clock_apply_count_before = g_ps_hw6_clock_policy_probe.apply_count;
-        clock_pll2_on_count_before =
+        ps_audio_sfx_clock_held = 1UL;
+        g_ps_hw6_rtos_probe.audio_sfx_clock_held = 1UL;
+        ps_audio_sfx_clock_apply_count_before =
+          g_ps_hw6_clock_policy_probe.apply_count;
+        ps_audio_sfx_clock_pll2_on_count_before =
           g_ps_hw6_clock_policy_probe.pll2_domain_on_count;
-        clock_pll2_off_count_before =
+        ps_audio_sfx_clock_pll2_off_count_before =
           g_ps_hw6_clock_policy_probe.pll2_domain_off_count;
-        sfx_status = PS_HW6_OwnerStateMachines_RunAudioSfx(cycle_index);
-        if ((sfx_status == HAL_OK) &&
-            (g_ps_hw6_rtos_probe.audio_sfx_first_success_capture.valid ==
-             0UL))
+        sfx_status = PS_HW6_OwnerStateMachines_Stabilize(
+          PS_HW6_RTOS_OWNER_AUDIO);
+        if (sfx_status == HAL_OK)
         {
-          PS_HW6_RTOS_CaptureAudioSfx(
-            &g_ps_hw6_rtos_probe.audio_sfx_first_success_capture,
-            sfx_status,
-            clock_apply_count_before,
-            clock_pll2_on_count_before,
-            clock_pll2_off_count_before);
-        }
-        else if ((sfx_status != HAL_OK) &&
-                 (g_ps_hw6_rtos_probe
-                    .audio_sfx_first_post_stop_failure_capture.valid == 0UL) &&
-                 (((g_ps_hw6_rtos_probe
-                      .audio_sfx_first_success_capture.valid != 0UL) &&
-                   (g_ps_hw6_rtos_probe.stop2_auto_entry_count >
-                    g_ps_hw6_rtos_probe
-                      .audio_sfx_first_success_capture.stop2_entry_count)) ||
-                  ((g_ps_hw6_rtos_probe
-                      .audio_sfx_first_success_capture.valid == 0UL) &&
-                   (g_ps_hw6_rtos_probe.stop2_auto_entry_count != 0UL))))
-        {
-          PS_HW6_RTOS_CaptureAudioSfx(
-            &g_ps_hw6_rtos_probe
-               .audio_sfx_first_post_stop_failure_capture,
-            sfx_status,
-            clock_apply_count_before,
-            clock_pll2_on_count_before,
-            clock_pll2_off_count_before);
+          sfx_status = PS_HW6_OwnerStateMachines_RunAudioSfx(
+            cycle_index,
+            &request_handed_to_owner);
         }
       }
     }
-    release_status = PS_HW6_RTOS_RequestAudioClockCapabilities(
-      PS_HW6_RTOS_AUDIO_CLOCK_REASON_RELEASE,
-      0UL);
-    g_ps_hw6_rtos_probe.audio_sfx_clock_release_status =
-      (uint32_t)release_status;
+    else
+    {
+      sfx_status = PS_HW6_OwnerStateMachines_RunAudioSfx(
+        cycle_index,
+        &request_handed_to_owner);
+    }
+
+    if (request_handed_to_owner == 0UL)
+    {
+      g_ps_hw6_rtos_probe.audio_sfx_unowned_complete_count++;
+      PS_HW6_RTOS_AudioSfxRequestComplete();
+    }
     g_ps_hw6_rtos_probe.audio_sfx_owner_status =
       (uint32_t)sfx_status;
-    ps_audio_sfx_pending = 0UL;
-    if (ps_runtime_package_replace_waiting_for_audio != 0UL)
+    if ((sfx_status == HAL_ERROR) &&
+        (PS_HW6_AudioOwner_SfxActive() == 0UL))
     {
-      ps_runtime_package_replace_waiting_for_audio = 0UL;
-      g_ps_hw6_rtos_probe.runtime_package_replace_waiting_for_audio = 0UL;
-      g_ps_hw6_runtime_persistent_replace_request = 1UL;
+      PS_HW6_RTOS_FinalizeAudioSfx(sfx_status);
     }
   }
   else if (owner_id == PS_HW6_RTOS_OWNER_RUNTIME)
@@ -9306,6 +9405,12 @@ static ULONG PS_HW6_RTOS_OwnerReceiveWaitTicks(uint32_t owner_id,
       }
     }
     return wait_ticks;
+  }
+
+  if ((owner_id == PS_HW6_RTOS_OWNER_AUDIO) &&
+      (PS_HW6_AudioOwner_SfxActive() != 0UL))
+  {
+    return TX_NO_WAIT;
   }
 
   if ((owner_id != PS_HW6_RTOS_OWNER_DISPLAY) ||
@@ -9635,6 +9740,22 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (ps_power_boot_done != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
+      if (PS_HW6_AudioOwner_SfxActive() != 0UL)
+      {
+        HAL_StatusTypeDef audio_service_status =
+          PS_HW6_OwnerStateMachines_ServiceAudioSfx();
+
+        if (audio_service_status != HAL_BUSY)
+        {
+          PS_HW6_RTOS_FinalizeAudioSfx(audio_service_status);
+        }
+      }
+      else if (ps_audio_sfx_clock_held != 0UL)
+      {
+        PS_HW6_RTOS_FinalizeAudioSfx(
+          (g_ps_hw6_owner_probe.audio_success != 0UL) ?
+            HAL_OK : HAL_ERROR);
+      }
       if (g_ps_hw6_audio_clock_probe_request != 0UL)
       {
         audio_clock_release_after_request =

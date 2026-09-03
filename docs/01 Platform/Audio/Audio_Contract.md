@@ -4,17 +4,26 @@ This document defines PeepShow audio ownership, playback architecture, state mac
 
 Audio is owned by Platform. Engine and Reference Game code request only symbolic behavior granted by the selected target profile; they must not control SAI, DMA, LPTIM, GPIO, or amplifier pins directly.
 
-Implementation status on HW6 includes one target-proven STATE sampled-SFX
-path. The `.egg` format carries sampled-audio asset, ADPCM-bank, and cue
-chunks; STATE actions can request a symbolic cue through `qAudioCmd`; and
-`thAudio` owns bounded package-backed ADPCM decode, fixed-ring SAI DMA playback,
-MAX98357A shutdown, clock-intent release, and return to STOP2. The same cue is
+Implementation status on HW6 includes a fixed five-voice STATE sampled-SFX
+mixer. The `.egg` format carries sampled-audio asset, ADPCM-bank, and cue
+chunks; STATE actions can request symbolic cues through `qAudioCmd`; and
+`thAudio` owns bounded package-backed ADPCM decode, fixed-ring PCM mixing and
+SAI DMA playback, MAX98357A shutdown, clock-intent release, and return to STOP2. The same cue is
 target-proven both before and after a real STOP2 cycle. Post-STOP restoration is power-owned: `thPower`
 restores and verifies the voltage scale, re-arms the PLL2P epoch, hands the SAI
 kernel mux back to PLL2P, and grants `SAI_AUDIO_ACTIVE` before playback starts.
-Music, sustained playback, mixing, preemption, fades, and measured audio energy
-remain open. Package SFX streaming has fixed buffers and underrun telemetry, but
-still requires target evidence with a cue longer than the two DMA halves.
+Music, sustained playback, fades, and measured audio energy remain open.
+Package SFX streaming has fixed buffers and underrun telemetry and is
+target-proven with a cue longer than the two DMA halves. Five-voice overlap and
+priority/preemption still require target evidence. Initial five-voice target
+stress reached all five voices but exposed a refill underrun and stale-request
+jam at the scaffolded base clock. HW6 now grants bounded STATE SFX the
+`CLK_REACTIVE_BURST` development point and performs one bounded recovery to
+verified audio-idle state after a playback fault. A subsequent `48 MHz` run
+completed eight requests with five simultaneous voices and no underrun, but
+exposed audible summed-output overload. The mixer now applies deterministic
+per-voice de-click ramps, a weighted aggregate-volume budget, and a fixed-point
+look-ahead peak limiter; target fidelity revalidation remains required.
 
 ## Target Applicability
 
@@ -64,33 +73,44 @@ Speaker path:
 - music/SFX mixing to mono PCM where the active target profile grants sustained audio
 - volume, mute, fade, ducking, priority, and preemption
 
-### Initial HW6 STATE SFX Milestone
+### HW6 STATE SFX Milestone
 
-The first package-facing audio milestone is deliberately smaller than the full
-mixer contract:
+The package-facing STATE milestone remains deliberately smaller than the full
+music mixer contract:
 
-- one package-backed streamed sampled-SFX voice;
+- exactly five fixed package-backed streamed sampled-SFX voices;
+- the same cue may occupy multiple free voices;
+- when all voices are occupied, a request preempts the oldest voice among the
+  lowest-priority voices only when its priority is strictly higher; equal or
+  lower priority is rejected;
 - source WAV converted by host tooling to mono 16 kHz 4-bit IMA ADPCM;
 - complete compressed payload validated before playback, with ADPCM retained in
   the installed package blob and decoded into fixed PCM DMA halves as needed;
 - one symbolic `AUDIO_PLAY_SFX(id, priority, volume)` request from a STATE
   action through the Engine-to-`thAudio` queue;
+- 32-bit accumulation followed by per-voice de-click envelopes, an aggregate
+  authored-volume budget, and a target-bounded look-ahead peak limiter before
+  16-bit PCM conversion;
 - no music, runtime FAT access, arbitrary procedural audio, or HW6 BBB support;
 - deterministic completion, amplifier shutdown, clock-intent release, and
   return to reactive STOP2 admission after the burst drains.
 
 Peep Studio owns source import, deterministic conversion, package metadata,
 audition, and compatibility diagnostics. It never controls SAI, DMA,
-`SD_MODE`, clocks, or playback buffers.
+`SD_MODE`, clocks, or playback buffers. Host normalization establishes
+consistent individual cue level, but it does not replace runtime mix-bus
+protection: multiple individually valid cues may still sum above the target's
+safe output ceiling.
 
-Host/package status as of service API 21: implemented and covered by
+Host/package status as of service API 22: implemented and covered by
 deterministic compiler/parser/preview tests. The optional PKG1 audio asset,
 ADPCM bank, and cue chunks plus symbolic `play_sfx` action are available to
-Peep Studio. HW6 loader routing and one-voice `thAudio` playback are target-
-proven for a streamed multi-second cue, including audible output across natural
-STOP2 cycles, deterministic drain, and clock release. This grants only the
-one-voice `audio.sampled_sfx` subset described here, not music or the future
-mixer.
+Peep Studio. HW6 loader routing and streamed one-voice playback are target-
+proven for a multi-second cue, including audible output across natural STOP2
+cycles, deterministic drain, and clock release. The fixed five-voice mixer,
+overlap, and priority/preemption policy are implemented and build-tested but
+still require target proof. This grants only bounded STATE
+`audio.sampled_sfx`, not music or sustained realtime audio.
 
 The audio lifetime boundary is the active package, not an individual STATE
 scene. A package-global `play_sfx` action may be committed with a successful
@@ -105,8 +125,20 @@ Current FW0 bring-up bounds are:
 - source WAV: uncompressed mono or stereo PCM, 8/16/24/32-bit, 8..96 kHz;
 - compiled output: mono 16 kHz 4-bit IMA ADPCM in independent 256-sample blocks;
 - maximum 32 sampled-SFX assets, 64 cues, and 4 MiB compiled ADPCM bank;
-- exactly one admitted STATE SFX voice, with two fixed PCM DMA halves refilled
-  by `thAudio` from a resident package prefix or fixed 4 KiB package windows;
+- exactly five admitted STATE SFX voices, each with two fixed 4 KiB package
+  windows; `thAudio` serializes one in-flight `thStorage` window transaction,
+  mixes into two fixed PCM DMA halves, and performs no runtime allocation;
+- each voice receives a `2 ms` attack and `4 ms` release de-click envelope;
+  each mixed DMA half first limits the sum of contributing authored cue
+  volumes to a `255`-unit bus budget, then peak-scans and limits the result to
+  the HW6 development ceiling of `500` per mille (`-6 dBFS`) with `2 ms`
+  attack and `80 ms` release. These values remain target-tunable compile-time
+  knobs;
+- bounded STATE SFX holds `REACTIVE_TRANSACTION_ACTIVE | SAI_AUDIO_ACTIVE |
+  OCTOSPI_ACTIVE` for its burst/drain window. On HW6 the development policy
+  resolves this to the `48 MHz` MSI reactive-burst point while keeping the SAI
+  kernel fixed at its sample-rate clock, then returns SYSCLK to the `24 MHz`
+  reactive base after drain;
 - packages at or below `65536` bytes retain their complete existing cache
   path. Larger packages retain the leading `65536` bytes and may expose only
   a final ADPCM bank through package-backed audio windows;
@@ -126,9 +158,8 @@ budgets. The compiler places `AUD1` and `ACU1` before the final `ADB1` bank so
 the loader can validate all resident metadata before exposing package-backed
 audio. The installer verifies the full package; the partial runtime loader
 validates the resident table and metadata, and the decoder validates each ADPCM
-block as it is read. Neither runtime path accesses FAT. Music, multi-voice
-mixing, fades, ducking, priority, mute, and sustained-playback energy
-characterization remain later milestones.
+block as it is read. Neither runtime path accesses FAT. Music, fades, ducking,
+mute, and sustained-playback energy characterization remain later milestones.
 
 BBB path:
 
@@ -223,8 +254,14 @@ Rejected BBB requests:
 | Knob | Purpose |
 |---|---|
 | `KNOB_AUDIO_SAMPLE_RATE_HZ` | target PCM output rate, initially 16000 |
-| `KNOB_AUDIO_MIXER_SFX_VOICES` | target-profile SFX voice count; HW5 used 5 and HW6 remains pending validation |
+| `KNOB_AUDIO_MIXER_SFX_VOICES` | target-profile SFX voice count; HW6 development profile grants 5 pending target validation |
 | `KNOB_AUDIO_PCM_DMA_FRAMES` | PCM DMA buffer frame count |
+| `KNOB_AUDIO_SFX_MIX_CEILING_PER_MILLE` | target-safe peak ceiling for the final SFX mix bus |
+| `KNOB_AUDIO_SFX_MIX_VOLUME_BUDGET` | maximum aggregate authored cue volume before proportional bus attenuation |
+| `KNOB_AUDIO_SFX_LIMITER_ATTACK_MS` | maximum limiter gain-reduction time |
+| `KNOB_AUDIO_SFX_LIMITER_RELEASE_MS` | limiter unity-gain recovery time |
+| `KNOB_AUDIO_SFX_DECLICK_ATTACK_MS` | per-voice onset ramp duration |
+| `KNOB_AUDIO_SFX_DECLICK_RELEASE_MS` | per-voice completion/preemption-tail ramp duration |
 | `KNOB_AUDIO_MUSIC_RING_BYTES` | bounded music ring-buffer size |
 | `KNOB_AUDIO_ADPCM_BLOCK_BYTES` | ADPCM decode block size |
 | `KNOB_AUDIO_FADE_STEP_MS` | fade update cadence |
@@ -266,8 +303,12 @@ Speaker rules:
 - realtime/sustained-audio operation grants exactly 1 music voice
 - realtime/sustained-audio operation grants exactly 5 SFX voices unless the target profile reduces the count with evidence
 - reactive operation grants bounded SFX bursts only and must not start music
+- HW6 reactive STATE operation grants exactly 5 fixed SFX voices while the
+  development profile remains selected
 - music and SFX mix into one mono PCM stream only where the active profile grants sustained audio
 - SFX priority may preempt lower-priority SFX voices
+- mixed SFX must pass through the target output ceiling; a final hard clamp is
+  fault containment, not normal level control
 - music ducking is allowed for important SFX only where music is admitted
 - fades must be bounded and deterministic
 - DMA ISR only signals; decode/mix/refill occurs in `thAudio`
@@ -313,6 +354,11 @@ On failure:
 - publish visible/audible fault only if another output path remains valid
 - preserve diagnostics for bring-up
 - recover through bounded attempts only
+- every queued SFX request is completed exactly once, including a request
+  rejected before owner admission
+- after an underrun or DMA fault, stop and retire all voices, verify DMA/SAI and
+  the amplifier are physically idle, then perform at most one immediate FSM
+  recovery to `AUDIO_IDLE` / `SPK_OFF`; otherwise quarantine audio in error
 
 Examples of audio faults:
 
@@ -335,12 +381,14 @@ Examples of audio faults:
    underrun, then drains and releases the audio clock intent
 5. invalid format, decoded-size, and missing-asset cases are rejected
    before playback
-6. 1 music voice plus 5 overlapping SFX voices mix without underrun
-7. SFX priority/preemption works deterministically
-8. fade, mute, volume, and ducking behave correctly
-9. music ring-buffer path never reads from FileX/FAT during active playback
-10. BBB built-in pattern plays and stops cleanly on a target that grants BBB
-11. BBB procedural requests validate bounds on a target that grants BBB
+6. 5 overlapping STATE SFX voices mix without underrun and block STOP2 until drain
+7. equal/lower-priority overflow is rejected and strictly higher priority
+   preempts the oldest lowest-priority voice deterministically
+8. 1 music voice plus 5 overlapping SFX voices mix without underrun
+9. fade, mute, volume, and ducking behave correctly
+10. music ring-buffer path never reads from FileX/FAT during active playback
+11. BBB built-in pattern plays and stops cleanly on a target that grants BBB
+12. BBB procedural requests validate bounds on a target that grants BBB
 12. speaker and BBB play concurrently only on a target that grants both
 13. quiesce/resume leaves no active DMA/LPTIM output stale
 14. injected underrun routes to recovery or audio quarantine
@@ -352,7 +400,16 @@ heard it before and after STOP2. The final post-STOP capture showed successful
 voltage-scale restoration, PLL2P re-arm, SAI mux handoff, `4.096 MHz` SAI grant,
 DMA completion with IRQ/callback activity and no remaining transfer bytes,
 clean speaker shutdown, released SAI clock/reset ownership, and a physically
-ready STOP2 ledger with no failure mask. Case 4 remains pending target evidence.
+ready STOP2 ledger with no failure mask. Case 4 is target-proven with a
+multi-second package cue. Case 6 has reached five simultaneous voices on target,
+but the first stress run produced an underrun at the effective `24 MHz` scaffold
+point. A later `48 MHz` run completed all eight requests, reached five voices,
+and reported no underrun, DMA error, source failure, request leak, or final FSM
+fault; it also exposed audible overload because the initial mixer directly
+summed authored cue levels. A peak-only limiter prevented numeric clipping but
+left excessive aggregate bus energy during overlap. Weighted authored-volume
+budgeting, fixed-point peak limiting, and de-click ramps are now implemented,
+with target fidelity evidence pending.
 
 Related:
 

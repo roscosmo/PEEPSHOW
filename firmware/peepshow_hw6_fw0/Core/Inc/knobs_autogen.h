@@ -7,6 +7,12 @@
 
 #define KNOB_AUDIO_DMA_COMPLETION_MARGIN_MS                (20)
 #define KNOB_AUDIO_PCM_DMA_FRAMES                          (1024)
+#define KNOB_AUDIO_SFX_DECLICK_ATTACK_MS                   (2)
+#define KNOB_AUDIO_SFX_DECLICK_RELEASE_MS                  (4)
+#define KNOB_AUDIO_SFX_LIMITER_ATTACK_MS                   (2)
+#define KNOB_AUDIO_SFX_LIMITER_RELEASE_MS                  (80)
+#define KNOB_AUDIO_SFX_MIX_CEILING_PER_MILLE               (500)
+#define KNOB_AUDIO_SFX_MIX_VOLUME_BUDGET                   (255)
 #define KNOB_COMM_BLE_BOOT_DRAIN_MS                        (200)
 #define KNOB_COMM_BLE_BOOT_WAIT_MS                         (750)
 #define KNOB_COMM_BLE_RESET_ASSERT_MS                      (20)

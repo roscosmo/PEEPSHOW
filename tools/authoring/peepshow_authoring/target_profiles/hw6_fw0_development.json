@@ -2,7 +2,7 @@
   "schema_id": "peepshow.target_profile",
   "schema_version": 1,
   "profile_id": "hw6_fw0_development",
-  "profile_version": 1,
+  "profile_version": 2,
   "profile_status": "pending_validation",
   "package": {
     "maximum_bytes": 5242880,
@@ -19,7 +19,7 @@
       "maximum_assets": 32,
       "maximum_cues": 64,
       "maximum_bank_bytes": 4194304,
-      "voice_limit": 1,
+      "voice_limit": 5,
       "package_window_bytes": 4096,
       "package_window_count": 2,
       "route_action": "play_sfx",

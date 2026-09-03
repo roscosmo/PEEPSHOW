@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (76UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (77UL)
 
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_NONE       (0UL)
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_PREPARE    (1UL)
@@ -1213,7 +1213,11 @@ void PS_HW6_OwnerStateMachines_SetPostStopResumeCallback(
 uint32_t PS_HW6_OwnerStateMachines_Stop2IdlePeripheralsReady(void);
 void PS_HW6_OwnerStateMachines_BeginWorkflow(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Stabilize(uint32_t owner_id);
-HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunAudioSfx(uint32_t cue_index);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunAudioSfx(
+  uint32_t cue_index,
+  uint32_t *request_owned);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ServiceAudioSfx(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StopAudioSfx(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_AttachStorage(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_InitializeFlash(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void);

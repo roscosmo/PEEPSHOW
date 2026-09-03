@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (42UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (45UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -396,6 +396,32 @@ typedef struct
   uint32_t audio_sfx_source_prefetch_miss_count;
   uint32_t audio_sfx_source_prefetch_pending;
   uint32_t audio_sfx_source_prefetch_cleanup_status;
+  uint32_t audio_sfx_voice_limit;
+  uint32_t audio_sfx_voice_active_count;
+  uint32_t audio_sfx_voice_peak_count;
+  uint32_t audio_sfx_voice_admit_count;
+  uint32_t audio_sfx_voice_reject_count;
+  uint32_t audio_sfx_voice_preempt_count;
+  uint32_t audio_sfx_voice_complete_count;
+  uint32_t audio_sfx_voice_last_victim;
+  uint32_t audio_sfx_voice_last_priority;
+  uint32_t audio_sfx_mix_clip_count;
+  uint32_t audio_sfx_mix_residual_clip_count;
+  uint32_t audio_sfx_mix_pre_limit_peak;
+  uint32_t audio_sfx_mix_post_limit_peak;
+  uint32_t audio_sfx_mix_volume_budget;
+  uint32_t audio_sfx_mix_active_volume_sum;
+  uint32_t audio_sfx_mix_peak_volume_sum;
+  uint32_t audio_sfx_mix_volume_min_target_gain_q15;
+  uint32_t audio_sfx_mix_volume_budget_engagement_count;
+  uint32_t audio_sfx_limiter_ceiling;
+  uint32_t audio_sfx_limiter_target_gain_q15;
+  uint32_t audio_sfx_limiter_current_gain_q15;
+  uint32_t audio_sfx_limiter_min_gain_q15;
+  uint32_t audio_sfx_limiter_engagement_count;
+  uint32_t audio_sfx_limiter_attenuated_frame_count;
+  uint32_t audio_sfx_limiter_attack_cap_count;
+  uint32_t audio_sfx_declick_attenuated_frame_count;
 } PS_HW6_OwnerProbe;
 
 extern volatile PS_HW6_OwnerProbe g_ps_hw6_owner_probe;
@@ -434,6 +460,9 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2AndResume(void);
 void PS_HW6_DisplayOwner_DebugForceNextLpbamReady(void);
 HAL_StatusTypeDef PS_HW6_AudioOwner_RunTone(void);
 HAL_StatusTypeDef PS_HW6_AudioOwner_RunSfx(uint32_t cue_index);
+HAL_StatusTypeDef PS_HW6_AudioOwner_ServiceSfx(void);
+HAL_StatusTypeDef PS_HW6_AudioOwner_StopSfx(void);
+uint32_t PS_HW6_AudioOwner_SfxActive(void);
 HAL_StatusTypeDef PS_HW6_AudioOwner_VerifyIdle(void);
 HAL_StatusTypeDef PS_HW6_AudioOwner_MarkPostStopResume(void);
 void PS_HW6_OwnerServices_MarkComplete(void);

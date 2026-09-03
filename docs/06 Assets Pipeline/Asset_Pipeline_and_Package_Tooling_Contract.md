@@ -290,12 +290,15 @@ Audio profile output must target [[Audio_API_Contract]], not Platform audio driv
 Current status: the host authoring/package half is executable. Service API 22
 imports WAV, emits the optional audio chunks, validates symbolic `play_sfx`
 STATE actions, previews cue emission, and auditions decoded package bytes.
-HW6 now loads those chunks and routes one package-backed streamed STATE voice
-through `thAudio`;
-audible playback, completion, clock release, and return to STOP2 are target-
-proven. Peep Studio may report this HW6 playback capability, but must not imply
-support for music, runtime FAT streaming, mixing, or accepted production
-fidelity.
+HW6 now loads those chunks and routes five fixed package-backed streamed STATE
+voices through one `thAudio` mixer and SAI DMA ring. One-voice audible playback,
+completion, clock release, and return to STOP2 are target-proven; five-voice
+overlap and priority/preemption remain pending target proof. Peep Studio may
+report the selected development-profile capability, but must not imply support
+for music, runtime FAT streaming, or accepted production
+fidelity. Source normalization is a host concern and must make individual cue
+levels consistent. It cannot substitute for the target runtime limiter because
+several valid normalized cues can still sum beyond the speaker-path ceiling.
 
 ### Initial STATE SFX Asset Slice
 

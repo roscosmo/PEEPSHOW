@@ -389,7 +389,7 @@ class AuthoringServiceTests(unittest.TestCase):
         )
         self.assertEqual("play_sfx", audio["route_action"])
         self.assertTrue(audio["survives_same_package_scene_replacement"])
-        self.assertEqual(1, audio["voice_limit"])
+        self.assertEqual(5, audio["voice_limit"])
         self.assertEqual(64, graph["limits"]["states"])
         self.assertEqual(1, graph["limits"]["render_models"])
         self.assertIn("state.add", graph["state_commands"])

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (79UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (81UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -470,7 +470,16 @@ typedef struct
   uint32_t audio_sfx_grant_pll2_ready;
   uint32_t audio_sfx_grant_pll2_outputs;
   uint32_t audio_sfx_grant_sai_kernel_hz;
+  uint32_t audio_sfx_grant_selected_profile;
+  uint32_t audio_sfx_grant_current_profile;
+  uint32_t audio_sfx_grant_sysclk_hz;
+  uint32_t audio_sfx_grant_hclk_hz;
+  uint32_t audio_sfx_grant_voltage_scale;
+  uint32_t audio_sfx_grant_flash_latency;
   uint32_t audio_sfx_last_cue_index;
+  uint32_t audio_sfx_outstanding_count;
+  uint32_t audio_sfx_unowned_complete_count;
+  uint32_t audio_sfx_clock_held;
   PS_HW6_RTOS_AudioSfxCapture audio_sfx_first_success_capture;
   PS_HW6_RTOS_AudioSfxCapture audio_sfx_first_post_stop_failure_capture;
 
@@ -751,6 +760,7 @@ UINT PS_HW6_RTOS_BeginAudioPackageWindowRead(uint32_t package_offset,
                                              uint32_t length);
 UINT PS_HW6_RTOS_TryFinishAudioPackageWindowRead(void);
 UINT PS_HW6_RTOS_WaitFinishAudioPackageWindowRead(void);
+void PS_HW6_RTOS_AudioSfxRequestComplete(void);
 void PS_HW6_RTOS_LowPowerTimerSetup(ULONG count);
 void PS_HW6_RTOS_LowPowerEnter(void);
 void PS_HW6_RTOS_LowPowerExit(void);
