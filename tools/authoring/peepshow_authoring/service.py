@@ -46,7 +46,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 26
+SERVICE_API_VERSION = 27
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -297,6 +297,7 @@ class AuthoringService:
             "state_scene_graph": {
                 "command_batch_maximum": 64,
                 "target_scene_actions": ["play_sfx"],
+                "scene_commands": ["scene.add"],
                 "limits": {
                     "states": 64,
                     "render_models": 1,

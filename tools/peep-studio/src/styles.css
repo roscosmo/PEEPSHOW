@@ -421,6 +421,38 @@ button:focus-visible {
   padding: 0 7px 9px;
 }
 
+.scene-create-button {
+  width: calc(100% - 14px);
+  margin: 0 7px 7px;
+}
+
+.scene-create-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px 34px;
+  gap: 5px;
+  padding: 0 7px 7px;
+}
+
+.scene-create-form input {
+  min-width: 0;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid #aeb9b3;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #252c28;
+  font: inherit;
+}
+
+.scene-create-form input:focus {
+  border-color: #397596;
+  outline: 2px solid rgb(57 117 150 / 18%);
+}
+
+.scene-create-form .icon-button {
+  width: 34px;
+}
+
 .scene-row {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr) 16px;

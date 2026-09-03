@@ -314,7 +314,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(26, SERVICE_API_VERSION)
+        self.assertEqual(27, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -386,6 +386,7 @@ class AuthoringServiceTests(unittest.TestCase):
             result["state_scene_presentation"]["system_actions"],
         )
         graph = result["state_scene_graph"]
+        self.assertEqual(["scene.add"], graph["scene_commands"])
         self.assertEqual(64, graph["command_batch_maximum"])
         self.assertEqual(["play_sfx"], graph["target_scene_actions"])
         audio = result["state_scene_audio"]
@@ -497,6 +498,108 @@ class AuthoringServiceTests(unittest.TestCase):
                 )
             self.assertEqual("PROJECT_CREATE_TARGET_EXISTS", raised.exception.code)
             self.assertEqual("keep", marker.read_text(encoding="utf-8"))
+
+    def test_scene_add_creates_blank_relative_source_that_saves_and_reopens(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "Scene Authoring.peepproj"
+            service = AuthoringService()
+            created = service.handle(
+                request("project.create", {"path": str(project_root)})
+            )
+            added = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": created["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "scene.add",
+                                "display_name": "Credits",
+                            }
+                        ],
+                    },
+                )
+            )
+
+            self.assertTrue(added["valid"])
+            self.assertTrue(added["dirty"])
+            self.assertEqual(2, added["summary"]["scene_count"])
+            applied = added["applied_commands"][0]
+            self.assertEqual("credits", applied["scene_id"])
+            self.assertEqual("scenes/credits.state.json", applied["source"])
+            credits = next(
+                scene
+                for scene in added["document"]["scenes"]
+                if scene["scene_id"] == "credits"
+            )
+            self.assertEqual("start", credits["entry_state"])
+            self.assertEqual([], credits["input_actions"])
+            self.assertEqual([], credits["routes"])
+            self.assertEqual([], credits["reactive_wait_default"]["event_interests"])
+
+            built = service.handle(
+                request(
+                    "project.build_package",
+                    {"project_revision": added["project_revision"]},
+                )
+            )
+            self.assertEqual(2, built["package"]["scene_count"])
+            saved = service.handle(
+                request(
+                    "project.save",
+                    {"project_revision": added["project_revision"]},
+                )
+            )
+            self.assertFalse(saved["dirty"])
+            self.assertTrue((project_root / "scenes" / "credits.state.json").is_file())
+            manifest = json.loads(
+                (project_root / "project.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                ["scenes/main.state.json", "scenes/credits.state.json"],
+                manifest["scene_sources"],
+            )
+
+            reopened = AuthoringService().handle(
+                request("project.load", {"path": str(project_root)})
+            )
+            self.assertTrue(reopened["valid"])
+            self.assertEqual(saved["document"], reopened["document"])
+
+    def test_scene_add_derives_collision_safe_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = AuthoringService()
+            created = service.handle(
+                request(
+                    "project.create",
+                    {"path": str(Path(temp_dir) / "Scene IDs.peepproj")},
+                )
+            )
+            first = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": created["project_revision"],
+                        "commands": [{"kind": "scene.add", "display_name": "Credits"}],
+                    },
+                )
+            )
+            second = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": first["project_revision"],
+                        "commands": [{"kind": "scene.add", "display_name": "Credits"}],
+                    },
+                )
+            )
+
+            self.assertEqual("credits", first["applied_commands"][0]["scene_id"])
+            self.assertEqual("credits_2", second["applied_commands"][0]["scene_id"])
+            self.assertEqual(
+                "scenes/credits_2.state.json",
+                second["applied_commands"][0]["source"],
+            )
 
     def test_state_sfx_package_preview_and_audition_use_compiled_audio(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

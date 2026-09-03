@@ -245,6 +245,69 @@ def _command_move_index(value: Any, field: str, length: int) -> int:
     return index
 
 
+def _apply_scene_add(
+    root: Path,
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    scene_sources: list[str],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "display_name"},
+        {"kind", "display_name", "command_id"},
+    )
+    display_name = command.get("display_name")
+    issues: list[ValidationIssue] = []
+    _text(display_name, "command.display_name", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    if len(scenes) >= 32:
+        raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "project supports at most 32 scenes")
+
+    manifest_sources = project.get("scene_sources")
+    if not isinstance(manifest_sources, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.scene_sources must be an array")
+    if len(scene_sources) != len(scenes) or manifest_sources != scene_sources:
+        raise ProjectCommandError("PROJECT_SOURCE_MISMATCH", "loaded scene sources do not match the project manifest")
+
+    existing_ids = {
+        str(scene.get("scene_id"))
+        for scene in scenes
+        if isinstance(scene.get("scene_id"), str)
+    }
+    base_id = _new_project_slug(str(display_name))
+    scene_id = base_id
+    suffix = 2
+    while True:
+        source = f"scenes/{scene_id}.state.json"
+        if (
+            scene_id not in existing_ids
+            and source not in scene_sources
+            and not (root / source).exists()
+        ):
+            break
+        scene_id = f"{base_id}_{suffix}"
+        suffix += 1
+
+    interaction_template = scenes[0].get("interaction_policy") if scenes else None
+    scene = _new_state_scene(
+        scene_id,
+        str(display_name),
+        interaction_template=interaction_template,
+    )
+    scenes.append(scene)
+    scene_sources.append(source)
+    manifest_sources.append(source)
+    return {
+        "kind": "scene.add",
+        "scene_id": scene_id,
+        "display_name": display_name,
+        "source": source,
+    }
+
+
 def _apply_state_add(
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
@@ -3914,8 +3977,8 @@ def _check_scene(
         if not isinstance(wait_policy.get("hold_fallback_allowed"), bool):
             _issue(issues, "WAIT_FALLBACK_INVALID", f"{path}.hold_fallback_allowed", "must be true or false")
         interests = wait_policy.get("event_interests")
-        if not isinstance(interests, list) or not interests:
-            _issue(issues, "WAIT_EVENT_INTEREST_MISSING", f"{path}.event_interests", "must contain at least one input action")
+        if not isinstance(interests, list):
+            _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.event_interests", "must be an array")
         else:
             for index, action_ref in enumerate(interests):
                 if action_ref not in input_actions:
@@ -4163,6 +4226,100 @@ def _new_project_slug(project_name: str) -> str:
     return slug[:48].rstrip("_")
 
 
+def _new_state_scene(
+    scene_id: str,
+    display_name: str,
+    *,
+    interaction_template: dict[str, Any] | None = None,
+    include_package_exit: bool = False,
+) -> dict[str, Any]:
+    input_actions: list[dict[str, Any]] = []
+    routes: list[dict[str, Any]] = []
+    event_interests: list[str] = []
+    if include_package_exit:
+        input_actions.append(
+            {
+                "action_id": "exit_project",
+                "logical_source": "BUTTON_B",
+            }
+        )
+        routes.append(
+            {
+                "route_id": "exit_project",
+                "action_ref": "exit_project",
+                "from_states": ["start"],
+                "guards": [],
+                "actions": [{"kind": "exit_to_shell"}],
+                "target_state": "start",
+            }
+        )
+        event_interests.append("exit_project")
+
+    interaction_mode = (
+        interaction_template.get("mode")
+        if isinstance(interaction_template, dict)
+        else "continuous"
+    )
+    interaction_policy: dict[str, Any] = {
+        "policy_id": f"{scene_id}_interaction",
+        "mode": interaction_mode,
+        "meaningful_activity_actions": list(event_interests),
+    }
+    if interaction_mode == "timeout":
+        inactive_route = interaction_template.get("inactive_route")
+        interaction_policy["inactive_route"] = (
+            inactive_route
+            if inactive_route in {"preserve_scene", "exit_to_shell"}
+            else "preserve_scene"
+        )
+        if "bounded_deferrals" in interaction_template:
+            interaction_policy["bounded_deferrals"] = []
+
+    return {
+        "schema_id": "peepshow.authoring.state_scene",
+        "schema_version": 1,
+        "scene_id": scene_id,
+        "display_name": display_name,
+        "scene_type": "STATE_SCENE",
+        "entry_state": "start",
+        "variables": [],
+        "input_actions": input_actions,
+        "states": [
+            {
+                "state_id": "start",
+                "display_name": "Start",
+                "waiting_visual_ref": "static_wait",
+            }
+        ],
+        "routes": routes,
+        "render_models": [
+            {
+                "visual_id": "scene_placement",
+                "focus_index": 0,
+                "elements": [],
+            }
+        ],
+        "waiting_visuals": [
+            {
+                "waiting_visual_id": "static_wait",
+                "presentation_id": f"{scene_id}_static",
+                "phase_quantum_ms": 250,
+                "combined_step_count": 1,
+                "settled_step": 0,
+                "cycle_policy": "loop",
+                "elements": [],
+            }
+        ],
+        "reactive_wait_default": {
+            "policy_id": f"{scene_id}_wait_policy",
+            "waiting_visual_ref": "static_wait",
+            "hold_fallback_allowed": True,
+            "event_interests": event_interests,
+        },
+        "interaction_policy": interaction_policy,
+    }
+
+
 def create_project(project_root: str | Path) -> ProjectBundle:
     root = Path(project_root)
     if not root.is_absolute():
@@ -4209,67 +4366,11 @@ def create_project(project_root: str | Path) -> ProjectBundle:
             "ruleset_version": 1,
         },
     }
-    scene = {
-        "schema_id": "peepshow.authoring.state_scene",
-        "schema_version": 1,
-        "scene_id": "main",
-        "display_name": "Main",
-        "scene_type": "STATE_SCENE",
-        "entry_state": "start",
-        "variables": [],
-        "input_actions": [
-            {
-                "action_id": "exit_project",
-                "logical_source": "BUTTON_B",
-            }
-        ],
-        "states": [
-            {
-                "state_id": "start",
-                "display_name": "Start",
-                "waiting_visual_ref": "static_wait",
-            }
-        ],
-        "routes": [
-            {
-                "route_id": "exit_project",
-                "action_ref": "exit_project",
-                "from_states": ["start"],
-                "guards": [],
-                "actions": [{"kind": "exit_to_shell"}],
-                "target_state": "start",
-            }
-        ],
-        "render_models": [
-            {
-                "visual_id": "scene_placement",
-                "focus_index": 0,
-                "elements": [],
-            }
-        ],
-        "waiting_visuals": [
-            {
-                "waiting_visual_id": "static_wait",
-                "presentation_id": "main_static",
-                "phase_quantum_ms": 250,
-                "combined_step_count": 1,
-                "settled_step": 0,
-                "cycle_policy": "loop",
-                "elements": [],
-            }
-        ],
-        "reactive_wait_default": {
-            "policy_id": "main_wait_policy",
-            "waiting_visual_ref": "static_wait",
-            "hold_fallback_allowed": True,
-            "event_interests": ["exit_project"],
-        },
-        "interaction_policy": {
-            "policy_id": "main_interaction",
-            "mode": "continuous",
-            "meaningful_activity_actions": ["exit_project"],
-        },
-    }
+    scene = _new_state_scene(
+        "main",
+        "Main",
+        include_package_exit=True,
+    )
 
     staging_root = root.with_name(f".{root.stem}.creating.peepproj")
     if staging_root.exists():
@@ -4516,6 +4617,7 @@ def apply_project_commands(
 
     project = deepcopy(bundle.project)
     scenes = deepcopy(list(bundle.scenes))
+    scene_sources = list(bundle.scene_sources)
     asset_catalogs = deepcopy(list(bundle.asset_catalogs))
     asset_catalog_sources = list(bundle.asset_catalog_sources)
     assets = deepcopy(list(bundle.assets))
@@ -4529,7 +4631,11 @@ def apply_project_commands(
         if not isinstance(command, dict):
             raise ProjectCommandError("COMMAND_SHAPE_INVALID", "each command must be an object")
         kind = command.get("kind")
-        if kind == "state.add":
+        if kind == "scene.add":
+            applied.append(
+                _apply_scene_add(bundle.root, project, scenes, scene_sources, command)
+            )
+        elif kind == "state.add":
             applied.append(_apply_state_add(scenes, command))
         elif kind == "state.delete":
             applied.append(_apply_state_delete(project, scenes, command))
@@ -4696,7 +4802,7 @@ def apply_project_commands(
             bundle.root,
             project,
             tuple(scenes),
-            bundle.scene_sources,
+            tuple(scene_sources),
             tuple(asset_catalogs),
             tuple(asset_catalog_sources),
             tuple(assets),
@@ -4745,8 +4851,6 @@ def save_project(bundle: ProjectBundle) -> tuple[str, ...]:
         if path is None or issues:
             issue = issues[0] if issues else ValidationIssue("SCENE_SOURCE_INVALID", source, "scene source is invalid")
             raise ProjectCommandError(issue.code, issue.message)
-        if not path.exists():
-            raise ProjectCommandError("PROJECT_SAVE_FAILED", f"scene source '{source}' no longer exists")
         encoded = (
             json.dumps(
                 scene,

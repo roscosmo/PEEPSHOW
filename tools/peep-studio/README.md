@@ -10,6 +10,8 @@ preview execution, or compilation rules in TypeScript.
 - creates a valid writable `.peepproj` with one starter STATE scene, or opens a
   `.peepproj` directory or a writable temporary copy of the checked-in
   STATE example;
+- adds blank STATE scenes from the Scene hierarchy, with Python-owned IDs and
+  relative source files created on Save;
 - lists authored scenes and starts a selected-scene preview directly;
 - renders the exact 168x144 1bpp framebuffer returned by Python;
 - injects logical A/B/L/R and joystick-cardinal input and advances deterministic preview time;

@@ -532,6 +532,10 @@ interaction_policy:
   bounded_deferrals[]
 ```
 
+`event_interests[]` may be empty while a STATE scene is being authored. An
+empty list compiles as zero event-interest records and must not force tools to
+invent an input binding or transition.
+
 Rules:
 
 - every package declares exactly one interaction mode: `continuous` or `timeout`.

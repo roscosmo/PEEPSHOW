@@ -1,0 +1,46 @@
+{
+  "schema_id": "peepshow.authoring.project",
+  "schema_version": 1,
+  "project_id": "project.new_project_test",
+  "project_name": "New Project test",
+  "package": {
+    "package_id": "dev.peepshow.new_project_test",
+    "display_name": "New Project test",
+    "version": "0.1.0"
+  },
+  "selected_target_profile": "hw6_fw0_development",
+  "entry_scene": "main",
+  "scene_sources": [
+    "scenes/main.state.json"
+  ],
+  "validation": {
+    "build_profile": "development",
+    "ruleset_version": 1
+  },
+  "editor": {
+    "state_graph": {
+      "scenes": {
+        "main": {
+          "routes": {
+            "exit_project": {
+              "sources": {
+                "start": {
+                  "routing_version": 3,
+                  "rails": [],
+                  "target_handle": "entry-bottom-right",
+                  "target_side": "bottom"
+                }
+              }
+            }
+          },
+          "nodes": {
+            "start": {
+              "x": 51,
+              "y": 21
+            }
+          }
+        }
+      }
+    }
+  }
+}

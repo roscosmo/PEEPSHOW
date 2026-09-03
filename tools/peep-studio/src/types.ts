@@ -414,6 +414,7 @@ export type ServiceHello = {
   };
   state_scene_graph: {
     command_batch_maximum: number;
+    scene_commands: string[];
     limits: {
       states: number;
       render_models: number;

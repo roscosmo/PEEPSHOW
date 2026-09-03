@@ -138,13 +138,18 @@ must not already exist. `project.load` starts a new monotonically increasing pro
 project operation must supply that revision; stale requests are rejected rather
 than being applied to a newer document.
 
+`scene.add` creates a blank STATE scene through `project.apply_commands`.
+Python derives a collision-safe scene ID and relative source path from its
+display name. The scene starts with one entry state and no fabricated inputs or
+routes; `project.save` creates its new scene source file.
+
 The build operation returns the exact existing compiler output as base64 package
 bytes, package metadata, and the matching deterministic compatibility report.
 It does not choose a destination or write an installable file. The V1 report
 marks the current HW6 development profile as `pending_validation` and
 `dev_only`; it does not claim shipping authority before target-profile closure.
 
-Service API version 26 exposes the selected HW6 profile and its deterministic
+Service API version 27 exposes the selected HW6 profile and its deterministic
 hash in `service.hello`, and provides deterministic selected-STATE-scene preview,
 direct STATE-to-STATE replacement, and a `state_scene_presentation` capability
 block in `service.hello`. A

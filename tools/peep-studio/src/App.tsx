@@ -24,6 +24,7 @@ import {
   PackageCheck,
   Pause,
   Play,
+  Plus,
   RectangleHorizontal,
   RotateCcw,
   Redo2,
@@ -139,6 +140,8 @@ export default function App() {
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("scene-flow");
   const [placementInspectorTab, setPlacementInspectorTab] = useState<PlacementInspectorTab>("object");
   const [sceneThumbnails, setSceneThumbnails] = useState<Record<string, Framebuffer>>({});
+  const [sceneCreatorOpen, setSceneCreatorOpen] = useState(false);
+  const [newSceneName, setNewSceneName] = useState("");
   const [selectedAssetFrameId, setSelectedAssetFrameId] = useState<string | null>(null);
   const [selectedAudioCueId, setSelectedAudioCueId] = useState<string | null>(null);
   const [audioAuditionStatus, setAudioAuditionStatus] = useState("No cue auditioned.");
@@ -240,6 +243,8 @@ export default function App() {
       setSelectedScene(null);
       setPlacementStateId(null);
       setSceneThumbnails({});
+      setSceneCreatorOpen(false);
+      setNewSceneName("");
       setSceneSelection({ kind: "scene" });
       setSelectedPlacementElement(null);
       try {
@@ -292,6 +297,8 @@ export default function App() {
       setSelectedScene(null);
       setPlacementStateId(null);
       setSceneThumbnails({});
+      setSceneCreatorOpen(false);
+      setNewSceneName("");
       setSceneSelection({ kind: "scene" });
       setSelectedPlacementElement(null);
       setProjectPath(path);
@@ -444,6 +451,37 @@ export default function App() {
     setSceneThumbnails({});
     setPlacementDraftPositions({});
     setBuild(null);
+  };
+
+  const addScene = async () => {
+    const displayName = newSceneName.trim();
+    if (bridge === undefined || project === null || busy !== null || displayName.length === 0) {
+      return;
+    }
+    setBusy("Adding scene");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{ kind: "scene.add", display_name: displayName }],
+      });
+      const applied = result.applied_commands[0];
+      const sceneId = typeof applied?.scene_id === "string" ? applied.scene_id : null;
+      if (sceneId === null) {
+        throw new Error("Authoring service did not return the new scene ID");
+      }
+      applyProjectResult(result);
+      setSceneCreatorOpen(false);
+      setNewSceneName("");
+      setWorkspaceMode("scene-flow");
+      if (await startPreview(sceneId, result.project_revision)) {
+        setMessage(`Added ${displayName}. Save to write it to the project.`);
+      }
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
   };
 
   const stepHistory = async (operation: "project.undo" | "project.redo") => {
@@ -3624,6 +3662,60 @@ export default function App() {
             <>
               <details className="project-section" open>
                 <summary>Scenes</summary>
+                {sceneCreatorOpen ? (
+                  <form
+                    className="scene-create-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void addScene();
+                    }}
+                  >
+                    <input
+                      autoFocus
+                      aria-label="New scene name"
+                      value={newSceneName}
+                      maxLength={96}
+                      placeholder="Scene name"
+                      onChange={(event) => setNewSceneName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          setSceneCreatorOpen(false);
+                          setNewSceneName("");
+                        }
+                      }}
+                    />
+                    <button
+                      type="submit"
+                      className="icon-button"
+                      disabled={newSceneName.trim().length === 0 || busy !== null}
+                      title="Create scene"
+                    >
+                      <Check size={16} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      disabled={busy !== null}
+                      title="Cancel"
+                      onClick={() => {
+                        setSceneCreatorOpen(false);
+                        setNewSceneName("");
+                      }}
+                    >
+                      <X size={16} aria-hidden="true" />
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    className="button secondary scene-create-button"
+                    disabled={busy !== null || service?.state_scene_graph.scene_commands?.includes("scene.add") !== true}
+                    onClick={() => setSceneCreatorOpen(true)}
+                  >
+                    <Plus size={15} aria-hidden="true" />
+                    Add scene
+                  </button>
+                )}
                 <nav className="scene-list" aria-label="Project scenes">
                   {scenes.map((scene) => (
                     <button

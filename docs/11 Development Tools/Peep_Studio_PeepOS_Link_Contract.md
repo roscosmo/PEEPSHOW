@@ -256,7 +256,7 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `26`.
+protocol is version `1`; the current service API is version `27`.
 
 | Operation | Purpose |
 |---|---|
@@ -664,9 +664,16 @@ for subsequent scene, state, route, placement, and asset work is to recreate the
 checked-in `state_slice.peepproj` example from this starter using only Peep
 Studio, then validate and build it through the same service path.
 
+Service API version 27 adds `scene.add` through `project.apply_commands`.
+Python derives a collision-safe stable ID and `scenes/<id>.state.json` source,
+updates the manifest and in-memory source mapping together, and creates the
+source file on Save. The new STATE scene contains one ordinary entry state and
+may validly contain zero logical inputs, event interests, or routes. Peep Studio
+collects only its display name and immediately opens the resulting scene.
+
 ### Stage 5: Package Scene Flow
 
-- create and remove package scenes;
+- create package STATE scenes (implemented in service API 27) and remove scenes;
 - provide a package-level flow view whose nodes are scenes, not states;
 - author declared scene-transition routes, entry behavior, return behavior,
   `transition_scene`, and `exit_to_shell` actions;
