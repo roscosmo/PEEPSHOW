@@ -72,7 +72,7 @@ printf "expected playback: after STOP mark>=1, recovery attempt=success, pending
 printf "expected package-backed playback: loader resident < package, audio package-backed=1, source windows>=1 with failures=0/status=0, and stream underrun=0\n"
 printf "expected prefetch: start=complete, miss=0, pending=0, cleanup=0; completed windows are fetched by thStorage before the decoder crosses each boundary\n"
 printf "expected refill deadline: opposite-event=0 and max cycles below budget; opposite-event>0 proves DMA reached the refill half before it was released\n"
-printf "expected five-voice burst: clock selected/current and SYSCLK/HCLK match candidate 4=80MHz, 7=120MHz, or 5=160MHz during the grant; mixer peak=5, underrun=0, and all admitted voices complete\n"
+printf "expected five-voice burst: clock selected/current and SYSCLK/HCLK match candidate 3=48MHz, 4=80MHz, 7=120MHz, or 5=160MHz during the grant; mixer peak=5, underrun=0, and all admitted voices complete\n"
 printf "expected completed release: mixer current=2, live-stream/held=0/0, final SYSCLK/HCLK=24000000/24000000, PLL1=0, flash=0, and STOP2 resumes\n"
 printf "expected fault containment: after any underrun, outstanding=0 and audio/speaker return to 2/0 only after physical idle verification; otherwise they remain quarantined in error\n"
 printf "--- end HW6 STATE sampled-SFX proof ---\n"

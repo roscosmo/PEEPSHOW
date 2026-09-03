@@ -172,6 +172,8 @@ static uint32_t PS_HW6_ClockPolicy_TargetHzForProfile(uint32_t profile)
 static uint32_t PS_HW6_ClockPolicy_IsAudioMixProfile(uint32_t profile)
 {
   return ((profile ==
+           (uint32_t)PS_HW6_CLOCK_PROFILE_REACTIVE_BURST) ||
+          (profile ==
            (uint32_t)PS_HW6_CLOCK_PROFILE_REALTIME_BALANCED) ||
           (profile == (uint32_t)PS_HW6_CLOCK_PROFILE_REALTIME_HIGH) ||
           (profile == (uint32_t)PS_HW6_CLOCK_PROFILE_IO_HIGH)) ? 1UL : 0UL;
