@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_PROBE_MAGIC                 (0x48364F57UL)
-#define PS_HW6_OWNER_PROBE_VERSION               (45UL)
+#define PS_HW6_OWNER_PROBE_VERSION               (46UL)
 #define PS_HW6_OWNER_POWER_REGISTER_COUNT        (7U)
 #define PS_HW6_OWNER_CHARGER_CONFIG_REGISTER_COUNT \
   PS_DEV_ADP5360_CHARGER_CONFIG_REGISTER_COUNT
@@ -386,6 +386,22 @@ typedef struct
   uint32_t audio_sfx_stream_wait_system_state_before;
   uint32_t audio_sfx_stream_wait_current_thread_before;
   uint32_t audio_sfx_stream_status;
+  uint32_t audio_sfx_profile_mix_count;
+  uint32_t audio_sfx_profile_mix_last_cycles;
+  uint32_t audio_sfx_profile_mix_max_cycles;
+  uint32_t audio_sfx_profile_mix_worst_decode_cycles;
+  uint32_t audio_sfx_profile_mix_worst_accumulate_cycles;
+  uint32_t audio_sfx_profile_mix_worst_analysis_cycles;
+  uint32_t audio_sfx_profile_mix_worst_output_cycles;
+  uint32_t audio_sfx_profile_service_count;
+  uint32_t audio_sfx_profile_service_last_cycles;
+  uint32_t audio_sfx_profile_service_max_cycles;
+  uint32_t audio_sfx_profile_service_worst_retire_cycles;
+  uint32_t audio_sfx_profile_service_worst_mix_cycles;
+  uint32_t audio_sfx_profile_service_worst_release_cycles;
+  uint32_t audio_sfx_profile_source_count;
+  uint32_t audio_sfx_profile_source_last_cycles;
+  uint32_t audio_sfx_profile_source_max_cycles;
   uint32_t audio_sfx_package_backed;
   uint32_t audio_sfx_source_window_read_count;
   uint32_t audio_sfx_source_window_failure_count;

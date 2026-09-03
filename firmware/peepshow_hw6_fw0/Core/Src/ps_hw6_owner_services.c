@@ -158,7 +158,7 @@ static uint8_t ps_hw6_audio_stream_source_windows[
   [PS_PACKAGE_READER_WINDOW_BYTES]
   __attribute__((aligned(4)));
 static int16_t ps_hw6_audio_stream_mix_scratch[
-  PS_HW6_AUDIO_STREAM_HALF_FRAMES * 2UL]
+  PS_HW6_AUDIO_STREAM_HALF_FRAMES]
   __attribute__((aligned(4)));
 static int32_t ps_hw6_audio_stream_mix_accumulator[
   PS_HW6_AUDIO_STREAM_HALF_FRAMES]
@@ -176,6 +176,8 @@ typedef struct
   uint32_t decoded_sample_count;
   int32_t predictor;
   int32_t step_index;
+  uint32_t packed_byte;
+  uint32_t packed_byte_valid;
   uint32_t source_window_offset;
   uint32_t source_window_length;
   uint32_t source_window_valid;
@@ -2603,7 +2605,8 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2AndResume(void)
           (preferred_map_status != 0UL)) ? HAL_OK : HAL_ERROR;
 }
 
-static int32_t PS_HW6_AudioClampPcm(int32_t sample)
+static inline __attribute__((always_inline)) int32_t
+PS_HW6_AudioClampPcm(int32_t sample)
 {
   if (sample > 32767)
   {
@@ -2616,13 +2619,15 @@ static int32_t PS_HW6_AudioClampPcm(int32_t sample)
   return sample;
 }
 
-static uint32_t PS_HW6_AudioAbsPcm(int32_t sample)
+static inline __attribute__((always_inline)) uint32_t
+PS_HW6_AudioAbsPcm(int32_t sample)
 {
   return (sample < 0) ?
     (uint32_t)(-(int64_t)sample) : (uint32_t)sample;
 }
 
-static int32_t PS_HW6_AudioScalePcmQ15(int32_t sample, uint32_t gain_q15)
+static inline __attribute__((always_inline)) int32_t
+PS_HW6_AudioScalePcmQ15(int32_t sample, uint32_t gain_q15)
 {
   int64_t product = (int64_t)sample * (int64_t)gain_q15;
 
@@ -2637,7 +2642,8 @@ static int32_t PS_HW6_AudioScalePcmQ15(int32_t sample, uint32_t gain_q15)
   return (int32_t)(product / (int64_t)PS_HW6_AUDIO_GAIN_Q15_ONE);
 }
 
-static uint32_t PS_HW6_AudioSfxEnvelopeGainQ15(
+static inline __attribute__((always_inline)) uint32_t
+PS_HW6_AudioSfxEnvelopeGainQ15(
   const ps_hw6_audio_stream_decoder_t *decoder)
 {
   uint32_t sample_index;
@@ -2671,7 +2677,8 @@ static uint32_t PS_HW6_AudioSfxEnvelopeGainQ15(
   return gain_q15;
 }
 
-static uint8_t *PS_HW6_AudioStreamSourceWindow(
+static inline __attribute__((always_inline)) uint8_t *
+PS_HW6_AudioStreamSourceWindow(
   const ps_hw6_audio_stream_decoder_t *decoder,
   uint32_t window_index)
 {
@@ -3110,6 +3117,7 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamLoadBlock(
   }
   decoder->block_sample_count = block_sample_count;
   decoder->block_sample_index = 0UL;
+  decoder->packed_byte_valid = 0UL;
   decoder->block_index++;
   return HAL_OK;
 }
@@ -3148,6 +3156,7 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamDecodeFrames(
 {
   const ps_egg_state_loader_audio_cue_t *cue;
   uint32_t output_frame = 0UL;
+  uint32_t declick_attenuated_frames = 0UL;
 
   if ((decoder == NULL) || (decoder->cue == NULL) ||
       (destination == NULL) || (frame_capacity == 0UL) ||
@@ -3158,7 +3167,7 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamDecodeFrames(
 
   cue = decoder->cue;
   (void)memset(destination, 0,
-               frame_capacity * 2UL * sizeof(destination[0]));
+               frame_capacity * sizeof(destination[0]));
   while ((output_frame < frame_capacity) &&
          (decoder->decoded_sample_count < cue->sample_count))
   {
@@ -3185,15 +3194,29 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamDecodeFrames(
       int32_t step = ps_hw6_ima_step_table[decoder->step_index];
       int32_t delta = step >> 3U;
 
-      if (PS_HW6_AudioStreamReadByte(
-            decoder,
-            decoder->block_payload_offset + (nibble_index / 2UL),
-            &packed) != HAL_OK)
+      if ((nibble_index & 1UL) == 0UL)
       {
-        return HAL_ERROR;
+        if (PS_HW6_AudioStreamReadByte(
+              decoder,
+              decoder->block_payload_offset + (nibble_index / 2UL),
+              &packed) != HAL_OK)
+        {
+          return HAL_ERROR;
+        }
+        decoder->packed_byte = (uint32_t)packed;
+        decoder->packed_byte_valid = 1UL;
+        nibble = (uint32_t)packed & 0x0FUL;
       }
-      nibble = ((nibble_index & 1UL) == 0UL) ?
-        ((uint32_t)packed & 0x0FUL) : ((uint32_t)packed >> 4U);
+      else
+      {
+        if (decoder->packed_byte_valid == 0UL)
+        {
+          return HAL_ERROR;
+        }
+        packed = (uint8_t)decoder->packed_byte;
+        decoder->packed_byte_valid = 0UL;
+        nibble = (uint32_t)packed >> 4U;
+      }
       if ((nibble & 4UL) != 0UL)
       {
         delta += step;
@@ -3227,17 +3250,18 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamDecodeFrames(
     envelope_gain_q15 = PS_HW6_AudioSfxEnvelopeGainQ15(decoder);
     if (envelope_gain_q15 < PS_HW6_AUDIO_GAIN_Q15_ONE)
     {
-      g_ps_hw6_owner_probe.audio_sfx_declick_attenuated_frame_count++;
+      declick_attenuated_frames++;
       sample = PS_HW6_AudioScalePcmQ15(sample, envelope_gain_q15);
     }
-    destination[output_frame * 2UL] = (int16_t)sample;
-    destination[(output_frame * 2UL) + 1UL] = (int16_t)sample;
+    destination[output_frame] = (int16_t)sample;
     decoder->block_sample_index++;
     decoder->decoded_sample_count++;
     output_frame++;
   }
 
   *decoded_frames = output_frame;
+  g_ps_hw6_owner_probe.audio_sfx_declick_attenuated_frame_count +=
+    declick_attenuated_frames;
   *source_finished = 0UL;
   if (decoder->decoded_sample_count == cue->sample_count)
   {
@@ -3636,6 +3660,27 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxServiceSourceReads(void)
   return HAL_OK;
 }
 
+static HAL_StatusTypeDef PS_HW6_AudioSfxServiceSourceReadsProfiled(void)
+{
+  HAL_StatusTypeDef status;
+  uint32_t start_cycles = DWT->CYCCNT;
+  uint32_t elapsed_cycles;
+
+  status = PS_HW6_AudioSfxServiceSourceReads();
+  elapsed_cycles = DWT->CYCCNT - start_cycles;
+  if (ps_hw6_audio_sfx_active != 0UL)
+  {
+    g_ps_hw6_owner_probe.audio_sfx_profile_source_count++;
+    g_ps_hw6_owner_probe.audio_sfx_profile_source_last_cycles = elapsed_cycles;
+    if (elapsed_cycles >
+        g_ps_hw6_owner_probe.audio_sfx_profile_source_max_cycles)
+    {
+      g_ps_hw6_owner_probe.audio_sfx_profile_source_max_cycles = elapsed_cycles;
+    }
+  }
+  return status;
+}
+
 static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
   int16_t *destination,
   uint32_t stream_event)
@@ -3647,6 +3692,22 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
   uint32_t volume_target_gain_q15 = PS_HW6_AUDIO_GAIN_Q15_ONE;
   uint32_t target_gain_q15 = PS_HW6_AUDIO_GAIN_Q15_ONE;
   uint32_t gain_step_q15 = 0UL;
+  uint32_t declick_attenuated_frames = 0UL;
+  uint32_t mix_clip_count = 0UL;
+  uint32_t limiter_attenuated_frame_count = 0UL;
+  uint32_t limiter_attack_cap_count = 0UL;
+  uint32_t residual_clip_count = 0UL;
+  uint32_t limiter_gain_q15 = ps_hw6_audio_sfx_limiter_gain_q15;
+  uint32_t limiter_min_gain_q15 =
+    g_ps_hw6_owner_probe.audio_sfx_limiter_min_gain_q15;
+  uint32_t decode_cycles = 0UL;
+  uint32_t accumulate_cycles = 0UL;
+  uint32_t analysis_cycles;
+  uint32_t output_cycles;
+  uint32_t phase_start_cycles;
+  uint32_t mix_cycles;
+  uint32_t profile_active = ps_hw6_audio_sfx_active;
+  uint32_t mix_start_cycles = DWT->CYCCNT;
   uint32_t voice_index;
   uint32_t frame;
 
@@ -3662,6 +3723,7 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
     uint32_t tail_frames;
     uint32_t contributed_frames;
     uint32_t source_finished = 0UL;
+    int32_t last_voice_sample = 0;
 
     if ((voice->in_use == 0UL) || (voice->finished != 0UL))
     {
@@ -3669,6 +3731,7 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
     }
     if (voice->ready != 0UL)
     {
+      phase_start_cycles = DWT->CYCCNT;
       if (PS_HW6_AudioStreamDecodeFrames(
             &voice->decoder,
             ps_hw6_audio_stream_mix_scratch,
@@ -3679,9 +3742,11 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
         g_ps_hw6_owner_probe.audio_sfx_decode_status = (uint32_t)HAL_ERROR;
         return HAL_ERROR;
       }
+      decode_cycles += DWT->CYCCNT - phase_start_cycles;
       g_ps_hw6_owner_probe.audio_sfx_decoded_samples += decoded_frames;
     }
 
+    phase_start_cycles = DWT->CYCCNT;
     tail_frames = voice->preempt_tail_frames_remaining;
     if (tail_frames > PS_HW6_AUDIO_STREAM_HALF_FRAMES)
     {
@@ -3700,7 +3765,7 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
     for (frame = 0UL; frame < contributed_frames; ++frame)
     {
       int32_t voice_sample = (frame < decoded_frames) ?
-        (int32_t)ps_hw6_audio_stream_mix_scratch[frame * 2UL] : 0;
+        (int32_t)ps_hw6_audio_stream_mix_scratch[frame] : 0;
 
       if (voice->preempt_tail_frames_remaining != 0UL)
       {
@@ -3712,10 +3777,14 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
         voice_sample += PS_HW6_AudioScalePcmQ15(
           voice->preempt_tail_sample, tail_gain_q15);
         voice->preempt_tail_frames_remaining--;
-        g_ps_hw6_owner_probe.audio_sfx_declick_attenuated_frame_count++;
+        declick_attenuated_frames++;
       }
       ps_hw6_audio_stream_mix_accumulator[frame] += voice_sample;
-      voice->last_output_sample = voice_sample;
+      last_voice_sample = voice_sample;
+    }
+    if (contributed_frames != 0UL)
+    {
+      voice->last_output_sample = last_voice_sample;
     }
     if ((source_finished != 0UL) &&
         (voice->preempt_tail_frames_remaining == 0UL))
@@ -3723,8 +3792,10 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
       voice->finished = 1UL;
       voice->final_event = stream_event;
     }
+    accumulate_cycles += DWT->CYCCNT - phase_start_cycles;
   }
 
+  phase_start_cycles = DWT->CYCCNT;
   for (frame = 0UL; frame < PS_HW6_AUDIO_STREAM_HALF_FRAMES; ++frame)
   {
     uint32_t magnitude = PS_HW6_AudioAbsPcm(
@@ -3737,7 +3808,7 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
     if ((ps_hw6_audio_stream_mix_accumulator[frame] > 32767) ||
         (ps_hw6_audio_stream_mix_accumulator[frame] < -32768))
     {
-      g_ps_hw6_owner_probe.audio_sfx_mix_clip_count++;
+      mix_clip_count++;
     }
   }
   if (pre_limit_peak > g_ps_hw6_owner_probe.audio_sfx_mix_pre_limit_peak)
@@ -3771,47 +3842,49 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
     g_ps_hw6_owner_probe.audio_sfx_mix_volume_budget_engagement_count++;
   }
 
-  if (ps_hw6_audio_sfx_limiter_gain_q15 > target_gain_q15)
+  if (limiter_gain_q15 > target_gain_q15)
   {
     gain_step_q15 =
       (PS_HW6_AUDIO_GAIN_Q15_ONE +
        PS_HW6_AUDIO_SFX_LIMITER_ATTACK_FRAMES - 1UL) /
       PS_HW6_AUDIO_SFX_LIMITER_ATTACK_FRAMES;
   }
-  else if (ps_hw6_audio_sfx_limiter_gain_q15 < target_gain_q15)
+  else if (limiter_gain_q15 < target_gain_q15)
   {
     gain_step_q15 =
       (PS_HW6_AUDIO_GAIN_Q15_ONE +
        PS_HW6_AUDIO_SFX_LIMITER_RELEASE_FRAMES - 1UL) /
       PS_HW6_AUDIO_SFX_LIMITER_RELEASE_FRAMES;
   }
+  analysis_cycles = DWT->CYCCNT - phase_start_cycles;
 
+  phase_start_cycles = DWT->CYCCNT;
   for (frame = 0UL; frame < PS_HW6_AUDIO_STREAM_HALF_FRAMES; ++frame)
   {
     int32_t mixed_sample = ps_hw6_audio_stream_mix_accumulator[frame];
     uint32_t magnitude;
 
-    if (ps_hw6_audio_sfx_limiter_gain_q15 > target_gain_q15)
+    if (limiter_gain_q15 > target_gain_q15)
     {
       uint32_t difference =
-        ps_hw6_audio_sfx_limiter_gain_q15 - target_gain_q15;
+        limiter_gain_q15 - target_gain_q15;
 
-      ps_hw6_audio_sfx_limiter_gain_q15 -=
+      limiter_gain_q15 -=
         (difference < gain_step_q15) ? difference : gain_step_q15;
     }
-    else if (ps_hw6_audio_sfx_limiter_gain_q15 < target_gain_q15)
+    else if (limiter_gain_q15 < target_gain_q15)
     {
       uint32_t difference =
-        target_gain_q15 - ps_hw6_audio_sfx_limiter_gain_q15;
+        target_gain_q15 - limiter_gain_q15;
 
-      ps_hw6_audio_sfx_limiter_gain_q15 +=
+      limiter_gain_q15 +=
         (difference < gain_step_q15) ? difference : gain_step_q15;
     }
 
-    if (ps_hw6_audio_sfx_limiter_gain_q15 < PS_HW6_AUDIO_GAIN_Q15_ONE)
+    if (limiter_gain_q15 < PS_HW6_AUDIO_GAIN_Q15_ONE)
     {
       mixed_sample = PS_HW6_AudioScalePcmQ15(
-        mixed_sample, ps_hw6_audio_sfx_limiter_gain_q15);
+        mixed_sample, limiter_gain_q15);
     }
     magnitude = PS_HW6_AudioAbsPcm(mixed_sample);
     if ((magnitude > PS_HW6_AUDIO_SFX_LIMITER_CEILING_PCM) &&
@@ -3822,27 +3895,24 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
          PS_HW6_AUDIO_GAIN_Q15_ONE) /
         PS_HW6_AudioAbsPcm(ps_hw6_audio_stream_mix_accumulator[frame]);
 
-      if (safe_gain_q15 < ps_hw6_audio_sfx_limiter_gain_q15)
+      if (safe_gain_q15 < limiter_gain_q15)
       {
-        ps_hw6_audio_sfx_limiter_gain_q15 = safe_gain_q15;
+        limiter_gain_q15 = safe_gain_q15;
         mixed_sample = PS_HW6_AudioScalePcmQ15(
           ps_hw6_audio_stream_mix_accumulator[frame],
-          ps_hw6_audio_sfx_limiter_gain_q15);
+          limiter_gain_q15);
         magnitude = PS_HW6_AudioAbsPcm(mixed_sample);
-        g_ps_hw6_owner_probe.audio_sfx_limiter_attack_cap_count++;
+        limiter_attack_cap_count++;
       }
     }
-    if ((ps_hw6_audio_sfx_limiter_gain_q15 <
-         PS_HW6_AUDIO_GAIN_Q15_ONE) &&
+    if ((limiter_gain_q15 < PS_HW6_AUDIO_GAIN_Q15_ONE) &&
         (ps_hw6_audio_stream_mix_accumulator[frame] != 0))
     {
-      g_ps_hw6_owner_probe.audio_sfx_limiter_attenuated_frame_count++;
+      limiter_attenuated_frame_count++;
     }
-    if (ps_hw6_audio_sfx_limiter_gain_q15 <
-        g_ps_hw6_owner_probe.audio_sfx_limiter_min_gain_q15)
+    if (limiter_gain_q15 < limiter_min_gain_q15)
     {
-      g_ps_hw6_owner_probe.audio_sfx_limiter_min_gain_q15 =
-        ps_hw6_audio_sfx_limiter_gain_q15;
+      limiter_min_gain_q15 = limiter_gain_q15;
     }
     if (magnitude > post_limit_peak)
     {
@@ -3850,19 +3920,32 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
     }
     if ((mixed_sample > 32767) || (mixed_sample < -32768))
     {
-      g_ps_hw6_owner_probe.audio_sfx_mix_residual_clip_count++;
+      residual_clip_count++;
     }
     mixed_sample = PS_HW6_AudioClampPcm(mixed_sample);
     destination[frame * 2UL] = (int16_t)mixed_sample;
     destination[(frame * 2UL) + 1UL] = (int16_t)mixed_sample;
   }
+  output_cycles = DWT->CYCCNT - phase_start_cycles;
   if (post_limit_peak > g_ps_hw6_owner_probe.audio_sfx_mix_post_limit_peak)
   {
     g_ps_hw6_owner_probe.audio_sfx_mix_post_limit_peak = post_limit_peak;
   }
+  ps_hw6_audio_sfx_limiter_gain_q15 = limiter_gain_q15;
+  g_ps_hw6_owner_probe.audio_sfx_mix_clip_count += mix_clip_count;
+  g_ps_hw6_owner_probe.audio_sfx_limiter_attenuated_frame_count +=
+    limiter_attenuated_frame_count;
+  g_ps_hw6_owner_probe.audio_sfx_limiter_attack_cap_count +=
+    limiter_attack_cap_count;
+  g_ps_hw6_owner_probe.audio_sfx_mix_residual_clip_count +=
+    residual_clip_count;
+  g_ps_hw6_owner_probe.audio_sfx_declick_attenuated_frame_count +=
+    declick_attenuated_frames;
+  g_ps_hw6_owner_probe.audio_sfx_limiter_min_gain_q15 =
+    limiter_min_gain_q15;
   g_ps_hw6_owner_probe.audio_sfx_limiter_target_gain_q15 = target_gain_q15;
   g_ps_hw6_owner_probe.audio_sfx_limiter_current_gain_q15 =
-    ps_hw6_audio_sfx_limiter_gain_q15;
+    limiter_gain_q15;
   g_ps_hw6_owner_probe.audio_sfx_mix_active_volume_sum = active_volume_sum;
   if (active_volume_sum >
       g_ps_hw6_owner_probe.audio_sfx_mix_peak_volume_sum)
@@ -3881,6 +3964,24 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
   g_ps_hw6_owner_probe.audio_sfx_stream_silence_frames =
     ps_hw6_audio_sfx_silence_frames;
   g_ps_hw6_owner_probe.audio_sfx_decode_status = (uint32_t)HAL_OK;
+  mix_cycles = DWT->CYCCNT - mix_start_cycles;
+  if (profile_active != 0UL)
+  {
+    g_ps_hw6_owner_probe.audio_sfx_profile_mix_count++;
+    g_ps_hw6_owner_probe.audio_sfx_profile_mix_last_cycles = mix_cycles;
+    if (mix_cycles > g_ps_hw6_owner_probe.audio_sfx_profile_mix_max_cycles)
+    {
+      g_ps_hw6_owner_probe.audio_sfx_profile_mix_max_cycles = mix_cycles;
+      g_ps_hw6_owner_probe.audio_sfx_profile_mix_worst_decode_cycles =
+        decode_cycles;
+      g_ps_hw6_owner_probe.audio_sfx_profile_mix_worst_accumulate_cycles =
+        accumulate_cycles;
+      g_ps_hw6_owner_probe.audio_sfx_profile_mix_worst_analysis_cycles =
+        analysis_cycles;
+      g_ps_hw6_owner_probe.audio_sfx_profile_mix_worst_output_cycles =
+        output_cycles;
+    }
+  }
   return HAL_OK;
 }
 
@@ -4036,6 +4137,22 @@ static void PS_HW6_AudioSfxResetPlaybackProbe(void)
     PS_HW6_OWNER_STATUS_NOT_RUN;
   g_ps_hw6_owner_probe.audio_sfx_stream_status =
     PS_HW6_OWNER_STATUS_NOT_RUN;
+  g_ps_hw6_owner_probe.audio_sfx_profile_mix_count = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_profile_mix_last_cycles = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_profile_mix_max_cycles = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_profile_mix_worst_decode_cycles = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_profile_mix_worst_accumulate_cycles = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_profile_mix_worst_analysis_cycles = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_profile_mix_worst_output_cycles = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_profile_service_count = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_profile_service_last_cycles = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_profile_service_max_cycles = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_profile_service_worst_retire_cycles = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_profile_service_worst_mix_cycles = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_profile_service_worst_release_cycles = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_profile_source_count = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_profile_source_last_cycles = 0UL;
+  g_ps_hw6_owner_probe.audio_sfx_profile_source_max_cycles = 0UL;
   g_ps_hw6_owner_probe.audio_sfx_source_window_read_count = 0UL;
   g_ps_hw6_owner_probe.audio_sfx_source_window_failure_count = 0UL;
   g_ps_hw6_owner_probe.audio_sfx_source_window_bytes = 0UL;
@@ -4170,7 +4287,7 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_RunSfx(uint32_t cue_index)
       PS_DEV_AUDIO_STREAM_EVENT_SECOND_HALF);
   }
   if ((status == HAL_OK) &&
-      (PS_HW6_AudioSfxServiceSourceReads() != HAL_OK))
+      (PS_HW6_AudioSfxServiceSourceReadsProfiled() != HAL_OK))
   {
     status = HAL_ERROR;
   }
@@ -4204,6 +4321,12 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_ServiceSfx(void)
 {
   ps_status_t playback_status;
   HAL_StatusTypeDef status;
+  uint32_t service_start_cycles;
+  uint32_t phase_start_cycles;
+  uint32_t retire_cycles;
+  uint32_t mix_cycles;
+  uint32_t release_cycles;
+  uint32_t service_cycles;
   uint32_t stream_event = 0UL;
   int16_t *destination;
 
@@ -4219,7 +4342,7 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_ServiceSfx(void)
     &ps_hw6_audio_sfx_result);
   if (playback_status == PS_STATUS_TIMEOUT)
   {
-    if (PS_HW6_AudioSfxServiceSourceReads() != HAL_OK)
+    if (PS_HW6_AudioSfxServiceSourceReadsProfiled() != HAL_OK)
     {
       return PS_HW6_AudioSfxStopStream(PS_STATUS_IO_ERROR);
     }
@@ -4230,7 +4353,10 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_ServiceSfx(void)
     return PS_HW6_AudioSfxStopStream(playback_status);
   }
 
+  service_start_cycles = DWT->CYCCNT;
+  phase_start_cycles = service_start_cycles;
   status = PS_HW6_AudioSfxRetireConsumed(stream_event);
+  retire_cycles = DWT->CYCCNT - phase_start_cycles;
   if (status != HAL_OK)
   {
     return PS_HW6_AudioSfxStopStream(PS_STATUS_IO_ERROR);
@@ -4247,17 +4373,33 @@ HAL_StatusTypeDef PS_HW6_AudioOwner_ServiceSfx(void)
   {
     return PS_HW6_AudioSfxStopStream(PS_STATUS_IO_ERROR);
   }
+  mix_cycles = g_ps_hw6_owner_probe.audio_sfx_profile_mix_last_cycles;
+  phase_start_cycles = DWT->CYCCNT;
   playback_status = ps_dev_audio_stream_release_half(
     &ps_hw6_audio, stream_event);
+  release_cycles = DWT->CYCCNT - phase_start_cycles;
   if (playback_status != PS_STATUS_OK)
   {
     return PS_HW6_AudioSfxStopStream(playback_status);
   }
 
+  service_cycles = DWT->CYCCNT - service_start_cycles;
+  g_ps_hw6_owner_probe.audio_sfx_profile_service_count++;
+  g_ps_hw6_owner_probe.audio_sfx_profile_service_last_cycles = service_cycles;
+  if (service_cycles >
+      g_ps_hw6_owner_probe.audio_sfx_profile_service_max_cycles)
+  {
+    g_ps_hw6_owner_probe.audio_sfx_profile_service_max_cycles = service_cycles;
+    g_ps_hw6_owner_probe.audio_sfx_profile_service_worst_retire_cycles =
+      retire_cycles;
+    g_ps_hw6_owner_probe.audio_sfx_profile_service_worst_mix_cycles = mix_cycles;
+    g_ps_hw6_owner_probe.audio_sfx_profile_service_worst_release_cycles =
+      release_cycles;
+  }
   ps_hw6_audio_sfx_refill_count++;
   g_ps_hw6_owner_probe.audio_sfx_stream_refill_count =
     ps_hw6_audio_sfx_refill_count;
-  if (PS_HW6_AudioSfxServiceSourceReads() != HAL_OK)
+  if (PS_HW6_AudioSfxServiceSourceReadsProfiled() != HAL_OK)
   {
     return PS_HW6_AudioSfxStopStream(PS_STATUS_IO_ERROR);
   }
