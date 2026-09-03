@@ -52,6 +52,7 @@ LOGICAL_INPUT_SOURCES = {
 STATE_WAITING_ANIMATION_QUANTUM_MS = 250
 STATE_GRAPH_ROUTE_RAIL_MAX = 8
 STATE_GRAPH_ROUTE_LAYOUT_VERSION = 3
+STATE_GRAPH_SYSTEM_EXIT_NODE_ID = "system-exit"
 STATE_GRAPH_ENTRY_HANDLES = {
     "entry-top-left",
     "entry-top-right",
@@ -339,6 +340,93 @@ def _apply_state_add(
     return {"kind": "state.add", "scene_id": scene.get("scene_id"), "state": normalized}
 
 
+def _apply_state_create(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "display_name", "x", "y"},
+        {"kind", "scene_id", "display_name", "x", "y", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    display_name = command.get("display_name")
+    issues: list[ValidationIssue] = []
+    _text(display_name, "command.display_name", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+
+    states = scene.get("states")
+    if not isinstance(states, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.states must be an array")
+    existing_ids = {
+        str(state.get("state_id"))
+        for state in states
+        if isinstance(state, dict) and isinstance(state.get("state_id"), str)
+    }
+    base_id = _new_project_slug(str(display_name))
+    state_id = base_id
+    suffix = 2
+    while state_id in existing_ids:
+        state_id = f"{base_id}_{suffix}"
+        suffix += 1
+
+    waiting_visual_ids = [
+        waiting.get("waiting_visual_id")
+        for waiting in scene.get("waiting_visuals", [])
+        if isinstance(waiting, dict) and isinstance(waiting.get("waiting_visual_id"), str)
+    ]
+    entry_state_id = scene.get("entry_state")
+    entry_state = next(
+        (
+            state
+            for state in states
+            if isinstance(state, dict) and state.get("state_id") == entry_state_id
+        ),
+        None,
+    )
+    waiting_visual_ref = entry_state.get("waiting_visual_ref") if isinstance(entry_state, dict) else None
+    if waiting_visual_ref not in waiting_visual_ids:
+        waiting_visual_ref = waiting_visual_ids[0] if waiting_visual_ids else None
+    if waiting_visual_ref is None:
+        raise ProjectCommandError(
+            "COMMAND_TARGET_UNKNOWN",
+            "scene has no waiting presentation for a new state",
+        )
+
+    x = _layout_coordinate(command.get("x"), "command.x")
+    y = _layout_coordinate(command.get("y"), "command.y")
+    state = {
+        "state_id": state_id,
+        "display_name": display_name,
+        "waiting_visual_ref": waiting_visual_ref,
+    }
+    added = _apply_state_add(
+        scenes,
+        {"kind": "state.add", "scene_id": scene.get("scene_id"), "state": state},
+    )
+    positioned = _apply_state_graph_node_position(
+        project,
+        scenes,
+        {
+            "kind": "editor.state_graph.set_node_position",
+            "scene_id": scene.get("scene_id"),
+            "state_id": state_id,
+            "x": x,
+            "y": y,
+        },
+    )
+    return {
+        "kind": "state.create",
+        "scene_id": scene.get("scene_id"),
+        "state": added["state"],
+        "x": positioned["x"],
+        "y": positioned["y"],
+    }
+
+
 def _apply_state_delete(
     project: dict[str, Any],
     scenes: list[dict[str, Any]],
@@ -613,6 +701,38 @@ def _append_input_policy_reference(
         references.append(action_id)
 
 
+def _remove_input_policy_reference(
+    scene: dict[str, Any],
+    policy_field: str,
+    references_field: str,
+    action_id: str,
+) -> None:
+    policy = scene.get(policy_field)
+    references = policy.get(references_field) if isinstance(policy, dict) else None
+    if isinstance(references, list):
+        policy[references_field] = [value for value in references if value != action_id]
+
+
+def _validate_logical_input_binding(
+    scene: dict[str, Any],
+    logical_source: Any,
+    event_kind: Any,
+) -> None:
+    if logical_source not in LOGICAL_INPUT_SOURCES:
+        raise ProjectCommandError("INPUT_SOURCE_INVALID", "unsupported logical source")
+    if event_kind not in LOGICAL_INPUT_EVENT_KINDS:
+        raise ProjectCommandError("INPUT_EVENT_INVALID", "event_kind must be press, release, hold, or repeat")
+    if logical_source == "BUTTON_START" and event_kind != "press":
+        raise ProjectCommandError("INPUT_EVENT_SYSTEM_OWNED", "START supports package press only")
+    if logical_source in {
+        "JOY_UP_LEFT",
+        "JOY_UP_RIGHT",
+        "JOY_DOWN_LEFT",
+        "JOY_DOWN_RIGHT",
+    } and scene.get("joystick_policy", "four_way") != "eight_way":
+        raise ProjectCommandError("JOYSTICK_POLICY_REQUIRED", "diagonal bindings require eight_way")
+
+
 def _apply_route_create_trigger(
     project: dict[str, Any],
     scenes: list[dict[str, Any]],
@@ -629,6 +749,7 @@ def _apply_route_create_trigger(
             "event_kind",
             "target_state",
             "scene_exit_ref",
+            "system_exit",
             "target_handle",
             "target_side",
             "command_id",
@@ -640,34 +761,25 @@ def _apply_route_create_trigger(
 
     logical_source = command.get("logical_source")
     event_kind = command.get("event_kind", "press")
-    if logical_source not in LOGICAL_INPUT_SOURCES:
-        raise ProjectCommandError("INPUT_SOURCE_INVALID", "unsupported logical source")
-    if event_kind not in LOGICAL_INPUT_EVENT_KINDS:
-        raise ProjectCommandError("INPUT_EVENT_INVALID", "event_kind must be press, release, hold, or repeat")
-    if logical_source == "BUTTON_START" and event_kind != "press":
-        raise ProjectCommandError("INPUT_EVENT_SYSTEM_OWNED", "START supports package press only")
-    if logical_source in {
-        "JOY_UP_LEFT",
-        "JOY_UP_RIGHT",
-        "JOY_DOWN_LEFT",
-        "JOY_DOWN_RIGHT",
-    } and scene.get("joystick_policy", "four_way") != "eight_way":
-        raise ProjectCommandError("JOYSTICK_POLICY_REQUIRED", "diagonal bindings require eight_way")
+    _validate_logical_input_binding(scene, logical_source, event_kind)
 
     has_target_state = "target_state" in command
     has_scene_exit = "scene_exit_ref" in command
-    if has_target_state == has_scene_exit:
+    has_system_exit = "system_exit" in command
+    if sum((has_target_state, has_scene_exit, has_system_exit)) != 1:
         raise ProjectCommandError(
             "COMMAND_SHAPE_INVALID",
-            "route.create_trigger requires exactly one of target_state or scene_exit_ref",
+            "route.create_trigger requires exactly one destination",
         )
+    if has_system_exit and command.get("system_exit") is not True:
+        raise ProjectCommandError("COMMAND_SHAPE_INVALID", "system_exit must be true")
 
     route_target: dict[str, str]
     if has_target_state:
         target_state = command.get("target_state")
         _command_record(scene, "states", "state_id", target_state)
         route_target = {"target_state": str(target_state)}
-    else:
+    elif has_scene_exit:
         scene_exit = _command_record(
             scene,
             "scene_exits",
@@ -678,6 +790,8 @@ def _apply_route_create_trigger(
             "scene_exit_ref": str(scene_exit.get("scene_exit_id")),
             "target_scene": str(scene_exit.get("target_scene")),
         }
+    else:
+        route_target = {"target_state": str(source_state)}
 
     input_actions = scene.get("input_actions")
     routes = scene.get("routes")
@@ -734,7 +848,7 @@ def _apply_route_create_trigger(
         "action_ref": action_id,
         "from_states": [source_state],
         "guards": [],
-        "actions": [],
+        "actions": [{"kind": "exit_to_shell"}] if has_system_exit else [],
         **route_target,
     }
     routes.append(route)
@@ -780,6 +894,93 @@ def _apply_route_create_trigger(
         )
         result["route_layout"] = layout
     return result
+
+
+def _apply_route_rebind_trigger(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "route_id", "logical_source"},
+        {"kind", "scene_id", "route_id", "logical_source", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    route = _command_record(scene, "routes", "route_id", command.get("route_id"))
+    input_actions = scene.get("input_actions")
+    routes = scene.get("routes")
+    if not isinstance(input_actions, list) or not isinstance(routes, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene input actions and routes must be arrays")
+    previous_action = _command_record(scene, "input_actions", "action_id", route.get("action_ref"))
+    previous_action_id = str(previous_action.get("action_id"))
+    event_kind = previous_action.get("event_kind", "press")
+    logical_source = command.get("logical_source")
+    _validate_logical_input_binding(scene, logical_source, event_kind)
+
+    input_action = next(
+        (
+            action
+            for action in input_actions
+            if isinstance(action, dict)
+            and action.get("logical_source") == logical_source
+            and action.get("event_kind", "press") == event_kind
+        ),
+        None,
+    )
+    input_action_created = input_action is None
+    if input_action is None:
+        if len(input_actions) >= 32:
+            raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "scene supports at most 32 input actions")
+        action_id = _unique_generated_record_id(
+            input_actions,
+            "action_id",
+            f"{str(logical_source).lower()}_{event_kind}",
+        )
+        input_action = {
+            "action_id": action_id,
+            "logical_source": logical_source,
+            "event_kind": event_kind,
+        }
+        input_actions.append(input_action)
+    else:
+        action_id = str(input_action.get("action_id"))
+
+    source_states = set(route.get("from_states", []))
+    if any(
+        isinstance(candidate, dict)
+        and candidate is not route
+        and candidate.get("action_ref") == action_id
+        and source_states.intersection(candidate.get("from_states", []))
+        for candidate in routes
+    ):
+        raise ProjectCommandError(
+            "ROUTE_TRIGGER_IN_USE",
+            f"{logical_source} {event_kind} already has a transition from this route's state",
+        )
+
+    route["action_ref"] = action_id
+    _append_input_policy_reference(scene, "reactive_wait_default", "event_interests", action_id)
+    _append_input_policy_reference(scene, "interaction_policy", "meaningful_activity_actions", action_id)
+    previous_action_removed = False
+    if previous_action_id != action_id and not any(
+        isinstance(candidate, dict) and candidate.get("action_ref") == previous_action_id
+        for candidate in routes
+    ):
+        input_actions.remove(previous_action)
+        _remove_input_policy_reference(scene, "reactive_wait_default", "event_interests", previous_action_id)
+        _remove_input_policy_reference(scene, "interaction_policy", "meaningful_activity_actions", previous_action_id)
+        previous_action_removed = True
+
+    return {
+        "kind": "route.rebind_trigger",
+        "scene_id": scene.get("scene_id"),
+        "route_id": route.get("route_id"),
+        "input_action": deepcopy(input_action),
+        "input_action_created": input_action_created,
+        "previous_action_id": previous_action_id,
+        "previous_action_removed": previous_action_removed,
+        "route": deepcopy(route),
+    }
 
 
 def _apply_route_add(
@@ -2487,6 +2688,7 @@ def _apply_state_graph_node_position(
         if isinstance(state, dict)
     }
     valid_node_ids.add("scene-entry")
+    valid_node_ids.add(STATE_GRAPH_SYSTEM_EXIT_NODE_ID)
     valid_node_ids.update(
         f"scene-exit-{scene_exit.get('scene_exit_id')}"
         for scene_exit in target_scene.get("scene_exits", [])
@@ -2523,6 +2725,92 @@ def _apply_state_graph_node_position(
     if has_state_id:
         result["state_id"] = node_id
     return result
+
+
+def _apply_state_graph_entry_layout(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "target_handle", "target_side"},
+        {"kind", "scene_id", "target_handle", "target_side", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    target_handle = command.get("target_handle")
+    target_side = command.get("target_side")
+    if target_handle not in STATE_GRAPH_ENTRY_HANDLES:
+        raise ProjectCommandError("PROJECT_VALUE_INVALID", "target_handle must name a state entry socket")
+    if target_side not in STATE_GRAPH_ENTRY_SIDES:
+        raise ProjectCommandError("PROJECT_VALUE_INVALID", "target_side must name a card side")
+    if target_side not in STATE_GRAPH_ENTRY_HANDLE_SIDES[target_handle]:
+        raise ProjectCommandError(
+            "PROJECT_VALUE_INVALID",
+            "target_side is not available on the selected corner entry",
+        )
+
+    editor = project.setdefault("editor", {})
+    if not isinstance(editor, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor must be an object")
+    state_graph = editor.setdefault("state_graph", {})
+    if not isinstance(state_graph, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor.state_graph must be an object")
+    graph_scenes = state_graph.setdefault("scenes", {})
+    if not isinstance(graph_scenes, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor.state_graph.scenes must be an object")
+    scene_id = str(scene.get("scene_id"))
+    scene_layout = graph_scenes.setdefault(scene_id, {})
+    if not isinstance(scene_layout, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", f"project.editor.state_graph.scenes[{scene_id}] must be an object")
+    scene_layout["entry"] = {
+        "target_handle": target_handle,
+        "target_side": target_side,
+    }
+    return {
+        "kind": "editor.state_graph.set_entry_layout",
+        "scene_id": scene_id,
+        "target_handle": target_handle,
+        "target_side": target_side,
+    }
+
+
+def _apply_state_graph_system_exit_delete(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id"},
+        {"kind", "scene_id", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    if any(
+        isinstance(route, dict)
+        and any(
+            isinstance(action, dict) and action.get("kind") == "exit_to_shell"
+            for action in route.get("actions", [])
+        )
+        for route in scene.get("routes", [])
+    ):
+        raise ProjectCommandError(
+            "COMMAND_TARGET_IN_USE",
+            "delete Exit to PeepOS transitions before deleting the terminal",
+        )
+    editor = project.get("editor")
+    state_graph = editor.get("state_graph") if isinstance(editor, dict) else None
+    graph_scenes = state_graph.get("scenes") if isinstance(state_graph, dict) else None
+    scene_layout = graph_scenes.get(scene.get("scene_id")) if isinstance(graph_scenes, dict) else None
+    nodes = scene_layout.get("nodes") if isinstance(scene_layout, dict) else None
+    if isinstance(nodes, dict):
+        nodes.pop(STATE_GRAPH_SYSTEM_EXIT_NODE_ID, None)
+        if not nodes:
+            scene_layout.pop("nodes", None)
+    return {
+        "kind": "editor.state_graph.delete_system_exit",
+        "scene_id": scene.get("scene_id"),
+    }
 
 
 def _apply_state_graph_route_layout(
@@ -3372,7 +3660,37 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
                                 if not isinstance(scene_layout, dict):
                                     _issue(issues, "PROJECT_TYPE_INVALID", scene_path, "must be an object")
                                     continue
-                                _check_keys(scene_layout, set(), scene_path, issues, {"nodes", "routes"})
+                                _check_keys(scene_layout, set(), scene_path, issues, {"entry", "nodes", "routes"})
+                                entry_layout = scene_layout.get("entry")
+                                if entry_layout is not None:
+                                    entry_path = f"{scene_path}.entry"
+                                    if not isinstance(entry_layout, dict):
+                                        _issue(issues, "PROJECT_TYPE_INVALID", entry_path, "must be an object")
+                                    else:
+                                        _check_keys(entry_layout, {"target_handle", "target_side"}, entry_path, issues)
+                                        target_handle = entry_layout.get("target_handle")
+                                        target_side = entry_layout.get("target_side")
+                                        if target_handle not in STATE_GRAPH_ENTRY_HANDLES:
+                                            _issue(
+                                                issues,
+                                                "PROJECT_VALUE_INVALID",
+                                                f"{entry_path}.target_handle",
+                                                "must name a state entry socket",
+                                            )
+                                        if target_side not in STATE_GRAPH_ENTRY_SIDES:
+                                            _issue(
+                                                issues,
+                                                "PROJECT_VALUE_INVALID",
+                                                f"{entry_path}.target_side",
+                                                "must name a card side",
+                                            )
+                                        elif target_handle in STATE_GRAPH_ENTRY_HANDLE_SIDES and target_side not in STATE_GRAPH_ENTRY_HANDLE_SIDES[target_handle]:
+                                            _issue(
+                                                issues,
+                                                "PROJECT_VALUE_INVALID",
+                                                f"{entry_path}.target_side",
+                                                "is not available on the selected corner entry",
+                                            )
                                 nodes = scene_layout.get("nodes")
                                 if nodes is not None:
                                     if not isinstance(nodes, dict):
@@ -4801,6 +5119,7 @@ def load_project(project_root: str | Path) -> ProjectBundle:
                     if isinstance(state, dict)
                 }
                 valid_node_ids.add("scene-entry")
+                valid_node_ids.add(STATE_GRAPH_SYSTEM_EXIT_NODE_ID)
                 valid_node_ids.update(
                     f"scene-exit-{scene_exit.get('scene_exit_id')}"
                     for scene_exit in target_scene.get("scene_exits", [])
@@ -4927,6 +5246,8 @@ def apply_project_commands(
             applied.append(
                 _apply_scene_add(bundle.root, project, scenes, scene_sources, command)
             )
+        elif kind == "state.create":
+            applied.append(_apply_state_create(project, scenes, command))
         elif kind == "state.add":
             applied.append(_apply_state_add(scenes, command))
         elif kind == "state.delete":
@@ -4951,6 +5272,8 @@ def apply_project_commands(
             applied.append(_apply_input_action_delete(scenes, command))
         elif kind == "route.create_trigger":
             applied.append(_apply_route_create_trigger(project, scenes, command))
+        elif kind == "route.rebind_trigger":
+            applied.append(_apply_route_rebind_trigger(scenes, command))
         elif kind == "route.add":
             applied.append(_apply_route_add(scenes, command))
         elif kind == "route.delete":
@@ -5052,6 +5375,10 @@ def apply_project_commands(
             applied.append(_apply_scene_flow_node_position(project, scenes, command))
         elif kind == "editor.state_graph.set_node_position":
             applied.append(_apply_state_graph_node_position(project, scenes, command))
+        elif kind == "editor.state_graph.set_entry_layout":
+            applied.append(_apply_state_graph_entry_layout(project, scenes, command))
+        elif kind == "editor.state_graph.delete_system_exit":
+            applied.append(_apply_state_graph_system_exit_delete(project, scenes, command))
         elif kind == "editor.state_graph.set_route_layout":
             applied.append(_apply_state_graph_route_layout(project, scenes, command))
         elif kind == "route.set_guard":

@@ -314,7 +314,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(30, SERVICE_API_VERSION)
+        self.assertEqual(32, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -434,6 +434,7 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertEqual(64, graph["limits"]["states"])
         self.assertEqual(1, graph["limits"]["render_models"])
         self.assertIn("state.add", graph["state_commands"])
+        self.assertIn("state.create", graph["state_commands"])
         self.assertNotIn("state.set_render_model", graph["state_commands"])
         self.assertIn("state_placement.set_override", graph["state_placement_commands"])
         self.assertIn("route.guard.move", graph["guard_commands"])
@@ -922,6 +923,69 @@ class AuthoringServiceTests(unittest.TestCase):
                 )
             )
         self.assertEqual("PROJECT_TEXT_INVALID", raised.exception.code)
+
+    def test_state_create_allocates_id_inherits_waiting_visual_and_positions_node(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        created = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "state.create",
+                            "scene_id": "state_demo",
+                            "display_name": "New State",
+                            "x": 420,
+                            "y": -80,
+                        }
+                    ],
+                },
+            )
+        )
+        self.assertTrue(created["valid"])
+        applied = created["applied_commands"][0]
+        self.assertEqual("state.create", applied["kind"])
+        self.assertEqual("new_state", applied["state"]["state_id"])
+        self.assertEqual("state_wait", applied["state"]["waiting_visual_ref"])
+        self.assertEqual(420, applied["x"])
+        self.assertEqual(-80, applied["y"])
+        scene = next(
+            item
+            for item in created["document"]["scenes"]
+            if item["scene_id"] == "state_demo"
+        )
+        new_state = next(
+            state for state in scene["states"] if state["state_id"] == "new_state"
+        )
+        self.assertEqual("New State", new_state["display_name"])
+        node = created["document"]["project"]["editor"]["state_graph"]["scenes"][
+            "state_demo"
+        ]["nodes"]["new_state"]
+        self.assertEqual({"x": 420, "y": -80}, node)
+
+        created_again = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": created["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "state.create",
+                            "scene_id": "state_demo",
+                            "display_name": "New State",
+                            "x": 780,
+                            "y": -80,
+                        }
+                    ],
+                },
+            )
+        )
+        self.assertEqual(
+            "new_state_2",
+            created_again["applied_commands"][0]["state"]["state_id"],
+        )
 
     def test_graph_commands_build_and_compile_a_complete_menu_state(self) -> None:
         service = AuthoringService()
@@ -2208,6 +2272,128 @@ class AuthoringServiceTests(unittest.TestCase):
                 {"x": -256, "y": 384},
                 reloaded.normalized()["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["nodes"]["right"],
             )
+
+    def test_state_graph_entry_connection_layout_is_editor_only(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        before = service.handle(
+            request("project.build_package", {"project_revision": loaded["project_revision"]})
+        )
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "editor.state_graph.set_entry_layout",
+                            "scene_id": "state_demo",
+                            "target_handle": "entry-bottom-right",
+                            "target_side": "right",
+                        }
+                    ],
+                },
+            )
+        )
+        entry = changed["document"]["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["entry"]
+        self.assertEqual(
+            {"target_handle": "entry-bottom-right", "target_side": "right"},
+            entry,
+        )
+        after = service.handle(
+            request("project.build_package", {"project_revision": changed["project_revision"]})
+        )
+        self.assertEqual(before["package"]["sha256"], after["package"]["sha256"])
+
+    def test_route_rebind_trigger_preserves_route_semantics(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        scene_before = next(
+            scene for scene in loaded["document"]["scenes"] if scene["scene_id"] == "state_demo"
+        )
+        route_before = next(route for route in scene_before["routes"] if route["route_id"] == "center_to_right")
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "route.rebind_trigger",
+                            "scene_id": "state_demo",
+                            "route_id": "center_to_right",
+                            "logical_source": "BUTTON_B",
+                        }
+                    ],
+                },
+            )
+        )
+        scene_after = next(
+            scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_demo"
+        )
+        route_after = next(route for route in scene_after["routes"] if route["route_id"] == "center_to_right")
+        input_action = next(
+            action for action in scene_after["input_actions"] if action["action_id"] == route_after["action_ref"]
+        )
+        self.assertEqual("BUTTON_B", input_action["logical_source"])
+        self.assertEqual("press", input_action["event_kind"])
+        for field in ("from_states", "guards", "actions", "target_state"):
+            self.assertEqual(route_before[field], route_after[field])
+
+    def test_exit_to_peepos_terminal_is_optional_and_uses_existing_system_action(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "editor.state_graph.set_node_position",
+                            "scene_id": "state_demo",
+                            "node_id": "system-exit",
+                            "x": 900,
+                            "y": 240,
+                        },
+                        {
+                            "kind": "route.create_trigger",
+                            "scene_id": "state_demo",
+                            "source_state": "center",
+                            "logical_source": "BUTTON_B",
+                            "event_kind": "press",
+                            "system_exit": True,
+                        },
+                    ],
+                },
+            )
+        )
+        scene = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_demo")
+        applied_route = changed["applied_commands"][1]["route"]
+        self.assertEqual("center", applied_route["target_state"])
+        self.assertEqual([{"kind": "exit_to_shell"}], applied_route["actions"])
+        self.assertEqual(
+            {"x": 900, "y": 240},
+            changed["document"]["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["nodes"]["system-exit"],
+        )
+        self.assertIn(applied_route["route_id"], {route["route_id"] for route in scene["routes"]})
+
+        with self.assertRaises(ProtocolError) as raised:
+            service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": changed["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.state_graph.delete_system_exit",
+                                "scene_id": "state_demo",
+                            }
+                        ],
+                    },
+                )
+            )
+        self.assertEqual("COMMAND_TARGET_IN_USE", raised.exception.code)
 
     def test_state_graph_route_waypoints_are_editor_only_and_persist(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

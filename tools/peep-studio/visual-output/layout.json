@@ -1,0 +1,68 @@
+{
+  "desktop": {
+    "toolbar": {
+      "width": 1424,
+      "height": 62,
+      "top": 0,
+      "left": 0
+    },
+    "project": {
+      "width": 320,
+      "height": 745,
+      "top": 62,
+      "left": 0
+    },
+    "preview": {
+      "width": 320,
+      "height": 442,
+      "top": 105,
+      "left": 0
+    },
+    "graph": {
+      "width": 702,
+      "height": 745,
+      "top": 62,
+      "left": 326
+    },
+    "inspector": {
+      "width": 390,
+      "height": 745,
+      "top": 62,
+      "left": 1034
+    },
+    "overflowX": false
+  },
+  "compact": {
+    "toolbar": {
+      "width": 729,
+      "height": 116,
+      "top": 0,
+      "left": 0
+    },
+    "project": {
+      "width": 729,
+      "height": 624,
+      "top": 116,
+      "left": 0
+    },
+    "preview": {
+      "width": 729,
+      "height": 456,
+      "top": 159,
+      "left": 0
+    },
+    "graph": {
+      "width": 729,
+      "height": 460,
+      "top": 740,
+      "left": 0
+    },
+    "inspector": {
+      "width": 729,
+      "height": 326,
+      "top": 1200,
+      "left": 0
+    },
+    "overflowX": false
+  }
+}

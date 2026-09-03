@@ -46,7 +46,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 30
+SERVICE_API_VERSION = 32
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -384,9 +384,12 @@ class AuthoringService:
                 "route_layout_version": 3,
                 "editor_layout_commands": [
                     "editor.state_graph.set_node_position",
+                    "editor.state_graph.set_entry_layout",
+                    "editor.state_graph.delete_system_exit",
                     "editor.state_graph.set_route_layout",
                 ],
                 "state_commands": [
+                    "state.create",
                     "state.add",
                     "state.delete",
                     "state.rename",
@@ -411,6 +414,7 @@ class AuthoringService:
                 ],
                 "route_commands": [
                     "route.create_trigger",
+                    "route.rebind_trigger",
                     "route.add",
                     "route.delete",
                     "route.set_action_ref",

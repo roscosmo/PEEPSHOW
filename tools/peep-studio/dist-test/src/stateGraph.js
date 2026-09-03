@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.STATE_GRAPH_ENTRY_PORTS = exports.STATE_GRAPH_ENTRY_HANDLES = void 0;
+exports.nextStateGraphNodePosition = nextStateGraphNodePosition;
 exports.stateActionDescription = stateActionDescription;
 exports.visibleStateActions = visibleStateActions;
 exports.stateGuardDescription = stateGuardDescription;
@@ -20,6 +21,36 @@ exports.removeStateTransitionRouteSection = removeStateTransitionRouteSection;
 exports.planStateTransitionRoutes = planStateTransitionRoutes;
 exports.buildStateGraphModel = buildStateGraphModel;
 exports.buildSceneFlowGraphModel = buildSceneFlowGraphModel;
+function nextStateGraphNodePosition(nodes, selectedStateId) {
+    if (nodes.length === 0) {
+        return { x: 0, y: 0 };
+    }
+    const anchor = nodes.find((node) => node.id === selectedStateId)
+        ?? nodes.reduce((rightmost, node) => node.x > rightmost.x ? node : rightmost);
+    const gapX = 360;
+    const gapY = 420;
+    const isOpen = (x, y) => !nodes.some((node) => Math.abs(node.x - x) < 330 && Math.abs(node.y - y) < 360);
+    for (let radius = 1; radius <= 8; radius += 1) {
+        const offsets = [
+            [radius, 0],
+            [0, radius],
+            [-radius, 0],
+            [0, -radius],
+            [radius, radius],
+            [-radius, radius],
+            [radius, -radius],
+            [-radius, -radius],
+        ];
+        for (const [column, row] of offsets) {
+            const x = anchor.x + column * gapX;
+            const y = anchor.y + row * gapY;
+            if (isOpen(x, y)) {
+                return { x, y };
+            }
+        }
+    }
+    return { x: anchor.x + gapX * 9, y: anchor.y };
+}
 const INPUT_LABELS = {
     BUTTON_A: "Button A",
     BUTTON_START: "Start",
@@ -130,7 +161,7 @@ function stateActionDescription(action) {
     return "Advanced effect";
 }
 function visibleStateActions(route) {
-    return route.actions.filter((action) => action.kind !== "request_render");
+    return route.actions.filter((action) => action.kind !== "request_render" && action.kind !== "exit_to_shell");
 }
 const GUARD_DESCRIPTION_OPERATORS = {
     eq: "is",
@@ -913,6 +944,7 @@ function buildStateGraphModel(scene, editor) {
     const variableRefsByState = new Map();
     const savedPositions = scene === null ? undefined : editor?.state_graph?.scenes?.[scene.scene_id]?.nodes;
     const savedRouteLayouts = scene === null ? undefined : editor?.state_graph?.scenes?.[scene.scene_id]?.routes;
+    const savedEntryLayout = scene === null ? undefined : editor?.state_graph?.scenes?.[scene.scene_id]?.entry;
     const exitForRoute = (route) => {
         if (route.scene_exit_ref !== undefined) {
             return declaredSceneExits.find((sceneExit) => sceneExit.scene_exit_id === route.scene_exit_ref);
@@ -992,7 +1024,10 @@ function buildStateGraphModel(scene, editor) {
     const topmostY = nodes.length === 0 ? 0 : Math.min(...nodes.map((node) => node.y));
     const rightmostX = nodes.length === 0 ? 0 : Math.max(...nodes.map((node) => node.x));
     const entryNodeId = "scene-entry";
+    const systemExitNodeId = "system-exit";
     const entryPosition = savedPositions?.[entryNodeId] ?? { x: leftmostX - 220, y: topmostY + 96 };
+    const systemExitPosition = savedPositions?.[systemExitNodeId] ?? { x: rightmostX + 440, y: topmostY + 180 };
+    const hasSystemExitRoute = routes.some((route) => route.actions.some((action) => action.kind === "exit_to_shell"));
     const declaredEndpoints = declaredSceneExits.map((sceneExit, index) => {
         const id = `scene-exit-${sceneExit.scene_exit_id}`;
         const savedPosition = savedPositions?.[id];
@@ -1018,20 +1053,39 @@ function buildStateGraphModel(scene, editor) {
         x: entryPosition.x,
         y: entryPosition.y,
     };
-    const endpoints = [entryEndpoint, ...declaredEndpoints, ...legacySceneExits];
+    const systemExitEndpoint = savedPositions?.[systemExitNodeId] !== undefined || hasSystemExitRoute
+        ? {
+            id: systemExitNodeId,
+            kind: "system",
+            label: "Exit to PeepOS",
+            detail: "Return control to the system shell",
+            declared: savedPositions?.[systemExitNodeId] !== undefined,
+            x: systemExitPosition.x,
+            y: systemExitPosition.y,
+        }
+        : undefined;
+    const endpoints = [
+        entryEndpoint,
+        ...declaredEndpoints,
+        ...legacySceneExits,
+        ...(systemExitEndpoint === undefined ? [] : [systemExitEndpoint]),
+    ];
     const endpointByExitId = new Map(declaredEndpoints
         .filter((endpoint) => endpoint.sceneExitId !== undefined)
         .map((endpoint) => [endpoint.sceneExitId, endpoint]));
     const legacyEndpointByRoute = new Map(legacySceneExits.map((endpoint) => [endpoint.id.replace("scene-exit-legacy-", ""), endpoint]));
     const edges = routes.flatMap((route) => {
         const targetState = route.target_state;
+        const targetsSystemExit = route.actions.some((action) => action.kind === "exit_to_shell");
         const declaredExit = exitForRoute(route);
         const targetEndpoint = declaredExit === undefined
             ? legacyEndpointByRoute.get(route.route_id)
             : endpointByExitId.get(declaredExit.scene_exit_id);
-        const target = targetState !== undefined && stateIds.has(targetState)
-            ? targetState
-            : targetEndpoint?.id;
+        const target = targetsSystemExit && systemExitEndpoint !== undefined
+            ? systemExitEndpoint.id
+            : targetState !== undefined && stateIds.has(targetState)
+                ? targetState
+                : targetEndpoint?.id;
         if (target === undefined) {
             return [];
         }
@@ -1053,7 +1107,9 @@ function buildStateGraphModel(scene, editor) {
                 rails: currentLayout?.rails ?? [],
                 targetHandle: currentLayout?.target_handle,
                 targetSide: currentLayout?.target_side,
-                targetKind: targetState === undefined ? "scene_exit" : "state",
+                targetKind: targetsSystemExit
+                    ? "system_exit"
+                    : targetState === undefined ? "scene_exit" : "state",
             };
         });
     });
@@ -1062,7 +1118,12 @@ function buildStateGraphModel(scene, editor) {
         endpoints,
         edges,
         entryEdge: entryState !== null && statePositions.has(entryState)
-            ? { source: entryNodeId, target: entryState }
+            ? {
+                source: entryNodeId,
+                target: entryState,
+                targetHandle: savedEntryLayout?.target_handle ?? "entry-top-left",
+                targetSide: savedEntryLayout?.target_side ?? "left",
+            }
             : undefined,
     };
 }

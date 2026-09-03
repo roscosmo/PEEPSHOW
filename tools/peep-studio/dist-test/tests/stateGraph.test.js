@@ -5,6 +5,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const strict_1 = __importDefault(require("node:assert/strict"));
 const stateGraph_1 = require("../src/stateGraph");
+strict_1.default.deepEqual((0, stateGraph_1.nextStateGraphNodePosition)([], undefined), { x: 0, y: 0 });
+strict_1.default.deepEqual((0, stateGraph_1.nextStateGraphNodePosition)([
+    { id: "start", x: 0, y: 0 },
+    { id: "settings", x: 360, y: 0 },
+], "start"), { x: 0, y: 420 });
+strict_1.default.deepEqual((0, stateGraph_1.nextStateGraphNodePosition)([
+    { id: "start", x: 0, y: 0 },
+    { id: "settings", x: 360, y: 0 },
+], "settings"), { x: 720, y: 0 });
 const scene = {
     scene_id: "menu",
     display_name: "Menu",
@@ -49,6 +58,10 @@ const savedGraph = (0, stateGraph_1.buildStateGraphModel)(scene, {
     state_graph: {
         scenes: {
             menu: {
+                entry: {
+                    target_handle: "entry-bottom-left",
+                    target_side: "bottom",
+                },
                 nodes: {
                     armed: { x: -120, y: 220 },
                 },
@@ -115,6 +128,8 @@ strict_1.default.equal(graph.edges[0]?.actions[0]?.kind, "set_variable");
 strict_1.default.deepEqual(savedGraph.edges[0]?.rails, [{ axis: "x", value: 180 }, { axis: "y", value: 90 }]);
 strict_1.default.equal(savedGraph.edges[0]?.targetHandle, "entry-bottom-right");
 strict_1.default.equal(savedGraph.edges[0]?.targetSide, "right");
+strict_1.default.equal(savedGraph.entryEdge?.targetHandle, "entry-bottom-left");
+strict_1.default.equal(savedGraph.entryEdge?.targetSide, "bottom");
 strict_1.default.deepEqual(legacyRouteGraph.edges[0]?.rails, []);
 strict_1.default.equal(legacyRouteGraph.edges[0]?.targetHandle, undefined);
 strict_1.default.equal(savedGraph.nodes.find((node) => node.id === "armed")?.x, -120);
@@ -142,6 +157,23 @@ strict_1.default.equal(holdOutput?.label, "Button B held");
 strict_1.default.equal(holdOutput?.eventKind, "hold");
 strict_1.default.equal(holdOutput?.triggerKind, "physical");
 strict_1.default.equal(lifecycleGraph.nodes[0]?.platformOutputCount, 0);
+const systemExitGraph = (0, stateGraph_1.buildStateGraphModel)({
+    ...scene,
+    routes: [
+        {
+            route_id: "leave_package",
+            action_ref: "select",
+            from_states: ["idle"],
+            guards: [],
+            actions: [{ kind: "exit_to_shell" }],
+            target_state: "idle",
+        },
+    ],
+});
+strict_1.default.equal(systemExitGraph.endpoints.some((endpoint) => endpoint.kind === "system"), true);
+strict_1.default.equal(systemExitGraph.edges[0]?.target, "system-exit");
+strict_1.default.equal(systemExitGraph.edges[0]?.targetKind, "system_exit");
+strict_1.default.deepEqual(systemExitGraph.edges[0]?.actions, []);
 strict_1.default.equal((0, stateGraph_1.resolveStateExitSide)({ x: 0, y: 0 }, { x: 340, y: 0 }), "right");
 strict_1.default.equal((0, stateGraph_1.resolveStateExitSide)({ x: 0, y: 0 }, { x: -120, y: 220 }), "left");
 strict_1.default.equal((0, stateGraph_1.resolveStateEntryHandle)({ x: 0, y: 0 }, { x: 340, y: 0 }), "entry-top-left");

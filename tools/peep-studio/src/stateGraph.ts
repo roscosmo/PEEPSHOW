@@ -41,6 +41,42 @@ export type StateGraphLayoutNode = {
   platformOutputCount?: number;
 };
 
+export function nextStateGraphNodePosition(
+  nodes: StateGraphLayoutNode[],
+  selectedStateId?: string,
+): EditorNodePosition {
+  if (nodes.length === 0) {
+    return { x: 0, y: 0 };
+  }
+  const anchor = nodes.find((node) => node.id === selectedStateId)
+    ?? nodes.reduce((rightmost, node) => node.x > rightmost.x ? node : rightmost);
+  const gapX = 360;
+  const gapY = 420;
+  const isOpen = (x: number, y: number) => !nodes.some(
+    (node) => Math.abs(node.x - x) < 330 && Math.abs(node.y - y) < 360,
+  );
+  for (let radius = 1; radius <= 8; radius += 1) {
+    const offsets = [
+      [radius, 0],
+      [0, radius],
+      [-radius, 0],
+      [0, -radius],
+      [radius, radius],
+      [-radius, radius],
+      [radius, -radius],
+      [-radius, -radius],
+    ];
+    for (const [column, row] of offsets) {
+      const x = anchor.x + column * gapX;
+      const y = anchor.y + row * gapY;
+      if (isOpen(x, y)) {
+        return { x, y };
+      }
+    }
+  }
+  return { x: anchor.x + gapX * 9, y: anchor.y };
+}
+
 export type StateTransitionLayoutRequest = {
   id: string;
   source: string;
@@ -103,12 +139,12 @@ export type GraphTransitionEdge = {
   rails: EditorRouteRail[];
   targetHandle?: StateGraphEntryHandle;
   targetSide?: StateGraphEntrySide;
-  targetKind?: "state" | "scene_exit";
+  targetKind?: "state" | "scene_exit" | "system_exit";
 };
 
 export type GraphSceneEndpointNode = {
   id: string;
-  kind: "entry" | "exit";
+  kind: "entry" | "exit" | "system";
   label: string;
   detail: string;
   sceneExitId?: string;
@@ -123,7 +159,12 @@ export type StateGraphModel = {
   nodes: GraphStateNode[];
   endpoints: GraphSceneEndpointNode[];
   edges: GraphTransitionEdge[];
-  entryEdge?: { source: string; target: string };
+  entryEdge?: {
+    source: string;
+    target: string;
+    targetHandle: StateGraphEntryHandle;
+    targetSide: StateGraphEntrySide;
+  };
 };
 
 export type GraphSceneNode = {
@@ -281,7 +322,7 @@ export function stateActionDescription(action: StateAction): string | null {
 }
 
 export function visibleStateActions(route: StateRoute): StateAction[] {
-  return route.actions.filter((action) => action.kind !== "request_render");
+  return route.actions.filter((action) => action.kind !== "request_render" && action.kind !== "exit_to_shell");
 }
 
 const GUARD_DESCRIPTION_OPERATORS: Record<string, string> = {
@@ -1257,6 +1298,8 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
     scene === null ? undefined : editor?.state_graph?.scenes?.[scene.scene_id]?.nodes;
   const savedRouteLayouts =
     scene === null ? undefined : editor?.state_graph?.scenes?.[scene.scene_id]?.routes;
+  const savedEntryLayout =
+    scene === null ? undefined : editor?.state_graph?.scenes?.[scene.scene_id]?.entry;
   const exitForRoute = (route: StateRoute): SceneExitRecord | undefined => {
     if (route.scene_exit_ref !== undefined) {
       return declaredSceneExits.find((sceneExit) => sceneExit.scene_exit_id === route.scene_exit_ref);
@@ -1339,7 +1382,12 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
   const topmostY = nodes.length === 0 ? 0 : Math.min(...nodes.map((node) => node.y));
   const rightmostX = nodes.length === 0 ? 0 : Math.max(...nodes.map((node) => node.x));
   const entryNodeId = "scene-entry";
+  const systemExitNodeId = "system-exit";
   const entryPosition = savedPositions?.[entryNodeId] ?? { x: leftmostX - 220, y: topmostY + 96 };
+  const systemExitPosition = savedPositions?.[systemExitNodeId] ?? { x: rightmostX + 440, y: topmostY + 180 };
+  const hasSystemExitRoute = routes.some((route) =>
+    route.actions.some((action) => action.kind === "exit_to_shell"),
+  );
   const declaredEndpoints: GraphSceneEndpointNode[] = declaredSceneExits.map((sceneExit, index) => {
     const id = `scene-exit-${sceneExit.scene_exit_id}`;
     const savedPosition = savedPositions?.[id];
@@ -1365,7 +1413,24 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
     x: entryPosition.x,
     y: entryPosition.y,
   };
-  const endpoints = [entryEndpoint, ...declaredEndpoints, ...legacySceneExits];
+  const systemExitEndpoint: GraphSceneEndpointNode | undefined =
+    savedPositions?.[systemExitNodeId] !== undefined || hasSystemExitRoute
+      ? {
+          id: systemExitNodeId,
+          kind: "system",
+          label: "Exit to PeepOS",
+          detail: "Return control to the system shell",
+          declared: savedPositions?.[systemExitNodeId] !== undefined,
+          x: systemExitPosition.x,
+          y: systemExitPosition.y,
+        }
+      : undefined;
+  const endpoints = [
+    entryEndpoint,
+    ...declaredEndpoints,
+    ...legacySceneExits,
+    ...(systemExitEndpoint === undefined ? [] : [systemExitEndpoint]),
+  ];
   const endpointByExitId = new Map(
     declaredEndpoints
       .filter((endpoint) => endpoint.sceneExitId !== undefined)
@@ -1377,11 +1442,14 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
 
   const edges = routes.flatMap((route: StateRoute) => {
     const targetState = route.target_state;
+    const targetsSystemExit = route.actions.some((action) => action.kind === "exit_to_shell");
     const declaredExit = exitForRoute(route);
     const targetEndpoint = declaredExit === undefined
       ? legacyEndpointByRoute.get(route.route_id)
       : endpointByExitId.get(declaredExit.scene_exit_id);
-    const target = targetState !== undefined && stateIds.has(targetState)
+    const target = targetsSystemExit && systemExitEndpoint !== undefined
+      ? systemExitEndpoint.id
+      : targetState !== undefined && stateIds.has(targetState)
       ? targetState
       : targetEndpoint?.id;
     if (target === undefined) {
@@ -1405,7 +1473,9 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
           rails: currentLayout?.rails ?? [],
           targetHandle: currentLayout?.target_handle,
           targetSide: currentLayout?.target_side,
-          targetKind: targetState === undefined ? "scene_exit" as const : "state" as const,
+          targetKind: targetsSystemExit
+            ? "system_exit" as const
+            : targetState === undefined ? "scene_exit" as const : "state" as const,
         };
       });
   });
@@ -1415,7 +1485,12 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
     endpoints,
     edges,
     entryEdge: entryState !== null && statePositions.has(entryState)
-      ? { source: entryNodeId, target: entryState }
+      ? {
+          source: entryNodeId,
+          target: entryState,
+          targetHandle: savedEntryLayout?.target_handle ?? "entry-top-left",
+          targetSide: savedEntryLayout?.target_side ?? "left",
+        }
       : undefined,
   };
 }

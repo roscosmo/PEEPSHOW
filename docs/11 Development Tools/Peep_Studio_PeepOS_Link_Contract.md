@@ -462,9 +462,9 @@ dirty state is computed against the last saved semantic project hash.
 Service API version 26 adds `project.create`. Python derives stable project and
 package IDs from the selected `.peepproj` directory name, writes only relative
 source references, validates the authored files, and loads the result as the
-active clean project. The starter scene, state, Button B binding, and
-exit-to-shell route are ordinary editable records. Peep Studio must not protect
-them or attach example-specific behavior to them.
+active clean project. The starter contains one ordinary scene and entry state;
+it does not create an input binding, route, or shell exit. Peep Studio must not
+protect starter records or attach example-specific behavior to them.
 
 Service API version 15 adds deterministic build-time text assets through the
 existing `asset.upsert`/`asset.delete` commands. Peep Studio discovers the
@@ -637,8 +637,11 @@ physical control. `press` is the default; `hold`, `release`, and `repeat` are
 available when advertised by the service, and non-default bindings are marked
 on the physical-control node. START remains package-press-only. The **Add new
 trigger** row is reserved for PeepOS events and must not duplicate physical
-buttons or joystick directions. State creation, deletion, and entry selection
-remain the next GUI lifecycle work.
+buttons or joystick directions. Local Logic now exposes state creation,
+inspector-owned naming and scene-start selection, and selected-state deletion
+through the inspector or Delete key. Deletion never performs implicit route or
+entry-state cleanup; Python rejects the last state, current entry state, or any
+state still referenced by a route.
 
 Service API version 29 adds the high-level `route.create_trigger` command.
 Python creates or reuses the scene-level logical input binding, creates the
@@ -671,6 +674,35 @@ Making those PeepOS triggers executable requires all of the following:
   never poll or control peripherals directly;
 - target capability reporting for step counting and other peripheral-derived
   events, so unsupported hardware cannot produce a valid deployable binding.
+
+Service API version 31 adds the high-level `state.create` command. React sends
+the selected scene, author-facing default name, and an editor-only open graph
+position. Python allocates a collision-free stable state ID, inherits the
+scene's current entry-state waiting presentation, creates the state, and stores
+its initial graph position as one undoable command. Adding a state does not
+move existing nodes, create routes, duplicate scene placement, or make the new
+state the scene entry implicitly.
+
+Service API version 32 completes the first direct graph-connection pass:
+
+- `editor.state_graph.set_entry_layout` stores the selected corner entry and
+  adjacent side independently of the semantic `state.set_entry` command. The
+  Scene Entry node and its arrow may be moved and reconnected to any state entry
+  socket without adding package records to the compiled output.
+- `route.rebind_trigger` changes one existing route to another physical control
+  while preserving its lifecycle, source states, guards, ordered actions,
+  destination, and manual line layout. Python creates or reuses the matching
+  input action and removes the previous binding only when no route still uses it.
+- `system-exit` is an optional editor node. A physical trigger dropped onto it
+  creates an ordinary route containing the existing `exit_to_shell` action;
+  the compiler and firmware operation are unchanged. New scenes do not contain
+  this node or route by default.
+
+Physical control lifecycle choices remain `press`, `hold`, `release`, and
+`repeat`. Firmware already emits Press, Release, Long Press, and Repeat; the
+author-facing `hold` name maps to Long Press. These are not PeepOS trigger
+catalog entries. START remains package-visible as short press only, with its
+system-owned long press reserved for shell access.
 
 Service API version 23 adds `editor.state_graph.set_route_waypoints`. It accepts
 one route ID, one source state from that route, and an ordered array of zero to

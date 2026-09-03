@@ -181,6 +181,10 @@ export type ProjectEditorData = {
   };
   state_graph?: {
     scenes?: Record<string, {
+      entry?: {
+        target_handle: "entry-top-left" | "entry-top-right" | "entry-bottom-left" | "entry-bottom-right";
+        target_side: "left" | "right" | "top" | "bottom";
+      };
       nodes?: Record<string, EditorNodePosition>;
       routes?: Record<string, EditorRouteLayout>;
     }>;

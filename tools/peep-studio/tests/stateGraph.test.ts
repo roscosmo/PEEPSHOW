@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   buildSceneFlowGraphModel,
   buildStateGraphModel,
+  nextStateGraphNodePosition,
   buildStateTransitionRoute,
   insertStateTransitionRouteSection,
   moveStateTransitionRouteSection,
@@ -13,6 +14,22 @@ import {
   stateGuardDescription,
   stateTransitionRouteSections,
 } from "../src/stateGraph";
+
+assert.deepEqual(nextStateGraphNodePosition([], undefined), { x: 0, y: 0 });
+assert.deepEqual(
+  nextStateGraphNodePosition([
+    { id: "start", x: 0, y: 0 },
+    { id: "settings", x: 360, y: 0 },
+  ], "start"),
+  { x: 0, y: 420 },
+);
+assert.deepEqual(
+  nextStateGraphNodePosition([
+    { id: "start", x: 0, y: 0 },
+    { id: "settings", x: 360, y: 0 },
+  ], "settings"),
+  { x: 720, y: 0 },
+);
 import type { SceneDocument } from "../src/types";
 
 const scene: SceneDocument = {
@@ -60,6 +77,10 @@ const savedGraph = buildStateGraphModel(scene, {
   state_graph: {
     scenes: {
       menu: {
+        entry: {
+          target_handle: "entry-bottom-left",
+          target_side: "bottom",
+        },
         nodes: {
           armed: { x: -120, y: 220 },
         },
@@ -127,6 +148,8 @@ assert.equal(graph.edges[0]?.actions[0]?.kind, "set_variable");
 assert.deepEqual(savedGraph.edges[0]?.rails, [{ axis: "x", value: 180 }, { axis: "y", value: 90 }]);
 assert.equal(savedGraph.edges[0]?.targetHandle, "entry-bottom-right");
 assert.equal(savedGraph.edges[0]?.targetSide, "right");
+assert.equal(savedGraph.entryEdge?.targetHandle, "entry-bottom-left");
+assert.equal(savedGraph.entryEdge?.targetSide, "bottom");
 assert.deepEqual(legacyRouteGraph.edges[0]?.rails, []);
 assert.equal(legacyRouteGraph.edges[0]?.targetHandle, undefined);
 assert.equal(savedGraph.nodes.find((node) => node.id === "armed")?.x, -120);
@@ -155,6 +178,24 @@ assert.equal(holdOutput?.label, "Button B held");
 assert.equal(holdOutput?.eventKind, "hold");
 assert.equal(holdOutput?.triggerKind, "physical");
 assert.equal(lifecycleGraph.nodes[0]?.platformOutputCount, 0);
+
+const systemExitGraph = buildStateGraphModel({
+  ...scene,
+  routes: [
+    {
+      route_id: "leave_package",
+      action_ref: "select",
+      from_states: ["idle"],
+      guards: [],
+      actions: [{ kind: "exit_to_shell" }],
+      target_state: "idle",
+    },
+  ],
+});
+assert.equal(systemExitGraph.endpoints.some((endpoint) => endpoint.kind === "system"), true);
+assert.equal(systemExitGraph.edges[0]?.target, "system-exit");
+assert.equal(systemExitGraph.edges[0]?.targetKind, "system_exit");
+assert.deepEqual(systemExitGraph.edges[0]?.actions, []);
 
 assert.equal(resolveStateExitSide({ x: 0, y: 0 }, { x: 340, y: 0 }), "right");
 assert.equal(resolveStateExitSide({ x: 0, y: 0 }, { x: -120, y: 220 }), "left");

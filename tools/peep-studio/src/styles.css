@@ -2387,6 +2387,11 @@ button:focus-visible {
   background: #fff9db;
 }
 
+.state-scene-endpoint.system {
+  border-color: #8b1e3f;
+  background: #fff0f3;
+}
+
 .state-scene-endpoint.selected {
   box-shadow: 0 0 0 3px #175f8a, 0 3px 8px rgb(55 64 59 / 10%);
 }
@@ -2417,6 +2422,10 @@ button:focus-visible {
 
 .state-scene-endpoint.exit .react-flow__handle {
   background: #ff922b;
+}
+
+.state-scene-endpoint.system .react-flow__handle {
+  background: #e03131;
 }
 
 .scene-card-node {
@@ -3550,6 +3559,22 @@ button:focus-visible {
   box-shadow: 0 8px 18px rgb(55 64 59 / 12%);
 }
 
+.state-graph-toolbar.react-flow__panel {
+  display: flex;
+  gap: 6px;
+  z-index: 30;
+}
+
+.state-graph-toolbar .button {
+  min-height: 34px;
+  gap: 6px;
+  padding: 0 10px;
+}
+
+.state-graph-status.react-flow__panel {
+  margin-top: 52px;
+}
+
 .graph-selection-summary {
   display: grid;
   min-width: 190px;
@@ -3944,6 +3969,39 @@ button:focus-visible {
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.state-lifecycle-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.state-lifecycle-actions .button {
+  min-width: 0;
+  min-height: 34px;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 8px;
+}
+
+.state-lifecycle-actions .button.active:disabled {
+  border-color: #8dbb9a;
+  background: #edf8f0;
+  color: #256437;
+  opacity: 1;
+}
+
+.state-lifecycle-actions .state-delete-button {
+  border-color: #d4a28e;
+  background: #fff8f3;
+  color: #793a24;
+}
+
+.state-lifecycle-actions .state-delete-button:hover:not(:disabled) {
+  border-color: #b86f52;
+  background: #fff0e8;
 }
 
 .internal-ref-note {

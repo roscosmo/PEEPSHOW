@@ -41,6 +41,7 @@ import {
   Plus,
   Route,
   RotateCcw,
+  Trash2,
   X,
   Volume2,
   Variable,
@@ -53,6 +54,7 @@ import {
   buildStateTransitionRoute,
   insertStateTransitionRouteSection,
   moveStateTransitionRouteSection,
+  nextStateGraphNodePosition,
   planStateTransitionRoutes,
   removeStateTransitionRouteSection,
   resolveStateExitSide,
@@ -93,6 +95,7 @@ import type {
 export type SceneSelection =
   | { kind: "scene" }
   | { kind: "sceneExit"; id: string }
+  | { kind: "systemExit" }
   | { kind: "state"; id: string }
   | { kind: "route"; id: string; sourceState?: string }
   | { kind: "render"; id: string }
@@ -109,7 +112,8 @@ export type NewStateTransitionTarget =
       targetHandle: StateGraphEntryHandle;
       targetSide: StateGraphEntrySide;
     }
-  | { kind: "sceneExit"; sceneExitId: string };
+  | { kind: "sceneExit"; sceneExitId: string }
+  | { kind: "systemExit" };
 
 type PendingPhysicalTriggerConnection = {
   sceneId: string;
@@ -305,7 +309,7 @@ function displayVariableName(variableId: string): string {
 }
 
 function visibleEffectCount(actions: Array<{ kind: string }>): number {
-  return actions.filter((action) => action.kind !== "request_render").length;
+  return actions.filter((action) => action.kind !== "request_render" && action.kind !== "exit_to_shell").length;
 }
 
 type StateCardNodeData = {
@@ -848,11 +852,16 @@ function SceneEndpointNode({ data, selected }: NodeProps<Node<SceneEndpointNodeD
       }}
     >
       {endpoint.kind === "entry" ? (
-        <Handle id="scene-entry-out" type="source" position={Position.Right} isConnectable={false} />
+        <Handle id="scene-entry-out" type="source" position={Position.Right} isConnectable={canEdit} />
       ) : (
-        <Handle id="scene-exit-in" type="target" position={Position.Left} isConnectable={canEdit} />
+        <Handle
+          id={endpoint.kind === "system" ? "system-exit-in" : "scene-exit-in"}
+          type="target"
+          position={Position.Left}
+          isConnectable={canEdit}
+        />
       )}
-      <span>{endpoint.kind === "entry" ? "Scene entry" : "Scene exit"}</span>
+      <span>{endpoint.kind === "entry" ? "Scene entry" : endpoint.kind === "system" ? "System action" : "Scene exit"}</span>
       <strong>{endpoint.label}</strong>
       <small>{endpoint.detail}</small>
     </div>
@@ -1527,10 +1536,16 @@ export function StateGraphView({
   physicalEventKinds,
   peepOSTriggers,
   onSelect,
+  onCreateState,
+  onDeleteState,
   onMoveStateNode,
+  onSetEntryConnection,
   onSetRouteLayout,
   onCreateTriggerRoute,
+  onRebindTriggerRoute,
   onConnectRouteToSceneExit,
+  onDeleteSystemExit,
+  canCreateState,
   canEdit,
 }: {
   scene: SceneDocument | null;
@@ -1540,7 +1555,15 @@ export function StateGraphView({
   physicalEventKinds: StateTriggerEventKind[];
   peepOSTriggers: PeepOSTriggerCapability[];
   onSelect: (selection: SceneSelection) => void;
+  onCreateState: (sceneId: string, x: number, y: number) => void;
+  onDeleteState: (sceneId: string, stateId: string) => void;
   onMoveStateNode: (sceneId: string, stateId: string, x: number, y: number) => void;
+  onSetEntryConnection: (
+    sceneId: string,
+    stateId: string,
+    targetHandle: StateGraphEntryHandle,
+    targetSide: StateGraphEntrySide,
+  ) => void;
   onSetRouteLayout: (
     sceneId: string,
     routeId: string,
@@ -1556,12 +1579,15 @@ export function StateGraphView({
     eventKind: StateTriggerEventKind,
     target: NewStateTransitionTarget,
   ) => void;
+  onRebindTriggerRoute: (sceneId: string, routeId: string, logicalSource: string) => void;
   onConnectRouteToSceneExit: (
     sceneId: string,
     routeId: string,
     sceneExitId: string,
     targetScene: string,
   ) => void;
+  onDeleteSystemExit: (sceneId: string) => void;
+  canCreateState: boolean;
   canEdit: boolean;
 }) {
   const graph = useMemo(() => buildStateGraphModel(scene, editor), [editor, scene]);
@@ -1579,7 +1605,7 @@ export function StateGraphView({
         position: { x: node.x, y: node.y },
         data: {
           graphNode: routeStateNode(node, defaultPositionById, {}),
-          activeEntryHandles: node.isEntry ? ["entry-top-left"] : [],
+          activeEntryHandles: node.isEntry ? [graph.entryEdge?.targetHandle ?? "entry-top-left"] : [],
           canEdit,
           joystickPolicy: scene?.joystick_policy ?? "four_way",
           physicalEventKinds,
@@ -1609,18 +1635,19 @@ export function StateGraphView({
           onSelect: (selectedEndpoint: GraphSceneEndpointNode) => {
             onSelect(selectedEndpoint.kind === "exit" && selectedEndpoint.sceneExitId !== undefined
               ? { kind: "sceneExit", id: selectedEndpoint.sceneExitId }
-              : { kind: "scene" });
+              : selectedEndpoint.kind === "system"
+                ? { kind: "systemExit" }
+                : { kind: "scene" });
           },
         },
         selected: endpoint.kind === "exit"
-          && endpoint.sceneExitId !== undefined
-          && selected.kind === "sceneExit"
-          && selected.id === endpoint.sceneExitId,
-        draggable: canEdit && endpoint.declared,
+          ? endpoint.sceneExitId !== undefined && selected.kind === "sceneExit" && selected.id === endpoint.sceneExitId
+          : endpoint.kind === "system" && selected.kind === "systemExit",
+        draggable: canEdit && (endpoint.declared || endpoint.kind !== "exit"),
         connectable: canEdit,
       })),
     ],
-    [canEdit, defaultPositionById, graph.endpoints, graph.nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, scene?.joystick_policy, selected],
+    [canEdit, defaultPositionById, graph.endpoints, graph.entryEdge?.targetHandle, graph.nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, scene?.joystick_policy, selected],
   );
   const [nodes, setNodes] = useState<Node[]>(baseNodes);
   const graphNodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
@@ -1637,7 +1664,7 @@ export function StateGraphView({
   const transitionLayouts = useMemo(
     () =>
       planStateTransitionRoutes(
-        graph.edges.filter((edge) => edge.targetKind !== "scene_exit").map((edge) => {
+        graph.edges.filter((edge) => edge.targetKind === "state").map((edge) => {
           const sourceNode = graphNodeById.get(edge.source);
           const sourceOutput = sourceNode?.outputs.find((output) => output.id === edge.sourceHandle);
           const sourceOutputIndex = sourceNode?.outputs
@@ -1671,7 +1698,7 @@ export function StateGraphView({
           data: {
             graphNode: routeStateNode(graphNode, positionById, transitionLayouts),
             activeEntryHandles: [
-              ...(graphNode.isEntry ? ["entry-top-left"] : []),
+              ...(graphNode.isEntry ? [graph.entryEdge?.targetHandle ?? "entry-top-left"] : []),
               ...graph.edges
                 .filter((edge) => edge.target === graphNode.id)
                 .map((edge) => transitionLayouts[edge.sourceHandle]?.targetHandle)
@@ -1697,12 +1724,35 @@ export function StateGraphView({
           connectable: canEdit,
         };
       }),
-    [canEdit, graph.edges, graphNodeById, nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, positionById, scene?.joystick_policy, selected, transitionLayouts],
+    [canEdit, graph.edges, graph.entryEdge?.targetHandle, graphNodeById, nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, positionById, scene?.joystick_policy, selected, transitionLayouts],
   );
   useEffect(() => {
     setPendingPhysicalConnection(null);
     setPeepOSTriggerStateId(null);
   }, [scene?.scene_id]);
+  useEffect(() => {
+    if (!canEdit || scene === null || (selected.kind !== "state" && selected.kind !== "systemExit")) {
+      return;
+    }
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Delete" && event.key !== "Backspace") {
+        return;
+      }
+      const target = event.target instanceof Element ? event.target : null;
+      if (target !== null && target.closest("input, select, textarea, button, [contenteditable='true']") !== null) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (selected.kind === "state") {
+        onDeleteState(scene.scene_id, selected.id);
+      } else {
+        onDeleteSystemExit(scene.scene_id);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [canEdit, onDeleteState, onDeleteSystemExit, scene, selected]);
   useEffect(() => {
     const sceneId = scene?.scene_id ?? null;
     setNodes((current) => {
@@ -1749,6 +1799,23 @@ export function StateGraphView({
     if (scene === null || connection.source === null || connection.target === null || connection.sourceHandle === null) {
       return;
     }
+    const sourceEndpoint = graph.endpoints.find((item) => item.id === connection.source);
+    if (sourceEndpoint?.kind === "entry" && connection.sourceHandle === "scene-entry-out") {
+      const targetState = graph.nodes.find((item) => item.id === connection.target);
+      const [targetHandleValue, targetSideValue] = (connection.targetHandle ?? "").split(":");
+      const targetPort = STATE_GRAPH_ENTRY_PORTS.find(
+        (port) => port.handle === targetHandleValue && port.side === targetSideValue,
+      );
+      if (targetState !== undefined && targetPort !== undefined) {
+        onSetEntryConnection(
+          scene.scene_id,
+          targetState.id,
+          targetPort.handle,
+          targetPort.side,
+        );
+      }
+      return;
+    }
     const sourceNode = graph.nodes.find((item) => item.id === connection.source);
     if (sourceNode === undefined) {
       return;
@@ -1776,9 +1843,11 @@ export function StateGraphView({
         const newRouteEndpoint = graph.endpoints.find((item) => item.id === connection.target);
         if (newRouteEndpoint?.kind === "exit" && newRouteEndpoint.sceneExitId !== undefined) {
           target = {
-          kind: "sceneExit",
-          sceneExitId: newRouteEndpoint.sceneExitId,
+            kind: "sceneExit",
+            sceneExitId: newRouteEndpoint.sceneExitId,
           };
+        } else if (newRouteEndpoint?.kind === "system") {
+          target = { kind: "systemExit" };
         }
       }
       const eventKinds = availablePhysicalEventKinds(sourceNode, logicalSource, physicalEventKinds);
@@ -1810,6 +1879,35 @@ export function StateGraphView({
       endpoint.targetScene,
     );
   };
+  const onReconnect = (edge: Edge, connection: Connection) => {
+    if (scene !== null && graph.entryEdge !== undefined && edge.id === `${graph.entryEdge.source}->${graph.entryEdge.target}`) {
+      const targetState = graph.nodes.find((node) => node.id === connection.target);
+      const [targetHandleValue, targetSideValue] = (connection.targetHandle ?? "").split(":");
+      const targetPort = STATE_GRAPH_ENTRY_PORTS.find(
+        (port) => port.handle === targetHandleValue && port.side === targetSideValue,
+      );
+      if (targetState !== undefined && targetPort !== undefined) {
+        onSetEntryConnection(scene.scene_id, targetState.id, targetPort.handle, targetPort.side);
+      }
+      return;
+    }
+    if (
+      scene === null
+      || connection.source !== edge.source
+      || connection.sourceHandle === null
+      || !connection.sourceHandle.startsWith("new-physical-trigger:")
+    ) {
+      return;
+    }
+    const routeId = typeof edge.data?.route_id === "string" ? edge.data.route_id : null;
+    const sourceNode = graph.nodes.find((node) => node.id === edge.source);
+    const sourceOutput = sourceNode?.outputs.find((output) => output.routeId === routeId);
+    if (routeId === null || sourceOutput?.triggerKind !== "physical") {
+      return;
+    }
+    const logicalSource = connection.sourceHandle.slice("new-physical-trigger:".length);
+    onRebindTriggerRoute(scene.scene_id, routeId, logicalSource);
+  };
   useEffect(() => {
     if (flowRef.current === null) {
       return;
@@ -1828,21 +1926,25 @@ export function StateGraphView({
       }
       const output = node.outputs.find((item) => item.routeId === selected.id);
       if (output !== undefined) {
-        const targetLabel = output.targetScene === undefined
+        const selectedEdge = graph.edges.find((edge) => edge.route.route_id === selected.id && edge.source === node.id);
+        const targetsSystem = selectedEdge?.targetKind === "system_exit";
+        const targetLabel = targetsSystem
+          ? "Exit to PeepOS"
+          : output.targetScene === undefined
           ? output.targetStateLabel ?? output.targetState ?? "state"
           : output.targetScene;
         return {
           from: node.label,
           trigger: output.label,
           target: targetLabel,
-          targetKind: output.targetScene === undefined ? "state" : "scene",
+          targetKind: targetsSystem ? "system action" : output.targetScene === undefined ? "state" : "scene",
           conditions: output.guardCount,
           effects: output.actionCount,
         };
       }
     }
     return null;
-  }, [graph.nodes, selected]);
+  }, [graph.edges, graph.nodes, selected]);
   const pendingPhysicalSourceLabel = pendingPhysicalConnection === null
     ? ""
     : INPUT_LABELS[pendingPhysicalConnection.logicalSource] ?? pendingPhysicalConnection.logicalSource;
@@ -1855,6 +1957,9 @@ export function StateGraphView({
       const stateId = target.stateId;
       return graph.nodes.find((node) => node.id === stateId)?.label ?? stateId;
     }
+    if (target.kind === "systemExit") {
+      return "Exit to PeepOS";
+    }
     const sceneExitId = target.sceneExitId;
     return graph.endpoints.find((endpoint) => endpoint.sceneExitId === sceneExitId)?.label ?? sceneExitId;
   })();
@@ -1863,9 +1968,11 @@ export function StateGraphView({
     () => {
       const transitionEdges = graph.edges.map((edge) => {
         const transitionLayout = transitionLayouts[edge.sourceHandle];
+        const sourceNode = graphNodeById.get(edge.source);
+        const sourceOutput = sourceNode?.outputs.find((output) => output.id === edge.sourceHandle);
         const targetNode = graphNodeById.get(edge.target);
         const targetNodePosition = positionById.get(edge.target);
-        const targetEntryPorts = edge.targetKind === "scene_exit" || targetNode === undefined || targetNodePosition === undefined
+        const targetEntryPorts = edge.targetKind !== "state" || targetNode === undefined || targetNodePosition === undefined
           ? undefined
           : STATE_GRAPH_ENTRY_PORTS.map((port) => ({
               handle: port.handle,
@@ -1885,8 +1992,11 @@ export function StateGraphView({
           target: edge.target,
           sourceHandle: edge.sourceHandle,
           targetHandle: transitionLayout === undefined
-            ? edge.targetKind === "scene_exit" ? "scene-exit-in" : undefined
+            ? edge.targetKind === "scene_exit"
+              ? "scene-exit-in"
+              : edge.targetKind === "system_exit" ? "system-exit-in" : undefined
             : stateEntryPortId(transitionLayout.targetHandle, transitionLayout.targetSide),
+          reconnectable: sourceOutput?.triggerKind === "physical" ? "source" as const : false,
           selected: isSelected,
           className: isSelected ? "state-transition-edge selected" : "state-transition-edge",
           data: {
@@ -1896,8 +2006,8 @@ export function StateGraphView({
             guards: edge.guards,
             actions: edge.actions,
             rails: edge.rails,
-            targetHandle: edge.targetKind === "scene_exit" ? undefined : transitionLayout?.targetHandle,
-            targetSide: edge.targetKind === "scene_exit" ? "left" : transitionLayout?.targetSide,
+            targetHandle: edge.targetKind === "state" ? transitionLayout?.targetHandle : undefined,
+            targetSide: edge.targetKind === "state" ? transitionLayout?.targetSide : "left",
             targetEntryPorts,
             canEdit,
             showSectionHandles: isSelected && selected.kind === "route" && selected.sourceState !== undefined,
@@ -1924,16 +2034,17 @@ export function StateGraphView({
         source: graph.entryEdge.source,
         target: graph.entryEdge.target,
         sourceHandle: "scene-entry-out",
-        targetHandle: stateEntryPortId("entry-top-left", "left"),
+        targetHandle: stateEntryPortId(graph.entryEdge.targetHandle, graph.entryEdge.targetSide),
         type: "smoothstep",
-        selectable: false,
-        focusable: false,
+        reconnectable: "target" as const,
+        selectable: canEdit,
+        focusable: canEdit,
         markerEnd: { type: MarkerType.ArrowClosed, color: "#2f9e44" },
         style: { stroke: "#2f9e44", strokeWidth: 2 },
       }];
       return [...transitionEdges, ...entryEdge];
     },
-    [canEdit, graph.edges, graphNodeById, onSelect, onSetRouteLayout, positionById, scene, selected, transitionLayouts],
+    [canEdit, graph.edges, graph.entryEdge, graphNodeById, onSelect, onSetRouteLayout, positionById, scene, selected, transitionLayouts],
   );
 
   if (scene === null) {
@@ -1972,9 +2083,12 @@ export function StateGraphView({
       }}
       nodesDraggable={canEdit}
       nodesConnectable={canEdit}
+      edgesReconnectable={canEdit}
+      deleteKeyCode={null}
       elementsSelectable
       onNodesChange={onNodesChange}
       onConnect={onConnect}
+      onReconnect={onReconnect}
       onNodeDragStop={(_, node) => onNodeDragStop(node)}
       onNodeClick={(_, node) => {
         if (node.type === "stateCard") {
@@ -1984,7 +2098,9 @@ export function StateGraphView({
         const endpoint = (node.data as SceneEndpointNodeData | undefined)?.endpoint;
         onSelect(endpoint?.kind === "exit" && endpoint.sceneExitId !== undefined
           ? { kind: "sceneExit", id: endpoint.sceneExitId }
-          : { kind: "scene" });
+          : endpoint?.kind === "system"
+            ? { kind: "systemExit" }
+            : { kind: "scene" });
       }}
       onEdgeClick={(_, edge) => {
         if (edge.data?.route_id === undefined) {
@@ -2103,6 +2219,54 @@ export function StateGraphView({
           </div>
         </Panel>
       )}
+      <Panel position="top-left" className="state-graph-toolbar">
+        <button
+          className="button secondary"
+          disabled={!canEdit || !canCreateState}
+          title="Add state"
+          type="button"
+          onClick={() => {
+            const stateNodes = nodes.flatMap((node) => graphNodeById.has(node.id)
+              ? [{ id: node.id, x: node.position.x, y: node.position.y }]
+              : []);
+            const position = nextStateGraphNodePosition(
+              stateNodes,
+              selected.kind === "state" ? selected.id : undefined,
+            );
+            setPendingPhysicalConnection(null);
+            setPeepOSTriggerStateId(null);
+            onCreateState(scene.scene_id, position.x, position.y);
+          }}
+        >
+          <Plus size={14} aria-hidden="true" />
+          Add state
+        </button>
+        {!graph.endpoints.some((endpoint) => endpoint.kind === "system") && (
+          <button
+            className="button secondary"
+            disabled={!canEdit}
+            title="Place Exit to PeepOS"
+            type="button"
+            onClick={() => {
+              const rightmost = nodes.reduce(
+                (value, node) => Math.max(value, node.position.x),
+                0,
+              );
+              const topmost = nodes.reduce(
+                (value, node) => Math.min(value, node.position.y),
+                0,
+              );
+              setPendingPhysicalConnection(null);
+              setPeepOSTriggerStateId(null);
+              onSelect({ kind: "systemExit" });
+              onMoveStateNode(scene.scene_id, "system-exit", rightmost + 440, topmost + 180);
+            }}
+          >
+            <LogOut size={14} aria-hidden="true" />
+            Exit to PeepOS
+          </button>
+        )}
+      </Panel>
       {selectedTransition !== null && (
         <Panel position="top-right" className="graph-selection-summary">
           <span>Selected transition</span>
@@ -2424,6 +2588,8 @@ export function SceneAuthoringInspector({
   selection,
   onSelect,
   onRenameState,
+  onSetEntryState,
+  onDeleteState,
   onSetRouteTarget,
   onSetRouteSceneTarget,
   onSetSceneExitTarget,
@@ -2440,6 +2606,8 @@ export function SceneAuthoringInspector({
   selection: SceneSelection;
   onSelect: (selection: SceneSelection) => void;
   onRenameState: (sceneId: string, stateId: string, displayName: string) => Promise<void>;
+  onSetEntryState: (sceneId: string, stateId: string) => Promise<void>;
+  onDeleteState: (sceneId: string, stateId: string) => Promise<void>;
   onSetRouteTarget: (sceneId: string, routeId: string, targetState: string) => Promise<void>;
   onSetRouteSceneTarget: (sceneId: string, routeId: string, targetScene: string, sceneExitRef?: string) => Promise<void>;
   onSetSceneExitTarget: (sceneId: string, sceneExitId: string, targetScene: string) => Promise<void>;
@@ -2480,6 +2648,9 @@ export function SceneAuthoringInspector({
     : null;
   const render = selection.kind === "render" ? renderModels.find((item) => item.visual_id === selection.id) ?? null : null;
   const waiting = selection.kind === "waiting" ? waitingVisuals.find((item) => item.waiting_visual_id === selection.id) ?? null : null;
+  const systemExitRouteCount = routes.filter((item) =>
+    item.actions.some((action) => action.kind === "exit_to_shell"),
+  ).length;
 
   return (
     <>
@@ -2487,10 +2658,13 @@ export function SceneAuthoringInspector({
         <StateInspector
           sceneId={scene.scene_id}
           state={state}
+          isEntry={scene.entry_state === state.state_id}
           renderModels={renderModels}
           waitingVisuals={waitingVisuals}
           onSelect={onSelect}
           onRenameState={onRenameState}
+          onSetEntryState={onSetEntryState}
+          onDeleteState={onDeleteState}
           canEdit={canEdit}
         />
       )}
@@ -2528,6 +2702,21 @@ export function SceneAuthoringInspector({
       )}
       {render !== null && <RenderInspector render={render} />}
       {waiting !== null && <WaitingInspector waiting={waiting} />}
+      {selection.kind === "systemExit" && (
+        <section className="inspector-section selected-record">
+          <h3><LogOut size={14} aria-hidden="true" /> Exit to PeepOS</h3>
+          <div className="compact-grid">
+            <div>
+              <span>Destination</span>
+              <strong>System shell</strong>
+            </div>
+            <div>
+              <span>Transitions</span>
+              <strong>{systemExitRouteCount}</strong>
+            </div>
+          </div>
+        </section>
+      )}
 
       {selection.kind === "scene" && (
         <SceneOverview
@@ -2628,7 +2817,11 @@ function SceneOverview({
           <div className="record-list">
             {routes.map((item: StateRoute) => (
               <button key={item.route_id} className="record-row" type="button" onClick={() => onSelect({ kind: "route", id: item.route_id })}>
-                <strong>{item.from_states.join(", ")} {"->"} {item.target_scene === undefined ? item.target_state : `scene:${item.target_scene}`}</strong>
+                <strong>
+                  {item.from_states.join(", ")} {"->"} {item.actions.some((action) => action.kind === "exit_to_shell")
+                    ? "PeepOS"
+                    : item.target_scene === undefined ? item.target_state : `scene:${item.target_scene}`}
+                </strong>
                 <small>{item.guards.length === 0 ? "always allowed" : `${item.guards.length} condition${item.guards.length === 1 ? "" : "s"}`}; {visibleEffectCount(item.actions)} effect{visibleEffectCount(item.actions) === 1 ? "" : "s"}</small>
               </button>
             ))}
@@ -2674,18 +2867,24 @@ function SceneOverview({
 function StateInspector({
   sceneId,
   state,
+  isEntry,
   renderModels,
   waitingVisuals,
   onSelect,
   onRenameState,
+  onSetEntryState,
+  onDeleteState,
   canEdit,
 }: {
   sceneId: string;
   state: StateRecord;
+  isEntry: boolean;
   renderModels: RenderModel[];
   waitingVisuals: WaitingVisual[];
   onSelect: (selection: SceneSelection) => void;
   onRenameState: (sceneId: string, stateId: string, displayName: string) => Promise<void>;
+  onSetEntryState: (sceneId: string, stateId: string) => Promise<void>;
+  onDeleteState: (sceneId: string, stateId: string) => Promise<void>;
   canEdit: boolean;
 }) {
   const render = renderModels[0];
@@ -2709,6 +2908,10 @@ function StateInspector({
         <div>
           <span>State</span>
           <strong>{state.display_name}</strong>
+        </div>
+        <div>
+          <span>Scene start</span>
+          <strong>{isEntry ? "Yes" : "No"}</strong>
         </div>
         <div>
           <span>Object changes</span>
@@ -2747,6 +2950,27 @@ function StateInspector({
       <button className="link-row" type="button" onClick={() => onSelect({ kind: "waiting", id: state.waiting_visual_ref })}>
         Waiting animation <strong>{waiting === undefined ? "Missing" : `${waiting.combined_step_count} step${waiting.combined_step_count === 1 ? "" : "s"}`}</strong>
       </button>
+      <div className="state-lifecycle-actions">
+        <button
+          className={`button secondary ${isEntry ? "active" : ""}`}
+          disabled={!canEdit || isEntry}
+          type="button"
+          onClick={() => void onSetEntryState(sceneId, state.state_id)}
+        >
+          <Play size={14} aria-hidden="true" />
+          {isEntry ? "Starts scene" : "Set as start"}
+        </button>
+        <button
+          className="button state-delete-button"
+          disabled={!canEdit}
+          title="Delete selected state"
+          type="button"
+          onClick={() => void onDeleteState(sceneId, state.state_id)}
+        >
+          <Trash2 size={14} aria-hidden="true" />
+          Delete state
+        </button>
+      </div>
       <div className="internal-ref-note">
         Internal state ID: <code>{state.state_id}</code>
       </div>
@@ -2849,13 +3073,16 @@ function RouteInspector({
 }) {
   const input = inputActions.find((item) => item.action_id === route.action_ref);
   const fromLabels = route.from_states.map((stateId) => displayStateName(states, stateId)).join(", ");
-  const exitsScene = route.target_scene !== undefined;
+  const exitsToPeepOS = route.actions.some((action) => action.kind === "exit_to_shell");
+  const exitsScene = !exitsToPeepOS && route.target_scene !== undefined;
   const routeSceneExit = sceneExits.find((sceneExit) => sceneExit.scene_exit_id === route.scene_exit_ref)
     ?? sceneExits.find((sceneExit) => sceneExit.target_scene === route.target_scene);
-  const routeTarget = route.target_scene === undefined
+  const routeTarget = exitsToPeepOS
+    ? "PeepOS"
+    : route.target_scene === undefined
     ? displayStateName(states, route.target_state ?? "")
     : routeSceneExit?.display_name ?? scenes.find((scene) => scene.scene_id === route.target_scene)?.display_name ?? route.target_scene;
-  const targetKind = route.target_scene === undefined ? "state" : "scene exit";
+  const targetKind = exitsToPeepOS ? "system" : route.target_scene === undefined ? "state" : "scene exit";
   return (
     <section className="inspector-section selected-record">
       <h3>Selected transition</h3>
@@ -2873,7 +3100,7 @@ function RouteInspector({
           <strong>{routeTarget}</strong>
         </div>
       </div>
-      {exitsScene ? (
+      {exitsToPeepOS ? null : exitsScene ? (
         <label className="select-field" htmlFor={`route-scene-exit-${route.route_id}`}>
           Scene exit
           <select
@@ -3071,8 +3298,9 @@ function EditableActionList({
 }) {
   const visibleActions = route.actions
     .map((action, actionIndex) => ({ action, actionIndex }))
-    .filter(({ action }) => action.kind !== "request_render");
-  const addActionIndex = route.actions.length;
+    .filter(({ action }) => action.kind !== "request_render" && action.kind !== "exit_to_shell");
+  const systemExitIndex = route.actions.findIndex((action) => action.kind === "exit_to_shell");
+  const addActionIndex = systemExitIndex >= 0 ? systemExitIndex : route.actions.length;
   const addVariableAction = variables[0] === undefined ? null : {
     kind: "set_variable",
     variable_ref: variables[0].variable_id,
