@@ -1608,8 +1608,7 @@ const ps_scene_waiting_visual_t *PS_SceneRuntime_ResolveStateSceneWaitingVisual(
   }
   binding_index = PS_SceneRuntime_FindVisualBindingIndex(
     scene, model->visual_binding_id);
-  if ((binding_index == PS_SCENE_RUNTIME_INDEX_INVALID) ||
-      (cursor_bounds == NULL))
+  if (binding_index == PS_SCENE_RUNTIME_INDEX_INVALID)
   {
     g_ps_scene_runtime_probe.reject_count++;
     g_ps_scene_runtime_probe.last_status = 1UL;
@@ -1636,6 +1635,10 @@ const ps_scene_waiting_visual_t *PS_SceneRuntime_ResolveStateSceneWaitingVisual(
     if (element.visual_source_id ==
         PS_SCENE_WAITING_VISUAL_SOURCE_SHELL_CURSOR)
     {
+      if (cursor_bounds == NULL)
+      {
+        continue;
+      }
       element.logical_bounds = *cursor_bounds;
     }
     else

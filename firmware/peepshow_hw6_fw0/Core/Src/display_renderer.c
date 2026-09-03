@@ -507,12 +507,6 @@ static void DisplayRenderer_ClearListCursor(uint32_t row)
 
 static void DisplayRenderer_RecordCursorBaseFrame(void)
 {
-  if (s_lpbam_cursor_panel_region_valid == 0UL)
-  {
-    s_display_cursor_base_valid = 0UL;
-    return;
-  }
-
   (void)memcpy(s_display_cursor_base_framebuffer,
                s_display_framebuffer,
                sizeof(s_display_cursor_base_framebuffer));
@@ -1004,9 +998,7 @@ static uint32_t DisplayRenderer_ResolveSceneWaitingVisual(
       (g_display_renderer_scene_waiting_probe.active == 0UL) ||
       (DisplayRenderer_ValidateSceneWaitingVisual(visual) == 0UL) ||
       (s_display_committed_valid == 0UL) ||
-      (s_display_cursor_base_valid == 0UL) ||
-      (s_lpbam_cursor_panel_region_valid == 0UL) ||
-      (s_display_committed_focus_valid == 0UL))
+      (s_display_cursor_base_valid == 0UL))
   {
     g_display_renderer_scene_waiting_probe.last_resolve_status = 1UL;
     return 0UL;
@@ -1015,7 +1007,9 @@ static uint32_t DisplayRenderer_ResolveSceneWaitingVisual(
   animation->animation_id = visual->presentation_id;
   animation->source_primitive_id =
     DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK;
-  animation->focus_row = s_display_committed_focus_index;
+  animation->focus_row =
+    (s_display_committed_focus_valid != 0UL) ?
+      s_display_committed_focus_index : DISPLAY_RENDERER_ROW_NONE;
   animation->phase_count = visual->sequence_step_count;
   animation->sequence_frame_count = visual->sequence_step_count;
   animation->cadence_ms = visual->phase_quantum_ms;
@@ -1046,6 +1040,12 @@ static uint32_t DisplayRenderer_ResolveSceneWaitingVisual(
     if (source->visual_source_id ==
         PS_SCENE_WAITING_VISUAL_SOURCE_SHELL_CURSOR)
     {
+      if ((s_lpbam_cursor_panel_region_valid == 0UL) ||
+          (s_display_committed_focus_valid == 0UL))
+      {
+        g_display_renderer_scene_waiting_probe.last_resolve_status = 1UL;
+        return 0UL;
+      }
       target->source_primitive_id =
         DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK;
       if ((target->panel_bounds.start_row !=
@@ -3500,9 +3500,18 @@ void DisplayRenderer_PrepareUIPage(
     DisplayRenderer_RecordCursorBaseFrame();
     DisplayRenderer_ComputeDirtyRowsFromCommitted();
     s_rotate_ccw = 0UL;
-    s_display_pending_focus_index = scene_model->focus_index;
-    s_display_pending_focus_valid = 1UL;
-    s_display_pending_focus_invalidates = 0UL;
+    if (s_lpbam_cursor_panel_region_valid != 0UL)
+    {
+      s_display_pending_focus_index = scene_model->focus_index;
+      s_display_pending_focus_valid = 1UL;
+      s_display_pending_focus_invalidates = 0UL;
+    }
+    else
+    {
+      s_display_pending_focus_index = DISPLAY_RENDERER_ROW_NONE;
+      s_display_pending_focus_valid = 0UL;
+      s_display_pending_focus_invalidates = 1UL;
+    }
     DisplayRenderer_FillStats(stats,
                               black_pixels,
                               primitive_id,

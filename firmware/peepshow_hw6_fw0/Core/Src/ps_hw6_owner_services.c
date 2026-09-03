@@ -1156,6 +1156,7 @@ static void PS_HW6_DisplayOwner_PublishStateWaitingVisual(
   const ps_scene_render_model_t *scene_model)
 {
   ps_scene_waiting_visual_bounds_t cursor_bounds;
+  const ps_scene_waiting_visual_bounds_t *cursor_bounds_ptr = NULL;
   const ps_scene_waiting_visual_t *visual;
   uint32_t bounds_ready;
 
@@ -1170,26 +1171,22 @@ static void PS_HW6_DisplayOwner_PublishStateWaitingVisual(
   {
     bounds_ready = DisplayRenderer_GetSceneFocusLogicalBounds(
       scene_model, &cursor_bounds);
+    if (bounds_ready != 0UL)
+    {
+      cursor_bounds_ptr = &cursor_bounds;
+    }
+    visual = PS_SceneRuntime_ResolveStateSceneWaitingVisual(
+      scene_model, cursor_bounds_ptr);
   }
   else
   {
     bounds_ready = DisplayRenderer_GetListCursorLogicalBounds(
       focus_index, &cursor_bounds);
-  }
-  if (bounds_ready == 0UL)
-  {
-    DisplayRenderer_ClearSceneWaitingVisual();
-    return;
-  }
-
-  if ((page == (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF) &&
-      (PS_SceneRuntime_StateSceneActive() != 0UL))
-  {
-    visual = PS_SceneRuntime_ResolveStateSceneWaitingVisual(
-      scene_model, &cursor_bounds);
-  }
-  else
-  {
+    if (bounds_ready == 0UL)
+    {
+      DisplayRenderer_ClearSceneWaitingVisual();
+      return;
+    }
     visual = PS_SceneRuntime_ResolveShellStateWaitingVisual(
       page, focus_index, &cursor_bounds);
   }
