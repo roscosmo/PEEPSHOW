@@ -14,8 +14,7 @@ restores and verifies the voltage scale, re-arms the PLL2P epoch, hands the SAI
 kernel mux back to PLL2P, and grants `SAI_AUDIO_ACTIVE` before playback starts.
 Music, sustained playback, fades, and measured audio energy remain open.
 Package SFX streaming has fixed buffers and underrun telemetry and is
-target-proven with a cue longer than the two DMA halves. Five-voice overlap and
-priority/preemption still require target evidence. Initial five-voice target
+target-proven with a cue longer than the two DMA halves. Initial five-voice target
 stress reached all five voices but exposed a refill underrun and stale-request
 jam at the scaffolded base clock. HW6 now grants bounded STATE SFX the
 `CLK_REACTIVE_BURST` development point and performs one bounded recovery to
@@ -23,7 +22,12 @@ verified audio-idle state after a playback fault. A subsequent `48 MHz` run
 completed eight requests with five simultaneous voices and no underrun, but
 exposed audible summed-output overload. The mixer now applies deterministic
 per-voice de-click ramps, a weighted aggregate-volume budget, and a fixed-point
-look-ahead peak limiter; target fidelity revalidation remains required.
+look-ahead peak limiter. Five-voice overlap is target-proven clean at the
+candidate `80 MHz` point. The optimized path decodes sequentially from resident
+package windows directly into the mix accumulator; its measured worst mixer
+time is `469417` cycles (`5.87 ms`) and its worst complete refill is `967382`
+cycles (`12.09 ms`) against a `32 ms` deadline. Strict higher-priority
+preemption remains open.
 
 ## Target Applicability
 
@@ -107,9 +111,10 @@ deterministic compiler/parser/preview tests. The optional PKG1 audio asset,
 ADPCM bank, and cue chunks plus symbolic `play_sfx` action are available to
 Peep Studio. HW6 loader routing and streamed one-voice playback are target-
 proven for a multi-second cue, including audible output across natural STOP2
-cycles, deterministic drain, and clock release. The fixed five-voice mixer,
-overlap, and priority/preemption policy are implemented and build-tested but
-still require target proof. This grants only bounded STATE
+cycles, deterministic drain, and clock release. The fixed five-voice mixer and
+equal/lower-priority overflow rejection are target-proven with clean audible
+overlap at `80 MHz`; strict higher-priority preemption still requires target
+proof. This grants only bounded STATE
 `audio.sampled_sfx`, not music or sustained realtime audio.
 
 The audio lifetime boundary is the active package, not an individual STATE
@@ -408,8 +413,15 @@ and reported no underrun, DMA error, source failure, request leak, or final FSM
 fault; it also exposed audible overload because the initial mixer directly
 summed authored cue levels. A peak-only limiter prevented numeric clipping but
 left excessive aggregate bus energy during overlap. Weighted authored-volume
-budgeting, fixed-point peak limiting, and de-click ramps are now implemented,
-with target fidelity evidence pending.
+budgeting, fixed-point peak limiting, and de-click ramps are now implemented.
+The optimized direct-window/fused-accumulation path subsequently completed five
+simultaneous voices cleanly at `80 MHz`: all `183335` samples decoded, all five
+voices completed, DMA callbacks were `50/49`, and underrun, opposite-half,
+source-failure, prefetch-miss, and residual-clip counts remained zero. Worst
+mixer and complete-refill times were `5.87 ms` and `12.09 ms`, leaving `62.2%`
+of the `32 ms` refill deadline. Case 6 is therefore target-proven; music plus
+five SFX, strict higher-priority preemption, and realtime display contention
+remain open.
 
 Related:
 

@@ -157,9 +157,6 @@ static uint8_t ps_hw6_audio_stream_source_windows[
   [PS_HW6_AUDIO_STREAM_SOURCE_WINDOW_COUNT]
   [PS_PACKAGE_READER_WINDOW_BYTES]
   __attribute__((aligned(4)));
-static int16_t ps_hw6_audio_stream_mix_scratch[
-  PS_HW6_AUDIO_STREAM_HALF_FRAMES]
-  __attribute__((aligned(4)));
 static int32_t ps_hw6_audio_stream_mix_accumulator[
   PS_HW6_AUDIO_STREAM_HALF_FRAMES]
   __attribute__((aligned(4)));
@@ -170,7 +167,6 @@ typedef struct
   uint32_t voice_index;
   uint32_t source_offset;
   uint32_t block_index;
-  uint32_t block_payload_offset;
   uint32_t block_sample_count;
   uint32_t block_sample_index;
   uint32_t decoded_sample_count;
@@ -178,6 +174,8 @@ typedef struct
   int32_t step_index;
   uint32_t packed_byte;
   uint32_t packed_byte_valid;
+  const uint8_t *source_cursor;
+  uint32_t source_cursor_remaining;
   uint32_t source_window_offset;
   uint32_t source_window_length;
   uint32_t source_window_valid;
@@ -2686,11 +2684,35 @@ PS_HW6_AudioStreamSourceWindow(
     [window_index];
 }
 
+static HAL_StatusTypeDef PS_HW6_AudioStreamBindSourceCursor(
+  ps_hw6_audio_stream_decoder_t *decoder)
+{
+  uint32_t cursor_index;
+
+  if ((decoder == NULL) || (decoder->source_window_valid == 0UL) ||
+      (decoder->source_offset < decoder->source_window_offset))
+  {
+    return HAL_ERROR;
+  }
+
+  cursor_index = decoder->source_offset - decoder->source_window_offset;
+  if (cursor_index >= decoder->source_window_length)
+  {
+    return HAL_ERROR;
+  }
+  decoder->source_cursor = PS_HW6_AudioStreamSourceWindow(
+    decoder, decoder->source_window_index) + cursor_index;
+  decoder->source_cursor_remaining =
+    decoder->source_window_length - cursor_index;
+  return HAL_OK;
+}
+
 static HAL_StatusTypeDef PS_HW6_AudioStreamFinishRead(
   ps_hw6_audio_stream_decoder_t *decoder,
   uint32_t wait_for_completion)
 {
   UINT read_status;
+  HAL_StatusTypeDef cursor_status = HAL_OK;
 
   if ((decoder == NULL) ||
       (ps_hw6_audio_stream_read_decoder != decoder) ||
@@ -2727,6 +2749,7 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamFinishRead(
     decoder->source_window_index = decoder->source_prefetch_index;
     decoder->source_window_valid = 1UL;
     decoder->source_initial_pending = 0UL;
+    cursor_status = PS_HW6_AudioStreamBindSourceCursor(decoder);
   }
   else
   {
@@ -2736,7 +2759,7 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamFinishRead(
   }
   ps_hw6_audio_stream_read_decoder = NULL;
   ps_hw6_audio_stream_read_kind = PS_HW6_AUDIO_STREAM_READ_NONE;
-  return HAL_OK;
+  return cursor_status;
 }
 
 static HAL_StatusTypeDef PS_HW6_AudioStreamStartInitialRead(
@@ -2906,32 +2929,20 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamDrainPrefetch(
   return status;
 }
 
-static HAL_StatusTypeDef PS_HW6_AudioStreamReadByte(
-  ps_hw6_audio_stream_decoder_t *decoder,
-  uint32_t source_offset,
-  uint8_t *value)
+static HAL_StatusTypeDef PS_HW6_AudioStreamEnsureSourceCursor(
+  ps_hw6_audio_stream_decoder_t *decoder)
 {
   const ps_egg_state_loader_audio_cue_t *cue;
+  uint32_t source_offset;
 
-  if ((decoder == NULL) || (decoder->cue == NULL) || (value == NULL))
+  if ((decoder == NULL) || (decoder->cue == NULL))
   {
     return HAL_ERROR;
   }
   cue = decoder->cue;
-  if (source_offset >= cue->adpcm_size)
-  {
-    return HAL_ERROR;
-  }
-  if (cue->package_backed == 0UL)
-  {
-    if (cue->adpcm == NULL)
-    {
-      return HAL_ERROR;
-    }
-    *value = cue->adpcm[source_offset];
-    return HAL_OK;
-  }
-  if (cue->package_backed != 1UL)
+  source_offset = decoder->source_offset;
+  if ((cue->package_backed != 1UL) ||
+      (source_offset >= cue->adpcm_size))
   {
     return HAL_ERROR;
   }
@@ -3057,17 +3068,40 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamReadByte(
   }
 
 source_window_ready:
-  *value = PS_HW6_AudioStreamSourceWindow(
-    decoder, decoder->source_window_index)[
-    source_offset - decoder->source_window_offset];
+  return PS_HW6_AudioStreamBindSourceCursor(decoder);
+}
+
+static inline __attribute__((always_inline)) HAL_StatusTypeDef
+PS_HW6_AudioStreamReadNextByte(
+  ps_hw6_audio_stream_decoder_t *decoder,
+  uint8_t *value)
+{
+  if ((decoder == NULL) || (decoder->cue == NULL) || (value == NULL) ||
+      (decoder->source_offset >= decoder->cue->adpcm_size))
+  {
+    return HAL_ERROR;
+  }
+  if ((decoder->source_cursor == NULL) ||
+      (decoder->source_cursor_remaining == 0UL))
+  {
+    if (PS_HW6_AudioStreamEnsureSourceCursor(decoder) != HAL_OK)
+    {
+      return HAL_ERROR;
+    }
+  }
+
+  *value = *decoder->source_cursor;
+  decoder->source_cursor++;
+  decoder->source_cursor_remaining--;
+  decoder->source_offset++;
   return HAL_OK;
 }
 
-static HAL_StatusTypeDef PS_HW6_AudioStreamLoadBlock(
+static __attribute__((optimize("O3"))) HAL_StatusTypeDef
+PS_HW6_AudioStreamLoadBlock(
   ps_hw6_audio_stream_decoder_t *decoder)
 {
   const ps_egg_state_loader_audio_cue_t *cue;
-  uint32_t source_offset;
   uint32_t block_sample_count;
   uint32_t packed_count;
   uint8_t header[PS_HW6_AUDIO_ADPCM_BLOCK_HEADER_BYTES];
@@ -3080,16 +3114,15 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamLoadBlock(
   }
 
   cue = decoder->cue;
-  source_offset = decoder->source_offset;
-  if ((source_offset + PS_HW6_AUDIO_ADPCM_BLOCK_HEADER_BYTES) >
-      cue->adpcm_size)
+  if ((decoder->source_offset > cue->adpcm_size) ||
+      ((cue->adpcm_size - decoder->source_offset) <
+       PS_HW6_AUDIO_ADPCM_BLOCK_HEADER_BYTES))
   {
     return HAL_ERROR;
   }
   for (index = 0UL; index < sizeof(header); ++index)
   {
-    if (PS_HW6_AudioStreamReadByte(decoder, source_offset + index,
-                                   &header[index]) != HAL_OK)
+    if (PS_HW6_AudioStreamReadNextByte(decoder, &header[index]) != HAL_OK)
     {
       return HAL_ERROR;
     }
@@ -3109,9 +3142,8 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamLoadBlock(
   }
 
   packed_count = ((block_sample_count - 1UL) + 1UL) / 2UL;
-  decoder->block_payload_offset = source_offset + 6UL;
-  decoder->source_offset = decoder->block_payload_offset + packed_count;
-  if (decoder->source_offset > cue->adpcm_size)
+  if ((decoder->source_offset > cue->adpcm_size) ||
+      (packed_count > (cue->adpcm_size - decoder->source_offset)))
   {
     return HAL_ERROR;
   }
@@ -3144,30 +3176,37 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamDecoderInit(
   decoder->voice_index = voice_index;
   decoder->source_window_last_status = PS_HW6_OWNER_STATUS_NOT_RUN;
   decoder->source_prefetch_cleanup_status = PS_HW6_OWNER_STATUS_NOT_RUN;
+  if (cue->package_backed == 0UL)
+  {
+    decoder->source_cursor = cue->adpcm;
+    decoder->source_cursor_remaining = cue->adpcm_size;
+  }
   return HAL_OK;
 }
 
-static HAL_StatusTypeDef PS_HW6_AudioStreamDecodeFrames(
+static __attribute__((optimize("O3"))) HAL_StatusTypeDef
+PS_HW6_AudioStreamDecodeAccumulate(
   ps_hw6_audio_stream_decoder_t *decoder,
-  int16_t *destination,
+  int32_t *accumulator,
   uint32_t frame_capacity,
   uint32_t *decoded_frames,
-  uint32_t *source_finished)
+  uint32_t *source_finished,
+  int32_t *last_sample)
 {
   const ps_egg_state_loader_audio_cue_t *cue;
   uint32_t output_frame = 0UL;
   uint32_t declick_attenuated_frames = 0UL;
 
   if ((decoder == NULL) || (decoder->cue == NULL) ||
-      (destination == NULL) || (frame_capacity == 0UL) ||
-      (decoded_frames == NULL) || (source_finished == NULL))
+      (accumulator == NULL) || (frame_capacity == 0UL) ||
+      (decoded_frames == NULL) || (source_finished == NULL) ||
+      (last_sample == NULL))
   {
     return HAL_ERROR;
   }
 
   cue = decoder->cue;
-  (void)memset(destination, 0,
-               frame_capacity * sizeof(destination[0]));
+  *last_sample = 0;
   while ((output_frame < frame_capacity) &&
          (decoder->decoded_sample_count < cue->sample_count))
   {
@@ -3196,10 +3235,7 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamDecodeFrames(
 
       if ((nibble_index & 1UL) == 0UL)
       {
-        if (PS_HW6_AudioStreamReadByte(
-              decoder,
-              decoder->block_payload_offset + (nibble_index / 2UL),
-              &packed) != HAL_OK)
+        if (PS_HW6_AudioStreamReadNextByte(decoder, &packed) != HAL_OK)
         {
           return HAL_ERROR;
         }
@@ -3253,7 +3289,8 @@ static HAL_StatusTypeDef PS_HW6_AudioStreamDecodeFrames(
       declick_attenuated_frames++;
       sample = PS_HW6_AudioScalePcmQ15(sample, envelope_gain_q15);
     }
-    destination[output_frame] = (int16_t)sample;
+    accumulator[output_frame] += sample;
+    *last_sample = sample;
     decoder->block_sample_index++;
     decoder->decoded_sample_count++;
     output_frame++;
@@ -3681,7 +3718,8 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxServiceSourceReadsProfiled(void)
   return status;
 }
 
-static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
+static __attribute__((optimize("O3"))) HAL_StatusTypeDef
+PS_HW6_AudioSfxMixHalf(
   int16_t *destination,
   uint32_t stream_event)
 {
@@ -3723,6 +3761,8 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
     uint32_t tail_frames;
     uint32_t contributed_frames;
     uint32_t source_finished = 0UL;
+    int32_t last_decoded_sample = 0;
+    int32_t last_tail_sample = 0;
     int32_t last_voice_sample = 0;
 
     if ((voice->in_use == 0UL) || (voice->finished != 0UL))
@@ -3732,12 +3772,13 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
     if (voice->ready != 0UL)
     {
       phase_start_cycles = DWT->CYCCNT;
-      if (PS_HW6_AudioStreamDecodeFrames(
+      if (PS_HW6_AudioStreamDecodeAccumulate(
             &voice->decoder,
-            ps_hw6_audio_stream_mix_scratch,
+            ps_hw6_audio_stream_mix_accumulator,
             PS_HW6_AUDIO_STREAM_HALF_FRAMES,
             &decoded_frames,
-            &source_finished) != HAL_OK)
+            &source_finished,
+            &last_decoded_sample) != HAL_OK)
       {
         g_ps_hw6_owner_probe.audio_sfx_decode_status = (uint32_t)HAL_ERROR;
         return HAL_ERROR;
@@ -3762,11 +3803,8 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
     {
       active_volume_sum += voice->cue.volume;
     }
-    for (frame = 0UL; frame < contributed_frames; ++frame)
+    for (frame = 0UL; frame < tail_frames; ++frame)
     {
-      int32_t voice_sample = (frame < decoded_frames) ?
-        (int32_t)ps_hw6_audio_stream_mix_scratch[frame] : 0;
-
       if (voice->preempt_tail_frames_remaining != 0UL)
       {
         uint32_t tail_gain_q15 =
@@ -3774,16 +3812,27 @@ static HAL_StatusTypeDef PS_HW6_AudioSfxMixHalf(
            PS_HW6_AUDIO_GAIN_Q15_ONE) /
           PS_HW6_AUDIO_SFX_DECLICK_RELEASE_FRAMES;
 
-        voice_sample += PS_HW6_AudioScalePcmQ15(
+        last_tail_sample = PS_HW6_AudioScalePcmQ15(
           voice->preempt_tail_sample, tail_gain_q15);
+        ps_hw6_audio_stream_mix_accumulator[frame] += last_tail_sample;
         voice->preempt_tail_frames_remaining--;
         declick_attenuated_frames++;
       }
-      ps_hw6_audio_stream_mix_accumulator[frame] += voice_sample;
-      last_voice_sample = voice_sample;
     }
     if (contributed_frames != 0UL)
     {
+      if (decoded_frames >= tail_frames)
+      {
+        last_voice_sample = last_decoded_sample;
+        if ((decoded_frames == tail_frames) && (tail_frames != 0UL))
+        {
+          last_voice_sample += last_tail_sample;
+        }
+      }
+      else
+      {
+        last_voice_sample = last_tail_sample;
+      }
       voice->last_output_sample = last_voice_sample;
     }
     if ((source_finished != 0UL) &&
