@@ -167,7 +167,8 @@ extern RTC_HandleTypeDef hrtc;
 #define PS_HW6_RTOS_AUDIO_CLOCK_PACKAGE_SFX_CAPABILITIES \
   (PS_HW6_RTOS_AUDIO_CLOCK_SAI_CAPABILITIES | \
    PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE | \
-   PS_HW6_CLOCK_CAP_REACTIVE_TRANSACTION_ACTIVE)
+   PS_HW6_CLOCK_CAP_REACTIVE_TRANSACTION_ACTIVE | \
+   PS_HW6_CLOCK_CAP_AUDIO_MIX_ACTIVE)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_NONE       (0UL)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_EXPORT (1UL)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_RECLAIM (2UL)
@@ -1458,7 +1459,7 @@ static uint32_t PS_HW6_RTOS_ClockProfileRequestIsValid(uint32_t payload)
     return 0UL;
   }
 
-  return (profile <= (uint32_t)PS_HW6_CLOCK_PROFILE_STOP_PREP) ? 1UL : 0UL;
+  return (profile <= (uint32_t)PS_HW6_CLOCK_PROFILE_LAST) ? 1UL : 0UL;
 }
 
 static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
@@ -3027,7 +3028,7 @@ static UINT PS_HW6_RTOS_SendClockProfileCommand(uint32_t requester_id,
   ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
 
   if ((requester_id >= PS_HW6_CLOCK_REQUESTER_COUNT) ||
-      (profile > (uint32_t)PS_HW6_CLOCK_PROFILE_STOP_PREP) ||
+      (profile > (uint32_t)PS_HW6_CLOCK_PROFILE_LAST) ||
       ((capabilities & ~PS_HW6_CLOCK_CAP_ALL) != 0UL))
   {
     return TX_QUEUE_ERROR;
@@ -3154,7 +3155,8 @@ static UINT PS_HW6_RTOS_RequestAudioClockCapabilities(
   UINT status;
 
   if ((reason == PS_HW6_RTOS_AUDIO_CLOCK_REASON_REACTIVE_SFX) &&
-      (capabilities != 0UL))
+      (capabilities != 0UL) &&
+      ((capabilities & PS_HW6_CLOCK_CAP_AUDIO_MIX_ACTIVE) == 0UL))
   {
     requested_profile = (uint32_t)PS_HW6_CLOCK_PROFILE_IO_HIGH;
   }

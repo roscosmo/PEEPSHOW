@@ -15,7 +15,7 @@ printf "PLL2 req/out/on/off/status = 0x%x / 0x%x / %u / %u / 0x%x\n", $cp->pll2_
 printf "SAI active/gate/reset on/off/reset-count/epoch/status = %u / %u / %u / %u / %u / %u / %u / 0x%x\n", $cp->sai_domain_active, $cp->sai_clock_enabled, $cp->sai_reset_asserted, $cp->sai_domain_on_count, $cp->sai_domain_off_count, $cp->sai_reset_count, $cp->sai_grant_epoch, $cp->sai_domain_last_status
 printf "STOP2 prepare count/status/physical/fail = %u / 0x%x / %u / 0x%x\n", $cp->stop2_prepare_count, $cp->stop2_prepare_status, $cp->stop2_physical_ready, $cp->stop2_physical_failure_mask
 printf "kernel usb/sai/ospi Hz = %u / %u / %u\n", $cp->usb_kernel_hz, $cp->sai1_kernel_hz, $cp->ospi_kernel_hz
-printf "profiles: UNKNOWN=0 BOOT_RECOVERY=1 REACTIVE_BASE=2 REACTIVE_BURST=3 REALTIME_BALANCED=4 IO_HIGH=5 STOP_PREP=6\n"
-printf "caps: USB=0x1 OCTOSPI=0x2 SAI=0x4 DISPLAY=0x8 RT=0x10 REACTIVE=0x20 LPBAM_DISPLAY=0x40\n"
+printf "profiles: UNKNOWN=0 BOOT_RECOVERY=1 REACTIVE_BASE=2 REACTIVE_BURST=3 REALTIME_BALANCED=4 IO_HIGH=5 STOP_PREP=6 REALTIME_HIGH=7\n"
+printf "caps: USB=0x1 OCTOSPI=0x2 SAI=0x4 DISPLAY=0x8 RT=0x10 REACTIVE=0x20 LPBAM_DISPLAY=0x40 AUDIO_MIX=0x80\n"
 printf "audio clock reasons: NONE=0 REACTIVE_SFX=1 REALTIME_MIXER=2 RELEASE=3\n"
 printf "status: TX_SUCCESS=0x0 TX_NOT_DONE=0x20 NOT_RUN=0xffffffff\n"

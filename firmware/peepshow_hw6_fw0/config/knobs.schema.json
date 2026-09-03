@@ -98,6 +98,7 @@
     "power_clock_reactive_base_hz",
     "power_clock_reactive_burst_hz",
     "power_clock_realtime_balanced_hz",
+    "power_clock_realtime_high_hz",
     "power_clock_io_high_hz",
     "power_clock_pll2_autogate_enable",
     "power_stop2_display_wait_backend",
@@ -1218,6 +1219,18 @@
       "class": "protected_policy",
       "path": "platform.knobs.power.clock_realtime_balanced_hz",
       "description": "Candidate SYSCLK/HCLK for realtime/gameplay deadlines. Actual use requires deadline and current evidence before promotion."
+    },
+    "power_clock_realtime_high_hz": {
+      "type": "integer",
+      "minimum": 1000000,
+      "maximum": 160000000,
+      "default": 120000000,
+      "unit": "Hz",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.clock_realtime_high_hz",
+      "description": "Candidate SYSCLK/HCLK between balanced realtime and the high-I/O ceiling. Initial HW6 characterization uses VOS1 so frequency effects can be measured independently of voltage scaling."
     },
     "power_clock_io_high_hz": {
       "type": "integer",
