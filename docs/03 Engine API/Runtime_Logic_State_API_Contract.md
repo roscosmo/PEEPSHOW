@@ -294,6 +294,35 @@ Rules:
 - gameplay inactivity timers compile as normal delayed events and state transitions, not PeepOS lock settings
 - graph-local variables and scene/entity properties must declare type, size, range, reset behavior, and persistence behavior
 
+The first bounded hierarchical execution subset has one active child region per
+composite state and one active root-to-leaf path. For one admitted event, the
+runtime evaluates matching handlers at the leaf first and then walks toward the
+root. At each level, declared order is deterministic and the first handler with
+true guards consumes the event. False guards do not consume it. An internal
+handler may execute bounded actions without exiting, re-entering, or changing
+the active path; an empty internal handler explicitly blocks ancestor fallback.
+
+Compilers may flatten this hierarchy into leaf dispatch rows and expanded
+entry/exit action tables. Source nesting must not require recursion, dynamic
+allocation, or an unbounded ancestor walk in firmware. Target profiles must
+declare maximum hierarchy depth, flattened states, handlers, and action cost.
+
+State history and retained scene contexts are separate capabilities:
+
+- shallow history remembers one direct child;
+- deep history remembers one bounded descendant path;
+- missing history falls back to the declared initial-child path;
+- Open/Return scene navigation retains a bounded scene context, while ordinary
+  scene replacement does not;
+- package restart clears session history unless declared save-backed data is
+  restored through the save/settings contract.
+
+Support described here is a target runtime contract, not evidence that the
+current HW6 package profile implements it. Engine capability data must keep
+hierarchy, internal handlers, history, and retained scene navigation disabled
+in authoring tools until package parsing, execution, preview, and target bounds
+are implemented together.
+
 ---
 
 ## Event Model

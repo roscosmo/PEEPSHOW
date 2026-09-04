@@ -832,6 +832,62 @@ expose the matching counterpart, and deleting one must remove or detach the
 matching counterpart through the Python service rather than a renderer-only
 shortcut.
 
+### Stage 5B: Hierarchical State And Restorable Navigation
+
+Status: planned contract work; not exposed by the current executable service or
+HW6 package profile.
+
+The first hierarchical slice adds one active child region per composite state.
+Events dispatch from the active leaf toward its ancestors. The first enabled
+handler consumes the event, allowing a parent to define one fallback handler
+without duplicating it across every child. An internal handler executes actions
+without changing or re-entering the active child. Parallel regions, deferred
+events, and concurrent child execution remain outside this slice.
+
+The Python service must own and expose:
+
+- parent/child state structure, one initial child per composite, and bounded
+  hierarchy depth;
+- deterministic leaf-first event selection and explicit internal handlers;
+- validation for cycles, unreachable children, ambiguous transition ordering,
+  invalid history targets, and flattened-table budget overflow;
+- normalized active-state paths and inherited-handler provenance in preview
+  results;
+- shallow/deep state-history declarations and initial-entry fallback;
+- semantic scene navigation modes for **Go to**, **Go to and resume**,
+  **Open**, and **Return**;
+- capability fields that keep all unsupported controls hidden until compiler,
+  preview, package-format, and target-profile support agree.
+
+The compiler may flatten parent handlers into bounded leaf dispatch rows. It
+must preserve action order, child-over-parent priority, entry/exit ordering,
+and internal-handler no-reentry behavior. Authoring hierarchy must not require
+recursive firmware execution.
+
+The Engine/runtime side must define before Peep Studio exposes restoration:
+
+- maximum hierarchy depth, flattened state/handler counts, and retained scene
+  contexts for each target profile;
+- a bounded action-only/internal-handler primitive that does not reset state,
+  presentation identity, or timeline epoch;
+- scene-context Open/Return storage and overflow behavior;
+- whether timer deadlines, queued events, waiting-animation phase, and audio
+  state pause, continue, restart, or cancel while a scene is retained;
+- package stop, fault, shell entry, and package-restart behavior for all history
+  and retained contexts.
+
+Acceptance for this stage uses the menu example:
+
+1. Start Game, Settings, and Credits are children of one Menu Selection state.
+2. Up, Down, and A remain child handlers; one parent R handler is inherited by
+   all three without duplicated source routes.
+3. Opening Settings and returning restores the previously selected menu child.
+4. Package launch still enters the declared initial child.
+5. Preview and device execute the same deterministic event trace and resolved
+   placement.
+6. The generated package passes authoring tests and is exercised on current HW6
+   hardware before the capability is considered brought up.
+
 ### Stage 6: Animation Timeline
 
 - add and remove authored phase visuals;

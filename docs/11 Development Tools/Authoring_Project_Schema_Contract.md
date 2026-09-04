@@ -577,22 +577,25 @@ Rules:
 
 ## Hierarchical State Machines
 
-The editor may expose hierarchical state machines.
+The complete authoring model may expose hierarchical state machines. The
+current executable STATE subset remains flat: every route names one or more
+flat source states and exactly one destination state or scene. Hierarchical
+fields, internal handlers, state history, and scene Open/Return navigation are
+not executable until the service capability response explicitly exposes them.
 
 Example:
 
 ```text
-Pet
-  Awake
-    Idle
-    Eating
-    Playing
-  Sleeping
-    LightSleep
-    DeepSleep
+Menu Selection
+  Start Game
+  Settings
+  Credits
+
+Menu Selection handles R once.
+The active child handles Up, Down, and A before the parent sees them.
 ```
 
-Conceptual schema:
+Target source model:
 
 ```text
 hsm_graph:
@@ -607,11 +610,98 @@ hsm_graph:
 
 state:
   state_id
-  parent_state_id
   display_name
+  parent_state_id          # absent only for top-level states
+  state_kind               # leaf | composite
+  initial_substate         # required for a composite state
+  history_mode             # none | shallow | deep
   entry_actions[]
   exit_actions[]
-  substates[]
+
+transition:
+  source_state
+  event_ref
+  guards[]
+  actions[]
+  transition_kind          # external | internal
+  target_state             # required only for an external state transition
+  target_scene             # alternative external scene destination
+  destination_entry        # initial | history
+```
+
+These names describe the target semantic shape; they do not amend the current
+version-1 JSON schema by themselves. The executable schema revision must be
+introduced with service capability fields, validators, compiler support, and
+preview support in one coherent milestone.
+
+### Active State And Event Dispatch
+
+- one non-parallel graph has exactly one active root-to-leaf state path;
+- an event is offered first to the active leaf, then to each ancestor in order;
+- at one level, matching transitions are evaluated in deterministic declared
+  order and the first transition with true guards handles the event;
+- a transition whose guards are false does not consume the event. Dispatch may
+  continue to another matching transition and then to the parent;
+- selecting a child transition consumes the event, so the parent handler does
+  not also run;
+- an internal transition runs its bounded actions, consumes the event, and
+  leaves the active state path unchanged. An internal transition with no
+  actions is the explicit way to block an inherited parent trigger;
+- an external transition exits the active path to the least common ancestor,
+  runs transition actions, and enters the target path in deterministic order;
+- entering a composite without requested history follows its declared
+  `initial_substate` chain until a leaf is active.
+
+This gives a composite `Menu Selection` state one R handler while its Start
+Game, Settings, and Credits children independently consume Up, Down, and A.
+The compiler may expand inherited handlers into leaf dispatch rows; runtime
+code must not use recursive calls to implement source hierarchy.
+
+### State History
+
+History is explicit rather than an automatic consequence of hierarchy:
+
+- `none` always enters the declared initial substate;
+- `shallow` remembers the most recently active direct child;
+- `deep` remembers the complete active descendant path;
+- requesting history before a valid history record exists falls back to the
+  initial-substate chain;
+- history is package-session state unless the author separately maps relevant
+  data to declared save-backed fields;
+- Package Entry starts from declared initial state and does not silently reuse
+  history from a previous package run.
+
+History records are bounded by graph depth and state count. They store stable
+state IDs, not editor node positions or framebuffer snapshots. Scene placement
+is resolved again from scene defaults, parent overrides, and active-leaf
+overrides after restoration.
+
+### Scene Navigation And Restoration
+
+State history inside one active scene does not preserve a scene that has been
+replaced. The target scene-navigation model therefore distinguishes:
+
+- **Go to**: replace the active scene and normally enter the destination fresh;
+- **Go to and resume**: replace the active scene and request its remembered
+  state path;
+- **Open**: retain the current bounded scene context and activate another scene;
+- **Return**: close the opened scene and resume the retained context.
+
+Open/Return requires a target-profile-bounded scene-context stack. A retained
+context includes, at minimum, the active state path and scene-local variables.
+Resolved placement is recomputed from semantic state. Timer deadlines, queued
+events, waiting-animation phase, and audio continuation require explicit
+suspend/resume rules before this navigation mode can be exposed. No tool may
+infer those policies.
+
+The menu example target is:
+
+```text
+Package Entry -> Main Menu                    # fresh
+Main Menu [Menu Selection > Settings]
+  -> Open Settings
+Settings -> Return
+Main Menu [Menu Selection > Settings]         # restored
 ```
 
 Rules:
@@ -621,7 +711,9 @@ Rules:
 - every state transition target must resolve.
 - entry, exit, and transition actions must be bounded.
 - transition selection order must be deterministic.
-- parallel regions are allowed only if their scheduling, event ordering, and action cost are statically bounded.
+- parallel regions are outside the first hierarchical bring-up slice. They may
+  be added only if scheduling, event ordering, and action cost are statically
+  bounded.
 - history states, deep history, or deferred events may exist only if the compiler can express them in bounded PeepOS runtime primitives.
 - the editor may show hierarchy; the runtime package receives validated flattened or table-driven logic.
 

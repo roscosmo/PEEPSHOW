@@ -113,6 +113,87 @@ Exact badge counts should come from normalized service data or service-provided
 summary fields. React should not infer package semantics from raw JSON in ways
 the Python service cannot validate.
 
+## Hierarchical State UX Target
+
+A composite state groups one active child region and owns handlers shared by
+its descendants. In a menu, Start Game, Settings, and Credits can be child
+states of Menu Selection while Menu Selection owns one R handler. The graph
+must not display or persist three generated copies of that parent handler.
+
+Event behavior is presented in author language:
+
+- the active child gets the trigger first;
+- an enabled child handler consumes it;
+- otherwise the trigger is offered to its parent;
+- a parent action that does not change state leaves the selected child active;
+- an explicit **Block inherited trigger** handler consumes an event without an
+  action when a child must suppress the parent fallback.
+
+Composite-state presentation must follow the live Excalidraw design language.
+Before implementation, the design pass must choose whether children expand
+inside the parent card, open as a focused nested canvas with breadcrumbs, or
+support both. Regardless of that choice:
+
+- the scene hierarchy remains visible and identifies the active state path;
+- a composite card visibly differs from a leaf without resembling a prefab;
+- parent-owned triggers remain visible on the composite card;
+- a focused child graph shows inherited parent handlers without duplicating
+  editable rows;
+- selecting a parent handler opens one inspector record and one action order;
+- moving or laying out child nodes is editor-only and does not alter hierarchy;
+- the emulator reports the complete active path, not only the leaf label.
+
+History controls use plain labels rather than requiring UML terminology:
+
+```text
+On re-entry
+  Start at initial substate
+  Remember previous substate
+  Remember complete nested state
+```
+
+The inspector may disclose shallow/deep history terminology in advanced help.
+Package launch remains fresh unless a later package-resume contract explicitly
+says otherwise.
+
+Scene Flow navigation must distinguish semantic behavior:
+
+- **Go to** replaces a scene;
+- **Go to and resume** restores remembered destination state;
+- **Open** retains the current scene context;
+- **Return** resumes the retained context.
+
+These labels cannot be implemented as renderer-only variants of the existing
+editor Go To reference card. They require typed service-owned navigation data
+and target-profile capability support.
+
+### Hierarchical Bring-Up Plan
+
+1. **Contract and capability slice**: agree on event bubbling, internal-handler
+   behavior, history fallback, navigation modes, runtime bounds, and suspended
+   timer/audio policy. Publish capability fields before enabling controls.
+2. **Service model and validation**: add composite/parent records, initial-child
+   rules, internal handlers, cycle checks, deterministic ordering, history
+   validation, and normalized inherited-handler summaries.
+3. **Compiler and preview parity**: flatten hierarchy into bounded dispatch
+   tables, expose the active path in traces, and prove child-first dispatch and
+   no-reentry internal actions with deterministic tests.
+4. **Local Logic UI**: create/reparent states, enter and leave a composite,
+   author parent handlers once, inspect inherited behavior, and preserve nested
+   editor layouts. Resolve the exact canvas modality against Excalidraw first.
+5. **State history**: expose initial, shallow, and deep re-entry choices only
+   after service preview and compiled execution agree.
+6. **Restorable scene navigation**: add Go to and resume, Open, and Return after
+   bounded runtime scene contexts and suspend/resume rules are exposed.
+7. **Acceptance example and hardware gate**: rebuild the menu example so R is a
+   parent handler, Settings/Credits return to the previous selection, package
+   launch starts at selection one, and the same trace passes service, Studio,
+   package-build, and current-HW6 tests.
+
+Do not start with prefab abstraction. A future Menu prefab may generate or own
+this hierarchy only after ordinary composite states, inherited dispatch,
+history, and restoration are robust and inspectable.
+
 ## Prefab And Menu Nodes
 
 Users should not need to build common menus from empty low-level states.
