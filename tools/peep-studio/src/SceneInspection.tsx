@@ -2248,18 +2248,17 @@ export function StateGraphView({
             title="Place Exit to PeepOS"
             type="button"
             onClick={() => {
-              const rightmost = nodes.reduce(
-                (value, node) => Math.max(value, node.position.x),
-                0,
-              );
-              const topmost = nodes.reduce(
-                (value, node) => Math.min(value, node.position.y),
-                0,
+              const stateNodes = nodes.flatMap((node) => graphNodeById.has(node.id)
+                ? [{ id: node.id, x: node.position.x, y: node.position.y }]
+                : []);
+              const position = nextStateGraphNodePosition(
+                stateNodes,
+                selected.kind === "state" ? selected.id : undefined,
               );
               setPendingPhysicalConnection(null);
               setPeepOSTriggerStateId(null);
               onSelect({ kind: "systemExit" });
-              onMoveStateNode(scene.scene_id, "system-exit", rightmost + 440, topmost + 180);
+              onMoveStateNode(scene.scene_id, "system-exit", position.x, position.y);
             }}
           >
             <LogOut size={14} aria-hidden="true" />
@@ -2388,7 +2387,10 @@ export function SceneFlowView({
     });
   }, [baseNodes]);
   const onNodesChange = (changes: NodeChange[]) => {
-    setNodes((current) => applyNodeChanges(changes, current));
+    const layoutChanges = changes.filter((change) => change.type !== "select");
+    if (layoutChanges.length > 0) {
+      setNodes((current) => applyNodeChanges(layoutChanges, current));
+    }
   };
   const onNodeDragStop = (node: Node) => {
     const x = Math.round(node.position.x);

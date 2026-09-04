@@ -383,6 +383,11 @@ clear badges when the selected logic state changes an object. Runtime preview ma
 still step through scene logic, but it must not make the placement target
 ambiguous.
 
+While a valid project contains scenes, Peep Studio must keep one scene selected.
+Editor commands may invalidate the service preview revision, but the emulator must
+restart the selected scene preview after the command settles instead of remaining
+blank or visually deselected.
+
 Objects are deletable from the GUI unless the Python service rejects the command
 because the project would become invalid. The renderer must not block deletion
 because an object is named `cursor`, named `marker`, or has `focus_role: focus`.
@@ -500,6 +505,9 @@ reports emitted cue events, while `project.audio_audition` returns a WAV decoded
 from the compiled package bytes. `service.hello.state_scene_audio` publishes
 the exact limits and reports the bounded one-voice HW6 STATE subset as target-
 available through `target_playback_status = available_bounded_state_sfx`.
+The Peep Studio emulator plays the final cue emitted by each input through that
+packaged-WAV audition path, applies the emitted volume, and preempts the current
+cue to mirror the bounded one-voice runtime behavior.
 Peep Studio must keep host audition distinct from device proof and
 must report music, arbitrary-length audio, mixing, and production fidelity as
 unsupported or pending.

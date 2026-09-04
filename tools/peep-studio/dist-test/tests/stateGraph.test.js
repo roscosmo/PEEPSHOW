@@ -174,6 +174,21 @@ strict_1.default.equal(systemExitGraph.endpoints.some((endpoint) => endpoint.kin
 strict_1.default.equal(systemExitGraph.edges[0]?.target, "system-exit");
 strict_1.default.equal(systemExitGraph.edges[0]?.targetKind, "system_exit");
 strict_1.default.deepEqual(systemExitGraph.edges[0]?.actions, []);
+const placedSystemExitGraph = (0, stateGraph_1.buildStateGraphModel)(scene, {
+    state_graph: {
+        scenes: {
+            menu: {
+                nodes: {
+                    "system-exit": { x: 0, y: 420 },
+                },
+                routes: {},
+            },
+        },
+    },
+});
+const placedSystemExit = placedSystemExitGraph.endpoints.find((endpoint) => endpoint.kind === "system");
+strict_1.default.deepEqual(placedSystemExit === undefined ? undefined : { x: placedSystemExit.x, y: placedSystemExit.y }, { x: 0, y: 420 });
+strict_1.default.equal(placedSystemExit?.declared, true);
 strict_1.default.equal((0, stateGraph_1.resolveStateExitSide)({ x: 0, y: 0 }, { x: 340, y: 0 }), "right");
 strict_1.default.equal((0, stateGraph_1.resolveStateExitSide)({ x: 0, y: 0 }, { x: -120, y: 220 }), "left");
 strict_1.default.equal((0, stateGraph_1.resolveStateEntryHandle)({ x: 0, y: 0 }, { x: 340, y: 0 }), "entry-top-left");

@@ -197,6 +197,22 @@ assert.equal(systemExitGraph.edges[0]?.target, "system-exit");
 assert.equal(systemExitGraph.edges[0]?.targetKind, "system_exit");
 assert.deepEqual(systemExitGraph.edges[0]?.actions, []);
 
+const placedSystemExitGraph = buildStateGraphModel(scene, {
+  state_graph: {
+    scenes: {
+      menu: {
+        nodes: {
+          "system-exit": { x: 0, y: 420 },
+        },
+        routes: {},
+      },
+    },
+  },
+});
+const placedSystemExit = placedSystemExitGraph.endpoints.find((endpoint) => endpoint.kind === "system");
+assert.deepEqual(placedSystemExit === undefined ? undefined : { x: placedSystemExit.x, y: placedSystemExit.y }, { x: 0, y: 420 });
+assert.equal(placedSystemExit?.declared, true);
+
 assert.equal(resolveStateExitSide({ x: 0, y: 0 }, { x: 340, y: 0 }), "right");
 assert.equal(resolveStateExitSide({ x: 0, y: 0 }, { x: -120, y: 220 }), "left");
 assert.equal(resolveStateEntryHandle({ x: 0, y: 0 }, { x: 340, y: 0 }), "entry-top-left");

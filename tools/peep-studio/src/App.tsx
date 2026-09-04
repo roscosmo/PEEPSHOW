@@ -170,6 +170,20 @@ export default function App() {
   const projectRevisionRef = useRef<number | null>(null);
   const layoutSaveChain = useRef(Promise.resolve());
   const operationLock = useRef(false);
+  const audioPlaybackRef = useRef<HTMLAudioElement | null>(null);
+  const audioPlaybackRequestRef = useRef(0);
+  const previewAudioCacheRef = useRef(new Map<string, string>());
+  const previewRestoreAttemptRef = useRef<string | null>(null);
+
+  const stopAudioPlayback = useCallback(() => {
+    audioPlaybackRequestRef.current += 1;
+    const audio = audioPlaybackRef.current;
+    if (audio !== null) {
+      audio.pause();
+      audio.currentTime = 0;
+      audioPlaybackRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     previewRef.current = preview;
@@ -186,6 +200,11 @@ export default function App() {
   useEffect(() => {
     projectRevisionRef.current = project?.project_revision ?? null;
   }, [project?.project_revision]);
+
+  useEffect(() => {
+    previewAudioCacheRef.current.clear();
+    return stopAudioPlayback;
+  }, [project?.project_revision, stopAudioPlayback]);
 
   useEffect(() => {
     if (bridge === undefined) {
@@ -205,6 +224,7 @@ export default function App() {
       }
       setBusy("Starting preview");
       setPlaying(false);
+      stopAudioPlayback();
       try {
         const result = await bridge.serviceRequest<PreviewSnapshot>("project.preview_reset", {
           project_revision: revision,
@@ -223,7 +243,7 @@ export default function App() {
         setBusy(null);
       }
     },
-    [bridge, project?.project_revision],
+    [bridge, project?.project_revision, stopAudioPlayback],
   );
 
   const loadProject = useCallback(
@@ -369,6 +389,63 @@ export default function App() {
     return () => window.clearInterval(interval);
   }, [advancePreview, playing]);
 
+  const playPreviewAudioEvents = useCallback(
+    async (snapshot: PreviewSnapshot) => {
+      const audioEvents = snapshot.input?.audio_events ?? [];
+      const event = audioEvents[audioEvents.length - 1];
+      if (
+        bridge === undefined ||
+        event === undefined ||
+        service?.operations.includes("project.audio_audition") !== true
+      ) {
+        return;
+      }
+
+      const requestId = audioPlaybackRequestRef.current + 1;
+      audioPlaybackRequestRef.current = requestId;
+      const cacheKey = `${snapshot.project_revision}:${event.cue_id}`;
+      try {
+        let dataUrl = previewAudioCacheRef.current.get(cacheKey);
+        if (dataUrl === undefined) {
+          const result = await bridge.serviceRequest<AudioAuditionResult>("project.audio_audition", {
+            project_revision: snapshot.project_revision,
+            cue_id: event.cue_id,
+          });
+          dataUrl = `data:audio/wav;base64,${result.audio.wav_base64}`;
+          previewAudioCacheRef.current.set(cacheKey, dataUrl);
+        }
+        if (audioPlaybackRequestRef.current !== requestId) {
+          return;
+        }
+
+        const currentAudio = audioPlaybackRef.current;
+        if (currentAudio !== null) {
+          currentAudio.pause();
+          currentAudio.currentTime = 0;
+        }
+        if (event.volume <= 0) {
+          audioPlaybackRef.current = null;
+          return;
+        }
+
+        const audio = new Audio(dataUrl);
+        audio.volume = Math.min(1, Math.max(0, event.volume / 255));
+        audioPlaybackRef.current = audio;
+        audio.addEventListener("ended", () => {
+          if (audioPlaybackRef.current === audio) {
+            audioPlaybackRef.current = null;
+          }
+        }, { once: true });
+        await audio.play();
+      } catch (error) {
+        if (audioPlaybackRequestRef.current === requestId) {
+          setMessage(`Preview audio failed: ${errorText(error)}`);
+        }
+      }
+    },
+    [bridge, service?.operations],
+  );
+
   const sendInput = async (logicalSource: string) => {
     const current = previewRef.current;
     if (bridge === undefined || current === null || operationLock.current) {
@@ -382,6 +459,7 @@ export default function App() {
         logical_source: logicalSource,
       });
       setPreview(result);
+      void playPreviewAudioEvents(result);
       if (result.scene.scene_id !== selectedScene) {
         setSelectedScene(result.scene.scene_id);
         setSceneSelection({ kind: "scene" });
@@ -803,12 +881,19 @@ export default function App() {
     }
     setBusy("Auditioning audio");
     setPlaying(false);
+    stopAudioPlayback();
     try {
       const result = await bridge.serviceRequest<AudioAuditionResult>("project.audio_audition", {
         project_revision: project.project_revision,
         cue_id: cueId,
       });
       const audio = new Audio(`data:audio/wav;base64,${result.audio.wav_base64}`);
+      audioPlaybackRef.current = audio;
+      audio.addEventListener("ended", () => {
+        if (audioPlaybackRef.current === audio) {
+          audioPlaybackRef.current = null;
+        }
+      }, { once: true });
       await audio.play();
       setSelectedAudioCueId(cueId);
       setAudioAuditionStatus(`Played packaged ${result.audio.duration_ms} ms cue at ${result.audio.sample_rate_hz} Hz.`);
@@ -2096,6 +2181,49 @@ export default function App() {
     () => scenes.find((scene) => scene.scene_id === selectedScene) ?? null,
     [scenes, selectedScene],
   );
+
+  useEffect(() => {
+    if (!projectValid || scenes.length === 0) {
+      return;
+    }
+    if (selectedScene !== null && scenes.some((scene) => scene.scene_id === selectedScene)) {
+      return;
+    }
+    const fallbackScene = scenes.find((scene) => scene.scene_id === project?.summary.entry_scene) ?? scenes[0];
+    setSelectedScene(fallbackScene.scene_id);
+    setSceneSelection({ kind: "scene" });
+    setSelectedPlacementElement(null);
+  }, [project?.summary.entry_scene, projectValid, scenes, selectedScene]);
+
+  useEffect(() => {
+    if (
+      bridge === undefined ||
+      busy !== null ||
+      projectRevision === null ||
+      !projectValid ||
+      selectedSceneDocument === null
+    ) {
+      return undefined;
+    }
+    if (preview !== null) {
+      previewRestoreAttemptRef.current = null;
+      return undefined;
+    }
+
+    const restoreKey = `${projectRevision}:${selectedSceneDocument.scene_id}`;
+    if (previewRestoreAttemptRef.current === restoreKey) {
+      return undefined;
+    }
+    const timeout = window.setTimeout(() => {
+      if (previewRef.current !== null) {
+        return;
+      }
+      previewRestoreAttemptRef.current = restoreKey;
+      void startPreview(selectedSceneDocument.scene_id, projectRevision);
+    }, 80);
+    return () => window.clearTimeout(timeout);
+  }, [bridge, busy, preview, projectRevision, projectValid, selectedSceneDocument, startPreview]);
+
   const placementState = useMemo<StateRecord | null>(() => {
     if (selectedSceneDocument === null) {
       return null;
