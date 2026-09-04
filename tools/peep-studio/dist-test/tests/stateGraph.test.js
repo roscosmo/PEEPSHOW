@@ -73,6 +73,7 @@ const savedGraph = (0, stateGraph_1.buildStateGraphModel)(scene, {
                                 target_handle: "entry-bottom-right",
                                 target_side: "right",
                                 rails: [{ axis: "x", value: 180 }, { axis: "y", value: 90 }],
+                                token_positions: { condition: 0.24, actions: [0.76] },
                             },
                         },
                     },
@@ -128,6 +129,7 @@ strict_1.default.equal(graph.edges[0]?.actions[0]?.kind, "set_variable");
 strict_1.default.deepEqual(savedGraph.edges[0]?.rails, [{ axis: "x", value: 180 }, { axis: "y", value: 90 }]);
 strict_1.default.equal(savedGraph.edges[0]?.targetHandle, "entry-bottom-right");
 strict_1.default.equal(savedGraph.edges[0]?.targetSide, "right");
+strict_1.default.deepEqual(savedGraph.edges[0]?.tokenPositions, { condition: 0.24, actions: [0.76] });
 strict_1.default.equal(savedGraph.entryEdge?.targetHandle, "entry-bottom-left");
 strict_1.default.equal(savedGraph.entryEdge?.targetSide, "bottom");
 strict_1.default.deepEqual(legacyRouteGraph.edges[0]?.rails, []);

@@ -58,6 +58,7 @@ import type {
   CompiledAssetFrame,
   EditorNodePosition,
   EditorRouteRail,
+  EditorRouteTokenPositions,
   Framebuffer,
   PackageBuildResult,
   ProjectCommandResult,
@@ -1545,6 +1546,7 @@ export default function App() {
     rails: EditorRouteRail[],
     targetHandle: StateGraphEntryHandle | null,
     targetSide: StateGraphEntrySide | null,
+    tokenPositions?: EditorRouteTokenPositions,
   ) => {
     if (bridge === undefined || project === null) {
       return;
@@ -1568,6 +1570,7 @@ export default function App() {
             rails,
             target_handle: targetHandle,
             target_side: targetSide,
+            ...(tokenPositions === undefined ? {} : { token_positions: tokenPositions }),
           },
         ],
       });
@@ -4246,8 +4249,8 @@ export default function App() {
               onSetEntryConnection={(sceneId, stateId, targetHandle, targetSide) => {
                 void setEntryConnection(sceneId, stateId, targetHandle, targetSide);
               }}
-              onSetRouteLayout={(sceneId, routeId, sourceState, rails, targetHandle, targetSide) => {
-                void setStateRouteLayout(sceneId, routeId, sourceState, rails, targetHandle, targetSide);
+              onSetRouteLayout={(sceneId, routeId, sourceState, rails, targetHandle, targetSide, tokenPositions) => {
+                void setStateRouteLayout(sceneId, routeId, sourceState, rails, targetHandle, targetSide, tokenPositions);
               }}
               onCreateTriggerRoute={(sceneId, sourceState, logicalSource, eventKind, target) => {
                 void createTriggerRoute(sceneId, sourceState, logicalSource, eventKind, target);

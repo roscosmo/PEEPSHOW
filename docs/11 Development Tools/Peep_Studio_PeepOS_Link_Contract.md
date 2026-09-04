@@ -706,6 +706,15 @@ Service API version 32 completes the first direct graph-connection pass:
   the compiler and firmware operation are unchanged. New scenes do not contain
   this node or route by default.
 
+Service API version 33 extends `editor.state_graph.set_route_layout` with
+editor-only `token_positions`. Peep Studio stores one optional condition
+position and the ordered visible-action positions as normalized fractions along
+the routed transition path. Dragging a token projects it onto the complete path
+and clamps it between adjacent tokens, so graph cleanup cannot reorder semantic
+actions. The destination arrow owns a higher-priority hit target than overlapping
+line-section controls. Token positions participate in undo, redo, and Save but
+remain excluded from compiled package bytes.
+
 Physical control lifecycle choices remain `press`, `hold`, `release`, and
 `repeat`. Firmware already emits Press, Release, Long Press, and Repeat; the
 author-facing `hold` name maps to Long Press. These are not PeepOS trigger

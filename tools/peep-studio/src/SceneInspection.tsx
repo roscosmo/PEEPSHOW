@@ -46,7 +46,7 @@ import {
   Volume2,
   Variable,
 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { FramebufferCanvas } from "./FramebufferCanvas";
 import {
   buildSceneFlowGraphModel,
@@ -77,6 +77,7 @@ import type {
   AudioCueRecord,
   EditorNodePosition,
   EditorRouteRail,
+  EditorRouteTokenPositions,
   Framebuffer,
   InputAction,
   PeepOSTriggerCapability,
@@ -877,6 +878,7 @@ type StateTransitionEdgeData = {
   guards?: StateGuard[];
   actions?: StateAction[];
   rails?: EditorRouteRail[];
+  tokenPositions?: EditorRouteTokenPositions;
   targetHandle?: StateGraphEntryHandle;
   targetSide?: StateGraphEntrySide;
   targetEntryPorts?: Array<{
@@ -893,6 +895,7 @@ type StateTransitionEdgeData = {
     rails: EditorRouteRail[],
     targetHandle: StateGraphEntryHandle | null,
     targetSide: StateGraphEntrySide | null,
+    tokenPositions: EditorRouteTokenPositions,
   ) => void;
 };
 
@@ -950,6 +953,105 @@ function routeLabelPoint(points: Array<{ x: number; y: number }>, fraction = 0.5
     remaining -= length;
   }
   return points[points.length - 1];
+}
+
+function closestRouteFraction(
+  points: EditorNodePosition[],
+  point: EditorNodePosition,
+): number {
+  const lengths: number[] = [];
+  let totalLength = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const length = Math.hypot(current.x - previous.x, current.y - previous.y);
+    lengths.push(length);
+    totalLength += length;
+  }
+  if (totalLength === 0) {
+    return 0.5;
+  }
+
+  let closestDistance = Number.POSITIVE_INFINITY;
+  let closestLength = totalLength * 0.5;
+  let traversed = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const start = points[index - 1];
+    const end = points[index];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = lengths[index - 1] ?? 0;
+    const lengthSquared = dx * dx + dy * dy;
+    const segmentFraction = lengthSquared === 0
+      ? 0
+      : Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+    const projectedX = start.x + dx * segmentFraction;
+    const projectedY = start.y + dy * segmentFraction;
+    const distance = Math.hypot(point.x - projectedX, point.y - projectedY);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestLength = traversed + length * segmentFraction;
+    }
+    traversed += length;
+  }
+  return closestLength / totalLength;
+}
+
+function defaultRouteTokenFractions(count: number): number[] {
+  if (count <= 0) {
+    return [];
+  }
+  if (count === 1) {
+    return [0.5];
+  }
+  const spacing = Math.min(0.12, 0.72 / (count - 1));
+  const start = 0.5 - spacing * (count - 1) / 2;
+  return Array.from({ length: count }, (_, index) => start + index * spacing);
+}
+
+function resolvedRouteTokenFractions(
+  hasCondition: boolean,
+  actionCount: number,
+  positions: EditorRouteTokenPositions | undefined,
+): number[] {
+  const count = actionCount + (hasCondition ? 1 : 0);
+  const defaults = defaultRouteTokenFractions(count);
+  const actions = positions?.actions ?? [];
+  if (
+    actions.length !== actionCount ||
+    (hasCondition && typeof positions?.condition !== "number")
+  ) {
+    return defaults;
+  }
+  const fractions = [
+    ...(hasCondition ? [positions?.condition ?? 0.5] : []),
+    ...actions,
+  ];
+  const valid = fractions.every((fraction, index) => (
+    Number.isFinite(fraction) &&
+    fraction >= 0.02 &&
+    fraction <= 0.98 &&
+    (index === 0 || fraction > fractions[index - 1])
+  ));
+  return valid ? fractions : defaults;
+}
+
+function clampRouteTokenFraction(fractions: number[], index: number, fraction: number): number {
+  const gap = Math.min(0.08, 0.72 / Math.max(1, fractions.length - 1));
+  const minimum = index === 0 ? 0.02 : fractions[index - 1] + gap;
+  const maximum = index === fractions.length - 1 ? 0.98 : fractions[index + 1] - gap;
+  return Math.max(minimum, Math.min(maximum, fraction));
+}
+
+function routeTokenPositions(
+  hasCondition: boolean,
+  fractions: number[],
+): EditorRouteTokenPositions {
+  const actionOffset = hasCondition ? 1 : 0;
+  return {
+    ...(hasCondition ? { condition: Math.round((fractions[0] ?? 0.5) * 10000) / 10000 } : {}),
+    actions: fractions.slice(actionOffset).map((fraction) => Math.round(fraction * 10000) / 10000),
+  };
 }
 
 function closestRouteSegment(points: EditorNodePosition[], point: EditorNodePosition): number {
@@ -1028,6 +1130,7 @@ function StateTransitionEdge({
   const [draftTargetSide, setDraftTargetSide] = useState<StateGraphEntrySide | undefined>(persistedTargetSide);
   const draftTargetSideRef = useRef<StateGraphEntrySide | undefined>(persistedTargetSide);
   const [selectedSection, setSelectedSection] = useState<number | null>(null);
+  const [arrowHovered, setArrowHovered] = useState(false);
   const dragCleanupRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     const next = persistedRails.map((rail) => ({ ...rail }));
@@ -1100,11 +1203,32 @@ function StateTransitionEdge({
       action,
     })),
   ];
+  const hasConditionToken = guards.length > 0;
+  const persistedTokenPositions = edgeData?.tokenPositions;
+  const persistedTokenKey = JSON.stringify(persistedTokenPositions ?? {});
+  const tokenKey = tokens.map((token) => token.key).join("|");
+  const initialTokenFractions = resolvedRouteTokenFractions(
+    hasConditionToken,
+    actions.length,
+    persistedTokenPositions,
+  );
+  const [draftTokenFractions, setDraftTokenFractions] = useState(initialTokenFractions);
+  const draftTokenFractionsRef = useRef(initialTokenFractions);
+  useEffect(() => {
+    const next = resolvedRouteTokenFractions(
+      hasConditionToken,
+      actions.length,
+      persistedTokenPositions,
+    );
+    draftTokenFractionsRef.current = next;
+    setDraftTokenFractions(next);
+  }, [actions.length, hasConditionToken, persistedTokenKey, tokenKey]);
 
   const commitLayout = (
     rails: EditorRouteRail[],
     targetHandle: StateGraphEntryHandle | null,
     targetSide: StateGraphEntrySide | null,
+    tokenPositions = routeTokenPositions(hasConditionToken, draftTokenFractionsRef.current),
   ) => {
     const rounded = rails.map((rail) => ({ axis: rail.axis, value: Math.round(rail.value) }));
     draftRailsRef.current = rounded;
@@ -1113,7 +1237,7 @@ function StateTransitionEdge({
     setDraftTargetHandle(targetHandle ?? undefined);
     draftTargetSideRef.current = targetSide ?? undefined;
     setDraftTargetSide(targetSide ?? undefined);
-    edgeData?.onSetRouteLayout?.(routeId, sourceState, rounded, targetHandle, targetSide);
+    edgeData?.onSetRouteLayout?.(routeId, sourceState, rounded, targetHandle, targetSide, tokenPositions);
   };
 
   useEffect(() => {
@@ -1177,6 +1301,69 @@ function StateTransitionEdge({
     }
     return closest;
   };
+  const arrowCanMove = canEdit && (edgeData?.targetEntryPorts?.length ?? 0) > 0;
+  const beginArrowDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    edgeData?.onSelectRoute?.(routeId, sourceState);
+    if (!arrowCanMove) {
+      return;
+    }
+    event.preventDefault();
+    dragCleanupRef.current?.();
+    const pointerId = event.pointerId;
+    const originalHandle = effectiveTargetHandle;
+    const originalSide = effectiveTargetSide;
+    const onPointerMove = (pointerEvent: globalThis.PointerEvent) => {
+      if (pointerEvent.pointerId !== pointerId) {
+        return;
+      }
+      pointerEvent.preventDefault();
+      const point = screenToFlowPosition({ x: pointerEvent.clientX, y: pointerEvent.clientY });
+      const closest = closestEntryPort(point);
+      if (closest !== null && closest.distance <= 72) {
+        draftTargetHandleRef.current = closest.handle;
+        setDraftTargetHandle(closest.handle);
+        draftTargetSideRef.current = closest.side;
+        setDraftTargetSide(closest.side);
+      }
+    };
+    const finishDrag = (pointerEvent: globalThis.PointerEvent) => {
+      if (pointerEvent.pointerId !== pointerId) {
+        return;
+      }
+      const point = screenToFlowPosition({ x: pointerEvent.clientX, y: pointerEvent.clientY });
+      const closest = closestEntryPort(point);
+      dragCleanupRef.current?.();
+      dragCleanupRef.current = null;
+      if (closest !== null && closest.distance <= 72) {
+        commitLayout(draftRailsRef.current, closest.handle, closest.side);
+      } else {
+        draftTargetHandleRef.current = originalHandle;
+        setDraftTargetHandle(originalHandle);
+        draftTargetSideRef.current = originalSide;
+        setDraftTargetSide(originalSide);
+      }
+    };
+    const cancelDrag = (pointerEvent: globalThis.PointerEvent) => {
+      if (pointerEvent.pointerId !== pointerId) {
+        return;
+      }
+      dragCleanupRef.current?.();
+      dragCleanupRef.current = null;
+      draftTargetHandleRef.current = originalHandle;
+      setDraftTargetHandle(originalHandle);
+      draftTargetSideRef.current = originalSide;
+      setDraftTargetSide(originalSide);
+    };
+    window.addEventListener("pointermove", onPointerMove, true);
+    window.addEventListener("pointerup", finishDrag, true);
+    window.addEventListener("pointercancel", cancelDrag, true);
+    dragCleanupRef.current = () => {
+      window.removeEventListener("pointermove", onPointerMove, true);
+      window.removeEventListener("pointerup", finishDrag, true);
+      window.removeEventListener("pointercancel", cancelDrag, true);
+    };
+  };
 
   return (
     <>
@@ -1197,78 +1384,28 @@ function StateTransitionEdge({
         }}
       />
       <path
-        className={`state-transition-arrow ${selected ? "selected" : ""} ${canEdit ? "editable" : ""}`}
+        className={`state-transition-arrow ${selected ? "selected" : ""} ${arrowHovered ? "hovered" : ""}`}
         d={arrowPath}
-        onClick={(event) => {
-          event.stopPropagation();
-          edgeData?.onSelectRoute?.(routeId, sourceState);
-        }}
-        onPointerDown={(event) => {
-          if (!canEdit) {
-            return;
-          }
-          event.preventDefault();
-          event.stopPropagation();
-          edgeData?.onSelectRoute?.(routeId, sourceState);
-          dragCleanupRef.current?.();
-          const pointerId = event.pointerId;
-          const originalHandle = effectiveTargetHandle;
-          const originalSide = effectiveTargetSide;
-          const onPointerMove = (pointerEvent: globalThis.PointerEvent) => {
-            if (pointerEvent.pointerId !== pointerId) {
-              return;
-            }
-            pointerEvent.preventDefault();
-            const point = screenToFlowPosition({ x: pointerEvent.clientX, y: pointerEvent.clientY });
-            const closest = closestEntryPort(point);
-            if (closest !== null && closest.distance <= 72) {
-              draftTargetHandleRef.current = closest.handle;
-              setDraftTargetHandle(closest.handle);
-              draftTargetSideRef.current = closest.side;
-              setDraftTargetSide(closest.side);
-            }
-          };
-          const finishDrag = (pointerEvent: globalThis.PointerEvent) => {
-            if (pointerEvent.pointerId !== pointerId) {
-              return;
-            }
-            const point = screenToFlowPosition({ x: pointerEvent.clientX, y: pointerEvent.clientY });
-            const closest = closestEntryPort(point);
-            dragCleanupRef.current?.();
-            dragCleanupRef.current = null;
-            if (closest !== null && closest.distance <= 72) {
-              commitLayout(draftRailsRef.current, closest.handle, closest.side);
-            } else {
-              draftTargetHandleRef.current = originalHandle;
-              setDraftTargetHandle(originalHandle);
-              draftTargetSideRef.current = originalSide;
-              setDraftTargetSide(originalSide);
-            }
-          };
-          const cancelDrag = (pointerEvent: globalThis.PointerEvent) => {
-            if (pointerEvent.pointerId !== pointerId) {
-              return;
-            }
-            dragCleanupRef.current?.();
-            dragCleanupRef.current = null;
-            draftTargetHandleRef.current = originalHandle;
-            setDraftTargetHandle(originalHandle);
-            draftTargetSideRef.current = originalSide;
-            setDraftTargetSide(originalSide);
-          };
-          window.addEventListener("pointermove", onPointerMove, true);
-          window.addEventListener("pointerup", finishDrag, true);
-          window.addEventListener("pointercancel", cancelDrag, true);
-          dragCleanupRef.current = () => {
-            window.removeEventListener("pointermove", onPointerMove, true);
-            window.removeEventListener("pointerup", finishDrag, true);
-            window.removeEventListener("pointercancel", cancelDrag, true);
-          };
-        }}
       />
+      <EdgeLabelRenderer>
+        <button
+          className={`state-transition-arrow-hit nodrag nopan ${arrowCanMove ? "editable" : ""}`}
+          type="button"
+          aria-label={arrowCanMove ? "Move transition destination" : "Select transition"}
+          style={{
+            transform: `translate(-50%, -50%) translate(${arrowTip.x}px, ${arrowTip.y}px)`,
+          }}
+          onClick={(event) => {
+            event.stopPropagation();
+            edgeData?.onSelectRoute?.(routeId, sourceState);
+          }}
+          onPointerEnter={() => setArrowHovered(true)}
+          onPointerLeave={() => setArrowHovered(false)}
+          onPointerDown={beginArrowDrag}
+        />
+      </EdgeLabelRenderer>
       {tokens.map((token, index) => {
-        const spacing = Math.min(0.12, 0.7 / Math.max(1, tokens.length - 1));
-        const fraction = 0.5 + (index - (tokens.length - 1) / 2) * spacing;
+        const fraction = draftTokenFractions[index] ?? initialTokenFractions[index] ?? 0.5;
         const labelPoint = routeLabelPoint(route.points, fraction);
         return (
           <EdgeLabelRenderer key={`${routeId}:${sourceState}:${token.key}`}>
@@ -1279,12 +1416,86 @@ function StateTransitionEdge({
               }}
             >
               <button
-                className={`state-transition-token state-transition-${token.kind} nodrag nopan ${selected ? "selected" : ""}`}
+                className={`state-transition-token state-transition-${token.kind} nodrag nopan ${selected ? "selected" : ""} ${canEdit ? "editable" : ""}`}
                 type="button"
                 aria-label={token.description}
                 onClick={(event) => {
                   event.stopPropagation();
                   edgeData?.onSelectRoute?.(routeId, sourceState);
+                }}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  edgeData?.onSelectRoute?.(routeId, sourceState);
+                  if (!canEdit) {
+                    return;
+                  }
+                  event.preventDefault();
+                  dragCleanupRef.current?.();
+                  setSelectedSection(null);
+                  const pointerId = event.pointerId;
+                  const startX = event.clientX;
+                  const startY = event.clientY;
+                  const original = [...draftTokenFractionsRef.current];
+                  let moved = false;
+                  const fractionAtPointer = (pointerEvent: globalThis.PointerEvent) => {
+                    const point = screenToFlowPosition({ x: pointerEvent.clientX, y: pointerEvent.clientY });
+                    return clampRouteTokenFraction(
+                      original,
+                      index,
+                      closestRouteFraction(route.points, point),
+                    );
+                  };
+                  const onPointerMove = (pointerEvent: globalThis.PointerEvent) => {
+                    if (pointerEvent.pointerId !== pointerId) {
+                      return;
+                    }
+                    pointerEvent.preventDefault();
+                    if (!moved && Math.hypot(pointerEvent.clientX - startX, pointerEvent.clientY - startY) < 3) {
+                      return;
+                    }
+                    moved = true;
+                    const next = [...original];
+                    next[index] = fractionAtPointer(pointerEvent);
+                    draftTokenFractionsRef.current = next;
+                    setDraftTokenFractions(next);
+                  };
+                  const finishDrag = (pointerEvent: globalThis.PointerEvent) => {
+                    if (pointerEvent.pointerId !== pointerId) {
+                      return;
+                    }
+                    dragCleanupRef.current?.();
+                    dragCleanupRef.current = null;
+                    if (!moved) {
+                      return;
+                    }
+                    const next = [...original];
+                    next[index] = fractionAtPointer(pointerEvent);
+                    draftTokenFractionsRef.current = next;
+                    setDraftTokenFractions(next);
+                    commitLayout(
+                      draftRailsRef.current,
+                      effectiveTargetHandle ?? null,
+                      effectiveTargetSide,
+                      routeTokenPositions(hasConditionToken, next),
+                    );
+                  };
+                  const cancelDrag = (pointerEvent: globalThis.PointerEvent) => {
+                    if (pointerEvent.pointerId !== pointerId) {
+                      return;
+                    }
+                    dragCleanupRef.current?.();
+                    dragCleanupRef.current = null;
+                    draftTokenFractionsRef.current = original;
+                    setDraftTokenFractions(original);
+                  };
+                  window.addEventListener("pointermove", onPointerMove, true);
+                  window.addEventListener("pointerup", finishDrag, true);
+                  window.addEventListener("pointercancel", cancelDrag, true);
+                  dragCleanupRef.current = () => {
+                    window.removeEventListener("pointermove", onPointerMove, true);
+                    window.removeEventListener("pointerup", finishDrag, true);
+                    window.removeEventListener("pointercancel", cancelDrag, true);
+                  };
                 }}
               >
                 <span className="state-transition-token-symbol">
@@ -1571,6 +1782,7 @@ export function StateGraphView({
     rails: EditorRouteRail[],
     targetHandle: StateGraphEntryHandle | null,
     targetSide: StateGraphEntrySide | null,
+    tokenPositions: EditorRouteTokenPositions,
   ) => void;
   onCreateTriggerRoute: (
     sceneId: string,
@@ -2006,6 +2218,7 @@ export function StateGraphView({
             guards: edge.guards,
             actions: edge.actions,
             rails: edge.rails,
+            tokenPositions: edge.tokenPositions,
             targetHandle: edge.targetKind === "state" ? transitionLayout?.targetHandle : undefined,
             targetSide: edge.targetKind === "state" ? transitionLayout?.targetSide : "left",
             targetEntryPorts,
@@ -2018,9 +2231,10 @@ export function StateGraphView({
               rails: EditorRouteRail[],
               targetHandle: StateGraphEntryHandle | null,
               targetSide: StateGraphEntrySide | null,
+              tokenPositions: EditorRouteTokenPositions,
             ) => {
               if (scene !== null) {
-                onSetRouteLayout(scene.scene_id, routeId, sourceState, rails, targetHandle, targetSide);
+                onSetRouteLayout(scene.scene_id, routeId, sourceState, rails, targetHandle, targetSide, tokenPositions);
               }
             },
           },

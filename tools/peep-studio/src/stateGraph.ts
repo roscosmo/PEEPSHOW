@@ -1,4 +1,4 @@
-import type { EditorNodePosition, EditorRouteRail, InputAction, ProjectEditorData, SceneDocument, SceneExitRecord, StateAction, StateGuard, StateRecord, StateRoute } from "./types";
+import type { EditorNodePosition, EditorRouteRail, EditorRouteTokenPositions, InputAction, ProjectEditorData, SceneDocument, SceneExitRecord, StateAction, StateGuard, StateRecord, StateRoute } from "./types";
 
 export type StateGraphExitSide = "left" | "right" | "top" | "bottom";
 export type StateGraphEntrySide = "left" | "right" | "top" | "bottom";
@@ -137,6 +137,7 @@ export type GraphTransitionEdge = {
   actions: StateAction[];
   effectLabels: string[];
   rails: EditorRouteRail[];
+  tokenPositions?: EditorRouteTokenPositions;
   targetHandle?: StateGraphEntryHandle;
   targetSide?: StateGraphEntrySide;
   targetKind?: "state" | "scene_exit" | "system_exit";
@@ -1471,6 +1472,7 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
           actions: visibleStateActions(route),
           effectLabels: routeEffectLabels(route),
           rails: currentLayout?.rails ?? [],
+          tokenPositions: currentLayout?.token_positions,
           targetHandle: currentLayout?.target_handle,
           targetSide: currentLayout?.target_side,
           targetKind: targetsSystemExit

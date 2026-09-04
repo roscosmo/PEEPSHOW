@@ -75,6 +75,9 @@ Peep Studio should present local STATE logic as dynamic node cards:
 - effects that happen during a transition should be shown on the transition
   line as a compact transition-effect chip/node where useful. This separates
   "what caused the move" from "what changed during the move";
+- condition and effect chips may be dragged anywhere along the transition line.
+  Their visual order follows guard evaluation and action execution order, so
+  adjacent chips constrain one another and cannot be dragged past each other;
 - outputs are grouped by trigger type where useful: buttons, timers,
   variable/condition events, and system events;
 - each exit has a single destination to preserve state-machine clarity;
@@ -85,8 +88,8 @@ Semantic transitions still compile through the Python authoring service as
 bounded routes, guards, actions, and target states. React must not create
 graph-only behavior that the Python service cannot validate or compile. Visual
 transition-effect chips are presentation of existing service-owned route
-actions unless the service later exposes typed editor-only layout metadata for
-manually positioned effect chips.
+actions. Their manually adjusted path positions are typed editor-only metadata;
+they never change route semantics or compiled package output.
 
 State cards may use badges for author-facing summaries:
 

@@ -3368,6 +3368,14 @@ button:focus-visible {
   cursor: pointer;
 }
 
+.state-transition-token.editable {
+  cursor: grab;
+}
+
+.state-transition-token.editable:active {
+  cursor: grabbing;
+}
+
 .state-transition-token::before {
   position: absolute;
   inset: 5px;
@@ -3453,21 +3461,33 @@ button:focus-visible {
 .state-transition-arrow {
   fill: #4f5f58;
   paint-order: stroke fill;
-  pointer-events: all;
+  pointer-events: none;
   stroke: transparent;
   stroke-width: 12px;
 }
 
 .state-transition-arrow.selected,
-.state-transition-arrow:hover {
+.state-transition-arrow.hovered {
   fill: #175f8a;
 }
 
-.state-transition-arrow.editable {
+.state-transition-arrow-hit {
+  position: absolute;
+  z-index: 8;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.state-transition-arrow-hit.editable {
   cursor: grab;
 }
 
-.state-transition-arrow.editable:active {
+.state-transition-arrow-hit.editable:active {
   cursor: grabbing;
 }
 

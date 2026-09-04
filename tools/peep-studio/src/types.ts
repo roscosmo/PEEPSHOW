@@ -165,12 +165,18 @@ export type EditorRouteRail = {
   value: number;
 };
 
+export type EditorRouteTokenPositions = {
+  condition?: number;
+  actions?: number[];
+};
+
 export type EditorRouteLayout = {
   sources?: Record<string, {
     routing_version?: number;
     target_handle?: "entry-top-left" | "entry-top-right" | "entry-bottom-left" | "entry-bottom-right";
     target_side?: "left" | "right" | "top" | "bottom";
     rails?: EditorRouteRail[];
+    token_positions?: EditorRouteTokenPositions;
     waypoints?: EditorNodePosition[];
   }>;
 };

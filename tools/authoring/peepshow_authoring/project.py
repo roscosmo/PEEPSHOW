@@ -51,6 +51,7 @@ LOGICAL_INPUT_SOURCES = {
 }
 STATE_WAITING_ANIMATION_QUANTUM_MS = 250
 STATE_GRAPH_ROUTE_RAIL_MAX = 8
+STATE_GRAPH_ROUTE_ACTION_TOKEN_MAX = 8
 STATE_GRAPH_ROUTE_LAYOUT_VERSION = 3
 STATE_GRAPH_SYSTEM_EXIT_NODE_ID = "system-exit"
 STATE_GRAPH_ENTRY_HANDLES = {
@@ -2604,6 +2605,60 @@ def _layout_coordinate(value: Any, path: str) -> int:
     return int(round(value))
 
 
+def _layout_fraction(value: Any, path: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", f"{path} must be a number")
+    fraction = round(float(value), 4)
+    if not 0.02 <= fraction <= 0.98:
+        raise ProjectCommandError("PROJECT_VALUE_INVALID", f"{path} must be between 0.02 and 0.98")
+    return fraction
+
+
+def _normalize_route_token_positions(value: Any, path: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", f"{path} must be an object")
+    _require_command_fields(value, set(), {"condition", "actions"})
+    normalized: dict[str, Any] = {}
+    ordered: list[float] = []
+    if "condition" in value:
+        condition = _layout_fraction(value.get("condition"), f"{path}.condition")
+        normalized["condition"] = condition
+        ordered.append(condition)
+    if "actions" in value:
+        action_values = value.get("actions")
+        if not isinstance(action_values, list):
+            raise ProjectCommandError("PROJECT_TYPE_INVALID", f"{path}.actions must be an array")
+        if len(action_values) > STATE_GRAPH_ROUTE_ACTION_TOKEN_MAX:
+            raise ProjectCommandError(
+                "PROJECT_LIMIT_EXCEEDED",
+                f"{path}.actions contains more than {STATE_GRAPH_ROUTE_ACTION_TOKEN_MAX} positions",
+            )
+        actions = [
+            _layout_fraction(action, f"{path}.actions[{index}]")
+            for index, action in enumerate(action_values)
+        ]
+        if actions:
+            normalized["actions"] = actions
+            ordered.extend(actions)
+    if any(current <= previous for previous, current in zip(ordered, ordered[1:])):
+        raise ProjectCommandError(
+            "PROJECT_VALUE_INVALID",
+            f"{path} positions must follow transition execution order",
+        )
+    return normalized
+
+
+def _validate_route_token_positions(
+    value: Any,
+    path: str,
+    issues: list[ValidationIssue],
+) -> None:
+    try:
+        _normalize_route_token_positions(value, path)
+    except ProjectCommandError as exc:
+        _issue(issues, exc.code, path, exc.message)
+
+
 def _apply_scene_flow_node_position(
     project: dict[str, Any],
     scenes: list[dict[str, Any]],
@@ -2821,7 +2876,17 @@ def _apply_state_graph_route_layout(
     _require_command_fields(
         command,
         {"kind", "scene_id", "route_id", "source_state", "rails", "target_handle", "target_side"},
-        {"kind", "scene_id", "route_id", "source_state", "rails", "target_handle", "target_side", "command_id"},
+        {
+            "kind",
+            "scene_id",
+            "route_id",
+            "source_state",
+            "rails",
+            "target_handle",
+            "target_side",
+            "token_positions",
+            "command_id",
+        },
     )
     issues: list[ValidationIssue] = []
     scene_id = command.get("scene_id")
@@ -2887,14 +2952,24 @@ def _apply_state_graph_route_layout(
             "command.target_side is not available on the selected corner entry",
         )
 
-    if not rails and target_handle is None and target_side is None:
-        editor = project.get("editor")
-        state_graph = editor.get("state_graph") if isinstance(editor, dict) else None
-        graph_scenes = state_graph.get("scenes") if isinstance(state_graph, dict) else None
-        scene_layout = graph_scenes.get(scene_id) if isinstance(graph_scenes, dict) else None
-        routes = scene_layout.get("routes") if isinstance(scene_layout, dict) else None
-        route_layout = routes.get(route_id) if isinstance(routes, dict) else None
-        sources = route_layout.get("sources") if isinstance(route_layout, dict) else None
+    editor = project.get("editor")
+    state_graph = editor.get("state_graph") if isinstance(editor, dict) else None
+    graph_scenes = state_graph.get("scenes") if isinstance(state_graph, dict) else None
+    scene_layout = graph_scenes.get(scene_id) if isinstance(graph_scenes, dict) else None
+    routes = scene_layout.get("routes") if isinstance(scene_layout, dict) else None
+    route_layout = routes.get(route_id) if isinstance(routes, dict) else None
+    sources = route_layout.get("sources") if isinstance(route_layout, dict) else None
+    existing_source_layout = sources.get(source_state) if isinstance(sources, dict) else None
+    if "token_positions" in command:
+        token_positions = _normalize_route_token_positions(
+            command.get("token_positions"), "command.token_positions"
+        )
+    elif isinstance(existing_source_layout, dict):
+        token_positions = deepcopy(existing_source_layout.get("token_positions", {}))
+    else:
+        token_positions = {}
+
+    if not rails and target_handle is None and target_side is None and not token_positions:
         if isinstance(sources, dict):
             sources.pop(source_state, None)
             if not sources:
@@ -2935,13 +3010,16 @@ def _apply_state_graph_route_layout(
                 "PROJECT_TYPE_INVALID",
                 f"project.editor.state_graph.scenes[{scene_id}].routes[{route_id}].sources must be an object",
             )
-        sources[source_state] = {
+        source_layout = {
             "routing_version": STATE_GRAPH_ROUTE_LAYOUT_VERSION,
             "rails": rails,
         }
         if target_handle is not None:
-            sources[source_state]["target_handle"] = target_handle
-            sources[source_state]["target_side"] = target_side
+            source_layout["target_handle"] = target_handle
+            source_layout["target_side"] = target_side
+        if token_positions:
+            source_layout["token_positions"] = token_positions
+        sources[source_state] = source_layout
     return {
         "kind": "editor.state_graph.set_route_layout",
         "scene_id": scene_id,
@@ -2950,6 +3028,7 @@ def _apply_state_graph_route_layout(
         "rails": rails,
         "target_handle": target_handle,
         "target_side": target_side,
+        "token_positions": token_positions,
     }
 
 
@@ -3750,7 +3829,7 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
                                                         {"rails"},
                                                         source_path,
                                                         issues,
-                                                        {"rails", "routing_version", "target_handle", "target_side"},
+                                                        {"rails", "routing_version", "target_handle", "target_side", "token_positions"},
                                                     )
                                                     target_handle = source_layout.get("target_handle")
                                                     if target_handle is not None and target_handle not in STATE_GRAPH_ENTRY_HANDLES:
@@ -3781,6 +3860,13 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
                                                             "PROJECT_VALUE_INVALID",
                                                             f"{source_path}.target_side",
                                                             "is not available on the selected corner entry",
+                                                        )
+                                                    token_positions = source_layout.get("token_positions")
+                                                    if token_positions is not None:
+                                                        _validate_route_token_positions(
+                                                            token_positions,
+                                                            f"{source_path}.token_positions",
+                                                            issues,
                                                         )
                                                     rails = source_layout.get("rails")
                                                     if not isinstance(rails, list):

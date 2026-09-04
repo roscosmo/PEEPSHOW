@@ -314,7 +314,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(32, SERVICE_API_VERSION)
+        self.assertEqual(33, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -2421,6 +2421,10 @@ class AuthoringServiceTests(unittest.TestCase):
                                 ],
                                 "target_handle": "entry-bottom-right",
                                 "target_side": "right",
+                                "token_positions": {
+                                    "condition": 0.28444,
+                                    "actions": [0.71555],
+                                },
                             }
                         ],
                     },
@@ -2432,6 +2436,10 @@ class AuthoringServiceTests(unittest.TestCase):
             self.assertEqual(expected, route_layout["sources"]["center"]["rails"])
             self.assertEqual("entry-bottom-right", route_layout["sources"]["center"]["target_handle"])
             self.assertEqual("right", route_layout["sources"]["center"]["target_side"])
+            self.assertEqual(
+                {"condition": 0.2844, "actions": [0.7156]},
+                route_layout["sources"]["center"]["token_positions"],
+            )
             after = service.handle(
                 request("project.build_package", {"project_revision": routed["project_revision"]})
             )
@@ -2446,6 +2454,10 @@ class AuthoringServiceTests(unittest.TestCase):
             self.assertEqual(expected, redone_route["sources"]["center"]["rails"])
             self.assertEqual("entry-bottom-right", redone_route["sources"]["center"]["target_handle"])
             self.assertEqual("right", redone_route["sources"]["center"]["target_side"])
+            self.assertEqual(
+                {"condition": 0.2844, "actions": [0.7156]},
+                redone_route["sources"]["center"]["token_positions"],
+            )
 
             saved = service.handle(request("project.save", {"project_revision": redone["project_revision"]}))
             self.assertIn("project.json", saved["saved_sources"])
@@ -2455,8 +2467,12 @@ class AuthoringServiceTests(unittest.TestCase):
             self.assertEqual(expected, persisted["sources"]["center"]["rails"])
             self.assertEqual("entry-bottom-right", persisted["sources"]["center"]["target_handle"])
             self.assertEqual("right", persisted["sources"]["center"]["target_side"])
+            self.assertEqual(
+                {"condition": 0.2844, "actions": [0.7156]},
+                persisted["sources"]["center"]["token_positions"],
+            )
 
-            reset = service.handle(
+            automatic_route = service.handle(
                 request(
                     "project.apply_commands",
                     {
@@ -2470,6 +2486,37 @@ class AuthoringServiceTests(unittest.TestCase):
                                 "rails": [],
                                 "target_handle": None,
                                 "target_side": None,
+                            }
+                        ],
+                    },
+                )
+            )
+            automatic_source = automatic_route["document"]["project"]["editor"][
+                "state_graph"
+            ]["scenes"]["state_demo"]["routes"]["center_to_right"]["sources"][
+                "center"
+            ]
+            self.assertEqual([], automatic_source["rails"])
+            self.assertEqual(
+                {"condition": 0.2844, "actions": [0.7156]},
+                automatic_source["token_positions"],
+            )
+
+            reset = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": automatic_route["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.state_graph.set_route_layout",
+                                "scene_id": "state_demo",
+                                "route_id": "center_to_right",
+                                "source_state": "center",
+                                "rails": [],
+                                "target_handle": None,
+                                "target_side": None,
+                                "token_positions": {},
                             }
                         ],
                     },
@@ -2582,6 +2629,19 @@ class AuthoringServiceTests(unittest.TestCase):
                     "rails": [],
                     "target_handle": "entry-top-left",
                     "target_side": "right",
+                },
+                "PROJECT_VALUE_INVALID",
+            ),
+            (
+                {
+                    "kind": "editor.state_graph.set_route_layout",
+                    "scene_id": "state_demo",
+                    "route_id": "center_to_right",
+                    "source_state": "center",
+                    "rails": [],
+                    "target_handle": "entry-top-left",
+                    "target_side": "top",
+                    "token_positions": {"condition": 0.7, "actions": [0.4]},
                 },
                 "PROJECT_VALUE_INVALID",
             ),

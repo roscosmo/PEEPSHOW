@@ -1009,6 +1009,9 @@ editor_data:
                 rails[]:
                   axis
                   value
+                token_positions:
+                  condition
+                  actions[]
   comments[]
   bookmarks[]
   local_ui_state
@@ -1031,6 +1034,13 @@ one `target_handle` chosen from the four corner entry zones plus one
 `target_side`. Each corner exposes two valid directional ports: top and left,
 top and right, bottom and left, or bottom and right. The port choice is
 presentation-only and does not change the route's semantic target state.
+
+Version 3 route layouts may also store `token_positions`. `condition` is the
+optional aggregated guard-chip position, and `actions` contains visible action-
+chip positions in semantic execution order. Each value is a normalized path
+fraction from `0.02` to `0.98`; present values must be strictly increasing.
+Peep Studio prevents adjacent tokens from crossing, so moving a chip never
+reorders guards or actions.
 
 Peep Studio derives right-angle intersections and endpoint joins from the saved
 rails. Generated corners, hover controls, card-relative endpoints, and arrow

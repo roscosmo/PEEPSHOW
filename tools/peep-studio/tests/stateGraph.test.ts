@@ -92,6 +92,7 @@ const savedGraph = buildStateGraphModel(scene, {
                 target_handle: "entry-bottom-right",
                 target_side: "right",
                 rails: [{ axis: "x", value: 180 }, { axis: "y", value: 90 }],
+                token_positions: { condition: 0.24, actions: [0.76] },
               },
             },
           },
@@ -148,6 +149,7 @@ assert.equal(graph.edges[0]?.actions[0]?.kind, "set_variable");
 assert.deepEqual(savedGraph.edges[0]?.rails, [{ axis: "x", value: 180 }, { axis: "y", value: 90 }]);
 assert.equal(savedGraph.edges[0]?.targetHandle, "entry-bottom-right");
 assert.equal(savedGraph.edges[0]?.targetSide, "right");
+assert.deepEqual(savedGraph.edges[0]?.tokenPositions, { condition: 0.24, actions: [0.76] });
 assert.equal(savedGraph.entryEdge?.targetHandle, "entry-bottom-left");
 assert.equal(savedGraph.entryEdge?.targetSide, "bottom");
 assert.deepEqual(legacyRouteGraph.edges[0]?.rails, []);

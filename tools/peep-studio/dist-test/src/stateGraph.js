@@ -1105,6 +1105,7 @@ function buildStateGraphModel(scene, editor) {
                 actions: visibleStateActions(route),
                 effectLabels: routeEffectLabels(route),
                 rails: currentLayout?.rails ?? [],
+                tokenPositions: currentLayout?.token_positions,
                 targetHandle: currentLayout?.target_handle,
                 targetSide: currentLayout?.target_side,
                 targetKind: targetsSystemExit
