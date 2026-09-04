@@ -306,9 +306,68 @@ Scene-flow mode:
 
 Placement mode:
 
-- left: project and scene list;
+- left: the fixed emulator/display preview, scene hierarchy, then a contextual
+  placement hierarchy for the selected scene;
 - center: large scaled screen preview;
 - right: inspector for selected visual elements and placement controls.
 
-Until visual element mutation exists, placement mode is a preview-focused shell
-for the future placement workflow.
+The placement hierarchy mirrors semantic ownership rather than flattening the
+resolved framebuffer:
+
+```text
+Scene
+  Base Placement
+    scene-owned objects
+  States
+    State A
+      objects changed by State A
+    State B
+      objects changed by State B
+```
+
+`Base Placement` is a first-class edit scope. State rows contain only local
+object variations; they do not imply separate screens. The same stable object
+may appear under Base Placement and under every state that changes it. With
+hierarchical states, child state rows nest beneath their composite parent and
+inherit the parent's placement changes.
+
+Placement target selection follows conventional tree-selection behavior:
+
+- plain click selects one state exclusively and makes it the primary preview;
+- Ctrl-click toggles individual state scopes;
+- Shift-click selects a contiguous range of sibling states;
+- Ctrl+A selects all state siblings in the focused hierarchy level;
+- the most recently clicked selected state remains the primary preview while
+  edits apply to the complete selected set;
+- clicking Base Placement clears state selection and previews/edits the scene
+  defaults;
+- Base Placement and state scopes cannot be selected together;
+- an ancestor and its descendant cannot both be edit targets because the
+  ancestor already applies through inheritance.
+
+There are no state-target checkboxes and ordinary row clicks never accumulate
+targets. Selecting all currently declared states remains an explicit fixed set;
+it is not normalized to Base Placement and does not include states created
+later.
+
+Adding an object uses the selected scope:
+
+- Base Placement creates a scene-wide object inherited by current and future
+  states;
+- one selected state creates an object visible in that state scope;
+- multiple selected states create one stable object visible in exactly those
+  scopes;
+- selecting a composite parent makes the object visible through that parent's
+  descendants, including future descendants.
+
+The inspector shows a read-only edit-target breadcrumb instead of an
+"Applying edits to" checkbox panel. Each editable property identifies whether
+its value is defined here or inherited, identifies the inherited source when
+useful, and provides a reset action for removing the local override. Resetting
+an override must reveal the inherited value; it must not write a copied value
+back into the state.
+
+When multiple states are selected, the hierarchy clearly distinguishes the
+primary preview state from the complete edit selection. The center canvas shows
+the resolved primary state while each mutation is applied atomically to the
+explicit selected-state set.

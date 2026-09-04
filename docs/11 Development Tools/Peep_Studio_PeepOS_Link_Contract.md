@@ -361,8 +361,8 @@ The default workspaces expose these concepts:
 - **Scene Flow:** game-level storyboard flow between scenes.
 - **Local Logic:** per-scene behavior as state cards, prefab cards, trigger
   output rows, conditions, effects, and destinations.
-- **Placement:** panel-native scene composition plus the selected state's object
-  variations.
+- **Placement:** scene-base composition plus explicit state-owned object
+  variations on one stable scene surface.
 - **Assets:** sprites, build-time text sprites, future audio assets, frame
   strips, and author-facing animation definitions.
 - **Debug/Advanced:** stable IDs, generated records, backend-only fields, and
@@ -378,10 +378,19 @@ Placement must not silently follow the emulator's current runtime state while an
 author is editing. A `STATE_SCENE` owns one placed-object surface. Individual
 logic states may override selected object presentation, such as position,
 visibility, sprite frame, or waiting animation, but they do not own separate
-screen layouts. The object hierarchy shows the scene-owned objects first, with
-clear badges when the selected logic state changes an object. Runtime preview may
-still step through scene logic, but it must not make the placement target
-ambiguous.
+screen layouts. The hierarchy exposes Scene Base first and each state's local
+variations beneath it. Runtime preview may still step through scene logic, but
+it must not change the placement edit target.
+
+Placement keeps three concepts separate:
+
+- the scene-owned object identity;
+- the explicit edit scope: Scene Base or a bounded set of state IDs;
+- one primary state used to render a resolved preview when several states are
+  selected.
+
+Selecting every current state is an exact set and remains distinct from Scene
+Base. Base values are inherited by future states; exact state sets are not.
 
 While a valid project contains scenes, Peep Studio must keep one scene selected.
 Editor commands may invalidate the service preview revision, but the emulator must
@@ -559,6 +568,22 @@ demo scaffolding and toward authored object names, type icons, layer/order
 badges, and logic/prefab ownership badges. Demo focus objects must not be
 special-cased or made undeletable in the renderer.
 
+The next Placement ownership slice replaces the flat object list and checkbox
+target panel with a scene-base/state hierarchy. It also requires service-owned
+support for:
+
+- rendering Scene Base without applying a logic-state override;
+- adding one object to Scene Base or to an exact bounded state-ID set;
+- applying one mutation atomically to an exact selected-state set;
+- explicitly clearing individual local properties or a complete local
+  placement override;
+- returning enough normalized provenance for Peep Studio to label each value as
+  local or inherited without interpreting raw project JSON.
+
+State-scoped object creation is stored as one scene object hidden at base and
+revealed in the selected scopes. React must request this semantic operation; it
+must not clone objects or assemble hidden implementation records itself.
+
 The Assets workspace lists compiled sprite assets, shows frame previews, can
 preview a multi-frame sprite loop, and can import a PNG as either one full-image
 masked 1bpp frame or an evenly divided same-size frame grid through Electron
@@ -732,6 +757,11 @@ emulator session and subsequent input/time operations continue from it. When
 omitted, the scene's declared entry state remains authoritative. This differs
 from `project.preview_state`, which renders one isolated state for Placement
 without replacing or advancing the live emulator session.
+
+The planned Placement ownership service slice must add a base-only isolated
+preview alongside `project.preview_state`. It must preserve one primary preview
+state separately from an exact multi-state edit target and must not alter the
+live emulator session.
 
 Physical control lifecycle choices remain `press`, `hold`, `release`, and
 `repeat`. Firmware already emits Press, Release, Long Press, and Repeat; the

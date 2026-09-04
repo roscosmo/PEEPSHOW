@@ -937,6 +937,47 @@ the scene-owned object. Package compilation may flatten those overrides into
 target-specific retained records, but authored source must keep the scene object
 identity stable.
 
+### Placement Scope And Inheritance
+
+Placement authoring distinguishes the scene base from state-owned variations:
+
+- **Scene Base** owns the stable object identities and their default position,
+  visibility, visual, layer, and draw order. A base-visible object is inherited
+  by every current and future state unless a state overrides it.
+- **State scope** owns only the properties it changes. It does not create a
+  second render element or an independent screen layout.
+- selecting every currently declared state is not equivalent to Scene Base.
+  It is an exact set of state IDs and does not silently expand when a future
+  state is added.
+- changing a Scene Base property must not rewrite or clear explicit state
+  overrides. Clearing an override is a separate author action.
+- clearing a local property override restores the next inherited value rather
+  than copying that value into the state record.
+
+An object added to an exact set of states remains one scene-owned object. Its
+canonical flat-state representation is base `visible: false` plus
+`visible: true` overrides for the selected state IDs. This makes the object
+absent from new states added later. An object added to Scene Base uses its base
+visibility and is inherited by new states automatically.
+
+For the planned hierarchical-state model, effective placement resolves in this
+order:
+
+```text
+Scene Base -> outermost active parent -> ... -> active leaf
+```
+
+The deepest supplied property wins. A parent-state override is inherited by all
+active descendants; a child record stores only properties that differ from its
+inherited result. Selecting a composite parent as an edit scope is therefore
+different from selecting all of its currently declared children: the parent
+scope also applies to children added later.
+
+Multi-state authoring operations must carry an explicit, bounded state-ID set
+and apply atomically through the Python service. The transient editor selection
+is not package semantics. React must not infer ownership by cloning render
+elements or by manufacturing independent per-state render models.
+
 The initial system-font contract is fixed-cell 8x8, black ink on a transparent
 background, printable ASCII `0x20..0x7e`, newline line breaks, and integer
 nearest-neighbor scaling. Rasterized output must fit `168x144` and emits exactly
