@@ -2219,6 +2219,27 @@ export function StateGraphView({
       flowRef.current?.fitView({ padding: 0.22, maxZoom: 1 });
     });
   }, [scene?.scene_id]);
+  useEffect(() => {
+    if (activeStateId === null) {
+      return;
+    }
+    const animationFrame = window.requestAnimationFrame(() => {
+      const instance = flowRef.current;
+      const activeNode = instance?.getNode(activeStateId);
+      if (instance === null || instance === undefined || activeNode === undefined) {
+        return;
+      }
+      const width = activeNode.measured?.width ?? activeNode.width ?? 300;
+      const height = activeNode.measured?.height ?? activeNode.height ?? 268;
+      const viewport = instance.getViewport();
+      void instance.setCenter(
+        activeNode.position.x + width / 2,
+        activeNode.position.y + height / 2,
+        { zoom: viewport.zoom, duration: 260 },
+      );
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [activeStateId, scene?.scene_id]);
   const selectedTransition = useMemo(() => {
     if (selected.kind !== "route") {
       return null;

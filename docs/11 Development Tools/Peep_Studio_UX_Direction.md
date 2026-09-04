@@ -95,6 +95,9 @@ Peep Studio should present local STATE logic as dynamic node cards:
   from that state. The emulator's current state uses a dedicated runtime
   highlight that remains visually distinct from author selection and follows
   transitions without moving the author's selection;
+- while the emulator runs, the State Graph viewport smoothly centers each new
+  runtime-active state without changing the current zoom, node positions,
+  manual route layout, or author selection;
 - Reset returns to the state from which the current preview run was launched.
   Selecting a scene instead launches from its declared entry state;
 - advanced/internal route IDs remain available for debugging, but are not shown
