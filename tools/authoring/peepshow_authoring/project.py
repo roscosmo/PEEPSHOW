@@ -53,6 +53,7 @@ STATE_WAITING_ANIMATION_QUANTUM_MS = 250
 STATE_GRAPH_ROUTE_RAIL_MAX = 8
 STATE_GRAPH_ROUTE_ACTION_TOKEN_MAX = 8
 STATE_GRAPH_ROUTE_LAYOUT_VERSION = 3
+SCENE_FLOW_REFERENCE_MAX = 64
 STATE_GRAPH_SYSTEM_EXIT_NODE_ID = "system-exit"
 STATE_GRAPH_ENTRY_HANDLES = {
     "entry-top-left",
@@ -308,6 +309,53 @@ def _apply_scene_add(
         "display_name": display_name,
         "source": source,
     }
+
+
+def _apply_scene_rename(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "display_name"},
+        {"kind", "scene_id", "display_name", "command_id"},
+    )
+    scene_id = command.get("scene_id")
+    display_name = command.get("display_name")
+    issues: list[ValidationIssue] = []
+    _stable_id(scene_id, "command.scene_id", issues)
+    _text(display_name, "command.display_name", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    scene = _command_scene(scenes, scene_id)
+    scene["display_name"] = display_name
+    return {
+        "kind": "scene.rename",
+        "scene_id": scene_id,
+        "display_name": display_name,
+    }
+
+
+def _apply_project_set_entry_scene(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id"},
+        {"kind", "scene_id", "command_id"},
+    )
+    scene_id = command.get("scene_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(scene_id, "command.scene_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    _command_scene(scenes, scene_id)
+    project["entry_scene"] = scene_id
+    return {"kind": "project.set_entry_scene", "scene_id": scene_id}
 
 
 def _apply_state_add(
@@ -1067,6 +1115,13 @@ def _apply_route_delete(
         if isinstance(route, dict) and route.get("route_id") == route_id:
             routes.pop(index)
             _remove_state_graph_route_layout(project, scene.get("scene_id"), route_id)
+            _set_scene_flow_exit_reference(
+                project,
+                str(scene.get("scene_id")),
+                "route",
+                str(route_id),
+                None,
+            )
             return {"kind": "route.delete", "scene_id": scene.get("scene_id"), "route_id": route_id}
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown route '{route_id}'")
 
@@ -1155,6 +1210,7 @@ def _apply_state_rename(
 
 
 def _apply_route_set_target(
+    project: dict[str, Any],
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
 ) -> dict[str, Any]:
@@ -1235,6 +1291,7 @@ def _apply_route_set_target(
                     route.pop("target_scene", None)
                     route.pop("scene_exit_ref", None)
                     route["target_state"] = target_state
+                    _set_scene_flow_exit_reference(project, str(scene_id), "route", str(route_id), None)
                     result["target_state"] = target_state
                 else:
                     route.pop("target_state", None)
@@ -1246,6 +1303,14 @@ def _apply_route_set_target(
                     result["target_scene"] = target_scene
                     if scene_exit_ref is not None:
                         result["scene_exit_ref"] = scene_exit_ref
+                    scene_flow = project.get("editor", {}).get("scene_flow", {}) if isinstance(project.get("editor"), dict) else {}
+                    references = scene_flow.get("references", {}) if isinstance(scene_flow, dict) else {}
+                    groups = scene_flow.get("exit_references", {}) if isinstance(scene_flow, dict) else {}
+                    scene_group = groups.get(scene_id, {}) if isinstance(groups, dict) else {}
+                    reference_id = scene_group.get(_scene_flow_endpoint_key("route", str(route_id))) if isinstance(scene_group, dict) else None
+                    reference = references.get(reference_id) if isinstance(references, dict) else None
+                    if not isinstance(reference, dict) or reference.get("target_scene") != target_scene:
+                        _set_scene_flow_exit_reference(project, str(scene_id), "route", str(route_id), None)
                 return result
         raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown route '{route_id}'")
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
@@ -1253,6 +1318,117 @@ def _apply_route_set_target(
 
 def _route_id_component(value: str) -> str:
     return re.sub(r"[^a-z0-9_.-]+", "_", value.lower()).strip("_") or "exit"
+
+
+def _scene_flow_data(project: dict[str, Any]) -> dict[str, Any]:
+    editor = project.setdefault("editor", {})
+    if not isinstance(editor, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor must be an object")
+    scene_flow = editor.setdefault("scene_flow", {})
+    if not isinstance(scene_flow, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor.scene_flow must be an object")
+    return scene_flow
+
+
+def _scene_flow_references(project: dict[str, Any]) -> dict[str, Any]:
+    references = _scene_flow_data(project).setdefault("references", {})
+    if not isinstance(references, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor.scene_flow.references must be an object")
+    return references
+
+
+def _scene_flow_reference(project: dict[str, Any], reference_id: Any) -> dict[str, Any]:
+    issues: list[ValidationIssue] = []
+    _stable_id(reference_id, "command.reference_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    reference = _scene_flow_references(project).get(reference_id)
+    if not isinstance(reference, dict):
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene-flow reference '{reference_id}'")
+    return reference
+
+
+def _scene_flow_endpoint_key(endpoint_kind: str, endpoint_id: str) -> str:
+    return f"{endpoint_kind}:{endpoint_id}"
+
+
+def _scene_flow_exit_reference_groups(project: dict[str, Any]) -> dict[str, Any]:
+    groups = _scene_flow_data(project).setdefault("exit_references", {})
+    if not isinstance(groups, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor.scene_flow.exit_references must be an object")
+    return groups
+
+
+def _set_scene_flow_exit_reference(
+    project: dict[str, Any],
+    scene_id: str,
+    endpoint_kind: str,
+    endpoint_id: str,
+    reference_id: str | None,
+) -> None:
+    endpoint_key = _scene_flow_endpoint_key(endpoint_kind, endpoint_id)
+    if reference_id is None:
+        editor = project.get("editor")
+        scene_flow = editor.get("scene_flow") if isinstance(editor, dict) else None
+        groups = scene_flow.get("exit_references") if isinstance(scene_flow, dict) else None
+        if not isinstance(groups, dict):
+            return
+        scene_group = groups.get(scene_id)
+        if isinstance(scene_group, dict):
+            scene_group.pop(endpoint_key, None)
+            if not scene_group:
+                groups.pop(scene_id, None)
+        if not groups:
+            scene_flow.pop("exit_references", None)
+        return
+    groups = _scene_flow_exit_reference_groups(project)
+    scene_group = groups.setdefault(scene_id, {})
+    if not isinstance(scene_group, dict):
+        raise ProjectCommandError(
+            "PROJECT_TYPE_INVALID",
+            f"project.editor.scene_flow.exit_references[{scene_id}] must be an object",
+        )
+    scene_group[endpoint_key] = reference_id
+
+
+def _scene_flow_endpoint(
+    scenes: list[dict[str, Any]],
+    scene_id: str,
+    endpoint_kind: str,
+    endpoint_id: str,
+) -> dict[str, Any]:
+    scene = _command_scene(scenes, scene_id)
+    if endpoint_kind == "scene_exit":
+        return _command_record(scene, "scene_exits", "scene_exit_id", endpoint_id)
+    if endpoint_kind == "route":
+        return _command_record(scene, "routes", "route_id", endpoint_id)
+    raise ProjectCommandError(
+        "PROJECT_VALUE_INVALID",
+        "command.endpoint_kind must be scene_exit or route",
+    )
+
+
+def _set_scene_flow_endpoint_target(
+    scenes: list[dict[str, Any]],
+    scene_id: str,
+    endpoint_kind: str,
+    endpoint_id: str,
+    target_scene: str,
+) -> None:
+    if scene_id == target_scene:
+        raise ProjectCommandError("COMMAND_TARGET_INVALID", "scene exits must target another scene")
+    _command_scene(scenes, target_scene)
+    endpoint = _scene_flow_endpoint(scenes, scene_id, endpoint_kind, endpoint_id)
+    endpoint["target_scene"] = target_scene
+    if endpoint_kind == "scene_exit":
+        source_scene = _command_scene(scenes, scene_id)
+        for route in source_scene.get("routes", []):
+            if isinstance(route, dict) and route.get("scene_exit_ref") == endpoint_id:
+                route["target_scene"] = target_scene
+    else:
+        endpoint.pop("target_state", None)
+        endpoint.pop("scene_exit_ref", None)
 
 
 def _unique_generated_scene_exit_id(scene: dict[str, Any], target_scene: str) -> str:
@@ -1273,18 +1449,20 @@ def _unique_generated_scene_exit_id(scene: dict[str, Any], target_scene: str) ->
 
 
 def _apply_scene_exit_add(
+    project: dict[str, Any],
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
 ) -> dict[str, Any]:
     _require_command_fields(
         command,
         {"kind", "scene_id", "target_scene"},
-        {"kind", "scene_id", "target_scene", "display_name", "command_id"},
+        {"kind", "scene_id", "target_scene", "display_name", "scene_flow_reference_id", "command_id"},
     )
     issues: list[ValidationIssue] = []
     scene_id = command.get("scene_id")
     target_scene = command.get("target_scene")
     display_name = command.get("display_name")
+    reference_id = command.get("scene_flow_reference_id")
     _stable_id(scene_id, "command.scene_id", issues)
     _stable_id(target_scene, "command.target_scene", issues)
     if display_name is not None:
@@ -1305,6 +1483,13 @@ def _apply_scene_exit_add(
     )
     if target is None:
         raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown target scene '{target_scene}'")
+    if reference_id is not None:
+        reference = _scene_flow_reference(project, reference_id)
+        if reference.get("target_scene") != target_scene:
+            raise ProjectCommandError(
+                "COMMAND_TARGET_INVALID",
+                "scene-flow reference does not point to command.target_scene",
+            )
 
     for scene in scenes:
         if scene.get("scene_id") != scene_id:
@@ -1321,6 +1506,14 @@ def _apply_scene_exit_add(
             "target_scene": target_scene,
         }
         scene_exits.append(scene_exit)
+        if isinstance(reference_id, str):
+            _set_scene_flow_exit_reference(
+                project,
+                str(scene_id),
+                "scene_exit",
+                scene_exit_id,
+                reference_id,
+            )
 
         return {
             "kind": "scene_exit.add",
@@ -1331,6 +1524,7 @@ def _apply_scene_exit_add(
 
 
 def _apply_scene_exit_set_target(
+    project: dict[str, Any],
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
 ) -> dict[str, Any]:
@@ -1364,6 +1558,14 @@ def _apply_scene_exit_set_target(
             for route in scene.get("routes", []):
                 if isinstance(route, dict) and route.get("scene_exit_ref") == scene_exit_id:
                     route["target_scene"] = target_scene
+            scene_flow = project.get("editor", {}).get("scene_flow", {}) if isinstance(project.get("editor"), dict) else {}
+            references = scene_flow.get("references", {}) if isinstance(scene_flow, dict) else {}
+            groups = scene_flow.get("exit_references", {}) if isinstance(scene_flow, dict) else {}
+            scene_group = groups.get(scene_id, {}) if isinstance(groups, dict) else {}
+            reference_id = scene_group.get(_scene_flow_endpoint_key("scene_exit", str(scene_exit_id))) if isinstance(scene_group, dict) else None
+            reference = references.get(reference_id) if isinstance(references, dict) else None
+            if not isinstance(reference, dict) or reference.get("target_scene") != target_scene:
+                _set_scene_flow_exit_reference(project, str(scene_id), "scene_exit", str(scene_exit_id), None)
             return {
                 "kind": "scene_exit.set_target",
                 "scene_id": scene_id,
@@ -1407,6 +1609,13 @@ def _apply_scene_exit_delete(
             )
             if isinstance(nodes, dict):
                 nodes.pop(f"scene-exit-{scene_exit_id}", None)
+            _set_scene_flow_exit_reference(
+                project,
+                str(scene.get("scene_id")),
+                "scene_exit",
+                str(scene_exit_id),
+                None,
+            )
             return {
                 "kind": "scene_exit.delete",
                 "scene_id": scene.get("scene_id"),
@@ -2702,6 +2911,246 @@ def _apply_scene_flow_node_position(
     }
 
 
+def _apply_scene_flow_package_entry_position(
+    project: dict[str, Any],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "x", "y"},
+        {"kind", "x", "y", "command_id"},
+    )
+    position = {
+        "x": _layout_coordinate(command.get("x"), "command.x"),
+        "y": _layout_coordinate(command.get("y"), "command.y"),
+    }
+    _scene_flow_data(project)["package_entry"] = position
+    return {"kind": "editor.scene_flow.set_package_entry_position", **position}
+
+
+def _unique_scene_flow_reference_id(references: dict[str, Any], target_scene: str) -> str:
+    base = f"go_to_{_route_id_component(target_scene)}"[:64].rstrip("_.-")
+    if base not in references:
+        return base
+    for suffix in range(2, 100):
+        suffix_text = f"_{suffix}"
+        candidate = f"{base[:64 - len(suffix_text)].rstrip('_.-')}{suffix_text}"
+        if candidate not in references:
+            return candidate
+    raise ProjectCommandError("COMMAND_TARGET_INVALID", "could not generate a unique scene-flow reference ID")
+
+
+def _apply_scene_flow_reference_add(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "target_scene", "x", "y"},
+        {"kind", "target_scene", "x", "y", "command_id"},
+    )
+    target_scene = command.get("target_scene")
+    issues: list[ValidationIssue] = []
+    _stable_id(target_scene, "command.target_scene", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    _command_scene(scenes, target_scene)
+    references = _scene_flow_references(project)
+    if len(references) >= SCENE_FLOW_REFERENCE_MAX:
+        raise ProjectCommandError(
+            "PROJECT_LIMIT_EXCEEDED",
+            f"scene flow supports at most {SCENE_FLOW_REFERENCE_MAX} Go To references",
+        )
+    reference_id = _unique_scene_flow_reference_id(references, str(target_scene))
+    reference = {
+        "target_scene": target_scene,
+        "x": _layout_coordinate(command.get("x"), "command.x"),
+        "y": _layout_coordinate(command.get("y"), "command.y"),
+    }
+    references[reference_id] = reference
+    return {
+        "kind": "editor.scene_flow.add_reference",
+        "reference_id": reference_id,
+        **reference,
+    }
+
+
+def _apply_scene_flow_reference_position(
+    project: dict[str, Any],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "reference_id", "x", "y"},
+        {"kind", "reference_id", "x", "y", "command_id"},
+    )
+    reference_id = command.get("reference_id")
+    reference = _scene_flow_reference(project, reference_id)
+    position = {
+        "x": _layout_coordinate(command.get("x"), "command.x"),
+        "y": _layout_coordinate(command.get("y"), "command.y"),
+    }
+    reference.update(position)
+    return {
+        "kind": "editor.scene_flow.set_reference_position",
+        "reference_id": reference_id,
+        **position,
+    }
+
+
+def _apply_scene_flow_reference_target(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "reference_id", "target_scene"},
+        {"kind", "reference_id", "target_scene", "command_id"},
+    )
+    reference_id = command.get("reference_id")
+    target_scene = command.get("target_scene")
+    issues: list[ValidationIssue] = []
+    _stable_id(target_scene, "command.target_scene", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    _command_scene(scenes, target_scene)
+    reference = _scene_flow_reference(project, reference_id)
+    scene_flow = _scene_flow_data(project)
+    groups = scene_flow.get("exit_references", {})
+    attached: list[tuple[str, str, str]] = []
+    if isinstance(groups, dict):
+        for source_scene, scene_group in groups.items():
+            if not isinstance(scene_group, dict):
+                continue
+            for endpoint_key, mapped_reference in scene_group.items():
+                if mapped_reference != reference_id or not isinstance(endpoint_key, str) or ":" not in endpoint_key:
+                    continue
+                endpoint_kind, endpoint_id = endpoint_key.split(":", 1)
+                if source_scene == target_scene:
+                    raise ProjectCommandError(
+                        "COMMAND_TARGET_INVALID",
+                        "a Go To reference cannot retarget an attached exit back to its own scene",
+                    )
+                _scene_flow_endpoint(scenes, source_scene, endpoint_kind, endpoint_id)
+                attached.append((source_scene, endpoint_kind, endpoint_id))
+    for source_scene, endpoint_kind, endpoint_id in attached:
+        _set_scene_flow_endpoint_target(
+            scenes,
+            source_scene,
+            endpoint_kind,
+            endpoint_id,
+            str(target_scene),
+        )
+    reference["target_scene"] = target_scene
+    return {
+        "kind": "editor.scene_flow.set_reference_target",
+        "reference_id": reference_id,
+        "target_scene": target_scene,
+        "updated_exit_count": len(attached),
+    }
+
+
+def _apply_scene_flow_reference_delete(
+    project: dict[str, Any],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "reference_id"},
+        {"kind", "reference_id", "command_id"},
+    )
+    reference_id = command.get("reference_id")
+    references = _scene_flow_references(project)
+    if reference_id not in references:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene-flow reference '{reference_id}'")
+    references.pop(reference_id)
+    scene_flow = _scene_flow_data(project)
+    groups = scene_flow.get("exit_references", {})
+    detached = 0
+    if isinstance(groups, dict):
+        for source_scene in list(groups):
+            scene_group = groups.get(source_scene)
+            if not isinstance(scene_group, dict):
+                continue
+            for endpoint_key in list(scene_group):
+                if scene_group.get(endpoint_key) == reference_id:
+                    scene_group.pop(endpoint_key)
+                    detached += 1
+            if not scene_group:
+                groups.pop(source_scene, None)
+        if not groups:
+            scene_flow.pop("exit_references", None)
+    if not references:
+        scene_flow.pop("references", None)
+    return {
+        "kind": "editor.scene_flow.delete_reference",
+        "reference_id": reference_id,
+        "detached_exit_count": detached,
+    }
+
+
+def _apply_scene_flow_exit_reference(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "endpoint_kind", "endpoint_id", "reference_id"},
+        {"kind", "scene_id", "endpoint_kind", "endpoint_id", "reference_id", "command_id"},
+    )
+    scene_id = command.get("scene_id")
+    endpoint_kind = command.get("endpoint_kind")
+    endpoint_id = command.get("endpoint_id")
+    reference_id = command.get("reference_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(scene_id, "command.scene_id", issues)
+    _stable_id(endpoint_id, "command.endpoint_id", issues)
+    if reference_id is not None:
+        _stable_id(reference_id, "command.reference_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    if endpoint_kind not in {"scene_exit", "route"}:
+        raise ProjectCommandError(
+            "PROJECT_VALUE_INVALID",
+            "command.endpoint_kind must be scene_exit or route",
+        )
+    _scene_flow_endpoint(scenes, str(scene_id), endpoint_kind, str(endpoint_id))
+    target_scene = None
+    if reference_id is not None:
+        reference = _scene_flow_reference(project, reference_id)
+        target_scene = reference.get("target_scene")
+        if not isinstance(target_scene, str):
+            raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene-flow reference target_scene must be a string")
+        _set_scene_flow_endpoint_target(
+            scenes,
+            str(scene_id),
+            endpoint_kind,
+            str(endpoint_id),
+            target_scene,
+        )
+    _set_scene_flow_exit_reference(
+        project,
+        str(scene_id),
+        endpoint_kind,
+        str(endpoint_id),
+        reference_id,
+    )
+    return {
+        "kind": "editor.scene_flow.set_exit_reference",
+        "scene_id": scene_id,
+        "endpoint_kind": endpoint_kind,
+        "endpoint_id": endpoint_id,
+        "reference_id": reference_id,
+        "target_scene": target_scene,
+    }
+
+
 def _apply_state_graph_node_position(
     project: dict[str, Any],
     scenes: list[dict[str, Any]],
@@ -3699,7 +4148,13 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
                 if not isinstance(scene_flow, dict):
                     _issue(issues, "PROJECT_TYPE_INVALID", "project.editor.scene_flow", "must be an object")
                 else:
-                    _check_keys(scene_flow, set(), "project.editor.scene_flow", issues, {"nodes"})
+                    _check_keys(
+                        scene_flow,
+                        set(),
+                        "project.editor.scene_flow",
+                        issues,
+                        {"nodes", "package_entry", "references", "exit_references"},
+                    )
                     nodes = scene_flow.get("nodes")
                     if nodes is not None:
                         if not isinstance(nodes, dict):
@@ -3720,6 +4175,66 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
                                         _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "must be a number")
                                     elif not -100000 <= value <= 100000:
                                         _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "outside supported editor layout range")
+                    package_entry = scene_flow.get("package_entry")
+                    if package_entry is not None:
+                        path = "project.editor.scene_flow.package_entry"
+                        if not isinstance(package_entry, dict):
+                            _issue(issues, "PROJECT_TYPE_INVALID", path, "must be an object")
+                        else:
+                            _check_keys(package_entry, {"x", "y"}, path, issues)
+                            for axis in ("x", "y"):
+                                value = package_entry.get(axis)
+                                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                                    _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "must be a number")
+                                elif not -100000 <= value <= 100000:
+                                    _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "outside supported editor layout range")
+                    references = scene_flow.get("references")
+                    if references is not None:
+                        if not isinstance(references, dict):
+                            _issue(issues, "PROJECT_TYPE_INVALID", "project.editor.scene_flow.references", "must be an object")
+                        elif len(references) > SCENE_FLOW_REFERENCE_MAX:
+                            _issue(
+                                issues,
+                                "PROJECT_LIMIT_EXCEEDED",
+                                "project.editor.scene_flow.references",
+                                f"contains more than {SCENE_FLOW_REFERENCE_MAX} references",
+                            )
+                        else:
+                            for reference_id, reference in references.items():
+                                path = f"project.editor.scene_flow.references[{reference_id}]"
+                                _stable_id(reference_id, path, issues)
+                                if not isinstance(reference, dict):
+                                    _issue(issues, "PROJECT_TYPE_INVALID", path, "must be an object")
+                                    continue
+                                _check_keys(reference, {"target_scene", "x", "y"}, path, issues)
+                                _stable_id(reference.get("target_scene"), f"{path}.target_scene", issues)
+                                for axis in ("x", "y"):
+                                    value = reference.get(axis)
+                                    if isinstance(value, bool) or not isinstance(value, (int, float)):
+                                        _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "must be a number")
+                                    elif not -100000 <= value <= 100000:
+                                        _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "outside supported editor layout range")
+                    exit_references = scene_flow.get("exit_references")
+                    if exit_references is not None:
+                        if not isinstance(exit_references, dict):
+                            _issue(issues, "PROJECT_TYPE_INVALID", "project.editor.scene_flow.exit_references", "must be an object")
+                        else:
+                            for scene_id, scene_group in exit_references.items():
+                                path = f"project.editor.scene_flow.exit_references[{scene_id}]"
+                                _stable_id(scene_id, path, issues)
+                                if not isinstance(scene_group, dict):
+                                    _issue(issues, "PROJECT_TYPE_INVALID", path, "must be an object")
+                                    continue
+                                for endpoint_key, reference_id in scene_group.items():
+                                    endpoint_path = f"{path}[{endpoint_key}]"
+                                    if not isinstance(endpoint_key, str) or not re.fullmatch(r"(?:scene_exit|route):[a-z0-9][a-z0-9_.-]*", endpoint_key):
+                                        _issue(
+                                            issues,
+                                            "PROJECT_VALUE_INVALID",
+                                            endpoint_path,
+                                            "must identify a scene_exit or route endpoint",
+                                        )
+                                    _stable_id(reference_id, endpoint_path, issues)
             state_graph = editor.get("state_graph")
             if state_graph is not None:
                 if not isinstance(state_graph, dict):
@@ -5176,13 +5691,67 @@ def load_project(project_root: str | Path) -> ProjectBundle:
                     f"project.editor.scene_flow.nodes[{scene_id}]",
                     f"unknown scene '{scene_id}'",
                 )
+    scene_flow = project.get("editor", {}).get("scene_flow", {}) if isinstance(project.get("editor"), dict) else {}
+    references = scene_flow.get("references", {}) if isinstance(scene_flow, dict) else {}
+    if isinstance(references, dict):
+        for reference_id, reference in references.items():
+            target_scene = reference.get("target_scene") if isinstance(reference, dict) else None
+            if isinstance(target_scene, str) and target_scene not in scene_ids:
+                _issue(
+                    issues,
+                    "SCENE_ID_UNKNOWN",
+                    f"project.editor.scene_flow.references[{reference_id}].target_scene",
+                    f"unknown scene '{target_scene}'",
+                )
+    exit_references = scene_flow.get("exit_references", {}) if isinstance(scene_flow, dict) else {}
+    scenes_by_id = {
+        scene.get("scene_id"): scene
+        for scene in scenes
+        if isinstance(scene, dict) and isinstance(scene.get("scene_id"), str)
+    }
+    if isinstance(exit_references, dict):
+        for source_scene, scene_group in exit_references.items():
+            source = scenes_by_id.get(source_scene)
+            if source is None:
+                _issue(
+                    issues,
+                    "SCENE_ID_UNKNOWN",
+                    f"project.editor.scene_flow.exit_references[{source_scene}]",
+                    f"unknown scene '{source_scene}'",
+                )
+                continue
+            if not isinstance(scene_group, dict):
+                continue
+            for endpoint_key, reference_id in scene_group.items():
+                path = f"project.editor.scene_flow.exit_references[{source_scene}][{endpoint_key}]"
+                reference = references.get(reference_id) if isinstance(references, dict) else None
+                if not isinstance(reference, dict):
+                    _issue(issues, "PROJECT_REFERENCE_MISSING", path, f"unknown scene-flow reference '{reference_id}'")
+                    continue
+                if not isinstance(endpoint_key, str) or ":" not in endpoint_key:
+                    continue
+                endpoint_kind, endpoint_id = endpoint_key.split(":", 1)
+                collection_name = "scene_exits" if endpoint_kind == "scene_exit" else "routes"
+                id_field = "scene_exit_id" if endpoint_kind == "scene_exit" else "route_id"
+                endpoint = next(
+                    (
+                        record
+                        for record in source.get(collection_name, [])
+                        if isinstance(record, dict) and record.get(id_field) == endpoint_id
+                    ),
+                    None,
+                )
+                if endpoint is None:
+                    _issue(issues, "PROJECT_REFERENCE_MISSING", path, f"unknown {endpoint_kind} '{endpoint_id}'")
+                elif endpoint.get("target_scene") != reference.get("target_scene"):
+                    _issue(
+                        issues,
+                        "COMMAND_TARGET_INVALID",
+                        path,
+                        "scene-flow reference target does not match the authored scene destination",
+                    )
     state_graph_scenes = project.get("editor", {}).get("state_graph", {}).get("scenes", {}) if isinstance(project.get("editor"), dict) else {}
     if isinstance(state_graph_scenes, dict):
-        scenes_by_id = {
-            scene.get("scene_id"): scene
-            for scene in scenes
-            if isinstance(scene, dict) and isinstance(scene.get("scene_id"), str)
-        }
         for scene_id, scene_layout in state_graph_scenes.items():
             if not isinstance(scene_id, str):
                 continue
@@ -5332,6 +5901,10 @@ def apply_project_commands(
             applied.append(
                 _apply_scene_add(bundle.root, project, scenes, scene_sources, command)
             )
+        elif kind == "scene.rename":
+            applied.append(_apply_scene_rename(scenes, command))
+        elif kind == "project.set_entry_scene":
+            applied.append(_apply_project_set_entry_scene(project, scenes, command))
         elif kind == "state.create":
             applied.append(_apply_state_create(project, scenes, command))
         elif kind == "state.add":
@@ -5367,11 +5940,11 @@ def apply_project_commands(
         elif kind in {"route.set_sources", "route.set_action_ref"}:
             applied.append(_apply_route_set_binding(project, scenes, command))
         elif kind == "route.set_target":
-            applied.append(_apply_route_set_target(scenes, command))
+            applied.append(_apply_route_set_target(project, scenes, command))
         elif kind == "scene_exit.add":
-            applied.append(_apply_scene_exit_add(scenes, command))
+            applied.append(_apply_scene_exit_add(project, scenes, command))
         elif kind == "scene_exit.set_target":
-            applied.append(_apply_scene_exit_set_target(scenes, command))
+            applied.append(_apply_scene_exit_set_target(project, scenes, command))
         elif kind == "scene_exit.delete":
             applied.append(_apply_scene_exit_delete(project, scenes, command))
         elif kind == "render_element.set_position":
@@ -5459,6 +6032,18 @@ def apply_project_commands(
                 raise ProjectCommandError(issue.code, issue.message)
         elif kind == "editor.scene_flow.set_node_position":
             applied.append(_apply_scene_flow_node_position(project, scenes, command))
+        elif kind == "editor.scene_flow.set_package_entry_position":
+            applied.append(_apply_scene_flow_package_entry_position(project, command))
+        elif kind == "editor.scene_flow.add_reference":
+            applied.append(_apply_scene_flow_reference_add(project, scenes, command))
+        elif kind == "editor.scene_flow.set_reference_position":
+            applied.append(_apply_scene_flow_reference_position(project, command))
+        elif kind == "editor.scene_flow.set_reference_target":
+            applied.append(_apply_scene_flow_reference_target(project, scenes, command))
+        elif kind == "editor.scene_flow.delete_reference":
+            applied.append(_apply_scene_flow_reference_delete(project, command))
+        elif kind == "editor.scene_flow.set_exit_reference":
+            applied.append(_apply_scene_flow_exit_reference(project, scenes, command))
         elif kind == "editor.state_graph.set_node_position":
             applied.append(_apply_state_graph_node_position(project, scenes, command))
         elif kind == "editor.state_graph.set_entry_layout":

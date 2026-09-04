@@ -314,7 +314,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(33, SERVICE_API_VERSION)
+        self.assertEqual(34, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -394,7 +394,12 @@ class AuthoringServiceTests(unittest.TestCase):
             result["state_scene_presentation"]["system_actions"],
         )
         graph = result["state_scene_graph"]
-        self.assertEqual(["scene.add"], graph["scene_commands"])
+        self.assertEqual(
+            ["scene.add", "scene.rename", "project.set_entry_scene"],
+            graph["scene_commands"],
+        )
+        self.assertIn("editor.scene_flow.add_reference", graph["scene_flow_commands"])
+        self.assertIn("editor.scene_flow.set_exit_reference", graph["scene_flow_commands"])
         self.assertEqual(64, graph["command_batch_maximum"])
         self.assertEqual(["play_sfx"], graph["target_scene_actions"])
         self.assertEqual([], graph["peepos_trigger_commands"])
@@ -2227,6 +2232,194 @@ class AuthoringServiceTests(unittest.TestCase):
                 {"x": 512, "y": -48},
                 reloaded.normalized()["project"]["editor"]["scene_flow"]["nodes"]["state_details"],
             )
+
+    def test_scene_flow_package_entry_and_go_to_references_are_editor_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "scene_flow_layout.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            before = service.handle(
+                request("project.build_package", {"project_revision": loaded["project_revision"]})
+            )
+            added = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.scene_flow.set_package_entry_position",
+                                "x": -218.6,
+                                "y": 91.2,
+                            },
+                            {
+                                "kind": "editor.scene_flow.add_reference",
+                                "target_scene": "state_details",
+                                "x": 834.7,
+                                "y": 122.4,
+                            },
+                        ],
+                    },
+                )
+            )
+            reference_id = added["applied_commands"][1]["reference_id"]
+            connected = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": added["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.scene_flow.set_exit_reference",
+                                "scene_id": "state_demo",
+                                "endpoint_kind": "scene_exit",
+                                "endpoint_id": "to_state_details",
+                                "reference_id": reference_id,
+                            }
+                        ],
+                    },
+                )
+            )
+            after = service.handle(
+                request("project.build_package", {"project_revision": connected["project_revision"]})
+            )
+
+            self.assertEqual(before["package"]["sha256"], after["package"]["sha256"])
+            scene_flow = connected["document"]["project"]["editor"]["scene_flow"]
+            self.assertEqual({"x": -219, "y": 91}, scene_flow["package_entry"])
+            self.assertEqual(
+                {"target_scene": "state_details", "x": 835, "y": 122},
+                scene_flow["references"][reference_id],
+            )
+            self.assertEqual(
+                reference_id,
+                scene_flow["exit_references"]["state_demo"]["scene_exit:to_state_details"],
+            )
+
+            saved = service.handle(request("project.save", {"project_revision": connected["project_revision"]}))
+            self.assertIn("project.json", saved["saved_sources"])
+            reloaded = load_project(project_root).normalized()["project"]["editor"]["scene_flow"]
+            self.assertEqual(reference_id, reloaded["exit_references"]["state_demo"]["scene_exit:to_state_details"])
+
+            added_scene = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": saved["project_revision"],
+                        "commands": [{"kind": "scene.add", "display_name": "Credits"}],
+                    },
+                )
+            )
+            retargeted = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": added_scene["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.scene_flow.set_reference_target",
+                                "reference_id": reference_id,
+                                "target_scene": "credits",
+                            }
+                        ],
+                    },
+                )
+            )
+            source_scene = next(
+                scene for scene in retargeted["document"]["scenes"] if scene["scene_id"] == "state_demo"
+            )
+            self.assertEqual("credits", source_scene["scene_exits"][0]["target_scene"])
+
+            deleted = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": retargeted["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.scene_flow.delete_reference",
+                                "reference_id": reference_id,
+                            }
+                        ],
+                    },
+                )
+            )
+            source_scene = next(
+                scene for scene in deleted["document"]["scenes"] if scene["scene_id"] == "state_demo"
+            )
+            self.assertEqual("credits", source_scene["scene_exits"][0]["target_scene"])
+            self.assertNotIn("references", deleted["document"]["project"]["editor"]["scene_flow"])
+            self.assertNotIn("exit_references", deleted["document"]["project"]["editor"]["scene_flow"])
+
+    def test_scene_rename_and_package_entry_scene_are_service_owned(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "scene.rename",
+                            "scene_id": "state_details",
+                            "display_name": "Options",
+                        },
+                        {
+                            "kind": "project.set_entry_scene",
+                            "scene_id": "state_details",
+                        },
+                    ],
+                },
+            )
+        )
+        renamed = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_details")
+        self.assertEqual("Options", renamed["display_name"])
+        self.assertEqual("state_details", changed["document"]["project"]["entry_scene"])
+        self.assertEqual("state_details", changed["summary"]["entry_scene"])
+
+    def test_scene_exit_can_be_created_through_go_to_reference(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        added_reference = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "editor.scene_flow.add_reference",
+                            "target_scene": "state_details",
+                            "x": 700,
+                            "y": 100,
+                        }
+                    ],
+                },
+            )
+        )
+        reference_id = added_reference["applied_commands"][0]["reference_id"]
+        added_exit = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": added_reference["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "scene_exit.add",
+                            "scene_id": "state_demo",
+                            "target_scene": "state_details",
+                            "scene_flow_reference_id": reference_id,
+                        }
+                    ],
+                },
+            )
+        )
+        scene_exit_id = added_exit["applied_commands"][0]["scene_exit"]["scene_exit_id"]
+        self.assertEqual(
+            reference_id,
+            added_exit["document"]["project"]["editor"]["scene_flow"]["exit_references"]["state_demo"][f"scene_exit:{scene_exit_id}"],
+        )
 
     def test_state_graph_node_position_is_editor_only_and_persists(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

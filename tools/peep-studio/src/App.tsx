@@ -42,6 +42,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { FramebufferCanvas, FramePreviewCanvas } from "./FramebufferCanvas";
 import {
   SceneAuthoringInspector,
+  SceneFlowInspector,
   SceneFlowView,
   StateGraphView,
   type NewStateTransitionTarget,
@@ -1082,6 +1083,50 @@ export default function App() {
     }
   };
 
+  const renameScene = async (sceneId: string, displayName: string) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy("Renaming scene");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{ kind: "scene.rename", scene_id: sceneId, display_name: displayName }],
+      });
+      applyProjectResult(result);
+      setSelectedScene(sceneId);
+      setSceneSelection({ kind: "scene" });
+      setMessage("Scene renamed. Save to write it to the project.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const setPackageEntryScene = async (sceneId: string) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy("Updating package entry");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{ kind: "project.set_entry_scene", scene_id: sceneId }],
+      });
+      applyProjectResult(result);
+      setSelectedScene(sceneId);
+      setSceneSelection({ kind: "packageEntry" });
+      setMessage("Package entry connected. Save to write it to the project.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const createState = async (sceneId: string, x: number, y: number) => {
     if (bridge === undefined || project === null || busy !== null) {
       return;
@@ -1329,6 +1374,7 @@ export default function App() {
     routeId: string,
     targetScene: string,
     sceneExitRef?: string,
+    sceneFlowReferenceId?: string,
   ) => {
     if (bridge === undefined || project === null || busy !== null) {
       return;
@@ -1338,15 +1384,30 @@ export default function App() {
     try {
       const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
         project_revision: project.project_revision,
-        commands: [
-          {
-            kind: "route.set_target",
-            scene_id: sceneId,
-            route_id: routeId,
-            target_scene: targetScene,
-            ...(sceneExitRef === undefined ? {} : { scene_exit_ref: sceneExitRef }),
-          },
-        ],
+        commands: sceneFlowReferenceId === undefined
+          ? [
+              {
+                kind: "route.set_target",
+                scene_id: sceneId,
+                route_id: routeId,
+                target_scene: targetScene,
+                ...(sceneExitRef === undefined ? {} : { scene_exit_ref: sceneExitRef }),
+              },
+              {
+                kind: "editor.scene_flow.set_exit_reference",
+                scene_id: sceneId,
+                endpoint_kind: "route",
+                endpoint_id: routeId,
+                reference_id: null,
+              },
+            ]
+          : [{
+              kind: "editor.scene_flow.set_exit_reference",
+              scene_id: sceneId,
+              endpoint_kind: "route",
+              endpoint_id: routeId,
+              reference_id: sceneFlowReferenceId,
+            }],
       });
       applyProjectResult(result);
       setSelectedScene(sceneId);
@@ -1359,7 +1420,7 @@ export default function App() {
     }
   };
 
-  const addSceneExit = async (sceneId: string, targetScene: string) => {
+  const addSceneExit = async (sceneId: string, targetScene: string, referenceId?: string) => {
     if (bridge === undefined || project === null || busy !== null) {
       return;
     }
@@ -1373,6 +1434,7 @@ export default function App() {
             kind: "scene_exit.add",
             scene_id: sceneId,
             target_scene: targetScene,
+            ...(referenceId === undefined ? {} : { scene_flow_reference_id: referenceId }),
           },
         ],
       });
@@ -1389,7 +1451,12 @@ export default function App() {
     }
   };
 
-  const setSceneExitTarget = async (sceneId: string, sceneExitId: string, targetScene: string) => {
+  const setSceneExitTarget = async (
+    sceneId: string,
+    sceneExitId: string,
+    targetScene: string,
+    referenceId?: string,
+  ) => {
     if (bridge === undefined || project === null || busy !== null) {
       return;
     }
@@ -1398,12 +1465,29 @@ export default function App() {
     try {
       const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
         project_revision: project.project_revision,
-        commands: [{
-          kind: "scene_exit.set_target",
-          scene_id: sceneId,
-          scene_exit_id: sceneExitId,
-          target_scene: targetScene,
-        }],
+        commands: referenceId === undefined
+          ? [
+              {
+                kind: "scene_exit.set_target",
+                scene_id: sceneId,
+                scene_exit_id: sceneExitId,
+                target_scene: targetScene,
+              },
+              {
+                kind: "editor.scene_flow.set_exit_reference",
+                scene_id: sceneId,
+                endpoint_kind: "scene_exit",
+                endpoint_id: sceneExitId,
+                reference_id: null,
+              },
+            ]
+          : [{
+              kind: "editor.scene_flow.set_exit_reference",
+              scene_id: sceneId,
+              endpoint_kind: "scene_exit",
+              endpoint_id: sceneExitId,
+              reference_id: referenceId,
+            }],
       });
       applyProjectResult(result);
       setSelectedScene(sceneId);
@@ -1500,6 +1584,128 @@ export default function App() {
       setMessage(errorText(error));
     });
     await layoutSaveChain.current;
+  };
+
+  const movePackageEntryNode = async (x: number, y: number) => {
+    if (bridge === undefined || project === null) {
+      return;
+    }
+    setSceneFlowLayoutStatus(`queued package-entry @ ${Math.round(x)}, ${Math.round(y)}`);
+    layoutSaveChain.current = layoutSaveChain.current.then(async () => {
+      const revision = projectRevisionRef.current;
+      if (revision === null) {
+        return;
+      }
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: revision,
+        commands: [{ kind: "editor.scene_flow.set_package_entry_position", x, y }],
+      });
+      projectRevisionRef.current = result.project_revision;
+      applyProjectResult(result);
+      setSceneFlowLayoutStatus(`saved package-entry @ ${Math.round(x)}, ${Math.round(y)} rev ${result.project_revision}`);
+      setMessage("Graph layout updated. Save to write it to the project.");
+    }).catch((error) => {
+      setSceneFlowLayoutStatus(`save failed: ${errorText(error)}`);
+      setMessage(errorText(error));
+    });
+    await layoutSaveChain.current;
+  };
+
+  const moveSceneReferenceNode = async (referenceId: string, x: number, y: number) => {
+    if (bridge === undefined || project === null) {
+      return;
+    }
+    setSceneFlowLayoutStatus(`queued ${referenceId} @ ${Math.round(x)}, ${Math.round(y)}`);
+    layoutSaveChain.current = layoutSaveChain.current.then(async () => {
+      const revision = projectRevisionRef.current;
+      if (revision === null) {
+        return;
+      }
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: revision,
+        commands: [{
+          kind: "editor.scene_flow.set_reference_position",
+          reference_id: referenceId,
+          x,
+          y,
+        }],
+      });
+      projectRevisionRef.current = result.project_revision;
+      applyProjectResult(result);
+      setSceneFlowLayoutStatus(`saved ${referenceId} @ ${Math.round(x)}, ${Math.round(y)} rev ${result.project_revision}`);
+      setMessage("Graph layout updated. Save to write it to the project.");
+    }).catch((error) => {
+      setSceneFlowLayoutStatus(`save failed: ${errorText(error)}`);
+      setMessage(errorText(error));
+    });
+    await layoutSaveChain.current;
+  };
+
+  const addSceneReference = async (targetScene: string, x: number, y: number) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy("Adding scene reference");
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{ kind: "editor.scene_flow.add_reference", target_scene: targetScene, x, y }],
+      });
+      const referenceId = String(result.applied_commands[0]?.reference_id ?? "");
+      applyProjectResult(result);
+      setSelectedScene(targetScene);
+      setSceneSelection({ kind: "sceneReference", id: referenceId });
+      setMessage("Go To reference added. Save to write it to the project.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const setSceneReferenceTarget = async (referenceId: string, targetScene: string) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy("Updating scene reference");
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{
+          kind: "editor.scene_flow.set_reference_target",
+          reference_id: referenceId,
+          target_scene: targetScene,
+        }],
+      });
+      applyProjectResult(result);
+      setSelectedScene(targetScene);
+      setSceneSelection({ kind: "sceneReference", id: referenceId });
+      setMessage("Go To destination updated. Save to write it to the project.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const deleteSceneReference = async (referenceId: string) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy("Deleting scene reference");
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{ kind: "editor.scene_flow.delete_reference", reference_id: referenceId }],
+      });
+      applyProjectResult(result);
+      setSceneSelection({ kind: "scene" });
+      setMessage("Go To reference deleted. Scene destinations were preserved.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
   };
 
   const moveStateNode = async (sceneId: string, nodeId: string, x: number, y: number) => {
@@ -4183,10 +4389,16 @@ export default function App() {
               thumbnails={sceneThumbnails}
               editor={project?.document?.project?.editor}
               layoutStatus={sceneFlowLayoutStatus}
-              selectedSceneId={selectedScene}
+              selectedSceneId={sceneSelection.kind === "sceneReference" || sceneSelection.kind === "packageEntry" ? null : selectedScene}
               selectedSceneExitId={sceneSelection.kind === "sceneExit" ? sceneSelection.id : null}
               selectedRouteId={sceneSelection.kind === "route" ? sceneSelection.id : null}
-              onSelectScene={(sceneId) => void startPreview(sceneId)}
+              selectedReferenceId={sceneSelection.kind === "sceneReference" ? sceneSelection.id : null}
+              packageEntrySelected={sceneSelection.kind === "packageEntry"}
+              onSelectScene={(sceneId) => {
+                setSelectedScene(sceneId);
+                setSceneSelection({ kind: "scene" });
+                void startPreview(sceneId);
+              }}
               onSelectSceneRoute={(sceneId, routeId) => {
                 setSelectedScene(sceneId);
                 setSceneSelection({ kind: "route", id: routeId });
@@ -4195,23 +4407,39 @@ export default function App() {
                 setSelectedScene(sceneId);
                 setSceneSelection({ kind: "sceneExit", id: sceneExitId });
               }}
-              onAddSceneExit={(sceneId, targetScene) => {
-                void addSceneExit(sceneId, targetScene);
+              onSelectPackageEntry={() => {
+                const entryScene = project?.summary.entry_scene ?? null;
+                if (entryScene !== null) {
+                  setSelectedScene(entryScene);
+                }
+                setSceneSelection({ kind: "packageEntry" });
               }}
+              onSelectSceneReference={(referenceId, targetScene) => {
+                setSelectedScene(targetScene);
+                setSceneSelection({ kind: "sceneReference", id: referenceId });
+              }}
+              onAddSceneExit={(sceneId, targetScene, referenceId) => {
+                void addSceneExit(sceneId, targetScene, referenceId);
+              }}
+              onAddSceneReference={(targetScene, x, y) => void addSceneReference(targetScene, x, y)}
               onDeleteSceneExit={(sceneId, sceneExitId) => {
                 void deleteSceneExit(sceneId, sceneExitId);
               }}
               onDeleteLegacyRoute={(sceneId, routeId) => {
                 void deleteLegacySceneRoute(sceneId, routeId);
               }}
+              onDeleteSceneReference={(referenceId) => void deleteSceneReference(referenceId)}
               onMoveSceneNode={(sceneId, x, y) => {
                 void moveSceneNode(sceneId, x, y);
               }}
-              onConnectSceneExit={(sceneId, routeId, targetScene) => {
-                void setRouteSceneTarget(sceneId, routeId, targetScene);
+              onMovePackageEntry={(x, y) => void movePackageEntryNode(x, y)}
+              onMoveSceneReference={(referenceId, x, y) => void moveSceneReferenceNode(referenceId, x, y)}
+              onSetEntryScene={(sceneId) => void setPackageEntryScene(sceneId)}
+              onConnectSceneExit={(sceneId, routeId, targetScene, referenceId) => {
+                void setRouteSceneTarget(sceneId, routeId, targetScene, undefined, referenceId);
               }}
-              onSetSceneExitTarget={(sceneId, sceneExitId, targetScene) => {
-                void setSceneExitTarget(sceneId, sceneExitId, targetScene);
+              onSetSceneExitTarget={(sceneId, sceneExitId, targetScene, referenceId) => {
+                void setSceneExitTarget(sceneId, sceneExitId, targetScene, referenceId);
               }}
               canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
             />
@@ -4308,7 +4536,7 @@ export default function App() {
           {workspaceMode === "placement" && (placementInspectorTab === "settings" ? renderPlacementViewSettings() : renderPlacementInspector())}
           {workspaceMode === "assets" && renderAssetInspector()}
 
-          {workspaceMode !== "placement" && workspaceMode !== "assets" && (
+          {workspaceMode === "logic" && (
             <section className="inspector-section">
               <h3>Runtime</h3>
               {preview === null ? (
@@ -4325,7 +4553,24 @@ export default function App() {
             </section>
           )}
 
-          {workspaceMode !== "placement" && workspaceMode !== "assets" && (
+          {workspaceMode === "scene-flow" && (
+            <SceneFlowInspector
+              scene={selectedSceneDocument}
+              scenes={scenes}
+              editor={project?.document?.project?.editor}
+              entrySceneId={project?.summary.entry_scene ?? null}
+              selection={sceneSelection}
+              onSelect={setSceneSelection}
+              onRenameScene={renameScene}
+              onSetSceneExitTarget={setSceneExitTarget}
+              onSetLegacyRouteTarget={setRouteSceneTarget}
+              onSetReferenceTarget={setSceneReferenceTarget}
+              onDeleteReference={deleteSceneReference}
+              canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
+            />
+          )}
+
+          {workspaceMode === "logic" && (
             <SceneAuthoringInspector
               scene={selectedSceneDocument}
               scenes={scenes}
@@ -4348,7 +4593,7 @@ export default function App() {
             />
           )}
 
-          {workspaceMode !== "placement" && workspaceMode !== "assets" && (
+          {workspaceMode === "logic" && (
             <section className="inspector-section">
               <h3>Variables</h3>
               {preview === null || Object.keys(preview.variables).length === 0 ? (
@@ -4363,7 +4608,7 @@ export default function App() {
             </section>
           )}
 
-          {workspaceMode !== "placement" && workspaceMode !== "assets" && (
+          {workspaceMode === "logic" && (
             <section className="inspector-section">
               <h3>Validation</h3>
               {project === null ? (

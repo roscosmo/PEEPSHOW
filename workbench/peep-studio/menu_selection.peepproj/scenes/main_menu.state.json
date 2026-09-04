@@ -5,15 +5,7 @@
   "display_name": "Main Menu",
   "scene_type": "STATE_SCENE",
   "entry_state": "select_start",
-  "variables": [
-    {
-      "variable_id": "selected_index",
-      "value_type": "int32",
-      "initial": 0,
-      "minimum": 0,
-      "maximum": 2
-    }
-  ],
+  "variables": [],
   "input_actions": [
     {
       "action_id": "move_up",
@@ -28,6 +20,23 @@
       "logical_source": "BUTTON_A"
     }
   ],
+  "scene_exits": [
+    {
+      "scene_exit_id": "to_start_game",
+      "display_name": "Start Game",
+      "target_scene": "start_game"
+    },
+    {
+      "scene_exit_id": "to_settings",
+      "display_name": "Settings",
+      "target_scene": "settings"
+    },
+    {
+      "scene_exit_id": "to_credits",
+      "display_name": "Credits",
+      "target_scene": "credits"
+    }
+  ],
   "states": [
     {
       "state_id": "select_start",
@@ -35,18 +44,13 @@
       "waiting_visual_ref": "select_start_wait",
       "placement_overrides": [
         {
-          "element_ref": "selector",
-          "x": 30,
-          "y": 48
-        },
-        {
           "element_ref": "selection_box",
           "x": 42,
           "y": 47
         },
         {
           "element_ref": "slime2frame_1",
-          "x": 133,
+          "x": 27,
           "y": 51
         }
       ]
@@ -57,18 +61,13 @@
       "waiting_visual_ref": "select_settings_wait",
       "placement_overrides": [
         {
-          "element_ref": "selector",
-          "x": 30,
-          "y": 72
-        },
-        {
           "element_ref": "selection_box",
           "x": 42,
           "y": 71
         },
         {
           "element_ref": "slime2frame_1",
-          "x": 134,
+          "x": 25,
           "y": 75
         }
       ]
@@ -79,18 +78,13 @@
       "waiting_visual_ref": "select_credits_wait",
       "placement_overrides": [
         {
-          "element_ref": "selector",
-          "x": 30,
-          "y": 96
-        },
-        {
           "element_ref": "selection_box",
           "x": 42,
           "y": 95
         },
         {
           "element_ref": "slime2frame_1",
-          "x": 135,
+          "x": 26,
           "y": 99
         }
       ]
@@ -103,23 +97,11 @@
       "from_states": [
         "select_start"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 0
-        }
-      ],
+      "guards": [],
       "actions": [
         {
-          "kind": "set_variable",
-          "variable_ref": "selected_index",
-          "operation": "assign",
-          "value": 1
-        },
-        {
           "kind": "play_sfx",
-          "cue_ref": "megaman.cue"
+          "cue_ref": "foghorn_bo.cue"
         }
       ],
       "target_state": "select_settings"
@@ -130,20 +112,8 @@
       "from_states": [
         "select_settings"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 1
-        }
-      ],
+      "guards": [],
       "actions": [
-        {
-          "kind": "set_variable",
-          "variable_ref": "selected_index",
-          "operation": "assign",
-          "value": 2
-        },
         {
           "kind": "play_sfx",
           "cue_ref": "foghorn_bo.cue"
@@ -157,20 +127,8 @@
       "from_states": [
         "select_credits"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 2
-        }
-      ],
+      "guards": [],
       "actions": [
-        {
-          "kind": "set_variable",
-          "variable_ref": "selected_index",
-          "operation": "assign",
-          "value": 0
-        },
         {
           "kind": "play_sfx",
           "cue_ref": "foghorn_bo.cue"
@@ -184,20 +142,8 @@
       "from_states": [
         "select_start"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 0
-        }
-      ],
+      "guards": [],
       "actions": [
-        {
-          "kind": "set_variable",
-          "variable_ref": "selected_index",
-          "operation": "assign",
-          "value": 2
-        },
         {
           "kind": "play_sfx",
           "cue_ref": "foghorn_bo.cue"
@@ -211,20 +157,8 @@
       "from_states": [
         "select_settings"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 1
-        }
-      ],
+      "guards": [],
       "actions": [
-        {
-          "kind": "set_variable",
-          "variable_ref": "selected_index",
-          "operation": "assign",
-          "value": 0
-        },
         {
           "kind": "play_sfx",
           "cue_ref": "foghorn_bo.cue"
@@ -238,20 +172,8 @@
       "from_states": [
         "select_credits"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 2
-        }
-      ],
+      "guards": [],
       "actions": [
-        {
-          "kind": "set_variable",
-          "variable_ref": "selected_index",
-          "operation": "assign",
-          "value": 1
-        },
         {
           "kind": "play_sfx",
           "cue_ref": "foghorn_bo.cue"
@@ -265,19 +187,9 @@
       "from_states": [
         "select_start"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 0
-        }
-      ],
-      "actions": [
-        {
-          "kind": "play_sfx",
-          "cue_ref": "foghorn_bo.cue"
-        }
-      ],
+      "guards": [],
+      "actions": [],
+      "scene_exit_ref": "to_start_game",
       "target_scene": "start_game"
     },
     {
@@ -286,19 +198,9 @@
       "from_states": [
         "select_settings"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 1
-        }
-      ],
-      "actions": [
-        {
-          "kind": "play_sfx",
-          "cue_ref": "foghorn_bo.cue"
-        }
-      ],
+      "guards": [],
+      "actions": [],
+      "scene_exit_ref": "to_settings",
       "target_scene": "settings"
     },
     {
@@ -307,19 +209,9 @@
       "from_states": [
         "select_credits"
       ],
-      "guards": [
-        {
-          "variable_ref": "selected_index",
-          "operator": "eq",
-          "value": 2
-        }
-      ],
-      "actions": [
-        {
-          "kind": "play_sfx",
-          "cue_ref": "foghorn_bo.cue"
-        }
-      ],
+      "guards": [],
+      "actions": [],
+      "scene_exit_ref": "to_credits",
       "target_scene": "credits"
     }
   ],
@@ -358,18 +250,6 @@
           "width": 88,
           "height": 18,
           "z_order": 2
-        },
-        {
-          "element_id": "selector",
-          "kind": "sprite",
-          "layer": "UI",
-          "visual_ref": "selector.bright",
-          "x": 30,
-          "y": 48,
-          "width": 8,
-          "height": 16,
-          "z_order": 3,
-          "focus_role": "focus"
         },
         {
           "element_id": "label_start",
@@ -424,44 +304,19 @@
       "waiting_visual_id": "menu_wait",
       "presentation_id": "main_menu_wait",
       "phase_quantum_ms": 250,
-      "combined_step_count": 2,
-      "settled_step": 1,
+      "combined_step_count": 1,
+      "settled_step": 0,
       "cycle_policy": "loop",
-      "elements": [
-        {
-          "element_id": "selector_blink",
-          "source_element_ref": "selector",
-          "phase_visual_refs": [
-            "selector.dim",
-            "selector.bright"
-          ],
-          "step_phase_indices": [
-            0,
-            1
-          ]
-        }
-      ]
+      "elements": []
     },
     {
       "waiting_visual_id": "select_start_wait",
       "presentation_id": "main_menu.select_start.waiting",
       "phase_quantum_ms": 250,
       "combined_step_count": 2,
-      "settled_step": 1,
+      "settled_step": 0,
       "cycle_policy": "loop",
       "elements": [
-        {
-          "element_id": "selector_blink",
-          "source_element_ref": "selector",
-          "phase_visual_refs": [
-            "selector.dim",
-            "selector.bright"
-          ],
-          "step_phase_indices": [
-            0,
-            1
-          ]
-        },
         {
           "element_id": "slime2frame_1_wait",
           "source_element_ref": "slime2frame_1",
@@ -470,42 +325,8 @@
             "slime2frame.frame_2"
           ],
           "step_phase_indices": [
-            1,
-            0
-          ]
-        }
-      ]
-    },
-    {
-      "waiting_visual_id": "select_credits_wait",
-      "presentation_id": "main_menu.select_credits.waiting",
-      "phase_quantum_ms": 250,
-      "combined_step_count": 2,
-      "settled_step": 1,
-      "cycle_policy": "loop",
-      "elements": [
-        {
-          "element_id": "selector_blink",
-          "source_element_ref": "selector",
-          "phase_visual_refs": [
-            "selector.dim",
-            "selector.bright"
-          ],
-          "step_phase_indices": [
             0,
             1
-          ]
-        },
-        {
-          "element_id": "slime2frame_1_wait",
-          "source_element_ref": "slime2frame_1",
-          "phase_visual_refs": [
-            "slime2frame.frame_1",
-            "slime2frame.frame_2"
-          ],
-          "step_phase_indices": [
-            1,
-            0
           ]
         }
       ]
@@ -515,21 +336,9 @@
       "presentation_id": "main_menu.select_settings.waiting",
       "phase_quantum_ms": 250,
       "combined_step_count": 2,
-      "settled_step": 1,
+      "settled_step": 0,
       "cycle_policy": "loop",
       "elements": [
-        {
-          "element_id": "selector_blink",
-          "source_element_ref": "selector",
-          "phase_visual_refs": [
-            "selector.dim",
-            "selector.bright"
-          ],
-          "step_phase_indices": [
-            0,
-            1
-          ]
-        },
         {
           "element_id": "slime2frame_1_wait",
           "source_element_ref": "slime2frame_1",
@@ -538,8 +347,30 @@
             "slime2frame.frame_2"
           ],
           "step_phase_indices": [
-            1,
-            0
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "waiting_visual_id": "select_credits_wait",
+      "presentation_id": "main_menu.select_credits.waiting",
+      "phase_quantum_ms": 250,
+      "combined_step_count": 2,
+      "settled_step": 0,
+      "cycle_policy": "loop",
+      "elements": [
+        {
+          "element_id": "slime2frame_1_wait",
+          "source_element_ref": "slime2frame_1",
+          "phase_visual_refs": [
+            "slime2frame.frame_1",
+            "slime2frame.frame_2"
+          ],
+          "step_phase_indices": [
+            0,
+            1
           ]
         }
       ]

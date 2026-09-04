@@ -715,6 +715,17 @@ actions. The destination arrow owns a higher-priority hit target than overlappin
 line-section controls. Token positions participate in undo, redo, and Save but
 remain excluded from compiled package bytes.
 
+Service API version 34 makes Scene Flow nodes service-owned authoring records.
+`scene.rename` updates the author-facing scene name while preserving its stable
+ID, and `project.set_entry_scene` changes the package entry connection. The
+service also owns editor-only Package Entry placement, reusable Go To scene
+references, reference retargeting/deletion, and the mapping from a semantic
+scene exit to the Go To node used to display that destination. These visual
+records participate in undo, redo, and Save but remain excluded from compiled
+package bytes. Retargeting a Go To node retargets its attached exits through the
+same validated service transaction; deleting it preserves their real scene
+destinations.
+
 Physical control lifecycle choices remain `press`, `hold`, `release`, and
 `repeat`. Firmware already emits Press, Release, Long Press, and Repeat; the
 author-facing `hold` name maps to Long Press. These are not PeepOS trigger
@@ -794,12 +805,15 @@ Studio may expose these exact semantics for the HW6 FW0 target profile. It must
 not expose cross-scene route actions, push/pop, return stacks, or
 STATE-to-SEQUENCE/PROGRAM transitions yet.
 
-Peep Studio implementation status: first package scene-flow view is
-implemented. It presents scenes as separate package-level nodes and shows
-declared `scene_exits` as storyboard edges, with legacy direct `target_scene`
-routes retained as a compatibility fallback. Scene cards
-show their existing scene-exit outputs as selectable rows and render real
-Python-generated initial scene thumbnails through `project.scene_thumbnails`.
+Peep Studio implementation status: the package scene-flow view is implemented
+as a left-to-right storyboard. It presents scenes as separate package-level
+nodes and shows declared `scene_exits` as storyboard edges, with legacy direct
+`target_scene` routes retained as a compatibility fallback. Scene cards follow
+the shared Excalidraw language: centered scene name, real Python-generated
+initial scene thumbnail, attached green entry capsule, aligned exit rows and
+nodes, and a dotted new-exit row. Package Entry is a separate one-output node.
+Reusable editor-only Go To nodes can represent an existing destination to the
+right without duplicating that scene or changing package execution semantics.
 Existing actionless `target_scene` routes can be retargeted to another STATE
 scene through the inspector or by dragging an existing exit row to another
 scene's entry row. Service API 28 separates the scene-flow declaration from the

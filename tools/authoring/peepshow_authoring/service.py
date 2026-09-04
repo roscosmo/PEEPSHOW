@@ -46,7 +46,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 33
+SERVICE_API_VERSION = 34
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -297,7 +297,16 @@ class AuthoringService:
             "state_scene_graph": {
                 "command_batch_maximum": 64,
                 "target_scene_actions": ["play_sfx"],
-                "scene_commands": ["scene.add"],
+                "scene_commands": ["scene.add", "scene.rename", "project.set_entry_scene"],
+                "scene_flow_commands": [
+                    "editor.scene_flow.set_node_position",
+                    "editor.scene_flow.set_package_entry_position",
+                    "editor.scene_flow.add_reference",
+                    "editor.scene_flow.set_reference_position",
+                    "editor.scene_flow.set_reference_target",
+                    "editor.scene_flow.delete_reference",
+                    "editor.scene_flow.set_exit_reference",
+                ],
                 "peepos_trigger_commands": [],
                 "peepos_trigger_catalog": [
                     {

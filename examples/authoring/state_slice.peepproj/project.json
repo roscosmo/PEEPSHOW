@@ -24,6 +24,58 @@
     "ruleset_version": 1
   },
   "editor": {
+    "scene_flow": {
+      "nodes": {
+        "main_menu": {
+          "x": 260,
+          "y": 200
+        },
+        "start_game": {
+          "x": 720,
+          "y": 0
+        },
+        "settings": {
+          "x": 720,
+          "y": 300
+        },
+        "credits": {
+          "x": 720,
+          "y": 600
+        }
+      },
+      "package_entry": {
+        "x": 40,
+        "y": 300
+      },
+      "references": {
+        "goto_main_menu_from_start_game": {
+          "target_scene": "main_menu",
+          "x": 1120,
+          "y": 90
+        },
+        "goto_main_menu_from_settings": {
+          "target_scene": "main_menu",
+          "x": 1120,
+          "y": 390
+        },
+        "goto_main_menu_from_credits": {
+          "target_scene": "main_menu",
+          "x": 1120,
+          "y": 690
+        }
+      },
+      "exit_references": {
+        "start_game": {
+          "scene_exit:to_main_menu": "goto_main_menu_from_start_game"
+        },
+        "settings": {
+          "scene_exit:to_main_menu": "goto_main_menu_from_settings"
+        },
+        "credits": {
+          "scene_exit:to_main_menu": "goto_main_menu_from_credits"
+        }
+      }
+    },
     "state_graph": {
       "scenes": {
         "main_menu": {

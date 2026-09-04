@@ -1,8 +1,8 @@
 {
   "schema_id": "peepshow.authoring.state_scene",
   "schema_version": 1,
-  "scene_id": "start_game",
-  "display_name": "Start Game",
+  "scene_id": "credits",
+  "display_name": "Credits",
   "scene_type": "STATE_SCENE",
   "entry_state": "shown",
   "variables": [],
@@ -12,18 +12,18 @@
       "logical_source": "BUTTON_B"
     }
   ],
+  "scene_exits": [
+    {
+      "scene_exit_id": "to_main_menu",
+      "display_name": "Main Menu",
+      "target_scene": "main_menu"
+    }
+  ],
   "states": [
     {
       "state_id": "shown",
-      "display_name": "Start Game",
-      "waiting_visual_ref": "shown_wait",
-      "placement_overrides": [
-        {
-          "element_ref": "frame1_crop_2_1",
-          "x": 47,
-          "y": 16
-        }
-      ]
+      "display_name": "Credits",
+      "waiting_visual_ref": "static_wait"
     }
   ],
   "routes": [
@@ -34,12 +34,8 @@
         "shown"
       ],
       "guards": [],
-      "actions": [
-        {
-          "kind": "play_sfx",
-          "cue_ref": "foghorn_bo.cue"
-        }
-      ],
+      "actions": [],
+      "scene_exit_ref": "to_main_menu",
       "target_scene": "main_menu"
     }
   ],
@@ -59,6 +55,17 @@
           "z_order": 0
         },
         {
+          "element_id": "scene_title",
+          "kind": "sprite",
+          "layer": "UI",
+          "visual_ref": "title_credits.frame",
+          "x": 56,
+          "y": 52,
+          "width": 56,
+          "height": 8,
+          "z_order": 1
+        },
+        {
           "element_id": "back_hint",
           "kind": "sprite",
           "layer": "UI",
@@ -68,18 +75,6 @@
           "width": 56,
           "height": 8,
           "z_order": 2
-        },
-        {
-          "element_id": "frame1_crop_2_1",
-          "kind": "sprite",
-          "visual_ref": "frame1_crop_2.frame_1",
-          "x": 48,
-          "y": 40,
-          "width": 78,
-          "height": 96,
-          "z_order": 3,
-          "layer": "SCENE",
-          "visible": true
         }
       ]
     }
@@ -87,42 +82,16 @@
   "waiting_visuals": [
     {
       "waiting_visual_id": "static_wait",
-      "presentation_id": "start_game_static",
+      "presentation_id": "credits_static",
       "phase_quantum_ms": 250,
       "combined_step_count": 1,
       "settled_step": 0,
       "cycle_policy": "loop",
       "elements": []
-    },
-    {
-      "waiting_visual_id": "shown_wait",
-      "presentation_id": "start_game.shown.waiting",
-      "phase_quantum_ms": 250,
-      "combined_step_count": 4,
-      "settled_step": 0,
-      "cycle_policy": "loop",
-      "elements": [
-        {
-          "element_id": "frame1_crop_2_1_wait",
-          "source_element_ref": "frame1_crop_2_1",
-          "phase_visual_refs": [
-            "frame1_crop_2.frame_1",
-            "frame1_crop_2.frame_2",
-            "frame1_crop_2.frame_3",
-            "frame1_crop_2.frame_4"
-          ],
-          "step_phase_indices": [
-            0,
-            1,
-            2,
-            3
-          ]
-        }
-      ]
     }
   ],
   "reactive_wait_default": {
-    "policy_id": "start_game_wait_policy",
+    "policy_id": "credits_wait_policy",
     "waiting_visual_ref": "static_wait",
     "hold_fallback_allowed": true,
     "event_interests": [
@@ -130,7 +99,7 @@
     ]
   },
   "interaction_policy": {
-    "policy_id": "start_game_interaction",
+    "policy_id": "credits_interaction",
     "mode": "continuous",
     "meaningful_activity_actions": [
       "back_to_menu"

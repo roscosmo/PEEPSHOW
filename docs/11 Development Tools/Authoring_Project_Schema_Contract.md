@@ -992,6 +992,17 @@ editor_data:
       scene_id:
         x
         y
+    package_entry:
+      x
+      y
+    references:
+      reference_id:
+        target_scene
+        x
+        y
+    exit_references:
+      source_scene_id:
+        endpoint_kind:endpoint_id: reference_id
   state_graph:
     scenes:
       scene_id:
@@ -1017,14 +1028,31 @@ editor_data:
   local_ui_state
 ```
 
-The first executable Peep Studio subset stores scene-flow positions in
-`project.editor.scene_flow.nodes[scene_id] = { x, y }` and per-scene STATE graph
+Peep Studio stores scene-card positions in
+`project.editor.scene_flow.nodes[scene_id] = { x, y }`, the standalone package
+entry position in `project.editor.scene_flow.package_entry`, and reusable
+editor-only Go To nodes in
+`project.editor.scene_flow.references[reference_id] = { target_scene, x, y }`.
+`exit_references[source_scene_id][endpoint_kind:endpoint_id]` optionally maps a
+declared scene exit or legacy scene route to the Go To node used to represent
+its real destination visually. Removing that mapping or deleting the reference
+does not alter the semantic scene destination.
+Reference IDs are stable editor IDs, at most 64 Go To references are stored per
+project, and every mapped endpoint must have the same semantic `target_scene`
+as its selected reference.
+
+Per-scene STATE graph
 positions in
 `project.editor.state_graph.scenes[scene_id].nodes[node_id] = { x, y }`. State
 IDs are used for state cards; `scene-entry` and
 `scene-exit-<scene_exit_id>` identify the semantic endpoint nodes. These
 coordinates are for author comprehension only; they do not change scene order,
 entry behavior, routes, preview behavior, or compiled package bytes.
+
+`scene.rename` changes only a scene's author-facing `display_name` and preserves
+its stable `scene_id`. `project.set_entry_scene` changes the semantic package
+entry scene and is represented in Scene Flow by reconnecting the Package Entry
+node's single output.
 
 Manual STATE-transition routing stores zero to eight alternating horizontal or
 vertical rail coordinates per visible route branch in

@@ -306,22 +306,20 @@ function stateOutputPoint(position, sourceSide, outputIndex, sourceRatio) {
 }
 function defaultStateLane(sourceX, sourceY, targetX, targetY, sourceSide) {
     if (sourceSide === "top" || sourceSide === "bottom") {
-        const sameRow = Math.abs(sourceY - targetY) < 180;
         const naturallySeparated = sourceSide === "top"
-            ? sourceY > targetY + 48
-            : sourceY < targetY - 48;
-        if (!sameRow && naturallySeparated) {
+            ? sourceY > targetY
+            : sourceY < targetY;
+        if (naturallySeparated) {
             return sourceY + (targetY - sourceY) / 2;
         }
         return sourceSide === "top"
             ? Math.min(sourceY, targetY) - STATE_CARD_ROUTE_CLEARANCE
             : Math.max(sourceY, targetY) + STATE_CARD_ROUTE_CLEARANCE;
     }
-    const sameColumn = Math.abs(sourceX - targetX) < 180;
     const naturallySeparated = sourceSide === "right"
-        ? sourceX < targetX - 48
-        : sourceX > targetX + 48;
-    if (!sameColumn && naturallySeparated) {
+        ? sourceX < targetX
+        : sourceX > targetX;
+    if (naturallySeparated) {
         return sourceX + (targetX - sourceX) / 2;
     }
     return sourceSide === "left"
@@ -485,7 +483,7 @@ function manualRoutePoints(source, target, sourceSide, targetSide, rails) {
     if (firstRail?.axis !== sourceAxis) {
         resolvedRails.unshift({ axis: sourceAxis, value: sourceValue + sourceDirection * 24 });
     }
-    else if ((firstRail.value - sourceValue) * sourceDirection < 10) {
+    else if ((firstRail.value - sourceValue) * sourceDirection <= 0) {
         firstRail.value = sourceValue + sourceDirection * 24;
     }
     const targetAxis = targetSide === "left" || targetSide === "right" ? "x" : "y";
@@ -493,10 +491,19 @@ function manualRoutePoints(source, target, sourceSide, targetSide, rails) {
     const targetDirection = targetSide === "left" || targetSide === "top" ? -1 : 1;
     const requiredApproachValue = targetValue + targetDirection * 48;
     if (sourceAxis === targetAxis && resolvedRails.length === 1) {
-        const bridgeAxis = targetAxis === "x" ? "y" : "x";
-        const bridgeValue = bridgeAxis === "x" ? source.x + 48 : source.y + 48;
-        resolvedRails.push({ axis: bridgeAxis, value: bridgeValue });
-        resolvedRails.push({ axis: targetAxis, value: requiredApproachValue });
+        const sharedRail = resolvedRails[0];
+        const sourceIsClear = (sharedRail.value - sourceValue) * sourceDirection > 0;
+        const targetIsClear = (sharedRail.value - targetValue) * targetDirection > 0;
+        if (!sourceIsClear || !targetIsClear) {
+            const bridgeAxis = targetAxis === "x" ? "y" : "x";
+            const sourceBridgeValue = bridgeAxis === "x" ? source.x : source.y;
+            const targetBridgeValue = bridgeAxis === "x" ? target.x : target.y;
+            const bridgeValue = sourceBridgeValue === targetBridgeValue
+                ? sourceBridgeValue - STATE_CARD_ROUTE_CLEARANCE
+                : sourceBridgeValue + (targetBridgeValue - sourceBridgeValue) / 2;
+            resolvedRails.push({ axis: bridgeAxis, value: bridgeValue });
+            resolvedRails.push({ axis: targetAxis, value: requiredApproachValue });
+        }
     }
     let finalTargetRailIndex = -1;
     for (let index = resolvedRails.length - 1; index >= 0; index -= 1) {
@@ -511,8 +518,8 @@ function manualRoutePoints(source, target, sourceSide, targetSide, rails) {
     else {
         const finalTargetRail = resolvedRails[finalTargetRailIndex];
         const approachIsClear = targetDirection < 0
-            ? finalTargetRail.value <= targetValue - 24
-            : finalTargetRail.value >= targetValue + 24;
+            ? finalTargetRail.value < targetValue
+            : finalTargetRail.value > targetValue;
         if (!approachIsClear) {
             finalTargetRail.value = requiredApproachValue;
         }
@@ -551,50 +558,115 @@ function buildStateTransitionRoute({ sourceX, sourceY, targetX, targetY, sourceS
     const approach = targetHorizontal
         ? { x: targetX + targetDirection * 48, y: targetY }
         : { x: targetX, y: targetY + targetDirection * 48 };
+    const sourceDirection = sourceSide === "left" || sourceSide === "top" ? -1 : 1;
+    const sourceAxisValue = horizontalExit ? sourceX : sourceY;
+    const targetAxisValue = targetHorizontal ? targetX : targetY;
+    const sourcePoint = { x: sourceX, y: sourceY };
+    const targetPoint = { x: targetX, y: targetY };
     let rawPoints;
     if (horizontalExit && !targetHorizontal) {
-        rawPoints = [
-            { x: sourceX, y: sourceY },
-            { x: resolvedLane, y: sourceY },
-            { x: resolvedLane, y: approach.y },
-            approach,
-            { x: targetX, y: targetY },
-        ];
+        const corner = { x: targetX, y: sourceY };
+        const leavesSourceCleanly = (corner.x - sourceX) * sourceDirection >= 0;
+        const reachesTargetCleanly = (corner.y - targetY) * targetDirection >= 0;
+        rawPoints = leavesSourceCleanly && reachesTargetCleanly
+            ? [sourcePoint, corner, targetPoint]
+            : [
+                sourcePoint,
+                { x: resolvedLane, y: sourceY },
+                { x: resolvedLane, y: approach.y },
+                approach,
+                targetPoint,
+            ];
     }
     else if (!horizontalExit && targetHorizontal) {
-        rawPoints = [
-            { x: sourceX, y: sourceY },
-            { x: sourceX, y: resolvedLane },
-            { x: approach.x, y: resolvedLane },
-            approach,
-            { x: targetX, y: targetY },
-        ];
+        const corner = { x: sourceX, y: targetY };
+        const leavesSourceCleanly = (corner.y - sourceY) * sourceDirection >= 0;
+        const reachesTargetCleanly = (corner.x - targetX) * targetDirection >= 0;
+        rawPoints = leavesSourceCleanly && reachesTargetCleanly
+            ? [sourcePoint, corner, targetPoint]
+            : [
+                sourcePoint,
+                { x: sourceX, y: resolvedLane },
+                { x: approach.x, y: resolvedLane },
+                approach,
+                targetPoint,
+            ];
     }
     else if (horizontalExit) {
-        const bridgeY = Math.abs(sourceY - targetY) >= 48
-            ? sourceY + (targetY - sourceY) / 2
-            : Math.min(sourceY, targetY) - STATE_CARD_ROUTE_CLEARANCE;
-        rawPoints = [
-            { x: sourceX, y: sourceY },
-            { x: resolvedLane, y: sourceY },
-            { x: resolvedLane, y: bridgeY },
-            { x: approach.x, y: bridgeY },
-            approach,
-            { x: targetX, y: targetY },
-        ];
+        const sameDirectionLane = sourceDirection === targetDirection
+            ? sourceDirection < 0
+                ? Math.min(sourceX, targetX) - STATE_CARD_ROUTE_CLEARANCE
+                : Math.max(sourceX, targetX) + STATE_CARD_ROUTE_CLEARANCE
+            : resolvedLane;
+        const sharedLaneIsClear = (sameDirectionLane - sourceAxisValue) * sourceDirection >= 0
+            && (sameDirectionLane - targetAxisValue) * targetDirection >= 0;
+        if (sourceY === targetY
+            && (targetX - sourceX) * sourceDirection >= 0
+            && (sourceX - targetX) * targetDirection >= 0) {
+            rawPoints = [sourcePoint, targetPoint];
+        }
+        else if (sharedLaneIsClear) {
+            rawPoints = [
+                sourcePoint,
+                { x: sameDirectionLane, y: sourceY },
+                { x: sameDirectionLane, y: targetY },
+                targetPoint,
+            ];
+        }
+        else {
+            const sourceLane = (resolvedLane - sourceX) * sourceDirection >= 0
+                ? resolvedLane
+                : sourceX + sourceDirection * 48;
+            const bridgeY = Math.abs(sourceY - targetY) >= 48
+                ? sourceY + (targetY - sourceY) / 2
+                : Math.min(sourceY, targetY) - STATE_CARD_ROUTE_CLEARANCE;
+            rawPoints = [
+                sourcePoint,
+                { x: sourceLane, y: sourceY },
+                { x: sourceLane, y: bridgeY },
+                { x: approach.x, y: bridgeY },
+                approach,
+                targetPoint,
+            ];
+        }
     }
     else {
-        const bridgeX = Math.abs(sourceX - targetX) >= 48
-            ? sourceX + (targetX - sourceX) / 2
-            : Math.min(sourceX, targetX) - STATE_CARD_ROUTE_CLEARANCE;
-        rawPoints = [
-            { x: sourceX, y: sourceY },
-            { x: sourceX, y: resolvedLane },
-            { x: bridgeX, y: resolvedLane },
-            { x: bridgeX, y: approach.y },
-            approach,
-            { x: targetX, y: targetY },
-        ];
+        const sameDirectionLane = sourceDirection === targetDirection
+            ? sourceDirection < 0
+                ? Math.min(sourceY, targetY) - STATE_CARD_ROUTE_CLEARANCE
+                : Math.max(sourceY, targetY) + STATE_CARD_ROUTE_CLEARANCE
+            : resolvedLane;
+        const sharedLaneIsClear = (sameDirectionLane - sourceAxisValue) * sourceDirection >= 0
+            && (sameDirectionLane - targetAxisValue) * targetDirection >= 0;
+        if (sourceX === targetX
+            && (targetY - sourceY) * sourceDirection >= 0
+            && (sourceY - targetY) * targetDirection >= 0) {
+            rawPoints = [sourcePoint, targetPoint];
+        }
+        else if (sharedLaneIsClear) {
+            rawPoints = [
+                sourcePoint,
+                { x: sourceX, y: sameDirectionLane },
+                { x: targetX, y: sameDirectionLane },
+                targetPoint,
+            ];
+        }
+        else {
+            const sourceLane = (resolvedLane - sourceY) * sourceDirection >= 0
+                ? resolvedLane
+                : sourceY + sourceDirection * 48;
+            const bridgeX = Math.abs(sourceX - targetX) >= 48
+                ? sourceX + (targetX - sourceX) / 2
+                : Math.min(sourceX, targetX) - STATE_CARD_ROUTE_CLEARANCE;
+            rawPoints = [
+                sourcePoint,
+                { x: sourceX, y: sourceLane },
+                { x: bridgeX, y: sourceLane },
+                { x: bridgeX, y: approach.y },
+                approach,
+                targetPoint,
+            ];
+        }
     }
     const controlPoints = simplifyRoutePoints(rawPoints);
     return {
@@ -821,6 +893,16 @@ function nodeCrossingScore(candidate, nodes, source, target) {
     });
     return score;
 }
+function routeShapeScore(points) {
+    const length = points.slice(1).reduce((total, point, index) => {
+        const previous = points[index];
+        return total + Math.abs(point.x - previous.x) + Math.abs(point.y - previous.y);
+    }, 0);
+    const directDistance = Math.abs(points.at(-1).x - points[0].x)
+        + Math.abs(points.at(-1).y - points[0].y);
+    const bends = Math.max(0, points.length - 2);
+    return bends * 8 + length * 0.02 + Math.max(0, length - directDistance) * 0.25;
+}
 function planStateTransitionRoutes(requests, nodes) {
     const nodeById = new Map(nodes.map((node) => [node.id, node]));
     const placedSegments = [];
@@ -907,6 +989,7 @@ function planStateTransitionRoutes(requests, nodes) {
                     const score = sidePenalty
                         + handlePenalty
                         + distancePenalty
+                        + routeShapeScore(route.points)
                         + overlappingSegmentScore(segments, placedSegments)
                         + nodeCrossingScore(segments, nodes, request.source, request.target);
                     if (best === undefined || score < best.score) {
@@ -1130,12 +1213,15 @@ function buildStateGraphModel(scene, editor) {
 }
 function buildSceneFlowGraphModel(scenes, entrySceneId, editor) {
     const sceneIds = new Set(scenes.map((scene) => scene.scene_id));
+    const sceneById = new Map(scenes.map((scene) => [scene.scene_id, scene]));
     const exitsByScene = new Map();
     scenes.forEach((scene) => {
         const declared = (scene.scene_exits ?? [])
             .filter((sceneExit) => sceneIds.has(sceneExit.target_scene))
             .map((sceneExit) => ({
             id: `${scene.scene_id}:scene-exit-${sceneExit.scene_exit_id}`,
+            endpointKind: "scene_exit",
+            endpointId: sceneExit.scene_exit_id,
             sceneExitId: sceneExit.scene_exit_id,
             label: sceneExit.display_name,
             targetScene: sceneExit.target_scene,
@@ -1150,6 +1236,8 @@ function buildSceneFlowGraphModel(scenes, entrySceneId, editor) {
             && !coveredTargets.has(route.target_scene))
             .map((route) => ({
             id: `${scene.scene_id}:legacy-${route.route_id}`,
+            endpointKind: "route",
+            endpointId: route.route_id,
             routeId: route.route_id,
             label: routeLabel(route, scene.input_actions ?? []),
             targetScene: route.target_scene,
@@ -1158,14 +1246,34 @@ function buildSceneFlowGraphModel(scenes, entrySceneId, editor) {
         }));
         exitsByScene.set(scene.scene_id, [...declared, ...legacy]);
     });
+    const referenceRecords = editor?.scene_flow?.references ?? {};
+    const references = Object.entries(referenceRecords)
+        .filter(([, reference]) => sceneIds.has(reference.target_scene))
+        .map(([referenceId, reference]) => ({
+        id: referenceId,
+        label: `Go to ${sceneById.get(reference.target_scene)?.display_name ?? reference.target_scene}`,
+        targetScene: reference.target_scene,
+        x: reference.x,
+        y: reference.y,
+    }));
+    const referenceById = new Map(references.map((reference) => [reference.id, reference]));
     const edges = scenes.flatMap((scene) => (exitsByScene.get(scene.scene_id) ?? []).map((sceneExit) => {
         const route = sceneExit.routeId === undefined
             ? undefined
             : (scene.routes ?? []).find((item) => item.route_id === sceneExit.routeId);
+        const mappedReferenceId = editor?.scene_flow?.exit_references?.[scene.scene_id]?.[`${sceneExit.endpointKind}:${sceneExit.endpointId}`];
+        const mappedReference = mappedReferenceId === undefined
+            ? undefined
+            : referenceById.get(mappedReferenceId);
+        const referenceId = mappedReference?.targetScene === sceneExit.targetScene
+            ? mappedReference.id
+            : undefined;
         return {
             id: `${sceneExit.id}->${sceneExit.targetScene}`,
             source: scene.scene_id,
-            target: sceneExit.targetScene,
+            target: referenceId ?? sceneExit.targetScene,
+            targetScene: sceneExit.targetScene,
+            referenceId,
             label: sceneExit.label,
             sceneExit,
             route,
@@ -1175,16 +1283,32 @@ function buildSceneFlowGraphModel(scenes, entrySceneId, editor) {
     edges.forEach((edge) => {
         outgoingCounts.set(edge.source, (outgoingCounts.get(edge.source) ?? 0) + 1);
     });
-    const incomingTargets = new Set(edges.map((edge) => edge.target));
+    const depthByScene = new Map();
+    if (entrySceneId !== null && sceneIds.has(entrySceneId)) {
+        depthByScene.set(entrySceneId, 0);
+        const queue = [entrySceneId];
+        while (queue.length > 0) {
+            const source = queue.shift();
+            const depth = depthByScene.get(source) ?? 0;
+            edges
+                .filter((edge) => edge.source === source)
+                .forEach((edge) => {
+                if (!depthByScene.has(edge.targetScene)) {
+                    depthByScene.set(edge.targetScene, depth + 1);
+                    queue.push(edge.targetScene);
+                }
+            });
+        }
+    }
     const columnY = new Map();
-    const nodes = scenes.map((scene, index) => {
+    const nodes = scenes.map((scene) => {
         const states = scene.states ?? [];
         const entryState = states.find((state) => state.state_id === scene.entry_state);
         const isEntry = scene.scene_id === entrySceneId;
-        const column = isEntry || !incomingTargets.has(scene.scene_id) ? 0 : 1;
+        const column = depthByScene.get(scene.scene_id) ?? 0;
         const exits = exitsByScene.get(scene.scene_id) ?? [];
         const y = columnY.get(column) ?? 0;
-        columnY.set(column, y + 430 + exits.length * 58);
+        columnY.set(column, y + 360 + exits.length * 58);
         const savedPosition = editor?.scene_flow?.nodes?.[scene.scene_id];
         return {
             id: scene.scene_id,
@@ -1194,9 +1318,19 @@ function buildSceneFlowGraphModel(scenes, entrySceneId, editor) {
             routeCount: outgoingCounts.get(scene.scene_id) ?? 0,
             entryStateLabel: entryState?.display_name ?? scene.entry_state ?? "No start state",
             exits,
-            x: savedPosition?.x ?? column * 360,
+            x: savedPosition?.x ?? column * 430,
             y: savedPosition?.y ?? y,
         };
     });
-    return { nodes, edges };
+    const entryNode = nodes.find((node) => node.id === entrySceneId);
+    const savedPackageEntry = editor?.scene_flow?.package_entry;
+    const packageEntry = entryNode === undefined
+        ? undefined
+        : {
+            id: "package-entry",
+            targetScene: entryNode.id,
+            x: savedPackageEntry?.x ?? entryNode.x - 190,
+            y: savedPackageEntry?.y ?? entryNode.y + 96,
+        };
+    return { nodes, references, packageEntry, edges };
 }

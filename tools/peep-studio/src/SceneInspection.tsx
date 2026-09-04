@@ -65,6 +65,8 @@ import {
   stateTransitionRouteSections,
   STATE_GRAPH_ENTRY_HANDLES,
   STATE_GRAPH_ENTRY_PORTS,
+  type GraphPackageEntryNode,
+  type GraphSceneReferenceNode,
   type GraphSceneNode,
   type GraphSceneEndpointNode,
   type GraphStateNode,
@@ -96,6 +98,8 @@ import type {
 export type SceneSelection =
   | { kind: "scene" }
   | { kind: "sceneExit"; id: string }
+  | { kind: "packageEntry" }
+  | { kind: "sceneReference"; id: string }
   | { kind: "systemExit" }
   | { kind: "state"; id: string }
   | { kind: "route"; id: string; sourceState?: string }
@@ -1186,6 +1190,9 @@ function StateTransitionEdge({
   const edgeStyle = {
     ...style,
     stroke: `url(#${gradientId})`,
+    strokeDasharray: "10 8",
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
   };
   const guards = Array.isArray(edgeData?.guards) ? edgeData.guards : [];
   const actions = Array.isArray(edgeData?.actions) ? edgeData.actions : [];
@@ -1369,8 +1376,8 @@ function StateTransitionEdge({
     <>
       <defs>
         <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={arrowTip.x} y2={arrowTip.y}>
-          <stop offset="0%" stopColor={selected ? "#7f8e87" : "#9da9a3"} />
-          <stop offset="100%" stopColor={selected ? "#175f8a" : "#4f5f58"} />
+          <stop offset="0%" stopColor={selected ? "#4dabf7" : "#74c0fc"} />
+          <stop offset="100%" stopColor={selected ? "#1864ab" : "#1971c2"} />
         </linearGradient>
       </defs>
       <BaseEdge id={id} path={route.path} style={edgeStyle} />
@@ -1640,96 +1647,173 @@ function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
     >
       <div className="scene-card-heading">
         <strong>{graphNode.label}</strong>
-        <div className="scene-badge-strip" aria-label="Scene badges">
-          <span className="scene-card-badge" title="Internal states">
-            <strong>{graphNode.stateCount}</strong>
-            <small>states</small>
-          </span>
+      </div>
+      <div className="scene-card-preview-row">
+        <span className="scene-entry-stem" aria-hidden="true" />
+        <Handle
+          className="scene-entry-handle"
+          id="entry"
+          type="target"
+          position={Position.Left}
+          isConnectable={canEdit}
+        />
+        <div className="scene-card-preview" aria-hidden="true">
+          <FramebufferCanvas framebuffer={thumbnail} />
         </div>
       </div>
-      <div className="scene-card-preview" aria-hidden="true">
-        <FramebufferCanvas framebuffer={thumbnail} />
-      </div>
-      <div className="scene-entry-row">
-        <Handle id="entry" type="target" position={Position.Left} isConnectable={canEdit} />
-        <span>{graphNode.isEntry ? "Start scene" : "Scene entry"}</span>
-        <small>{graphNode.entryStateLabel}</small>
-      </div>
       <div className="scene-exit-list">
-        {graphNode.exits.length === 0 ? (
-          <span className="scene-exit-empty">No scene exits</span>
-        ) : (
-          graphNode.exits.map((exit) => (
-            <span
-              className={`scene-exit-row ${
-                (exit.sceneExitId !== undefined
-                  ? selectedSceneExitId === exit.sceneExitId
-                  : selectedRouteId === exit.routeId)
-                  ? "selected" : ""}`}
-              key={exit.id}
-              role="button"
-              tabIndex={0}
-              onClick={(event) => {
+        {graphNode.exits.map((exit) => (
+          <span
+            className={`scene-exit-row ${
+              (exit.sceneExitId !== undefined
+                ? selectedSceneExitId === exit.sceneExitId
+                : selectedRouteId === exit.routeId)
+                ? "selected" : ""}`}
+            key={exit.id}
+            role="button"
+            tabIndex={0}
+            onClick={(event) => {
+              event.stopPropagation();
+              event.currentTarget.focus();
+              if (exit.sceneExitId !== undefined) {
+                onSelectSceneExit(graphNode.id, exit.sceneExitId);
+              } else if (exit.routeId !== undefined) {
+                onSelectSceneRoute(graphNode.id, exit.routeId);
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
                 event.stopPropagation();
-                event.currentTarget.focus();
                 if (exit.sceneExitId !== undefined) {
                   onSelectSceneExit(graphNode.id, exit.sceneExitId);
                 } else if (exit.routeId !== undefined) {
                   onSelectSceneRoute(graphNode.id, exit.routeId);
                 }
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  if (exit.sceneExitId !== undefined) {
-                    onSelectSceneExit(graphNode.id, exit.sceneExitId);
-                  } else if (exit.routeId !== undefined) {
-                    onSelectSceneRoute(graphNode.id, exit.routeId);
-                  }
-                  return;
+                return;
+              }
+              if (canEdit && (event.key === "Delete" || event.key === "Backspace")) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (exit.sceneExitId !== undefined) {
+                  onDeleteSceneExit(graphNode.id, exit.sceneExitId);
+                } else if (exit.routeId !== undefined) {
+                  onDeleteLegacyRoute(graphNode.id, exit.routeId);
                 }
-                if (canEdit && (event.key === "Delete" || event.key === "Backspace")) {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  if (exit.sceneExitId !== undefined) {
-                    onDeleteSceneExit(graphNode.id, exit.sceneExitId);
-                  } else if (exit.routeId !== undefined) {
-                    onDeleteLegacyRoute(graphNode.id, exit.routeId);
-                  }
-                }
-              }}
-            >
-              <span>{exit.label}</span>
-              <small>Go to {exit.targetScene}</small>
-              <Handle id={exit.id} type="source" position={Position.Right} isConnectable={canEdit} />
-            </span>
-          ))
-        )}
-      </div>
-      {targetScenes.length > 0 && (
-        <div
-          className={`scene-new-exit-slot ${canAddExit ? "" : "disabled"}`}
-          aria-label={canAddExit ? "Drag to create a new scene exit" : "No destination scenes available"}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <Plus size={14} aria-hidden="true" />
-          <span>New exit</span>
-          {canAddExit && (
+              }
+            }}
+          >
+            <span>{exit.label}</span>
+            <span className="scene-exit-stem" aria-hidden="true" />
             <Handle
-              id={`${graphNode.id}:${NEW_SCENE_EXIT_HANDLE}`}
+              className="scene-exit-handle"
+              id={exit.id}
               type="source"
               position={Position.Right}
               isConnectable={canEdit}
             />
-          )}
-        </div>
-      )}
+          </span>
+        ))}
+      </div>
+      <div
+        className={`scene-new-exit-slot ${canAddExit ? "" : "disabled"}`}
+        aria-label={canAddExit ? "Drag to create a new scene exit" : "No destination scenes available"}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <Plus size={14} aria-hidden="true" />
+        <span>Add new exit</span>
+        <span className="scene-new-exit-stem" aria-hidden="true" />
+        <Handle
+          className="scene-new-exit-handle"
+          id={`${graphNode.id}:${NEW_SCENE_EXIT_HANDLE}`}
+          type="source"
+          position={Position.Right}
+          isConnectable={canAddExit}
+        />
+      </div>
     </div>
   );
 }
 
-const SCENE_NODE_TYPES = { sceneCard: SceneCardNode };
+type PackageEntryNodeData = {
+  graphNode: GraphPackageEntryNode;
+  canEdit: boolean;
+  onSelect: () => void;
+};
+
+function PackageEntryNode({ data, selected }: NodeProps<Node<PackageEntryNodeData>>) {
+  return (
+    <div
+      className={`package-entry-node ${selected ? "selected" : ""}`}
+      role="button"
+      tabIndex={0}
+      onClick={(event) => {
+        event.stopPropagation();
+        data.onSelect();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          data.onSelect();
+        }
+      }}
+    >
+      <strong>Package<br />Entry</strong>
+      <span className="package-entry-stem" aria-hidden="true" />
+      <Handle
+        className="package-entry-handle"
+        id="package-entry-out"
+        type="source"
+        position={Position.Right}
+        isConnectable={data.canEdit}
+      />
+    </div>
+  );
+}
+
+type SceneReferenceNodeData = {
+  graphNode: GraphSceneReferenceNode;
+  canEdit: boolean;
+  onSelect: (referenceId: string, targetScene: string) => void;
+};
+
+function SceneReferenceNode({ data, selected }: NodeProps<Node<SceneReferenceNodeData>>) {
+  const { graphNode } = data;
+  return (
+    <div
+      className={`scene-reference-node ${selected ? "selected" : ""}`}
+      role="button"
+      tabIndex={0}
+      onClick={(event) => {
+        event.stopPropagation();
+        data.onSelect(graphNode.id, graphNode.targetScene);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          data.onSelect(graphNode.id, graphNode.targetScene);
+        }
+      }}
+    >
+      <span className="scene-reference-kicker">Go to</span>
+      <strong>{graphNode.label.replace(/^Go to /, "")}</strong>
+      <span className="scene-reference-stem" aria-hidden="true" />
+      <Handle
+        className="scene-reference-handle"
+        id="reference-entry"
+        type="target"
+        position={Position.Left}
+        isConnectable={data.canEdit}
+      />
+    </div>
+  );
+}
+
+const SCENE_NODE_TYPES = {
+  packageEntry: PackageEntryNode,
+  sceneCard: SceneCardNode,
+  sceneReference: SceneReferenceNode,
+};
 
 function sameNodeSet(left: Node[], right: Node[]) {
   if (left.length !== right.length) {
@@ -2240,7 +2324,7 @@ export function StateGraphView({
           },
           label: edge.label,
           type: "stateTransition",
-          style: { strokeWidth: isSelected ? 3.4 : 1.8 },
+          style: { strokeWidth: isSelected ? 4.8 : 4 },
         };
       });
       const entryEdge = graph.entryEdge === undefined ? [] : [{
@@ -2515,13 +2599,22 @@ export function SceneFlowView({
   selectedSceneId,
   selectedSceneExitId,
   selectedRouteId,
+  selectedReferenceId,
+  packageEntrySelected,
   onSelectScene,
   onSelectSceneExit,
   onSelectSceneRoute,
+  onSelectPackageEntry,
+  onSelectSceneReference,
   onAddSceneExit,
+  onAddSceneReference,
   onDeleteSceneExit,
   onDeleteLegacyRoute,
+  onDeleteSceneReference,
   onMoveSceneNode,
+  onMovePackageEntry,
+  onMoveSceneReference,
+  onSetEntryScene,
   onSetSceneExitTarget,
   onConnectSceneExit,
   canEdit,
@@ -2534,15 +2627,24 @@ export function SceneFlowView({
   selectedSceneId: string | null;
   selectedSceneExitId: string | null;
   selectedRouteId: string | null;
+  selectedReferenceId: string | null;
+  packageEntrySelected: boolean;
   onSelectScene: (sceneId: string) => void;
   onSelectSceneExit: (sceneId: string, sceneExitId: string) => void;
   onSelectSceneRoute: (sceneId: string, routeId: string) => void;
-  onAddSceneExit: (sceneId: string, targetScene: string) => void;
+  onSelectPackageEntry: () => void;
+  onSelectSceneReference: (referenceId: string, targetScene: string) => void;
+  onAddSceneExit: (sceneId: string, targetScene: string, referenceId?: string) => void;
+  onAddSceneReference: (targetScene: string, x: number, y: number) => void;
   onDeleteSceneExit: (sceneId: string, sceneExitId: string) => void;
   onDeleteLegacyRoute: (sceneId: string, routeId: string) => void;
+  onDeleteSceneReference: (referenceId: string) => void;
   onMoveSceneNode: (sceneId: string, x: number, y: number) => void;
-  onSetSceneExitTarget: (sceneId: string, sceneExitId: string, targetScene: string) => void;
-  onConnectSceneExit: (sceneId: string, routeId: string, targetScene: string) => void;
+  onMovePackageEntry: (x: number, y: number) => void;
+  onMoveSceneReference: (referenceId: string, x: number, y: number) => void;
+  onSetEntryScene: (sceneId: string) => void;
+  onSetSceneExitTarget: (sceneId: string, sceneExitId: string, targetScene: string, referenceId?: string) => void;
+  onConnectSceneExit: (sceneId: string, routeId: string, targetScene: string, referenceId?: string) => void;
   canEdit: boolean;
 }) {
   const graph = useMemo(() => buildSceneFlowGraphModel(scenes, entrySceneId, editor), [editor, entrySceneId, scenes]);
@@ -2551,9 +2653,10 @@ export function SceneFlowView({
   const [viewportText, setViewportText] = useState("viewport not ready");
   const [lastDragText, setLastDragText] = useState("No drag yet");
   const [lastConnectText, setLastConnectText] = useState("No connect yet");
+  const [referencePickerOpen, setReferencePickerOpen] = useState(false);
   const baseNodes: Node[] = useMemo(
-    () =>
-      graph.nodes.map((node) => ({
+    () => {
+      const sceneNodes = graph.nodes.map((node) => ({
         id: node.id,
         type: "sceneCard",
         position: { x: node.x, y: node.y },
@@ -2572,9 +2675,37 @@ export function SceneFlowView({
         },
         selected: selectedSceneId === node.id,
         draggable: canEdit,
-        connectable: false,
-      })),
-    [canEdit, graph.nodes, onDeleteLegacyRoute, onDeleteSceneExit, onSelectScene, onSelectSceneExit, onSelectSceneRoute, scenes, selectedRouteId, selectedSceneExitId, selectedSceneId, thumbnails],
+        connectable: canEdit,
+      }));
+      const referenceNodes = graph.references.map((reference) => ({
+        id: reference.id,
+        type: "sceneReference",
+        position: { x: reference.x, y: reference.y },
+        data: {
+          graphNode: reference,
+          canEdit,
+          onSelect: onSelectSceneReference,
+        },
+        selected: selectedReferenceId === reference.id,
+        draggable: canEdit,
+        connectable: canEdit,
+      }));
+      const packageNodes = graph.packageEntry === undefined ? [] : [{
+        id: graph.packageEntry.id,
+        type: "packageEntry",
+        position: { x: graph.packageEntry.x, y: graph.packageEntry.y },
+        data: {
+          graphNode: graph.packageEntry,
+          canEdit,
+          onSelect: onSelectPackageEntry,
+        },
+        selected: packageEntrySelected,
+        draggable: canEdit,
+        connectable: canEdit,
+      }];
+      return [...packageNodes, ...sceneNodes, ...referenceNodes];
+    },
+    [canEdit, graph.nodes, graph.packageEntry, graph.references, onDeleteLegacyRoute, onDeleteSceneExit, onSelectPackageEntry, onSelectScene, onSelectSceneExit, onSelectSceneReference, onSelectSceneRoute, packageEntrySelected, scenes, selectedReferenceId, selectedRouteId, selectedSceneExitId, selectedSceneId, thumbnails],
   );
   const [nodes, setNodes] = useState<Node[]>(baseNodes);
   useEffect(() => {
@@ -2613,15 +2744,23 @@ export function SceneFlowView({
     setNodes((current) =>
       current.map((item) => (item.id === node.id ? { ...item, position: { x, y } } : item)),
     );
-    onMoveSceneNode(node.id, x, y);
+    if (node.type === "packageEntry") {
+      onMovePackageEntry(x, y);
+    } else if (node.type === "sceneReference") {
+      onMoveSceneReference(node.id, x, y);
+    } else {
+      onMoveSceneNode(node.id, x, y);
+    }
   };
   const edges: Edge[] = useMemo(
-    () =>
-      graph.edges.map((edge) => ({
+    () => {
+      const sceneEdges: Edge[] = graph.edges.map((edge) => ({
         id: edge.id,
         source: edge.source,
         target: edge.target,
         sourceHandle: edge.sceneExit.id,
+        targetHandle: edge.referenceId === undefined ? "entry" : "reference-entry",
+        type: "smoothstep",
         selected: edge.sceneExit.sceneExitId !== undefined
           ? selectedSceneExitId === edge.sceneExit.sceneExitId
           : selectedRouteId === edge.sceneExit.routeId,
@@ -2629,17 +2768,42 @@ export function SceneFlowView({
           route_id: edge.sceneExit.routeId,
           scene_exit_id: edge.sceneExit.sceneExitId,
           source_scene_id: edge.source,
+          reference_id: edge.referenceId,
         },
-        markerEnd: { type: MarkerType.ArrowClosed },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#51645b" },
         style: {
+          stroke: "#51645b",
           strokeWidth: (edge.sceneExit.sceneExitId !== undefined
             ? selectedSceneExitId === edge.sceneExit.sceneExitId
             : selectedRouteId === edge.sceneExit.routeId) ? 2.8 : 1.7,
         },
-      })),
-    [graph.edges, selectedRouteId, selectedSceneExitId],
+      }));
+      const packageEdge: Edge[] = graph.packageEntry === undefined ? [] : [{
+        id: `package-entry->${graph.packageEntry.targetScene}`,
+        source: graph.packageEntry.id,
+        target: graph.packageEntry.targetScene,
+        sourceHandle: "package-entry-out",
+        targetHandle: "entry",
+        type: "smoothstep",
+        selectable: true,
+        selected: packageEntrySelected,
+        data: { package_entry: true },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#2f9e44" },
+        style: {
+          stroke: "#2f9e44",
+          strokeDasharray: "7 5",
+          strokeWidth: packageEntrySelected ? 2.8 : 1.8,
+        },
+      }];
+      return [...packageEdge, ...sceneEdges];
+    },
+    [graph.edges, graph.packageEntry, packageEntrySelected, selectedRouteId, selectedSceneExitId],
   );
   const deleteSelectedSceneExit = () => {
+    if (canEdit && selectedReferenceId !== null) {
+      onDeleteSceneReference(selectedReferenceId);
+      return;
+    }
     if (!canEdit || selectedSceneId === null) {
       return;
     }
@@ -2670,28 +2834,39 @@ export function SceneFlowView({
   };
   const onConnect = (connection: Connection) => {
     const sourceScene = connection.source;
-    const targetScene = connection.target;
+    const targetNode = connection.target;
     const sourceHandle = connection.sourceHandle;
-    if (sourceScene === null || targetScene === null || sourceHandle === null) {
+    if (sourceScene === null || targetNode === null || sourceHandle === null) {
       setLastConnectText("ignored incomplete connection");
       return;
     }
+    if (sourceScene === "package-entry") {
+      if (!graph.nodes.some((node) => node.id === targetNode)) {
+        setLastConnectText("package entry must connect to a scene");
+        return;
+      }
+      setLastConnectText(`package entry -> ${targetNode}`);
+      onSetEntryScene(targetNode);
+      return;
+    }
+    const targetReference = graph.references.find((reference) => reference.id === targetNode);
+    const targetScene = targetReference?.targetScene ?? targetNode;
     if (sourceScene === targetScene) {
       setLastConnectText(`ignored ${sourceScene} -> ${targetScene}`);
       return;
     }
     if (sourceHandle === `${sourceScene}:${NEW_SCENE_EXIT_HANDLE}`) {
       setLastConnectText(`created exit ${sourceScene} -> ${targetScene}`);
-      onAddSceneExit(sourceScene, targetScene);
+      onAddSceneExit(sourceScene, targetScene, targetReference?.id);
       return;
     }
     const sourceExit = graph.nodes.find((node) => node.id === sourceScene)?.exits.find((exit) => exit.id === sourceHandle);
     if (sourceExit?.sceneExitId !== undefined) {
       setLastConnectText(`${sourceScene}:${sourceExit.sceneExitId} -> ${targetScene}`);
-      onSetSceneExitTarget(sourceScene, sourceExit.sceneExitId, targetScene);
+      onSetSceneExitTarget(sourceScene, sourceExit.sceneExitId, targetScene, targetReference?.id);
     } else if (sourceExit?.routeId !== undefined) {
       setLastConnectText(`${sourceScene}:${sourceExit.routeId} -> ${targetScene}`);
-      onConnectSceneExit(sourceScene, sourceExit.routeId, targetScene);
+      onConnectSceneExit(sourceScene, sourceExit.routeId, targetScene, targetReference?.id);
     }
   };
   const updateViewportText = () => {
@@ -2704,13 +2879,15 @@ export function SceneFlowView({
   };
   useEffect(() => {
     updateViewportText();
-  }, [nodes.length, edges.length, selectedSceneId, selectedRouteId, selectedSceneExitId]);
+  }, [nodes.length, edges.length, packageEntrySelected, selectedReferenceId, selectedSceneId, selectedRouteId, selectedSceneExitId]);
   const debugLines = [
-    `nodes ${nodes.length} / graph ${graph.nodes.length}`,
-    `edges ${edges.length} / graph ${graph.edges.length}`,
+    `nodes ${nodes.length} / graph ${graph.nodes.length + graph.references.length + (graph.packageEntry === undefined ? 0 : 1)}`,
+    `edges ${edges.length} / graph ${graph.edges.length + (graph.packageEntry === undefined ? 0 : 1)}`,
     `selected scene ${selectedSceneId ?? "-"}`,
     `selected scene exit ${selectedSceneExitId ?? "-"}`,
     `selected route ${selectedRouteId ?? "-"}`,
+    `selected reference ${selectedReferenceId ?? "-"}`,
+    `package entry selected ${packageEntrySelected ? "yes" : "no"}`,
     `viewport ${viewportText}`,
     `last drag ${lastDragText}`,
     `last connect ${lastConnectText}`,
@@ -2758,11 +2935,27 @@ export function SceneFlowView({
       onConnect={onConnect}
       onNodeDragStop={(_, node) => onNodeDragStop(node)}
       onMoveEnd={updateViewportText}
+      onPaneClick={() => setReferencePickerOpen(false)}
       onKeyDown={handleSceneFlowKeyDown}
       tabIndex={0}
-      onNodeClick={(_, node) => onSelectScene(node.id)}
+      onNodeClick={(_, node) => {
+        if (node.type === "packageEntry") {
+          onSelectPackageEntry();
+        } else if (node.type === "sceneReference") {
+          const reference = graph.references.find((item) => item.id === node.id);
+          if (reference !== undefined) {
+            onSelectSceneReference(reference.id, reference.targetScene);
+          }
+        } else {
+          onSelectScene(node.id);
+        }
+      }}
       onEdgeClick={(event, edge) => {
         (event.currentTarget as HTMLElement).focus();
+        if (edge.data?.package_entry === true) {
+          onSelectPackageEntry();
+          return;
+        }
         const sourceScene = String(edge.data?.source_scene_id ?? "");
         if (typeof edge.data?.scene_exit_id === "string") {
           onSelectSceneExit(sourceScene, edge.data.scene_exit_id);
@@ -2773,7 +2966,53 @@ export function SceneFlowView({
       proOptions={{ hideAttribution: true }}
     >
       <Background gap={18} size={1} />
-      <GraphMiniMap nodes={graph.nodes} edges={graph.edges} selectedId={selectedSceneId} />
+      <GraphMiniMap
+        nodes={[
+          ...(graph.packageEntry === undefined ? [] : [graph.packageEntry]),
+          ...graph.nodes,
+          ...graph.references,
+        ]}
+        edges={[
+          ...(graph.packageEntry === undefined ? [] : [{ source: graph.packageEntry.id, target: graph.packageEntry.targetScene }]),
+          ...graph.edges,
+        ]}
+        selectedId={packageEntrySelected ? "package-entry" : selectedReferenceId ?? selectedSceneId}
+      />
+      <Panel position="top-right" className="scene-flow-tools">
+        <button
+          type="button"
+          disabled={!canEdit}
+          onClick={() => setReferencePickerOpen((current) => !current)}
+        >
+          <ExternalLink size={14} aria-hidden="true" />
+          Go to
+        </button>
+        {referencePickerOpen && (
+          <div className="scene-flow-reference-picker">
+            {scenes.filter((scene) => scene.scene_type === "STATE_SCENE").map((scene) => (
+              <button
+                type="button"
+                key={scene.scene_id}
+                onClick={(event) => {
+                  const bounds = event.currentTarget.closest(".react-flow")?.getBoundingClientRect();
+                  const instance = flowRef.current;
+                  if (bounds === undefined || instance === null) {
+                    return;
+                  }
+                  const point = instance.screenToFlowPosition({
+                    x: bounds.left + bounds.width / 2,
+                    y: bounds.top + bounds.height / 2,
+                  });
+                  onAddSceneReference(scene.scene_id, Math.round(point.x - 90), Math.round(point.y - 35));
+                  setReferencePickerOpen(false);
+                }}
+              >
+                {scene.display_name}
+              </button>
+            ))}
+          </div>
+        )}
+      </Panel>
       <Panel position="top-left" className="scene-flow-debug">
         <details>
           <summary>
@@ -2794,6 +3033,250 @@ export function SceneFlowView({
       </Panel>
       <Controls showInteractive={false} />
     </ReactFlow>
+  );
+}
+
+export function SceneFlowInspector({
+  scene,
+  scenes,
+  editor,
+  entrySceneId,
+  selection,
+  onSelect,
+  onRenameScene,
+  onSetSceneExitTarget,
+  onSetLegacyRouteTarget,
+  onSetReferenceTarget,
+  onDeleteReference,
+  canEdit,
+}: {
+  scene: SceneDocument | null;
+  scenes: SceneDocument[];
+  editor?: ProjectEditorData;
+  entrySceneId: string | null;
+  selection: SceneSelection;
+  onSelect: (selection: SceneSelection) => void;
+  onRenameScene: (sceneId: string, displayName: string) => Promise<void>;
+  onSetSceneExitTarget: (sceneId: string, sceneExitId: string, targetScene: string) => Promise<void>;
+  onSetLegacyRouteTarget: (sceneId: string, routeId: string, targetScene: string) => Promise<void>;
+  onSetReferenceTarget: (referenceId: string, targetScene: string) => Promise<void>;
+  onDeleteReference: (referenceId: string) => Promise<void>;
+  canEdit: boolean;
+}) {
+  if (selection.kind === "packageEntry") {
+    const entryScene = scenes.find((item) => item.scene_id === entrySceneId);
+    return (
+      <section className="inspector-section selected-record">
+        <h3><Play size={14} aria-hidden="true" /> Package entry</h3>
+        <div className="compact-grid">
+          <div>
+            <span>Connected scene</span>
+            <strong>{entryScene?.display_name ?? "Not connected"}</strong>
+          </div>
+          <div>
+            <span>Output</span>
+            <strong>1 scene link</strong>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (selection.kind === "sceneReference") {
+    const reference = editor?.scene_flow?.references?.[selection.id];
+    if (reference === undefined) {
+      return <EmptyInspector>Select a Go To reference to inspect it.</EmptyInspector>;
+    }
+    const attachedCount = Object.values(editor?.scene_flow?.exit_references ?? {})
+      .reduce((total, group) => total + Object.values(group).filter((value) => value === selection.id).length, 0);
+    const attachedSources = new Set(
+      Object.entries(editor?.scene_flow?.exit_references ?? {})
+        .filter(([, group]) => Object.values(group).some((value) => value === selection.id))
+        .map(([sceneId]) => sceneId),
+    );
+    return (
+      <section className="inspector-section selected-record">
+        <h3><ExternalLink size={14} aria-hidden="true" /> Go to</h3>
+        <label className="select-field" htmlFor={`scene-reference-target-${selection.id}`}>
+          Destination scene
+          <select
+            id={`scene-reference-target-${selection.id}`}
+            value={reference.target_scene}
+            disabled={!canEdit}
+            onChange={(event) => void onSetReferenceTarget(selection.id, event.target.value)}
+          >
+            {scenes
+              .filter((item) => item.scene_type === "STATE_SCENE" && !attachedSources.has(item.scene_id))
+              .map((item) => (
+              <option key={item.scene_id} value={item.scene_id}>{item.display_name}</option>
+              ))}
+          </select>
+        </label>
+        <div className="compact-grid">
+          <div>
+            <span>Connected exits</span>
+            <strong>{attachedCount}</strong>
+          </div>
+          <div>
+            <span>Reference ID</span>
+            <strong>{selection.id}</strong>
+          </div>
+        </div>
+        <button
+          className="button state-delete-button"
+          type="button"
+          disabled={!canEdit}
+          onClick={() => void onDeleteReference(selection.id)}
+        >
+          <Trash2 size={14} aria-hidden="true" />
+          Delete reference
+        </button>
+      </section>
+    );
+  }
+
+  if (selection.kind === "sceneExit" && scene !== null) {
+    const sceneExit = (scene.scene_exits ?? []).find((item) => item.scene_exit_id === selection.id);
+    if (sceneExit !== undefined) {
+      return (
+        <SceneExitInspector
+          scene={scene}
+          scenes={scenes}
+          sceneExit={sceneExit}
+          onSetSceneExitTarget={onSetSceneExitTarget}
+          canEdit={canEdit}
+        />
+      );
+    }
+  }
+
+  if (selection.kind === "route" && scene !== null) {
+    const route = (scene.routes ?? []).find((item) => item.route_id === selection.id);
+    if (route?.target_scene !== undefined) {
+      return (
+        <section className="inspector-section selected-record">
+          <h3><ExternalLink size={14} aria-hidden="true" /> Scene transition</h3>
+          <label className="select-field" htmlFor={`legacy-scene-target-${route.route_id}`}>
+            Destination scene
+            <select
+              id={`legacy-scene-target-${route.route_id}`}
+              value={route.target_scene}
+              disabled={!canEdit}
+              onChange={(event) => void onSetLegacyRouteTarget(scene.scene_id, route.route_id, event.target.value)}
+            >
+              {scenes.filter((item) => item.scene_id !== scene.scene_id).map((item) => (
+                <option key={item.scene_id} value={item.scene_id}>{item.display_name}</option>
+              ))}
+            </select>
+          </label>
+          <div className="internal-ref-note">Legacy route ID: <code>{route.route_id}</code></div>
+        </section>
+      );
+    }
+  }
+
+  return (
+    <SceneNodeInspector
+      scene={scene}
+      scenes={scenes}
+      entrySceneId={entrySceneId}
+      onSelect={onSelect}
+      onRenameScene={onRenameScene}
+      canEdit={canEdit}
+    />
+  );
+}
+
+function SceneNodeInspector({
+  scene,
+  scenes,
+  entrySceneId,
+  onSelect,
+  onRenameScene,
+  canEdit,
+}: {
+  scene: SceneDocument | null;
+  scenes: SceneDocument[];
+  entrySceneId: string | null;
+  onSelect: (selection: SceneSelection) => void;
+  onRenameScene: (sceneId: string, displayName: string) => Promise<void>;
+  canEdit: boolean;
+}) {
+  const [displayName, setDisplayName] = useState(scene?.display_name ?? "");
+  useEffect(() => {
+    setDisplayName(scene?.display_name ?? "");
+  }, [scene?.display_name, scene?.scene_id]);
+
+  if (scene === null) {
+    return (
+      <section className="inspector-section">
+        <h3><Network size={14} aria-hidden="true" /> Scene</h3>
+        <EmptyInspector>Select a scene node to inspect it.</EmptyInspector>
+      </section>
+    );
+  }
+
+  const trimmed = displayName.trim();
+  const renameDisabled = !canEdit || trimmed.length === 0 || trimmed === scene.display_name;
+  const entryState = (scene.states ?? []).find((state) => state.state_id === scene.entry_state);
+  return (
+    <section className="inspector-section selected-record">
+      <h3><Network size={14} aria-hidden="true" /> Scene</h3>
+      <form
+        className="rename-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!renameDisabled) {
+            void onRenameScene(scene.scene_id, trimmed);
+          }
+        }}
+      >
+        <label htmlFor={`scene-name-${scene.scene_id}`}>Scene name</label>
+        <div>
+          <input
+            id={`scene-name-${scene.scene_id}`}
+            value={displayName}
+            disabled={!canEdit}
+            onChange={(event) => setDisplayName(event.target.value)}
+          />
+          <button type="submit" disabled={renameDisabled}>Rename</button>
+        </div>
+      </form>
+      <div className="compact-grid">
+        <div>
+          <span>Package entry</span>
+          <strong>{scene.scene_id === entrySceneId ? "Yes" : "No"}</strong>
+        </div>
+        <div>
+          <span>Starts at</span>
+          <strong>{entryState?.display_name ?? scene.entry_state}</strong>
+        </div>
+        <div>
+          <span>Scene type</span>
+          <strong>{scene.scene_type.replace(/_/g, " ")}</strong>
+        </div>
+        <div>
+          <span>Scene exits</span>
+          <strong>{scene.scene_exits?.length ?? 0}</strong>
+        </div>
+      </div>
+      {(scene.scene_exits ?? []).length > 0 && (
+        <div className="record-list scene-inspector-exits">
+          {(scene.scene_exits ?? []).map((sceneExit) => (
+            <button
+              key={sceneExit.scene_exit_id}
+              className="record-row"
+              type="button"
+              onClick={() => onSelect({ kind: "sceneExit", id: sceneExit.scene_exit_id })}
+            >
+              <strong>{sceneExit.display_name}</strong>
+              <small>Go to {scenes.find((item) => item.scene_id === sceneExit.target_scene)?.display_name ?? sceneExit.target_scene}</small>
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="internal-ref-note">Internal scene ID: <code>{scene.scene_id}</code></div>
+    </section>
   );
 }
 

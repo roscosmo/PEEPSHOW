@@ -12,6 +12,13 @@
       "logical_source": "BUTTON_B"
     }
   ],
+  "scene_exits": [
+    {
+      "scene_exit_id": "to_main_menu",
+      "display_name": "Main Menu",
+      "target_scene": "main_menu"
+    }
+  ],
   "states": [
     {
       "state_id": "shown",
@@ -27,12 +34,8 @@
         "shown"
       ],
       "guards": [],
-      "actions": [
-        {
-          "kind": "play_sfx",
-          "cue_ref": "foghorn_bo.cue"
-        }
-      ],
+      "actions": [],
+      "scene_exit_ref": "to_main_menu",
       "target_scene": "main_menu"
     }
   ],

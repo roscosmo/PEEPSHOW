@@ -267,7 +267,8 @@ const sideEntryRoute = buildStateTransitionRoute({
 assert.deepEqual(sideEntryRoute.points.at(-1), { x: 300, y: 200 });
 assert.equal(sideEntryRoute.points.at(-2)?.y, 200);
 assert.equal((sideEntryRoute.points.at(-2)?.x ?? 300) < 300, true);
-assert.deepEqual(sideEntryRoute.rails, [{ axis: "y", value: 272 }, { axis: "x", value: 252 }]);
+assert.deepEqual(sideEntryRoute.points, [{ x: 40, y: 100 }, { x: 40, y: 200 }, { x: 300, y: 200 }]);
+assert.deepEqual(sideEntryRoute.rails, []);
 const movedSideEntryRails = moveStateTransitionRouteSection(
   sideEntryRoute.controlPoints,
   sideEntryRoute.controlPoints.length - 2,
@@ -287,6 +288,66 @@ const movedSideEntryRoute = buildStateTransitionRoute({
 });
 assert.equal(movedSideEntryRoute.points.some((point) => point.y === 140), true);
 assert.deepEqual(movedSideEntryRoute.points.at(-1), { x: 300, y: 200 });
+
+const closeSceneExitRoute = buildStateTransitionRoute({
+  sourceX: 72,
+  sourceY: 200,
+  targetX: 148,
+  targetY: 188,
+  sourceSide: "right",
+  targetSide: "left",
+});
+assert.deepEqual(closeSceneExitRoute.points, [
+  { x: 72, y: 200 },
+  { x: 110, y: 200 },
+  { x: 110, y: 188 },
+  { x: 148, y: 188 },
+]);
+assert.equal(closeSceneExitRoute.points.every((point) => point.y >= 188 && point.y <= 200), true);
+const tightSceneExitRoute = buildStateTransitionRoute({
+  sourceX: 72,
+  sourceY: 200,
+  targetX: 90,
+  targetY: 188,
+  sourceSide: "right",
+  targetSide: "left",
+});
+assert.deepEqual(tightSceneExitRoute.points, [
+  { x: 72, y: 200 },
+  { x: 81, y: 200 },
+  { x: 81, y: 188 },
+  { x: 90, y: 188 },
+]);
+assert.equal(tightSceneExitRoute.points.every((point) => point.x >= 72 && point.x <= 90), true);
+const retainedTightRoute = buildStateTransitionRoute({
+  sourceX: 72,
+  sourceY: 202,
+  targetX: 90,
+  targetY: 186,
+  sourceSide: "right",
+  targetSide: "left",
+  rails: [{ axis: "x", value: 81 }],
+});
+assert.equal(retainedTightRoute.points.every((point) => point.x >= 72 && point.x <= 90), true);
+const movedCloseRails = moveStateTransitionRouteSection(
+  closeSceneExitRoute.controlPoints,
+  1,
+  { x: 120, y: 194 },
+  "right",
+  "left",
+);
+assert.deepEqual(movedCloseRails, [{ axis: "x", value: 120 }]);
+const retainedCloseRoute = buildStateTransitionRoute({
+  sourceX: 72,
+  sourceY: 206,
+  targetX: 148,
+  targetY: 184,
+  sourceSide: "right",
+  targetSide: "left",
+  rails: movedCloseRails ?? undefined,
+});
+assert.equal(retainedCloseRoute.points.some((point) => point.x === 120), true);
+assert.equal(retainedCloseRoute.points.every((point) => point.y >= 184 && point.y <= 206), true);
 
 const manualRoute = buildStateTransitionRoute({
   sourceX: 280,
@@ -548,3 +609,55 @@ assert.equal(sceneFlow.nodes.find((node) => node.id === "menu")?.exits[0]?.targe
 assert.equal(sceneFlow.edges.length, 2);
 assert.equal(sceneFlow.edges.some((edge) => edge.source === "menu" && edge.target === "game"), true);
 assert.equal(sceneFlow.edges.some((edge) => edge.source === "summary" && edge.target === "menu"), true);
+assert.equal(sceneFlow.packageEntry?.targetScene, "menu");
+
+const sceneFlowWithReference = buildSceneFlowGraphModel([
+  menuScene,
+  {
+    ...scene,
+    scene_id: "game",
+    display_name: "Game",
+    routes: [],
+  },
+  {
+    ...scene,
+    scene_id: "summary",
+    display_name: "Summary",
+    routes: [
+      {
+        route_id: "summary_to_menu",
+        action_ref: "select",
+        from_states: ["idle"],
+        guards: [],
+        actions: [],
+        target_scene: "menu",
+      },
+    ],
+  },
+], "menu", {
+  scene_flow: {
+    package_entry: { x: -180, y: 70 },
+    references: {
+      go_to_menu: { target_scene: "menu", x: 900, y: 140 },
+    },
+    exit_references: {
+      summary: { "route:summary_to_menu": "go_to_menu" },
+    },
+  },
+});
+
+assert.deepEqual(sceneFlowWithReference.packageEntry, {
+  id: "package-entry",
+  targetScene: "menu",
+  x: -180,
+  y: 70,
+});
+assert.equal(sceneFlowWithReference.references[0]?.label, "Go to Menu");
+assert.equal(
+  sceneFlowWithReference.edges.some((edge) => (
+    edge.source === "summary" &&
+    edge.target === "go_to_menu" &&
+    edge.targetScene === "menu"
+  )),
+  true,
+);

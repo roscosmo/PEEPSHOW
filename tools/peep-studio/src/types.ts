@@ -181,9 +181,16 @@ export type EditorRouteLayout = {
   }>;
 };
 
+export type EditorSceneFlowReference = EditorNodePosition & {
+  target_scene: string;
+};
+
 export type ProjectEditorData = {
   scene_flow?: {
     nodes?: Record<string, EditorNodePosition>;
+    package_entry?: EditorNodePosition;
+    references?: Record<string, EditorSceneFlowReference>;
+    exit_references?: Record<string, Record<string, string>>;
   };
   state_graph?: {
     scenes?: Record<string, {
@@ -445,6 +452,7 @@ export type ServiceHello = {
   state_scene_graph: {
     command_batch_maximum: number;
     scene_commands: string[];
+    scene_flow_commands: string[];
     peepos_trigger_commands: string[];
     peepos_trigger_catalog: PeepOSTriggerCapability[];
     limits: {

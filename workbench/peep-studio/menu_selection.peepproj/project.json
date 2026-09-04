@@ -1,0 +1,254 @@
+{
+  "schema_id": "peepshow.authoring.project",
+  "schema_version": 1,
+  "project_id": "example.menu_selection",
+  "project_name": "Menu Selection Demo",
+  "package": {
+    "package_id": "dev.peepshow.menu_selection",
+    "display_name": "Menu Selection Demo",
+    "version": "0.1.0"
+  },
+  "selected_target_profile": "hw6_fw0_development",
+  "entry_scene": "main_menu",
+  "scene_sources": [
+    "scenes/main_menu.state.json",
+    "scenes/start_game.state.json",
+    "scenes/settings.state.json",
+    "scenes/credits.state.json"
+  ],
+  "asset_sources": [
+    "assets/catalog.json"
+  ],
+  "validation": {
+    "build_profile": "development",
+    "ruleset_version": 1
+  },
+  "editor": {
+    "scene_flow": {
+      "nodes": {
+        "main_menu": {
+          "x": 205,
+          "y": 225
+        },
+        "start_game": {
+          "x": 702,
+          "y": -30
+        },
+        "settings": {
+          "x": 703,
+          "y": 414
+        },
+        "credits": {
+          "x": 710,
+          "y": 889
+        }
+      },
+      "package_entry": {
+        "x": -29,
+        "y": 237
+      },
+      "references": {
+        "goto_main_menu_from_start_game": {
+          "target_scene": "main_menu",
+          "x": 1178,
+          "y": 216
+        },
+        "goto_main_menu_from_settings": {
+          "target_scene": "main_menu",
+          "x": 1153,
+          "y": 703
+        },
+        "goto_main_menu_from_credits": {
+          "target_scene": "main_menu",
+          "x": 1143,
+          "y": 1106
+        }
+      },
+      "exit_references": {
+        "start_game": {
+          "scene_exit:to_main_menu": "goto_main_menu_from_start_game"
+        },
+        "settings": {
+          "scene_exit:to_main_menu": "goto_main_menu_from_settings"
+        },
+        "credits": {
+          "scene_exit:to_main_menu": "goto_main_menu_from_credits"
+        }
+      }
+    },
+    "state_graph": {
+      "scenes": {
+        "main_menu": {
+          "nodes": {
+            "select_credits": {
+              "x": -32,
+              "y": 666
+            },
+            "scene-entry": {
+              "x": -301,
+              "y": -165
+            },
+            "select_start": {
+              "x": -24,
+              "y": -59
+            },
+            "select_settings": {
+              "x": -30,
+              "y": 301
+            },
+            "scene-exit-to_credits": {
+              "x": 357,
+              "y": 835
+            },
+            "scene-exit-to_settings": {
+              "x": 347,
+              "y": 462
+            },
+            "scene-exit-to_start_game": {
+              "x": 375,
+              "y": 117
+            }
+          },
+          "routes": {
+            "credits_up_to_settings": {
+              "sources": {
+                "select_credits": {
+                  "routing_version": 3,
+                  "rails": [
+                    {
+                      "axis": "x",
+                      "value": -98
+                    }
+                  ],
+                  "target_handle": "entry-bottom-left",
+                  "target_side": "left",
+                  "token_positions": {
+                    "actions": [
+                      0.5052
+                    ]
+                  }
+                }
+              }
+            },
+            "credits_down_to_start": {
+              "sources": {
+                "select_credits": {
+                  "routing_version": 3,
+                  "rails": [
+                    {
+                      "axis": "y",
+                      "value": 1007
+                    },
+                    {
+                      "axis": "x",
+                      "value": -219
+                    }
+                  ],
+                  "target_handle": "entry-top-left",
+                  "target_side": "left",
+                  "token_positions": {
+                    "actions": [
+                      0.5
+                    ]
+                  }
+                }
+              }
+            },
+            "start_up_to_credits": {
+              "sources": {
+                "select_start": {
+                  "routing_version": 3,
+                  "rails": [
+                    {
+                      "axis": "x",
+                      "value": -143
+                    },
+                    {
+                      "axis": "y",
+                      "value": 977
+                    }
+                  ],
+                  "target_handle": "entry-bottom-left",
+                  "target_side": "left",
+                  "token_positions": {
+                    "actions": [
+                      0.5
+                    ]
+                  }
+                }
+              }
+            },
+            "start_down_to_settings": {
+              "sources": {
+                "select_start": {
+                  "routing_version": 3,
+                  "rails": [
+                    {
+                      "axis": "y",
+                      "value": 251
+                    }
+                  ],
+                  "target_handle": "entry-top-left",
+                  "target_side": "top",
+                  "token_positions": {
+                    "actions": [
+                      0.5
+                    ]
+                  }
+                }
+              }
+            },
+            "settings_down_to_credits": {
+              "sources": {
+                "select_settings": {
+                  "routing_version": 3,
+                  "rails": [
+                    {
+                      "axis": "y",
+                      "value": 617
+                    }
+                  ],
+                  "target_handle": "entry-top-left",
+                  "target_side": "top",
+                  "token_positions": {
+                    "actions": [
+                      0.5
+                    ]
+                  }
+                }
+              }
+            },
+            "settings_up_to_start": {
+              "sources": {
+                "select_settings": {
+                  "routing_version": 3,
+                  "rails": [
+                    {
+                      "axis": "x",
+                      "value": -87
+                    },
+                    {
+                      "axis": "y",
+                      "value": 243
+                    }
+                  ],
+                  "target_handle": "entry-bottom-left",
+                  "target_side": "bottom",
+                  "token_positions": {
+                    "actions": [
+                      0.1458
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "entry": {
+            "target_handle": "entry-top-left",
+            "target_side": "top"
+          }
+        }
+      }
+    }
+  }
+}

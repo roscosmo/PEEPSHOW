@@ -1,8 +1,8 @@
 {
   "schema_id": "peepshow.authoring.state_scene",
   "schema_version": 1,
-  "scene_id": "credits",
-  "display_name": "Credits",
+  "scene_id": "start_game",
+  "display_name": "Start Game",
   "scene_type": "STATE_SCENE",
   "entry_state": "shown",
   "variables": [],
@@ -12,10 +12,17 @@
       "logical_source": "BUTTON_B"
     }
   ],
+  "scene_exits": [
+    {
+      "scene_exit_id": "to_main_menu",
+      "display_name": "Main Menu",
+      "target_scene": "main_menu"
+    }
+  ],
   "states": [
     {
       "state_id": "shown",
-      "display_name": "Credits",
+      "display_name": "Start Game",
       "waiting_visual_ref": "static_wait"
     }
   ],
@@ -27,12 +34,8 @@
         "shown"
       ],
       "guards": [],
-      "actions": [
-        {
-          "kind": "play_sfx",
-          "cue_ref": "foghorn_bo.cue"
-        }
-      ],
+      "actions": [],
+      "scene_exit_ref": "to_main_menu",
       "target_scene": "main_menu"
     }
   ],
@@ -55,10 +58,10 @@
           "element_id": "scene_title",
           "kind": "sprite",
           "layer": "UI",
-          "visual_ref": "title_credits.frame",
-          "x": 56,
+          "visual_ref": "title_start.frame",
+          "x": 44,
           "y": 52,
-          "width": 56,
+          "width": 80,
           "height": 8,
           "z_order": 1
         },
@@ -79,7 +82,7 @@
   "waiting_visuals": [
     {
       "waiting_visual_id": "static_wait",
-      "presentation_id": "credits_static",
+      "presentation_id": "start_game_static",
       "phase_quantum_ms": 250,
       "combined_step_count": 1,
       "settled_step": 0,
@@ -88,7 +91,7 @@
     }
   ],
   "reactive_wait_default": {
-    "policy_id": "credits_wait_policy",
+    "policy_id": "start_game_wait_policy",
     "waiting_visual_ref": "static_wait",
     "hold_fallback_allowed": true,
     "event_interests": [
@@ -96,7 +99,7 @@
     ]
   },
   "interaction_policy": {
-    "policy_id": "credits_interaction",
+    "policy_id": "start_game_interaction",
     "mode": "continuous",
     "meaningful_activity_actions": [
       "back_to_menu"

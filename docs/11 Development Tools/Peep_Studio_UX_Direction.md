@@ -69,7 +69,17 @@ Peep Studio should present local STATE logic as dynamic node cards:
   arrive here";
 - side edges are reserved for exit rows. The editor should choose the left or
   right side of each exit automatically to reduce line overlap, with manual
-  refinement later;
+  refinement available;
+- automatic transition routing prefers the shortest clear orthogonal path.
+  Node intersections, overlapping lines, backtracking, excess bends, and path
+  length are penalized in that order. An outside loop is only appropriate when
+  a compact route is obstructed;
+- manually adjusted transition rails remain authoritative when connected nodes
+  move. Endpoint segments may be re-anchored or simplified when invalid, but a
+  small movement elsewhere must not reset the author's route;
+- State Graph transitions use the Excalidraw language of thick blue dashed
+  paths with solid blue direction arrows. The green Scene Entry connection is
+  distinct and remains an entry affordance rather than a triggered transition;
 - each exit row summarizes the trigger and shows condition badges, such as
   "Button A - 1 condition";
 - effects that happen during a transition should be shown on the transition
@@ -176,15 +186,30 @@ Normal logic mode:
 - right: wider inspector with screen preview at the top, then selected-state or
   selected-transition controls.
 
-Future scene-flow mode:
+Scene-flow mode:
 
 - left-to-right storyboard graph for moving between scenes or major screens;
-- scene nodes should show the scene name, a small screen preview, a card-level
-  entry affordance, and one dynamic scene-exit row per declared scene exit;
+- scene nodes use the shared Excalidraw visual language: a centered scene name,
+  dominant screen preview, attached green scene-entry capsule, aligned
+  scene-exit stems and nodes, and a dotted **Add new exit** row;
+- scene cards do not show an internal-state count badge. State counts become
+  misleading as prefab-backed authoring replaces exposed low-level states;
+- Package Entry is a standalone movable graph node with exactly one output.
+  Connecting that output to a scene entry changes the package entry scene;
+- reusable **Go to <scene>** nodes are editor-only visual references to an
+  existing scene. Multiple scene exits may connect to one reference so a
+  backward semantic jump can still read left-to-right in the storyboard;
+- deleting a Go To reference removes only the visual alias. Attached scene
+  exits retain their authored destination and fall back to the real scene node;
 - adding a scene-flow exit creates the matching local scene-exit in that scene's
   Local Logic graph, and creating a local scene-exit exposes the matching exit
   in Scene Flow. These are the same authored link viewed from two workspaces;
 - nodes should show small screen previews, not raw scene IDs;
+- selecting a scene opens a scene-specific inspector with editable display
+  name, entry-state summary, scene type, declared exits, and stable ID. Package
+  Entry and Go To nodes have their own contextual inspectors;
+- initial connections use automatic left-to-right orthogonal routing. Manual
+  Scene Flow route refinement follows after the node language is stable;
 - direct STATE-to-STATE scene replacement is now exposed for the proven HW6
   target-profile subset; push/pop, return stacks, and other scene types remain
   unavailable until the service exposes them.
