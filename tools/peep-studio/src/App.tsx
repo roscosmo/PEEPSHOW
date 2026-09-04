@@ -111,6 +111,18 @@ type PendingSpriteImport = {
   frameHeight: number;
 };
 
+type PreviewStartTarget = {
+  sceneId: string;
+  stateId?: string;
+};
+
+type PreviewStartOptions = {
+  revision?: number;
+  stateId?: string;
+  updateSelection?: boolean;
+  rememberStart?: boolean;
+};
+
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -176,6 +188,7 @@ export default function App() {
   const audioPlaybackRequestRef = useRef(0);
   const previewAudioCacheRef = useRef(new Map<string, string>());
   const previewRestoreAttemptRef = useRef<string | null>(null);
+  const previewStartRef = useRef<PreviewStartTarget | null>(null);
 
   const stopAudioPlayback = useCallback(() => {
     audioPlaybackRequestRef.current += 1;
@@ -220,7 +233,8 @@ export default function App() {
   }, [bridge]);
 
   const startPreview = useCallback(
-    async (sceneId: string, revision = project?.project_revision) => {
+    async (sceneId: string, options: PreviewStartOptions = {}) => {
+      const revision = options.revision ?? project?.project_revision;
       if (bridge === undefined || revision === undefined) {
         return false;
       }
@@ -231,9 +245,20 @@ export default function App() {
         const result = await bridge.serviceRequest<PreviewSnapshot>("project.preview_reset", {
           project_revision: revision,
           scene_id: sceneId,
+          ...(options.stateId === undefined ? {} : { state_id: options.stateId }),
         });
+        if (options.rememberStart !== false) {
+          previewStartRef.current = {
+            sceneId,
+            ...(options.stateId === undefined ? {} : { stateId: options.stateId }),
+          };
+        }
         setSelectedScene(sceneId);
-        setSceneSelection({ kind: "scene" });
+        if (options.updateSelection !== false) {
+          setSceneSelection(options.stateId === undefined
+            ? { kind: "scene" }
+            : { kind: "state", id: options.stateId });
+        }
         setSelectedPlacementElement(null);
         setPreview(result);
         setMessage(null);
@@ -265,6 +290,7 @@ export default function App() {
       setPlacementPreviewLoading(false);
       setPlacementPreviewError(null);
       setSelectedScene(null);
+      previewStartRef.current = null;
       setPlacementStateId(null);
       setSceneThumbnails({});
       setSceneCreatorOpen(false);
@@ -279,7 +305,7 @@ export default function App() {
         setCanRedo(result.can_redo);
         setMessage(result.valid ? null : "Project validation failed. Review the issues panel.");
         if (result.valid) {
-          await startPreview(result.summary.entry_scene, result.project_revision);
+          await startPreview(result.summary.entry_scene, { revision: result.project_revision });
         }
       } catch (error) {
         setMessage(errorText(error));
@@ -334,7 +360,7 @@ export default function App() {
       setCanRedo(result.can_redo);
       setMessage(result.valid ? `Created ${result.summary.project_name}.` : "Project validation failed. Review the issues panel.");
       if (result.valid) {
-        if (await startPreview(result.summary.entry_scene, result.project_revision)) {
+        if (await startPreview(result.summary.entry_scene, { revision: result.project_revision })) {
           setMessage(`Created ${result.summary.project_name}.`);
         }
       }
@@ -556,7 +582,7 @@ export default function App() {
       setSceneCreatorOpen(false);
       setNewSceneName("");
       setWorkspaceMode("scene-flow");
-      if (await startPreview(sceneId, result.project_revision)) {
+      if (await startPreview(sceneId, { revision: result.project_revision })) {
         setMessage(`Added ${displayName}. Save to write it to the project.`);
       }
     } catch (error) {
@@ -2428,7 +2454,17 @@ export default function App() {
         return;
       }
       previewRestoreAttemptRef.current = restoreKey;
-      void startPreview(selectedSceneDocument.scene_id, projectRevision);
+      const rememberedStart = previewStartRef.current;
+      const rememberedStateId = rememberedStart?.sceneId === selectedSceneDocument.scene_id
+        && rememberedStart.stateId !== undefined
+        && (selectedSceneDocument.states ?? []).some((state) => state.state_id === rememberedStart.stateId)
+        ? rememberedStart.stateId
+        : undefined;
+      void startPreview(selectedSceneDocument.scene_id, {
+        revision: projectRevision,
+        stateId: rememberedStateId,
+        updateSelection: false,
+      });
     }, 80);
     return () => window.clearTimeout(timeout);
   }, [bridge, busy, preview, projectRevision, projectValid, selectedSceneDocument, startPreview]);
@@ -2940,7 +2976,19 @@ export default function App() {
               <h2>{preview?.scene.display_name ?? "State preview"}</h2>
             </div>
             <div className="playback-controls" aria-label="Preview playback">
-              <button className="icon-button" onClick={() => selectedScene !== null && void startPreview(selectedScene)} disabled={preview === null} title="Reset preview">
+              <button
+                className="icon-button"
+                onClick={() => {
+                  const target = previewStartRef.current;
+                  if (target !== null) {
+                    void startPreview(target.sceneId, { stateId: target.stateId });
+                  } else if (selectedScene !== null) {
+                    void startPreview(selectedScene);
+                  }
+                }}
+                disabled={preview === null}
+                title="Reset preview"
+              >
                 <RotateCcw size={18} aria-hidden="true" />
               </button>
               <button className="icon-button transport-play" onClick={() => setPlaying((value) => !value)} disabled={preview === null} title={playing ? "Pause preview" : "Play preview"}>
@@ -4459,12 +4507,20 @@ export default function App() {
           <div className="graph-surface">
             <StateGraphView
               scene={selectedSceneDocument}
+              activeStateId={preview !== null && preview.scene.scene_id === selectedSceneDocument?.scene_id
+                ? preview.scene.state_id
+                : null}
               editor={project?.document?.project?.editor}
               layoutStatus={stateGraphLayoutStatus}
               selected={sceneSelection}
               physicalEventKinds={service?.state_scene_presentation.logical_input_events ?? ["press"]}
               peepOSTriggers={service?.state_scene_graph.peepos_trigger_catalog ?? []}
-              onSelect={setSceneSelection}
+              onSelect={(selection) => {
+                setSceneSelection(selection);
+                if (selection.kind === "state" && selectedSceneDocument !== null) {
+                  void startPreview(selectedSceneDocument.scene_id, { stateId: selection.id });
+                }
+              }}
               onCreateState={(sceneId, x, y) => {
                 void createState(sceneId, x, y);
               }}

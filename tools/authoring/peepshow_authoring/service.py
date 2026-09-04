@@ -46,7 +46,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 34
+SERVICE_API_VERSION = 35
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -738,10 +738,16 @@ class AuthoringService:
         return self._preview
 
     def _preview_reset(self, params: dict[str, Any]) -> dict[str, Any]:
-        bundle = self._current_bundle(params, {"scene_id"})
+        fields = {"scene_id"}
+        if "state_id" in params:
+            fields.add("state_id")
+        bundle = self._current_bundle(params, fields)
         scene_id = params["scene_id"]
+        state_id = params.get("state_id")
         if not isinstance(scene_id, str) or not scene_id:
             raise ProtocolError("PREVIEW_SCENE_INVALID", "scene_id must be non-empty text")
+        if state_id is not None and (not isinstance(state_id, str) or not state_id):
+            raise ProtocolError("PREVIEW_STATE_INVALID", "state_id must be non-empty text when provided")
         if not bundle.valid:
             raise ProtocolError(
                 "PROJECT_INVALID",
@@ -750,7 +756,7 @@ class AuthoringService:
             )
         try:
             package = parse_egg(build_egg(bundle))
-            preview = StateScenePreview(package, scene_id)
+            preview = StateScenePreview(package, scene_id, state_id)
         except (EggCompileError, EggFormatError, PreviewError) as exc:
             raise ProtocolError("PREVIEW_START_FAILED", str(exc)) from exc
         self._preview = preview

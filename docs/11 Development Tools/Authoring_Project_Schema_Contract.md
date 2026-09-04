@@ -1278,7 +1278,9 @@ Rules:
 
 For the initial STATE subset, preview launch accepts a selected `scene_id` plus
 an explicit initial state or the scene's declared entry state. This is an
-editor-only launch fixture. Preview then consumes compiled package scene,
+editor-only launch fixture. `project.preview_reset` starts the live emulator at
+that state, while `project.preview_state` remains a side-effect-free exact-state
+render for Placement. Preview then consumes compiled package scene,
 sprite, animation, and waiting-visual records; it must not draw from source PNG
 files or use React-only animation rules. Input and time advance only through
 explicit preview operations, and every returned frame is an exact `168 x 144`

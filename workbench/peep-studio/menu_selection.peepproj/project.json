@@ -32,11 +32,11 @@
         },
         "start_game": {
           "x": 702,
-          "y": -30
+          "y": -29
         },
         "settings": {
-          "x": 703,
-          "y": 414
+          "x": 707,
+          "y": 417
         },
         "credits": {
           "x": 710,
@@ -81,8 +81,8 @@
         "main_menu": {
           "nodes": {
             "select_credits": {
-              "x": -32,
-              "y": 666
+              "x": -6,
+              "y": 658
             },
             "scene-entry": {
               "x": -301,
@@ -93,8 +93,8 @@
               "y": -59
             },
             "select_settings": {
-              "x": -30,
-              "y": 301
+              "x": -1,
+              "y": 319
             },
             "scene-exit-to_credits": {
               "x": 342,
@@ -137,11 +137,11 @@
                   "rails": [
                     {
                       "axis": "y",
-                      "value": 1007
+                      "value": 943
                     },
                     {
                       "axis": "x",
-                      "value": -219
+                      "value": -228
                     }
                   ],
                   "target_handle": "entry-top-left",

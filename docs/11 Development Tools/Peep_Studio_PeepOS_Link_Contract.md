@@ -274,7 +274,7 @@ protocol is version `1`; the current service API is version `27`.
 | `project.redo` | redo the last undone command within the bounded service history |
 | `project.scene_thumbnails` | return one side-effect-free initial framebuffer snapshot per compiled STATE scene |
 | `project.audio_audition` | decode one compiled sampled-SFX cue and return the exact packaged sound as mono 16 kHz PCM WAV |
-| `project.preview_reset` | start one selected STATE scene directly |
+| `project.preview_reset` | start one selected STATE scene at its declared entry state or an optional explicit author-selected state |
 | `project.preview_state` | render one exact STATE scene/state framebuffer for placement editing without touching the live preview session |
 | `project.preview_input` | inject one logical source plus optional `event_kind`; supports A/B/L/R, short START press, and cardinal/diagonal joystick STATE events |
 | `project.preview_advance` | advance deterministic preview time by an explicit duration |
@@ -725,6 +725,13 @@ records participate in undo, redo, and Save but remain excluded from compiled
 package bytes. Retargeting a Go To node retargets its attached exits through the
 same validated service transaction; deleting it preserves their real scene
 destinations.
+
+Service API version 35 allows `project.preview_reset` to accept an optional
+`state_id`. When present, that state becomes the initial state of the live
+emulator session and subsequent input/time operations continue from it. When
+omitted, the scene's declared entry state remains authoritative. This differs
+from `project.preview_state`, which renders one isolated state for Placement
+without replacing or advancing the live emulator session.
 
 Physical control lifecycle choices remain `press`, `hold`, `release`, and
 `repeat`. Firmware already emits Press, Release, Long Press, and Repeat; the

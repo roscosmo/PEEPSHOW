@@ -40,7 +40,7 @@
   "states": [
     {
       "state_id": "select_start",
-      "display_name": "Start Game",
+      "display_name": "Select: Start Game",
       "waiting_visual_ref": "select_start_wait",
       "placement_overrides": [
         {
@@ -57,7 +57,7 @@
     },
     {
       "state_id": "select_settings",
-      "display_name": "Settings",
+      "display_name": "Select: Settings",
       "waiting_visual_ref": "select_settings_wait",
       "placement_overrides": [
         {
@@ -74,7 +74,7 @@
     },
     {
       "state_id": "select_credits",
-      "display_name": "Credits",
+      "display_name": "Select: Credits",
       "waiting_visual_ref": "select_credits_wait",
       "placement_overrides": [
         {

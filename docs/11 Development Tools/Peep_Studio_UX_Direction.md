@@ -91,6 +91,12 @@ Peep Studio should present local STATE logic as dynamic node cards:
 - outputs are grouped by trigger type where useful: buttons, timers,
   variable/condition events, and system events;
 - each exit has a single destination to preserve state-machine clarity;
+- selecting a state card in Local Logic pauses and restarts the live emulator
+  from that state. The emulator's current state uses a dedicated runtime
+  highlight that remains visually distinct from author selection and follows
+  transitions without moving the author's selection;
+- Reset returns to the state from which the current preview run was launched.
+  Selecting a scene instead launches from its declared entry state;
 - advanced/internal route IDs remain available for debugging, but are not shown
   on the node face by default.
 

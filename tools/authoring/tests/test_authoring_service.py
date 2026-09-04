@@ -314,7 +314,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(34, SERVICE_API_VERSION)
+        self.assertEqual(35, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -837,6 +837,30 @@ class AuthoringServiceTests(unittest.TestCase):
         )
         self.assertEqual("main_menu", returned["scene"]["scene_id"])
         self.assertEqual("select_start", returned["scene"]["state_id"])
+
+        selected_reset = service.handle(
+            request(
+                "project.preview_reset",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "scene_id": "main_menu",
+                    "state_id": "select_credits",
+                },
+            )
+        )
+        self.assertEqual("main_menu", selected_reset["scene"]["scene_id"])
+        self.assertEqual("select_credits", selected_reset["scene"]["state_id"])
+        selected_moved = service.handle(
+            request(
+                "project.preview_input",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "preview_revision": selected_reset["preview_revision"],
+                    "logical_source": "JOY_UP",
+                },
+            )
+        )
+        self.assertEqual("select_settings", selected_moved["scene"]["state_id"])
 
     def test_reloading_invalidates_prior_revision(self) -> None:
         service = AuthoringService()

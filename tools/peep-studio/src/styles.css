@@ -2360,6 +2360,19 @@ button:focus-visible {
   box-shadow: 0 0 0 3px #175f8a, 0 5px 12px rgb(55 64 59 / 12%);
 }
 
+.state-card-node.runtime-active {
+  border-color: #2f9e44;
+  box-shadow: 0 0 0 3px rgb(47 158 68 / 42%), 0 5px 12px rgb(55 64 59 / 12%);
+}
+
+.state-card-node.runtime-active.selected {
+  border-color: #2f9e44;
+  box-shadow:
+    0 0 0 3px #2f9e44,
+    0 0 0 6px #175f8a,
+    0 5px 12px rgb(55 64 59 / 12%);
+}
+
 .state-scene-endpoint {
   position: relative;
   display: grid;

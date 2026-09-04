@@ -320,6 +320,7 @@ function visibleEffectCount(actions: Array<{ kind: string }>): number {
 type StateCardNodeData = {
   graphNode: RoutedGraphStateNode;
   activeEntryHandles: string[];
+  runtimeActive: boolean;
   canEdit: boolean;
   selectedRouteId: string | null;
   joystickPolicy: "four_way" | "eight_way";
@@ -532,6 +533,7 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
     joystickPolicy,
     peepOSTriggerOpen,
     physicalEventKinds,
+    runtimeActive,
     selectedRouteId,
     onOpenPeepOSTriggers,
     onSelectRoute,
@@ -668,9 +670,10 @@ function StateCardNode({ data, selected }: NodeProps<Node<StateCardNodeData>>) {
   return (
     <div
       ref={cardRef}
-      className={`state-card-node ${graphNode.isEntry ? "entry" : ""} ${selected ? "selected" : ""}`}
+      className={`state-card-node ${graphNode.isEntry ? "entry" : ""} ${runtimeActive ? "runtime-active" : ""} ${selected ? "selected" : ""}`}
       role="button"
       tabIndex={0}
+      aria-current={runtimeActive ? "step" : undefined}
       onClick={() => onSelectState(graphNode.id)}
       onKeyDown={(event) => {
         if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
@@ -1825,6 +1828,7 @@ function sameNodeSet(left: Node[], right: Node[]) {
 
 export function StateGraphView({
   scene,
+  activeStateId,
   editor,
   layoutStatus,
   selected,
@@ -1844,6 +1848,7 @@ export function StateGraphView({
   canEdit,
 }: {
   scene: SceneDocument | null;
+  activeStateId: string | null;
   editor?: ProjectEditorData;
   layoutStatus: string;
   selected: SceneSelection;
@@ -1902,6 +1907,7 @@ export function StateGraphView({
         data: {
           graphNode: routeStateNode(node, defaultPositionById, {}),
           activeEntryHandles: node.isEntry ? [graph.entryEdge?.targetHandle ?? "entry-top-left"] : [],
+          runtimeActive: activeStateId === node.id,
           canEdit,
           joystickPolicy: scene?.joystick_policy ?? "four_way",
           physicalEventKinds,
@@ -1943,7 +1949,7 @@ export function StateGraphView({
         connectable: canEdit,
       })),
     ],
-    [canEdit, defaultPositionById, graph.endpoints, graph.entryEdge?.targetHandle, graph.nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, scene?.joystick_policy, selected],
+    [activeStateId, canEdit, defaultPositionById, graph.endpoints, graph.entryEdge?.targetHandle, graph.nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, scene?.joystick_policy, selected],
   );
   const [nodes, setNodes] = useState<Node[]>(baseNodes);
   const graphNodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
@@ -2000,6 +2006,7 @@ export function StateGraphView({
                 .map((edge) => transitionLayouts[edge.sourceHandle]?.targetHandle)
                 .filter((handle): handle is StateGraphEntryHandle => handle !== undefined),
             ],
+            runtimeActive: activeStateId === graphNode.id,
             canEdit,
             joystickPolicy: scene?.joystick_policy ?? "four_way",
             physicalEventKinds,
@@ -2020,7 +2027,7 @@ export function StateGraphView({
           connectable: canEdit,
         };
       }),
-    [canEdit, graph.edges, graph.entryEdge?.targetHandle, graphNodeById, nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, positionById, scene?.joystick_policy, selected, transitionLayouts],
+    [activeStateId, canEdit, graph.edges, graph.entryEdge?.targetHandle, graphNodeById, nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, positionById, scene?.joystick_policy, selected, transitionLayouts],
   );
   useEffect(() => {
     setPendingPhysicalConnection(null);
