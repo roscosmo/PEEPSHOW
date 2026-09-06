@@ -79,7 +79,8 @@ authoring capability until those contracts and the Python service support it.
 ## Bring-Up Mapping
 
 - **Implemented:** Package Entry, Scene Flow cards and references, Local Logic
-  scene-boundary nodes, and the shared transition-line visual language.
+  scene-boundary nodes, the shared transition-line visual language, and the
+  persistent scene-rooted project hierarchy across all workspaces.
 - **Current bring-up:** inspector-owned variables, ordered conditions and
   effects, including service-validated variable and retained-object changes.
 - **Wait for the general layout drawing:** application-shell and emulator

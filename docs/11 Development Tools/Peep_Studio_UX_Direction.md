@@ -99,10 +99,14 @@ Peep Studio should present local STATE logic as dynamic node cards:
 - outputs are grouped by trigger type where useful: buttons, timers,
   variable/condition events, and system events;
 - each exit has a single destination to preserve state-machine clarity;
-- selecting a state card in Local Logic pauses and restarts the live emulator
-  from that state. The emulator's current state uses a dedicated runtime
-  highlight that remains visually distinct from author selection and follows
-  transitions without moving the author's selection;
+- selecting a state card in Local Logic changes author selection only. It does
+  not pause, reset, or reposition the emulator;
+- each state hierarchy row and the selected-state inspector provide an explicit
+  `Load in emulator` command for choosing the state from which the preview run
+  starts;
+- the emulator's current state uses a dedicated runtime indicator that remains
+  visually distinct from author selection and follows transitions without
+  moving the author's selection;
 - while the emulator runs, the State Graph viewport keeps the runtime-active
   state within a padded visible area. It pans only when that state leaves the
   area and does not change the current zoom, node positions, manual route
@@ -298,10 +302,32 @@ Placement.
 
 Normal logic mode:
 
-- left: project and scene list;
+- left: fixed emulator/display preview followed by the persistent project scene
+  hierarchy;
 - center: large per-scene state graph;
-- right: wider inspector with screen preview at the top, then selected-state or
-  selected-transition controls.
+- right: selected-state or selected-transition controls.
+
+The left hierarchy is shared by Scene Flow, Local Logic, Placement, and Assets.
+A scene is always the highest authoring owner. Expanding it exposes Scene Base
+objects, states and their local object changes, and scene-local variables. It
+must not be replaced by a separate workspace-specific Placement tree. Scene,
+Base, States, each state, and other grouping rows are independently
+collapsible. Disclosure arrows change only expansion state; they never change
+the selected scene, state, object, workspace, or placement edit target. Clicking
+the remainder of a selectable row changes selection without implicitly
+expanding or collapsing it.
+
+State-row status must not rely on similar competing outlines. Author selection
+uses a strong blue left rail and blue-tinted row. Emulator activity uses a green
+runtime dot. The Placement workspace's primary preview uses an amber eye marker
+that is not shown in other workspaces. Selecting a state outside Placement does
+not change the Placement preview target or reset the emulator.
+
+Scene exits do not appear in the hierarchy because they are semantic graph
+links rather than tangible scene children. Sprite, text, and audio source
+assets remain package-owned reusable resources in Assets and do not receive a
+second hierarchy branch. A placed sprite or other asset-backed scene element
+appears as an ordinary object under Scene Base or the state that changes it.
 
 Scene-flow mode:
 
@@ -335,17 +361,17 @@ Scene-flow mode:
 
 Placement mode:
 
-- left: the fixed emulator/display preview, scene hierarchy, then a contextual
-  placement hierarchy for the selected scene;
+- left: the fixed emulator/display preview and the same persistent scene
+  hierarchy used by every workspace;
 - center: large scaled screen preview;
 - right: inspector for selected visual elements and placement controls.
 
-The placement hierarchy mirrors semantic ownership rather than flattening the
-resolved framebuffer:
+The placement branches within the scene hierarchy mirror semantic ownership
+rather than flattening the resolved framebuffer:
 
 ```text
 Scene
-  Base Placement
+  Base objects
     scene-owned objects
   States
     State A
@@ -355,8 +381,12 @@ Scene
 ```
 
 `Base Placement` is a first-class edit scope. State rows contain only local
-object variations; they do not imply separate screens. The same stable object
-may appear under Base Placement and under every state that changes it. With
+object variations; they do not imply separate screens. An object inherited
+unchanged by at least one declared state remains visible under Base Placement
+and may also expose local changes under applicable states. An object with local
+placement properties in every declared state is presented only beneath those
+states, even though normalized storage retains its stable scene-level element
+record. Explicit state-scoped objects likewise do not appear under Base. With
 hierarchical states, child state rows nest beneath their composite parent and
 inherit the parent's placement changes.
 

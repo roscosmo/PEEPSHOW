@@ -539,9 +539,19 @@ not require or imply an on-device runtime font renderer.
 
 Implementation status: placement mode shell is present in Peep Studio. It keeps
 the fixed project-panel preview available in every mode, promotes the selected
-scene preview into the main workspace for placement, shows a scene object
-hierarchy in the project panel, and reserves the inspector for the selected
-object's placement/properties. The placement display has a faint screen-space
+scene preview into the main workspace for placement, and reserves the inspector
+for the selected object's placement/properties. The project panel now uses one
+persistent scene-rooted hierarchy in every workspace. Each expanded scene shows
+Scene Base objects, states with only their local object changes, and scene-local
+variables. Scene exits remain graph links and do not appear as hierarchy
+children. Asset sources remain package-owned and reusable in Assets; an
+asset-backed element appears in the hierarchy only as an ordinary placed
+object. Scene, Base, States, individual state, and data-group branches are
+independently collapsible. Disclosure controls do not mutate selection or edit
+scope. For hierarchy presentation, an element with local placement properties
+in every declared state is shown only under those states; this does not change
+its normalized scene-level identity or compiler representation. The placement
+display has a faint screen-space
 grid, selectable retained-element overlays, a floating primitive tool palette,
 drag movement, shape resize handles, line endpoint handles, sprite placement
 from a picker of compiled asset frames, inspector X/Y fields, layer/visibility
@@ -564,9 +574,10 @@ command. These controls call the Python service commands
 normalized JSON in React. `state_placement.set_override` is the authoring path
 for selected-state position, visibility, and static sprite-frame changes.
 
-Known Stage 3 UX debt: The object hierarchy must continue moving away from raw
-demo scaffolding and toward authored object names, type icons, layer/order
-badges, and logic/prefab ownership badges. Demo focus objects must not be
+Known Stage 3 UX debt: Hierarchy object rows still expose stable element IDs
+because the source model has no separate authored object-name field. A later
+service contract should add authored names and logic/prefab ownership metadata
+without deriving either from demo IDs. Demo focus objects must not be
 special-cased or made undeletable in the renderer.
 
 Service API 36 establishes the backend boundary for the next Placement
@@ -671,17 +682,23 @@ STATE scene: it can create/delete states and render models, choose the entry
 state, create/update/delete variables and logical inputs, create/delete and
 retarget routes, edit route sources and input bindings, and add/delete/reorder
 guards and actions. Reactive-wait and interaction policies are also replaceable
-through typed commands. Dragging an available physical-control socket to a
-state entry or declared Scene Exit opens a lifecycle choice owned by that
-physical control. `press` is the default; `hold`, `release`, and `repeat` are
-available when advertised by the service, and non-default bindings are marked
-on the physical-control node. START remains package-press-only. The **Add new
-trigger** row is reserved for PeepOS events and must not duplicate physical
-buttons or joystick directions. Local Logic now exposes state creation,
-inspector-owned naming and scene-start selection, and selected-state deletion
-through the inspector or Delete key. Deletion never performs implicit route or
-entry-state cleanup; Python rejects the last state, current entry state, or any
-state still referenced by a route.
+through typed commands. The transition inspector creates, deletes, and reorders
+guards and author-visible actions. It directly edits variable changes and
+destination-state element visibility, position, sprite frame, and bounded
+waiting-animation selection; sprite frame choices stay within the selected
+sprite asset. The scene inspector creates variables, edits their integer ranges,
+and deletes unreferenced variables through the advertised typed commands.
+Backend-only render and system-exit actions remain outside the ordered author
+list. Dragging an available physical-control socket to a state entry or declared
+Scene Exit opens a lifecycle choice owned by that physical control. `press` is
+the default; `hold`, `release`, and `repeat` are available when advertised by
+the service, and non-default bindings are marked on the physical-control node.
+START remains package-press-only. The **Add new trigger** row is reserved for
+PeepOS events and must not duplicate physical buttons or joystick directions.
+Local Logic now exposes state creation, inspector-owned naming and scene-start
+selection, and selected-state deletion through the inspector or Delete key.
+Deletion never performs implicit route or entry-state cleanup; Python rejects
+the last state, current entry state, or any state still referenced by a route.
 
 Service API version 29 adds the high-level `route.create_trigger` command.
 Python creates or reuses the scene-level logical input binding, creates the

@@ -3706,20 +3706,7 @@ def _route_target_elements(
             "GRAPH_TRANSITION_TARGET_UNKNOWN",
             "element actions require a valid target_state",
         )
-    render_model = next(
-        (
-            item
-            for item in scene.get("render_models", [])
-            if isinstance(item, dict)
-            and item.get("visual_id") == state.get("render_model_ref")
-        ),
-        None,
-    )
-    if render_model is None:
-        raise ProjectCommandError(
-            "RENDER_MODEL_UNKNOWN",
-            "target state render model does not exist",
-        )
+    render_model = _scene_placement_model(scene)
     return {
         str(item.get("element_id")): item
         for item in render_model.get("elements", [])

@@ -3459,6 +3459,7 @@ export function SceneAuthoringInspector({
   editor,
   selection,
   onSelect,
+  onPreviewState,
   onRenameState,
   onSetEntryState,
   onDeleteState,
@@ -3484,12 +3485,14 @@ export function SceneAuthoringInspector({
   guardLimit,
   actionLimit,
   canEdit,
+  canPreview,
 }: {
   scene: SceneDocument | null;
   scenes: SceneDocument[];
   editor?: ProjectEditorData;
   selection: SceneSelection;
   onSelect: (selection: SceneSelection) => void;
+  onPreviewState: (sceneId: string, stateId: string) => Promise<boolean>;
   onRenameState: (sceneId: string, stateId: string, displayName: string) => Promise<void>;
   onSetEntryState: (sceneId: string, stateId: string) => Promise<void>;
   onDeleteState: (sceneId: string, stateId: string) => Promise<void>;
@@ -3537,6 +3540,7 @@ export function SceneAuthoringInspector({
   guardLimit: number;
   actionLimit: number;
   canEdit: boolean;
+  canPreview: boolean;
 }) {
   const variables = scene?.variables ?? [];
   const inputActions = scene?.input_actions ?? [];
@@ -3565,10 +3569,12 @@ export function SceneAuthoringInspector({
           renderModels={renderModels}
           waitingVisuals={waitingVisuals}
           onSelect={onSelect}
+          onPreviewState={onPreviewState}
           onRenameState={onRenameState}
           onSetEntryState={onSetEntryState}
           onDeleteState={onDeleteState}
           canEdit={canEdit}
+          canPreview={canPreview}
         />
       )}
       {route !== null && scene !== null && (
@@ -4030,10 +4036,12 @@ function StateInspector({
   renderModels,
   waitingVisuals,
   onSelect,
+  onPreviewState,
   onRenameState,
   onSetEntryState,
   onDeleteState,
   canEdit,
+  canPreview,
 }: {
   sceneId: string;
   state: StateRecord;
@@ -4041,10 +4049,12 @@ function StateInspector({
   renderModels: RenderModel[];
   waitingVisuals: WaitingVisual[];
   onSelect: (selection: SceneSelection) => void;
+  onPreviewState: (sceneId: string, stateId: string) => Promise<boolean>;
   onRenameState: (sceneId: string, stateId: string, displayName: string) => Promise<void>;
   onSetEntryState: (sceneId: string, stateId: string) => Promise<void>;
   onDeleteState: (sceneId: string, stateId: string) => Promise<void>;
   canEdit: boolean;
+  canPreview: boolean;
 }) {
   const render = renderModels[0];
   const waiting = waitingVisuals.find((item) => item.waiting_visual_id === state.waiting_visual_ref);
@@ -4110,6 +4120,15 @@ function StateInspector({
         Waiting animation <strong>{waiting === undefined ? "Missing" : `${waiting.combined_step_count} step${waiting.combined_step_count === 1 ? "" : "s"}`}</strong>
       </button>
       <div className="state-lifecycle-actions">
+        <button
+          className="button secondary"
+          disabled={!canPreview}
+          type="button"
+          onClick={() => void onPreviewState(sceneId, state.state_id)}
+        >
+          <Eye size={14} aria-hidden="true" />
+          Load in emulator
+        </button>
         <button
           className={`button secondary ${isEntry ? "active" : ""}`}
           disabled={!canEdit || isEntry}

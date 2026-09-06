@@ -497,6 +497,297 @@ button:focus-visible {
   font-size: 10px;
 }
 
+.scene-hierarchy {
+  display: grid;
+  gap: 4px;
+  padding: 0 7px 12px;
+  outline: none;
+}
+
+.scene-hierarchy-node {
+  min-width: 0;
+}
+
+.scene-hierarchy-row,
+.hierarchy-branch-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  box-sizing: border-box;
+  gap: 2px;
+}
+
+.hierarchy-disclosure-control {
+  display: grid;
+  width: 24px;
+  height: 32px;
+  flex: 0 0 24px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #69756e;
+  cursor: pointer;
+}
+
+.hierarchy-disclosure-control:hover {
+  background: #eef2ef;
+  color: #254d63;
+}
+
+.hierarchy-emulator-load {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #59665f;
+  cursor: pointer;
+}
+
+.hierarchy-emulator-load:hover:not(:disabled) {
+  border-color: #80a78a;
+  background: #eaf5ed;
+  color: #247a35;
+}
+
+.hierarchy-emulator-load:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.hierarchy-disclosure-control svg {
+  transition: transform 120ms ease;
+}
+
+.hierarchy-disclosure-control svg.expanded {
+  transform: rotate(90deg);
+}
+
+.scene-hierarchy-select {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 42px;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: #303733;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.scene-hierarchy-select:hover {
+  background: #eef2ef;
+}
+
+.scene-hierarchy-node.selected .scene-hierarchy-select {
+  border-color: #a9c7da;
+  background: #e6f0f6;
+  color: #154969;
+}
+
+.scene-hierarchy-select > span {
+  min-width: 0;
+}
+
+.scene-hierarchy-select strong,
+.scene-hierarchy-select small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-hierarchy-select strong {
+  font-size: 12px;
+}
+
+.scene-hierarchy-select small {
+  margin-top: 1px;
+  color: #727b76;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.scene-hierarchy-children {
+  display: grid;
+  gap: 6px;
+  margin: 2px 0 7px 14px;
+  padding: 5px 0 3px 8px;
+  border-left: 2px solid #dce4df;
+}
+
+.hierarchy-branch {
+  display: block;
+  min-width: 0;
+}
+
+.hierarchy-branch-select {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 36px;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: #303a34;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.hierarchy-branch-select:hover {
+  border-color: #c8d7cf;
+  background: #f0f5f2;
+}
+
+.hierarchy-branch-select.selected {
+  border-color: #175f8a;
+  background: #e7f4fa;
+  box-shadow: inset 4px 0 #175f8a;
+}
+
+.hierarchy-state-icon {
+  position: relative;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+}
+
+.hierarchy-runtime-indicator {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid #ffffff;
+  border-radius: 50%;
+  background: #2f9e44;
+  box-shadow: 0 0 0 1px #247a35;
+}
+
+.hierarchy-state-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.hierarchy-placement-indicator {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  color: #b45f06;
+}
+
+.hierarchy-branch-select > span {
+  min-width: 0;
+}
+
+.hierarchy-branch-select strong,
+.hierarchy-branch-select small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hierarchy-branch-select strong {
+  font-size: 11px;
+}
+
+.hierarchy-branch-select small {
+  margin-top: 1px;
+  color: #68736d;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.hierarchy-nested-branches,
+.hierarchy-reference-rows {
+  display: grid;
+  gap: 4px;
+  margin: 3px 0 2px 12px;
+  padding-left: 8px;
+  border-left: 1px solid #dce4df;
+}
+
+.hierarchy-branch > .placement-object-children {
+  margin-top: 3px;
+}
+
+.scene-reference-branch {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.scene-reference-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: #36413b;
+  cursor: pointer;
+  text-align: left;
+}
+
+.scene-reference-row:hover {
+  border-color: #c8d7cf;
+  background: #f0f5f2;
+}
+
+.scene-reference-row.selected {
+  border-color: #6f9eb5;
+  background: #eef8fc;
+}
+
+.scene-reference-row > span {
+  min-width: 0;
+}
+
+.scene-reference-row strong,
+.scene-reference-row small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-reference-row strong {
+  font-size: 10px;
+}
+
+.scene-reference-row small {
+  margin-top: 1px;
+  color: #748079;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
 .preview-pane {
   display: grid;
   grid-template-rows: 63px minmax(0, 1fr) 104px;
@@ -2316,6 +2607,15 @@ button:focus-visible {
   box-shadow: inset 3px 0 #2f9e44;
 }
 
+.placement-scope-node.runtime-active {
+  border-color: #72ad7f;
+  box-shadow: inset 3px 0 #2f9e44;
+}
+
+.placement-scope-node.runtime-active.primary {
+  box-shadow: inset 3px 0 #2f9e44, 0 0 0 2px rgb(47 158 68 / 16%);
+}
+
 .placement-object-children {
   display: grid;
   gap: 4px;
@@ -2383,6 +2683,7 @@ button:focus-visible {
 }
 
 .placement-object-tree code,
+.scene-hierarchy code,
 .placement-element-list code {
   padding: 2px 4px;
   border: 1px solid #d4ddd8;

@@ -10,6 +10,7 @@ import {
   Circle,
   CircleDot,
   Download,
+  Eye,
   FileCode2,
   FilePlus2,
   FolderOpen,
@@ -72,7 +73,7 @@ import type {
   SceneDocument,
   ServiceHello,
 } from "./types";
-import type { RenderElement, RenderModel, StateRecord } from "./types";
+import type { RenderElement, RenderModel, StateRecord, StateVariable } from "./types";
 
 const INPUTS = [
   { source: "BUTTON_L", label: "L", icon: Circle },
@@ -157,6 +158,8 @@ export default function App() {
   const [sceneThumbnails, setSceneThumbnails] = useState<Record<string, Framebuffer>>({});
   const [sceneCreatorOpen, setSceneCreatorOpen] = useState(false);
   const [newSceneName, setNewSceneName] = useState("");
+  const [expandedSceneIds, setExpandedSceneIds] = useState<string[]>([]);
+  const [collapsedHierarchyIds, setCollapsedHierarchyIds] = useState<string[]>([]);
   const [selectedAssetFrameId, setSelectedAssetFrameId] = useState<string | null>(null);
   const [selectedAudioCueId, setSelectedAudioCueId] = useState<string | null>(null);
   const [audioAuditionStatus, setAudioAuditionStatus] = useState("No cue auditioned.");
@@ -296,6 +299,8 @@ export default function App() {
       setSceneThumbnails({});
       setSceneCreatorOpen(false);
       setNewSceneName("");
+      setExpandedSceneIds([]);
+      setCollapsedHierarchyIds([]);
       setSceneSelection({ kind: "scene" });
       setSelectedPlacementElement(null);
       try {
@@ -350,6 +355,8 @@ export default function App() {
       setSceneThumbnails({});
       setSceneCreatorOpen(false);
       setNewSceneName("");
+      setExpandedSceneIds([]);
+      setCollapsedHierarchyIds([]);
       setSceneSelection({ kind: "scene" });
       setSelectedPlacementElement(null);
       setProjectPath(path);
@@ -1832,7 +1839,7 @@ export default function App() {
     if (bridge === undefined || project === null || busy !== null) {
       return;
     }
-    setBusy("Updating guard");
+    setBusy("Updating condition");
     setPlaying(false);
     try {
       const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
@@ -1850,8 +1857,10 @@ export default function App() {
         ],
       });
       applyProjectResult(result);
-      setSceneSelection({ kind: "route", id: routeId });
-      setMessage("Guard updated. Save to write it to the project.");
+      setSceneSelection((current) => current.kind === "route" && current.id === routeId
+        ? current
+        : { kind: "route", id: routeId });
+      setMessage("Condition updated. Save to write it to the project.");
     } catch (error) {
       setMessage(errorText(error));
     } finally {
@@ -1868,7 +1877,7 @@ export default function App() {
     if (bridge === undefined || project === null || busy !== null) {
       return;
     }
-    setBusy("Updating action");
+    setBusy("Updating effect");
     setPlaying(false);
     try {
       const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
@@ -1884,8 +1893,10 @@ export default function App() {
         ],
       });
       applyProjectResult(result);
-      setSceneSelection({ kind: "route", id: routeId });
-      setMessage("Action updated. Save to write it to the project.");
+      setSceneSelection((current) => current.kind === "route" && current.id === routeId
+        ? current
+        : { kind: "route", id: routeId });
+      setMessage("Effect updated. Save to write it to the project.");
     } catch (error) {
       setMessage(errorText(error));
     } finally {
@@ -1902,7 +1913,7 @@ export default function App() {
     if (bridge === undefined || project === null || busy !== null) {
       return;
     }
-    setBusy("Adding action");
+    setBusy("Adding effect");
     setPlaying(false);
     try {
       const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
@@ -1918,14 +1929,149 @@ export default function App() {
         ],
       });
       applyProjectResult(result);
-      setSceneSelection({ kind: "route", id: routeId });
-      setMessage("Action added. Save to write it to the project.");
+      setSceneSelection((current) => current.kind === "route" && current.id === routeId
+        ? current
+        : { kind: "route", id: routeId });
+      setMessage("Effect added. Save to write it to the project.");
     } catch (error) {
       setMessage(errorText(error));
     } finally {
       setBusy(null);
     }
   };
+
+  const applyVariableCommand = async (
+    busyLabel: string,
+    successMessage: string,
+    sceneId: string,
+    command: Record<string, unknown>,
+  ) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy(busyLabel);
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{ scene_id: sceneId, ...command }],
+      });
+      applyProjectResult(result);
+      setSceneSelection({ kind: "scene" });
+      setMessage(`${successMessage} Save to write it to the project.`);
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const addVariable = async (sceneId: string, variable: StateVariable) => applyVariableCommand(
+    "Adding variable",
+    "Variable added.",
+    sceneId,
+    { kind: "variable.add", variable },
+  );
+
+  const updateVariable = async (sceneId: string, variable: StateVariable) => applyVariableCommand(
+    "Updating variable",
+    "Variable updated.",
+    sceneId,
+    { kind: "variable.update", variable },
+  );
+
+  const deleteVariable = async (sceneId: string, variableId: string) => applyVariableCommand(
+    "Deleting variable",
+    "Variable deleted.",
+    sceneId,
+    { kind: "variable.delete", variable_id: variableId },
+  );
+
+  const applyRouteListCommand = async (
+    busyLabel: string,
+    successMessage: string,
+    sceneId: string,
+    routeId: string,
+    command: Record<string, unknown>,
+  ) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    setBusy(busyLabel);
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{ scene_id: sceneId, route_id: routeId, ...command }],
+      });
+      applyProjectResult(result);
+      setSceneSelection((current) => current.kind === "route" && current.id === routeId
+        ? current
+        : { kind: "route", id: routeId });
+      setMessage(`${successMessage} Save to write it to the project.`);
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const addRouteGuard = async (
+    sceneId: string,
+    routeId: string,
+    guardIndex: number,
+    guard: Record<string, unknown>,
+  ) => applyRouteListCommand(
+    "Adding condition",
+    "Condition added.",
+    sceneId,
+    routeId,
+    { kind: "route.guard.add", guard_index: guardIndex, guard },
+  );
+
+  const deleteRouteGuard = async (sceneId: string, routeId: string, guardIndex: number) =>
+    applyRouteListCommand(
+      "Deleting condition",
+      "Condition deleted.",
+      sceneId,
+      routeId,
+      { kind: "route.guard.delete", guard_index: guardIndex },
+    );
+
+  const moveRouteGuard = async (
+    sceneId: string,
+    routeId: string,
+    guardIndex: number,
+    targetIndex: number,
+  ) => applyRouteListCommand(
+    "Reordering conditions",
+    "Condition order updated.",
+    sceneId,
+    routeId,
+    { kind: "route.guard.move", guard_index: guardIndex, target_index: targetIndex },
+  );
+
+  const deleteRouteAction = async (sceneId: string, routeId: string, actionIndex: number) =>
+    applyRouteListCommand(
+      "Deleting effect",
+      "Effect deleted.",
+      sceneId,
+      routeId,
+      { kind: "route.action.delete", action_index: actionIndex },
+    );
+
+  const moveRouteAction = async (
+    sceneId: string,
+    routeId: string,
+    actionIndex: number,
+    targetIndex: number,
+  ) => applyRouteListCommand(
+    "Reordering effects",
+    "Effect order updated.",
+    sceneId,
+    routeId,
+    { kind: "route.action.move", action_index: actionIndex, target_index: targetIndex },
+  );
 
   const applyRenderElementCommand = async (
     busyLabel: string,
@@ -2322,6 +2468,19 @@ export default function App() {
   const placementAnimationSupported =
     waitingAnimationCommands.includes("render_element.bind_waiting_animation") &&
     waitingAnimationCommands.includes("render_element.clear_waiting_animation");
+
+  useEffect(() => {
+    const validIds = new Set(scenes.map((scene) => scene.scene_id));
+    setExpandedSceneIds((current) => {
+      const next = current.filter((sceneId) => validIds.has(sceneId));
+      if (selectedScene !== null && validIds.has(selectedScene) && !next.includes(selectedScene)) {
+        next.push(selectedScene);
+      }
+      return next.length === current.length && next.every((sceneId, index) => sceneId === current[index])
+        ? current
+        : next;
+    });
+  }, [scenes, selectedScene]);
 
   useEffect(() => {
     if (bridge === undefined || projectRevision === null || !projectValid || !thumbnailsSupported) {
@@ -3782,7 +3941,7 @@ export default function App() {
       setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
     }
   };
-  const selectPlacementState = (stateId: string, event?: ReactMouseEvent<HTMLButtonElement>) => {
+  const selectPlacementState = (stateId: string, event?: ReactMouseEvent<HTMLElement>) => {
     const states = selectedSceneDocument?.states ?? [];
     const state = (selectedSceneDocument?.states ?? []).find((item) => item.state_id === stateId) ?? null;
     if (state === null) {
@@ -3890,142 +4049,403 @@ export default function App() {
       </section>
     );
   };
-  const renderPlacementObjectHierarchy = () => {
-    const elements = placementElements();
-    const selectedStateIds = new Set(placementEditStateIds);
-    const stateScopedElementIds = new Set(placementOwnershipScene?.state_scoped_element_ids ?? []);
-    const renderObjectRow = (
-      element: RenderElement,
-      key: string,
-      onClick: () => void,
-      badges: string[],
-      selected: boolean,
-    ) => (
-      <button
-        key={key}
-        className={`placement-tree-object ${selected ? "selected" : ""}`}
-        type="button"
-        onClick={onClick}
-      >
-        <span className="placement-object-kind">
-          {placementKindIcon(element.kind)}
-          <span>
-            <strong>{placementKindLabel(element.kind)}</strong>
-            <small>{placementSourceLabel(element)}</small>
-          </span>
-        </span>
-        <span className="placement-object-badges">
-          {badges.map((badge) => <code key={badge}>{badge}</code>)}
-        </span>
-      </button>
-    );
-    return (
-      <details className="project-section placement-object-section" open>
-        <summary>Placement</summary>
-        {selectedSceneDocument === null ? (
-          <p className="muted project-section-empty">Select a scene to inspect objects.</p>
-        ) : (
-          <div
-            className="placement-object-tree"
-            role="tree"
-            aria-multiselectable="true"
-            tabIndex={0}
-            onKeyDown={handlePlacementHierarchyKeyDown}
+  const toggleHierarchyScene = (sceneId: string) => {
+    setExpandedSceneIds((current) => (
+      current.includes(sceneId)
+        ? current.filter((id) => id !== sceneId)
+        : [...current, sceneId]
+    ));
+  };
+  const toggleHierarchyGroup = (groupId: string) => {
+    setCollapsedHierarchyIds((current) => (
+      current.includes(groupId)
+        ? current.filter((id) => id !== groupId)
+        : [...current, groupId]
+    ));
+  };
+  const selectHierarchyScene = (sceneId: string) => {
+    if (selectedScene === sceneId) {
+      setSceneSelection({ kind: "scene" });
+      return;
+    }
+    void startPreview(sceneId);
+  };
+  const openHierarchyPlacementTarget = async (
+    scene: SceneDocument,
+    stateId: string | null,
+    elementId?: string,
+  ) => {
+    setWorkspaceMode("placement");
+    if (selectedScene !== scene.scene_id) {
+      const started = await startPreview(scene.scene_id, {
+        ...(stateId === null ? {} : { stateId }),
+        updateSelection: false,
+      });
+      if (!started) {
+        return;
+      }
+    }
+    placementSelectionAnchorRef.current = stateId;
+    setPlacementEditStateIds(stateId === null ? [] : [stateId]);
+    setPlacementStateId(stateId);
+    setSelectedPlacementElement(elementId ?? null);
+    if (elementId !== undefined) {
+      setPlacementInspectorTab("object");
+    }
+    const renderModel = scene.render_models?.[0] ?? null;
+    setSceneSelection(stateId === null
+      ? renderModel === null ? { kind: "scene" } : { kind: "render", id: renderModel.visual_id }
+      : { kind: "state", id: stateId });
+  };
+  const openHierarchyState = (
+    scene: SceneDocument,
+    state: StateRecord,
+    event: ReactMouseEvent<HTMLElement>,
+  ) => {
+    if (workspaceMode === "placement") {
+      if (selectedScene === scene.scene_id) {
+        selectPlacementState(state.state_id, event);
+      } else {
+        void openHierarchyPlacementTarget(scene, state.state_id);
+      }
+      return;
+    }
+    setWorkspaceMode("logic");
+    setSelectedScene(scene.scene_id);
+    setSelectedPlacementElement(null);
+    setSceneSelection({ kind: "state", id: state.state_id });
+  };
+  const openHierarchyVariable = async (scene: SceneDocument) => {
+    setWorkspaceMode("logic");
+    if (selectedScene !== scene.scene_id) {
+      const started = await startPreview(scene.scene_id, { updateSelection: false });
+      if (!started) {
+        return;
+      }
+    }
+    setSceneSelection({ kind: "scene" });
+  };
+  const renderSceneHierarchy = () => (
+    <nav
+      className="scene-hierarchy"
+      aria-label="Project scene hierarchy"
+      onKeyDown={handlePlacementHierarchyKeyDown}
+    >
+      {scenes.map((scene) => {
+        const renderModel = scene.render_models?.[0] ?? null;
+        const elements = [...(renderModel?.elements ?? [])].sort((left, right) => left.z_order - right.z_order);
+        const ownership = project?.placement_ownership?.scenes[scene.scene_id] ?? null;
+        const stateScopedElementIds = new Set(ownership?.state_scoped_element_ids ?? []);
+        const stateIds = (scene.states ?? []).map((state) => state.state_id);
+        const fullyStateControlledElementIds = new Set(
+          elements
+            .filter((element) => (
+              stateIds.length > 0
+              && stateIds.every((stateId) => (
+                (ownership?.states[stateId]?.changes[element.element_id]?.local_properties.length ?? 0) > 0
+              ))
+            ))
+            .map((element) => element.element_id),
+        );
+        const baseElements = elements.filter((element) => (
+          !stateScopedElementIds.has(element.element_id)
+          && !fullyStateControlledElementIds.has(element.element_id)
+        ));
+        const renderObjectRow = (
+          element: RenderElement,
+          key: string,
+          onClick: () => void,
+          badges: string[],
+          selected: boolean,
+        ) => (
+          <button
+            key={key}
+            className={`placement-tree-object ${selected ? "selected" : ""}`}
+            type="button"
+            onClick={onClick}
           >
-            {placementRenderModel === null ? (
-              <p className="muted project-section-empty">No scene placement surface.</p>
-            ) : (
-              <>
-                <section className="placement-tree-branch base-branch">
+            <span className="placement-object-kind">
+              {placementKindIcon(element.kind)}
+              <span>
+                <strong>{element.element_id}</strong>
+                <small>{placementKindLabel(element.kind)}</small>
+              </span>
+            </span>
+            <span className="placement-object-badges">
+              {badges.map((badge) => <code key={badge}>{badge}</code>)}
+            </span>
+          </button>
+        );
+        const sceneSelected = selectedScene === scene.scene_id;
+        const expanded = expandedSceneIds.includes(scene.scene_id);
+        const baseGroupId = `${scene.scene_id}:base`;
+        const statesGroupId = `${scene.scene_id}:states`;
+        const variablesGroupId = `${scene.scene_id}:variables`;
+        const baseExpanded = !collapsedHierarchyIds.includes(baseGroupId);
+        const statesExpanded = !collapsedHierarchyIds.includes(statesGroupId);
+        const variablesExpanded = !collapsedHierarchyIds.includes(variablesGroupId);
+        return (
+          <section
+            className={`scene-hierarchy-node ${sceneSelected ? "selected" : ""}`}
+            key={scene.scene_id}
+          >
+            <div className="scene-hierarchy-row">
+              <button
+                className="hierarchy-disclosure-control"
+                type="button"
+                aria-expanded={expanded}
+                aria-label={`${expanded ? "Collapse" : "Expand"} ${scene.display_name}`}
+                title={`${expanded ? "Collapse" : "Expand"} ${scene.display_name}`}
+                onClick={() => toggleHierarchyScene(scene.scene_id)}
+              >
+                <ChevronRight className={expanded ? "expanded" : ""} size={15} aria-hidden="true" />
+              </button>
+              <button
+                className="scene-hierarchy-select"
+                type="button"
+                onClick={() => selectHierarchyScene(scene.scene_id)}
+              >
+                <FileCode2 size={16} aria-hidden="true" />
+                <span>
+                  <strong>{scene.display_name}</strong>
+                  <small>{scene.scene_type}</small>
+                </span>
+              </button>
+            </div>
+            {expanded && <div className="scene-hierarchy-children">
+              <section className="hierarchy-branch base-branch">
+                <div className="hierarchy-branch-row">
                   <button
-                    className={`placement-scope-node ${placementEditStateIds.length === 0 ? "selected primary" : ""}`}
+                    className="hierarchy-disclosure-control"
                     type="button"
-                    role="treeitem"
-                    aria-selected={placementEditStateIds.length === 0}
-                    onClick={() => selectPlacementBase()}
+                    aria-expanded={baseExpanded}
+                    aria-label={`${baseExpanded ? "Collapse" : "Expand"} Base objects`}
+                    title={`${baseExpanded ? "Collapse" : "Expand"} Base objects`}
+                    onClick={() => toggleHierarchyGroup(baseGroupId)}
+                  >
+                    <ChevronRight className={baseExpanded ? "expanded" : ""} size={14} aria-hidden="true" />
+                  </button>
+                  <button
+                    className={`hierarchy-branch-select ${sceneSelected && workspaceMode === "placement" && placementEditStateIds.length === 0 ? "selected" : ""}`}
+                    type="button"
+                    onClick={() => void openHierarchyPlacementTarget(scene, null)}
                   >
                     <Layers3 size={15} aria-hidden="true" />
                     <span>
-                      <strong>Base Placement</strong>
-                      <small>Scene defaults</small>
+                      <strong>Base objects</strong>
+                      <small>Scene-owned placement</small>
                     </span>
-                    <code>{elements.length}</code>
+                    <span className="hierarchy-state-meta">
+                      {sceneSelected && workspaceMode === "placement" && placementStateId === null && (
+                        <span className="hierarchy-placement-indicator" title="Placement preview" aria-label="Placement preview">
+                          <Eye size={13} aria-hidden="true" />
+                        </span>
+                      )}
+                      <code>{baseElements.length}</code>
+                    </span>
                   </button>
-                  <div className="placement-object-children" role="group">
-                    {elements.length === 0 ? (
-                      <p className="muted project-section-empty">No base objects.</p>
-                    ) : elements.map((element) => renderObjectRow(
+                </div>
+                {baseExpanded && baseElements.length > 0 && (
+                  <div className="placement-object-children">
+                    {baseElements.map((element) => renderObjectRow(
                       element,
-                      `base:${element.element_id}`,
-                      () => selectPlacementBase(element.element_id),
+                      `${scene.scene_id}:base:${element.element_id}`,
+                      () => void openHierarchyPlacementTarget(scene, null, element.element_id),
                       [
                         placementLayerLabel(element),
-                        ...(stateScopedElementIds.has(element.element_id) && element.visible === false ? ["Scoped"] : []),
                         ...(element.visible === false ? ["Hidden"] : []),
                         `z${element.z_order}`,
                       ],
-                      placementEditStateIds.length === 0 && selectedPlacementElement === element.element_id,
+                      sceneSelected
+                        && workspaceMode === "placement"
+                        && placementEditStateIds.length === 0
+                        && selectedPlacementElement === element.element_id,
                     ))}
                   </div>
-                </section>
-                <div className="placement-tree-section-label">State variations</div>
-                {(selectedSceneDocument.states ?? []).map((state) => {
-                  const stateProjection = placementOwnershipScene?.states[state.state_id] ?? null;
-                  const changes = stateProjection?.changes ?? {};
-                  const resolvedById = new Map(
-                    (stateProjection?.resolved_elements ?? []).map((element) => [element.element_id, element]),
-                  );
-                  const changedElements = elements
-                    .filter((element) => changes[element.element_id] !== undefined)
-                    .map((element) => resolvedById.get(element.element_id) ?? element);
-                  const selected = selectedStateIds.has(state.state_id);
-                  const primary = placementStateId === state.state_id;
-                  return (
-                    <section className="placement-tree-branch state-branch" key={state.state_id}>
-                      <button
-                        className={`placement-scope-node ${selected ? "selected" : ""} ${primary ? "primary" : ""}`}
-                        type="button"
-                        role="treeitem"
-                        aria-selected={selected}
-                        onClick={(event) => selectPlacementState(state.state_id, event)}
-                      >
-                        <Network size={15} aria-hidden="true" />
-                        <span>
-                          <strong>{state.display_name}</strong>
-                          <small>{primary ? "Primary preview" : state.state_id}</small>
-                        </span>
-                        <code>{changedElements.length}</code>
-                      </button>
-                      {changedElements.length > 0 && (
-                        <div className="placement-object-children" role="group">
-                          {changedElements.map((element) => {
-                            const change = changes[element.element_id];
-                            const badges = [
-                              ...(change?.local_properties.includes("position") ? ["Position"] : []),
-                              ...(change?.local_properties.includes("visible") ? ["Visibility"] : []),
-                              ...(change?.local_properties.includes("visual_ref") ? ["Frame"] : []),
-                              ...(change?.animated ? ["Anim"] : []),
-                            ];
-                            return renderObjectRow(
-                              element,
-                              `${state.state_id}:${element.element_id}`,
-                              () => selectPlacementStateObject(state.state_id, element.element_id),
-                              badges,
-                              primary && selectedPlacementElement === element.element_id,
-                            );
-                          })}
+                )}
+              </section>
+              <section className="hierarchy-branch states-branch">
+                <div className="hierarchy-branch-row">
+                  <button
+                    className="hierarchy-disclosure-control"
+                    type="button"
+                    aria-expanded={statesExpanded}
+                    aria-label={`${statesExpanded ? "Collapse" : "Expand"} States`}
+                    title={`${statesExpanded ? "Collapse" : "Expand"} States`}
+                    onClick={() => toggleHierarchyGroup(statesGroupId)}
+                  >
+                    <ChevronRight className={statesExpanded ? "expanded" : ""} size={14} aria-hidden="true" />
+                  </button>
+                  <button
+                    className="hierarchy-branch-select"
+                    type="button"
+                    onClick={() => toggleHierarchyGroup(statesGroupId)}
+                  >
+                    <Network size={15} aria-hidden="true" />
+                    <span>
+                      <strong>States</strong>
+                      <small>Local object changes</small>
+                    </span>
+                    <code>{scene.states?.length ?? 0}</code>
+                  </button>
+                </div>
+                {statesExpanded && <div className="hierarchy-nested-branches">
+                  {(scene.states ?? []).map((state) => {
+                    const projection = ownership?.states[state.state_id] ?? null;
+                    const changes = projection?.changes ?? {};
+                    const resolvedById = new Map(
+                      (projection?.resolved_elements ?? []).map((element) => [element.element_id, element]),
+                    );
+                    const changedElements = elements
+                      .filter((element) => changes[element.element_id] !== undefined)
+                      .map((element) => resolvedById.get(element.element_id) ?? element);
+                    const selected = sceneSelected && (
+                      workspaceMode === "placement"
+                        ? placementEditStateIds.includes(state.state_id)
+                        : sceneSelection.kind === "state" && sceneSelection.id === state.state_id
+                    );
+                    const primary = sceneSelected
+                      && workspaceMode === "placement"
+                      && placementStateId === state.state_id;
+                    const active = preview?.scene.scene_id === scene.scene_id && preview.scene.state_id === state.state_id;
+                    const stateGroupId = `${scene.scene_id}:state:${state.state_id}`;
+                    const stateExpanded = !collapsedHierarchyIds.includes(stateGroupId);
+                    return (
+                      <section className="hierarchy-branch state-branch" key={state.state_id}>
+                        <div className="hierarchy-branch-row">
+                          <button
+                            className="hierarchy-disclosure-control"
+                            type="button"
+                            aria-expanded={stateExpanded}
+                            aria-label={`${stateExpanded ? "Collapse" : "Expand"} ${state.display_name}`}
+                            title={`${stateExpanded ? "Collapse" : "Expand"} ${state.display_name}`}
+                            onClick={() => toggleHierarchyGroup(stateGroupId)}
+                          >
+                            <ChevronRight className={stateExpanded ? "expanded" : ""} size={14} aria-hidden="true" />
+                          </button>
+                          <button
+                            className={`hierarchy-branch-select ${selected ? "selected" : ""}`}
+                            type="button"
+                            aria-selected={selected}
+                            aria-current={active ? "step" : undefined}
+                            onClick={(event) => openHierarchyState(scene, state, event)}
+                          >
+                            <span className="hierarchy-state-icon">
+                              <Network size={15} aria-hidden="true" />
+                              {active && (
+                                <span className="hierarchy-runtime-indicator" title="Emulator active" aria-label="Emulator active" />
+                              )}
+                            </span>
+                            <span>
+                              <strong>{state.display_name}</strong>
+                              <small>
+                                {active && primary
+                                  ? "Emulator active / Placement preview"
+                                  : active
+                                    ? "Emulator active"
+                                    : primary
+                                      ? "Placement preview"
+                                      : state.state_id}
+                              </small>
+                            </span>
+                            <span className="hierarchy-state-meta">
+                              {primary && (
+                                <span className="hierarchy-placement-indicator" title="Placement preview" aria-label="Placement preview">
+                                  <Eye size={13} aria-hidden="true" />
+                                </span>
+                              )}
+                              <code>{changedElements.length}</code>
+                            </span>
+                          </button>
+                          <button
+                            className="hierarchy-emulator-load"
+                            type="button"
+                            disabled={!projectValid || busy !== null}
+                            aria-label={`Load ${state.display_name} in emulator`}
+                            title={`Load ${state.display_name} in emulator`}
+                            onClick={() => void startPreview(scene.scene_id, {
+                              stateId: state.state_id,
+                              updateSelection: false,
+                            })}
+                          >
+                            <MonitorDot size={15} aria-hidden="true" />
+                          </button>
                         </div>
-                      )}
-                    </section>
-                  );
-                })}
-              </>
-            )}
-          </div>
-        )}
-      </details>
-    );
-  };
+                        {stateExpanded && changedElements.length > 0 && (
+                          <div className="placement-object-children">
+                            {changedElements.map((element) => {
+                              const change = changes[element.element_id];
+                              const badges = [
+                                ...(change?.local_properties.includes("position") ? ["Position"] : []),
+                                ...(change?.local_properties.includes("visible") ? ["Visibility"] : []),
+                                ...(change?.local_properties.includes("visual_ref") ? ["Frame"] : []),
+                                ...(change?.animated ? ["Anim"] : []),
+                              ];
+                              return renderObjectRow(
+                                element,
+                                `${scene.scene_id}:${state.state_id}:${element.element_id}`,
+                                () => void openHierarchyPlacementTarget(scene, state.state_id, element.element_id),
+                                badges,
+                                sceneSelected && primary && selectedPlacementElement === element.element_id,
+                              );
+                            })}
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })}
+                </div>}
+              </section>
+              {(scene.variables?.length ?? 0) > 0 && (
+                <section className="hierarchy-branch variables-branch">
+                  <div className="hierarchy-branch-row">
+                    <button
+                      className="hierarchy-disclosure-control"
+                      type="button"
+                      aria-expanded={variablesExpanded}
+                      aria-label={`${variablesExpanded ? "Collapse" : "Expand"} Variables`}
+                      title={`${variablesExpanded ? "Collapse" : "Expand"} Variables`}
+                      onClick={() => toggleHierarchyGroup(variablesGroupId)}
+                    >
+                      <ChevronRight className={variablesExpanded ? "expanded" : ""} size={14} aria-hidden="true" />
+                    </button>
+                    <button
+                      className="hierarchy-branch-select"
+                      type="button"
+                      onClick={() => toggleHierarchyGroup(variablesGroupId)}
+                    >
+                      <Type size={15} aria-hidden="true" />
+                      <span>
+                        <strong>Variables</strong>
+                        <small>Scene-local data</small>
+                      </span>
+                      <code>{scene.variables?.length ?? 0}</code>
+                    </button>
+                  </div>
+                  {variablesExpanded && <div className="hierarchy-reference-rows">
+                    {scene.variables?.map((variable) => (
+                      <button
+                        className="scene-reference-row"
+                        key={variable.variable_id}
+                        type="button"
+                        onClick={() => void openHierarchyVariable(scene)}
+                      >
+                        <Type size={14} aria-hidden="true" />
+                        <span>
+                          <strong>{variable.variable_id}</strong>
+                          <small>{variable.value_type}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </div>}
+                </section>
+              )}
+            </div>}
+          </section>
+        );
+      })}
+    </nav>
+  );
   const renderPlacementInspector = () => {
     const elements = [...effectivePlacementElements].sort((left, right) => left.z_order - right.z_order);
     const selectedElement = selectedPlacementElement === null
@@ -4534,27 +4954,10 @@ export default function App() {
                     Add scene
                   </button>
                 )}
-                <nav className="scene-list" aria-label="Project scenes">
-                  {scenes.map((scene) => (
-                    <button
-                      key={scene.scene_id}
-                      className={`scene-row ${selectedScene === scene.scene_id ? "selected" : ""}`}
-                      onClick={() => void startPreview(scene.scene_id)}
-                    >
-                      <FileCode2 size={16} aria-hidden="true" />
-                      <span>
-                        <strong>{scene.display_name}</strong>
-                        <small>{scene.scene_type}</small>
-                      </span>
-                      <ChevronRight size={15} aria-hidden="true" />
-                    </button>
-                  ))}
-                </nav>
+                {renderSceneHierarchy()}
               </details>
             </>
           )}
-
-          {workspaceMode === "placement" && renderPlacementObjectHierarchy()}
         </aside>
 
         <div
@@ -4677,12 +5080,7 @@ export default function App() {
               selected={sceneSelection}
               physicalEventKinds={service?.state_scene_presentation.logical_input_events ?? ["press"]}
               peepOSTriggers={service?.state_scene_graph.peepos_trigger_catalog ?? []}
-              onSelect={(selection) => {
-                setSceneSelection(selection);
-                if (selection.kind === "state" && selectedSceneDocument !== null) {
-                  void startPreview(selectedSceneDocument.scene_id, { stateId: selection.id });
-                }
-              }}
+              onSelect={setSceneSelection}
               onCreateState={(sceneId, x, y) => {
                 void createState(sceneId, x, y);
               }}
@@ -4795,6 +5193,7 @@ export default function App() {
               editor={project?.document?.project?.editor}
               selection={sceneSelection}
               onSelect={setSceneSelection}
+              onPreviewState={(sceneId, stateId) => startPreview(sceneId, { stateId, updateSelection: false })}
               onRenameState={renameState}
               onSetEntryState={setEntryState}
               onDeleteState={deleteState}
@@ -4802,12 +5201,26 @@ export default function App() {
               onSetRouteSceneTarget={setRouteSceneTarget}
               onSetSceneExitTarget={setSceneExitTarget}
               onSetRouteGuard={setRouteGuard}
+              onAddRouteGuard={addRouteGuard}
+              onDeleteRouteGuard={deleteRouteGuard}
+              onMoveRouteGuard={moveRouteGuard}
               onSetRouteAction={setRouteAction}
               onAddRouteAction={addRouteAction}
+              onDeleteRouteAction={deleteRouteAction}
+              onMoveRouteAction={moveRouteAction}
+              onAddVariable={addVariable}
+              onUpdateVariable={updateVariable}
+              onDeleteVariable={deleteVariable}
               onResetRouteLayout={(sceneId, routeId, sourceState) =>
                 setStateRouteLayout(sceneId, routeId, sourceState, [], null, null)}
+              placementOwnership={project?.placement_ownership ?? null}
+              assets={assets}
               audioCues={audioCues}
+              variableLimit={service?.state_scene_graph.limits.variables ?? 0}
+              guardLimit={service?.state_scene_graph.limits.guards_per_route ?? 0}
+              actionLimit={service?.state_scene_graph.limits.actions_per_route ?? 0}
               canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
+              canPreview={projectValid && busy === null}
             />
           )}
 

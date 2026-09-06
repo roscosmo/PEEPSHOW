@@ -3340,6 +3340,44 @@ class AuthoringServiceTests(unittest.TestCase):
         action = next(route for route in changed["document"]["scenes"][0]["routes"] if route["route_id"] == "center_to_right")["actions"][0]
         self.assertEqual({"kind": "request_render"}, action)
 
+    def test_route_action_add_resolves_scene_placement_for_target_state(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "route.action.add",
+                            "scene_id": "state_demo",
+                            "route_id": "center_to_right",
+                            "action_index": 0,
+                            "action": {
+                                "kind": "set_element_visibility",
+                                "element_ref": "cursor",
+                                "visible": True,
+                            },
+                        }
+                    ],
+                },
+            )
+        )
+        route = next(
+            route
+            for route in changed["document"]["scenes"][0]["routes"]
+            if route["route_id"] == "center_to_right"
+        )
+        self.assertEqual(
+            {
+                "kind": "set_element_visibility",
+                "element_ref": "cursor",
+                "visible": True,
+            },
+            route["actions"][0],
+        )
+
     def test_route_set_action_rejects_invalid_fields(self) -> None:
         service = AuthoringService()
         loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
