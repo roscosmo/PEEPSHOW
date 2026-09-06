@@ -214,6 +214,7 @@ export type GraphSceneReferenceNode = {
 export type GraphPackageEntryNode = {
   id: "package-entry";
   targetScene: string;
+  outputSide: StateGraphExitSide;
   x: number;
   y: number;
 };
@@ -1508,7 +1509,7 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
   const entryEndpoint: GraphSceneEndpointNode = {
     id: entryNodeId,
     kind: "entry",
-    label: "Scene entry",
+    label: scene?.display_name ?? "Scene entry",
     detail: stateLabels.get(entryState ?? "") ?? entryState ?? "No entry state",
     targetState: entryState ?? undefined,
     declared: true,
@@ -1721,12 +1722,22 @@ export function buildSceneFlowGraphModel(
   const savedPackageEntry = editor?.scene_flow?.package_entry;
   const packageEntry = entryNode === undefined
     ? undefined
-    : {
-        id: "package-entry" as const,
-        targetScene: entryNode.id,
-        x: savedPackageEntry?.x ?? entryNode.x - 190,
-        y: savedPackageEntry?.y ?? entryNode.y + 96,
-      };
+    : (() => {
+        const x = savedPackageEntry?.x ?? entryNode.x - 190;
+        const y = savedPackageEntry?.y ?? entryNode.y + 96;
+        const deltaX = entryNode.x - x;
+        const deltaY = entryNode.y - y;
+        const outputSide: StateGraphExitSide = Math.abs(deltaX) >= Math.abs(deltaY)
+          ? deltaX >= 0 ? "right" : "left"
+          : deltaY >= 0 ? "bottom" : "top";
+        return {
+          id: "package-entry" as const,
+          targetScene: entryNode.id,
+          outputSide,
+          x,
+          y,
+        };
+      })();
 
   return { nodes, references, packageEntry, edges };
 }

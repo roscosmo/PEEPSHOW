@@ -1129,7 +1129,7 @@ function buildStateGraphModel(scene, editor) {
     const entryEndpoint = {
         id: entryNodeId,
         kind: "entry",
-        label: "Scene entry",
+        label: scene?.display_name ?? "Scene entry",
         detail: stateLabels.get(entryState ?? "") ?? entryState ?? "No entry state",
         targetState: entryState ?? undefined,
         declared: true,
@@ -1326,11 +1326,21 @@ function buildSceneFlowGraphModel(scenes, entrySceneId, editor) {
     const savedPackageEntry = editor?.scene_flow?.package_entry;
     const packageEntry = entryNode === undefined
         ? undefined
-        : {
-            id: "package-entry",
-            targetScene: entryNode.id,
-            x: savedPackageEntry?.x ?? entryNode.x - 190,
-            y: savedPackageEntry?.y ?? entryNode.y + 96,
-        };
+        : (() => {
+            const x = savedPackageEntry?.x ?? entryNode.x - 190;
+            const y = savedPackageEntry?.y ?? entryNode.y + 96;
+            const deltaX = entryNode.x - x;
+            const deltaY = entryNode.y - y;
+            const outputSide = Math.abs(deltaX) >= Math.abs(deltaY)
+                ? deltaX >= 0 ? "right" : "left"
+                : deltaY >= 0 ? "bottom" : "top";
+            return {
+                id: "package-entry",
+                targetScene: entryNode.id,
+                outputSide,
+                x,
+                y,
+            };
+        })();
     return { nodes, references, packageEntry, edges };
 }

@@ -9,6 +9,7 @@ import {
   Position,
   ReactFlow,
   applyNodeChanges,
+  getSmoothStepPath,
   type Connection,
   type Edge,
   type EdgeProps,
@@ -41,6 +42,7 @@ import {
   Plus,
   Route,
   RotateCcw,
+  Triangle,
   Trash2,
   X,
   Volume2,
@@ -846,11 +848,35 @@ type SceneEndpointNodeData = {
 
 function SceneEndpointNode({ data, selected }: NodeProps<Node<SceneEndpointNodeData>>) {
   const { endpoint, canEdit, onSelect } = data;
+  if (endpoint.kind === "system") {
+    return (
+      <div
+        className={`state-scene-endpoint system ${selected ? "selected" : ""}`}
+        role="button"
+        tabIndex={0}
+        onClick={() => onSelect(endpoint)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect(endpoint);
+          }
+        }}
+      >
+        <Handle id="system-exit-in" type="target" position={Position.Left} isConnectable={canEdit} />
+        <span>System action</span>
+        <strong>{endpoint.label}</strong>
+        <small>{endpoint.detail}</small>
+      </div>
+    );
+  }
+  const isEntry = endpoint.kind === "entry";
   return (
     <div
-      className={`state-scene-endpoint ${endpoint.kind} ${selected ? "selected" : ""}`}
+      className={`state-scene-endpoint boundary ${endpoint.kind} ${selected ? "selected" : ""}`}
       role="button"
       tabIndex={0}
+      aria-label={`${isEntry ? "Scene entry" : "Scene exit"}: ${endpoint.label}. ${endpoint.detail}`}
+      title={`${isEntry ? "Scene entry" : "Scene exit"}: ${endpoint.detail}`}
       onClick={() => onSelect(endpoint)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -859,19 +885,27 @@ function SceneEndpointNode({ data, selected }: NodeProps<Node<SceneEndpointNodeD
         }
       }}
     >
-      {endpoint.kind === "entry" ? (
-        <Handle id="scene-entry-out" type="source" position={Position.Right} isConnectable={canEdit} />
+      <span className="scene-boundary-direction" aria-hidden="true">
+        <Triangle size={36} strokeWidth={1.5} fill="currentColor" />
+      </span>
+      {isEntry ? (
+        <Handle
+          className="scene-boundary-local-handle"
+          id="scene-entry-out"
+          type="source"
+          position={Position.Right}
+          isConnectable={canEdit}
+        />
       ) : (
         <Handle
-          id={endpoint.kind === "system" ? "system-exit-in" : "scene-exit-in"}
+          className="scene-boundary-local-handle"
+          id="scene-exit-in"
           type="target"
           position={Position.Left}
           isConnectable={canEdit}
         />
       )}
-      <span>{endpoint.kind === "entry" ? "Scene entry" : endpoint.kind === "system" ? "System action" : "Scene exit"}</span>
       <strong>{endpoint.label}</strong>
-      <small>{endpoint.detail}</small>
     </div>
   );
 }
@@ -1601,10 +1635,72 @@ function StateTransitionEdge({
   );
 }
 
-const STATE_EDGE_TYPES = { stateTransition: StateTransitionEdge };
+type GradientTransitionEdgeData = {
+  tone?: "blue" | "green";
+};
+
+function GradientTransitionEdge({
+  data,
+  id,
+  markerEnd,
+  selected,
+  sourcePosition,
+  sourceX,
+  sourceY,
+  style,
+  targetPosition,
+  targetX,
+  targetY,
+}: EdgeProps) {
+  const [path] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+    borderRadius: 10,
+  });
+  const tone = (data as GradientTransitionEdgeData | undefined)?.tone ?? "blue";
+  const gradientId = `gradient-transition-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+  const startColor = tone === "green"
+    ? selected ? "#69db7c" : "#8ce99a"
+    : selected ? "#4dabf7" : "#74c0fc";
+  const endColor = tone === "green"
+    ? selected ? "#2b8a3e" : "#2f9e44"
+    : selected ? "#1864ab" : "#1971c2";
+  return (
+    <>
+      <defs>
+        <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}>
+          <stop offset="0%" stopColor={startColor} />
+          <stop offset="100%" stopColor={endColor} />
+        </linearGradient>
+      </defs>
+      <BaseEdge
+        id={id}
+        path={path}
+        markerEnd={markerEnd}
+        style={{
+          ...style,
+          stroke: `url(#${gradientId})`,
+          strokeDasharray: "10 8",
+          strokeLinecap: "round",
+          strokeLinejoin: "round",
+        }}
+      />
+    </>
+  );
+}
+
+const STATE_EDGE_TYPES = {
+  gradientTransition: GradientTransitionEdge,
+  stateTransition: StateTransitionEdge,
+};
 
 type SceneCardNodeData = {
   graphNode: GraphSceneNode;
+  entryActive: boolean;
   thumbnail: Framebuffer | null;
   targetScenes: SceneDocument[];
   selectedSceneExitId: string | null;
@@ -1620,6 +1716,7 @@ type SceneCardNodeData = {
 function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
   const {
     graphNode,
+    entryActive,
     targetScenes,
     canEdit,
     onSelectScene,
@@ -1642,7 +1739,7 @@ function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
 
   return (
     <div
-      className={`scene-card-node ${graphNode.isEntry ? "entry" : ""} ${selected ? "selected" : ""}`}
+      className={`scene-card-node ${entryActive ? "entry-active" : ""} ${selected ? "selected" : ""}`}
       role="button"
       tabIndex={0}
       onClick={() => onSelectScene(graphNode.id)}
@@ -1744,7 +1841,22 @@ type PackageEntryNodeData = {
   onSelect: () => void;
 };
 
+const SCENE_FLOW_HANDLE_POSITION: Record<StateGraphExitSide, Position> = {
+  top: Position.Top,
+  right: Position.Right,
+  bottom: Position.Bottom,
+  left: Position.Left,
+};
+
 function PackageEntryNode({ data, selected }: NodeProps<Node<PackageEntryNodeData>>) {
+  const outputSide = data.graphNode.outputSide;
+  const updateNodeInternals = useUpdateNodeInternals();
+  useEffect(() => {
+    const animationFrame = window.requestAnimationFrame(() => {
+      updateNodeInternals(data.graphNode.id);
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [data.graphNode.id, outputSide, updateNodeInternals]);
   return (
     <div
       className={`package-entry-node ${selected ? "selected" : ""}`}
@@ -1761,13 +1873,12 @@ function PackageEntryNode({ data, selected }: NodeProps<Node<PackageEntryNodeDat
         }
       }}
     >
-      <strong>Package<br />Entry</strong>
-      <span className="package-entry-stem" aria-hidden="true" />
+      <strong>Start</strong>
       <Handle
-        className="package-entry-handle"
+        className={`package-entry-handle ${outputSide}`}
         id="package-entry-out"
         type="source"
-        position={Position.Right}
+        position={SCENE_FLOW_HANDLE_POSITION[outputSide]}
         isConnectable={data.canEdit}
       />
     </div>
@@ -1784,9 +1895,10 @@ function SceneReferenceNode({ data, selected }: NodeProps<Node<SceneReferenceNod
   const { graphNode } = data;
   return (
     <div
-      className={`scene-reference-node ${selected ? "selected" : ""}`}
+      className={`state-scene-endpoint boundary exit scene-reference-node ${selected ? "selected" : ""}`}
       role="button"
       tabIndex={0}
+      aria-label={`Go to ${graphNode.label.replace(/^Go to /, "")}`}
       onClick={(event) => {
         event.stopPropagation();
         data.onSelect(graphNode.id, graphNode.targetScene);
@@ -1798,11 +1910,12 @@ function SceneReferenceNode({ data, selected }: NodeProps<Node<SceneReferenceNod
         }
       }}
     >
-      <span className="scene-reference-kicker">Go to</span>
+      <span className="scene-boundary-direction" aria-hidden="true">
+        <Triangle size={36} strokeWidth={1.5} fill="currentColor" />
+      </span>
       <strong>{graphNode.label.replace(/^Go to /, "")}</strong>
-      <span className="scene-reference-stem" aria-hidden="true" />
       <Handle
-        className="scene-reference-handle"
+        className="scene-boundary-local-handle scene-reference-handle"
         id="reference-entry"
         type="target"
         position={Position.Left}
@@ -1817,6 +1930,7 @@ const SCENE_NODE_TYPES = {
   sceneCard: SceneCardNode,
   sceneReference: SceneReferenceNode,
 };
+const SCENE_EDGE_TYPES = { gradientTransition: GradientTransitionEdge };
 
 function sameNodeSet(left: Node[], right: Node[]) {
   if (left.length !== right.length) {
@@ -2232,11 +2346,33 @@ export function StateGraphView({
       const width = activeNode.measured?.width ?? activeNode.width ?? 300;
       const height = activeNode.measured?.height ?? activeNode.height ?? 268;
       const viewport = instance.getViewport();
-      void instance.setCenter(
-        activeNode.position.x + width / 2,
-        activeNode.position.y + height / 2,
-        { zoom: viewport.zoom, duration: 260 },
-      );
+      const flowElement = document.querySelector<HTMLElement>(".state-graph-flow");
+      if (flowElement === null) {
+        return;
+      }
+      const padding = 72;
+      const nodeLeft = activeNode.position.x * viewport.zoom + viewport.x;
+      const nodeTop = activeNode.position.y * viewport.zoom + viewport.y;
+      const nodeRight = nodeLeft + width * viewport.zoom;
+      const nodeBottom = nodeTop + height * viewport.zoom;
+      let shiftX = 0;
+      let shiftY = 0;
+      if (nodeLeft < padding) {
+        shiftX = padding - nodeLeft;
+      } else if (nodeRight > flowElement.clientWidth - padding) {
+        shiftX = flowElement.clientWidth - padding - nodeRight;
+      }
+      if (nodeTop < padding) {
+        shiftY = padding - nodeTop;
+      } else if (nodeBottom > flowElement.clientHeight - padding) {
+        shiftY = flowElement.clientHeight - padding - nodeBottom;
+      }
+      if (shiftX !== 0 || shiftY !== 0) {
+        void instance.setViewport(
+          { x: viewport.x + shiftX, y: viewport.y + shiftY, zoom: viewport.zoom },
+          { duration: 220 },
+        );
+      }
     });
     return () => window.cancelAnimationFrame(animationFrame);
   }, [activeStateId, scene?.scene_id]);
@@ -2361,12 +2497,13 @@ export function StateGraphView({
         target: graph.entryEdge.target,
         sourceHandle: "scene-entry-out",
         targetHandle: stateEntryPortId(graph.entryEdge.targetHandle, graph.entryEdge.targetSide),
-        type: "smoothstep",
+        type: "gradientTransition",
         reconnectable: "target" as const,
         selectable: canEdit,
         focusable: canEdit,
+        data: { tone: "green" },
         markerEnd: { type: MarkerType.ArrowClosed, color: "#2f9e44" },
-        style: { stroke: "#2f9e44", strokeWidth: 2 },
+        style: { strokeWidth: 4 },
       }];
       return [...transitionEdges, ...entryEdge];
     },
@@ -2393,6 +2530,7 @@ export function StateGraphView({
 
   return (
     <ReactFlow
+      className="state-graph-flow"
       nodes={flowNodes}
       edges={edges}
       edgeTypes={STATE_EDGE_TYPES}
@@ -2684,12 +2822,17 @@ export function SceneFlowView({
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
   const baseNodes: Node[] = useMemo(
     () => {
+      const activeEntrySceneIds = new Set(graph.edges.map((edge) => edge.targetScene));
+      if (graph.packageEntry !== undefined) {
+        activeEntrySceneIds.add(graph.packageEntry.targetScene);
+      }
       const sceneNodes = graph.nodes.map((node) => ({
         id: node.id,
         type: "sceneCard",
         position: { x: node.x, y: node.y },
         data: {
           graphNode: node,
+          entryActive: activeEntrySceneIds.has(node.id),
           thumbnail: thumbnails[node.id] ?? null,
           targetScenes: scenes.filter((scene) => scene.scene_type === "STATE_SCENE" && scene.scene_id !== node.id),
           selectedSceneExitId,
@@ -2788,22 +2931,22 @@ export function SceneFlowView({
         target: edge.target,
         sourceHandle: edge.sceneExit.id,
         targetHandle: edge.referenceId === undefined ? "entry" : "reference-entry",
-        type: "smoothstep",
+        type: "gradientTransition",
         selected: edge.sceneExit.sceneExitId !== undefined
           ? selectedSceneExitId === edge.sceneExit.sceneExitId
           : selectedRouteId === edge.sceneExit.routeId,
         data: {
+          tone: "blue",
           route_id: edge.sceneExit.routeId,
           scene_exit_id: edge.sceneExit.sceneExitId,
           source_scene_id: edge.source,
           reference_id: edge.referenceId,
         },
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#51645b" },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#1971c2" },
         style: {
-          stroke: "#51645b",
           strokeWidth: (edge.sceneExit.sceneExitId !== undefined
             ? selectedSceneExitId === edge.sceneExit.sceneExitId
-            : selectedRouteId === edge.sceneExit.routeId) ? 2.8 : 1.7,
+            : selectedRouteId === edge.sceneExit.routeId) ? 4.8 : 4,
         },
       }));
       const packageEdge: Edge[] = graph.packageEntry === undefined ? [] : [{
@@ -2812,15 +2955,13 @@ export function SceneFlowView({
         target: graph.packageEntry.targetScene,
         sourceHandle: "package-entry-out",
         targetHandle: "entry",
-        type: "smoothstep",
+        type: "gradientTransition",
         selectable: true,
         selected: packageEntrySelected,
-        data: { package_entry: true },
+        data: { package_entry: true, tone: "green" },
         markerEnd: { type: MarkerType.ArrowClosed, color: "#2f9e44" },
         style: {
-          stroke: "#2f9e44",
-          strokeDasharray: "7 5",
-          strokeWidth: packageEntrySelected ? 2.8 : 1.8,
+          strokeWidth: packageEntrySelected ? 4.8 : 4,
         },
       }];
       return [...packageEdge, ...sceneEdges];
@@ -2943,6 +3084,7 @@ export function SceneFlowView({
     <ReactFlow
       nodes={nodes}
       edges={edges}
+      edgeTypes={SCENE_EDGE_TYPES}
       nodeTypes={SCENE_NODE_TYPES}
       fitViewOptions={{ padding: 0.28, maxZoom: 1 }}
       onInit={(instance) => {

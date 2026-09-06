@@ -28,7 +28,15 @@ The active node-design reference may be a shared Excalidraw board. When a board
 is used, the designer should attach or export the `.excalidraw` source, a PNG,
 or both before implementation starts. The current live reference is:
 
-- `docs/11 Development Tools/Peep Studio Design/Peep-Studio_Design-notes.excalidraw`
+- [Peep Studio design index](<Peep Studio Design/Peep Studio Design.md>)
+- canonical board:
+  `docs/11 Development Tools/Peep Studio Design/Peep-Studio_Design-notes.excalidraw`
+
+The design index is a living summary of approved visual semantics,
+implementation status, and unresolved layout work. A drawing change that alters
+those decisions must update the index and relevant behavior contract before the
+change is implemented. The summary should not duplicate every coordinate or
+exploratory mark from the board.
 
 Peep Studio work should treat that drawing as the visual design source and these
 docs as the behavior source. Before changing graph interaction patterns, the
@@ -102,6 +110,12 @@ Peep Studio should present local STATE logic as dynamic node cards:
   Selecting a scene instead launches from its declared entry state;
 - advanced/internal route IDs remain available for debugging, but are not shown
   on the node face by default.
+- Local Logic Scene Entry and Scene Exit use compact grey boundary cards. Scene
+  Entry has a non-connectable green directional indicator and one red circular
+  output into local logic. Scene Exit has one green circular local input and a
+  non-connectable red directional indicator. The board currently uses diamonds
+  as directional placeholders; a pointed or triangular treatment is preferred
+  because these indicators are not sockets.
 
 Semantic transitions still compile through the Python authoring service as
 bounded routes, guards, actions, and target states. React must not create
@@ -284,8 +298,10 @@ Scene-flow mode:
   scene-exit stems and nodes, and a dotted **Add new exit** row;
 - scene cards do not show an internal-state count badge. State counts become
   misleading as prefab-backed authoring replaces exposed low-level states;
-- Package Entry is a standalone movable graph node with exactly one output.
-  Connecting that output to a scene entry changes the package entry scene;
+- Package Entry is a standalone movable green **Start** node with exactly one
+  red output. Its visual output may use any side chosen by automatic routing or
+  later manual refinement. Connecting it to a scene entry changes the package
+  entry scene;
 - reusable **Go to <scene>** nodes are editor-only visual references to an
   existing scene. Multiple scene exits may connect to one reference so a
   backward semantic jump can still read left-to-right in the storyboard;

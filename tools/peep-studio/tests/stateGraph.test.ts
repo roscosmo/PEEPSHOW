@@ -599,6 +599,7 @@ const localWithSceneExit = buildStateGraphModel(menuScene);
 assert.equal(localWithSceneExit.nodes.find((node) => node.id === "idle")?.outputs.length, 2);
 assert.equal(localWithSceneExit.nodes.find((node) => node.id === "idle")?.outputs.some((output) => output.targetScene === "game"), true);
 assert.equal(localWithSceneExit.endpoints.some((endpoint) => endpoint.sceneExitId === "to_game"), true);
+assert.equal(localWithSceneExit.endpoints.find((endpoint) => endpoint.kind === "entry")?.label, "Menu");
 assert.equal(localWithSceneExit.edges.length, 2);
 assert.equal(localWithSceneExit.edges.some((edge) => edge.target === "scene-exit-to_game"), true);
 assert.equal(sceneFlow.nodes.length, 3);
@@ -610,6 +611,7 @@ assert.equal(sceneFlow.edges.length, 2);
 assert.equal(sceneFlow.edges.some((edge) => edge.source === "menu" && edge.target === "game"), true);
 assert.equal(sceneFlow.edges.some((edge) => edge.source === "summary" && edge.target === "menu"), true);
 assert.equal(sceneFlow.packageEntry?.targetScene, "menu");
+assert.equal(sceneFlow.packageEntry?.outputSide, "right");
 
 const sceneFlowWithReference = buildSceneFlowGraphModel([
   menuScene,
@@ -649,6 +651,7 @@ const sceneFlowWithReference = buildSceneFlowGraphModel([
 assert.deepEqual(sceneFlowWithReference.packageEntry, {
   id: "package-entry",
   targetScene: "menu",
+  outputSide: "right",
   x: -180,
   y: 70,
 });
@@ -661,3 +664,16 @@ assert.equal(
   )),
   true,
 );
+
+const packageEntrySideCases = [
+  { position: { x: -300, y: 0 }, expected: "right" },
+  { position: { x: 300, y: 0 }, expected: "left" },
+  { position: { x: 0, y: -300 }, expected: "bottom" },
+  { position: { x: 0, y: 300 }, expected: "top" },
+] as const;
+for (const sideCase of packageEntrySideCases) {
+  const model = buildSceneFlowGraphModel([menuScene], "menu", {
+    scene_flow: { package_entry: sideCase.position },
+  });
+  assert.equal(model.packageEntry?.outputSide, sideCase.expected);
+}

@@ -501,6 +501,7 @@ const localWithSceneExit = (0, stateGraph_1.buildStateGraphModel)(menuScene);
 strict_1.default.equal(localWithSceneExit.nodes.find((node) => node.id === "idle")?.outputs.length, 2);
 strict_1.default.equal(localWithSceneExit.nodes.find((node) => node.id === "idle")?.outputs.some((output) => output.targetScene === "game"), true);
 strict_1.default.equal(localWithSceneExit.endpoints.some((endpoint) => endpoint.sceneExitId === "to_game"), true);
+strict_1.default.equal(localWithSceneExit.endpoints.find((endpoint) => endpoint.kind === "entry")?.label, "Menu");
 strict_1.default.equal(localWithSceneExit.edges.length, 2);
 strict_1.default.equal(localWithSceneExit.edges.some((edge) => edge.target === "scene-exit-to_game"), true);
 strict_1.default.equal(sceneFlow.nodes.length, 3);
@@ -512,6 +513,7 @@ strict_1.default.equal(sceneFlow.edges.length, 2);
 strict_1.default.equal(sceneFlow.edges.some((edge) => edge.source === "menu" && edge.target === "game"), true);
 strict_1.default.equal(sceneFlow.edges.some((edge) => edge.source === "summary" && edge.target === "menu"), true);
 strict_1.default.equal(sceneFlow.packageEntry?.targetScene, "menu");
+strict_1.default.equal(sceneFlow.packageEntry?.outputSide, "right");
 const sceneFlowWithReference = (0, stateGraph_1.buildSceneFlowGraphModel)([
     menuScene,
     {
@@ -549,6 +551,7 @@ const sceneFlowWithReference = (0, stateGraph_1.buildSceneFlowGraphModel)([
 strict_1.default.deepEqual(sceneFlowWithReference.packageEntry, {
     id: "package-entry",
     targetScene: "menu",
+    outputSide: "right",
     x: -180,
     y: 70,
 });
@@ -556,3 +559,15 @@ strict_1.default.equal(sceneFlowWithReference.references[0]?.label, "Go to Menu"
 strict_1.default.equal(sceneFlowWithReference.edges.some((edge) => (edge.source === "summary" &&
     edge.target === "go_to_menu" &&
     edge.targetScene === "menu")), true);
+const packageEntrySideCases = [
+    { position: { x: -300, y: 0 }, expected: "right" },
+    { position: { x: 300, y: 0 }, expected: "left" },
+    { position: { x: 0, y: -300 }, expected: "bottom" },
+    { position: { x: 0, y: 300 }, expected: "top" },
+];
+for (const sideCase of packageEntrySideCases) {
+    const model = (0, stateGraph_1.buildSceneFlowGraphModel)([menuScene], "menu", {
+        scene_flow: { package_entry: sideCase.position },
+    });
+    strict_1.default.equal(model.packageEntry?.outputSide, sideCase.expected);
+}

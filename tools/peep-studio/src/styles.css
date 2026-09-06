@@ -2467,16 +2467,6 @@ button:focus-visible {
   box-shadow: 0 3px 8px rgb(55 64 59 / 10%);
 }
 
-.state-scene-endpoint.entry {
-  border-color: #2b8a3e;
-  background: #ebfbee;
-}
-
-.state-scene-endpoint.exit {
-  border-color: #d97706;
-  background: #fff9db;
-}
-
 .state-scene-endpoint.system {
   border-color: #8b1e3f;
   background: #fff0f3;
@@ -2486,36 +2476,91 @@ button:focus-visible {
   box-shadow: 0 0 0 3px #175f8a, 0 3px 8px rgb(55 64 59 / 10%);
 }
 
-.state-scene-endpoint > span,
-.state-scene-endpoint > small {
+.state-scene-endpoint.system > span,
+.state-scene-endpoint.system > small {
   color: #59645e;
   font-size: 9px;
   font-weight: 800;
   text-transform: uppercase;
 }
 
-.state-scene-endpoint > strong {
+.state-scene-endpoint.system > strong {
   overflow-wrap: anywhere;
   font-size: 13px;
 }
 
-.state-scene-endpoint .react-flow__handle {
+.state-scene-endpoint.system .react-flow__handle {
   width: 11px;
   height: 11px;
   border: 2px solid #303733;
-  background: #fff;
-}
-
-.state-scene-endpoint.entry .react-flow__handle {
-  background: #40c057;
-}
-
-.state-scene-endpoint.exit .react-flow__handle {
-  background: #ff922b;
-}
-
-.state-scene-endpoint.system .react-flow__handle {
   background: #e03131;
+}
+
+.state-scene-endpoint.boundary {
+  width: 157px;
+  min-height: 57px;
+  place-items: center;
+  padding: 9px 22px;
+  border-color: #303733;
+  background: #ced4da;
+  text-align: center;
+}
+
+.state-scene-endpoint.boundary > strong {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.scene-boundary-direction {
+  position: absolute;
+  top: -18px;
+  z-index: 2;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  color: #40c057;
+  line-height: 0;
+  pointer-events: none;
+}
+
+.scene-boundary-direction svg {
+  display: block;
+  fill: currentcolor;
+  stroke: #303733;
+}
+
+.state-scene-endpoint.entry .scene-boundary-direction {
+  left: -14px;
+  transform: rotate(135deg);
+}
+
+.state-scene-endpoint.exit .scene-boundary-direction {
+  right: -14px;
+  color: #fa5252;
+  transform: rotate(45deg);
+}
+
+.state-scene-endpoint.boundary .scene-boundary-local-handle {
+  z-index: 3;
+  width: 13px;
+  height: 13px;
+  border: 2px solid #303733;
+  box-shadow: none;
+}
+
+.state-scene-endpoint.entry .scene-boundary-local-handle {
+  right: 0;
+  background: #fa5252;
+}
+
+.state-scene-endpoint.exit .scene-boundary-local-handle {
+  left: 0;
+  background: #40c057;
 }
 
 .scene-card-node {
@@ -2586,9 +2631,7 @@ button:focus-visible {
 
 .scene-entry-stem,
 .scene-exit-stem,
-.scene-new-exit-stem,
-.package-entry-stem,
-.scene-reference-stem {
+.scene-new-exit-stem {
   position: absolute;
   height: 2px;
   background: #2c312e;
@@ -2669,7 +2712,7 @@ button:focus-visible {
   background: #b2f2bb;
 }
 
-.scene-card-node.entry .scene-entry-handle {
+.scene-card-node.entry-active .scene-entry-handle {
   background: #40c057;
 }
 
@@ -2721,12 +2764,19 @@ button:focus-visible {
   border: 2px solid #2c312e;
   border-radius: 50%;
   background: #40c057;
-  color: #17221b;
+  color: #ffffff;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 850;
+  font-size: 24px;
+  font-weight: 900;
   text-align: center;
   text-transform: uppercase;
+}
+
+.package-entry-node > strong {
+  color: #ffffff;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1;
 }
 
 .package-entry-node.selected,
@@ -2735,64 +2785,43 @@ button:focus-visible {
   box-shadow: 0 0 0 3px rgb(23 95 138 / 20%);
 }
 
-.package-entry-stem {
-  top: 50%;
-  right: -30px;
-  width: 30px;
-}
-
 .package-entry-node .package-entry-handle {
-  right: -38px;
-  width: 15px;
-  height: 15px;
+  z-index: 3;
+  width: 18px;
+  height: 18px;
   background: #fa5252;
 }
 
-.scene-reference-node {
-  position: relative;
-  display: grid;
-  box-sizing: border-box;
-  width: 190px;
-  min-height: 72px;
-  align-content: center;
-  gap: 3px;
-  padding: 10px 16px 10px 34px;
-  border: 2px solid #2c312e;
-  border-radius: 8px;
-  background: #e9ecef;
-  color: #27302b;
-  cursor: pointer;
-  text-align: left;
+.package-entry-node .package-entry-handle.top {
+  top: 0;
+  right: auto;
+  bottom: auto;
+  left: 50%;
 }
 
-.scene-reference-kicker {
-  color: #617068;
-  font-size: 9px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.scene-reference-node strong {
-  overflow: hidden;
-  font-size: 14px;
-  font-weight: 850;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.scene-reference-stem {
+.package-entry-node .package-entry-handle.right {
   top: 50%;
-  left: -28px;
-  width: 28px;
+  right: 0;
+  bottom: auto;
+  left: auto;
 }
 
-.scene-reference-node .scene-reference-handle {
-  left: -38px;
-  width: 20px;
-  height: 34px;
-  border-radius: 999px;
-  background: #b2f2bb;
+.package-entry-node .package-entry-handle.bottom {
+  top: auto;
+  right: auto;
+  bottom: 0;
+  left: 50%;
+}
+
+.package-entry-node .package-entry-handle.left {
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  left: 0;
+}
+
+.scene-reference-node {
+  cursor: pointer;
 }
 
 .scene-exit-picker {
