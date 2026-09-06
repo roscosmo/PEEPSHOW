@@ -78,6 +78,7 @@ import {
   type StateTransitionLayout,
 } from "./stateGraph";
 import type {
+  AssetRecord,
   AudioCueRecord,
   EditorNodePosition,
   EditorRouteRail,
@@ -85,7 +86,9 @@ import type {
   Framebuffer,
   InputAction,
   PeepOSTriggerCapability,
+  PlacementOwnership,
   ProjectEditorData,
+  RenderElement,
   RenderModel,
   SceneDocument,
   SceneExitRecord,
@@ -3463,10 +3466,23 @@ export function SceneAuthoringInspector({
   onSetRouteSceneTarget,
   onSetSceneExitTarget,
   onSetRouteGuard,
+  onAddRouteGuard,
+  onDeleteRouteGuard,
+  onMoveRouteGuard,
   onSetRouteAction,
   onAddRouteAction,
+  onDeleteRouteAction,
+  onMoveRouteAction,
+  onAddVariable,
+  onUpdateVariable,
+  onDeleteVariable,
   onResetRouteLayout,
+  placementOwnership,
+  assets,
   audioCues,
+  variableLimit,
+  guardLimit,
+  actionLimit,
   canEdit,
 }: {
   scene: SceneDocument | null;
@@ -3488,6 +3504,14 @@ export function SceneAuthoringInspector({
     operator: string,
     value: number,
   ) => Promise<void>;
+  onAddRouteGuard: (
+    sceneId: string,
+    routeId: string,
+    guardIndex: number,
+    guard: Record<string, unknown>,
+  ) => Promise<void>;
+  onDeleteRouteGuard: (sceneId: string, routeId: string, guardIndex: number) => Promise<void>;
+  onMoveRouteGuard: (sceneId: string, routeId: string, guardIndex: number, targetIndex: number) => Promise<void>;
   onSetRouteAction: (
     sceneId: string,
     routeId: string,
@@ -3500,8 +3524,18 @@ export function SceneAuthoringInspector({
     actionIndex: number,
     action: Record<string, unknown>,
   ) => Promise<void>;
+  onDeleteRouteAction: (sceneId: string, routeId: string, actionIndex: number) => Promise<void>;
+  onMoveRouteAction: (sceneId: string, routeId: string, actionIndex: number, targetIndex: number) => Promise<void>;
+  onAddVariable: (sceneId: string, variable: StateVariable) => Promise<void>;
+  onUpdateVariable: (sceneId: string, variable: StateVariable) => Promise<void>;
+  onDeleteVariable: (sceneId: string, variableId: string) => Promise<void>;
   onResetRouteLayout: (sceneId: string, routeId: string, sourceState: string) => Promise<void>;
+  placementOwnership: PlacementOwnership | null;
+  assets: AssetRecord[];
   audioCues: AudioCueRecord[];
+  variableLimit: number;
+  guardLimit: number;
+  actionLimit: number;
   canEdit: boolean;
 }) {
   const variables = scene?.variables ?? [];
@@ -3550,12 +3584,23 @@ export function SceneAuthoringInspector({
           sceneExits={scene.scene_exits ?? []}
           inputActions={inputActions}
           variables={variables}
+          renderModels={renderModels}
+          waitingVisuals={waitingVisuals}
+          placementOwnership={placementOwnership}
+          assets={assets}
           audioCues={audioCues}
+          guardLimit={guardLimit}
+          actionLimit={actionLimit}
           onSetRouteTarget={onSetRouteTarget}
           onSetRouteSceneTarget={onSetRouteSceneTarget}
           onSetRouteGuard={onSetRouteGuard}
+          onAddRouteGuard={onAddRouteGuard}
+          onDeleteRouteGuard={onDeleteRouteGuard}
+          onMoveRouteGuard={onMoveRouteGuard}
           onSetRouteAction={onSetRouteAction}
           onAddRouteAction={onAddRouteAction}
+          onDeleteRouteAction={onDeleteRouteAction}
+          onMoveRouteAction={onMoveRouteAction}
           onResetRouteLayout={onResetRouteLayout}
           canEdit={canEdit}
         />
@@ -3596,6 +3641,11 @@ export function SceneAuthoringInspector({
           renderModels={renderModels}
           waitingVisuals={waitingVisuals}
           onSelect={onSelect}
+          variableLimit={variableLimit}
+          canEdit={canEdit}
+          onAddVariable={onAddVariable}
+          onUpdateVariable={onUpdateVariable}
+          onDeleteVariable={onDeleteVariable}
         />
       )}
     </>
@@ -3610,6 +3660,11 @@ function SceneOverview({
   renderModels,
   waitingVisuals,
   onSelect,
+  variableLimit,
+  canEdit,
+  onAddVariable,
+  onUpdateVariable,
+  onDeleteVariable,
 }: {
   scene: SceneDocument | null;
   states: StateRecord[];
@@ -3618,6 +3673,11 @@ function SceneOverview({
   renderModels: RenderModel[];
   waitingVisuals: WaitingVisual[];
   onSelect: (selection: SceneSelection) => void;
+  variableLimit: number;
+  canEdit: boolean;
+  onAddVariable: (sceneId: string, variable: StateVariable) => Promise<void>;
+  onUpdateVariable: (sceneId: string, variable: StateVariable) => Promise<void>;
+  onDeleteVariable: (sceneId: string, variableId: string) => Promise<void>;
 }) {
   if (scene === null) {
     return (
@@ -3664,18 +3724,15 @@ function SceneOverview({
 
       <section className="inspector-section">
         <h3><Variable size={14} aria-hidden="true" /> Variables</h3>
-        {variables.length === 0 ? (
-          <EmptyInspector>No variables in this scene.</EmptyInspector>
-        ) : (
-          <div className="record-list">
-            {variables.map((variable: StateVariable) => (
-              <button key={variable.variable_id} className="record-row" type="button">
-                <strong>{variable.variable_id}</strong>
-                <small>starts at {variable.initial}; allowed {variable.minimum} to {variable.maximum}</small>
-              </button>
-            ))}
-          </div>
-        )}
+        <VariableEditorList
+          sceneId={scene.scene_id}
+          variables={variables}
+          variableLimit={variableLimit}
+          canEdit={canEdit}
+          onAddVariable={onAddVariable}
+          onUpdateVariable={onUpdateVariable}
+          onDeleteVariable={onDeleteVariable}
+        />
       </section>
 
       <section className="inspector-section">
@@ -3730,6 +3787,239 @@ function SceneOverview({
         )}
       </section>
     </>
+  );
+}
+
+const VARIABLE_ID_PATTERN = /^[a-z][a-z0-9_.-]{0,63}$/;
+const INT32_MINIMUM = -2147483648;
+const INT32_MAXIMUM = 2147483647;
+
+function VariableEditorList({
+  sceneId,
+  variables,
+  variableLimit,
+  canEdit,
+  onAddVariable,
+  onUpdateVariable,
+  onDeleteVariable,
+}: {
+  sceneId: string;
+  variables: StateVariable[];
+  variableLimit: number;
+  canEdit: boolean;
+  onAddVariable: (sceneId: string, variable: StateVariable) => Promise<void>;
+  onUpdateVariable: (sceneId: string, variable: StateVariable) => Promise<void>;
+  onDeleteVariable: (sceneId: string, variableId: string) => Promise<void>;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [variableId, setVariableId] = useState("counter");
+  const [minimum, setMinimum] = useState(0);
+  const [initial, setInitial] = useState(0);
+  const [maximum, setMaximum] = useState(1);
+  const atLimit = variables.length >= variableLimit;
+  const duplicateId = variables.some((variable) => variable.variable_id === variableId);
+  const validRange = minimum <= initial && initial <= maximum;
+  const canAdd = canEdit
+    && !atLimit
+    && VARIABLE_ID_PATTERN.test(variableId)
+    && !duplicateId
+    && validRange;
+
+  useEffect(() => {
+    setAdding(false);
+    setVariableId("counter");
+    setMinimum(0);
+    setInitial(0);
+    setMaximum(1);
+  }, [sceneId]);
+
+  return (
+    <div className="variable-editor-list">
+      {variables.length === 0 && !adding && <EmptyInspector>No variables in this scene.</EmptyInspector>}
+      {variables.map((variable) => (
+        <VariableEditorRow
+          key={variable.variable_id}
+          sceneId={sceneId}
+          variable={variable}
+          canEdit={canEdit}
+          onUpdateVariable={onUpdateVariable}
+          onDeleteVariable={onDeleteVariable}
+        />
+      ))}
+      {adding ? (
+        <form
+          className="variable-editor-row variable-add-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!canAdd) {
+              return;
+            }
+            void onAddVariable(sceneId, {
+              variable_id: variableId,
+              value_type: "int32",
+              minimum,
+              initial,
+              maximum,
+            }).then(() => {
+              setAdding(false);
+              setVariableId("counter");
+              setMinimum(0);
+              setInitial(0);
+              setMaximum(1);
+            });
+          }}
+        >
+          <label className="variable-id-field">
+            <span>Internal name</span>
+            <input
+              value={variableId}
+              maxLength={64}
+              pattern="[a-z][a-z0-9_.-]{0,63}"
+              title="Use a lowercase ID beginning with a letter"
+              disabled={!canEdit}
+              onChange={(event) => setVariableId(event.target.value)}
+            />
+          </label>
+          <VariableRangeFields
+            minimum={minimum}
+            initial={initial}
+            maximum={maximum}
+            disabled={!canEdit}
+            onMinimum={setMinimum}
+            onInitial={setInitial}
+            onMaximum={setMaximum}
+          />
+          {!validRange && <div className="field-error">Minimum must be at or below the start value, and maximum at or above it.</div>}
+          {duplicateId && <div className="field-error">That variable already exists.</div>}
+          <div className="variable-form-actions">
+            <button className="button secondary" type="button" onClick={() => setAdding(false)}>Cancel</button>
+            <button className="button primary" type="submit" disabled={!canAdd}>Add variable</button>
+          </div>
+        </form>
+      ) : (
+        <button
+          className="button secondary logic-add-button"
+          type="button"
+          disabled={!canEdit || atLimit}
+          title={atLimit ? `This scene supports at most ${variableLimit} variables` : undefined}
+          onClick={() => setAdding(true)}
+        >
+          <Plus size={13} aria-hidden="true" />
+          Add variable
+        </button>
+      )}
+    </div>
+  );
+}
+
+function VariableEditorRow({
+  sceneId,
+  variable,
+  canEdit,
+  onUpdateVariable,
+  onDeleteVariable,
+}: {
+  sceneId: string;
+  variable: StateVariable;
+  canEdit: boolean;
+  onUpdateVariable: (sceneId: string, variable: StateVariable) => Promise<void>;
+  onDeleteVariable: (sceneId: string, variableId: string) => Promise<void>;
+}) {
+  const [minimum, setMinimum] = useState(variable.minimum);
+  const [initial, setInitial] = useState(variable.initial);
+  const [maximum, setMaximum] = useState(variable.maximum);
+  const validRange = minimum <= initial && initial <= maximum;
+  const changed = minimum !== variable.minimum || initial !== variable.initial || maximum !== variable.maximum;
+
+  useEffect(() => {
+    setMinimum(variable.minimum);
+    setInitial(variable.initial);
+    setMaximum(variable.maximum);
+  }, [variable.initial, variable.maximum, variable.minimum]);
+
+  return (
+    <form
+      className="variable-editor-row"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (canEdit && validRange && changed) {
+          void onUpdateVariable(sceneId, { ...variable, minimum, initial, maximum });
+        }
+      }}
+    >
+      <div className="variable-row-heading">
+        <strong>{displayVariableName(variable.variable_id)}</strong>
+        <code>{variable.variable_id}</code>
+        <button
+          className="icon-button danger"
+          type="button"
+          disabled={!canEdit}
+          title="Delete variable"
+          aria-label={`Delete ${displayVariableName(variable.variable_id)}`}
+          onClick={() => void onDeleteVariable(sceneId, variable.variable_id)}
+        >
+          <Trash2 size={13} aria-hidden="true" />
+        </button>
+      </div>
+      <VariableRangeFields
+        minimum={minimum}
+        initial={initial}
+        maximum={maximum}
+        disabled={!canEdit}
+        onMinimum={setMinimum}
+        onInitial={setInitial}
+        onMaximum={setMaximum}
+      />
+      {!validRange && <div className="field-error">Minimum must be at or below the start value, and maximum at or above it.</div>}
+      <button className="button secondary variable-save-button" type="submit" disabled={!canEdit || !validRange || !changed}>
+        Save range
+      </button>
+    </form>
+  );
+}
+
+function VariableRangeFields({
+  minimum,
+  initial,
+  maximum,
+  disabled,
+  onMinimum,
+  onInitial,
+  onMaximum,
+}: {
+  minimum: number;
+  initial: number;
+  maximum: number;
+  disabled: boolean;
+  onMinimum: (value: number) => void;
+  onInitial: (value: number) => void;
+  onMaximum: (value: number) => void;
+}) {
+  const numberField = (label: string, value: number, onChange: (value: number) => void) => (
+    <label>
+      <span>{label}</span>
+      <input
+        type="number"
+        min={INT32_MINIMUM}
+        max={INT32_MAXIMUM}
+        step={1}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => {
+          const nextValue = Number.parseInt(event.target.value, 10);
+          if (Number.isFinite(nextValue)) {
+            onChange(nextValue);
+          }
+        }}
+      />
+    </label>
+  );
+  return (
+    <div className="variable-range-fields">
+      {numberField("Minimum", minimum, onMinimum)}
+      {numberField("Starts at", initial, onInitial)}
+      {numberField("Maximum", maximum, onMaximum)}
+    </div>
   );
 }
 
@@ -3896,12 +4186,23 @@ function RouteInspector({
   sceneExits,
   inputActions,
   variables,
+  renderModels,
+  waitingVisuals,
+  placementOwnership,
+  assets,
   audioCues,
+  guardLimit,
+  actionLimit,
   onSetRouteTarget,
   onSetRouteSceneTarget,
   onSetRouteGuard,
+  onAddRouteGuard,
+  onDeleteRouteGuard,
+  onMoveRouteGuard,
   onSetRouteAction,
   onAddRouteAction,
+  onDeleteRouteAction,
+  onMoveRouteAction,
   onResetRouteLayout,
   canEdit,
 }: {
@@ -3914,7 +4215,13 @@ function RouteInspector({
   sceneExits: SceneExitRecord[];
   inputActions: InputAction[];
   variables: StateVariable[];
+  renderModels: RenderModel[];
+  waitingVisuals: WaitingVisual[];
+  placementOwnership: PlacementOwnership | null;
+  assets: AssetRecord[];
   audioCues: AudioCueRecord[];
+  guardLimit: number;
+  actionLimit: number;
   onSetRouteTarget: (sceneId: string, routeId: string, targetState: string) => Promise<void>;
   onSetRouteSceneTarget: (sceneId: string, routeId: string, targetScene: string, sceneExitRef?: string) => Promise<void>;
   onSetRouteGuard: (
@@ -3925,6 +4232,14 @@ function RouteInspector({
     operator: string,
     value: number,
   ) => Promise<void>;
+  onAddRouteGuard: (
+    sceneId: string,
+    routeId: string,
+    guardIndex: number,
+    guard: Record<string, unknown>,
+  ) => Promise<void>;
+  onDeleteRouteGuard: (sceneId: string, routeId: string, guardIndex: number) => Promise<void>;
+  onMoveRouteGuard: (sceneId: string, routeId: string, guardIndex: number, targetIndex: number) => Promise<void>;
   onSetRouteAction: (
     sceneId: string,
     routeId: string,
@@ -3937,6 +4252,8 @@ function RouteInspector({
     actionIndex: number,
     action: Record<string, unknown>,
   ) => Promise<void>;
+  onDeleteRouteAction: (sceneId: string, routeId: string, actionIndex: number) => Promise<void>;
+  onMoveRouteAction: (sceneId: string, routeId: string, actionIndex: number, targetIndex: number) => Promise<void>;
   onResetRouteLayout: (sceneId: string, routeId: string, sourceState: string) => Promise<void>;
   canEdit: boolean;
 }) {
@@ -3952,6 +4269,13 @@ function RouteInspector({
     ? displayStateName(states, route.target_state ?? "")
     : routeSceneExit?.display_name ?? scenes.find((scene) => scene.scene_id === route.target_scene)?.display_name ?? route.target_scene;
   const targetKind = exitsToPeepOS ? "system" : route.target_scene === undefined ? "state" : "scene exit";
+  const targetState = states.find((state) => state.state_id === route.target_state);
+  const targetRenderModel = renderModels.find((renderModel) => renderModel.visual_id === targetState?.render_model_ref);
+  const targetElements = targetState === undefined
+    ? targetRenderModel?.elements ?? []
+    : placementOwnership?.scenes[sceneId]?.states[targetState.state_id]?.resolved_elements
+      ?? targetRenderModel?.elements
+      ?? [];
   return (
     <section className="inspector-section selected-record">
       <h3>Selected transition</h3>
@@ -4036,19 +4360,30 @@ function RouteInspector({
         sceneId={sceneId}
         route={route}
         variables={variables}
+        guardLimit={guardLimit}
         canEdit={canEdit}
         onSetRouteGuard={onSetRouteGuard}
+        onAddRouteGuard={onAddRouteGuard}
+        onDeleteRouteGuard={onDeleteRouteGuard}
+        onMoveRouteGuard={onMoveRouteGuard}
       />
       <h4>Then</h4>
       <EditableActionList
         sceneId={sceneId}
         route={route}
         variables={variables}
+        targetState={targetState}
+        targetElements={targetElements}
+        waitingVisuals={waitingVisuals}
+        assets={assets}
         audioCues={audioCues}
-        canAddActions={!exitsScene}
+        localActionsAllowed={!exitsScene}
+        canAddActions={!exitsScene && route.actions.length < actionLimit}
         canEdit={canEdit}
         onSetRouteAction={onSetRouteAction}
         onAddRouteAction={onAddRouteAction}
+        onDeleteRouteAction={onDeleteRouteAction}
+        onMoveRouteAction={onMoveRouteAction}
       />
       <div className="internal-ref-note">
         Internal transition ID: <code>{route.route_id}</code>
@@ -4061,12 +4396,17 @@ function EditableGuardList({
   sceneId,
   route,
   variables,
+  guardLimit,
   canEdit,
   onSetRouteGuard,
+  onAddRouteGuard,
+  onDeleteRouteGuard,
+  onMoveRouteGuard,
 }: {
   sceneId: string;
   route: StateRoute;
   variables: StateVariable[];
+  guardLimit: number;
   canEdit: boolean;
   onSetRouteGuard: (
     sceneId: string,
@@ -4076,19 +4416,62 @@ function EditableGuardList({
     operator: string,
     value: number,
   ) => Promise<void>;
+  onAddRouteGuard: (
+    sceneId: string,
+    routeId: string,
+    guardIndex: number,
+    guard: Record<string, unknown>,
+  ) => Promise<void>;
+  onDeleteRouteGuard: (sceneId: string, routeId: string, guardIndex: number) => Promise<void>;
+  onMoveRouteGuard: (sceneId: string, routeId: string, guardIndex: number, targetIndex: number) => Promise<void>;
 }) {
-  if (route.guards.length === 0) {
-    return <div className="plain-rule-note">Always allowed.</div>;
-  }
+  const defaultVariable = variables[0];
+  const canAdd = canEdit && defaultVariable !== undefined && route.guards.length < guardLimit;
   return (
     <div className="guard-editor-list">
+      {route.guards.length === 0 && <div className="plain-rule-note">Always allowed.</div>}
       {route.guards.map((guard, index) => {
+        const variable = variables.find((item) => item.variable_id === guard.variable_ref);
         const commit = (variableRef: string, operator: string, value: number) => {
           void onSetRouteGuard(sceneId, route.route_id, index, variableRef, operator, value);
         };
         return (
           <div className="logic-sentence-row" key={`${route.route_id}-guard-${index}`}>
-            {route.guards.length > 1 && <span className="logic-row-index">Condition {index + 1}</span>}
+            <div className="logic-row-heading">
+              <span className="logic-row-index">Condition {index + 1}</span>
+              <div className="logic-row-actions">
+                <button
+                  className="icon-button"
+                  type="button"
+                  disabled={!canEdit || index === 0}
+                  title="Move condition earlier"
+                  aria-label={`Move condition ${index + 1} earlier`}
+                  onClick={() => void onMoveRouteGuard(sceneId, route.route_id, index, index - 1)}
+                >
+                  <ArrowUp size={13} aria-hidden="true" />
+                </button>
+                <button
+                  className="icon-button"
+                  type="button"
+                  disabled={!canEdit || index === route.guards.length - 1}
+                  title="Move condition later"
+                  aria-label={`Move condition ${index + 1} later`}
+                  onClick={() => void onMoveRouteGuard(sceneId, route.route_id, index, index + 1)}
+                >
+                  <ArrowDown size={13} aria-hidden="true" />
+                </button>
+                <button
+                  className="icon-button danger"
+                  type="button"
+                  disabled={!canEdit}
+                  title="Delete condition"
+                  aria-label={`Delete condition ${index + 1}`}
+                  onClick={() => void onDeleteRouteGuard(sceneId, route.route_id, index)}
+                >
+                  <Trash2 size={13} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
             <div className="logic-sentence">
               <span>Only if</span>
               <select
@@ -4119,6 +4502,8 @@ function EditableGuardList({
                 aria-label={`Condition ${index + 1} value`}
                 type="number"
                 step={1}
+                min={variable?.minimum}
+                max={variable?.maximum}
                 value={guard.value}
                 disabled={!canEdit}
                 onChange={(event) => {
@@ -4132,24 +4517,109 @@ function EditableGuardList({
           </div>
         );
       })}
+      <button
+        className="button secondary logic-add-button"
+        type="button"
+        disabled={!canAdd}
+        title={defaultVariable === undefined ? "Create a variable before adding a condition" : undefined}
+        onClick={() => {
+          if (defaultVariable !== undefined) {
+            void onAddRouteGuard(sceneId, route.route_id, route.guards.length, {
+              variable_ref: defaultVariable.variable_id,
+              operator: "eq",
+              value: defaultVariable.initial,
+            });
+          }
+        }}
+      >
+        <Plus size={13} aria-hidden="true" />
+        Add condition
+      </button>
     </div>
   );
+}
+
+type WaitingAnimationChoice = {
+  key: string;
+  label: string;
+  waitingVisualRef: string;
+  waitingElementRef: string;
+};
+
+const EFFECT_KIND_LABELS: Record<string, string> = {
+  set_variable: "Change variable",
+  set_element_visibility: "Show or hide object",
+  set_element_position: "Move object",
+  set_element_frame: "Change sprite frame",
+  set_element_waiting_animation: "Change animation",
+  play_sfx: "Play SFX",
+};
+
+function spriteFrameChoices(element: RenderElement | undefined, assets: AssetRecord[], frameRef?: string) {
+  if (element?.kind !== "sprite") {
+    return [];
+  }
+  const asset = assets.find((candidate) => candidate.frames.some((frame) => frame.frame_id === element.visual_ref))
+    ?? assets.find((candidate) => candidate.frames.some((frame) => frame.frame_id === frameRef));
+  return (asset?.frames ?? []).map((frame) => ({
+    frameId: frame.frame_id,
+    label: frame.display_name ?? frame.frame_id,
+  }));
+}
+
+function waitingAnimationChoices(
+  elementRef: string,
+  targetState: StateRecord | undefined,
+  waitingVisuals: WaitingVisual[],
+): WaitingAnimationChoice[] {
+  const targetTimeline = waitingVisuals.find((waiting) => waiting.waiting_visual_id === targetState?.waiting_visual_ref);
+  if (targetTimeline === undefined) {
+    return [];
+  }
+  return waitingVisuals.flatMap((waiting) => {
+    if (
+      waiting.phase_quantum_ms !== targetTimeline.phase_quantum_ms
+      || waiting.combined_step_count !== targetTimeline.combined_step_count
+    ) {
+      return [];
+    }
+    return waiting.elements
+      .filter((element) => element.source_element_ref === elementRef)
+      .map((element) => ({
+        key: `${waiting.waiting_visual_id}:${element.element_id}`,
+        label: `${waiting.waiting_visual_id} / ${element.element_id}`,
+        waitingVisualRef: waiting.waiting_visual_id,
+        waitingElementRef: element.element_id,
+      }));
+  });
 }
 
 function EditableActionList({
   sceneId,
   route,
   variables,
+  targetState,
+  targetElements,
+  waitingVisuals,
+  assets,
   audioCues,
+  localActionsAllowed,
   canAddActions,
   canEdit,
   onSetRouteAction,
   onAddRouteAction,
+  onDeleteRouteAction,
+  onMoveRouteAction,
 }: {
   sceneId: string;
   route: StateRoute;
   variables: StateVariable[];
+  targetState?: StateRecord;
+  targetElements: RenderElement[];
+  waitingVisuals: WaitingVisual[];
+  assets: AssetRecord[];
   audioCues: AudioCueRecord[];
+  localActionsAllowed: boolean;
   canAddActions: boolean;
   canEdit: boolean;
   onSetRouteAction: (
@@ -4164,118 +4634,221 @@ function EditableActionList({
     actionIndex: number,
     action: Record<string, unknown>,
   ) => Promise<void>;
+  onDeleteRouteAction: (sceneId: string, routeId: string, actionIndex: number) => Promise<void>;
+  onMoveRouteAction: (sceneId: string, routeId: string, actionIndex: number, targetIndex: number) => Promise<void>;
 }) {
   const visibleActions = route.actions
     .map((action, actionIndex) => ({ action, actionIndex }))
     .filter(({ action }) => action.kind !== "request_render" && action.kind !== "exit_to_shell");
   const systemExitIndex = route.actions.findIndex((action) => action.kind === "exit_to_shell");
   const addActionIndex = systemExitIndex >= 0 ? systemExitIndex : route.actions.length;
-  const addVariableAction = variables[0] === undefined ? null : {
-    kind: "set_variable",
-    variable_ref: variables[0].variable_id,
-    operation: "assign",
-    value: 0,
+  const targetElementById = new Map(targetElements.map((element) => [element.element_id, element]));
+
+  const defaultActionForKind = (kind: string, preferredElementRef?: string): Record<string, unknown> | null => {
+    if (kind === "set_variable") {
+      const variable = variables[0];
+      return variable === undefined ? null : {
+        kind,
+        variable_ref: variable.variable_id,
+        operation: "assign",
+        value: variable.initial,
+      };
+    }
+    if (kind === "play_sfx") {
+      const cue = audioCues[0];
+      return cue === undefined ? null : { kind, cue_ref: cue.cue_id };
+    }
+    const preferredElement = preferredElementRef === undefined ? undefined : targetElementById.get(preferredElementRef);
+    if (kind === "set_element_visibility" || kind === "set_element_position") {
+      const element = preferredElement ?? targetElements[0];
+      if (element === undefined) {
+        return null;
+      }
+      return kind === "set_element_visibility"
+        ? { kind, element_ref: element.element_id, visible: true }
+        : { kind, element_ref: element.element_id, x: element.x, y: element.y };
+    }
+    if (kind === "set_element_frame") {
+      const candidates = preferredElement === undefined
+        ? targetElements.filter((element) => element.kind === "sprite")
+        : [preferredElement];
+      for (const element of candidates) {
+        const frames = spriteFrameChoices(element, assets);
+        const frameRef = frames.find((frame) => frame.frameId === element.visual_ref)?.frameId ?? frames[0]?.frameId;
+        if (frameRef !== undefined) {
+          return { kind, element_ref: element.element_id, frame_ref: frameRef };
+        }
+      }
+      return null;
+    }
+    if (kind === "set_element_waiting_animation") {
+      const candidates = preferredElement === undefined ? targetElements : [preferredElement];
+      for (const element of candidates) {
+        const choice = waitingAnimationChoices(element.element_id, targetState, waitingVisuals)[0];
+        if (choice !== undefined) {
+          return {
+            kind,
+            element_ref: element.element_id,
+            waiting_visual_ref: choice.waitingVisualRef,
+            waiting_element_ref: choice.waitingElementRef,
+            timeline_policy: "preserve",
+          };
+        }
+      }
+    }
+    return null;
   };
-  const addSfxAction = audioCues[0] === undefined ? null : {
-    kind: "play_sfx",
-    cue_ref: audioCues[0].cue_id,
-  };
-  const addEffectButtons = canAddActions && (addVariableAction !== null || addSfxAction !== null) ? (
-    <div className="action-add-row">
-      {addVariableAction !== null && (
-        <button
-          className="button secondary"
-          type="button"
-          disabled={!canEdit}
-          onClick={() => {
-            void onAddRouteAction(sceneId, route.route_id, addActionIndex, addVariableAction);
-          }}
-        >
-          Add variable
-        </button>
-      )}
-      {addSfxAction !== null && (
-        <button
-          className="button secondary"
-          type="button"
-          disabled={!canEdit}
-          onClick={() => {
-            void onAddRouteAction(sceneId, route.route_id, addActionIndex, addSfxAction);
-          }}
-        >
-          Add SFX
-        </button>
-      )}
-    </div>
-  ) : null;
-  if (visibleActions.length === 0) {
-    return (
-      <div className="action-editor-list">
-        <div className="plain-rule-note">No visible effects.</div>
-        {addEffectButtons}
-      </div>
-    );
-  }
+
+  const localEffectKinds = [
+    "set_variable",
+    "set_element_visibility",
+    "set_element_position",
+    "set_element_frame",
+    "set_element_waiting_animation",
+  ];
+  const availableEffectKinds = [
+    ...(localActionsAllowed ? localEffectKinds : []),
+    "play_sfx",
+  ].filter((kind) => defaultActionForKind(kind) !== null);
+
   return (
     <div className="action-editor-list">
+      {visibleActions.length === 0 && <div className="plain-rule-note">No visible effects.</div>}
       {visibleActions.map(({ action, actionIndex }, visibleIndex) => {
         const variableRef = action.variable_ref ?? variables[0]?.variable_id ?? "";
+        const variable = variables.find((item) => item.variable_id === variableRef);
         const operation = action.operation === "add" ? "add" : "assign";
-        const value = typeof action.value === "number" ? action.value : 0;
+        const value = typeof action.value === "number" ? action.value : variable?.initial ?? 0;
         const isAdd = operation === "add";
         const cueRef = action.cue_ref ?? audioCues[0]?.cue_id ?? "";
+        const isElementAction = action.kind.startsWith("set_element_");
+        const elementRef = action.element_ref ?? targetElements[0]?.element_id ?? "";
+        const element = targetElementById.get(elementRef);
+        const frames = spriteFrameChoices(element, assets, action.frame_ref);
+        const animationChoices = waitingAnimationChoices(elementRef, targetState, waitingVisuals);
+        const animationKey = `${action.waiting_visual_ref ?? ""}:${action.waiting_element_ref ?? ""}`;
+        const kindOptions = availableEffectKinds.includes(action.kind)
+          ? availableEffectKinds
+          : [action.kind, ...availableEffectKinds];
         const commit = (nextAction: Record<string, unknown>) => {
           void onSetRouteAction(sceneId, route.route_id, actionIndex, nextAction);
         };
         return (
           <div className="logic-sentence-row" key={`${route.route_id}-action-${actionIndex}`}>
-            {visibleActions.length > 1 && <span className="logic-row-index">Effect {visibleIndex + 1}</span>}
+            <div className="logic-row-heading">
+              <span className="logic-row-index">Effect {visibleIndex + 1}</span>
+              <div className="logic-row-actions">
+                <button
+                  className="icon-button"
+                  type="button"
+                  disabled={!canEdit || visibleIndex === 0}
+                  title="Move effect earlier"
+                  aria-label={`Move effect ${visibleIndex + 1} earlier`}
+                  onClick={() => void onMoveRouteAction(
+                    sceneId,
+                    route.route_id,
+                    actionIndex,
+                    visibleActions[visibleIndex - 1]!.actionIndex,
+                  )}
+                >
+                  <ArrowUp size={13} aria-hidden="true" />
+                </button>
+                <button
+                  className="icon-button"
+                  type="button"
+                  disabled={!canEdit || visibleIndex === visibleActions.length - 1}
+                  title="Move effect later"
+                  aria-label={`Move effect ${visibleIndex + 1} later`}
+                  onClick={() => void onMoveRouteAction(
+                    sceneId,
+                    route.route_id,
+                    actionIndex,
+                    visibleActions[visibleIndex + 1]!.actionIndex,
+                  )}
+                >
+                  <ArrowDown size={13} aria-hidden="true" />
+                </button>
+                <button
+                  className="icon-button danger"
+                  type="button"
+                  disabled={!canEdit}
+                  title="Delete effect"
+                  aria-label={`Delete effect ${visibleIndex + 1}`}
+                  onClick={() => void onDeleteRouteAction(sceneId, route.route_id, actionIndex)}
+                >
+                  <Trash2 size={13} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
             <div className="logic-sentence">
               <span>Then</span>
               <select
                 aria-label={`Effect ${visibleIndex + 1} kind`}
                 value={action.kind}
-                disabled={!canEdit}
+                disabled={!canEdit || (!localActionsAllowed && action.kind !== "play_sfx")}
                 onChange={(event) => {
-                  if (event.target.value === "play_sfx") {
-                    if (cueRef !== "") {
-                      commit({ kind: "play_sfx", cue_ref: cueRef });
-                    }
-                    return;
+                  const nextAction = defaultActionForKind(event.target.value);
+                  if (nextAction !== null) {
+                    commit(nextAction);
                   }
-                  commit({ kind: "set_variable", variable_ref: variableRef, operation, value });
                 }}
               >
-                <option value="set_variable">Change variable</option>
-                <option value="play_sfx" disabled={audioCues.length === 0}>Play SFX</option>
+                {kindOptions.map((kind) => (
+                  <option key={kind} value={kind}>{EFFECT_KIND_LABELS[kind] ?? "Advanced effect"}</option>
+                ))}
               </select>
+              {isElementAction && (
+                <select
+                  aria-label={`Effect ${visibleIndex + 1} object`}
+                  value={elementRef}
+                  disabled={!canEdit || targetElements.length === 0}
+                  onChange={(event) => {
+                    const nextAction = defaultActionForKind(action.kind, event.target.value);
+                    if (nextAction !== null) {
+                      commit(action.kind === "set_element_visibility"
+                        ? { ...nextAction, visible: action.visible !== false }
+                        : action.kind === "set_element_waiting_animation"
+                          ? { ...nextAction, timeline_policy: action.timeline_policy === "rebase" ? "rebase" : "preserve" }
+                          : nextAction);
+                    }
+                  }}
+                >
+                  {targetElements.map((candidate) => (
+                    <option key={candidate.element_id} value={candidate.element_id}>{candidate.element_id}</option>
+                  ))}
+                </select>
+              )}
               {action.kind === "set_variable" && (
                 <>
                   <select
                     aria-label={`Effect ${visibleIndex + 1} operation`}
                     value={operation}
                     disabled={!canEdit}
-                    onChange={(event) => {
-                      commit({ kind: "set_variable", variable_ref: variableRef, operation: event.target.value, value });
-                    }}
+                    onChange={(event) => commit({
+                      kind: "set_variable",
+                      variable_ref: variableRef,
+                      operation: event.target.value,
+                      value,
+                    })}
                   >
                     {ACTION_OPERATIONS.map((item) => (
-                      <option key={item} value={item}>
-                        {item === "assign" ? "set" : "change"}
-                      </option>
+                      <option key={item} value={item}>{item === "assign" ? "set" : "change"}</option>
                     ))}
                   </select>
                   <select
                     aria-label={`Effect ${visibleIndex + 1} variable`}
                     value={variableRef}
                     disabled={!canEdit || variables.length === 0}
-                    onChange={(event) => {
-                      commit({ kind: "set_variable", variable_ref: event.target.value, operation, value });
-                    }}
+                    onChange={(event) => commit({
+                      kind: "set_variable",
+                      variable_ref: event.target.value,
+                      operation,
+                      value,
+                    })}
                   >
-                    {variables.map((variable) => (
-                      <option key={variable.variable_id} value={variable.variable_id}>
-                        {displayVariableName(variable.variable_id)}
+                    {variables.map((candidate) => (
+                      <option key={candidate.variable_id} value={candidate.variable_id}>
+                        {displayVariableName(candidate.variable_id)}
                       </option>
                     ))}
                   </select>
@@ -4284,6 +4857,8 @@ function EditableActionList({
                     aria-label={isAdd ? `Effect ${visibleIndex + 1} change amount` : `Effect ${visibleIndex + 1} target value`}
                     type="number"
                     step={1}
+                    min={isAdd ? undefined : variable?.minimum}
+                    max={isAdd ? undefined : variable?.maximum}
                     value={value}
                     disabled={!canEdit}
                     onChange={(event) => {
@@ -4295,19 +4870,122 @@ function EditableActionList({
                   />
                 </>
               )}
+              {action.kind === "set_element_visibility" && (
+                <label className="logic-toggle">
+                  <input
+                    type="checkbox"
+                    checked={action.visible !== false}
+                    disabled={!canEdit}
+                    onChange={(event) => commit({
+                      kind: action.kind,
+                      element_ref: elementRef,
+                      visible: event.target.checked,
+                    })}
+                  />
+                  Visible
+                </label>
+              )}
+              {action.kind === "set_element_position" && (
+                <>
+                  <span>X</span>
+                  <input
+                    aria-label={`Effect ${visibleIndex + 1} X position`}
+                    type="number"
+                    step={1}
+                    min={0}
+                    max={Math.max(0, 168 - (element?.width ?? 0))}
+                    value={action.x ?? element?.x ?? 0}
+                    disabled={!canEdit}
+                    onChange={(event) => {
+                      const x = Number.parseInt(event.target.value, 10);
+                      if (Number.isFinite(x)) {
+                        commit({ kind: action.kind, element_ref: elementRef, x, y: action.y ?? element?.y ?? 0 });
+                      }
+                    }}
+                  />
+                  <span>Y</span>
+                  <input
+                    aria-label={`Effect ${visibleIndex + 1} Y position`}
+                    type="number"
+                    step={1}
+                    min={0}
+                    max={Math.max(0, 144 - (element?.height ?? 0))}
+                    value={action.y ?? element?.y ?? 0}
+                    disabled={!canEdit}
+                    onChange={(event) => {
+                      const y = Number.parseInt(event.target.value, 10);
+                      if (Number.isFinite(y)) {
+                        commit({ kind: action.kind, element_ref: elementRef, x: action.x ?? element?.x ?? 0, y });
+                      }
+                    }}
+                  />
+                </>
+              )}
+              {action.kind === "set_element_frame" && (
+                <select
+                  aria-label={`Effect ${visibleIndex + 1} sprite frame`}
+                  value={action.frame_ref ?? frames[0]?.frameId ?? ""}
+                  disabled={!canEdit || frames.length === 0}
+                  onChange={(event) => commit({
+                    kind: action.kind,
+                    element_ref: elementRef,
+                    frame_ref: event.target.value,
+                  })}
+                >
+                  {frames.map((frame) => (
+                    <option key={frame.frameId} value={frame.frameId}>{frame.label}</option>
+                  ))}
+                </select>
+              )}
+              {action.kind === "set_element_waiting_animation" && (
+                <>
+                  <select
+                    aria-label={`Effect ${visibleIndex + 1} animation`}
+                    value={animationKey}
+                    disabled={!canEdit || animationChoices.length === 0}
+                    onChange={(event) => {
+                      const choice = animationChoices.find((candidate) => candidate.key === event.target.value);
+                      if (choice !== undefined) {
+                        commit({
+                          kind: action.kind,
+                          element_ref: elementRef,
+                          waiting_visual_ref: choice.waitingVisualRef,
+                          waiting_element_ref: choice.waitingElementRef,
+                          timeline_policy: action.timeline_policy === "rebase" ? "rebase" : "preserve",
+                        });
+                      }
+                    }}
+                  >
+                    {animationChoices.map((choice) => (
+                      <option key={choice.key} value={choice.key}>{choice.label}</option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label={`Effect ${visibleIndex + 1} timeline behavior`}
+                    value={action.timeline_policy === "rebase" ? "rebase" : "preserve"}
+                    disabled={!canEdit}
+                    onChange={(event) => commit({
+                      kind: action.kind,
+                      element_ref: elementRef,
+                      waiting_visual_ref: action.waiting_visual_ref,
+                      waiting_element_ref: action.waiting_element_ref,
+                      timeline_policy: event.target.value,
+                    })}
+                  >
+                    <option value="preserve">Keep timing</option>
+                    <option value="rebase">Restart timing</option>
+                  </select>
+                </>
+              )}
               {action.kind === "play_sfx" && (
                 <select
                   aria-label={`Effect ${visibleIndex + 1} SFX cue`}
                   value={cueRef}
                   disabled={!canEdit || audioCues.length === 0}
-                  onChange={(event) => {
-                    commit({ kind: "play_sfx", cue_ref: event.target.value });
-                  }}
+                  onChange={(event) => commit({ kind: "play_sfx", cue_ref: event.target.value })}
                 >
                   {audioCues.map((cue) => (
-                    <option key={cue.cue_id} value={cue.cue_id}>
-                      {cue.cue_id}
-                    </option>
+                    <option key={cue.cue_id} value={cue.cue_id}>{cue.cue_id}</option>
                   ))}
                 </select>
               )}
@@ -4318,7 +4996,27 @@ function EditableActionList({
           </div>
         );
       })}
-      {addEffectButtons}
+      {canAddActions && availableEffectKinds.length > 0 && (
+        <label className="effect-add-control">
+          <Plus size={13} aria-hidden="true" />
+          <select
+            aria-label="Add effect"
+            value=""
+            disabled={!canEdit}
+            onChange={(event) => {
+              const action = defaultActionForKind(event.target.value);
+              if (action !== null) {
+                void onAddRouteAction(sceneId, route.route_id, addActionIndex, action);
+              }
+            }}
+          >
+            <option value="">Add effect...</option>
+            {availableEffectKinds.map((kind) => (
+              <option key={kind} value={kind}>{EFFECT_KIND_LABELS[kind]}</option>
+            ))}
+          </select>
+        </label>
+      )}
     </div>
   );
 }

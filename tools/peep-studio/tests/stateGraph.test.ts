@@ -13,6 +13,7 @@ import {
   stateEntryPortPoint,
   stateGuardDescription,
   stateTransitionRouteSections,
+  visibleStateActions,
 } from "../src/stateGraph";
 
 assert.deepEqual(nextStateGraphNodePosition([], undefined), { x: 0, y: 0 });
@@ -490,6 +491,39 @@ assert.deepEqual(selfCrossingRoute.points, [{ x: 0, y: 0 }, { x: 100, y: 0 }, { 
 assert.equal(stateGuardDescription(scene.routes![0]!.guards[0]!), "Coins is greater than 0");
 assert.equal(stateActionDescription(scene.routes![0]!.actions[0]!), "Coins -1");
 assert.equal(stateActionDescription(scene.routes![0]!.actions[1]!), null);
+
+const authoredEffects = visibleStateActions({
+  ...scene.routes![0]!,
+  actions: [
+    { kind: "request_render" },
+    { kind: "set_element_visibility", element_ref: "menu_cursor", visible: false },
+    { kind: "set_element_position", element_ref: "menu_cursor", x: 12, y: 34 },
+    { kind: "set_element_frame", element_ref: "menu_cursor", frame_ref: "cursor_selected" },
+    {
+      kind: "set_element_waiting_animation",
+      element_ref: "menu_cursor",
+      waiting_visual_ref: "menu_waiting",
+      waiting_element_ref: "cursor_animation",
+      timeline_policy: "preserve",
+    },
+    { kind: "set_variable", variable_ref: "coins", operation: "assign", value: 4 },
+    { kind: "exit_to_shell" },
+  ],
+});
+assert.deepEqual(authoredEffects.map((action) => action.kind), [
+  "set_element_visibility",
+  "set_element_position",
+  "set_element_frame",
+  "set_element_waiting_animation",
+  "set_variable",
+]);
+assert.deepEqual(authoredEffects.map(stateActionDescription), [
+  "Hide Menu cursor",
+  "Move Menu cursor to 12, 34",
+  "Change Menu cursor frame to Cursor selected",
+  "Animate Menu cursor",
+  "Coins = 4",
+]);
 
 const lanePlan = planStateTransitionRoutes(
   [

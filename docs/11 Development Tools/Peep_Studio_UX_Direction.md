@@ -103,9 +103,10 @@ Peep Studio should present local STATE logic as dynamic node cards:
   from that state. The emulator's current state uses a dedicated runtime
   highlight that remains visually distinct from author selection and follows
   transitions without moving the author's selection;
-- while the emulator runs, the State Graph viewport smoothly centers each new
-  runtime-active state without changing the current zoom, node positions,
-  manual route layout, or author selection;
+- while the emulator runs, the State Graph viewport keeps the runtime-active
+  state within a padded visible area. It pans only when that state leaves the
+  area and does not change the current zoom, node positions, manual route
+  layout, or author selection;
 - Reset returns to the state from which the current preview run was launched.
   Selecting a scene instead launches from its declared entry state;
 - advanced/internal route IDs remain available for debugging, but are not shown
@@ -254,17 +255,29 @@ focus roles to simulate prefab behavior.
 
 ## Action Authoring Target
 
+The scene inspector owns variable creation, integer range editing, and deletion.
+Variable IDs are stable after creation; referenced variables cannot be deleted
+until their conditions and effects are removed.
+
 Raw actions should be presented as readable effects:
 
 - `set_variable` with `add`: "Change [counter] by [+1]".
 - `set_variable` with `assign`: "Set [counter] to [1]".
+- `set_element_visibility`: "Show/Hide [object]".
+- `set_element_position`: "Move [object] to [x], [y]".
+- `set_element_frame`: "Change [object] frame to [frame]". Frame choices are
+  restricted to the selected sprite asset.
+- `set_element_waiting_animation`: "Change [object] animation to [animation]"
+  with explicit preserve/restart timing behavior.
 - `play_sfx`: "Play sound [sound name]".
 - `request_render`: backend-only refresh work; it should not be shown as an
   author effect.
 
-The Stage 2 command layer may continue editing existing action records only, but
-the UI should increasingly present those records as friendly effect rows,
-presets, and pickers.
+The transition inspector creates, deletes, and reorders conditions and
+author-visible effects through typed service commands. Effect order is runtime
+execution order and must match the symbols shown along the transition. System
+actions such as `request_render` and `exit_to_shell` remain hidden from this
+ordered author list.
 
 ## Sound Authoring Target
 

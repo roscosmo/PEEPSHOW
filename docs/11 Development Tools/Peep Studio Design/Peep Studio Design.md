@@ -78,11 +78,11 @@ authoring capability until those contracts and the Python service support it.
 
 ## Bring-Up Mapping
 
-- **Approved next:** Package Entry and Local Logic scene-boundary node anatomy.
-- **Safe in parallel:** authored object names and service-owned logic-to-object
-  provenance.
+- **Implemented:** Package Entry, Scene Flow cards and references, Local Logic
+  scene-boundary nodes, and the shared transition-line visual language.
+- **Current bring-up:** inspector-owned variables, ordered conditions and
+  effects, including service-validated variable and retained-object changes.
 - **Wait for the general layout drawing:** application-shell and emulator
   placement changes.
 - **Wait for runtime contracts:** editable prefabs, hierarchical-state behavior,
   restorable navigation, and capability-gated PeepOS triggers.
-
