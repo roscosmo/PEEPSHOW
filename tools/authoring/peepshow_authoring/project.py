@@ -1804,6 +1804,113 @@ def _apply_render_element_add(
     }
 
 
+def _placement_scope_state_ids(
+    scene: dict[str, Any],
+    scope: Any,
+) -> tuple[str, ...] | None:
+    if not isinstance(scope, dict):
+        raise ProjectCommandError("COMMAND_SHAPE_INVALID", "command.scope must be an object")
+    scope_kind = scope.get("kind")
+    if scope_kind == "scene_base":
+        _require_command_fields(scope, {"kind"}, {"kind"})
+        return None
+    if scope_kind != "states":
+        raise ProjectCommandError(
+            "COMMAND_SHAPE_INVALID",
+            "command.scope.kind must be scene_base or states",
+        )
+    _require_command_fields(scope, {"kind", "state_ids"}, {"kind", "state_ids"})
+    state_ids = scope.get("state_ids")
+    if not isinstance(state_ids, list) or not state_ids or len(state_ids) > 64:
+        raise ProjectCommandError(
+            "COMMAND_LIST_INVALID",
+            "command.scope.state_ids must contain 1..64 state IDs",
+        )
+    known_state_ids = {
+        state.get("state_id")
+        for state in scene.get("states", [])
+        if isinstance(state, dict) and isinstance(state.get("state_id"), str)
+    }
+    resolved: list[str] = []
+    for state_id in state_ids:
+        issues: list[ValidationIssue] = []
+        _stable_id(state_id, "command.scope.state_ids", issues)
+        if issues:
+            issue = issues[0]
+            raise ProjectCommandError(issue.code, issue.message)
+        if state_id in resolved:
+            raise ProjectCommandError(
+                "PROJECT_ID_DUPLICATE",
+                f"command.scope.state_ids contains duplicate state '{state_id}'",
+            )
+        if state_id not in known_state_ids:
+            raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown state '{state_id}'")
+        resolved.append(state_id)
+    return tuple(resolved)
+
+
+def _apply_placement_object_add(
+    scenes: list[dict[str, Any]],
+    frames: list[Masked1bppFrame],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "scope", "element"},
+        {"kind", "scene_id", "scope", "element", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    placement_model = _scene_placement_model(scene)
+    state_ids = _placement_scope_state_ids(scene, command.get("scope"))
+    element = command.get("element")
+    if not isinstance(element, dict):
+        raise ProjectCommandError("COMMAND_SHAPE_INVALID", "command.element must be an object")
+    if state_ids is not None and element.get("visible", True) is not True:
+        raise ProjectCommandError(
+            "RENDER_VISIBILITY_INVALID",
+            "an object added to selected states must be visible in those states",
+        )
+
+    base_element = deepcopy(element)
+    if state_ids is not None:
+        base_element["visible"] = False
+    added = _apply_render_element_add(
+        scenes,
+        frames,
+        {
+            "kind": "render_element.add",
+            "scene_id": scene.get("scene_id"),
+            "render_model_id": placement_model.get("visual_id"),
+            "element": base_element,
+        },
+    )
+    element_id = added["element_id"]
+    if state_ids is not None:
+        for state_id in state_ids:
+            _apply_state_placement_set_override(
+                scenes,
+                frames,
+                {
+                    "kind": "state_placement.set_override",
+                    "scene_id": scene.get("scene_id"),
+                    "state_id": state_id,
+                    "render_model_id": placement_model.get("visual_id"),
+                    "element_id": element_id,
+                    "visible": True,
+                },
+            )
+    return {
+        "kind": "placement_object.add",
+        "scene_id": scene.get("scene_id"),
+        "render_model_id": placement_model.get("visual_id"),
+        "element_id": element_id,
+        "scope": {
+            "kind": "scene_base" if state_ids is None else "states",
+            **({} if state_ids is None else {"state_ids": list(state_ids)}),
+        },
+    }
+
+
 def _apply_render_element_delete(
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
@@ -2080,6 +2187,80 @@ def _apply_state_placement_set_override(
         "state_id": command.get("state_id"),
         "render_model_id": command.get("render_model_id"),
         "element_id": element_id,
+        "removed": removed,
+    }
+
+
+def _apply_state_placement_clear_override(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "state_id", "element_id"},
+        {"kind", "scene_id", "state_id", "element_id", "properties", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    state = _command_record(scene, "states", "state_id", command.get("state_id"))
+    placement_model = _scene_placement_model(scene)
+    element = _target_render_element(placement_model, command.get("element_id"))
+    element_id = str(element["element_id"])
+    overrides = _state_placement_overrides(state)
+    existing = next(
+        (
+            item
+            for item in overrides
+            if isinstance(item, dict) and item.get("element_ref") == element_id
+        ),
+        None,
+    )
+
+    requested = command.get("properties")
+    if requested is None:
+        properties = ("position", "visible", "visual_ref")
+    else:
+        if not isinstance(requested, list) or not requested:
+            raise ProjectCommandError(
+                "COMMAND_LIST_INVALID",
+                "command.properties must be a non-empty array when provided",
+            )
+        properties_list: list[str] = []
+        for value in requested:
+            if value not in {"position", "visible", "visual_ref"}:
+                raise ProjectCommandError(
+                    "COMMAND_SHAPE_INVALID",
+                    "command.properties entries must be position, visible, or visual_ref",
+                )
+            if value in properties_list:
+                raise ProjectCommandError(
+                    "COMMAND_SHAPE_INVALID",
+                    f"command.properties contains duplicate '{value}'",
+                )
+            properties_list.append(value)
+        properties = tuple(properties_list)
+
+    cleared: list[str] = []
+    removed = False
+    if existing is not None:
+        if "position" in properties and ("x" in existing or "y" in existing):
+            existing.pop("x", None)
+            existing.pop("y", None)
+            cleared.append("position")
+        for property_name in ("visible", "visual_ref"):
+            if property_name in properties and property_name in existing:
+                existing.pop(property_name)
+                cleared.append(property_name)
+        if set(existing) == {"element_ref"}:
+            overrides.remove(existing)
+            removed = True
+
+    return {
+        "kind": "state_placement.clear_override",
+        "scene_id": scene.get("scene_id"),
+        "state_id": state.get("state_id"),
+        "render_model_id": placement_model.get("visual_id"),
+        "element_id": element_id,
+        "cleared": cleared,
         "removed": removed,
     }
 
@@ -5951,6 +6132,10 @@ def apply_project_commands(
             applied.append(_apply_render_element_set_position(scenes, command))
         elif kind == "state_placement.set_override":
             applied.append(_apply_state_placement_set_override(scenes, frames, command))
+        elif kind == "state_placement.clear_override":
+            applied.append(_apply_state_placement_clear_override(scenes, command))
+        elif kind == "placement_object.add":
+            applied.append(_apply_placement_object_add(scenes, frames, command))
         elif kind == "render_element.add":
             applied.append(_apply_render_element_add(scenes, frames, command))
         elif kind == "render_element.delete":

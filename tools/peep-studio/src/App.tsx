@@ -38,7 +38,7 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { FramebufferCanvas, FramePreviewCanvas } from "./FramebufferCanvas";
 import {
   SceneAuthoringInspector,
@@ -62,6 +62,7 @@ import type {
   EditorRouteTokenPositions,
   Framebuffer,
   PackageBuildResult,
+  PlacementPreviewSnapshot,
   ProjectCommandResult,
   ProjectHistoryResult,
   ProjectSceneThumbnailsResult,
@@ -70,7 +71,6 @@ import type {
   ProjectLoadResult,
   SceneDocument,
   ServiceHello,
-  WaitingVisual,
 } from "./types";
 import type { RenderElement, RenderModel, StateRecord } from "./types";
 
@@ -136,7 +136,7 @@ export default function App() {
   const [service, setService] = useState<ServiceHello | null>(null);
   const [project, setProject] = useState<ProjectLoadResult | null>(null);
   const [preview, setPreview] = useState<PreviewSnapshot | null>(null);
-  const [placementPreview, setPlacementPreview] = useState<PreviewSnapshot | null>(null);
+  const [placementPreview, setPlacementPreview] = useState<PlacementPreviewSnapshot | null>(null);
   const [placementPreviewLoading, setPlacementPreviewLoading] = useState(false);
   const [placementPreviewError, setPlacementPreviewError] = useState<string | null>(null);
   const [selectedScene, setSelectedScene] = useState<string | null>(null);
@@ -144,7 +144,6 @@ export default function App() {
   const [temporaryProject, setTemporaryProject] = useState(false);
   const [sceneSelection, setSceneSelection] = useState<SceneSelection>({ kind: "scene" });
   const [placementStateId, setPlacementStateId] = useState<string | null>(null);
-  const [placementEditAllStates, setPlacementEditAllStates] = useState(false);
   const [placementEditStateIds, setPlacementEditStateIds] = useState<string[]>([]);
   const [selectedPlacementElement, setSelectedPlacementElement] = useState<string | null>(null);
   const [build, setBuild] = useState<PackageBuildResult | null>(null);
@@ -189,6 +188,8 @@ export default function App() {
   const previewAudioCacheRef = useRef(new Map<string, string>());
   const previewRestoreAttemptRef = useRef<string | null>(null);
   const previewStartRef = useRef<PreviewStartTarget | null>(null);
+  const placementSelectionAnchorRef = useRef<string | null>(null);
+  const placementSceneRef = useRef<string | null>(null);
 
   const stopAudioPlayback = useCallback(() => {
     audioPlaybackRequestRef.current += 1;
@@ -546,6 +547,7 @@ export default function App() {
             valid: result.valid,
             issues: result.issues,
             document: result.document,
+            placement_ownership: result.placement_ownership,
             summary: result.summary,
           }
     ));
@@ -2009,74 +2011,34 @@ export default function App() {
       setBusy(null);
     }
   };
-  const applyStatePlacementOverride = async (
-    busyLabel: string,
-    sceneId: string,
-    stateId: string,
-    renderModelId: string,
-    elementId: string,
-    override: Record<string, unknown>,
-    successMessage: string,
-  ) => {
-    if (bridge === undefined || project === null || busy !== null) {
-      return;
-    }
-    setBusy(busyLabel);
-    setPlaying(false);
-    try {
-      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
-        project_revision: project.project_revision,
-        commands: [
-          {
-            kind: "state_placement.set_override",
-            scene_id: sceneId,
-            state_id: stateId,
-            render_model_id: renderModelId,
-            element_id: elementId,
-            ...override,
-          },
-        ],
-      });
-      applyProjectResult(result);
-      setSelectedScene(sceneId);
-      setSelectedPlacementElement(elementId);
-      setSceneSelection({ kind: "state", id: stateId });
-      if (result.valid) {
-        const previewResult = await bridge.serviceRequest<PreviewSnapshot>("project.preview_reset", {
-          project_revision: result.project_revision,
-          scene_id: sceneId,
-        });
-        setPreview(previewResult);
-      }
-      setMessage(successMessage);
-    } catch (error) {
-      setPlacementDraftPositions({});
-      setMessage(errorText(error));
-    } finally {
-      setBusy(null);
-    }
-  };
   const placementEditStateTargets = () => {
     const states = selectedSceneDocument?.states ?? [];
     const validIds = new Set(states.map((state) => state.state_id));
-    const checked = placementEditStateIds.filter((stateId) => validIds.has(stateId));
-    if (checked.length > 0) {
-      return checked;
-    }
-    return placementState === null ? [] : [placementState.state_id];
+    return placementEditStateIds.filter((stateId) => validIds.has(stateId));
   };
   const placementBaseElement = (elementId: string) => (
     placementRenderModel?.elements.find((element) => element.element_id === elementId) ?? null
   );
-  const statePlacementOverride = (state: StateRecord, elementId: string) => (
-    state.placement_overrides?.find((override) => override.element_ref === elementId) ?? null
+  const placementResolvedElement = (stateId: string, elementId: string) => (
+    placementOwnershipScene?.states[stateId]?.resolved_elements.find(
+      (element) => element.element_id === elementId,
+    ) ?? null
   );
   const placementEditTargetLabel = () => {
-    if (placementEditAllStates) {
-      return "all states";
+    const targetStateIds = placementEditStateTargets();
+    if (targetStateIds.length === 0) {
+      return "Base Placement";
     }
-    const count = placementEditStateTargets().length;
-    return count === 1 ? "1 state" : `${count} states`;
+    if (targetStateIds.length === 1) {
+      return (selectedSceneDocument?.states ?? []).find((state) => state.state_id === targetStateIds[0])?.display_name ?? targetStateIds[0];
+    }
+    return `${targetStateIds.length} states`;
+  };
+  const placementObjectScope = () => {
+    const stateIds = placementEditStateTargets();
+    return stateIds.length === 0
+      ? { kind: "scene_base" }
+      : { kind: "states", state_ids: stateIds };
   };
   const scopedPositionCommands = (
     element: RenderElement,
@@ -2088,13 +2050,9 @@ export default function App() {
       return [];
     }
     const baseElement = placementBaseElement(element.element_id) ?? element;
-    const states = selectedSceneDocument.states ?? [];
-    if (placementEditAllStates) {
-      const hasStatePositionOverride = states.some((state) => {
-        const override = statePlacementOverride(state, element.element_id);
-        return override?.x !== undefined || override?.y !== undefined;
-      });
-      if (baseElement.x === x && baseElement.y === y && !hasStatePositionOverride) {
+    const targetStateIds = placementEditStateTargets();
+    if (targetStateIds.length === 0) {
+      if (baseElement.x === x && baseElement.y === y) {
         return [];
       }
       return [
@@ -2106,25 +2064,11 @@ export default function App() {
           x,
           y,
         },
-        ...states.map((state) => ({
-          kind: "state_placement.set_override",
-          scene_id: selectedSceneDocument.scene_id,
-          state_id: state.state_id,
-          render_model_id: renderModelId,
-          element_id: element.element_id,
-          x,
-          y,
-        })),
       ];
     }
-    const targetStateIds = placementEditStateTargets();
     const unchanged = targetStateIds.every((stateId) => {
-      const state = states.find((item) => item.state_id === stateId);
-      if (state === undefined) {
-        return true;
-      }
-      const override = statePlacementOverride(state, element.element_id);
-      return (override?.x ?? baseElement.x) === x && (override?.y ?? baseElement.y) === y;
+      const resolved = placementResolvedElement(stateId, element.element_id) ?? baseElement;
+      return resolved.x === x && resolved.y === y;
     });
     if (unchanged) {
       return [];
@@ -2148,12 +2092,9 @@ export default function App() {
       return [];
     }
     const baseElement = placementBaseElement(element.element_id) ?? element;
-    const states = selectedSceneDocument.states ?? [];
-    if (placementEditAllStates) {
-      const hasStateVisibilityOverride = states.some((state) => (
-        statePlacementOverride(state, element.element_id)?.visible !== undefined
-      ));
-      if ((baseElement.visible ?? true) === visible && !hasStateVisibilityOverride) {
+    const targetStateIds = placementEditStateTargets();
+    if (targetStateIds.length === 0) {
+      if ((baseElement.visible ?? true) === visible) {
         return [];
       }
       return [
@@ -2164,24 +2105,11 @@ export default function App() {
           element_id: element.element_id,
           visible,
         },
-        ...states.map((state) => ({
-          kind: "state_placement.set_override",
-          scene_id: selectedSceneDocument.scene_id,
-          state_id: state.state_id,
-          render_model_id: renderModelId,
-          element_id: element.element_id,
-          visible,
-        })),
       ];
     }
-    const targetStateIds = placementEditStateTargets();
     const unchanged = targetStateIds.every((stateId) => {
-      const state = states.find((item) => item.state_id === stateId);
-      if (state === undefined) {
-        return true;
-      }
-      const override = statePlacementOverride(state, element.element_id);
-      return (override?.visible ?? baseElement.visible ?? true) === visible;
+      const resolved = placementResolvedElement(stateId, element.element_id) ?? baseElement;
+      return (resolved.visible ?? true) === visible;
     });
     if (unchanged) {
       return [];
@@ -2210,7 +2138,7 @@ export default function App() {
     if (commands.length === 0) {
       return;
     }
-    const targetStateIds = placementEditAllStates ? [] : placementEditStateTargets();
+    const targetStateIds = placementEditStateTargets();
     void applyPlacementCommandBatch(
       "Moving object",
       selectedSceneDocument.scene_id,
@@ -2276,6 +2204,25 @@ export default function App() {
   };
   const deletePlacementElement = (element: RenderElement, renderModelId: string) => {
     if (selectedSceneDocument === null) {
+      return;
+    }
+    const targetStateIds = placementEditStateTargets();
+    if (targetStateIds.length > 0) {
+      const commands = scopedVisibilityCommands(element, renderModelId, false);
+      if (commands.length === 0) {
+        return;
+      }
+      void applyPlacementCommandBatch(
+        "Removing object from states",
+        selectedSceneDocument.scene_id,
+        renderModelId,
+        element.element_id,
+        commands,
+        `Object removed from ${placementEditTargetLabel()}. Save to write it to the project.`,
+        placementState === null
+          ? { kind: "render", id: renderModelId }
+          : { kind: "state", id: placementState.state_id },
+      );
       return;
     }
     void applyRenderElementCommand(
@@ -2369,6 +2316,8 @@ export default function App() {
   const projectValid = project?.valid ?? false;
   const thumbnailsSupported = service?.operations.includes("project.scene_thumbnails") === true;
   const placementPreviewSupported = service?.operations.includes("project.preview_state") === true;
+  const placementBasePreviewSupported = service?.operations.includes("project.preview_scene_base") === true;
+  const scopedPlacementAddSupported = service?.state_scene_presentation.element_commands.includes("placement_object.add") === true;
   const waitingAnimationCommands = service?.state_scene_presentation.waiting_animation.commands ?? [];
   const placementAnimationSupported =
     waitingAnimationCommands.includes("render_element.bind_waiting_animation") &&
@@ -2473,13 +2422,7 @@ export default function App() {
     if (selectedSceneDocument === null) {
       return null;
     }
-    const states = selectedSceneDocument.states ?? [];
-    return (
-      states.find((state) => state.state_id === placementStateId) ??
-      states.find((state) => state.state_id === selectedSceneDocument.entry_state) ??
-      states[0] ??
-      null
-    );
+    return (selectedSceneDocument.states ?? []).find((state) => state.state_id === placementStateId) ?? null;
   }, [placementStateId, selectedSceneDocument]);
   const placementRenderModel = useMemo<RenderModel | null>(() => {
     if (selectedSceneDocument === null) {
@@ -2487,53 +2430,51 @@ export default function App() {
     }
     return selectedSceneDocument.render_models?.[0] ?? null;
   }, [selectedSceneDocument]);
-  const placementOverrideByElement = useMemo(() => {
-    const overrides = new Map<string, NonNullable<StateRecord["placement_overrides"]>[number]>();
-    for (const override of placementState?.placement_overrides ?? []) {
-      overrides.set(override.element_ref, override);
+  const placementOwnershipScene = useMemo(() => {
+    if (selectedSceneDocument === null) {
+      return null;
     }
-    return overrides;
-  }, [placementState?.placement_overrides]);
+    return project?.placement_ownership?.scenes[selectedSceneDocument.scene_id] ?? null;
+  }, [project?.placement_ownership, selectedSceneDocument]);
+  const placementStateProjection = useMemo(() => {
+    if (placementState === null || placementOwnershipScene === null) {
+      return null;
+    }
+    return placementOwnershipScene.states[placementState.state_id] ?? null;
+  }, [placementOwnershipScene, placementState]);
   const effectivePlacementElements = useMemo<RenderElement[]>(() => {
     if (placementRenderModel === null) {
       return [];
     }
-    return placementRenderModel.elements.map((element) => {
-      const override = placementOverrideByElement.get(element.element_id);
-      if (override === undefined) {
-        return element;
-      }
-      return {
-        ...element,
-        x: override.x ?? element.x,
-        y: override.y ?? element.y,
-        visible: override.visible ?? element.visible,
-        visual_ref: override.visual_ref ?? element.visual_ref,
-      };
-    });
-  }, [placementOverrideByElement, placementRenderModel]);
+    if (
+      placementStateProjection === null ||
+      placementOwnershipScene?.render_model_id !== placementRenderModel.visual_id
+    ) {
+      return placementRenderModel.elements;
+    }
+    return placementStateProjection.resolved_elements;
+  }, [placementOwnershipScene?.render_model_id, placementRenderModel, placementStateProjection]);
   useEffect(() => {
     const sceneId = selectedSceneDocument?.scene_id ?? null;
     const stateId = placementState?.state_id ?? null;
+    const previewSupported = stateId === null ? placementBasePreviewSupported : placementPreviewSupported;
     const readyForPlacementPreview =
       bridge !== undefined &&
       projectRevision !== null &&
       projectValid &&
       workspaceMode === "placement" &&
-      sceneId !== null &&
-      stateId !== null;
+      sceneId !== null;
     if (
       !readyForPlacementPreview ||
-      !placementPreviewSupported ||
+      !previewSupported ||
       projectRevision === null ||
-      sceneId === null ||
-      stateId === null
+      sceneId === null
     ) {
       setPlacementPreview(null);
       setPlacementPreviewLoading(false);
       setPlacementPreviewError(
-        readyForPlacementPreview && !placementPreviewSupported
-          ? `Placement preview needs Service API 16. Restart Peep Studio if the top bar still shows Service API ${service?.service_api_version ?? "unknown"}.`
+        readyForPlacementPreview && !previewSupported
+          ? `This placement scope needs Service API ${stateId === null ? 36 : 16}. Restart Peep Studio if the top bar still shows Service API ${service?.service_api_version ?? "unknown"}.`
           : null,
       );
       return undefined;
@@ -2542,18 +2483,21 @@ export default function App() {
     let cancelled = false;
     setPlacementPreviewLoading(true);
     setPlacementPreviewError(null);
+    const operation = stateId === null ? "project.preview_scene_base" : "project.preview_state";
     bridge
-      .serviceRequest<PreviewSnapshot>("project.preview_state", {
+      .serviceRequest<PlacementPreviewSnapshot>(operation, {
         project_revision: projectRevision,
         scene_id: sceneId,
-        state_id: stateId,
+        ...(stateId === null ? {} : { state_id: stateId }),
       })
       .then((result) => {
+        const matchesScope = stateId === null
+          ? "placement" in result && result.placement.scene_id === sceneId
+          : "scene" in result && result.scene.scene_id === sceneId && result.scene.state_id === stateId;
         if (
           cancelled ||
           result.project_revision !== projectRevision ||
-          result.scene.scene_id !== sceneId ||
-          result.scene.state_id !== stateId
+          !matchesScope
         ) {
           return;
         }
@@ -2576,6 +2520,7 @@ export default function App() {
     };
   }, [
     bridge,
+    placementBasePreviewSupported,
     placementPreviewSupported,
     placementState?.state_id,
     projectRevision,
@@ -2585,48 +2530,39 @@ export default function App() {
     workspaceMode,
   ]);
   useEffect(() => {
+    const sceneId = selectedSceneDocument?.scene_id ?? null;
+    const sceneKey = sceneId === null ? null : `${project?.summary.project_id ?? ""}:${sceneId}`;
+    if (placementSceneRef.current === sceneKey) {
+      return;
+    }
+    placementSceneRef.current = sceneKey;
+    placementSelectionAnchorRef.current = null;
+    setPlacementStateId(null);
+    setPlacementEditStateIds([]);
+    setSelectedPlacementElement(null);
+  }, [project?.summary.project_id, selectedSceneDocument?.scene_id]);
+  useEffect(() => {
     if (selectedSceneDocument === null) {
+      if (placementEditStateIds.length > 0) {
+        setPlacementEditStateIds([]);
+      }
       if (placementStateId !== null) {
         setPlacementStateId(null);
       }
       return;
     }
     const states = selectedSceneDocument.states ?? [];
-    if (placementStateId !== null && states.some((state) => state.state_id === placementStateId)) {
-      return;
-    }
-    setPlacementStateId(
-      states.find((state) => state.state_id === selectedSceneDocument.entry_state)?.state_id ??
-      states[0]?.state_id ??
-      null,
-    );
-    setSelectedPlacementElement(null);
-  }, [placementStateId, selectedSceneDocument]);
-  useEffect(() => {
-    if (selectedSceneDocument === null) {
-      if (placementEditAllStates) {
-        setPlacementEditAllStates(false);
-      }
-      if (placementEditStateIds.length > 0) {
-        setPlacementEditStateIds([]);
-      }
-      return;
-    }
-    const states = selectedSceneDocument.states ?? [];
     const validIds = new Set(states.map((state) => state.state_id));
-    const fallbackStateId =
-      (placementStateId !== null && validIds.has(placementStateId) ? placementStateId : null) ??
-      states.find((state) => state.state_id === selectedSceneDocument.entry_state)?.state_id ??
-      states[0]?.state_id ??
-      null;
     setPlacementEditStateIds((current) => {
       const next = current.filter((stateId) => validIds.has(stateId));
-      const resolved = next.length > 0 ? next : fallbackStateId === null ? [] : [fallbackStateId];
-      return resolved.length === current.length && resolved.every((stateId, index) => stateId === current[index])
+      return next.length === current.length && next.every((stateId, index) => stateId === current[index])
         ? current
-        : resolved;
+        : next;
     });
-  }, [placementEditAllStates, placementEditStateIds.length, placementStateId, selectedSceneDocument]);
+    if (placementStateId !== null && !validIds.has(placementStateId)) {
+      setPlacementStateId(placementEditStateIds.find((stateId) => validIds.has(stateId)) ?? null);
+    }
+  }, [placementEditStateIds, placementStateId, selectedSceneDocument]);
   const selectedPlacementRenderElement = useMemo<RenderElement | null>(() => {
     if (selectedPlacementElement === null) {
       return null;
@@ -2892,7 +2828,7 @@ export default function App() {
       </button>
       <button
         type="button"
-        disabled={busy !== null || selectedSceneDocument === null || placementRenderModel === null || compiledAssetFrames.length === 0}
+        disabled={!scopedPlacementAddSupported || busy !== null || selectedSceneDocument === null || placementRenderModel === null || compiledAssetFrames.length === 0}
         onClick={() => setSpritePickerOpen((open) => !open)}
         title={compiledAssetFrames.length === 0 ? "No sprite assets available" : "Add sprite"}
         aria-label="Add sprite"
@@ -2904,7 +2840,7 @@ export default function App() {
           key={primitive.kind}
           className={`primitive-${primitive.kind}`}
           type="button"
-          disabled={busy !== null || selectedSceneDocument === null || placementRenderModel === null}
+          disabled={!scopedPlacementAddSupported || busy !== null || selectedSceneDocument === null || placementRenderModel === null}
           onClick={() => void addPlacementPrimitive(primitive.kind)}
           title={`Add ${primitive.label.toLowerCase()}`}
           aria-label={`Add ${primitive.label.toLowerCase()}`}
@@ -2934,7 +2870,7 @@ export default function App() {
                 <button
                   key={frame.frame_id}
                   type="button"
-                  disabled={busy !== null || selectedSceneDocument === null || placementRenderModel === null}
+                  disabled={!scopedPlacementAddSupported || busy !== null || selectedSceneDocument === null || placementRenderModel === null}
                   title={`${placementFrameLabel(frame)} (${frame.width}x${frame.height})`}
                   onClick={() => void addPlacementSprite(frame)}
                 >
@@ -2952,21 +2888,29 @@ export default function App() {
     </div>
   );
   const renderPreviewPanel = (variant: "project" | "placement") => {
-    const placementFramebuffer = placementPreview?.project_revision === projectRevision &&
-      placementPreview.scene.scene_id === selectedSceneDocument?.scene_id &&
-      placementPreview.scene.state_id === placementState?.state_id
-      ? placementPreview.framebuffer
-      : null;
+    const placementPreviewMatches = placementPreview?.project_revision === projectRevision && (
+      placementState === null
+        ? "placement" in placementPreview && placementPreview.placement.scene_id === selectedSceneDocument?.scene_id
+        : "scene" in placementPreview &&
+          placementPreview.scene.scene_id === selectedSceneDocument?.scene_id &&
+          placementPreview.scene.state_id === placementState.state_id
+    );
+    const placementFramebuffer = placementPreviewMatches ? placementPreview.framebuffer : null;
     const matchingLiveFramebuffer = preview?.project_revision === projectRevision &&
+      placementState !== null &&
       preview.scene.scene_id === selectedSceneDocument?.scene_id &&
-      preview.scene.state_id === placementState?.state_id
+      preview.scene.state_id === placementState.state_id
       ? preview.framebuffer
       : null;
     const framebuffer = variant === "placement" ? placementFramebuffer ?? matchingLiveFramebuffer : preview?.framebuffer ?? null;
     const placementPreviewNotice =
       variant !== "placement" || placementFramebuffer !== null || matchingLiveFramebuffer !== null
         ? null
-        : placementPreviewError ?? (placementPreviewLoading ? "Loading selected state preview..." : "No selected state preview available.");
+        : placementPreviewError ?? (
+          placementPreviewLoading
+            ? `Loading ${placementState === null ? "Base Placement" : "selected state"} preview...`
+            : `No ${placementState === null ? "Base Placement" : "selected state"} preview available.`
+        );
     return (
     <section className={`preview-pane ${variant === "placement" ? "preview-pane-large" : "preview-pane-compact"}`}>
         {variant === "project" && (
@@ -3042,7 +2986,7 @@ export default function App() {
                     const y = boundsDraft?.y ?? positionDraft?.y ?? element.y;
                     const width = boundsDraft?.width ?? element.width;
                     const height = boundsDraft?.height ?? element.height;
-                    const canResize = selectedPlacementElement === element.element_id && element.kind !== "sprite" && placementRenderModel !== null;
+                    const canResize = placementEditStateIds.length === 0 && selectedPlacementElement === element.element_id && element.kind !== "sprite" && placementRenderModel !== null;
                     const isLine = element.kind === "line";
                     return (
                       <button
@@ -3596,7 +3540,7 @@ export default function App() {
       </div>
     </section>
   );
-  const placementElements = () => [...effectivePlacementElements].sort((left, right) => left.z_order - right.z_order);
+  const placementElements = () => [...(placementRenderModel?.elements ?? [])].sort((left, right) => left.z_order - right.z_order);
   const placementKindLabel = (kind: string) => {
     switch (kind) {
       case "sprite":
@@ -3660,6 +3604,11 @@ export default function App() {
       }
       return;
     }
+    if (!scopedPlacementAddSupported) {
+      setMessage(`Scoped placement needs Service API 36. Restart Peep Studio if the top bar still shows Service API ${service?.service_api_version ?? "unknown"}.`);
+      return;
+    }
+    const targetStateIds = placementEditStateTargets();
     const element: RenderElement = {
       element_id: nextPlacementElementId(frame.asset_id, placementRenderModel.elements),
       kind: "sprite",
@@ -3675,27 +3624,27 @@ export default function App() {
     const animationFrames = compiledAssetFrameGroups.find((group) => group.assetId === frame.asset_id)?.frames ?? [];
     const canAutoAnimate =
       placementAnimationSupported &&
-      placementState !== null &&
+      targetStateIds.length > 0 &&
       animationFrames.length >= 2 &&
       animationFrames.length <= 4 &&
       animationFrames.every((item) => item.width === frame.width && item.height === frame.height);
     const commands: Record<string, unknown>[] = [
       {
-        kind: "render_element.add",
+        kind: "placement_object.add",
         scene_id: selectedSceneDocument.scene_id,
-        render_model_id: placementRenderModel.visual_id,
+        scope: placementObjectScope(),
         element,
       },
     ];
     if (canAutoAnimate) {
-      commands.push({
-        kind: "render_element.bind_waiting_animation",
-        scene_id: selectedSceneDocument.scene_id,
-        state_id: placementState.state_id,
-        render_model_id: placementRenderModel.visual_id,
-        element_id: element.element_id,
-        phase_visual_refs: animationFrames.map((item) => item.frame_id),
-      });
+      commands.push(...targetStateIds.map((stateId) => ({
+          kind: "render_element.bind_waiting_animation",
+          scene_id: selectedSceneDocument.scene_id,
+          state_id: stateId,
+          render_model_id: placementRenderModel.visual_id,
+          element_id: element.element_id,
+          phase_visual_refs: animationFrames.map((item) => item.frame_id),
+        })));
     }
     if (bridge === undefined || project === null || busy !== null) {
       return;
@@ -3711,7 +3660,9 @@ export default function App() {
       setSelectedScene(selectedSceneDocument.scene_id);
       setSelectedPlacementElement(element.element_id);
       setPlacementInspectorTab("object");
-      setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
+      setSceneSelection(placementState === null
+        ? { kind: "render", id: placementRenderModel.visual_id }
+        : { kind: "state", id: placementState.state_id });
       if (result.valid) {
         const previewResult = await bridge.serviceRequest<PreviewSnapshot>("project.preview_reset", {
           project_revision: result.project_revision,
@@ -3719,7 +3670,7 @@ export default function App() {
         });
         setPreview(previewResult);
       }
-      setMessage(`${canAutoAnimate ? "Animated sprite" : "Sprite"} added. Save to write it to the project.`);
+      setMessage(`${canAutoAnimate ? "Animated sprite" : "Sprite"} added to ${placementEditTargetLabel()}. Save to write it to the project.`);
       setSpritePickerOpen(false);
     } catch (error) {
       setMessage(errorText(error));
@@ -3732,36 +3683,46 @@ export default function App() {
     renderModelId: string,
     frames: CompiledAssetFrame[],
   ) => {
-    if (selectedSceneDocument === null || placementState === null || frames.length < 2) {
+    const targetStateIds = placementEditStateTargets();
+    if (selectedSceneDocument === null || placementState === null || targetStateIds.length === 0 || frames.length < 2) {
       return;
     }
-    await applyRenderElementCommand(
+    await applyPlacementCommandBatch(
       "Adding animation",
       selectedSceneDocument.scene_id,
       renderModelId,
       element.element_id,
-      {
+      targetStateIds.map((stateId) => ({
         kind: "render_element.bind_waiting_animation",
-        state_id: placementState.state_id,
+        scene_id: selectedSceneDocument.scene_id,
+        state_id: stateId,
+        render_model_id: renderModelId,
+        element_id: element.element_id,
         phase_visual_refs: frames.map((frame) => frame.frame_id),
-      },
-      "Sprite animation enabled. Save to write it to the project.",
+      })),
+      `Sprite animation enabled for ${placementEditTargetLabel()}. Save to write it to the project.`,
+      { kind: "state", id: placementState.state_id },
     );
   };
   const clearPlacementSpriteAnimation = async (element: RenderElement, renderModelId: string) => {
-    if (selectedSceneDocument === null || placementState === null) {
+    const targetStateIds = placementEditStateTargets();
+    if (selectedSceneDocument === null || placementState === null || targetStateIds.length === 0) {
       return;
     }
-    await applyRenderElementCommand(
+    await applyPlacementCommandBatch(
       "Removing animation",
       selectedSceneDocument.scene_id,
       renderModelId,
       element.element_id,
-      {
+      targetStateIds.map((stateId) => ({
         kind: "render_element.clear_waiting_animation",
-        state_id: placementState.state_id,
-      },
-      "Sprite animation removed. Save to write it to the project.",
+        scene_id: selectedSceneDocument.scene_id,
+        state_id: stateId,
+        render_model_id: renderModelId,
+        element_id: element.element_id,
+      })),
+      `Sprite animation removed for ${placementEditTargetLabel()}. Save to write it to the project.`,
+      { kind: "state", id: placementState.state_id },
     );
   };
   const addPlacementPrimitive = async (kind: PlacementPrimitiveKind) => {
@@ -3779,16 +3740,25 @@ export default function App() {
       layer: "SCENE",
       visible: true,
     };
-    await applyRenderElementCommand(
+    if (!scopedPlacementAddSupported) {
+      setMessage(`Scoped placement needs Service API 36. Restart Peep Studio if the top bar still shows Service API ${service?.service_api_version ?? "unknown"}.`);
+      return;
+    }
+    await applyPlacementCommandBatch(
       "Adding object",
       selectedSceneDocument.scene_id,
       placementRenderModel.visual_id,
-      null,
-      {
-        kind: "render_element.add",
+      element.element_id,
+      [{
+        kind: "placement_object.add",
+        scene_id: selectedSceneDocument.scene_id,
+        scope: placementObjectScope(),
         element,
-      },
-      "Object added. Save to write it to the project.",
+      }],
+      `Object added to ${placementEditTargetLabel()}. Save to write it to the project.`,
+      placementState === null
+        ? { kind: "render", id: placementRenderModel.visual_id }
+        : { kind: "state", id: placementState.state_id },
     );
     setSelectedPlacementElement(element.element_id);
     setPlacementInspectorTab("object");
@@ -3800,34 +3770,96 @@ export default function App() {
       setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
     }
   };
-  const selectPlacementState = (stateId: string) => {
+  const selectPlacementBase = (elementId?: string) => {
+    placementSelectionAnchorRef.current = null;
+    setPlacementEditStateIds([]);
+    setPlacementStateId(null);
+    if (elementId !== undefined) {
+      setSelectedPlacementElement(elementId);
+      setPlacementInspectorTab("object");
+    }
+    if (placementRenderModel !== null) {
+      setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
+    }
+  };
+  const selectPlacementState = (stateId: string, event?: ReactMouseEvent<HTMLButtonElement>) => {
+    const states = selectedSceneDocument?.states ?? [];
     const state = (selectedSceneDocument?.states ?? []).find((item) => item.state_id === stateId) ?? null;
-    setPlacementStateId(stateId);
-    if (state !== null && placementRenderModel !== null) {
-      setSceneSelection({ kind: "state", id: state.state_id });
+    if (state === null) {
+      return;
     }
-  };
-  const setAllPlacementStatesTargeted = (targeted: boolean) => {
-    setPlacementEditAllStates(targeted);
-    if (!targeted && placementEditStateTargets().length === 0 && placementState !== null) {
-      setPlacementEditStateIds([placementState.state_id]);
-    }
-  };
-  const togglePlacementEditState = (stateId: string) => {
-    const currentlyChecked = placementEditStateIds.includes(stateId);
-    setPlacementEditAllStates(false);
-    if (!currentlyChecked) {
-      setPlacementStateId(stateId);
-    }
-    setPlacementEditStateIds((current) => {
-      if (current.includes(stateId)) {
-        return current.length <= 1 ? current : current.filter((item) => item !== stateId);
+    const orderedIds = states.map((item) => item.state_id);
+    const additive = event?.ctrlKey === true || event?.metaKey === true;
+    const range = event?.shiftKey === true;
+    let nextIds: string[];
+    if (range && placementSelectionAnchorRef.current !== null) {
+      const anchorIndex = orderedIds.indexOf(placementSelectionAnchorRef.current);
+      const stateIndex = orderedIds.indexOf(stateId);
+      if (anchorIndex >= 0 && stateIndex >= 0) {
+        const start = Math.min(anchorIndex, stateIndex);
+        const end = Math.max(anchorIndex, stateIndex);
+        const rangeIds = orderedIds.slice(start, end + 1);
+        nextIds = additive
+          ? orderedIds.filter((id) => placementEditStateIds.includes(id) || rangeIds.includes(id))
+          : rangeIds;
+      } else {
+        nextIds = [stateId];
       }
-      return [...current, stateId];
-    });
+    } else if (additive) {
+      const selectedIds = new Set(placementEditStateIds);
+      if (selectedIds.has(stateId)) {
+        selectedIds.delete(stateId);
+      } else {
+        selectedIds.add(stateId);
+      }
+      nextIds = orderedIds.filter((id) => selectedIds.has(id));
+      placementSelectionAnchorRef.current = stateId;
+    } else {
+      nextIds = [stateId];
+      placementSelectionAnchorRef.current = stateId;
+    }
+    const nextPrimary = nextIds.includes(stateId)
+      ? stateId
+      : nextIds.includes(placementStateId ?? "")
+        ? placementStateId
+        : nextIds.at(-1) ?? null;
+    setPlacementEditStateIds(nextIds);
+    setPlacementStateId(nextPrimary);
+    if (nextPrimary === null) {
+      if (placementRenderModel !== null) {
+        setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
+      }
+    } else {
+      setSceneSelection({ kind: "state", id: nextPrimary });
+    }
+  };
+  const selectPlacementStateObject = (stateId: string, elementId: string) => {
+    placementSelectionAnchorRef.current = stateId;
+    setPlacementEditStateIds([stateId]);
+    setPlacementStateId(stateId);
+    setSelectedPlacementElement(elementId);
+    setPlacementInspectorTab("object");
+    setSceneSelection({ kind: "state", id: stateId });
+  };
+  const handlePlacementHierarchyKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "a") {
+      return;
+    }
+    const stateIds = (selectedSceneDocument?.states ?? []).map((state) => state.state_id);
+    if (stateIds.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    const primary = placementStateId !== null && stateIds.includes(placementStateId)
+      ? placementStateId
+      : stateIds[0];
+    placementSelectionAnchorRef.current = primary;
+    setPlacementEditStateIds(stateIds);
+    setPlacementStateId(primary);
+    setSceneSelection({ kind: "state", id: primary });
   };
   const renderPlacementEditScope = () => {
-    const editStateIds = new Set(placementEditStateIds);
+    const targetStates = (selectedSceneDocument?.states ?? []).filter((state) => placementEditStateIds.includes(state.state_id));
     return (
       <section className="inspector-section placement-edit-scope-section">
         <h3><SquareMousePointer size={14} aria-hidden="true" /> Edit target</h3>
@@ -3836,49 +3868,23 @@ export default function App() {
         ) : (
           <div className="placement-edit-scope">
             <div className="placement-scope-header">
-              <span>Applying edits to</span>
-              <code>{placementEditAllStates ? "All states" : placementEditTargetLabel()}</code>
+              <span>{targetStates.length === 0 ? <Layers3 size={16} aria-hidden="true" /> : <Network size={16} aria-hidden="true" />}</span>
+              <span>
+                <strong>{placementEditTargetLabel()}</strong>
+                <small>{targetStates.length === 0 ? "Scene base" : `${targetStates.length} state${targetStates.length === 1 ? "" : "s"}`}</small>
+              </span>
+              <code>{targetStates.length === 0 ? "BASE" : targetStates.length}</code>
             </div>
-            <label className="placement-scope-all">
-              <input
-                type="checkbox"
-                checked={placementEditAllStates}
-                disabled={busy !== null}
-                onChange={(event) => setAllPlacementStatesTargeted(event.target.checked)}
-              />
-              <span>All states</span>
-            </label>
-            <div className="placement-state-scope-list">
-              {(selectedSceneDocument.states ?? []).map((state) => (
-                <div
-                  key={state.state_id}
-                  className={`placement-state-scope-row ${placementState?.state_id === state.state_id ? "previewing" : ""}`}
-                >
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={placementEditAllStates || editStateIds.has(state.state_id)}
-                      disabled={busy !== null || placementEditAllStates}
-                      onChange={() => togglePlacementEditState(state.state_id)}
-                    />
-                    <span>
-                      <strong>{state.display_name}</strong>
-                      <small>{state.state_id}</small>
-                    </span>
-                  </label>
-                  <button
-                    className="placement-state-preview-button"
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() => selectPlacementState(state.state_id)}
-                    title="Preview this state"
-                  >
-                    {placementState?.state_id === state.state_id ? "Preview" : "View"}
-                  </button>
-                </div>
-              ))}
-            </div>
-            <p className="muted">Previewing {placementState?.display_name ?? "no state"}.</p>
+            {targetStates.length > 1 && (
+              <div className="placement-target-chips">
+                {targetStates.map((state) => (
+                  <span className={placementStateId === state.state_id ? "primary" : ""} key={state.state_id}>
+                    {state.display_name}
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="muted">Preview: {placementState?.display_name ?? "Base Placement"}</p>
           </div>
         )}
       </section>
@@ -3886,50 +3892,134 @@ export default function App() {
   };
   const renderPlacementObjectHierarchy = () => {
     const elements = placementElements();
-    const activeWaitingVisual = selectedSceneDocument?.waiting_visuals?.find(
-      (waiting) => waiting.waiting_visual_id === placementState?.waiting_visual_ref,
-    ) ?? null;
-    const animatedSourceIds = new Set(
-      activeWaitingVisual?.elements.map((element) => element.source_element_ref) ?? [],
+    const selectedStateIds = new Set(placementEditStateIds);
+    const stateScopedElementIds = new Set(placementOwnershipScene?.state_scoped_element_ids ?? []);
+    const renderObjectRow = (
+      element: RenderElement,
+      key: string,
+      onClick: () => void,
+      badges: string[],
+      selected: boolean,
+    ) => (
+      <button
+        key={key}
+        className={`placement-tree-object ${selected ? "selected" : ""}`}
+        type="button"
+        onClick={onClick}
+      >
+        <span className="placement-object-kind">
+          {placementKindIcon(element.kind)}
+          <span>
+            <strong>{placementKindLabel(element.kind)}</strong>
+            <small>{placementSourceLabel(element)}</small>
+          </span>
+        </span>
+        <span className="placement-object-badges">
+          {badges.map((badge) => <code key={badge}>{badge}</code>)}
+        </span>
+      </button>
     );
-    const changedSourceIds = new Set((placementState?.placement_overrides ?? []).map((override) => override.element_ref));
     return (
       <details className="project-section placement-object-section" open>
-        <summary>Hierarchy</summary>
+        <summary>Placement</summary>
         {selectedSceneDocument === null ? (
           <p className="muted project-section-empty">Select a scene to inspect objects.</p>
         ) : (
-          <div className="placement-object-tree">
+          <div
+            className="placement-object-tree"
+            role="tree"
+            aria-multiselectable="true"
+            tabIndex={0}
+            onKeyDown={handlePlacementHierarchyKeyDown}
+          >
             {placementRenderModel === null ? (
-              <p className="muted project-section-empty">No placed-object view for this state.</p>
-            ) : elements.length === 0 ? (
-              <p className="muted project-section-empty">No placed objects.</p>
+              <p className="muted project-section-empty">No scene placement surface.</p>
             ) : (
-              <div className="placement-object-children">
-                {elements.map((element: RenderElement) => (
+              <>
+                <section className="placement-tree-branch base-branch">
                   <button
-                    key={element.element_id}
-                    className={selectedPlacementElement === element.element_id ? "selected" : ""}
+                    className={`placement-scope-node ${placementEditStateIds.length === 0 ? "selected primary" : ""}`}
                     type="button"
-                    onClick={() => selectPlacementElement(element.element_id)}
+                    role="treeitem"
+                    aria-selected={placementEditStateIds.length === 0}
+                    onClick={() => selectPlacementBase()}
                   >
-                    <span className="placement-object-kind">
-                      {placementKindIcon(element.kind)}
-                      <span>
-                        <strong>{placementKindLabel(element.kind)}</strong>
-                        <small>{placementSourceLabel(element)}</small>
-                      </span>
+                    <Layers3 size={15} aria-hidden="true" />
+                    <span>
+                      <strong>Base Placement</strong>
+                      <small>Scene defaults</small>
                     </span>
-                    <span className="placement-object-badges">
-                      <code>{placementLayerLabel(element)}</code>
-                      {changedSourceIds.has(element.element_id) && <code>Changed</code>}
-                      {animatedSourceIds.has(element.element_id) && <code>Anim</code>}
-                      {element.visible === false && <code>Hidden</code>}
-                      <code>z{element.z_order}</code>
-                    </span>
+                    <code>{elements.length}</code>
                   </button>
-                ))}
-              </div>
+                  <div className="placement-object-children" role="group">
+                    {elements.length === 0 ? (
+                      <p className="muted project-section-empty">No base objects.</p>
+                    ) : elements.map((element) => renderObjectRow(
+                      element,
+                      `base:${element.element_id}`,
+                      () => selectPlacementBase(element.element_id),
+                      [
+                        placementLayerLabel(element),
+                        ...(stateScopedElementIds.has(element.element_id) && element.visible === false ? ["Scoped"] : []),
+                        ...(element.visible === false ? ["Hidden"] : []),
+                        `z${element.z_order}`,
+                      ],
+                      placementEditStateIds.length === 0 && selectedPlacementElement === element.element_id,
+                    ))}
+                  </div>
+                </section>
+                <div className="placement-tree-section-label">State variations</div>
+                {(selectedSceneDocument.states ?? []).map((state) => {
+                  const stateProjection = placementOwnershipScene?.states[state.state_id] ?? null;
+                  const changes = stateProjection?.changes ?? {};
+                  const resolvedById = new Map(
+                    (stateProjection?.resolved_elements ?? []).map((element) => [element.element_id, element]),
+                  );
+                  const changedElements = elements
+                    .filter((element) => changes[element.element_id] !== undefined)
+                    .map((element) => resolvedById.get(element.element_id) ?? element);
+                  const selected = selectedStateIds.has(state.state_id);
+                  const primary = placementStateId === state.state_id;
+                  return (
+                    <section className="placement-tree-branch state-branch" key={state.state_id}>
+                      <button
+                        className={`placement-scope-node ${selected ? "selected" : ""} ${primary ? "primary" : ""}`}
+                        type="button"
+                        role="treeitem"
+                        aria-selected={selected}
+                        onClick={(event) => selectPlacementState(state.state_id, event)}
+                      >
+                        <Network size={15} aria-hidden="true" />
+                        <span>
+                          <strong>{state.display_name}</strong>
+                          <small>{primary ? "Primary preview" : state.state_id}</small>
+                        </span>
+                        <code>{changedElements.length}</code>
+                      </button>
+                      {changedElements.length > 0 && (
+                        <div className="placement-object-children" role="group">
+                          {changedElements.map((element) => {
+                            const change = changes[element.element_id];
+                            const badges = [
+                              ...(change?.local_properties.includes("position") ? ["Position"] : []),
+                              ...(change?.local_properties.includes("visible") ? ["Visibility"] : []),
+                              ...(change?.local_properties.includes("visual_ref") ? ["Frame"] : []),
+                              ...(change?.animated ? ["Anim"] : []),
+                            ];
+                            return renderObjectRow(
+                              element,
+                              `${state.state_id}:${element.element_id}`,
+                              () => selectPlacementStateObject(state.state_id, element.element_id),
+                              badges,
+                              primary && selectedPlacementElement === element.element_id,
+                            );
+                          })}
+                        </div>
+                      )}
+                    </section>
+                  );
+                })}
+              </>
             )}
           </div>
         )}
@@ -3953,12 +4043,53 @@ export default function App() {
       selectedSpriteFrames.length >= 2 &&
       selectedSpriteFrames.length <= 4 &&
       selectedSpriteFrames.every((frame) => frame.width === selectedElement.width && frame.height === selectedElement.height);
-    const selectedStateWaitingVisual: WaitingVisual | null = selectedSceneDocument?.waiting_visuals?.find(
-      (waiting) => waiting.waiting_visual_id === placementState?.waiting_visual_ref,
-    ) ?? null;
-    const selectedSpriteAnimation = selectedElement === null
-      ? null
-      : selectedStateWaitingVisual?.elements.find((element) => element.source_element_ref === selectedElement.element_id) ?? null;
+    const targetStateIds = placementEditStateTargets();
+    const placementPropertyOverrideCount = (property: "position" | "visible" | "visual_ref") => {
+      if (selectedElement === null) {
+        return 0;
+      }
+      return targetStateIds.filter((stateId) => (
+        placementOwnershipScene?.states[stateId]?.changes[selectedElement.element_id]
+          ?.local_properties.includes(property) === true
+      )).length;
+    };
+    const placementPropertyStatus = (property: "position" | "visible" | "visual_ref") => {
+      if (targetStateIds.length === 0) {
+        return "Scene base";
+      }
+      const count = placementPropertyOverrideCount(property);
+      if (count === 0) {
+        return "Inherited";
+      }
+      return count === targetStateIds.length ? "Local" : "Mixed";
+    };
+    const clearPlacementOverrides = (properties: Array<"position" | "visible" | "visual_ref">) => {
+      if (selectedSceneDocument === null || placementRenderModel === null || selectedElement === null || targetStateIds.length === 0) {
+        return;
+      }
+      void applyPlacementCommandBatch(
+        "Restoring inherited placement",
+        selectedSceneDocument.scene_id,
+        placementRenderModel.visual_id,
+        selectedElement.element_id,
+        targetStateIds.map((stateId) => ({
+          kind: "state_placement.clear_override",
+          scene_id: selectedSceneDocument.scene_id,
+          state_id: stateId,
+          element_id: selectedElement.element_id,
+          properties,
+        })),
+        `Inherited ${properties.join(", ")} restored for ${placementEditTargetLabel()}. Save to write it to the project.`,
+        placementState === null
+          ? { kind: "render", id: placementRenderModel.visual_id }
+          : { kind: "state", id: placementState.state_id },
+      );
+    };
+    const selectedSpriteAnimationCount = selectedElement === null
+      ? 0
+      : targetStateIds.filter((stateId) => (
+          placementOwnershipScene?.states[stateId]?.changes[selectedElement.element_id]?.animated === true
+        )).length;
     const commitPositionInput = (axis: "x" | "y", value: string) => {
       if (selectedElement === null || placementRenderModel === null) {
         return;
@@ -3975,7 +4106,7 @@ export default function App() {
       );
     };
     const commitBoundsInput = (axis: "width" | "height", value: string) => {
-      if (selectedSceneDocument === null || selectedElement === null || placementRenderModel === null) {
+      if (selectedSceneDocument === null || selectedElement === null || placementRenderModel === null || targetStateIds.length > 0) {
         return;
       }
       const parsed = Math.round(Number(value));
@@ -3992,7 +4123,7 @@ export default function App() {
       });
     };
     const setElementLayer = (layer: "BACKGROUND" | "SCENE" | "UI") => {
-      if (selectedSceneDocument === null || selectedElement === null || placementRenderModel === null) {
+      if (selectedSceneDocument === null || selectedElement === null || placementRenderModel === null || targetStateIds.length > 0) {
         return;
       }
       void applyRenderElementCommand(
@@ -4012,7 +4143,7 @@ export default function App() {
       if (commands.length === 0) {
         return;
       }
-      const targetStateIds = placementEditAllStates ? [] : placementEditStateTargets();
+      const targetStateIds = placementEditStateTargets();
       void applyPlacementCommandBatch(
         "Changing visibility",
         selectedSceneDocument.scene_id,
@@ -4046,6 +4177,32 @@ export default function App() {
               <div><dt>Draw order</dt><dd>{selectedElement.z_order}</dd></div>
               <div><dt>Internal ID</dt><dd>{selectedElement.element_id}</dd></div>
             </dl>
+            {targetStateIds.length > 0 && (
+              <div className="placement-override-status">
+                {([
+                  ["Position", "position"],
+                  ["Visibility", "visible"],
+                  ...(selectedElement.kind === "sprite" ? [["Frame", "visual_ref"]] : []),
+                ] as Array<[string, "position" | "visible" | "visual_ref"]>).map(([label, property]) => {
+                  const overrideCount = placementPropertyOverrideCount(property);
+                  return (
+                    <div key={property}>
+                      <span>{label}</span>
+                      <code>{placementPropertyStatus(property)}</code>
+                      <button
+                        type="button"
+                        disabled={busy !== null || overrideCount === 0}
+                        onClick={() => clearPlacementOverrides([property])}
+                        title={`Restore inherited ${label.toLowerCase()}`}
+                        aria-label={`Restore inherited ${label.toLowerCase()}`}
+                      >
+                        <RotateCcw size={13} aria-hidden="true" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <div className="placement-position-editor">
               <label>
                 X
@@ -4089,7 +4246,7 @@ export default function App() {
                       min="1"
                       max={168 - selectedElement.x}
                       defaultValue={selectedElement.width}
-                      disabled={busy !== null}
+                      disabled={busy !== null || targetStateIds.length > 0}
                       onBlur={(event) => commitBoundsInput("width", event.target.value)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
@@ -4106,7 +4263,7 @@ export default function App() {
                       min="1"
                       max={144 - selectedElement.y}
                       defaultValue={selectedElement.height}
-                      disabled={busy !== null}
+                      disabled={busy !== null || targetStateIds.length > 0}
                       onBlur={(event) => commitBoundsInput("height", event.target.value)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
@@ -4121,7 +4278,7 @@ export default function App() {
                 Layer
                 <select
                   value={placementLayerLabel(selectedElement)}
-                  disabled={busy !== null}
+                  disabled={busy !== null || targetStateIds.length > 0}
                   onChange={(event) => setElementLayer(event.target.value as "BACKGROUND" | "SCENE" | "UI")}
                 >
                   <option value="BACKGROUND">Background</option>
@@ -4134,7 +4291,7 @@ export default function App() {
                 <div>
                   <button
                     type="button"
-                    disabled={busy !== null || selectedElement.z_order <= 0}
+                    disabled={busy !== null || targetStateIds.length > 0 || selectedElement.z_order <= 0}
                     onClick={() => setPlacementElementZOrder(selectedElement, placementRenderModel.visual_id, selectedElement.z_order - 1)}
                     title="Send backward"
                   >
@@ -4143,7 +4300,7 @@ export default function App() {
                   </button>
                   <button
                     type="button"
-                    disabled={busy !== null || selectedElement.z_order >= 255}
+                    disabled={busy !== null || targetStateIds.length > 0 || selectedElement.z_order >= 255}
                     onClick={() => setPlacementElementZOrder(selectedElement, placementRenderModel.visual_id, selectedElement.z_order + 1)}
                     title="Bring forward"
                   >
@@ -4161,13 +4318,18 @@ export default function App() {
                 />
                 Visible
               </label>
-              <p className="muted">Arrow keys nudge 1 px. Shift + arrow nudges 8 px.</p>
             </div>
             {selectedElement.kind === "sprite" && (
               <div className="placement-animation-editor">
                 <div className="placement-animation-heading">
                   <span>Animation</span>
-                  <code>{selectedSpriteAnimation === null ? "Static" : "Animated"}</code>
+                  <code>{targetStateIds.length === 0
+                    ? "State-owned"
+                    : selectedSpriteAnimationCount === 0
+                      ? "Static"
+                      : selectedSpriteAnimationCount === targetStateIds.length
+                        ? "Animated"
+                        : "Mixed"}</code>
                 </div>
                 {selectedSpriteFrames.length > 0 && (
                   <div className="placement-animation-strip" aria-label="Sprite frames">
@@ -4178,7 +4340,7 @@ export default function App() {
                     ))}
                   </div>
                 )}
-                {selectedSpriteFrame === null ? (
+                {targetStateIds.length === 0 ? null : selectedSpriteFrame === null ? (
                   <p className="muted">This sprite's frame is not available.</p>
                 ) : !placementAnimationSupported ? (
                   <p className="muted">Restart Peep Studio for sprite animation editing.</p>
@@ -4192,7 +4354,7 @@ export default function App() {
                   <label className="placement-animation-toggle">
                     <input
                       type="checkbox"
-                      checked={selectedSpriteAnimation !== null}
+                      checked={selectedSpriteAnimationCount === targetStateIds.length}
                       disabled={busy !== null}
                       onChange={(event) => {
                         if (event.target.checked) {
@@ -4214,7 +4376,7 @@ export default function App() {
                 onClick={() => deletePlacementElement(selectedElement, placementRenderModel.visual_id)}
               >
                 <Trash2 size={14} aria-hidden="true" />
-                Delete object
+                {targetStateIds.length === 0 ? "Delete object" : `Remove from ${targetStateIds.length} state${targetStateIds.length === 1 ? "" : "s"}`}
               </button>
             </div>
           </>
@@ -4412,7 +4574,7 @@ export default function App() {
                 <h2>
                   {selectedSceneDocument === null
                     ? "No scene selected"
-                    : `${selectedSceneDocument.display_name} / ${placementState?.display_name ?? "No state"}`}
+                    : `${selectedSceneDocument.display_name} / ${placementState?.display_name ?? "Base Placement"}`}
                 </h2>
               </div>
               {renderModeTabs()}

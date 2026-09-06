@@ -123,6 +123,24 @@ export type RenderModel = {
   elements: RenderElement[];
 };
 
+export type PlacementProperty = "position" | "visible" | "visual_ref";
+
+export type PlacementStateProjection = {
+  changes: Record<string, {
+    local_properties: PlacementProperty[];
+    animated: boolean;
+  }>;
+  resolved_elements: RenderElement[];
+};
+
+export type PlacementOwnership = {
+  scenes: Record<string, {
+    render_model_id: string;
+    state_scoped_element_ids: string[];
+    states: Record<string, PlacementStateProjection>;
+  }>;
+};
+
 export type WaitingVisualElement = {
   element_id: string;
   source_element_ref: string;
@@ -279,6 +297,7 @@ export type ProjectLoadResult = {
   valid: boolean;
   issues: ValidationIssue[];
   document: ProjectDocument | null;
+  placement_ownership: PlacementOwnership | null;
   summary: ProjectSummary;
   dirty: boolean;
   can_undo: boolean;
@@ -291,6 +310,7 @@ export type ProjectCommandResult = {
   valid: boolean;
   issues: ValidationIssue[];
   document: ProjectDocument | null;
+  placement_ownership: PlacementOwnership | null;
   summary: ProjectSummary;
   applied_commands: Array<Record<string, unknown>>;
   dirty: boolean;
@@ -304,6 +324,7 @@ export type ProjectSaveResult = {
   valid: boolean;
   issues: ValidationIssue[];
   document: ProjectDocument | null;
+  placement_ownership: PlacementOwnership | null;
   summary: ProjectSummary;
   dirty: boolean;
   can_undo: boolean;
@@ -317,6 +338,7 @@ export type ProjectHistoryResult = {
   valid: boolean;
   issues: ValidationIssue[];
   document: ProjectDocument | null;
+  placement_ownership: PlacementOwnership | null;
   summary: ProjectSummary;
   dirty: boolean;
   can_undo: boolean;
@@ -374,6 +396,19 @@ export type PreviewSnapshot = {
   } | null;
   framebuffer: Framebuffer;
 };
+
+export type SceneBasePreviewSnapshot = {
+  project_revision: number;
+  preview_revision: number;
+  placement: {
+    kind: "scene_base";
+    scene_id: string;
+    display_name: string;
+  };
+  framebuffer: Framebuffer;
+};
+
+export type PlacementPreviewSnapshot = PreviewSnapshot | SceneBasePreviewSnapshot;
 
 export type PackageBuildResult = {
   project_revision: number;

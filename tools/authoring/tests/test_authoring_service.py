@@ -314,7 +314,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(35, SERVICE_API_VERSION)
+        self.assertEqual(36, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -328,6 +328,7 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertIn("project.scene_thumbnails", result["operations"])
         self.assertIn("project.audio_audition", result["operations"])
         self.assertIn("project.preview_reset", result["operations"])
+        self.assertIn("project.preview_scene_base", result["operations"])
         self.assertIn("project.preview_input", result["operations"])
         self.assertIn("project.preview_advance", result["operations"])
         self.assertIn(
@@ -442,6 +443,8 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertIn("state.create", graph["state_commands"])
         self.assertNotIn("state.set_render_model", graph["state_commands"])
         self.assertIn("state_placement.set_override", graph["state_placement_commands"])
+        self.assertIn("state_placement.clear_override", graph["state_placement_commands"])
+        self.assertIn("placement_object.add", result["state_scene_presentation"]["element_commands"])
         self.assertIn("route.guard.move", graph["guard_commands"])
         self.assertIn("route.action.move", graph["action_commands"])
         self.assertIn("scene_exit.add", graph["scene_exit_commands"])
@@ -1809,6 +1812,193 @@ class AuthoringServiceTests(unittest.TestCase):
         left_cursor = next(element for element in left_model["elements"] if element["element_id"] == "cursor")
         self.assertEqual((31, 42), (center_cursor["x"], center_cursor["y"]))
         self.assertEqual((8, 43), (left_cursor["x"], left_cursor["y"]))
+
+    def test_placement_object_add_distinguishes_scene_base_from_exact_state_set(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "placement_object.add",
+                            "scene_id": "state_demo",
+                            "scope": {"kind": "scene_base"},
+                            "element": {
+                                "element_id": "shared_box",
+                                "kind": "outline_rect",
+                                "x": 4,
+                                "y": 4,
+                                "width": 20,
+                                "height": 12,
+                                "z_order": 20,
+                                "layer": "SCENE",
+                            },
+                        },
+                        {
+                            "kind": "placement_object.add",
+                            "scene_id": "state_demo",
+                            "scope": {"kind": "states", "state_ids": ["center", "right"]},
+                            "element": {
+                                "element_id": "scoped_box",
+                                "kind": "filled_rect",
+                                "x": 30,
+                                "y": 30,
+                                "width": 10,
+                                "height": 10,
+                                "z_order": 21,
+                                "layer": "UI",
+                            },
+                        },
+                    ],
+                },
+            )
+        )
+
+        scene = next(item for item in changed["document"]["scenes"] if item["scene_id"] == "state_demo")
+        elements = {item["element_id"]: item for item in scene["render_models"][0]["elements"]}
+        self.assertTrue(elements["shared_box"].get("visible", True))
+        self.assertFalse(elements["scoped_box"]["visible"])
+        overrides = {
+            state["state_id"]: {
+                item["element_ref"]: item
+                for item in state.get("placement_overrides", [])
+            }
+            for state in scene["states"]
+        }
+        self.assertNotIn("shared_box", overrides["center"])
+        self.assertEqual({"element_ref": "scoped_box", "visible": True}, overrides["center"]["scoped_box"])
+        self.assertEqual({"element_ref": "scoped_box", "visible": True}, overrides["right"]["scoped_box"])
+        self.assertNotIn("scoped_box", overrides["left"])
+        self.assertEqual(
+            {"kind": "states", "state_ids": ["center", "right"]},
+            changed["applied_commands"][1]["scope"],
+        )
+        ownership = changed["placement_ownership"]["scenes"]["state_demo"]
+        self.assertEqual("scene_placement", ownership["render_model_id"])
+        self.assertEqual(["scoped_box"], ownership["state_scoped_element_ids"])
+        self.assertEqual(
+            {"local_properties": ["visible"], "animated": False},
+            ownership["states"]["center"]["changes"]["scoped_box"],
+        )
+        center_elements = {
+            item["element_id"]: item
+            for item in ownership["states"]["center"]["resolved_elements"]
+        }
+        left_elements = {
+            item["element_id"]: item
+            for item in ownership["states"]["left"]["resolved_elements"]
+        }
+        self.assertTrue(center_elements["scoped_box"]["visible"])
+        self.assertFalse(left_elements["scoped_box"]["visible"])
+        self.assertNotIn("scoped_box", ownership["states"]["left"]["changes"])
+
+        future = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": changed["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "state.add",
+                            "scene_id": "state_demo",
+                            "state": {
+                                "state_id": "future",
+                                "display_name": "Future",
+                                "waiting_visual_ref": scene["states"][0]["waiting_visual_ref"],
+                            },
+                        }
+                    ],
+                },
+            )
+        )
+        scene = next(item for item in future["document"]["scenes"] if item["scene_id"] == "state_demo")
+        future_state = next(state for state in scene["states"] if state["state_id"] == "future")
+        self.assertFalse(elements["scoped_box"]["visible"])
+        self.assertNotIn(
+            "scoped_box",
+            {item["element_ref"] for item in future_state.get("placement_overrides", [])},
+        )
+        future_ownership = future["placement_ownership"]["scenes"]["state_demo"]
+        future_elements = {
+            item["element_id"]: item
+            for item in future_ownership["states"]["future"]["resolved_elements"]
+        }
+        self.assertFalse(future_elements["scoped_box"]["visible"])
+        self.assertNotIn("scoped_box", future_ownership["states"]["future"]["changes"])
+
+    def test_state_placement_clear_override_restores_inherited_properties(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "state_placement.set_override",
+                            "scene_id": "state_demo",
+                            "state_id": "center",
+                            "render_model_id": "scene_placement",
+                            "element_id": "cursor",
+                            "x": 31,
+                            "y": 42,
+                            "visible": False,
+                        }
+                    ],
+                },
+            )
+        )
+        position_cleared = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": changed["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "state_placement.clear_override",
+                            "scene_id": "state_demo",
+                            "state_id": "center",
+                            "element_id": "cursor",
+                            "properties": ["position"],
+                        }
+                    ],
+                },
+            )
+        )
+        scene = next(item for item in position_cleared["document"]["scenes"] if item["scene_id"] == "state_demo")
+        center = next(state for state in scene["states"] if state["state_id"] == "center")
+        self.assertEqual([{"element_ref": "cursor", "visible": False}], center["placement_overrides"])
+        self.assertEqual(["position"], position_cleared["applied_commands"][0]["cleared"])
+        change = position_cleared["placement_ownership"]["scenes"]["state_demo"]["states"]["center"]["changes"]["cursor"]
+        self.assertEqual(["visible"], change["local_properties"])
+
+        override_cleared = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": position_cleared["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "state_placement.clear_override",
+                            "scene_id": "state_demo",
+                            "state_id": "center",
+                            "element_id": "cursor",
+                        }
+                    ],
+                },
+            )
+        )
+        scene = next(item for item in override_cleared["document"]["scenes"] if item["scene_id"] == "state_demo")
+        center = next(state for state in scene["states"] if state["state_id"] == "center")
+        self.assertEqual([], center["placement_overrides"])
+        self.assertTrue(override_cleared["applied_commands"][0]["removed"])
+        change = override_cleared["placement_ownership"]["scenes"]["state_demo"]["states"]["center"]["changes"]["cursor"]
+        self.assertEqual([], change["local_properties"])
+        self.assertTrue(change["animated"])
 
     def test_state_presentation_commands_add_and_edit_retained_element(self) -> None:
         service = AuthoringService()
@@ -3543,9 +3733,21 @@ class AuthoringServiceTests(unittest.TestCase):
                     },
                 )
             )
+            base = service.handle(
+                request(
+                    "project.preview_scene_base",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "scene_id": "state_demo",
+                    },
+                )
+            )
 
             self.assertEqual(reset["preview_revision"], selected["preview_revision"])
+            self.assertEqual(reset["preview_revision"], base["preview_revision"])
             self.assertEqual("state_demo", selected["scene"]["scene_id"])
+            self.assertEqual("scene_base", base["placement"]["kind"])
+            self.assertEqual(3024, base["framebuffer"]["size_bytes"])
             self.assertEqual("right", selected["scene"]["state_id"])
             self.assertEqual(0, selected["timeline"]["elapsed_ms"])
             self.assertNotEqual(reset["framebuffer"]["sha256"], selected["framebuffer"]["sha256"])
@@ -3561,6 +3763,84 @@ class AuthoringServiceTests(unittest.TestCase):
                 )
             )
             self.assertEqual("center", advanced["scene"]["state_id"])
+            self.assertEqual(250, advanced["timeline"]["elapsed_ms"])
+
+    def test_preview_scene_base_ignores_state_overrides_without_touching_live_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "Base Preview.peepproj"
+            service = AuthoringService()
+            created = service.handle(request("project.create", {"path": str(project_root)}))
+            added = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": created["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "placement_object.add",
+                                "scene_id": "main",
+                                "scope": {"kind": "scene_base"},
+                                "element": {
+                                    "element_id": "base_box",
+                                    "kind": "filled_rect",
+                                    "x": 0,
+                                    "y": 0,
+                                    "width": 10,
+                                    "height": 10,
+                                    "z_order": 0,
+                                    "layer": "SCENE",
+                                },
+                            },
+                            {
+                                "kind": "state_placement.set_override",
+                                "scene_id": "main",
+                                "state_id": "start",
+                                "render_model_id": "scene_placement",
+                                "element_id": "base_box",
+                                "visible": False,
+                            },
+                        ],
+                    },
+                )
+            )
+            reset = service.handle(
+                request(
+                    "project.preview_reset",
+                    {"project_revision": added["project_revision"], "scene_id": "main"},
+                )
+            )
+            base = service.handle(
+                request(
+                    "project.preview_scene_base",
+                    {"project_revision": added["project_revision"], "scene_id": "main"},
+                )
+            )
+            selected = service.handle(
+                request(
+                    "project.preview_state",
+                    {
+                        "project_revision": added["project_revision"],
+                        "scene_id": "main",
+                        "state_id": "start",
+                    },
+                )
+            )
+
+            self.assertEqual({"kind": "scene_base", "scene_id": "main", "display_name": "Base Placement"}, base["placement"])
+            self.assertEqual(100, base["framebuffer"]["black_pixel_count"])
+            self.assertEqual(0, selected["framebuffer"]["black_pixel_count"])
+            self.assertEqual(reset["preview_revision"], base["preview_revision"])
+            advanced = service.handle(
+                request(
+                    "project.preview_advance",
+                    {
+                        "project_revision": added["project_revision"],
+                        "preview_revision": reset["preview_revision"],
+                        "elapsed_ms": 250,
+                    },
+                )
+            )
+            self.assertEqual("start", advanced["scene"]["state_id"])
             self.assertEqual(250, advanced["timeline"]["elapsed_ms"])
 
     def test_scene_thumbnails_return_package_backed_frames_without_touching_live_preview(self) -> None:

@@ -2109,8 +2109,9 @@ button:focus-visible {
 
 .placement-object-tree {
   display: grid;
-  gap: 8px;
+  gap: 7px;
   padding: 0 9px 12px;
+  outline: none;
 }
 
 .placement-edit-scope {
@@ -2123,73 +2124,30 @@ button:focus-visible {
 }
 
 .placement-scope-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: #68736d;
-  font-size: 10px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.placement-scope-all,
-.placement-state-scope-row label {
-  display: flex;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  min-width: 0;
   color: #27302b;
-  font-size: 11px;
-  font-weight: 760;
 }
 
-.placement-scope-all input,
-.placement-state-scope-row input {
-  flex: 0 0 auto;
+.placement-scope-header > span:nth-child(2) {
+  min-width: 0;
 }
 
-.placement-state-scope-list {
-  display: grid;
-  gap: 5px;
-}
-
-.placement-state-scope-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 7px;
-  border: 1px solid #c9d3ce;
-  border-radius: 6px;
-  background: #ffffff;
-}
-
-.placement-state-scope-row.previewing {
-  border-color: #8fb9cc;
-  background: #eef8fc;
-}
-
-.placement-state-scope-row label span,
-.placement-edit-scope .muted {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.placement-state-scope-row strong,
-.placement-state-scope-row small {
+.placement-scope-header strong,
+.placement-scope-header small {
   display: block;
-}
-
-.placement-state-scope-row strong {
   overflow: hidden;
-  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.placement-state-scope-row small {
+.placement-scope-header strong {
+  font-size: 12px;
+}
+
+.placement-scope-header small {
   margin-top: 1px;
   color: #68736d;
   font-size: 9px;
@@ -2197,45 +2155,119 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
-.placement-state-preview-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 54px;
-  height: 26px;
-  margin-left: 0;
-  padding: 0 8px;
-  border: 1px solid #c9d3ce;
-  border-radius: 6px;
-  background: #f8fbf9;
-  color: #425049;
-  font-size: 10px;
-  font-weight: 760;
-  text-align: center;
+.placement-target-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
-.placement-state-scope-row.previewing .placement-state-preview-button {
-  border-color: #6f9eb5;
+.placement-target-chips span {
+  padding: 3px 6px;
+  border: 1px solid #c9d3ce;
+  border-radius: 999px;
   background: #ffffff;
-  color: #255a74;
+  color: #56615b;
+  font-size: 9px;
+  font-weight: 760;
+}
+
+.placement-target-chips span.primary {
+  border-color: #68aa77;
+  color: #216d35;
 }
 
 .placement-edit-scope .muted {
   font-size: 10px;
 }
 
-.placement-object-children {
-  display: grid;
-  gap: 7px;
+.placement-scope-header > code {
+  padding: 2px 5px;
+  border: 1px solid #cfd8d3;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #4e5a54;
+  font-size: 9px;
+  font-weight: 800;
 }
 
-.placement-object-tree button,
+.placement-override-status {
+  display: grid;
+  gap: 4px;
+  margin-top: 9px;
+  padding: 7px;
+  border: 1px solid #d7ded9;
+  border-radius: 6px;
+  background: #f7faf8;
+}
+
+.placement-override-status > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 26px;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  color: #3e4943;
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.placement-override-status code {
+  color: #52615a;
+  font-size: 9px;
+}
+
+.placement-override-status button {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-items: center;
+  padding: 0;
+  border: 1px solid #c9d3ce;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #425049;
+}
+
+.placement-override-status button:hover:not(:disabled) {
+  border-color: #6f9eb5;
+  color: #255a74;
+}
+
+.placement-override-status button:disabled {
+  color: #a1aaa5;
+  background: #eef3f0;
+}
+
+.placement-tree-section-label {
+  margin-top: 3px;
+  padding: 5px 4px 2px;
+  color: #68736d;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.placement-tree-branch {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.placement-tree-branch.state-branch {
+  padding-left: 7px;
+  border-left: 2px solid #dce4df;
+}
+
+.placement-scope-node,
+.placement-tree-object,
 .placement-element-list button {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 9px;
-  padding: 8px;
+  gap: 7px;
+  min-height: 36px;
+  padding: 6px 7px;
   border: 1px solid #d3dcd6;
   border-radius: 6px;
   background: #ffffff;
@@ -2244,8 +2276,59 @@ button:focus-visible {
   text-align: left;
 }
 
-.placement-object-tree button {
-  margin-left: 10px;
+.placement-scope-node > span {
+  min-width: 0;
+}
+
+.placement-scope-node strong,
+.placement-scope-node small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.placement-scope-node strong {
+  font-size: 11px;
+}
+
+.placement-scope-node small {
+  margin-top: 1px;
+  color: #68736d;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.placement-scope-node:hover,
+.placement-tree-object:hover,
+.placement-element-list button:hover {
+  border-color: #8eb0c3;
+  background: #eef7fb;
+}
+
+.placement-scope-node.selected {
+  border-color: #6f9eb5;
+  background: #eef8fc;
+}
+
+.placement-scope-node.primary {
+  box-shadow: inset 3px 0 #2f9e44;
+}
+
+.placement-object-children {
+  display: grid;
+  gap: 4px;
+  padding-left: 13px;
+}
+
+.placement-object-children .project-section-empty {
+  padding: 3px 7px 5px;
+}
+
+.placement-tree-object {
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 34px;
 }
 
 .placement-object-kind {
@@ -2269,20 +2352,14 @@ button:focus-visible {
   max-width: 86px;
 }
 
-.placement-object-tree button:hover,
-.placement-element-list button:hover {
-  border-color: #8eb0c3;
-  background: #eef7fb;
-}
-
-.placement-object-tree button.selected,
+.placement-tree-object.selected,
 .placement-element-list button.selected {
   border-color: #d6812f;
   background: #fff4e8;
 }
 
-.placement-object-tree strong,
-.placement-object-tree small,
+.placement-tree-object strong,
+.placement-tree-object small,
 .placement-element-list strong,
 .placement-element-list small {
   display: block;
@@ -2291,12 +2368,12 @@ button:focus-visible {
   white-space: nowrap;
 }
 
-.placement-object-tree strong,
+.placement-tree-object strong,
 .placement-element-list strong {
   font-size: 11px;
 }
 
-.placement-object-tree small,
+.placement-tree-object small,
 .placement-element-list small {
   margin-top: 2px;
   color: #68736d;

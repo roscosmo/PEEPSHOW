@@ -555,9 +555,10 @@ waiting-visual timing and does not expose raw phase-step internals to the
 author. Placing a compatible multi-frame sprite defaults to animated, and the
 inspector exposes this as a Static/Animated toggle rather than a backend update
 command. These controls call the Python service commands
-(`render_element.add`, `render_element.delete`,
+(`placement_object.add`, `render_element.add`, `render_element.delete`,
 `render_element.set_bounds`, `render_element.set_layer`,
 `render_element.set_z_order`, `state_placement.set_override`,
+`state_placement.clear_override`,
 `render_element.bind_waiting_animation`, and
 `render_element.clear_waiting_animation`) rather than directly editing
 normalized JSON in React. `state_placement.set_override` is the authoring path
@@ -568,17 +569,23 @@ demo scaffolding and toward authored object names, type icons, layer/order
 badges, and logic/prefab ownership badges. Demo focus objects must not be
 special-cased or made undeletable in the renderer.
 
-The next Placement ownership slice replaces the flat object list and checkbox
-target panel with a scene-base/state hierarchy. It also requires service-owned
-support for:
+Service API 36 establishes the backend boundary for the next Placement
+ownership slice. `project.preview_scene_base` renders Scene Base in isolation,
+`placement_object.add` creates an object in Scene Base or an exact bounded
+state-ID set, and `state_placement.clear_override` restores inheritance without
+copying inherited values. Project-document responses expose a derived
+`placement_ownership` projection containing resolved state elements and
+local/inherited provenance. The GUI consumes that projection for its
+scene-base/state hierarchy, effective placement, property labels, and animation
+badges instead of interpreting raw source records.
+
+The service-owned behavior now includes:
 
 - rendering Scene Base without applying a logic-state override;
 - adding one object to Scene Base or to an exact bounded state-ID set;
 - applying one mutation atomically to an exact selected-state set;
 - explicitly clearing individual local properties or a complete local
-  placement override;
-- returning enough normalized provenance for Peep Studio to label each value as
-  local or inherited without interpreting raw project JSON.
+  placement override.
 
 State-scoped object creation is stored as one scene object hidden at base and
 revealed in the selected scopes. React must request this semantic operation; it
@@ -758,10 +765,19 @@ omitted, the scene's declared entry state remains authoritative. This differs
 from `project.preview_state`, which renders one isolated state for Placement
 without replacing or advancing the live emulator session.
 
-The planned Placement ownership service slice must add a base-only isolated
-preview alongside `project.preview_state`. It must preserve one primary preview
-state separately from an exact multi-state edit target and must not alter the
-live emulator session.
+Service API version 36 adds `project.preview_scene_base`, a base-only isolated
+preview alongside `project.preview_state`. It removes all state placement
+overrides from an ephemeral compilation and suppresses waiting-animation frame
+selection so the returned framebuffer represents the authored Scene Base. It
+does not replace, advance, or invalidate the live emulator session.
+
+API 36 also adds `placement_object.add` and
+`state_placement.clear_override`. Scoped creation is one atomic semantic
+command; Peep Studio does not construct the base-hidden/state-visible record
+pattern itself. Exact state sets remain exact when later states are created.
+The API's derived `placement_ownership` response is non-persistent editor data;
+it identifies state-scoped objects, resolves effective elements per state, and
+reports local placement properties and waiting-animation ownership.
 
 Physical control lifecycle choices remain `press`, `hold`, `release`, and
 `repeat`. Firmware already emits Press, Release, Long Press, and Repeat; the

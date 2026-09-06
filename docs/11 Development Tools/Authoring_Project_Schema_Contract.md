@@ -978,6 +978,41 @@ and apply atomically through the Python service. The transient editor selection
 is not package semantics. React must not infer ownership by cloning render
 elements or by manufacturing independent per-state render models.
 
+Service API 36 provides the first source-authoring operations for this model:
+
+```text
+placement_object.add
+  scene_id
+  scope:
+    kind: scene_base
+    # or
+    kind: states
+    state_ids[]               # exact non-empty set; maximum 64
+  element
+
+state_placement.clear_override
+  scene_id
+  state_id
+  element_id
+  properties[]                # optional: position, visible, visual_ref
+```
+
+`placement_object.add` derives the scene's sole placement model. For an exact
+state set it writes one base-hidden scene element plus visible overrides for
+those states in one validated transaction. `state_placement.clear_override`
+removes the requested local fields, or the complete local override when
+`properties` is omitted. Neither operation changes the compiled RND2 format.
+
+Valid project-document responses also include a derived
+`placement_ownership` projection. For each scene it identifies the placement
+model, state-scoped element IDs, and each state's resolved elements. Per-element
+state changes report ordered `local_properties` (`position`, `visible`, or
+`visual_ref`) plus whether the element is animated in that state. This
+projection is editor-facing provenance only: it is recomputed from the
+validated source and is never saved into `.peepproj` files or emitted in RND2.
+Peep Studio must use this projection rather than interpreting raw placement or
+waiting-animation records in React.
+
 The initial system-font contract is fixed-cell 8x8, black ink on a transparent
 background, printable ASCII `0x20..0x7e`, newline line breaks, and integer
 nearest-neighbor scaling. Rasterized output must fit `168x144` and emits exactly

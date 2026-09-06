@@ -5,6 +5,8 @@ from __future__ import annotations
 import base64
 import hashlib
 import sys
+from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -46,7 +48,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 35
+SERVICE_API_VERSION = 36
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -66,6 +68,7 @@ SERVICE_OPERATIONS = (
     "project.audio_audition",
     "project.preview_reset",
     "project.preview_state",
+    "project.preview_scene_base",
     "project.preview_input",
     "project.preview_advance",
 )
@@ -120,6 +123,90 @@ def _require_fields(params: dict[str, Any], required: set[str]) -> None:
         )
 
 
+def _placement_ownership(bundle: ProjectBundle) -> dict[str, Any]:
+    scenes: dict[str, Any] = {}
+    for scene in bundle.scenes:
+        scene_id = scene.get("scene_id")
+        render_models = scene.get("render_models", [])
+        if not isinstance(scene_id, str) or not render_models:
+            continue
+
+        render_model = render_models[0]
+        render_model_id = render_model.get("visual_id")
+        base_elements = render_model.get("elements", [])
+        waiting_visuals = {
+            item["waiting_visual_id"]: item
+            for item in scene.get("waiting_visuals", [])
+            if isinstance(item, dict) and isinstance(item.get("waiting_visual_id"), str)
+        }
+        state_results: dict[str, Any] = {}
+        state_visible_ids: set[str] = set()
+        for state in scene.get("states", []):
+            state_id = state.get("state_id")
+            if not isinstance(state_id, str):
+                continue
+            overrides = {
+                item["element_ref"]: item
+                for item in state.get("placement_overrides", [])
+                if isinstance(item, dict) and isinstance(item.get("element_ref"), str)
+            }
+            state_visible_ids.update(
+                element_id
+                for element_id, override in overrides.items()
+                if override.get("visible") is True
+            )
+            waiting_visual = waiting_visuals.get(state.get("waiting_visual_ref"), {})
+            animated_ids = {
+                item["source_element_ref"]
+                for item in waiting_visual.get("elements", [])
+                if isinstance(item, dict) and isinstance(item.get("source_element_ref"), str)
+            }
+            changes: dict[str, Any] = {}
+            resolved_elements: list[dict[str, Any]] = []
+            for base_element in base_elements:
+                element = deepcopy(base_element)
+                element_id = element.get("element_id")
+                override = overrides.get(element_id, {})
+                local_properties: list[str] = []
+                if "x" in override or "y" in override:
+                    local_properties.append("position")
+                    if "x" in override:
+                        element["x"] = override["x"]
+                    if "y" in override:
+                        element["y"] = override["y"]
+                if "visible" in override:
+                    local_properties.append("visible")
+                    element["visible"] = override["visible"]
+                if "visual_ref" in override:
+                    local_properties.append("visual_ref")
+                    element["visual_ref"] = override["visual_ref"]
+                animated = element_id in animated_ids
+                if local_properties or animated:
+                    changes[element_id] = {
+                        "local_properties": local_properties,
+                        "animated": animated,
+                    }
+                resolved_elements.append(element)
+            state_results[state_id] = {
+                "changes": changes,
+                "resolved_elements": resolved_elements,
+            }
+
+        scenes[scene_id] = {
+            "render_model_id": render_model_id,
+            "state_scoped_element_ids": sorted(
+                element_id
+                for element in base_elements
+                for element_id in [element.get("element_id")]
+                if isinstance(element_id, str)
+                if element.get("visible", True) is False
+                and element_id in state_visible_ids
+            ),
+            "states": state_results,
+        }
+    return {"scenes": scenes}
+
+
 class AuthoringService:
     """Single-session deterministic facade over the headless authoring API."""
 
@@ -154,6 +241,7 @@ class AuthoringService:
             "valid": bundle.valid,
             "issues": _issues(bundle),
             "document": bundle.normalized() if bundle.valid else None,
+            "placement_ownership": _placement_ownership(bundle) if bundle.valid else None,
             "summary": _project_summary(bundle),
             "dirty": self._dirty(),
             "can_undo": bool(self._undo_stack),
@@ -207,6 +295,7 @@ class AuthoringService:
                 "visibility": True,
                 "z_order": True,
                 "element_commands": [
+                    "placement_object.add",
                     "render_element.add",
                     "render_element.delete",
                     "render_element.set_bounds",
@@ -215,6 +304,7 @@ class AuthoringService:
                 ],
                 "state_override_commands": [
                     "state_placement.set_override",
+                    "state_placement.clear_override",
                 ],
                 "asset_commands": [
                     "asset.upsert",
@@ -407,6 +497,7 @@ class AuthoringService:
                 ],
                 "state_placement_commands": [
                     "state_placement.set_override",
+                    "state_placement.clear_override",
                 ],
                 "render_model_commands": [
                     "render_model.set_focus_index",
@@ -784,6 +875,50 @@ class AuthoringService:
             raise ProtocolError("PREVIEW_STATE_FAILED", str(exc)) from exc
         return self._preview_result(preview.snapshot())
 
+    def _preview_scene_base(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params, {"scene_id"})
+        scene_id = params["scene_id"]
+        if not isinstance(scene_id, str) or not scene_id:
+            raise ProtocolError("PREVIEW_SCENE_INVALID", "scene_id must be non-empty text")
+        if not bundle.valid:
+            raise ProtocolError(
+                "PROJECT_INVALID",
+                "project must validate before preview",
+                details={"issues": _issues(bundle)},
+            )
+
+        scenes = deepcopy(list(bundle.scenes))
+        scene = next(
+            (item for item in scenes if item.get("scene_id") == scene_id),
+            None,
+        )
+        if scene is None:
+            raise ProtocolError("PREVIEW_SCENE_INVALID", f"scene '{scene_id}' is not present")
+        for state in scene.get("states", []):
+            if isinstance(state, dict):
+                state.pop("placement_overrides", None)
+        preview_bundle = replace(bundle, scenes=tuple(scenes))
+        try:
+            package = parse_egg(build_egg(preview_bundle))
+            preview = StateScenePreview(
+                package,
+                scene_id,
+                include_waiting_visuals=False,
+            )
+        except (EggCompileError, EggFormatError, PreviewError) as exc:
+            raise ProtocolError("PREVIEW_SCENE_BASE_FAILED", str(exc)) from exc
+        snapshot = preview.snapshot()
+        return self._preview_result(
+            {
+                "placement": {
+                    "kind": "scene_base",
+                    "scene_id": scene_id,
+                    "display_name": "Base Placement",
+                },
+                "framebuffer": snapshot["framebuffer"],
+            }
+        )
+
     def _preview_input(self, params: dict[str, Any]) -> dict[str, Any]:
         fields = {"logical_source"}
         if "event_kind" in params:
@@ -825,6 +960,7 @@ class AuthoringService:
             "project.audio_audition": self._audio_audition,
             "project.preview_reset": self._preview_reset,
             "project.preview_state": self._preview_state,
+            "project.preview_scene_base": self._preview_scene_base,
             "project.preview_input": self._preview_input,
             "project.preview_advance": self._preview_advance,
         }
