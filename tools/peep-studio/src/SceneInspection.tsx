@@ -4397,7 +4397,7 @@ function RouteInspector({
         assets={assets}
         audioCues={audioCues}
         localActionsAllowed={!exitsScene}
-        canAddActions={!exitsScene && route.actions.length < actionLimit}
+        canAddActions={route.actions.length < actionLimit}
         canEdit={canEdit}
         onSetRouteAction={onSetRouteAction}
         onAddRouteAction={onAddRouteAction}

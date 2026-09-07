@@ -201,7 +201,8 @@ audio_cues[]:
 
 A local STATE route may include
 `{"kind":"play_sfx","cue_ref":"stable.cue.id"}` in its ordered action list.
-The cue must exist. Direct `target_scene` routes remain actionless. WAV paths
+The cue must exist. Direct `target_scene` routes may contain only package-global
+`play_sfx` actions; scene-local actions remain invalid on those routes. WAV paths
 are source-only; packages contain compiled audio IDs, metadata, and ADPCM bytes,
 never host paths. The current subset is one-shot only and rejects looping,
 music, streaming, and procedural audio.

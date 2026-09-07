@@ -419,6 +419,13 @@ Adding an object uses the selected scope:
 - selecting a composite parent makes the object visible through that parent's
   descendants, including future descendants.
 
+When a compatible multi-frame sprite is added to Scene Base, its default
+waiting animation is bound across every current state while the retained object
+itself remains scene-owned. When it is added to an explicit state set, the
+animation is bound only in that set. The Placement animation toggle uses the
+same scope rule and reports mixed state animation without converting the object
+to state ownership.
+
 The inspector shows a read-only edit-target breadcrumb instead of an
 "Applying edits to" checkbox panel. Each editable property identifies whether
 its value is defined here or inherited, identifies the inherited source when
@@ -430,3 +437,109 @@ When multiple states are selected, the hierarchy clearly distinguishes the
 primary preview state from the complete edit selection. The center canvas shows
 the resolved primary state while each mutation is applied atomically to the
 explicit selected-state set.
+
+## Current GUI Bring-Up Plan
+
+This plan is ordered by dependency. Regressions that make authored content
+disappear or execute incorrectly are resolved before adding new interaction
+surfaces. Each stage is exercised from a newly created project rather than by
+depending on IDs or structure from the checked-in example.
+
+### 1. Stability And Authoring Trust
+
+- Diagnose and fix the save refresh regression where Placement retains an
+  object's selection box but stops drawing its content until the workspace is
+  changed.
+- Diagnose and fix the regression where newly placed multi-frame sprites no
+  longer animate.
+- Clear incompatible inspector selections when workspace or object selection
+  changes. Placement must not retain unrelated sprite-frame and audio records
+  as simultaneous implicit selections.
+- Hiding Placement object boxes hides only guides, labels, and bounds. Objects
+  retain stable canvas hit targets and remain selectable and movable.
+- Restore effect creation for every currently advertised non-audio transition
+  action. Unsupported actions remain absent rather than failing after input.
+
+This stage is complete when save/reload, workspace switching, selection,
+movement, animation, and transition-effect editing remain coherent in the
+blank-project acceptance project.
+
+### 2. Selection, Keyboard, And Inspector Coherence
+
+- `Ctrl+Z` invokes the existing project undo operation when focus is not owned
+  by a native text-editing control. Redo retains the platform convention
+  already shown by the toolbar.
+- `Escape` clears object, state, transition, asset, and auxiliary inspector
+  selection and selects the project root. The active scene context and emulator
+  session remain valid; project-root selection does not mean that the project
+  has no scene.
+- The project-root inspector owns package name, target profile, path, build and
+  export information, and other package-wide controls currently occupying the
+  left panel.
+- State names are edited directly in the selected state's primary name field;
+  the inspector does not repeat the name in a separate rename form.
+- Author-facing object and asset names use the same direct-edit pattern as the
+  service gains the required typed rename commands.
+
+### 3. Placement And Asset Creation
+
+- Primitive palette tools use direct canvas gestures. A line is created from
+  two selected endpoints; rectangle, filled rectangle, circle, and ellipse use
+  a dragged bounds gesture. The command is committed when the gesture ends and
+  `Escape` cancels an unfinished draw.
+- Text is a Placement palette tool. Choosing it creates build-time text at the
+  selected location through the text-asset service path; authors do not visit a
+  separate sprite-creation workflow merely to place a label.
+- Normal sprite-sheet import asks for integer columns and rows, such as `4 x 1`.
+  The service verifies that the source dimensions divide evenly and derives
+  frame pixel bounds and source rectangles. Raw frame width and height are not
+  normal controls.
+- Assets presents one card per sprite. Its ordered frames appear as a scaled
+  strip in the selected asset inspector and are not duplicated as independent
+  top-level asset cards.
+- Placement continues to reject records outside the 168x144 panel under the
+  current authoring schema. Partly off-panel sprites are nevertheless a required
+  use case so objects can enter or leave the display during movement. The next
+  schema/firmware alignment must define signed bounds, host/target clipping, and
+  resource accounting consistently before the GUI enables that placement.
+
+### 4. Scene Flow Tools And Routing
+
+- Remove New Scene from the project hierarchy. New Scene and Go To become
+  floating Scene Flow palette tools on the left edge of the graph, matching the
+  Placement palette's position, sizing, tooltips, and selected-tool behavior.
+- Extend automatic Scene Flow routing to penalize node intersections,
+  overlapping routes, backtracking, and unnecessary bends while preserving its
+  left-to-right storyboard bias.
+- When several routes enter one node, fan their final arrow segments across
+  distinct entry positions so every arrow remains visible and selectable.
+- Draw an unambiguous bridge on one route wherever two unrelated transition
+  lines must cross. Bridges are presentation only and do not alter direction,
+  selection priority, or runtime order.
+- Add persistent manual Scene Flow route refinement after automatic routing and
+  fan-out are stable. Authors move straight orthogonal sections, while endpoint
+  joins remain attached and small node moves preserve the manual middle.
+
+### 5. Workspace Density
+
+- Add an emulator collapse control that switches between the complete emulator
+  and a display-only form. The display size and current preview are retained;
+  transport and physical controls are hidden rather than destroyed.
+- Continue the general shell layout only after the living Excalidraw board
+  defines the remaining workspace proportions and empty-space treatment.
+
+### 6. Merge-Gated Audio And Hardware Acceptance
+
+- After the next firmware/audio merge, reconcile capability versions before
+  changing audio UI.
+- Add direct audio naming, normalized import/conversion controls, five-SFX plus
+  music-track capacity reporting, exact packaged audition, and Play sound
+  transition effects only from the merged service capability surface.
+- Build the acceptance project, install its current `.egg`, and exercise input,
+  scene transitions, retained visuals, animation, SFX, music, shell exit, and
+  STOP2 behavior on current HW6 before declaring the merged slice complete.
+
+Hierarchical state execution, restorable navigation, PeepOS-derived triggers,
+and editable prefabs remain contract-gated work. They must not be simulated in
+the renderer while the executable service and target profile still report them
+as unavailable.

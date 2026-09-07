@@ -53,6 +53,9 @@ authoring capability until those contracts and the Python service support it.
 - The circular sockets are the only local transition connection points.
 - Scene Flow and Local Logic show two views of the same service-owned scene
   entry or exit semantics; neither workspace creates a private visual-only link.
+- Scene Flow uses a floating tool palette on the left edge of its canvas, in the
+  same position and visual language as the Placement palette. New Scene and Go
+  To are palette tools rather than permanent rows in the project hierarchy.
 
 ### Emulator
 
@@ -65,6 +68,9 @@ authoring capability until those contracts and the Python service support it.
 - Physical controls sit below the display, with the joystick on the left, Start
   between the joystick and face/shoulder controls, and L/R/A/B on the right.
 - Scene and active-state identity belong to the emulator assembly.
+- The emulator may collapse to a display-only form. Collapsing hides its
+  transport and physical controls without changing preview state or package
+  behavior.
 - Placement of the complete emulator within the application shell remains open
   until the general Peep Studio layout is drawn and approved.
 
@@ -81,8 +87,9 @@ authoring capability until those contracts and the Python service support it.
 - **Implemented:** Package Entry, Scene Flow cards and references, Local Logic
   scene-boundary nodes, the shared transition-line visual language, and the
   persistent scene-rooted project hierarchy across all workspaces.
-- **Current bring-up:** inspector-owned variables, ordered conditions and
-  effects, including service-validated variable and retained-object changes.
+- **Current bring-up:** stabilize save/preview/animation behavior, complete the
+  blank-project authoring acceptance path, then refine Placement tools, Assets,
+  and Scene Flow routing in the order recorded by the UX direction.
 - **Wait for the general layout drawing:** application-shell and emulator
   placement changes.
 - **Wait for runtime contracts:** editable prefabs, hierarchical-state behavior,

@@ -1040,6 +1040,16 @@ button:focus-visible {
   display: none;
 }
 
+.placement-screen-overlay.boxes-hidden .placement-element-box:not(:hover):not(.selected) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.placement-screen-overlay.boxes-hidden .placement-element-box:not(:hover):not(.selected) span {
+  opacity: 0;
+}
+
 .placement-resize-handle {
   position: absolute;
   z-index: 2;
