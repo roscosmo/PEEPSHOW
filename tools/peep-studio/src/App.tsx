@@ -151,7 +151,7 @@ export default function App() {
   const [selectedScene, setSelectedScene] = useState<string | null>(null);
   const [projectPath, setProjectPath] = useState<string | null>(null);
   const [temporaryProject, setTemporaryProject] = useState(false);
-  const [sceneSelection, setSceneSelection] = useState<SceneSelection>({ kind: "scene" });
+  const [sceneSelection, setSceneSelection] = useState<SceneSelection>({ kind: "project" });
   const [placementStateId, setPlacementStateId] = useState<string | null>(null);
   const [placementEditStateIds, setPlacementEditStateIds] = useState<string[]>([]);
   const [selectedPlacementElement, setSelectedPlacementElement] = useState<string | null>(null);
@@ -269,8 +269,8 @@ export default function App() {
           setSceneSelection(options.stateId === undefined
             ? { kind: "scene" }
             : { kind: "state", id: options.stateId });
+          setSelectedPlacementElement(null);
         }
-        setSelectedPlacementElement(null);
         setPreview(result);
         setMessage(null);
         return true;
@@ -413,8 +413,7 @@ export default function App() {
         setPreview(result);
         if (result.scene.scene_id !== selectedSceneRef.current && workspaceModeRef.current !== "placement") {
           setSelectedScene(result.scene.scene_id);
-          setSceneSelection({ kind: "scene" });
-          setSelectedPlacementElement(null);
+          setSceneSelection((current) => current.kind === "project" ? current : { kind: "scene" });
         }
       } catch (error) {
         setPlaying(false);
@@ -507,7 +506,7 @@ export default function App() {
       void playPreviewAudioEvents(result);
       if (result.scene.scene_id !== selectedScene) {
         setSelectedScene(result.scene.scene_id);
-        setSceneSelection({ kind: "scene" });
+        setSceneSelection((current) => current.kind === "project" ? current : { kind: "scene" });
       }
       setMessage(null);
     } catch (error) {
@@ -635,6 +634,41 @@ export default function App() {
       setBusy(null);
     }
   };
+
+  const selectProjectRoot = () => {
+    placementSelectionAnchorRef.current = null;
+    setSceneSelection({ kind: "project" });
+    setPlacementStateId(null);
+    setPlacementEditStateIds([]);
+    setSelectedPlacementElement(null);
+    setAssetSelection(null);
+    setAssetPreviewPlaying(false);
+    setSpritePickerOpen(false);
+    setSceneCreatorOpen(false);
+    setNewSceneName("");
+  };
+
+  const selectAssetRecord = (selection: AssetSelection) => {
+    setAssetSelection(selection);
+    if (selection !== null) {
+      setSceneSelection({ kind: "scene" });
+    }
+  };
+
+  useEffect(() => {
+    const handleRootSelectionShortcut = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || project === null) {
+        return;
+      }
+      event.preventDefault();
+      if (event.target instanceof HTMLElement && event.target.matches("input, textarea, select")) {
+        event.target.blur();
+      }
+      selectProjectRoot();
+    };
+    window.addEventListener("keydown", handleRootSelectionShortcut);
+    return () => window.removeEventListener("keydown", handleRootSelectionShortcut);
+  }, [project]);
 
   useEffect(() => {
     const handleHistoryShortcut = (event: KeyboardEvent) => {
@@ -855,7 +889,7 @@ export default function App() {
         ],
       });
       applyProjectResult(result);
-      setAssetSelection(frames[0] === undefined ? null : { kind: "sprite", frameId: frames[0].frame_id });
+      selectAssetRecord(frames[0] === undefined ? null : { kind: "sprite", frameId: frames[0].frame_id });
       setWorkspaceMode("assets");
       setPendingSpriteImport(null);
       setAssetImportDebug(`Imported ${pendingSpriteImport.sourcePath}: ${frames.length} frame${frames.length === 1 ? "" : "s"} at ${parsed.frameWidth}x${parsed.frameHeight}.`);
@@ -899,7 +933,7 @@ export default function App() {
         commands: [{ kind: "asset.upsert", asset }],
       });
       applyProjectResult(result);
-      setAssetSelection({ kind: "sprite", frameId: `${assetId}.frame` });
+      selectAssetRecord({ kind: "sprite", frameId: `${assetId}.frame` });
       setWorkspaceMode("assets");
       setMessage("Text sprite created. Save to write it to the project.");
     } catch (error) {
@@ -948,7 +982,7 @@ export default function App() {
         ],
       });
       applyProjectResult(result);
-      setAssetSelection({ kind: "audio", cueId });
+      selectAssetRecord({ kind: "audio", cueId });
       setWorkspaceMode("assets");
       setAudioAuditionStatus(`Imported ${imported.sourcePath}.`);
       setMessage(`Imported ${assetId} as ${cueId}. Save to write it to the project.`);
@@ -981,7 +1015,7 @@ export default function App() {
         }
       }, { once: true });
       await audio.play();
-      setAssetSelection({ kind: "audio", cueId });
+      selectAssetRecord({ kind: "audio", cueId });
       setAudioAuditionStatus(`Played packaged ${result.audio.duration_ms} ms cue at ${result.audio.sample_rate_hz} Hz.`);
       setMessage(`Auditioned ${cueId} from packaged ADPCM bytes.`);
     } catch (error) {
@@ -1032,7 +1066,7 @@ export default function App() {
       });
       applyProjectResult(result);
       if (frameId !== null) {
-        setAssetSelection({ kind: "sprite", frameId });
+        selectAssetRecord({ kind: "sprite", frameId });
       }
       setMessage("Asset label updated. Save to write it to the project.");
     } catch (error) {
@@ -1072,7 +1106,7 @@ export default function App() {
         commands: [{ kind: "asset.upsert", asset: updated }],
       });
       applyProjectResult(result);
-      setAssetSelection(asset.frames[0] === undefined ? null : { kind: "sprite", frameId: asset.frames[0].frame_id });
+      selectAssetRecord(asset.frames[0] === undefined ? null : { kind: "sprite", frameId: asset.frames[0].frame_id });
       setMessage("Text sprite updated. Save to write it to the project.");
     } catch (error) {
       setMessage(errorText(error));
@@ -1105,7 +1139,7 @@ export default function App() {
         commands: [{ kind: "asset.upsert", asset: updated }],
       });
       applyProjectResult(result);
-      setAssetSelection({ kind: "sprite", frameId });
+      selectAssetRecord({ kind: "sprite", frameId });
       setMessage("Frame updated. Save to write it to the project.");
     } catch (error) {
       setMessage(errorText(error));
@@ -3131,9 +3165,9 @@ export default function App() {
                 onClick={() => {
                   const target = previewStartRef.current;
                   if (target !== null) {
-                    void startPreview(target.sceneId, { stateId: target.stateId });
+                    void startPreview(target.sceneId, { stateId: target.stateId, updateSelection: false });
                   } else if (selectedScene !== null) {
-                    void startPreview(selectedScene);
+                    void startPreview(selectedScene, { updateSelection: false });
                   }
                 }}
                 disabled={preview === null}
@@ -3427,7 +3461,7 @@ export default function App() {
                       key={frame.frame_id}
                       className={selectedAssetFrame?.frame_id === frame.frame_id ? "selected" : ""}
                       type="button"
-                      onClick={() => setAssetSelection({ kind: "sprite", frameId: frame.frame_id })}
+                      onClick={() => selectAssetRecord({ kind: "sprite", frameId: frame.frame_id })}
                       title="Edit this frame"
                     >
                       <span className="asset-frame-preview">
@@ -3457,7 +3491,7 @@ export default function App() {
                         <button
                           className="audio-cue-select"
                           type="button"
-                          onClick={() => setAssetSelection({ kind: "audio", cueId: cue.cue_id })}
+                          onClick={() => selectAssetRecord({ kind: "audio", cueId: cue.cue_id })}
                           title="Select this SFX cue"
                         >
                           <Volume2 size={18} aria-hidden="true" />
@@ -3563,7 +3597,7 @@ export default function App() {
                         key={frame.frame_id}
                         className={frame.frame_id === selectedAssetFrame.frame_id ? "selected" : ""}
                         type="button"
-                        onClick={() => setAssetSelection({ kind: "sprite", frameId: frame.frame_id })}
+                        onClick={() => selectAssetRecord({ kind: "sprite", frameId: frame.frame_id })}
                         title={placementFrameLabel(frame)}
                       >
                         <FramePreviewCanvas frame={frame} />
@@ -4255,7 +4289,7 @@ export default function App() {
             </span>
           </button>
         );
-        const sceneSelected = selectedScene === scene.scene_id;
+        const sceneSelected = sceneSelection.kind !== "project" && selectedScene === scene.scene_id;
         const expanded = expandedSceneIds.includes(scene.scene_id);
         const baseGroupId = `${scene.scene_id}:base`;
         const statesGroupId = `${scene.scene_id}:states`;
@@ -4885,6 +4919,66 @@ export default function App() {
       </>
     );
   };
+  const projectRootSelected = sceneSelection.kind === "project";
+  const renderProjectInspector = () => (
+    <>
+      <section className="inspector-section project-inspector">
+        <h3><Box size={14} aria-hidden="true" /> Project</h3>
+        {project === null ? (
+          <p className="muted">No project open.</p>
+        ) : (
+          <>
+            <div className="project-inspector-title">
+              <strong>{project.summary.project_name}</strong>
+              <span className={`validation-state ${project.valid ? "valid" : "invalid"}`}>
+                <StatusMark ok={project.valid} /> {project.valid ? "Valid" : "Invalid"}
+              </span>
+            </div>
+            <dl className="inspector-list">
+              <div><dt>Package</dt><dd>{project.summary.package_id}</dd></div>
+              <div><dt>Target</dt><dd>{project.summary.target_profile}</dd></div>
+              <div><dt>Entry scene</dt><dd>{project.summary.entry_scene}</dd></div>
+              <div><dt>Source</dt><dd>{temporaryProject ? "Example copy" : "Project"}</dd></div>
+              <div><dt>Edits</dt><dd>{dirty ? "Unsaved" : "Clean"}</dd></div>
+              <div><dt>Path</dt><dd title={projectPath ?? undefined}>{projectPath ?? "-"}</dd></div>
+              <div><dt>Scenes</dt><dd>{project.summary.scene_count}</dd></div>
+              <div><dt>Frames</dt><dd>{project.summary.asset_frame_count}</dd></div>
+              <div><dt>Animations</dt><dd>{project.summary.animation_count}</dd></div>
+              <div><dt>SFX</dt><dd>{project.summary.audio_cue_count}</dd></div>
+            </dl>
+          </>
+        )}
+      </section>
+      <section className="inspector-section">
+        <h3>Validation</h3>
+        {project === null ? (
+          <p className="muted">No validation result.</p>
+        ) : project.issues.length === 0 ? (
+          <div className="success-note"><PackageCheck size={17} aria-hidden="true" /> Project is package-ready.</div>
+        ) : (
+          <div className="issue-list">
+            {project.issues.map((issue, index) => (
+              <div className="issue" key={`${issue.code}-${index}`}>
+                <AlertTriangle size={16} aria-hidden="true" />
+                <span><strong>{issue.code}</strong>{issue.message}<small>{issue.path}</small></span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      {build !== null && (
+        <section className="inspector-section build-result">
+          <h3>Last build</h3>
+          <dl className="inspector-list">
+            <div><dt>Size</dt><dd>{build.package.size_bytes} B</dd></div>
+            <div><dt>Chunks</dt><dd>{build.package.chunk_count}</dd></div>
+            <div><dt>Scenes</dt><dd>{build.package.scene_count}</dd></div>
+          </dl>
+          <code>{build.package.sha256.slice(0, 16)}...</code>
+        </section>
+      )}
+    </>
+  );
 
   return (
     <main className="studio-shell">
@@ -4943,32 +5037,24 @@ export default function App() {
         style={{ "--project-width": `${projectWidth}px`, "--inspector-width": `${inspectorWidth}px` } as CSSProperties}
       >
         <aside className="project-pane">
-          <div className="pane-heading project-heading">
-            <details className="project-heading-details">
-              <summary>
-                <span>Project</span>
-                {project !== null && (
-                  <span className={`validation-state ${project.valid ? "valid" : "invalid"}`}>
-                    <StatusMark ok={project.valid} /> {project.valid ? "Valid" : "Invalid"}
-                  </span>
-                )}
-              </summary>
-              {project !== null && (
-                <dl className="project-facts project-facts-dropdown">
-                  <div><dt>Package</dt><dd>{project.summary.package_id}</dd></div>
-                  <div><dt>Target</dt><dd>{project.summary.target_profile}</dd></div>
-                  <div><dt>Source</dt><dd>{temporaryProject ? "Example copy" : "Project"}</dd></div>
-                  <div><dt>Edits</dt><dd>{dirty ? "Unsaved" : "Clean"}</dd></div>
-                  <div><dt>Path</dt><dd title={projectPath ?? undefined}>{projectPath ?? "-"}</dd></div>
-                  <div><dt>Frames</dt><dd>{project.summary.asset_frame_count}</dd></div>
-                  <div><dt>Animations</dt><dd>{project.summary.animation_count}</dd></div>
-                  <div><dt>SFX</dt><dd>{project.summary.audio_cue_count}</dd></div>
-                </dl>
-              )}
-            </details>
-          </div>
-
           {renderPreviewPanel("project")}
+
+          {project !== null && (
+            <button
+              className={`project-root-row ${projectRootSelected ? "selected" : ""}`}
+              type="button"
+              onClick={selectProjectRoot}
+            >
+              <Box size={17} aria-hidden="true" />
+              <span className="project-root-copy">
+                <strong>{project.summary.project_name}</strong>
+                <small>Project</small>
+              </span>
+              <span className={`validation-state ${project.valid ? "valid" : "invalid"}`}>
+                <StatusMark ok={project.valid} /> {project.valid ? "Valid" : "Invalid"}
+              </span>
+            </button>
+          )}
 
           {project === null ? (
             <div className="empty-pane">
@@ -5082,7 +5168,7 @@ export default function App() {
               thumbnails={sceneThumbnails}
               editor={project?.document?.project?.editor}
               layoutStatus={sceneFlowLayoutStatus}
-              selectedSceneId={sceneSelection.kind === "sceneReference" || sceneSelection.kind === "packageEntry" ? null : selectedScene}
+              selectedSceneId={sceneSelection.kind === "project" || sceneSelection.kind === "sceneReference" || sceneSelection.kind === "packageEntry" ? null : selectedScene}
               selectedSceneExitId={sceneSelection.kind === "sceneExit" ? sceneSelection.id : null}
               selectedRouteId={sceneSelection.kind === "route" ? sceneSelection.id : null}
               selectedReferenceId={sceneSelection.kind === "sceneReference" ? sceneSelection.id : null}
@@ -5209,7 +5295,7 @@ export default function App() {
         <aside className="inspector-pane">
           <div className="pane-heading inspector-heading">
             <span>Inspector</span>
-            {workspaceMode === "placement" && (
+            {workspaceMode === "placement" && !projectRootSelected && (
               <div className="inspector-tabs" aria-label="Placement inspector tabs">
                 <button
                   type="button"
@@ -5229,10 +5315,11 @@ export default function App() {
             )}
           </div>
 
-          {workspaceMode === "placement" && (placementInspectorTab === "settings" ? renderPlacementViewSettings() : renderPlacementInspector())}
-          {workspaceMode === "assets" && renderAssetInspector()}
+          {projectRootSelected && renderProjectInspector()}
+          {!projectRootSelected && workspaceMode === "placement" && (placementInspectorTab === "settings" ? renderPlacementViewSettings() : renderPlacementInspector())}
+          {!projectRootSelected && workspaceMode === "assets" && renderAssetInspector()}
 
-          {workspaceMode === "logic" && (
+          {!projectRootSelected && workspaceMode === "logic" && (
             <section className="inspector-section">
               <h3>Runtime</h3>
               {preview === null ? (
@@ -5249,7 +5336,7 @@ export default function App() {
             </section>
           )}
 
-          {workspaceMode === "scene-flow" && (
+          {!projectRootSelected && workspaceMode === "scene-flow" && (
             <SceneFlowInspector
               scene={selectedSceneDocument}
               scenes={scenes}
@@ -5266,7 +5353,7 @@ export default function App() {
             />
           )}
 
-          {workspaceMode === "logic" && (
+          {!projectRootSelected && workspaceMode === "logic" && (
             <SceneAuthoringInspector
               scene={selectedSceneDocument}
               scenes={scenes}
@@ -5304,7 +5391,7 @@ export default function App() {
             />
           )}
 
-          {workspaceMode === "logic" && (
+          {!projectRootSelected && workspaceMode === "logic" && (
             <section className="inspector-section">
               <h3>Variables</h3>
               {preview === null || Object.keys(preview.variables).length === 0 ? (
@@ -5319,37 +5406,6 @@ export default function App() {
             </section>
           )}
 
-          {workspaceMode === "logic" && (
-            <section className="inspector-section">
-              <h3>Validation</h3>
-              {project === null ? (
-                <p className="muted">No validation result.</p>
-              ) : project.issues.length === 0 ? (
-                <div className="success-note"><PackageCheck size={17} aria-hidden="true" /> Project is package-ready.</div>
-              ) : (
-                <div className="issue-list">
-                  {project.issues.map((issue, index) => (
-                    <div className="issue" key={`${issue.code}-${index}`}>
-                      <AlertTriangle size={16} aria-hidden="true" />
-                      <span><strong>{issue.code}</strong>{issue.message}<small>{issue.path}</small></span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
-
-          {build !== null && (
-            <section className="inspector-section build-result">
-              <h3>Last build</h3>
-              <dl className="inspector-list">
-                <div><dt>Size</dt><dd>{build.package.size_bytes} B</dd></div>
-                <div><dt>Chunks</dt><dd>{build.package.chunk_count}</dd></div>
-                <div><dt>Scenes</dt><dd>{build.package.scene_count}</dd></div>
-              </dl>
-              <code>{build.package.sha256.slice(0, 16)}...</code>
-            </section>
-          )}
         </aside>
       </section>
 

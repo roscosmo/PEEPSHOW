@@ -1,0 +1,54 @@
+{
+  "schema_id": "peepshow.authoring.state_scene",
+  "schema_version": 1,
+  "scene_id": "credits",
+  "display_name": "Credits",
+  "scene_type": "STATE_SCENE",
+  "entry_state": "start",
+  "variables": [],
+  "input_actions": [],
+  "scene_exits": [
+    {
+      "scene_exit_id": "to_main",
+      "display_name": "Main",
+      "target_scene": "main"
+    }
+  ],
+  "states": [
+    {
+      "state_id": "start",
+      "display_name": "Start",
+      "waiting_visual_ref": "static_wait"
+    }
+  ],
+  "routes": [],
+  "render_models": [
+    {
+      "visual_id": "scene_placement",
+      "focus_index": 0,
+      "elements": []
+    }
+  ],
+  "waiting_visuals": [
+    {
+      "waiting_visual_id": "static_wait",
+      "presentation_id": "credits_static",
+      "phase_quantum_ms": 250,
+      "combined_step_count": 1,
+      "settled_step": 0,
+      "cycle_policy": "loop",
+      "elements": []
+    }
+  ],
+  "reactive_wait_default": {
+    "policy_id": "credits_wait_policy",
+    "waiting_visual_ref": "static_wait",
+    "hold_fallback_allowed": true,
+    "event_interests": []
+  },
+  "interaction_policy": {
+    "policy_id": "credits_interaction",
+    "mode": "continuous",
+    "meaningful_activity_actions": []
+  }
+}

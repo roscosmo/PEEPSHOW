@@ -1,0 +1,109 @@
+{
+  "schema_id": "peepshow.authoring.assets",
+  "schema_version": 1,
+  "assets": [
+    {
+      "asset_id": "frame1_crop",
+      "asset_type": "masked_1bpp",
+      "display_name": "WIZARD",
+      "frames": [
+        {
+          "display_name": "Frame 1",
+          "frame_id": "frame1_crop.frame_1",
+          "pivot_x": 0,
+          "pivot_y": 0,
+          "source_rect": {
+            "height": 96,
+            "width": 78,
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "display_name": "Frame 2",
+          "frame_id": "frame1_crop.frame_2",
+          "pivot_x": 0,
+          "pivot_y": 0,
+          "source_rect": {
+            "height": 96,
+            "width": 78,
+            "x": 78,
+            "y": 0
+          }
+        },
+        {
+          "display_name": "Frame 3",
+          "frame_id": "frame1_crop.frame_3",
+          "pivot_x": 0,
+          "pivot_y": 0,
+          "source_rect": {
+            "height": 96,
+            "width": 78,
+            "x": 156,
+            "y": 0
+          }
+        },
+        {
+          "display_name": "Frame 4",
+          "frame_id": "frame1_crop.frame_4",
+          "pivot_x": 0,
+          "pivot_y": 0,
+          "source_rect": {
+            "height": 96,
+            "width": 78,
+            "x": 234,
+            "y": 0
+          }
+        }
+      ],
+      "source_format": "png",
+      "source_path": "assets/frame1_crop.png"
+    },
+    {
+      "asset_id": "label",
+      "asset_type": "masked_1bpp",
+      "display_name": "PEEP SHOW",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "frames": [
+        {
+          "display_name": "Frame",
+          "frame_id": "label.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ],
+      "scale": 1,
+      "source_format": "system_font_text",
+      "text": "PEEP SHOW"
+    }
+  ],
+  "animations": [],
+  "audio_assets": [
+    {
+      "asset_id": "audio_001_hover_01",
+      "asset_type": "sampled_sfx",
+      "source_path": "assets/audio_001_hover_01.wav",
+      "source_format": "wav"
+    },
+    {
+      "asset_id": "audio_013_confirm_03",
+      "asset_type": "sampled_sfx",
+      "source_path": "assets/audio_013_confirm_03.wav",
+      "source_format": "wav"
+    }
+  ],
+  "audio_cues": [
+    {
+      "cue_id": "audio_001_hover_01.cue",
+      "asset_ref": "audio_001_hover_01",
+      "priority": 96,
+      "volume": 200
+    },
+    {
+      "cue_id": "audio_013_confirm_03.cue",
+      "asset_ref": "audio_013_confirm_03",
+      "priority": 96,
+      "volume": 200
+    }
+  ]
+}

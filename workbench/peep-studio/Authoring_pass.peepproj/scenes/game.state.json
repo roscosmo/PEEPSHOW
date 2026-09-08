@@ -1,0 +1,115 @@
+{
+  "schema_id": "peepshow.authoring.state_scene",
+  "schema_version": 1,
+  "scene_id": "game",
+  "display_name": "GAME",
+  "scene_type": "STATE_SCENE",
+  "entry_state": "start",
+  "variables": [],
+  "input_actions": [
+    {
+      "action_id": "button_b_press",
+      "logical_source": "BUTTON_B",
+      "event_kind": "press"
+    }
+  ],
+  "scene_exits": [
+    {
+      "scene_exit_id": "to_main",
+      "display_name": "Main",
+      "target_scene": "main"
+    }
+  ],
+  "states": [
+    {
+      "state_id": "start",
+      "display_name": "Start",
+      "waiting_visual_ref": "start_wait"
+    }
+  ],
+  "routes": [
+    {
+      "route_id": "start_button_b_press",
+      "action_ref": "button_b_press",
+      "from_states": [
+        "start"
+      ],
+      "guards": [],
+      "actions": [],
+      "scene_exit_ref": "to_main",
+      "target_scene": "main"
+    }
+  ],
+  "render_models": [
+    {
+      "visual_id": "scene_placement",
+      "focus_index": 0,
+      "elements": [
+        {
+          "element_id": "frame1_crop_1",
+          "kind": "sprite",
+          "visual_ref": "frame1_crop.frame_1",
+          "x": 48,
+          "y": 32,
+          "width": 78,
+          "height": 96,
+          "z_order": 1,
+          "layer": "SCENE",
+          "visible": true
+        }
+      ]
+    }
+  ],
+  "waiting_visuals": [
+    {
+      "waiting_visual_id": "static_wait",
+      "presentation_id": "game_static",
+      "phase_quantum_ms": 250,
+      "combined_step_count": 1,
+      "settled_step": 0,
+      "cycle_policy": "loop",
+      "elements": []
+    },
+    {
+      "waiting_visual_id": "start_wait",
+      "presentation_id": "game.start.waiting",
+      "phase_quantum_ms": 250,
+      "combined_step_count": 4,
+      "settled_step": 0,
+      "cycle_policy": "loop",
+      "elements": [
+        {
+          "element_id": "frame1_crop_1_wait",
+          "source_element_ref": "frame1_crop_1",
+          "phase_visual_refs": [
+            "frame1_crop.frame_1",
+            "frame1_crop.frame_2",
+            "frame1_crop.frame_3",
+            "frame1_crop.frame_4"
+          ],
+          "step_phase_indices": [
+            0,
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    }
+  ],
+  "reactive_wait_default": {
+    "policy_id": "game_wait_policy",
+    "waiting_visual_ref": "static_wait",
+    "hold_fallback_allowed": true,
+    "event_interests": [
+      "button_b_press"
+    ]
+  },
+  "interaction_policy": {
+    "policy_id": "game_interaction",
+    "mode": "continuous",
+    "meaningful_activity_actions": [
+      "button_b_press"
+    ]
+  }
+}

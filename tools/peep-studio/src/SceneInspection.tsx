@@ -101,6 +101,7 @@ import type {
 } from "./types";
 
 export type SceneSelection =
+  | { kind: "project" }
   | { kind: "scene" }
   | { kind: "sceneExit"; id: string }
   | { kind: "packageEntry" }
