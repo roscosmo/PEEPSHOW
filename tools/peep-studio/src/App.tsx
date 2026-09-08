@@ -974,6 +974,7 @@ export default function App() {
             kind: "audio_cue.upsert",
             audio_cue: {
               cue_id: cueId,
+              display_name: assetId,
               asset_ref: assetId,
               priority: 96,
               volume: 200,
@@ -1069,6 +1070,38 @@ export default function App() {
         selectAssetRecord({ kind: "sprite", frameId });
       }
       setMessage("Asset label updated. Save to write it to the project.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const updateAudioCueDisplayName = async (cue: AudioCueRecord, nextDisplayName: string) => {
+    if (bridge === undefined || project === null || busy !== null) {
+      return;
+    }
+    const displayName = nextDisplayName.trim();
+    if (displayName.length === 0 || displayName.length > 64) {
+      setMessage("Audio names must be 1 to 64 characters.");
+      return;
+    }
+    if (displayName === (cue.display_name ?? cue.cue_id)) {
+      return;
+    }
+    setBusy("Renaming audio cue");
+    setPlaying(false);
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{
+          kind: "audio_cue.upsert",
+          audio_cue: { ...cue, display_name: displayName },
+        }],
+      });
+      applyProjectResult(result);
+      selectAssetRecord({ kind: "audio", cueId: cue.cue_id });
+      setMessage("Audio cue renamed. Save to write it to the project.");
     } catch (error) {
       setMessage(errorText(error));
     } finally {
@@ -2538,6 +2571,7 @@ export default function App() {
     ? audioCues.find((cue) => cue.cue_id === assetSelection.cueId) ?? null
     : null;
   const selectedAudioAsset = selectedAudioCue === null ? null : audioAssetById.get(selectedAudioCue.asset_ref) ?? null;
+  const audioCueDisplayName = (cue: AudioCueRecord) => cue.display_name?.trim() || cue.cue_id;
   const selectedAssetFrame = assetSelection?.kind === "sprite"
     ? compiledAssetFrameById.get(assetSelection.frameId) ?? null
     : null;
@@ -3496,9 +3530,9 @@ export default function App() {
                         >
                           <Volume2 size={18} aria-hidden="true" />
                           <span>
-                            <strong>{cue.cue_id}</strong>
+                            <strong>{audioCueDisplayName(cue)}</strong>
                             <small>
-                              {asset === undefined ? cue.asset_ref : `${asset.duration_ms} ms / ${asset.adpcm_bytes} ADPCM bytes`}
+                              {cue.cue_id} / {asset === undefined ? cue.asset_ref : `${asset.duration_ms} ms / ${asset.adpcm_bytes} ADPCM bytes`}
                             </small>
                           </span>
                         </button>
@@ -3511,7 +3545,7 @@ export default function App() {
                             void auditionAudioCue(cue.cue_id);
                           }}
                           title="Audition packaged cue"
-                          aria-label={`Audition ${cue.cue_id}`}
+                          aria-label={`Audition ${audioCueDisplayName(cue)}`}
                         >
                           <Play size={15} aria-hidden="true" />
                         </button>
@@ -3689,6 +3723,37 @@ export default function App() {
         <p className="muted">Import a WAV to create a bounded STATE SFX cue.</p>
       ) : (
         <>
+          <div className="asset-name-editor">
+            <label>
+              SFX name
+              <input
+                key={`${selectedAudioCue.cue_id}-${selectedAudioCue.display_name ?? ""}`}
+                type="text"
+                maxLength={64}
+                defaultValue={audioCueDisplayName(selectedAudioCue)}
+                disabled={busy !== null}
+                onBlur={(event) => {
+                  const value = event.currentTarget.value.trim();
+                  if (value.length === 0) {
+                    event.currentTarget.value = audioCueDisplayName(selectedAudioCue);
+                    return;
+                  }
+                  void updateAudioCueDisplayName(selectedAudioCue, value);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  } else if (event.key === "Escape") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    event.currentTarget.value = audioCueDisplayName(selectedAudioCue);
+                    event.currentTarget.blur();
+                  }
+                }}
+              />
+            </label>
+          </div>
           <div className="audio-inspector-controls">
             <button
               className="button primary"
@@ -3702,7 +3767,7 @@ export default function App() {
             <span>{audioAuditionStatus}</span>
           </div>
           <dl className="inspector-list">
-            <div><dt>Cue</dt><dd>{selectedAudioCue.cue_id}</dd></div>
+            <div><dt>Cue ID</dt><dd>{selectedAudioCue.cue_id}</dd></div>
             <div><dt>Asset</dt><dd>{selectedAudioCue.asset_ref}</dd></div>
             <div><dt>Priority</dt><dd>{selectedAudioCue.priority}</dd></div>
             <div><dt>Volume</dt><dd>{selectedAudioCue.volume}</dd></div>

@@ -4619,7 +4619,8 @@ button:focus-visible {
   background: #ffffff;
 }
 
-.state-summary-card span {
+.state-summary-card span,
+.state-summary-card label {
   color: #68736d;
   font-size: 10px;
   font-weight: 750;
@@ -4633,6 +4634,31 @@ button:focus-visible {
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.state-summary-card .state-name-input {
+  min-width: 0;
+  width: 100%;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid #c9d3ce;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #26302b;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.state-summary-card .state-name-input:focus {
+  border-color: #1875a6;
+  outline: 2px solid rgb(24 117 166 / 16%);
+  outline-offset: 0;
+}
+
+.state-summary-card .state-name-input:disabled {
+  color: #818b85;
+  background: #eef3f0;
 }
 
 .state-lifecycle-actions {

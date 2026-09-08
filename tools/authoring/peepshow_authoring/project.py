@@ -5561,8 +5561,11 @@ def _compile_asset_catalogs(
                 {"cue_id", "asset_ref", "priority", "volume"},
                 cue_path,
                 issues,
+                {"cue_id", "display_name", "asset_ref", "priority", "volume"},
             )
             _stable_id(cue_id, f"{cue_path}.cue_id", issues)
+            if "display_name" in cue:
+                _text(cue.get("display_name"), f"{cue_path}.display_name", issues, 64)
             _stable_id(cue.get("asset_ref"), f"{cue_path}.asset_ref", issues)
             for field in ("priority", "volume"):
                 value = cue.get(field)

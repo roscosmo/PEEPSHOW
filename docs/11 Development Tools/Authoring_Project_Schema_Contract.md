@@ -194,6 +194,7 @@ audio_assets[]:
 
 audio_cues[]:
   cue_id
+  display_name   # optional author-facing label, not packaged
   asset_ref
   priority       # 0..255
   volume         # 0..255

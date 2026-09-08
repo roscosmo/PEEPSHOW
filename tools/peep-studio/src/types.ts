@@ -275,6 +275,7 @@ export type AudioAssetRecord = {
 
 export type AudioCueRecord = {
   cue_id: string;
+  display_name?: string;
   asset_ref: string;
   priority: number;
   volume: number;

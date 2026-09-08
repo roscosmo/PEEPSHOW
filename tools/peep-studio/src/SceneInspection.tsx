@@ -4068,16 +4068,44 @@ function StateInspector({
     setDisplayName(state.display_name);
   }, [state.display_name, state.state_id]);
 
-  const trimmed = displayName.trim();
-  const renameDisabled = !canEdit || trimmed.length === 0 || trimmed === state.display_name;
+  const commitDisplayName = (value: string) => {
+    const trimmed = value.trim();
+    if (!canEdit || trimmed.length === 0 || trimmed === state.display_name) {
+      setDisplayName(state.display_name);
+      return;
+    }
+    setDisplayName(trimmed);
+    void onRenameState(sceneId, state.state_id, trimmed);
+  };
 
   return (
     <section className="inspector-section selected-record">
       <h3>Selected state</h3>
       <div className="state-summary-card">
         <div>
-          <span>State</span>
-          <strong>{state.display_name}</strong>
+          <label htmlFor={`state-name-${state.state_id}`}>Name</label>
+          <input
+            id={`state-name-${state.state_id}`}
+            className="state-name-input"
+            value={displayName}
+            maxLength={64}
+            disabled={!canEdit}
+            aria-label="State name"
+            onChange={(event) => setDisplayName(event.target.value)}
+            onBlur={(event) => commitDisplayName(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.currentTarget.blur();
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                event.currentTarget.value = state.display_name;
+                setDisplayName(state.display_name);
+                event.currentTarget.blur();
+              }
+            }}
+          />
         </div>
         <div>
           <span>Scene start</span>
@@ -4092,26 +4120,6 @@ function StateInspector({
           <strong>{waiting === undefined ? "Not linked" : `${waitingStepCount} step${waitingStepCount === 1 ? "" : "s"}`}</strong>
         </div>
       </div>
-      <form
-        className="rename-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!renameDisabled) {
-            void onRenameState(sceneId, state.state_id, trimmed);
-          }
-        }}
-      >
-        <label htmlFor={`state-name-${state.state_id}`}>State name</label>
-        <div>
-          <input
-            id={`state-name-${state.state_id}`}
-            value={displayName}
-            onChange={(event) => setDisplayName(event.target.value)}
-            disabled={!canEdit}
-          />
-          <button type="submit" disabled={renameDisabled}>Rename</button>
-        </div>
-      </form>
       {render !== undefined && (
         <button className="link-row" type="button" onClick={() => onSelect({ kind: "render", id: render.visual_id })}>
           Scene placement <strong>{screenElementCount} object{screenElementCount === 1 ? "" : "s"}</strong>
@@ -5005,7 +5013,7 @@ function EditableActionList({
                   onChange={(event) => commit({ kind: "play_sfx", cue_ref: event.target.value })}
                 >
                   {audioCues.map((cue) => (
-                    <option key={cue.cue_id} value={cue.cue_id}>{cue.cue_id}</option>
+                    <option key={cue.cue_id} value={cue.cue_id}>{cue.display_name?.trim() || cue.cue_id}</option>
                   ))}
                 </select>
               )}

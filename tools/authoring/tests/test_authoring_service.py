@@ -680,6 +680,7 @@ class AuthoringServiceTests(unittest.TestCase):
                                 "kind": "audio_cue.upsert",
                                 "audio_cue": {
                                     "cue_id": "ui.select.cue",
+                                    "display_name": "Menu Select",
                                     "asset_ref": "ui.select",
                                     "priority": 96,
                                     "volume": 200,
@@ -700,6 +701,7 @@ class AuthoringServiceTests(unittest.TestCase):
                 )
             )
             revision = changed["project_revision"]
+            self.assertEqual("Menu Select", changed["document"]["audio_cues"][0]["display_name"])
 
             built = service.handle(
                 request("project.build_package", {"project_revision": revision})
