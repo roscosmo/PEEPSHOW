@@ -6,6 +6,93 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const strict_1 = __importDefault(require("node:assert/strict"));
 const stateGraph_1 = require("../src/stateGraph");
 const sceneFlowRouting_1 = require("../src/sceneFlowRouting");
+const graphArrowGeometry_1 = require("../src/graphArrowGeometry");
+const arrivals = [
+    { id: "a", target: "menu", targetHandle: "entry-top-left:top" },
+    { id: "b", target: "menu", targetHandle: "entry-top-left:top" },
+    { id: "green-entry", target: "menu", targetHandle: "entry-top-left:top" },
+    { id: "different-side", target: "menu", targetHandle: "entry-top-left:left" },
+    { id: "different-state", target: "credits", targetHandle: "entry-top-left:top" },
+];
+strict_1.default.deepEqual((0, graphArrowGeometry_1.incomingPeers)(arrivals, arrivals[0]), ["a", "b", "green-entry"]);
+strict_1.default.deepEqual((0, graphArrowGeometry_1.incomingPeers)([...arrivals].reverse(), arrivals[0]), ["a", "b", "green-entry"]);
+strict_1.default.deepEqual((0, graphArrowGeometry_1.incomingPeers)(arrivals, { ...arrivals[0], targetHandle: "entry-top-left:left" }), ["a", "different-side"]);
+function insidePolygon(point, polygon) {
+    return polygon.every((start, index) => {
+        const end = polygon[(index + 1) % polygon.length];
+        return (end.x - start.x) * (point.y - start.y) - (end.y - start.y) * (point.x - start.x) >= -0.0001;
+    });
+}
+const sockets = [
+    { center: { x: 600, y: 220 }, width: 20, height: 34 },
+    { center: { x: 600, y: 220 }, width: 13, height: 13 },
+    { center: { x: 600, y: 220 }, width: 20, height: 29, rotation: Math.PI / 6 },
+    { center: { x: 600, y: 220 }, width: 20, height: 29, rotation: -Math.PI / 6 },
+];
+for (const socket of sockets) {
+    for (const side of ["top", "right", "bottom", "left"]) {
+        for (const count of [1, 2, 3, 6]) {
+            const ids = Array.from({ length: count }, (_, index) => `edge-${index}`);
+            const arrows = ids.map((id) => (0, graphArrowGeometry_1.incomingArrow)(socket, side, ids, id));
+            strict_1.default.equal(new Set(arrows.map((arrow) => arrow.arrowPath)).size, count);
+            arrows.forEach((arrow, index) => {
+                const vertices = arrow.arrowPath.match(/-?\d+(?:\.\d+)?(?:e[-+]?\d+)?/gi).map(Number);
+                const width = Math.hypot(vertices[2] - vertices[4], vertices[3] - vertices[5]);
+                const depth = Math.hypot(vertices[0] - (vertices[2] + vertices[4]) / 2, vertices[1] - (vertices[3] + vertices[5]) / 2);
+                (0, strict_1.default)(Math.abs(width - 12) < 0.0001, `${count} arrivals must retain full-width arrowheads`);
+                (0, strict_1.default)(Math.abs(depth - 10) < 0.0001, `${count} arrivals must retain full-depth arrowheads`);
+                for (const zoom of [1, 0.75, 0.5]) {
+                    (0, strict_1.default)(Math.abs(width * depth / 2 * zoom * zoom - 60 * zoom * zoom) < 0.0001, "Connection count must not reduce arrow area at any zoom");
+                }
+                (0, strict_1.default)(insidePolygon(arrow.tip, arrow.hitPolygon), "The visible tip belongs to its own click area");
+                arrows.forEach((other, otherIndex) => {
+                    if (index !== otherIndex)
+                        (0, strict_1.default)(!insidePolygon(arrow.tip, other.hitPolygon), "Other arrow buttons cannot cover this tip");
+                });
+                const dx = arrow.tip.x - socket.center.x;
+                const dy = arrow.tip.y - socket.center.y;
+                const rotation = socket.rotation ?? 0;
+                const x = dx * Math.cos(rotation) + dy * Math.sin(rotation);
+                const y = -dx * Math.sin(rotation) + dy * Math.cos(rotation);
+                const radius = socket.width / 2;
+                (0, strict_1.default)(Math.abs(Math.hypot(x, Math.max(0, Math.abs(y) - (socket.height - socket.width) / 2)) - radius) < 0.0001, "Arrow tip must meet the visible capsule boundary, not its centre");
+                const shifted = (0, graphArrowGeometry_1.incomingArrow)({ ...socket, center: { x: socket.center.x + 30, y: socket.center.y - 25 } }, side, ids, ids[index]);
+                (0, strict_1.default)(Math.abs(shifted.tip.x - arrow.tip.x - 30) < 0.0001);
+                (0, strict_1.default)(Math.abs(shifted.tip.y - arrow.tip.y + 25) < 0.0001);
+                const rails = [{ axis: "x", value: 400 }, { axis: "y", value: 120 }];
+                const saved = structuredClone(rails);
+                const route = (0, stateGraph_1.buildStateTransitionRoute)({ sourceX: 50, sourceY: 80, sourceSide: "right", targetSide: side,
+                    targetX: arrow.routeTarget.x, targetY: arrow.routeTarget.y, rails });
+                strict_1.default.deepEqual(rails, saved, "Fan allocation must not rewrite persisted rails");
+                (0, strict_1.default)(route.points.every((point, slot) => slot === 0 || point.x === route.points[slot - 1].x || point.y === route.points[slot - 1].y));
+            });
+            // Sample the entire approach area, not just the centres of the HTML buttons.
+            for (let x = 545; x <= 655; x += 2) {
+                for (let y = 165; y <= 275; y += 2) {
+                    (0, strict_1.default)(arrows.filter((arrow) => insidePolygon({ x, y }, arrow.hitPolygon)).length <= 1);
+                }
+            }
+        }
+    }
+}
+strict_1.default.deepEqual((0, graphArrowGeometry_1.handleBoundary)({ x: 100, y: 50 }, { x: 5, y: 10, width: 20, height: 34, position: "left" }), { x: 105, y: 77 });
+strict_1.default.deepEqual((0, graphArrowGeometry_1.handleBoundary)({ x: 100, y: 50 }, { x: 5, y: 10, width: 20, height: 34, position: "right" }), { x: 125, y: 77 });
+const corner = sockets[2];
+const topIds = ["top-1", "top-2", "top-3"];
+const leftIds = ["left-1", "left-2"];
+const topTips = topIds.map((id) => (0, graphArrowGeometry_1.incomingArrow)(corner, "top", topIds, id).tip);
+const leftTips = leftIds.map((id) => (0, graphArrowGeometry_1.incomingArrow)(corner, "left", leftIds, id).tip);
+const mixedArrivals = [
+    ...topIds.map((id) => (0, graphArrowGeometry_1.incomingArrow)(corner, "top", topIds, id, leftTips)),
+    ...leftIds.map((id) => (0, graphArrowGeometry_1.incomingArrow)(corner, "left", leftIds, id, topTips)),
+];
+mixedArrivals.forEach((arrow, index) => {
+    (0, strict_1.default)(insidePolygon(arrow.tip, arrow.hitPolygon));
+    mixedArrivals.forEach((other, slot) => {
+        if (index !== slot)
+            (0, strict_1.default)(!insidePolygon(arrow.tip, other.hitPolygon), "Different approach sides share the same corner socket");
+    });
+});
 strict_1.default.deepEqual((0, stateGraph_1.nextStateGraphNodePosition)([], undefined), { x: 0, y: 0 });
 strict_1.default.deepEqual((0, stateGraph_1.nextStateGraphNodePosition)([
     { id: "start", x: 0, y: 0 },

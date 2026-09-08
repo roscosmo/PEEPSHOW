@@ -13,6 +13,7 @@ import {
   type Connection,
   type Edge,
   type EdgeProps,
+  type InternalNode,
   type Node,
   type NodeChange,
   type NodeProps,
@@ -80,6 +81,7 @@ import {
   type StateTransitionLayout,
 } from "./stateGraph";
 import { planSceneFlowRoutes, type SceneFlowRouteRequest } from "./sceneFlowRouting";
+import { handleBoundary, incomingArrow, incomingPeers, type EntrySocket } from "./graphArrowGeometry";
 import type {
   AssetRecord,
   AudioCueRecord,
@@ -920,6 +922,7 @@ function SceneEndpointNode({ data, selected }: NodeProps<Node<SceneEndpointNodeD
 const STATE_NODE_TYPES = { stateCard: StateCardNode, sceneEndpoint: SceneEndpointNode };
 
 type StateTransitionEdgeData = {
+  tone?: "blue" | "green";
   route_id?: string;
   source_state?: string;
   laneX?: number;
@@ -930,12 +933,14 @@ type StateTransitionEdgeData = {
   targetHandle?: StateGraphEntryHandle;
   targetSide?: StateGraphEntrySide;
   targetEntryPorts?: Array<{
+    stateId?: string;
     handle: StateGraphEntryHandle;
     side: StateGraphEntrySide;
     point: EditorNodePosition;
   }>;
   canEdit?: boolean;
   showSectionHandles?: boolean;
+  onSetEntryTarget?: (stateId: string, handle: StateGraphEntryHandle, side: StateGraphEntrySide) => void;
   onSelectRoute?: (routeId: string, sourceState: string) => void;
   onSetRouteLayout?: (
     routeId: string,
@@ -1153,6 +1158,46 @@ function TransitionActionIcon({ action }: { action: StateAction }) {
   return <Route size={15} aria-hidden="true" />;
 }
 
+function graphEntryArrow(
+  edges: Edge[],
+  node: InternalNode | undefined,
+  edge: Pick<Edge, "id" | "target" | "targetHandle">,
+  fallback: EditorNodePosition,
+  side: StateGraphEntrySide,
+) {
+  const handle = node?.internals.handleBounds?.target?.find((candidate) => candidate.id === edge.targetHandle);
+  let socket: EntrySocket = { center: fallback, width: 0, height: 0 };
+  if (node !== undefined && handle !== undefined) {
+    const center = {
+      x: node.internals.positionAbsolute.x + handle.x + handle.width / 2,
+      y: node.internals.positionAbsolute.y + handle.y + handle.height / 2,
+    };
+    socket = { center, width: handle.width, height: handle.height };
+    if (node.type === "stateCard") {
+      const top = edge.targetHandle?.startsWith("entry-top") === true;
+      const left = edge.targetHandle?.includes("-left:") === true;
+      socket = {
+        center: {
+          x: center.x + (side === "left" || side === "right" ? left ? 8 : -8 : 0),
+          y: center.y + (side === "top" || side === "bottom" ? top ? 9 : -9 : 0),
+        },
+        width: 20,
+        height: 29,
+        rotation: (top === left ? 30 : -30) * Math.PI / 180,
+      };
+    }
+  }
+  const otherTips = node?.type !== "stateCard" || handle === undefined ? [] : edges
+    .filter((peer) => peer.id !== edge.id && peer.target === edge.target
+      && peer.targetHandle !== edge.targetHandle
+      && peer.targetHandle?.split(":")[0] === edge.targetHandle?.split(":")[0])
+    .flatMap((peer) => {
+      const port = STATE_GRAPH_ENTRY_PORTS.find((candidate) => stateEntryPortId(candidate.handle, candidate.side) === peer.targetHandle);
+      return port === undefined ? [] : [incomingArrow(socket, port.side, incomingPeers(edges, peer), peer.id).tip];
+    });
+  return incomingArrow(socket, side, handle === undefined ? [edge.id] : incomingPeers(edges, edge), edge.id, otherTips);
+}
+
 function StateTransitionEdge({
   data,
   id,
@@ -1161,12 +1206,17 @@ function StateTransitionEdge({
   sourceX,
   sourceY,
   style,
+  target,
+  targetHandleId,
   targetPosition,
   targetX,
   targetY,
 }: EdgeProps) {
   const edgeData = data as StateTransitionEdgeData | undefined;
   const { screenToFlowPosition } = useReactFlow();
+  const flowEdges = useStore((state) => state.edges);
+  const nodeLookup = useStore((state) => state.nodeLookup);
+  const [draftTargetState, setDraftTargetState] = useState(target);
   const persistedRails = Array.isArray(edgeData?.rails) ? edgeData.rails : [];
   const persistedRailKey = persistedRails.map((rail) => `${rail.axis}:${rail.value}`).join("|");
   const persistedTargetHandle = edgeData?.targetHandle;
@@ -1189,7 +1239,8 @@ function StateTransitionEdge({
     draftTargetSideRef.current = persistedTargetSide;
     setDraftTargetSide(persistedTargetSide);
     setSelectedSection(null);
-  }, [persistedRailKey, persistedTargetHandle, persistedTargetSide]);
+    setDraftTargetState(target);
+  }, [persistedRailKey, persistedTargetHandle, persistedTargetSide, target]);
   useEffect(() => () => dragCleanupRef.current?.(), []);
 
   const routeId = typeof edgeData?.route_id === "string" ? edgeData.route_id : id;
@@ -1200,20 +1251,27 @@ function StateTransitionEdge({
   const effectiveTargetSide = draftTargetSide ?? persistedTargetSide ?? edgeTargetSide(targetPosition);
   const targetPort = edgeData?.targetEntryPorts?.find((port) => (
     port.handle === effectiveTargetHandle && port.side === effectiveTargetSide
+    && (port.stateId === undefined || port.stateId === draftTargetState)
   ));
   const usesReactFlowTarget = effectiveTargetHandle === persistedTargetHandle
-    && effectiveTargetSide === persistedTargetSide;
-  const arrowTip = usesReactFlowTarget
+    && effectiveTargetSide === persistedTargetSide && draftTargetState === target;
+  const targetPoint = usesReactFlowTarget
     ? { x: targetX, y: targetY }
     : targetPort?.point ?? { x: targetX, y: targetY };
+  const arrow = graphEntryArrow(flowEdges, nodeLookup.get(draftTargetState), {
+    id, target: draftTargetState,
+    targetHandle: effectiveTargetHandle === undefined ? targetHandleId : stateEntryPortId(effectiveTargetHandle, effectiveTargetSide),
+  }, targetPoint, effectiveTargetSide);
+  const arrowTip = arrow.tip;
+  const green = edgeData?.tone === "green";
   const laneX = usesReactFlowTarget && typeof edgeData?.laneX === "number"
     ? edgeData.laneX
     : undefined;
   const automaticRoute = buildStateTransitionRoute({
     sourceX,
     sourceY,
-    targetX: arrowTip.x,
-    targetY: arrowTip.y,
+    targetX: arrow.routeTarget.x,
+    targetY: arrow.routeTarget.y,
     sourceSide: edgeSourceSide(sourcePosition),
     targetSide: effectiveTargetSide,
     laneX,
@@ -1223,8 +1281,8 @@ function StateTransitionEdge({
     : buildStateTransitionRoute({
         sourceX,
         sourceY,
-        targetX: arrowTip.x,
-        targetY: arrowTip.y,
+        targetX: arrow.routeTarget.x,
+        targetY: arrow.routeTarget.y,
         sourceSide: edgeSourceSide(sourcePosition),
         targetSide: effectiveTargetSide,
         rails: draftRails,
@@ -1317,7 +1375,7 @@ function StateTransitionEdge({
   }, [canEdit, effectiveTargetHandle, effectiveTargetSide, route, routeId, selectedSection, showSectionHandles, sourceState]);
 
   const addRouteSection = (clientX: number, clientY: number) => {
-    if (!canEdit) {
+    if (!canEdit || edgeData?.onSetRouteLayout === undefined) {
       return;
     }
     const point = screenToFlowPosition({ x: clientX, y: clientY });
@@ -1330,24 +1388,17 @@ function StateTransitionEdge({
     commitLayout(inserted, effectiveTargetHandle ?? null, effectiveTargetSide);
   };
 
-  const arrowPath = effectiveTargetSide === "top"
-    ? `M ${arrowTip.x} ${arrowTip.y} L ${arrowTip.x - 6} ${arrowTip.y - 9} L ${arrowTip.x + 6} ${arrowTip.y - 9} Z`
-    : effectiveTargetSide === "bottom"
-      ? `M ${arrowTip.x} ${arrowTip.y} L ${arrowTip.x - 6} ${arrowTip.y + 9} L ${arrowTip.x + 6} ${arrowTip.y + 9} Z`
-      : effectiveTargetSide === "left"
-        ? `M ${arrowTip.x} ${arrowTip.y} L ${arrowTip.x - 9} ${arrowTip.y - 6} L ${arrowTip.x - 9} ${arrowTip.y + 6} Z`
-        : `M ${arrowTip.x} ${arrowTip.y} L ${arrowTip.x + 9} ${arrowTip.y - 6} L ${arrowTip.x + 9} ${arrowTip.y + 6} Z`;
-
   const closestEntryPort = (point: EditorNodePosition): {
+    stateId?: string;
     handle: StateGraphEntryHandle;
     side: StateGraphEntrySide;
     distance: number;
   } | null => {
-    let closest: { handle: StateGraphEntryHandle; side: StateGraphEntrySide; distance: number } | null = null;
+    let closest: { stateId?: string; handle: StateGraphEntryHandle; side: StateGraphEntrySide; distance: number } | null = null;
     for (const port of edgeData?.targetEntryPorts ?? []) {
       const distance = Math.hypot(point.x - port.point.x, point.y - port.point.y);
       if (closest === null || distance < closest.distance) {
-        closest = { handle: port.handle, side: port.side, distance };
+        closest = { stateId: port.stateId, handle: port.handle, side: port.side, distance };
       }
     }
     return closest;
@@ -1364,6 +1415,7 @@ function StateTransitionEdge({
     const pointerId = event.pointerId;
     const originalHandle = effectiveTargetHandle;
     const originalSide = effectiveTargetSide;
+    const originalState = draftTargetState;
     const onPointerMove = (pointerEvent: globalThis.PointerEvent) => {
       if (pointerEvent.pointerId !== pointerId) {
         return;
@@ -1376,6 +1428,7 @@ function StateTransitionEdge({
         setDraftTargetHandle(closest.handle);
         draftTargetSideRef.current = closest.side;
         setDraftTargetSide(closest.side);
+        setDraftTargetState(closest.stateId ?? target);
       }
     };
     const finishDrag = (pointerEvent: globalThis.PointerEvent) => {
@@ -1387,8 +1440,13 @@ function StateTransitionEdge({
       dragCleanupRef.current?.();
       dragCleanupRef.current = null;
       if (closest !== null && closest.distance <= 72) {
-        commitLayout(draftRailsRef.current, closest.handle, closest.side);
+        if (edgeData?.onSetEntryTarget !== undefined) {
+          edgeData.onSetEntryTarget(closest.stateId ?? target, closest.handle, closest.side);
+        } else {
+          commitLayout(draftRailsRef.current, closest.handle, closest.side);
+        }
       } else {
+        setDraftTargetState(originalState);
         draftTargetHandleRef.current = originalHandle;
         setDraftTargetHandle(originalHandle);
         draftTargetSideRef.current = originalSide;
@@ -1401,6 +1459,7 @@ function StateTransitionEdge({
       }
       dragCleanupRef.current?.();
       dragCleanupRef.current = null;
+      setDraftTargetState(originalState);
       draftTargetHandleRef.current = originalHandle;
       setDraftTargetHandle(originalHandle);
       draftTargetSideRef.current = originalSide;
@@ -1420,14 +1479,14 @@ function StateTransitionEdge({
     <>
       <defs>
         <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={arrowTip.x} y2={arrowTip.y}>
-          <stop offset="0%" stopColor={selected ? "#4dabf7" : "#74c0fc"} />
-          <stop offset="100%" stopColor={selected ? "#1864ab" : "#1971c2"} />
+          <stop offset="0%" stopColor={green ? "#8ce99a" : selected ? "#4dabf7" : "#74c0fc"} />
+          <stop offset="100%" stopColor={green ? "#2f9e44" : selected ? "#1864ab" : "#1971c2"} />
         </linearGradient>
       </defs>
-      <BaseEdge id={id} path={route.path} style={edgeStyle} />
+      <BaseEdge id={id} path={route.path + arrow.leadPath} style={edgeStyle} />
       <path
         className="state-transition-hit-path"
-        d={route.path}
+        d={route.path + arrow.leadPath}
         onDoubleClick={(event) => {
           event.stopPropagation();
           edgeData?.onSelectRoute?.(routeId, sourceState);
@@ -1436,16 +1495,16 @@ function StateTransitionEdge({
       />
       <path
         className={`state-transition-arrow ${selected ? "selected" : ""} ${arrowHovered ? "hovered" : ""}`}
-        d={arrowPath}
+        d={arrow.arrowPath}
+        style={green ? { fill: "#2f9e44" } : undefined}
       />
       <EdgeLabelRenderer>
         <button
           className={`state-transition-arrow-hit nodrag nopan ${arrowCanMove ? "editable" : ""}`}
+          data-edge-id={id}
           type="button"
           aria-label={arrowCanMove ? "Move transition destination" : "Select transition"}
-          style={{
-            transform: `translate(-50%, -50%) translate(${arrowTip.x}px, ${arrowTip.y}px)`,
-          }}
+          style={arrow.hitStyle}
           onClick={(event) => {
             event.stopPropagation();
             edgeData?.onSelectRoute?.(routeId, sourceState);
@@ -1648,7 +1707,6 @@ type SceneFlowTransitionEdgeData = {
   endpointKind: "scene_exit" | "route";
   endpointId: string;
   rails?: EditorRouteRail[];
-  targetOffsetY?: number;
   canEdit?: boolean;
   onSelect: () => void;
   onSetRouteLayout: (rails: EditorRouteRail[]) => void;
@@ -1662,6 +1720,8 @@ function SceneFlowTransitionEdge({
   sourceX,
   sourceY,
   style,
+  target,
+  targetHandleId,
   targetPosition,
   targetX,
   targetY,
@@ -1686,6 +1746,10 @@ function SceneFlowTransitionEdge({
   }, [persistedRailKey]);
   useEffect(() => () => dragCleanupRef.current?.(), []);
 
+  const targetSide = edgeTargetSide(targetPosition);
+  const arrow = graphEntryArrow(flowEdges, nodeLookup.get(target), {
+    id, target, targetHandle: targetHandleId,
+  }, { x: targetX, y: targetY }, targetSide);
   const plans = useMemo(() => {
     const requests: SceneFlowRouteRequest[] = flowEdges.flatMap((flowEdge) => {
       if (flowEdge.type !== "sceneTransition") {
@@ -1708,22 +1772,19 @@ function SceneFlowTransitionEdge({
           sourceNode: flowEdge.source,
           targetNode: flowEdge.target,
           source: { x: sourceX, y: sourceY },
-          target: { x: targetX, y: targetY + (edgeData?.targetOffsetY ?? 0) },
+          target: arrow.routeTarget,
           sourceSide: edgeSourceSide(sourcePosition),
           targetSide: edgeTargetSide(targetPosition),
           rails: draftRails,
         }];
       }
       const candidateData = flowEdge.data as SceneFlowTransitionEdgeData | undefined;
-      const source = {
-        x: sourceNode.internals.positionAbsolute.x + sourceHandle.x + sourceHandle.width / 2,
-        y: sourceNode.internals.positionAbsolute.y + sourceHandle.y + sourceHandle.height / 2,
-      };
-      const target = {
-        x: targetNode.internals.positionAbsolute.x + targetHandle.x + targetHandle.width / 2,
-        y: targetNode.internals.positionAbsolute.y + targetHandle.y + targetHandle.height / 2
-          + (candidateData?.targetOffsetY ?? 0),
-      };
+      const source = handleBoundary(sourceNode.internals.positionAbsolute, sourceHandle);
+      const target = graphEntryArrow(
+        flowEdges, targetNode, flowEdge,
+        handleBoundary(targetNode.internals.positionAbsolute, targetHandle),
+        edgeTargetSide(targetHandle.position),
+      ).routeTarget;
       return [{
         id: flowEdge.id,
         sourceNode: flowEdge.source,
@@ -1756,10 +1817,9 @@ function SceneFlowTransitionEdge({
       }];
     });
     return planSceneFlowRoutes(requests, obstacles);
-  }, [draftRails, edgeData?.targetOffsetY, flowEdges, flowNodes, id, nodeLookup, sourcePosition, sourceX, sourceY, targetPosition, targetX, targetY]);
+  }, [draftRails, flowEdges, flowNodes, id, nodeLookup, sourcePosition, sourceX, sourceY, targetPosition, targetX, targetY, arrow.routeTarget.x, arrow.routeTarget.y]);
 
-  const targetSide = edgeTargetSide(targetPosition);
-  const fallbackTarget = { x: targetX, y: targetY + (edgeData?.targetOffsetY ?? 0) };
+  const fallbackTarget = arrow.routeTarget;
   const route = plans[id]?.route ?? buildStateTransitionRoute({
     sourceX,
     sourceY,
@@ -1769,7 +1829,7 @@ function SceneFlowTransitionEdge({
     targetSide,
     rails: draftRails,
   });
-  const arrowTip = route.points.at(-1) ?? fallbackTarget;
+  const arrowTip = arrow.tip;
   const routeSections = stateTransitionRouteSections(route.controlPoints);
   const gradientId = `scene-transition-gradient-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
   const canEdit = edgeData?.canEdit === true;
@@ -1805,13 +1865,6 @@ function SceneFlowTransitionEdge({
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [canEdit, route.controlPoints, selected, selectedSection, targetSide]);
 
-  const arrowPath = targetSide === "top"
-    ? `M ${arrowTip.x} ${arrowTip.y} L ${arrowTip.x - 6} ${arrowTip.y - 9} L ${arrowTip.x + 6} ${arrowTip.y - 9} Z`
-    : targetSide === "bottom"
-      ? `M ${arrowTip.x} ${arrowTip.y} L ${arrowTip.x - 6} ${arrowTip.y + 9} L ${arrowTip.x + 6} ${arrowTip.y + 9} Z`
-      : targetSide === "left"
-        ? `M ${arrowTip.x} ${arrowTip.y} L ${arrowTip.x - 9} ${arrowTip.y - 6} L ${arrowTip.x - 9} ${arrowTip.y + 6} Z`
-        : `M ${arrowTip.x} ${arrowTip.y} L ${arrowTip.x + 9} ${arrowTip.y - 6} L ${arrowTip.x + 9} ${arrowTip.y + 6} Z`;
   const edgeStyle = {
     ...style,
     stroke: `url(#${gradientId})`,
@@ -1828,10 +1881,10 @@ function SceneFlowTransitionEdge({
           <stop offset="100%" stopColor={selected ? "#1864ab" : "#1971c2"} />
         </linearGradient>
       </defs>
-      <BaseEdge id={id} path={route.path} style={edgeStyle} />
+      <BaseEdge id={id} path={route.path + arrow.leadPath} style={edgeStyle} />
       <path
         className="state-transition-hit-path"
-        d={route.path}
+        d={route.path + arrow.leadPath}
         onClick={(event) => {
           event.stopPropagation();
           edgeData?.onSelect();
@@ -1866,13 +1919,14 @@ function SceneFlowTransitionEdge({
           </g>
         );
       })}
-      <path className={`state-transition-arrow ${selected ? "selected" : ""} ${arrowHovered ? "hovered" : ""}`} d={arrowPath} />
+      <path className={`state-transition-arrow ${selected ? "selected" : ""} ${arrowHovered ? "hovered" : ""}`} d={arrow.arrowPath} />
       <EdgeLabelRenderer>
         <button
           className="state-transition-arrow-hit nodrag nopan"
           type="button"
           aria-label="Select scene transition"
-          style={{ transform: `translate(-50%, -50%) translate(${arrowTip.x}px, ${arrowTip.y}px)` }}
+          data-edge-id={id}
+          style={arrow.hitStyle}
           onClick={(event) => {
             event.stopPropagation();
             edgeData?.onSelect();
@@ -1980,29 +2034,34 @@ function SceneFlowTransitionEdge({
 
 type GradientTransitionEdgeData = {
   tone?: "blue" | "green";
-  targetOffsetY?: number;
+  onSelect?: () => void;
 };
 
 function GradientTransitionEdge({
   data,
   id,
-  markerEnd,
   selected,
   sourcePosition,
   sourceX,
   sourceY,
   style,
+  target,
+  targetHandleId,
   targetPosition,
   targetX,
   targetY,
 }: EdgeProps) {
-  const adjustedTargetY = targetY + ((data as GradientTransitionEdgeData | undefined)?.targetOffsetY ?? 0);
+  const flowEdges = useStore((state) => state.edges);
+  const targetNode = useStore((state) => state.nodeLookup.get(target));
+  const arrow = graphEntryArrow(flowEdges, targetNode, {
+    id, target, targetHandle: targetHandleId,
+  }, { x: targetX, y: targetY }, edgeTargetSide(targetPosition));
   const [path] = getSmoothStepPath({
     sourceX,
     sourceY,
     sourcePosition,
-    targetX,
-    targetY: adjustedTargetY,
+    targetX: arrow.routeTarget.x,
+    targetY: arrow.routeTarget.y,
     targetPosition,
     borderRadius: 10,
   });
@@ -2017,15 +2076,14 @@ function GradientTransitionEdge({
   return (
     <>
       <defs>
-        <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={adjustedTargetY}>
+        <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={arrow.tip.x} y2={arrow.tip.y}>
           <stop offset="0%" stopColor={startColor} />
           <stop offset="100%" stopColor={endColor} />
         </linearGradient>
       </defs>
       <BaseEdge
         id={id}
-        path={path}
-        markerEnd={markerEnd}
+        path={path + arrow.leadPath}
         style={{
           ...style,
           stroke: `url(#${gradientId})`,
@@ -2034,6 +2092,20 @@ function GradientTransitionEdge({
           strokeLinejoin: "round",
         }}
       />
+      <path className="state-transition-arrow" d={arrow.arrowPath} style={{ fill: endColor }} />
+      <EdgeLabelRenderer>
+        <button
+          className="state-transition-arrow-hit nodrag nopan"
+          type="button"
+          aria-label="Select package entry transition"
+          data-edge-id={id}
+          style={arrow.hitStyle}
+          onClick={(event) => {
+            event.stopPropagation();
+            (data as GradientTransitionEdgeData | undefined)?.onSelect?.();
+          }}
+        />
+      </EdgeLabelRenderer>
     </>
   );
 }
@@ -2046,7 +2118,6 @@ const STATE_EDGE_TYPES = {
 type SceneCardNodeData = {
   graphNode: GraphSceneNode;
   entryActive: boolean;
-  incomingCount: number;
   thumbnail: Framebuffer | null;
   targetScenes: SceneDocument[];
   selectedSceneExitId: string | null;
@@ -2063,7 +2134,6 @@ function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
   const {
     graphNode,
     entryActive,
-    incomingCount,
     targetScenes,
     canEdit,
     onSelectScene,
@@ -2103,7 +2173,6 @@ function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
           type="target"
           position={Position.Left}
           isConnectable={canEdit}
-          style={{ height: `${Math.max(34, incomingCount * 18 + 8)}px` }}
         />
         <div className="scene-card-preview" aria-hidden="true">
           <FramebufferCanvas framebuffer={thumbnail} />
@@ -2848,17 +2917,32 @@ export function StateGraphView({
         target: graph.entryEdge.target,
         sourceHandle: "scene-entry-out",
         targetHandle: stateEntryPortId(graph.entryEdge.targetHandle, graph.entryEdge.targetSide),
-        type: "gradientTransition",
+        type: "stateTransition",
         reconnectable: "target" as const,
         selectable: canEdit,
         focusable: canEdit,
-        data: { tone: "green" },
+        data: {
+          tone: "green",
+          targetHandle: graph.entryEdge.targetHandle,
+          targetSide: graph.entryEdge.targetSide,
+          targetEntryPorts: graph.nodes.flatMap((node) => STATE_GRAPH_ENTRY_PORTS.map((port) => ({
+            ...port, stateId: node.id,
+            point: stateEntryPortPoint({ ...(positionById.get(node.id) ?? node), platformOutputCount: node.platformOutputCount }, port.handle, port.side),
+          }))),
+          canEdit,
+          onSelectRoute: () => onSelect({ kind: "scene" }),
+          onSetEntryTarget: (stateId: string, handle: StateGraphEntryHandle, side: StateGraphEntrySide) => {
+            if (scene !== null) {
+              onSetEntryConnection(scene.scene_id, stateId, handle, side);
+            }
+          },
+        },
         markerEnd: { type: MarkerType.ArrowClosed, color: "#2f9e44" },
         style: { strokeWidth: 4 },
       }];
       return [...transitionEdges, ...entryEdge];
     },
-    [canEdit, graph.edges, graph.entryEdge, graphNodeById, onSelect, onSetRouteLayout, positionById, scene, selected, transitionLayouts],
+    [canEdit, graph.edges, graph.entryEdge, graph.nodes, graphNodeById, onSelect, onSetEntryConnection, onSetRouteLayout, positionById, scene, selected, transitionLayouts],
   );
 
   if (scene === null) {
@@ -3186,16 +3270,8 @@ export function SceneFlowView({
   const baseNodes: Node[] = useMemo(
     () => {
       const activeEntrySceneIds = new Set(graph.edges.map((edge) => edge.targetScene));
-      const incomingCounts = new Map<string, number>();
-      graph.edges.forEach((edge) => {
-        incomingCounts.set(edge.target, (incomingCounts.get(edge.target) ?? 0) + 1);
-      });
       if (graph.packageEntry !== undefined) {
         activeEntrySceneIds.add(graph.packageEntry.targetScene);
-        incomingCounts.set(
-          graph.packageEntry.targetScene,
-          (incomingCounts.get(graph.packageEntry.targetScene) ?? 0) + 1,
-        );
       }
       const sceneNodes = graph.nodes.map((node) => ({
         id: node.id,
@@ -3204,7 +3280,6 @@ export function SceneFlowView({
         data: {
           graphNode: node,
           entryActive: activeEntrySceneIds.has(node.id),
-          incomingCount: incomingCounts.get(node.id) ?? 0,
           thumbnail: thumbnails[node.id] ?? null,
           targetScenes: scenes.filter((scene) => scene.scene_type === "STATE_SCENE" && scene.scene_id !== node.id),
           selectedSceneExitId,
@@ -3297,25 +3372,6 @@ export function SceneFlowView({
   };
   const edges: Edge[] = useMemo(
     () => {
-      const incomingEdgeIds = new Map<string, string[]>();
-      graph.edges.forEach((edge) => {
-        const ids = incomingEdgeIds.get(edge.target) ?? [];
-        ids.push(edge.id);
-        incomingEdgeIds.set(edge.target, ids);
-      });
-      const packageEdgeId = graph.packageEntry === undefined
-        ? null
-        : `package-entry->${graph.packageEntry.targetScene}`;
-      if (packageEdgeId !== null && graph.packageEntry !== undefined) {
-        const ids = incomingEdgeIds.get(graph.packageEntry.targetScene) ?? [];
-        ids.unshift(packageEdgeId);
-        incomingEdgeIds.set(graph.packageEntry.targetScene, ids);
-      }
-      const targetOffset = (targetId: string, edgeId: string) => {
-        const ids = incomingEdgeIds.get(targetId) ?? [edgeId];
-        const index = Math.max(0, ids.indexOf(edgeId));
-        return (index - (ids.length - 1) / 2) * 18;
-      };
       const sceneEdges: Edge[] = graph.edges.map((edge) => ({
         id: edge.id,
         source: edge.source,
@@ -3334,7 +3390,6 @@ export function SceneFlowView({
           rails: editor?.scene_flow?.routes?.[edge.source]?.[
             `${edge.sceneExit.endpointKind}:${edge.sceneExit.endpointId}`
           ]?.rails ?? [],
-          targetOffsetY: targetOffset(edge.target, edge.id),
           canEdit,
           onSelect: () => {
             if (edge.sceneExit.sceneExitId !== undefined) {
@@ -3374,7 +3429,7 @@ export function SceneFlowView({
         data: {
           package_entry: true,
           tone: "green",
-          targetOffsetY: targetOffset(graph.packageEntry.targetScene, packageEdgeId ?? ""),
+          onSelect: onSelectPackageEntry,
         },
         markerEnd: { type: MarkerType.ArrowClosed, color: "#2f9e44" },
         style: {
@@ -3383,7 +3438,7 @@ export function SceneFlowView({
       }];
       return [...packageEdge, ...sceneEdges];
     },
-    [canEdit, editor, graph.edges, graph.packageEntry, onSelectSceneExit, onSelectSceneRoute, onSetRouteLayout, packageEntrySelected, selectedRouteId, selectedSceneExitId],
+    [canEdit, editor, graph.edges, graph.packageEntry, onSelectPackageEntry, onSelectSceneExit, onSelectSceneRoute, onSetRouteLayout, packageEntrySelected, selectedRouteId, selectedSceneExitId],
   );
   const deleteSelectedSceneExit = () => {
     if (canEdit && selectedReferenceId !== null) {

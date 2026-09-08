@@ -518,6 +518,17 @@ the shared scoring weights rather than introduce per-example route behavior.
   left-to-right storyboard bias.
 - When several routes enter one node, fan their final arrow segments across
   distinct entry positions so every arrow remains visible and selectable.
+  This applies in both Scene Flow and Local Logic, including green entry
+  connections and shared Go To/scene-exit destinations. Tips meet the visible
+  socket outline, not its centre. Socket shapes and state corners stay fixed;
+  only the short terminal fan is derived. Arrow hit areas are separated and
+  take priority over route-section dragging. Local Logic groups arrivals by
+  the chosen corner and approach side; it does not repick manually pinned
+  ports. Moving nodes, retargeting arrows, and recalculating the fan preserve
+  saved manual rails. Green scene-entry arrows can still target another state.
+  Regression coverage includes the actual graph components in
+  `tools/peep-studio/tests/graph-arrows.html`, checked at desktop and compact
+  sizes by `tests/graph-arrows-check.cjs` against a running renderer.
 - Draw an unambiguous bridge on one route wherever two unrelated transition
   lines must cross. Bridges are presentation only and do not alter direction,
   selection priority, or runtime order.
