@@ -402,6 +402,7 @@ class AuthoringServiceTests(unittest.TestCase):
         )
         self.assertIn("editor.scene_flow.add_reference", graph["scene_flow_commands"])
         self.assertIn("editor.scene_flow.set_exit_reference", graph["scene_flow_commands"])
+        self.assertIn("editor.scene_flow.set_route_layout", graph["scene_flow_commands"])
         self.assertEqual(64, graph["command_batch_maximum"])
         self.assertEqual(["play_sfx"], graph["target_scene_actions"])
         self.assertEqual([], graph["peepos_trigger_commands"])
@@ -2568,6 +2569,70 @@ class AuthoringServiceTests(unittest.TestCase):
             self.assertEqual("credits", source_scene["scene_exits"][0]["target_scene"])
             self.assertNotIn("references", deleted["document"]["project"]["editor"]["scene_flow"])
             self.assertNotIn("exit_references", deleted["document"]["project"]["editor"]["scene_flow"])
+
+    def test_scene_flow_route_layout_is_editor_only_and_persists(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "scene_flow_route_layout.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            before = service.handle(
+                request("project.build_package", {"project_revision": loaded["project_revision"]})
+            )
+            changed = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.scene_flow.set_route_layout",
+                                "scene_id": "state_demo",
+                                "endpoint_kind": "scene_exit",
+                                "endpoint_id": "to_state_details",
+                                "rails": [
+                                    {"axis": "x", "value": 421.6},
+                                    {"axis": "y", "value": -72.2},
+                                ],
+                            }
+                        ],
+                    },
+                )
+            )
+            after = service.handle(
+                request("project.build_package", {"project_revision": changed["project_revision"]})
+            )
+            self.assertEqual(before["package"]["sha256"], after["package"]["sha256"])
+            layout = changed["document"]["project"]["editor"]["scene_flow"]["routes"]["state_demo"][
+                "scene_exit:to_state_details"
+            ]
+            self.assertEqual(1, layout["routing_version"])
+            self.assertEqual(
+                [{"axis": "x", "value": 422}, {"axis": "y", "value": -72}],
+                layout["rails"],
+            )
+            saved = service.handle(request("project.save", {"project_revision": changed["project_revision"]}))
+            reloaded = load_project(project_root).normalized()["project"]["editor"]["scene_flow"]
+            self.assertEqual(layout, reloaded["routes"]["state_demo"]["scene_exit:to_state_details"])
+
+            reset = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": saved["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.scene_flow.set_route_layout",
+                                "scene_id": "state_demo",
+                                "endpoint_kind": "scene_exit",
+                                "endpoint_id": "to_state_details",
+                                "rails": [],
+                            }
+                        ],
+                    },
+                )
+            )
+            self.assertNotIn("routes", reset["document"]["project"]["editor"]["scene_flow"])
 
     def test_scene_rename_and_package_entry_scene_are_service_owned(self) -> None:
         service = AuthoringService()

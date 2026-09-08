@@ -13,6 +13,7 @@ exports.stateEntryPortId = stateEntryPortId;
 exports.stateEntryPortPoint = stateEntryPortPoint;
 exports.stateEntryHandlePoint = stateEntryHandlePoint;
 exports.routeRailsFromPoints = routeRailsFromPoints;
+exports.buildOrthogonalTransitionRoute = buildOrthogonalTransitionRoute;
 exports.buildStateTransitionRoute = buildStateTransitionRoute;
 exports.stateTransitionRouteSections = stateTransitionRouteSections;
 exports.moveStateTransitionRouteSection = moveStateTransitionRouteSection;
@@ -473,6 +474,15 @@ function routeRailsFromPoints(points, targetSide) {
         }
     }
     return canonicalRails(rails);
+}
+function buildOrthogonalTransitionRoute(points, targetSide) {
+    const controlPoints = simplifyRoutePoints(points);
+    return {
+        path: roundedPolylinePath(controlPoints, 14),
+        points: controlPoints,
+        controlPoints,
+        rails: routeRailsFromPoints(controlPoints, targetSide),
+    };
 }
 function manualRoutePoints(source, target, sourceSide, targetSide, rails) {
     const resolvedRails = canonicalRails(rails);

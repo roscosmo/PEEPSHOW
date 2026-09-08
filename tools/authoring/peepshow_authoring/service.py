@@ -396,6 +396,7 @@ class AuthoringService:
                     "editor.scene_flow.set_reference_target",
                     "editor.scene_flow.delete_reference",
                     "editor.scene_flow.set_exit_reference",
+                    "editor.scene_flow.set_route_layout",
                 ],
                 "peepos_trigger_commands": [],
                 "peepos_trigger_catalog": [

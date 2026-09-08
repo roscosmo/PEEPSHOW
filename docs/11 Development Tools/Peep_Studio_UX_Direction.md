@@ -505,6 +505,11 @@ blank-project acceptance project.
 
 ### 4. Scene Flow Tools And Routing
 
+Bring-up status: implemented. Scene Flow now owns its New Scene and Go To
+palette, measured-node automatic routing, destination fan-out, crossing
+bridges, and editor-only manual orthogonal rails. Further tuning should adjust
+the shared scoring weights rather than introduce per-example route behavior.
+
 - Remove New Scene from the project hierarchy. New Scene and Go To become
   floating Scene Flow palette tools on the left edge of the graph, matching the
   Placement palette's position, sizing, tooltips, and selected-tool behavior.

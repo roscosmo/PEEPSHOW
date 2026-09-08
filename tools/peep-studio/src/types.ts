@@ -210,6 +210,10 @@ export type ProjectEditorData = {
     package_entry?: EditorNodePosition;
     references?: Record<string, EditorSceneFlowReference>;
     exit_references?: Record<string, Record<string, string>>;
+    routes?: Record<string, Record<string, {
+      routing_version?: number;
+      rails?: EditorRouteRail[];
+    }>>;
   };
   state_graph?: {
     scenes?: Record<string, {

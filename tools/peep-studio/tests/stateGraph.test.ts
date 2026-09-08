@@ -15,6 +15,7 @@ import {
   stateTransitionRouteSections,
   visibleStateActions,
 } from "../src/stateGraph";
+import { planSceneFlowRoutes } from "../src/sceneFlowRouting";
 
 assert.deepEqual(nextStateGraphNodePosition([], undefined), { x: 0, y: 0 });
 assert.deepEqual(
@@ -572,6 +573,86 @@ const invalidRouteGraph = buildStateGraphModel({
 });
 
 assert.equal(invalidRouteGraph.edges.length, 0);
+
+const sceneRoutePlans = planSceneFlowRoutes(
+  [
+    {
+      id: "first-scene-route",
+      sourceNode: "menu",
+      targetNode: "game",
+      source: { x: 0, y: 100 },
+      target: { x: 500, y: 100 },
+      sourceSide: "right",
+      targetSide: "left",
+    },
+    {
+      id: "second-scene-route",
+      sourceNode: "menu-alt",
+      targetNode: "game-alt",
+      source: { x: 0, y: 118 },
+      target: { x: 500, y: 118 },
+      sourceSide: "right",
+      targetSide: "left",
+    },
+  ],
+  [],
+);
+assert.notEqual(sceneRoutePlans["first-scene-route"]?.route.path, sceneRoutePlans["second-scene-route"]?.route.path);
+assert.equal(
+  Object.values(sceneRoutePlans).every((plan) => plan.route.points.slice(1).every((point, index) => {
+    const previous = plan.route.points[index];
+    return point.x === previous.x || point.y === previous.y;
+  })),
+  true,
+);
+
+const obstacleAwareSceneRoute = planSceneFlowRoutes(
+  [{
+    id: "around-card",
+    sourceNode: "source",
+    targetNode: "target",
+    source: { x: 0, y: 100 },
+    target: { x: 500, y: 100 },
+    sourceSide: "right",
+    targetSide: "left",
+  }],
+  [{ id: "middle", x: 200, y: 0, width: 100, height: 220 }],
+);
+assert.equal(
+  obstacleAwareSceneRoute["around-card"]!.route.points.some((point) => point.y < -18 || point.y > 238),
+  true,
+);
+
+const crossingSceneRoutes = planSceneFlowRoutes(
+  [
+    {
+      id: "horizontal",
+      sourceNode: "left",
+      targetNode: "right",
+      source: { x: 0, y: 100 },
+      target: { x: 400, y: 100 },
+      sourceSide: "right",
+      targetSide: "left",
+      rails: [{ axis: "x", value: 200 }],
+    },
+    {
+      id: "vertical",
+      sourceNode: "top",
+      targetNode: "bottom",
+      source: { x: 200, y: 0 },
+      target: { x: 200, y: 200 },
+      sourceSide: "bottom",
+      targetSide: "top",
+      rails: [{ axis: "y", value: 100 }],
+    },
+  ],
+  [],
+);
+assert.equal(
+  crossingSceneRoutes.horizontal!.crossings.length + crossingSceneRoutes.vertical!.crossings.length,
+  1,
+);
+assert.equal(crossingSceneRoutes.vertical!.crossings[0]?.orientation, "vertical");
 
 const menuScene: SceneDocument = {
   ...scene,

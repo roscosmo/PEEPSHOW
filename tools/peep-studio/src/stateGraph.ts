@@ -747,6 +747,19 @@ export function routeRailsFromPoints(
   return canonicalRails(rails);
 }
 
+export function buildOrthogonalTransitionRoute(
+  points: StateTransitionRoutePoint[],
+  targetSide: StateGraphEntrySide,
+): StateTransitionRoute {
+  const controlPoints = simplifyRoutePoints(points);
+  return {
+    path: roundedPolylinePath(controlPoints, 14),
+    points: controlPoints,
+    controlPoints,
+    rails: routeRailsFromPoints(controlPoints, targetSide),
+  };
+}
+
 function manualRoutePoints(
   source: StateTransitionRoutePoint,
   target: StateTransitionRoutePoint,

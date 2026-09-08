@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const strict_1 = __importDefault(require("node:assert/strict"));
 const stateGraph_1 = require("../src/stateGraph");
+const sceneFlowRouting_1 = require("../src/sceneFlowRouting");
 strict_1.default.deepEqual((0, stateGraph_1.nextStateGraphNodePosition)([], undefined), { x: 0, y: 0 });
 strict_1.default.deepEqual((0, stateGraph_1.nextStateGraphNodePosition)([
     { id: "start", x: 0, y: 0 },
@@ -476,6 +477,65 @@ const invalidRouteGraph = (0, stateGraph_1.buildStateGraphModel)({
     routes: [{ ...scene.routes[0], target_state: "missing" }],
 });
 strict_1.default.equal(invalidRouteGraph.edges.length, 0);
+const sceneRoutePlans = (0, sceneFlowRouting_1.planSceneFlowRoutes)([
+    {
+        id: "first-scene-route",
+        sourceNode: "menu",
+        targetNode: "game",
+        source: { x: 0, y: 100 },
+        target: { x: 500, y: 100 },
+        sourceSide: "right",
+        targetSide: "left",
+    },
+    {
+        id: "second-scene-route",
+        sourceNode: "menu-alt",
+        targetNode: "game-alt",
+        source: { x: 0, y: 118 },
+        target: { x: 500, y: 118 },
+        sourceSide: "right",
+        targetSide: "left",
+    },
+], []);
+strict_1.default.notEqual(sceneRoutePlans["first-scene-route"]?.route.path, sceneRoutePlans["second-scene-route"]?.route.path);
+strict_1.default.equal(Object.values(sceneRoutePlans).every((plan) => plan.route.points.slice(1).every((point, index) => {
+    const previous = plan.route.points[index];
+    return point.x === previous.x || point.y === previous.y;
+})), true);
+const obstacleAwareSceneRoute = (0, sceneFlowRouting_1.planSceneFlowRoutes)([{
+        id: "around-card",
+        sourceNode: "source",
+        targetNode: "target",
+        source: { x: 0, y: 100 },
+        target: { x: 500, y: 100 },
+        sourceSide: "right",
+        targetSide: "left",
+    }], [{ id: "middle", x: 200, y: 0, width: 100, height: 220 }]);
+strict_1.default.equal(obstacleAwareSceneRoute["around-card"].route.points.some((point) => point.y < -18 || point.y > 238), true);
+const crossingSceneRoutes = (0, sceneFlowRouting_1.planSceneFlowRoutes)([
+    {
+        id: "horizontal",
+        sourceNode: "left",
+        targetNode: "right",
+        source: { x: 0, y: 100 },
+        target: { x: 400, y: 100 },
+        sourceSide: "right",
+        targetSide: "left",
+        rails: [{ axis: "x", value: 200 }],
+    },
+    {
+        id: "vertical",
+        sourceNode: "top",
+        targetNode: "bottom",
+        source: { x: 200, y: 0 },
+        target: { x: 200, y: 200 },
+        sourceSide: "bottom",
+        targetSide: "top",
+        rails: [{ axis: "y", value: 100 }],
+    },
+], []);
+strict_1.default.equal(crossingSceneRoutes.horizontal.crossings.length + crossingSceneRoutes.vertical.crossings.length, 1);
+strict_1.default.equal(crossingSceneRoutes.vertical.crossings[0]?.orientation, "vertical");
 const menuScene = {
     ...scene,
     scene_exits: [

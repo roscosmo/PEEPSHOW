@@ -180,8 +180,6 @@ export default function App() {
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("scene-flow");
   const [placementInspectorTab, setPlacementInspectorTab] = useState<PlacementInspectorTab>("object");
   const [sceneThumbnails, setSceneThumbnails] = useState<Record<string, Framebuffer>>({});
-  const [sceneCreatorOpen, setSceneCreatorOpen] = useState(false);
-  const [newSceneName, setNewSceneName] = useState("");
   const [expandedSceneIds, setExpandedSceneIds] = useState<string[]>([]);
   const [collapsedHierarchyIds, setCollapsedHierarchyIds] = useState<string[]>([]);
   const [assetSelection, setAssetSelection] = useState<AssetSelection>(null);
@@ -323,8 +321,6 @@ export default function App() {
       previewStartRef.current = null;
       setPlacementStateId(null);
       setSceneThumbnails({});
-      setSceneCreatorOpen(false);
-      setNewSceneName("");
       setExpandedSceneIds([]);
       setCollapsedHierarchyIds([]);
       setSceneSelection({ kind: "scene" });
@@ -380,8 +376,6 @@ export default function App() {
       setSelectedScene(null);
       setPlacementStateId(null);
       setSceneThumbnails({});
-      setSceneCreatorOpen(false);
-      setNewSceneName("");
       setExpandedSceneIds([]);
       setCollapsedHierarchyIds([]);
       setSceneSelection({ kind: "scene" });
@@ -603,8 +597,8 @@ export default function App() {
     setBuild(null);
   };
 
-  const addScene = async () => {
-    const displayName = newSceneName.trim();
+  const addScene = async (requestedName: string) => {
+    const displayName = requestedName.trim();
     if (bridge === undefined || project === null || busy !== null || displayName.length === 0) {
       return;
     }
@@ -621,8 +615,6 @@ export default function App() {
         throw new Error("Authoring service did not return the new scene ID");
       }
       applyProjectResult(result);
-      setSceneCreatorOpen(false);
-      setNewSceneName("");
       setWorkspaceMode("scene-flow");
       if (await startPreview(sceneId, { revision: result.project_revision })) {
         setMessage(`Added ${displayName}. Save to write it to the project.`);
@@ -665,8 +657,6 @@ export default function App() {
     setAssetPreviewPlaying(false);
     setSpritePickerOpen(false);
     setPlacementTool("select");
-    setSceneCreatorOpen(false);
-    setNewSceneName("");
   };
 
   const selectAssetRecord = (selection: AssetSelection) => {
@@ -1755,6 +1745,47 @@ export default function App() {
         `saved ${String(applied?.scene_id ?? sceneId)} @ ${String(applied?.x ?? x)}, ${String(applied?.y ?? y)} rev ${result.project_revision}`,
       );
       setMessage("Graph layout updated. Save to write it to the project.");
+    }).catch((error) => {
+      setSceneFlowLayoutStatus(`save failed: ${errorText(error)}`);
+      setMessage(errorText(error));
+    });
+    await layoutSaveChain.current;
+  };
+
+  const setSceneRouteLayout = async (
+    sceneId: string,
+    endpointKind: "scene_exit" | "route",
+    endpointId: string,
+    rails: EditorRouteRail[],
+  ) => {
+    if (bridge === undefined || project === null) {
+      return;
+    }
+    const endpointKey = `${endpointKind}:${endpointId}`;
+    const action = rails.length === 0 ? "automatic routing" : "manual routing";
+    setSceneFlowLayoutStatus(`queued ${sceneId}.${endpointKey}: ${action}`);
+    layoutSaveChain.current = layoutSaveChain.current.then(async () => {
+      const revision = projectRevisionRef.current;
+      if (revision === null) {
+        setSceneFlowLayoutStatus(`skipped ${sceneId}.${endpointKey}: no project revision`);
+        return;
+      }
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: revision,
+        commands: [{
+          kind: "editor.scene_flow.set_route_layout",
+          scene_id: sceneId,
+          endpoint_kind: endpointKind,
+          endpoint_id: endpointId,
+          rails,
+        }],
+      });
+      projectRevisionRef.current = result.project_revision;
+      applyProjectResult(result);
+      setSceneFlowLayoutStatus(`saved ${sceneId}.${endpointKey}: ${action} rev ${result.project_revision}`);
+      setMessage(rails.length === 0
+        ? "Scene transition returned to automatic routing. Save to write it to the project."
+        : "Scene transition layout updated. Save to write it to the project.");
     }).catch((error) => {
       setSceneFlowLayoutStatus(`save failed: ${errorText(error)}`);
       setMessage(errorText(error));
@@ -5263,60 +5294,6 @@ export default function App() {
             <>
               <details className="project-section" open>
                 <summary>Scenes</summary>
-                {sceneCreatorOpen ? (
-                  <form
-                    className="scene-create-form"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void addScene();
-                    }}
-                  >
-                    <input
-                      autoFocus
-                      aria-label="New scene name"
-                      value={newSceneName}
-                      maxLength={96}
-                      placeholder="Scene name"
-                      onChange={(event) => setNewSceneName(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Escape") {
-                          setSceneCreatorOpen(false);
-                          setNewSceneName("");
-                        }
-                      }}
-                    />
-                    <button
-                      type="submit"
-                      className="icon-button"
-                      disabled={newSceneName.trim().length === 0 || busy !== null}
-                      title="Create scene"
-                    >
-                      <Check size={16} aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      disabled={busy !== null}
-                      title="Cancel"
-                      onClick={() => {
-                        setSceneCreatorOpen(false);
-                        setNewSceneName("");
-                      }}
-                    >
-                      <X size={16} aria-hidden="true" />
-                    </button>
-                  </form>
-                ) : (
-                  <button
-                    type="button"
-                    className="button secondary scene-create-button"
-                    disabled={busy !== null || service?.state_scene_graph.scene_commands?.includes("scene.add") !== true}
-                    onClick={() => setSceneCreatorOpen(true)}
-                  >
-                    <Plus size={15} aria-hidden="true" />
-                    Add scene
-                  </button>
-                )}
                 {renderSceneHierarchy()}
               </details>
             </>
@@ -5370,6 +5347,7 @@ export default function App() {
               selectedRouteId={sceneSelection.kind === "route" ? sceneSelection.id : null}
               selectedReferenceId={sceneSelection.kind === "sceneReference" ? sceneSelection.id : null}
               packageEntrySelected={sceneSelection.kind === "packageEntry"}
+              onAddScene={(displayName) => void addScene(displayName)}
               onSelectScene={(sceneId) => {
                 setSelectedScene(sceneId);
                 setSceneSelection({ kind: "scene" });
@@ -5410,6 +5388,9 @@ export default function App() {
               }}
               onMovePackageEntry={(x, y) => void movePackageEntryNode(x, y)}
               onMoveSceneReference={(referenceId, x, y) => void moveSceneReferenceNode(referenceId, x, y)}
+              onSetRouteLayout={(sceneId, endpointKind, endpointId, rails) => {
+                void setSceneRouteLayout(sceneId, endpointKind, endpointId, rails);
+              }}
               onSetEntryScene={(sceneId) => void setPackageEntryScene(sceneId)}
               onConnectSceneExit={(sceneId, routeId, targetScene, referenceId) => {
                 void setRouteSceneTarget(sceneId, routeId, targetScene, undefined, referenceId);
@@ -5418,6 +5399,7 @@ export default function App() {
                 void setSceneExitTarget(sceneId, sceneExitId, targetScene, referenceId);
               }}
               canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
+              canAddScene={service?.state_scene_graph.scene_commands?.includes("scene.add") === true && busy === null}
             />
           </div>
         </section>

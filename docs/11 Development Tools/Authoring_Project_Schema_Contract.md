@@ -1176,6 +1176,13 @@ editor_data:
     exit_references:
       source_scene_id:
         endpoint_kind:endpoint_id: reference_id
+    routes:
+      source_scene_id:
+        endpoint_kind:endpoint_id:
+          routing_version: 1
+          rails[]:
+            axis
+            value
   state_graph:
     scenes:
       scene_id:
@@ -1213,6 +1220,15 @@ does not alter the semantic scene destination.
 Reference IDs are stable editor IDs, at most 64 Go To references are stored per
 project, and every mapped endpoint must have the same semantic `target_scene`
 as its selected reference.
+
+Manual Scene Flow geometry is stored under
+`project.editor.scene_flow.routes[source_scene_id][endpoint_kind:endpoint_id]`.
+Version 1 stores at most eight alternating `x` and `y` rails. Rails refine the
+orthogonal middle of the connection while its first and last joins remain
+attached to the current source exit and destination entry. An empty rail list
+removes the record and returns the transition to automatic routing. This data,
+including crossing bridges and automatic fan-out derived from it, is editor-only
+and must not change compiled package bytes or runtime transition order.
 
 Per-scene STATE graph
 positions in

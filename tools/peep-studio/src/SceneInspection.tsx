@@ -18,6 +18,7 @@ import {
   type NodeProps,
   type ReactFlowInstance,
   useReactFlow,
+  useStore,
   useUpdateNodeInternals,
 } from "@xyflow/react";
 import {
@@ -27,6 +28,7 @@ import {
   ArrowRight,
   ArrowUp,
   CalendarClock,
+  Check,
   ExternalLink,
   Eye,
   Filter,
@@ -77,6 +79,7 @@ import {
   type StateGraphExitSide,
   type StateTransitionLayout,
 } from "./stateGraph";
+import { planSceneFlowRoutes, type SceneFlowRouteRequest } from "./sceneFlowRouting";
 import type {
   AssetRecord,
   AudioCueRecord,
@@ -1639,8 +1642,345 @@ function StateTransitionEdge({
   );
 }
 
+type SceneFlowTransitionEdgeData = {
+  tone?: "blue" | "green";
+  sourceSceneId: string;
+  endpointKind: "scene_exit" | "route";
+  endpointId: string;
+  rails?: EditorRouteRail[];
+  targetOffsetY?: number;
+  canEdit?: boolean;
+  onSelect: () => void;
+  onSetRouteLayout: (rails: EditorRouteRail[]) => void;
+};
+
+function SceneFlowTransitionEdge({
+  data,
+  id,
+  selected,
+  sourcePosition,
+  sourceX,
+  sourceY,
+  style,
+  targetPosition,
+  targetX,
+  targetY,
+}: EdgeProps) {
+  const edgeData = data as SceneFlowTransitionEdgeData | undefined;
+  const { screenToFlowPosition } = useReactFlow();
+  const flowEdges = useStore((state) => state.edges);
+  const flowNodes = useStore((state) => state.nodes);
+  const nodeLookup = useStore((state) => state.nodeLookup);
+  const persistedRails = Array.isArray(edgeData?.rails) ? edgeData.rails : [];
+  const persistedRailKey = persistedRails.map((rail) => `${rail.axis}:${rail.value}`).join("|");
+  const [draftRails, setDraftRails] = useState<EditorRouteRail[]>(persistedRails);
+  const draftRailsRef = useRef<EditorRouteRail[]>(persistedRails);
+  const [selectedSection, setSelectedSection] = useState<number | null>(null);
+  const [arrowHovered, setArrowHovered] = useState(false);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const next = persistedRails.map((rail) => ({ ...rail }));
+    draftRailsRef.current = next;
+    setDraftRails(next);
+    setSelectedSection(null);
+  }, [persistedRailKey]);
+  useEffect(() => () => dragCleanupRef.current?.(), []);
+
+  const plans = useMemo(() => {
+    const requests: SceneFlowRouteRequest[] = flowEdges.flatMap((flowEdge) => {
+      if (flowEdge.type !== "sceneTransition") {
+        return [];
+      }
+      const sourceNode = nodeLookup.get(flowEdge.source);
+      const targetNode = nodeLookup.get(flowEdge.target);
+      const sourceHandle = sourceNode?.internals.handleBounds?.source?.find(
+        (handle) => handle.id === flowEdge.sourceHandle,
+      );
+      const targetHandle = targetNode?.internals.handleBounds?.target?.find(
+        (handle) => handle.id === flowEdge.targetHandle,
+      );
+      if (sourceNode === undefined || targetNode === undefined || sourceHandle === undefined || targetHandle === undefined) {
+        if (flowEdge.id !== id) {
+          return [];
+        }
+        return [{
+          id,
+          sourceNode: flowEdge.source,
+          targetNode: flowEdge.target,
+          source: { x: sourceX, y: sourceY },
+          target: { x: targetX, y: targetY + (edgeData?.targetOffsetY ?? 0) },
+          sourceSide: edgeSourceSide(sourcePosition),
+          targetSide: edgeTargetSide(targetPosition),
+          rails: draftRails,
+        }];
+      }
+      const candidateData = flowEdge.data as SceneFlowTransitionEdgeData | undefined;
+      const source = {
+        x: sourceNode.internals.positionAbsolute.x + sourceHandle.x + sourceHandle.width / 2,
+        y: sourceNode.internals.positionAbsolute.y + sourceHandle.y + sourceHandle.height / 2,
+      };
+      const target = {
+        x: targetNode.internals.positionAbsolute.x + targetHandle.x + targetHandle.width / 2,
+        y: targetNode.internals.positionAbsolute.y + targetHandle.y + targetHandle.height / 2
+          + (candidateData?.targetOffsetY ?? 0),
+      };
+      return [{
+        id: flowEdge.id,
+        sourceNode: flowEdge.source,
+        targetNode: flowEdge.target,
+        source,
+        target,
+        sourceSide: edgeSourceSide(sourceHandle.position),
+        targetSide: edgeTargetSide(targetHandle.position),
+        rails: flowEdge.id === id
+          ? draftRails
+          : Array.isArray(candidateData?.rails) ? candidateData.rails : [],
+      }];
+    });
+    const obstacles = flowNodes.flatMap((flowNode) => {
+      const internal = nodeLookup.get(flowNode.id);
+      if (internal === undefined) {
+        return [];
+      }
+      const width = internal.measured.width ?? flowNode.measured?.width;
+      const height = internal.measured.height ?? flowNode.measured?.height;
+      if (width === undefined || height === undefined) {
+        return [];
+      }
+      return [{
+        id: flowNode.id,
+        x: internal.internals.positionAbsolute.x,
+        y: internal.internals.positionAbsolute.y,
+        width,
+        height,
+      }];
+    });
+    return planSceneFlowRoutes(requests, obstacles);
+  }, [draftRails, edgeData?.targetOffsetY, flowEdges, flowNodes, id, nodeLookup, sourcePosition, sourceX, sourceY, targetPosition, targetX, targetY]);
+
+  const targetSide = edgeTargetSide(targetPosition);
+  const fallbackTarget = { x: targetX, y: targetY + (edgeData?.targetOffsetY ?? 0) };
+  const route = plans[id]?.route ?? buildStateTransitionRoute({
+    sourceX,
+    sourceY,
+    targetX: fallbackTarget.x,
+    targetY: fallbackTarget.y,
+    sourceSide: edgeSourceSide(sourcePosition),
+    targetSide,
+    rails: draftRails,
+  });
+  const arrowTip = route.points.at(-1) ?? fallbackTarget;
+  const routeSections = stateTransitionRouteSections(route.controlPoints);
+  const gradientId = `scene-transition-gradient-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+  const canEdit = edgeData?.canEdit === true;
+  const commitLayout = (rails: EditorRouteRail[]) => {
+    const rounded = rails.map((rail) => ({ axis: rail.axis, value: Math.round(rail.value) }));
+    draftRailsRef.current = rounded;
+    setDraftRails(rounded);
+    edgeData?.onSetRouteLayout(rounded);
+  };
+
+  useEffect(() => {
+    if (!selected || selectedSection === null || !canEdit) {
+      return;
+    }
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Delete" && event.key !== "Backspace") {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target !== null && target.closest("input, select, textarea, [contenteditable='true']") !== null) {
+        return;
+      }
+      const next = removeStateTransitionRouteSection(route.controlPoints, selectedSection, targetSide);
+      if (next === null) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      setSelectedSection(null);
+      commitLayout(next);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [canEdit, route.controlPoints, selected, selectedSection, targetSide]);
+
+  const arrowPath = targetSide === "top"
+    ? `M ${arrowTip.x} ${arrowTip.y} L ${arrowTip.x - 6} ${arrowTip.y - 9} L ${arrowTip.x + 6} ${arrowTip.y - 9} Z`
+    : targetSide === "bottom"
+      ? `M ${arrowTip.x} ${arrowTip.y} L ${arrowTip.x - 6} ${arrowTip.y + 9} L ${arrowTip.x + 6} ${arrowTip.y + 9} Z`
+      : targetSide === "left"
+        ? `M ${arrowTip.x} ${arrowTip.y} L ${arrowTip.x - 9} ${arrowTip.y - 6} L ${arrowTip.x - 9} ${arrowTip.y + 6} Z`
+        : `M ${arrowTip.x} ${arrowTip.y} L ${arrowTip.x + 9} ${arrowTip.y - 6} L ${arrowTip.x + 9} ${arrowTip.y + 6} Z`;
+  const edgeStyle = {
+    ...style,
+    stroke: `url(#${gradientId})`,
+    strokeDasharray: "10 8",
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+
+  return (
+    <>
+      <defs>
+        <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={arrowTip.x} y2={arrowTip.y}>
+          <stop offset="0%" stopColor={selected ? "#4dabf7" : "#74c0fc"} />
+          <stop offset="100%" stopColor={selected ? "#1864ab" : "#1971c2"} />
+        </linearGradient>
+      </defs>
+      <BaseEdge id={id} path={route.path} style={edgeStyle} />
+      <path
+        className="state-transition-hit-path"
+        d={route.path}
+        onClick={(event) => {
+          event.stopPropagation();
+          edgeData?.onSelect();
+        }}
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          edgeData?.onSelect();
+          if (!canEdit) {
+            return;
+          }
+          const point = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+          const segmentIndex = closestRouteSegment(route.controlPoints, point);
+          const next = insertStateTransitionRouteSection(route.controlPoints, segmentIndex, point, targetSide);
+          if (next !== null) {
+            setSelectedSection(null);
+            commitLayout(next);
+          }
+        }}
+      />
+      {(plans[id]?.crossings ?? []).map((crossing, index) => {
+        const horizontal = crossing.orientation === "horizontal";
+        const maskPath = horizontal
+          ? `M ${crossing.x - 10} ${crossing.y} L ${crossing.x + 10} ${crossing.y}`
+          : `M ${crossing.x} ${crossing.y - 10} L ${crossing.x} ${crossing.y + 10}`;
+        const bridgePath = horizontal
+          ? `M ${crossing.x - 10} ${crossing.y} Q ${crossing.x} ${crossing.y - 11} ${crossing.x + 10} ${crossing.y}`
+          : `M ${crossing.x} ${crossing.y - 10} Q ${crossing.x + 11} ${crossing.y} ${crossing.x} ${crossing.y + 10}`;
+        return (
+          <g key={`${id}:crossing-${index}`} className="scene-transition-bridge" pointerEvents="none">
+            <path d={maskPath} stroke="#eef2f0" strokeWidth={10} fill="none" />
+            <path d={bridgePath} stroke={`url(#${gradientId})`} strokeWidth={selected ? 4.8 : 4} strokeLinecap="round" fill="none" />
+          </g>
+        );
+      })}
+      <path className={`state-transition-arrow ${selected ? "selected" : ""} ${arrowHovered ? "hovered" : ""}`} d={arrowPath} />
+      <EdgeLabelRenderer>
+        <button
+          className="state-transition-arrow-hit nodrag nopan"
+          type="button"
+          aria-label="Select scene transition"
+          style={{ transform: `translate(-50%, -50%) translate(${arrowTip.x}px, ${arrowTip.y}px)` }}
+          onClick={(event) => {
+            event.stopPropagation();
+            edgeData?.onSelect();
+          }}
+          onPointerEnter={() => setArrowHovered(true)}
+          onPointerLeave={() => setArrowHovered(false)}
+        />
+      </EdgeLabelRenderer>
+      {selected && draftRails.length > 0 && (
+        <EdgeLabelRenderer>
+          <button
+            className="scene-route-reset nodrag nopan"
+            type="button"
+            title="Return scene transition to automatic routing"
+            aria-label="Return scene transition to automatic routing"
+            style={{
+              transform: `translate(-50%, -50%) translate(${routeLabelPoint(route.points).x}px, ${routeLabelPoint(route.points).y}px)`,
+            }}
+            disabled={!canEdit}
+            onClick={(event) => {
+              event.stopPropagation();
+              commitLayout([]);
+            }}
+          >
+            <RotateCcw size={13} aria-hidden="true" />
+          </button>
+        </EdgeLabelRenderer>
+      )}
+      {selected && routeSections.map((section) => (
+        <EdgeLabelRenderer key={`${id}:section-${section.controlSegmentIndex}`}>
+          <button
+            className={`state-route-section state-route-section-${section.orientation} nodrag nopan ${selectedSection === section.controlSegmentIndex ? "selected" : ""}`}
+            type="button"
+            aria-label={`Move ${section.orientation} scene transition section`}
+            title={section.orientation === "horizontal" ? "Drag up or down" : "Drag left or right"}
+            style={{
+              width: section.orientation === "horizontal" ? `${Math.max(22, section.length)}px` : "16px",
+              height: section.orientation === "vertical" ? `${Math.max(22, section.length)}px` : "16px",
+              transform: `translate(-50%, -50%) translate(${section.center.x}px, ${section.center.y}px)`,
+            }}
+            disabled={!canEdit}
+            onClick={(event) => event.stopPropagation()}
+            onPointerDown={(event) => {
+              if (!canEdit) {
+                return;
+              }
+              event.preventDefault();
+              event.stopPropagation();
+              edgeData?.onSelect();
+              dragCleanupRef.current?.();
+              const basePoints = route.controlPoints.map((point) => ({ ...point }));
+              setSelectedSection(section.controlSegmentIndex);
+              const pointerId = event.pointerId;
+              const onPointerMove = (pointerEvent: globalThis.PointerEvent) => {
+                if (pointerEvent.pointerId !== pointerId) {
+                  return;
+                }
+                pointerEvent.preventDefault();
+                const point = screenToFlowPosition({ x: pointerEvent.clientX, y: pointerEvent.clientY });
+                const next = moveStateTransitionRouteSection(
+                  basePoints,
+                  section.controlSegmentIndex,
+                  point,
+                  edgeSourceSide(sourcePosition),
+                  targetSide,
+                );
+                if (next !== null) {
+                  draftRailsRef.current = next;
+                  setDraftRails(next);
+                }
+              };
+              const finishDrag = (pointerEvent: globalThis.PointerEvent) => {
+                if (pointerEvent.pointerId !== pointerId) {
+                  return;
+                }
+                dragCleanupRef.current?.();
+                dragCleanupRef.current = null;
+                commitLayout(draftRailsRef.current);
+              };
+              const cancelDrag = (pointerEvent: globalThis.PointerEvent) => {
+                if (pointerEvent.pointerId !== pointerId) {
+                  return;
+                }
+                dragCleanupRef.current?.();
+                dragCleanupRef.current = null;
+                const restored = persistedRails.map((rail) => ({ ...rail }));
+                draftRailsRef.current = restored;
+                setDraftRails(restored);
+              };
+              window.addEventListener("pointermove", onPointerMove, true);
+              window.addEventListener("pointerup", finishDrag, true);
+              window.addEventListener("pointercancel", cancelDrag, true);
+              dragCleanupRef.current = () => {
+                window.removeEventListener("pointermove", onPointerMove, true);
+                window.removeEventListener("pointerup", finishDrag, true);
+                window.removeEventListener("pointercancel", cancelDrag, true);
+              };
+            }}
+          />
+        </EdgeLabelRenderer>
+      ))}
+    </>
+  );
+}
+
 type GradientTransitionEdgeData = {
   tone?: "blue" | "green";
+  targetOffsetY?: number;
 };
 
 function GradientTransitionEdge({
@@ -1656,12 +1996,13 @@ function GradientTransitionEdge({
   targetX,
   targetY,
 }: EdgeProps) {
+  const adjustedTargetY = targetY + ((data as GradientTransitionEdgeData | undefined)?.targetOffsetY ?? 0);
   const [path] = getSmoothStepPath({
     sourceX,
     sourceY,
     sourcePosition,
     targetX,
-    targetY,
+    targetY: adjustedTargetY,
     targetPosition,
     borderRadius: 10,
   });
@@ -1676,7 +2017,7 @@ function GradientTransitionEdge({
   return (
     <>
       <defs>
-        <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}>
+        <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={adjustedTargetY}>
           <stop offset="0%" stopColor={startColor} />
           <stop offset="100%" stopColor={endColor} />
         </linearGradient>
@@ -1705,6 +2046,7 @@ const STATE_EDGE_TYPES = {
 type SceneCardNodeData = {
   graphNode: GraphSceneNode;
   entryActive: boolean;
+  incomingCount: number;
   thumbnail: Framebuffer | null;
   targetScenes: SceneDocument[];
   selectedSceneExitId: string | null;
@@ -1721,6 +2063,7 @@ function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
   const {
     graphNode,
     entryActive,
+    incomingCount,
     targetScenes,
     canEdit,
     onSelectScene,
@@ -1760,6 +2103,7 @@ function SceneCardNode({ data, selected }: NodeProps<Node<SceneCardNodeData>>) {
           type="target"
           position={Position.Left}
           isConnectable={canEdit}
+          style={{ height: `${Math.max(34, incomingCount * 18 + 8)}px` }}
         />
         <div className="scene-card-preview" aria-hidden="true">
           <FramebufferCanvas framebuffer={thumbnail} />
@@ -1934,7 +2278,10 @@ const SCENE_NODE_TYPES = {
   sceneCard: SceneCardNode,
   sceneReference: SceneReferenceNode,
 };
-const SCENE_EDGE_TYPES = { gradientTransition: GradientTransitionEdge };
+const SCENE_EDGE_TYPES = {
+  gradientTransition: GradientTransitionEdge,
+  sceneTransition: SceneFlowTransitionEdge,
+};
 
 function sameNodeSet(left: Node[], right: Node[]) {
   if (left.length !== right.length) {
@@ -2771,6 +3118,7 @@ export function SceneFlowView({
   selectedRouteId,
   selectedReferenceId,
   packageEntrySelected,
+  onAddScene,
   onSelectScene,
   onSelectSceneExit,
   onSelectSceneRoute,
@@ -2784,10 +3132,12 @@ export function SceneFlowView({
   onMoveSceneNode,
   onMovePackageEntry,
   onMoveSceneReference,
+  onSetRouteLayout,
   onSetEntryScene,
   onSetSceneExitTarget,
   onConnectSceneExit,
   canEdit,
+  canAddScene,
 }: {
   scenes: SceneDocument[];
   entrySceneId: string | null;
@@ -2799,6 +3149,7 @@ export function SceneFlowView({
   selectedRouteId: string | null;
   selectedReferenceId: string | null;
   packageEntrySelected: boolean;
+  onAddScene: (displayName: string) => void;
   onSelectScene: (sceneId: string) => void;
   onSelectSceneExit: (sceneId: string, sceneExitId: string) => void;
   onSelectSceneRoute: (sceneId: string, routeId: string) => void;
@@ -2812,10 +3163,17 @@ export function SceneFlowView({
   onMoveSceneNode: (sceneId: string, x: number, y: number) => void;
   onMovePackageEntry: (x: number, y: number) => void;
   onMoveSceneReference: (referenceId: string, x: number, y: number) => void;
+  onSetRouteLayout: (
+    sceneId: string,
+    endpointKind: "scene_exit" | "route",
+    endpointId: string,
+    rails: EditorRouteRail[],
+  ) => void;
   onSetEntryScene: (sceneId: string) => void;
   onSetSceneExitTarget: (sceneId: string, sceneExitId: string, targetScene: string, referenceId?: string) => void;
   onConnectSceneExit: (sceneId: string, routeId: string, targetScene: string, referenceId?: string) => void;
   canEdit: boolean;
+  canAddScene: boolean;
 }) {
   const graph = useMemo(() => buildSceneFlowGraphModel(scenes, entrySceneId, editor), [editor, entrySceneId, scenes]);
   const flowRef = useRef<ReactFlowInstance | null>(null);
@@ -2823,12 +3181,21 @@ export function SceneFlowView({
   const [viewportText, setViewportText] = useState("viewport not ready");
   const [lastDragText, setLastDragText] = useState("No drag yet");
   const [lastConnectText, setLastConnectText] = useState("No connect yet");
-  const [referencePickerOpen, setReferencePickerOpen] = useState(false);
+  const [paletteTool, setPaletteTool] = useState<"scene" | "reference" | null>(null);
+  const [newSceneName, setNewSceneName] = useState("");
   const baseNodes: Node[] = useMemo(
     () => {
       const activeEntrySceneIds = new Set(graph.edges.map((edge) => edge.targetScene));
+      const incomingCounts = new Map<string, number>();
+      graph.edges.forEach((edge) => {
+        incomingCounts.set(edge.target, (incomingCounts.get(edge.target) ?? 0) + 1);
+      });
       if (graph.packageEntry !== undefined) {
         activeEntrySceneIds.add(graph.packageEntry.targetScene);
+        incomingCounts.set(
+          graph.packageEntry.targetScene,
+          (incomingCounts.get(graph.packageEntry.targetScene) ?? 0) + 1,
+        );
       }
       const sceneNodes = graph.nodes.map((node) => ({
         id: node.id,
@@ -2837,6 +3204,7 @@ export function SceneFlowView({
         data: {
           graphNode: node,
           entryActive: activeEntrySceneIds.has(node.id),
+          incomingCount: incomingCounts.get(node.id) ?? 0,
           thumbnail: thumbnails[node.id] ?? null,
           targetScenes: scenes.filter((scene) => scene.scene_type === "STATE_SCENE" && scene.scene_id !== node.id),
           selectedSceneExitId,
@@ -2929,24 +3297,65 @@ export function SceneFlowView({
   };
   const edges: Edge[] = useMemo(
     () => {
+      const incomingEdgeIds = new Map<string, string[]>();
+      graph.edges.forEach((edge) => {
+        const ids = incomingEdgeIds.get(edge.target) ?? [];
+        ids.push(edge.id);
+        incomingEdgeIds.set(edge.target, ids);
+      });
+      const packageEdgeId = graph.packageEntry === undefined
+        ? null
+        : `package-entry->${graph.packageEntry.targetScene}`;
+      if (packageEdgeId !== null && graph.packageEntry !== undefined) {
+        const ids = incomingEdgeIds.get(graph.packageEntry.targetScene) ?? [];
+        ids.unshift(packageEdgeId);
+        incomingEdgeIds.set(graph.packageEntry.targetScene, ids);
+      }
+      const targetOffset = (targetId: string, edgeId: string) => {
+        const ids = incomingEdgeIds.get(targetId) ?? [edgeId];
+        const index = Math.max(0, ids.indexOf(edgeId));
+        return (index - (ids.length - 1) / 2) * 18;
+      };
       const sceneEdges: Edge[] = graph.edges.map((edge) => ({
         id: edge.id,
         source: edge.source,
         target: edge.target,
         sourceHandle: edge.sceneExit.id,
         targetHandle: edge.referenceId === undefined ? "entry" : "reference-entry",
-        type: "gradientTransition",
+        type: "sceneTransition",
         selected: edge.sceneExit.sceneExitId !== undefined
           ? selectedSceneExitId === edge.sceneExit.sceneExitId
           : selectedRouteId === edge.sceneExit.routeId,
         data: {
           tone: "blue",
+          sourceSceneId: edge.source,
+          endpointKind: edge.sceneExit.endpointKind,
+          endpointId: edge.sceneExit.endpointId,
+          rails: editor?.scene_flow?.routes?.[edge.source]?.[
+            `${edge.sceneExit.endpointKind}:${edge.sceneExit.endpointId}`
+          ]?.rails ?? [],
+          targetOffsetY: targetOffset(edge.target, edge.id),
+          canEdit,
+          onSelect: () => {
+            if (edge.sceneExit.sceneExitId !== undefined) {
+              onSelectSceneExit(edge.source, edge.sceneExit.sceneExitId);
+            } else if (edge.sceneExit.routeId !== undefined) {
+              onSelectSceneRoute(edge.source, edge.sceneExit.routeId);
+            }
+          },
+          onSetRouteLayout: (rails: EditorRouteRail[]) => {
+            onSetRouteLayout(
+              edge.source,
+              edge.sceneExit.endpointKind,
+              edge.sceneExit.endpointId,
+              rails,
+            );
+          },
           route_id: edge.sceneExit.routeId,
           scene_exit_id: edge.sceneExit.sceneExitId,
           source_scene_id: edge.source,
           reference_id: edge.referenceId,
         },
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#1971c2" },
         style: {
           strokeWidth: (edge.sceneExit.sceneExitId !== undefined
             ? selectedSceneExitId === edge.sceneExit.sceneExitId
@@ -2962,7 +3371,11 @@ export function SceneFlowView({
         type: "gradientTransition",
         selectable: true,
         selected: packageEntrySelected,
-        data: { package_entry: true, tone: "green" },
+        data: {
+          package_entry: true,
+          tone: "green",
+          targetOffsetY: targetOffset(graph.packageEntry.targetScene, packageEdgeId ?? ""),
+        },
         markerEnd: { type: MarkerType.ArrowClosed, color: "#2f9e44" },
         style: {
           strokeWidth: packageEntrySelected ? 4.8 : 4,
@@ -2970,7 +3383,7 @@ export function SceneFlowView({
       }];
       return [...packageEdge, ...sceneEdges];
     },
-    [graph.edges, graph.packageEntry, packageEntrySelected, selectedRouteId, selectedSceneExitId],
+    [canEdit, editor, graph.edges, graph.packageEntry, onSelectSceneExit, onSelectSceneRoute, onSetRouteLayout, packageEntrySelected, selectedRouteId, selectedSceneExitId],
   );
   const deleteSelectedSceneExit = () => {
     if (canEdit && selectedReferenceId !== null) {
@@ -3109,7 +3522,7 @@ export function SceneFlowView({
       onConnect={onConnect}
       onNodeDragStop={(_, node) => onNodeDragStop(node)}
       onMoveEnd={updateViewportText}
-      onPaneClick={() => setReferencePickerOpen(false)}
+      onPaneClick={() => setPaletteTool(null)}
       onKeyDown={handleSceneFlowKeyDown}
       tabIndex={0}
       onNodeClick={(_, node) => {
@@ -3152,17 +3565,76 @@ export function SceneFlowView({
         ]}
         selectedId={packageEntrySelected ? "package-entry" : selectedReferenceId ?? selectedSceneId}
       />
-      <Panel position="top-right" className="scene-flow-tools">
-        <button
-          type="button"
-          disabled={!canEdit}
-          onClick={() => setReferencePickerOpen((current) => !current)}
-        >
-          <ExternalLink size={14} aria-hidden="true" />
-          Go to
-        </button>
-        {referencePickerOpen && (
-          <div className="scene-flow-reference-picker">
+      <Panel position="top-left" className="scene-flow-palette-panel">
+        <div className="scene-flow-tool-palette" role="toolbar" aria-label="Scene Flow tools">
+          <button
+            className={paletteTool === "scene" ? "active" : ""}
+            type="button"
+            disabled={!canAddScene}
+            title="New scene"
+            aria-label="New scene"
+            onClick={() => setPaletteTool((current) => current === "scene" ? null : "scene")}
+          >
+            <Plus size={18} aria-hidden="true" />
+          </button>
+          <button
+            className={paletteTool === "reference" ? "active" : ""}
+            type="button"
+            disabled={!canEdit}
+            title="Add Go To reference"
+            aria-label="Add Go To reference"
+            onClick={() => setPaletteTool((current) => current === "reference" ? null : "reference")}
+          >
+            <ExternalLink size={17} aria-hidden="true" />
+          </button>
+        </div>
+        {paletteTool === "scene" && (
+          <form
+            className="scene-flow-tool-popover scene-flow-new-scene-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const displayName = newSceneName.trim();
+              if (displayName.length === 0) {
+                return;
+              }
+              onAddScene(displayName);
+              setNewSceneName("");
+              setPaletteTool(null);
+            }}
+          >
+            <input
+              autoFocus
+              aria-label="New scene name"
+              value={newSceneName}
+              maxLength={96}
+              placeholder="Scene name"
+              onChange={(event) => setNewSceneName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.stopPropagation();
+                  setNewSceneName("");
+                  setPaletteTool(null);
+                }
+              }}
+            />
+            <button type="submit" className="icon-button" disabled={newSceneName.trim().length === 0} title="Create scene">
+              <Check size={16} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              title="Cancel"
+              onClick={() => {
+                setNewSceneName("");
+                setPaletteTool(null);
+              }}
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
+          </form>
+        )}
+        {paletteTool === "reference" && (
+          <div className="scene-flow-tool-popover scene-flow-reference-picker">
             {scenes.filter((scene) => scene.scene_type === "STATE_SCENE").map((scene) => (
               <button
                 type="button"
@@ -3178,7 +3650,7 @@ export function SceneFlowView({
                     y: bounds.top + bounds.height / 2,
                   });
                   onAddSceneReference(scene.scene_id, Math.round(point.x - 90), Math.round(point.y - 35));
-                  setReferencePickerOpen(false);
+                  setPaletteTool(null);
                 }}
               >
                 {scene.display_name}
@@ -3187,7 +3659,7 @@ export function SceneFlowView({
           </div>
         )}
       </Panel>
-      <Panel position="top-left" className="scene-flow-debug">
+      <Panel position="bottom-right" className="scene-flow-debug">
         <details>
           <summary>
             <span>Scene Flow Debug</span>

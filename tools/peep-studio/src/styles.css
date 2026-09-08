@@ -4043,6 +4043,32 @@ button:focus-visible {
   cursor: default;
 }
 
+.scene-route-reset {
+  position: absolute;
+  z-index: 9;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #8eb0c3;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #175f8a;
+  box-shadow: 0 2px 5px rgb(39 48 43 / 14%);
+  cursor: pointer;
+  pointer-events: all;
+}
+
+.scene-route-reset:hover:not(:disabled) {
+  background: #e7f3f8;
+}
+
+.scene-route-reset:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .route-layout-actions {
   display: flex;
   justify-content: flex-end;
@@ -4064,44 +4090,80 @@ button:focus-visible {
   box-shadow: none;
 }
 
-.scene-flow-tools {
+.scene-flow-palette-panel {
   z-index: 30;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 24px;
+}
+
+.scene-flow-tool-palette {
   display: grid;
-  justify-items: end;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid rgb(25 32 29 / 24%);
+  border-radius: 8px;
+  background: rgb(24 30 27 / 92%);
+  box-shadow: 0 12px 26px rgb(25 32 29 / 20%);
 }
 
-.scene-flow-tools > button {
-  display: inline-flex;
-  min-height: 34px;
+.scene-flow-tool-palette button {
+  display: grid;
+  width: 34px;
+  height: 34px;
   align-items: center;
-  gap: 7px;
-  padding: 6px 10px;
-  border: 1px solid #9fa9a3;
-  border-radius: 5px;
-  background: #ffffff;
-  color: #27302b;
+  justify-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #f2f5f3;
   cursor: pointer;
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
 }
 
-.scene-flow-tools > button:disabled {
-  opacity: 0.5;
+.scene-flow-tool-palette button:hover:not(:disabled),
+.scene-flow-tool-palette button.active {
+  border-color: rgb(255 255 255 / 24%);
+  background: rgb(255 255 255 / 14%);
+}
+
+.scene-flow-tool-palette button:disabled {
+  color: rgb(242 245 243 / 32%);
   cursor: default;
 }
 
-.scene-flow-reference-picker {
-  display: grid;
+.scene-flow-tool-popover {
   width: 210px;
-  max-height: 280px;
-  margin-top: 6px;
-  overflow: auto;
-  padding: 6px;
   border: 1px solid #aeb8b2;
   border-radius: 6px;
   background: #ffffff;
   box-shadow: 0 8px 20px rgb(47 57 51 / 16%);
+}
+
+.scene-flow-new-scene-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px 32px;
+  gap: 5px;
+  padding: 6px;
+}
+
+.scene-flow-new-scene-form input {
+  min-width: 0;
+  height: 32px;
+  border: 1px solid #aeb8b2;
+  border-radius: 4px;
+  padding: 0 8px;
+  color: #27302b;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.scene-flow-reference-picker {
+  display: grid;
+  max-height: 280px;
+  overflow: auto;
+  padding: 6px;
 }
 
 .scene-flow-reference-picker button {
