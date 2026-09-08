@@ -7,10 +7,13 @@
 extern "C" {
 #endif
 
-#define PS_SCENE_RENDER_MODEL_API_VERSION (3UL)
+#define PS_SCENE_RENDER_MODEL_API_VERSION (4UL)
 #define PS_SCENE_RENDER_MODEL_ELEMENT_MAX (12U)
 #define PS_SCENE_RENDER_CANVAS_WIDTH      (168U)
 #define PS_SCENE_RENDER_CANVAS_HEIGHT     (144U)
+
+#define PS_SCENE_RENDER_ELEMENT_FLAG_LINE_UP_RIGHT (1U << 0)
+#define PS_SCENE_RENDER_ELEMENT_FLAGS_MASK          (PS_SCENE_RENDER_ELEMENT_FLAG_LINE_UP_RIGHT)
 
 #define PS_SCENE_RENDER_TEXT_STATE_SCENE (1UL)
 #define PS_SCENE_RENDER_TEXT_STATE_1     (2UL)
@@ -65,7 +68,7 @@ typedef struct
   uint16_t width;
   uint16_t height;
   uint16_t z_order;
-  uint16_t reserved;
+  uint16_t flags;
 } ps_scene_render_element_t;
 
 typedef struct

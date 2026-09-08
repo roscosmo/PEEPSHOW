@@ -8,5 +8,5 @@
     "rootDir": ".",
     "types": ["node"]
   },
-  "include": ["src/stateGraph.ts", "src/types.ts", "tests/**/*.ts"]
+  "include": ["src/placementGeometry.ts", "src/stateGraph.ts", "src/types.ts", "tests/**/*.ts"]
 }

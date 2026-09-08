@@ -222,6 +222,7 @@ def make_procedural_project(parent: Path) -> Path:
                     "element_id": "line",
                     "kind": "line",
                     "layer": "SCENE",
+                    "line_direction": "up_right",
                     "x": 32,
                     "y": 20,
                     "width": 9,
@@ -4039,7 +4040,7 @@ class AuthoringServiceTests(unittest.TestCase):
 
             for point in (
                 (20, 20), (28, 26),
-                (32, 20), (36, 23), (40, 26),
+                (32, 26), (36, 23), (40, 20),
                 (44, 20), (52, 26),
                 (60, 20), (64, 24), (60, 28), (56, 24),
                 (73, 20), (78, 23), (73, 26), (68, 23),
@@ -4047,6 +4048,7 @@ class AuthoringServiceTests(unittest.TestCase):
                 self.assertEqual(1, pixel(*point), point)
             self.assertEqual(0, pixel(48, 23))
             self.assertEqual(0, pixel(60, 24))
+            self.assertEqual(0, pixel(32, 20))
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = make_preview_project(Path(temp_dir))

@@ -2129,7 +2129,10 @@ static uint32_t DisplayRenderer_ValidateSceneModel(
         (element->type > PS_SCENE_RENDER_ELEMENT_ELLIPSE) ||
         (element->layer >= PS_SCENE_RENDER_LAYER_COUNT) ||
         (element->visible > 1UL) ||
-        (element->z_order > 255U) || (element->reserved != 0U) ||
+        (element->z_order > 255U) ||
+        ((element->flags & (uint16_t)~PS_SCENE_RENDER_ELEMENT_FLAGS_MASK) != 0U) ||
+        ((element->flags != 0U) &&
+         (element->type != PS_SCENE_RENDER_ELEMENT_LINE)) ||
         (element->width == 0U) || (element->height == 0U) ||
         (x_end > PS_SCENE_RENDER_CANVAS_WIDTH) ||
         (y_end > PS_SCENE_RENDER_CANVAS_HEIGHT))
@@ -2237,11 +2240,22 @@ static uint32_t DisplayRenderer_DrawSceneElement(
         element->y);
       break;
     case PS_SCENE_RENDER_ELEMENT_LINE:
-      black_pixels += DisplayRenderer_Line(
-        element->x,
-        element->y,
-        (uint16_t)(element->x + element->width - 1U),
-        (uint16_t)(element->y + element->height - 1U));
+      if ((element->flags & PS_SCENE_RENDER_ELEMENT_FLAG_LINE_UP_RIGHT) != 0U)
+      {
+        black_pixels += DisplayRenderer_Line(
+          element->x,
+          (uint16_t)(element->y + element->height - 1U),
+          (uint16_t)(element->x + element->width - 1U),
+          element->y);
+      }
+      else
+      {
+        black_pixels += DisplayRenderer_Line(
+          element->x,
+          element->y,
+          (uint16_t)(element->x + element->width - 1U),
+          (uint16_t)(element->y + element->height - 1U));
+      }
       break;
     case PS_SCENE_RENDER_ELEMENT_FILLED_RECT:
       black_pixels += DisplayRenderer_FilledRect(

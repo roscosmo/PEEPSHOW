@@ -834,6 +834,7 @@ state_render_element:
   asset_ref                 # sprite only
   frame_ref                 # sprite only
   primitive_geometry        # primitive only; bounded integer coordinates
+  line_direction            # line only; down_right (default) or up_right
   primitive_ink             # fixed black in the initial executable subset
 ```
 
@@ -856,6 +857,8 @@ Rules:
 - `RND2` is the initial executable retained-presentation record. It carries
   explicit package layer, visibility, z-order, bounds, and one of `sprite`,
   `line`, `outline_rect`, `filled_rect`, `circle`, or `ellipse`.
+- `RND2` line records use a bounded flag for `up_right`; an absent flag and all
+  older source/package records default to `down_right`.
 - `RND1` remains accepted by the package parser and HW6 loader for backward
   compatibility; new builds emit `RND2`.
 - initial primitives use fixed black ink. White/clear ink is not exposed yet.

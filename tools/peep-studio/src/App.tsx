@@ -42,6 +42,17 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { FramebufferCanvas, FramePreviewCanvas } from "./FramebufferCanvas";
 import {
+  lineDirectionFromPoints,
+  normalizePrimitiveBounds,
+  PLACEMENT_HEIGHT,
+  PLACEMENT_WIDTH,
+  primitiveBoundsFromPoints,
+  type PlacementBounds,
+  type PlacementLineDirection,
+  type PlacementPoint,
+  type PlacementPrimitiveKind,
+} from "./placementGeometry";
+import {
   SceneAuthoringInspector,
   SceneFlowInspector,
   SceneFlowView,
@@ -97,7 +108,12 @@ const PLACEMENT_PRIMITIVES = [
   { kind: "ellipse", label: "Ellipse" },
 ] as const;
 
-type PlacementPrimitiveKind = (typeof PLACEMENT_PRIMITIVES)[number]["kind"];
+type PlacementTool = "select" | PlacementPrimitiveKind;
+type PlacementPrimitiveDraft = {
+  kind: PlacementPrimitiveKind;
+  bounds: PlacementBounds;
+  lineDirection?: PlacementLineDirection;
+};
 type WorkspaceMode = "scene-flow" | "logic" | "placement" | "assets";
 type PlacementInspectorTab = "object" | "settings";
 type AssetSelection =
@@ -181,6 +197,8 @@ export default function App() {
   const [placementGridStrength, setPlacementGridStrength] = useState(18);
   const [placementOverlayVisible, setPlacementOverlayVisible] = useState(true);
   const [placementLabelMode, setPlacementLabelMode] = useState<"hover" | "always" | "off">("hover");
+  const [placementTool, setPlacementTool] = useState<PlacementTool>("select");
+  const [placementPrimitiveDraft, setPlacementPrimitiveDraft] = useState<PlacementPrimitiveDraft | null>(null);
   const [spritePickerOpen, setSpritePickerOpen] = useState(false);
   const [placementDraftPositions, setPlacementDraftPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [placementDraftBounds, setPlacementDraftBounds] = useState<Record<string, { x: number; y: number; width: number; height: number }>>({});
@@ -200,6 +218,7 @@ export default function App() {
   const previewStartRef = useRef<PreviewStartTarget | null>(null);
   const placementSelectionAnchorRef = useRef<string | null>(null);
   const placementSceneRef = useRef<string | null>(null);
+  const placementDrawCancelRef = useRef<(() => boolean) | null>(null);
 
   const stopAudioPlayback = useCallback(() => {
     audioPlaybackRequestRef.current += 1;
@@ -636,6 +655,7 @@ export default function App() {
   };
 
   const selectProjectRoot = () => {
+    placementDrawCancelRef.current?.();
     placementSelectionAnchorRef.current = null;
     setSceneSelection({ kind: "project" });
     setPlacementStateId(null);
@@ -644,6 +664,7 @@ export default function App() {
     setAssetSelection(null);
     setAssetPreviewPlaying(false);
     setSpritePickerOpen(false);
+    setPlacementTool("select");
     setSceneCreatorOpen(false);
     setNewSceneName("");
   };
@@ -658,6 +679,10 @@ export default function App() {
   useEffect(() => {
     const handleRootSelectionShortcut = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || project === null) {
+        return;
+      }
+      if (placementDrawCancelRef.current?.()) {
+        event.preventDefault();
         return;
       }
       event.preventDefault();
@@ -2417,32 +2442,6 @@ export default function App() {
       targetStateIds.length === 1 ? { kind: "state", id: targetStateIds[0] } : { kind: "render", id: renderModelId },
     );
   };
-  const oddDimension = (value: number, maximum: number) => {
-    const bounded = Math.min(maximum, Math.max(3, Math.round(value)));
-    if (bounded % 2 === 1) {
-      return bounded;
-    }
-    return bounded < maximum ? bounded + 1 : bounded - 1;
-  };
-  const normalizePrimitiveBounds = (
-    element: Pick<RenderElement, "kind">,
-    bounds: { x: number; y: number; width: number; height: number },
-  ) => {
-    const nextX = Math.min(167, Math.max(0, Math.round(bounds.x)));
-    const nextY = Math.min(143, Math.max(0, Math.round(bounds.y)));
-    if (element.kind === "circle") {
-      const maximum = Math.min(168 - nextX, 144 - nextY);
-      const size = oddDimension(Math.max(bounds.width, bounds.height), maximum);
-      return { x: nextX, y: nextY, width: size, height: size };
-    }
-    const nextWidth = element.kind === "ellipse"
-      ? oddDimension(bounds.width, 168 - nextX)
-      : Math.min(168 - nextX, Math.max(1, Math.round(bounds.width)));
-    const nextHeight = element.kind === "ellipse"
-      ? oddDimension(bounds.height, 144 - nextY)
-      : Math.min(144 - nextY, Math.max(1, Math.round(bounds.height)));
-    return { x: nextX, y: nextY, width: nextWidth, height: nextHeight };
-  };
   const resizePlacementElement = (
     element: RenderElement,
     renderModelId: string,
@@ -2451,7 +2450,7 @@ export default function App() {
     if (selectedSceneDocument === null) {
       return;
     }
-    const { x: nextX, y: nextY, width: nextWidth, height: nextHeight } = normalizePrimitiveBounds(element, bounds);
+    const { x: nextX, y: nextY, width: nextWidth, height: nextHeight } = normalizePrimitiveBounds(element.kind as PlacementPrimitiveKind, bounds);
     if (nextX === element.x && nextY === element.y && nextWidth === element.width && nextHeight === element.height) {
       return;
     }
@@ -3079,7 +3078,7 @@ export default function App() {
         nextHeight = Math.min(144 - startBounds.y, Math.max(1, startBounds.height + dy));
       }
 
-      latestBounds = normalizePrimitiveBounds(element, { x: nextX, y: nextY, width: nextWidth, height: nextHeight });
+      latestBounds = normalizePrimitiveBounds(element.kind as PlacementPrimitiveKind, { x: nextX, y: nextY, width: nextWidth, height: nextHeight });
       setPlacementDraftBounds((current) => ({ ...current, [key]: latestBounds }));
     };
     const stop = () => {
@@ -3095,15 +3094,96 @@ export default function App() {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop);
   };
+  const placementPointFromClient = (rect: DOMRect, clientX: number, clientY: number): PlacementPoint => ({
+    x: Math.min(PLACEMENT_WIDTH - 1, Math.max(0, Math.floor(((clientX - rect.left) / rect.width) * PLACEMENT_WIDTH))),
+    y: Math.min(PLACEMENT_HEIGHT - 1, Math.max(0, Math.floor(((clientY - rect.top) / rect.height) * PLACEMENT_HEIGHT))),
+  });
+  const startPlacementPrimitiveDraw = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (
+      placementTool === "select" ||
+      event.button !== 0 ||
+      selectedSceneDocument === null ||
+      placementRenderModel === null ||
+      busy !== null ||
+      !scopedPlacementAddSupported
+    ) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.focus();
+    placementDrawCancelRef.current?.();
+    const kind = placementTool;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const start = placementPointFromClient(rect, event.clientX, event.clientY);
+    let latestBounds = primitiveBoundsFromPoints(kind, start, start);
+    let latestLineDirection: PlacementLineDirection = "down_right";
+    let finished = false;
+
+    const cleanup = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", cancel);
+      placementDrawCancelRef.current = null;
+      setPlacementPrimitiveDraft(null);
+    };
+    const update = (clientX: number, clientY: number) => {
+      const end = placementPointFromClient(rect, clientX, clientY);
+      latestBounds = primitiveBoundsFromPoints(kind, start, end);
+      latestLineDirection = lineDirectionFromPoints(start, end);
+      setPlacementPrimitiveDraft({ kind, bounds: latestBounds, lineDirection: latestLineDirection });
+    };
+    const move = (moveEvent: PointerEvent) => update(moveEvent.clientX, moveEvent.clientY);
+    const stop = (stopEvent: PointerEvent) => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      update(stopEvent.clientX, stopEvent.clientY);
+      cleanup();
+      void addPlacementPrimitive(kind, latestBounds, latestLineDirection);
+    };
+    const cancel = () => {
+      if (finished) {
+        return false;
+      }
+      finished = true;
+      cleanup();
+      return true;
+    };
+
+    setSelectedPlacementElement(null);
+    setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
+    setPlacementPrimitiveDraft({ kind, bounds: latestBounds, lineDirection: latestLineDirection });
+    placementDrawCancelRef.current = cancel;
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", cancel);
+  };
   const renderPlacementToolPalette = () => (
     <div className="placement-tool-palette" aria-label="Placement tools">
-      <button type="button" className="active" title="Select and move objects" aria-label="Select and move objects">
+      <button
+        type="button"
+        className={placementTool === "select" ? "active" : ""}
+        onClick={() => {
+          placementDrawCancelRef.current?.();
+          setPlacementTool("select");
+          setSpritePickerOpen(false);
+        }}
+        title="Select and move objects"
+        aria-label="Select and move objects"
+      >
         <SquareMousePointer size={18} aria-hidden="true" />
       </button>
       <button
         type="button"
         disabled={!scopedPlacementAddSupported || busy !== null || selectedSceneDocument === null || placementRenderModel === null || compiledAssetFrames.length === 0}
-        onClick={() => setSpritePickerOpen((open) => !open)}
+        className={spritePickerOpen ? "active" : ""}
+        onClick={() => {
+          placementDrawCancelRef.current?.();
+          setPlacementTool("select");
+          setSpritePickerOpen((open) => !open);
+        }}
         title={compiledAssetFrames.length === 0 ? "No sprite assets available" : "Add sprite"}
         aria-label="Add sprite"
       >
@@ -3112,12 +3192,17 @@ export default function App() {
       {PLACEMENT_PRIMITIVES.map((primitive) => (
         <button
           key={primitive.kind}
-          className={`primitive-${primitive.kind}`}
+          className={`primitive-${primitive.kind} ${placementTool === primitive.kind ? "active" : ""}`}
           type="button"
           disabled={!scopedPlacementAddSupported || busy !== null || selectedSceneDocument === null || placementRenderModel === null}
-          onClick={() => void addPlacementPrimitive(primitive.kind)}
-          title={`Add ${primitive.label.toLowerCase()}`}
-          aria-label={`Add ${primitive.label.toLowerCase()}`}
+          onClick={() => {
+            placementDrawCancelRef.current?.();
+            setPlacementTool(primitive.kind);
+            setSpritePickerOpen(false);
+            setSelectedPlacementElement(null);
+          }}
+          title={`Draw ${primitive.label.toLowerCase()}`}
+          aria-label={`Draw ${primitive.label.toLowerCase()}`}
         >
           {placementKindIcon(primitive.kind)}
         </button>
@@ -3239,16 +3324,50 @@ export default function App() {
           )}
           {variant === "placement" && (
             <div
-              className={`placement-screen-overlay labels-${placementLabelMode} ${placementOverlayVisible ? "" : "boxes-hidden"}`}
+              className={`placement-screen-overlay labels-${placementLabelMode} ${placementOverlayVisible ? "" : "boxes-hidden"} ${placementTool === "select" ? "" : `drawing-tool drawing-${placementTool}`}`}
               aria-label="Placement selection overlay"
               tabIndex={0}
               onKeyDown={handlePlacementKeyDown}
+              onPointerDown={startPlacementPrimitiveDraw}
               style={{
                 "--placement-grid-minor-opacity": placementGridVisible ? placementGridStrength / 100 : 0,
                 "--placement-grid-major-opacity": placementGridVisible && placementMajorGridVisible ? (placementGridStrength + 6) / 100 : 0,
               } as CSSProperties}
             >
               <div className="placement-pixel-grid" aria-hidden="true" />
+              {placementPrimitiveDraft !== null && (
+                <svg className="placement-primitive-draft" viewBox={`0 0 ${PLACEMENT_WIDTH} ${PLACEMENT_HEIGHT}`} aria-hidden="true">
+                  {placementPrimitiveDraft.kind === "line" && (
+                    <line
+                      x1={placementPrimitiveDraft.bounds.x + 0.5}
+                      y1={placementPrimitiveDraft.lineDirection === "up_right"
+                        ? placementPrimitiveDraft.bounds.y + placementPrimitiveDraft.bounds.height - 0.5
+                        : placementPrimitiveDraft.bounds.y + 0.5}
+                      x2={placementPrimitiveDraft.bounds.x + placementPrimitiveDraft.bounds.width - 0.5}
+                      y2={placementPrimitiveDraft.lineDirection === "up_right"
+                        ? placementPrimitiveDraft.bounds.y + 0.5
+                        : placementPrimitiveDraft.bounds.y + placementPrimitiveDraft.bounds.height - 0.5}
+                    />
+                  )}
+                  {(placementPrimitiveDraft.kind === "outline_rect" || placementPrimitiveDraft.kind === "filled_rect") && (
+                    <rect
+                      className={placementPrimitiveDraft.kind === "filled_rect" ? "filled" : ""}
+                      x={placementPrimitiveDraft.bounds.x + 0.5}
+                      y={placementPrimitiveDraft.bounds.y + 0.5}
+                      width={Math.max(0, placementPrimitiveDraft.bounds.width - 1)}
+                      height={Math.max(0, placementPrimitiveDraft.bounds.height - 1)}
+                    />
+                  )}
+                  {(placementPrimitiveDraft.kind === "circle" || placementPrimitiveDraft.kind === "ellipse") && (
+                    <ellipse
+                      cx={placementPrimitiveDraft.bounds.x + placementPrimitiveDraft.bounds.width / 2}
+                      cy={placementPrimitiveDraft.bounds.y + placementPrimitiveDraft.bounds.height / 2}
+                      rx={Math.max(0.5, placementPrimitiveDraft.bounds.width / 2 - 0.5)}
+                      ry={Math.max(0.5, placementPrimitiveDraft.bounds.height / 2 - 0.5)}
+                    />
+                  )}
+                </svg>
+              )}
               {[...effectivePlacementElements]
                   .sort((left, right) => left.z_order - right.z_order)
                   .map((element) => {
@@ -3288,8 +3407,13 @@ export default function App() {
                         {canResize && (
                           <>
                             <i
-                              className={`placement-resize-handle ${isLine ? "handle-line-start" : "handle-nw"}`}
-                              onPointerDown={(event) => startPlacementResize(event, element, placementRenderModel.visual_id, "nw")}
+                              className={`placement-resize-handle ${isLine && element.line_direction === "up_right" ? "handle-sw" : "handle-nw"}`}
+                              onPointerDown={(event) => startPlacementResize(
+                                event,
+                                element,
+                                placementRenderModel.visual_id,
+                                isLine && element.line_direction === "up_right" ? "sw" : "nw",
+                              )}
                             />
                             {!isLine && (
                               <>
@@ -3298,8 +3422,13 @@ export default function App() {
                               </>
                             )}
                             <i
-                              className={`placement-resize-handle ${isLine ? "handle-line-end" : "handle-se"}`}
-                              onPointerDown={(event) => startPlacementResize(event, element, placementRenderModel.visual_id, "se")}
+                              className={`placement-resize-handle ${isLine && element.line_direction === "up_right" ? "handle-ne" : "handle-se"}`}
+                              onPointerDown={(event) => startPlacementResize(
+                                event,
+                                element,
+                                placementRenderModel.visual_id,
+                                isLine && element.line_direction === "up_right" ? "ne" : "se",
+                              )}
                             />
                           </>
                         )}
@@ -4051,20 +4180,23 @@ export default function App() {
         : { kind: "state", id: placementState.state_id },
     );
   };
-  const addPlacementPrimitive = async (kind: PlacementPrimitiveKind) => {
+  const addPlacementPrimitive = async (
+    kind: PlacementPrimitiveKind,
+    requestedBounds: PlacementBounds,
+    lineDirection: PlacementLineDirection = "down_right",
+  ) => {
     if (selectedSceneDocument === null || placementRenderModel === null) {
       return;
     }
+    const bounds = normalizePrimitiveBounds(kind, requestedBounds);
     const element: RenderElement = {
       element_id: nextPlacementElementId(kind, placementRenderModel.elements),
       kind,
-      x: 48,
-      y: 40,
-      width: kind === "line" ? 48 : kind === "circle" ? 31 : kind === "ellipse" ? 33 : 32,
-      height: kind === "line" ? 1 : kind === "circle" ? 31 : kind === "ellipse" ? 25 : 24,
+      ...bounds,
       z_order: Math.max(0, ...placementRenderModel.elements.map((item) => item.z_order)) + 1,
       layer: "SCENE",
       visible: true,
+      ...(kind === "line" ? { line_direction: lineDirection } : {}),
     };
     if (!scopedPlacementAddSupported) {
       setMessage(`Scoped placement needs Service API 36. Restart Peep Studio if the top bar still shows Service API ${service?.service_api_version ?? "unknown"}.`);

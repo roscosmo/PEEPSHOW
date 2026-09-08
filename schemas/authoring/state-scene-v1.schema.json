@@ -172,7 +172,8 @@
         "height": { "type": "integer", "minimum": 1 },
         "z_order": { "type": "integer", "minimum": 0, "maximum": 255 },
         "focus_role": { "enum": ["none", "focus"] },
-        "visible": { "type": "boolean" }
+        "visible": { "type": "boolean" },
+        "line_direction": { "enum": ["down_right", "up_right"] }
       },
       "allOf": [
         {

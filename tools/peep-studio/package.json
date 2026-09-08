@@ -9,7 +9,7 @@
     "dev:renderer": "vite --host 127.0.0.1",
     "dev:electron": "wait-on tcp:5173 && tsc -p tsconfig.electron.json && set ELECTRON_RUN_AS_NODE=&& electron .",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
-    "test": "tsc -p tsconfig.test.json && node dist-test/tests/stateGraph.test.js",
+    "test": "tsc -p tsconfig.test.json && node dist-test/tests/stateGraph.test.js && node dist-test/tests/placementGeometry.test.js",
     "visual:check": "electron tests/visual-check.cjs"
   },
   "dependencies": {

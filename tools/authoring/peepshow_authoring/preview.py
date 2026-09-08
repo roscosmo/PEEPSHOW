@@ -622,7 +622,10 @@ class StateScenePreview:
         right = x + width - 1
         bottom = y + height - 1
         if kind == 2:
-            cls._draw_line(framebuffer, x, y, right, bottom)
+            if element.get("line_direction", "down_right") == "up_right":
+                cls._draw_line(framebuffer, x, bottom, right, y)
+            else:
+                cls._draw_line(framebuffer, x, y, right, bottom)
         elif kind == 3:
             cls._draw_line(framebuffer, x, y, right, y)
             cls._draw_line(framebuffer, x, bottom, right, bottom)

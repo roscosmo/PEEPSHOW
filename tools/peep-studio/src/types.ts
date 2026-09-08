@@ -115,6 +115,7 @@ export type RenderElement = {
   focus_role?: string;
   layer?: "BACKGROUND" | "SCENE" | "UI";
   visible?: boolean;
+  line_direction?: "down_right" | "up_right";
 };
 
 export type RenderModel = {

@@ -137,7 +137,10 @@ static uint32_t PS_SceneRuntime_RenderElementValid(
       (element->type > PS_SCENE_RENDER_ELEMENT_ELLIPSE) ||
       (element->layer >= PS_SCENE_RENDER_LAYER_COUNT) ||
       (element->visible > 1UL) ||
-      (element->z_order > 255U) || (element->reserved != 0U) ||
+      (element->z_order > 255U) ||
+      ((element->flags & (uint16_t)~PS_SCENE_RENDER_ELEMENT_FLAGS_MASK) != 0U) ||
+      ((element->flags != 0U) &&
+       (element->type != PS_SCENE_RENDER_ELEMENT_LINE)) ||
       (element->width == 0U) || (element->height == 0U))
   {
     return 0UL;

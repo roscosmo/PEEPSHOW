@@ -1751,7 +1751,7 @@ def _apply_render_element_add(
     if not isinstance(element, dict):
         raise ProjectCommandError("COMMAND_SHAPE_INVALID", "command.element must be an object")
     required = {"element_id", "kind", "x", "y", "width", "height", "z_order"}
-    allowed = required | {"visual_ref", "focus_role", "layer", "visible"}
+    allowed = required | {"visual_ref", "focus_role", "layer", "visible", "line_direction"}
     _require_command_fields(element, required, allowed)
     element_id = element.get("element_id")
     issues: list[ValidationIssue] = []
@@ -1784,6 +1784,18 @@ def _apply_render_element_add(
             raise ProjectCommandError("ASSET_FRAME_UNKNOWN", f"unknown sprite visual '{visual_ref}'")
     elif "visual_ref" in element:
         raise ProjectCommandError("RENDER_VISUAL_REF_INVALID", "primitives do not reference assets")
+    line_direction = element.get("line_direction", "down_right")
+    if kind == "line":
+        if not isinstance(line_direction, str) or line_direction not in {"down_right", "up_right"}:
+            raise ProjectCommandError(
+                "RENDER_LINE_DIRECTION_INVALID",
+                "line_direction must be down_right or up_right",
+            )
+    elif "line_direction" in element:
+        raise ProjectCommandError(
+            "RENDER_LINE_DIRECTION_INVALID",
+            "line_direction is only valid for line elements",
+        )
     if focus_role == "focus" and (kind != "sprite" or layer != "UI" or not visible):
         raise ProjectCommandError("RENDER_FOCUS_INVALID", "focus must be a visible UI sprite")
 
@@ -4935,7 +4947,7 @@ def _check_scene(
         for element_id, element in elements.items():
             item_path = f"{path}.elements[{element_id}]"
             required = {"element_id", "kind", "x", "y", "width", "height", "z_order"}
-            allowed = required | {"visual_ref", "focus_role", "layer", "visible"}
+            allowed = required | {"visual_ref", "focus_role", "layer", "visible", "line_direction"}
             for key in sorted(required - element.keys()):
                 _issue(issues, "PROJECT_FIELD_MISSING", f"{item_path}.{key}", "required field is missing")
             for key in sorted(element.keys() - allowed):
@@ -4957,6 +4969,22 @@ def _check_scene(
                         )
                 elif "visual_ref" in element:
                     _issue(issues, "RENDER_VISUAL_REF_INVALID", f"{item_path}.visual_ref", "primitives do not reference assets")
+                line_direction = element.get("line_direction", "down_right")
+                if kind == "line":
+                    if not isinstance(line_direction, str) or line_direction not in {"down_right", "up_right"}:
+                        _issue(
+                            issues,
+                            "RENDER_LINE_DIRECTION_INVALID",
+                            f"{item_path}.line_direction",
+                            "must be down_right or up_right",
+                        )
+                elif "line_direction" in element:
+                    _issue(
+                        issues,
+                        "RENDER_LINE_DIRECTION_INVALID",
+                        f"{item_path}.line_direction",
+                        "is only valid for line elements",
+                    )
             layer = element.get(
                 "layer",
                 "UI" if element.get("focus_role", "none") == "focus" else "SCENE",

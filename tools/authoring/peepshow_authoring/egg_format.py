@@ -599,8 +599,9 @@ def _parse_render(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]
             visual_ref = None if record[1] == 0xFFFF else _string(strings, record[1], "render visual_ref")
             _require(record[2] in {1, 2, 3, 4, 5, 6}, "render element kind is invalid")
             _require(record[3] in {0, 1, 2}, "render package layer is invalid")
-            _require(record[4] & ~0x03 == 0 and record[5] == 0 and record[11] == 0, "render flags or reserved fields are invalid")
+            _require(record[4] & ~0x07 == 0 and record[5] == 0 and record[11] == 0, "render flags or reserved fields are invalid")
             _require(not (record[4] & 0x01) or (record[2] == 1 and record[3] == 2 and record[4] & 0x02), "render focus element is invalid")
+            _require(not (record[4] & 0x04) or record[2] == 2, "render line-direction flag is invalid")
             _require((record[2] == 1 and visual_ref is not None) or (record[2] != 1 and visual_ref is None), "render visual reference is invalid")
             _require(record[8] > 0 and record[9] > 0, "render element dimensions are invalid")
             layer = record[3]
@@ -613,22 +614,23 @@ def _parse_render(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]
                 _require(width == height, "circle bounds must be square")
         _require(x >= 0 and y >= 0 and x + width <= 168 and y + height <= 144, "render element exceeds the canvas")
         _require(z_order <= 255, "render z-order is invalid")
-        elements.append(
-            {
-                "format_version": version,
-                "element_id": element_id,
-                "visual_ref": visual_ref,
-                "kind": record[2],
-                "layer": layer,
-                "visible": visible,
-                "focus_role": focus_role,
-                "x": x,
-                "y": y,
-                "width": width,
-                "height": height,
-                "z_order": z_order,
-            }
-        )
+        element = {
+            "format_version": version,
+            "element_id": element_id,
+            "visual_ref": visual_ref,
+            "kind": record[2],
+            "layer": layer,
+            "visible": visible,
+            "focus_role": focus_role,
+            "x": x,
+            "y": y,
+            "width": width,
+            "height": height,
+            "z_order": z_order,
+        }
+        if record[2] == 2:
+            element["line_direction"] = "up_right" if version == 2 and record[4] & 0x04 else "down_right"
+        elements.append(element)
     models: list[dict[str, object]] = []
     for visual_id, focus, first_element, count in model_records:
         models.append(

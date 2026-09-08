@@ -974,6 +974,38 @@ button:focus-visible {
   pointer-events: none;
 }
 
+.placement-screen-overlay.drawing-tool {
+  cursor: crosshair;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.placement-screen-overlay.drawing-tool .placement-element-box {
+  pointer-events: none;
+}
+
+.placement-primitive-draft {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.placement-primitive-draft line,
+.placement-primitive-draft rect,
+.placement-primitive-draft ellipse {
+  fill: none;
+  stroke: #0d83bd;
+  stroke-width: 1;
+}
+
+.placement-primitive-draft rect.filled {
+  fill: rgb(13 131 189 / 24%);
+}
+
 .placement-pixel-grid {
   position: absolute;
   inset: 0;
@@ -1080,20 +1112,6 @@ button:focus-visible {
   right: -5px;
   bottom: -5px;
   cursor: nwse-resize;
-}
-
-.placement-resize-handle.handle-line-start {
-  top: 50%;
-  left: -5px;
-  cursor: move;
-  transform: translateY(-50%);
-}
-
-.placement-resize-handle.handle-line-end {
-  top: 50%;
-  right: -5px;
-  cursor: move;
-  transform: translateY(-50%);
 }
 
 .transport-bar {

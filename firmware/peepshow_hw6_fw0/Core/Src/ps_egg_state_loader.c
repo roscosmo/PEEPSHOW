@@ -1434,12 +1434,13 @@ static uint32_t PS_EggParseRender(const ps_egg_chunk_t *chunk,
       width = PS_EggU16(&record[12]);
       height = PS_EggU16(&record[14]);
       if ((type < 1U) || (type > 6U) || (layer > 2U) ||
-          ((flags & (uint8_t)~0x03U) != 0U) ||
+          ((flags & (uint8_t)~0x07U) != 0U) ||
           (record[7] != 0U) || (PS_EggU16(&record[18]) != 0U) ||
           (PS_EggU16(&record[16]) > 255U) ||
           (PS_EggU16(&record[16]) > 255U) ||
           (((flags & 0x01U) != 0U) &&
            ((type != 1U) || (layer != 2U) || ((flags & 0x02U) == 0U))) ||
+          (((flags & 0x04U) != 0U) && (type != 2U)) ||
           ((type == 1U) && (visual_ref >= strings->count)) ||
           ((type != 1U) && (visual_ref != 0xFFFFU)) ||
           (((type == 5U) || (type == 6U)) &&
@@ -1587,6 +1588,8 @@ static uint32_t PS_EggMapRenderElement(
     element->width = PS_EggU16(&record[12]);
     element->height = PS_EggU16(&record[14]);
     element->z_order = PS_EggU16(&record[16]);
+    element->flags = ((flags & 0x04U) != 0U) ?
+      PS_SCENE_RENDER_ELEMENT_FLAG_LINE_UP_RIGHT : 0U;
     if (kind == 1U)
     {
       if ((visual_ref >= strings->count) ||
