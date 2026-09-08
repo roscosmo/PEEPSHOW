@@ -13,7 +13,11 @@ else
     if $xyz_mode == 3
       set logging file G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_joystick_xyz_sweep_zrange_capture.csv
     else
-      set logging file G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_joystick_xyz_capture.csv
+      if $xyz_mode == 4
+        set logging file G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_joystick_xyz_sweep_all_high_capture.csv
+      else
+        set logging file G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_joystick_xyz_capture.csv
+      end
     end
   end
 end
@@ -36,7 +40,11 @@ else
     if $xyz_mode == 3
       printf "Dumped %lu TMAG3001 SWEEP Z-HIGH XYZ rows to G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_joystick_xyz_sweep_zrange_capture.csv\n", $xyz_count
     else
-      printf "Dumped %lu TMAG3001 XYZ rows to G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_joystick_xyz_capture.csv\n", $xyz_count
+      if $xyz_mode == 4
+        printf "Dumped %lu TMAG3001 SWEEP ALL-HIGH XYZ rows to G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_joystick_xyz_sweep_all_high_capture.csv\n", $xyz_count
+      else
+        printf "Dumped %lu TMAG3001 XYZ rows to G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_joystick_xyz_capture.csv\n", $xyz_count
+      end
     end
   end
 end

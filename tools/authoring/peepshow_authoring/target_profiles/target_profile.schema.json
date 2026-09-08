@@ -11,6 +11,7 @@
     "profile_version",
     "profile_status",
     "package",
+    "state_scene_events",
     "audio"
   ],
   "properties": {
@@ -51,6 +52,93 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 4294967295
+        }
+      }
+    },
+    "state_scene_events": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "binding_count_max",
+        "queue_depth",
+        "sources",
+        "values"
+      ],
+      "properties": {
+        "binding_count_max": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "queue_depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "event_type",
+              "status",
+              "required_capability",
+              "stop2_wake",
+              "configuration_schema"
+            ],
+            "properties": {
+              "event_type": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_.-]{0,63}$"
+              },
+              "status": {
+                "enum": [
+                  "available_pending_validation",
+                  "contracted_not_exposed",
+                  "blocked"
+                ]
+              },
+              "required_capability": {
+                "type": ["string", "null"]
+              },
+              "stop2_wake": {
+                "type": "boolean"
+              },
+              "configuration_schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value_type",
+              "status",
+              "required_capability",
+              "data_type",
+              "minimum",
+              "maximum"
+            ],
+            "properties": {
+              "value_type": { "type": "string" },
+              "status": {
+                "enum": [
+                  "available_pending_validation",
+                  "contracted_not_exposed",
+                  "blocked"
+                ]
+              },
+              "required_capability": { "type": ["string", "null"] },
+              "data_type": { "enum": ["uint8", "boolean"] },
+              "minimum": { "type": "integer" },
+              "maximum": { "type": "integer" }
+            }
+          }
         }
       }
     },

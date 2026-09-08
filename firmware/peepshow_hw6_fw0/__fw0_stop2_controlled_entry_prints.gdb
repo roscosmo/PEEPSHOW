@@ -33,6 +33,14 @@ printf "joystick sleep proof status/committed/omit/i2c = 0x%x / %u / %u / 0x%x /
 printf "joystick int cfg1 before/target/after = 0x%x / 0x%x / 0x%x\n", $sm->joystick_sleep_audit_int_config1_before, $sm->joystick_sleep_audit_int_config1_target, $sm->joystick_sleep_audit_int_config1_after
 printf "joystick sleep write/verify masks = 0x%x / 0x%x\n", $sm->joystick_sleep_audit_write_ok_mask, $sm->joystick_sleep_audit_verify_ok_mask
 printf "joystick cycle0 sleep/status/device2 = 0x%x / 0x%x / 0x%x\n", $sm->joystick_cycle_sleep_status[0], $sm->joystick_driver_last_status, $sm->joystick_device_config2_sleep
+printf "joystick wake profile build/fallback/status/reason/armed = %u / %u / 0x%x / %u / %u\n", $sm->joystick_wake_profile_build_count, $sm->joystick_wake_profile_fallback_count, $sm->joystick_wake_profile_status, $sm->joystick_wake_profile_reason, $sm->joystick_wake_profile_armed
+printf "joystick wake derived threshold X/Y bounds X/Y endpoints = 0x%x / 0x%x / %u / %u / 0x%x\n", $sm->joystick_wake_field_threshold_x_code, $sm->joystick_wake_field_threshold_y_code, $sm->joystick_wake_neutral_bound_x_counts, $sm->joystick_wake_neutral_bound_y_counts, $sm->joystick_wake_endpoint_coverage_mask
+printf "joystick W&S arm/status period-ms/code/hysteresis = %u / 0x%x / %u / 0x%x / 0x%x\n", $sm->joystick_wake_sleep_arm_count, $sm->joystick_wake_sleep_arm_status, $sm->joystick_wake_sleep_period_ms, $sm->joystick_wake_sleep_period_code, $sm->joystick_wake_field_hysteresis_code
+printf "joystick W&S sensor cfg1/2/3 int/device2 = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->joystick_wake_sensor_config1, $sm->joystick_wake_sensor_config2, $sm->joystick_wake_sensor_config3, $sm->joystick_wake_int_config1, $sm->joystick_wake_device_config2
+printf "joystick W&S threshold X/Y/Z low = 0x%x / 0x%x / 0x%x high = 0x%x / 0x%x / 0x%x\n", $sm->joystick_wake_threshold_x, $sm->joystick_wake_threshold_y, $sm->joystick_wake_threshold_z, $sm->joystick_wake_threshold_x_high, $sm->joystick_wake_threshold_y_high, $sm->joystick_wake_threshold_z_high
+printf "joystick W&S write/verify/last HAL/error = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->joystick_wake_write_ok_mask, $sm->joystick_wake_verify_ok_mask, $sm->joystick_wake_last_hal_status, $sm->joystick_wake_last_hal_error
+printf "joystick wake preclear pin/read/device/thr/int-rb = %u / 0x%x / 0x%x / %u / %u\n", $sm->joystick_wake_preclear_int_pin_level, $sm->joystick_wake_preclear_read_status, $sm->joystick_wake_preclear_device_status, $sm->joystick_wake_preclear_threshold_cross, $sm->joystick_wake_preclear_int_readback
+printf "final input checks/veto/status queue/enq/deq joy-pending GPIOC = %u / %u / 0x%x / 0x%x / %u / %u / %u / 0x%x\n", $rt->stop2_final_input_check_count, $rt->stop2_final_input_veto_count, $rt->stop2_final_input_last_status, $rt->stop2_final_input_queue_mask, $rt->stop2_final_input_enqueue_count, $rt->stop2_final_input_dequeue_count, $rt->stop2_final_joystick_pending_count, $rt->stop2_final_input_gpioc_idr
 printf "imu sleep proof value/write/committed/omit/i2c = 0x%x / 0x%x / %u / %u / 0x%x / 0x%x\n", $sm->imu_deep_power_down_value, $sm->imu_deep_power_down_write_status, $sm->imu_terminal_deep_power_down_committed, $sm->imu_post_deep_power_down_read_omitted, $sm->imu_i2c_state_after, $sm->imu_i2c_error_after
 printf "imu snapshot/write/verify masks = 0x%x / 0x%x / 0x%x\n", $sm->imu_snapshot_ok_mask, $sm->imu_write_ok_mask, $sm->imu_verify_ok_mask
 printf "imu cycle0 sleep/status/whoami = 0x%x / 0x%x / 0x%x\n", $sm->imu_cycle_sleep_status[0], $sm->imu_driver_last_status, $sm->imu_whoami
@@ -101,6 +109,7 @@ printf "BLE modes: RESET_HELD=0 SLEEP_SYSTEM_OFF=1 SEARCHING=2 PAIRING=3 CONNECT
 printf "IMU modes: OFF=0 LOW_RATE=1 EVENT_ARMED=2 STEP_COUNTER=3 STREAMING=4\n"
 printf "wake masks: START=0x1 BUTTON=0x2 JOY=0x4 SENSOR=0x8 PMIC=0x10 RTC=0x20 USB=0x40 FAULT=0x80 UNKNOWN=0x80000000\n"
 printf "wake causes: NONE=0 START=1 BUTTON=2 JOY=3 SENSOR=4 PMIC=5 RTC=6 USB=7 FAULT=8 UNKNOWN=9\n"
+printf "joystick wake profile reasons: NONE=0 POLICY=1 CAL=2 TRANSFORM=3 RANGE=4 ENDPOINT=5; endpoint bits UP/RIGHT/DOWN/LEFT=0x1/0x2/0x4/0x8\n"
 printf "SysTick CTRL bits: ENABLE=0x1 TICKINT=0x2 CLKSOURCE=0x4\n"
 printf "GPIO park groups: OSPI=0x1 SAI=0x2 USB=0x4 DISPLAY_SPI=0x8 I2C=0x10; override NOT_RUN=0xffffffff uses knob default\n"
 printf "status: HAL_OK=0x0 HAL_ERROR=0x1 UNAVAILABLE=0xfffffffe NOT_RUN=0xffffffff\n"

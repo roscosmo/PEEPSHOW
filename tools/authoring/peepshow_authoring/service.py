@@ -26,6 +26,7 @@ from .preview import PreviewError, StateScenePreview
 from .target_profile import (
     TARGET_PROFILE_ID,
     TARGET_SAMPLED_SFX,
+    TARGET_STATE_SCENE_EVENTS,
     public_target_profile,
 )
 from .protocol import (
@@ -39,7 +40,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 22
+SERVICE_API_VERSION = 23
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -287,6 +288,9 @@ class AuthoringService:
                 "system_actions": ["exit_to_shell"],
             },
             "state_scene_graph": {
+                "compiled_format": "STG1",
+                "compiled_format_version": 5,
+                "load_compatible_versions": [1, 2, 3, 4, 5],
                 "command_batch_maximum": 64,
                 "target_scene_actions": ["play_sfx"],
                 "limits": {
@@ -294,6 +298,9 @@ class AuthoringService:
                     "render_models": 1,
                     "variables": 32,
                     "input_actions": 32,
+                    "compiled_event_bindings": int(
+                        TARGET_STATE_SCENE_EVENTS["binding_count_max"]
+                    ),
                     "routes": 128,
                     "guards_per_route": 8,
                     "actions_per_route": 8,
@@ -321,10 +328,16 @@ class AuthoringService:
                     "input_action.update",
                     "input_action.delete",
                 ],
+                "event_binding_commands": [
+                    "event_binding.add",
+                    "event_binding.update",
+                    "event_binding.delete",
+                ],
                 "route_commands": [
                     "route.add",
                     "route.delete",
                     "route.set_action_ref",
+                    "route.set_event_ref",
                     "route.set_sources",
                     "route.set_target",
                     "route.add_scene_exit",

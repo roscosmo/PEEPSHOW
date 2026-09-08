@@ -17,5 +17,5 @@ printf "max x/y/z   = %ld / %ld / %ld\n", g_ps_hw6_owner_sm_probe.joystick_xyz_c
 printf "last x/y/z  = %ld / %ld / %ld\n", g_ps_hw6_owner_sm_probe.joystick_xyz_capture_last_x, g_ps_hw6_owner_sm_probe.joystick_xyz_capture_last_y, g_ps_hw6_owner_sm_probe.joystick_xyz_capture_last_z
 printf "max abs delta z / last conv/read = %lu / 0x%lx / 0x%lx\n", g_ps_hw6_owner_sm_probe.joystick_xyz_capture_max_abs_delta_z, g_ps_hw6_owner_sm_probe.joystick_xyz_capture_last_conv_status, g_ps_hw6_owner_sm_probe.joystick_xyz_capture_last_read_status
 printf "driver state/status ops = %lu / 0x%lx / %lu\n", g_ps_hw6_owner_sm_probe.joystick_driver_state, g_ps_hw6_owner_sm_probe.joystick_driver_last_status, g_ps_hw6_owner_sm_probe.joystick_driver_operation_count
-printf "modes: NONE=0 REST=1 SWEEP=2 SWEEP_Z_HIGH=3; status: HAL_OK=0x0 HAL_ERROR=0x1 NOT_RUN=0xffffffff\n"
+printf "modes: NONE=0 REST=1 SWEEP=2 SWEEP_Z_HIGH=3 SWEEP_ALL_HIGH=4; status: HAL_OK=0x0 HAL_ERROR=0x1 NOT_RUN=0xffffffff\n"
 printf "Dump CSV with: source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_joystick_xyz_dump_csv.gdb\n"

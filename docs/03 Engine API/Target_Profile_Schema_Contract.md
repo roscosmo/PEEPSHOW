@@ -356,6 +356,27 @@ time:
   missed_event_catchup_max
 ```
 
+STATE event discovery is target-profile data:
+
+```text
+state_scene_events:
+  binding_count_max
+  queue_depth
+  sources[]:
+    event_type
+    status
+    required_capability
+    stop2_wake
+    configuration_schema
+```
+
+`status` distinguishes executable sources from contracted or blocked future
+sources. Authoring tools must not infer availability from a generic trigger
+name. The HW6 FW0 development profile initially exposes
+`time.state_entry_elapsed`; lifecycle, calendar, animation, audio, step, and
+battery event entries remain discoverable with their truthful implementation
+status.
+
 Rules:
 
 - the compiler derives a reactive workload class from validated scene content;

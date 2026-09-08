@@ -139,6 +139,24 @@ retained render elements, reactive wait policy, and waiting visuals. It is a
 strict subset of this contract and does not redefine the future complete
 schema.
 
+The executable subset also accepts optional generic `event_bindings`. Existing
+`input_actions` and route `action_ref` fields remain load-compatible. New
+non-input routes use `event_ref`, and `event_ref` may also name an input action
+so editors can migrate to one route vocabulary without rewriting old projects.
+
+```text
+event_bindings[]:
+  binding_id
+  event_type = time.state_entry_elapsed
+  configuration:
+    delay_ms
+```
+
+The timer is a state-entry one-shot. A route's `from_states` determines the
+states in which its referenced timer is armed. IDs must be unique across
+`input_actions` and `event_bindings`. The selected target profile supplies the
+allowed delay range and total event-binding limit.
+
 The current executable STATE input-source set is `BUTTON_A`, `BUTTON_B`,
 `BUTTON_L`, `BUTTON_R`, `BUTTON_START`, `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`,
 `JOY_DOWN`, `JOY_UP_LEFT`, `JOY_UP_RIGHT`, `JOY_DOWN_LEFT`, and

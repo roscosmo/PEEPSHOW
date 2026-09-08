@@ -553,6 +553,96 @@ class AuthoringModelTests(unittest.TestCase):
             self.assertEqual(13, binding["logical_source"])
             self.assertEqual(4, binding["logical_event"])
 
+    def test_graph_v5_state_entry_timer_round_trips_and_previews(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "state_timer.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            scene_path = project_root / "scenes" / "state_demo.state.json"
+            scene = json.loads(scene_path.read_text(encoding="utf-8"))
+            scene["event_bindings"] = [
+                {
+                    "binding_id": "auto_advance",
+                    "event_type": "time.state_entry_elapsed",
+                    "configuration": {"delay_ms": 1250},
+                }
+            ]
+            scene["routes"].append(
+                {
+                    "route_id": "center_auto_advance",
+                    "event_ref": "auto_advance",
+                    "from_states": ["center"],
+                    "guards": [],
+                    "actions": [
+                        {
+                            "kind": "set_variable",
+                            "variable_ref": "selected_index",
+                            "operation": "assign",
+                            "value": 2,
+                        }
+                    ],
+                    "target_state": "right",
+                }
+            )
+            scene["reactive_wait_default"]["event_interests"].append(
+                "auto_advance"
+            )
+            scene_path.write_text(json.dumps(scene), encoding="utf-8")
+
+            bundle = load_project(project_root)
+            self.assertEqual((), bundle.issues)
+            package = parse_egg(build_egg(bundle))
+            compiled_scene = next(
+                item for item in package.scenes if item["scene_id"] == "state_demo"
+            )
+            graph = compiled_scene["graph"]
+            self.assertEqual(5, graph["format_version"])
+            self.assertEqual(6, graph["binding_count"])
+            self.assertEqual(5, graph["input_count"])
+            self.assertEqual(
+                (
+                    {
+                        "binding_id": "auto_advance",
+                        "event_type": "time.state_entry_elapsed",
+                        "configuration": {"delay_ms": 1250},
+                        "binding_index": 5,
+                    },
+                ),
+                graph["event_bindings"],
+            )
+            timer_route = next(
+                route
+                for route in graph["routes"]
+                if route["route_id"] == "center_auto_advance"
+            )
+            self.assertEqual(5, timer_route["action_index"])
+
+            preview = StateScenePreview(package, "state_demo")
+            preview.advance(1249)
+            self.assertEqual("center", preview.snapshot()["scene"]["state_id"])
+            preview.advance(1)
+            snapshot = preview.snapshot()
+            self.assertEqual("right", snapshot["scene"]["state_id"])
+            self.assertEqual(2, snapshot["variables"]["selected_index"])
+
+    def test_state_entry_timer_rejects_invalid_delay_and_duplicate_binding_id(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "invalid_state_timer.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            scene_path = project_root / "scenes" / "state_demo.state.json"
+            scene = json.loads(scene_path.read_text(encoding="utf-8"))
+            scene["event_bindings"] = [
+                {
+                    "binding_id": "move_left",
+                    "event_type": "time.state_entry_elapsed",
+                    "configuration": {"delay_ms": 0},
+                }
+            ]
+            scene_path.write_text(json.dumps(scene), encoding="utf-8")
+
+            codes = {issue.code for issue in load_project(project_root).issues}
+            self.assertIn("PROJECT_ID_DUPLICATE", codes)
+            self.assertIn("EVENT_TIMER_DELAY_INVALID", codes)
+
     def test_diagonal_and_start_lifecycle_policy_validation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "invalid_input_policy.peepproj"

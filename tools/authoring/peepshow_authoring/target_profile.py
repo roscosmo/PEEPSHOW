@@ -67,6 +67,7 @@ def _validate_target_profile(profile: dict[str, Any]) -> None:
             "profile_version",
             "profile_status",
             "package",
+            "state_scene_events",
             "audio",
         },
         "target_profile",
@@ -91,6 +92,78 @@ def _validate_target_profile(profile: dict[str, Any]) -> None:
     )
     if resident_bytes > maximum_bytes:
         raise TargetProfileError("package resident prefix exceeds package maximum")
+
+    state_events = profile["state_scene_events"]
+    if not isinstance(state_events, dict):
+        raise TargetProfileError("target_profile.state_scene_events must be an object")
+    _require_keys(
+        state_events,
+        {"binding_count_max", "queue_depth", "sources", "values"},
+        "state_scene_events",
+    )
+    _positive_int(
+        state_events["binding_count_max"],
+        "state_scene_events.binding_count_max",
+        32,
+    )
+    _positive_int(state_events["queue_depth"], "state_scene_events.queue_depth", 32)
+    sources = state_events["sources"]
+    if not isinstance(sources, list) or not sources:
+        raise TargetProfileError("state_scene_events.sources must be a non-empty array")
+    source_ids: set[str] = set()
+    for index, source in enumerate(sources):
+        path = f"state_scene_events.sources[{index}]"
+        if not isinstance(source, dict):
+            raise TargetProfileError(f"{path} must be an object")
+        _require_keys(
+            source,
+            {
+                "event_type",
+                "status",
+                "required_capability",
+                "stop2_wake",
+                "configuration_schema",
+            },
+            path,
+        )
+        event_type = source["event_type"]
+        if not isinstance(event_type, str) or not event_type:
+            raise TargetProfileError(f"{path}.event_type must be non-empty text")
+        if event_type in source_ids:
+            raise TargetProfileError(f"duplicate state event type: {event_type}")
+        source_ids.add(event_type)
+        if source["status"] not in {
+            "available_pending_validation",
+            "contracted_not_exposed",
+            "blocked",
+        }:
+            raise TargetProfileError(f"{path}.status is unsupported")
+        capability = source["required_capability"]
+        if capability is not None and (not isinstance(capability, str) or not capability):
+            raise TargetProfileError(f"{path}.required_capability is invalid")
+        if not isinstance(source["stop2_wake"], bool):
+            raise TargetProfileError(f"{path}.stop2_wake must be true or false")
+        if not isinstance(source["configuration_schema"], dict):
+            raise TargetProfileError(f"{path}.configuration_schema must be an object")
+    timer_source = next(
+        (item for item in sources if item["event_type"] == "time.state_entry_elapsed"),
+        None,
+    )
+    if timer_source is None or timer_source["status"] != "available_pending_validation":
+        raise TargetProfileError("state-entry timer must be available in the HW6 FW0 profile")
+    delay_schema = timer_source["configuration_schema"].get("delay_ms")
+    if not isinstance(delay_schema, dict):
+        raise TargetProfileError("state-entry timer delay schema is missing")
+    _require_keys(delay_schema, {"type", "minimum", "maximum"}, "timer.delay_ms")
+    if delay_schema["type"] != "integer":
+        raise TargetProfileError("timer.delay_ms must be an integer")
+    timer_minimum = _positive_int(delay_schema["minimum"], "timer.delay_ms.minimum")
+    timer_maximum = _positive_int(delay_schema["maximum"], "timer.delay_ms.maximum")
+    if timer_minimum > timer_maximum:
+        raise TargetProfileError("timer delay range is invalid")
+    values = state_events["values"]
+    if not isinstance(values, list):
+        raise TargetProfileError("state_scene_events.values must be an array")
 
     audio = profile["audio"]
     if not isinstance(audio, dict):
@@ -178,6 +251,12 @@ TARGET_PROFILE_ID = str(TARGET_PROFILE["profile_id"])
 TARGET_PROFILE_HASH = hashlib.sha256(_canonical_bytes(TARGET_PROFILE)).hexdigest()
 SUPPORTED_TARGET_PROFILE_IDS = frozenset({TARGET_PROFILE_ID})
 TARGET_SAMPLED_SFX = TARGET_PROFILE["audio"]["sampled_sfx"]
+TARGET_STATE_SCENE_EVENTS = TARGET_PROFILE["state_scene_events"]
+TARGET_STATE_TIMER = next(
+    item
+    for item in TARGET_STATE_SCENE_EVENTS["sources"]
+    if item["event_type"] == "time.state_entry_elapsed"
+)
 
 
 def target_profile_for_id(profile_id: str) -> dict[str, Any]:
@@ -193,6 +272,7 @@ def public_target_profile() -> dict[str, Any]:
         "profile_status": TARGET_PROFILE["profile_status"],
         "profile_hash": TARGET_PROFILE_HASH,
         "package": deepcopy(TARGET_PROFILE["package"]),
+        "state_scene_events": deepcopy(TARGET_PROFILE["state_scene_events"]),
         "audio": deepcopy(TARGET_PROFILE["audio"]),
     }
 
@@ -200,6 +280,8 @@ def public_target_profile() -> dict[str, Any]:
 def render_firmware_header() -> str:
     package = TARGET_PROFILE["package"]
     sampled_sfx = TARGET_SAMPLED_SFX
+    state_events = TARGET_STATE_SCENE_EVENTS
+    timer_delay = TARGET_STATE_TIMER["configuration_schema"]["delay_ms"]
     survives_scene = (
         1 if sampled_sfx["survives_same_package_scene_replacement"] else 0
     )
@@ -217,6 +299,14 @@ def render_firmware_header() -> str:
             f"({package['maximum_bytes']}UL)",
             "#define PS_TARGET_PROFILE_PACKAGE_RESIDENT_BYTES "
             f"({package['resident_prefix_bytes']}UL)",
+            "#define PS_TARGET_PROFILE_STATE_EVENT_BINDING_MAX "
+            f"({state_events['binding_count_max']}U)",
+            "#define PS_TARGET_PROFILE_STATE_EVENT_QUEUE_DEPTH "
+            f"({state_events['queue_depth']}U)",
+            "#define PS_TARGET_PROFILE_STATE_TIMER_MIN_MS "
+            f"({timer_delay['minimum']}UL)",
+            "#define PS_TARGET_PROFILE_STATE_TIMER_MAX_MS "
+            f"({timer_delay['maximum']}UL)",
             "#define PS_TARGET_PROFILE_AUDIO_SAMPLE_RATE_HZ "
             f"({sampled_sfx['sample_rate_hz']}UL)",
             "#define PS_TARGET_PROFILE_AUDIO_CHANNELS "

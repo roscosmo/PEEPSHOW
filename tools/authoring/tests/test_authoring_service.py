@@ -314,7 +314,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(22, SERVICE_API_VERSION)
+        self.assertEqual(23, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -336,6 +336,13 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertEqual(5242880, profile["package"]["maximum_bytes"])
         self.assertEqual(65536, profile["package"]["resident_prefix_bytes"])
         self.assertEqual(64, len(profile["profile_hash"]))
+        timer_source = next(
+            source
+            for source in profile["state_scene_events"]["sources"]
+            if source["event_type"] == "time.state_entry_elapsed"
+        )
+        self.assertEqual("available_pending_validation", timer_source["status"])
+        self.assertTrue(timer_source["stop2_wake"])
         self.assertEqual("RND2", result["state_scene_presentation"]["record_format"])
         self.assertEqual(
             ["BACKGROUND", "SCENE", "UI"],
@@ -380,6 +387,9 @@ class AuthoringServiceTests(unittest.TestCase):
             result["state_scene_presentation"]["system_actions"],
         )
         graph = result["state_scene_graph"]
+        self.assertEqual(5, graph["compiled_format_version"])
+        self.assertIn("event_binding.add", graph["event_binding_commands"])
+        self.assertIn("route.set_event_ref", graph["route_commands"])
         self.assertEqual(64, graph["command_batch_maximum"])
         self.assertEqual(["play_sfx"], graph["target_scene_actions"])
         audio = result["state_scene_audio"]
@@ -817,6 +827,75 @@ class AuthoringServiceTests(unittest.TestCase):
                 service.handle(request("project.apply_commands", {"project_revision": loaded["project_revision"], "commands": [command]}))
             self.assertEqual("COMMAND_TARGET_IN_USE", raised.exception.code)
             self.assertIn(message, raised.exception.message)
+
+    def test_state_timer_commands_compile_through_service(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "event_binding.add",
+                            "scene_id": "state_demo",
+                            "event_binding": {
+                                "binding_id": "auto_advance",
+                                "event_type": "time.state_entry_elapsed",
+                                "configuration": {"delay_ms": 500},
+                            },
+                        },
+                        {
+                            "kind": "route.add",
+                            "scene_id": "state_demo",
+                            "route": {
+                                "route_id": "auto_right",
+                                "event_ref": "auto_advance",
+                                "from_states": ["center"],
+                                "guards": [],
+                                "actions": [],
+                                "target_state": "right",
+                            },
+                        },
+                        {
+                            "kind": "scene.set_reactive_wait_default",
+                            "scene_id": "state_demo",
+                            "reactive_wait_default": {
+                                "policy_id": "state_wait_policy",
+                                "waiting_visual_ref": "state_wait",
+                                "hold_fallback_allowed": True,
+                                "event_interests": [
+                                    "move_left",
+                                    "move_right",
+                                    "joy_move_left",
+                                    "joy_move_right",
+                                    "open_details",
+                                    "auto_advance",
+                                ],
+                            },
+                        },
+                    ],
+                },
+            )
+        )
+        scene = changed["document"]["scenes"][0]
+        self.assertEqual("auto_advance", scene["event_bindings"][0]["binding_id"])
+        route = next(item for item in scene["routes"] if item["route_id"] == "auto_right")
+        self.assertEqual("auto_advance", route["event_ref"])
+        self.assertNotIn("action_ref", route)
+
+        built = service.handle(
+            request(
+                "project.build_package",
+                {"project_revision": changed["project_revision"]},
+            )
+        )
+        package = parse_egg(base64.b64decode(built["package"]["blob_base64"]))
+        graph = next(
+            item["graph"] for item in package.scenes if item["scene_id"] == "state_demo"
+        )
+        self.assertEqual(5, graph["format_version"])
 
     def test_graph_delete_batch_succeeds_after_references_are_detached(self) -> None:
         service = AuthoringService()

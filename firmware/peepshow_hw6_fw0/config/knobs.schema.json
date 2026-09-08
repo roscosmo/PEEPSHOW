@@ -19,6 +19,10 @@
     "input_start_ship_display_clear_ms",
     "input_start_stable_samples",
     "input_joystick_cal_neutral_ms",
+    "input_joystick_cal_neutral_return_count",
+    "input_joystick_cal_neutral_motion_counts",
+    "input_joystick_cal_neutral_stable_span_counts",
+    "input_joystick_cal_neutral_stable_samples",
     "input_joystick_cal_cardinal_ms",
     "input_joystick_cal_sweep_ms",
     "input_joystick_cal_sample_period_ms",
@@ -33,6 +37,7 @@
     "input_joystick_wake_field_hysteresis_code",
     "input_joystick_cal_min_cardinal_span_counts",
     "input_joystick_cal_sweep_coverage_per_mille",
+    "input_joystick_cal_deadzone_max_per_mille",
     "input_joystick_cal_deadzone_pad_per_mille",
     "input_joystick_direction_enter_per_mille",
     "input_joystick_direction_release_per_mille",
@@ -267,14 +272,61 @@
     "input_joystick_cal_neutral_ms": {
       "type": "integer",
       "minimum": 100,
-      "maximum": 5000,
-      "default": 1200,
+      "maximum": 30000,
+      "default": 12000,
       "unit": "ms",
       "timebase_domain": "threadx",
       "owner": "thInput",
       "class": "protected_policy",
       "path": "platform.knobs.input.joystick_cal_neutral_ms",
-      "description": "Neutral hold capture duration for joystick calibration."
+      "description": "Hard timeout for collecting the bounded flick-and-release neutral return set."
+    },
+    "input_joystick_cal_neutral_return_count": {
+      "type": "integer",
+      "enum": [3, 5, 7, 9],
+      "default": 5,
+      "unit": "returns",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_cal_neutral_return_count",
+      "description": "Odd number of stable post-flick return centroids used to derive the joystick neutral center and envelope."
+    },
+    "input_joystick_cal_neutral_motion_counts": {
+      "type": "integer",
+      "minimum": 512,
+      "maximum": 32767,
+      "default": 4000,
+      "unit": "counts",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_cal_neutral_motion_counts",
+      "description": "Minimum raw X or Y excursion needed to recognize a deliberate neutral-calibration flick."
+    },
+    "input_joystick_cal_neutral_stable_span_counts": {
+      "type": "integer",
+      "minimum": 64,
+      "maximum": 8192,
+      "default": 1024,
+      "unit": "counts",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_cal_neutral_stable_span_counts",
+      "description": "Maximum raw X and Y span accepted within a stable post-release neutral window."
+    },
+    "input_joystick_cal_neutral_stable_samples": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 32,
+      "default": 5,
+      "unit": "samples",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_cal_neutral_stable_samples",
+      "description": "Consecutive bounded samples required for the initial neutral baseline and each accepted post-flick return."
     },
     "input_joystick_cal_cardinal_ms": {
       "type": "integer",
@@ -404,7 +456,7 @@
       "owner": "thSensor",
       "class": "protected_policy",
       "path": "platform.knobs.input.joystick_wake_field_threshold_code",
-      "description": "TMAG3001 omnipolar X/Y switch operating threshold. Each code step equals 256 counts in the 16-bit magnetic result."
+      "description": "Proven TMAG3001 omnipolar X/Y threshold used when a valid calibration cannot produce an accepted derived wake profile. Each code step equals 256 counts in the 16-bit magnetic result."
     },
     "input_joystick_wake_field_hysteresis_code": {
       "type": "integer",
@@ -441,6 +493,18 @@
       "class": "protected_policy",
       "path": "platform.knobs.input.joystick_cal_sweep_coverage_per_mille",
       "description": "Minimum fraction of each captured cardinal reach that the full-travel sweep must reproduce."
+    },
+    "input_joystick_cal_deadzone_max_per_mille": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 500,
+      "default": 350,
+      "unit": "per_mille",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_cal_deadzone_max_per_mille",
+      "description": "Maximum aligned neutral radius, including padding, accepted before joystick calibration fails."
     },
     "input_joystick_cal_deadzone_pad_per_mille": {
       "type": "integer",

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_RTOS_PROBE_MAGIC          (0x48365254UL)
-#define PS_HW6_RTOS_PROBE_VERSION        (81UL)
+#define PS_HW6_RTOS_PROBE_VERSION        (82UL)
 #define PS_HW6_RTOS_OWNER_COUNT          (9U)
 #define PS_HW6_RTOS_QUEUE_COUNT          (9U)
 #define PS_HW6_RTOS_EVENT_GROUP_COUNT    (4U)
@@ -696,6 +696,26 @@ typedef struct
   uint32_t runtime_interaction_rtc_elapsed_ticks;
   uint32_t runtime_interaction_rtc_expire_count;
   uint32_t runtime_interaction_rtc_command_status;
+  uint32_t runtime_state_timer_scene_revision;
+  uint32_t runtime_state_timer_configured_count;
+  uint32_t runtime_state_timer_active_count;
+  uint32_t runtime_state_timer_sync_count;
+  uint32_t runtime_state_timer_due_count;
+  uint32_t runtime_state_timer_dispatch_count;
+  uint32_t runtime_state_timer_applied_count;
+  uint32_t runtime_state_timer_ignored_count;
+  uint32_t runtime_state_timer_error_count;
+  uint32_t runtime_state_timer_last_binding_index;
+  uint32_t runtime_state_timer_last_delay_ms;
+  uint32_t runtime_state_timer_last_deadline_tick;
+  uint32_t runtime_state_timer_paused;
+  uint32_t runtime_state_timer_pause_count;
+  uint32_t runtime_state_timer_resume_count;
+  uint32_t runtime_rtc_wake_source;
+  uint32_t runtime_state_timer_rtc_select_count;
+  uint32_t runtime_state_timer_rtc_selected;
+  uint32_t runtime_state_timer_rtc_remaining_ticks;
+  uint32_t runtime_state_timer_rtc_elapsed_ticks;
   uint32_t admission_api_version;
   uint32_t admission_request_count;
   uint32_t admission_allow_count;

@@ -170,6 +170,33 @@ time.cancel_schedule(event_id)
 time.next_scheduled_event()
 ```
 
+### State-entry delayed events
+
+The executable STATE subset initially exposes a one-shot relative timer named
+`time.state_entry_elapsed`.
+
+- the timer starts when its destination state is committed
+- leaving the state cancels that activation's timer
+- re-entering the state starts a new timer, including a self-transition
+- STOP2 does not pause the timer; Platform arms the earliest required RTC wake
+  deadline and the Engine dispatches the event after wake restoration
+- logical `INACTIVE` does not pause the timer while the package remains active
+- explicit package suspension for the system menu pauses the timer and
+  preserves its remaining duration
+- resume from that system menu rearms the timer from the preserved duration;
+  it does not emit an overdue event
+- local-calendar schedules remain absolute and are not shifted by package
+  suspension
+
+`thRuntime` owns the logical deadline and state-activation identity. `thPower`
+owns the physical RTC wake timer and selects the earliest admitted system or
+package deadline. A package never selects an RTC alarm channel or observes raw
+RTC interrupt state.
+
+Only one event may be emitted for one state-timer activation. RTC rounding,
+spurious wake, repeated wake preparation, and stale queue entries must not
+duplicate it.
+
 Schedule rule examples:
 
 ```text

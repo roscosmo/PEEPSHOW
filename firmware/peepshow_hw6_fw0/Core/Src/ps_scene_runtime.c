@@ -187,6 +187,7 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
 {
   uint32_t state_index;
   uint32_t visual_binding_index;
+  uint32_t event_binding_index;
   uint32_t compare_index;
   uint32_t route_index;
   uint32_t variable_index;
@@ -203,7 +204,9 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
       (scene->state_count > PS_SCENE_RUNTIME_STATE_MAX) ||
       (scene->visual_binding_count == 0UL) ||
       (scene->visual_binding_count > PS_SCENE_RUNTIME_VISUAL_BINDING_MAX) ||
+      (scene->event_binding_count > PS_SCENE_RUNTIME_EVENT_BINDING_MAX) ||
       (scene->input_route_count > PS_SCENE_RUNTIME_INPUT_ROUTE_MAX) ||
+      (scene->input_route_count > scene->event_binding_count) ||
       (scene->variable_count > PS_SCENE_RUNTIME_VARIABLE_MAX) ||
       (scene->guard_count > PS_SCENE_RUNTIME_GUARD_MAX) ||
       (scene->action_count > PS_SCENE_RUNTIME_ACTION_MAX) ||
@@ -337,6 +340,53 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
     return 1UL;
   }
 
+  for (event_binding_index = 0UL;
+       event_binding_index < scene->event_binding_count;
+       ++event_binding_index)
+  {
+    const ps_scene_runtime_event_binding_t *binding =
+      &scene->event_bindings[event_binding_index];
+    uint32_t event_found = 0UL;
+
+    if ((binding->binding_id != event_binding_index + 1UL) ||
+        !(((binding->event_class == PS_SCENE_RUNTIME_EVENT_CLASS_INPUT) &&
+           (binding->event_kind >= 1UL) && (binding->event_kind <= 4UL) &&
+           (binding->source >= 1UL) && (binding->source <= 13UL) &&
+           (binding->parameter == 0UL)) ||
+          ((binding->event_class == PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) &&
+           (binding->event_kind == PS_SCENE_RUNTIME_TIMER_STATE_ENTRY) &&
+           (binding->source == 0UL) &&
+           (binding->parameter >= PS_TARGET_PROFILE_STATE_TIMER_MIN_MS) &&
+           (binding->parameter <= PS_TARGET_PROFILE_STATE_TIMER_MAX_MS))))
+    {
+      return 1UL;
+    }
+    for (compare_index = event_binding_index + 1UL;
+         compare_index < scene->event_binding_count;
+         ++compare_index)
+    {
+      if (binding->binding_id == scene->event_bindings[compare_index].binding_id)
+      {
+        return 1UL;
+      }
+    }
+    for (transition_index = 0UL;
+         transition_index < scene->transition_count;
+         ++transition_index)
+    {
+      if (scene->transitions[transition_index].scene_event_id ==
+          event_binding_index + 1UL)
+      {
+        event_found = 1UL;
+        break;
+      }
+    }
+    if (event_found == 0UL)
+    {
+      return 1UL;
+    }
+  }
+
   for (route_index = 0UL;
        route_index < scene->input_route_count;
        ++route_index)
@@ -346,7 +396,14 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
     uint32_t event_found = 0UL;
 
     if ((route->logical_event == 0UL) || (route->input_id == 0UL) ||
-        (route->scene_event_id == 0UL))
+        (route->scene_event_id == 0UL) ||
+        (route->scene_event_id > scene->event_binding_count) ||
+        (scene->event_bindings[route->scene_event_id - 1UL].event_class !=
+         PS_SCENE_RUNTIME_EVENT_CLASS_INPUT) ||
+        (scene->event_bindings[route->scene_event_id - 1UL].event_kind !=
+         route->logical_event) ||
+        (scene->event_bindings[route->scene_event_id - 1UL].source !=
+         route->input_id))
     {
       return 1UL;
     }
@@ -575,6 +632,7 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
 
     if ((transition->transition_id == 0UL) ||
         (transition->scene_event_id == 0UL) ||
+        (transition->scene_event_id > scene->event_binding_count) ||
         (PS_SceneRuntime_FindStateIndex(scene, transition->source_state_id) ==
          PS_SCENE_RUNTIME_INDEX_INVALID) ||
         (!(((transition->target_scene_id == 0UL) &&
@@ -1026,6 +1084,8 @@ static uint32_t PS_SceneRuntime_ActivateDecodedScene(
   g_ps_scene_runtime_probe.descriptor_state_count = scene->state_count;
   g_ps_scene_runtime_probe.descriptor_visual_binding_count =
     scene->visual_binding_count;
+  g_ps_scene_runtime_probe.descriptor_event_binding_count =
+    scene->event_binding_count;
   g_ps_scene_runtime_probe.descriptor_input_route_count =
     scene->input_route_count;
   g_ps_scene_runtime_probe.descriptor_variable_count = scene->variable_count;
@@ -1202,6 +1262,11 @@ uint32_t PS_SceneRuntime_StateIndex(void)
   return g_ps_scene_runtime_probe.state_index;
 }
 
+uint32_t PS_SceneRuntime_StateRevision(void)
+{
+  return g_ps_scene_runtime_probe.state_revision;
+}
+
 uint32_t PS_SceneRuntime_StateFocusIndex(void)
 {
   return g_ps_scene_runtime_probe.focus_index;
@@ -1342,43 +1407,22 @@ const ps_scene_render_model_t *PS_SceneRuntime_ResolveStateSceneRenderModel(
   return model;
 }
 
-uint32_t PS_SceneRuntime_HandleStateSceneInput(uint32_t logical_event,
-                                               uint32_t input_id)
+static uint32_t PS_SceneRuntime_HandleStateSceneEventId(
+  uint32_t scene_event_id)
 {
   const ps_scene_runtime_state_scene_t *scene =
     s_ps_scene_runtime_state_scene;
-  uint32_t route_index;
-  uint32_t scene_event_id = 0UL;
   uint32_t transition_index;
   uint32_t target_binding_index = PS_SCENE_RUNTIME_INDEX_INVALID;
   int32_t staged_variables[PS_SCENE_RUNTIME_VARIABLE_MAX];
 
-  if (g_ps_scene_runtime_probe.active == 0UL)
+  if ((g_ps_scene_runtime_probe.active == 0UL) ||
+      (scene_event_id == 0UL) ||
+      (scene_event_id > scene->event_binding_count))
   {
     g_ps_scene_runtime_probe.last_status = 1UL;
     return PS_SCENE_RUNTIME_INPUT_ERROR;
   }
-
-  for (route_index = 0UL; route_index < scene->input_route_count; ++route_index)
-  {
-    const ps_scene_runtime_input_route_t *route =
-      &scene->input_routes[route_index];
-
-    if ((route->logical_event == logical_event) &&
-        (route->input_id == input_id))
-    {
-      scene_event_id = route->scene_event_id;
-      break;
-    }
-  }
-  if (scene_event_id == 0UL)
-  {
-    g_ps_scene_runtime_probe.input_route_miss_count++;
-    g_ps_scene_runtime_probe.last_status = 0UL;
-    return PS_SCENE_RUNTIME_INPUT_IGNORED;
-  }
-
-  g_ps_scene_runtime_probe.input_route_match_count++;
   g_ps_scene_runtime_probe.action_count++;
   g_ps_scene_runtime_probe.last_action = scene_event_id;
   g_ps_scene_runtime_probe.last_scene_event_id = scene_event_id;
@@ -1547,6 +1591,94 @@ uint32_t PS_SceneRuntime_HandleStateSceneInput(uint32_t logical_event,
   g_ps_scene_runtime_probe.transition_miss_count++;
   g_ps_scene_runtime_probe.last_status = 0UL;
   return PS_SCENE_RUNTIME_INPUT_IGNORED;
+}
+
+uint32_t PS_SceneRuntime_HandleStateSceneInput(uint32_t logical_event,
+                                               uint32_t input_id)
+{
+  const ps_scene_runtime_state_scene_t *scene =
+    s_ps_scene_runtime_state_scene;
+  uint32_t route_index;
+
+  if ((g_ps_scene_runtime_probe.active == 0UL) || (scene == NULL))
+  {
+    g_ps_scene_runtime_probe.last_status = 1UL;
+    return PS_SCENE_RUNTIME_INPUT_ERROR;
+  }
+  for (route_index = 0UL; route_index < scene->input_route_count; ++route_index)
+  {
+    const ps_scene_runtime_input_route_t *route =
+      &scene->input_routes[route_index];
+
+    if ((route->logical_event == logical_event) &&
+        (route->input_id == input_id))
+    {
+      g_ps_scene_runtime_probe.input_route_match_count++;
+      return PS_SceneRuntime_HandleStateSceneEventId(route->scene_event_id);
+    }
+  }
+  g_ps_scene_runtime_probe.input_route_miss_count++;
+  g_ps_scene_runtime_probe.last_status = 0UL;
+  return PS_SCENE_RUNTIME_INPUT_IGNORED;
+}
+
+uint32_t PS_SceneRuntime_StateEntryTimerDelay(uint32_t binding_index,
+                                              uint32_t *delay_ms)
+{
+  const ps_scene_runtime_state_scene_t *scene =
+    s_ps_scene_runtime_state_scene;
+  const ps_scene_runtime_event_binding_t *binding;
+  uint32_t transition_index;
+
+  if ((delay_ms == NULL) || (g_ps_scene_runtime_probe.active == 0UL) ||
+      (scene == NULL) || (binding_index >= scene->event_binding_count))
+  {
+    return 0UL;
+  }
+  binding = &scene->event_bindings[binding_index];
+  if ((binding->event_class != PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) ||
+      (binding->event_kind != PS_SCENE_RUNTIME_TIMER_STATE_ENTRY))
+  {
+    return 0UL;
+  }
+  for (transition_index = 0UL;
+       transition_index < scene->transition_count;
+       ++transition_index)
+  {
+    const ps_scene_runtime_transition_t *transition =
+      &scene->transitions[transition_index];
+
+    if ((transition->scene_event_id == binding_index + 1UL) &&
+        (transition->source_state_id == g_ps_scene_runtime_probe.state_id))
+    {
+      *delay_ms = binding->parameter;
+      return 1UL;
+    }
+  }
+  return 0UL;
+}
+
+uint32_t PS_SceneRuntime_HandleStateSceneEvent(uint32_t binding_index)
+{
+  const ps_scene_runtime_state_scene_t *scene =
+    s_ps_scene_runtime_state_scene;
+  uint32_t result;
+
+  if ((g_ps_scene_runtime_probe.active == 0UL) || (scene == NULL) ||
+      (binding_index >= scene->event_binding_count))
+  {
+    g_ps_scene_runtime_probe.event_dispatch_reject_count++;
+    g_ps_scene_runtime_probe.last_status = 1UL;
+    return PS_SCENE_RUNTIME_INPUT_ERROR;
+  }
+  g_ps_scene_runtime_probe.event_dispatch_count++;
+  g_ps_scene_runtime_probe.last_event_binding_index = binding_index;
+  result = PS_SceneRuntime_HandleStateSceneEventId(binding_index + 1UL);
+  if (result == PS_SCENE_RUNTIME_INPUT_ERROR)
+  {
+    g_ps_scene_runtime_probe.event_dispatch_reject_count++;
+  }
+  return result;
 }
 
 uint32_t PS_SceneRuntime_TakeSfxRequest(uint32_t *cue_index)

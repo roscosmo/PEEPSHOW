@@ -325,6 +325,31 @@ Rules:
 - hardware faults are not ordinary gameplay events
 - required Platform primitive failure routes through Engine lifecycle and Platform diagnostics
 
+Executable STATE sources use symbolic event bindings:
+
+```text
+event_binding:
+  binding_id
+  event_type
+  configuration
+```
+
+Routes reference `binding_id`; they never reference an ISR, RTOS object,
+peripheral instance, or hardware callback. The target profile publishes the
+available `event_type` values and their bounded configuration schemas.
+
+The first executable non-input binding is
+`time.state_entry_elapsed`. Its configuration contains one `delay_ms` value.
+It is armed when the destination state is atomically committed, fires once,
+and is cancelled when that state activation is left. Re-entering the same
+state creates a new activation and rearms the binding. A stale event from an
+earlier state activation must be rejected.
+
+For deterministic delivery, PeepOS completes physical wake and owner recovery
+before delivering the timer event. Events due together are delivered in
+compiled binding order. Each event completes one bounded reactive transaction
+before the next event is considered.
+
 ---
 
 ## Guards And Expressions
