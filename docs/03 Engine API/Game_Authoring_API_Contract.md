@@ -155,6 +155,17 @@ Compile boundary:
 
 An Authoring Kit may compile into one or more scenes. Every generated scene declares exactly one canonical scene type.
 
+Timer ownership in reusable behavior follows
+[[Time_And_Power_Intent_API_Contract]] and
+[[Runtime_Logic_State_API_Contract]]. A prefab-local timer belongs to each live
+entity/behavior instance, not the shared definition. The compiler resolves
+distinct local timer and expiry-handler references for each instance; scene
+selection changes do not implicitly reset them. Removing an instance cancels
+its timers. Independent event branches may perform bounded actions without a
+state transition. These are agreed contract semantics; the current executable
+timer subset remains state-entry only, with scene-owned timers and independent
+handlers next and instance ownership following.
+
 Example:
 
 ```text

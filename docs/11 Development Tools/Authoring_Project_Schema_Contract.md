@@ -152,8 +152,10 @@ event_bindings[]:
     delay_ms
 ```
 
-The timer is a state-entry one-shot. A route's `from_states` determines the
-states in which its referenced timer is armed. IDs must be unique across
+This currently executable timer is a state-entry one-shot. For this explicit
+event type, a route's `from_states` determines the states in which its
+referenced timer is armed. This coupling must not be generalized to other
+timer scopes. IDs must be unique across
 `input_actions` and `event_bindings`. The selected target profile supplies the
 allowed delay range and total event-binding limit.
 
@@ -599,6 +601,7 @@ hsm_graph:
   transitions[]
   variables[]
   timers[]
+  event_handlers[]
   action_tables[]
   bounds
 
@@ -627,6 +630,75 @@ Rules:
 ## Events, Guards, And Actions
 
 Authoring source may define symbolic events, guards, and actions.
+
+### Scoped timers and independent event branches
+
+The agreed direction in [[Time_And_Power_Intent_API_Contract]] separates timer
+ownership from graph state and expiry handling. The following is conceptual
+schema intent, not new fields accepted by the current executable JSON schema:
+
+```text
+timer_declaration:
+  timer_id
+  owner_ref                 # state activation, scene, entity/behavior, or package session
+  start_policy              # owner entry/activation or explicit action
+  duration_ms               # initial scoped increment is relative and one-shot
+  expiry_event_ref
+
+event_handler:
+  handler_id
+  owner_ref
+  event_ref
+  guards[]
+  actions[]
+```
+
+Rules:
+
+- new timers authored in scene logic default to scene ownership; state-entry
+  timing remains an explicitly named option
+- timer owner and start policy are visible authoring choices, not inferred
+  from a menu selection, graph position, or handler's `from_states`
+- scene-entry timers survive internal state changes; action-started timers
+  wait for explicit Start or Restart
+- Start preserves an armed timer, Restart replaces the countdown and pending
+  expiry, and Cancel invalidates that arm
+- an expiry may enter an independent guarded action branch without a state or
+  scene destination; a state restriction is an explicit guard
+- an action-only handler must not be lowered to an artificial self-transition
+- timer IDs are local to an owner; prefab compilation resolves distinct timer
+  and handler references for each instantiated entity/behavior
+- a package-session handler cannot reference a destroyed scene's local state;
+  all cross-owner references must resolve through declared supported bindings
+- relative timers count through hardware sleep and pause during explicit owner
+  suspension; calendar deadlines remain absolute as defined by the time contract
+- owner removal cancels contained timers; package ownership does not imply
+  saved timers or behavior running outside the package session
+
+The next executable increment is scene-owned one-shot timers plus independent
+handlers and explicit timer actions. Instance and package-session scopes
+follow. Export remains capability/schema-gated; editors must not relabel the
+existing `time.state_entry_elapsed` binding as a scene timer or emit these
+conceptual fields to a target that only supports state-entry transitions.
+Exact field encodings and event/action identifiers require coordinated schema,
+compiler, firmware, and digital-twin support before they become executable.
+
+The existing executable route rule requiring exactly one `target_state` or
+`target_scene` remains in force for routes. The planned independent handler is
+a separate bounded entry point; existing projects need no silent conversion.
+
+Example scene logic:
+
+```text
+Scene entry -> Start choice_timeout (10 seconds)
+Menu input -> Update selection
+choice_timeout expiry -> Confirm current selection
+```
+
+An inactivity variant explicitly restarts `choice_timeout` on meaningful menu
+input. The countdown does not restart merely because the selection changed.
+
+### Event sources and actions
 
 Allowed event sources are those defined by [[Runtime_Logic_State_API_Contract]]:
 
@@ -663,6 +735,7 @@ Actions must compile to symbolic Engine requests, such as:
 - request audio cue or BBB pattern
 - request save/settings read or write
 - schedule delayed/calendar event
+- start, restart, or cancel a declared timer where the target supports it
 - request sensor context
 - send communication message
 - emit package diagnostic marker
