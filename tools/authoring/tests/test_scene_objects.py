@@ -252,7 +252,7 @@ class SceneObjectMigrationTests(unittest.TestCase):
         before = build_egg(self.bundle)
         plan_object_migration(self.bundle, "state_demo", accept_continuous_animation=True)
         self.assertEqual(before, build_egg(self.bundle))
-        self.assertEqual(40, SERVICE_API_VERSION)
+        self.assertEqual(41, SERVICE_API_VERSION)
 
     def test_multiple_tracks_for_one_object_require_a_choice(self):
         def change(scene):

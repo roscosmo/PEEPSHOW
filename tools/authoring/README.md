@@ -170,9 +170,18 @@ use the advertised `state_management_commands` in `scene_object_authoring` and
 per-scene capabilities: create/add/delete/rename states, select the entry state,
 and edit node/entry layout. `project.set_entry_scene` also accepts V2 scenes.
 New states have empty overrides; deleting a state does not delete scene objects.
-Entry, last and referenced states cannot be deleted. V2 graph construction and
-scene connections remain unavailable. Existing object editing, bounded undo/redo,
+Entry, last and referenced states cannot be deleted. Existing object editing, bounded undo/redo,
 draft preview, save/reload and separate `build_issues` are retained.
+
+API 41 adds native V2 local graph construction: variables, inputs, timer bindings,
+independent scene-timer handlers, state routes, guards and graph layout. Discover
+`local_graph_commands` in hello's `scene_object_authoring` and per-scene capabilities.
+`graph_construction_commands` is now true; `scene_connection_commands` remains false
+for V2, with route destinations limited to `state` and `system_exit`. Keep using
+`object_actions.set` for complete ordered action lists. The legacy action and
+placement commands remain blocked. Scene-timer bindings and their single handler
+must be added/deleted together in one valid batch. This adds no new sensor events,
+no migration, and no export support.
 
 The build operation returns the exact existing compiler output as base64 package
 bytes, package metadata, and the matching deterministic compatibility report.
@@ -180,7 +189,7 @@ It does not choose a destination or write an installable file. The V1 report
 marks the current HW6 development profile as `pending_validation` and
 `dev_only`; it does not claim shipping authority before target-profile closure.
 
-Service API version 40 exposes the selected HW6 profile and its deterministic
+Service API version 41 exposes the selected HW6 profile and its deterministic
 hash in `service.hello`, and provides deterministic selected-STATE-scene preview,
 direct STATE-to-STATE replacement, and a `state_scene_presentation` capability
 block in `service.hello`. A
@@ -205,7 +214,7 @@ new executable package decoder. Any project containing version-2 scenes reports
 works, but egg export and firmware support remain unavailable. Legacy projects
 are not implicitly migrated. Exact command fields, limitations and GUI handoff:
 `docs/11 Development Tools/Peep_Studio_Scene_Object_Ownership_Handoff.md`,
-Connected Host Increment (API 39) and Native Creation and States (API 40).
+Connected Host Increment (API 39), Native Creation and States (API 40), and Native Local Graphs (API 41).
 
 The canonical HW6 development limits live in
 `peepshow_authoring/target_profiles/hw6_fw0_development.json`. After changing

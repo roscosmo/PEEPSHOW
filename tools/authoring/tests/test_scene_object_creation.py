@@ -82,7 +82,7 @@ class SceneObjectCreationTests(unittest.TestCase):
 
     def test_capabilities_distinguish_creation_state_management_and_graphs(self):
         hello = self.call("service.hello")
-        self.assertEqual(40, SERVICE_API_VERSION)
+        self.assertEqual(41, SERVICE_API_VERSION)
         creation = hello["scene_creation"]
         self.assertEqual("project.create", creation["project_operation"])
         self.assertEqual("scene.add", creation["scene_command"])
@@ -100,7 +100,8 @@ class SceneObjectCreationTests(unittest.TestCase):
         self.assertTrue(expected.issubset(capability["supported_commands"]))
         self.assertIn("project.set_entry_scene", capability["supported_commands"])
         self.assertEqual(expected, set(hello["scene_object_authoring"]["state_management_commands"]))
-        self.assertFalse(capability["graph_construction_commands"])
+        self.assertTrue(capability["graph_construction_commands"])
+        self.assertFalse(capability["scene_connection_commands"])
         self.assertFalse(capability["egg_export"])
         self.assertFalse(hello["scene_object_authoring"]["firmware_available"])
 
@@ -223,7 +224,7 @@ class SceneObjectCreationTests(unittest.TestCase):
         scene["event_handlers"] = [{"handler_id": "timer_target", "event_ref": "tick", "guards": [],
                                      "actions": [], "target_state": "second"}]
         variants.append(scene)
-        # Graph authoring is still blocked; load valid source fixtures to exercise references.
+        # Load source fixtures so state deletion is checked independently of graph commands.
         for index, scene in enumerate(variants):
             with self.subTest(reference=index):
                 (self.root / "scenes/main.state.json").write_text(json.dumps(scene), encoding="utf-8")
@@ -248,10 +249,10 @@ class SceneObjectCreationTests(unittest.TestCase):
         self.call("project.undo")
         self.assertEqual(before, self.service._bundle.canonical_bytes())
 
-    def test_unsupported_graph_and_legacy_mutations_remain_blocked(self):
+    def test_unsupported_connections_and_legacy_mutations_remain_blocked(self):
         self.create(scene_schema_version=2)
-        for kind in ("route.add", "route.create", "event_binding.upsert", "event_handler.upsert",
-                     "variable.add", "scene_exit.add", "state_placement.clear_override",
+        for kind in ("route.create", "event_binding.upsert", "event_handler.upsert",
+                     "scene_exit.add", "state_placement.clear_override",
                      "render_element.bind_waiting_animation"):
             with self.subTest(kind=kind):
                 self.assert_rejected_unchanged(self.command(kind), code="COMMAND_EXECUTION_MODEL_MISMATCH")
