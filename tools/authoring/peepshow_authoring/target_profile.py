@@ -161,6 +161,13 @@ def _validate_target_profile(profile: dict[str, Any]) -> None:
     timer_maximum = _positive_int(delay_schema["maximum"], "timer.delay_ms.maximum")
     if timer_minimum > timer_maximum:
         raise TargetProfileError("timer delay range is invalid")
+    scene_timer = next((item for item in sources if item["event_type"] == "time.scene_elapsed"), None)
+    if (scene_timer is None or scene_timer["status"] != "available_pending_validation"
+            or scene_timer["configuration_schema"].get("delay_ms") != delay_schema
+            or scene_timer["configuration_schema"].get("start_policy") != {
+                "type": "string", "enum": ["scene_entry", "action"], "default": "scene_entry"
+            }):
+        raise TargetProfileError("scene timer must expose the shared delay range and explicit start policy")
     values = state_events["values"]
     if not isinstance(values, list):
         raise TargetProfileError("state_scene_events.values must be an array")

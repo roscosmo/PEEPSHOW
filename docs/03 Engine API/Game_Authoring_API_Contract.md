@@ -162,9 +162,10 @@ entity/behavior instance, not the shared definition. The compiler resolves
 distinct local timer and expiry-handler references for each instance; scene
 selection changes do not implicitly reset them. Removing an instance cancels
 its timers. Independent event branches may perform bounded actions without a
-state transition. These are agreed contract semantics; the current executable
-timer subset remains state-entry only, with scene-owned timers and independent
-handlers next and instance ownership following.
+state transition. The executable subset now includes state-entry timers and
+scene-owned one-shots with independent handlers and Start/Restart/Cancel
+actions; target expiry verification is pending. Prefab instance ownership
+remains a future increment, not a currently exported capability.
 
 Example:
 

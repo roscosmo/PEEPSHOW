@@ -378,6 +378,9 @@ static volatile uint32_t ps_runtime_interaction_rtc_irq_expired;
 static volatile uint32_t ps_runtime_interaction_rtc_command_queued;
 typedef struct
 {
+  uint32_t configured;
+  uint32_t scope;
+  uint32_t delay_ticks;
   uint32_t active;
   uint32_t deadline_tick;
   uint32_t paused_remaining_ticks;
@@ -387,6 +390,7 @@ typedef struct
 static ps_runtime_state_timer_slot_t
   ps_runtime_state_timers[PS_SCENE_RUNTIME_EVENT_BINDING_MAX];
 static uint32_t ps_runtime_state_timer_scene_revision;
+static uint32_t ps_runtime_timer_scene_activation;
 static uint32_t ps_runtime_state_timer_paused;
 static uint32_t ps_runtime_rtc_wake_source;
 static uint32_t ps_runtime_rtc_selected_remaining_ticks;
@@ -1064,6 +1068,7 @@ static void PS_HW6_RTOS_ResetProbe(void)
   (void)memset(ps_runtime_state_timers, 0,
                sizeof(ps_runtime_state_timers));
   ps_runtime_state_timer_scene_revision = 0UL;
+  ps_runtime_timer_scene_activation = 0UL;
   ps_runtime_state_timer_paused = 0UL;
   ps_runtime_rtc_wake_source = PS_HW6_RTOS_RTC_WAKE_SOURCE_NONE;
   ps_runtime_rtc_selected_remaining_ticks = 0UL;
@@ -8078,14 +8083,10 @@ void PS_HW6_RTOS_InteractionStop2TimeoutFinish(void)
       }
       if (elapsed_ticks >= timer->stop2_remaining_ticks)
       {
-        timer->deadline_tick = now_tick;
         state_timer_due = 1UL;
       }
-      else
-      {
-        timer->deadline_tick =
-          now_tick + (timer->stop2_remaining_ticks - elapsed_ticks);
-      }
+      timer->deadline_tick =
+        now_tick + timer->stop2_remaining_ticks - elapsed_ticks;
       timer->stop2_remaining_ticks = 0UL;
     }
   }
@@ -8133,6 +8134,7 @@ static void PS_HW6_RTOS_RuntimeStateTimersClear(void)
   (void)memset(ps_runtime_state_timers, 0,
                sizeof(ps_runtime_state_timers));
   ps_runtime_state_timer_scene_revision = 0UL;
+  ps_runtime_timer_scene_activation = 0UL;
   ps_runtime_state_timer_paused = 0UL;
   g_ps_hw6_rtos_probe.runtime_state_timer_scene_revision = 0UL;
   g_ps_hw6_rtos_probe.runtime_state_timer_configured_count = 0UL;
@@ -8144,50 +8146,98 @@ static void PS_HW6_RTOS_RuntimeStateTimersSync(uint32_t now_tick,
                                                uint32_t force)
 {
   uint32_t revision;
+  uint32_t scene_activation;
   uint32_t binding_index;
+  uint32_t action_kind;
   uint32_t configured_count = 0UL;
+  uint32_t active_count = 0UL;
+  uint32_t changed;
 
   if (PS_SceneRuntime_StateSceneActive() == 0UL)
   {
     PS_HW6_RTOS_RuntimeStateTimersClear();
     return;
   }
-  revision = PS_SceneRuntime_StateRevision();
-  if ((force == 0UL) &&
-      (revision == ps_runtime_state_timer_scene_revision))
+  revision = PS_SceneRuntime_StateActivation();
+  scene_activation = PS_SceneRuntime_SceneActivation();
+  changed = (force != 0UL) ||
+    (revision != ps_runtime_state_timer_scene_revision) ||
+    (scene_activation != ps_runtime_timer_scene_activation);
+  if ((force != 0UL) ||
+      (scene_activation != ps_runtime_timer_scene_activation))
   {
-    return;
+    (void)memset(ps_runtime_state_timers, 0,
+                 sizeof(ps_runtime_state_timers));
+    ps_runtime_state_timer_paused = 0UL;
   }
-
-  (void)memset(ps_runtime_state_timers, 0,
-               sizeof(ps_runtime_state_timers));
-  ps_runtime_state_timer_scene_revision = revision;
-  ps_runtime_state_timer_paused = 0UL;
   for (binding_index = 0UL;
        binding_index < PS_SCENE_RUNTIME_EVENT_BINDING_MAX;
        ++binding_index)
   {
     uint32_t delay_ms;
+    uint32_t scope;
+    uint32_t start_policy;
+    ps_runtime_state_timer_slot_t *timer =
+      &ps_runtime_state_timers[binding_index];
 
-    if (PS_SceneRuntime_StateEntryTimerDelay(binding_index, &delay_ms) != 0UL)
+    if (PS_SceneRuntime_TimerConfiguration(
+          binding_index, &scope, &start_policy, &delay_ms) == 0UL)
     {
-      ps_runtime_state_timers[binding_index].active = 1UL;
-      ps_runtime_state_timers[binding_index].deadline_tick =
-        now_tick + PS_HW6_RTOS_MsToTicks(delay_ms);
-      configured_count++;
+      (void)memset(timer, 0, sizeof(*timer));
+      continue;
+    }
+    if ((timer->configured == 0UL) ||
+        ((scope == PS_SCENE_RUNTIME_TIMER_STATE_ENTRY) && (changed != 0UL)))
+    {
+      (void)memset(timer, 0, sizeof(*timer));
+      timer->configured = 1UL;
+      timer->scope = scope;
+      timer->delay_ticks = PS_HW6_RTOS_MsToTicks(delay_ms);
+      timer->active = (start_policy == PS_SCENE_RUNTIME_TIMER_START_ENTRY);
+      timer->deadline_tick = now_tick + timer->delay_ticks;
       g_ps_hw6_rtos_probe.runtime_state_timer_last_binding_index =
         binding_index;
       g_ps_hw6_rtos_probe.runtime_state_timer_last_delay_ms = delay_ms;
       g_ps_hw6_rtos_probe.runtime_state_timer_last_deadline_tick =
-        ps_runtime_state_timers[binding_index].deadline_tick;
+        timer->deadline_tick;
     }
   }
+  /* Commands are committed with the route, before another due event is selected. */
+  while (PS_SceneRuntime_TakeTimerAction(&binding_index, &action_kind) != 0UL)
+  {
+    ps_runtime_state_timer_slot_t *timer =
+      &ps_runtime_state_timers[binding_index];
+    if ((timer->configured == 0UL) ||
+        (timer->scope != PS_SCENE_RUNTIME_TIMER_SCENE))
+    {
+      continue;
+    }
+    if (action_kind == PS_SCENE_RUNTIME_ACTION_CANCEL_TIMER)
+    {
+      timer->active = 0UL;
+    }
+    else if ((action_kind == PS_SCENE_RUNTIME_ACTION_RESTART_TIMER) ||
+             (timer->active == 0UL))
+    {
+      timer->active = 1UL;
+      timer->deadline_tick = now_tick + timer->delay_ticks;
+      timer->paused_remaining_ticks = timer->delay_ticks;
+    }
+  }
+  for (binding_index = 0UL;
+       binding_index < PS_SCENE_RUNTIME_EVENT_BINDING_MAX; ++binding_index)
+  {
+    configured_count += ps_runtime_state_timers[binding_index].configured;
+    active_count += ps_runtime_state_timers[binding_index].active;
+  }
+  ps_runtime_state_timer_scene_revision = revision;
+  ps_runtime_timer_scene_activation = scene_activation;
   g_ps_hw6_rtos_probe.runtime_state_timer_scene_revision = revision;
   g_ps_hw6_rtos_probe.runtime_state_timer_configured_count =
     configured_count;
-  g_ps_hw6_rtos_probe.runtime_state_timer_active_count = configured_count;
-  g_ps_hw6_rtos_probe.runtime_state_timer_sync_count++;
-  g_ps_hw6_rtos_probe.runtime_state_timer_paused = 0UL;
+  g_ps_hw6_rtos_probe.runtime_state_timer_active_count = active_count;
+  g_ps_hw6_rtos_probe.runtime_state_timer_sync_count += changed;
+  g_ps_hw6_rtos_probe.runtime_state_timer_paused = ps_runtime_state_timer_paused;
 }
 
 static uint32_t PS_HW6_RTOS_RuntimeStateTimerNext(
@@ -8199,6 +8249,7 @@ static uint32_t PS_HW6_RTOS_RuntimeStateTimerNext(
   uint32_t found = 0UL;
   uint32_t selected_remaining = 0UL;
   uint32_t selected_index = PS_SCENE_RUNTIME_INDEX_INVALID;
+  uint32_t selected_deadline = 0UL;
 
   if ((remaining_ticks == NULL) || (binding_index == NULL) ||
       (ps_runtime_state_timer_paused != 0UL))
@@ -8218,12 +8269,13 @@ static uint32_t PS_HW6_RTOS_RuntimeStateTimerNext(
     remaining = (PS_HW6_RTOS_TimeReached(
       now_tick, timer->deadline_tick) != 0UL) ?
       0UL : timer->deadline_tick - now_tick;
-    if ((found == 0UL) || (remaining < selected_remaining) ||
-        ((remaining == selected_remaining) && (index < selected_index)))
+    if ((found == 0UL) ||
+        ((int32_t)(timer->deadline_tick - selected_deadline) < 0))
     {
       found = 1UL;
       selected_remaining = remaining;
       selected_index = index;
+      selected_deadline = timer->deadline_tick;
     }
   }
   if (found != 0UL)
@@ -8248,9 +8300,7 @@ static void PS_HW6_RTOS_RuntimeStateTimersPause(uint32_t now_tick)
 
     if (timer->active != 0UL)
     {
-      timer->paused_remaining_ticks = (PS_HW6_RTOS_TimeReached(
-        now_tick, timer->deadline_tick) != 0UL) ?
-        0UL : timer->deadline_tick - now_tick;
+      timer->paused_remaining_ticks = timer->deadline_tick - now_tick;
     }
   }
   ps_runtime_state_timer_paused = 1UL;

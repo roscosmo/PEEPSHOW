@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 
-#define PS_SCENE_RUNTIME_API_VERSION             (20UL)
+#define PS_SCENE_RUNTIME_API_VERSION             (21UL)
 #define PS_SCENE_RUNTIME_SCENE_TYPE_STATE        (1UL)
 #define PS_SCENE_RUNTIME_STATUS_NOT_RUN          (0xFFFFFFFFUL)
 #define PS_SCENE_RUNTIME_STATUS_OK               (0UL)
@@ -42,6 +42,9 @@ extern "C" {
 #define PS_SCENE_RUNTIME_EVENT_CLASS_INPUT       (1UL)
 #define PS_SCENE_RUNTIME_EVENT_CLASS_TIMER       (2UL)
 #define PS_SCENE_RUNTIME_TIMER_STATE_ENTRY       (1UL)
+#define PS_SCENE_RUNTIME_TIMER_SCENE             (2UL)
+#define PS_SCENE_RUNTIME_TIMER_START_ENTRY       (0UL)
+#define PS_SCENE_RUNTIME_TIMER_START_ACTION      (1UL)
 
 typedef enum
 {
@@ -77,7 +80,10 @@ typedef enum
   PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_FRAME,
   PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_WAITING_ANIMATION,
   PS_SCENE_RUNTIME_ACTION_PLAY_SFX,
-  PS_SCENE_RUNTIME_ACTION_EXIT_TO_SHELL
+  PS_SCENE_RUNTIME_ACTION_EXIT_TO_SHELL,
+  PS_SCENE_RUNTIME_ACTION_START_TIMER,
+  PS_SCENE_RUNTIME_ACTION_RESTART_TIMER,
+  PS_SCENE_RUNTIME_ACTION_CANCEL_TIMER
 } ps_scene_runtime_action_kind_t;
 
 typedef enum
@@ -298,6 +304,14 @@ void PS_SceneRuntime_ExitStateScene(void);
 uint32_t PS_SceneRuntime_StateSceneActive(void);
 uint32_t PS_SceneRuntime_StateIndex(void);
 uint32_t PS_SceneRuntime_StateRevision(void);
+uint32_t PS_SceneRuntime_SceneActivation(void);
+uint32_t PS_SceneRuntime_StateActivation(void);
+uint32_t PS_SceneRuntime_TimerConfiguration(uint32_t binding_index,
+                                          uint32_t *scope,
+                                          uint32_t *start_policy,
+                                          uint32_t *delay_ms);
+uint32_t PS_SceneRuntime_TakeTimerAction(uint32_t *binding_index,
+                                       uint32_t *kind);
 uint32_t PS_SceneRuntime_StateFocusIndex(void);
 uint32_t PS_SceneRuntime_InteractionMode(void);
 uint32_t PS_SceneRuntime_InactiveRoute(void);

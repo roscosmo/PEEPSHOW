@@ -8,8 +8,8 @@ set $new_binding_id = 1
 set $new_transition_id = 1
 
 printf "--- HW6 temporary STATE timer injection ---\n"
-if (g_ps_scene_runtime_probe.active == 0) || ($scene == 0)
-  printf "Timer NOT armed: launch a STATE scene first.\n"
+if (g_ps_scene_runtime_probe.active == 0) || ($scene == 0) || (g_ps_scene_runtime_probe.api_version != 21)
+  printf "Timer NOT armed: launch a STATE scene with scene runtime API 21 first.\n"
 else
   if ($scene->event_binding_count >= 16) || ($scene->transition_count >= 16)
     printf "Timer NOT armed: the active scene has no spare binding or transition slot.\n"
@@ -67,7 +67,7 @@ else
     set $scene->transition_count = $transition_index + 1
     set g_ps_scene_runtime_probe.descriptor_event_binding_count = $scene->event_binding_count
     set g_ps_scene_runtime_probe.descriptor_transition_count = $scene->transition_count
-    set ps_runtime_state_timer_scene_revision = g_ps_scene_runtime_probe.state_revision + 1
+    set ps_runtime_state_timer_scene_revision = s_ps_scene_runtime_state_activation + 1
     set ps_runtime_state_timer_paused = 0
 
     if $candidate >= 0

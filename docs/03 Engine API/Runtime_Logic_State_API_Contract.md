@@ -101,9 +101,10 @@ Authoring tools may present richer editors, hierarchy, visual scripting, dialogu
 Compiled package output must reduce those forms to bounded PeepOS runtime logic primitives.
 
 This is the complete contract model, not the current executable subset. The
-current STATE timer implementation is limited to state-entry events routed
-through transitions. Scene-owned timers and independent handlers are the next
-increment; instance and package-session scopes follow.
+current STATE timer implementation supports state-entry transition events and
+scene-owned one-shots with independent handlers and explicit timer actions.
+Host checks pass; target expiry/STOP2 verification remains pending. Instance
+and package-session scopes follow.
 
 Rules:
 
@@ -349,12 +350,21 @@ Routes reference `binding_id`; they never reference an ISR, RTOS object,
 peripheral instance, or hardware callback. The target profile publishes the
 available `event_type` values and their bounded configuration schemas.
 
-The current executable non-input binding is
+The state-scoped executable non-input binding is
 `time.state_entry_elapsed`. Its configuration contains one `delay_ms` value.
 It is armed when its owning state activation is atomically committed, fires once,
 and is cancelled when that state activation is left. Re-entering the same
 state creates a new activation and rearms the binding. A stale event from an
 earlier state activation must be rejected.
+
+`time.scene_elapsed` is scene-owned and survives those state activations.
+Its `start_policy` is `scene_entry` (default) or `action`. Its sole independent
+handler executes from any current state; omitting both target fields means
+actions only. Existing input/state-timer routes still require a destination.
+Start/Restart/Cancel actions reference scene timers by binding ID. The first
+executable handler subset permits variable, render-request, SFX, shell-exit,
+and timer actions without a destination; element mutations require an explicit
+target state, and direct scene replacement retains its SFX-only restriction.
 
 For deterministic delivery, PeepOS completes physical wake and owner recovery
 before delivering the timer event. Due timers are ordered by logical deadline,
@@ -382,7 +392,7 @@ a bounded action list. It is evaluated when the event arrives at its live
 owner, regardless of the scene's current selection/state unless an explicit
 guard restricts it. It need not declare a destination state or scene.
 
-For the next timer increment, each timer expiry binding resolves to one
+For the executable scene-timer increment, each timer expiry binding resolves to one
 declared handler. The Engine does not also send it through the current-state
 transition table or broadcast it to unrelated instances. Explicitly authored
 state-entry transition bindings retain their existing routing.

@@ -1226,7 +1226,7 @@ static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
   if ((memcmp(payload, "STG1", 4UL) != 0) ||
       ((format_version != 1U) && (format_version != 2U) &&
        (format_version != 3U) && (format_version != 4U) &&
-       (format_version != 5U)) ||
+       (format_version != 5U) && (format_version != 6U)) ||
       (PS_EggU16(&payload[6]) != PS_EGG_GRAPH_HEADER_SIZE))
   {
     return 0UL;
@@ -2060,8 +2060,11 @@ static uint32_t PS_EggDecodeScene(
              (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)) &&
            (parameter == 0UL)) ||
           ((event_class == PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) &&
-           (event_kind == PS_SCENE_RUNTIME_TIMER_STATE_ENTRY) &&
-           (source == 0UL) &&
+           (((event_kind == PS_SCENE_RUNTIME_TIMER_STATE_ENTRY) &&
+             (source == 0UL)) ||
+            ((graph.format_version >= 6U) &&
+             (event_kind == PS_SCENE_RUNTIME_TIMER_SCENE) &&
+             (source <= PS_SCENE_RUNTIME_TIMER_START_ACTION))) &&
            (parameter >= PS_TARGET_PROFILE_STATE_TIMER_MIN_MS) &&
            (parameter <= PS_TARGET_PROFILE_STATE_TIMER_MAX_MS))))
     {
@@ -2144,18 +2147,31 @@ static uint32_t PS_EggDecodeScene(
     uint32_t guard;
     uint32_t operation;
     uint32_t source;
+    uint32_t independent = (source_count == 0U);
 
     if ((PS_EggU16(route) >= strings->count) ||
         (input_index >= graph.binding_count) ||
         (!(((target_state < graph.state_count) &&
             (target_scene_string == 0xFFFFU)) ||
            ((target_state == 0xFFFFU) &&
-            (target_scene_id != 0UL)))) ||
+            (target_scene_id != 0UL)) ||
+           ((graph.format_version >= 6U) && (independent != 0UL) &&
+            (target_state == 0xFFFFU) &&
+            (target_scene_string == 0xFFFFU)))) ||
         ((uint32_t)first_source + source_count > graph.source_count) ||
         ((uint32_t)first_guard + route_guard_count > graph.guard_count) ||
         ((uint32_t)first_operation + route_operation_count >
          graph.operation_count) ||
         (guard_count + route_guard_count > PS_SCENE_RUNTIME_GUARD_MAX))
+    {
+      return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+    }
+    if ((independent != 0UL) !=
+        ((graph.format_version >= 6U) &&
+         (scene->event_bindings[input_index].event_class ==
+          PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) &&
+         (scene->event_bindings[input_index].event_kind ==
+          PS_SCENE_RUNTIME_TIMER_SCENE)))
     {
       return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
     }
@@ -2255,16 +2271,39 @@ static uint32_t PS_EggDecodeScene(
         scene->actions[action_count].secondary_value = 0;
         action_count++;
       }
+      else if ((record[0] >= 9U) && (record[0] <= 11U))
+      {
+        uint16_t timer_index = PS_EggU16(&record[2]);
+        if ((graph.format_version < 6U) || (record[1] != 0U) ||
+            (timer_index >= graph.binding_count) ||
+            (scene->event_bindings[timer_index].event_class !=
+             PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) ||
+            (scene->event_bindings[timer_index].event_kind !=
+             PS_SCENE_RUNTIME_TIMER_SCENE) ||
+            (PS_EggU32(&record[4]) != 0UL) ||
+            (PS_EggU32(&record[8]) != 0UL) ||
+            (action_count >= PS_SCENE_RUNTIME_ACTION_MAX))
+        {
+          return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+        }
+        scene->actions[action_count].kind =
+          PS_SCENE_RUNTIME_ACTION_START_TIMER + (record[0] - 9U);
+        scene->actions[action_count].target_id = timer_index;
+        action_count++;
+      }
       else
       {
         uint16_t element_index = PS_EggU16(&record[2]);
-        ps_scene_runtime_visual_binding_t *target_binding =
-          &scene->visual_bindings[target_state];
+        ps_scene_runtime_visual_binding_t *target_binding;
         ps_scene_render_element_t *target_element;
         ps_scene_runtime_action_t *target_action;
 
-        if ((target_state >= graph.state_count) ||
-            (element_index >= target_binding->element_count) ||
+        if (target_state >= graph.state_count)
+        {
+          return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+        }
+        target_binding = &scene->visual_bindings[target_state];
+        if ((element_index >= target_binding->element_count) ||
             ((record[0] != 6U) && (record[1] != 0U)) ||
             (action_count >= PS_SCENE_RUNTIME_ACTION_MAX))
         {
@@ -2438,9 +2477,10 @@ static uint32_t PS_EggDecodeScene(
         action_count++;
       }
     }
-    for (source = 0UL; source < source_count; ++source)
+    for (source = 0UL; source < source_count + independent; ++source)
     {
-      uint16_t source_state = PS_EggU16(&graph_payload[graph.source_offset +
+      uint16_t source_state = (independent != 0UL) ? 0U :
+        PS_EggU16(&graph_payload[graph.source_offset +
         (((uint32_t)first_source + source) * 2UL)]);
       ps_scene_runtime_transition_t *transition;
       if ((source_state >= graph.state_count) ||
@@ -2450,13 +2490,14 @@ static uint32_t PS_EggDecodeScene(
       }
       transition = &scene->transitions[transition_count];
       transition->transition_id = transition_count + 1UL;
-      transition->source_state_id = (uint32_t)source_state + 1UL;
+      transition->source_state_id = (independent != 0UL) ?
+        0UL : (uint32_t)source_state + 1UL;
       transition->scene_event_id = (uint32_t)input_index + 1UL;
       transition->first_guard = first_runtime_guard;
       transition->guard_count = route_guard_count;
       transition->first_action = first_runtime_action;
       transition->action_count = action_count - first_runtime_action;
-      transition->target_state_id = (target_scene_id == 0UL) ?
+      transition->target_state_id = (target_state != 0xFFFFU) ?
         (uint32_t)target_state + 1UL : 0UL;
       transition->target_scene_id = target_scene_id;
       transition_count++;

@@ -200,7 +200,7 @@ and `ACU1` symbolic cues respectively. The three chunks are optional but must
 appear as an all-or-none group. Their presence does not imply that a target
 profile grants `audio.sampled_sfx`; target admission remains separate.
 
-The current STATE graph chunk is `STG1` version `4`. Its four-byte input record
+Input-only STATE graph chunks use `STG1` version `4`. Their four-byte input record
 stores the logical source ID in the low byte and the event kind in the high
 byte. Event kinds are `PRESS=1`, `RELEASE=2`, `HOLD=3`, and `REPEAT=4`.
 The scene interaction-policy word stores the interaction mode in its low byte
@@ -209,6 +209,34 @@ and `EIGHT_WAY=2`. `STG1` versions `1` through `3` decode as `PRESS` plus
 `FOUR_WAY` for compatibility. Unknown event or joystick-policy values fail
 validation. `BUTTON_START` may only bind `PRESS`; its long gesture remains
 system-owned.
+
+Graphs with state-entry timers use `STG1` v5; scene timers/independent handlers
+require v6. Both retain the v4 header and v2 route layout, but replace the
+four-byte input records with 12-byte event bindings (`<HBBII`, little endian):
+string ID, event class, event kind, source, parameter. Class 1 is input, with
+the logical event kind/source and zero parameter. Class 2 is a relative timer,
+whose parameter is bounded `delay_ms` (10..86400000 for this target).
+
+- Timer kind 1: state-entry one-shot, source=0. Nonempty route source-state
+  lists determine the active states; the existing state lifetime is retained.
+- Timer kind 2 (v6): scene-owned one-shot. Source=0 means scene entry;
+  source=1 means explicit action start. Other values fail validation.
+- An independent handler is a v6 route record with source count=0 bound to a
+  kind-2 timer. There must be exactly one such handler per scene timer. Other
+  bindings require ordinary nonempty source-state lists.
+- Only an independent handler may use destination state=0xffff and destination
+  scene=0xffff together, meaning action-only. Explicit destinations retain their
+  existing meaning. No synthetic self-transition is generated.
+- Operation kinds 9/10/11 mean Start/Restart/Cancel. In the existing
+  `<BBHHHi` operation record, the first H is the target scene-timer binding
+  index; the operation byte and all remaining fields are zero. Invalid targets
+  and nonzero reserved fields fail validation. These operations require v6.
+- Action-only handlers cannot encode element mutations in this increment;
+  those need a target state. Direct scene replacement still permits only SFX.
+
+No v6 construct is downgraded to v5 during export. Firmware supporting v6
+continues to decode versions 1..5; an older decoder must reject v6. This is an
+inner graph-version change, not a new package envelope or storage layout.
 
 ---
 

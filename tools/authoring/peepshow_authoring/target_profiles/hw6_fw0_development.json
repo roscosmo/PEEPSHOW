@@ -2,7 +2,7 @@
   "schema_id": "peepshow.target_profile",
   "schema_version": 1,
   "profile_id": "hw6_fw0_development",
-  "profile_version": 3,
+  "profile_version": 4,
   "profile_status": "pending_validation",
   "package": {
     "maximum_bytes": 5242880,
@@ -12,6 +12,24 @@
     "binding_count_max": 16,
     "queue_depth": 8,
     "sources": [
+      {
+        "event_type": "time.scene_elapsed",
+        "status": "available_pending_validation",
+        "required_capability": "time.delayed_event",
+        "stop2_wake": true,
+        "configuration_schema": {
+          "delay_ms": {
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 86400000
+          },
+          "start_policy": {
+            "type": "string",
+            "enum": ["scene_entry", "action"],
+            "default": "scene_entry"
+          }
+        }
+      },
       {
         "event_type": "time.state_entry_elapsed",
         "status": "available_pending_validation",

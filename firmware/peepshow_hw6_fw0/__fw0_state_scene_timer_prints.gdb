@@ -1,6 +1,7 @@
 set pagination off
-printf "--- HW6 STATE state-entry timer ---\n"
+printf "--- HW6 STATE scoped timers ---\n"
 printf "rtos/scene api = %u / %u\n", g_ps_hw6_rtos_probe.version, g_ps_scene_runtime_probe.api_version
+printf "scene/state activation = %u / %u\n", s_ps_scene_runtime_scene_activation, s_ps_scene_runtime_state_activation
 printf "scene active/state/revision/event bindings = %u / %u / %u / %u\n", g_ps_scene_runtime_probe.active, g_ps_scene_runtime_probe.state_index, g_ps_scene_runtime_probe.state_revision, g_ps_scene_runtime_probe.descriptor_event_binding_count
 printf "scene event dispatch/reject/last binding/event/transition = %u / %u / %u / %u / %u\n", g_ps_scene_runtime_probe.event_dispatch_count, g_ps_scene_runtime_probe.event_dispatch_reject_count, g_ps_scene_runtime_probe.last_event_binding_index, g_ps_scene_runtime_probe.last_scene_event_id, g_ps_scene_runtime_probe.last_transition_id
 printf "timer revision/configured/active/sync/paused = %u / %u / %u / %u / %u\n", g_ps_hw6_rtos_probe.runtime_state_timer_scene_revision, g_ps_hw6_rtos_probe.runtime_state_timer_configured_count, g_ps_hw6_rtos_probe.runtime_state_timer_active_count, g_ps_hw6_rtos_probe.runtime_state_timer_sync_count, g_ps_hw6_rtos_probe.runtime_state_timer_paused
@@ -11,4 +12,4 @@ printf "shared RTC arm/status/clock/counter interaction remaining/elapsed/expiry
 printf "runtime class/lifecycle interaction mode/state = %u / %u / %u / %u\n", g_ps_hw6_rtos_probe.runtime_current_class, g_ps_hw6_rtos_probe.runtime_lifecycle, g_ps_hw6_rtos_probe.runtime_interaction_mode, g_ps_hw6_rtos_probe.runtime_interaction_state
 printf "STOP2 enabled/checks/entries/skips/status physical/failure = %u / %u / %u / %u / 0x%x / %u / 0x%x\n", g_ps_hw6_rtos_probe.stop2_auto_enabled, g_ps_hw6_rtos_probe.stop2_auto_check_count, g_ps_hw6_rtos_probe.stop2_auto_entry_count, g_ps_hw6_rtos_probe.stop2_auto_skip_count, g_ps_hw6_rtos_probe.stop2_auto_last_status, g_ps_hw6_clock_policy_probe.stop2_physical_ready, g_ps_hw6_clock_policy_probe.stop2_physical_failure_mask
 printf "expected after the injected transition: due/dispatch/applied each increment once, error remains 0, and RTC state selects is at least 1 if STOP2 occurred. The current configured/active values may return to 0 in the destination state. RTC source NONE/INTERACTION/STATE_TIMER=0/1/2; state binding preserves the last selected timer.\n"
-printf "--- end HW6 STATE state-entry timer ---\n"
+printf "--- end HW6 STATE scoped timers ---\n"

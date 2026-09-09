@@ -152,12 +152,60 @@ event_bindings[]:
     delay_ms
 ```
 
-This currently executable timer is a state-entry one-shot. For this explicit
+This legacy executable timer is a state-entry one-shot. For this explicit
 event type, a route's `from_states` determines the states in which its
 referenced timer is armed. This coupling must not be generalized to other
 timer scopes. IDs must be unique across
 `input_actions` and `event_bindings`. The selected target profile supplies the
 allowed delay range and total event-binding limit.
+
+The scene-owned one-shot form is also executable (STG1 v6; target verification
+pending):
+
+```text
+event_bindings[]:
+  binding_id
+  event_type = time.scene_elapsed
+  configuration:
+    delay_ms                # same target duration bounds as state timers
+    start_policy            # scene_entry (default) or action
+
+event_handlers[]:
+  handler_id
+  event_ref                 # exactly one handler per scene timer binding
+  guards[]
+  actions[]
+  target_state?             # optional; cannot coexist with target_scene
+  target_scene?             # optional; same-package destination only
+
+timer action:
+  kind = start_timer | restart_timer | cancel_timer
+  timer_ref                 # scene timer binding_id, local to this scene
+```
+
+Handlers have no `from_states` or `action_ref`. Omitting both targets executes
+actions without state re-entry. Scene-timer bindings cannot also appear in
+ordinary state routes. Handler IDs are unique within the scene and must not
+collide with route IDs. State and scene timers share the 16 compiled binding
+slots. Each handler consumes one runtime transition slot; existing guard and
+action budgets also apply. Target firmware still admits at most 16 expanded
+transitions, 16 guards, and 32 stored actions per scene.
+
+Action-only handlers accept variable mutations, `request_render`, `play_sfx`,
+`exit_to_shell`, and timer actions. Element mutation actions currently require
+`target_state`; `target_scene` retains the existing SFX-only action rule.
+Runtime suspension pauses relative countdowns; state/selection changes do not
+pause or restart a scene timer. Replacement/recreation cancels the old scene's
+timers. A false guard consumes the expiry without retrying.
+
+The shared service exposes `event_handler.add` and `event_handler.update` with
+`scene_id` plus the complete `event_handler` record; `event_handler.delete`
+uses `scene_id` and `handler_id`. Add/remove the timer and its handler in one
+`project.apply_commands` batch so the final graph remains valid. Removing a
+binding still referenced by a handler or timer action is rejected.
+`project.preview_advance` returns `timer_events` with accepted/ignored results,
+audio events, and system actions, using the same result fields as input events.
+These backend changes do not add GUI controls.
 
 The current executable STATE input-source set is `BUTTON_A`, `BUTTON_B`,
 `BUTTON_L`, `BUTTON_R`, `BUTTON_START`, `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`,
@@ -675,16 +723,14 @@ Rules:
 - owner removal cancels contained timers; package ownership does not imply
   saved timers or behavior running outside the package session
 
-The next executable increment is scene-owned one-shot timers plus independent
-handlers and explicit timer actions. Instance and package-session scopes
-follow. Export remains capability/schema-gated; editors must not relabel the
-existing `time.state_entry_elapsed` binding as a scene timer or emit these
-conceptual fields to a target that only supports state-entry transitions.
-Exact field encodings and event/action identifiers require coordinated schema,
-compiler, firmware, and digital-twin support before they become executable.
+The scene-owned one-shot increment is implemented using the executable fields
+above, not the full conceptual `owner_ref` model. Instance and package-session
+scopes follow. Export remains capability/schema-gated; editors must not relabel
+`time.state_entry_elapsed` as a scene timer. STG1 v6 coordinates the shared
+compiler/parser/preview and firmware; older decoders reject it explicitly.
 
 The existing executable route rule requiring exactly one `target_state` or
-`target_scene` remains in force for routes. The planned independent handler is
+`target_scene` remains in force for routes. The independent handler is
 a separate bounded entry point; existing projects need no silent conversion.
 
 Example scene logic:

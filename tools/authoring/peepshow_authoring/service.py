@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 import base64
 import hashlib
 import sys
@@ -289,8 +290,16 @@ class AuthoringService:
             },
             "state_scene_graph": {
                 "compiled_format": "STG1",
-                "compiled_format_version": 5,
-                "load_compatible_versions": [1, 2, 3, 4, 5],
+                "compiled_format_version": 6,
+                "load_compatible_versions": [1, 2, 3, 4, 5, 6],
+                "scene_timers": {
+                    "event_type": "time.scene_elapsed",
+                    "start_policies": ["scene_entry", "action"],
+                    "actions": ["start_timer", "restart_timer", "cancel_timer"],
+                    "handler_collection": "event_handlers",
+                    "handler_target_optional": True,
+                    "element_actions_require_target_state": True,
+                },
                 "command_batch_maximum": 64,
                 "target_scene_actions": ["play_sfx"],
                 "limits": {
@@ -332,6 +341,11 @@ class AuthoringService:
                     "event_binding.add",
                     "event_binding.update",
                     "event_binding.delete",
+                ],
+                "event_handler_commands": [
+                    "event_handler.add",
+                    "event_handler.update",
+                    "event_handler.delete",
                 ],
                 "route_commands": [
                     "route.add",
@@ -690,10 +704,12 @@ class AuthoringService:
     def _preview_advance(self, params: dict[str, Any]) -> dict[str, Any]:
         preview = self._current_preview(params, {"elapsed_ms"})
         try:
-            preview.advance(params["elapsed_ms"])
+            events = preview.advance(params["elapsed_ms"])
         except PreviewError as exc:
             raise ProtocolError("PREVIEW_ADVANCE_FAILED", str(exc)) from exc
-        return self._preview_result(preview.snapshot())
+        snapshot = preview.snapshot()
+        snapshot["timer_events"] = [asdict(event) for event in events]
+        return self._preview_result(snapshot)
 
     def handle(self, request: ServiceRequest) -> dict[str, Any]:
         handlers = {

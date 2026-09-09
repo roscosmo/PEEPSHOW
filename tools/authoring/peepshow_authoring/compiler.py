@@ -182,6 +182,13 @@ def _i32(value: int, field: str) -> int:
     return value
 
 
+def _graph_routes(scene: dict[str, Any]) -> list[dict[str, Any]]:
+    return [*scene["routes"], *(
+        {**handler, "route_id": handler["handler_id"], "from_states": []}
+        for handler in scene.get("event_handlers", [])
+    )]
+
+
 def _string_table(bundle: ProjectBundle, scenes: tuple[dict[str, Any], ...] | None = None) -> tuple[tuple[str, ...], dict[str, int], bytes]:
     project = bundle.project
     package = project["package"]
@@ -201,10 +208,10 @@ def _string_table(bundle: ProjectBundle, scenes: tuple[dict[str, Any], ...] | No
         )
         for state in scene["states"]:
             values.update((state["state_id"], state["display_name"]))
-        values.update(record["route_id"] for record in scene["routes"])
+        values.update(record["route_id"] for record in _graph_routes(scene))
         values.update(
             record["target_scene"]
-            for record in scene["routes"]
+            for record in _graph_routes(scene)
             if "target_scene" in record
         )
         for model in scene["render_models"]:
@@ -374,7 +381,7 @@ def _compile_graph(
     events = scene.get("event_bindings", [])
     bindings = [*inputs, *events]
     states = scene["states"]
-    routes = scene["routes"]
+    routes = _graph_routes(scene)
     variable_index = {record["variable_id"]: index for index, record in enumerate(variables)}
     binding_index = {
         (record["action_id"] if "action_id" in record else record["binding_id"]): index
@@ -397,6 +404,8 @@ def _compile_graph(
             )
         )
     graph_version = 5 if events else 4
+    if any(record["event_type"] == "time.scene_elapsed" for record in events):
+        graph_version = 6
     if graph_version == 4:
         binding_records = b"".join(
             INPUT_RECORD.pack(
@@ -419,14 +428,14 @@ def _compile_graph(
                 )
             )
         for record in events:
-            if record["event_type"] != "time.state_entry_elapsed":
+            if record["event_type"] not in {"time.state_entry_elapsed", "time.scene_elapsed"}:
                 raise EggCompileError("unsupported STATE event binding")
             encoded_bindings.extend(
                 EVENT_RECORD.pack(
                     strings[record["binding_id"]],
                     EVENT_CLASS_TIMER,
-                    TIMER_EVENT_STATE_ENTRY_ELAPSED,
-                    0,
+                    2 if record["event_type"] == "time.scene_elapsed" else TIMER_EVENT_STATE_ENTRY_ELAPSED,
+                    1 if record["configuration"].get("start_policy") == "action" else 0,
                     _u32(
                         record["configuration"]["delay_ms"],
                         "state-entry timer delay",
@@ -555,6 +564,11 @@ def _compile_graph(
             elif operation["kind"] == "exit_to_shell":
                 operation_records.extend(
                     OPERATION_RECORD.pack(8, 0, 0, 0, 0, 0)
+                )
+            elif operation["kind"] in {"start_timer", "restart_timer", "cancel_timer"}:
+                kind = {"start_timer": 9, "restart_timer": 10, "cancel_timer": 11}[operation["kind"]]
+                operation_records.extend(
+                    OPERATION_RECORD.pack(kind, 0, binding_index[operation["timer_ref"]], 0, 0, 0)
                 )
             else:
                 raise EggCompileError("unsupported STATE route action")

@@ -87,7 +87,7 @@ SCENE_KEYS = {
     "reactive_wait_default",
     "interaction_policy",
 }
-SCENE_OPTIONAL_KEYS = {"joystick_policy", "event_bindings"}
+SCENE_OPTIONAL_KEYS = {"joystick_policy", "event_bindings", "event_handlers"}
 
 
 @dataclass(frozen=True)
@@ -598,11 +598,14 @@ def _apply_event_binding_delete(
     )
     scene = _command_scene(scenes, command.get("scene_id"))
     binding_id = command.get("binding_id")
-    for route in scene.get("routes", []):
-        if isinstance(route, dict) and route.get("event_ref") == binding_id:
+    for route in [*scene.get("routes", []), *scene.get("event_handlers", [])]:
+        if isinstance(route, dict) and (route.get("event_ref") == binding_id or any(
+            isinstance(action, dict) and action.get("timer_ref") == binding_id
+            for action in route.get("actions", [])
+        )):
             raise ProjectCommandError(
                 "COMMAND_TARGET_IN_USE",
-                f"event binding '{binding_id}' is referenced by route '{route.get('route_id')}'",
+                f"event binding '{binding_id}' is referenced by '{route.get('handler_id', route.get('route_id'))}'",
             )
     wait_policy = scene.get("reactive_wait_default")
     if isinstance(wait_policy, dict) and binding_id in wait_policy.get(
@@ -628,6 +631,46 @@ def _apply_event_binding_delete(
     raise ProjectCommandError(
         "COMMAND_TARGET_UNKNOWN", f"unknown event binding '{binding_id}'"
     )
+
+
+def _apply_event_handler_command(
+    scenes: list[dict[str, Any]], command: dict[str, Any]
+) -> dict[str, Any]:
+    kind = command["kind"]
+    deleting = kind == "event_handler.delete"
+    field = "handler_id" if deleting else "event_handler"
+    required = {"kind", "scene_id", field}
+    _require_command_fields(command, required, required | {"command_id"})
+    scene = _command_scene(scenes, command.get("scene_id"))
+    handler = command.get(field)
+    if not deleting and not isinstance(handler, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "event_handler must be an object")
+    handler_id = handler if deleting else handler.get("handler_id")
+    if not deleting and "target_scene" in handler:
+        if handler["target_scene"] not in {item.get("scene_id") for item in scenes}:
+            raise ProjectCommandError("SCENE_TRANSITION_TARGET_UNKNOWN", "handler target scene does not exist")
+    issues: list[ValidationIssue] = []
+    _stable_id(handler_id, "command.handler_id", issues)
+    if issues:
+        raise ProjectCommandError(issues[0].code, issues[0].message)
+    handlers = scene.setdefault("event_handlers", [])
+    if not isinstance(handlers, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "event_handlers must be an array")
+    index = next((i for i, item in enumerate(handlers)
+                  if isinstance(item, dict) and item.get("handler_id") == handler_id), None)
+    if kind == "event_handler.add":
+        if index is not None or any(route.get("route_id") == handler_id for route in scene.get("routes", [])):
+            raise ProjectCommandError("PROJECT_ID_DUPLICATE", f"handler ID '{handler_id}' already exists")
+        if len(handlers) >= STATE_EVENT_BINDING_MAX:
+            raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "scene handler limit exceeded")
+        handlers.append(deepcopy(handler))
+    elif index is None:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown handler '{handler_id}'")
+    elif deleting:
+        handlers.pop(index)
+    else:
+        handlers[index] = deepcopy(handler)
+    return {"kind": kind, "scene_id": scene["scene_id"], field: deepcopy(handler)}
 
 
 def _apply_route_add(
@@ -3317,12 +3360,12 @@ def _check_scene(
             path,
             issues,
         )
-        if binding.get("event_type") != "time.state_entry_elapsed":
+        if binding.get("event_type") not in {"time.state_entry_elapsed", "time.scene_elapsed"}:
             _issue(
                 issues,
                 "EVENT_TYPE_UNAVAILABLE",
                 f"{path}.event_type",
-                "target currently exposes only time.state_entry_elapsed",
+                "target exposes state-entry and scene elapsed timers",
             )
         configuration = binding.get("configuration")
         if not isinstance(configuration, dict):
@@ -3333,7 +3376,13 @@ def _check_scene(
                 "must be an object",
             )
             continue
-        _check_keys(configuration, {"delay_ms"}, f"{path}.configuration", issues)
+        allowed_config = {"delay_ms"}
+        if binding.get("event_type") == "time.scene_elapsed":
+            allowed_config.add("start_policy")
+            if configuration.get("start_policy", "scene_entry") not in {"scene_entry", "action"}:
+                _issue(issues, "EVENT_TIMER_START_INVALID", f"{path}.configuration.start_policy",
+                       "must be scene_entry or action")
+        _check_keys(configuration, {"delay_ms"}, f"{path}.configuration", issues, allowed_config)
         delay_ms = configuration.get("delay_ms")
         if (
             isinstance(delay_ms, bool)
@@ -3365,6 +3414,16 @@ def _check_scene(
     render_models = _unique_ids(scene.get("render_models"), "visual_id", f"{base}.render_models", issues, 64)
     waiting_visuals = _unique_ids(scene.get("waiting_visuals"), "waiting_visual_id", f"{base}.waiting_visuals", issues, 32)
     routes = _unique_ids(scene.get("routes"), "route_id", f"{base}.routes", issues, 128)
+    handlers = _unique_ids(scene.get("event_handlers", []), "handler_id", f"{base}.event_handlers", issues, 16)
+    scene_timers = {key for key, value in event_bindings.items()
+                    if value.get("event_type") == "time.scene_elapsed"}
+    for binding_id in scene_timers:
+        if sum(handler.get("event_ref") == binding_id for handler in handlers.values()) != 1:
+            _issue(issues, "EVENT_HANDLER_REQUIRED", f"{base}.event_handlers",
+                   f"scene timer '{binding_id}' requires exactly one independent handler")
+    if set(routes) & set(handlers):
+        _issue(issues, "EVENT_HANDLER_ID_DUPLICATE", f"{base}.event_handlers",
+               "handler IDs must not duplicate route IDs")
     if len(render_models) != 1:
         _issue(issues, "SCENE_PLACEMENT_INVALID", f"{base}.render_models", "STATE_SCENE must declare exactly one placement render model")
 
@@ -3474,17 +3533,23 @@ def _check_scene(
             _issue(issues, "WAIT_VISUAL_UNKNOWN", f"{path}.waiting_visual_ref", "waiting visual does not exist")
         _check_state_placement_overrides(state, path, placement_elements, frame_lookup, issues)
 
-    for route_id, route in routes.items():
-        path = f"{base}.routes[{route_id}]"
+    for route_id, route in [*routes.items(), *handlers.items()]:
+        independent = route_id in handlers
+        path = f"{base}.{'event_handlers' if independent else 'routes'}[{route_id}]"
         target_elements: dict[str, dict[str, Any]] = {}
-        required = {"route_id", "from_states", "guards", "actions"}
+        required = ({"handler_id", "event_ref", "guards", "actions"} if independent
+                    else {"route_id", "from_states", "guards", "actions"})
         allowed = required | {
-            "action_ref",
             "event_ref",
             "target_state",
             "target_scene",
         }
+        if not independent:
+            allowed.add("action_ref")
         _check_keys(route, required, path, issues, allowed)
+        if independent != (route.get("event_ref") in scene_timers):
+            _issue(issues, "EVENT_HANDLER_SCOPE_INVALID", path,
+                   "scene timers require independent handlers; state/input events require routes")
         has_action_ref = "action_ref" in route
         has_event_ref = "event_ref" in route
         if has_action_ref == has_event_ref:
@@ -3509,7 +3574,9 @@ def _check_scene(
                 "event binding does not exist",
             )
         from_states = route.get("from_states")
-        if not isinstance(from_states, list) or not from_states:
+        if independent:
+            pass
+        elif not isinstance(from_states, list) or not from_states:
             _issue(issues, "ROUTE_SOURCE_MISSING", f"{path}.from_states", "must contain at least one state")
         else:
             for index, state_ref in enumerate(from_states):
@@ -3517,7 +3584,7 @@ def _check_scene(
                     _issue(issues, "GRAPH_STATE_UNKNOWN", f"{path}.from_states[{index}]", f"unknown state '{state_ref}'")
         has_target_state = "target_state" in route
         has_target_scene = "target_scene" in route
-        if has_target_state == has_target_scene:
+        if (has_target_state and has_target_scene) or (not independent and not (has_target_state or has_target_scene)):
             _issue(
                 issues,
                 "GRAPH_TRANSITION_TARGET_INVALID",
@@ -3586,6 +3653,11 @@ def _check_scene(
                         _issue(issues, "ACTION_TYPE_INVALID", f"{action_path}.value", "must be an integer")
                 elif kind == "request_render":
                     _check_keys(action, {"kind"}, action_path, issues)
+                elif kind in {"start_timer", "restart_timer", "cancel_timer"}:
+                    _check_keys(action, {"kind", "timer_ref"}, action_path, issues)
+                    if action.get("timer_ref") not in scene_timers:
+                        _issue(issues, "ACTION_TIMER_UNKNOWN", f"{action_path}.timer_ref",
+                               "must reference a scene timer in this scene")
                 elif kind == "play_sfx":
                     _check_keys(action, {"kind", "cue_ref"}, action_path, issues)
                     cue_ref = action.get("cue_ref")
@@ -4182,7 +4254,7 @@ def load_project(project_root: str | Path) -> ProjectBundle:
                         f"unknown state '{state_id}'",
                     )
     for scene, source in zip(scenes, loaded_scene_sources):
-        for route in scene.get("routes", []):
+        for route in [*scene.get("routes", []), *scene.get("event_handlers", [])]:
             if not isinstance(route, dict) or "target_scene" not in route:
                 continue
             target_scene = route.get("target_scene")
@@ -4190,7 +4262,7 @@ def load_project(project_root: str | Path) -> ProjectBundle:
                 _issue(
                     issues,
                     "SCENE_TRANSITION_TARGET_UNKNOWN",
-                    f"scene[{source}].routes[{route.get('route_id')}].target_scene",
+                    f"scene[{source}].{'event_handlers' if 'handler_id' in route else 'routes'}[{route.get('handler_id', route.get('route_id'))}].target_scene",
                     f"unknown scene '{target_scene}'",
                 )
     interaction_modes = {
@@ -4273,6 +4345,8 @@ def apply_project_commands(
             applied.append(_apply_event_binding_upsert(scenes, command))
         elif kind == "event_binding.delete":
             applied.append(_apply_event_binding_delete(scenes, command))
+        elif kind in {"event_handler.add", "event_handler.update", "event_handler.delete"}:
+            applied.append(_apply_event_handler_command(scenes, command))
         elif kind == "route.add":
             applied.append(_apply_route_add(scenes, command))
         elif kind == "route.delete":

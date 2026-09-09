@@ -723,7 +723,7 @@ def _parse_graph(
     values = GRAPH_HEADER.unpack_from(payload)
     graph_version = values[1]
     _require(
-        values[0] == b"STG1" and graph_version in {1, 2, 3, 4, 5} and values[2] == GRAPH_HEADER.size,
+        values[0] == b"STG1" and graph_version in {1, 2, 3, 4, 5, 6} and values[2] == GRAPH_HEADER.size,
         "unsupported state graph",
     )
     route_record = ROUTE_RECORD_V1 if graph_version == 1 else ROUTE_RECORD_V2
@@ -828,16 +828,18 @@ def _parse_graph(
         elif event_class == 2:
             _require(
                 graph_version >= 5
-                and logical_event == 1
-                and logical_source == 0
-                and parameter > 0,
+                and ((logical_event == 1 and logical_source == 0)
+                     or (graph_version >= 6 and logical_event == 2 and logical_source in {0, 1}))
+                and 10 <= parameter <= 86400000,
                 "state timer event is invalid",
             )
             event_bindings.append(
                 {
                     "binding_id": binding_id,
-                    "event_type": "time.state_entry_elapsed",
-                    "configuration": {"delay_ms": parameter},
+                    "event_type": "time.scene_elapsed" if logical_event == 2 else "time.state_entry_elapsed",
+                    "configuration": ({"delay_ms": parameter,
+                                       "start_policy": "action" if logical_source else "scene_entry"}
+                                      if logical_event == 2 else {"delay_ms": parameter}),
                     "binding_index": index,
                 }
             )
@@ -880,10 +882,16 @@ def _parse_graph(
             _require(
                 record[1] < binding_count
                 and ((target_state < state_count and target_scene == 0xFFFF)
-                     or (target_state == 0xFFFF and target_scene < len(strings))),
+                     or (target_state == 0xFFFF and target_scene < len(strings))
+                     or (graph_version >= 6 and record[5] == 0
+                         and target_state == 0xFFFF and target_scene == 0xFFFF)),
                 "route action or target is invalid",
             )
             range_offset = 4
+        independent = record[range_offset + 1] == 0
+        scene_timer = bindings[record[1]]["event_class"] == 2 and bindings[record[1]]["event_kind"] == 2
+        _require(independent == (graph_version >= 6 and scene_timer),
+                 "scene timer requires an independent handler")
         _require(record[range_offset] + record[range_offset + 1] <= source_count, "route source range is invalid")
         _require(record[range_offset + 2] + record[range_offset + 3] <= guard_count, "route guard range is invalid")
         _require(record[range_offset + 4] + record[range_offset + 5] <= operation_count, "route operation range is invalid")
@@ -1006,6 +1014,15 @@ def _parse_graph(
                 "exit-to-shell operation is invalid",
             )
             operations.append({"kind": record[0]})
+        elif record[0] in {9, 10, 11}:
+            _require(
+                graph_version >= 6 and record[1] == 0 and record[2] < binding_count
+                and bindings[record[2]]["event_class"] == 2
+                and bindings[record[2]]["event_kind"] == 2
+                and record[3:] == (0, 0, 0),
+                "timer operation is invalid",
+            )
+            operations.append({"kind": record[0], "binding_index": record[2]})
         else:
             raise EggFormatError("operation record is invalid")
     routes: list[dict[str, object]] = []
@@ -1029,6 +1046,9 @@ def _parse_graph(
                 all(int(operation["kind"]) == 7 for operation in route_operations),
                 "direct scene replacement operation is invalid",
             )
+        elif target_state_index is None:
+            _require(not any(int(op["kind"]) in {3, 4, 5, 6} for op in route_operations),
+                     "element actions require an explicit target state")
         routes.append(
             {
                 "route_id": _string(strings, record[0], "route ID"),
@@ -1044,6 +1064,10 @@ def _parse_graph(
                 "operations": route_operations,
             }
         )
+    for binding_index, binding in enumerate(bindings):
+        if binding["event_class"] == 2 and binding["event_kind"] == 2:
+            _require(sum(route["action_index"] == binding_index for route in routes) == 1,
+                     "scene timer requires exactly one handler")
     event_refs = struct.unpack_from(f"<{event_count}H", payload, offsets[7]) if event_count else ()
     meaningful_refs = struct.unpack_from(f"<{meaningful_count}H", payload, offsets[8]) if meaningful_count else ()
     _require(all(ref < binding_count for ref in event_refs), "policy event-binding index is invalid")

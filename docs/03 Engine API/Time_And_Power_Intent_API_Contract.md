@@ -177,23 +177,42 @@ lifetime from whichever state handles the event.
 
 ### Implementation status and next increment
 
-The current executable STATE subset implements only
-`time.state_entry_elapsed`, with one `delay_ms` and state-transition routing.
-The broader model below is agreed contract direction. Scene-owned timers,
-independent expiry handlers, explicit timer actions, instance-owned timers,
-and package-session timers are not exposed by that implementation yet.
+The executable STATE subset supports `time.state_entry_elapsed` with
+state-transition routing, and `time.scene_elapsed` with an independent
+`event_handlers` entry. Scene timers declare `delay_ms` and `start_policy`
+(`scene_entry` by default, or `action`); `start_timer`, `restart_timer`, and
+`cancel_timer` reference the declared scene binding through `timer_ref`.
+Scene timers and handlers use STG1 v6; existing state-entry eggs retain v5.
+The shared target profile advertises both as `available_pending_validation`.
+No Peep Studio GUI controls are added by this implementation.
 
-The next increment is scene-owned one-shot timers and independent event
-handlers, retaining the existing state-entry binding and its behavior.
 Instance and package-session ownership follow through the same model. Repeating
 timers and reset-persistent scheduling are separate increments; their presence
 in the wider contract does not imply current executable support.
 
 Target profiles and executable schemas must advertise only supported forms.
 Existing state-entry bindings must not silently become scene-owned timers.
-The current RAM-injection test has not yet proved timer expiry through STOP2:
-the reported run discovered the binding but recorded zero due, dispatch, and
-applied events. A cancelled state timer is not expiry or RTC-wake evidence.
+Host tests cover the production C scheduler/runtime and shared compiler,
+parser, and preview. On-target expiry through STOP2 remains unverified: the
+earlier state-entry injection discovered a binding but recorded zero due,
+dispatch, and applied events. A cancelled state timer is not expiry evidence.
+
+`__fw0_scene_timer_test_enable.gdb` injects a scene timer and action-only
+private counter increment into the current scene in RAM. After resuming,
+wake the device and change selections within that scene, then leave it idle
+and print with `__fw0_scene_timer_test_prints.gdb` after at least seven seconds.
+No screen cue is expected. Counter=1 proves the handler ran; state activations
+show intervening transitions; an RTC selection shows scheduling, not a power
+measurement. Scene replacement cancels this test, and reset/reload discards
+it without modifying the installed egg. Do not pause during audio playback.
+
+The scheduler selects due bindings directly from bounded live slots, rather
+than queuing binding-specific expiries. Start preserves an active/due slot;
+Restart replaces its deadline; Cancel removes it before the next selection.
+Scene/state activation identities, separate from rendering revisions, control
+owner invalidation. Generic RTC wake commands only request reevaluation of
+these live slots. Relative remaining durations pause on package suspension;
+physical sleep uses the existing shared RTC prepare/restore path.
 
 ### Timer declaration and ownership
 

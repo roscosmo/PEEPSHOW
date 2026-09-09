@@ -387,7 +387,8 @@ class AuthoringServiceTests(unittest.TestCase):
             result["state_scene_presentation"]["system_actions"],
         )
         graph = result["state_scene_graph"]
-        self.assertEqual(5, graph["compiled_format_version"])
+        self.assertEqual(6, graph["compiled_format_version"])
+        self.assertEqual("event_handlers", graph["scene_timers"]["handler_collection"])
         self.assertIn("event_binding.add", graph["event_binding_commands"])
         self.assertIn("route.set_event_ref", graph["route_commands"])
         self.assertEqual(64, graph["command_batch_maximum"])
