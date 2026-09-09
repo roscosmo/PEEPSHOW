@@ -158,13 +158,29 @@ Python derives a collision-safe scene ID and relative source path from its
 display name. The scene starts with one entry state and no fabricated inputs or
 routes; `project.save` creates its new scene source file.
 
+API 40 adds explicit native scene-object creation. Both `project.create` params
+and the `scene.add` command accept `scene_schema_version: 2`. Omission defaults
+to V1, even inside a V2 project; scenes do not inherit a version. The project
+manifest remains V1. A native V2 scene has an empty object list and one `start`
+state with empty overrides, without legacy waiting/render records or migration.
+These are valid editable drafts, not export-ready packages.
+
+Discover creation through `service.hello.scene_creation`. For V2 state editing,
+use the advertised `state_management_commands` in `scene_object_authoring` and
+per-scene capabilities: create/add/delete/rename states, select the entry state,
+and edit node/entry layout. `project.set_entry_scene` also accepts V2 scenes.
+New states have empty overrides; deleting a state does not delete scene objects.
+Entry, last and referenced states cannot be deleted. V2 graph construction and
+scene connections remain unavailable. Existing object editing, bounded undo/redo,
+draft preview, save/reload and separate `build_issues` are retained.
+
 The build operation returns the exact existing compiler output as base64 package
 bytes, package metadata, and the matching deterministic compatibility report.
 It does not choose a destination or write an installable file. The V1 report
 marks the current HW6 development profile as `pending_validation` and
 `dev_only`; it does not claim shipping authority before target-profile closure.
 
-Service API version 39 exposes the selected HW6 profile and its deterministic
+Service API version 40 exposes the selected HW6 profile and its deterministic
 hash in `service.hello`, and provides deterministic selected-STATE-scene preview,
 direct STATE-to-STATE replacement, and a `state_scene_presentation` capability
 block in `service.hello`. A
@@ -189,7 +205,7 @@ new executable package decoder. Any project containing version-2 scenes reports
 works, but egg export and firmware support remain unavailable. Legacy projects
 are not implicitly migrated. Exact command fields, limitations and GUI handoff:
 `docs/11 Development Tools/Peep_Studio_Scene_Object_Ownership_Handoff.md`,
-Connected Host Increment (API 39).
+Connected Host Increment (API 39) and Native Creation and States (API 40).
 
 The canonical HW6 development limits live in
 `peepshow_authoring/target_profiles/hw6_fw0_development.json`. After changing

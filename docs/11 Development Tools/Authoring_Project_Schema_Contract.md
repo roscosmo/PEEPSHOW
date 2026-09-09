@@ -1615,6 +1615,38 @@ Rules:
 
 ---
 
+## Native Scene Creation and State Management
+
+Service API 40 supports explicit `scene_schema_version: 2` on `project.create`
+parameters and `scene.add` commands. Omission means V1, not inheritance from the
+entry scene. Values must be integer 1 or 2; invalid values do not modify the
+active project or create files. This selects the scene source model; the project
+manifest schema version remains 1. It never invokes migration.
+
+A new V2 scene has no objects, inputs, routes, variables or exits and one `start`
+entry state with `object_overrides: []`. It has no legacy render models or
+waiting records. Empty scenes remain editable/previewable drafts; V2 executable
+export remains blocked independently through `build_issues`.
+
+V2 supports `state.create`, `state.add`, `state.delete`, `state.rename`,
+`state.set_entry`, `editor.state_graph.set_node_position` and
+`editor.state_graph.set_entry_layout`. Generated states start with empty overrides,
+not copies of the entry state's properties. Explicit `state.add` takes a V2 state
+record and validates its sparse overrides. Deletion refuses the last or entry
+state, or any state referenced by a route or independent event handler; deleting
+an unreferenced state removes its overrides/layout but retains scene objects.
+`project.set_entry_scene` accepts either scene model.
+
+All edits use the existing revision-checked, atomic command batches and undo/redo;
+`scene.add` source files are written only on save. GUI must discover
+`service.hello.scene_creation` and per-scene `supported_commands` and
+`state_management_commands`. V2 `graph_construction_commands` remains false:
+layout/entry selection does not authorize route/trigger/variable construction
+or scene-exit wiring. Exact payloads are in
+[[Peep_Studio_Scene_Object_Ownership_Handoff]].
+
+---
+
 ## Technology Guidance
 
 The schema remains independent of the GUI framework. The accepted V1 process,

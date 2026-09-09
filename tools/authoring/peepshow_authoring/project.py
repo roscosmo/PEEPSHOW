@@ -268,8 +268,9 @@ def _apply_scene_add(
     _require_command_fields(
         command,
         {"kind", "display_name"},
-        {"kind", "display_name", "command_id"},
+        {"kind", "display_name", "scene_schema_version", "command_id"},
     )
+    scene_schema_version = _scene_schema_version(command.get("scene_schema_version", 1))
     display_name = command.get("display_name")
     issues: list[ValidationIssue] = []
     _text(display_name, "command.display_name", issues)
@@ -309,6 +310,7 @@ def _apply_scene_add(
         scene_id,
         str(display_name),
         interaction_template=interaction_template,
+        scene_schema_version=scene_schema_version,
     )
     scenes.append(scene)
     scene_sources.append(source)
@@ -432,36 +434,28 @@ def _apply_state_create(
         state_id = f"{base_id}_{suffix}"
         suffix += 1
 
-    waiting_visual_ids = [
-        waiting.get("waiting_visual_id")
-        for waiting in scene.get("waiting_visuals", [])
-        if isinstance(waiting, dict) and isinstance(waiting.get("waiting_visual_id"), str)
-    ]
-    entry_state_id = scene.get("entry_state")
-    entry_state = next(
-        (
-            state
-            for state in states
-            if isinstance(state, dict) and state.get("state_id") == entry_state_id
-        ),
-        None,
-    )
-    waiting_visual_ref = entry_state.get("waiting_visual_ref") if isinstance(entry_state, dict) else None
-    if waiting_visual_ref not in waiting_visual_ids:
-        waiting_visual_ref = waiting_visual_ids[0] if waiting_visual_ids else None
-    if waiting_visual_ref is None:
-        raise ProjectCommandError(
-            "COMMAND_TARGET_UNKNOWN",
-            "scene has no waiting presentation for a new state",
-        )
-
     x = _layout_coordinate(command.get("x"), "command.x")
     y = _layout_coordinate(command.get("y"), "command.y")
-    state = {
-        "state_id": state_id,
-        "display_name": display_name,
-        "waiting_visual_ref": waiting_visual_ref,
-    }
+    state = {"state_id": state_id, "display_name": display_name}
+    if scene.get("schema_version") == 2:
+        state["object_overrides"] = []
+    else:
+        waiting_visual_ids = [
+            waiting.get("waiting_visual_id")
+            for waiting in scene.get("waiting_visuals", [])
+            if isinstance(waiting, dict) and isinstance(waiting.get("waiting_visual_id"), str)
+        ]
+        entry_state_id = scene.get("entry_state")
+        entry_state = next(
+            (state for state in states if isinstance(state, dict) and state.get("state_id") == entry_state_id),
+            None,
+        )
+        waiting_visual_ref = entry_state.get("waiting_visual_ref") if isinstance(entry_state, dict) else None
+        if waiting_visual_ref not in waiting_visual_ids:
+            waiting_visual_ref = waiting_visual_ids[0] if waiting_visual_ids else None
+        if waiting_visual_ref is None:
+            raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", "scene has no waiting presentation for a new state")
+        state["waiting_visual_ref"] = waiting_visual_ref
     added = _apply_state_add(
         scenes,
         {"kind": "state.add", "scene_id": scene.get("scene_id"), "state": state},
@@ -510,6 +504,10 @@ def _apply_state_delete(
         raise ProjectCommandError("COMMAND_TARGET_IN_USE", "the last state cannot be deleted")
     if scene.get("entry_state") == state_id:
         raise ProjectCommandError("COMMAND_TARGET_IN_USE", "entry state must be changed before deletion")
+    if scene.get("schema_version") == 2:
+        for handler in scene.get("event_handlers", []):
+            if isinstance(handler, dict) and handler.get("target_state") == state_id:
+                raise ProjectCommandError("COMMAND_TARGET_IN_USE", f"state '{state_id}' is referenced by handler '{handler.get('handler_id')}'")
     for route in scene.get("routes", []):
         if not isinstance(route, dict):
             continue
@@ -6144,11 +6142,18 @@ def _new_project_slug(project_name: str) -> str:
     return slug[:48].rstrip("_")
 
 
+def _scene_schema_version(value: Any) -> int:
+    if type(value) is not int or value not in (1, 2):
+        raise ProjectCommandError("SCENE_SCHEMA_VERSION_UNSUPPORTED", "scene_schema_version must be integer 1 or 2")
+    return value
+
+
 def _new_state_scene(
     scene_id: str,
     display_name: str,
     *,
     interaction_template: dict[str, Any] | None = None,
+    scene_schema_version: int = 1,
 ) -> dict[str, Any]:
     input_actions: list[dict[str, Any]] = []
     routes: list[dict[str, Any]] = []
@@ -6174,9 +6179,9 @@ def _new_state_scene(
         if "bounded_deferrals" in interaction_template:
             interaction_policy["bounded_deferrals"] = []
 
-    return {
+    scene = {
         "schema_id": "peepshow.authoring.state_scene",
-        "schema_version": 1,
+        "schema_version": _scene_schema_version(scene_schema_version),
         "scene_id": scene_id,
         "display_name": display_name,
         "scene_type": "STATE_SCENE",
@@ -6184,6 +6189,20 @@ def _new_state_scene(
         "variables": [],
         "input_actions": input_actions,
         "scene_exits": [],
+        "routes": routes,
+        "reactive_wait_default": {
+            "policy_id": f"{scene_id}_wait_policy",
+            "hold_fallback_allowed": True,
+            "event_interests": event_interests,
+        },
+        "interaction_policy": interaction_policy,
+    }
+    if scene_schema_version == 2:
+        scene["objects"] = []
+        scene["states"] = [{"state_id": "start", "display_name": "Start", "object_overrides": []}]
+        return scene
+
+    scene.update({
         "states": [
             {
                 "state_id": "start",
@@ -6191,7 +6210,6 @@ def _new_state_scene(
                 "waiting_visual_ref": "static_wait",
             }
         ],
-        "routes": routes,
         "render_models": [
             {
                 "visual_id": "scene_placement",
@@ -6210,17 +6228,13 @@ def _new_state_scene(
                 "elements": [],
             }
         ],
-        "reactive_wait_default": {
-            "policy_id": f"{scene_id}_wait_policy",
-            "waiting_visual_ref": "static_wait",
-            "hold_fallback_allowed": True,
-            "event_interests": event_interests,
-        },
-        "interaction_policy": interaction_policy,
-    }
+    })
+    scene["reactive_wait_default"]["waiting_visual_ref"] = "static_wait"
+    return scene
 
 
-def create_project(project_root: str | Path) -> ProjectBundle:
+def create_project(project_root: str | Path, *, scene_schema_version: int = 1) -> ProjectBundle:
+    scene_schema_version = _scene_schema_version(scene_schema_version)
     root = Path(project_root)
     if not root.is_absolute():
         raise ProjectCommandError("PROJECT_PATH_INVALID", "new project path must be absolute")
@@ -6266,7 +6280,7 @@ def create_project(project_root: str | Path) -> ProjectBundle:
             "ruleset_version": 1,
         },
     }
-    scene = _new_state_scene("main", "Main")
+    scene = _new_state_scene("main", "Main", scene_schema_version=scene_schema_version)
 
     staging_root = root.with_name(f".{root.stem}.creating.peepproj")
     if staging_root.exists():
