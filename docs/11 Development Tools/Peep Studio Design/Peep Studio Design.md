@@ -67,10 +67,18 @@ authoring capability until those contracts and the Python service support it.
   second workspace-style container.
 - Physical controls sit below the display, with the joystick on the left, Start
   between the joystick and face/shoulder controls, and L/R/A/B on the right.
+- The joystick uses four peach circular direction buttons without a neutral
+  placeholder. Tilted peach L/R ovals sit above the B/A circles, in that order.
+- Scene and state names sit beneath Start in the middle column. Transport uses
+  circular icon controls; the collapse affordance is at the top left.
 - Scene and active-state identity belong to the emulator assembly.
 - The emulator may collapse to a display-only form. Collapsing hides its
   transport and physical controls without changing preview state or package
   behavior.
+- Collapse is presentation-only: a running emulator continues advancing timers,
+  animation, audio, and state transitions. A paused emulator remains paused.
+  The same canvas stays mounted at the same size. Expanding does not reset the
+  session or change editor selection; runtime graph highlighting remains live.
 - Placement of the complete emulator within the application shell remains open
   until the general Peep Studio layout is drawn and approved.
 
@@ -86,7 +94,9 @@ authoring capability until those contracts and the Python service support it.
 
 - **Implemented:** Package Entry, Scene Flow cards and references, Local Logic
   scene-boundary nodes, the shared transition-line visual language, and the
-  persistent scene-rooted project hierarchy across all workspaces.
+  persistent scene-rooted project hierarchy across all workspaces. The emulator
+  now follows the board's internal control layout and supports display-only
+  collapse without changing execution.
 - **Current bring-up:** stabilize save/preview/animation behavior, complete the
   blank-project authoring acceptance path, then refine Placement tools, Assets,
   and Scene Flow routing in the order recorded by the UX direction.

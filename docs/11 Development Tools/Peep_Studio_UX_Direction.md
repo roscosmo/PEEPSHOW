@@ -538,9 +538,17 @@ the shared scoring weights rather than introduce per-example route behavior.
 
 ### 5. Workspace Density
 
-- Add an emulator collapse control that switches between the complete emulator
+- Implemented: an emulator collapse control switches between the complete emulator
   and a display-only form. The display size and current preview are retained;
   transport and physical controls are hidden rather than destroyed.
+- Its internal layout follows the canonical board: circular transport controls
+  above a flush display; joystick left, Start and scene/state identity in the
+  middle, tilted L/R buttons above B/A on the right. Reserved placeholders and
+  the inactive neutral joystick control are not rendered.
+- Collapse never changes playback state, preview session, audio handling, or
+  editor selection. Timers and state transitions continue while playing, the
+  framebuffer and runtime highlights continue updating, and expanding does not
+  restart playback. The display retains its 168:144 aspect ratio and dimensions.
 - Continue the general shell layout only after the living Excalidraw board
   defines the remaining workspace proportions and empty-space treatment.
 

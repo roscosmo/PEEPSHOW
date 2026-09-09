@@ -1,8 +1,6 @@
 import {
   AlertTriangle,
   ArrowDown,
-  ArrowLeft,
-  ArrowRight,
   ArrowUp,
   Box,
   Check,
@@ -31,7 +29,6 @@ import {
   Redo2,
   Save,
   SaveAll,
-  StepForward,
   SquareMousePointer,
   Trash2,
   Type,
@@ -41,6 +38,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { FramebufferCanvas, FramePreviewCanvas } from "./FramebufferCanvas";
+import { EmulatorPanel } from "./EmulatorPanel";
 import {
   lineDirectionFromPoints,
   normalizePrimitiveBounds,
@@ -85,20 +83,6 @@ import type {
   ServiceHello,
 } from "./types";
 import type { RenderElement, RenderModel, StateRecord, StateVariable } from "./types";
-
-const INPUTS = [
-  { source: "BUTTON_L", label: "L", icon: Circle },
-  { source: "BUTTON_R", label: "R", icon: Circle },
-  { source: "BUTTON_A", label: "A", icon: Circle },
-  { source: "BUTTON_B", label: "B", icon: Circle },
-] as const;
-
-const JOYSTICK_INPUTS = [
-  { source: "JOY_UP", label: "Up", icon: ArrowUp, className: "joy-up" },
-  { source: "JOY_LEFT", label: "Left", icon: ArrowLeft, className: "joy-left" },
-  { source: "JOY_RIGHT", label: "Right", icon: ArrowRight, className: "joy-right" },
-  { source: "JOY_DOWN", label: "Down", icon: ArrowDown, className: "joy-down" },
-] as const;
 
 const PLACEMENT_PRIMITIVES = [
   { kind: "line", label: "Line" },
@@ -2937,40 +2921,6 @@ export default function App() {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop);
   };
-  const renderInputControls = () => (
-    <div className="input-controls">
-      <div className="input-control-group">
-        <span className="input-group-label">Joystick</span>
-        <div className="joystick-pad" aria-label="Joystick cardinal inputs">
-          {JOYSTICK_INPUTS.map(({ source, label, icon: Icon, className }) => (
-            <button key={source} className={`joystick-button ${className}`} onClick={() => void sendInput(source)} disabled={preview === null} title={`Send ${source}`}>
-              <Icon size={15} aria-hidden="true" />
-              <span>{label}</span>
-            </button>
-          ))}
-          <button className="joystick-nub" type="button" disabled title="Analog joystick preview is reserved for PROGRAM scenes" aria-label="Analog joystick preview reserved for PROGRAM scenes" />
-        </div>
-      </div>
-      <div className="input-control-group start-control-group">
-        <span className="input-group-label">Start</span>
-        <button className="input-button start-button" onClick={() => void sendInput("BUTTON_START")} disabled={preview === null} title="Send BUTTON_START">
-          <Circle size={13} aria-hidden="true" />
-          Start
-        </button>
-      </div>
-      <div className="input-control-group">
-        <span className="input-group-label">Buttons</span>
-        <div className="trigger-buttons" aria-label="Trigger buttons">
-          {INPUTS.map(({ source, label, icon: Icon }) => (
-            <button key={source} className="input-button" onClick={() => void sendInput(source)} disabled={preview === null} title={`Send ${source}`}>
-              <Icon size={13} aria-hidden="true" />
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
   const placementDraftKey = (renderModelId: string, elementId: string) => `${renderModelId}:${elementId}`;
   const handlePlacementKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (placementRenderModel === null || selectedPlacementRenderElement === null || busy !== null) {
@@ -3302,47 +3252,22 @@ export default function App() {
             : `No ${placementState === null ? "Base Placement" : "selected state"} preview available.`
         );
     return (
-    <section className={`preview-pane ${variant === "placement" ? "preview-pane-large" : "preview-pane-compact"}`}>
-        {variant === "project" && (
-          <div className="preview-heading emulator-heading">
-            <div className="preview-title">
-              <span className="section-kicker">State</span>
-              <h2>{preview?.scene.display_name ?? "State preview"}</h2>
-            </div>
-            <div className="playback-controls" aria-label="Preview playback">
-              <button
-                className="icon-button"
-                onClick={() => {
-                  const target = previewStartRef.current;
-                  if (target !== null) {
-                    void startPreview(target.sceneId, { stateId: target.stateId, updateSelection: false });
-                  } else if (selectedScene !== null) {
-                    void startPreview(selectedScene, { updateSelection: false });
-                  }
-                }}
-                disabled={preview === null}
-                title="Reset preview"
-              >
-                <RotateCcw size={18} aria-hidden="true" />
-              </button>
-              <button className="icon-button transport-play" onClick={() => setPlaying((value) => !value)} disabled={preview === null} title={playing ? "Pause preview" : "Play preview"}>
-                {playing ? <Pause size={19} aria-hidden="true" /> : <Play size={19} aria-hidden="true" />}
-              </button>
-              <button className="icon-button" onClick={() => void advancePreview(250)} disabled={preview === null} title="Advance 250 ms">
-                <StepForward size={18} aria-hidden="true" />
-              </button>
-            </div>
-            {preview !== null ? (
-              <div className="timeline-readout">
-                <span>Step {preview.timeline.step_index + 1}/{preview.timeline.step_count}</span>
-                <strong>{preview.timeline.elapsed_ms} ms</strong>
-              </div>
-            ) : (
-              <div className="timeline-readout timeline-readout-empty" aria-hidden="true" />
-            )}
-          </div>
-        )}
-
+      variant === "project" ? <EmulatorPanel
+        preview={preview}
+        sceneName={scenes.find((scene) => scene.scene_id === preview?.scene.scene_id)?.display_name ?? "No active scene"}
+        playing={playing}
+        onReset={() => {
+          const target = previewStartRef.current;
+          if (target !== null) {
+            void startPreview(target.sceneId, { stateId: target.stateId, updateSelection: false });
+          } else if (selectedScene !== null) {
+            void startPreview(selectedScene, { updateSelection: false });
+          }
+        }}
+        onTogglePlaying={() => setPlaying((value) => !value)}
+        onAdvance={() => void advancePreview(250)}
+        onInput={(source) => void sendInput(source)}
+      /> : <section className="preview-pane preview-pane-large">
         <div className="display-stage">
           {variant === "placement" && renderPlacementToolPalette()}
           {variant === "placement" && spritePickerOpen && renderSpritePicker()}
@@ -3471,7 +3396,6 @@ export default function App() {
         </div>
       </div>
 
-      {variant === "project" && <div className="transport-bar">{renderInputControls()}</div>}
     </section>
     );
   };
