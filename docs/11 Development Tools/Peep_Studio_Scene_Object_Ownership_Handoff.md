@@ -1,8 +1,8 @@
 # Peep Studio Scene Object Ownership Handoff
 
-Status: shared baseline committed; GUI representation review accepted;
-development-only object/migration primitives host-tested. Service, full scene
-schema, executable and firmware integration remain pending.
+Status: GUI representation review accepted; full source envelope, migration/edit
+transactions and host preview connected in API 39. Executable encoding,
+firmware and autonomous display integration remain pending.
 
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. This handoff coordinates
 work; it does not allocate executable schema fields, capability IDs, or opcodes.
@@ -203,9 +203,8 @@ overrides clear individual axes; mixed-scene service operations must check model
 and command capabilities. Authored clip binding must not create private state
 waiting records and is distinct from deferred runtime clip assignment.
 
-Development source fields/operations are implemented only in the isolated object
-module and fragment schema. There are no newly available service commands,
-capabilities or numeric wire IDs. The first increment does not include groups,
+Source fields/operations are now connected to the host service as described
+below. No numeric executable wire IDs are allocated. The first increment does not include groups,
 prefabs or runtime playback-control commands. GUI enables editing based on
 delivered per-model capabilities, never the service API number alone. Preserve
 undo/redo and reference-safe asset edits along with existing draft/build behavior.
@@ -236,10 +235,10 @@ On top of main `abe38bc` (executable design checkpoint):
 - No firmware, compiler, service, preview, examples or workbench changed.
   No full ARM build or hardware test was needed/performed for this host-only work.
 
-These pure-function tests do not complete O01-O10, integrate a real scene timer,
-or prove preview/LPBAM scheduling. Production source loading/save/preview and
-transactional migration service commands are next, followed by binary/firmware
-integration and the recorded device acceptance cases. Existing example projects
+Those foundation tests alone did not complete O01-O10, integrate a real scene
+timer, or prove preview/LPBAM scheduling. The connected host increment below
+supersedes the source-loader/service limitations of that checkpoint. Binary/firmware
+integration and device acceptance remain next. Existing example projects
 stay legacy fixtures until that path is complete; no additional GUI design
 approval is required to start the directly scoped next implementation work.
 
@@ -247,5 +246,144 @@ Record host tests and device results separately. A preview phase-continuity pass
 does not prove autonomous playback or STOP2 behavior. Validate failed builds,
 legacy packages, and unsupported-capability errors as well as the happy path.
 Concrete acceptance cases are in [[Scene_Object_Ownership_Acceptance_Plan]],
-under the ownership contract. Only the development host evidence above is
-claimed here; no end-to-end scene-object or hardware pass is claimed.
+under the ownership contract. No firmware scene-object or hardware pass is claimed.
+
+### Connected Host Increment (API 39)
+
+Built on main `aaad7c8` (the isolated foundation checkpoint). This increment
+changes shared Python/source schema/docs only, not firmware, GUI UI, examples
+or workbench content. It preserves legacy-only egg generation and the API 38
+editing workflow. Existing projects are never migrated on open/save.
+
+Implemented:
+- Full source envelope `schemas/authoring/state-scene-v2.schema.json`, reusing
+  object definitions and common graph schema definitions. Python performs
+  reference, geometry, action and graph validation. Root/fragment structural
+  parity is tested; a general JSON Schema validator was not added or run.
+- Explicit migration preview/apply with project revision and source-content
+  checks. Scene plus newly created immutable clips are one undoable in-memory
+  edit. Undo/redo and save/reload preserve IDs, clips and mixed-version scenes.
+- Object commands through `project.apply_commands`; the entire batch is
+  rejected unchanged if any command or final reference validation fails.
+- Host preview retains the existing input/guard/timer executor and rasterizer,
+  with underlying object state, temporary masks and scene-active clip time.
+  It exposes per-object phase and remaining interval. Scene changes recreate
+  objects; state changes do not. Explicit scene suspension pauses playback.
+- `build_issues` reports `SCENE_OBJECT_EXECUTABLE_UNAVAILABLE` for version 2.
+  Strict build/export refuses any package containing such a scene, including
+  mixed projects. This is an editable/previewable draft, not device support.
+
+The host graph adapter temporarily represents common graph/render fields in
+legacy-shaped records, then restores symbolic object actions before execution.
+Those records are not a version-2 executable format or a semantic migration
+back to legacy. Preview responses label it `host_scene_objects_not_firmware`.
+No wire layout, device admission, LPBAM scheduling or hardware pass is implied.
+
+### Studio Capability Checks
+
+`service.hello.scene_object_authoring` reports `status: host_available`, source
+version 2, execution model `scene_objects`, command names and axis conventions;
+`egg_export` and `firmware_available` are both false. This is separate from the
+unchanged device target profile. Do not enable a device/export option from it.
+`clip_loop_policies` currently contains only `loop`; runtime playback controls
+and version-2 graph-construction commands are explicitly unavailable.
+
+Project document results (including normalization) expose `scene_capabilities[scene_id]`: source version,
+execution model, host editing/preview, export-model availability,
+`supported_commands` and `legacy_command_catalog`. For version 1 the existing
+legacy catalog remains authoritative (`supported_commands: null`); for version
+2 only the explicit command list applies. Export-model availability for a legacy
+scene does not mean the whole project is build-ready; always use `build_issues`.
+
+Version-2 `placement_ownership[scene_id]` contains `objects`, per-state `changes`
+and `resolved_elements`, and `state_scoped_element_ids`. It is marked
+`derived_read_only: true`. Each override's `local_properties` distinguishes X
+and Y. These are entry-time derived values, not current preview playback.
+Live preview responses supply `objects` with `underlying`, `effective`, and
+`playback` (`animation_ref`, `phase_index`, `remaining_ms`). Their `timeline`
+reports scene elapsed time/ownership, not a fabricated shared waiting phase.
+
+Do not fabricate authoritative `render_models` or state waiting references for
+version 2. Studio must branch on the model and use the object commands; legacy
+placement/animation mutation commands targeting version 2 are rejected with
+`COMMAND_EXECUTION_MODEL_MISMATCH`.
+
+### Migration Operations
+
+Both operations require `project_revision`, `scene_id` and the boolean
+`accept_continuous_animation`. Preview returns `can_apply` and `plan` containing
+`source_revision`, candidate scene, new clip records, changes and issues.
+
+```json
+{"operation":"project.object_migration_preview","params":{"project_revision":1,"scene_id":"main","accept_continuous_animation":true}}
+```
+
+Application additionally requires that preview's `source_revision` string:
+
+```json
+{"operation":"project.object_migration_apply","params":{"project_revision":1,"scene_id":"main","accept_continuous_animation":true,"source_revision":"<plan.source_revision>"}}
+```
+
+These examples show operation/params only; use the normal protocol envelope.
+Application recomputes the plan rather than trusting edited candidate JSON.
+Unresolved migration issues block application. It updates memory, increments
+the project revision and invalidates preview; it does not write project files.
+Normal `project.save` persists the result using the existing per-file writes.
+Static migration can use `false`; animated migration requires the author's
+explicit acceptance of continuous scene playback starting at sequence step zero.
+
+### Object Command Payloads
+
+All commands below use `kind` and `scene_id`, and may include `command_id`.
+Submit them in the normal `project.apply_commands` batch with project revision.
+
+| Kind | Additional fields |
+|---|---|
+| `object.add` | Full `object` definition; optional `visible_in_states` array of distinct existing state IDs |
+| `object.delete` | `object_id`; removes overrides, but refuses while actions reference the object |
+| `object.set_defaults` | `object_id`, nonempty `properties` containing any of `x`, `y`, `visible`, `visual_ref` |
+| `object.bind_animation` | `object_id`, `animation_ref`; writes one authored clip reference, no state-private waiting records |
+| `object.clear_animation` | `object_id`; removes the authored clip reference |
+| `object_override.set` | `object_id`, `state_id`, nonempty sparse `properties` using `x`, `y`, `visible`, `visual_ref` |
+| `object_override.clear` | `object_id`, `state_id`, nonempty `properties` array of individual property names; `position` is invalid |
+| `object_actions.set` | `owner_kind: route` or `handler`, existing `owner_id`, complete ordered `actions` array |
+
+`visible_in_states` explicitly makes the object base-hidden, visible only in
+that exact state set. Omission leaves the supplied default visibility intact.
+An empty array means hidden in every state. Null is not a substitute for omission.
+
+Action records are distinct from edit commands: `object.set_position` with
+`object_ref` and X and/or Y; `object.move_by` with `object_ref` and dx and/or dy;
+`object.set_visibility` with `visible`; `object.set_frame` with `frame_ref`;
+`object.clear_frame` with no value. Relative writes use underlying coordinates,
+accumulate in order and clamp after each write. Positive dy is up; absolute Y
+is down. Static masks do not stop/restart the clip, and clearing reveals its
+current phase. These actions may coexist with supported variable/timer/SFX
+actions. Direct scene-replacement routes still permit only `play_sfx`.
+
+Existing `scene.rename`, `state.rename`, and `state.set_entry` also work for
+version 2. Other legacy scene/graph/placement commands are deliberately not
+advertised for version 2 yet. In mixed projects, catalog asset/animation/audio
+upsert/delete, `scene.add` (creates a legacy scene), and
+`project.set_entry_scene` remain allowed; final validation protects references
+from either model. No object ID rename, geometry-edit command, version-2 state
+creation/graph construction, groups or runtime playback controls are delivered
+in this increment. GUI can integrate the declared object subset, not infer a
+complete replacement for all existing editor tools. Keep examples legacy until
+executable support is delivered.
+
+### Host Verification
+
+The connected regression suite covers migration choices/staleness, one-step
+undo/redo including clip catalogs, save/reload, mixed-model rejection and batch
+rollback, exact visibility sets, individual-axis clearing, reference-safe edits,
+empty drafts, frame masks, hidden playback/suspension, scene recreation and
+filled primitive rasterization. A scene timer fires through the shared executor
+after a state change and changes an object without another state transition.
+State changes at 375 ms preserve the remaining 125 ms of a 250 ms clip frame.
+Late variable-action failure leaves earlier staged object writes uncommitted.
+
+Verification: 190 authoring tests passed, including existing native checks and
+18 connected scene-object integration tests. Target-profile generated-header
+check and `git diff --check` passed. No ARM build or hardware test was performed:
+the firmware is unchanged and cannot execute version-2 scenes yet.

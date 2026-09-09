@@ -1,19 +1,19 @@
 # Scene Object Executable Design
 
-Status: GUI representation review accepted with the clarifications below;
-development-only object source/migration primitives implemented. Full scene,
-service, executable and firmware integration remain unavailable.
+Status: GUI representation review accepted; source loading, migration/editing
+service and host scene-object preview implemented in service API 39. Executable
+encoding, firmware execution and autonomous display integration remain pending.
 
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. Tests:
 [[Scene_Object_Ownership_Acceptance_Plan]]. Coordination:
 [[Peep_Studio_Scene_Object_Ownership_Handoff]]. The agreed lifetime semantics
-remain authoritative. Names and layouts below are proposed API design, not
-commands to run or allocated wire IDs.
+remain authoritative. The source/service subset is documented in the handoff;
+executable layouts below are still proposals, not allocated wire IDs.
 
 Baseline: main `34c76bba4bcf59ab03d8668dca329f2338caf33f`, incorporating the
 reviewed shared backend from GUI `57f7030cc65c09b434223e405c12b67e211b99a0`.
-Service API remains 38. The 148-test baseline integration pass does not test this
-new model; development-only results are recorded separately in the handoff.
+That baseline used service API 38. The 148-test baseline integration pass does
+not test this model; subsequent host results are recorded in the handoff.
 
 ## GUI Review Clarifications
 
@@ -39,7 +39,7 @@ integration questions before the new service contract is frozen:
    one axis preserves it. Remove a sparse override record only when it controls
    no properties. Legacy `state_placement.clear_override` with `position` retains
    its legacy paired behavior; it is not an implicit version-2 command adapter.
-4. Each future scene response declares its execution model, source version and
+4. Each project document response declares per-scene execution model, source version and
    supported commands. Derived legacy-shaped views are read-only projections,
    not writable version-1 source. The backend checks the scene model as well as
    the project revision before applying commands, including every command in a
@@ -60,8 +60,11 @@ frame actions and clip references, not only legacy render elements.
 fragment validation, pure object-action staging/resolution, independent-axis
 clearing, and a non-writing migration plan/materialization API. Its schema is
 `schemas/authoring/scene-object-model-v2.schema.json`, a definitions/placement
-fragment, NOT a complete version-2 STATE scene schema. Graph, target admission,
-service integration, remaining-phase diagnostics and binary encoding are pending.
+fragment. `state-scene-v2.schema.json` now describes the full source envelope.
+Project loading validates the object model and shared graph rules. Service API
+39 connects migration, transactional editing, save/reload and host preview,
+including per-object phase/residual diagnostics. Target admission, binary
+encoding and firmware integration remain pending.
 
 The migration API consumes a validated legacy `ProjectBundle`, preserves IDs,
 and returns an in-memory scene candidate plus new immutable catalog clip records.
@@ -72,11 +75,19 @@ animated conversion explicitly requires acceptance of scene-continuous playback
 starting at sequence step zero. Different state tracks and legacy destination
 mutations remain blocking issues instead of being guessed or discarded.
 
-Do not put a returned candidate into a working project yet: the production
-loader deliberately still rejects scene version 2, and service API 38 exposes
-none of these helpers. Full source loading/save/preview, migration commands,
-catalog transactions and export readiness will be connected as a subsequent
-coherent increment. This boundary preserves current Studio behavior meanwhile.
+Use `project.object_migration_preview` and `project.object_migration_apply` for
+the connected workflow: converted scene and catalog clips form one undoable
+in-memory transaction, then normal `project.save` persists them. Saving retains
+the existing per-file write behavior, not a new whole-project disk transaction.
+Opening/saving legacy source does not migrate it. Projects containing version 2
+remain editable drafts and report `SCENE_OBJECT_EXECUTABLE_UNAVAILABLE` through
+`build_issues`; no export path may encode them as legacy eggs.
+
+Host preview reuses the graph/timer compiler and rasterizer through an internal
+legacy-shaped graph projection, restores symbolic object actions, and maintains
+live scene objects independently of that projection. It is explicitly labeled
+`host_scene_objects_not_firmware`. This tests host semantics, not a future binary
+decoder or STOP2/LPBAM execution. No new numeric wire IDs are allocated here.
 
 ## First Executable Increment
 
@@ -292,8 +303,9 @@ Version-2 source JSON Schema, Python validation, service and compiler need share
 parity fixtures: the existing version-1 JSON Schema does not fully describe the
 current Python placement/primitive surface and is not a complete migration spec.
 Report issues with stable codes, scene/object/state/action paths and actionable
-messages. Target capabilities distinguish unavailable, host-tested and
-hardware-validated behavior; this proposal does not advertise any new capability.
+messages. Host service capabilities distinguish this delivered subset from
+unavailable executable/firmware support. The target profile does not yet
+advertise a scene-object executable capability.
 
 ## Delivery and Review
 

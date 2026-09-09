@@ -5229,7 +5229,12 @@ def _check_scene(
     animation_ids: set[str],
     audio_cue_ids: set[str],
     issues: list[ValidationIssue],
+    animations: dict[str, dict[str, Any]] | None = None,
 ) -> None:
+    if scene.get("schema_version") == 2:
+        from .scene_object_authoring import check_object_scene
+        check_object_scene(scene, source, frame_lookup, animations or {}, audio_cue_ids, issues)
+        return
     base = f"scene[{source}]"
     frame_ids = set(frame_lookup)
     _check_keys(scene, SCENE_KEYS, base, issues, SCENE_KEYS | SCENE_OPTIONAL_KEYS)
@@ -6366,6 +6371,7 @@ def load_project(project_root: str | Path) -> ProjectBundle:
                 animation_ids,
                 audio_cue_ids,
                 issues,
+                {animation["animation_id"]: animation for animation in animations},
             )
             scene_id = scene.get("scene_id")
             if isinstance(scene_id, str):
@@ -6602,6 +6608,7 @@ def apply_project_commands(
     bundle: ProjectBundle,
     commands: Any,
 ) -> tuple[ProjectBundle, tuple[dict[str, Any], ...]]:
+    from .scene_object_authoring import OBJECT_COMMANDS, apply_object_command, check_command_model
     if not bundle.valid:
         raise ProjectCommandError("PROJECT_INVALID", "project must validate before commands can be applied")
     if not isinstance(commands, list) or not commands:
@@ -6625,7 +6632,10 @@ def apply_project_commands(
         if not isinstance(command, dict):
             raise ProjectCommandError("COMMAND_SHAPE_INVALID", "each command must be an object")
         kind = command.get("kind")
-        if kind == "scene.add":
+        check_command_model(scenes, command)
+        if kind in OBJECT_COMMANDS:
+            applied.append(apply_object_command(scenes, command))
+        elif kind == "scene.add":
             applied.append(
                 _apply_scene_add(bundle.root, project, scenes, scene_sources, command)
             )
@@ -6826,6 +6836,7 @@ def apply_project_commands(
             animation_ids,
             audio_cue_ids,
             validation_issues,
+            {animation["animation_id"]: animation for animation in animations},
         )
     if validation_issues:
         issue = validation_issues[0]

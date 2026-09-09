@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://peepshow.dev/schema/authoring/state-scene-v2.schema.json",
+  "title": "PeepShow scene-owned STATE source V2",
+  "$comment": "Host authoring/preview only; not an executable egg capability. Shared semantic validation additionally checks references, geometry, bounds and supported clips/actions. V1 references reuse common graph definitions, not legacy object ownership.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "scene_id", "display_name", "scene_type", "entry_state", "variables", "input_actions", "states", "routes", "objects", "reactive_wait_default", "interaction_policy"],
+  "properties": {
+    "schema_id": {"const": "peepshow.authoring.state_scene"},
+    "schema_version": {"const": 2},
+    "scene_id": {"$ref": "#/$defs/id"},
+    "display_name": {"type": "string", "minLength": 1, "maxLength": 96},
+    "scene_type": {"const": "STATE_SCENE"},
+    "entry_state": {"$ref": "#/$defs/id"},
+    "objects": {"type": "array", "maxItems": 32, "items": {"$ref": "scene-object-model-v2.schema.json#/$defs/object"}},
+    "states": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "scene-object-model-v2.schema.json#/$defs/state"}},
+    "variables": {"$ref": "state-scene-v1.schema.json#/properties/variables"},
+    "input_actions": {"$ref": "state-scene-v1.schema.json#/properties/input_actions"},
+    "scene_exits": {"$ref": "state-scene-v1.schema.json#/properties/scene_exits"},
+    "event_bindings": {"$ref": "state-scene-v1.schema.json#/properties/event_bindings"},
+    "event_handlers": {"type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/handler"}},
+    "routes": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/route"}},
+    "reactive_wait_default": {
+      "type": "object", "additionalProperties": false,
+      "required": ["policy_id", "hold_fallback_allowed", "event_interests"],
+      "properties": {
+        "policy_id": {"$ref": "#/$defs/id"},
+        "hold_fallback_allowed": {"type": "boolean"},
+        "event_interests": {"$ref": "state-scene-v1.schema.json#/$defs/reactive_wait/properties/event_interests"}
+      }
+    },
+    "interaction_policy": {"$ref": "state-scene-v1.schema.json#/$defs/interaction_policy"},
+    "joystick_policy": {"enum": ["four_way", "eight_way"]}
+  },
+  "$defs": {
+    "id": {"$ref": "scene-object-model-v2.schema.json#/$defs/id"},
+    "guards": {"type": "array", "maxItems": 8, "items": {"$ref": "state-scene-v1.schema.json#/$defs/guard"}},
+    "actions": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/action"}},
+    "action": {
+      "oneOf": [
+        {"$ref": "state-scene-v1.schema.json#/$defs/action"},
+        {"$ref": "scene-object-model-v2.schema.json#/$defs/action"},
+        {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "exit_to_shell"}}}
+      ]
+    },
+    "scene_replacement": {
+      "if": {"required": ["target_scene"]},
+      "then": {"properties": {"actions": {"items": {"properties": {"kind": {"const": "play_sfx"}}}}}}
+    },
+    "handler": {
+      "type": "object", "additionalProperties": false,
+      "required": ["handler_id", "event_ref", "guards", "actions"],
+      "not": {"required": ["target_state", "target_scene"]},
+      "allOf": [{"$ref": "#/$defs/scene_replacement"}],
+      "properties": {
+        "handler_id": {"$ref": "#/$defs/id"}, "event_ref": {"$ref": "#/$defs/id"},
+        "guards": {"$ref": "#/$defs/guards"}, "actions": {"$ref": "#/$defs/actions"},
+        "target_state": {"$ref": "#/$defs/id"}, "target_scene": {"$ref": "#/$defs/id"}
+      }
+    },
+    "route": {
+      "type": "object", "additionalProperties": false,
+      "required": ["route_id", "from_states", "guards", "actions"],
+      "allOf": [
+        {"oneOf": [{"required": ["action_ref"], "not": {"required": ["event_ref"]}}, {"required": ["event_ref"], "not": {"required": ["action_ref"]}}]},
+        {"oneOf": [{"required": ["target_state"], "not": {"required": ["target_scene"]}}, {"required": ["target_scene"], "not": {"required": ["target_state"]}}]},
+        {"if": {"required": ["scene_exit_ref"]}, "then": {"required": ["target_scene"]}},
+        {"$ref": "#/$defs/scene_replacement"}
+      ],
+      "properties": {
+        "route_id": {"$ref": "#/$defs/id"}, "action_ref": {"$ref": "#/$defs/id"}, "event_ref": {"$ref": "#/$defs/id"},
+        "from_states": {"type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "guards": {"$ref": "#/$defs/guards"}, "actions": {"$ref": "#/$defs/actions"},
+        "target_state": {"$ref": "#/$defs/id"}, "target_scene": {"$ref": "#/$defs/id"}, "scene_exit_ref": {"$ref": "#/$defs/id"}
+      }
+    }
+  }
+}

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .egg_format import EggPackage
+from .scene_objects import initialize_objects, apply_object_actions, resolve_object
 
 
 DISPLAY_WIDTH = 168
@@ -120,6 +121,10 @@ class StateScenePreview:
         if scene is None:
             raise PreviewError(f"scene '{scene_id}' is not present in the package")
         self._scene = scene
+        self._object_source = scene.get("object_source")
+        self._object_definitions = {obj["object_id"]: obj for obj in self._object_source["objects"]} if self._object_source else {}
+        self._object_live = initialize_objects(list(self._object_definitions.values()))
+        self._object_clips = scene.get("object_animations", {})
         self._graph = scene["graph"]
         self._render_models = scene["render_models"]
         self._waiting_visuals = scene["waiting_visuals"]
@@ -230,6 +235,7 @@ class StateScenePreview:
             )
 
         prior_waiting = self._waiting()
+        object_live = self._object_live
         variables = list(self._variables)
         element_overrides = {
             key: dict(value) for key, value in self._element_overrides.items()
@@ -252,6 +258,12 @@ class StateScenePreview:
         )
         target_model = self._render_models[target_model_index]
         for operation in route["operations"]:
+            if "object_action" in operation:
+                object_live = apply_object_actions(
+                    list(self._object_definitions.values()), object_live, [operation["object_action"]],
+                    {ref: (int(frame["width"]), int(frame["height"])) for ref, frame in self._frames.items()},
+                )
+                continue
             kind = int(operation["kind"])
             if kind == 2:
                 continue
@@ -364,6 +376,7 @@ class StateScenePreview:
             variables[variable_index] = value
 
         self._variables = variables
+        self._object_live = object_live
         self._element_overrides = element_overrides
         self._waiting_element_overrides = waiting_element_overrides
         self._state_index = int(target_state)
@@ -516,6 +529,16 @@ class StateScenePreview:
         element_index: int,
         element: dict[str, object],
     ) -> dict[str, object]:
+        if self._object_source is not None:
+            ref = str(element["element_id"])
+            state = next(state for state in self._object_source["states"] if state["state_id"] == self._state()["state_id"])
+            override = next((item for item in state["object_overrides"] if item["object_ref"] == ref), {})
+            resolved = dict(element)
+            resolved.update(resolve_object(
+                self._object_definitions[ref], self._object_live[ref], override,
+                self._object_clips if self._include_waiting_visuals else {}, self._elapsed_ms,
+            ))
+            return resolved
         override = self._element_overrides.get((model_index, element_index))
         if not override:
             return element
@@ -568,7 +591,8 @@ class StateScenePreview:
                         f"element '{element['element_id']}' uses a procedural visual; "
                         "the package-backed preview requires sprites"
                     )
-                if version == 2 and kind not in {1, 2, 3, 4, 5, 6}:
+                retained_kinds = {1, 2, 3, 4, 5, 6, 7, 8} if self._object_source is not None else {1, 2, 3, 4, 5, 6}
+                if version == 2 and kind not in retained_kinds:
                     raise PreviewError(f"element '{element['element_id']}' has an unsupported retained type")
                 if kind == 1:
                     self._require_native_frame(element, str(element["visual_ref"]))
@@ -594,6 +618,8 @@ class StateScenePreview:
             )
             model = self._render_models[model_index]
             for operation in route["operations"]:
+                if "object_action" in operation:
+                    continue
                 kind = int(operation["kind"])
                 if kind not in {3, 4, 5, 6}:
                     continue
@@ -826,7 +852,7 @@ class StateScenePreview:
                 "route_id": input_result.route_id,
                 "audio_events": list(input_result.audio_events),
             }
-        return {
+        result = {
             "scene": {
                 "scene_id": self.scene_id,
                 "state_index": self._state_index,
@@ -854,3 +880,27 @@ class StateScenePreview:
                 "data_base64": base64.b64encode(self._framebuffer).decode("ascii"),
             },
         }
+        if self._object_source is not None:
+            model_index = int(state["render_model_index"])
+            model = self._render_models[model_index]
+            objects = []
+            for index, element in enumerate(model["elements"]):
+                ref = str(element["element_id"])
+                obj = self._object_definitions[ref]
+                clip = self._object_clips.get(obj.get("animation_ref"))
+                playback = None
+                if clip is not None:
+                    remaining = self._elapsed_ms % sum(clip["frame_duration_ms"])
+                    for phase, duration in enumerate(clip["frame_duration_ms"]):
+                        if remaining < duration:
+                            playback = {"animation_ref": obj["animation_ref"], "phase_index": phase,
+                                        "remaining_ms": duration - remaining}
+                            break
+                        remaining -= duration
+                objects.append({"object_id": ref, "underlying": dict(self._object_live[ref]),
+                                "effective": self._resolved_element(model_index, index, element), "playback": playback})
+            result["scene"]["execution_model"] = "scene_objects"
+            result["timeline"] = {"elapsed_ms": self._elapsed_ms, "ownership": "scene_objects"}
+            result["objects"] = objects
+            result["preview_backend"] = "host_scene_objects_not_firmware"
+        return result
