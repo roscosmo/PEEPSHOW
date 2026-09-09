@@ -90,6 +90,27 @@ Measured hardware behavior, current SRAM4 admission limits, and power figures
 remain hardware evidence. The desktop preview must not claim to reproduce
 current draw or prove STOP2 behavior.
 
+## Planned Device Inputs
+
+The next selected increments are read-only battery SOC/validity and threshold
+events, package-session steps/milestones, then stable coarse orientation
+snapshots and pose-change events. [[Sensor_API_Contract]] defines the planned
+semantics; [[IMU_Contract]] distinguishes retained hardware features from FW0
+placeholders. None of these inputs becomes executable through a docs update.
+
+An observation/event interest is separate from permission to wake the MCU.
+Orientation observation comes before any measured orientation wake grant;
+step counting must not wake the MCU per step. Taps, shake, generic motion wake,
+free-fall, activity/inactivity, significant motion, embedded relative tilt and
+continuous tilt/streaming remain deferred. The broad `sensor.imu_events`
+capability or a generic peripheral placeholder must not enable them all.
+
+Keep these controls unavailable until each typed source/value, owner/runtime
+path, shared schema/service/compiler/preview behavior and target-profile
+grant agree. Orientation event IDs and pose enums are not introduced here.
+Coordinate changes to shared authoring files with the GUI agent; no GUI merge
+is needed to continue OS bring-up, and none of this blocks scoped-timer UI work.
+
 ## Scoped Timer Integration
 
 Merge the OS timer baseline into the existing GUI branch now, then implement
@@ -271,8 +292,8 @@ unavailable. Preserve any editor work already completed on the GUI branch.
 - GUI controls for scoped timers and independent expiry handlers (backend
   ready for this merge, not blocked on another firmware implementation);
 - package-facing active/inactive/resume triggers, calendar alarms, step
-  milestones, battery SOC values/threshold events, animation completion,
-  audio markers, and generic peripheral events;
+  milestones, battery SOC values/threshold events, stable orientation,
+  animation completion, audio markers, and generic peripheral events;
 - repeating, prefab-instance, package-session, and reset-persistent timers;
 - Peep Studio controls for the backend-ready retained-element, asset-catalog,
   waiting-timeline, and STATE graph mutation commands;

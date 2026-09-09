@@ -13,7 +13,9 @@ Related:
 - [[Sensors_Index]]
 - [[Light_Sensor_Contract]]
 - [[IMU_Contract]]
+- [[PMIC_and_Power_Contract]]
 - [[Power_and_Sleep_Policy]]
+- [[Time_And_Power_Intent_API_Contract]]
 - [[Brought_Up_Tracker]]
 
 ---
@@ -116,7 +118,126 @@ Capability names must not include part numbers, pins, registers, addresses, ADC 
 
 ---
 
+## Initial HW6 Product Scope
+
+As of 2026-09-09, the next device-input increments are read-only battery SOC,
+package-session steps, and stable orientation. These remain contracted and
+unexposed; this decision does not enable a target-profile capability or add
+an executable event binding. Battery SOC belongs to `power.battery_soc`, not
+the IMU; it is included here to keep observation and event semantics aligned.
+
+| Priority | Package-facing behavior | Initial wake policy |
+|---|---|---|
+| 1. Battery SOC | Valid normalized percentage, then rising/falling threshold events | Use OS power snapshots; no extra package wake source |
+| 2. Package-session steps | Session count/delta and bounded milestone events | Preserve admitted counting through STOP2; no per-step MCU wake |
+| 3. Stable orientation | Current resolved pose and qualified pose-change events | Observe by default; STOP2 wake requires a separate measured grant |
+
+The larger `sensor.imu_events` capability is not permission to use every
+feature of the fitted sensor. Profiles must enumerate the supported event
+interests and contexts. Taps of every multiplicity, shake, generic motion
+wake, free-fall, activity/inactivity, significant motion, embedded relative
+tilt, and continuous tilt/motion streaming are deferred. They must not be
+enabled implicitly alongside steps or orientation. Keychain transport is
+expected normal behavior, not automatically meaningful user interaction.
+
+### Observation Is Not Wake Permission
+
+- Reading a cached snapshot neither enables a detector nor grants wake.
+  Fresh sampling and retained detection require their own admitted context.
+- An event interest declares what package logic consumes. A wake intent
+  separately asks whether that source may wake the MCU; it does not override
+  OS interaction, safety, or package-suspension policy.
+- Observation-only contexts may update on existing wake opportunities and
+  coalesce to the latest resolved value. They must not promise delivery of
+  every physical transition that occurred during sleep. A profile must state
+  freshness and maximum delivery latency before such a context is exposed.
+- A hardware interrupt that schedules `thSensor` is not yet a qualified
+  package event, and a sensor wake does not itself activate a package or
+  refresh the interaction timeout.
+- Explicit package suspension stops its handlers and withdraws its wake
+  interests and unnecessary sampling requests. Other admitted OS consumers
+  remain intact. Resume reconciles snapshots without replaying an unbounded
+  event history; replacement discards events belonging to the old activation.
+- Detector power, interrupt routing, filtering, stability, hysteresis and
+  cadence remain Platform-owned. Firmware tuning uses the knobs system;
+  tools expose only the logical options admitted by the target profile.
+
+`thSensor` owns IMU work, `thPower` owns fuel-gauge snapshots and wake admission,
+and `thRuntime` consumes bounded snapshots/events. Packages never read a
+peripheral or reconfigure its interrupt path.
+
+### Battery SOC Semantics
+
+The planned values are `device.battery.soc_percent` and
+`device.battery.soc_valid`; the planned binding is
+`device.battery.soc_threshold`, as listed by the target profile. These names
+remain unavailable until the shared implementation and target proof exist.
+
+- Percentage is a normalized fuel estimate, not an exact remaining-runtime
+  promise. Validity reflects the OS freshness/quality policy; an invalid
+  reading is not converted to zero or used to evaluate a threshold.
+- Threshold events compare consecutive valid, OS-filtered observations in
+  the declared rising or falling direction. Initial subscription, resume or
+  recovery after an invalid interval establishes a baseline without inventing
+  a crossing. Content can inspect the current value for an already-low case.
+- Repeated readings on the same side do not repeat the event. OS-owned
+  hysteresis controls rearming; numeric policy must be specified and tested
+  before exposure. Delivery uses normal power monitoring, not a new package
+  polling loop or a claim of hardware SOC-threshold wake.
+- Battery health faults, PMIC/charger control, USB/VBUS state and shutdown
+  decisions remain OS-only. A gameplay threshold cannot delay or suppress
+  protective power behavior.
+
+### Stable Orientation Semantics
+
+The first orientation primitive is a coarse gravity-relative device pose,
+not continuous steering, compass heading, or the embedded relative-tilt
+algorithm. The six physical faces must be mapped to the assembled device's
+screen/body axes and verified on target before fixing author-facing enums.
+
+- Publish a current qualified pose with validity/age. Ambiguous, moving or
+  stale data must not be presented as a newly confirmed pose.
+- A changed pose must satisfy the admitted stability/dwell and hysteresis
+  policy. Emit once for each qualified change; repeated samples in the same
+  pose do not retrigger. Initial acquisition supplies a snapshot, not a
+  fabricated change event.
+- Package logic may select which entered poses matter. Any future
+  scene-owned handler remains independent of menu selection/state lifetime;
+  orientation must not be implemented as a forced input or focus movement.
+- Stable package events do not prove low wake cost. A coarse hardware
+  orientation interrupt may wake the MCU before software qualification.
+  Wake-capable admission must measure those physical interrupts, including
+  rejected candidates, and show that carried keychain motion is acceptable.
+- Start with observation and qualified event delivery. Promote orientation
+  wake only after validating the retained detector, interrupt clear/rearm,
+  STOP2 operation, latency and current consumption. Deferred tap or generic
+  motion wake must not be used as an undocumented substitute.
+
+### Exposure And Implementation Order
+
+Implement SOC snapshots/thresholds first, then embedded step counting and
+session reconciliation, then orientation snapshots/qualified changes. Each
+is a separate increment; orientation wake is a later measured promotion,
+not a prerequisite for orientation observation.
+
+Before exposing each increment, agree concrete payloads, bounded delivery
+and suspension rules, implement owner/runtime support and shared
+schema/service/compiler/preview behavior, and record target evidence. A
+placeholder's `stop2_wake` flag alone is not proof of a working wake source
+or of delivery at the exact instant a threshold is reached.
+
+The existing scoped-timer GUI work can proceed independently. Peep Studio
+must not infer sensor support from this document, a broad capability name,
+or the sensor datasheet. It must continue to discover executable sources
+from the selected profile and service.
+
+---
+
 ## Sensor Profile Schema
+
+The shapes and names below describe the broader contracted API, not the
+currently executable HW6 package format. The initial HW6 subset and its
+exposure conditions are defined above.
 
 Packages declare sensor use as package data.
 
@@ -234,6 +355,28 @@ Rules:
 - Platform owns embedded step-counter activation and retention policy.
 - step counting must not wake the MCU for every step during normal low-power operation.
 - if the step primitive fails at runtime, Platform/Engine logs the fault and applies lifecycle/degraded-capability policy.
+
+For the initial HW6 package-session subset:
+
+- The session baseline/count survives ordinary state, selection and scene
+  changes. Stop, replacement or reset ends the live session; this is not a
+  daily counter or an implicit reset-persistent total.
+- The initial package-facing operation is observing steps since that session
+  began, plus declared milestones. The generic session/reset functions above
+  are conceptual, not additional executable commands granted by this plan.
+- Temporary suspension preserves session identity but does not itself grant
+  background counting. The measured context must explicitly specify whether
+  counting continues while suspended and how gaps are represented. Handlers
+  never execute while the package is suspended.
+- The Platform reconciles the embedded counter using bounded scheduled reads
+  or existing wake opportunities. The profile must bound observation latency
+  and prevent ambiguous counter wrap. Reset/recovery must not be mistaken
+  for a huge positive step delta or silently claimed as measured steps.
+- Milestones fire once per declared threshold per session when a valid
+  observed count crosses it. Batched counts may cross several milestones;
+  delivery is bounded and deterministic in threshold then binding order,
+  with stale-owner checks between handlers. This is not an interrupt at the
+  exact Nth physical step or a stream of reconstructed per-step events.
 
 ---
 
@@ -382,3 +525,27 @@ Rules:
 8. normal game-facing API does not expose I2C, ADC, register, or driver fault codes.
 9. digital twin replay produces the same package-visible sensor event sequence for a fixed trace.
 10. digital twin sensor fault injection records diagnostics without treating the injected fault as hardware bring-up evidence.
+
+### Initial HW6 Acceptance Evidence
+
+These are pending tests, not claims of existing support:
+
+1. Default-off and observation-only contexts do not enable unrelated gesture
+   detectors or sensor wake routes; suspension removes only the package's
+   requests, leaving other admitted consumers intact.
+2. SOC startup, stale/invalid samples, repeated same-side values, crossings
+   and hysteresis rearming produce deterministic values/events without
+   changing OS power protection.
+3. Step totals survive scene changes and admitted STOP2 retention; counter
+   wrap, recovery and suspension reconcile without invented steps or
+   duplicate milestones. Measure latency and prove no per-step MCU wakes.
+4. All six orientation poses match device axes; ambiguous angles, repeated
+   samples and carried-motion traces do not produce duplicate qualified
+   changes. Initial acquisition and resume do not fabricate transitions.
+5. Before granting orientation wake, measure raw interrupt count as well as
+   qualified event count, STOP2 residency, return-to-sleep, delivery latency
+   and current on resting and normally carried units. Software event
+   suppression alone is not evidence of avoided hardware wakes.
+6. Export rejects deferred event types and ungranted wake intents; deterministic
+   preview traces match firmware semantics. GUI timer support remains usable
+   while these sensor capabilities are still unavailable.

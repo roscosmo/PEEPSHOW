@@ -397,9 +397,22 @@ changing the built-in example.
 
 ## Follow-On OS Work
 
-After this merge, the proposed next capability is read-only battery SOC and
-validity, then threshold events; lifecycle event bindings, package-session
-steps/milestones, calendar scheduling, and completion/expanded timer scopes
-follow as separate increments. These are priorities, not newly exposed APIs.
-The GUI agent can prepare unavailable surfaces but must not encode these
-events until service/schema/compiler/preview/firmware support agrees.
+The selected device-input increments are read-only battery SOC/validity and
+threshold events, package-session steps/milestones, then stable orientation
+snapshots and pose changes. See [[Sensor_API_Contract]] for semantics and
+[[IMU_Contract]] for the hardware bring-up boundary. Lifecycle bindings,
+calendar scheduling and completion/expanded timer scopes remain separate
+work; none is a prerequisite for finishing the timer editor.
+
+Observation and event interests do not grant wake permission. Steps must not
+wake the MCU per step; orientation observation precedes any measured STOP2
+wake grant. Taps, shake, generic motion wake, free-fall, activity/inactivity,
+significant motion, embedded relative tilt and continuous tilt/streaming are
+deferred, not features to expose automatically from the datasheet.
+
+These are priorities and contracts, not newly exposed APIs. Keep their GUI
+surfaces unavailable until service/schema/compiler/preview/firmware support
+agrees. Do not invent orientation event IDs or add a generic peripheral escape
+hatch. The OS branch can continue this work while the GUI branch implements
+the already shared timer baseline; coordinate shared authoring-file changes
+before the next capability merge.
