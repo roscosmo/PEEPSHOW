@@ -152,6 +152,27 @@ edge request/run reached `2/2` with zero misses or deferrals; DMA completed with
 scene animated both awake and autonomously in STOP2. A focusless scene with no
 animated elements remains valid and uses held-frame fallback.
 
+### Retained Shape Extension (2026-09-09)
+
+Package line records preserve their authored diagonal through validation,
+decoding, and composition. `down_right` is the legacy default; `up_right` joins
+the bounding box's bottom-left to top-right. Both use the existing inclusive
+integer line rasterizer, including horizontal and vertical lines.
+
+`filled_circle` and `filled_ellipse` use horizontal spans from the existing
+integer ellipse boundary. Filled and outline variants therefore agree at their
+edges. Both retain odd positive bounds of at least three pixels, with equal
+width/height for circles. Ink remains black; package `OVERLAY` is forbidden.
+
+The model's layout/API and existing enum values remain unchanged. New internal
+element types are appended; no framebuffer allocation, transport ownership,
+LPBAM payload format, or STOP2 admission rule changes. Primitives compose into
+the same committed framebuffer used by awake drawing and STOP2 presentation.
+Native tests cover package preflight/decoding, both runtime/display validators,
+and pixel parity between exact host preview and production C rasterization.
+Hardware acceptance of the new line direction and fills remains pending.
+See [[Peep_Studio_Shape_Primitives_Handoff]].
+
 ## DMA-Safe Buffer Placement
 
 HW6 display DMA/LPDMA source data must live in the SRAM4 display-DMA/autonomous arena. This allocation model is validated on HW5 and target-proven on HW6. At the current `250 ms` cadence, the eight-row cursor program averages `56 uA` over five minutes and the guaranteed three-full-panel-state program averages `85 uA`. These establish sparse and maximum-guaranteed-coverage average-current endpoints; pulse shape, intermediate coverage, and alternate cadence scaling remain provisional.

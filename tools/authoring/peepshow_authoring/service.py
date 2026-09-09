@@ -41,7 +41,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 23
+SERVICE_API_VERSION = 24
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -197,7 +197,10 @@ class AuthoringService:
                     "filled_rect",
                     "circle",
                     "ellipse",
+                    "filled_circle",
+                    "filled_ellipse",
                 ],
+                "line_directions": ["down_right", "up_right"],
                 "visibility": True,
                 "z_order": True,
                 "element_commands": [

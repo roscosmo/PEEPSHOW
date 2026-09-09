@@ -863,7 +863,7 @@ Conceptual retained element classes:
 ```text
 state_render_element:
   element_id
-  element_type              # sprite, line, outline_rect, filled_rect, circle, ellipse
+  element_type              # sprite, line, outline_rect, filled_rect, circle, ellipse, filled_circle, filled_ellipse
   layer                     # background, scene, ui
   visible
   order
@@ -872,6 +872,7 @@ state_render_element:
   frame_ref                 # sprite only
   primitive_geometry        # primitive only; bounded integer coordinates
   primitive_ink             # fixed black in the initial executable subset
+  line_direction            # line only: down_right (default) or up_right
 ```
 
 Rules:
@@ -892,10 +893,18 @@ Rules:
   `move`, `set_frame`, and `set_animation` operations.
 - `RND2` is the initial executable retained-presentation record. It carries
   explicit package layer, visibility, z-order, bounds, and one of `sprite`,
-  `line`, `outline_rect`, `filled_rect`, `circle`, or `ellipse`.
+  `line`, `outline_rect`, `filled_rect`, `circle`, `ellipse`, `filled_circle`, or
+  `filled_ellipse`.
 - `RND1` remains accepted by the package parser and HW6 loader for backward
   compatibility; new builds emit `RND2`.
 - initial primitives use fixed black ink. White/clear ink is not exposed yet.
+- lines use inclusive integer endpoints derived from their bounding box:
+  `down_right` joins top-left to bottom-right; `up_right` joins bottom-left to
+  top-right. Positive width/height permits horizontal, vertical, and point lines.
+  `line_direction` on any non-line element is invalid.
+- circle/ellipse bounds, filled or outline, must be odd and at least `3x3`;
+  circles must also be square. Filled variants fill each outline row's inclusive
+  interior and retain the same outline boundary, black ink, and ordering rules.
 - authored text records compile to ordinary masked 1bpp sprite frames; runtime
   font records are not part of this subset.
 
@@ -904,6 +913,11 @@ compilation, package parsing, exact host preview, HW6 loading, retained
 composition, scene replacement, and STOP2 presentation were proven together on
 2026-08-27. Static primitives remained composed while both package sprite
 animations continued in STOP2.
+
+The additional line-direction and filled-round-shape support dated 2026-09-09
+is host/native tested and Debug-build verified, not yet target-accepted. The
+earlier hardware proof does not cover these additions. The GUI handoff is
+[[Peep_Studio_Shape_Primitives_Handoff]].
 
 ### Initial Masked-1bpp STATE Subset
 

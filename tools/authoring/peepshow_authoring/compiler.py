@@ -90,6 +90,8 @@ RENDER_KINDS = {
     "filled_rect": 4,
     "circle": 5,
     "ellipse": 6,
+    "filled_circle": 7,
+    "filled_ellipse": 8,
 }
 RENDER_LAYERS = {"BACKGROUND": 0, "SCENE": 1, "UI": 2}
 INACTIVE_ROUTES = {"preserve_scene": 1, "exit_to_shell": 2}
@@ -287,7 +289,8 @@ def _compile_render(scene: dict[str, Any], strings: dict[str, int]) -> bytes:
                         "UI" if element.get("focus_role", "none") == "focus" else "SCENE",
                     )],
                     (1 if element.get("focus_role", "none") == "focus" else 0)
-                    | (2 if element.get("visible", True) else 0),
+                    | (2 if element.get("visible", True) else 0)
+                    | (4 if element["kind"] == "line" and element.get("line_direction", "down_right") == "up_right" else 0),
                     0,
                     _i16(element["x"], "render x"),
                     _i16(element["y"], "render y"),

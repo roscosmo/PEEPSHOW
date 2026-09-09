@@ -1523,8 +1523,9 @@ static uint32_t PS_EggParseRender(const ps_egg_chunk_t *chunk,
       y = PS_EggI16(&record[10]);
       width = PS_EggU16(&record[12]);
       height = PS_EggU16(&record[14]);
-      if ((type < 1U) || (type > 6U) || (layer > 2U) ||
-          ((flags & (uint8_t)~0x03U) != 0U) ||
+      if ((type < 1U) || (type > 8U) || (layer > 2U) ||
+          ((flags & (uint8_t)~0x07U) != 0U) ||
+          (((flags & 0x04U) != 0U) && (type != 2U)) ||
           (record[7] != 0U) || (PS_EggU16(&record[18]) != 0U) ||
           (PS_EggU16(&record[16]) > 255U) ||
           (PS_EggU16(&record[16]) > 255U) ||
@@ -1532,10 +1533,10 @@ static uint32_t PS_EggParseRender(const ps_egg_chunk_t *chunk,
            ((type != 1U) || (layer != 2U) || ((flags & 0x02U) == 0U))) ||
           ((type == 1U) && (visual_ref >= strings->count)) ||
           ((type != 1U) && (visual_ref != 0xFFFFU)) ||
-          (((type == 5U) || (type == 6U)) &&
+          (((type == 5U) || (type == 6U) || (type == 7U) || (type == 8U)) &&
            ((width < 3U) || (height < 3U) ||
             ((width & 1U) == 0U) || ((height & 1U) == 0U))) ||
-          ((type == 5U) && (width != height)))
+          (((type == 5U) || (type == 7U)) && (width != height)))
       {
         return 0UL;
       }
@@ -1701,7 +1702,8 @@ static uint32_t PS_EggMapRenderElement(ps_egg_context_t *context, const uint8_t 
     switch (kind)
     {
       case 2U:
-        element->type = PS_SCENE_RENDER_ELEMENT_LINE;
+        element->type = ((flags & 0x04U) != 0U) ?
+          PS_SCENE_RENDER_ELEMENT_LINE_UP_RIGHT : PS_SCENE_RENDER_ELEMENT_LINE;
         break;
       case 3U:
         element->type = PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT;
@@ -1714,6 +1716,12 @@ static uint32_t PS_EggMapRenderElement(ps_egg_context_t *context, const uint8_t 
         break;
       case 6U:
         element->type = PS_SCENE_RENDER_ELEMENT_ELLIPSE;
+        break;
+      case 7U:
+        element->type = PS_SCENE_RENDER_ELEMENT_FILLED_CIRCLE;
+        break;
+      case 8U:
+        element->type = PS_SCENE_RENDER_ELEMENT_FILLED_ELLIPSE;
         break;
       default:
         return 0UL;

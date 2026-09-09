@@ -18,7 +18,8 @@ TOOL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL_ROOT))
 from peepshow_authoring.compiler import build_egg
 from peepshow_authoring.project import load_project
-from peepshow_authoring.egg_format import CHUNK_ENTRY, HEADER, RENDER_HEADER, RENDER_MODEL_RECORD
+from peepshow_authoring.egg_format import (CHUNK_ENTRY, HEADER, RENDER_HEADER,
+    RENDER_MODEL_RECORD, RENDER_ELEMENT_RECORD, EggFormatError, parse_egg)
 
 
 def firmware_function(source: str, name: str) -> str:
@@ -143,6 +144,44 @@ class FirmwarePackageWorkflowTests(unittest.TestCase):
 
             fixture("baseline", baseline)
             fixture("valid", baseline, 0)
+            from test_firmware_shape_primitives import make_shape_project
+            shapes = build_egg(load_project(make_shape_project(work)))
+            fixture("all_shapes", shapes, 0)
+            # Mutate a non-focus primitive, preserving CRCs and package digest.
+            for index in range(HEADER.unpack_from(shapes)[6]):
+                entry_offset = HEADER.size + index * CHUNK_ENTRY.size
+                entry = CHUNK_ENTRY.unpack_from(shapes, entry_offset)
+                if entry[0] != 5:
+                    continue
+                model_count, element_count = RENDER_HEADER.unpack_from(shapes, entry[4])[3:5]
+                start = entry[4] + RENDER_HEADER.size + model_count * RENDER_MODEL_RECORD.size
+                primitive = next((start + item * RENDER_ELEMENT_RECORD.size for item in range(element_count)
+                                  if shapes[start + item * RENDER_ELEMENT_RECORD.size + 4] == 7), None)
+                if primitive is None:
+                    continue
+                for name, kind, flags, width, height in [
+                    ("non_line_direction", 7, 6, 13, 13),
+                    ("unknown_flag", 2, 10, 13, 13),
+                    ("unknown_kind", 9, 2, 13, 13),
+                    ("filled_circle_even", 7, 2, 12, 12),
+                    ("filled_circle_not_square", 7, 2, 13, 11),
+                    ("filled_ellipse_even", 8, 2, 13, 12),
+                    ("filled_ellipse_small", 8, 2, 1, 13),
+                    ("primitive_focus", 8, 3, 13, 13),
+                ]:
+                    data = bytearray(shapes)
+                    data[primitive + 4] = kind
+                    data[primitive + 6] = flags
+                    struct.pack_into("<HH", data, primitive + 12, width, height)
+                    struct.pack_into("<I", data, entry_offset + 24,
+                                     zlib.crc32(data[entry[4]:entry[4] + entry[5]]))
+                    data[-32:] = hashlib.sha256(data[:-40]).digest()
+                    with self.assertRaises(EggFormatError, msg=name):
+                        parse_egg(bytes(data))
+                    fixture(name, data, 11)
+                break
+            else:
+                self.fail("filled-circle fixture was not emitted")
             # Preserve valid container CRCs/digest while emptying just one model.
             render_entries = []
             header = HEADER.unpack_from(baseline)
@@ -198,6 +237,12 @@ class FirmwarePackageWorkflowTests(unittest.TestCase):
                 data = reported.read_bytes()
                 if hashlib.sha256(data).hexdigest() == "e8c5445a4e9c3aba20b239ddb087dc984394f0a1dc167dca58379ff492387c2e":
                     fixture("reported_empty_scene", data, 11)
+            reported_new = reported.with_name("authoring_pass_test_new.egg")
+            if reported_new.is_file():
+                data = reported_new.read_bytes()
+                if hashlib.sha256(data).hexdigest() == "4710d2583b944ea88b5925c60b968f67e64684855944ad5ae227b31ae1127ef5":
+                    parse_egg(data)
+                    fixture("reported_line_direction", data, 0)
             executable = work / "package_validation.exe"
             environment = dict(os.environ)
             environment["PATH"] = str(Path(compiler).parent) + os.pathsep + environment.get("PATH", "")
@@ -211,6 +256,13 @@ class FirmwarePackageWorkflowTests(unittest.TestCase):
                                     timeout=20, env=environment)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             self.assertIn("live-context isolation checks passed", result.stdout)
+            command[-3] = str(Path(__file__).with_name("native_shape_decode.c"))
+            result = subprocess.run(command, capture_output=True, text=True, timeout=60, env=environment)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            result = subprocess.run([str(executable), str(work / "all_shapes.egg")],
+                                    capture_output=True, text=True, timeout=10, env=environment)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn("shape decoding checks passed", result.stdout)
 
 
 if __name__ == "__main__":
