@@ -2,9 +2,10 @@
 
 Date: 2026-09-09.
 
-Status: root cause identified; product rule agreed; validation implementation
-and target retest pending. This is a documentation-only handoff for the GUI
-branch. It changes no firmware, authoring service, schema, compiler or project.
+Status: product rule agreed. OS candidate preflight and boot/PLAY error recovery
+are implemented with local native regression coverage; hardware retest remains
+pending. GUI/shared build-readiness implementation remains GUI-branch work.
+This handoff introduces no schema, compiler, project or UI protocol change.
 
 Related:
 
@@ -12,6 +13,7 @@ Related:
 - [[Peep_Studio_PeepOS_Link_Contract]]
 - [[Peep_Studio_Scoped_Timer_Handoff]]
 - [[Shell_and_UI_Navigation_State_Machine]]
+- [[Package_Workflow_Validation_Runbook]]
 
 ## Agreed Rule
 
@@ -75,7 +77,7 @@ The attached debugger session reported:
 - Scene active `0`, activation status `1`; runtime lifecycle `5` (`ERROR`).
 - UI remained page `0` (`BOOT`), with no UI transitions and no scene rendered.
 
-The native failure is explained by these code paths:
+The original failure was explained by these code paths (before the OS fix):
 
 | Location | Relevant behavior |
 |---|---|
@@ -149,16 +151,30 @@ file on hardware and confirm PLAY launches the authored `main`, secondary
 scenes render, and a subsequent normal boot launches successfully. A valid
 container or a completed flash install alone does not confirm runtime loading.
 
-Native/hardware proof remains pending until those tests run. Updating the GUI
-validator does not repair the egg already installed on the device.
+OS native regressions now reject an empty render model in each included scene
+and state, including this exact artifact when its recorded fingerprint matches.
+They also check rejection leaves the live loader and scene unchanged. Hardware
+confirmation remains pending. Updating either validator does not repair the egg
+already installed on the device.
 
-## Separate OS Recovery Follow-Up
+## OS Implementation Status
 
 Firmware must still handle an incompatible or damaged package with a usable
 shell/error page after either PLAY or boot. An error must not leave the UI at
 BOOT or the old installed prompt. Export checks reduce invalid inputs but do
 not remove the need for runtime validation and failure recovery.
 
-This recovery change is not implemented by this handoff and does not require
-the GUI agent to modify firmware. Keep it separate from the agreed decision
-to reject empty scenes.
+The OS branch now runs complete native preflight before `VALID` and again before
+flash writes, using isolated loader scratch and the runtime owner's HASH path.
+Every scene/state is checked, not just the entry scene. Boot and PLAY loader
+failures now restore shell runtime ownership and retain a recoverable package
+error request for the UI owner to consume. B reaches package tools and START
+reaches the shell menu without retrying the bad egg. Visible shell pages own
+buttons and joystick input even with no runtime or a failed package; the locked
+fatal shell-error screen is not used for package failures. Local tests now
+exercise actual UI-router navigation, not just error-event delivery. These
+changes have a successful Debug build, not a hardware pass yet.
+
+The GUI agent should still implement the readiness diagnostics above. Firmware
+rejection is a second line of defense, not a substitute for actionable authoring
+errors. No Peep Studio implementation files were changed by the OS workflow fix.

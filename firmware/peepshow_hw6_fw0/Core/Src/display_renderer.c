@@ -1,4 +1,5 @@
 #include "display_renderer.h"
+#include "ps_package_workflow.h"
 
 #include <string.h>
 
@@ -2583,7 +2584,23 @@ static void DisplayRenderer_UIList(uint32_t page,
       list->rows[2] = "B BACK";
       break;
     case PS_UI_ROUTER_PAGE_PACKAGE_BROWSER:
-      if (focus_index >= PS_UI_ROUTER_PACKAGE_MENU_FOCUS_BASE)
+      if ((focus_index >= PS_PACKAGE_WORKFLOW_DISPLAY_BASE) &&
+          (focus_index < PS_PACKAGE_WORKFLOW_DISPLAY_BASE +
+                         PS_PACKAGE_WORKFLOW_PHASE_COUNT))
+      {
+        static const char *const phases[PS_PACKAGE_WORKFLOW_PHASE_COUNT] =
+        {
+          "READY", "STARTING", "PREPARING", "SCANNING", "READING",
+          "VALIDATING", "ERASING", "WRITING", "VERIFYING", "COMMITTING",
+          "LOADING", "LAUNCHING", "CONNECTING", "RECLAIMING", "DONE", "ERROR"
+        };
+        list->title = "PACKAGE / USB";
+        list->rows[0] = phases[focus_index - PS_PACKAGE_WORKFLOW_DISPLAY_BASE];
+        list->rows[1] = "PLEASE WAIT";
+        list->rows[2] = "";
+        break;
+      }
+      else if (focus_index >= PS_UI_ROUTER_PACKAGE_MENU_FOCUS_BASE)
       {
         uint32_t package_focus =
           focus_index - PS_UI_ROUTER_PACKAGE_MENU_FOCUS_BASE;

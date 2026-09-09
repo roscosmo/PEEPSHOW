@@ -525,10 +525,11 @@ ps_status_t PS_StoragePackageIndex_Scan(ps_storage_flash_block_t *block)
   return PS_STATUS_OK;
 }
 
-ps_status_t PS_StoragePackageIndex_InstallValidated(
+ps_status_t PS_StoragePackageIndex_InstallValidatedWithProgress(
   ps_storage_flash_block_t *block,
   const uint8_t *package,
-  uint32_t package_size)
+  uint32_t package_size,
+  ps_storage_package_progress_fn progress)
 {
   const ps_storage_region_t *index_region;
   const ps_storage_region_t *package_region;
@@ -589,6 +590,10 @@ ps_status_t PS_StoragePackageIndex_InstallValidated(
 
   g_ps_storage_package_install_probe.stage =
     PS_STORAGE_PACKAGE_INSTALL_STAGE_SCAN;
+  if (progress != NULL)
+  {
+    progress(PS_STORAGE_PACKAGE_INSTALL_STAGE_SCAN);
+  }
   status = PS_StoragePackageIndex_Scan(block);
   if (status != PS_STATUS_OK)
   {
@@ -627,6 +632,10 @@ ps_status_t PS_StoragePackageIndex_InstallValidated(
                 block->geometry.erase_block_size;
   g_ps_storage_package_install_probe.stage =
     PS_STORAGE_PACKAGE_INSTALL_STAGE_ERASE_PACKAGE;
+  if (progress != NULL)
+  {
+    progress(PS_STORAGE_PACKAGE_INSTALL_STAGE_ERASE_PACKAGE);
+  }
   for (erase_index = 0UL; erase_index < erase_count; ++erase_index)
   {
     poll_count = 0UL;
@@ -647,6 +656,10 @@ ps_status_t PS_StoragePackageIndex_InstallValidated(
 
   g_ps_storage_package_install_probe.stage =
     PS_STORAGE_PACKAGE_INSTALL_STAGE_PROGRAM_PACKAGE;
+  if (progress != NULL)
+  {
+    progress(PS_STORAGE_PACKAGE_INSTALL_STAGE_PROGRAM_PACKAGE);
+  }
   for (program_offset = 0UL;
        program_offset < package_size;
        program_offset += block->geometry.program_page_size)
@@ -696,6 +709,10 @@ ps_status_t PS_StoragePackageIndex_InstallValidated(
 
   g_ps_storage_package_install_probe.stage =
     PS_STORAGE_PACKAGE_INSTALL_STAGE_VERIFY_PACKAGE;
+  if (progress != NULL)
+  {
+    progress(PS_STORAGE_PACKAGE_INSTALL_STAGE_VERIFY_PACKAGE);
+  }
   status = PS_StoragePackageIndex_VerifyBytes(block,
                                               target_package_start,
                                               package,
@@ -719,6 +736,10 @@ ps_status_t PS_StoragePackageIndex_InstallValidated(
                                      target_slot);
   g_ps_storage_package_install_probe.stage =
     PS_STORAGE_PACKAGE_INSTALL_STAGE_ERASE_INDEX;
+  if (progress != NULL)
+  {
+    progress(PS_STORAGE_PACKAGE_INSTALL_STAGE_ERASE_INDEX);
+  }
   poll_count = 0UL;
   status = ps_storage_flash_block_erase(
     block,
@@ -734,6 +755,10 @@ ps_status_t PS_StoragePackageIndex_InstallValidated(
 
   g_ps_storage_package_install_probe.stage =
     PS_STORAGE_PACKAGE_INSTALL_STAGE_PROGRAM_INDEX;
+  if (progress != NULL)
+  {
+    progress(PS_STORAGE_PACKAGE_INSTALL_STAGE_PROGRAM_INDEX);
+  }
   status = ps_storage_flash_block_program(block,
                                           target_index_start,
                                           ps_storage_package_index_body,
@@ -747,6 +772,10 @@ ps_status_t PS_StoragePackageIndex_InstallValidated(
 
   g_ps_storage_package_install_probe.stage =
     PS_STORAGE_PACKAGE_INSTALL_STAGE_VERIFY_INDEX;
+  if (progress != NULL)
+  {
+    progress(PS_STORAGE_PACKAGE_INSTALL_STAGE_VERIFY_INDEX);
+  }
   status = PS_StoragePackageIndex_VerifyBytes(
     block,
     target_index_start,
@@ -764,6 +793,10 @@ ps_status_t PS_StoragePackageIndex_InstallValidated(
 
   g_ps_storage_package_install_probe.stage =
     PS_STORAGE_PACKAGE_INSTALL_STAGE_COMMIT;
+  if (progress != NULL)
+  {
+    progress(PS_STORAGE_PACKAGE_INSTALL_STAGE_COMMIT);
+  }
   PS_StoragePackageIndex_PutU32(marker,
                                 PS_STORAGE_PACKAGE_INDEX_COMMIT_MARKER);
   status = ps_storage_flash_block_program(
@@ -803,6 +836,10 @@ ps_status_t PS_StoragePackageIndex_InstallValidated(
 
   g_ps_storage_package_install_probe.stage =
     PS_STORAGE_PACKAGE_INSTALL_STAGE_RESCAN;
+  if (progress != NULL)
+  {
+    progress(PS_STORAGE_PACKAGE_INSTALL_STAGE_RESCAN);
+  }
   status = PS_StoragePackageIndex_Scan(block);
   g_ps_storage_package_install_probe.rescan_status = (uint32_t)status;
   g_ps_storage_package_install_probe.selected_record =
@@ -826,6 +863,18 @@ ps_status_t PS_StoragePackageIndex_InstallValidated(
 
   g_ps_storage_package_install_probe.stage =
     PS_STORAGE_PACKAGE_INSTALL_STAGE_COMPLETE;
+  if (progress != NULL)
+  {
+    progress(PS_STORAGE_PACKAGE_INSTALL_STAGE_COMPLETE);
+  }
   g_ps_storage_package_install_probe.status = (uint32_t)PS_STATUS_OK;
   return PS_STATUS_OK;
+}
+
+
+ps_status_t PS_StoragePackageIndex_InstallValidated(
+  ps_storage_flash_block_t *block, const uint8_t *package, uint32_t package_size)
+{
+  return PS_StoragePackageIndex_InstallValidatedWithProgress(
+    block, package, package_size, NULL);
 }

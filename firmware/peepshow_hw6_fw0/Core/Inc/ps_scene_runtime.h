@@ -300,6 +300,9 @@ const ps_scene_waiting_visual_t *PS_SceneRuntime_ResolveShellStateWaitingVisual(
   uint32_t focus_index,
   const ps_scene_waiting_visual_bounds_t *cursor_bounds);
 uint32_t PS_SceneRuntime_EnterStateScene(void);
+/* Pure descriptor check, shared by activation and candidate preflight. */
+uint32_t PS_SceneRuntime_ValidateDescriptor(
+  const ps_scene_runtime_state_scene_t *scene, uint32_t package_scene_count);
 void PS_SceneRuntime_ExitStateScene(void);
 uint32_t PS_SceneRuntime_StateSceneActive(void);
 uint32_t PS_SceneRuntime_StateIndex(void);

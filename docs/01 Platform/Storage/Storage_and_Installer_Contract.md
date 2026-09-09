@@ -159,13 +159,21 @@ then publish `VALID`. Package install and launch remain separate user actions.
 Until that migration lands, the FW0 A/B path is bring-up-only behavior and must
 not be extended as a product package catalog.
 
-The current bring-up admission check before persistent commit is still narrower
-than the production rule in step 4: it checks the bounded `PKG1` envelope and
-footer, then byte-verifies the programmed package. SHA-256, complete container,
-chunk, and scene-schema validation currently runs during the immediate runtime
-activation. Production completion must move the required integrity checks
-before the commit marker so a semantically invalid package can never become the
-selected generation.
+The FW0 preflight implementation now checks SHA-256, the complete container and
+chunk CRCs, target residency, and every included scene/state using the native
+loader and descriptor validator before presenting `VALID`. It repeats preflight
+on the bytes reread for install before any package erase/program/commit. This
+also applies to the embedded SWD install source. Runtime validation remains in
+place. Local native tests pass; this change is awaiting hardware acceptance,
+not a new target-proven milestone. See [[Package_Workflow_Validation_Runbook]].
+
+`thStorage` owns a separate fixed candidate buffer and closes FileX/LevelX before
+requesting preflight from `thRuntime`, the HASH owner. Preflight has independent
+loader/catalog scratch and must not overwrite the active package context,
+resident bytes, or reader handle. A timed-out validation retains its candidate
+reservation until the runtime owner finishes, preventing a late read of reused
+storage. The low-level `InstallValidated` API still requires its caller to have
+performed semantic preflight; it is not itself a second scene-loader entrypoint.
 
 The current `65536`-byte staged-RAM source remains a bring-up MSC source bridge,
 not the installed slot size or the product package limit. The product installer
@@ -292,11 +300,11 @@ USB export rules:
 - during HW6 FW0 USB/storage bring-up, explicit provisioning and MSC service requests may also show temporary display cues through `thDisplay`; these cues are observation-only and must not decide storage, USB, erase, format, or reclaim behavior
 - MSC UI is an overlay: successful reclaim restores the UI page/state underneath the MSC cue; error and recovery states may remain on the MSC overlay until handled.
 - FW0 reclaim may run a bounded staging/export root-directory classifier for diagnostics: it opens FileX/LevelX only under `thStorage`, classifies the reclaimed volume as `EMPTY`, `UNSUPPORTED`, `PACKAGE_CANDIDATE`, `MULTIPLE`, or `ERROR`, closes FileX/LevelX before returning, and performs no package import or install writes. This classifier must not decide whether MSC reclaim itself succeeded; safe USB teardown/parking is the transport completion condition. Directories are counted for diagnostics but do not make a single package file unsupported, because host operating systems may create metadata directories. `PACKAGE_CANDIDATE` is a filename-level hint only for exactly one `.egg` file, not an automatic install prompt.
-- FW0 runs a read-only minimum package-envelope validator for one clean package candidate. This validator reopens the staging/export volume under `thStorage`, opens the package file for read, reads at most the first 64 bytes, requires the first four bytes to be `PKG1`, records the first 16 bytes and FileX/LevelX statuses for GDB evidence, and closes FileX/LevelX before returning. This is prompt admission only; it is not complete package validation.
+- FW0 retains a read-only 64-byte minimum package-envelope check for one clean candidate. It is an early classifier only, not permission to display `VALID` or install. Explicit package scan follows it with full native preflight. The legacy envelope reason remains envelope-specific; the separate workflow probe reports the full preflight status, failing scene ID and reason.
 - Selecting `PACKAGE INSTALL` from the PACKAGE menu asks `thStorage` to scan the reclaimed staging volume. This is the first point where product UI decides whether copied files should be considered for package install.
 - Pressing `A` on a valid package prompt currently uses the bounded `65536`-byte bring-up path. The product replacement reopens the staged `.egg` under `thStorage`, validates it without a full-RAM copy, publishes `PENDING`, chunk-writes and verifies the active package slot, then commits `VALID` last.
 - After a product commit, `thStorage` publishes an installed-package handle source rather than a complete installed-RAM copy and reports `INSTALLED` to the package browser. Pressing `A` then asks `thRuntime` to validate required metadata and activate the package. Install and launch remain separate user actions.
-- Runtime never reads FAT/FileX. A package must be exited before installer admission replaces its active package context. The persistent A/B write/index/select/boot-launch path and bounded installed-package audio reader are target-proven bring-up behavior. Single-slot migration, streamed MSC installation without the complete staged-RAM bridge, full pre-commit validation, reset injection at every install stage, uninstall, package quarantine, and generalized installed-asset coverage remain open.
+- Runtime never reads FAT/FileX. A package must be exited before installer admission replaces its active package context. The persistent A/B write/index/select/boot-launch path and bounded installed-package audio reader are target-proven bring-up behavior. Full pre-commit validation is implemented and locally tested but awaits target acceptance. Single-slot migration, streamed MSC installation without the complete staged-RAM bridge, reset injection at every install stage, uninstall, package quarantine, and generalized installed-asset coverage remain open.
 - HW6 evidence `EV-HW6-20260813-P1-PKGMSC-043` validates the earlier package-page force-rescan path that auto-prompted after reclaim. That behavior is now classified as bring-up scaffolding only; product MSC remains transport-only, and package selection/install belongs to the package browser. HW6 evidence `EV-HW6-20260813-P1-RUNTIME-044` validates the runtime-host installer overlay around that earlier scaffold; it does not define final package-browser UX.
 - if MSC export detects an unformatted or invalid LevelX/FileX staging volume, it reports recovery-required state and leaves formatting to the explicit provisioning command
 - normal boot may ask `thStorage` to run a USB boot-park cleanup command; this command only parks generated USB device hardware and refreshes clock readback, and must not mount FileX/LevelX, initialize package storage, expose MSC, or prove storage readiness
@@ -361,6 +369,34 @@ Rules:
 - composite `MSC + CDC` is future work and requires new validation before use.
 
 ## Installer Mode Behavior
+
+The shell MSC enter/reclaim, package scan/install and PLAY paths use a bounded
+owner-routed workflow. `thUI` accepts the action without waiting for admission or
+storage. `thDisplay` must finish the initial `STARTING` transfer before runtime
+preparation and storage work are dispatched. Later stage notifications show
+reading, validation, erase, writing, verification, commit and loading activity.
+They are observation-only and may be coalesced/skipped if a stage finishes
+before the display consumes it; the first notice is mandatory.
+
+Only one workflow is accepted at a time. Repeated input does not queue another
+install, and normal animation/redraw cannot overwrite its busy notice. Completion
+is retained until `thUI` consumes it even if the notification queue is full.
+Critical power/shutdown display commands are not suppressed. STOP2 is blocked
+while the workflow or candidate validation is active; normal policy resumes
+after completion. PLAY/boot loader errors restore `SHELL / REACTIVE / RUNNING`
+and request the recoverable package error prompt, not the locked fatal shell
+error page. B returns to package tools and START reaches the shell menu without
+retrying the failed egg. Shell buttons and joystick navigation do not depend on
+the failed package lifecycle. Terminal installer errors retain failure
+diagnostics but return runtime ownership to the shell. Absence of a package
+still uses EGGLESS; neither recovery path erases installed data.
+
+No clock profile changes accompany this workflow. Phase wall times, sampled
+HCLK and clock-policy OSPI frequency are recorded for target measurement.
+These are not CPU-utilization measurements. The existing MSC capability request
+selects 160 MHz; an otherwise unopposed flash-only package request uses the
+24 MHz base profile. Hardware acceptance and the exact observation limits are
+listed in [[Package_Workflow_Validation_Runbook]].
 
 Installer/export mode is mostly unusable by design.
 

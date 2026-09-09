@@ -188,8 +188,8 @@ static uint32_t PS_SceneRuntime_RenderElementValid(
           (element->style_id == PS_SCENE_RENDER_STYLE_NONE)) ? 1UL : 0UL;
 }
 
-static uint32_t PS_SceneRuntime_ValidateStateScene(
-  const ps_scene_runtime_state_scene_t *scene)
+uint32_t PS_SceneRuntime_ValidateDescriptor(
+  const ps_scene_runtime_state_scene_t *scene, uint32_t package_scene_count)
 {
   uint32_t state_index;
   uint32_t visual_binding_index;
@@ -202,7 +202,6 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
   uint32_t waiting_animation_index;
   uint32_t transition_index;
 
-  g_ps_scene_runtime_probe.descriptor_validate_count++;
   if ((scene == NULL) ||
       (scene->api_version != PS_SCENE_RUNTIME_API_VERSION) ||
       (scene->scene_id == 0UL) ||
@@ -667,7 +666,7 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
            ((transition->target_scene_id != 0UL) &&
             (transition->target_state_id == 0UL) &&
             (transition->target_scene_id <=
-             PS_EggStateLoader_SceneCount())) ||
+             package_scene_count)) ||
            ((transition->source_state_id == 0UL) &&
             (transition->target_state_id == 0UL) &&
             (transition->target_scene_id == 0UL)))) ||
@@ -718,6 +717,13 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
   }
 
   return 0UL;
+}
+
+static uint32_t PS_SceneRuntime_ValidateStateScene(
+  const ps_scene_runtime_state_scene_t *scene)
+{
+  g_ps_scene_runtime_probe.descriptor_validate_count++;
+  return PS_SceneRuntime_ValidateDescriptor(scene, PS_EggStateLoader_SceneCount());
 }
 
 static void PS_SceneRuntime_SelectState(uint32_t state_index)

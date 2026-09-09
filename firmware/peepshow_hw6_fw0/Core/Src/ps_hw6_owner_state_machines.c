@@ -19,6 +19,7 @@
 #include "ps_hw_i2c3.h"
 #include "ps_hw6_owner_services.h"
 #include "ps_hw6_rtos_probe.h"
+#include "ps_package_workflow.h"
 #include "ps_hw6_trace.h"
 #include "ps_hw6_usb_export.h"
 #include "ps_input_buttons.h"
@@ -7316,6 +7317,45 @@ static HAL_StatusTypeDef PS_HW6_SM_PrepareStorageForUsbExport(void)
   return PS_HW6_SM_PrepareStorageForFlashReady(1UL);
 }
 
+/* Transport scratch is separate from the installed package and runtime cache. */
+static uint8_t ps_package_candidate_buffer[PS_PACKAGE_SOURCE_STAGED_CAPACITY_BYTES]
+  __attribute__((aligned(4)));
+
+static ps_status_t PS_HW6_SM_LoadPackageCandidate(void)
+{
+  if (PS_HW6_RTOS_PackageValidationBusy() != 0UL)
+  {
+    return PS_STATUS_BUSY;
+  }
+  PS_HW6_RTOS_PackageProgress(PS_PACKAGE_WORKFLOW_READING);
+  return ps_storage_filex_levelx_load_usb_staging_package(
+    &ps_flash_block,
+    PS_HW6_SM_FindStorageRegion(PS_STORAGE_REGION_USB_STAGING),
+    ps_package_candidate_buffer, sizeof(ps_package_candidate_buffer),
+    &ps_storage_package_load_result);
+}
+
+static void PS_HW6_SM_PackageInstallProgress(uint32_t stage)
+{
+  switch (stage)
+  {
+    case PS_STORAGE_PACKAGE_INSTALL_STAGE_ERASE_PACKAGE:
+      PS_HW6_RTOS_PackageProgress(PS_PACKAGE_WORKFLOW_ERASING);
+      break;
+    case PS_STORAGE_PACKAGE_INSTALL_STAGE_PROGRAM_PACKAGE:
+      PS_HW6_RTOS_PackageProgress(PS_PACKAGE_WORKFLOW_PROGRAMMING);
+      break;
+    case PS_STORAGE_PACKAGE_INSTALL_STAGE_VERIFY_PACKAGE:
+      PS_HW6_RTOS_PackageProgress(PS_PACKAGE_WORKFLOW_VERIFYING);
+      break;
+    case PS_STORAGE_PACKAGE_INSTALL_STAGE_ERASE_INDEX:
+      PS_HW6_RTOS_PackageProgress(PS_PACKAGE_WORKFLOW_COMMITTING);
+      break;
+    default:
+      break;
+  }
+}
+
 static HAL_StatusTypeDef PS_HW6_SM_RunUsbStageRescanScaffold(void)
 {
   ps_status_t scan_status;
@@ -7468,6 +7508,29 @@ static HAL_StatusTypeDef PS_HW6_SM_RunUsbStageRescanScaffold(void)
   }
 
   g_ps_hw6_owner_sm_probe.usb_stage_rescan_pending = 0UL;
+  if (g_ps_hw6_owner_sm_probe.package_candidate_pending != 0UL)
+  {
+    validate_status = PS_HW6_SM_LoadPackageCandidate();
+    if (validate_status == PS_STATUS_OK)
+    {
+      PS_HW6_RTOS_PackageProgress(PS_PACKAGE_WORKFLOW_VALIDATING);
+      if (PS_HW6_RTOS_ValidatePackage(ps_package_candidate_buffer,
+            ps_storage_package_load_result.bytes_read) != 0UL)
+      {
+        validate_status = PS_STATUS_VERIFY_FAILED;
+      }
+    }
+    g_ps_hw6_owner_sm_probe.package_validate_status = validate_status;
+    if (validate_status != PS_STATUS_OK)
+    {
+      g_ps_hw6_owner_sm_probe.package_candidate_pending = 0UL;
+      return HAL_ERROR;
+    }
+  }
+  else if (validate_candidate != 0UL)
+  {
+    return HAL_ERROR;
+  }
   return (scan_status == PS_STATUS_OK) ? HAL_OK : HAL_ERROR;
 }
 
@@ -7476,8 +7539,6 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
   HAL_StatusTypeDef status = HAL_ERROR;
   HAL_StatusTypeDef park_status = HAL_ERROR;
   HAL_StatusTypeDef prepare_status = HAL_ERROR;
-  uint8_t *staged_buffer = NULL;
-  uint32_t staged_capacity = 0UL;
   uint32_t publish_status = 1UL;
   ps_status_t load_status = PS_STATUS_INTERNAL_ERROR;
   ps_status_t persistent_status = PS_STATUS_INTERNAL_ERROR;
@@ -7550,16 +7611,9 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
         PS_HW6_OWNER_SM_CYCLE_COUNT);
     }
 
-    if ((prepare_status == HAL_OK) &&
-        (PS_PackageSource_BeginInstalledWrite(&staged_buffer,
-                                              &staged_capacity) == 0UL))
+    if (prepare_status == HAL_OK)
     {
-      load_status = ps_storage_filex_levelx_load_usb_staging_package(
-        &ps_flash_block,
-        PS_HW6_SM_FindStorageRegion(PS_STORAGE_REGION_USB_STAGING),
-        staged_buffer,
-        staged_capacity,
-        &ps_storage_package_load_result);
+      load_status = PS_HW6_SM_LoadPackageCandidate();
       g_ps_hw6_owner_sm_probe.package_install_stub_load_status =
         (uint32_t)load_status;
       g_ps_hw6_owner_sm_probe.package_install_stub_load_reason =
@@ -7581,10 +7635,19 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
 
       if (load_status == PS_STATUS_OK)
       {
-        persistent_status = PS_StoragePackageIndex_InstallValidated(
-          &ps_flash_block,
-          staged_buffer,
-          ps_storage_package_load_result.bytes_read);
+        PS_HW6_RTOS_PackageProgress(PS_PACKAGE_WORKFLOW_VALIDATING);
+        if (PS_HW6_RTOS_ValidatePackage(ps_package_candidate_buffer,
+              ps_storage_package_load_result.bytes_read) == 0UL)
+        {
+          persistent_status = PS_StoragePackageIndex_InstallValidatedWithProgress(
+            &ps_flash_block, ps_package_candidate_buffer,
+            ps_storage_package_load_result.bytes_read,
+            PS_HW6_SM_PackageInstallProgress);
+        }
+        else
+        {
+          persistent_status = PS_STATUS_VERIFY_FAILED;
+        }
         g_ps_hw6_owner_sm_probe.package_install_stub_persistent_status =
           (uint32_t)persistent_status;
         if (persistent_status == PS_STATUS_OK)
@@ -7604,10 +7667,8 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
           (persistent_status == PS_STATUS_OK) &&
           (park_status == HAL_OK))
       {
-        publish_status = PS_PackageSource_CommitInstalledWrite(
-          ps_storage_package_load_result.bytes_read,
-          ps_storage_package_load_result.bytes_read,
-          g_ps_storage_package_install_probe.selected_generation);
+        /* Activation loads the committed slot; never publish transport scratch. */
+        publish_status = 0UL;
       }
     }
 
@@ -7619,13 +7680,9 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunPackageInstallStub(void)
       status = HAL_OK;
       g_ps_hw6_owner_sm_probe.package_candidate_pending = 0UL;
       g_ps_hw6_owner_sm_probe.package_install_stub_source =
-        (uint32_t)PS_PACKAGE_SOURCE_INSTALLED_RAM;
+        (uint32_t)PS_PACKAGE_SOURCE_NONE;
       g_ps_hw6_owner_sm_probe.package_install_stub_generation =
-        g_ps_package_source_probe.generation;
-    }
-    else
-    {
-      PS_PackageSource_AbortStagedWrite();
+        g_ps_storage_package_install_probe.selected_generation;
     }
     g_ps_hw6_owner_sm_probe.package_install_stub_publish_status =
       publish_status;
@@ -7667,10 +7724,13 @@ PS_HW6_OwnerStateMachines_RunEmbeddedPersistentPackageInstall(void)
       (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_FLASH] ==
        (uint32_t)FLASH_READY))
   {
-    install_status = PS_StoragePackageIndex_InstallValidated(
-      &ps_flash_block,
-      g_ps_embedded_egg,
-      g_ps_embedded_egg_size);
+    PS_HW6_RTOS_PackageProgress(PS_PACKAGE_WORKFLOW_VALIDATING);
+    if (PS_HW6_RTOS_ValidatePackage(g_ps_embedded_egg, g_ps_embedded_egg_size) == 0UL)
+    {
+      install_status = PS_StoragePackageIndex_InstallValidatedWithProgress(
+        &ps_flash_block, g_ps_embedded_egg, g_ps_embedded_egg_size,
+        PS_HW6_SM_PackageInstallProgress);
+    }
     if (install_status == PS_STATUS_OK)
     {
       PS_PackageSource_AbortStagedWrite();
