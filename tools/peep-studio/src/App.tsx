@@ -61,7 +61,8 @@ import {
   type StateTriggerEventKind,
 } from "./SceneInspection";
 import type { StateGraphEntryHandle, StateGraphEntrySide } from "./stateGraph";
-import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, usesSceneObjects } from "./sceneCapabilities";
+import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsObjectCommand, usesSceneObjects } from "./sceneCapabilities";
+import { SceneObjectInspector } from "./SceneObjectInspector";
 import type {
   AssetFrameRecord,
   AssetRecord,
@@ -4747,25 +4748,34 @@ export default function App() {
       : elements.find((element) => element.element_id === selectedPlacementElement) ?? null;
     if (objectSceneSelected) {
       const object = placementOwnershipScene?.objects?.find((item) => item.object_id === selectedPlacementElement);
-      const properties = selectedPlacementElement === null ? []
-        : placementStateProjection?.changes[selectedPlacementElement]?.local_properties ?? [];
-      return <section className="inspector-section placement-inspector">
-        <h3>Object</h3>
-        <p className="muted">Read-only scene objects</p>
-        {selectedElement === null ? <p className="muted">No object selected.</p> : <dl className="inspector-list">
-          <div><dt>Name</dt><dd>{placementObjectLabelBase(selectedElement)}</dd></div>
-          <div><dt>Owner</dt><dd>{selectedSceneDocument?.display_name}</dd></div>
-          <div><dt>View</dt><dd>{placementState?.display_name ?? "Scene defaults"}</dd></div>
-          <div><dt>X</dt><dd>{selectedElement.x}</dd></div>
-          <div><dt>Y</dt><dd>{selectedElement.y}</dd></div>
-          <div><dt>Size</dt><dd>{selectedElement.width} x {selectedElement.height}</dd></div>
-          <div><dt>Visible</dt><dd>{selectedElement.visible === false ? "No" : "Yes"}</dd></div>
-          <div><dt>Frame</dt><dd>{selectedElement.visual_ref ?? "None"}</dd></div>
-          <div><dt>Clip</dt><dd>{object?.animation_ref ?? "None"}</dd></div>
-          <div><dt>Overrides</dt><dd>{properties.join(", ") || "None"}</dd></div>
-          <div><dt>Internal ID</dt><dd>{selectedElement.element_id}</dd></div>
-        </dl>}
-      </section>;
+      if (selectedSceneDocument === null) return null;
+      return <>{renderPlacementEditScope()}<SceneObjectInspector
+        key={`${selectedSceneDocument.scene_id}:${selectedPlacementElement}:${placementEditStateIds.join(",")}`}
+        scene={selectedSceneDocument} object={object}
+        label={selectedElement === null ? "" : placementObjectLabelBase(selectedElement)}
+        stateIds={placementEditStateTargets()} ownership={placementOwnershipScene}
+        frames={compiledAssetFrames} clips={project?.document?.animations ?? []} busy={busy !== null}
+        supports={kind => supportsObjectCommand(service, selectedSceneCapability, kind)}
+        onApply={async commands => {
+          if (bridge === undefined || project === null || busy !== null || commands.length === 0
+            || commands.some(command => command.scene_id !== selectedSceneDocument.scene_id
+              || !supportsObjectCommand(service, selectedSceneCapability, String(command.kind)))) return false;
+          setBusy("Updating scene object");
+          setPlaying(false);
+          stopAudioPlayback();
+          try {
+            const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+              project_revision: project.project_revision, commands,
+            });
+            applyProjectResult(result);
+            setMessage("Scene object updated. Save to write it to the project.");
+            return true;
+          } catch (error) {
+            setMessage(errorText(error));
+            return false;
+          } finally { setBusy(null); }
+        }}
+      /></>;
     }
     const selectedElementIsShape = selectedElement !== null && selectedElement.kind !== "sprite";
     const selectedSpriteFrame = selectedElement?.kind === "sprite" && selectedElement.visual_ref !== undefined

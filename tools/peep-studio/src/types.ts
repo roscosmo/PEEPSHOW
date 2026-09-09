@@ -312,6 +312,7 @@ export type AudioCueRecord = {
 };
 
 export type ProjectDocument = {
+  animations?: AuthoredClip[];
   project?: {
     editor?: ProjectEditorData;
   };
@@ -320,6 +321,13 @@ export type ProjectDocument = {
   audio_assets?: AudioAssetRecord[];
   audio_cues?: AudioCueRecord[];
   compiled_asset_frames?: CompiledAssetFrame[];
+};
+
+export type AuthoredClip = {
+  animation_id: string;
+  frame_refs: string[];
+  frame_duration_ms: number[];
+  loop_policy: string;
 };
 
 export type ProjectLoadResult = {

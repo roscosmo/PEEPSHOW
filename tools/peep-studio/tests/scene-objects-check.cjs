@@ -41,12 +41,22 @@ app.whenReady().then(async () => {
   child.stderr.on("data", data => process.stderr.write(data));
   ipcMain.handle("hierarchy:example", () => fixture);
   ipcMain.handle("hierarchy:service", async (_, operation, params) => {
-    if (/apply_commands|save|create|undo|redo|migration/.test(operation)) {
+    if (/create|migration/.test(operation)) {
       mutations.push(operation);
       throw new Error("Unexpected UI mutation: " + operation);
     }
-    const result = await request(operation, params);
+    if (operation === "project.load") assert.equal(params.path, fixture);
+    if (operation === "project.apply_commands") {
+      for (const command of params.commands) {
+        assert(["object.set_defaults", "object_override.set", "object_override.clear", "object.bind_animation", "object.clear_animation"].includes(command.kind));
+        assert.equal(command.scene_id, "state_demo");
+      }
+      mutations.push(...params.commands);
+    }
+    const result = await request(operation, params).catch(error => { throw new Error(`${operation}: ${error.message}`); });
+    if (["project.apply_commands", "project.undo", "project.redo", "project.save"].includes(operation)) documentResult = result;
     if (operation !== "project.load") return result;
+    if (result.document.scenes.some(scene => scene.schema_version === 2)) { documentResult = result; return result; }
     // Fixture preparation is explicit and isolated from the application and user projects.
     const migration = { project_revision: result.project_revision, scene_id: "state_demo", accept_continuous_animation: true };
     const plan = await request("project.object_migration_preview", migration);
@@ -57,7 +67,7 @@ app.whenReady().then(async () => {
   });
   window = new BrowserWindow({ width: 1440, height: 900, show: false,
     webPreferences: { preload: path.join(__dirname, "hierarchy-preload.cjs"), contextIsolation: true, sandbox: true, backgroundThrottling: false, offscreen: true } });
-  const evaluate = code => window.webContents.executeJavaScript(code);
+  const evaluate = code => window.webContents.executeJavaScript(code).catch(error => { throw new Error(`${code.slice(0, 350)}: ${error.message}`); });
   const click = async selector => {
     await evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) throw new Error('Missing ${selector}'); e.click(); })()`);
     await wait(250);
@@ -78,7 +88,7 @@ app.whenReady().then(async () => {
   assert.equal(await evaluate("document.querySelector('.scene-hierarchy-node.selected .base-branch code').textContent"),
     String(documentResult.placement_ownership.scenes.state_demo.objects.length));
   await click('.scene-hierarchy-node.selected .placement-tree-object');
-  assert(await evaluate("document.querySelector('.placement-inspector').textContent.includes('Read-only scene objects')"));
+  assert(await evaluate("!document.querySelector('[aria-label=\"Object X\"]').disabled"));
   assert(await evaluate("!!document.querySelector('.placement-element-box.selected')"));
   assert(await evaluate("document.querySelector('.emulator-timeline').textContent.includes('Scene time')"));
   assert.equal(await evaluate("document.body.textContent.includes('NaN')"), false);
@@ -86,6 +96,32 @@ app.whenReady().then(async () => {
     const p = c.getContext('2d').getImageData(0,0,c.width,c.height).data;
     let dark=0; for(let i=0;i<p.length;i+=4) if(p[i]<80 && p[i+1]<80 && p[i+2]<80) dark++; return dark; })()`);
   assert(pixelCount > 0, "Placement framebuffer must contain rendered objects");
+  const scene = () => documentResult.document.scenes.find(scene => scene.scene_id === "state_demo");
+  const selectedId = await evaluate("document.querySelector('.placement-element-box.selected span').textContent");
+  const object = () => scene().objects.find(object => object.object_id === selectedId);
+  const setControl = async (label, value, tag = "input") => {
+    await evaluate(`(() => {
+      const e = document.querySelector('[aria-label="${label}"]'); e.focus();
+      Object.getOwnPropertyDescriptor(${tag === "select" ? "HTMLSelectElement" : "HTMLInputElement"}.prototype, 'value').set.call(e, ${JSON.stringify(String(value))});
+      e.dispatchEvent(new Event('${tag === "select" ? "change" : "input"}', { bubbles: true }));
+    })()`);
+    await wait(80);
+    await evaluate(`document.querySelector('[aria-label="${label}"]').dispatchEvent(new FocusEvent('focusout', { bubbles: true }))`);
+    await wait(450);
+  };
+  const originalX = object().defaults.x;
+  await setControl("Object X", originalX - 2);
+  assert.equal(object().defaults.x, originalX - 2);
+  await click('button[title="Undo"]');
+  assert.equal(object().defaults.x, originalX);
+  await click('button[title="Redo"]');
+  assert.equal(object().defaults.x, originalX - 2);
+  const clip = object().animation_ref;
+  assert(clip);
+  await setControl("Object animation", "", "select");
+  assert.equal(object().animation_ref, undefined);
+  await setControl("Object animation", clip, "select");
+  assert.equal(object().animation_ref, clip);
   for (const width of [1440, 760]) {
     window.setSize(width, 900);
     window.webContents.invalidate();
@@ -101,6 +137,43 @@ app.whenReady().then(async () => {
   const expected = documentResult.placement_ownership.scenes.state_demo.states[stateId].resolved_elements;
   const actual = await evaluate("[...document.querySelectorAll('.placement-element-box')].map(e => e.title)");
   for (const element of expected) assert(actual.includes(`${element.element_id}: ${element.x},${element.y} ${element.width}x${element.height}`));
+  const override = () => scene().states.find(state => state.state_id === stateId).object_overrides.find(item => item.object_ref === selectedId);
+  await setControl("Object X", originalX - 4);
+  await setControl("Object Y", 20);
+  assert.equal(override().x, originalX - 4);
+  assert.equal(override().y, 20);
+  const secondStateId = scene().states.find(state => state.state_id !== stateId).state_id;
+  const secondStateName = scene().states.find(state => state.state_id === secondStateId).display_name;
+  await evaluate(`[...document.querySelectorAll('.scene-hierarchy-node.selected .state-branch .hierarchy-branch-select')].find(e => e.querySelector('strong')?.textContent === ${JSON.stringify(secondStateName)}).dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true, detail: 1 }))`);
+  await wait(300);
+  await setControl("Object Y", 22);
+  for (const id of [stateId, secondStateId]) {
+    assert.equal(scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === selectedId).y, 22);
+  }
+  await click('[aria-label="Object visible"]');
+  for (const id of [stateId, secondStateId]) {
+    assert.equal(scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === selectedId).visible, false);
+  }
+  await click('[aria-label="Clear visible override"]');
+  await setControl("Object frame", "marker.phase_b", "select");
+  for (const id of [stateId, secondStateId]) {
+    assert.equal(scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === selectedId).visual_ref, "marker.phase_b");
+  }
+  await click('[aria-label="Clear visual_ref override"]');
+  await click('[aria-label="Clear x override"]');
+  assert.equal(override().x, undefined);
+  assert.equal(override().y, 22);
+  assert(await evaluate("document.querySelector('[aria-label=\"Object animation\"]').disabled"));
+  // A rejected out-of-bounds value must not issue a command.
+  const count = mutations.length;
+  await setControl("Object Y", 9999);
+  assert.equal(mutations.length, count);
+  await button("Save");
+  const savedScene = JSON.stringify(scene());
+  await button("Open example");
+  await wait(600);
+  assert.equal(JSON.stringify(scene()), savedScene);
+  assert.equal(await evaluate("document.querySelector('footer').textContent.includes('PROJECT_REVISION_STALE')"), false);
   await button("Local logic");
   assert(await evaluate("[...document.querySelectorAll('.state-graph-pane .react-flow__node')].every(e => !e.classList.contains('draggable'))"));
   // Changing selection to a legacy scene restores the existing graph editing controls.
@@ -109,8 +182,8 @@ app.whenReady().then(async () => {
   await evaluate(`[...document.querySelectorAll('.scene-hierarchy-select')].find(e => e.textContent.includes(${JSON.stringify(legacy.display_name)})).click()`);
   await wait(400);
   assert(await evaluate("!!document.querySelector('.state-graph-pane .react-flow__node.draggable')"));
-  assert.deepEqual(mutations, []);
-  console.log("Mixed-version GUI checks passed; placement pixels:", pixelCount);
+  assert(mutations.some(command => command.kind === "object_override.clear"));
+  console.log("Mixed-version GUI editing checks passed; placement pixels:", pixelCount);
 }).catch(error => { console.error(error); process.exitCode = 1; }).finally(() => {
   clearTimeout(watchdog);
   child?.kill(); window?.destroy();

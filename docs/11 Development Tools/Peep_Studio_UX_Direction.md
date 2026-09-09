@@ -602,8 +602,8 @@ as unavailable.
 
 ### API 39 Scene-Object GUI Bringup
 
-Checkpoint 1 implemented: read-only version-2 scene-object inspection alongside
-unchanged legacy editing. The hierarchy lists scene-owned objects once under
+Checkpoint 1 implemented the read-only display; checkpoint 2a adds supported
+inspector editing alongside unchanged legacy editing. The hierarchy lists scene-owned objects once under
 Base objects and state override references under their states. Placement uses
 the host's resolved projections; defaults are displayed directly, without
 creating legacy render models or resolving ownership in TypeScript.
@@ -613,9 +613,21 @@ creating legacy render models or resolving ownership in TypeScript.
   This is not a live mutable-object debugger.
 - The host-preview capability requires `service.hello.scene_object_authoring`
   and per-scene `scene_capabilities`. Legacy command catalogs are not reused for
-  version-2 editing. Its placement and graph mutations remain disabled in this
-  first checkpoint, including commands the backend already supports but the GUI
-  has not yet integrated.
+  version-2 editing. Inspector commands require both hello's command list and
+  the selected scene's explicit command list and host-editing capability.
+  Canvas dragging, geometry edits, object creation/deletion and graph mutations
+  remain disabled until their separate GUI increments.
+- The placement inspector edits X and Y independently, visibility, and a
+  size-compatible default frame. State selections issue sparse override commands
+  in one batch, with inherited/overridden/mixed status and per-property reset.
+  Clearing X preserves Y. No override resolution is implemented in TypeScript.
+- Scene-base editing can bind an existing compatible authored clip or clear it
+  to Static. State scopes show the scene animation without enabling clip edits;
+  their frame field edits an explicit frame override. No state-private animation
+  records are created, and clip authoring/runtime controls are not added here.
+- Object edits use the existing revision, undo/redo, save and preview refresh
+  lifecycle. Playback pauses during an authoring edit; this is not live runtime
+  position manipulation or a promise to retain playback phase across edits.
 - The emulator displays scene elapsed time instead of legacy waiting steps.
   Version-2 states do not show missing legacy waiting-animation links.
 - Projects containing non-exportable scene objects show a persistent host-only
@@ -623,11 +635,13 @@ creating legacy render models or resolving ownership in TypeScript.
 - Tests: `sceneCapabilities.test.ts` covers capability and presentation mapping;
   `scene-objects-check.cjs` uses an explicitly migrated temporary fixture with
   a real API 39 sidecar to check mixed-version selection, projections, rendered
-  pixels, read-only controls, and desktop/compact screenshots. User projects and
+  pixels, per-axis and multi-state edits, visibility/frame override clearing,
+  clip unbind/rebind, undo/redo, save/reload, disabled graph controls, and
+  desktop/compact screenshots. User projects and
   repository examples are not migrated by Studio or modified by the test.
 
-Next checkpoints: integrate advertised object/default/override/clip editing;
-then explicit migration preview/apply with consent and supported object actions.
+Next checkpoints: supported object creation/deletion and canvas interaction;
+explicit migration preview/apply with consent; supported object actions.
 Preserve undo/redo, save/reload, legacy editing, and visible export restrictions.
 Shared schemas, compiler, service, and firmware remain OS-owned. Do not add a
 parallel model or expose version-2 graph construction ahead of its handoff.

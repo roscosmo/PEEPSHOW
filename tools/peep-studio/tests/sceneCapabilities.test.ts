@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, usesSceneObjects } from "../src/sceneCapabilities.js";
+import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsObjectCommand, usesSceneObjects } from "../src/sceneCapabilities.js";
 import type { SceneCapabilities, SceneDocument, ServiceHello } from "../src/types.js";
 
 const legacy: SceneDocument = { scene_id: "old", scene_type: "STATE_SCENE", display_name: "Old" };
@@ -23,3 +23,13 @@ assert.deepEqual(baseObjectRows(modern, projection), [{ element_id: "box", kind:
 assert.deepEqual(object.defaults, { x: 12, y: 13, visible: false });
 assert.deepEqual(baseObjectRows(modern), []);
 console.log("Scene capability and projection tests passed");
+
+const editingHost = { ...service, operations: ["project.apply_commands"], scene_object_authoring: {
+  ...service.scene_object_authoring!, commands: ["object.set_defaults"],
+} };
+const editingScene = { ...capability, supported_commands: ["object.set_defaults"] };
+assert(supportsObjectCommand(editingHost, editingScene, "object.set_defaults"));
+assert(!supportsObjectCommand(editingHost, capability, "object.set_defaults"));
+assert(!supportsObjectCommand(editingHost, { ...editingScene, host_editing: false }, "object.set_defaults"));
+assert(!supportsObjectCommand({ ...editingHost, scene_object_authoring: { ...editingHost.scene_object_authoring, commands: [] } }, editingScene, "object.set_defaults"));
+assert(!supportsObjectCommand(editingHost, undefined, "object.set_defaults"));
