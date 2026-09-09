@@ -1,13 +1,14 @@
 # Scene Object Lifetime and Control Contract
 
-Status: ownership semantics agreed following GUI review; executable implementation pending.
+Status: ownership semantics agreed; host preview and the C object-bank core are
+implemented. Production loader/graph/display integration remains pending.
 
 This contract defines the target model for scene-owned objects. It does not
 change the interpretation of existing eggs or advertise a new firmware
 capability. The rules below incorporate the GUI review and agreed movement,
-override, and compatibility decisions. The source schema, executable
-discriminator, binary layout, and capability identifiers remain to be agreed
-before implementation; no new identifiers are allocated by this document.
+override, and compatibility decisions. Source schema and development executable
+layout are recorded in [[Scene_Object_Executable_Design]]. This document does not
+allocate wire IDs or grant a production scene-object capability.
 
 Related:
 - [[Authority_and_Invariants]]

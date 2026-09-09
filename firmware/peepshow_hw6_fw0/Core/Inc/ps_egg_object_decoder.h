@@ -73,6 +73,7 @@ typedef struct
 {
   ps_egg_object_bytes_t objects;
   ps_egg_object_bytes_t controls;
+  ps_egg_object_bytes_t animations;
   uint32_t override_offset;
   uint32_t operation_offset;
   uint16_t object_count;
@@ -101,6 +102,10 @@ uint32_t PS_EggObject_GetOverride(const ps_egg_object_view_t *view,
   uint16_t state, uint16_t index, ps_egg_object_override_t *value);
 uint32_t PS_EggObject_GetOperation(const ps_egg_object_view_t *view,
   uint16_t index, ps_egg_object_operation_t *value);
+uint32_t PS_EggObject_GetClipStep(const ps_egg_object_view_t *view,
+  uint16_t object, uint16_t step, uint16_t *frame, uint32_t *duration_ms);
+uint16_t PS_EggObject_ClipStepCount(const ps_egg_object_view_t *view,
+  uint16_t object);
 
 #ifdef __cplusplus
 }

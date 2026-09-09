@@ -438,3 +438,34 @@ API **39**, source/service commands, GUI capabilities and ordinary export are
 unchanged. Keep V2 export unavailable. Remaining OS work: integrate complete
 container/scene/graph validation with the loader, implement the bounded live
 object bank and transactional actions, then display/awake/STOP2 continuity.
+
+### C Object Bank Core Increment
+
+After `dc8815196fd14fcd9a8bf2773d356bd41914e47f`, the OS adds
+`ps_scene_objects.h/.c`: fixed-capacity underlying properties, transactional
+object actions, sparse state overrides, effective snapshots and analytical clip
+phase/residual time. Decoder getters now expose immutable clip steps. Native
+tests consume actual V2 encoder bytes with two independent objects sharing a
+four-step, 250 ms clip; they do not substitute host-preview data for C behavior.
+
+Selection changes preserve phase and remaining time; persistent movement reads
+underlying coordinates and clamps each ordered write safely. Temporary frame
+masks beat persistent masks, while both leave playback advancing. Hidden clips
+advance without a scheduler, and explicit scene suspension pauses elapsed time.
+Failed, stale and double commits do not change the live bank. Scene recreation
+uses fresh defaults and a new activation token.
+
+The core is compiled but not connected to production loading, graph dispatch,
+timer dispatch or the display owner yet. V2 installation/export remains disabled;
+**API 39 and Studio commands/capabilities are unchanged**. No GUI worktree,
+source schema, compiler semantics, clocks, drivers or power policy changed.
+
+Verification: **218 authoring tests pass**, including six new native-core tests;
+HW6 Debug build, target-profile and diff checks pass. ARM ABI bank/stage/snapshot
+sizes are 216/240/408 bytes. Unoptimized local stack frames are 320 bytes for
+Init, 128 for Apply and 504 for Snapshot, excluding callees/interrupt overhead.
+No production banks are allocated yet, and no device pass is claimed.
+
+Next OS integration: complete V2 container/scene/graph validation and lowering;
+stage graph variables/object actions together; admit and publish the display
+plan while preserving phase and residual deadlines across awake/STOP2 handoff.

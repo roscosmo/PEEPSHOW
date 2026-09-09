@@ -229,6 +229,42 @@ uint32_t PS_EggObject_GetOperation(const ps_egg_object_view_t *view,
   return 1U;
 }
 
+uint16_t PS_EggObject_ClipStepCount(const ps_egg_object_view_t *view,
+  uint16_t object)
+{
+  ps_egg_object_definition_t definition;
+  if (!PS_EggObject_GetDefinition(view, object, &definition) ||
+      (definition.clip == PS_EGG_OBJECT_REF_NONE))
+  {
+    return 0U;
+  }
+  return U16(view->animations.data + CLIP_HEADER +
+             (uint32_t)definition.clip * CLIP_RECORD + 4U);
+}
+
+uint32_t PS_EggObject_GetClipStep(const ps_egg_object_view_t *view,
+  uint16_t object, uint16_t step, uint16_t *frame, uint32_t *duration_ms)
+{
+  ps_egg_object_definition_t definition;
+  const uint8_t *header;
+  const uint8_t *record;
+  uint32_t frames;
+  uint32_t durations;
+  if ((frame == NULL) || (duration_ms == NULL) ||
+      (step >= PS_EggObject_ClipStepCount(view, object)) ||
+      !PS_EggObject_GetDefinition(view, object, &definition))
+  {
+    return 0U;
+  }
+  header = view->animations.data;
+  record = header + CLIP_HEADER + (uint32_t)definition.clip * CLIP_RECORD;
+  frames = CLIP_HEADER + (uint32_t)U16(header + 8U) * CLIP_RECORD;
+  durations = frames + (uint32_t)U16(header + 10U) * 2U;
+  *frame = U16(header + frames + ((uint32_t)U16(record + 2U) + step) * 2U);
+  *duration_ms = U32(header + durations + ((uint32_t)U16(record + 6U) + step) * 4U);
+  return 1U;
+}
+
 static ps_egg_object_status_t Objects(const ps_egg_object_view_t *view,
   ps_egg_object_bytes_t strings, ps_egg_object_bytes_t assets,
   ps_egg_object_bytes_t animations)
@@ -401,6 +437,7 @@ ps_egg_object_status_t PS_EggObject_Decode(
   }
   candidate.objects = objects;
   candidate.controls = controls;
+  candidate.animations = animations;
   status = Objects(&candidate, strings, assets, animations);
   if (status == PS_EGG_OBJECT_OK)
   {

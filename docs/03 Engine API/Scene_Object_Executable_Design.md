@@ -2,9 +2,9 @@
 
 Status: GUI representation review accepted; source loading, migration/editing
 service and host scene-object preview implemented in service API 39. A separate
-development V2 binary encoder/reader and a C object/control-record decoder are
-implemented; normal export, full firmware package integration, execution and
-autonomous display integration remain unavailable.
+development V2 binary encoder/reader, C object/control-record decoder and staged
+C object-bank core are implemented. Normal export, production loader/graph
+execution and autonomous display integration remain unavailable.
 
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. Tests:
 [[Scene_Object_Ownership_Acceptance_Plan]]. Coordination:
@@ -268,6 +268,46 @@ time accounting and autonomous phase evidence; do not depend on sleeping CPU
 ticks. During scene suspension, pause scene-active elapsed time.
 
 ## Bounded Playback Plan
+
+### C Object Bank Core
+
+`ps_scene_objects.c` now implements the object-only runtime core against an
+immutable `ps_egg_object_view_t`. Defaults initialize once. State selection
+replaces sparse overrides without resetting underlying properties or clip time.
+All five object operations run on a caller-owned staging copy; failed actions
+invalidate that transaction. Commit checks its originating bank, scene activation
+and mutation serial, rejecting stale or already-consumed transactions. A later
+graph/variable/display failure must abort the object stage before any side effect.
+
+The core supplies a pointer-free effective snapshot. Persistent frame selection
+is separate from the default frame, and state frame masks take precedence.
+Hidden clips and masked clips retain phase and residual time analytically.
+Elapsed milliseconds are supplied by the caller; no HAL tick, RTOS tick, polling
+or display scheduling is introduced. Include reconciled STOP2 time in this input;
+explicit scene suspension pauses it. The actual Platform timebase integration
+is not implemented by this core.
+
+Storage reuses current ceilings: 12 objects, 8 animated instances (including
+hidden), 4 distinct frames and 12 steps per clip, 8 states and 32 staged object
+actions. No new tunable constants, global banks or target capability are added.
+These local bounds do not prove that the combined clips fit an LPBAM schedule.
+Common quantum, combined cycle, payload budget and residual handoff still need
+display admission before production activation.
+
+ARM Cortex-M33 ABI measurements: bank 216 bytes, staging structure 240 bytes,
+pointer-free snapshot 408 bytes. GCC 12.3 `-O0 -fstack-usage` reports local frames
+of 320 bytes for Init, 128 for Apply and 504 for Snapshot. These are per-function
+frames, not complete call-chain or interrupt stack bounds. They must be included
+in the integrating runtime owner's stack/RAM budget. The full Debug build does
+not allocate these banks yet and retains its previous RAM footprint.
+
+Byte-backed native tests cover phase/residual preservation at 375/425 ms,
+independent masks on two objects sharing a clip, ordered/clamped signed movement,
+override removal, hidden playback, suspend/resume, recreation, transaction abort,
+stale/double commit and capacity failures. These are C semantic checks, not a
+production graph/timer dispatch, actual renderer or hardware STOP2 pass.
+
+### Display Integration Remaining
 
 Proposed first-increment ceilings retain the current renderer envelope:
 

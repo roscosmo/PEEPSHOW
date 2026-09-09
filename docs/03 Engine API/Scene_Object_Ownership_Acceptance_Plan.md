@@ -1,6 +1,8 @@
 # Scene Object Ownership Acceptance Plan
 
-Status: design and test specification only; all cases NOT RUN.
+Status: acceptance specification with host/native subsets implemented; device
+ownership and awake/STOP2 handoff acceptance remain NOT RUN. Incremental results
+are recorded in [[Peep_Studio_Scene_Object_Ownership_Handoff]].
 
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. Coordination:
 [[Peep_Studio_Scene_Object_Ownership_Handoff]]. This plan defines expected
@@ -25,8 +27,10 @@ Times below refer to scene-active time except where a suspension test explicitly
 uses wall time. Frame numbers are test labels, not executable enum allocations.
 Each case starts from a fresh fixture unless it explicitly continues a sequence.
 
-The fixtures are to be created during implementation. This document does not
-claim that the existing authoring service can already express all of them.
+Host and byte-backed native fixtures now exercise subsets of these semantics.
+The device fixture with visibly numbered frames and complete runtime/display
+integration remains to be delivered. Do not treat native frame-index assertions
+as evidence that a panel animated or that firmware dispatched a scene timer.
 
 ## Increment 1: Ownership and Continuity
 
