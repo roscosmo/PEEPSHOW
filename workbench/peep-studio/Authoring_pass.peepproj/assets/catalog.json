@@ -90,18 +90,46 @@
       "asset_type": "sampled_sfx",
       "source_path": "assets/audio_013_confirm_03.wav",
       "source_format": "wav"
+    },
+    {
+      "asset_id": "audio_029_decline_09",
+      "asset_type": "sampled_sfx",
+      "source_path": "assets/audio_029_decline_09.wav",
+      "source_format": "wav"
+    },
+    {
+      "asset_id": "audio_033_denied_03",
+      "asset_type": "sampled_sfx",
+      "source_path": "assets/audio_033_denied_03.wav",
+      "source_format": "wav"
     }
   ],
   "audio_cues": [
     {
-      "cue_id": "audio_001_hover_01.cue",
       "asset_ref": "audio_001_hover_01",
+      "cue_id": "audio_001_hover_01.cue",
+      "priority": 96,
+      "volume": 200,
+      "display_name": "UI_Move.cue"
+    },
+    {
+      "asset_ref": "audio_013_confirm_03",
+      "cue_id": "audio_013_confirm_03.cue",
+      "priority": 96,
+      "volume": 200,
+      "display_name": "UI_Confirm.cue"
+    },
+    {
+      "asset_ref": "audio_029_decline_09",
+      "cue_id": "audio_029_decline_09.cue",
+      "display_name": "UI_Back",
       "priority": 96,
       "volume": 200
     },
     {
-      "cue_id": "audio_013_confirm_03.cue",
-      "asset_ref": "audio_013_confirm_03",
+      "asset_ref": "audio_033_denied_03",
+      "cue_id": "audio_033_denied_03.cue",
+      "display_name": "UI_Denied",
       "priority": 96,
       "volume": 200
     }

@@ -315,7 +315,7 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(37, SERVICE_API_VERSION)
+        self.assertEqual(38, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
@@ -468,7 +468,7 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertIn("render_element.bind_waiting_animation", waiting_animation["commands"])
         self.assertIn("render_element.clear_waiting_animation", waiting_animation["commands"])
 
-    def test_create_project_is_valid_buildable_previewable_and_reopenable(self) -> None:
+    def test_create_project_is_valid_draft_previewable_and_reopenable(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "My First Game.peepproj"
             service = AuthoringService()
@@ -490,10 +490,10 @@ class AuthoringServiceTests(unittest.TestCase):
             self.assertEqual(["scenes/main.state.json"], manifest["scene_sources"])
 
             revision = created["project_revision"]
-            built = service.handle(
-                request("project.build_package", {"project_revision": revision})
-            )
-            self.assertGreater(built["package"]["size_bytes"], 0)
+            with self.assertRaises(ProtocolError) as error:
+                service.handle(request("project.build_package", {"project_revision": revision}))
+            self.assertEqual("PACKAGE_NOT_READY", error.exception.code)
+            self.assertEqual(created["build_issues"], error.exception.details["issues"])
             preview = service.handle(
                 request(
                     "project.preview_reset",
@@ -599,13 +599,9 @@ class AuthoringServiceTests(unittest.TestCase):
             self.assertEqual([], credits["routes"])
             self.assertEqual([], credits["reactive_wait_default"]["event_interests"])
 
-            built = service.handle(
-                request(
-                    "project.build_package",
-                    {"project_revision": added["project_revision"]},
-                )
-            )
-            self.assertEqual(2, built["package"]["scene_count"])
+            with self.assertRaises(ProtocolError) as error:
+                service.handle(request("project.build_package", {"project_revision": added["project_revision"]}))
+            self.assertEqual(["credits", "main"], [issue["scene_id"] for issue in error.exception.details["issues"]])
             saved = service.handle(
                 request(
                     "project.save",

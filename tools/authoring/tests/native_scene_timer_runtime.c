@@ -65,6 +65,9 @@ int main(void)
     .first_action = 0, .action_count = 2,
   };
   *scene = fixture;
+  scene->visual_bindings[0].element_count = 0;
+  assert(PS_SceneRuntime_ValidateStateScene(scene) != 0);
+  *scene = fixture;
   assert(PS_SceneRuntime_ValidateStateScene(scene) == 0);
   assert(PS_SceneRuntime_ActivateDecodedScene(scene, 0) == 0);
   scene_epoch = PS_SceneRuntime_SceneActivation();

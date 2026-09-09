@@ -561,7 +561,7 @@ def _parse_audio(
     return tuple(assets), tuple(cues)
 
 
-def _parse_render(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]:
+def _parse_render(payload: bytes, strings: tuple[str, ...], *, _draft: bool = False) -> dict[str, object]:
     _require(len(payload) >= RENDER_HEADER.size, "render chunk is truncated")
     values = RENDER_HEADER.unpack_from(payload)
     version = values[1]
@@ -581,6 +581,7 @@ def _parse_render(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]
             payload, model_offset + index * RENDER_MODEL_RECORD.size
         )
         _string(strings, visual_id, "render visual_id")
+        _require(_draft or count > 0, f"RENDER_MODEL_EMPTY: render model '{strings[visual_id]}' has no elements")
         _require(first_element + count <= element_count, "render model element range is invalid")
         model_records.append((visual_id, focus, first_element, count))
     elements: list[dict[str, object]] = []
@@ -1103,7 +1104,7 @@ def _parse_graph(
     }
 
 
-def parse_egg(blob: bytes) -> EggPackage:
+def parse_egg(blob: bytes, *, _draft: bool = False) -> EggPackage:
     _require(len(blob) >= HEADER.size + FOOTER.size, "package is truncated")
     values = HEADER.unpack_from(blob)
     (
@@ -1210,7 +1211,7 @@ def parse_egg(blob: bytes) -> EggPackage:
         _require(chunks[render_index].chunk_type == CHUNK_RENDER_MODELS, "scene render chunk type is invalid")
         _require(chunks[wait_index].chunk_type == CHUNK_WAITING_VISUALS, "scene wait chunk type is invalid")
         used_scene_chunks.update((graph_index, render_index, wait_index))
-        render_summary = _parse_render(chunks[render_index].payload, strings)
+        render_summary = _parse_render(chunks[render_index].payload, strings, _draft=_draft)
         wait_summary = _parse_wait(chunks[wait_index].payload, strings)
         graph_summary = _parse_graph(
             chunks[graph_index].payload,

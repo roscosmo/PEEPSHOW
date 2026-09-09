@@ -2,7 +2,7 @@
   "schema_id": "peepshow.authoring.state_scene",
   "schema_version": 1,
   "scene_id": "main",
-  "display_name": "Main",
+  "display_name": "Main Menu",
   "scene_type": "STATE_SCENE",
   "entry_state": "start",
   "variables": [],
@@ -20,6 +20,11 @@
     {
       "action_id": "button_a_press",
       "logical_source": "BUTTON_A",
+      "event_kind": "press"
+    },
+    {
+      "action_id": "button_b_press",
+      "logical_source": "BUTTON_B",
       "event_kind": "press"
     }
   ],
@@ -180,6 +185,51 @@
         }
       ],
       "target_state": "start"
+    },
+    {
+      "route_id": "start_button_b_press",
+      "action_ref": "button_b_press",
+      "from_states": [
+        "start"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "play_sfx",
+          "cue_ref": "audio_033_denied_03.cue"
+        }
+      ],
+      "target_state": "start"
+    },
+    {
+      "route_id": "new_state_button_b_press",
+      "action_ref": "button_b_press",
+      "from_states": [
+        "new_state"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "play_sfx",
+          "cue_ref": "audio_033_denied_03.cue"
+        }
+      ],
+      "target_state": "new_state"
+    },
+    {
+      "route_id": "new_state_2_button_b_press",
+      "action_ref": "button_b_press",
+      "from_states": [
+        "new_state_2"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "play_sfx",
+          "cue_ref": "audio_033_denied_03.cue"
+        }
+      ],
+      "target_state": "new_state_2"
     }
   ],
   "render_models": [
@@ -321,7 +371,8 @@
     "event_interests": [
       "joy_down_press",
       "joy_up_press",
-      "button_a_press"
+      "button_a_press",
+      "button_b_press"
     ]
   },
   "interaction_policy": {
@@ -330,7 +381,8 @@
     "meaningful_activity_actions": [
       "joy_down_press",
       "joy_up_press",
-      "button_a_press"
+      "button_a_press",
+      "button_b_press"
     ]
   }
 }

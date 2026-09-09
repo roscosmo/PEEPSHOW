@@ -1,4 +1,7 @@
 export type ValidationIssue = {
+  scene_id?: string;
+  state_id?: string;
+  render_model_ref?: string;
   code: string;
   path: string;
   message: string;
@@ -298,6 +301,7 @@ export type ProjectDocument = {
 };
 
 export type ProjectLoadResult = {
+  build_issues?: ValidationIssue[];
   project_revision: number;
   source_name: string;
   valid: boolean;
@@ -312,6 +316,7 @@ export type ProjectLoadResult = {
 };
 
 export type ProjectCommandResult = {
+  build_issues?: ValidationIssue[];
   project_revision: number;
   valid: boolean;
   issues: ValidationIssue[];
@@ -326,6 +331,7 @@ export type ProjectCommandResult = {
 };
 
 export type ProjectSaveResult = {
+  build_issues?: ValidationIssue[];
   project_revision: number;
   valid: boolean;
   issues: ValidationIssue[];
@@ -340,6 +346,7 @@ export type ProjectSaveResult = {
 };
 
 export type ProjectHistoryResult = {
+  build_issues?: ValidationIssue[];
   project_revision: number;
   valid: boolean;
   issues: ValidationIssue[];

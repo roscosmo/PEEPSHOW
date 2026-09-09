@@ -336,7 +336,7 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the merged service API is version `37` (the OS timer
+protocol is version `1`; the current service API is version `38` (the OS timer
 handoff baseline was `23`). Rediscover it after merging and restarting the
 Python sidecar.
 

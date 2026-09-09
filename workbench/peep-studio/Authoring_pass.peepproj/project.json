@@ -43,18 +43,18 @@
       "references": {
         "go_to_main": {
           "target_scene": "main",
-          "x": 918,
-          "y": 231
+          "x": 880,
+          "y": 214
         },
         "go_to_main_2": {
           "target_scene": "main",
-          "x": 861,
-          "y": 647
+          "x": 878,
+          "y": 643
         },
         "go_to_main_3": {
           "target_scene": "main",
-          "x": 865,
-          "y": 1075
+          "x": 869,
+          "y": 1084
         }
       },
       "exit_references": {
@@ -67,6 +67,10 @@
         "credits": {
           "scene_exit:to_main": "go_to_main_3"
         }
+      },
+      "package_entry": {
+        "x": -177,
+        "y": -184
       }
     },
     "state_graph": {
@@ -161,6 +165,36 @@
                   "target_side": "left"
                 }
               }
+            },
+            "start_button_b_press": {
+              "sources": {
+                "start": {
+                  "routing_version": 3,
+                  "rails": [],
+                  "target_handle": "entry-bottom-right",
+                  "target_side": "bottom"
+                }
+              }
+            },
+            "new_state_button_b_press": {
+              "sources": {
+                "new_state": {
+                  "routing_version": 3,
+                  "rails": [],
+                  "target_handle": "entry-bottom-right",
+                  "target_side": "bottom"
+                }
+              }
+            },
+            "new_state_2_button_b_press": {
+              "sources": {
+                "new_state_2": {
+                  "routing_version": 3,
+                  "rails": [],
+                  "target_handle": "entry-bottom-right",
+                  "target_side": "bottom"
+                }
+              }
             }
           }
         },
@@ -173,14 +207,22 @@
             "scene-exit-to_main": {
               "x": 440,
               "y": 212
+            },
+            "scene-entry": {
+              "x": -220,
+              "y": -82
             }
           }
         },
         "settings": {
           "nodes": {
             "scene-exit-to_main": {
-              "x": 444,
-              "y": 179
+              "x": 650,
+              "y": 96
+            },
+            "scene-entry": {
+              "x": -328,
+              "y": -50
             }
           }
         }

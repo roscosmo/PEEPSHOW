@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .egg_format import parse_egg
+from .compiler import build_readiness_issues
 from .project import ProjectBundle, ValidationIssue
 from .target_profile import (
     TARGET_PROFILE_HASH,
@@ -205,6 +206,15 @@ def build_compatibility_report(
         _validation_result(f"validation-{index + 1}", issue)
         for index, issue in enumerate(bundle.issues)
     ]
+    readiness = build_readiness_issues(bundle)
+    validation_results.extend(
+        _validation_result(
+            f"build-readiness-{index + 1}",
+            ValidationIssue(issue["code"], issue["path"], issue["message"]),
+            blocks_preview=False,
+        )
+        for index, issue in enumerate(readiness)
+    )
     if bundle.project:
         validation_results.append(_pending_profile_result(build_profile))
 
@@ -218,7 +228,7 @@ def build_compatibility_report(
         or build_profile == "shipping"
         and result["blocks_shipping_package"]
     )
-    if bundle.issues or build_profile == "shipping":
+    if bundle.issues or readiness or build_profile == "shipping":
         report_status = "failed"
     else:
         report_status = "dev_only"

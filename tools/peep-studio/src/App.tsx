@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  ArrowRight,
   Box,
   Check,
   ChevronRight,
@@ -518,6 +519,7 @@ export default function App() {
       return;
     }
     setBusy("Building package");
+    setBuild(null);
     try {
       const result = await bridge.serviceRequest<PackageBuildResult>("project.build_package", {
         project_revision: project.project_revision,
@@ -561,6 +563,7 @@ export default function App() {
             project_revision: result.project_revision,
             valid: result.valid,
             issues: result.issues,
+            build_issues: result.build_issues,
             document: result.document,
             placement_ownership: result.placement_ownership,
             summary: result.summary,
@@ -2536,7 +2539,7 @@ export default function App() {
   };
 
   const exportPackage = async () => {
-    if (bridge === undefined || build === null) {
+    if (bridge === undefined || build === null || busy !== null) {
       return;
     }
     const exported = await bridge.exportEgg(
@@ -5105,14 +5108,24 @@ export default function App() {
         <h3>Validation</h3>
         {project === null ? (
           <p className="muted">No validation result.</p>
-        ) : project.issues.length === 0 ? (
-          <div className="success-note"><PackageCheck size={17} aria-hidden="true" /> Project is package-ready.</div>
+        ) : project.issues.length === 0 && (project.build_issues ?? []).length === 0 ? (
+          <div className="success-note"><PackageCheck size={17} aria-hidden="true" /> No source validation issues.</div>
         ) : (
           <div className="issue-list">
-            {project.issues.map((issue, index) => (
+            {[...project.issues, ...(project.build_issues ?? [])].map((issue, index) => (
               <div className="issue" key={`${issue.code}-${index}`}>
                 <AlertTriangle size={16} aria-hidden="true" />
                 <span><strong>{issue.code}</strong>{issue.message}<small>{issue.path}</small></span>
+                {issue.scene_id && (
+                  <button className="icon-button" title="Locate scene" onClick={() => {
+                    setSelectedScene(issue.scene_id!);
+                    setWorkspaceMode("placement");
+                    setPlacementStateId(issue.state_id ?? null);
+                    setPlacementEditStateIds(issue.state_id ? [issue.state_id] : []);
+                    setSelectedPlacementElement(null);
+                    setSceneSelection(issue.state_id ? { kind: "state", id: issue.state_id } : { kind: "scene" });
+                  }}><ArrowRight size={16} aria-hidden="true" /></button>
+                )}
               </div>
             ))}
           </div>
@@ -5178,7 +5191,7 @@ export default function App() {
             <SaveAll size={16} aria-hidden="true" />
             Save as
           </button>
-          <button className="icon-button" onClick={exportPackage} disabled={build === null} title="Export .egg">
+          <button className="icon-button" onClick={exportPackage} disabled={build === null || busy !== null} title="Export .egg">
             <Download size={18} aria-hidden="true" />
           </button>
         </div>

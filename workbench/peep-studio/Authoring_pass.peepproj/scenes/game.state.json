@@ -35,7 +35,12 @@
         "start"
       ],
       "guards": [],
-      "actions": [],
+      "actions": [
+        {
+          "kind": "play_sfx",
+          "cue_ref": "audio_029_decline_09.cue"
+        }
+      ],
       "scene_exit_ref": "to_main",
       "target_scene": "main"
     }

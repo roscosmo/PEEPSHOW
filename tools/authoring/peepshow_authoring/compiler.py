@@ -54,6 +54,7 @@ from .egg_format import (
     WAIT_RECORD,
     EggChunkSpec,
     EggFormatError,
+    EggPackage,
     build_container,
     parse_egg,
 )
@@ -156,6 +157,27 @@ def _package_scene(scene: dict[str, Any]) -> dict[str, Any]:
 
 class EggCompileError(ValueError):
     """Raised when validated source cannot fit the frozen binary schema."""
+
+
+def build_readiness_issues(bundle: ProjectBundle) -> list[dict[str, str]]:
+    if not bundle.valid:
+        return []
+    issues = []
+    for source in sorted(bundle.scenes, key=lambda scene: scene["scene_id"]):
+        scene = _package_scene(source)
+        models = {model["visual_id"]: model for model in scene["render_models"]}
+        for state in sorted(scene["states"], key=lambda state: state["state_id"]):
+            model = models[state["render_model_ref"]]
+            if not model["elements"]:
+                issues.append({
+                    "code": "RENDER_MODEL_EMPTY",
+                    "scene_id": scene["scene_id"],
+                    "state_id": state["state_id"],
+                    "render_model_ref": model["visual_id"],
+                    "path": f"scenes[{scene['scene_id']}].states[{state['state_id']}].render_model_ref",
+                    "message": f"Scene \"{scene['scene_id']}\", state \"{state['state_id']}\": place at least one visual object before building.",
+                })
+    return issues
 
 
 def _u16(value: int, field: str) -> int:
@@ -862,6 +884,18 @@ def _compile_audio_chunks(
 
 
 def build_egg(bundle: ProjectBundle) -> bytes:
+    issues = build_readiness_issues(bundle)
+    if issues:
+        raise EggCompileError("\n".join(issue["message"] for issue in issues))
+    return _build_egg(bundle)
+
+
+def build_preview_package(bundle: ProjectBundle) -> EggPackage:
+    """Compile an in-memory draft for host preview, never for export."""
+    return parse_egg(_build_egg(bundle, _draft=True), _draft=True)
+
+
+def _build_egg(bundle: ProjectBundle, *, _draft: bool = False) -> bytes:
     if not bundle.valid:
         raise EggCompileError("project must validate before package compilation")
     try:
@@ -938,7 +972,7 @@ def build_egg(bundle: ProjectBundle) -> bytes:
                 "compiled package exceeds the "
                 f"{package_limit}-byte {target_profile['profile_id']} limit"
             )
-        parse_egg(blob)
+        parse_egg(blob, _draft=_draft)
         return blob
     except (KeyError, struct.error, EggFormatError) as exc:
         raise EggCompileError(f"could not emit a valid .egg: {exc}") from exc

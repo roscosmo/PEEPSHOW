@@ -22,7 +22,7 @@ from .audio_assets import (
     pcm16_wav,
 )
 from .compatibility import build_compatibility_report
-from .compiler import EggCompileError, build_egg
+from .compiler import EggCompileError, build_egg, build_preview_package, build_readiness_issues
 from .egg_format import EggFormatError, parse_egg
 from .project import (
     ProjectBundle,
@@ -50,7 +50,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 37
+SERVICE_API_VERSION = 38
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -242,6 +242,7 @@ class AuthoringService:
             "project_revision": self._project_revision,
             "valid": bundle.valid,
             "issues": _issues(bundle),
+            "build_issues": build_readiness_issues(bundle),
             "document": bundle.normalized() if bundle.valid else None,
             "placement_ownership": _placement_ownership(bundle) if bundle.valid else None,
             "summary": _project_summary(bundle),
@@ -668,6 +669,13 @@ class AuthoringService:
 
     def _build_package(self, params: dict[str, Any]) -> dict[str, Any]:
         bundle = self._current_bundle(params)
+        readiness = build_readiness_issues(bundle)
+        if readiness:
+            raise ProtocolError(
+                "PACKAGE_NOT_READY",
+                "\n".join(issue["message"] for issue in readiness),
+                details={"issues": readiness},
+            )
         if not bundle.valid:
             raise ProtocolError(
                 "PROJECT_INVALID",
@@ -702,7 +710,7 @@ class AuthoringService:
     def _compatibility_report(self, params: dict[str, Any]) -> dict[str, Any]:
         bundle = self._current_bundle(params)
         try:
-            blob = build_egg(bundle) if bundle.valid else None
+            blob = build_egg(bundle) if bundle.valid and not build_readiness_issues(bundle) else None
         except EggCompileError as exc:
             raise ProtocolError("PACKAGE_BUILD_FAILED", str(exc)) from exc
         return {
@@ -719,7 +727,7 @@ class AuthoringService:
                 details={"issues": _issues(bundle)},
             )
         try:
-            package = parse_egg(build_egg(bundle))
+            package = build_preview_package(bundle)
             thumbnails = [
                 {
                     "scene_id": str(scene["scene_id"]),
@@ -746,7 +754,7 @@ class AuthoringService:
                 details={"issues": _issues(bundle)},
             )
         try:
-            package = parse_egg(build_egg(bundle))
+            package = build_preview_package(bundle)
             cue = next(
                 (item for item in package.audio_cues if item["cue_id"] == cue_id),
                 None,
@@ -874,7 +882,7 @@ class AuthoringService:
                 details={"issues": _issues(bundle)},
             )
         try:
-            package = parse_egg(build_egg(bundle))
+            package = build_preview_package(bundle)
             preview = StateScenePreview(package, scene_id, state_id)
         except (EggCompileError, EggFormatError, PreviewError) as exc:
             raise ProtocolError("PREVIEW_START_FAILED", str(exc)) from exc
@@ -897,7 +905,7 @@ class AuthoringService:
                 details={"issues": _issues(bundle)},
             )
         try:
-            package = parse_egg(build_egg(bundle))
+            package = build_preview_package(bundle)
             preview = StateScenePreview(package, scene_id, state_id)
         except (EggCompileError, EggFormatError, PreviewError) as exc:
             raise ProtocolError("PREVIEW_STATE_FAILED", str(exc)) from exc
@@ -927,7 +935,7 @@ class AuthoringService:
                 state.pop("placement_overrides", None)
         preview_bundle = replace(bundle, scenes=tuple(scenes))
         try:
-            package = parse_egg(build_egg(preview_bundle))
+            package = build_preview_package(preview_bundle)
             preview = StateScenePreview(
                 package,
                 scene_id,

@@ -2,9 +2,32 @@
 
 Date: 2026-09-09.
 
-Status: root cause identified; product rule agreed; validation implementation
-and target retest pending. This is a documentation-only handoff for the GUI
-branch. It changes no firmware, authoring service, schema, compiler or project.
+Status: shared validation and Studio diagnostics implemented; target retest
+pending. The original handoff was documentation-only. The GUI follow-through
+adds build-readiness checks without changing firmware or user projects.
+
+## Implementation Follow-Through
+
+- Service API `38` includes `build_issues` alongside draft source `issues` on
+  project document responses. Each empty-state issue includes scene/state IDs
+  and the resolved render-model reference. Studio lists these in the project
+  inspector with a locate-scene control.
+- Shared build, CLI export and embedding reject incomplete presentations;
+  strict compiled parsing/inspection also rejects zero-element render models.
+  Existing output files are not overwritten on readiness failure.
+- Host preview, thumbnails and audition use an explicit internal draft path.
+  Draft validity and save/reopen are unchanged; no empty package is returned
+  by the export service. Compatibility reports block package output without
+  blocking draft preview.
+- Studio clears previous build results before attempting a new build and
+  disables export while busy. No source-validation success is described as
+  proof of package readiness.
+- Regression coverage includes draft creation/save/reopen, stable multi-scene
+  diagnostics, primitive-only builds, old empty binaries, output preservation,
+  and the production native runtime's zero-element rejection.
+
+This does not repair already exported or installed eggs. The target acceptance
+steps below remain required; host checks are not hardware proof.
 
 Related:
 
