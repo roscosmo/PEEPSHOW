@@ -509,13 +509,22 @@ the masked-1bpp STATE milestone.
 
 Peep Studio authors retained records rather than immediate firmware draw calls.
 The STATE presentation milestone adds package records for line, outline
-rectangle, filled rectangle, circle, and ellipse geometry using bounded native
-integer coordinates. Package content may use `BACKGROUND`, `SCENE`, and `UI`;
+rectangle, filled rectangle, outline/filled circle, and outline/filled ellipse
+geometry using bounded native integer coordinates. Package content may use
+`BACKGROUND`, `SCENE`, and `UI`;
 `OVERLAY` remains system-owned.
 
 Exact host preview and firmware must use identical clipping, ink, fill, and
 ordering semantics. Private shell/calibration drawing helpers and historical
 cursor/marker/diamond proof mappings are not package capabilities.
+
+The 2026-09-09 extension preserves the GUI's `line_direction` encoding and adds
+`filled_circle`/`filled_ellipse`. Lines include both endpoints and may use either
+diagonal, including horizontal, vertical, and single-pixel bounds. Round shapes
+retain odd dimensions of at least three pixels; circles must be square. Filled
+shapes use the same rasterized boundary as their outline counterpart. See
+[[Peep_Studio_Shape_Primitives_Handoff]] for wire IDs, flags, GUI integration,
+and the distinction between host verification and pending target acceptance.
 
 Initial menu text is compiled on the host into masked 1bpp sprite assets using
 the frozen `peepshow.system.8x8.basic.v1` glyph resource. The initial record

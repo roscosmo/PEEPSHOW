@@ -49,6 +49,20 @@ Rules:
 - Eggless boot, package-load failure, and an explicit package `exit_to_shell`
   action may enter the PeepOS shell. Low-battery recovery retries normal boot
   package arbitration.
+- Shell navigation must not depend on a healthy package runtime. Visible HOME,
+  MENU, SETTINGS, CALIBRATION and PACKAGES pages own button and joystick input
+  even when the runtime class is NONE or the package lifecycle is ERROR.
+  Runtime-owned pages do not acquire shell focus merely because loading failed.
+  Explicit operation locks, power/shutdown overlays and MSC ownership still win.
+- A failed boot or PLAY clears the failed package's active context and restores
+  `SHELL / REACTIVE / RUNNING`. `PACKAGE_LAUNCH_ERROR` shows the recoverable
+  package error prompt, with no RESUME target. B returns to the package tools;
+  START reaches the shell menu. Neither action retries or erases the bad egg.
+  Terminal installer failures also return runtime ownership to the shell while
+  retaining their failure event/status for diagnostics.
+- Bad eggs are not fatal shell faults: they must not use the navigation-locked
+  `SHELL_FAULT` page or the `RECOVER_OK` boot-retry path. A real platform fault or
+  blocking power overlay must not be dismissed by a package failure notification.
 - Runtime launch requests are legal from boot arbitration, the shell root, or
   `SHELL_PACKAGE_BROWSER`.
 - Explicit runtime exit routes through `SHELL_RUNTIME_HANDOFF` before the shell
@@ -140,7 +154,9 @@ On HW6 unit 001, FW0 has a first shell router integrated with `thUI`,
 - awake joystick messages preserve the canonical eight-way candidate alongside
   one deterministic four-way shell action. Diagonals retain the previous valid
   axis, then use normalized magnitude, then a fixed horizontal tie-break.
-- the FW0 input focus resolver keeps shell, installer, shutdown, and MSC overlay button events on `thUI`; package runtime classes receive the same generic logical presses through `thRuntime` stubs instead of shell navigation
+- the FW0 input focus resolver keeps shell-page buttons and joystick directions
+  on `thUI` independently of package health; shutdown and MSC retain overlay
+  handling, and running package pages receive logical events through `thRuntime`
 - display presentation is routed through `thDisplay`; the UI does not touch the
   display peripheral directly
 - product HOME is the installed package entry scene; boot keeps the bootstrap

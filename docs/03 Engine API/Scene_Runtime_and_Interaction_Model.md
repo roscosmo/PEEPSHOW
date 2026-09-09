@@ -18,6 +18,14 @@ Related:
 - [[Input_Focus_API_Contract]]
 - [[Game_Authoring_API_Contract]]
 - [[Authoring_Project_Schema_Contract]]
+- [[Scene_Object_Lifetime_and_Control_Contract]]
+
+Scene objects are owned by their scene instance, not by logical states. States
+control object properties and temporary overrides; changing selection does not
+itself recreate objects or restart playback. The target lifetime and control
+rules, legacy implementation boundary, and migration requirements are defined
+in [[Scene_Object_Lifetime_and_Control_Contract]]. Those target rules must not
+be mistaken for capabilities already supported by every executable egg profile.
 
 ---
 

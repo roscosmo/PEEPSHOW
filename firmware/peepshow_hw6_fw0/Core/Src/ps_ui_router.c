@@ -860,14 +860,27 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
       status = PS_STATUS_OK;
       break;
     case PS_UI_ROUTER_EVENT_PACKAGE_VALIDATE_ERROR:
+    case PS_UI_ROUTER_EVENT_PACKAGE_LAUNCH_ERROR:
+      if (PS_UIRouter_CanNavigate() == 0UL)
+      {
+        status = PS_STATUS_INVALID_STATE;
+        break;
+      }
+      if (event == PS_UI_ROUTER_EVENT_PACKAGE_LAUNCH_ERROR)
+      {
+        ps_ui_router_state.eggless = 1UL;
+        ps_ui_router_state.resume_available = 0UL;
+        ps_ui_router_state.pending_action = PS_UI_ROUTER_ACTION_NONE;
+      }
       ps_ui_router_state.previous_page = ps_ui_router_state.current_page;
       ps_ui_router_state.current_page = PS_UI_ROUTER_PAGE_PACKAGE_BROWSER;
       ps_ui_router_state.requested_page = PS_UI_ROUTER_PAGE_PACKAGE_BROWSER;
       ps_ui_router_state.nav_state = PS_UI_ROUTER_NAV_FOCUS;
-      ps_ui_router_state.modal_state = PS_UI_ROUTER_MODAL_DIALOG;
+      ps_ui_router_state.modal_state = PS_UI_ROUTER_MODAL_NONE;
       ps_ui_router_state.calibration_page = PS_UI_ROUTER_CAL_NONE;
       ps_ui_router_state.shutdown_state = PS_UI_ROUTER_SHUTDOWN_NONE;
       ps_ui_router_state.shutdown_countdown_seconds = 0UL;
+      ps_ui_router_state.focus_index = 0UL;
       PS_UIRouter_SetPackageState(PS_UI_ROUTER_PACKAGE_ERROR);
       status = PS_STATUS_OK;
       break;

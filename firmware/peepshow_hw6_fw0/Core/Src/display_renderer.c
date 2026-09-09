@@ -1,4 +1,5 @@
 #include "display_renderer.h"
+#include "ps_package_workflow.h"
 
 #include <string.h>
 
@@ -2102,6 +2103,11 @@ static uint32_t DisplayRenderer_DrawEllipse(int32_t center_x,
                                             int32_t center_y,
                                             int32_t radius_x,
                                             int32_t radius_y);
+static uint32_t DisplayRenderer_RasterEllipse(int32_t center_x,
+                                              int32_t center_y,
+                                              int32_t radius_x,
+                                              int32_t radius_y,
+                                              uint32_t filled);
 
 static uint32_t DisplayRenderer_ValidateSceneModel(
   const ps_scene_render_model_t *model)
@@ -2126,7 +2132,7 @@ static uint32_t DisplayRenderer_ValidateSceneModel(
 
     if ((element->element_id == 0UL) ||
         (element->type <= PS_SCENE_RENDER_ELEMENT_NONE) ||
-        (element->type > PS_SCENE_RENDER_ELEMENT_ELLIPSE) ||
+        (element->type > PS_SCENE_RENDER_ELEMENT_FILLED_ELLIPSE) ||
         (element->layer >= PS_SCENE_RENDER_LAYER_COUNT) ||
         (element->visible > 1UL) ||
         (element->z_order > 255U) ||
@@ -2140,11 +2146,14 @@ static uint32_t DisplayRenderer_ValidateSceneModel(
       return 0UL;
     }
     if (((element->type == PS_SCENE_RENDER_ELEMENT_CIRCLE) ||
-         (element->type == PS_SCENE_RENDER_ELEMENT_ELLIPSE)) &&
+         (element->type == PS_SCENE_RENDER_ELEMENT_ELLIPSE) ||
+         (element->type == PS_SCENE_RENDER_ELEMENT_FILLED_CIRCLE) ||
+         (element->type == PS_SCENE_RENDER_ELEMENT_FILLED_ELLIPSE)) &&
         ((element->width < 3U) || (element->height < 3U) ||
          ((element->width & 1U) == 0U) ||
          ((element->height & 1U) == 0U) ||
-         ((element->type == PS_SCENE_RENDER_ELEMENT_CIRCLE) &&
+         (((element->type == PS_SCENE_RENDER_ELEMENT_CIRCLE) ||
+           (element->type == PS_SCENE_RENDER_ELEMENT_FILLED_CIRCLE)) &&
           (element->width != element->height))))
     {
       return 0UL;
@@ -2239,8 +2248,10 @@ static uint32_t DisplayRenderer_DrawSceneElement(
         (uint16_t)(element->x + element->width - 1U),
         element->y);
       break;
-    case PS_SCENE_RENDER_ELEMENT_LINE:
-      if ((element->flags & PS_SCENE_RENDER_ELEMENT_FLAG_LINE_UP_RIGHT) != 0U)
+      case PS_SCENE_RENDER_ELEMENT_LINE:
+      case PS_SCENE_RENDER_ELEMENT_LINE_UP_RIGHT:
+      if ((element->type == PS_SCENE_RENDER_ELEMENT_LINE_UP_RIGHT) ||
+          ((element->flags & PS_SCENE_RENDER_ELEMENT_FLAG_LINE_UP_RIGHT) != 0U))
       {
         black_pixels += DisplayRenderer_Line(
           element->x,
@@ -2263,11 +2274,15 @@ static uint32_t DisplayRenderer_DrawSceneElement(
       break;
     case PS_SCENE_RENDER_ELEMENT_CIRCLE:
     case PS_SCENE_RENDER_ELEMENT_ELLIPSE:
-      black_pixels += DisplayRenderer_DrawEllipse(
+    case PS_SCENE_RENDER_ELEMENT_FILLED_CIRCLE:
+    case PS_SCENE_RENDER_ELEMENT_FILLED_ELLIPSE:
+      black_pixels += DisplayRenderer_RasterEllipse(
         (int32_t)element->x + ((int32_t)element->width / 2),
         (int32_t)element->y + ((int32_t)element->height / 2),
         (int32_t)element->width / 2,
-        (int32_t)element->height / 2);
+        (int32_t)element->height / 2,
+        ((element->type == PS_SCENE_RENDER_ELEMENT_FILLED_CIRCLE) ||
+         (element->type == PS_SCENE_RENDER_ELEMENT_FILLED_ELLIPSE)) ? 1UL : 0UL);
       break;
     case PS_SCENE_RENDER_ELEMENT_TEXT:
     {
@@ -2597,7 +2612,23 @@ static void DisplayRenderer_UIList(uint32_t page,
       list->rows[2] = "B BACK";
       break;
     case PS_UI_ROUTER_PAGE_PACKAGE_BROWSER:
-      if (focus_index >= PS_UI_ROUTER_PACKAGE_MENU_FOCUS_BASE)
+      if ((focus_index >= PS_PACKAGE_WORKFLOW_DISPLAY_BASE) &&
+          (focus_index < PS_PACKAGE_WORKFLOW_DISPLAY_BASE +
+                         PS_PACKAGE_WORKFLOW_PHASE_COUNT))
+      {
+        static const char *const phases[PS_PACKAGE_WORKFLOW_PHASE_COUNT] =
+        {
+          "READY", "STARTING", "PREPARING", "SCANNING", "READING",
+          "VALIDATING", "ERASING", "WRITING", "VERIFYING", "COMMITTING",
+          "LOADING", "LAUNCHING", "CONNECTING", "RECLAIMING", "DONE", "ERROR"
+        };
+        list->title = "PACKAGE / USB";
+        list->rows[0] = phases[focus_index - PS_PACKAGE_WORKFLOW_DISPLAY_BASE];
+        list->rows[1] = "PLEASE WAIT";
+        list->rows[2] = "";
+        break;
+      }
+      else if (focus_index >= PS_UI_ROUTER_PACKAGE_MENU_FOCUS_BASE)
       {
         uint32_t package_focus =
           focus_index - PS_UI_ROUTER_PACKAGE_MENU_FOCUS_BASE;
@@ -3322,6 +3353,38 @@ static uint32_t DisplayRenderer_DrawEllipse(
   int32_t radius_x,
   int32_t radius_y)
 {
+  return DisplayRenderer_RasterEllipse(center_x, center_y, radius_x, radius_y, 0UL);
+}
+
+static uint32_t DisplayRenderer_EllipseRow(
+  int32_t center_x,
+  int32_t center_y,
+  int32_t x,
+  int32_t y,
+  uint32_t filled)
+{
+  if (filled != 0UL)
+  {
+    return DisplayRenderer_HorizontalLine(
+             (uint16_t)(center_x - x), (uint16_t)(center_x + x),
+             (uint16_t)(center_y + y)) +
+           DisplayRenderer_HorizontalLine(
+             (uint16_t)(center_x - x), (uint16_t)(center_x + x),
+             (uint16_t)(center_y - y));
+  }
+  return DisplayRenderer_SetBlack((uint16_t)(center_x + x), (uint16_t)(center_y + y)) +
+         DisplayRenderer_SetBlack((uint16_t)(center_x - x), (uint16_t)(center_y + y)) +
+         DisplayRenderer_SetBlack((uint16_t)(center_x + x), (uint16_t)(center_y - y)) +
+         DisplayRenderer_SetBlack((uint16_t)(center_x - x), (uint16_t)(center_y - y));
+}
+
+static uint32_t DisplayRenderer_RasterEllipse(
+  int32_t center_x,
+  int32_t center_y,
+  int32_t radius_x,
+  int32_t radius_y,
+  uint32_t filled)
+{
   uint32_t black_pixels = 0UL;
   int32_t x = 0;
   int32_t y = radius_y;
@@ -3346,18 +3409,7 @@ static uint32_t DisplayRenderer_DrawEllipse(
 
   while (dx < dy)
   {
-    black_pixels += DisplayRenderer_SetBlack(
-      (uint16_t)(center_x + x),
-      (uint16_t)(center_y + y));
-    black_pixels += DisplayRenderer_SetBlack(
-      (uint16_t)(center_x - x),
-      (uint16_t)(center_y + y));
-    black_pixels += DisplayRenderer_SetBlack(
-      (uint16_t)(center_x + x),
-      (uint16_t)(center_y - y));
-    black_pixels += DisplayRenderer_SetBlack(
-      (uint16_t)(center_x - x),
-      (uint16_t)(center_y - y));
+    black_pixels += DisplayRenderer_EllipseRow(center_x, center_y, x, y, filled);
     ++x;
     dx += 2 * radius_y_squared;
     if (decision < 0)
@@ -3378,18 +3430,7 @@ static uint32_t DisplayRenderer_DrawEllipse(
              (radius_x_squared * radius_y_squared);
   while (y >= 0)
   {
-    black_pixels += DisplayRenderer_SetBlack(
-      (uint16_t)(center_x + x),
-      (uint16_t)(center_y + y));
-    black_pixels += DisplayRenderer_SetBlack(
-      (uint16_t)(center_x - x),
-      (uint16_t)(center_y + y));
-    black_pixels += DisplayRenderer_SetBlack(
-      (uint16_t)(center_x + x),
-      (uint16_t)(center_y - y));
-    black_pixels += DisplayRenderer_SetBlack(
-      (uint16_t)(center_x - x),
-      (uint16_t)(center_y - y));
+    black_pixels += DisplayRenderer_EllipseRow(center_x, center_y, x, y, filled);
     --y;
     dy -= 2 * radius_x_squared;
     if (decision > 0)

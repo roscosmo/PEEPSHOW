@@ -1999,8 +1999,11 @@ def _apply_render_element_add(
         issue = issues[0]
         raise ProjectCommandError(issue.code, issue.message)
     kind = element.get("kind")
-    if kind not in {"sprite", "line", "outline_rect", "filled_rect", "circle", "ellipse"}:
+    if kind not in {"sprite", "line", "outline_rect", "filled_rect", "circle", "ellipse", "filled_circle", "filled_ellipse"}:
         raise ProjectCommandError("RENDER_KIND_INVALID", "unsupported retained element type")
+    if (("line_direction" in element and kind != "line")
+            or element.get("line_direction", "down_right") not in {"down_right", "up_right"}):
+        raise ProjectCommandError("RENDER_LINE_DIRECTION_INVALID", "line_direction must be down_right or up_right on a line")
     x = _render_coordinate(element.get("x"), "command.element.x")
     y = _render_coordinate(element.get("y"), "command.element.y")
     width = _render_dimension(element.get("width"), "command.element.width")
@@ -5409,7 +5412,7 @@ def _check_scene(
             for key in sorted(element.keys() - allowed):
                 _issue(issues, "PROJECT_FIELD_UNKNOWN", f"{item_path}.{key}", "field is not part of the V1 subset")
             kind = element.get("kind")
-            if kind not in {"sprite", "line", "outline_rect", "filled_rect", "circle", "ellipse"}:
+            if kind not in {"sprite", "line", "outline_rect", "filled_rect", "circle", "ellipse", "filled_circle", "filled_ellipse"}:
                 _issue(issues, "RENDER_KIND_INVALID", f"{item_path}.kind", "unsupported retained element type")
             else:
                 element_kinds[element_id] = kind
@@ -5472,9 +5475,9 @@ def _check_scene(
             if all(isinstance(value, int) and not isinstance(value, bool) for value in (x, y, width, height)):
                 if x + width > 168 or y + height > 144:
                     _issue(issues, "RENDER_BOUNDS_INVALID", item_path, "element exceeds the 168x144 canvas")
-                if kind in {"circle", "ellipse"} and (width < 3 or height < 3 or width % 2 == 0 or height % 2 == 0):
+                if kind in {"circle", "ellipse", "filled_circle", "filled_ellipse"} and (width < 3 or height < 3 or width % 2 == 0 or height % 2 == 0):
                     _issue(issues, "RENDER_GEOMETRY_INVALID", item_path, "circle and ellipse bounds must be odd and at least 3")
-                if kind == "circle" and width != height:
+                if kind in {"circle", "filled_circle"} and width != height:
                     _issue(issues, "RENDER_GEOMETRY_INVALID", item_path, "circle bounds must be square")
 
     for waiting_id, waiting in waiting_visuals.items():

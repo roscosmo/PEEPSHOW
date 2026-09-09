@@ -978,7 +978,7 @@ Conceptual retained element classes:
 ```text
 state_render_element:
   element_id
-  element_type              # sprite, line, outline_rect, filled_rect, circle, ellipse
+  element_type              # sprite, line, outline_rect, filled_rect, circle, ellipse, filled_circle, filled_ellipse
   layer                     # background, scene, ui
   visible
   order
@@ -1008,12 +1008,20 @@ Rules:
   `move`, `set_frame`, and `set_animation` operations.
 - `RND2` is the initial executable retained-presentation record. It carries
   explicit package layer, visibility, z-order, bounds, and one of `sprite`,
-  `line`, `outline_rect`, `filled_rect`, `circle`, or `ellipse`.
+  `line`, `outline_rect`, `filled_rect`, `circle`, `ellipse`, `filled_circle`, or
+  `filled_ellipse`.
 - `RND2` line records use a bounded flag for `up_right`; an absent flag and all
   older source/package records default to `down_right`.
 - `RND1` remains accepted by the package parser and HW6 loader for backward
   compatibility; new builds emit `RND2`.
 - initial primitives use fixed black ink. White/clear ink is not exposed yet.
+- lines use inclusive integer endpoints derived from their bounding box:
+  `down_right` joins top-left to bottom-right; `up_right` joins bottom-left to
+  top-right. Positive width/height permits horizontal, vertical, and point lines.
+  `line_direction` on any non-line element is invalid.
+- circle/ellipse bounds, filled or outline, must be odd and at least `3x3`;
+  circles must also be square. Filled variants fill each outline row's inclusive
+  interior and retain the same outline boundary, black ink, and ordering rules.
 - authored text records compile to ordinary masked 1bpp sprite frames; runtime
   font records are not part of this subset.
 
@@ -1022,6 +1030,11 @@ compilation, package parsing, exact host preview, HW6 loading, retained
 composition, scene replacement, and STOP2 presentation were proven together on
 2026-08-27. Static primitives remained composed while both package sprite
 animations continued in STOP2.
+
+The additional line-direction and filled-round-shape support dated 2026-09-09
+is host/native tested and Debug-build verified, not yet target-accepted. The
+earlier hardware proof does not cover these additions. The GUI handoff is
+[[Peep_Studio_Shape_Primitives_Handoff]].
 
 ### Initial Masked-1bpp STATE Subset
 
@@ -1117,18 +1130,18 @@ canonical flat-state representation is base `visible: false` plus
 absent from new states added later. An object added to Scene Base uses its base
 visibility and is inherited by new states automatically.
 
-For the planned hierarchical-state model, effective placement resolves in this
-order:
+Earlier hierarchical-placement planning proposed the following order. This is
+not executable behavior and is deferred by the scene-object ownership contract:
 
 ```text
 Scene Base -> outermost active parent -> ... -> active leaf
 ```
 
-The deepest supplied property wins. A parent-state override is inherited by all
-active descendants; a child record stores only properties that differ from its
-inherited result. Selecting a composite parent as an edit scope is therefore
-different from selecting all of its currently declared children: the parent
-scope also applies to children added later.
+Hierarchical precedence must be agreed before implementation. The first
+scene-object increment rejects simultaneously active controllers overriding
+the same property instead of applying a deepest-state-wins rule. Existing flat
+state-set authoring retains its current meaning; it does not imply parent-state
+inheritance or introduce hierarchical runtime overrides.
 
 Multi-state authoring operations must carry an explicit, bounded state-ID set
 and apply atomically through the Python service. The transient editor selection
@@ -1169,6 +1182,15 @@ projection is editor-facing provenance only: it is recomputed from the
 validated source and is never saved into `.peepproj` files or emitted in RND2.
 Peep Studio must use this projection rather than interpreting raw placement or
 waiting-animation records in React.
+The live ownership target is defined in
+[[Scene_Object_Lifetime_and_Control_Contract]], with branch coordination in
+[[Peep_Studio_Scene_Object_Ownership_Handoff]]. Shared source placement is not
+yet equivalent to shared mutable runtime object storage: the current compiler
+flattens base placement into per-state visual bindings, and waiting-animation
+editing can generate per-state presentation identities. Under the new model,
+flattening is permitted only if it preserves stable object identity, persistent
+properties, and playback continuity. Adoption requires an explicit executable
+version/capability and legacy migration; this paragraph adds no schema fields.
 
 The initial system-font contract is fixed-cell 8x8, black ink on a transparent
 background, printable ASCII `0x20..0x7e`, newline line breaks, and integer

@@ -146,6 +146,10 @@ ps_status_t PS_StoragePackageIndex_InstallValidated(
   ps_storage_flash_block_t *block,
   const uint8_t *package,
   uint32_t package_size);
+typedef void (*ps_storage_package_progress_fn)(uint32_t stage);
+ps_status_t PS_StoragePackageIndex_InstallValidatedWithProgress(
+  ps_storage_flash_block_t *block, const uint8_t *package, uint32_t package_size,
+  ps_storage_package_progress_fn progress);
 
 #ifdef __cplusplus
 }

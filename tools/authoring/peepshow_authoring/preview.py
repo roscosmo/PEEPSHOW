@@ -685,7 +685,21 @@ class StateScenePreview:
                 y0 += sy
 
     @classmethod
-    def _draw_ellipse(cls, framebuffer: bytearray, center_x: int, center_y: int, radius_x: int, radius_y: int) -> None:
+    def _draw_ellipse_row(cls, framebuffer: bytearray, center_x: int, center_y: int, x: int, y: int, filled: bool) -> None:
+        if filled:
+            cls._draw_line(framebuffer, center_x - x, center_y + y, center_x + x, center_y + y)
+            cls._draw_line(framebuffer, center_x - x, center_y - y, center_x + x, center_y - y)
+        else:
+            for point_x, point_y in (
+                (center_x + x, center_y + y),
+                (center_x - x, center_y + y),
+                (center_x + x, center_y - y),
+                (center_x - x, center_y - y),
+            ):
+                cls._write_bit(framebuffer, point_x, point_y, 1)
+
+    @classmethod
+    def _draw_ellipse(cls, framebuffer: bytearray, center_x: int, center_y: int, radius_x: int, radius_y: int, filled: bool = False) -> None:
         x = 0
         y = radius_y
         radius_x_squared = radius_x * radius_x
@@ -694,13 +708,7 @@ class StateScenePreview:
         dy = 2 * radius_x_squared * y
         decision = radius_y_squared - radius_x_squared * radius_y + radius_x_squared // 4
         while dx < dy:
-            for point_x, point_y in (
-                (center_x + x, center_y + y),
-                (center_x - x, center_y + y),
-                (center_x + x, center_y - y),
-                (center_x - x, center_y - y),
-            ):
-                cls._write_bit(framebuffer, point_x, point_y, 1)
+            cls._draw_ellipse_row(framebuffer, center_x, center_y, x, y, filled)
             x += 1
             dx += 2 * radius_y_squared
             if decision < 0:
@@ -717,13 +725,7 @@ class StateScenePreview:
             - radius_x_squared * radius_y_squared
         )
         while y >= 0:
-            for point_x, point_y in (
-                (center_x + x, center_y + y),
-                (center_x - x, center_y + y),
-                (center_x + x, center_y - y),
-                (center_x - x, center_y - y),
-            ):
-                cls._write_bit(framebuffer, point_x, point_y, 1)
+            cls._draw_ellipse_row(framebuffer, center_x, center_y, x, y, filled)
             y -= 1
             dy -= 2 * radius_x_squared
             if decision > 0:
@@ -755,8 +757,8 @@ class StateScenePreview:
         elif kind == 4:
             for row in range(y, bottom + 1):
                 cls._draw_line(framebuffer, x, row, right, row)
-        elif kind in {5, 6}:
-            cls._draw_ellipse(framebuffer, x + width // 2, y + height // 2, width // 2, height // 2)
+        elif kind in {5, 6, 7, 8}:
+            cls._draw_ellipse(framebuffer, x + width // 2, y + height // 2, width // 2, height // 2, kind in {7, 8})
         else:
             raise PreviewError(f"element '{element['element_id']}' has an unsupported retained type")
 

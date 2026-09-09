@@ -294,7 +294,10 @@ class AuthoringService:
                     "filled_rect",
                     "circle",
                     "ellipse",
+                    "filled_circle",
+                    "filled_ellipse",
                 ],
+                "line_directions": ["down_right", "up_right"],
                 "visibility": True,
                 "z_order": True,
                 "element_commands": [

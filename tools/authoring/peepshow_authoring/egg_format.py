@@ -599,9 +599,10 @@ def _parse_render(payload: bytes, strings: tuple[str, ...], *, _draft: bool = Fa
             x, y, width, height, z_order = record[4:9]
         else:
             visual_ref = None if record[1] == 0xFFFF else _string(strings, record[1], "render visual_ref")
-            _require(record[2] in {1, 2, 3, 4, 5, 6}, "render element kind is invalid")
+            _require(record[2] in {1, 2, 3, 4, 5, 6, 7, 8}, "render element kind is invalid")
             _require(record[3] in {0, 1, 2}, "render package layer is invalid")
             _require(record[4] & ~0x07 == 0 and record[5] == 0 and record[11] == 0, "render flags or reserved fields are invalid")
+
             _require(not (record[4] & 0x01) or (record[2] == 1 and record[3] == 2 and record[4] & 0x02), "render focus element is invalid")
             _require(not (record[4] & 0x04) or record[2] == 2, "render line-direction flag is invalid")
             _require((record[2] == 1 and visual_ref is not None) or (record[2] != 1 and visual_ref is None), "render visual reference is invalid")
@@ -610,9 +611,9 @@ def _parse_render(payload: bytes, strings: tuple[str, ...], *, _draft: bool = Fa
             visible = 1 if record[4] & 0x02 else 0
             focus_role = 1 if record[4] & 0x01 else 0
             x, y, width, height, z_order = record[6:11]
-            if record[2] in {5, 6}:
+            if record[2] in {5, 6, 7, 8}:
                 _require(width >= 3 and height >= 3 and width % 2 == 1 and height % 2 == 1, "ellipse bounds must be odd and at least 3")
-            if record[2] == 5:
+            if record[2] in {5, 7}:
                 _require(width == height, "circle bounds must be square")
         _require(x >= 0 and y >= 0 and x + width <= 168 and y + height <= 144, "render element exceeds the canvas")
         _require(z_order <= 255, "render z-order is invalid")

@@ -366,6 +366,9 @@ class AuthoringServiceTests(unittest.TestCase):
             ["four_way", "eight_way"],
             result["state_scene_presentation"]["joystick_policies"],
         )
+        self.assertIn("filled_circle", result["state_scene_presentation"]["element_kinds"])
+        self.assertIn("filled_ellipse", result["state_scene_presentation"]["element_kinds"])
+        self.assertEqual(["down_right", "up_right"], result["state_scene_presentation"]["line_directions"])
         self.assertFalse(result["state_scene_presentation"]["runtime_text"])
         text = result["state_scene_presentation"]["build_time_text"]
         self.assertEqual("system_font_text", text["source_format"])

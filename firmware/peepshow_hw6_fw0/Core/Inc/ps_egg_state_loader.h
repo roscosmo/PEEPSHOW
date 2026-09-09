@@ -121,6 +121,10 @@ typedef struct
 } ps_egg_state_loader_probe_t;
 
 extern volatile ps_egg_state_loader_probe_t g_ps_egg_state_loader_probe;
+extern volatile ps_egg_state_loader_probe_t g_ps_egg_validation_probe;
+
+/* thRuntime only. Full candidate validation without activating or replacing it. */
+uint32_t PS_EggStateLoader_ValidatePackage(const uint8_t *blob, uint32_t size);
 
 /*
  * The package blob must remain immutable while the decoded scene is active.

@@ -91,6 +91,8 @@ RENDER_KINDS = {
     "filled_rect": 4,
     "circle": 5,
     "ellipse": 6,
+    "filled_circle": 7,
+    "filled_ellipse": 8,
 }
 RENDER_LAYERS = {"BACKGROUND": 0, "SCENE": 1, "UI": 2}
 INACTIVE_ROUTES = {"preserve_scene": 1, "exit_to_shell": 2}
