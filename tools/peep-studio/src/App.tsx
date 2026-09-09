@@ -2325,6 +2325,32 @@ export default function App() {
     const validIds = new Set(states.map((state) => state.state_id));
     return placementEditStateIds.filter((stateId) => validIds.has(stateId));
   };
+  const applySceneObjectCommands = async (commands: Record<string, unknown>[]) => {
+    if (bridge === undefined || project === null || busy !== null || selectedSceneDocument === null || commands.length === 0
+      || commands.some(command => command.scene_id !== selectedSceneDocument.scene_id
+        || !supportsObjectCommand(service, selectedSceneCapability, String(command.kind)))) return false;
+    setBusy("Updating scene object");
+    setPlaying(false);
+    stopAudioPlayback();
+    try {
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision, commands,
+      });
+      applyProjectResult(result);
+      setMessage("Scene object updated. Save to write it to the project.");
+      return true;
+    } catch (error) {
+      setMessage(errorText(error));
+      return false;
+    } finally { setBusy(null); }
+  };
+  const sceneObjectPropertyCommands = (elementId: string, properties: Record<string, number | boolean>) => {
+    if (selectedSceneDocument === null) return [];
+    const common = { scene_id: selectedSceneDocument.scene_id, object_id: elementId, properties };
+    const ids = placementEditStateTargets();
+    return ids.length === 0 ? [{ kind: "object.set_defaults", ...common }]
+      : ids.map(state_id => ({ kind: "object_override.set", ...common, state_id }));
+  };
   const placementAnimationStateTargets = () => {
     const explicitStateIds = placementEditStateTargets();
     return explicitStateIds.length > 0
@@ -2440,7 +2466,7 @@ export default function App() {
   };
   const movePlacementElement = (
     element: RenderElement,
-    renderModelId: string,
+    renderModelId: string | null,
     x: number,
     y: number,
   ) => {
@@ -2449,6 +2475,14 @@ export default function App() {
     }
     const nextX = Math.min(Math.max(0, 168 - element.width), Math.max(0, Math.round(x)));
     const nextY = Math.min(Math.max(0, 144 - element.height), Math.max(0, Math.round(y)));
+    if (objectSceneSelected) {
+      const properties: Record<string, number> = {};
+      if (nextX !== element.x) properties.x = nextX;
+      if (nextY !== element.y) properties.y = nextY;
+      if (Object.keys(properties).length > 0) void applySceneObjectCommands(sceneObjectPropertyCommands(element.element_id, properties));
+      return;
+    }
+    if (renderModelId === null) return;
     const commands = scopedPositionCommands(element, renderModelId, nextX, nextY);
     if (commands.length === 0) {
       return;
@@ -2491,11 +2525,18 @@ export default function App() {
       "Element resized. Save to write it to the project.",
     );
   };
-  const deletePlacementElement = (element: RenderElement, renderModelId: string) => {
+  const deletePlacementElement = (element: RenderElement, renderModelId: string | null) => {
     if (selectedSceneDocument === null) {
       return;
     }
     const targetStateIds = placementEditStateTargets();
+    if (objectSceneSelected) {
+      void applySceneObjectCommands(targetStateIds.length > 0
+        ? sceneObjectPropertyCommands(element.element_id, { visible: false })
+        : [{ kind: "object.delete", scene_id: selectedSceneDocument.scene_id, object_id: element.element_id }]);
+      return;
+    }
+    if (renderModelId === null) return;
     if (targetStateIds.length > 0) {
       const commands = scopedVisibilityCommands(element, renderModelId, false);
       if (commands.length === 0) {
@@ -2607,7 +2648,6 @@ export default function App() {
   const thumbnailsSupported = service?.operations.includes("project.scene_thumbnails") === true;
   const placementPreviewSupported = service?.operations.includes("project.preview_state") === true;
   const placementBasePreviewSupported = service?.operations.includes("project.preview_scene_base") === true;
-  const scopedPlacementAddSupported = service?.state_scene_presentation.element_commands.includes("placement_object.add") === true;
   const waitingAnimationCommands = service?.state_scene_presentation.waiting_animation.commands ?? [];
   const placementAnimationSupported =
     waitingAnimationCommands.includes("render_element.bind_waiting_animation") &&
@@ -2667,6 +2707,11 @@ export default function App() {
 
   const selectedSceneCapability = selectedScene === null ? undefined : project?.scene_capabilities?.[selectedScene];
   const objectSceneSelected = usesSceneObjects(selectedSceneDocument, selectedSceneCapability);
+  const scopedPlacementAddSupported = objectSceneSelected
+    ? supportsObjectCommand(service, selectedSceneCapability, "object.add")
+    : service?.state_scene_presentation.element_commands.includes("placement_object.add") === true;
+  const sceneObjectMoveSupported = objectSceneSelected && supportsObjectCommand(service, selectedSceneCapability,
+    placementEditStateIds.length === 0 ? "object.set_defaults" : "object_override.set");
   const canEditSelectedScene = canEditLegacyScene(selectedSceneDocument, selectedSceneCapability)
     && service?.operations.includes("project.apply_commands") === true && busy === null;
   const readOnlySceneIds = useMemo(() => scenes.filter((scene) =>
@@ -2945,9 +2990,9 @@ export default function App() {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop);
   };
-  const placementDraftKey = (renderModelId: string, elementId: string) => `${renderModelId}:${elementId}`;
+  const placementDraftKey = (renderModelId: string | null, elementId: string) => `${renderModelId ?? `objects:${selectedScene}`}:${elementId}`;
   const handlePlacementKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (placementRenderModel === null || selectedPlacementRenderElement === null || busy !== null) {
+    if ((!objectSceneSelected && placementRenderModel === null) || selectedPlacementRenderElement === null || busy !== null) {
       return;
     }
     const target = event.target as HTMLElement | null;
@@ -2956,7 +3001,7 @@ export default function App() {
     }
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
-      deletePlacementElement(selectedPlacementRenderElement, placementRenderModel.visual_id);
+      deletePlacementElement(selectedPlacementRenderElement, placementRenderModel?.visual_id ?? null);
       return;
     }
     const step = event.shiftKey ? 8 : 1;
@@ -2976,7 +3021,7 @@ export default function App() {
     event.preventDefault();
     movePlacementElement(
       selectedPlacementRenderElement,
-      placementRenderModel.visual_id,
+      placementRenderModel?.visual_id ?? null,
       selectedPlacementRenderElement.x + dx,
       selectedPlacementRenderElement.y + dy,
     );
@@ -2984,9 +3029,9 @@ export default function App() {
   const startPlacementDrag = (
     event: ReactPointerEvent<HTMLButtonElement>,
     element: RenderElement,
-    renderModelId: string,
+    renderModelId: string | null,
   ) => {
-    if (selectedSceneDocument === null || busy !== null) {
+    if (selectedSceneDocument === null || busy !== null || (objectSceneSelected && !sceneObjectMoveSupported)) {
       return;
     }
     event.preventDefault();
@@ -3007,7 +3052,7 @@ export default function App() {
     let latestY = startY;
     setSelectedPlacementElement(element.element_id);
     setPlacementInspectorTab("object");
-    setSceneSelection({ kind: "render", id: renderModelId });
+    if (renderModelId !== null) setSceneSelection({ kind: "render", id: renderModelId });
 
     const move = (moveEvent: PointerEvent) => {
       const dx = Math.round(((moveEvent.clientX - startClientX) / rect.width) * 168);
@@ -3108,7 +3153,7 @@ export default function App() {
       placementTool === "select" ||
       event.button !== 0 ||
       selectedSceneDocument === null ||
-      placementRenderModel === null ||
+      (!objectSceneSelected && placementRenderModel === null) ||
       busy !== null ||
       !scopedPlacementAddSupported
     ) {
@@ -3158,7 +3203,7 @@ export default function App() {
     };
 
     setSelectedPlacementElement(null);
-    setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
+    if (placementRenderModel !== null) setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
     setPlacementPrimitiveDraft({ kind, bounds: latestBounds, lineDirection: latestLineDirection });
     placementDrawCancelRef.current = cancel;
     window.addEventListener("pointermove", move);
@@ -3182,7 +3227,7 @@ export default function App() {
       </button>
       <button
         type="button"
-        disabled={!scopedPlacementAddSupported || busy !== null || selectedSceneDocument === null || placementRenderModel === null || compiledAssetFrames.length === 0}
+        disabled={!scopedPlacementAddSupported || busy !== null || selectedSceneDocument === null || (!objectSceneSelected && placementRenderModel === null) || compiledAssetFrames.length === 0}
         className={spritePickerOpen ? "active" : ""}
         onClick={() => {
           placementDrawCancelRef.current?.();
@@ -3199,7 +3244,7 @@ export default function App() {
           key={primitive.kind}
           className={`primitive-${primitive.kind} ${placementTool === primitive.kind ? "active" : ""}`}
           type="button"
-          disabled={!scopedPlacementAddSupported || busy !== null || selectedSceneDocument === null || placementRenderModel === null}
+          disabled={!scopedPlacementAddSupported || busy !== null || selectedSceneDocument === null || (!objectSceneSelected && placementRenderModel === null)}
           onClick={() => {
             placementDrawCancelRef.current?.();
             setPlacementTool(primitive.kind);
@@ -3234,7 +3279,7 @@ export default function App() {
                 <button
                   key={frame.frame_id}
                   type="button"
-                  disabled={!scopedPlacementAddSupported || busy !== null || selectedSceneDocument === null || placementRenderModel === null}
+                  disabled={!scopedPlacementAddSupported || busy !== null || selectedSceneDocument === null || (!objectSceneSelected && placementRenderModel === null)}
                   title={`${placementFrameLabel(frame)} (${frame.width}x${frame.height})`}
                   onClick={() => void addPlacementSprite(frame)}
                 >
@@ -3351,7 +3396,7 @@ export default function App() {
               {[...effectivePlacementElements]
                   .sort((left, right) => left.z_order - right.z_order)
                   .map((element) => {
-                    const key = placementDraftKey(placementRenderModel?.visual_id ?? "", element.element_id);
+                    const key = placementDraftKey(placementRenderModel?.visual_id ?? null, element.element_id);
                     const positionDraft = placementDraftPositions[key];
                     const boundsDraft = placementDraftBounds[key];
                     const x = boundsDraft?.x ?? positionDraft?.x ?? element.x;
@@ -3373,8 +3418,8 @@ export default function App() {
                         }}
                         title={`${element.element_id}: ${x},${y} ${width}x${height}`}
                         onPointerDown={(event) => {
-                          if (placementRenderModel !== null) {
-                            startPlacementDrag(event, element, placementRenderModel.visual_id);
+                          if (placementRenderModel !== null || sceneObjectMoveSupported) {
+                            startPlacementDrag(event, element, placementRenderModel?.visual_id ?? null);
                           }
                         }}
                         onClick={(event) => {
@@ -4026,7 +4071,35 @@ export default function App() {
     }
     return `${prefix}_${elements.length + 1}`;
   };
+  const addSceneObject = async (element: RenderElement) => {
+    if (selectedSceneDocument === null) return false;
+    const { element_id, x, y, visible, visual_ref, ...geometry } = element;
+    const stateIds = placementEditStateTargets();
+    const applied = await applySceneObjectCommands([{ kind: "object.add", scene_id: selectedSceneDocument.scene_id,
+      object: { ...geometry, object_id: element_id,
+        defaults: { x, y, visible: visible !== false, ...(visual_ref === undefined ? {} : { visual_ref }) } },
+      ...(stateIds.length === 0 ? {} : { visible_in_states: stateIds }) }]);
+    if (applied) {
+      setSelectedPlacementElement(element_id);
+      setPlacementInspectorTab("object");
+    }
+    return applied;
+  };
   const addPlacementSprite = async (frame: CompiledAssetFrame | null) => {
+    if (objectSceneSelected && selectedSceneDocument !== null && frame !== null) {
+      if (frame.width > PLACEMENT_WIDTH || frame.height > PLACEMENT_HEIGHT) {
+        setMessage("This sprite is larger than the placement canvas.");
+        return;
+      }
+      const elements = baseObjectRows(selectedSceneDocument, placementOwnershipScene);
+      const added = await addSceneObject({ element_id: nextPlacementElementId(frame.asset_id, elements),
+        kind: "sprite", visual_ref: frame.frame_id,
+        x: Math.min(48, PLACEMENT_WIDTH - frame.width), y: Math.min(40, PLACEMENT_HEIGHT - frame.height),
+        width: frame.width, height: frame.height, z_order: Math.min(255, Math.max(0, ...elements.map(item => item.z_order)) + 1),
+        layer: "SCENE", visible: true });
+      if (added) setSpritePickerOpen(false);
+      return;
+    }
     if (selectedSceneDocument === null || placementRenderModel === null || frame === null) {
       if (frame === null) {
         setMessage("Create or import a sprite asset first.");
@@ -4164,6 +4237,14 @@ export default function App() {
     requestedBounds: PlacementBounds,
     lineDirection: PlacementLineDirection = "down_right",
   ) => {
+    if (objectSceneSelected && selectedSceneDocument !== null) {
+      const elements = baseObjectRows(selectedSceneDocument, placementOwnershipScene);
+      await addSceneObject({ element_id: nextPlacementElementId(kind, elements), kind,
+        ...normalizePrimitiveBounds(kind, requestedBounds),
+        z_order: Math.min(255, Math.max(0, ...elements.map(item => item.z_order)) + 1), layer: "SCENE", visible: true,
+        ...(kind === "line" ? { line_direction: lineDirection } : {}) });
+      return;
+    }
     if (selectedSceneDocument === null || placementRenderModel === null) {
       return;
     }
@@ -4756,25 +4837,7 @@ export default function App() {
         stateIds={placementEditStateTargets()} ownership={placementOwnershipScene}
         frames={compiledAssetFrames} clips={project?.document?.animations ?? []} busy={busy !== null}
         supports={kind => supportsObjectCommand(service, selectedSceneCapability, kind)}
-        onApply={async commands => {
-          if (bridge === undefined || project === null || busy !== null || commands.length === 0
-            || commands.some(command => command.scene_id !== selectedSceneDocument.scene_id
-              || !supportsObjectCommand(service, selectedSceneCapability, String(command.kind)))) return false;
-          setBusy("Updating scene object");
-          setPlaying(false);
-          stopAudioPlayback();
-          try {
-            const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
-              project_revision: project.project_revision, commands,
-            });
-            applyProjectResult(result);
-            setMessage("Scene object updated. Save to write it to the project.");
-            return true;
-          } catch (error) {
-            setMessage(errorText(error));
-            return false;
-          } finally { setBusy(null); }
-        }}
+        onApply={applySceneObjectCommands}
       /></>;
     }
     const selectedElementIsShape = selectedElement !== null && selectedElement.kind !== "sprite";

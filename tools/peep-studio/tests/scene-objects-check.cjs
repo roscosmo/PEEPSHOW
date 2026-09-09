@@ -48,7 +48,7 @@ app.whenReady().then(async () => {
     if (operation === "project.load") assert.equal(params.path, fixture);
     if (operation === "project.apply_commands") {
       for (const command of params.commands) {
-        assert(["object.set_defaults", "object_override.set", "object_override.clear", "object.bind_animation", "object.clear_animation"].includes(command.kind));
+        assert(["object.add", "object.delete", "object.set_defaults", "object_override.set", "object_override.clear", "object.bind_animation", "object.clear_animation"].includes(command.kind));
         assert.equal(command.scene_id, "state_demo");
       }
       mutations.push(...params.commands);
@@ -62,7 +62,11 @@ app.whenReady().then(async () => {
     const plan = await request("project.object_migration_preview", migration);
     assert(plan.can_apply, JSON.stringify(plan));
     const migrated = await request("project.object_migration_apply", { ...migration, source_revision: plan.plan.source_revision });
-    documentResult = { ...result, ...migrated };
+    const route = migrated.document.scenes.find(scene => scene.scene_id === 'state_demo').routes.find(route => route.target_state);
+    const referenced = await request('project.apply_commands', { project_revision: migrated.project_revision,
+      commands: [{ kind: 'object_actions.set', scene_id: 'state_demo', owner_kind: 'route', owner_id: route.route_id,
+        actions: [...route.actions, { kind: 'object.set_visibility', object_ref: 'marker', visible: true }] }] });
+    documentResult = { ...result, ...referenced };
     return documentResult;
   });
   window = new BrowserWindow({ width: 1440, height: 900, show: false,
@@ -110,6 +114,9 @@ app.whenReady().then(async () => {
     await wait(450);
   };
   const originalX = object().defaults.x;
+  await button('Delete object');
+  assert(object(), 'An object referenced by a transition must survive a refused delete');
+  assert(await evaluate("document.querySelector('footer').textContent.includes('OBJECT_IN_USE')"));
   await setControl("Object X", originalX - 2);
   assert.equal(object().defaults.x, originalX - 2);
   await click('button[title="Undo"]');
@@ -168,6 +175,70 @@ app.whenReady().then(async () => {
   const count = mutations.length;
   await setControl("Object Y", 9999);
   assert.equal(mutations.length, count);
+  const pointer = async (selector, type, x, y) => {
+    await evaluate(`(() => {
+      const overlay = document.querySelector('.placement-screen-overlay').getBoundingClientRect();
+      const target = ${selector === "window" ? "window" : `document.querySelector(${JSON.stringify(selector)})`};
+      target.dispatchEvent(new PointerEvent(${JSON.stringify(type)}, { bubbles: true, button: 0, pointerId: 1,
+        clientX: overlay.left + ${x + 0.5} / 168 * overlay.width, clientY: overlay.top + ${y + 0.5} / 144 * overlay.height }));
+    })()`);
+    await wait(100);
+  };
+  // New geometry is authored through the same two-point tools, with exact visibility scope.
+  await click('.placement-tool-palette .primitive-outline_rect');
+  await pointer('.placement-screen-overlay', 'pointerdown', 30, 40);
+  await pointer('window', 'pointermove', 40, 50);
+  await pointer('window', 'pointerup', 40, 50);
+  await wait(400);
+  const createdId = mutations.findLast(command => command.kind === 'object.add').object.object_id;
+  const created = () => scene().objects.find(item => item.object_id === createdId);
+  assert.equal(created().defaults.visible, false);
+  for (const state of scene().states) {
+    const change = state.object_overrides.find(item => item.object_ref === createdId);
+    assert.equal(change?.visible === true, [stateId, secondStateId].includes(state.state_id));
+  }
+  await click('[aria-label="Select and move objects"]');
+  await pointer('.placement-element-box.selected', 'pointerdown', 35, 45);
+  await pointer('window', 'pointermove', 45, 45);
+  await pointer('window', 'pointerup', 45, 45);
+  await wait(450);
+  for (const id of [stateId, secondStateId]) {
+    const change = scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === createdId);
+    assert.equal(change.x, 40);
+    assert.equal(change.y, undefined, 'Horizontal movement must retain Y inheritance');
+  }
+  await evaluate("document.querySelector('.placement-element-box.selected').dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}))");
+  await wait(450);
+  assert.equal(scene().states.find(state => state.state_id === stateId).object_overrides.find(item => item.object_ref === createdId).x, 41);
+  window.webContents.invalidate();
+  await wait(250);
+  fs.writeFileSync(path.join(output, 'canvas-scoped-object.png'), (await window.webContents.capturePage()).toPNG());
+  await button('Remove from selected states');
+  assert(created(), 'State removal must not delete the scene-owned object');
+  for (const id of [stateId, secondStateId]) assert.equal(scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === createdId).visible, false);
+  await click('.scene-hierarchy-node.selected .base-branch .hierarchy-branch-select');
+  await button('Delete object');
+  assert.equal(created(), undefined);
+  assert(scene().states.every(state => !state.object_overrides.some(item => item.object_ref === createdId)));
+  await click('button[title="Undo"]');
+  assert(created(), 'Undo restores the object and its overrides');
+  await click('button[title="Redo"]');
+  assert.equal(created(), undefined);
+  await click('[aria-label="Add sprite"]');
+  await click('.placement-sprite-picker-group button');
+  const spriteAdded = mutations.findLast(command => command.kind === 'object.add');
+  assert.equal(spriteAdded.object.kind, 'sprite');
+  assert.equal(spriteAdded.visible_in_states, undefined);
+  assert.equal(scene().objects.find(item => item.object_id === spriteAdded.object.object_id).defaults.visible, true);
+  assert(!scene().waiting_visuals, 'Sprite creation must not fabricate legacy animation records');
+  const sprite = () => scene().objects.find(item => item.object_id === spriteAdded.object.object_id);
+  const spriteX = sprite().defaults.x, spriteY = sprite().defaults.y;
+  await pointer('.placement-element-box.selected', 'pointerdown', spriteX + 2, spriteY + 2);
+  await pointer('window', 'pointermove', spriteX + 7, spriteY + 9);
+  await pointer('window', 'pointerup', spriteX + 7, spriteY + 9);
+  await wait(450);
+  assert.equal(sprite().defaults.x, spriteX + 5);
+  assert.equal(sprite().defaults.y, spriteY + 7);
   await button("Save");
   const savedScene = JSON.stringify(scene());
   await button("Open example");

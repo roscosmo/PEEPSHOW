@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Trash2 } from "lucide-react";
 import type { AuthoredClip, CompiledAssetFrame, PlacementOwnership, RenderElement, SceneDocument, SceneObject } from "./types";
 
 type Property = "x" | "y" | "visible" | "visual_ref";
@@ -102,5 +102,12 @@ export function SceneObjectInspector({ scene, object, label, stateIds, ownership
           {matchingClips.map(clip => <option key={clip.animation_id} value={clip.animation_id} disabled={!supports("object.bind_animation")}>{clip.animation_id}</option>)}
         </select></label></div>
     </>}
+    <button className="button secondary" type="button"
+      disabled={busy || !supports(stateScope ? "object_override.set" : "object.delete")}
+      onClick={() => void (stateScope ? set("visible", false) : onApply([
+        { kind: "object.delete", scene_id: scene.scene_id, object_id: object.object_id },
+      ]))}>
+      <Trash2 size={14} />{stateScope ? "Remove from selected states" : "Delete object"}
+    </button>
   </section>;
 }
