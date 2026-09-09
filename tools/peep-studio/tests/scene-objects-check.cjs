@@ -11,6 +11,15 @@ const output = path.resolve("dist/scene-objects-check");
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "peep-scene-objects-"));
 const fixture = path.join(temporary, "mixed.peepproj");
 fs.cpSync(path.join(root, "tools/authoring/peepshow_authoring/test_project.peepproj"), fixture, { recursive: true });
+// A dedicated self-loop in the disposable fixture lets repeated inputs exercise ordered writes.
+const sourcePath = path.join(fixture, 'scenes/state_demo.state.json');
+const source = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
+source.input_actions.push({ action_id: 'test_move', logical_source: 'BUTTON_B' });
+source.routes.push({ route_id: 'test_move', action_ref: 'test_move', from_states: ['center'],
+  target_state: 'center', guards: [], actions: [{ kind: 'request_render' }] });
+source.reactive_wait_default.event_interests.push('test_move');
+source.interaction_policy.meaningful_activity_actions.push('test_move');
+fs.writeFileSync(sourcePath, JSON.stringify(source));
 fs.mkdirSync(output, { recursive: true });
 app.setPath("userData", path.join(output, "profile"));
 app.disableHardwareAcceleration();
@@ -20,7 +29,7 @@ let nextId = 0;
 const pending = new Map();
 const mutations = [];
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-const watchdog = setTimeout(() => { child?.kill(); app.exit(1); }, 45000);
+const watchdog = setTimeout(() => { child?.kill(); app.exit(1); }, 90000);
 function request(operation, params) {
   const id = String(++nextId);
   return new Promise((resolve, reject) => {
@@ -48,7 +57,7 @@ app.whenReady().then(async () => {
     if (operation === "project.load") assert.equal(params.path, fixture);
     if (operation === "project.apply_commands") {
       for (const command of params.commands) {
-        assert(["object.add", "object.delete", "object.set_defaults", "object_override.set", "object_override.clear", "object.bind_animation", "object.clear_animation"].includes(command.kind));
+        assert(["object_actions.set", "object.add", "object.delete", "object.set_defaults", "object_override.set", "object_override.clear", "object.bind_animation", "object.clear_animation"].includes(command.kind));
         assert.equal(command.scene_id, "state_demo");
       }
       mutations.push(...params.commands);
@@ -247,6 +256,66 @@ app.whenReady().then(async () => {
   assert.equal(await evaluate("document.querySelector('footer').textContent.includes('PROJECT_REVISION_STALE')"), false);
   await button("Local logic");
   assert(await evaluate("[...document.querySelectorAll('.state-graph-pane .react-flow__node')].every(e => !e.classList.contains('draggable'))"));
+  const selectTestRoute = () => click('.react-flow__node[data-id="center"] [aria-label="B trigger, configured"]');
+  await selectTestRoute();
+  const actionRoute = () => scene().routes.find(route => route.route_id === 'test_move');
+  await setControl('Add effect', 'object.move_by', 'select');
+  await setControl('Effect 1 object', spriteAdded.object.object_id, 'select');
+  await setControl('Effect 1 dx', 4);
+  await click('[aria-label="Effect 1 use dy"]');
+  await setControl('Effect 1 dy', 3);
+  assert.deepEqual(actionRoute().actions[1], { kind: 'object.move_by', object_ref: spriteAdded.object.object_id, dx: 4, dy: 3 });
+  const runInputs = async (count) => {
+    const project_revision = documentResult.project_revision;
+    let snapshot = await request('project.preview_reset', { project_revision, scene_id: 'state_demo', state_id: 'center' });
+    for (let i = 0; i < count; i++) snapshot = await request('project.preview_input', {
+      project_revision, preview_revision: snapshot.preview_revision, logical_source: 'BUTTON_B',
+    });
+    return snapshot.objects.find(object => object.object_id === spriteAdded.object.object_id);
+  };
+  let moved = await runInputs(2);
+  assert.equal(moved.underlying.x, sprite().defaults.x + 8);
+  assert.equal(moved.underlying.y, sprite().defaults.y - 6);
+  await setControl('Add effect', 'object.set_position', 'select');
+  await setControl('Effect 2 object', spriteAdded.object.object_id, 'select');
+  await setControl('Effect 2 x', 30);
+  moved = await runInputs(1);
+  assert.equal(moved.underlying.x, 30);
+  await click('[aria-label="Move effect 2 earlier"]');
+  moved = await runInputs(1);
+  assert.equal(moved.underlying.x, 34);
+  assert.equal(actionRoute().actions[0].kind, 'request_render', 'Hidden actions retain their position');
+  await click('[aria-label="Delete effect 1"]');
+  assert.equal(actionRoute().actions.length, 2);
+  await click('button[title="Undo"]');
+  assert.equal(actionRoute().actions.length, 3);
+  await click('button[title="Redo"]');
+  assert.equal(actionRoute().actions.length, 2);
+  await selectTestRoute();
+  await setControl('Add effect', 'object.clear_frame', 'select');
+  assert.equal(actionRoute().actions.at(-1).kind, 'object.clear_frame');
+  await setControl('Add effect', 'object.set_frame', 'select');
+  assert.equal(actionRoute().actions.at(-1).kind, 'object.set_frame');
+  assert(actionRoute().actions.at(-1).frame_ref);
+  await setControl('Add effect', 'object.set_visibility', 'select');
+  await setControl('Effect 4 object', spriteAdded.object.object_id, 'select');
+  await click('.action-editor-list .logic-toggle input');
+  moved = await runInputs(1);
+  assert.equal(moved.underlying.visible, false);
+  await click('.react-flow__node[data-id="center"] [aria-label="A trigger, configured"]');
+  assert(await evaluate("[...(document.querySelector('[aria-label=\"Add effect\"]')?.options ?? [])].every(option => !option.value || option.value === 'play_sfx')"));
+  await selectTestRoute();
+  for (const width of [1440, 760]) {
+    window.setSize(width, 1000); window.webContents.invalidate(); await wait(500);
+    assert(await evaluate("[...document.querySelectorAll('.inspector-pane input,.inspector-pane select')].every(e => e.getBoundingClientRect().right <= document.querySelector('.inspector-pane').getBoundingClientRect().right)"));
+    fs.writeFileSync(path.join(output, `object-actions-${width}.png`), (await window.webContents.capturePage()).toPNG());
+  }
+  window.setSize(1440, 900);
+  await button('Save');
+  const savedActions = JSON.stringify(actionRoute().actions);
+  await button('Open example'); await wait(500);
+  assert.equal(JSON.stringify(actionRoute().actions), savedActions);
+  await button('Local logic');
   // Changing selection to a legacy scene restores the existing graph editing controls.
   const legacy = documentResult.document.scenes.find(scene => scene.schema_version === 1);
   assert(legacy, "Fixture must contain both versions");

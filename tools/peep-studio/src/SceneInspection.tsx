@@ -53,6 +53,7 @@ import {
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { FramebufferCanvas } from "./FramebufferCanvas";
+import { ObjectMotionFields } from "./ObjectMotionFields";
 import {
   buildSceneFlowGraphModel,
   buildStateGraphModel,
@@ -1137,13 +1138,13 @@ function TransitionActionIcon({ action }: { action: StateAction }) {
   if (action.kind === "play_sfx") {
     return <Volume2 size={15} aria-hidden="true" />;
   }
-  if (action.kind === "set_element_visibility") {
+  if (action.kind === "set_element_visibility" || action.kind === "object.set_visibility") {
     return <Eye size={15} aria-hidden="true" />;
   }
-  if (action.kind === "set_element_position") {
+  if (action.kind === "set_element_position" || action.kind === "object.set_position" || action.kind === "object.move_by") {
     return <Move size={15} aria-hidden="true" />;
   }
-  if (action.kind === "set_element_frame") {
+  if (action.kind === "set_element_frame" || action.kind === "object.set_frame" || action.kind === "object.clear_frame") {
     return <Image size={15} aria-hidden="true" />;
   }
   if (action.kind === "set_element_waiting_animation") {
@@ -3991,6 +3992,7 @@ function SceneNodeInspector({
 }
 
 export function SceneAuthoringInspector({
+  objectActionsEditable = false,
   scene,
   scenes,
   editor,
@@ -4078,6 +4080,7 @@ export function SceneAuthoringInspector({
   actionLimit: number;
   canEdit: boolean;
   canPreview: boolean;
+  objectActionsEditable?: boolean;
 }) {
   const variables = scene?.variables ?? [];
   const inputActions = scene?.input_actions ?? [];
@@ -4116,6 +4119,7 @@ export function SceneAuthoringInspector({
       )}
       {route !== null && scene !== null && (
         <RouteInspector
+          objectActionsEditable={objectActionsEditable}
           sceneId={scene.scene_id}
           route={route}
           sourceState={selection.kind === "route" ? selection.sourceState : undefined}
@@ -4743,6 +4747,7 @@ function SceneExitInspector({
 }
 
 function RouteInspector({
+  objectActionsEditable = false,
   sceneId,
   route,
   sourceState,
@@ -4776,6 +4781,7 @@ function RouteInspector({
   route: StateRoute;
   sourceState?: string;
   hasManualRoute: boolean;
+  objectActionsEditable?: boolean;
   states: StateRecord[];
   scenes: SceneDocument[];
   sceneExits: SceneExitRecord[];
@@ -4837,6 +4843,7 @@ function RouteInspector({
   const targetKind = exitsToPeepOS ? "system" : route.target_scene === undefined ? "state" : "scene exit";
   const targetState = states.find((state) => state.state_id === route.target_state);
   const targetRenderModel = renderModels.find((renderModel) => renderModel.visual_id === targetState?.render_model_ref);
+  const sceneObjects = scenes.find(scene => scene.scene_id === sceneId)?.schema_version === 2;
   const targetElements = targetState === undefined
     ? targetRenderModel?.elements ?? []
     : placementOwnership?.scenes[sceneId]?.states[targetState.state_id]?.resolved_elements
@@ -4935,6 +4942,7 @@ function RouteInspector({
       />
       <h4>Then</h4>
       <EditableActionList
+        sceneObjects={sceneObjects}
         sceneId={sceneId}
         route={route}
         variables={variables}
@@ -4945,7 +4953,7 @@ function RouteInspector({
         audioCues={audioCues}
         localActionsAllowed={!exitsScene}
         canAddActions={route.actions.length < actionLimit}
-        canEdit={canEdit}
+        canEdit={sceneObjects ? objectActionsEditable : canEdit}
         onSetRouteAction={onSetRouteAction}
         onAddRouteAction={onAddRouteAction}
         onDeleteRouteAction={onDeleteRouteAction}
@@ -5113,6 +5121,11 @@ type WaitingAnimationChoice = {
 };
 
 const EFFECT_KIND_LABELS: Record<string, string> = {
+  "object.move_by": "Move by (relative)",
+  "object.set_position": "Set position (absolute)",
+  "object.set_visibility": "Show or hide object",
+  "object.set_frame": "Set frame override",
+  "object.clear_frame": "Clear frame override",
   set_variable: "Change variable",
   set_element_visibility: "Show or hide object",
   set_element_position: "Set position",
@@ -5161,6 +5174,7 @@ function waitingAnimationChoices(
 }
 
 export function EditableActionList({
+  sceneObjects = false,
   sceneId,
   route,
   variables,
@@ -5180,6 +5194,7 @@ export function EditableActionList({
   sceneId: string;
   route: StateRoute;
   variables: StateVariable[];
+  sceneObjects?: boolean;
   targetState?: StateRecord;
   targetElements: RenderElement[];
   waitingVisuals: WaitingVisual[];
@@ -5225,6 +5240,18 @@ export function EditableActionList({
       return cue === undefined ? null : { kind, cue_ref: cue.cue_id };
     }
     const preferredElement = preferredElementRef === undefined ? undefined : targetElementById.get(preferredElementRef);
+    if (kind.startsWith("object.")) {
+      const element = preferredElement ?? targetElements.find(item =>
+        !["object.set_frame", "object.clear_frame"].includes(kind) || item.kind === "sprite");
+      if (element === undefined) return null;
+      const common = { kind, object_ref: element.element_id };
+      if (kind === "object.move_by") return { ...common, dx: 1 };
+      if (kind === "object.set_position") return { ...common, x: element.x };
+      if (kind === "object.set_visibility") return { ...common, visible: true };
+      if (kind === "object.clear_frame") return element.kind === "sprite" ? common : null;
+      const frame = spriteFrameChoices(element, assets)[0];
+      return frame === undefined ? null : { ...common, frame_ref: frame.frameId };
+    }
     if (kind === "set_element_visibility" || kind === "set_element_position") {
       const element = preferredElement ?? targetElements[0];
       if (element === undefined) {
@@ -5265,7 +5292,7 @@ export function EditableActionList({
     return null;
   };
 
-  const localEffectKinds = [
+  const localEffectKinds = sceneObjects ? ["set_variable", "object.move_by", "object.set_position", "object.set_visibility", "object.set_frame", "object.clear_frame"] : [
     "set_variable",
     "set_element_visibility",
     "set_element_position",
@@ -5287,8 +5314,8 @@ export function EditableActionList({
         const value = typeof action.value === "number" ? action.value : variable?.initial ?? 0;
         const isAdd = operation === "add";
         const cueRef = action.cue_ref ?? audioCues[0]?.cue_id ?? "";
-        const isElementAction = action.kind.startsWith("set_element_");
-        const elementRef = action.element_ref ?? targetElements[0]?.element_id ?? "";
+        const isElementAction = action.kind.startsWith("set_element_") || action.kind.startsWith("object.");
+        const elementRef = action.object_ref ?? action.element_ref ?? targetElements[0]?.element_id ?? "";
         const element = targetElementById.get(elementRef);
         const frames = spriteFrameChoices(element, assets, action.frame_ref);
         const animationChoices = waitingAnimationChoices(elementRef, targetState, waitingVisuals);
@@ -5375,6 +5402,10 @@ export function EditableActionList({
                   onChange={(event) => {
                     const nextAction = defaultActionForKind(action.kind, event.target.value);
                     if (nextAction !== null) {
+                      if (action.kind.startsWith("object.") && action.kind !== "object.set_frame") {
+                        commit({ ...action, object_ref: event.target.value });
+                        return;
+                      }
                       commit(action.kind === "set_element_visibility"
                         ? { ...nextAction, visible: action.visible !== false }
                         : action.kind === "set_element_waiting_animation"
@@ -5383,7 +5414,7 @@ export function EditableActionList({
                     }
                   }}
                 >
-                  {targetElements.map((candidate) => (
+                  {targetElements.filter(candidate => !["object.set_frame", "object.clear_frame"].includes(action.kind) || candidate.kind === "sprite").map((candidate) => (
                     <option key={candidate.element_id} value={candidate.element_id}>{candidate.element_id}</option>
                   ))}
                 </select>
@@ -5449,7 +5480,10 @@ export function EditableActionList({
                   </label>
                 </>
               )}
-              {action.kind === "set_element_visibility" && (
+              {(action.kind === "object.move_by" || action.kind === "object.set_position") && (
+                <ObjectMotionFields action={action} index={visibleIndex + 1} disabled={!canEdit} onCommit={commit} />
+              )}
+              {(action.kind === "set_element_visibility" || action.kind === "object.set_visibility") && (
                 <label className="logic-toggle">
                   <input
                     type="checkbox"
@@ -5457,7 +5491,7 @@ export function EditableActionList({
                     disabled={!canEdit}
                     onChange={(event) => commit({
                       kind: action.kind,
-                      element_ref: elementRef,
+                      ...(sceneObjects ? { object_ref: elementRef } : { element_ref: elementRef }),
                       visible: event.target.checked,
                     })}
                   />
@@ -5504,7 +5538,7 @@ export function EditableActionList({
                   </label>
                 </div>
               )}
-              {action.kind === "set_element_frame" && (
+              {(action.kind === "set_element_frame" || action.kind === "object.set_frame") && (
                 <label className="effect-field">
                 <span>Frame</span>
                 <select
@@ -5513,7 +5547,7 @@ export function EditableActionList({
                   disabled={!canEdit || frames.length === 0}
                   onChange={(event) => commit({
                     kind: action.kind,
-                    element_ref: elementRef,
+                    ...(sceneObjects ? { object_ref: elementRef } : { element_ref: elementRef }),
                     frame_ref: event.target.value,
                   })}
                 >

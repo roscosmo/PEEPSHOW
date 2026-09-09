@@ -99,6 +99,9 @@ export type StateGuard = {
 };
 
 export type StateAction = {
+  object_ref?: string;
+  dx?: number;
+  dy?: number;
   kind: string;
   variable_ref?: string;
   operation?: string;

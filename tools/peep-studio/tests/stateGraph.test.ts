@@ -25,6 +25,9 @@ const arrivals = [
   { id: "different-side", target: "menu", targetHandle: "entry-top-left:left" },
   { id: "different-state", target: "credits", targetHandle: "entry-top-left:top" },
 ];
+assert.equal(stateActionDescription({ kind: "object.move_by", object_ref: "wizard", dx: 4, dy: -3 }), "Move Wizard: X +4 (right), Y -3 (up)");
+assert.equal(stateActionDescription({ kind: "object.set_position", object_ref: "wizard", x: 30 }), "Set Wizard: X 30");
+assert.equal(stateActionDescription({ kind: "object.clear_frame", object_ref: "wizard" }), "Clear Wizard frame override");
 assert.deepEqual(incomingPeers(arrivals, arrivals[0]), ["a", "b", "green-entry"]);
 assert.deepEqual(incomingPeers([...arrivals].reverse(), arrivals[0]), ["a", "b", "green-entry"]);
 assert.deepEqual(incomingPeers(arrivals, { ...arrivals[0], targetHandle: "entry-top-left:left" }), ["a", "different-side"]);

@@ -2031,12 +2031,25 @@ export default function App() {
     }
   };
 
+  const editObjectRouteActions = async (sceneId: string, routeId: string, edit: (actions: Record<string, unknown>[]) => void) => {
+    const route = project?.document?.scenes?.find(scene => scene.scene_id === sceneId)?.routes?.find(route => route.route_id === routeId);
+    if (route === undefined) return;
+    const actions: Record<string, unknown>[] = route.actions.map(action => ({ ...action }));
+    edit(actions);
+    await applySceneObjectCommands([{ kind: "object_actions.set", scene_id: sceneId,
+      owner_kind: "route", owner_id: routeId, actions }]);
+  };
+  const routeUsesObjects = (sceneId: string) => project?.document?.scenes?.find(scene => scene.scene_id === sceneId)?.schema_version === 2;
   const setRouteAction = async (
     sceneId: string,
     routeId: string,
     actionIndex: number,
     action: Record<string, unknown>,
   ) => {
+    if (routeUsesObjects(sceneId)) {
+      await editObjectRouteActions(sceneId, routeId, actions => { actions[actionIndex] = action; });
+      return;
+    }
     if (bridge === undefined || project === null || busy !== null) {
       return;
     }
@@ -2073,6 +2086,10 @@ export default function App() {
     actionIndex: number,
     action: Record<string, unknown>,
   ) => {
+    if (routeUsesObjects(sceneId)) {
+      await editObjectRouteActions(sceneId, routeId, actions => { actions.splice(actionIndex, 0, action); });
+      return;
+    }
     if (bridge === undefined || project === null || busy !== null) {
       return;
     }
@@ -2214,27 +2231,41 @@ export default function App() {
     { kind: "route.guard.move", guard_index: guardIndex, target_index: targetIndex },
   );
 
-  const deleteRouteAction = async (sceneId: string, routeId: string, actionIndex: number) =>
-    applyRouteListCommand(
+  const deleteRouteAction = async (sceneId: string, routeId: string, actionIndex: number) => {
+    if (routeUsesObjects(sceneId)) {
+      await editObjectRouteActions(sceneId, routeId, actions => { actions.splice(actionIndex, 1); });
+      return;
+    }
+    await applyRouteListCommand(
       "Deleting effect",
       "Effect deleted.",
       sceneId,
       routeId,
       { kind: "route.action.delete", action_index: actionIndex },
     );
+  };
 
   const moveRouteAction = async (
     sceneId: string,
     routeId: string,
     actionIndex: number,
     targetIndex: number,
-  ) => applyRouteListCommand(
+  ) => {
+    if (routeUsesObjects(sceneId)) {
+      await editObjectRouteActions(sceneId, routeId, actions => {
+        const [action] = actions.splice(actionIndex, 1);
+        if (action !== undefined) actions.splice(targetIndex, 0, action);
+      });
+      return;
+    }
+    await applyRouteListCommand(
     "Reordering effects",
     "Effect order updated.",
     sceneId,
     routeId,
     { kind: "route.action.move", action_index: actionIndex, target_index: targetIndex },
   );
+  };
 
   const applyRenderElementCommand = async (
     busyLabel: string,
@@ -5614,6 +5645,7 @@ export default function App() {
 
           {!projectRootSelected && workspaceMode === "logic" && (
             <SceneAuthoringInspector
+              objectActionsEditable={busy === null && supportsObjectCommand(service, selectedSceneCapability, "object_actions.set")}
               scene={selectedSceneDocument}
               scenes={scenes}
               editor={project?.document?.project?.editor}

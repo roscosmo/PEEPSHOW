@@ -657,8 +657,42 @@ creating legacy render models or resolving ownership in TypeScript.
   desktop/compact screenshots. User projects and
   repository examples are not migrated by Studio or modified by the test.
 
-Next checkpoints: explicit migration preview/apply with consent; supported
-object actions; further controls only as supported by host increments.
+Checkpoint 3 implements transition action editing for existing version-2 routes.
+Add/edit/delete/reorder submit the complete ordered list through
+`object_actions.set`, preserving hidden and advanced records. The GUI exposes
+relative movement (+X right, +Y up), absolute positioning (Y from top), independent
+axis selection, visibility, set-frame and clear-frame actions alongside existing
+variable/SFX controls. Clear-frame restores the underlying clip's current phase;
+it is not an animation restart. Graph icons/tooltips identify the new actions.
+Scene-replacement routes still offer only SFX. Route construction and guard
+editing remain separately disabled. Handler editing is not exposed in this slice.
+
+Real-host tests verify repeated movement, sign conventions, the differing results
+of reordered set/move actions, hidden-record preservation, undo/redo and save/reload.
+The test fixture is temporary; Studio does not construct unsupported graphs.
+
+### Native Creation Priority
+
+Migration UI is deferred by user decision. Development should prioritize new
+native scene-object projects and recreating the menu example through Studio.
+The OS agent confirmed main `323179d` still lacks most shared-authoring commands;
+firmware development decoding/execution does not imply those commands exist.
+
+Requested OS-owned increments, each advertised through hello/per-scene capabilities:
+
+1. Project creation with a version-2 initial scene, additional version-2 scenes,
+   and state creation/deletion. Rename and entry-state selection already exist.
+2. Version-2 trigger/input binding, route construction/retargeting, guards and
+   variable management. Existing ordered action replacement is not construction.
+3. Scene exit creation and reciprocal local-graph endpoints/connections. Package
+   entry-scene selection already exists independently.
+
+Version 2 identifies the scene-object source format, not a required change to
+the project container version. OS owns payload design and shared implementation;
+Studio must not silently migrate a legacy new project as a creation workaround.
+Integrate each supported increment without waiting for the whole migration or
+firmware/export rollout. Keep current export restrictions until explicitly handed off.
+
 Preserve undo/redo, save/reload, legacy editing, and visible export restrictions.
 Shared schemas, compiler, service, and firmware remain OS-owned. Do not add a
 parallel model or expose version-2 graph construction ahead of its handoff.

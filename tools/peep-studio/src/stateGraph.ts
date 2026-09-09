@@ -309,6 +309,19 @@ export function stateActionDescription(action: StateAction): string | null {
   if (action.kind === "request_render") {
     return null;
   }
+  if (action.kind.startsWith("object.")) {
+    const target = displayRefName(action.object_ref, "object");
+    if (action.kind === "object.move_by") return `Move ${target}: ${[
+      action.dx === undefined ? null : `X ${signedValue(action.dx)} (right)`,
+      action.dy === undefined ? null : `Y ${signedValue(action.dy)} (up)`,
+    ].filter(Boolean).join(", ")}`;
+    if (action.kind === "object.set_position") return `Set ${target}: ${[
+      action.x === undefined ? null : `X ${action.x}`, action.y === undefined ? null : `Y ${action.y}`,
+    ].filter(Boolean).join(", ")}`;
+    if (action.kind === "object.set_visibility") return `${action.visible === false ? "Hide" : "Show"} ${target}`;
+    if (action.kind === "object.set_frame") return `Set ${target} frame: ${action.frame_ref ?? ""}`;
+    if (action.kind === "object.clear_frame") return `Clear ${target} frame override`;
+  }
   if (action.kind === "set_variable") {
     const variableName = displayRefName(action.variable_ref, "variable");
     if (action.operation === "add") {

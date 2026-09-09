@@ -60,6 +60,23 @@ button:focus-visible {
   margin-top: 12px;
 }
 
+.effect-field > .object-action-axis {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+}
+
+.effect-field .object-action-axis input[type="checkbox"] {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  min-height: 14px;
+  padding: 0;
+  margin: 0;
+}
+
 .scene-object-property label {
   display: grid;
   gap: 5px;
