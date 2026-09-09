@@ -990,6 +990,16 @@ the scene-owned object. Package compilation may flatten those overrides into
 target-specific retained records, but authored source must keep the scene object
 identity stable.
 
+The live ownership target is defined in
+[[Scene_Object_Lifetime_and_Control_Contract]], with branch coordination in
+[[Peep_Studio_Scene_Object_Ownership_Handoff]]. Shared source placement is not
+yet equivalent to shared mutable runtime object storage: the current compiler
+flattens base placement into per-state visual bindings, and waiting-animation
+editing can generate per-state presentation identities. Under the new model,
+flattening is permitted only if it preserves stable object identity, persistent
+properties, and playback continuity. Adoption requires an explicit executable
+version/capability and legacy migration; this paragraph adds no schema fields.
+
 The initial system-font contract is fixed-cell 8x8, black ink on a transparent
 background, printable ASCII `0x20..0x7e`, newline line breaks, and integer
 nearest-neighbor scaling. Rasterized output must fit `168x144` and emits exactly

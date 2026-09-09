@@ -527,7 +527,13 @@ The menu remains mounted while waiting. Its cursor/background may continue anima
 
 `STATIC` is no longer an execution-mode token. The term remains valid for static art, static frames, and one-shot display updates where accurate.
 
-For the HW6 v1 profile, state-scene waiting presentation uses a `250 ms` phase quantum. Authored phase durations are integer multiples of that quantum; a two-frame animation with one quantum per phase has a `500 ms` full cycle. This is presentation timing, not a package logic tick. Awake rendering and autonomous playback consume one shared presentation epoch so changing backend does not restart or duplicate a phase. Multiple elements share one combined timeline: two-phase and three-phase elements, for example, repeat over six steps. Updating selection or other content inside the same presentation preserves its step and deadline; entering a different state or presentation rebases to that presentation's settled step.
+For the HW6 v1 profile, state-scene waiting presentation uses a `250 ms` phase quantum. Authored phase durations are integer multiples of that quantum; a two-frame animation with one quantum per phase has a `500 ms` full cycle. This is presentation timing, not a package logic tick. Awake rendering and autonomous playback consume one shared presentation epoch so changing backend does not restart or duplicate a phase. Multiple elements share one combined timeline: two-phase and three-phase elements, for example, repeat over six steps. Updating selection or other content inside the same compatible presentation preserves its step and deadline. In the current executable model, selecting an incompatible waiting presentation rebases to its settled step; a logical state change alone is not a requirement to restart animation.
+
+The scene-owned object target in [[Scene_Object_Lifetime_and_Control_Contract]]
+separates object playback from per-state presentation identity. It requires
+unrelated selection changes to preserve playback and makes restart explicit.
+This target needs a versioned implementation and does not silently reinterpret
+existing per-state waiting records.
 
 The authoring tool must preview both the preferred timeline and the target's
 deterministic three-step result. It presents a visual budget indicator derived
