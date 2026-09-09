@@ -163,6 +163,7 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("scene-flow");
+  const [projectHierarchyExpanded, setProjectHierarchyExpanded] = useState(true);
   const [placementInspectorTab, setPlacementInspectorTab] = useState<PlacementInspectorTab>("object");
   const [sceneThumbnails, setSceneThumbnails] = useState<Record<string, Framebuffer>>({});
   const [expandedSceneIds, setExpandedSceneIds] = useState<string[]>([]);
@@ -4321,11 +4322,8 @@ export default function App() {
     ));
   };
   const selectHierarchyScene = (sceneId: string) => {
-    if (selectedScene === sceneId) {
-      setSceneSelection({ kind: "scene" });
-      return;
-    }
-    void startPreview(sceneId);
+    setSelectedScene(sceneId);
+    setSceneSelection({ kind: "scene" });
   };
   const openHierarchyPlacementTarget = async (
     scene: SceneDocument,
@@ -4367,7 +4365,6 @@ export default function App() {
       }
       return;
     }
-    setWorkspaceMode("logic");
     setSelectedScene(scene.scene_id);
     setSelectedPlacementElement(null);
     setSceneSelection({ kind: "state", id: state.state_id });
@@ -4472,6 +4469,7 @@ export default function App() {
                 className="scene-hierarchy-select"
                 type="button"
                 onClick={() => selectHierarchyScene(scene.scene_id)}
+                onDoubleClick={() => toggleHierarchyScene(scene.scene_id)}
               >
                 <FileCode2 size={16} aria-hidden="true" />
                 <span>
@@ -4496,7 +4494,13 @@ export default function App() {
                   <button
                     className={`hierarchy-branch-select ${sceneSelected && workspaceMode === "placement" && placementEditStateIds.length === 0 ? "selected" : ""}`}
                     type="button"
-                    onClick={() => void openHierarchyPlacementTarget(scene, null)}
+                    onClick={() => {
+                      setSelectedScene(scene.scene_id);
+                      setPlacementStateId(null);
+                      setPlacementEditStateIds([]);
+                      setSceneSelection(renderModel ? { kind: "render", id: renderModel.visual_id } : { kind: "scene" });
+                    }}
+                    onDoubleClick={() => toggleHierarchyGroup(baseGroupId)}
                   >
                     <Layers3 size={15} aria-hidden="true" />
                     <span>
@@ -4547,7 +4551,8 @@ export default function App() {
                   <button
                     className="hierarchy-branch-select"
                     type="button"
-                    onClick={() => toggleHierarchyGroup(statesGroupId)}
+                    onClick={() => selectHierarchyScene(scene.scene_id)}
+                    onDoubleClick={() => toggleHierarchyGroup(statesGroupId)}
                   >
                     <Network size={15} aria-hidden="true" />
                     <span>
@@ -4596,7 +4601,8 @@ export default function App() {
                             type="button"
                             aria-selected={selected}
                             aria-current={active ? "step" : undefined}
-                            onClick={(event) => openHierarchyState(scene, state, event)}
+                            onClick={(event) => { if (event.detail < 2) openHierarchyState(scene, state, event); }}
+                            onDoubleClick={() => toggleHierarchyGroup(stateGroupId)}
                           >
                             <span className="hierarchy-state-icon">
                               <Network size={15} aria-hidden="true" />
@@ -4678,9 +4684,10 @@ export default function App() {
                       <ChevronRight className={variablesExpanded ? "expanded" : ""} size={14} aria-hidden="true" />
                     </button>
                     <button
-                      className="hierarchy-branch-select"
-                      type="button"
-                      onClick={() => toggleHierarchyGroup(variablesGroupId)}
+                    className="hierarchy-branch-select"
+                    type="button"
+                    onClick={() => selectHierarchyScene(scene.scene_id)}
+                    onDoubleClick={() => toggleHierarchyGroup(variablesGroupId)}
                     >
                       <Type size={15} aria-hidden="true" />
                       <span>
@@ -5205,10 +5212,22 @@ export default function App() {
           {renderPreviewPanel("project")}
 
           {project !== null && (
+            <div className="project-hierarchy-root">
+            <button
+              className="hierarchy-disclosure-control"
+              type="button"
+              aria-expanded={projectHierarchyExpanded}
+              aria-label={`${projectHierarchyExpanded ? "Collapse" : "Expand"} project`}
+              title={`${projectHierarchyExpanded ? "Collapse" : "Expand"} project`}
+              onClick={() => setProjectHierarchyExpanded((expanded) => !expanded)}
+            >
+              <ChevronRight className={projectHierarchyExpanded ? "expanded" : ""} size={15} aria-hidden="true" />
+            </button>
             <button
               className={`project-root-row ${projectRootSelected ? "selected" : ""}`}
               type="button"
               onClick={selectProjectRoot}
+              onDoubleClick={() => setProjectHierarchyExpanded((expanded) => !expanded)}
             >
               <Box size={17} aria-hidden="true" />
               <span className="project-root-copy">
@@ -5219,6 +5238,7 @@ export default function App() {
                 <StatusMark ok={project.valid} /> {project.valid ? "Valid" : "Invalid"}
               </span>
             </button>
+            </div>
           )}
 
           {project === null ? (
@@ -5228,12 +5248,7 @@ export default function App() {
               <span>Open a .peepproj folder to inspect scenes and package assets.</span>
             </div>
           ) : (
-            <>
-              <details className="project-section" open>
-                <summary>Scenes</summary>
-                {renderSceneHierarchy()}
-              </details>
-            </>
+            projectHierarchyExpanded && renderSceneHierarchy()
           )}
         </aside>
 
@@ -5289,6 +5304,11 @@ export default function App() {
                 setSelectedScene(sceneId);
                 setSceneSelection({ kind: "scene" });
                 void startPreview(sceneId);
+              }}
+              onOpenScene={(sceneId) => {
+                setSelectedScene(sceneId);
+                setSceneSelection({ kind: "scene" });
+                setWorkspaceMode("logic");
               }}
               onSelectSceneRoute={(sceneId, routeId) => {
                 setSelectedScene(sceneId);

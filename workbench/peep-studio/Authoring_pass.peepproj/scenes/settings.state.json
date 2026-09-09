@@ -44,7 +44,20 @@
     {
       "visual_id": "scene_placement",
       "focus_index": 0,
-      "elements": []
+      "elements": [
+        {
+          "element_id": "line_1",
+          "kind": "line",
+          "x": 27,
+          "y": 25,
+          "width": 100,
+          "height": 83,
+          "z_order": 1,
+          "layer": "SCENE",
+          "visible": true,
+          "line_direction": "down_right"
+        }
+      ]
     }
   ],
   "waiting_visuals": [

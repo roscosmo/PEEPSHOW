@@ -466,6 +466,31 @@ blank-project acceptance project.
 
 ### 2. Selection, Keyboard, And Inspector Coherence
 
+GUI refinements (compatibility-only work against API 38):
+
+- Implemented: the project row is the expandable hierarchy root directly below the
+  emulator. Scenes are its direct children; remove the redundant Scenes
+  classification row. Project selection still opens package-wide inspector
+  controls. This is hierarchy presentation, not scene-object migration.
+- Implemented: double-clicking a scene card in Scene Flow opens Local Logic,
+  without double-click graph zoom.
+- Implemented: a single click on a parent hierarchy row selects it. A double-click
+  expands/collapses its child rows; this must not hide scene objects in the
+  emulator or change authored visibility. Disclosure arrows remain independent
+  of selection and can expand/collapse without disturbing the current target.
+- These interactions are separate: scene-card double-click navigates to logic;
+  hierarchy parent-row double-click toggles expansion, including scene rows.
+  A hierarchy double-click must not also navigate to another workspace.
+- Pending: refine transition-action inspector layout: rename the current absolute
+  action from Move object to Set position; put object selection on its own row
+  and give parameters clearly labelled, adequately sized fields. Preserve
+  execution order and compact graph symbols. Relative Move by remains
+  unavailable until the OS agent hands over a supported shared-backend
+  increment; agreed author-facing axes are positive X right and positive Y up,
+  with displacement applied to underlying mutable position and edge clamping.
+  Do not introduce a GUI-only movement model or change the existing absolute
+  coordinate convention as part of this layout work.
+
 - `Ctrl+Z` invokes the existing project undo operation when focus is not owned
   by a native text-editing control. Redo retains the platform convention
   already shown by the toolbar.
@@ -538,6 +563,11 @@ the shared scoring weights rather than introduce per-example route behavior.
 
 ### 5. Workspace Density
 
+- Implemented: project and inspector panels use thin vertical scrollbars with
+  a stable reserved gutter so scrolling does not cover controls. Scrolling is
+  retained. `tests/hierarchy-check.cjs` exercises the actual app through a
+  read-only example load, checks navigation/expansion and scrollbar geometry,
+  and captures desktop and compact layouts.
 - Implemented: an emulator collapse control switches between the complete emulator
   and a display-only form. The display size and current preview are retained;
   transport and physical controls are hidden rather than destroyed.

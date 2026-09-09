@@ -58,7 +58,7 @@
     },
     {
       "state_id": "new_state_2",
-      "display_name": "New State",
+      "display_name": "Credits",
       "waiting_visual_ref": "new_state_2_wait"
     }
   ],

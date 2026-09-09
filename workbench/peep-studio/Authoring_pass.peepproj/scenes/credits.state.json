@@ -6,7 +6,13 @@
   "scene_type": "STATE_SCENE",
   "entry_state": "start",
   "variables": [],
-  "input_actions": [],
+  "input_actions": [
+    {
+      "action_id": "button_b_press",
+      "logical_source": "BUTTON_B",
+      "event_kind": "press"
+    }
+  ],
   "scene_exits": [
     {
       "scene_exit_id": "to_main",
@@ -21,12 +27,42 @@
       "waiting_visual_ref": "static_wait"
     }
   ],
-  "routes": [],
+  "routes": [
+    {
+      "route_id": "start_button_b_press",
+      "action_ref": "button_b_press",
+      "from_states": [
+        "start"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "play_sfx",
+          "cue_ref": "audio_029_decline_09.cue"
+        }
+      ],
+      "scene_exit_ref": "to_main",
+      "target_scene": "main"
+    }
+  ],
   "render_models": [
     {
       "visual_id": "scene_placement",
       "focus_index": 0,
-      "elements": []
+      "elements": [
+        {
+          "element_id": "line_1",
+          "kind": "line",
+          "x": 28,
+          "y": 32,
+          "width": 90,
+          "height": 60,
+          "z_order": 1,
+          "layer": "SCENE",
+          "visible": true,
+          "line_direction": "up_right"
+        }
+      ]
     }
   ],
   "waiting_visuals": [
@@ -44,11 +80,15 @@
     "policy_id": "credits_wait_policy",
     "waiting_visual_ref": "static_wait",
     "hold_fallback_allowed": true,
-    "event_interests": []
+    "event_interests": [
+      "button_b_press"
+    ]
   },
   "interaction_policy": {
     "policy_id": "credits_interaction",
     "mode": "continuous",
-    "meaningful_activity_actions": []
+    "meaningful_activity_actions": [
+      "button_b_press"
+    ]
   }
 }

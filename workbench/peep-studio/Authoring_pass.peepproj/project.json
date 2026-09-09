@@ -33,7 +33,7 @@
         },
         "settings": {
           "x": 488,
-          "y": 382
+          "y": 386
         },
         "credits": {
           "x": 488,
@@ -102,8 +102,8 @@
               "y": 306
             },
             "scene-exit-to_credits": {
-              "x": 589,
-              "y": 1034
+              "x": 505,
+              "y": 1066
             }
           },
           "routes": {
@@ -205,12 +205,29 @@
               "y": 48
             },
             "scene-exit-to_main": {
-              "x": 440,
-              "y": 212
+              "x": 549,
+              "y": 169
             },
             "scene-entry": {
               "x": -220,
               "y": -82
+            }
+          },
+          "routes": {
+            "start_joy_right_press": {
+              "sources": {
+                "start": {
+                  "routing_version": 3,
+                  "rails": [
+                    {
+                      "axis": "y",
+                      "value": 596
+                    }
+                  ],
+                  "target_handle": "entry-bottom-left",
+                  "target_side": "bottom"
+                }
+              }
             }
           }
         },
@@ -223,6 +240,18 @@
             "scene-entry": {
               "x": -328,
               "y": -50
+            }
+          }
+        },
+        "credits": {
+          "nodes": {
+            "scene-exit-to_main": {
+              "x": 355,
+              "y": 339
+            },
+            "scene-entry": {
+              "x": -277,
+              "y": -28
             }
           }
         }

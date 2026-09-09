@@ -11,6 +11,11 @@
       "action_id": "button_b_press",
       "logical_source": "BUTTON_B",
       "event_kind": "press"
+    },
+    {
+      "action_id": "joy_right_press",
+      "logical_source": "JOY_RIGHT",
+      "event_kind": "press"
     }
   ],
   "scene_exits": [
@@ -43,6 +48,23 @@
       ],
       "scene_exit_ref": "to_main",
       "target_scene": "main"
+    },
+    {
+      "route_id": "start_joy_right_press",
+      "action_ref": "joy_right_press",
+      "from_states": [
+        "start"
+      ],
+      "guards": [],
+      "actions": [
+        {
+          "kind": "set_element_position",
+          "element_ref": "frame1_crop_1",
+          "x": 48,
+          "y": 32
+        }
+      ],
+      "target_state": "start"
     }
   ],
   "render_models": [
@@ -107,14 +129,16 @@
     "waiting_visual_ref": "static_wait",
     "hold_fallback_allowed": true,
     "event_interests": [
-      "button_b_press"
+      "button_b_press",
+      "joy_right_press"
     ]
   },
   "interaction_policy": {
     "policy_id": "game_interaction",
     "mode": "continuous",
     "meaningful_activity_actions": [
-      "button_b_press"
+      "button_b_press",
+      "joy_right_press"
     ]
   }
 }

@@ -3204,6 +3204,7 @@ export function SceneFlowView({
   packageEntrySelected,
   onAddScene,
   onSelectScene,
+  onOpenScene,
   onSelectSceneExit,
   onSelectSceneRoute,
   onSelectPackageEntry,
@@ -3235,6 +3236,7 @@ export function SceneFlowView({
   packageEntrySelected: boolean;
   onAddScene: (displayName: string) => void;
   onSelectScene: (sceneId: string) => void;
+  onOpenScene?: (sceneId: string) => void;
   onSelectSceneExit: (sceneId: string, sceneExitId: string) => void;
   onSelectSceneRoute: (sceneId: string, routeId: string) => void;
   onSelectPackageEntry: () => void;
@@ -3579,6 +3581,10 @@ export function SceneFlowView({
       onMoveEnd={updateViewportText}
       onPaneClick={() => setPaletteTool(null)}
       onKeyDown={handleSceneFlowKeyDown}
+      zoomOnDoubleClick={false}
+      onNodeDoubleClick={(_, node) => {
+        if (scenes.some((scene) => scene.scene_id === node.id)) onOpenScene?.(node.id);
+      }}
       tabIndex={0}
       onNodeClick={(_, node) => {
         if (node.type === "packageEntry") {

@@ -195,6 +195,9 @@ button:focus-visible {
 .inspector-pane {
   min-width: 0;
   overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #9ba9a1 transparent;
+  scrollbar-gutter: stable;
   background: #f9faf9;
 }
 
@@ -318,6 +321,21 @@ button:focus-visible {
   color: #303934;
   text-align: left;
   cursor: pointer;
+}
+
+.project-hierarchy-root {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-bottom: 1px solid #dce1de;
+  background: #ffffff;
+}
+
+.project-hierarchy-root .project-root-row {
+  min-width: 0;
+  flex: 1;
+  padding-left: 4px;
+  border-bottom: 0;
 }
 
 .project-root-row:hover,
