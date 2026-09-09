@@ -92,6 +92,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/ps_egg_state_loader.c
     Core/Src/ps_egg_object_decoder.c
     Core/Src/ps_scene_objects.c
+    Core/Src/ps_scene_object_graph.c
     Core/Src/ps_scene_runtime.c
     Core/Src/ps_ui_router.c
     Core/Src/ps_hw6_trace.c

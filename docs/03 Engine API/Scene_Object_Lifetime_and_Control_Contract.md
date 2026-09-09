@@ -1,7 +1,8 @@
 # Scene Object Lifetime and Control Contract
 
-Status: ownership semantics agreed; host preview and the C object-bank core are
-implemented. Production loader/graph/display integration remains pending.
+Status: ownership semantics agreed; host preview, full development C scene
+decoding and staged object/graph execution are implemented. Production owner,
+display admission and awake/STOP2 integration remain pending.
 
 This contract defines the target model for scene-owned objects. It does not
 change the interpretation of existing eggs or advertise a new firmware

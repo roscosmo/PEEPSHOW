@@ -469,3 +469,35 @@ No production banks are allocated yet, and no device pass is claimed.
 Next OS integration: complete V2 container/scene/graph validation and lowering;
 stage graph variables/object actions together; admit and publish the display
 plan while preserving phase and residual deadlines across awake/STOP2 handoff.
+
+### Development Loader and Graph Increment
+
+After `ecf7797` (staged object-bank core), the shared C loader now has an explicit
+development V2 decode entry. It validates the entire mixed-model package before
+returning a selected scene, preserves live V1 loader state, and leaves output
+unchanged on failure. Model-2 graph revision 7 lowers to scene objects and sparse
+overrides, not per-state render bindings. Shared animation catalog validation
+includes unreferenced clips. Object-operation references and route ranges must
+be canonical, bounded and fully accounted for.
+
+`ps_scene_object_graph` stages variables, object operations, state selection and
+ordered side effects. One commit publishes variables/objects only after caller
+admission; failed/aborted/stale transactions publish nothing. A scene-timer event
+can mutate objects without state re-entry. Native checks retain frame 1 with
+125 ms remaining across a transition at 375 ms. Replacement routes decode, but
+commit is withheld until replacement admission/orchestration is implemented.
+
+**Service API 39 and Studio capabilities are unchanged.** Runtime descriptor API
+is 22; this is not an authoring API bump. No GUI worktree, source schema, Python
+compiler/service, knobs, clocks, drivers or power modes changed. Do not enable
+V2 export or claim on-device support. Normal V2 install/activation remains blocked.
+
+Verification: **228 authoring tests pass**, including ten new native-loader/graph
+tests; HW6 Debug build and target-profile/diff checks pass. ARM graph bank/stage/
+effects sizes are 256/1096/784 bytes, caller-owned and not allocated in production
+yet. Stack measurements and remaining limits are in the executable design.
+No physical RTC, display, audio or STOP2 test is claimed for this increment.
+
+Next: production owner/display admission, frame resolution and residual-deadline
+handoff; then device continuity/recovery tests and an explicit capability/export
+handoff for Studio. GUI placement/migration work can continue independently.

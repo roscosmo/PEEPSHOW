@@ -125,6 +125,13 @@ extern volatile ps_egg_state_loader_probe_t g_ps_egg_validation_probe;
 
 /* thRuntime only. Full candidate validation without activating or replacing it. */
 uint32_t PS_EggStateLoader_ValidatePackage(const uint8_t *blob, uint32_t size);
+/* thRuntime only, explicit development path. Validates every scene before
+ * copying the requested descriptor (scene_id=0 selects entry). Does not publish
+ * a runtime package or admit display/LPBAM. Output is unchanged on failure.
+ * Borrowed object spans require blob to remain immutable while in use.
+ */
+uint32_t PS_EggStateLoader_DecodeDevelopmentScene(const uint8_t *blob,
+  uint32_t size, uint32_t scene_id, ps_scene_runtime_state_scene_t *scene);
 
 /*
  * The package blob must remain immutable while the decoded scene is active.

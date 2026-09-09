@@ -6,12 +6,15 @@
 #include "ps_scene_render_model.h"
 #include "ps_scene_waiting_visual.h"
 #include "ps_target_profile_autogen.h"
+#include "ps_egg_object_decoder.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define PS_SCENE_RUNTIME_API_VERSION             (21UL)
+#define PS_SCENE_RUNTIME_API_VERSION             (22UL)
+#define PS_SCENE_RUNTIME_MODEL_LEGACY            (0UL)
+#define PS_SCENE_RUNTIME_MODEL_OBJECTS           (2UL)
 #define PS_SCENE_RUNTIME_SCENE_TYPE_STATE        (1UL)
 #define PS_SCENE_RUNTIME_STATUS_NOT_RUN          (0xFFFFFFFFUL)
 #define PS_SCENE_RUNTIME_STATUS_OK               (0UL)
@@ -83,7 +86,8 @@ typedef enum
   PS_SCENE_RUNTIME_ACTION_EXIT_TO_SHELL,
   PS_SCENE_RUNTIME_ACTION_START_TIMER,
   PS_SCENE_RUNTIME_ACTION_RESTART_TIMER,
-  PS_SCENE_RUNTIME_ACTION_CANCEL_TIMER
+  PS_SCENE_RUNTIME_ACTION_CANCEL_TIMER,
+  PS_SCENE_RUNTIME_ACTION_OBJECT_OPERATION
 } ps_scene_runtime_action_kind_t;
 
 typedef enum
@@ -203,6 +207,8 @@ typedef struct
     waiting_animations[PS_SCENE_RUNTIME_WAITING_ANIMATION_MAX];
   ps_scene_runtime_transition_t
     transitions[PS_SCENE_RUNTIME_TRANSITION_MAX];
+  uint32_t execution_model;
+  ps_egg_object_view_t object_definition;
 } ps_scene_runtime_state_scene_t;
 
 typedef struct
@@ -300,7 +306,10 @@ const ps_scene_waiting_visual_t *PS_SceneRuntime_ResolveShellStateWaitingVisual(
   uint32_t focus_index,
   const ps_scene_waiting_visual_bounds_t *cursor_bounds);
 uint32_t PS_SceneRuntime_EnterStateScene(void);
-/* Pure descriptor check, shared by activation and candidate preflight. */
+/* Pure descriptor check, shared by activation and candidate preflight.
+ * Object descriptors must carry an immutable view from PS_EggObject_Decode.
+ * A valid object descriptor is not production display/activation admission.
+ */
 uint32_t PS_SceneRuntime_ValidateDescriptor(
   const ps_scene_runtime_state_scene_t *scene, uint32_t package_scene_count);
 void PS_SceneRuntime_ExitStateScene(void);

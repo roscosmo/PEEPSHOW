@@ -1,8 +1,10 @@
 # PeepPkg V2 Development Layout
 
-Status: host encoder/parser increment; NOT a shipping capability or firmware
-acceptance claim. Normal build/export and `parse_egg` continue to reject V2.
-Use only `build_development_egg_v2` / `parse_development_egg_v2` for fixtures.
+Status: host encoder/parser and explicit C development decoder/graph increments;
+NOT a shipping capability or device acceptance claim. Normal build/export,
+`parse_egg` and production firmware installation continue to reject V2.
+Use `build_development_egg_v2` / `parse_development_egg_v2` for host fixtures;
+the C development entry is `PS_EggStateLoader_DecodeDevelopmentScene`.
 Authority: [[Scene_Object_Executable_Design]], [[Package_Blob_Format_Contract]].
 
 All integers are little-endian. Container magic remains `PKG1`, header version

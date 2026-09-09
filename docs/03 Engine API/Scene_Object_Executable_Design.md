@@ -2,9 +2,9 @@
 
 Status: GUI representation review accepted; source loading, migration/editing
 service and host scene-object preview implemented in service API 39. A separate
-development V2 binary encoder/reader, C object/control-record decoder and staged
-C object-bank core are implemented. Normal export, production loader/graph
-execution and autonomous display integration remain unavailable.
+development V2 binary encoder/reader, full C development scene decoder and staged
+C object/graph execution are implemented. Normal export, production activation,
+replacement orchestration and autonomous display integration remain unavailable.
 
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. Tests:
 [[Scene_Object_Ownership_Acceptance_Plan]]. Coordination:
@@ -307,7 +307,57 @@ override removal, hidden playback, suspend/resume, recreation, transaction abort
 stale/double commit and capacity failures. These are C semantic checks, not a
 production graph/timer dispatch, actual renderer or hardware STOP2 pass.
 
-### Display Integration Remaining
+### Development Loader and Graph Transactions
+
+`PS_EggStateLoader_DecodeDevelopmentScene` explicitly enables V2 decoding in the
+existing candidate-validation context. It validates container CRCs/digest,
+resident metadata, shared sprite/audio/animation catalogs, all mixed-model
+scenes and graph/control links before copying the requested scene descriptor.
+Scene ID zero selects the package entry. Failure preserves the caller's output;
+the active V1 loader/context is never replaced. Candidate scratch pointers are
+cleared on return; object spans in a successful output borrow immutable package
+bytes. This remains a runtime-owner operation because it uses HASH and shared
+decoder scratch, not a new storage-thread parser.
+
+SCN2 model 1 uses the existing legacy lowering; model 2 lowers graph revision 7
+to a descriptor with zero state-private visual bindings and a validated object
+definition. Internal descriptor model zero retains legacy initialization; model
+two denotes objects. These are distinct from SCN2's wire model values 1/2.
+Runtime descriptor API is now 22. Wire IDs/layout, service API 39, source commands
+and the target-profile capability remain unchanged.
+
+`ps_scene_object_graph.h/.c` executes those decoded routes against a caller-owned
+bank. Input and timer bindings use the same zero-based event-dispatch entry.
+Guards read committed variables. Ordered variable/object writes and destination
+overrides are staged together; a scene handler without a destination keeps the
+current state and does not report state re-entry. Timers/SFX/shell actions remain
+ordered staged effects, not messages emitted during evaluation. Snapshot and
+display/effect admission must precede the single-owner commit. Abort, overflow,
+stale variables, stale object time, recreation and duplicate commit leave live
+state untouched. Explicit suspension rejects event execution until resumed.
+
+Scene-replacement routes decode and stage a target plus permitted SFX, but this
+increment deliberately refuses to commit them: replacement/resource admission
+and effect dispatch still need the production owner. No V2 scene can enter via
+normal install, boot activation or runtime replacement yet. The development
+decoder is not called by those paths, and ordinary V2 validation still rejects
+the container. No synthetic legacy binding is used to bypass missing rendering.
+
+ARM ABI graph bank/stage/effects sizes are 256/1096/784 bytes. They are not new
+production globals. Local unoptimized stack frames are 112 bytes for StageEvent,
+24 for Commit and 32 for graph Init. The shared descriptor validator uses 144
+bytes; its V2-only object check uses another 232, calling the existing 320-byte
+object Init. Decoder local frames are 376 for scene lowering and 48 for the
+development entry. These exclude callees/interrupts and are not an owner-stack
+or target timing pass. Allocate/budget integrating scratch explicitly.
+
+Native byte-backed evidence includes mixed legacy/object decoding, non-entry
+scene rejection, graph/model/link mismatch, catalog integrity, capacity checks,
+live-loader isolation, ordered object/variable commits at 375 ms, timer-handler
+mutation without state re-entry, and rollback. RTC scheduling, actual SFX delivery,
+rendering and STOP2 residual handoff are not exercised by this increment.
+
+### Display and Owner Work Remaining
 
 Proposed first-increment ceilings retain the current renderer envelope:
 

@@ -4,6 +4,11 @@ Status: acceptance specification with host/native subsets implemented; device
 ownership and awake/STOP2 handoff acceptance remain NOT RUN. Incremental results
 are recorded in [[Peep_Studio_Scene_Object_Ownership_Handoff]].
 
+The native V2 graph fixture now drives real compiled package bytes through the
+complete development loader and staged input/timer graph execution. It checks
+joint object/variable rollback and state/phase continuity. It does not schedule
+an RTC timer, publish display/SFX work or enter physical STOP2.
+
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. Coordination:
 [[Peep_Studio_Scene_Object_Ownership_Handoff]]. This plan defines expected
 behavior, not executable helper commands, wire IDs, or implemented features.
