@@ -611,7 +611,7 @@ assert.deepEqual(authoredEffects.map((action) => action.kind), [
 ]);
 assert.deepEqual(authoredEffects.map(stateActionDescription), [
   "Hide Menu cursor",
-  "Move Menu cursor to 12, 34",
+      "Set Menu cursor position to 12, 34",
   "Change Menu cursor frame to Cursor selected",
   "Animate Menu cursor",
   "Coins = 4",

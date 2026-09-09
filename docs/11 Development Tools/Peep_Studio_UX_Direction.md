@@ -481,10 +481,12 @@ GUI refinements (compatibility-only work against API 38):
 - These interactions are separate: scene-card double-click navigates to logic;
   hierarchy parent-row double-click toggles expansion, including scene rows.
   A hierarchy double-click must not also navigate to another workspace.
-- Pending: refine transition-action inspector layout: rename the current absolute
-  action from Move object to Set position; put object selection on its own row
-  and give parameters clearly labelled, adequately sized fields. Preserve
-  execution order and compact graph symbols. Relative Move by remains
+- Implemented: transition-action inspector uses labelled rows for action type,
+  object, variable, frame, animation timing and SFX. The absolute action is
+  Set position, with paired X-from-left and Y-from-top pixel fields. Graph
+  tooltips use the same terminology. Execution order and compact graph symbols
+  are unchanged. `tests/action-inspector-check.cjs` covers narrow layouts,
+  edits, ordering, deletion and read-only controls. Relative Move by remains
   unavailable until the OS agent hands over a supported shared-backend
   increment; agreed author-facing axes are positive X right and positive Y up,
   with displacement applied to underlying mutable position and edge clamping.

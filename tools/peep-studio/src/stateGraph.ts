@@ -333,7 +333,7 @@ export function stateActionDescription(action: StateAction): string | null {
   }
   if (action.kind === "set_element_position") {
     const target = displayRefName(action.element_ref, "object");
-    return action.x === undefined || action.y === undefined ? `Move ${target}` : `Move ${target} to ${action.x}, ${action.y}`;
+    return action.x === undefined || action.y === undefined ? `Set ${target} position` : `Set ${target} position to ${action.x}, ${action.y}`;
   }
   if (action.kind === "set_element_frame") {
     return `Change ${displayRefName(action.element_ref, "object")} frame${action.frame_ref === undefined ? "" : ` to ${displayRefName(action.frame_ref, "frame")}`}`;

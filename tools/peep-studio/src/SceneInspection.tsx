@@ -5110,7 +5110,7 @@ type WaitingAnimationChoice = {
 const EFFECT_KIND_LABELS: Record<string, string> = {
   set_variable: "Change variable",
   set_element_visibility: "Show or hide object",
-  set_element_position: "Move object",
+  set_element_position: "Set position",
   set_element_frame: "Change sprite frame",
   set_element_waiting_animation: "Change animation",
   play_sfx: "Play SFX",
@@ -5155,7 +5155,7 @@ function waitingAnimationChoices(
   });
 }
 
-function EditableActionList({
+export function EditableActionList({
   sceneId,
   route,
   variables,
@@ -5341,8 +5341,9 @@ function EditableActionList({
                 </button>
               </div>
             </div>
-            <div className="logic-sentence">
-              <span>Then</span>
+            <div className="logic-sentence effect-fields">
+              <label className="effect-field">
+              <span>Action</span>
               <select
                 aria-label={`Effect ${visibleIndex + 1} kind`}
                 value={action.kind}
@@ -5358,7 +5359,10 @@ function EditableActionList({
                   <option key={kind} value={kind}>{EFFECT_KIND_LABELS[kind] ?? "Advanced effect"}</option>
                 ))}
               </select>
+              </label>
               {isElementAction && (
+                <label className="effect-field">
+                <span>Object</span>
                 <select
                   aria-label={`Effect ${visibleIndex + 1} object`}
                   value={elementRef}
@@ -5378,9 +5382,12 @@ function EditableActionList({
                     <option key={candidate.element_id} value={candidate.element_id}>{candidate.element_id}</option>
                   ))}
                 </select>
+                </label>
               )}
               {action.kind === "set_variable" && (
                 <>
+                  <label className="effect-field">
+                  <span>Operation</span>
                   <select
                     aria-label={`Effect ${visibleIndex + 1} operation`}
                     value={operation}
@@ -5393,9 +5400,12 @@ function EditableActionList({
                     })}
                   >
                     {ACTION_OPERATIONS.map((item) => (
-                      <option key={item} value={item}>{item === "assign" ? "set" : "change"}</option>
+                      <option key={item} value={item}>{item === "assign" ? "Set value" : "Add amount"}</option>
                     ))}
                   </select>
+                  </label>
+                  <label className="effect-field">
+                  <span>Variable</span>
                   <select
                     aria-label={`Effect ${visibleIndex + 1} variable`}
                     value={variableRef}
@@ -5413,7 +5423,9 @@ function EditableActionList({
                       </option>
                     ))}
                   </select>
-                  <span>{isAdd ? "by" : "to"}</span>
+                  </label>
+                  <label className="effect-field">
+                  <span>{isAdd ? "Amount" : "Value"}</span>
                   <input
                     aria-label={isAdd ? `Effect ${visibleIndex + 1} change amount` : `Effect ${visibleIndex + 1} target value`}
                     type="number"
@@ -5429,6 +5441,7 @@ function EditableActionList({
                       }
                     }}
                   />
+                  </label>
                 </>
               )}
               {action.kind === "set_element_visibility" && (
@@ -5447,8 +5460,9 @@ function EditableActionList({
                 </label>
               )}
               {action.kind === "set_element_position" && (
-                <>
-                  <span>X</span>
+                <div className="effect-coordinate-fields">
+                  <label className="effect-field">
+                  <span>X (px from left)</span>
                   <input
                     aria-label={`Effect ${visibleIndex + 1} X position`}
                     type="number"
@@ -5464,7 +5478,9 @@ function EditableActionList({
                       }
                     }}
                   />
-                  <span>Y</span>
+                  </label>
+                  <label className="effect-field">
+                  <span>Y (px from top)</span>
                   <input
                     aria-label={`Effect ${visibleIndex + 1} Y position`}
                     type="number"
@@ -5480,9 +5496,12 @@ function EditableActionList({
                       }
                     }}
                   />
-                </>
+                  </label>
+                </div>
               )}
               {action.kind === "set_element_frame" && (
+                <label className="effect-field">
+                <span>Frame</span>
                 <select
                   aria-label={`Effect ${visibleIndex + 1} sprite frame`}
                   value={action.frame_ref ?? frames[0]?.frameId ?? ""}
@@ -5497,9 +5516,12 @@ function EditableActionList({
                     <option key={frame.frameId} value={frame.frameId}>{frame.label}</option>
                   ))}
                 </select>
+                </label>
               )}
               {action.kind === "set_element_waiting_animation" && (
                 <>
+                  <label className="effect-field">
+                  <span>Animation</span>
                   <select
                     aria-label={`Effect ${visibleIndex + 1} animation`}
                     value={animationKey}
@@ -5521,6 +5543,9 @@ function EditableActionList({
                       <option key={choice.key} value={choice.key}>{choice.label}</option>
                     ))}
                   </select>
+                  </label>
+                  <label className="effect-field">
+                  <span>Timing</span>
                   <select
                     aria-label={`Effect ${visibleIndex + 1} timeline behavior`}
                     value={action.timeline_policy === "rebase" ? "rebase" : "preserve"}
@@ -5536,9 +5561,12 @@ function EditableActionList({
                     <option value="preserve">Keep timing</option>
                     <option value="rebase">Restart timing</option>
                   </select>
+                  </label>
                 </>
               )}
               {action.kind === "play_sfx" && (
+                <label className="effect-field">
+                <span>SFX cue</span>
                 <select
                   aria-label={`Effect ${visibleIndex + 1} SFX cue`}
                   value={cueRef}
@@ -5549,6 +5577,7 @@ function EditableActionList({
                     <option key={cue.cue_id} value={cue.cue_id}>{cue.display_name?.trim() || cue.cue_id}</option>
                   ))}
                 </select>
+                </label>
               )}
             </div>
             {action.kind === "play_sfx" && audioCues.length === 0 && (
