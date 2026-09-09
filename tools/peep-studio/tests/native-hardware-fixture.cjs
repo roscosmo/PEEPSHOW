@@ -1,0 +1,118 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const readline = require('node:readline');
+const { spawn } = require('node:child_process');
+
+const root = path.resolve(__dirname, '../../..');
+const projectPath = path.join(root, 'examples/authoring/native_v2_continuity.peepproj');
+const create = process.argv.includes('--create');
+const child = spawn(process.env.PEEPSHOW_PYTHON || 'python', ['-u', 'tools/authoring/egg_tool.py', 'service'], {
+  cwd: root, windowsHide: true,
+});
+let id = 0, revision;
+const pending = new Map();
+readline.createInterface({ input: child.stdout }).on('line', line => {
+  const response = JSON.parse(line), promise = pending.get(response.id);
+  pending.delete(response.id);
+  if (response.ok) promise?.resolve(response.result);
+  else promise?.reject(new Error(JSON.stringify(response.error)));
+});
+child.stderr.on('data', data => process.stderr.write(data));
+child.on('error', error => { for (const p of pending.values()) p.reject(error); });
+const watchdog = setTimeout(() => { console.error('Fixture service timed out'); child.kill(); process.exitCode = 1; }, 30000);
+async function call(operation, params = {}) {
+  const requestId = String(++id);
+  const result = await new Promise((resolve, reject) => {
+    pending.set(requestId, { resolve, reject });
+    child.stdin.write(JSON.stringify({ protocol_version: 1, id: requestId, operation,
+      params: { ...(revision === undefined || ['service.hello', 'project.create', 'project.load'].includes(operation)
+        ? {} : { project_revision: revision }), ...params } }) + '\n');
+  });
+  revision = result.project_revision ?? revision;
+  return result;
+}
+const command = (kind, params) => ({ kind, scene_id: 'main', ...params });
+const edit = (...commands) => call('project.apply_commands', { commands });
+const object = (snapshot, id) => snapshot.objects.find(item => item.object_id === id);
+
+(async () => {
+  if (create) {
+    if (fs.existsSync(projectPath)) {
+      const draft = await call('project.load', { path: projectPath });
+      assert.equal(draft.document.scenes.length, 1, 'Refusing to overwrite a populated fixture');
+      assert.equal(draft.document.scenes[0].objects.length, 0);
+      assert.equal(draft.document.scenes[0].states.length, 1);
+      assert.equal(draft.summary.asset_frame_count, 0);
+      assert(!fs.existsSync(path.join(projectPath, 'assets/pulse.png')));
+    } else await call('project.create', { path: projectPath, scene_schema_version: 2 });
+    fs.mkdirSync(path.join(projectPath, 'assets'), { recursive: true });
+    // Reuse only this bitmap; no example scene, migration, or runtime records are copied.
+    fs.copyFileSync(path.join(root, 'examples/authoring/state_transition_slice.peepproj/assets/cursor.png'),
+      path.join(projectPath, 'assets/pulse.png'));
+    await edit({ kind: 'asset.upsert', asset: {
+      asset_id: 'pulse', display_name: 'Continuity Sprite', asset_type: 'masked_1bpp',
+      source_path: 'assets/pulse.png', source_format: 'png',
+      frames: ['a', 'b'].map((suffix, index) => ({ frame_id: `pulse.${suffix}`,
+        source_rect: { x: index * 8, y: 0, width: 8, height: 16 }, pivot_x: 0, pivot_y: 0 })),
+    } }, { kind: 'animation.upsert', animation: { animation_id: 'pulse_loop',
+      frame_refs: ['pulse.a', 'pulse.b'], frame_duration_ms: [500, 500], loop_policy: 'loop' } });
+    const added = await edit(command('state.create', { display_name: 'Marker Right', x: 420, y: 0 }));
+    const right = added.applied_commands[0].state.state_id;
+    await edit(
+      command('scene.rename', { display_name: 'Animation Continuity' }),
+      command('state.rename', { state_id: 'start', display_name: 'Marker Left' }),
+      command('editor.state_graph.set_node_position', { state_id: 'start', x: 0, y: 0 }),
+      command('editor.state_graph.set_node_position', { node_id: 'scene-entry', x: -260, y: 0 }),
+      command('object.add', { object: { object_id: 'continuity_sprite', kind: 'sprite', width: 8, height: 16,
+        z_order: 0, layer: 'SCENE', defaults: { x: 80, y: 40, visible: true, visual_ref: 'pulse.a' }, animation_ref: 'pulse_loop' } }),
+      command('object.add', { object: { object_id: 'position_marker', kind: 'filled_rect', width: 16, height: 16,
+        z_order: 1, layer: 'SCENE', defaults: { x: 32, y: 104, visible: true } } }),
+      command('object_override.set', { object_id: 'position_marker', state_id: right, properties: { x: 120 } }),
+      command('route.create_trigger', { source_state: 'start', logical_source: 'BUTTON_A', event_kind: 'press', target_state: right }),
+      command('route.create_trigger', { source_state: right, logical_source: 'BUTTON_B', event_kind: 'press', target_state: 'start' }),
+    );
+    await call('project.save');
+  }
+  const loaded = await call('project.load', { path: projectPath });
+  assert(loaded.valid);
+  assert.equal(loaded.document.scenes.length, 1);
+  const scene = loaded.document.scenes[0];
+  assert.equal(scene.schema_version, 2);
+  assert.equal(scene.states.length, 2);
+  assert.equal(scene.objects.length, 2);
+  assert.equal(scene.routes.length, 2);
+  assert.equal(scene.scene_exits.length, 0);
+  assert(!scene.render_models && !scene.waiting_visuals);
+  assert(scene.states.every(state => state.object_overrides.every(override => override.object_ref === 'position_marker')));
+  assert.equal(loaded.scene_capabilities.main.egg_export, false);
+  assert.equal(scene.objects.find(item => item.object_id === 'continuity_sprite').animation_ref, 'pulse_loop');
+  const right = scene.states.find(state => state.state_id !== 'start').state_id;
+  let snapshot = await call('project.preview_reset', { scene_id: 'main', state_id: 'start' });
+  const advance = elapsed_ms => call('project.preview_advance', { preview_revision: snapshot.preview_revision, elapsed_ms });
+  const input = logical_source => call('project.preview_input', { preview_revision: snapshot.preview_revision, logical_source });
+  assert(snapshot.framebuffer.black_pixel_count > 256);
+  assert.equal(object(snapshot, 'position_marker').effective.x, 32);
+  snapshot = await advance(650);
+  assert.equal(object(snapshot, 'continuity_sprite').effective.visual_ref, 'pulse.b');
+  const beforeA = object(snapshot, 'continuity_sprite');
+  snapshot = await input('BUTTON_A');
+  assert.equal(snapshot.scene.state_id, right);
+  assert.deepEqual(object(snapshot, 'continuity_sprite'), beforeA, 'A must not reset or override the sprite');
+  assert.equal(object(snapshot, 'position_marker').effective.x, 120);
+  assert.equal(object(snapshot, 'position_marker').underlying.x, 32);
+  snapshot = await advance(300);
+  const beforeB = object(snapshot, 'continuity_sprite');
+  snapshot = await input('BUTTON_B');
+  assert.equal(snapshot.scene.state_id, 'start');
+  assert.deepEqual(object(snapshot, 'continuity_sprite'), beforeB, 'B must preserve the running clip phase');
+  assert.equal(object(snapshot, 'position_marker').effective.x, 32);
+  snapshot = await advance(100);
+  assert.equal(object(snapshot, 'continuity_sprite').effective.visual_ref, 'pulse.a');
+  snapshot = await advance(500);
+  assert.equal(object(snapshot, 'continuity_sprite').effective.visual_ref, 'pulse.b');
+  console.log(`Validated source fixture: ${projectPath}`);
+  console.log('A/B state changes preserve sprite playback; marker override changes/restores X; loop wraps. No egg generated.');
+})().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => {
+  clearTimeout(watchdog); child.kill();
+});
