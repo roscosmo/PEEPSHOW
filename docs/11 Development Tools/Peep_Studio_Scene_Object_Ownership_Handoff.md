@@ -1,6 +1,6 @@
 # Peep Studio Scene Object Ownership Handoff
 
-Status: GUI semantic review received and decisions recorded; compatibility merge and implementation pending.
+Status: shared backend integrated and host/native validation passed on main; integration commit and scene-object migration pending.
 
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. This handoff coordinates
 work; it does not allocate executable schema fields, capability IDs, or opcodes.
@@ -19,16 +19,80 @@ Do not expose the new semantics as available based only on an editor change.
 
 ## Coordination Now
 
-1. Complete the current GUI compatibility merge, preserving Studio behavior and
-   integrating implemented primitive support. At the time of the GUI review,
-   nine conflicts were reported unresolved; this documentation does not claim
-   to resolve or inspect those conflicts. Do not implement object migration in
-   that merge. User performs git state-changing operations.
-2. GUI provides the resolved commit and list of shared schema/authoring files
-   changed. Establish a common shared-backend baseline before OS migration work;
-   do not overwrite newer GUI backend changes with the older main copies. This
-   does not require importing unfinished UI work into main. The exact integration
-   route depends on the resolved diff and remains a user-run git operation.
+### Pinned Compatibility Baseline
+
+GUI merge commit: `57f7030cc65c09b434223e405c12b67e211b99a0`.
+Parents: GUI `98f3cf0415fa4c8613a427e07b7cf3235c7fa627` and incoming main
+`8f271532216216065f03a831bdb09cc07d8f2953`. The subsequent main design/acceptance
+checkpoint is `018fc802234024d4df437cfb3be89da7c0bfae01` and must be retained.
+
+The OS agent verified a full Debug build of the GUI merge in a separate build
+directory: 653 build steps including link, with unused-function/parameter
+warnings. RAM usage was 433992 bytes, ROM 522352 bytes, and SRAM4 15480 bytes.
+This is build evidence, not a hardware pass. The GUI agent separately reported
+148 tests, native checks, Studio typecheck, and target-profile checks passing;
+the independent main integration results are recorded below.
+
+The reviewed main integration boundary is shared authoring code/schema, its
+internal fixtures, public `examples/authoring/state_slice.peepproj` example,
+and matching tests, plus the updated authoring schema,
+empty-scene validation handoff, and PeepOS link contract. Preserve service API
+38 and the behaviors listed below. Exclude Studio UI, design artwork, workbench,
+loose assets, generated embedded egg, and all GUI-side firmware differences.
+Both branches already encode upward diagonal lines using the same egg flag;
+main's loader translates it to its existing internal element type. Importing
+the Python backend does not require adopting GUI's internal render-model flags.
+
+Retain main's `test_authoring_model.py` embedded-package source expectation.
+GUI's version changes that expectation to its own embedded demo. Bring across
+its added audio-cue display-name regression separately during integration;
+do not replace main's embedded egg merely to make GUI's fixture test pass.
+Reconcile imported documentation with retained main design decisions and verify
+the combined host/native suite and target profile before committing integration.
+Object migration remains a separate increment after representation agreement.
+
+### Main Integration Verification
+
+Validated the working-tree integration on top of main
+`018fc802234024d4df437cfb3be89da7c0bfae01`, importing the scoped shared files and
+public example from GUI commit `57f7030cc65c09b434223e405c12b67e211b99a0`.
+The first run had 146 passing tests and two public-example failures because the
+initial import omitted that updated example. Importing its five changed source
+files resolved both failures without firmware changes or weakened assertions.
+
+- Full authoring suite: 148 tests passed, zero failures/errors/skips, including
+  native package validation, shell recovery/input, workflow ordering, scene
+  timers, and primitive pixel/validation checks against main's firmware.
+- Target-profile generated-header check passed.
+- Main's committed embedded-egg freshness test passed; its original source
+  expectation was retained and the audio-cue display-name test was added.
+- Service API 38, draft/readiness separation, placement commands, and updated
+  scene-exit example behavior remain represented in the passing service suite.
+- Firmware and workbench have no changes relative to main HEAD. No embedded
+  egg regeneration, GUI firmware API adoption, or scene-object migration occurred.
+
+Reproduction from the main workspace, with host GCC available:
+
+```powershell
+$env:HOST_CC = 'C:\msys64\ucrt64\bin\gcc.exe'
+$env:PATH = 'C:\msys64\ucrt64\bin;' + $env:PATH
+tools/.venv/Scripts/python.exe -m unittest discover -s tools/authoring/tests -p "test_*.py" -v
+tools/.venv/Scripts/python.exe tools/authoring/gen_target_profile.py --check
+```
+
+No new full ARM build or hardware test was performed for this source-only main
+integration. The earlier GUI ARM build is separate evidence, not a replacement
+for device acceptance. Scene-object acceptance cases remain NOT RUN.
+
+### Integration Sequence
+
+1. Completed: the user committed the GUI compatibility merge identified above,
+   preserving Studio behavior and integrating primitive support. Object migration
+   was not implemented. User performs all git state-changing operations.
+2. Imported and validated: the reviewed shared-backend baseline and matching
+   public example are in main's working tree. The user checkpoints this coherent
+   integration before new schema/runtime work; no unrelated UI/firmware/workbench
+   content was imported.
 3. Agree the source schema, executable discriminator, action addressing, and
    capability reporting together before either branch implements those fields.
 4. The OS agent implements a bounded end-to-end backend/firmware increment and
@@ -57,10 +121,8 @@ planning can proceed now; UI layout planning and unrelated GUI work can continue
 | Legacy destination-binding actions | Keep legacy meaning until explicitly migrated |
 | Legacy per-state animated overrides | Keep legacy compilation or require an explicit supported conversion; no silent loss |
 
-The GUI agent should mark its older hierarchical-precedence proposal deferred
-when reconciling placement documentation. No matching "deepest state" wording
-was found in main's Engine API or Development Tools docs during this update;
-the GUI-only text has not been edited from this worktree.
+The imported placement documentation marks the older hierarchical-precedence
+proposal deferred. It does not enable a "deepest state wins" runtime policy.
 
 ## File Ownership
 

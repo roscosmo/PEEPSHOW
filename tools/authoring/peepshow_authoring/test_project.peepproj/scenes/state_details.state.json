@@ -12,6 +12,13 @@
       "logical_source": "BUTTON_B"
     }
   ],
+  "scene_exits": [
+    {
+      "scene_exit_id": "to_state_demo",
+      "display_name": "State Demo",
+      "target_scene": "state_demo"
+    }
+  ],
   "states": [
     {
       "state_id": "details",
@@ -28,6 +35,7 @@
       ],
       "guards": [],
       "actions": [],
+      "scene_exit_ref": "to_state_demo",
       "target_scene": "state_demo"
     }
   ],

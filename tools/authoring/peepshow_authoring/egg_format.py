@@ -561,7 +561,7 @@ def _parse_audio(
     return tuple(assets), tuple(cues)
 
 
-def _parse_render(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]:
+def _parse_render(payload: bytes, strings: tuple[str, ...], *, _draft: bool = False) -> dict[str, object]:
     _require(len(payload) >= RENDER_HEADER.size, "render chunk is truncated")
     values = RENDER_HEADER.unpack_from(payload)
     version = values[1]
@@ -581,6 +581,7 @@ def _parse_render(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]
             payload, model_offset + index * RENDER_MODEL_RECORD.size
         )
         _string(strings, visual_id, "render visual_id")
+        _require(_draft or count > 0, f"RENDER_MODEL_EMPTY: render model '{strings[visual_id]}' has no elements")
         _require(first_element + count <= element_count, "render model element range is invalid")
         model_records.append((visual_id, focus, first_element, count))
     elements: list[dict[str, object]] = []
@@ -601,8 +602,9 @@ def _parse_render(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]
             _require(record[2] in {1, 2, 3, 4, 5, 6, 7, 8}, "render element kind is invalid")
             _require(record[3] in {0, 1, 2}, "render package layer is invalid")
             _require(record[4] & ~0x07 == 0 and record[5] == 0 and record[11] == 0, "render flags or reserved fields are invalid")
-            _require(not (record[4] & 0x04) or record[2] == 2, "render line-direction flag is invalid")
+
             _require(not (record[4] & 0x01) or (record[2] == 1 and record[3] == 2 and record[4] & 0x02), "render focus element is invalid")
+            _require(not (record[4] & 0x04) or record[2] == 2, "render line-direction flag is invalid")
             _require((record[2] == 1 and visual_ref is not None) or (record[2] != 1 and visual_ref is None), "render visual reference is invalid")
             _require(record[8] > 0 and record[9] > 0, "render element dimensions are invalid")
             layer = record[3]
@@ -615,24 +617,23 @@ def _parse_render(payload: bytes, strings: tuple[str, ...]) -> dict[str, object]
                 _require(width == height, "circle bounds must be square")
         _require(x >= 0 and y >= 0 and x + width <= 168 and y + height <= 144, "render element exceeds the canvas")
         _require(z_order <= 255, "render z-order is invalid")
-        elements.append(
-            {
-                "format_version": version,
-                "element_id": element_id,
-                "visual_ref": visual_ref,
-                "kind": record[2],
-                "layer": layer,
-                "visible": visible,
-                "focus_role": focus_role,
-                "x": x,
-                "y": y,
-                "width": width,
-                "height": height,
-                "z_order": z_order,
-            }
-        )
+        element = {
+            "format_version": version,
+            "element_id": element_id,
+            "visual_ref": visual_ref,
+            "kind": record[2],
+            "layer": layer,
+            "visible": visible,
+            "focus_role": focus_role,
+            "x": x,
+            "y": y,
+            "width": width,
+            "height": height,
+            "z_order": z_order,
+        }
         if record[2] == 2:
-            elements[-1]["line_direction"] = "up_right" if version == 2 and record[4] & 0x04 else "down_right"
+            element["line_direction"] = "up_right" if version == 2 and record[4] & 0x04 else "down_right"
+        elements.append(element)
     models: list[dict[str, object]] = []
     for visual_id, focus, first_element, count in model_records:
         models.append(
@@ -1104,7 +1105,7 @@ def _parse_graph(
     }
 
 
-def parse_egg(blob: bytes) -> EggPackage:
+def parse_egg(blob: bytes, *, _draft: bool = False) -> EggPackage:
     _require(len(blob) >= HEADER.size + FOOTER.size, "package is truncated")
     values = HEADER.unpack_from(blob)
     (
@@ -1211,7 +1212,7 @@ def parse_egg(blob: bytes) -> EggPackage:
         _require(chunks[render_index].chunk_type == CHUNK_RENDER_MODELS, "scene render chunk type is invalid")
         _require(chunks[wait_index].chunk_type == CHUNK_WAITING_VISUALS, "scene wait chunk type is invalid")
         used_scene_chunks.update((graph_index, render_index, wait_index))
-        render_summary = _parse_render(chunks[render_index].payload, strings)
+        render_summary = _parse_render(chunks[render_index].payload, strings, _draft=_draft)
         wait_summary = _parse_wait(chunks[wait_index].payload, strings)
         graph_summary = _parse_graph(
             chunks[graph_index].payload,

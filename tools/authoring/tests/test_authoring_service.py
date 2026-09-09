@@ -222,6 +222,7 @@ def make_procedural_project(parent: Path) -> Path:
                     "element_id": "line",
                     "kind": "line",
                     "layer": "SCENE",
+                    "line_direction": "up_right",
                     "x": 32,
                     "y": 20,
                     "width": 9,
@@ -314,10 +315,11 @@ class AuthoringServiceTests(unittest.TestCase):
         service = AuthoringService()
         result = service.handle(request("service.hello"))
         self.assertEqual("peepshow_authoring", result["service"])
-        self.assertEqual(24, SERVICE_API_VERSION)
+        self.assertEqual(38, SERVICE_API_VERSION)
         self.assertEqual(SERVICE_API_VERSION, result["service_api_version"])
         self.assertEqual(PROTOCOL_VERSION, result["protocol_version"])
         self.assertFalse(result["project_loaded"])
+        self.assertIn("project.create", result["operations"])
         self.assertIn("project.build_package", result["operations"])
         self.assertIn("project.compatibility_report", result["operations"])
         self.assertIn("project.apply_commands", result["operations"])
@@ -327,8 +329,14 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertIn("project.scene_thumbnails", result["operations"])
         self.assertIn("project.audio_audition", result["operations"])
         self.assertIn("project.preview_reset", result["operations"])
+        self.assertIn("project.preview_scene_base", result["operations"])
         self.assertIn("project.preview_input", result["operations"])
         self.assertIn("project.preview_advance", result["operations"])
+        self.assertIn(
+            "editor.state_graph.set_route_layout",
+            result["state_scene_graph"]["editor_layout_commands"],
+        )
+        self.assertEqual(3, result["state_scene_graph"]["route_layout_version"])
         profiles = result["target_profiles"]
         self.assertEqual("hw6_fw0_development", profiles["default_profile_id"])
         self.assertEqual(1, len(profiles["available"]))
@@ -350,6 +358,14 @@ class AuthoringServiceTests(unittest.TestCase):
         )
         self.assertNotIn("OVERLAY", result["state_scene_presentation"]["package_layers"])
         self.assertIn("ellipse", result["state_scene_presentation"]["element_kinds"])
+        self.assertEqual(
+            ["press", "release", "hold", "repeat"],
+            result["state_scene_presentation"]["logical_input_events"],
+        )
+        self.assertEqual(
+            ["four_way", "eight_way"],
+            result["state_scene_presentation"]["joystick_policies"],
+        )
         self.assertIn("filled_circle", result["state_scene_presentation"]["element_kinds"])
         self.assertIn("filled_ellipse", result["state_scene_presentation"]["element_kinds"])
         self.assertEqual(["down_right", "up_right"], result["state_scene_presentation"]["line_directions"])
@@ -390,12 +406,45 @@ class AuthoringServiceTests(unittest.TestCase):
             result["state_scene_presentation"]["system_actions"],
         )
         graph = result["state_scene_graph"]
+        self.assertEqual(
+            ["scene.add", "scene.rename", "project.set_entry_scene"],
+            graph["scene_commands"],
+        )
+        self.assertIn("editor.scene_flow.add_reference", graph["scene_flow_commands"])
+        self.assertIn("editor.scene_flow.set_exit_reference", graph["scene_flow_commands"])
+        self.assertIn("editor.scene_flow.set_route_layout", graph["scene_flow_commands"])
         self.assertEqual(6, graph["compiled_format_version"])
         self.assertEqual("event_handlers", graph["scene_timers"]["handler_collection"])
         self.assertIn("event_binding.add", graph["event_binding_commands"])
         self.assertIn("route.set_event_ref", graph["route_commands"])
         self.assertEqual(64, graph["command_batch_maximum"])
         self.assertEqual(["play_sfx"], graph["target_scene_actions"])
+        self.assertEqual([], graph["peepos_trigger_commands"])
+        peepos_triggers = graph["peepos_trigger_catalog"]
+        self.assertEqual(
+            [
+                "step_count",
+                "delay_elapsed",
+                "local_schedule",
+                "device_active",
+                "device_inactive",
+                "wake_resume",
+                "animation_complete",
+                "audio_marker",
+                "peripheral_event",
+            ],
+            [trigger["kind"] for trigger in peepos_triggers],
+        )
+        self.assertTrue(
+            all(trigger["support"] == "contract_only" for trigger in peepos_triggers)
+        )
+        self.assertIn("target_capability", peepos_triggers[0]["requires"])
+        self.assertTrue(
+            all(
+                "firmware_event_dispatch" in trigger["requires"]
+                for trigger in peepos_triggers
+            )
+        )
         audio = result["state_scene_audio"]
         self.assertTrue(audio["host_package_support"])
         self.assertEqual(
@@ -407,14 +456,211 @@ class AuthoringServiceTests(unittest.TestCase):
         self.assertEqual(64, graph["limits"]["states"])
         self.assertEqual(1, graph["limits"]["render_models"])
         self.assertIn("state.add", graph["state_commands"])
+        self.assertIn("state.create", graph["state_commands"])
         self.assertNotIn("state.set_render_model", graph["state_commands"])
         self.assertIn("state_placement.set_override", graph["state_placement_commands"])
+        self.assertIn("state_placement.clear_override", graph["state_placement_commands"])
+        self.assertIn("placement_object.add", result["state_scene_presentation"]["element_commands"])
         self.assertIn("route.guard.move", graph["guard_commands"])
         self.assertIn("route.action.move", graph["action_commands"])
+        self.assertIn("scene_exit.add", graph["scene_exit_commands"])
+        self.assertIn("route.create_trigger", graph["route_commands"])
+        self.assertNotIn("route.add_scene_exit", graph["route_commands"])
         self.assertEqual("reject_if_referenced", graph["generic_delete_policy"])
         waiting_animation = result["state_scene_presentation"]["waiting_animation"]
         self.assertIn("render_element.bind_waiting_animation", waiting_animation["commands"])
         self.assertIn("render_element.clear_waiting_animation", waiting_animation["commands"])
+
+    def test_create_project_is_valid_draft_previewable_and_reopenable(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "My First Game.peepproj"
+            service = AuthoringService()
+            created = service.handle(
+                request("project.create", {"path": str(project_root)})
+            )
+
+            self.assertTrue(created["valid"])
+            self.assertFalse(created["dirty"])
+            self.assertEqual("My First Game.peepproj", created["source_name"])
+            self.assertEqual("My First Game", created["summary"]["project_name"])
+            self.assertEqual("main", created["summary"]["entry_scene"])
+            self.assertEqual(1, created["summary"]["scene_count"])
+            self.assertTrue((project_root / "project.json").is_file())
+            self.assertTrue((project_root / "scenes" / "main.state.json").is_file())
+            manifest = json.loads(
+                (project_root / "project.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(["scenes/main.state.json"], manifest["scene_sources"])
+
+            revision = created["project_revision"]
+            with self.assertRaises(ProtocolError) as error:
+                service.handle(request("project.build_package", {"project_revision": revision}))
+            self.assertEqual("PACKAGE_NOT_READY", error.exception.code)
+            self.assertEqual(created["build_issues"], error.exception.details["issues"])
+            preview = service.handle(
+                request(
+                    "project.preview_reset",
+                    {"project_revision": revision, "scene_id": "main"},
+                )
+            )
+            ignored = service.handle(
+                request(
+                    "project.preview_input",
+                    {
+                        "project_revision": revision,
+                        "preview_revision": preview["preview_revision"],
+                        "logical_source": "BUTTON_B",
+                    },
+                )
+            )
+            self.assertFalse(ignored["input"]["accepted"])
+            main_scene = created["document"]["scenes"][0]
+            self.assertEqual([], main_scene["input_actions"])
+            self.assertEqual([], main_scene["routes"])
+            self.assertEqual([], main_scene["scene_exits"])
+
+            changed = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": revision,
+                        "commands": [
+                            {
+                                "kind": "state.rename",
+                                "scene_id": "main",
+                                "state_id": "start",
+                                "display_name": "Ready",
+                            }
+                        ],
+                    },
+                )
+            )
+            self.assertTrue(changed["dirty"])
+            saved = service.handle(
+                request(
+                    "project.save",
+                    {"project_revision": changed["project_revision"]},
+                )
+            )
+            self.assertFalse(saved["dirty"])
+
+            reopened = AuthoringService().handle(
+                request("project.load", {"path": str(project_root)})
+            )
+            self.assertTrue(reopened["valid"])
+            self.assertEqual(saved["document"], reopened["document"])
+
+    def test_create_project_never_overwrites_an_existing_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "Existing.peepproj"
+            project_root.mkdir()
+            marker = project_root / "keep.txt"
+            marker.write_text("keep", encoding="utf-8")
+
+            with self.assertRaises(ProtocolError) as raised:
+                AuthoringService().handle(
+                    request("project.create", {"path": str(project_root)})
+                )
+            self.assertEqual("PROJECT_CREATE_TARGET_EXISTS", raised.exception.code)
+            self.assertEqual("keep", marker.read_text(encoding="utf-8"))
+
+    def test_scene_add_creates_blank_relative_source_that_saves_and_reopens(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "Scene Authoring.peepproj"
+            service = AuthoringService()
+            created = service.handle(
+                request("project.create", {"path": str(project_root)})
+            )
+            added = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": created["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "scene.add",
+                                "display_name": "Credits",
+                            }
+                        ],
+                    },
+                )
+            )
+
+            self.assertTrue(added["valid"])
+            self.assertTrue(added["dirty"])
+            self.assertEqual(2, added["summary"]["scene_count"])
+            applied = added["applied_commands"][0]
+            self.assertEqual("credits", applied["scene_id"])
+            self.assertEqual("scenes/credits.state.json", applied["source"])
+            credits = next(
+                scene
+                for scene in added["document"]["scenes"]
+                if scene["scene_id"] == "credits"
+            )
+            self.assertEqual("start", credits["entry_state"])
+            self.assertEqual([], credits["input_actions"])
+            self.assertEqual([], credits["routes"])
+            self.assertEqual([], credits["reactive_wait_default"]["event_interests"])
+
+            with self.assertRaises(ProtocolError) as error:
+                service.handle(request("project.build_package", {"project_revision": added["project_revision"]}))
+            self.assertEqual(["credits", "main"], [issue["scene_id"] for issue in error.exception.details["issues"]])
+            saved = service.handle(
+                request(
+                    "project.save",
+                    {"project_revision": added["project_revision"]},
+                )
+            )
+            self.assertFalse(saved["dirty"])
+            self.assertTrue((project_root / "scenes" / "credits.state.json").is_file())
+            manifest = json.loads(
+                (project_root / "project.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                ["scenes/main.state.json", "scenes/credits.state.json"],
+                manifest["scene_sources"],
+            )
+
+            reopened = AuthoringService().handle(
+                request("project.load", {"path": str(project_root)})
+            )
+            self.assertTrue(reopened["valid"])
+            self.assertEqual(saved["document"], reopened["document"])
+
+    def test_scene_add_derives_collision_safe_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = AuthoringService()
+            created = service.handle(
+                request(
+                    "project.create",
+                    {"path": str(Path(temp_dir) / "Scene IDs.peepproj")},
+                )
+            )
+            first = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": created["project_revision"],
+                        "commands": [{"kind": "scene.add", "display_name": "Credits"}],
+                    },
+                )
+            )
+            second = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": first["project_revision"],
+                        "commands": [{"kind": "scene.add", "display_name": "Credits"}],
+                    },
+                )
+            )
+
+            self.assertEqual("credits", first["applied_commands"][0]["scene_id"])
+            self.assertEqual("credits_2", second["applied_commands"][0]["scene_id"])
+            self.assertEqual(
+                "scenes/credits_2.state.json",
+                second["applied_commands"][0]["source"],
+            )
 
     def test_state_sfx_package_preview_and_audition_use_compiled_audio(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -446,6 +692,7 @@ class AuthoringServiceTests(unittest.TestCase):
                                 "kind": "audio_cue.upsert",
                                 "audio_cue": {
                                     "cue_id": "ui.select.cue",
+                                    "display_name": "Menu Select",
                                     "asset_ref": "ui.select",
                                     "priority": 96,
                                     "volume": 200,
@@ -466,6 +713,7 @@ class AuthoringServiceTests(unittest.TestCase):
                 )
             )
             revision = changed["project_revision"]
+            self.assertEqual("Menu Select", changed["document"]["audio_cues"][0]["display_name"])
 
             built = service.handle(
                 request("project.build_package", {"project_revision": revision})
@@ -567,7 +815,7 @@ class AuthoringServiceTests(unittest.TestCase):
         )
         self.assertEqual("main_menu", reset["scene"]["scene_id"])
         self.assertEqual("select_start", reset["scene"]["state_id"])
-        self.assertEqual(0, reset["variables"]["selected_index"])
+        self.assertEqual({}, reset["variables"])
 
         moved = service.handle(
             request(
@@ -580,7 +828,7 @@ class AuthoringServiceTests(unittest.TestCase):
             )
         )
         self.assertEqual("select_settings", moved["scene"]["state_id"])
-        self.assertEqual(1, moved["variables"]["selected_index"])
+        self.assertEqual({}, moved["variables"])
 
         chosen = service.handle(
             request(
@@ -606,6 +854,30 @@ class AuthoringServiceTests(unittest.TestCase):
         )
         self.assertEqual("main_menu", returned["scene"]["scene_id"])
         self.assertEqual("select_start", returned["scene"]["state_id"])
+
+        selected_reset = service.handle(
+            request(
+                "project.preview_reset",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "scene_id": "main_menu",
+                    "state_id": "select_credits",
+                },
+            )
+        )
+        self.assertEqual("main_menu", selected_reset["scene"]["scene_id"])
+        self.assertEqual("select_credits", selected_reset["scene"]["state_id"])
+        selected_moved = service.handle(
+            request(
+                "project.preview_input",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "preview_revision": selected_reset["preview_revision"],
+                    "logical_source": "JOY_UP",
+                },
+            )
+        )
+        self.assertEqual("select_settings", selected_moved["scene"]["state_id"])
 
     def test_reloading_invalidates_prior_revision(self) -> None:
         service = AuthoringService()
@@ -697,6 +969,69 @@ class AuthoringServiceTests(unittest.TestCase):
                 )
             )
         self.assertEqual("PROJECT_TEXT_INVALID", raised.exception.code)
+
+    def test_state_create_allocates_id_inherits_waiting_visual_and_positions_node(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        created = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "state.create",
+                            "scene_id": "state_demo",
+                            "display_name": "New State",
+                            "x": 420,
+                            "y": -80,
+                        }
+                    ],
+                },
+            )
+        )
+        self.assertTrue(created["valid"])
+        applied = created["applied_commands"][0]
+        self.assertEqual("state.create", applied["kind"])
+        self.assertEqual("new_state", applied["state"]["state_id"])
+        self.assertEqual("state_wait", applied["state"]["waiting_visual_ref"])
+        self.assertEqual(420, applied["x"])
+        self.assertEqual(-80, applied["y"])
+        scene = next(
+            item
+            for item in created["document"]["scenes"]
+            if item["scene_id"] == "state_demo"
+        )
+        new_state = next(
+            state for state in scene["states"] if state["state_id"] == "new_state"
+        )
+        self.assertEqual("New State", new_state["display_name"])
+        node = created["document"]["project"]["editor"]["state_graph"]["scenes"][
+            "state_demo"
+        ]["nodes"]["new_state"]
+        self.assertEqual({"x": 420, "y": -80}, node)
+
+        created_again = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": created["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "state.create",
+                            "scene_id": "state_demo",
+                            "display_name": "New State",
+                            "x": 780,
+                            "y": -80,
+                        }
+                    ],
+                },
+            )
+        )
+        self.assertEqual(
+            "new_state_2",
+            created_again["applied_commands"][0]["state"]["state_id"],
+        )
 
     def test_graph_commands_build_and_compile_a_complete_menu_state(self) -> None:
         service = AuthoringService()
@@ -974,7 +1309,6 @@ class AuthoringServiceTests(unittest.TestCase):
         )
         self.assertTrue(changed["dirty"])
         self.assertTrue(changed["can_undo"])
-
         undone = service.handle(request("project.undo", {"project_revision": changed["project_revision"]}))
         routes = undone["document"]["scenes"][0]["routes"]
         self.assertEqual(
@@ -1011,9 +1345,13 @@ class AuthoringServiceTests(unittest.TestCase):
             )
         self.assertEqual("COMMAND_TARGET_UNKNOWN", raised.exception.code)
 
-    def test_route_add_scene_exit_creates_valid_direct_transition(self) -> None:
+    def test_scene_exit_add_creates_unwired_semantic_endpoint(self) -> None:
         service = AuthoringService()
         loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        details_before = next(
+            scene for scene in loaded["document"]["scenes"]
+            if scene["scene_id"] == "state_details"
+        )
         changed = service.handle(
             request(
                 "project.apply_commands",
@@ -1021,9 +1359,8 @@ class AuthoringServiceTests(unittest.TestCase):
                     "project_revision": loaded["project_revision"],
                     "commands": [
                         {
-                            "kind": "route.add_scene_exit",
+                            "kind": "scene_exit.add",
                             "scene_id": "state_details",
-                            "logical_source": "BUTTON_A",
                             "target_scene": "state_demo",
                         }
                     ],
@@ -1032,40 +1369,207 @@ class AuthoringServiceTests(unittest.TestCase):
         )
 
         applied = changed["applied_commands"][0]
-        route_id = applied["route_id"]
         details = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_details")
-        route = next(route for route in details["routes"] if route["route_id"] == route_id)
-        self.assertEqual("route.add_scene_exit", applied["kind"])
-        self.assertEqual(route_id, applied["action_id"])
-        self.assertEqual("BUTTON_A", applied["logical_source"])
-        self.assertEqual("state_demo", route["target_scene"])
-        self.assertEqual(route_id, route["action_ref"])
-        self.assertEqual([], route["guards"])
-        self.assertEqual([], route["actions"])
-        self.assertEqual([state["state_id"] for state in details["states"]], route["from_states"])
-        self.assertIn({"action_id": route_id, "logical_source": "BUTTON_A"}, details["input_actions"])
-        self.assertIn(route_id, details["reactive_wait_default"]["event_interests"])
-        self.assertIn(route_id, details["interaction_policy"]["meaningful_activity_actions"])
-
-        reset = service.handle(
-            request(
-                "project.preview_reset",
-                {"project_revision": changed["project_revision"], "scene_id": "state_details"},
-            )
+        self.assertEqual("scene_exit.add", applied["kind"])
+        self.assertEqual(
+            {
+                "scene_exit_id": "to_state_demo_2",
+                "display_name": "State Demo",
+                "target_scene": "state_demo",
+            },
+            applied["scene_exit"],
         )
-        preview = service.handle(
+        self.assertIn(applied["scene_exit"], details["scene_exits"])
+        self.assertEqual(details_before["input_actions"], details["input_actions"])
+        self.assertEqual(details_before["routes"], details["routes"])
+        self.assertEqual(
+            details_before["reactive_wait_default"],
+            details["reactive_wait_default"],
+        )
+        self.assertTrue(changed["dirty"])
+        self.assertTrue(changed["can_undo"])
+
+        positioned = service.handle(
             request(
-                "project.preview_input",
+                "project.apply_commands",
                 {
                     "project_revision": changed["project_revision"],
-                    "preview_revision": reset["preview_revision"],
-                    "logical_source": "BUTTON_A",
+                    "commands": [{
+                        "kind": "editor.state_graph.set_node_position",
+                        "scene_id": "state_details",
+                        "node_id": "scene-exit-to_state_demo_2",
+                        "x": 480,
+                        "y": 120,
+                    }],
                 },
             )
         )
-        self.assertEqual("state_demo", preview["scene"]["scene_id"])
-        self.assertTrue(changed["dirty"])
-        self.assertTrue(changed["can_undo"])
+        self.assertEqual(
+            {"x": 480, "y": 120},
+            positioned["document"]["project"]["editor"]["state_graph"]["scenes"]
+            ["state_details"]["nodes"]["scene-exit-to_state_demo_2"],
+        )
+
+    def test_route_create_trigger_owns_input_policies_and_entry_socket_layout(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "Trigger Game.peepproj"
+            service = AuthoringService()
+            created = service.handle(
+                request("project.create", {"path": str(project_root)})
+            )
+            changed = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": created["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "route.create_trigger",
+                                "scene_id": "main",
+                                "source_state": "start",
+                                "logical_source": "BUTTON_A",
+                                "event_kind": "press",
+                                "target_state": "start",
+                                "target_handle": "entry-bottom-right",
+                                "target_side": "right",
+                            }
+                        ],
+                    },
+                )
+            )
+
+            applied = changed["applied_commands"][0]
+            scene = changed["document"]["scenes"][0]
+            self.assertTrue(applied["input_action_created"])
+            self.assertEqual(
+                {
+                    "action_id": "button_a_press",
+                    "logical_source": "BUTTON_A",
+                    "event_kind": "press",
+                },
+                applied["input_action"],
+            )
+            self.assertEqual("start_button_a_press", applied["route"]["route_id"])
+            self.assertEqual("start", applied["route"]["target_state"])
+            self.assertEqual(["button_a_press"], scene["reactive_wait_default"]["event_interests"])
+            self.assertEqual(["button_a_press"], scene["interaction_policy"]["meaningful_activity_actions"])
+            layout = changed["document"]["project"]["editor"]["state_graph"]["scenes"]["main"]["routes"]
+            self.assertEqual(
+                {
+                    "routing_version": 3,
+                    "rails": [],
+                    "target_handle": "entry-bottom-right",
+                    "target_side": "right",
+                },
+                layout["start_button_a_press"]["sources"]["start"],
+            )
+            self.assertTrue(changed["valid"])
+
+    def test_route_create_trigger_reuses_scene_input_and_rejects_duplicate_source_route(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "Trigger Reuse.peepproj"
+            service = AuthoringService()
+            created = service.handle(
+                request("project.create", {"path": str(project_root)})
+            )
+            with_second_state = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": created["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "state.add",
+                                "scene_id": "main",
+                                "state": {
+                                    "state_id": "second",
+                                    "display_name": "Second",
+                                    "waiting_visual_ref": "static_wait",
+                                },
+                            },
+                            {
+                                "kind": "route.create_trigger",
+                                "scene_id": "main",
+                                "source_state": "start",
+                                "logical_source": "JOY_DOWN",
+                                "event_kind": "repeat",
+                                "target_state": "second",
+                            },
+                        ],
+                    },
+                )
+            )
+            reused = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": with_second_state["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "route.create_trigger",
+                                "scene_id": "main",
+                                "source_state": "second",
+                                "logical_source": "JOY_DOWN",
+                                "event_kind": "repeat",
+                                "target_state": "start",
+                            }
+                        ],
+                    },
+                )
+            )
+            self.assertFalse(reused["applied_commands"][0]["input_action_created"])
+            self.assertEqual(1, len(reused["document"]["scenes"][0]["input_actions"]))
+
+            with self.assertRaises(ProtocolError) as raised:
+                service.handle(
+                    request(
+                        "project.apply_commands",
+                        {
+                            "project_revision": reused["project_revision"],
+                            "commands": [
+                                {
+                                    "kind": "route.create_trigger",
+                                    "scene_id": "main",
+                                    "source_state": "second",
+                                    "logical_source": "JOY_DOWN",
+                                    "event_kind": "repeat",
+                                    "target_state": "second",
+                                }
+                            ],
+                        },
+                    )
+                )
+            self.assertEqual("ROUTE_TRIGGER_IN_USE", raised.exception.code)
+
+    def test_route_create_trigger_wires_a_declared_scene_exit_without_input_prompt(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        details = next(
+            scene for scene in loaded["document"]["scenes"]
+            if scene["scene_id"] == "state_details"
+        )
+        scene_exit = details["scene_exits"][0]
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "route.create_trigger",
+                            "scene_id": "state_details",
+                            "source_state": details["entry_state"],
+                            "logical_source": "BUTTON_L",
+                            "scene_exit_ref": scene_exit["scene_exit_id"],
+                        }
+                    ],
+                },
+            )
+        )
+        route = changed["applied_commands"][0]["route"]
+        self.assertEqual(scene_exit["scene_exit_id"], route["scene_exit_ref"])
+        self.assertEqual(scene_exit["target_scene"], route["target_scene"])
+        self.assertNotIn("target_state", route)
 
     def test_scene_exit_play_sfx_compiles_previews_and_can_be_deleted(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1143,7 +1647,7 @@ class AuthoringServiceTests(unittest.TestCase):
                         "project_revision": changed["project_revision"],
                         "commands": [
                             {
-                                "kind": "route.delete_scene_exit",
+                                "kind": "route.delete",
                                 "scene_id": "state_demo",
                                 "route_id": "open_details",
                             }
@@ -1187,31 +1691,9 @@ class AuthoringServiceTests(unittest.TestCase):
             raised.exception.code,
         )
 
-    def test_route_add_scene_exit_rejects_duplicate_source(self) -> None:
+    def test_scene_exit_set_target_updates_referencing_routes(self) -> None:
         service = AuthoringService()
-        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
-        with self.assertRaises(ProtocolError) as raised:
-            service.handle(
-                request(
-                    "project.apply_commands",
-                    {
-                        "project_revision": loaded["project_revision"],
-                        "commands": [
-                            {
-                                "kind": "route.add_scene_exit",
-                                "scene_id": "state_demo",
-                                "logical_source": "BUTTON_A",
-                                "target_scene": "state_details",
-                            }
-                        ],
-                    },
-                )
-            )
-        self.assertEqual("INPUT_SOURCE_DUPLICATE", raised.exception.code)
-
-    def test_route_delete_scene_exit_removes_route_and_action_binding(self) -> None:
-        service = AuthoringService()
-        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        loaded = service.handle(request("project.load", {"path": str(PUBLIC_EXAMPLE)}))
         changed = service.handle(
             request(
                 "project.apply_commands",
@@ -1219,33 +1701,72 @@ class AuthoringServiceTests(unittest.TestCase):
                     "project_revision": loaded["project_revision"],
                     "commands": [
                         {
-                            "kind": "route.delete_scene_exit",
-                            "scene_id": "state_demo",
-                            "route_id": "open_details",
+                            "kind": "scene_exit.set_target",
+                            "scene_id": "main_menu",
+                            "scene_exit_id": "to_settings",
+                            "target_scene": "credits",
                         }
                     ],
                 },
             )
         )
 
-        demo = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_demo")
-        self.assertNotIn("open_details", [route["route_id"] for route in demo["routes"]])
-        self.assertNotIn("open_details", [action["action_id"] for action in demo["input_actions"]])
-        self.assertNotIn("open_details", demo["reactive_wait_default"]["event_interests"])
-        self.assertNotIn("open_details", demo["interaction_policy"]["meaningful_activity_actions"])
-        self.assertEqual(
-            {
-                "kind": "route.delete_scene_exit",
-                "scene_id": "state_demo",
-                "route_id": "open_details",
-                "action_id": "open_details",
-                "target_scene": "state_details",
-            },
-            changed["applied_commands"][0],
-        )
-        self.assertTrue(changed["dirty"])
+        menu = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "main_menu")
+        scene_exit = next(item for item in menu["scene_exits"] if item["scene_exit_id"] == "to_settings")
+        route = next(item for item in menu["routes"] if item["route_id"] == "choose_settings")
+        self.assertEqual("credits", scene_exit["target_scene"])
+        self.assertEqual("credits", route["target_scene"])
 
-    def test_route_delete_scene_exit_rejects_local_route(self) -> None:
+    def test_scene_exit_delete_rejects_connected_endpoint_and_removes_unused_endpoint(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        with self.assertRaises(ProtocolError) as raised:
+            service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [{
+                            "kind": "scene_exit.delete",
+                            "scene_id": "state_demo",
+                            "scene_exit_id": "to_state_details",
+                        }],
+                    },
+                )
+            )
+        self.assertEqual("COMMAND_TARGET_IN_USE", raised.exception.code)
+
+        added = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [{
+                        "kind": "scene_exit.add",
+                        "scene_id": "state_details",
+                        "target_scene": "state_demo",
+                    }],
+                },
+            )
+        )
+        added_exit_id = added["applied_commands"][0]["scene_exit"]["scene_exit_id"]
+        deleted = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": added["project_revision"],
+                    "commands": [{
+                        "kind": "scene_exit.delete",
+                        "scene_id": "state_details",
+                        "scene_exit_id": added_exit_id,
+                    }],
+                },
+            )
+        )
+        details = next(scene for scene in deleted["document"]["scenes"] if scene["scene_id"] == "state_details")
+        self.assertNotIn(added_exit_id, {item["scene_exit_id"] for item in details["scene_exits"]})
+
+    def test_scene_exit_rejects_unknown_target(self) -> None:
         service = AuthoringService()
         loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
         with self.assertRaises(ProtocolError) as raised:
@@ -1256,15 +1777,15 @@ class AuthoringServiceTests(unittest.TestCase):
                         "project_revision": loaded["project_revision"],
                         "commands": [
                             {
-                                "kind": "route.delete_scene_exit",
+                                "kind": "scene_exit.add",
                                 "scene_id": "state_demo",
-                                "route_id": "center_to_right",
+                                "target_scene": "missing",
                             }
                         ],
                     },
                 )
             )
-        self.assertEqual("COMMAND_TARGET_INVALID", raised.exception.code)
+        self.assertEqual("COMMAND_TARGET_UNKNOWN", raised.exception.code)
 
     def test_render_element_set_position_updates_existing_element(self) -> None:
         service = AuthoringService()
@@ -1374,6 +1895,193 @@ class AuthoringServiceTests(unittest.TestCase):
         left_cursor = next(element for element in left_model["elements"] if element["element_id"] == "cursor")
         self.assertEqual((31, 42), (center_cursor["x"], center_cursor["y"]))
         self.assertEqual((8, 43), (left_cursor["x"], left_cursor["y"]))
+
+    def test_placement_object_add_distinguishes_scene_base_from_exact_state_set(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "placement_object.add",
+                            "scene_id": "state_demo",
+                            "scope": {"kind": "scene_base"},
+                            "element": {
+                                "element_id": "shared_box",
+                                "kind": "outline_rect",
+                                "x": 4,
+                                "y": 4,
+                                "width": 20,
+                                "height": 12,
+                                "z_order": 20,
+                                "layer": "SCENE",
+                            },
+                        },
+                        {
+                            "kind": "placement_object.add",
+                            "scene_id": "state_demo",
+                            "scope": {"kind": "states", "state_ids": ["center", "right"]},
+                            "element": {
+                                "element_id": "scoped_box",
+                                "kind": "filled_rect",
+                                "x": 30,
+                                "y": 30,
+                                "width": 10,
+                                "height": 10,
+                                "z_order": 21,
+                                "layer": "UI",
+                            },
+                        },
+                    ],
+                },
+            )
+        )
+
+        scene = next(item for item in changed["document"]["scenes"] if item["scene_id"] == "state_demo")
+        elements = {item["element_id"]: item for item in scene["render_models"][0]["elements"]}
+        self.assertTrue(elements["shared_box"].get("visible", True))
+        self.assertFalse(elements["scoped_box"]["visible"])
+        overrides = {
+            state["state_id"]: {
+                item["element_ref"]: item
+                for item in state.get("placement_overrides", [])
+            }
+            for state in scene["states"]
+        }
+        self.assertNotIn("shared_box", overrides["center"])
+        self.assertEqual({"element_ref": "scoped_box", "visible": True}, overrides["center"]["scoped_box"])
+        self.assertEqual({"element_ref": "scoped_box", "visible": True}, overrides["right"]["scoped_box"])
+        self.assertNotIn("scoped_box", overrides["left"])
+        self.assertEqual(
+            {"kind": "states", "state_ids": ["center", "right"]},
+            changed["applied_commands"][1]["scope"],
+        )
+        ownership = changed["placement_ownership"]["scenes"]["state_demo"]
+        self.assertEqual("scene_placement", ownership["render_model_id"])
+        self.assertEqual(["scoped_box"], ownership["state_scoped_element_ids"])
+        self.assertEqual(
+            {"local_properties": ["visible"], "animated": False},
+            ownership["states"]["center"]["changes"]["scoped_box"],
+        )
+        center_elements = {
+            item["element_id"]: item
+            for item in ownership["states"]["center"]["resolved_elements"]
+        }
+        left_elements = {
+            item["element_id"]: item
+            for item in ownership["states"]["left"]["resolved_elements"]
+        }
+        self.assertTrue(center_elements["scoped_box"]["visible"])
+        self.assertFalse(left_elements["scoped_box"]["visible"])
+        self.assertNotIn("scoped_box", ownership["states"]["left"]["changes"])
+
+        future = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": changed["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "state.add",
+                            "scene_id": "state_demo",
+                            "state": {
+                                "state_id": "future",
+                                "display_name": "Future",
+                                "waiting_visual_ref": scene["states"][0]["waiting_visual_ref"],
+                            },
+                        }
+                    ],
+                },
+            )
+        )
+        scene = next(item for item in future["document"]["scenes"] if item["scene_id"] == "state_demo")
+        future_state = next(state for state in scene["states"] if state["state_id"] == "future")
+        self.assertFalse(elements["scoped_box"]["visible"])
+        self.assertNotIn(
+            "scoped_box",
+            {item["element_ref"] for item in future_state.get("placement_overrides", [])},
+        )
+        future_ownership = future["placement_ownership"]["scenes"]["state_demo"]
+        future_elements = {
+            item["element_id"]: item
+            for item in future_ownership["states"]["future"]["resolved_elements"]
+        }
+        self.assertFalse(future_elements["scoped_box"]["visible"])
+        self.assertNotIn("scoped_box", future_ownership["states"]["future"]["changes"])
+
+    def test_state_placement_clear_override_restores_inherited_properties(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "state_placement.set_override",
+                            "scene_id": "state_demo",
+                            "state_id": "center",
+                            "render_model_id": "scene_placement",
+                            "element_id": "cursor",
+                            "x": 31,
+                            "y": 42,
+                            "visible": False,
+                        }
+                    ],
+                },
+            )
+        )
+        position_cleared = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": changed["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "state_placement.clear_override",
+                            "scene_id": "state_demo",
+                            "state_id": "center",
+                            "element_id": "cursor",
+                            "properties": ["position"],
+                        }
+                    ],
+                },
+            )
+        )
+        scene = next(item for item in position_cleared["document"]["scenes"] if item["scene_id"] == "state_demo")
+        center = next(state for state in scene["states"] if state["state_id"] == "center")
+        self.assertEqual([{"element_ref": "cursor", "visible": False}], center["placement_overrides"])
+        self.assertEqual(["position"], position_cleared["applied_commands"][0]["cleared"])
+        change = position_cleared["placement_ownership"]["scenes"]["state_demo"]["states"]["center"]["changes"]["cursor"]
+        self.assertEqual(["visible"], change["local_properties"])
+
+        override_cleared = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": position_cleared["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "state_placement.clear_override",
+                            "scene_id": "state_demo",
+                            "state_id": "center",
+                            "element_id": "cursor",
+                        }
+                    ],
+                },
+            )
+        )
+        scene = next(item for item in override_cleared["document"]["scenes"] if item["scene_id"] == "state_demo")
+        center = next(state for state in scene["states"] if state["state_id"] == "center")
+        self.assertEqual([], center["placement_overrides"])
+        self.assertTrue(override_cleared["applied_commands"][0]["removed"])
+        change = override_cleared["placement_ownership"]["scenes"]["state_demo"]["states"]["center"]["changes"]["cursor"]
+        self.assertEqual([], change["local_properties"])
+        self.assertTrue(change["animated"])
 
     def test_state_presentation_commands_add_and_edit_retained_element(self) -> None:
         service = AuthoringService()
@@ -1707,6 +2415,17 @@ class AuthoringServiceTests(unittest.TestCase):
     def test_short_start_can_be_authored_compiled_and_previewed(self) -> None:
         service = AuthoringService()
         loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        source = next(
+            scene for scene in loaded["document"]["scenes"]
+            if scene["scene_id"] == "state_demo"
+        )
+        wait_policy = dict(source["reactive_wait_default"])
+        wait_policy["event_interests"] = [*wait_policy["event_interests"], "open_details_start"]
+        interaction_policy = dict(source["interaction_policy"])
+        interaction_policy["meaningful_activity_actions"] = [
+            *interaction_policy["meaningful_activity_actions"],
+            "open_details_start",
+        ]
         changed = service.handle(
             request(
                 "project.apply_commands",
@@ -1714,11 +2433,36 @@ class AuthoringServiceTests(unittest.TestCase):
                     "project_revision": loaded["project_revision"],
                     "commands": [
                         {
-                            "kind": "route.add_scene_exit",
+                            "kind": "input_action.add",
                             "scene_id": "state_demo",
-                            "logical_source": "BUTTON_START",
-                            "target_scene": "state_details",
-                        }
+                            "input_action": {
+                                "action_id": "open_details_start",
+                                "logical_source": "BUTTON_START",
+                            },
+                        },
+                        {
+                            "kind": "route.add",
+                            "scene_id": "state_demo",
+                            "route": {
+                                "route_id": "open_details_start",
+                                "action_ref": "open_details_start",
+                                "from_states": ["center"],
+                                "guards": [],
+                                "actions": [],
+                                "scene_exit_ref": "to_state_details",
+                                "target_scene": "state_details",
+                            },
+                        },
+                        {
+                            "kind": "scene.set_reactive_wait_default",
+                            "scene_id": "state_demo",
+                            "reactive_wait_default": wait_policy,
+                        },
+                        {
+                            "kind": "scene.set_interaction_policy",
+                            "scene_id": "state_demo",
+                            "interaction_policy": interaction_policy,
+                        },
                     ],
                 },
             )
@@ -1786,6 +2530,258 @@ class AuthoringServiceTests(unittest.TestCase):
                 reloaded.normalized()["project"]["editor"]["scene_flow"]["nodes"]["state_details"],
             )
 
+    def test_scene_flow_package_entry_and_go_to_references_are_editor_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "scene_flow_layout.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            before = service.handle(
+                request("project.build_package", {"project_revision": loaded["project_revision"]})
+            )
+            added = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.scene_flow.set_package_entry_position",
+                                "x": -218.6,
+                                "y": 91.2,
+                            },
+                            {
+                                "kind": "editor.scene_flow.add_reference",
+                                "target_scene": "state_details",
+                                "x": 834.7,
+                                "y": 122.4,
+                            },
+                        ],
+                    },
+                )
+            )
+            reference_id = added["applied_commands"][1]["reference_id"]
+            connected = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": added["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.scene_flow.set_exit_reference",
+                                "scene_id": "state_demo",
+                                "endpoint_kind": "scene_exit",
+                                "endpoint_id": "to_state_details",
+                                "reference_id": reference_id,
+                            }
+                        ],
+                    },
+                )
+            )
+            after = service.handle(
+                request("project.build_package", {"project_revision": connected["project_revision"]})
+            )
+
+            self.assertEqual(before["package"]["sha256"], after["package"]["sha256"])
+            scene_flow = connected["document"]["project"]["editor"]["scene_flow"]
+            self.assertEqual({"x": -219, "y": 91}, scene_flow["package_entry"])
+            self.assertEqual(
+                {"target_scene": "state_details", "x": 835, "y": 122},
+                scene_flow["references"][reference_id],
+            )
+            self.assertEqual(
+                reference_id,
+                scene_flow["exit_references"]["state_demo"]["scene_exit:to_state_details"],
+            )
+
+            saved = service.handle(request("project.save", {"project_revision": connected["project_revision"]}))
+            self.assertIn("project.json", saved["saved_sources"])
+            reloaded = load_project(project_root).normalized()["project"]["editor"]["scene_flow"]
+            self.assertEqual(reference_id, reloaded["exit_references"]["state_demo"]["scene_exit:to_state_details"])
+
+            added_scene = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": saved["project_revision"],
+                        "commands": [{"kind": "scene.add", "display_name": "Credits"}],
+                    },
+                )
+            )
+            retargeted = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": added_scene["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.scene_flow.set_reference_target",
+                                "reference_id": reference_id,
+                                "target_scene": "credits",
+                            }
+                        ],
+                    },
+                )
+            )
+            source_scene = next(
+                scene for scene in retargeted["document"]["scenes"] if scene["scene_id"] == "state_demo"
+            )
+            self.assertEqual("credits", source_scene["scene_exits"][0]["target_scene"])
+
+            deleted = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": retargeted["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.scene_flow.delete_reference",
+                                "reference_id": reference_id,
+                            }
+                        ],
+                    },
+                )
+            )
+            source_scene = next(
+                scene for scene in deleted["document"]["scenes"] if scene["scene_id"] == "state_demo"
+            )
+            self.assertEqual("credits", source_scene["scene_exits"][0]["target_scene"])
+            self.assertNotIn("references", deleted["document"]["project"]["editor"]["scene_flow"])
+            self.assertNotIn("exit_references", deleted["document"]["project"]["editor"]["scene_flow"])
+
+    def test_scene_flow_route_layout_is_editor_only_and_persists(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "scene_flow_route_layout.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            before = service.handle(
+                request("project.build_package", {"project_revision": loaded["project_revision"]})
+            )
+            changed = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.scene_flow.set_route_layout",
+                                "scene_id": "state_demo",
+                                "endpoint_kind": "scene_exit",
+                                "endpoint_id": "to_state_details",
+                                "rails": [
+                                    {"axis": "x", "value": 421.6},
+                                    {"axis": "y", "value": -72.2},
+                                ],
+                            }
+                        ],
+                    },
+                )
+            )
+            after = service.handle(
+                request("project.build_package", {"project_revision": changed["project_revision"]})
+            )
+            self.assertEqual(before["package"]["sha256"], after["package"]["sha256"])
+            layout = changed["document"]["project"]["editor"]["scene_flow"]["routes"]["state_demo"][
+                "scene_exit:to_state_details"
+            ]
+            self.assertEqual(1, layout["routing_version"])
+            self.assertEqual(
+                [{"axis": "x", "value": 422}, {"axis": "y", "value": -72}],
+                layout["rails"],
+            )
+            saved = service.handle(request("project.save", {"project_revision": changed["project_revision"]}))
+            reloaded = load_project(project_root).normalized()["project"]["editor"]["scene_flow"]
+            self.assertEqual(layout, reloaded["routes"]["state_demo"]["scene_exit:to_state_details"])
+
+            reset = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": saved["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.scene_flow.set_route_layout",
+                                "scene_id": "state_demo",
+                                "endpoint_kind": "scene_exit",
+                                "endpoint_id": "to_state_details",
+                                "rails": [],
+                            }
+                        ],
+                    },
+                )
+            )
+            self.assertNotIn("routes", reset["document"]["project"]["editor"]["scene_flow"])
+
+    def test_scene_rename_and_package_entry_scene_are_service_owned(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "scene.rename",
+                            "scene_id": "state_details",
+                            "display_name": "Options",
+                        },
+                        {
+                            "kind": "project.set_entry_scene",
+                            "scene_id": "state_details",
+                        },
+                    ],
+                },
+            )
+        )
+        renamed = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_details")
+        self.assertEqual("Options", renamed["display_name"])
+        self.assertEqual("state_details", changed["document"]["project"]["entry_scene"])
+        self.assertEqual("state_details", changed["summary"]["entry_scene"])
+
+    def test_scene_exit_can_be_created_through_go_to_reference(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        added_reference = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "editor.scene_flow.add_reference",
+                            "target_scene": "state_details",
+                            "x": 700,
+                            "y": 100,
+                        }
+                    ],
+                },
+            )
+        )
+        reference_id = added_reference["applied_commands"][0]["reference_id"]
+        added_exit = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": added_reference["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "scene_exit.add",
+                            "scene_id": "state_demo",
+                            "target_scene": "state_details",
+                            "scene_flow_reference_id": reference_id,
+                        }
+                    ],
+                },
+            )
+        )
+        scene_exit_id = added_exit["applied_commands"][0]["scene_exit"]["scene_exit_id"]
+        self.assertEqual(
+            reference_id,
+            added_exit["document"]["project"]["editor"]["scene_flow"]["exit_references"]["state_demo"][f"scene_exit:{scene_exit_id}"],
+        )
+
     def test_state_graph_node_position_is_editor_only_and_persists(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "state_layout.peepproj"
@@ -1830,6 +2826,434 @@ class AuthoringServiceTests(unittest.TestCase):
                 {"x": -256, "y": 384},
                 reloaded.normalized()["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["nodes"]["right"],
             )
+
+    def test_state_graph_entry_connection_layout_is_editor_only(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        before = service.handle(
+            request("project.build_package", {"project_revision": loaded["project_revision"]})
+        )
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "editor.state_graph.set_entry_layout",
+                            "scene_id": "state_demo",
+                            "target_handle": "entry-bottom-right",
+                            "target_side": "right",
+                        }
+                    ],
+                },
+            )
+        )
+        entry = changed["document"]["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["entry"]
+        self.assertEqual(
+            {"target_handle": "entry-bottom-right", "target_side": "right"},
+            entry,
+        )
+        after = service.handle(
+            request("project.build_package", {"project_revision": changed["project_revision"]})
+        )
+        self.assertEqual(before["package"]["sha256"], after["package"]["sha256"])
+
+    def test_route_rebind_trigger_preserves_route_semantics(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        scene_before = next(
+            scene for scene in loaded["document"]["scenes"] if scene["scene_id"] == "state_demo"
+        )
+        route_before = next(route for route in scene_before["routes"] if route["route_id"] == "center_to_right")
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "route.rebind_trigger",
+                            "scene_id": "state_demo",
+                            "route_id": "center_to_right",
+                            "logical_source": "BUTTON_B",
+                        }
+                    ],
+                },
+            )
+        )
+        scene_after = next(
+            scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_demo"
+        )
+        route_after = next(route for route in scene_after["routes"] if route["route_id"] == "center_to_right")
+        input_action = next(
+            action for action in scene_after["input_actions"] if action["action_id"] == route_after["action_ref"]
+        )
+        self.assertEqual("BUTTON_B", input_action["logical_source"])
+        self.assertEqual("press", input_action["event_kind"])
+        for field in ("from_states", "guards", "actions", "target_state"):
+            self.assertEqual(route_before[field], route_after[field])
+
+    def test_exit_to_peepos_terminal_is_optional_and_uses_existing_system_action(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "editor.state_graph.set_node_position",
+                            "scene_id": "state_demo",
+                            "node_id": "system-exit",
+                            "x": 900,
+                            "y": 240,
+                        },
+                        {
+                            "kind": "route.create_trigger",
+                            "scene_id": "state_demo",
+                            "source_state": "center",
+                            "logical_source": "BUTTON_B",
+                            "event_kind": "press",
+                            "system_exit": True,
+                        },
+                    ],
+                },
+            )
+        )
+        scene = next(scene for scene in changed["document"]["scenes"] if scene["scene_id"] == "state_demo")
+        applied_route = changed["applied_commands"][1]["route"]
+        self.assertEqual("center", applied_route["target_state"])
+        self.assertEqual([{"kind": "exit_to_shell"}], applied_route["actions"])
+        self.assertEqual(
+            {"x": 900, "y": 240},
+            changed["document"]["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["nodes"]["system-exit"],
+        )
+        self.assertIn(applied_route["route_id"], {route["route_id"] for route in scene["routes"]})
+
+        with self.assertRaises(ProtocolError) as raised:
+            service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": changed["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.state_graph.delete_system_exit",
+                                "scene_id": "state_demo",
+                            }
+                        ],
+                    },
+                )
+            )
+        self.assertEqual("COMMAND_TARGET_IN_USE", raised.exception.code)
+
+    def test_state_graph_route_waypoints_are_editor_only_and_persist(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "route_layout.peepproj"
+            shutil.copytree(SAMPLE, project_root)
+            service = AuthoringService()
+            loaded = service.handle(request("project.load", {"path": str(project_root)}))
+            before = service.handle(
+                request("project.build_package", {"project_revision": loaded["project_revision"]})
+            )
+            routed = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.state_graph.set_route_layout",
+                                "scene_id": "state_demo",
+                                "route_id": "center_to_right",
+                                "source_state": "center",
+                                "rails": [
+                                    {"axis": "x", "value": 144.4},
+                                    {"axis": "y", "value": -64.6},
+                                ],
+                                "target_handle": "entry-bottom-right",
+                                "target_side": "right",
+                                "token_positions": {
+                                    "condition": 0.28444,
+                                    "actions": [0.71555],
+                                },
+                            }
+                        ],
+                    },
+                )
+            )
+            expected = [{"axis": "x", "value": 144}, {"axis": "y", "value": -65}]
+            route_layout = routed["document"]["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["routes"]["center_to_right"]
+            self.assertEqual(3, route_layout["sources"]["center"]["routing_version"])
+            self.assertEqual(expected, route_layout["sources"]["center"]["rails"])
+            self.assertEqual("entry-bottom-right", route_layout["sources"]["center"]["target_handle"])
+            self.assertEqual("right", route_layout["sources"]["center"]["target_side"])
+            self.assertEqual(
+                {"condition": 0.2844, "actions": [0.7156]},
+                route_layout["sources"]["center"]["token_positions"],
+            )
+            after = service.handle(
+                request("project.build_package", {"project_revision": routed["project_revision"]})
+            )
+            self.assertEqual(before["package"]["sha256"], after["package"]["sha256"])
+
+            undone = service.handle(request("project.undo", {"project_revision": routed["project_revision"]}))
+            undone_routes = undone["document"]["project"].get("editor", {}).get("state_graph", {}).get("scenes", {}).get("state_demo", {}).get("routes", {})
+            self.assertNotIn("center_to_right", undone_routes)
+            redone = service.handle(request("project.redo", {"project_revision": undone["project_revision"]}))
+            redone_route = redone["document"]["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["routes"]["center_to_right"]
+            self.assertEqual(3, redone_route["sources"]["center"]["routing_version"])
+            self.assertEqual(expected, redone_route["sources"]["center"]["rails"])
+            self.assertEqual("entry-bottom-right", redone_route["sources"]["center"]["target_handle"])
+            self.assertEqual("right", redone_route["sources"]["center"]["target_side"])
+            self.assertEqual(
+                {"condition": 0.2844, "actions": [0.7156]},
+                redone_route["sources"]["center"]["token_positions"],
+            )
+
+            saved = service.handle(request("project.save", {"project_revision": redone["project_revision"]}))
+            self.assertIn("project.json", saved["saved_sources"])
+            reloaded = load_project(project_root)
+            persisted = reloaded.normalized()["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["routes"]["center_to_right"]
+            self.assertEqual(3, persisted["sources"]["center"]["routing_version"])
+            self.assertEqual(expected, persisted["sources"]["center"]["rails"])
+            self.assertEqual("entry-bottom-right", persisted["sources"]["center"]["target_handle"])
+            self.assertEqual("right", persisted["sources"]["center"]["target_side"])
+            self.assertEqual(
+                {"condition": 0.2844, "actions": [0.7156]},
+                persisted["sources"]["center"]["token_positions"],
+            )
+
+            automatic_route = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": saved["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.state_graph.set_route_layout",
+                                "scene_id": "state_demo",
+                                "route_id": "center_to_right",
+                                "source_state": "center",
+                                "rails": [],
+                                "target_handle": None,
+                                "target_side": None,
+                            }
+                        ],
+                    },
+                )
+            )
+            automatic_source = automatic_route["document"]["project"]["editor"][
+                "state_graph"
+            ]["scenes"]["state_demo"]["routes"]["center_to_right"]["sources"][
+                "center"
+            ]
+            self.assertEqual([], automatic_source["rails"])
+            self.assertEqual(
+                {"condition": 0.2844, "actions": [0.7156]},
+                automatic_source["token_positions"],
+            )
+
+            reset = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": automatic_route["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "editor.state_graph.set_route_layout",
+                                "scene_id": "state_demo",
+                                "route_id": "center_to_right",
+                                "source_state": "center",
+                                "rails": [],
+                                "target_handle": None,
+                                "target_side": None,
+                                "token_positions": {},
+                            }
+                        ],
+                    },
+                )
+            )
+            reset_routes = reset["document"]["project"]["editor"]["state_graph"]["scenes"]["state_demo"].get("routes", {})
+            self.assertNotIn("center_to_right", reset_routes)
+
+    def test_state_graph_target_socket_persists_without_manual_rails(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "editor.state_graph.set_route_layout",
+                            "scene_id": "state_demo",
+                            "route_id": "center_to_right",
+                            "source_state": "center",
+                            "rails": [],
+                            "target_handle": "entry-bottom-left",
+                            "target_side": "left",
+                        }
+                    ],
+                },
+            )
+        )
+        source_layout = changed["document"]["project"]["editor"]["state_graph"]["scenes"]["state_demo"]["routes"]["center_to_right"]["sources"]["center"]
+        self.assertEqual(3, source_layout["routing_version"])
+        self.assertEqual([], source_layout["rails"])
+        self.assertEqual("entry-bottom-left", source_layout["target_handle"])
+        self.assertEqual("left", source_layout["target_side"])
+
+    def test_state_graph_route_layout_rejects_unknown_routes_and_excess_rails(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        cases = [
+            (
+                {
+                    "kind": "editor.state_graph.set_route_layout",
+                    "scene_id": "state_demo",
+                    "route_id": "missing",
+                    "source_state": "center",
+                    "rails": [{"axis": "x", "value": 0}],
+                    "target_handle": "entry-top-left",
+                    "target_side": "top",
+                },
+                "COMMAND_TARGET_UNKNOWN",
+            ),
+            (
+                {
+                    "kind": "editor.state_graph.set_route_layout",
+                    "scene_id": "state_demo",
+                    "route_id": "center_to_right",
+                    "source_state": "left",
+                    "rails": [{"axis": "x", "value": 0}],
+                    "target_handle": "entry-top-left",
+                    "target_side": "top",
+                },
+                "COMMAND_TARGET_UNKNOWN",
+            ),
+            (
+                {
+                    "kind": "editor.state_graph.set_route_layout",
+                    "scene_id": "state_demo",
+                    "route_id": "center_to_right",
+                    "source_state": "center",
+                    "rails": [
+                        {"axis": "x" if index % 2 == 0 else "y", "value": index}
+                        for index in range(9)
+                    ],
+                    "target_handle": "entry-top-left",
+                    "target_side": "top",
+                },
+                "PROJECT_LIMIT_EXCEEDED",
+            ),
+            (
+                {
+                    "kind": "editor.state_graph.set_route_layout",
+                    "scene_id": "state_demo",
+                    "route_id": "center_to_right",
+                    "source_state": "center",
+                    "rails": [],
+                    "target_handle": "entry-left",
+                    "target_side": "top",
+                },
+                "PROJECT_VALUE_INVALID",
+            ),
+            (
+                {
+                    "kind": "editor.state_graph.set_route_layout",
+                    "scene_id": "state_demo",
+                    "route_id": "center_to_right",
+                    "source_state": "center",
+                    "rails": [{"axis": "x", "value": 10}, {"axis": "x", "value": 20}],
+                    "target_handle": "entry-top-left",
+                    "target_side": "top",
+                },
+                "PROJECT_VALUE_INVALID",
+            ),
+            (
+                {
+                    "kind": "editor.state_graph.set_route_layout",
+                    "scene_id": "state_demo",
+                    "route_id": "center_to_right",
+                    "source_state": "center",
+                    "rails": [],
+                    "target_handle": "entry-top-left",
+                    "target_side": "right",
+                },
+                "PROJECT_VALUE_INVALID",
+            ),
+            (
+                {
+                    "kind": "editor.state_graph.set_route_layout",
+                    "scene_id": "state_demo",
+                    "route_id": "center_to_right",
+                    "source_state": "center",
+                    "rails": [],
+                    "target_handle": "entry-top-left",
+                    "target_side": "top",
+                    "token_positions": {"condition": 0.7, "actions": [0.4]},
+                },
+                "PROJECT_VALUE_INVALID",
+            ),
+        ]
+        for command, code in cases:
+            with self.subTest(code=code):
+                with self.assertRaises(ProtocolError) as raised:
+                    service.handle(
+                        request(
+                            "project.apply_commands",
+                            {
+                                "project_revision": loaded["project_revision"],
+                                "commands": [command],
+                            },
+                        )
+                    )
+                self.assertEqual(code, raised.exception.code)
+
+    def test_state_graph_route_layout_is_removed_with_a_route_source(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        routed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "editor.state_graph.set_route_layout",
+                            "scene_id": "state_demo",
+                            "route_id": "center_to_right",
+                            "source_state": "center",
+                            "rails": [{"axis": "x", "value": 100}],
+                            "target_handle": "entry-top-left",
+                            "target_side": "top",
+                        }
+                    ],
+                },
+            )
+        )
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": routed["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "route.set_sources",
+                            "scene_id": "state_demo",
+                            "route_id": "center_to_right",
+                            "from_states": ["left"],
+                        }
+                    ],
+                },
+            )
+        )
+        routes = changed["document"]["project"]["editor"]["state_graph"]["scenes"]["state_demo"].get("routes", {})
+        self.assertNotIn("center_to_right", routes)
 
     def test_route_set_target_persists_on_save(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2062,6 +3486,44 @@ class AuthoringServiceTests(unittest.TestCase):
         )
         action = next(route for route in changed["document"]["scenes"][0]["routes"] if route["route_id"] == "center_to_right")["actions"][0]
         self.assertEqual({"kind": "request_render"}, action)
+
+    def test_route_action_add_resolves_scene_placement_for_target_state(self) -> None:
+        service = AuthoringService()
+        loaded = service.handle(request("project.load", {"path": str(SAMPLE)}))
+        changed = service.handle(
+            request(
+                "project.apply_commands",
+                {
+                    "project_revision": loaded["project_revision"],
+                    "commands": [
+                        {
+                            "kind": "route.action.add",
+                            "scene_id": "state_demo",
+                            "route_id": "center_to_right",
+                            "action_index": 0,
+                            "action": {
+                                "kind": "set_element_visibility",
+                                "element_ref": "cursor",
+                                "visible": True,
+                            },
+                        }
+                    ],
+                },
+            )
+        )
+        route = next(
+            route
+            for route in changed["document"]["scenes"][0]["routes"]
+            if route["route_id"] == "center_to_right"
+        )
+        self.assertEqual(
+            {
+                "kind": "set_element_visibility",
+                "element_ref": "cursor",
+                "visible": True,
+            },
+            route["actions"][0],
+        )
 
     def test_route_set_action_rejects_invalid_fields(self) -> None:
         service = AuthoringService()
@@ -2456,9 +3918,21 @@ class AuthoringServiceTests(unittest.TestCase):
                     },
                 )
             )
+            base = service.handle(
+                request(
+                    "project.preview_scene_base",
+                    {
+                        "project_revision": loaded["project_revision"],
+                        "scene_id": "state_demo",
+                    },
+                )
+            )
 
             self.assertEqual(reset["preview_revision"], selected["preview_revision"])
+            self.assertEqual(reset["preview_revision"], base["preview_revision"])
             self.assertEqual("state_demo", selected["scene"]["scene_id"])
+            self.assertEqual("scene_base", base["placement"]["kind"])
+            self.assertEqual(3024, base["framebuffer"]["size_bytes"])
             self.assertEqual("right", selected["scene"]["state_id"])
             self.assertEqual(0, selected["timeline"]["elapsed_ms"])
             self.assertNotEqual(reset["framebuffer"]["sha256"], selected["framebuffer"]["sha256"])
@@ -2474,6 +3948,84 @@ class AuthoringServiceTests(unittest.TestCase):
                 )
             )
             self.assertEqual("center", advanced["scene"]["state_id"])
+            self.assertEqual(250, advanced["timeline"]["elapsed_ms"])
+
+    def test_preview_scene_base_ignores_state_overrides_without_touching_live_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "Base Preview.peepproj"
+            service = AuthoringService()
+            created = service.handle(request("project.create", {"path": str(project_root)}))
+            added = service.handle(
+                request(
+                    "project.apply_commands",
+                    {
+                        "project_revision": created["project_revision"],
+                        "commands": [
+                            {
+                                "kind": "placement_object.add",
+                                "scene_id": "main",
+                                "scope": {"kind": "scene_base"},
+                                "element": {
+                                    "element_id": "base_box",
+                                    "kind": "filled_rect",
+                                    "x": 0,
+                                    "y": 0,
+                                    "width": 10,
+                                    "height": 10,
+                                    "z_order": 0,
+                                    "layer": "SCENE",
+                                },
+                            },
+                            {
+                                "kind": "state_placement.set_override",
+                                "scene_id": "main",
+                                "state_id": "start",
+                                "render_model_id": "scene_placement",
+                                "element_id": "base_box",
+                                "visible": False,
+                            },
+                        ],
+                    },
+                )
+            )
+            reset = service.handle(
+                request(
+                    "project.preview_reset",
+                    {"project_revision": added["project_revision"], "scene_id": "main"},
+                )
+            )
+            base = service.handle(
+                request(
+                    "project.preview_scene_base",
+                    {"project_revision": added["project_revision"], "scene_id": "main"},
+                )
+            )
+            selected = service.handle(
+                request(
+                    "project.preview_state",
+                    {
+                        "project_revision": added["project_revision"],
+                        "scene_id": "main",
+                        "state_id": "start",
+                    },
+                )
+            )
+
+            self.assertEqual({"kind": "scene_base", "scene_id": "main", "display_name": "Base Placement"}, base["placement"])
+            self.assertEqual(100, base["framebuffer"]["black_pixel_count"])
+            self.assertEqual(0, selected["framebuffer"]["black_pixel_count"])
+            self.assertEqual(reset["preview_revision"], base["preview_revision"])
+            advanced = service.handle(
+                request(
+                    "project.preview_advance",
+                    {
+                        "project_revision": added["project_revision"],
+                        "preview_revision": reset["preview_revision"],
+                        "elapsed_ms": 250,
+                    },
+                )
+            )
+            self.assertEqual("start", advanced["scene"]["state_id"])
             self.assertEqual(250, advanced["timeline"]["elapsed_ms"])
 
     def test_scene_thumbnails_return_package_backed_frames_without_touching_live_preview(self) -> None:
@@ -2632,7 +4184,7 @@ class AuthoringServiceTests(unittest.TestCase):
 
             for point in (
                 (20, 20), (28, 26),
-                (32, 20), (36, 23), (40, 26),
+                (32, 26), (36, 23), (40, 20),
                 (44, 20), (52, 26),
                 (60, 20), (64, 24), (60, 28), (56, 24),
                 (73, 20), (78, 23), (73, 26), (68, 23),
@@ -2640,6 +4192,7 @@ class AuthoringServiceTests(unittest.TestCase):
                 self.assertEqual(1, pixel(*point), point)
             self.assertEqual(0, pixel(48, 23))
             self.assertEqual(0, pixel(60, 24))
+            self.assertEqual(0, pixel(32, 20))
 
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = make_preview_project(Path(temp_dir))

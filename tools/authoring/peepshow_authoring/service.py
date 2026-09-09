@@ -6,6 +6,8 @@ from dataclasses import asdict
 import base64
 import hashlib
 import sys
+from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -20,9 +22,16 @@ from .audio_assets import (
     pcm16_wav,
 )
 from .compatibility import build_compatibility_report
-from .compiler import EggCompileError, build_egg
+from .compiler import EggCompileError, build_egg, build_preview_package, build_readiness_issues
 from .egg_format import EggFormatError, parse_egg
-from .project import ProjectBundle, ProjectCommandError, apply_project_commands, load_project, save_project
+from .project import (
+    ProjectBundle,
+    ProjectCommandError,
+    apply_project_commands,
+    create_project,
+    load_project,
+    save_project,
+)
 from .preview import PreviewError, StateScenePreview
 from .target_profile import (
     TARGET_PROFILE_ID,
@@ -41,12 +50,13 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 24
+SERVICE_API_VERSION = 38
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
     "service.hello",
     "service.shutdown",
+    "project.create",
     "project.load",
     "project.validate",
     "project.normalize",
@@ -60,6 +70,7 @@ SERVICE_OPERATIONS = (
     "project.audio_audition",
     "project.preview_reset",
     "project.preview_state",
+    "project.preview_scene_base",
     "project.preview_input",
     "project.preview_advance",
 )
@@ -114,6 +125,90 @@ def _require_fields(params: dict[str, Any], required: set[str]) -> None:
         )
 
 
+def _placement_ownership(bundle: ProjectBundle) -> dict[str, Any]:
+    scenes: dict[str, Any] = {}
+    for scene in bundle.scenes:
+        scene_id = scene.get("scene_id")
+        render_models = scene.get("render_models", [])
+        if not isinstance(scene_id, str) or not render_models:
+            continue
+
+        render_model = render_models[0]
+        render_model_id = render_model.get("visual_id")
+        base_elements = render_model.get("elements", [])
+        waiting_visuals = {
+            item["waiting_visual_id"]: item
+            for item in scene.get("waiting_visuals", [])
+            if isinstance(item, dict) and isinstance(item.get("waiting_visual_id"), str)
+        }
+        state_results: dict[str, Any] = {}
+        state_visible_ids: set[str] = set()
+        for state in scene.get("states", []):
+            state_id = state.get("state_id")
+            if not isinstance(state_id, str):
+                continue
+            overrides = {
+                item["element_ref"]: item
+                for item in state.get("placement_overrides", [])
+                if isinstance(item, dict) and isinstance(item.get("element_ref"), str)
+            }
+            state_visible_ids.update(
+                element_id
+                for element_id, override in overrides.items()
+                if override.get("visible") is True
+            )
+            waiting_visual = waiting_visuals.get(state.get("waiting_visual_ref"), {})
+            animated_ids = {
+                item["source_element_ref"]
+                for item in waiting_visual.get("elements", [])
+                if isinstance(item, dict) and isinstance(item.get("source_element_ref"), str)
+            }
+            changes: dict[str, Any] = {}
+            resolved_elements: list[dict[str, Any]] = []
+            for base_element in base_elements:
+                element = deepcopy(base_element)
+                element_id = element.get("element_id")
+                override = overrides.get(element_id, {})
+                local_properties: list[str] = []
+                if "x" in override or "y" in override:
+                    local_properties.append("position")
+                    if "x" in override:
+                        element["x"] = override["x"]
+                    if "y" in override:
+                        element["y"] = override["y"]
+                if "visible" in override:
+                    local_properties.append("visible")
+                    element["visible"] = override["visible"]
+                if "visual_ref" in override:
+                    local_properties.append("visual_ref")
+                    element["visual_ref"] = override["visual_ref"]
+                animated = element_id in animated_ids
+                if local_properties or animated:
+                    changes[element_id] = {
+                        "local_properties": local_properties,
+                        "animated": animated,
+                    }
+                resolved_elements.append(element)
+            state_results[state_id] = {
+                "changes": changes,
+                "resolved_elements": resolved_elements,
+            }
+
+        scenes[scene_id] = {
+            "render_model_id": render_model_id,
+            "state_scoped_element_ids": sorted(
+                element_id
+                for element in base_elements
+                for element_id in [element.get("element_id")]
+                if isinstance(element_id, str)
+                if element.get("visible", True) is False
+                and element_id in state_visible_ids
+            ),
+            "states": state_results,
+        }
+    return {"scenes": scenes}
+
+
 class AuthoringService:
     """Single-session deterministic facade over the headless authoring API."""
 
@@ -147,7 +242,9 @@ class AuthoringService:
             "project_revision": self._project_revision,
             "valid": bundle.valid,
             "issues": _issues(bundle),
+            "build_issues": build_readiness_issues(bundle),
             "document": bundle.normalized() if bundle.valid else None,
+            "placement_ownership": _placement_ownership(bundle) if bundle.valid else None,
             "summary": _project_summary(bundle),
             "dirty": self._dirty(),
             "can_undo": bool(self._undo_stack),
@@ -204,6 +301,7 @@ class AuthoringService:
                 "visibility": True,
                 "z_order": True,
                 "element_commands": [
+                    "placement_object.add",
                     "render_element.add",
                     "render_element.delete",
                     "render_element.set_bounds",
@@ -212,6 +310,7 @@ class AuthoringService:
                 ],
                 "state_override_commands": [
                     "state_placement.set_override",
+                    "state_placement.clear_override",
                 ],
                 "asset_commands": [
                     "asset.upsert",
@@ -305,19 +404,112 @@ class AuthoringService:
                 },
                 "command_batch_maximum": 64,
                 "target_scene_actions": ["play_sfx"],
+                "scene_commands": ["scene.add", "scene.rename", "project.set_entry_scene"],
+                "scene_flow_commands": [
+                    "editor.scene_flow.set_node_position",
+                    "editor.scene_flow.set_package_entry_position",
+                    "editor.scene_flow.add_reference",
+                    "editor.scene_flow.set_reference_position",
+                    "editor.scene_flow.set_reference_target",
+                    "editor.scene_flow.delete_reference",
+                    "editor.scene_flow.set_exit_reference",
+                    "editor.scene_flow.set_route_layout",
+                ],
+                "peepos_trigger_commands": [],
+                "peepos_trigger_catalog": [
+                    {
+                        "kind": "step_count",
+                        "label": "Step count",
+                        "detail": "Daily step count reached a configured value",
+                        "support": "contract_only",
+                        "requires": [
+                            "authoring_schema",
+                            "compiler",
+                            "preview",
+                            "firmware_event_dispatch",
+                            "target_capability",
+                        ],
+                    },
+                    {
+                        "kind": "delay_elapsed",
+                        "label": "Timer",
+                        "detail": "Bounded delay elapsed",
+                        "support": "contract_only",
+                        "requires": ["authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                    },
+                    {
+                        "kind": "local_schedule",
+                        "label": "Date and time",
+                        "detail": "Local calendar schedule matched",
+                        "support": "contract_only",
+                        "requires": ["authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                    },
+                    {
+                        "kind": "device_active",
+                        "label": "Device active",
+                        "detail": "PeepOS activated the package",
+                        "support": "contract_only",
+                        "requires": ["authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                    },
+                    {
+                        "kind": "device_inactive",
+                        "label": "Device inactive",
+                        "detail": "PeepOS suspended active interaction",
+                        "support": "contract_only",
+                        "requires": ["authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                    },
+                    {
+                        "kind": "wake_resume",
+                        "label": "Wake or resume",
+                        "detail": "A declared wake or resume reason occurred",
+                        "support": "contract_only",
+                        "requires": ["authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                    },
+                    {
+                        "kind": "animation_complete",
+                        "label": "Animation complete",
+                        "detail": "A bounded animation reached completion",
+                        "support": "contract_only",
+                        "requires": ["authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                    },
+                    {
+                        "kind": "audio_marker",
+                        "label": "Audio marker",
+                        "detail": "A cue marker or completion event occurred",
+                        "support": "contract_only",
+                        "requires": ["authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                    },
+                    {
+                        "kind": "peripheral_event",
+                        "label": "Peripheral event",
+                        "detail": "A capability-approved sensor or peripheral event occurred",
+                        "support": "contract_only",
+                        "requires": ["target_capability", "authoring_schema", "compiler", "preview", "firmware_event_dispatch"],
+                    },
+                ],
                 "limits": {
                     "states": 64,
                     "render_models": 1,
                     "variables": 32,
                     "input_actions": 32,
+                    "scene_exits": 32,
                     "compiled_event_bindings": int(
                         TARGET_STATE_SCENE_EVENTS["binding_count_max"]
                     ),
                     "routes": 128,
                     "guards_per_route": 8,
                     "actions_per_route": 8,
+                    "route_waypoints": 8,
                 },
+                "route_layout_version": 3,
+                "editor_layout_commands": [
+                    "editor.state_graph.set_node_position",
+                    "editor.state_graph.set_entry_layout",
+                    "editor.state_graph.delete_system_exit",
+                    "editor.state_graph.set_route_layout",
+                ],
                 "state_commands": [
+                    "state.create",
                     "state.add",
                     "state.delete",
                     "state.rename",
@@ -326,6 +518,7 @@ class AuthoringService:
                 ],
                 "state_placement_commands": [
                     "state_placement.set_override",
+                    "state_placement.clear_override",
                 ],
                 "render_model_commands": [
                     "render_model.set_focus_index",
@@ -351,14 +544,19 @@ class AuthoringService:
                     "event_handler.delete",
                 ],
                 "route_commands": [
+                    "route.create_trigger",
+                    "route.rebind_trigger",
                     "route.add",
                     "route.delete",
                     "route.set_action_ref",
                     "route.set_event_ref",
                     "route.set_sources",
                     "route.set_target",
-                    "route.add_scene_exit",
-                    "route.delete_scene_exit",
+                ],
+                "scene_exit_commands": [
+                    "scene_exit.add",
+                    "scene_exit.set_target",
+                    "scene_exit.delete",
                 ],
                 "guard_commands": [
                     "route.guard.add",
@@ -414,12 +612,7 @@ class AuthoringService:
         self.shutdown_requested = True
         return {"shutdown": True}
 
-    def _load(self, params: dict[str, Any]) -> dict[str, Any]:
-        _require_fields(params, {"path"})
-        path = params["path"]
-        if not isinstance(path, str) or not path:
-            raise ProtocolError("PROJECT_PATH_INVALID", "path must be non-empty text")
-        bundle = load_project(Path(path))
+    def _activate_bundle(self, bundle: ProjectBundle) -> dict[str, Any]:
         self._bundle = bundle
         self._project_revision += 1
         self._preview = None
@@ -432,6 +625,25 @@ class AuthoringService:
             "source_name": bundle.root.name,
             **self._project_document_result(bundle),
         }
+
+    def _create(self, params: dict[str, Any]) -> dict[str, Any]:
+        _require_fields(params, {"path"})
+        path = params["path"]
+        if not isinstance(path, str) or not path:
+            raise ProtocolError("PROJECT_PATH_INVALID", "path must be non-empty text")
+        try:
+            bundle = create_project(Path(path))
+        except ProjectCommandError as exc:
+            raise ProtocolError(exc.code, exc.message) from exc
+        return self._activate_bundle(bundle)
+
+    def _load(self, params: dict[str, Any]) -> dict[str, Any]:
+        _require_fields(params, {"path"})
+        path = params["path"]
+        if not isinstance(path, str) or not path:
+            raise ProtocolError("PROJECT_PATH_INVALID", "path must be non-empty text")
+        bundle = load_project(Path(path))
+        return self._activate_bundle(bundle)
 
     def _validate(self, params: dict[str, Any]) -> dict[str, Any]:
         bundle = self._current_bundle(params)
@@ -460,6 +672,13 @@ class AuthoringService:
 
     def _build_package(self, params: dict[str, Any]) -> dict[str, Any]:
         bundle = self._current_bundle(params)
+        readiness = build_readiness_issues(bundle)
+        if readiness:
+            raise ProtocolError(
+                "PACKAGE_NOT_READY",
+                "\n".join(issue["message"] for issue in readiness),
+                details={"issues": readiness},
+            )
         if not bundle.valid:
             raise ProtocolError(
                 "PROJECT_INVALID",
@@ -494,7 +713,7 @@ class AuthoringService:
     def _compatibility_report(self, params: dict[str, Any]) -> dict[str, Any]:
         bundle = self._current_bundle(params)
         try:
-            blob = build_egg(bundle) if bundle.valid else None
+            blob = build_egg(bundle) if bundle.valid and not build_readiness_issues(bundle) else None
         except EggCompileError as exc:
             raise ProtocolError("PACKAGE_BUILD_FAILED", str(exc)) from exc
         return {
@@ -511,7 +730,7 @@ class AuthoringService:
                 details={"issues": _issues(bundle)},
             )
         try:
-            package = parse_egg(build_egg(bundle))
+            package = build_preview_package(bundle)
             thumbnails = [
                 {
                     "scene_id": str(scene["scene_id"]),
@@ -538,7 +757,7 @@ class AuthoringService:
                 details={"issues": _issues(bundle)},
             )
         try:
-            package = parse_egg(build_egg(bundle))
+            package = build_preview_package(bundle)
             cue = next(
                 (item for item in package.audio_cues if item["cue_id"] == cue_id),
                 None,
@@ -649,10 +868,16 @@ class AuthoringService:
         return self._preview
 
     def _preview_reset(self, params: dict[str, Any]) -> dict[str, Any]:
-        bundle = self._current_bundle(params, {"scene_id"})
+        fields = {"scene_id"}
+        if "state_id" in params:
+            fields.add("state_id")
+        bundle = self._current_bundle(params, fields)
         scene_id = params["scene_id"]
+        state_id = params.get("state_id")
         if not isinstance(scene_id, str) or not scene_id:
             raise ProtocolError("PREVIEW_SCENE_INVALID", "scene_id must be non-empty text")
+        if state_id is not None and (not isinstance(state_id, str) or not state_id):
+            raise ProtocolError("PREVIEW_STATE_INVALID", "state_id must be non-empty text when provided")
         if not bundle.valid:
             raise ProtocolError(
                 "PROJECT_INVALID",
@@ -660,8 +885,8 @@ class AuthoringService:
                 details={"issues": _issues(bundle)},
             )
         try:
-            package = parse_egg(build_egg(bundle))
-            preview = StateScenePreview(package, scene_id)
+            package = build_preview_package(bundle)
+            preview = StateScenePreview(package, scene_id, state_id)
         except (EggCompileError, EggFormatError, PreviewError) as exc:
             raise ProtocolError("PREVIEW_START_FAILED", str(exc)) from exc
         self._preview = preview
@@ -683,11 +908,55 @@ class AuthoringService:
                 details={"issues": _issues(bundle)},
             )
         try:
-            package = parse_egg(build_egg(bundle))
+            package = build_preview_package(bundle)
             preview = StateScenePreview(package, scene_id, state_id)
         except (EggCompileError, EggFormatError, PreviewError) as exc:
             raise ProtocolError("PREVIEW_STATE_FAILED", str(exc)) from exc
         return self._preview_result(preview.snapshot())
+
+    def _preview_scene_base(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params, {"scene_id"})
+        scene_id = params["scene_id"]
+        if not isinstance(scene_id, str) or not scene_id:
+            raise ProtocolError("PREVIEW_SCENE_INVALID", "scene_id must be non-empty text")
+        if not bundle.valid:
+            raise ProtocolError(
+                "PROJECT_INVALID",
+                "project must validate before preview",
+                details={"issues": _issues(bundle)},
+            )
+
+        scenes = deepcopy(list(bundle.scenes))
+        scene = next(
+            (item for item in scenes if item.get("scene_id") == scene_id),
+            None,
+        )
+        if scene is None:
+            raise ProtocolError("PREVIEW_SCENE_INVALID", f"scene '{scene_id}' is not present")
+        for state in scene.get("states", []):
+            if isinstance(state, dict):
+                state.pop("placement_overrides", None)
+        preview_bundle = replace(bundle, scenes=tuple(scenes))
+        try:
+            package = build_preview_package(preview_bundle)
+            preview = StateScenePreview(
+                package,
+                scene_id,
+                include_waiting_visuals=False,
+            )
+        except (EggCompileError, EggFormatError, PreviewError) as exc:
+            raise ProtocolError("PREVIEW_SCENE_BASE_FAILED", str(exc)) from exc
+        snapshot = preview.snapshot()
+        return self._preview_result(
+            {
+                "placement": {
+                    "kind": "scene_base",
+                    "scene_id": scene_id,
+                    "display_name": "Base Placement",
+                },
+                "framebuffer": snapshot["framebuffer"],
+            }
+        )
 
     def _preview_input(self, params: dict[str, Any]) -> dict[str, Any]:
         fields = {"logical_source"}
@@ -718,6 +987,7 @@ class AuthoringService:
         handlers = {
             "service.hello": self._hello,
             "service.shutdown": self._shutdown,
+            "project.create": self._create,
             "project.load": self._load,
             "project.validate": self._validate,
             "project.normalize": self._normalize,
@@ -731,6 +1001,7 @@ class AuthoringService:
             "project.audio_audition": self._audio_audition,
             "project.preview_reset": self._preview_reset,
             "project.preview_state": self._preview_state,
+            "project.preview_scene_base": self._preview_scene_base,
             "project.preview_input": self._preview_input,
             "project.preview_advance": self._preview_advance,
         }

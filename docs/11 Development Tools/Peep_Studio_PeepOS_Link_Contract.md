@@ -100,15 +100,19 @@ state-resolved presentation of every exported STATE scene.
 
 See [[Rendering_API_Contract]] and
 [[Peep_Studio_Empty_Scene_Validation_Handoff]] for the exact failing egg,
-evidence, diagnostics and build/inspect/native parity tests. The GUI branch
-should add shared blocking build/export checks while keeping incomplete
-scene drafts editable and saveable. Empty visual content is not the same as
-missing an exit or having no animation/focus element.
+evidence, diagnostics and build/inspect/native parity tests. Service API 38
+implements shared blocking build/export checks and structured `build_issues`
+while keeping incomplete scene drafts editable, saveable, and previewable.
+Empty visual content is not the same as missing an exit or having no
+animation/focus element.
 
-This is a pending validation repair, not an implemented capability change.
 Current GUI eggs must be revalidated and rebuilt after correcting their empty
-scenes; successful install/container checks alone are not launch proof. The
-separate firmware launch-error recovery defect remains an OS follow-up.
+scenes; successful install/container checks alone are not launch proof. OS
+candidate preflight and boot/PLAY error recovery are implemented with native
+regression coverage. Main's integrated shared backend passed 148 host/native
+tests and the target-profile check with its retained firmware; the compatibility
+baseline and reproduction are recorded in
+[[Peep_Studio_Scene_Object_Ownership_Handoff]]. Target retest remains pending.
 
 ## Planned Device Inputs
 
@@ -336,13 +340,15 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the service API at the timer handoff baseline is
-version `23`. Rediscover it after merging and restarting the Python sidecar.
+protocol is version `1`; the current service API is version `38` (the OS timer
+handoff baseline was `23`). Rediscover it after merging and restarting the
+Python sidecar.
 
 | Operation | Purpose |
 |---|---|
 | `service.hello` | discover service/API versions and supported operations |
 | `service.shutdown` | request orderly sidecar shutdown |
+| `project.create` | create, validate, persist, and load a new minimal `.peepproj` at a previously unused path |
 | `project.load` | load and validate one `.peepproj` directory |
 | `project.validate` | return authoritative issues and semantic hash |
 | `project.normalize` | return canonical normalized project data |
@@ -354,7 +360,7 @@ version `23`. Rediscover it after merging and restarting the Python sidecar.
 | `project.redo` | redo the last undone command within the bounded service history |
 | `project.scene_thumbnails` | return one side-effect-free initial framebuffer snapshot per compiled STATE scene |
 | `project.audio_audition` | decode one compiled sampled-SFX cue and return the exact packaged sound as mono 16 kHz PCM WAV |
-| `project.preview_reset` | start one selected STATE scene directly |
+| `project.preview_reset` | start one selected STATE scene at its declared entry state or an optional explicit author-selected state |
 | `project.preview_state` | render one exact STATE scene/state framebuffer for placement editing without touching the live preview session |
 | `project.preview_input` | inject one logical source plus optional `event_kind`; supports A/B/L/R, short START press, and cardinal/diagonal joystick STATE events |
 | `project.preview_advance` | advance deterministic preview time by an explicit duration; return one-shot `timer_events` with handler results, audio events, and any system action |
@@ -446,8 +452,8 @@ The default workspaces expose these concepts:
 - **Scene Flow:** game-level storyboard flow between scenes.
 - **Local Logic:** per-scene behavior as state cards, prefab cards, trigger
   output rows, conditions, effects, and destinations.
-- **Placement:** panel-native scene composition plus the selected state's object
-  variations.
+- **Placement:** scene-base composition plus explicit state-owned object
+  variations on one stable scene surface.
 - **Assets:** sprites, build-time text sprites, future audio assets, frame
   strips, and author-facing animation definitions.
 - **Debug/Advanced:** stable IDs, generated records, backend-only fields, and
@@ -463,10 +469,24 @@ Placement must not silently follow the emulator's current runtime state while an
 author is editing. A `STATE_SCENE` owns one placed-object surface. Individual
 logic states may override selected object presentation, such as position,
 visibility, sprite frame, or waiting animation, but they do not own separate
-screen layouts. The object hierarchy shows the scene-owned objects first, with
-clear badges when the selected logic state changes an object. Runtime preview may
-still step through scene logic, but it must not make the placement target
-ambiguous.
+screen layouts. The hierarchy exposes Scene Base first and each state's local
+variations beneath it. Runtime preview may still step through scene logic, but
+it must not change the placement edit target.
+
+Placement keeps three concepts separate:
+
+- the scene-owned object identity;
+- the explicit edit scope: Scene Base or a bounded set of state IDs;
+- one primary state used to render a resolved preview when several states are
+  selected.
+
+Selecting every current state is an exact set and remains distinct from Scene
+Base. Base values are inherited by future states; exact state sets are not.
+
+While a valid project contains scenes, Peep Studio must keep one scene selected.
+Editor commands may invalidate the service preview revision, but the emulator must
+restart the selected scene preview after the command settles instead of remaining
+blank or visually deselected.
 
 Objects are deletable from the GUI unless the Python service rejects the command
 because the project would become invalid. The renderer must not block deletion
@@ -544,6 +564,13 @@ example button are temporary copies. `project.undo` and `project.redo` keep a
 bounded 32-step command history in the Python service; new edits clear redo, and
 dirty state is computed against the last saved semantic project hash.
 
+Service API version 26 adds `project.create`. Python derives stable project and
+package IDs from the selected `.peepproj` directory name, writes only relative
+source references, validates the authored files, and loads the result as the
+active clean project. The starter contains one ordinary scene and entry state;
+it does not create an input binding, route, or shell exit. Peep Studio must not
+protect starter records or attach example-specific behavior to them.
+
 Service API version 15 adds deterministic build-time text assets through the
 existing `asset.upsert`/`asset.delete` commands. Peep Studio discovers the
 exact font ID, glyph cell, character set, scaling bounds, ink/background, and
@@ -584,6 +611,13 @@ host audition distinct from device proof and report looping, music, and
 procedural audio as unsupported; strict higher-priority preemption, concurrent
 display margin, production fidelity, and energy remain pending target proof.
 
+The current Peep Studio emulator still plays only the final cue emitted by each
+input through the packaged-WAV audition path, applies its volume, and preempts
+the previous cue. It does not yet mirror the five-voice target. First-use audio
+preparation currently builds the package on demand; moving preparation ahead of
+interactive playback, consuming timer-emitted audio, and matching the merged
+audio capabilities remain follow-up editor work, not completed target parity.
+
 ### Stage 3: Scene Canvas And Visual Elements
 
 - add, remove, select, move, and reorder retained visual elements;
@@ -602,9 +636,19 @@ not require or imply an on-device runtime font renderer.
 
 Implementation status: placement mode shell is present in Peep Studio. It keeps
 the fixed project-panel preview available in every mode, promotes the selected
-scene preview into the main workspace for placement, shows a scene object
-hierarchy in the project panel, and reserves the inspector for the selected
-object's placement/properties. The placement display has a faint screen-space
+scene preview into the main workspace for placement, and reserves the inspector
+for the selected object's placement/properties. The project panel now uses one
+persistent scene-rooted hierarchy in every workspace. Each expanded scene shows
+Scene Base objects, states with only their local object changes, and scene-local
+variables. Scene exits remain graph links and do not appear as hierarchy
+children. Asset sources remain package-owned and reusable in Assets; an
+asset-backed element appears in the hierarchy only as an ordinary placed
+object. Scene, Base, States, individual state, and data-group branches are
+independently collapsible. Disclosure controls do not mutate selection or edit
+scope. For hierarchy presentation, an element with local placement properties
+in every declared state is shown only under those states; this does not change
+its normalized scene-level identity or compiler representation. The placement
+display has a faint screen-space
 grid, selectable retained-element overlays, a floating primitive tool palette,
 drag movement, shape resize handles, line endpoint handles, sprite placement
 from a picker of compiled asset frames, inspector X/Y fields, layer/visibility
@@ -618,18 +662,42 @@ waiting-visual timing and does not expose raw phase-step internals to the
 author. Placing a compatible multi-frame sprite defaults to animated, and the
 inspector exposes this as a Static/Animated toggle rather than a backend update
 command. These controls call the Python service commands
-(`render_element.add`, `render_element.delete`,
+(`placement_object.add`, `render_element.add`, `render_element.delete`,
 `render_element.set_bounds`, `render_element.set_layer`,
 `render_element.set_z_order`, `state_placement.set_override`,
+`state_placement.clear_override`,
 `render_element.bind_waiting_animation`, and
 `render_element.clear_waiting_animation`) rather than directly editing
 normalized JSON in React. `state_placement.set_override` is the authoring path
 for selected-state position, visibility, and static sprite-frame changes.
 
-Known Stage 3 UX debt: The object hierarchy must continue moving away from raw
-demo scaffolding and toward authored object names, type icons, layer/order
-badges, and logic/prefab ownership badges. Demo focus objects must not be
+Known Stage 3 UX debt: Hierarchy object rows still expose stable element IDs
+because the source model has no separate authored object-name field. A later
+service contract should add authored names and logic/prefab ownership metadata
+without deriving either from demo IDs. Demo focus objects must not be
 special-cased or made undeletable in the renderer.
+
+Service API 36 establishes the backend boundary for the next Placement
+ownership slice. `project.preview_scene_base` renders Scene Base in isolation,
+`placement_object.add` creates an object in Scene Base or an exact bounded
+state-ID set, and `state_placement.clear_override` restores inheritance without
+copying inherited values. Project-document responses expose a derived
+`placement_ownership` projection containing resolved state elements and
+local/inherited provenance. The GUI consumes that projection for its
+scene-base/state hierarchy, effective placement, property labels, and animation
+badges instead of interpreting raw source records.
+
+The service-owned behavior now includes:
+
+- rendering Scene Base without applying a logic-state override;
+- adding one object to Scene Base or to an exact bounded state-ID set;
+- applying one mutation atomically to an exact selected-state set;
+- explicitly clearing individual local properties or a complete local
+  placement override.
+
+State-scoped object creation is stored as one scene object hidden at base and
+revealed in the selected scopes. React must request this semantic operation; it
+must not clone objects or assemble hidden implementation records itself.
 
 The Assets workspace lists compiled sprite assets, shows frame previews, can
 preview a multi-frame sprite loop, and can import a PNG as either one full-image
@@ -667,6 +735,30 @@ the backend contract changes.
 - edit the one declared entry state;
 - present local logic as state/prefab node cards with trigger output rows, not
   as a UML-first edge editor;
+- show entry as a card-level arrival affordance, not as a separate editable
+  entry row. The visual design may use green oval entry handles around
+  top/bottom/corner entry zones, but those handles must not become separate
+  semantic records;
+- keep side edges for trigger exit rows. Exit side should be chosen
+  automatically to reduce line overlap first. Selected transitions expose up
+  to eight editor-only routing rails through draggable straight sections.
+  Horizontal sections move vertically, vertical sections move horizontally,
+  and every outgoing, middle, and incoming section is directly draggable. Each
+  corner entry zone exposes one horizontal and one vertical directional port,
+  and the incoming arrow can be dragged onto any of those eight ports on the
+  same semantic target state. Peep Studio creates the required right-angle
+  endpoint joins automatically.
+  Moving a card must recalculate its terminal connection without creating
+  diagonals, fixed-offset loops, or changing the manually arranged middle. A
+  double-click adds another movable jog. Manual routing and the selected entry
+  socket are stored per route and source state through
+  `editor.state_graph.set_route_layout`; empty rails plus a null target handle
+  and null target side restore automatic routing for that visible branch;
+- present guards as one compact condition diamond with a count badge, followed
+  by one compact action diamond per author-visible route action. Action diamonds
+  preserve service-owned execution order, use fixed symbols rather than dense
+  labels, expose plain-language hover descriptions, and select the owning route
+  for full inspection. Backend-only `request_render` actions remain hidden;
 - create and remove deterministic state-transition outputs and their single
   destination edges through Python service commands;
 - edit logical A/B/L/R and JOY_LEFT/JOY_RIGHT/JOY_UP/JOY_DOWN routes, guard
@@ -679,7 +771,7 @@ At the end of this stage, an author can build a complete interactive menu that
 fits within one STATE scene.
 
 Implementation status: local logic presentation has been reshaped toward the
-user-facing vocabulary. State graph cards show screen names, entry/output
+user-facing vocabulary. State graph cards show state names, entry/output
 badges, and trigger output rows. The primary inspector uses transition,
 condition, and effect language while keeping Python-owned routes, guards, and
 actions as the underlying semantics. The Python backend is complete for one
@@ -687,12 +779,171 @@ STATE scene: it can create/delete states and render models, choose the entry
 state, create/update/delete variables and logical inputs, create/delete and
 retarget routes, edit route sources and input bindings, and add/delete/reorder
 guards and actions. Reactive-wait and interaction policies are also replaceable
-through typed commands. The next GUI work is to expose these API 14 commands
-through the existing node-card and inspector model.
+through typed commands. The transition inspector creates, deletes, and reorders
+guards and author-visible actions. It directly edits variable changes and
+destination-state element visibility, position, sprite frame, and bounded
+waiting-animation selection; sprite frame choices stay within the selected
+sprite asset. The scene inspector creates variables, edits their integer ranges,
+and deletes unreferenced variables through the advertised typed commands.
+Backend-only render and system-exit actions remain outside the ordered author
+list. Dragging an available physical-control socket to a state entry or declared
+Scene Exit opens a lifecycle choice owned by that physical control. `press` is
+the default; `hold`, `release`, and `repeat` are available when advertised by
+the service, and non-default bindings are marked on the physical-control node.
+START remains package-press-only. The **Add new trigger** row is reserved for
+PeepOS events and must not duplicate physical buttons or joystick directions.
+Local Logic now exposes state creation, inspector-owned naming and scene-start
+selection, and selected-state deletion through the inspector or Delete key.
+Deletion never performs implicit route or entry-state cleanup; Python rejects
+the last state, current entry state, or any state still referenced by a route.
+
+Service API version 29 adds the high-level `route.create_trigger` command.
+Python creates or reuses the scene-level logical input binding, creates the
+single-source route, resolves declared Scene Exit targets, and adds the input
+to reactive-wait and meaningful-activity policy lists. An optional destination
+entry socket is stored as editor-only route layout. React supplies the author's
+source, lifecycle, source state, and dropped destination; it does not generate
+record IDs or modify power-policy internals.
+
+Service API version 30 separates physical input lifecycles from the future
+PeepOS trigger surface. `state_scene_graph.peepos_trigger_catalog` advertises
+the initial author-facing event classes: step-count thresholds, bounded timers,
+local date/time schedules, device active/inactive, wake/resume, animation
+completion, audio markers, and capability-gated peripheral events. The catalog
+currently marks every class `contract_only`, and
+`state_scene_graph.peepos_trigger_commands` is empty. Peep Studio may show
+these entries as unavailable bring-up targets, but it must not synthesize input
+records or routes for them.
+
+Making those PeepOS triggers executable requires all of the following:
+
+- typed authoring records for event kind, source identity, threshold/schedule,
+  payload shape, and catch-up/coalescing policy where applicable;
+- deterministic compiler/package records and validator limits;
+- deterministic preview injection for time, step-count, completion, and sensor
+  events;
+- PeepOS-owned event dispatch into package logic. Firmware retains ownership of
+  clocks, step derivation, sensors, audio, animation completion, wake reasons,
+  filtering, and power policy; packages receive bounded normalized events and
+  never poll or control peripherals directly;
+- target capability reporting for step counting and other peripheral-derived
+  events, so unsupported hardware cannot produce a valid deployable binding.
+
+Service API version 31 adds the high-level `state.create` command. React sends
+the selected scene, author-facing default name, and an editor-only open graph
+position. Python allocates a collision-free stable state ID, inherits the
+scene's current entry-state waiting presentation, creates the state, and stores
+its initial graph position as one undoable command. Adding a state does not
+move existing nodes, create routes, duplicate scene placement, or make the new
+state the scene entry implicitly.
+
+Service API version 32 completes the first direct graph-connection pass:
+
+- `editor.state_graph.set_entry_layout` stores the selected corner entry and
+  adjacent side independently of the semantic `state.set_entry` command. The
+  Scene Entry node and its arrow may be moved and reconnected to any state entry
+  socket without adding package records to the compiled output.
+- `route.rebind_trigger` changes one existing route to another physical control
+  while preserving its lifecycle, source states, guards, ordered actions,
+  destination, and manual line layout. Python creates or reuses the matching
+  input action and removes the previous binding only when no route still uses it.
+- `system-exit` is an optional editor node. A physical trigger dropped onto it
+  creates an ordinary route containing the existing `exit_to_shell` action;
+  the compiler and firmware operation are unchanged. New scenes do not contain
+  this node or route by default.
+
+Service API version 33 extends `editor.state_graph.set_route_layout` with
+editor-only `token_positions`. Peep Studio stores one optional condition
+position and the ordered visible-action positions as normalized fractions along
+the routed transition path. Dragging a token projects it onto the complete path
+and clamps it between adjacent tokens, so graph cleanup cannot reorder semantic
+actions. The destination arrow owns a higher-priority hit target than overlapping
+line-section controls. Token positions participate in undo, redo, and Save but
+remain excluded from compiled package bytes.
+
+Service API version 34 makes Scene Flow nodes service-owned authoring records.
+`scene.rename` updates the author-facing scene name while preserving its stable
+ID, and `project.set_entry_scene` changes the package entry connection. The
+service also owns editor-only Package Entry placement, reusable Go To scene
+references, reference retargeting/deletion, and the mapping from a semantic
+scene exit to the Go To node used to display that destination. These visual
+records participate in undo, redo, and Save but remain excluded from compiled
+package bytes. Retargeting a Go To node retargets its attached exits through the
+same validated service transaction; deleting it preserves their real scene
+destinations.
+
+Service API version 35 allows `project.preview_reset` to accept an optional
+`state_id`. When present, that state becomes the initial state of the live
+emulator session and subsequent input/time operations continue from it. When
+omitted, the scene's declared entry state remains authoritative. This differs
+from `project.preview_state`, which renders one isolated state for Placement
+without replacing or advancing the live emulator session.
+
+Service API version 36 adds `project.preview_scene_base`, a base-only isolated
+preview alongside `project.preview_state`. It removes all state placement
+overrides from an ephemeral compilation and suppresses waiting-animation frame
+selection so the returned framebuffer represents the authored Scene Base. It
+does not replace, advance, or invalidate the live emulator session.
+
+API 36 also adds `placement_object.add` and
+`state_placement.clear_override`. Scoped creation is one atomic semantic
+command; Peep Studio does not construct the base-hidden/state-visible record
+pattern itself. Exact state sets remain exact when later states are created.
+The API's derived `placement_ownership` response is non-persistent editor data;
+it identifies state-scoped objects, resolves effective elements per state, and
+reports local placement properties and waiting-animation ownership.
+
+Physical control lifecycle choices remain `press`, `hold`, `release`, and
+`repeat`. Firmware already emits Press, Release, Long Press, and Repeat; the
+author-facing `hold` name maps to Long Press. These are not PeepOS trigger
+catalog entries. START remains package-visible as short press only, with its
+system-owned long press reserved for shell access.
+
+Service API version 23 adds `editor.state_graph.set_route_waypoints`. It accepts
+one route ID, one source state from that route, and an ordered array of zero to
+eight `{ x, y }` graph points. It validates all three references, participates
+in project undo/redo and save, removes stale layout when the route or source is
+deleted, and remains excluded from compiled package bytes.
+
+Service API version 24 writes canonical route layouts with
+`routing_version: 2` and advertises that value as
+`state_scene_graph.route_layout_version`. Peep Studio ignores earlier unversioned
+bring-up routes so obsolete generated corners cannot be carried into the clean
+section editor. Version 2 persists only the simplified author route; hover
+controls and calculated endpoint joins remain renderer-only.
+
+Service API version 25 replaces point-based route layouts with alternating
+`x`/`y` rail coordinates and an optional explicit corner entry plus directional
+`target_side` through `editor.state_graph.set_route_layout`. The four corner
+entry zones each expose their adjacent horizontal and vertical sides. It
+advertises route layout version 3.
+Generated joins and arrow geometry remain renderer-only, version 2 waypoints
+are ignored by Peep Studio, and editor routing remains excluded from compiled
+package bytes.
+
+Service API version 26 adds first-class project creation. The Python service,
+not Electron or React, owns starter records, IDs, validation, and source writes.
+Electron only selects a new `.peepproj` path, and React activates the returned
+normalized document in Scene Flow. The authoring-completeness acceptance target
+for subsequent scene, state, route, placement, and asset work is to recreate the
+checked-in `state_slice.peepproj` example from this starter using only Peep
+Studio, then validate and build it through the same service path.
+
+Service API version 28 removes the authored `BUTTON_B -> exit_to_shell` route
+from new-project starters. Long START access to the PeepOS shell is system-owned
+and needs no package route. `exit_to_shell` remains available as an optional,
+explicit package action rather than starter behavior.
+
+Service API version 27 adds `scene.add` through `project.apply_commands`.
+Python derives a collision-safe stable ID and `scenes/<id>.state.json` source,
+updates the manifest and in-memory source mapping together, and creates the
+source file on Save. The new STATE scene contains one ordinary entry state and
+may validly contain zero logical inputs, event interests, or routes. Peep Studio
+collects only its display name and immediately opens the resulting scene.
 
 ### Stage 5: Package Scene Flow
 
-- create and remove package scenes;
+- create package STATE scenes (implemented in service API 27) and remove scenes;
 - provide a package-level flow view whose nodes are scenes, not states;
 - author declared scene-transition routes, entry behavior, return behavior,
   `transition_scene`, and `exit_to_shell` actions;
@@ -721,19 +972,88 @@ Studio may expose these exact semantics for the HW6 FW0 target profile. It must
 not expose cross-scene route actions, push/pop, return stacks, or
 STATE-to-SEQUENCE/PROGRAM transitions yet.
 
-Peep Studio implementation status: first package scene-flow view is
-implemented. It presents scenes as separate package-level nodes and shows
-existing `target_scene` route edges from normalized service data. Scene cards
-show their existing scene-exit outputs as selectable rows and render real
-Python-generated initial scene thumbnails through `project.scene_thumbnails`.
+Peep Studio implementation status: the package scene-flow view is implemented
+as a left-to-right storyboard. It presents scenes as separate package-level
+nodes and shows declared `scene_exits` as storyboard edges, with legacy direct
+`target_scene` routes retained as a compatibility fallback. Scene cards follow
+the shared Excalidraw language: centered scene name, real Python-generated
+initial scene thumbnail, attached green entry capsule, aligned exit rows and
+nodes, and a dotted new-exit row. Package Entry is a separate one-output node.
+Reusable editor-only Go To nodes can represent an existing destination to the
+right without duplicating that scene or changing package execution semantics.
 Existing actionless `target_scene` routes can be retargeted to another STATE
 scene through the inspector or by dragging an existing exit row to another
-scene's entry row. New scene-flow exits can be added from scene cards through
-an empty output slot that prompts for the trigger before calling
-`route.add_scene_exit`, and deleted through `route.delete_scene_exit`.
+scene's entry row. Service API 28 separates the scene-flow declaration from the
+local route that reaches it. New scene-flow exits are added without choosing an
+input through `scene_exit.add`; the matching unconnected Scene Exit node appears
+inside Local Logic. A movable Scene Entry node points to the destination
+scene's declared entry state. Existing local routes can be wired to an exit and
+retain the proven executable `target_scene` behavior. Exit retargeting and
+deletion use `scene_exit.set_target` and `scene_exit.delete`; deletion is
+rejected while local routes still reference the endpoint.
 Scene-flow cards can be manually rearranged; saved
 positions live under project editor-only layout metadata and must not affect
-compiled package bytes.
+compiled package bytes. Scene-flow exits and Local Logic scene-exit rows are
+the same authored link viewed from two workspaces: creating one must create or
+expose the matching counterpart, and deleting one must remove or detach the
+matching counterpart through the Python service rather than a renderer-only
+shortcut.
+
+### Stage 5B: Hierarchical State And Restorable Navigation
+
+Status: planned contract work; not exposed by the current executable service or
+HW6 package profile.
+
+The first hierarchical slice adds one active child region per composite state.
+Events dispatch from the active leaf toward its ancestors. The first enabled
+handler consumes the event, allowing a parent to define one fallback handler
+without duplicating it across every child. An internal handler executes actions
+without changing or re-entering the active child. Parallel regions, deferred
+events, and concurrent child execution remain outside this slice.
+
+The Python service must own and expose:
+
+- parent/child state structure, one initial child per composite, and bounded
+  hierarchy depth;
+- deterministic leaf-first event selection and explicit internal handlers;
+- validation for cycles, unreachable children, ambiguous transition ordering,
+  invalid history targets, and flattened-table budget overflow;
+- normalized active-state paths and inherited-handler provenance in preview
+  results;
+- shallow/deep state-history declarations and initial-entry fallback;
+- semantic scene navigation modes for **Go to**, **Go to and resume**,
+  **Open**, and **Return**;
+- capability fields that keep all unsupported controls hidden until compiler,
+  preview, package-format, and target-profile support agree.
+
+The compiler may flatten parent handlers into bounded leaf dispatch rows. It
+must preserve action order, child-over-parent priority, entry/exit ordering,
+and internal-handler no-reentry behavior. Authoring hierarchy must not require
+recursive firmware execution.
+
+The Engine/runtime side must define before Peep Studio exposes restoration:
+
+- maximum hierarchy depth, flattened state/handler counts, and retained scene
+  contexts for each target profile;
+- a bounded action-only/internal-handler primitive that does not reset state,
+  presentation identity, or timeline epoch;
+- scene-context Open/Return storage and overflow behavior;
+- whether timer deadlines, queued events, waiting-animation phase, and audio
+  state pause, continue, restart, or cancel while a scene is retained;
+- package stop, fault, shell entry, and package-restart behavior for all history
+  and retained contexts.
+
+Acceptance for this stage uses the menu example:
+
+1. Start Game, Settings, and Credits are children of one Menu Selection state.
+2. Up, Down, and A remain child handlers; one parent R handler is inherited by
+   all three without duplicated source routes.
+3. Opening Settings and returning restores the previously selected menu child.
+4. Package launch still enters the declared initial child.
+5. Preview and device execute the same deterministic event trace and resolved
+   placement.
+6. The generated package passes authoring tests and is exercised on current HW6
+   hardware before the capability is considered brought up.
 
 ### Stage 6: Animation Timeline
 
@@ -755,6 +1075,45 @@ compiled package bytes.
 - add formal font and localization package records when required;
 - add fixed 4-tone and 16-tone dither profiles;
 - add maps, tile layers, scaling, transforms, and richer retained rendering;
+
+Upcoming Peep Studio work for the implemented STATE sampled-SFX subset:
+
+- present audio assets as author-facing **Sounds**, while keeping `sampled_sfx`
+  IDs available only in advanced/debug details;
+- show sound cards with display name, cue count, duration, packaged size,
+  volume, and an audition button that plays the exact compiled package bytes;
+- support sound import, rename, cue edit, cue delete, and asset delete through
+  `audio_asset.*` and `audio_cue.*` service commands;
+- present route actions as **Play sound** effects rather than backend
+  `play_sfx` records;
+- allow package-global **Play sound** effects on direct scene-flow exits, which
+  the service and package contracts now allow for `target_scene` routes;
+- surface preview-emitted sound events beside the emulator controls so authors
+  can see which cue fired during host preview;
+- show target-profile audio budgets in plain language: sounds used, cues used,
+  packaged audio storage used, total package size, and one-voice STATE limit;
+- label unsupported audio modes as unavailable: music, looping, procedural
+  audio, arbitrary mixing, and production-fidelity/device-power proof from host
+  audition alone.
+
+Upcoming node-workspace refinement:
+
+- use
+  `docs/11 Development Tools/Peep Studio Design/Peep-Studio_Design-notes.excalidraw`
+  as the current live visual reference for graph-node direction;
+- treat prefab/menu nodes in that drawing as an intended abstraction direction,
+  not as immediate editable behavior until Python exposes typed prefab/slot
+  records and generated-internal ownership metadata;
+- update graph presentation toward the agreed node-card anatomy: title on the
+  left, summary badges on the right, optional green entry handles around card
+  entry zones, side-mounted trigger exits, and transition-effect chips on lines;
+- use author-facing badges for **Variables** and **Objects** when summarizing
+  how much local state or retained scene content a node/transition touches.
+  Counts must come from normalized service data or future service-provided
+  summary fields, not renderer-side semantic guesses;
+- keep scene-flow graph semantics separate from local STATE graph semantics:
+  scene flow remains storyboard-like, while local logic remains a freeform
+  state-machine graph with trigger output rows.
 
 ### Stage 8: Later Scene Types
 

@@ -48,12 +48,20 @@ class PreviewInputResult:
 class StateScenePreview:
     """Deterministic selected-scene executor over an independently parsed package."""
 
-    def __init__(self, package: EggPackage, scene_id: str, state_id: str | None = None) -> None:
+    def __init__(
+        self,
+        package: EggPackage,
+        scene_id: str,
+        state_id: str | None = None,
+        *,
+        include_waiting_visuals: bool = True,
+    ) -> None:
         self._package = package
         self._scenes = {str(scene["scene_id"]): scene for scene in package.scenes}
         self._frames = {str(frame["frame_id"]): frame for frame in package.assets}
         self._animations = {str(animation["animation_id"]): animation for animation in package.animations}
         self._audio_cues = package.audio_cues
+        self._include_waiting_visuals = include_waiting_visuals
         self._elapsed_ms = 0
         self._activate_scene(scene_id)
         if state_id is not None:
@@ -481,6 +489,8 @@ class StateScenePreview:
         self._render_framebuffer()
 
     def _visual_overrides(self) -> dict[str, str]:
+        if not self._include_waiting_visuals:
+            return {}
         result: dict[str, str] = {}
         state = self._state()
         model_index = int(state["render_model_index"])

@@ -239,6 +239,23 @@ In the executable STATE subset, every route declares exactly one destination:
 - `target_state` names a state in the route's source scene.
 - `target_scene` names another STATE scene in the same project/package.
 
+An authoring scene may also declare bounded semantic scene exits:
+
+```text
+scene_exits[]:
+  scene_exit_id
+  display_name
+  target_scene
+```
+
+A scene exit declares a destination endpoint; it is not an input binding or an
+executable transition by itself. Local STATE routes may identify the endpoint
+with `scene_exit_ref` while retaining the corresponding `target_scene` used by
+the executable subset. The service owns keeping those two fields consistent.
+Creating an exit must not create an input action, choose a trigger, add a route,
+or attach the exit to every state. The destination scene's declared
+`entry_state` is the corresponding scene-entry endpoint.
+
 When `target_scene` is used, `actions` may be empty or contain only
 package-global `play_sfx` actions. Guards still evaluate in the source scene.
 The cue request is committed only after the destination loads successfully and
@@ -260,6 +277,7 @@ audio_assets[]:
 
 audio_cues[]:
   cue_id
+  display_name   # optional author-facing label, not packaged
   asset_ref
   priority       # 0..255
   volume         # 0..255
@@ -267,7 +285,8 @@ audio_cues[]:
 
 A local STATE route may include
 `{"kind":"play_sfx","cue_ref":"stable.cue.id"}` in its ordered action list.
-The cue must exist. Direct `target_scene` routes remain actionless. WAV paths
+The cue must exist. Direct `target_scene` routes may contain only package-global
+`play_sfx` actions; scene-local actions remain invalid on those routes. WAV paths
 are source-only; packages contain compiled audio IDs, metadata, and ADPCM bytes,
 never host paths. The current subset is one-shot only and rejects looping,
 music, streaming, and procedural audio.
@@ -615,6 +634,10 @@ interaction_policy:
   bounded_deferrals[]
 ```
 
+`event_interests[]` may be empty while a STATE scene is being authored. An
+empty list compiles as zero event-interest records and must not force tools to
+invent an input binding or transition.
+
 Rules:
 
 - every package declares exactly one interaction mode: `continuous` or `timeout`.
@@ -639,22 +662,25 @@ Rules:
 
 ## Hierarchical State Machines
 
-The editor may expose hierarchical state machines.
+The complete authoring model may expose hierarchical state machines. The
+current executable STATE subset remains flat: every route names one or more
+flat source states and exactly one destination state or scene. Hierarchical
+fields, internal handlers, state history, and scene Open/Return navigation are
+not executable until the service capability response explicitly exposes them.
 
 Example:
 
 ```text
-Pet
-  Awake
-    Idle
-    Eating
-    Playing
-  Sleeping
-    LightSleep
-    DeepSleep
+Menu Selection
+  Start Game
+  Settings
+  Credits
+
+Menu Selection handles R once.
+The active child handles Up, Down, and A before the parent sees them.
 ```
 
-Conceptual schema:
+Target source model:
 
 ```text
 hsm_graph:
@@ -670,11 +696,98 @@ hsm_graph:
 
 state:
   state_id
-  parent_state_id
   display_name
+  parent_state_id          # absent only for top-level states
+  state_kind               # leaf | composite
+  initial_substate         # required for a composite state
+  history_mode             # none | shallow | deep
   entry_actions[]
   exit_actions[]
-  substates[]
+
+transition:
+  source_state
+  event_ref
+  guards[]
+  actions[]
+  transition_kind          # external | internal
+  target_state             # required only for an external state transition
+  target_scene             # alternative external scene destination
+  destination_entry        # initial | history
+```
+
+These names describe the target semantic shape; they do not amend the current
+version-1 JSON schema by themselves. The executable schema revision must be
+introduced with service capability fields, validators, compiler support, and
+preview support in one coherent milestone.
+
+### Active State And Event Dispatch
+
+- one non-parallel graph has exactly one active root-to-leaf state path;
+- an event is offered first to the active leaf, then to each ancestor in order;
+- at one level, matching transitions are evaluated in deterministic declared
+  order and the first transition with true guards handles the event;
+- a transition whose guards are false does not consume the event. Dispatch may
+  continue to another matching transition and then to the parent;
+- selecting a child transition consumes the event, so the parent handler does
+  not also run;
+- an internal transition runs its bounded actions, consumes the event, and
+  leaves the active state path unchanged. An internal transition with no
+  actions is the explicit way to block an inherited parent trigger;
+- an external transition exits the active path to the least common ancestor,
+  runs transition actions, and enters the target path in deterministic order;
+- entering a composite without requested history follows its declared
+  `initial_substate` chain until a leaf is active.
+
+This gives a composite `Menu Selection` state one R handler while its Start
+Game, Settings, and Credits children independently consume Up, Down, and A.
+The compiler may expand inherited handlers into leaf dispatch rows; runtime
+code must not use recursive calls to implement source hierarchy.
+
+### State History
+
+History is explicit rather than an automatic consequence of hierarchy:
+
+- `none` always enters the declared initial substate;
+- `shallow` remembers the most recently active direct child;
+- `deep` remembers the complete active descendant path;
+- requesting history before a valid history record exists falls back to the
+  initial-substate chain;
+- history is package-session state unless the author separately maps relevant
+  data to declared save-backed fields;
+- Package Entry starts from declared initial state and does not silently reuse
+  history from a previous package run.
+
+History records are bounded by graph depth and state count. They store stable
+state IDs, not editor node positions or framebuffer snapshots. Scene placement
+is resolved again from scene defaults, parent overrides, and active-leaf
+overrides after restoration.
+
+### Scene Navigation And Restoration
+
+State history inside one active scene does not preserve a scene that has been
+replaced. The target scene-navigation model therefore distinguishes:
+
+- **Go to**: replace the active scene and normally enter the destination fresh;
+- **Go to and resume**: replace the active scene and request its remembered
+  state path;
+- **Open**: retain the current bounded scene context and activate another scene;
+- **Return**: close the opened scene and resume the retained context.
+
+Open/Return requires a target-profile-bounded scene-context stack. A retained
+context includes, at minimum, the active state path and scene-local variables.
+Resolved placement is recomputed from semantic state. Timer deadlines, queued
+events, waiting-animation phase, and audio continuation require explicit
+suspend/resume rules before this navigation mode can be exposed. No tool may
+infer those policies.
+
+The menu example target is:
+
+```text
+Package Entry -> Main Menu                    # fresh
+Main Menu [Menu Selection > Settings]
+  -> Open Settings
+Settings -> Return
+Main Menu [Menu Selection > Settings]         # restored
 ```
 
 Rules:
@@ -684,7 +797,9 @@ Rules:
 - every state transition target must resolve.
 - entry, exit, and transition actions must be bounded.
 - transition selection order must be deterministic.
-- parallel regions are allowed only if their scheduling, event ordering, and action cost are statically bounded.
+- parallel regions are outside the first hierarchical bring-up slice. They may
+  be added only if scheduling, event ordering, and action cost are statically
+  bounded.
 - history states, deep history, or deferred events may exist only if the compiler can express them in bounded PeepOS runtime primitives.
 - the editor may show hierarchy; the runtime package receives validated flattened or table-driven logic.
 
@@ -871,8 +986,8 @@ state_render_element:
   asset_ref                 # sprite only
   frame_ref                 # sprite only
   primitive_geometry        # primitive only; bounded integer coordinates
+  line_direction            # line only; down_right (default) or up_right
   primitive_ink             # fixed black in the initial executable subset
-  line_direction            # line only: down_right (default) or up_right
 ```
 
 Rules:
@@ -895,6 +1010,8 @@ Rules:
   explicit package layer, visibility, z-order, bounds, and one of `sprite`,
   `line`, `outline_rect`, `filled_rect`, `circle`, `ellipse`, `filled_circle`, or
   `filled_ellipse`.
+- `RND2` line records use a bounded flag for `up_right`; an absent flag and all
+  older source/package records default to `down_right`.
 - `RND1` remains accepted by the package parser and HW6 loader for backward
   compatibility; new builds emit `RND2`.
 - initial primitives use fixed black ink. White/clear ink is not exposed yet.
@@ -990,6 +1107,81 @@ the scene-owned object. Package compilation may flatten those overrides into
 target-specific retained records, but authored source must keep the scene object
 identity stable.
 
+### Placement Scope And Inheritance
+
+Placement authoring distinguishes the scene base from state-owned variations:
+
+- **Scene Base** owns the stable object identities and their default position,
+  visibility, visual, layer, and draw order. A base-visible object is inherited
+  by every current and future state unless a state overrides it.
+- **State scope** owns only the properties it changes. It does not create a
+  second render element or an independent screen layout.
+- selecting every currently declared state is not equivalent to Scene Base.
+  It is an exact set of state IDs and does not silently expand when a future
+  state is added.
+- changing a Scene Base property must not rewrite or clear explicit state
+  overrides. Clearing an override is a separate author action.
+- clearing a local property override restores the next inherited value rather
+  than copying that value into the state record.
+
+An object added to an exact set of states remains one scene-owned object. Its
+canonical flat-state representation is base `visible: false` plus
+`visible: true` overrides for the selected state IDs. This makes the object
+absent from new states added later. An object added to Scene Base uses its base
+visibility and is inherited by new states automatically.
+
+Earlier hierarchical-placement planning proposed the following order. This is
+not executable behavior and is deferred by the scene-object ownership contract:
+
+```text
+Scene Base -> outermost active parent -> ... -> active leaf
+```
+
+Hierarchical precedence must be agreed before implementation. The first
+scene-object increment rejects simultaneously active controllers overriding
+the same property instead of applying a deepest-state-wins rule. Existing flat
+state-set authoring retains its current meaning; it does not imply parent-state
+inheritance or introduce hierarchical runtime overrides.
+
+Multi-state authoring operations must carry an explicit, bounded state-ID set
+and apply atomically through the Python service. The transient editor selection
+is not package semantics. React must not infer ownership by cloning render
+elements or by manufacturing independent per-state render models.
+
+Service API 36 provides the first source-authoring operations for this model:
+
+```text
+placement_object.add
+  scene_id
+  scope:
+    kind: scene_base
+    # or
+    kind: states
+    state_ids[]               # exact non-empty set; maximum 64
+  element
+
+state_placement.clear_override
+  scene_id
+  state_id
+  element_id
+  properties[]                # optional: position, visible, visual_ref
+```
+
+`placement_object.add` derives the scene's sole placement model. For an exact
+state set it writes one base-hidden scene element plus visible overrides for
+those states in one validated transaction. `state_placement.clear_override`
+removes the requested local fields, or the complete local override when
+`properties` is omitted. Neither operation changes the compiled RND2 format.
+
+Valid project-document responses also include a derived
+`placement_ownership` projection. For each scene it identifies the placement
+model, state-scoped element IDs, and each state's resolved elements. Per-element
+state changes report ordered `local_properties` (`position`, `visible`, or
+`visual_ref`) plus whether the element is animated in that state. This
+projection is editor-facing provenance only: it is recomputed from the
+validated source and is never saved into `.peepproj` files or emitted in RND2.
+Peep Studio must use this projection rather than interpreting raw placement or
+waiting-animation records in React.
 The live ownership target is defined in
 [[Scene_Object_Lifetime_and_Control_Contract]], with branch coordination in
 [[Peep_Studio_Scene_Object_Ownership_Handoff]]. Shared source placement is not
@@ -1147,6 +1339,24 @@ editor_data:
       scene_id:
         x
         y
+    package_entry:
+      x
+      y
+    references:
+      reference_id:
+        target_scene
+        x
+        y
+    exit_references:
+      source_scene_id:
+        endpoint_kind:endpoint_id: reference_id
+    routes:
+      source_scene_id:
+        endpoint_kind:endpoint_id:
+          routing_version: 1
+          rails[]:
+            axis
+            value
   state_graph:
     scenes:
       scene_id:
@@ -1154,17 +1364,88 @@ editor_data:
           state_id:
             x
             y
+        routes:
+          route_id:
+            sources:
+              state_id:
+                routing_version
+                target_handle
+                target_side
+                rails[]:
+                  axis
+                  value
+                token_positions:
+                  condition
+                  actions[]
   comments[]
   bookmarks[]
   local_ui_state
 ```
 
-The first executable Peep Studio subset stores scene-flow positions in
-`project.editor.scene_flow.nodes[scene_id] = { x, y }` and per-scene STATE graph
+Peep Studio stores scene-card positions in
+`project.editor.scene_flow.nodes[scene_id] = { x, y }`, the standalone package
+entry position in `project.editor.scene_flow.package_entry`, and reusable
+editor-only Go To nodes in
+`project.editor.scene_flow.references[reference_id] = { target_scene, x, y }`.
+`exit_references[source_scene_id][endpoint_kind:endpoint_id]` optionally maps a
+declared scene exit or legacy scene route to the Go To node used to represent
+its real destination visually. Removing that mapping or deleting the reference
+does not alter the semantic scene destination.
+Reference IDs are stable editor IDs, at most 64 Go To references are stored per
+project, and every mapped endpoint must have the same semantic `target_scene`
+as its selected reference.
+
+Manual Scene Flow geometry is stored under
+`project.editor.scene_flow.routes[source_scene_id][endpoint_kind:endpoint_id]`.
+Version 1 stores at most eight alternating `x` and `y` rails. Rails refine the
+orthogonal middle of the connection while its first and last joins remain
+attached to the current source exit and destination entry. An empty rail list
+removes the record and returns the transition to automatic routing. This data,
+including crossing bridges and automatic fan-out derived from it, is editor-only
+and must not change compiled package bytes or runtime transition order.
+
+Per-scene STATE graph
 positions in
-`project.editor.state_graph.scenes[scene_id].nodes[state_id] = { x, y }`. These
+`project.editor.state_graph.scenes[scene_id].nodes[node_id] = { x, y }`. State
+IDs are used for state cards; `scene-entry` and
+`scene-exit-<scene_exit_id>` identify the semantic endpoint nodes. These
 coordinates are for author comprehension only; they do not change scene order,
 entry behavior, routes, preview behavior, or compiled package bytes.
+
+`scene.rename` changes only a scene's author-facing `display_name` and preserves
+its stable `scene_id`. `project.set_entry_scene` changes the semantic package
+entry scene and is represented in Scene Flow by reconnecting the Package Entry
+node's single output.
+
+Manual STATE-transition routing stores zero to eight alternating horizontal or
+vertical rail coordinates per visible route branch in
+`project.editor.state_graph.scenes[scene_id].routes[route_id].sources[state_id].rails`.
+Each rail has `axis: x|y` and a numeric `value`. Version 3 layouts may also save
+one `target_handle` chosen from the four corner entry zones plus one
+`target_side`. Each corner exposes two valid directional ports: top and left,
+top and right, bottom and left, or bottom and right. The port choice is
+presentation-only and does not change the route's semantic target state.
+
+Version 3 route layouts may also store `token_positions`. `condition` is the
+optional aggregated guard-chip position, and `actions` contains visible action-
+chip positions in semantic execution order. Each value is a normalized path
+fraction from `0.02` to `0.98`; present values must be strictly increasing.
+Peep Studio prevents adjacent tokens from crossing, so moving a chip never
+reorders guards or actions.
+
+Peep Studio derives right-angle intersections and endpoint joins from the saved
+rails. Generated corners, hover controls, card-relative endpoints, and arrow
+geometry must never be persisted. Moving a card updates only those derived
+joins while preserving the author's middle rails. Every straight section,
+including the outgoing and incoming sections, is draggable; Peep Studio derives
+the required right-angle endpoint joins. Dragging the arrow selects a
+destination corner and approach side, and double-clicking a route adds a movable
+jog. Clearing the rails, target handle, and target side restores fully automatic
+routing. Version 2 waypoint layouts and older
+unversioned bring-up layouts remain readable project data but Peep Studio must
+ignore them rather than carrying obsolete helper geometry into the rail router.
+Route layouts are editor-only and must not alter action order, transition
+behavior, preview behavior, or compiled package bytes.
 
 Rules:
 
@@ -1172,6 +1453,7 @@ Rules:
 - editor-only data must not affect package runtime behavior.
 - package builds must be deterministic when editor-only data changes.
 - editor-only data must not be installed to the device except where a future debug artifact explicitly records it as tooling metadata.
+- stale node and route layout records must be removed when their semantic records are deleted.
 
 ---
 
@@ -1267,7 +1549,9 @@ Rules:
 
 For the initial STATE subset, preview launch accepts a selected `scene_id` plus
 an explicit initial state or the scene's declared entry state. This is an
-editor-only launch fixture. Preview then consumes compiled package scene,
+editor-only launch fixture. `project.preview_reset` starts the live emulator at
+that state, while `project.preview_state` remains a side-effect-free exact-state
+render for Placement. Preview then consumes compiled package scene,
 sprite, animation, and waiting-visual records; it must not draw from source PNG
 files or use React-only animation rules. Input and time advance only through
 explicit preview operations, and every returned frame is an exact `168 x 144`
@@ -1304,6 +1588,7 @@ Rules:
 Any GUI or CLI should call the toolchain through stable operations:
 
 ```text
+project.create
 project.load
 project.save
 project.import_template
@@ -1319,6 +1604,10 @@ project.clean_generated
 Rules:
 
 - operation results are schema-versioned.
+- new projects are created from ordinary editable schema records, not copied
+  examples or UI-protected templates.
+- new project source references are relative to the `.peepproj` root, and
+  creation must reject an existing destination rather than overwrite it.
 - validation results use stable codes.
 - package builds record selected target profile, tool versions, schema versions, and content hashes.
 - the GUI must not bypass validation when exporting installable artifacts.

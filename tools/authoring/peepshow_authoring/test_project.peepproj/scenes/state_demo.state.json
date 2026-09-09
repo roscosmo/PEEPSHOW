@@ -36,6 +36,13 @@
       "logical_source": "BUTTON_A"
     }
   ],
+  "scene_exits": [
+    {
+      "scene_exit_id": "to_state_details",
+      "display_name": "Details Scene",
+      "target_scene": "state_details"
+    }
+  ],
   "states": [
     {
       "state_id": "left",
@@ -397,6 +404,7 @@
       ],
       "guards": [],
       "actions": [],
+      "scene_exit_ref": "to_state_details",
       "target_scene": "state_details"
     }
   ],

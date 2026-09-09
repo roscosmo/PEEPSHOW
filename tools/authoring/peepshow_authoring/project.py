@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import re
+import shutil
 from copy import deepcopy
 from dataclasses import dataclass
 from math import gcd
@@ -29,6 +30,7 @@ from .image_assets import (
 from .system_fonts import SystemFontError, rasterize_system_font_text
 from .target_profile import (
     SUPPORTED_TARGET_PROFILE_IDS,
+    TARGET_PROFILE_ID,
     TARGET_STATE_SCENE_EVENTS,
     TARGET_STATE_TIMER,
 )
@@ -53,6 +55,25 @@ LOGICAL_INPUT_SOURCES = {
     "JOY_DOWN_RIGHT",
 }
 STATE_WAITING_ANIMATION_QUANTUM_MS = 250
+STATE_GRAPH_ROUTE_RAIL_MAX = 8
+STATE_GRAPH_ROUTE_ACTION_TOKEN_MAX = 8
+STATE_GRAPH_ROUTE_LAYOUT_VERSION = 3
+SCENE_FLOW_REFERENCE_MAX = 64
+SCENE_FLOW_ROUTE_LAYOUT_VERSION = 1
+STATE_GRAPH_SYSTEM_EXIT_NODE_ID = "system-exit"
+STATE_GRAPH_ENTRY_HANDLES = {
+    "entry-top-left",
+    "entry-top-right",
+    "entry-bottom-left",
+    "entry-bottom-right",
+}
+STATE_GRAPH_ENTRY_SIDES = {"left", "right", "top", "bottom"}
+STATE_GRAPH_ENTRY_HANDLE_SIDES = {
+    "entry-top-left": {"top", "left"},
+    "entry-top-right": {"top", "right"},
+    "entry-bottom-left": {"bottom", "left"},
+    "entry-bottom-right": {"bottom", "right"},
+}
 LOGICAL_INPUT_EVENT_KINDS = {"press", "release", "hold", "repeat"}
 JOYSTICK_POLICIES = {"four_way", "eight_way"}
 STATE_EVENT_BINDING_MAX = int(TARGET_STATE_SCENE_EVENTS["binding_count_max"])
@@ -87,7 +108,7 @@ SCENE_KEYS = {
     "reactive_wait_default",
     "interaction_policy",
 }
-SCENE_OPTIONAL_KEYS = {"joystick_policy", "event_bindings", "event_handlers"}
+SCENE_OPTIONAL_KEYS = {"joystick_policy", "scene_exits", "event_bindings", "event_handlers"}
 
 
 @dataclass(frozen=True)
@@ -237,6 +258,116 @@ def _command_move_index(value: Any, field: str, length: int) -> int:
     return index
 
 
+def _apply_scene_add(
+    root: Path,
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    scene_sources: list[str],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "display_name"},
+        {"kind", "display_name", "command_id"},
+    )
+    display_name = command.get("display_name")
+    issues: list[ValidationIssue] = []
+    _text(display_name, "command.display_name", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    if len(scenes) >= 32:
+        raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "project supports at most 32 scenes")
+
+    manifest_sources = project.get("scene_sources")
+    if not isinstance(manifest_sources, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.scene_sources must be an array")
+    if len(scene_sources) != len(scenes) or manifest_sources != scene_sources:
+        raise ProjectCommandError("PROJECT_SOURCE_MISMATCH", "loaded scene sources do not match the project manifest")
+
+    existing_ids = {
+        str(scene.get("scene_id"))
+        for scene in scenes
+        if isinstance(scene.get("scene_id"), str)
+    }
+    base_id = _new_project_slug(str(display_name))
+    scene_id = base_id
+    suffix = 2
+    while True:
+        source = f"scenes/{scene_id}.state.json"
+        if (
+            scene_id not in existing_ids
+            and source not in scene_sources
+            and not (root / source).exists()
+        ):
+            break
+        scene_id = f"{base_id}_{suffix}"
+        suffix += 1
+
+    interaction_template = scenes[0].get("interaction_policy") if scenes else None
+    scene = _new_state_scene(
+        scene_id,
+        str(display_name),
+        interaction_template=interaction_template,
+    )
+    scenes.append(scene)
+    scene_sources.append(source)
+    manifest_sources.append(source)
+    return {
+        "kind": "scene.add",
+        "scene_id": scene_id,
+        "display_name": display_name,
+        "source": source,
+    }
+
+
+def _apply_scene_rename(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "display_name"},
+        {"kind", "scene_id", "display_name", "command_id"},
+    )
+    scene_id = command.get("scene_id")
+    display_name = command.get("display_name")
+    issues: list[ValidationIssue] = []
+    _stable_id(scene_id, "command.scene_id", issues)
+    _text(display_name, "command.display_name", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    scene = _command_scene(scenes, scene_id)
+    scene["display_name"] = display_name
+    return {
+        "kind": "scene.rename",
+        "scene_id": scene_id,
+        "display_name": display_name,
+    }
+
+
+def _apply_project_set_entry_scene(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id"},
+        {"kind", "scene_id", "command_id"},
+    )
+    scene_id = command.get("scene_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(scene_id, "command.scene_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    _command_scene(scenes, scene_id)
+    project["entry_scene"] = scene_id
+    return {"kind": "project.set_entry_scene", "scene_id": scene_id}
+
+
 def _apply_state_add(
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
@@ -266,6 +397,93 @@ def _apply_state_add(
     normalized = deepcopy(state)
     states.append(normalized)
     return {"kind": "state.add", "scene_id": scene.get("scene_id"), "state": normalized}
+
+
+def _apply_state_create(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "display_name", "x", "y"},
+        {"kind", "scene_id", "display_name", "x", "y", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    display_name = command.get("display_name")
+    issues: list[ValidationIssue] = []
+    _text(display_name, "command.display_name", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+
+    states = scene.get("states")
+    if not isinstance(states, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.states must be an array")
+    existing_ids = {
+        str(state.get("state_id"))
+        for state in states
+        if isinstance(state, dict) and isinstance(state.get("state_id"), str)
+    }
+    base_id = _new_project_slug(str(display_name))
+    state_id = base_id
+    suffix = 2
+    while state_id in existing_ids:
+        state_id = f"{base_id}_{suffix}"
+        suffix += 1
+
+    waiting_visual_ids = [
+        waiting.get("waiting_visual_id")
+        for waiting in scene.get("waiting_visuals", [])
+        if isinstance(waiting, dict) and isinstance(waiting.get("waiting_visual_id"), str)
+    ]
+    entry_state_id = scene.get("entry_state")
+    entry_state = next(
+        (
+            state
+            for state in states
+            if isinstance(state, dict) and state.get("state_id") == entry_state_id
+        ),
+        None,
+    )
+    waiting_visual_ref = entry_state.get("waiting_visual_ref") if isinstance(entry_state, dict) else None
+    if waiting_visual_ref not in waiting_visual_ids:
+        waiting_visual_ref = waiting_visual_ids[0] if waiting_visual_ids else None
+    if waiting_visual_ref is None:
+        raise ProjectCommandError(
+            "COMMAND_TARGET_UNKNOWN",
+            "scene has no waiting presentation for a new state",
+        )
+
+    x = _layout_coordinate(command.get("x"), "command.x")
+    y = _layout_coordinate(command.get("y"), "command.y")
+    state = {
+        "state_id": state_id,
+        "display_name": display_name,
+        "waiting_visual_ref": waiting_visual_ref,
+    }
+    added = _apply_state_add(
+        scenes,
+        {"kind": "state.add", "scene_id": scene.get("scene_id"), "state": state},
+    )
+    positioned = _apply_state_graph_node_position(
+        project,
+        scenes,
+        {
+            "kind": "editor.state_graph.set_node_position",
+            "scene_id": scene.get("scene_id"),
+            "state_id": state_id,
+            "x": x,
+            "y": y,
+        },
+    )
+    return {
+        "kind": "state.create",
+        "scene_id": scene.get("scene_id"),
+        "state": added["state"],
+        "x": positioned["x"],
+        "y": positioned["y"],
+    }
 
 
 def _apply_state_delete(
@@ -518,6 +736,239 @@ def _apply_input_action_delete(
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown input action '{action_id}'")
 
 
+def _unique_generated_record_id(
+    records: list[dict[str, Any]],
+    id_field: str,
+    base: str,
+) -> str:
+    normalized = _route_id_component(base)[:64].rstrip("_.-")
+    existing = {
+        record.get(id_field)
+        for record in records
+        if isinstance(record, dict)
+    }
+    if normalized not in existing:
+        return normalized
+    for suffix in range(2, len(records) + 3):
+        suffix_text = f"_{suffix}"
+        candidate = f"{normalized[:64 - len(suffix_text)].rstrip('_.-')}{suffix_text}"
+        if candidate not in existing:
+            return candidate
+    raise ProjectCommandError("COMMAND_TARGET_INVALID", f"could not generate a unique {id_field}")
+
+
+def _append_input_policy_reference(
+    scene: dict[str, Any],
+    policy_field: str,
+    references_field: str,
+    action_id: str,
+) -> None:
+    policy = scene.get(policy_field)
+    references = policy.get(references_field) if isinstance(policy, dict) else None
+    if not isinstance(references, list):
+        raise ProjectCommandError(
+            "PROJECT_TYPE_INVALID",
+            f"scene.{policy_field}.{references_field} must be an array",
+        )
+    if action_id not in references:
+        references.append(action_id)
+
+
+def _remove_input_policy_reference(
+    scene: dict[str, Any],
+    policy_field: str,
+    references_field: str,
+    action_id: str,
+) -> None:
+    policy = scene.get(policy_field)
+    references = policy.get(references_field) if isinstance(policy, dict) else None
+    if isinstance(references, list):
+        policy[references_field] = [value for value in references if value != action_id]
+
+
+def _validate_logical_input_binding(
+    scene: dict[str, Any],
+    logical_source: Any,
+    event_kind: Any,
+) -> None:
+    if logical_source not in LOGICAL_INPUT_SOURCES:
+        raise ProjectCommandError("INPUT_SOURCE_INVALID", "unsupported logical source")
+    if event_kind not in LOGICAL_INPUT_EVENT_KINDS:
+        raise ProjectCommandError("INPUT_EVENT_INVALID", "event_kind must be press, release, hold, or repeat")
+    if logical_source == "BUTTON_START" and event_kind != "press":
+        raise ProjectCommandError("INPUT_EVENT_SYSTEM_OWNED", "START supports package press only")
+    if logical_source in {
+        "JOY_UP_LEFT",
+        "JOY_UP_RIGHT",
+        "JOY_DOWN_LEFT",
+        "JOY_DOWN_RIGHT",
+    } and scene.get("joystick_policy", "four_way") != "eight_way":
+        raise ProjectCommandError("JOYSTICK_POLICY_REQUIRED", "diagonal bindings require eight_way")
+
+
+def _apply_route_create_trigger(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "source_state", "logical_source"},
+        {
+            "kind",
+            "scene_id",
+            "source_state",
+            "logical_source",
+            "event_kind",
+            "target_state",
+            "scene_exit_ref",
+            "system_exit",
+            "target_handle",
+            "target_side",
+            "command_id",
+        },
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    source_state = command.get("source_state")
+    _command_record(scene, "states", "state_id", source_state)
+
+    logical_source = command.get("logical_source")
+    event_kind = command.get("event_kind", "press")
+    _validate_logical_input_binding(scene, logical_source, event_kind)
+
+    has_target_state = "target_state" in command
+    has_scene_exit = "scene_exit_ref" in command
+    has_system_exit = "system_exit" in command
+    if sum((has_target_state, has_scene_exit, has_system_exit)) != 1:
+        raise ProjectCommandError(
+            "COMMAND_SHAPE_INVALID",
+            "route.create_trigger requires exactly one destination",
+        )
+    if has_system_exit and command.get("system_exit") is not True:
+        raise ProjectCommandError("COMMAND_SHAPE_INVALID", "system_exit must be true")
+
+    route_target: dict[str, str]
+    if has_target_state:
+        target_state = command.get("target_state")
+        _command_record(scene, "states", "state_id", target_state)
+        route_target = {"target_state": str(target_state)}
+    elif has_scene_exit:
+        scene_exit = _command_record(
+            scene,
+            "scene_exits",
+            "scene_exit_id",
+            command.get("scene_exit_ref"),
+        )
+        route_target = {
+            "scene_exit_ref": str(scene_exit.get("scene_exit_id")),
+            "target_scene": str(scene_exit.get("target_scene")),
+        }
+    else:
+        route_target = {"target_state": str(source_state)}
+
+    input_actions = scene.get("input_actions")
+    routes = scene.get("routes")
+    if not isinstance(input_actions, list) or not isinstance(routes, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene input actions and routes must be arrays")
+    input_action = next(
+        (
+            action
+            for action in input_actions
+            if isinstance(action, dict)
+            and action.get("logical_source") == logical_source
+            and action.get("event_kind", "press") == event_kind
+        ),
+        None,
+    )
+    input_action_created = input_action is None
+    if input_action is None:
+        if len(input_actions) >= 32:
+            raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "scene supports at most 32 input actions")
+        action_id = _unique_generated_record_id(
+            input_actions,
+            "action_id",
+            f"{str(logical_source).lower()}_{event_kind}",
+        )
+        input_action = {
+            "action_id": action_id,
+            "logical_source": logical_source,
+            "event_kind": event_kind,
+        }
+        input_actions.append(input_action)
+    else:
+        action_id = str(input_action.get("action_id"))
+
+    if any(
+        isinstance(route, dict)
+        and route.get("action_ref") == action_id
+        and source_state in route.get("from_states", [])
+        for route in routes
+    ):
+        raise ProjectCommandError(
+            "ROUTE_TRIGGER_IN_USE",
+            f"{logical_source} {event_kind} already has a transition from state '{source_state}'",
+        )
+    if len(routes) >= 128:
+        raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "scene supports at most 128 routes")
+
+    route_id = _unique_generated_record_id(
+        routes,
+        "route_id",
+        f"{source_state}_{action_id}",
+    )
+    route = {
+        "route_id": route_id,
+        "action_ref": action_id,
+        "from_states": [source_state],
+        "guards": [],
+        "actions": [{"kind": "exit_to_shell"}] if has_system_exit else [],
+        **route_target,
+    }
+    routes.append(route)
+    _append_input_policy_reference(
+        scene,
+        "reactive_wait_default",
+        "event_interests",
+        action_id,
+    )
+    _append_input_policy_reference(
+        scene,
+        "interaction_policy",
+        "meaningful_activity_actions",
+        action_id,
+    )
+
+    result: dict[str, Any] = {
+        "kind": "route.create_trigger",
+        "scene_id": scene.get("scene_id"),
+        "source_state": source_state,
+        "input_action": deepcopy(input_action),
+        "input_action_created": input_action_created,
+        "route": deepcopy(route),
+    }
+    if "target_handle" in command or "target_side" in command:
+        if not has_target_state:
+            raise ProjectCommandError(
+                "COMMAND_SHAPE_INVALID",
+                "scene-exit transitions cannot select a state entry socket",
+            )
+        layout = _apply_state_graph_route_layout(
+            project,
+            scenes,
+            {
+                "kind": "editor.state_graph.set_route_layout",
+                "scene_id": scene.get("scene_id"),
+                "route_id": route_id,
+                "source_state": source_state,
+                "rails": [],
+                "target_handle": command.get("target_handle"),
+                "target_side": command.get("target_side"),
+            },
+        )
+        result["route_layout"] = layout
+    return result
+
+
 def _apply_event_binding_upsert(
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
@@ -584,6 +1035,93 @@ def _apply_event_binding_upsert(
         "kind": kind,
         "scene_id": scene.get("scene_id"),
         "event_binding": normalized,
+    }
+
+
+def _apply_route_rebind_trigger(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "route_id", "logical_source"},
+        {"kind", "scene_id", "route_id", "logical_source", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    route = _command_record(scene, "routes", "route_id", command.get("route_id"))
+    input_actions = scene.get("input_actions")
+    routes = scene.get("routes")
+    if not isinstance(input_actions, list) or not isinstance(routes, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene input actions and routes must be arrays")
+    previous_action = _command_record(scene, "input_actions", "action_id", route.get("action_ref"))
+    previous_action_id = str(previous_action.get("action_id"))
+    event_kind = previous_action.get("event_kind", "press")
+    logical_source = command.get("logical_source")
+    _validate_logical_input_binding(scene, logical_source, event_kind)
+
+    input_action = next(
+        (
+            action
+            for action in input_actions
+            if isinstance(action, dict)
+            and action.get("logical_source") == logical_source
+            and action.get("event_kind", "press") == event_kind
+        ),
+        None,
+    )
+    input_action_created = input_action is None
+    if input_action is None:
+        if len(input_actions) >= 32:
+            raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "scene supports at most 32 input actions")
+        action_id = _unique_generated_record_id(
+            input_actions,
+            "action_id",
+            f"{str(logical_source).lower()}_{event_kind}",
+        )
+        input_action = {
+            "action_id": action_id,
+            "logical_source": logical_source,
+            "event_kind": event_kind,
+        }
+        input_actions.append(input_action)
+    else:
+        action_id = str(input_action.get("action_id"))
+
+    source_states = set(route.get("from_states", []))
+    if any(
+        isinstance(candidate, dict)
+        and candidate is not route
+        and candidate.get("action_ref") == action_id
+        and source_states.intersection(candidate.get("from_states", []))
+        for candidate in routes
+    ):
+        raise ProjectCommandError(
+            "ROUTE_TRIGGER_IN_USE",
+            f"{logical_source} {event_kind} already has a transition from this route's state",
+        )
+
+    route["action_ref"] = action_id
+    _append_input_policy_reference(scene, "reactive_wait_default", "event_interests", action_id)
+    _append_input_policy_reference(scene, "interaction_policy", "meaningful_activity_actions", action_id)
+    previous_action_removed = False
+    if previous_action_id != action_id and not any(
+        isinstance(candidate, dict) and candidate.get("action_ref") == previous_action_id
+        for candidate in routes
+    ):
+        input_actions.remove(previous_action)
+        _remove_input_policy_reference(scene, "reactive_wait_default", "event_interests", previous_action_id)
+        _remove_input_policy_reference(scene, "interaction_policy", "meaningful_activity_actions", previous_action_id)
+        previous_action_removed = True
+
+    return {
+        "kind": "route.rebind_trigger",
+        "scene_id": scene.get("scene_id"),
+        "route_id": route.get("route_id"),
+        "input_action": deepcopy(input_action),
+        "input_action_created": input_action_created,
+        "previous_action_id": previous_action_id,
+        "previous_action_removed": previous_action_removed,
+        "route": deepcopy(route),
     }
 
 
@@ -700,7 +1238,49 @@ def _apply_route_add(
     return {"kind": "route.add", "scene_id": scene.get("scene_id"), "route": normalized}
 
 
+def _remove_state_graph_route_layout(
+    project: dict[str, Any],
+    scene_id: Any,
+    route_id: Any,
+) -> None:
+    editor = project.get("editor")
+    state_graph = editor.get("state_graph") if isinstance(editor, dict) else None
+    graph_scenes = state_graph.get("scenes") if isinstance(state_graph, dict) else None
+    scene_layout = graph_scenes.get(scene_id) if isinstance(graph_scenes, dict) else None
+    routes = scene_layout.get("routes") if isinstance(scene_layout, dict) else None
+    if isinstance(routes, dict):
+        routes.pop(route_id, None)
+        if not routes:
+            scene_layout.pop("routes", None)
+
+
+def _retain_state_graph_route_sources(
+    project: dict[str, Any],
+    scene_id: Any,
+    route_id: Any,
+    source_states: list[Any],
+) -> None:
+    editor = project.get("editor")
+    state_graph = editor.get("state_graph") if isinstance(editor, dict) else None
+    graph_scenes = state_graph.get("scenes") if isinstance(state_graph, dict) else None
+    scene_layout = graph_scenes.get(scene_id) if isinstance(graph_scenes, dict) else None
+    routes = scene_layout.get("routes") if isinstance(scene_layout, dict) else None
+    route_layout = routes.get(route_id) if isinstance(routes, dict) else None
+    sources = route_layout.get("sources") if isinstance(route_layout, dict) else None
+    if not isinstance(sources, dict):
+        return
+    retained = set(source_states)
+    for source_state in list(sources):
+        if source_state not in retained:
+            sources.pop(source_state, None)
+    if not sources:
+        routes.pop(route_id, None)
+    if not routes:
+        scene_layout.pop("routes", None)
+
+
 def _apply_route_delete(
+    project: dict[str, Any],
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
 ) -> dict[str, Any]:
@@ -713,11 +1293,26 @@ def _apply_route_delete(
     for index, route in enumerate(routes):
         if isinstance(route, dict) and route.get("route_id") == route_id:
             routes.pop(index)
+            _remove_state_graph_route_layout(project, scene.get("scene_id"), route_id)
+            _set_scene_flow_exit_reference(
+                project,
+                str(scene.get("scene_id")),
+                "route",
+                str(route_id),
+                None,
+            )
+            _remove_scene_flow_route_layout(
+                project,
+                str(scene.get("scene_id")),
+                "route",
+                str(route_id),
+            )
             return {"kind": "route.delete", "scene_id": scene.get("scene_id"), "route_id": route_id}
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown route '{route_id}'")
 
 
 def _apply_route_set_binding(
+    project: dict[str, Any],
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
 ) -> dict[str, Any]:
@@ -754,6 +1349,8 @@ def _apply_route_set_binding(
             )
         route.pop("action_ref", None)
     route[field] = value
+    if field == "from_states":
+        _retain_state_graph_route_sources(project, scene.get("scene_id"), route.get("route_id"), value)
     return {"kind": kind, "scene_id": scene.get("scene_id"), "route_id": route.get("route_id"), field: value}
 
 
@@ -818,19 +1415,21 @@ def _apply_state_rename(
 
 
 def _apply_route_set_target(
+    project: dict[str, Any],
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
 ) -> dict[str, Any]:
     _require_command_fields(
         command,
         {"kind", "scene_id", "route_id"},
-        {"kind", "scene_id", "route_id", "target_state", "target_scene", "command_id"},
+        {"kind", "scene_id", "route_id", "target_state", "target_scene", "scene_exit_ref", "command_id"},
     )
     issues: list[ValidationIssue] = []
     scene_id = command.get("scene_id")
     route_id = command.get("route_id")
     target_state = command.get("target_state")
     target_scene = command.get("target_scene")
+    scene_exit_ref = command.get("scene_exit_ref")
     has_target_state = "target_state" in command
     has_target_scene = "target_scene" in command
     _stable_id(scene_id, "command.scene_id", issues)
@@ -865,6 +1464,19 @@ def _apply_route_set_target(
             raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown target state '{target_state}'")
         if has_target_scene and target_scene not in scene_ids:
             raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown target scene '{target_scene}'")
+        if has_target_scene and scene_exit_ref is not None:
+            matching_exit = next(
+                (
+                    scene_exit
+                    for scene_exit in scene.get("scene_exits", [])
+                    if isinstance(scene_exit, dict) and scene_exit.get("scene_exit_id") == scene_exit_ref
+                ),
+                None,
+            )
+            if matching_exit is None:
+                raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene exit '{scene_exit_ref}'")
+            if matching_exit.get("target_scene") != target_scene:
+                raise ProjectCommandError("COMMAND_TARGET_INVALID", "scene exit target does not match target_scene")
         for route in scene.get("routes", []):
             if isinstance(route, dict) and route.get("route_id") == route_id:
                 if has_target_scene and any(
@@ -882,12 +1494,29 @@ def _apply_route_set_target(
                 }
                 if has_target_state:
                     route.pop("target_scene", None)
+                    route.pop("scene_exit_ref", None)
                     route["target_state"] = target_state
+                    _set_scene_flow_exit_reference(project, str(scene_id), "route", str(route_id), None)
+                    _remove_scene_flow_route_layout(project, str(scene_id), "route", str(route_id))
                     result["target_state"] = target_state
                 else:
                     route.pop("target_state", None)
                     route["target_scene"] = target_scene
+                    if scene_exit_ref is None:
+                        route.pop("scene_exit_ref", None)
+                    else:
+                        route["scene_exit_ref"] = scene_exit_ref
                     result["target_scene"] = target_scene
+                    if scene_exit_ref is not None:
+                        result["scene_exit_ref"] = scene_exit_ref
+                    scene_flow = project.get("editor", {}).get("scene_flow", {}) if isinstance(project.get("editor"), dict) else {}
+                    references = scene_flow.get("references", {}) if isinstance(scene_flow, dict) else {}
+                    groups = scene_flow.get("exit_references", {}) if isinstance(scene_flow, dict) else {}
+                    scene_group = groups.get(scene_id, {}) if isinstance(groups, dict) else {}
+                    reference_id = scene_group.get(_scene_flow_endpoint_key("route", str(route_id))) if isinstance(scene_group, dict) else None
+                    reference = references.get(reference_id) if isinstance(references, dict) else None
+                    if not isinstance(reference, dict) or reference.get("target_scene") != target_scene:
+                        _set_scene_flow_exit_reference(project, str(scene_id), "route", str(route_id), None)
                 return result
         raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown route '{route_id}'")
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
@@ -897,166 +1526,341 @@ def _route_id_component(value: str) -> str:
     return re.sub(r"[^a-z0-9_.-]+", "_", value.lower()).strip("_") or "exit"
 
 
-def _unique_generated_route_id(scene: dict[str, Any], logical_source: str, target_scene: str) -> str:
-    base = f"exit_{_route_id_component(logical_source)}_to_{_route_id_component(target_scene)}"
+def _scene_flow_data(project: dict[str, Any]) -> dict[str, Any]:
+    editor = project.setdefault("editor", {})
+    if not isinstance(editor, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor must be an object")
+    scene_flow = editor.setdefault("scene_flow", {})
+    if not isinstance(scene_flow, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor.scene_flow must be an object")
+    return scene_flow
+
+
+def _scene_flow_references(project: dict[str, Any]) -> dict[str, Any]:
+    references = _scene_flow_data(project).setdefault("references", {})
+    if not isinstance(references, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor.scene_flow.references must be an object")
+    return references
+
+
+def _scene_flow_reference(project: dict[str, Any], reference_id: Any) -> dict[str, Any]:
+    issues: list[ValidationIssue] = []
+    _stable_id(reference_id, "command.reference_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    reference = _scene_flow_references(project).get(reference_id)
+    if not isinstance(reference, dict):
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene-flow reference '{reference_id}'")
+    return reference
+
+
+def _scene_flow_endpoint_key(endpoint_kind: str, endpoint_id: str) -> str:
+    return f"{endpoint_kind}:{endpoint_id}"
+
+
+def _scene_flow_exit_reference_groups(project: dict[str, Any]) -> dict[str, Any]:
+    groups = _scene_flow_data(project).setdefault("exit_references", {})
+    if not isinstance(groups, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor.scene_flow.exit_references must be an object")
+    return groups
+
+
+def _scene_flow_route_groups(project: dict[str, Any]) -> dict[str, Any]:
+    groups = _scene_flow_data(project).setdefault("routes", {})
+    if not isinstance(groups, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor.scene_flow.routes must be an object")
+    return groups
+
+
+def _remove_scene_flow_route_layout(
+    project: dict[str, Any],
+    scene_id: str,
+    endpoint_kind: str,
+    endpoint_id: str,
+) -> None:
+    editor = project.get("editor")
+    scene_flow = editor.get("scene_flow") if isinstance(editor, dict) else None
+    groups = scene_flow.get("routes") if isinstance(scene_flow, dict) else None
+    if not isinstance(groups, dict):
+        return
+    scene_group = groups.get(scene_id)
+    if isinstance(scene_group, dict):
+        scene_group.pop(_scene_flow_endpoint_key(endpoint_kind, endpoint_id), None)
+        if not scene_group:
+            groups.pop(scene_id, None)
+    if not groups:
+        scene_flow.pop("routes", None)
+
+
+def _set_scene_flow_exit_reference(
+    project: dict[str, Any],
+    scene_id: str,
+    endpoint_kind: str,
+    endpoint_id: str,
+    reference_id: str | None,
+) -> None:
+    endpoint_key = _scene_flow_endpoint_key(endpoint_kind, endpoint_id)
+    if reference_id is None:
+        editor = project.get("editor")
+        scene_flow = editor.get("scene_flow") if isinstance(editor, dict) else None
+        groups = scene_flow.get("exit_references") if isinstance(scene_flow, dict) else None
+        if not isinstance(groups, dict):
+            return
+        scene_group = groups.get(scene_id)
+        if isinstance(scene_group, dict):
+            scene_group.pop(endpoint_key, None)
+            if not scene_group:
+                groups.pop(scene_id, None)
+        if not groups:
+            scene_flow.pop("exit_references", None)
+        return
+    groups = _scene_flow_exit_reference_groups(project)
+    scene_group = groups.setdefault(scene_id, {})
+    if not isinstance(scene_group, dict):
+        raise ProjectCommandError(
+            "PROJECT_TYPE_INVALID",
+            f"project.editor.scene_flow.exit_references[{scene_id}] must be an object",
+        )
+    scene_group[endpoint_key] = reference_id
+
+
+def _scene_flow_endpoint(
+    scenes: list[dict[str, Any]],
+    scene_id: str,
+    endpoint_kind: str,
+    endpoint_id: str,
+) -> dict[str, Any]:
+    scene = _command_scene(scenes, scene_id)
+    if endpoint_kind == "scene_exit":
+        return _command_record(scene, "scene_exits", "scene_exit_id", endpoint_id)
+    if endpoint_kind == "route":
+        return _command_record(scene, "routes", "route_id", endpoint_id)
+    raise ProjectCommandError(
+        "PROJECT_VALUE_INVALID",
+        "command.endpoint_kind must be scene_exit or route",
+    )
+
+
+def _set_scene_flow_endpoint_target(
+    scenes: list[dict[str, Any]],
+    scene_id: str,
+    endpoint_kind: str,
+    endpoint_id: str,
+    target_scene: str,
+) -> None:
+    if scene_id == target_scene:
+        raise ProjectCommandError("COMMAND_TARGET_INVALID", "scene exits must target another scene")
+    _command_scene(scenes, target_scene)
+    endpoint = _scene_flow_endpoint(scenes, scene_id, endpoint_kind, endpoint_id)
+    endpoint["target_scene"] = target_scene
+    if endpoint_kind == "scene_exit":
+        source_scene = _command_scene(scenes, scene_id)
+        for route in source_scene.get("routes", []):
+            if isinstance(route, dict) and route.get("scene_exit_ref") == endpoint_id:
+                route["target_scene"] = target_scene
+    else:
+        endpoint.pop("target_state", None)
+        endpoint.pop("scene_exit_ref", None)
+
+
+def _unique_generated_scene_exit_id(scene: dict[str, Any], target_scene: str) -> str:
+    base = f"to_{_route_id_component(target_scene)}"[:64].rstrip("_.-")
     existing = {
-        route.get("route_id")
-        for route in scene.get("routes", [])
-        if isinstance(route, dict)
+        scene_exit.get("scene_exit_id")
+        for scene_exit in scene.get("scene_exits", [])
+        if isinstance(scene_exit, dict)
     }
     if base not in existing:
         return base
     for suffix in range(2, 100):
-        candidate = f"{base}_{suffix}"
+        suffix_text = f"_{suffix}"
+        candidate = f"{base[:64 - len(suffix_text)].rstrip('_.-')}{suffix_text}"
         if candidate not in existing:
             return candidate
-    raise ProjectCommandError("COMMAND_TARGET_INVALID", "could not generate a unique route ID")
+    raise ProjectCommandError("COMMAND_TARGET_INVALID", "could not generate a unique scene exit ID")
 
 
-def _apply_route_add_scene_exit(
+def _apply_scene_exit_add(
+    project: dict[str, Any],
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
 ) -> dict[str, Any]:
     _require_command_fields(
         command,
-        {"kind", "scene_id", "logical_source", "target_scene"},
-        {"kind", "scene_id", "logical_source", "target_scene", "command_id"},
+        {"kind", "scene_id", "target_scene"},
+        {"kind", "scene_id", "target_scene", "display_name", "scene_flow_reference_id", "command_id"},
     )
     issues: list[ValidationIssue] = []
     scene_id = command.get("scene_id")
-    logical_source = command.get("logical_source")
     target_scene = command.get("target_scene")
+    display_name = command.get("display_name")
+    reference_id = command.get("scene_flow_reference_id")
     _stable_id(scene_id, "command.scene_id", issues)
     _stable_id(target_scene, "command.target_scene", issues)
-    if logical_source not in LOGICAL_INPUT_SOURCES:
-        raise ProjectCommandError("INPUT_SOURCE_INVALID", "unsupported logical source")
+    if display_name is not None:
+        _text(display_name, "command.display_name", issues)
     if scene_id == target_scene:
         raise ProjectCommandError("COMMAND_TARGET_INVALID", "scene exits must target another scene")
     if issues:
         issue = issues[0]
         raise ProjectCommandError(issue.code, issue.message)
 
-    scene_ids = {
-        scene.get("scene_id")
-        for scene in scenes
-        if isinstance(scene, dict)
-    }
-    if target_scene not in scene_ids:
+    target = next(
+        (
+            scene
+            for scene in scenes
+            if isinstance(scene, dict) and scene.get("scene_id") == target_scene
+        ),
+        None,
+    )
+    if target is None:
         raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown target scene '{target_scene}'")
+    if reference_id is not None:
+        reference = _scene_flow_reference(project, reference_id)
+        if reference.get("target_scene") != target_scene:
+            raise ProjectCommandError(
+                "COMMAND_TARGET_INVALID",
+                "scene-flow reference does not point to command.target_scene",
+            )
 
     for scene in scenes:
         if scene.get("scene_id") != scene_id:
             continue
-        states = [
-            state.get("state_id")
-            for state in scene.get("states", [])
-            if isinstance(state, dict) and isinstance(state.get("state_id"), str)
-        ]
-        if not states:
-            raise ProjectCommandError("COMMAND_TARGET_INVALID", "scene has no states to exit from")
-        for action in scene.get("input_actions", []):
-            if (
-                isinstance(action, dict)
-                and action.get("logical_source") == logical_source
-                and action.get("event_kind", "press") == "press"
-            ):
-                raise ProjectCommandError("INPUT_SOURCE_DUPLICATE", "logical source is already bound")
-
-        route_id = _unique_generated_route_id(scene, logical_source, target_scene)
-        input_action = {"action_id": route_id, "logical_source": logical_source}
-        route = {
-            "route_id": route_id,
-            "action_ref": route_id,
-            "from_states": states,
-            "guards": [],
-            "actions": [],
+        scene_exits = scene.setdefault("scene_exits", [])
+        if not isinstance(scene_exits, list):
+            raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.scene_exits must be an array")
+        if len(scene_exits) >= 32:
+            raise ProjectCommandError("PROJECT_LIMIT_EXCEEDED", "scene supports at most 32 scene exits")
+        scene_exit_id = _unique_generated_scene_exit_id(scene, str(target_scene))
+        scene_exit = {
+            "scene_exit_id": scene_exit_id,
+            "display_name": display_name or str(target.get("display_name") or target_scene),
             "target_scene": target_scene,
         }
-        scene.setdefault("input_actions", []).append(input_action)
-        scene.setdefault("routes", []).append(route)
-
-        wait_policy = scene.get("reactive_wait_default")
-        if isinstance(wait_policy, dict):
-            interests = wait_policy.get("event_interests")
-            if isinstance(interests, list) and route_id not in interests:
-                interests.append(route_id)
-        interaction = scene.get("interaction_policy")
-        if isinstance(interaction, dict):
-            meaningful = interaction.get("meaningful_activity_actions")
-            if isinstance(meaningful, list) and route_id not in meaningful:
-                meaningful.append(route_id)
+        scene_exits.append(scene_exit)
+        if isinstance(reference_id, str):
+            _set_scene_flow_exit_reference(
+                project,
+                str(scene_id),
+                "scene_exit",
+                scene_exit_id,
+                reference_id,
+            )
 
         return {
-            "kind": "route.add_scene_exit",
+            "kind": "scene_exit.add",
             "scene_id": scene_id,
-            "route_id": route_id,
-            "action_id": route_id,
-            "logical_source": logical_source,
-            "target_scene": target_scene,
-            "from_states": states,
+            "scene_exit": deepcopy(scene_exit),
         }
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
 
 
-def _apply_route_delete_scene_exit(
+def _apply_scene_exit_set_target(
+    project: dict[str, Any],
     scenes: list[dict[str, Any]],
     command: dict[str, Any],
 ) -> dict[str, Any]:
     _require_command_fields(
         command,
-        {"kind", "scene_id", "route_id"},
-        {"kind", "scene_id", "route_id", "command_id"},
+        {"kind", "scene_id", "scene_exit_id", "target_scene"},
+        {"kind", "scene_id", "scene_exit_id", "target_scene", "command_id"},
     )
     issues: list[ValidationIssue] = []
     scene_id = command.get("scene_id")
-    route_id = command.get("route_id")
+    scene_exit_id = command.get("scene_exit_id")
+    target_scene = command.get("target_scene")
     _stable_id(scene_id, "command.scene_id", issues)
-    _stable_id(route_id, "command.route_id", issues)
+    _stable_id(scene_exit_id, "command.scene_exit_id", issues)
+    _stable_id(target_scene, "command.target_scene", issues)
+    if scene_id == target_scene:
+        raise ProjectCommandError("COMMAND_TARGET_INVALID", "scene exits must target another scene")
     if issues:
         issue = issues[0]
         raise ProjectCommandError(issue.code, issue.message)
+    if not any(isinstance(scene, dict) and scene.get("scene_id") == target_scene for scene in scenes):
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown target scene '{target_scene}'")
 
     for scene in scenes:
         if scene.get("scene_id") != scene_id:
             continue
-        routes = scene.get("routes")
-        if not isinstance(routes, list):
-            raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.routes must be an array")
-        for index, route in enumerate(routes):
-            if not isinstance(route, dict) or route.get("route_id") != route_id:
+        for scene_exit in scene.get("scene_exits", []):
+            if not isinstance(scene_exit, dict) or scene_exit.get("scene_exit_id") != scene_exit_id:
                 continue
-            if "target_scene" not in route:
-                raise ProjectCommandError("COMMAND_TARGET_INVALID", "route is not a scene exit")
-            action_ref = route.get("action_ref")
-            target_scene = route.get("target_scene")
-            routes.pop(index)
-
-            input_actions = scene.get("input_actions")
-            if isinstance(input_actions, list):
-                scene["input_actions"] = [
-                    action
-                    for action in input_actions
-                    if not (isinstance(action, dict) and action.get("action_id") == action_ref)
-                ]
-            wait_policy = scene.get("reactive_wait_default")
-            if isinstance(wait_policy, dict) and isinstance(wait_policy.get("event_interests"), list):
-                wait_policy["event_interests"] = [
-                    item for item in wait_policy["event_interests"] if item != action_ref
-                ]
-            interaction = scene.get("interaction_policy")
-            if isinstance(interaction, dict) and isinstance(interaction.get("meaningful_activity_actions"), list):
-                interaction["meaningful_activity_actions"] = [
-                    item for item in interaction["meaningful_activity_actions"] if item != action_ref
-                ]
+            scene_exit["target_scene"] = target_scene
+            for route in scene.get("routes", []):
+                if isinstance(route, dict) and route.get("scene_exit_ref") == scene_exit_id:
+                    route["target_scene"] = target_scene
+            scene_flow = project.get("editor", {}).get("scene_flow", {}) if isinstance(project.get("editor"), dict) else {}
+            references = scene_flow.get("references", {}) if isinstance(scene_flow, dict) else {}
+            groups = scene_flow.get("exit_references", {}) if isinstance(scene_flow, dict) else {}
+            scene_group = groups.get(scene_id, {}) if isinstance(groups, dict) else {}
+            reference_id = scene_group.get(_scene_flow_endpoint_key("scene_exit", str(scene_exit_id))) if isinstance(scene_group, dict) else None
+            reference = references.get(reference_id) if isinstance(references, dict) else None
+            if not isinstance(reference, dict) or reference.get("target_scene") != target_scene:
+                _set_scene_flow_exit_reference(project, str(scene_id), "scene_exit", str(scene_exit_id), None)
             return {
-                "kind": "route.delete_scene_exit",
+                "kind": "scene_exit.set_target",
                 "scene_id": scene_id,
-                "route_id": route_id,
-                "action_id": action_ref,
+                "scene_exit_id": scene_exit_id,
                 "target_scene": target_scene,
             }
-        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown route '{route_id}'")
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene exit '{scene_exit_id}'")
     raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
+
+
+def _apply_scene_exit_delete(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "scene_exit_id"},
+        {"kind", "scene_id", "scene_exit_id", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    scene_exit_id = command.get("scene_exit_id")
+    scene_exits = scene.get("scene_exits")
+    if not isinstance(scene_exits, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.scene_exits must be an array")
+    for route in scene.get("routes", []):
+        if isinstance(route, dict) and route.get("scene_exit_ref") == scene_exit_id:
+            raise ProjectCommandError(
+                "COMMAND_TARGET_IN_USE",
+                f"scene exit '{scene_exit_id}' is referenced by route '{route.get('route_id')}'",
+            )
+    for index, scene_exit in enumerate(scene_exits):
+        if isinstance(scene_exit, dict) and scene_exit.get("scene_exit_id") == scene_exit_id:
+            scene_exits.pop(index)
+            nodes = (
+                project.get("editor", {})
+                .get("state_graph", {})
+                .get("scenes", {})
+                .get(scene.get("scene_id"), {})
+                .get("nodes", {})
+            )
+            if isinstance(nodes, dict):
+                nodes.pop(f"scene-exit-{scene_exit_id}", None)
+            _set_scene_flow_exit_reference(
+                project,
+                str(scene.get("scene_id")),
+                "scene_exit",
+                str(scene_exit_id),
+                None,
+            )
+            _remove_scene_flow_route_layout(
+                project,
+                str(scene.get("scene_id")),
+                "scene_exit",
+                str(scene_exit_id),
+            )
+            return {
+                "kind": "scene_exit.delete",
+                "scene_id": scene.get("scene_id"),
+                "scene_exit_id": scene_exit_id,
+            }
+    raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene exit '{scene_exit_id}'")
 
 
 def _render_coordinate(value: Any, path: str) -> int:
@@ -1222,6 +2026,18 @@ def _apply_render_element_add(
             raise ProjectCommandError("ASSET_FRAME_UNKNOWN", f"unknown sprite visual '{visual_ref}'")
     elif "visual_ref" in element:
         raise ProjectCommandError("RENDER_VISUAL_REF_INVALID", "primitives do not reference assets")
+    line_direction = element.get("line_direction", "down_right")
+    if kind == "line":
+        if not isinstance(line_direction, str) or line_direction not in {"down_right", "up_right"}:
+            raise ProjectCommandError(
+                "RENDER_LINE_DIRECTION_INVALID",
+                "line_direction must be down_right or up_right",
+            )
+    elif "line_direction" in element:
+        raise ProjectCommandError(
+            "RENDER_LINE_DIRECTION_INVALID",
+            "line_direction is only valid for line elements",
+        )
     if focus_role == "focus" and (kind != "sprite" or layer != "UI" or not visible):
         raise ProjectCommandError("RENDER_FOCUS_INVALID", "focus must be a visible UI sprite")
 
@@ -1239,6 +2055,113 @@ def _apply_render_element_add(
         "scene_id": command.get("scene_id"),
         "render_model_id": command.get("render_model_id"),
         "element_id": element_id,
+    }
+
+
+def _placement_scope_state_ids(
+    scene: dict[str, Any],
+    scope: Any,
+) -> tuple[str, ...] | None:
+    if not isinstance(scope, dict):
+        raise ProjectCommandError("COMMAND_SHAPE_INVALID", "command.scope must be an object")
+    scope_kind = scope.get("kind")
+    if scope_kind == "scene_base":
+        _require_command_fields(scope, {"kind"}, {"kind"})
+        return None
+    if scope_kind != "states":
+        raise ProjectCommandError(
+            "COMMAND_SHAPE_INVALID",
+            "command.scope.kind must be scene_base or states",
+        )
+    _require_command_fields(scope, {"kind", "state_ids"}, {"kind", "state_ids"})
+    state_ids = scope.get("state_ids")
+    if not isinstance(state_ids, list) or not state_ids or len(state_ids) > 64:
+        raise ProjectCommandError(
+            "COMMAND_LIST_INVALID",
+            "command.scope.state_ids must contain 1..64 state IDs",
+        )
+    known_state_ids = {
+        state.get("state_id")
+        for state in scene.get("states", [])
+        if isinstance(state, dict) and isinstance(state.get("state_id"), str)
+    }
+    resolved: list[str] = []
+    for state_id in state_ids:
+        issues: list[ValidationIssue] = []
+        _stable_id(state_id, "command.scope.state_ids", issues)
+        if issues:
+            issue = issues[0]
+            raise ProjectCommandError(issue.code, issue.message)
+        if state_id in resolved:
+            raise ProjectCommandError(
+                "PROJECT_ID_DUPLICATE",
+                f"command.scope.state_ids contains duplicate state '{state_id}'",
+            )
+        if state_id not in known_state_ids:
+            raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown state '{state_id}'")
+        resolved.append(state_id)
+    return tuple(resolved)
+
+
+def _apply_placement_object_add(
+    scenes: list[dict[str, Any]],
+    frames: list[Masked1bppFrame],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "scope", "element"},
+        {"kind", "scene_id", "scope", "element", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    placement_model = _scene_placement_model(scene)
+    state_ids = _placement_scope_state_ids(scene, command.get("scope"))
+    element = command.get("element")
+    if not isinstance(element, dict):
+        raise ProjectCommandError("COMMAND_SHAPE_INVALID", "command.element must be an object")
+    if state_ids is not None and element.get("visible", True) is not True:
+        raise ProjectCommandError(
+            "RENDER_VISIBILITY_INVALID",
+            "an object added to selected states must be visible in those states",
+        )
+
+    base_element = deepcopy(element)
+    if state_ids is not None:
+        base_element["visible"] = False
+    added = _apply_render_element_add(
+        scenes,
+        frames,
+        {
+            "kind": "render_element.add",
+            "scene_id": scene.get("scene_id"),
+            "render_model_id": placement_model.get("visual_id"),
+            "element": base_element,
+        },
+    )
+    element_id = added["element_id"]
+    if state_ids is not None:
+        for state_id in state_ids:
+            _apply_state_placement_set_override(
+                scenes,
+                frames,
+                {
+                    "kind": "state_placement.set_override",
+                    "scene_id": scene.get("scene_id"),
+                    "state_id": state_id,
+                    "render_model_id": placement_model.get("visual_id"),
+                    "element_id": element_id,
+                    "visible": True,
+                },
+            )
+    return {
+        "kind": "placement_object.add",
+        "scene_id": scene.get("scene_id"),
+        "render_model_id": placement_model.get("visual_id"),
+        "element_id": element_id,
+        "scope": {
+            "kind": "scene_base" if state_ids is None else "states",
+            **({} if state_ids is None else {"state_ids": list(state_ids)}),
+        },
     }
 
 
@@ -1518,6 +2441,80 @@ def _apply_state_placement_set_override(
         "state_id": command.get("state_id"),
         "render_model_id": command.get("render_model_id"),
         "element_id": element_id,
+        "removed": removed,
+    }
+
+
+def _apply_state_placement_clear_override(
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "state_id", "element_id"},
+        {"kind", "scene_id", "state_id", "element_id", "properties", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    state = _command_record(scene, "states", "state_id", command.get("state_id"))
+    placement_model = _scene_placement_model(scene)
+    element = _target_render_element(placement_model, command.get("element_id"))
+    element_id = str(element["element_id"])
+    overrides = _state_placement_overrides(state)
+    existing = next(
+        (
+            item
+            for item in overrides
+            if isinstance(item, dict) and item.get("element_ref") == element_id
+        ),
+        None,
+    )
+
+    requested = command.get("properties")
+    if requested is None:
+        properties = ("position", "visible", "visual_ref")
+    else:
+        if not isinstance(requested, list) or not requested:
+            raise ProjectCommandError(
+                "COMMAND_LIST_INVALID",
+                "command.properties must be a non-empty array when provided",
+            )
+        properties_list: list[str] = []
+        for value in requested:
+            if value not in {"position", "visible", "visual_ref"}:
+                raise ProjectCommandError(
+                    "COMMAND_SHAPE_INVALID",
+                    "command.properties entries must be position, visible, or visual_ref",
+                )
+            if value in properties_list:
+                raise ProjectCommandError(
+                    "COMMAND_SHAPE_INVALID",
+                    f"command.properties contains duplicate '{value}'",
+                )
+            properties_list.append(value)
+        properties = tuple(properties_list)
+
+    cleared: list[str] = []
+    removed = False
+    if existing is not None:
+        if "position" in properties and ("x" in existing or "y" in existing):
+            existing.pop("x", None)
+            existing.pop("y", None)
+            cleared.append("position")
+        for property_name in ("visible", "visual_ref"):
+            if property_name in properties and property_name in existing:
+                existing.pop(property_name)
+                cleared.append(property_name)
+        if set(existing) == {"element_ref"}:
+            overrides.remove(existing)
+            removed = True
+
+    return {
+        "kind": "state_placement.clear_override",
+        "scene_id": scene.get("scene_id"),
+        "state_id": state.get("state_id"),
+        "render_model_id": placement_model.get("visual_id"),
+        "element_id": element_id,
+        "cleared": cleared,
         "removed": removed,
     }
 
@@ -2252,6 +3249,60 @@ def _layout_coordinate(value: Any, path: str) -> int:
     return int(round(value))
 
 
+def _layout_fraction(value: Any, path: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", f"{path} must be a number")
+    fraction = round(float(value), 4)
+    if not 0.02 <= fraction <= 0.98:
+        raise ProjectCommandError("PROJECT_VALUE_INVALID", f"{path} must be between 0.02 and 0.98")
+    return fraction
+
+
+def _normalize_route_token_positions(value: Any, path: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", f"{path} must be an object")
+    _require_command_fields(value, set(), {"condition", "actions"})
+    normalized: dict[str, Any] = {}
+    ordered: list[float] = []
+    if "condition" in value:
+        condition = _layout_fraction(value.get("condition"), f"{path}.condition")
+        normalized["condition"] = condition
+        ordered.append(condition)
+    if "actions" in value:
+        action_values = value.get("actions")
+        if not isinstance(action_values, list):
+            raise ProjectCommandError("PROJECT_TYPE_INVALID", f"{path}.actions must be an array")
+        if len(action_values) > STATE_GRAPH_ROUTE_ACTION_TOKEN_MAX:
+            raise ProjectCommandError(
+                "PROJECT_LIMIT_EXCEEDED",
+                f"{path}.actions contains more than {STATE_GRAPH_ROUTE_ACTION_TOKEN_MAX} positions",
+            )
+        actions = [
+            _layout_fraction(action, f"{path}.actions[{index}]")
+            for index, action in enumerate(action_values)
+        ]
+        if actions:
+            normalized["actions"] = actions
+            ordered.extend(actions)
+    if any(current <= previous for previous, current in zip(ordered, ordered[1:])):
+        raise ProjectCommandError(
+            "PROJECT_VALUE_INVALID",
+            f"{path} positions must follow transition execution order",
+        )
+    return normalized
+
+
+def _validate_route_token_positions(
+    value: Any,
+    path: str,
+    issues: list[ValidationIssue],
+) -> None:
+    try:
+        _normalize_route_token_positions(value, path)
+    except ProjectCommandError as exc:
+        _issue(issues, exc.code, path, exc.message)
+
+
 def _apply_scene_flow_node_position(
     project: dict[str, Any],
     scenes: list[dict[str, Any]],
@@ -2295,6 +3346,319 @@ def _apply_scene_flow_node_position(
     }
 
 
+def _apply_scene_flow_package_entry_position(
+    project: dict[str, Any],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "x", "y"},
+        {"kind", "x", "y", "command_id"},
+    )
+    position = {
+        "x": _layout_coordinate(command.get("x"), "command.x"),
+        "y": _layout_coordinate(command.get("y"), "command.y"),
+    }
+    _scene_flow_data(project)["package_entry"] = position
+    return {"kind": "editor.scene_flow.set_package_entry_position", **position}
+
+
+def _unique_scene_flow_reference_id(references: dict[str, Any], target_scene: str) -> str:
+    base = f"go_to_{_route_id_component(target_scene)}"[:64].rstrip("_.-")
+    if base not in references:
+        return base
+    for suffix in range(2, 100):
+        suffix_text = f"_{suffix}"
+        candidate = f"{base[:64 - len(suffix_text)].rstrip('_.-')}{suffix_text}"
+        if candidate not in references:
+            return candidate
+    raise ProjectCommandError("COMMAND_TARGET_INVALID", "could not generate a unique scene-flow reference ID")
+
+
+def _apply_scene_flow_reference_add(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "target_scene", "x", "y"},
+        {"kind", "target_scene", "x", "y", "command_id"},
+    )
+    target_scene = command.get("target_scene")
+    issues: list[ValidationIssue] = []
+    _stable_id(target_scene, "command.target_scene", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    _command_scene(scenes, target_scene)
+    references = _scene_flow_references(project)
+    if len(references) >= SCENE_FLOW_REFERENCE_MAX:
+        raise ProjectCommandError(
+            "PROJECT_LIMIT_EXCEEDED",
+            f"scene flow supports at most {SCENE_FLOW_REFERENCE_MAX} Go To references",
+        )
+    reference_id = _unique_scene_flow_reference_id(references, str(target_scene))
+    reference = {
+        "target_scene": target_scene,
+        "x": _layout_coordinate(command.get("x"), "command.x"),
+        "y": _layout_coordinate(command.get("y"), "command.y"),
+    }
+    references[reference_id] = reference
+    return {
+        "kind": "editor.scene_flow.add_reference",
+        "reference_id": reference_id,
+        **reference,
+    }
+
+
+def _apply_scene_flow_reference_position(
+    project: dict[str, Any],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "reference_id", "x", "y"},
+        {"kind", "reference_id", "x", "y", "command_id"},
+    )
+    reference_id = command.get("reference_id")
+    reference = _scene_flow_reference(project, reference_id)
+    position = {
+        "x": _layout_coordinate(command.get("x"), "command.x"),
+        "y": _layout_coordinate(command.get("y"), "command.y"),
+    }
+    reference.update(position)
+    return {
+        "kind": "editor.scene_flow.set_reference_position",
+        "reference_id": reference_id,
+        **position,
+    }
+
+
+def _apply_scene_flow_reference_target(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "reference_id", "target_scene"},
+        {"kind", "reference_id", "target_scene", "command_id"},
+    )
+    reference_id = command.get("reference_id")
+    target_scene = command.get("target_scene")
+    issues: list[ValidationIssue] = []
+    _stable_id(target_scene, "command.target_scene", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    _command_scene(scenes, target_scene)
+    reference = _scene_flow_reference(project, reference_id)
+    scene_flow = _scene_flow_data(project)
+    groups = scene_flow.get("exit_references", {})
+    attached: list[tuple[str, str, str]] = []
+    if isinstance(groups, dict):
+        for source_scene, scene_group in groups.items():
+            if not isinstance(scene_group, dict):
+                continue
+            for endpoint_key, mapped_reference in scene_group.items():
+                if mapped_reference != reference_id or not isinstance(endpoint_key, str) or ":" not in endpoint_key:
+                    continue
+                endpoint_kind, endpoint_id = endpoint_key.split(":", 1)
+                if source_scene == target_scene:
+                    raise ProjectCommandError(
+                        "COMMAND_TARGET_INVALID",
+                        "a Go To reference cannot retarget an attached exit back to its own scene",
+                    )
+                _scene_flow_endpoint(scenes, source_scene, endpoint_kind, endpoint_id)
+                attached.append((source_scene, endpoint_kind, endpoint_id))
+    for source_scene, endpoint_kind, endpoint_id in attached:
+        _set_scene_flow_endpoint_target(
+            scenes,
+            source_scene,
+            endpoint_kind,
+            endpoint_id,
+            str(target_scene),
+        )
+    reference["target_scene"] = target_scene
+    return {
+        "kind": "editor.scene_flow.set_reference_target",
+        "reference_id": reference_id,
+        "target_scene": target_scene,
+        "updated_exit_count": len(attached),
+    }
+
+
+def _apply_scene_flow_reference_delete(
+    project: dict[str, Any],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "reference_id"},
+        {"kind", "reference_id", "command_id"},
+    )
+    reference_id = command.get("reference_id")
+    references = _scene_flow_references(project)
+    if reference_id not in references:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene-flow reference '{reference_id}'")
+    references.pop(reference_id)
+    scene_flow = _scene_flow_data(project)
+    groups = scene_flow.get("exit_references", {})
+    detached = 0
+    if isinstance(groups, dict):
+        for source_scene in list(groups):
+            scene_group = groups.get(source_scene)
+            if not isinstance(scene_group, dict):
+                continue
+            for endpoint_key in list(scene_group):
+                if scene_group.get(endpoint_key) == reference_id:
+                    scene_group.pop(endpoint_key)
+                    detached += 1
+            if not scene_group:
+                groups.pop(source_scene, None)
+        if not groups:
+            scene_flow.pop("exit_references", None)
+    if not references:
+        scene_flow.pop("references", None)
+    return {
+        "kind": "editor.scene_flow.delete_reference",
+        "reference_id": reference_id,
+        "detached_exit_count": detached,
+    }
+
+
+def _apply_scene_flow_exit_reference(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "endpoint_kind", "endpoint_id", "reference_id"},
+        {"kind", "scene_id", "endpoint_kind", "endpoint_id", "reference_id", "command_id"},
+    )
+    scene_id = command.get("scene_id")
+    endpoint_kind = command.get("endpoint_kind")
+    endpoint_id = command.get("endpoint_id")
+    reference_id = command.get("reference_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(scene_id, "command.scene_id", issues)
+    _stable_id(endpoint_id, "command.endpoint_id", issues)
+    if reference_id is not None:
+        _stable_id(reference_id, "command.reference_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    if endpoint_kind not in {"scene_exit", "route"}:
+        raise ProjectCommandError(
+            "PROJECT_VALUE_INVALID",
+            "command.endpoint_kind must be scene_exit or route",
+        )
+    _scene_flow_endpoint(scenes, str(scene_id), endpoint_kind, str(endpoint_id))
+    target_scene = None
+    if reference_id is not None:
+        reference = _scene_flow_reference(project, reference_id)
+        target_scene = reference.get("target_scene")
+        if not isinstance(target_scene, str):
+            raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene-flow reference target_scene must be a string")
+        _set_scene_flow_endpoint_target(
+            scenes,
+            str(scene_id),
+            endpoint_kind,
+            str(endpoint_id),
+            target_scene,
+        )
+    _set_scene_flow_exit_reference(
+        project,
+        str(scene_id),
+        endpoint_kind,
+        str(endpoint_id),
+        reference_id,
+    )
+    return {
+        "kind": "editor.scene_flow.set_exit_reference",
+        "scene_id": scene_id,
+        "endpoint_kind": endpoint_kind,
+        "endpoint_id": endpoint_id,
+        "reference_id": reference_id,
+        "target_scene": target_scene,
+    }
+
+
+def _apply_scene_flow_route_layout(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "endpoint_kind", "endpoint_id", "rails"},
+        {"kind", "scene_id", "endpoint_kind", "endpoint_id", "rails", "command_id"},
+    )
+    scene_id = command.get("scene_id")
+    endpoint_kind = command.get("endpoint_kind")
+    endpoint_id = command.get("endpoint_id")
+    issues: list[ValidationIssue] = []
+    _stable_id(scene_id, "command.scene_id", issues)
+    _stable_id(endpoint_id, "command.endpoint_id", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+    if endpoint_kind not in {"scene_exit", "route"}:
+        raise ProjectCommandError(
+            "PROJECT_VALUE_INVALID",
+            "command.endpoint_kind must be scene_exit or route",
+        )
+    _scene_flow_endpoint(scenes, str(scene_id), endpoint_kind, str(endpoint_id))
+
+    rail_values = command.get("rails")
+    if not isinstance(rail_values, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "command.rails must be an array")
+    if len(rail_values) > STATE_GRAPH_ROUTE_RAIL_MAX:
+        raise ProjectCommandError(
+            "PROJECT_LIMIT_EXCEEDED",
+            f"command.rails contains more than {STATE_GRAPH_ROUTE_RAIL_MAX} rails",
+        )
+    rails: list[dict[str, Any]] = []
+    previous_axis: str | None = None
+    for index, rail in enumerate(rail_values):
+        path = f"command.rails[{index}]"
+        if not isinstance(rail, dict):
+            raise ProjectCommandError("PROJECT_TYPE_INVALID", f"{path} must be an object")
+        _require_command_fields(rail, {"axis", "value"}, {"axis", "value"})
+        axis = rail.get("axis")
+        if axis not in {"x", "y"}:
+            raise ProjectCommandError("PROJECT_VALUE_INVALID", f"{path}.axis must be 'x' or 'y'")
+        if axis == previous_axis:
+            raise ProjectCommandError("PROJECT_VALUE_INVALID", f"{path}.axis must alternate")
+        rails.append({"axis": axis, "value": _layout_coordinate(rail.get("value"), f"{path}.value")})
+        previous_axis = axis
+
+    endpoint_key = _scene_flow_endpoint_key(endpoint_kind, str(endpoint_id))
+    if not rails:
+        _remove_scene_flow_route_layout(project, str(scene_id), endpoint_kind, str(endpoint_id))
+    else:
+        groups = _scene_flow_route_groups(project)
+        scene_group = groups.setdefault(scene_id, {})
+        if not isinstance(scene_group, dict):
+            raise ProjectCommandError(
+                "PROJECT_TYPE_INVALID",
+                f"project.editor.scene_flow.routes[{scene_id}] must be an object",
+            )
+        scene_group[endpoint_key] = {
+            "routing_version": SCENE_FLOW_ROUTE_LAYOUT_VERSION,
+            "rails": rails,
+        }
+    return {
+        "kind": "editor.scene_flow.set_route_layout",
+        "scene_id": scene_id,
+        "endpoint_kind": endpoint_kind,
+        "endpoint_id": endpoint_id,
+        "rails": rails,
+    }
+
+
 def _apply_state_graph_node_position(
     project: dict[str, Any],
     scenes: list[dict[str, Any]],
@@ -2302,14 +3666,20 @@ def _apply_state_graph_node_position(
 ) -> dict[str, Any]:
     _require_command_fields(
         command,
-        {"kind", "scene_id", "state_id", "x", "y"},
-        {"kind", "scene_id", "state_id", "x", "y", "command_id"},
+        {"kind", "scene_id", "x", "y"},
+        {"kind", "scene_id", "state_id", "node_id", "x", "y", "command_id"},
     )
     issues: list[ValidationIssue] = []
     scene_id = command.get("scene_id")
-    state_id = command.get("state_id")
+    has_state_id = "state_id" in command
+    has_node_id = "node_id" in command
+    if has_state_id == has_node_id:
+        raise ProjectCommandError(
+            "COMMAND_SHAPE_INVALID",
+            "state graph position requires exactly one of state_id or node_id",
+        )
+    node_id = command.get("state_id") if has_state_id else command.get("node_id")
     _stable_id(scene_id, "command.scene_id", issues)
-    _stable_id(state_id, "command.state_id", issues)
     if issues:
         issue = issues[0]
         raise ProjectCommandError(issue.code, issue.message)
@@ -2324,13 +3694,20 @@ def _apply_state_graph_node_position(
     )
     if target_scene is None:
         raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown scene '{scene_id}'")
-    state_ids = {
+    valid_node_ids = {
         state.get("state_id")
         for state in target_scene.get("states", [])
         if isinstance(state, dict)
     }
-    if state_id not in state_ids:
-        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown state '{state_id}'")
+    valid_node_ids.add("scene-entry")
+    valid_node_ids.add(STATE_GRAPH_SYSTEM_EXIT_NODE_ID)
+    valid_node_ids.update(
+        f"scene-exit-{scene_exit.get('scene_exit_id')}"
+        for scene_exit in target_scene.get("scene_exits", [])
+        if isinstance(scene_exit, dict) and isinstance(scene_exit.get("scene_exit_id"), str)
+    )
+    if node_id not in valid_node_ids:
+        raise ProjectCommandError("COMMAND_TARGET_UNKNOWN", f"unknown state graph node '{node_id}'")
 
     x = _layout_coordinate(command.get("x"), "command.x")
     y = _layout_coordinate(command.get("y"), "command.y")
@@ -2349,13 +3726,266 @@ def _apply_state_graph_node_position(
     nodes = scene_layout.setdefault("nodes", {})
     if not isinstance(nodes, dict):
         raise ProjectCommandError("PROJECT_TYPE_INVALID", f"project.editor.state_graph.scenes[{scene_id}].nodes must be an object")
-    nodes[state_id] = {"x": x, "y": y}
-    return {
+    nodes[node_id] = {"x": x, "y": y}
+    result = {
         "kind": "editor.state_graph.set_node_position",
         "scene_id": scene_id,
-        "state_id": state_id,
+        "node_id": node_id,
         "x": x,
         "y": y,
+    }
+    if has_state_id:
+        result["state_id"] = node_id
+    return result
+
+
+def _apply_state_graph_entry_layout(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "target_handle", "target_side"},
+        {"kind", "scene_id", "target_handle", "target_side", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    target_handle = command.get("target_handle")
+    target_side = command.get("target_side")
+    if target_handle not in STATE_GRAPH_ENTRY_HANDLES:
+        raise ProjectCommandError("PROJECT_VALUE_INVALID", "target_handle must name a state entry socket")
+    if target_side not in STATE_GRAPH_ENTRY_SIDES:
+        raise ProjectCommandError("PROJECT_VALUE_INVALID", "target_side must name a card side")
+    if target_side not in STATE_GRAPH_ENTRY_HANDLE_SIDES[target_handle]:
+        raise ProjectCommandError(
+            "PROJECT_VALUE_INVALID",
+            "target_side is not available on the selected corner entry",
+        )
+
+    editor = project.setdefault("editor", {})
+    if not isinstance(editor, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor must be an object")
+    state_graph = editor.setdefault("state_graph", {})
+    if not isinstance(state_graph, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor.state_graph must be an object")
+    graph_scenes = state_graph.setdefault("scenes", {})
+    if not isinstance(graph_scenes, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor.state_graph.scenes must be an object")
+    scene_id = str(scene.get("scene_id"))
+    scene_layout = graph_scenes.setdefault(scene_id, {})
+    if not isinstance(scene_layout, dict):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", f"project.editor.state_graph.scenes[{scene_id}] must be an object")
+    scene_layout["entry"] = {
+        "target_handle": target_handle,
+        "target_side": target_side,
+    }
+    return {
+        "kind": "editor.state_graph.set_entry_layout",
+        "scene_id": scene_id,
+        "target_handle": target_handle,
+        "target_side": target_side,
+    }
+
+
+def _apply_state_graph_system_exit_delete(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id"},
+        {"kind", "scene_id", "command_id"},
+    )
+    scene = _command_scene(scenes, command.get("scene_id"))
+    if any(
+        isinstance(route, dict)
+        and any(
+            isinstance(action, dict) and action.get("kind") == "exit_to_shell"
+            for action in route.get("actions", [])
+        )
+        for route in scene.get("routes", [])
+    ):
+        raise ProjectCommandError(
+            "COMMAND_TARGET_IN_USE",
+            "delete Exit to PeepOS transitions before deleting the terminal",
+        )
+    editor = project.get("editor")
+    state_graph = editor.get("state_graph") if isinstance(editor, dict) else None
+    graph_scenes = state_graph.get("scenes") if isinstance(state_graph, dict) else None
+    scene_layout = graph_scenes.get(scene.get("scene_id")) if isinstance(graph_scenes, dict) else None
+    nodes = scene_layout.get("nodes") if isinstance(scene_layout, dict) else None
+    if isinstance(nodes, dict):
+        nodes.pop(STATE_GRAPH_SYSTEM_EXIT_NODE_ID, None)
+        if not nodes:
+            scene_layout.pop("nodes", None)
+    return {
+        "kind": "editor.state_graph.delete_system_exit",
+        "scene_id": scene.get("scene_id"),
+    }
+
+
+def _apply_state_graph_route_layout(
+    project: dict[str, Any],
+    scenes: list[dict[str, Any]],
+    command: dict[str, Any],
+) -> dict[str, Any]:
+    _require_command_fields(
+        command,
+        {"kind", "scene_id", "route_id", "source_state", "rails", "target_handle", "target_side"},
+        {
+            "kind",
+            "scene_id",
+            "route_id",
+            "source_state",
+            "rails",
+            "target_handle",
+            "target_side",
+            "token_positions",
+            "command_id",
+        },
+    )
+    issues: list[ValidationIssue] = []
+    scene_id = command.get("scene_id")
+    route_id = command.get("route_id")
+    source_state = command.get("source_state")
+    _stable_id(scene_id, "command.scene_id", issues)
+    _stable_id(route_id, "command.route_id", issues)
+    _stable_id(source_state, "command.source_state", issues)
+    if issues:
+        issue = issues[0]
+        raise ProjectCommandError(issue.code, issue.message)
+
+    scene = _command_scene(scenes, scene_id)
+    route = _command_record(scene, "routes", "route_id", route_id)
+    if source_state not in route.get("from_states", []):
+        raise ProjectCommandError(
+            "COMMAND_TARGET_UNKNOWN",
+            f"state '{source_state}' is not a source of route '{route_id}'",
+        )
+    rail_values = command.get("rails")
+    if not isinstance(rail_values, list):
+        raise ProjectCommandError("PROJECT_TYPE_INVALID", "command.rails must be an array")
+    if len(rail_values) > STATE_GRAPH_ROUTE_RAIL_MAX:
+        raise ProjectCommandError(
+            "PROJECT_LIMIT_EXCEEDED",
+            f"command.rails contains more than {STATE_GRAPH_ROUTE_RAIL_MAX} rails",
+        )
+    rails: list[dict[str, Any]] = []
+    previous_axis: str | None = None
+    for index, rail in enumerate(rail_values):
+        path = f"command.rails[{index}]"
+        if not isinstance(rail, dict):
+            raise ProjectCommandError("PROJECT_TYPE_INVALID", f"{path} must be an object")
+        _require_command_fields(rail, {"axis", "value"}, {"axis", "value"})
+        axis = rail.get("axis")
+        if axis not in {"x", "y"}:
+            raise ProjectCommandError("PROJECT_VALUE_INVALID", f"{path}.axis must be 'x' or 'y'")
+        if axis == previous_axis:
+            raise ProjectCommandError("PROJECT_VALUE_INVALID", f"{path}.axis must alternate")
+        rails.append({"axis": axis, "value": _layout_coordinate(rail.get("value"), f"{path}.value")})
+        previous_axis = axis
+
+    target_handle = command.get("target_handle")
+    if target_handle is not None and target_handle not in STATE_GRAPH_ENTRY_HANDLES:
+        raise ProjectCommandError(
+            "PROJECT_VALUE_INVALID",
+            "command.target_handle must name a state entry socket or be null",
+        )
+    target_side = command.get("target_side")
+    if target_side is not None and target_side not in STATE_GRAPH_ENTRY_SIDES:
+        raise ProjectCommandError(
+            "PROJECT_VALUE_INVALID",
+            "command.target_side must name a card side or be null",
+        )
+    if (target_handle is None) != (target_side is None):
+        raise ProjectCommandError(
+            "PROJECT_VALUE_INVALID",
+            "command.target_handle and command.target_side must both be set or both be null",
+        )
+    if target_handle is not None and target_side not in STATE_GRAPH_ENTRY_HANDLE_SIDES[target_handle]:
+        raise ProjectCommandError(
+            "PROJECT_VALUE_INVALID",
+            "command.target_side is not available on the selected corner entry",
+        )
+
+    editor = project.get("editor")
+    state_graph = editor.get("state_graph") if isinstance(editor, dict) else None
+    graph_scenes = state_graph.get("scenes") if isinstance(state_graph, dict) else None
+    scene_layout = graph_scenes.get(scene_id) if isinstance(graph_scenes, dict) else None
+    routes = scene_layout.get("routes") if isinstance(scene_layout, dict) else None
+    route_layout = routes.get(route_id) if isinstance(routes, dict) else None
+    sources = route_layout.get("sources") if isinstance(route_layout, dict) else None
+    existing_source_layout = sources.get(source_state) if isinstance(sources, dict) else None
+    if "token_positions" in command:
+        token_positions = _normalize_route_token_positions(
+            command.get("token_positions"), "command.token_positions"
+        )
+    elif isinstance(existing_source_layout, dict):
+        token_positions = deepcopy(existing_source_layout.get("token_positions", {}))
+    else:
+        token_positions = {}
+
+    if not rails and target_handle is None and target_side is None and not token_positions:
+        if isinstance(sources, dict):
+            sources.pop(source_state, None)
+            if not sources:
+                routes.pop(route_id, None)
+            if not routes:
+                scene_layout.pop("routes", None)
+    else:
+        editor = project.setdefault("editor", {})
+        if not isinstance(editor, dict):
+            raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor must be an object")
+        state_graph = editor.setdefault("state_graph", {})
+        if not isinstance(state_graph, dict):
+            raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor.state_graph must be an object")
+        graph_scenes = state_graph.setdefault("scenes", {})
+        if not isinstance(graph_scenes, dict):
+            raise ProjectCommandError("PROJECT_TYPE_INVALID", "project.editor.state_graph.scenes must be an object")
+        scene_layout = graph_scenes.setdefault(scene_id, {})
+        if not isinstance(scene_layout, dict):
+            raise ProjectCommandError(
+                "PROJECT_TYPE_INVALID",
+                f"project.editor.state_graph.scenes[{scene_id}] must be an object",
+            )
+        routes = scene_layout.setdefault("routes", {})
+        if not isinstance(routes, dict):
+            raise ProjectCommandError(
+                "PROJECT_TYPE_INVALID",
+                f"project.editor.state_graph.scenes[{scene_id}].routes must be an object",
+            )
+        route_layout = routes.setdefault(route_id, {})
+        if not isinstance(route_layout, dict):
+            raise ProjectCommandError(
+                "PROJECT_TYPE_INVALID",
+                f"project.editor.state_graph.scenes[{scene_id}].routes[{route_id}] must be an object",
+            )
+        sources = route_layout.setdefault("sources", {})
+        if not isinstance(sources, dict):
+            raise ProjectCommandError(
+                "PROJECT_TYPE_INVALID",
+                f"project.editor.state_graph.scenes[{scene_id}].routes[{route_id}].sources must be an object",
+            )
+        source_layout = {
+            "routing_version": STATE_GRAPH_ROUTE_LAYOUT_VERSION,
+            "rails": rails,
+        }
+        if target_handle is not None:
+            source_layout["target_handle"] = target_handle
+            source_layout["target_side"] = target_side
+        if token_positions:
+            source_layout["token_positions"] = token_positions
+        sources[source_state] = source_layout
+    return {
+        "kind": "editor.state_graph.set_route_layout",
+        "scene_id": scene_id,
+        "route_id": route_id,
+        "source_state": source_state,
+        "rails": rails,
+        "target_handle": target_handle,
+        "target_side": target_side,
+        "token_positions": token_positions,
     }
 
 
@@ -2403,20 +4033,7 @@ def _route_target_elements(
             "GRAPH_TRANSITION_TARGET_UNKNOWN",
             "element actions require a valid target_state",
         )
-    render_model = next(
-        (
-            item
-            for item in scene.get("render_models", [])
-            if isinstance(item, dict)
-            and item.get("visual_id") == state.get("render_model_ref")
-        ),
-        None,
-    )
-    if render_model is None:
-        raise ProjectCommandError(
-            "RENDER_MODEL_UNKNOWN",
-            "target state render model does not exist",
-        )
+    render_model = _scene_placement_model(scene)
     return {
         str(item.get("element_id")): item
         for item in render_model.get("elements", [])
@@ -2894,6 +4511,17 @@ def _stable_id(value: Any, path: str, issues: list[ValidationIssue]) -> bool:
     return True
 
 
+def _editor_node_id(value: Any, path: str, issues: list[ValidationIssue]) -> bool:
+    if (
+        not isinstance(value, str)
+        or not 1 <= len(value) <= 96
+        or re.fullmatch(r"[a-z][a-z0-9_.-]*", value) is None
+    ):
+        _issue(issues, "PROJECT_ID_INVALID", path, "must be a lowercase editor node ID")
+        return False
+    return True
+
+
 def _text(value: Any, path: str, issues: list[ValidationIssue], maximum: int = 96) -> bool:
     if not isinstance(value, str) or not 1 <= len(value) <= maximum:
         _issue(issues, "PROJECT_TEXT_INVALID", path, f"must be text with 1..{maximum} characters")
@@ -3015,7 +4643,13 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
                 if not isinstance(scene_flow, dict):
                     _issue(issues, "PROJECT_TYPE_INVALID", "project.editor.scene_flow", "must be an object")
                 else:
-                    _check_keys(scene_flow, set(), "project.editor.scene_flow", issues, {"nodes"})
+                    _check_keys(
+                        scene_flow,
+                        set(),
+                        "project.editor.scene_flow",
+                        issues,
+                        {"nodes", "package_entry", "references", "exit_references", "routes"},
+                    )
                     nodes = scene_flow.get("nodes")
                     if nodes is not None:
                         if not isinstance(nodes, dict):
@@ -3036,6 +4670,132 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
                                         _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "must be a number")
                                     elif not -100000 <= value <= 100000:
                                         _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "outside supported editor layout range")
+                    package_entry = scene_flow.get("package_entry")
+                    if package_entry is not None:
+                        path = "project.editor.scene_flow.package_entry"
+                        if not isinstance(package_entry, dict):
+                            _issue(issues, "PROJECT_TYPE_INVALID", path, "must be an object")
+                        else:
+                            _check_keys(package_entry, {"x", "y"}, path, issues)
+                            for axis in ("x", "y"):
+                                value = package_entry.get(axis)
+                                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                                    _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "must be a number")
+                                elif not -100000 <= value <= 100000:
+                                    _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "outside supported editor layout range")
+                    references = scene_flow.get("references")
+                    if references is not None:
+                        if not isinstance(references, dict):
+                            _issue(issues, "PROJECT_TYPE_INVALID", "project.editor.scene_flow.references", "must be an object")
+                        elif len(references) > SCENE_FLOW_REFERENCE_MAX:
+                            _issue(
+                                issues,
+                                "PROJECT_LIMIT_EXCEEDED",
+                                "project.editor.scene_flow.references",
+                                f"contains more than {SCENE_FLOW_REFERENCE_MAX} references",
+                            )
+                        else:
+                            for reference_id, reference in references.items():
+                                path = f"project.editor.scene_flow.references[{reference_id}]"
+                                _stable_id(reference_id, path, issues)
+                                if not isinstance(reference, dict):
+                                    _issue(issues, "PROJECT_TYPE_INVALID", path, "must be an object")
+                                    continue
+                                _check_keys(reference, {"target_scene", "x", "y"}, path, issues)
+                                _stable_id(reference.get("target_scene"), f"{path}.target_scene", issues)
+                                for axis in ("x", "y"):
+                                    value = reference.get(axis)
+                                    if isinstance(value, bool) or not isinstance(value, (int, float)):
+                                        _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "must be a number")
+                                    elif not -100000 <= value <= 100000:
+                                        _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "outside supported editor layout range")
+                    exit_references = scene_flow.get("exit_references")
+                    if exit_references is not None:
+                        if not isinstance(exit_references, dict):
+                            _issue(issues, "PROJECT_TYPE_INVALID", "project.editor.scene_flow.exit_references", "must be an object")
+                        else:
+                            for scene_id, scene_group in exit_references.items():
+                                path = f"project.editor.scene_flow.exit_references[{scene_id}]"
+                                _stable_id(scene_id, path, issues)
+                                if not isinstance(scene_group, dict):
+                                    _issue(issues, "PROJECT_TYPE_INVALID", path, "must be an object")
+                                    continue
+                                for endpoint_key, reference_id in scene_group.items():
+                                    endpoint_path = f"{path}[{endpoint_key}]"
+                                    if not isinstance(endpoint_key, str) or not re.fullmatch(r"(?:scene_exit|route):[a-z0-9][a-z0-9_.-]*", endpoint_key):
+                                        _issue(
+                                            issues,
+                                            "PROJECT_VALUE_INVALID",
+                                            endpoint_path,
+                                            "must identify a scene_exit or route endpoint",
+                                        )
+                                    _stable_id(reference_id, endpoint_path, issues)
+                    scene_routes = scene_flow.get("routes")
+                    if scene_routes is not None:
+                        if not isinstance(scene_routes, dict):
+                            _issue(issues, "PROJECT_TYPE_INVALID", "project.editor.scene_flow.routes", "must be an object")
+                        elif len(scene_routes) > 128:
+                            _issue(issues, "PROJECT_LIMIT_EXCEEDED", "project.editor.scene_flow.routes", "contains more than 128 scene groups")
+                        else:
+                            for scene_id, scene_group in scene_routes.items():
+                                path = f"project.editor.scene_flow.routes[{scene_id}]"
+                                _stable_id(scene_id, path, issues)
+                                if not isinstance(scene_group, dict):
+                                    _issue(issues, "PROJECT_TYPE_INVALID", path, "must be an object")
+                                    continue
+                                if len(scene_group) > 128:
+                                    _issue(issues, "PROJECT_LIMIT_EXCEEDED", path, "contains more than 128 route layouts")
+                                    continue
+                                for endpoint_key, layout in scene_group.items():
+                                    layout_path = f"{path}[{endpoint_key}]"
+                                    if not isinstance(endpoint_key, str) or not re.fullmatch(r"(?:scene_exit|route):[a-z0-9][a-z0-9_.-]*", endpoint_key):
+                                        _issue(
+                                            issues,
+                                            "PROJECT_VALUE_INVALID",
+                                            layout_path,
+                                            "must identify a scene_exit or route endpoint",
+                                        )
+                                    if not isinstance(layout, dict):
+                                        _issue(issues, "PROJECT_TYPE_INVALID", layout_path, "must be an object")
+                                        continue
+                                    _check_keys(layout, {"routing_version", "rails"}, layout_path, issues)
+                                    if layout.get("routing_version") != SCENE_FLOW_ROUTE_LAYOUT_VERSION:
+                                        _issue(
+                                            issues,
+                                            "PROJECT_VALUE_INVALID",
+                                            f"{layout_path}.routing_version",
+                                            f"must be {SCENE_FLOW_ROUTE_LAYOUT_VERSION}",
+                                        )
+                                    rails = layout.get("rails")
+                                    if not isinstance(rails, list):
+                                        _issue(issues, "PROJECT_TYPE_INVALID", f"{layout_path}.rails", "must be an array")
+                                        continue
+                                    if len(rails) > STATE_GRAPH_ROUTE_RAIL_MAX:
+                                        _issue(
+                                            issues,
+                                            "PROJECT_LIMIT_EXCEEDED",
+                                            f"{layout_path}.rails",
+                                            f"contains more than {STATE_GRAPH_ROUTE_RAIL_MAX} rails",
+                                        )
+                                        continue
+                                    previous_axis = None
+                                    for index, rail in enumerate(rails):
+                                        rail_path = f"{layout_path}.rails[{index}]"
+                                        if not isinstance(rail, dict):
+                                            _issue(issues, "PROJECT_TYPE_INVALID", rail_path, "must be an object")
+                                            continue
+                                        _check_keys(rail, {"axis", "value"}, rail_path, issues)
+                                        axis = rail.get("axis")
+                                        if axis not in {"x", "y"}:
+                                            _issue(issues, "PROJECT_VALUE_INVALID", f"{rail_path}.axis", "must be x or y")
+                                        elif axis == previous_axis:
+                                            _issue(issues, "PROJECT_VALUE_INVALID", f"{rail_path}.axis", "must alternate")
+                                        previous_axis = axis
+                                        value = rail.get("value")
+                                        if isinstance(value, bool) or not isinstance(value, (int, float)):
+                                            _issue(issues, "PROJECT_TYPE_INVALID", f"{rail_path}.value", "must be a number")
+                                        elif not -100000 <= value <= 100000:
+                                            _issue(issues, "PROJECT_TYPE_INVALID", f"{rail_path}.value", "outside supported editor layout range")
             state_graph = editor.get("state_graph")
             if state_graph is not None:
                 if not isinstance(state_graph, dict):
@@ -3055,28 +4815,204 @@ def _check_project(project: dict[str, Any], issues: list[ValidationIssue]) -> No
                                 if not isinstance(scene_layout, dict):
                                     _issue(issues, "PROJECT_TYPE_INVALID", scene_path, "must be an object")
                                     continue
-                                _check_keys(scene_layout, set(), scene_path, issues, {"nodes"})
+                                _check_keys(scene_layout, set(), scene_path, issues, {"entry", "nodes", "routes"})
+                                entry_layout = scene_layout.get("entry")
+                                if entry_layout is not None:
+                                    entry_path = f"{scene_path}.entry"
+                                    if not isinstance(entry_layout, dict):
+                                        _issue(issues, "PROJECT_TYPE_INVALID", entry_path, "must be an object")
+                                    else:
+                                        _check_keys(entry_layout, {"target_handle", "target_side"}, entry_path, issues)
+                                        target_handle = entry_layout.get("target_handle")
+                                        target_side = entry_layout.get("target_side")
+                                        if target_handle not in STATE_GRAPH_ENTRY_HANDLES:
+                                            _issue(
+                                                issues,
+                                                "PROJECT_VALUE_INVALID",
+                                                f"{entry_path}.target_handle",
+                                                "must name a state entry socket",
+                                            )
+                                        if target_side not in STATE_GRAPH_ENTRY_SIDES:
+                                            _issue(
+                                                issues,
+                                                "PROJECT_VALUE_INVALID",
+                                                f"{entry_path}.target_side",
+                                                "must name a card side",
+                                            )
+                                        elif target_handle in STATE_GRAPH_ENTRY_HANDLE_SIDES and target_side not in STATE_GRAPH_ENTRY_HANDLE_SIDES[target_handle]:
+                                            _issue(
+                                                issues,
+                                                "PROJECT_VALUE_INVALID",
+                                                f"{entry_path}.target_side",
+                                                "is not available on the selected corner entry",
+                                            )
                                 nodes = scene_layout.get("nodes")
-                                if nodes is None:
-                                    continue
-                                if not isinstance(nodes, dict):
-                                    _issue(issues, "PROJECT_TYPE_INVALID", f"{scene_path}.nodes", "must be an object")
-                                elif len(nodes) > 128:
-                                    _issue(issues, "PROJECT_LIMIT_EXCEEDED", f"{scene_path}.nodes", "contains more than 128 nodes")
-                                else:
-                                    for state_id, position in nodes.items():
-                                        path = f"{scene_path}.nodes[{state_id}]"
-                                        _stable_id(state_id, path, issues)
-                                        if not isinstance(position, dict):
-                                            _issue(issues, "PROJECT_TYPE_INVALID", path, "must be an object")
-                                            continue
-                                        _check_keys(position, {"x", "y"}, path, issues)
-                                        for axis in ("x", "y"):
-                                            value = position.get(axis)
-                                            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                                                _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "must be a number")
-                                            elif not -100000 <= value <= 100000:
-                                                _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "outside supported editor layout range")
+                                if nodes is not None:
+                                    if not isinstance(nodes, dict):
+                                        _issue(issues, "PROJECT_TYPE_INVALID", f"{scene_path}.nodes", "must be an object")
+                                    elif len(nodes) > 128:
+                                        _issue(issues, "PROJECT_LIMIT_EXCEEDED", f"{scene_path}.nodes", "contains more than 128 nodes")
+                                    else:
+                                        for state_id, position in nodes.items():
+                                            path = f"{scene_path}.nodes[{state_id}]"
+                                            _editor_node_id(state_id, path, issues)
+                                            if not isinstance(position, dict):
+                                                _issue(issues, "PROJECT_TYPE_INVALID", path, "must be an object")
+                                                continue
+                                            _check_keys(position, {"x", "y"}, path, issues)
+                                            for axis in ("x", "y"):
+                                                value = position.get(axis)
+                                                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                                                    _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "must be a number")
+                                                elif not -100000 <= value <= 100000:
+                                                    _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.{axis}", "outside supported editor layout range")
+                                routes = scene_layout.get("routes")
+                                if routes is not None:
+                                    if not isinstance(routes, dict):
+                                        _issue(issues, "PROJECT_TYPE_INVALID", f"{scene_path}.routes", "must be an object")
+                                    elif len(routes) > 128:
+                                        _issue(issues, "PROJECT_LIMIT_EXCEEDED", f"{scene_path}.routes", "contains more than 128 routes")
+                                    else:
+                                        for route_id, route_layout in routes.items():
+                                            route_path = f"{scene_path}.routes[{route_id}]"
+                                            _stable_id(route_id, route_path, issues)
+                                            if not isinstance(route_layout, dict):
+                                                _issue(issues, "PROJECT_TYPE_INVALID", route_path, "must be an object")
+                                                continue
+                                            _check_keys(route_layout, {"sources"}, route_path, issues)
+                                            sources = route_layout.get("sources")
+                                            if not isinstance(sources, dict):
+                                                _issue(issues, "PROJECT_TYPE_INVALID", f"{route_path}.sources", "must be an object")
+                                                continue
+                                            if len(sources) > 64:
+                                                _issue(
+                                                    issues,
+                                                    "PROJECT_LIMIT_EXCEEDED",
+                                                    f"{route_path}.sources",
+                                                    "contains more than 64 source states",
+                                                )
+                                                continue
+                                            for source_state, source_layout in sources.items():
+                                                source_path = f"{route_path}.sources[{source_state}]"
+                                                _stable_id(source_state, source_path, issues)
+                                                if not isinstance(source_layout, dict):
+                                                    _issue(issues, "PROJECT_TYPE_INVALID", source_path, "must be an object")
+                                                    continue
+                                                routing_version = source_layout.get("routing_version")
+                                                if routing_version == STATE_GRAPH_ROUTE_LAYOUT_VERSION:
+                                                    _check_keys(
+                                                        source_layout,
+                                                        {"rails"},
+                                                        source_path,
+                                                        issues,
+                                                        {"rails", "routing_version", "target_handle", "target_side", "token_positions"},
+                                                    )
+                                                    target_handle = source_layout.get("target_handle")
+                                                    if target_handle is not None and target_handle not in STATE_GRAPH_ENTRY_HANDLES:
+                                                        _issue(
+                                                            issues,
+                                                            "PROJECT_VALUE_INVALID",
+                                                            f"{source_path}.target_handle",
+                                                            "must name a state entry socket",
+                                                        )
+                                                    target_side = source_layout.get("target_side")
+                                                    if target_side is not None and target_side not in STATE_GRAPH_ENTRY_SIDES:
+                                                        _issue(
+                                                            issues,
+                                                            "PROJECT_VALUE_INVALID",
+                                                            f"{source_path}.target_side",
+                                                            "must name a card side",
+                                                        )
+                                                    elif target_side is not None and target_handle is None:
+                                                        _issue(
+                                                            issues,
+                                                            "PROJECT_VALUE_INVALID",
+                                                            f"{source_path}.target_side",
+                                                            "requires target_handle",
+                                                        )
+                                                    elif target_handle in STATE_GRAPH_ENTRY_HANDLE_SIDES and target_side is not None and target_side not in STATE_GRAPH_ENTRY_HANDLE_SIDES[target_handle]:
+                                                        _issue(
+                                                            issues,
+                                                            "PROJECT_VALUE_INVALID",
+                                                            f"{source_path}.target_side",
+                                                            "is not available on the selected corner entry",
+                                                        )
+                                                    token_positions = source_layout.get("token_positions")
+                                                    if token_positions is not None:
+                                                        _validate_route_token_positions(
+                                                            token_positions,
+                                                            f"{source_path}.token_positions",
+                                                            issues,
+                                                        )
+                                                    rails = source_layout.get("rails")
+                                                    if not isinstance(rails, list):
+                                                        _issue(issues, "PROJECT_TYPE_INVALID", f"{source_path}.rails", "must be an array")
+                                                        continue
+                                                    if len(rails) > STATE_GRAPH_ROUTE_RAIL_MAX:
+                                                        _issue(
+                                                            issues,
+                                                            "PROJECT_LIMIT_EXCEEDED",
+                                                            f"{source_path}.rails",
+                                                            f"contains more than {STATE_GRAPH_ROUTE_RAIL_MAX} rails",
+                                                        )
+                                                        continue
+                                                    previous_axis = None
+                                                    for index, rail in enumerate(rails):
+                                                        rail_path = f"{source_path}.rails[{index}]"
+                                                        if not isinstance(rail, dict):
+                                                            _issue(issues, "PROJECT_TYPE_INVALID", rail_path, "must be an object")
+                                                            continue
+                                                        _check_keys(rail, {"axis", "value"}, rail_path, issues)
+                                                        axis = rail.get("axis")
+                                                        if axis not in {"x", "y"}:
+                                                            _issue(issues, "PROJECT_VALUE_INVALID", f"{rail_path}.axis", "must be x or y")
+                                                        elif axis == previous_axis:
+                                                            _issue(issues, "PROJECT_VALUE_INVALID", f"{rail_path}.axis", "must alternate")
+                                                        previous_axis = axis
+                                                        value = rail.get("value")
+                                                        if isinstance(value, bool) or not isinstance(value, (int, float)):
+                                                            _issue(issues, "PROJECT_TYPE_INVALID", f"{rail_path}.value", "must be a number")
+                                                        elif not -100000 <= value <= 100000:
+                                                            _issue(issues, "PROJECT_TYPE_INVALID", f"{rail_path}.value", "outside supported editor layout range")
+                                                else:
+                                                    _check_keys(
+                                                        source_layout,
+                                                        {"waypoints"},
+                                                        source_path,
+                                                        issues,
+                                                        {"waypoints", "routing_version"},
+                                                    )
+                                                    if routing_version not in {None, 2}:
+                                                        _issue(
+                                                            issues,
+                                                            "PROJECT_VALUE_INVALID",
+                                                            f"{source_path}.routing_version",
+                                                            "must be 2 or 3",
+                                                        )
+                                                    waypoints = source_layout.get("waypoints")
+                                                    if not isinstance(waypoints, list):
+                                                        _issue(issues, "PROJECT_TYPE_INVALID", f"{source_path}.waypoints", "must be an array")
+                                                        continue
+                                                    if len(waypoints) > STATE_GRAPH_ROUTE_RAIL_MAX:
+                                                        _issue(
+                                                            issues,
+                                                            "PROJECT_LIMIT_EXCEEDED",
+                                                            f"{source_path}.waypoints",
+                                                            f"contains more than {STATE_GRAPH_ROUTE_RAIL_MAX} points",
+                                                        )
+                                                        continue
+                                                    for index, point in enumerate(waypoints):
+                                                        point_path = f"{source_path}.waypoints[{index}]"
+                                                        if not isinstance(point, dict):
+                                                            _issue(issues, "PROJECT_TYPE_INVALID", point_path, "must be an object")
+                                                            continue
+                                                        _check_keys(point, {"x", "y"}, point_path, issues)
+                                                        for axis in ("x", "y"):
+                                                            value = point.get(axis)
+                                                            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                                                                _issue(issues, "PROJECT_TYPE_INVALID", f"{point_path}.{axis}", "must be a number")
+                                                            elif not -100000 <= value <= 100000:
+                                                                _issue(issues, "PROJECT_TYPE_INVALID", f"{point_path}.{axis}", "outside supported editor layout range")
 
 
 def _check_asset(
@@ -3414,6 +5350,30 @@ def _check_scene(
         _issue(issues, "JOYSTICK_POLICY_REQUIRED", f"{base}.joystick_policy", "diagonal bindings require eight_way")
 
     states = _unique_ids(scene.get("states"), "state_id", f"{base}.states", issues, 64)
+    scene_exits = _unique_ids(
+        scene.get("scene_exits", []),
+        "scene_exit_id",
+        f"{base}.scene_exits",
+        issues,
+        32,
+    )
+    for scene_exit_id, scene_exit in scene_exits.items():
+        path = f"{base}.scene_exits[{scene_exit_id}]"
+        _check_keys(
+            scene_exit,
+            {"scene_exit_id", "display_name", "target_scene"},
+            path,
+            issues,
+        )
+        _text(scene_exit.get("display_name"), f"{path}.display_name", issues)
+        _stable_id(scene_exit.get("target_scene"), f"{path}.target_scene", issues)
+        if scene_exit.get("target_scene") == scene.get("scene_id"):
+            _issue(
+                issues,
+                "SCENE_TRANSITION_TARGET_INVALID",
+                f"{path}.target_scene",
+                "scene exits must target another scene",
+            )
     render_models = _unique_ids(scene.get("render_models"), "visual_id", f"{base}.render_models", issues, 64)
     waiting_visuals = _unique_ids(scene.get("waiting_visuals"), "waiting_visual_id", f"{base}.waiting_visuals", issues, 32)
     routes = _unique_ids(scene.get("routes"), "route_id", f"{base}.routes", issues, 128)
@@ -3468,9 +5428,22 @@ def _check_scene(
                         )
                 elif "visual_ref" in element:
                     _issue(issues, "RENDER_VISUAL_REF_INVALID", f"{item_path}.visual_ref", "primitives do not reference assets")
-            if (("line_direction" in element and kind != "line")
-                    or element.get("line_direction", "down_right") not in {"down_right", "up_right"}):
-                _issue(issues, "RENDER_LINE_DIRECTION_INVALID", f"{item_path}.line_direction", "line_direction must be down_right or up_right on a line")
+                line_direction = element.get("line_direction", "down_right")
+                if kind == "line":
+                    if not isinstance(line_direction, str) or line_direction not in {"down_right", "up_right"}:
+                        _issue(
+                            issues,
+                            "RENDER_LINE_DIRECTION_INVALID",
+                            f"{item_path}.line_direction",
+                            "must be down_right or up_right",
+                        )
+                elif "line_direction" in element:
+                    _issue(
+                        issues,
+                        "RENDER_LINE_DIRECTION_INVALID",
+                        f"{item_path}.line_direction",
+                        "is only valid for line elements",
+                    )
             layer = element.get(
                 "layer",
                 "UI" if element.get("focus_role", "none") == "focus" else "SCENE",
@@ -3551,7 +5524,7 @@ def _check_scene(
             "target_scene",
         }
         if not independent:
-            allowed.add("action_ref")
+            allowed.update({"action_ref", "scene_exit_ref"})
         _check_keys(route, required, path, issues, allowed)
         if independent != (route.get("event_ref") in scene_timers):
             _issue(issues, "EVENT_HANDLER_SCOPE_INVALID", path,
@@ -3600,6 +5573,13 @@ def _check_scene(
         elif has_target_state and route.get("target_state") not in states:
             _issue(issues, "GRAPH_TRANSITION_TARGET_UNKNOWN", f"{path}.target_state", "target state does not exist")
         elif has_target_state:
+            if "scene_exit_ref" in route:
+                _issue(
+                    issues,
+                    "SCENE_EXIT_TARGET_MISMATCH",
+                    f"{path}.scene_exit_ref",
+                    "local state routes cannot reference a scene exit",
+                )
             target_state_record = states[route.get("target_state")]
             only_render_model = next(iter(render_models), None)
             target_model = render_models.get(target_state_record.get("render_model_ref") or only_render_model)
@@ -3612,6 +5592,22 @@ def _check_scene(
                 }
         elif has_target_scene:
             _stable_id(route.get("target_scene"), f"{path}.target_scene", issues)
+            scene_exit_ref = route.get("scene_exit_ref")
+            if scene_exit_ref is not None:
+                if scene_exit_ref not in scene_exits:
+                    _issue(
+                        issues,
+                        "SCENE_EXIT_UNKNOWN",
+                        f"{path}.scene_exit_ref",
+                        f"unknown scene exit '{scene_exit_ref}'",
+                    )
+                elif scene_exits[scene_exit_ref].get("target_scene") != route.get("target_scene"):
+                    _issue(
+                        issues,
+                        "SCENE_EXIT_TARGET_MISMATCH",
+                        f"{path}.scene_exit_ref",
+                        "route target_scene must match its declared scene exit",
+                    )
             route_actions = route.get("actions")
             if isinstance(route_actions, list) and any(
                 not isinstance(action, dict) or action.get("kind") != "play_sfx"
@@ -3891,8 +5887,8 @@ def _check_scene(
         if not isinstance(wait_policy.get("hold_fallback_allowed"), bool):
             _issue(issues, "WAIT_FALLBACK_INVALID", f"{path}.hold_fallback_allowed", "must be true or false")
         interests = wait_policy.get("event_interests")
-        if not isinstance(interests, list) or not interests:
-            _issue(issues, "WAIT_EVENT_INTEREST_MISSING", f"{path}.event_interests", "must contain at least one event binding")
+        if not isinstance(interests, list):
+            _issue(issues, "PROJECT_TYPE_INVALID", f"{path}.event_interests", "must be an array")
         else:
             for index, action_ref in enumerate(interests):
                 if action_ref not in all_event_bindings:
@@ -4091,8 +6087,11 @@ def _compile_asset_catalogs(
                 {"cue_id", "asset_ref", "priority", "volume"},
                 cue_path,
                 issues,
+                {"cue_id", "display_name", "asset_ref", "priority", "volume"},
             )
             _stable_id(cue_id, f"{cue_path}.cue_id", issues)
+            if "display_name" in cue:
+                _text(cue.get("display_name"), f"{cue_path}.display_name", issues, 64)
             _stable_id(cue.get("asset_ref"), f"{cue_path}.asset_ref", issues)
             for field in ("priority", "volume"):
                 value = cue.get(field)
@@ -4129,6 +6128,173 @@ def _compile_asset_catalogs(
             f"compiled audio exceeds the {AUDIO_MAX_BANK_BYTES}-byte active-package audio limit",
         )
     return assets, animations, frames, audio_assets, audio_cues, issues
+
+
+def _new_project_slug(project_name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", project_name.lower()).strip("_")
+    if not slug:
+        slug = "project"
+    if not slug[0].isalpha():
+        slug = f"project_{slug}"
+    return slug[:48].rstrip("_")
+
+
+def _new_state_scene(
+    scene_id: str,
+    display_name: str,
+    *,
+    interaction_template: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    input_actions: list[dict[str, Any]] = []
+    routes: list[dict[str, Any]] = []
+    event_interests: list[str] = []
+
+    interaction_mode = (
+        interaction_template.get("mode")
+        if isinstance(interaction_template, dict)
+        else "continuous"
+    )
+    interaction_policy: dict[str, Any] = {
+        "policy_id": f"{scene_id}_interaction",
+        "mode": interaction_mode,
+        "meaningful_activity_actions": list(event_interests),
+    }
+    if interaction_mode == "timeout":
+        inactive_route = interaction_template.get("inactive_route")
+        interaction_policy["inactive_route"] = (
+            inactive_route
+            if inactive_route in {"preserve_scene", "exit_to_shell"}
+            else "preserve_scene"
+        )
+        if "bounded_deferrals" in interaction_template:
+            interaction_policy["bounded_deferrals"] = []
+
+    return {
+        "schema_id": "peepshow.authoring.state_scene",
+        "schema_version": 1,
+        "scene_id": scene_id,
+        "display_name": display_name,
+        "scene_type": "STATE_SCENE",
+        "entry_state": "start",
+        "variables": [],
+        "input_actions": input_actions,
+        "scene_exits": [],
+        "states": [
+            {
+                "state_id": "start",
+                "display_name": "Start",
+                "waiting_visual_ref": "static_wait",
+            }
+        ],
+        "routes": routes,
+        "render_models": [
+            {
+                "visual_id": "scene_placement",
+                "focus_index": 0,
+                "elements": [],
+            }
+        ],
+        "waiting_visuals": [
+            {
+                "waiting_visual_id": "static_wait",
+                "presentation_id": f"{scene_id}_static",
+                "phase_quantum_ms": 250,
+                "combined_step_count": 1,
+                "settled_step": 0,
+                "cycle_policy": "loop",
+                "elements": [],
+            }
+        ],
+        "reactive_wait_default": {
+            "policy_id": f"{scene_id}_wait_policy",
+            "waiting_visual_ref": "static_wait",
+            "hold_fallback_allowed": True,
+            "event_interests": event_interests,
+        },
+        "interaction_policy": interaction_policy,
+    }
+
+
+def create_project(project_root: str | Path) -> ProjectBundle:
+    root = Path(project_root)
+    if not root.is_absolute():
+        raise ProjectCommandError("PROJECT_PATH_INVALID", "new project path must be absolute")
+    if root.suffix != ".peepproj":
+        raise ProjectCommandError(
+            "PROJECT_SUFFIX_INVALID",
+            "editable project directories must end in .peepproj",
+        )
+    if root.exists():
+        raise ProjectCommandError(
+            "PROJECT_CREATE_TARGET_EXISTS",
+            "choose a new project location; that path already exists",
+        )
+    if not root.parent.is_dir():
+        raise ProjectCommandError(
+            "PROJECT_CREATE_PARENT_MISSING",
+            "the selected project parent directory does not exist",
+        )
+
+    project_name = root.stem.strip()
+    if not 1 <= len(project_name) <= 96:
+        raise ProjectCommandError(
+            "PROJECT_TEXT_INVALID",
+            "project name must contain 1..96 characters",
+        )
+    slug = _new_project_slug(project_name)
+    scene_source = "scenes/main.state.json"
+    project = {
+        "schema_id": "peepshow.authoring.project",
+        "schema_version": 1,
+        "project_id": f"project.{slug}",
+        "project_name": project_name,
+        "package": {
+            "package_id": f"dev.peepshow.{slug}",
+            "display_name": project_name,
+            "version": "0.1.0",
+        },
+        "selected_target_profile": TARGET_PROFILE_ID,
+        "entry_scene": "main",
+        "scene_sources": [scene_source],
+        "validation": {
+            "build_profile": "development",
+            "ruleset_version": 1,
+        },
+    }
+    scene = _new_state_scene("main", "Main")
+
+    staging_root = root.with_name(f".{root.stem}.creating.peepproj")
+    if staging_root.exists():
+        raise ProjectCommandError(
+            "PROJECT_CREATE_STAGING_EXISTS",
+            f"remove the incomplete creation directory '{staging_root.name}' and try again",
+        )
+    try:
+        (staging_root / "scenes").mkdir(parents=True)
+        (staging_root / "project.json").write_text(
+            json.dumps(project, ensure_ascii=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        (staging_root / scene_source).write_text(
+            json.dumps(scene, ensure_ascii=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        staged_bundle = load_project(staging_root)
+        if not staged_bundle.valid:
+            issue = staged_bundle.issues[0]
+            raise ProjectCommandError(issue.code, f"{issue.path}: {issue.message}")
+        staging_root.replace(root)
+    except ProjectCommandError:
+        shutil.rmtree(staging_root, ignore_errors=True)
+        raise
+    except OSError as exc:
+        shutil.rmtree(staging_root, ignore_errors=True)
+        raise ProjectCommandError(
+            "PROJECT_CREATE_FAILED",
+            f"could not create project: {exc}",
+        ) from exc
+
+    return load_project(root)
 
 
 def load_project(project_root: str | Path) -> ProjectBundle:
@@ -4222,13 +6388,98 @@ def load_project(project_root: str | Path) -> ProjectBundle:
                     f"project.editor.scene_flow.nodes[{scene_id}]",
                     f"unknown scene '{scene_id}'",
                 )
+    scene_flow = project.get("editor", {}).get("scene_flow", {}) if isinstance(project.get("editor"), dict) else {}
+    references = scene_flow.get("references", {}) if isinstance(scene_flow, dict) else {}
+    if isinstance(references, dict):
+        for reference_id, reference in references.items():
+            target_scene = reference.get("target_scene") if isinstance(reference, dict) else None
+            if isinstance(target_scene, str) and target_scene not in scene_ids:
+                _issue(
+                    issues,
+                    "SCENE_ID_UNKNOWN",
+                    f"project.editor.scene_flow.references[{reference_id}].target_scene",
+                    f"unknown scene '{target_scene}'",
+                )
+    exit_references = scene_flow.get("exit_references", {}) if isinstance(scene_flow, dict) else {}
+    scenes_by_id = {
+        scene.get("scene_id"): scene
+        for scene in scenes
+        if isinstance(scene, dict) and isinstance(scene.get("scene_id"), str)
+    }
+    if isinstance(exit_references, dict):
+        for source_scene, scene_group in exit_references.items():
+            source = scenes_by_id.get(source_scene)
+            if source is None:
+                _issue(
+                    issues,
+                    "SCENE_ID_UNKNOWN",
+                    f"project.editor.scene_flow.exit_references[{source_scene}]",
+                    f"unknown scene '{source_scene}'",
+                )
+                continue
+            if not isinstance(scene_group, dict):
+                continue
+            for endpoint_key, reference_id in scene_group.items():
+                path = f"project.editor.scene_flow.exit_references[{source_scene}][{endpoint_key}]"
+                reference = references.get(reference_id) if isinstance(references, dict) else None
+                if not isinstance(reference, dict):
+                    _issue(issues, "PROJECT_REFERENCE_MISSING", path, f"unknown scene-flow reference '{reference_id}'")
+                    continue
+                if not isinstance(endpoint_key, str) or ":" not in endpoint_key:
+                    continue
+                endpoint_kind, endpoint_id = endpoint_key.split(":", 1)
+                collection_name = "scene_exits" if endpoint_kind == "scene_exit" else "routes"
+                id_field = "scene_exit_id" if endpoint_kind == "scene_exit" else "route_id"
+                endpoint = next(
+                    (
+                        record
+                        for record in source.get(collection_name, [])
+                        if isinstance(record, dict) and record.get(id_field) == endpoint_id
+                    ),
+                    None,
+                )
+                if endpoint is None:
+                    _issue(issues, "PROJECT_REFERENCE_MISSING", path, f"unknown {endpoint_kind} '{endpoint_id}'")
+                elif endpoint.get("target_scene") != reference.get("target_scene"):
+                    _issue(
+                        issues,
+                        "COMMAND_TARGET_INVALID",
+                        path,
+                        "scene-flow reference target does not match the authored scene destination",
+                    )
+    scene_route_layouts = scene_flow.get("routes", {}) if isinstance(scene_flow, dict) else {}
+    if isinstance(scene_route_layouts, dict):
+        for source_scene, scene_group in scene_route_layouts.items():
+            source = scenes_by_id.get(source_scene)
+            if source is None:
+                _issue(
+                    issues,
+                    "SCENE_ID_UNKNOWN",
+                    f"project.editor.scene_flow.routes[{source_scene}]",
+                    f"unknown scene '{source_scene}'",
+                )
+                continue
+            if not isinstance(scene_group, dict):
+                continue
+            for endpoint_key in scene_group:
+                path = f"project.editor.scene_flow.routes[{source_scene}][{endpoint_key}]"
+                if not isinstance(endpoint_key, str) or ":" not in endpoint_key:
+                    continue
+                endpoint_kind, endpoint_id = endpoint_key.split(":", 1)
+                collection_name = "scene_exits" if endpoint_kind == "scene_exit" else "routes"
+                id_field = "scene_exit_id" if endpoint_kind == "scene_exit" else "route_id"
+                endpoint = next(
+                    (
+                        record
+                        for record in source.get(collection_name, [])
+                        if isinstance(record, dict) and record.get(id_field) == endpoint_id
+                    ),
+                    None,
+                )
+                if endpoint is None:
+                    _issue(issues, "PROJECT_REFERENCE_MISSING", path, f"unknown {endpoint_kind} '{endpoint_id}'")
     state_graph_scenes = project.get("editor", {}).get("state_graph", {}).get("scenes", {}) if isinstance(project.get("editor"), dict) else {}
     if isinstance(state_graph_scenes, dict):
-        scenes_by_id = {
-            scene.get("scene_id"): scene
-            for scene in scenes
-            if isinstance(scene, dict) and isinstance(scene.get("scene_id"), str)
-        }
         for scene_id, scene_layout in state_graph_scenes.items():
             if not isinstance(scene_id, str):
                 continue
@@ -4244,22 +6495,70 @@ def load_project(project_root: str | Path) -> ProjectBundle:
             if not isinstance(scene_layout, dict):
                 continue
             nodes = scene_layout.get("nodes")
-            if not isinstance(nodes, dict):
-                continue
-            state_ids = {
-                state.get("state_id")
-                for state in target_scene.get("states", [])
-                if isinstance(state, dict)
-            }
-            for state_id in nodes:
-                if isinstance(state_id, str) and state_id not in state_ids:
-                    _issue(
-                        issues,
-                        "GRAPH_STATE_UNKNOWN",
-                        f"project.editor.state_graph.scenes[{scene_id}].nodes[{state_id}]",
-                        f"unknown state '{state_id}'",
-                    )
+            if isinstance(nodes, dict):
+                valid_node_ids = {
+                    state.get("state_id")
+                    for state in target_scene.get("states", [])
+                    if isinstance(state, dict)
+                }
+                valid_node_ids.add("scene-entry")
+                valid_node_ids.add(STATE_GRAPH_SYSTEM_EXIT_NODE_ID)
+                valid_node_ids.update(
+                    f"scene-exit-{scene_exit.get('scene_exit_id')}"
+                    for scene_exit in target_scene.get("scene_exits", [])
+                    if isinstance(scene_exit, dict) and isinstance(scene_exit.get("scene_exit_id"), str)
+                )
+                for node_id in nodes:
+                    if isinstance(node_id, str) and node_id not in valid_node_ids:
+                        _issue(
+                            issues,
+                            "GRAPH_STATE_UNKNOWN",
+                            f"project.editor.state_graph.scenes[{scene_id}].nodes[{node_id}]",
+                            f"unknown state graph node '{node_id}'",
+                        )
+            routes = scene_layout.get("routes")
+            if isinstance(routes, dict):
+                routes_by_id = {
+                    route.get("route_id"): route
+                    for route in target_scene.get("routes", [])
+                    if isinstance(route, dict) and isinstance(route.get("route_id"), str)
+                }
+                for route_id, route_layout in routes.items():
+                    if not isinstance(route_id, str):
+                        continue
+                    target_route = routes_by_id.get(route_id)
+                    if target_route is None:
+                        _issue(
+                            issues,
+                            "GRAPH_ROUTE_UNKNOWN",
+                            f"project.editor.state_graph.scenes[{scene_id}].routes[{route_id}]",
+                            f"unknown route '{route_id}'",
+                        )
+                        continue
+                    sources = route_layout.get("sources") if isinstance(route_layout, dict) else None
+                    if not isinstance(sources, dict):
+                        continue
+                    valid_sources = set(target_route.get("from_states", []))
+                    for source_state in sources:
+                        if isinstance(source_state, str) and source_state not in valid_sources:
+                            _issue(
+                                issues,
+                                "GRAPH_ROUTE_SOURCE_UNKNOWN",
+                                f"project.editor.state_graph.scenes[{scene_id}].routes[{route_id}].sources[{source_state}]",
+                                f"state '{source_state}' is not a source of route '{route_id}'",
+                            )
     for scene, source in zip(scenes, loaded_scene_sources):
+        for scene_exit in scene.get("scene_exits", []):
+            if not isinstance(scene_exit, dict):
+                continue
+            target_scene = scene_exit.get("target_scene")
+            if isinstance(target_scene, str) and target_scene not in scene_ids:
+                _issue(
+                    issues,
+                    "SCENE_TRANSITION_TARGET_UNKNOWN",
+                    f"scene[{source}].scene_exits[{scene_exit.get('scene_exit_id')}].target_scene",
+                    f"unknown scene '{target_scene}'",
+                )
         for route in [*scene.get("routes", []), *scene.get("event_handlers", [])]:
             if not isinstance(route, dict) or "target_scene" not in route:
                 continue
@@ -4312,6 +6611,7 @@ def apply_project_commands(
 
     project = deepcopy(bundle.project)
     scenes = deepcopy(list(bundle.scenes))
+    scene_sources = list(bundle.scene_sources)
     asset_catalogs = deepcopy(list(bundle.asset_catalogs))
     asset_catalog_sources = list(bundle.asset_catalog_sources)
     assets = deepcopy(list(bundle.assets))
@@ -4325,7 +6625,17 @@ def apply_project_commands(
         if not isinstance(command, dict):
             raise ProjectCommandError("COMMAND_SHAPE_INVALID", "each command must be an object")
         kind = command.get("kind")
-        if kind == "state.add":
+        if kind == "scene.add":
+            applied.append(
+                _apply_scene_add(bundle.root, project, scenes, scene_sources, command)
+            )
+        elif kind == "scene.rename":
+            applied.append(_apply_scene_rename(scenes, command))
+        elif kind == "project.set_entry_scene":
+            applied.append(_apply_project_set_entry_scene(project, scenes, command))
+        elif kind == "state.create":
+            applied.append(_apply_state_create(project, scenes, command))
+        elif kind == "state.add":
             applied.append(_apply_state_add(scenes, command))
         elif kind == "state.delete":
             applied.append(_apply_state_delete(project, scenes, command))
@@ -4347,6 +6657,10 @@ def apply_project_commands(
             applied.append(_apply_input_action_upsert(scenes, command))
         elif kind == "input_action.delete":
             applied.append(_apply_input_action_delete(scenes, command))
+        elif kind == "route.create_trigger":
+            applied.append(_apply_route_create_trigger(project, scenes, command))
+        elif kind == "route.rebind_trigger":
+            applied.append(_apply_route_rebind_trigger(scenes, command))
         elif kind in {"event_binding.add", "event_binding.update"}:
             applied.append(_apply_event_binding_upsert(scenes, command))
         elif kind == "event_binding.delete":
@@ -4356,19 +6670,25 @@ def apply_project_commands(
         elif kind == "route.add":
             applied.append(_apply_route_add(scenes, command))
         elif kind == "route.delete":
-            applied.append(_apply_route_delete(scenes, command))
+            applied.append(_apply_route_delete(project, scenes, command))
         elif kind in {"route.set_sources", "route.set_action_ref", "route.set_event_ref"}:
-            applied.append(_apply_route_set_binding(scenes, command))
+            applied.append(_apply_route_set_binding(project, scenes, command))
         elif kind == "route.set_target":
-            applied.append(_apply_route_set_target(scenes, command))
-        elif kind == "route.add_scene_exit":
-            applied.append(_apply_route_add_scene_exit(scenes, command))
-        elif kind == "route.delete_scene_exit":
-            applied.append(_apply_route_delete_scene_exit(scenes, command))
+            applied.append(_apply_route_set_target(project, scenes, command))
+        elif kind == "scene_exit.add":
+            applied.append(_apply_scene_exit_add(project, scenes, command))
+        elif kind == "scene_exit.set_target":
+            applied.append(_apply_scene_exit_set_target(project, scenes, command))
+        elif kind == "scene_exit.delete":
+            applied.append(_apply_scene_exit_delete(project, scenes, command))
         elif kind == "render_element.set_position":
             applied.append(_apply_render_element_set_position(scenes, command))
         elif kind == "state_placement.set_override":
             applied.append(_apply_state_placement_set_override(scenes, frames, command))
+        elif kind == "state_placement.clear_override":
+            applied.append(_apply_state_placement_clear_override(scenes, command))
+        elif kind == "placement_object.add":
+            applied.append(_apply_placement_object_add(scenes, frames, command))
         elif kind == "render_element.add":
             applied.append(_apply_render_element_add(scenes, frames, command))
         elif kind == "render_element.delete":
@@ -4450,8 +6770,28 @@ def apply_project_commands(
                 raise ProjectCommandError(issue.code, issue.message)
         elif kind == "editor.scene_flow.set_node_position":
             applied.append(_apply_scene_flow_node_position(project, scenes, command))
+        elif kind == "editor.scene_flow.set_package_entry_position":
+            applied.append(_apply_scene_flow_package_entry_position(project, command))
+        elif kind == "editor.scene_flow.add_reference":
+            applied.append(_apply_scene_flow_reference_add(project, scenes, command))
+        elif kind == "editor.scene_flow.set_reference_position":
+            applied.append(_apply_scene_flow_reference_position(project, command))
+        elif kind == "editor.scene_flow.set_reference_target":
+            applied.append(_apply_scene_flow_reference_target(project, scenes, command))
+        elif kind == "editor.scene_flow.delete_reference":
+            applied.append(_apply_scene_flow_reference_delete(project, command))
+        elif kind == "editor.scene_flow.set_exit_reference":
+            applied.append(_apply_scene_flow_exit_reference(project, scenes, command))
+        elif kind == "editor.scene_flow.set_route_layout":
+            applied.append(_apply_scene_flow_route_layout(project, scenes, command))
         elif kind == "editor.state_graph.set_node_position":
             applied.append(_apply_state_graph_node_position(project, scenes, command))
+        elif kind == "editor.state_graph.set_entry_layout":
+            applied.append(_apply_state_graph_entry_layout(project, scenes, command))
+        elif kind == "editor.state_graph.delete_system_exit":
+            applied.append(_apply_state_graph_system_exit_delete(project, scenes, command))
+        elif kind == "editor.state_graph.set_route_layout":
+            applied.append(_apply_state_graph_route_layout(project, scenes, command))
         elif kind == "route.set_guard":
             applied.append(_apply_route_set_guard(scenes, command))
         elif kind in {"route.guard.add", "route.guard.delete", "route.guard.move"}:
@@ -4496,7 +6836,7 @@ def apply_project_commands(
             bundle.root,
             project,
             tuple(scenes),
-            bundle.scene_sources,
+            tuple(scene_sources),
             tuple(asset_catalogs),
             tuple(asset_catalog_sources),
             tuple(assets),
@@ -4545,8 +6885,6 @@ def save_project(bundle: ProjectBundle) -> tuple[str, ...]:
         if path is None or issues:
             issue = issues[0] if issues else ValidationIssue("SCENE_SOURCE_INVALID", source, "scene source is invalid")
             raise ProjectCommandError(issue.code, issue.message)
-        if not path.exists():
-            raise ProjectCommandError("PROJECT_SAVE_FAILED", f"scene source '{source}' no longer exists")
         encoded = (
             json.dumps(
                 scene,

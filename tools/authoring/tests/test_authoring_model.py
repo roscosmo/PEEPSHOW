@@ -340,6 +340,20 @@ class AuthoringModelTests(unittest.TestCase):
             operation = next(item for item in route["operations"] if item["kind"] == 7)
             self.assertEqual(0, operation["cue_index"])
 
+    def test_audio_cue_display_name_is_authoring_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = make_audio_project(Path(temp_dir))
+            before = build_egg(load_project(project_root))
+            catalog_path = project_root / "assets" / "catalog.json"
+            catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+            catalog["audio_cues"][0]["display_name"] = "Menu Select"
+            catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+
+            bundle = load_project(project_root)
+            self.assertEqual((), bundle.issues)
+            self.assertEqual("Menu Select", bundle.audio_cues[0]["display_name"])
+            self.assertEqual(before, build_egg(bundle))
+
     def test_sampled_sfx_larger_than_resident_cache_compiles(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = make_audio_project(Path(temp_dir))
