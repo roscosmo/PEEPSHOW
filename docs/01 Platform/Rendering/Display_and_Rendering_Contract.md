@@ -29,7 +29,7 @@ Display is Platform-owned. Engine and Reference Game code request scene/frame pr
 - Engine/Reference Game code renders into approved abstractions and requests presentation.
 - Low-level panel code lives in `LS013B7DH05.c` and is limited to Sharp Memory LCD command framing, transfer preparation, DMA/polling flush mechanics, and panel-native clear/present operations.
 - The Platform display renderer lives above the panel driver in `display_renderer.c`; it owns retained logical layers, composition into the committed native framebuffer, logical-to-native drawing helpers, dirty rows, basic text/shape composition, diagnostic patterns, framebuffer hash, and minimal FW0 UI page rendering.
-- The canonical compositor order is `OVERLAY`, `UI`, `SCENE`, `BACKGROUND`. FW0 currently proves one committed framebuffer and incremental cursor rows; retained per-layer storage remains pending.
+- The canonical compositor order is `OVERLAY`, `UI`, `SCENE`, `BACKGROUND`. FW0 currently proves one committed framebuffer, retained element composition, and bounded dirty-row updates; retained per-layer pixel storage remains pending.
 
 ## Electrical / Low-Power Rules
 
@@ -71,17 +71,17 @@ path through `thDisplay`:
 - the current FW0 target clears the panel into static hold immediately when
   `thDisplay` starts, then lets UI render HOME after power boot completes
 - `thDisplay` publishes `DISPLAY_TRANSFER_ACTIVE` through `thPower` around
-  the validated boot clear-hold transfer; queued UI render calls are wrapped
-  the same way but still need a settled HOME-render target capture
+  boot, UI, and scene display transactions and releases it after the transfer
+  completes
 - the current firmware maps the logical landscape UI to the native portrait
   panel with a 90 degree counter-clockwise rotation
 - the user confirmed the corrected orientation visually on the physical display
 - the renderer is intentionally minimal and now sits in `display_renderer.c`
   above the low-level `LS013B7DH05.c` panel driver
-- FW0 currently renders shell pages as a compact three-row list with an explicit
-  selected-row cursor; the renderer owns both visible cursor phases, solid and
-  outlined, for awake presentation and LPBAM compilation
-- FW0 now has a target-proven LPBAM cursor-slice handoff that can arm SPI3,
+- FW0 renders shell pages as a compact three-row list and renders package STATE
+  scenes from bounded retained elements; package scenes may have no focus
+  element and may contain zero or more bounded animated elements
+- FW0 has a target-proven LPBAM waiting-visual handoff that can arm SPI3,
   LPDMA1, LPTIM1, SRAM4 payloads/descriptors, enter STOP2, animate without CPU
   intervention, wake, and reclaim normal display ownership
 - the renderer-owned waiting-animation compiler now combines multiple bounded
@@ -139,18 +139,18 @@ thread retained `1276` bytes of lower stack margin. This proves that
 `thRuntime` can select one structurally compatible element track atomically
 while `thDisplay` remains the sole compositor and LPBAM owner.
 
-HW6 target proof on 2026-08-27 validates authored `RND2` presentation records end to end. The deterministic `3492`-byte embedded package loaded through loader API `9` with status/reason `0/0`, decoded two scenes and `3/16` render models/elements for the source scene, and activated runtime API `13` with status `0`. The active center model resolved seven elements: one masked 1bpp focus sprite, one animated marker sprite, and package-authored filled rectangle, diagonal line, outline rectangle, circle, and ellipse records. Two STATE scene replacements completed with zero failures, and eleven STOP2 entries completed. The user confirmed the shapes rendered correctly, scene replacement was visible, static primitives remained composed in STOP2, and both sprite animations continued there. This closes the initial package serialization, exact-preview, loader, retained-compositor, and STOP2 proof for black-ink static primitives on package layers `BACKGROUND`, `SCENE`, and `UI`; `OVERLAY` remains system-owned.
-
-The next source-complete STATE slice removes that package-art gap without
-changing the validated transport. Egg loader API v3 accepts either the original
-six required scene chunks or the nine-chunk form containing `asset_table`,
-`masked_1bpp_sprite_bank`, and `animation_table`; it validates frame bounds,
-stride, masks, padding, and immutable package ranges. Render elements and
-waiting-phase references resolve to one-based package frame handles. `thDisplay`
-composes those same masked pixels into the awake framebuffer and the existing
-waiting-animation frames, after which the proven dirty-row and LPBAM compiler
-remain unchanged. This implementation is pending HW6 visual and repeated
-STOP2/wake validation and is not target evidence yet.
+HW6 evidence `EV-HW6-20260903-P1-STATEWAITGENERAL-097` validates that the
+production waiting path has no cursor or focus dependency. A package-authored
+STATE scene published one focusless four-phase sprite on a four-step `250 ms`
+timeline. The awake renderer advanced the four-frame timeline. The preferred LPBAM
+compile admitted four logical frames covering `78` candidate rows as `13`
+transactions, using `7579` wire bytes and `7592/10512` payload bytes. Queue
+construction produced `91` nodes; fill, clock, link, start, DMA, and reclaim
+statuses were all `0x0`. The selected authored handoff advanced frame `1 -> 2`;
+edge request/run reached `2/2` with zero misses or deferrals; DMA completed with
+`CBR1=0`; and two real STOP2 entries completed. The operator confirmed the
+scene animated both awake and autonomously in STOP2. A focusless scene with no
+animated elements remains valid and uses held-frame fallback.
 
 ## DMA-Safe Buffer Placement
 

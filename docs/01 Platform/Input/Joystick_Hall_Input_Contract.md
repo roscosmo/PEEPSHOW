@@ -80,14 +80,21 @@ non-terminal TMAG configuration writes, writes wake-and-sleep operating mode
 last, and performs no post-terminal I2C read. A bounded wake read and settle
 must precede quiet-sleep preparation because a previous firmware image may
 leave the TMAG in wake-and-sleep mode across an MCU reset. The tuning values are a
-`20 ms` wake-and-sleep period, field-threshold code `48`, and maximum hardware
-hysteresis code `7`, all supplied through the knobs system. Threshold code `48`
-corresponds to `12288` counts in the 16-bit magnetic result.
+`20 ms` wake-and-sleep period and maximum hardware hysteresis code `7`, both
+supplied through the knobs system. X/Y field thresholds are derived separately
+from the active unit calibration. If that derivation rejects an otherwise valid
+calibration, FW0 temporarily retains movement wake with the knob-controlled
+fixed threshold baseline instead of silently quiet-sleeping the sensor. The
+profile probe preserves the derivation failure reason while reporting the wake
+path as armed, so this fallback is distinguishable from a derived profile.
+Each threshold-code step corresponds to `256` counts in the 16-bit magnetic
+result.
 
-2026-08-25 HW6 target testing accepted this configuration as the movement-wake
-baseline. Four-way visual testing confirmed that positive and negative X/Y
-movement each wake the MCU from STOP2 and that neutral returns promptly to
-STOP2. The aggregate proof recorded joystick IRQ/enqueue/dequeue counts of
+2026-08-25 HW6 target testing accepted fixed threshold code `48` as the
+movement-wake bring-up baseline on the tested unit. Four-way visual testing
+confirmed that positive and negative X/Y movement each woke the MCU from STOP2
+and that neutral returned promptly to STOP2. The aggregate proof recorded
+joystick IRQ/enqueue/dequeue counts of
 `14/14/14` and `14` joystick-classified STOP2 wakes, with zero coalesces, drops,
 or pending events.
 All configuration writes and readbacks passed (`write=0xfff`, `verify=0x7ff`),
@@ -96,6 +103,12 @@ STOP2 measurements recorded `55 uA` with joystick W&S disabled and `65 uA` with
 W&S enabled, so movement wake adds approximately `10 uA` and remains inside the
 `100 uA` STOP2 budget. Long-duration neutral false-wake rate remains a separate
 measurement.
+
+That fixed code is not population evidence. A later battery-unit test showed
+that code `48` could arm successfully while a deliberate RIGHT movement did not
+produce a physical `JOY_INT` edge. Unit-to-unit rest-field offset and magnet
+recentering therefore have to be characterized before selecting production
+threshold policy.
 
 Final STOP admission must fail if a joystick event is latched in software, the
 input queue is non-empty, or active-low `JOY_INT` on `PC11` is already asserted.
@@ -155,7 +168,11 @@ Current FW0 calibration status:
 - raw X/Y/Z diagnostic sampling works through `thInput`
 - bounded REST and full-travel SWEEP raw XYZ CSV capture helpers are target-validated
 - a fixed-point normalized joystick API exists for diagnostics and calibration review
-- the shell flow captures neutral, UP, RIGHT, DOWN, LEFT, and full travel
+- the shell flow captures a bounded set of post-flick neutral returns, then
+  UP, RIGHT, DOWN, LEFT, and full travel
+- neutral capture requires five deliberate excursion-and-release cycles,
+  rejects unstable return windows, and uses the coordinate-wise median of the
+  accepted return centroids instead of one initial resting position
 - each capture is incremental and owned by `thInput`; progress is published for UI rendering
 - opposite cardinal pairs solve a Q20 axis transform without floating point
 - the full-travel sweep must reproduce all four cardinal directions before it is accepted
@@ -237,6 +254,47 @@ classification, and the matched STOP2 current comparison are target-validated.
 Canonical awake diagonal publication and the temporary HOME diagnostic are
 target-validated across all four diagonal directions.
 
+### Guided Wake-Threshold Characterization
+
+FW0 provides a temporary, nonpersistent population-characterization path on
+the `INPUT TEST` page. It is debugger-armed only and does not change the saved
+calibration or the production threshold fallback.
+
+- A valid saved calibration is required so the diagnostic starts from a known
+  joystick configuration. Characterization does not reuse its neutral returns.
+- Suspend the active package through the system menu before arming the test.
+- `thInput` guides CENTER, UP, RELEASE CENTER, RIGHT, RELEASE CENTER, DOWN,
+  RELEASE CENTER, LEFT, RELEASE CENTER. The five neutral captures therefore
+  come directly from this characterization session.
+- At each center prompt, the operator waits for the stick to physically settle
+  before pressing A. At each cardinal prompt, the operator holds full travel
+  before pressing A. The UI must render `SCANNING` before acquisition proceeds,
+  and further A presses are ignored until that capture has completed or failed.
+- Every capture samples five bounded raw X/Y observations and rejects excessive
+  movement. Center and cardinal captures then perform bounded real TMAG
+  wake-and-sleep comparator trials on each axis. Release-center captures finish
+  after raw sampling and retain both their centroid and peak absolute sample.
+  The acquisition is a deadline-driven, incremental owner state machine; it
+  does not sleep or monopolize `thInput` for the whole scan. X trials enable
+  only X and Y trials enable only Y, so a strong endpoint on the other axis
+  cannot contaminate the result.
+- The search records the highest code that asserts at each pose and repeats the
+  adjacent boundary observations. It does not claim a full monotonic sweep. A
+  measured-axis result at hardware code `127` is accepted and explicitly
+  reported as ceiling-censored rather than rejected.
+- The candidate X/Y pair is placed above both the measured center assertion
+  boundary and every independently captured neutral sample peak. It is feasible
+  only if that same pair still covers all four cardinal poses.
+- The calibration page and characterization page remain awake; STOP2 is
+  deliberately blocked during acquisition.
+
+Use
+`__fw0_joystick_wake_characterization_enable.gdb` once to start the guided
+flow and `__fw0_joystick_wake_characterization_prints.gdb` once after the
+display says `HALT + PRINT`. Results from the PPK2 unit and both battery units
+at a common supply voltage are required before this diagnostic can inform a
+production threshold decision.
+
 ## Calibration Contract
 
 Joystick calibration is required for normal usability.
@@ -244,6 +302,13 @@ Joystick calibration is required for normal usability.
 Rules:
 
 - Calibration lives in the protected calibration storage region.
+- Neutral calibration must use an odd, bounded set of stable post-flick return
+  centroids; one held resting-position capture is not a valid center estimate.
+- The neutral center is the coordinate-wise median of those centroids. After
+  the cardinal transform is solved, the deadzone must enclose every accepted
+  return centroid plus the configured margin.
+- A neutral capture that times out, lacks the required return count, or needs a
+  deadzone beyond the accepted aligned limit must fail and remain retryable.
 - If no valid joystick calibration is found, normal shell/game input must not start.
 - Missing or invalid calibration routes to safe-mode calibration.
 - Safe-mode calibration must be navigable without the joystick.
@@ -317,7 +382,9 @@ Baseline omnipolar field-switch policy:
   gain selection, threshold direction override, and active-high polarity.
 - `Sensor_Config_3.THR_SEL = 2h` selects per-axis magnetic field thresholds.
 - `Sensor_Config_3.WOC_SEL = 0h` disables relative wake-on-change.
-- `THR_Config_1` and `THR_Config_2` set the same provisional X/Y operating point.
+- `THR_Config_1` and `THR_Config_2` use independently derived X/Y operating
+  points, or the proven fixed baseline on both axes when valid-calibration
+  derivation rejects.
 - `THR_Config_3 = 0h` disables the Z threshold.
 - `Sensor_Config_4`, `Sensor_Config_5`, and `Sensor_Config_6` are cleared so
   high/tamper thresholds are disabled.
@@ -331,15 +398,21 @@ STOP2 baseline park policy:
 - Write `Device_Config_2.Operating_Mode = Wake-and-Sleep` last.
 - Do not read TMAG registers after the terminal write unless deliberately waking it.
 - If calibration is missing, use the non-interactive quiet-sleep fallback and retain L/R plus A/B navigation.
+- If calibration is valid but profile derivation rejects, use the explicit fixed
+  threshold fallback and retain the rejection reason in telemetry.
 
 Switch mode provides a level output, so the event remains observable while the
 MCU wakes. Active-low polarity and the HW6 `JOY_INT` EXTI path must remain
 validated against the board circuit and CubeMX configuration.
 
-The fixed field threshold is a hardware proof, not final policy. Production must
-derive X/Y operating points from calibration, validate that neutral plus margin
-is below both operating points and that all four cardinal endpoints cross them,
-and fall back to button-only wake if a unit has insufficient field margin.
+The fixed field threshold was a hardware proof, not production policy. Firmware
+maps the calibrated runtime-neutral envelope back through the saved transform,
+then places each X/Y operating point one hardware code above the corresponding
+maximum raw-field magnitude. It also reconstructs all four calibrated cardinal
+endpoints and requires each endpoint to cross at least one operating point. A
+missing, malformed, saturated, or insufficient-range calibration selects quiet
+TMAG sleep and button-only wake instead of arming an unsafe field threshold. This
+derivation uses the existing persistent calibration format.
 
 ---
 

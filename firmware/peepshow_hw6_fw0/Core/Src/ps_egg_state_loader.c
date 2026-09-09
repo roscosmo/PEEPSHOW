@@ -41,6 +41,7 @@
 #define PS_EGG_GRAPH_HEADER_SIZE         (40UL)
 #define PS_EGG_VARIABLE_RECORD_SIZE      (16UL)
 #define PS_EGG_INPUT_RECORD_SIZE         (4UL)
+#define PS_EGG_EVENT_RECORD_SIZE         (12UL)
 #define PS_EGG_STATE_RECORD_SIZE         (8UL)
 #define PS_EGG_ROUTE_RECORD_V1_SIZE      (18UL)
 #define PS_EGG_ROUTE_RECORD_V2_SIZE      (20UL)
@@ -84,6 +85,7 @@ typedef struct
 
 typedef struct
 {
+  uint32_t binding_record_offset;
   uint32_t state_record_offset;
   uint32_t route_record_offset;
   uint32_t source_offset;
@@ -92,7 +94,7 @@ typedef struct
   uint32_t meaningful_offset;
   uint16_t entry_state;
   uint16_t variable_count;
-  uint16_t input_count;
+  uint16_t binding_count;
   uint16_t state_count;
   uint16_t route_count;
   uint16_t source_count;
@@ -100,6 +102,7 @@ typedef struct
   uint16_t operation_count;
   uint16_t default_waiting;
   uint16_t format_version;
+  uint16_t binding_record_size;
   uint16_t route_record_size;
   uint16_t meaningful_count;
   uint16_t interaction_mode;
@@ -1222,14 +1225,15 @@ static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
   format_version = PS_EggU16(&payload[4]);
   if ((memcmp(payload, "STG1", 4UL) != 0) ||
       ((format_version != 1U) && (format_version != 2U) &&
-       (format_version != 3U) && (format_version != 4U)) ||
+       (format_version != 3U) && (format_version != 4U) &&
+       (format_version != 5U) && (format_version != 6U)) ||
       (PS_EggU16(&payload[6]) != PS_EGG_GRAPH_HEADER_SIZE))
   {
     return 0UL;
   }
   view->entry_state = PS_EggU16(&payload[8]);
   view->variable_count = PS_EggU16(&payload[10]);
-  view->input_count = PS_EggU16(&payload[12]);
+  view->binding_count = PS_EggU16(&payload[12]);
   view->state_count = PS_EggU16(&payload[14]);
   view->route_count = PS_EggU16(&payload[16]);
   view->source_count = PS_EggU16(&payload[18]);
@@ -1237,6 +1241,9 @@ static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
   view->operation_count = PS_EggU16(&payload[22]);
   view->default_waiting = PS_EggU16(&payload[26]);
   view->format_version = format_version;
+  view->binding_record_size = (format_version >= 5U) ?
+    (uint16_t)PS_EGG_EVENT_RECORD_SIZE :
+    (uint16_t)PS_EGG_INPUT_RECORD_SIZE;
   view->route_record_size = (format_version == 1U) ?
     (uint16_t)PS_EGG_ROUTE_RECORD_V1_SIZE :
     (uint16_t)PS_EGG_ROUTE_RECORD_V2_SIZE;
@@ -1254,7 +1261,7 @@ static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
       (view->state_count > PS_SCENE_RUNTIME_STATE_MAX) ||
       (view->entry_state >= view->state_count) ||
       (view->variable_count > PS_SCENE_RUNTIME_VARIABLE_MAX) ||
-      (view->input_count > PS_SCENE_RUNTIME_INPUT_ROUTE_MAX) ||
+      (view->binding_count > PS_SCENE_RUNTIME_EVENT_BINDING_MAX) ||
       (view->guard_count > PS_SCENE_RUNTIME_GUARD_MAX) ||
       (view->operation_count > (PS_SCENE_RUNTIME_ACTION_MAX +
                                 PS_SCENE_RUNTIME_TRANSITION_MAX)) ||
@@ -1287,12 +1294,13 @@ static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
     return 0UL;
   }
   offset += (uint32_t)view->variable_count * PS_EGG_VARIABLE_RECORD_SIZE;
+  view->binding_record_offset = offset;
   if (PS_EggRangeValid(chunk->size, offset,
-      (uint32_t)view->input_count * PS_EGG_INPUT_RECORD_SIZE) == 0UL)
+      (uint32_t)view->binding_count * view->binding_record_size) == 0UL)
   {
     return 0UL;
   }
-  offset += (uint32_t)view->input_count * PS_EGG_INPUT_RECORD_SIZE;
+  offset += (uint32_t)view->binding_count * view->binding_record_size;
   view->state_record_offset = offset;
   offset += (uint32_t)view->state_count * PS_EGG_STATE_RECORD_SIZE;
   view->route_record_offset = offset;
@@ -1330,15 +1338,21 @@ static uint32_t PS_EggParseGraph(const ps_egg_chunk_t *chunk,
   for (index = 0UL; index < event_count; ++index)
   {
     if (PS_EggU16(&payload[event_offset + (index * 2UL)]) >=
-        view->input_count)
+        view->binding_count)
     {
       return 0UL;
     }
   }
   for (index = 0UL; index < meaningful_count; ++index)
   {
-    if (PS_EggU16(&payload[meaningful_offset + (index * 2UL)]) >=
-        view->input_count)
+    uint16_t binding_index = PS_EggU16(
+      &payload[meaningful_offset + (index * 2UL)]);
+
+    if ((binding_index >= view->binding_count) ||
+        ((format_version >= 5U) &&
+         (payload[view->binding_record_offset +
+                  ((uint32_t)binding_index * view->binding_record_size) + 2UL] !=
+          (uint8_t)PS_SCENE_RUNTIME_EVENT_CLASS_INPUT)))
     {
       return 0UL;
     }
@@ -1955,6 +1969,8 @@ static uint32_t PS_EggDecodeScene(
   static ps_egg_graph_view_t graph;
   static ps_egg_render_view_t render;
   static ps_egg_wait_view_t waiting;
+  static uint32_t
+    binding_to_input[PS_SCENE_RUNTIME_EVENT_BINDING_MAX];
   const uint8_t *graph_payload = &blob[graph_chunk->offset];
   const uint8_t *render_payload = &blob[render_chunk->offset];
   const uint8_t *wait_payload = &blob[wait_chunk->offset];
@@ -1984,17 +2000,16 @@ static uint32_t PS_EggDecodeScene(
   scene->entry_state_id = (uint32_t)graph.entry_state + 1UL;
   scene->state_count = graph.state_count;
   scene->visual_binding_count = graph.state_count;
-  scene->input_route_count = graph.input_count;
+  scene->event_binding_count = graph.binding_count;
+  scene->input_route_count = 0UL;
   scene->variable_count = graph.variable_count;
   scene->interaction_mode = graph.interaction_mode;
   scene->inactive_route = graph.inactive_route;
   scene->joystick_policy = graph.joystick_policy;
   scene->meaningful_input_mask = 0UL;
-  for (index = 0UL; index < graph.meaningful_count; ++index)
+  for (index = 0UL; index < PS_SCENE_RUNTIME_EVENT_BINDING_MAX; ++index)
   {
-    uint16_t input_index = PS_EggU16(
-      &graph_payload[graph.meaningful_offset + (index * 2UL)]);
-    scene->meaningful_input_mask |= (1UL << input_index);
+    binding_to_input[index] = PS_SCENE_RUNTIME_INDEX_INVALID;
   }
 
   for (index = 0UL; index < graph.variable_count; ++index)
@@ -2005,34 +2020,90 @@ static uint32_t PS_EggDecodeScene(
     scene->variables[index].value_type = PS_SCENE_RUNTIME_VALUE_S32;
     scene->variables[index].initial_value = PS_EggI32(&record[4]);
   }
-  for (index = 0UL; index < graph.input_count; ++index)
+  for (index = 0UL; index < graph.binding_count; ++index)
   {
-    const uint8_t *record = &graph_payload[
-      PS_EGG_GRAPH_HEADER_SIZE +
-      ((uint32_t)graph.variable_count * PS_EGG_VARIABLE_RECORD_SIZE) +
-      (index * PS_EGG_INPUT_RECORD_SIZE)];
-    uint16_t packed_input = PS_EggU16(&record[2]);
-    uint16_t source = (graph.format_version < 4U) ?
-      packed_input : (packed_input & 0x00FFU);
-    uint16_t logical_event = (graph.format_version < 4U) ?
-      (uint16_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS :
-      ((packed_input >> 8U) & 0x00FFU);
+    const uint8_t *record = &graph_payload[graph.binding_record_offset +
+      (index * graph.binding_record_size)];
+    uint32_t event_class;
+    uint32_t event_kind;
+    uint32_t source;
+    uint32_t parameter;
+
+    if (graph.format_version < 5U)
+    {
+      uint16_t packed_input = PS_EggU16(&record[2]);
+
+      event_class = PS_SCENE_RUNTIME_EVENT_CLASS_INPUT;
+      source = (graph.format_version < 4U) ?
+        (uint32_t)packed_input : (uint32_t)(packed_input & 0x00FFU);
+      event_kind = (graph.format_version < 4U) ?
+        (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS :
+        (uint32_t)((packed_input >> 8U) & 0x00FFU);
+      parameter = 0UL;
+    }
+    else
+    {
+      event_class = record[2];
+      event_kind = record[3];
+      source = PS_EggU32(&record[4]);
+      parameter = PS_EggU32(&record[8]);
+    }
     if ((PS_EggU16(record) >= strings->count) ||
-        (!(((source >= (uint16_t)PS_INPUT_LOGICAL_SOURCE_BUTTON_A) &&
-            (source <= (uint16_t)PS_INPUT_LOGICAL_SOURCE_START)) ||
-           ((source >= (uint16_t)PS_INPUT_LOGICAL_SOURCE_JOY_LEFT) &&
-            (source <= (uint16_t)PS_INPUT_LOGICAL_SOURCE_JOY_DOWN_RIGHT)))) ||
-        (logical_event < (uint16_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS) ||
-        (logical_event > (uint16_t)PS_INPUT_BUTTON_LOGICAL_EVENT_REPEAT) ||
-        ((source == (uint16_t)PS_INPUT_LOGICAL_SOURCE_START) &&
-         (logical_event != (uint16_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)))
+        !(((event_class == PS_SCENE_RUNTIME_EVENT_CLASS_INPUT) &&
+           (((source >= (uint32_t)PS_INPUT_LOGICAL_SOURCE_BUTTON_A) &&
+             (source <= (uint32_t)PS_INPUT_LOGICAL_SOURCE_START)) ||
+            ((source >= (uint32_t)PS_INPUT_LOGICAL_SOURCE_JOY_LEFT) &&
+             (source <= (uint32_t)PS_INPUT_LOGICAL_SOURCE_JOY_DOWN_RIGHT))) &&
+           (event_kind >=
+            (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS) &&
+           (event_kind <=
+            (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_REPEAT) &&
+           ((source != (uint32_t)PS_INPUT_LOGICAL_SOURCE_START) ||
+            (event_kind ==
+             (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS)) &&
+           (parameter == 0UL)) ||
+          ((event_class == PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) &&
+           (((event_kind == PS_SCENE_RUNTIME_TIMER_STATE_ENTRY) &&
+             (source == 0UL)) ||
+            ((graph.format_version >= 6U) &&
+             (event_kind == PS_SCENE_RUNTIME_TIMER_SCENE) &&
+             (source <= PS_SCENE_RUNTIME_TIMER_START_ACTION))) &&
+           (parameter >= PS_TARGET_PROFILE_STATE_TIMER_MIN_MS) &&
+           (parameter <= PS_TARGET_PROFILE_STATE_TIMER_MAX_MS))))
     {
       return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
     }
-    scene->input_routes[index].logical_event =
-      logical_event;
-    scene->input_routes[index].input_id = source;
-    scene->input_routes[index].scene_event_id = index + 1UL;
+    scene->event_bindings[index].binding_id = index + 1UL;
+    scene->event_bindings[index].event_class = event_class;
+    scene->event_bindings[index].event_kind = event_kind;
+    scene->event_bindings[index].source = source;
+    scene->event_bindings[index].parameter = parameter;
+    if (event_class == PS_SCENE_RUNTIME_EVENT_CLASS_INPUT)
+    {
+      uint32_t input_index = scene->input_route_count;
+
+      if (input_index >= PS_SCENE_RUNTIME_INPUT_ROUTE_MAX)
+      {
+        return PS_EggFail(PS_EGG_STATE_LOADER_REASON_CAPACITY);
+      }
+      binding_to_input[index] = input_index;
+      scene->input_routes[input_index].logical_event = event_kind;
+      scene->input_routes[input_index].input_id = source;
+      scene->input_routes[input_index].scene_event_id = index + 1UL;
+      scene->input_route_count++;
+    }
+  }
+  for (index = 0UL; index < graph.meaningful_count; ++index)
+  {
+    uint16_t binding_index = PS_EggU16(
+      &graph_payload[graph.meaningful_offset + (index * 2UL)]);
+    uint32_t input_index = binding_to_input[binding_index];
+
+    if (input_index == PS_SCENE_RUNTIME_INDEX_INVALID)
+    {
+      return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+    }
+    scene->meaningful_input_mask |= (1UL << input_index);
   }
   for (index = 0UL; index < graph.state_count; ++index)
   {
@@ -2079,18 +2150,31 @@ static uint32_t PS_EggDecodeScene(
     uint32_t guard;
     uint32_t operation;
     uint32_t source;
+    uint32_t independent = (source_count == 0U);
 
     if ((PS_EggU16(route) >= strings->count) ||
-        (input_index >= graph.input_count) ||
+        (input_index >= graph.binding_count) ||
         (!(((target_state < graph.state_count) &&
             (target_scene_string == 0xFFFFU)) ||
            ((target_state == 0xFFFFU) &&
-            (target_scene_id != 0UL)))) ||
+            (target_scene_id != 0UL)) ||
+           ((graph.format_version >= 6U) && (independent != 0UL) &&
+            (target_state == 0xFFFFU) &&
+            (target_scene_string == 0xFFFFU)))) ||
         ((uint32_t)first_source + source_count > graph.source_count) ||
         ((uint32_t)first_guard + route_guard_count > graph.guard_count) ||
         ((uint32_t)first_operation + route_operation_count >
          graph.operation_count) ||
         (guard_count + route_guard_count > PS_SCENE_RUNTIME_GUARD_MAX))
+    {
+      return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+    }
+    if ((independent != 0UL) !=
+        ((graph.format_version >= 6U) &&
+         (scene->event_bindings[input_index].event_class ==
+          PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) &&
+         (scene->event_bindings[input_index].event_kind ==
+          PS_SCENE_RUNTIME_TIMER_SCENE)))
     {
       return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
     }
@@ -2190,16 +2274,39 @@ static uint32_t PS_EggDecodeScene(
         scene->actions[action_count].secondary_value = 0;
         action_count++;
       }
+      else if ((record[0] >= 9U) && (record[0] <= 11U))
+      {
+        uint16_t timer_index = PS_EggU16(&record[2]);
+        if ((graph.format_version < 6U) || (record[1] != 0U) ||
+            (timer_index >= graph.binding_count) ||
+            (scene->event_bindings[timer_index].event_class !=
+             PS_SCENE_RUNTIME_EVENT_CLASS_TIMER) ||
+            (scene->event_bindings[timer_index].event_kind !=
+             PS_SCENE_RUNTIME_TIMER_SCENE) ||
+            (PS_EggU32(&record[4]) != 0UL) ||
+            (PS_EggU32(&record[8]) != 0UL) ||
+            (action_count >= PS_SCENE_RUNTIME_ACTION_MAX))
+        {
+          return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+        }
+        scene->actions[action_count].kind =
+          PS_SCENE_RUNTIME_ACTION_START_TIMER + (record[0] - 9U);
+        scene->actions[action_count].target_id = timer_index;
+        action_count++;
+      }
       else
       {
         uint16_t element_index = PS_EggU16(&record[2]);
-        ps_scene_runtime_visual_binding_t *target_binding =
-          &scene->visual_bindings[target_state];
+        ps_scene_runtime_visual_binding_t *target_binding;
         ps_scene_render_element_t *target_element;
         ps_scene_runtime_action_t *target_action;
 
-        if ((target_state >= graph.state_count) ||
-            (element_index >= target_binding->element_count) ||
+        if (target_state >= graph.state_count)
+        {
+          return PS_EggFail(PS_EGG_STATE_LOADER_REASON_GRAPH);
+        }
+        target_binding = &scene->visual_bindings[target_state];
+        if ((element_index >= target_binding->element_count) ||
             ((record[0] != 6U) && (record[1] != 0U)) ||
             (action_count >= PS_SCENE_RUNTIME_ACTION_MAX))
         {
@@ -2373,9 +2480,10 @@ static uint32_t PS_EggDecodeScene(
         action_count++;
       }
     }
-    for (source = 0UL; source < source_count; ++source)
+    for (source = 0UL; source < source_count + independent; ++source)
     {
-      uint16_t source_state = PS_EggU16(&graph_payload[graph.source_offset +
+      uint16_t source_state = (independent != 0UL) ? 0U :
+        PS_EggU16(&graph_payload[graph.source_offset +
         (((uint32_t)first_source + source) * 2UL)]);
       ps_scene_runtime_transition_t *transition;
       if ((source_state >= graph.state_count) ||
@@ -2385,13 +2493,14 @@ static uint32_t PS_EggDecodeScene(
       }
       transition = &scene->transitions[transition_count];
       transition->transition_id = transition_count + 1UL;
-      transition->source_state_id = (uint32_t)source_state + 1UL;
+      transition->source_state_id = (independent != 0UL) ?
+        0UL : (uint32_t)source_state + 1UL;
       transition->scene_event_id = (uint32_t)input_index + 1UL;
       transition->first_guard = first_runtime_guard;
       transition->guard_count = route_guard_count;
       transition->first_action = first_runtime_action;
       transition->action_count = action_count - first_runtime_action;
-      transition->target_state_id = (target_scene_id == 0UL) ?
+      transition->target_state_id = (target_state != 0xFFFFU) ?
         (uint32_t)target_state + 1UL : 0UL;
       transition->target_scene_id = target_scene_id;
       transition_count++;
@@ -2402,7 +2511,7 @@ static uint32_t PS_EggDecodeScene(
   scene->transition_count = transition_count;
 
   g_ps_egg_state_loader_probe.state_count = graph.state_count;
-  g_ps_egg_state_loader_probe.input_count = graph.input_count;
+  g_ps_egg_state_loader_probe.input_count = scene->input_route_count;
   g_ps_egg_state_loader_probe.route_count = graph.route_count;
   g_ps_egg_state_loader_probe.transition_count = transition_count;
   g_ps_egg_state_loader_probe.render_model_count = render.model_count;

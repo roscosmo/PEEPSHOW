@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 import base64
 import hashlib
 import sys
@@ -35,6 +36,7 @@ from .preview import PreviewError, StateScenePreview
 from .target_profile import (
     TARGET_PROFILE_ID,
     TARGET_SAMPLED_SFX,
+    TARGET_STATE_SCENE_EVENTS,
     public_target_profile,
 )
 from .protocol import (
@@ -48,7 +50,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 36
+SERVICE_API_VERSION = 37
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -385,6 +387,17 @@ class AuthoringService:
                 "system_actions": ["exit_to_shell"],
             },
             "state_scene_graph": {
+                "compiled_format": "STG1",
+                "compiled_format_version": 6,
+                "load_compatible_versions": [1, 2, 3, 4, 5, 6],
+                "scene_timers": {
+                    "event_type": "time.scene_elapsed",
+                    "start_policies": ["scene_entry", "action"],
+                    "actions": ["start_timer", "restart_timer", "cancel_timer"],
+                    "handler_collection": "event_handlers",
+                    "handler_target_optional": True,
+                    "element_actions_require_target_state": True,
+                },
                 "command_batch_maximum": 64,
                 "target_scene_actions": ["play_sfx"],
                 "scene_commands": ["scene.add", "scene.rename", "project.set_entry_scene"],
@@ -476,6 +489,9 @@ class AuthoringService:
                     "variables": 32,
                     "input_actions": 32,
                     "scene_exits": 32,
+                    "compiled_event_bindings": int(
+                        TARGET_STATE_SCENE_EVENTS["binding_count_max"]
+                    ),
                     "routes": 128,
                     "guards_per_route": 8,
                     "actions_per_route": 8,
@@ -513,12 +529,23 @@ class AuthoringService:
                     "input_action.update",
                     "input_action.delete",
                 ],
+                "event_binding_commands": [
+                    "event_binding.add",
+                    "event_binding.update",
+                    "event_binding.delete",
+                ],
+                "event_handler_commands": [
+                    "event_handler.add",
+                    "event_handler.update",
+                    "event_handler.delete",
+                ],
                 "route_commands": [
                     "route.create_trigger",
                     "route.rebind_trigger",
                     "route.add",
                     "route.delete",
                     "route.set_action_ref",
+                    "route.set_event_ref",
                     "route.set_sources",
                     "route.set_target",
                 ],
@@ -938,10 +965,12 @@ class AuthoringService:
     def _preview_advance(self, params: dict[str, Any]) -> dict[str, Any]:
         preview = self._current_preview(params, {"elapsed_ms"})
         try:
-            preview.advance(params["elapsed_ms"])
+            events = preview.advance(params["elapsed_ms"])
         except PreviewError as exc:
             raise ProtocolError("PREVIEW_ADVANCE_FAILED", str(exc)) from exc
-        return self._preview_result(preview.snapshot())
+        snapshot = preview.snapshot()
+        snapshot["timer_events"] = [asdict(event) for event in events]
+        return self._preview_result(snapshot)
 
     def handle(self, request: ServiceRequest) -> dict[str, Any]:
         handlers = {

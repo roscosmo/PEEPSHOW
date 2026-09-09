@@ -218,6 +218,7 @@ Platform settings, calibration, BLE bonding, install metadata, and fault logs ar
 | `time.wake_reason` | `CONTRACTED` | normalized package-visible wake reason through lifecycle |
 | `time.catch_up_policy` | `CONTRACTED` | bounded missed-event reconciliation policy |
 | `time.rtc_wake_intent` | `CONTRACTED` | RTC-backed wake/cadence intent without RTC hardware control |
+| `power.battery_soc` | `CONTRACTED` | normalized read-only battery SOC and validity, with bounded rising/falling threshold events where the target grants them |
 | `power.reactive_wait` | `CONTRACTED` | package can declare a settled reactive wait contract without selecting sleep hardware |
 | `power.latency_hint` | `CONTRACTED` | package declares acceptable response latency |
 | `power.cadence_request` | `CONTRACTED` | package can request bounded reactive schedule cadence or realtime frame cadence |
@@ -225,6 +226,11 @@ Platform settings, calibration, BLE bonding, install metadata, and fault logs ar
 | `power.inactive_route` | `CONTRACTED` | package can declare routing from realtime work to a state scene or shell when interaction becomes inactive |
 
 Packages may read PeepOS calendar time where granted, but may not set, correct, resync, or directly access RTC hardware.
+
+`power.battery_soc` exposes only normalized `soc_percent` and `soc_valid`.
+PMIC registers, charging state, VBUS/USB state, protection state, and shutdown
+policy remain system-only. Threshold events are edge-triggered after
+OS-owned filtering and hysteresis and cannot override low-battery policy.
 
 These capabilities express intent only. Platform chooses RTC setup, sleep class, clocks, wake-source arming, and resume policy.
 
@@ -244,6 +250,12 @@ Target profiles expose package-facing wake behavior as wake intents and normaliz
 | `sensor.imu_motion_stream` | `CONTRACTED` | bounded higher-rate motion context for realtime gameplay | yes if optional |
 
 Sensor raw values are diagnostics/calibration only. Packages consume resolved PeepOS values, sessions, contexts, and events through [[Sensor_API_Contract]].
+
+An exposed package step session begins when the package launches and survives
+scene replacement, package INACTIVE, STOP2, and temporary system-menu
+suspension. It resets when the package unloads or the device reboots. A step
+milestone compares against that package-session count; it is not the device's
+lifetime counter and it does not grant access to raw IMU state.
 
 Each validated profile publishes only the sensors physically present on that target. HW6 must set `sensors.light_supported = false` and omit `sensor.light` and `sensor.light_stream`; its retained IMU capabilities remain pending HW6 validation. A fault in a granted sensor is handled through Platform/Engine fault lifecycle and diagnostics, not normal package gameplay logic.
 

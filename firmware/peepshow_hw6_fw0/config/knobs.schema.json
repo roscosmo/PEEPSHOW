@@ -19,6 +19,10 @@
     "input_start_ship_display_clear_ms",
     "input_start_stable_samples",
     "input_joystick_cal_neutral_ms",
+    "input_joystick_cal_neutral_return_count",
+    "input_joystick_cal_neutral_motion_counts",
+    "input_joystick_cal_neutral_stable_span_counts",
+    "input_joystick_cal_neutral_stable_samples",
     "input_joystick_cal_cardinal_ms",
     "input_joystick_cal_sweep_ms",
     "input_joystick_cal_sample_period_ms",
@@ -33,6 +37,7 @@
     "input_joystick_wake_field_hysteresis_code",
     "input_joystick_cal_min_cardinal_span_counts",
     "input_joystick_cal_sweep_coverage_per_mille",
+    "input_joystick_cal_deadzone_max_per_mille",
     "input_joystick_cal_deadzone_pad_per_mille",
     "input_joystick_direction_enter_per_mille",
     "input_joystick_direction_release_per_mille",
@@ -45,6 +50,12 @@
     "input_rtos_irq_priority",
     "audio_pcm_dma_frames",
     "audio_dma_completion_margin_ms",
+    "audio_sfx_mix_ceiling_per_mille",
+    "audio_sfx_mix_volume_budget",
+    "audio_sfx_limiter_attack_ms",
+    "audio_sfx_limiter_release_ms",
+    "audio_sfx_declick_attack_ms",
+    "audio_sfx_declick_release_ms",
     "debug_tracex_enable",
     "debug_tracex_user_events_enable",
     "debug_swo_lifecycle_enable",
@@ -92,6 +103,7 @@
     "power_clock_reactive_base_hz",
     "power_clock_reactive_burst_hz",
     "power_clock_realtime_balanced_hz",
+    "power_clock_realtime_high_hz",
     "power_clock_io_high_hz",
     "power_clock_pll2_autogate_enable",
     "power_stop2_display_wait_backend",
@@ -260,14 +272,61 @@
     "input_joystick_cal_neutral_ms": {
       "type": "integer",
       "minimum": 100,
-      "maximum": 5000,
-      "default": 1200,
+      "maximum": 30000,
+      "default": 12000,
       "unit": "ms",
       "timebase_domain": "threadx",
       "owner": "thInput",
       "class": "protected_policy",
       "path": "platform.knobs.input.joystick_cal_neutral_ms",
-      "description": "Neutral hold capture duration for joystick calibration."
+      "description": "Hard timeout for collecting the bounded flick-and-release neutral return set."
+    },
+    "input_joystick_cal_neutral_return_count": {
+      "type": "integer",
+      "enum": [3, 5, 7, 9],
+      "default": 5,
+      "unit": "returns",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_cal_neutral_return_count",
+      "description": "Odd number of stable post-flick return centroids used to derive the joystick neutral center and envelope."
+    },
+    "input_joystick_cal_neutral_motion_counts": {
+      "type": "integer",
+      "minimum": 512,
+      "maximum": 32767,
+      "default": 4000,
+      "unit": "counts",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_cal_neutral_motion_counts",
+      "description": "Minimum raw X or Y excursion needed to recognize a deliberate neutral-calibration flick."
+    },
+    "input_joystick_cal_neutral_stable_span_counts": {
+      "type": "integer",
+      "minimum": 64,
+      "maximum": 8192,
+      "default": 1024,
+      "unit": "counts",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_cal_neutral_stable_span_counts",
+      "description": "Maximum raw X and Y span accepted within a stable post-release neutral window."
+    },
+    "input_joystick_cal_neutral_stable_samples": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 32,
+      "default": 5,
+      "unit": "samples",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_cal_neutral_stable_samples",
+      "description": "Consecutive bounded samples required for the initial neutral baseline and each accepted post-flick return."
     },
     "input_joystick_cal_cardinal_ms": {
       "type": "integer",
@@ -397,7 +456,7 @@
       "owner": "thSensor",
       "class": "protected_policy",
       "path": "platform.knobs.input.joystick_wake_field_threshold_code",
-      "description": "TMAG3001 omnipolar X/Y switch operating threshold. Each code step equals 256 counts in the 16-bit magnetic result."
+      "description": "Proven TMAG3001 omnipolar X/Y threshold used when a valid calibration cannot produce an accepted derived wake profile. Each code step equals 256 counts in the 16-bit magnetic result."
     },
     "input_joystick_wake_field_hysteresis_code": {
       "type": "integer",
@@ -434,6 +493,18 @@
       "class": "protected_policy",
       "path": "platform.knobs.input.joystick_cal_sweep_coverage_per_mille",
       "description": "Minimum fraction of each captured cardinal reach that the full-travel sweep must reproduce."
+    },
+    "input_joystick_cal_deadzone_max_per_mille": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 500,
+      "default": 350,
+      "unit": "per_mille",
+      "timebase_domain": "threadx",
+      "owner": "thInput",
+      "class": "protected_policy",
+      "path": "platform.knobs.input.joystick_cal_deadzone_max_per_mille",
+      "description": "Maximum aligned neutral radius, including padding, accepted before joystick calibration fails."
     },
     "input_joystick_cal_deadzone_pad_per_mille": {
       "type": "integer",
@@ -578,6 +649,78 @@
       "class": "protected_policy",
       "path": "platform.knobs.audio.dma_completion_margin_ms",
       "description": "Bounded margin added to the calculated DMA callback deadline while thAudio waits for one-shot completion or a circular-stream refill event."
+    },
+    "audio_sfx_mix_ceiling_per_mille": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 1000,
+      "default": 500,
+      "unit": "per_mille",
+      "timebase_domain": "audio_clock",
+      "owner": "thAudio",
+      "class": "protected_policy",
+      "path": "platform.knobs.audio.sfx_mix_ceiling_per_mille",
+      "description": "Peak ceiling applied to the mixed SFX bus before conversion to 16-bit PCM. This target-specific digital ceiling protects the HW6 amplifier and speaker from summed-voice overload."
+    },
+    "audio_sfx_mix_volume_budget": {
+      "type": "integer",
+      "minimum": 64,
+      "maximum": 255,
+      "default": 255,
+      "unit": "cue_gain",
+      "timebase_domain": "audio_clock",
+      "owner": "thAudio",
+      "class": "protected_policy",
+      "path": "platform.knobs.audio.sfx_mix_volume_budget",
+      "description": "Maximum aggregate authored cue volume admitted to the SFX mix bus. A value of 255 preserves one full-volume voice and proportionally attenuates overlapping voices whose combined volume exceeds that budget."
+    },
+    "audio_sfx_limiter_attack_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20,
+      "default": 2,
+      "unit": "ms",
+      "timebase_domain": "audio_clock",
+      "owner": "thAudio",
+      "class": "protected_policy",
+      "path": "platform.knobs.audio.sfx_limiter_attack_ms",
+      "description": "Maximum time for the fixed-point SFX bus limiter to reduce gain toward the look-ahead target."
+    },
+    "audio_sfx_limiter_release_ms": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 1000,
+      "default": 80,
+      "unit": "ms",
+      "timebase_domain": "audio_clock",
+      "owner": "thAudio",
+      "class": "protected_policy",
+      "path": "platform.knobs.audio.sfx_limiter_release_ms",
+      "description": "Time for the fixed-point SFX bus limiter to restore unity gain after the mixed peak falls below the output ceiling."
+    },
+    "audio_sfx_declick_attack_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20,
+      "default": 2,
+      "unit": "ms",
+      "timebase_domain": "audio_clock",
+      "owner": "thAudio",
+      "class": "protected_policy",
+      "path": "platform.knobs.audio.sfx_declick_attack_ms",
+      "description": "Linear per-voice attack applied when a sampled SFX starts so admission cannot introduce a full-amplitude discontinuity."
+    },
+    "audio_sfx_declick_release_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "default": 4,
+      "unit": "ms",
+      "timebase_domain": "audio_clock",
+      "owner": "thAudio",
+      "class": "protected_policy",
+      "path": "platform.knobs.audio.sfx_declick_release_ms",
+      "description": "Linear per-voice release applied at natural completion and as a bounded tail when a lower-priority voice is preempted."
     },
     "debug_tracex_enable": {
       "type": "boolean",
@@ -1140,6 +1283,18 @@
       "class": "protected_policy",
       "path": "platform.knobs.power.clock_realtime_balanced_hz",
       "description": "Candidate SYSCLK/HCLK for realtime/gameplay deadlines. Actual use requires deadline and current evidence before promotion."
+    },
+    "power_clock_realtime_high_hz": {
+      "type": "integer",
+      "minimum": 1000000,
+      "maximum": 160000000,
+      "default": 120000000,
+      "unit": "Hz",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.clock_realtime_high_hz",
+      "description": "Candidate SYSCLK/HCLK between balanced realtime and the high-I/O ceiling. Initial HW6 characterization uses VOS1 so frequency effects can be measured independently of voltage scaling."
     },
     "power_clock_io_high_hz": {
       "type": "integer",

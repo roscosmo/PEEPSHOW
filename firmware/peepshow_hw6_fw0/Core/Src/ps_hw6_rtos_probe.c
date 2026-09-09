@@ -12,6 +12,7 @@
 #include "ps_input_buttons.h"
 #include "ps_input_joystick.h"
 #include "ps_input_logical.h"
+#include "ps_input_state.h"
 #include "ps_lpbam_display_buffers.h"
 #include "ps_egg_state_loader.h"
 #include "ps_package_reader.h"
@@ -123,6 +124,9 @@ extern RTC_HandleTypeDef hrtc;
   (86400UL * PS_HW6_RTOS_RTC_UNITS_PER_SECOND)
 #define PS_HW6_RTOS_RTC_DIV16_COUNTS_PER_SECOND (2048UL)
 #define PS_HW6_RTOS_RTC_DIV16_MAX_MS (32000UL)
+#define PS_HW6_RTOS_RTC_WAKE_SOURCE_NONE (0UL)
+#define PS_HW6_RTOS_RTC_WAKE_SOURCE_INTERACTION (1UL)
+#define PS_HW6_RTOS_RTC_WAKE_SOURCE_STATE_TIMER (2UL)
 #define PS_HW6_RTOS_EVENT_DEBUG_INDEX     (3U)
 #define PS_HW6_RTOS_ACK_OWNER(owner_id)   (1UL << (owner_id))
 #define PS_HW6_RTOS_PACKAGE_READER_ACK    (1UL << 15U)
@@ -166,7 +170,9 @@ extern RTC_HandleTypeDef hrtc;
   (PS_HW6_CLOCK_CAP_SAI_AUDIO_ACTIVE)
 #define PS_HW6_RTOS_AUDIO_CLOCK_PACKAGE_SFX_CAPABILITIES \
   (PS_HW6_RTOS_AUDIO_CLOCK_SAI_CAPABILITIES | \
-   PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE)
+   PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE | \
+   PS_HW6_CLOCK_CAP_REACTIVE_TRANSACTION_ACTIVE | \
+   PS_HW6_CLOCK_CAP_AUDIO_MIX_ACTIVE)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_NONE       (0UL)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_EXPORT (1UL)
 #define PS_HW6_RTOS_STORAGE_CLOCK_REASON_MSC_RECLAIM (2UL)
@@ -200,8 +206,8 @@ extern RTC_HandleTypeDef hrtc;
 #define PS_HW6_RTOS_DISPLAY_CLOCK_REASON_RELEASE    (2UL)
 #define PS_HW6_RTOS_DISPLAY_CLOCK_TRANSFER_CAPABILITIES \
   (PS_HW6_CLOCK_CAP_DISPLAY_TRANSFER_ACTIVE)
-#define PS_HW6_RTOS_LPBAM_HANDOFF_SOURCE_PHASE (1UL)
-#define PS_HW6_RTOS_LPBAM_HANDOFF_TARGET_PHASE (0UL)
+#define PS_HW6_RTOS_LEGACY_CURSOR_VISIBLE_PHASE (1UL)
+#define PS_HW6_RTOS_LEGACY_CURSOR_HIDDEN_PHASE  (0UL)
 
 #define PS_HW6_RTOS_INPUT_POLICY_API_VERSION (2UL)
 #define PS_HW6_RTOS_INPUT_POLICY_TARGET_NONE (0UL)
@@ -370,11 +376,34 @@ static uint32_t ps_runtime_interaction_rtc_start_units;
 static uint32_t ps_runtime_interaction_rtc_remaining_ticks;
 static volatile uint32_t ps_runtime_interaction_rtc_irq_expired;
 static volatile uint32_t ps_runtime_interaction_rtc_command_queued;
+typedef struct
+{
+  uint32_t configured;
+  uint32_t scope;
+  uint32_t delay_ticks;
+  uint32_t active;
+  uint32_t deadline_tick;
+  uint32_t paused_remaining_ticks;
+  uint32_t stop2_remaining_ticks;
+} ps_runtime_state_timer_slot_t;
+
+static ps_runtime_state_timer_slot_t
+  ps_runtime_state_timers[PS_SCENE_RUNTIME_EVENT_BINDING_MAX];
+static uint32_t ps_runtime_state_timer_scene_revision;
+static uint32_t ps_runtime_timer_scene_activation;
+static uint32_t ps_runtime_state_timer_paused;
+static uint32_t ps_runtime_rtc_wake_source;
+static uint32_t ps_runtime_rtc_selected_remaining_ticks;
+static uint32_t ps_runtime_rtc_state_timer_scene_revision;
 static uint32_t ps_power_input_activity_generation;
 static uint32_t ps_display_blink_visible;
 static uint32_t ps_display_waiting_sequence_frame;
 static uint32_t ps_display_waiting_sequence_count;
 static volatile uint32_t ps_audio_sfx_pending;
+static uint32_t ps_audio_sfx_clock_held;
+static uint32_t ps_audio_sfx_clock_apply_count_before;
+static uint32_t ps_audio_sfx_clock_pll2_on_count_before;
+static uint32_t ps_audio_sfx_clock_pll2_off_count_before;
 static volatile uint32_t ps_runtime_package_replace_waiting_for_audio;
 static volatile uint32_t ps_runtime_package_replace_waiting_for_install;
 static volatile uint32_t ps_storage_embedded_package_install_active;
@@ -388,7 +417,12 @@ static uint32_t ps_stop2_lpbam_edge_request_pending;
 static uint32_t ps_stop2_lpbam_edge_rearm_needed;
 static uint32_t ps_stop2_lpbam_edge_target_tick;
 static uint32_t ps_stop2_lpbam_edge_start_phase;
+static uint32_t ps_stop2_lpbam_edge_target_phase;
+static uint32_t ps_stop2_lpbam_edge_waiting_sequence;
+static uint32_t ps_stop2_lpbam_edge_start_sequence_frame;
 static uint32_t ps_stop2_lpbam_edge_target_sequence_frame;
+static uint32_t ps_stop2_lpbam_edge_compiled_sequence_frame;
+static uint32_t ps_stop2_lpbam_edge_sequence_count;
 static uint32_t ps_stop2_lpbam_edge_render_count;
 static uint32_t ps_stop2_lpbam_edge_page;
 static volatile uint32_t ps_pmic_int_pending_count;
@@ -427,6 +461,17 @@ static void PS_HW6_RTOS_RuntimeInteractionService(uint32_t now_tick);
 static void PS_HW6_RTOS_RuntimeInteractionRefresh(uint32_t logical_event,
                                                    uint32_t input_id,
                                                    uint32_t now_tick);
+static void PS_HW6_RTOS_RuntimeStateTimersSync(uint32_t now_tick,
+                                               uint32_t force);
+static void PS_HW6_RTOS_RuntimeStateTimersClear(void);
+static void PS_HW6_RTOS_RuntimeStateTimersPause(uint32_t now_tick);
+static void PS_HW6_RTOS_RuntimeStateTimersResume(uint32_t now_tick);
+static void PS_HW6_RTOS_RuntimeStateTimersService(uint32_t now_tick);
+static uint32_t PS_HW6_RTOS_RuntimeStateTimerNext(
+  uint32_t now_tick,
+  uint32_t *remaining_ticks,
+  uint32_t *binding_index);
+static UINT PS_HW6_RTOS_CompleteStateSceneEvent(uint32_t scene_result);
 static HAL_StatusTypeDef PS_HW6_RTOS_InteractionRtcReadUnits(
   uint32_t *units);
 static UINT PS_HW6_RTOS_SendDisplayUiRenderCommand(
@@ -1020,11 +1065,29 @@ static void PS_HW6_RTOS_ResetProbe(void)
   ps_runtime_interaction_rtc_remaining_ticks = 0UL;
   ps_runtime_interaction_rtc_irq_expired = 0UL;
   ps_runtime_interaction_rtc_command_queued = 0UL;
+  (void)memset(ps_runtime_state_timers, 0,
+               sizeof(ps_runtime_state_timers));
+  ps_runtime_state_timer_scene_revision = 0UL;
+  ps_runtime_timer_scene_activation = 0UL;
+  ps_runtime_state_timer_paused = 0UL;
+  ps_runtime_rtc_wake_source = PS_HW6_RTOS_RTC_WAKE_SOURCE_NONE;
+  ps_runtime_rtc_selected_remaining_ticks = 0UL;
+  ps_runtime_rtc_state_timer_scene_revision = 0UL;
+  g_ps_hw6_rtos_probe.runtime_rtc_wake_source =
+    PS_HW6_RTOS_RTC_WAKE_SOURCE_NONE;
+  g_ps_hw6_rtos_probe.runtime_state_timer_last_binding_index =
+    PS_SCENE_RUNTIME_INDEX_INVALID;
+  g_ps_hw6_rtos_probe.runtime_state_timer_rtc_selected =
+    PS_SCENE_RUNTIME_INDEX_INVALID;
   ps_power_input_activity_generation = 0UL;
   ps_display_blink_visible = 1UL;
   ps_display_waiting_sequence_frame = 0UL;
   ps_display_waiting_sequence_count = 0UL;
   ps_audio_sfx_pending = 0UL;
+  ps_audio_sfx_clock_held = 0UL;
+  ps_audio_sfx_clock_apply_count_before = 0UL;
+  ps_audio_sfx_clock_pll2_on_count_before = 0UL;
+  ps_audio_sfx_clock_pll2_off_count_before = 0UL;
   ps_runtime_package_replace_waiting_for_audio = 0UL;
   ps_runtime_package_replace_waiting_for_install = 0UL;
   ps_storage_embedded_package_install_active = 0UL;
@@ -1036,6 +1099,12 @@ static void PS_HW6_RTOS_ResetProbe(void)
   ps_stop2_lpbam_edge_rearm_needed = 0UL;
   ps_stop2_lpbam_edge_target_tick = 0UL;
   ps_stop2_lpbam_edge_start_phase = 0UL;
+  ps_stop2_lpbam_edge_target_phase = 0UL;
+  ps_stop2_lpbam_edge_waiting_sequence = 0UL;
+  ps_stop2_lpbam_edge_start_sequence_frame = 0UL;
+  ps_stop2_lpbam_edge_target_sequence_frame = 0UL;
+  ps_stop2_lpbam_edge_compiled_sequence_frame = 0UL;
+  ps_stop2_lpbam_edge_sequence_count = 0UL;
   ps_stop2_lpbam_edge_render_count = 0UL;
   ps_stop2_lpbam_edge_page = 0UL;
   g_ps_hw6_rtos_probe.magic = PS_HW6_RTOS_PROBE_MAGIC;
@@ -1100,6 +1169,8 @@ static void PS_HW6_RTOS_ResetProbe(void)
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.audio_clock_release_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_outstanding_count = 0UL;
+  g_ps_hw6_rtos_probe.audio_sfx_clock_held = 0UL;
   g_ps_hw6_rtos_probe.audio_sfx_send_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.audio_sfx_owner_status =
@@ -1111,6 +1182,18 @@ static void PS_HW6_RTOS_ResetProbe(void)
   g_ps_hw6_rtos_probe.audio_sfx_grant_policy_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.audio_sfx_grant_policy_stage =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_grant_selected_profile =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_grant_current_profile =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_grant_sysclk_hz =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_grant_hclk_hz =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_grant_voltage_scale =
+    PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_hw6_rtos_probe.audio_sfx_grant_flash_latency =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.audio_sfx_last_cue_index =
     PS_HW6_RTOS_STATUS_NOT_RUN;
@@ -1293,7 +1376,7 @@ void PS_HW6_RTOS_RecordJoystickExti(uint16_t gpio_pin, uint32_t level)
   uint32_t enqueue_required;
 
   if ((KNOB_INPUT_JOYSTICK_STOP2_WAKE_ENABLE == 0) ||
-      (PS_HW6_OwnerStateMachines_JoystickStop2WakeAllowed() == 0UL) ||
+      (PS_HW6_OwnerStateMachines_JoystickStop2WakeArmed() == 0UL) ||
       (gpio_pin != JOY_INT_Pin) ||
       (level != 0UL))
   {
@@ -1435,7 +1518,7 @@ static uint32_t PS_HW6_RTOS_ClockProfileRequestIsValid(uint32_t payload)
     return 0UL;
   }
 
-  return (profile <= (uint32_t)PS_HW6_CLOCK_PROFILE_STOP_PREP) ? 1UL : 0UL;
+  return (profile <= (uint32_t)PS_HW6_CLOCK_PROFILE_LAST) ? 1UL : 0UL;
 }
 
 static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
@@ -1800,7 +1883,7 @@ static uint32_t PS_HW6_RTOS_RuntimeInputCommandIsValid(
 
   if (g_ps_hw6_rtos_probe.input_policy_lock_active != 0UL)
   {
-    return;
+    return 0UL;
   }
 
   if ((event < (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS) ||
@@ -1816,6 +1899,92 @@ static uint32_t PS_HW6_RTOS_RuntimeInputCommandIsValid(
   }
 
   return 1UL;
+}
+
+static void PS_HW6_RTOS_AudioSfxRequestQueued(void)
+{
+  uint32_t primask = __get_PRIMASK();
+
+  __disable_irq();
+  if (ps_audio_sfx_pending != UINT32_MAX)
+  {
+    ps_audio_sfx_pending++;
+  }
+  g_ps_hw6_rtos_probe.audio_sfx_outstanding_count = ps_audio_sfx_pending;
+  __set_PRIMASK(primask);
+}
+
+void PS_HW6_RTOS_AudioSfxRequestComplete(void)
+{
+  uint32_t primask = __get_PRIMASK();
+  uint32_t remaining;
+
+  __disable_irq();
+  if (ps_audio_sfx_pending != 0UL)
+  {
+    ps_audio_sfx_pending--;
+  }
+  remaining = ps_audio_sfx_pending;
+  g_ps_hw6_rtos_probe.audio_sfx_outstanding_count = remaining;
+  __set_PRIMASK(primask);
+
+  if ((remaining == 0UL) &&
+      (ps_runtime_package_replace_waiting_for_audio != 0UL))
+  {
+    ps_runtime_package_replace_waiting_for_audio = 0UL;
+    g_ps_hw6_rtos_probe.runtime_package_replace_waiting_for_audio = 0UL;
+    g_ps_hw6_runtime_persistent_replace_request = 1UL;
+  }
+}
+
+static UINT PS_HW6_RTOS_CompleteStateSceneEvent(uint32_t scene_result)
+{
+  UINT status = TX_SUCCESS;
+
+  if (scene_result == PS_SCENE_RUNTIME_INPUT_APPLIED)
+  {
+    uint32_t cue_index;
+    uint32_t shell_exit_requested =
+      PS_SceneRuntime_TakeShellExitRequest();
+
+    if (shell_exit_requested != 0UL)
+    {
+      status = PS_HW6_RTOS_RequestRuntimeCommand(
+        PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_RETURN);
+    }
+    else if (PS_SceneRuntime_TakeSfxRequest(&cue_index) != 0UL)
+    {
+      UINT sfx_status;
+
+      g_ps_hw6_rtos_probe.audio_sfx_dispatch_count++;
+      g_ps_hw6_rtos_probe.audio_sfx_last_cue_index = cue_index;
+      PS_HW6_RTOS_AudioSfxRequestQueued();
+      sfx_status = PS_HW6_RTOS_SendModeCommand(
+        PS_HW6_RTOS_OWNER_AUDIO,
+        PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX,
+        cue_index);
+      if (sfx_status != TX_SUCCESS)
+      {
+        PS_HW6_RTOS_AudioSfxRequestComplete();
+      }
+      g_ps_hw6_rtos_probe.audio_sfx_send_status =
+        (uint32_t)sfx_status;
+    }
+    if (shell_exit_requested == 0UL)
+    {
+      status = PS_HW6_RTOS_SendDisplayUiRenderCommand(
+        (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF,
+        (uint32_t)PS_UI_ROUTER_CAL_NONE,
+        PS_SceneRuntime_StateFocusIndex(),
+        (uint32_t)PS_UI_ROUTER_SHUTDOWN_NONE,
+        0UL);
+    }
+  }
+  else if (scene_result == PS_SCENE_RUNTIME_INPUT_ERROR)
+  {
+    status = TX_CALLER_ERROR;
+  }
+  return status;
 }
 
 static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
@@ -1841,57 +2010,12 @@ static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
     scene_result = PS_SceneRuntime_HandleStateSceneInput(event, button_id);
     if (scene_result == PS_SCENE_RUNTIME_INPUT_APPLIED)
     {
-      uint32_t cue_index;
-      uint32_t shell_exit_requested;
-
       PS_HW6_RTOS_RuntimeInteractionRefresh(event,
                                              button_id,
                                              (uint32_t)tx_time_get());
-      shell_exit_requested = PS_SceneRuntime_TakeShellExitRequest();
-      if (shell_exit_requested != 0UL)
-      {
-        status = PS_HW6_RTOS_RequestRuntimeCommand(
-          PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_RETURN);
-      }
-      else if (PS_SceneRuntime_TakeSfxRequest(&cue_index) != 0UL)
-      {
-        UINT sfx_status;
-
-        g_ps_hw6_rtos_probe.audio_sfx_dispatch_count++;
-        g_ps_hw6_rtos_probe.audio_sfx_last_cue_index = cue_index;
-        if (ps_audio_sfx_pending == 0UL)
-        {
-          ps_audio_sfx_pending = 1UL;
-          sfx_status = PS_HW6_RTOS_SendModeCommand(
-            PS_HW6_RTOS_OWNER_AUDIO,
-            PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX,
-            cue_index);
-          if (sfx_status != TX_SUCCESS)
-          {
-            ps_audio_sfx_pending = 0UL;
-          }
-        }
-        else
-        {
-          sfx_status = TX_QUEUE_FULL;
-        }
-        g_ps_hw6_rtos_probe.audio_sfx_send_status =
-          (uint32_t)sfx_status;
-      }
-      if (shell_exit_requested == 0UL)
-      {
-        status = PS_HW6_RTOS_SendDisplayUiRenderCommand(
-          (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF,
-          (uint32_t)PS_UI_ROUTER_CAL_NONE,
-          PS_SceneRuntime_StateFocusIndex(),
-          (uint32_t)PS_UI_ROUTER_SHUTDOWN_NONE,
-          0UL);
-      }
+      PS_HW6_RTOS_RuntimeStateTimersSync((uint32_t)tx_time_get(), 0UL);
     }
-    else if (scene_result == PS_SCENE_RUNTIME_INPUT_ERROR)
-    {
-      status = TX_CALLER_ERROR;
-    }
+    status = PS_HW6_RTOS_CompleteStateSceneEvent(scene_result);
   }
 
   g_ps_hw6_rtos_probe.runtime_input_event_count++;
@@ -2028,6 +2152,22 @@ static uint32_t PS_HW6_RTOS_RequestJoystickCalibrationCapture(
   uint32_t button_id)
 {
   uint32_t calibration_page = g_ps_ui_router_probe.calibration_page;
+
+  if ((button_id == PS_INPUT_BUTTON_ID_A) &&
+      (g_ps_ui_router_probe.current_page ==
+       PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC) &&
+      (PS_HW6_OwnerStateMachines_JoystickWakeCharacterizationActive() !=
+       0UL))
+  {
+    if ((g_ps_hw6_owner_sm_probe
+           .joystick_wake_characterization_complete == 0UL) &&
+        (PS_HW6_OwnerStateMachines_JoystickWakeCharacterizationCaptureActive()
+         == 0UL))
+    {
+      g_ps_hw6_joystick_wake_characterization_capture_request = 1UL;
+    }
+    return 1UL;
+  }
 
   if ((button_id == PS_INPUT_BUTTON_ID_A) &&
       (g_ps_ui_router_probe.current_page == PS_UI_ROUTER_PAGE_CALIBRATION))
@@ -2217,8 +2357,10 @@ static uint32_t PS_HW6_RTOS_BeginBootHome(void)
 {
   UINT status;
 
-  if (g_ps_hw6_owner_sm_probe
-        .joystick_calibration_persistent_load_available == 0UL)
+  if ((g_ps_hw6_owner_sm_probe
+         .joystick_calibration_persistent_load_available == 0UL) ||
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK] ==
+       (uint32_t)JOY_ERROR))
   {
     ps_status_t router_status = PS_UIRouter_Dispatch(
       PS_UI_ROUTER_EVENT_NAV_CALIBRATION);
@@ -2271,14 +2413,21 @@ static UINT PS_HW6_RTOS_RequestRuntimeCommandAndWait(ULONG command)
     PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
 }
 
+static uint32_t PS_HW6_RTOS_ShutdownStateIsBlocking(uint32_t shutdown_state)
+{
+  return ((shutdown_state != (uint32_t)PS_UI_ROUTER_SHUTDOWN_NONE) &&
+          (shutdown_state != (uint32_t)PS_UI_ROUTER_SHUTDOWN_CANCELLED)) ?
+         1UL : 0UL;
+}
+
 static uint32_t PS_HW6_RTOS_SystemOverlayActive(void)
 {
   return ((g_ps_ui_router_probe.current_page ==
            (uint32_t)PS_UI_ROUTER_PAGE_SHUTDOWN) ||
           (ps_runtime_interaction_cue_active != 0UL) ||
           (ps_runtime_interaction_activation_active != 0UL) ||
-          (g_ps_ui_router_probe.shutdown_state !=
-           (uint32_t)PS_UI_ROUTER_SHUTDOWN_NONE) ||
+          (PS_HW6_RTOS_ShutdownStateIsBlocking(
+             g_ps_ui_router_probe.shutdown_state) != 0UL) ||
           (g_ps_hw6_owner_sm_probe.usb_host_msc_active != 0UL) ||
           (g_ps_storage_msc_bridge_probe.export_enabled != 0UL)) ?
          1UL : 0UL;
@@ -2975,7 +3124,7 @@ static UINT PS_HW6_RTOS_SendClockProfileCommand(uint32_t requester_id,
   ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
 
   if ((requester_id >= PS_HW6_CLOCK_REQUESTER_COUNT) ||
-      (profile > (uint32_t)PS_HW6_CLOCK_PROFILE_STOP_PREP) ||
+      (profile > (uint32_t)PS_HW6_CLOCK_PROFILE_LAST) ||
       ((capabilities & ~PS_HW6_CLOCK_CAP_ALL) != 0UL))
   {
     return TX_QUEUE_ERROR;
@@ -3097,11 +3246,19 @@ static UINT PS_HW6_RTOS_RequestAudioClockCapabilities(
   uint32_t reason,
   uint32_t capabilities)
 {
+  uint32_t requested_profile =
+    (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN;
   UINT status;
 
+  if ((reason == PS_HW6_RTOS_AUDIO_CLOCK_REASON_REACTIVE_SFX) &&
+      (capabilities != 0UL) &&
+      ((capabilities & PS_HW6_CLOCK_CAP_AUDIO_MIX_ACTIVE) == 0UL))
+  {
+    requested_profile = (uint32_t)PS_HW6_CLOCK_PROFILE_IO_HIGH;
+  }
   status = PS_HW6_RTOS_RequestPowerClockProfile(
     PS_HW6_RTOS_OWNER_AUDIO,
-    (uint32_t)PS_HW6_CLOCK_PROFILE_UNKNOWN,
+    requested_profile,
     capabilities);
 
   g_ps_hw6_rtos_probe.audio_clock_last_reason = reason;
@@ -3484,7 +3641,12 @@ static void PS_HW6_RTOS_ClearDisplayLpbamEdgeRequest(uint32_t status)
   ps_stop2_lpbam_edge_request_pending = 0UL;
   ps_stop2_lpbam_edge_target_tick = 0UL;
   ps_stop2_lpbam_edge_start_phase = 0UL;
+  ps_stop2_lpbam_edge_target_phase = 0UL;
+  ps_stop2_lpbam_edge_waiting_sequence = 0UL;
+  ps_stop2_lpbam_edge_start_sequence_frame = 0UL;
   ps_stop2_lpbam_edge_target_sequence_frame = 0UL;
+  ps_stop2_lpbam_edge_compiled_sequence_frame = 0UL;
+  ps_stop2_lpbam_edge_sequence_count = 0UL;
   ps_stop2_lpbam_edge_render_count = 0UL;
   ps_stop2_lpbam_edge_page = 0UL;
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_state =
@@ -3502,6 +3664,32 @@ static void PS_HW6_RTOS_ResumeDisplayBlinkAfterLpbamStop(uint32_t now_tick)
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_rearm_pending = 0UL;
   ps_display_blink_stop2_suppressed = 0UL;
   PS_HW6_RTOS_ResetDisplayCursorBlink(now_tick);
+}
+
+static void PS_HW6_RTOS_ResumeDisplayAfterLpbamCancel(uint32_t now_tick)
+{
+  uint32_t target_phase = ps_stop2_lpbam_edge_target_phase;
+  uint32_t target_sequence_frame =
+    ps_stop2_lpbam_edge_target_sequence_frame;
+  uint32_t sequence_count = ps_stop2_lpbam_edge_sequence_count;
+
+  if ((ps_stop2_lpbam_edge_waiting_sequence == 0UL) ||
+      (sequence_count == 0UL) ||
+      (target_sequence_frame >= sequence_count))
+  {
+    PS_HW6_RTOS_ResumeDisplayBlinkAfterLpbamStop(now_tick);
+    return;
+  }
+
+  PS_HW6_RTOS_ClearDisplayLpbamEdgeRequest((uint32_t)HAL_OK);
+  ps_stop2_lpbam_edge_rearm_needed = 0UL;
+  g_ps_hw6_rtos_probe.stop2_lpbam_edge_rearm_pending = 0UL;
+  ps_display_blink_stop2_suppressed = 0UL;
+  ps_display_blink_visible = target_phase;
+  ps_display_waiting_sequence_frame = target_sequence_frame;
+  ps_display_waiting_sequence_count = sequence_count;
+  ps_display_blink_next_tick = now_tick +
+    PS_HW6_RTOS_DisplayCursorBlinkPeriodTicks();
 }
 
 static HAL_StatusTypeDef PS_HW6_RTOS_ResumeDisplayTimelineAfterStop2(
@@ -3585,13 +3773,14 @@ static void PS_HW6_RTOS_DeferDisplayLpbamRearm(uint32_t now_tick)
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_rearm_tick = now_tick;
 }
 
-static uint32_t PS_HW6_RTOS_NextDisplayLpbamHandoffSequenceFrame(void)
+static uint32_t PS_HW6_RTOS_DisplayWaitingTimelineActive(void)
 {
-  uint32_t offset;
   uint32_t sequence_count =
     g_ps_hw6_owner_probe.display_waiting_sequence_frame_count;
 
-  if ((ps_display_waiting_sequence_count == 0UL) ||
+  if ((g_ps_hw6_owner_probe.display_waiting_snapshot_status !=
+       (uint32_t)HAL_OK) ||
+      (ps_display_waiting_sequence_count == 0UL) ||
       (ps_display_waiting_sequence_count !=
        sequence_count) ||
       (ps_display_waiting_sequence_frame >=
@@ -3600,27 +3789,7 @@ static uint32_t PS_HW6_RTOS_NextDisplayLpbamHandoffSequenceFrame(void)
     return 0UL;
   }
 
-  for (offset = 1UL;
-       offset <= ps_display_waiting_sequence_count;
-       ++offset)
-  {
-    uint32_t candidate =
-      (ps_display_waiting_sequence_frame + offset) %
-      ps_display_waiting_sequence_count;
-    uint32_t previous =
-      (candidate + ps_display_waiting_sequence_count - 1UL) %
-      ps_display_waiting_sequence_count;
-
-    if ((g_ps_hw6_owner_probe.display_waiting_sequence_phase[previous] ==
-         PS_HW6_RTOS_LPBAM_HANDOFF_SOURCE_PHASE) &&
-        (g_ps_hw6_owner_probe.display_waiting_sequence_phase[candidate] ==
-         PS_HW6_RTOS_LPBAM_HANDOFF_TARGET_PHASE))
-    {
-      return candidate;
-    }
-  }
-
-  return 0UL;
+  return 1UL;
 }
 
 static void PS_HW6_RTOS_RequestDisplayLpbamPrepareAtBlinkEdge(
@@ -3628,6 +3797,10 @@ static void PS_HW6_RTOS_RequestDisplayLpbamPrepareAtBlinkEdge(
 {
   uint32_t target_tick = ps_display_blink_next_tick;
   uint32_t period_ticks = PS_HW6_RTOS_DisplayCursorBlinkPeriodTicks();
+  uint32_t waiting_sequence =
+    PS_HW6_RTOS_DisplayWaitingTimelineActive();
+  uint32_t target_sequence_frame = 0UL;
+  uint32_t target_phase = PS_HW6_RTOS_LEGACY_CURSOR_HIDDEN_PHASE;
   UINT wake_status = TX_SUCCESS;
 
   if (period_ticks == 0UL)
@@ -3652,8 +3825,17 @@ static void PS_HW6_RTOS_RequestDisplayLpbamPrepareAtBlinkEdge(
     target_tick = now_tick;
     g_ps_hw6_rtos_probe.stop2_lpbam_edge_miss_count++;
   }
-  if (ps_display_blink_visible !=
-      PS_HW6_RTOS_LPBAM_HANDOFF_SOURCE_PHASE)
+  if (waiting_sequence != 0UL)
+  {
+    target_sequence_frame =
+      (ps_display_waiting_sequence_frame + 1UL) %
+      ps_display_waiting_sequence_count;
+    target_phase =
+      g_ps_hw6_owner_probe.display_waiting_sequence_phase[
+        target_sequence_frame];
+  }
+  else if (ps_display_blink_visible !=
+           PS_HW6_RTOS_LEGACY_CURSOR_VISIBLE_PHASE)
   {
     target_tick += period_ticks;
   }
@@ -3663,8 +3845,14 @@ static void PS_HW6_RTOS_RequestDisplayLpbamPrepareAtBlinkEdge(
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_rearm_pending = 0UL;
   ps_stop2_lpbam_edge_target_tick = target_tick;
   ps_stop2_lpbam_edge_start_phase = ps_display_blink_visible;
-  ps_stop2_lpbam_edge_target_sequence_frame =
-    PS_HW6_RTOS_NextDisplayLpbamHandoffSequenceFrame();
+  ps_stop2_lpbam_edge_target_phase = target_phase;
+  ps_stop2_lpbam_edge_waiting_sequence = waiting_sequence;
+  ps_stop2_lpbam_edge_start_sequence_frame =
+    ps_display_waiting_sequence_frame;
+  ps_stop2_lpbam_edge_target_sequence_frame = target_sequence_frame;
+  ps_stop2_lpbam_edge_compiled_sequence_frame = target_sequence_frame;
+  ps_stop2_lpbam_edge_sequence_count =
+    (waiting_sequence != 0UL) ? ps_display_waiting_sequence_count : 0UL;
   ps_stop2_lpbam_edge_render_count =
     g_ps_hw6_owner_probe.display_ui_render_count;
   ps_stop2_lpbam_edge_page = g_ps_ui_router_probe.current_page;
@@ -3677,13 +3865,13 @@ static void PS_HW6_RTOS_RequestDisplayLpbamPrepareAtBlinkEdge(
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_start_phase =
     ps_stop2_lpbam_edge_start_phase;
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_start_sequence_frame =
-    ps_display_waiting_sequence_frame;
+    ps_stop2_lpbam_edge_start_sequence_frame;
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_target_sequence_frame =
     ps_stop2_lpbam_edge_target_sequence_frame;
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_render_phase =
-    (ps_stop2_lpbam_edge_start_phase == 0UL) ? 1UL : 0UL;
+    ps_stop2_lpbam_edge_target_phase;
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_render_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_render_tick = 0UL;
@@ -3738,10 +3926,8 @@ static HAL_StatusTypeDef PS_HW6_RTOS_CompileDisplayLpbamAheadOfEdge(
   }
   else
   {
-    ps_stop2_lpbam_edge_target_sequence_frame =
+    ps_stop2_lpbam_edge_compiled_sequence_frame =
       g_ps_hw6_owner_probe.display_lpbam_sequence_start_frame;
-    g_ps_hw6_rtos_probe.stop2_lpbam_edge_target_sequence_frame =
-      ps_stop2_lpbam_edge_target_sequence_frame;
   }
 
   return status;
@@ -3874,6 +4060,8 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunDisplayLpbamPrepareAtBlinkEdge(
   HAL_StatusTypeDef status;
   uint32_t current_visible = ps_display_blink_visible;
   uint32_t next_visible;
+  uint32_t compiled_sequence_frame =
+    ps_stop2_lpbam_edge_compiled_sequence_frame;
 
   if (PS_HW6_RTOS_DisplayLpbamEdgeRequestMatches() == 0UL)
   {
@@ -3882,14 +4070,14 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunDisplayLpbamPrepareAtBlinkEdge(
   }
 
   if ((g_ps_hw6_owner_probe.display_lpbam_sequence_frame_count == 0UL) ||
-      (ps_stop2_lpbam_edge_target_sequence_frame >=
+      (compiled_sequence_frame >=
        g_ps_hw6_owner_probe.display_lpbam_sequence_frame_count))
   {
     PS_HW6_RTOS_ClearDisplayLpbamEdgeRequest((uint32_t)HAL_ERROR);
     return HAL_ERROR;
   }
   next_visible = g_ps_hw6_owner_probe.display_lpbam_sequence_phase[
-    ps_stop2_lpbam_edge_target_sequence_frame];
+    compiled_sequence_frame];
 
   ps_stop2_lpbam_edge_request_pending = 0UL;
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_run_count++;
@@ -3902,8 +4090,39 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunDisplayLpbamPrepareAtBlinkEdge(
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
 
-  if ((current_visible != PS_HW6_RTOS_LPBAM_HANDOFF_SOURCE_PHASE) ||
-      (next_visible != PS_HW6_RTOS_LPBAM_HANDOFF_TARGET_PHASE))
+  if (ps_stop2_lpbam_edge_waiting_sequence != 0UL)
+  {
+    uint32_t expected_target_sequence_frame;
+
+    if ((ps_stop2_lpbam_edge_sequence_count == 0UL) ||
+        (ps_stop2_lpbam_edge_start_sequence_frame >=
+         ps_stop2_lpbam_edge_sequence_count))
+    {
+      g_ps_hw6_rtos_probe.stop2_lpbam_edge_state =
+        PS_HW6_RTOS_STOP2_LPBAM_EDGE_FAILED;
+      g_ps_hw6_rtos_probe.stop2_lpbam_edge_status = (uint32_t)HAL_ERROR;
+      return HAL_ERROR;
+    }
+    expected_target_sequence_frame =
+      (ps_stop2_lpbam_edge_start_sequence_frame + 1UL) %
+      ps_stop2_lpbam_edge_sequence_count;
+    if ((ps_display_waiting_sequence_count !=
+         ps_stop2_lpbam_edge_sequence_count) ||
+        (ps_display_waiting_sequence_frame !=
+         ps_stop2_lpbam_edge_start_sequence_frame) ||
+        (ps_stop2_lpbam_edge_target_sequence_frame !=
+         expected_target_sequence_frame) ||
+        (current_visible != ps_stop2_lpbam_edge_start_phase) ||
+        (next_visible != ps_stop2_lpbam_edge_target_phase))
+    {
+      g_ps_hw6_rtos_probe.stop2_lpbam_edge_state =
+        PS_HW6_RTOS_STOP2_LPBAM_EDGE_FAILED;
+      g_ps_hw6_rtos_probe.stop2_lpbam_edge_status = (uint32_t)HAL_ERROR;
+      return HAL_ERROR;
+    }
+  }
+  else if ((current_visible != PS_HW6_RTOS_LEGACY_CURSOR_VISIBLE_PHASE) ||
+           (next_visible != PS_HW6_RTOS_LEGACY_CURSOR_HIDDEN_PHASE))
   {
     g_ps_hw6_rtos_probe.stop2_lpbam_edge_state =
       PS_HW6_RTOS_STOP2_LPBAM_EDGE_FAILED;
@@ -3912,7 +4131,7 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunDisplayLpbamPrepareAtBlinkEdge(
   }
 
   status = PS_HW6_RTOS_RenderDisplayWaitingSequenceFrame(
-    ps_stop2_lpbam_edge_target_sequence_frame,
+    compiled_sequence_frame,
     now_tick,
     period_ticks);
   g_ps_hw6_rtos_probe.stop2_lpbam_edge_render_status = (uint32_t)status;
@@ -4016,9 +4235,32 @@ static void PS_HW6_RTOS_RunDisplayCursorBlinkPeriodic(uint32_t now_tick)
       (PS_HW6_RTOS_TimeReached(now_tick,
                                ps_stop2_lpbam_edge_target_tick) != 0UL))
   {
-    if ((ps_display_blink_visible ==
-         PS_HW6_RTOS_LPBAM_HANDOFF_SOURCE_PHASE) &&
-        (next_visible == PS_HW6_RTOS_LPBAM_HANDOFF_TARGET_PHASE))
+    uint32_t handoff_ready;
+
+    if (ps_stop2_lpbam_edge_waiting_sequence != 0UL)
+    {
+      handoff_ready =
+        ((sequence_active != 0UL) &&
+         (ps_display_waiting_sequence_count ==
+          ps_stop2_lpbam_edge_sequence_count) &&
+         (ps_display_waiting_sequence_frame ==
+          ps_stop2_lpbam_edge_start_sequence_frame) &&
+         (next_sequence_frame ==
+          ps_stop2_lpbam_edge_target_sequence_frame) &&
+         (ps_display_blink_visible ==
+          ps_stop2_lpbam_edge_start_phase) &&
+         (next_visible == ps_stop2_lpbam_edge_target_phase)) ? 1UL : 0UL;
+    }
+    else
+    {
+      handoff_ready =
+        ((ps_display_blink_visible ==
+          PS_HW6_RTOS_LEGACY_CURSOR_VISIBLE_PHASE) &&
+         (next_visible ==
+          PS_HW6_RTOS_LEGACY_CURSOR_HIDDEN_PHASE)) ? 1UL : 0UL;
+    }
+
+    if (handoff_ready != 0UL)
     {
       if (PS_HW6_RTOS_RunDisplayLpbamPrepareAtBlinkEdge(now_tick,
                                                          period_ticks) ==
@@ -4026,6 +4268,14 @@ static void PS_HW6_RTOS_RunDisplayCursorBlinkPeriodic(uint32_t now_tick)
       {
         return;
       }
+      PS_HW6_RTOS_DeferDisplayLpbamRearm(now_tick);
+      return;
+    }
+    if (ps_stop2_lpbam_edge_waiting_sequence != 0UL)
+    {
+      g_ps_hw6_rtos_probe.stop2_lpbam_edge_defer_count++;
+      PS_HW6_RTOS_DeferDisplayLpbamRearm(now_tick);
+      return;
     }
     else
     {
@@ -4462,7 +4712,10 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RequestDisplayLpbamAbort(
   g_ps_hw6_rtos_probe.stop2_lpbam_abort_ack_flags = 0UL;
   g_ps_hw6_rtos_probe.stop2_lpbam_abort_owner_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
-  g_ps_hw6_rtos_probe.stop2_lpbam_abort_resume_phase = 1UL;
+  g_ps_hw6_rtos_probe.stop2_lpbam_abort_resume_phase =
+    (ps_stop2_lpbam_edge_waiting_sequence != 0UL) ?
+      ps_stop2_lpbam_edge_target_phase :
+      PS_HW6_RTOS_LEGACY_CURSOR_VISIBLE_PHASE;
   g_ps_hw6_rtos_probe.stop2_lpbam_abort_resume_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
   g_ps_hw6_rtos_probe.stop2_lpbam_abort_resume_tick = 0UL;
@@ -4531,7 +4784,7 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RequestDisplayLpbamAbort(
       return PS_HW6_RTOS_ResumeDisplayTimelineAfterStop2(
         (uint32_t)tx_time_get());
     }
-    PS_HW6_RTOS_ResumeDisplayBlinkAfterLpbamStop(
+    PS_HW6_RTOS_ResumeDisplayAfterLpbamCancel(
       (uint32_t)tx_time_get());
     return HAL_OK;
   }
@@ -4762,7 +5015,7 @@ uint32_t PS_HW6_RTOS_Stop2FinalInputReady(void)
             ps_joystick_int_consumed_count) &&
            (g_ps_hw6_joystick_cardinal_request == 0UL) &&
            ((KNOB_INPUT_JOYSTICK_STOP2_WAKE_ENABLE == 0) ||
-            (PS_HW6_OwnerStateMachines_JoystickStop2WakeAllowed() == 0UL) ||
+            (PS_HW6_OwnerStateMachines_JoystickStop2WakeArmed() == 0UL) ||
             ((g_ps_hw6_rtos_probe.stop2_final_input_gpioc_idr &
               (uint32_t)JOY_INT_Pin) != 0UL)) &&
            (queue_mask == 0UL) &&
@@ -4822,8 +5075,8 @@ static uint32_t PS_HW6_RTOS_Stop2AutoUiAllowsIdle(void)
        (uint32_t)PS_UI_ROUTER_ACTION_NONE) ||
       (g_ps_ui_router_probe.modal_state !=
        (uint32_t)PS_UI_ROUTER_MODAL_NONE) ||
-      (g_ps_ui_router_probe.shutdown_state !=
-       (uint32_t)PS_UI_ROUTER_SHUTDOWN_NONE) ||
+      (PS_HW6_RTOS_ShutdownStateIsBlocking(
+         g_ps_ui_router_probe.shutdown_state) != 0UL) ||
       (PS_HW6_RTOS_SystemOverlayActive() != 0UL))
   {
     return 0UL;
@@ -5539,10 +5792,28 @@ static UINT PS_HW6_RTOS_DeliverInputLogicalEvent(
   {
     target = PS_HW6_RTOS_INPUT_POLICY_TARGET_UI;
     reason = PS_HW6_RTOS_INPUT_POLICY_REASON_UI_FOCUS;
-    PS_HW6_RTOS_SendCurrentUiRenderCommand();
-    status = TX_SUCCESS;
-    g_ps_hw6_rtos_probe.input_policy_deliver_count++;
-    g_ps_hw6_rtos_probe.input_policy_ui_deliver_count++;
+    if ((event == (uint32_t)PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS) &&
+        (button_id == (uint32_t)PS_INPUT_LOGICAL_SOURCE_BUTTON_A) &&
+        (PS_HW6_OwnerStateMachines_JoystickWakeCharacterizationActive() !=
+         0UL))
+    {
+      status = PS_HW6_RTOS_SendUiLogicalPress(button_id);
+    }
+    else
+    {
+      PS_HW6_RTOS_SendCurrentUiRenderCommand();
+      status = TX_SUCCESS;
+    }
+    if (status == TX_SUCCESS)
+    {
+      g_ps_hw6_rtos_probe.input_policy_deliver_count++;
+      g_ps_hw6_rtos_probe.input_policy_ui_deliver_count++;
+    }
+    else
+    {
+      reason = PS_HW6_RTOS_INPUT_POLICY_REASON_SEND_FAILED;
+      g_ps_hw6_rtos_probe.input_policy_suppress_count++;
+    }
   }
   else if (g_ps_ui_router_probe.current_page ==
            (uint32_t)PS_UI_ROUTER_PAGE_CALIBRATION)
@@ -5917,6 +6188,8 @@ static uint32_t PS_HW6_RTOS_JoystickAwakePollingAllowed(void)
       (g_ps_ui_router_probe.current_page ==
        (uint32_t)PS_UI_ROUTER_PAGE_CALIBRATION) ||
       (g_ps_hw6_owner_sm_probe.joystick_calibration_session_active != 0UL) ||
+      (PS_HW6_OwnerStateMachines_JoystickWakeCharacterizationActive() !=
+       0UL) ||
       (PS_HW6_OwnerStateMachines_JoystickCalibrationCaptureActive() != 0UL))
   {
     return 0UL;
@@ -7540,9 +7813,6 @@ void RTC_IRQHandler(void)
     ps_runtime_interaction_rtc_irq_expired = 1UL;
     if (ps_runtime_interaction_rtc_armed != 0UL)
     {
-      ps_runtime_interaction_timeout_forced = 1UL;
-      ps_runtime_interaction_timeout_forced_epoch =
-        ps_runtime_interaction_rtc_armed_epoch;
       if (ps_runtime_interaction_rtc_command_queued == 0UL)
       {
         ps_runtime_interaction_rtc_command_queued = 1UL;
@@ -7558,7 +7828,13 @@ void RTC_IRQHandler(void)
 uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
 {
   uint32_t now_tick;
-  uint32_t remaining_ticks;
+  uint32_t remaining_ticks = 0UL;
+  uint32_t interaction_remaining_ticks = 0UL;
+  uint32_t interaction_available = 0UL;
+  uint32_t state_timer_remaining_ticks = 0UL;
+  uint32_t state_timer_binding_index = PS_SCENE_RUNTIME_INDEX_INVALID;
+  uint32_t state_timer_available;
+  uint32_t timer_index;
   uint32_t remaining_ms;
   uint32_t wake_clock;
   uint32_t wake_counter;
@@ -7568,24 +7844,66 @@ uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
   ps_runtime_interaction_rtc_armed = 0UL;
   ps_runtime_interaction_rtc_irq_expired = 0UL;
   ps_runtime_interaction_rtc_command_queued = 0UL;
-  if ((ps_runtime_interaction_mode !=
-       PS_SCENE_RUNTIME_INTERACTION_TIMEOUT) ||
-      (ps_runtime_interaction_state !=
-       PS_HW6_RUNTIME_INTERACTION_STATE_ACTIVE) ||
-      (ps_runtime_interaction_deadline_tick == 0UL))
+  ps_runtime_rtc_wake_source = PS_HW6_RTOS_RTC_WAKE_SOURCE_NONE;
+  ps_runtime_rtc_selected_remaining_ticks = 0UL;
+  ps_runtime_rtc_state_timer_scene_revision =
+    ps_runtime_state_timer_scene_revision;
+  g_ps_hw6_rtos_probe.runtime_rtc_wake_source =
+    PS_HW6_RTOS_RTC_WAKE_SOURCE_NONE;
+
+  now_tick = (uint32_t)tx_time_get();
+  if ((ps_runtime_interaction_mode ==
+       PS_SCENE_RUNTIME_INTERACTION_TIMEOUT) &&
+      (ps_runtime_interaction_state ==
+       PS_HW6_RUNTIME_INTERACTION_STATE_ACTIVE) &&
+      (ps_runtime_interaction_deadline_tick != 0UL))
+  {
+    interaction_available = 1UL;
+    interaction_remaining_ticks = PS_HW6_RTOS_TimeReached(
+      now_tick, ps_runtime_interaction_deadline_tick) != 0UL ?
+      0UL : ps_runtime_interaction_deadline_tick - now_tick;
+  }
+  state_timer_available = PS_HW6_RTOS_RuntimeStateTimerNext(
+    now_tick,
+    &state_timer_remaining_ticks,
+    &state_timer_binding_index);
+
+  if ((interaction_available == 0UL) && (state_timer_available == 0UL))
   {
     g_ps_hw6_rtos_probe.runtime_interaction_rtc_arm_status =
       (uint32_t)HAL_OK;
     return (uint32_t)HAL_OK;
   }
 
-  now_tick = (uint32_t)tx_time_get();
-  if (PS_HW6_RTOS_TimeReached(
-        now_tick, ps_runtime_interaction_deadline_tick) != 0UL)
+  if ((state_timer_available != 0UL) &&
+      ((interaction_available == 0UL) ||
+       (state_timer_remaining_ticks <= interaction_remaining_ticks)))
   {
-    ps_runtime_interaction_timeout_forced = 1UL;
-    ps_runtime_interaction_timeout_forced_epoch =
-      ps_runtime_interaction_epoch;
+    ps_runtime_rtc_wake_source = PS_HW6_RTOS_RTC_WAKE_SOURCE_STATE_TIMER;
+    remaining_ticks = state_timer_remaining_ticks;
+    g_ps_hw6_rtos_probe.runtime_state_timer_rtc_selected =
+      state_timer_binding_index;
+    g_ps_hw6_rtos_probe.runtime_state_timer_rtc_remaining_ticks =
+      state_timer_remaining_ticks;
+    g_ps_hw6_rtos_probe.runtime_state_timer_rtc_select_count++;
+  }
+  else
+  {
+    ps_runtime_rtc_wake_source = PS_HW6_RTOS_RTC_WAKE_SOURCE_INTERACTION;
+    remaining_ticks = interaction_remaining_ticks;
+  }
+  g_ps_hw6_rtos_probe.runtime_rtc_wake_source =
+    ps_runtime_rtc_wake_source;
+
+  if (remaining_ticks == 0UL)
+  {
+    if ((interaction_available != 0UL) &&
+        (interaction_remaining_ticks == 0UL))
+    {
+      ps_runtime_interaction_timeout_forced = 1UL;
+      ps_runtime_interaction_timeout_forced_epoch =
+        ps_runtime_interaction_epoch;
+    }
     g_ps_hw6_rtos_probe.runtime_interaction_rtc_arm_status =
       (uint32_t)HAL_BUSY;
     g_ps_hw6_rtos_probe.runtime_interaction_rtc_command_status =
@@ -7594,7 +7912,27 @@ uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
     return (uint32_t)HAL_BUSY;
   }
 
-  remaining_ticks = ps_runtime_interaction_deadline_tick - now_tick;
+  ps_runtime_interaction_rtc_remaining_ticks =
+    (interaction_available != 0UL) ? interaction_remaining_ticks : 0UL;
+  ps_runtime_interaction_rtc_armed_epoch = ps_runtime_interaction_epoch;
+  ps_runtime_rtc_selected_remaining_ticks = remaining_ticks;
+  if (ps_runtime_state_timer_paused == 0UL)
+  {
+    for (timer_index = 0UL;
+         timer_index < PS_SCENE_RUNTIME_EVENT_BINDING_MAX;
+         ++timer_index)
+    {
+      ps_runtime_state_timer_slot_t *timer =
+        &ps_runtime_state_timers[timer_index];
+
+      if (timer->active != 0UL)
+      {
+        timer->stop2_remaining_ticks = PS_HW6_RTOS_TimeReached(
+          now_tick, timer->deadline_tick) != 0UL ?
+          0UL : timer->deadline_tick - now_tick;
+      }
+    }
+  }
   status = PS_HW6_RTOS_InteractionRtcReadUnits(
     &ps_runtime_interaction_rtc_start_units);
   if (status != HAL_OK)
@@ -7645,15 +7983,13 @@ uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
   g_ps_hw6_rtos_probe.runtime_interaction_rtc_clock = wake_clock;
   g_ps_hw6_rtos_probe.runtime_interaction_rtc_counter = wake_counter;
   g_ps_hw6_rtos_probe.runtime_interaction_rtc_remaining_ticks =
-    remaining_ticks;
+    ps_runtime_interaction_rtc_remaining_ticks;
   if (status != HAL_OK)
   {
     HAL_NVIC_DisableIRQ(RTC_IRQn);
     return (uint32_t)status;
   }
 
-  ps_runtime_interaction_rtc_remaining_ticks = remaining_ticks;
-  ps_runtime_interaction_rtc_armed_epoch = ps_runtime_interaction_epoch;
   ps_runtime_interaction_rtc_armed = 1UL;
   return (uint32_t)HAL_OK;
 }
@@ -7663,7 +7999,9 @@ void PS_HW6_RTOS_InteractionStop2TimeoutFinish(void)
   uint32_t end_units = ps_runtime_interaction_rtc_start_units;
   uint32_t elapsed_units = 0UL;
   uint32_t elapsed_ticks = 0UL;
-  uint32_t expired;
+  uint32_t interaction_due = 0UL;
+  uint32_t state_timer_due = 0UL;
+  uint32_t timer_index;
   uint32_t now_tick;
   HAL_StatusTypeDef read_status;
   HAL_StatusTypeDef deactivate_status;
@@ -7674,10 +8012,8 @@ void PS_HW6_RTOS_InteractionStop2TimeoutFinish(void)
     return;
   }
 
-  expired = (ps_runtime_interaction_rtc_irq_expired != 0UL) ? 1UL : 0UL;
   if (__HAL_RTC_WAKEUPTIMER_GET_FLAG(&hrtc, RTC_FLAG_WUTF) != 0UL)
   {
-    expired = 1UL;
     ps_runtime_interaction_rtc_irq_expired = 1UL;
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
   }
@@ -7700,11 +8036,7 @@ void PS_HW6_RTOS_InteractionStop2TimeoutFinish(void)
   }
   else
   {
-    expired = 1UL;
-  }
-  if (elapsed_ticks >= ps_runtime_interaction_rtc_remaining_ticks)
-  {
-    expired = 1UL;
+    elapsed_ticks = ps_runtime_rtc_selected_remaining_ticks;
   }
 
   now_tick = (uint32_t)tx_time_get();
@@ -7713,21 +8045,17 @@ void PS_HW6_RTOS_InteractionStop2TimeoutFinish(void)
       (ps_runtime_interaction_state ==
        PS_HW6_RUNTIME_INTERACTION_STATE_ACTIVE) &&
       (ps_runtime_interaction_mode ==
-       PS_SCENE_RUNTIME_INTERACTION_TIMEOUT))
+       PS_SCENE_RUNTIME_INTERACTION_TIMEOUT) &&
+      (ps_runtime_interaction_rtc_remaining_ticks != 0UL))
   {
-    if (expired != 0UL)
+    if (elapsed_ticks >= ps_runtime_interaction_rtc_remaining_ticks)
     {
+      interaction_due = 1UL;
       ps_runtime_interaction_timeout_forced = 1UL;
       ps_runtime_interaction_timeout_forced_epoch =
         ps_runtime_interaction_rtc_armed_epoch;
       ps_runtime_interaction_deadline_tick = now_tick;
       g_ps_hw6_rtos_probe.runtime_interaction_rtc_expire_count++;
-      if (ps_runtime_interaction_rtc_command_queued == 0UL)
-      {
-        ps_runtime_interaction_rtc_command_queued = 1UL;
-        command_status = PS_HW6_RTOS_RequestRuntimeCommand(
-          PS_HW6_RTOS_COMMAND_RUNTIME_INTERACTION_TIMEOUT);
-      }
     }
     else
     {
@@ -7738,9 +8066,49 @@ void PS_HW6_RTOS_InteractionStop2TimeoutFinish(void)
       ps_runtime_interaction_deadline_tick;
   }
 
-  ps_runtime_interaction_rtc_armed = 0UL;
+  if ((ps_runtime_state_timer_paused == 0UL) &&
+      (ps_runtime_rtc_state_timer_scene_revision ==
+       ps_runtime_state_timer_scene_revision))
+  {
+    for (timer_index = 0UL;
+         timer_index < PS_SCENE_RUNTIME_EVENT_BINDING_MAX;
+         ++timer_index)
+    {
+      ps_runtime_state_timer_slot_t *timer =
+        &ps_runtime_state_timers[timer_index];
+
+      if (timer->active == 0UL)
+      {
+        continue;
+      }
+      if (elapsed_ticks >= timer->stop2_remaining_ticks)
+      {
+        state_timer_due = 1UL;
+      }
+      timer->deadline_tick =
+        now_tick + timer->stop2_remaining_ticks - elapsed_ticks;
+      timer->stop2_remaining_ticks = 0UL;
+    }
+  }
+
+  if (((interaction_due != 0UL) || (state_timer_due != 0UL)) &&
+      (ps_runtime_interaction_rtc_command_queued == 0UL))
+  {
+    ps_runtime_interaction_rtc_command_queued = 1UL;
+    command_status = PS_HW6_RTOS_RequestRuntimeCommand(
+      PS_HW6_RTOS_COMMAND_RUNTIME_INTERACTION_TIMEOUT);
+  }
+
   g_ps_hw6_rtos_probe.runtime_interaction_rtc_elapsed_ticks =
     elapsed_ticks;
+  if (ps_runtime_rtc_wake_source == PS_HW6_RTOS_RTC_WAKE_SOURCE_STATE_TIMER)
+  {
+    g_ps_hw6_rtos_probe.runtime_state_timer_rtc_elapsed_ticks =
+      elapsed_ticks;
+  }
+  ps_runtime_interaction_rtc_armed = 0UL;
+  ps_runtime_rtc_wake_source = PS_HW6_RTOS_RTC_WAKE_SOURCE_NONE;
+  ps_runtime_rtc_selected_remaining_ticks = 0UL;
   if (command_status != TX_NOT_AVAILABLE)
   {
     g_ps_hw6_rtos_probe.runtime_interaction_rtc_command_status =
@@ -7759,6 +8127,262 @@ static uint32_t PS_HW6_RTOS_RuntimeInteractionPeriodTicks(uint32_t ms)
   uint32_t ticks = PS_HW6_RTOS_MsToTicks(ms);
 
   return (ticks != 0UL) ? ticks : 1UL;
+}
+
+static void PS_HW6_RTOS_RuntimeStateTimersClear(void)
+{
+  (void)memset(ps_runtime_state_timers, 0,
+               sizeof(ps_runtime_state_timers));
+  ps_runtime_state_timer_scene_revision = 0UL;
+  ps_runtime_timer_scene_activation = 0UL;
+  ps_runtime_state_timer_paused = 0UL;
+  g_ps_hw6_rtos_probe.runtime_state_timer_scene_revision = 0UL;
+  g_ps_hw6_rtos_probe.runtime_state_timer_configured_count = 0UL;
+  g_ps_hw6_rtos_probe.runtime_state_timer_active_count = 0UL;
+  g_ps_hw6_rtos_probe.runtime_state_timer_paused = 0UL;
+}
+
+static void PS_HW6_RTOS_RuntimeStateTimersSync(uint32_t now_tick,
+                                               uint32_t force)
+{
+  uint32_t revision;
+  uint32_t scene_activation;
+  uint32_t binding_index;
+  uint32_t action_kind;
+  uint32_t configured_count = 0UL;
+  uint32_t active_count = 0UL;
+  uint32_t changed;
+
+  if (PS_SceneRuntime_StateSceneActive() == 0UL)
+  {
+    PS_HW6_RTOS_RuntimeStateTimersClear();
+    return;
+  }
+  revision = PS_SceneRuntime_StateActivation();
+  scene_activation = PS_SceneRuntime_SceneActivation();
+  changed = (force != 0UL) ||
+    (revision != ps_runtime_state_timer_scene_revision) ||
+    (scene_activation != ps_runtime_timer_scene_activation);
+  if ((force != 0UL) ||
+      (scene_activation != ps_runtime_timer_scene_activation))
+  {
+    (void)memset(ps_runtime_state_timers, 0,
+                 sizeof(ps_runtime_state_timers));
+    ps_runtime_state_timer_paused = 0UL;
+  }
+  for (binding_index = 0UL;
+       binding_index < PS_SCENE_RUNTIME_EVENT_BINDING_MAX;
+       ++binding_index)
+  {
+    uint32_t delay_ms;
+    uint32_t scope;
+    uint32_t start_policy;
+    ps_runtime_state_timer_slot_t *timer =
+      &ps_runtime_state_timers[binding_index];
+
+    if (PS_SceneRuntime_TimerConfiguration(
+          binding_index, &scope, &start_policy, &delay_ms) == 0UL)
+    {
+      (void)memset(timer, 0, sizeof(*timer));
+      continue;
+    }
+    if ((timer->configured == 0UL) ||
+        ((scope == PS_SCENE_RUNTIME_TIMER_STATE_ENTRY) && (changed != 0UL)))
+    {
+      (void)memset(timer, 0, sizeof(*timer));
+      timer->configured = 1UL;
+      timer->scope = scope;
+      timer->delay_ticks = PS_HW6_RTOS_MsToTicks(delay_ms);
+      timer->active = (start_policy == PS_SCENE_RUNTIME_TIMER_START_ENTRY);
+      timer->deadline_tick = now_tick + timer->delay_ticks;
+      g_ps_hw6_rtos_probe.runtime_state_timer_last_binding_index =
+        binding_index;
+      g_ps_hw6_rtos_probe.runtime_state_timer_last_delay_ms = delay_ms;
+      g_ps_hw6_rtos_probe.runtime_state_timer_last_deadline_tick =
+        timer->deadline_tick;
+    }
+  }
+  /* Commands are committed with the route, before another due event is selected. */
+  while (PS_SceneRuntime_TakeTimerAction(&binding_index, &action_kind) != 0UL)
+  {
+    ps_runtime_state_timer_slot_t *timer =
+      &ps_runtime_state_timers[binding_index];
+    if ((timer->configured == 0UL) ||
+        (timer->scope != PS_SCENE_RUNTIME_TIMER_SCENE))
+    {
+      continue;
+    }
+    if (action_kind == PS_SCENE_RUNTIME_ACTION_CANCEL_TIMER)
+    {
+      timer->active = 0UL;
+    }
+    else if ((action_kind == PS_SCENE_RUNTIME_ACTION_RESTART_TIMER) ||
+             (timer->active == 0UL))
+    {
+      timer->active = 1UL;
+      timer->deadline_tick = now_tick + timer->delay_ticks;
+      timer->paused_remaining_ticks = timer->delay_ticks;
+    }
+  }
+  for (binding_index = 0UL;
+       binding_index < PS_SCENE_RUNTIME_EVENT_BINDING_MAX; ++binding_index)
+  {
+    configured_count += ps_runtime_state_timers[binding_index].configured;
+    active_count += ps_runtime_state_timers[binding_index].active;
+  }
+  ps_runtime_state_timer_scene_revision = revision;
+  ps_runtime_timer_scene_activation = scene_activation;
+  g_ps_hw6_rtos_probe.runtime_state_timer_scene_revision = revision;
+  g_ps_hw6_rtos_probe.runtime_state_timer_configured_count =
+    configured_count;
+  g_ps_hw6_rtos_probe.runtime_state_timer_active_count = active_count;
+  g_ps_hw6_rtos_probe.runtime_state_timer_sync_count += changed;
+  g_ps_hw6_rtos_probe.runtime_state_timer_paused = ps_runtime_state_timer_paused;
+}
+
+static uint32_t PS_HW6_RTOS_RuntimeStateTimerNext(
+  uint32_t now_tick,
+  uint32_t *remaining_ticks,
+  uint32_t *binding_index)
+{
+  uint32_t index;
+  uint32_t found = 0UL;
+  uint32_t selected_remaining = 0UL;
+  uint32_t selected_index = PS_SCENE_RUNTIME_INDEX_INVALID;
+  uint32_t selected_deadline = 0UL;
+
+  if ((remaining_ticks == NULL) || (binding_index == NULL) ||
+      (ps_runtime_state_timer_paused != 0UL))
+  {
+    return 0UL;
+  }
+  for (index = 0UL; index < PS_SCENE_RUNTIME_EVENT_BINDING_MAX; ++index)
+  {
+    const ps_runtime_state_timer_slot_t *timer =
+      &ps_runtime_state_timers[index];
+    uint32_t remaining;
+
+    if (timer->active == 0UL)
+    {
+      continue;
+    }
+    remaining = (PS_HW6_RTOS_TimeReached(
+      now_tick, timer->deadline_tick) != 0UL) ?
+      0UL : timer->deadline_tick - now_tick;
+    if ((found == 0UL) ||
+        ((int32_t)(timer->deadline_tick - selected_deadline) < 0))
+    {
+      found = 1UL;
+      selected_remaining = remaining;
+      selected_index = index;
+      selected_deadline = timer->deadline_tick;
+    }
+  }
+  if (found != 0UL)
+  {
+    *remaining_ticks = selected_remaining;
+    *binding_index = selected_index;
+  }
+  return found;
+}
+
+static void PS_HW6_RTOS_RuntimeStateTimersPause(uint32_t now_tick)
+{
+  uint32_t index;
+
+  if (ps_runtime_state_timer_paused != 0UL)
+  {
+    return;
+  }
+  for (index = 0UL; index < PS_SCENE_RUNTIME_EVENT_BINDING_MAX; ++index)
+  {
+    ps_runtime_state_timer_slot_t *timer = &ps_runtime_state_timers[index];
+
+    if (timer->active != 0UL)
+    {
+      timer->paused_remaining_ticks = timer->deadline_tick - now_tick;
+    }
+  }
+  ps_runtime_state_timer_paused = 1UL;
+  g_ps_hw6_rtos_probe.runtime_state_timer_paused = 1UL;
+  g_ps_hw6_rtos_probe.runtime_state_timer_pause_count++;
+}
+
+static void PS_HW6_RTOS_RuntimeStateTimersResume(uint32_t now_tick)
+{
+  uint32_t index;
+
+  if (ps_runtime_state_timer_paused == 0UL)
+  {
+    return;
+  }
+  for (index = 0UL; index < PS_SCENE_RUNTIME_EVENT_BINDING_MAX; ++index)
+  {
+    ps_runtime_state_timer_slot_t *timer = &ps_runtime_state_timers[index];
+
+    if (timer->active != 0UL)
+    {
+      timer->deadline_tick = now_tick + timer->paused_remaining_ticks;
+      timer->paused_remaining_ticks = 0UL;
+    }
+  }
+  ps_runtime_state_timer_paused = 0UL;
+  g_ps_hw6_rtos_probe.runtime_state_timer_paused = 0UL;
+  g_ps_hw6_rtos_probe.runtime_state_timer_resume_count++;
+}
+
+static void PS_HW6_RTOS_RuntimeStateTimersService(uint32_t now_tick)
+{
+  uint32_t dispatch_budget = PS_SCENE_RUNTIME_EVENT_BINDING_MAX;
+
+  if ((ps_runtime_state_timer_paused != 0UL) ||
+      (g_ps_hw6_rtos_probe.runtime_current_class !=
+       (uint32_t)PS_HW6_RUNTIME_CLASS_LP_GRAPH) ||
+      (g_ps_hw6_rtos_probe.runtime_lifecycle !=
+       (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_RUNNING) ||
+      (PS_SceneRuntime_StateSceneActive() == 0UL))
+  {
+    return;
+  }
+  PS_HW6_RTOS_RuntimeStateTimersSync(now_tick, 0UL);
+  while (dispatch_budget != 0UL)
+  {
+    uint32_t remaining_ticks;
+    uint32_t binding_index;
+    uint32_t scene_result;
+
+    if ((PS_HW6_RTOS_RuntimeStateTimerNext(
+           now_tick, &remaining_ticks, &binding_index) == 0UL) ||
+        (remaining_ticks != 0UL))
+    {
+      break;
+    }
+    ps_runtime_state_timers[binding_index].active = 0UL;
+    if (g_ps_hw6_rtos_probe.runtime_state_timer_active_count != 0UL)
+    {
+      g_ps_hw6_rtos_probe.runtime_state_timer_active_count--;
+    }
+    g_ps_hw6_rtos_probe.runtime_state_timer_due_count++;
+    g_ps_hw6_rtos_probe.runtime_state_timer_dispatch_count++;
+    g_ps_hw6_rtos_probe.runtime_state_timer_last_binding_index =
+      binding_index;
+    scene_result = PS_SceneRuntime_HandleStateSceneEvent(binding_index);
+    if (scene_result == PS_SCENE_RUNTIME_INPUT_APPLIED)
+    {
+      g_ps_hw6_rtos_probe.runtime_state_timer_applied_count++;
+    }
+    else if (scene_result == PS_SCENE_RUNTIME_INPUT_IGNORED)
+    {
+      g_ps_hw6_rtos_probe.runtime_state_timer_ignored_count++;
+    }
+    else
+    {
+      g_ps_hw6_rtos_probe.runtime_state_timer_error_count++;
+    }
+    (void)PS_HW6_RTOS_CompleteStateSceneEvent(scene_result);
+    PS_HW6_RTOS_RuntimeStateTimersSync(now_tick, 0UL);
+    dispatch_budget--;
+  }
 }
 
 static void PS_HW6_RTOS_RuntimeInteractionBegin(uint32_t now_tick)
@@ -7796,6 +8420,7 @@ static void PS_HW6_RTOS_RuntimeInteractionBegin(uint32_t now_tick)
   g_ps_hw6_rtos_probe.runtime_interaction_active_count++;
   g_ps_hw6_rtos_probe.runtime_interaction_active_tick = now_tick;
   g_ps_hw6_rtos_probe.runtime_interaction_joystick_wake_allowed = 1UL;
+  PS_HW6_RTOS_RuntimeStateTimersSync(now_tick, 1UL);
 }
 
 static void PS_HW6_RTOS_RuntimeInteractionEnd(void)
@@ -7821,6 +8446,7 @@ static void PS_HW6_RTOS_RuntimeInteractionEnd(void)
   g_ps_hw6_rtos_probe.runtime_interaction_activation_frame = 0UL;
   g_ps_hw6_rtos_probe.runtime_interaction_activation_deadline_tick = 0UL;
   g_ps_hw6_rtos_probe.runtime_interaction_joystick_wake_allowed = 1UL;
+  PS_HW6_RTOS_RuntimeStateTimersClear();
 }
 
 static void PS_HW6_RTOS_RuntimeInteractionRefresh(uint32_t logical_event,
@@ -8075,6 +8701,9 @@ static void PS_HW6_RTOS_RuntimeSuspend(void)
 
   if (release_status == TX_SUCCESS)
   {
+    uint32_t now_tick = (uint32_t)tx_time_get();
+
+    PS_HW6_RTOS_RuntimeStateTimersPause(now_tick);
     g_ps_hw6_rtos_probe.runtime_lifecycle =
       (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_SUSPENDED;
   }
@@ -8124,6 +8753,7 @@ static void PS_HW6_RTOS_RuntimeResume(void)
   {
     g_ps_hw6_rtos_probe.runtime_lifecycle =
       (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_RUNNING;
+    PS_HW6_RTOS_RuntimeStateTimersResume((uint32_t)tx_time_get());
     if (PS_SceneRuntime_StateSceneActive() != 0UL)
     {
       render_status = PS_HW6_RTOS_SendDisplayUiRenderCommand(
@@ -8235,7 +8865,12 @@ static void PS_HW6_RTOS_HandleRuntimeCommand(ULONG command)
   else if (command == PS_HW6_RTOS_COMMAND_RUNTIME_INTERACTION_TIMEOUT)
   {
     ps_runtime_interaction_rtc_command_queued = 0UL;
-    PS_HW6_RTOS_RuntimeInteractionService((uint32_t)tx_time_get());
+    {
+      uint32_t now_tick = (uint32_t)tx_time_get();
+
+      PS_HW6_RTOS_RuntimeStateTimersService(now_tick);
+      PS_HW6_RTOS_RuntimeInteractionService(now_tick);
+    }
   }
   else if (command == PS_HW6_RTOS_COMMAND_RUNTIME_INTERACTION_INACTIVE)
   {
@@ -8812,6 +9447,55 @@ static void PS_HW6_RTOS_CaptureAudioSfx(
   capture->valid = 1UL;
 }
 
+static void PS_HW6_RTOS_FinalizeAudioSfx(HAL_StatusTypeDef owner_status)
+{
+  UINT release_status;
+
+  if (ps_audio_sfx_clock_held == 0UL)
+  {
+    return;
+  }
+  if ((owner_status == HAL_OK) &&
+      (g_ps_hw6_rtos_probe.audio_sfx_first_success_capture.valid == 0UL))
+  {
+    PS_HW6_RTOS_CaptureAudioSfx(
+      &g_ps_hw6_rtos_probe.audio_sfx_first_success_capture,
+      owner_status,
+      ps_audio_sfx_clock_apply_count_before,
+      ps_audio_sfx_clock_pll2_on_count_before,
+      ps_audio_sfx_clock_pll2_off_count_before);
+  }
+  else if ((owner_status != HAL_OK) &&
+           (g_ps_hw6_rtos_probe
+              .audio_sfx_first_post_stop_failure_capture.valid == 0UL) &&
+           (((g_ps_hw6_rtos_probe.audio_sfx_first_success_capture.valid !=
+              0UL) &&
+             (g_ps_hw6_rtos_probe.stop2_auto_entry_count >
+              g_ps_hw6_rtos_probe
+                .audio_sfx_first_success_capture.stop2_entry_count)) ||
+            ((g_ps_hw6_rtos_probe.audio_sfx_first_success_capture.valid ==
+              0UL) &&
+             (g_ps_hw6_rtos_probe.stop2_auto_entry_count != 0UL))))
+  {
+    PS_HW6_RTOS_CaptureAudioSfx(
+      &g_ps_hw6_rtos_probe.audio_sfx_first_post_stop_failure_capture,
+      owner_status,
+      ps_audio_sfx_clock_apply_count_before,
+      ps_audio_sfx_clock_pll2_on_count_before,
+      ps_audio_sfx_clock_pll2_off_count_before);
+  }
+
+  release_status = PS_HW6_RTOS_RequestAudioClockCapabilities(
+    PS_HW6_RTOS_AUDIO_CLOCK_REASON_RELEASE,
+    0UL);
+  g_ps_hw6_rtos_probe.audio_sfx_clock_release_status =
+    (uint32_t)release_status;
+  g_ps_hw6_rtos_probe.audio_sfx_owner_status =
+    (uint32_t)owner_status;
+  ps_audio_sfx_clock_held = 0UL;
+  g_ps_hw6_rtos_probe.audio_sfx_clock_held = 0UL;
+}
+
 static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
                                            ULONG command,
                                            uint32_t cycle_index)
@@ -8868,6 +9552,18 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
         g_ps_hw6_clock_policy_probe.pll2_output_enabled_mask;
       g_ps_hw6_rtos_probe.audio_sfx_grant_sai_kernel_hz =
         g_ps_hw6_clock_policy_probe.sai1_kernel_hz;
+      g_ps_hw6_rtos_probe.audio_sfx_grant_selected_profile =
+        g_ps_hw6_clock_policy_probe.selected_profile;
+      g_ps_hw6_rtos_probe.audio_sfx_grant_current_profile =
+        g_ps_hw6_clock_policy_probe.current_profile;
+      g_ps_hw6_rtos_probe.audio_sfx_grant_sysclk_hz =
+        HAL_RCC_GetSysClockFreq();
+      g_ps_hw6_rtos_probe.audio_sfx_grant_hclk_hz =
+        HAL_RCC_GetHCLKFreq();
+      g_ps_hw6_rtos_probe.audio_sfx_grant_voltage_scale =
+        HAL_PWREx_GetVoltageRange();
+      g_ps_hw6_rtos_probe.audio_sfx_grant_flash_latency =
+        __HAL_FLASH_GET_LATENCY();
     }
     PS_HW6_RTOS_ScheduleClockReleaseStop2Recheck(requester_id,
                                                  capabilities,
@@ -8961,13 +9657,22 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
   {
     HAL_StatusTypeDef abort_status;
     HAL_StatusTypeDef resume_status = HAL_ERROR;
+    uint32_t resume_waiting_sequence =
+      ((ps_stop2_lpbam_edge_waiting_sequence != 0UL) &&
+       (g_ps_hw6_owner_probe.display_lpbam_prearmed != 0UL) &&
+       (g_ps_hw6_owner_probe.display_lpbam_active == 0UL)) ? 1UL : 0UL;
 
     abort_status = PS_HW6_DisplayOwner_AbortLpbamStop2();
     if (abort_status == HAL_OK)
     {
-      resume_status = PS_HW6_DisplayOwner_RenderCursorBlink(1UL);
+      resume_status = (resume_waiting_sequence != 0UL) ? HAL_OK :
+        PS_HW6_DisplayOwner_RenderCursorBlink(
+          PS_HW6_RTOS_LEGACY_CURSOR_VISIBLE_PHASE);
     }
-    g_ps_hw6_rtos_probe.stop2_lpbam_abort_resume_phase = 1UL;
+    g_ps_hw6_rtos_probe.stop2_lpbam_abort_resume_phase =
+      (resume_waiting_sequence != 0UL) ?
+        ps_stop2_lpbam_edge_target_phase :
+        PS_HW6_RTOS_LEGACY_CURSOR_VISIBLE_PHASE;
     g_ps_hw6_rtos_probe.stop2_lpbam_abort_resume_status =
       (uint32_t)resume_status;
     g_ps_hw6_rtos_probe.stop2_lpbam_abort_resume_tick =
@@ -9040,77 +9745,56 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
            (command == PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX))
   {
     HAL_StatusTypeDef sfx_status = HAL_ERROR;
-    UINT clock_status;
-    UINT release_status;
-    uint32_t clock_apply_count_before = 0UL;
-    uint32_t clock_pll2_on_count_before = 0UL;
-    uint32_t clock_pll2_off_count_before = 0UL;
+    uint32_t request_handed_to_owner = 0UL;
 
     g_ps_hw6_rtos_probe.audio_sfx_owner_count++;
     g_ps_hw6_rtos_probe.audio_sfx_last_cue_index = cycle_index;
-    clock_status = PS_HW6_RTOS_RequestAudioClockCapabilities(
-      PS_HW6_RTOS_AUDIO_CLOCK_REASON_REACTIVE_SFX,
-      PS_HW6_RTOS_AUDIO_CLOCK_PACKAGE_SFX_CAPABILITIES);
-    g_ps_hw6_rtos_probe.audio_sfx_clock_request_status =
-      (uint32_t)clock_status;
-    if (clock_status == TX_SUCCESS)
+    if (ps_audio_sfx_clock_held == 0UL)
     {
-      sfx_status = PS_HW6_OwnerStateMachines_Stabilize(
-        PS_HW6_RTOS_OWNER_AUDIO);
-      if (sfx_status == HAL_OK)
+      UINT clock_status = PS_HW6_RTOS_RequestAudioClockCapabilities(
+        PS_HW6_RTOS_AUDIO_CLOCK_REASON_REACTIVE_SFX,
+        PS_HW6_RTOS_AUDIO_CLOCK_PACKAGE_SFX_CAPABILITIES);
+
+      g_ps_hw6_rtos_probe.audio_sfx_clock_request_status =
+        (uint32_t)clock_status;
+      if (clock_status == TX_SUCCESS)
       {
-        clock_apply_count_before = g_ps_hw6_clock_policy_probe.apply_count;
-        clock_pll2_on_count_before =
+        ps_audio_sfx_clock_held = 1UL;
+        g_ps_hw6_rtos_probe.audio_sfx_clock_held = 1UL;
+        ps_audio_sfx_clock_apply_count_before =
+          g_ps_hw6_clock_policy_probe.apply_count;
+        ps_audio_sfx_clock_pll2_on_count_before =
           g_ps_hw6_clock_policy_probe.pll2_domain_on_count;
-        clock_pll2_off_count_before =
+        ps_audio_sfx_clock_pll2_off_count_before =
           g_ps_hw6_clock_policy_probe.pll2_domain_off_count;
-        sfx_status = PS_HW6_OwnerStateMachines_RunAudioSfx(cycle_index);
-        if ((sfx_status == HAL_OK) &&
-            (g_ps_hw6_rtos_probe.audio_sfx_first_success_capture.valid ==
-             0UL))
+        sfx_status = PS_HW6_OwnerStateMachines_Stabilize(
+          PS_HW6_RTOS_OWNER_AUDIO);
+        if (sfx_status == HAL_OK)
         {
-          PS_HW6_RTOS_CaptureAudioSfx(
-            &g_ps_hw6_rtos_probe.audio_sfx_first_success_capture,
-            sfx_status,
-            clock_apply_count_before,
-            clock_pll2_on_count_before,
-            clock_pll2_off_count_before);
-        }
-        else if ((sfx_status != HAL_OK) &&
-                 (g_ps_hw6_rtos_probe
-                    .audio_sfx_first_post_stop_failure_capture.valid == 0UL) &&
-                 (((g_ps_hw6_rtos_probe
-                      .audio_sfx_first_success_capture.valid != 0UL) &&
-                   (g_ps_hw6_rtos_probe.stop2_auto_entry_count >
-                    g_ps_hw6_rtos_probe
-                      .audio_sfx_first_success_capture.stop2_entry_count)) ||
-                  ((g_ps_hw6_rtos_probe
-                      .audio_sfx_first_success_capture.valid == 0UL) &&
-                   (g_ps_hw6_rtos_probe.stop2_auto_entry_count != 0UL))))
-        {
-          PS_HW6_RTOS_CaptureAudioSfx(
-            &g_ps_hw6_rtos_probe
-               .audio_sfx_first_post_stop_failure_capture,
-            sfx_status,
-            clock_apply_count_before,
-            clock_pll2_on_count_before,
-            clock_pll2_off_count_before);
+          sfx_status = PS_HW6_OwnerStateMachines_RunAudioSfx(
+            cycle_index,
+            &request_handed_to_owner);
         }
       }
     }
-    release_status = PS_HW6_RTOS_RequestAudioClockCapabilities(
-      PS_HW6_RTOS_AUDIO_CLOCK_REASON_RELEASE,
-      0UL);
-    g_ps_hw6_rtos_probe.audio_sfx_clock_release_status =
-      (uint32_t)release_status;
+    else
+    {
+      sfx_status = PS_HW6_OwnerStateMachines_RunAudioSfx(
+        cycle_index,
+        &request_handed_to_owner);
+    }
+
+    if (request_handed_to_owner == 0UL)
+    {
+      g_ps_hw6_rtos_probe.audio_sfx_unowned_complete_count++;
+      PS_HW6_RTOS_AudioSfxRequestComplete();
+    }
     g_ps_hw6_rtos_probe.audio_sfx_owner_status =
       (uint32_t)sfx_status;
-    ps_audio_sfx_pending = 0UL;
-    if (ps_runtime_package_replace_waiting_for_audio != 0UL)
+    if ((sfx_status == HAL_ERROR) &&
+        (PS_HW6_AudioOwner_SfxActive() == 0UL))
     {
-      ps_runtime_package_replace_waiting_for_audio = 0UL;
-      g_ps_hw6_rtos_probe.runtime_package_replace_waiting_for_audio = 0UL;
-      g_ps_hw6_runtime_persistent_replace_request = 1UL;
+      PS_HW6_RTOS_FinalizeAudioSfx(sfx_status);
     }
   }
   else if (owner_id == PS_HW6_RTOS_OWNER_RUNTIME)
@@ -9228,6 +9912,23 @@ static ULONG PS_HW6_RTOS_OwnerReceiveWaitTicks(uint32_t owner_id,
         wait_ticks = (ULONG)remaining_ticks;
       }
     }
+    if ((PS_HW6_OwnerStateMachines_JoystickWakeCharacterizationCaptureActive()
+         != 0UL) &&
+        (PS_HW6_OwnerStateMachines_JoystickWakeCharacterizationCaptureNextTick()
+         != 0UL))
+    {
+      remaining_ticks = (int32_t)
+        (PS_HW6_OwnerStateMachines_JoystickWakeCharacterizationCaptureNextTick()
+         - now_tick);
+      if (remaining_ticks <= 0)
+      {
+        wait_ticks = TX_NO_WAIT;
+      }
+      else if ((uint32_t)remaining_ticks < (uint32_t)wait_ticks)
+      {
+        wait_ticks = (ULONG)remaining_ticks;
+      }
+    }
     if ((g_ps_ui_router_probe.current_page ==
          PS_UI_ROUTER_PAGE_CALIBRATION) &&
         (g_ps_ui_router_probe.calibration_page ==
@@ -9264,6 +9965,23 @@ static ULONG PS_HW6_RTOS_OwnerReceiveWaitTicks(uint32_t owner_id,
 
   if (owner_id == PS_HW6_RTOS_OWNER_RUNTIME)
   {
+    uint32_t state_timer_remaining_ticks;
+    uint32_t state_timer_binding_index;
+
+    if (PS_HW6_RTOS_RuntimeStateTimerNext(
+          now_tick,
+          &state_timer_remaining_ticks,
+          &state_timer_binding_index) != 0UL)
+    {
+      if (state_timer_remaining_ticks == 0UL)
+      {
+        wait_ticks = TX_NO_WAIT;
+      }
+      else if (state_timer_remaining_ticks < (uint32_t)wait_ticks)
+      {
+        wait_ticks = (ULONG)state_timer_remaining_ticks;
+      }
+    }
     if ((ps_runtime_interaction_state ==
          PS_HW6_RUNTIME_INTERACTION_STATE_ACTIVE) &&
         (ps_runtime_interaction_deadline_tick != 0UL))
@@ -9306,6 +10024,12 @@ static ULONG PS_HW6_RTOS_OwnerReceiveWaitTicks(uint32_t owner_id,
       }
     }
     return wait_ticks;
+  }
+
+  if ((owner_id == PS_HW6_RTOS_OWNER_AUDIO) &&
+      (PS_HW6_AudioOwner_SfxActive() != 0UL))
+  {
+    return TX_NO_WAIT;
   }
 
   if ((owner_id != PS_HW6_RTOS_OWNER_DISPLAY) ||
@@ -9628,6 +10352,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (ps_power_boot_done != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
+      PS_HW6_RTOS_RuntimeStateTimersService((uint32_t)now);
       PS_HW6_RTOS_RuntimeInteractionService((uint32_t)now);
     }
 
@@ -9635,6 +10360,22 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (ps_power_boot_done != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
+      if (PS_HW6_AudioOwner_SfxActive() != 0UL)
+      {
+        HAL_StatusTypeDef audio_service_status =
+          PS_HW6_OwnerStateMachines_ServiceAudioSfx();
+
+        if (audio_service_status != HAL_BUSY)
+        {
+          PS_HW6_RTOS_FinalizeAudioSfx(audio_service_status);
+        }
+      }
+      else if (ps_audio_sfx_clock_held != 0UL)
+      {
+        PS_HW6_RTOS_FinalizeAudioSfx(
+          (g_ps_hw6_owner_probe.audio_success != 0UL) ?
+            HAL_OK : HAL_ERROR);
+      }
       if (g_ps_hw6_audio_clock_probe_request != 0UL)
       {
         audio_clock_release_after_request =
@@ -9944,6 +10685,54 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       }
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
+        (g_ps_hw6_joystick_wake_characterization_start_request != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      uint32_t runtime_is_shell =
+        ((g_ps_hw6_rtos_probe.runtime_current_class ==
+          (uint32_t)PS_HW6_RUNTIME_CLASS_SHELL) &&
+         (g_ps_hw6_rtos_probe.runtime_lifecycle ==
+          (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_RUNNING)) ? 1UL : 0UL;
+      uint32_t runtime_is_suspended =
+        (g_ps_hw6_rtos_probe.runtime_lifecycle ==
+         (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_SUSPENDED) ? 1UL : 0UL;
+
+      g_ps_hw6_joystick_wake_characterization_start_request = 0UL;
+      if (((runtime_is_shell != 0UL) || (runtime_is_suspended != 0UL)) &&
+          (g_ps_ui_router_request == 0UL) &&
+          (PS_HW6_OwnerStateMachines_BeginJoystickWakeCharacterization() ==
+           HAL_OK))
+      {
+        g_ps_ui_router_request_event =
+          PS_UI_ROUTER_EVENT_NAV_INPUT_DIAGNOSTIC;
+        g_ps_ui_router_request = 1UL;
+      }
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
+        (g_ps_hw6_joystick_wake_characterization_capture_request != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      g_ps_hw6_joystick_wake_characterization_capture_request = 0UL;
+      (void)
+        PS_HW6_OwnerStateMachines_StartJoystickWakeCharacterizationCapture();
+      PS_HW6_RTOS_SendCurrentUiRenderCommand();
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
+        (PS_HW6_OwnerStateMachines_JoystickWakeCharacterizationCaptureActive()
+         != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
+    {
+      HAL_StatusTypeDef characterization_status =
+        PS_HW6_OwnerStateMachines_StepJoystickWakeCharacterizationCapture();
+
+      if ((characterization_status != HAL_BUSY) ||
+          (PS_HW6_OwnerStateMachines_JoystickWakeCharacterizationCaptureActive()
+           == 0UL))
+      {
+        PS_HW6_RTOS_SendCurrentUiRenderCommand();
+      }
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_INPUT) &&
         (g_ps_hw6_joystick_xyz_capture_request != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
@@ -9960,6 +10749,10 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         capture_router_event = PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_SWEEP;
       }
       else if (capture_mode == PS_HW6_JOYSTICK_XYZ_CAPTURE_SWEEP_Z_HIGH)
+      {
+        capture_router_event = PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_SWEEP;
+      }
+      else if (capture_mode == PS_HW6_JOYSTICK_XYZ_CAPTURE_SWEEP_ALL_HIGH)
       {
         capture_router_event = PS_UI_ROUTER_EVENT_JOYSTICK_XYZ_SWEEP;
       }

@@ -170,6 +170,256 @@ time.cancel_schedule(event_id)
 time.next_scheduled_event()
 ```
 
+These are logical contract operations, not a list of implemented target APIs.
+Relative schedules must resolve to declared timer slots and owners; the
+`schedule_after` shorthand does not allocate an anonymous timer or infer its
+lifetime from whichever state handles the event.
+
+### Implementation status and next increment
+
+The executable STATE subset supports `time.state_entry_elapsed` with
+state-transition routing, and `time.scene_elapsed` with an independent
+`event_handlers` entry. Scene timers declare `delay_ms` and `start_policy`
+(`scene_entry` by default, or `action`); `start_timer`, `restart_timer`, and
+`cancel_timer` reference the declared scene binding through `timer_ref`.
+Scene timers and handlers use STG1 v6; existing state-entry eggs retain v5.
+The shared target profile advertises both as `available_pending_validation`.
+No Peep Studio GUI controls are added by this implementation.
+
+Instance and package-session ownership follow through the same model. Repeating
+timers and reset-persistent scheduling are separate increments; their presence
+in the wider contract does not imply current executable support.
+
+Target profiles and executable schemas must advertise only supported forms.
+Existing state-entry bindings must not silently become scene-owned timers.
+Host tests cover the production C scheduler/runtime and shared compiler,
+parser, and preview. The scene-owned one-shot expiry test through the shared
+RTC/STOP2 path passed on target; the evidence and its limits are recorded
+below. This does not turn the earlier cancelled state-entry injection into
+an expiry pass, or qualify every timer operation on hardware.
+
+The GUI implementation and merge handoff is
+[[Peep_Studio_Scoped_Timer_Handoff]]. It uses the existing shared service and
+does not require another firmware implementation before editor work begins.
+
+`__fw0_scene_timer_test_enable.gdb` injects a scene timer and action-only
+private counter increment into the current scene in RAM. After resuming,
+wake the device and change selections within that scene, then leave it idle
+and print with `__fw0_scene_timer_test_prints.gdb` after at least seven seconds.
+No screen cue is expected. Counter=1 proves the handler ran; state activations
+show intervening transitions; an RTC selection shows scheduling, not a power
+measurement. Scene replacement cancels this test, and reset/reload discards
+it without modifying the installed egg. Do not pause during audio playback.
+
+The test-result helper keeps its arm identity, counter index, and baselines in
+GDB convenience variables. A new GDB session loses that bookkeeping even if
+the MCU has retained the injected test and completed its work. A missing test
+record is not a firmware failure. Reattach without resetting and use the
+read-only `__fw0_state_scene_timer_prints.gdb` for firmware-owned counters;
+do not rearm or reset before collecting them. Debugger disconnect alone does
+not establish a wake cause or a power measurement.
+
+The scheduler selects due bindings directly from bounded live slots, rather
+than queuing binding-specific expiries. Start preserves an active/due slot;
+Restart replaces its deadline; Cancel removes it before the next selection.
+Scene/state activation identities, separate from rendering revisions, control
+owner invalidation. Generic RTC wake commands only request reevaluation of
+these live slots. Relative remaining durations pause on package suspension;
+physical sleep uses the existing shared RTC prepare/restore path.
+
+### Recorded scene-timer target pass
+
+Recorded: `2026-09-09`. Source baseline: `c982593` (scene-owned timers and
+independent expiry handlers). Evidence is the user-run GDB transcript in the
+bring-up conversation, transcribed here; no board serial, ELF fingerprint,
+TraceX capture, or PPK2 measurement was supplied with this result.
+
+The user reported a wake during the injected five-second scene-timer test.
+The debugger disconnected at STOP, so the convenience-variable-based result
+helper could not report. The subsequent firmware-owned print was:
+
+```text
+rtos/scene api = 82 / 21
+scene/state activation = 1 / 4
+scene active/state/revision/event bindings = 1 / 0 / 5 / 4
+scene event dispatch/reject/last binding/event/transition = 1 / 0 / 3 / 2 / 3
+timer revision/configured/active/sync/paused = 4 / 1 / 0 / 4 / 0
+timer due/dispatch/applied/ignored/error = 1 / 1 / 1 / 0 / 0
+timer last binding/delay/deadline pause/resume = 3 / 5000 / 1245 / 0 / 0
+RTC source/state selects/binding/remaining/elapsed = 0 / 1 / 3 / 420 / 421
+shared RTC arm/status/clock/counter interaction remaining/elapsed/expiry = 1 / 0x0 / 0x0 / 8601 / 0 / 421 / 0
+runtime class/lifecycle interaction mode/state = 2 / 2 / 1 / 1
+STOP2 enabled/checks/entries/skips/status physical/failure = 1 / 142 / 6 / 136 / 0x1 / 1 / 0x0
+```
+
+Verdict: **PASS for one scene-owned timer expiry and independent handler
+application in the RTC/STOP2 test.** Due, dispatch, and applied each reached
+one; ignored/error remained zero. Configured/active `1/0` shows the declared
+one-shot was consumed. RTC selection identifies the same binding `3`, with
+`421` ticks elapsed against `420` remaining, and STOP2 entries reached six.
+These are subsystem-work counters, not merely evidence that a thread woke.
+
+Scene/state activation `1/4` is consistent with internal state changes while
+retaining one scene activation. The lost GDB baselines prevent reconstructing
+the exact number of transitions after injection. The private counter was not
+read, so do not claim its numeric value or an exact five-second wall-clock
+measurement from this transcript. The final RTC source `0` is the current
+idle selector; the historical selection/elapsed fields retain the timer work.
+
+Still required on target: a real GUI-authored/exported timer egg; Start on
+idle versus active; Restart; Cancel; system-menu pause/resume; scene
+replacement cancellation; and a deliberate state-owned timer expiry.
+Host tests already cover these control/lifetime semantics, but do not replace
+their target checks. No current-draw, all-duration, or full-profile
+qualification claim is made. The timer sources in the development profile
+remain `available_pending_validation`; this documentation-only record does not
+change profile values, hashes, generated headers, or firmware.
+
+### Timer declaration and ownership
+
+A timer declaration separates three decisions:
+
+- owner: the activation or instance whose lifetime contains the timer
+- start policy: owner entry/activation or an explicit bounded action
+- expiry handler: the event branch to evaluate when the timer becomes due
+
+Clock basis is a separate decision, described below. Graph placement, menu
+selection, and a handler's optional state guard do not implicitly select an
+owner or restart a countdown.
+
+| Owner scope | Lifetime and cancellation | Example |
+|---|---|---|
+| State activation | cancelled when the owning state activation exits; re-entry creates a new activation | hint after remaining on one choice |
+| Scene instance | survives internal state and selection changes; cancelled when that scene instance is destroyed or replaced | timed menu selection |
+| Entity/behavior instance | belongs to one live instance; cancelled when that instance is removed | independent automatic-close timer for each door |
+| Package session | survives scene changes; cancelled when the package session stops or is replaced/unmounted | game-wide cooldown |
+
+Scene ownership is the authoring default for new timers in scene logic. State
+ownership is an explicit choice. Prefab-local behavior resolves its owner to
+the instantiated entity/behavior, not the shared prefab definition. Two
+instances may declare the same local timer name without sharing a countdown.
+Reusable behavior attached to the same entity must also resolve distinct
+timer slots for each declared behavior instance.
+
+Containment still applies: destroying a scene cancels its state and instance
+timers; stopping a package cancels every timer in that session. Merely changing
+focus, hiding a visual, or returning the CPU to STOP2 destroys no owner.
+A retained scene that is explicitly suspended preserves its relative timers
+under the suspension rules below. Recreating a scene with the same source ID
+creates a new owner, not a continuation of a destroyed scene's timers.
+
+Engine timer identity includes the live owner identity, the compiled local
+timer ID, and an arm generation. State owners additionally identify the state
+activation. The Engine rejects events from an expired owner or superseded arm
+even if a source ID or table slot has been reused.
+
+### Start, restart, and cancel
+
+The initial scoped forms are one-shot. Their duration, event binding, owner,
+and start policy are declared before export.
+
+| Operation | Required behavior |
+|---|---|
+| Start | arm an idle timer; leave an armed timer or pending expiry unchanged |
+| Restart | invalidate the old arm and pending expiry, then start the declared duration again |
+| Cancel | disarm and invalidate any pending expiry; cancelling an idle timer is harmless |
+
+An owner-entry start occurs once when that owner is committed. A scene-entry
+timer does not restart on state transitions, focus changes, visual updates,
+or resume. An action-started timer waits for an explicit Start or Restart
+action. Cancelled or consumed one-shots can be explicitly started again.
+
+Actions must name a compiler-resolved timer reference in an allowed owner
+scope. They must not cancel another instance's timer by matching a display
+name, allocate timers dynamically, or extend an owner's lifetime.
+
+### Independent expiry handlers
+
+Expiry is a directed event to a declared handler in the timer owner's logic.
+It does not require a transition from the current scene state. A handler may
+evaluate guards, update variables, request rendering or audio, control another
+declared timer, or explicitly request a state/scene transition.
+
+The independent branch waits for an event; it is not a thread, parallel
+polling loop, or continuously executing behavior. The Engine processes each
+event as one bounded transaction. A rejected guard consumes that one-shot
+expiry; it does not retry the handler implicitly.
+
+Example authoring behavior:
+
+```text
+Scene entered -> Start choice_timeout (10 seconds)
+Up/down input -> Change selection
+choice_timeout expired -> Confirm current selection
+```
+
+Selection changes leave this timer running. To implement gameplay inactivity
+instead, the author explicitly adds Restart choice_timeout to meaningful input
+handlers. An action-only expiry handler must not synthesize a self-transition
+just to run actions or refresh presentation.
+
+The current event transaction commits before the next event is considered.
+Due timers are ordered by logical deadline, then compiled owner/binding order
+for ties. Before delivery, owner and arm identities are checked again; an
+earlier transaction may have cancelled or replaced a later due timer.
+Per-owner and total package bounds cover timer slots, pending events, handler
+cost, and maximum live instance counts.
+
+### Clock basis, STOP2, and suspension
+
+- Relative gameplay timers count logical elapsed time while their owner is
+  active. STOP2 counts toward that duration. Platform selects the earliest
+  admitted RTC deadline and restores owners before Engine event delivery.
+- Explicit package suspension, such as opening the system menu, pauses
+  relative timers and preserves their remaining duration. Explicit suspension
+  of a retained scene also pauses that scene's contained relative timers.
+- A package-session timer continues across ordinary scene changes or scene
+  suspension while the package itself remains active.
+- Resume continues the remaining duration without treating suspended time as
+  elapsed gameplay time. An expiry already due when suspension starts remains
+  eligible for one delivery after resume, subject to cancellation.
+- Logical `INACTIVE` alone does not pause timers while their owner remains
+  active. A resulting scene destruction or package suspension still applies
+  the corresponding ownership or suspension rule.
+- Local-calendar deadlines remain absolute and are not shifted by suspension.
+  While an owner is suspended, package handlers do not execute; overdue events
+  are reconciled on resume through the declared bounded catch-up policy.
+- Package stop, unmount, replacement, or reset ends the live session. Package
+  ownership does not imply reset persistence or execution while another
+  package is active. Reconstructing a saved deadline requires explicit
+  versioned save data and load-time reconciliation.
+
+Clock basis and owner scope must not be conflated: a scene-owned gameplay
+countdown can pause in the system menu, while an absolute calendar deadline
+does not move. Neither is tied to a physical RTC channel in authored content.
+
+### State-entry delayed events
+
+The existing executable `time.state_entry_elapsed` remains the explicit
+state-activation specialization of this model.
+
+- the timer starts when its owning state activation is committed
+- leaving the state cancels that activation's timer
+- re-entering the state starts a new timer, including a self-transition
+- STOP2 does not pause the timer; Platform arms the earliest required RTC wake
+  deadline and the Engine dispatches the event after wake restoration
+- logical `INACTIVE` does not pause the timer while the package remains active
+- explicit package suspension for the system menu pauses the timer and
+  preserves its remaining duration
+- resume from that system menu rearms the timer from the preserved duration;
+  time spent suspended does not itself produce an overdue event
+- local-calendar schedules remain absolute and are not shifted by package
+  suspension
+
+`thRuntime` owns logical deadlines and owner/arm identities. `thPower`
+owns the physical RTC wake timer and selects the earliest admitted system or
+package deadline. A package never selects an RTC alarm channel or observes raw
+RTC interrupt state.
+
+Only one event may be delivered for one timer arm. RTC rounding,
+spurious wake, repeated wake preparation, and stale queue entries must not
+duplicate it.
+
 Schedule rule examples:
 
 ```text
@@ -417,6 +667,10 @@ Reject:
 
 - direct RTC, SysTick, hardware timer, STOP, clock, PMIC, or wake-pin references.
 - unbounded schedule tables.
+- unsupported timer scopes, start policies, clock bases, or independent handlers.
+- unresolved timer owners/handlers, ambiguous instance-local references, or
+  limits that omit the maximum number of live instances.
+- implicit timer restarts on unrelated state, selection, or visual changes.
 - unbounded catch-up.
 - polling loops used to approximate reactive schedules or waiting-visual cadence.
 - high-frequency schedules or awake input-wait loops in state scenes.
@@ -460,6 +714,8 @@ Optional twin time models:
 Rules:
 
 - calendar time must be controllable in deterministic tests.
+- supported timer scopes must share owner lifetime, arm identity, Start/Restart/
+  Cancel semantics, suspension behavior, and expiry ordering with firmware.
 - scheduled events, lifecycle events, wake reasons, cadence clamps, reactive yields, interaction-state timing, consumed activation gestures, and admitted interactive peer-wait behavior must be replayable.
 - twin profiles must derive cadence caps and interaction-policy bounds from measured/frozen target profiles.
 - twin evidence does not prove RTC hardware, wake latency, current draw, or physical sleep behavior.
@@ -489,3 +745,15 @@ Rules:
 19. digital twin deterministic replay produces the same schedule, reactive-yield, inactive/active, wake, lifecycle, and event sequence for a fixed trace.
 20. digital twin accelerated sleep simulation is not used as physical-target current, wake-latency, or RTC hardware evidence.
 21. package-authored system inactivity timeout or activation gesture fails validation.
+22. a scene-owned one-shot expires once while menu selection changes repeatedly.
+23. a state-entry timer cancels on state exit and rearms on re-entry without restarting a scene-owned timer.
+24. Start preserves an armed deadline; Restart replaces it; Cancel prevents delivery even when an old expiry is queued.
+25. an expiry handler updates a variable or presentation without an artificial state transition.
+26. two instances of one prefab run and cancel identically named timers independently; removing one rejects its stale events.
+27. replacing/recreating a scene cancels old scene/instance timers while a package-session timer survives ordinary scene replacement.
+28. STOP2 counts toward a relative deadline; system-menu suspension preserves remaining time; resume does not duplicate an already-due expiry.
+29. retained-scene suspension pauses contained relative timers while a package-session timer continues if the package remains active.
+30. absolute calendar deadlines do not shift during suspension; delivery after resume follows bounded catch-up and never runs a suspended handler.
+31. simultaneous expiries are deterministic, and an earlier cancellation or owner replacement prevents stale later delivery.
+32. stopping the package clears all session timers; reset persistence requires explicit saved-deadline reconstruction.
+33. a profile lacking scene/instance/package timers or independent handlers rejects their export instead of silently compiling them as state-entry transitions.

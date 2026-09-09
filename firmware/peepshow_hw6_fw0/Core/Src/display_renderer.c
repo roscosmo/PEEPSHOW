@@ -507,12 +507,6 @@ static void DisplayRenderer_ClearListCursor(uint32_t row)
 
 static void DisplayRenderer_RecordCursorBaseFrame(void)
 {
-  if (s_lpbam_cursor_panel_region_valid == 0UL)
-  {
-    s_display_cursor_base_valid = 0UL;
-    return;
-  }
-
   (void)memcpy(s_display_cursor_base_framebuffer,
                s_display_framebuffer,
                sizeof(s_display_cursor_base_framebuffer));
@@ -1004,9 +998,7 @@ static uint32_t DisplayRenderer_ResolveSceneWaitingVisual(
       (g_display_renderer_scene_waiting_probe.active == 0UL) ||
       (DisplayRenderer_ValidateSceneWaitingVisual(visual) == 0UL) ||
       (s_display_committed_valid == 0UL) ||
-      (s_display_cursor_base_valid == 0UL) ||
-      (s_lpbam_cursor_panel_region_valid == 0UL) ||
-      (s_display_committed_focus_valid == 0UL))
+      (s_display_cursor_base_valid == 0UL))
   {
     g_display_renderer_scene_waiting_probe.last_resolve_status = 1UL;
     return 0UL;
@@ -1015,7 +1007,9 @@ static uint32_t DisplayRenderer_ResolveSceneWaitingVisual(
   animation->animation_id = visual->presentation_id;
   animation->source_primitive_id =
     DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK;
-  animation->focus_row = s_display_committed_focus_index;
+  animation->focus_row =
+    (s_display_committed_focus_valid != 0UL) ?
+      s_display_committed_focus_index : DISPLAY_RENDERER_ROW_NONE;
   animation->phase_count = visual->sequence_step_count;
   animation->sequence_frame_count = visual->sequence_step_count;
   animation->cadence_ms = visual->phase_quantum_ms;
@@ -1046,6 +1040,12 @@ static uint32_t DisplayRenderer_ResolveSceneWaitingVisual(
     if (source->visual_source_id ==
         PS_SCENE_WAITING_VISUAL_SOURCE_SHELL_CURSOR)
     {
+      if ((s_lpbam_cursor_panel_region_valid == 0UL) ||
+          (s_display_committed_focus_valid == 0UL))
+      {
+        g_display_renderer_scene_waiting_probe.last_resolve_status = 1UL;
+        return 0UL;
+      }
       target->source_primitive_id =
         DISPLAY_RENDERER_PRIMITIVE_CURSOR_BLINK;
       if ((target->panel_bounds.start_row !=
@@ -2536,7 +2536,7 @@ static void DisplayRenderer_UIList(uint32_t page,
       list->title = "CALIBRATION";
       if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_NEUTRAL)
       {
-        list->rows[0] = "STICK CENTER";
+        list->rows[0] = "FLICK RELEASE";
         list->rows[1] = "PRESS A";
       }
       else if (calibration_page == PS_UI_ROUTER_CAL_JOYSTICK_UP)
@@ -2990,6 +2990,173 @@ static uint32_t DisplayRenderer_DrawInputDiagnosticPage(void)
       g_ps_hw6_rtos_probe.joystick_logical_last_event), 1U);
   black_pixels += DisplayRenderer_DrawText(8U, 112U, "USE ANY INPUT", 1U);
   black_pixels += DisplayRenderer_DrawText(8U, 127U, "NO SCRIPT", 1U);
+  return black_pixels;
+}
+
+static const char *DisplayRenderer_JoystickWakeCharacterizationPoseText(
+  uint32_t pose,
+  uint32_t neutral_pending)
+{
+  if (neutral_pending != 0UL)
+  {
+    return "RELEASE CENTER";
+  }
+  if (pose == PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_CENTER)
+  {
+    return "SETTLE CENTER";
+  }
+  if (pose == PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_UP)
+  {
+    return "HOLD UP";
+  }
+  if (pose == PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_RIGHT)
+  {
+    return "HOLD RIGHT";
+  }
+  if (pose == PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_DOWN)
+  {
+    return "HOLD DOWN";
+  }
+  if (pose == PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_LEFT)
+  {
+    return "HOLD LEFT";
+  }
+  return "COMPLETE";
+}
+
+static const char *DisplayRenderer_JoystickWakeCharacterizationStepText(
+  uint32_t pose,
+  uint32_t neutral_pending,
+  uint32_t neutral_return_count)
+{
+  if ((pose == PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_CENTER) ||
+      (neutral_pending != 0UL))
+  {
+    if (neutral_return_count == 0UL)
+    {
+      return "RETURN 1 OF 5";
+    }
+    if (neutral_return_count == 1UL)
+    {
+      return "RETURN 2 OF 5";
+    }
+    if (neutral_return_count == 2UL)
+    {
+      return "RETURN 3 OF 5";
+    }
+    if (neutral_return_count == 3UL)
+    {
+      return "RETURN 4 OF 5";
+    }
+    return "RETURN 5 OF 5";
+  }
+  if (pose == PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_UP)
+  {
+    return "DIRECTION 1 OF 4";
+  }
+  if (pose == PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_RIGHT)
+  {
+    return "DIRECTION 2 OF 4";
+  }
+  if (pose == PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_DOWN)
+  {
+    return "DIRECTION 3 OF 4";
+  }
+  if (pose == PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_LEFT)
+  {
+    return "DIRECTION 4 OF 4";
+  }
+  return "ALL 9 CAPTURED";
+}
+
+static uint32_t
+DisplayRenderer_DrawJoystickWakeCharacterizationPage(void)
+{
+  uint32_t black_pixels = 0UL;
+  uint32_t pose = g_ps_hw6_owner_sm_probe
+    .joystick_wake_characterization_pose;
+  uint32_t neutral_pending = g_ps_hw6_owner_sm_probe
+    .joystick_wake_characterization_neutral_pending;
+  uint32_t neutral_return_count = g_ps_hw6_owner_sm_probe
+    .joystick_wake_characterization_neutral_return_count;
+  const char *status_text = "PRESS A";
+  const char *instruction_text;
+
+  if ((pose == PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_CENTER) ||
+      (neutral_pending != 0UL))
+  {
+    instruction_text = "SETTLE THEN PRESS A";
+  }
+  else
+  {
+    instruction_text = "FULL TRAVEL THEN A";
+  }
+
+  if (g_ps_hw6_owner_sm_probe.joystick_wake_characterization_complete != 0UL)
+  {
+    status_text = (g_ps_hw6_owner_sm_probe
+      .joystick_wake_characterization_feasible != 0UL) ?
+      "ONE PAIR FOUND" : "NO ONE PAIR";
+  }
+  else if (g_ps_hw6_owner_sm_probe
+             .joystick_wake_characterization_capture_active != 0UL)
+  {
+    status_text = "SCANNING";
+  }
+  else if ((g_ps_hw6_owner_sm_probe
+              .joystick_wake_characterization_capture_count != 0UL) &&
+           (g_ps_hw6_owner_sm_probe
+              .joystick_wake_characterization_capture_status ==
+            (uint32_t)HAL_ERROR))
+  {
+    status_text = "TRY AGAIN";
+  }
+
+  black_pixels += DisplayRenderer_HorizontalLine(
+    0U, (uint16_t)(DISPLAY_RENDERER_WIDTH - 1U), 0U);
+  black_pixels += DisplayRenderer_HorizontalLine(
+    0U, (uint16_t)(DISPLAY_RENDERER_WIDTH - 1U),
+    (uint16_t)(DISPLAY_RENDERER_HEIGHT - 1U));
+  black_pixels += DisplayRenderer_VerticalLine(
+    0U, 0U, (uint16_t)(DISPLAY_RENDERER_HEIGHT - 1U));
+  black_pixels += DisplayRenderer_VerticalLine(
+    (uint16_t)(DISPLAY_RENDERER_WIDTH - 1U), 0U,
+    (uint16_t)(DISPLAY_RENDERER_HEIGHT - 1U));
+  black_pixels += DisplayRenderer_DrawCenteredText(8U, "WAKE SCAN", 1U);
+  black_pixels += DisplayRenderer_HorizontalLine(
+    12U, (uint16_t)(DISPLAY_RENDERER_WIDTH - 13U), 24U);
+  black_pixels += DisplayRenderer_DrawCenteredText(
+    43U,
+    DisplayRenderer_JoystickWakeCharacterizationPoseText(
+      pose,
+      neutral_pending),
+    1U);
+  black_pixels += DisplayRenderer_DrawCenteredText(
+    66U,
+    DisplayRenderer_JoystickWakeCharacterizationStepText(
+      pose,
+      neutral_pending,
+      neutral_return_count),
+    1U);
+  black_pixels += DisplayRenderer_DrawCenteredText(94U, status_text, 1U);
+  if (g_ps_hw6_owner_sm_probe.joystick_wake_characterization_complete != 0UL)
+  {
+    black_pixels += DisplayRenderer_DrawCenteredText(
+      119U, "HALT + PRINT", 1U);
+  }
+  else
+  {
+    if (g_ps_hw6_owner_sm_probe
+          .joystick_wake_characterization_capture_active != 0UL)
+    {
+      instruction_text = ((pose ==
+        PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_CENTER) ||
+        (neutral_pending != 0UL)) ?
+        "KEEP CENTER STILL" : "KEEP POSE STILL";
+    }
+    black_pixels += DisplayRenderer_DrawCenteredText(
+      119U, instruction_text, 1U);
+  }
   return black_pixels;
 }
 
@@ -3514,9 +3681,18 @@ void DisplayRenderer_PrepareUIPage(
     DisplayRenderer_RecordCursorBaseFrame();
     DisplayRenderer_ComputeDirtyRowsFromCommitted();
     s_rotate_ccw = 0UL;
-    s_display_pending_focus_index = scene_model->focus_index;
-    s_display_pending_focus_valid = 1UL;
-    s_display_pending_focus_invalidates = 0UL;
+    if (s_lpbam_cursor_panel_region_valid != 0UL)
+    {
+      s_display_pending_focus_index = scene_model->focus_index;
+      s_display_pending_focus_valid = 1UL;
+      s_display_pending_focus_invalidates = 0UL;
+    }
+    else
+    {
+      s_display_pending_focus_index = DISPLAY_RENDERER_ROW_NONE;
+      s_display_pending_focus_valid = 0UL;
+      s_display_pending_focus_invalidates = 1UL;
+    }
     DisplayRenderer_FillStats(stats,
                               black_pixels,
                               primitive_id,
@@ -3555,7 +3731,16 @@ void DisplayRenderer_PrepareUIPage(
   {
     DisplayRenderer_ClearWhite();
     s_rotate_ccw = 1UL;
-    black_pixels = DisplayRenderer_DrawInputDiagnosticPage();
+    if (g_ps_hw6_owner_sm_probe
+          .joystick_wake_characterization_active != 0UL)
+    {
+      black_pixels =
+        DisplayRenderer_DrawJoystickWakeCharacterizationPage();
+    }
+    else
+    {
+      black_pixels = DisplayRenderer_DrawInputDiagnosticPage();
+    }
     DisplayRenderer_RecordCursorBaseFrame();
     DisplayRenderer_ComputeDirtyRowsFromCommitted();
     s_rotate_ccw = 0UL;

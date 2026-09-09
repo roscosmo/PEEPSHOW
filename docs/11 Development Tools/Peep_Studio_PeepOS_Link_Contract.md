@@ -4,6 +4,12 @@ Status: `active_handoff`
 
 Implementation status: `Stage_3_STATE_presentation_GUI_in_progress`
 
+Timer integration handoff: `backend_ready_GUI_merge_pending`, recorded
+`2026-09-09` against OS commit `c982593`. See
+[[Peep_Studio_Scoped_Timer_Handoff]] for the current timer-specific work;
+the stage history below does not establish the state of the separate GUI
+branch.
+
 This document is the working boundary between Peep Studio development and
 PeepOS/HW6 bring-up. It tells an editor agent what the platform actually
 supports today, which host interface to use, and which planned features must
@@ -13,6 +19,7 @@ Related:
 
 - [[Authoring_Tool_Architecture]]
 - [[Authoring_Project_Schema_Contract]]
+- [[Peep_Studio_Scoped_Timer_Handoff]]
 - [[Peep_Studio_UX_Direction]]
 - [[HW6_Authoring_Vertical_Slice]]
 - [[Asset_Pipeline_and_Package_Tooling_Contract]]
@@ -65,22 +72,47 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | package output | deterministic `.egg` binary with SHA-256 integrity |
 | scene type | STATE |
 | state execution | bounded variables, input routes, guards, actions, and deterministic transitions |
-| package scene flow | direct STATE-to-STATE replacement is implemented and proven on HW6 through service API 8, PKG1 graph V2, and FW0 runtime API 11 |
+| scoped timers | service API 23 / STG1 v6 adds scene-owned one-shots, independent expiry handlers and Start/Restart/Cancel; existing state-entry bindings retain v5 semantics; scene expiry/handler application in an RTC/STOP2 test passed, with real GUI-export and remaining target control/lifetime tests pending |
+| package scene flow | direct STATE-to-STATE replacement is implemented and proven on HW6 through service API 8, PKG1 graph V2, and FW0 runtime API 11; route actions run before replacement and same-package SFX may drain across that scene boundary |
 | input | service API 20 / PKG1 `STG1` v4 supports A/B/L/R lifecycle bindings (`press`, `release`, `hold`, `repeat`), short START press, eight cardinal/diagonal joystick sources, per-STATE `four_way` / `eight_way` policy, and the explicit `exit_to_shell` route action; firmware input support and HW6 lifecycle diagnostic proof are complete, while shell-exit target proof remains pending |
 | visuals | package-backed native-scale masked 1bpp sprite frames |
 | retained render model | bounded ordered scene elements with binary alpha and four platform planes |
 | package primitives | retained line, outline rectangle, filled rectangle, circle, and ellipse records are compiled, previewed, loaded, and target-proven; private shell/calibration draw helpers remain unavailable |
 | package text | service API 15 rasterizes printable-ASCII menu labels through `peepshow.system.8x8.basic.v1` into ordinary masked 1bpp sprite frames; runtime text remains unavailable |
 | retained element actions | service API 17 and FW0 runtime API 15 implement atomic destination-state show/hide, move, retained frame selection, and bounded waiting-animation selection; host package/preview tests and HW6 awake/STOP2 visual proof pass |
-| package audio | service API 18 imports PCM WAV, deterministically compiles mono 16 kHz 4-bit IMA ADPCM, emits symbolic sampled-SFX assets/cues and `play_sfx` STATE actions, previews cue emission, and auditions the exact packaged bytes; HW6 one-voice bounded STATE playback before and after real STOP2, drain, clock release, and return to STOP2 are target-proven |
-| STATE animated elements | bounded repeating sprite phase timelines with 1..4 frames, 1..12 combined steps, explicit cadence, and a settled step; mixed 2-phase and 3-phase composition and deterministic fallback are target-proven |
+| package audio | service API 18 imports PCM WAV, deterministically compiles mono 16 kHz 4-bit IMA ADPCM, emits symbolic sampled-SFX assets/cues and `play_sfx` STATE actions, previews cue emission, and auditions the exact packaged bytes; HW6 multi-second package-backed playback across STOP2 and clean five-voice overlap at `80 MHz` and the audio-only `48 MHz` candidate are target-proven; strict higher-priority preemption and concurrent display margin remain open |
+| STATE animated elements | bounded repeating sprite phase timelines with 1..4 frames, 1..12 combined steps, explicit cadence, and a settled step; mixed 2/3-phase composition, focusless four-frame package motion, and deterministic fallback are target-proven; a scene may also contain zero animated elements |
 | awake preview | exact 168x144 package-backed framebuffer with deterministic fake time and side-effect-free scene thumbnails |
 | STOP2 | package visuals compiled into LPBAM animation and resumed across wake/STOP2 handoff |
-| firmware package proof | embedded and USB-installed `.egg` packages load, validate, resolve STATE content, handle input, render package pixels, replace STATE scenes directly, animate in STOP2, and return to shell; installed packages currently run through a `65536`-byte RAM cache; CONTINUOUS/TIMEOUT interaction lifecycle and manual inactivity are target-proven |
+| firmware package proof | embedded and USB-installed `.egg` packages load, validate, resolve STATE content, handle input, render package pixels, replace STATE scenes directly, animate in STOP2, boot from the selected installed generation, and return to shell; installed runtime keeps a bounded resident prefix and uses storage-owner reader windows for nonresident audio, while the current MSC source bridge remains limited to `65536` bytes; CONTINUOUS/TIMEOUT interaction lifecycle and manual inactivity are target-proven |
 
 Measured hardware behavior, current SRAM4 admission limits, and power figures
 remain hardware evidence. The desktop preview must not claim to reproduce
 current draw or prove STOP2 behavior.
+
+## Scoped Timer Integration
+
+Merge the OS timer baseline into the existing GUI branch now, then implement
+the editor against [[Peep_Studio_Scoped_Timer_Handoff]]. Do not wait for SOC,
+steps, lifecycle, or calendar triggers. Merge back after an editor-authored
+timer project round-trips, previews, exports, and passes the agreed target
+acceptance test.
+
+Only `time.scene_elapsed` and `time.state_entry_elapsed` are executable
+non-input bindings in this increment. Scene timers default to scene ownership
+and use independent handlers; state-entry timers remain explicitly tied to
+their source states. Hardware STOP2 counts as elapsed time, whereas explicit
+package suspension pauses relative timers. The logical interaction mode
+controls elsewhere in this document are not new lifecycle trigger bindings.
+
+Read the selected `service.hello` target profile's `state_scene_events`
+metadata and the service's `state_scene_graph` commands. Do not replace
+`available_pending_validation` with "not exposed": it describes an executable
+development capability with incomplete qualification. Other OS triggers and
+battery values remain contracted-but-unexposed; generic peripheral events
+remain blocked. The new target pass is recorded in
+[[Time_And_Power_Intent_API_Contract]], without changing profile hashes or
+declaring the full profile validated.
 
 ---
 
@@ -231,10 +263,17 @@ pointers, SAI/DMA configuration, source paths, or host-only objects.
 
 ## Not Yet Exposed
 
-The following are planned or incomplete and must be labelled unavailable in
-the editor until this document is updated:
+The following remain planned or incomplete. Backend-ready editor controls
+may be implemented now; unsupported package capabilities must remain
+unavailable. Preserve any editor work already completed on the GUI branch.
 
 - SEQUENCE and PROGRAM scene authoring or execution;
+- GUI controls for scoped timers and independent expiry handlers (backend
+  ready for this merge, not blocked on another firmware implementation);
+- package-facing active/inactive/resume triggers, calendar alarms, step
+  milestones, battery SOC values/threshold events, animation completion,
+  audio markers, and generic peripheral events;
+- repeating, prefab-instance, package-session, and reset-persistent timers;
 - Peep Studio controls for the backend-ready retained-element, asset-catalog,
   waiting-timeline, and STATE graph mutation commands;
 - arbitrary desktop fonts, runtime text, and waiting-animation mutation actions;
@@ -256,7 +295,9 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `27`.
+protocol is version `1`; the merged service API is version `37` (the OS timer
+handoff baseline was `23`). Rediscover it after merging and restarting the
+Python sidecar.
 
 | Operation | Purpose |
 |---|---|
@@ -277,7 +318,7 @@ protocol is version `1`; the current service API is version `27`.
 | `project.preview_reset` | start one selected STATE scene at its declared entry state or an optional explicit author-selected state |
 | `project.preview_state` | render one exact STATE scene/state framebuffer for placement editing without touching the live preview session |
 | `project.preview_input` | inject one logical source plus optional `event_kind`; supports A/B/L/R, short START press, and cardinal/diagonal joystick STATE events |
-| `project.preview_advance` | advance deterministic preview time by an explicit duration |
+| `project.preview_advance` | advance deterministic preview time by an explicit duration; return one-shot `timer_events` with handler results, audio events, and any system action |
 
 Every project operation after load uses `project_revision`. Live preview
 operations after reset also use `preview_revision`. `project.preview_state`
@@ -317,6 +358,11 @@ policy, preview execution, filesystem access, or hardware policy.
 ---
 
 ## GUI Agent Handoff
+
+The current scoped-timer task, examples, validation limits, and merge
+acceptance checklist are in [[Peep_Studio_Scoped_Timer_Handoff]]. Start there
+for the OS trigger controls; preserve unrelated work already done on the GUI
+branch rather than restarting the staged editor plan below.
 
 The Peep Studio agent may work under `tools/peep-studio/` and may add host-side
 tests and editor documentation. It should not modify firmware while performing
@@ -505,21 +551,27 @@ presentation or expose LPBAM details. Peep Studio must discover these rules
 from `service.hello.state_scene_presentation.element_actions` rather than
 assuming that arbitrary animations can be assigned to STATE elements.
 
-Service API version 18 adds the bounded host/package STATE SFX subset. Asset
+Service API version 18 introduced the host/package STATE SFX subset. Asset
 catalogs may contain `sampled_sfx` WAV sources and symbolic cues; route actions
 may use `{"kind":"play_sfx","cue_ref":"..."}`. The compiler converts source
 audio to mono 16 kHz 4-bit IMA ADPCM in fixed 256-sample blocks and emits the
 optional `AUD1`, `ADB1`, and `ACU1` package chunks. `project.preview_input`
 reports emitted cue events, while `project.audio_audition` returns a WAV decoded
 from the compiled package bytes. `service.hello.state_scene_audio` publishes
-the exact limits and reports the bounded one-voice HW6 STATE subset as target-
-available through `target_playback_status = available_bounded_state_sfx`.
-The Peep Studio emulator plays the final cue emitted by each input through that
-packaged-WAV audition path, applies the emitted volume, and preempts the current
-cue to mirror the bounded one-voice runtime behavior.
-Peep Studio must keep host audition distinct from device proof and
-must report music, arbitrary-length audio, mixing, and production fidelity as
-unsupported or pending.
+the current profile limits and reports package-streamed STATE SFX through
+`target_playback_status = available_package_streamed_state_sfx`. The HW6 FW0
+development profile exposes five SFX voices, bounded raw-package reader windows,
+and continuation across same-package scene replacement. Peep Studio must keep
+host audition distinct from device proof and report looping, music, and
+procedural audio as unsupported; strict higher-priority preemption, concurrent
+display margin, production fidelity, and energy remain pending target proof.
+
+The current Peep Studio emulator still plays only the final cue emitted by each
+input through the packaged-WAV audition path, applies its volume, and preempts
+the previous cue. It does not yet mirror the five-voice target. First-use audio
+preparation currently builds the package on demand; moving preparation ahead of
+interactive playback, consuming timer-emitted audio, and matching the merged
+audio capabilities remain follow-up editor work, not completed target parity.
 
 ### Stage 3: Scene Canvas And Visual Elements
 

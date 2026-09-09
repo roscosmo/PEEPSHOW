@@ -25,17 +25,21 @@ extern void PeriphCommonClock_Config(void);
 #define PS_HW6_CLOCK_STAGE_SAI_DOMAIN_ON    (13UL)
 #define PS_HW6_CLOCK_STAGE_SAI_DOMAIN_OFF   (14UL)
 #define PS_HW6_CLOCK_STAGE_STOP2_VERIFY     (15UL)
+#define PS_HW6_CLOCK_STAGE_SYSCLK_REACTIVE_BURST (16UL)
+#define PS_HW6_CLOCK_STAGE_SYSCLK_REALTIME_BALANCED (17UL)
+#define PS_HW6_CLOCK_STAGE_SYSCLK_REALTIME_HIGH (18UL)
 
 #define PS_HW6_CLOCK_PROFILE_BIT(profile) \
   (1UL << ((uint32_t)(profile)))
 #define PS_HW6_CLOCK_SUPPORTED_PROFILE_MASK \
   (PS_HW6_CLOCK_PROFILE_BIT(PS_HW6_CLOCK_PROFILE_BOOT_RECOVERY) | \
    PS_HW6_CLOCK_PROFILE_BIT(PS_HW6_CLOCK_PROFILE_REACTIVE_BASE) | \
+   PS_HW6_CLOCK_PROFILE_BIT(PS_HW6_CLOCK_PROFILE_REACTIVE_BURST) | \
+   PS_HW6_CLOCK_PROFILE_BIT(PS_HW6_CLOCK_PROFILE_REALTIME_BALANCED) | \
    PS_HW6_CLOCK_PROFILE_BIT(PS_HW6_CLOCK_PROFILE_IO_HIGH) | \
-   PS_HW6_CLOCK_PROFILE_BIT(PS_HW6_CLOCK_PROFILE_STOP_PREP))
-#define PS_HW6_CLOCK_SCAFFOLD_PROFILE_MASK \
-  (PS_HW6_CLOCK_PROFILE_BIT(PS_HW6_CLOCK_PROFILE_REACTIVE_BURST) | \
-   PS_HW6_CLOCK_PROFILE_BIT(PS_HW6_CLOCK_PROFILE_REALTIME_BALANCED))
+   PS_HW6_CLOCK_PROFILE_BIT(PS_HW6_CLOCK_PROFILE_STOP_PREP) | \
+   PS_HW6_CLOCK_PROFILE_BIT(PS_HW6_CLOCK_PROFILE_REALTIME_HIGH))
+#define PS_HW6_CLOCK_SCAFFOLD_PROFILE_MASK (0UL)
 
 #define PS_HW6_CLOCK_STOP2_BLOCKER_CAP_MASK \
   (PS_HW6_CLOCK_CAP_USB_DEVICE_ACTIVE | \
@@ -43,12 +47,15 @@ extern void PeriphCommonClock_Config(void);
    PS_HW6_CLOCK_CAP_SAI_AUDIO_ACTIVE | \
    PS_HW6_CLOCK_CAP_DISPLAY_TRANSFER_ACTIVE | \
    PS_HW6_CLOCK_CAP_REALTIME_DEADLINE_ACTIVE | \
-   PS_HW6_CLOCK_CAP_REACTIVE_TRANSACTION_ACTIVE)
+   PS_HW6_CLOCK_CAP_REACTIVE_TRANSACTION_ACTIVE | \
+   PS_HW6_CLOCK_CAP_AUDIO_MIX_ACTIVE)
 #define PS_HW6_CLOCK_PLL2_DOMAIN_MASK \
   (PS_HW6_CLOCK_DOMAIN_PLL2_OCTOSPI | \
    PS_HW6_CLOCK_DOMAIN_PLL2_SAI)
 
 volatile ps_hw6_clock_policy_probe_t g_ps_hw6_clock_policy_probe;
+volatile uint32_t g_ps_hw6_clock_audio_mix_profile_override =
+  (uint32_t)PS_HW6_CLOCK_PROFILE_IO_HIGH;
 
 static void PS_HW6_ClockPolicy_SetStaticProbeFields(void)
 {
@@ -153,11 +160,23 @@ static uint32_t PS_HW6_ClockPolicy_TargetHzForProfile(uint32_t profile)
       return (uint32_t)KNOB_POWER_CLOCK_REACTIVE_BURST_HZ;
     case PS_HW6_CLOCK_PROFILE_REALTIME_BALANCED:
       return (uint32_t)KNOB_POWER_CLOCK_REALTIME_BALANCED_HZ;
+    case PS_HW6_CLOCK_PROFILE_REALTIME_HIGH:
+      return (uint32_t)KNOB_POWER_CLOCK_REALTIME_HIGH_HZ;
     case PS_HW6_CLOCK_PROFILE_IO_HIGH:
       return (uint32_t)KNOB_POWER_CLOCK_IO_HIGH_HZ;
     default:
       return 0UL;
   }
+}
+
+static uint32_t PS_HW6_ClockPolicy_IsAudioMixProfile(uint32_t profile)
+{
+  return ((profile ==
+           (uint32_t)PS_HW6_CLOCK_PROFILE_REACTIVE_BURST) ||
+          (profile ==
+           (uint32_t)PS_HW6_CLOCK_PROFILE_REALTIME_BALANCED) ||
+          (profile == (uint32_t)PS_HW6_CLOCK_PROFILE_REALTIME_HIGH) ||
+          (profile == (uint32_t)PS_HW6_CLOCK_PROFILE_IO_HIGH)) ? 1UL : 0UL;
 }
 
 static uint32_t PS_HW6_ClockPolicy_ReadbackDomainMask(void)
@@ -800,20 +819,106 @@ static UINT PS_HW6_ClockPolicy_Pll2DomainSet(
   return (hal_status == HAL_OK) ? TX_SUCCESS : TX_NOT_DONE;
 }
 
-static UINT PS_HW6_ClockPolicy_ApplyIoHigh(uint32_t required_domain_mask)
+static UINT PS_HW6_ClockPolicy_SetMsiSysclkRange(
+  uint32_t range,
+  uint32_t expected_hz)
+{
+  RCC_OscInitTypeDef oscillator = {0};
+
+  if (__HAL_RCC_GET_SYSCLK_SOURCE() != RCC_SYSCLKSOURCE_STATUS_MSI)
+  {
+    return TX_NOT_DONE;
+  }
+  if (HAL_RCC_GetSysClockFreq() == expected_hz)
+  {
+    return TX_SUCCESS;
+  }
+
+  oscillator.OscillatorType = RCC_OSCILLATORTYPE_MSI;
+  oscillator.MSIState = RCC_MSI_ON;
+  oscillator.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
+  oscillator.MSIClockRange = range;
+  oscillator.PLL.PLLState = RCC_PLL_NONE;
+  if (HAL_RCC_OscConfig(&oscillator) != HAL_OK)
+  {
+    return TX_NOT_DONE;
+  }
+
+  return (HAL_RCC_GetSysClockFreq() == expected_hz) ?
+         TX_SUCCESS : TX_NOT_DONE;
+}
+
+static UINT PS_HW6_ClockPolicy_ApplyReactiveBurst(void)
+{
+  UINT status;
+
+  if ((uint32_t)KNOB_POWER_CLOCK_REACTIVE_BURST_HZ != 48000000UL)
+  {
+    return TX_NOT_DONE;
+  }
+
+  g_ps_hw6_clock_policy_probe.last_stage =
+    PS_HW6_CLOCK_STAGE_SYSCLK_REACTIVE_BURST;
+  status = PS_HW6_ClockPolicy_SetMsiSysclkRange(
+    RCC_MSIRANGE_0,
+    (uint32_t)KNOB_POWER_CLOCK_REACTIVE_BURST_HZ);
+  if (status != TX_SUCCESS)
+  {
+    return status;
+  }
+
+  g_ps_hw6_clock_policy_probe.last_stage =
+    PS_HW6_CLOCK_STAGE_SYSTICK;
+  status = PS_HW6_ClockPolicy_RetuneThreadXSysTick();
+  if (status != TX_SUCCESS)
+  {
+    return status;
+  }
+
+  g_ps_hw6_clock_policy_probe.last_stage =
+    PS_HW6_CLOCK_STAGE_USB_DOMAIN_OFF;
+  return PS_HW6_ClockPolicy_UsbDomainSet(0U);
+}
+
+static UINT PS_HW6_ClockPolicy_ApplyPll1Profile(
+  uint32_t target_hz,
+  uint32_t pll_n,
+  uint32_t flash_latency,
+  uint32_t required_domain_mask)
 {
   RCC_OscInitTypeDef osc = {0};
   RCC_ClkInitTypeDef clk = {0};
   HAL_StatusTypeDef hal_status;
   UINT tx_status;
 
-  if ((uint32_t)KNOB_POWER_CLOCK_IO_HIGH_HZ != 160000000UL)
+  if (((uint32_t)KNOB_POWER_CLOCK_REACTIVE_BASE_HZ != 24000000UL) ||
+      (target_hz == 0UL) || (pll_n == 0UL) ||
+      (flash_latency > FLASH_LATENCY_4))
   {
     return TX_NOT_DONE;
   }
 
-  if (HAL_RCC_GetSysClockFreq() < 160000000UL)
+  if ((__HAL_RCC_GET_SYSCLK_SOURCE() != RCC_SYSCLKSOURCE_STATUS_PLLCLK) ||
+      (HAL_RCC_GetSysClockFreq() != target_hz) ||
+      (HAL_RCC_GetHCLKFreq() != target_hz) ||
+      (HAL_PWREx_GetVoltageRange() != PWR_REGULATOR_VOLTAGE_SCALE1) ||
+      (__HAL_FLASH_GET_LATENCY() != flash_latency))
   {
+    if (__HAL_RCC_GET_FLAG(RCC_FLAG_MSIRDY) == 0U)
+    {
+      osc.OscillatorType = RCC_OSCILLATORTYPE_MSI;
+      osc.MSIState = RCC_MSI_ON;
+      osc.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
+      osc.MSIClockRange = RCC_MSIRANGE_1;
+      osc.PLL.PLLState = RCC_PLL_NONE;
+      hal_status = HAL_RCC_OscConfig(&osc);
+      if (hal_status != HAL_OK)
+      {
+        return TX_NOT_DONE;
+      }
+    }
+
+    /* PLL1 can only be retuned after SYSCLK has moved to the MSI refuge. */
     clk.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |
                     RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2 |
                     RCC_CLOCKTYPE_PCLK3;
@@ -826,6 +931,14 @@ static UINT PS_HW6_ClockPolicy_ApplyIoHigh(uint32_t required_domain_mask)
     if (hal_status != HAL_OK)
     {
       return TX_NOT_DONE;
+    }
+
+    tx_status = PS_HW6_ClockPolicy_SetMsiSysclkRange(
+      RCC_MSIRANGE_1,
+      (uint32_t)KNOB_POWER_CLOCK_REACTIVE_BASE_HZ);
+    if (tx_status != TX_SUCCESS)
+    {
+      return tx_status;
     }
 
     hal_status = HAL_PWREx_ControlVoltageScaling(
@@ -851,7 +964,7 @@ static UINT PS_HW6_ClockPolicy_ApplyIoHigh(uint32_t required_domain_mask)
     osc.PLL.PLLState = RCC_PLL_ON;
     osc.PLL.PLLSource = RCC_PLLSOURCE_HSI;
     osc.PLL.PLLM = 1;
-    osc.PLL.PLLN = 20;
+    osc.PLL.PLLN = pll_n;
     osc.PLL.PLLP = 2;
     osc.PLL.PLLQ = 2;
     osc.PLL.PLLR = 2;
@@ -865,11 +978,20 @@ static UINT PS_HW6_ClockPolicy_ApplyIoHigh(uint32_t required_domain_mask)
     }
 
     clk.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-    hal_status = HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_4);
+    hal_status = HAL_RCC_ClockConfig(&clk, flash_latency);
     if (hal_status != HAL_OK)
     {
       return TX_NOT_DONE;
     }
+  }
+
+  if ((__HAL_RCC_GET_SYSCLK_SOURCE() != RCC_SYSCLKSOURCE_STATUS_PLLCLK) ||
+      (HAL_RCC_GetSysClockFreq() != target_hz) ||
+      (HAL_RCC_GetHCLKFreq() != target_hz) ||
+      (HAL_PWREx_GetVoltageRange() != PWR_REGULATOR_VOLTAGE_SCALE1) ||
+      (__HAL_FLASH_GET_LATENCY() != flash_latency))
+  {
+    return TX_NOT_DONE;
   }
 
   g_ps_hw6_clock_policy_probe.last_stage =
@@ -896,6 +1018,50 @@ static UINT PS_HW6_ClockPolicy_ApplyIoHigh(uint32_t required_domain_mask)
   g_ps_hw6_clock_policy_probe.last_stage =
     PS_HW6_CLOCK_STAGE_USB_DOMAIN_OFF;
   return PS_HW6_ClockPolicy_UsbDomainSet(0U);
+}
+
+static UINT PS_HW6_ClockPolicy_ApplyRealtimeBalanced(
+  uint32_t required_domain_mask)
+{
+  if ((uint32_t)KNOB_POWER_CLOCK_REALTIME_BALANCED_HZ != 80000000UL)
+  {
+    return TX_NOT_DONE;
+  }
+
+  return PS_HW6_ClockPolicy_ApplyPll1Profile(
+    (uint32_t)KNOB_POWER_CLOCK_REALTIME_BALANCED_HZ,
+    10UL,
+    FLASH_LATENCY_2,
+    required_domain_mask);
+}
+
+static UINT PS_HW6_ClockPolicy_ApplyRealtimeHigh(
+  uint32_t required_domain_mask)
+{
+  if ((uint32_t)KNOB_POWER_CLOCK_REALTIME_HIGH_HZ != 120000000UL)
+  {
+    return TX_NOT_DONE;
+  }
+
+  return PS_HW6_ClockPolicy_ApplyPll1Profile(
+    (uint32_t)KNOB_POWER_CLOCK_REALTIME_HIGH_HZ,
+    15UL,
+    FLASH_LATENCY_3,
+    required_domain_mask);
+}
+
+static UINT PS_HW6_ClockPolicy_ApplyIoHigh(uint32_t required_domain_mask)
+{
+  if ((uint32_t)KNOB_POWER_CLOCK_IO_HIGH_HZ != 160000000UL)
+  {
+    return TX_NOT_DONE;
+  }
+
+  return PS_HW6_ClockPolicy_ApplyPll1Profile(
+    (uint32_t)KNOB_POWER_CLOCK_IO_HIGH_HZ,
+    20UL,
+    FLASH_LATENCY_4,
+    required_domain_mask);
 }
 
 static UINT PS_HW6_ClockPolicy_RestorePostStopBaseClocks(void)
@@ -967,9 +1133,17 @@ static UINT PS_HW6_ClockPolicy_RestorePostStopBaseClocks(void)
 
 static UINT PS_HW6_ClockPolicy_ApplyBase(uint32_t selected_profile)
 {
+  RCC_OscInitTypeDef oscillator = {0};
+  RCC_ClkInitTypeDef clock = {0};
+  HAL_StatusTypeDef hal_status;
   UINT status;
 
   (void)selected_profile;
+  if ((uint32_t)KNOB_POWER_CLOCK_REACTIVE_BASE_HZ != 24000000UL)
+  {
+    return TX_NOT_DONE;
+  }
+
   g_ps_hw6_clock_policy_probe.last_stage =
     PS_HW6_CLOCK_STAGE_USB_DOMAIN_OFF;
   status = PS_HW6_ClockPolicy_UsbDomainSet(0U);
@@ -978,13 +1152,91 @@ static UINT PS_HW6_ClockPolicy_ApplyBase(uint32_t selected_profile)
     return status;
   }
 
-  g_ps_hw6_clock_policy_probe.last_stage =
-    PS_HW6_CLOCK_STAGE_RESTORE_BASE;
-  /*
-   * Runtime clock release must not re-run Cube's global clock setup. USB
-   * reclaim can call this path while middleware teardown is still unwinding;
-   * keep the release bounded to owned domains and leave full restore to boot.
-   */
+  if ((__HAL_RCC_GET_SYSCLK_SOURCE() != RCC_SYSCLKSOURCE_STATUS_MSI) ||
+      (HAL_RCC_GetSysClockFreq() !=
+       (uint32_t)KNOB_POWER_CLOCK_REACTIVE_BASE_HZ) ||
+      (HAL_RCC_GetHCLKFreq() !=
+       (uint32_t)KNOB_POWER_CLOCK_REACTIVE_BASE_HZ) ||
+      (HAL_PWREx_GetVoltageRange() != PWR_REGULATOR_VOLTAGE_SCALE3) ||
+      (__HAL_FLASH_GET_LATENCY() != FLASH_LATENCY_0) ||
+      (__HAL_RCC_GET_FLAG(RCC_FLAG_PLL1RDY) != 0U))
+  {
+    if (__HAL_RCC_GET_FLAG(RCC_FLAG_MSIRDY) == 0U)
+    {
+      oscillator.OscillatorType = RCC_OSCILLATORTYPE_MSI;
+      oscillator.MSIState = RCC_MSI_ON;
+      oscillator.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
+      oscillator.MSIClockRange = RCC_MSIRANGE_1;
+      oscillator.PLL.PLLState = RCC_PLL_NONE;
+      hal_status = HAL_RCC_OscConfig(&oscillator);
+      if (hal_status != HAL_OK)
+      {
+        return TX_NOT_DONE;
+      }
+    }
+
+    g_ps_hw6_clock_policy_probe.last_stage =
+      PS_HW6_CLOCK_STAGE_RESTORE_BASE;
+    clock.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |
+                      RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2 |
+                      RCC_CLOCKTYPE_PCLK3;
+    clock.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
+    clock.AHBCLKDivider = RCC_SYSCLK_DIV1;
+    clock.APB1CLKDivider = RCC_HCLK_DIV2;
+    clock.APB2CLKDivider = RCC_HCLK_DIV2;
+    clock.APB3CLKDivider = RCC_HCLK_DIV8;
+    hal_status = HAL_RCC_ClockConfig(&clock, FLASH_LATENCY_4);
+    if (hal_status != HAL_OK)
+    {
+      return TX_NOT_DONE;
+    }
+
+    status = PS_HW6_ClockPolicy_SetMsiSysclkRange(
+      RCC_MSIRANGE_1,
+      (uint32_t)KNOB_POWER_CLOCK_REACTIVE_BASE_HZ);
+    if (status != TX_SUCCESS)
+    {
+      return status;
+    }
+
+    if (__HAL_RCC_GET_FLAG(RCC_FLAG_PLL1RDY) != 0U)
+    {
+      oscillator.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+      oscillator.HSIState = RCC_HSI_ON;
+      oscillator.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+      oscillator.PLL.PLLState = RCC_PLL_OFF;
+      hal_status = HAL_RCC_OscConfig(&oscillator);
+      if (hal_status != HAL_OK)
+      {
+        return TX_NOT_DONE;
+      }
+    }
+
+    hal_status = HAL_PWREx_ControlVoltageScaling(
+      PWR_REGULATOR_VOLTAGE_SCALE3);
+    if (hal_status != HAL_OK)
+    {
+      return TX_NOT_DONE;
+    }
+
+    hal_status = HAL_RCC_ClockConfig(&clock, FLASH_LATENCY_0);
+    if (hal_status != HAL_OK)
+    {
+      return TX_NOT_DONE;
+    }
+  }
+
+  if ((__HAL_RCC_GET_SYSCLK_SOURCE() != RCC_SYSCLKSOURCE_STATUS_MSI) ||
+      (HAL_RCC_GetSysClockFreq() !=
+       (uint32_t)KNOB_POWER_CLOCK_REACTIVE_BASE_HZ) ||
+      (HAL_RCC_GetHCLKFreq() !=
+       (uint32_t)KNOB_POWER_CLOCK_REACTIVE_BASE_HZ) ||
+      (HAL_PWREx_GetVoltageRange() != PWR_REGULATOR_VOLTAGE_SCALE3) ||
+      (__HAL_FLASH_GET_LATENCY() != FLASH_LATENCY_0) ||
+      (__HAL_RCC_GET_FLAG(RCC_FLAG_PLL1RDY) != 0U))
+  {
+    return TX_NOT_DONE;
+  }
 
   g_ps_hw6_clock_policy_probe.last_stage =
     PS_HW6_CLOCK_STAGE_SYSTICK;
@@ -1054,17 +1306,36 @@ static UINT PS_HW6_ClockPolicy_ApplyResolvedProfile(
         g_ps_hw6_clock_policy_probe.current_profile = selected_profile;
       }
     }
-    else if ((selected_profile ==
-              (uint32_t)PS_HW6_CLOCK_PROFILE_REACTIVE_BURST) ||
-             (selected_profile ==
-              (uint32_t)PS_HW6_CLOCK_PROFILE_REALTIME_BALANCED))
+    else if (selected_profile ==
+             (uint32_t)PS_HW6_CLOCK_PROFILE_REACTIVE_BURST)
     {
-      status = PS_HW6_ClockPolicy_ApplyBase(
-        (uint32_t)PS_HW6_CLOCK_PROFILE_REACTIVE_BASE);
+      status = PS_HW6_ClockPolicy_ApplyReactiveBurst();
       if (status == TX_SUCCESS)
       {
-        g_ps_hw6_clock_policy_probe.current_profile =
-          (uint32_t)PS_HW6_CLOCK_PROFILE_REACTIVE_BASE;
+        g_ps_hw6_clock_policy_probe.current_profile = selected_profile;
+      }
+    }
+    else if (selected_profile ==
+             (uint32_t)PS_HW6_CLOCK_PROFILE_REALTIME_BALANCED)
+    {
+      g_ps_hw6_clock_policy_probe.last_stage =
+        PS_HW6_CLOCK_STAGE_SYSCLK_REALTIME_BALANCED;
+      status = PS_HW6_ClockPolicy_ApplyRealtimeBalanced(
+        required_domain_mask);
+      if (status == TX_SUCCESS)
+      {
+        g_ps_hw6_clock_policy_probe.current_profile = selected_profile;
+      }
+    }
+    else if (selected_profile ==
+             (uint32_t)PS_HW6_CLOCK_PROFILE_REALTIME_HIGH)
+    {
+      g_ps_hw6_clock_policy_probe.last_stage =
+        PS_HW6_CLOCK_STAGE_SYSCLK_REALTIME_HIGH;
+      status = PS_HW6_ClockPolicy_ApplyRealtimeHigh(required_domain_mask);
+      if (status == TX_SUCCESS)
+      {
+        g_ps_hw6_clock_policy_probe.current_profile = selected_profile;
       }
     }
     else
@@ -1147,20 +1418,38 @@ void PS_HW6_ClockPolicy_RecordHardwareSnapshot(void)
 
 uint32_t PS_HW6_ClockPolicy_SelectProfile(uint32_t capabilities)
 {
+  uint32_t mix_profile;
+
   if ((capabilities & PS_HW6_CLOCK_CAP_USB_DEVICE_ACTIVE) != 0UL)
   {
     return (uint32_t)PS_HW6_CLOCK_PROFILE_IO_HIGH;
   }
-  if ((capabilities & (PS_HW6_CLOCK_CAP_SAI_AUDIO_ACTIVE |
-                       PS_HW6_CLOCK_CAP_REALTIME_DEADLINE_ACTIVE)) != 0UL)
+  if ((capabilities & PS_HW6_CLOCK_CAP_AUDIO_MIX_ACTIVE) != 0UL)
+  {
+    mix_profile = g_ps_hw6_clock_policy_probe.current_profile;
+    if (PS_HW6_ClockPolicy_IsAudioMixProfile(mix_profile) != 0UL)
+    {
+      return mix_profile;
+    }
+
+    mix_profile = g_ps_hw6_clock_audio_mix_profile_override;
+    return (PS_HW6_ClockPolicy_IsAudioMixProfile(mix_profile) != 0UL) ?
+           mix_profile : (uint32_t)PS_HW6_CLOCK_PROFILE_IO_HIGH;
+  }
+  if ((capabilities & PS_HW6_CLOCK_CAP_REALTIME_DEADLINE_ACTIVE) != 0UL)
   {
     return (uint32_t)PS_HW6_CLOCK_PROFILE_REALTIME_BALANCED;
   }
-  if ((capabilities & (PS_HW6_CLOCK_CAP_OCTOSPI_ACTIVE |
-                       PS_HW6_CLOCK_CAP_DISPLAY_TRANSFER_ACTIVE |
-                       PS_HW6_CLOCK_CAP_REACTIVE_TRANSACTION_ACTIVE)) != 0UL)
+  if ((capabilities & (PS_HW6_CLOCK_CAP_SAI_AUDIO_ACTIVE |
+                       PS_HW6_CLOCK_CAP_REACTIVE_TRANSACTION_ACTIVE)) ==
+      (PS_HW6_CLOCK_CAP_SAI_AUDIO_ACTIVE |
+       PS_HW6_CLOCK_CAP_REACTIVE_TRANSACTION_ACTIVE))
   {
     return (uint32_t)PS_HW6_CLOCK_PROFILE_REACTIVE_BURST;
+  }
+  if ((capabilities & PS_HW6_CLOCK_CAP_SAI_AUDIO_ACTIVE) != 0UL)
+  {
+    return (uint32_t)PS_HW6_CLOCK_PROFILE_REALTIME_BALANCED;
   }
 
   return (uint32_t)PS_HW6_CLOCK_PROFILE_REACTIVE_BASE;
@@ -1262,7 +1551,7 @@ UINT PS_HW6_ClockPolicy_ApplyRequesterProfile(
     PS_HW6_CLOCK_STAGE_REQUESTER_UPDATE;
 
   if ((requester_id >= PS_HW6_CLOCK_REQUESTER_COUNT) ||
-      (requested_profile > (uint32_t)PS_HW6_CLOCK_PROFILE_STOP_PREP) ||
+      (requested_profile > (uint32_t)PS_HW6_CLOCK_PROFILE_LAST) ||
       ((capabilities & ~PS_HW6_CLOCK_CAP_ALL) != 0UL))
   {
     g_ps_hw6_clock_policy_probe.last_status = (uint32_t)TX_NOT_DONE;

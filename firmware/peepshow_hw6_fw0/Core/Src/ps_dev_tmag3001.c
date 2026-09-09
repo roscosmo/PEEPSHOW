@@ -9,6 +9,8 @@
 #define PS_DEV_TMAG3001_TRANSFER_TIMEOUT_MS (50UL)
 #define PS_DEV_TMAG3001_WAKE_SETTLE_TICKS   (1UL)
 #define PS_DEV_TMAG3001_SAMPLE_SETTLE_TICKS (1UL)
+#define PS_DEV_TMAG3001_WAKE_PROBE_TRIALS   (1UL)
+#define PS_DEV_TMAG3001_GENERAL_CALL_ADDRESS (0x00U)
 
 #define PS_DEV_TMAG3001_REG_DEVICE_CONFIG2   (0x01U)
 #define PS_DEV_TMAG3001_REG_SENSOR_CONFIG1   (0x02U)
@@ -21,6 +23,7 @@
 #define PS_DEV_TMAG3001_REG_SENSOR_CONFIG4   (0x09U)
 #define PS_DEV_TMAG3001_REG_SENSOR_CONFIG5   (0x0AU)
 #define PS_DEV_TMAG3001_REG_SENSOR_CONFIG6   (0x0BU)
+#define PS_DEV_TMAG3001_REG_I2C_ADDRESS      (0x0CU)
 #define PS_DEV_TMAG3001_REG_DEVICE_ID        (0x0DU)
 #define PS_DEV_TMAG3001_REG_MANUFACTURER_LSB (0x0EU)
 #define PS_DEV_TMAG3001_REG_MANUFACTURER_MSB (0x0FU)
@@ -37,8 +40,10 @@
 #define PS_DEV_TMAG3001_OPERATING_SLEEP      (0x01U)
 #define PS_DEV_TMAG3001_OPERATING_CONTINUOUS (0x02U)
 #define PS_DEV_TMAG3001_OPERATING_WAKE_SLEEP (0x03U)
-#define PS_DEV_TMAG3001_ACTIVE_CHANNELS      (0x70U)
-#define PS_DEV_TMAG3001_WAKE_CHANNELS        (0x30U)
+#define PS_DEV_TMAG3001_ACTIVE_CHANNELS       (0x70U)
+#define PS_DEV_TMAG3001_WAKE_CHANNEL_X        (0x10U)
+#define PS_DEV_TMAG3001_WAKE_CHANNEL_Y        (0x20U)
+#define PS_DEV_TMAG3001_WAKE_CHANNEL_X_Y      (0x30U)
 #define PS_DEV_TMAG3001_SLEEP_TIME_MASK      (0x0FU)
 #define PS_DEV_TMAG3001_SENSOR_CONFIG2_RANGE_MASK (0x03U)
 #define PS_DEV_TMAG3001_SENSOR_CONFIG3_FIELD_THRESHOLD (0x20U)
@@ -46,9 +51,11 @@
 #define PS_DEV_TMAG3001_THRESHOLD_HYSTERESIS_MASK (0xE0U)
 #define PS_DEV_TMAG3001_THRESHOLD_HYSTERESIS_SHIFT (5U)
 #define PS_DEV_TMAG3001_INT_CONFIG1_DISABLED     (0x01U)
+#define PS_DEV_TMAG3001_I2C_ADDRESS_SHIFT        (1U)
+#define PS_DEV_TMAG3001_I2C_ADDRESS_UPDATE_ENABLE (0x01U)
 
-#define PS_DEV_TMAG3001_WRITE_REQUIRED_MASK  (0x07UL)
-#define PS_DEV_TMAG3001_VERIFY_REQUIRED_MASK (0x03UL)
+#define PS_DEV_TMAG3001_WRITE_REQUIRED_MASK  (0x0FUL)
+#define PS_DEV_TMAG3001_VERIFY_REQUIRED_MASK (0x07UL)
 #define PS_DEV_TMAG3001_SLEEP_AUDIT_WRITE_MASK  (0x0FUL)
 #define PS_DEV_TMAG3001_SLEEP_AUDIT_VERIFY_MASK (0x07UL)
 #define PS_DEV_TMAG3001_WAKE_SLEEP_WRITE_MASK   (0x0FFFUL)
@@ -154,6 +161,74 @@ static ps_status_t ps_dev_tmag3001_write_verify(
   return status;
 }
 
+static uint8_t ps_dev_tmag3001_i2c_address_target(
+  const ps_dev_tmag3001_t *device)
+{
+  return (uint8_t)((uint8_t)(device->address_7bit <<
+                             PS_DEV_TMAG3001_I2C_ADDRESS_SHIFT) |
+                   PS_DEV_TMAG3001_I2C_ADDRESS_UPDATE_ENABLE);
+}
+
+static ps_status_t ps_dev_tmag3001_program_i2c_address(
+  ps_dev_tmag3001_t *device,
+  const ps_hw_i2c3_lease_t *lease,
+  ps_dev_tmag3001_transport_t *transport,
+  uint8_t *readback)
+{
+  return ps_dev_tmag3001_write_verify(
+    device,
+    lease,
+    transport,
+    PS_DEV_TMAG3001_REG_I2C_ADDRESS,
+    ps_dev_tmag3001_i2c_address_target(device),
+    readback);
+}
+
+static ps_status_t ps_dev_tmag3001_general_call_restore_i2c_address(
+  ps_dev_tmag3001_t *device,
+  const ps_hw_i2c3_lease_t *lease,
+  ps_dev_tmag3001_transport_t *transport,
+  ps_status_t *wake_status,
+  ps_status_t *write_status)
+{
+  uint8_t target;
+  ps_status_t status;
+
+  target = ps_dev_tmag3001_i2c_address_target(device);
+  transport->last_transfer = ps_hw_i2c3_mem_write(
+    lease,
+    PS_DEV_TMAG3001_GENERAL_CALL_ADDRESS,
+    PS_DEV_TMAG3001_REG_I2C_ADDRESS,
+    &target,
+    1U,
+    PS_DEV_TMAG3001_TRANSFER_TIMEOUT_MS);
+  status = transport->last_transfer.status;
+  *wake_status = status;
+
+  /* A sleeping device may use the first write only to enter standby. */
+  if ((status == PS_STATUS_IO_ERROR) ||
+      (status == PS_STATUS_TIMEOUT) ||
+      (status == PS_STATUS_EXPECTED_NACK))
+  {
+    tx_thread_sleep(PS_DEV_TMAG3001_WAKE_SETTLE_TICKS);
+    transport->last_transfer = ps_hw_i2c3_mem_write(
+      lease,
+      PS_DEV_TMAG3001_GENERAL_CALL_ADDRESS,
+      PS_DEV_TMAG3001_REG_I2C_ADDRESS,
+      &target,
+      1U,
+      PS_DEV_TMAG3001_TRANSFER_TIMEOUT_MS);
+    status = transport->last_transfer.status;
+  }
+
+  *write_status = status;
+  if (status == PS_STATUS_OK)
+  {
+    tx_thread_sleep(PS_DEV_TMAG3001_WAKE_SETTLE_TICKS);
+  }
+  return status;
+}
+
 static ps_status_t ps_dev_tmag3001_probe_identity(
   ps_dev_tmag3001_t *device,
   const ps_hw_i2c3_lease_t *lease,
@@ -241,11 +316,17 @@ ps_status_t ps_dev_tmag3001_stabilize_suspended(
   }
   (void)memset(result, 0, sizeof(*result));
   result->status = PS_STATUS_INTERNAL_ERROR;
+  result->wake_probe_status = PS_STATUS_INTERNAL_ERROR;
+  result->general_call_wake_status = PS_STATUS_INTERNAL_ERROR;
+  result->general_call_status = PS_STATUS_INTERNAL_ERROR;
   result->ready_status = PS_STATUS_INTERNAL_ERROR;
   result->identity_status = PS_STATUS_INTERNAL_ERROR;
+  result->i2c_address_verify_status = PS_STATUS_INTERNAL_ERROR;
   result->sensor_config1_verify_status = PS_STATUS_INTERNAL_ERROR;
   result->device_config2_verify_status = PS_STATUS_INTERNAL_ERROR;
   result->sleep_write_status = PS_STATUS_INTERNAL_ERROR;
+  result->i2c_address_target =
+    ps_dev_tmag3001_i2c_address_target(device);
   if (device->initialized == 0U)
   {
     result->status = PS_STATUS_NOT_INITIALIZED;
@@ -267,6 +348,14 @@ ps_status_t ps_dev_tmag3001_stabilize_suspended(
   }
   (void)memset(&transport, 0, sizeof(transport));
 
+  transport.last_transfer = ps_hw_i2c3_probe_address(
+    &lease,
+    device->address_7bit,
+    PS_DEV_TMAG3001_WAKE_PROBE_TRIALS,
+    PS_DEV_TMAG3001_TRANSFER_TIMEOUT_MS);
+  result->wake_probe_status = transport.last_transfer.status;
+  tx_thread_sleep(PS_DEV_TMAG3001_WAKE_SETTLE_TICKS);
+
   status = ps_dev_tmag3001_probe_identity(
     device,
     &lease,
@@ -275,8 +364,43 @@ ps_status_t ps_dev_tmag3001_stabilize_suspended(
     &result->manufacturer_lsb,
     &result->manufacturer_msb,
     &result->identity_match);
+  if ((status == PS_STATUS_IO_ERROR) ||
+      (status == PS_STATUS_TIMEOUT) ||
+      (status == PS_STATUS_EXPECTED_NACK))
+  {
+    result->general_call_used = 1UL;
+    (void)ps_dev_tmag3001_general_call_restore_i2c_address(
+      device,
+      &lease,
+      &transport,
+      &result->general_call_wake_status,
+      &result->general_call_status);
+    status = ps_dev_tmag3001_probe_identity(
+      device,
+      &lease,
+      &transport,
+      &result->device_id,
+      &result->manufacturer_lsb,
+      &result->manufacturer_msb,
+      &result->identity_match);
+  }
   result->ready_status = status;
   result->identity_status = status;
+
+  if (status == PS_STATUS_OK)
+  {
+    status = ps_dev_tmag3001_program_i2c_address(
+      device,
+      &lease,
+      &transport,
+      &result->i2c_address_after);
+    result->i2c_address_verify_status = status;
+    if (status == PS_STATUS_OK)
+    {
+      result->write_ok_mask |= 1UL << 2U;
+      result->verify_ok_mask |= 1UL << 2U;
+    }
+  }
 
   if (status == PS_STATUS_OK)
   {
@@ -383,7 +507,7 @@ ps_status_t ps_dev_tmag3001_stabilize_suspended(
     result->sleep_write_status = status;
     if (status == PS_STATUS_OK)
     {
-      result->write_ok_mask |= 1UL << 2U;
+      result->write_ok_mask |= 1UL << 3U;
       result->terminal_sleep_committed = 1UL;
     }
   }
@@ -925,6 +1049,14 @@ ps_status_t ps_dev_tmag3001_prepare_sleep(
   result->post_sleep_read_omitted = 1UL;
   if (status == PS_STATUS_OK)
   {
+    status = ps_dev_tmag3001_program_i2c_address(
+      device,
+      &lease,
+      &transport,
+      NULL);
+  }
+  if (status == PS_STATUS_OK)
+  {
     status = ps_dev_tmag3001_write(
       device,
       &lease,
@@ -1042,10 +1174,12 @@ ps_status_t ps_dev_tmag3001_read_raw_sample(
   return sample->status;
 }
 
-ps_status_t ps_dev_tmag3001_prepare_wake_sleep_omnipolar_xy(
+static ps_status_t ps_dev_tmag3001_prepare_wake_sleep_omnipolar_channels(
   ps_dev_tmag3001_t *device,
   uint8_t sleep_period_code,
-  uint8_t field_threshold_code,
+  uint8_t wake_channels,
+  uint8_t field_threshold_x_code,
+  uint8_t field_threshold_y_code,
   uint8_t field_hysteresis_code,
   ps_dev_tmag3001_wake_sleep_result_t *result)
 {
@@ -1058,8 +1192,13 @@ ps_status_t ps_dev_tmag3001_prepare_wake_sleep_omnipolar_xy(
 
   if ((device == NULL) || (result == NULL) ||
       (sleep_period_code > 0x0CU) ||
-      (field_threshold_code == 0U) ||
-      (field_threshold_code > 0x7FU) ||
+      ((wake_channels != PS_DEV_TMAG3001_WAKE_CHANNEL_X) &&
+       (wake_channels != PS_DEV_TMAG3001_WAKE_CHANNEL_Y) &&
+       (wake_channels != PS_DEV_TMAG3001_WAKE_CHANNEL_X_Y)) ||
+      (field_threshold_x_code == 0U) ||
+      (field_threshold_x_code > 0x7FU) ||
+      (field_threshold_y_code == 0U) ||
+      (field_threshold_y_code > 0x7FU) ||
       (field_hysteresis_code > 0x07U))
   {
     return PS_STATUS_INVALID_ARGUMENT;
@@ -1070,10 +1209,11 @@ ps_status_t ps_dev_tmag3001_prepare_wake_sleep_omnipolar_xy(
   result->identity_status = PS_STATUS_INTERNAL_ERROR;
   result->terminal_write_status = PS_STATUS_INTERNAL_ERROR;
   result->sleep_period_code = sleep_period_code;
-  result->field_threshold_code = field_threshold_code;
+  result->field_threshold_x_code = field_threshold_x_code;
+  result->field_threshold_y_code = field_threshold_y_code;
   result->field_hysteresis_code = field_hysteresis_code;
   result->sensor_config1_target =
-    (uint8_t)(PS_DEV_TMAG3001_WAKE_CHANNELS |
+    (uint8_t)(wake_channels |
               (sleep_period_code & PS_DEV_TMAG3001_SLEEP_TIME_MASK));
   result->sensor_config3_target =
     PS_DEV_TMAG3001_SENSOR_CONFIG3_FIELD_THRESHOLD;
@@ -1187,7 +1327,7 @@ ps_status_t ps_dev_tmag3001_prepare_wake_sleep_omnipolar_xy(
       &lease,
       &transport,
       PS_DEV_TMAG3001_REG_THR_CONFIG1,
-      field_threshold_code,
+      field_threshold_x_code,
       &result->threshold_x_after);
     if (status == PS_STATUS_OK)
     {
@@ -1202,7 +1342,7 @@ ps_status_t ps_dev_tmag3001_prepare_wake_sleep_omnipolar_xy(
       &lease,
       &transport,
       PS_DEV_TMAG3001_REG_THR_CONFIG2,
-      field_threshold_code,
+      field_threshold_y_code,
       &result->threshold_y_after);
     if (status == PS_STATUS_OK)
     {
@@ -1324,6 +1464,14 @@ ps_status_t ps_dev_tmag3001_prepare_wake_sleep_omnipolar_xy(
   result->post_terminal_read_omitted = 1UL;
   if (status == PS_STATUS_OK)
   {
+    status = ps_dev_tmag3001_program_i2c_address(
+      device,
+      &lease,
+      &transport,
+      NULL);
+  }
+  if (status == PS_STATUS_OK)
+  {
     status = ps_dev_tmag3001_write(
       device,
       &lease,
@@ -1355,6 +1503,63 @@ ps_status_t ps_dev_tmag3001_prepare_wake_sleep_omnipolar_xy(
     device->state = PS_DEV_TMAG3001_STATE_WAKE_SLEEP;
   }
   return result->status;
+}
+
+ps_status_t ps_dev_tmag3001_prepare_wake_sleep_omnipolar_xy(
+  ps_dev_tmag3001_t *device,
+  uint8_t sleep_period_code,
+  uint8_t field_threshold_x_code,
+  uint8_t field_threshold_y_code,
+  uint8_t field_hysteresis_code,
+  ps_dev_tmag3001_wake_sleep_result_t *result)
+{
+  return ps_dev_tmag3001_prepare_wake_sleep_omnipolar_channels(
+    device,
+    sleep_period_code,
+    PS_DEV_TMAG3001_WAKE_CHANNEL_X_Y,
+    field_threshold_x_code,
+    field_threshold_y_code,
+    field_hysteresis_code,
+    result);
+}
+
+ps_status_t ps_dev_tmag3001_prepare_wake_sleep_omnipolar_axis(
+  ps_dev_tmag3001_t *device,
+  uint8_t sleep_period_code,
+  uint8_t wake_axis,
+  uint8_t field_threshold_code,
+  uint8_t field_hysteresis_code,
+  ps_dev_tmag3001_wake_sleep_result_t *result)
+{
+  uint8_t wake_channels;
+  uint8_t field_threshold_x_code;
+  uint8_t field_threshold_y_code;
+
+  if (wake_axis == PS_DEV_TMAG3001_WAKE_AXIS_X)
+  {
+    wake_channels = PS_DEV_TMAG3001_WAKE_CHANNEL_X;
+    field_threshold_x_code = field_threshold_code;
+    field_threshold_y_code = 0x7FU;
+  }
+  else if (wake_axis == PS_DEV_TMAG3001_WAKE_AXIS_Y)
+  {
+    wake_channels = PS_DEV_TMAG3001_WAKE_CHANNEL_Y;
+    field_threshold_x_code = 0x7FU;
+    field_threshold_y_code = field_threshold_code;
+  }
+  else
+  {
+    return PS_STATUS_INVALID_ARGUMENT;
+  }
+
+  return ps_dev_tmag3001_prepare_wake_sleep_omnipolar_channels(
+    device,
+    sleep_period_code,
+    wake_channels,
+    field_threshold_x_code,
+    field_threshold_y_code,
+    field_hysteresis_code,
+    result);
 }
 
 ps_status_t ps_dev_tmag3001_suspend(
@@ -1468,6 +1673,14 @@ ps_status_t ps_dev_tmag3001_suspend(
     }
   }
   result->post_sleep_read_omitted = 1UL;
+  if (status == PS_STATUS_OK)
+  {
+    status = ps_dev_tmag3001_program_i2c_address(
+      device,
+      &lease,
+      &transport,
+      NULL);
+  }
   if (status == PS_STATUS_OK)
   {
     status = ps_dev_tmag3001_write(

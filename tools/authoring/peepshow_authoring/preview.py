@@ -81,7 +81,8 @@ class StateScenePreview:
         if state_index is None:
             raise PreviewError(f"state '{state_id}' is not present in scene '{self.scene_id}'")
         self._state_index = state_index
-        self._elapsed_ms = 0
+        self._state_elapsed_ms = 0
+        self._fired_timer_bindings: set[int] = set()
         self._step_elapsed_ms = 0
         self._step_index = int(self._waiting()["settled_step"])
         self._render_framebuffer()
@@ -129,41 +130,72 @@ class StateScenePreview:
             tuple[int, int], dict[str, object]
         ] = {}
         self._elapsed_ms = 0
+        self._state_elapsed_ms = 0
+        self._fired_timer_bindings: set[int] = set()
+        self._scene_timer_delays = {
+            int(binding["binding_index"]): int(binding["configuration"]["delay_ms"])
+            for binding in self._graph.get("event_bindings", ())
+            if binding["event_type"] == "time.scene_elapsed"
+        }
+        self._scene_timer_deadlines = {
+            int(binding["binding_index"]): int(binding["configuration"]["delay_ms"])
+            for binding in self._graph.get("event_bindings", ())
+            if binding["event_type"] == "time.scene_elapsed"
+            and binding["configuration"]["start_policy"] == "scene_entry"
+        }
+        self._suspended = False
         self._step_elapsed_ms = 0
         self._step_index = int(self._waiting()["settled_step"])
         self._validate_scene_subset()
 
     def apply_input(self, logical_source: str, event_kind: str = "press") -> PreviewInputResult:
+        if self._suspended:
+            return PreviewInputResult(logical_source, event_kind, None, False, None)
         source = LOGICAL_SOURCES.get(logical_source)
         if source is None:
             raise PreviewError(f"logical source '{logical_source}' is unsupported")
         event = LOGICAL_EVENTS.get(event_kind)
         if event is None:
             raise PreviewError(f"logical event '{event_kind}' is unsupported")
-        action_index = next(
+        action = next(
             (
-                index
-                for index, action in enumerate(self._graph["inputs"])
+                action
+                for action in self._graph["inputs"]
                 if int(action["logical_source"]) == source
                 and int(action.get("logical_event", 1)) == event
             ),
             None,
         )
-        if action_index is None:
+        if action is None:
             return PreviewInputResult(logical_source, event_kind, None, False, None)
-        action_id = str(self._graph["inputs"][action_index]["action_id"])
+        action_index = int(
+            action.get("binding_index", self._graph["inputs"].index(action))
+        )
+        action_id = str(action["action_id"])
+        return self._apply_binding(
+            action_index, logical_source, event_kind, action_id
+        )
+
+    def _apply_binding(
+        self,
+        binding_index: int,
+        logical_source: str,
+        event_kind: str,
+        binding_id: str,
+    ) -> PreviewInputResult:
         route = next(
             (
                 candidate
                 for candidate in self._graph["routes"]
-                if int(candidate["action_index"]) == action_index
-                and self._state_index in candidate["source_state_indexes"]
+                if int(candidate["action_index"]) == binding_index
+                and (not candidate["source_state_indexes"]
+                     or self._state_index in candidate["source_state_indexes"])
                 and all(self._guard_passes(guard) for guard in candidate["guards"])
             ),
             None,
         )
         if route is None:
-            return PreviewInputResult(logical_source, event_kind, action_id, False, None)
+            return PreviewInputResult(logical_source, event_kind, binding_id, False, None)
 
         target_scene = route["target_scene"]
         if target_scene is not None:
@@ -191,7 +223,7 @@ class StateScenePreview:
             return PreviewInputResult(
                 logical_source,
                 event_kind,
-                action_id,
+                binding_id,
                 True,
                 str(route["route_id"]),
                 tuple(audio_events),
@@ -211,8 +243,10 @@ class StateScenePreview:
         system_action: str | None = None
         definitions = self._graph["variables"]
         target_state = route["target_state_index"]
-        if target_state is None:
-            raise PreviewError("compiled route has no target")
+        changes_state = target_state is not None
+        if not changes_state:
+            target_state = self._state_index
+        timer_commands: list[tuple[int, int]] = []
         target_model_index = int(
             self._graph["states"][int(target_state)]["render_model_index"]
         )
@@ -238,6 +272,9 @@ class StateScenePreview:
                 continue
             if kind == 8:
                 system_action = "exit_to_shell"
+                continue
+            if kind in {9, 10, 11}:
+                timer_commands.append((kind, int(operation["binding_index"])))
                 continue
             if kind in {3, 4, 5, 6}:
                 element_index = int(operation["element_index"])
@@ -330,6 +367,19 @@ class StateScenePreview:
         self._element_overrides = element_overrides
         self._waiting_element_overrides = waiting_element_overrides
         self._state_index = int(target_state)
+        if changes_state:
+            self._state_elapsed_ms = 0
+            self._fired_timer_bindings.clear()
+        for kind, timer_index in timer_commands:
+            if kind == 11:
+                self._scene_timer_deadlines.pop(timer_index, None)
+            elif kind == 10 or timer_index not in self._scene_timer_deadlines:
+                self._scene_timer_deadlines[timer_index] = (
+                    self._elapsed_ms + self._scene_timer_delays[timer_index]
+                )
+        if system_action == "exit_to_shell":
+            self._scene_timer_deadlines.clear()
+            self._suspended = True
         next_waiting = self._waiting()
         if force_timeline_rebase or not self._compatible_timeline(
             prior_waiting, next_waiting
@@ -340,7 +390,7 @@ class StateScenePreview:
         return PreviewInputResult(
             logical_source,
             event_kind,
-            action_id,
+            binding_id,
             True,
             str(route["route_id"]),
             tuple(audio_events),
@@ -355,9 +405,79 @@ class StateScenePreview:
             and first["combined_step_count"] == second["combined_step_count"]
         )
 
-    def advance(self, elapsed_ms: int) -> None:
+    def advance(self, elapsed_ms: int) -> tuple[PreviewInputResult, ...]:
         if isinstance(elapsed_ms, bool) or not isinstance(elapsed_ms, int) or not 0 <= elapsed_ms <= 600000:
             raise PreviewError("elapsed_ms must be an integer in 0..600000")
+        if self._suspended:
+            return ()
+        results: list[PreviewInputResult] = []
+        remaining_ms = elapsed_ms
+        dispatch_count = 0
+        while True:
+            timer = self._next_state_timer()
+            if timer is None:
+                self._advance_visual(remaining_ms)
+                break
+            due_in_ms, binding_index, binding_id = timer
+            if due_in_ms > remaining_ms:
+                self._advance_visual(remaining_ms)
+                break
+            self._advance_visual(due_in_ms)
+            remaining_ms -= due_in_ms
+            self._fired_timer_bindings.add(binding_index)
+            self._scene_timer_deadlines.pop(binding_index, None)
+            result = self._apply_binding(
+                binding_index,
+                "time.scene_elapsed" if binding_index in self._scene_timer_delays else "time.state_entry_elapsed",
+                "elapsed",
+                binding_id,
+            )
+            results.append(result)
+            dispatch_count += 1
+            if self._suspended:
+                break
+            if dispatch_count > 128:
+                raise PreviewError("timer cascade exceeds the bounded preview budget")
+            if remaining_ms == 0:
+                next_timer = self._next_state_timer()
+                if next_timer is None or next_timer[0] > 0:
+                    break
+        return tuple(results)
+
+    def _next_state_timer(self) -> tuple[int, int, str] | None:
+        candidates: list[tuple[int, int, str]] = []
+        for binding in self._graph.get("event_bindings", ()):
+            binding_index = int(binding["binding_index"])
+            if binding["event_type"] == "time.scene_elapsed":
+                if binding_index in self._scene_timer_deadlines:
+                    candidates.append((max(0, self._scene_timer_deadlines[binding_index] - self._elapsed_ms),
+                                       binding_index, str(binding["binding_id"])))
+                continue
+            if binding_index in self._fired_timer_bindings:
+                continue
+            if not any(
+                int(route["action_index"]) == binding_index
+                and self._state_index in route["source_state_indexes"]
+                for route in self._graph["routes"]
+            ):
+                continue
+            delay_ms = int(binding["configuration"]["delay_ms"])
+            candidates.append(
+                (
+                    max(0, delay_ms - self._state_elapsed_ms),
+                    binding_index,
+                    str(binding["binding_id"]),
+                )
+            )
+        return min(candidates) if candidates else None
+
+    def suspend(self) -> None:
+        self._suspended = True
+
+    def resume(self) -> None:
+        self._suspended = False
+
+    def _advance_visual(self, elapsed_ms: int) -> None:
         waiting = self._waiting()
         quantum = int(waiting["phase_quantum_ms"])
         step_count = int(waiting["combined_step_count"])
@@ -365,6 +485,7 @@ class StateScenePreview:
         self._step_index = (self._step_index + total // quantum) % step_count
         self._step_elapsed_ms = total % quantum
         self._elapsed_ms += elapsed_ms
+        self._state_elapsed_ms += elapsed_ms
         self._render_framebuffer()
 
     def _visual_overrides(self) -> dict[str, str]:

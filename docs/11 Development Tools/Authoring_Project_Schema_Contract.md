@@ -139,6 +139,89 @@ retained render elements, reactive wait policy, and waiting visuals. It is a
 strict subset of this contract and does not redefine the future complete
 schema.
 
+The executable subset also accepts optional generic `event_bindings`. Existing
+`input_actions` and route `action_ref` fields remain load-compatible. New
+non-input routes use `event_ref`, and `event_ref` may also name an input action
+so editors can migrate to one route vocabulary without rewriting old projects.
+
+```text
+event_bindings[]:
+  binding_id
+  event_type = time.state_entry_elapsed
+  configuration:
+    delay_ms
+```
+
+This legacy executable timer is a state-entry one-shot. For this explicit
+event type, a route's `from_states` determines the states in which its
+referenced timer is armed. This coupling must not be generalized to other
+timer scopes. IDs must be unique across
+`input_actions` and `event_bindings`. The selected target profile supplies the
+allowed delay range and total event-binding limit.
+
+The scene-owned one-shot form is also executable (STG1 v6). Its RTC/STOP2
+expiry and independent handler application have a recorded target pass in
+[[Time_And_Power_Intent_API_Contract]]; GUI export and remaining target
+control/lifetime checks are pending. [[Peep_Studio_Scoped_Timer_Handoff]] gives
+the editor integration sequence and concrete command examples:
+
+```text
+event_bindings[]:
+  binding_id
+  event_type = time.scene_elapsed
+  configuration:
+    delay_ms                # same target duration bounds as state timers
+    start_policy            # scene_entry (default) or action
+
+event_handlers[]:
+  handler_id
+  event_ref                 # exactly one handler per scene timer binding
+  guards[]
+  actions[]
+  target_state?             # optional; cannot coexist with target_scene
+  target_scene?             # optional; same-package destination only
+
+timer action:
+  kind = start_timer | restart_timer | cancel_timer
+  timer_ref                 # scene timer binding_id, local to this scene
+```
+
+Handlers have no `from_states` or `action_ref`. Omitting both targets executes
+actions without state re-entry. Scene-timer bindings cannot also appear in
+ordinary state routes. Handler IDs are unique within the scene and must not
+collide with route IDs. State and scene timers share the 16 compiled binding
+slots. Each handler consumes one runtime transition slot; existing guard and
+action budgets also apply. Target firmware still admits at most 16 expanded
+transitions, 16 guards, and 32 stored actions per scene.
+
+Action-only handlers accept variable mutations, `request_render`, `play_sfx`,
+`exit_to_shell`, and timer actions. Element mutation actions currently require
+`target_state`; `target_scene` retains the existing SFX-only action rule.
+Runtime suspension pauses relative countdowns; state/selection changes do not
+pause or restart a scene timer. Replacement/recreation cancels the old scene's
+timers. A false guard consumes the expiry without retrying.
+
+The shared service exposes `event_handler.add` and `event_handler.update` with
+`scene_id` plus the complete `event_handler` record; `event_handler.delete`
+uses `scene_id` and `handler_id`. Add/remove the timer and its handler in one
+`project.apply_commands` batch so the final graph remains valid. Removing a
+binding still referenced by a handler or timer action is rejected.
+`project.preview_advance` returns `timer_events` with accepted/ignored results,
+audio events, and system actions, using the same result fields as input events.
+These backend changes do not add GUI controls.
+
+Timer-control actions currently reference scene timers only. Do not offer
+Start/Restart/Cancel against a state-entry binding. Handler edits use complete
+`event_handler` replacement, not the `route.action.*` or `route.guard.*`
+commands. Shared bindings include input actions as well as state and scene
+timers; the 16-slot target budget is not 16 additional timers.
+
+The service API at the timer handoff baseline is `23`; discover actual
+operations, `state_scene_graph.scene_timers`, and the selected profile's
+`state_scene_events` through `service.hello`. The profile's
+`available_pending_validation` status admits development timer authoring and
+is not interchangeable with `contracted_not_exposed` or `blocked`.
+
 The current executable STATE input-source set is `BUTTON_A`, `BUTTON_B`,
 `BUTTON_L`, `BUTTON_R`, `BUTTON_START`, `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`,
 `JOY_DOWN`, `JOY_UP_LEFT`, `JOY_UP_RIGHT`, `JOY_DOWN_LEFT`, and
@@ -607,6 +690,7 @@ hsm_graph:
   transitions[]
   variables[]
   timers[]
+  event_handlers[]
   action_tables[]
   bounds
 
@@ -725,6 +809,73 @@ Rules:
 
 Authoring source may define symbolic events, guards, and actions.
 
+### Scoped timers and independent event branches
+
+The agreed direction in [[Time_And_Power_Intent_API_Contract]] separates timer
+ownership from graph state and expiry handling. The following is conceptual
+schema intent, not new fields accepted by the current executable JSON schema:
+
+```text
+timer_declaration:
+  timer_id
+  owner_ref                 # state activation, scene, entity/behavior, or package session
+  start_policy              # owner entry/activation or explicit action
+  duration_ms               # initial scoped increment is relative and one-shot
+  expiry_event_ref
+
+event_handler:
+  handler_id
+  owner_ref
+  event_ref
+  guards[]
+  actions[]
+```
+
+Rules:
+
+- new timers authored in scene logic default to scene ownership; state-entry
+  timing remains an explicitly named option
+- timer owner and start policy are visible authoring choices, not inferred
+  from a menu selection, graph position, or handler's `from_states`
+- scene-entry timers survive internal state changes; action-started timers
+  wait for explicit Start or Restart
+- Start preserves an armed timer, Restart replaces the countdown and pending
+  expiry, and Cancel invalidates that arm
+- an expiry may enter an independent guarded action branch without a state or
+  scene destination; a state restriction is an explicit guard
+- an action-only handler must not be lowered to an artificial self-transition
+- timer IDs are local to an owner; prefab compilation resolves distinct timer
+  and handler references for each instantiated entity/behavior
+- a package-session handler cannot reference a destroyed scene's local state;
+  all cross-owner references must resolve through declared supported bindings
+- relative timers count through hardware sleep and pause during explicit owner
+  suspension; calendar deadlines remain absolute as defined by the time contract
+- owner removal cancels contained timers; package ownership does not imply
+  saved timers or behavior running outside the package session
+
+The scene-owned one-shot increment is implemented using the executable fields
+above, not the full conceptual `owner_ref` model. Instance and package-session
+scopes follow. Export remains capability/schema-gated; editors must not relabel
+`time.state_entry_elapsed` as a scene timer. STG1 v6 coordinates the shared
+compiler/parser/preview and firmware; older decoders reject it explicitly.
+
+The existing executable route rule requiring exactly one `target_state` or
+`target_scene` remains in force for routes. The independent handler is
+a separate bounded entry point; existing projects need no silent conversion.
+
+Example scene logic:
+
+```text
+Scene entry -> Start choice_timeout (10 seconds)
+Menu input -> Update selection
+choice_timeout expiry -> Confirm current selection
+```
+
+An inactivity variant explicitly restarts `choice_timeout` on meaningful menu
+input. The countdown does not restart merely because the selection changed.
+
+### Event sources and actions
+
 Allowed event sources are those defined by [[Runtime_Logic_State_API_Contract]]:
 
 - lifecycle
@@ -760,6 +911,7 @@ Actions must compile to symbolic Engine requests, such as:
 - request audio cue or BBB pattern
 - request save/settings read or write
 - schedule delayed/calendar event
+- start, restart, or cancel a declared timer where the target supports it
 - request sensor context
 - send communication message
 - emit package diagnostic marker

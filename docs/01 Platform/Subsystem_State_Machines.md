@@ -457,6 +457,10 @@ Rules:
 - Speaker/BBB concurrency applies only to targets that physically provide and grant both paths; it is not an HW6 behavior.
 - No blocking refill operations.
 - Owner thread publishes activity status to power manager.
+- A speaker DMA/refill fault retires all voices and may return from
+  `AUDIO_ERROR` / `SPK_ERROR` to `AUDIO_IDLE` / `SPK_OFF` only after the audio
+  owner verifies the physical path is idle. Recovery is one bounded attempt;
+  failure leaves audio quarantined.
 
 ---
 

@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-#define PS_DEV_TMAG3001_API_VERSION (9UL)
+#define PS_DEV_TMAG3001_API_VERSION (13UL)
 
 #define PS_DEV_TMAG3001_SENSOR_CONFIG2_X_Y_RANGE_MASK (0x02U)
 #define PS_DEV_TMAG3001_SENSOR_CONFIG2_Z_RANGE_MASK   (0x01U)
@@ -18,6 +18,8 @@ extern "C" {
 #define PS_DEV_TMAG3001_DEVICE_STATUS_INT_RB_MASK     (0x10U)
 #define PS_DEV_TMAG3001_SENSOR_CONFIG2_X_Y_HIGH_RANGE (0x02U)
 #define PS_DEV_TMAG3001_SENSOR_CONFIG2_Z_HIGH_RANGE   (0x01U)
+#define PS_DEV_TMAG3001_WAKE_AXIS_X                    (1U)
+#define PS_DEV_TMAG3001_WAKE_AXIS_Y                    (2U)
 
 typedef enum
 {
@@ -42,11 +44,18 @@ typedef struct
 typedef struct
 {
   ps_status_t status;
+  ps_status_t wake_probe_status;
+  ps_status_t general_call_wake_status;
+  ps_status_t general_call_status;
   ps_status_t ready_status;
   ps_status_t identity_status;
+  ps_status_t i2c_address_verify_status;
   uint8_t device_id;
   uint8_t manufacturer_lsb;
   uint8_t manufacturer_msb;
+  uint8_t i2c_address_target;
+  uint8_t i2c_address_after;
+  uint32_t general_call_used;
   uint32_t identity_match;
   uint8_t sensor_config1_before;
   uint8_t sensor_config1_after;
@@ -134,7 +143,8 @@ typedef struct
   uint8_t manufacturer_lsb;
   uint8_t manufacturer_msb;
   uint8_t sleep_period_code;
-  uint8_t field_threshold_code;
+  uint8_t field_threshold_x_code;
+  uint8_t field_threshold_y_code;
   uint8_t field_hysteresis_code;
   uint8_t sensor_config1_target;
   uint8_t sensor_config1_after;
@@ -205,6 +215,14 @@ ps_status_t ps_dev_tmag3001_prepare_sleep_audit(
 ps_status_t ps_dev_tmag3001_prepare_wake_sleep_omnipolar_xy(
   ps_dev_tmag3001_t *device,
   uint8_t sleep_period_code,
+  uint8_t field_threshold_x_code,
+  uint8_t field_threshold_y_code,
+  uint8_t field_hysteresis_code,
+  ps_dev_tmag3001_wake_sleep_result_t *result);
+ps_status_t ps_dev_tmag3001_prepare_wake_sleep_omnipolar_axis(
+  ps_dev_tmag3001_t *device,
+  uint8_t sleep_period_code,
+  uint8_t wake_axis,
   uint8_t field_threshold_code,
   uint8_t field_hysteresis_code,
   ps_dev_tmag3001_wake_sleep_result_t *result);

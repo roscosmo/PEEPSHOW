@@ -608,8 +608,10 @@ ps_status_t PS_UIRouter_Dispatch(uint32_t event)
       status = PS_UIRouter_GotoPage(PS_UI_ROUTER_PAGE_INPUT_DIAGNOSTIC);
       break;
     case PS_UI_ROUTER_EVENT_LAUNCH_RUNTIME:
-      if ((ps_ui_router_state.shutdown_state ==
-           PS_UI_ROUTER_SHUTDOWN_NONE) &&
+      if (((ps_ui_router_state.shutdown_state ==
+            PS_UI_ROUTER_SHUTDOWN_NONE) ||
+           (ps_ui_router_state.shutdown_state ==
+            PS_UI_ROUTER_SHUTDOWN_CANCELLED)) &&
           ((ps_ui_router_state.current_page ==
             PS_UI_ROUTER_PAGE_BOOTSTRAP) ||
           (ps_ui_router_state.current_page == PS_UI_ROUTER_PAGE_HOME) ||

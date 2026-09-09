@@ -33,6 +33,7 @@ from .egg_format import (
     CHUNK_STATE_GRAPH,
     CHUNK_STRING_TABLE,
     CHUNK_WAITING_VISUALS,
+    EVENT_RECORD,
     GRAPH_HEADER,
     GUARD_RECORD,
     INPUT_RECORD,
@@ -76,6 +77,9 @@ LOGICAL_SOURCES = {
     "JOY_DOWN_RIGHT": 13,
 }
 LOGICAL_EVENTS = {"press": 1, "release": 2, "hold": 3, "repeat": 4}
+EVENT_CLASS_INPUT = 1
+EVENT_CLASS_TIMER = 2
+TIMER_EVENT_STATE_ENTRY_ELAPSED = 1
 JOYSTICK_POLICIES = {"four_way": 1, "eight_way": 2}
 GUARD_OPERATORS = {"eq": 1, "ne": 2, "lt": 3, "le": 4, "gt": 5, "ge": 6}
 VARIABLE_OPERATIONS = {"assign": 1, "add": 2}
@@ -160,6 +164,12 @@ def _u16(value: int, field: str) -> int:
     return value
 
 
+def _u32(value: int, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 0xFFFFFFFF:
+        raise EggCompileError(f"{field} does not fit u32")
+    return value
+
+
 def _i16(value: int, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not -0x8000 <= value <= 0x7FFF:
         raise EggCompileError(f"{field} does not fit i16")
@@ -170,6 +180,13 @@ def _i32(value: int, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not -0x80000000 <= value <= 0x7FFFFFFF:
         raise EggCompileError(f"{field} does not fit int32")
     return value
+
+
+def _graph_routes(scene: dict[str, Any]) -> list[dict[str, Any]]:
+    return [*scene["routes"], *(
+        {**handler, "route_id": handler["handler_id"], "from_states": []}
+        for handler in scene.get("event_handlers", [])
+    )]
 
 
 def _string_table(bundle: ProjectBundle, scenes: tuple[dict[str, Any], ...] | None = None) -> tuple[tuple[str, ...], dict[str, int], bytes]:
@@ -186,12 +203,15 @@ def _string_table(bundle: ProjectBundle, scenes: tuple[dict[str, Any], ...] | No
         values.update((scene["scene_id"], scene["display_name"]))
         values.update(record["variable_id"] for record in scene["variables"])
         values.update(record["action_id"] for record in scene["input_actions"])
+        values.update(
+            record["binding_id"] for record in scene.get("event_bindings", [])
+        )
         for state in scene["states"]:
             values.update((state["state_id"], state["display_name"]))
-        values.update(record["route_id"] for record in scene["routes"])
+        values.update(record["route_id"] for record in _graph_routes(scene))
         values.update(
             record["target_scene"]
-            for record in scene["routes"]
+            for record in _graph_routes(scene)
             if "target_scene" in record
         )
         for model in scene["render_models"]:
@@ -364,10 +384,15 @@ def _compile_graph(
 ) -> bytes:
     variables = scene["variables"]
     inputs = scene["input_actions"]
+    events = scene.get("event_bindings", [])
+    bindings = [*inputs, *events]
     states = scene["states"]
-    routes = scene["routes"]
+    routes = _graph_routes(scene)
     variable_index = {record["variable_id"]: index for index, record in enumerate(variables)}
-    input_index = {record["action_id"]: index for index, record in enumerate(inputs)}
+    binding_index = {
+        (record["action_id"] if "action_id" in record else record["binding_id"]): index
+        for index, record in enumerate(bindings)
+    }
     state_index = {record["state_id"]: index for index, record in enumerate(states)}
     render_index = {record["visual_id"]: index for index, record in enumerate(scene["render_models"])}
     waiting_index = {record["waiting_visual_id"]: index for index, record in enumerate(scene["waiting_visuals"])}
@@ -384,14 +409,46 @@ def _compile_graph(
                 _i32(variable["maximum"], "variable maximum"),
             )
         )
-    input_records = b"".join(
-        INPUT_RECORD.pack(
-            strings[record["action_id"]],
-            LOGICAL_SOURCES[record["logical_source"]]
-            | (LOGICAL_EVENTS[record.get("event_kind", "press")] << 8),
+    graph_version = 5 if events else 4
+    if any(record["event_type"] == "time.scene_elapsed" for record in events):
+        graph_version = 6
+    if graph_version == 4:
+        binding_records = b"".join(
+            INPUT_RECORD.pack(
+                strings[record["action_id"]],
+                LOGICAL_SOURCES[record["logical_source"]]
+                | (LOGICAL_EVENTS[record.get("event_kind", "press")] << 8),
+            )
+            for record in inputs
         )
-        for record in inputs
-    )
+    else:
+        encoded_bindings = bytearray()
+        for record in inputs:
+            encoded_bindings.extend(
+                EVENT_RECORD.pack(
+                    strings[record["action_id"]],
+                    EVENT_CLASS_INPUT,
+                    LOGICAL_EVENTS[record.get("event_kind", "press")],
+                    LOGICAL_SOURCES[record["logical_source"]],
+                    0,
+                )
+            )
+        for record in events:
+            if record["event_type"] not in {"time.state_entry_elapsed", "time.scene_elapsed"}:
+                raise EggCompileError("unsupported STATE event binding")
+            encoded_bindings.extend(
+                EVENT_RECORD.pack(
+                    strings[record["binding_id"]],
+                    EVENT_CLASS_TIMER,
+                    2 if record["event_type"] == "time.scene_elapsed" else TIMER_EVENT_STATE_ENTRY_ELAPSED,
+                    1 if record["configuration"].get("start_policy") == "action" else 0,
+                    _u32(
+                        record["configuration"]["delay_ms"],
+                        "state-entry timer delay",
+                    ),
+                )
+            )
+        binding_records = bytes(encoded_bindings)
     state_records = b"".join(
         STATE_RECORD.pack(
             strings[record["state_id"]],
@@ -514,13 +571,18 @@ def _compile_graph(
                 operation_records.extend(
                     OPERATION_RECORD.pack(8, 0, 0, 0, 0, 0)
                 )
+            elif operation["kind"] in {"start_timer", "restart_timer", "cancel_timer"}:
+                kind = {"start_timer": 9, "restart_timer": 10, "cancel_timer": 11}[operation["kind"]]
+                operation_records.extend(
+                    OPERATION_RECORD.pack(kind, 0, binding_index[operation["timer_ref"]], 0, 0, 0)
+                )
             else:
                 raise EggCompileError("unsupported STATE route action")
             operation_count += 1
         route_records.extend(
             ROUTE_RECORD.pack(
                 strings[route["route_id"]],
-                input_index[route["action_ref"]],
+                binding_index[route.get("event_ref", route.get("action_ref"))],
                 state_index[route["target_state"]] if "target_state" in route else 0xFFFF,
                 strings[route["target_scene"]] if "target_scene" in route else 0xFFFF,
                 _u16(first_source, "first route source"),
@@ -534,17 +596,17 @@ def _compile_graph(
 
     wait_policy = scene["reactive_wait_default"]
     interaction = scene["interaction_policy"]
-    event_interests = [input_index[value] for value in wait_policy["event_interests"]]
-    meaningful = [input_index[value] for value in interaction["meaningful_activity_actions"]]
+    event_interests = [binding_index[value] for value in wait_policy["event_interests"]]
+    meaningful = [binding_index[value] for value in interaction["meaningful_activity_actions"]]
     interaction_mode = INTERACTION_MODES[interaction["mode"]]
     inactive_route = INACTIVE_ROUTES.get(interaction.get("inactive_route"), 0)
     header = GRAPH_HEADER.pack(
         b"STG1",
-        4,
+        graph_version,
         GRAPH_HEADER.size,
         state_index[scene["entry_state"]],
         _u16(len(variables), "variable count"),
-        _u16(len(inputs), "input count"),
+        _u16(len(bindings), "event binding count"),
         _u16(len(states), "state count"),
         _u16(len(routes), "route count"),
         _u16(len(source_states), "route source count"),
@@ -565,7 +627,7 @@ def _compile_graph(
     return (
         header
         + variable_records
-        + input_records
+        + binding_records
         + state_records
         + route_records
         + sources

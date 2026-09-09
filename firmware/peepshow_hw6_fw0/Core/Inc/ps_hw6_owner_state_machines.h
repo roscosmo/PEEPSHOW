@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PS_HW6_OWNER_SM_PROBE_MAGIC          (0x48364653UL)
-#define PS_HW6_OWNER_SM_PROBE_VERSION        (76UL)
+#define PS_HW6_OWNER_SM_PROBE_VERSION        (85UL)
 
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_NONE       (0UL)
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_PREPARE    (1UL)
@@ -22,6 +22,26 @@ extern "C" {
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_NORMALIZE  (7UL)
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_SUSPEND    (8UL)
 #define PS_HW6_JOYSTICK_FAILURE_STAGE_FINISH_FSM (9UL)
+
+#define PS_HW6_JOYSTICK_WAKE_PROFILE_REASON_NONE              (0UL)
+#define PS_HW6_JOYSTICK_WAKE_PROFILE_REASON_POLICY_DISABLED   (1UL)
+#define PS_HW6_JOYSTICK_WAKE_PROFILE_REASON_CALIBRATION       (2UL)
+#define PS_HW6_JOYSTICK_WAKE_PROFILE_REASON_TRANSFORM         (3UL)
+#define PS_HW6_JOYSTICK_WAKE_PROFILE_REASON_THRESHOLD_RANGE   (4UL)
+#define PS_HW6_JOYSTICK_WAKE_PROFILE_REASON_ENDPOINT_COVERAGE (5UL)
+#define PS_HW6_JOYSTICK_CAL_NEUTRAL_RETURN_CAPACITY            (9U)
+#define PS_HW6_JOYSTICK_CAL_NEUTRAL_PHASE_IDLE                 (0UL)
+#define PS_HW6_JOYSTICK_CAL_NEUTRAL_PHASE_BASELINE             (1UL)
+#define PS_HW6_JOYSTICK_CAL_NEUTRAL_PHASE_WAIT_MOTION          (2UL)
+#define PS_HW6_JOYSTICK_CAL_NEUTRAL_PHASE_WAIT_RETURN          (3UL)
+#define PS_HW6_JOYSTICK_CAL_NEUTRAL_PHASE_STABLE_RETURN        (4UL)
+#define PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_COUNT       (5U)
+#define PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_CENTER      (0UL)
+#define PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_UP          (1UL)
+#define PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_RIGHT       (2UL)
+#define PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_DOWN        (3UL)
+#define PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_LEFT        (4UL)
+#define PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_NEUTRAL_COUNT     (5U)
 #define PS_HW6_OWNER_SM_COUNT                (10U)
 #define PS_HW6_OWNER_SM_TRACE_DEPTH          (128U)
 #define PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT (7U)
@@ -60,7 +80,8 @@ typedef enum
   PS_HW6_JOYSTICK_XYZ_CAPTURE_NONE = 0,
   PS_HW6_JOYSTICK_XYZ_CAPTURE_REST,
   PS_HW6_JOYSTICK_XYZ_CAPTURE_SWEEP,
-  PS_HW6_JOYSTICK_XYZ_CAPTURE_SWEEP_Z_HIGH
+  PS_HW6_JOYSTICK_XYZ_CAPTURE_SWEEP_Z_HIGH,
+  PS_HW6_JOYSTICK_XYZ_CAPTURE_SWEEP_ALL_HIGH
 } PS_HW6_JoystickXyzCaptureMode;
 
 typedef enum
@@ -473,8 +494,15 @@ typedef struct
   uint32_t joystick_driver_state;
   uint32_t joystick_driver_operation_count;
   uint32_t joystick_driver_last_status;
+  uint32_t joystick_wake_probe_status;
+  uint32_t joystick_general_call_used;
+  uint32_t joystick_general_call_wake_status;
+  uint32_t joystick_general_call_status;
   uint32_t joystick_ready_status;
   uint32_t joystick_identity_status;
+  uint32_t joystick_i2c_address_target;
+  uint32_t joystick_i2c_address_after;
+  uint32_t joystick_i2c_address_verify_status;
   uint32_t joystick_device_id;
   uint32_t joystick_manufacturer_lsb;
   uint32_t joystick_manufacturer_msb;
@@ -497,7 +525,16 @@ typedef struct
   uint32_t joystick_wake_sleep_arm_status;
   uint32_t joystick_wake_sleep_period_ms;
   uint32_t joystick_wake_sleep_period_code;
-  uint32_t joystick_wake_field_threshold_code;
+  uint32_t joystick_wake_profile_build_count;
+  uint32_t joystick_wake_profile_fallback_count;
+  uint32_t joystick_wake_profile_status;
+  uint32_t joystick_wake_profile_reason;
+  uint32_t joystick_wake_profile_armed;
+  uint32_t joystick_wake_field_threshold_x_code;
+  uint32_t joystick_wake_field_threshold_y_code;
+  uint32_t joystick_wake_neutral_bound_x_counts;
+  uint32_t joystick_wake_neutral_bound_y_counts;
+  uint32_t joystick_wake_endpoint_coverage_mask;
   uint32_t joystick_wake_field_hysteresis_code;
   uint32_t joystick_wake_sensor_config1;
   uint32_t joystick_wake_sensor_config2;
@@ -519,6 +556,77 @@ typedef struct
   uint32_t joystick_wake_preclear_device_status;
   uint32_t joystick_wake_preclear_threshold_cross;
   uint32_t joystick_wake_preclear_int_readback;
+  uint32_t joystick_wake_characterization_start_count;
+  uint32_t joystick_wake_characterization_active;
+  uint32_t joystick_wake_characterization_complete;
+  uint32_t joystick_wake_characterization_status;
+  uint32_t joystick_wake_characterization_pose;
+  uint32_t joystick_wake_characterization_capture_count;
+  uint32_t joystick_wake_characterization_capture_active;
+  uint32_t joystick_wake_characterization_capture_status;
+  uint32_t joystick_wake_characterization_capture_start_tick;
+  uint32_t joystick_wake_characterization_capture_end_tick;
+  uint32_t joystick_wake_characterization_capture_stage;
+  uint32_t joystick_wake_characterization_capture_step_count;
+  uint32_t joystick_wake_characterization_capture_next_tick;
+  uint32_t joystick_wake_characterization_capture_axis;
+  uint32_t joystick_wake_characterization_boundary_phase;
+  uint32_t joystick_wake_characterization_trial_threshold_code;
+  uint32_t joystick_wake_characterization_trial_pending;
+  uint32_t joystick_wake_characterization_x_sensor_config1_target;
+  uint32_t joystick_wake_characterization_x_sensor_config1_after;
+  uint32_t joystick_wake_characterization_y_sensor_config1_target;
+  uint32_t joystick_wake_characterization_y_sensor_config1_after;
+  uint32_t joystick_wake_characterization_sample_count[
+    PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_COUNT];
+  uint32_t joystick_wake_characterization_sample_stable_mask;
+  int32_t joystick_wake_characterization_raw_min_x[
+    PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_COUNT];
+  int32_t joystick_wake_characterization_raw_max_x[
+    PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_COUNT];
+  int32_t joystick_wake_characterization_raw_average_x[
+    PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_COUNT];
+  int32_t joystick_wake_characterization_raw_min_y[
+    PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_COUNT];
+  int32_t joystick_wake_characterization_raw_max_y[
+    PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_COUNT];
+  int32_t joystick_wake_characterization_raw_average_y[
+    PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_COUNT];
+  uint32_t joystick_wake_characterization_x_max_asserted_code[
+    PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_COUNT];
+  uint32_t joystick_wake_characterization_y_max_asserted_code[
+    PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_COUNT];
+  uint32_t joystick_wake_characterization_x_trial_count[
+    PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_COUNT];
+  uint32_t joystick_wake_characterization_y_trial_count[
+    PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_POSE_COUNT];
+  uint32_t joystick_wake_characterization_x_boundary_valid_mask;
+  uint32_t joystick_wake_characterization_y_boundary_valid_mask;
+  uint32_t joystick_wake_characterization_x_ceiling_mask;
+  uint32_t joystick_wake_characterization_y_ceiling_mask;
+  uint32_t joystick_wake_characterization_neutral_pending;
+  uint32_t joystick_wake_characterization_capture_neutral;
+  uint32_t joystick_wake_characterization_neutral_return_count;
+  uint32_t joystick_wake_characterization_neutral_return_target;
+  int32_t joystick_wake_characterization_neutral_return_x[
+    PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_NEUTRAL_COUNT];
+  int32_t joystick_wake_characterization_neutral_return_y[
+    PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_NEUTRAL_COUNT];
+  uint32_t joystick_wake_characterization_neutral_peak_x[
+    PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_NEUTRAL_COUNT];
+  uint32_t joystick_wake_characterization_neutral_peak_y[
+    PS_HW6_JOYSTICK_WAKE_CHARACTERIZATION_NEUTRAL_COUNT];
+  uint32_t joystick_wake_characterization_neutral_bound_x_counts;
+  uint32_t joystick_wake_characterization_neutral_bound_y_counts;
+  uint32_t joystick_wake_characterization_neutral_safe_x_code;
+  uint32_t joystick_wake_characterization_neutral_safe_y_code;
+  uint32_t joystick_wake_characterization_candidate_x_code;
+  uint32_t joystick_wake_characterization_candidate_y_code;
+  uint32_t joystick_wake_characterization_direction_coverage_mask;
+  uint32_t joystick_wake_characterization_feasible;
+  uint32_t joystick_wake_characterization_last_driver_status;
+  uint32_t joystick_wake_characterization_last_hal_status;
+  uint32_t joystick_wake_characterization_last_hal_error;
   uint32_t joystick_wake_direction_capture_count;
   uint32_t joystick_wake_direction_capture_status;
   uint32_t joystick_wake_direction_capture_tick;
@@ -711,6 +819,17 @@ typedef struct
   uint32_t joystick_calibration_capture_sample_count;
   uint32_t joystick_calibration_capture_error_count;
   uint32_t joystick_calibration_capture_next_tick;
+  uint32_t joystick_calibration_neutral_phase;
+  uint32_t joystick_calibration_neutral_return_count;
+  uint32_t joystick_calibration_neutral_return_target;
+  uint32_t joystick_calibration_neutral_stable_count;
+  int32_t joystick_calibration_neutral_anchor_x;
+  int32_t joystick_calibration_neutral_anchor_y;
+  int32_t joystick_calibration_neutral_peak_distance;
+  int32_t joystick_calibration_neutral_return_x[
+    PS_HW6_JOYSTICK_CAL_NEUTRAL_RETURN_CAPACITY];
+  int32_t joystick_calibration_neutral_return_y[
+    PS_HW6_JOYSTICK_CAL_NEUTRAL_RETURN_CAPACITY];
   uint32_t joystick_calibration_sweep_coverage_mask;
   uint32_t joystick_calibration_active_valid;
   int32_t joystick_calibration_center_x;
@@ -1199,6 +1318,10 @@ extern volatile uint32_t g_ps_hw6_joystick_calibration_capture_page;
 extern volatile uint32_t g_ps_hw6_joystick_sleep_audit_request;
 extern volatile uint32_t g_ps_hw6_joystick_xyz_capture_request;
 extern volatile uint32_t g_ps_hw6_joystick_xyz_capture_mode;
+extern volatile uint32_t
+  g_ps_hw6_joystick_wake_characterization_start_request;
+extern volatile uint32_t
+  g_ps_hw6_joystick_wake_characterization_capture_request;
 extern volatile uint32_t g_ps_hw6_ble_sleep_dsr_deasserted;
 extern volatile PS_HW6_JoystickXyzCaptureRecord
   g_ps_hw6_joystick_xyz_capture_buffer[];
@@ -1213,7 +1336,11 @@ void PS_HW6_OwnerStateMachines_SetPostStopResumeCallback(
 uint32_t PS_HW6_OwnerStateMachines_Stop2IdlePeripheralsReady(void);
 void PS_HW6_OwnerStateMachines_BeginWorkflow(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_Stabilize(uint32_t owner_id);
-HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunAudioSfx(uint32_t cue_index);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunAudioSfx(
+  uint32_t cue_index,
+  uint32_t *request_owned);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_ServiceAudioSfx(void);
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StopAudioSfx(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_AttachStorage(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_InitializeFlash(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StartUsbExport(void);
@@ -1242,9 +1369,22 @@ uint32_t PS_HW6_OwnerStateMachines_TakeJoystickWakeDirection(
   uint32_t *direction_mask);
 void PS_HW6_OwnerStateMachines_SetJoystickStop2WakeAllowed(uint32_t allowed);
 uint32_t PS_HW6_OwnerStateMachines_JoystickStop2WakeAllowed(void);
+uint32_t PS_HW6_OwnerStateMachines_JoystickStop2WakeArmed(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickSleepAudit(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickXyzCapture(
   uint32_t capture_mode);
+HAL_StatusTypeDef
+PS_HW6_OwnerStateMachines_BeginJoystickWakeCharacterization(void);
+HAL_StatusTypeDef
+PS_HW6_OwnerStateMachines_StartJoystickWakeCharacterizationCapture(void);
+HAL_StatusTypeDef
+PS_HW6_OwnerStateMachines_StepJoystickWakeCharacterizationCapture(void);
+uint32_t
+PS_HW6_OwnerStateMachines_JoystickWakeCharacterizationActive(void);
+uint32_t
+PS_HW6_OwnerStateMachines_JoystickWakeCharacterizationCaptureActive(void);
+uint32_t
+PS_HW6_OwnerStateMachines_JoystickWakeCharacterizationCaptureNextTick(void);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunJoystickCalibrationCapture(
   uint32_t calibration_page);
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_StepJoystickCalibrationCapture(void);

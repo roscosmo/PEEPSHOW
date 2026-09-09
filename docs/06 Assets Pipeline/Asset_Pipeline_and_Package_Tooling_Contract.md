@@ -80,20 +80,26 @@ The current HW6 vertical slice provides:
 - `EMBEDDED`, backed by the generated development `.egg` artifact.
 - `STAGED_RAM`, backed by one complete bounded `.egg` copied from the reclaimed
   FileX staging volume after every storage handle is closed.
-- `INSTALLED_RAM`, the current FW0 bring-up source backed by the selected
-  persistent A/B package generation copied from raw package storage by
-  `thStorage` into the bounded runtime cache.
+- `INSTALLED_RAM`, the current FW0 bring-up source backed by a bounded resident
+  prefix copied from the selected persistent A/B package generation by
+  `thStorage`. The immutable view retains the complete package size; approved
+  nonresident audio ranges are served through bounded package-reader windows
+  requested from `thStorage`.
 - `NONE`, which cleanly returns to the shell and displays `EGGLESS`.
 
 Installed-package publication currently uses the same immutable view only after
-`thStorage` has selected a committed A/B index generation, copied the package,
-and parked storage. This is bring-up behavior, not the product package model.
+`thStorage` has selected a committed A/B index generation, copied its resident
+prefix, and parked storage. Runtime package-reader requests temporarily return
+to `thStorage` for bounded raw-package windows; they never open FileX/FAT. This
+is bring-up behavior, not the product package model.
 
 The product replacement has one active raw package slot. Package metadata is
 prepared in bounded RAM, while large assets are exposed through scoped package
 asset handles and bounded reads issued by `thStorage`. Active STATE, SEQUENCE,
 and PROGRAM execution must never open or stream from the FAT staging filesystem.
-Full pre-commit semantic validation and the bounded installed-asset reader are
+The installed audio-tail reader is implemented and target-proven with a package
+larger than the resident prefix. Full pre-commit semantic validation,
+generalized installed-asset coverage, and the single-slot installer are still
 required before production package capacity is exposed.
 
 Templates, Authoring Kits, prefabs, behavior graphs, and behavior macros are source-level authoring objects. Tooling must lower them into the package output forms defined by this contract. They must not appear as independent firmware components, direct Platform hooks, or new scene types.
@@ -290,12 +296,17 @@ Audio profile output must target [[Audio_API_Contract]], not Platform audio driv
 Current status: the host authoring/package half is executable. Service API 22
 imports WAV, emits the optional audio chunks, validates symbolic `play_sfx`
 STATE actions, previews cue emission, and auditions decoded package bytes.
-HW6 now loads those chunks and routes one package-backed streamed STATE voice
-through `thAudio`;
-audible playback, completion, clock release, and return to STOP2 are target-
-proven. Peep Studio may report this HW6 playback capability, but must not imply
-support for music, runtime FAT streaming, mixing, or accepted production
-fidelity.
+HW6 now loads those chunks and routes five fixed package-backed streamed STATE
+voices through one `thAudio` mixer and SAI DMA ring. One-voice audible playback,
+completion, clock release, and return to STOP2 are target-proven. Five-voice
+overlap, deterministic equal/lower-priority rejection, and clean audio-only
+operation at `48 MHz` are also target-proven; strict higher-priority preemption
+and concurrent display margin remain open. Peep Studio may
+report the selected development-profile capability, but must not imply support
+for music, runtime FAT streaming, or accepted production
+fidelity. Source normalization is a host concern and must make individual cue
+levels consistent. It cannot substitute for the target runtime limiter because
+several valid normalized cues can still sum beyond the speaker-path ceiling.
 
 ### Initial STATE SFX Asset Slice
 

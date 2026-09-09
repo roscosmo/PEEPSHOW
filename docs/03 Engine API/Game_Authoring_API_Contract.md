@@ -155,6 +155,22 @@ Compile boundary:
 
 An Authoring Kit may compile into one or more scenes. Every generated scene declares exactly one canonical scene type.
 
+Timer ownership in reusable behavior follows
+[[Time_And_Power_Intent_API_Contract]] and
+[[Runtime_Logic_State_API_Contract]]. A prefab-local timer belongs to each live
+entity/behavior instance, not the shared definition. The compiler resolves
+distinct local timer and expiry-handler references for each instance; scene
+selection changes do not implicitly reset them. Removing an instance cancels
+its timers. Independent event branches may perform bounded actions without a
+state transition. The executable subset now includes state-entry timers and
+scene-owned one-shots with independent handlers and Start/Restart/Cancel
+actions. A scene-owned expiry and independent handler application passed the
+target RTC/STOP2 test recorded in [[Time_And_Power_Intent_API_Contract]];
+GUI-authored export and the remaining target control/lifetime checks are
+still pending. [[Peep_Studio_Scoped_Timer_Handoff]] defines the GUI merge and
+implementation work. Prefab instance ownership remains a future increment,
+not a currently exported capability.
+
 Example:
 
 ```text

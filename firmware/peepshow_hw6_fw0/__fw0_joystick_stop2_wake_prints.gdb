@@ -9,7 +9,9 @@ printf "ThreadX pool available before/after fragments = %u / %u / %u\n", $rt->po
 printf "sensor stack bytes/start/end/ptr/lower margin = %u / 0x%x / 0x%x / 0x%x / %u\n", $rt->thread_stack_config_bytes[4], $rt->thread_stack_start[4], $rt->thread_stack_end[4], $rt->thread_stack_ptr[4], $rt->thread_stack_ptr[4] - $rt->thread_stack_start[4]
 printf "wake/sleep arm count/status = %u / 0x%x\n", $sm->joystick_wake_sleep_arm_count, $sm->joystick_wake_sleep_arm_status
 printf "STOP2 expected wake mask / GPIOC wake/park masks = 0x%x / 0x%x / 0x%x\n", $sm->stop2_expected_wake_pin, $sm->stop2_gpio_wake_mask[2], $sm->stop2_gpio_park_mask[2]
-printf "wake period ms/code field threshold/hysteresis = %u / %u / %u / %u\n", $sm->joystick_wake_sleep_period_ms, $sm->joystick_wake_sleep_period_code, $sm->joystick_wake_field_threshold_code, $sm->joystick_wake_field_hysteresis_code
+printf "wake profile build/fallback/status/reason/armed = %u / %u / 0x%x / %u / %u\n", $sm->joystick_wake_profile_build_count, $sm->joystick_wake_profile_fallback_count, $sm->joystick_wake_profile_status, $sm->joystick_wake_profile_reason, $sm->joystick_wake_profile_armed
+printf "wake period ms/code threshold X/Y hysteresis = %u / %u / %u / %u / %u\n", $sm->joystick_wake_sleep_period_ms, $sm->joystick_wake_sleep_period_code, $sm->joystick_wake_field_threshold_x_code, $sm->joystick_wake_field_threshold_y_code, $sm->joystick_wake_field_hysteresis_code
+printf "wake neutral bounds X/Y endpoint coverage = %u / %u / 0x%x\n", $sm->joystick_wake_neutral_bound_x_counts, $sm->joystick_wake_neutral_bound_y_counts, $sm->joystick_wake_endpoint_coverage_mask
 printf "wake registers sensor1/2/3 threshold X/Y/Z = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->joystick_wake_sensor_config1, $sm->joystick_wake_sensor_config2, $sm->joystick_wake_sensor_config3, $sm->joystick_wake_threshold_x, $sm->joystick_wake_threshold_y, $sm->joystick_wake_threshold_z
 printf "wake registers high X/Y/Z int/device2 = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->joystick_wake_threshold_x_high, $sm->joystick_wake_threshold_y_high, $sm->joystick_wake_threshold_z_high, $sm->joystick_wake_int_config1, $sm->joystick_wake_device_config2
 printf "wake write/verify masks HAL/error = 0x%x / 0x%x / 0x%x / 0x%x\n", $sm->joystick_wake_write_ok_mask, $sm->joystick_wake_verify_ok_mask, $sm->joystick_wake_last_hal_status, $sm->joystick_wake_last_hal_error
@@ -36,6 +38,9 @@ else
 end
 printf "STOP2 auto checks/entries/skips = %u / %u / %u\n", $rt->stop2_auto_check_count, $rt->stop2_auto_entry_count, $rt->stop2_auto_skip_count
 printf "dir bits: LEFT=0x1 RIGHT=0x2 UP=0x4 DOWN=0x8; wake source JOYSTICK=0x4; primary JOYSTICK=3\n"
-printf "expected omnipolar switch: APIs=65/73/9; neutral remains in STOP2, cardinal movement asserts JOY_INT, IRQ enq=deq with no drops, wake confirm uses <=3 samples and reaches 2 stable samples for a held cardinal, wake source includes 0x4, primary=3, and one logical activation is delivered per movement wake\n"
-printf "expected registers: sensor1/2/3=0x34/0x00/0x20 threshold X/Y/Z=0x30/0x30/0 high X/Y/Z=0/0/0 int=0x18 device2=0xe3 write/verify=0xfff/0x7ff\n"
+printf "profile reasons: NONE=0 POLICY=1 CAL=2 TRANSFORM=3 RANGE=4 ENDPOINT=5; endpoint coverage UP/RIGHT/DOWN/LEFT=0xf\n"
+printf "expected omnipolar switch APIs=82/85/13\n"
+printf "expected derived profile: status/reason/armed=0/0/1, fallback does not increment, endpoint coverage=0xf, and threshold X/Y match the derived codes\n"
+printf "expected fixed fallback after a derivation rejection: status/reason preserve the rejection, armed=1, fallback increments, and threshold X/Y=48/48\n"
+printf "expected wake proof: sensor1/2/3=0x34/0x00/0x20, Z=0, high X/Y/Z=0/0/0, int=0x18, device2=0xe3, write/verify=0xfff/0x7ff; neutral remains in STOP2 and each cardinal movement produces a joystick-classified wake without drops\n"
 printf "--- end joystick movement wake ---\n"

@@ -5,12 +5,13 @@
 
 #include "ps_scene_render_model.h"
 #include "ps_scene_waiting_visual.h"
+#include "ps_target_profile_autogen.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define PS_SCENE_RUNTIME_API_VERSION             (19UL)
+#define PS_SCENE_RUNTIME_API_VERSION             (21UL)
 #define PS_SCENE_RUNTIME_SCENE_TYPE_STATE        (1UL)
 #define PS_SCENE_RUNTIME_STATUS_NOT_RUN          (0xFFFFFFFFUL)
 #define PS_SCENE_RUNTIME_STATUS_OK               (0UL)
@@ -19,7 +20,10 @@ extern "C" {
 #define PS_SCENE_RUNTIME_INDEX_INVALID           (0xFFFFFFFFUL)
 #define PS_SCENE_RUNTIME_STATE_MAX               (8U)
 #define PS_SCENE_RUNTIME_VISUAL_BINDING_MAX      (8U)
-#define PS_SCENE_RUNTIME_INPUT_ROUTE_MAX         (16U)
+#define PS_SCENE_RUNTIME_EVENT_BINDING_MAX       \
+  PS_TARGET_PROFILE_STATE_EVENT_BINDING_MAX
+#define PS_SCENE_RUNTIME_INPUT_ROUTE_MAX         \
+  PS_SCENE_RUNTIME_EVENT_BINDING_MAX
 #define PS_SCENE_RUNTIME_VARIABLE_MAX            (8U)
 #define PS_SCENE_RUNTIME_GUARD_MAX               (16U)
 #define PS_SCENE_RUNTIME_ACTION_MAX              (32U)
@@ -35,6 +39,12 @@ extern "C" {
 #define PS_SCENE_RUNTIME_INACTIVE_EXIT_SHELL     (2UL)
 #define PS_SCENE_RUNTIME_JOYSTICK_FOUR_WAY       (1UL)
 #define PS_SCENE_RUNTIME_JOYSTICK_EIGHT_WAY      (2UL)
+#define PS_SCENE_RUNTIME_EVENT_CLASS_INPUT       (1UL)
+#define PS_SCENE_RUNTIME_EVENT_CLASS_TIMER       (2UL)
+#define PS_SCENE_RUNTIME_TIMER_STATE_ENTRY       (1UL)
+#define PS_SCENE_RUNTIME_TIMER_SCENE             (2UL)
+#define PS_SCENE_RUNTIME_TIMER_START_ENTRY       (0UL)
+#define PS_SCENE_RUNTIME_TIMER_START_ACTION      (1UL)
 
 typedef enum
 {
@@ -70,7 +80,10 @@ typedef enum
   PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_FRAME,
   PS_SCENE_RUNTIME_ACTION_SET_ELEMENT_WAITING_ANIMATION,
   PS_SCENE_RUNTIME_ACTION_PLAY_SFX,
-  PS_SCENE_RUNTIME_ACTION_EXIT_TO_SHELL
+  PS_SCENE_RUNTIME_ACTION_EXIT_TO_SHELL,
+  PS_SCENE_RUNTIME_ACTION_START_TIMER,
+  PS_SCENE_RUNTIME_ACTION_RESTART_TIMER,
+  PS_SCENE_RUNTIME_ACTION_CANCEL_TIMER
 } ps_scene_runtime_action_kind_t;
 
 typedef enum
@@ -111,6 +124,15 @@ typedef struct
   uint32_t input_id;
   uint32_t scene_event_id;
 } ps_scene_runtime_input_route_t;
+
+typedef struct
+{
+  uint32_t binding_id;
+  uint32_t event_class;
+  uint32_t event_kind;
+  uint32_t source;
+  uint32_t parameter;
+} ps_scene_runtime_event_binding_t;
 
 typedef struct
 {
@@ -156,6 +178,7 @@ typedef struct
   uint32_t entry_state_id;
   uint32_t state_count;
   uint32_t visual_binding_count;
+  uint32_t event_binding_count;
   uint32_t input_route_count;
   uint32_t variable_count;
   uint32_t guard_count;
@@ -169,6 +192,8 @@ typedef struct
   ps_scene_runtime_state_t states[PS_SCENE_RUNTIME_STATE_MAX];
   ps_scene_runtime_visual_binding_t
     visual_bindings[PS_SCENE_RUNTIME_VISUAL_BINDING_MAX];
+  ps_scene_runtime_event_binding_t
+    event_bindings[PS_SCENE_RUNTIME_EVENT_BINDING_MAX];
   ps_scene_runtime_input_route_t
     input_routes[PS_SCENE_RUNTIME_INPUT_ROUTE_MAX];
   ps_scene_runtime_variable_t variables[PS_SCENE_RUNTIME_VARIABLE_MAX];
@@ -206,6 +231,7 @@ typedef struct
   uint32_t descriptor_validate_count;
   uint32_t descriptor_state_count;
   uint32_t descriptor_visual_binding_count;
+  uint32_t descriptor_event_binding_count;
   uint32_t descriptor_input_route_count;
   uint32_t descriptor_variable_count;
   uint32_t descriptor_guard_count;
@@ -223,6 +249,9 @@ typedef struct
   uint32_t transition_miss_count;
   uint32_t input_route_match_count;
   uint32_t input_route_miss_count;
+  uint32_t event_dispatch_count;
+  uint32_t event_dispatch_reject_count;
+  uint32_t last_event_binding_index;
   uint32_t guard_evaluate_count;
   uint32_t guard_pass_count;
   uint32_t guard_reject_count;
@@ -274,6 +303,15 @@ uint32_t PS_SceneRuntime_EnterStateScene(void);
 void PS_SceneRuntime_ExitStateScene(void);
 uint32_t PS_SceneRuntime_StateSceneActive(void);
 uint32_t PS_SceneRuntime_StateIndex(void);
+uint32_t PS_SceneRuntime_StateRevision(void);
+uint32_t PS_SceneRuntime_SceneActivation(void);
+uint32_t PS_SceneRuntime_StateActivation(void);
+uint32_t PS_SceneRuntime_TimerConfiguration(uint32_t binding_index,
+                                          uint32_t *scope,
+                                          uint32_t *start_policy,
+                                          uint32_t *delay_ms);
+uint32_t PS_SceneRuntime_TakeTimerAction(uint32_t *binding_index,
+                                       uint32_t *kind);
 uint32_t PS_SceneRuntime_StateFocusIndex(void);
 uint32_t PS_SceneRuntime_InteractionMode(void);
 uint32_t PS_SceneRuntime_InactiveRoute(void);
@@ -285,6 +323,10 @@ const ps_scene_render_model_t *PS_SceneRuntime_ResolveStateSceneRenderModel(
 uint32_t PS_SceneRuntime_HandleStateSceneInput(
   uint32_t logical_event,
   uint32_t input_id);
+uint32_t PS_SceneRuntime_StateEntryTimerDelay(
+  uint32_t binding_index,
+  uint32_t *delay_ms);
+uint32_t PS_SceneRuntime_HandleStateSceneEvent(uint32_t binding_index);
 uint32_t PS_SceneRuntime_TakeSfxRequest(uint32_t *cue_index);
 uint32_t PS_SceneRuntime_TakeShellExitRequest(void);
 const ps_scene_waiting_visual_t *PS_SceneRuntime_ResolveStateSceneWaitingVisual(

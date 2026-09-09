@@ -20,6 +20,16 @@ Recommended baseline owners:
 | `thSensor` | sensor bus, sensor policy, health publication |
 | `thComm` | BLE/NINA module, communication UART, communication policy |
 
+Current HW6 reconciliation: package-authored STATE waiting visuals do not add
+an owner or queue and do not require a focus/cursor element. `thRuntime`
+publishes the bounded logical descriptor, `thDisplay` exclusively composes and
+executes awake GPDMA or STOP2 LPBAM presentation, and `thPower` exclusively
+admits and enters STOP2. Evidence `EV-HW6-20260903-P1-STATEWAITGENERAL-097`
+proved real LPBAM work for a focusless four-frame package visual: edge
+request/run `2/2`, `91` queue nodes, DMA `CBR1=0`, and two completed STOP2
+entries. The cursor-specific probe-version paragraphs below are retained as
+historical progression rather than current capability limits.
+
 ---
 
 ## Queue Topology Baseline

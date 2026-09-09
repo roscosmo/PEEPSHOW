@@ -45,7 +45,9 @@ Does not define:
 
 ## Core Principle
 
-Packages do not own threads, RTOS objects, timers, queues, interrupts, or hardware loops.
+Packages do not own threads, RTOS objects, hardware timers, queues, interrupts,
+or hardware loops. Logical timers have declared package/scene/instance/state
+owners for lifetime and routing; the Engine owns their execution.
 
 Packages express:
 
@@ -82,9 +84,13 @@ Runtime logic is organized as:
 
 ```text
 package
+  package-session timers / event handlers
   scenes[]
+    scene timers / independent event handlers
+    entity/behavior instances with local timers / event handlers
     state graphs / sequence timelines / bounded programs
       states / substates
+        state-activation timers
         transitions
           guards
           bounded action lists
@@ -93,6 +99,12 @@ package
 Authoring tools may present richer editors, hierarchy, visual scripting, dialogue trees, map triggers, pet behavior trees, or scene timelines.
 
 Compiled package output must reduce those forms to bounded PeepOS runtime logic primitives.
+
+This is the complete contract model, not the current executable subset. The
+current STATE timer implementation supports state-entry transition events and
+scene-owned one-shots with independent handlers and explicit timer actions.
+Host checks pass; target expiry/STOP2 verification remains pending. Instance
+and package-session scopes follow.
 
 Rules:
 
@@ -354,6 +366,90 @@ Rules:
 - hardware faults are not ordinary gameplay events
 - required Platform primitive failure routes through Engine lifecycle and Platform diagnostics
 
+Executable STATE sources use symbolic event bindings:
+
+```text
+event_binding:
+  binding_id
+  event_type
+  configuration
+```
+
+Routes reference `binding_id`; they never reference an ISR, RTOS object,
+peripheral instance, or hardware callback. The target profile publishes the
+available `event_type` values and their bounded configuration schemas.
+
+The state-scoped executable non-input binding is
+`time.state_entry_elapsed`. Its configuration contains one `delay_ms` value.
+It is armed when its owning state activation is atomically committed, fires once,
+and is cancelled when that state activation is left. Re-entering the same
+state creates a new activation and rearms the binding. A stale event from an
+earlier state activation must be rejected.
+
+`time.scene_elapsed` is scene-owned and survives those state activations.
+Its `start_policy` is `scene_entry` (default) or `action`. Its sole independent
+handler executes from any current state; omitting both target fields means
+actions only. Existing input/state-timer routes still require a destination.
+Start/Restart/Cancel actions reference scene timers by binding ID. The first
+executable handler subset permits variable, render-request, SFX, shell-exit,
+and timer actions without a destination; element mutations require an explicit
+target state, and direct scene replacement retains its SFX-only restriction.
+
+For deterministic delivery, PeepOS completes physical wake and owner recovery
+before delivering the timer event. Due timers are ordered by logical deadline,
+then compiled owner/binding order for ties. Each event completes one bounded
+reactive transaction before the next event is considered.
+
+### Timer ownership and independent handlers
+
+The agreed scoped timer model is defined by
+[[Time_And_Power_Intent_API_Contract]]. Timer lifetime, start policy, clock
+basis, and expiry handler are separate declarations. A handler's location or
+optional state guard must not implicitly change the timer's owner.
+
+- state-activation timers end on that state exit
+- scene timers survive state and selection changes within the same scene instance
+- entity/behavior timers belong to each live instance, not a prefab definition
+- package-session timers survive scene changes but end when the package stops
+
+The Engine resolves timer references to bounded owner-local slots and checks
+owner and arm identities before delivery. Reused state IDs, scene IDs, or
+entity slots must not admit an event from an earlier activation.
+
+An independent event handler is a declared event entry point with guards and
+a bounded action list. It is evaluated when the event arrives at its live
+owner, regardless of the scene's current selection/state unless an explicit
+guard restricts it. It need not declare a destination state or scene.
+
+For the executable scene-timer increment, each timer expiry binding resolves to one
+declared handler. The Engine does not also send it through the current-state
+transition table or broadcast it to unrelated instances. Explicitly authored
+state-entry transition bindings retain their existing routing.
+
+Handler rules:
+
+- no event arrival means no handler work; an independent branch creates no
+  background loop, task, or separately scheduled runtime
+- guards and actions use the same validation, cost limits, and transaction
+  rules as existing reactive logic
+- false guards consume the one-shot event without an implicit retry
+- state/scene transitions occur only when explicitly requested and must meet
+  the existing destination and action restrictions
+- action-only variable or visual changes preserve state activation and scene
+  lifetime; rendering revisions must not be treated as timer-owner identity
+- Start on an armed timer preserves its deadline; Restart replaces the arm;
+  Cancel invalidates its pending expiry
+- the current event transaction commits before another event runs; owner/arm
+  validity is rechecked before each later delivery
+- scene replacement or instance removal during a handler invalidates contained
+  timers and queued events before further delivery
+
+This allows a scene countdown to expire while menu states change, and allows
+an expiry to update a value without manufacturing a self-transition. Prefab
+behavior lowers to the same tables with distinct references per instance.
+Independent handlers do not introduce an additional scene type or relax the
+profile's reactive cadence and power limits.
+
 ---
 
 ## Guards And Expressions
@@ -398,6 +494,7 @@ Allowed action categories:
 - request audio cue or BBB pattern through [[Audio_API_Contract]]
 - request save/settings read or write through [[Package_Save_Settings_API_Contract]]
 - request delayed event, calendar schedule, cadence, reactive waiting visual, or power intent through [[Time_And_Power_Intent_API_Contract]]
+- start, restart, or cancel a compiler-declared logical timer where supported
 - request or release sensor context through [[Sensor_API_Contract]]
 - request communication session/message behavior through [[Communication_API_Contract]]
 - emit package diagnostics through [[Diagnostics_API_Contract]]
@@ -551,6 +648,12 @@ Required checks:
 - action table length and cost are bounded
 - expression cost is bounded
 - timer cadence and catch-up policy are valid
+- timer owner, start policy, clock basis, handler reference, and lifecycle are
+  supported by the selected profile
+- independent handlers have bounded guards/actions and unambiguous event
+  routing; a destination is required only for an explicit transition
+- instance-local timer/event references cannot alias across live instances,
+  and total limits account for the maximum instance count
 - variable size and persistence class are valid
 - event queue bounds are valid
 - capability use is declared
@@ -603,6 +706,13 @@ Any generated artifact containing these constructs must fail internal safety ver
 14. suspend/resume during active runtime logic preserves or reconstructs package state according to declared persistence classes.
 15. package logic cannot receive hardware owner faults as normal gameplay branches.
 16. digital twin replay of a fixed input/time/sensor trace produces identical state and diagnostics output.
+17. a scene-owned timer survives menu state changes and invokes its independent handler once.
+18. an action-only handler updates state data or presentation without re-entering a state or rearming its timers.
+19. state-entry transition bindings retain their cancellation/re-entry behavior when scoped timer support is added.
+20. identical prefab-local timer names resolve independently for two live instances; removal and slot reuse reject stale expiry events.
+21. explicit cancellation, restart, or scene replacement invalidates old queued timer events before later delivery.
+22. false handler guards consume the one-shot expiry without repeated evaluation or hidden rearming.
+23. unsupported owner scopes and independent handlers fail export for the current executable profile.
 
 ---
 

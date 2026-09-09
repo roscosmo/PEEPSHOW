@@ -1,9 +1,10 @@
 set pagination off
 set $cp = &g_ps_hw6_clock_policy_probe
 set $rt = &g_ps_hw6_rtos_probe
-printf "--- HW6 clock policy scaffold ---\n"
+printf "--- HW6 clock policy ---\n"
 printf "api/apply/restore/status = %u / %u / %u / 0x%x\n", $cp->api_version, $cp->apply_count, $cp->restore_count, $cp->last_status
 printf "request/selected/current/caps = %u / %u / %u / 0x%x\n", $cp->requested_profile, $cp->selected_profile, $cp->current_profile, $cp->active_capabilities
+printf "audio mixer profile override = %u\n", g_ps_hw6_clock_audio_mix_profile_override
 printf "requester active/aggregated = 0x%x / 0x%x\n", $cp->requester_active_mask, $cp->aggregated_capabilities
 printf "requester caps P/A/I/D/S/ST/C/UI/RT = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $cp->requester_capabilities[0], $cp->requester_capabilities[1], $cp->requester_capabilities[2], $cp->requester_capabilities[3], $cp->requester_capabilities[4], $cp->requester_capabilities[5], $cp->requester_capabilities[6], $cp->requester_capabilities[7], $cp->requester_capabilities[8]
 printf "requester stat P/A/I/D/S/ST/C/UI/RT = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\n", $cp->requester_status[0], $cp->requester_status[1], $cp->requester_status[2], $cp->requester_status[3], $cp->requester_status[4], $cp->requester_status[5], $cp->requester_status[6], $cp->requester_status[7], $cp->requester_status[8]
@@ -34,10 +35,10 @@ printf "usb clk/vdd/hsi48/shsi = %u / %u / %u / %u\n", $cp->usb_clock_enabled, $
 printf "pll1/pll2/pll3 ready   = %u / %u / %u\n", $cp->pll1_ready, $cp->pll2_ready, $cp->pll3_ready
 printf "kernel usb/sai/ospi Hz = %u / %u / %u\n", $cp->usb_kernel_hz, $cp->sai1_kernel_hz, $cp->ospi_kernel_hz
 printf "profile masks supported/scaffold = 0x%x / 0x%x\n", $cp->supported_profile_mask, $cp->scaffold_profile_mask
-printf "profiles: UNKNOWN=0 BOOT_RECOVERY=1 REACTIVE_BASE=2 REACTIVE_BURST=3 REALTIME_BALANCED=4 IO_HIGH=5 STOP_PREP=6\n"
-printf "caps: USB=0x1 OCTOSPI=0x2 SAI=0x4 DISPLAY=0x8 RT=0x10 REACTIVE=0x20 LPBAM_DISPLAY=0x40\n"
+printf "profiles: UNKNOWN=0 BOOT_RECOVERY=1 REACTIVE_BASE=2 REACTIVE_BURST=3 REALTIME_BALANCED=4 IO_HIGH=5 STOP_PREP=6 REALTIME_HIGH=7\n"
+printf "caps: USB=0x1 OCTOSPI=0x2 SAI=0x4 DISPLAY=0x8 RT=0x10 REACTIVE=0x20 LPBAM_DISPLAY=0x40 AUDIO_MIX=0x80\n"
 printf "domains: USB=0x1 PLL2_OCTOSPI=0x2 PLL2_SAI=0x4 DISPLAY=0x8 RT=0x10 REACTIVE=0x20 LPBAM_DISPLAY=0x40\n"
-printf "stages: IDLE=0 SELECT=1 SYSCLK_IO_HIGH=2 USB_ON=3 RESTORE_BASE=4 USB_OFF=5 SYSTICK=6 COMPLETE=7 REQUESTER=8 RESOLVE=9 PLL2_ON=10 PLL2_OFF=11 PLL2_REARM=12 SAI_ON=13 SAI_OFF=14 STOP_VERIFY=15\n"
+printf "stages: IDLE=0 SELECT=1 SYSCLK_IO_HIGH=2 USB_ON=3 RESTORE_BASE=4 USB_OFF=5 SYSTICK=6 COMPLETE=7 REQUESTER=8 RESOLVE=9 PLL2_ON=10 PLL2_OFF=11 PLL2_REARM=12 SAI_ON=13 SAI_OFF=14 STOP_VERIFY=15 REACTIVE_BURST=16 REALTIME_BALANCED=17 REALTIME_HIGH=18\n"
 printf "STOP2 fail bits: REQUESTERS=0x1 SAI_GATE=0x2 SAI_RESET=0x4 PLL2_RDY=0x8 PLL2_OUT=0x10 PLL3_RDY=0x20 HSI48=0x40 SHSI=0x80 USB_GATE=0x100 VDDUSB=0x200\n"
 printf "audio clock reasons: NONE=0 REACTIVE_SFX=1 REALTIME_MIXER=2 RELEASE=3\n"
 printf "storage clock reasons: NONE=0 MSC_EXPORT=1 MSC_RECLAIM=2 FLASH_INIT=3 RELEASE=4 ATTACH=5 POST_STOP_RESUME=6\n"
