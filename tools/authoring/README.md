@@ -2,6 +2,15 @@
 
 This directory contains the host-side authoring model and compiler pipeline.
 
+Scene-owned object development is isolated in `peepshow_authoring/scene_objects.py`.
+It validates an objects/states fragment and provides pure host semantics plus
+non-writing migration plans. It is not wired into API 38, preview or egg export;
+do not replace project scenes with its returned version-2 candidates yet.
+`schemas/authoring/scene-object-model-v2.schema.json` describes that fragment,
+not a complete version-2 scene or hardware capability. See
+`docs/03 Engine API/Scene_Object_Executable_Design.md` for the implementation
+boundary and coordinate/mask semantics.
+
 The first implemented subset supports editable `.peepproj` directories with
 one or more `STATE_SCENE` source files. It validates stable IDs, bounded scene
 tables, symbolic input routes, retained render elements, reactive waiting

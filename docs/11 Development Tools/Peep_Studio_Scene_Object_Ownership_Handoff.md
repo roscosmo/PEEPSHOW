@@ -1,6 +1,8 @@
 # Peep Studio Scene Object Ownership Handoff
 
-Status: shared backend integrated, validated and committed on main; executable representation proposed; scene-object migration unimplemented.
+Status: shared baseline committed; GUI representation review accepted;
+development-only object/migration primitives host-tested. Service, full scene
+schema, executable and firmware integration remain pending.
 
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. This handoff coordinates
 work; it does not allocate executable schema fields, capability IDs, or opcodes.
@@ -95,17 +97,18 @@ for device acceptance. Scene-object acceptance cases remain NOT RUN.
 2. Completed: the reviewed shared-backend baseline and matching public example
    were imported, validated and committed on main at the integration commit
    above; no unrelated UI/firmware/workbench content was imported.
-3. Agree the source schema, executable discriminator, action addressing, and
-   capability reporting together before either branch implements those fields.
+3. Reviewed: GUI found no architectural blocker in the executable proposal.
+   Its four clarifications are recorded in the executable design. Full service
+   and byte-level contracts are still to be frozen during implementation.
 4. The OS agent implements a bounded end-to-end backend/firmware increment and
    provides fixtures, validation results, and a capability handoff.
 5. Merge that backend increment from main into GUI. The GUI agent implements
    editing/preview controls against the actual shared capability, then reports
    authoring-to-device acceptance results.
 
-Compatibility integration is complete. Do not begin competing schema
-implementations while the executable representation remains open. Documentation and acceptance
-planning can proceed now; UI layout planning and unrelated GUI work can continue.
+Compatibility integration and GUI representation review are complete. OS owns
+the shared implementation; do not begin competing schema implementations. GUI
+layout planning and unrelated UI work can continue.
 
 ## GUI Review Decisions
 
@@ -180,10 +183,10 @@ control are stable. Grouping must not change lifetime or playback. Prefab
 expansion must provide distinct instance IDs and local state; instance timer
 support requires its own advertised capability, not an assumption.
 
-## Remaining Representation Agreement
+## Representation Review and Implementation
 
-The concrete proposal is [[Scene_Object_Executable_Design]]. Review this before
-implementing UI migration or changing shared source fields. It proposes:
+The reviewed proposal is [[Scene_Object_Executable_Design]]. GUI found no
+architectural blocker and approved OS proceeding. Its design specifies:
 - Explicit scene source version 2, stable object IDs, and sparse state overrides.
 - Object-targeted persistent actions without destination-state addressing.
 - A new executable version with explicit scene execution models, preserving
@@ -193,20 +196,19 @@ implementing UI migration or changing shared source fields. It proposes:
 - Explicit migration preview/apply and version-aware service projections, while
   retaining API 38 baseline behavior, placement commands and `build_issues`.
 
-Field names, executable layout and capability allocations remain proposals;
-there are no newly available commands or numeric wire IDs. The first increment
-does not include groups, prefabs or explicit playback-control commands. GUI can
-continue unrelated UI work while OS owns the coordinated shared implementation.
+The four GUI clarifications are now explicit: fallback frames do not mask clips;
+static selections have separate set/clear semantics; relative dx/dy mean right/up
+while absolute coordinates stay right/down and movement clamps whole bounds;
+overrides clear individual axes; mixed-scene service operations must check model
+and command capabilities. Authored clip binding must not create private state
+waiting records and is distinct from deferred runtime clip assignment.
 
-The GUI agent has agreed the ownership/lifecycle model and supplied the mapping
-above. The next joint review is the executable representation, not another
-request to approve those same semantics:
-- Source version/migration selection and retention of legacy source semantics.
-- Executable discriminator and target capability negotiation.
-- Stable object/clip identity and action target addressing without a destination state.
-- Bounded storage and shared animation scheduling representation.
-- Service commands and structured diagnostics consumed by Studio.
-- Resolved shared-file baseline and active ownership during implementation.
+Development source fields/operations are implemented only in the isolated object
+module and fragment schema. There are no newly available service commands,
+capabilities or numeric wire IDs. The first increment does not include groups,
+prefabs or runtime playback-control commands. GUI enables editing based on
+delivered per-model capabilities, never the service API number alone. Preserve
+undo/redo and reference-safe asset edits along with existing draft/build behavior.
 
 Do not allocate new wire IDs or implement a parallel runtime model in TypeScript.
 The shared backend remains validation/compiler authority and the preview must
@@ -215,9 +217,35 @@ backend capability is present.
 
 ## Completion Evidence
 
+### Development Object Foundation
+
+On top of main `abe38bc` (executable design checkpoint):
+- Added `scene_objects.py`: object/state fragment validation; pure object action
+  staging and visual resolution; independent-axis override clearing; migration
+  preview/materialization with content-revision checks. No project writes.
+- Added `scene-object-model-v2.schema.json`: fragment definitions, not the full
+  scene schema or target admission contract. Structural field-set parity is
+  tested; a general JSON Schema validator was not added or run.
+- Added 24 host regressions covering masks, frame continuity at supplied times,
+  underlying ordered movement/clamping, axis conventions, independent clearing,
+  malformed input, shared-asset instance separation and migration restrictions.
+- Full authoring suite: 172 tests passed, including existing native tests;
+  target-profile generated-header check passed.
+- Service API remains 38. Legacy egg output remains unchanged in the regression
+  fixture. The current project loader/export path rejects a version-2 candidate.
+- No firmware, compiler, service, preview, examples or workbench changed.
+  No full ARM build or hardware test was needed/performed for this host-only work.
+
+These pure-function tests do not complete O01-O10, integrate a real scene timer,
+or prove preview/LPBAM scheduling. Production source loading/save/preview and
+transactional migration service commands are next, followed by binary/firmware
+integration and the recorded device acceptance cases. Existing example projects
+stay legacy fixtures until that path is complete; no additional GUI design
+approval is required to start the directly scoped next implementation work.
+
 Record host tests and device results separately. A preview phase-continuity pass
 does not prove autonomous playback or STOP2 behavior. Validate failed builds,
 legacy packages, and unsupported-capability errors as well as the happy path.
 Concrete acceptance cases are in [[Scene_Object_Ownership_Acceptance_Plan]],
-under the ownership contract. No implementation or hardware pass is claimed
-by this documentation checkpoint.
+under the ownership contract. Only the development host evidence above is
+claimed here; no end-to-end scene-object or hardware pass is claimed.

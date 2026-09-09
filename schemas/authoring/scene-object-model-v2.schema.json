@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://peepshow.dev/schema/authoring/scene-object-model-v2.schema.json",
+  "title": "Scene object placement fragment V2 (development only)",
+  "$comment": "Objects/states fragment only, not a full STATE scene schema or advertised target capability. Reference integrity, geometry, canvas bounds and clip compatibility require shared semantic validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["objects", "states"],
+  "properties": {
+    "objects": {"type": "array", "items": {"$ref": "#/$defs/object"}},
+    "states": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/state"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$"},
+    "coordinate": {"type": "integer", "minimum": 0},
+    "int32": {"type": "integer", "minimum": -2147483648, "maximum": 2147483647},
+    "defaults": {
+      "type": "object", "additionalProperties": false,
+      "required": ["x", "y", "visible"],
+      "properties": {
+        "x": {"$ref": "#/$defs/coordinate"}, "y": {"$ref": "#/$defs/coordinate"},
+        "visible": {"type": "boolean"}, "visual_ref": {"$ref": "#/$defs/id"}
+      }
+    },
+    "object": {
+      "type": "object", "additionalProperties": false,
+      "required": ["object_id", "kind", "width", "height", "z_order", "layer", "defaults"],
+      "properties": {
+        "object_id": {"$ref": "#/$defs/id"},
+        "kind": {"enum": ["sprite", "line", "outline_rect", "filled_rect", "circle", "ellipse", "filled_circle", "filled_ellipse"]},
+        "width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1},
+        "z_order": {"type": "integer", "minimum": 0, "maximum": 255},
+        "layer": {"enum": ["BACKGROUND", "SCENE", "UI"]},
+        "focus_role": {"enum": ["none", "focus"]},
+        "line_direction": {"enum": ["down_right", "up_right"]},
+        "animation_ref": {"$ref": "#/$defs/id"},
+        "defaults": {"$ref": "#/$defs/defaults"}
+      },
+      "allOf": [
+        {"if": {"properties": {"kind": {"const": "sprite"}}},
+         "then": {"properties": {"defaults": {"required": ["visual_ref"]}}},
+         "else": {"not": {"anyOf": [{"required": ["animation_ref"]}, {"properties": {"defaults": {"required": ["visual_ref"]}}, "required": ["defaults"]}]}}},
+        {"if": {"not": {"properties": {"kind": {"const": "line"}}}},
+         "then": {"not": {"required": ["line_direction"]}}}
+      ]
+    },
+    "override": {
+      "type": "object", "additionalProperties": false,
+      "required": ["object_ref"],
+      "anyOf": [{"required": ["x"]}, {"required": ["y"]}, {"required": ["visible"]}, {"required": ["visual_ref"]}],
+      "properties": {
+        "object_ref": {"$ref": "#/$defs/id"},
+        "x": {"$ref": "#/$defs/coordinate"}, "y": {"$ref": "#/$defs/coordinate"},
+        "visible": {"type": "boolean"}, "visual_ref": {"$ref": "#/$defs/id"}
+      }
+    },
+    "state": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state_id", "display_name", "object_overrides"],
+      "properties": {
+        "state_id": {"$ref": "#/$defs/id"}, "display_name": {"type": "string", "minLength": 1, "maxLength": 96},
+        "object_overrides": {"type": "array", "items": {"$ref": "#/$defs/override"}}
+      }
+    },
+    "action": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["kind", "object_ref"],
+         "anyOf": [{"required": ["x"]}, {"required": ["y"]}],
+         "properties": {"kind": {"const": "object.set_position"}, "object_ref": {"$ref": "#/$defs/id"}, "x": {"$ref": "#/$defs/int32"}, "y": {"$ref": "#/$defs/int32"}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "object_ref"],
+         "anyOf": [{"required": ["dx"]}, {"required": ["dy"]}],
+         "properties": {"kind": {"const": "object.move_by"}, "object_ref": {"$ref": "#/$defs/id"}, "dx": {"$ref": "#/$defs/int32"}, "dy": {"$ref": "#/$defs/int32"}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "object_ref", "visible"],
+         "properties": {"kind": {"const": "object.set_visibility"}, "object_ref": {"$ref": "#/$defs/id"}, "visible": {"type": "boolean"}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "object_ref", "frame_ref"],
+         "properties": {"kind": {"const": "object.set_frame"}, "object_ref": {"$ref": "#/$defs/id"}, "frame_ref": {"$ref": "#/$defs/id"}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "object_ref"],
+         "properties": {"kind": {"const": "object.clear_frame"}, "object_ref": {"$ref": "#/$defs/id"}}}
+      ]
+    }
+  }
+}

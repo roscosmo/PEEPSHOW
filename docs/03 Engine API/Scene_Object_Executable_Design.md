@@ -1,6 +1,8 @@
 # Scene Object Executable Design
 
-Status: representation proposal for OS/GUI review; NOT implemented or available.
+Status: GUI representation review accepted with the clarifications below;
+development-only object source/migration primitives implemented. Full scene,
+service, executable and firmware integration remain unavailable.
 
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. Tests:
 [[Scene_Object_Ownership_Acceptance_Plan]]. Coordination:
@@ -10,7 +12,71 @@ commands to run or allocated wire IDs.
 
 Baseline: main `34c76bba4bcf59ab03d8668dca329f2338caf33f`, incorporating the
 reviewed shared backend from GUI `57f7030cc65c09b434223e405c12b67e211b99a0`.
-Service API is 38. The 148-test integration pass does not test this new model.
+Service API remains 38. The 148-test baseline integration pass does not test this
+new model; development-only results are recorded separately in the handoff.
+
+## GUI Review Clarifications
+
+The GUI review found no architectural blocker. The following resolves its four
+integration questions before the new service contract is frozen:
+
+1. `defaults.visual_ref` is the object's authored static fallback, not a mask.
+   When `animation_ref` is present, the animation supplies the displayed frame
+   immediately. Persistent static selection is a separate nullable live property,
+   initially unset. `object.set_frame` sets it; `object.clear_frame` clears it.
+   A state's `visual_ref` override masks both. Removing that state override
+   reveals the persistent selection if set, otherwise the current animation
+   phase, otherwise the authored static fallback. Neither mask changes clip time.
+2. Absolute placement remains top-left-origin pixels: positive X right, positive
+   Y down. `object.set_position` uses those existing coordinates. Relative
+   `object.move_by` uses `dx` positive right and `dy` positive up; apply
+   `x += dx`, `y -= dy` to underlying coordinates, not displayed overrides.
+   After each ordered position action, clamp X to `[0, canvas_width-width]` and
+   Y to `[0, canvas_height-height]`. Subsequent actions read that clamped result.
+   Use overflow-safe intermediate arithmetic. Defaults/overrides outside the
+   canvas are authoring errors; do not silently clamp source placement edits.
+3. Version-2 overrides and clearing address `x` and `y` independently. Omitting
+   one axis preserves it. Remove a sparse override record only when it controls
+   no properties. Legacy `state_placement.clear_override` with `position` retains
+   its legacy paired behavior; it is not an implicit version-2 command adapter.
+4. Each future scene response declares its execution model, source version and
+   supported commands. Derived legacy-shaped views are read-only projections,
+   not writable version-1 source. The backend checks the scene model as well as
+   the project revision before applying commands, including every command in a
+   mixed-scene transaction. A model mismatch rejects the transaction unchanged.
+   Studio enables version-2 editing from delivered per-model capabilities, not
+   from a higher service API number alone.
+
+Authored object clip binding is needed in increment 1 and writes `animation_ref`
+without creating per-state waiting records. This is distinct from deferred
+runtime clip-assignment/restart actions. Preserve draft save/preview, build
+issues, undo/redo and reference-safe asset edits during service integration.
+Asset deletion/replacement must account for object defaults, static overrides,
+frame actions and clip references, not only legacy render elements.
+
+## Development Boundary
+
+`tools/authoring/peepshow_authoring/scene_objects.py` implements object/state
+fragment validation, pure object-action staging/resolution, independent-axis
+clearing, and a non-writing migration plan/materialization API. Its schema is
+`schemas/authoring/scene-object-model-v2.schema.json`, a definitions/placement
+fragment, NOT a complete version-2 STATE scene schema. Graph, target admission,
+service integration, remaining-phase diagnostics and binary encoding are pending.
+
+The migration API consumes a validated legacy `ProjectBundle`, preserves IDs,
+and returns an in-memory scene candidate plus new immutable catalog clip records.
+It binds the preview to the normalized project's content hash and recomputes
+materialization, rather than trusting modified plan contents. It writes no
+project/catalog files. Static placement conversion needs no animation choice;
+animated conversion explicitly requires acceptance of scene-continuous playback
+starting at sequence step zero. Different state tracks and legacy destination
+mutations remain blocking issues instead of being guessed or discarded.
+
+Do not put a returned candidate into a working project yet: the production
+loader deliberately still rejects scene version 2, and service API 38 exposes
+none of these helpers. Full source loading/save/preview, migration commands,
+catalog transactions and export readiness will be connected as a subsequent
+coherent increment. This boundary preserves current Studio behavior meanwhile.
 
 ## First Executable Increment
 
@@ -38,7 +104,7 @@ Version 2 replaces per-state render models and waiting presentations with:
 | Scene `objects` | One definition per placed object, including hidden objects |
 | Object `object_id` | Stable scene-local authoring ID; preserve the old element ID during migration |
 | Object `kind`, layer, geometry and primitive settings | Existing render properties with their existing constraints |
-| Object `defaults` | Initial mutable `x`, `y`, `visible`, and static `visual_ref` where applicable |
+| Object `defaults` | Initial mutable `x`, `y`, `visible`, and fallback `visual_ref` where applicable; not a static animation mask |
 | Object `animation_ref` | Optional immutable clip reference using the existing asset animation catalog |
 | State `object_overrides` | Sparse records keyed by `object_ref`; only supplied properties are controlled |
 | Route/handler object action `object_ref` | Object in the current scene, independent of any destination state |
@@ -49,7 +115,7 @@ as derived and translate writes through the shared command implementation.
 States no longer require `render_model_ref` or `waiting_visual_ref` in version 2.
 Retain reactive-wait and interaction policy independently of object ownership.
 
-Illustrative fragment, not a complete scene or currently accepted JSON:
+Illustrative scene fragment, not a complete scene accepted by project loading:
 
 ```json
 {
@@ -80,9 +146,10 @@ object. Converting a legacy waiting sequence to a catalog clip requires exact
 frame order, duration, looping/settling behavior, and initial phase equivalence.
 If that cannot be represented within supported limits, migration needs a choice.
 
-Proposed action operations are `object.set_position`, `object.move_by`,
-`object.set_visibility`, and `object.set_frame`, each with `object_ref` and typed
-arguments. Their exact command/opcode allocations belong to implementation.
+Development source operations are `object.set_position`, `object.move_by`,
+`object.set_visibility`, `object.set_frame`, and `object.clear_frame`, each with
+`object_ref` and typed arguments. They are not service commands or wire opcodes.
+Exact service-command and opcode allocations belong to integration.
 Position operations may address either axis independently. Relative operations
 read underlying mutable coordinates, including earlier writes in the action list.
 The frame operation is a persistent static visual selection, not an animation
@@ -91,7 +158,8 @@ selection reveals the clip's current phase. An explicit clear operation must
 be representable; do not use an out-of-range frame as a sentinel in source.
 
 Neither persistent nor temporary frame selection changes the clip clock.
-Clip assignment/restart controls remain increment 2. Existing legacy element
+Runtime clip assignment/restart controls remain increment 2. Authored object clip
+binding belongs to increment 1. Existing legacy element
 actions keep their destination-binding semantics on the legacy path.
 
 ## Executable Discrimination and Records
