@@ -53,6 +53,40 @@ The IMU defaults fully off unless a system, Engine, Reference Game, or diagnosti
 
 Failure is non-critical and recoverable. Features depending on motion input must degrade cleanly when IMU data is unavailable.
 
+### Initial PeepShow Feature Selection
+
+The usage list above is a hardware/architecture repertoire, not a request to
+enable every detector. The initial HW6 product subset is embedded steps and
+stable coarse orientation, following the read-only battery SOC work owned by
+`thPower`. Package semantics and exposure order are in [[Sensor_API_Contract]].
+
+Taps, shake, generic motion wake, free-fall, activity/inactivity, significant
+motion, embedded relative tilt and continuous motion streaming remain deferred
+and unrequested features remain off. Ordinary keychain transport must not be
+treated as an activation gesture simply because a hardware detector exists.
+
+Coarse 6D orientation, embedded relative tilt and continuous tilt input are
+different features. ST documents relative tilt as a change from an established
+orientation reference; it is not the six-face pose state or a continuous
+steering vector. The retained part is LIS2DUX12TR. See the
+[ST datasheet](https://www.st.com/resource/en/datasheet/lis2dux12.pdf) and
+[AN5909](https://www.st.com/resource/en/application_note/an5909-lis2dux12-ultralowpower-3axis-smart-accelerometer-with-antialiasing-filter-artificial-intelligence-and-advanced-digital-features-stmicroelectronics.pdf)
+for the distinct hardware functions; their existence is not FW0 validation.
+
+Observation and wake admission are separate. `thSensor` may provide admitted
+snapshots/events without arming `MPU_INT` as a package wake source. A future
+orientation wake context needs an active retained detector while the MCU
+sleeps, not IMU deep-power-down. Hardware candidate interrupts may precede
+software pose qualification, so both interrupt frequency and delivered-event
+frequency must be measured. Software dwell/hysteresis does not by itself
+prevent physical wakes.
+
+Package suspension withdraws its wake interests and unnecessary sampling;
+other admitted consumers and explicitly retained step contexts remain intact.
+Removing the final request returns to the validated off policy. None of this
+promotes the current `EVENT_ARMED` or `STEP_COUNTER` placeholders to valid
+STOP2 residency.
+
 ---
 
 ## Public Data Contract
@@ -165,3 +199,10 @@ STOP2 resident policy preserves the logical active IMU mode while selecting the 
 8. streaming sample mode - placeholder only; real register configuration remains open
 9. recovery after I2C/register fault
 10. graceful degradation when IMU is unavailable
+11. pending step proof: real counter increments and bounded reconciliation,
+    including wrap/recovery, not merely entry into a named owner state
+12. pending orientation proof: assembled-device axis mapping, stable pose
+    changes, ambiguous/moving samples and deterministic clear/rearm behavior
+13. before orientation wake promotion: measured raw interrupts, qualified
+    events, STOP2 residency and current during rest and ordinary keychain
+    transport, with all unrequested gesture sources disabled

@@ -146,6 +146,46 @@ The Engine may also support bounded procedural surfaces for advanced packages. P
 
 ---
 
+## Non-Empty STATE Scene Presentation
+
+The agreed HW6 STATE package rule, confirmed on 2026-09-09, is that an
+exported scene must not have an empty presentation. Every state in every
+exported `STATE_SCENE` must resolve to a render model containing at least one
+valid render element, within the existing target-profile maximum.
+
+This is a structural visual-object rule:
+
+- A placed, supported sprite, compiled text object or primitive can satisfy
+  it. An asset merely present in the asset catalog does not.
+- A logic state, route, exit node, timer or audio cue is not a render element.
+  Wiring an exit does not make an otherwise empty scene exportable.
+- A static scene with no animation remains valid. No focus/cursor element
+  is required. These are separate from the non-empty render-model rule.
+- The minimum counts valid retained render elements, not black pixels or
+  animation tracks; existing visibility and geometry rules still apply.
+- Check every included scene/state, not only the entry scene or the scene
+  currently open in the editor. An empty secondary scene can reject the
+  package before its populated entry scene is activated.
+
+Peep Studio may retain empty scenes as incomplete editing/saving drafts.
+Build/export readiness must report their empty state presentations as blocking
+errors before producing or replacing an installable `.egg`. The shared
+validator/compiler and compiled-package validation must agree with the native
+loader; a GUI-only check is insufficient. Do not silently omit scenes or
+insert synthetic visual objects to make a package pass.
+
+This decision retains firmware's non-empty presentation requirement. It
+supersedes the earlier investigation proposal to permit zero-element scenes.
+It does not introduce a mandatory exit route. Missing navigation is a separate
+authoring concern, and failure to present a shell error after a rejected
+package remains a separate firmware recovery defect.
+
+See [[Peep_Studio_Empty_Scene_Validation_Handoff]] for the reproduced failure,
+GUI-agent implementation scope and acceptance cases. That handoff is a
+documented requirement, not a claim that the shared validation fix is done.
+
+---
+
 ## Tilemap And Viewport Model
 
 Tilemaps are package assets, not runtime editor files.
