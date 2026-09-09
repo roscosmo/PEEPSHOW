@@ -1,8 +1,9 @@
 # Peep Studio Scene Object Ownership Handoff
 
 Status: GUI representation review accepted; full source envelope, migration/edit
-transactions and host preview connected in API 39. Executable encoding,
-firmware and autonomous display integration remain pending.
+transactions and host preview connected in API 39. Development-only V2 binary
+encoding/reading is implemented. Normal export, firmware and autonomous display
+integration remain unavailable.
 
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. This handoff coordinates
 work; it does not allocate executable schema fields, capability IDs, or opcodes.
@@ -387,3 +388,53 @@ Verification: 190 authoring tests passed, including existing native checks and
 18 connected scene-object integration tests. Target-profile generated-header
 check and `git diff --check` passed. No ARM build or hardware test was performed:
 the firmware is unchanged and cannot execute version-2 scenes yet.
+
+### Development Binary Increment
+
+On top of main `f2a7d9e`, the OS backend adds a separate development-only
+`compiler.build_development_egg_v2(bundle)` and
+`object_egg.parse_development_egg_v2(blob)`. Controlled source fixtures are
+migrated and encoded in tests without Studio UI. The reader consumes actual
+binary object/control records, not the API 39 host-preview annotations.
+
+Container version 2 explicitly distinguishes legacy and object-model scenes.
+New object/control tables and graph revision 7 preserve action ordering and
+reuse asset, animation and audio payloads. The development layout is
+`schemas/package/PeepPkg_V2_Development_Layout.md`; this records allocated
+wire values but does not grant HW6 runtime or LPBAM admission.
+
+GUI-facing API remains **39**. No service commands/capabilities, source schemas,
+normal export paths, examples, workbench or firmware are changed in this
+increment. Studio should continue its agreed capability-aware placement and
+inspection work. Do not connect the development builder to the export button.
+`SCENE_OBJECT_EXECUTABLE_UNAVAILABLE` remains the normal build result for V2.
+
+Tests include deterministic mixed-scene round trips, all five object actions,
+independent timer handlers, asset/audio reuse, default-reader rejection and
+malformed records with recomputed checksums. A bounded byte-corruption sweep
+checks that failures return format errors, not decoder crashes. These are host
+format checks, not a C decoder or device execution pass. Next: firmware decode,
+bounded object storage/actions, display handoff and hardware acceptance.
+
+Verification: 206 authoring tests passed, including native checks and 16
+development-format tests. Target-profile consistency and `git diff --check`
+passed. No ARM build or hardware test was performed; firmware is unchanged.
+
+### C Object Record Decoder Increment
+
+Added `ps_egg_object_decoder.h/.c` to the HW6 source build. This bounded,
+allocation-free module reads the new object/control chunks and validates their
+references against shared catalog bytes. Six native tests compare its actual
+decoded fields and malformed-input decisions with the independent Python
+record reader. The existing native loader test also verifies that a V2 fixture
+is still rejected without changing the active V1 context.
+
+Verification: **212 authoring tests pass**, including native tests. HW6 Debug
+build, target-profile consistency and `git diff --check` pass. No device test
+was performed: the decoder is not yet called by production loading or runtime.
+This does not prove full V2 package validation, live object execution or LPBAM.
+
+API **39**, source/service commands, GUI capabilities and ordinary export are
+unchanged. Keep V2 export unavailable. Remaining OS work: integrate complete
+container/scene/graph validation with the loader, implement the bounded live
+object bank and transactional actions, then display/awake/STOP2 continuity.

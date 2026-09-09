@@ -1,14 +1,18 @@
 # Scene Object Executable Design
 
 Status: GUI representation review accepted; source loading, migration/editing
-service and host scene-object preview implemented in service API 39. Executable
-encoding, firmware execution and autonomous display integration remain pending.
+service and host scene-object preview implemented in service API 39. A separate
+development V2 binary encoder/reader and a C object/control-record decoder are
+implemented; normal export, full firmware package integration, execution and
+autonomous display integration remain unavailable.
 
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. Tests:
 [[Scene_Object_Ownership_Acceptance_Plan]]. Coordination:
 [[Peep_Studio_Scene_Object_Ownership_Handoff]]. The agreed lifetime semantics
 remain authoritative. The source/service subset is documented in the handoff;
-executable layouts below are still proposals, not allocated wire IDs.
+the concrete development wire allocation is recorded in
+`schemas/package/PeepPkg_V2_Development_Layout.md`. Firmware admission and
+resource limits still require implementation and target evidence.
 
 Baseline: main `34c76bba4bcf59ab03d8668dca329f2338caf33f`, incorporating the
 reviewed shared backend from GUI `57f7030cc65c09b434223e405c12b67e211b99a0`.
@@ -63,8 +67,9 @@ clearing, and a non-writing migration plan/materialization API. Its schema is
 fragment. `state-scene-v2.schema.json` now describes the full source envelope.
 Project loading validates the object model and shared graph rules. Service API
 39 connects migration, transactional editing, save/reload and host preview,
-including per-object phase/residual diagnostics. Target admission, binary
-encoding and firmware integration remain pending.
+including per-object phase/residual diagnostics. Development binary encoding
+and independent reading are implemented separately; target admission, production
+export and firmware integration remain pending.
 
 The migration API consumes a validated legacy `ProjectBundle`, preserves IDs,
 and returns an in-memory scene candidate plus new immutable catalog clip records.
@@ -86,8 +91,9 @@ remain editable drafts and report `SCENE_OBJECT_EXECUTABLE_UNAVAILABLE` through
 Host preview reuses the graph/timer compiler and rasterizer through an internal
 legacy-shaped graph projection, restores symbolic object actions, and maintains
 live scene objects independently of that projection. It is explicitly labeled
-`host_scene_objects_not_firmware`. This tests host semantics, not a future binary
-decoder or STOP2/LPBAM execution. No new numeric wire IDs are allocated here.
+`host_scene_objects_not_firmware`. This tests host semantics, not the separate
+development binary reader or STOP2/LPBAM execution. The preview projection does
+not use the new wire records allocated in the development layout.
 
 ## First Executable Increment
 
@@ -175,6 +181,13 @@ actions keep their destination-binding semantics on the legacy path.
 
 ## Executable Discrimination and Records
 
+The development host increment implements the version strategy below using
+container version 2, `SCN2`, `OBJ2`/`OCT2` chunks 13/14, and object graph
+revision 7. Exact sizes, fields and validation are in
+`schemas/package/PeepPkg_V2_Development_Layout.md`. API 39 and its export
+restrictions are unchanged. Default readers reject these packages; the explicit
+development reader validates them from bytes without source-model annotations.
+
 Propose a new egg container version for object-model packages. Retain the
 existing envelope layout, directory, checksum/hash mechanisms, and immutable
 asset/audio encodings where compatible. New firmware accepts both versions;
@@ -205,10 +218,25 @@ All record sizes, offsets, counts, reserved bits and reference ranges are checke
 before publication. Unknown operations, property bits, models or capabilities
 are rejection reasons, not ignored extensions.
 
-Do not allocate numeric chunk types, enum values, capability bits or packed C
-structures in this document. Freeze them together with byte-level encoder/parser
-fixtures. The loader and installation preflight must share semantic validation;
+Numeric chunk/operation values are frozen in the development layout alongside
+encoder/parser fixtures, not duplicated here. C record decoding is implemented;
+whole-package integration and target capability admission remain next.
+The loader and installation preflight must share semantic validation;
 recognizing the container header is not proof that its scenes can run.
+
+`ps_egg_object_decoder.c` now decodes OBJ2/OCT2 through explicit little-endian
+reads, not packed-structure casts. It checks object definitions, state override
+partitions, all five object operations, referenced stable IDs, frame dimensions
+and looping clip references. It returns a borrowed immutable view only after
+both tables pass; failure clears the output. No mutable bank is allocated.
+
+This is a record decoder, not a V2 package validator. Container integrity,
+complete shared catalogs, scene/graph references, target capacity and display
+schedule admission remain the parent loader's responsibility. Wire ceilings
+bound decoder loops; they do not grant the larger host-format limits to HW6.
+The module is built but not called by the installer/runtime. Production V2
+rejection remains tested. Native byte/field parity and ARM compilation are not
+evidence of device execution, animation continuity or STOP2 behavior.
 
 ## Live Runtime and Display Ownership
 
