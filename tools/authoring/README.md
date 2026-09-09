@@ -2,6 +2,15 @@
 
 This directory contains the host-side authoring model and compiler pipeline.
 
+Scene-owned object development is isolated in `peepshow_authoring/scene_objects.py`.
+It validates an objects/states fragment and provides pure host semantics plus
+non-writing migration plans. It is not wired into API 38, preview or egg export;
+do not replace project scenes with its returned version-2 candidates yet.
+`schemas/authoring/scene-object-model-v2.schema.json` describes that fragment,
+not a complete version-2 scene or hardware capability. See
+`docs/03 Engine API/Scene_Object_Executable_Design.md` for the implementation
+boundary and coordinate/mask semantics.
+
 The first implemented subset supports editable `.peepproj` directories with
 one or more `STATE_SCENE` source files. It validates stable IDs, bounded scene
 tables, symbolic input routes, retained render elements, reactive waiting
@@ -129,12 +138,16 @@ Implemented operations:
 - `project.scene_thumbnails`
 - `project.audio_audition`
 - `project.preview_reset`
+- `project.preview_state`
+- `project.preview_scene_base`
 - `project.preview_input`
 - `project.preview_advance`
 
-`project.create` writes and loads a new `.peepproj` with one ordinary STATE
-scene, one entry state, and a Button B exit-to-shell route. The destination
-must not already exist. `project.load` starts a new monotonically increasing project revision. Every
+`project.create` writes and loads a new `.peepproj` with one blank STATE
+scene, one entry state, and no fabricated inputs or routes. It is an editable,
+previewable draft; visual content must be added before package export. The
+destination must not already exist. `project.load` starts a new monotonically
+increasing project revision. Every
 project operation must supply that revision; stale requests are rejected rather
 than being applied to a newer document.
 
@@ -149,7 +162,7 @@ It does not choose a destination or write an installable file. The V1 report
 marks the current HW6 development profile as `pending_validation` and
 `dev_only`; it does not claim shipping authority before target-profile closure.
 
-Service API version 27 exposes the selected HW6 profile and its deterministic
+Service API version 38 exposes the selected HW6 profile and its deterministic
 hash in `service.hello`, and provides deterministic selected-STATE-scene preview,
 direct STATE-to-STATE replacement, and a `state_scene_presentation` capability
 block in `service.hello`. A
@@ -157,8 +170,11 @@ reset names the scene to launch directly, an input operation supplies one
 logical source plus an optional lifecycle event kind, and an advance operation supplies explicit elapsed
 milliseconds. Every response contains the current compiled state, timeline,
 variables, and an exact `168 x 144` packed 1bpp framebuffer. Preview never
-reads source assets after reset: it builds and independently parses the `.egg`,
-then executes those validated package records.
+reads source assets after reset: it compiles an in-memory draft and independently
+parses its records. The explicit internal draft path allows empty presentations
+for editing; strict package build/export/inspection does not. `build_issues`
+reports export readiness separately from source `issues`. Scene-base preview
+omits state overrides and waiting visuals without changing the live preview.
 
 The canonical HW6 development limits live in
 `peepshow_authoring/target_profiles/hw6_fw0_development.json`. After changing
@@ -178,7 +194,8 @@ entry state, resets destination-local variables, and starts the destination
 timeline at its settled step.
 
 The exact preview accepts `RND2` package-backed masked 1bpp sprites plus line,
-outline rectangle, filled rectangle, circle, and ellipse elements. Package
+outline rectangle, filled rectangle, circle, ellipse, filled circle, and filled
+ellipse elements. Line direction is preserved in either diagonal direction. Package
 content may use `BACKGROUND`, `SCENE`, and `UI`; `OVERLAY` is system-owned.
 Route actions may atomically show/hide a destination element, move it within
 the 168x144 panel, or select a same-sized retained sprite frame. Visibility and

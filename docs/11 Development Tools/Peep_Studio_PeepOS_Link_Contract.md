@@ -100,15 +100,19 @@ state-resolved presentation of every exported STATE scene.
 
 See [[Rendering_API_Contract]] and
 [[Peep_Studio_Empty_Scene_Validation_Handoff]] for the exact failing egg,
-evidence, diagnostics and build/inspect/native parity tests. The GUI branch
-should add shared blocking build/export checks while keeping incomplete
-scene drafts editable and saveable. Empty visual content is not the same as
-missing an exit or having no animation/focus element.
+evidence, diagnostics and build/inspect/native parity tests. Service API 38
+implements shared blocking build/export checks and structured `build_issues`
+while keeping incomplete scene drafts editable, saveable, and previewable.
+Empty visual content is not the same as missing an exit or having no
+animation/focus element.
 
-This is a pending validation repair, not an implemented capability change.
 Current GUI eggs must be revalidated and rebuilt after correcting their empty
-scenes; successful install/container checks alone are not launch proof. The
-separate firmware launch-error recovery defect remains an OS follow-up.
+scenes; successful install/container checks alone are not launch proof. OS
+candidate preflight and boot/PLAY error recovery are implemented with native
+regression coverage. Main's integrated shared backend passed 148 host/native
+tests and the target-profile check with its retained firmware; the compatibility
+baseline and reproduction are recorded in
+[[Peep_Studio_Scene_Object_Ownership_Handoff]]. Target retest remains pending.
 
 ## Planned Device Inputs
 

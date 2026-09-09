@@ -1,11 +1,13 @@
 # Scene Object Lifetime and Control Contract
 
-Status: ownership direction approved; executable implementation pending.
+Status: ownership semantics agreed following GUI review; executable implementation pending.
 
 This contract defines the target model for scene-owned objects. It does not
 change the interpretation of existing eggs or advertise a new firmware
-capability. The detailed defaults below are the shared design baseline for
-OS/GUI review before freezing the executable schema and wire format.
+capability. The rules below incorporate the GUI review and agreed movement,
+override, and compatibility decisions. The source schema, executable
+discriminator, binary layout, and capability identifiers remain to be agreed
+before implementation; no new identifiers are allocated by this document.
 
 Related:
 - [[Authority_and_Invariants]]
@@ -14,6 +16,7 @@ Related:
 - [[Authoring_Project_Schema_Contract]]
 - [[State_Scene_World_Entity_and_Turn_Contract]]
 - [[Peep_Studio_Scene_Object_Ownership_Handoff]]
+- [[Scene_Object_Ownership_Acceptance_Plan]]
 
 ## Ownership
 
@@ -62,6 +65,18 @@ the override still controls the effective presentation until removed. Leaving
 a state removes only its overrides, revealing the current underlying values,
 not resetting the entire object to authored defaults.
 
+Relative movement reads and changes the underlying mutable position, not the
+effective overridden position. For example, authored `x=10`, an active override
+`x=100`, and a relative move of `+5` produce underlying `x=15`, displayed
+`x=100`. Leaving that override displays `x=15`. Subsequent relative actions in
+the same ordered transaction read the result of earlier actions. Position
+arithmetic and range validation must not depend on which state is rendering.
+
+Overrides apply per property. A visibility override does not freeze position,
+and an X-position override does not implicitly override Y. Adding an object to
+selected states means one scene object with base visibility false and visibility
+overrides for exactly those states, not one separately allocated object per state.
+
 Transactions have a deterministic order: evaluate guards against the current
 snapshot, execute the ordered action list, change logical state if requested,
 replace the exiting/entering states' override sets, then publish one resulting
@@ -74,6 +89,13 @@ using editor order, hash order, or whichever thread happens to run first.
 Ordered actions within one transaction may write the same property; the last
 action in that declared order wins. Hierarchical override priority is deferred
 until explicitly specified.
+
+The older authoring proposal "deepest state wins" is deferred for the new
+object model. Parent/child states may control different properties, but
+simultaneously active writes to the same property are a build conflict even
+when their values happen to agree. Mutually exclusive states may override the
+same property because their overrides cannot be active together. Existing
+legacy behavior must not be changed as a side effect of this restriction.
 
 ## Animation Continuity
 
@@ -177,6 +199,15 @@ classified as temporary overrides, persistent actions, or intentional playback
 changes; ambiguous behavior must be reported, not guessed. Preserve legacy
 compilation until the new profile is supported end to end.
 
+In particular, existing actions that mutate a destination state's visual
+binding must not automatically become persistent scene-object actions. Existing
+per-state waiting-animation records must not automatically become temporary
+object playback tracks or be collapsed merely because they reference the same
+asset. Projects using different animations per state retain legacy compilation
+unless the author explicitly chooses a supported conversion. A conversion
+requiring temporary animated override tracks is unavailable in the first
+increment; report that limitation without dropping content or claiming success.
+
 Required acceptance cases:
 - Menu movement preserves a base animation's phase and remaining time awake and across STOP2.
 - Object mutations survive unrelated state transitions; override exit reveals the current underlying value.
@@ -191,3 +222,8 @@ Required acceptance cases:
 These are acceptance requirements, not recorded test passes. Implement and
 validate in increments without raising memory, clock, or autonomous-display
 budgets implicitly.
+
+Concrete fixtures, numerical expectations, implementation increments, and
+evidence requirements are in [[Scene_Object_Ownership_Acceptance_Plan]]. All
+cases start as NOT RUN. GUI design agreement is not compiler, preview, or
+device validation.
