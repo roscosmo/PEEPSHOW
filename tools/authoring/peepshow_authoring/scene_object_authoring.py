@@ -22,7 +22,20 @@ STATE_MANAGEMENT_COMMANDS = (
     "state.add", "state.create", "state.delete", "state.rename", "state.set_entry",
     "editor.state_graph.set_node_position", "editor.state_graph.set_entry_layout",
 )
-COMMON_SCENE_COMMANDS = ("scene.rename", "project.set_entry_scene", *STATE_MANAGEMENT_COMMANDS)
+LOCAL_GRAPH_COMMANDS = (
+    "variable.add", "variable.update", "variable.delete",
+    "input_action.add", "input_action.update", "input_action.delete",
+    "event_binding.add", "event_binding.update", "event_binding.delete",
+    "event_handler.add", "event_handler.update", "event_handler.delete",
+    "route.create_trigger", "route.rebind_trigger", "route.add", "route.delete",
+    "route.set_action_ref", "route.set_event_ref", "route.set_sources", "route.set_target",
+    "route.guard.add", "route.guard.delete", "route.guard.move", "route.set_guard",
+    "scene.set_reactive_wait_default", "scene.set_interaction_policy", "scene.set_joystick_policy",
+    "editor.state_graph.set_route_layout", "editor.state_graph.delete_system_exit",
+)
+COMMON_SCENE_COMMANDS = (
+    "scene.rename", "project.set_entry_scene", *STATE_MANAGEMENT_COMMANDS, *LOCAL_GRAPH_COMMANDS,
+)
 
 
 def execution_model(scene):
@@ -122,6 +135,15 @@ def check_command_model(scenes, command):
                         "audio_asset.upsert", "audio_asset.delete", "audio_cue.upsert", "audio_cue.delete",
                         "scene.add", "project.set_entry_scene"}:
             raise ProjectCommandError("COMMAND_EXECUTION_MODEL_MISMATCH", f"'{kind}' has not been integrated with mixed scene models")
+
+    if scene is not None and scene.get("schema_version") == 2 and kind in LOCAL_GRAPH_COMMANDS:
+        destination = command
+        if kind == "route.add":
+            destination = command.get("route")
+        elif kind in ("event_handler.add", "event_handler.update"):
+            destination = command.get("event_handler")
+        if isinstance(destination, dict) and {"target_scene", "scene_exit_ref"} & destination.keys():
+            raise ProjectCommandError("SCENE_OBJECT_CONNECTION_UNAVAILABLE", "version-2 graph commands currently author local state or shell destinations only")
 
 
 def apply_object_command(scenes, command):

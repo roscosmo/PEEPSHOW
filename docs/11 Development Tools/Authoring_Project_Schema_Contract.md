@@ -1640,10 +1640,41 @@ an unreferenced state removes its overrides/layout but retains scene objects.
 All edits use the existing revision-checked, atomic command batches and undo/redo;
 `scene.add` source files are written only on save. GUI must discover
 `service.hello.scene_creation` and per-scene `supported_commands` and
-`state_management_commands`. V2 `graph_construction_commands` remains false:
-layout/entry selection does not authorize route/trigger/variable construction
-or scene-exit wiring. Exact payloads are in
+`state_management_commands`. API 40 delivered only state/layout management;
+API 41 additionally exposes the local graph commands below. Neither increment
+authorizes scene-exit wiring. Exact payloads are in
 [[Peep_Studio_Scene_Object_Ownership_Handoff]].
+
+### Native Local Graphs
+
+API 41 exposes a V2 `local_graph_commands` list in hello's
+`scene_object_authoring` and per-scene capabilities. These are existing shared
+commands operating on the common graph records, not a parallel V2 graph schema.
+They cover variable/input/event-binding add/update/delete, independent-handler
+add/update/delete, route creation/rebinding/deletion/source/event/target edits,
+guard editing, scene policies and local route layout. `object_actions.set`
+remains the V2 action-list editor; legacy destination-element actions and their
+editing commands remain unsupported.
+
+V2 `graph_construction_commands` is true, but `scene_connection_commands` is
+false. Commands that write `target_scene` or `scene_exit_ref` return
+`SCENE_OBJECT_CONNECTION_UNAVAILABLE`; scene-exit and scene-flow mutations remain
+blocked. Local state destinations and the existing shell-exit action are admitted.
+Loading existing V2 source that already has scene links is unchanged; this
+restriction applies to the newly exposed authoring commands, not source migration.
+
+The only admitted OS event bindings remain `time.state_entry_elapsed` and
+`time.scene_elapsed`. State timers use source-state routes; scene timers have
+exactly one independent handler, with an optional local target state. Creating
+or deleting a scene timer and its handler therefore requires one atomic batch.
+Variable deletion checks handler guards/actions as well as routes. Timer and input
+deletion checks graph/policy references; commands do not silently remove users.
+Rebinding an input retains it when another route refers to it through either
+`action_ref` or `event_ref`.
+
+Reference checks, bounded record counts, event/handler scope, action/guard validation,
+batch rollback, undo/redo and host preview remain shared with the existing backend.
+No wire values, source fields, sensor capabilities or V2 export admission are added.
 
 ---
 

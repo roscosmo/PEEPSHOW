@@ -643,13 +643,17 @@ def _apply_variable_delete(
     _require_command_fields(command, {"kind", "scene_id", "variable_id"}, {"kind", "scene_id", "variable_id", "command_id"})
     scene = _command_scene(scenes, command.get("scene_id"))
     variable_id = command.get("variable_id")
-    for route in scene.get("routes", []):
+    references = list(scene.get("routes", []))
+    if scene.get("schema_version") == 2:
+        references.extend(scene.get("event_handlers", []))
+    for route in references:
         if not isinstance(route, dict):
             continue
         used = any(isinstance(guard, dict) and guard.get("variable_ref") == variable_id for guard in route.get("guards", []))
         used = used or any(isinstance(action, dict) and action.get("variable_ref") == variable_id for action in route.get("actions", []))
         if used:
-            raise ProjectCommandError("COMMAND_TARGET_IN_USE", f"variable '{variable_id}' is referenced by route '{route.get('route_id')}'")
+            owner = f"handler '{route['handler_id']}'" if "handler_id" in route else f"route '{route.get('route_id')}'"
+            raise ProjectCommandError("COMMAND_TARGET_IN_USE", f"variable '{variable_id}' is referenced by {owner}")
     variables = scene.get("variables")
     if not isinstance(variables, list):
         raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.variables must be an array")
@@ -1103,7 +1107,8 @@ def _apply_route_rebind_trigger(
     _append_input_policy_reference(scene, "interaction_policy", "meaningful_activity_actions", action_id)
     previous_action_removed = False
     if previous_action_id != action_id and not any(
-        isinstance(candidate, dict) and candidate.get("action_ref") == previous_action_id
+        isinstance(candidate, dict) and (candidate.get("action_ref") == previous_action_id
+            or (scene.get("schema_version") == 2 and candidate.get("event_ref") == previous_action_id))
         for candidate in routes
     ):
         input_actions.remove(previous_action)

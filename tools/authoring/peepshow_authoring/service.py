@@ -33,7 +33,9 @@ from .project import (
     save_project,
 )
 from .preview import PreviewError, StateScenePreview
-from .scene_object_authoring import OBJECT_COMMANDS, COMMON_SCENE_COMMANDS, STATE_MANAGEMENT_COMMANDS, execution_model
+from .scene_object_authoring import (
+    OBJECT_COMMANDS, COMMON_SCENE_COMMANDS, STATE_MANAGEMENT_COMMANDS, LOCAL_GRAPH_COMMANDS, execution_model,
+)
 from .scene_objects import (
     SceneObjectError, initialize_objects, resolve_object,
     plan_object_migration, materialize_object_migration,
@@ -55,7 +57,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 40
+SERVICE_API_VERSION = 41
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -145,7 +147,10 @@ def _scene_capabilities(bundle: ProjectBundle) -> dict[str, Any]:
             "supported_commands": list(OBJECT_COMMANDS + COMMON_SCENE_COMMANDS) if scene["schema_version"] == 2 else None,
             "legacy_command_catalog": scene["schema_version"] == 1,
             "state_management_commands": list(STATE_MANAGEMENT_COMMANDS),
-            "graph_construction_commands": scene["schema_version"] == 1,
+            "graph_construction_commands": True,
+            "local_graph_commands": list(LOCAL_GRAPH_COMMANDS),
+            "scene_connection_commands": scene["schema_version"] == 1,
+            "route_destination_kinds": ["state", "system_exit"] + (["scene"] if scene["schema_version"] == 1 else []),
         } for scene in bundle.scenes
     }
 
@@ -349,7 +354,10 @@ class AuthoringService:
                 "override_properties": ["x", "y", "visible", "visual_ref"],
                 "clip_loop_policies": ["loop"],
                 "runtime_playback_controls": False,
-                "graph_construction_commands": False,
+                "graph_construction_commands": True,
+                "local_graph_commands": list(LOCAL_GRAPH_COMMANDS),
+                "scene_connection_commands": False,
+                "route_destination_kinds": ["state", "system_exit"],
             },
             "target_profiles": {
                 "default_profile_id": TARGET_PROFILE_ID,

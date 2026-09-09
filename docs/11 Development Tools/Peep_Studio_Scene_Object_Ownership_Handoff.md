@@ -2,7 +2,8 @@
 
 Status: GUI representation review accepted; full source envelope, migration/edit
 transactions and host preview connected in API 39. API 40 adds native V2
-project/scene creation and state management. Development-only V2 binary
+project/scene creation and state management. API 41 adds native local graphs.
+Development-only V2 binary
 encoding/reading and C loader/graph cores are implemented. Normal export,
 production firmware activation and autonomous display integration remain unavailable.
 
@@ -616,3 +617,103 @@ Verification: **240 authoring tests pass**, including native C checks and 12 new
 native-authoring service tests. Target-profile consistency and `git diff --check`
 pass. No firmware build or device test was run: this increment changes no firmware
 and does not claim production V2 execution or display/STOP2 continuity.
+
+### Native Local Graphs (API 41)
+
+After `9c5a42d`, native V2 scenes can author their local input/timer graph without
+migration or source-file edits. This increment reuses shared command handlers,
+validation, graph/timer host execution and the object-action editor. It changes
+no source schema, wire values, GUI worktree or firmware.
+
+**Capability handoff:** `service.hello.scene_object_authoring` and each valid
+scene capability now contain `local_graph_commands`. For V2,
+`graph_construction_commands: true`, `scene_connection_commands: false`, and
+`route_destination_kinds: ["state", "system_exit"]`. Every delivered V2 command
+is also in `commands` (hello) and `supported_commands` (per scene). V1 still
+uses the legacy catalog and allows scene connections. Do not infer scene wiring
+support from the graph boolean or API number alone.
+
+Newly admitted V2 commands, with existing field names:
+
+| Area | Commands | Payload after `kind` and `scene_id` |
+| --- | --- | --- |
+| Variables | `variable.add`, `variable.update`, `variable.delete` | Full `variable` record; delete takes `variable_id` |
+| Inputs | `input_action.add`, `input_action.update`, `input_action.delete` | Full `input_action` record; delete takes `action_id` |
+| Timers | `event_binding.add`, `event_binding.update`, `event_binding.delete` | Full `event_binding` record; delete takes `binding_id` |
+| Independent handlers | `event_handler.add`, `event_handler.update`, `event_handler.delete` | Full `event_handler` record; delete takes `handler_id` |
+| Trigger creation | `route.create_trigger` | `source_state`, `logical_source`, optional `event_kind`; exactly one `target_state` or `system_exit: true` |
+| Trigger rebinding | `route.rebind_trigger` | `route_id`, `logical_source`; retains event kind |
+| Routes | `route.add`, `route.delete` | Full `route` record; delete takes `route_id` |
+| Route edits | `route.set_sources`, `route.set_action_ref`, `route.set_event_ref`, `route.set_target` | `route_id` plus `from_states`, `action_ref`, `event_ref` or local `target_state` respectively |
+| Guard lists | `route.guard.add`, `route.guard.delete`, `route.guard.move` | `route_id`, `guard_index`; add takes `guard`, move takes `target_index` |
+| Guard edit | `route.set_guard` | `route_id`, `guard_index`, `variable_ref`, `operator`, `value` |
+| Policies | `scene.set_reactive_wait_default`, `scene.set_interaction_policy`, `scene.set_joystick_policy` | Full corresponding policy value, using the same field name without `scene.set_` |
+| Route layout | `editor.state_graph.set_route_layout` | Existing `route_id`, `source_state`, `rails`, `target_handle`, `target_side`, optional `token_positions` |
+| Shell terminal layout | `editor.state_graph.delete_system_exit` | No additional fields; refuses while shell-exit routes still reference it |
+
+`object_actions.set` remains the complete ordered action-list editor for both
+routes and handlers. It supports the existing validated mixture of object,
+variable, timer and SFX actions. Do not use legacy `route.action.*`,
+`route.set_action` or destination-element mutations on V2. Handler update accepts
+the full handler, including its guards, optional local target and actions.
+
+Create a native V2 project using the API 40 creation commands first. Example
+`commands` array for `project.apply_commands` with the current `project_revision`:
+
+```json
+[
+  {"kind": "state.create", "scene_id": "main", "display_name": "Other", "x": 200, "y": 0},
+  {"kind": "object.add", "scene_id": "main", "object": {"object_id": "panel", "kind": "filled_rect", "width": 8, "height": 8, "z_order": 0, "layer": "SCENE", "defaults": {"x": 10, "y": 20, "visible": true}}},
+  {"kind": "variable.add", "scene_id": "main", "variable": {"variable_id": "count", "value_type": "int32", "initial": 0, "minimum": 0, "maximum": 10}},
+  {"kind": "input_action.add", "scene_id": "main", "input_action": {"action_id": "a", "logical_source": "BUTTON_A"}},
+  {"kind": "route.add", "scene_id": "main", "route": {"route_id": "next", "action_ref": "a", "from_states": ["start"], "target_state": "other", "guards": [{"variable_ref": "count", "operator": "eq", "value": 0}], "actions": []}},
+  {"kind": "object_actions.set", "scene_id": "main", "owner_kind": "route", "owner_id": "next", "actions": [{"kind": "object.move_by", "object_ref": "panel", "dx": 5}, {"kind": "set_variable", "variable_ref": "count", "operation": "add", "value": 1}]}
+]
+```
+
+This example assumes a fresh project, so the generated state ID is `other`.
+In general use IDs returned in `applied_commands`. `route.create_trigger` is the
+convenience alternative: it creates/reuses a logical input, creates the route,
+and registers its wait/meaningful-activity interests. Its optional entry socket
+fields are `target_handle`/`target_side`. Explicit `input_action.add`/`route.add`
+do not automatically edit those policies; use the policy commands where needed.
+Full policy replacements must retain required fields, including interaction mode.
+
+Scene timer creation is one batch containing both binding and handler:
+
+```json
+[
+  {"kind": "event_binding.add", "scene_id": "main", "event_binding": {"binding_id": "tick", "event_type": "time.scene_elapsed", "configuration": {"delay_ms": 500, "start_policy": "scene_entry"}}},
+  {"kind": "event_handler.add", "scene_id": "main", "event_handler": {"handler_id": "tick_handler", "event_ref": "tick", "guards": [], "actions": [{"kind": "object.move_by", "object_ref": "panel", "dx": 7}]}}
+]
+```
+
+The handler above changes the underlying object without state re-entry. Scene
+timers survive local state transitions. `start_policy: "action"` instead waits
+for `start_timer` or `restart_timer`; `cancel_timer` disarms it. State-entry timers
+use `time.state_entry_elapsed`, configuration `{ "delay_ms": 500 }`, and a route
+with `event_ref` and `from_states`, not an independent handler. These are the
+existing scoped timer semantics, not new OS event types. Unsupported sensor/SOC/
+schedule triggers are still rejected.
+
+Exactly one handler is required for each scene timer at batch completion. Delete
+the handler first, then its binding, in the same batch after removing timer actions
+and policy references. A lone binding addition or lone handler deletion is invalid.
+Variable deletion refuses uses in handler guards/actions as well as routes.
+Input rebinding retains the old input if another route uses its `event_ref` alias.
+These operations never silently detach graph users.
+
+Scene connections remain the next increment. V2 `scene_exit.*` and
+`editor.scene_flow.*` commands are blocked. Writing `target_scene` or
+`scene_exit_ref` through the newly exposed route/handler commands returns
+`SCENE_OBJECT_CONNECTION_UNAVAILABLE`. Existing linked source can still load,
+save and preview as before; this does not migrate or invalidate earlier documents.
+
+Verification: **254 authoring tests pass**, including native C checks and 14 new
+native V2 graph-authoring tests. Tests exercise real host input/timer dispatch,
+not only command acceptance: guarded state transitions, underlying movement under
+overrides, scene timers across state changes, one-shot state timers, action start/
+restart/cancel, reference protection, undo/redo, save/reload and invalid-batch
+rollback. V1 regression checks pass. No firmware build/device test was run because
+firmware is unchanged. Ordinary V2 export remains blocked by
+`SCENE_OBJECT_EXECUTABLE_UNAVAILABLE`; no hardware behavior is claimed here.
