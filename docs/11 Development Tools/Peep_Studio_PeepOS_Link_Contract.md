@@ -90,6 +90,26 @@ Measured hardware behavior, current SRAM4 admission limits, and power figures
 remain hardware evidence. The desktop preview must not claim to reproduce
 current draw or prove STOP2 behavior.
 
+## Blocking Empty-Scene Validation
+
+The 2026-09-09 GUI-export failure exposed a shared/native validation mismatch:
+the shared parser accepted scenes with no visual objects, while the native
+loader rejected them before entry-scene activation. The agreed rule is to
+retain firmware's requirement for at least one valid render element in every
+state-resolved presentation of every exported STATE scene.
+
+See [[Rendering_API_Contract]] and
+[[Peep_Studio_Empty_Scene_Validation_Handoff]] for the exact failing egg,
+evidence, diagnostics and build/inspect/native parity tests. The GUI branch
+should add shared blocking build/export checks while keeping incomplete
+scene drafts editable and saveable. Empty visual content is not the same as
+missing an exit or having no animation/focus element.
+
+This is a pending validation repair, not an implemented capability change.
+Current GUI eggs must be revalidated and rebuilt after correcting their empty
+scenes; successful install/container checks alone are not launch proof. The
+separate firmware launch-error recovery defect remains an OS follow-up.
+
 ## Planned Device Inputs
 
 The next selected increments are read-only battery SOC/validity and threshold
