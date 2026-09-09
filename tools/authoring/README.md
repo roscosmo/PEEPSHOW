@@ -132,6 +132,8 @@ Implemented operations:
 - `project.build_package`
 - `project.compatibility_report`
 - `project.apply_commands`
+- `project.object_migration_preview`
+- `project.object_migration_apply`
 - `project.save`
 - `project.undo`
 - `project.redo`
@@ -162,7 +164,7 @@ It does not choose a destination or write an installable file. The V1 report
 marks the current HW6 development profile as `pending_validation` and
 `dev_only`; it does not claim shipping authority before target-profile closure.
 
-Service API version 38 exposes the selected HW6 profile and its deterministic
+Service API version 39 exposes the selected HW6 profile and its deterministic
 hash in `service.hello`, and provides deterministic selected-STATE-scene preview,
 direct STATE-to-STATE replacement, and a `state_scene_presentation` capability
 block in `service.hello`. A
@@ -170,11 +172,24 @@ reset names the scene to launch directly, an input operation supplies one
 logical source plus an optional lifecycle event kind, and an advance operation supplies explicit elapsed
 milliseconds. Every response contains the current compiled state, timeline,
 variables, and an exact `168 x 144` packed 1bpp framebuffer. Preview never
-reads source assets after reset: it compiles an in-memory draft and independently
-parses its records. The explicit internal draft path allows empty presentations
+reads source assets after reset. For legacy scenes it compiles an in-memory draft
+and independently parses its records. The explicit internal draft path allows empty presentations
 for editing; strict package build/export/inspection does not. `build_issues`
 reports export readiness separately from source `issues`. Scene-base preview
 omits state overrides and waiting visuals without changing the live preview.
+
+API 39 also supports explicit migration to version-2 scene-owned objects,
+transactional object edits, save/reload and host preview. Check
+`service.hello.scene_object_authoring` and each document's `scene_capabilities`;
+do not infer supported editing commands from the API number alone. Object clips
+continue through state changes, hidden placement and static masks. The host
+preview reuses the graph/timer executor with a labeled internal adapter, not a
+new executable package decoder. Any project containing version-2 scenes reports
+`SCENE_OBJECT_EXECUTABLE_UNAVAILABLE` in `build_issues`: draft editing/preview
+works, but egg export and firmware support remain unavailable. Legacy projects
+are not implicitly migrated. Exact command fields, limitations and GUI handoff:
+`docs/11 Development Tools/Peep_Studio_Scene_Object_Ownership_Handoff.md`,
+Connected Host Increment (API 39).
 
 The canonical HW6 development limits live in
 `peepshow_authoring/target_profiles/hw6_fw0_development.json`. After changing

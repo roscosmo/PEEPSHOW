@@ -33,6 +33,11 @@ from .project import (
     save_project,
 )
 from .preview import PreviewError, StateScenePreview
+from .scene_object_authoring import OBJECT_COMMANDS, COMMON_SCENE_COMMANDS, execution_model
+from .scene_objects import (
+    SceneObjectError, initialize_objects, resolve_object,
+    plan_object_migration, materialize_object_migration,
+)
 from .target_profile import (
     TARGET_PROFILE_ID,
     TARGET_SAMPLED_SFX,
@@ -50,7 +55,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 38
+SERVICE_API_VERSION = 39
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -63,6 +68,8 @@ SERVICE_OPERATIONS = (
     "project.build_package",
     "project.compatibility_report",
     "project.apply_commands",
+    "project.object_migration_preview",
+    "project.object_migration_apply",
     "project.save",
     "project.undo",
     "project.redo",
@@ -125,10 +132,50 @@ def _require_fields(params: dict[str, Any], required: set[str]) -> None:
         )
 
 
+def _scene_capabilities(bundle: ProjectBundle) -> dict[str, Any]:
+    if not bundle.valid:
+        return {}
+    return {
+        scene["scene_id"]: {
+            "schema_version": scene["schema_version"],
+            "execution_model": execution_model(scene),
+            "host_editing": True,
+            "host_preview": True,
+            "egg_export": scene["schema_version"] == 1,
+            "supported_commands": list(OBJECT_COMMANDS + COMMON_SCENE_COMMANDS) if scene["schema_version"] == 2 else None,
+            "legacy_command_catalog": scene["schema_version"] == 1,
+        } for scene in bundle.scenes
+    }
+
+
 def _placement_ownership(bundle: ProjectBundle) -> dict[str, Any]:
     scenes: dict[str, Any] = {}
     for scene in bundle.scenes:
         scene_id = scene.get("scene_id")
+        if scene.get("schema_version") == 2:
+            objects = scene["objects"]
+            live = initialize_objects(objects)
+            clips = {clip["animation_id"]: clip for clip in bundle.animations}
+            states = {}
+            for state in scene["states"]:
+                overrides = {item["object_ref"]: item for item in state["object_overrides"]}
+                states[state["state_id"]] = {
+                    "changes": {ref: {"local_properties": sorted(set(item) - {"object_ref"}), "animated": False} for ref, item in overrides.items()},
+                    "resolved_elements": [
+                        {**{key: value for key, value in obj.items() if key not in {"object_id", "defaults", "animation_ref"}},
+                         **resolve_object(obj, live[obj["object_id"]], overrides.get(obj["object_id"], {}), clips, 0),
+                         "element_id": obj["object_id"]} for obj in objects
+                    ],
+                }
+            scenes[scene_id] = {
+                "execution_model": "scene_objects", "derived_read_only": True,
+                "objects": deepcopy(objects), "states": states,
+                "state_scoped_element_ids": sorted(obj["object_id"] for obj in objects
+                    if not obj["defaults"]["visible"] and any(
+                        item.get("visible") is True and item["object_ref"] == obj["object_id"]
+                        for state in scene["states"] for item in state["object_overrides"])),
+            }
+            continue
         render_models = scene.get("render_models", [])
         if not isinstance(scene_id, str) or not render_models:
             continue
@@ -245,6 +292,7 @@ class AuthoringService:
             "build_issues": build_readiness_issues(bundle),
             "document": bundle.normalized() if bundle.valid else None,
             "placement_ownership": _placement_ownership(bundle) if bundle.valid else None,
+            "scene_capabilities": _scene_capabilities(bundle),
             "summary": _project_summary(bundle),
             "dirty": self._dirty(),
             "can_undo": bool(self._undo_stack),
@@ -278,6 +326,17 @@ class AuthoringService:
             "service_api_version": SERVICE_API_VERSION,
             "protocol_version": PROTOCOL_VERSION,
             "operations": list(SERVICE_OPERATIONS),
+            "scene_object_authoring": {
+                "status": "host_available", "schema_version": 2,
+                "execution_model": "scene_objects", "egg_export": False, "firmware_available": False,
+                "commands": list(OBJECT_COMMANDS + COMMON_SCENE_COMMANDS),
+                "absolute_axes": {"x": "right", "y": "down"},
+                "relative_axes": {"dx": "right", "dy": "up"},
+                "override_properties": ["x", "y", "visible", "visual_ref"],
+                "clip_loop_policies": ["loop"],
+                "runtime_playback_controls": False,
+                "graph_construction_commands": False,
+            },
             "target_profiles": {
                 "default_profile_id": TARGET_PROFILE_ID,
                 "available": [public_target_profile()],
@@ -667,6 +726,7 @@ class AuthoringService:
         return {
             "project_revision": self._project_revision,
             "document": bundle.normalized(),
+            "scene_capabilities": _scene_capabilities(bundle),
             "canonical_sha256": hashlib.sha256(bundle.canonical_bytes()).hexdigest(),
         }
 
@@ -807,6 +867,45 @@ class AuthoringService:
             "applied_commands": list(applied),
         }
 
+    def _object_migration_preview(self, params: dict[str, Any]) -> dict[str, Any]:
+        bundle = self._current_bundle(params, {"scene_id", "accept_continuous_animation"})
+        if not isinstance(params["scene_id"], str) or type(params["accept_continuous_animation"]) is not bool:
+            raise ProtocolError("OPERATION_PARAMS_INVALID", "scene_id must be text and animation acceptance must be boolean")
+        try:
+            plan = plan_object_migration(bundle, params["scene_id"], accept_continuous_animation=params["accept_continuous_animation"])
+        except SceneObjectError as exc:
+            raise ProtocolError(exc.issue.code, exc.issue.message) from exc
+        return {"project_revision": self._project_revision, "plan": asdict(plan), "can_apply": not plan.issues}
+
+    def _object_migration_apply(self, params: dict[str, Any]) -> dict[str, Any]:
+        from .project import _check_scene
+        bundle = self._current_bundle(params, {"scene_id", "source_revision", "accept_continuous_animation"})
+        preview = self._object_migration_preview({key: value for key, value in params.items() if key != "source_revision"})
+        if params["source_revision"] != preview["plan"]["source_revision"]:
+            raise ProtocolError("MIGRATION_SOURCE_CHANGED", "preview migration again against the current project")
+        try:
+            plan = plan_object_migration(bundle, params["scene_id"], accept_continuous_animation=params["accept_continuous_animation"])
+            scene, clips = materialize_object_migration(bundle, plan, accept_continuous_animation=params["accept_continuous_animation"])
+            updated = bundle
+            if clips:
+                updated, _ = apply_project_commands(bundle, [{"kind": "animation.upsert", "animation": clip} for clip in clips])
+            issues = []
+            _check_scene(scene, params["scene_id"], {frame.frame_id: frame for frame in updated.frames},
+                         {clip["animation_id"] for clip in updated.animations}, {cue["cue_id"] for cue in updated.audio_cues},
+                         issues, {clip["animation_id"]: clip for clip in updated.animations})
+            if issues:
+                raise ProtocolError("MIGRATION_INVALID", "migration did not validate", details={"issues": [asdict(item) for item in issues]})
+            updated = replace(updated, scenes=tuple(scene if item["scene_id"] == scene["scene_id"] else item for item in updated.scenes))
+        except (SceneObjectError, ProjectCommandError) as exc:
+            if isinstance(exc, SceneObjectError):
+                raise ProtocolError(exc.issue.code, exc.issue.message) from exc
+            raise ProtocolError(exc.code, exc.message) from exc
+        self._remember_undo(bundle)
+        self._bundle = updated
+        self._project_revision += 1
+        self._invalidate_preview()
+        return self._project_document_result(updated)
+
     def _save(self, params: dict[str, Any]) -> dict[str, Any]:
         bundle = self._current_bundle(params)
         try:
@@ -936,6 +1035,8 @@ class AuthoringService:
         for state in scene.get("states", []):
             if isinstance(state, dict):
                 state.pop("placement_overrides", None)
+                if scene.get("schema_version") == 2:
+                    state["object_overrides"] = []
         preview_bundle = replace(bundle, scenes=tuple(scenes))
         try:
             package = build_preview_package(preview_bundle)
@@ -994,6 +1095,8 @@ class AuthoringService:
             "project.build_package": self._build_package,
             "project.compatibility_report": self._compatibility_report,
             "project.apply_commands": self._apply_commands,
+            "project.object_migration_preview": self._object_migration_preview,
+            "project.object_migration_apply": self._object_migration_apply,
             "project.save": self._save,
             "project.undo": self._undo,
             "project.redo": self._redo,

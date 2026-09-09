@@ -166,6 +166,13 @@ def build_readiness_issues(bundle: ProjectBundle) -> list[dict[str, str]]:
         return []
     issues = []
     for source in sorted(bundle.scenes, key=lambda scene: scene["scene_id"]):
+        if source.get("schema_version") == 2:
+            issues.append({
+                "code": "SCENE_OBJECT_EXECUTABLE_UNAVAILABLE", "scene_id": source["scene_id"],
+                "path": f"scenes[{source['scene_id']}].schema_version",
+                "message": f"Scene '{source['scene_id']}' uses scene-owned objects; host editing/preview is available, but egg/firmware support is not implemented.",
+            })
+            continue
         scene = _package_scene(source)
         models = {model["visual_id"]: model for model in scene["render_models"]}
         for state in sorted(scene["states"], key=lambda state: state["state_id"]):
@@ -894,12 +901,39 @@ def build_egg(bundle: ProjectBundle) -> bytes:
 
 def build_preview_package(bundle: ProjectBundle) -> EggPackage:
     """Compile an in-memory draft for host preview, never for export."""
+    if any(scene.get("schema_version") == 2 for scene in bundle.scenes):
+        from dataclasses import replace
+        from .scene_object_authoring import graph_validation_view
+        if not bundle.valid:
+            raise EggCompileError("project must validate before preview")
+        views = tuple(graph_validation_view(scene) if scene.get("schema_version") == 2 else scene for scene in bundle.scenes)
+        package = parse_egg(_build_egg(replace(bundle, scenes=views), _draft=True), _draft=True)
+        sources = {scene["scene_id"]: scene for scene in bundle.scenes}
+        for scene in package.scenes:
+            source = sources[scene["scene_id"]]
+            if source.get("schema_version") != 2:
+                continue
+            scene["object_source"] = deepcopy(source)
+            scene["object_animations"] = {clip["animation_id"]: deepcopy(clip) for clip in bundle.animations}
+            routes = {route.get("route_id", route.get("handler_id")): route for route in [*source["routes"], *source.get("event_handlers", [])]}
+            for route in scene["graph"]["routes"]:
+                # Keep the shared executor's graph/timer IR, restoring only host object operations.
+                actions = routes[route["route_id"]]["actions"]
+                if len(actions) != len(route["operations"]):
+                    raise EggCompileError("preview action projection lost operation ordering")
+                route["operations"] = tuple(
+                    {"object_action": deepcopy(action)} if action["kind"].startswith("object.") else operation
+                    for action, operation in zip(actions, route["operations"])
+                )
+        return package
     return parse_egg(_build_egg(bundle, _draft=True), _draft=True)
 
 
 def _build_egg(bundle: ProjectBundle, *, _draft: bool = False) -> bytes:
     if not bundle.valid:
         raise EggCompileError("project must validate before package compilation")
+    if any(scene.get("schema_version") == 2 for scene in bundle.scenes):
+        raise EggCompileError("SCENE_OBJECT_EXECUTABLE_UNAVAILABLE: version-2 scenes cannot be encoded as legacy eggs")
     try:
         target_profile = target_profile_for_id(
             bundle.project["selected_target_profile"]

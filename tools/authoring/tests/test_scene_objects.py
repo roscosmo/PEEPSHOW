@@ -248,11 +248,11 @@ class SceneObjectMigrationTests(unittest.TestCase):
         with self.assertRaises(SceneObjectError):
             materialize_object_migration(bundle, plan, accept_continuous_animation=True)
 
-    def test_existing_egg_output_and_service_version_are_unchanged(self):
+    def test_existing_egg_output_is_unchanged_by_migration_planning(self):
         before = build_egg(self.bundle)
         plan_object_migration(self.bundle, "state_demo", accept_continuous_animation=True)
         self.assertEqual(before, build_egg(self.bundle))
-        self.assertEqual(38, SERVICE_API_VERSION)
+        self.assertEqual(39, SERVICE_API_VERSION)
 
     def test_multiple_tracks_for_one_object_require_a_choice(self):
         def change(scene):
@@ -274,7 +274,7 @@ class SceneObjectMigrationTests(unittest.TestCase):
         candidate, _ = materialize_object_migration(bundle, plan, accept_continuous_animation=True)
         self.assertEqual([], candidate["states"][0]["object_overrides"])
 
-    def test_candidate_is_not_accepted_by_legacy_project_export(self):
+    def test_candidate_without_its_migrated_clips_is_invalid(self):
         plan = plan_object_migration(self.bundle, "state_demo", accept_continuous_animation=True)
         candidate, _ = materialize_object_migration(self.bundle, plan, accept_continuous_animation=True)
         with tempfile.TemporaryDirectory() as temp:
@@ -283,7 +283,7 @@ class SceneObjectMigrationTests(unittest.TestCase):
             (root / "scenes/state_demo.state.json").write_text(json.dumps(candidate), encoding="utf-8")
             bundle = load_project(root)
             self.assertFalse(bundle.valid)
-            self.assertIn("SCENE_SCHEMA_UNSUPPORTED", {issue.code for issue in bundle.issues})
+            self.assertIn("OBJECT_ANIMATION_INVALID", {issue.code for issue in bundle.issues})
             with self.assertRaises(EggCompileError):
                 build_egg(bundle)
 
