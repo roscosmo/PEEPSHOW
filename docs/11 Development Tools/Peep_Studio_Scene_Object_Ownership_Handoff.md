@@ -1,6 +1,6 @@
 # Peep Studio Scene Object Ownership Handoff
 
-Status: shared backend integrated and host/native validation passed on main; integration commit and scene-object migration pending.
+Status: shared backend integrated, validated and committed on main; executable representation proposed; scene-object migration unimplemented.
 
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. This handoff coordinates
 work; it does not allocate executable schema fields, capability IDs, or opcodes.
@@ -25,6 +25,9 @@ GUI merge commit: `57f7030cc65c09b434223e405c12b67e211b99a0`.
 Parents: GUI `98f3cf0415fa4c8613a427e07b7cf3235c7fa627` and incoming main
 `8f271532216216065f03a831bdb09cc07d8f2953`. The subsequent main design/acceptance
 checkpoint is `018fc802234024d4df437cfb3be89da7c0bfae01` and must be retained.
+The completed main integration is committed as
+`34c76bba4bcf59ab03d8668dca329f2338caf33f`. Use that combined baseline for the
+scene-object increment, not a fresh wholesale import of the GUI shared files.
 
 The OS agent verified a full Debug build of the GUI merge in a separate build
 directory: 653 build steps including link, with unused-function/parameter
@@ -89,10 +92,9 @@ for device acceptance. Scene-object acceptance cases remain NOT RUN.
 1. Completed: the user committed the GUI compatibility merge identified above,
    preserving Studio behavior and integrating primitive support. Object migration
    was not implemented. User performs all git state-changing operations.
-2. Imported and validated: the reviewed shared-backend baseline and matching
-   public example are in main's working tree. The user checkpoints this coherent
-   integration before new schema/runtime work; no unrelated UI/firmware/workbench
-   content was imported.
+2. Completed: the reviewed shared-backend baseline and matching public example
+   were imported, validated and committed on main at the integration commit
+   above; no unrelated UI/firmware/workbench content was imported.
 3. Agree the source schema, executable discriminator, action addressing, and
    capability reporting together before either branch implements those fields.
 4. The OS agent implements a bounded end-to-end backend/firmware increment and
@@ -101,8 +103,8 @@ for device acceptance. Scene-object acceptance cases remain NOT RUN.
    editing/preview controls against the actual shared capability, then reports
    authoring-to-device acceptance results.
 
-Do not begin competing schema implementations while compatibility integration
-and the executable representation remain open. Documentation and acceptance
+Compatibility integration is complete. Do not begin competing schema
+implementations while the executable representation remains open. Documentation and acceptance
 planning can proceed now; UI layout planning and unrelated GUI work can continue.
 
 ## GUI Review Decisions
@@ -179,6 +181,22 @@ expansion must provide distinct instance IDs and local state; instance timer
 support requires its own advertised capability, not an assumption.
 
 ## Remaining Representation Agreement
+
+The concrete proposal is [[Scene_Object_Executable_Design]]. Review this before
+implementing UI migration or changing shared source fields. It proposes:
+- Explicit scene source version 2, stable object IDs, and sparse state overrides.
+- Object-targeted persistent actions without destination-state addressing.
+- A new executable version with explicit scene execution models, preserving
+  legacy compilation and requiring full install-time semantic validation.
+- Fixed-capacity live object storage and phase-preserving display snapshots
+  within the existing renderer envelope; no per-object threads or hardware timers.
+- Explicit migration preview/apply and version-aware service projections, while
+  retaining API 38 baseline behavior, placement commands and `build_issues`.
+
+Field names, executable layout and capability allocations remain proposals;
+there are no newly available commands or numeric wire IDs. The first increment
+does not include groups, prefabs or explicit playback-control commands. GUI can
+continue unrelated UI work while OS owns the coordinated shared implementation.
 
 The GUI agent has agreed the ownership/lifecycle model and supplied the mapping
 above. The next joint review is the executable representation, not another
