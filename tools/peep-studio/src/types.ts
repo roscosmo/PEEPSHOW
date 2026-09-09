@@ -21,6 +21,9 @@ export type ProjectSummary = {
 };
 
 export type SceneCapabilities = {
+  local_graph_commands?: string[];
+  scene_connection_commands?: boolean;
+  route_destination_kinds?: string[];
   schema_version: number;
   execution_model: string;
   host_editing: boolean;
@@ -494,6 +497,9 @@ export type ServiceHello = {
     version_parameter: string; supported_versions: number[]; default_version: number;
   };
   scene_object_authoring?: {
+    local_graph_commands?: string[];
+    scene_connection_commands?: boolean;
+    route_destination_kinds?: string[];
     state_management_commands?: string[];
     status: string;
     schema_version: number;

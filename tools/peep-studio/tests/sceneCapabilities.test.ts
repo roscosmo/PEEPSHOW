@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsNativeCreation, supportsStateManagement, supportsObjectCommand, usesSceneObjects } from "../src/sceneCapabilities.js";
+import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsNativeCreation, supportsStateManagement, supportsLocalGraphCommand, supportsObjectCommand, usesSceneObjects } from "../src/sceneCapabilities.js";
 import type { SceneCapabilities, SceneDocument, ServiceHello } from "../src/types.js";
 
 const legacy: SceneDocument = { scene_id: "old", scene_type: "STATE_SCENE", display_name: "Old" };
@@ -50,3 +50,16 @@ assert(!supportsStateManagement({ ...creationHost, scene_object_authoring: {
   ...creationHost.scene_object_authoring, state_management_commands: [],
 } }, stateScene, "state.create"));
 assert(!supportsStateManagement(creationHost, stateScene, "route.add"));
+
+const graphHost = { ...creationHost, scene_object_authoring: { ...creationHost.scene_object_authoring,
+  commands: ["route.create_trigger"], local_graph_commands: ["route.create_trigger"],
+  graph_construction_commands: true, scene_connection_commands: false,
+} };
+const graphScene = { ...stateScene, supported_commands: ["route.create_trigger"], local_graph_commands: ["route.create_trigger"] };
+assert(supportsLocalGraphCommand(graphHost, graphScene, "route.create_trigger"));
+assert(!supportsLocalGraphCommand(graphHost, { ...graphScene, supported_commands: [] }, "route.create_trigger"));
+assert(!supportsLocalGraphCommand(graphHost, { ...graphScene, local_graph_commands: [] }, "route.create_trigger"));
+assert(!supportsLocalGraphCommand({ ...graphHost, scene_object_authoring: { ...graphHost.scene_object_authoring,
+  local_graph_commands: [],
+} }, graphScene, "route.create_trigger"));
+assert(!supportsLocalGraphCommand(graphHost, graphScene, "scene_exit.add"));

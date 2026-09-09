@@ -675,15 +675,17 @@ The test fixture is temporary; Studio does not construct unsupported graphs.
 
 Migration UI is deferred by user decision. Development should prioritize new
 native scene-object projects and recreating the menu example through Studio.
-API 40 supplies native creation and state management. Graph construction remains
-unavailable; firmware development decoding/execution does not imply those commands exist.
+API 40 supplies native creation and state management. API 41 adds local graphs;
+scene connections remain unavailable. Firmware development decoding/execution
+does not imply authoring commands or production export exist.
 
 Requested OS-owned increments, each advertised through hello/per-scene capabilities:
 
 1. Delivered in API 40 and connected in Studio: version-2 initial/additional scenes,
    state creation/deletion, rename, entry selection, and state/entry layout.
-2. Version-2 trigger/input binding, route construction/retargeting, guards and
-   variable management. Existing ordered action replacement is not construction.
+2. Delivered in API 41: local input/timer graph commands. Studio connects physical
+   trigger creation/rebinding, route retargeting/deletion/layout, guards and variables.
+   Timer authoring UI is the next GUI slice.
 3. Scene exit creation and reciprocal local-graph endpoints/connections. Package
    entry-scene selection already exists independently.
 
@@ -708,6 +710,27 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   State movement and entry-arrow editing are separate from graph wiring permissions.
 - Project inspector exposes entry-scene selection; scene names remain editable.
 - No automatic migration, fabricated render models, or state-private animation
-  records. V2 trigger/route/scene-exit construction stays disabled, as does export.
+  records. At this increment, V2 graph construction stayed disabled (local graphs
+  are enabled by the API 41 increment below); export remains disabled.
 - Regression coverage uses a temporary project and the real sidecar to exercise
   native creation, state lifecycle, movement, undo/redo, scene addition, and save/reload.
+
+### API 41 Local Graph GUI Increment
+
+- Physical input sockets can create native local transitions and rebind triggers
+  using the existing Press/Hold/Release/Repeat picker. Commands require hello and
+  per-scene `local_graph_commands` plus `supported_commands`; API numbers and the
+  broad graph-construction flag are not sufficient.
+- Variables and guard lists use their existing shared command editors. Local
+  destinations, manual routing, and transition deletion are enabled independently
+  of scene connections. Ordered actions continue through `object_actions.set`.
+- Scene-exit sockets remain non-connectable and their destination controls remain
+  disabled for V2. No scene-flow or shared backend ownership changes are included.
+- Timer bindings/handlers are supported by the host but not yet exposed by Studio.
+  The next timer UI slice must create a scene binding and its single handler in one
+  batch, and delete handler then binding together after clearing references. State
+  timers instead use a binding and a state-scoped route. Unsupported OS events stay
+  disabled. Do not reuse physical-trigger creation for timers.
+- Native GUI regression coverage creates a guarded input route from scratch,
+  edits its actions, checks host execution, and verifies undo/redo and save/reload.
+  Migration remains deferred and V2 egg export remains visibly unavailable.

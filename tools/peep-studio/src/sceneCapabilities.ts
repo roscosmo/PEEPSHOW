@@ -36,6 +36,12 @@ export function supportsStateManagement(service: ServiceHello | null, capability
     && service?.scene_object_authoring?.state_management_commands?.includes(command) === true;
 }
 
+export function supportsLocalGraphCommand(service: ServiceHello | null, capability: SceneCapabilities | undefined, command: string): boolean {
+  return supportsObjectCommand(service, capability, command)
+    && service?.scene_object_authoring?.local_graph_commands?.includes(command) === true
+    && capability?.local_graph_commands?.includes(command) === true;
+}
+
 // Presentation adapter only: defaults are displayed verbatim; state resolution stays in the host.
 export function baseObjectRows(scene: SceneDocument, ownership?: PlacementOwnership["scenes"][string] | null): RenderElement[] {
   if (!usesSceneObjects(scene)) return scene.render_models?.[0]?.elements ?? [];

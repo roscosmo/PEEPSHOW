@@ -17,13 +17,14 @@ let child, window, latest;
 let id = 0;
 const pending = new Map();
 const commands = [];
+const serviceErrors = [];
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const watchdog = setTimeout(() => { child?.kill(); app.exit(1); }, 60000);
 app.whenReady().then(async () => {
   child = spawn(process.env.PEEPSHOW_PYTHON || 'python', ['-u', 'tools/authoring/egg_tool.py', 'service'], { cwd: root, windowsHide: true });
   readline.createInterface({ input: child.stdout }).on('line', line => {
     const r = JSON.parse(line), p = pending.get(r.id); pending.delete(r.id);
-    if (r.ok) p?.resolve(r.result); else p?.reject(new Error(JSON.stringify(r.error)));
+    if (r.ok) p?.resolve(r.result); else { serviceErrors.push(r.error); p?.reject(new Error(JSON.stringify(r.error))); }
   });
   child.stderr.on('data', data => process.stderr.write(data));
   ipcMain.handle('native:path', () => projectPath);
@@ -86,6 +87,53 @@ app.whenReady().then(async () => {
   assert(await evaluate("document.querySelector('button[title=\"Add state\"]').disabled === false"));
   window.webContents.invalidate(); await wait(300);
   fs.writeFileSync(path.join(output, 'native-states.png'), (await window.webContents.capturePage()).toPNG());
+  await click('.react-flow__pane');
+  await button('Add variable');
+  await click('.variable-add-form button[type="submit"]');
+  assert.equal(main().variables[0].variable_id, 'counter');
+  const choose = async (selector, value) => {
+    await evaluate(`(() => {const e=document.querySelector(${JSON.stringify(selector)});
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(value)});
+      e.dispatchEvent(new Event('change',{bubbles:true}));})()`); await wait(450);
+  };
+  await click(`.react-flow__node[data-id="${stateId}"] [data-handleid="new-physical-trigger:BUTTON_A"]`);
+  await click(`.react-flow__node[data-id="${stateId}"] [data-handleid="entry-top-left:top"]`);
+  await button('Create transition');
+  assert.equal(main().routes.length, 1);
+  const routeId = main().routes[0].route_id;
+  assert.equal(main().routes[0].target_state, stateId);
+  assert(commands.some(command => command.kind === 'route.create_trigger'));
+  await button('Add condition');
+  assert.equal(main().routes[0].guards[0].variable_ref, 'counter');
+  await choose('[aria-label="Condition 1 operator"]', 'eq');
+  await choose('[aria-label="Add effect"]', 'set_variable');
+  assert.equal(main().routes[0].actions[0].kind, 'set_variable');
+  await choose('[aria-label="Effect 1 operation"]', 'assign');
+  await text('[aria-label="Effect 1 target value"]', '1');
+  await click('button[title="Add state"]');
+  const targetId = main().states.find(state => state.state_id !== stateId).state_id;
+  await evaluate("document.querySelector('.state-transition-edge').dispatchEvent(new MouseEvent('click',{bubbles:true}))");
+  await wait(300);
+  await choose(`select[id="route-target-${routeId}"]`, targetId);
+  assert.equal(main().routes[0].target_state, targetId);
+  const request = (operation, params) => new Promise((resolve, reject) => {
+    const requestId = String(++id); pending.set(requestId, {resolve, reject});
+    child.stdin.write(JSON.stringify({protocol_version:1,id:requestId,operation,params})+'\n');
+  });
+  let snapshot = await request('project.preview_reset', {project_revision:latest.project_revision,scene_id:'main',state_id:stateId});
+  snapshot = await request('project.preview_input', {project_revision:latest.project_revision,
+    preview_revision:snapshot.preview_revision,logical_source:'BUTTON_A'});
+  assert.equal(snapshot.variables.counter, 1, 'The authored guarded button route must execute in the host');
+  assert.equal(snapshot.scene.state_id, targetId);
+  assert(commands.some(command => command.kind === 'object_actions.set' && command.owner_id === routeId));
+  assert(!commands.some(command => command.kind.startsWith('route.action.') || command.kind === 'route.set_action'));
+  window.webContents.invalidate(); await wait(200);
+  fs.writeFileSync(path.join(output, 'native-local-graph.png'), (await window.webContents.capturePage()).toPNG());
+  await click('button[title="Delete transition"]');
+  assert.equal(main().routes.length, 0);
+  await click('button[title="Undo"]'); assert.equal(main().routes.length, 1);
+  await click('button[title="Redo"]'); assert.equal(main().routes.length, 0);
+  assert(!commands.some(command => command.kind.startsWith('scene_exit.')));
   await button('Scene flow');
   await click('button[title="New scene"]');
   await text('[aria-label="New scene name"]', 'Garden');
@@ -106,7 +154,8 @@ app.whenReady().then(async () => {
   const reload = await new Promise((resolve,reject) => { const requestId=String(++id); pending.set(requestId,{resolve,reject});
     child.stdin.write(JSON.stringify({protocol_version:1,id:requestId,operation:'project.load',params:{path:projectPath}})+'\n'); });
   assert.equal(JSON.stringify(reload.document.scenes), saved);
-  console.log('Native creation, state lifecycle, layout, scene addition and save/reload passed');
+  assert.deepEqual(serviceErrors, [], 'Native workflow must not generate service errors');
+  console.log('Native creation, state lifecycle, local graph/guard/actions, scene addition and save/reload passed');
 }).catch(error => { console.error(error); process.exitCode = 1; }).finally(() => {
   clearTimeout(watchdog); child?.kill(); window?.destroy(); fs.rmSync(temp,{recursive:true,force:true}); app.exit(process.exitCode || 0);
 });

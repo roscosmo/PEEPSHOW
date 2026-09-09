@@ -61,7 +61,7 @@ import {
   type StateTriggerEventKind,
 } from "./SceneInspection";
 import type { StateGraphEntryHandle, StateGraphEntrySide } from "./stateGraph";
-import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsNativeCreation, supportsStateManagement, supportsObjectCommand, usesSceneObjects } from "./sceneCapabilities";
+import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsNativeCreation, supportsStateManagement, supportsLocalGraphCommand, supportsObjectCommand, usesSceneObjects } from "./sceneCapabilities";
 import { SceneObjectInspector } from "./SceneObjectInspector";
 import type {
   AssetFrameRecord,
@@ -1696,7 +1696,7 @@ export default function App() {
     if (bridge === undefined || project === null || busy !== null) {
       return;
     }
-    setBusy("Deleting legacy scene transition");
+    setBusy("Deleting transition");
     setPlaying(false);
     try {
       const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
@@ -1706,7 +1706,7 @@ export default function App() {
       applyProjectResult(result);
       setSelectedScene(sceneId);
       setSceneSelection({ kind: "scene" });
-      setMessage("Legacy scene transition deleted. Save to write it to the project.");
+      setMessage("Transition deleted. Save to write it to the project.");
     } catch (error) {
       setMessage(errorText(error));
     } finally {
@@ -2755,6 +2755,14 @@ export default function App() {
   const stateCommandAllowed = (command: string) => objectSceneSelected
     ? busy === null && supportsStateManagement(service, selectedSceneCapability, command)
     : canEditSelectedScene;
+  const localCommandAllowed = (command: string) => objectSceneSelected
+    ? busy === null && supportsLocalGraphCommand(service, selectedSceneCapability, command)
+    : canEditSelectedScene;
+  const canEditLocalGraph = ["route.create_trigger", "route.rebind_trigger", "editor.state_graph.set_route_layout",
+    "editor.state_graph.delete_system_exit"].every(localCommandAllowed)
+    && (!objectSceneSelected || ["state", "system_exit"].every(kind =>
+      service?.scene_object_authoring?.route_destination_kinds?.includes(kind)
+      && selectedSceneCapability?.route_destination_kinds?.includes(kind)));
   const readOnlySceneIds = useMemo(() => scenes.filter((scene) =>
     !canEditLegacyScene(scene, project?.scene_capabilities?.[scene.scene_id])).map((scene) => scene.scene_id),
   [scenes, project?.scene_capabilities]);
@@ -5587,7 +5595,8 @@ export default function App() {
               canMoveStates={stateCommandAllowed("editor.state_graph.set_node_position")}
               canDeleteStates={stateCommandAllowed("state.delete")}
               canEditEntry={stateCommandAllowed("state.set_entry") && stateCommandAllowed("editor.state_graph.set_entry_layout")}
-              canEdit={canEditSelectedScene}
+              canEdit={canEditLocalGraph}
+              canConnectScenes={canEditSelectedScene}
             />
           </div>
         </section>
@@ -5672,6 +5681,8 @@ export default function App() {
 
           {!projectRootSelected && workspaceMode === "logic" && (
             <SceneAuthoringInspector
+              onDeleteRoute={deleteLegacySceneRoute}
+              localCommandAllowed={localCommandAllowed}
               stateCommandAllowed={stateCommandAllowed}
               objectActionsEditable={busy === null && supportsObjectCommand(service, selectedSceneCapability, "object_actions.set")}
               scene={selectedSceneDocument}

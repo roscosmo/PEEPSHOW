@@ -2384,6 +2384,7 @@ export function StateGraphView({
   canMoveStates = canEdit,
   canDeleteStates = canEdit,
   canEditEntry = canEdit,
+  canConnectScenes = canEdit,
 }: {
   scene: SceneDocument | null;
   activeStateId: string | null;
@@ -2431,6 +2432,7 @@ export function StateGraphView({
   canMoveStates?: boolean;
   canDeleteStates?: boolean;
   canEditEntry?: boolean;
+  canConnectScenes?: boolean;
 }) {
   const graph = useMemo(() => buildStateGraphModel(scene, editor), [editor, scene]);
   const flowRef = useRef<ReactFlowInstance | null>(null);
@@ -2474,7 +2476,7 @@ export function StateGraphView({
         position: { x: endpoint.x, y: endpoint.y },
         data: {
           endpoint,
-          canEdit,
+          canEdit: endpoint.kind === "exit" ? canConnectScenes : canEdit,
           onSelect: (selectedEndpoint: GraphSceneEndpointNode) => {
             onSelect(selectedEndpoint.kind === "exit" && selectedEndpoint.sceneExitId !== undefined
               ? { kind: "sceneExit", id: selectedEndpoint.sceneExitId }
@@ -2486,11 +2488,11 @@ export function StateGraphView({
         selected: endpoint.kind === "exit"
           ? endpoint.sceneExitId !== undefined && selected.kind === "sceneExit" && selected.id === endpoint.sceneExitId
           : endpoint.kind === "system" && selected.kind === "systemExit",
-        draggable: endpoint.kind === "entry" ? canMoveStates : canEdit && (endpoint.declared || endpoint.kind !== "exit"),
-        connectable: canEdit,
+        draggable: endpoint.kind === "entry" ? canMoveStates : endpoint.kind === "exit" ? canConnectScenes && endpoint.declared : canEdit,
+        connectable: endpoint.kind === "exit" ? canConnectScenes : canEdit,
       })),
     ],
-    [activeStateId, canEdit, canMoveStates, defaultPositionById, graph.endpoints, graph.entryEdge?.targetHandle, graph.nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, scene?.joystick_policy, selected],
+    [activeStateId, canEdit, canMoveStates, canConnectScenes, defaultPositionById, graph.endpoints, graph.entryEdge?.targetHandle, graph.nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, scene?.joystick_policy, selected],
   );
   const [nodes, setNodes] = useState<Node[]>(baseNodes);
   const graphNodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
@@ -2666,6 +2668,7 @@ export function StateGraphView({
       return;
     }
     if (connection.sourceHandle.startsWith("new-physical-trigger:")) {
+      if (!canEdit) return;
       const logicalSource = connection.sourceHandle.slice("new-physical-trigger:".length);
       let target: NewStateTransitionTarget | null = null;
       const targetState = graph.nodes.find((item) => item.id === connection.target);
@@ -2686,7 +2689,7 @@ export function StateGraphView({
       }
       if (target === null) {
         const newRouteEndpoint = graph.endpoints.find((item) => item.id === connection.target);
-        if (newRouteEndpoint?.kind === "exit" && newRouteEndpoint.sceneExitId !== undefined) {
+        if (canConnectScenes && newRouteEndpoint?.kind === "exit" && newRouteEndpoint.sceneExitId !== undefined) {
           target = {
             kind: "sceneExit",
             sceneExitId: newRouteEndpoint.sceneExitId,
@@ -2710,7 +2713,7 @@ export function StateGraphView({
       return;
     }
     const endpoint = graph.endpoints.find((item) => item.id === connection.target);
-    if (endpoint?.kind !== "exit" || endpoint.sceneExitId === undefined || endpoint.targetScene === undefined) {
+    if (!canConnectScenes || endpoint?.kind !== "exit" || endpoint.sceneExitId === undefined || endpoint.targetScene === undefined) {
       return;
     }
     const output = sourceNode.outputs.find((item) => item.id === connection.sourceHandle);
@@ -4001,6 +4004,8 @@ function SceneNodeInspector({
 }
 
 export function SceneAuthoringInspector({
+  onDeleteRoute,
+  localCommandAllowed,
   stateCommandAllowed,
   objectActionsEditable = false,
   scene,
@@ -4092,6 +4097,8 @@ export function SceneAuthoringInspector({
   canPreview: boolean;
   objectActionsEditable?: boolean;
   stateCommandAllowed?: (command: string) => boolean;
+  localCommandAllowed?: (command: string) => boolean;
+  onDeleteRoute?: (sceneId: string, routeId: string) => Promise<void>;
 }) {
   const variables = scene?.variables ?? [];
   const inputActions = scene?.input_actions ?? [];
@@ -4133,6 +4140,8 @@ export function SceneAuthoringInspector({
       )}
       {route !== null && scene !== null && (
         <RouteInspector
+          onDeleteRoute={onDeleteRoute}
+          localCommandAllowed={localCommandAllowed}
           objectActionsEditable={objectActionsEditable}
           sceneId={scene.scene_id}
           route={route}
@@ -4203,7 +4212,7 @@ export function SceneAuthoringInspector({
           waitingVisuals={waitingVisuals}
           onSelect={onSelect}
           variableLimit={variableLimit}
-          canEdit={canEdit}
+          canEdit={localCommandAllowed ? ["variable.add", "variable.update", "variable.delete"].every(localCommandAllowed) : canEdit}
           onAddVariable={onAddVariable}
           onUpdateVariable={onUpdateVariable}
           onDeleteVariable={onDeleteVariable}
@@ -4767,6 +4776,8 @@ function SceneExitInspector({
 }
 
 function RouteInspector({
+  onDeleteRoute,
+  localCommandAllowed,
   objectActionsEditable = false,
   sceneId,
   route,
@@ -4802,6 +4813,8 @@ function RouteInspector({
   sourceState?: string;
   hasManualRoute: boolean;
   objectActionsEditable?: boolean;
+  localCommandAllowed?: (command: string) => boolean;
+  onDeleteRoute?: (sceneId: string, routeId: string) => Promise<void>;
   states: StateRecord[];
   scenes: SceneDocument[];
   sceneExits: SceneExitRecord[];
@@ -4919,7 +4932,7 @@ function RouteInspector({
           <select
             id={`route-target-${route.route_id}`}
             value={route.target_state}
-            disabled={!canEdit}
+            disabled={!(localCommandAllowed?.("route.set_target") ?? canEdit)}
             onChange={(event) => {
               void onSetRouteTarget(sceneId, route.route_id, event.target.value);
             }}
@@ -4937,7 +4950,7 @@ function RouteInspector({
           <button
             className="button secondary"
             type="button"
-            disabled={!canEdit || !hasManualRoute}
+            disabled={!(localCommandAllowed?.("editor.state_graph.set_route_layout") ?? canEdit) || !hasManualRoute}
             title="Return this transition line to automatic routing"
             onClick={() => {
               void onResetRouteLayout(sceneId, route.route_id, sourceState);
@@ -4954,7 +4967,7 @@ function RouteInspector({
         route={route}
         variables={variables}
         guardLimit={guardLimit}
-        canEdit={canEdit}
+        canEdit={localCommandAllowed ? ["route.set_guard", "route.guard.add", "route.guard.delete", "route.guard.move"].every(localCommandAllowed) : canEdit}
         onSetRouteGuard={onSetRouteGuard}
         onAddRouteGuard={onAddRouteGuard}
         onDeleteRouteGuard={onDeleteRouteGuard}
@@ -4982,6 +4995,9 @@ function RouteInspector({
       <div className="internal-ref-note">
         Internal transition ID: <code>{route.route_id}</code>
       </div>
+      {onDeleteRoute && <button className="button secondary" type="button" title="Delete transition"
+        disabled={!(localCommandAllowed?.("route.delete") ?? canEdit)}
+        onClick={() => void onDeleteRoute(sceneId, route.route_id)}><Trash2 size={14} />Delete transition</button>}
     </section>
   );
 }
