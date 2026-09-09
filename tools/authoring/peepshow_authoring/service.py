@@ -33,7 +33,7 @@ from .project import (
     save_project,
 )
 from .preview import PreviewError, StateScenePreview
-from .scene_object_authoring import OBJECT_COMMANDS, COMMON_SCENE_COMMANDS, execution_model
+from .scene_object_authoring import OBJECT_COMMANDS, COMMON_SCENE_COMMANDS, STATE_MANAGEMENT_COMMANDS, execution_model
 from .scene_objects import (
     SceneObjectError, initialize_objects, resolve_object,
     plan_object_migration, materialize_object_migration,
@@ -55,7 +55,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 39
+SERVICE_API_VERSION = 40
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -144,6 +144,8 @@ def _scene_capabilities(bundle: ProjectBundle) -> dict[str, Any]:
             "egg_export": scene["schema_version"] == 1,
             "supported_commands": list(OBJECT_COMMANDS + COMMON_SCENE_COMMANDS) if scene["schema_version"] == 2 else None,
             "legacy_command_catalog": scene["schema_version"] == 1,
+            "state_management_commands": list(STATE_MANAGEMENT_COMMANDS),
+            "graph_construction_commands": scene["schema_version"] == 1,
         } for scene in bundle.scenes
     }
 
@@ -326,10 +328,22 @@ class AuthoringService:
             "service_api_version": SERVICE_API_VERSION,
             "protocol_version": PROTOCOL_VERSION,
             "operations": list(SERVICE_OPERATIONS),
+            "scene_creation": {
+                "project_operation": "project.create",
+                "scene_command": "scene.add",
+                "entry_scene_command": "project.set_entry_scene",
+                "version_parameter": "scene_schema_version",
+                "supported_versions": [1, 2],
+                "default_version": 1,
+                "scene_add_inherits_version": False,
+                "initial_state_id": "start",
+                "empty_scene_is_editable_draft": True,
+            },
             "scene_object_authoring": {
                 "status": "host_available", "schema_version": 2,
                 "execution_model": "scene_objects", "egg_export": False, "firmware_available": False,
                 "commands": list(OBJECT_COMMANDS + COMMON_SCENE_COMMANDS),
+                "state_management_commands": list(STATE_MANAGEMENT_COMMANDS),
                 "absolute_axes": {"x": "right", "y": "down"},
                 "relative_axes": {"dx": "right", "dy": "up"},
                 "override_properties": ["x", "y", "visible", "visual_ref"],
@@ -686,12 +700,12 @@ class AuthoringService:
         }
 
     def _create(self, params: dict[str, Any]) -> dict[str, Any]:
-        _require_fields(params, {"path"})
+        _require_fields(params, {"path"} | ({"scene_schema_version"} if "scene_schema_version" in params else set()))
         path = params["path"]
         if not isinstance(path, str) or not path:
             raise ProtocolError("PROJECT_PATH_INVALID", "path must be non-empty text")
         try:
-            bundle = create_project(Path(path))
+            bundle = create_project(Path(path), scene_schema_version=params.get("scene_schema_version", 1))
         except ProjectCommandError as exc:
             raise ProtocolError(exc.code, exc.message) from exc
         return self._activate_bundle(bundle)

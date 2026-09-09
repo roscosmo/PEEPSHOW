@@ -1,4 +1,5 @@
 #include "ps_scene_runtime.h"
+#include "ps_scene_objects.h"
 
 #include <string.h>
 
@@ -194,6 +195,21 @@ static uint32_t PS_SceneRuntime_RenderElementValid(
           (element->style_id == PS_SCENE_RENDER_STYLE_NONE)) ? 1UL : 0UL;
 }
 
+static uint32_t PS_SceneRuntime_ValidateObjectDefinition(
+  const ps_scene_runtime_state_scene_t *scene)
+{
+  ps_scene_objects_t candidate;
+  if ((scene->visual_binding_count != 0UL) ||
+      (scene->waiting_animation_count != 0UL) ||
+      (scene->object_definition.state_count != scene->state_count) ||
+      (PS_SceneObjects_Init(&candidate, &scene->object_definition, 1UL,
+        (uint16_t)(scene->entry_state_id - 1UL)) != PS_SCENE_OBJECTS_OK))
+  {
+    return 1UL;
+  }
+  return 0UL;
+}
+
 uint32_t PS_SceneRuntime_ValidateDescriptor(
   const ps_scene_runtime_state_scene_t *scene, uint32_t package_scene_count)
 {
@@ -213,7 +229,10 @@ uint32_t PS_SceneRuntime_ValidateDescriptor(
       (scene->scene_id == 0UL) ||
       (scene->state_count == 0UL) ||
       (scene->state_count > PS_SCENE_RUNTIME_STATE_MAX) ||
-      (scene->visual_binding_count == 0UL) ||
+      ((scene->execution_model != PS_SCENE_RUNTIME_MODEL_LEGACY) &&
+       (scene->execution_model != PS_SCENE_RUNTIME_MODEL_OBJECTS)) ||
+      ((scene->execution_model == PS_SCENE_RUNTIME_MODEL_LEGACY) &&
+       (scene->visual_binding_count == 0UL)) ||
       (scene->visual_binding_count > PS_SCENE_RUNTIME_VISUAL_BINDING_MAX) ||
       (scene->event_binding_count > PS_SCENE_RUNTIME_EVENT_BINDING_MAX) ||
       (scene->input_route_count > PS_SCENE_RUNTIME_INPUT_ROUTE_MAX) ||
@@ -238,15 +257,26 @@ uint32_t PS_SceneRuntime_ValidateDescriptor(
     return 1UL;
   }
 
+  if ((scene->execution_model == PS_SCENE_RUNTIME_MODEL_OBJECTS) &&
+      (PS_SceneRuntime_ValidateObjectDefinition(scene) != 0UL))
+  {
+    return 1UL;
+  }
+
   for (state_index = 0UL; state_index < scene->state_count; ++state_index)
   {
     const ps_scene_runtime_state_t *state = &scene->states[state_index];
     uint32_t state_binding_index = PS_SceneRuntime_FindVisualBindingIndex(
       scene, state->visual_binding_id);
 
-    if ((state->state_id == 0UL) || (state->visual_binding_id == 0UL) ||
-        (state_binding_index == PS_SCENE_RUNTIME_INDEX_INVALID) ||
-        (state->focus_index >= scene->state_count))
+    if ((state->state_id == 0UL) ||
+        ((scene->execution_model == PS_SCENE_RUNTIME_MODEL_LEGACY) &&
+         ((state->visual_binding_id == 0UL) ||
+          (state_binding_index == PS_SCENE_RUNTIME_INDEX_INVALID) ||
+          (state->focus_index >= scene->state_count))) ||
+        ((scene->execution_model == PS_SCENE_RUNTIME_MODEL_OBJECTS) &&
+         ((state->state_id != state_index + 1UL) ||
+          (state->visual_binding_id != 0UL) || (state->focus_index != 0UL))))
     {
       return 1UL;
     }
@@ -491,6 +521,18 @@ uint32_t PS_SceneRuntime_ValidateDescriptor(
     uint32_t binding_index;
     uint32_t element_index;
 
+    if (action->kind == PS_SCENE_RUNTIME_ACTION_OBJECT_OPERATION)
+    {
+      if ((scene->execution_model != PS_SCENE_RUNTIME_MODEL_OBJECTS) ||
+          (action->target_id >= scene->object_definition.operation_count) ||
+          (action->target_element_id != 0UL) || (action->operation != 0UL) ||
+          (action->value != 0) || (action->secondary_value != 0))
+      {
+        return 1UL;
+      }
+      continue;
+    }
+
     if ((action->kind >= PS_SCENE_RUNTIME_ACTION_START_TIMER) &&
         (action->kind <= PS_SCENE_RUNTIME_ACTION_CANCEL_TIMER))
     {
@@ -547,6 +589,10 @@ uint32_t PS_SceneRuntime_ValidateDescriptor(
       continue;
     }
 
+    if (scene->execution_model == PS_SCENE_RUNTIME_MODEL_OBJECTS)
+    {
+      return 1UL;
+    }
     binding_index = PS_SceneRuntime_FindVisualBindingIndex(
       scene, action->target_id);
     if ((binding_index == PS_SCENE_RUNTIME_INDEX_INVALID) ||
@@ -729,6 +775,11 @@ static uint32_t PS_SceneRuntime_ValidateStateScene(
   const ps_scene_runtime_state_scene_t *scene)
 {
   g_ps_scene_runtime_probe.descriptor_validate_count++;
+  /* Development descriptors are not display-admitted production scenes yet. */
+  if ((scene == NULL) || (scene->execution_model != PS_SCENE_RUNTIME_MODEL_LEGACY))
+  {
+    return 1UL;
+  }
   return PS_SceneRuntime_ValidateDescriptor(scene, PS_EggStateLoader_SceneCount());
 }
 

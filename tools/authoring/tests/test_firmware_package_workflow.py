@@ -144,6 +144,10 @@ class FirmwarePackageWorkflowTests(unittest.TestCase):
 
             fixture("baseline", baseline)
             fixture("valid", baseline, 0)
+            # The object-record decoder is not yet whole-package execution support.
+            from test_object_egg import object_bundle
+            from peepshow_authoring.compiler import build_development_egg_v2
+            fixture("development_v2_not_admitted", build_development_egg_v2(object_bundle()), 2)
             from test_firmware_shape_primitives import make_shape_project
             shapes = build_egg(load_project(make_shape_project(work)))
             fixture("all_shapes", shapes, 0)

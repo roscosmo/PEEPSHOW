@@ -18,7 +18,11 @@ OBJECT_COMMANDS = (
     "object_actions.set",
 )
 # Other legacy commands are not implicitly safe for a different scene representation.
-COMMON_SCENE_COMMANDS = ("scene.rename", "state.rename", "state.set_entry")
+STATE_MANAGEMENT_COMMANDS = (
+    "state.add", "state.create", "state.delete", "state.rename", "state.set_entry",
+    "editor.state_graph.set_node_position", "editor.state_graph.set_entry_layout",
+)
+COMMON_SCENE_COMMANDS = ("scene.rename", "project.set_entry_scene", *STATE_MANAGEMENT_COMMANDS)
 
 
 def execution_model(scene):

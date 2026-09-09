@@ -1,8 +1,10 @@
 # Peep Studio Scene Object Ownership Handoff
 
 Status: GUI representation review accepted; full source envelope, migration/edit
-transactions and host preview connected in API 39. Executable encoding,
-firmware and autonomous display integration remain pending.
+transactions and host preview connected in API 39. API 40 adds native V2
+project/scene creation and state management. Development-only V2 binary
+encoding/reading and C loader/graph cores are implemented. Normal export,
+production firmware activation and autonomous display integration remain unavailable.
 
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. This handoff coordinates
 work; it does not allocate executable schema fields, capability IDs, or opcodes.
@@ -387,3 +389,230 @@ Verification: 190 authoring tests passed, including existing native checks and
 18 connected scene-object integration tests. Target-profile generated-header
 check and `git diff --check` passed. No ARM build or hardware test was performed:
 the firmware is unchanged and cannot execute version-2 scenes yet.
+
+### Development Binary Increment
+
+On top of main `f2a7d9e`, the OS backend adds a separate development-only
+`compiler.build_development_egg_v2(bundle)` and
+`object_egg.parse_development_egg_v2(blob)`. Controlled source fixtures are
+migrated and encoded in tests without Studio UI. The reader consumes actual
+binary object/control records, not the API 39 host-preview annotations.
+
+Container version 2 explicitly distinguishes legacy and object-model scenes.
+New object/control tables and graph revision 7 preserve action ordering and
+reuse asset, animation and audio payloads. The development layout is
+`schemas/package/PeepPkg_V2_Development_Layout.md`; this records allocated
+wire values but does not grant HW6 runtime or LPBAM admission.
+
+GUI-facing API remains **39**. No service commands/capabilities, source schemas,
+normal export paths, examples, workbench or firmware are changed in this
+increment. Studio should continue its agreed capability-aware placement and
+inspection work. Do not connect the development builder to the export button.
+`SCENE_OBJECT_EXECUTABLE_UNAVAILABLE` remains the normal build result for V2.
+
+Tests include deterministic mixed-scene round trips, all five object actions,
+independent timer handlers, asset/audio reuse, default-reader rejection and
+malformed records with recomputed checksums. A bounded byte-corruption sweep
+checks that failures return format errors, not decoder crashes. These are host
+format checks, not a C decoder or device execution pass. Next: firmware decode,
+bounded object storage/actions, display handoff and hardware acceptance.
+
+Verification: 206 authoring tests passed, including native checks and 16
+development-format tests. Target-profile consistency and `git diff --check`
+passed. No ARM build or hardware test was performed; firmware is unchanged.
+
+### C Object Record Decoder Increment
+
+Added `ps_egg_object_decoder.h/.c` to the HW6 source build. This bounded,
+allocation-free module reads the new object/control chunks and validates their
+references against shared catalog bytes. Six native tests compare its actual
+decoded fields and malformed-input decisions with the independent Python
+record reader. The existing native loader test also verifies that a V2 fixture
+is still rejected without changing the active V1 context.
+
+Verification: **212 authoring tests pass**, including native tests. HW6 Debug
+build, target-profile consistency and `git diff --check` pass. No device test
+was performed: the decoder is not yet called by production loading or runtime.
+This does not prove full V2 package validation, live object execution or LPBAM.
+
+API **39**, source/service commands, GUI capabilities and ordinary export are
+unchanged. Keep V2 export unavailable. Remaining OS work: integrate complete
+container/scene/graph validation with the loader, implement the bounded live
+object bank and transactional actions, then display/awake/STOP2 continuity.
+
+### C Object Bank Core Increment
+
+After `dc8815196fd14fcd9a8bf2773d356bd41914e47f`, the OS adds
+`ps_scene_objects.h/.c`: fixed-capacity underlying properties, transactional
+object actions, sparse state overrides, effective snapshots and analytical clip
+phase/residual time. Decoder getters now expose immutable clip steps. Native
+tests consume actual V2 encoder bytes with two independent objects sharing a
+four-step, 250 ms clip; they do not substitute host-preview data for C behavior.
+
+Selection changes preserve phase and remaining time; persistent movement reads
+underlying coordinates and clamps each ordered write safely. Temporary frame
+masks beat persistent masks, while both leave playback advancing. Hidden clips
+advance without a scheduler, and explicit scene suspension pauses elapsed time.
+Failed, stale and double commits do not change the live bank. Scene recreation
+uses fresh defaults and a new activation token.
+
+The core is compiled but not connected to production loading, graph dispatch,
+timer dispatch or the display owner yet. V2 installation/export remains disabled;
+**API 39 and Studio commands/capabilities are unchanged**. No GUI worktree,
+source schema, compiler semantics, clocks, drivers or power policy changed.
+
+Verification: **218 authoring tests pass**, including six new native-core tests;
+HW6 Debug build, target-profile and diff checks pass. ARM ABI bank/stage/snapshot
+sizes are 216/240/408 bytes. Unoptimized local stack frames are 320 bytes for
+Init, 128 for Apply and 504 for Snapshot, excluding callees/interrupt overhead.
+No production banks are allocated yet, and no device pass is claimed.
+
+Next OS integration: complete V2 container/scene/graph validation and lowering;
+stage graph variables/object actions together; admit and publish the display
+plan while preserving phase and residual deadlines across awake/STOP2 handoff.
+
+### Development Loader and Graph Increment
+
+After `ecf7797` (staged object-bank core), the shared C loader now has an explicit
+development V2 decode entry. It validates the entire mixed-model package before
+returning a selected scene, preserves live V1 loader state, and leaves output
+unchanged on failure. Model-2 graph revision 7 lowers to scene objects and sparse
+overrides, not per-state render bindings. Shared animation catalog validation
+includes unreferenced clips. Object-operation references and route ranges must
+be canonical, bounded and fully accounted for.
+
+`ps_scene_object_graph` stages variables, object operations, state selection and
+ordered side effects. One commit publishes variables/objects only after caller
+admission; failed/aborted/stale transactions publish nothing. A scene-timer event
+can mutate objects without state re-entry. Native checks retain frame 1 with
+125 ms remaining across a transition at 375 ms. Replacement routes decode, but
+commit is withheld until replacement admission/orchestration is implemented.
+
+**Service API 39 and Studio capabilities are unchanged.** Runtime descriptor API
+is 22; this is not an authoring API bump. No GUI worktree, source schema, Python
+compiler/service, knobs, clocks, drivers or power modes changed. Do not enable
+V2 export or claim on-device support. Normal V2 install/activation remains blocked.
+
+Verification: **228 authoring tests pass**, including ten new native-loader/graph
+tests; HW6 Debug build and target-profile/diff checks pass. ARM graph bank/stage/
+effects sizes are 256/1096/784 bytes, caller-owned and not allocated in production
+yet. Stack measurements and remaining limits are in the executable design.
+No physical RTC, display, audio or STOP2 test is claimed for this increment.
+
+Next: production owner/display admission, frame resolution and residual-deadline
+handoff; then device continuity/recovery tests and an explicit capability/export
+handoff for Studio. GUI placement/migration work can continue independently.
+
+### Native Creation and States (API 40)
+
+Following `323179d`, the agreed next priority is native scene-object authoring,
+not migration. This increment changes only the shared Python authoring service,
+tests and documentation. The GUI worktree and firmware are untouched. Existing
+migration behavior remains available but no new migration work is included.
+
+**Delivered:** native V2 project/scene creation, state create/add/delete/rename,
+entry state selection, node/entry layout, and project entry scene selection.
+**Not delivered:** V2 graph construction (inputs, triggers, routes, guards,
+variables, independent handlers), scene-exit/connection authoring, runtime clip
+controls, production V2 activation or ordinary egg export. Existing
+`object_actions.set` still edits actions on already-existing routes/handlers.
+
+Discover creation without loading a project:
+
+```json
+{
+  "scene_creation": {
+    "project_operation": "project.create",
+    "scene_command": "scene.add",
+    "entry_scene_command": "project.set_entry_scene",
+    "version_parameter": "scene_schema_version",
+    "supported_versions": [1, 2],
+    "default_version": 1,
+    "scene_add_inherits_version": false,
+    "initial_state_id": "start",
+    "empty_scene_is_editable_draft": true
+  }
+}
+```
+
+This is a fragment of `service.hello`, not a request. Create a new project using
+`project.create` with these params (destination must not exist):
+
+```json
+{"path": "G:/PEEPSHOW/workbench/new-game.peepproj", "scene_schema_version": 2}
+```
+
+The new project is immediately saved and loaded with a new project revision.
+Its manifest stays version 1. The initial `main` scene is version 2, has
+`objects: []`, and one `start` state with `object_overrides: []`. No example,
+migration or state-private waiting/render records are inserted. Blank V2 host
+preview works; `build_issues` still reports `SCENE_OBJECT_EXECUTABLE_UNAVAILABLE`.
+Adding objects does not remove that production-export restriction.
+
+To add another scene, call `project.apply_commands` with the current
+`project_revision` and a `commands` array containing:
+
+```json
+{"kind": "scene.add", "display_name": "Garden", "scene_schema_version": 2}
+```
+
+Use the returned `applied_commands` entry's `scene_id` and `source`, not a frontend-generated
+slug; IDs and relative source paths are collision-safe. The file is created by
+`project.save`, not by this command. Omission of `scene_schema_version` means
+**V1 even in a wholly V2 project**. Studio must explicitly request its chosen
+model. Invalid values, including strings, booleans and null, return
+`SCENE_SCHEMA_VERSION_UNSUPPORTED` without partial changes.
+
+Both hello's `scene_object_authoring` and each scene capability now list:
+
+```json
+{
+  "state_management_commands": [
+    "state.add", "state.create", "state.delete", "state.rename", "state.set_entry",
+    "editor.state_graph.set_node_position", "editor.state_graph.set_entry_layout"
+  ]
+}
+```
+
+These commands also appear in the V2 scene's `supported_commands`, alongside
+existing object commands, `scene.rename` and `project.set_entry_scene`.
+`graph_construction_commands` remains false for V2 and true for V1. The broad
+legacy graph catalog in hello must not override a V2 scene's command list.
+
+Example command records, each used in `project.apply_commands`:
+
+```json
+[
+  {"kind": "state.create", "scene_id": "main", "display_name": "Playing", "x": 200, "y": 100},
+  {"kind": "state.add", "scene_id": "main", "state": {"state_id": "paused", "display_name": "Paused", "object_overrides": []}},
+  {"kind": "state.rename", "scene_id": "main", "state_id": "paused", "display_name": "Resting"},
+  {"kind": "state.set_entry", "scene_id": "main", "state_id": "paused"},
+  {"kind": "editor.state_graph.set_node_position", "scene_id": "main", "state_id": "paused", "x": 240, "y": 120},
+  {"kind": "editor.state_graph.set_entry_layout", "scene_id": "main", "target_handle": "entry-top-left", "target_side": "top"},
+  {"kind": "state.delete", "scene_id": "main", "state_id": "start"},
+  {"kind": "project.set_entry_scene", "scene_id": "garden"}
+]
+```
+
+`state.create` allocates a stable collision-safe ID, empty overrides and graph
+position. `state.add` accepts an explicit source record and runs shared validation.
+The x/y above are editor graph coordinates, not object positions. New states do
+not inherit entry-state overrides or join an existing exact visibility state set.
+The 64-state limit remains enforced. Rename changes only the display name.
+
+Deletion refuses entry/last states and route source/target or independent-handler
+target references with `COMMAND_TARGET_IN_USE`; it does not silently remove
+transitions. Unreferenced deletion removes that state's overrides and node layout,
+not the scene-owned objects. Change the entry first when deleting the old entry.
+Setting project/scene entry is not scene-exit wiring.
+
+Edits retain revision checks, whole-batch rollback, bounded undo/redo, reference-safe
+validation, draft preview/save and separate build readiness. A failed batch adds
+no undo entry and writes no scene files. Existing V1 creation and editing remain
+unchanged. GUI can now implement native project/scene creation and state management
+from capabilities; OS's next shared increment is graph construction and connections.
+
+Verification: **240 authoring tests pass**, including native C checks and 12 new
+native-authoring service tests. Target-profile consistency and `git diff --check`
+pass. No firmware build or device test was run: this increment changes no firmware
+and does not claim production V2 execution or display/STOP2 continuity.

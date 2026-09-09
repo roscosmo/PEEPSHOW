@@ -67,6 +67,8 @@ CHUNK_ANIMATION_TABLE = 9
 CHUNK_AUDIO_ASSET_TABLE = 10
 CHUNK_AUDIO_ADPCM_BANK = 11
 CHUNK_AUDIO_CUE_TABLE = 12
+CHUNK_SCENE_OBJECTS = 13
+CHUNK_OBJECT_CONTROLS = 14
 KNOWN_CHUNK_TYPES = {
     CHUNK_MANIFEST,
     CHUNK_STRING_TABLE,
@@ -81,6 +83,7 @@ KNOWN_CHUNK_TYPES = {
     CHUNK_AUDIO_ADPCM_BANK,
     CHUNK_AUDIO_CUE_TABLE,
 }
+DEVELOPMENT_V2_CHUNK_TYPES = KNOWN_CHUNK_TYPES | {CHUNK_SCENE_OBJECTS, CHUNK_OBJECT_CONTROLS}
 
 ASSET_FLAG_OPAQUE = 1
 ANIMATION_LOOP_POLICIES = {1, 2, 3, 4}
@@ -147,6 +150,8 @@ def build_container(
     chunks: Iterable[EggChunkSpec],
     manifest_chunk_index: int,
     package_flags: int = 0,
+    *,
+    _development_v2: bool = False,
 ) -> bytes:
     chunk_list = tuple(chunks)
     if not chunk_list or len(chunk_list) > 128:
@@ -163,7 +168,7 @@ def build_container(
     cursor = align_up(table_offset + len(chunk_list) * CHUNK_ENTRY.size)
     placements: list[tuple[int, EggChunkSpec]] = []
     for chunk in chunk_list:
-        if chunk.chunk_type not in KNOWN_CHUNK_TYPES:
+        if chunk.chunk_type not in (DEVELOPMENT_V2_CHUNK_TYPES if _development_v2 else KNOWN_CHUNK_TYPES):
             raise EggFormatError(f"unknown chunk type {chunk.chunk_type}")
         if not chunk.payload:
             raise EggFormatError(f"chunk '{chunk.chunk_id}' is empty")
@@ -176,7 +181,7 @@ def build_container(
 
     header_values = (
         b"PKG1",
-        CONTAINER_VERSION,
+        2 if _development_v2 else CONTAINER_VERSION,
         HEADER.size,
         package_size,
         table_offset,
@@ -722,12 +727,14 @@ def _parse_graph(
     render_count: int,
     waiting_count: int,
     audio_cue_count: int,
+    *,
+    object_operation_count: int | None = None,
 ) -> dict[str, object]:
     _require(len(payload) >= GRAPH_HEADER.size, "state graph is truncated")
     values = GRAPH_HEADER.unpack_from(payload)
     graph_version = values[1]
     _require(
-        values[0] == b"STG1" and graph_version in {1, 2, 3, 4, 5, 6} and values[2] == GRAPH_HEADER.size,
+        values[0] == b"STG1" and graph_version in ({7} if object_operation_count is not None else {1, 2, 3, 4, 5, 6}) and values[2] == GRAPH_HEADER.size,
         "unsupported state graph",
     )
     route_record = ROUTE_RECORD_V1 if graph_version == 1 else ROUTE_RECORD_V2
@@ -761,7 +768,7 @@ def _parse_graph(
     )
     _string(strings, wait_policy_id, "wait policy ID")
     _string(strings, interaction_policy_id, "interaction policy ID")
-    _require(entry_state < state_count and default_waiting < waiting_count, "state graph entry or wait reference is invalid")
+    _require(entry_state < state_count and (default_waiting == 0xFFFF if graph_version == 7 else default_waiting < waiting_count), "state graph entry or wait reference is invalid")
     offsets = [GRAPH_HEADER.size]
     binding_record = EVENT_RECORD if graph_version >= 5 else INPUT_RECORD
     sizes = (
@@ -863,7 +870,7 @@ def _parse_graph(
         record = STATE_RECORD.unpack_from(payload, offsets[2] + index * STATE_RECORD.size)
         state_id = _string(strings, record[0], "state ID")
         display_name = _string(strings, record[1], "state display name")
-        _require(record[2] < render_count and record[3] < waiting_count, "state visual reference is invalid")
+        _require(record[2:] == (0xFFFF, 0xFFFF) if graph_version == 7 else record[2] < render_count and record[3] < waiting_count, "state visual reference is invalid")
         states.append(
             {
                 "state_id": state_id,
@@ -908,6 +915,7 @@ def _parse_graph(
     operations: list[dict[str, object]] = []
     for index in range(operation_count):
         record = OPERATION_RECORD.unpack_from(payload, offsets[6] + index * OPERATION_RECORD.size)
+        _require(graph_version != 7 or record[0] not in {3, 4, 5, 6}, "legacy element operation in object graph")
         if record[0] == 1:
             _require(
                 record[1] in {1, 2}
@@ -1027,6 +1035,9 @@ def _parse_graph(
                 "timer operation is invalid",
             )
             operations.append({"kind": record[0], "binding_index": record[2]})
+        elif record[0] == 12 and graph_version == 7:
+            _require(record[1] == 0 and record[2] < object_operation_count and record[3:] == (0, 0, 0), "object operation reference is invalid")
+            operations.append({"kind": 12, "object_operation_index": record[2]})
         else:
             raise EggFormatError("operation record is invalid")
     routes: list[dict[str, object]] = []
@@ -1105,7 +1116,7 @@ def _parse_graph(
     }
 
 
-def parse_egg(blob: bytes, *, _draft: bool = False) -> EggPackage:
+def parse_egg(blob: bytes, *, _draft: bool = False, _development_v2: bool = False) -> EggPackage:
     _require(len(blob) >= HEADER.size + FOOTER.size, "package is truncated")
     values = HEADER.unpack_from(blob)
     (
@@ -1125,7 +1136,9 @@ def parse_egg(blob: bytes, *, _draft: bool = False) -> EggPackage:
         header_crc,
         reserved_bytes,
     ) = values
-    _require(magic == b"PKG1" and version == 1, "unsupported package container")
+    _require(magic == b"PKG1" and version == (2 if _development_v2 else 1), "unsupported package container")
+    if _development_v2:
+        _require(not _draft and package_flags == 0, "development V2 flags/draft mode are invalid")
     _require(header_size == HEADER.size and entry_size == CHUNK_ENTRY.size, "container record size is invalid")
     _require(package_size == len(blob), "package size does not match the file")
     _require(table_offset == HEADER.size and alignment == ALIGNMENT, "container offsets or alignment are invalid")
@@ -1146,7 +1159,9 @@ def parse_egg(blob: bytes, *, _draft: bool = False) -> EggPackage:
     for index in range(chunk_count):
         entry = CHUNK_ENTRY.unpack_from(blob, table_offset + index * CHUNK_ENTRY.size)
         chunk_type, format_version, flags, chunk_hash, offset, size, crc, chunk_alignment, chunk_reserved, capability = entry
-        _require(chunk_type in KNOWN_CHUNK_TYPES and format_version == 1, f"chunk {index} type or version is unsupported")
+        _require(chunk_type in (DEVELOPMENT_V2_CHUNK_TYPES if _development_v2 else KNOWN_CHUNK_TYPES) and format_version == 1, f"chunk {index} type or version is unsupported")
+        if _development_v2:
+            _require(flags == 0 and capability == 0, "development V2 chunk flags/capability are invalid")
         _require(chunk_alignment == ALIGNMENT and offset % chunk_alignment == 0, f"chunk {index} alignment is invalid")
         _require(chunk_reserved == 0 and size > 0, f"chunk {index} reserved field or size is invalid")
         _require(offset >= align_up(table_end) and offset + size <= footer_offset, f"chunk {index} is outside payload bounds")
@@ -1158,6 +1173,13 @@ def parse_egg(blob: bytes, *, _draft: bool = False) -> EggPackage:
         chunks.append(EggChunk(chunk_type, format_version, flags, chunk_hash, offset, size, crc, chunk_alignment, capability, payload))
     ordered_ranges = sorted(ranges)
     _require(all(ordered_ranges[i][1] <= ordered_ranges[i + 1][0] for i in range(len(ordered_ranges) - 1)), "chunk payloads overlap")
+    if _development_v2:
+        _require(footer_offset % ALIGNMENT == 0, "V2 footer alignment invalid")
+        cursor = table_end
+        for start, end in ordered_ranges:
+            _require(not any(blob[cursor:start]), "V2 padding is nonzero")
+            cursor = end
+        _require(not any(blob[cursor:footer_offset]), "V2 tail padding is nonzero")
     _require(chunks[manifest_index].chunk_type == CHUNK_MANIFEST, "manifest index selects the wrong chunk type")
 
     string_chunks = [chunk for chunk in chunks if chunk.chunk_type == CHUNK_STRING_TABLE]
@@ -1187,6 +1209,11 @@ def parse_egg(blob: bytes, *, _draft: bool = False) -> EggPackage:
         )
     else:
         audio_assets, audio_cues = (), ()
+
+    if _development_v2:
+        from .object_egg import parse_object_package
+        return parse_object_package(blob, chunks, strings, manifest, manifest_index,
+                                    package_id_hash, audio_assets, audio_cues)
 
     scene_payload = scene_chunks[0].payload
     _require(len(scene_payload) >= SCENE_HEADER.size, "scene table is truncated")

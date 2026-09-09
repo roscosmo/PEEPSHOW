@@ -3,6 +3,8 @@
 /* Runtime event tests do not use the hardware button API or its HAL include. */
 #define PS_INPUT_BUTTONS_H
 #include "ps_scene_runtime.c"
+#include "ps_egg_object_decoder.c"
+#include "ps_scene_objects.c"
 
 static ps_scene_runtime_state_scene_t fixture;
 volatile ps_package_source_probe_t g_ps_package_source_probe;

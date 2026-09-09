@@ -7,6 +7,8 @@
 #define PS_INPUT_BUTTON_LOGICAL_EVENT_REPEAT 4U
 #include "ps_egg_state_loader.c"
 #include "ps_scene_runtime.c"
+#include "ps_egg_object_decoder.c"
+#include "ps_scene_objects.c"
 
 static uint8_t baseline[1048576], candidate[1048576];
 static uint32_t baseline_size;

@@ -29,6 +29,8 @@ from .egg_format import (
     CHUNK_MANIFEST,
     CHUNK_MASKED_1BPP_SPRITE_BANK,
     CHUNK_RENDER_MODELS,
+    CHUNK_SCENE_OBJECTS,
+    CHUNK_OBJECT_CONTROLS,
     CHUNK_SCENE_TABLE,
     CHUNK_STATE_GRAPH,
     CHUNK_STRING_TABLE,
@@ -245,13 +247,14 @@ def _string_table(bundle: ProjectBundle, scenes: tuple[dict[str, Any], ...] | No
             for record in _graph_routes(scene)
             if "target_scene" in record
         )
-        for model in scene["render_models"]:
+        values.update(obj["object_id"] for obj in scene.get("objects", []))
+        for model in scene.get("render_models", []):
             values.add(model["visual_id"])
             for element in model["elements"]:
                 values.add(element["element_id"])
                 if element["kind"] == "sprite":
                     values.add(element["visual_ref"])
-        for waiting in scene["waiting_visuals"]:
+        for waiting in scene.get("waiting_visuals", []):
             values.update((waiting["waiting_visual_id"], waiting["presentation_id"]))
             for element in waiting["elements"]:
                 values.update((element["element_id"], element["source_element_ref"]))
@@ -412,6 +415,8 @@ def _compile_graph(
     scene: dict[str, Any],
     strings: dict[str, int],
     audio_cue_indexes: dict[str, int],
+    *,
+    _objects: bool = False,
 ) -> bytes:
     variables = scene["variables"]
     inputs = scene["input_actions"]
@@ -425,8 +430,8 @@ def _compile_graph(
         for index, record in enumerate(bindings)
     }
     state_index = {record["state_id"]: index for index, record in enumerate(states)}
-    render_index = {record["visual_id"]: index for index, record in enumerate(scene["render_models"])}
-    waiting_index = {record["waiting_visual_id"]: index for index, record in enumerate(scene["waiting_visuals"])}
+    render_index = {record["visual_id"]: index for index, record in enumerate(scene.get("render_models", []))}
+    waiting_index = {record["waiting_visual_id"]: index for index, record in enumerate(scene.get("waiting_visuals", []))}
 
     variable_records = bytearray()
     for variable in variables:
@@ -443,6 +448,8 @@ def _compile_graph(
     graph_version = 5 if events else 4
     if any(record["event_type"] == "time.scene_elapsed" for record in events):
         graph_version = 6
+    if _objects:
+        graph_version = 7
     if graph_version == 4:
         binding_records = b"".join(
             INPUT_RECORD.pack(
@@ -484,8 +491,8 @@ def _compile_graph(
         STATE_RECORD.pack(
             strings[record["state_id"]],
             strings[record["display_name"]],
-            render_index[record["render_model_ref"]],
-            waiting_index[record["waiting_visual_ref"]],
+            0xFFFF if _objects else render_index[record["render_model_ref"]],
+            0xFFFF if _objects else waiting_index[record["waiting_visual_ref"]],
         )
         for record in states
     )
@@ -496,9 +503,10 @@ def _compile_graph(
     operation_records = bytearray()
     guard_count = 0
     operation_count = 0
+    object_operation_count = 0
     for route in routes:
         target_elements: dict[str, int] = {}
-        if "target_state" in route:
+        if "target_state" in route and not _objects:
             target_state_record = states[state_index[route["target_state"]]]
             target_render_model = scene["render_models"][
                 render_index[target_state_record["render_model_ref"]]
@@ -522,7 +530,10 @@ def _compile_graph(
             guard_count += 1
         first_operation = operation_count
         for operation in route["actions"]:
-            if operation["kind"] == "set_variable":
+            if _objects and operation["kind"].startswith("object."):
+                operation_records.extend(OPERATION_RECORD.pack(12, 0, object_operation_count, 0, 0, 0))
+                object_operation_count += 1
+            elif operation["kind"] == "set_variable":
                 operation_records.extend(
                     OPERATION_RECORD.pack(
                         1,
@@ -644,7 +655,7 @@ def _compile_graph(
         _u16(guard_count, "guard count"),
         _u16(operation_count, "operation count"),
         strings[wait_policy["policy_id"]],
-        waiting_index[wait_policy["waiting_visual_ref"]],
+        0xFFFF if _objects else waiting_index[wait_policy["waiting_visual_ref"]],
         1 if wait_policy["hold_fallback_allowed"] else 0,
         _u16(len(event_interests), "event-interest count"),
         strings[interaction["policy_id"]],
@@ -673,6 +684,8 @@ def _compile_scene_table(
     scenes: tuple[dict[str, Any], ...],
     strings: dict[str, int],
     chunk_indexes: dict[str, tuple[int, int, int]],
+    *,
+    _development_v2: bool = False,
 ) -> bytes:
     records = bytearray()
     for scene in scenes:
@@ -687,11 +700,11 @@ def _compile_scene_table(
                 graph_index,
                 render_index,
                 waiting_index,
-                0,
+                (2 if scene.get("schema_version") == 2 else 1) if _development_v2 else 0,
                 0,
             )
         )
-    return SCENE_HEADER.pack(b"SCN1", 1, SCENE_HEADER.size, len(scenes), 0) + records
+    return SCENE_HEADER.pack(b"SCN2" if _development_v2 else b"SCN1", 2 if _development_v2 else 1, SCENE_HEADER.size, len(scenes), 0) + records
 
 
 def _append_plane(payload: bytearray, plane: bytes, offsets: dict[bytes, int]) -> int:
@@ -929,10 +942,17 @@ def build_preview_package(bundle: ProjectBundle) -> EggPackage:
     return parse_egg(_build_egg(bundle, _draft=True), _draft=True)
 
 
-def _build_egg(bundle: ProjectBundle, *, _draft: bool = False) -> bytes:
+def build_development_egg_v2(bundle: ProjectBundle) -> bytes:
+    """Build a strict V2 binary fixture, never called by normal export/service."""
+    if not any(scene.get("schema_version") == 2 for scene in bundle.scenes):
+        raise EggCompileError("development V2 requires a scene-object scene")
+    return _build_egg(bundle, _development_v2=True)
+
+
+def _build_egg(bundle: ProjectBundle, *, _draft: bool = False, _development_v2: bool = False) -> bytes:
     if not bundle.valid:
         raise EggCompileError("project must validate before package compilation")
-    if any(scene.get("schema_version") == 2 for scene in bundle.scenes):
+    if any(scene.get("schema_version") == 2 for scene in bundle.scenes) and not _development_v2:
         raise EggCompileError("SCENE_OBJECT_EXECUTABLE_UNAVAILABLE: version-2 scenes cannot be encoded as legacy eggs")
     try:
         target_profile = target_profile_for_id(
@@ -940,7 +960,8 @@ def _build_egg(bundle: ProjectBundle, *, _draft: bool = False) -> bytes:
         )
     except (KeyError, TargetProfileError) as exc:
         raise EggCompileError(f"target profile is unavailable: {exc}") from exc
-    scenes = tuple(_package_scene(scene) for scene in sorted(bundle.scenes, key=lambda scene: scene["scene_id"]))
+    scenes = tuple(scene if scene.get("schema_version") == 2 else _package_scene(scene)
+                   for scene in sorted(bundle.scenes, key=lambda scene: scene["scene_id"]))
     _, string_indexes, string_payload = _string_table(bundle, scenes)
     audio_cue_indexes = {
         cue["cue_id"]: index
@@ -953,10 +974,19 @@ def _build_egg(bundle: ProjectBundle, *, _draft: bool = False) -> bytes:
     chunks: list[EggChunkSpec] = [
         EggChunkSpec("strings", CHUNK_STRING_TABLE, string_payload),
         EggChunkSpec("manifest", CHUNK_MANIFEST, _compile_manifest(bundle.project, string_indexes, len(scenes))),
-        EggChunkSpec("scenes", CHUNK_SCENE_TABLE, _compile_scene_table(scenes, string_indexes, chunk_indexes)),
+        EggChunkSpec("scenes", CHUNK_SCENE_TABLE, _compile_scene_table(scenes, string_indexes, chunk_indexes, _development_v2=_development_v2)),
     ]
     for scene in scenes:
         scene_id = scene["scene_id"]
+        if scene.get("schema_version") == 2:
+            from .object_egg import compile_object_chunks
+            object_payload, control_payload = compile_object_chunks(scene, string_indexes, bundle.frames, bundle.animations)
+            chunks.extend((
+                EggChunkSpec(f"state_graph.{scene_id}", CHUNK_STATE_GRAPH, _compile_graph(scene, string_indexes, audio_cue_indexes, _objects=True)),
+                EggChunkSpec(f"objects.{scene_id}", CHUNK_SCENE_OBJECTS, object_payload),
+                EggChunkSpec(f"object_controls.{scene_id}", CHUNK_OBJECT_CONTROLS, control_payload),
+            ))
+            continue
         chunks.extend(
             (
                 EggChunkSpec(
@@ -1001,14 +1031,14 @@ def _build_egg(bundle: ProjectBundle, *, _draft: bool = False) -> bytes:
             )
         )
     try:
-        blob = build_container(bundle.project["package"]["package_id"], chunks, manifest_chunk_index=1)
+        blob = build_container(bundle.project["package"]["package_id"], chunks, manifest_chunk_index=1, _development_v2=_development_v2)
         package_limit = int(target_profile["package"]["maximum_bytes"])
         if len(blob) > package_limit:
             raise EggCompileError(
                 "compiled package exceeds the "
                 f"{package_limit}-byte {target_profile['profile_id']} limit"
             )
-        parse_egg(blob, _draft=_draft)
+        parse_egg(blob, _draft=_draft, _development_v2=_development_v2)
         return blob
     except (KeyError, struct.error, EggFormatError) as exc:
         raise EggCompileError(f"could not emit a valid .egg: {exc}") from exc
