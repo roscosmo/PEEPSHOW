@@ -9,6 +9,7 @@ Development tools support bring-up, package authoring, telemetry, live-safe Plat
 - [[Dev_Orchestration_CLI_Contract]]
 - [[Authoring_Tool_Architecture]]
 - [[Peep_Studio_PeepOS_Link_Contract]]
+- [[Peep_Studio_Scoped_Timer_Handoff]]
 - [[Authoring_Project_Schema_Contract]]
 - [[HW6_Authoring_Vertical_Slice]]
 - [[USB_Development_Mode_Contract]]

@@ -4,6 +4,12 @@ Status: `active_handoff`
 
 Implementation status: `Stage_3_STATE_presentation_GUI_in_progress`
 
+Timer integration handoff: `backend_ready_GUI_merge_pending`, recorded
+`2026-09-09` against OS commit `c982593`. See
+[[Peep_Studio_Scoped_Timer_Handoff]] for the current timer-specific work;
+the stage history below does not establish the state of the separate GUI
+branch.
+
 This document is the working boundary between Peep Studio development and
 PeepOS/HW6 bring-up. It tells an editor agent what the platform actually
 supports today, which host interface to use, and which planned features must
@@ -13,6 +19,7 @@ Related:
 
 - [[Authoring_Tool_Architecture]]
 - [[Authoring_Project_Schema_Contract]]
+- [[Peep_Studio_Scoped_Timer_Handoff]]
 - [[Peep_Studio_UX_Direction]]
 - [[HW6_Authoring_Vertical_Slice]]
 - [[Asset_Pipeline_and_Package_Tooling_Contract]]
@@ -65,6 +72,7 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 | package output | deterministic `.egg` binary with SHA-256 integrity |
 | scene type | STATE |
 | state execution | bounded variables, input routes, guards, actions, and deterministic transitions |
+| scoped timers | service API 23 / STG1 v6 adds scene-owned one-shots, independent expiry handlers and Start/Restart/Cancel; existing state-entry bindings retain v5 semantics; scene expiry/handler application in an RTC/STOP2 test passed, with real GUI-export and remaining target control/lifetime tests pending |
 | package scene flow | direct STATE-to-STATE replacement is implemented and proven on HW6 through service API 8, PKG1 graph V2, and FW0 runtime API 11; route actions run before replacement and same-package SFX may drain across that scene boundary |
 | input | service API 20 / PKG1 `STG1` v4 supports A/B/L/R lifecycle bindings (`press`, `release`, `hold`, `repeat`), short START press, eight cardinal/diagonal joystick sources, per-STATE `four_way` / `eight_way` policy, and the explicit `exit_to_shell` route action; firmware input support and HW6 lifecycle diagnostic proof are complete, while shell-exit target proof remains pending |
 | visuals | package-backed native-scale masked 1bpp sprite frames |
@@ -81,6 +89,30 @@ their stated HW6 proof; the remaining rows have been exercised on target.
 Measured hardware behavior, current SRAM4 admission limits, and power figures
 remain hardware evidence. The desktop preview must not claim to reproduce
 current draw or prove STOP2 behavior.
+
+## Scoped Timer Integration
+
+Merge the OS timer baseline into the existing GUI branch now, then implement
+the editor against [[Peep_Studio_Scoped_Timer_Handoff]]. Do not wait for SOC,
+steps, lifecycle, or calendar triggers. Merge back after an editor-authored
+timer project round-trips, previews, exports, and passes the agreed target
+acceptance test.
+
+Only `time.scene_elapsed` and `time.state_entry_elapsed` are executable
+non-input bindings in this increment. Scene timers default to scene ownership
+and use independent handlers; state-entry timers remain explicitly tied to
+their source states. Hardware STOP2 counts as elapsed time, whereas explicit
+package suspension pauses relative timers. The logical interaction mode
+controls elsewhere in this document are not new lifecycle trigger bindings.
+
+Read the selected `service.hello` target profile's `state_scene_events`
+metadata and the service's `state_scene_graph` commands. Do not replace
+`available_pending_validation` with "not exposed": it describes an executable
+development capability with incomplete qualification. Other OS triggers and
+battery values remain contracted-but-unexposed; generic peripheral events
+remain blocked. The new target pass is recorded in
+[[Time_And_Power_Intent_API_Contract]], without changing profile hashes or
+declaring the full profile validated.
 
 ---
 
@@ -231,10 +263,17 @@ pointers, SAI/DMA configuration, source paths, or host-only objects.
 
 ## Not Yet Exposed
 
-The following are planned or incomplete and must be labelled unavailable in
-the editor until this document is updated:
+The following remain planned or incomplete. Backend-ready editor controls
+may be implemented now; unsupported package capabilities must remain
+unavailable. Preserve any editor work already completed on the GUI branch.
 
 - SEQUENCE and PROGRAM scene authoring or execution;
+- GUI controls for scoped timers and independent expiry handlers (backend
+  ready for this merge, not blocked on another firmware implementation);
+- package-facing active/inactive/resume triggers, calendar alarms, step
+  milestones, battery SOC values/threshold events, animation completion,
+  audio markers, and generic peripheral events;
+- repeating, prefab-instance, package-session, and reset-persistent timers;
 - Peep Studio controls for the backend-ready retained-element, asset-catalog,
   waiting-timeline, and STATE graph mutation commands;
 - arbitrary desktop fonts, runtime text, and waiting-animation mutation actions;
@@ -256,7 +295,8 @@ python -u tools/authoring/egg_tool.py service
 ```
 
 Transport is newline-delimited JSON over stdin/stdout. The current transport
-protocol is version `1`; the current service API is version `20`.
+protocol is version `1`; the service API at the timer handoff baseline is
+version `23`. Rediscover it after merging and restarting the Python sidecar.
 
 | Operation | Purpose |
 |---|---|
@@ -276,7 +316,7 @@ protocol is version `1`; the current service API is version `20`.
 | `project.preview_reset` | start one selected STATE scene directly |
 | `project.preview_state` | render one exact STATE scene/state framebuffer for placement editing without touching the live preview session |
 | `project.preview_input` | inject one logical source plus optional `event_kind`; supports A/B/L/R, short START press, and cardinal/diagonal joystick STATE events |
-| `project.preview_advance` | advance deterministic preview time by an explicit duration |
+| `project.preview_advance` | advance deterministic preview time by an explicit duration; return one-shot `timer_events` with handler results, audio events, and any system action |
 
 Every project operation after load uses `project_revision`. Live preview
 operations after reset also use `preview_revision`. `project.preview_state`
@@ -316,6 +356,11 @@ policy, preview execution, filesystem access, or hardware policy.
 ---
 
 ## GUI Agent Handoff
+
+The current scoped-timer task, examples, validation limits, and merge
+acceptance checklist are in [[Peep_Studio_Scoped_Timer_Handoff]]. Start there
+for the OS trigger controls; preserve unrelated work already done on the GUI
+branch rather than restarting the staged editor plan below.
 
 The Peep Studio agent may work under `tools/peep-studio/` and may add host-side
 tests and editor documentation. It should not modify firmware while performing

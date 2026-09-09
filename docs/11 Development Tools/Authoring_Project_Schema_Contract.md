@@ -159,8 +159,11 @@ timer scopes. IDs must be unique across
 `input_actions` and `event_bindings`. The selected target profile supplies the
 allowed delay range and total event-binding limit.
 
-The scene-owned one-shot form is also executable (STG1 v6; target verification
-pending):
+The scene-owned one-shot form is also executable (STG1 v6). Its RTC/STOP2
+expiry and independent handler application have a recorded target pass in
+[[Time_And_Power_Intent_API_Contract]]; GUI export and remaining target
+control/lifetime checks are pending. [[Peep_Studio_Scoped_Timer_Handoff]] gives
+the editor integration sequence and concrete command examples:
 
 ```text
 event_bindings[]:
@@ -206,6 +209,18 @@ binding still referenced by a handler or timer action is rejected.
 `project.preview_advance` returns `timer_events` with accepted/ignored results,
 audio events, and system actions, using the same result fields as input events.
 These backend changes do not add GUI controls.
+
+Timer-control actions currently reference scene timers only. Do not offer
+Start/Restart/Cancel against a state-entry binding. Handler edits use complete
+`event_handler` replacement, not the `route.action.*` or `route.guard.*`
+commands. Shared bindings include input actions as well as state and scene
+timers; the 16-slot target budget is not 16 additional timers.
+
+The service API at the timer handoff baseline is `23`; discover actual
+operations, `state_scene_graph.scene_timers`, and the selected profile's
+`state_scene_events` through `service.hello`. The profile's
+`available_pending_validation` status admits development timer authoring and
+is not interchangeable with `contracted_not_exposed` or `blocked`.
 
 The current executable STATE input-source set is `BUTTON_A`, `BUTTON_B`,
 `BUTTON_L`, `BUTTON_R`, `BUTTON_START`, `JOY_LEFT`, `JOY_RIGHT`, `JOY_UP`,

@@ -193,9 +193,14 @@ in the wider contract does not imply current executable support.
 Target profiles and executable schemas must advertise only supported forms.
 Existing state-entry bindings must not silently become scene-owned timers.
 Host tests cover the production C scheduler/runtime and shared compiler,
-parser, and preview. On-target expiry through STOP2 remains unverified: the
-earlier state-entry injection discovered a binding but recorded zero due,
-dispatch, and applied events. A cancelled state timer is not expiry evidence.
+parser, and preview. The scene-owned one-shot expiry test through the shared
+RTC/STOP2 path passed on target; the evidence and its limits are recorded
+below. This does not turn the earlier cancelled state-entry injection into
+an expiry pass, or qualify every timer operation on hardware.
+
+The GUI implementation and merge handoff is
+[[Peep_Studio_Scoped_Timer_Handoff]]. It uses the existing shared service and
+does not require another firmware implementation before editor work begins.
 
 `__fw0_scene_timer_test_enable.gdb` injects a scene timer and action-only
 private counter increment into the current scene in RAM. After resuming,
@@ -206,6 +211,14 @@ show intervening transitions; an RTC selection shows scheduling, not a power
 measurement. Scene replacement cancels this test, and reset/reload discards
 it without modifying the installed egg. Do not pause during audio playback.
 
+The test-result helper keeps its arm identity, counter index, and baselines in
+GDB convenience variables. A new GDB session loses that bookkeeping even if
+the MCU has retained the injected test and completed its work. A missing test
+record is not a firmware failure. Reattach without resetting and use the
+read-only `__fw0_state_scene_timer_prints.gdb` for firmware-owned counters;
+do not rearm or reset before collecting them. Debugger disconnect alone does
+not establish a wake cause or a power measurement.
+
 The scheduler selects due bindings directly from bounded live slots, rather
 than queuing binding-specific expiries. Start preserves an active/due slot;
 Restart replaces its deadline; Cancel removes it before the next selection.
@@ -213,6 +226,54 @@ Scene/state activation identities, separate from rendering revisions, control
 owner invalidation. Generic RTC wake commands only request reevaluation of
 these live slots. Relative remaining durations pause on package suspension;
 physical sleep uses the existing shared RTC prepare/restore path.
+
+### Recorded scene-timer target pass
+
+Recorded: `2026-09-09`. Source baseline: `c982593` (scene-owned timers and
+independent expiry handlers). Evidence is the user-run GDB transcript in the
+bring-up conversation, transcribed here; no board serial, ELF fingerprint,
+TraceX capture, or PPK2 measurement was supplied with this result.
+
+The user reported a wake during the injected five-second scene-timer test.
+The debugger disconnected at STOP, so the convenience-variable-based result
+helper could not report. The subsequent firmware-owned print was:
+
+```text
+rtos/scene api = 82 / 21
+scene/state activation = 1 / 4
+scene active/state/revision/event bindings = 1 / 0 / 5 / 4
+scene event dispatch/reject/last binding/event/transition = 1 / 0 / 3 / 2 / 3
+timer revision/configured/active/sync/paused = 4 / 1 / 0 / 4 / 0
+timer due/dispatch/applied/ignored/error = 1 / 1 / 1 / 0 / 0
+timer last binding/delay/deadline pause/resume = 3 / 5000 / 1245 / 0 / 0
+RTC source/state selects/binding/remaining/elapsed = 0 / 1 / 3 / 420 / 421
+shared RTC arm/status/clock/counter interaction remaining/elapsed/expiry = 1 / 0x0 / 0x0 / 8601 / 0 / 421 / 0
+runtime class/lifecycle interaction mode/state = 2 / 2 / 1 / 1
+STOP2 enabled/checks/entries/skips/status physical/failure = 1 / 142 / 6 / 136 / 0x1 / 1 / 0x0
+```
+
+Verdict: **PASS for one scene-owned timer expiry and independent handler
+application in the RTC/STOP2 test.** Due, dispatch, and applied each reached
+one; ignored/error remained zero. Configured/active `1/0` shows the declared
+one-shot was consumed. RTC selection identifies the same binding `3`, with
+`421` ticks elapsed against `420` remaining, and STOP2 entries reached six.
+These are subsystem-work counters, not merely evidence that a thread woke.
+
+Scene/state activation `1/4` is consistent with internal state changes while
+retaining one scene activation. The lost GDB baselines prevent reconstructing
+the exact number of transitions after injection. The private counter was not
+read, so do not claim its numeric value or an exact five-second wall-clock
+measurement from this transcript. The final RTC source `0` is the current
+idle selector; the historical selection/elapsed fields retain the timer work.
+
+Still required on target: a real GUI-authored/exported timer egg; Start on
+idle versus active; Restart; Cancel; system-menu pause/resume; scene
+replacement cancellation; and a deliberate state-owned timer expiry.
+Host tests already cover these control/lifetime semantics, but do not replace
+their target checks. No current-draw, all-duration, or full-profile
+qualification claim is made. The timer sources in the development profile
+remain `available_pending_validation`; this documentation-only record does not
+change profile values, hashes, generated headers, or firmware.
 
 ### Timer declaration and ownership
 
