@@ -255,7 +255,7 @@ app.whenReady().then(async () => {
   assert.equal(JSON.stringify(scene()), savedScene);
   assert.equal(await evaluate("document.querySelector('footer').textContent.includes('PROJECT_REVISION_STALE')"), false);
   await button("Local logic");
-  assert(await evaluate("[...document.querySelectorAll('.state-graph-pane .react-flow__node')].every(e => !e.classList.contains('draggable'))"));
+  assert(await evaluate("!!document.querySelector('.state-graph-pane .react-flow__node.draggable')"));
   const selectTestRoute = () => click('.react-flow__node[data-id="center"] [aria-label="B trigger, configured"]');
   await selectTestRoute();
   const actionRoute = () => scene().routes.find(route => route.route_id === 'test_move');

@@ -61,7 +61,7 @@ import {
   type StateTriggerEventKind,
 } from "./SceneInspection";
 import type { StateGraphEntryHandle, StateGraphEntrySide } from "./stateGraph";
-import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsObjectCommand, usesSceneObjects } from "./sceneCapabilities";
+import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsNativeCreation, supportsStateManagement, supportsObjectCommand, usesSceneObjects } from "./sceneCapabilities";
 import { SceneObjectInspector } from "./SceneObjectInspector";
 import type {
   AssetFrameRecord,
@@ -355,7 +355,9 @@ export default function App() {
     setBusy("Creating project");
     setPlaying(false);
     try {
-      const result = await bridge.serviceRequest<ProjectLoadResult>("project.create", { path });
+      const result = await bridge.serviceRequest<ProjectLoadResult>("project.create", {
+        path, ...(supportsNativeCreation(service) ? { scene_schema_version: 2 } : {}),
+      });
       setBuild(null);
       setPreview(null);
       setPlacementPreview(null);
@@ -593,12 +595,17 @@ export default function App() {
     if (bridge === undefined || project === null || busy !== null || displayName.length === 0) {
       return;
     }
+    const nativeScene = project.document?.scenes?.find(scene => scene.scene_id === project.summary.entry_scene)?.schema_version === 2;
+    if (nativeScene && !supportsNativeCreation(service)) return;
     setBusy("Adding scene");
     setPlaying(false);
     try {
       const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
         project_revision: project.project_revision,
-        commands: [{ kind: "scene.add", display_name: displayName }],
+        commands: [{ kind: "scene.add", display_name: displayName,
+          ...(nativeScene
+            ? { scene_schema_version: 2 } : {}),
+        }],
       });
       const applied = result.applied_commands[0];
       const sceneId = typeof applied?.scene_id === "string" ? applied.scene_id : null;
@@ -2745,6 +2752,9 @@ export default function App() {
     placementEditStateIds.length === 0 ? "object.set_defaults" : "object_override.set");
   const canEditSelectedScene = canEditLegacyScene(selectedSceneDocument, selectedSceneCapability)
     && service?.operations.includes("project.apply_commands") === true && busy === null;
+  const stateCommandAllowed = (command: string) => objectSceneSelected
+    ? busy === null && supportsStateManagement(service, selectedSceneCapability, command)
+    : canEditSelectedScene;
   const readOnlySceneIds = useMemo(() => scenes.filter((scene) =>
     !canEditLegacyScene(scene, project?.scene_capabilities?.[scene.scene_id])).map((scene) => scene.scene_id),
   [scenes, project?.scene_capabilities]);
@@ -5253,6 +5263,17 @@ export default function App() {
               <div><dt>Animations</dt><dd>{project.summary.animation_count}</dd></div>
               <div><dt>SFX</dt><dd>{project.summary.audio_cue_count}</dd></div>
             </dl>
+            <label className="select-field">Entry scene
+              <select aria-label="Project entry scene" value={project.summary.entry_scene}
+                disabled={busy !== null || !(service?.scene_creation?.entry_scene_command === "project.set_entry_scene"
+                  || service?.state_scene_graph.scene_commands.includes("project.set_entry_scene") === true)}
+                onChange={event => void setPackageEntryScene(event.target.value)}>
+                {scenes.map(scene => <option key={scene.scene_id} value={scene.scene_id}
+                  disabled={scene.schema_version === 2 && !supportsObjectCommand(service, project.scene_capabilities?.[scene.scene_id], "project.set_entry_scene")}>
+                  {scene.display_name}
+                </option>)}
+              </select>
+            </label>
           </>
         )}
       </section>
@@ -5505,7 +5526,8 @@ export default function App() {
                 void setSceneExitTarget(sceneId, sceneExitId, targetScene, referenceId);
               }}
               canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
-              canAddScene={service?.state_scene_graph.scene_commands?.includes("scene.add") === true && busy === null}
+              canAddScene={busy === null && (project?.document?.scenes?.find(scene => scene.scene_id === project.summary.entry_scene)?.schema_version === 2
+                ? supportsNativeCreation(service) : service?.state_scene_graph.scene_commands?.includes("scene.add") === true)}
               readOnlySceneIds={readOnlySceneIds}
             />
           </div>
@@ -5560,7 +5582,11 @@ export default function App() {
               onDeleteSystemExit={(sceneId) => {
                 void deleteSystemExit(sceneId);
               }}
-              canCreateState={canEditSelectedScene && service?.state_scene_graph.state_commands.includes("state.create") === true}
+              canCreateState={stateCommandAllowed("state.create") && (objectSceneSelected
+                || service?.state_scene_graph.state_commands.includes("state.create") === true)}
+              canMoveStates={stateCommandAllowed("editor.state_graph.set_node_position")}
+              canDeleteStates={stateCommandAllowed("state.delete")}
+              canEditEntry={stateCommandAllowed("state.set_entry") && stateCommandAllowed("editor.state_graph.set_entry_layout")}
               canEdit={canEditSelectedScene}
             />
           </div>
@@ -5628,6 +5654,7 @@ export default function App() {
 
           {!projectRootSelected && workspaceMode === "scene-flow" && (
             <SceneFlowInspector
+              canRenameScene={canEditSelectedScene || (busy === null && supportsObjectCommand(service, selectedSceneCapability, "scene.rename"))}
               scene={selectedSceneDocument}
               scenes={scenes}
               editor={project?.document?.project?.editor}
@@ -5645,6 +5672,7 @@ export default function App() {
 
           {!projectRootSelected && workspaceMode === "logic" && (
             <SceneAuthoringInspector
+              stateCommandAllowed={stateCommandAllowed}
               objectActionsEditable={busy === null && supportsObjectCommand(service, selectedSceneCapability, "object_actions.set")}
               scene={selectedSceneDocument}
               scenes={scenes}

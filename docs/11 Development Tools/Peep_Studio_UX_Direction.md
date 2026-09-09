@@ -675,13 +675,13 @@ The test fixture is temporary; Studio does not construct unsupported graphs.
 
 Migration UI is deferred by user decision. Development should prioritize new
 native scene-object projects and recreating the menu example through Studio.
-The OS agent confirmed main `323179d` still lacks most shared-authoring commands;
-firmware development decoding/execution does not imply those commands exist.
+API 40 supplies native creation and state management. Graph construction remains
+unavailable; firmware development decoding/execution does not imply those commands exist.
 
 Requested OS-owned increments, each advertised through hello/per-scene capabilities:
 
-1. Project creation with a version-2 initial scene, additional version-2 scenes,
-   and state creation/deletion. Rename and entry-state selection already exist.
+1. Delivered in API 40 and connected in Studio: version-2 initial/additional scenes,
+   state creation/deletion, rename, entry selection, and state/entry layout.
 2. Version-2 trigger/input binding, route construction/retargeting, guards and
    variable management. Existing ordered action replacement is not construction.
 3. Scene exit creation and reciprocal local-graph endpoints/connections. Package
@@ -696,3 +696,18 @@ firmware/export rollout. Keep current export restrictions until explicitly hande
 Preserve undo/redo, save/reload, legacy editing, and visible export restrictions.
 Shared schemas, compiler, service, and firmware remain OS-owned. Do not add a
 parallel model or expose version-2 graph construction ahead of its handoff.
+
+### API 40 Native Creation GUI Increment
+
+- New projects request `scene_schema_version: 2` when `service.hello.scene_creation`
+  advertises native creation. Older hosts retain their version-1 creation path.
+- Additional scenes explicitly use the entry scene's source format; the host does
+  not inherit version 2 when the parameter is omitted. Legacy projects stay legacy.
+- State creation, rename, deletion, entry selection, and layout controls require
+  both advertised state-management commands and per-scene supported commands.
+  State movement and entry-arrow editing are separate from graph wiring permissions.
+- Project inspector exposes entry-scene selection; scene names remain editable.
+- No automatic migration, fabricated render models, or state-private animation
+  records. V2 trigger/route/scene-exit construction stays disabled, as does export.
+- Regression coverage uses a temporary project and the real sidecar to exercise
+  native creation, state lifecycle, movement, undo/redo, scene addition, and save/reload.

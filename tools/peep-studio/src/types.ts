@@ -489,7 +489,12 @@ export type PeepOSTriggerCapability = {
 };
 
 export type ServiceHello = {
+  scene_creation?: {
+    project_operation: string; scene_command: string; entry_scene_command: string;
+    version_parameter: string; supported_versions: number[]; default_version: number;
+  };
   scene_object_authoring?: {
+    state_management_commands?: string[];
     status: string;
     schema_version: number;
     execution_model: string;

@@ -2381,6 +2381,9 @@ export function StateGraphView({
   onDeleteSystemExit,
   canCreateState,
   canEdit,
+  canMoveStates = canEdit,
+  canDeleteStates = canEdit,
+  canEditEntry = canEdit,
 }: {
   scene: SceneDocument | null;
   activeStateId: string | null;
@@ -2425,6 +2428,9 @@ export function StateGraphView({
   onDeleteSystemExit: (sceneId: string) => void;
   canCreateState: boolean;
   canEdit: boolean;
+  canMoveStates?: boolean;
+  canDeleteStates?: boolean;
+  canEditEntry?: boolean;
 }) {
   const graph = useMemo(() => buildStateGraphModel(scene, editor), [editor, scene]);
   const flowRef = useRef<ReactFlowInstance | null>(null);
@@ -2459,7 +2465,7 @@ export function StateGraphView({
           onSelectRoute: (routeId: string, sourceState: string) => onSelect({ kind: "route", id: routeId, sourceState }),
         },
         selected: selected.kind === "state" && selected.id === node.id,
-        draggable: canEdit,
+        draggable: canMoveStates,
         connectable: canEdit,
       })),
       ...graph.endpoints.map((endpoint) => ({
@@ -2480,11 +2486,11 @@ export function StateGraphView({
         selected: endpoint.kind === "exit"
           ? endpoint.sceneExitId !== undefined && selected.kind === "sceneExit" && selected.id === endpoint.sceneExitId
           : endpoint.kind === "system" && selected.kind === "systemExit",
-        draggable: canEdit && (endpoint.declared || endpoint.kind !== "exit"),
+        draggable: endpoint.kind === "entry" ? canMoveStates : canEdit && (endpoint.declared || endpoint.kind !== "exit"),
         connectable: canEdit,
       })),
     ],
-    [activeStateId, canEdit, defaultPositionById, graph.endpoints, graph.entryEdge?.targetHandle, graph.nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, scene?.joystick_policy, selected],
+    [activeStateId, canEdit, canMoveStates, defaultPositionById, graph.endpoints, graph.entryEdge?.targetHandle, graph.nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, scene?.joystick_policy, selected],
   );
   const [nodes, setNodes] = useState<Node[]>(baseNodes);
   const graphNodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
@@ -2558,18 +2564,19 @@ export function StateGraphView({
             onSelectRoute: (routeId: string, sourceState: string) => onSelect({ kind: "route", id: routeId, sourceState }),
           },
           selected: selected.kind === "state" && selected.id === node.id,
-          draggable: canEdit,
+          draggable: canMoveStates,
           connectable: canEdit,
         };
       }),
-    [activeStateId, canEdit, graph.edges, graph.entryEdge?.targetHandle, graphNodeById, nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, positionById, scene?.joystick_policy, selected, transitionLayouts],
+    [activeStateId, canEdit, canMoveStates, graph.edges, graph.entryEdge?.targetHandle, graphNodeById, nodes, onSelect, peepOSTriggerStateId, peepOSTriggers.length, physicalEventKinds, positionById, scene?.joystick_policy, selected, transitionLayouts],
   );
   useEffect(() => {
     setPendingPhysicalConnection(null);
     setPeepOSTriggerStateId(null);
   }, [scene?.scene_id]);
   useEffect(() => {
-    if (!canEdit || scene === null || (selected.kind !== "state" && selected.kind !== "systemExit")) {
+    if (scene === null || (selected.kind !== "state" && selected.kind !== "systemExit")
+      || (selected.kind === "state" ? !canDeleteStates : !canEdit)) {
       return;
     }
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -2590,7 +2597,7 @@ export function StateGraphView({
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [canEdit, onDeleteState, onDeleteSystemExit, scene, selected]);
+  }, [canEdit, canDeleteStates, onDeleteState, onDeleteSystemExit, scene, selected]);
   useEffect(() => {
     const sceneId = scene?.scene_id ?? null;
     setNodes((current) => {
@@ -2920,8 +2927,8 @@ export function StateGraphView({
         targetHandle: stateEntryPortId(graph.entryEdge.targetHandle, graph.entryEdge.targetSide),
         type: "stateTransition",
         reconnectable: "target" as const,
-        selectable: canEdit,
-        focusable: canEdit,
+        selectable: canEditEntry,
+        focusable: canEditEntry,
         data: {
           tone: "green",
           targetHandle: graph.entryEdge.targetHandle,
@@ -2930,7 +2937,7 @@ export function StateGraphView({
             ...port, stateId: node.id,
             point: stateEntryPortPoint({ ...(positionById.get(node.id) ?? node), platformOutputCount: node.platformOutputCount }, port.handle, port.side),
           }))),
-          canEdit,
+          canEdit: canEditEntry,
           onSelectRoute: () => onSelect({ kind: "scene" }),
           onSetEntryTarget: (stateId: string, handle: StateGraphEntryHandle, side: StateGraphEntrySide) => {
             if (scene !== null) {
@@ -2943,7 +2950,7 @@ export function StateGraphView({
       }];
       return [...transitionEdges, ...entryEdge];
     },
-    [canEdit, graph.edges, graph.entryEdge, graph.nodes, graphNodeById, onSelect, onSetEntryConnection, onSetRouteLayout, positionById, scene, selected, transitionLayouts],
+    [canEdit, canEditEntry, graph.edges, graph.entryEdge, graph.nodes, graphNodeById, onSelect, onSetEntryConnection, onSetRouteLayout, positionById, scene, selected, transitionLayouts],
   );
 
   if (scene === null) {
@@ -2981,7 +2988,7 @@ export function StateGraphView({
           });
         }
       }}
-      nodesDraggable={canEdit}
+      nodesDraggable={canMoveStates}
       nodesConnectable={canEdit}
       edgesReconnectable={canEdit}
       deleteKeyCode={null}
@@ -3122,7 +3129,7 @@ export function StateGraphView({
       <Panel position="top-left" className="state-graph-toolbar">
         <button
           className="button secondary"
-          disabled={!canEdit || !canCreateState}
+          disabled={!canCreateState}
           title="Add state"
           type="button"
           onClick={() => {
@@ -3748,6 +3755,7 @@ export function SceneFlowView({
 }
 
 export function SceneFlowInspector({
+  canRenameScene,
   scene,
   scenes,
   editor,
@@ -3773,6 +3781,7 @@ export function SceneFlowInspector({
   onSetReferenceTarget: (referenceId: string, targetScene: string) => Promise<void>;
   onDeleteReference: (referenceId: string) => Promise<void>;
   canEdit: boolean;
+  canRenameScene?: boolean;
 }) {
   if (selection.kind === "packageEntry") {
     const entryScene = scenes.find((item) => item.scene_id === entrySceneId);
@@ -3893,7 +3902,7 @@ export function SceneFlowInspector({
       entrySceneId={entrySceneId}
       onSelect={onSelect}
       onRenameScene={onRenameScene}
-      canEdit={canEdit}
+      canEdit={canRenameScene ?? canEdit}
     />
   );
 }
@@ -3992,6 +4001,7 @@ function SceneNodeInspector({
 }
 
 export function SceneAuthoringInspector({
+  stateCommandAllowed,
   objectActionsEditable = false,
   scene,
   scenes,
@@ -4081,6 +4091,7 @@ export function SceneAuthoringInspector({
   canEdit: boolean;
   canPreview: boolean;
   objectActionsEditable?: boolean;
+  stateCommandAllowed?: (command: string) => boolean;
 }) {
   const variables = scene?.variables ?? [];
   const inputActions = scene?.input_actions ?? [];
@@ -4103,6 +4114,9 @@ export function SceneAuthoringInspector({
     <>
       {state !== null && scene !== null && (
         <StateInspector
+          canRename={stateCommandAllowed?.("state.rename")}
+          canSetEntry={stateCommandAllowed?.("state.set_entry")}
+          canDelete={stateCommandAllowed?.("state.delete")}
           sceneId={scene.scene_id}
           state={state}
           isEntry={scene.entry_state === state.state_id}
@@ -4583,6 +4597,9 @@ function StateInspector({
   onDeleteState,
   canEdit,
   canPreview,
+  canRename = canEdit,
+  canSetEntry = canEdit,
+  canDelete = canEdit,
 }: {
   sceneId: string;
   state: StateRecord;
@@ -4596,6 +4613,9 @@ function StateInspector({
   onDeleteState: (sceneId: string, stateId: string) => Promise<void>;
   canEdit: boolean;
   canPreview: boolean;
+  canRename?: boolean;
+  canSetEntry?: boolean;
+  canDelete?: boolean;
 }) {
   const render = renderModels[0];
   const waiting = waitingVisuals.find((item) => item.waiting_visual_id === state.waiting_visual_ref);
@@ -4610,7 +4630,7 @@ function StateInspector({
 
   const commitDisplayName = (value: string) => {
     const trimmed = value.trim();
-    if (!canEdit || trimmed.length === 0 || trimmed === state.display_name) {
+    if (!canRename || trimmed.length === 0 || trimmed === state.display_name) {
       setDisplayName(state.display_name);
       return;
     }
@@ -4629,7 +4649,7 @@ function StateInspector({
             className="state-name-input"
             value={displayName}
             maxLength={64}
-            disabled={!canEdit}
+            disabled={!canRename}
             aria-label="State name"
             onChange={(event) => setDisplayName(event.target.value)}
             onBlur={(event) => commitDisplayName(event.currentTarget.value)}
@@ -4682,7 +4702,7 @@ function StateInspector({
         </button>
         <button
           className={`button secondary ${isEntry ? "active" : ""}`}
-          disabled={!canEdit || isEntry}
+          disabled={!canSetEntry || isEntry}
           type="button"
           onClick={() => void onSetEntryState(sceneId, state.state_id)}
         >
@@ -4691,7 +4711,7 @@ function StateInspector({
         </button>
         <button
           className="button state-delete-button"
-          disabled={!canEdit}
+          disabled={!canDelete || isEntry}
           title="Delete selected state"
           type="button"
           onClick={() => void onDeleteState(sceneId, state.state_id)}

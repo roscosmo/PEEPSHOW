@@ -24,6 +24,18 @@ export function supportsObjectCommand(service: ServiceHello | null, capability: 
     && capability.supported_commands?.includes(command) === true;
 }
 
+export function supportsNativeCreation(service: ServiceHello | null): boolean {
+  return service?.scene_creation?.supported_versions.includes(2) === true
+    && service.scene_creation.version_parameter === "scene_schema_version"
+    && service.scene_creation.project_operation === "project.create"
+    && service.scene_creation.scene_command === "scene.add";
+}
+
+export function supportsStateManagement(service: ServiceHello | null, capability: SceneCapabilities | undefined, command: string): boolean {
+  return supportsObjectCommand(service, capability, command)
+    && service?.scene_object_authoring?.state_management_commands?.includes(command) === true;
+}
+
 // Presentation adapter only: defaults are displayed verbatim; state resolution stays in the host.
 export function baseObjectRows(scene: SceneDocument, ownership?: PlacementOwnership["scenes"][string] | null): RenderElement[] {
   if (!usesSceneObjects(scene)) return scene.render_models?.[0]?.elements ?? [];

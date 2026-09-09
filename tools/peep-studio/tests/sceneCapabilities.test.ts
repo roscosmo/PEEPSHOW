@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsObjectCommand, usesSceneObjects } from "../src/sceneCapabilities.js";
+import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsNativeCreation, supportsStateManagement, supportsObjectCommand, usesSceneObjects } from "../src/sceneCapabilities.js";
 import type { SceneCapabilities, SceneDocument, ServiceHello } from "../src/types.js";
 
 const legacy: SceneDocument = { scene_id: "old", scene_type: "STATE_SCENE", display_name: "Old" };
@@ -33,3 +33,20 @@ assert(!supportsObjectCommand(editingHost, capability, "object.set_defaults"));
 assert(!supportsObjectCommand(editingHost, { ...editingScene, host_editing: false }, "object.set_defaults"));
 assert(!supportsObjectCommand({ ...editingHost, scene_object_authoring: { ...editingHost.scene_object_authoring, commands: [] } }, editingScene, "object.set_defaults"));
 assert(!supportsObjectCommand(editingHost, undefined, "object.set_defaults"));
+
+const creationHost = { ...editingHost, scene_creation: {
+  project_operation: "project.create", scene_command: "scene.add", entry_scene_command: "project.set_entry_scene",
+  version_parameter: "scene_schema_version", supported_versions: [1, 2], default_version: 1,
+}, scene_object_authoring: { ...editingHost.scene_object_authoring,
+  commands: ["state.create"], state_management_commands: ["state.create"],
+} };
+assert(supportsNativeCreation(creationHost));
+assert(!supportsNativeCreation(editingHost));
+assert(!supportsNativeCreation({ ...creationHost, scene_creation: { ...creationHost.scene_creation, supported_versions: [1] } }));
+const stateScene = { ...capability, supported_commands: ["state.create"] };
+assert(supportsStateManagement(creationHost, stateScene, "state.create"));
+assert(!supportsStateManagement(creationHost, capability, "state.create"));
+assert(!supportsStateManagement({ ...creationHost, scene_object_authoring: {
+  ...creationHost.scene_object_authoring, state_management_commands: [],
+} }, stateScene, "state.create"));
+assert(!supportsStateManagement(creationHost, stateScene, "route.add"));
