@@ -39,6 +39,19 @@ button:focus-visible {
   background: #f3f5f4;
 }
 
+.studio-shell:has(> .host-preview-notice) {
+  grid-template-rows: 62px auto minmax(0, 1fr) 28px;
+}
+
+.host-preview-notice {
+  padding: 6px 18px;
+  border-bottom: 1px solid #afc8d8;
+  background: #e9f4fa;
+  color: #224c65;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .app-toolbar {
   display: flex;
   align-items: center;
@@ -5352,6 +5365,10 @@ button:focus-visible {
     height: auto;
     min-height: 100%;
     grid-template-rows: auto auto 28px;
+  }
+
+  .studio-shell:has(> .host-preview-notice) {
+    grid-template-rows: auto auto auto 28px;
   }
 
   .app-toolbar {

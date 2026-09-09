@@ -120,7 +120,7 @@ export type GraphStateNode = {
   variableTouchCount: number;
   placementOverrideCount: number;
   platformOutputCount: number;
-  waitingVisualRef: string;
+  waitingVisualRef?: string;
   outputs: GraphStateOutput[];
   x: number;
   y: number;
@@ -1484,7 +1484,7 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
       label: state.display_name,
       isEntry: state.state_id === entryState,
       variableTouchCount: variableRefsByState.get(state.state_id)?.size ?? 0,
-      placementOverrideCount: state.placement_overrides?.length ?? 0,
+      placementOverrideCount: state.object_overrides?.length ?? state.placement_overrides?.length ?? 0,
       platformOutputCount: outputs.filter((output) => output.triggerKind === "platform").length,
       waitingVisualRef: state.waiting_visual_ref,
       outputs,

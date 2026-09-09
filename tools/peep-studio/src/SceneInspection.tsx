@@ -3223,6 +3223,7 @@ export function SceneFlowView({
   onConnectSceneExit,
   canEdit,
   canAddScene,
+  readOnlySceneIds = [],
 }: {
   scenes: SceneDocument[];
   entrySceneId: string | null;
@@ -3260,6 +3261,7 @@ export function SceneFlowView({
   onConnectSceneExit: (sceneId: string, routeId: string, targetScene: string, referenceId?: string) => void;
   canEdit: boolean;
   canAddScene: boolean;
+  readOnlySceneIds?: string[];
 }) {
   const graph = useMemo(() => buildSceneFlowGraphModel(scenes, entrySceneId, editor), [editor, entrySceneId, scenes]);
   const flowRef = useRef<ReactFlowInstance | null>(null);
@@ -3286,7 +3288,7 @@ export function SceneFlowView({
           targetScenes: scenes.filter((scene) => scene.scene_type === "STATE_SCENE" && scene.scene_id !== node.id),
           selectedSceneExitId,
           selectedRouteId,
-          canEdit,
+          canEdit: canEdit && !readOnlySceneIds.includes(node.id),
           onSelectScene,
           onSelectSceneExit,
           onSelectSceneRoute,
@@ -3294,8 +3296,8 @@ export function SceneFlowView({
           onDeleteLegacyRoute,
         },
         selected: selectedSceneId === node.id,
-        draggable: canEdit,
-        connectable: canEdit,
+        draggable: canEdit && !readOnlySceneIds.includes(node.id),
+        connectable: canEdit && !readOnlySceneIds.includes(node.id),
       }));
       const referenceNodes = graph.references.map((reference) => ({
         id: reference.id,
@@ -3325,7 +3327,7 @@ export function SceneFlowView({
       }];
       return [...packageNodes, ...sceneNodes, ...referenceNodes];
     },
-    [canEdit, graph.nodes, graph.packageEntry, graph.references, onDeleteLegacyRoute, onDeleteSceneExit, onSelectPackageEntry, onSelectScene, onSelectSceneExit, onSelectSceneReference, onSelectSceneRoute, packageEntrySelected, scenes, selectedReferenceId, selectedRouteId, selectedSceneExitId, selectedSceneId, thumbnails],
+    [canEdit, readOnlySceneIds, graph.nodes, graph.packageEntry, graph.references, onDeleteLegacyRoute, onDeleteSceneExit, onSelectPackageEntry, onSelectScene, onSelectSceneExit, onSelectSceneReference, onSelectSceneRoute, packageEntrySelected, scenes, selectedReferenceId, selectedRouteId, selectedSceneExitId, selectedSceneId, thumbnails],
   );
   const [nodes, setNodes] = useState<Node[]>(baseNodes);
   useEffect(() => {
@@ -3392,7 +3394,7 @@ export function SceneFlowView({
           rails: editor?.scene_flow?.routes?.[edge.source]?.[
             `${edge.sceneExit.endpointKind}:${edge.sceneExit.endpointId}`
           ]?.rails ?? [],
-          canEdit,
+          canEdit: canEdit && !readOnlySceneIds.includes(edge.source),
           onSelect: () => {
             if (edge.sceneExit.sceneExitId !== undefined) {
               onSelectSceneExit(edge.source, edge.sceneExit.sceneExitId);
@@ -3440,14 +3442,14 @@ export function SceneFlowView({
       }];
       return [...packageEdge, ...sceneEdges];
     },
-    [canEdit, editor, graph.edges, graph.packageEntry, onSelectPackageEntry, onSelectSceneExit, onSelectSceneRoute, onSetRouteLayout, packageEntrySelected, selectedRouteId, selectedSceneExitId],
+    [canEdit, readOnlySceneIds, editor, graph.edges, graph.packageEntry, onSelectPackageEntry, onSelectSceneExit, onSelectSceneRoute, onSetRouteLayout, packageEntrySelected, selectedRouteId, selectedSceneExitId],
   );
   const deleteSelectedSceneExit = () => {
     if (canEdit && selectedReferenceId !== null) {
       onDeleteSceneReference(selectedReferenceId);
       return;
     }
-    if (!canEdit || selectedSceneId === null) {
+    if (!canEdit || selectedSceneId === null || readOnlySceneIds.includes(selectedSceneId)) {
       return;
     }
     const selectedExit = graph.nodes.find((node) => node.id === selectedSceneId)?.exits.find(
@@ -3477,6 +3479,7 @@ export function SceneFlowView({
   };
   const onConnect = (connection: Connection) => {
     const sourceScene = connection.source;
+    if (!canEdit || (sourceScene !== null && readOnlySceneIds.includes(sourceScene))) return;
     const targetNode = connection.target;
     const sourceHandle = connection.sourceHandle;
     if (sourceScene === null || targetNode === null || sourceHandle === null) {
@@ -4594,7 +4597,7 @@ function StateInspector({
   const waiting = waitingVisuals.find((item) => item.waiting_visual_id === state.waiting_visual_ref);
   const [displayName, setDisplayName] = useState(state.display_name);
   const screenElementCount = render?.elements.length ?? 0;
-  const placementOverrideCount = state.placement_overrides?.length ?? 0;
+  const placementOverrideCount = state.object_overrides?.length ?? state.placement_overrides?.length ?? 0;
   const waitingStepCount = waiting?.combined_step_count ?? 0;
 
   useEffect(() => {
@@ -4648,19 +4651,21 @@ function StateInspector({
           <span>Object changes</span>
           <strong>{placementOverrideCount}</strong>
         </div>
-        <div>
+        {state.waiting_visual_ref !== undefined && <div>
           <span>Waiting</span>
           <strong>{waiting === undefined ? "Not linked" : `${waitingStepCount} step${waitingStepCount === 1 ? "" : "s"}`}</strong>
-        </div>
+        </div>}
       </div>
       {render !== undefined && (
         <button className="link-row" type="button" onClick={() => onSelect({ kind: "render", id: render.visual_id })}>
           Scene placement <strong>{screenElementCount} object{screenElementCount === 1 ? "" : "s"}</strong>
         </button>
       )}
-      <button className="link-row" type="button" onClick={() => onSelect({ kind: "waiting", id: state.waiting_visual_ref })}>
+      {state.waiting_visual_ref !== undefined && <button className="link-row" type="button" onClick={() => {
+        if (state.waiting_visual_ref !== undefined) onSelect({ kind: "waiting", id: state.waiting_visual_ref });
+      }}>
         Waiting animation <strong>{waiting === undefined ? "Missing" : `${waiting.combined_step_count} step${waiting.combined_step_count === 1 ? "" : "s"}`}</strong>
-      </button>
+      </button>}
       <div className="state-lifecycle-actions">
         <button
           className="button secondary"

@@ -61,6 +61,7 @@ import {
   type StateTriggerEventKind,
 } from "./SceneInspection";
 import type { StateGraphEntryHandle, StateGraphEntrySide } from "./stateGraph";
+import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, usesSceneObjects } from "./sceneCapabilities";
 import type {
   AssetFrameRecord,
   AssetRecord,
@@ -567,6 +568,7 @@ export default function App() {
             build_issues: result.build_issues,
             document: result.document,
             placement_ownership: result.placement_ownership,
+            scene_capabilities: result.scene_capabilities,
             summary: result.summary,
           }
     ));
@@ -2662,6 +2664,16 @@ export default function App() {
     [scenes, selectedScene],
   );
 
+  const selectedSceneCapability = selectedScene === null ? undefined : project?.scene_capabilities?.[selectedScene];
+  const objectSceneSelected = usesSceneObjects(selectedSceneDocument, selectedSceneCapability);
+  const canEditSelectedScene = canEditLegacyScene(selectedSceneDocument, selectedSceneCapability)
+    && service?.operations.includes("project.apply_commands") === true && busy === null;
+  const readOnlySceneIds = useMemo(() => scenes.filter((scene) =>
+    !canEditLegacyScene(scene, project?.scene_capabilities?.[scene.scene_id])).map((scene) => scene.scene_id),
+  [scenes, project?.scene_capabilities]);
+  const hostOnlyProject = scenes.some((scene) => usesSceneObjects(scene, project?.scene_capabilities?.[scene.scene_id])
+    && project?.scene_capabilities?.[scene.scene_id]?.egg_export !== true);
+
   useEffect(() => {
     if (!projectValid || scenes.length === 0) {
       return;
@@ -2739,6 +2751,9 @@ export default function App() {
     return placementOwnershipScene.states[placementState.state_id] ?? null;
   }, [placementOwnershipScene, placementState]);
   const effectivePlacementElements = useMemo<RenderElement[]>(() => {
+    if (objectSceneSelected && selectedSceneDocument !== null) {
+      return placementStateProjection?.resolved_elements ?? baseObjectRows(selectedSceneDocument, placementOwnershipScene);
+    }
     if (placementRenderModel === null) {
       return [];
     }
@@ -2749,11 +2764,12 @@ export default function App() {
       return placementRenderModel.elements;
     }
     return placementStateProjection.resolved_elements;
-  }, [placementOwnershipScene?.render_model_id, placementRenderModel, placementStateProjection]);
+  }, [objectSceneSelected, selectedSceneDocument, placementOwnershipScene, placementRenderModel, placementStateProjection]);
   useEffect(() => {
     const sceneId = selectedSceneDocument?.scene_id ?? null;
     const stateId = placementState?.state_id ?? null;
-    const previewSupported = stateId === null ? placementBasePreviewSupported : placementPreviewSupported;
+    const previewSupported = (stateId === null ? placementBasePreviewSupported : placementPreviewSupported)
+      && (!objectSceneSelected || canPreviewSceneObjects(service, selectedSceneCapability));
     const readyForPlacementPreview =
       bridge !== undefined &&
       projectRevision !== null &&
@@ -2770,7 +2786,7 @@ export default function App() {
       setPlacementPreviewLoading(false);
       setPlacementPreviewError(
         readyForPlacementPreview && !previewSupported
-          ? `This placement scope needs Service API ${stateId === null ? 36 : 16}. Restart Peep Studio if the top bar still shows Service API ${service?.service_api_version ?? "unknown"}.`
+          ? "The connected host does not advertise preview for this placement scope."
           : null,
       );
       return undefined;
@@ -2816,6 +2832,9 @@ export default function App() {
     };
   }, [
     bridge,
+    objectSceneSelected,
+    selectedSceneCapability,
+    service,
     placementBasePreviewSupported,
     placementPreviewSupported,
     placementState?.state_id,
@@ -4387,10 +4406,11 @@ export default function App() {
     >
       {scenes.map((scene) => {
         const renderModel = scene.render_models?.[0] ?? null;
-        const elements = [...(renderModel?.elements ?? [])].sort((left, right) => left.z_order - right.z_order);
+        const ownership = project?.placement_ownership?.scenes[scene.scene_id] ?? null;
+        const elements = [...baseObjectRows(scene, ownership)].sort((left, right) => left.z_order - right.z_order);
         const objectLabelCounts = new Map<string, number>();
         const objectLabelById = new Map<string, string>();
-        for (const element of renderModel?.elements ?? []) {
+        for (const element of elements) {
           const baseLabel = placementObjectLabelBase(element);
           const occurrence = (objectLabelCounts.get(baseLabel) ?? 0) + 1;
           objectLabelCounts.set(baseLabel, occurrence);
@@ -4399,7 +4419,6 @@ export default function App() {
             occurrence === 1 ? baseLabel : `${baseLabel} ${occurrence}`,
           );
         }
-        const ownership = project?.placement_ownership?.scenes[scene.scene_id] ?? null;
         const stateScopedElementIds = new Set(ownership?.state_scoped_element_ids ?? []);
         const stateIds = (scene.states ?? []).map((state) => state.state_id);
         const fullyStateControlledElementIds = new Set(
@@ -4412,7 +4431,7 @@ export default function App() {
             ))
             .map((element) => element.element_id),
         );
-        const baseElements = elements.filter((element) => (
+        const baseElements = usesSceneObjects(scene) ? elements : elements.filter((element) => (
           !stateScopedElementIds.has(element.element_id)
           && !fullyStateControlledElementIds.has(element.element_id)
         ));
@@ -4726,6 +4745,28 @@ export default function App() {
     const selectedElement = selectedPlacementElement === null
       ? null
       : elements.find((element) => element.element_id === selectedPlacementElement) ?? null;
+    if (objectSceneSelected) {
+      const object = placementOwnershipScene?.objects?.find((item) => item.object_id === selectedPlacementElement);
+      const properties = selectedPlacementElement === null ? []
+        : placementStateProjection?.changes[selectedPlacementElement]?.local_properties ?? [];
+      return <section className="inspector-section placement-inspector">
+        <h3>Object</h3>
+        <p className="muted">Read-only scene objects</p>
+        {selectedElement === null ? <p className="muted">No object selected.</p> : <dl className="inspector-list">
+          <div><dt>Name</dt><dd>{placementObjectLabelBase(selectedElement)}</dd></div>
+          <div><dt>Owner</dt><dd>{selectedSceneDocument?.display_name}</dd></div>
+          <div><dt>View</dt><dd>{placementState?.display_name ?? "Scene defaults"}</dd></div>
+          <div><dt>X</dt><dd>{selectedElement.x}</dd></div>
+          <div><dt>Y</dt><dd>{selectedElement.y}</dd></div>
+          <div><dt>Size</dt><dd>{selectedElement.width} x {selectedElement.height}</dd></div>
+          <div><dt>Visible</dt><dd>{selectedElement.visible === false ? "No" : "Yes"}</dd></div>
+          <div><dt>Frame</dt><dd>{selectedElement.visual_ref ?? "None"}</dd></div>
+          <div><dt>Clip</dt><dd>{object?.animation_ref ?? "None"}</dd></div>
+          <div><dt>Overrides</dt><dd>{properties.join(", ") || "None"}</dd></div>
+          <div><dt>Internal ID</dt><dd>{selectedElement.element_id}</dd></div>
+        </dl>}
+      </section>;
+    }
     const selectedElementIsShape = selectedElement !== null && selectedElement.kind !== "sprite";
     const selectedSpriteFrame = selectedElement?.kind === "sprite" && selectedElement.visual_ref !== undefined
       ? compiledAssetFrameById.get(selectedElement.visual_ref) ?? null
@@ -5180,7 +5221,7 @@ export default function App() {
             <FolderOpen size={16} aria-hidden="true" />
             Open project
           </button>
-          <button className="button primary" onClick={buildPackage} disabled={!project?.valid || busy !== null}>
+          <button className="button primary" onClick={buildPackage} disabled={!project?.valid || busy !== null || hostOnlyProject}>
             <Hammer size={16} aria-hidden="true" />
             Build
           </button>
@@ -5198,11 +5239,15 @@ export default function App() {
             <SaveAll size={16} aria-hidden="true" />
             Save as
           </button>
-          <button className="icon-button" onClick={exportPackage} disabled={build === null || busy !== null} title="Export .egg">
+          <button className="icon-button" onClick={exportPackage} disabled={build === null || busy !== null || hostOnlyProject} title="Export .egg">
             <Download size={18} aria-hidden="true" />
           </button>
         </div>
       </header>
+
+      {hostOnlyProject && <div className="host-preview-notice" role="status">
+        Host preview only: this project contains scene objects. Version-2 .egg export and device support are unavailable.
+      </div>}
 
       <section
         className={`workspace-grid ${workspaceMode === "placement" ? "placement-mode" : workspaceMode === "scene-flow" ? "scene-flow-mode" : workspaceMode === "assets" ? "assets-mode" : "logic-mode"}`}
@@ -5357,6 +5402,7 @@ export default function App() {
               }}
               canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
               canAddScene={service?.state_scene_graph.scene_commands?.includes("scene.add") === true && busy === null}
+              readOnlySceneIds={readOnlySceneIds}
             />
           </div>
         </section>
@@ -5410,8 +5456,8 @@ export default function App() {
               onDeleteSystemExit={(sceneId) => {
                 void deleteSystemExit(sceneId);
               }}
-              canCreateState={service?.state_scene_graph.state_commands.includes("state.create") === true}
-              canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
+              canCreateState={canEditSelectedScene && service?.state_scene_graph.state_commands.includes("state.create") === true}
+              canEdit={canEditSelectedScene}
             />
           </div>
         </section>
@@ -5464,8 +5510,12 @@ export default function App() {
                 <dl className="inspector-list">
                   <div><dt>Scene</dt><dd>{preview.scene.scene_id}</dd></div>
                   <div><dt>State</dt><dd>{preview.scene.state_id}</dd></div>
-                  <div><dt>Presentation</dt><dd>{preview.timeline.presentation_id}</dd></div>
-                  <div><dt>Quantum</dt><dd>{preview.timeline.phase_quantum_ms} ms</dd></div>
+                  {preview.timeline.ownership === "scene_objects" ? (
+                    <div><dt>Scene time</dt><dd>{preview.timeline.elapsed_ms} ms</dd></div>
+                  ) : <>
+                    <div><dt>Presentation</dt><dd>{preview.timeline.presentation_id}</dd></div>
+                    <div><dt>Quantum</dt><dd>{preview.timeline.phase_quantum_ms} ms</dd></div>
+                  </>}
                   <div><dt>Black pixels</dt><dd>{preview.framebuffer.black_pixel_count}</dd></div>
                 </dl>
               )}
@@ -5485,7 +5535,7 @@ export default function App() {
               onSetLegacyRouteTarget={setRouteSceneTarget}
               onSetReferenceTarget={setSceneReferenceTarget}
               onDeleteReference={deleteSceneReference}
-              canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
+              canEdit={canEditSelectedScene}
             />
           )}
 
@@ -5522,7 +5572,7 @@ export default function App() {
               variableLimit={service?.state_scene_graph.limits.variables ?? 0}
               guardLimit={service?.state_scene_graph.limits.guards_per_route ?? 0}
               actionLimit={service?.state_scene_graph.limits.actions_per_route ?? 0}
-              canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
+              canEdit={canEditSelectedScene}
               canPreview={projectValid && busy === null}
             />
           )}

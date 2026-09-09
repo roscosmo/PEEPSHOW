@@ -20,7 +20,25 @@ export type ProjectSummary = {
   audio_cue_count: number;
 };
 
+export type SceneCapabilities = {
+  schema_version: number;
+  execution_model: string;
+  host_editing: boolean;
+  host_preview: boolean;
+  egg_export: boolean;
+  supported_commands: string[] | null;
+  legacy_command_catalog: boolean;
+};
+
+export type SceneObject = Omit<RenderElement, "element_id" | "x" | "y" | "visible" | "visual_ref"> & {
+  object_id: string;
+  defaults: { x: number; y: number; visible: boolean; visual_ref?: string };
+  animation_ref?: string;
+};
+
 export type SceneDocument = {
+  schema_version?: number;
+  objects?: SceneObject[];
   scene_id: string;
   display_name: string;
   scene_type: string;
@@ -60,7 +78,8 @@ export type InputAction = {
 export type StateRecord = {
   state_id: string;
   display_name: string;
-  waiting_visual_ref: string;
+  waiting_visual_ref?: string;
+  object_overrides?: Array<{ object_ref: string; x?: number; y?: number; visible?: boolean; visual_ref?: string }>;
   render_model_ref?: string;
   placement_overrides?: StatePlacementOverride[];
 };
@@ -131,7 +150,7 @@ export type PlacementProperty = "position" | "visible" | "visual_ref";
 
 export type PlacementStateProjection = {
   changes: Record<string, {
-    local_properties: PlacementProperty[];
+    local_properties: Array<PlacementProperty | "x" | "y">;
     animated: boolean;
   }>;
   resolved_elements: RenderElement[];
@@ -139,7 +158,10 @@ export type PlacementStateProjection = {
 
 export type PlacementOwnership = {
   scenes: Record<string, {
-    render_model_id: string;
+    render_model_id?: string;
+    execution_model?: string;
+    derived_read_only?: boolean;
+    objects?: SceneObject[];
     state_scoped_element_ids: string[];
     states: Record<string, PlacementStateProjection>;
   }>;
@@ -301,6 +323,7 @@ export type ProjectDocument = {
 };
 
 export type ProjectLoadResult = {
+  scene_capabilities?: Record<string, SceneCapabilities>;
   build_issues?: ValidationIssue[];
   project_revision: number;
   source_name: string;
@@ -316,6 +339,7 @@ export type ProjectLoadResult = {
 };
 
 export type ProjectCommandResult = {
+  scene_capabilities?: Record<string, SceneCapabilities>;
   build_issues?: ValidationIssue[];
   project_revision: number;
   valid: boolean;
@@ -331,6 +355,7 @@ export type ProjectCommandResult = {
 };
 
 export type ProjectSaveResult = {
+  scene_capabilities?: Record<string, SceneCapabilities>;
   build_issues?: ValidationIssue[];
   project_revision: number;
   valid: boolean;
@@ -346,6 +371,7 @@ export type ProjectSaveResult = {
 };
 
 export type ProjectHistoryResult = {
+  scene_capabilities?: Record<string, SceneCapabilities>;
   build_issues?: ValidationIssue[];
   project_revision: number;
   valid: boolean;
@@ -389,11 +415,12 @@ export type PreviewSnapshot = {
   };
   timeline: {
     elapsed_ms: number;
-    presentation_id: number;
-    step_index: number;
-    step_elapsed_ms: number;
-    phase_quantum_ms: number;
-    step_count: number;
+    ownership?: "scene_objects";
+    presentation_id?: number;
+    step_index?: number;
+    step_elapsed_ms?: number;
+    phase_quantum_ms?: number;
+    step_count?: number;
   };
   variables: Record<string, number>;
   input: {
@@ -451,6 +478,15 @@ export type PeepOSTriggerCapability = {
 };
 
 export type ServiceHello = {
+  scene_object_authoring?: {
+    status: string;
+    schema_version: number;
+    execution_model: string;
+    egg_export: boolean;
+    firmware_available: boolean;
+    commands: string[];
+    graph_construction_commands: boolean;
+  };
   service: string;
   service_api_version: number;
   protocol_version: number;

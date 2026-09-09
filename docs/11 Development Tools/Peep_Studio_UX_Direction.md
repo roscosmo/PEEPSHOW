@@ -599,3 +599,35 @@ Hierarchical state execution, restorable navigation, PeepOS-derived triggers,
 and editable prefabs remain contract-gated work. They must not be simulated in
 the renderer while the executable service and target profile still report them
 as unavailable.
+
+### API 39 Scene-Object GUI Bringup
+
+Checkpoint 1 implemented: read-only version-2 scene-object inspection alongside
+unchanged legacy editing. The hierarchy lists scene-owned objects once under
+Base objects and state override references under their states. Placement uses
+the host's resolved projections; defaults are displayed directly, without
+creating legacy render models or resolving ownership in TypeScript.
+
+- Version-2 object selection exposes defaults or the selected state's entry-time
+  projection, independent-axis override names, and the authored clip reference.
+  This is not a live mutable-object debugger.
+- The host-preview capability requires `service.hello.scene_object_authoring`
+  and per-scene `scene_capabilities`. Legacy command catalogs are not reused for
+  version-2 editing. Its placement and graph mutations remain disabled in this
+  first checkpoint, including commands the backend already supports but the GUI
+  has not yet integrated.
+- The emulator displays scene elapsed time instead of legacy waiting steps.
+  Version-2 states do not show missing legacy waiting-animation links.
+- Projects containing non-exportable scene objects show a persistent host-only
+  notice and disable Build/Export, including mixed-version projects.
+- Tests: `sceneCapabilities.test.ts` covers capability and presentation mapping;
+  `scene-objects-check.cjs` uses an explicitly migrated temporary fixture with
+  a real API 39 sidecar to check mixed-version selection, projections, rendered
+  pixels, read-only controls, and desktop/compact screenshots. User projects and
+  repository examples are not migrated by Studio or modified by the test.
+
+Next checkpoints: integrate advertised object/default/override/clip editing;
+then explicit migration preview/apply with consent and supported object actions.
+Preserve undo/redo, save/reload, legacy editing, and visible export restrictions.
+Shared schemas, compiler, service, and firmware remain OS-owned. Do not add a
+parallel model or expose version-2 graph construction ahead of its handoff.

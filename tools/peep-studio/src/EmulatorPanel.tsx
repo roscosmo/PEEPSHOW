@@ -58,7 +58,8 @@ export function EmulatorPanel({ preview, sceneName, playing, onReset, onTogglePl
             <strong title={`State: ${preview?.scene.display_name ?? "No active state"}`} aria-label={`State: ${preview?.scene.display_name ?? "No active state"}`}>{preview?.scene.display_name ?? "No active state"}</strong>
           </div>
           {preview !== null && <div className="emulator-timeline" aria-label="Preview timing">
-            <span>Step {preview.timeline.step_index + 1}/{preview.timeline.step_count}</span>
+            <span>{preview.timeline.ownership === "scene_objects" ? "Scene time"
+              : `Step ${(preview.timeline.step_index ?? 0) + 1}/${preview.timeline.step_count ?? 1}`}</span>
             <span>{preview.timeline.elapsed_ms} ms</span>
           </div>}
         </div>
