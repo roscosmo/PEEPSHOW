@@ -19,6 +19,8 @@ volatile uint32_t g_ps_ui_router_request, g_ps_ui_router_request_event;
 const uint8_t g_ps_object_development_egg[] = {0};
 const uint32_t g_ps_object_development_egg_size = 1;
 static struct { uint32_t active; } g_ps_package_workflow_probe;
+static struct { uint32_t fault; } g_ps_audio_package_probe;
+static uint32_t PS_HW6_RTOS_OpenPackageSfx(void) { return 0; }
 static struct { uint32_t display_complete; } g_ps_hw6_owner_probe;
 static struct { uint32_t scene_id; } g_ps_scene_runtime_probe;
 static struct {

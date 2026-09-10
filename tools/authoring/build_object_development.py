@@ -6,6 +6,7 @@ from pathlib import Path
 
 from peepshow_authoring.compiler import build_development_egg_v2
 from peepshow_authoring.project import load_project
+from peepshow_authoring.audio_assets import CompiledAudioAsset, encode_ima_adpcm
 
 DEFAULT_PROJECT = Path(__file__).resolve().parents[2] / "examples/authoring/native_v2_continuity.peepproj"
 
@@ -105,18 +106,61 @@ def timer_fixture_bundle():
     return replace(bundle, project=project, scenes=(scene,))
 
 
+def sfx_fixture_bundle():
+    """OS audio integration variant; both pinned GUI projects remain unchanged."""
+    bundle = load_project(DEFAULT_PROJECT.parent / "native_v2_scene_timer.peepproj")
+    orbit = fixture_bundle()
+    scene = deepcopy(bundle.scenes[0])
+    scene["objects"][0].update(width=32, height=32, animation_ref="orbit.loop")
+    scene["objects"][0]["defaults"]["visual_ref"] = "orbit.0"
+    for route in scene["routes"]:
+        route["actions"].append({"kind": "play_sfx", "cue_ref": "short.cue"})
+    scene["event_handlers"][0]["actions"].append({"kind": "play_sfx", "cue_ref": "long.cue"})
+    for name, button, actions in (
+        ("sound", "BUTTON_L", [{"kind": "play_sfx", "cue_ref": "short.cue"},
+                                 {"kind": "play_sfx", "cue_ref": "long.cue"}]),
+        ("shell", "BUTTON_R", [{"kind": "exit_to_shell"}]),
+    ):
+        scene["input_actions"].append({"action_id": name, "logical_source": button, "event_kind": "press"})
+        for state in ("start", "marker_right"):
+            scene["routes"].append({"route_id": f"{name}_{state}", "action_ref": name,
+                "from_states": [state], "guards": [], "actions": deepcopy(actions), "target_state": state})
+        scene["reactive_wait_default"]["event_interests"].append(name)
+    audio = []
+    for name, duration in (("short", 80), ("long", 6000)):
+        count = duration * 16
+        # Low-level integer triangle, with source ramps in addition to the mixer envelope.
+        samples = [((i % 32 if i % 32 < 16 else 32 - i % 32) - 8) * 600 *
+                   min(i, count - 1 - i, 160) // 160 for i in range(count)]
+        adpcm, blocks = encode_ima_adpcm(samples)
+        audio.append(CompiledAudioAsset(name, "generated", 16000, 1, 16000, 1,
+            count, duration, count * 2, 256, blocks, adpcm))
+    cues = tuple({"cue_id": f"{name}.cue", "asset_ref": name, "priority": 1, "volume": 96}
+                 for name in ("short", "long"))
+    project = deepcopy(bundle.project)
+    project["package"]["package_id"] = "dev.peepshow.native_v2_sfx"
+    return replace(bundle, project=project, scenes=(scene,), frames=orbit.frames,
+                   assets=orbit.assets, animations=orbit.animations,
+                   audio_assets=tuple(audio), audio_cues=cues)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", type=Path, default=DEFAULT_PROJECT,
                         help="Native V2 project; defaults to the checked-in Studio continuity fixture")
     parser.add_argument("--timers", action="store_true",
                         help="Use the OS timer variant of the checked-in Studio fixture (source stays unchanged)")
+    parser.add_argument("--sfx", action="store_true",
+                        help="Use the OS four-frame/audio variant (GUI sources stay unchanged)")
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[2] /
                         "firmware/peepshow_hw6_fw0/Core/Src/ps_object_development_egg_autogen.c")
     args = parser.parse_args()
-    if args.timers and args.project.resolve() != DEFAULT_PROJECT.resolve():
-        parser.error("--timers uses the checked-in Studio fixture; omit --project")
-    blob = build_development_egg_v2(timer_fixture_bundle() if args.timers else load_project(args.project))
+    if (args.timers or args.sfx) and args.project.resolve() != DEFAULT_PROJECT.resolve():
+        parser.error("--timers/--sfx use checked-in fixtures; omit --project")
+    if args.timers and args.sfx:
+        parser.error("choose either --timers or --sfx")
+    bundle = sfx_fixture_bundle() if args.sfx else timer_fixture_bundle() if args.timers else load_project(args.project)
+    blob = build_development_egg_v2(bundle)
     args.output.write_text(render_c(blob), encoding="ascii", newline="\n")
     print(f"Development-only V2 egg: {len(blob)} bytes -> {args.output}")
 

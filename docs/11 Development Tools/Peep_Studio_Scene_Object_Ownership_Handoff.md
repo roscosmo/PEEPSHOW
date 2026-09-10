@@ -728,7 +728,7 @@ remain unchanged. This is not permission to enable V2 egg export in Studio.
 The first GUI-authored hardware fixture has one V2 scene with continuous
 interaction, two local states, A/B button routes, one scene-owned looping sprite
 and separate object overrides. It intentionally omits timers and SFX. The next
-development increment admits scoped timers; SFX, timeout interaction and
+development timer increment admitted scoped timers; at that checkpoint SFX, timeout interaction and
 scene-to-scene routes remain rejected. Object/variable actions and guards are
 allowed; a system-exit route can return to the shell. No requirement for a
 focus or cursor object is added.
@@ -801,3 +801,39 @@ installed package. Use the explicit `--project` command and hardware sequence in
 [[Scene_Object_Awake_Development_Test]]. The previous OS timer variant and tests
 remain available. Service API 41, export restrictions and the awake-only scope
 are unchanged; GUI does not need another backend command for this fixture.
+
+## V2 Awake SFX Handoff
+
+The current explicit development path now admits ordinary `PLAY_SFX` from
+committed local input transitions and scene/state timer handlers. Multiple sound
+actions are dispatched in authored order. They do not restart scene-owned
+animation, and local state changes do not stop already playing sounds.
+
+Ordinary package SFX stops and is discarded on temporary shell entry, package
+exit/replacement or installer entry. Resume permits new playback but never
+replays discarded cues. Clip length does not imply resumability. Dialogue/music
+pause/resume will be a separate explicit capability, not an implicit change to
+`PLAY_SFX`; no new authoring command or music control is advertised here.
+
+OS's `build_object_development.py --sfx` variant derives from the passed GUI
+scene-timer bundle without editing its source. It has four clear animation
+frames at 250 ms, short A/B tones, a six-second tone on timer reveal, L for
+two ordered overlapping tones and R for shell exit. START tests suspension and
+silent resume. Development/scene/audio-package probe APIs are `3/22/1`.
+
+The user heard short A/B tones and uninterrupted long playback. The original
+three-second tone was too close to the START hold duration to establish early
+stopping. It is now six seconds and both test tones have twice the source
+amplitude, without changing production mixer settings. Shell-stop/silent-resume
+hardware verification is still pending.
+
+Verification: 273 authoring/native tests pass, including real graph/scheduler/
+render integration and extracted production audio lifetime paths. The Debug
+firmware builds. Audio hardware calls are stubbed in host tests; audible
+overlap, uninterrupted animation and shell-stop behavior await the HW6 test.
+The earlier GUI continuity and timer passes remain separate hardware evidence.
+
+Service API 41, ordinary V2 export restrictions and target capabilities are
+unchanged. Studio can continue supported authoring work; no GUI merge or source
+fixture update is required for this OS test. This does not deliver production
+V2 installation, scene connections or STOP2/LPBAM support.

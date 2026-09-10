@@ -121,6 +121,9 @@ extern RTC_HandleTypeDef hrtc;
 #define PS_HW6_RTOS_COMMAND_STORAGE_PACKAGE_READ_WINDOW (43UL)
 #define PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_REPLACE (44UL)
 #define PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_VALIDATE (45UL)
+#define PS_HW6_RTOS_COMMAND_AUDIO_STOP_PACKAGE (46UL)
+#define PS_HW6_RTOS_COMMAND_RUNTIME_POWER_SUSPEND (47UL)
+#define PS_HW6_RTOS_AUDIO_STOP_ACK (1UL << 12U)
 #define PS_HW6_RTOS_PACKAGE_WORKFLOW_MAGIC (0x50574B46UL)
 #define PS_HW6_RTOS_PACKAGE_VALIDATE_ACK (1UL << 14U)
 #define PS_HW6_RTOS_OBJECT_DISPLAY_ACK   (1UL << 13U)
@@ -408,6 +411,7 @@ static uint32_t ps_display_blink_visible;
 static uint32_t ps_display_waiting_sequence_frame;
 static uint32_t ps_display_waiting_sequence_count;
 static volatile uint32_t ps_audio_sfx_pending;
+volatile PS_HW6_AudioPackageProbe g_ps_audio_package_probe = { .api_version = 1UL };
 static uint32_t ps_audio_sfx_clock_held;
 static uint32_t ps_audio_sfx_clock_apply_count_before;
 static uint32_t ps_audio_sfx_clock_pll2_on_count_before;
@@ -461,6 +465,8 @@ static volatile uint32_t ps_stop2_wake_nvic_ispr3_before;
 
 static void PS_HW6_RTOS_SendCurrentUiRenderCommand(void);
 static void PS_HW6_RTOS_RuntimePackageReturn(void);
+static UINT PS_HW6_RTOS_StopPackageSfx(void);
+static UINT PS_HW6_RTOS_OpenPackageSfx(void);
 static void PS_HW6_RTOS_RuntimePackageReplacementFail(void);
 static UINT PS_HW6_RTOS_ObjectPresent(void);
 static uint32_t PS_HW6_RTOS_ObjectAdvance(uint32_t now_tick);
@@ -533,7 +539,7 @@ static volatile uint32_t ps_package_launch_fault_pending;
 static void PS_HW6_RTOS_PackageWorkflowFinish(UINT status);
 static void PS_HW6_RTOS_PackageWorkflowStorage(void);
 static void PS_HW6_RTOS_PackageWorkflowPrepare(void);
-static void PS_HW6_RTOS_RuntimeSuspend(void);
+static void PS_HW6_RTOS_RuntimeSuspend(uint32_t discard_sfx);
 
 static CHAR *const ps_owner_names[PS_HW6_RTOS_OWNER_COUNT] =
 {
@@ -1644,6 +1650,7 @@ static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
        (message[2] == PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_VALIDATE) ||
        (message[2] == PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_RETURN) ||
        (message[2] == PS_HW6_RTOS_COMMAND_RUNTIME_SUSPEND) ||
+       (message[2] == PS_HW6_RTOS_COMMAND_RUNTIME_POWER_SUSPEND) ||
        (message[2] == PS_HW6_RTOS_COMMAND_RUNTIME_RESUME) ||
        (message[2] == PS_HW6_RTOS_COMMAND_RUNTIME_INTERACTION_CUE) ||
        (message[2] == PS_HW6_RTOS_COMMAND_RUNTIME_INTERACTION_START) ||
@@ -1654,6 +1661,9 @@ static uint32_t PS_HW6_RTOS_CommandIsValid(uint32_t owner_id,
     return 1UL;
   }
   cycle_index = (uint32_t)(message[3] ^ PS_HW6_RTOS_COMMAND_TOKEN);
+  if ((owner_id == PS_HW6_RTOS_OWNER_AUDIO) &&
+      (message[2] == PS_HW6_RTOS_COMMAND_AUDIO_STOP_PACKAGE))
+  { return 1UL; }
   if ((owner_id == PS_HW6_RTOS_OWNER_AUDIO) &&
       (message[2] == PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX) &&
       (cycle_index < PS_EGG_STATE_LOADER_AUDIO_CUE_MAX))
@@ -1983,6 +1993,54 @@ void PS_HW6_RTOS_AudioSfxRequestComplete(void)
   }
 }
 
+static UINT PS_HW6_RTOS_OpenPackageSfx(void)
+{
+  if ((g_ps_audio_package_probe.fault != 0UL) ||
+      (g_ps_audio_package_probe.request != g_ps_audio_package_probe.complete) ||
+      (g_ps_audio_package_probe.status != TX_SUCCESS)) { return TX_NOT_DONE; }
+  g_ps_audio_package_probe.blocked = 0UL;
+  return TX_SUCCESS;
+}
+
+static UINT PS_HW6_RTOS_StopPackageSfx(void)
+{
+  ULONG actual = 0UL;
+  UINT status;
+  g_ps_audio_package_probe.blocked = 1UL;
+  if (g_ps_audio_package_probe.fault != 0UL) { return TX_NOT_DONE; }
+  g_ps_audio_package_probe.request++;
+  g_ps_audio_package_probe.send_status = PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_audio_package_probe.wait_status = PS_HW6_RTOS_STATUS_NOT_RUN;
+  g_ps_audio_package_probe.owner_status = PS_HW6_RTOS_STATUS_NOT_RUN;
+  if ((ps_audio_sfx_pending == 0UL) && (ps_audio_sfx_clock_held == 0UL) &&
+      (PS_HW6_AudioOwner_SfxActive() == 0UL))
+  {
+    g_ps_audio_package_probe.complete = g_ps_audio_package_probe.request;
+    g_ps_audio_package_probe.owner_status = HAL_OK;
+    g_ps_audio_package_probe.status = TX_SUCCESS;
+    return TX_SUCCESS;
+  }
+  (void)tx_event_flags_get(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+    PS_HW6_RTOS_AUDIO_STOP_ACK, TX_AND_CLEAR, &actual, TX_NO_WAIT);
+  status = PS_HW6_RTOS_SendModeCommand(PS_HW6_RTOS_OWNER_AUDIO,
+    PS_HW6_RTOS_COMMAND_AUDIO_STOP_PACKAGE, g_ps_audio_package_probe.request);
+  g_ps_audio_package_probe.send_status = status;
+  if (status == TX_SUCCESS)
+  {
+    status = tx_event_flags_get(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+      PS_HW6_RTOS_AUDIO_STOP_ACK, TX_AND_CLEAR, &actual, PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
+    g_ps_audio_package_probe.wait_status = status;
+    if ((status == TX_SUCCESS) &&
+        ((g_ps_audio_package_probe.complete != g_ps_audio_package_probe.request) ||
+         (g_ps_audio_package_probe.owner_status != HAL_OK) ||
+         (ps_audio_sfx_pending != 0UL) || (ps_audio_sfx_clock_held != 0UL) ||
+         (PS_HW6_AudioOwner_SfxActive() != 0UL))) { status = TX_NOT_DONE; }
+  }
+  g_ps_audio_package_probe.status = status;
+  if (status != TX_SUCCESS) { g_ps_audio_package_probe.fault = 1UL; }
+  return status;
+}
+
 static UINT PS_HW6_RTOS_CompleteStateSceneEvent(uint32_t scene_result)
 {
   UINT status = TX_SUCCESS;
@@ -2004,23 +2062,28 @@ static UINT PS_HW6_RTOS_CompleteStateSceneEvent(uint32_t scene_result)
       status = PS_HW6_RTOS_RequestRuntimeCommand(
         PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_RETURN);
     }
-    else if (PS_SceneRuntime_TakeSfxRequest(&cue_index) != 0UL)
+    else
     {
-      UINT sfx_status;
-
-      g_ps_hw6_rtos_probe.audio_sfx_dispatch_count++;
-      g_ps_hw6_rtos_probe.audio_sfx_last_cue_index = cue_index;
-      PS_HW6_RTOS_AudioSfxRequestQueued();
-      sfx_status = PS_HW6_RTOS_SendModeCommand(
-        PS_HW6_RTOS_OWNER_AUDIO,
-        PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX,
-        cue_index);
-      if (sfx_status != TX_SUCCESS)
+      uint32_t index;
+      for (index = 0UL; index < PS_SCENE_RUNTIME_ACTION_MAX; ++index)
       {
-        PS_HW6_RTOS_AudioSfxRequestComplete();
+        UINT sfx_status;
+        if (PS_SceneRuntime_TakeSfxRequest(&cue_index) == 0UL) { break; }
+        if (g_ps_audio_package_probe.blocked != 0UL)
+        { g_ps_audio_package_probe.discarded++; continue; }
+        g_ps_hw6_rtos_probe.audio_sfx_dispatch_count++;
+        g_ps_hw6_rtos_probe.audio_sfx_last_cue_index = cue_index;
+        PS_HW6_RTOS_AudioSfxRequestQueued();
+        sfx_status = PS_HW6_RTOS_SendModeCommand(
+          PS_HW6_RTOS_OWNER_AUDIO,
+          PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX,
+          cue_index);
+        if (sfx_status != TX_SUCCESS)
+        {
+          PS_HW6_RTOS_AudioSfxRequestComplete();
+        }
+        g_ps_hw6_rtos_probe.audio_sfx_send_status = (uint32_t)sfx_status;
       }
-      g_ps_hw6_rtos_probe.audio_sfx_send_status =
-        (uint32_t)sfx_status;
     }
     if (shell_exit_requested == 0UL)
     {
@@ -2686,14 +2749,15 @@ static UINT PS_HW6_RTOS_AdmitSystemAction(uint32_t action)
   {
     if (tx_thread_identify() == &ps_threads[PS_HW6_RTOS_OWNER_RUNTIME])
     {
-      PS_HW6_RTOS_RuntimeSuspend();
+      PS_HW6_RTOS_RuntimeSuspend((power_action == 0UL) ? 1UL : 0UL);
       status = (g_ps_hw6_rtos_probe.runtime_last_status == PS_STATUS_OK) ?
         TX_SUCCESS : TX_NOT_DONE;
     }
     else
     {
       status = PS_HW6_RTOS_RequestRuntimeCommandAndWait(
-        PS_HW6_RTOS_COMMAND_RUNTIME_SUSPEND);
+        (power_action != 0UL) ? PS_HW6_RTOS_COMMAND_RUNTIME_POWER_SUSPEND :
+                               PS_HW6_RTOS_COMMAND_RUNTIME_SUSPEND);
     }
     if (status != TX_SUCCESS)
     {
@@ -7492,6 +7556,11 @@ static void PS_HW6_RTOS_RuntimeEnterInstaller(void)
      (PS_HW6_RTOS_RuntimePackageActive() != 0UL)) ? 1UL : 0UL;
 
   g_ps_hw6_rtos_probe.runtime_installer_enter_count++;
+  if (PS_HW6_RTOS_StopPackageSfx() != TX_SUCCESS)
+  {
+    PS_HW6_RTOS_RuntimeRecord(PS_HW6_RUNTIME_EVENT_INSTALLER_ENTER, PS_STATUS_INTERNAL_ERROR);
+    return;
+  }
   if (discard_package != 0UL)
   {
     PS_HW6_RTOS_RuntimeInteractionEnd();
@@ -7595,6 +7664,7 @@ static void PS_HW6_RTOS_RequestPackageInstallErrorUi(void)
 
 static void PS_HW6_RTOS_RuntimePackageReplacementFail(void)
 {
+  (void)PS_HW6_RTOS_StopPackageSfx();
   ps_package_launch_fault_pending = 1UL;
   PS_HW6_RTOS_RuntimeInteractionEnd();
   if (PS_SceneRuntime_StateSceneActive() != 0UL)
@@ -7642,6 +7712,11 @@ static uint32_t PS_HW6_RTOS_RuntimePackageActivateStub(
     g_ps_hw6_rtos_probe.runtime_package_reactive_activate_stub_count++;
   }
 
+  if (PS_HW6_RTOS_StopPackageSfx() != TX_SUCCESS)
+  {
+    PS_HW6_RTOS_RuntimeRecord(event, PS_STATUS_INTERNAL_ERROR);
+    return PS_STATUS_INTERNAL_ERROR;
+  }
   if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_LP_GRAPH) &&
       (clock_status == TX_SUCCESS) &&
       (g_ps_package_source_override ==
@@ -7761,6 +7836,7 @@ static uint32_t PS_HW6_RTOS_RuntimePackageActivateStub(
     }
     else
     {
+      (void)PS_HW6_RTOS_OpenPackageSfx();
       PS_HW6_RTOS_RuntimeInteractionBegin((uint32_t)tx_time_get());
       if (render_in_place != 0UL)
       {
@@ -7834,12 +7910,12 @@ static void PS_HW6_RTOS_RuntimePackageReplace(uint32_t capabilities,
   {
     g_ps_hw6_rtos_probe.runtime_package_replace_active_count++;
     g_ps_hw6_rtos_probe.input_policy_lock_active = 1UL;
-    if (ps_audio_sfx_pending != 0UL)
+    ps_runtime_package_replace_waiting_for_audio = 0UL;
+    g_ps_hw6_rtos_probe.runtime_package_replace_waiting_for_audio = 0UL;
+    if (PS_HW6_RTOS_StopPackageSfx() != TX_SUCCESS)
     {
-      ps_runtime_package_replace_waiting_for_audio = 1UL;
-      g_ps_hw6_rtos_probe.runtime_package_replace_waiting_for_audio = 1UL;
-      g_ps_hw6_rtos_probe.runtime_package_replace_deferred_audio_count++;
-      runtime_status = (uint32_t)PS_STATUS_BUSY;
+      g_ps_hw6_rtos_probe.input_policy_lock_active = 0UL;
+      runtime_status = (uint32_t)PS_STATUS_INTERNAL_ERROR;
     }
     else
     {
@@ -7898,10 +7974,11 @@ static void PS_HW6_RTOS_RuntimePackageReplace(uint32_t capabilities,
 
 static void PS_HW6_RTOS_RuntimePackageReturn(void)
 {
-  UINT release_status = TX_SUCCESS;
+  UINT release_status = PS_HW6_RTOS_StopPackageSfx();
 
   g_ps_hw6_rtos_probe.runtime_package_return_count++;
-  if (g_ps_hw6_rtos_probe.runtime_active_capabilities != 0UL)
+  if ((release_status == TX_SUCCESS) &&
+      (g_ps_hw6_rtos_probe.runtime_active_capabilities != 0UL))
   {
     release_status = PS_HW6_RTOS_RequestRuntimeClockCapabilities(
       PS_HW6_RTOS_RUNTIME_CLOCK_REASON_RELEASE,
@@ -7997,7 +8074,8 @@ static void PS_HW6_RTOS_ObjectService(uint32_t now_tick)
     if (g_ps_object_development_probe.lease_fault != 0UL) { blockers |= 1UL; }
     if ((PS_HW6_RTOS_SystemOverlayActive() != 0UL) ||
         (g_ps_package_workflow_probe.active != 0UL)) { blockers |= 2UL; }
-    if ((PS_HW6_AudioOwner_SfxActive() != 0UL) ||
+    if ((g_ps_audio_package_probe.fault != 0UL) ||
+        (PS_HW6_AudioOwner_SfxActive() != 0UL) ||
         (ps_audio_sfx_pending != 0UL) || (ps_audio_sfx_clock_held != 0UL)) { blockers |= 4UL; }
     if ((ps_queues[PS_HW6_RTOS_OWNER_DISPLAY].tx_queue_enqueued != 0UL) ||
         (g_ps_hw6_owner_probe.display_complete == 0UL)) { blockers |= 8UL; }
@@ -8022,6 +8100,7 @@ static void PS_HW6_RTOS_ObjectService(uint32_t now_tick)
       g_ps_hw6_rtos_probe.runtime_active_package_id = 1UL;
       g_ps_hw6_rtos_probe.runtime_active_unit_id = g_ps_scene_runtime_probe.scene_id;
       g_ps_hw6_rtos_probe.runtime_active_capabilities = 0UL;
+      (void)PS_HW6_RTOS_OpenPackageSfx();
       PS_HW6_RTOS_RuntimeStateTimersSync(ps_object_last_tick, 1UL);
       if (PS_HW6_RTOS_ObjectPresent() != TX_SUCCESS)
       { g_ps_object_development_probe.launch_status = (uint32_t)HAL_ERROR; }
@@ -8990,9 +9069,10 @@ static void PS_HW6_RTOS_RuntimeInteractionService(uint32_t now_tick)
   PS_HW6_RTOS_RuntimeInteractionEnterInactive(now_tick, 0UL);
 }
 
-static void PS_HW6_RTOS_RuntimeSuspend(void)
+static void PS_HW6_RTOS_RuntimeSuspend(uint32_t discard_sfx)
 {
-  UINT release_status = TX_SUCCESS;
+  /* Power admission has its own subsequent owner quiesce barrier. */
+  UINT release_status = (discard_sfx != 0UL) ? PS_HW6_RTOS_StopPackageSfx() : TX_SUCCESS;
   uint32_t saved_capabilities =
     g_ps_hw6_rtos_probe.runtime_active_capabilities;
 
@@ -9008,7 +9088,7 @@ static void PS_HW6_RTOS_RuntimeSuspend(void)
   g_ps_hw6_rtos_probe.runtime_suspend_clock_release_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
 
-  if (saved_capabilities != 0UL)
+  if ((release_status == TX_SUCCESS) && (saved_capabilities != 0UL))
   {
     release_status = PS_HW6_RTOS_RequestRuntimeClockCapabilities(
       PS_HW6_RTOS_RUNTIME_CLOCK_REASON_RELEASE,
@@ -9042,6 +9122,12 @@ static void PS_HW6_RTOS_RuntimeResume(void)
     g_ps_hw6_rtos_probe.runtime_suspend_saved_capabilities;
   uint32_t reason = PS_HW6_RTOS_RUNTIME_CLOCK_REASON_REACTIVE_TRANSACTION;
 
+  if (g_ps_audio_package_probe.fault != 0UL)
+  {
+    PS_HW6_RTOS_RuntimeRecord(PS_HW6_RUNTIME_EVENT_RESUME, PS_STATUS_INTERNAL_ERROR);
+    return;
+  }
+
   g_ps_hw6_rtos_probe.runtime_resume_count++;
   g_ps_hw6_rtos_probe.runtime_resume_clock_request_status =
     PS_HW6_RTOS_STATUS_NOT_RUN;
@@ -9073,6 +9159,7 @@ static void PS_HW6_RTOS_RuntimeResume(void)
   {
     g_ps_hw6_rtos_probe.runtime_lifecycle =
       (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_RUNNING;
+    (void)PS_HW6_RTOS_OpenPackageSfx();
     PS_HW6_RTOS_RuntimeStateTimersResume((uint32_t)tx_time_get());
     if (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL)
     {
@@ -9114,6 +9201,7 @@ static void PS_HW6_RTOS_HandleRuntimeCommand(ULONG command)
   }
   else if ((command == PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_RETURN) ||
            (command == PS_HW6_RTOS_COMMAND_RUNTIME_SUSPEND) ||
+           (command == PS_HW6_RTOS_COMMAND_RUNTIME_POWER_SUSPEND) ||
            (command == PS_HW6_RTOS_COMMAND_RUNTIME_RESUME))
   {
     request_before_command = 0UL;
@@ -9192,9 +9280,11 @@ static void PS_HW6_RTOS_HandleRuntimeCommand(ULONG command)
   {
     PS_HW6_RTOS_RuntimePackageReturn();
   }
-  else if (command == PS_HW6_RTOS_COMMAND_RUNTIME_SUSPEND)
+  else if ((command == PS_HW6_RTOS_COMMAND_RUNTIME_SUSPEND) ||
+           (command == PS_HW6_RTOS_COMMAND_RUNTIME_POWER_SUSPEND))
   {
-    PS_HW6_RTOS_RuntimeSuspend();
+    PS_HW6_RTOS_RuntimeSuspend(
+      (command == PS_HW6_RTOS_COMMAND_RUNTIME_SUSPEND) ? 1UL : 0UL);
   }
   else if (command == PS_HW6_RTOS_COMMAND_RUNTIME_RESUME)
   {
@@ -9496,8 +9586,9 @@ static void PS_HW6_RTOS_PackageWorkflowPrepare(void)
        (action == PS_UI_ROUTER_ACTION_PACKAGE_INSTALL_STUB)))
   {
     PS_HW6_RTOS_RuntimeEnterInstaller();
-    status = PS_HW6_RTOS_SendUiLifecycleEvent(
-      PS_UI_ROUTER_EVENT_SYSTEM_MENU_DISCARD);
+    status = (g_ps_hw6_rtos_probe.runtime_last_status == PS_STATUS_OK) ?
+      PS_HW6_RTOS_SendUiLifecycleEvent(PS_UI_ROUTER_EVENT_SYSTEM_MENU_DISCARD) :
+      TX_NOT_DONE;
   }
   if (status == TX_SUCCESS)
   {
@@ -10082,6 +10173,22 @@ static void PS_HW6_RTOS_FinalizeAudioSfx(HAL_StatusTypeDef owner_status)
   g_ps_hw6_rtos_probe.audio_sfx_clock_held = 0UL;
 }
 
+static void PS_HW6_RTOS_StopPackageSfxOwner(uint32_t sequence)
+{
+  HAL_StatusTypeDef status = PS_HW6_OwnerStateMachines_StopAudioSfx();
+  if (status == HAL_OK) { status = PS_HW6_AudioOwner_VerifyIdle(); }
+  if ((status == HAL_OK) && (ps_audio_sfx_clock_held != 0UL))
+  {
+    PS_HW6_RTOS_FinalizeAudioSfx(status);
+    if (g_ps_hw6_rtos_probe.audio_sfx_clock_release_status != TX_SUCCESS)
+    { status = HAL_ERROR; }
+  }
+  g_ps_audio_package_probe.owner_status = status;
+  g_ps_audio_package_probe.complete = sequence;
+  (void)tx_event_flags_set(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+    PS_HW6_RTOS_AUDIO_STOP_ACK, TX_OR);
+}
+
 static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
                                            ULONG command,
                                            uint32_t cycle_index)
@@ -10328,6 +10435,11 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
       TX_OR);
   }
   else if ((owner_id == PS_HW6_RTOS_OWNER_AUDIO) &&
+           (command == PS_HW6_RTOS_COMMAND_AUDIO_STOP_PACKAGE))
+  {
+    PS_HW6_RTOS_StopPackageSfxOwner(cycle_index);
+  }
+  else if ((owner_id == PS_HW6_RTOS_OWNER_AUDIO) &&
            (command == PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX))
   {
     HAL_StatusTypeDef sfx_status = HAL_ERROR;
@@ -10335,6 +10447,12 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
 
     g_ps_hw6_rtos_probe.audio_sfx_owner_count++;
     g_ps_hw6_rtos_probe.audio_sfx_last_cue_index = cycle_index;
+    if (g_ps_audio_package_probe.blocked != 0UL)
+    {
+      g_ps_audio_package_probe.discarded++;
+      PS_HW6_RTOS_AudioSfxRequestComplete();
+      return;
+    }
     if (ps_audio_sfx_clock_held == 0UL)
     {
       UINT clock_status = PS_HW6_RTOS_RequestAudioClockCapabilities(
@@ -10355,11 +10473,16 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
           g_ps_hw6_clock_policy_probe.pll2_domain_off_count;
         sfx_status = PS_HW6_OwnerStateMachines_Stabilize(
           PS_HW6_RTOS_OWNER_AUDIO);
-        if (sfx_status == HAL_OK)
+        if ((sfx_status == HAL_OK) && (g_ps_audio_package_probe.blocked == 0UL))
         {
           sfx_status = PS_HW6_OwnerStateMachines_RunAudioSfx(
             cycle_index,
             &request_handed_to_owner);
+        }
+        else if (g_ps_audio_package_probe.blocked != 0UL)
+        {
+          g_ps_audio_package_probe.discarded++;
+          sfx_status = HAL_BUSY;
         }
       }
     }

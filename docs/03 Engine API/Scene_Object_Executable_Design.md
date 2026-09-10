@@ -466,3 +466,13 @@ fixture passed state/scene expiry, visual continuity, Restart and Cancel;
 suspension and broader cases remain native-only. See the same development-test document for the
 OS-owned timer variant, which leaves GUI's source unchanged. STOP2/LPBAM and
 ordinary V2 export remain unavailable.
+
+The subsequent awake development increment admits ordinary `PLAY_SFX` effects
+after successful object-graph commit, including multiple ordered effects from
+input or timer handlers. The existing audio owner and queue perform playback.
+Shell suspension and package exit/replacement stop and discard active/queued
+SFX through a bounded owner acknowledgement before source reuse. Returning from
+the shell does not replay those cues. Future resumable music/dialogue requires
+an explicit capability, independent of clip duration. Native tests and the
+firmware build pass; this increment's audio hardware verification is pending.
+See [[Audio_Contract]] and [[Scene_Object_Awake_Development_Test]].

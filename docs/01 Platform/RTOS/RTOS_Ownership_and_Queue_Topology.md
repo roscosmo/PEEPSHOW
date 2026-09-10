@@ -329,7 +329,23 @@ contracts.
 
 ---
 
+Power-requested runtime suspension uses the internal
+`RUNTIME_POWER_SUSPEND` command. It preserves the existing graph/timer pause and
+subsequent power owner-quiesce path, rather than entering the shell SFX-stop
+barrier while `thPower` is waiting for runtime admission. Ordinary runtime
+suspension continues to stop/discard SFX before acknowledging shell entry.
+
 ## Validation Evidence Required
+
+The package-SFX stop barrier uses the existing `qAudioCmd` four-word command
+envelope and `egDebug` bit 12 for its dedicated acknowledgement. `thRuntime` is
+the sole package-SFX producer and stop requester. It closes admission before
+enqueueing STOP; FIFO consumption discards preceding PLAY requests while closed.
+The acknowledgement carries a checked request sequence in the separate audio
+package probe and confirms owner stop, zero outstanding requests, and clock release.
+This bit is separate from object-display bit 13, validation bit 14, package-reader
+bit 15, owner acknowledgements and clock acknowledgements. A timeout quarantines
+the package audio path until reset, so a late acknowledgement cannot reopen it.
 
 Before runtime host feature work:
 1. queue producers and consumers verified

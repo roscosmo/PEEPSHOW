@@ -5,6 +5,8 @@ passed awake HW6 checks. V2 STOP2/LPBAM remains unimplemented.
 The exact GUI scene-timer fixture from `90b849c` also passed awake timer reveal
 and visually observed A/B animation continuity, separately from the OS variant.
 This is not normal V2 export, installation, automatic boot, or STOP2 admission.
+The current OS SFX variant is implemented for the next device test; its audio
+and shell-stop behavior is not yet hardware-qualified.
 
 ## Delivered Path
 
@@ -15,8 +17,8 @@ V1 package admission still rejects V2. The installed A/B package is not changed.
 
 The first device subset admits a V2 entry scene with continuous interaction,
 local input routes, guards, variables, object actions, sparse state overrides,
-looping object clips, state/scene one-shot timers, timer controls and shell exit.
-SFX, interaction timeout and routes to other scenes are rejected at development
+looping object clips, state/scene one-shot timers, timer controls, ordinary
+`PLAY_SFX` and shell exit. Interaction timeout and routes to other scenes are rejected at development
 activation, not silently ignored.
 The complete egg must fit the existing package-resident limit (64 KiB). This
 avoids borrowing runtime assets from the installed package reader. Normal target
@@ -75,7 +77,7 @@ tools/.venv/Scripts/python.exe tools/authoring/build_object_development.py
 
 The builder still accepts `--project <path.peepproj>` and `--output <path.c>`.
 This is not a new Studio export capability. The reproducibility test tracks the
-checked-in GUI source. The original synthetic four-corner fixture remains in
+current OS SFX variant described below. The original synthetic four-corner fixture remains in
 `fixture_bundle()` for native regression coverage, but is no longer the CLI default.
 
 ## Previous OS Timer Fixture
@@ -99,17 +101,17 @@ Regenerate that earlier variant with:
 tools/.venv/Scripts/python.exe tools/authoring/build_object_development.py --timers
 ```
 
-Without `--timers` or `--project`, the builder restores the original GUI continuity
+Without `--timers`, `--sfx` or `--project`, the builder restores the original GUI continuity
 fixture. The OS timer variant remains covered by native regression tests.
 
-## Current GUI Scene-Timer Fixture
+## Passed GUI Scene-Timer Fixture
 
 Source: `examples/authoring/native_v2_scene_timer.peepproj`, copied unchanged from
 GUI commit `90b849c89aa869ce41c33da25f304a883c9e8887`. All five source files were
 verified against that commit. `5c059bf` is the older continuity fixture commit,
 not the provenance of this new timer project. No GUI implementation was imported.
 
-The checked-in development payload is now this project's 1,484-byte egg:
+The preceding checked-in development payload was this project's 1,484-byte egg:
 
 - The original sprite and A/B lower-marker behavior remain unchanged.
 - A separate 16x16 square at `(76,80)` starts hidden.
@@ -118,13 +120,13 @@ The checked-in development payload is now this project's 1,484-byte egg:
 - A/B neither restarts the timer nor hides the square after expiry.
 - There is no state timer, L/R timer control, SFX or scene exit in this fixture.
 
-Regenerate the current checked-in payload explicitly:
+Regenerate that exact GUI payload explicitly:
 
 ```powershell
 tools/.venv/Scripts/python.exe tools/authoring/build_object_development.py --project examples/authoring/native_v2_scene_timer.peepproj
 ```
 
-The generated-C reproducibility test checks this exact project. The real native
+The real native
 runtime/scheduler tests A/B at 650/950 ms, no expiry at 1,990 ms, and dispatch at
 2,050 ms without changing state activation or restarting playback (phase 0,
 450 ms remaining). The square stays visible through later A/B changes; after
@@ -190,28 +192,85 @@ remaining duration. An expiry already due at suspension remains due after resume
 Exit/recreation cancels old timer owners. These are native-tested semantics,
 not a new hardware suspension or STOP2 claim.
 
+## Current OS SFX Variant
+
+Generate the current 53,612-byte development payload with:
+
+```powershell
+tools/.venv/Scripts/python.exe tools/authoring/build_object_development.py --sfx
+```
+
+This copies the passed GUI timer bundle in memory, leaving both GUI source
+projects unchanged. It substitutes a 32x32 four-corner animation at `(80,40)`,
+250 ms per frame, to make continuity easier to observe. A/B retains the marker
+overrides and each matched transition plays an 80 ms tone. The two-second scene
+handler reveals the hidden square and plays a six-second tone. L commits two
+sound actions in order (short then long); R exits to the shell. L/R are authored
+for both states. Both tones use twice the original source amplitude (about +6 dB),
+with cue volume and mixer settings unchanged. These are generated test tones,
+not a normalization or speaker-loudness qualification.
+
+The initial three-second tone was too close to the START hold duration to prove
+early stopping. The user heard A/B tones and uninterrupted long playback, but
+shell-stop/silent-resume remains unverified. The six-second replacement leaves
+an audible interval to interrupt: press L, then immediately hold START.
+
+Committed V2 effects feed the existing bounded audio queue in action order.
+Failed transactions emit no sound; queue refusal balances outstanding requests
+without rolling back the already committed scene. Local state changes do not
+stop active audio. No mixer, decoder, clock profile or hardware driver changes
+are made by this increment.
+
+Shell suspension, package exit/replacement and installer entry close package
+audio admission, discard queued cues and stop active voices on `thAudio` before
+releasing their clock and acknowledging completion. `thRuntime` waits for this
+bounded FIFO barrier before changing the package lifetime. A failed or late
+acknowledgement quarantines audio admission until reset; it cannot authorize
+source reuse. Ordinary SFX is discarded regardless of duration. Resume allows
+new sounds but does not replay old ones. Resumable music/dialogue is a separate,
+deferred capability; see [[Audio_Contract]].
+
+Native tests cover committed input/timer sound delivery, multiple ordered cues,
+transaction rollback, queue refusal, animation residuals, real suspend/resume/
+exit control flow, queued-cue discard, clock-grant overlap and stop/clock/timeout/
+sequence failures. Audio hardware calls are stubbed in these host tests: they
+prove orchestration, not audibility, DMA timing or pop-free stopping.
+
+Local verification: **273 authoring/native tests pass** and the HW6 Debug build
+links with RAM 438,392 bytes, ROM 906,048 bytes and SRAM4 15,480 bytes. The
+four-frame/audio payload is generated separately from normal embedded assets.
+No additional SRAM4 allocation is introduced. Hardware SFX verification remains
+pending; the preceding timer/continuity passes do not qualify this new behavior.
+
 ## Hardware Sequence
 
 1. Flash the new Debug ELF. Let normal boot finish and open HOME or the shell
    MENU using START. Leave audio stopped and MSC inactive, then halt.
 2. Source `__fw0_object_scene_awake_enable.gdb` and resume. It only queues work
    for `thRuntime`; it does not call target functions from GDB or write storage.
-3. Watch the small two-frame sprite. Alternate A then B during the first two
-   seconds. The lower square changes sides without restarting the sprite. A
-   third square at `(76,80)` appears after two seconds despite those state changes.
-4. Halt once and source `__fw0_object_scene_awake_prints.gdb`. Require active V2,
+3. Watch the four-corner animation. Alternate A then B: the lower square changes
+   sides and short tones play without restarting animation. After two seconds,
+   the third square appears and a six-second tone starts. A/B during that tone
+   must not stop it.
+4. Once audio is quiet, halt and source `__fw0_object_scene_awake_prints.gdb`. Require active V2,
    successful launch/render/queue/wait, no lease fault and visible movement.
    The animation's last projected phase/residual and actual display result are
    reported separately from thread/input counters.
-5. Resume and continue A/B changes for at least six more seconds. The third
-   square stays visible, and the scene timer does not fire again. There are no
-   L/R timer controls or automatic state transitions in this exact GUI fixture.
-6. START opens the shell; B is a local state transition in this fixture. Reset
-   ends the development session. Shell suspension keeps automatic STOP2 blocked.
+5. Resume, press L, then immediately hold START to open the shell while the long tone plays.
+   Sound must stop on shell entry. Once quiet, halt and print: audio fault/status
+   must be zero, request must equal complete, and outstanding/clock-held must be
+   zero. Resume the target and select the shell's Resume action: animation and
+   timers resume, but discarded sound must not return.
+6. L must start fresh tones after resuming the package. Press R during playback:
+   sound stops and the package exits. Unlike temporary suspension, exit releases
+   the development session's automatic STOP2 restriction.
 
-The two object helpers require development/scene APIs `2/22` and use device-resident
-results, not GDB convenience-variable history. The GUI sprite asset IDs cycle
-65537..65538. State IDs 1/2 select marker X=32/120, Y=104. Automatic STOP2 entry
+Do not halt during playback: debugger interruption breaks audio timing and would
+invalidate that observation. Report audible artifacts separately from counters.
+
+The two object helpers require development/scene/audio-package APIs `3/22/1` and use device-resident
+results, not GDB convenience-variable history. The OS sprite asset IDs cycle
+65537..65540. State IDs 1/2 select marker X=32/120, Y=104. Automatic STOP2 entry
 count must not advance while the development scene is active. This awake test is
 not a power measurement; halt/resume also cannot establish real-time cadence.
 `__fw0_state_scene_timer_prints.gdb` supplies detailed timer counters and owner
@@ -321,6 +380,6 @@ remain outstanding.
 
 Full firmware build and native checks are necessary but do not prove panel
 animation, input responsiveness or DMA timing. Record the hardware result before
-claiming additional behavior complete. Next are V2 effects, production
+claiming additional behavior complete. Next are the SFX hardware check, production
 admission and STOP2/LPBAM continuity; ordinary export remains blocked until the
 advertised firmware capability actually supports the package being built.

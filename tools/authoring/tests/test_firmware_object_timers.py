@@ -11,7 +11,7 @@ import unittest
 import test_firmware_object_awake as awake
 from test_firmware_package_workflow import firmware_function
 from test_firmware_shape_primitives import panel_pixels
-from build_object_development import DEFAULT_PROJECT, timer_fixture_bundle
+from build_object_development import DEFAULT_PROJECT, timer_fixture_bundle, sfx_fixture_bundle
 from peepshow_authoring.compiler import build_development_egg_v2
 from peepshow_authoring.project import load_project
 
@@ -129,6 +129,19 @@ class ObjectTimerTests(unittest.TestCase):
 
     def test_render_failure_ends_session_and_clears_timers(self):
         self.run_timer(7)
+
+    def test_v2_input_timer_and_multiple_sfx_dispatch(self):
+        self.run_timer(12, bundle=sfx_fixture_bundle())
+
+    def test_aborted_v2_transaction_never_publishes_sfx(self):
+        bundle = sfx_fixture_bundle()
+        scene = deepcopy(bundle.scenes[0])
+        scene["variables"] = [{"variable_id": "counter", "value_type": "int32", "initial": 2147483647,
+                               "minimum": -2147483648, "maximum": 2147483647}]
+        for route in scene["routes"]:
+            route["actions"].append({"kind": "set_variable", "variable_ref": "counter",
+                                     "operation": "add", "value": 1})
+        self.run_timer(13, scene=scene, bundle=bundle)
 
 
 if __name__ == "__main__":

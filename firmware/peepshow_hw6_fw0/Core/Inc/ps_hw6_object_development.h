@@ -2,7 +2,7 @@
 #define PS_HW6_OBJECT_DEVELOPMENT_H
 #include <stdint.h>
 
-#define PS_HW6_OBJECT_DEVELOPMENT_API_VERSION (2UL)
+#define PS_HW6_OBJECT_DEVELOPMENT_API_VERSION (3UL)
 
 typedef struct
 {

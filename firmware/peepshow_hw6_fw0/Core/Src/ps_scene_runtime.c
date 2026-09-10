@@ -28,6 +28,7 @@ static ps_scene_runtime_state_scene_t *s_ps_scene_runtime_state_scene =
 static uint32_t s_ps_scene_runtime_active_slot;
 static uint32_t s_ps_scene_runtime_pending_sfx_cue =
   PS_SCENE_RUNTIME_INDEX_INVALID;
+static uint32_t s_ps_object_sfx_take;
 static uint32_t s_ps_scene_runtime_pending_shell_exit;
 static uint32_t s_ps_scene_runtime_scene_activation;
 static uint32_t s_ps_scene_runtime_state_activation;
@@ -1326,6 +1327,7 @@ uint32_t PS_SceneRuntime_EnterDevelopmentObjects(const uint8_t *blob, uint32_t s
   {
     uint32_t kind = scene->actions[index].kind;
     if ((kind != PS_SCENE_RUNTIME_ACTION_OBJECT_OPERATION) &&
+        (kind != PS_SCENE_RUNTIME_ACTION_PLAY_SFX) &&
         (kind != PS_SCENE_RUNTIME_ACTION_SET_VARIABLE) &&
         (kind != PS_SCENE_RUNTIME_ACTION_EXIT_TO_SHELL) &&
         !((kind >= PS_SCENE_RUNTIME_ACTION_START_TIMER) &&
@@ -1341,6 +1343,8 @@ uint32_t PS_SceneRuntime_EnterDevelopmentObjects(const uint8_t *blob, uint32_t s
   s_ps_scene_runtime_pending_shell_exit = 0UL;
   s_ps_scene_runtime_pending_sfx_cue = PS_SCENE_RUNTIME_INDEX_INVALID;
   if (PS_SceneRuntime_ActivateDecodedScene(scene, 0UL) != 0UL) { return 1UL; }
+  s_ps_object_sfx_take = 0UL;
+  s_ps_object_effects.count = 0UL;
   s_ps_scene_runtime_development_objects = 1UL;
   g_ps_scene_runtime_probe.activation_status = PS_SCENE_RUNTIME_STATUS_OK;
   return 0UL;
@@ -1655,6 +1659,8 @@ static uint32_t PS_SceneRuntime_HandleStateSceneEventId(
   s_ps_scene_runtime_timer_action_take = 0UL;
   if (s_ps_scene_runtime_development_objects != 0UL)
   {
+    s_ps_object_sfx_take = 0UL;
+    s_ps_object_effects.count = 0UL;
     uint32_t result = PS_SceneObjectGraph_StageEvent(&s_ps_object_graph,
       scene_event_id - 1UL, &s_ps_object_stage);
     uint32_t next_ms;
@@ -1686,6 +1692,12 @@ static uint32_t PS_SceneRuntime_HandleStateSceneEventId(
       {
         s_ps_scene_runtime_pending_shell_exit = 1UL;
         g_ps_scene_runtime_probe.shell_exit_action_commit_count++;
+      }
+      else if (s_ps_object_effects.actions[index].kind == PS_SCENE_RUNTIME_ACTION_PLAY_SFX)
+      {
+        g_ps_scene_runtime_probe.sfx_action_commit_count++;
+        g_ps_scene_runtime_probe.last_sfx_cue_index =
+          (uint32_t)s_ps_object_effects.actions[index].value;
       }
       else if ((s_ps_object_effects.actions[index].kind >= PS_SCENE_RUNTIME_ACTION_START_TIMER) &&
                (s_ps_object_effects.actions[index].kind <= PS_SCENE_RUNTIME_ACTION_CANCEL_TIMER))
@@ -1994,6 +2006,21 @@ uint32_t PS_SceneRuntime_TimerConfiguration(uint32_t binding_index,
 
 uint32_t PS_SceneRuntime_TakeSfxRequest(uint32_t *cue_index)
 {
+  if ((cue_index != NULL) && (s_ps_scene_runtime_development_objects != 0UL))
+  {
+    while (s_ps_object_sfx_take < s_ps_object_effects.count)
+    {
+      const ps_scene_runtime_action_t *action =
+        &s_ps_object_effects.actions[s_ps_object_sfx_take++];
+      if (action->kind == PS_SCENE_RUNTIME_ACTION_PLAY_SFX)
+      {
+        *cue_index = (uint32_t)action->value;
+        g_ps_scene_runtime_probe.sfx_request_take_count++;
+        return 1UL;
+      }
+    }
+    return 0UL;
+  }
   if ((cue_index == NULL) ||
       (s_ps_scene_runtime_pending_sfx_cue ==
        PS_SCENE_RUNTIME_INDEX_INVALID))

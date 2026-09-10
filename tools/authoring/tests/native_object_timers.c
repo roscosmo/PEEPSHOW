@@ -19,6 +19,9 @@ typedef uint32_t UINT;
 volatile ps_hw6_object_development_probe_t g_ps_object_development_probe;
 static uint32_t ps_object_last_tick, ps_object_tick_fraction;
 static uint32_t now, draws, failures, exits, render_error;
+static struct { uint32_t blocked, discarded; } g_ps_audio_package_probe;
+static uint32_t sfx_allowed, sfx_pending, sfx_sends, sfx_reject;
+static uint32_t sfx_samples[16];
 static uint32_t PS_HW6_RTOS_ObjectAdvance(uint32_t tick);
 static UINT PS_HW6_RTOS_ObjectPresent(void);
 static void PS_HW6_RTOS_RuntimeStateTimersClear(void);
@@ -32,10 +35,18 @@ static void PS_HW6_RTOS_RuntimePackageReplacementFail(void)
 { failures++; PS_SceneRuntime_ExitStateScene(); PS_HW6_RTOS_RuntimeStateTimersClear(); }
 static UINT PS_HW6_RTOS_RequestRuntimeCommand(uint32_t command)
 { (void)command; assert(0); return 1; }
-static void PS_HW6_RTOS_AudioSfxRequestQueued(void) { assert(0); }
-static void PS_HW6_RTOS_AudioSfxRequestComplete(void) { assert(0); }
+static void PS_HW6_RTOS_AudioSfxRequestQueued(void) { assert(sfx_allowed); sfx_pending++; }
+static void PS_HW6_RTOS_AudioSfxRequestComplete(void) { assert(sfx_pending); sfx_pending--; }
 static UINT PS_HW6_RTOS_SendModeCommand(uint32_t owner, uint32_t command, uint32_t cue)
-{ (void)owner; (void)command; (void)cue; assert(0); return 1; }
+{
+  ps_egg_state_loader_audio_cue_t value;
+  assert(owner == PS_HW6_RTOS_OWNER_AUDIO && command == PS_HW6_RTOS_COMMAND_AUDIO_PLAY_SFX);
+  assert(sfx_allowed && sfx_sends < 16);
+  assert(PS_EggStateLoader_GetAudioCue(cue, &value) == 1);
+  assert(value.adpcm != NULL && value.package_backed == 0);
+  sfx_samples[sfx_sends++] = value.sample_count;
+  return sfx_reject;
+}
 static UINT PS_HW6_RTOS_SendDisplayUiRenderCommand(uint32_t page, uint32_t cal,
   uint32_t focus, uint32_t shutdown, uint32_t countdown)
 { (void)page; (void)cal; (void)focus; (void)shutdown; (void)countdown; assert(0); return 1; }
@@ -100,7 +111,7 @@ int main(int argc, char **argv)
   PS_HW6_RTOS_RuntimeStateTimersSync(now, 1);
   assert(PS_HW6_RTOS_ObjectPresent() == 0);
   timer = binding(PS_SCENE_RUNTIME_TIMER_SCENE);
-  state_timer = mode == 11 ? 0U : binding(PS_SCENE_RUNTIME_TIMER_STATE_ENTRY);
+  state_timer = mode >= 11 ? 0U : binding(PS_SCENE_RUNTIME_TIMER_STATE_ENTRY);
   scene_epoch = PS_SceneRuntime_SceneActivation();
 
   if (mode == 0)
@@ -276,6 +287,40 @@ int main(int argc, char **argv)
     assert(s_ps_object_snapshot.elapsed_ms == 8000);
     assert(s_ps_object_snapshot.objects[0].step == 0);
     assert(s_ps_object_snapshot.objects[0].remaining_ms == 500);
+  }
+  else if (mode == 12)
+  {
+    sfx_allowed = 1;
+    now = 165; input(1);
+    assert(sfx_sends == 1 && sfx_samples[0] == 1280);
+    assert(s_ps_object_snapshot.objects[0].step == 2 && s_ps_object_snapshot.objects[0].remaining_ms == 100);
+    now = 195; input(2);
+    assert(sfx_sends == 2 && sfx_samples[1] == 1280);
+    state_epoch = PS_SceneRuntime_StateActivation();
+    service(305);
+    assert(sfx_sends == 3 && sfx_samples[2] == 96000);
+    assert(PS_SceneRuntime_StateActivation() == state_epoch && model.elements[2].visible == 1);
+    assert(s_ps_object_snapshot.objects[0].step == 0 && s_ps_object_snapshot.objects[0].remaining_ms == 200);
+    now = 330; input(3);
+    assert(sfx_sends == 5 && sfx_samples[3] == 1280 && sfx_samples[4] == 96000);
+    assert(sfx_pending == 5 && g_ps_scene_runtime_probe.sfx_request_take_count == 5);
+    sfx_reject = 1;
+    now = 340; input(1);
+    assert(sfx_sends == 6 && sfx_pending == 5 && g_ps_hw6_rtos_probe.audio_sfx_send_status == 1);
+    g_ps_audio_package_probe.blocked = 1;
+    now = 350; input(2);
+    assert(sfx_sends == 6 && sfx_pending == 5 && g_ps_audio_package_probe.discarded == 1);
+    now = 360; input(4);
+    assert(exits == 1 && !PS_SceneRuntime_DevelopmentObjectsActive());
+  }
+  else if (mode == 13)
+  {
+    uint32_t cue;
+    now = 165;
+    assert(PS_HW6_RTOS_ObjectAdvance(now) == 0);
+    assert(PS_SceneRuntime_HandleStateSceneInput(1, 1) == PS_SCENE_RUNTIME_INPUT_ERROR);
+    assert(PS_SceneRuntime_TakeSfxRequest(&cue) == 0 && sfx_sends == 0);
+    assert(g_ps_scene_runtime_probe.state_id == 1);
   }
   else { assert(0); }
   assert(g_ps_hw6_rtos_probe.runtime_state_timer_error_count == 0);
