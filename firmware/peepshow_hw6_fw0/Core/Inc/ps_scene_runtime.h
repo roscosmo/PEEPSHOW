@@ -5,6 +5,7 @@
 
 #include "ps_scene_render_model.h"
 #include "ps_scene_waiting_visual.h"
+#include "ps_scene_object_waiting.h"
 #include "ps_target_profile_autogen.h"
 #include "ps_egg_object_decoder.h"
 
@@ -310,6 +311,7 @@ uint32_t PS_SceneRuntime_EnterStateScene(void);
 uint32_t PS_SceneRuntime_EnterDevelopmentObjects(const uint8_t *blob, uint32_t size);
 uint32_t PS_SceneRuntime_DevelopmentObjectsActive(void);
 uint32_t PS_SceneRuntime_AdvanceDevelopmentObjects(uint32_t elapsed_ms);
+uint32_t PS_SceneRuntime_BuildDevelopmentWaiting(ps_object_waiting_program_t *program);
 uint32_t PS_SceneRuntime_ProjectDevelopmentObjects(ps_scene_render_model_t *model,
   uint32_t *next_ms);
 /* Pure descriptor check, shared by activation and candidate preflight.

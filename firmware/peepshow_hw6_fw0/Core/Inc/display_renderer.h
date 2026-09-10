@@ -125,6 +125,9 @@ void DisplayRenderer_ClearWhite(void);
 const uint8_t *DisplayRenderer_GetBuffer(void);
 uint32_t DisplayRenderer_GetDirtyRows(const uint16_t **rows);
 void DisplayRenderer_CommitPresentedFrame(void);
+/* thDisplay only; composes off-screen without changing the committed frame. */
+uint32_t DisplayRenderer_CopySceneModelFrame(const ps_scene_render_model_t *model,
+  uint8_t *destination, uint32_t destination_size);
 uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
   uint32_t visible,
   display_renderer_stats_t *stats);

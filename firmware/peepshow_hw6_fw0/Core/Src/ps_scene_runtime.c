@@ -41,6 +41,15 @@ static ps_scene_object_graph_t s_ps_object_graph;
 static ps_scene_object_graph_stage_t s_ps_object_stage;
 static ps_scene_object_effects_t s_ps_object_effects;
 static ps_scene_objects_snapshot_t s_ps_object_snapshot;
+
+uint32_t PS_SceneRuntime_BuildDevelopmentWaiting(ps_object_waiting_program_t *program)
+{
+  static ps_object_waiting_workspace_t workspace;
+  if (PS_SceneRuntime_DevelopmentObjectsActive() == 0UL)
+  { return (uint32_t)PS_OBJECT_WAITING_ARGUMENT; }
+  return (uint32_t)PS_ObjectWaiting_Build(&s_ps_object_graph.objects,
+    g_ps_scene_runtime_probe.scene_id, program, &workspace);
+}
 static ps_scene_render_model_t s_ps_object_admission_model;
 
 uint32_t PS_SceneRuntime_DevelopmentObjectsActive(void)

@@ -866,7 +866,19 @@ work; no backend command or capability change is required for this integration.
 
 OS has added a pure bounded V2 waiting-schedule compiler, preserving numbered
 frame timing and independent object state without mutating the live bank.
-It is native-tested only and not connected to STOP2 admission yet. Display-owner
-leasing, LPBAM resource admission and hardware wake/time reconciliation follow.
+An explicit one-shot development check now leases that schedule to the display
+owner and packs full-scene frames into the real LPBAM payload buffers. Native
+packet replay passes: the numbered fixture uses 4 steps, 8 transactions and
+4672/10512 payload bytes. Physical preparation evidence is still pending.
+This does not arm playback or permit V2 STOP2. Timing-aware handoff, DMA queue
+admission and hardware wake/time reconciliation follow.
 GUI needs no source changes or new fixture for this step. Keep ordinary V2
 export disabled and retain the passed numbered fixture unchanged.
+
+When coordinating the LPBAM fixture, include the proposed explicit scene
+animation interval and whole-multiple frame-duration rule. This is a pending
+authoring contract increment, not an existing service command. Current firmware
+derives a common interval, which can expand awkward mixed timings into an
+over-budget sequence. Shared validation must check divisibility, combined cycle
+length and target resources; do not implement a GUI-only timing model or silently
+round durations. No GUI changes are needed for the current OS preparation test.

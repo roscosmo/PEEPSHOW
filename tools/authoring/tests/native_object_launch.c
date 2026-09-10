@@ -14,6 +14,7 @@
 
 volatile ps_hw6_object_development_probe_t g_ps_object_development_probe;
 volatile uint32_t g_ps_object_development_request;
+volatile uint32_t g_ps_object_lpbam_prepare_request;
 volatile ps_ui_router_probe_t g_ps_ui_router_probe;
 volatile uint32_t g_ps_ui_router_request, g_ps_ui_router_request_event;
 const uint8_t g_ps_object_development_egg[] = {0};

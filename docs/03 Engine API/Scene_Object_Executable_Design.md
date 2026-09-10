@@ -510,7 +510,33 @@ LPDMA progress snapshot or transfer completion on hardware wake.
 The integrating caller must invalidate a program on object/state/scene changes,
 lease it immutably to the display owner, admit actual row/payload/node budgets,
 honor the first partial interval, and reconcile RTC elapsed time plus display
-progress before allowing runtime events after wake. These owner and hardware
-connections are the next increment. Automatic V2 STOP2 remains blocked and the
-current development payload/helpers remain unchanged. No export capability is
-advertised by the existence of this compiler.
+progress before allowing runtime events after wake. Automatic V2 STOP2 remains
+blocked. No export capability is advertised by the existence of this compiler.
+
+The display-owner preparation increment now leases one requested schedule along
+with its matching render model through the existing bounded queue/acknowledgement.
+On a lease timeout neither model nor program can be overwritten. The owner
+validates that the projected starting model equals the presented development
+model, then composes complete ordered scene frames and packs their actual row
+differences. Static overlays are not erased by per-sprite bounds clearing.
+Preparation reuses existing LPBAM frame/payload buffers, only while compiled,
+prearmed and active playback are all absent. It does not select/build a DMA
+queue or publish readiness. Payload rejection is observable and leaves awake
+execution intact; no V1 guaranteed truncation fallback is applied.
+
+This connects schedule leasing and row/payload admission for an explicit test,
+not the autonomous handoff. First-interval timing, queue/node admission and
+RTC/display-progress reconciliation remain required before permitting V2 STOP2.
+
+### Authoring Timing Coordination
+
+The intended Studio experience is an explicit scene animation interval, with
+authored frame durations constrained to whole multiples. This is not an OS
+tick setting or a restriction on responsive input redraws. It is not yet a
+new source field or service command: the current compiler still derives the
+common quantum. Shared validation must also check the combined loop length
+and actual target resource budget; divisibility alone is insufficient.
+Do not silently round durations, shorten loops or restart playback to make a
+scene fit. Coordinate this constraint with GUI when requesting an LPBAM fixture,
+along with evidence from owner admission and physical timing tests. Preserve
+the passed four-frame 400 ms fixture for the initial hardware handoff.

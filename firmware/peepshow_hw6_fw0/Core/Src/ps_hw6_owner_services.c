@@ -7,6 +7,7 @@
 #include "ps_dev_audio.h"
 #include "ps_egg_state_loader.h"
 #include "ps_hw6_rtos_probe.h"
+#include "ps_hw6_object_development.h"
 #include "ps_lpbam_display_buffers.h"
 #include "ps_lpbam_display_queue.h"
 #include "ps_package_reader.h"
@@ -2158,6 +2159,67 @@ PS_HW6_DisplayOwner_CompileWaitingAnimationPayload(
     status = PS_LpbamDisplay_FinishPreparedAnimation();
   }
 
+  return status;
+}
+
+HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareDevelopmentObjectWaiting(
+  const ps_object_waiting_program_t *program)
+{
+  static ps_scene_objects_snapshot_t scratch;
+  static ps_scene_render_model_t model;
+  static uint16_t rows[DISPLAY_HEIGHT];
+  uint8_t (*previous)[LINE_WIDTH] = ps_lpbam_display_frame_a;
+  uint8_t (*target)[LINE_WIDTH] = ps_lpbam_display_frame_b;
+  uint32_t step;
+  HAL_StatusTypeDef status;
+
+  g_ps_object_lpbam_prepare_probe.frames_composed = 0UL;
+  g_ps_object_lpbam_prepare_probe.sequence_used = 0UL;
+  g_ps_object_lpbam_prepare_probe.chunk_used = 0UL;
+  g_ps_object_lpbam_prepare_probe.payload_used_bytes = 0UL;
+  g_ps_object_lpbam_prepare_probe.payload_capacity_bytes = 0UL;
+  g_ps_object_lpbam_prepare_probe.reason = PS_LPBAM_ADMISSION_REASON_ARGUMENT;
+  if ((program == NULL) || (PS_SceneRuntime_DevelopmentObjectsActive() == 0UL) ||
+      (ps_hw6_display_lpbam_active != 0UL) ||
+      (ps_hw6_display_lpbam_prearmed != 0UL) ||
+      (ps_hw6_display_lpbam_compiled != 0UL) ||
+      (g_ps_hw6_owner_probe.display_success == 0UL) ||
+      (g_ps_hw6_owner_probe.display_ui_page != PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF) ||
+      (PS_ObjectWaiting_Project(program, 0UL, &scratch, &model) != PS_OBJECT_WAITING_OK) ||
+      (memcmp(&model, &ps_hw6_development_display_model, sizeof(model)) != 0))
+  { return HAL_ERROR; }
+
+  for (step = 0UL; step < DISPLAY_HEIGHT; ++step) { rows[step] = (uint16_t)(step + 1UL); }
+  status = PS_LpbamDisplay_BeginPreparedAnimation(rows, DISPLAY_HEIGHT,
+    (uint16_t)program->step_count, 0U);
+  if ((status == HAL_OK) &&
+      (DisplayRenderer_CopySceneModelFrame(&model, &previous[0][0],
+        sizeof(ps_lpbam_display_frame_a)) == 0UL))
+  { status = HAL_ERROR; }
+  if (status == HAL_OK) { g_ps_object_lpbam_prepare_probe.frames_composed++; }
+  for (step = 0UL; (status == HAL_OK) && (step < program->step_count); ++step)
+  {
+    uint8_t (*swap)[LINE_WIDTH];
+    if ((PS_ObjectWaiting_Project(program, (step + 1UL) % program->step_count,
+           &scratch, &model) != PS_OBJECT_WAITING_OK) ||
+        (DisplayRenderer_CopySceneModelFrame(&model, &target[0][0],
+           sizeof(ps_lpbam_display_frame_b)) == 0UL))
+    { status = HAL_ERROR; break; }
+    g_ps_object_lpbam_prepare_probe.frames_composed++;
+    status = PS_LpbamDisplay_AppendPreparedTransition(previous, target);
+    swap = previous;
+    previous = target;
+    target = swap;
+  }
+  if (status == HAL_OK) { status = PS_LpbamDisplay_FinishPreparedAnimation(); }
+  g_ps_object_lpbam_prepare_probe.reason =
+    ((status != HAL_OK) && (ps_lpbam_display_admission.reason == PS_LPBAM_ADMISSION_REASON_NONE)) ?
+    PS_LPBAM_ADMISSION_REASON_BUILD : ps_lpbam_display_admission.reason;
+  g_ps_object_lpbam_prepare_probe.sequence_used = ps_lpbam_display_admission.sequence_used;
+  g_ps_object_lpbam_prepare_probe.chunk_used = ps_lpbam_display_admission.chunk_used;
+  g_ps_object_lpbam_prepare_probe.payload_used_bytes = ps_lpbam_display_admission.payload_used_bytes;
+  g_ps_object_lpbam_prepare_probe.payload_capacity_bytes = ps_lpbam_display_admission.payload_capacity_bytes;
+  /* Preparation only: no queue selection, readiness, clock change or DMA start. */
   return status;
 }
 

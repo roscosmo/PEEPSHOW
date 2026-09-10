@@ -7,6 +7,7 @@
 #include "ps_scene_objects.c"
 #include "ps_scene_object_graph.c"
 #include "ps_scene_object_render.c"
+#include "ps_scene_object_waiting.c"
 
 static ps_scene_runtime_state_scene_t fixture;
 volatile ps_package_source_probe_t g_ps_package_source_probe;

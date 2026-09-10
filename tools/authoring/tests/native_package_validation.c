@@ -11,6 +11,7 @@
 #include "ps_scene_objects.c"
 #include "ps_scene_object_graph.c"
 #include "ps_scene_object_render.c"
+#include "ps_scene_object_waiting.c"
 
 static uint8_t baseline[1048576], candidate[1048576];
 static uint32_t baseline_size;

@@ -1,6 +1,5 @@
 #define PS_OBJECT_AWAKE_MAIN awake_main
 #include "native_object_awake.c"
-#include "ps_scene_object_waiting.c"
 
 static ps_object_waiting_program_t program;
 static ps_object_waiting_workspace_t workspace;

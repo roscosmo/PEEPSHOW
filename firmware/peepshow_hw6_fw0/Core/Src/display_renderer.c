@@ -2399,6 +2399,28 @@ static uint32_t DisplayRenderer_DrawSceneModel(
   return black_pixels;
 }
 
+uint32_t DisplayRenderer_CopySceneModelFrame(const ps_scene_render_model_t *model,
+  uint8_t *destination, uint32_t destination_size)
+{
+  static uint8_t saved[DISPLAY_RENDERER_BUFFER_SIZE];
+  uint32_t index;
+  if ((destination == NULL) || (destination == s_display_framebuffer) ||
+      (destination_size < DISPLAY_RENDERER_BUFFER_SIZE) ||
+      (DisplayRenderer_ValidateSceneModel(model) == 0UL)) { return 0UL; }
+  /* Legacy focus drawing changes cursor bookkeeping; it is not a V2 object. */
+  for (index = 0UL; index < model->element_count; ++index)
+  {
+    if (model->elements[index].type == PS_SCENE_RENDER_ELEMENT_FOCUS)
+    { return 0UL; }
+  }
+  (void)memcpy(saved, s_display_framebuffer, sizeof(saved));
+  (void)memset(s_display_framebuffer, 0xFF, sizeof(s_display_framebuffer));
+  (void)DisplayRenderer_DrawSceneModel(model);
+  (void)memcpy(destination, s_display_framebuffer, sizeof(s_display_framebuffer));
+  (void)memcpy(s_display_framebuffer, saved, sizeof(saved));
+  return 1UL;
+}
+
 static void DisplayRenderer_ListInit(display_renderer_list_t *list)
 {
   uint32_t i;

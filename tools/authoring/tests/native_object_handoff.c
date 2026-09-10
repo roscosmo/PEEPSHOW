@@ -21,6 +21,19 @@ typedef uint32_t ULONG;
 static uint32_t ps_event_groups[4], ps_queues[9];
 volatile ps_hw6_object_development_probe_t g_ps_object_development_probe;
 static ps_scene_render_model_t ps_object_display_lease;
+static ps_object_waiting_program_t ps_object_waiting_lease;
+static uint32_t ps_object_waiting_lease_request;
+volatile uint32_t g_ps_object_lpbam_prepare_request;
+volatile ps_hw6_object_lpbam_prepare_probe_t g_ps_object_lpbam_prepare_probe;
+static uint32_t schedule_result, builds;
+static uint32_t PS_SceneRuntime_BuildDevelopmentWaiting(ps_object_waiting_program_t *program)
+{
+  builds++;
+  program->step_count = 4;
+  program->quantum_ms = 400;
+  program->initial_remaining_ms = 150;
+  return schedule_result;
+}
 static uint32_t ps_object_last_tick, ps_object_tick_fraction;
 static uint32_t now, queue_result, wait_result, render_result, mismatch;
 static uint32_t advance_calls, project_calls, send_calls, clock_elapsed;
@@ -64,6 +77,18 @@ int main(void)
   assert(clock_elapsed == 1130 && g_ps_object_development_probe.state_id == 2);
   next_duration = 0;
   assert(PS_HW6_RTOS_ObjectPresent() == 0 && g_ps_object_development_probe.next_tick == 0);
+  assert(builds == 0);
+  g_ps_object_lpbam_prepare_request = 1;
+  assert(PS_HW6_RTOS_ObjectPresent() == 0);
+  assert(builds == 1 && g_ps_object_lpbam_prepare_request == 0);
+  assert(ps_object_waiting_lease_request == g_ps_object_development_probe.render_request);
+  assert(g_ps_object_lpbam_prepare_probe.quantum_ms == 400);
+  assert(g_ps_object_lpbam_prepare_probe.initial_remaining_ms == 150);
+  assert(PS_HW6_RTOS_ObjectPresent() == 0 && ps_object_waiting_lease_request == 0);
+  schedule_result = PS_OBJECT_WAITING_CAPACITY;
+  g_ps_object_lpbam_prepare_request = 1;
+  assert(PS_HW6_RTOS_ObjectPresent() == 0 && ps_object_waiting_lease_request == 0);
+  assert(g_ps_object_lpbam_prepare_probe.complete_count == 2 && builds == 2);
   queue_result = 9;
   assert(PS_HW6_RTOS_ObjectPresent() == 9 && g_ps_object_development_probe.lease_fault == 0);
   queue_result = 0;
@@ -78,11 +103,15 @@ int main(void)
   {
     uint32_t a = advance_calls, p = project_calls, s = send_calls;
     ps_scene_render_model_t saved = ps_object_display_lease;
+    ps_object_waiting_program_t waiting_saved = ps_object_waiting_lease;
+    g_ps_object_lpbam_prepare_request = 1;
     wait_result = 0;
     now += 200;
     assert(PS_HW6_RTOS_ObjectPresent() == TX_CALLER_ERROR);
     assert(a == advance_calls && p == project_calls && s == send_calls);
     assert(memcmp(&saved, &ps_object_display_lease, sizeof(saved)) == 0);
+    assert(memcmp(&waiting_saved, &ps_object_waiting_lease, sizeof(waiting_saved)) == 0);
+    assert(g_ps_object_lpbam_prepare_request == 1 && builds == 2);
   }
   return 0;
 }

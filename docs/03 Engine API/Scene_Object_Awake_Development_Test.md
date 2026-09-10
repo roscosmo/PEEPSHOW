@@ -357,12 +357,62 @@ backwards time, invalid projection steps and arithmetic/capacity failures are
 rejected. Failure leaves the program unavailable rather than retaining a stale
 step count.
 
-This is host/native preparation, not hardware LPBAM admission. The source is
-compiled by the firmware build but is not called by the active runtime yet;
-dead-code elimination leaves the linked image size unchanged. The numbered
-fixture and debugger helpers remain awake-only. No new device test or reflash
-is needed for this isolated increment. See [[Scene_Object_Executable_Design]]
-for the owner handoff, partial-interval and wake reconciliation work still due.
+That isolated checkpoint (`4f791fb3bdaed1c6f7bf25d0b2d6cc9897edc2f8`) did not
+call the compiler from the active runtime. The following increment adds an
+explicit owner-routed payload preparation check; neither increment enables
+autonomous V2 playback.
+
+### Display-Owner Payload Preparation (2026-09-10)
+
+The one-shot request builds an immutable schedule in `thRuntime` and includes
+it in the existing bounded display lease. `thDisplay` presents the matching
+scene and composes complete, layer-ordered scene frames into the existing
+LPBAM row/payload compiler. Off-screen composition restores the committed
+framebuffer and does not change dirty tracking. The owner rejects a mismatched
+scene model or an already compiled/prearmed/active autonomous program before
+touching shared payloads. A schedule/payload rejection does not fail the awake
+scene. No guaranteed frame-dropping fallback is used for V2.
+
+This is preparation only: no queue build/selection, readiness publication,
+LPTIM configuration, DMA start or STOP2 policy change. The captured first
+remaining interval is reported, not yet applied to hardware. Ordinary V2 egg
+export/install/boot remain disabled, and the numbered source/payload is unchanged.
+
+Native tests replay actual packed row transactions through three loops and
+compare each resulting framebuffer against the full-scene renderer. They also
+check overlap, hidden animation/hold, capacity rejection, stale model rejection,
+active/prearmed/compiled guards, source/framebuffer preservation and display
+lease timeout immutability. The exact numbered fixture at 650 ms uses 4 steps,
+8 transactions and 4672/10512 payload bytes, with quantum/residual 400/150 ms.
+All 283 authoring/native tests pass. Debug build: RAM 444088 B, ROM 856544 B,
+SRAM4 unchanged at 15480/16384 B. Physical preparation evidence is pending.
+
+Reflash, boot into the shell, then launch the unchanged fixture:
+
+```gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_object_scene_awake_enable.gdb
+```
+
+Resume until the numbered scene is visible, halt, then queue one preparation:
+
+```gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_object_scene_lpbam_prepare_enable.gdb
+```
+
+Resume for one second, halt and print:
+
+```gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_object_scene_lpbam_prepare_prints.gdb
+```
+
+Require request=complete>0, schedule/payload/reason=0/0/0, steps/quantum=4/400,
+composed=5 (includes the wrap frame), sequence=4, chunks<=18 and used<=capacity.
+The initial residual is 1..400 ms depending on when capture occurred.
+Ready/prearmed/active must stay zero. Repeat after moving the lower square with
+A/B; awake input and animation must remain normal. A completed queue request
+alone is not evidence of packing; check payload status, frame count and budgets.
+Successful packing is not proof of autonomous playback or timing. Do not force
+manual STOP2. Next: timing-aware handoff and wake reconciliation before events.
 
 ## Verification and Next Work
 
