@@ -911,7 +911,14 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   repeat inputs, exact host timer boundary and fixed object positions. Prior
   passed fixtures remain unchanged. This is not a new hardware pass and does
   not complete the separate from-scratch GUI workflow audit.
-- OS next owns production validation, installation, launch and reboot loading.
+- OS reports candidate acceptance/rejection through display-owner queues without
+  disturbing running animations (2026-09-11). This is a separate queue-path result,
+  not an installation, activation or cold-boot pass for the GUI fixture.
+- Freeze the installation fixture at the source commit above for comparable
+  results. No replacement fixture or backend workaround is needed.
+- OS next owns storage-contract reconciliation, V2 installation admission,
+  activation and cold-boot loading. The fixture has not passed those hardware checks.
   GUI export remains capability-gated and backend `build_issues` stay intact.
   After production admission is advertised, enable only the supported subset
-  and test an actual Studio-built egg through USB install, launch and cold boot.
+  and test this exact source through Studio build, USB install, launch and cold
+  boot, including animation continuity and the timer reveal.
