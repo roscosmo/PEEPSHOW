@@ -5,6 +5,8 @@
 #include "ps_scene_runtime.c"
 #include "ps_egg_object_decoder.c"
 #include "ps_scene_objects.c"
+#include "ps_scene_object_graph.c"
+#include "ps_scene_object_render.c"
 
 static ps_scene_runtime_state_scene_t fixture;
 volatile ps_package_source_probe_t g_ps_package_source_probe;
@@ -19,6 +21,12 @@ uint32_t PS_EggStateLoader_Load(const uint8_t *blob, uint32_t size,
   (void)blob; (void)size; (void)resident; (void)scene; return 1;
 }
 uint32_t PS_EggStateLoader_EntrySceneId(void) { return 1; }
+uint32_t PS_EggStateLoader_DecodeDevelopmentScene(const uint8_t *blob,
+  uint32_t size, uint32_t id, ps_scene_runtime_state_scene_t *scene)
+{ (void)blob; (void)size; (void)id; (void)scene; return 1; }
+uint32_t PS_EggStateLoader_LoadDevelopment(const uint8_t *blob,
+  uint32_t size, ps_scene_runtime_state_scene_t *scene)
+{ (void)blob; (void)size; (void)scene; return 1; }
 
 uint32_t PS_EggStateLoader_SceneCount(void) { return 2U; }
 uint32_t PS_EggStateLoader_LoadScene(uint32_t id, ps_scene_runtime_state_scene_t *scene)

@@ -717,3 +717,23 @@ restart/cancel, reference protection, undo/redo, save/reload and invalid-batch
 rollback. V1 regression checks pass. No firmware build/device test was run because
 firmware is unchanged. Ordinary V2 export remains blocked by
 `SCENE_OBJECT_EXECUTABLE_UNAVAILABLE`; no hardware behavior is claimed here.
+
+## First Awake Hardware Fixture Handoff
+
+OS now has an explicit development-only V2 activation/display path. Hardware
+verification is pending; service API 41, target capabilities and ordinary export
+remain unchanged. This is not permission to enable V2 egg export in Studio.
+
+For the first GUI-authored hardware fixture, provide one V2 scene with continuous
+interaction, two local states, A/B button routes, one scene-owned looping sprite
+and separate object overrides. Keep timers, SFX, timeout interaction and
+scene-to-scene routes out of this fixture: the first device path explicitly
+rejects them. Object/variable actions and guards are allowed; a system-exit route
+can return to the shell. No requirement for a focus or cursor object is added.
+
+OS generates the development egg from the supplied project using
+`tools/authoring/build_object_development.py --project <path>` and builds the
+firmware. The independent default fixture is already included so testing does
+not wait for GUI work. Details, commands and evidence requirements are in
+[[Scene_Object_Awake_Development_Test]]. GUI should continue capability-gated
+authoring; no shared service or Studio files changed in this firmware increment.

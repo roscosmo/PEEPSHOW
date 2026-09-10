@@ -5,6 +5,7 @@
 
 #include "stm32u5xx_hal.h"
 #include "ps_dev_adp5360.h"
+#include "ps_scene_render_model.h"
 #include "tx_api.h"
 
 #ifdef __cplusplus
@@ -459,6 +460,9 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   uint32_t focus_index,
   uint32_t shutdown_state,
   uint32_t shutdown_countdown_seconds);
+/* thDisplay only. Copies runtime's leased immutable model before presenting. */
+HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderDevelopmentObjects(
+  const ps_scene_render_model_t *model);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderCursorBlink(uint32_t visible);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderWaitingSequenceFrame(
   uint32_t sequence_frame);

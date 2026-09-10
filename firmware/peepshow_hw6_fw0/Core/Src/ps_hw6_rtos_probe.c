@@ -20,6 +20,7 @@
 #include "ps_package_workflow.h"
 #include "ps_power_state.h"
 #include "ps_scene_runtime.h"
+#include "ps_hw6_object_development.h"
 #include "ps_storage_filex_levelx.h"
 #include "ps_storage_msc_bridge.h"
 #include "ps_storage_state.h"
@@ -122,6 +123,8 @@ extern RTC_HandleTypeDef hrtc;
 #define PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_VALIDATE (45UL)
 #define PS_HW6_RTOS_PACKAGE_WORKFLOW_MAGIC (0x50574B46UL)
 #define PS_HW6_RTOS_PACKAGE_VALIDATE_ACK (1UL << 14U)
+#define PS_HW6_RTOS_OBJECT_DISPLAY_ACK   (1UL << 13U)
+#define PS_HW6_RTOS_OBJECT_DISPLAY_MAGIC (0x4F424A32UL)
 #define PS_HW6_RTOS_INTERACTION_ACTIVATION_FRAME_COUNT (3UL)
 #define PS_HW6_RTOS_RTC_UNITS_PER_SECOND (256UL)
 #define PS_HW6_RTOS_RTC_UNITS_PER_DAY \
@@ -458,6 +461,23 @@ static volatile uint32_t ps_stop2_wake_nvic_ispr3_before;
 
 static void PS_HW6_RTOS_SendCurrentUiRenderCommand(void);
 static void PS_HW6_RTOS_RuntimePackageReturn(void);
+static void PS_HW6_RTOS_RuntimePackageReplacementFail(void);
+static UINT PS_HW6_RTOS_ObjectPresent(void);
+static uint32_t PS_HW6_RTOS_ObjectAdvance(uint32_t now_tick);
+static void PS_HW6_RTOS_ObjectService(uint32_t now_tick);
+
+volatile uint32_t g_ps_object_development_request;
+volatile ps_hw6_object_development_probe_t g_ps_object_development_probe =
+{
+  .api_version = 1UL,
+  .launch_status = 0xFFFFFFFFUL,
+  .render_status = 0xFFFFFFFFUL
+};
+/* Leased until display ACK. A timeout quarantines it until reset. */
+static ps_scene_render_model_t ps_object_display_lease;
+static uint32_t ps_object_last_tick;
+static uint32_t ps_object_tick_fraction;
+static volatile uint32_t ps_object_launching;
 static void PS_HW6_RTOS_RuntimeInteractionBegin(uint32_t now_tick);
 static void PS_HW6_RTOS_RuntimeInteractionEnd(void);
 static void PS_HW6_RTOS_RuntimeInteractionShowCue(uint32_t now_tick);
@@ -1998,12 +2018,20 @@ static UINT PS_HW6_RTOS_CompleteStateSceneEvent(uint32_t scene_result)
     }
     if (shell_exit_requested == 0UL)
     {
-      status = PS_HW6_RTOS_SendDisplayUiRenderCommand(
-        (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF,
-        (uint32_t)PS_UI_ROUTER_CAL_NONE,
-        PS_SceneRuntime_StateFocusIndex(),
-        (uint32_t)PS_UI_ROUTER_SHUTDOWN_NONE,
-        0UL);
+      if (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL)
+      {
+        status = PS_HW6_RTOS_ObjectPresent();
+        if (status != TX_SUCCESS) { PS_HW6_RTOS_RuntimePackageReplacementFail(); }
+      }
+      else
+      {
+        status = PS_HW6_RTOS_SendDisplayUiRenderCommand(
+          (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF,
+          (uint32_t)PS_UI_ROUTER_CAL_NONE,
+          PS_SceneRuntime_StateFocusIndex(),
+          (uint32_t)PS_UI_ROUTER_SHUTDOWN_NONE,
+          0UL);
+      }
     }
   }
   else if (scene_result == PS_SCENE_RUNTIME_INPUT_ERROR)
@@ -2033,6 +2061,15 @@ static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
   {
     uint32_t scene_result;
 
+    if ((PS_SceneRuntime_DevelopmentObjectsActive() != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_lifecycle != PS_HW6_RUNTIME_LIFECYCLE_RUNNING))
+    { return; }
+    if ((PS_SceneRuntime_DevelopmentObjectsActive() != 0UL) &&
+        (PS_HW6_RTOS_ObjectAdvance((uint32_t)tx_time_get()) != 0UL))
+    {
+      PS_HW6_RTOS_RuntimePackageReturn();
+      return;
+    }
     scene_result = PS_SceneRuntime_HandleStateSceneInput(event, button_id);
     if (scene_result == PS_SCENE_RUNTIME_INPUT_APPLIED)
     {
@@ -5173,7 +5210,9 @@ static uint32_t PS_HW6_RTOS_Stop2AutoDynamicBlockerMask(
   uint32_t blocker_mask = 0UL;
   uint32_t queue_mask = PS_HW6_RTOS_Stop2AutoQueuePendingMask();
 
-  if (PS_HW6_RTOS_Stop2AutoRuntimeAllowsIdle() == 0UL)
+  if ((PS_HW6_RTOS_Stop2AutoRuntimeAllowsIdle() == 0UL) ||
+      (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL) ||
+      (ps_object_launching != 0UL))
   {
     blocker_mask |= PS_HW6_RTOS_STOP2_BLOCK_RUNTIME_BUSY;
   }
@@ -7891,6 +7930,120 @@ static void PS_HW6_RTOS_RuntimePackageReturn(void)
     (uint32_t)PS_STATUS_OK : (uint32_t)PS_STATUS_INTERNAL_ERROR);
 }
 
+static uint32_t PS_HW6_RTOS_ObjectAdvance(uint32_t now_tick)
+{
+  uint64_t scaled = (uint64_t)(now_tick - ps_object_last_tick) * 1000ULL +
+    ps_object_tick_fraction;
+  uint32_t elapsed_ms = (uint32_t)(scaled / TX_TIMER_TICKS_PER_SECOND);
+  ps_object_last_tick = now_tick;
+  ps_object_tick_fraction = (uint32_t)(scaled % TX_TIMER_TICKS_PER_SECOND);
+  g_ps_object_development_probe.elapsed_ms += elapsed_ms;
+  return PS_SceneRuntime_AdvanceDevelopmentObjects(elapsed_ms);
+}
+
+static UINT PS_HW6_RTOS_ObjectPresent(void)
+{
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+  ULONG actual = 0UL;
+  uint32_t next_ms;
+  uint32_t now_tick = (uint32_t)tx_time_get();
+  UINT status;
+  if ((g_ps_object_development_probe.lease_fault != 0UL) ||
+      (PS_HW6_RTOS_ObjectAdvance(now_tick) != 0UL) ||
+      (PS_SceneRuntime_ProjectDevelopmentObjects(&ps_object_display_lease,
+        &next_ms) != 0UL)) { return TX_CALLER_ERROR; }
+  g_ps_object_development_probe.next_tick = (next_ms != 0UL) ?
+    now_tick + PS_HW6_RTOS_MsToTicks(next_ms) : 0UL;
+  g_ps_object_development_probe.state_id = ps_object_display_lease.state_id;
+  g_ps_object_development_probe.first_asset_id = ps_object_display_lease.elements[0].asset_id;
+  (void)tx_event_flags_get(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+    PS_HW6_RTOS_OBJECT_DISPLAY_ACK, TX_AND_CLEAR, &actual, TX_NO_WAIT);
+  message[0] = PS_HW6_RTOS_OBJECT_DISPLAY_MAGIC;
+  message[1] = PS_HW6_RTOS_OWNER_DISPLAY;
+  message[2] = ++g_ps_object_development_probe.render_request;
+  message[3] = PS_SceneRuntime_SceneActivation();
+  g_ps_object_development_probe.render_status = PS_HW6_RTOS_STATUS_NOT_RUN;
+  status = tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_DISPLAY], message, TX_NO_WAIT);
+  g_ps_object_development_probe.queue_status = status;
+  if (status != TX_SUCCESS) { return status; }
+  status = tx_event_flags_get(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+    PS_HW6_RTOS_OBJECT_DISPLAY_ACK, TX_AND_CLEAR, &actual,
+    PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
+  g_ps_object_development_probe.wait_status = status;
+  if (status != TX_SUCCESS)
+  {
+    g_ps_object_development_probe.lease_fault = 1UL;
+    return status;
+  }
+  return ((g_ps_object_development_probe.render_complete == (uint32_t)message[2]) &&
+          (g_ps_object_development_probe.render_status == (uint32_t)HAL_OK)) ?
+    TX_SUCCESS : TX_CALLER_ERROR;
+}
+
+static void PS_HW6_RTOS_ObjectService(uint32_t now_tick)
+{
+  if (g_ps_object_development_request != 0UL)
+  {
+    uint32_t blockers = 0UL;
+    g_ps_object_development_request = 0UL;
+    g_ps_object_development_probe.launch_count++;
+    g_ps_object_development_probe.launch_status = (uint32_t)HAL_BUSY;
+    if (g_ps_object_development_probe.lease_fault != 0UL) { blockers |= 1UL; }
+    if ((PS_HW6_RTOS_SystemOverlayActive() != 0UL) ||
+        (g_ps_package_workflow_probe.active != 0UL)) { blockers |= 2UL; }
+    if ((PS_HW6_AudioOwner_SfxActive() != 0UL) ||
+        (ps_audio_sfx_pending != 0UL) || (ps_audio_sfx_clock_held != 0UL)) { blockers |= 4UL; }
+    if ((ps_queues[PS_HW6_RTOS_OWNER_DISPLAY].tx_queue_enqueued != 0UL) ||
+        (g_ps_hw6_owner_probe.display_complete == 0UL)) { blockers |= 8UL; }
+    if ((g_ps_ui_router_probe.current_page != PS_UI_ROUTER_PAGE_HOME) &&
+        (g_ps_ui_router_probe.current_page != PS_UI_ROUTER_PAGE_MENU)) { blockers |= 16UL; }
+    if (g_ps_hw6_rtos_probe.runtime_active_capabilities != 0UL) { blockers |= 32UL; }
+    g_ps_object_development_probe.admission_blockers = blockers;
+    if (blockers != 0UL) { return; }
+    ps_object_launching = 1UL;
+    PS_HW6_RTOS_RuntimeInteractionEnd();
+    PS_SceneRuntime_ExitStateScene();
+    g_ps_object_development_probe.launch_status =
+      PS_SceneRuntime_EnterDevelopmentObjects(g_ps_object_development_egg,
+        g_ps_object_development_egg_size);
+    if (g_ps_object_development_probe.launch_status == 0UL)
+    {
+      ps_object_last_tick = (uint32_t)tx_time_get();
+      ps_object_tick_fraction = 0UL;
+      g_ps_object_development_probe.elapsed_ms = 0UL;
+      PS_HW6_RTOS_RuntimeSetState(PS_HW6_RUNTIME_CLASS_LP_GRAPH,
+        PS_HW6_RUNTIME_EXEC_REACTIVE, PS_HW6_RUNTIME_LIFECYCLE_RUNNING);
+      g_ps_hw6_rtos_probe.runtime_active_package_id = 1UL;
+      g_ps_hw6_rtos_probe.runtime_active_unit_id = g_ps_scene_runtime_probe.scene_id;
+      g_ps_hw6_rtos_probe.runtime_active_capabilities = 0UL;
+      if (PS_HW6_RTOS_ObjectPresent() != TX_SUCCESS)
+      { g_ps_object_development_probe.launch_status = (uint32_t)HAL_ERROR; }
+      else
+      {
+        g_ps_ui_router_request_event =
+          (uint32_t)PS_UI_ROUTER_EVENT_LAUNCH_RUNTIME;
+        g_ps_ui_router_request = 1UL;
+      }
+    }
+    ps_object_launching = 0UL;
+    if (g_ps_object_development_probe.launch_status != 0UL)
+    { (void)PS_HW6_RTOS_RuntimePackageReplacementFail(); }
+    return;
+  }
+  if (PS_SceneRuntime_DevelopmentObjectsActive() == 0UL) { return; }
+  if (g_ps_hw6_rtos_probe.runtime_lifecycle != PS_HW6_RUNTIME_LIFECYCLE_RUNNING)
+  {
+    ps_object_last_tick = now_tick;
+    return;
+  }
+  if ((g_ps_object_development_probe.next_tick != 0UL) &&
+      ((int32_t)(now_tick - g_ps_object_development_probe.next_tick) >= 0))
+  {
+    if (PS_HW6_RTOS_ObjectPresent() != TX_SUCCESS)
+    { (void)PS_HW6_RTOS_RuntimePackageReplacementFail(); }
+  }
+}
+
 static HAL_StatusTypeDef PS_HW6_RTOS_InteractionRtcReadUnits(
   uint32_t *units)
 {
@@ -8846,6 +8999,8 @@ static void PS_HW6_RTOS_RuntimeSuspend(void)
     uint32_t now_tick = (uint32_t)tx_time_get();
 
     PS_HW6_RTOS_RuntimeStateTimersPause(now_tick);
+    if (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL)
+    { (void)PS_HW6_RTOS_ObjectAdvance(now_tick); }
     g_ps_hw6_rtos_probe.runtime_lifecycle =
       (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_SUSPENDED;
   }
@@ -8896,7 +9051,13 @@ static void PS_HW6_RTOS_RuntimeResume(void)
     g_ps_hw6_rtos_probe.runtime_lifecycle =
       (uint32_t)PS_HW6_RUNTIME_LIFECYCLE_RUNNING;
     PS_HW6_RTOS_RuntimeStateTimersResume((uint32_t)tx_time_get());
-    if (PS_SceneRuntime_StateSceneActive() != 0UL)
+    if (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL)
+    {
+      ps_object_last_tick = (uint32_t)tx_time_get();
+      render_status = PS_HW6_RTOS_ObjectPresent();
+      if (render_status != TX_SUCCESS) { PS_HW6_RTOS_RuntimePackageReplacementFail(); }
+    }
+    else if (PS_SceneRuntime_StateSceneActive() != 0UL)
     {
       render_status = PS_HW6_RTOS_SendDisplayUiRenderCommand(
         (uint32_t)PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF,
@@ -10373,6 +10534,15 @@ static ULONG PS_HW6_RTOS_OwnerReceiveWaitTicks(uint32_t owner_id,
     uint32_t state_timer_remaining_ticks;
     uint32_t state_timer_binding_index;
 
+    if ((PS_SceneRuntime_DevelopmentObjectsActive() != 0UL) &&
+        (g_ps_hw6_rtos_probe.runtime_lifecycle == PS_HW6_RUNTIME_LIFECYCLE_RUNNING) &&
+        (g_ps_object_development_probe.next_tick != 0UL))
+    {
+      remaining_ticks = (int32_t)(g_ps_object_development_probe.next_tick - now_tick);
+      if (remaining_ticks <= 0) { wait_ticks = TX_NO_WAIT; }
+      else if ((uint32_t)remaining_ticks < (uint32_t)wait_ticks)
+      { wait_ticks = (ULONG)remaining_ticks; }
+    }
     if (PS_HW6_RTOS_RuntimeStateTimerNext(
           now_tick,
           &state_timer_remaining_ticks,
@@ -10600,6 +10770,28 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       {
         PS_HW6_RTOS_HandleRuntimeInput(message);
       }
+      else if ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) &&
+               (message[0] == PS_HW6_RTOS_OBJECT_DISPLAY_MAGIC) &&
+               (message[1] == PS_HW6_RTOS_OWNER_DISPLAY))
+      {
+        HAL_StatusTypeDef result = HAL_ERROR;
+        if (((uint32_t)message[2] == g_ps_object_development_probe.render_request) &&
+            ((uint32_t)message[3] == PS_SceneRuntime_SceneActivation()) &&
+            (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL))
+        {
+          if (PS_HW6_RTOS_RequestDisplayClockCapabilities(
+                PS_HW6_RTOS_DISPLAY_CLOCK_REASON_TRANSFER,
+                PS_HW6_RTOS_DISPLAY_CLOCK_TRANSFER_CAPABILITIES) == TX_SUCCESS)
+          { result = PS_HW6_DisplayOwner_RenderDevelopmentObjects(&ps_object_display_lease); }
+          (void)PS_HW6_RTOS_RequestDisplayClockCapabilities(
+            PS_HW6_RTOS_DISPLAY_CLOCK_REASON_RELEASE, 0UL);
+          PS_HW6_RTOS_ResetDisplayCursorBlink((uint32_t)tx_time_get());
+        }
+        g_ps_object_development_probe.render_status = (uint32_t)result;
+        g_ps_object_development_probe.render_complete = (uint32_t)message[2];
+        (void)tx_event_flags_set(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+          PS_HW6_RTOS_OBJECT_DISPLAY_ACK, TX_OR);
+      }
       else if (PS_HW6_RTOS_DisplayUiCommandIsValid(owner_id, message) != 0UL)
       {
         HAL_StatusTypeDef display_status;
@@ -10780,6 +10972,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     {
       PS_HW6_RTOS_RuntimeStateTimersService((uint32_t)now);
       PS_HW6_RTOS_RuntimeInteractionService((uint32_t)now);
+      PS_HW6_RTOS_ObjectService((uint32_t)tx_time_get());
     }
 
     if ((owner_id == PS_HW6_RTOS_OWNER_AUDIO) &&

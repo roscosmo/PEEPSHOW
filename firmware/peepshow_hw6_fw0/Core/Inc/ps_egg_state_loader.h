@@ -132,6 +132,10 @@ uint32_t PS_EggStateLoader_ValidatePackage(const uint8_t *blob, uint32_t size);
  */
 uint32_t PS_EggStateLoader_DecodeDevelopmentScene(const uint8_t *blob,
   uint32_t size, uint32_t scene_id, ps_scene_runtime_state_scene_t *scene);
+/* Explicit development activation only, after old display/audio work is idle.
+ * Publishes the validated immutable catalogs for display frame resolution. */
+uint32_t PS_EggStateLoader_LoadDevelopment(const uint8_t *blob,
+  uint32_t size, ps_scene_runtime_state_scene_t *scene);
 
 /*
  * The package blob must remain immutable while the decoded scene is active.

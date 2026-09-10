@@ -306,6 +306,12 @@ const ps_scene_waiting_visual_t *PS_SceneRuntime_ResolveShellStateWaitingVisual(
   uint32_t focus_index,
   const ps_scene_waiting_visual_bounds_t *cursor_bounds);
 uint32_t PS_SceneRuntime_EnterStateScene(void);
+/* Explicit awake development session, never normal package admission. */
+uint32_t PS_SceneRuntime_EnterDevelopmentObjects(const uint8_t *blob, uint32_t size);
+uint32_t PS_SceneRuntime_DevelopmentObjectsActive(void);
+uint32_t PS_SceneRuntime_AdvanceDevelopmentObjects(uint32_t elapsed_ms);
+uint32_t PS_SceneRuntime_ProjectDevelopmentObjects(ps_scene_render_model_t *model,
+  uint32_t *next_ms);
 /* Pure descriptor check, shared by activation and candidate preflight.
  * Object descriptors must carry an immutable view from PS_EggObject_Decode.
  * A valid object descriptor is not production display/activation admission.

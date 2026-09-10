@@ -3082,8 +3082,9 @@ uint32_t PS_EggStateLoader_Load(
   return PS_EggContext_Load(&s_ps_egg_runtime_context, blob, package_size, resident_size, scene);
 }
 
-uint32_t PS_EggStateLoader_DecodeDevelopmentScene(const uint8_t *blob,
-  uint32_t size, uint32_t scene_id, ps_scene_runtime_state_scene_t *scene)
+static uint32_t PS_EggDecodeDevelopment(const uint8_t *blob,
+  uint32_t size, uint32_t scene_id, ps_scene_runtime_state_scene_t *scene,
+  uint32_t publish)
 {
   ps_egg_context_t *context = &s_ps_egg_validation_context;
   uint32_t status;
@@ -3131,12 +3132,30 @@ uint32_t PS_EggStateLoader_DecodeDevelopmentScene(const uint8_t *blob,
     if (status == 0UL)
     {
       (void)memcpy(scene, &s_ps_egg_validation_scene, sizeof(*scene));
+      if (publish != 0UL)
+      {
+        s_ps_egg_runtime_context = *context;
+        s_ps_egg_runtime_context.probe = &g_ps_egg_state_loader_probe;
+        g_ps_egg_state_loader_probe = g_ps_egg_validation_probe;
+      }
     }
   }
   (void)memset(context, 0, sizeof(*context));
   context->probe = &g_ps_egg_validation_probe;
   (void)memset(&s_ps_egg_validation_scene, 0, sizeof(s_ps_egg_validation_scene));
   return status;
+}
+
+uint32_t PS_EggStateLoader_DecodeDevelopmentScene(const uint8_t *blob,
+  uint32_t size, uint32_t scene_id, ps_scene_runtime_state_scene_t *scene)
+{
+  return PS_EggDecodeDevelopment(blob, size, scene_id, scene, 0UL);
+}
+
+uint32_t PS_EggStateLoader_LoadDevelopment(const uint8_t *blob,
+  uint32_t size, ps_scene_runtime_state_scene_t *scene)
+{
+  return PS_EggDecodeDevelopment(blob, size, 0UL, scene, 1UL);
 }
 
 /* Called only by thRuntime; HASH ownership and the active loader stay unchanged. */

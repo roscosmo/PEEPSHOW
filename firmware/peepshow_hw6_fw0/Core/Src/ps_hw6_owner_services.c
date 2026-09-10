@@ -19,6 +19,8 @@
 #include "ps_dev_adp5360.h"
 #include "ps_hw_i2c3.h"
 
+static ps_scene_render_model_t ps_hw6_development_display_model;
+
 #define PS_HW6_OWNER_PHASE_INIT             (0x6700UL)
 #define PS_HW6_OWNER_PHASE_POWER            (0x6701UL)
 #define PS_HW6_OWNER_PHASE_DISPLAY          (0x6702UL)
@@ -1884,6 +1886,17 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearForShipping(void)
   return status;
 }
 
+HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderDevelopmentObjects(
+  const ps_scene_render_model_t *model)
+{
+  if ((model == NULL) || (PS_SceneRuntime_DevelopmentObjectsActive() == 0UL) ||
+      (model->timeline_revision != PS_SceneRuntime_SceneActivation()))
+  { return HAL_ERROR; }
+  ps_hw6_development_display_model = *model;
+  return PS_HW6_DisplayOwner_RenderUI(PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF,
+    PS_UI_ROUTER_CAL_NONE, 0UL, PS_UI_ROUTER_SHUTDOWN_NONE, 0UL);
+}
+
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   uint32_t page,
   uint32_t calibration_page,
@@ -1936,7 +1949,16 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
        (page == (uint32_t)PS_UI_ROUTER_PAGE_INTERACTION_CUE)) &&
       (PS_SceneRuntime_StateSceneActive() != 0UL))
   {
-    scene_model = PS_SceneRuntime_ResolveStateSceneRenderModel();
+    if (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL)
+    {
+      if (ps_hw6_development_display_model.timeline_revision !=
+          PS_SceneRuntime_SceneActivation()) { return HAL_ERROR; }
+      scene_model = &ps_hw6_development_display_model;
+    }
+    else
+    {
+      scene_model = PS_SceneRuntime_ResolveStateSceneRenderModel();
+    }
   }
 
   PS_HW6_PrepareDisplayUIPage(page,
@@ -1945,10 +1967,14 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
                               shutdown_state,
                               shutdown_countdown_seconds,
                               scene_model);
-  PS_HW6_DisplayOwner_PublishStateWaitingVisual(
-    page,
-    g_ps_hw6_owner_probe.display_ui_current_focus_row,
-    scene_model);
+  if ((PS_SceneRuntime_DevelopmentObjectsActive() != 0UL) &&
+      (page == PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF))
+  { DisplayRenderer_ClearSceneWaitingVisual(); }
+  else
+  {
+    PS_HW6_DisplayOwner_PublishStateWaitingVisual(
+      page, g_ps_hw6_owner_probe.display_ui_current_focus_row, scene_model);
+  }
   driver_status = PS_HW6_DisplayOwner_PresentRendererRows(
     &g_ps_hw6_owner_probe.display_init_status,
     &g_ps_hw6_owner_probe.display_present_status);

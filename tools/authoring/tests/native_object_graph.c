@@ -1,7 +1,6 @@
 #define main validation_main
 #include "native_package_validation.c"
 #undef main
-#include "ps_scene_object_graph.c"
 
 static uint32_t input_binding(const ps_scene_runtime_state_scene_t *scene, uint32_t source)
 {

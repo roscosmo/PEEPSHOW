@@ -444,3 +444,14 @@ The first device proof is selection moving a marker without restarting a base
 sprite, followed by a scene timer changing an object without a state transition.
 Include awake/STOP2 continuity and invalid-package recovery. Explicit playback,
 groups and prefabs remain later increments with their own acceptance evidence.
+
+### Awake Development Integration
+
+The first explicit device path is now implemented, with hardware verification
+pending. See [[Scene_Object_Awake_Development_Test]] for the exact subset, build
+fixture, owner handoff and two GDB helpers. The existing object bank/graph now
+feed a pointer-free render model and the real display owner. Local state changes
+do not reset the object clock. The development session deliberately remains
+awake; this does not enable production V2 installation/export or LPBAM. The
+earlier allocation-free/no-active-path notes describe the preceding pure-engine
+increment, not this explicit test path.
