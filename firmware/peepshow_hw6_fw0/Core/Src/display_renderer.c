@@ -37,6 +37,7 @@ typedef struct
 } display_renderer_list_t;
 
 static uint8_t s_display_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
+static const ps_egg_sprite_catalog_t *s_display_candidate_catalog;
 static uint8_t s_display_committed_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint8_t s_display_cursor_base_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint16_t s_display_dirty_rows[DISPLAY_RENDERER_DIRTY_ROW_MAX];
@@ -240,6 +241,14 @@ static void DisplayRenderer_SetLogicalPixelInBuffer(
   }
 }
 
+static uint32_t DisplayRenderer_ResolveSpriteFrame(uint32_t frame_id,
+  ps_egg_state_loader_sprite_frame_t *frame)
+{
+  return (s_display_candidate_catalog == NULL) ?
+    PS_EggStateLoader_GetSpriteFrame(frame_id, frame) :
+    PS_EggStateLoader_GetCatalogSpriteFrame(s_display_candidate_catalog, frame_id, frame);
+}
+
 static uint32_t DisplayRenderer_ApplyPackageSprite(
   uint32_t frame_id,
   const ps_scene_waiting_visual_bounds_t *bounds,
@@ -255,7 +264,7 @@ static uint32_t DisplayRenderer_ApplyPackageSprite(
 
   if ((bounds == NULL) || (destination == NULL) ||
       (destination_size < DISPLAY_RENDERER_BUFFER_SIZE) ||
-      (PS_EggStateLoader_GetSpriteFrame(frame_id, &frame) == 0UL) ||
+      (DisplayRenderer_ResolveSpriteFrame(frame_id, &frame) == 0UL) ||
       (frame.width != bounds->width) ||
       (frame.height != bounds->height) ||
       (((uint32_t)bounds->x + bounds->width) > DISPLAY_RENDERER_WIDTH) ||
@@ -1114,7 +1123,7 @@ static uint32_t DisplayRenderer_ResolveSceneWaitingVisual(
            ++package_phase)
       {
         ps_egg_state_loader_sprite_frame_t frame;
-        if ((PS_EggStateLoader_GetSpriteFrame(
+        if ((DisplayRenderer_ResolveSpriteFrame(
                source->phase_visual_id[package_phase], &frame) == 0UL) ||
             (frame.width != source->logical_bounds.width) ||
             (frame.height != source->logical_bounds.height))
@@ -2227,7 +2236,7 @@ static uint32_t DisplayRenderer_ValidateSceneModel(
         (element->asset_id != PS_SCENE_RENDER_SPRITE_DIAMOND))
     {
       ps_egg_state_loader_sprite_frame_t frame;
-      if ((PS_EggStateLoader_GetSpriteFrame(
+      if ((DisplayRenderer_ResolveSpriteFrame(
              element->asset_id, &frame) == 0UL) ||
           (frame.width != element->width) ||
           (frame.height != element->height))
@@ -2245,7 +2254,7 @@ static uint32_t DisplayRenderer_ValidateSceneModel(
         return 0UL;
       }
       if ((element->asset_id != 0UL) &&
-          ((PS_EggStateLoader_GetSpriteFrame(
+          ((DisplayRenderer_ResolveSpriteFrame(
               element->asset_id, &frame) == 0UL) ||
            (frame.width != element->width) ||
            (frame.height != element->height)))
@@ -2484,6 +2493,18 @@ uint32_t DisplayRenderer_CopySceneModelFrame(const ps_scene_render_model_t *mode
   (void)memcpy(destination, s_display_framebuffer, sizeof(s_display_framebuffer));
   (void)memcpy(s_display_framebuffer, saved, sizeof(saved));
   return 1UL;
+}
+
+uint32_t DisplayRenderer_CopyCandidateSceneFrame(const ps_scene_render_model_t *model,
+  const ps_egg_sprite_catalog_t *catalog, uint8_t *destination, uint32_t destination_size)
+{
+  uint32_t status;
+  if ((catalog == NULL) || (s_display_candidate_catalog != NULL)) { return 0UL; }
+  /* Only thDisplay enters this bounded scope; no waits or callbacks within it. */
+  s_display_candidate_catalog = catalog;
+  status = DisplayRenderer_CopySceneModelFrame(model, destination, destination_size);
+  s_display_candidate_catalog = NULL;
+  return status;
 }
 
 static void DisplayRenderer_ListInit(display_renderer_list_t *list)

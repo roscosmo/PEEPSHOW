@@ -32,6 +32,8 @@ static uint32_t DisplayRenderer_ApplyPackageSprite(uint32_t id,
 { (void)id; (void)bounds; (void)pixels; (void)size; (void)clear; (void)count; assert(0); return 0; }
 uint32_t PS_EggStateLoader_GetSpriteFrame(uint32_t id, ps_egg_state_loader_sprite_frame_t *frame)
 { (void)id; (void)frame; assert(0); return 0; }
+static uint32_t DisplayRenderer_ResolveSpriteFrame(uint32_t id, ps_egg_state_loader_sprite_frame_t *frame)
+{ return PS_EggStateLoader_GetSpriteFrame(id, frame); }
 
 #include "shape_under_test.inc"
 

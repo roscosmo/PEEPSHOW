@@ -47,6 +47,86 @@ candidate is exercised with both a live V1 package and a live V2 object bank;
 successful profile checks still fail ordinary install validation. These are
 host-native checks, not installed-package hardware acceptance.
 
+## Isolated Candidate Display Admission
+
+The next implemented boundary checks a **single frozen object snapshot and its
+complete repeating animation program**, not every reachable package state.
+It is not yet connected to installation, boot loading or a GUI capability.
+
+1. `thRuntime` calls `PS_EggStateLoader_DecodeV2Candidate` into private descriptor
+   and catalog outputs. This applies the same profile/integrity checks above,
+   clears outputs on failure, and never publishes the active package catalog.
+   Unlike the result-only validator, successful outputs deliberately borrow
+   immutable candidate bytes. The caller must keep the candidate storage leased
+   until all consumers finish, including a timed-out display request that has
+   not acknowledged completion. No FileX/runtime FAT reads are introduced.
+2. From a private candidate object bank, `PS_ObjectWaiting_Build` constructs the
+   pointer-free combined program. Incompatible timing or more than 12 combined
+   steps rejects before raster work. No approximation or discarded frames.
+3. `thDisplay` calls `PS_ObjectDisplay_CheckWaiting` with that program, the
+   explicit candidate catalog and a dedicated caller-owned workspace. It
+   projects and composes each full frame, including static objects, and checks
+   every transition including the wrap back to the first frame.
+4. The result separates projection, raster and payload failures, gives the
+   failing target step and number of composed frames, and reports exact sequence,
+   chunk, wire-byte and allocated-payload-byte use. Success has payload status
+   and reason zero. The checker does not present, mark ready, build/start DMA,
+   change clocks, or replace active display data.
+
+`DisplayRenderer_CopyCandidateSceneFrame` uses only the supplied catalog and
+never substitutes an active-package sprite with the same ID. Its synchronous
+thDisplay-only scope restores the framebuffer, rotation and asset resolver on
+success or failure. `PS_LpbamDisplay_CheckFullSceneAnimation` uses separate
+ordinary-RAM frames and payload storage, shared production row/wire helpers,
+and exact byte comparisons for same-band payload reuse. All production slots
+have equal capacity, so private slot numbering does not affect the budget.
+Limits remain **12 steps, 18 chunks, 10,512 payload bytes**. An unchanged step
+uses the same band-zero refresh as the full-scene production packer.
+
+The workspace must be allocated deterministically outside owner thread stacks;
+it must not alias live framebuffers, payloads or descriptors. This increment
+provides the caller-owned workspace types, not an additional runtime allocation
+or an asynchronous request/lease protocol. Owner-queue integration is pending.
+Only validated immutable catalog views are accepted inputs; they are not a
+second parser for untrusted package bytes.
+
+**Do not cache this result as admission for the entire package.** Visibility,
+position, frame masks, state overrides and object actions can change composed
+bands, combined timing and resource use. Initial admission and each subsequent
+candidate transaction need to check their actual resulting snapshot before
+publication. An entry-state pass alone is not permission to label an installed
+package fully supported. Timer/variable/graph reachability is not exhaustively
+enumerated by this component.
+
+Native coverage in `test_firmware_object_display_admission.py` compares exact
+results with the existing production packer for structured/dual fixtures, both
+A/B states and both timer visibility states. It exercises same-ID/different-pixel
+active and candidate catalogs, missing candidate graphics, static hold, payload
+deduplication, exact 18-chunk/10,512-byte capacity, chunk/step overflow and a
+composition failure at wrap. Active catalog, object bank, framebuffer and all
+live payload/compiler storage remain unchanged. The structured fixture reports
+4/8/4,672 steps/chunks/bytes; dual reports 8/16/9,344. These are native checks;
+the new candidate path has not yet been exercised through hardware owner queues.
+
+### Shared-Path Hardware Regression Pass (2026-09-11)
+
+After the candidate-checker changes, the user repeated the existing dual-animation
+development LPBAM test and confirmed unchanged behaviour. The capture reported:
+
+- Enabled/active/development = 1/1/1; fault and launch status = 0/0.
+- Combined schedule = 8 steps at 400 ms; publish count/status = 8/0.
+- Five WFI returns; sleep measured/reconciled = 5/5, status 0, total reconciled
+  missing time 12,129 ms. Wake snapshot/render/map/resume statuses all zero.
+- Timer due/applied/error = 1/1/0, with one RTC selection; reveal visible = 1.
+- Display request/complete = 8/8, result/fault = 0/0; sleep barrier = 0.
+
+This closes the shared renderer/wire-packer regression check, combining observed
+behaviour with completed display and sleep/wake work. Current payload/commit
+status was NOT_RUN after redraw, so this capture does not independently report
+the prepared chunk/byte totals. No new current or precise cadence measurement
+was supplied. It does not validate candidate admission through hardware queues,
+installation, or reboot loading; those remain separate work.
+
 ## Container
 
 All integers are little-endian. Container magic remains `PKG1`, header version

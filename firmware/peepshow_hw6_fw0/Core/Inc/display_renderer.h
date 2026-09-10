@@ -6,6 +6,7 @@
 #include "LS013B7DH05.h"
 #include "ps_scene_render_model.h"
 #include "ps_scene_waiting_visual.h"
+#include "ps_egg_state_loader.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -130,6 +131,11 @@ void DisplayRenderer_CommitPresentedFrame(void);
 /* thDisplay only; composes off-screen without changing the committed frame. */
 uint32_t DisplayRenderer_CopySceneModelFrame(const ps_scene_render_model_t *model,
   uint8_t *destination, uint32_t destination_size);
+/* thDisplay only, synchronous/non-reentrant; no active-catalog fallback.
+ * catalog and its package lease must remain immutable throughout the call.
+ */
+uint32_t DisplayRenderer_CopyCandidateSceneFrame(const ps_scene_render_model_t *model,
+  const ps_egg_sprite_catalog_t *catalog, uint8_t *destination, uint32_t destination_size);
 uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
   uint32_t visible,
   display_renderer_stats_t *stats);

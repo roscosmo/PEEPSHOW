@@ -2,13 +2,6 @@
 #include <string.h>
 
 #define PS_LPBAM_MLCD_CMD_WRITE 0x01U
-#define PS_LPBAM_ROW_WIRE_BYTES (1U + LINE_WIDTH + 1U)
-#define PS_LPBAM_ALIGN4(value) (((value) + 3U) & ~3U)
-#define PS_LPBAM_SPATIAL_PAYLOAD_BYTES \
-  (1U + ((PS_LPBAM_DISPLAY_SPATIAL_ROWS + 1U) * \
-         PS_LPBAM_ROW_WIRE_BYTES) + 2U)
-#define PS_LPBAM_SPATIAL_SLOT_BYTES \
-  PS_LPBAM_ALIGN4(PS_LPBAM_SPATIAL_PAYLOAD_BYTES)
 #define PS_LPBAM_DISPLAY_BANK_BYTES \
   (PS_LPBAM_DISPLAY_SPATIAL_CHUNK_COUNT * PS_LPBAM_SPATIAL_SLOT_BYTES)
 #define PS_LPBAM_DISPLAY_ARENA_SIZE \
@@ -240,6 +233,100 @@ static HAL_StatusTypeDef PS_LpbamDisplay_FinalizePayload(
     HAL_OK : HAL_ERROR;
 }
 
+static HAL_StatusTypeDef PS_LpbamDisplay_ComposeBand(uint8_t band,
+  const uint8_t (*frame)[LINE_WIDTH], uint8_t *payload, uint16_t *length)
+{
+  uint16_t start = PS_LpbamDisplay_BandStartRow(band);
+  uint16_t count = PS_LpbamDisplay_BandRowCount(band);
+  uint16_t row;
+  uint8_t *write = payload;
+  if ((frame == NULL) || (payload == NULL) || (length == NULL) || (count == 0U))
+  { return HAL_ERROR; }
+  *write++ = PS_LPBAM_MLCD_CMD_WRITE;
+  for (row = start; row < start + count; ++row)
+  { PS_LpbamDisplay_AppendWireRow(&write, row, frame); }
+  return PS_LpbamDisplay_FinalizePayload(payload, write,
+    (uint16_t)(start + count - 1U), frame, length);
+}
+
+HAL_StatusTypeDef PS_LpbamDisplay_CheckFullSceneAnimation(uint32_t sequence_count,
+  ps_lpbam_display_compose_fn compose, void *context,
+  ps_lpbam_display_check_workspace_t *workspace, ps_lpbam_display_admission_t *result)
+{
+  uint32_t step;
+  uint16_t used_slots = 0U;
+  if (result == NULL) { return HAL_ERROR; }
+  (void)memset(result, 0, sizeof(*result));
+  result->api_version = PS_LPBAM_DISPLAY_ADMISSION_API_VERSION;
+  result->sequence_capacity = PS_LPBAM_DISPLAY_SEQUENCE_MAX;
+  result->chunk_capacity = PS_LPBAM_DISPLAY_MAX_CHUNKS;
+  result->payload_capacity_bytes = PS_LPBAM_DISPLAY_ARENA_SIZE;
+  result->status = HAL_ERROR;
+  result->reason = PS_LPBAM_ADMISSION_REASON_ARGUMENT;
+  if (workspace != NULL) { (void)memset(workspace, 0, sizeof(*workspace)); }
+  if ((workspace == NULL) || (compose == NULL) || (sequence_count == 0UL))
+  { return HAL_ERROR; }
+  if (sequence_count > PS_LPBAM_DISPLAY_SEQUENCE_MAX)
+  { result->reason = PS_LPBAM_ADMISSION_REASON_SEQUENCE; return HAL_ERROR; }
+  result->reason = PS_LPBAM_ADMISSION_REASON_BUILD;
+  if (compose(context, 0UL, &workspace->previous[0][0], sizeof(workspace->previous)) == 0UL)
+  { return HAL_ERROR; }
+  workspace->frames_composed++;
+  for (step = 0UL; step < sequence_count; ++step)
+  {
+    uint8_t dirty_band[PS_LPBAM_DISPLAY_SPATIAL_CHUNK_COUNT] = {0};
+    uint32_t any_dirty = 0UL;
+    uint16_t row;
+    uint8_t band;
+    if (compose(context, (step + 1UL) % sequence_count,
+        &workspace->target[0][0], sizeof(workspace->target)) == 0UL)
+    { return HAL_ERROR; }
+    workspace->frames_composed++;
+    for (row = 1U; row <= DISPLAY_HEIGHT; ++row)
+    {
+      if (PS_LpbamDisplay_RowIsDirty(workspace->previous, workspace->target, row) != 0U)
+      {
+        dirty_band[(row - 1U) / PS_LPBAM_DISPLAY_SPATIAL_ROWS] = 1U;
+        any_dirty = 1UL;
+      }
+    }
+    /* Full-scene production packing refreshes band zero for an unchanged step. */
+    if (any_dirty == 0UL) { dirty_band[0] = 1U; }
+    for (band = 0U; band < PS_LPBAM_DISPLAY_SPATIAL_CHUNK_COUNT; ++band)
+    {
+      uint16_t length;
+      uint16_t slot;
+      if (dirty_band[band] == 0U) { continue; }
+      if (result->chunk_used >= PS_LPBAM_DISPLAY_MAX_CHUNKS)
+      { result->reason = PS_LPBAM_ADMISSION_REASON_CHUNKS; return HAL_ERROR; }
+      if (PS_LpbamDisplay_ComposeBand(band, workspace->target, workspace->wire, &length) != HAL_OK)
+      { return HAL_ERROR; }
+      for (slot = 0U; slot < used_slots; ++slot)
+      {
+        if ((workspace->band[slot] == band) && (workspace->length[slot] == length) &&
+            (memcmp(workspace->payload[slot], workspace->wire, length) == 0)) { break; }
+      }
+      if (slot == used_slots)
+      {
+        if ((slot >= PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT) || (length > PS_LPBAM_SPATIAL_SLOT_BYTES))
+        { result->reason = PS_LPBAM_ADMISSION_REASON_PAYLOAD; return HAL_ERROR; }
+        (void)memcpy(workspace->payload[slot], workspace->wire, length);
+        workspace->length[slot] = length;
+        workspace->band[slot] = band;
+        used_slots++;
+        result->payload_used_bytes = (uint16_t)(used_slots * PS_LPBAM_SPATIAL_SLOT_BYTES);
+      }
+      result->payload_wire_bytes = (uint16_t)(result->payload_wire_bytes + length);
+      result->chunk_used++;
+    }
+    result->sequence_used++;
+    (void)memcpy(workspace->previous, workspace->target, sizeof(workspace->previous));
+  }
+  result->status = HAL_OK;
+  result->reason = PS_LPBAM_ADMISSION_REASON_NONE;
+  return HAL_OK;
+}
+
 static void PS_LpbamDisplay_ResetPayloadState(void)
 {
   memset(ps_lpbam_display_tx, 0, sizeof(ps_lpbam_display_tx));
@@ -385,11 +472,7 @@ HAL_StatusTypeDef PS_LpbamDisplay_AppendPreparedTransition(
        band < PS_LPBAM_DISPLAY_SPATIAL_CHUNK_COUNT;
        ++band)
   {
-    uint16_t rows_this_chunk;
-    uint16_t start_row;
-    uint16_t last_row;
     uint8_t *payload = NULL;
-    uint8_t *write;
     uint16_t len = 0U;
     uint8_t payload_slot = 0xFFU;
 
@@ -405,23 +488,8 @@ HAL_StatusTypeDef PS_LpbamDisplay_AppendPreparedTransition(
         PS_LPBAM_ADMISSION_REASON_CHUNKS);
     }
 
-    start_row = PS_LpbamDisplay_BandStartRow(band);
-    rows_this_chunk = PS_LpbamDisplay_BandRowCount(band);
-    write = ps_lpbam_display_payload_scratch;
-    *write++ = PS_LPBAM_MLCD_CMD_WRITE;
-    for (uint16_t i = 0U; i < rows_this_chunk; ++i)
-    {
-      uint16_t row = (uint16_t)(start_row + i);
-      PS_LpbamDisplay_AppendWireRow(&write, row, target_frame);
-    }
-
-    last_row = (uint16_t)(start_row + rows_this_chunk - 1U);
-    if (PS_LpbamDisplay_FinalizePayload(
-          ps_lpbam_display_payload_scratch,
-          write,
-          last_row,
-          target_frame,
-          &len) != HAL_OK)
+    if (PS_LpbamDisplay_ComposeBand(band, target_frame,
+          ps_lpbam_display_payload_scratch, &len) != HAL_OK)
     {
       return PS_LpbamDisplay_AdmissionFailure(
         PS_LPBAM_ADMISSION_REASON_BUILD);

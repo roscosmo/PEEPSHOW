@@ -28,7 +28,7 @@ class ObjectAwakeTests(unittest.TestCase):
         source = (cls.firmware / "Core/Src/display_renderer.c").read_text(encoding="utf-8")
         names = ["SetBlack", "HorizontalLine", "VerticalLine", "Line", "FilledRect",
                  "EllipseRow", "RasterEllipse", "SetPanelPixelWhiteInBuffer",
-                 "SetPanelPixelBlackInBuffer", "SetLogicalPixelInBuffer", "ApplyPackageSprite",
+                 "SetPanelPixelBlackInBuffer", "SetLogicalPixelInBuffer", "ResolveSpriteFrame", "ApplyPackageSprite",
                  "ValidateSceneModel", "DrawSceneElement"]
         (cls.work / "object_raster_under_test.inc").write_text(
             "\n".join(firmware_function(source, "DisplayRenderer_" + name) for name in names), encoding="ascii")

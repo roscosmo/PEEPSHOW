@@ -146,14 +146,6 @@ typedef struct
 
 typedef struct
 {
-  const uint8_t *records;
-  const uint8_t *sprite_payload;
-  uint32_t sprite_size;
-  uint16_t frame_count;
-} ps_egg_sprite_catalog_t;
-
-typedef struct
-{
   const uint8_t *adpcm;
   uint32_t package_offset;
   uint32_t package_backed;
@@ -843,7 +835,8 @@ static uint32_t PS_EggSpritePlaneValid(const uint8_t *plane,
   return 1UL;
 }
 
-static uint32_t PS_EggContext_GetSpriteFrame(ps_egg_context_t *context, uint32_t frame_id,
+uint32_t PS_EggStateLoader_GetCatalogSpriteFrame(const ps_egg_sprite_catalog_t *catalog,
+  uint32_t frame_id,
   ps_egg_state_loader_sprite_frame_t *frame)
 {
   uint32_t frame_index;
@@ -854,37 +847,37 @@ static uint32_t PS_EggContext_GetSpriteFrame(ps_egg_context_t *context, uint32_t
   uint32_t mask_size;
   uint32_t flags;
 
-  if ((frame == NULL) ||
+  if ((catalog == NULL) || (catalog->sprite_payload == NULL) || (frame == NULL) ||
       (frame_id <= PS_EGG_STATE_LOADER_SPRITE_FRAME_ID_BASE))
   {
     return 0UL;
   }
   frame_index = frame_id - PS_EGG_STATE_LOADER_SPRITE_FRAME_ID_BASE - 1UL;
-  if ((context->sprite_catalog.records == NULL) ||
-      (frame_index >= context->sprite_catalog.frame_count))
+  if ((catalog->records == NULL) ||
+      (frame_index >= catalog->frame_count))
   {
     return 0UL;
   }
 
-  record = &context->sprite_catalog.records[
+  record = &catalog->records[
     frame_index * PS_EGG_ASSET_RECORD_SIZE];
   pixel_offset = PS_EggU32(&record[16]);
   pixel_size = PS_EggU32(&record[20]);
   mask_offset = PS_EggU32(&record[24]);
   mask_size = PS_EggU32(&record[28]);
   flags = PS_EggU32(&record[32]);
-  if ((PS_EggRangeValid(context->sprite_catalog.sprite_size,
+  if ((PS_EggRangeValid(catalog->sprite_size,
                         pixel_offset, pixel_size) == 0UL) ||
       (((flags & PS_EGG_ASSET_FLAG_OPAQUE) == 0UL) &&
-       (PS_EggRangeValid(context->sprite_catalog.sprite_size,
+       (PS_EggRangeValid(catalog->sprite_size,
                          mask_offset, mask_size) == 0UL)))
   {
     return 0UL;
   }
 
-  frame->pixels = &context->sprite_catalog.sprite_payload[pixel_offset];
+  frame->pixels = &catalog->sprite_payload[pixel_offset];
   frame->mask = ((flags & PS_EGG_ASSET_FLAG_OPAQUE) != 0UL) ? NULL :
-    &context->sprite_catalog.sprite_payload[mask_offset];
+    &catalog->sprite_payload[mask_offset];
   frame->width = PS_EggU16(&record[4]);
   frame->height = PS_EggU16(&record[6]);
   frame->row_stride_bytes = PS_EggU16(&record[8]);
@@ -892,6 +885,12 @@ static uint32_t PS_EggContext_GetSpriteFrame(ps_egg_context_t *context, uint32_t
   frame->pivot_y = PS_EggI16(&record[14]);
   frame->opaque = ((flags & PS_EGG_ASSET_FLAG_OPAQUE) != 0UL) ? 1UL : 0UL;
   return 1UL;
+}
+
+static uint32_t PS_EggContext_GetSpriteFrame(ps_egg_context_t *context, uint32_t frame_id,
+  ps_egg_state_loader_sprite_frame_t *frame)
+{
+  return PS_EggStateLoader_GetCatalogSpriteFrame(&context->sprite_catalog, frame_id, frame);
 }
 
 static uint32_t PS_EggContext_GetAudioCue(ps_egg_context_t *context, uint32_t cue_index,
@@ -3136,7 +3135,7 @@ static uint32_t PS_EggCheckV2Profile(ps_egg_context_t *context,
 
 static uint32_t PS_EggDecodeDevelopment(const uint8_t *blob,
   uint32_t size, uint32_t scene_id, ps_scene_runtime_state_scene_t *scene,
-  uint32_t publish, ps_egg_v2_profile_result_t *profile)
+  uint32_t publish, ps_egg_v2_profile_result_t *profile, ps_egg_sprite_catalog_t *catalog)
 {
   ps_egg_context_t *context = &s_ps_egg_validation_context;
   uint32_t status;
@@ -3186,6 +3185,11 @@ static uint32_t PS_EggDecodeDevelopment(const uint8_t *blob,
       if (profile != NULL)
       {
         status = PS_EggCheckV2Profile(context, &s_ps_egg_validation_scene, profile);
+        if ((status == 0UL) && (scene != NULL) && (catalog != NULL))
+        {
+          *scene = s_ps_egg_validation_scene;
+          *catalog = context->sprite_catalog;
+        }
       }
       else
       {
@@ -3208,13 +3212,13 @@ static uint32_t PS_EggDecodeDevelopment(const uint8_t *blob,
 uint32_t PS_EggStateLoader_DecodeDevelopmentScene(const uint8_t *blob,
   uint32_t size, uint32_t scene_id, ps_scene_runtime_state_scene_t *scene)
 {
-  return PS_EggDecodeDevelopment(blob, size, scene_id, scene, 0UL, NULL);
+  return PS_EggDecodeDevelopment(blob, size, scene_id, scene, 0UL, NULL, NULL);
 }
 
 uint32_t PS_EggStateLoader_LoadDevelopment(const uint8_t *blob,
   uint32_t size, ps_scene_runtime_state_scene_t *scene)
 {
-  return PS_EggDecodeDevelopment(blob, size, 0UL, scene, 1UL, NULL);
+  return PS_EggDecodeDevelopment(blob, size, 0UL, scene, 1UL, NULL, NULL);
 }
 
 uint32_t PS_EggStateLoader_ValidateV2Profile(const uint8_t *blob, uint32_t size,
@@ -3229,7 +3233,27 @@ uint32_t PS_EggStateLoader_ValidateV2Profile(const uint8_t *blob, uint32_t size,
   if (size > PS_TARGET_PROFILE_PACKAGE_RESIDENT_BYTES)
   { result->reason = PS_EGG_V2_PROFILE_CAPACITY; return 1UL; }
   result->reason = PS_EGG_V2_PROFILE_PACKAGE;
-  status = PS_EggDecodeDevelopment(blob, size, 0UL, NULL, 0UL, result);
+  status = PS_EggDecodeDevelopment(blob, size, 0UL, NULL, 0UL, result, NULL);
+  result->loader_reason = g_ps_egg_validation_probe.reason;
+  return status;
+}
+
+uint32_t PS_EggStateLoader_DecodeV2Candidate(const uint8_t *blob, uint32_t size,
+  ps_scene_runtime_state_scene_t *scene, ps_egg_sprite_catalog_t *catalog,
+  ps_egg_v2_profile_result_t *result)
+{
+  uint32_t status;
+  if (scene != NULL) { (void)memset(scene, 0, sizeof(*scene)); }
+  if (catalog != NULL) { (void)memset(catalog, 0, sizeof(*catalog)); }
+  if (result == NULL) { return 1UL; }
+  (void)memset(result, 0, sizeof(*result));
+  result->item_index = PS_SCENE_RUNTIME_INDEX_INVALID;
+  if ((blob == NULL) || (size == 0UL) || (scene == NULL) || (catalog == NULL))
+  { result->reason = PS_EGG_V2_PROFILE_ARGUMENT; return 1UL; }
+  if (size > PS_TARGET_PROFILE_PACKAGE_RESIDENT_BYTES)
+  { result->reason = PS_EGG_V2_PROFILE_CAPACITY; return 1UL; }
+  result->reason = PS_EGG_V2_PROFILE_PACKAGE;
+  status = PS_EggDecodeDevelopment(blob, size, 0UL, scene, 0UL, result, catalog);
   result->loader_reason = g_ps_egg_validation_probe.reason;
   return status;
 }

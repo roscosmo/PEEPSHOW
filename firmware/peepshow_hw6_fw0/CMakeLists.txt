@@ -95,6 +95,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/ps_scene_object_graph.c
     Core/Src/ps_scene_object_render.c
     Core/Src/ps_scene_object_waiting.c
+    Core/Src/ps_scene_object_display_admission.c
     Core/Src/ps_object_development_egg_autogen.c
     Core/Src/ps_scene_runtime.c
     Core/Src/ps_ui_router.c

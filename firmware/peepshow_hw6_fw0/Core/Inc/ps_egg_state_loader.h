@@ -40,6 +40,17 @@ typedef struct
   uint32_t opaque;
 } ps_egg_state_loader_sprite_frame_t;
 
+/* Read-only view exported only after full candidate validation. All spans borrow
+ * immutable resident package bytes; keep that package leased until display ACK.
+ */
+typedef struct
+{
+  const uint8_t *records;
+  const uint8_t *sprite_payload;
+  uint32_t sprite_size;
+  uint16_t frame_count;
+} ps_egg_sprite_catalog_t;
+
 typedef struct
 {
   const uint8_t *adpcm;
@@ -155,6 +166,15 @@ typedef struct
  */
 uint32_t PS_EggStateLoader_ValidateV2Profile(const uint8_t *blob, uint32_t size,
   ps_egg_v2_profile_result_t *result);
+/* Same validation, exporting a candidate descriptor/catalog without activation.
+ * Outputs are cleared on rejection. This does not authorize installation.
+ */
+uint32_t PS_EggStateLoader_DecodeV2Candidate(const uint8_t *blob, uint32_t size,
+  ps_scene_runtime_state_scene_t *scene, ps_egg_sprite_catalog_t *catalog,
+  ps_egg_v2_profile_result_t *result);
+/* Pure lookup in a validated immutable view; never falls back to active assets. */
+uint32_t PS_EggStateLoader_GetCatalogSpriteFrame(const ps_egg_sprite_catalog_t *catalog,
+  uint32_t frame_id, ps_egg_state_loader_sprite_frame_t *frame);
 
 /* thRuntime only. Full candidate validation without activating or replacing it. */
 uint32_t PS_EggStateLoader_ValidatePackage(const uint8_t *blob, uint32_t size);
