@@ -14,6 +14,6 @@ else
   printf "UI page / runtime class / life / display renders / success = %u / %u / %u / %u / %u\n", g_ps_ui_router_probe.current_page, g_ps_hw6_rtos_probe.runtime_current_class, g_ps_hw6_rtos_probe.runtime_lifecycle, g_ps_hw6_owner_probe.display_ui_render_count, g_ps_hw6_owner_probe.display_success
   printf "STOP2 entries = %u (must not increase while this development scene is active)\n", g_ps_hw6_rtos_probe.stop2_auto_entry_count
   printf "Expected: active/development=1/1, launch/result/queue/wait/fault=0, UI/class/life=6/2/2. Consumed alone is not proof of drawing: require result=0, display success=1 and visible movement.\n"
-  printf "Default fixture: state 1/2 moves marker x=24/128, y=100. First asset cycles 65537..65540; A must preserve the sprite phase and remaining frame time.\n"
+  printf "Studio fixture: state 1/2 selects marker x=32/120, y=104. First asset cycles 65537..65538 every 500 ms; A then B must preserve sprite phase and remaining frame time. B returns to state 1, not the shell.\n"
   printf "If halted during a transfer, request/consumed and result may still be incomplete. Resume before judging that as a failed render.\n"
 end

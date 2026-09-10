@@ -10,7 +10,8 @@ import unittest
 
 from test_firmware_package_workflow import TOOL_ROOT, firmware_function
 from test_firmware_shape_primitives import panel_pixels
-from build_object_development import fixture_bundle, render_c
+from build_object_development import DEFAULT_PROJECT, fixture_bundle, render_c
+from peepshow_authoring.project import load_project
 from peepshow_authoring.compiler import build_development_egg_v2, build_egg, EggCompileError
 
 
@@ -42,13 +43,13 @@ class ObjectAwakeTests(unittest.TestCase):
         if result.returncode:
             raise AssertionError(result.stdout + result.stderr)
 
-    def run_bundle(self, bundle, reject=False):
+    def run_bundle(self, bundle, reject=False, gui=False):
         blob = build_development_egg_v2(bundle)
         path = self.work / "fixture.egg"
         path.write_bytes(blob)
         path.with_suffix(".egg.sha256").write_bytes(hashlib.sha256(blob[:-40]).digest())
         output = self.work / "pixels.bin"
-        result = subprocess.run([str(self.exe), str(path), str(output), str(int(reject))],
+        result = subprocess.run([str(self.exe), str(path), str(output), str(2 if gui else int(reject))],
             capture_output=True, text=True, timeout=10, env=self.env)
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         return output.read_bytes() if not reject else None
@@ -85,8 +86,27 @@ class ObjectAwakeTests(unittest.TestCase):
             "actions": [{"kind": "object.set_position", "object_ref": "marker", "x": 64}]}]
         self.run_bundle(replace(bundle, scenes=(scene,)), reject=True)
 
+    def test_gui_fixture_runtime_continuity_and_pixels(self):
+        bundle = load_project(DEFAULT_PROJECT)
+        actual = self.run_bundle(bundle, gui=True)
+        expected = bytearray()
+        for phase, marker_x in [(0, 32), (1, 32), (1, 120), (1, 120), (1, 32), (0, 32), (1, 32)]:
+            logical = bytearray(3024)
+            frame = bundle.frames[phase]
+            for y in range(144):
+                for x in range(168):
+                    black = marker_x <= x < marker_x + 16 and 104 <= y < 120
+                    if 80 <= x < 88 and 40 <= y < 56:
+                        index = (y - 40) * frame.row_stride_bytes + (x - 80) // 8
+                        bit = 128 >> ((x - 80) % 8)
+                        black = bool(frame.pixels[index] & frame.mask[index] & bit)
+                    if black:
+                        logical[y * 21 + x // 8] |= 128 >> (x % 8)
+            expected.extend(panel_pixels(logical))
+        self.assertEqual(expected, actual)
+
     def test_checked_in_fixture_is_reproducible_and_not_ordinary_export(self):
-        bundle = fixture_bundle()
+        bundle = load_project(DEFAULT_PROJECT)
         self.assertEqual(render_c(build_development_egg_v2(bundle)),
             (self.firmware / "Core/Src/ps_object_development_egg_autogen.c").read_text(encoding="ascii"))
         with self.assertRaises(EggCompileError):

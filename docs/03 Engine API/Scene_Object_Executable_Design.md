@@ -447,8 +447,10 @@ groups and prefabs remain later increments with their own acceptance evidence.
 
 ### Awake Development Integration
 
-The first explicit device path is now implemented, with hardware verification
-pending. See [[Scene_Object_Awake_Development_Test]] for the exact subset, build
+The first explicit device path is implemented and its original awake fixture
+passed hardware animation, independent state overrides and shell exit. The next
+GUI-authored fixture passes native checks and awaits its hardware test.
+See [[Scene_Object_Awake_Development_Test]] for the exact subset, build
 fixture, owner handoff and two GDB helpers. The existing object bank/graph now
 feed a pointer-free render model and the real display owner. Local state changes
 do not reset the object clock. The development session deliberately remains

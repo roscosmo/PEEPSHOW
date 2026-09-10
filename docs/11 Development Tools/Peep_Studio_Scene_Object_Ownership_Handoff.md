@@ -720,8 +720,9 @@ firmware is unchanged. Ordinary V2 export remains blocked by
 
 ## First Awake Hardware Fixture Handoff
 
-OS now has an explicit development-only V2 activation/display path. Hardware
-verification is pending; service API 41, target capabilities and ordinary export
+OS now has an explicit development-only V2 activation/display path. The original
+awake fixture passed hardware animation, independent marker changes and shell
+exit. Service API 41, target capabilities and ordinary export
 remain unchanged. This is not permission to enable V2 egg export in Studio.
 
 For the first GUI-authored hardware fixture, provide one V2 scene with continuous
@@ -733,7 +734,13 @@ can return to the shell. No requirement for a focus or cursor object is added.
 
 OS generates the development egg from the supplied project using
 `tools/authoring/build_object_development.py --project <path>` and builds the
-firmware. The independent default fixture is already included so testing does
-not wait for GUI work. Details, commands and evidence requirements are in
+firmware. GUI's source-only fixture from commit
+`5c059bfce37770319cb49f09a14246202c42e039` is now imported unchanged at
+`examples/authoring/native_v2_continuity.peepproj` and is the development builder's
+default. Its 1,344-byte egg passes native C activation, A/B animation continuity
+and exact raster checks; hardware verification of this fixture remains pending.
+A moves the marker right and B returns it left; neither exits to the shell.
+The earlier synthetic fixture remains a native regression test. Details, commands
+and evidence requirements are in
 [[Scene_Object_Awake_Development_Test]]. GUI should continue capability-gated
 authoring; no shared service or Studio files changed in this firmware increment.

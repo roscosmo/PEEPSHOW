@@ -1,6 +1,6 @@
 # Scene Object Awake Development Test
 
-Status: implemented for explicit HW6 development launch; hardware proof pending.
+Status: original awake fixture passed on HW6; GUI-authored fixture hardware test pending.
 This is not normal V2 export, installation, automatic boot, or STOP2 admission.
 
 ## Delivered Path
@@ -41,36 +41,38 @@ reset, preventing reuse while a delayed display command could still read it.
 There are no automatic launch retries. Launch refusals report an admission mask.
 
 The explicit development session blocks automatic STOP2 through the existing
-runtime-busy admission bit, including while suspended in the shell. B exit ends
-the session and releases that restriction. Do not force manual STOP2 during this
+runtime-busy admission bit, including while suspended in the shell. A shell-exit
+action or reset ends the session and releases that restriction; the current GUI
+fixture uses B for a local transition, not shell exit. Do not force manual STOP2 during this
 test. No clock profiles, drivers, linker regions, pool sizes or stack settings
 are changed. This is not a production always-awake fallback for V2 packages.
 
-## Default Fixture
+## Current GUI Fixture
 
-`tools/authoring/build_object_development.py` creates a separate 1,824-byte V2
-proof egg and `ps_object_development_egg_autogen.c`. It does not modify the legacy
-example project or the normal embedded egg. The generated fixture contains:
+Source: `examples/authoring/native_v2_continuity.peepproj`, imported unchanged
+from GUI commit `5c059bfce37770319cb49f09a14246202c42e039`. Only the project
+directory was copied, not Studio code or shared service changes.
 
-- A 32x32 four-frame sprite at `(68,28)`, with a 250 ms frame duration. A small
-  square moves around its four corners.
-- A separate 16x16 lower marker, whose base position is `(24,100)`.
-- Two states. The second state overrides only the marker's X coordinate to 128.
-- A toggles states. B returns to the shell. Neither state controls the sprite.
+`tools/authoring/build_object_development.py` now defaults to that project and
+generates a separate 1,344-byte development egg in
+`ps_object_development_egg_autogen.c`. The normal embedded egg and installed
+package remain untouched. The fixture contains:
 
-Regenerate the default fixture before building if its generator changes:
+- An 8x16 scene-owned sprite at `(80,40)`, looping two frames, 500 ms each.
+- A separate 16x16 square at `(32,104)`; the second state overrides only X to 120.
+- A moves from state 1 to state 2; B returns from state 2 to state 1.
+- Neither state overrides the sprite. No shell-exit action is authored.
+
+Regenerate the checked-in fixture before building if its source changes:
 
 ```powershell
 tools/.venv/Scripts/python.exe tools/authoring/build_object_development.py
 ```
 
-The same development builder accepts `--project <path.peepproj>` for the GUI
-fixture handoff. OS should review that fixture against the subset above, generate
-it explicitly and rebuild. This is not a new Studio export capability. The
-checked-in default-fixture reproducibility test intentionally tracks the default;
-integrating a different checked-in hardware fixture also requires updating that
-test's expected fixture. `--output` can instead write a separate development C
-artifact without replacing the checked-in proof.
+The builder still accepts `--project <path.peepproj>` and `--output <path.c>`.
+This is not a new Studio export capability. The reproducibility test tracks the
+checked-in GUI source. The original synthetic four-corner fixture remains in
+`fixture_bundle()` for native regression coverage, but is no longer the CLI default.
 
 ## Hardware Sequence
 
@@ -78,18 +80,18 @@ artifact without replacing the checked-in proof.
    MENU using START. Leave audio stopped and MSC inactive, then halt.
 2. Source `__fw0_object_scene_awake_enable.gdb` and resume. It only queues work
    for `thRuntime`; it does not call target functions from GDB or write storage.
-3. Watch the four-corner animation. Press A several times at different points in
-   its cycle. The lower marker must change sides without restarting the sprite.
+3. Watch the small two-frame sprite. Alternate A then B at different points in
+   its cycle. The lower square must change sides without restarting the sprite.
 4. Halt once and source `__fw0_object_scene_awake_prints.gdb`. Require active V2,
    successful launch/render/queue/wait, no lease fault and visible movement.
    The animation's last projected phase/residual and actual display result are
    reported separately from thread/input counters.
-5. Resume and press B. The shell must work again. Optionally repeat launch and
-   check START/shell resume pauses the animation rather than restarting it.
+5. START opens the shell; B is a local state transition in this fixture. Reset
+   ends the development session. Shell suspension keeps automatic STOP2 blocked.
 
 These two new helpers require development/scene APIs `1/22` and use device-resident
-results, not GDB convenience-variable history. The default sprite asset IDs cycle
-65537..65540. State IDs 1/2 select marker X=24/128, Y=100. Automatic STOP2 entry
+results, not GDB convenience-variable history. The GUI sprite asset IDs cycle
+65537..65538. State IDs 1/2 select marker X=32/120, Y=104. Automatic STOP2 entry
 count must not advance while the development scene is active. This awake test is
 not a power measurement; halt/resume also cannot establish real-time cadence.
 
@@ -111,11 +113,28 @@ launch incorrectly sent LAUNCH_RUNTIME through the restricted UI lifecycle helpe
 which rejected it and triggered package-error cleanup. Launch now publishes the
 existing UI router runtime-launch request after a successful first render. The
 new native launch test reproduced the failure before this correction and passes
-afterward. Hardware retest remains pending.
+afterward.
 
-Local verification: **260 authoring/native tests pass**, target-profile generated
+### Recorded Hardware Pass (2026-09-10)
+
+The original four-corner fixture was retested after the launch fix. The user
+confirmed visible animation, A moving the independent marker without interrupting
+that animation, and B exiting to the shell. The dump showed launch/render/queue/
+wait status zero, no lease fault, 51/51 display requests consumed successfully,
+active/development=1/1 and UI/class/lifecycle=6/2/2. STOP2 entries stayed zero,
+as required for this awake-only test. This pass is checkpointed in
+`013f4f8ae2ae7dcf3b4d56e6288b8a4a49270ba5`.
+
+The GUI fixture now also has native coverage through the real C runtime and
+production raster functions. Seven complete framebuffer outputs are checked.
+At 650 ms A preserves frame 1 with 350 ms remaining; after another 300 ms B
+preserves frame 1 with 50 ms remaining. Subsequent advances cross the loop
+boundary without restarting. Underlying marker X stays 32 while effective X
+changes to 120 and back. GUI-fixture hardware verification remains pending.
+
+Local verification: **261 authoring/native tests pass**, target-profile generated
 files are current, and the full HW6 Debug firmware links successfully. Linker
-usage is RAM 438,344 bytes, ROM 852,904 bytes and SRAM4 15,480 bytes; no new SRAM4
+usage is RAM 438,344 bytes, ROM 852,424 bytes and SRAM4 15,480 bytes; no new SRAM4
 objects are introduced. The new explicit path uses 4,180 bytes of static state
 plus normal alignment. Existing scene descriptor slots are reused.
 

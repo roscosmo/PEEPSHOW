@@ -7,6 +7,8 @@ from pathlib import Path
 from peepshow_authoring.compiler import build_development_egg_v2
 from peepshow_authoring.project import load_project
 
+DEFAULT_PROJECT = Path(__file__).resolve().parents[2] / "examples/authoring/native_v2_continuity.peepproj"
+
 
 def fixture_bundle():
     bundle = load_project(Path(__file__).parent / "peepshow_authoring/test_project.peepproj")
@@ -73,11 +75,12 @@ def render_c(blob):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--project", type=Path, help="Native V2 fixture from Studio; default is the isolated proof")
+    parser.add_argument("--project", type=Path, default=DEFAULT_PROJECT,
+                        help="Native V2 project; defaults to the checked-in Studio continuity fixture")
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[2] /
                         "firmware/peepshow_hw6_fw0/Core/Src/ps_object_development_egg_autogen.c")
     args = parser.parse_args()
-    blob = build_development_egg_v2(load_project(args.project) if args.project else fixture_bundle())
+    blob = build_development_egg_v2(load_project(args.project))
     args.output.write_text(render_c(blob), encoding="ascii", newline="\n")
     print(f"Development-only V2 egg: {len(blob)} bytes -> {args.output}")
 

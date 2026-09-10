@@ -11,9 +11,10 @@ else
     else
       set g_ps_object_development_request = 1
       printf "Queued. Resume normally. No install or flash write is performed.\n"
-      printf "Default fixture: a square moves around four corners every 250 ms. A moves the separate lower marker without restarting that animation. B returns to the shell.\n"
+      printf "Studio fixture: a small sprite at (80,40) alternates two frames every 500 ms. A moves the lower square right; B moves it left. Neither should restart the sprite.\n"
+      printf "B does NOT exit this fixture. START opens the shell; reset ends the development session.\n"
       printf "This is explicitly AWAKE ONLY: automatic STOP2 is blocked while the development scene is active, including shell suspension. Do not force manual STOP2.\n"
-      printf "After observing animation and pressing A several times, halt and source __fw0_object_scene_awake_prints.gdb.\n"
+      printf "After observing animation and alternating A then B several times, halt and source __fw0_object_scene_awake_prints.gdb.\n"
     end
   end
 end

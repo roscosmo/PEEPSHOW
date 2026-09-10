@@ -33,6 +33,44 @@ static void frame(FILE *output)
   assert(fwrite(s_display_framebuffer, 1, sizeof(s_display_framebuffer), output) == sizeof(s_display_framebuffer));
 }
 
+static void gui_fixture(FILE *output)
+{
+  uint32_t next, epoch = PS_SceneRuntime_SceneActivation();
+  assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0 && next == 500);
+  assert(model.element_count == 2 && model.elements[0].asset_id == 65537);
+  assert(model.elements[1].x == 32 && model.elements[1].y == 104);
+  frame(output);
+  assert(PS_SceneRuntime_AdvanceDevelopmentObjects(650) == 0);
+  assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0 && next == 350);
+  assert(model.elements[0].asset_id == 65538);
+  frame(output);
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 1) == PS_SCENE_RUNTIME_INPUT_APPLIED);
+  assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0 && next == 350);
+  assert(model.state_id == 2 && model.elements[1].x == 120);
+  assert(model.elements[0].asset_id == 65538 && model.timeline_revision == epoch);
+  assert(s_ps_object_graph.objects.objects[1].x == 32);
+  frame(output);
+  assert(PS_SceneRuntime_AdvanceDevelopmentObjects(300) == 0);
+  assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0 && next == 50);
+  assert(model.elements[0].asset_id == 65538);
+  frame(output);
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 2) == PS_SCENE_RUNTIME_INPUT_APPLIED);
+  assert(PS_SceneRuntime_TakeShellExitRequest() == 0);
+  assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0 && next == 50);
+  assert(model.state_id == 1 && model.elements[1].x == 32);
+  assert(model.elements[0].asset_id == 65538 && model.timeline_revision == epoch);
+  assert(s_ps_object_graph.objects.objects[1].x == 32);
+  frame(output);
+  assert(PS_SceneRuntime_AdvanceDevelopmentObjects(100) == 0);
+  assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0 && next == 450);
+  assert(model.elements[0].asset_id == 65537);
+  frame(output);
+  assert(PS_SceneRuntime_AdvanceDevelopmentObjects(500) == 0);
+  assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0 && next == 450);
+  assert(model.elements[0].asset_id == 65538);
+  frame(output);
+}
+
 int main(int argc, char **argv)
 {
   uint32_t size, next, phase, epoch, status;
@@ -41,12 +79,21 @@ int main(int argc, char **argv)
   size = read_blob(argv[1], candidate);
   set_hash(argv[1], candidate, size);
   status = PS_SceneRuntime_EnterDevelopmentObjects(candidate, size);
-  if (atoi(argv[3]) != 0)
+  if (atoi(argv[3]) == 1)
   {
     assert(status != 0 && PS_SceneRuntime_StateSceneActive() == 0);
     return 0;
   }
   assert(status == 0 && PS_SceneRuntime_DevelopmentObjectsActive() == 1);
+  if (atoi(argv[3]) == 2)
+  {
+    output = fopen(argv[2], "wb"); assert(output != NULL);
+    gui_fixture(output);
+    fclose(output);
+    PS_SceneRuntime_ExitStateScene();
+    assert(PS_EggStateLoader_Load(candidate, size, size, &s_ps_scene_runtime_scene_slots[0]) != 0);
+    return 0;
+  }
   epoch = PS_SceneRuntime_SceneActivation();
   assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0 && next == 250);
   assert(model.element_count == 2 && model.elements[0].asset_id == 65537);

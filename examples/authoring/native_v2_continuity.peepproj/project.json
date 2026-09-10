@@ -1,0 +1,45 @@
+{
+  "schema_id": "peepshow.authoring.project",
+  "schema_version": 1,
+  "project_id": "project.native_v2_continuity",
+  "project_name": "native_v2_continuity",
+  "package": {
+    "package_id": "dev.peepshow.native_v2_continuity",
+    "display_name": "native_v2_continuity",
+    "version": "0.1.0"
+  },
+  "selected_target_profile": "hw6_fw0_development",
+  "entry_scene": "main",
+  "scene_sources": [
+    "scenes/main.state.json"
+  ],
+  "validation": {
+    "build_profile": "development",
+    "ruleset_version": 1
+  },
+  "asset_sources": [
+    "assets/catalog.json"
+  ],
+  "editor": {
+    "state_graph": {
+      "scenes": {
+        "main": {
+          "nodes": {
+            "marker_right": {
+              "x": 420,
+              "y": 0
+            },
+            "start": {
+              "x": 0,
+              "y": 0
+            },
+            "scene-entry": {
+              "x": -260,
+              "y": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}
