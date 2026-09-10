@@ -766,9 +766,17 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   undo/redo, save/reload and inspector layout at 1280/1440 px. Shared backend and firmware
   are unchanged. Ordinary V2 export stays disabled; migration remains deferred.
 
-- Next hardware fixture: `examples/authoring/native_v2_timer_four_frames.peepproj`.
+- Frozen regression fixture: `examples/authoring/native_v2_timer_four_frames.peepproj`
+  at commit `de80153`.
   It retains the timer and A/B override behavior but uses four numbered 24x24
   frames (1, 2, 3, 4), 400 ms each. The 1600 ms loop does not restart naturally
   at the 2000 ms timer expiry, making an unintended reset to frame 1 observable.
-  Host checks verify distinct rendered frames, sequence, wrap and continuity;
-  this separate fixture still needs its own HW6 pass. Ordinary export is blocked.
+  Host checks verify distinct rendered frames, sequence, wrap and continuity.
+  OS reports an awake-only HW6 pass: the numbered animation visibly continues
+  across A/B marker changes without resetting; the scene timer applied once with
+  zero errors and its square was visible. Preserve this fixture unchanged.
+- OS next owns V2 STOP2/LPBAM animation and timer continuity verification. The
+  awake-only result does not establish low-power continuity. No new service
+  commands or capabilities accompanied this pass; Studio continues against the
+  existing advertised authoring capabilities. Ordinary V2 export remains disabled
+  until the production capability handoff. Migration remains deferred.
