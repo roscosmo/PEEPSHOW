@@ -474,5 +474,43 @@ Shell suspension and package exit/replacement stop and discard active/queued
 SFX through a bounded owner acknowledgement before source reuse. Returning from
 the shell does not replay those cues. Future resumable music/dialogue requires
 an explicit capability, independent of clip duration. Native tests and the
-firmware build pass; this increment's audio hardware verification is pending.
+firmware build pass; audible playback and shell-stop/silent-resume have passed
+the scoped hardware check recorded in the development-test document.
 See [[Audio_Contract]] and [[Scene_Object_Awake_Development_Test]].
+
+### V2 Waiting Schedule Compiler
+
+`ps_scene_object_waiting.c` is the first low-power preparation increment. It is
+a pure, allocation-free compiler, not a new active display path. It reads a
+validated object bank without mutating it and produces a pointer-free base
+snapshot plus per-object frame references for at most the existing 12 combined
+steps. Caller-owned scratch avoids a hidden heap or global working buffer.
+
+Visible, unmasked animation supplies the timing constraints. The common quantum
+is the greatest common divisor of frame durations; the cycle is the least
+common multiple of their loop durations. Arithmetic is checked before narrowing
+or accepting the schedule. A schedule exceeding the bounded step capacity is
+rejected explicitly, not shortened or approximated. Hidden and statically masked
+clips do not demand display wakeups. With no visible animation the result is
+one held frame and no display deadline; object clocks still belong to runtime.
+
+The program captures remaining time in the initial interval separately from the
+steady quantum. For the numbered fixture captured at scene time 650 ms, it
+starts on digit 2 with 150 ms remaining, then advances every 400 ms. Rebuilding
+after a state override does not restart that clock. Unequal frame durations
+appear as exact repeated steps. Full-scene model projection preserves static
+objects and layering rather than clearing sprite bounds over other objects.
+
+The pure resolver maps absolute scene elapsed time to a program step and its
+remaining interval, including large elapsed values and loop wrap. Backwards
+time is rejected. Shell suspension pauses scene time; STOP2 elapsed time must
+be supplied by the Platform. This arithmetic is not a substitute for the real
+LPDMA progress snapshot or transfer completion on hardware wake.
+
+The integrating caller must invalidate a program on object/state/scene changes,
+lease it immutably to the display owner, admit actual row/payload/node budgets,
+honor the first partial interval, and reconcile RTC elapsed time plus display
+progress before allowing runtime events after wake. These owner and hardware
+connections are the next increment. Automatic V2 STOP2 remains blocked and the
+current development payload/helpers remain unchanged. No export capability is
+advertised by the existence of this compiler.

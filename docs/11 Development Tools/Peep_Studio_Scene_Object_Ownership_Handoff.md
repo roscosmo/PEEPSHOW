@@ -855,6 +855,18 @@ reveal and one-shot consumption. Five framebuffer outputs are compared exactly.
 The current GDB helpers describe this numbered fixture, which intentionally has
 no audio or L/R controls. Hold START for shell access; reset ends the session.
 
-This fixture's device test remains pending. API 41, ordinary export restrictions,
+This fixture's device test passed: the user clearly observed A/B continuity;
+the timer applied once with zero errors and the reveal square was visible.
+OS checkpoint: `6caa8fe4ed16ece6c9d74cee2c8750dd8277ab4e`.
+API 41, ordinary export restrictions,
 and the awake-only scope are unchanged. GUI may continue supported authoring UI
 work; no backend command or capability change is required for this integration.
+
+## Low-Power Preparation Status
+
+OS has added a pure bounded V2 waiting-schedule compiler, preserving numbered
+frame timing and independent object state without mutating the live bank.
+It is native-tested only and not connected to STOP2 admission yet. Display-owner
+leasing, LPBAM resource admission and hardware wake/time reconciliation follow.
+GUI needs no source changes or new fixture for this step. Keep ordinary V2
+export disabled and retain the passed numbered fixture unchanged.

@@ -7,7 +7,7 @@ and visually observed A/B animation continuity, separately from the OS variant.
 This is not normal V2 export, installation, automatic boot, or STOP2 admission.
 The OS SFX variant passed audible A/B and long-tone playback plus shell-stop and
 silent resume. The current payload is the exact GUI numbered four-frame timer
-fixture from `de80153`; its hardware check is pending.
+fixture from `de80153`, which also passed the awake hardware check.
 
 ## Delivered Path
 
@@ -332,7 +332,37 @@ Hardware sequence:
 The helpers now describe this exact fixture. APIs remain `3/22/1`. Hold START
 for the shell; reset ends the development session. Automatic STOP2 remains
 blocked, even during shell suspension. Normal V2 export remains unavailable.
-Hardware verification of this exact numbered fixture is pending.
+Hardware verification of this exact numbered fixture passed at checkpoint
+`6caa8fe4ed16ece6c9d74cee2c8750dd8277ab4e`. The user confirmed that the clearer
+numbered animation does not reset when A/B changes the lower square. The timer
+applied once with zero errors and its square was visible at `(76,80)`.
+Display request/complete=27/26 with result=NOT_RUN and success=0 was captured
+inside framebuffer hashing, before render completion; it is not evidence of a
+failed render. The single cumulative STOP2 entry is not evidence of V2 sleep.
+
+## Low-Power Preparation Increment
+
+The pure V2 waiting-program compiler is now implemented and tested against the
+live object engine and production raster functions. It preserves the current
+partial frame interval, composes complete scene models including overlays,
+supports exact unequal durations and combined loops, and rejects schedules
+over the existing 12-step limit. Hidden or statically masked clips require only
+a held frame. The original object bank is never advanced by preparation.
+
+Verification: 279 authoring/native tests pass, the generated target profile is
+current, and the full Debug build links with unchanged RAM/ROM/SRAM4 usage.
+Tests include exact pixel comparisons against the live engine at partial-frame
+boundaries, loop wrap and elapsed values up to UINT64_MAX. Suspended sources,
+backwards time, invalid projection steps and arithmetic/capacity failures are
+rejected. Failure leaves the program unavailable rather than retaining a stale
+step count.
+
+This is host/native preparation, not hardware LPBAM admission. The source is
+compiled by the firmware build but is not called by the active runtime yet;
+dead-code elimination leaves the linked image size unchanged. The numbered
+fixture and debugger helpers remain awake-only. No new device test or reflash
+is needed for this isolated increment. See [[Scene_Object_Executable_Design]]
+for the owner handoff, partial-interval and wake reconciliation work still due.
 
 ## Verification and Next Work
 
