@@ -9,6 +9,9 @@ else
   printf "display request / consumed / result / queue / wait / lease fault = %u / %u / 0x%x / 0x%x / 0x%x / %u\n", g_ps_object_development_probe.render_request, g_ps_object_development_probe.render_complete, g_ps_object_development_probe.render_status, g_ps_object_development_probe.queue_status, g_ps_object_development_probe.wait_status, g_ps_object_development_probe.lease_fault
   printf "last projected elapsed ms / next tick / state / first asset = %u / %u / %u / %u\n", g_ps_object_development_probe.elapsed_ms, g_ps_object_development_probe.next_tick, g_ps_object_development_probe.state_id, g_ps_object_development_probe.first_asset_id
   printf "first object phase / remaining ms / animation visible = %u / %u / %u\n", s_ps_object_snapshot.objects[0].step, s_ps_object_snapshot.objects[0].remaining_ms, s_ps_object_snapshot.objects[0].animation_visible
+  if s_ps_object_snapshot.count > 8
+    printf "slow indicator phase / remaining ms / animation visible = %u / %u / %u\n", s_ps_object_snapshot.objects[8].step, s_ps_object_snapshot.objects[8].remaining_ms, s_ps_object_snapshot.objects[8].animation_visible
+  end
   printf "last projected marker x/y = %d / %d\n", s_ps_object_snapshot.objects[1].effective.x, s_ps_object_snapshot.objects[1].effective.y
   if s_ps_object_snapshot.count >= 3
     printf "timer marker visible/x/y (after 2s: 1/76/116) = %u / %d / %d\n", (s_ps_object_snapshot.objects[2].effective.flags & 1), s_ps_object_snapshot.objects[2].effective.x, s_ps_object_snapshot.objects[2].effective.y
@@ -23,6 +26,7 @@ else
   printf "SFX voices active/peak/completed refills/decoded/underrun = %u / %u / %u / %u / %u / %u\n", g_ps_hw6_owner_probe.audio_sfx_voice_active_count, g_ps_hw6_owner_probe.audio_sfx_voice_peak_count, g_ps_hw6_owner_probe.audio_sfx_voice_complete_count, g_ps_hw6_owner_probe.audio_sfx_stream_refill_count, g_ps_hw6_owner_probe.audio_sfx_decoded_samples, g_ps_hw6_owner_probe.audio_sfx_stream_underrun_count
   printf "Expected: active/development=1/1, launch/result/queue/wait/fault=0, UI/class/life=6/2/2. Consumed alone is not proof of drawing: require result=0, display success=1 and visible movement.\n"
   printf "Structured OS fixture: state 1/2 selects marker x=32/120, y=68, inside the B/A slots. Top digits at (72,12) cycle every 400 ms. A/B must preserve phase and remaining frame time.\n"
+  printf "Current dual fixture also has a four-cell indicator at (72,44), advancing every 800 ms. A/B and timer reveal must preserve both clips.\n"
   printf "At 2 seconds the scene timer reveals the third square once, without state entry or animation restart; digit 2 is due at expiry. The square stays visible through later A/B changes.\n"
   printf "No audio or L/R controls are authored. Audio counters may describe an earlier installed package. HOLD START opens the shell; reset ends the development session.\n"
   printf "If halted during a transfer, request/consumed and result may still be incomplete. Resume before judging that as a failed render.\n"

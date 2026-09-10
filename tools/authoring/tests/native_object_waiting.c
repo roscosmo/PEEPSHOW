@@ -25,6 +25,7 @@ int main(int argc, char **argv)
     program.step_count = 4;
     assert(PS_ObjectWaiting_Build(&before, 1, &program, &workspace) == PS_OBJECT_WAITING_CAPACITY);
     assert(program.step_count == 0);
+    assert(memcmp(&before, &s_ps_object_graph.objects, sizeof(before)) == 0);
     return 0;
   }
   assert(PS_ObjectWaiting_Build(&before, 1, &program, &workspace) == PS_OBJECT_WAITING_OK);
@@ -32,6 +33,7 @@ int main(int argc, char **argv)
   if (mode == 2) { assert(program.step_count == 1 && program.quantum_ms == 0); }
   if (mode == 3) { assert(program.step_count == 12 && program.quantum_ms == 200); }
   if (mode == 0) { assert(program.step_count == 4 && program.quantum_ms == 400 && program.initial_remaining_ms == 150); }
+  if (mode == 5) { assert(program.step_count == 8 && program.quantum_ms == 400 && program.initial_remaining_ms == 150); }
   output = fopen(argv[2], "wb"); assert(output != NULL);
   for (index = 0; index < sizeof(deltas) / sizeof(deltas[0]); ++index)
   {
@@ -61,12 +63,22 @@ int main(int argc, char **argv)
   assert(reference.elapsed_ms == 650);
   assert(PS_ObjectWaiting_Build(&reference, 1, &program, &workspace) == PS_OBJECT_WAITING_ARGUMENT);
   assert(program.step_count == 0);
-  if (mode == 0)
+  if (mode == 0 || mode == 5)
   {
     assert(PS_SceneRuntime_HandleStateSceneInput(1, 1) == PS_SCENE_RUNTIME_INPUT_APPLIED);
     assert(PS_ObjectWaiting_Build(&s_ps_object_graph.objects, 1, &program, &workspace) == PS_OBJECT_WAITING_OK);
     assert(program.initial_remaining_ms == 150 && program.base.elapsed_ms == 650);
     assert(program.base.objects[0].step == 1 && program.base.objects[1].effective.x == 120);
+    if (mode == 5)
+    {
+      assert(program.base.objects[8].step == 0 && program.base.objects[8].remaining_ms == 150);
+      assert(PS_SceneRuntime_AdvanceDevelopmentObjects(300) == 0);
+      assert(PS_SceneRuntime_HandleStateSceneInput(1, 2) == PS_SCENE_RUNTIME_INPUT_APPLIED);
+      assert(PS_ObjectWaiting_Build(&s_ps_object_graph.objects, 1, &program, &workspace) == PS_OBJECT_WAITING_OK);
+      assert(program.initial_remaining_ms == 250 && program.base.objects[1].effective.x == 32);
+      assert(program.base.objects[0].step == 2 && program.base.objects[0].remaining_ms == 250);
+      assert(program.base.objects[8].step == 1 && program.base.objects[8].remaining_ms == 650);
+    }
     reference = before;
     reference.elapsed_ms = UINT64_MAX - 1;
     assert(PS_ObjectWaiting_Build(&reference, 1, &program, &workspace) == PS_OBJECT_WAITING_TIME);

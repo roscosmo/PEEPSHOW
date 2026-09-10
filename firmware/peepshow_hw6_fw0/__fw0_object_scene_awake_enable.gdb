@@ -11,7 +11,7 @@ else
     else
       set g_ps_object_development_request = 1
       printf "Queued. Resume normally. No install or flash write is performed.\n"
-      printf "Structured OS fixture: top digits 1,2,3,4 at (72,12), 400 ms per frame. Middle slots are B (left) and A (right).\n"
+      printf "Dual-animation OS fixture: top digits at (72,12) advance every 400 ms; the four-cell indicator at (72,44) advances every 800 ms. Middle slots are B (left) and A (right).\n"
       printf "A moves the marker once into A; B moves it once into B. The bottom slot fills after 2 seconds and never moves. All outlines and labels stay fixed.\n"
       printf "This fixture has NO audio, L/R controls or exit action. HOLD START opens the shell; reset ends the development session.\n"
       printf "This is explicitly AWAKE ONLY: automatic STOP2 is blocked while the development scene is active, including shell suspension. Do not force manual STOP2.\n"

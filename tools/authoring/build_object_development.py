@@ -185,6 +185,42 @@ def structured_fixture_bundle():
     return replace(bundle, project=project, scenes=(scene,), frames=tuple(frames), assets=assets)
 
 
+def dual_fixture_bundle():
+    """Two independent clips with a deliberately compatible common interval."""
+    bundle = structured_fixture_bundle()
+    scene = deepcopy(bundle.scenes[0])
+    scene["display_name"] = "Dual Animation Sleep Wake"
+    frames = list(bundle.frames)
+    refs = []
+    for phase in range(4):
+        pixels = bytearray(36)
+        for y in range(12):
+            for x in range(24):
+                cell, column = divmod(x, 6)
+                if column < 5 and (column in (0, 4) or y in (0, 11) or cell == phase):
+                    pixels[y * 3 + x // 8] |= 1 << (7 - x % 8)
+        ref = f"slow_indicator.{phase}"
+        refs.append(ref)
+        frames.append(replace(bundle.frames[0], asset_id="slow_indicator", frame_id=ref,
+            width=24, height=12, row_stride_bytes=3, pixels=bytes(pixels),
+            mask=bytes([255] * 36), opaque=True))
+    assets = deepcopy(list(bundle.assets))
+    assets.append({"asset_id": "slow_indicator", "asset_type": "masked_1bpp",
+        "frames": [{"frame_id": ref,
+            "source_rect": {"x": 0, "y": 0, "width": 24, "height": 12}} for ref in refs]})
+    animations = deepcopy(list(bundle.animations))
+    animations.append({"animation_id": "slow_indicator_loop", "loop_policy": "loop",
+        "frame_refs": refs, "frame_duration_ms": [800] * 4})
+    scene["objects"].append({"object_id": "slow_indicator", "kind": "sprite",
+        "width": 24, "height": 12, "z_order": 5, "layer": "SCENE",
+        "defaults": {"x": 72, "y": 44, "visible": True, "visual_ref": refs[0]},
+        "animation_ref": "slow_indicator_loop"})
+    project = deepcopy(bundle.project)
+    project["package"]["package_id"] = "dev.peepshow.dual_sleep_wake"
+    return replace(bundle, project=project, scenes=(scene,), frames=tuple(frames),
+        assets=assets, animations=animations)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", type=Path, default=DEFAULT_PROJECT,
@@ -195,14 +231,16 @@ def main():
                         help="Use the OS four-frame/audio variant (GUI sources stay unchanged)")
     parser.add_argument("--structured", action="store_true",
                         help="Use labelled B/A slots and a fixed timer slot (GUI source stays unchanged)")
+    parser.add_argument("--dual", action="store_true",
+                        help="Use structured slots with independent 400 ms / 800 ms animations")
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[2] /
                         "firmware/peepshow_hw6_fw0/Core/Src/ps_object_development_egg_autogen.c")
     args = parser.parse_args()
-    if (args.timers or args.sfx or args.structured) and args.project.resolve() != DEFAULT_PROJECT.resolve():
-        parser.error("--timers/--sfx/--structured use checked-in fixtures; omit --project")
-    if sum((args.timers, args.sfx, args.structured)) > 1:
-        parser.error("choose one of --timers, --sfx or --structured")
-    bundle = (structured_fixture_bundle() if args.structured else sfx_fixture_bundle() if args.sfx
+    if (args.timers or args.sfx or args.structured or args.dual) and args.project.resolve() != DEFAULT_PROJECT.resolve():
+        parser.error("--timers/--sfx/--structured/--dual use checked-in fixtures; omit --project")
+    if sum((args.timers, args.sfx, args.structured, args.dual)) > 1:
+        parser.error("choose one of --timers, --sfx, --structured or --dual")
+    bundle = (dual_fixture_bundle() if args.dual else structured_fixture_bundle() if args.structured else sfx_fixture_bundle() if args.sfx
               else timer_fixture_bundle() if args.timers else load_project(args.project))
     blob = build_development_egg_v2(bundle)
     args.output.write_text(render_c(blob), encoding="ascii", newline="\n")

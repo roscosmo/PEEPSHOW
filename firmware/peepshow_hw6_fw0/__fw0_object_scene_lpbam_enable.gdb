@@ -11,10 +11,11 @@ else
     else
       set g_ps_object_development_request = 2
       printf "Queued. Resume normally. The installed package is unchanged.\n"
-      printf "Structured OS fixture: top digits 1,2,3,4 loop at 400 ms per frame. Middle slots are labelled B (left) and A (right).\n"
+      printf "Dual-animation OS fixture: top digits 1,2,3,4 advance every 400 ms. The four-cell indicator below advances left-to-right every 800 ms.\n"
+      printf "Each indicator position spans two digit frames. Their full combined pattern repeats after 3.2 seconds. Middle marker slots are B (left) and A (right).\n"
       printf "The marker starts in B. A moves it once into A; B moves it once into B. Pressing the already-selected button does nothing.\n"
       printf "The bottom slot fills once after 2 seconds, then stays fixed. The outlines and labels must never move.\n"
-      printf "After each A/B change release everything: returning to low-power animation must not move any square or restart the digits.\n"
+      printf "After each A/B change release everything: low-power animation must return without restarting either clip or shifting the marker/labels/outlines.\n"
       printf "HOLD START opens the shell; this development session stays awake while shell-suspended. Reset ends it.\n"
       printf "Do not force manual STOP2 or halt at the sleep edge. Observe first; halt after waking with A/B and source __fw0_object_scene_lpbam_prints.gdb.\n"
       printf "A debugger disconnect is not a reset: reconnect without resetting or reflashing to retain these results.\n"

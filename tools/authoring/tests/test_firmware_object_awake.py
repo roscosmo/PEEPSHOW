@@ -10,7 +10,7 @@ import unittest
 
 from test_firmware_package_workflow import TOOL_ROOT, firmware_function
 from test_firmware_shape_primitives import panel_pixels
-from build_object_development import DEFAULT_PROJECT, fixture_bundle, render_c, structured_fixture_bundle
+from build_object_development import DEFAULT_PROJECT, fixture_bundle, render_c, dual_fixture_bundle
 from peepshow_authoring.project import load_project
 from peepshow_authoring.compiler import build_development_egg_v2, build_egg, EggCompileError
 
@@ -106,7 +106,7 @@ class ObjectAwakeTests(unittest.TestCase):
         self.assertEqual(expected, actual)
 
     def test_checked_in_fixture_is_reproducible_and_not_ordinary_export(self):
-        bundle = structured_fixture_bundle()
+        bundle = dual_fixture_bundle()
         self.assertEqual(render_c(build_development_egg_v2(bundle)),
             (self.firmware / "Core/Src/ps_object_development_egg_autogen.c").read_text(encoding="ascii"))
         with self.assertRaises(EggCompileError):

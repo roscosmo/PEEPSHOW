@@ -90,7 +90,7 @@ int main(int argc, char **argv)
     return 0;
   }
   assert(status == HAL_OK && g_ps_object_lpbam_prepare_probe.reason == 0);
-  assert(program.step_count == (mode == 2 ? 1U : 4U));
+  assert(program.step_count == (mode == 2 ? 1U : mode == 3 ? 8U : 4U));
   assert(program.quantum_ms == (mode == 2 ? 0U : 400U));
   assert(g_ps_object_lpbam_prepare_probe.frames_composed == program.step_count + 1);
   assert(g_ps_object_lpbam_prepare_probe.sequence_used == program.step_count);

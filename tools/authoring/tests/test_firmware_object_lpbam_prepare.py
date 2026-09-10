@@ -9,7 +9,7 @@ import unittest
 
 import test_firmware_object_awake as awake
 from test_firmware_package_workflow import firmware_function
-from build_object_development import DEFAULT_PROJECT, structured_fixture_bundle
+from build_object_development import DEFAULT_PROJECT, structured_fixture_bundle, dual_fixture_bundle
 from peepshow_authoring.compiler import build_development_egg_v2
 from peepshow_authoring.project import load_project
 
@@ -79,6 +79,17 @@ class ObjectLpbamPrepareTests(unittest.TestCase):
             "width": 10, "height": 24, "layer": "UI", "z_order": 3,
             "defaults": {"x": 79, "y": 40, "visible": True}})
         self.check(replace(bundle, scenes=(scene,)))
+
+    def test_dual_animation_payloads_both_states_and_timer_visibility(self):
+        bundle = dual_fixture_bundle()
+        for state in ("start", "marker_right"):
+            for visible in (False, True):
+                with self.subTest(state=state, visible=visible):
+                    scene = deepcopy(bundle.scenes[0])
+                    scene["entry_state"] = state
+                    scene["objects"][2]["defaults"]["visible"] = visible
+                    output = self.check(replace(bundle, scenes=(scene,)), 3)
+                    self.assertIn("steps=8 chunks=16 bytes=9344/10512", output)
 
     def test_capacity_rejection_does_not_change_live_scene_or_framebuffer(self):
         bundle = self.bundle()

@@ -8,7 +8,7 @@ import subprocess
 import unittest
 
 import test_firmware_object_awake as awake
-from build_object_development import DEFAULT_PROJECT
+from build_object_development import DEFAULT_PROJECT, dual_fixture_bundle
 from peepshow_authoring.compiler import build_development_egg_v2
 from peepshow_authoring.project import load_project
 
@@ -47,6 +47,19 @@ class ObjectWaitingTests(unittest.TestCase):
 
     def test_numbered_frames_partial_interval_wrap_and_large_elapsed(self):
         self.check(self.bundle())
+
+    def test_dual_fixture_continuity_and_awkward_timing_rejection(self):
+        bundle = dual_fixture_bundle()
+        self.check(bundle, 5)
+        animations = deepcopy(list(bundle.animations))
+        animations[-1]["frame_duration_ms"] = [700] * 4
+        self.check(replace(bundle, animations=animations), 1)
+
+    def test_dual_hidden_indicator_does_not_expand_visible_schedule(self):
+        bundle = dual_fixture_bundle()
+        scene = deepcopy(bundle.scenes[0])
+        scene["objects"][-1]["defaults"]["visible"] = False
+        self.check(replace(bundle, scenes=(scene,)))
 
     def test_full_scene_preserves_static_overlay(self):
         bundle = self.bundle()

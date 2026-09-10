@@ -10,12 +10,101 @@ and visually observed A/B animation continuity, separately from the OS variant.
 This is not normal V2 export, installation, automatic boot, or STOP2 admission.
 The OS SFX variant passed audible A/B and long-tone playback plus shell-stop and
 silent resume. The exact GUI numbered four-frame timer fixture from `de80153`
-also passed the awake hardware check. The current payload is a separate
-structured OS variant derived from it; GUI's source project is unchanged.
+also passed the awake hardware check. The current payload is the two-animation
+extension of the structured OS variant below. Its combined-animation hardware
+check passed as recorded below; GUI's source project is unchanged.
+
+## Dual Animation Test
+
+The single-animation structured pass is checkpointed at
+`2fa549f72ca6d88259231598963824a4f658758d`. This next increment changes only the
+OS diagnostic payload, helpers, tests and documentation, not the runtime or any
+advertised GUI/export capability. Generate it with:
+
+```powershell
+tools/.venv/Scripts/python.exe tools/authoring/build_object_development.py --dual
+```
+
+The B/A slots and bottom timer square retain their proven positions and actions.
+A ninth object at `(72,44)` adds four outlined cells with one filled cell moving
+left-to-right every **800 ms**. The top digits still advance every **400 ms**.
+Both loops begin with scene entry; A/B and the timer handler must restart neither.
+Every filled indicator cell spans two digit frames. From entry, the pattern is:
+
+| Scene ms | Digit | Indicator cell (left to right) |
+|---|---|---|
+| 0 | 1 | 1 |
+| 400 | 2 | 1 |
+| 800 | 3 | 2 |
+| 1200 | 4 | 2 |
+| 1600 | 1 | 3 |
+| 2000 | 2 | 3; bottom square appears |
+| 2400 | 3 | 4 |
+| 2800 | 4 | 4 |
+| 3200 | 1 | 1; combined loop repeats |
+
+The derived common interval is 400 ms, and the combined cycle is 3200 ms:
+**8 steps, 16 chunks, 9,344 of 10,512 bytes**. Both A/B states and both timer
+visibility states have this payload footprint in native tests. The shared
+native-row span of the two clips avoids separate extra row chunks. This is a
+specific layout result, not a general promise for two animations at these rates.
+
+Native tests compare the complete replayed payload against awake-rendered frames
+over three combined cycles, including rotation initially off. They compare the
+compiled schedule against independent live object advancement at partial frames,
+loop wrap and large elapsed values. A at 650 ms preserves both clips; B at 950 ms
+leaves digit step 2 with 250 ms remaining and indicator step 1 with 650 ms remaining.
+Hiding the second clip reduces the visible schedule to four steps. Changing its
+duration to 700 ms would require 112 combined steps at 100 ms; schedule building
+rejects it without changing live object state. This rejection is native-tested,
+not a new ordinary-export build check or a new hardware fallback policy.
+
+Use `__fw0_object_scene_lpbam_enable.gdb` from shell HOME/MENU after boot. Resume,
+observe both rates during STOP2, then alternate A/B and let the unit return to
+sleep. Neither animation may restart, the marker must move once, and the bottom
+square must stay fixed after its reveal. Wake with A/B, halt, and use
+`__fw0_object_scene_lpbam_prints.gdb`. The helper additionally prints the slower
+object's last projected phase and residual; those are not live DMA state.
+
+The existing `--structured` generator retains the passed single-animation
+variant. Existing numbered GUI project files and the original routes/handlers
+are unchanged. This does not decide the future authored scene-interval policy.
+
+Local verification: **289 authoring/native tests pass**, target-profile and
+whitespace checks pass, and the Debug firmware links. The generated development
+egg is 2,680 bytes. RAM remains 451,600 bytes and SRAM4 15,480 bytes; ROM is
+862,640 bytes. The new slower-object probe expressions resolve against that ELF.
+
+### Dual Animation Hardware Pass (2026-09-10)
+
+The user confirmed the indicator advanced once per two digit frames during
+STOP2, neither animation restarted on A/B, and the marker made no extra movement.
+Verdict: **PASS for this dual-animation development fixture**.
+
+The retained dump reports enabled/active/development=1/1/1, no fault, five V2 WFI
+returns and five sleep measurements/reconciliations. Missing tick time totals
+8,507 ms (latest 1,488 ms), with clock status zero. Wake snapshot, render,
+preferred mapping and timeline resume all succeeded, and the sleep barrier is
+clear. Five object renders completed with zero status/fault. The timer applied
+once, with zero errors and one RTC selection; the bottom square is visible.
+The current selected marker is at x=120 (A).
+
+The reported schedule is eight steps at 400 ms. The last runtime snapshot has
+digit step 3 and indicator step 1, each with 171 ms remaining, consistent with
+their shared next edge. It is not a simultaneous snapshot of the live DMA phase.
+Current payload/commit fields were cleared during redraw, so 16 chunks/9,344
+bytes remain the native-tested footprint rather than a measurement retained in
+this hardware dump. The successful wake/render evidence and visual confirmation
+establish more than thread scheduling or a queued request alone.
+
+This does not establish exact 400/800 ms timing, long-duration drift, quantified
+current, or arbitrary animation-layout admission. Ordinary V2 export/installation
+and GUI capabilities remain unchanged; the 400/700 ms rejection remains native
+coverage only.
 
 ## Structured Sleep/Wake Retest
 
-Generate the current OS diagnostic payload with:
+Generate the passed single-animation OS diagnostic payload with:
 
 ```powershell
 tools/.venv/Scripts/python.exe tools/authoring/build_object_development.py --structured

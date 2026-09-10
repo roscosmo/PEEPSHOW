@@ -15,9 +15,13 @@ else
   printf "wake snapshot/render/map/resume status frame/remaining ticks = 0x%x / 0x%x / 0x%x / 0x%x / %u / %u\n", g_ps_hw6_owner_probe.display_lpbam_wake_snapshot_status, g_ps_hw6_owner_probe.display_lpbam_wake_render_status, g_ps_hw6_owner_probe.display_lpbam_wake_preferred_map_status, g_ps_hw6_rtos_probe.stop2_lpbam_wake_resume_status, g_ps_hw6_rtos_probe.stop2_lpbam_wake_resume_sequence_frame, g_ps_hw6_rtos_probe.stop2_lpbam_wake_resume_remaining_ticks
   printf "timer due/applied/error RTC selections = %u / %u / %u / %u\n", g_ps_hw6_rtos_probe.runtime_state_timer_due_count, g_ps_hw6_rtos_probe.runtime_state_timer_applied_count, g_ps_hw6_rtos_probe.runtime_state_timer_error_count, g_ps_hw6_rtos_probe.runtime_state_timer_rtc_select_count
   printf "last object snapshot phase/remaining/marker x / reveal visible = %u / %u / %d / %u\n", s_ps_object_snapshot.objects[0].step, s_ps_object_snapshot.objects[0].remaining_ms, s_ps_object_snapshot.objects[1].effective.x, (s_ps_object_snapshot.objects[2].effective.flags & 1)
+  if s_ps_object_snapshot.count > 8
+    printf "last slow indicator phase/remaining ms / animation visible = %u / %u / %u\n", s_ps_object_snapshot.objects[8].step, s_ps_object_snapshot.objects[8].remaining_ms, s_ps_object_snapshot.objects[8].animation_visible
+  end
   printf "display request/complete/result/fault = %u / %u / 0x%x / %u\n", g_ps_object_development_probe.render_request, g_ps_object_development_probe.render_complete, g_ps_object_development_probe.render_status, g_ps_object_development_probe.lease_fault
   printf "Expected after wake: enabled=1 fault=0, publish/wake statuses=0, V2 WFI returns>0, measured=reconciled, barrier=0. Current payload/commit fields can reset to NOT_RUN after a redraw. Limits: 12 steps, 18 chunks, 10512 bytes.\n"
   printf "Structured fixture: marker x=32(B) or 120(A), y=68; timer square x=76,y=116. Only the marker moves on A/B, once. All outlines and labels stay fixed.\n"
+  printf "Current dual fixture: expected steps/quantum=8/400 and chunks/bytes=16/9344. Digits advance every 400 ms, the four-cell indicator every 800 ms; neither restarts on A/B or timer reveal.\n"
   printf "Request/commit counters alone do not prove low-power drawing. Require visible 1-2-3-4 cadence while asleep, low-current residency, A/B continuity, and the timer reveal.\n"
   printf "Snapshots describe the last runtime projection, not live autonomous frames. Active/ready can be zero after wake. A halted in-flight render is not a completed-render failure.\n"
 end
