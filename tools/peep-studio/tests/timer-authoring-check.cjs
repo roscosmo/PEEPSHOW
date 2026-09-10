@@ -53,6 +53,8 @@ app.whenReady().then(async () => {
   await button('Scene timer'); await field('Timer delay',1000); await button('Create timer');
   const bindingId = scene().event_bindings[0].binding_id;
   assert.equal(scene().event_handlers.length,1);
+  assert.equal(await evaluate("document.querySelectorAll('.action-editor-list').length"),1);
+  assert(await evaluate("![...document.querySelectorAll('h3')].some(e=>e.textContent.trim()==='Selected transition')"));
   assert(batches.some(batch => batch.some(c => c.kind === 'event_binding.add') && batch.some(c => c.kind === 'event_handler.add')));
   await field('Add effect','object.move_by','select'); await field('Effect 1 dx',5);
   assert.equal(scene().event_handlers[0].actions[0].dx,5);
@@ -71,6 +73,8 @@ app.whenReady().then(async () => {
   await click('[aria-label="Delete effect 2"]');
   await field('Timer start policy','action','select');
   await evaluate("document.querySelector('.state-transition-edge').dispatchEvent(new MouseEvent('click',{bubbles:true}))"); await wait(300);
+  assert.equal(await evaluate("document.querySelectorAll('[aria-label=\"Timer delay\"]').length"),0);
+  assert.equal(await evaluate("document.querySelectorAll('.action-editor-list').length"),1);
   await field('Add effect','start_timer','select');
   assert.equal(scene().routes[0].actions[0].kind,'start_timer');
   snapshot = await run('project.preview_reset',{scene_id:'main'});
@@ -80,9 +84,19 @@ app.whenReady().then(async () => {
   snapshot = await run('project.preview_advance',{preview_revision:snapshot.preview_revision,elapsed_ms:1000});
   assert.equal(snapshot.objects.find(o => o.object_id === 'continuity_sprite').underlying.x,85);
   await field('Selected timer',bindingId,'select');
+  assert.equal(await evaluate("document.querySelectorAll('.action-editor-list').length"),1);
+  assert(await evaluate("![...document.querySelectorAll('h3')].some(e=>e.textContent.trim()==='Selected transition')"));
   assert(await evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Delete timer').disabled"));
+  await evaluate("document.querySelector('.state-transition-edge').dispatchEvent(new MouseEvent('click',{bubbles:true}))"); await wait(300);
   await click('[aria-label="Delete effect 1"]');
   assert.equal(scene().routes[0].actions.length,0);
+  await field('Selected timer',bindingId,'select');
+  assert.equal(scene().event_handlers[0].actions[0].dx,5,'Editing the route must not edit the timer handler');
+  await evaluate("document.querySelector('.react-flow__node[data-id=\"start\"]').dispatchEvent(new MouseEvent('click',{bubbles:true}))"); await wait(250);
+  assert.equal(await evaluate("document.querySelectorAll('.action-editor-list').length"),0);
+  assert.equal(await evaluate("document.querySelectorAll('[aria-label=\"Timer delay\"]').length"),0);
+  await field('Selected timer',bindingId,'select');
+  assert.equal(await evaluate("document.querySelectorAll('.action-editor-list').length"),1);
   await field('Timer start policy','scene_entry','select');
   window.webContents.invalidate(); await wait(200);
   await evaluate("document.querySelector('.timer-inspector').scrollIntoView({block:'end'})"); await wait(200);
@@ -106,6 +120,9 @@ app.whenReady().then(async () => {
   await button('State timer'); await field('Timer delay',1000); await field('Timer destination','marker_right','select'); await button('Create timer');
   assert.equal(scene().event_bindings[0].event_type,'time.state_entry_elapsed');
   assert.equal(scene().event_handlers.length,0);
+  assert.equal(await evaluate("document.querySelectorAll('.action-editor-list').length"),1);
+  assert.equal(await evaluate("document.querySelectorAll('[aria-label=\"Timer destination\"]').length"),0);
+  assert.equal(await evaluate("document.querySelectorAll('[aria-label=\"Timer delay\"]').length"),1);
   snapshot = await run('project.preview_reset',{scene_id:'main'});
   snapshot = await run('project.preview_advance',{preview_revision:snapshot.preview_revision,elapsed_ms:700});
   snapshot = await run('project.preview_input',{preview_revision:snapshot.preview_revision,logical_source:'BUTTON_A'});
@@ -114,9 +131,19 @@ app.whenReady().then(async () => {
   assert.equal(snapshot.scene.state_id,'start','Re-entry must restart the full state timer');
   snapshot = await run('project.preview_advance',{preview_revision:snapshot.preview_revision,elapsed_ms:600});
   assert.equal(snapshot.scene.state_id,'marker_right');
+  await evaluate("document.querySelector('.react-flow__node[data-id=\"start\"]').dispatchEvent(new MouseEvent('click',{bubbles:true}))"); await wait(250);
+  assert.equal(await evaluate("document.querySelectorAll('[aria-label=\"Timer delay\"]').length"),0);
+  const beforeDraft = JSON.stringify(scene());
+  await button('Scene timer'); await field('Timer delay',4321);
+  await button('Assets'); await button('Local logic');
+  assert.equal(await evaluate("document.querySelectorAll('[aria-label=\"Timer delay\"]').length"),0);
+  await button('Scene timer');
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Timer delay\"]').value"),'5000');
+  await button('Cancel');
+  assert.equal(JSON.stringify(scene()),beforeDraft,'Leaving a timer draft must not create or mutate records');
   assert(await evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Build').disabled"));
   assert.deepEqual(errors,[]);
-  console.log('GUI timers: paired scene creation/deletion, ordered actions, cross-state expiry, one-shot behavior, state re-entry, undo/redo and save/reload passed');
+  console.log('GUI timers: single-target selection, draft cancellation, paired mutations, ordered actions, timer lifetimes, undo/redo and save/reload passed');
 }).catch(error => { console.error(error); process.exitCode = 1; }).finally(() => {
   clearTimeout(watchdog); child?.kill(); window?.destroy(); fs.rmSync(temp,{recursive:true,force:true}); app.exit(process.exitCode || 0);
 });

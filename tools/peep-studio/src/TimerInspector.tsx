@@ -1,22 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { Clock, Plus, Trash2 } from "lucide-react";
-import { EditableActionList, EditableGuardList } from "./SceneInspection";
+import { EditableActionList, EditableGuardList, type SceneSelection } from "./SceneInspection";
 import { baseObjectRows } from "./sceneCapabilities";
 import { createTimerCommands, deleteTimerCommands, SCENE_TIMER, STATE_TIMER, timerBounds } from "./timerAuthoring";
 import type { TimerCommand } from "./timerAuthoring";
 import type { AssetRecord, AudioCueRecord, PlacementOwnership, SceneDocument, ServiceHello, StateAction, StateGuard, StateRoute } from "./types";
 
-export type TimerRequest = { serial: number; sceneId: string; eventType: string; stateId?: string };
-
-export function TimerInspector({ scene, service, profileId, stateId, routeId, request, supports, onApply, ownership, assets, audioCues }: {
-  scene: SceneDocument; service: ServiceHello | null; profileId: string; stateId?: string; routeId?: string;
-  request: TimerRequest | null; supports: (kind: string) => boolean;
+export function TimerInspector({ scene, service, profileId, selection, onSelect, supports, onApply, ownership, assets, audioCues }: {
+  scene: SceneDocument; service: ServiceHello | null; profileId: string;
+  selection: SceneSelection; onSelect: (selection: SceneSelection) => void; supports: (kind: string) => boolean;
   onApply: (commands: TimerCommand[]) => Promise<boolean>;
   ownership: PlacementOwnership["scenes"][string] | null; assets: AssetRecord[]; audioCues: AudioCueRecord[];
 }) {
   const section = useRef<HTMLElement>(null);
-  const [selected, setSelected] = useState("");
-  const [adding, setAdding] = useState<string | null>(null);
+  const stateId = selection.kind === "state" ? selection.id : selection.kind === "timerDraft" ? selection.stateId : undefined;
+  const route = selection.kind === "route" ? scene.routes?.find(item => item.route_id === selection.id) : undefined;
+  const selected = selection.kind === "timer" ? selection.id : route?.event_ref ?? "";
+  const adding = selection.kind === "timerDraft" ? selection.eventType : null;
   const [delay, setDelay] = useState("5000");
   const [start, setStart] = useState("scene_entry");
   const [destination, setDestination] = useState("");
@@ -24,7 +24,7 @@ export function TimerInspector({ scene, service, profileId, stateId, routeId, re
   const bindings = (scene.event_bindings ?? []).filter(binding => [SCENE_TIMER, STATE_TIMER].includes(binding.event_type));
   const binding = bindings.find(item => item.binding_id === selected);
   const handler = scene.event_handlers?.find(item => item.event_ref === selected);
-  const route = scene.routes?.find(item => item.event_ref === selected);
+  const timerRoutes = (scene.routes ?? []).filter(item => item.event_ref === selected);
   const record = handler ?? route;
   const ownerId = handler?.handler_id ?? route?.route_id ?? "";
   const ownerKind = handler ? "handler" : "route";
@@ -38,19 +38,20 @@ export function TimerInspector({ scene, service, profileId, stateId, routeId, re
   const canCreate = (type: string) => !!timerBounds(service, profileId, type)
     && all("event_binding.add", "scene.set_reactive_wait_default", type === SCENE_TIMER ? "event_handler.add" : "route.add");
   const begin = (type: string, from = stateId) => {
-    setAdding(type); setSelected(""); setDelay("5000"); setStart("scene_entry");
-    setSource(from ?? scene.entry_state ?? ""); setDestination(type === STATE_TIMER ? from ?? scene.entry_state ?? "" : "");
+    onSelect({ kind: "timerDraft", eventType: type, stateId: type === STATE_TIMER ? from : undefined });
   };
-  useEffect(() => { setSelected(""); setAdding(null); }, [scene.scene_id]);
-  useEffect(() => { if (request?.sceneId === scene.scene_id) {
-    begin(request.eventType, request.stateId);
+  useEffect(() => { if (adding) {
+    setDelay("5000"); setStart("scene_entry"); setSource(stateId ?? scene.entry_state ?? "");
+    setDestination(adding === STATE_TIMER ? stateId ?? scene.entry_state ?? "" : "");
     section.current?.scrollIntoView({ block: "nearest" });
-  } }, [request]);
-  useEffect(() => {
-    const eventRef = scene.routes?.find(item => item.route_id === routeId)?.event_ref;
-    if (eventRef) { setSelected(eventRef); setAdding(null); }
-    else if (routeId) { setSelected(""); setAdding(null); }
-  }, [routeId, scene.scene_id]);
+  } }, [adding, stateId, scene.scene_id]);
+  const selectTimer = (id: string) => {
+    const timer = bindings.find(item => item.binding_id === id);
+    const routes = (scene.routes ?? []).filter(item => item.event_ref === id);
+    if (timer?.event_type === STATE_TIMER && routes.length === 1)
+      onSelect({ kind: "route", id: routes[0].route_id, sourceState: routes[0].from_states[0] });
+    else onSelect(id ? { kind: "timer", id } : { kind: "scene" });
+  };
   useEffect(() => { if (binding) { setDelay(String(binding.configuration.delay_ms)); setStart(binding.configuration.start_policy ?? "scene_entry"); } },
     [binding?.binding_id, binding?.configuration.delay_ms, binding?.configuration.start_policy]);
 
@@ -77,7 +78,7 @@ export function TimerInspector({ scene, service, profileId, stateId, routeId, re
       <button className="button secondary" type="button" disabled={!canCreate(STATE_TIMER) || !stateId} onClick={() => begin(STATE_TIMER)}><Plus size={14} />State timer</button>
     </div>
     {bindings.length > 0 && <label className="select-field">Timer
-      <select aria-label="Selected timer" value={selected} onChange={event => { setSelected(event.target.value); setAdding(null); }}>
+      <select aria-label="Selected timer" value={selected} onChange={event => selectTimer(event.target.value)}>
         <option value="">Select timer</option>
         {bindings.map(item => <option key={item.binding_id} value={item.binding_id}>
           {item.binding_id} ({item.event_type === SCENE_TIMER ? "Scene" : "State entry"})
@@ -103,7 +104,7 @@ export function TimerInspector({ scene, service, profileId, stateId, routeId, re
         <select aria-label="Timer source state" value={source} onChange={event => setSource(event.target.value)}>
           {(scene.states ?? []).map(state => <option key={state.state_id} value={state.state_id}>{state.display_name}</option>)}
         </select></label>}
-      <label className="select-field">On expiry
+      {(adding || handler) && <label className="select-field">On expiry
         <select aria-label="Timer destination" value={adding ? destination : record?.target_state ?? ""}
           disabled={!adding && (!!record?.target_scene || !supports(isScene ? "event_handler.update" : "route.set_target"))}
           onChange={event => {
@@ -116,16 +117,20 @@ export function TimerInspector({ scene, service, profileId, stateId, routeId, re
           }}>
           {(adding === SCENE_TIMER || isScene) && <option value="">Actions only</option>}
           {(scene.states ?? []).map(state => <option key={state.state_id} value={state.state_id}>{state.display_name}</option>)}
-        </select></label>
+        </select></label>}
       {adding && <div className="timer-toolbar">
-        <button className="button secondary" type="button" onClick={() => setAdding(null)}>Cancel</button>
+        <button className="button secondary" type="button" onClick={() => onSelect(stateId ? { kind: "state", id: stateId } : { kind: "scene" })}>Cancel</button>
         <button className="button primary" type="button" disabled={!validDelay || !canCreate(adding) || (adding === STATE_TIMER && (!source || !destination))}
           onClick={async () => { const commands = createTimerCommands(scene, adding, Number(delay), source, destination, start);
-            if (await onApply(commands)) { setSelected((commands[0].event_binding as { binding_id: string }).binding_id); setAdding(null); }
+            if (await onApply(commands)) {
+              const routeCommand = commands.find(command => command.kind === "route.add");
+              onSelect(routeCommand ? { kind: "route", id: (routeCommand.route as StateRoute).route_id, sourceState: source }
+                : { kind: "timer", id: (commands[0].event_binding as { binding_id: string }).binding_id });
+            }
           }}>Create timer</button>
       </div>}
     </>}
-    {!adding && binding && record && (handler || routeId !== route?.route_id) && <>
+    {!adding && binding && handler && record && <>
       {handler && <><h4>Only if</h4><EditableGuardList sceneId={scene.scene_id} route={viewRecord} variables={scene.variables ?? []}
         guardLimit={service?.state_scene_graph.limits.guards_per_route ?? 0} canEdit={supports("event_handler.update")}
         onSetRouteGuard={async (_s, _r, index, variable_ref, operator, value) => {
@@ -142,9 +147,18 @@ export function TimerInspector({ scene, service, profileId, stateId, routeId, re
         onAddRouteAction={async (_s, _r, index, action) => { const actions = [...record.actions]; actions.splice(index, 0, action as StateAction); await setActions(actions); }}
         onDeleteRouteAction={async (_s, _r, index) => { await setActions(record.actions.filter((_a, i) => i !== index)); }}
         onMoveRouteAction={async (_s, _r, index, target) => { const actions = [...record.actions]; actions.splice(target, 0, ...actions.splice(index, 1)); await setActions(actions); }} />
+    </>}
+    {!adding && binding && selection.kind === "timer" && <>
+      {!handler && timerRoutes.length > 0 && <div className="record-list" aria-label="Timer transitions">
+        {timerRoutes.map(item => <button className="record-row" key={item.route_id} type="button"
+          onClick={() => onSelect({ kind: "route", id: item.route_id, sourceState: item.from_states[0] })}>
+          {item.from_states.map(id => scene.states?.find(state => state.state_id === id)?.display_name ?? id).join(", ")}
+          {" -> "}{scene.states?.find(state => state.state_id === item.target_state)?.display_name ?? item.target_state ?? item.route_id}
+        </button>)}
+      </div>}
       <button className="button secondary" type="button" disabled={externalReferences || !deletion.every(item => supports(String(item.kind)))}
         title={externalReferences ? "Remove actions referencing this timer before deleting it" : "Delete timer and expiry branch"}
-        onClick={async () => { if (await onApply(deletion)) setSelected(""); }}><Trash2 size={14} />Delete timer</button>
+        onClick={async () => { if (await onApply(deletion)) onSelect({ kind: "scene" }); }}><Trash2 size={14} />Delete timer</button>
     </>}
   </section>;
 }

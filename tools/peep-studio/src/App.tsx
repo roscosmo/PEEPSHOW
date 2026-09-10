@@ -63,7 +63,7 @@ import {
 import type { StateGraphEntryHandle, StateGraphEntrySide } from "./stateGraph";
 import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsNativeCreation, supportsStateManagement, supportsLocalGraphCommand, supportsObjectCommand, usesSceneObjects } from "./sceneCapabilities";
 import { SceneObjectInspector } from "./SceneObjectInspector";
-import { TimerInspector, type TimerRequest } from "./TimerInspector";
+import { TimerInspector } from "./TimerInspector";
 import { SCENE_TIMER, STATE_TIMER, timerBounds, deleteTimerCommands } from "./timerAuthoring";
 import type {
   AssetFrameRecord,
@@ -157,7 +157,6 @@ export default function App() {
   const [projectPath, setProjectPath] = useState<string | null>(null);
   const [temporaryProject, setTemporaryProject] = useState(false);
   const [sceneSelection, setSceneSelection] = useState<SceneSelection>({ kind: "project" });
-  const [timerRequest, setTimerRequest] = useState<TimerRequest | null>(null);
   const [placementStateId, setPlacementStateId] = useState<string | null>(null);
   const [placementEditStateIds, setPlacementEditStateIds] = useState<string[]>([]);
   const [selectedPlacementElement, setSelectedPlacementElement] = useState<string | null>(null);
@@ -168,6 +167,13 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("scene-flow");
+  useEffect(() => {
+    if (workspaceMode !== "logic") setSceneSelection(current => current.kind === "timerDraft" ? { kind: "scene" } : current);
+  }, [workspaceMode]);
+  useEffect(() => {
+    if (sceneSelection.kind === "timer" && !project?.document?.scenes?.find(scene => scene.scene_id === selectedScene)
+      ?.event_bindings?.some(binding => binding.binding_id === sceneSelection.id)) setSceneSelection({ kind: "scene" });
+  }, [project?.document, selectedScene, sceneSelection]);
   const [projectHierarchyExpanded, setProjectHierarchyExpanded] = useState(true);
   const [placementInspectorTab, setPlacementInspectorTab] = useState<PlacementInspectorTab>("object");
   const [sceneThumbnails, setSceneThumbnails] = useState<Record<string, Framebuffer>>({});
@@ -5575,8 +5581,7 @@ export default function App() {
                 timerBounds(service, project?.summary.target_profile ?? "", type)
                 && ["event_binding.add", "scene.set_reactive_wait_default", type === SCENE_TIMER ? "event_handler.add" : "route.add"].every(localCommandAllowed)) : []}
               onRequestTimer={(stateId, eventType) => {
-                setSceneSelection(eventType === SCENE_TIMER ? { kind: "scene" } : { kind: "state", id: stateId });
-                setTimerRequest({ serial: Date.now(), sceneId: selectedSceneDocument!.scene_id, eventType, stateId });
+                setSceneSelection({ kind: "timerDraft", eventType, stateId: eventType === STATE_TIMER ? stateId : undefined });
               }}
               onSelect={setSceneSelection}
               onCreateState={(sceneId, x, y) => {
@@ -5740,9 +5745,7 @@ export default function App() {
 
           {!projectRootSelected && workspaceMode === "logic" && objectSceneSelected && selectedSceneDocument && (
             <TimerInspector key={selectedSceneDocument.scene_id} scene={selectedSceneDocument} service={service}
-              profileId={project?.summary.target_profile ?? ""} request={timerRequest}
-              stateId={sceneSelection.kind === "state" ? sceneSelection.id : undefined}
-              routeId={sceneSelection.kind === "route" ? sceneSelection.id : undefined}
+              profileId={project?.summary.target_profile ?? ""} selection={sceneSelection} onSelect={setSceneSelection}
               supports={kind => kind === "object_actions.set"
                 ? busy === null && supportsObjectCommand(service, selectedSceneCapability, kind) : localCommandAllowed(kind)}
               onApply={applySceneObjectCommands} ownership={project?.placement_ownership?.scenes[selectedSceneDocument.scene_id] ?? null}

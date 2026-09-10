@@ -792,3 +792,23 @@ parallel model or expose version-2 graph construction ahead of its handoff.
 - Mixed-version GUI regression checks cover the V2 counts and hidden sections,
   then switch to V1 and verify that its legacy sections remain available.
   Frozen hardware fixtures and ordinary V2 export restrictions are unchanged.
+
+### Timer Inspector Selection
+
+- Scene timers and unfinished timer drafts use the shared inspector selection,
+  not a second selection stored privately in the timer panel. Choosing a timer
+  replaces the route/state editor; choosing a route or state clears unrelated
+  timer detail. Emulator-active state remains independent of editor selection.
+- A state timer with one expiry route selects that route. Its existing route
+  inspector owns destination, guards and actions; the timer section adds delay
+  only. Shared state-timer bindings list their routes for explicit selection.
+- Scene timer actions and route actions have one editor at a time. Selecting a
+  timer to inspect external references never leaves another route's action controls
+  active above it. No stored action order or timer lifetime semantics change.
+- Leaving a timer draft for another selection or workspace discards the draft
+  without creating records. Deletion and undo of creation clear invalid timer
+  selection rather than leaving a missing timer selected.
+- GUI regression checks cover mutually exclusive action editors, correct action
+  ownership when switching targets, state/timer transitions, draft cancellation,
+  existing timer lifetimes, undo/redo and save/reload. Backend, firmware, frozen
+  fixtures and export restrictions are unchanged.

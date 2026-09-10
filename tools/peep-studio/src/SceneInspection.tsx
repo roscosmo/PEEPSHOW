@@ -115,6 +115,8 @@ export type SceneSelection =
   | { kind: "sceneReference"; id: string }
   | { kind: "systemExit" }
   | { kind: "state"; id: string }
+  | { kind: "timer"; id: string }
+  | { kind: "timerDraft"; eventType: string; stateId?: string }
   | { kind: "route"; id: string; sourceState?: string }
   | { kind: "render"; id: string }
   | { kind: "waiting"; id: string };
