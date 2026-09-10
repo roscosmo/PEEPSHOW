@@ -848,3 +848,23 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   shared backend, frozen fixtures and ordinary V2 export restrictions are unchanged.
 - GUI checks cover readable names, coordinates, independent-axis masking,
   unavailable previews and narrow inspector layouts, plus existing timer workflows.
+
+### Native Sprite Loop Creation
+
+- Scene-owned sprites can create a new looping clip from their source asset's
+  authored frame order. The inspector provides New loop and frame duration in
+  milliseconds; all frames must match the object's dimensions. This first pass
+  uses a uniform duration, not an inferred hardware scheduling interval.
+- Creation and binding use one `animation.upsert` / `object.bind_animation` batch,
+  gated by advertised catalog commands, loop policy and per-scene binding support.
+  Undo removes both the new clip and binding; existing clips are not rewritten.
+  State-scoped editing cannot create or rebind a scene-owned animation.
+- The fresh-project GUI regression imports a four-frame PNG, creates the loop,
+  checks undo/redo and save/reopen, and verifies four distinct looping host frames.
+  Its ten-frame variant also verifies authored order rather than lexical frame-ID
+  order. The existing mixed V1/V2 object-editing regression remains passing.
+  A separate stale placement-preview request can still occur during reopening;
+  source round-trip succeeds and the cancelled request is not displayed as an error.
+- Backend, firmware and frozen fixtures remain unchanged. This does not validate
+  the combined LPBAM budget or enable ordinary V2 export/install. The full fresh
+  project check with state overrides, A/B routes and a timer remains to be completed.

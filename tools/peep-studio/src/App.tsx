@@ -2381,7 +2381,9 @@ export default function App() {
   };
   const applySceneObjectCommands = async (commands: Record<string, unknown>[]) => {
     if (bridge === undefined || project === null || busy !== null || selectedSceneDocument === null || commands.length === 0
-      || commands.some(command => command.scene_id !== selectedSceneDocument.scene_id
+      || commands.some(command => command.kind === "animation.upsert"
+        ? command.scene_id !== undefined || service?.state_scene_presentation.general_frame_animation.commands.includes("animation.upsert") !== true
+        : command.scene_id !== selectedSceneDocument.scene_id
         || !supportsObjectCommand(service, selectedSceneCapability, String(command.kind)))) return false;
     setBusy("Updating scene object");
     setPlaying(false);
@@ -4901,6 +4903,9 @@ export default function App() {
         label={selectedElement === null ? "" : placementObjectLabelBase(selectedElement)}
         stateIds={placementEditStateTargets()} ownership={placementOwnershipScene}
         frames={compiledAssetFrames} clips={project?.document?.animations ?? []} busy={busy !== null}
+        assets={assets}
+        canCreateAnimation={service?.scene_object_authoring?.clip_loop_policies?.includes("loop") === true
+          && service.state_scene_presentation.general_frame_animation.commands.includes("animation.upsert") === true}
         supports={kind => supportsObjectCommand(service, selectedSceneCapability, kind)}
         onApply={applySceneObjectCommands}
       /></>;

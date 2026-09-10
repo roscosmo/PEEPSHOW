@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { RotateCcw, Trash2 } from "lucide-react";
-import type { AuthoredClip, CompiledAssetFrame, PlacementOwnership, RenderElement, SceneDocument, SceneObject } from "./types";
+import { Plus, RotateCcw, Trash2 } from "lucide-react";
+import type { AssetRecord, AuthoredClip, CompiledAssetFrame, PlacementOwnership, RenderElement, SceneDocument, SceneObject } from "./types";
 
 type Property = "x" | "y" | "visible" | "visual_ref";
 type Command = Record<string, unknown>;
@@ -35,11 +35,55 @@ function Visibility({ value, disabled, onChange }: { value: boolean | undefined;
     checked={value === true} onChange={event => onChange(event.target.checked)} />;
 }
 
-export function SceneObjectInspector({ scene, object, label, stateIds, ownership, frames, clips, busy, supports, onApply }: {
+function SpriteLoopCreator({ sceneId, object, frames, assets, clips, disabled, onApply }: {
+  sceneId: string; object: SceneObject; frames: CompiledAssetFrame[]; clips: AuthoredClip[];
+  assets: AssetRecord[];
+  disabled: boolean; onApply: (commands: Command[]) => Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [duration, setDuration] = useState("400");
+  const assetId = frames.find(frame => frame.frame_id === object.defaults.visual_ref)?.asset_id;
+  const sourceFrames = assets.find(asset => asset.asset_id === assetId)?.frames ?? [];
+  const byId = new Map(frames.map(frame => [frame.frame_id, frame]));
+  const sequence = sourceFrames.flatMap(frame => {
+    const compiled = byId.get(frame.frame_id);
+    return compiled ? [compiled] : [];
+  });
+  const compatible = sequence.length === sourceFrames.length && sequence.length >= 2 && sequence.length <= 256 &&
+    sequence.every(frame => frame.width === object.width && frame.height === object.height);
+  const ms = Number(duration);
+  const valid = duration.trim() !== "" && Number.isInteger(ms) && ms >= 1 && ms <= 60000;
+  if (!compatible) return null;
+  return <div className="scene-object-property">
+    {!open ? <button className="button secondary" type="button" disabled={disabled} onClick={() => setOpen(true)}>
+      <Plus size={14} />New loop
+    </button> : <>
+      <label><span>Frame duration (ms)</span><input aria-label="New loop frame duration" type="number"
+        min={1} max={60000} step={1} value={duration} disabled={disabled}
+        onChange={event => setDuration(event.target.value)} /></label>
+      <small>{sequence.length} frames, imported order</small>
+      <button className="button primary" type="button" disabled={disabled || !valid} onClick={async () => {
+        let index = 1;
+        while (clips.some(clip => clip.animation_id === `${assetId}_loop_${index}`)) index++;
+        const animation_id = `${assetId}_loop_${index}`;
+        if (await onApply([
+          { kind: "animation.upsert", animation: { animation_id, frame_refs: sequence.map(frame => frame.frame_id),
+            frame_duration_ms: sequence.map(() => ms), loop_policy: "loop" } },
+          { kind: "object.bind_animation", scene_id: sceneId, object_id: object.object_id, animation_ref: animation_id },
+        ])) setOpen(false);
+      }}>Create loop</button>
+      <button className="button secondary" type="button" disabled={disabled} onClick={() => setOpen(false)}>Cancel</button>
+    </>}
+  </div>;
+}
+
+export function SceneObjectInspector({ scene, object, label, stateIds, ownership, frames, clips, busy, supports, onApply, canCreateAnimation = false, assets = [] }: {
   scene: SceneDocument; object: SceneObject | undefined; label: string; stateIds: string[];
   ownership: PlacementOwnership["scenes"][string] | null;
   frames: CompiledAssetFrame[]; clips: AuthoredClip[]; busy: boolean;
   supports: (kind: string) => boolean;
+  canCreateAnimation?: boolean;
+  assets?: AssetRecord[];
   onApply: (commands: Command[]) => Promise<boolean>;
 }) {
   if (!object) return <section className="inspector-section placement-inspector"><p className="muted">No object selected.</p></section>;
@@ -101,6 +145,9 @@ export function SceneObjectInspector({ scene, object, label, stateIds, ownership
           <option value="" disabled={!supports("object.clear_animation")}>Static</option>
           {matchingClips.map(clip => <option key={clip.animation_id} value={clip.animation_id} disabled={!supports("object.bind_animation")}>{clip.animation_id}</option>)}
         </select></label></div>
+      {canCreateAnimation && <SpriteLoopCreator key={object.object_id} sceneId={scene.scene_id} object={object}
+        frames={frames} assets={assets} clips={clips} disabled={stateScope || busy || !supports("object.bind_animation")}
+        onApply={onApply} />}
     </>}
     <button className="button secondary" type="button"
       disabled={busy || !supports(stateScope ? "object_override.set" : "object.delete")}

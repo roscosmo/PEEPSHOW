@@ -525,6 +525,7 @@ export type ServiceHello = {
     version_parameter: string; supported_versions: number[]; default_version: number;
   };
   scene_object_authoring?: {
+    clip_loop_policies?: string[];
     local_graph_commands?: string[];
     scene_connection_commands?: boolean;
     route_destination_kinds?: string[];
