@@ -3082,15 +3082,67 @@ uint32_t PS_EggStateLoader_Load(
   return PS_EggContext_Load(&s_ps_egg_runtime_context, blob, package_size, resident_size, scene);
 }
 
+static uint32_t PS_EggCheckV2Profile(ps_egg_context_t *context,
+  const ps_scene_runtime_state_scene_t *scene, ps_egg_v2_profile_result_t *result)
+{
+  uint32_t index;
+  result->scene_id = scene->scene_id;
+  if (context->scene_count != 1U)
+  { result->reason = PS_EGG_V2_PROFILE_SCENE_COUNT; return 1UL; }
+  if (scene->execution_model != PS_SCENE_RUNTIME_MODEL_OBJECTS)
+  { result->reason = PS_EGG_V2_PROFILE_MODEL; return 1UL; }
+  if (scene->interaction_mode != PS_SCENE_RUNTIME_INTERACTION_CONTINUOUS)
+  { result->reason = PS_EGG_V2_PROFILE_INTERACTION; return 1UL; }
+  if ((PS_EggCountChunks(context, PS_EGG_CHUNK_AUDIO_ASSETS) != 0UL) ||
+      (PS_EggCountChunks(context, PS_EGG_CHUNK_AUDIO_BANK) != 0UL) ||
+      (PS_EggCountChunks(context, PS_EGG_CHUNK_AUDIO_CUES) != 0UL))
+  { result->reason = PS_EGG_V2_PROFILE_AUDIO; return 1UL; }
+  for (index = 0UL; index < scene->event_binding_count; ++index)
+  {
+    if ((scene->event_bindings[index].event_class != PS_SCENE_RUNTIME_EVENT_CLASS_INPUT) &&
+        (scene->event_bindings[index].event_class != PS_SCENE_RUNTIME_EVENT_CLASS_TIMER))
+    {
+      result->reason = PS_EGG_V2_PROFILE_EVENT;
+      result->item_index = index;
+      return 1UL;
+    }
+  }
+  for (index = 0UL; index < scene->transition_count; ++index)
+  {
+    if (scene->transitions[index].target_scene_id != 0UL)
+    {
+      result->reason = PS_EGG_V2_PROFILE_SCENE_EXIT;
+      result->item_index = index;
+      return 1UL;
+    }
+  }
+  for (index = 0UL; index < scene->action_count; ++index)
+  {
+    uint32_t kind = scene->actions[index].kind;
+    if ((kind != PS_SCENE_RUNTIME_ACTION_OBJECT_OPERATION) &&
+        (kind != PS_SCENE_RUNTIME_ACTION_SET_VARIABLE) &&
+        (kind != PS_SCENE_RUNTIME_ACTION_START_TIMER) &&
+        (kind != PS_SCENE_RUNTIME_ACTION_RESTART_TIMER) &&
+        (kind != PS_SCENE_RUNTIME_ACTION_CANCEL_TIMER))
+    {
+      result->reason = PS_EGG_V2_PROFILE_ACTION;
+      result->item_index = index;
+      return 1UL;
+    }
+  }
+  result->reason = PS_EGG_V2_PROFILE_NONE;
+  return 0UL;
+}
+
 static uint32_t PS_EggDecodeDevelopment(const uint8_t *blob,
   uint32_t size, uint32_t scene_id, ps_scene_runtime_state_scene_t *scene,
-  uint32_t publish)
+  uint32_t publish, ps_egg_v2_profile_result_t *profile)
 {
   ps_egg_context_t *context = &s_ps_egg_validation_context;
   uint32_t status;
   uint32_t index;
   uint32_t interaction_mode = 0UL;
-  if (scene == NULL)
+  if ((scene == NULL) && (profile == NULL))
   {
     return 1UL;
   }
@@ -3131,12 +3183,19 @@ static uint32_t PS_EggDecodeDevelopment(const uint8_t *blob,
       &s_ps_egg_validation_scene);
     if (status == 0UL)
     {
-      (void)memcpy(scene, &s_ps_egg_validation_scene, sizeof(*scene));
-      if (publish != 0UL)
+      if (profile != NULL)
       {
-        s_ps_egg_runtime_context = *context;
-        s_ps_egg_runtime_context.probe = &g_ps_egg_state_loader_probe;
-        g_ps_egg_state_loader_probe = g_ps_egg_validation_probe;
+        status = PS_EggCheckV2Profile(context, &s_ps_egg_validation_scene, profile);
+      }
+      else
+      {
+        (void)memcpy(scene, &s_ps_egg_validation_scene, sizeof(*scene));
+        if (publish != 0UL)
+        {
+          s_ps_egg_runtime_context = *context;
+          s_ps_egg_runtime_context.probe = &g_ps_egg_state_loader_probe;
+          g_ps_egg_state_loader_probe = g_ps_egg_validation_probe;
+        }
       }
     }
   }
@@ -3149,13 +3208,30 @@ static uint32_t PS_EggDecodeDevelopment(const uint8_t *blob,
 uint32_t PS_EggStateLoader_DecodeDevelopmentScene(const uint8_t *blob,
   uint32_t size, uint32_t scene_id, ps_scene_runtime_state_scene_t *scene)
 {
-  return PS_EggDecodeDevelopment(blob, size, scene_id, scene, 0UL);
+  return PS_EggDecodeDevelopment(blob, size, scene_id, scene, 0UL, NULL);
 }
 
 uint32_t PS_EggStateLoader_LoadDevelopment(const uint8_t *blob,
   uint32_t size, ps_scene_runtime_state_scene_t *scene)
 {
-  return PS_EggDecodeDevelopment(blob, size, 0UL, scene, 1UL);
+  return PS_EggDecodeDevelopment(blob, size, 0UL, scene, 1UL, NULL);
+}
+
+uint32_t PS_EggStateLoader_ValidateV2Profile(const uint8_t *blob, uint32_t size,
+  ps_egg_v2_profile_result_t *result)
+{
+  uint32_t status;
+  if (result == NULL) { return 1UL; }
+  (void)memset(result, 0, sizeof(*result));
+  result->item_index = PS_SCENE_RUNTIME_INDEX_INVALID;
+  if ((blob == NULL) || (size == 0UL))
+  { result->reason = PS_EGG_V2_PROFILE_ARGUMENT; return 1UL; }
+  if (size > PS_TARGET_PROFILE_PACKAGE_RESIDENT_BYTES)
+  { result->reason = PS_EGG_V2_PROFILE_CAPACITY; return 1UL; }
+  result->reason = PS_EGG_V2_PROFILE_PACKAGE;
+  status = PS_EggDecodeDevelopment(blob, size, 0UL, NULL, 0UL, result);
+  result->loader_reason = g_ps_egg_validation_probe.reason;
+  return status;
 }
 
 /* Called only by thRuntime; HASH ownership and the active loader stay unchanged. */

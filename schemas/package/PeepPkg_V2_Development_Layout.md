@@ -7,6 +7,48 @@ Use `build_development_egg_v2` / `parse_development_egg_v2` for host fixtures;
 the C development entry is `PS_EggStateLoader_DecodeDevelopmentScene`.
 Authority: [[Scene_Object_Executable_Design]], [[Package_Blob_Format_Contract]].
 
+## Isolated Firmware Profile Preflight
+
+`PS_EggStateLoader_ValidateV2Profile` is a thRuntime-only, non-publishing check,
+not an installer entry point. It reuses the candidate loader's whole-package
+integrity and every-scene descriptor checks, then requires:
+
+- One scene, execution model 2, continuous interaction.
+- A fully resident package within the existing 65,536-byte bridge capacity.
+  This is not the product package-size limit.
+- Local input and scoped timer bindings, guards and variables, scene-owned
+  object operations, variable writes and start/restart/cancel timer actions.
+- No audio chunks, cross-scene transitions or exit-to-shell actions.
+
+The result distinguishes argument/capacity/integrity failures from unsupported
+scene count, model, interaction, audio, event, scene target or action. It retains
+the loader reason for malformed packages and a zero-based offending item index
+for binding/transition/action rejection. No candidate pointer survives return;
+active catalogs, scene banks and active probes are unchanged.
+Callers must use the returned status and profile result: the separate candidate
+loader probe describes structural decoding, which can succeed while the profile
+rejects otherwise valid but unsupported content.
+
+**A profile pass does not authorize installation, export or STOP2.** It does not
+compose display frames or prove LPBAM budgets across mutable object states.
+The production `ValidatePackage` path still rejects V2; service capabilities and
+ordinary export remain unchanged. Further increments must connect candidate
+display admission, installed activation and reboot loading, and reconcile the
+FW0 A/B installer with the authoritative single-active-slot transaction contract
+before claiming product installation support. This increment changes neither
+flash layout nor storage behaviour. See [[Storage_and_Installer_Contract]].
+
+Native coverage: `test_firmware_v2_profile.py` runs the real C loader against
+the GUI numbered/timer fixture and OS structured, dual-animation and scoped-timer
+variants. It checks legacy-format rejection, audio and shell-action rejection,
+timeout/multiscene rejection, malformed non-entry scenes, digest/header/chunk
+failures, object/control corruption, and the inclusive 64 KiB boundary. Every
+candidate is exercised with both a live V1 package and a live V2 object bank;
+successful profile checks still fail ordinary install validation. These are
+host-native checks, not installed-package hardware acceptance.
+
+## Container
+
 All integers are little-endian. Container magic remains `PKG1`, header version
 is **2**. The 64-byte header, 40-byte directory entries, alignment, CRCs and
 `END1` integrity footer retain V1 layouts. Package/chunk flags and capability
