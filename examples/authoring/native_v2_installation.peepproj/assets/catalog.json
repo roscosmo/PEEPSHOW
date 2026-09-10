@@ -1,0 +1,122 @@
+{
+  "schema_id": "peepshow.authoring.assets",
+  "schema_version": 1,
+  "assets": [
+    {
+      "asset_id": "sequence_1",
+      "display_name": "Sequence 1",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "1",
+      "scale": 3,
+      "frames": [
+        {
+          "frame_id": "pulse.a",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "sequence_2",
+      "display_name": "Sequence 2",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "2",
+      "scale": 3,
+      "frames": [
+        {
+          "frame_id": "pulse.b",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "sequence_3",
+      "display_name": "Sequence 3",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "3",
+      "scale": 3,
+      "frames": [
+        {
+          "frame_id": "pulse.c",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "sequence_4",
+      "display_name": "Sequence 4",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "4",
+      "scale": 3,
+      "frames": [
+        {
+          "frame_id": "pulse.d",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "label_b",
+      "display_name": "B position label",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "B",
+      "scale": 2,
+      "frames": [
+        {
+          "frame_id": "label.b",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "label_a",
+      "display_name": "A position label",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "A",
+      "scale": 2,
+      "frames": [
+        {
+          "frame_id": "label.a",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    }
+  ],
+  "animations": [
+    {
+      "animation_id": "pulse_loop",
+      "frame_refs": [
+        "pulse.a",
+        "pulse.b",
+        "pulse.c",
+        "pulse.d"
+      ],
+      "frame_duration_ms": [
+        400,
+        400,
+        400,
+        400
+      ],
+      "loop_policy": "loop"
+    }
+  ],
+  "audio_assets": [],
+  "audio_cues": []
+}

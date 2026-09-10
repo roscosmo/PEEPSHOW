@@ -868,3 +868,18 @@ parallel model or expose version-2 graph construction ahead of its handoff.
 - Backend, firmware and frozen fixtures remain unchanged. This does not validate
   the combined LPBAM budget or enable ordinary V2 export/install. The full fresh
   project check with state overrides, A/B routes and a timer remains to be completed.
+
+### Production Admission Fixture Handoff
+
+- New source-only candidate: `examples/authoring/native_v2_installation.peepproj`.
+  One continuous-interaction V2 scene, four numbered frames at 400 ms, labelled
+  B/A boxes and an independent state-overridden marker, plus a fixed square
+  revealed once by a scene timer at 2000 ms. No audio or scene exits.
+- Host checks cover source reload, distinct frames and wrap, A/B continuity,
+  repeat inputs, exact host timer boundary and fixed object positions. Prior
+  passed fixtures remain unchanged. This is not a new hardware pass and does
+  not complete the separate from-scratch GUI workflow audit.
+- OS next owns production validation, installation, launch and reboot loading.
+  GUI export remains capability-gated and backend `build_issues` stay intact.
+  After production admission is advertised, enable only the supported subset
+  and test an actual Studio-built egg through USB install, launch and cold boot.

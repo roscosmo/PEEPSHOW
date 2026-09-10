@@ -5,9 +5,10 @@ const readline = require('node:readline');
 const { spawn } = require('node:child_process');
 
 const root = path.resolve(__dirname, '../../..');
-const fourFrames = process.argv.includes('--four-frames');
+const admission = process.argv.includes('--admission');
+const fourFrames = admission || process.argv.includes('--four-frames');
 const timers = fourFrames || process.argv.includes('--timers');
-const fixtureName = fourFrames ? 'native_v2_timer_four_frames' : timers ? 'native_v2_scene_timer' : 'native_v2_continuity';
+const fixtureName = admission ? 'native_v2_installation' : fourFrames ? 'native_v2_timer_four_frames' : timers ? 'native_v2_scene_timer' : 'native_v2_continuity';
 const projectPath = path.join(root, `examples/authoring/${fixtureName}.peepproj`);
 const frameRefs = fourFrames ? ['pulse.a', 'pulse.b', 'pulse.c', 'pulse.d'] : ['pulse.a', 'pulse.b'];
 const create = process.argv.includes('--create');
@@ -78,9 +79,9 @@ const object = (snapshot, id) => snapshot.objects.find(item => item.object_id ==
       command('editor.state_graph.set_node_position', { state_id: 'start', x: 0, y: 0 }),
       command('editor.state_graph.set_node_position', { node_id: 'scene-entry', x: -260, y: 0 }),
       command('object.add', { object: { object_id: 'continuity_sprite', kind: 'sprite', width: fourFrames ? 24 : 8, height: fourFrames ? 24 : 16,
-        z_order: 0, layer: 'SCENE', defaults: { x: fourFrames ? 72 : 80, y: 40, visible: true, visual_ref: 'pulse.a' }, animation_ref: 'pulse_loop' } }),
+        z_order: 0, layer: 'SCENE', defaults: { x: fourFrames ? 72 : 80, y: admission ? 12 : 40, visible: true, visual_ref: 'pulse.a' }, animation_ref: 'pulse_loop' } }),
       command('object.add', { object: { object_id: 'position_marker', kind: 'filled_rect', width: 16, height: 16,
-        z_order: 1, layer: 'SCENE', defaults: { x: 32, y: 104, visible: true } } }),
+        z_order: 1, layer: 'SCENE', defaults: { x: 32, y: admission ? 68 : 104, visible: true } } }),
       command('object_override.set', { object_id: 'position_marker', state_id: right, properties: { x: 120 } }),
       command('route.create_trigger', { source_state: 'start', logical_source: 'BUTTON_A', event_kind: 'press', target_state: right }),
       command('route.create_trigger', { source_state: right, logical_source: 'BUTTON_B', event_kind: 'press', target_state: 'start' }),
@@ -88,7 +89,7 @@ const object = (snapshot, id) => snapshot.objects.find(item => item.object_id ==
     if (timers) await edit(
       command('scene.rename', { display_name: fourFrames ? 'Four Frame Timer Continuity' : 'Scene Timer Continuity' }),
       command('object.add', { object: { object_id: 'timer_marker', kind: 'filled_rect', width: 16, height: 16,
-        z_order: 2, layer: 'SCENE', defaults: { x: 76, y: 80, visible: false } } }),
+        z_order: 2, layer: 'SCENE', defaults: { x: 76, y: admission ? 116 : 80, visible: false } } }),
       command('event_binding.add', { event_binding: { binding_id: 'reveal_timer', event_type: 'time.scene_elapsed',
         configuration: { delay_ms: 2000, start_policy: 'scene_entry' } } }),
       command('event_handler.add', { event_handler: { handler_id: 'reveal_expired', event_ref: 'reveal_timer', guards: [], actions: [] } }),
@@ -97,6 +98,27 @@ const object = (snapshot, id) => snapshot.objects.find(item => item.object_id ==
       command('scene.set_reactive_wait_default', { reactive_wait_default: { policy_id: 'main_wait_policy',
         hold_fallback_allowed: true, event_interests: ['button_a_press', 'button_b_press', 'reveal_timer'] } }),
     );
+    if (admission) {
+      await edit(...['B', 'A'].map(letter => ({ kind: 'asset.upsert', asset: {
+        asset_id: `label_${letter.toLowerCase()}`, display_name: `${letter} position label`, asset_type: 'masked_1bpp',
+        source_format: 'system_font_text', font_id: 'peepshow.system.8x8.basic.v1', text: letter, scale: 2,
+        frames: [{ frame_id: `label.${letter.toLowerCase()}`, pivot_x: 0, pivot_y: 0 }],
+      } })));
+      await edit(
+        command('scene.rename', { display_name: 'V2 Installation Test' }),
+        command('state.rename', { state_id: 'start', display_name: 'B - Left' }),
+        command('state.rename', { state_id: right, display_name: 'A - Right' }),
+        ...[{ id: 'b_box', x: 28, y: 64 }, { id: 'a_box', x: 116, y: 64 }, { id: 'timer_box', x: 72, y: 112 }]
+          .map(({ id, x, y }) => command('object.add', { object: {
+            object_id: id, kind: 'outline_rect', width: 24, height: 24, z_order: 3, layer: 'SCENE',
+            defaults: { x, y, visible: true },
+          } })),
+        ...[{ letter: 'b', x: 8 }, { letter: 'a', x: 144 }].map(({ letter, x }) => command('object.add', { object: {
+          object_id: `label_${letter}`, kind: 'sprite', width: 16, height: 16, z_order: 4, layer: 'SCENE',
+          defaults: { x, y: 68, visible: true, visual_ref: `label.${letter}` },
+        } })),
+      );
+    }
     await call('project.save');
   }
   const loaded = await call('project.load', { path: projectPath });
@@ -105,19 +127,31 @@ const object = (snapshot, id) => snapshot.objects.find(item => item.object_id ==
   const scene = loaded.document.scenes[0];
   assert.equal(scene.schema_version, 2);
   assert.equal(scene.states.length, 2);
-  assert.equal(scene.objects.length, timers ? 3 : 2);
+  assert.equal(scene.objects.length, admission ? 8 : timers ? 3 : 2);
   assert.equal(scene.routes.length, 2);
   assert.equal(scene.scene_exits.length, 0);
   assert(!scene.render_models && !scene.waiting_visuals);
   assert(scene.states.every(state => state.object_overrides.every(override => override.object_ref === 'position_marker')));
   assert.equal(loaded.scene_capabilities.main.egg_export, false);
+  if (admission) {
+    assert.equal(scene.interaction_policy.mode, 'continuous');
+    assert.equal(loaded.document.audio_assets.length, 0);
+    assert.equal(loaded.document.audio_cues.length, 0);
+    assert.equal(loaded.document.animations.length, 1);
+    assert.deepEqual(loaded.document.animations[0].frame_duration_ms, [400, 400, 400, 400]);
+    assert.equal(scene.event_bindings.length, 1);
+    assert.equal(scene.event_handlers.length, 1);
+    assert.equal(scene.event_handlers[0].target_state, undefined);
+    assert.deepEqual(scene.event_handlers[0].actions, [{kind:'object.set_visibility', object_ref:'timer_marker', visible:true}]);
+    assert(loaded.build_issues.length > 0, 'The backend export restriction must remain reported');
+  }
   assert.equal(scene.objects.find(item => item.object_id === 'continuity_sprite').animation_ref, 'pulse_loop');
   const right = scene.states.find(state => state.state_id !== 'start').state_id;
   let snapshot = await call('project.preview_reset', { scene_id: 'main', state_id: 'start' });
   const advance = elapsed_ms => call('project.preview_advance', { preview_revision: snapshot.preview_revision, elapsed_ms });
   const input = logical_source => call('project.preview_input', { preview_revision: snapshot.preview_revision, logical_source });
   if (fourFrames) {
-    assert.equal(loaded.summary.asset_frame_count, 4);
+    assert.equal(loaded.summary.asset_frame_count, admission ? 6 : 4);
     const pixels = new Set();
     for (let i = 0; i < 4; i++) {
       assert.equal(object(snapshot, 'continuity_sprite').effective.visual_ref, frameRefs[i]);
@@ -138,6 +172,11 @@ const object = (snapshot, id) => snapshot.objects.find(item => item.object_id ==
   assert.deepEqual(object(snapshot, 'continuity_sprite'), beforeA, 'A must not reset or override the sprite');
   assert.equal(object(snapshot, 'position_marker').effective.x, 120);
   assert.equal(object(snapshot, 'position_marker').underlying.x, 32);
+  if (admission) {
+    const objectsBefore = snapshot.objects;
+    snapshot = await input('BUTTON_A');
+    assert.deepEqual(snapshot.objects, objectsBefore, 'Repeated A must not move objects or restart animation');
+  }
   snapshot = await advance(300);
   const beforeB = object(snapshot, 'continuity_sprite');
   snapshot = await input('BUTTON_B');
@@ -153,7 +192,13 @@ const object = (snapshot, id) => snapshot.objects.find(item => item.object_id ==
     snapshot = await advance(250);
     snapshot = await input('BUTTON_A');
     assert.equal(snapshot.scene.state_id, right);
-    snapshot = await advance(250);
+    if (admission) {
+      snapshot = await advance(199);
+      assert.equal(snapshot.timeline.elapsed_ms, 1999);
+      assert.equal(object(snapshot, 'timer_marker').effective.visible, false);
+      assert.equal(snapshot.timer_events.length, 0);
+      snapshot = await advance(1);
+    } else snapshot = await advance(250);
     if (fourFrames) assert.equal(object(snapshot, 'continuity_sprite').effective.visual_ref, 'pulse.b', 'Timer expiry must not restart at frame 1');
     assert.equal(snapshot.scene.state_id, right, 'Action-only expiry must not enter another state');
     assert.equal(object(snapshot, 'timer_marker').underlying.visible, true);
@@ -164,6 +209,23 @@ const object = (snapshot, id) => snapshot.objects.find(item => item.object_id ==
     assert.equal(object(snapshot, 'position_marker').effective.x, 32);
     snapshot = await advance(6000);
     assert.equal(snapshot.timer_events.length, 0, 'One-shot timer must not repeat');
+    if (admission) {
+      const fixedIds = ['timer_marker', 'timer_box', 'b_box', 'a_box', 'label_b', 'label_a'];
+      const fixedBefore = snapshot.objects.filter(item => fixedIds.includes(item.object_id));
+      for (const button of ['BUTTON_A','BUTTON_A','BUTTON_B','BUTTON_B']) {
+        const playbackBefore = object(snapshot, 'continuity_sprite').playback;
+        snapshot = await input(button);
+        assert.deepEqual(object(snapshot, 'continuity_sprite').playback, playbackBefore);
+        assert.deepEqual(snapshot.objects.filter(item => fixedIds.includes(item.object_id)), fixedBefore);
+      }
+      assert.equal(object(snapshot, 'position_marker').effective.y, 68);
+      assert.equal(object(snapshot, 'timer_marker').effective.x, 76);
+      assert.equal(object(snapshot, 'timer_marker').effective.y, 116);
+      const output = path.join(root, 'tools/peep-studio/dist/native-v2-installation');
+      fs.mkdirSync(output, {recursive:true});
+      fs.writeFileSync(path.join(output,'host-preview.json'), JSON.stringify(snapshot,null,2));
+      fs.writeFileSync(path.join(output,'build-issues.json'), JSON.stringify(loaded.build_issues,null,2));
+    }
   }
   console.log(`Validated source fixture: ${projectPath}`);
   console.log('A/B state changes preserve sprite playback; marker override changes/restores X; loop wraps. No egg generated.');
