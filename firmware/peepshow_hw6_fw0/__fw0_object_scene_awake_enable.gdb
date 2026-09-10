@@ -11,11 +11,11 @@ else
     else
       set g_ps_object_development_request = 1
       printf "Queued. Resume normally. No install or flash write is performed.\n"
-      printf "OS sound variant: a square orbits four corners at (80,40), one frame every 250 ms. A moves the lower marker right; B moves it left. Each matched A/B transition plays a short tone without restarting animation.\n"
-      printf "After 2 seconds the hidden square at (76,80) appears and a 6-second tone starts. Test tones are now twice the source amplitude. Local A/B changes must not stop the long tone.\n"
-      printf "L starts a short and long tone together. Immediately HOLD START to open the shell: the long tone must stop early. Resume returns silently. L can start fresh sounds afterward. R exits to shell and discards sounds.\n"
+      printf "Exact GUI four-frame timer fixture (de80153): large digits 1,2,3,4 loop at (72,40), 400 ms per frame. A moves the lower square right; B moves it left. Neither should reset the digits to 1.\n"
+      printf "After 2 seconds the hidden square at (76,80) appears once; the digit should be 2 at expiry. Press A/B while 2,3 or 4 is visible and check that the sequence continues.\n"
+      printf "This fixture has NO audio, L/R controls or exit action. HOLD START opens the shell; reset ends the development session.\n"
       printf "This is explicitly AWAKE ONLY: automatic STOP2 is blocked while the development scene is active, including shell suspension. Do not force manual STOP2.\n"
-      printf "Do not halt during playback. Once quiet, halt and source __fw0_object_scene_awake_prints.gdb.\n"
+      printf "After observing the numbered sequence, A/B changes and timer reveal, halt and source __fw0_object_scene_awake_prints.gdb.\n"
     end
   end
 end

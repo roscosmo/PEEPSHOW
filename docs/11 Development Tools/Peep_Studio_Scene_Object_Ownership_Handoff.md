@@ -824,16 +824,37 @@ silent resume. Development/scene/audio-package probe APIs are `3/22/1`.
 The user heard short A/B tones and uninterrupted long playback. The original
 three-second tone was too close to the START hold duration to establish early
 stopping. It is now six seconds and both test tones have twice the source
-amplitude, without changing production mixer settings. Shell-stop/silent-resume
-hardware verification is still pending.
+amplitude, without changing production mixer settings. The user subsequently
+confirmed shell entry stops the six-second tone and Resume does not replay it.
+Audio shutdown request/complete=4/4, all shutdown statuses zero, no fault,
+no outstanding audio or held clock, and no underruns. This is recorded at
+`521f0b1cedabadf70db9b8183f78f74eff6a0a00`.
 
 Verification: 273 authoring/native tests pass, including real graph/scheduler/
 render integration and extracted production audio lifetime paths. The Debug
-firmware builds. Audio hardware calls are stubbed in host tests; audible
-overlap, uninterrupted animation and shell-stop behavior await the HW6 test.
+firmware builds. Audio hardware calls are stubbed in host tests; hardware evidence
+is limited to the user-observed playback and shell-stop/silent-resume checks above.
 The earlier GUI continuity and timer passes remain separate hardware evidence.
 
 Service API 41, ordinary V2 export restrictions and target capabilities are
 unchanged. Studio can continue supported authoring work; no GUI merge or source
 fixture update is required for this OS test. This does not deliver production
 V2 installation, scene connections or STOP2/LPBAM support.
+
+## Exact GUI Four-Frame Timer Integration
+
+Imported only `examples/authoring/native_v2_timer_four_frames.peepproj` from
+`de80153ca256937612248aef36f6fd3e45a9d39c`, with all four source files
+matching the commit. OS generated its separate 1,908-byte development egg.
+The previous passed GUI projects are untouched, and the OS SFX variant remains
+available with `build_object_development.py --sfx`.
+
+The real native runtime/scheduler/renderer checks digits 1,2,3,4 at 400 ms,
+A/B phase residuals, timer expiry at digit 2 without state re-entry, persistent
+reveal and one-shot consumption. Five framebuffer outputs are compared exactly.
+The current GDB helpers describe this numbered fixture, which intentionally has
+no audio or L/R controls. Hold START for shell access; reset ends the session.
+
+This fixture's device test remains pending. API 41, ordinary export restrictions,
+and the awake-only scope are unchanged. GUI may continue supported authoring UI
+work; no backend command or capability change is required for this integration.

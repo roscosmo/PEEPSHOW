@@ -5,8 +5,9 @@ passed awake HW6 checks. V2 STOP2/LPBAM remains unimplemented.
 The exact GUI scene-timer fixture from `90b849c` also passed awake timer reveal
 and visually observed A/B animation continuity, separately from the OS variant.
 This is not normal V2 export, installation, automatic boot, or STOP2 admission.
-The current OS SFX variant is implemented for the next device test; its audio
-and shell-stop behavior is not yet hardware-qualified.
+The OS SFX variant passed audible A/B and long-tone playback plus shell-stop and
+silent resume. The current payload is the exact GUI numbered four-frame timer
+fixture from `de80153`; its hardware check is pending.
 
 ## Delivered Path
 
@@ -192,9 +193,9 @@ remaining duration. An expiry already due at suspension remains due after resume
 Exit/recreation cancels old timer owners. These are native-tested semantics,
 not a new hardware suspension or STOP2 claim.
 
-## Current OS SFX Variant
+## Previous OS SFX Variant
 
-Generate the current 53,612-byte development payload with:
+Regenerate the previous 53,612-byte development payload with:
 
 ```powershell
 tools/.venv/Scripts/python.exe tools/authoring/build_object_development.py --sfx
@@ -212,7 +213,7 @@ not a normalization or speaker-loudness qualification.
 
 The initial three-second tone was too close to the START hold duration to prove
 early stopping. The user heard A/B tones and uninterrupted long playback, but
-shell-stop/silent-resume remains unverified. The six-second replacement leaves
+shell-stop/silent-resume was initially unverified. The six-second replacement leaves
 an audible interval to interrupt: press L, then immediately hold START.
 
 Committed V2 effects feed the existing bounded audio queue in action order.
@@ -239,10 +240,10 @@ prove orchestration, not audibility, DMA timing or pop-free stopping.
 Local verification: **273 authoring/native tests pass** and the HW6 Debug build
 links with RAM 438,392 bytes, ROM 906,048 bytes and SRAM4 15,480 bytes. The
 four-frame/audio payload is generated separately from normal embedded assets.
-No additional SRAM4 allocation is introduced. Hardware SFX verification remains
-pending; the preceding timer/continuity passes do not qualify this new behavior.
+No additional SRAM4 allocation is introduced. The subsequent six-second test
+passed shell-stop and silent resume as recorded below.
 
-## Hardware Sequence
+### Previous SFX Hardware Sequence
 
 1. Flash the new Debug ELF. Let normal boot finish and open HOME or the shell
    MENU using START. Leave audio stopped and MSC inactive, then halt.
@@ -268,7 +269,7 @@ pending; the preceding timer/continuity passes do not qualify this new behavior.
 Do not halt during playback: debugger interruption breaks audio timing and would
 invalidate that observation. Report audible artifacts separately from counters.
 
-The two object helpers require development/scene/audio-package APIs `3/22/1` and use device-resident
+At this SFX checkpoint, the two object helpers required development/scene/audio-package APIs `3/22/1` and used device-resident
 results, not GDB convenience-variable history. The OS sprite asset IDs cycle
 65537..65540. State IDs 1/2 select marker X=32/120, Y=104. Automatic STOP2 entry
 count must not advance while the development scene is active. This awake test is
@@ -277,6 +278,61 @@ not a power measurement; halt/resume also cannot establish real-time cadence.
 activations. Timer counters are cumulative; compare changes, not an assumed
 zero baseline from a previously running installed package. No RTC selection is
 required for this explicitly awake-only test.
+
+### Recorded SFX Shell Pass
+
+Checkpoint `521f0b1cedabadf70db9b8183f78f74eff6a0a00`: the user confirmed
+the six-second tone stopped on shell entry and did not replay on Resume.
+The device reported audio request/complete=4/4, send/wait/owner/status=0,
+fault=0, outstanding/clock-held=0 and zero underruns. Admission was reopened
+(`blocked=0`) after returning to the active development scene. Voice peak=2
+and 41,216 decoded samples show real audio work, not just command delivery.
+Earlier user observations confirmed short A/B tones and continued long playback.
+
+Display request/complete=47/46 with result=NOT_RUN was captured mid-render;
+it does not establish a rendering failure or successful completion of request 47.
+This pass does not qualify all replacement, timeout or queue-discard cases.
+
+## Current GUI Numbered Timer Fixture
+
+Source: `examples/authoring/native_v2_timer_four_frames.peepproj`, imported
+unchanged from `de80153ca256937612248aef36f6fd3e45a9d39c`. All four files
+match their commit blob hashes. No Studio implementation was imported.
+
+```powershell
+tools/.venv/Scripts/python.exe tools/authoring/build_object_development.py --project examples/authoring/native_v2_timer_four_frames.peepproj
+```
+
+The checked-in development egg is now 1,908 bytes. Its 24x24 sprite at `(72,40)`
+displays digits 1,2,3,4, each for 400 ms. A/B moves the independent marker
+between X=32/120 at Y=104. The two-second scene timer reveals the square at
+`(76,80)` once, with no target state. At exact expiry digit 2 is due, rather
+than a reset to digit 1. There are no SFX, L/R controls or exit actions.
+
+The native harness checks five complete framebuffer images: all four digits
+with interleaved A/B changes, then digit 2 with the revealed timer marker.
+It checks residual frame times, no premature expiry, unchanged scene/state
+activation during the handler, and no repeated expiry after later A/B changes.
+The SFX and earlier timer variants retain their native regression tests.
+
+Local verification: 274 authoring/native tests pass, target-profile generation
+is current, and the Debug firmware builds. Linker usage is RAM 438,392 bytes,
+ROM 854,344 bytes and SRAM4 15,480 bytes. Only the generated development payload
+changes in firmware C; production runtime and driver code are unchanged.
+
+Hardware sequence:
+1. Flash the Debug ELF, finish boot, hold START to open the shell MENU and halt.
+2. Source `__fw0_object_scene_awake_enable.gdb` and resume.
+3. While digits 2, 3 or 4 are visible, alternate A/B. The lower square moves
+   without the digits jumping back to 1. The timer square appears after two
+   seconds and stays visible through further state changes.
+4. Halt and source `__fw0_object_scene_awake_prints.gdb`. An in-flight display
+   request is not a completed-render result; combine counters with observation.
+
+The helpers now describe this exact fixture. APIs remain `3/22/1`. Hold START
+for the shell; reset ends the development session. Automatic STOP2 remains
+blocked, even during shell suspension. Normal V2 export remains unavailable.
+Hardware verification of this exact numbered fixture is pending.
 
 ## Verification and Next Work
 

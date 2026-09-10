@@ -103,6 +103,28 @@ class ObjectTimerTests(unittest.TestCase):
         self.run_timer(3)
         self.run_timer(10)
 
+    def test_exact_gui_four_frame_timer_continuity_and_pixels(self):
+        bundle = load_project(DEFAULT_PROJECT.parent / "native_v2_timer_four_frames.peepproj")
+        self.assertEqual(4, len({frame.pixels for frame in bundle.frames}))
+        actual = self.run_timer(14, bundle=bundle)
+        expected = bytearray()
+        for phase, marker_x, revealed in ((0, 32, False), (1, 120, False),
+                                          (2, 32, False), (3, 120, False), (1, 120, True)):
+            frame = bundle.frames[phase]
+            logical = bytearray(3024)
+            for y in range(144):
+                for x in range(168):
+                    black = (marker_x <= x < marker_x + 16 and 104 <= y < 120)
+                    black |= revealed and 76 <= x < 92 and 80 <= y < 96
+                    if 72 <= x < 96 and 40 <= y < 64:
+                        index = (y - 40) * frame.row_stride_bytes + (x - 72) // 8
+                        bit = 128 >> ((x - 72) % 8)
+                        black = bool(frame.pixels[index] & frame.mask[index] & bit)
+                    if black:
+                        logical[y * 21 + x // 8] |= 128 >> (x % 8)
+            expected.extend(panel_pixels(logical))
+        self.assertEqual(expected, actual)
+
     def test_state_reentry_and_scene_recreation(self):
         self.run_timer(8)
         self.run_timer(9)

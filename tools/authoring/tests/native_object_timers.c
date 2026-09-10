@@ -322,11 +322,47 @@ int main(int argc, char **argv)
     assert(PS_SceneRuntime_TakeSfxRequest(&cue) == 0 && sfx_sends == 0);
     assert(g_ps_scene_runtime_probe.state_id == 1);
   }
+  else if (mode == 14)
+  {
+    uint32_t phase;
+    assert(ps_runtime_state_timers[timer].deadline_tick == 300);
+    output = fopen(argv[2], "wb"); assert(output != NULL);
+    for (phase = 0; phase < 4; ++phase)
+    {
+      now = 100 + 44 * phase;
+      if (phase != 0) { input((phase & 1U) ? 1U : 2U); }
+      assert(PS_HW6_RTOS_ObjectPresent() == 0);
+      assert(s_ps_object_snapshot.objects[0].step == phase);
+      assert(s_ps_object_snapshot.objects[0].remaining_ms == 400 - 40 * phase);
+      assert(model.elements[0].x == 72 && model.elements[0].y == 40);
+      assert(model.elements[2].visible == 0);
+      assert(fwrite(s_display_framebuffer, 1, sizeof(s_display_framebuffer), output) == sizeof(s_display_framebuffer));
+    }
+    fclose(output);
+    state_epoch = PS_SceneRuntime_StateActivation();
+    service(299);
+    assert(g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 0);
+    service(300);
+    assert(model.elements[2].visible == 1);
+    assert(s_ps_object_snapshot.objects[0].step == 1);
+    assert(s_ps_object_snapshot.objects[0].remaining_ms == 400);
+    assert(PS_SceneRuntime_StateActivation() == state_epoch);
+    assert(PS_SceneRuntime_SceneActivation() == scene_epoch);
+    now = 330; input(2);
+    now = 340; input(1);
+    service(625);
+    assert(PS_HW6_RTOS_ObjectPresent() == 0);
+    assert(s_ps_object_snapshot.objects[0].step == 1);
+    assert(s_ps_object_snapshot.objects[0].remaining_ms == 350);
+    assert(model.elements[1].x == 120 && model.elements[2].visible == 1);
+    assert(g_ps_hw6_rtos_probe.runtime_state_timer_applied_count == 1);
+    assert(ps_runtime_state_timers[timer].active == 0 && sfx_sends == 0);
+  }
   else { assert(0); }
   assert(g_ps_hw6_rtos_probe.runtime_state_timer_error_count == 0);
   if (PS_SceneRuntime_StateSceneActive())
   { assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0); }
-  output = fopen(argv[2], "wb"); assert(output != NULL);
+  output = fopen(argv[2], mode == 14 ? "ab" : "wb"); assert(output != NULL);
   assert(fwrite(s_display_framebuffer, 1, sizeof(s_display_framebuffer), output) == sizeof(s_display_framebuffer));
   fclose(output);
   return 0;
