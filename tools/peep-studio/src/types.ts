@@ -48,6 +48,8 @@ export type SceneDocument = {
   entry_state?: string;
   variables?: StateVariable[];
   input_actions?: InputAction[];
+  event_bindings?: EventBinding[];
+  event_handlers?: EventHandler[];
   scene_exits?: SceneExitRecord[];
   states?: StateRecord[];
   routes?: StateRoute[];
@@ -102,6 +104,7 @@ export type StateGuard = {
 };
 
 export type StateAction = {
+  timer_ref?: string;
   object_ref?: string;
   dx?: number;
   dy?: number;
@@ -122,13 +125,28 @@ export type StateAction = {
 
 export type StateRoute = {
   route_id: string;
-  action_ref: string;
+  action_ref?: string;
+  event_ref?: string;
   from_states: string[];
   guards: StateGuard[];
   actions: StateAction[];
   target_state?: string;
   target_scene?: string;
   scene_exit_ref?: string;
+};
+
+export type EventBinding = {
+  binding_id: string;
+  event_type: string;
+  configuration: { delay_ms?: number; start_policy?: string; [key: string]: unknown };
+};
+export type EventHandler = {
+  handler_id: string;
+  event_ref: string;
+  guards: StateGuard[];
+  actions: StateAction[];
+  target_state?: string;
+  target_scene?: string;
 };
 
 export type RenderElement = {
@@ -492,6 +510,11 @@ export type PeepOSTriggerCapability = {
 };
 
 export type ServiceHello = {
+  target_profiles?: { available: Array<{ profile_id: string; state_scene_events?: {
+    sources: Array<{ event_type: string; status: string; configuration_schema: {
+      delay_ms?: { minimum: number; maximum: number };
+    } }>;
+  } }> };
   scene_creation?: {
     project_operation: string; scene_command: string; entry_scene_command: string;
     version_parameter: string; supported_versions: number[]; default_version: number;
@@ -556,6 +579,7 @@ export type ServiceHello = {
     element_actions: boolean;
   };
   state_scene_graph: {
+    scene_timers?: { event_type: string; start_policies: string[]; actions: string[] };
     command_batch_maximum: number;
     scene_commands: string[];
     scene_flow_commands: string[];

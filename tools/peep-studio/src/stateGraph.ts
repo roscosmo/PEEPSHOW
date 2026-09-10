@@ -387,7 +387,7 @@ function visibleActionCount(route: StateRoute): number {
 
 function routeLabel(route: StateRoute, inputActions: InputAction[]): string {
   const badges = [countLabel(route.guards.length, "rule"), countLabel(visibleActionCount(route), "effect")].filter(Boolean);
-  return [inputLabel(inputActions, route.action_ref), ...badges].join(" - ");
+  return [inputLabel(inputActions, route.action_ref ?? route.event_ref ?? ""), ...badges].join(" - ");
 }
 
 function statePosition(
@@ -1459,7 +1459,7 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
       .forEach((source) => {
         const outputs = outputsByState.get(source) ?? [];
         const variableRefs = variableRefsByState.get(source) ?? new Set<string>();
-        const logicalSource = inputSource(inputActions, route.action_ref);
+        const logicalSource = inputSource(inputActions, route.action_ref ?? route.event_ref ?? "");
         const eventKind = inputActions.find((item) => item.action_id === route.action_ref)?.event_kind ?? "press";
         const physicalExit = PHYSICAL_TRIGGER_EXITS[logicalSource];
         route.guards.forEach((guard) => variableRefs.add(guard.variable_ref));
@@ -1471,13 +1471,13 @@ export function buildStateGraphModel(scene: SceneDocument | null, editor?: Proje
         outputs.push({
           id: `${route.route_id}:${source}`,
           routeId: route.route_id,
-          label: inputLabel(inputActions, route.action_ref),
+          label: inputLabel(inputActions, route.action_ref ?? route.event_ref ?? ""),
           guardCount: route.guards.length,
           actionCount: effectLabels.length,
           effectLabels,
           logicalSource,
           eventKind,
-          triggerKind: inputKind(inputActions, route.action_ref),
+          triggerKind: inputKind(inputActions, route.action_ref ?? route.event_ref ?? ""),
           preferredExitSide: physicalExit?.side,
           exitRatio: physicalExit?.ratio,
           targetState: route.target_state,

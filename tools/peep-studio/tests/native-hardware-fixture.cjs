@@ -5,7 +5,8 @@ const readline = require('node:readline');
 const { spawn } = require('node:child_process');
 
 const root = path.resolve(__dirname, '../../..');
-const projectPath = path.join(root, 'examples/authoring/native_v2_continuity.peepproj');
+const timers = process.argv.includes('--timers');
+const projectPath = path.join(root, `examples/authoring/${timers ? 'native_v2_scene_timer' : 'native_v2_continuity'}.peepproj`);
 const create = process.argv.includes('--create');
 const child = spawn(process.env.PEEPSHOW_PYTHON || 'python', ['-u', 'tools/authoring/egg_tool.py', 'service'], {
   cwd: root, windowsHide: true,
@@ -72,6 +73,18 @@ const object = (snapshot, id) => snapshot.objects.find(item => item.object_id ==
       command('route.create_trigger', { source_state: 'start', logical_source: 'BUTTON_A', event_kind: 'press', target_state: right }),
       command('route.create_trigger', { source_state: right, logical_source: 'BUTTON_B', event_kind: 'press', target_state: 'start' }),
     );
+    if (timers) await edit(
+      command('scene.rename', { display_name: 'Scene Timer Continuity' }),
+      command('object.add', { object: { object_id: 'timer_marker', kind: 'filled_rect', width: 16, height: 16,
+        z_order: 2, layer: 'SCENE', defaults: { x: 76, y: 80, visible: false } } }),
+      command('event_binding.add', { event_binding: { binding_id: 'reveal_timer', event_type: 'time.scene_elapsed',
+        configuration: { delay_ms: 2000, start_policy: 'scene_entry' } } }),
+      command('event_handler.add', { event_handler: { handler_id: 'reveal_expired', event_ref: 'reveal_timer', guards: [], actions: [] } }),
+      command('object_actions.set', { owner_kind: 'handler', owner_id: 'reveal_expired',
+        actions: [{ kind: 'object.set_visibility', object_ref: 'timer_marker', visible: true }] }),
+      command('scene.set_reactive_wait_default', { reactive_wait_default: { policy_id: 'main_wait_policy',
+        hold_fallback_allowed: true, event_interests: ['button_a_press', 'button_b_press', 'reveal_timer'] } }),
+    );
     await call('project.save');
   }
   const loaded = await call('project.load', { path: projectPath });
@@ -80,7 +93,7 @@ const object = (snapshot, id) => snapshot.objects.find(item => item.object_id ==
   const scene = loaded.document.scenes[0];
   assert.equal(scene.schema_version, 2);
   assert.equal(scene.states.length, 2);
-  assert.equal(scene.objects.length, 2);
+  assert.equal(scene.objects.length, timers ? 3 : 2);
   assert.equal(scene.routes.length, 2);
   assert.equal(scene.scene_exits.length, 0);
   assert(!scene.render_models && !scene.waiting_visuals);
@@ -111,6 +124,22 @@ const object = (snapshot, id) => snapshot.objects.find(item => item.object_id ==
   assert.equal(object(snapshot, 'continuity_sprite').effective.visual_ref, 'pulse.a');
   snapshot = await advance(500);
   assert.equal(object(snapshot, 'continuity_sprite').effective.visual_ref, 'pulse.b');
+  if (timers) {
+    assert.equal(object(snapshot, 'timer_marker').effective.visible, false);
+    snapshot = await advance(250);
+    snapshot = await input('BUTTON_A');
+    assert.equal(snapshot.scene.state_id, right);
+    snapshot = await advance(250);
+    assert.equal(snapshot.scene.state_id, right, 'Action-only expiry must not enter another state');
+    assert.equal(object(snapshot, 'timer_marker').underlying.visible, true);
+    assert.equal(object(snapshot, 'position_marker').effective.x, 120);
+    assert.equal(snapshot.timer_events.length, 1, 'Scene timer must expire across local state changes');
+    snapshot = await input('BUTTON_B');
+    assert.equal(object(snapshot, 'timer_marker').effective.visible, true);
+    assert.equal(object(snapshot, 'position_marker').effective.x, 32);
+    snapshot = await advance(6000);
+    assert.equal(snapshot.timer_events.length, 0, 'One-shot timer must not repeat');
+  }
   console.log(`Validated source fixture: ${projectPath}`);
   console.log('A/B state changes preserve sprite playback; marker override changes/restores X; loop wraps. No egg generated.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => {

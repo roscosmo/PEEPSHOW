@@ -30,6 +30,7 @@ import {
   ArrowUp,
   CalendarClock,
   Check,
+  Clock,
   ExternalLink,
   Eye,
   Filter,
@@ -2362,6 +2363,8 @@ function sameNodeSet(left: Node[], right: Node[]) {
 }
 
 export function StateGraphView({
+  timerTypes = [],
+  onRequestTimer,
   scene,
   activeStateId,
   editor,
@@ -2393,6 +2396,8 @@ export function StateGraphView({
   selected: SceneSelection;
   physicalEventKinds: StateTriggerEventKind[];
   peepOSTriggers: PeepOSTriggerCapability[];
+  timerTypes?: string[];
+  onRequestTimer?: (stateId: string, eventType: string) => void;
   onSelect: (selection: SceneSelection) => void;
   onCreateState: (sceneId: string, x: number, y: number) => void;
   onDeleteState: (sceneId: string, stateId: string) => void;
@@ -3111,7 +3116,10 @@ export function StateGraphView({
             </button>
           </div>
           <div className="peepos-trigger-list">
-            {peepOSTriggers.map((trigger) => (
+            {timerTypes.map(eventType => <button key={eventType} type="button" onClick={() => {
+              onRequestTimer?.(peepOSTriggerStateId, eventType); setPeepOSTriggerStateId(null);
+            }}><Clock size={16} /><span><strong>{eventType === "time.scene_elapsed" ? "Scene timer" : "State-entry timer"}</strong></span></button>)}
+            {peepOSTriggers.filter(trigger => trigger.kind !== "delay_elapsed" || timerTypes.length === 0).map((trigger) => (
               <button
                 disabled
                 key={trigger.kind}
@@ -4004,6 +4012,7 @@ function SceneNodeInspector({
 }
 
 export function SceneAuthoringInspector({
+  timerActionKinds = [],
   onDeleteRoute,
   localCommandAllowed,
   stateCommandAllowed,
@@ -4099,6 +4108,7 @@ export function SceneAuthoringInspector({
   stateCommandAllowed?: (command: string) => boolean;
   localCommandAllowed?: (command: string) => boolean;
   onDeleteRoute?: (sceneId: string, routeId: string) => Promise<void>;
+  timerActionKinds?: string[];
 }) {
   const variables = scene?.variables ?? [];
   const inputActions = scene?.input_actions ?? [];
@@ -4140,6 +4150,7 @@ export function SceneAuthoringInspector({
       )}
       {route !== null && scene !== null && (
         <RouteInspector
+          timerActionKinds={timerActionKinds}
           onDeleteRoute={onDeleteRoute}
           localCommandAllowed={localCommandAllowed}
           objectActionsEditable={objectActionsEditable}
@@ -4776,6 +4787,7 @@ function SceneExitInspector({
 }
 
 function RouteInspector({
+  timerActionKinds = [],
   onDeleteRoute,
   localCommandAllowed,
   objectActionsEditable = false,
@@ -4815,6 +4827,7 @@ function RouteInspector({
   objectActionsEditable?: boolean;
   localCommandAllowed?: (command: string) => boolean;
   onDeleteRoute?: (sceneId: string, routeId: string) => Promise<void>;
+  timerActionKinds?: string[];
   states: StateRecord[];
   scenes: SceneDocument[];
   sceneExits: SceneExitRecord[];
@@ -4888,7 +4901,7 @@ function RouteInspector({
       <div className="transition-summary">
         <div>
           <span>When</span>
-          <strong>{displayInputTrigger(input, route.action_ref)}</strong>
+          <strong>{displayInputTrigger(input, route.action_ref ?? route.event_ref ?? "")}</strong>
         </div>
         <div>
           <span>From</span>
@@ -4975,6 +4988,9 @@ function RouteInspector({
       />
       <h4>Then</h4>
       <EditableActionList
+        timers={(scenes.find(scene => scene.scene_id === sceneId)?.event_bindings ?? [])
+          .filter(binding => binding.event_type === "time.scene_elapsed").map(binding => binding.binding_id)}
+        timerActionKinds={timerActionKinds}
         sceneObjects={sceneObjects}
         sceneId={sceneId}
         route={route}
@@ -5002,7 +5018,7 @@ function RouteInspector({
   );
 }
 
-function EditableGuardList({
+export function EditableGuardList({
   sceneId,
   route,
   variables,
@@ -5157,6 +5173,9 @@ type WaitingAnimationChoice = {
 };
 
 const EFFECT_KIND_LABELS: Record<string, string> = {
+  start_timer: "Start timer",
+  restart_timer: "Restart timer",
+  cancel_timer: "Cancel timer",
   "object.move_by": "Move by (relative)",
   "object.set_position": "Set position (absolute)",
   "object.set_visibility": "Show or hide object",
@@ -5210,6 +5229,8 @@ function waitingAnimationChoices(
 }
 
 export function EditableActionList({
+  timers = [],
+  timerActionKinds = [],
   sceneObjects = false,
   sceneId,
   route,
@@ -5231,6 +5252,8 @@ export function EditableActionList({
   route: StateRoute;
   variables: StateVariable[];
   sceneObjects?: boolean;
+  timers?: string[];
+  timerActionKinds?: string[];
   targetState?: StateRecord;
   targetElements: RenderElement[];
   waitingVisuals: WaitingVisual[];
@@ -5262,6 +5285,7 @@ export function EditableActionList({
   const targetElementById = new Map(targetElements.map((element) => [element.element_id, element]));
 
   const defaultActionForKind = (kind: string, preferredElementRef?: string): Record<string, unknown> | null => {
+    if (timerActionKinds.includes(kind)) return timers.length ? { kind, timer_ref: timers[0] } : null;
     if (kind === "set_variable") {
       const variable = variables[0];
       return variable === undefined ? null : {
@@ -5336,7 +5360,7 @@ export function EditableActionList({
     "set_element_waiting_animation",
   ];
   const availableEffectKinds = [
-    ...(localActionsAllowed ? localEffectKinds : []),
+    ...(localActionsAllowed ? [...localEffectKinds, ...timerActionKinds] : []),
     "play_sfx",
   ].filter((kind) => defaultActionForKind(kind) !== null);
 
@@ -5639,7 +5663,12 @@ export function EditableActionList({
                   </label>
                 </>
               )}
-              {action.kind === "play_sfx" && (
+            {timerActionKinds.includes(action.kind) && <label className="effect-field"><span>Scene timer</span>
+              <select aria-label={`Effect ${visibleIndex + 1} timer`} value={action.timer_ref ?? ""} disabled={!canEdit}
+                onChange={event => commit({ kind: action.kind, timer_ref: event.target.value })}>
+                {timers.map(id => <option key={id} value={id}>{id}</option>)}
+              </select></label>}
+            {action.kind === "play_sfx" && (
                 <label className="effect-field">
                 <span>SFX cue</span>
                 <select

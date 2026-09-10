@@ -39,4 +39,9 @@ node tests/native-hardware-fixture.cjs
 Default invocation only loads and previews; it does not save or export. `--create`
 is for initially generating this fixture and refuses to replace a populated project.
 
-Hardware animation continuity, rendering and input behavior are not yet verified.
+## HW6 Result
+
+OS reports the exact fixture at commit `5c059bfce37770319cb49f09a14246202c42e039`
+runs on HW6: A/B overrides work without visibly restarting animation. This verifies
+the awake-only development path. It is not a measured phase-continuity or STOP2
+qualification claim. Ordinary V2 export remains blocked.

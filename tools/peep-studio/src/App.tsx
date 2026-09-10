@@ -63,6 +63,8 @@ import {
 import type { StateGraphEntryHandle, StateGraphEntrySide } from "./stateGraph";
 import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsNativeCreation, supportsStateManagement, supportsLocalGraphCommand, supportsObjectCommand, usesSceneObjects } from "./sceneCapabilities";
 import { SceneObjectInspector } from "./SceneObjectInspector";
+import { TimerInspector, type TimerRequest } from "./TimerInspector";
+import { SCENE_TIMER, STATE_TIMER, timerBounds, deleteTimerCommands } from "./timerAuthoring";
 import type {
   AssetFrameRecord,
   AssetRecord,
@@ -155,6 +157,7 @@ export default function App() {
   const [projectPath, setProjectPath] = useState<string | null>(null);
   const [temporaryProject, setTemporaryProject] = useState(false);
   const [sceneSelection, setSceneSelection] = useState<SceneSelection>({ kind: "project" });
+  const [timerRequest, setTimerRequest] = useState<TimerRequest | null>(null);
   const [placementStateId, setPlacementStateId] = useState<string | null>(null);
   const [placementEditStateIds, setPlacementEditStateIds] = useState<string[]>([]);
   const [selectedPlacementElement, setSelectedPlacementElement] = useState<string | null>(null);
@@ -1701,7 +1704,13 @@ export default function App() {
     try {
       const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
         project_revision: project.project_revision,
-        commands: [{ kind: "route.delete", scene_id: sceneId, route_id: routeId }],
+        commands: (() => {
+          const scene = project.document?.scenes?.find(item => item.scene_id === sceneId);
+          const eventRef = scene?.routes?.find(route => route.route_id === routeId)?.event_ref;
+          return scene && eventRef && scene.routes?.filter(route => route.event_ref === eventRef).length === 1
+            && scene.event_bindings?.some(binding => binding.binding_id === eventRef && binding.event_type === STATE_TIMER)
+            ? deleteTimerCommands(scene, eventRef) : [{ kind: "route.delete", scene_id: sceneId, route_id: routeId }];
+        })(),
       });
       applyProjectResult(result);
       setSelectedScene(sceneId);
@@ -5562,6 +5571,13 @@ export default function App() {
               selected={sceneSelection}
               physicalEventKinds={service?.state_scene_presentation.logical_input_events ?? ["press"]}
               peepOSTriggers={service?.state_scene_graph.peepos_trigger_catalog ?? []}
+              timerTypes={objectSceneSelected ? [SCENE_TIMER, STATE_TIMER].filter(type =>
+                timerBounds(service, project?.summary.target_profile ?? "", type)
+                && ["event_binding.add", "scene.set_reactive_wait_default", type === SCENE_TIMER ? "event_handler.add" : "route.add"].every(localCommandAllowed)) : []}
+              onRequestTimer={(stateId, eventType) => {
+                setSceneSelection(eventType === SCENE_TIMER ? { kind: "scene" } : { kind: "state", id: stateId });
+                setTimerRequest({ serial: Date.now(), sceneId: selectedSceneDocument!.scene_id, eventType, stateId });
+              }}
               onSelect={setSceneSelection}
               onCreateState={(sceneId, x, y) => {
                 void createState(sceneId, x, y);
@@ -5681,6 +5697,7 @@ export default function App() {
 
           {!projectRootSelected && workspaceMode === "logic" && (
             <SceneAuthoringInspector
+              timerActionKinds={objectSceneSelected ? service?.state_scene_graph.scene_timers?.actions ?? [] : []}
               onDeleteRoute={deleteLegacySceneRoute}
               localCommandAllowed={localCommandAllowed}
               stateCommandAllowed={stateCommandAllowed}
@@ -5721,6 +5738,16 @@ export default function App() {
             />
           )}
 
+          {!projectRootSelected && workspaceMode === "logic" && objectSceneSelected && selectedSceneDocument && (
+            <TimerInspector key={selectedSceneDocument.scene_id} scene={selectedSceneDocument} service={service}
+              profileId={project?.summary.target_profile ?? ""} request={timerRequest}
+              stateId={sceneSelection.kind === "state" ? sceneSelection.id : undefined}
+              routeId={sceneSelection.kind === "route" ? sceneSelection.id : undefined}
+              supports={kind => kind === "object_actions.set"
+                ? busy === null && supportsObjectCommand(service, selectedSceneCapability, kind) : localCommandAllowed(kind)}
+              onApply={applySceneObjectCommands} ownership={project?.placement_ownership?.scenes[selectedSceneDocument.scene_id] ?? null}
+              assets={assets} audioCues={audioCues} />
+          )}
           {!projectRootSelected && workspaceMode === "logic" && (
             <section className="inspector-section">
               <h3>Variables</h3>

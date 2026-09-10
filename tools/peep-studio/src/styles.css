@@ -1375,6 +1375,17 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
+.timer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.timer-inspector .select-field {
+  margin-block: 10px;
+}
+
 .project-inspector-title {
   display: flex;
   align-items: center;
@@ -5234,7 +5245,8 @@ button:focus-visible {
   margin-top: 12px;
 }
 
-.select-field select {
+.select-field select,
+.timer-inspector input[type="number"] {
   width: 100%;
   min-width: 0;
   height: 32px;

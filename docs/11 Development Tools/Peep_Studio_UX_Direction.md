@@ -685,7 +685,7 @@ Requested OS-owned increments, each advertised through hello/per-scene capabilit
    state creation/deletion, rename, entry selection, and state/entry layout.
 2. Delivered in API 41: local input/timer graph commands. Studio connects physical
    trigger creation/rebinding, route retargeting/deletion/layout, guards and variables.
-   Timer authoring UI is the next GUI slice.
+   Native timer authoring is connected in the timer increment below.
 3. Scene exit creation and reciprocal local-graph endpoints/connections. Package
    entry-scene selection already exists independently.
 
@@ -726,11 +726,40 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   of scene connections. Ordered actions continue through `object_actions.set`.
 - Scene-exit sockets remain non-connectable and their destination controls remain
   disabled for V2. No scene-flow or shared backend ownership changes are included.
-- Timer bindings/handlers are supported by the host but not yet exposed by Studio.
-  The next timer UI slice must create a scene binding and its single handler in one
-  batch, and delete handler then binding together after clearing references. State
-  timers instead use a binding and a state-scoped route. Unsupported OS events stay
-  disabled. Do not reuse physical-trigger creation for timers.
+- Timer bindings/handlers are exposed by the native timer increment below. Scene
+  binding/handler mutations are paired; state timers use state-scoped routes.
+  Unsupported OS events stay disabled. Physical-trigger creation is not reused.
 - Native GUI regression coverage creates a guarded input route from scratch,
   edits its actions, checks host execution, and verifies undo/redo and save/reload.
   Migration remains deferred and V2 egg export remains visibly unavailable.
+
+### Native Timers And HW6 Fixture
+
+- OS reports that the exact continuity fixture at
+  `5c059bfce37770319cb49f09a14246202c42e039` runs on HW6: A/B overrides work without
+  visibly restarting animation. This is an awake-only development-path pass,
+  not measured phase continuity, STOP2 qualification or ordinary export support.
+- Native V2 timer authoring uses advertised commands and the selected profile's
+  available timer source metadata, including delay bounds. Scene timers are owned
+  by the scene inspector; state-entry timers are available from the state trigger
+  picker. Unsupported event placeholders remain disabled.
+- Scene timers expose On scene entry / By action, an action-only or local-state
+  expiry destination, guards and ordered actions. They survive local state changes.
+  Their independent handlers are edited in the inspector, not synthesized as
+  self-routes or state-owned transitions. Graph presentation for independent
+  handlers is deferred until its visual design is agreed.
+- State-entry timers use one binding and a state-scoped route. Leaving and
+  re-entering restarts their duration. Existing route guard/action/layout editors
+  remain in use; event references are displayed as platform outputs.
+- Start, Restart and Cancel timer actions target scene timers only and retain
+  their position in the existing ordered `object_actions.set` editor.
+- Create/delete scene bindings and their one handler in a single transaction.
+  Delete removes timer wait-interest references and refuses to silently strip
+  external timer actions. Undo/redo and save/reload cover the complete change.
+- `examples/authoring/native_v2_scene_timer.peepproj` is the source-only handoff:
+  a two-second scene timer reveals one object while A/B overrides move another.
+  Host verified; this timer fixture has no hardware acceptance claim yet.
+- GUI checks cover paired creation/deletion, cross-state expiry, one-shot behavior,
+  action-started timers, state-entry restart, reference protection, ordered effects,
+  undo/redo, save/reload and inspector layout at 1280/1440 px. Shared backend and firmware
+  are unchanged. Ordinary V2 export stays disabled; migration remains deferred.
