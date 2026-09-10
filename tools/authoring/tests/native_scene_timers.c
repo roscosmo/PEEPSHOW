@@ -8,6 +8,11 @@
 #define PS_HW6_RUNTIME_CLASS_LP_GRAPH 2U
 #define PS_HW6_RUNTIME_LIFECYCLE_RUNNING 2U
 
+uint32_t PS_SceneRuntime_DevelopmentObjectsActive(void) { return 0; }
+static uint32_t tx_time_get(void) { assert(0); return 0; }
+static uint32_t PS_HW6_RTOS_ObjectAdvance(uint32_t now) { (void)now; assert(0); return 1; }
+static void PS_HW6_RTOS_RuntimePackageReplacementFail(void) { assert(0); }
+
 static uint32_t scene_active;
 static uint32_t scene_activation;
 static uint32_t state_activation;

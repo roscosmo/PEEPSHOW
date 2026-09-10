@@ -725,12 +725,13 @@ awake fixture passed hardware animation, independent marker changes and shell
 exit. Service API 41, target capabilities and ordinary export
 remain unchanged. This is not permission to enable V2 egg export in Studio.
 
-For the first GUI-authored hardware fixture, provide one V2 scene with continuous
+The first GUI-authored hardware fixture has one V2 scene with continuous
 interaction, two local states, A/B button routes, one scene-owned looping sprite
-and separate object overrides. Keep timers, SFX, timeout interaction and
-scene-to-scene routes out of this fixture: the first device path explicitly
-rejects them. Object/variable actions and guards are allowed; a system-exit route
-can return to the shell. No requirement for a focus or cursor object is added.
+and separate object overrides. It intentionally omits timers and SFX. The next
+development increment admits scoped timers; SFX, timeout interaction and
+scene-to-scene routes remain rejected. Object/variable actions and guards are
+allowed; a system-exit route can return to the shell. No requirement for a
+focus or cursor object is added.
 
 OS generates the development egg from the supplied project using
 `tools/authoring/build_object_development.py --project <path>` and builds the
@@ -738,9 +739,36 @@ firmware. GUI's source-only fixture from commit
 `5c059bfce37770319cb49f09a14246202c42e039` is now imported unchanged at
 `examples/authoring/native_v2_continuity.peepproj` and is the development builder's
 default. Its 1,344-byte egg passes native C activation, A/B animation continuity
-and exact raster checks; hardware verification of this fixture remains pending.
+and exact raster checks. Its awake hardware test passed: the user saw the sprite
+animate across A/B changes, and the dump recorded seven applied transitions,
+30/30 successful display requests and no render/queue/wait errors or lease faults.
+Exact frame timing remains native-tested rather than inferred from one snapshot.
 A moves the marker right and B returns it left; neither exits to the shell.
 The earlier synthetic fixture remains a native regression test. Details, commands
 and evidence requirements are in
 [[Scene_Object_Awake_Development_Test]]. GUI should continue capability-gated
 authoring; no shared service or Studio files changed in this firmware increment.
+
+## V2 Awake Timer Handoff
+
+State-entry and scene-owned one-shots now connect to the existing `thRuntime`
+scheduler in the explicit V2 development path. Scene handlers can change objects
+without a destination state; state activation stays unchanged. Committed
+Start/Restart/Cancel actions use the same bounded slots and ordering as V1.
+State timers cancel/rearm with state activations; scene timers survive A/B state
+changes. Relative timers pause in the shell and resume their remaining duration.
+
+Native tests cover the real V2 runtime plus scheduler and rendering, not just
+timer command acceptance. The OS timer fixture is generated with
+`build_object_development.py --timers`; GUI's source fixture is unchanged.
+The described awake hardware fixture passed: state/scene expiry, uninterrupted
+animation during A/B changes, Restart and Cancel. Timer due/dispatch/applied were
+2/2/2 with zero errors; all 50 display requests completed successfully. Broader
+timer controls and suspension remain native-tested, not hardware-qualified.
+Development probe API is now 2;
+service API 41 and target/export capabilities do not change.
+
+GUI may continue timer authoring with the existing commands and capabilities.
+Create/delete each scene binding and its independent handler together. Supply
+a source-only timer fixture for the next integration check; do not enable
+ordinary V2 egg export or claim STOP2/LPBAM timer support from this increment.

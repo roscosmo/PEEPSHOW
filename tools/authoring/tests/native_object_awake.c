@@ -71,7 +71,10 @@ static void gui_fixture(FILE *output)
   frame(output);
 }
 
-int main(int argc, char **argv)
+#ifndef PS_OBJECT_AWAKE_MAIN
+#define PS_OBJECT_AWAKE_MAIN main
+#endif
+int PS_OBJECT_AWAKE_MAIN(int argc, char **argv)
 {
   uint32_t size, next, phase, epoch, status;
   FILE *output;

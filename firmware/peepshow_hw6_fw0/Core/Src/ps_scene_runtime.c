@@ -1311,10 +1311,11 @@ uint32_t PS_SceneRuntime_EnterDevelopmentObjects(const uint8_t *blob, uint32_t s
   if ((scene->execution_model != PS_SCENE_RUNTIME_MODEL_OBJECTS) ||
       (scene->interaction_mode != PS_SCENE_RUNTIME_INTERACTION_CONTINUOUS))
   { return 1UL; }
-  /* This first awake proof admits local input/object/variable work only. */
+  /* Awake development admits local input and scoped timer transactions. */
   for (index = 0UL; index < scene->event_binding_count; ++index)
   {
-    if (scene->event_bindings[index].event_class != PS_SCENE_RUNTIME_EVENT_CLASS_INPUT)
+    if ((scene->event_bindings[index].event_class != PS_SCENE_RUNTIME_EVENT_CLASS_INPUT) &&
+        (scene->event_bindings[index].event_class != PS_SCENE_RUNTIME_EVENT_CLASS_TIMER))
     { return 1UL; }
   }
   for (index = 0UL; index < scene->transition_count; ++index)
@@ -1326,7 +1327,9 @@ uint32_t PS_SceneRuntime_EnterDevelopmentObjects(const uint8_t *blob, uint32_t s
     uint32_t kind = scene->actions[index].kind;
     if ((kind != PS_SCENE_RUNTIME_ACTION_OBJECT_OPERATION) &&
         (kind != PS_SCENE_RUNTIME_ACTION_SET_VARIABLE) &&
-        (kind != PS_SCENE_RUNTIME_ACTION_EXIT_TO_SHELL)) { return 1UL; }
+        (kind != PS_SCENE_RUNTIME_ACTION_EXIT_TO_SHELL) &&
+        !((kind >= PS_SCENE_RUNTIME_ACTION_START_TIMER) &&
+          (kind <= PS_SCENE_RUNTIME_ACTION_CANCEL_TIMER))) { return 1UL; }
   }
   if ((PS_EggStateLoader_LoadDevelopment(blob, size, scene) != 0UL) ||
       (PS_SceneObjectGraph_Init(&s_ps_object_graph, scene,
@@ -1648,6 +1651,8 @@ static uint32_t PS_SceneRuntime_HandleStateSceneEventId(
   g_ps_scene_runtime_probe.action_count++;
   g_ps_scene_runtime_probe.last_action = scene_event_id;
   g_ps_scene_runtime_probe.last_scene_event_id = scene_event_id;
+  s_ps_scene_runtime_timer_action_count = 0UL;
+  s_ps_scene_runtime_timer_action_take = 0UL;
   if (s_ps_scene_runtime_development_objects != 0UL)
   {
     uint32_t result = PS_SceneObjectGraph_StageEvent(&s_ps_object_graph,
@@ -1669,6 +1674,7 @@ static uint32_t PS_SceneRuntime_HandleStateSceneEventId(
     g_ps_scene_runtime_probe.primary_variable_value = s_ps_object_graph.variables[0];
     g_ps_scene_runtime_probe.state_revision++;
     g_ps_scene_runtime_probe.transition_match_count++;
+    g_ps_scene_runtime_probe.last_transition_id = s_ps_object_effects.transition_id;
     if (s_ps_object_effects.state_entered != 0UL)
     {
       s_ps_scene_runtime_state_activation++;
@@ -1677,14 +1683,20 @@ static uint32_t PS_SceneRuntime_HandleStateSceneEventId(
     for (index = 0UL; index < s_ps_object_effects.count; ++index)
     {
       if (s_ps_object_effects.actions[index].kind == PS_SCENE_RUNTIME_ACTION_EXIT_TO_SHELL)
-      { s_ps_scene_runtime_pending_shell_exit = 1UL; }
+      {
+        s_ps_scene_runtime_pending_shell_exit = 1UL;
+        g_ps_scene_runtime_probe.shell_exit_action_commit_count++;
+      }
+      else if ((s_ps_object_effects.actions[index].kind >= PS_SCENE_RUNTIME_ACTION_START_TIMER) &&
+               (s_ps_object_effects.actions[index].kind <= PS_SCENE_RUNTIME_ACTION_CANCEL_TIMER))
+      {
+        s_ps_scene_runtime_timer_actions[s_ps_scene_runtime_timer_action_count++] =
+          s_ps_object_effects.actions[index];
+      }
     }
     g_ps_scene_runtime_probe.last_status = PS_SCENE_RUNTIME_STATUS_OK;
     return PS_SCENE_RUNTIME_INPUT_APPLIED;
   }
-  s_ps_scene_runtime_timer_action_count = 0UL;
-  s_ps_scene_runtime_timer_action_take = 0UL;
-
   for (transition_index = 0UL;
        transition_index < scene->transition_count;
        ++transition_index)

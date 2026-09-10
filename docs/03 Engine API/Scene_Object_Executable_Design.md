@@ -449,7 +449,7 @@ groups and prefabs remain later increments with their own acceptance evidence.
 
 The first explicit device path is implemented and its original awake fixture
 passed hardware animation, independent state overrides and shell exit. The next
-GUI-authored fixture passes native checks and awaits its hardware test.
+GUI-authored fixture also passed awake hardware animation and A/B overrides.
 See [[Scene_Object_Awake_Development_Test]] for the exact subset, build
 fixture, owner handoff and two GDB helpers. The existing object bank/graph now
 feed a pointer-free render model and the real display owner. Local state changes
@@ -457,3 +457,12 @@ do not reset the object clock. The development session deliberately remains
 awake; this does not enable production V2 installation/export or LPBAM. The
 earlier allocation-free/no-active-path notes describe the preceding pure-engine
 increment, not this explicit test path.
+
+The next awake increment admits state/scene timers and publishes committed timer
+actions to the existing runtime scheduler. Scene timer handlers may mutate scene
+objects without a state transition. Native tests cover real scheduler/graph/render
+integration, timer controls, owner lifetimes and suspension. The awake hardware
+fixture passed state/scene expiry, visual continuity, Restart and Cancel;
+suspension and broader cases remain native-only. See the same development-test document for the
+OS-owned timer variant, which leaves GUI's source unchanged. STOP2/LPBAM and
+ordinary V2 export remain unavailable.

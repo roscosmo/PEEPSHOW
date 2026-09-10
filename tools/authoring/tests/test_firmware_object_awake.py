@@ -10,7 +10,7 @@ import unittest
 
 from test_firmware_package_workflow import TOOL_ROOT, firmware_function
 from test_firmware_shape_primitives import panel_pixels
-from build_object_development import DEFAULT_PROJECT, fixture_bundle, render_c
+from build_object_development import DEFAULT_PROJECT, fixture_bundle, timer_fixture_bundle, render_c
 from peepshow_authoring.project import load_project
 from peepshow_authoring.compiler import build_development_egg_v2, build_egg, EggCompileError
 
@@ -77,14 +77,14 @@ class ObjectAwakeTests(unittest.TestCase):
         scene["interaction_policy"].update(mode="timeout", inactive_route="preserve_scene")
         self.run_bundle(replace(bundle, scenes=(scene,)), reject=True)
 
-    def test_unsupported_timer_is_not_silently_ignored(self):
+    def test_scene_timer_is_admitted(self):
         bundle = fixture_bundle()
         scene = deepcopy(bundle.scenes[0])
         scene["event_bindings"] = [{"binding_id": "later", "event_type": "time.scene_elapsed",
             "configuration": {"delay_ms": 5000, "start_policy": "scene_entry"}}]
         scene["event_handlers"] = [{"handler_id": "later_handler", "event_ref": "later", "guards": [],
             "actions": [{"kind": "object.set_position", "object_ref": "marker", "x": 64}]}]
-        self.run_bundle(replace(bundle, scenes=(scene,)), reject=True)
+        self.run_bundle(replace(bundle, scenes=(scene,)))
 
     def test_gui_fixture_runtime_continuity_and_pixels(self):
         bundle = load_project(DEFAULT_PROJECT)
@@ -106,7 +106,7 @@ class ObjectAwakeTests(unittest.TestCase):
         self.assertEqual(expected, actual)
 
     def test_checked_in_fixture_is_reproducible_and_not_ordinary_export(self):
-        bundle = load_project(DEFAULT_PROJECT)
+        bundle = timer_fixture_bundle()
         self.assertEqual(render_c(build_development_egg_v2(bundle)),
             (self.firmware / "Core/Src/ps_object_development_egg_autogen.c").read_text(encoding="ascii"))
         with self.assertRaises(EggCompileError):

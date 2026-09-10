@@ -29,6 +29,7 @@ static struct { uint32_t tx_queue_enqueued; } ps_queues[9];
 static uint32_t ps_audio_sfx_pending, ps_audio_sfx_clock_held;
 static uint32_t ps_object_launching, ps_object_last_tick, ps_object_tick_fraction;
 static uint32_t active, enter_status, present_status, presentations, failures;
+static uint32_t timer_syncs;
 static uint32_t PS_HW6_RTOS_SystemOverlayActive(void) { return 0; }
 static uint32_t PS_HW6_AudioOwner_SfxActive(void) { return 0; }
 static void PS_HW6_RTOS_RuntimeInteractionEnd(void) {}
@@ -49,12 +50,15 @@ static void PS_HW6_RTOS_RuntimeSetState(uint32_t cls, uint32_t exec, uint32_t li
 static uint32_t PS_HW6_RTOS_ObjectPresent(void)
 {
   assert(active && g_ps_ui_router_request == 0);
+  assert(timer_syncs == 1);
   presentations++;
   g_ps_object_development_probe.next_tick = 125;
   return present_status;
 }
 static uint32_t PS_HW6_RTOS_RuntimePackageReplacementFail(void)
 { failures++; active = 0; return 0; }
+static void PS_HW6_RTOS_RuntimeStateTimersSync(uint32_t tick, uint32_t force)
+{ assert(active && tick == 100 && force == 1); timer_syncs++; }
 
 /* The old launch path calls this restricted helper and fails. */
 uint32_t PS_HW6_RTOS_SendUiLifecycleEvent(uint32_t event)
@@ -73,6 +77,7 @@ static void reset(void)
   g_ps_ui_router_request = 0;
   g_ps_ui_router_request_event = 0;
   active = enter_status = present_status = presentations = failures = 0;
+  timer_syncs = 0;
 }
 
 int main(void)

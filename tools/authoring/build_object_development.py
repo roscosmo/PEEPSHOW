@@ -73,14 +73,50 @@ def render_c(blob):
             'sizeof(g_ps_object_development_egg);\n')
 
 
+def timer_fixture_bundle():
+    """OS-only timer proof derived from, without editing, GUI's pinned source."""
+    bundle = load_project(DEFAULT_PROJECT)
+    scene = deepcopy(bundle.scenes[0])
+    scene["objects"].append({"object_id": "timer_marker", "kind": "filled_rect",
+        "width": 12, "height": 12, "z_order": 2, "layer": "SCENE",
+        "defaults": {"x": 16, "y": 16, "visible": True}})
+    scene["event_bindings"] = [
+        {"binding_id": "scene_delay", "event_type": "time.scene_elapsed",
+         "configuration": {"delay_ms": 5000, "start_policy": "scene_entry"}},
+        {"binding_id": "state_delay", "event_type": "time.state_entry_elapsed",
+         "configuration": {"delay_ms": 3000}}]
+    scene["event_handlers"] = [{"handler_id": "scene_delay_handler", "event_ref": "scene_delay",
+        "guards": [], "actions": [{"kind": "object.set_position",
+                                    "object_ref": "timer_marker", "x": 140}]}]
+    scene["routes"].append({"route_id": "state_delay_route", "event_ref": "state_delay",
+        "from_states": ["marker_right"], "guards": [], "actions": [], "target_state": "start"})
+    for name, button, actions in (
+        ("restart", "BUTTON_L", [{"kind": "restart_timer", "timer_ref": "scene_delay"},
+                                  {"kind": "object.set_position", "object_ref": "timer_marker", "x": 16}]),
+        ("cancel", "BUTTON_R", [{"kind": "cancel_timer", "timer_ref": "scene_delay"}]),
+    ):
+        scene["input_actions"].append({"action_id": name, "logical_source": button, "event_kind": "press"})
+        for state in ("start", "marker_right"):
+            scene["routes"].append({"route_id": f"{name}_{state}", "action_ref": name,
+                "from_states": [state], "guards": [], "actions": deepcopy(actions), "target_state": state})
+    scene["reactive_wait_default"]["event_interests"].extend(["scene_delay", "state_delay", "restart", "cancel"])
+    project = deepcopy(bundle.project)
+    project["package"]["package_id"] = "dev.peepshow.native_v2_timers"
+    return replace(bundle, project=project, scenes=(scene,))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", type=Path, default=DEFAULT_PROJECT,
                         help="Native V2 project; defaults to the checked-in Studio continuity fixture")
+    parser.add_argument("--timers", action="store_true",
+                        help="Use the OS timer variant of the checked-in Studio fixture (source stays unchanged)")
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[2] /
                         "firmware/peepshow_hw6_fw0/Core/Src/ps_object_development_egg_autogen.c")
     args = parser.parse_args()
-    blob = build_development_egg_v2(load_project(args.project))
+    if args.timers and args.project.resolve() != DEFAULT_PROJECT.resolve():
+        parser.error("--timers uses the checked-in Studio fixture; omit --project")
+    blob = build_development_egg_v2(timer_fixture_bundle() if args.timers else load_project(args.project))
     args.output.write_text(render_c(blob), encoding="ascii", newline="\n")
     print(f"Development-only V2 egg: {len(blob)} bytes -> {args.output}")
 
