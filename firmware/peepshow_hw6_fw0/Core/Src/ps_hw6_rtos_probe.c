@@ -21,6 +21,9 @@
 #include "ps_power_state.h"
 #include "ps_scene_runtime.h"
 #include "ps_hw6_object_development.h"
+#include "ps_hw6_object_candidate.h"
+#include "ps_scene_object_graph.h"
+#include "ps_scene_object_display_admission.h"
 #include "ps_storage_filex_levelx.h"
 #include "ps_storage_msc_bridge.h"
 #include "ps_storage_state.h"
@@ -129,6 +132,8 @@ extern RTC_HandleTypeDef hrtc;
 #define PS_HW6_RTOS_OBJECT_DISPLAY_ACK   (1UL << 13U)
 #define PS_HW6_RTOS_OBJECT_WAKE_READY    (1UL << 11U)
 #define PS_HW6_RTOS_OBJECT_DISPLAY_MAGIC (0x4F424A32UL)
+#define PS_HW6_RTOS_OBJECT_CANDIDATE_MAGIC (0x43414E32UL)
+#define PS_HW6_RTOS_OBJECT_CANDIDATE_ACK (1UL << 10U)
 #define PS_HW6_RTOS_INTERACTION_ACTIVATION_FRAME_COUNT (3UL)
 #define PS_HW6_RTOS_RTC_UNITS_PER_SECOND (256UL)
 #define PS_HW6_RTOS_RTC_UNITS_PER_DAY \
@@ -490,6 +495,24 @@ static uint64_t ps_object_rtc_start_ms;
 static uint32_t ps_object_rtc_start_tick;
 static uint32_t ps_object_rtc_valid;
 static volatile uint32_t ps_object_runtime_busy;
+/* Runtime owns the lease, display publishes completion last. All scratch is
+ * ordinary RAM. No candidate storage is reused on an acknowledgement timeout. */
+static volatile uint32_t ps_candidate_busy;
+static volatile uint32_t ps_candidate_sent;
+static const uint8_t *ps_candidate_blob;
+static uint32_t ps_candidate_size;
+static ps_scene_runtime_state_scene_t ps_candidate_scene;
+static ps_scene_object_graph_t ps_candidate_graph;
+static ps_object_waiting_workspace_t ps_candidate_waiting_workspace;
+static ps_object_waiting_program_t ps_candidate_program;
+static ps_egg_sprite_catalog_t ps_candidate_catalog;
+static ps_object_display_workspace_t ps_candidate_display_workspace;
+static ps_object_display_result_t ps_candidate_display_result;
+volatile uint32_t g_ps_object_candidate_request;
+volatile ps_hw6_object_candidate_probe_t g_ps_object_candidate_probe = {
+  .api_version = PS_HW6_OBJECT_CANDIDATE_API_VERSION,
+  .status = PS_HW6_RTOS_STATUS_NOT_RUN
+};
 volatile ps_hw6_object_lpbam_probe_t g_ps_object_lpbam_probe =
   { .api_version = PS_HW6_OBJECT_LPBAM_API_VERSION };
 volatile uint32_t g_ps_object_lpbam_prepare_request;
@@ -5016,6 +5039,9 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunStop2EligibilityDryRun(void)
 
   PS_HW6_ClockPolicy_RecordHardwareSnapshot();
 
+  if ((ps_candidate_busy != 0UL) || (g_ps_object_candidate_request != 0UL))
+  { blocker_mask |= PS_HW6_RTOS_STOP2_BLOCK_RUNTIME_BUSY; }
+
   power_state =
     g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_POWER];
   pmic_state =
@@ -5258,6 +5284,9 @@ static uint32_t PS_HW6_RTOS_Stop2AutoRuntimeAllowsIdle(void)
   uint32_t runtime_class = g_ps_hw6_rtos_probe.runtime_current_class;
   uint32_t runtime_exec = g_ps_hw6_rtos_probe.runtime_execution;
   uint32_t runtime_lifecycle = g_ps_hw6_rtos_probe.runtime_lifecycle;
+
+  if ((ps_candidate_busy != 0UL) || (g_ps_object_candidate_request != 0UL))
+  { return 0UL; }
 
   if ((runtime_class == (uint32_t)PS_HW6_RUNTIME_CLASS_SHELL) &&
       (runtime_exec == (uint32_t)PS_HW6_RUNTIME_EXEC_REACTIVE) &&
@@ -8249,6 +8278,204 @@ static UINT PS_HW6_RTOS_ObjectPresent(void)
     TX_SUCCESS : TX_CALLER_ERROR;
 }
 
+static void PS_HW6_RTOS_CandidateRelease(void)
+{
+  ps_candidate_blob = NULL;
+  ps_candidate_size = 0UL;
+  (void)memset(&ps_candidate_catalog, 0, sizeof(ps_candidate_catalog));
+  (void)memset(&ps_candidate_scene, 0, sizeof(ps_candidate_scene));
+  (void)memset(&ps_candidate_graph, 0, sizeof(ps_candidate_graph));
+  (void)memset(&ps_candidate_waiting_workspace, 0, sizeof(ps_candidate_waiting_workspace));
+  ps_candidate_sent = 0UL;
+  g_ps_object_candidate_probe.leased = 0UL;
+  __DMB();
+  ps_candidate_busy = 0UL;
+}
+
+static void PS_HW6_RTOS_CandidateReap(void)
+{
+  if ((ps_candidate_busy != 0UL) && (ps_candidate_sent != 0UL) &&
+      (g_ps_object_candidate_probe.display_complete == g_ps_object_candidate_probe.request_id))
+  {
+    __DMB();
+    if (g_ps_object_candidate_probe.wait_status != TX_SUCCESS)
+    { g_ps_object_candidate_probe.late_completions++; }
+    g_ps_object_candidate_probe.status = g_ps_object_candidate_probe.display_status;
+    PS_HW6_RTOS_CandidateRelease();
+  }
+}
+
+static void PS_HW6_RTOS_CandidateDisplay(const ULONG *message)
+{
+  uint32_t token = (uint32_t)message[2];
+  if ((ps_candidate_busy == 0UL) || (ps_candidate_sent == 0UL) ||
+      (token != g_ps_object_candidate_probe.request_id) ||
+      ((uint32_t)message[3] != ~token) ||
+      (g_ps_object_candidate_probe.display_started == token))
+  { return; }
+
+  __DMB();
+  g_ps_object_candidate_probe.display_started = token;
+  if ((g_ps_hw6_owner_probe.display_complete == 0UL) ||
+      (g_ps_hw6_owner_probe.display_lpbam_active != 0UL) ||
+      (g_ps_hw6_owner_probe.display_lpbam_prearmed != 0UL))
+  {
+    g_ps_object_candidate_probe.display_status = 2UL;
+    __DMB();
+    g_ps_object_candidate_probe.display_complete = token;
+    (void)tx_event_flags_set(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+      PS_HW6_RTOS_OBJECT_CANDIDATE_ACK, TX_OR);
+    return;
+  }
+  g_ps_object_candidate_probe.display_status = 1UL;
+  g_ps_object_candidate_probe.clock_status = PS_HW6_RTOS_RequestDisplayClockCapabilities(
+    PS_HW6_RTOS_DISPLAY_CLOCK_REASON_TRANSFER, PS_HW6_RTOS_DISPLAY_CLOCK_TRANSFER_CAPABILITIES);
+  if (g_ps_object_candidate_probe.clock_status == TX_SUCCESS)
+  {
+    g_ps_object_candidate_probe.display_status = PS_ObjectDisplay_CheckWaiting(
+      &ps_candidate_program, &ps_candidate_catalog, &ps_candidate_display_workspace,
+      &ps_candidate_display_result);
+    g_ps_object_candidate_probe.projection_status = ps_candidate_display_result.projection_status;
+    g_ps_object_candidate_probe.raster_status = ps_candidate_display_result.raster_status;
+    g_ps_object_candidate_probe.failed_step = ps_candidate_display_result.failed_step;
+    g_ps_object_candidate_probe.frames_composed = ps_candidate_display_result.frames_composed;
+    g_ps_object_candidate_probe.payload_status = ps_candidate_display_result.payload.status;
+    g_ps_object_candidate_probe.payload_reason = ps_candidate_display_result.payload.reason;
+    g_ps_object_candidate_probe.chunks = ps_candidate_display_result.payload.chunk_used;
+    g_ps_object_candidate_probe.bytes = ps_candidate_display_result.payload.payload_used_bytes;
+  }
+  g_ps_object_candidate_probe.clock_release_status = PS_HW6_RTOS_RequestDisplayClockCapabilities(
+    PS_HW6_RTOS_DISPLAY_CLOCK_REASON_RELEASE, 0UL);
+  if (g_ps_object_candidate_probe.clock_release_status != TX_SUCCESS)
+  { g_ps_object_candidate_probe.display_status = 1UL; }
+
+  /* No candidate access after this publication, including after set preempts us.
+   * The event is a notification; only the matching token releases ownership. */
+  __DMB();
+  g_ps_object_candidate_probe.display_complete = token;
+  (void)tx_event_flags_set(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+    PS_HW6_RTOS_OBJECT_CANDIDATE_ACK, TX_OR);
+}
+
+static void PS_HW6_RTOS_CandidateSend(void)
+{
+  ULONG actual;
+  ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
+  UINT status;
+  (void)tx_event_flags_get(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+    PS_HW6_RTOS_OBJECT_CANDIDATE_ACK, TX_AND_CLEAR, &actual, TX_NO_WAIT);
+  message[0] = PS_HW6_RTOS_OBJECT_CANDIDATE_MAGIC;
+  message[1] = PS_HW6_RTOS_OWNER_DISPLAY;
+  message[2] = g_ps_object_candidate_probe.request_id;
+  message[3] = ~message[2];
+  __DMB();
+  ps_candidate_sent = 1UL;
+  status = tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_DISPLAY], message, TX_NO_WAIT);
+  g_ps_object_candidate_probe.queue_status = status;
+  if (status != TX_SUCCESS)
+  {
+    g_ps_object_candidate_probe.status = 1UL;
+    PS_HW6_RTOS_CandidateRelease();
+    return;
+  }
+  status = tx_event_flags_get(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+    PS_HW6_RTOS_OBJECT_CANDIDATE_ACK, TX_AND_CLEAR, &actual, PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
+  if ((status == TX_SUCCESS) &&
+      (g_ps_object_candidate_probe.display_complete != g_ps_object_candidate_probe.request_id))
+  { status = TX_CALLER_ERROR; }
+  g_ps_object_candidate_probe.wait_status = status;
+  /* On timeout (or stale notification) retain everything until actual completion.
+   * Normal runtime service reaps a late completion without a retry or spin. */
+  PS_HW6_RTOS_CandidateReap();
+}
+
+static void PS_HW6_RTOS_CandidateBegin(const uint8_t *blob, uint32_t size, uint32_t mode)
+{
+  ps_egg_v2_profile_result_t profile;
+  uint32_t token = g_ps_object_candidate_probe.request_id;
+  uint32_t refused = g_ps_object_candidate_probe.refused;
+  uint32_t late = g_ps_object_candidate_probe.late_completions;
+  if ((ps_candidate_busy != 0UL) || (token == UINT32_MAX) ||
+      (blob == NULL) || (size == 0UL) || ((mode != 1UL) && (mode != 2UL)))
+  { g_ps_object_candidate_probe.refused++; return; }
+
+  ps_candidate_busy = 1UL;
+  ps_candidate_blob = blob;
+  ps_candidate_size = size;
+  g_ps_object_candidate_probe = (ps_hw6_object_candidate_probe_t){
+    .api_version = PS_HW6_OBJECT_CANDIDATE_API_VERSION,
+    .request_id = token + 1UL, .mode = mode, .leased = 1UL,
+    .refused = refused, .late_completions = late,
+    .status = PS_HW6_RTOS_STATUS_NOT_RUN,
+    .profile_status = PS_HW6_RTOS_STATUS_NOT_RUN,
+    .graph_status = PS_HW6_RTOS_STATUS_NOT_RUN,
+    .schedule_status = PS_HW6_RTOS_STATUS_NOT_RUN,
+    .queue_status = PS_HW6_RTOS_STATUS_NOT_RUN,
+    .wait_status = PS_HW6_RTOS_STATUS_NOT_RUN,
+    .display_status = PS_HW6_RTOS_STATUS_NOT_RUN,
+    .clock_status = PS_HW6_RTOS_STATUS_NOT_RUN,
+    .clock_release_status = PS_HW6_RTOS_STATUS_NOT_RUN,
+    .runtime_clock_status = PS_HW6_RTOS_STATUS_NOT_RUN,
+    .runtime_clock_release_status = PS_HW6_RTOS_STATUS_NOT_RUN,
+    .projection_status = PS_HW6_RTOS_STATUS_NOT_RUN,
+    .raster_status = PS_HW6_RTOS_STATUS_NOT_RUN,
+    .failed_step = PS_HW6_RTOS_STATUS_NOT_RUN,
+    .payload_status = PS_HW6_RTOS_STATUS_NOT_RUN
+  };
+  g_ps_object_candidate_probe.runtime_clock_status = PS_HW6_RTOS_RequestRuntimeClockCapabilities(
+    PS_HW6_RTOS_RUNTIME_CLOCK_REASON_REACTIVE_TRANSACTION,
+    PS_HW6_RTOS_RUNTIME_CLOCK_REACTIVE_CAPABILITIES);
+  if (g_ps_object_candidate_probe.runtime_clock_status == TX_SUCCESS)
+  {
+    g_ps_object_candidate_probe.profile_status = PS_EggStateLoader_DecodeV2Candidate(
+      ps_candidate_blob, ps_candidate_size, &ps_candidate_scene, &ps_candidate_catalog, &profile);
+    g_ps_object_candidate_probe.profile_reason = profile.reason;
+    g_ps_object_candidate_probe.loader_reason = profile.loader_reason;
+    if (g_ps_object_candidate_probe.profile_status == 0UL)
+    {
+      g_ps_object_candidate_probe.graph_status = PS_SceneObjectGraph_Init(
+        &ps_candidate_graph, &ps_candidate_scene, 1UL, token + 1UL);
+      if (g_ps_object_candidate_probe.graph_status == 0UL)
+      {
+        g_ps_object_candidate_probe.schedule_status = PS_ObjectWaiting_Build(
+          &ps_candidate_graph.objects, ps_candidate_scene.scene_id,
+          &ps_candidate_program, &ps_candidate_waiting_workspace);
+        g_ps_object_candidate_probe.steps = ps_candidate_program.step_count;
+        g_ps_object_candidate_probe.quantum_ms = ps_candidate_program.quantum_ms;
+      }
+    }
+  }
+  g_ps_object_candidate_probe.runtime_clock_release_status = PS_HW6_RTOS_RequestRuntimeClockCapabilities(
+    PS_HW6_RTOS_RUNTIME_CLOCK_REASON_RELEASE, 0UL);
+  if ((g_ps_object_candidate_probe.schedule_status != 0UL) ||
+      (g_ps_object_candidate_probe.runtime_clock_release_status != TX_SUCCESS))
+  {
+    g_ps_object_candidate_probe.status = 1UL;
+    PS_HW6_RTOS_CandidateRelease();
+    return;
+  }
+  if (mode == 2UL) { ps_candidate_catalog.frame_count = 0U; }
+  PS_HW6_RTOS_CandidateSend();
+}
+
+static void PS_HW6_RTOS_CandidateService(void)
+{
+  uint32_t mode;
+  PS_HW6_RTOS_CandidateReap();
+  mode = g_ps_object_candidate_request;
+  if (mode == 0UL) { return; }
+  g_ps_object_candidate_request = 0UL;
+  if ((ps_candidate_busy != 0UL) || (g_ps_package_workflow_probe.active != 0UL) ||
+      (ps_package_validation_busy != 0UL) ||
+      (g_ps_hw6_rtos_probe.runtime_active_capabilities != 0UL) ||
+      (g_ps_hw6_owner_probe.display_lpbam_active != 0UL) ||
+      (g_ps_hw6_owner_probe.display_lpbam_prearmed != 0UL))
+  { g_ps_object_candidate_probe.refused++; return; }
+  /* The diagnostic borrows immutable linked ROM, never a live package buffer.
+   * A future storage caller must honor the same lease before reusing its bytes. */
+  PS_HW6_RTOS_CandidateBegin(g_ps_object_development_egg, g_ps_object_development_egg_size, mode);
+}
+
 static void PS_HW6_RTOS_ObjectService(uint32_t now_tick)
 {
   if (g_ps_object_development_request != 0UL)
@@ -11128,6 +11355,12 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         PS_HW6_RTOS_HandleRuntimeInput(message);
       }
       else if ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) &&
+               (message[0] == PS_HW6_RTOS_OBJECT_CANDIDATE_MAGIC) &&
+               (message[1] == PS_HW6_RTOS_OWNER_DISPLAY))
+      {
+        PS_HW6_RTOS_CandidateDisplay(message);
+      }
+      else if ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) &&
                (message[0] == PS_HW6_RTOS_OBJECT_DISPLAY_MAGIC) &&
                (message[1] == PS_HW6_RTOS_OWNER_DISPLAY))
       {
@@ -11346,6 +11579,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     {
       PS_HW6_RTOS_RuntimeStateTimersService((uint32_t)now);
       PS_HW6_RTOS_RuntimeInteractionService((uint32_t)now);
+      PS_HW6_RTOS_CandidateService();
       PS_HW6_RTOS_ObjectService((uint32_t)tx_time_get());
     }
 

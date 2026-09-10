@@ -83,10 +83,11 @@ have equal capacity, so private slot numbering does not affect the budget.
 Limits remain **12 steps, 18 chunks, 10,512 payload bytes**. An unchanged step
 uses the same band-zero refresh as the full-scene production packer.
 
-The workspace must be allocated deterministically outside owner thread stacks;
-it must not alias live framebuffers, payloads or descriptors. This increment
-provides the caller-owned workspace types, not an additional runtime allocation
-or an asynchronous request/lease protocol. Owner-queue integration is pending.
+The workspace is allocated deterministically outside owner thread stacks;
+it must not alias live framebuffers, payloads or descriptors. The development
+owner-queue integration below now reserves private ordinary-RAM scratch for
+the descriptor, graph, schedule and exact display check. No SRAM4 arena or
+production payload capacity is changed.
 Only validated immutable catalog views are accepted inputs; they are not a
 second parser for untrusted package bytes.
 
@@ -106,7 +107,95 @@ deduplication, exact 18-chunk/10,512-byte capacity, chunk/step overflow and a
 composition failure at wrap. Active catalog, object bank, framebuffer and all
 live payload/compiler storage remain unchanged. The structured fixture reports
 4/8/4,672 steps/chunks/bytes; dual reports 8/16/9,344. These are native checks;
-the new candidate path has not yet been exercised through hardware owner queues.
+the separate owner-queue hardware result is recorded below.
+
+### Development Owner-Queue Integration
+
+`PS_HW6_RTOS_CandidateService` runs in the existing bounded runtime service.
+It checks the immutable embedded development egg, not the installed blob.
+`thRuntime` validates and constructs a private entry-state program, then sends
+a four-word `qDisplayCmd` envelope: candidate magic `0x43414e32`, display owner,
+monotonic nonzero request token, bitwise-complement token. Tokens do not wrap.
+The display owner checks the matching lease, performs exact raster/payload
+admission, restores its clock request, and publishes the completion token after
+its final candidate access. Debug event-group bit 10 is the candidate ACK;
+it is separate from render, storage-validation and clock acknowledgements.
+
+- Queue send is nonblocking. Failure before ownership transfer releases the
+  private lease and reports failure without drawing or installing anything.
+- The acknowledgement wait uses the existing owner ACK timeout. A timeout or
+  unrelated/stale notification does **not** release or overwrite the candidate.
+  Status remains NOT_RUN while ownership is unresolved; `wait_status` records
+  the wait failure. Later ordinary runtime service releases only a matching
+  completed token. No busy loop, hidden retry or second concurrent candidate.
+- A late rejection releases memory exactly like a late success. An ACK alone,
+  an old message, or a duplicate message cannot authorize reuse. Borrowed blob,
+  descriptor and catalog pointers are cleared on release.
+- Pending requests and leases inhibit automatic and controlled STOP2 admission.
+  Other owners retain their normal responsibilities. At execution, display busy
+  or autonomous prearmed/active state returns status 2 without raster work or
+  changing its clock intent. No abort/replacement of live presentation is used
+  to make the check succeed.
+- The wrapper uses existing runtime reactive and display transfer clock intents;
+  the pure checker itself still has no clock/peripheral operations. No clock
+  profile, tuning value, queue allocation or thread topology is changed.
+
+The `ps_hw6_object_candidate` probe is independently versioned at API 1. Existing
+render/runtime probe layouts and Studio/service capabilities are unchanged.
+This is not yet a public storage/install API: the only hardware candidate source
+is linked immutable ROM. A future caller with reusable storage must preserve its
+source bytes through the same completion boundary, even after timeout.
+
+Hardware sequence:
+
+1. Launch the existing dual-animation development scene from HOME/shell with
+   `__fw0_object_scene_lpbam_enable.gdb`. Observe its normal cadence first.
+2. Wake normally with A/B, halt, and source `__fw0_object_candidate_enable.gdb`.
+   Resume for two seconds, then halt and source `__fw0_object_candidate_prints.gdb`.
+   If already asleep when requested, wake normally to let runtime consume it.
+3. Expect profile/graph/schedule/queue/wait/display/status all zero, request token
+   equal to display completion, leased zero, all four clock statuses zero,
+   8 steps at 400 ms, 9 composed frames (including wrap), 16 chunks/9,344 bytes.
+4. Source `__fw0_object_candidate_reject_enable.gdb`, resume and print again.
+   This deliberately sets **only the private candidate catalog's frame count**
+   to zero after valid decoding. Expect profile/graph/schedule zero but
+   display/raster/status 1 and payload reason BUILD (5), completed token and
+   released lease. It tests raster rejection, not a malformed exported egg or
+   a resource-overflow package. It must never borrow active sprites to pass.
+5. After both cases, check that A/B still moves the marker once, neither
+   animation restarts, the timer reveal stays correct, and normal low-power
+   playback returns. No new panel content is expected from the checker itself.
+
+Native queue coverage runs the real candidate decoder, graph, scheduler and
+renderer with deterministic ThreadX queue/event stubs. It checks normal and
+immediate completion, queue-full failure, timeout reservation, refusal while
+leased, late success/rejection, stale notification/message, duplicate delivery,
+token exhaustion, busy display, clock failures and structural rejection before
+enqueue. It compares active object/catalog/framebuffer state around candidate
+success and rejection. This is not hardware timing or installed-package proof.
+
+### Candidate Owner-Queue Hardware Pass (2026-09-11)
+
+Initial acceptance and rejection checks succeeded from the shell. The user then
+launched the dual-animation scene with `__fw0_object_scene_lpbam_enable.gdb`,
+repeated both checks, and confirmed "yes animations as before". The candidate
+helper itself does not launch or replace a scene.
+
+- Normal request 1: profile/graph/schedule and queue/wait/display/status all zero;
+  8 steps at 400 ms, 9 frames composed, 16 chunks and 9,344 payload bytes.
+- Missing-sprite request 2: profile/graph/schedule zero, raster/display/status 1;
+  failed step 0, zero frames composed, payload status/reason 1/5 (BUILD), and
+  zero chunks/bytes. This is the deliberately injected private-catalog rejection.
+- Both requests completed with matching tokens, lease zero, all four runtime
+  and display clock request/release statuses zero, and no refusals or late
+  completions. These counters show completed checker work, not just dispatch.
+
+This passes normal candidate acceptance and deliberate raster rejection through
+the real owner queues with observed animation continuity. No new current,
+precise cadence or STOP2 residency measurement accompanied this capture; the
+earlier dual-animation sleep/wake evidence remains separate. Timeout/stale-token
+behaviour remains native-tested, not hardware fault-injected. This does not
+enable ordinary V2 export, installation, replacement or reboot loading.
 
 ### Shared-Path Hardware Regression Pass (2026-09-11)
 
