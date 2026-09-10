@@ -1,0 +1,145 @@
+{
+  "schema_id": "peepshow.authoring.state_scene",
+  "schema_version": 2,
+  "scene_id": "main",
+  "display_name": "Four Frame Timer Continuity",
+  "scene_type": "STATE_SCENE",
+  "entry_state": "start",
+  "variables": [],
+  "input_actions": [
+    {
+      "action_id": "button_a_press",
+      "logical_source": "BUTTON_A",
+      "event_kind": "press"
+    },
+    {
+      "action_id": "button_b_press",
+      "logical_source": "BUTTON_B",
+      "event_kind": "press"
+    }
+  ],
+  "scene_exits": [],
+  "routes": [
+    {
+      "route_id": "start_button_a_press",
+      "action_ref": "button_a_press",
+      "from_states": [
+        "start"
+      ],
+      "guards": [],
+      "actions": [],
+      "target_state": "marker_right"
+    },
+    {
+      "route_id": "marker_right_button_b_press",
+      "action_ref": "button_b_press",
+      "from_states": [
+        "marker_right"
+      ],
+      "guards": [],
+      "actions": [],
+      "target_state": "start"
+    }
+  ],
+  "reactive_wait_default": {
+    "policy_id": "main_wait_policy",
+    "hold_fallback_allowed": true,
+    "event_interests": [
+      "button_a_press",
+      "button_b_press",
+      "reveal_timer"
+    ]
+  },
+  "interaction_policy": {
+    "policy_id": "main_interaction",
+    "mode": "continuous",
+    "meaningful_activity_actions": [
+      "button_a_press",
+      "button_b_press"
+    ]
+  },
+  "objects": [
+    {
+      "object_id": "continuity_sprite",
+      "kind": "sprite",
+      "width": 24,
+      "height": 24,
+      "z_order": 0,
+      "layer": "SCENE",
+      "defaults": {
+        "x": 72,
+        "y": 40,
+        "visible": true,
+        "visual_ref": "pulse.a"
+      },
+      "animation_ref": "pulse_loop"
+    },
+    {
+      "object_id": "position_marker",
+      "kind": "filled_rect",
+      "width": 16,
+      "height": 16,
+      "z_order": 1,
+      "layer": "SCENE",
+      "defaults": {
+        "x": 32,
+        "y": 104,
+        "visible": true
+      }
+    },
+    {
+      "object_id": "timer_marker",
+      "kind": "filled_rect",
+      "width": 16,
+      "height": 16,
+      "z_order": 2,
+      "layer": "SCENE",
+      "defaults": {
+        "x": 76,
+        "y": 80,
+        "visible": false
+      }
+    }
+  ],
+  "states": [
+    {
+      "state_id": "start",
+      "display_name": "Marker Left",
+      "object_overrides": []
+    },
+    {
+      "state_id": "marker_right",
+      "display_name": "Marker Right",
+      "object_overrides": [
+        {
+          "object_ref": "position_marker",
+          "x": 120
+        }
+      ]
+    }
+  ],
+  "event_bindings": [
+    {
+      "binding_id": "reveal_timer",
+      "event_type": "time.scene_elapsed",
+      "configuration": {
+        "delay_ms": 2000,
+        "start_policy": "scene_entry"
+      }
+    }
+  ],
+  "event_handlers": [
+    {
+      "handler_id": "reveal_expired",
+      "event_ref": "reveal_timer",
+      "guards": [],
+      "actions": [
+        {
+          "kind": "object.set_visibility",
+          "object_ref": "timer_marker",
+          "visible": true
+        }
+      ]
+    }
+  ]
+}

@@ -758,8 +758,17 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   external timer actions. Undo/redo and save/reload cover the complete change.
 - `examples/authoring/native_v2_scene_timer.peepproj` is the source-only handoff:
   a two-second scene timer reveals one object while A/B overrides move another.
-  Host verified; this timer fixture has no hardware acceptance claim yet.
+  OS subsequently reports this timer fixture passed on HW6. Its source and
+  assets are frozen unchanged for the next test; no additional power-mode or
+  ordinary-export qualification is inferred from that report.
 - GUI checks cover paired creation/deletion, cross-state expiry, one-shot behavior,
   action-started timers, state-entry restart, reference protection, ordered effects,
   undo/redo, save/reload and inspector layout at 1280/1440 px. Shared backend and firmware
   are unchanged. Ordinary V2 export stays disabled; migration remains deferred.
+
+- Next hardware fixture: `examples/authoring/native_v2_timer_four_frames.peepproj`.
+  It retains the timer and A/B override behavior but uses four numbered 24x24
+  frames (1, 2, 3, 4), 400 ms each. The 1600 ms loop does not restart naturally
+  at the 2000 ms timer expiry, making an unintended reset to frame 1 observable.
+  Host checks verify distinct rendered frames, sequence, wrap and continuity;
+  this separate fixture still needs its own HW6 pass. Ordinary export is blocked.
