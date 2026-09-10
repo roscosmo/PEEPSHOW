@@ -437,6 +437,11 @@ export type ProjectSceneThumbnailsResult = {
 };
 
 export type PreviewSnapshot = {
+  objects?: Array<{
+    object_id: string;
+    underlying: { x: number; y: number };
+    effective: { x: number; y: number };
+  }>;
   project_revision: number;
   preview_revision: number;
   scene: {

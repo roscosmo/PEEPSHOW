@@ -52,7 +52,8 @@ import {
   Volume2,
   Variable,
 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { Fragment, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { ObjectActionContext, ObjectActionPosition } from "./ObjectActionContext";
 import { FramebufferCanvas } from "./FramebufferCanvas";
 import { ObjectMotionFields } from "./ObjectMotionFields";
 import {
@@ -5292,6 +5293,12 @@ export function EditableActionList({
   const systemExitIndex = route.actions.findIndex((action) => action.kind === "exit_to_shell");
   const addActionIndex = systemExitIndex >= 0 ? systemExitIndex : route.actions.length;
   const targetElementById = new Map(targetElements.map((element) => [element.element_id, element]));
+  const { label: objectLabel, scene: actionScene } = useContext(ObjectActionContext);
+  const labels = targetElements.map(objectLabel);
+  const objectOptionLabel = (element: RenderElement) => {
+    const label = objectLabel(element);
+    return labels.filter(item => item === label).length > 1 ? `${label} (${element.element_id})` : label;
+  };
 
   const defaultActionForKind = (kind: string, preferredElementRef?: string): Record<string, unknown> | null => {
     if (timerActionKinds.includes(kind)) return timers.length ? { kind, timer_ref: timers[0] } : null;
@@ -5484,7 +5491,7 @@ export function EditableActionList({
                   }}
                 >
                   {targetElements.filter(candidate => !["object.set_frame", "object.clear_frame"].includes(action.kind) || candidate.kind === "sprite").map((candidate) => (
-                    <option key={candidate.element_id} value={candidate.element_id}>{candidate.element_id}</option>
+                    <option key={candidate.element_id} value={candidate.element_id}>{objectOptionLabel(candidate)}</option>
                   ))}
                 </select>
                 </label>
@@ -5550,7 +5557,11 @@ export function EditableActionList({
                 </>
               )}
               {(action.kind === "object.move_by" || action.kind === "object.set_position") && (
-                <ObjectMotionFields action={action} index={visibleIndex + 1} disabled={!canEdit} onCommit={commit} />
+                <>
+                  <ObjectMotionFields action={action} index={visibleIndex + 1} disabled={!canEdit} onCommit={commit} />
+                  <ObjectActionPosition objectId={elementRef} action={action}
+                    targetState={targetState ?? actionScene?.states?.find(state => state.state_id === route.target_state)} />
+                </>
               )}
               {(action.kind === "set_element_visibility" || action.kind === "object.set_visibility") && (
                 <label className="logic-toggle">

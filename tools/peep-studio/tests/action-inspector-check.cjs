@@ -54,6 +54,35 @@ app.whenReady().then(async () => {
   await window.loadURL('http://127.0.0.1:5174/tests/action-inspector.html?readonly=true');
   await wait(300);
   assert(await evaluate("[...document.querySelectorAll('input,select,button')].every(e => e.disabled)"));
-  process.stdout.write('Action inspector layout, edits, ordering, deletion and read-only checks passed\n');
+  for (const width of [260, 360, 520]) {
+    await window.loadURL(`http://127.0.0.1:5174/tests/action-inspector.html?native&width=${width}`);
+    await wait(400);
+    const details = await evaluate(`(() => {
+      const e = document.querySelector('.object-action-position');
+      return { text: e.textContent, label: document.querySelector('[aria-label="Effect 1 object"]').selectedOptions[0].text,
+        clipped: [...e.querySelectorAll('dt,dd,p')].some(item => { const r=item.getBoundingClientRect(); return r.left < 0 || r.right > ${width}; }) };
+    })()`);
+    assert.equal(details.label, 'Wizard');
+    assert.equal(details.clipped, false);
+    assert(details.text.includes('Marker right'));
+    assert(details.text.includes('X 85, Y 40'));
+    assert(details.text.includes('X 120, Y 40'));
+    assert(details.text.includes("X movement masked by the active state's override"));
+    assert(details.text.includes('Destination Destination: Y movement masked'));
+    fs.writeFileSync(path.join(output, `object-position-${width}.png`), (await window.webContents.capturePage()).toPNG());
+  }
+  await window.loadURL('http://127.0.0.1:5174/tests/action-inspector.html?native&duplicates&horizontal');
+  await wait(300);
+  assert.deepEqual(await evaluate(`[...document.querySelector('[aria-label="Effect 1 object"]').options].map(o => o.text)`), ['Wizard (wizard)', 'Wizard (wizard_2)']);
+  assert(!(await evaluate("document.querySelector('.object-action-position').textContent")).includes('Y movement masked'));
+  for (const unavailable of ['otherScene', 'noPreview']) {
+    await window.loadURL(`http://127.0.0.1:5174/tests/action-inspector.html?native&${unavailable}`);
+    await wait(300);
+    const text = await evaluate("document.querySelector('.object-action-position').textContent");
+    assert(text.includes('No current emulator position'));
+    assert(!text.includes('X 85'));
+    assert(!text.includes('active state'));
+  }
+  process.stdout.write('Action inspector layout, edits, ordering, read-only, object names, live positions and override checks passed\n');
 }).then(() => { clearTimeout(watchdog); window?.destroy(); app.exit(0); })
   .catch(error => { process.stderr.write(error.stack + '\n'); clearTimeout(watchdog); window?.destroy(); app.exit(1); });

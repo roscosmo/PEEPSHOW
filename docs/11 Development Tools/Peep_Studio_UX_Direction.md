@@ -812,3 +812,19 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   ownership when switching targets, state/timer transitions, draft cancellation,
   existing timer lifetimes, undo/redo and save/reload. Backend, firmware, frozen
   fixtures and export restrictions are unchanged.
+
+### Object Action Context
+
+- Action object pickers use the same asset and shape labels as placement.
+  Duplicate labels retain their object IDs for disambiguation; stored references
+  and action order do not change.
+- Native movement actions show underlying and effective screen coordinates from
+  the host emulator snapshot, explicitly labeled with its active state. Missing,
+  different-scene or outdated-revision previews do not supply live coordinates.
+- Axis-specific override notes distinguish the active emulator state from the
+  authored destination state. They describe only axes touched by the action;
+  they do not predict action execution or resolve runtime positions in the GUI.
+- Scene timer handlers and local routes share this presentation. Legacy editing,
+  shared backend, frozen fixtures and ordinary V2 export restrictions are unchanged.
+- GUI checks cover readable names, coordinates, independent-axis masking,
+  unavailable previews and narrow inspector layouts, plus existing timer workflows.

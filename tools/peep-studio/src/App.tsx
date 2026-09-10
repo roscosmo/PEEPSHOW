@@ -64,6 +64,7 @@ import type { StateGraphEntryHandle, StateGraphEntrySide } from "./stateGraph";
 import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsNativeCreation, supportsStateManagement, supportsLocalGraphCommand, supportsObjectCommand, usesSceneObjects } from "./sceneCapabilities";
 import { SceneObjectInspector } from "./SceneObjectInspector";
 import { TimerInspector } from "./TimerInspector";
+import { ObjectActionContext } from "./ObjectActionContext";
 import { SCENE_TIMER, STATE_TIMER, timerBounds, deleteTimerCommands } from "./timerAuthoring";
 import type {
   AssetFrameRecord,
@@ -5634,6 +5635,9 @@ export default function App() {
           onPointerDown={startInspectorResize}
         />
 
+        <ObjectActionContext.Provider value={{ scene: selectedSceneDocument,
+          preview: preview?.project_revision === projectRevision ? preview : null,
+          label: placementObjectLabelBase }}>
         <aside className="inspector-pane">
           <div className="pane-heading inspector-heading">
             <span>Inspector</span>
@@ -5767,6 +5771,7 @@ export default function App() {
           )}
 
         </aside>
+        </ObjectActionContext.Provider>
       </section>
 
       <footer className="status-bar">

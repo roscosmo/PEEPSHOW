@@ -5135,6 +5135,22 @@ button:focus-visible {
   gap: 10px;
 }
 
+.object-action-position {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.object-action-position .inspector-list div {
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.object-action-position .plain-rule-note {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
 .logic-toggle input {
   width: 15px;
   min-width: 15px;
