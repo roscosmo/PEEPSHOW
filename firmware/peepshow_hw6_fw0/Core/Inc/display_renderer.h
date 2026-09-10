@@ -94,6 +94,8 @@ typedef struct
   uint32_t sequence_start_frame;
   uint32_t sequence_phase[DISPLAY_RENDERER_WAITING_SEQUENCE_MAX];
   uint32_t element_count;
+  display_renderer_waiting_phase_composer_t compose_scene;
+  const void *scene_context;
   display_renderer_waiting_element_t
     elements[DISPLAY_RENDERER_WAITING_ELEMENT_MAX];
   const uint16_t *candidate_rows;
@@ -141,6 +143,8 @@ uint32_t DisplayRenderer_GetSceneFocusLogicalBounds(
 uint32_t DisplayRenderer_PublishSceneWaitingVisual(
   const ps_scene_waiting_visual_t *visual);
 void DisplayRenderer_ClearSceneWaitingVisual(void);
+uint32_t DisplayRenderer_PublishFullSceneWaiting(
+  const display_renderer_waiting_animation_t *animation);
 uint32_t DisplayRenderer_GetSceneWaitingTimeline(
   uint32_t *presentation_id,
   uint32_t *sequence_step_count,

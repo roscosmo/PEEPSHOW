@@ -24,7 +24,8 @@ from peepshow_authoring.egg_format import (CHUNK_ENTRY, HEADER, RENDER_HEADER,
 
 def firmware_function(source: str, name: str) -> str:
     """Extract a file-scope definition (not its forward declaration) for host C."""
-    match = re.search(r"^(?:static )?\w+ " + re.escape(name) + r"\([^;{}]*\)\s*\{", source, re.MULTILINE)
+    match = re.search(r"^(?:(?:static|const)\s+)*\w+\s+(?:\*\s*)?" +
+                      re.escape(name) + r"\([^;{}]*\)\s*\{", source, re.MULTILINE)
     if match is None:
         raise AssertionError(f"Missing production function: {name}")
     end = source.index("\n}", match.end()) + 2

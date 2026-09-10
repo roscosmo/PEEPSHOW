@@ -49,6 +49,8 @@ static display_renderer_waiting_animation_t s_display_waiting_animation;
 static display_renderer_waiting_animation_t
   s_display_waiting_guaranteed_animation;
 static ps_scene_waiting_visual_t s_display_scene_waiting_visual;
+static display_renderer_waiting_animation_t s_display_full_scene_waiting;
+static uint32_t s_display_full_scene_waiting_active;
 static const display_renderer_waiting_animation_t
   *s_display_selected_waiting_animation = &s_display_waiting_animation;
 static uint16_t s_display_dirty_row_count;
@@ -927,6 +929,7 @@ uint32_t DisplayRenderer_PublishSceneWaitingVisual(
   (void)memcpy(&s_display_scene_waiting_visual,
                visual,
                sizeof(s_display_scene_waiting_visual));
+  s_display_full_scene_waiting_active = 0UL;
   g_display_renderer_scene_waiting_probe.publish_count++;
   g_display_renderer_scene_waiting_probe.active = 1UL;
   g_display_renderer_scene_waiting_probe.presentation_id =
@@ -943,6 +946,7 @@ uint32_t DisplayRenderer_PublishSceneWaitingVisual(
 
 void DisplayRenderer_ClearSceneWaitingVisual(void)
 {
+  s_display_full_scene_waiting_active = 0UL;
   (void)memset(&s_display_scene_waiting_visual, 0,
                sizeof(s_display_scene_waiting_visual));
   g_display_renderer_scene_waiting_probe.api_version =
@@ -958,6 +962,24 @@ void DisplayRenderer_ClearSceneWaitingVisual(void)
     DISPLAY_RENDERER_SCENE_WAITING_STATUS_NOT_RUN;
 }
 
+uint32_t DisplayRenderer_PublishFullSceneWaiting(
+  const display_renderer_waiting_animation_t *animation)
+{
+  if ((DisplayRenderer_ValidateWaitingAnimation(animation) == 0UL) ||
+      (animation->compose_scene == NULL)) { return 0UL; }
+  s_display_full_scene_waiting = *animation;
+  s_display_full_scene_waiting_active = 1UL;
+  g_display_renderer_scene_waiting_probe.active = 1UL;
+  g_display_renderer_scene_waiting_probe.publish_count++;
+  g_display_renderer_scene_waiting_probe.presentation_id = animation->animation_id;
+  g_display_renderer_scene_waiting_probe.sequence_step_count = animation->sequence_frame_count;
+  g_display_renderer_scene_waiting_probe.settled_sequence_step = animation->sequence_start_frame;
+  g_display_renderer_scene_waiting_probe.element_count = 0UL;
+  g_display_renderer_scene_waiting_probe.last_status = 0UL;
+  g_display_renderer_scene_waiting_probe.last_resolve_status = 0UL;
+  return 1UL;
+}
+
 uint32_t DisplayRenderer_GetSceneWaitingTimeline(
   uint32_t *presentation_id,
   uint32_t *sequence_step_count,
@@ -966,6 +988,17 @@ uint32_t DisplayRenderer_GetSceneWaitingTimeline(
 {
   const ps_scene_waiting_visual_t *visual =
     &s_display_scene_waiting_visual;
+
+  if ((s_display_full_scene_waiting_active != 0UL) &&
+      (presentation_id != NULL) && (sequence_step_count != NULL) &&
+      (settled_sequence_step != NULL) && (phase_quantum_ms != NULL))
+  {
+    *presentation_id = s_display_full_scene_waiting.animation_id;
+    *sequence_step_count = s_display_full_scene_waiting.sequence_frame_count;
+    *settled_sequence_step = s_display_full_scene_waiting.sequence_start_frame;
+    *phase_quantum_ms = s_display_full_scene_waiting.cadence_ms;
+    return 1UL;
+  }
 
   if ((presentation_id == NULL) || (sequence_step_count == NULL) ||
       (settled_sequence_step == NULL) || (phase_quantum_ms == NULL) ||
@@ -1215,6 +1248,18 @@ uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
   return 1UL;
 }
 
+static uint32_t DisplayRenderer_ResolveFullSceneWaiting(
+  display_renderer_waiting_animation_t *animation, uint32_t start, uint32_t deadline)
+{
+  if ((s_display_full_scene_waiting_active == 0UL) ||
+      (start >= s_display_full_scene_waiting.sequence_frame_count)) { return 0UL; }
+  *animation = s_display_full_scene_waiting;
+  animation->sequence_start_frame = start;
+  animation->current_phase = start;
+  animation->next_deadline_tick = deadline;
+  return 1UL;
+}
+
 const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
   uint32_t sequence_start_frame,
   uint32_t next_deadline_tick)
@@ -1229,6 +1274,11 @@ const display_renderer_waiting_animation_t *DisplayRenderer_GetWaitingAnimation(
 
   (void)memset(animation, 0, sizeof(*animation));
   s_display_selected_waiting_animation = animation;
+  if (s_display_full_scene_waiting_active != 0UL)
+  {
+    return (DisplayRenderer_ResolveFullSceneWaiting(animation, sequence_start_frame,
+      next_deadline_tick) != 0UL) ? animation : NULL;
+  }
   (void)memset(s_display_waiting_candidate_row_marks, 0,
                sizeof(s_display_waiting_candidate_row_marks));
 
@@ -1459,7 +1509,8 @@ uint32_t DisplayRenderer_ValidateWaitingAnimation(
        animation->sequence_frame_count) ||
       (animation->current_phase >= animation->phase_count) ||
       (animation->cadence_ms == 0UL) ||
-      (animation->element_count == 0UL) ||
+      ((animation->element_count == 0UL) && (animation->compose_scene == NULL)) ||
+      ((animation->element_count != 0UL) && (animation->compose_scene != NULL)) ||
       (animation->element_count > DISPLAY_RENDERER_WAITING_ELEMENT_MAX) ||
       (animation->candidate_rows == NULL) ||
       (animation->candidate_row_count == 0U) ||
@@ -1531,7 +1582,8 @@ DisplayRenderer_GetGuaranteedWaitingAnimation(
   uint32_t frame;
   uint32_t start_found = 0UL;
 
-  if (DisplayRenderer_ValidateWaitingAnimation(preferred) == 0UL)
+  if ((DisplayRenderer_ValidateWaitingAnimation(preferred) == 0UL) ||
+      (preferred->compose_scene != NULL))
   {
     return NULL;
   }
@@ -1684,9 +1736,18 @@ uint32_t DisplayRenderer_CopyWaitingAnimationFrame(
       (sequence_frame >= animation->sequence_frame_count) ||
       (destination == NULL) ||
       (destination_size < DISPLAY_RENDERER_BUFFER_SIZE) ||
-      (s_display_cursor_base_valid == 0UL))
+      ((animation->compose_scene == NULL) && (s_display_cursor_base_valid == 0UL)))
   {
     return 0UL;
+  }
+
+  if (animation->compose_scene != NULL)
+  {
+    static uint8_t composed[DISPLAY_RENDERER_BUFFER_SIZE];
+    if (animation->compose_scene(animation->scene_context, sequence_frame,
+        composed, sizeof(composed)) == 0UL) { return 0UL; }
+    (void)memcpy(destination, composed, sizeof(composed));
+    return 1UL;
   }
 
   (void)memcpy(destination,
@@ -2404,6 +2465,7 @@ uint32_t DisplayRenderer_CopySceneModelFrame(const ps_scene_render_model_t *mode
 {
   static uint8_t saved[DISPLAY_RENDERER_BUFFER_SIZE];
   uint32_t index;
+  uint32_t saved_rotation;
   if ((destination == NULL) || (destination == s_display_framebuffer) ||
       (destination_size < DISPLAY_RENDERER_BUFFER_SIZE) ||
       (DisplayRenderer_ValidateSceneModel(model) == 0UL)) { return 0UL; }
@@ -2415,7 +2477,10 @@ uint32_t DisplayRenderer_CopySceneModelFrame(const ps_scene_render_model_t *mode
   }
   (void)memcpy(saved, s_display_framebuffer, sizeof(saved));
   (void)memset(s_display_framebuffer, 0xFF, sizeof(s_display_framebuffer));
+  saved_rotation = s_rotate_ccw;
+  s_rotate_ccw = 1UL;
   (void)DisplayRenderer_DrawSceneModel(model);
+  s_rotate_ccw = saved_rotation;
   (void)memcpy(destination, s_display_framebuffer, sizeof(s_display_framebuffer));
   (void)memcpy(s_display_framebuffer, saved, sizeof(saved));
   return 1UL;

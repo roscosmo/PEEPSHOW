@@ -17,6 +17,8 @@ typedef uint32_t UINT;
 #define PS_UI_ROUTER_SHUTDOWN_NONE 0U
 
 volatile ps_hw6_object_development_probe_t g_ps_object_development_probe;
+volatile ps_hw6_object_lpbam_probe_t g_ps_object_lpbam_probe;
+static uint64_t ps_object_missing_consumed;
 static uint32_t ps_object_last_tick, ps_object_tick_fraction;
 static uint32_t now, draws, failures, exits, render_error;
 static struct { uint32_t blocked, discarded; } g_ps_audio_package_probe;

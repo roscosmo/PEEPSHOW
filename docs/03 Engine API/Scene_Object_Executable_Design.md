@@ -4,7 +4,10 @@ Status: GUI representation review accepted; source loading, migration/editing
 service and host scene-object preview implemented in service API 39. A separate
 development V2 binary encoder/reader, full C development scene decoder and staged
 C object/graph execution are implemented. Normal export, production activation,
-replacement orchestration and autonomous display integration remain unavailable.
+replacement orchestration remain unavailable. Autonomous display integration is
+now available only as an opt-in development test. The structured fixture has a
+scoped hardware pass; exact timing and broader admission remain unproven. See
+[[Scene_Object_Awake_Development_Test]].
 
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. Tests:
 [[Scene_Object_Ownership_Acceptance_Plan]]. Coordination:

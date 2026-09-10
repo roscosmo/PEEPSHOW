@@ -12,7 +12,7 @@ printf "shared RTC arm/status/clock/counter interaction remaining/elapsed/expiry
 printf "runtime class/lifecycle interaction mode/state = %u / %u / %u / %u\n", g_ps_hw6_rtos_probe.runtime_current_class, g_ps_hw6_rtos_probe.runtime_lifecycle, g_ps_hw6_rtos_probe.runtime_interaction_mode, g_ps_hw6_rtos_probe.runtime_interaction_state
 printf "STOP2 enabled/checks/entries/skips/status physical/failure = %u / %u / %u / %u / 0x%x / %u / 0x%x\n", g_ps_hw6_rtos_probe.stop2_auto_enabled, g_ps_hw6_rtos_probe.stop2_auto_check_count, g_ps_hw6_rtos_probe.stop2_auto_entry_count, g_ps_hw6_rtos_probe.stop2_auto_skip_count, g_ps_hw6_rtos_probe.stop2_auto_last_status, g_ps_hw6_clock_policy_probe.stop2_physical_ready, g_ps_hw6_clock_policy_probe.stop2_physical_failure_mask
 if s_ps_scene_runtime_development_objects != 0
-  printf "V2 awake timer test: due/dispatch/applied count real handler work; errors must remain zero. Scene timers preserve state activation unless their handler explicitly transitions. No RTC selection is required while automatic STOP2 is blocked.\n"
+  printf "V2 timer test: due/dispatch/applied count real handler work; errors must remain zero. Scene timers preserve state activation unless their handler explicitly transitions. RTC selection is expected if an active timer spans autonomous STOP2; it is not required in the awake-only variant.\n"
 else
   printf "expected after the injected transition: due/dispatch/applied each increment once, error remains 0, and RTC state selects is at least 1 if STOP2 occurred. The current configured/active values may return to 0 in the destination state. RTC source NONE/INTERACTION/STATE_TIMER=0/1/2; state binding preserves the last selected timer.\n"
 end

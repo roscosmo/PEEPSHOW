@@ -10,8 +10,8 @@ else
   printf "last projected elapsed ms / next tick / state / first asset = %u / %u / %u / %u\n", g_ps_object_development_probe.elapsed_ms, g_ps_object_development_probe.next_tick, g_ps_object_development_probe.state_id, g_ps_object_development_probe.first_asset_id
   printf "first object phase / remaining ms / animation visible = %u / %u / %u\n", s_ps_object_snapshot.objects[0].step, s_ps_object_snapshot.objects[0].remaining_ms, s_ps_object_snapshot.objects[0].animation_visible
   printf "last projected marker x/y = %d / %d\n", s_ps_object_snapshot.objects[1].effective.x, s_ps_object_snapshot.objects[1].effective.y
-  if s_ps_object_snapshot.count == 3
-    printf "timer marker visible/x/y (after 2s: 1/76/80) = %u / %d / %d\n", (s_ps_object_snapshot.objects[2].effective.flags & 1), s_ps_object_snapshot.objects[2].effective.x, s_ps_object_snapshot.objects[2].effective.y
+  if s_ps_object_snapshot.count >= 3
+    printf "timer marker visible/x/y (after 2s: 1/76/116) = %u / %d / %d\n", (s_ps_object_snapshot.objects[2].effective.flags & 1), s_ps_object_snapshot.objects[2].effective.x, s_ps_object_snapshot.objects[2].effective.y
   end
   printf "timer configured/active/paused due/applied/ignored/error = %u / %u / %u / %u / %u / %u / %u\n", g_ps_hw6_rtos_probe.runtime_state_timer_configured_count, g_ps_hw6_rtos_probe.runtime_state_timer_active_count, g_ps_hw6_rtos_probe.runtime_state_timer_paused, g_ps_hw6_rtos_probe.runtime_state_timer_due_count, g_ps_hw6_rtos_probe.runtime_state_timer_applied_count, g_ps_hw6_rtos_probe.runtime_state_timer_ignored_count, g_ps_hw6_rtos_probe.runtime_state_timer_error_count
   printf "input events / matched transitions / state changes = %u / %u / %u\n", g_ps_hw6_rtos_probe.runtime_input_event_count, g_ps_scene_runtime_probe.transition_match_count, g_ps_scene_runtime_probe.state_change_count
@@ -22,7 +22,7 @@ else
   printf "SFX dispatch/send owner/status outstanding/clock held = %u / 0x%x / %u / 0x%x / %u / %u\n", g_ps_hw6_rtos_probe.audio_sfx_dispatch_count, g_ps_hw6_rtos_probe.audio_sfx_send_status, g_ps_hw6_rtos_probe.audio_sfx_owner_count, g_ps_hw6_rtos_probe.audio_sfx_owner_status, g_ps_hw6_rtos_probe.audio_sfx_outstanding_count, g_ps_hw6_rtos_probe.audio_sfx_clock_held
   printf "SFX voices active/peak/completed refills/decoded/underrun = %u / %u / %u / %u / %u / %u\n", g_ps_hw6_owner_probe.audio_sfx_voice_active_count, g_ps_hw6_owner_probe.audio_sfx_voice_peak_count, g_ps_hw6_owner_probe.audio_sfx_voice_complete_count, g_ps_hw6_owner_probe.audio_sfx_stream_refill_count, g_ps_hw6_owner_probe.audio_sfx_decoded_samples, g_ps_hw6_owner_probe.audio_sfx_stream_underrun_count
   printf "Expected: active/development=1/1, launch/result/queue/wait/fault=0, UI/class/life=6/2/2. Consumed alone is not proof of drawing: require result=0, display success=1 and visible movement.\n"
-  printf "Exact GUI four-frame timer fixture (de80153): state 1/2 selects marker x=32/120, y=104. Digits 1,2,3,4 at (72,40) cycle 65537..65540 every 400 ms. A/B must preserve phase and remaining frame time.\n"
+  printf "Structured OS fixture: state 1/2 selects marker x=32/120, y=68, inside the B/A slots. Top digits at (72,12) cycle every 400 ms. A/B must preserve phase and remaining frame time.\n"
   printf "At 2 seconds the scene timer reveals the third square once, without state entry or animation restart; digit 2 is due at expiry. The square stays visible through later A/B changes.\n"
   printf "No audio or L/R controls are authored. Audio counters may describe an earlier installed package. HOLD START opens the shell; reset ends the development session.\n"
   printf "If halted during a transfer, request/consumed and result may still be incomplete. Resume before judging that as a failed render.\n"

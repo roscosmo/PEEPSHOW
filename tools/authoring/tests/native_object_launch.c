@@ -11,6 +11,10 @@
 #define PS_HW6_RUNTIME_CLASS_LP_GRAPH 2U
 #define PS_HW6_RUNTIME_EXEC_REACTIVE 1U
 #define PS_HW6_RUNTIME_LIFECYCLE_RUNNING 2U
+#define PS_HW6_RTOS_STATUS_NOT_RUN 0xFFFFFFFFU
+volatile ps_hw6_object_lpbam_probe_t g_ps_object_lpbam_probe;
+static uint64_t ps_object_missing_consumed;
+static uint32_t ps_object_rtc_valid;
 
 volatile ps_hw6_object_development_probe_t g_ps_object_development_probe;
 volatile uint32_t g_ps_object_development_request;
@@ -27,6 +31,7 @@ static struct { uint32_t scene_id; } g_ps_scene_runtime_probe;
 static struct {
   uint32_t runtime_active_capabilities, runtime_active_package_id;
   uint32_t runtime_active_unit_id, runtime_lifecycle;
+  uint32_t stop2_auto_entry_count;
 } g_ps_hw6_rtos_probe;
 static struct { uint32_t tx_queue_enqueued; } ps_queues[9];
 static uint32_t ps_audio_sfx_pending, ps_audio_sfx_clock_held;
@@ -56,6 +61,7 @@ static uint32_t PS_HW6_RTOS_ObjectPresent(void)
   assert(timer_syncs == 1);
   presentations++;
   g_ps_object_development_probe.next_tick = 125;
+  g_ps_object_lpbam_probe.publish_status = 0;
   return present_status;
 }
 static uint32_t PS_HW6_RTOS_RuntimePackageReplacementFail(void)
@@ -118,5 +124,15 @@ int main(void)
   assert(g_ps_object_development_probe.admission_blockers == 1);
   assert(presentations == 0 && failures == 0 && !active);
   assert(g_ps_ui_router_request == 0);
+  reset();
+  g_ps_object_development_request = 2;
+  PS_HW6_RTOS_ObjectService(100);
+  assert(g_ps_object_lpbam_probe.enabled == 1 && presentations == 1);
+  g_ps_ui_router_request = 0;
+  PS_HW6_RTOS_ObjectService(1000);
+  assert(presentations == 1); /* thDisplay, not thRuntime, owns frame scheduling. */
+  g_ps_object_lpbam_probe.fault = 1;
+  PS_HW6_RTOS_ObjectService(1000);
+  assert(failures == 1 && !active);
   return 0;
 }

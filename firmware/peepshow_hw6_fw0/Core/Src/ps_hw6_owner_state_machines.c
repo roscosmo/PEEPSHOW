@@ -19,6 +19,7 @@
 #include "ps_hw_i2c3.h"
 #include "ps_hw6_owner_services.h"
 #include "ps_hw6_rtos_probe.h"
+#include "ps_hw6_object_development.h"
 #include "ps_package_workflow.h"
 #include "ps_hw6_trace.h"
 #include "ps_hw6_usb_export.h"
@@ -28,6 +29,7 @@
 #include "ps_input_state.h"
 #include "ps_package_reader.h"
 #include "ps_package_source.h"
+#include "ps_scene_runtime.h"
 #include "ps_ui_router.h"
 #include "ps_power_events.h"
 #include "ps_power_state.h"
@@ -11145,6 +11147,12 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
         {
           gpio_park_status = HAL_ERROR;
         }
+        if ((gpio_park_status == HAL_OK) &&
+            (PS_HW6_RTOS_ObjectSleepClockBegin() != (uint32_t)HAL_OK))
+        {
+          (void)PS_HW6_SM_RestoreStop2GpioPins();
+          gpio_park_status = HAL_ERROR;
+        }
         if (gpio_park_status == HAL_OK)
         {
           HAL_SuspendTick();
@@ -11206,6 +11214,9 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
               HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
               __ISB();
               stop2_entered = 1UL;
+              if ((g_ps_object_lpbam_probe.enabled != 0UL) &&
+                  (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL))
+              { g_ps_object_lpbam_probe.physical_count++; }
               PS_HW6_SM_RecordStop2PostWfiState();
               if (g_ps_hw6_power_stop2_post_wfi_break_enable != 0UL)
               {
@@ -11260,6 +11271,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold(void)
             }
           }
           gpio_restore_status = PS_HW6_SM_RestoreStop2GpioPins();
+          PS_HW6_RTOS_ObjectSleepClockFinish();
           PS_HW6_SM_RestoreThreadXSystick(systick_ctrl_before);
           HAL_ResumeTick();
           if (final_input_critical_active != 0UL)

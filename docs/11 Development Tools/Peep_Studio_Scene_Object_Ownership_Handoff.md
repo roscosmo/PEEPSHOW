@@ -5,7 +5,11 @@ transactions and host preview connected in API 39. API 40 adds native V2
 project/scene creation and state management. API 41 adds native local graphs.
 Development-only V2 binary
 encoding/reading and C loader/graph cores are implemented. Normal export,
-production firmware activation and autonomous display integration remain unavailable.
+production firmware activation remain unavailable. An opt-in firmware-only
+autonomous display test has a scoped structured-fixture hardware pass; this does not
+enable GUI export or change any advertised capability. See
+[[Scene_Object_Awake_Development_Test]] for the retained numbered fixture and
+test sequence.
 
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. This handoff coordinates
 work; it does not allocate executable schema fields, capability IDs, or opcodes.

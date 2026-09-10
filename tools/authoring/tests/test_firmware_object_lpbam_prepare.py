@@ -9,7 +9,7 @@ import unittest
 
 import test_firmware_object_awake as awake
 from test_firmware_package_workflow import firmware_function
-from build_object_development import DEFAULT_PROJECT
+from build_object_development import DEFAULT_PROJECT, structured_fixture_bundle
 from peepshow_authoring.compiler import build_development_egg_v2
 from peepshow_authoring.project import load_project
 
@@ -52,6 +52,25 @@ class ObjectLpbamPrepareTests(unittest.TestCase):
 
     def test_numbered_scene_payload_replay_wrap_and_lease_guards(self):
         self.check(self.bundle())
+
+    def test_structured_slots_both_states_and_timer_visibility(self):
+        bundle = structured_fixture_bundle()
+        scene = bundle.scenes[0]
+        self.assertEqual(8, len(scene["objects"]))
+        self.assertEqual((72, 12), (scene["objects"][0]["defaults"]["x"], scene["objects"][0]["defaults"]["y"]))
+        self.assertEqual(68, scene["objects"][1]["defaults"]["y"])
+        self.assertEqual(116, scene["objects"][2]["defaults"]["y"])
+        original = self.bundle().scenes[0]
+        self.assertEqual(original["routes"], scene["routes"])
+        self.assertEqual(original["event_handlers"], scene["event_handlers"])
+        self.assertEqual(original["event_bindings"], scene["event_bindings"])
+        for state in ("start", "marker_right"):
+            for visible in (False, True):
+                with self.subTest(state=state, visible=visible):
+                    variant = deepcopy(scene)
+                    variant["entry_state"] = state
+                    variant["objects"][2]["defaults"]["visible"] = visible
+                    self.check(replace(bundle, scenes=(variant,)))
 
     def test_overlapping_static_object_survives_every_packed_frame(self):
         bundle = self.bundle()

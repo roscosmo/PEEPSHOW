@@ -464,6 +464,10 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
 /* thDisplay only. Copies runtime's leased immutable model before presenting. */
 HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareDevelopmentObjectWaiting(
   const ps_object_waiting_program_t *program);
+HAL_StatusTypeDef PS_HW6_DisplayOwner_PublishDevelopmentWaiting(
+  const ps_object_waiting_program_t *program, uint32_t next_deadline_tick);
+uint32_t PS_HW6_DisplayOwner_ObjectWaitingPosition(uint32_t now_tick,
+  uint32_t *frame, uint32_t *remaining_ticks);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderDevelopmentObjects(
   const ps_scene_render_model_t *model);
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderCursorBlink(uint32_t visible);

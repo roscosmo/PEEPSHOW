@@ -19,6 +19,26 @@ static ps_scene_objects_t saved_bank;
 static uint8_t pixels[DISPLAY_RENDERER_BUFFER_SIZE], expected[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint8_t saved_frame[DISPLAY_RENDERER_BUFFER_SIZE];
 
+static void check_copy_orientation(const ps_scene_render_model_t *scene)
+{
+  uint32_t rotation;
+  /* Match awake PrepareUIPage's explicit logical-coordinate drawing. */
+  s_rotate_ccw = 1;
+  memset(s_display_framebuffer, 0xFF, sizeof(s_display_framebuffer));
+  (void)DisplayRenderer_DrawSceneModel(scene);
+  memcpy(expected, s_display_framebuffer, sizeof(expected));
+  memcpy(s_display_framebuffer, saved_frame, sizeof(saved_frame));
+  for (rotation = 0; rotation <= 1; ++rotation)
+  {
+    s_rotate_ccw = rotation;
+    assert(DisplayRenderer_CopySceneModelFrame(scene, pixels, sizeof(pixels)) == 1);
+    assert(memcmp(pixels, expected, sizeof(pixels)) == 0);
+    assert(s_rotate_ccw == rotation);
+    assert(memcmp(saved_frame, s_display_framebuffer, sizeof(saved_frame)) == 0);
+  }
+  s_rotate_ccw = 0;
+}
+
 static void replay(uint32_t sequence)
 {
   const ps_lpbam_display_sequence_entry_t *entry = &ps_lpbam_display_sequence[sequence];
@@ -56,6 +76,7 @@ int main(int argc, char **argv)
   saved_program = program;
   memset(s_display_framebuffer, 0xA5, sizeof(s_display_framebuffer));
   memcpy(saved_frame, s_display_framebuffer, sizeof(saved_frame));
+  check_copy_orientation(&ps_hw6_development_display_model);
   g_ps_hw6_owner_probe.display_success = 1;
   g_ps_hw6_owner_probe.display_ui_page = PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF;
   status = PS_HW6_DisplayOwner_PrepareDevelopmentObjectWaiting(&program);
@@ -84,7 +105,12 @@ int main(int argc, char **argv)
   {
     replay(step % program.step_count);
     assert(PS_ObjectWaiting_Project(&program, (step + 1) % program.step_count, &scratch, &model) == PS_OBJECT_WAITING_OK);
-    assert(DisplayRenderer_CopySceneModelFrame(&model, expected, sizeof(expected)) == 1);
+    s_rotate_ccw = 1;
+    memset(s_display_framebuffer, 0xFF, sizeof(s_display_framebuffer));
+    (void)DisplayRenderer_DrawSceneModel(&model);
+    memcpy(expected, s_display_framebuffer, sizeof(expected));
+    memcpy(s_display_framebuffer, saved_frame, sizeof(saved_frame));
+    s_rotate_ccw = 0;
     assert(memcmp(pixels, expected, sizeof(pixels)) == 0);
     assert(memcmp(saved_frame, s_display_framebuffer, sizeof(saved_frame)) == 0);
   }

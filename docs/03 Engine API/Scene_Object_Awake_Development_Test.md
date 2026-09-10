@@ -1,13 +1,101 @@
 # Scene Object Awake Development Test
 
 Status: original and GUI continuity fixtures, plus the scoped V2 timer fixture,
-passed awake HW6 checks. V2 STOP2/LPBAM remains unimplemented.
+passed awake HW6 checks. An opt-in V2 STOP2/LPBAM development path is now
+implemented; the structured fixture passed the scoped sleep/wake and rotation
+correction retest recorded below. The original awake helper
+still requests the separately validated awake-only mode.
 The exact GUI scene-timer fixture from `90b849c` also passed awake timer reveal
 and visually observed A/B animation continuity, separately from the OS variant.
 This is not normal V2 export, installation, automatic boot, or STOP2 admission.
 The OS SFX variant passed audible A/B and long-tone playback plus shell-stop and
-silent resume. The current payload is the exact GUI numbered four-frame timer
-fixture from `de80153`, which also passed the awake hardware check.
+silent resume. The exact GUI numbered four-frame timer fixture from `de80153`
+also passed the awake hardware check. The current payload is a separate
+structured OS variant derived from it; GUI's source project is unchanged.
+
+## Structured Sleep/Wake Retest
+
+Generate the current OS diagnostic payload with:
+
+```powershell
+tools/.venv/Scripts/python.exe tools/authoring/build_object_development.py --structured
+```
+
+It retains the original 400 ms digit animation, A/B routes and two-second scene
+timer, but uses eight scene-owned objects with an unambiguous layout:
+
+- Top: digits at `(72,12)`, the only continuously animated object.
+- Middle: fixed 24x24 outlines at `(28,64)` and `(116,64)`, labelled B and A.
+  The 16x16 marker starts at `(32,68)` inside B; A moves it to `(120,68)` inside A.
+  Repeating the already-selected button has no route and must not move it.
+- Bottom: fixed 24x24 outline at `(72,112)`. Its 16x16 square at `(76,116)` appears
+  once after two seconds and must never move or disappear on A/B or wake/sleep.
+
+Use the existing `__fw0_object_scene_lpbam_enable.gdb` from the shell, then
+`__fw0_object_scene_lpbam_prints.gdb` after observation and wake. The awake helper
+also runs this new layout, but retains its deliberate STOP2 block. Current
+payload/commit diagnostics can return to NOT_RUN after a redraw; retained wake
+results, observed display behavior and low-current residency are separate evidence.
+
+### Rotation Regression and Measurement Record
+
+The first autonomous numbered-fixture run showed visible animation during
+low-current STOP2, confirmed by the user. After reconnecting the debugger,
+probes showed five WFI returns, six elapsed-time measurements/reconciliations,
+12,085 ms of missing tick time, successful wake snapshot/render/map/resume,
+one timer dispatch/applied with zero errors, and seven successful object renders.
+This is sleep/wake evidence, **not a complete rendering pass**: the user observed
+the marker moving twice per press and the nominally fixed timer square shifting.
+
+The frame-copy path called `DisplayRenderer_DrawSceneModel` without enabling
+`s_rotate_ccw`, unlike awake `DisplayRenderer_PrepareUIPage`. Rectangle primitives
+therefore used panel coordinates in autonomous frames while package sprites
+already transformed logical coordinates independently. Frame copying now saves,
+enables and restores rotation. A regression comparing complete awake-rendered
+frames against copied frames failed before this fix. It now covers both initial
+rotation values, full payload replay, both structured-fixture states, timer
+visibility and preservation of caller framebuffer/rotation. The previous native
+harness initialized rotation to one and consequently missed the defect.
+
+After the correction and structured-variant update, all **286 authoring/native
+tests pass**, including exact regeneration of the 2,216-byte embedded diagnostic
+egg and continued ordinary-export rejection. The Debug build links with RAM
+451,600 bytes, ROM 862,176 bytes and unchanged SRAM4 15,480 bytes. Target-profile
+and whitespace checks pass. All 145 distinct probe expressions across the five
+affected helpers resolve against the built ELF; this is not a live-read guarantee.
+The structured hardware retest is recorded below.
+
+### Structured Hardware Pass (2026-09-10)
+
+The user confirmed the labelled layout was clearer and A/B each caused only one
+marker movement, correcting the prior awake/autonomous coordinate jump. Combined
+with the preceding explicit confirmation of animation during low-current STOP2,
+this is a **PASS for the scoped development fixture**, not production admission.
+
+The retained dump reports enabled/active/development=1/1/1, no fault, nine
+successful publications and nine completed object renders, all with zero status.
+The program has four steps at 400 ms; its full payload uses eight chunks and
+4,672 bytes within the existing limits. Commit status is zero. There are six
+V2 WFI returns and six sleep measurements/reconciliations, totaling 9,197 ms of
+missing tick time; the latest is 727 ms and clock status is zero. Wake snapshot,
+render, preferred-frame mapping and timeline resume all succeeded. Barrier is
+clear. The scene timer was selected for RTC wake and applied once with zero
+errors; the timer marker is visible and the selected marker is at x=120 (A).
+
+The dump's current ready/prearmed/active=0/0/0 describes the awake post-wake
+state, not failure of the preceding autonomous run. Object snapshot phase 0
+with 38 ms remaining and retained wake phase 3 with 26 ticks remaining refer to
+different instants and must not be compared as simultaneous frames.
+
+Exact 400 ms cadence, first-partial-interval accuracy, long-residency drift,
+power consumption in amperes and arbitrary multi-animation scenes remain
+unmeasured by this dump. No GUI/service/export capability is enabled by this pass.
+
+An independent debugger connection failure initially returned each preceding
+memory read's value. Repeated API reads proved the one-response delay. Reattaching
+without reset restored the expected API sequence 82/22/1; all earlier shifted
+dumps were discarded. Field resolution against an ELF does not validate live
+remote-memory replies. No firmware workaround was added for this debugger fault.
 
 ## Delivered Path
 
@@ -30,7 +118,7 @@ ticks, preserving fractional conversion and frame residuals across local state
 changes. The next visible, unmasked animation deadline shortens its queue wait;
 hidden or statically masked playback advances analytically without forcing
 display updates. Shell suspension pauses scene time; resume does not add the
-time spent in the shell. This timing increment does not yet reconcile STOP2.
+time spent in the shell. The opt-in path below additionally reconciles STOP2.
 
 `thDisplay` owns retained composition, cached render models and transfers. Runtime
 projects a complete immutable model into one leased static buffer, sends the
@@ -47,7 +135,7 @@ error handling. An acknowledgement timeout quarantines the leased buffer until
 reset, preventing reuse while a delayed display command could still read it.
 There are no automatic launch retries. Launch refusals report an admission mask.
 
-The explicit development session blocks automatic STOP2 through the existing
+The awake-only development session blocks automatic STOP2 through the existing
 runtime-busy admission bit, including while suspended in the shell. A shell-exit
 action or reset ends the session and releases that restriction; the current GUI
 fixture uses B for a local transition, not shell exit. Do not force manual STOP2 during this
@@ -415,6 +503,92 @@ Successful packing is not proof of autonomous playback or timing. Do not force
 manual STOP2. Next: timing-aware handoff and wake reconciliation before events.
 
 ## Verification and Next Work
+
+### Opt-In Autonomous Development Test
+
+The preparation-only hardware pass is committed at
+`18217f020b25704da59aeac28a70127ff01b1d46`: 4 steps at 400 ms, 140 ms initial
+residual, 5 compositions including wrap, 8 chunks and 4672/10512 payload bytes.
+Ready/prearmed/active were all zero. The user also confirmed A/B did not disturb
+awake cadence after packing. This is packing evidence, not autonomous evidence.
+
+The next path uses development request **2**, leaving request **1** awake-only.
+Flash the new Debug ELF, finish boot, open the shell MENU with **HOLD START**,
+then halt and run:
+
+```gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_object_scene_lpbam_enable.gdb
+```
+
+Resume normally. Leave the controls released and watch 1,2,3,4 at 400 ms/frame.
+The third square should appear once after two seconds. After that, use A/B to
+wake and change the lower square, then release everything and allow sleep again.
+The digits must continue, and each packed scene must retain the updated square.
+HOLD START opens the shell; suspension still blocks sleep in this development
+increment and pauses scene time. No installed package, GUI source, service API,
+ordinary export capability or SRAM4 allocation changes.
+
+After observing, wake with A/B, halt and run:
+
+```gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_object_scene_lpbam_prints.gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_state_scene_timer_prints.gdb
+```
+
+If STOP2 disconnects the debugger, reconnect without reset/reflash to preserve
+the retained probes. Do not use forced manual STOP2 or breakpoints at entry.
+Debug-in-low-power affects residency/current measurements; confirm normal-run
+low-current residency separately. A WFI return count alone does not establish
+sustained STOP2 or autonomous panel output.
+
+Implementation boundaries:
+
+- Runtime publishes a leased immutable complete-scene schedule; display copies
+  it into owner-private storage. A full-scene composer has no cursor, focus or
+  four-phase-per-element prerequisite. It preserves all scene layers/overlays.
+- Display runs the awake schedule and compiles the existing bounded payload and
+  queue path before handoff. Runtime no longer wakes for each animation frame.
+  Runtime work in progress blocks sleep; `egDebug` bit 11 is the bounded wake
+  recovery notification. Input/timer handling waits for display recovery.
+- V2 does not use the legacy three-step truncation or held-frame fallback.
+  Rejected schedules remain awake and report failure. This opt-in animated test
+  requires a nonzero quantum representable in ThreadX ticks; static HOLD-only
+  programs and non-tick-representable quanta are not admitted by this increment.
+- At commit, LPTIM1 ARR represents the repeating interval; CCR1 sets the offset
+  to the next authored edge. Writes are acknowledged/read back. An expired
+  deadline or a tick crossing during programming rejects that attempt instead
+  of silently starting a new full interval. Wake residual uses the compare edge,
+  not just distance to ARR. No periodic CPU animation-wake mechanism is added.
+- `thPower` measures calendar RTC elapsed time around the stopped ThreadX tick,
+  including midnight/month/year rollover. It publishes only missing elapsed
+  milliseconds; `thRuntime` applies them once before further object work.
+  Existing earliest-deadline RTC selection still wakes for scene/state timers.
+  RTC failure/backwards time or a single sleep exceeding `UINT32_MAX` ms faults
+  this development session rather than guessing elapsed time. Shell time pauses.
+- Runtime scheduling retains its 10 ms tick granularity; RTC reads and LPTIM
+  synchronization introduce their own quantization. This is not a sub-millisecond
+  phase accuracy claim. Long-residency RTC/LPTIM drift remains a hardware check.
+
+Hardware basis: ST's [AN4865](https://www.st.com.cn/resource/en/application_note/an4865-lowpower-timer-lptim-applicative-use-cases-on-stm32-microcontrollers-stmicroelectronics.pdf)
+describes independent ARR period and CCRx PWM duty/edge control for STM32U5's
+type-3 LPTIM, and autonomous PWM in STOP. The partial-edge implementation still
+requires target timing evidence; a host register model cannot provide it.
+
+Native coverage includes complete numbered frames through the full-scene
+adapter and actual payload compiler, refusal of truncated fallback, partial
+first interval and repeat period, late/write-failed commit, tick wrap, calendar
+rollover, exactly-once bank time reconciliation before A/B, and RTC failure.
+The structured hardware pass and its measurement limits are recorded above.
+Ordinary V2 export remains disabled.
+
+Local verification for this increment: **285 authoring/native tests pass**, the
+target-profile check passes, and the full HW6 Debug firmware links. All 60
+distinct probe expressions in the new launch/print helpers resolve against that
+ELF. RAM usage is 451,600 bytes, ROM 861,848 bytes, and SRAM4 remains 15,480 bytes.
+The build retains two pre-existing unused-function warnings in owner state
+machines; there are no new warnings from this increment.
+
+## Earlier Awake Verification
 
 Native tests exercise the real C V2 loader, activation, graph, snapshot projector
 and production primitive/sprite raster functions. Seven complete framebuffer

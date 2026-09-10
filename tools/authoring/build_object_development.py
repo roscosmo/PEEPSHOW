@@ -144,6 +144,47 @@ def sfx_fixture_bundle():
                    audio_assets=tuple(audio), audio_cues=cues)
 
 
+def structured_fixture_bundle():
+    """Labelled OS sleep/wake test; the original GUI fixture stays unchanged."""
+    bundle = load_project(DEFAULT_PROJECT.parent / "native_v2_timer_four_frames.peepproj")
+    scene = deepcopy(bundle.scenes[0])
+    scene["display_name"] = "Structured Sleep Wake"
+    scene["objects"][0]["defaults"].update(x=72, y=12)
+    scene["objects"][1]["defaults"].update(x=32, y=68)
+    scene["objects"][2]["defaults"].update(x=76, y=116)
+    for name, x, y in (("left_slot", 28, 64), ("right_slot", 116, 64), ("timer_slot", 72, 112)):
+        scene["objects"].append({"object_id": name, "kind": "outline_rect",
+            "width": 24, "height": 24, "z_order": 3, "layer": "SCENE",
+            "defaults": {"x": x, "y": y, "visible": True}})
+    frames = list(bundle.frames)
+    assets = deepcopy(list(bundle.assets))
+    for name, x, rows in (
+        ("label_b", 35, (30, 17, 17, 30, 17, 17, 30)),
+        ("label_a", 123, (14, 17, 17, 31, 17, 17, 17)),
+    ):
+        pixels = bytearray(28)
+        for y, row in enumerate(rows):
+            for bit in range(5):
+                if row & (1 << (4 - bit)):
+                    for dy in range(2):
+                        for dx in range(2):
+                            px = bit * 2 + dx
+                            pixels[(y * 2 + dy) * 2 + px // 8] |= 1 << (7 - px % 8)
+        frame_id = name + ".0"
+        frames.append(replace(bundle.frames[0], asset_id=name, frame_id=frame_id,
+            width=10, height=14, row_stride_bytes=2, pixels=bytes(pixels),
+            mask=bytes([255] * 28), opaque=True))
+        assets.append({"asset_id": name, "asset_type": "masked_1bpp",
+            "frames": [{"frame_id": frame_id,
+                "source_rect": {"x": 0, "y": 0, "width": 10, "height": 14}}]})
+        scene["objects"].append({"object_id": name, "kind": "sprite",
+            "width": 10, "height": 14, "z_order": 4, "layer": "SCENE",
+            "defaults": {"x": x, "y": 44, "visible": True, "visual_ref": frame_id}})
+    project = deepcopy(bundle.project)
+    project["package"]["package_id"] = "dev.peepshow.structured_sleep_wake"
+    return replace(bundle, project=project, scenes=(scene,), frames=tuple(frames), assets=assets)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", type=Path, default=DEFAULT_PROJECT,
@@ -152,14 +193,17 @@ def main():
                         help="Use the OS timer variant of the checked-in Studio fixture (source stays unchanged)")
     parser.add_argument("--sfx", action="store_true",
                         help="Use the OS four-frame/audio variant (GUI sources stay unchanged)")
+    parser.add_argument("--structured", action="store_true",
+                        help="Use labelled B/A slots and a fixed timer slot (GUI source stays unchanged)")
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[2] /
                         "firmware/peepshow_hw6_fw0/Core/Src/ps_object_development_egg_autogen.c")
     args = parser.parse_args()
-    if (args.timers or args.sfx) and args.project.resolve() != DEFAULT_PROJECT.resolve():
-        parser.error("--timers/--sfx use checked-in fixtures; omit --project")
-    if args.timers and args.sfx:
-        parser.error("choose either --timers or --sfx")
-    bundle = sfx_fixture_bundle() if args.sfx else timer_fixture_bundle() if args.timers else load_project(args.project)
+    if (args.timers or args.sfx or args.structured) and args.project.resolve() != DEFAULT_PROJECT.resolve():
+        parser.error("--timers/--sfx/--structured use checked-in fixtures; omit --project")
+    if sum((args.timers, args.sfx, args.structured)) > 1:
+        parser.error("choose one of --timers, --sfx or --structured")
+    bundle = (structured_fixture_bundle() if args.structured else sfx_fixture_bundle() if args.sfx
+              else timer_fixture_bundle() if args.timers else load_project(args.project))
     blob = build_development_egg_v2(bundle)
     args.output.write_text(render_c(blob), encoding="ascii", newline="\n")
     print(f"Development-only V2 egg: {len(blob)} bytes -> {args.output}")

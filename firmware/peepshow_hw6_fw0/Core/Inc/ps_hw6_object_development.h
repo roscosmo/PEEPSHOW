@@ -47,6 +47,32 @@ typedef struct
 
 extern volatile ps_hw6_object_lpbam_prepare_probe_t g_ps_object_lpbam_prepare_probe;
 extern volatile uint32_t g_ps_object_lpbam_prepare_request;
+
+/* Development request 2 opts into autonomous playback; request 1 stays awake. */
+#define PS_HW6_OBJECT_LPBAM_API_VERSION (1UL)
+typedef struct
+{
+  uint32_t api_version;
+  uint32_t enabled;
+  uint32_t fault;
+  uint32_t publish_count;
+  uint32_t publish_status;
+  uint32_t deadline_tick;
+  uint32_t commit_remaining_ticks;
+  uint32_t compare_count;
+  uint32_t wake_compare_count;
+  uint32_t sleep_count;
+  uint32_t physical_count;
+  uint32_t clock_status;
+  uint32_t sleep_ms;
+  uint32_t reconciled_count;
+  uint32_t barrier;
+  uint32_t entry_baseline;
+  uint64_t missing_ms;
+} ps_hw6_object_lpbam_probe_t;
+extern volatile ps_hw6_object_lpbam_probe_t g_ps_object_lpbam_probe;
+uint32_t PS_HW6_RTOS_ObjectSleepClockBegin(void);
+void PS_HW6_RTOS_ObjectSleepClockFinish(void);
 extern const uint8_t g_ps_object_development_egg[];
 extern const uint32_t g_ps_object_development_egg_size;
 #endif
