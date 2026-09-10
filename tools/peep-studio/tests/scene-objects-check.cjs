@@ -256,6 +256,15 @@ app.whenReady().then(async () => {
   assert.equal(await evaluate("document.querySelector('footer').textContent.includes('PROJECT_REVISION_STALE')"), false);
   await button("Local logic");
   assert(await evaluate("!!document.querySelector('.state-graph-pane .react-flow__node.draggable')"));
+  await click('.state-graph-pane .react-flow__pane');
+  const overviewCount = await evaluate("[...document.querySelectorAll('.scene-overview-card > div')].find(e => e.querySelector('span')?.textContent === 'Scene objects').querySelector('strong').textContent");
+  assert.equal(Number(overviewCount), scene().objects.length);
+  assert(await evaluate("![...document.querySelectorAll('.inspector-section h3')].some(e => ['Screen layouts','Waiting animations'].includes(e.textContent.trim()))"));
+  window.webContents.invalidate(); await wait(200);
+  fs.writeFileSync(path.join(output,'v2-scene-inspector.png'),(await window.webContents.capturePage()).toPNG());
+  await evaluate("document.querySelector('.react-flow__node[data-id=\"center\"]').dispatchEvent(new MouseEvent('click',{bubbles:true}))"); await wait(200);
+  assert.equal(Number(await evaluate("[...document.querySelectorAll('.state-summary-card > div')].find(e => e.querySelector('span')?.textContent === 'Objects overridden').querySelector('strong').textContent")), scene().states.find(s=>s.state_id==='center').object_overrides.length);
+  assert(await evaluate("!document.querySelector('.selected-record').textContent.includes('Waiting animation')"));
   const selectTestRoute = () => click('.react-flow__node[data-id="center"] [aria-label="B trigger, configured"]');
   await selectTestRoute();
   const actionRoute = () => scene().routes.find(route => route.route_id === 'test_move');
@@ -322,6 +331,9 @@ app.whenReady().then(async () => {
   await evaluate(`[...document.querySelectorAll('.scene-hierarchy-select')].find(e => e.textContent.includes(${JSON.stringify(legacy.display_name)})).click()`);
   await wait(400);
   assert(await evaluate("!!document.querySelector('.state-graph-pane .react-flow__node.draggable')"));
+  await click('.state-graph-pane .react-flow__pane');
+  assert(await evaluate("['Screen layouts','Waiting animations'].every(label => [...document.querySelectorAll('.inspector-section h3')].some(e=>e.textContent.trim()===label))"));
+  assert(await evaluate("[...document.querySelectorAll('.scene-overview-card span')].some(e=>e.textContent==='Screen items')"));
   assert(mutations.some(command => command.kind === "object_override.clear"));
   console.log("Mixed-version GUI editing checks passed; placement pixels:", pixelCount);
 }).catch(error => { console.error(error); process.exitCode = 1; }).finally(() => {

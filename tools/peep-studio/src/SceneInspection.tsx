@@ -4114,8 +4114,9 @@ export function SceneAuthoringInspector({
   const inputActions = scene?.input_actions ?? [];
   const states = scene?.states ?? [];
   const routes = scene?.routes ?? [];
-  const renderModels = scene?.render_models ?? [];
-  const waitingVisuals = scene?.waiting_visuals ?? [];
+  const sceneObjects = scene?.schema_version === 2;
+  const renderModels = sceneObjects ? [] : scene?.render_models ?? [];
+  const waitingVisuals = sceneObjects ? [] : scene?.waiting_visuals ?? [];
   const state = selection.kind === "state" ? states.find((item) => item.state_id === selection.id) ?? null : null;
   const route = selection.kind === "route" ? routes.find((item) => item.route_id === selection.id) ?? null : null;
   const sceneExit = selection.kind === "sceneExit"
@@ -4131,6 +4132,7 @@ export function SceneAuthoringInspector({
     <>
       {state !== null && scene !== null && (
         <StateInspector
+          sceneObjectCount={sceneObjects ? scene.objects?.length ?? 0 : undefined}
           canRename={stateCommandAllowed?.("state.rename")}
           canSetEntry={stateCommandAllowed?.("state.set_entry")}
           canDelete={stateCommandAllowed?.("state.delete")}
@@ -4269,7 +4271,9 @@ function SceneOverview({
     );
   }
   const entryState = states.find((state) => state.state_id === scene.entry_state);
-  const elementCount = renderModels.reduce((total, item) => total + item.elements.length, 0);
+  const sceneObjects = scene.schema_version === 2;
+  const elementCount = sceneObjects ? scene.objects?.length ?? 0
+    : renderModels.reduce((total, item) => total + item.elements.length, 0);
   return (
     <>
       <section className="inspector-section">
@@ -4296,11 +4300,11 @@ function SceneOverview({
             <strong>{variables.length}</strong>
           </div>
           <div>
-            <span>Screen items</span>
+            <span>{sceneObjects ? "Scene objects" : "Screen items"}</span>
             <strong>{elementCount}</strong>
           </div>
         </div>
-        <p className="scene-overview-prompt">Select a state or transition in the graph to edit it.</p>
+        {!sceneObjects && <p className="scene-overview-prompt">Select a state or transition in the graph to edit it.</p>}
       </section>
 
       <section className="inspector-section">
@@ -4336,7 +4340,7 @@ function SceneOverview({
         )}
       </section>
 
-      <section className="inspector-section">
+      {!sceneObjects && <section className="inspector-section">
         <h3><Layers3 size={14} aria-hidden="true" /> Screen layouts</h3>
         {renderModels.length === 0 ? (
           <EmptyInspector>No screen layouts in this scene.</EmptyInspector>
@@ -4350,9 +4354,9 @@ function SceneOverview({
             ))}
           </div>
         )}
-      </section>
+      </section>}
 
-      <section className="inspector-section">
+      {!sceneObjects && <section className="inspector-section">
         <h3><Hourglass size={14} aria-hidden="true" /> Waiting animations</h3>
         {waitingVisuals.length === 0 ? (
           <EmptyInspector>No waiting animations in this scene.</EmptyInspector>
@@ -4366,7 +4370,7 @@ function SceneOverview({
             ))}
           </div>
         )}
-      </section>
+      </section>}
     </>
   );
 }
@@ -4605,6 +4609,7 @@ function VariableRangeFields({
 }
 
 function StateInspector({
+  sceneObjectCount,
   sceneId,
   state,
   isEntry,
@@ -4623,6 +4628,7 @@ function StateInspector({
 }: {
   sceneId: string;
   state: StateRecord;
+  sceneObjectCount?: number;
   isEntry: boolean;
   renderModels: RenderModel[];
   waitingVisuals: WaitingVisual[];
@@ -4692,10 +4698,11 @@ function StateInspector({
           <strong>{isEntry ? "Yes" : "No"}</strong>
         </div>
         <div>
-          <span>Object changes</span>
+          <span>{sceneObjectCount === undefined ? "Object changes" : "Objects overridden"}</span>
           <strong>{placementOverrideCount}</strong>
         </div>
-        {state.waiting_visual_ref !== undefined && <div>
+        {sceneObjectCount !== undefined && <div><span>Scene objects</span><strong>{sceneObjectCount}</strong></div>}
+        {sceneObjectCount === undefined && state.waiting_visual_ref !== undefined && <div>
           <span>Waiting</span>
           <strong>{waiting === undefined ? "Not linked" : `${waitingStepCount} step${waitingStepCount === 1 ? "" : "s"}`}</strong>
         </div>}
@@ -4705,7 +4712,7 @@ function StateInspector({
           Scene placement <strong>{screenElementCount} object{screenElementCount === 1 ? "" : "s"}</strong>
         </button>
       )}
-      {state.waiting_visual_ref !== undefined && <button className="link-row" type="button" onClick={() => {
+      {sceneObjectCount === undefined && state.waiting_visual_ref !== undefined && <button className="link-row" type="button" onClick={() => {
         if (state.waiting_visual_ref !== undefined) onSelect({ kind: "waiting", id: state.waiting_visual_ref });
       }}>
         Waiting animation <strong>{waiting === undefined ? "Missing" : `${waiting.combined_step_count} step${waiting.combined_step_count === 1 ? "" : "s"}`}</strong>

@@ -780,3 +780,15 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   commands or capabilities accompanied this pass; Studio continues against the
   existing advertised authoring capabilities. Ordinary V2 export remains disabled
   until the production capability handoff. Migration remains deferred.
+
+### V2 Inspector Terminology
+
+- Native scene overviews count scene-owned objects directly, rather than legacy
+  render-model elements. State summaries distinguish scene objects from objects
+  overridden by that state; these are record counts, not counts of changed fields.
+- V2 inspectors omit Screen layouts, Waiting animations and their legacy links.
+  V1 retains those sections and controls unchanged. This is presentation-only:
+  no project data, ownership rules, migration, backend or firmware changes.
+- Mixed-version GUI regression checks cover the V2 counts and hidden sections,
+  then switch to V1 and verify that its legacy sections remain available.
+  Frozen hardware fixtures and ordinary V2 export restrictions are unchanged.
