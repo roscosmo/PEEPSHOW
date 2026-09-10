@@ -863,8 +863,8 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   checks undo/redo and save/reopen, and verifies four distinct looping host frames.
   Its ten-frame variant also verifies authored order rather than lexical frame-ID
   order. The existing mixed V1/V2 object-editing regression remains passing.
-  A separate stale placement-preview request can still occur during reopening;
-  source round-trip succeeds and the cancelled request is not displayed as an error.
+  The reopening stale-preview request is now covered by the replacement-lifecycle
+  regression below; the test no longer permits stale service errors.
 - Backend, firmware and frozen fixtures remain unchanged. This does not validate
   the combined LPBAM budget or enable ordinary V2 export/install.
 
@@ -882,6 +882,23 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   through further input and time. This complete run produced no service errors.
 - The test uses a separate temporary project and does not modify the hardware
   handoff source. This host/GUI result does not imply hardware or export admission.
+
+### Placement Preview Replacement Lifecycle
+
+- Opening/creating a project now suspends placement-preview requests until the
+  replacement operation finishes. A synchronous generation marker invalidates
+  old successes and failures, including replies arriving before effect cleanup.
+  Both base and state placement resume against the loaded project revision.
+- The original trace showed a revision-6 preview dispatched after `project.load`,
+  then rejected after that load advanced the service to revision 7. Saving had
+  retained revision 6 and succeeded; this was a GUI load/preview ordering issue.
+- `tests/native-sprite-loop-check.cjs --reload-race` delays load responses, holds
+  and releases obsolete state-preview successes/failures, verifies no placement
+  requests during replacement, and checks reopening after a simulated load
+  failure. The full workflow also requires zero service errors, rather than
+  tolerating stale-preview rejections. Injected test failures remain explicit.
+- This changes only GUI request lifecycle. Backend validation, normal save
+  semantics, animation ownership, build issues and export restrictions are unchanged.
 
 ### Production Admission Fixture Handoff
 

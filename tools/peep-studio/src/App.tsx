@@ -150,6 +150,9 @@ export default function App() {
   const bridge = window.peepStudio;
   const [service, setService] = useState<ServiceHello | null>(null);
   const [project, setProject] = useState<ProjectLoadResult | null>(null);
+  const [projectReplacing, setProjectReplacing] = useState(false);
+  // Synchronous invalidation also covers replies arriving before React effect cleanup.
+  const projectReplacementRef = useRef({ pending: false, generation: 0 });
   const [preview, setPreview] = useState<PreviewSnapshot | null>(null);
   const [placementPreview, setPlacementPreview] = useState<PlacementPreviewSnapshot | null>(null);
   const [placementPreviewLoading, setPlacementPreviewLoading] = useState(false);
@@ -301,9 +304,11 @@ export default function App() {
 
   const loadProject = useCallback(
     async (path: string) => {
-      if (bridge === undefined) {
+      if (bridge === undefined || projectReplacementRef.current.pending) {
         return;
       }
+      projectReplacementRef.current = { pending: true, generation: projectReplacementRef.current.generation + 1 };
+      setProjectReplacing(true);
       setBusy("Loading project");
       setPlaying(false);
       setBuild(null);
@@ -337,6 +342,8 @@ export default function App() {
       } catch (error) {
         setMessage(errorText(error));
       } finally {
+        projectReplacementRef.current.pending = false;
+        setProjectReplacing(false);
         setBusy(null);
       }
     },
@@ -355,13 +362,16 @@ export default function App() {
   };
 
   const newProject = async () => {
-    if (bridge === undefined || busy !== null) {
+    if (bridge === undefined || busy !== null || projectReplacementRef.current.pending) {
       return;
     }
     const path = await bridge.chooseNewProjectPath();
     if (path === null) {
       return;
     }
+    if (projectReplacementRef.current.pending) return;
+    projectReplacementRef.current = { pending: true, generation: projectReplacementRef.current.generation + 1 };
+    setProjectReplacing(true);
     setBusy("Creating project");
     setPlaying(false);
     try {
@@ -397,6 +407,8 @@ export default function App() {
     } catch (error) {
       setMessage(errorText(error));
     } finally {
+      projectReplacementRef.current.pending = false;
+      setProjectReplacing(false);
       setBusy(null);
     }
   };
@@ -2884,6 +2896,7 @@ export default function App() {
     const previewSupported = (stateId === null ? placementBasePreviewSupported : placementPreviewSupported)
       && (!objectSceneSelected || canPreviewSceneObjects(service, selectedSceneCapability));
     const readyForPlacementPreview =
+      !projectReplacing && !projectReplacementRef.current.pending &&
       bridge !== undefined &&
       projectRevision !== null &&
       projectValid &&
@@ -2906,6 +2919,9 @@ export default function App() {
     }
 
     let cancelled = false;
+    const generation = projectReplacementRef.current.generation;
+    const obsolete = () => cancelled || projectReplacementRef.current.pending ||
+      generation !== projectReplacementRef.current.generation;
     setPlacementPreviewLoading(true);
     setPlacementPreviewError(null);
     const operation = stateId === null ? "project.preview_scene_base" : "project.preview_state";
@@ -2920,7 +2936,7 @@ export default function App() {
           ? "placement" in result && result.placement.scene_id === sceneId
           : "scene" in result && result.scene.scene_id === sceneId && result.scene.state_id === stateId;
         if (
-          cancelled ||
+          obsolete() ||
           result.project_revision !== projectRevision ||
           !matchesScope
         ) {
@@ -2931,7 +2947,7 @@ export default function App() {
         setPlacementPreviewError(null);
       })
       .catch((error) => {
-        if (!cancelled) {
+        if (!obsolete()) {
           const text = errorText(error);
           setPlacementPreview(null);
           setPlacementPreviewLoading(false);
@@ -2951,6 +2967,7 @@ export default function App() {
     placementBasePreviewSupported,
     placementPreviewSupported,
     placementState?.state_id,
+    projectReplacing,
     projectRevision,
     projectValid,
     selectedSceneDocument?.scene_id,

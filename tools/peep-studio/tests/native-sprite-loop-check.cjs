@@ -4,12 +4,16 @@ const { app, BrowserWindow, ipcMain, nativeImage } = require('electron');
 const root = path.resolve(__dirname, '../../..');
 const frameCount = process.argv.includes('--ten') ? 10 : 4;
 const workflow = process.argv.includes('--workflow');
+const reloadRace = process.argv.includes('--reload-race');
 const projectPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'peep-workflow-audit-')), 'fresh.peepproj');
 const output = path.resolve('dist/native-sprite-loop-check');
 fs.mkdirSync(output, { recursive: true });
 app.setPath('userData', path.join(output, 'profile'));
 app.disableHardwareAcceleration(); app.on('window-all-closed', () => {});
 let child, window, latest, hello, id = 0;
+let loadPending = false, holdNextPreview = false, releaseHeldPreview;
+let failNextLoad = false;
+const previewsDuringLoad = [];
 const pending = new Map(), errors = [], commands = [], batches = [];
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const watchdog = setTimeout(() => { child?.kill(); app.exit(1); }, workflow ? 90000 : 60000);
@@ -23,6 +27,15 @@ app.whenReady().then(async () => {
   ipcMain.handle('audit:path', () => projectPath);
   ipcMain.handle('audit:service', async (_, operation, params) => {
     assert(!operation.includes('migration'));
+    if (operation === 'project.load' && failNextLoad) {
+      failNextLoad = false;
+      throw new Error('Load failure diagnostic');
+    }
+    const placementRequest = ['project.preview_state','project.preview_scene_base'].includes(operation);
+    if (placementRequest && loadPending) previewsDuringLoad.push({operation,params});
+    const held = placementRequest && holdNextPreview;
+    if (held) holdNextPreview = false;
+    if (operation === 'project.load') loadPending = true;
     if (operation === 'project.apply_commands') { commands.push(...params.commands); batches.push(params.commands); }
     const requestId = String(++id);
     const result = await new Promise((resolve, reject) => {
@@ -31,6 +44,16 @@ app.whenReady().then(async () => {
     });
     if (result.document) latest = result;
     if (operation === 'service.hello') hello = result;
+    if (operation === 'project.load') {
+      if (reloadRace) await wait(400);
+      loadPending = false;
+    }
+    if (held) {
+      const outcome = await new Promise(resolve => { releaseHeldPreview = resolve; });
+      if (outcome === 'reject') throw new Error('Obsolete preview diagnostic');
+      return {...result, framebuffer:{...result.framebuffer,
+        data_base64:Buffer.alloc(result.framebuffer.size_bytes,255).toString('base64')}};
+    }
     return result;
   });
   ipcMain.handle('audit:png', () => {
@@ -152,7 +175,26 @@ app.whenReady().then(async () => {
     fs.writeFileSync(path.join(output,'workflow-timer.png'),(await window.webContents.capturePage()).toPNG());
   }
   await button('Save'); const saved = JSON.stringify(latest.document.scenes);
+  if (reloadRace) {
+    for (const outcome of ['resolve','reject']) {
+      holdNextPreview = true; releaseHeldPreview = undefined;
+      await click('.scene-hierarchy-node.selected .state-branch .hierarchy-branch-select');
+      assert.equal(typeof releaseHeldPreview, 'function', 'Must hold an actual state preview response');
+      await button('Open project'); await wait(400);
+      assert.equal(JSON.stringify(latest.document.scenes), saved);
+      const before = await evaluate("document.querySelector('.panel-bezel canvas').toDataURL()");
+      releaseHeldPreview(outcome); await wait(250);
+      assert.equal(await evaluate("document.querySelector('.panel-bezel canvas').toDataURL()"),before,'Obsolete response must not replace current pixels');
+      assert(!(await evaluate("document.querySelector('.status-bar').textContent")).includes('Obsolete preview diagnostic'));
+    }
+    assert.deepEqual(previewsDuringLoad, [], 'No placement requests may be dispatched during project replacement');
+    failNextLoad = true;
+    await button('Open project'); await wait(400);
+    assert.equal(failNextLoad, false, 'The failed load must have been attempted');
+  }
+  const revisionBeforeReload = latest.project_revision;
   await button('Open project'); assert.equal(JSON.stringify(latest.document.scenes), saved);
+  assert(latest.project_revision > revisionBeforeReload, 'Reopen must reach the service even after a failed load');
   assert.deepEqual(latest.document.animations, [clip]);
   const preview = (operation, params) => new Promise((resolve, reject) => {
     const requestId = String(++id); pending.set(requestId, {resolve, reject, operation});
@@ -192,12 +234,12 @@ app.whenReady().then(async () => {
     assert.equal(object(timerObjectId).effective.x,76); assert.equal(object(timerObjectId).effective.y,76);
     console.log('Fresh GUI workflow: two states, A/B routes, independent X override, atomic timer undo/redo, exact one-shot expiry and animation continuity after save/reopen passed');
   }
-  assert(errors.every(error => error.code === 'PROJECT_REVISION_STALE' && ['project.preview_state','project.preview_scene_base'].includes(error.operation)), JSON.stringify(errors));
+  assert.deepEqual(errors, [], 'The workflow must not emit stale or other service errors');
   assert(!(await evaluate("document.querySelector('.status-bar').textContent")).includes('PROJECT_REVISION_STALE'));
   window.webContents.invalidate(); await wait(250);
   fs.writeFileSync(path.join(output, 'fresh-sprite.png'), (await window.webContents.capturePage()).toPNG());
   const result = {projectPath,workflow,animation,objects:currentScene().objects,clips:latest.document.animations,animationCommands:commands.filter(c=>c.kind.includes('animation')),capabilities:hello?.scene_object_authoring,errors};
   fs.writeFileSync(path.join(output,'result.json'),JSON.stringify(result,null,2));
   console.log(`Native sprite loop: fresh GUI creation, ${frameCount} ordered frames, one-batch binding, undo/redo, save/reopen and distinct looping host frames passed`);
-  if (errors.length) console.log('Cancelled stale placement-preview requests:', errors.length);
+  if (reloadRace) console.log('Delayed load: no previews during replacement; old replies ignored; reopening recovers after a failed load');
 }).catch(error => {console.error(error);process.exitCode=1;}).finally(()=>{clearTimeout(watchdog);child?.kill();window?.destroy();app.exit(process.exitCode||0);});
