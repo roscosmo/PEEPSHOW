@@ -779,11 +779,27 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   OS reports an awake-only HW6 pass: the numbered animation visibly continues
   across A/B marker changes without resetting; the scene timer applied once with
   zero errors and its square was visible. Preserve this fixture unchanged.
-- OS next owns V2 STOP2/LPBAM animation and timer continuity verification. The
-  awake-only result does not establish low-power continuity. No new service
-  commands or capabilities accompanied this pass; Studio continues against the
-  existing advertised authoring capabilities. Ordinary V2 export remains disabled
-  until the production capability handoff. Migration remains deferred.
+- OS reports a scoped STOP2/LPBAM development-path hardware pass (2026-09-10),
+  recorded in `Scene_Object_Awake_Development_Test.md`, Structured Hardware Pass,
+  and the ownership handoff in the OS workspace; these evidence updates are not
+  yet merged into this GUI branch. The separate labelled OS diagnostic variant
+  retains the four-frame animation, A/B overrides and scene timer. The GUI source
+  fixtures remain frozen; do not relabel their earlier awake-only passes.
+- Observed animation continued during low-current STOP2. A/B preserved animation
+  continuity and moved the marker only once. The scene timer woke the device and
+  applied its handler once; wake-frame restoration and sleep-time reconciliation
+  succeeded without faults. OS corrected the awake/autonomous coordinate-rotation
+  mismatch in firmware, not in GUI placement or fixture coordinates.
+- Exact cadence, first-partial-interval accuracy, long-residency drift, quantified
+  power consumption and broader multi-animation coverage remain outstanding.
+  No service/API capabilities changed. Ordinary V2 export/install remains disabled
+  until the production capability handoff; migration remains deferred.
+- Coordinate the next LPBAM fixture with OS around a deliberate common animation
+  interval. Current combined-scene limits are 12 steps, 18 chunks and 10,512 payload
+  bytes. Individually fitting animations do not prove that their combined sequence
+  fits. Require the OS schedule/payload result for the complete scene; do not add
+  a GUI-only budget model, silently round durations or expose a scene-interval
+  control before the shared authoring command and validation are handed over.
 
 ### V2 Inspector Terminology
 
