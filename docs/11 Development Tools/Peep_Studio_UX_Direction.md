@@ -556,6 +556,10 @@ the shared scoring weights rather than introduce per-example route behavior.
   Regression coverage includes the actual graph components in
   `tools/peep-studio/tests/graph-arrows.html`, checked at desktop and compact
   sizes by `tests/graph-arrows-check.cjs` against a running renderer.
+  The scene fixture deliberately omits the optional read-only scene list. Its
+  default must retain a stable identity to avoid a node-update render loop.
+  Scene/state arrow selection, segment dragging and retained rails after node
+  movement pass at 1440px and 760px graph viewport widths.
 - Draw an unambiguous bridge on one route wherever two unrelated transition
   lines must cross. Bridges are presentation only and do not alter direction,
   selection priority, or runtime order.

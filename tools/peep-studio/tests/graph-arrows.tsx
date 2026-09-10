@@ -62,6 +62,7 @@ function Fixture() {
   useEffect(() => { document.body.dataset.editor = JSON.stringify(editor); }, [editor]);
   const record = (value: unknown) => { document.body.dataset.result = JSON.stringify(value); };
   if (new URLSearchParams(location.search).get("graph") === "scene") {
+    // Deliberately omit readOnlySceneIds to catch unstable-default render loops.
     return <SceneFlowView scenes={sceneFlow} entrySceneId="menu" thumbnails={{}} editor={editor} layoutStatus="fixture"
       selectedSceneId={null} selectedSceneExitId={sceneExit} selectedRouteId={null} selectedReferenceId={null} packageEntrySelected={packageSelected}
       canEdit canAddScene={false} onAddScene={noop} onSelectScene={noop} onSelectSceneRoute={noop}

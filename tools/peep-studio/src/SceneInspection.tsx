@@ -3213,6 +3213,9 @@ export function StateGraphView({
   );
 }
 
+// Keep the optional default stable: it participates in node/edge memoization.
+const NO_READ_ONLY_SCENES: string[] = [];
+
 export function SceneFlowView({
   scenes,
   entrySceneId,
@@ -3245,7 +3248,7 @@ export function SceneFlowView({
   onConnectSceneExit,
   canEdit,
   canAddScene,
-  readOnlySceneIds = [],
+  readOnlySceneIds = NO_READ_ONLY_SCENES,
 }: {
   scenes: SceneDocument[];
   entrySceneId: string | null;
