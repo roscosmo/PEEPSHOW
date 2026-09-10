@@ -3,6 +3,7 @@ const readline = require('node:readline'), { spawn } = require('node:child_proce
 const { app, BrowserWindow, ipcMain, nativeImage } = require('electron');
 const root = path.resolve(__dirname, '../../..');
 const frameCount = process.argv.includes('--ten') ? 10 : 4;
+const workflow = process.argv.includes('--workflow');
 const projectPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'peep-workflow-audit-')), 'fresh.peepproj');
 const output = path.resolve('dist/native-sprite-loop-check');
 fs.mkdirSync(output, { recursive: true });
@@ -11,7 +12,7 @@ app.disableHardwareAcceleration(); app.on('window-all-closed', () => {});
 let child, window, latest, hello, id = 0;
 const pending = new Map(), errors = [], commands = [], batches = [];
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-const watchdog = setTimeout(() => { child?.kill(); app.exit(1); }, 60000);
+const watchdog = setTimeout(() => { child?.kill(); app.exit(1); }, workflow ? 90000 : 60000);
 app.whenReady().then(async () => {
   child = spawn(process.env.PEEPSHOW_PYTHON, ['-u', 'tools/authoring/egg_tool.py', 'service'], { cwd: root, windowsHide: true });
   readline.createInterface({ input: child.stdout }).on('line', line => {
@@ -87,6 +88,69 @@ app.whenReady().then(async () => {
   assert.deepEqual(latest.document.animations, [clip]);
   assert.equal(latest.document.scenes[0].objects[0].animation_ref, clip.animation_id);
   assert(await evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Build').disabled"));
+  let rightId, markerId, timerObjectId;
+  const currentScene = () => latest.document.scenes[0];
+  if (workflow) {
+    const field = async (label, value, tag = 'input') => {
+      const selector = `[aria-label="${label}"]`;
+      await evaluate(`(() => {const e=document.querySelector(${JSON.stringify(selector)});
+        Object.getOwnPropertyDescriptor(${tag === 'select' ? 'HTMLSelectElement' : 'HTMLInputElement'}.prototype,'value').set.call(e,${JSON.stringify(String(value))});
+        e.dispatchEvent(new Event('${tag === 'select' ? 'change' : 'input'}',{bubbles:true}));})()`); await wait(150);
+      if (tag === 'input') await evaluate(`document.querySelector(${JSON.stringify(selector)}).dispatchEvent(new FocusEvent('focusout',{bubbles:true}))`);
+      await wait(300);
+    };
+    await button('Local logic'); await click('button[title="Add state"]');
+    rightId = currentScene().states.find(state => state.state_id !== 'start').state_id;
+    await field('State name', 'Right');
+    for (const [source, target, input] of [['start', rightId, 'BUTTON_A'], [rightId, 'start', 'BUTTON_B']]) {
+      await click(`.react-flow__node[data-id="${source}"] [data-handleid="new-physical-trigger:${input}"]`);
+      await click(`.react-flow__node[data-id="${target}"] [data-handleid="entry-top-left:top"]`);
+      await button('Create transition');
+    }
+    assert.equal(currentScene().routes.length, 2);
+    await button('Placement');
+    await click('.scene-hierarchy-node.selected .base-branch .hierarchy-branch-select');
+    const pointer = async (selector, type, x, y) => {
+      await evaluate(`(() => {const r=document.querySelector('.placement-screen-overlay').getBoundingClientRect();
+        const target=${selector === 'window' ? 'window' : `document.querySelector(${JSON.stringify(selector)})`};
+        target.dispatchEvent(new PointerEvent(${JSON.stringify(type)}, {bubbles:true,button:0,pointerId:1,
+          clientX:r.left+${x + 0.5}/168*r.width,clientY:r.top+${y + 0.5}/144*r.height}));})()`); await wait(100);
+    };
+    const draw = async (x, y) => {
+      const ids = new Set(currentScene().objects.map(object => object.object_id));
+      await click('.placement-tool-palette .primitive-filled_rect');
+      await pointer('.placement-screen-overlay', 'pointerdown', x, y);
+      await pointer('window', 'pointermove', x + 15, y + 15);
+      await pointer('window', 'pointerup', x + 15, y + 15); await wait(400);
+      const object = currentScene().objects.find(object => !ids.has(object.object_id));
+      assert(object, 'Drawing must create a scene-owned object');
+      return object.object_id;
+    };
+    markerId = await draw(32, 100);
+    await evaluate(`[...document.querySelectorAll('.scene-hierarchy-node.selected .state-branch .hierarchy-branch-select')].find(e=>e.textContent.includes(${JSON.stringify(rightId)})).click()`); await wait(400);
+    await field('Object X', 120);
+    assert.deepEqual(currentScene().states.find(state => state.state_id === rightId).object_overrides,
+      [{object_ref:markerId,x:120}]);
+    assert.deepEqual(currentScene().states.find(state => state.state_id === 'start').object_overrides, []);
+    await click('.scene-hierarchy-node.selected .base-branch .hierarchy-branch-select');
+    timerObjectId = await draw(76, 76); await click('[aria-label="Object visible"]');
+    assert.equal(currentScene().objects.find(object => object.object_id === timerObjectId).defaults.visible, false);
+    await button('Local logic'); await click('.react-flow__pane');
+    await button('Scene timer'); await field('Timer delay', 2000); await button('Create timer');
+    const bindingId = currentScene().event_bindings[0].binding_id;
+    assert(batches.some(batch => batch.some(c=>c.kind==='event_binding.add') && batch.some(c=>c.kind==='event_handler.add')));
+    await click('button[title="Undo"]');
+    assert.equal(currentScene().event_bindings?.length ?? 0, 0); assert.equal(currentScene().event_handlers?.length ?? 0, 0);
+    await click('button[title="Redo"]'); await field('Selected timer', bindingId, 'select');
+    await field('Add effect', 'object.set_visibility', 'select');
+    await field('Effect 1 object', timerObjectId, 'select');
+    assert.deepEqual(currentScene().event_handlers[0].actions,[{kind:'object.set_visibility',object_ref:timerObjectId,visible:true}]);
+    assert.equal(currentScene().event_handlers[0].target_state, undefined);
+    assert.equal(currentScene().objects.length, 3);
+    assert(currentScene().states.every(state=>state.object_overrides.every(item=>item.object_ref===markerId)));
+    window.webContents.invalidate(); await wait(200);
+    fs.writeFileSync(path.join(output,'workflow-timer.png'),(await window.webContents.capturePage()).toPNG());
+  }
   await button('Save'); const saved = JSON.stringify(latest.document.scenes);
   await button('Open project'); assert.equal(JSON.stringify(latest.document.scenes), saved);
   assert.deepEqual(latest.document.animations, [clip]);
@@ -102,11 +166,37 @@ app.whenReady().then(async () => {
     hashes.add(snapshot.framebuffer.sha256);
   }
   assert.equal(hashes.size, frameCount, 'Distinct frames must actually render');
+  if (workflow) {
+    snapshot = await preview('project.preview_reset', {scene_id:'main',state_id:'start'});
+    const advance = elapsed_ms => preview('project.preview_advance', {preview_revision:snapshot.preview_revision,elapsed_ms});
+    const input = logical_source => preview('project.preview_input', {preview_revision:snapshot.preview_revision,logical_source});
+    const object = id => snapshot.objects.find(item=>item.object_id===id);
+    const spriteId = currentScene().objects.find(item=>item.animation_ref===clip.animation_id).object_id;
+    snapshot = await advance(650);
+    const beforeA = object(spriteId).playback;
+    snapshot = await input('BUTTON_A');
+    assert.equal(snapshot.scene.state_id,rightId); assert.deepEqual(object(spriteId).playback,beforeA);
+    assert.equal(object(markerId).effective.x,120); assert.equal(object(markerId).underlying.x,32);
+    snapshot = await advance(300); const beforeB = object(spriteId).playback;
+    snapshot = await input('BUTTON_B');
+    assert.equal(snapshot.scene.state_id,'start'); assert.deepEqual(object(spriteId).playback,beforeB);
+    assert.equal(object(markerId).effective.x,32);
+    snapshot = await advance(1049);
+    assert.equal(snapshot.timeline.elapsed_ms,1999); assert.equal(object(timerObjectId).effective.visible,false);
+    snapshot = await advance(1);
+    assert.equal(snapshot.timer_events.length,1); assert.equal(object(timerObjectId).effective.visible,true);
+    assert.equal(object(spriteId).playback.phase_index,1);
+    assert.equal(snapshot.scene.state_id,'start');
+    snapshot = await input('BUTTON_A'); snapshot = await advance(6000);
+    assert.equal(snapshot.timer_events.length,0); assert.equal(object(timerObjectId).effective.visible,true);
+    assert.equal(object(timerObjectId).effective.x,76); assert.equal(object(timerObjectId).effective.y,76);
+    console.log('Fresh GUI workflow: two states, A/B routes, independent X override, atomic timer undo/redo, exact one-shot expiry and animation continuity after save/reopen passed');
+  }
   assert(errors.every(error => error.code === 'PROJECT_REVISION_STALE' && ['project.preview_state','project.preview_scene_base'].includes(error.operation)), JSON.stringify(errors));
   assert(!(await evaluate("document.querySelector('.status-bar').textContent")).includes('PROJECT_REVISION_STALE'));
   window.webContents.invalidate(); await wait(250);
   fs.writeFileSync(path.join(output, 'fresh-sprite.png'), (await window.webContents.capturePage()).toPNG());
-  const result = {projectPath,animation,objects:scene.objects,clips:latest.document.animations,animationCommands:commands.filter(c=>c.kind.includes('animation')),capabilities:hello?.scene_object_authoring,errors};
+  const result = {projectPath,workflow,animation,objects:currentScene().objects,clips:latest.document.animations,animationCommands:commands.filter(c=>c.kind.includes('animation')),capabilities:hello?.scene_object_authoring,errors};
   fs.writeFileSync(path.join(output,'result.json'),JSON.stringify(result,null,2));
   console.log(`Native sprite loop: fresh GUI creation, ${frameCount} ordered frames, one-batch binding, undo/redo, save/reopen and distinct looping host frames passed`);
   if (errors.length) console.log('Cancelled stale placement-preview requests:', errors.length);

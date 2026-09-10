@@ -866,12 +866,27 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   A separate stale placement-preview request can still occur during reopening;
   source round-trip succeeds and the cancelled request is not displayed as an error.
 - Backend, firmware and frozen fixtures remain unchanged. This does not validate
-  the combined LPBAM budget or enable ordinary V2 export/install. The full fresh
-  project check with state overrides, A/B routes and a timer remains to be completed.
+  the combined LPBAM budget or enable ordinary V2 export/install.
+
+### Fresh Native GUI Workflow
+
+- `tests/native-sprite-loop-check.cjs --workflow` now creates an empty native V2
+  project, imports a four-frame PNG, creates/binds a 400 ms loop, adds two states
+  and A/B routes, draws independent marker/timer objects, applies an X-only state
+  override and authors a scene timer through the GUI. Only native file pickers
+  are substituted; all project mutations go through the real GUI and service.
+- Passed: clip and paired binding/handler undo/redo, save/reopen, four distinct
+  looping framebuffers, A/B playback-phase continuity and underlying/effective
+  marker positions. The timer object stays hidden at 1999 ms, appears once at
+  2000 ms without state re-entry or animation reset, then stays fixed and visible
+  through further input and time. This complete run produced no service errors.
+- The test uses a separate temporary project and does not modify the hardware
+  handoff source. This host/GUI result does not imply hardware or export admission.
 
 ### Production Admission Fixture Handoff
 
 - New source-only candidate: `examples/authoring/native_v2_installation.peepproj`.
+  Source commit: `e7f11f011fcbd91001aac0d15a85543c6212f3ab`.
   One continuous-interaction V2 scene, four numbered frames at 400 ms, labelled
   B/A boxes and an independent state-overridden marker, plus a fixed square
   revealed once by a scene timer at 2000 ms. No audio or scene exits.
