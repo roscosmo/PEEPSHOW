@@ -100,7 +100,7 @@ int main(int argc, char **argv)
   PS_HW6_RTOS_RuntimeStateTimersSync(now, 1);
   assert(PS_HW6_RTOS_ObjectPresent() == 0);
   timer = binding(PS_SCENE_RUNTIME_TIMER_SCENE);
-  state_timer = binding(PS_SCENE_RUNTIME_TIMER_STATE_ENTRY);
+  state_timer = mode == 11 ? 0U : binding(PS_SCENE_RUNTIME_TIMER_STATE_ENTRY);
   scene_epoch = PS_SceneRuntime_SceneActivation();
 
   if (mode == 0)
@@ -235,6 +235,47 @@ int main(int argc, char **argv)
     assert(s_ps_object_snapshot.elapsed_ms == 5500);
     service(2000);
     assert(g_ps_hw6_rtos_probe.runtime_state_timer_applied_count == 1);
+  }
+  else if (mode == 11)
+  {
+    assert(model.elements[2].visible == 0);
+    assert(ps_runtime_state_timers[timer].deadline_tick == 300);
+    now = 165; input(1);
+    assert(s_ps_object_snapshot.objects[0].step == 1);
+    assert(s_ps_object_snapshot.objects[0].remaining_ms == 350);
+    now = 195; input(2);
+    assert(s_ps_object_snapshot.objects[0].remaining_ms == 50);
+    now = 240; input(1);
+    state_epoch = PS_SceneRuntime_StateActivation();
+    assert(ps_runtime_state_timers[timer].deadline_tick == 300);
+    service(299);
+    assert(g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 0);
+    assert(PS_HW6_RTOS_ObjectPresent() == 0);
+    assert(model.elements[2].visible == 0);
+    assert(s_ps_object_snapshot.objects[0].step == 1);
+    assert(s_ps_object_snapshot.objects[0].remaining_ms == 10);
+    service(305);
+    assert(model.elements[2].visible == 1);
+    assert(model.elements[2].x == 76 && model.elements[2].y == 80);
+    assert(PS_SceneRuntime_StateActivation() == state_epoch);
+    assert(PS_SceneRuntime_SceneActivation() == scene_epoch);
+    assert(s_ps_object_snapshot.elapsed_ms == 2050);
+    assert(s_ps_object_snapshot.objects[0].step == 0);
+    assert(s_ps_object_snapshot.objects[0].remaining_ms == 450);
+    now = 330; input(2);
+    assert(model.elements[2].visible == 1);
+    now = 340; input(1);
+    assert(model.elements[2].visible == 1);
+    service(900);
+    assert(PS_HW6_RTOS_ObjectPresent() == 0);
+    assert(model.elements[2].visible == 1 && model.elements[1].x == 120);
+    assert(g_ps_hw6_rtos_probe.runtime_state_timer_due_count == 1);
+    assert(g_ps_hw6_rtos_probe.runtime_state_timer_applied_count == 1);
+    assert(g_ps_hw6_rtos_probe.runtime_state_timer_ignored_count == 0);
+    assert(ps_runtime_state_timers[timer].active == 0);
+    assert(s_ps_object_snapshot.elapsed_ms == 8000);
+    assert(s_ps_object_snapshot.objects[0].step == 0);
+    assert(s_ps_object_snapshot.objects[0].remaining_ms == 500);
   }
   else { assert(0); }
   assert(g_ps_hw6_rtos_probe.runtime_state_timer_error_count == 0);

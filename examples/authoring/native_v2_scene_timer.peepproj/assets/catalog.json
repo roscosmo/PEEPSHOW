@@ -1,0 +1,53 @@
+{
+  "schema_id": "peepshow.authoring.assets",
+  "schema_version": 1,
+  "assets": [
+    {
+      "asset_id": "pulse",
+      "display_name": "Continuity Sprite",
+      "asset_type": "masked_1bpp",
+      "source_path": "assets/pulse.png",
+      "source_format": "png",
+      "frames": [
+        {
+          "frame_id": "pulse.a",
+          "source_rect": {
+            "x": 0,
+            "y": 0,
+            "width": 8,
+            "height": 16
+          },
+          "pivot_x": 0,
+          "pivot_y": 0
+        },
+        {
+          "frame_id": "pulse.b",
+          "source_rect": {
+            "x": 8,
+            "y": 0,
+            "width": 8,
+            "height": 16
+          },
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    }
+  ],
+  "animations": [
+    {
+      "animation_id": "pulse_loop",
+      "frame_refs": [
+        "pulse.a",
+        "pulse.b"
+      ],
+      "frame_duration_ms": [
+        500,
+        500
+      ],
+      "loop_policy": "loop"
+    }
+  ],
+  "audio_assets": [],
+  "audio_cues": []
+}

@@ -11,7 +11,7 @@ else
   printf "first object phase / remaining ms / animation visible = %u / %u / %u\n", s_ps_object_snapshot.objects[0].step, s_ps_object_snapshot.objects[0].remaining_ms, s_ps_object_snapshot.objects[0].animation_visible
   printf "last projected marker x/y = %d / %d\n", s_ps_object_snapshot.objects[1].effective.x, s_ps_object_snapshot.objects[1].effective.y
   if s_ps_object_snapshot.count == 3
-    printf "timer marker x/y (16 -> 140, y=16) = %d / %d\n", s_ps_object_snapshot.objects[2].effective.x, s_ps_object_snapshot.objects[2].effective.y
+    printf "timer marker visible/x/y (after 2s: 1/76/80) = %u / %d / %d\n", (s_ps_object_snapshot.objects[2].effective.flags & 1), s_ps_object_snapshot.objects[2].effective.x, s_ps_object_snapshot.objects[2].effective.y
   end
   printf "timer configured/active/paused due/applied/ignored/error = %u / %u / %u / %u / %u / %u / %u\n", g_ps_hw6_rtos_probe.runtime_state_timer_configured_count, g_ps_hw6_rtos_probe.runtime_state_timer_active_count, g_ps_hw6_rtos_probe.runtime_state_timer_paused, g_ps_hw6_rtos_probe.runtime_state_timer_due_count, g_ps_hw6_rtos_probe.runtime_state_timer_applied_count, g_ps_hw6_rtos_probe.runtime_state_timer_ignored_count, g_ps_hw6_rtos_probe.runtime_state_timer_error_count
   printf "input events / matched transitions / state changes = %u / %u / %u\n", g_ps_hw6_rtos_probe.runtime_input_event_count, g_ps_scene_runtime_probe.transition_match_count, g_ps_scene_runtime_probe.state_change_count
@@ -19,6 +19,6 @@ else
   printf "STOP2 entries = %u (must not increase while this development scene is active)\n", g_ps_hw6_rtos_probe.stop2_auto_entry_count
   printf "Expected: active/development=1/1, launch/result/queue/wait/fault=0, UI/class/life=6/2/2. Consumed alone is not proof of drawing: require result=0, display success=1 and visible movement.\n"
   printf "Studio fixture: state 1/2 selects marker x=32/120, y=104. First asset cycles 65537..65538 every 500 ms; A then B must preserve sprite phase and remaining frame time. B returns to state 1, not the shell.\n"
-  printf "Timer variant: scene expiry moves the top marker to x=140 without entering a state; state expiry returns state 2 to state 1. No RTC selection is expected in this awake-only test.\n"
+  printf "GUI timer fixture: scene expiry reveals the third square once after 2 seconds without entering a state. A/B must not hide it or restart the sprite. No RTC selection is expected in this awake-only test.\n"
   printf "If halted during a transfer, request/consumed and result may still be incomplete. Resume before judging that as a failed render.\n"
 end

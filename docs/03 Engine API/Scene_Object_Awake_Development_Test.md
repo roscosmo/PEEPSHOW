@@ -2,6 +2,8 @@
 
 Status: original and GUI continuity fixtures, plus the scoped V2 timer fixture,
 passed awake HW6 checks. V2 STOP2/LPBAM remains unimplemented.
+The exact GUI scene-timer fixture from `90b849c` also passed awake timer reveal
+and visually observed A/B animation continuity, separately from the OS variant.
 This is not normal V2 export, installation, automatic boot, or STOP2 admission.
 
 ## Delivered Path
@@ -76,9 +78,9 @@ This is not a new Studio export capability. The reproducibility test tracks the
 checked-in GUI source. The original synthetic four-corner fixture remains in
 `fixture_bundle()` for native regression coverage, but is no longer the CLI default.
 
-## Current Timer Fixture
+## Previous OS Timer Fixture
 
-The checked-in development C now uses the OS-owned `timer_fixture_bundle()`
+The previous development C used the OS-owned `timer_fixture_bundle()`
 variant. It copies GUI's project in memory without editing any of its source
 files, adds a third square at `(16,16)` and compiles a 1,872-byte egg:
 
@@ -91,15 +93,75 @@ files, adds a third square at `(16,16)` and compiles a 1,872-byte egg:
 - R cancels the scene timer. L/R explicitly re-enter the current state, so they
   also restart its state timer when used in `marker_right`.
 
-Regenerate the current checked-in development C with:
+Regenerate that earlier variant with:
 
 ```powershell
 tools/.venv/Scripts/python.exe tools/authoring/build_object_development.py --timers
 ```
 
-Without `--timers`, the builder restores the original GUI continuity fixture.
-The generated-C reproducibility test now checks the timer variant. Ordinary
-Studio export and the authoring service capability surface are unchanged.
+Without `--timers` or `--project`, the builder restores the original GUI continuity
+fixture. The OS timer variant remains covered by native regression tests.
+
+## Current GUI Scene-Timer Fixture
+
+Source: `examples/authoring/native_v2_scene_timer.peepproj`, copied unchanged from
+GUI commit `90b849c89aa869ce41c33da25f304a883c9e8887`. All five source files were
+verified against that commit. `5c059bf` is the older continuity fixture commit,
+not the provenance of this new timer project. No GUI implementation was imported.
+
+The checked-in development payload is now this project's 1,484-byte egg:
+
+- The original sprite and A/B lower-marker behavior remain unchanged.
+- A separate 16x16 square at `(76,80)` starts hidden.
+- `reveal_timer` expires once after two seconds of scene time. Its independent
+  `reveal_expired` handler makes that square visible without entering a state.
+- A/B neither restarts the timer nor hides the square after expiry.
+- There is no state timer, L/R timer control, SFX or scene exit in this fixture.
+
+Regenerate the current checked-in payload explicitly:
+
+```powershell
+tools/.venv/Scripts/python.exe tools/authoring/build_object_development.py --project examples/authoring/native_v2_scene_timer.peepproj
+```
+
+The generated-C reproducibility test checks this exact project. The real native
+runtime/scheduler tests A/B at 650/950 ms, no expiry at 1,990 ms, and dispatch at
+2,050 ms without changing state activation or restarting playback (phase 0,
+450 ms remaining). The square stays visible through later A/B changes; after
+8,000 ms total only one expiry has applied. The final framebuffer is compared
+byte-for-byte against the expected sprite and both squares. The awake hardware
+reveal and visual continuity pass is recorded below.
+Ordinary Studio export and the service capability surface remain unchanged.
+
+Local verification for this exact GUI integration: **269 authoring/native tests
+pass**, generated target-profile checks pass, and the full HW6 Debug build links.
+RAM is 438,344 bytes, ROM 852,864 bytes and SRAM4 15,480 bytes. Only the development
+payload changes in firmware C; no runtime, driver, clock or service code changes.
+
+### Recorded GUI Scene-Timer Hardware Pass (2026-09-10)
+
+The user saw the hidden square appear and subsequently confirmed animation
+continuity during A/B changes. The device reported launch status zero,
+active/development=1/1, eight completed display requests, zero render/queue/wait
+errors and no lease fault. Timer due/dispatch/applied were 1/1/1, ignored/error
+were 0/0, and the consumed one-shot was inactive. This records real handler and
+display work, not merely a scheduled thread.
+
+The object print helper stopped on an invalid `.effective.visible` expression.
+Visibility is stored in bit 0 of `.effective.flags`; the separate GDB read
+`p/u (s_ps_object_snapshot.objects[2].effective.flags & 1)` returned 1. This is a
+helper defect, not evidence of a runtime failure. The helper now reads that same
+flags bit; no firmware rebuild or reflash is required for this correction.
+The independent timer helper completed successfully.
+
+Verdict: PASS for awake timer reveal and user-observed A/B animation continuity.
+Exact timing, phase residuals and extended no-repeat behavior remain covered by
+native tests; a halted snapshot does not establish those timing properties.
+No STOP2, production installation or export capability is claimed.
+
+For the next GUI-authored hardware fixture, use four clearly distinct sequential
+frames rather than two. The user found a two-frame loop harder to judge for
+restarts. Preserve this passed fixture unchanged as regression evidence.
 
 ## Timer Integration
 
@@ -134,18 +196,17 @@ not a new hardware suspension or STOP2 claim.
    MENU using START. Leave audio stopped and MSC inactive, then halt.
 2. Source `__fw0_object_scene_awake_enable.gdb` and resume. It only queues work
    for `thRuntime`; it does not call target functions from GDB or write storage.
-3. Watch the small two-frame sprite. Alternate A then B for the first five seconds.
-   The lower square changes sides without restarting the sprite. The top square
-   moves right once after five seconds despite those state changes.
+3. Watch the small two-frame sprite. Alternate A then B during the first two
+   seconds. The lower square changes sides without restarting the sprite. A
+   third square at `(76,80)` appears after two seconds despite those state changes.
 4. Halt once and source `__fw0_object_scene_awake_prints.gdb`. Require active V2,
    successful launch/render/queue/wait, no lease fault and visible movement.
    The animation's last projected phase/residual and actual display result are
    reported separately from thread/input counters.
-5. Resume, press A and leave it in that state. After three seconds the lower
-   square returns left. The sprite and top square must not reset.
-6. L resets the top square and restarts its timer. R before expiry cancels it;
-   the square stays left after five seconds. L again allows a new expiry.
-7. START opens the shell; B is a local state transition in this fixture. Reset
+5. Resume and continue A/B changes for at least six more seconds. The third
+   square stays visible, and the scene timer does not fire again. There are no
+   L/R timer controls or automatic state transitions in this exact GUI fixture.
+6. START opens the shell; B is a local state transition in this fixture. Reset
    ends the development session. Shell suspension keeps automatic STOP2 blocked.
 
 The two object helpers require development/scene APIs `2/22` and use device-resident
@@ -245,7 +306,7 @@ V2 suspension/resume pass. STOP2 entries were cumulatively one, with no fixture
 entry baseline; no STOP2 or power-measurement claim is made. RTC selection was
 zero, as expected for the awake-only path.
 
-Local verification: **268 authoring/native tests pass**, target-profile generated
+At the OS timer checkpoint, local verification was **268 authoring/native tests pass**, target-profile generated
 files are current, and the full HW6 Debug firmware links successfully. Linker
 usage is RAM 438,344 bytes, ROM 853,248 bytes and SRAM4 15,480 bytes; no new SRAM4
 objects are introduced. The new explicit path uses 4,180 bytes of static state

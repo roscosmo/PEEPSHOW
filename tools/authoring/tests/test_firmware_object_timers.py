@@ -11,8 +11,9 @@ import unittest
 import test_firmware_object_awake as awake
 from test_firmware_package_workflow import firmware_function
 from test_firmware_shape_primitives import panel_pixels
-from build_object_development import timer_fixture_bundle
+from build_object_development import DEFAULT_PROJECT, timer_fixture_bundle
 from peepshow_authoring.compiler import build_development_egg_v2
+from peepshow_authoring.project import load_project
 
 
 class ObjectTimerTests(unittest.TestCase):
@@ -42,8 +43,9 @@ class ObjectTimerTests(unittest.TestCase):
         if result.returncode:
             raise AssertionError(result.stdout + result.stderr)
 
-    def run_timer(self, mode, scene=None):
-        bundle = timer_fixture_bundle()
+    def run_timer(self, mode, scene=None, bundle=None):
+        if bundle is None:
+            bundle = timer_fixture_bundle()
         if scene is not None:
             bundle = replace(bundle, scenes=(scene,))
         blob = build_development_egg_v2(bundle)
@@ -80,6 +82,22 @@ class ObjectTimerTests(unittest.TestCase):
                 if action["kind"] == "restart_timer":
                     action["kind"] = "start_timer"
         self.run_timer(2, scene)
+
+    def test_exact_gui_scene_timer_reveals_once_without_reentry(self):
+        bundle = load_project(DEFAULT_PROJECT.parent / "native_v2_scene_timer.peepproj")
+        actual = self.run_timer(11, bundle=bundle)
+        frame = bundle.frames[0]
+        logical = bytearray(3024)
+        for y in range(144):
+            for x in range(168):
+                black = (120 <= x < 136 and 104 <= y < 120) or (76 <= x < 92 and 80 <= y < 96)
+                if 80 <= x < 88 and 40 <= y < 56:
+                    index = (y - 40) * frame.row_stride_bytes
+                    bit = 128 >> (x - 80)
+                    black = bool(frame.pixels[index] & frame.mask[index] & bit)
+                if black:
+                    logical[y * 21 + x // 8] |= 128 >> (x % 8)
+        self.assertEqual(panel_pixels(logical), actual)
 
     def test_pause_resume_including_already_due_timer(self):
         self.run_timer(3)

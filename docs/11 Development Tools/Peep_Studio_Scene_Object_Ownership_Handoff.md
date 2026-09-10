@@ -772,3 +772,32 @@ GUI may continue timer authoring with the existing commands and capabilities.
 Create/delete each scene binding and its independent handler together. Supply
 a source-only timer fixture for the next integration check; do not enable
 ordinary V2 egg export or claim STOP2/LPBAM timer support from this increment.
+
+### Exact GUI Timer Fixture Integration
+
+The supplied `examples/authoring/native_v2_scene_timer.peepproj` is now imported
+unchanged from `90b849c89aa869ce41c33da25f304a883c9e8887`, with all five files
+verified against that commit. The earlier `5c059bf` hash identifies the continuity
+fixture, not this timer project. No Studio or shared service changes were copied.
+
+OS generated its 1,484-byte development egg and checked the exact GUI source
+through the native C runtime, timer scheduler and renderer. A/B preserves the
+two-second scene deadline and sprite timing. The action-only handler reveals
+the square at `(76,80)` without state re-entry, and it remains visible through
+later state changes with no repeated expiry. Exact final framebuffer checks pass.
+The Debug firmware builds, and the awake hardware test passed: the user saw the
+square appear and separately confirmed A/B animation continuity. The timer
+handler applied once with zero errors, and all eight reported display requests
+completed without render/queue/wait errors or lease faults. A helper typo stopped
+the object dump at visibility; the corrected direct flags-bit read returned 1.
+Exact phase residuals remain native-tested rather than proven by a halted dump.
+
+For the next source-only hardware fixture, GUI should use four clearly distinct
+sequential animation frames so a restart is easier to see. Keep this passed
+two-frame fixture unchanged. No new backend command is needed for that change.
+
+This replaces the checked-in development payload, not the normal embedded egg or
+installed package. Use the explicit `--project` command and hardware sequence in
+[[Scene_Object_Awake_Development_Test]]. The previous OS timer variant and tests
+remain available. Service API 41, export restrictions and the awake-only scope
+are unchanged; GUI does not need another backend command for this fixture.
