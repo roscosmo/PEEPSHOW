@@ -42,6 +42,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { FramebufferCanvas, FramePreviewCanvas } from "./FramebufferCanvas";
 import { parseSpriteSheetGrid } from "./spriteSheetImport";
 import { useEditorPreferences } from "./editorPreferences";
+import { SpriteAssetCard } from "./SpriteAssetCard";
 import { EmulatorPanel } from "./EmulatorPanel";
 import {
   lineDirectionFromPoints,
@@ -3722,24 +3723,17 @@ export default function App() {
               <section className="asset-group-panel">
                 <div className="asset-group-heading">
                   <strong>Sprites</strong>
-                  <span>{compiledAssetFrames.length} compiled frame{compiledAssetFrames.length === 1 ? "" : "s"}</span>
+                  <span>{compiledAssetFrameGroups.length} sprite{compiledAssetFrameGroups.length === 1 ? "" : "s"}</span>
                 </div>
                 <div className="asset-frame-gallery">
-                  {compiledAssetFrameGroups.flatMap((group) => group.frames.map((frame) => (
-                    <button
-                      key={frame.frame_id}
-                      className={selectedAssetFrame?.frame_id === frame.frame_id ? "selected" : ""}
-                      type="button"
-                      onClick={() => selectAssetRecord({ kind: "sprite", frameId: frame.frame_id })}
-                      title="Edit this frame"
-                    >
-                      <span className="asset-frame-preview">
-                        <FramePreviewCanvas frame={frame} />
-                      </span>
-                      <strong>{assetDisplayName(frame.asset_id)}</strong>
-                      <small>{placementFrameLabel(frame)} / {frame.width}x{frame.height}</small>
-                    </button>
-                  )))}
+                  {compiledAssetFrameGroups.map(group => {
+                    const authoredOrder = new Map((assetById.get(group.assetId)?.frames ?? []).map((frame, index) => [frame.frame_id, index]));
+                    const frames = [...group.frames].sort((a, b) => (authoredOrder.get(a.frame_id) ?? Infinity) - (authoredOrder.get(b.frame_id) ?? Infinity));
+                    return <SpriteAssetCard key={group.assetId} frames={frames}
+                      name={assetDisplayName(group.assetId)} selected={selectedAssetFrame?.asset_id === group.assetId}
+                      playback={preferences.thumbnailPlayback}
+                      onSelect={() => selectAssetRecord({ kind: "sprite", frameId: selectedAssetFrame?.asset_id === group.assetId ? selectedAssetFrame.frame_id : frames[0].frame_id })} />;
+                  })}
                 </div>
               </section>
             )}
@@ -5664,7 +5658,22 @@ export default function App() {
                 onClick={() => setSettingsOpen(false)}><X size={16} aria-hidden="true" /></button>
             )}
           </div>
-          {settingsOpen ? renderPlacementViewSettings() : <>
+          {settingsOpen ? <>
+            <section className="inspector-section">
+              <h3>Assets</h3>
+              <div className="placement-view-settings">
+                <label>Animated thumbnails
+                  <select aria-label="Animated thumbnails" value={preferences.thumbnailPlayback}
+                    onChange={event => updatePreference("thumbnailPlayback", event.target.value as "hover" | "always" | "off")}>
+                    <option value="hover">Hover</option>
+                    <option value="always">Always</option>
+                    <option value="off">Off</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+            {renderPlacementViewSettings()}
+          </> : <>
           {projectRootSelected && renderProjectInspector()}
           {!projectRootSelected && workspaceMode === "placement" && renderPlacementInspector()}
           {!projectRootSelected && workspaceMode === "assets" && renderAssetInspector()}

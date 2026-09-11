@@ -4,6 +4,7 @@ const { app, BrowserWindow, ipcMain, nativeImage } = require('electron');
 const root = path.resolve(__dirname, '../../..');
 const frameCount = process.argv.includes('--ten') ? 10 : 4;
 const grid = process.argv.includes('--grid');
+const transparent = process.argv.includes('--transparent');
 const sheetColumns = grid ? 2 : frameCount;
 const sheetRows = frameCount / sheetColumns;
 const workflow = process.argv.includes('--workflow');
@@ -62,6 +63,12 @@ app.whenReady().then(async () => {
   ipcMain.handle('audit:png', () => {
     const width = sheetColumns * 16, height = sheetRows * 16;
     const pixels = Buffer.alloc(width * height * 4, 255);
+    if (transparent) {
+      for (let frame = 0; frame < frameCount; frame++) {
+        const i = (Math.floor(frame / sheetColumns) * 16 * width + (frame % sheetColumns) * 16) * 4;
+        pixels[i + 3] = 0;
+      }
+    }
     for (let y = 3; y < 13; y++) for (let frame = 0; frame < frameCount; frame++) for (let x = 2; x < 4 + frame; x++) {
       const i = ((y + Math.floor(frame / sheetColumns) * 16) * width + (frame % sheetColumns) * 16 + x) * 4; pixels[i] = pixels[i + 1] = pixels[i + 2] = 0;
     }
@@ -121,6 +128,47 @@ app.whenReady().then(async () => {
   window.webContents.invalidate(); await wait(200);
   fs.writeFileSync(path.join(output,'sheet-import.png'),(await window.webContents.capturePage()).toPNG());
   await button('Import');
+  assert.equal(await evaluate("document.querySelectorAll('.asset-frame-gallery button').length"), 1);
+  const cardFrame = () => evaluate("document.querySelector('.asset-frame-gallery button').dataset.previewFrame");
+  const cardPixels = () => evaluate("document.querySelector('.asset-frame-gallery canvas').toDataURL()");
+  assert.equal(await cardFrame(), 'audit.frame_1');
+  const alpha = await evaluate("(() => {const c=document.querySelector('.asset-frame-gallery canvas');const p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;return [p[3],p[(3*c.width+2)*4+3]]})()");
+  assert.deepEqual(alpha, [transparent ? 0 : 255, 255]);
+  await wait(300);
+  assert.equal(await cardFrame(), 'audit.frame_1');
+  const cardBounds = await evaluate("(() => {const r=document.querySelector('.asset-frame-gallery button').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()");
+  window.webContents.sendInputEvent({type:'mouseMove', ...cardBounds});
+  const seen = [], pixels = new Set();
+  for (let i=0; i < frameCount * 3 + 3; i++) {
+    const frame = await cardFrame();
+    if (seen.at(-1) !== frame) seen.push(frame);
+    pixels.add(await cardPixels());
+    await wait(100);
+  }
+  assert.deepEqual(seen.slice(0,frameCount), Array.from({length:frameCount},(_,i)=>`audit.frame_${i+1}`));
+  if (pixels.size !== frameCount) console.error('Thumbnail pixel diagnostic', latest.document.compiled_asset_frames.map(frame => ({
+    id: frame.frame_id, opaque: frame.opaque, maskBytes: Buffer.from(frame.mask_base64, 'base64').length,
+    pixels: frame.pixels_sha256,
+  })));
+  assert.equal(pixels.size, frameCount);
+  window.webContents.sendInputEvent({type:'mouseMove',x:10,y:10}); await wait(300);
+  assert.equal(await cardFrame(), 'audit.frame_1');
+  await click('[aria-label="Settings"]');
+  const playback = async value => {
+    await evaluate(`(() => {const e=document.querySelector('[aria-label="Animated thumbnails"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('change',{bubbles:true}));})()`); await wait(100);
+  };
+  await playback('always');
+  const alwaysFrames = new Set();
+  for (let i=0;i<5;i++) {alwaysFrames.add(await cardFrame());await wait(100);}
+  assert(alwaysFrames.size > 1);
+  await playback('off');
+  window.webContents.sendInputEvent({type:'mouseMove',...cardBounds}); await wait(400);
+  assert.equal(await cardFrame(), 'audit.frame_1');
+  assert.equal(await evaluate("JSON.parse(localStorage.getItem('peep-studio.editor-preferences.v1')).thumbnailPlayback"), 'off');
+  await playback('hover');
+  window.webContents.sendInputEvent({type:'mouseMove',x:10,y:10});
+  await click('[aria-label="Close settings"]');
+  console.log('Sprite cards: one card, ordered distinct canvas frames, hover stop, Always/Off and persisted preference passed');
   assert.equal(commands.find(c=>c.kind==='asset.upsert').asset.frames.length, frameCount);
   assert.deepEqual(commands.find(c=>c.kind==='asset.upsert').asset.frames.map(f=>f.source_rect),
     Array.from({length:frameCount},(_,i)=>({x:(i%sheetColumns)*16,y:Math.floor(i/sheetColumns)*16,width:16,height:16})));
@@ -138,6 +186,12 @@ app.whenReady().then(async () => {
   assert.equal(latest.project_revision, tabRevision);
   window.webContents.invalidate(); await wait(200);
   fs.writeFileSync(path.join(output,'asset-tabs.png'),(await window.webContents.capturePage()).toPNG());
+  window.setSize(760,1000); await wait(300);
+  await evaluate("document.querySelector('.asset-workspace-pane').scrollIntoView({block:'start'})");
+  window.webContents.invalidate(); await wait(100);
+  fs.writeFileSync(path.join(output,'asset-cards-compact.png'),(await window.webContents.capturePage()).toPNG());
+  window.setSize(1440,1000); await wait(300);
+  await evaluate("window.scrollTo(0,0)");
   console.log('Asset tabs: filtered controls, empty state, cleared selection and keyboard navigation passed');
   await button('Placement');
   await click('.scene-hierarchy-node.selected .base-branch .hierarchy-branch-select');

@@ -552,10 +552,17 @@ Agreed delivery order:
    Coordinate persistent tag metadata with the shared authoring contract before
    adding fields or commands. Current typed sprite/audio records have no tag
    field; the contract's entity-definition tags are not an asset-tag contract.
-3. Sprite cards: one card per asset, with an animated thumbnail on hover for
-   multi-frame sprites. Frame inspection remains inside the asset inspector.
-   Add an Assets settings group with Hover (default), Always and Off playback
-   choices when thumbnail playback is implemented, not as an inert control.
+3. Sprite cards: implemented one card per asset, with animated thumbnails on
+   hover or keyboard focus for multi-frame sprites, in authored frame order.
+   Frame inspection remains inside the asset inspector. Assets settings offer
+   persisted Hover (default), Always and Off choices. Off-screen cards and hidden
+   windows stop thumbnail timers; inactive cards show the first frame. This uses
+   the existing 250 ms library-preview cadence, not authored clip timing, and
+   does not alter project animation records. Thumbnail rendering honors opaque
+   frames without masks as well as explicitly masked transparency. Electron
+   regression checks cover ten distinct canvas frames in order, hover stop,
+   Always/Off, settings persistence, and a transparent 2x2 sheet, followed by
+   loop creation, undo/redo and save/reopen.
 4. Audio cards: author-facing names omit the internal `.cue` suffix. Generate
    and cache a small waveform thumbnail on import, available after reopening.
    Waveforms are visual identification only, not playback or seeking controls.

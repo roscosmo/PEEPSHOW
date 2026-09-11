@@ -72,7 +72,7 @@ export function FramePreviewCanvas({ frame }: { frame: CompiledAssetFrame }) {
       for (let x = 0; x < frame.width; x += 1) {
         const byteIndex = y * frame.row_stride_bytes + (x >> 3);
         const bit = 0x80 >> (x & 7);
-        const visible = (mask.charCodeAt(byteIndex) & bit) !== 0;
+        const visible = frame.opaque || (mask.charCodeAt(byteIndex) & bit) !== 0;
         const black = (pixels.charCodeAt(byteIndex) & bit) !== 0;
         const target = (y * frame.width + x) * 4;
         image.data[target] = black ? 17 : 242;

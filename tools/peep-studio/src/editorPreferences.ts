@@ -7,6 +7,7 @@ const defaults = {
   gridStrength: 18,
   objectBoxes: true,
   labelMode: "hover" as "hover" | "always" | "off",
+  thumbnailPlayback: "hover" as "hover" | "always" | "off",
 };
 
 function readPreferences(): typeof defaults {
@@ -19,6 +20,7 @@ function readPreferences(): typeof defaults {
       objectBoxes: typeof value.objectBoxes === "boolean" ? value.objectBoxes : defaults.objectBoxes,
       gridStrength: Number.isInteger(value.gridStrength) && value.gridStrength >= 4 && value.gridStrength <= 30 ? value.gridStrength : defaults.gridStrength,
       labelMode: ["hover", "always", "off"].includes(value.labelMode) ? value.labelMode : defaults.labelMode,
+      thumbnailPlayback: ["hover", "always", "off"].includes(value.thumbnailPlayback) ? value.thumbnailPlayback : defaults.thumbnailPlayback,
     };
   } catch {
     return defaults;
