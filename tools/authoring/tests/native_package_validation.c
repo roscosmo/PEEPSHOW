@@ -23,7 +23,7 @@ volatile ps_package_source_probe_t g_ps_package_source_probe;
 uint32_t PS_HW6_HASH_Sha256(const uint8_t *bytes, uint32_t size, uint8_t digest[32])
 {
   /* Python's hashlib is the oracle; check the exact hardware-HASH input range. */
-  assert(bytes == hash_input && size == hash_size);
+  assert(size == hash_size && memcmp(bytes, hash_input, size) == 0);
   memcpy(digest, hash_digest, 32);
   return 0;
 }
@@ -34,6 +34,7 @@ uint32_t PS_PackageSource_Resolve(ps_package_source_view_t *view)
   view->blob = baseline;
   view->size = baseline_size;
   view->resident_size = baseline_size;
+  view->source = PS_PACKAGE_SOURCE_INSTALLED_RAM;
   return 0;
 }
 

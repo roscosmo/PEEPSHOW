@@ -886,3 +886,30 @@ derives a common interval, which can expand awkward mixed timings into an
 over-budget sequence. Shared validation must check divisibility, combined cycle
 length and target resources; do not implement a GUI-only timing model or silently
 round durations. No GUI changes are needed for the current OS preparation test.
+
+## Restricted Installation Checkpoint (Boot And Launch Passed)
+
+OS imported `examples/authoring/native_v2_installation.peepproj` unchanged from
+GUI commit `e7f11f011fcbd91001aac0d15a85543c6212f3ab`. An explicit development
+encoder command produces a 2,196-byte egg for USB installation. This does not
+change service API 41, ordinary export readiness or GUI capability declarations.
+
+Firmware now connects the restricted one-scene/fully resident/no-audio/no-exit
+profile to install preflight, PLAY and boot. Every staged input/timer object
+transaction also requires exact scheduling/raster/payload admission before
+commit. The existing autonomous playback and RTC timer paths are reused.
+The 2026-09-11 device retry passed boot into this installed V2 scene, then
+reinstallation and launch. Firmware needed a runtime stack correction from
+2048 to 4096 bytes; the GUI fixture and egg did not change. The capture confirms
+installed source 3, execution model 2, 2196 bytes, slot 0 generation 4, successful
+admission and completed drawing. Timer due/applied/error is 2/2/0 across the
+session. The launch regression is cleared for these observed paths.
+
+GUI should keep ordinary V2 export disabled until a separate capability/readiness
+handoff enables the restricted profile. This hardware pass does not itself
+change the service contract. No new UI command or fixture is needed for this step.
+Detailed installed low-power timing/current acceptance remains separate: the
+latest measured/reconciled sleep counters were 2/1, potentially sampled between
+wake accounting stages, not a settled reconciliation proof.
+Follow [[V2_Installed_Package_Test_Runbook]]; do not use the embedded V1 install
+helper or a development scene launcher as evidence of V2 installation.

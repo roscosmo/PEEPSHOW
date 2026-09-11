@@ -32,6 +32,13 @@ static uint32_t runtime_sends, ui_sends, queue_status, last_ui_status, last_ui_e
 static uint32_t scene_active, failure, render_status, storage_loads;
 static UINT PS_HW6_RTOS_StopPackageSfx(void) { return TX_SUCCESS; }
 static UINT PS_HW6_RTOS_OpenPackageSfx(void) { return TX_SUCCESS; }
+static uint32_t PS_HW6_RTOS_InstalledObjectCheck(const uint8_t *blob,
+  uint32_t size, const ps_scene_objects_t *objects)
+{ (void)blob; (void)size; (void)objects; return 0; }
+static UINT PS_HW6_RTOS_InstalledObjectLaunch(void) { return render_status; }
+void PS_SceneRuntime_SetObjectAdmission(ps_scene_object_admission_fn_t admission)
+{ assert(admission != NULL); }
+uint32_t PS_SceneRuntime_InstalledObjectsActive(void) { return 0; }
 
 enum { FAIL_NONE, FAIL_STORAGE, FAIL_READER, FAIL_SCENE, NO_PACKAGE, FAIL_RELEASE };
 static uint32_t PS_HW6_RTOS_RouterEventForLogicalSource(uint32_t source);

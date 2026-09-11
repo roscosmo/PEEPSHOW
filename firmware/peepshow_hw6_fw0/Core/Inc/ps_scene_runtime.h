@@ -307,6 +307,12 @@ const ps_scene_waiting_visual_t *PS_SceneRuntime_ResolveShellStateWaitingVisual(
   uint32_t focus_index,
   const ps_scene_waiting_visual_bounds_t *cursor_bounds);
 uint32_t PS_SceneRuntime_EnterStateScene(void);
+/* Same-thread admission only; the callback must finish copying the staged bank
+ * before returning. No callback or staged pointer is sent through an RTOS queue. */
+typedef uint32_t (*ps_scene_object_admission_fn_t)(const uint8_t *blob,
+  uint32_t size, const ps_scene_objects_t *objects);
+void PS_SceneRuntime_SetObjectAdmission(ps_scene_object_admission_fn_t admission);
+uint32_t PS_SceneRuntime_InstalledObjectsActive(void);
 /* Explicit awake development session, never normal package admission. */
 uint32_t PS_SceneRuntime_EnterDevelopmentObjects(const uint8_t *blob, uint32_t size);
 uint32_t PS_SceneRuntime_DevelopmentObjectsActive(void);

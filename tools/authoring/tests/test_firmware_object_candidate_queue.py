@@ -9,6 +9,7 @@ import test_firmware_object_display_admission as admission
 from test_firmware_package_workflow import firmware_function
 from build_object_development import dual_fixture_bundle
 from peepshow_authoring.compiler import build_development_egg_v2
+from peepshow_authoring.project import load_project
 
 
 class ObjectCandidateQueueTests(unittest.TestCase):
@@ -22,7 +23,8 @@ class ObjectCandidateQueueTests(unittest.TestCase):
         (cls.work / "candidate_globals.inc").write_text(source[start:end], encoding="ascii")
         (cls.work / "candidate_queue_under_test.inc").write_text("\n".join(
             firmware_function(source, "PS_HW6_RTOS_Candidate" + name) for name in
-            ("Release", "Reap", "Display", "Send", "Begin", "Service")), encoding="ascii")
+            ("Release", "Reap", "Display", "Send", "Check", "Begin", "Service")) + "\n" +
+            firmware_function(source, "PS_HW6_RTOS_InstalledObjectCheck"), encoding="ascii")
         cls.exe = cls.work / "candidate_queue.exe"
         result = subprocess.run([os.environ.get("HOST_CC", "C:/msys64/ucrt64/bin/gcc.exe"),
             "-std=c11", "-Wall", "-Wextra", "-Werror", "-O2",
@@ -51,6 +53,16 @@ class ObjectCandidateQueueTests(unittest.TestCase):
             function = firmware_function(self.source, "PS_HW6_RTOS_" + name)
             self.assertIn("ps_candidate_busy != 0UL", function)
             self.assertIn("g_ps_object_candidate_request != 0UL", function)
+
+    def test_exact_gui_installed_entry_and_transaction_rollback(self):
+        project = Path(__file__).resolve().parents[3] / "examples/authoring/native_v2_installation.peepproj"
+        blob = build_development_egg_v2(load_project(project))
+        path = self.work / "gui_install.egg"
+        path.write_bytes(blob)
+        path.with_suffix(".egg.sha256").write_bytes(hashlib.sha256(blob[:-40]).digest())
+        result = subprocess.run([str(self.exe), str(path), "installed"],
+            capture_output=True, text=True, timeout=10, env=self.env)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

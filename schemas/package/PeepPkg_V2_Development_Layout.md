@@ -1,8 +1,9 @@
 # PeepPkg V2 Development Layout
 
-Status: host encoder/parser and explicit C development decoder/graph increments;
-NOT a shipping capability or device acceptance claim. Normal build/export,
-`parse_egg` and production firmware installation continue to reject V2.
+Status: host encoder/parser and restricted firmware installation/activation;
+NOT a shipping capability or device acceptance claim. Normal Studio build/export
+and `parse_egg` continue to reject V2. The explicit development encoder supplies
+the hardware-test egg; restricted installation is described below.
 Use `build_development_egg_v2` / `parse_development_egg_v2` for host fixtures;
 the C development entry is `PS_EggStateLoader_DecodeDevelopmentScene`.
 Authority: [[Scene_Object_Executable_Design]], [[Package_Blob_Format_Contract]].
@@ -31,15 +32,16 @@ rejects otherwise valid but unsupported content.
 
 **A profile pass does not authorize installation, export or STOP2.** It does not
 compose display frames or prove LPBAM budgets across mutable object states.
-The production `ValidatePackage` path still rejects V2; service capabilities and
-ordinary export remain unchanged. Candidate display admission is implemented
-separately below; installed activation and reboot loading remain outstanding.
+The pure loader `ValidatePackage` API still rejects V2; service capabilities and
+ordinary export remain unchanged. The owner-level `PS_HW6_RTOS_ValidatePackage`
+now dispatches V2 to the restricted profile plus exact display admission below.
 The storage follow-up now implements the single-active-slot transaction journal
 and ignores legacy A/B installation records. Its native interruption tests pass;
 device install, PLAY, same-slot reinstallation and normal reboot passed with the
 321,480-byte embedded V1 artifact (generations 2 then 4). Physical power-cut and
-V2 installed activation remain unproven. That migration does not enable V2
-installation or export. See [[Storage_and_Installer_Contract]].
+V2 installed activation remain unproven on hardware. The separate restricted
+activation increment below is ready for that test, not general export.
+See [[Storage_and_Installer_Contract]].
 
 Native coverage: `test_firmware_v2_profile.py` runs the real C loader against
 the GUI numbered/timer fixture and OS structured, dual-animation and scoped-timer
@@ -54,7 +56,8 @@ host-native checks, not installed-package hardware acceptance.
 
 The next implemented boundary checks a **single frozen object snapshot and its
 complete repeating animation program**, not every reachable package state.
-It is not yet connected to installation, boot loading or a GUI capability.
+The restricted installation increment connects this check to installation and
+boot loading, but does not advertise a GUI capability.
 
 1. `thRuntime` calls `PS_EggStateLoader_DecodeV2Candidate` into private descriptor
    and catalog outputs. This applies the same profile/integrity checks above,
@@ -145,9 +148,10 @@ it is separate from render, storage-validation and clock acknowledgements.
 
 The `ps_hw6_object_candidate` probe is independently versioned at API 1. Existing
 render/runtime probe layouts and Studio/service capabilities are unchanged.
-This is not yet a public storage/install API: the only hardware candidate source
-is linked immutable ROM. A future caller with reusable storage must preserve its
-source bytes through the same completion boundary, even after timeout.
+The standalone diagnostic still borrows linked immutable ROM. Restricted
+installation checks use a dedicated fixed 64 KiB copy, retained through the
+same completion boundary even after timeout. Neither path borrows a mutable
+transport buffer after returning to its caller.
 
 Hardware sequence:
 
@@ -218,6 +222,44 @@ status was NOT_RUN after redraw, so this capture does not independently report
 the prepared chunk/byte totals. No new current or precise cadence measurement
 was supplied. It does not validate candidate admission through hardware queues,
 installation, or reboot loading; those remain separate work.
+
+## Restricted Installed V2 Increment (Hardware Pending)
+
+The owner-level package validation entry selects the restricted V2 checker for
+header version 2. Scan and install both require full integrity/profile checks,
+entry graph initialization, complete-cycle scheduling and exact display-owner
+raster/payload admission before the storage owner can publish VALID or erase.
+The existing single-slot journal is unchanged; its format is independent of
+the egg's version. V1 validation and installation remain supported.
+
+PLAY and boot resolve the installed resident bytes (source 3), repeat the V2
+profile and exact entry admission, then activate the object runtime. They do not
+substitute the linked ROM fixture. Missing admission callback, non-installed
+source, partial residency or any rejection fails closed to package error/shell.
+Successful activation initializes the existing reconciled object clock, scoped
+timers and autonomous LPBAM publication instead of the legacy state renderer.
+
+Before committing each input/timer transaction, the runtime checks its actual
+staged object bank through the same owner queue. Failure aborts object, state,
+variable and action changes. Existing error handling remains: input rejection
+reports an error without committing; timer dispatch failure returns to shell.
+There is no automatic retry or claim that entry admission proves all states fit.
+
+`PS_HW6_RTOS_InstalledObjectCheck` copies at most 65,536 package bytes into fixed
+ordinary RAM and validates its own immutable catalog. The bank is consumed
+synchronously into the pointer-free waiting program before enqueue. A timeout
+retains this copy and all private workspaces until matching display completion;
+it never commits a late transaction or installs after a timed-out check. Further
+checks refuse while leased. The wrapper restores an enclosing runtime clock
+claim after candidate work. No new thread, queue, heap, SRAM4 capacity or clock
+configuration is introduced. Integrity is currently rechecked per transaction;
+hardware responsiveness still needs verification before optimizing that work.
+
+Native coverage includes exact GUI fixture entry through `EnterStateScene`,
+missing-callback rejection, input rollback, phase preservation, fresh entry,
+private-buffer survival after timeout and source reuse, plus the existing
+candidate resource and integrity rejection tests. These are not USB or physical
+boot results. See [[V2_Installed_Package_Test_Runbook]] for the hardware sequence.
 
 ## Container
 

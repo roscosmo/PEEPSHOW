@@ -235,6 +235,8 @@ def main():
                         help="Use structured slots with independent 400 ms / 800 ms animations")
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[2] /
                         "firmware/peepshow_hw6_fw0/Core/Src/ps_object_development_egg_autogen.c")
+    parser.add_argument("--egg-output", type=Path,
+                        help="Write a development egg instead of changing the linked C fixture; normal export stays disabled")
     args = parser.parse_args()
     if (args.timers or args.sfx or args.structured or args.dual) and args.project.resolve() != DEFAULT_PROJECT.resolve():
         parser.error("--timers/--sfx/--structured/--dual use checked-in fixtures; omit --project")
@@ -243,6 +245,11 @@ def main():
     bundle = (dual_fixture_bundle() if args.dual else structured_fixture_bundle() if args.structured else sfx_fixture_bundle() if args.sfx
               else timer_fixture_bundle() if args.timers else load_project(args.project))
     blob = build_development_egg_v2(bundle)
+    if args.egg_output is not None:
+        args.egg_output.parent.mkdir(parents=True, exist_ok=True)
+        args.egg_output.write_bytes(blob)
+        print(f"Development-only V2 egg: {len(blob)} bytes -> {args.egg_output}")
+        return
     args.output.write_text(render_c(blob), encoding="ascii", newline="\n")
     print(f"Development-only V2 egg: {len(blob)} bytes -> {args.output}")
 

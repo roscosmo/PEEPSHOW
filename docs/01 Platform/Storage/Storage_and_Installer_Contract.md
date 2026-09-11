@@ -192,8 +192,16 @@ device check passed embedded V1 install, PLAY and normal reboot, then same-slot
 reinstallation (generation 2 to 4) and PLAY/reboot again. Both writes verified
 all 321,480 bytes with zero mismatches. This is not different-artifact replacement,
 physical power-cut or V2 acceptance; see [[Package_Workflow_Validation_Runbook]].
-Ordinary V2 install and GUI export remain disabled until their separate
-activation increment.
+Restricted V2 install and activation are now implemented for the single-scene,
+fully resident, input/timer/object profile in `PeepPkg_V2_Development_Layout.md`.
+Entry and each staged transaction require exact display-owner admission; a
+loader-only pass cannot authorize them. On 2026-09-11 the restricted 2196-byte
+GUI V2 fixture passed hardware boot, reinstallation and launch after correcting
+the runtime stack allocation. The capture confirms installed source 3, model 2,
+active scene, slot 0 generation 4, completed admission and completed drawing.
+Full installed low-power timing/current and physical power-cut acceptance remain
+separate; the latest sleep accounting capture was not fully reconciled.
+Ordinary GUI V2 export remains disabled. See [[V2_Installed_Package_Test_Runbook]].
 
 The FW0 preflight implementation now checks SHA-256, the complete container and
 chunk CRCs, target residency, and every included scene/state using the native

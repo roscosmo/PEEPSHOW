@@ -69,7 +69,8 @@ static UINT tx_queue_send(uint32_t *queue, const ULONG *message, ULONG wait)
   assert(queue == &ps_queues[3] && wait == TX_NO_WAIT);
   assert(message[0] == PS_HW6_RTOS_OBJECT_CANDIDATE_MAGIC && message[1] == 3);
   assert(message[2] == g_ps_object_candidate_probe.request_id && message[3] == ~message[2]);
-  assert(ps_candidate_busy && ps_candidate_sent && ps_candidate_blob == candidate);
+  assert(ps_candidate_busy && ps_candidate_sent &&
+    (ps_candidate_blob == candidate || ps_candidate_blob == ps_candidate_owned_bytes));
   memcpy(queued, message, sizeof(queued));
   sends++;
   if (send_status == 0 && delivery == 2) { PS_HW6_RTOS_CandidateDisplay(queued); }
@@ -103,9 +104,14 @@ int main(int argc, char **argv)
   ps_egg_sprite_catalog_t borrowed;
   uint32_t size, count, token;
   ULONG stale[4];
-  assert(argc == 2);
+  assert(argc == 2 || argc == 3);
   baseline_size = read_blob(argv[1], baseline);
   set_hash(argv[1], baseline, baseline_size);
+  if (argc == 3)
+  {
+    size = read_blob(argv[1], candidate);
+    goto installed_tests;
+  }
   assert(PS_SceneRuntime_EnterDevelopmentObjects(baseline, baseline_size) == 0);
   active_before = s_ps_object_graph;
   catalog_before = s_ps_egg_runtime_context;
@@ -219,7 +225,52 @@ int main(int argc, char **argv)
   PS_HW6_RTOS_CandidateBegin(candidate, size, 1);
   assert(!ps_candidate_busy && sends == count && g_ps_object_candidate_probe.profile_status == 1);
   candidate[0] ^= 1;
+  assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size, NULL) == 0);
+  complete(0);
+  assert(PS_HW6_RTOS_InstalledObjectCheck(candidate,
+    PS_TARGET_PROFILE_PACKAGE_RESIDENT_BYTES + 1U, NULL) == 1);
+
+  /* The actual source-resolved entry path, not the development launcher. */
+installed_tests:
+  PS_SceneRuntime_ExitStateScene();
+  set_hash(argv[1], baseline, baseline_size);
+  PS_SceneRuntime_SetObjectAdmission(NULL);
+  assert(PS_SceneRuntime_EnterStateScene() == PS_SCENE_RUNTIME_INDEX_INVALID);
+  PS_SceneRuntime_SetObjectAdmission(PS_HW6_RTOS_InstalledObjectCheck);
+  assert(PS_SceneRuntime_EnterStateScene() != PS_SCENE_RUNTIME_INDEX_INVALID);
+  assert(PS_SceneRuntime_InstalledObjectsActive() == 1);
+  assert(PS_SceneRuntime_AdvanceDevelopmentObjects(550) == 0);
+  active_before = s_ps_object_graph;
+  display_clock_failure = 1;
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 1) == PS_SCENE_RUNTIME_INPUT_ERROR);
+  assert(memcmp(&active_before, &s_ps_object_graph, sizeof(active_before)) == 0);
+  display_clock_failure = 0;
+  g_ps_hw6_rtos_probe.runtime_active_capabilities = PS_HW6_RTOS_RUNTIME_CLOCK_REACTIVE_CAPABILITIES;
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 1) == PS_SCENE_RUNTIME_INPUT_APPLIED);
+  assert(s_ps_object_graph.objects.state == 1);
+  assert(s_ps_object_graph.objects.objects[0].cycle_ms ==
+    active_before.objects.objects[0].cycle_ms);
+  g_ps_hw6_rtos_probe.runtime_active_capabilities = 0;
+
+  /* Timeout aborts the transaction; a later display completion owns its copy. */
+  active_before = s_ps_object_graph;
+  delivery = 0; wait_status = 7;
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 2) == PS_SCENE_RUNTIME_INPUT_ERROR);
+  assert(ps_candidate_busy && memcmp(&active_before, &s_ps_object_graph, sizeof(active_before)) == 0);
+  assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size, NULL) == 1);
+  baseline[0] ^= 1;
+  PS_HW6_RTOS_CandidateDisplay(queued);
+  PS_HW6_RTOS_CandidateReap();
+  complete(0);
+  baseline[0] ^= 1;
+  delivery = 1; wait_status = 0;
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 2) == PS_SCENE_RUNTIME_INPUT_APPLIED);
+  PS_SceneRuntime_ExitStateScene();
+  assert(PS_SceneRuntime_InstalledObjectsActive() == 0);
+  assert(PS_SceneRuntime_EnterStateScene() != PS_SCENE_RUNTIME_INDEX_INVALID);
+  assert(s_ps_object_graph.objects.state == 0);
   g_ps_object_candidate_probe.request_id = UINT32_MAX;
+  count = sends;
   PS_HW6_RTOS_CandidateBegin(candidate, size, 1);
   assert(!ps_candidate_busy && sends == count); /* Never wrap into stale tokens. */
   return 0;
