@@ -19,6 +19,7 @@ from peepshow_authoring.compiler import build_egg, build_development_egg_v2
 from peepshow_authoring.project import load_project
 from peepshow_authoring.object_egg import parse_development_egg_v2, OBJECT_HEADER
 from peepshow_authoring.egg_format import HEADER, CHUNK_ENTRY, RENDER_HEADER
+from prepare_v2_rejection import digest_rejection
 
 
 class V2ProfileTests(unittest.TestCase):
@@ -61,7 +62,10 @@ class V2ProfileTests(unittest.TestCase):
         fixture("legacy_not_v2", legacy, 3, 2)
         fixture("gui", good)
         installed_gui = load_project(TOOL_ROOT.parents[1] / "examples/authoring/native_v2_installation.peepproj")
-        fixture("public_export_gui", build_egg(installed_gui))
+        public_gui = build_egg(installed_gui)
+        fixture("public_export_gui", public_gui)
+        rejected_gui, rejection_report = digest_rejection(public_gui)
+        fixture("usb_digest_rejection", rejected_gui, 3, rejection_report["expected_preflight_reason"])
         fixture("structured", build_development_egg_v2(structured_fixture_bundle()))
         fixture("dual", build_development_egg_v2(dual_fixture_bundle()))
         fixture("timer_controls", build_development_egg_v2(timer_fixture_bundle()))

@@ -2,14 +2,20 @@
 
 Status: hardware boot, reinstallation and launch passed after the runtime stack
 correction (2026-09-11). Detailed installed low-power timing/current acceptance
-remains separate; ordinary Studio V2 export is still disabled.
+remains separate. API 42 supports restricted ordinary V2 export; Studio
+integration and its normal export/USB round trip are pending. After that pass,
+follow [[V2_USB_Rejection_Recovery_Test]] to check bad staging data and recovery.
 
 Source: `examples/authoring/native_v2_installation.peepproj`, imported unchanged
 from GUI commit `e7f11f011fcbd91001aac0d15a85543c6212f3ab`. Its README describes
 the earlier GUI-only checkpoint. This is a real V2 egg, not a converted V1 or
 linked development scene.
 
-## Artifact
+## Diagnostic Artifact (Earlier Path)
+
+For the next Studio integration test, use GUI's actual exported egg unchanged,
+not this diagnostic generation command. Keep the already-tested firmware; a
+new build/reflash is not required for the host-only API 42 changes.
 
 From the workspace root:
 
@@ -19,7 +25,7 @@ cmake --build firmware/peepshow_hw6_fw0/build/Debug
 ```
 
 The egg is 2,196 bytes. `--egg-output` leaves both linked firmware fixtures
-unchanged. Ordinary Studio export is still disabled. Flash the built firmware
+unchanged. This records the earlier diagnostic path. Flash the built firmware
 normally; do not run any development scene enable helper for this test.
 
 ## USB Install, PLAY, Reboot
