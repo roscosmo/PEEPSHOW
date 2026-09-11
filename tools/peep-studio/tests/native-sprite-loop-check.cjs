@@ -3,6 +3,9 @@ const readline = require('node:readline'), { spawn } = require('node:child_proce
 const { app, BrowserWindow, ipcMain, nativeImage } = require('electron');
 const root = path.resolve(__dirname, '../../..');
 const frameCount = process.argv.includes('--ten') ? 10 : 4;
+const grid = process.argv.includes('--grid');
+const sheetColumns = grid ? 2 : frameCount;
+const sheetRows = frameCount / sheetColumns;
 const workflow = process.argv.includes('--workflow');
 const reloadRace = process.argv.includes('--reload-race');
 const projectPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'peep-workflow-audit-')), 'fresh.peepproj');
@@ -57,15 +60,15 @@ app.whenReady().then(async () => {
     return result;
   });
   ipcMain.handle('audit:png', () => {
-    const width = frameCount * 16;
-    const pixels = Buffer.alloc(width * 16 * 4, 255);
+    const width = sheetColumns * 16, height = sheetRows * 16;
+    const pixels = Buffer.alloc(width * height * 4, 255);
     for (let y = 3; y < 13; y++) for (let frame = 0; frame < frameCount; frame++) for (let x = 2; x < 4 + frame; x++) {
-      const i = (y * width + frame * 16 + x) * 4; pixels[i] = pixels[i + 1] = pixels[i + 2] = 0;
+      const i = ((y + Math.floor(frame / sheetColumns) * 16) * width + (frame % sheetColumns) * 16 + x) * 4; pixels[i] = pixels[i + 1] = pixels[i + 2] = 0;
     }
     const destination = path.join(projectPath, 'assets', 'audit.png');
     fs.mkdirSync(path.dirname(destination), { recursive: true });
-    fs.writeFileSync(destination, nativeImage.createFromBitmap(pixels, { width, height: 16 }).toPNG());
-    return { assetId: 'audit', displayName: 'Sprite loop test', sourcePath: 'assets/audit.png', width, height: 16 };
+    fs.writeFileSync(destination, nativeImage.createFromBitmap(pixels, { width, height }).toPNG());
+    return { assetId: 'audit', displayName: 'Sprite loop test', sourcePath: 'assets/audit.png', width, height };
   });
   window = new BrowserWindow({ width: 1440, height: 1000, show: false, webPreferences: {
     preload: path.join(__dirname, 'native-sprite-loop-preload.cjs'), sandbox: true, contextIsolation: true, offscreen: true, backgroundThrottling: false,
@@ -74,12 +77,53 @@ app.whenReady().then(async () => {
   const button = async label => { await evaluate(`(() => { const e=[...document.querySelectorAll('button')].find(e=>e.textContent.trim()===${JSON.stringify(label)}); if(!e) throw Error('Missing button: '+${JSON.stringify(label)}); if(e.disabled) throw Error('Disabled button'); e.click(); })()`); await wait(450); };
   const click = async selector => { await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`); await wait(450); };
   await window.loadURL('http://127.0.0.1:5174'); await wait(800);
+  if (process.argv.includes('--settings')) {
+    await evaluate(`localStorage.setItem('peep-studio.editor-preferences.v1','invalid json')`);
+    await window.loadURL('http://127.0.0.1:5174'); await wait(800);
+    await click('[aria-label="Settings"]');
+    assert(await evaluate("document.querySelector('.placement-view-settings input').checked"));
+    await click('.placement-view-settings input');
+    await click('[aria-label="Close settings"]');
+    assert.equal(commands.length, 0);
+    await window.loadURL('http://127.0.0.1:5174'); await wait(800);
+    await click('[aria-label="Settings"]');
+    assert.equal(await evaluate("document.querySelector('.placement-view-settings input').checked"), false);
+    await evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))"); await wait(100);
+    assert.equal(await evaluate("document.querySelector('[aria-label=Settings]').getAttribute('aria-pressed')"), 'false');
+  }
   await button('New project');
   assert.equal(latest.document.scenes[0].schema_version, 2);
+  if (process.argv.includes('--settings')) {
+    const revision = latest.project_revision;
+    const selection = await evaluate("[...document.querySelectorAll('.scene-hierarchy-node.selected')].map(e=>e.textContent)");
+    await click('[aria-label="Settings"]');
+    await button('Placement');
+    assert.equal(await evaluate("document.querySelector('[aria-label=Settings]').getAttribute('aria-pressed')"), 'true');
+    assert.equal(await evaluate("document.querySelector('.placement-view-settings input').checked"), false);
+    window.webContents.invalidate(); await wait(200);
+    fs.writeFileSync(path.join(output,'settings.png'),(await window.webContents.capturePage()).toPNG());
+    await click('[aria-label="Close settings"]');
+    assert.deepEqual(await evaluate("[...document.querySelectorAll('.scene-hierarchy-node.selected')].map(e=>e.textContent)"), selection);
+    assert.equal(latest.project_revision, revision);
+    console.log('Settings: no-project access, corrupt storage fallback, reload persistence, workspace switching and selection preservation passed');
+  }
   await button('Assets'); await button('Choose PNG');
-  await evaluate(`(() => {const e=document.querySelector('.asset-import-controls input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'16'); e.dispatchEvent(new Event('input',{bubbles:true}));})()`); await wait(250);
+  const setGrid = async (axis, value) => {
+    await evaluate(`(() => {const e=document.querySelector('[aria-label="Sprite sheet ${axis}"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(String(value))}); e.dispatchEvent(new Event('input',{bubbles:true}));})()`); await wait(100);
+  };
+  for (const invalid of ['', '0', '1.5', '3', '257']) {
+    await setGrid('columns', invalid);
+    assert(await evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Import').disabled"));
+  }
+  await setGrid('columns', sheetColumns);
+  await setGrid('rows', sheetRows);
+  assert.match(await evaluate("document.querySelector('.asset-import-result').textContent"), /16x16 px each/);
+  window.webContents.invalidate(); await wait(200);
+  fs.writeFileSync(path.join(output,'sheet-import.png'),(await window.webContents.capturePage()).toPNG());
   await button('Import');
   assert.equal(commands.find(c=>c.kind==='asset.upsert').asset.frames.length, frameCount);
+  assert.deepEqual(commands.find(c=>c.kind==='asset.upsert').asset.frames.map(f=>f.source_rect),
+    Array.from({length:frameCount},(_,i)=>({x:(i%sheetColumns)*16,y:Math.floor(i/sheetColumns)*16,width:16,height:16})));
   await button('Placement');
   await click('.scene-hierarchy-node.selected .base-branch .hierarchy-branch-select');
   await click('[aria-label="Add sprite"]'); await click('.placement-sprite-picker-group button');

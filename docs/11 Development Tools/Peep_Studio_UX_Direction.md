@@ -517,10 +517,14 @@ GUI refinements (compatibility-only work against API 38):
 - Text is a Placement palette tool. Choosing it creates build-time text at the
   selected location through the text-asset service path; authors do not visit a
   separate sprite-creation workflow merely to place a label.
-- Normal sprite-sheet import asks for integer columns and rows, such as `4 x 1`.
-  The service verifies that the source dimensions divide evenly and derives
-  frame pixel bounds and source rectangles. Raw frame width and height are not
-  normal controls.
+- Implemented: sprite-sheet import asks for integer columns and rows, such as
+  `4 x 1`, and shows the derived pixel size. Studio rejects incomplete,
+  fractional, uneven, oversized-frame, and over-256-frame grids before sending
+  the existing `asset.upsert` command. Source rectangles retain left-to-right,
+  top-to-bottom order; the backend and project format are unchanged. Raw frame
+  width and height are not normal controls. Grid validation has unit coverage;
+  `native-sprite-loop-check.cjs` exercises import, loop creation and reload,
+  including a two-dimensional sheet with `--grid`.
 - Assets presents one card per sprite. Its ordered frames appear as a scaled
   strip in the selected asset inspector and are not duplicated as independent
   top-level asset cards.
@@ -529,6 +533,34 @@ GUI refinements (compatibility-only work against API 38):
   use case so objects can enter or leave the display during movement. The next
   schema/firmware alignment must define signed bounds, host/target clipping, and
   resource accounting consistently before the GUI enables that placement.
+
+#### Asset Library Refinement And Global Settings
+
+Agreed delivery order:
+
+1. Settings foundation: a permanent toolbar gear takes over the right inspector.
+   It works in every workspace, even without an object or project selected.
+   Closing it, toggling the gear, or pressing Escape restores the inspector
+   without changing selection. Preferences apply across projects on this
+   machine, not to authored project data. Implemented first: Placement pixel
+   grid, major lines, grid strength, object boxes and label mode, persisted in
+   local editor storage. The old Placement-only Settings tab is removed.
+2. Library organization: separate Sprites and Audio tabs instead of one long
+   mixed list. Group assets using tags; an asset may have multiple tags.
+   Coordinate persistent tag metadata with the shared authoring contract before
+   adding fields or commands.
+3. Sprite cards: one card per asset, with an animated thumbnail on hover for
+   multi-frame sprites. Frame inspection remains inside the asset inspector.
+   Add an Assets settings group with Hover (default), Always and Off playback
+   choices when thumbnail playback is implemented, not as an inert control.
+4. Audio cards: author-facing names omit the internal `.cue` suffix. Generate
+   and cache a small waveform thumbnail on import, available after reopening.
+   Waveforms are visual identification only, not playback or seeking controls.
+   Keep identity and references unchanged; waveform generation is separate from
+   audio normalization, conversion and production playback admission.
+
+Additional Settings groups will appear as real preferences are implemented;
+the settings surface is consistent rather than dependent on object selection.
 
 ### 4. Scene Flow Tools And Routing
 

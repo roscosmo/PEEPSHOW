@@ -30,6 +30,7 @@ import {
   Redo2,
   Save,
   SaveAll,
+  Settings,
   SquareMousePointer,
   Trash2,
   Type,
@@ -39,6 +40,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { FramebufferCanvas, FramePreviewCanvas } from "./FramebufferCanvas";
+import { parseSpriteSheetGrid } from "./spriteSheetImport";
+import { useEditorPreferences } from "./editorPreferences";
 import { EmulatorPanel } from "./EmulatorPanel";
 import {
   lineDirectionFromPoints,
@@ -105,7 +108,6 @@ type PlacementPrimitiveDraft = {
   lineDirection?: PlacementLineDirection;
 };
 type WorkspaceMode = "scene-flow" | "logic" | "placement" | "assets";
-type PlacementInspectorTab = "object" | "settings";
 type AssetSelection =
   | { kind: "sprite"; frameId: string }
   | { kind: "audio"; cueId: string }
@@ -118,8 +120,8 @@ type PendingSpriteImport = {
   sourcePath: string;
   width: number;
   height: number;
-  frameWidth: number;
-  frameHeight: number;
+  columns: string;
+  rows: string;
 };
 
 type PreviewStartTarget = {
@@ -179,7 +181,7 @@ export default function App() {
       ?.event_bindings?.some(binding => binding.binding_id === sceneSelection.id)) setSceneSelection({ kind: "scene" });
   }, [project?.document, selectedScene, sceneSelection]);
   const [projectHierarchyExpanded, setProjectHierarchyExpanded] = useState(true);
-  const [placementInspectorTab, setPlacementInspectorTab] = useState<PlacementInspectorTab>("object");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [sceneThumbnails, setSceneThumbnails] = useState<Record<string, Framebuffer>>({});
   const [expandedSceneIds, setExpandedSceneIds] = useState<string[]>([]);
   const [collapsedHierarchyIds, setCollapsedHierarchyIds] = useState<string[]>([]);
@@ -191,11 +193,15 @@ export default function App() {
   const [stateGraphLayoutStatus, setStateGraphLayoutStatus] = useState("No layout move yet");
   const [projectWidth, setProjectWidth] = useState(320);
   const [inspectorWidth, setInspectorWidth] = useState(390);
-  const [placementGridVisible, setPlacementGridVisible] = useState(true);
-  const [placementMajorGridVisible, setPlacementMajorGridVisible] = useState(true);
-  const [placementGridStrength, setPlacementGridStrength] = useState(18);
-  const [placementOverlayVisible, setPlacementOverlayVisible] = useState(true);
-  const [placementLabelMode, setPlacementLabelMode] = useState<"hover" | "always" | "off">("hover");
+  const { preferences, update: updatePreference } = useEditorPreferences();
+  const { gridVisible: placementGridVisible, majorGridVisible: placementMajorGridVisible,
+    gridStrength: placementGridStrength, objectBoxes: placementOverlayVisible,
+    labelMode: placementLabelMode } = preferences;
+  const setPlacementGridVisible = (value: boolean) => updatePreference("gridVisible", value);
+  const setPlacementMajorGridVisible = (value: boolean) => updatePreference("majorGridVisible", value);
+  const setPlacementGridStrength = (value: number) => updatePreference("gridStrength", value);
+  const setPlacementOverlayVisible = (value: boolean) => updatePreference("objectBoxes", value);
+  const setPlacementLabelMode = (value: "hover" | "always" | "off") => updatePreference("labelMode", value);
   const [placementTool, setPlacementTool] = useState<PlacementTool>("select");
   const [placementPrimitiveDraft, setPlacementPrimitiveDraft] = useState<PlacementPrimitiveDraft | null>(null);
   const [spritePickerOpen, setSpritePickerOpen] = useState(false);
@@ -688,9 +694,15 @@ export default function App() {
 
   useEffect(() => {
     const handleRootSelectionShortcut = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || project === null) {
+      if (event.key !== "Escape" || event.defaultPrevented) {
         return;
       }
+      if (settingsOpen) {
+        event.preventDefault();
+        setSettingsOpen(false);
+        return;
+      }
+      if (project === null) return;
       if (placementDrawCancelRef.current?.()) {
         event.preventDefault();
         return;
@@ -703,7 +715,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handleRootSelectionShortcut);
     return () => window.removeEventListener("keydown", handleRootSelectionShortcut);
-  }, [project]);
+  }, [project, settingsOpen]);
 
   useEffect(() => {
     const handleHistoryShortcut = (event: KeyboardEvent) => {
@@ -784,44 +796,6 @@ export default function App() {
     return `${baseCueId}_${existing.size + 1}`;
   };
 
-  const parseImportFrameSize = (
-    sourceWidth: number,
-    sourceHeight: number,
-    value: string,
-  ): { frameWidth: number; frameHeight: number; error?: string } => {
-    const trimmed = value.trim();
-    if (trimmed === "") {
-      if (sourceWidth > 168 || sourceHeight > 144) {
-        return {
-          frameWidth: sourceWidth,
-          frameHeight: sourceHeight,
-          error: "This PNG is larger than the screen. Enter the size of one sprite frame.",
-        };
-      }
-      return { frameWidth: sourceWidth, frameHeight: sourceHeight };
-    }
-    const match = trimmed.match(/^(\d+)\s*[x, ]\s*(\d+)$/i);
-    if (match === null) {
-      return { frameWidth: sourceWidth, frameHeight: sourceHeight, error: "Use a frame size like 16x16." };
-    }
-    const frameWidth = Number(match[1]);
-    const frameHeight = Number(match[2]);
-    if (!Number.isInteger(frameWidth) || !Number.isInteger(frameHeight) || frameWidth < 1 || frameHeight < 1) {
-      return { frameWidth, frameHeight, error: "Frame size must use positive whole pixels." };
-    }
-    if (frameWidth > 168 || frameHeight > 144) {
-      return { frameWidth, frameHeight, error: "Each sprite frame must fit inside 168x144." };
-    }
-    if (sourceWidth % frameWidth !== 0 || sourceHeight % frameHeight !== 0) {
-      return { frameWidth, frameHeight, error: "Frame size must divide the PNG evenly." };
-    }
-    const frameCount = (sourceWidth / frameWidth) * (sourceHeight / frameHeight);
-    if (frameCount > 256) {
-      return { frameWidth, frameHeight, error: "A sprite asset can contain at most 256 frames." };
-    }
-    return { frameWidth, frameHeight };
-  };
-
   const createGridFrames = (assetId: string, sourceWidth: number, sourceHeight: number, frameWidth: number, frameHeight: number): AssetFrameRecord[] => {
     const columns = sourceWidth / frameWidth;
     const rows = sourceHeight / frameHeight;
@@ -861,19 +835,17 @@ export default function App() {
         return;
       }
       const assetId = uniqueImportedAssetId(imported.assetId);
-      const defaultFrameSize = imported.width > 168 || imported.height > 144
-        ? (imported.width % 16 === 0 && imported.height % 16 === 0 ? "16x16" : "")
-        : "";
-      const parsed = parseImportFrameSize(imported.width, imported.height, defaultFrameSize);
+      const suggestTiles = (imported.width > 168 || imported.height > 144)
+        && imported.width % 16 === 0 && imported.height % 16 === 0;
       setPendingSpriteImport({
         ...imported,
         assetId,
-        frameWidth: parsed.error === undefined ? parsed.frameWidth : Math.min(imported.width, 168),
-        frameHeight: parsed.error === undefined ? parsed.frameHeight : Math.min(imported.height, 144),
+        columns: String(suggestTiles ? imported.width / 16 : 1),
+        rows: String(suggestTiles ? imported.height / 16 : 1),
       });
       setWorkspaceMode("assets");
       setAssetImportDebug(`Picked ${imported.sourcePath} (${imported.width}x${imported.height}).`);
-      setMessage("Choose frame size, then import the sprite.");
+      setMessage("Choose columns and rows, then import the sprite.");
     } catch (error) {
       const text = errorText(error);
       setAssetImportDebug(`PNG picker failed: ${text}`);
@@ -890,10 +862,11 @@ export default function App() {
     setBusy("Importing sprite");
     setPlaying(false);
     try {
-      const parsed = parseImportFrameSize(
+      const parsed = parseSpriteSheetGrid(
         pendingSpriteImport.width,
         pendingSpriteImport.height,
-        `${pendingSpriteImport.frameWidth}x${pendingSpriteImport.frameHeight}`,
+        pendingSpriteImport.columns,
+        pendingSpriteImport.rows,
       );
       if (parsed.error !== undefined) {
         setAssetImportDebug(`Import blocked: ${parsed.error}`);
@@ -3135,7 +3108,6 @@ export default function App() {
     let latestX = startX;
     let latestY = startY;
     setSelectedPlacementElement(element.element_id);
-    setPlacementInspectorTab("object");
     if (renderModelId !== null) setSceneSelection({ kind: "render", id: renderModelId });
 
     const move = (moveEvent: PointerEvent) => {
@@ -3187,7 +3159,6 @@ export default function App() {
     };
     let latestBounds = startBounds;
     setSelectedPlacementElement(element.element_id);
-    setPlacementInspectorTab("object");
     setSceneSelection({ kind: "render", id: renderModelId });
 
     const move = (moveEvent: PointerEvent) => {
@@ -3591,10 +3562,11 @@ export default function App() {
   const renderSpriteImportPanel = (canEditAssets: boolean) => {
     const importCheck = pendingSpriteImport === null
       ? null
-      : parseImportFrameSize(
+      : parseSpriteSheetGrid(
         pendingSpriteImport.width,
         pendingSpriteImport.height,
-        `${pendingSpriteImport.frameWidth}x${pendingSpriteImport.frameHeight}`,
+        pendingSpriteImport.columns,
+        pendingSpriteImport.rows,
       );
     const frameCount = pendingSpriteImport === null || importCheck === null || importCheck.error !== undefined
       ? 0
@@ -3604,7 +3576,6 @@ export default function App() {
         {pendingSpriteImport === null ? (
           <div>
             <strong>PNG import</strong>
-            <span>Choose a PNG, then set the frame size if it is a sprite sheet.</span>
           </div>
         ) : (
           <>
@@ -3619,37 +3590,39 @@ export default function App() {
             </div>
             <div className="asset-import-controls">
               <label>
-                Frame width
+                Columns
                 <input
                   type="number"
                   min={1}
-                  max={168}
+                  max={256}
                   step={1}
-                  value={pendingSpriteImport.frameWidth}
+                  aria-label="Sprite sheet columns"
+                  value={pendingSpriteImport.columns}
                   disabled={!canEditAssets}
                   onChange={(event) => {
-                    const value = Math.max(1, Math.round(Number(event.target.value)));
-                    setPendingSpriteImport((current) => current === null ? null : { ...current, frameWidth: value });
+                    const value = event.target.value;
+                    setPendingSpriteImport((current) => current === null ? null : { ...current, columns: value });
                   }}
                 />
               </label>
               <label>
-                Frame height
+                Rows
                 <input
                   type="number"
                   min={1}
-                  max={144}
+                  max={256}
                   step={1}
-                  value={pendingSpriteImport.frameHeight}
+                  aria-label="Sprite sheet rows"
+                  value={pendingSpriteImport.rows}
                   disabled={!canEditAssets}
                   onChange={(event) => {
-                    const value = Math.max(1, Math.round(Number(event.target.value)));
-                    setPendingSpriteImport((current) => current === null ? null : { ...current, frameHeight: value });
+                    const value = event.target.value;
+                    setPendingSpriteImport((current) => current === null ? null : { ...current, rows: value });
                   }}
                 />
               </label>
               <div className={`asset-import-result ${importCheck?.error !== undefined ? "error" : ""}`}>
-                {importCheck?.error ?? `${frameCount} frame${frameCount === 1 ? "" : "s"}`}
+                {importCheck?.error ?? `${frameCount} frame${frameCount === 1 ? "" : "s"} / ${importCheck?.frameWidth}x${importCheck?.frameHeight} px each`}
               </div>
               <button
                 className="button primary"
@@ -4040,7 +4013,7 @@ export default function App() {
   };
   const renderPlacementViewSettings = () => (
     <section className="inspector-section placement-view-settings-section">
-      <h3>Settings</h3>
+      <h3>Placement</h3>
       <div className="placement-view-settings">
         <label>
           <input
@@ -4165,7 +4138,6 @@ export default function App() {
       ...(stateIds.length === 0 ? {} : { visible_in_states: stateIds }) }]);
     if (applied) {
       setSelectedPlacementElement(element_id);
-      setPlacementInspectorTab("object");
     }
     return applied;
   };
@@ -4246,7 +4218,6 @@ export default function App() {
       applyProjectResult(result);
       setSelectedScene(selectedSceneDocument.scene_id);
       setSelectedPlacementElement(element.element_id);
-      setPlacementInspectorTab("object");
       setSceneSelection(placementState === null
         ? { kind: "render", id: placementRenderModel.visual_id }
         : { kind: "state", id: placementState.state_id });
@@ -4363,11 +4334,9 @@ export default function App() {
         : { kind: "state", id: placementState.state_id },
     );
     setSelectedPlacementElement(element.element_id);
-    setPlacementInspectorTab("object");
   };
   const selectPlacementElement = (elementId: string) => {
     setSelectedPlacementElement(elementId);
-    setPlacementInspectorTab("object");
     if (placementRenderModel !== null) {
       setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
     }
@@ -4378,7 +4347,6 @@ export default function App() {
     setPlacementStateId(null);
     if (elementId !== undefined) {
       setSelectedPlacementElement(elementId);
-      setPlacementInspectorTab("object");
     }
     if (placementRenderModel !== null) {
       setSceneSelection({ kind: "render", id: placementRenderModel.visual_id });
@@ -4440,7 +4408,6 @@ export default function App() {
     setPlacementEditStateIds([stateId]);
     setPlacementStateId(stateId);
     setSelectedPlacementElement(elementId);
-    setPlacementInspectorTab("object");
     setSceneSelection({ kind: "state", id: stateId });
   };
   const handlePlacementHierarchyKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -4530,7 +4497,6 @@ export default function App() {
     setPlacementStateId(stateId);
     setSelectedPlacementElement(elementId ?? null);
     if (elementId !== undefined) {
-      setPlacementInspectorTab("object");
     }
     const renderModel = scene.render_models?.[0] ?? null;
     setSceneSelection(stateId === null
@@ -5413,6 +5379,11 @@ export default function App() {
           <button className="icon-button" onClick={exportPackage} disabled={build === null || busy !== null || hostOnlyProject} title="Export .egg">
             <Download size={18} aria-hidden="true" />
           </button>
+          <button className="icon-button" type="button" title="Settings" aria-label="Settings"
+            aria-pressed={settingsOpen} aria-controls="studio-inspector"
+            onClick={() => setSettingsOpen(current => !current)}>
+            <Settings size={18} aria-hidden="true" />
+          </button>
         </div>
       </header>
 
@@ -5660,31 +5631,17 @@ export default function App() {
         <ObjectActionContext.Provider value={{ scene: selectedSceneDocument,
           preview: preview?.project_revision === projectRevision ? preview : null,
           label: placementObjectLabelBase }}>
-        <aside className="inspector-pane">
+        <aside className="inspector-pane" id="studio-inspector">
           <div className="pane-heading inspector-heading">
-            <span>Inspector</span>
-            {workspaceMode === "placement" && !projectRootSelected && (
-              <div className="inspector-tabs" aria-label="Placement inspector tabs">
-                <button
-                  type="button"
-                  className={placementInspectorTab === "object" ? "active" : ""}
-                  onClick={() => setPlacementInspectorTab("object")}
-                >
-                  Object
-                </button>
-                <button
-                  type="button"
-                  className={placementInspectorTab === "settings" ? "active" : ""}
-                  onClick={() => setPlacementInspectorTab("settings")}
-                >
-                  Settings
-                </button>
-              </div>
+            <span>{settingsOpen ? "Settings" : "Inspector"}</span>
+            {settingsOpen && (
+              <button className="icon-button" type="button" title="Close settings" aria-label="Close settings"
+                onClick={() => setSettingsOpen(false)}><X size={16} aria-hidden="true" /></button>
             )}
           </div>
-
+          {settingsOpen ? renderPlacementViewSettings() : <>
           {projectRootSelected && renderProjectInspector()}
-          {!projectRootSelected && workspaceMode === "placement" && (placementInspectorTab === "settings" ? renderPlacementViewSettings() : renderPlacementInspector())}
+          {!projectRootSelected && workspaceMode === "placement" && renderPlacementInspector()}
           {!projectRootSelected && workspaceMode === "assets" && renderAssetInspector()}
 
           {!projectRootSelected && workspaceMode === "logic" && (
@@ -5792,6 +5749,7 @@ export default function App() {
             </section>
           )}
 
+          </>}
         </aside>
         </ObjectActionContext.Provider>
       </section>
