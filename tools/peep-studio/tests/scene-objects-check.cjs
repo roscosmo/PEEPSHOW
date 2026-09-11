@@ -98,8 +98,8 @@ app.whenReady().then(async () => {
   }
   assert(await evaluate("!!document.querySelector('.host-preview-notice')"));
   assert(await evaluate("[...document.querySelectorAll('button')].find(e => e.textContent.trim() === 'Build').disabled"));
-  assert.equal(await evaluate("document.querySelector('.scene-hierarchy-node.selected .base-branch code').textContent"),
-    String(documentResult.placement_ownership.scenes.state_demo.objects.length));
+  assert.equal(await evaluate("document.querySelectorAll('.scene-hierarchy-node.selected .native-object-branch').length"),
+    documentResult.placement_ownership.scenes.state_demo.objects.length);
   await click('.scene-hierarchy-node.selected .placement-tree-object');
   assert(await evaluate("!document.querySelector('[aria-label=\"Object X\"]').disabled"));
   assert(await evaluate("!!document.querySelector('.placement-element-box.selected')"));
@@ -148,7 +148,7 @@ app.whenReady().then(async () => {
   window.setSize(1440, 900);
   await wait(300);
   const stateId = Object.keys(documentResult.placement_ownership.scenes.state_demo.states)[1];
-  await evaluate(`[...document.querySelectorAll('.scene-hierarchy-node.selected .state-branch .hierarchy-branch-select')].find(e => e.textContent.includes(${JSON.stringify(stateId)})).click()`);
+  await setControl('Placement target', stateId, 'select');
   await wait(500);
   const expected = documentResult.placement_ownership.scenes.state_demo.states[stateId].resolved_elements;
   const actual = await evaluate("[...document.querySelectorAll('.placement-element-box')].map(e => e.title)");
@@ -159,26 +159,26 @@ app.whenReady().then(async () => {
   assert.equal(override().x, originalX - 4);
   assert.equal(override().y, 20);
   const secondStateId = scene().states.find(state => state.state_id !== stateId).state_id;
-  const secondStateName = scene().states.find(state => state.state_id === secondStateId).display_name;
-  await evaluate(`[...document.querySelectorAll('.scene-hierarchy-node.selected .state-branch .hierarchy-branch-select')].find(e => e.querySelector('strong')?.textContent === ${JSON.stringify(secondStateName)}).dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true, detail: 1 }))`);
+  await setControl('Placement target', secondStateId, 'select');
   await wait(300);
   await setControl("Object Y", 22);
-  for (const id of [stateId, secondStateId]) {
+  assert.equal(override().y, 20, 'Selecting a different target must not edit the preceding state');
+  for (const id of [secondStateId]) {
     assert.equal(scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === selectedId).y, 22);
   }
   await click('[aria-label="Object visible"]');
-  for (const id of [stateId, secondStateId]) {
+  for (const id of [secondStateId]) {
     assert.equal(scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === selectedId).visible, false);
   }
   await click('[aria-label="Clear visible override"]');
   await setControl("Object frame", "marker.phase_b", "select");
-  for (const id of [stateId, secondStateId]) {
+  for (const id of [secondStateId]) {
     assert.equal(scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === selectedId).visual_ref, "marker.phase_b");
   }
   await click('[aria-label="Clear visual_ref override"]');
   await click('[aria-label="Clear x override"]');
-  assert.equal(override().x, undefined);
-  assert.equal(override().y, 22);
+  assert.equal(override().x, originalX - 4);
+  assert.equal(override().y, 20);
   assert(await evaluate("document.querySelector('[aria-label=\"Object animation\"]').disabled"));
   // A rejected out-of-bounds value must not issue a command.
   const count = mutations.length;
@@ -204,28 +204,28 @@ app.whenReady().then(async () => {
   assert.equal(created().defaults.visible, false);
   for (const state of scene().states) {
     const change = state.object_overrides.find(item => item.object_ref === createdId);
-    assert.equal(change?.visible === true, [stateId, secondStateId].includes(state.state_id));
+    assert.equal(change?.visible === true, state.state_id === secondStateId);
   }
   await click('[aria-label="Select and move objects"]');
   await pointer('.placement-element-box.selected', 'pointerdown', 35, 45);
   await pointer('window', 'pointermove', 45, 45);
   await pointer('window', 'pointerup', 45, 45);
   await wait(450);
-  for (const id of [stateId, secondStateId]) {
+  for (const id of [secondStateId]) {
     const change = scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === createdId);
     assert.equal(change.x, 40);
     assert.equal(change.y, undefined, 'Horizontal movement must retain Y inheritance');
   }
   await evaluate("document.querySelector('.placement-element-box.selected').dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}))");
   await wait(450);
-  assert.equal(scene().states.find(state => state.state_id === stateId).object_overrides.find(item => item.object_ref === createdId).x, 41);
+  assert.equal(scene().states.find(state => state.state_id === secondStateId).object_overrides.find(item => item.object_ref === createdId).x, 41);
   window.webContents.invalidate();
   await wait(250);
   fs.writeFileSync(path.join(output, 'canvas-scoped-object.png'), (await window.webContents.capturePage()).toPNG());
   await button('Remove from selected states');
   assert(created(), 'State removal must not delete the scene-owned object');
-  for (const id of [stateId, secondStateId]) assert.equal(scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === createdId).visible, false);
-  await click('.scene-hierarchy-node.selected .base-branch .hierarchy-branch-select');
+  for (const id of [secondStateId]) assert.equal(scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === createdId).visible, false);
+  await setControl('Placement target', '', 'select');
   await button('Delete object');
   assert.equal(created(), undefined);
   assert(scene().states.every(state => !state.object_overrides.some(item => item.object_ref === createdId)));

@@ -4437,6 +4437,7 @@ export default function App() {
     setSceneSelection({ kind: "state", id: stateId });
   };
   const handlePlacementHierarchyKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (objectSceneSelected) return;
     if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "a") {
       return;
     }
@@ -4462,6 +4463,7 @@ export default function App() {
           <p className="muted">Select a scene to choose where placement edits apply.</p>
         ) : (
           <div className="placement-edit-scope">
+            {!objectSceneSelected && <>
             <div className="placement-scope-header">
               <span>{targetStates.length === 0 ? <Layers3 size={16} aria-hidden="true" /> : <Network size={16} aria-hidden="true" />}</span>
               <span>
@@ -4480,6 +4482,14 @@ export default function App() {
               </div>
             )}
             <p className="muted">Preview: {placementState?.display_name ?? "Base Placement"}</p>
+            </>}
+            {objectSceneSelected && <label>Placement target
+              <select aria-label="Placement target" value={placementStateId ?? ""}
+                onChange={event => void openHierarchyPlacementTarget(selectedSceneDocument, event.target.value || null, selectedPlacementElement ?? undefined)}>
+                <option value="">Scene defaults</option>
+                {(selectedSceneDocument.states ?? []).map(state => <option key={state.state_id} value={state.state_id}>{state.display_name}</option>)}
+              </select>
+            </label>}
           </div>
         )}
       </section>
@@ -4509,7 +4519,9 @@ export default function App() {
     elementId?: string,
   ) => {
     setWorkspaceMode("placement");
-    if (selectedScene !== scene.scene_id) {
+    if (usesSceneObjects(scene)) {
+      setSelectedScene(scene.scene_id);
+    } else if (selectedScene !== scene.scene_id) {
       const started = await startPreview(scene.scene_id, {
         ...(stateId === null ? {} : { stateId }),
         updateSelection: false,
@@ -4522,8 +4534,6 @@ export default function App() {
     setPlacementEditStateIds(stateId === null ? [] : [stateId]);
     setPlacementStateId(stateId);
     setSelectedPlacementElement(elementId ?? null);
-    if (elementId !== undefined) {
-    }
     const renderModel = scene.render_models?.[0] ?? null;
     setSceneSelection(stateId === null
       ? renderModel === null ? { kind: "scene" } : { kind: "render", id: renderModel.visual_id }
@@ -4599,12 +4609,14 @@ export default function App() {
           onClick: () => void,
           badges: string[],
           selected: boolean,
+          onDoubleClick?: () => void,
         ) => (
           <button
             key={key}
             className={`placement-tree-object ${selected ? "selected" : ""}`}
             type="button"
             onClick={onClick}
+            onDoubleClick={onDoubleClick}
           >
             <span className="placement-object-kind">
               {placementKindIcon(element.kind)}
@@ -4656,6 +4668,47 @@ export default function App() {
               </button>
             </div>
             {expanded && <div className="scene-hierarchy-children">
+              {usesSceneObjects(scene) ? elements.map(element => {
+                const overrides = (scene.states ?? []).flatMap(state => {
+                  const projection = ownership?.states[state.state_id];
+                  const properties = projection?.changes[element.element_id]?.local_properties ?? [];
+                  if (!properties.length) return [];
+                  const resolved = projection?.resolved_elements.find(item => item.element_id === element.element_id);
+                  const description = properties.map(property => {
+                    if (property === "x" || property === "y") return `${property.toUpperCase()}: ${resolved?.[property] ?? "?"}`;
+                    if (property === "visible") return resolved?.visible ? "Visible" : "Hidden";
+                    if (property === "visual_ref") return "Frame override";
+                    return property;
+                  }).join(" / ");
+                  return [{ state, description }];
+                });
+                const groupId = JSON.stringify([scene.scene_id, "object", element.element_id]);
+                const objectExpanded = !collapsedHierarchyIds.includes(groupId);
+                const label = objectLabelById.get(element.element_id) ?? element.element_id;
+                return <section className="native-object-branch" key={element.element_id} data-object-id={element.element_id}>
+                  <div className="native-object-row">
+                    {overrides.length > 0 ? <button className="hierarchy-disclosure-control" type="button"
+                      aria-expanded={objectExpanded} aria-label={`${objectExpanded ? "Collapse" : "Expand"} ${label} overrides`}
+                      title={`${objectExpanded ? "Collapse" : "Expand"} ${label} overrides`}
+                      onClick={() => toggleHierarchyGroup(groupId)}>
+                      <ChevronRight className={objectExpanded ? "expanded" : ""} size={14} aria-hidden="true" />
+                    </button> : <span className="native-object-disclosure-spacer" />}
+                    {renderObjectRow(element, element.element_id,
+                      () => void openHierarchyPlacementTarget(scene, null, element.element_id),
+                      [...(element.visible === false ? ["Hidden"] : []), `z${element.z_order}`],
+                      sceneSelected && workspaceMode === "placement" && placementEditStateIds.length === 0 && selectedPlacementElement === element.element_id,
+                      overrides.length ? () => toggleHierarchyGroup(groupId) : undefined)}
+                  </div>
+                  {objectExpanded && overrides.length > 0 && <div className="native-object-overrides">
+                    {overrides.map(({ state, description }) => <button type="button" key={state.state_id}
+                      data-state-id={state.state_id}
+                      className={`hierarchy-branch-select ${sceneSelected && workspaceMode === "placement" && placementStateId === state.state_id && selectedPlacementElement === element.element_id ? "selected" : ""}`}
+                      onClick={() => void openHierarchyPlacementTarget(scene, state.state_id, element.element_id)}>
+                      <Network size={14} aria-hidden="true" /><span><strong>{state.display_name}</strong><small>{description}</small></span>
+                    </button>)}
+                  </div>}
+                </section>;
+              }) : <>
               <section className="hierarchy-branch base-branch">
                 <div className="hierarchy-branch-row">
                   <button
@@ -4847,6 +4900,7 @@ export default function App() {
                   })}
                 </div>}
               </section>
+              </>}
               {(scene.variables?.length ?? 0) > 0 && (
                 <section className="hierarchy-branch variables-branch">
                   <div className="hierarchy-branch-row">

@@ -198,7 +198,11 @@ app.whenReady().then(async () => {
   await evaluate("window.scrollTo(0,0)");
   console.log('Asset tabs: filtered controls, empty state, cleared selection and keyboard navigation passed');
   await button('Placement');
-  await click('.scene-hierarchy-node.selected .base-branch .hierarchy-branch-select');
+  const placementTarget = async value => {
+    await evaluate(`(() => {const e=document.querySelector('[aria-label="Placement target"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await wait(400);
+  };
+  await placementTarget('');
   await click('[aria-label="Add sprite"]'); await click('.placement-sprite-picker-group button');
   const scene = latest.document.scenes[0]; assert.equal(scene.objects.length, 1);
   const animation = await evaluate(`(() => {const e=document.querySelector('[aria-label="Object animation"]');return {disabled:e.disabled,options:[...e.options].map(o=>({value:o.value,text:o.text}))};})()`);
@@ -263,7 +267,8 @@ app.whenReady().then(async () => {
   await click('button[title="Redo"]');
   assert.deepEqual(latest.document.animations, [clip]);
   assert.equal(latest.document.scenes[0].objects[0].animation_ref, clip.animation_id);
-  assert(await evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Build').disabled"));
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Build').disabled"),
+    !latest.scene_capabilities[latest.document.scenes[0].scene_id].export_ready);
   let rightId, markerId, timerObjectId;
   const currentScene = () => latest.document.scenes[0];
   if (workflow) {
@@ -285,7 +290,7 @@ app.whenReady().then(async () => {
     }
     assert.equal(currentScene().routes.length, 2);
     await button('Placement');
-    await click('.scene-hierarchy-node.selected .base-branch .hierarchy-branch-select');
+    await placementTarget('');
     const pointer = async (selector, type, x, y) => {
       await evaluate(`(() => {const r=document.querySelector('.placement-screen-overlay').getBoundingClientRect();
         const target=${selector === 'window' ? 'window' : `document.querySelector(${JSON.stringify(selector)})`};
@@ -303,12 +308,12 @@ app.whenReady().then(async () => {
       return object.object_id;
     };
     markerId = await draw(32, 100);
-    await evaluate(`[...document.querySelectorAll('.scene-hierarchy-node.selected .state-branch .hierarchy-branch-select')].find(e=>e.textContent.includes(${JSON.stringify(rightId)})).click()`); await wait(400);
+    await placementTarget(rightId);
     await field('Object X', 120);
     assert.deepEqual(currentScene().states.find(state => state.state_id === rightId).object_overrides,
       [{object_ref:markerId,x:120}]);
     assert.deepEqual(currentScene().states.find(state => state.state_id === 'start').object_overrides, []);
-    await click('.scene-hierarchy-node.selected .base-branch .hierarchy-branch-select');
+    await placementTarget('');
     timerObjectId = await draw(76, 76); await click('[aria-label="Object visible"]');
     assert.equal(currentScene().objects.find(object => object.object_id === timerObjectId).defaults.visible, false);
     await button('Local logic'); await click('.react-flow__pane');
@@ -331,7 +336,7 @@ app.whenReady().then(async () => {
   if (reloadRace) {
     for (const outcome of ['resolve','reject']) {
       holdNextPreview = true; releaseHeldPreview = undefined;
-      await click('.scene-hierarchy-node.selected .state-branch .hierarchy-branch-select');
+      await placementTarget('start');
       assert.equal(typeof releaseHeldPreview, 'function', 'Must hold an actual state preview response');
       await button('Open project'); await wait(400);
       assert.equal(JSON.stringify(latest.document.scenes), saved);

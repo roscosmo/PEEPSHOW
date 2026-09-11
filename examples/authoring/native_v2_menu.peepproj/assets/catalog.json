@@ -1,0 +1,154 @@
+{
+  "schema_id": "peepshow.authoring.assets",
+  "schema_version": 1,
+  "assets": [
+    {
+      "asset_id": "menu_title",
+      "display_name": "MENU",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "MENU",
+      "scale": 2,
+      "frames": [
+        {
+          "frame_id": "menu_title.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "start_label",
+      "display_name": "Start Game",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "Start Game",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "start_label.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "settings_label",
+      "display_name": "Settings",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "Settings",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "settings_label.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "credits_label",
+      "display_name": "Credits",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "Credits",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "credits_label.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "counter_1",
+      "display_name": "1",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "1",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "counter_1.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "counter_2",
+      "display_name": "2",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "2",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "counter_2.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "counter_3",
+      "display_name": "3",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "3",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "counter_3.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "counter_4",
+      "display_name": "4",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "4",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "counter_4.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    }
+  ],
+  "animations": [
+    {
+      "animation_id": "menu_counter_loop",
+      "frame_refs": [
+        "counter_1.frame",
+        "counter_2.frame",
+        "counter_3.frame",
+        "counter_4.frame"
+      ],
+      "frame_duration_ms": [
+        400,
+        400,
+        400,
+        400
+      ],
+      "loop_policy": "loop"
+    }
+  ],
+  "audio_assets": [],
+  "audio_cues": []
+}

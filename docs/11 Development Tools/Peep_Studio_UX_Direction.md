@@ -994,6 +994,31 @@ parallel model or expose version-2 graph construction ahead of its handoff.
 
 ### Supported Authoring Next Steps
 
+- Native V2 hierarchy: Scene -> Object -> existing state overrides. No separate
+  Base objects or States groups, and no duplicated scene-owned objects. Override
+  children show the state name and authored property values from host placement
+  projections. Selecting an object targets scene defaults; selecting its state
+  child displays the complete state placement and edits only that object's
+  override. The inspector's single Placement target selector can choose any
+  state, including one without an override yet. No cross-state composite view.
+  Disclosure controls only expand/collapse; selection does not launch the
+  emulator. Whole-state selection and explicit emulator launch remain in Local
+  logic. This is presentation only; backend ownership and legacy editing remain
+  unchanged. Regression: `tests/native-menu-view.cjs`.
+
+- Native menu inspection example: `examples/authoring/native_v2_menu.peepproj`.
+  Created directly through V2 service commands, not migrated. One scene, three
+  vertically arranged selection states, six up/down wrap routes and eight
+  scene-owned objects. States override only the selector outline's Y position;
+  shared text/frame objects and a four-frame 400 ms counter remain scene-owned.
+  There are no A scene-navigation routes, redundant selection-variable guards,
+  audio, shell exits or replacement hardware fixtures. The legacy multi-scene
+  example and frozen installation fixture remain unchanged. The menu passes
+  backend export readiness and host continuity/navigation checks; this is not
+  a hardware pass. Open it using Open project; Open example still opens the
+  existing legacy example. Regression: `tests/native-menu-example.cjs`; GUI
+  inspection: `tests/native-menu-view.cjs`.
+
 - Existing-transition audit: verified native routes can be edited without
   deletion/recreation. The Electron regression drags a physical trigger from A
   to B, retargets the existing route, edits its guard, and reorders variable
