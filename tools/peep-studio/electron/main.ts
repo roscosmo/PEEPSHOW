@@ -4,6 +4,7 @@ import { cp, mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import { readThumbnailAudio } from "./audioThumbnail.js";
 
 const PROTOCOL_VERSION = 1;
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -346,6 +347,9 @@ ipcMain.handle("peep:import-audio-wav", async (_event, projectPath: unknown) => 
     sourcePath: destination.relativePath,
   };
 });
+
+ipcMain.handle("peep:audio-thumbnail-source", (_event, projectPath: unknown, sourcePath: unknown) =>
+  readThumbnailAudio(projectPath, sourcePath));
 
 ipcMain.handle("peep:save-project-as", async (_event, sourcePath: unknown, defaultName: unknown) => {
   if (typeof sourcePath !== "string" || typeof defaultName !== "string") {

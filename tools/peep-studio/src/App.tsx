@@ -44,6 +44,7 @@ import { parseSpriteSheetGrid } from "./spriteSheetImport";
 import { useEditorPreferences } from "./editorPreferences";
 import { SpriteAssetCard } from "./SpriteAssetCard";
 import { canBuildProject } from "./exportReadiness";
+import { AudioWaveform } from "./AudioWaveform";
 import { EmulatorPanel } from "./EmulatorPanel";
 import {
   lineDirectionFromPoints,
@@ -2690,7 +2691,7 @@ export default function App() {
     ? audioCues.find((cue) => cue.cue_id === assetSelection.cueId) ?? null
     : null;
   const selectedAudioAsset = selectedAudioCue === null ? null : audioAssetById.get(selectedAudioCue.asset_ref) ?? null;
-  const audioCueDisplayName = (cue: AudioCueRecord) => cue.display_name?.trim() || cue.cue_id;
+  const audioCueDisplayName = (cue: AudioCueRecord) => cue.display_name?.trim() || cue.cue_id.replace(/\.cue(?:_\d+)?$/, "");
   const selectedAssetFrame = assetSelection?.kind === "sprite"
     ? compiledAssetFrameById.get(assetSelection.frameId) ?? null
     : null;
@@ -3763,11 +3764,11 @@ export default function App() {
                           onClick={() => selectAssetRecord({ kind: "audio", cueId: cue.cue_id })}
                           title="Select this SFX cue"
                         >
-                          <Volume2 size={18} aria-hidden="true" />
+                          <AudioWaveform projectPath={projectPath} sourcePath={asset?.source_path} revision={project?.project_revision} />
                           <span>
                             <strong>{audioCueDisplayName(cue)}</strong>
                             <small>
-                              {cue.cue_id} / {asset === undefined ? cue.asset_ref : `${asset.duration_ms} ms / ${asset.adpcm_bytes} ADPCM bytes`}
+                              {asset === undefined ? "Source unavailable" : `${asset.duration_ms} ms / ${asset.adpcm_bytes} ADPCM bytes`}
                             </small>
                           </span>
                         </button>

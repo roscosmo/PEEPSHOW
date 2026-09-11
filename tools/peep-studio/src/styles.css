@@ -1596,6 +1596,23 @@ button:focus-visible {
   gap: 8px;
 }
 
+.audio-waveform {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 128px;
+  height: 40px;
+  flex: 0 1 128px;
+  min-width: 64px;
+  color: #377d82;
+}
+
+.audio-waveform canvas {
+  display: block;
+  width: 100%;
+  height: 40px;
+}
+
 .asset-workspace-summary .asset-library-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -1786,7 +1803,7 @@ button:focus-visible {
 .audio-cue-select {
   display: grid;
   min-width: 0;
-  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   padding: 0;

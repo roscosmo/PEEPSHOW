@@ -563,11 +563,18 @@ Agreed delivery order:
    regression checks cover ten distinct canvas frames in order, hover stop,
    Always/Off, settings persistence, and a transparent 2x2 sheet, followed by
    loop creation, undo/redo and save/reopen.
-4. Audio cards: author-facing names omit the internal `.cue` suffix. Generate
-   and cache a small waveform thumbnail on import, available after reopening.
+4. Audio cards: implemented waveform thumbnails and clean name fallbacks without
+   internal `.cue` suffixes. Library cards no longer repeat cue IDs beside names.
+   The imported source WAV is silently decoded when its card appears, including
+   existing assets on reopen. A bounded local cache stores 64 peak bins keyed by
+   source-content SHA-256; changed sources regenerate, and missing/unsupported
+   sources show a speaker placeholder. Source reads are confined to the real
+   project directory, WAV files, and a 32 MiB preview limit.
    Waveforms are visual identification only, not playback or seeking controls.
-   Keep identity and references unchanged; waveform generation is separate from
-   audio normalization, conversion and production playback admission.
+   Peak scaling affects only the thumbnail, never source normalization, encoded
+   audio or playback volume. No project fields or backend commands changed.
+   Electron tests cover mono/stereo/silence, cache reuse/invalidation, missing
+   files, path confinement and compact card layout.
 
 Additional Settings groups will appear as real preferences are implemented;
 the settings surface is consistent rather than dependent on object selection.
