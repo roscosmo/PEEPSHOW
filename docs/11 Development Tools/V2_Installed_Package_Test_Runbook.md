@@ -145,10 +145,37 @@ WFI returns/measured/reconciled were 2/2/1 with clock status 0.
 `PS_HW6_RTOS_ObjectAdvance` later consumes missing time and updates reconciled
 count. A halt between these stages can produce this difference, but this single
 snapshot does not establish that cause or demonstrate final reconciliation.
-Do not mark a complete low-power timing/current pass from this capture. A settled
-post-wake observation is still needed for that accounting check, and physical
-cadence/current measurements remain separate.
+That capture alone was not a complete low-power timing/current pass. The
+follow-up below closes the accounting check; physical cadence/current
+measurements remain separate.
 
 The launch stack regression is cleared for this fixture's observed boot and
 reinstall/launch paths. This is not general V2 export readiness, all-state
 coverage, physical power-cut acceptance or unrestricted package support.
+
+## Installed Animation Continuity And Sleep Accounting Passed
+
+Follow-up on 2026-09-11, against OS checkpoint
+`b5d9ab81cc3f7fc9a2c08c16900a1d8960246e31`: the user explicitly confirmed that
+alternating A/B does not interrupt the installed 1-2-3-4 animation.
+
+- Source/model/size remain 3/2/2196, scene active, activation status 0,
+  slot 0 generation 4. This is the installed GUI egg, not a ROM development test.
+- Latest admission token/complete 44/44, lease 0; status/profile/schedule/display
+  all 0. Exact payload remains 8 chunks / 4672 bytes.
+- Display request/complete 42/42, result 0, lease fault 0. This records completed
+  rendering as well as the user's visible continuity observation.
+- LPBAM enabled 1, fault 0, publish status 0; schedule 4 steps / 400 ms.
+- WFI returns/measured/reconciled 5/5/5, clock status 0. All recorded sleep
+  intervals have now been consumed by runtime time advancement. The earlier
+  2/2/1 snapshot is no longer an outstanding accounting result.
+- Timer due/applied/error remains 2/2/0, RTC selections 2, reveal flag 1.
+  No additional timer dispatch is recorded during the subsequent A/B exercise.
+- Latest projected digit phase 3 with 83 ms remaining, marker x=32; these
+  describe the last runtime projection, not the live DMA frame.
+
+Functional installed-fixture acceptance now includes boot, reinstall/launch,
+A/B animation continuity and post-wake time reconciliation. Precise 400 ms
+cadence, low-current residency, physical power-cut behavior and broader profile
+coverage are not established by this debugger capture. Ordinary V2 export stays
+disabled until the restricted backend capability/readiness handoff is delivered.

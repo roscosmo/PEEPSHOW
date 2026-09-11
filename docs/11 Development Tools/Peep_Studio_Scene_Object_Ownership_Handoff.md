@@ -908,8 +908,14 @@ session. The launch regression is cleared for these observed paths.
 GUI should keep ordinary V2 export disabled until a separate capability/readiness
 handoff enables the restricted profile. This hardware pass does not itself
 change the service contract. No new UI command or fixture is needed for this step.
-Detailed installed low-power timing/current acceptance remains separate: the
-latest measured/reconciled sleep counters were 2/1, potentially sampled between
-wake accounting stages, not a settled reconciliation proof.
+The follow-up against OS checkpoint `b5d9ab81cc3f7fc9a2c08c16900a1d8960246e31`
+also passed user-observed installed A/B animation continuity and sleep accounting:
+WFI returns/measured/reconciled 5/5/5, clock status 0, LPBAM fault 0,
+admission token/complete 44/44 and display request/complete 42/42 with status 0.
+Timer due/applied/error remains 2/2/0. The earlier 2/1 accounting snapshot is
+resolved. Precise cadence/current measurement remains separate.
+Next OS increment is restricted V2 build/export readiness and capability
+advertisement; Studio must consume that handoff rather than enabling export
+solely because this fixture passed. No replacement fixture is requested.
 Follow [[V2_Installed_Package_Test_Runbook]]; do not use the embedded V1 install
 helper or a development scene launcher as evidence of V2 installation.

@@ -199,8 +199,10 @@ loader-only pass cannot authorize them. On 2026-09-11 the restricted 2196-byte
 GUI V2 fixture passed hardware boot, reinstallation and launch after correcting
 the runtime stack allocation. The capture confirms installed source 3, model 2,
 active scene, slot 0 generation 4, completed admission and completed drawing.
-Full installed low-power timing/current and physical power-cut acceptance remain
-separate; the latest sleep accounting capture was not fully reconciled.
+The follow-up passed user-observed installed A/B animation continuity and settled
+sleep accounting (WFI returns/measured/reconciled 5/5/5, clock status 0), with
+completed drawing and admission status 0. Precise installed cadence/current
+measurement and physical power-cut acceptance remain separate.
 Ordinary GUI V2 export remains disabled. See [[V2_Installed_Package_Test_Runbook]].
 
 The FW0 preflight implementation now checks SHA-256, the complete container and
