@@ -986,6 +986,35 @@ parallel model or expose version-2 graph construction ahead of its handoff.
 - Export: `tools/peep-studio/dist/restricted-v2-export/native_v2_installation.egg`,
   2196 bytes, container V2, profile `hw6_v2_resident_v1`.
   SHA-256: `9f0914597fddf5fe7d4c35e2eeeab6626c3001ecccdd400d8ae65914f77866d9`.
-- OS next tests these exported bytes through normal USB install, PLAY and reboot,
-  including animation continuity and timer reveal. GUI commit is supplied after
-  the user commits this integration. No fixture changes are needed.
+- OS reports the Studio export/install test passed for this handoff. GUI export
+  integration commit: `981cdf51eb4bc914147518cd33b5adfd2714ab74`. Do not extend
+  that report into broader feature, timing or power qualification claims.
+  OS owns rejection/recovery testing independently; Studio authoring work does
+  not wait for it. Frozen fixtures and advertised export restrictions remain.
+
+### Supported Authoring Next Steps
+
+- Resume functional native authoring, not cosmetic refinements or new hardware
+  fixtures. Preserve separate editing, preview and whole-project export checks.
+- Implemented: native object inspectors can edit an existing clip's ordered
+  frames and durations using advertised `animation.upsert`, preserving its ID
+  and bindings. Apply commits one draft; Cancel/Escape discards it. Steps can be
+  added, duplicated, removed and reordered together with their durations.
+  The editor identifies shared scene-object references and warns that edits
+  affect every reference. State-scope editing remains disabled. Source-valid
+  timings remain editable even when backend export checks reject them; no GUI
+  timing scheduler or budget calculator was added. Regression coverage includes
+  ordered edits, shared binding retention, cancel, undo/redo and save/reopen.
+- API 42 compatibility correction: native preview/edit checks no longer require
+  the historical `host_available` status text. They use the scene-object execution
+  model, advertised host flags and supported command lists. The newer
+  `restricted_firmware_available` status does not disable native authoring.
+  Export capability and whole-project readiness checks remain independent.
+- Concrete backend blocker: reconstructing the full native multi-scene menu
+  requires scene-exit creation, reciprocal local-graph endpoints, and scene-flow
+  connections. V2 `scene_connection_commands` remains unavailable; scene creation
+  alone cannot connect Menu, Settings and Credits. Do not substitute V1 records.
+- Asset tags remain a separate metadata request: reusable sprite/audio assets
+  need saved multi-tag assignments for grouping across reopen/Save As. Current
+  asset records advertise no tag field or command. This does not block native
+  clip editing or the supported single-scene authoring workflow.

@@ -33,6 +33,14 @@ assert(!supportsObjectCommand(editingHost, capability, "object.set_defaults"));
 assert(!supportsObjectCommand(editingHost, { ...editingScene, host_editing: false }, "object.set_defaults"));
 assert(!supportsObjectCommand({ ...editingHost, scene_object_authoring: { ...editingHost.scene_object_authoring, commands: [] } }, editingScene, "object.set_defaults"));
 assert(!supportsObjectCommand(editingHost, undefined, "object.set_defaults"));
+const restrictedHost = { ...editingHost, scene_object_authoring: { ...editingHost.scene_object_authoring,
+  status: "restricted_firmware_available", egg_export: true } };
+assert(canPreviewSceneObjects(restrictedHost, capability));
+assert(supportsObjectCommand(restrictedHost, editingScene, "object.set_defaults"));
+assert(!canPreviewSceneObjects(restrictedHost, { ...capability, host_preview: false }));
+assert(!supportsObjectCommand(restrictedHost, { ...editingScene, host_editing: false }, "object.set_defaults"));
+assert(!supportsObjectCommand(restrictedHost, { ...editingScene, supported_commands: [] }, "object.set_defaults"));
+assert(!supportsObjectCommand({ ...restrictedHost, operations: [] }, editingScene, "object.set_defaults"));
 
 const creationHost = { ...editingHost, scene_creation: {
   project_operation: "project.create", scene_command: "scene.add", entry_scene_command: "project.set_entry_scene",

@@ -4908,7 +4908,7 @@ export default function App() {
       if (selectedSceneDocument === null) return null;
       return <>{renderPlacementEditScope()}<SceneObjectInspector
         key={`${selectedSceneDocument.scene_id}:${selectedPlacementElement}:${placementEditStateIds.join(",")}`}
-        scene={selectedSceneDocument} object={object}
+        scene={selectedSceneDocument} scenes={scenes} object={object}
         label={selectedElement === null ? "" : placementObjectLabelBase(selectedElement)}
         stateIds={placementEditStateTargets()} ownership={placementOwnershipScene}
         frames={compiledAssetFrames} clips={project?.document?.animations ?? []} busy={busy !== null}

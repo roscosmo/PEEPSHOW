@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus, RotateCcw, Trash2 } from "lucide-react";
+import { AnimationClipEditor } from "./AnimationClipEditor";
 import type { AssetRecord, AuthoredClip, CompiledAssetFrame, PlacementOwnership, RenderElement, SceneDocument, SceneObject } from "./types";
 
 type Property = "x" | "y" | "visible" | "visual_ref";
@@ -77,13 +78,14 @@ function SpriteLoopCreator({ sceneId, object, frames, assets, clips, disabled, o
   </div>;
 }
 
-export function SceneObjectInspector({ scene, object, label, stateIds, ownership, frames, clips, busy, supports, onApply, canCreateAnimation = false, assets = [] }: {
+export function SceneObjectInspector({ scene, object, label, stateIds, ownership, frames, clips, busy, supports, onApply, canCreateAnimation = false, assets = [], scenes = [scene] }: {
   scene: SceneDocument; object: SceneObject | undefined; label: string; stateIds: string[];
   ownership: PlacementOwnership["scenes"][string] | null;
   frames: CompiledAssetFrame[]; clips: AuthoredClip[]; busy: boolean;
   supports: (kind: string) => boolean;
   canCreateAnimation?: boolean;
   assets?: AssetRecord[];
+  scenes?: SceneDocument[];
   onApply: (commands: Command[]) => Promise<boolean>;
 }) {
   if (!object) return <section className="inspector-section placement-inspector"><p className="muted">No object selected.</p></section>;
@@ -148,6 +150,9 @@ export function SceneObjectInspector({ scene, object, label, stateIds, ownership
       {canCreateAnimation && <SpriteLoopCreator key={object.object_id} sceneId={scene.scene_id} object={object}
         frames={frames} assets={assets} clips={clips} disabled={stateScope || busy || !supports("object.bind_animation")}
         onApply={onApply} />}
+      {canCreateAnimation && clips.filter(clip => clip.animation_id === object.animation_ref).map(clip =>
+        <AnimationClipEditor key={JSON.stringify(clip)} clip={clip} frames={matchingFrames} assets={assets} scenes={scenes}
+          disabled={stateScope || busy} onApply={onApply} />)}
     </>}
     <button className="button secondary" type="button"
       disabled={busy || !supports(stateScope ? "object_override.set" : "object.delete")}

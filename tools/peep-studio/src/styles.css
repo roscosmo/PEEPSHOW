@@ -1596,6 +1596,17 @@ button:focus-visible {
   gap: 8px;
 }
 
+.clip-editor { min-width: 0; padding: 12px 0; border-top: 1px solid #bdcbc6; }
+.clip-editor h4, .clip-editor li { overflow-wrap: anywhere; }
+.clip-editor fieldset { min-width: 0; padding: 0; margin: 10px 0; border: 0; }
+.clip-step { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 8px; padding: 10px 0; border-bottom: 1px solid #dce3df; }
+.clip-step label { display: grid; gap: 4px; min-width: 0; }
+.clip-step input, .clip-step select { width: 100%; min-width: 0; }
+.clip-step label:nth-of-type(2), .clip-step-actions { grid-column: 2; }
+.clip-step-preview { width: 40px; height: 40px; display: grid; place-items: center; }
+.clip-step-preview canvas { max-width: 40px; max-height: 40px; object-fit: contain; image-rendering: pixelated; }
+.clip-step-actions, .clip-editor-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+
 .audio-waveform {
   display: flex;
   align-items: center;

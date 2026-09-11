@@ -10,15 +10,13 @@ export function canEditLegacyScene(scene: SceneDocument | null, capability?: Sce
 }
 
 export function canPreviewSceneObjects(service: ServiceHello | null, capability?: SceneCapabilities): boolean {
-  return service?.scene_object_authoring?.status === "host_available"
-    && service.scene_object_authoring.execution_model === "scene_objects"
+  return service?.scene_object_authoring?.execution_model === "scene_objects"
     && capability?.execution_model === "scene_objects" && capability.host_preview;
 }
 
 export function supportsObjectCommand(service: ServiceHello | null, capability: SceneCapabilities | undefined, command: string): boolean {
   return service?.operations.includes("project.apply_commands") === true
-    && service.scene_object_authoring?.status === "host_available"
-    && service.scene_object_authoring.execution_model === "scene_objects"
+    && service.scene_object_authoring?.execution_model === "scene_objects"
     && service.scene_object_authoring.commands.includes(command)
     && capability?.execution_model === "scene_objects" && capability.host_editing
     && capability.supported_commands?.includes(command) === true;

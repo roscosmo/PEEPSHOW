@@ -80,7 +80,11 @@ app.whenReady().then(async () => {
   window = new BrowserWindow({ width: 1440, height: 1000, show: false, webPreferences: {
     preload: path.join(__dirname, 'native-sprite-loop-preload.cjs'), sandbox: true, contextIsolation: true, offscreen: true, backgroundThrottling: false,
   } });
-  const evaluate = code => window.webContents.executeJavaScript(code);
+  const evaluate = code => window.webContents.executeJavaScript(code).catch(async error => {
+    console.error('Renderer test expression:', code);
+    console.error(await window.webContents.executeJavaScript('document.body.innerText'));
+    throw error;
+  });
   const button = async label => { await evaluate(`(() => { const e=[...document.querySelectorAll('button')].find(e=>e.textContent.trim()===${JSON.stringify(label)}); if(!e) throw Error('Missing button: '+${JSON.stringify(label)}); if(e.disabled) throw Error('Disabled button'); e.click(); })()`); await wait(450); };
   const click = async selector => { await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`); await wait(450); };
   await window.loadURL('http://127.0.0.1:5174'); await wait(800);
@@ -217,6 +221,42 @@ app.whenReady().then(async () => {
   assert.equal(latest.document.scenes[0].objects[0].animation_ref, clip.animation_id);
   assert(batches.some(batch => batch.length === 2 && batch[0].kind === 'animation.upsert' && batch[1].kind === 'object.bind_animation'));
   assert(!commands.some(command => /waiting/.test(command.kind)));
+  if (process.argv.includes('--edit-clip')) {
+    await click('[aria-label="Add sprite"]');await click('.placement-sprite-picker-group button');
+    await evaluate(`(() => {const e=document.querySelector('[aria-label="Object animation"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(clip.animation_id)});e.dispatchEvent(new Event('change',{bubbles:true}));})()`);await wait(500);
+    assert.equal(latest.document.scenes[0].objects.filter(object=>object.animation_ref===clip.animation_id).length,2);
+    await button('Edit clip');
+    assert.match(await evaluate("document.querySelector('.clip-editor summary').textContent"), /2 scene objects/);
+    const setDuration = async value => {
+      await evaluate(`(() => {const e=document.querySelector('[aria-label="Clip duration 1"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);await wait(150);
+    };
+    await setDuration('0');
+    assert(await evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Apply clip').disabled"));
+    await setDuration('333');
+    await click('[title="Move step 1 down"]');
+    await click('[title="Duplicate step 1"]');
+    await click('[title="Remove step 2"]');
+    await evaluate("document.querySelector('.clip-editor').scrollIntoView({block:'start'})");await wait(150);
+    window.webContents.invalidate();await wait(200);
+    fs.writeFileSync(path.join(output,'clip-editor.png'),(await window.webContents.capturePage()).toPNG());
+    await button('Apply clip');
+    const edited=latest.document.animations[0];
+    assert.equal(edited.animation_id,clip.animation_id);
+    assert.deepEqual(edited.frame_refs,[clip.frame_refs[1],clip.frame_refs[0],...clip.frame_refs.slice(2)]);
+    assert.deepEqual(edited.frame_duration_ms,[400,333,...clip.frame_duration_ms.slice(2)]);
+    assert.equal(latest.document.scenes[0].objects[0].animation_ref,clip.animation_id);
+    assert(latest.build_issues.length>0);
+    await click('button[title="Undo"]');assert.deepEqual(latest.document.animations,[clip]);
+    await click('button[title="Redo"]');assert.deepEqual(latest.document.animations,[edited]);
+    await button('Edit clip');await setDuration('800');await button('Cancel');
+    assert.deepEqual(latest.document.animations,[edited]);
+    await button('Save');await button('Open project');
+    assert.deepEqual(latest.document.animations,[edited]);
+    assert.equal(latest.document.scenes[0].objects.filter(object=>object.animation_ref===clip.animation_id).length,2);
+    assert.deepEqual(errors,[]);
+    console.log('Clip edit: same ID/binding, ordered frame-duration pairs, duplicate/remove, draft validation, backend blockers, cancel, undo/redo and save/reopen passed');
+    return;
+  }
   await click('button[title="Undo"]');
   assert.equal(latest.document.animations.length, 0);
   assert.equal(latest.document.scenes[0].objects[0].animation_ref, undefined);
