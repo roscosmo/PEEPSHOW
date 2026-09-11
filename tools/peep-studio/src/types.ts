@@ -29,6 +29,9 @@ export type SceneCapabilities = {
   host_editing: boolean;
   host_preview: boolean;
   egg_export: boolean;
+  export_ready?: boolean;
+  export_profile_id?: string | null;
+  export_readiness_scope?: string;
   supported_commands: string[] | null;
   legacy_command_catalog: boolean;
 };
@@ -490,6 +493,8 @@ export type PlacementPreviewSnapshot = PreviewSnapshot | SceneBasePreviewSnapsho
 export type PackageBuildResult = {
   project_revision: number;
   package: {
+    container_version?: number;
+    export_profile_id?: string | null;
     package_id: string;
     target_profile: string;
     entry_scene: string;
@@ -515,6 +520,11 @@ export type PeepOSTriggerCapability = {
 };
 
 export type ServiceHello = {
+  package_export?: {
+    operation: string;
+    container_versions: number[];
+    v2_profile?: { profile_id: string };
+  };
   target_profiles?: { available: Array<{ profile_id: string; state_scene_events?: {
     sources: Array<{ event_type: string; status: string; configuration_schema: {
       delay_ms?: { minimum: number; maximum: number };
@@ -535,6 +545,7 @@ export type ServiceHello = {
     execution_model: string;
     egg_export: boolean;
     firmware_available: boolean;
+    export_requires_project_readiness?: boolean;
     commands: string[];
     graph_construction_commands: boolean;
   };

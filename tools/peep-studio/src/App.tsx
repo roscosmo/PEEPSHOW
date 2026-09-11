@@ -43,6 +43,7 @@ import { FramebufferCanvas, FramePreviewCanvas } from "./FramebufferCanvas";
 import { parseSpriteSheetGrid } from "./spriteSheetImport";
 import { useEditorPreferences } from "./editorPreferences";
 import { SpriteAssetCard } from "./SpriteAssetCard";
+import { canBuildProject } from "./exportReadiness";
 import { EmulatorPanel } from "./EmulatorPanel";
 import {
   lineDirectionFromPoints,
@@ -550,7 +551,7 @@ export default function App() {
   };
 
   const buildPackage = async () => {
-    if (bridge === undefined || project === null || !project.valid) {
+    if (bridge === undefined || project === null || busy !== null || !canBuildProject(service, project)) {
       return;
     }
     setBusy("Building package");
@@ -559,6 +560,10 @@ export default function App() {
       const result = await bridge.serviceRequest<PackageBuildResult>("project.build_package", {
         project_revision: project.project_revision,
       });
+      if (result.project_revision !== projectRevisionRef.current || projectReplacementRef.current.pending) {
+        setMessage("Project changed during build. Build the current revision before exporting.");
+        return;
+      }
       setBuild(result);
       setMessage(`Built ${result.package.package_id}.egg`);
     } catch (error) {
@@ -2635,7 +2640,8 @@ export default function App() {
   };
 
   const exportPackage = async () => {
-    if (bridge === undefined || build === null || busy !== null) {
+    if (bridge === undefined || build === null || busy !== null || !canBuildProject(service, project)
+      || build.project_revision !== project?.project_revision || projectReplacementRef.current.pending) {
       return;
     }
     const exported = await bridge.exportEgg(
@@ -2779,8 +2785,8 @@ export default function App() {
   const readOnlySceneIds = useMemo(() => scenes.filter((scene) =>
     !canEditLegacyScene(scene, project?.scene_capabilities?.[scene.scene_id])).map((scene) => scene.scene_id),
   [scenes, project?.scene_capabilities]);
-  const hostOnlyProject = scenes.some((scene) => usesSceneObjects(scene, project?.scene_capabilities?.[scene.scene_id])
-    && project?.scene_capabilities?.[scene.scene_id]?.egg_export !== true);
+  const buildReady = canBuildProject(service, project);
+  const hostOnlyProject = scenes.some(scene => usesSceneObjects(scene, project?.scene_capabilities?.[scene.scene_id])) && !buildReady;
 
   useEffect(() => {
     if (!projectValid || scenes.length === 0) {
@@ -5342,6 +5348,8 @@ export default function App() {
             <div><dt>Size</dt><dd>{build.package.size_bytes} B</dd></div>
             <div><dt>Chunks</dt><dd>{build.package.chunk_count}</dd></div>
             <div><dt>Scenes</dt><dd>{build.package.scene_count}</dd></div>
+            {build.package.container_version !== undefined && <div><dt>Container</dt><dd>V{build.package.container_version}</dd></div>}
+            {build.package.export_profile_id && <div><dt>Profile</dt><dd>{build.package.export_profile_id}</dd></div>}
           </dl>
           <code>{build.package.sha256.slice(0, 16)}...</code>
         </section>
@@ -5377,7 +5385,7 @@ export default function App() {
             <FolderOpen size={16} aria-hidden="true" />
             Open project
           </button>
-          <button className="button primary" onClick={buildPackage} disabled={!project?.valid || busy !== null || hostOnlyProject}>
+          <button className="button primary" onClick={buildPackage} disabled={!buildReady || busy !== null}>
             <Hammer size={16} aria-hidden="true" />
             Build
           </button>
@@ -5395,7 +5403,7 @@ export default function App() {
             <SaveAll size={16} aria-hidden="true" />
             Save as
           </button>
-          <button className="icon-button" onClick={exportPackage} disabled={build === null || busy !== null || hostOnlyProject} title="Export .egg">
+          <button className="icon-button" onClick={exportPackage} disabled={build === null || busy !== null || !buildReady || build.project_revision !== project?.project_revision} title="Export .egg">
             <Download size={18} aria-hidden="true" />
           </button>
           <button className="icon-button" type="button" title="Settings" aria-label="Settings"
@@ -5407,7 +5415,9 @@ export default function App() {
       </header>
 
       {hostOnlyProject && <div className="host-preview-notice" role="status">
-        Host preview only: this project contains scene objects. Version-2 .egg export and device support are unavailable.
+        <span>V2 export is blocked for this project. Draft editing and supported preview remain available.</span>
+        {(project?.build_issues ?? []).map((issue, index) => <div key={`${issue.code}-${index}`}><strong>{issue.code}</strong>: {issue.message}</div>)}
+        <button type="button" className="button secondary" onClick={() => { setSettingsOpen(false); selectProjectRoot(); }}>Project validation</button>
       </div>}
 
       <section

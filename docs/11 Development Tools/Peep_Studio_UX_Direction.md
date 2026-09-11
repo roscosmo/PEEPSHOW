@@ -958,9 +958,27 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   not an installation, activation or cold-boot pass for the GUI fixture.
 - Freeze the installation fixture at the source commit above for comparable
   results. No replacement fixture or backend workaround is needed.
-- OS next owns storage-contract reconciliation, V2 installation admission,
-  activation and cold-boot loading. The fixture has not passed those hardware checks.
-  GUI export remains capability-gated and backend `build_issues` stay intact.
-  After production admission is advertised, enable only the supported subset
-  and test this exact source through Studio build, USB install, launch and cold
-  boot, including animation continuity and the timer reveal.
+- OS subsequently reports restricted V2 installed boot, reinstall/PLAY and
+  sleep-time reconciliation passing with this unchanged fixture. This does not
+  yet verify the new normal Studio-export round trip.
+
+### API 42 Restricted Export Integration
+
+- Governing handoff: [[Peep_Studio_Restricted_V2_Export_Handoff]]. This supersedes
+  the earlier blanket export block only for the advertised restricted subset.
+- Studio uses `package_export`, `scene_object_authoring.egg_export` and every
+  scene's whole-project `export_ready`/profile fields. No API-number shortcut,
+  scheduler, compiler, resource calculation or firmware changes were added.
+- Blocked drafts retain existing editing/preview commands; backend `build_issues`
+  are shown in the workspace notice and project validation inspector. Failed,
+  stale or obsolete builds cannot be exported as the last successful package.
+- `tests/restricted-export-check.cjs` opens the unchanged installation fixture
+  through Electron, clicks Build and Export, and captures the save destination
+  instead of opening the native file dialog. The ordinary backend package result
+  is written verbatim. Source-file hashes are checked before and after.
+- Export: `tools/peep-studio/dist/restricted-v2-export/native_v2_installation.egg`,
+  2196 bytes, container V2, profile `hw6_v2_resident_v1`.
+  SHA-256: `9f0914597fddf5fe7d4c35e2eeeab6626c3001ecccdd400d8ae65914f77866d9`.
+- OS next tests these exported bytes through normal USB install, PLAY and reboot,
+  including animation continuity and timer reveal. GUI commit is supplied after
+  the user commits this integration. No fixture changes are needed.
