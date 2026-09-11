@@ -126,20 +126,45 @@ The package-index region begins with two independent erase-sector records:
   record means no installed package;
 - generation comparison must remain deterministic across `uint32_t` wrap.
 
-The current FW0 index v1 still records an active A/B slot. It is migration
-debt. The product transaction record retains the two protected index sectors as
-a small redundant journal, but records package identity and transaction state
-rather than selecting between two package images.
+FW0 now uses transaction-record format 2 (independent of the egg format).
+The two protected index sectors form a journal, not two package slots. Old
+format-1 A/B records are ignored, including records pointing at the old second
+slot. The approved migration requires reinstall: boot only reads the index,
+does not erase old package bytes, and enters the shell when no format-2 `VALID`
+transaction exists. Settings, calibration, bonding, saves and staging are not
+migrated or cleared. The former second slot remains untouched content reserve.
+
+The little-endian record body is 256 bytes: magic `0x31494745` at offset 0,
+format `u16=2` at 4, body size `u16=256` at 6, generation at 8, transaction
+state at 12, package size at 16, identity hash low/high at 20/24, zero flags
+at 28, package SHA-256 at 32..63, CRC32 at 64, and erased bytes at 68..255.
+Fields not otherwise qualified are `u32`. CRC32 covers the body with its own
+four bytes treated as zero. The separately programmed `u32` commit marker
+`0x54494D43` is at offset 256. States are `PENDING=1`, `VALID=2`, `FAILED=3`.
+Generation zero is reserved; increment skips zero. Conflicting equal-generation
+records or a half-range generation difference reject selection deterministically.
+The current writer leaves `PENDING` after an error; the reader also recognizes
+`FAILED`. Index/install probes use API 3; storage-layout probe uses API 2.
 
 Single-slot replacement order is mandatory:
 
 1. fully validate the staged source artifact before erasing the active slot;
 2. publish a newer `PENDING` transaction state that blocks package launch and
    routes boot to the shell;
-3. erase and chunk-program only the active package slot through `thStorage`;
-4. read back and validate the installed bytes, container integrity, SHA-256,
+3. rescan and confirm committed `PENDING`, then erase and verify retirement of
+   the other journal sector before changing package bytes. No older launch
+   record may survive once its referenced package starts being overwritten;
+4. erase and chunk-program only the active package slot through `thStorage`;
+5. read back and validate the installed bytes, container integrity, SHA-256,
    and required package semantics;
-5. write and read-verify a complete `VALID` transaction record last.
+6. write and read-verify a complete `VALID` transaction record last, in the
+   sector opposite `PENDING`, then rescan before publishing availability.
+
+The fixed-buffer FW0 writer verifies every installed byte against the immutable
+candidate already checked for container integrity, SHA-256 and semantics by
+`thRuntime`. This preserves validation ownership; `thStorage` does not invoke
+the runtime loader or HASH peripheral. An uninterrupted first install uses
+generations 1 (`PENDING`) and 2 (`VALID`); a replacement normally advances by two.
 
 An interruption after `PENDING` is published may lose the previous game
 package, but it must leave the device recoverable through the shell. Reinstall
@@ -147,8 +172,8 @@ is then required. Automatic rollback to the previous package is deliberately
 not a product guarantee. Game data and firmware-update staging are not erased,
 programmed, or selected by package replacement.
 
-The HW6 FW0 USB vertical slice currently exercises the superseded A/B physical
-replacement path. MSC reclaim remains transport-only: it closes the
+The HW6 FW0 USB and embedded install paths use this single-slot writer.
+MSC reclaim remains transport-only: it closes the
 host-exported filesystem path and parks ownership without automatically
 installing, launching, or publishing package prompts. The PACKAGE menu keeps
 `USB FLASH` separate from `PACKAGE INSTALL`.
@@ -156,8 +181,19 @@ installing, launching, or publishing package prompts. The PACKAGE menu keeps
 The product installer must scan and validate a reclaimed staged `.egg`, publish
 the single-slot transaction state, chunk-program and verify the active slot,
 then publish `VALID`. Package install and launch remain separate user actions.
-Until that migration lands, the FW0 A/B path is bring-up-only behavior and must
-not be extended as a product package catalog.
+
+Host-native transaction tests cover partial/full interruption after every
+mutation, I/O failures, corrupt readback, legacy records, pending/failed records,
+generation conflicts/wrap, reinstall recovery, protected-region preservation,
+reader mount bounds and the full 5 MiB low-level writer bound. They exercise
+the actual layout/index/reader code against simulated NOR; they are not physical
+power-cut or installed-package hardware acceptance. Separately, the 2026-09-11
+device check passed embedded V1 install, PLAY and normal reboot, then same-slot
+reinstallation (generation 2 to 4) and PLAY/reboot again. Both writes verified
+all 321,480 bytes with zero mismatches. This is not different-artifact replacement,
+physical power-cut or V2 acceptance; see [[Package_Workflow_Validation_Runbook]].
+Ordinary V2 install and GUI export remain disabled until their separate
+activation increment.
 
 The FW0 preflight implementation now checks SHA-256, the complete container and
 chunk CRCs, target residency, and every included scene/state using the native

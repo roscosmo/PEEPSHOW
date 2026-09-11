@@ -1,4 +1,5 @@
 #include "ps_package_reader.h"
+#include "ps_storage_layout.h"
 
 #include <stddef.h>
 
@@ -58,7 +59,19 @@ ps_status_t PS_PackageReader_StorageMount(uint32_t package_start,
                                           uint32_t package_size,
                                           uint32_t generation)
 {
+  const ps_storage_region_t *regions;
+  uint32_t count;
+  uint32_t index;
+  uint32_t in_active_slot = 0UL;
+  regions = ps_storage_layout_regions(&count);
+  for (index = 0UL; index < count; ++index)
+  {
+    if ((regions[index].id == PS_STORAGE_REGION_INSTALLED_PACKAGE) &&
+        (package_start == regions[index].start) && (package_size <= regions[index].length))
+    { in_active_slot = 1UL; break; }
+  }
   if ((package_size == 0UL) || (generation == 0UL) ||
+      (in_active_slot == 0UL) ||
       (package_start > (UINT32_MAX - package_size)))
   {
     return PS_PackageReader_Fail(PS_STATUS_INVALID_ARGUMENT,

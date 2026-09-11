@@ -32,11 +32,14 @@ rejects otherwise valid but unsupported content.
 **A profile pass does not authorize installation, export or STOP2.** It does not
 compose display frames or prove LPBAM budgets across mutable object states.
 The production `ValidatePackage` path still rejects V2; service capabilities and
-ordinary export remain unchanged. Further increments must connect candidate
-display admission, installed activation and reboot loading, and reconcile the
-FW0 A/B installer with the authoritative single-active-slot transaction contract
-before claiming product installation support. This increment changes neither
-flash layout nor storage behaviour. See [[Storage_and_Installer_Contract]].
+ordinary export remain unchanged. Candidate display admission is implemented
+separately below; installed activation and reboot loading remain outstanding.
+The storage follow-up now implements the single-active-slot transaction journal
+and ignores legacy A/B installation records. Its native interruption tests pass;
+device install, PLAY, same-slot reinstallation and normal reboot passed with the
+321,480-byte embedded V1 artifact (generations 2 then 4). Physical power-cut and
+V2 installed activation remain unproven. That migration does not enable V2
+installation or export. See [[Storage_and_Installer_Contract]].
 
 Native coverage: `test_firmware_v2_profile.py` runs the real C loader against
 the GUI numbered/timer fixture and OS structured, dual-animation and scoped-timer

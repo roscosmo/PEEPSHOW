@@ -704,30 +704,41 @@ static uint32_t PS_EggValidateContainer(ps_egg_context_t *context, const uint8_t
   }
   if (full_package != 0UL)
   {
-    for (index = table_offset +
-                 ((uint32_t)chunk_count * PS_EGG_CHUNK_ENTRY_SIZE);
-         index < footer_offset;
-         ++index)
+    uint32_t cursor = table_offset +
+      ((uint32_t)chunk_count * PS_EGG_CHUNK_ENTRY_SIZE);
+    uint32_t range;
+
+    /* Bounds and non-overlap are already checked. Walk physical ranges without
+     * reordering the indexed chunk table; inspect only the padding gaps. */
+    for (range = 0UL; range <= chunk_count; ++range)
     {
       uint32_t chunk_index;
-      uint32_t occupied = 0UL;
+      uint32_t gap_end = footer_offset;
+      const ps_egg_chunk_t *next = NULL;
 
       for (chunk_index = 0UL;
            chunk_index < chunk_count;
            ++chunk_index)
       {
         const ps_egg_chunk_t *chunk = &context->chunks[chunk_index];
-        if ((index >= chunk->offset) &&
-            (index < (chunk->offset + chunk->size)))
+        if ((chunk->offset >= cursor) && (chunk->offset < gap_end))
         {
-          occupied = 1UL;
-          break;
+          next = chunk;
+          gap_end = chunk->offset;
         }
       }
-      if ((occupied == 0UL) && (blob[index] != 0U))
+      for (index = cursor; index < gap_end; ++index)
       {
-        return PS_EggFail(context, PS_EGG_STATE_LOADER_REASON_CHUNK);
+        if (blob[index] != 0U)
+        {
+          return PS_EggFail(context, PS_EGG_STATE_LOADER_REASON_CHUNK);
+        }
       }
+      if (next == NULL)
+      {
+        break;
+      }
+      cursor = next->offset + next->size;
     }
   }
   else
