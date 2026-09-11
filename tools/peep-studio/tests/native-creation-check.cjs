@@ -62,7 +62,7 @@ app.whenReady().then(async () => {
   assert.equal(main().states.length, 1);
   assert(!main().waiting_visuals && !main().render_models);
   assert(fs.existsSync(path.join(projectPath, 'project.json')));
-  assert(await evaluate("document.querySelector('.host-preview-notice').textContent.includes('Host preview only')"));
+  assert(await evaluate("document.querySelector('.host-preview-notice').textContent.includes('V2_OBJECTS_EMPTY')"));
   await button('Local logic');
   await click('button[title="Add state"]');
   const stateId = main().states.find(state => state.state_id !== 'start').state_id;
@@ -89,6 +89,7 @@ app.whenReady().then(async () => {
   fs.writeFileSync(path.join(output, 'native-states.png'), (await window.webContents.capturePage()).toPNG());
   await click('.react-flow__pane');
   await button('Add variable');
+  await evaluate(`(() => {const e=[...document.querySelectorAll('.variable-add-form label')].find(e=>e.textContent.trim()==='Maximum').querySelector('input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'10');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);await wait(100);
   await click('.variable-add-form button[type="submit"]');
   assert.equal(main().variables[0].variable_id, 'counter');
   const choose = async (selector, value) => {
@@ -110,21 +111,62 @@ app.whenReady().then(async () => {
   assert.equal(main().routes[0].actions[0].kind, 'set_variable');
   await choose('[aria-label="Effect 1 operation"]', 'assign');
   await text('[aria-label="Effect 1 target value"]', '1');
+  await choose('[aria-label="Add effect"]', 'set_variable');
+  await choose('[aria-label="Effect 2 operation"]', 'add');
+  await text('[aria-label="Effect 2 change amount"]', '2');
+  await click('[aria-label="Move effect 2 earlier"]');
+  assert.deepEqual(main().routes[0].actions.map(action=>action.operation),['add','assign']);
+  assert.equal(main().routes[0].route_id,routeId);
   await click('button[title="Add state"]');
   const targetId = main().states.find(state => state.state_id !== stateId).state_id;
   await evaluate("document.querySelector('.state-transition-edge').dispatchEvent(new MouseEvent('click',{bubbles:true}))");
   await wait(300);
   await choose(`select[id="route-target-${routeId}"]`, targetId);
   assert.equal(main().routes[0].target_state, targetId);
+  const beforeRebind=structuredClone(main().routes[0]);
+  const reconnectPoints=await evaluate(`(() => {
+    const a=document.querySelector('.react-flow__edgeupdater-source').getBoundingClientRect();
+    const b=document.querySelector('.react-flow__node[data-id="${stateId}"] [data-handleid="new-physical-trigger:BUTTON_B"]').getBoundingClientRect();
+    return {a:{x:Math.round(a.x+a.width/2),y:Math.round(a.y+a.height/2)},b:{x:Math.round(b.x+b.width/2),y:Math.round(b.y+b.height/2)}};
+  })()`);
+  window.webContents.sendInputEvent({type:'mouseMove',...reconnectPoints.a});
+  window.webContents.sendInputEvent({type:'mouseDown',button:'left',clickCount:1,...reconnectPoints.a});
+  for(let i=1;i<=10;i++) { window.webContents.sendInputEvent({type:'mouseMove',x:Math.round(reconnectPoints.a.x+(reconnectPoints.b.x-reconnectPoints.a.x)*i/10),y:Math.round(reconnectPoints.a.y+(reconnectPoints.b.y-reconnectPoints.a.y)*i/10)});await wait(20); }
+  window.webContents.sendInputEvent({type:'mouseUp',button:'left',clickCount:1,...reconnectPoints.b});await wait(500);
+  assert(commands.some(command=>command.kind==='route.rebind_trigger'&&command.route_id===routeId&&command.logical_source==='BUTTON_B'));
+  assert.deepEqual({...main().routes[0],action_ref:beforeRebind.action_ref},beforeRebind);
   const request = (operation, params) => new Promise((resolve, reject) => {
     const requestId = String(++id); pending.set(requestId, {resolve, reject});
     child.stdin.write(JSON.stringify({protocol_version:1,id:requestId,operation,params})+'\n');
   });
   let snapshot = await request('project.preview_reset', {project_revision:latest.project_revision,scene_id:'main',state_id:stateId});
+  await text('[aria-label="Condition 1 value"]','1');
+  snapshot = await request('project.preview_reset', {project_revision:latest.project_revision,scene_id:'main',state_id:stateId});
   snapshot = await request('project.preview_input', {project_revision:latest.project_revision,
-    preview_revision:snapshot.preview_revision,logical_source:'BUTTON_A'});
+    preview_revision:snapshot.preview_revision,logical_source:'BUTTON_B'});
+  assert.equal(snapshot.scene.state_id,stateId,'Edited guard must reject the input');
+  assert.equal(snapshot.variables.counter,0);
+  await text('[aria-label="Condition 1 value"]','0');
+  snapshot = await request('project.preview_reset', {project_revision:latest.project_revision,scene_id:'main',state_id:stateId});
+  snapshot = await request('project.preview_input', {project_revision:latest.project_revision,
+    preview_revision:snapshot.preview_revision,logical_source:'BUTTON_B'});
   assert.equal(snapshot.variables.counter, 1, 'The authored guarded button route must execute in the host');
   assert.equal(snapshot.scene.state_id, targetId);
+  await click('[aria-label="Move effect 1 later"]');
+  snapshot = await request('project.preview_reset', {project_revision:latest.project_revision,scene_id:'main',state_id:stateId});
+  snapshot = await request('project.preview_input', {project_revision:latest.project_revision,
+    preview_revision:snapshot.preview_revision,logical_source:'BUTTON_B'});
+  assert.equal(snapshot.variables.counter,3,'Assign then add must differ from add then assign');
+  assert.equal(main().routes[0].route_id,routeId);
+  const editedRoute=structuredClone(main().routes[0]);
+  await click('button[title="Undo"]');
+  assert.deepEqual(main().routes[0].actions.map(action=>action.operation),['add','assign']);
+  await click('button[title="Redo"]');assert.deepEqual(main().routes[0],editedRoute);
+  await button('Save');await button('Open project');
+  assert.deepEqual(main().routes[0],editedRoute);
+  await button('Local logic');
+  await evaluate("document.querySelector('.state-transition-edge').dispatchEvent(new MouseEvent('click',{bubbles:true}))");await wait(300);
+  console.log('Existing route edit: stable identity, guards reject/accept, ordered calculations, destination, undo/redo and save/reopen passed');
   assert(commands.some(command => command.kind === 'object_actions.set' && command.owner_id === routeId));
   assert(!commands.some(command => command.kind.startsWith('route.action.') || command.kind === 'route.set_action'));
   window.webContents.invalidate(); await wait(200);

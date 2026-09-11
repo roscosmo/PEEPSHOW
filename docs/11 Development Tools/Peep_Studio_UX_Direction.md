@@ -994,6 +994,16 @@ parallel model or expose version-2 graph construction ahead of its handoff.
 
 ### Supported Authoring Next Steps
 
+- Existing-transition audit: verified native routes can be edited without
+  deletion/recreation. The Electron regression drags a physical trigger from A
+  to B, retargets the existing route, edits its guard, and reorders variable
+  actions. Host execution confirms guard rejection/acceptance and distinct
+  results for add-then-assign versus assign-then-add. Route identity, actions,
+  guards and destination survive trigger rebinding; undo/redo and save/reopen
+  preserve the resulting route. No missing backend command or application fix
+  was identified for these workflows. The regression uses the API 42 empty-scene
+  build blocker rather than the superseded blanket V2 export prohibition.
+
 - Resume functional native authoring, not cosmetic refinements or new hardware
   fixtures. Preserve separate editing, preview and whole-project export checks.
 - Implemented: native object inspectors can edit an existing clip's ordered
