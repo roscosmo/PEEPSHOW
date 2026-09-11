@@ -148,7 +148,7 @@ app.whenReady().then(async () => {
   window.setSize(1440, 900);
   await wait(300);
   const stateId = Object.keys(documentResult.placement_ownership.scenes.state_demo.states)[1];
-  await setControl('Placement target', stateId, 'select');
+  await setControl('Editing', stateId, 'select');
   await wait(500);
   const expected = documentResult.placement_ownership.scenes.state_demo.states[stateId].resolved_elements;
   const actual = await evaluate("[...document.querySelectorAll('.placement-element-box')].map(e => e.title)");
@@ -159,7 +159,7 @@ app.whenReady().then(async () => {
   assert.equal(override().x, originalX - 4);
   assert.equal(override().y, 20);
   const secondStateId = scene().states.find(state => state.state_id !== stateId).state_id;
-  await setControl('Placement target', secondStateId, 'select');
+  await setControl('Editing', secondStateId, 'select');
   await wait(300);
   await setControl("Object Y", 22);
   assert.equal(override().y, 20, 'Selecting a different target must not edit the preceding state');
@@ -170,13 +170,13 @@ app.whenReady().then(async () => {
   for (const id of [secondStateId]) {
     assert.equal(scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === selectedId).visible, false);
   }
-  await click('[aria-label="Clear visible override"]');
+  await click('[aria-label="Use scene default for visibility"]');
   await setControl("Object frame", "marker.phase_b", "select");
   for (const id of [secondStateId]) {
     assert.equal(scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === selectedId).visual_ref, "marker.phase_b");
   }
-  await click('[aria-label="Clear visual_ref override"]');
-  await click('[aria-label="Clear x override"]');
+  await click('[aria-label="Use scene default for frame"]');
+  await click('[aria-label="Use scene default for X"]');
   assert.equal(override().x, originalX - 4);
   assert.equal(override().y, 20);
   assert(await evaluate("document.querySelector('[aria-label=\"Object animation\"]').disabled"));
@@ -225,7 +225,7 @@ app.whenReady().then(async () => {
   await button('Remove from selected states');
   assert(created(), 'State removal must not delete the scene-owned object');
   for (const id of [secondStateId]) assert.equal(scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === createdId).visible, false);
-  await setControl('Placement target', '', 'select');
+  await setControl('Editing', '', 'select');
   await button('Delete object');
   assert.equal(created(), undefined);
   assert(scene().states.every(state => !state.object_overrides.some(item => item.object_ref === createdId)));

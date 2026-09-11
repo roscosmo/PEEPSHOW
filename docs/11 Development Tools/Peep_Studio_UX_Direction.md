@@ -999,8 +999,10 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   children show the state name and authored property values from host placement
   projections. Selecting an object targets scene defaults; selecting its state
   child displays the complete state placement and edits only that object's
-  override. The inspector's single Placement target selector can choose any
+  override. The inspector's single Editing selector can choose any
   state, including one without an override yet. No cross-state composite view.
+  Property labels read Using scene default or Changed in this state; reset
+  tooltips read Use scene default. Technical command names remain internal.
   Disclosure controls only expand/collapse; selection does not launch the
   emulator. Whole-state selection and explicit emulator launch remain in Local
   logic. This is presentation only; backend ownership and legacy editing remain

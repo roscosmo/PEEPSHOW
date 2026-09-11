@@ -199,7 +199,7 @@ app.whenReady().then(async () => {
   console.log('Asset tabs: filtered controls, empty state, cleared selection and keyboard navigation passed');
   await button('Placement');
   const placementTarget = async value => {
-    await evaluate(`(() => {const e=document.querySelector('[aria-label="Placement target"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await evaluate(`(() => {const e=document.querySelector('[aria-label="Editing"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
     await wait(400);
   };
   await placementTarget('');

@@ -105,13 +105,13 @@ export function SceneObjectInspector({ scene, object, label, stateIds, ownership
   const overrideStates = (property: Property) => stateIds.filter(id =>
     ownership?.states[id]?.changes[object.object_id]?.local_properties.includes(property));
   const reset = (property: Property) => stateScope && <button className="icon-button" type="button"
-    title={`Clear ${property === "visual_ref" ? "frame" : property.toUpperCase()} override`}
-    aria-label={`Clear ${property} override`} disabled={busy || !supports("object_override.clear") || !overrideStates(property).length}
+    title="Use scene default"
+    aria-label={`Use scene default for ${property === "visual_ref" ? "frame" : property === "visible" ? "visibility" : property.toUpperCase()}`} disabled={busy || !supports("object_override.clear") || !overrideStates(property).length}
     onClick={() => void onApply(overrideStates(property).map(state_id => ({ kind: "object_override.clear",
       scene_id: scene.scene_id, object_id: object.object_id, state_id, properties: [property] })))}><RotateCcw size={14} /></button>;
   const status = (property: Property) => !stateScope ? "Scene default"
-    : overrideStates(property).length === 0 ? "Inherited"
-      : overrideStates(property).length === stateIds.length ? "Overridden" : "Mixed overrides";
+    : overrideStates(property).length === 0 ? "Using scene default"
+      : overrideStates(property).length === stateIds.length ? "Changed in this state" : "Changed in some states";
   const matchingFrames = frames.filter(frame => frame.width === object.width && frame.height === object.height);
   const matchingIds = new Set(matchingFrames.map(frame => frame.frame_id));
   const matchingClips = clips.filter(clip => clip.frame_refs.length > 0 && clip.frame_refs.every(id => matchingIds.has(id)));

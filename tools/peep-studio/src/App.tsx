@@ -4458,7 +4458,7 @@ export default function App() {
     const targetStates = (selectedSceneDocument?.states ?? []).filter((state) => placementEditStateIds.includes(state.state_id));
     return (
       <section className="inspector-section placement-edit-scope-section">
-        <h3><SquareMousePointer size={14} aria-hidden="true" /> Edit target</h3>
+        <h3><SquareMousePointer size={14} aria-hidden="true" /> Editing</h3>
         {selectedSceneDocument === null ? (
           <p className="muted">Select a scene to choose where placement edits apply.</p>
         ) : (
@@ -4483,13 +4483,11 @@ export default function App() {
             )}
             <p className="muted">Preview: {placementState?.display_name ?? "Base Placement"}</p>
             </>}
-            {objectSceneSelected && <label>Placement target
-              <select aria-label="Placement target" value={placementStateId ?? ""}
+            {objectSceneSelected && <select aria-label="Editing" value={placementStateId ?? ""}
                 onChange={event => void openHierarchyPlacementTarget(selectedSceneDocument, event.target.value || null, selectedPlacementElement ?? undefined)}>
                 <option value="">Scene defaults</option>
                 {(selectedSceneDocument.states ?? []).map(state => <option key={state.state_id} value={state.state_id}>{state.display_name}</option>)}
-              </select>
-            </label>}
+              </select>}
           </div>
         )}
       </section>

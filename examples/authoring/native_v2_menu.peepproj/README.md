@@ -21,7 +21,7 @@ The hierarchy lists all eight objects directly beneath the scene. Expand the
 selection outline to see its three state overrides. Selecting the object edits
 scene defaults; selecting an override displays that complete state's placement
 and targets the outline in that state. Other objects have no override children.
-The inspector's Placement target also allows choosing a state before it has an
+The inspector's Editing selector also allows choosing a state before it has an
 override. In Local logic the states are stacked in menu order; select a state
 there and use Load in emulator to launch it independently of placement selection.
 
