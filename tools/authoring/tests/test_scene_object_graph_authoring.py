@@ -84,12 +84,12 @@ class SceneObjectGraphAuthoringTests(unittest.TestCase):
 
     def test_hello_and_scene_advertise_exact_local_scope(self):
         hello = self.call("service.hello")
-        self.assertEqual(41, hello["service_api_version"])
+        self.assertEqual(42, hello["service_api_version"])
         scene_caps = self.call("project.normalize")["scene_capabilities"]["main"]
         for caps, command_key in ((hello["scene_object_authoring"], "commands"), (scene_caps, "supported_commands")):
             self.assertTrue(caps["graph_construction_commands"])
             self.assertFalse(caps["scene_connection_commands"])
-            self.assertFalse(caps["egg_export"])
+            self.assertTrue(caps["egg_export"])
             self.assertEqual(["state", "system_exit"], caps["route_destination_kinds"])
             self.assertEqual(list(LOCAL_GRAPH_COMMANDS), caps["local_graph_commands"])
             self.assertTrue(set(LOCAL_GRAPH_COMMANDS).issubset(caps[command_key]))
@@ -117,9 +117,8 @@ class SceneObjectGraphAuthoringTests(unittest.TestCase):
         self.assertEqual(15, snapshot["objects"][0]["underlying"]["x"])
         self.assertEqual(80, snapshot["objects"][0]["effective"]["x"])
         self.assertNotIn("waiting_visuals", self.scene())
-        with self.assertRaises(ProtocolError) as error:
-            self.call("project.build_package")
-        self.assertIn("SCENE_OBJECT_EXECUTABLE_UNAVAILABLE", [issue["code"] for issue in error.exception.details["issues"]])
+        built = self.call("project.build_package")
+        self.assertEqual(2, built["package"]["container_version"])
 
     def test_guard_edits_order_and_rejection_do_not_run_actions(self):
         self.graph()

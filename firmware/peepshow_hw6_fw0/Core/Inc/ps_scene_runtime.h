@@ -5,6 +5,7 @@
 
 #include "ps_scene_render_model.h"
 #include "ps_scene_waiting_visual.h"
+#include "ps_scene_object_waiting.h"
 #include "ps_target_profile_autogen.h"
 #include "ps_egg_object_decoder.h"
 
@@ -306,6 +307,19 @@ const ps_scene_waiting_visual_t *PS_SceneRuntime_ResolveShellStateWaitingVisual(
   uint32_t focus_index,
   const ps_scene_waiting_visual_bounds_t *cursor_bounds);
 uint32_t PS_SceneRuntime_EnterStateScene(void);
+/* Same-thread admission only; the callback must finish copying the staged bank
+ * before returning. No callback or staged pointer is sent through an RTOS queue. */
+typedef uint32_t (*ps_scene_object_admission_fn_t)(const uint8_t *blob,
+  uint32_t size, const ps_scene_objects_t *objects);
+void PS_SceneRuntime_SetObjectAdmission(ps_scene_object_admission_fn_t admission);
+uint32_t PS_SceneRuntime_InstalledObjectsActive(void);
+/* Explicit awake development session, never normal package admission. */
+uint32_t PS_SceneRuntime_EnterDevelopmentObjects(const uint8_t *blob, uint32_t size);
+uint32_t PS_SceneRuntime_DevelopmentObjectsActive(void);
+uint32_t PS_SceneRuntime_AdvanceDevelopmentObjects(uint32_t elapsed_ms);
+uint32_t PS_SceneRuntime_BuildDevelopmentWaiting(ps_object_waiting_program_t *program);
+uint32_t PS_SceneRuntime_ProjectDevelopmentObjects(ps_scene_render_model_t *model,
+  uint32_t *next_ms);
 /* Pure descriptor check, shared by activation and candidate preflight.
  * Object descriptors must carry an immutable view from PS_EggObject_Decode.
  * A valid object descriptor is not production display/activation admission.

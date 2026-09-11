@@ -126,6 +126,32 @@ envelope is diagnostic only; production message contracts remain under
 
 Current FW0 stack sizing is compile-time tunable through `KNOB_RTOS_DEFAULT_STACK_BYTES`, `KNOB_RTOS_POWER_STACK_BYTES`, `KNOB_RTOS_INPUT_STACK_BYTES`, `KNOB_RTOS_DISPLAY_STACK_BYTES`, `KNOB_RTOS_SENSOR_STACK_BYTES`, `KNOB_RTOS_STORAGE_STACK_BYTES`, and `KNOB_RTOS_RUNTIME_STACK_BYTES`. `thPower` has a provisional `6144` byte stack budget because it owns PMIC policy plus HAL clock-policy transitions during USB MSC reclaim, STOP2, audio-clock, and shutdown paths; this budget replaces the earlier `4096` byte value after a USB reclaim HardFault showed corrupted ThreadX/probe state while executing the power-owned RCC path. `thInput` has a measured provisional `1536` byte stack budget because bounded TMAG3001 raw XYZ diagnostic capture overflowed the original `1024` byte default stack; a `4096` byte input diagnostic stack exhausted the current ThreadX byte pool and is not the accepted default. The RTOS probe records configured stack bytes plus ThreadX stack start/end/current/high-water pointers for each owner so stack damage can be separated from normal storage, USB reclaim, or input-owner diagnostic failures.
 
+Installed V2 launch requires a `4096` byte `thRuntime` stack. The previous
+`2048` byte allocation faulted with Cortex-M33 STKOF and PSP at its lower bound
+during nested object admission/decoding. Probe initialization now avoids large
+automatic struct temporaries. The ARM Debug regression check
+`tools/authoring/check_v2_runtime_stack.py` measures the selected launch, input,
+timer and presentation call chains, including admission callbacks: the checked
+maximum is 1816 C bytes plus a 512-byte exception/library reserve. This is not
+a whole-firmware worst-case proof. The extra 2048 bytes use the existing fixed
+ThreadX pool. The 2026-09-11 hardware retry confirmed runtime stack size 4096,
+startup status 0, 13544 pool bytes remaining, and installed V2 boot plus
+reinstall/launch. Saved SP margin 3276 is not a worst-case high-water result.
+See `docs/11 Development Tools/V2_Installed_Package_Test_Runbook.md` for the
+fault evidence and retry limits. No owner, queue, clock or sleep policy changes.
+
+Installed V2 launch requires a `4096` byte `thRuntime` stack. The previous
+`2048` byte allocation faulted with Cortex-M33 STKOF and PSP at its lower bound
+during nested object admission/decoding. Probe initialization now avoids large
+automatic struct temporaries. The ARM Debug regression check
+`tools/authoring/check_v2_runtime_stack.py` measures the selected launch, input,
+timer and presentation call chains, including admission callbacks: the checked
+maximum is 1816 C bytes plus a 512-byte exception/library reserve. This is not
+a whole-firmware worst-case proof. The extra 2048 bytes use the existing fixed
+ThreadX pool; startup allocation status and hardware launch still need checking.
+See `docs/11 Development Tools/V2_Installed_Package_Test_Runbook.md` for the
+fault evidence and hardware retry. No owner, queue, clock or sleep policy changes.
+
 Phase 5 remains open for real producer/consumer routing, sole-owner peripheral
 access, saturation and timeout policy, fault propagation, and the power
 quiesce/resume barrier.
@@ -329,7 +355,23 @@ contracts.
 
 ---
 
+Power-requested runtime suspension uses the internal
+`RUNTIME_POWER_SUSPEND` command. It preserves the existing graph/timer pause and
+subsequent power owner-quiesce path, rather than entering the shell SFX-stop
+barrier while `thPower` is waiting for runtime admission. Ordinary runtime
+suspension continues to stop/discard SFX before acknowledging shell entry.
+
 ## Validation Evidence Required
+
+The package-SFX stop barrier uses the existing `qAudioCmd` four-word command
+envelope and `egDebug` bit 12 for its dedicated acknowledgement. `thRuntime` is
+the sole package-SFX producer and stop requester. It closes admission before
+enqueueing STOP; FIFO consumption discards preceding PLAY requests while closed.
+The acknowledgement carries a checked request sequence in the separate audio
+package probe and confirms owner stop, zero outstanding requests, and clock release.
+This bit is separate from object-display bit 13, validation bit 14, package-reader
+bit 15, owner acknowledgements and clock acknowledgements. A timeout quarantines
+the package audio path until reset, so a late acknowledgement cannot reopen it.
 
 Before runtime host feature work:
 1. queue producers and consumers verified

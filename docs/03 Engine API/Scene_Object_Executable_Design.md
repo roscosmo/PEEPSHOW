@@ -4,7 +4,10 @@ Status: GUI representation review accepted; source loading, migration/editing
 service and host scene-object preview implemented in service API 39. A separate
 development V2 binary encoder/reader, full C development scene decoder and staged
 C object/graph execution are implemented. Normal export, production activation,
-replacement orchestration and autonomous display integration remain unavailable.
+replacement orchestration remain unavailable. Autonomous display integration is
+now available only as an opt-in development test. The structured fixture has a
+scoped hardware pass; exact timing and broader admission remain unproven. See
+[[Scene_Object_Awake_Development_Test]].
 
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. Tests:
 [[Scene_Object_Ownership_Acceptance_Plan]]. Coordination:
@@ -444,3 +447,99 @@ The first device proof is selection moving a marker without restarting a base
 sprite, followed by a scene timer changing an object without a state transition.
 Include awake/STOP2 continuity and invalid-package recovery. Explicit playback,
 groups and prefabs remain later increments with their own acceptance evidence.
+
+### Awake Development Integration
+
+The first explicit device path is implemented and its original awake fixture
+passed hardware animation, independent state overrides and shell exit. The next
+GUI-authored fixture also passed awake hardware animation and A/B overrides.
+See [[Scene_Object_Awake_Development_Test]] for the exact subset, build
+fixture, owner handoff and two GDB helpers. The existing object bank/graph now
+feed a pointer-free render model and the real display owner. Local state changes
+do not reset the object clock. The development session deliberately remains
+awake; this does not enable production V2 installation/export or LPBAM. The
+earlier allocation-free/no-active-path notes describe the preceding pure-engine
+increment, not this explicit test path.
+
+The next awake increment admits state/scene timers and publishes committed timer
+actions to the existing runtime scheduler. Scene timer handlers may mutate scene
+objects without a state transition. Native tests cover real scheduler/graph/render
+integration, timer controls, owner lifetimes and suspension. The awake hardware
+fixture passed state/scene expiry, visual continuity, Restart and Cancel;
+suspension and broader cases remain native-only. See the same development-test document for the
+OS-owned timer variant, which leaves GUI's source unchanged. STOP2/LPBAM and
+ordinary V2 export remain unavailable.
+
+The subsequent awake development increment admits ordinary `PLAY_SFX` effects
+after successful object-graph commit, including multiple ordered effects from
+input or timer handlers. The existing audio owner and queue perform playback.
+Shell suspension and package exit/replacement stop and discard active/queued
+SFX through a bounded owner acknowledgement before source reuse. Returning from
+the shell does not replay those cues. Future resumable music/dialogue requires
+an explicit capability, independent of clip duration. Native tests and the
+firmware build pass; audible playback and shell-stop/silent-resume have passed
+the scoped hardware check recorded in the development-test document.
+See [[Audio_Contract]] and [[Scene_Object_Awake_Development_Test]].
+
+### V2 Waiting Schedule Compiler
+
+`ps_scene_object_waiting.c` is the first low-power preparation increment. It is
+a pure, allocation-free compiler, not a new active display path. It reads a
+validated object bank without mutating it and produces a pointer-free base
+snapshot plus per-object frame references for at most the existing 12 combined
+steps. Caller-owned scratch avoids a hidden heap or global working buffer.
+
+Visible, unmasked animation supplies the timing constraints. The common quantum
+is the greatest common divisor of frame durations; the cycle is the least
+common multiple of their loop durations. Arithmetic is checked before narrowing
+or accepting the schedule. A schedule exceeding the bounded step capacity is
+rejected explicitly, not shortened or approximated. Hidden and statically masked
+clips do not demand display wakeups. With no visible animation the result is
+one held frame and no display deadline; object clocks still belong to runtime.
+
+The program captures remaining time in the initial interval separately from the
+steady quantum. For the numbered fixture captured at scene time 650 ms, it
+starts on digit 2 with 150 ms remaining, then advances every 400 ms. Rebuilding
+after a state override does not restart that clock. Unequal frame durations
+appear as exact repeated steps. Full-scene model projection preserves static
+objects and layering rather than clearing sprite bounds over other objects.
+
+The pure resolver maps absolute scene elapsed time to a program step and its
+remaining interval, including large elapsed values and loop wrap. Backwards
+time is rejected. Shell suspension pauses scene time; STOP2 elapsed time must
+be supplied by the Platform. This arithmetic is not a substitute for the real
+LPDMA progress snapshot or transfer completion on hardware wake.
+
+The integrating caller must invalidate a program on object/state/scene changes,
+lease it immutably to the display owner, admit actual row/payload/node budgets,
+honor the first partial interval, and reconcile RTC elapsed time plus display
+progress before allowing runtime events after wake. Automatic V2 STOP2 remains
+blocked. No export capability is advertised by the existence of this compiler.
+
+The display-owner preparation increment now leases one requested schedule along
+with its matching render model through the existing bounded queue/acknowledgement.
+On a lease timeout neither model nor program can be overwritten. The owner
+validates that the projected starting model equals the presented development
+model, then composes complete ordered scene frames and packs their actual row
+differences. Static overlays are not erased by per-sprite bounds clearing.
+Preparation reuses existing LPBAM frame/payload buffers, only while compiled,
+prearmed and active playback are all absent. It does not select/build a DMA
+queue or publish readiness. Payload rejection is observable and leaves awake
+execution intact; no V1 guaranteed truncation fallback is applied.
+
+This connects schedule leasing and row/payload admission for an explicit test,
+not the autonomous handoff. First-interval timing, queue/node admission and
+RTC/display-progress reconciliation remain required before permitting V2 STOP2.
+
+### Authoring Timing Coordination
+
+The intended Studio experience is an explicit scene animation interval, with
+authored frame durations constrained to whole multiples. This is not an OS
+tick setting or a restriction on responsive input redraws. It is not yet a
+new source field or service command: the current compiler still derives the
+common quantum. Shared validation must also check the combined loop length
+and actual target resource budget; divisibility alone is insufficient.
+Do not silently round durations, shorten loops or restart playback to make a
+scene fit. Coordinate this constraint with GUI when requesting an LPBAM fixture,
+along with evidence from owner admission and physical timing tests. Preserve
+the passed four-frame 400 ms fixture for the initial hardware handoff.

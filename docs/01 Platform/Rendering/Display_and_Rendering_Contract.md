@@ -349,6 +349,18 @@ It is allowed and designed-for, but not required for the normal display renderer
 
 LPBAM rules:
 
+The V2 development-only object adapter is tracked in
+[[Scene_Object_Awake_Development_Test]]. It composes complete immutable object
+snapshots through the existing bounded payload/list path, without a cursor or
+focus requirement. It does not use the legacy three-step or held-frame fallback.
+Its opt-in timed commit preserves the first partial interval using the LPTIM
+compare offset; wake residual is measured to that compare edge. Production V2
+admission and exact timing/quantified power validation remain pending. The
+structured development fixture has observed low-power animation, corrected A/B
+placement continuity and successful timer/wake reconciliation recorded in the
+test document. Existing V1
+hand-off behavior is unchanged.
+
 - LPBAM may run only Platform-validated compiled waiting-visual slices.
 - LPBAM cannot own arbitrary game rendering.
 - LPBAM is the preferred backend on targets that grant the autonomous-display capability for eligible display motion while reactive runtime logic waits for its next admitted event.

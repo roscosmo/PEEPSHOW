@@ -40,6 +40,17 @@ typedef struct
   uint32_t opaque;
 } ps_egg_state_loader_sprite_frame_t;
 
+/* Read-only view exported only after full candidate validation. All spans borrow
+ * immutable resident package bytes; keep that package leased until display ACK.
+ */
+typedef struct
+{
+  const uint8_t *records;
+  const uint8_t *sprite_payload;
+  uint32_t sprite_size;
+  uint16_t frame_count;
+} ps_egg_sprite_catalog_t;
+
 typedef struct
 {
   const uint8_t *adpcm;
@@ -123,6 +134,48 @@ typedef struct
 extern volatile ps_egg_state_loader_probe_t g_ps_egg_state_loader_probe;
 extern volatile ps_egg_state_loader_probe_t g_ps_egg_validation_probe;
 
+/* This profile is not an installation or display/LPBAM admission result. */
+typedef enum
+{
+  PS_EGG_V2_PROFILE_NONE = 0,
+  PS_EGG_V2_PROFILE_ARGUMENT,
+  PS_EGG_V2_PROFILE_CAPACITY,
+  PS_EGG_V2_PROFILE_PACKAGE,
+  PS_EGG_V2_PROFILE_SCENE_COUNT,
+  PS_EGG_V2_PROFILE_MODEL,
+  PS_EGG_V2_PROFILE_INTERACTION,
+  PS_EGG_V2_PROFILE_AUDIO,
+  PS_EGG_V2_PROFILE_EVENT,
+  PS_EGG_V2_PROFILE_SCENE_EXIT,
+  PS_EGG_V2_PROFILE_ACTION
+} ps_egg_v2_profile_reason_t;
+
+typedef struct
+{
+  uint32_t reason;
+  uint32_t loader_reason;
+  uint32_t scene_id;
+  uint32_t item_index; /* Zero-based binding/transition/action; otherwise invalid. */
+} ps_egg_v2_profile_result_t;
+
+/* thRuntime only; shares the serialized candidate scratch/HASH path.
+ * Checks integrity and the first single-scene V2 feature profile. Does not
+ * activate, publish catalogs, retain blob pointers, or authorize installation.
+ * Returns 0 on profile success, 1 on rejection. result must be non-NULL.
+ * Production ValidatePackage intentionally continues rejecting V2.
+ */
+uint32_t PS_EggStateLoader_ValidateV2Profile(const uint8_t *blob, uint32_t size,
+  ps_egg_v2_profile_result_t *result);
+/* Same validation, exporting a candidate descriptor/catalog without activation.
+ * Outputs are cleared on rejection. This does not authorize installation.
+ */
+uint32_t PS_EggStateLoader_DecodeV2Candidate(const uint8_t *blob, uint32_t size,
+  ps_scene_runtime_state_scene_t *scene, ps_egg_sprite_catalog_t *catalog,
+  ps_egg_v2_profile_result_t *result);
+/* Pure lookup in a validated immutable view; never falls back to active assets. */
+uint32_t PS_EggStateLoader_GetCatalogSpriteFrame(const ps_egg_sprite_catalog_t *catalog,
+  uint32_t frame_id, ps_egg_state_loader_sprite_frame_t *frame);
+
 /* thRuntime only. Full candidate validation without activating or replacing it. */
 uint32_t PS_EggStateLoader_ValidatePackage(const uint8_t *blob, uint32_t size);
 /* thRuntime only, explicit development path. Validates every scene before
@@ -132,6 +185,10 @@ uint32_t PS_EggStateLoader_ValidatePackage(const uint8_t *blob, uint32_t size);
  */
 uint32_t PS_EggStateLoader_DecodeDevelopmentScene(const uint8_t *blob,
   uint32_t size, uint32_t scene_id, ps_scene_runtime_state_scene_t *scene);
+/* Explicit development activation only, after old display/audio work is idle.
+ * Publishes the validated immutable catalogs for display frame resolution. */
+uint32_t PS_EggStateLoader_LoadDevelopment(const uint8_t *blob,
+  uint32_t size, ps_scene_runtime_state_scene_t *scene);
 
 /*
  * The package blob must remain immutable while the decoded scene is active.

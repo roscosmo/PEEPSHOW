@@ -6,6 +6,7 @@
 #include "LS013B7DH05.h"
 #include "ps_scene_render_model.h"
 #include "ps_scene_waiting_visual.h"
+#include "ps_egg_state_loader.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -94,6 +95,8 @@ typedef struct
   uint32_t sequence_start_frame;
   uint32_t sequence_phase[DISPLAY_RENDERER_WAITING_SEQUENCE_MAX];
   uint32_t element_count;
+  display_renderer_waiting_phase_composer_t compose_scene;
+  const void *scene_context;
   display_renderer_waiting_element_t
     elements[DISPLAY_RENDERER_WAITING_ELEMENT_MAX];
   const uint16_t *candidate_rows;
@@ -125,6 +128,14 @@ void DisplayRenderer_ClearWhite(void);
 const uint8_t *DisplayRenderer_GetBuffer(void);
 uint32_t DisplayRenderer_GetDirtyRows(const uint16_t **rows);
 void DisplayRenderer_CommitPresentedFrame(void);
+/* thDisplay only; composes off-screen without changing the committed frame. */
+uint32_t DisplayRenderer_CopySceneModelFrame(const ps_scene_render_model_t *model,
+  uint8_t *destination, uint32_t destination_size);
+/* thDisplay only, synchronous/non-reentrant; no active-catalog fallback.
+ * catalog and its package lease must remain immutable throughout the call.
+ */
+uint32_t DisplayRenderer_CopyCandidateSceneFrame(const ps_scene_render_model_t *model,
+  const ps_egg_sprite_catalog_t *catalog, uint8_t *destination, uint32_t destination_size);
 uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
   uint32_t visible,
   display_renderer_stats_t *stats);
@@ -138,6 +149,8 @@ uint32_t DisplayRenderer_GetSceneFocusLogicalBounds(
 uint32_t DisplayRenderer_PublishSceneWaitingVisual(
   const ps_scene_waiting_visual_t *visual);
 void DisplayRenderer_ClearSceneWaitingVisual(void);
+uint32_t DisplayRenderer_PublishFullSceneWaiting(
+  const display_renderer_waiting_animation_t *animation);
 uint32_t DisplayRenderer_GetSceneWaitingTimeline(
   uint32_t *presentation_id,
   uint32_t *sequence_step_count,

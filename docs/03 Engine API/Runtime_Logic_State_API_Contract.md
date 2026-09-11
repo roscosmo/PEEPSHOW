@@ -395,6 +395,13 @@ executable handler subset permits variable, render-request, SFX, shell-exit,
 and timer actions without a destination; element mutations require an explicit
 target state, and direct scene replacement retains its SFX-only restriction.
 
+In the explicit V2 awake development path, scene-owned object mutations are
+also admitted in action-only scene timer handlers. They update the shared object
+bank without a synthetic state transition. The existing scheduler and timer
+controls apply; this does not enable ordinary V2 export, SFX, cross-scene routes,
+or V2 STOP2 admission. See [[Scene_Object_Awake_Development_Test]] for delivered
+test coverage and the recorded awake timer fixture pass.
+
 For deterministic delivery, PeepOS completes physical wake and owner recovery
 before delivering the timer event. Due timers are ordered by logical deadline,
 then compiled owner/binding order for ties. Each event completes one bounded

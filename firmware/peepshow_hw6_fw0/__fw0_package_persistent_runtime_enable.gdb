@@ -10,7 +10,7 @@ else
     set var g_ps_package_source_override = 0
     set var g_ps_hw6_runtime_persistent_replace_request = 1
     printf "--- HW6 persistent installed egg replacement requested ---\n"
-    printf "Resume normally. thRuntime reloads the selected installed package; an active SFX is allowed to finish before its source bytes change.\n"
+    printf "Resume normally. thRuntime stops and discards package SFX before reloading the selected installed package.\n"
     printf "The old scene is replaced in place. A load or render failure returns to the shell error page.\n"
     printf "When the new scene or error page is visible, halt and source __fw0_package_persistent_runtime_prints.gdb.\n"
   end

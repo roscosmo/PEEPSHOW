@@ -28,11 +28,102 @@ GUI readiness work: [[Peep_Studio_Empty_Scene_Validation_Handoff]].
   absence of a package still uses EGGLESS. Both buttons and joystick remain
   shell-owned on shell pages, independently of the package lifecycle.
 
-This does not change the A/B layout, calibration, flash geometry, clock profiles,
-egg format or Peep Studio implementation. The staged MSC bridge still has a
+The original workflow increment did not change the layout. The single-slot
+follow-up below supersedes A/B storage without changing calibration, flash
+geometry, clock profiles, egg format or Peep Studio. The staged MSC bridge still has a
 65536-byte limit. Large embedded eggs retain the resident-prefix/raw-audio-reader
 path. The SWD embedded installer receives the same preflight checks but retains
 its existing diagnostic UI entry path; shell timing fields describe shell actions.
+
+## Single-Slot Journal Checkpoint
+
+2026-09-11: layout API 2 and index/install probe API 3 implement one 5 MiB
+active package at `0x000C0000`, protected content reserve at `0x005C0000`, and
+format-2 PENDING/VALID journal records. Debug build, target-profile check and
+298 authoring/native tests pass. Device first install, PLAY, normal reboot,
+same-slot replacement and subsequent PLAY/reboot passed with the embedded V1
+fixture. Simulated NOR interruption/error tests remain distinct from physical
+power-cut acceptance.
+
+Recorded device evidence:
+
+- First install: 321,480 bytes, pending record/generation 0/1, final
+  record/slot/generation 1/0/2, package address `0xC0000`, index `0xB1000`.
+  Preflight completed with status/reason 0/0 and released its reservation.
+- Both installs: status/stage 0/11, pending/retire statuses 0/0, 79 erased
+  sectors, 1,256 programmed pages, all 321,480 bytes read-verified with zero
+  mismatches, commit marker `0x54494D43`, rescan success and availability 1.
+- After an actual reset (not merely reconnecting after STOP2), boot selected
+  generation 2, source 3, scene active 1 and loader status 0, with no install
+  or replacement request. The 65,536-byte resident prefix was loaded. The
+  printed boot HASH field was NOT_RUN; this is not fresh full-HASH proof.
+- Replacement: source 1/0, pending 0/3, final 1/0/4 at the same `0xC0000`
+  address. The user confirmed A PLAY and a subsequent normal reboot both
+  entered the package. No post-replacement reboot probe dump was supplied.
+
+Scope: the same embedded V1 artifact was reinstalled, not converted to V2.
+Different-artifact replacement, physical interruption recovery, new MSC-path
+acceptance, install latency measurement and a settings/calibration preservation
+audit are not established by this result. V2 install/export remains disabled.
+
+The first device attempt failed before reaching the writer: install count/size
+remained zero and the validation reservation stayed active. The 321,480-byte
+embedded candidate passed HASH in 131 ms, but validation had not reached scene
+decoding. The saved runtime PC `0x08011de0` in that test ELF mapped to the
+per-byte/per-chunk padding loop in `PS_EggValidateContainer`. This is evidence of
+validation work overrunning the acknowledgement wait, not a flash-write failure
+or a rejected package. Zero unexecuted erase/verify fields are not success.
+
+The loader now walks validated physical chunk ranges without reordering chunk
+indices and checks only the gaps for zero padding. Range selection is bounded
+by `chunk_count * (chunk_count + 1)` comparisons (462 for this candidate),
+instead of searching the chunk table again for every payload byte. CRC, SHA,
+overlap, bounds and resident-prefix checks are unchanged, as are clock policy
+and acknowledgement timeouts. Native preflight at `-O0` accepts the actual
+embedded source, reordered physical payloads and minimal padding, and rejects
+nonzero leading/intermediate/trailing gaps and overlapping chunks. The rebuilt
+firmware subsequently passed the device sequence recorded above. Install latency
+was not measured; host checks alone are not hardware timing evidence.
+
+Old format-1 A/B records are intentionally ignored. Flashing this firmware on
+an old installation should enter the shell/EGGLESS without erasing settings,
+calibration, saves, USB staging or old slot-B bytes. Reinstall is required.
+This checkpoint does not enable V2 install/export; use the existing embedded
+V1 fixture to test storage independently of Studio:
+
+1. Flash the matching Debug ELF, let boot finish, and confirm responsive shell
+   controls and retained calibration. Do not arm a development V2 scene or MSC.
+2. Halt and source the existing embedded installer, then continue normally:
+
+   ```gdb
+   source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_package_persistent_install_enable.gdb
+   ```
+
+3. Wait for `INSTALLED / A PLAY`, halt and print:
+
+   ```gdb
+   source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_package_persistent_install_prints.gdb
+   source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_package_index_scan_prints.gdb
+   ```
+
+   Require status 0, stage 11, pending/retire statuses 0, byte verification with
+   zero mismatches, selected slot 0/start `0xC0000`, and available 1. With only
+   legacy/erased records initially, pending generation is 1 and final is 2.
+4. Resume and press A to PLAY. Confirm actual scene drawing and working inputs;
+   a journal commit alone does not prove activation or rendering. Reset normally,
+   then confirm the same installed package launches. After boot, print the index
+   helper and `__fw0_package_persistent_runtime_prints.gdb`.
+5. Return to the shell and repeat the embedded install. The package address
+   must remain `0xC0000`; final generation normally becomes 4. Repeat PLAY and
+   reset. Two structurally valid journal records mean PENDING plus VALID, not
+   two package slots. Calibration and shell access must remain intact.
+
+Do not deliberately cut power during this first device check. The automated
+test injects interruptions after every NOR mutation (partial and complete),
+I/O failures and corrupt readback, then checks shell-or-complete-image selection,
+reinstall recovery and protected-region preservation. It also covers generation
+wrap/conflicts and the inclusive 5 MiB low-level writer boundary. Production
+transport and V2 support remain separately bounded as described above.
 
 ## Device Test
 
@@ -52,8 +143,9 @@ or audio. Debugger halts can change timing and low-power behavior.
    expect ERROR, not VALID or INSTALLED. Preflight reason must be `11` (RENDER)
    with the offending scene ID. The selected installed generation must remain
    unchanged. The previous good package must still launch after reset.
-5. On a unit already holding the bad egg, reset with this firmware without
-   replacing the egg first. Expect PACKAGE / PKG ERROR / B BACK, not a blank
+5. On a unit holding a bad egg under a current format-2 VALID journal, reset
+   without replacing the egg first. (Legacy A/B records instead produce EGGLESS
+   under the migration above.) Expect PACKAGE / PKG ERROR / B BACK, not a blank
    screen or SHELL FAULT. B must return to USB FLASH / PACKAGE INSTALL; START
    must reach the shell menu. Confirm both joystick navigation and A/B/L/R
    controls work. No shell navigation action may retry the failed egg.

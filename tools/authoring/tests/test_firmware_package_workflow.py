@@ -24,7 +24,8 @@ from peepshow_authoring.egg_format import (CHUNK_ENTRY, HEADER, RENDER_HEADER,
 
 def firmware_function(source: str, name: str) -> str:
     """Extract a file-scope definition (not its forward declaration) for host C."""
-    match = re.search(r"^static \w+ " + re.escape(name) + r"\([^;{}]*\)\s*\{", source, re.MULTILINE)
+    match = re.search(r"^(?:(?:static|const)\s+)*\w+\s+(?:\*\s*)?" +
+                      re.escape(name) + r"\([^;{}]*\)\s*\{", source, re.MULTILINE)
     if match is None:
         raise AssertionError(f"Missing production function: {name}")
     end = source.index("\n}", match.end()) + 2
@@ -144,6 +145,55 @@ class FirmwarePackageWorkflowTests(unittest.TestCase):
 
             fixture("baseline", baseline)
             fixture("valid", baseline, 0)
+            # Chunk indices are references, not physical ordering. Reverse only
+            # the payload placement and leave all indexed metadata unchanged.
+            header = HEADER.unpack_from(baseline)
+            entries = [CHUNK_ENTRY.unpack_from(baseline, header[4] + index * CHUNK_ENTRY.size)
+                       for index in range(header[6])]
+
+            def envelope(data):
+                struct.pack_into("<I", data, 8, len(data))
+                struct.pack_into("<I", data, 16, len(data) - 40)
+                struct.pack_into("<I", data, 44, 0)
+                struct.pack_into("<I", data, 44, zlib.crc32(data[:HEADER.size]))
+                data[-32:] = hashlib.sha256(data[:-40]).digest()
+                return data
+
+            table_end = header[4] + header[6] * CHUNK_ENTRY.size
+            reordered = bytearray(baseline[:table_end])
+            gaps = []
+            for index in reversed(range(len(entries))):
+                gaps.append(len(reordered))
+                reordered.extend(bytes(4 + (-len(reordered) % 4)))
+                entry = entries[index]
+                struct.pack_into("<I", reordered, header[4] + index * CHUNK_ENTRY.size + 16,
+                                 len(reordered))
+                reordered.extend(baseline[entry[4]:entry[4] + entry[5]])
+            gaps.append(len(reordered))
+            reordered.extend(bytes(4 + (-len(reordered) % 4)))
+            reordered.extend(baseline[-40:])
+            fixture("unordered_payloads_with_gaps", envelope(reordered), 0)
+            for index, gap in enumerate(gaps):
+                corrupt = bytearray(reordered)
+                corrupt[gap] = 1
+                fixture(f"nonzero_gap_{index}", envelope(corrupt), 5)
+            adjacent = bytearray(baseline[:table_end])
+            for index, entry in enumerate(entries):
+                adjacent.extend(bytes(-len(adjacent) % 4))
+                struct.pack_into("<I", adjacent, header[4] + index * CHUNK_ENTRY.size + 16,
+                                 len(adjacent))
+                adjacent.extend(baseline[entry[4]:entry[4] + entry[5]])
+            adjacent.extend(baseline[-40:])
+            fixture("minimal_padding", envelope(adjacent), 0)
+            corrupt = bytearray(reordered)
+            # Two records describing the same bytes must still fail overlap checks.
+            first = CHUNK_ENTRY.unpack_from(corrupt, header[4])
+            struct.pack_into("<III", corrupt, header[4] + CHUNK_ENTRY.size + 16,
+                             first[4], first[5], first[6])
+            fixture("overlap", envelope(corrupt), 5)
+            embedded_source = (firmware / "Core/Src/ps_embedded_egg_autogen.c").read_text(encoding="utf-8")
+            embedded = bytes(int(value, 16) for value in re.findall(r"0x([0-9A-Fa-f]{2})U", embedded_source))
+            fixture("actual_embedded_install_candidate", embedded, 0)
             # The object-record decoder is not yet whole-package execution support.
             from test_object_egg import object_bundle
             from peepshow_authoring.compiler import build_development_egg_v2
@@ -250,7 +300,7 @@ class FirmwarePackageWorkflowTests(unittest.TestCase):
             executable = work / "package_validation.exe"
             environment = dict(os.environ)
             environment["PATH"] = str(Path(compiler).parent) + os.pathsep + environment.get("PATH", "")
-            command = [compiler, "-std=c11", "-Wall", "-Wextra", "-Werror", "-O2",
+            command = [compiler, "-std=c11", "-Wall", "-Wextra", "-Werror", "-O0",
                        "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
                        "-I", str(firmware / "Core/Inc"), "-I", str(firmware / "Core/Src"),
                        str(Path(__file__).with_name("native_package_validation.c")), "-o", str(executable)]

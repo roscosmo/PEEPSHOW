@@ -5,7 +5,11 @@ transactions and host preview connected in API 39. API 40 adds native V2
 project/scene creation and state management. API 41 adds native local graphs.
 Development-only V2 binary
 encoding/reading and C loader/graph cores are implemented. Normal export,
-production firmware activation and autonomous display integration remain unavailable.
+production firmware activation remain unavailable. An opt-in firmware-only
+autonomous display test has a scoped structured-fixture hardware pass; this does not
+enable GUI export or change any advertised capability. See
+[[Scene_Object_Awake_Development_Test]] for the retained numbered fixture and
+test sequence.
 
 Authority: [[Scene_Object_Lifetime_and_Control_Contract]]. This handoff coordinates
 work; it does not allocate executable schema fields, capability IDs, or opcodes.
@@ -717,3 +721,216 @@ restart/cancel, reference protection, undo/redo, save/reload and invalid-batch
 rollback. V1 regression checks pass. No firmware build/device test was run because
 firmware is unchanged. Ordinary V2 export remains blocked by
 `SCENE_OBJECT_EXECUTABLE_UNAVAILABLE`; no hardware behavior is claimed here.
+
+## First Awake Hardware Fixture Handoff
+
+OS now has an explicit development-only V2 activation/display path. The original
+awake fixture passed hardware animation, independent marker changes and shell
+exit. Service API 41, target capabilities and ordinary export
+remain unchanged. This is not permission to enable V2 egg export in Studio.
+
+The first GUI-authored hardware fixture has one V2 scene with continuous
+interaction, two local states, A/B button routes, one scene-owned looping sprite
+and separate object overrides. It intentionally omits timers and SFX. The next
+development timer increment admitted scoped timers; at that checkpoint SFX, timeout interaction and
+scene-to-scene routes remain rejected. Object/variable actions and guards are
+allowed; a system-exit route can return to the shell. No requirement for a
+focus or cursor object is added.
+
+OS generates the development egg from the supplied project using
+`tools/authoring/build_object_development.py --project <path>` and builds the
+firmware. GUI's source-only fixture from commit
+`5c059bfce37770319cb49f09a14246202c42e039` is now imported unchanged at
+`examples/authoring/native_v2_continuity.peepproj` and is the development builder's
+default. Its 1,344-byte egg passes native C activation, A/B animation continuity
+and exact raster checks. Its awake hardware test passed: the user saw the sprite
+animate across A/B changes, and the dump recorded seven applied transitions,
+30/30 successful display requests and no render/queue/wait errors or lease faults.
+Exact frame timing remains native-tested rather than inferred from one snapshot.
+A moves the marker right and B returns it left; neither exits to the shell.
+The earlier synthetic fixture remains a native regression test. Details, commands
+and evidence requirements are in
+[[Scene_Object_Awake_Development_Test]]. GUI should continue capability-gated
+authoring; no shared service or Studio files changed in this firmware increment.
+
+## V2 Awake Timer Handoff
+
+State-entry and scene-owned one-shots now connect to the existing `thRuntime`
+scheduler in the explicit V2 development path. Scene handlers can change objects
+without a destination state; state activation stays unchanged. Committed
+Start/Restart/Cancel actions use the same bounded slots and ordering as V1.
+State timers cancel/rearm with state activations; scene timers survive A/B state
+changes. Relative timers pause in the shell and resume their remaining duration.
+
+Native tests cover the real V2 runtime plus scheduler and rendering, not just
+timer command acceptance. The OS timer fixture is generated with
+`build_object_development.py --timers`; GUI's source fixture is unchanged.
+The described awake hardware fixture passed: state/scene expiry, uninterrupted
+animation during A/B changes, Restart and Cancel. Timer due/dispatch/applied were
+2/2/2 with zero errors; all 50 display requests completed successfully. Broader
+timer controls and suspension remain native-tested, not hardware-qualified.
+Development probe API is now 2;
+service API 41 and target/export capabilities do not change.
+
+GUI may continue timer authoring with the existing commands and capabilities.
+Create/delete each scene binding and its independent handler together. Supply
+a source-only timer fixture for the next integration check; do not enable
+ordinary V2 egg export or claim STOP2/LPBAM timer support from this increment.
+
+### Exact GUI Timer Fixture Integration
+
+The supplied `examples/authoring/native_v2_scene_timer.peepproj` is now imported
+unchanged from `90b849c89aa869ce41c33da25f304a883c9e8887`, with all five files
+verified against that commit. The earlier `5c059bf` hash identifies the continuity
+fixture, not this timer project. No Studio or shared service changes were copied.
+
+OS generated its 1,484-byte development egg and checked the exact GUI source
+through the native C runtime, timer scheduler and renderer. A/B preserves the
+two-second scene deadline and sprite timing. The action-only handler reveals
+the square at `(76,80)` without state re-entry, and it remains visible through
+later state changes with no repeated expiry. Exact final framebuffer checks pass.
+The Debug firmware builds, and the awake hardware test passed: the user saw the
+square appear and separately confirmed A/B animation continuity. The timer
+handler applied once with zero errors, and all eight reported display requests
+completed without render/queue/wait errors or lease faults. A helper typo stopped
+the object dump at visibility; the corrected direct flags-bit read returned 1.
+Exact phase residuals remain native-tested rather than proven by a halted dump.
+
+For the next source-only hardware fixture, GUI should use four clearly distinct
+sequential animation frames so a restart is easier to see. Keep this passed
+two-frame fixture unchanged. No new backend command is needed for that change.
+
+This replaces the checked-in development payload, not the normal embedded egg or
+installed package. Use the explicit `--project` command and hardware sequence in
+[[Scene_Object_Awake_Development_Test]]. The previous OS timer variant and tests
+remain available. Service API 41, export restrictions and the awake-only scope
+are unchanged; GUI does not need another backend command for this fixture.
+
+## V2 Awake SFX Handoff
+
+The current explicit development path now admits ordinary `PLAY_SFX` from
+committed local input transitions and scene/state timer handlers. Multiple sound
+actions are dispatched in authored order. They do not restart scene-owned
+animation, and local state changes do not stop already playing sounds.
+
+Ordinary package SFX stops and is discarded on temporary shell entry, package
+exit/replacement or installer entry. Resume permits new playback but never
+replays discarded cues. Clip length does not imply resumability. Dialogue/music
+pause/resume will be a separate explicit capability, not an implicit change to
+`PLAY_SFX`; no new authoring command or music control is advertised here.
+
+OS's `build_object_development.py --sfx` variant derives from the passed GUI
+scene-timer bundle without editing its source. It has four clear animation
+frames at 250 ms, short A/B tones, a six-second tone on timer reveal, L for
+two ordered overlapping tones and R for shell exit. START tests suspension and
+silent resume. Development/scene/audio-package probe APIs are `3/22/1`.
+
+The user heard short A/B tones and uninterrupted long playback. The original
+three-second tone was too close to the START hold duration to establish early
+stopping. It is now six seconds and both test tones have twice the source
+amplitude, without changing production mixer settings. The user subsequently
+confirmed shell entry stops the six-second tone and Resume does not replay it.
+Audio shutdown request/complete=4/4, all shutdown statuses zero, no fault,
+no outstanding audio or held clock, and no underruns. This is recorded at
+`521f0b1cedabadf70db9b8183f78f74eff6a0a00`.
+
+Verification: 273 authoring/native tests pass, including real graph/scheduler/
+render integration and extracted production audio lifetime paths. The Debug
+firmware builds. Audio hardware calls are stubbed in host tests; hardware evidence
+is limited to the user-observed playback and shell-stop/silent-resume checks above.
+The earlier GUI continuity and timer passes remain separate hardware evidence.
+
+Service API 41, ordinary V2 export restrictions and target capabilities are
+unchanged. Studio can continue supported authoring work; no GUI merge or source
+fixture update is required for this OS test. This does not deliver production
+V2 installation, scene connections or STOP2/LPBAM support.
+
+## Exact GUI Four-Frame Timer Integration
+
+Imported only `examples/authoring/native_v2_timer_four_frames.peepproj` from
+`de80153ca256937612248aef36f6fd3e45a9d39c`, with all four source files
+matching the commit. OS generated its separate 1,908-byte development egg.
+The previous passed GUI projects are untouched, and the OS SFX variant remains
+available with `build_object_development.py --sfx`.
+
+The real native runtime/scheduler/renderer checks digits 1,2,3,4 at 400 ms,
+A/B phase residuals, timer expiry at digit 2 without state re-entry, persistent
+reveal and one-shot consumption. Five framebuffer outputs are compared exactly.
+The current GDB helpers describe this numbered fixture, which intentionally has
+no audio or L/R controls. Hold START for shell access; reset ends the session.
+
+This fixture's device test passed: the user clearly observed A/B continuity;
+the timer applied once with zero errors and the reveal square was visible.
+OS checkpoint: `6caa8fe4ed16ece6c9d74cee2c8750dd8277ab4e`.
+API 41, ordinary export restrictions,
+and the awake-only scope are unchanged. GUI may continue supported authoring UI
+work; no backend command or capability change is required for this integration.
+
+## Low-Power Preparation Status
+
+OS has added a pure bounded V2 waiting-schedule compiler, preserving numbered
+frame timing and independent object state without mutating the live bank.
+An explicit one-shot development check now leases that schedule to the display
+owner and packs full-scene frames into the real LPBAM payload buffers. Native
+packet replay passes: the numbered fixture uses 4 steps, 8 transactions and
+4672/10512 payload bytes. Physical preparation evidence is still pending.
+This does not arm playback or permit V2 STOP2. Timing-aware handoff, DMA queue
+admission and hardware wake/time reconciliation follow.
+GUI needs no source changes or new fixture for this step. Keep ordinary V2
+export disabled and retain the passed numbered fixture unchanged.
+
+When coordinating the LPBAM fixture, include the proposed explicit scene
+animation interval and whole-multiple frame-duration rule. This is a pending
+authoring contract increment, not an existing service command. Current firmware
+derives a common interval, which can expand awkward mixed timings into an
+over-budget sequence. Shared validation must check divisibility, combined cycle
+length and target resources; do not implement a GUI-only timing model or silently
+round durations. No GUI changes are needed for the current OS preparation test.
+
+## Restricted Installation Checkpoint (Boot And Launch Passed)
+
+OS imported `examples/authoring/native_v2_installation.peepproj` unchanged from
+GUI commit `e7f11f011fcbd91001aac0d15a85543c6212f3ab`. An explicit development
+encoder command produces a 2,196-byte egg for USB installation. This does not
+change service API 41, ordinary export readiness or GUI capability declarations.
+
+Firmware now connects the restricted one-scene/fully resident/no-audio/no-exit
+profile to install preflight, PLAY and boot. Every staged input/timer object
+transaction also requires exact scheduling/raster/payload admission before
+commit. The existing autonomous playback and RTC timer paths are reused.
+The 2026-09-11 device retry passed boot into this installed V2 scene, then
+reinstallation and launch. Firmware needed a runtime stack correction from
+2048 to 4096 bytes; the GUI fixture and egg did not change. The capture confirms
+installed source 3, execution model 2, 2196 bytes, slot 0 generation 4, successful
+admission and completed drawing. Timer due/applied/error is 2/2/0 across the
+session. The launch regression is cleared for these observed paths.
+
+GUI should keep ordinary V2 export disabled until a separate capability/readiness
+handoff enables the restricted profile. This hardware pass does not itself
+change the service contract. No new UI command or fixture is needed for this step.
+The follow-up against OS checkpoint `b5d9ab81cc3f7fc9a2c08c16900a1d8960246e31`
+also passed user-observed installed A/B animation continuity and sleep accounting:
+WFI returns/measured/reconciled 5/5/5, clock status 0, LPBAM fault 0,
+admission token/complete 44/44 and display request/complete 42/42 with status 0.
+Timer due/applied/error remains 2/2/0. The earlier 2/1 accounting snapshot is
+resolved. Precise cadence/current measurement remains separate.
+Next OS increment is restricted V2 build/export readiness and capability
+advertisement; Studio must consume that handoff rather than enabling export
+solely because this fixture passed. No replacement fixture is requested.
+Follow [[V2_Installed_Package_Test_Runbook]]; do not use the embedded V1 install
+helper or a development scene launcher as evidence of V2 installation.
+
+## Restricted Export Backend (API 42)
+
+The separate capability/readiness increment is now implemented. This supersedes
+the earlier instructions to keep all ordinary V2 export disabled after merging
+the backend; it does not enable unrestricted V2 export. Follow
+[[Peep_Studio_Restricted_V2_Export_Handoff]] for the exact supported subset,
+hello/per-scene fields and conservative animation budgets. Draft editing and
+preview remain available when a project is not export-ready.
+
+Studio should integrate normal Build/Export using the advertised capabilities
+and whole-project readiness, then export the existing installation fixture
+unchanged for the normal USB round trip. No new fixture or firmware edits are
+requested. The backend's public build produces the same 2196 fixture bytes as
+the development encoder used for the recorded hardware pass.

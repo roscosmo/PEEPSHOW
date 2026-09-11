@@ -22,6 +22,7 @@ from .audio_assets import (
     pcm16_wav,
 )
 from .compatibility import build_compatibility_report
+from .v2_export import PROFILE_ID as V2_EXPORT_PROFILE_ID, public_v2_export_profile
 from .compiler import EggCompileError, build_egg, build_preview_package, build_readiness_issues
 from .egg_format import EggFormatError, parse_egg
 from .project import (
@@ -57,7 +58,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 41
+SERVICE_API_VERSION = 42
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -137,13 +138,18 @@ def _require_fields(params: dict[str, Any], required: set[str]) -> None:
 def _scene_capabilities(bundle: ProjectBundle) -> dict[str, Any]:
     if not bundle.valid:
         return {}
+    export_ready = not build_readiness_issues(bundle)
+    object_package = any(scene["schema_version"] == 2 for scene in bundle.scenes)
     return {
         scene["scene_id"]: {
             "schema_version": scene["schema_version"],
             "execution_model": execution_model(scene),
             "host_editing": True,
             "host_preview": True,
-            "egg_export": scene["schema_version"] == 1,
+            "egg_export": True,
+            "export_ready": export_ready,
+            "export_profile_id": V2_EXPORT_PROFILE_ID if object_package else None,
+            "export_readiness_scope": "whole_project",
             "supported_commands": list(OBJECT_COMMANDS + COMMON_SCENE_COMMANDS) if scene["schema_version"] == 2 else None,
             "legacy_command_catalog": scene["schema_version"] == 1,
             "state_management_commands": list(STATE_MANAGEMENT_COMMANDS),
@@ -333,6 +339,12 @@ class AuthoringService:
             "service_api_version": SERVICE_API_VERSION,
             "protocol_version": PROTOCOL_VERSION,
             "operations": list(SERVICE_OPERATIONS),
+            "package_export": {
+                "operation": "project.build_package",
+                "container_versions": [1, 2],
+                "v2_profile": public_v2_export_profile(),
+                "readiness_field": "build_issues",
+            },
             "scene_creation": {
                 "project_operation": "project.create",
                 "scene_command": "scene.add",
@@ -345,8 +357,10 @@ class AuthoringService:
                 "empty_scene_is_editable_draft": True,
             },
             "scene_object_authoring": {
-                "status": "host_available", "schema_version": 2,
-                "execution_model": "scene_objects", "egg_export": False, "firmware_available": False,
+                "status": "restricted_firmware_available", "schema_version": 2,
+                "execution_model": "scene_objects", "egg_export": True, "firmware_available": True,
+                "export_profile_id": V2_EXPORT_PROFILE_ID,
+                "export_requires_project_readiness": True,
                 "commands": list(OBJECT_COMMANDS + COMMON_SCENE_COMMANDS),
                 "state_management_commands": list(STATE_MANAGEMENT_COMMANDS),
                 "absolute_axes": {"x": "right", "y": "down"},
@@ -776,6 +790,8 @@ class AuthoringService:
         return {
             "project_revision": self._project_revision,
             "package": {
+                "container_version": 2 if any(s.get("execution_model") == 2 for s in package.scenes) else 1,
+                "export_profile_id": V2_EXPORT_PROFILE_ID if any(s.get("execution_model") == 2 for s in package.scenes) else None,
                 "package_id": package.manifest["package_id"],
                 "target_profile": package.manifest["target_profile"],
                 "entry_scene": package.manifest["entry_scene"],

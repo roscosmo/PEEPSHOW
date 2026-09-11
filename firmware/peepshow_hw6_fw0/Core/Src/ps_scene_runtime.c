@@ -1,5 +1,7 @@
 #include "ps_scene_runtime.h"
 #include "ps_scene_objects.h"
+#include "ps_scene_object_graph.h"
+#include "ps_scene_object_render.h"
 
 #include <string.h>
 
@@ -26,6 +28,7 @@ static ps_scene_runtime_state_scene_t *s_ps_scene_runtime_state_scene =
 static uint32_t s_ps_scene_runtime_active_slot;
 static uint32_t s_ps_scene_runtime_pending_sfx_cue =
   PS_SCENE_RUNTIME_INDEX_INVALID;
+static uint32_t s_ps_object_sfx_take;
 static uint32_t s_ps_scene_runtime_pending_shell_exit;
 static uint32_t s_ps_scene_runtime_scene_activation;
 static uint32_t s_ps_scene_runtime_state_activation;
@@ -33,6 +36,57 @@ static ps_scene_runtime_action_t
   s_ps_scene_runtime_timer_actions[PS_SCENE_RUNTIME_ACTION_MAX];
 static uint32_t s_ps_scene_runtime_timer_action_count;
 static uint32_t s_ps_scene_runtime_timer_action_take;
+static uint32_t s_ps_scene_runtime_development_objects;
+static const uint8_t *s_ps_installed_object_blob;
+static uint32_t s_ps_installed_object_size;
+static ps_scene_object_admission_fn_t s_ps_object_admission;
+static ps_scene_object_graph_t s_ps_object_graph;
+static ps_scene_object_graph_stage_t s_ps_object_stage;
+static ps_scene_object_effects_t s_ps_object_effects;
+static ps_scene_objects_snapshot_t s_ps_object_snapshot;
+
+uint32_t PS_SceneRuntime_BuildDevelopmentWaiting(ps_object_waiting_program_t *program)
+{
+  static ps_object_waiting_workspace_t workspace;
+  if (PS_SceneRuntime_DevelopmentObjectsActive() == 0UL)
+  { return (uint32_t)PS_OBJECT_WAITING_ARGUMENT; }
+  return (uint32_t)PS_ObjectWaiting_Build(&s_ps_object_graph.objects,
+    g_ps_scene_runtime_probe.scene_id, program, &workspace);
+}
+static ps_scene_render_model_t s_ps_object_admission_model;
+
+void PS_SceneRuntime_SetObjectAdmission(ps_scene_object_admission_fn_t admission)
+{
+  s_ps_object_admission = admission;
+}
+
+uint32_t PS_SceneRuntime_InstalledObjectsActive(void)
+{
+  return (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL) &&
+    (s_ps_installed_object_blob != NULL);
+}
+
+uint32_t PS_SceneRuntime_DevelopmentObjectsActive(void)
+{
+  return (g_ps_scene_runtime_probe.active != 0UL) ?
+    s_ps_scene_runtime_development_objects : 0UL;
+}
+
+uint32_t PS_SceneRuntime_AdvanceDevelopmentObjects(uint32_t elapsed_ms)
+{
+  if (PS_SceneRuntime_DevelopmentObjectsActive() == 0UL) { return 1UL; }
+  return (uint32_t)PS_SceneObjects_Advance(&s_ps_object_graph.objects, elapsed_ms);
+}
+
+uint32_t PS_SceneRuntime_ProjectDevelopmentObjects(ps_scene_render_model_t *model,
+  uint32_t *next_ms)
+{
+  if ((PS_SceneRuntime_DevelopmentObjectsActive() == 0UL) ||
+      (PS_SceneObjects_Snapshot(&s_ps_object_graph.objects,
+        &s_ps_object_snapshot) != PS_SCENE_OBJECTS_OK)) { return 1UL; }
+  return PS_SceneObjectRender_Project(&s_ps_object_snapshot,
+    s_ps_object_graph.scene->scene_id, model, next_ms);
+}
 
 volatile uint32_t g_ps_scene_runtime_waiting_demo_enable;
 volatile ps_scene_runtime_probe_t g_ps_scene_runtime_probe =
@@ -1268,6 +1322,83 @@ static uint32_t PS_SceneRuntime_ReplaceStateScene(uint32_t target_scene_id)
   return 0UL;
 }
 
+static uint32_t PS_SceneRuntime_EnterObjects(const uint8_t *blob, uint32_t size,
+  uint32_t installed)
+{
+  ps_scene_runtime_state_scene_t *scene = &s_ps_scene_runtime_scene_slots[0];
+  uint32_t index;
+  uint32_t next_ms;
+  if ((g_ps_scene_runtime_probe.active != 0UL) ||
+      (size > PS_TARGET_PROFILE_PACKAGE_RESIDENT_BYTES)) { return 1UL; }
+  s_ps_installed_object_blob = NULL;
+  s_ps_installed_object_size = 0UL;
+  if (installed != 0UL)
+  {
+    ps_egg_v2_profile_result_t profile;
+    if ((s_ps_object_admission == NULL) ||
+        (PS_EggStateLoader_ValidateV2Profile(blob, size, &profile) != 0UL))
+    { return 1UL; }
+  }
+  g_ps_scene_runtime_probe.enter_count++;
+  g_ps_scene_runtime_probe.package_source = PS_PACKAGE_SOURCE_NONE;
+  g_ps_scene_runtime_probe.package_source_status = PS_PACKAGE_SOURCE_STATUS_NOT_RUN;
+  g_ps_scene_runtime_probe.activation_status = PS_SCENE_RUNTIME_STATUS_ERROR;
+  if (PS_EggStateLoader_DecodeDevelopmentScene(blob, size, 0UL, scene) != 0UL)
+  { return 1UL; }
+  if ((scene->execution_model != PS_SCENE_RUNTIME_MODEL_OBJECTS) ||
+      (scene->interaction_mode != PS_SCENE_RUNTIME_INTERACTION_CONTINUOUS))
+  { return 1UL; }
+  /* Awake development admits local input and scoped timer transactions. */
+  for (index = 0UL; index < scene->event_binding_count; ++index)
+  {
+    if ((scene->event_bindings[index].event_class != PS_SCENE_RUNTIME_EVENT_CLASS_INPUT) &&
+        (scene->event_bindings[index].event_class != PS_SCENE_RUNTIME_EVENT_CLASS_TIMER))
+    { return 1UL; }
+  }
+  for (index = 0UL; index < scene->transition_count; ++index)
+  {
+    if (scene->transitions[index].target_scene_id != 0UL) { return 1UL; }
+  }
+  for (index = 0UL; index < scene->action_count; ++index)
+  {
+    uint32_t kind = scene->actions[index].kind;
+    if ((kind != PS_SCENE_RUNTIME_ACTION_OBJECT_OPERATION) &&
+        (kind != PS_SCENE_RUNTIME_ACTION_PLAY_SFX) &&
+        (kind != PS_SCENE_RUNTIME_ACTION_SET_VARIABLE) &&
+        (kind != PS_SCENE_RUNTIME_ACTION_EXIT_TO_SHELL) &&
+        !((kind >= PS_SCENE_RUNTIME_ACTION_START_TIMER) &&
+          (kind <= PS_SCENE_RUNTIME_ACTION_CANCEL_TIMER))) { return 1UL; }
+  }
+  if ((PS_EggStateLoader_LoadDevelopment(blob, size, scene) != 0UL) ||
+      (PS_SceneObjectGraph_Init(&s_ps_object_graph, scene,
+        PS_EggStateLoader_SceneCount(), s_ps_scene_runtime_scene_activation + 1UL) != 0UL) ||
+      (PS_SceneObjects_Snapshot(&s_ps_object_graph.objects,
+        &s_ps_object_snapshot) != PS_SCENE_OBJECTS_OK) ||
+      (PS_SceneObjectRender_Project(&s_ps_object_snapshot, scene->scene_id,
+        &s_ps_object_admission_model, &next_ms) != 0UL)) { return 1UL; }
+  if ((installed != 0UL) &&
+      (s_ps_object_admission(blob, size, &s_ps_object_graph.objects) != 0UL))
+  { return 1UL; }
+  s_ps_scene_runtime_pending_shell_exit = 0UL;
+  s_ps_scene_runtime_pending_sfx_cue = PS_SCENE_RUNTIME_INDEX_INVALID;
+  if (PS_SceneRuntime_ActivateDecodedScene(scene, 0UL) != 0UL) { return 1UL; }
+  s_ps_object_sfx_take = 0UL;
+  s_ps_object_effects.count = 0UL;
+  s_ps_scene_runtime_development_objects = 1UL;
+  if (installed != 0UL)
+  {
+    s_ps_installed_object_blob = blob;
+    s_ps_installed_object_size = size;
+  }
+  g_ps_scene_runtime_probe.activation_status = PS_SCENE_RUNTIME_STATUS_OK;
+  return 0UL;
+}
+
+uint32_t PS_SceneRuntime_EnterDevelopmentObjects(const uint8_t *blob, uint32_t size)
+{
+  return PS_SceneRuntime_EnterObjects(blob, size, 0UL);
+}
+
 uint32_t PS_SceneRuntime_EnterStateScene(void)
 {
   ps_package_source_view_t package_view;
@@ -1278,6 +1409,7 @@ uint32_t PS_SceneRuntime_EnterStateScene(void)
   ps_scene_runtime_state_scene_t *validation_scene =
     &s_ps_scene_runtime_scene_slots[1];
 
+  s_ps_scene_runtime_development_objects = 0UL;
   g_ps_scene_runtime_probe.enter_count++;
   g_ps_scene_runtime_probe.last_status = PS_SCENE_RUNTIME_STATUS_NOT_RUN;
   g_ps_scene_runtime_probe.activation_status =
@@ -1311,6 +1443,22 @@ uint32_t PS_SceneRuntime_EnterStateScene(void)
   g_ps_scene_runtime_probe.package_source = package_view.source;
   g_ps_scene_runtime_probe.package_source_status =
     g_ps_package_source_probe.last_status;
+  if ((package_view.blob != NULL) && (package_view.resident_size >= 8UL) &&
+      (package_view.blob[4] == 2U) && (package_view.blob[5] == 0U))
+  {
+    uint32_t status = 1UL;
+    if ((package_view.source == PS_PACKAGE_SOURCE_INSTALLED_RAM) &&
+        (package_view.resident_size == package_view.size))
+    { status = PS_SceneRuntime_EnterObjects(package_view.blob, package_view.size, 1UL); }
+    g_ps_scene_runtime_probe.package_source = package_view.source;
+    g_ps_scene_runtime_probe.package_source_status = g_ps_package_source_probe.last_status;
+    if (status == 0UL) { return g_ps_scene_runtime_probe.state_index; }
+    g_ps_scene_runtime_probe.active = 0UL;
+    g_ps_scene_runtime_probe.reject_count++;
+    g_ps_scene_runtime_probe.last_status = PS_SCENE_RUNTIME_STATUS_ERROR;
+    g_ps_scene_runtime_probe.activation_status = PS_SCENE_RUNTIME_STATUS_ERROR;
+    return PS_SCENE_RUNTIME_INDEX_INVALID;
+  }
   if (PS_EggStateLoader_Load(package_view.blob,
                              package_view.size,
                              package_view.resident_size,
@@ -1363,6 +1511,9 @@ uint32_t PS_SceneRuntime_EnterStateScene(void)
 
 void PS_SceneRuntime_ExitStateScene(void)
 {
+  s_ps_scene_runtime_development_objects = 0UL;
+  s_ps_installed_object_blob = NULL;
+  s_ps_installed_object_size = 0UL;
   g_ps_scene_runtime_probe.exit_count++;
   g_ps_scene_runtime_probe.active = 0UL;
   g_ps_scene_runtime_probe.last_status = 0UL;
@@ -1573,7 +1724,66 @@ static uint32_t PS_SceneRuntime_HandleStateSceneEventId(
   g_ps_scene_runtime_probe.last_scene_event_id = scene_event_id;
   s_ps_scene_runtime_timer_action_count = 0UL;
   s_ps_scene_runtime_timer_action_take = 0UL;
-
+  if (s_ps_scene_runtime_development_objects != 0UL)
+  {
+    s_ps_object_sfx_take = 0UL;
+    s_ps_object_effects.count = 0UL;
+    uint32_t result = PS_SceneObjectGraph_StageEvent(&s_ps_object_graph,
+      scene_event_id - 1UL, &s_ps_object_stage);
+    uint32_t next_ms;
+    uint32_t index;
+    if (result != PS_SCENE_RUNTIME_INPUT_APPLIED) { return result; }
+    if ((PS_SceneObjects_Snapshot(&s_ps_object_stage.objects.candidate,
+          &s_ps_object_snapshot) != PS_SCENE_OBJECTS_OK) ||
+        (PS_SceneObjectRender_Project(&s_ps_object_snapshot, scene->scene_id,
+          &s_ps_object_admission_model, &next_ms) != 0UL))
+    {
+      PS_SceneObjectGraph_Abort(&s_ps_object_stage);
+      return PS_SCENE_RUNTIME_INPUT_ERROR;
+    }
+    if ((s_ps_installed_object_blob != NULL) &&
+        ((s_ps_object_admission == NULL) ||
+         (s_ps_object_admission(s_ps_installed_object_blob, s_ps_installed_object_size,
+           &s_ps_object_stage.objects.candidate) != 0UL)))
+    {
+      PS_SceneObjectGraph_Abort(&s_ps_object_stage);
+      return PS_SCENE_RUNTIME_INPUT_ERROR;
+    }
+    if (PS_SceneObjectGraph_Commit(&s_ps_object_graph, &s_ps_object_stage,
+          &s_ps_object_effects) != 0UL) { return PS_SCENE_RUNTIME_INPUT_ERROR; }
+    PS_SceneRuntime_SelectState(s_ps_object_graph.objects.state);
+    g_ps_scene_runtime_probe.primary_variable_value = s_ps_object_graph.variables[0];
+    g_ps_scene_runtime_probe.state_revision++;
+    g_ps_scene_runtime_probe.transition_match_count++;
+    g_ps_scene_runtime_probe.last_transition_id = s_ps_object_effects.transition_id;
+    if (s_ps_object_effects.state_entered != 0UL)
+    {
+      s_ps_scene_runtime_state_activation++;
+      g_ps_scene_runtime_probe.state_change_count++;
+    }
+    for (index = 0UL; index < s_ps_object_effects.count; ++index)
+    {
+      if (s_ps_object_effects.actions[index].kind == PS_SCENE_RUNTIME_ACTION_EXIT_TO_SHELL)
+      {
+        s_ps_scene_runtime_pending_shell_exit = 1UL;
+        g_ps_scene_runtime_probe.shell_exit_action_commit_count++;
+      }
+      else if (s_ps_object_effects.actions[index].kind == PS_SCENE_RUNTIME_ACTION_PLAY_SFX)
+      {
+        g_ps_scene_runtime_probe.sfx_action_commit_count++;
+        g_ps_scene_runtime_probe.last_sfx_cue_index =
+          (uint32_t)s_ps_object_effects.actions[index].value;
+      }
+      else if ((s_ps_object_effects.actions[index].kind >= PS_SCENE_RUNTIME_ACTION_START_TIMER) &&
+               (s_ps_object_effects.actions[index].kind <= PS_SCENE_RUNTIME_ACTION_CANCEL_TIMER))
+      {
+        s_ps_scene_runtime_timer_actions[s_ps_scene_runtime_timer_action_count++] =
+          s_ps_object_effects.actions[index];
+      }
+    }
+    g_ps_scene_runtime_probe.last_status = PS_SCENE_RUNTIME_STATUS_OK;
+    return PS_SCENE_RUNTIME_INPUT_APPLIED;
+  }
   for (transition_index = 0UL;
        transition_index < scene->transition_count;
        ++transition_index)
@@ -1871,6 +2081,21 @@ uint32_t PS_SceneRuntime_TimerConfiguration(uint32_t binding_index,
 
 uint32_t PS_SceneRuntime_TakeSfxRequest(uint32_t *cue_index)
 {
+  if ((cue_index != NULL) && (s_ps_scene_runtime_development_objects != 0UL))
+  {
+    while (s_ps_object_sfx_take < s_ps_object_effects.count)
+    {
+      const ps_scene_runtime_action_t *action =
+        &s_ps_object_effects.actions[s_ps_object_sfx_take++];
+      if (action->kind == PS_SCENE_RUNTIME_ACTION_PLAY_SFX)
+      {
+        *cue_index = (uint32_t)action->value;
+        g_ps_scene_runtime_probe.sfx_request_take_count++;
+        return 1UL;
+      }
+    }
+    return 0UL;
+  }
   if ((cue_index == NULL) ||
       (s_ps_scene_runtime_pending_sfx_cue ==
        PS_SCENE_RUNTIME_INDEX_INVALID))

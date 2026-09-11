@@ -7,6 +7,7 @@
 #include "ps_dev_audio.h"
 #include "ps_egg_state_loader.h"
 #include "ps_hw6_rtos_probe.h"
+#include "ps_hw6_object_development.h"
 #include "ps_lpbam_display_buffers.h"
 #include "ps_lpbam_display_queue.h"
 #include "ps_package_reader.h"
@@ -18,6 +19,22 @@
 #include "ps_ui_router.h"
 #include "ps_dev_adp5360.h"
 #include "ps_hw_i2c3.h"
+
+static ps_scene_render_model_t ps_hw6_development_display_model;
+static ps_object_waiting_program_t ps_hw6_object_waiting;
+static display_renderer_waiting_animation_t ps_hw6_object_animation;
+static uint32_t ps_hw6_object_waiting_tick;
+static uint64_t ps_hw6_object_waiting_missing_ms;
+
+static uint32_t PS_HW6_DisplayOwner_ComposeObjectStep(const void *context,
+  uint32_t step, uint8_t *destination, uint32_t size)
+{
+  static ps_scene_objects_snapshot_t snapshot;
+  static ps_scene_render_model_t model;
+  if (PS_ObjectWaiting_Project((const ps_object_waiting_program_t *)context,
+      step, &snapshot, &model) != PS_OBJECT_WAITING_OK) { return 0UL; }
+  return DisplayRenderer_CopySceneModelFrame(&model, destination, size);
+}
 
 #define PS_HW6_OWNER_PHASE_INIT             (0x6700UL)
 #define PS_HW6_OWNER_PHASE_POWER            (0x6701UL)
@@ -1011,6 +1028,42 @@ static HAL_StatusTypeDef PS_HW6_DisplayOwner_PrearmLpbamPlayback(void)
   return HAL_OK;
 }
 
+static HAL_StatusTypeDef PS_HW6_DisplayOwner_SetObjectFirstInterval(void)
+{
+  const display_renderer_waiting_animation_t *animation =
+    DisplayRenderer_GetSelectedWaitingAnimation();
+  uint32_t now = (uint32_t)tx_time_get();
+  uint32_t remaining;
+  uint32_t period;
+  uint32_t compare;
+  uint32_t period_ticks;
+  HAL_StatusTypeDef status;
+  if ((animation == NULL) || (animation->compose_scene == NULL)) { return HAL_OK; }
+  remaining = animation->next_deadline_tick - now;
+  period_ticks = (uint32_t)(((uint64_t)animation->cadence_ms * TX_TIMER_TICKS_PER_SECOND) / 1000ULL);
+  if (((int32_t)remaining <= 0) || (remaining > period_ticks) ||
+      (PS_HW6_DisplayOwner_GetLpbamTimerCounts(animation->cadence_ms,
+        &period, &compare) != HAL_OK)) { return HAL_BUSY; }
+  /* Rising PWM edge is CCR1+1; changing its offset leaves the repeat period intact. */
+  compare = (uint32_t)(((uint64_t)remaining * period + period_ticks - 1UL) / period_ticks);
+  if (compare >= period) { compare = period - 1UL; }
+  if (compare == 0UL) { return HAL_BUSY; }
+  --compare;
+  __HAL_LPTIM_CLEAR_FLAG(&hlptim1, LPTIM_FLAG_ARROK);
+  __HAL_LPTIM_AUTORELOAD_SET(&hlptim1, period - 1UL);
+  status = PS_HW6_DisplayOwner_WaitLptimFlag(LPTIM_FLAG_ARROK);
+  if (status != HAL_OK) { return status; }
+  __HAL_LPTIM_CLEAR_FLAG(&hlptim1, LPTIM_FLAG_CMP1OK);
+  __HAL_LPTIM_COMPARE_SET(&hlptim1, LPTIM_CHANNEL_1, compare);
+  status = PS_HW6_DisplayOwner_WaitLptimFlag(LPTIM_FLAG_CMP1OK);
+  if ((status != HAL_OK) || (hlptim1.Instance->CCR1 != compare) ||
+      (hlptim1.Instance->ARR != period - 1UL)) { return HAL_ERROR; }
+  if ((uint32_t)tx_time_get() != now) { return HAL_BUSY; }
+  g_ps_object_lpbam_probe.commit_remaining_ticks = remaining;
+  g_ps_object_lpbam_probe.compare_count = compare;
+  return HAL_OK;
+}
+
 HAL_StatusTypeDef PS_HW6_DisplayOwner_CommitLpbamStop2(void)
 {
   HAL_StatusTypeDef status;
@@ -1031,6 +1084,13 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_CommitLpbamStop2(void)
     return HAL_ERROR;
   }
 
+  status = PS_HW6_DisplayOwner_SetObjectFirstInterval();
+  if (status != HAL_OK)
+  {
+    g_ps_hw6_owner_probe.display_lpbam_commit_status = (uint32_t)status;
+    g_ps_hw6_owner_probe.display_lpbam_start_status = (uint32_t)status;
+    return status;
+  }
   status = HAL_DMAEx_List_Start(&handle_LPDMA1_Channel0);
   g_ps_hw6_owner_probe.display_lpbam_dma_start_status =
     (uint32_t)status;
@@ -1884,6 +1944,17 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_ClearForShipping(void)
   return status;
 }
 
+HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderDevelopmentObjects(
+  const ps_scene_render_model_t *model)
+{
+  if ((model == NULL) || (PS_SceneRuntime_DevelopmentObjectsActive() == 0UL) ||
+      (model->timeline_revision != PS_SceneRuntime_SceneActivation()))
+  { return HAL_ERROR; }
+  ps_hw6_development_display_model = *model;
+  return PS_HW6_DisplayOwner_RenderUI(PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF,
+    PS_UI_ROUTER_CAL_NONE, 0UL, PS_UI_ROUTER_SHUTDOWN_NONE, 0UL);
+}
+
 HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
   uint32_t page,
   uint32_t calibration_page,
@@ -1936,7 +2007,16 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
        (page == (uint32_t)PS_UI_ROUTER_PAGE_INTERACTION_CUE)) &&
       (PS_SceneRuntime_StateSceneActive() != 0UL))
   {
-    scene_model = PS_SceneRuntime_ResolveStateSceneRenderModel();
+    if (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL)
+    {
+      if (ps_hw6_development_display_model.timeline_revision !=
+          PS_SceneRuntime_SceneActivation()) { return HAL_ERROR; }
+      scene_model = &ps_hw6_development_display_model;
+    }
+    else
+    {
+      scene_model = PS_SceneRuntime_ResolveStateSceneRenderModel();
+    }
   }
 
   PS_HW6_PrepareDisplayUIPage(page,
@@ -1945,10 +2025,18 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_RenderUI(
                               shutdown_state,
                               shutdown_countdown_seconds,
                               scene_model);
-  PS_HW6_DisplayOwner_PublishStateWaitingVisual(
-    page,
-    g_ps_hw6_owner_probe.display_ui_current_focus_row,
-    scene_model);
+  if ((PS_SceneRuntime_DevelopmentObjectsActive() != 0UL) &&
+      (page == PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF))
+  {
+    DisplayRenderer_ClearSceneWaitingVisual();
+    if (g_ps_object_lpbam_probe.enabled != 0UL)
+    { (void)PS_HW6_DisplayOwner_PublishDevelopmentWaiting(NULL, 0UL); }
+  }
+  else
+  {
+    PS_HW6_DisplayOwner_PublishStateWaitingVisual(
+      page, g_ps_hw6_owner_probe.display_ui_current_focus_row, scene_model);
+  }
   driver_status = PS_HW6_DisplayOwner_PresentRendererRows(
     &g_ps_hw6_owner_probe.display_init_status,
     &g_ps_hw6_owner_probe.display_present_status);
@@ -2135,6 +2223,129 @@ PS_HW6_DisplayOwner_CompileWaitingAnimationPayload(
   return status;
 }
 
+uint32_t PS_HW6_DisplayOwner_ObjectWaitingPosition(uint32_t now_tick,
+  uint32_t *frame, uint32_t *remaining_ticks)
+{
+  uint32_t remaining_ms;
+  uint64_t elapsed;
+  if ((g_ps_object_lpbam_probe.enabled == 0UL) ||
+      (PS_SceneRuntime_DevelopmentObjectsActive() == 0UL) ||
+      (ps_hw6_object_waiting.base.activation != PS_SceneRuntime_SceneActivation()) ||
+      (ps_hw6_object_waiting.quantum_ms == 0UL)) { return 0UL; }
+  elapsed = ps_hw6_object_waiting.base.elapsed_ms +
+    (uint64_t)(now_tick - ps_hw6_object_waiting_tick) * 1000ULL / TX_TIMER_TICKS_PER_SECOND +
+    g_ps_object_lpbam_probe.missing_ms - ps_hw6_object_waiting_missing_ms;
+  if (PS_ObjectWaiting_Resolve(&ps_hw6_object_waiting, elapsed, frame, &remaining_ms) != PS_OBJECT_WAITING_OK)
+  { return 0UL; }
+  *remaining_ticks = (uint32_t)(((uint64_t)remaining_ms * TX_TIMER_TICKS_PER_SECOND + 999ULL) / 1000ULL);
+  return 1UL;
+}
+
+HAL_StatusTypeDef PS_HW6_DisplayOwner_PublishDevelopmentWaiting(
+  const ps_object_waiting_program_t *program, uint32_t next_deadline_tick)
+{
+  static uint16_t rows[DISPLAY_HEIGHT];
+  static ps_scene_objects_snapshot_t snapshot;
+  static ps_scene_render_model_t model;
+  uint32_t step;
+  if (program == NULL) { program = &ps_hw6_object_waiting; }
+  if ((g_ps_object_lpbam_probe.enabled == 0UL) ||
+      (program->quantum_ms == 0UL) ||
+      (((uint64_t)program->quantum_ms * TX_TIMER_TICKS_PER_SECOND) % 1000ULL != 0ULL) ||
+      (PS_ObjectWaiting_Project(program, 0UL, &snapshot, &model) != PS_OBJECT_WAITING_OK) ||
+      (memcmp(&model, &ps_hw6_development_display_model, sizeof(model)) != 0))
+  { return HAL_ERROR; }
+  if (program != &ps_hw6_object_waiting)
+  {
+    ps_hw6_object_waiting = *program;
+    ps_hw6_object_waiting_tick = next_deadline_tick -
+      (uint32_t)(((uint64_t)program->initial_remaining_ms * TX_TIMER_TICKS_PER_SECOND + 999ULL) / 1000ULL);
+    ps_hw6_object_waiting_missing_ms = g_ps_object_lpbam_probe.missing_ms;
+    ps_hw6_object_animation = (display_renderer_waiting_animation_t){0};
+    ps_hw6_object_animation.animation_id = program->base.activation;
+    ps_hw6_object_animation.source_primitive_id = DISPLAY_RENDERER_PRIMITIVE_SCENE_MODEL;
+    ps_hw6_object_animation.phase_count = program->step_count;
+    ps_hw6_object_animation.sequence_frame_count = program->step_count;
+    ps_hw6_object_animation.cadence_ms = program->quantum_ms;
+    ps_hw6_object_animation.next_deadline_tick = next_deadline_tick;
+    ps_hw6_object_animation.compose_scene = PS_HW6_DisplayOwner_ComposeObjectStep;
+    ps_hw6_object_animation.scene_context = &ps_hw6_object_waiting;
+    ps_hw6_object_animation.candidate_rows = rows;
+    ps_hw6_object_animation.candidate_row_count = DISPLAY_HEIGHT;
+    ps_hw6_object_animation.panel_bounds = (display_renderer_panel_region_t){
+      1U, DISPLAY_HEIGHT, 0U, DISPLAY_WIDTH};
+    for (step = 0UL; step < DISPLAY_HEIGHT; ++step) { rows[step] = (uint16_t)(step + 1UL); }
+    for (step = 0UL; step < program->step_count; ++step)
+    { ps_hw6_object_animation.sequence_phase[step] = step; }
+  }
+  if (DisplayRenderer_PublishFullSceneWaiting(&ps_hw6_object_animation) == 0UL)
+  { return HAL_ERROR; }
+  g_ps_object_lpbam_probe.deadline_tick = ps_hw6_object_animation.next_deadline_tick;
+  PS_HW6_DisplayOwner_SnapshotSceneWaitingTimeline();
+  return HAL_OK;
+}
+
+HAL_StatusTypeDef PS_HW6_DisplayOwner_PrepareDevelopmentObjectWaiting(
+  const ps_object_waiting_program_t *program)
+{
+  static ps_scene_objects_snapshot_t scratch;
+  static ps_scene_render_model_t model;
+  static uint16_t rows[DISPLAY_HEIGHT];
+  uint8_t (*previous)[LINE_WIDTH] = ps_lpbam_display_frame_a;
+  uint8_t (*target)[LINE_WIDTH] = ps_lpbam_display_frame_b;
+  uint32_t step;
+  HAL_StatusTypeDef status;
+
+  g_ps_object_lpbam_prepare_probe.frames_composed = 0UL;
+  g_ps_object_lpbam_prepare_probe.sequence_used = 0UL;
+  g_ps_object_lpbam_prepare_probe.chunk_used = 0UL;
+  g_ps_object_lpbam_prepare_probe.payload_used_bytes = 0UL;
+  g_ps_object_lpbam_prepare_probe.payload_capacity_bytes = 0UL;
+  g_ps_object_lpbam_prepare_probe.reason = PS_LPBAM_ADMISSION_REASON_ARGUMENT;
+  if ((program == NULL) || (PS_SceneRuntime_DevelopmentObjectsActive() == 0UL) ||
+      (ps_hw6_display_lpbam_active != 0UL) ||
+      (ps_hw6_display_lpbam_prearmed != 0UL) ||
+      (ps_hw6_display_lpbam_compiled != 0UL) ||
+      (g_ps_hw6_owner_probe.display_success == 0UL) ||
+      (g_ps_hw6_owner_probe.display_ui_page != PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF) ||
+      (PS_ObjectWaiting_Project(program, 0UL, &scratch, &model) != PS_OBJECT_WAITING_OK) ||
+      (memcmp(&model, &ps_hw6_development_display_model, sizeof(model)) != 0))
+  { return HAL_ERROR; }
+
+  for (step = 0UL; step < DISPLAY_HEIGHT; ++step) { rows[step] = (uint16_t)(step + 1UL); }
+  status = PS_LpbamDisplay_BeginPreparedAnimation(rows, DISPLAY_HEIGHT,
+    (uint16_t)program->step_count, 0U);
+  if ((status == HAL_OK) &&
+      (DisplayRenderer_CopySceneModelFrame(&model, &previous[0][0],
+        sizeof(ps_lpbam_display_frame_a)) == 0UL))
+  { status = HAL_ERROR; }
+  if (status == HAL_OK) { g_ps_object_lpbam_prepare_probe.frames_composed++; }
+  for (step = 0UL; (status == HAL_OK) && (step < program->step_count); ++step)
+  {
+    uint8_t (*swap)[LINE_WIDTH];
+    if ((PS_ObjectWaiting_Project(program, (step + 1UL) % program->step_count,
+           &scratch, &model) != PS_OBJECT_WAITING_OK) ||
+        (DisplayRenderer_CopySceneModelFrame(&model, &target[0][0],
+           sizeof(ps_lpbam_display_frame_b)) == 0UL))
+    { status = HAL_ERROR; break; }
+    g_ps_object_lpbam_prepare_probe.frames_composed++;
+    status = PS_LpbamDisplay_AppendPreparedTransition(previous, target);
+    swap = previous;
+    previous = target;
+    target = swap;
+  }
+  if (status == HAL_OK) { status = PS_LpbamDisplay_FinishPreparedAnimation(); }
+  g_ps_object_lpbam_prepare_probe.reason =
+    ((status != HAL_OK) && (ps_lpbam_display_admission.reason == PS_LPBAM_ADMISSION_REASON_NONE)) ?
+    PS_LPBAM_ADMISSION_REASON_BUILD : ps_lpbam_display_admission.reason;
+  g_ps_object_lpbam_prepare_probe.sequence_used = ps_lpbam_display_admission.sequence_used;
+  g_ps_object_lpbam_prepare_probe.chunk_used = ps_lpbam_display_admission.chunk_used;
+  g_ps_object_lpbam_prepare_probe.payload_used_bytes = ps_lpbam_display_admission.payload_used_bytes;
+  g_ps_object_lpbam_prepare_probe.payload_capacity_bytes = ps_lpbam_display_admission.payload_capacity_bytes;
+  /* Preparation only: no queue selection, readiness, clock change or DMA start. */
+  return status;
+}
+
 static void PS_HW6_DisplayOwner_RecordWaitingAnimation(
   const display_renderer_waiting_animation_t *animation)
 {
@@ -2299,8 +2510,9 @@ PS_HW6_DisplayOwner_CompileLpbamStop2WithAnimationPhase(
     g_ps_hw6_owner_probe.display_lpbam_compile_mode =
       PS_HW6_OWNER_LPBAM_COMPILE_PREFERRED;
   }
-  else if (PS_HW6_DisplayOwner_CanUseGuaranteedFallback(
-             ps_lpbam_display_admission.reason) != 0UL)
+  else if ((preferred_animation->compose_scene == NULL) &&
+           (PS_HW6_DisplayOwner_CanUseGuaranteedFallback(
+             ps_lpbam_display_admission.reason) != 0UL))
   {
     selected_animation = DisplayRenderer_GetGuaranteedWaitingAnimation(
       preferred_animation);
@@ -2532,6 +2744,7 @@ HAL_StatusTypeDef PS_HW6_DisplayOwner_AbortLpbamStop2AndResume(void)
     hlptim1.Instance->CNT;
   g_ps_hw6_owner_probe.display_lpbam_wake_lptim_period =
     hlptim1.Instance->ARR + 1UL;
+  g_ps_object_lpbam_probe.wake_compare_count = hlptim1.Instance->CCR1 + 1UL;
   snapshot_status = PS_LpbamDisplayQueue_SnapshotProgress(
     &handle_LPDMA1_Channel0, &progress);
   g_ps_hw6_owner_probe.display_lpbam_wake_snapshot_status =

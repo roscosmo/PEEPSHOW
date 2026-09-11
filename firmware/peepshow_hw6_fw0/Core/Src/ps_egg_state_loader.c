@@ -146,14 +146,6 @@ typedef struct
 
 typedef struct
 {
-  const uint8_t *records;
-  const uint8_t *sprite_payload;
-  uint32_t sprite_size;
-  uint16_t frame_count;
-} ps_egg_sprite_catalog_t;
-
-typedef struct
-{
   const uint8_t *adpcm;
   uint32_t package_offset;
   uint32_t package_backed;
@@ -712,30 +704,41 @@ static uint32_t PS_EggValidateContainer(ps_egg_context_t *context, const uint8_t
   }
   if (full_package != 0UL)
   {
-    for (index = table_offset +
-                 ((uint32_t)chunk_count * PS_EGG_CHUNK_ENTRY_SIZE);
-         index < footer_offset;
-         ++index)
+    uint32_t cursor = table_offset +
+      ((uint32_t)chunk_count * PS_EGG_CHUNK_ENTRY_SIZE);
+    uint32_t range;
+
+    /* Bounds and non-overlap are already checked. Walk physical ranges without
+     * reordering the indexed chunk table; inspect only the padding gaps. */
+    for (range = 0UL; range <= chunk_count; ++range)
     {
       uint32_t chunk_index;
-      uint32_t occupied = 0UL;
+      uint32_t gap_end = footer_offset;
+      const ps_egg_chunk_t *next = NULL;
 
       for (chunk_index = 0UL;
            chunk_index < chunk_count;
            ++chunk_index)
       {
         const ps_egg_chunk_t *chunk = &context->chunks[chunk_index];
-        if ((index >= chunk->offset) &&
-            (index < (chunk->offset + chunk->size)))
+        if ((chunk->offset >= cursor) && (chunk->offset < gap_end))
         {
-          occupied = 1UL;
-          break;
+          next = chunk;
+          gap_end = chunk->offset;
         }
       }
-      if ((occupied == 0UL) && (blob[index] != 0U))
+      for (index = cursor; index < gap_end; ++index)
       {
-        return PS_EggFail(context, PS_EGG_STATE_LOADER_REASON_CHUNK);
+        if (blob[index] != 0U)
+        {
+          return PS_EggFail(context, PS_EGG_STATE_LOADER_REASON_CHUNK);
+        }
       }
+      if (next == NULL)
+      {
+        break;
+      }
+      cursor = next->offset + next->size;
     }
   }
   else
@@ -843,7 +846,8 @@ static uint32_t PS_EggSpritePlaneValid(const uint8_t *plane,
   return 1UL;
 }
 
-static uint32_t PS_EggContext_GetSpriteFrame(ps_egg_context_t *context, uint32_t frame_id,
+uint32_t PS_EggStateLoader_GetCatalogSpriteFrame(const ps_egg_sprite_catalog_t *catalog,
+  uint32_t frame_id,
   ps_egg_state_loader_sprite_frame_t *frame)
 {
   uint32_t frame_index;
@@ -854,37 +858,37 @@ static uint32_t PS_EggContext_GetSpriteFrame(ps_egg_context_t *context, uint32_t
   uint32_t mask_size;
   uint32_t flags;
 
-  if ((frame == NULL) ||
+  if ((catalog == NULL) || (catalog->sprite_payload == NULL) || (frame == NULL) ||
       (frame_id <= PS_EGG_STATE_LOADER_SPRITE_FRAME_ID_BASE))
   {
     return 0UL;
   }
   frame_index = frame_id - PS_EGG_STATE_LOADER_SPRITE_FRAME_ID_BASE - 1UL;
-  if ((context->sprite_catalog.records == NULL) ||
-      (frame_index >= context->sprite_catalog.frame_count))
+  if ((catalog->records == NULL) ||
+      (frame_index >= catalog->frame_count))
   {
     return 0UL;
   }
 
-  record = &context->sprite_catalog.records[
+  record = &catalog->records[
     frame_index * PS_EGG_ASSET_RECORD_SIZE];
   pixel_offset = PS_EggU32(&record[16]);
   pixel_size = PS_EggU32(&record[20]);
   mask_offset = PS_EggU32(&record[24]);
   mask_size = PS_EggU32(&record[28]);
   flags = PS_EggU32(&record[32]);
-  if ((PS_EggRangeValid(context->sprite_catalog.sprite_size,
+  if ((PS_EggRangeValid(catalog->sprite_size,
                         pixel_offset, pixel_size) == 0UL) ||
       (((flags & PS_EGG_ASSET_FLAG_OPAQUE) == 0UL) &&
-       (PS_EggRangeValid(context->sprite_catalog.sprite_size,
+       (PS_EggRangeValid(catalog->sprite_size,
                          mask_offset, mask_size) == 0UL)))
   {
     return 0UL;
   }
 
-  frame->pixels = &context->sprite_catalog.sprite_payload[pixel_offset];
+  frame->pixels = &catalog->sprite_payload[pixel_offset];
   frame->mask = ((flags & PS_EGG_ASSET_FLAG_OPAQUE) != 0UL) ? NULL :
-    &context->sprite_catalog.sprite_payload[mask_offset];
+    &catalog->sprite_payload[mask_offset];
   frame->width = PS_EggU16(&record[4]);
   frame->height = PS_EggU16(&record[6]);
   frame->row_stride_bytes = PS_EggU16(&record[8]);
@@ -892,6 +896,12 @@ static uint32_t PS_EggContext_GetSpriteFrame(ps_egg_context_t *context, uint32_t
   frame->pivot_y = PS_EggI16(&record[14]);
   frame->opaque = ((flags & PS_EGG_ASSET_FLAG_OPAQUE) != 0UL) ? 1UL : 0UL;
   return 1UL;
+}
+
+static uint32_t PS_EggContext_GetSpriteFrame(ps_egg_context_t *context, uint32_t frame_id,
+  ps_egg_state_loader_sprite_frame_t *frame)
+{
+  return PS_EggStateLoader_GetCatalogSpriteFrame(&context->sprite_catalog, frame_id, frame);
 }
 
 static uint32_t PS_EggContext_GetAudioCue(ps_egg_context_t *context, uint32_t cue_index,
@@ -3082,14 +3092,67 @@ uint32_t PS_EggStateLoader_Load(
   return PS_EggContext_Load(&s_ps_egg_runtime_context, blob, package_size, resident_size, scene);
 }
 
-uint32_t PS_EggStateLoader_DecodeDevelopmentScene(const uint8_t *blob,
-  uint32_t size, uint32_t scene_id, ps_scene_runtime_state_scene_t *scene)
+static uint32_t PS_EggCheckV2Profile(ps_egg_context_t *context,
+  const ps_scene_runtime_state_scene_t *scene, ps_egg_v2_profile_result_t *result)
+{
+  uint32_t index;
+  result->scene_id = scene->scene_id;
+  if (context->scene_count != 1U)
+  { result->reason = PS_EGG_V2_PROFILE_SCENE_COUNT; return 1UL; }
+  if (scene->execution_model != PS_SCENE_RUNTIME_MODEL_OBJECTS)
+  { result->reason = PS_EGG_V2_PROFILE_MODEL; return 1UL; }
+  if (scene->interaction_mode != PS_SCENE_RUNTIME_INTERACTION_CONTINUOUS)
+  { result->reason = PS_EGG_V2_PROFILE_INTERACTION; return 1UL; }
+  if ((PS_EggCountChunks(context, PS_EGG_CHUNK_AUDIO_ASSETS) != 0UL) ||
+      (PS_EggCountChunks(context, PS_EGG_CHUNK_AUDIO_BANK) != 0UL) ||
+      (PS_EggCountChunks(context, PS_EGG_CHUNK_AUDIO_CUES) != 0UL))
+  { result->reason = PS_EGG_V2_PROFILE_AUDIO; return 1UL; }
+  for (index = 0UL; index < scene->event_binding_count; ++index)
+  {
+    if ((scene->event_bindings[index].event_class != PS_SCENE_RUNTIME_EVENT_CLASS_INPUT) &&
+        (scene->event_bindings[index].event_class != PS_SCENE_RUNTIME_EVENT_CLASS_TIMER))
+    {
+      result->reason = PS_EGG_V2_PROFILE_EVENT;
+      result->item_index = index;
+      return 1UL;
+    }
+  }
+  for (index = 0UL; index < scene->transition_count; ++index)
+  {
+    if (scene->transitions[index].target_scene_id != 0UL)
+    {
+      result->reason = PS_EGG_V2_PROFILE_SCENE_EXIT;
+      result->item_index = index;
+      return 1UL;
+    }
+  }
+  for (index = 0UL; index < scene->action_count; ++index)
+  {
+    uint32_t kind = scene->actions[index].kind;
+    if ((kind != PS_SCENE_RUNTIME_ACTION_OBJECT_OPERATION) &&
+        (kind != PS_SCENE_RUNTIME_ACTION_SET_VARIABLE) &&
+        (kind != PS_SCENE_RUNTIME_ACTION_START_TIMER) &&
+        (kind != PS_SCENE_RUNTIME_ACTION_RESTART_TIMER) &&
+        (kind != PS_SCENE_RUNTIME_ACTION_CANCEL_TIMER))
+    {
+      result->reason = PS_EGG_V2_PROFILE_ACTION;
+      result->item_index = index;
+      return 1UL;
+    }
+  }
+  result->reason = PS_EGG_V2_PROFILE_NONE;
+  return 0UL;
+}
+
+static uint32_t PS_EggDecodeDevelopment(const uint8_t *blob,
+  uint32_t size, uint32_t scene_id, ps_scene_runtime_state_scene_t *scene,
+  uint32_t publish, ps_egg_v2_profile_result_t *profile, ps_egg_sprite_catalog_t *catalog)
 {
   ps_egg_context_t *context = &s_ps_egg_validation_context;
   uint32_t status;
   uint32_t index;
   uint32_t interaction_mode = 0UL;
-  if (scene == NULL)
+  if ((scene == NULL) && (profile == NULL))
   {
     return 1UL;
   }
@@ -3130,12 +3193,79 @@ uint32_t PS_EggStateLoader_DecodeDevelopmentScene(const uint8_t *blob,
       &s_ps_egg_validation_scene);
     if (status == 0UL)
     {
-      (void)memcpy(scene, &s_ps_egg_validation_scene, sizeof(*scene));
+      if (profile != NULL)
+      {
+        status = PS_EggCheckV2Profile(context, &s_ps_egg_validation_scene, profile);
+        if ((status == 0UL) && (scene != NULL) && (catalog != NULL))
+        {
+          *scene = s_ps_egg_validation_scene;
+          *catalog = context->sprite_catalog;
+        }
+      }
+      else
+      {
+        (void)memcpy(scene, &s_ps_egg_validation_scene, sizeof(*scene));
+        if (publish != 0UL)
+        {
+          s_ps_egg_runtime_context = *context;
+          s_ps_egg_runtime_context.probe = &g_ps_egg_state_loader_probe;
+          g_ps_egg_state_loader_probe = g_ps_egg_validation_probe;
+        }
+      }
     }
   }
   (void)memset(context, 0, sizeof(*context));
   context->probe = &g_ps_egg_validation_probe;
   (void)memset(&s_ps_egg_validation_scene, 0, sizeof(s_ps_egg_validation_scene));
+  return status;
+}
+
+uint32_t PS_EggStateLoader_DecodeDevelopmentScene(const uint8_t *blob,
+  uint32_t size, uint32_t scene_id, ps_scene_runtime_state_scene_t *scene)
+{
+  return PS_EggDecodeDevelopment(blob, size, scene_id, scene, 0UL, NULL, NULL);
+}
+
+uint32_t PS_EggStateLoader_LoadDevelopment(const uint8_t *blob,
+  uint32_t size, ps_scene_runtime_state_scene_t *scene)
+{
+  return PS_EggDecodeDevelopment(blob, size, 0UL, scene, 1UL, NULL, NULL);
+}
+
+uint32_t PS_EggStateLoader_ValidateV2Profile(const uint8_t *blob, uint32_t size,
+  ps_egg_v2_profile_result_t *result)
+{
+  uint32_t status;
+  if (result == NULL) { return 1UL; }
+  (void)memset(result, 0, sizeof(*result));
+  result->item_index = PS_SCENE_RUNTIME_INDEX_INVALID;
+  if ((blob == NULL) || (size == 0UL))
+  { result->reason = PS_EGG_V2_PROFILE_ARGUMENT; return 1UL; }
+  if (size > PS_TARGET_PROFILE_PACKAGE_RESIDENT_BYTES)
+  { result->reason = PS_EGG_V2_PROFILE_CAPACITY; return 1UL; }
+  result->reason = PS_EGG_V2_PROFILE_PACKAGE;
+  status = PS_EggDecodeDevelopment(blob, size, 0UL, NULL, 0UL, result, NULL);
+  result->loader_reason = g_ps_egg_validation_probe.reason;
+  return status;
+}
+
+uint32_t PS_EggStateLoader_DecodeV2Candidate(const uint8_t *blob, uint32_t size,
+  ps_scene_runtime_state_scene_t *scene, ps_egg_sprite_catalog_t *catalog,
+  ps_egg_v2_profile_result_t *result)
+{
+  uint32_t status;
+  if (scene != NULL) { (void)memset(scene, 0, sizeof(*scene)); }
+  if (catalog != NULL) { (void)memset(catalog, 0, sizeof(*catalog)); }
+  if (result == NULL) { return 1UL; }
+  (void)memset(result, 0, sizeof(*result));
+  result->item_index = PS_SCENE_RUNTIME_INDEX_INVALID;
+  if ((blob == NULL) || (size == 0UL) || (scene == NULL) || (catalog == NULL))
+  { result->reason = PS_EGG_V2_PROFILE_ARGUMENT; return 1UL; }
+  if (size > PS_TARGET_PROFILE_PACKAGE_RESIDENT_BYTES)
+  { result->reason = PS_EGG_V2_PROFILE_CAPACITY; return 1UL; }
+  result->reason = PS_EGG_V2_PROFILE_PACKAGE;
+  status = PS_EggDecodeDevelopment(blob, size, 0UL, scene, 0UL, result, catalog);
+  result->loader_reason = g_ps_egg_validation_probe.reason;
   return status;
 }
 

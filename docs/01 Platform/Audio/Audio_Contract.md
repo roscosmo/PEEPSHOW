@@ -127,6 +127,32 @@ and drain package-owned voices before their source bytes can become invalid.
 PeepOS-owned shell and package-loading sounds use OS-owned assets and are not
 package voices.
 
+### Package Suspension Semantics
+
+These shell/package semantics are separate from power-requested suspension:
+power admission retains its existing subsequent owner-quiesce barrier. It must
+not wait inside the power thread for an audio clock-release request addressed
+back to that same thread.
+
+Ordinary `play_sfx` is transient, regardless of asset duration. Opening the shell
+stops and discards active package SFX and queued requests. Returning to the package
+accepts new requests; it never resumes or replays discarded SFX. Package exit,
+replacement and unmount also discard playback. Local state changes and same-package
+scene changes do not themselves stop SFX.
+
+Resumable dialogue/music is a separate, deferred playback capability with explicit
+authored intent. It must retain playback position during temporary suspension and
+discard it at package exit/replacement. Do not infer that intent from clip length
+or advertise pause/resume for the current SFX API. Fade-out/in and decoder-position
+restoration are not delivered by this stop-and-discard increment.
+
+The runtime closes SFX admission before a bounded FIFO stop barrier to `thAudio`.
+Queued play requests are consumed without playback while admission is closed;
+the owner stops voices and releases its clock intent before acknowledging. A
+failed send, timeout, stop, or clock release keeps admission closed and quarantines
+package reuse until reset. No source replacement may bypass that failure. The
+existing owner timeout is reused; there is no polling or automatic retry.
+
 Current FW0 bring-up bounds are:
 
 - source WAV: uncompressed mono or stereo PCM, 8/16/24/32-bit, 8..96 kHz;

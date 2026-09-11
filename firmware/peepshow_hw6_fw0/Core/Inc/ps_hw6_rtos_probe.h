@@ -754,6 +754,22 @@ typedef struct
 
 extern volatile PS_HW6_RTOS_Probe g_ps_hw6_rtos_probe;
 
+typedef struct
+{
+  uint32_t api_version;
+  uint32_t blocked;
+  uint32_t fault;
+  uint32_t request;
+  uint32_t complete;
+  uint32_t status;
+  uint32_t send_status;
+  uint32_t wait_status;
+  uint32_t owner_status;
+  uint32_t discarded;
+} PS_HW6_AudioPackageProbe;
+
+extern volatile PS_HW6_AudioPackageProbe g_ps_audio_package_probe;
+
 UINT PS_HW6_RTOS_Init(TX_BYTE_POOL *pool);
 UINT PS_HW6_RTOS_RequestUsbMscEnter(void);
 UINT PS_HW6_RTOS_RequestUsbMscExit(void);

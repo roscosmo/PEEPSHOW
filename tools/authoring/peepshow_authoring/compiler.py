@@ -166,15 +166,19 @@ class EggCompileError(ValueError):
 def build_readiness_issues(bundle: ProjectBundle) -> list[dict[str, str]]:
     if not bundle.valid:
         return []
+    if any(scene.get("schema_version") == 2 for scene in bundle.scenes):
+        from .v2_export import source_issues, package_issues, issue
+        issues = source_issues(bundle)
+        if issues:
+            return issues
+        try:
+            blob = build_development_egg_v2(bundle)
+            package = parse_egg(blob, _development_v2=True)
+            return package_issues(package, len(blob))
+        except (EggCompileError, EggFormatError) as exc:
+            return [issue("V2_ENCODING_UNSUPPORTED", "package", str(exc))]
     issues = []
     for source in sorted(bundle.scenes, key=lambda scene: scene["scene_id"]):
-        if source.get("schema_version") == 2:
-            issues.append({
-                "code": "SCENE_OBJECT_EXECUTABLE_UNAVAILABLE", "scene_id": source["scene_id"],
-                "path": f"scenes[{source['scene_id']}].schema_version",
-                "message": f"Scene '{source['scene_id']}' uses scene-owned objects; host editing/preview is available, but egg/firmware support is not implemented.",
-            })
-            continue
         scene = _package_scene(source)
         models = {model["visual_id"]: model for model in scene["render_models"]}
         for state in sorted(scene["states"], key=lambda state: state["state_id"]):
@@ -909,7 +913,7 @@ def build_egg(bundle: ProjectBundle) -> bytes:
     issues = build_readiness_issues(bundle)
     if issues:
         raise EggCompileError("\n".join(issue["message"] for issue in issues))
-    return _build_egg(bundle)
+    return _build_egg(bundle, _development_v2=any(scene.get("schema_version") == 2 for scene in bundle.scenes))
 
 
 def build_preview_package(bundle: ProjectBundle) -> EggPackage:
@@ -943,7 +947,7 @@ def build_preview_package(bundle: ProjectBundle) -> EggPackage:
 
 
 def build_development_egg_v2(bundle: ProjectBundle) -> bytes:
-    """Build a strict V2 binary fixture, never called by normal export/service."""
+    """Encode structurally valid V2; normal export additionally checks HW6 limits."""
     if not any(scene.get("schema_version") == 2 for scene in bundle.scenes):
         raise EggCompileError("development V2 requires a scene-object scene")
     return _build_egg(bundle, _development_v2=True)

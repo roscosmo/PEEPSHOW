@@ -209,10 +209,14 @@ transactional object edits, save/reload and host preview. Check
 do not infer supported editing commands from the API number alone. Object clips
 continue through state changes, hidden placement and static masks. The host
 preview reuses the graph/timer executor with a labeled internal adapter, not a
-new executable package decoder. Any project containing version-2 scenes reports
-`SCENE_OBJECT_EXECUTABLE_UNAVAILABLE` in `build_issues`: draft editing/preview
-works, but egg export and firmware support remain unavailable. Legacy projects
-are not implicitly migrated. Exact command fields, limitations and GUI handoff:
+new executable package decoder. API 42 enables ordinary V2 build/export for the
+restricted `hw6_v2_resident_v1` profile: one resident scene, input/timers/objects,
+no audio or exits, and conservative animation-resource checks. Discover support
+through hello and per-scene capabilities; require whole-project `export_ready`
+and inspect `build_issues`. Unsupported drafts retain editing/preview. Legacy
+projects are not implicitly migrated. Export limits and GUI integration:
+`docs/11 Development Tools/Peep_Studio_Restricted_V2_Export_Handoff.md`.
+Exact editing command fields and earlier increments:
 `docs/11 Development Tools/Peep_Studio_Scene_Object_Ownership_Handoff.md`,
 Connected Host Increment (API 39), Native Creation and States (API 40), and Native Local Graphs (API 41).
 

@@ -1118,6 +1118,12 @@ def _parse_graph(
 
 def parse_egg(blob: bytes, *, _draft: bool = False, _development_v2: bool = False) -> EggPackage:
     _require(len(blob) >= HEADER.size + FOOTER.size, "package is truncated")
+    if not _development_v2 and HEADER.unpack_from(blob)[1] == 2:
+        from .v2_export import package_issues
+        package = parse_egg(blob, _development_v2=True)
+        issues = package_issues(package, len(blob))
+        _require(not issues, "restricted V2 export profile: " + "; ".join(i["message"] for i in issues))
+        return package
     values = HEADER.unpack_from(blob)
     (
         magic,

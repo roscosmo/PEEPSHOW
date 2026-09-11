@@ -17,6 +17,11 @@
   (PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT / PS_LPBAM_DISPLAY_SPATIAL_CHUNK_COUNT)
 #define PS_LPBAM_DISPLAY_PATTERN_SEQUENCE_COUNT 4U
 #define PS_LPBAM_DISPLAY_ADMISSION_API_VERSION 4U
+#define PS_LPBAM_ROW_WIRE_BYTES (1U + LINE_WIDTH + 1U)
+#define PS_LPBAM_ALIGN4(value) (((value) + 3U) & ~3U)
+#define PS_LPBAM_SPATIAL_PAYLOAD_BYTES \
+  (1U + ((PS_LPBAM_DISPLAY_SPATIAL_ROWS + 1U) * PS_LPBAM_ROW_WIRE_BYTES) + 2U)
+#define PS_LPBAM_SPATIAL_SLOT_BYTES PS_LPBAM_ALIGN4(PS_LPBAM_SPATIAL_PAYLOAD_BYTES)
 
 #define PS_LPBAM_ADMISSION_REASON_NONE          0U
 #define PS_LPBAM_ADMISSION_REASON_ARGUMENT      1U
@@ -55,6 +60,30 @@ typedef struct
   uint32_t status;
   uint32_t reason;
 } ps_lpbam_display_admission_t;
+
+/* Caller-owned ordinary RAM, never DMA-visible/live payload scratch. */
+typedef struct
+{
+  uint8_t previous[DISPLAY_HEIGHT][LINE_WIDTH];
+  uint8_t target[DISPLAY_HEIGHT][LINE_WIDTH];
+  uint8_t payload[PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT][PS_LPBAM_SPATIAL_SLOT_BYTES];
+  uint8_t wire[PS_LPBAM_DISPLAY_TRANSACTION_MAX_LEN];
+  uint16_t length[PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT];
+  uint8_t band[PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT];
+  uint32_t frames_composed;
+} ps_lpbam_display_check_workspace_t;
+
+typedef uint32_t (*ps_lpbam_display_compose_fn)(void *context, uint32_t step,
+  uint8_t *destination, uint32_t capacity);
+
+/* thDisplay only. Exact full-scene band/chunk/payload admission, including wrap.
+ * Calls compose synchronously at most sequence_count+1 times (1 means success).
+ * Does not alter production buffers, descriptors, probes or readiness. Workspace,
+ * result and callback outputs must not alias live display/LPBAM storage.
+ */
+HAL_StatusTypeDef PS_LpbamDisplay_CheckFullSceneAnimation(uint32_t sequence_count,
+  ps_lpbam_display_compose_fn compose, void *context,
+  ps_lpbam_display_check_workspace_t *workspace, ps_lpbam_display_admission_t *result);
 
 extern uint8_t *ps_lpbam_display_tx[PS_LPBAM_DISPLAY_MAX_CHUNKS];
 extern uint8_t *ps_lpbam_display_payload_slot[

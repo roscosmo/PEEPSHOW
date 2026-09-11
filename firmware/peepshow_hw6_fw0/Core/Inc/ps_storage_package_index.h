@@ -11,13 +11,13 @@
 extern "C" {
 #endif
 
-#define PS_STORAGE_PACKAGE_INDEX_API_VERSION       (2UL)
+#define PS_STORAGE_PACKAGE_INDEX_API_VERSION       (3UL)
 #define PS_STORAGE_PACKAGE_INDEX_RECORD_COUNT      (2UL)
 #define PS_STORAGE_PACKAGE_INDEX_RECORD_BODY_SIZE  (256UL)
 #define PS_STORAGE_PACKAGE_INDEX_COMMIT_OFFSET     (256UL)
 #define PS_STORAGE_PACKAGE_INDEX_READ_SIZE         (260UL)
 #define PS_STORAGE_PACKAGE_INDEX_SECTOR_SIZE       (0x00001000UL)
-#define PS_STORAGE_PACKAGE_SLOT_COUNT              (2UL)
+#define PS_STORAGE_PACKAGE_SLOT_COUNT              (1UL)
 #define PS_STORAGE_PACKAGE_SLOT_SIZE \
   PS_TARGET_PROFILE_PACKAGE_MAX_BYTES
 #define PS_STORAGE_PACKAGE_INDEX_INVALID_SELECTION (0xFFFFFFFFUL)
@@ -33,8 +33,18 @@ typedef enum
   PS_STORAGE_PACKAGE_INDEX_REASON_CRC,
   PS_STORAGE_PACKAGE_INDEX_REASON_BOUNDS,
   PS_STORAGE_PACKAGE_INDEX_REASON_RESERVED,
-  PS_STORAGE_PACKAGE_INDEX_REASON_CONFLICT
+  PS_STORAGE_PACKAGE_INDEX_REASON_CONFLICT,
+  PS_STORAGE_PACKAGE_INDEX_REASON_LEGACY,
+  PS_STORAGE_PACKAGE_INDEX_REASON_TRANSACTION,
+  PS_STORAGE_PACKAGE_INDEX_REASON_PENDING
 } ps_storage_package_index_reason_t;
+
+typedef enum
+{
+  PS_STORAGE_PACKAGE_TRANSACTION_PENDING = 1,
+  PS_STORAGE_PACKAGE_TRANSACTION_VALID = 2,
+  PS_STORAGE_PACKAGE_TRANSACTION_FAILED = 3
+} ps_storage_package_transaction_t;
 
 typedef enum
 {
@@ -49,7 +59,9 @@ typedef enum
   PS_STORAGE_PACKAGE_INSTALL_STAGE_VERIFY_INDEX,
   PS_STORAGE_PACKAGE_INSTALL_STAGE_COMMIT,
   PS_STORAGE_PACKAGE_INSTALL_STAGE_RESCAN,
-  PS_STORAGE_PACKAGE_INSTALL_STAGE_COMPLETE
+  PS_STORAGE_PACKAGE_INSTALL_STAGE_COMPLETE,
+  PS_STORAGE_PACKAGE_INSTALL_STAGE_PENDING,
+  PS_STORAGE_PACKAGE_INSTALL_STAGE_RETIRE
 } ps_storage_package_install_stage_t;
 
 typedef struct
@@ -68,6 +80,8 @@ typedef struct
   uint32_t stored_crc32;
   uint32_t computed_crc32;
   uint32_t package_sha256_words[8];
+  uint32_t format_version;
+  uint32_t transaction_state;
 } ps_storage_package_index_record_probe_t;
 
 typedef struct
@@ -134,6 +148,10 @@ typedef struct
   uint32_t selected_record;
   uint32_t selected_slot;
   uint32_t selected_generation;
+  uint32_t pending_record;
+  uint32_t pending_generation;
+  uint32_t pending_status;
+  uint32_t retire_status;
 } ps_storage_package_install_probe_t;
 
 extern volatile ps_storage_package_index_probe_t
