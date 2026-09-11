@@ -1,9 +1,12 @@
 # PeepPkg V2 Development Layout
 
 Status: host encoder/parser and restricted firmware installation/activation;
-NOT a shipping capability or device acceptance claim. Normal Studio build/export
-and `parse_egg` continue to reject V2. The explicit development encoder supplies
-the hardware-test egg; restricted installation is described below.
+NOT a shipping capability or universal device acceptance claim. Authoring API 42
+enables ordinary build/export and `parse_egg` for a conservative subset of the
+restricted firmware profile. Studio integration remains pending. See
+[[Peep_Studio_Restricted_V2_Export_Handoff]] for capabilities and readiness.
+The explicit development encoder remains broader for hardware/negative fixtures;
+its output is not automatically eligible for ordinary export.
 Use `build_development_egg_v2` / `parse_development_egg_v2` for host fixtures;
 the C development entry is `PS_EggStateLoader_DecodeDevelopmentScene`.
 Authority: [[Scene_Object_Executable_Design]], [[Package_Blob_Format_Contract]].
@@ -32,15 +35,17 @@ rejects otherwise valid but unsupported content.
 
 **A profile pass does not authorize installation, export or STOP2.** It does not
 compose display frames or prove LPBAM budgets across mutable object states.
-The pure loader `ValidatePackage` API still rejects V2; service capabilities and
-ordinary export remain unchanged. The owner-level `PS_HW6_RTOS_ValidatePackage`
+The pure loader `ValidatePackage` API still rejects V2. The API 42 host export
+subset adds conservative graph/timing/payload checks. The owner-level `PS_HW6_RTOS_ValidatePackage`
 now dispatches V2 to the restricted profile plus exact display admission below.
 The storage follow-up now implements the single-active-slot transaction journal
 and ignores legacy A/B installation records. Its native interruption tests pass;
 device install, PLAY, same-slot reinstallation and normal reboot passed with the
 321,480-byte embedded V1 artifact (generations 2 then 4). Physical power-cut and
-V2 installed activation remain unproven on hardware. The separate restricted
-activation increment below is ready for that test, not general export.
+broader V2 profiles remain unproven on hardware. The 2196-byte GUI installation
+fixture subsequently passed V2 boot, reinstall/PLAY, A/B animation continuity
+and sleep accounting; see [[V2_Installed_Package_Test_Runbook]]. This is not
+general V2 or shipping acceptance.
 See [[Storage_and_Installer_Contract]].
 
 Native coverage: `test_firmware_v2_profile.py` runs the real C loader against
@@ -57,7 +62,8 @@ host-native checks, not installed-package hardware acceptance.
 The next implemented boundary checks a **single frozen object snapshot and its
 complete repeating animation program**, not every reachable package state.
 The restricted installation increment connects this check to installation and
-boot loading, but does not advertise a GUI capability.
+boot loading. API 42 separately advertises the conservative host export subset;
+this exact device check remains mandatory.
 
 1. `thRuntime` calls `PS_EggStateLoader_DecodeV2Candidate` into private descriptor
    and catalog outputs. This applies the same profile/integrity checks above,
@@ -344,8 +350,9 @@ until the complete package passes validation.
 Structural host ceilings: 32 objects, 64 states, 128 routes plus 16 handlers,
 32 variables, 32 input bindings plus 16 timers, 8 guards/actions per route,
 2048 overrides and 1152 control operations per scene. These are format test
-bounds, NOT admitted HW6 object-bank or LPBAM capacities. Firmware admission
-and target-profile limits must be implemented before normal export is enabled.
+bounds, NOT admitted HW6 object-bank or LPBAM capacities. Ordinary API 42 export
+enforces the smaller limits in [[Peep_Studio_Restricted_V2_Export_Handoff]];
+the broad explicit development encoder/parser retain these structural bounds.
 
 Fixtures cover deterministic encoding, mixed legacy/object scenes, explicit
 version rejection, all object operations, timer handlers, asset/audio reuse,
@@ -362,8 +369,9 @@ over an immutable borrowed view. Any decode failure clears that view.
 The parent loader must still validate container integrity, shared catalogs and
 pixel payloads, SCN2/STG1-7 cross-references and HW6 admission. The record decoder
 checks referenced stable IDs, dimensions and looping clip frame/duration ranges;
-it does not replace those whole-package checks. It is compiled into the build
-source list but not connected to production loading. V2 remains rejected there.
+it does not replace those whole-package checks. Restricted installed loading now
+uses this decoder through the parent loader and owner-level admission described
+above. The low-level decoder alone does not authorize launch.
 
 Native tests compare decoded fields and accept/reject results with the Python
 record reader, including unaligned payloads, signed-int32 extrema, every

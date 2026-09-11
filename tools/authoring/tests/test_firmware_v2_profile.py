@@ -60,6 +60,8 @@ class V2ProfileTests(unittest.TestCase):
         baseline.with_suffix(".egg.sha256").write_bytes(hashlib.sha256(baseline.read_bytes()[:-40]).digest())
         fixture("legacy_not_v2", legacy, 3, 2)
         fixture("gui", good)
+        installed_gui = load_project(TOOL_ROOT.parents[1] / "examples/authoring/native_v2_installation.peepproj")
+        fixture("public_export_gui", build_egg(installed_gui))
         fixture("structured", build_development_egg_v2(structured_fixture_bundle()))
         fixture("dual", build_development_egg_v2(dual_fixture_bundle()))
         fixture("timer_controls", build_development_egg_v2(timer_fixture_bundle()))

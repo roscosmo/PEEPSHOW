@@ -94,13 +94,13 @@ class SceneObjectIntegrationTests(unittest.TestCase):
         bundle = load_project(self.root)
         self.assertTrue(bundle.valid, bundle.issues)
         self.assertEqual(self.service._bundle.canonical_bytes(), bundle.canonical_bytes())
-        with self.assertRaisesRegex(EggCompileError, "firmware support is not implemented"):
+        with self.assertRaisesRegex(EggCompileError, "exactly one version-2 scene"):
             build_egg(bundle)
         hello = self.call("service.hello")
-        self.assertFalse(hello["scene_object_authoring"]["egg_export"])
+        self.assertTrue(hello["scene_object_authoring"]["egg_export"])
         with self.assertRaises(ProtocolError) as failure:
             self.call("project.build_package")
-        self.assertEqual("SCENE_OBJECT_EXECUTABLE_UNAVAILABLE", failure.exception.details["issues"][0]["code"])
+        self.assertEqual("V2_SCENE_PROFILE", failure.exception.details["issues"][0]["code"])
         self.call("project.compatibility_report")
         self.call("project.scene_thumbnails")
 

@@ -179,3 +179,13 @@ A/B animation continuity and post-wake time reconciliation. Precise 400 ms
 cadence, low-current residency, physical power-cut behavior and broader profile
 coverage are not established by this debugger capture. Ordinary V2 export stays
 disabled until the restricted backend capability/readiness handoff is delivered.
+
+## API 42 Export Follow-Up
+
+The restricted backend capability/readiness handoff is now delivered in
+[[Peep_Studio_Restricted_V2_Export_Handoff]]. It supersedes the blanket export
+restriction above for projects inside the advertised subset. The public build
+produces the same 2196 bytes for the unchanged installation fixture.
+Studio integration and the normal Studio-build/USB-install/PLAY/reboot round
+trip remain the next test; this does not upgrade the recorded evidence to
+shipping, current-measurement or general V2 acceptance.

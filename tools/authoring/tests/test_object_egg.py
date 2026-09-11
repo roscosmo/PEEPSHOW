@@ -101,7 +101,7 @@ class ObjectEggTests(unittest.TestCase):
     def test_normal_export_and_reader_do_not_accept_development_format(self):
         with self.assertRaises(EggCompileError):
             build_egg(self.bundle)
-        with self.assertRaisesRegex(EggFormatError, "unsupported package container"):
+        with self.assertRaisesRegex(EggFormatError, "restricted V2 export profile"):
             parse_egg(self.blob)
         legacy = load_project(FIXTURE)
         before = build_egg(legacy)

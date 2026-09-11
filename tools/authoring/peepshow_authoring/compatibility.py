@@ -9,6 +9,7 @@ from typing import Any
 
 from .egg_format import parse_egg
 from .compiler import build_readiness_issues
+from .v2_export import LIMITS as V2_LIMITS, package_admission
 from .project import ProjectBundle, ValidationIssue
 from .target_profile import (
     TARGET_PROFILE_HASH,
@@ -313,6 +314,15 @@ def build_compatibility_report(
         if target_profile is not None
         else None
     )
+    has_objects = any(scene.get("schema_version") == 2 for scene in bundle.scenes)
+    if has_objects:
+        package_limit = V2_LIMITS["package_bytes"]
+        budgets["waiting_visual_sequences"] = {
+            "status": "passed_conservative" if package is not None else "blocked",
+            "limits": {key: V2_LIMITS[key] for key in ("combined_steps", "chunks", "payload_bytes")},
+            "analysis": package_admission(package, len(package_blob))["animation_budget"] if package is not None else None,
+            "exact_device_admission_required": True,
+        }
     audio_limit = (
         int(target_profile["audio"]["sampled_sfx"]["maximum_bank_bytes"])
         if target_profile is not None
@@ -351,13 +361,16 @@ def build_compatibility_report(
             "tool_version": TOOL_VERSION,
             "validator_version": 1,
             "package_compiler_version": 1,
-            "schema_versions": ["peepshow.authoring.project:1", "peepshow.authoring.state_scene:1"],
+            "schema_versions": ["peepshow.authoring.project:1"] + [
+                f"peepshow.authoring.state_scene:{version}"
+                for version in sorted({scene.get("schema_version", 1) for scene in bundle.scenes})
+            ],
         },
         "package": {
             "package_id": project_package.get("package_id"),
             "package_name": project_package.get("display_name"),
             "package_version": project_package.get("version"),
-            "package_container_version": 1,
+            "package_container_version": 2 if has_objects else 1,
             "package_checksum": package_checksum,
             "source_manifest_checksum": source_checksum,
             "content_parameter_checksum": EMPTY_SHA256,

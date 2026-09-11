@@ -203,7 +203,10 @@ The follow-up passed user-observed installed A/B animation continuity and settle
 sleep accounting (WFI returns/measured/reconciled 5/5/5, clock status 0), with
 completed drawing and admission status 0. Precise installed cadence/current
 measurement and physical power-cut acceptance remain separate.
-Ordinary GUI V2 export remains disabled. See [[V2_Installed_Package_Test_Runbook]].
+Authoring API 42 now advertises a conservative restricted V2 export subset;
+Studio integration and its normal build/export/USB round trip remain pending.
+See [[Peep_Studio_Restricted_V2_Export_Handoff]] and
+[[V2_Installed_Package_Test_Runbook]]. Exact firmware admission remains required.
 
 The FW0 preflight implementation now checks SHA-256, the complete container and
 chunk CRCs, target residency, and every included scene/state using the native

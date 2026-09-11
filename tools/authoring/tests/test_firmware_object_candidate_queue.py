@@ -8,7 +8,7 @@ import unittest
 import test_firmware_object_display_admission as admission
 from test_firmware_package_workflow import firmware_function
 from build_object_development import dual_fixture_bundle
-from peepshow_authoring.compiler import build_development_egg_v2
+from peepshow_authoring.compiler import build_development_egg_v2, build_egg
 from peepshow_authoring.project import load_project
 
 
@@ -56,7 +56,7 @@ class ObjectCandidateQueueTests(unittest.TestCase):
 
     def test_exact_gui_installed_entry_and_transaction_rollback(self):
         project = Path(__file__).resolve().parents[3] / "examples/authoring/native_v2_installation.peepproj"
-        blob = build_development_egg_v2(load_project(project))
+        blob = build_egg(load_project(project))
         path = self.work / "gui_install.egg"
         path.write_bytes(blob)
         path.with_suffix(".egg.sha256").write_bytes(hashlib.sha256(blob[:-40]).digest())

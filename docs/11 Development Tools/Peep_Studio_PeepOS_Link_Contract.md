@@ -63,6 +63,13 @@ validated authoring example.
 
 ## Current Capability
 
+Authoring service API 42 now advertises restricted ordinary V2 build/export.
+See [[Peep_Studio_Restricted_V2_Export_Handoff]] for capabilities, whole-project
+readiness, conservative LPBAM budgets and the next Studio/USB hardware test.
+The existing installed fixture has passed; GUI integration remains pending.
+The V1 capability history below does not grant V2 audio, scene connections,
+shell-exit actions or unrestricted/shipping export.
+
 The following path is implemented. Rows explicitly marked pending still require
 their stated HW6 proof; the remaining rows have been exercised on target.
 

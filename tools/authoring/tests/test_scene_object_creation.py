@@ -78,11 +78,11 @@ class SceneObjectCreationTests(unittest.TestCase):
         self.call("project.scene_thumbnails")
         with self.assertRaises(ProtocolError) as error:
             self.call("project.build_package")
-        self.assertIn("SCENE_OBJECT_EXECUTABLE_UNAVAILABLE", [issue["code"] for issue in error.exception.details["issues"]])
+        self.assertIn("V2_OBJECTS_EMPTY", [issue["code"] for issue in error.exception.details["issues"]])
 
     def test_capabilities_distinguish_creation_state_management_and_graphs(self):
         hello = self.call("service.hello")
-        self.assertEqual(41, SERVICE_API_VERSION)
+        self.assertEqual(42, SERVICE_API_VERSION)
         creation = hello["scene_creation"]
         self.assertEqual("project.create", creation["project_operation"])
         self.assertEqual("scene.add", creation["scene_command"])
@@ -102,8 +102,9 @@ class SceneObjectCreationTests(unittest.TestCase):
         self.assertEqual(expected, set(hello["scene_object_authoring"]["state_management_commands"]))
         self.assertTrue(capability["graph_construction_commands"])
         self.assertFalse(capability["scene_connection_commands"])
-        self.assertFalse(capability["egg_export"])
-        self.assertFalse(hello["scene_object_authoring"]["firmware_available"])
+        self.assertTrue(capability["egg_export"])
+        self.assertFalse(capability["export_ready"])
+        self.assertTrue(hello["scene_object_authoring"]["firmware_available"])
 
     def test_version_selection_is_explicit_for_each_new_scene(self):
         self.create()

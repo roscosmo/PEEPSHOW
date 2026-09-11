@@ -919,3 +919,18 @@ advertisement; Studio must consume that handoff rather than enabling export
 solely because this fixture passed. No replacement fixture is requested.
 Follow [[V2_Installed_Package_Test_Runbook]]; do not use the embedded V1 install
 helper or a development scene launcher as evidence of V2 installation.
+
+## Restricted Export Backend (API 42)
+
+The separate capability/readiness increment is now implemented. This supersedes
+the earlier instructions to keep all ordinary V2 export disabled after merging
+the backend; it does not enable unrestricted V2 export. Follow
+[[Peep_Studio_Restricted_V2_Export_Handoff]] for the exact supported subset,
+hello/per-scene fields and conservative animation budgets. Draft editing and
+preview remain available when a project is not export-ready.
+
+Studio should integrate normal Build/Export using the advertised capabilities
+and whole-project readiness, then export the existing installation fixture
+unchanged for the normal USB round trip. No new fixture or firmware edits are
+requested. The backend's public build produces the same 2196 fixture bytes as
+the development encoder used for the recorded hardware pass.
