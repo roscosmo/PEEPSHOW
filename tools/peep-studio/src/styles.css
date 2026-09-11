@@ -1596,6 +1596,29 @@ button:focus-visible {
   gap: 8px;
 }
 
+.asset-workspace-summary .asset-library-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.asset-library-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid #bdcbc6;
+  border-radius: 4px;
+  background: #fff;
+  color: #27302b;
+}
+
+.asset-library-tabs button[aria-selected="true"] {
+  border-color: #1674a4;
+  background: #e8f3fa;
+  color: #145e84;
+}
+
 .asset-import-panel {
   display: grid;
   gap: 10px;

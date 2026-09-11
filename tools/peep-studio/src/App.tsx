@@ -186,6 +186,7 @@ export default function App() {
   const [expandedSceneIds, setExpandedSceneIds] = useState<string[]>([]);
   const [collapsedHierarchyIds, setCollapsedHierarchyIds] = useState<string[]>([]);
   const [assetSelection, setAssetSelection] = useState<AssetSelection>(null);
+  const [assetTab, setAssetTab] = useState<"sprite" | "audio">("sprite");
   const [audioAuditionStatus, setAudioAuditionStatus] = useState("No cue auditioned.");
   const [assetPreviewPlaying, setAssetPreviewPlaying] = useState(false);
   const [assetPreviewStep, setAssetPreviewStep] = useState(0);
@@ -688,8 +689,16 @@ export default function App() {
   const selectAssetRecord = (selection: AssetSelection) => {
     setAssetSelection(selection);
     if (selection !== null) {
+      setAssetTab(selection.kind);
       setSceneSelection({ kind: "scene" });
     }
+  };
+  const selectAssetTab = (tab: "sprite" | "audio") => {
+    if (tab === assetTab) return;
+    setAssetTab(tab);
+    setAssetSelection(null);
+    setAssetPreviewPlaying(false);
+    stopAudioPlayback();
   };
 
   useEffect(() => {
@@ -3643,7 +3652,7 @@ export default function App() {
     const canEditAssets = bridge !== undefined && project !== null && busy === null && service?.operations.includes("project.apply_commands") === true;
     const audioSupported = service?.state_scene_audio.host_package_support === true;
     const auditionSupported = service?.operations.includes("project.audio_audition") === true;
-    const hasAnyAssets = compiledAssetFrameGroups.length > 0 || audioCues.length > 0;
+    const hasTabAssets = assetTab === "sprite" ? compiledAssetFrameGroups.length > 0 : audioCues.length > 0;
     return (
       <section className="asset-workspace-pane">
         <div className="preview-heading graph-heading">
@@ -3655,13 +3664,26 @@ export default function App() {
         </div>
         <div className="asset-workspace">
           <div className="asset-workspace-summary">
-            <div>
-              <strong>Project library</strong>
-              <span>
-                {compiledAssetFrames.length} frame{compiledAssetFrames.length === 1 ? "" : "s"} / {audioCues.length} SFX cue{audioCues.length === 1 ? "" : "s"}
-              </span>
+            <div className="asset-library-tabs" role="tablist" aria-label="Asset types">
+              {(["sprite", "audio"] as const).map(tab => (
+                <button key={tab} type="button" role="tab" id={`asset-tab-${tab}`}
+                  aria-selected={assetTab === tab} aria-controls="asset-library-panel"
+                  tabIndex={assetTab === tab ? 0 : -1}
+                  onClick={() => selectAssetTab(tab)}
+                  onKeyDown={event => {
+                    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                    event.preventDefault();
+                    const next = event.key === "Home" ? "sprite" : event.key === "End" ? "audio" : tab === "sprite" ? "audio" : "sprite";
+                    selectAssetTab(next);
+                    document.getElementById(`asset-tab-${next}`)?.focus();
+                  }}>
+                  {tab === "sprite" ? <Image size={15} aria-hidden="true" /> : <Volume2 size={15} aria-hidden="true" />}
+                  {tab === "sprite" ? "Sprites" : "Audio"}
+                </button>
+              ))}
             </div>
             <div className="asset-workspace-actions">
+              {assetTab === "sprite" ? <>
               <button
                 className="button secondary"
                 type="button"
@@ -3680,6 +3702,7 @@ export default function App() {
                 <Type size={15} aria-hidden="true" />
                 Text sprite
               </button>
+              </> : <>
               <button
                 className="button secondary"
                 type="button"
@@ -3689,11 +3712,13 @@ export default function App() {
                 <Volume2 size={15} aria-hidden="true" />
                 WAV SFX
               </button>
+              </>}
             </div>
           </div>
-          {renderSpriteImportPanel(canEditAssets)}
+          <div id="asset-library-panel" role="tabpanel" aria-labelledby={`asset-tab-${assetTab}`}>
+          {assetTab === "sprite" && renderSpriteImportPanel(canEditAssets)}
           <div className="asset-group-stack">
-            {compiledAssetFrameGroups.length > 0 && (
+            {assetTab === "sprite" && compiledAssetFrameGroups.length > 0 && (
               <section className="asset-group-panel">
                 <div className="asset-group-heading">
                   <strong>Sprites</strong>
@@ -3718,7 +3743,7 @@ export default function App() {
                 </div>
               </section>
             )}
-            {audioCues.length > 0 && (
+            {assetTab === "audio" && audioCues.length > 0 && (
               <section className="asset-group-panel">
                 <div className="asset-group-heading">
                   <strong>Sampled SFX</strong>
@@ -3765,12 +3790,13 @@ export default function App() {
                 </div>
               </section>
             )}
-            {!hasAnyAssets && (
+            {!hasTabAssets && (
               <div className="asset-workspace-empty">
                 <Box size={28} aria-hidden="true" />
-                <strong>No project assets</strong>
+                <strong>{assetTab === "sprite" ? "No sprites" : "No audio assets"}</strong>
               </div>
             )}
+          </div>
           </div>
         </div>
       </section>
@@ -4006,8 +4032,7 @@ export default function App() {
     }
     return (
       <section className="inspector-section asset-inspector">
-        <h3><Box size={14} aria-hidden="true" /> Asset</h3>
-        <p className="muted">Select a sprite or sampled SFX to inspect it.</p>
+        <h3>{assetTab === "sprite" ? <Image size={14} aria-hidden="true" /> : <Volume2 size={14} aria-hidden="true" />} {assetTab === "sprite" ? "Sprite" : "Audio"}</h3>
       </section>
     );
   };

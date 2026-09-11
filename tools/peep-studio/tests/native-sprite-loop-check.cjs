@@ -124,6 +124,21 @@ app.whenReady().then(async () => {
   assert.equal(commands.find(c=>c.kind==='asset.upsert').asset.frames.length, frameCount);
   assert.deepEqual(commands.find(c=>c.kind==='asset.upsert').asset.frames.map(f=>f.source_rect),
     Array.from({length:frameCount},(_,i)=>({x:(i%sheetColumns)*16,y:Math.floor(i/sheetColumns)*16,width:16,height:16})));
+  await click('.asset-frame-gallery button');
+  assert(await evaluate("!!document.querySelector('.asset-inspector-preview')"));
+  const tabRevision = latest.project_revision;
+  await click('#asset-tab-audio');
+  assert.equal(await evaluate("document.querySelector('.asset-frame-gallery')"), null);
+  assert.equal(await evaluate("document.querySelector('.asset-inspector-preview')"), null);
+  assert.match(await evaluate("document.querySelector('.asset-workspace-empty').textContent"), /No audio assets/);
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].some(e=>e.textContent.trim()==='Choose PNG')"), false);
+  await evaluate("document.querySelector('#asset-tab-audio').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))"); await wait(100);
+  assert.equal(await evaluate("document.activeElement.id"), 'asset-tab-sprite');
+  assert.equal(await evaluate("document.querySelector('.asset-frame-gallery button.selected')"), null);
+  assert.equal(latest.project_revision, tabRevision);
+  window.webContents.invalidate(); await wait(200);
+  fs.writeFileSync(path.join(output,'asset-tabs.png'),(await window.webContents.capturePage()).toPNG());
+  console.log('Asset tabs: filtered controls, empty state, cleared selection and keyboard navigation passed');
   await button('Placement');
   await click('.scene-hierarchy-node.selected .base-branch .hierarchy-branch-select');
   await click('[aria-label="Add sprite"]'); await click('.placement-sprite-picker-group button');

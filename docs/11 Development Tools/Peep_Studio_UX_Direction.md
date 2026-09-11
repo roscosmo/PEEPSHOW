@@ -545,10 +545,13 @@ Agreed delivery order:
    machine, not to authored project data. Implemented first: Placement pixel
    grid, major lines, grid strength, object boxes and label mode, persisted in
    local editor storage. The old Placement-only Settings tab is removed.
-2. Library organization: separate Sprites and Audio tabs instead of one long
-   mixed list. Group assets using tags; an asset may have multiple tags.
+2. Library organization: implemented separate Sprites and Audio tabs with
+   filtered import controls, independent empty states and keyboard navigation.
+   Switching tabs clears the previous asset selection and stops its preview;
+   project data is unchanged. Group assets using tags; an asset may have multiple tags.
    Coordinate persistent tag metadata with the shared authoring contract before
-   adding fields or commands.
+   adding fields or commands. Current typed sprite/audio records have no tag
+   field; the contract's entity-definition tags are not an asset-tag contract.
 3. Sprite cards: one card per asset, with an animated thumbnail on hover for
    multi-frame sprites. Frame inspection remains inside the asset inspector.
    Add an Assets settings group with Hover (default), Always and Off playback
