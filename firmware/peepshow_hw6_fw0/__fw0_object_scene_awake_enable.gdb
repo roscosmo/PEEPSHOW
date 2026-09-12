@@ -1,7 +1,7 @@
 set pagination off
 printf "--- HW6 development V2 awake object scene ---\n"
-if (g_ps_object_development_probe.api_version != 3) || (g_ps_scene_runtime_probe.api_version != 22) || (g_ps_audio_package_probe.api_version != 1)
-  printf "NOT armed: this helper requires development/scene/audio-package APIs 3/22/1. Check the flashed ELF.\n"
+if (g_ps_object_development_probe.api_version != 4) || (g_ps_scene_runtime_probe.api_version != 22) || (g_ps_audio_package_probe.api_version != 1)
+  printf "NOT armed: this helper requires development/scene/audio-package APIs 4/22/1. Check the flashed ELF.\n"
 else
   if (g_ps_object_development_probe.lease_fault != 0) || (g_ps_audio_package_probe.fault != 0)
     printf "NOT armed: a display or audio shutdown fault requires a reset before another launch.\n"

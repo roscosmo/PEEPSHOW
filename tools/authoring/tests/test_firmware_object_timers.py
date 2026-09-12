@@ -17,6 +17,12 @@ from peepshow_authoring.project import load_project
 
 
 class ObjectTimerTests(unittest.TestCase):
+    def test_multiscene_input_and_timer_ownership_and_rejected_exit(self):
+        from test_firmware_object_scene_replacement import replacement_bundle
+        for mode in (16, 17, 18):
+            with self.subTest(mode=mode):
+                self.run_timer(mode, bundle=replacement_bundle(timer_exit=True))
+
     @classmethod
     def setUpClass(cls):
         awake.ObjectAwakeTests.setUpClass.__func__(cls)

@@ -1,9 +1,10 @@
 # V2 Multi-scene Preparation
 
-Status: private firmware candidate decoding and display-owner admission
+Status: private firmware candidate decoding, display-owner admission and
+development-only fresh scene replacement
 implemented on 2026-09-12. Decoder baseline is
 `ac46c0e70e3f7aeab05ad22ae4b987d3e29c6436`, following authoring API 43.
-Not multi-scene installation, runtime replacement, export permission or a
+Not multi-scene installation, export permission or a
 hardware pass.
 
 ## Delivered Boundary
@@ -150,11 +151,84 @@ their future replacement caller chain is not yet present and must be added then.
 No new hardware test is requested at this preparation checkpoint. Service API 43
 and the restricted single-scene export capability remain unchanged.
 
+## Development Fresh Replacement Follow-up
+
+`PS_SceneRuntime_EnterDevelopmentSceneSet` now admits every scene's initial
+presentation before publishing the package-wide immutable catalog. It retains
+the bounded eight-scene/65536-byte, continuous V2, action-free-exit subset.
+The runtime caller must retain immutable package bytes for the whole session.
+Installed entry and public export remain single-scene.
+
+On an input or timer exit, `thRuntime` decodes the destination into the inactive
+descriptor slot and initializes one file-static staging graph. It then requests
+exact display-owner admission for that fresh bank and selected scene. Only a
+matching successful completion permits commit. The committed graph, descriptor,
+authored variables, entry state, object defaults and playback become the fresh
+destination together. The package-wide catalog is shared unchanged; there is no
+cross-package replacement, per-scene asset copy, retained history or heap.
+
+Local transactions after replacement also admit against the current scene ID,
+not always the package entry. The triggering input is not replayed in the
+destination. Returning to a scene recreates its defaults rather than resuming
+the previous instance. Exit actions remain forbidden, so no outgoing variable,
+object, sound or timer effect can accompany the replacement.
+
+Failed decode, scheduling, raster, queue, clock or completion leaves the source
+graph and activation intact. Late completion only releases candidate resources;
+it cannot switch scenes. The existing scene-replacement counters record attempts,
+failure, source and destination. `ObjectReplacementRejected` identifies the last
+attempted event's rejected object exit; it is not an asynchronous completion.
+
+An unsuccessful timer exit leaves an inspectable `rejected_pending` record in
+the outgoing timer slot, with `active=0` and its original deadline retained.
+It does not repeatedly retry or keep waking the device. Explicit timer
+start/restart/cancel resolves that record; state-timer re-entry or successful
+scene replacement clears it. Other source timers and input remain usable.
+This pending state is not a successful or guard-ignored expiry. Ordinary local
+timer error handling is unchanged.
+
+On successful replacement, changed scene activation clears all outgoing timer
+slots and arms the destination's own timers. Before first destination display,
+the owner resets the animation time origin and consumes only the old instance's
+already-accounted STOP2 time. Admission duration and old sleep duration do not
+advance the new animation. Frame publication and LPBAM rebuilding still use
+existing owner/token and recovery paths. Logical atomicity does not promise to
+undo a physical panel/owner failure after commit.
+
+Development probe API **4** adds explicit request modes 3 (awake scene set) and
+4 (autonomous scene set). Existing enable helpers retain modes 1/2 and their
+single-scene fixture instructions; their version guards now require API 4.
+No new hardware run is requested with the currently embedded single-scene egg.
+Use a matching new ELF/firmware and dedicated fixture instructions at the next
+hardware checkpoint; do not force STOP2 or infer physical playback from dispatch.
+
+Verification uses actual C runtime/loader/graph and display-owner candidate
+functions with deterministic host queue/clock/HASH substitutes. It exercises:
+
+- All-scene entry rejection, successful input exit, fresh return, unchanged
+  shared catalog, default variables/playback and no input replay.
+- Local state/variable changes in a non-entry scene with continuity and exact
+  selected-scene admission.
+- Missing-sprite, clock request/release, queue and timeout rejection without
+  source mutation; refusal while leased and late success without replacement.
+- Actual timer scheduler behavior for input/timer exits, fresh deadlines despite
+  admission delay, discarded outgoing timers, rejected pending expiry without
+  automatic retry, and explicit authored restart.
+- Existing single-scene launch, owner handoff, STOP2 timing and installed/export
+  restrictions remain covered by the regression suite.
+
+The full suite passes **345 tests**, including development request/helper version
+checks. Debug firmware build, target-profile freshness and `git diff --check`
+pass. The expanded ARM static stack check includes
+development launch, input and timer replacement callback chains: worst checked
+path is 2424 bytes including the existing 512-byte reserve, leaving 1672 bytes
+of the 4096-byte runtime stack. This is not a measured hardware high-water mark.
+Physical multi-scene drawing, fresh-entry timing and STOP2 re-entry remain NOT RUN.
+
 ## Next OS Work
 
-1. Stage and admit a fresh destination before replacing the usable source;
-   commit catalogs, objects, variables, timer ownership and animation timeline
-   coherently. Failed admission must leave the source usable with no effects.
+1. Import the GUI two-scene fixture at its supplied commit without enabling
+   public export, and prepare labelled development test instructions.
 2. Prove input/timer exits, fresh return, stale outgoing timer rejection and
    LPBAM wake/re-entry on hardware using a clearly labelled two-scene fixture.
 3. Only then widen and advertise the installed/export subset to Studio.

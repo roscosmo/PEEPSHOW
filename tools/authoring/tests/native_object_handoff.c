@@ -38,6 +38,9 @@ static uint32_t PS_SceneRuntime_BuildDevelopmentWaiting(ps_object_waiting_progra
   return schedule_result;
 }
 static uint32_t ps_object_last_tick, ps_object_tick_fraction;
+static uint32_t ps_object_clock_activation = 42, ps_object_rtc_valid;
+static struct { uint32_t runtime_active_unit_id; } g_ps_hw6_rtos_probe;
+static struct { uint32_t scene_id; } g_ps_scene_runtime_probe;
 static uint32_t now, queue_result, wait_result, render_result, mismatch;
 static uint32_t advance_calls, project_calls, send_calls, clock_elapsed;
 static uint32_t next_duration = 250;

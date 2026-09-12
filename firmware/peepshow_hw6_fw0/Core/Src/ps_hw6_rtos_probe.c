@@ -402,6 +402,7 @@ typedef struct
   uint32_t deadline_tick;
   uint32_t paused_remaining_ticks;
   uint32_t stop2_remaining_ticks;
+  uint32_t rejected_pending;
 } ps_runtime_state_timer_slot_t;
 
 static ps_runtime_state_timer_slot_t
@@ -527,6 +528,7 @@ volatile ps_hw6_object_lpbam_prepare_probe_t g_ps_object_lpbam_prepare_probe =
   .payload_status = PS_HW6_RTOS_STATUS_NOT_RUN
 };
 static uint32_t ps_object_last_tick;
+static uint32_t ps_object_clock_activation;
 static uint32_t ps_object_tick_fraction;
 static volatile uint32_t ps_object_launching;
 static void PS_HW6_RTOS_RuntimeInteractionBegin(uint32_t now_tick);
@@ -2095,6 +2097,15 @@ static UINT PS_HW6_RTOS_CompleteStateSceneEvent(uint32_t scene_result)
     uint32_t cue_index;
     uint32_t shell_exit_requested =
       PS_SceneRuntime_TakeShellExitRequest();
+
+    if ((PS_SceneRuntime_DevelopmentObjectsActive() != 0UL) &&
+        (ps_object_clock_activation != PS_SceneRuntime_SceneActivation()))
+    {
+      uint32_t now_tick = (uint32_t)tx_time_get();
+      if (PS_HW6_RTOS_ObjectAdvance(now_tick) != 0UL)
+      { PS_HW6_RTOS_RuntimePackageReplacementFail(); return TX_CALLER_ERROR; }
+      PS_HW6_RTOS_RuntimeStateTimersSync(now_tick, 0UL);
+    }
 
     if (shell_exit_requested != 0UL)
     {
@@ -8218,6 +8229,19 @@ void PS_HW6_RTOS_ObjectSleepClockFinish(void)
 
 static uint32_t PS_HW6_RTOS_ObjectAdvance(uint32_t now_tick)
 {
+  uint32_t activation = PS_SceneRuntime_SceneActivation();
+  if (ps_object_clock_activation != activation)
+  {
+    /* Admission time and outgoing STOP2 reconciliation belong to the old
+     * instance, not to the freshly initialized destination. */
+    ps_object_clock_activation = activation;
+    ps_object_last_tick = now_tick;
+    ps_object_tick_fraction = 0UL;
+    ps_object_missing_consumed = g_ps_object_lpbam_probe.missing_ms;
+    ps_object_rtc_valid = 0UL;
+    g_ps_object_development_probe.elapsed_ms = 0UL;
+    g_ps_hw6_rtos_probe.runtime_active_unit_id = g_ps_scene_runtime_probe.scene_id;
+  }
   uint64_t scaled = (uint64_t)(now_tick - ps_object_last_tick) * 1000ULL +
     ps_object_tick_fraction;
   uint32_t elapsed_ms = (uint32_t)(scaled / TX_TIMER_TICKS_PER_SECOND);
@@ -8420,7 +8444,7 @@ static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
   uint32_t late = g_ps_object_candidate_probe.late_completions;
   if ((ps_candidate_busy != 0UL) || (token == UINT32_MAX) ||
       (blob == NULL) || (size == 0UL) || (mode < 1UL) || (mode > 3UL) ||
-      ((mode != 3UL) && (scene_id != 0UL)) || ((mode == 3UL) && (objects != NULL)))
+      ((mode != 3UL) && (scene_id != 0UL)))
   { g_ps_object_candidate_probe.refused++; return; }
 
   ps_candidate_busy = 1UL;
@@ -8537,6 +8561,12 @@ static uint32_t PS_HW6_RTOS_InstalledObjectCheck(const uint8_t *blob,
   return PS_HW6_RTOS_CandidateOwnedCheck(blob, size, 1UL, 0UL, objects);
 }
 
+static uint32_t PS_HW6_RTOS_ObjectSceneCheck(const uint8_t *blob,
+  uint32_t size, uint32_t scene_id, const ps_scene_objects_t *objects)
+{
+  return PS_HW6_RTOS_CandidateOwnedCheck(blob, size, 3UL, scene_id, objects);
+}
+
 uint32_t PS_HW6_ObjectCandidate_CheckScene(const uint8_t *blob, uint32_t size,
   uint32_t scene_id)
 {
@@ -8614,7 +8644,10 @@ static void PS_HW6_RTOS_ObjectService(uint32_t now_tick)
   if (g_ps_object_development_request != 0UL)
   {
     uint32_t blockers = 0UL;
-    uint32_t autonomous = (g_ps_object_development_request == 2UL) ? 1UL : 0UL;
+    uint32_t scene_set = (g_ps_object_development_request == 3UL) ||
+      (g_ps_object_development_request == 4UL);
+    uint32_t autonomous = (g_ps_object_development_request == 2UL) ||
+      (g_ps_object_development_request == 4UL);
     g_ps_object_development_request = 0UL;
     g_ps_object_development_probe.launch_count++;
     g_ps_object_development_probe.launch_status = (uint32_t)HAL_BUSY;
@@ -8640,9 +8673,13 @@ static void PS_HW6_RTOS_ObjectService(uint32_t now_tick)
     ps_object_launching = 1UL;
     PS_HW6_RTOS_RuntimeInteractionEnd();
     PS_SceneRuntime_ExitStateScene();
+    PS_SceneRuntime_SetObjectSceneAdmission(PS_HW6_RTOS_ObjectSceneCheck);
     g_ps_object_development_probe.launch_status =
-      PS_SceneRuntime_EnterDevelopmentObjects(g_ps_object_development_egg,
-        g_ps_object_development_egg_size);
+      (scene_set != 0UL) ?
+        PS_SceneRuntime_EnterDevelopmentSceneSet(g_ps_object_development_egg,
+          g_ps_object_development_egg_size) :
+        PS_SceneRuntime_EnterDevelopmentObjects(g_ps_object_development_egg,
+          g_ps_object_development_egg_size);
     if (g_ps_object_development_probe.launch_status == 0UL)
     {
       ps_object_last_tick = (uint32_t)tx_time_get();
@@ -9154,11 +9191,13 @@ static void PS_HW6_RTOS_RuntimeStateTimersSync(uint32_t now_tick,
     if (action_kind == PS_SCENE_RUNTIME_ACTION_CANCEL_TIMER)
     {
       timer->active = 0UL;
+      timer->rejected_pending = 0UL;
     }
     else if ((action_kind == PS_SCENE_RUNTIME_ACTION_RESTART_TIMER) ||
              (timer->active == 0UL))
     {
       timer->active = 1UL;
+      timer->rejected_pending = 0UL;
       timer->deadline_tick = now_tick + timer->delay_ticks;
       timer->paused_remaining_ticks = timer->delay_ticks;
     }
@@ -9330,11 +9369,21 @@ static void PS_HW6_RTOS_RuntimeStateTimersService(uint32_t now_tick)
       g_ps_hw6_rtos_probe.runtime_state_timer_error_count++;
       if (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL)
       {
+        if (PS_SceneRuntime_ObjectReplacementRejected() != 0UL)
+        {
+          /* Retain the failed expiry for inspection, but do not automatically
+           * retry it on every owner visit or RTC wake. Explicit start/restart,
+           * state re-entry or scene replacement resolves this pending record. */
+          ps_runtime_state_timers[binding_index].rejected_pending = 1UL;
+          return;
+        }
         PS_HW6_RTOS_RuntimePackageReplacementFail();
         return;
       }
     }
     (void)PS_HW6_RTOS_CompleteStateSceneEvent(scene_result);
+    if (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL)
+    { now_tick = (uint32_t)tx_time_get(); }
     PS_HW6_RTOS_RuntimeStateTimersSync(now_tick, 0UL);
     dispatch_budget--;
   }

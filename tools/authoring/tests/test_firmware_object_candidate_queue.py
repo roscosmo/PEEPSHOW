@@ -25,6 +25,7 @@ class ObjectCandidateQueueTests(unittest.TestCase):
             firmware_function(source, "PS_HW6_RTOS_Candidate" + name) for name in
             ("Release", "Reap", "Display", "Send", "Check", "Begin", "OwnedCheck", "Service")) + "\n" +
             firmware_function(source, "PS_HW6_RTOS_InstalledObjectCheck") + "\n" +
+            firmware_function(source, "PS_HW6_RTOS_ObjectSceneCheck") + "\n" +
             firmware_function(source, "PS_HW6_ObjectCandidate_CheckScene") + "\n" +
             firmware_function(source, "PS_HW6_ObjectCandidate_CheckSceneSet") + "\n" +
             firmware_function(source, "PS_HW6_RTOS_RunPackageValidation"), encoding="ascii")

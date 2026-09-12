@@ -192,6 +192,7 @@ int PS_OBJECT_CANDIDATE_MAIN(int argc, char **argv)
   uint32_t size, count, token;
   ULONG stale[4];
   assert(argc == 2 || argc == 3);
+  PS_SceneRuntime_SetObjectSceneAdmission(PS_HW6_RTOS_ObjectSceneCheck);
   baseline_size = read_blob(argv[1], baseline);
   set_hash(argv[1], baseline, baseline_size);
   if (argc == 3)

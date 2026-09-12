@@ -1086,3 +1086,19 @@ committing them; failed/timed-out checks preserve the live scene and retain any
 outstanding private copy until completion. Runtime replacement and hardware proof
 are still next. API 43 and GUI capabilities remain unchanged; continue connection
 editing and the host fixture without enabling multi-scene export.
+
+### OS Follow-up: Development Fresh Replacement
+
+The firmware development runtime now supports admitted, action-free exits to a
+fresh destination, including timer exits. Returning recreates object/variable
+defaults, entry state, animation and timers; it is not remembered entry or resume.
+Failed admission preserves the source, and late completion cannot switch scenes.
+Native tests cover real owner raster rejection and scheduler ownership; physical
+multi-scene/STOP2 testing is still outstanding. See [[V2_Multiscene_Preparation]].
+
+Service remains API 43 with no additional public commands or export permission.
+GUI should finish its two-scene host fixture and send the exact project path and
+commit. Include clearly distinct scene labels, a visible four-frame animation,
+button navigation, a timer-driven exit and an observable fresh-return reset.
+OS will generate and embed the development egg for the hardware test. Do not
+enable multi-scene export, scene memory or parallel regions from this checkpoint.

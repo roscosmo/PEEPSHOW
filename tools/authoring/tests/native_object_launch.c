@@ -50,6 +50,15 @@ static uint32_t PS_SceneRuntime_EnterDevelopmentObjects(const uint8_t *egg, uint
   active = (enter_status == 0);
   return enter_status;
 }
+static uint32_t scene_set_launches;
+static uint32_t PS_SceneRuntime_EnterDevelopmentSceneSet(const uint8_t *egg, uint32_t size)
+{ scene_set_launches++; return PS_SceneRuntime_EnterDevelopmentObjects(egg, size); }
+static uint32_t PS_HW6_RTOS_ObjectSceneCheck(const uint8_t *egg, uint32_t size,
+  uint32_t id, const ps_scene_objects_t *objects)
+{ (void)egg; (void)size; (void)id; (void)objects; return 0; }
+static void PS_SceneRuntime_SetObjectSceneAdmission(uint32_t (*callback)(const uint8_t *,
+  uint32_t, uint32_t, const ps_scene_objects_t *))
+{ assert(callback == PS_HW6_RTOS_ObjectSceneCheck); }
 static void PS_HW6_RTOS_RuntimeSetState(uint32_t cls, uint32_t exec, uint32_t life)
 {
   assert(cls == PS_HW6_RUNTIME_CLASS_LP_GRAPH && exec == PS_HW6_RUNTIME_EXEC_REACTIVE);
@@ -134,5 +143,15 @@ int main(void)
   g_ps_object_lpbam_probe.fault = 1;
   PS_HW6_RTOS_ObjectService(1000);
   assert(failures == 1 && !active);
+  reset();
+  g_ps_object_development_request = 3;
+  PS_HW6_RTOS_ObjectService(100);
+  assert(scene_set_launches == 1 && g_ps_object_lpbam_probe.enabled == 0);
+  assert(active && presentations == 1 && failures == 0);
+  reset();
+  g_ps_object_development_request = 4;
+  PS_HW6_RTOS_ObjectService(100);
+  assert(scene_set_launches == 2 && g_ps_object_lpbam_probe.enabled == 1);
+  assert(active && presentations == 1 && failures == 0);
   return 0;
 }

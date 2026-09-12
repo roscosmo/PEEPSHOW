@@ -1,7 +1,7 @@
 set pagination off
 printf "--- HW6 development V2 awake object scene ---\n"
-if (g_ps_object_development_probe.api_version != 3) || (g_ps_scene_runtime_probe.api_version != 22) || (g_ps_audio_package_probe.api_version != 1)
-  printf "Probe mismatch: expected development/scene/audio-package APIs 3/22/1.\n"
+if (g_ps_object_development_probe.api_version != 4) || (g_ps_scene_runtime_probe.api_version != 22) || (g_ps_audio_package_probe.api_version != 1)
+  printf "Probe mismatch: expected development/scene/audio-package APIs 4/22/1.\n"
 else
   printf "request / launches / launch status = %u / %u / 0x%x\n", g_ps_object_development_request, g_ps_object_development_probe.launch_count, g_ps_object_development_probe.launch_status
   printf "launch blockers = 0x%x (lease=1 overlay/workflow=2 audio=4 display=8 page=16 clock=32)\n", g_ps_object_development_probe.admission_blockers

@@ -39,6 +39,8 @@ static uint32_t tx_time_get(void) { return now; }
 static uint64_t ps_object_missing_consumed, ps_object_rtc_start_ms;
 static uint32_t ps_object_rtc_start_tick, ps_object_rtc_valid;
 static uint32_t ps_object_last_tick, ps_object_tick_fraction;
+static uint32_t ps_object_clock_activation;
+static struct { uint32_t runtime_active_unit_id; } g_ps_hw6_rtos_probe;
 typedef struct { uint32_t Hours, Minutes, Seconds, SubSeconds, SecondFraction; } RTC_TimeTypeDef;
 typedef struct { uint32_t Year, Month, Date; } RTC_DateTypeDef;
 static RTC_TimeTypeDef rtc_time;
@@ -76,6 +78,7 @@ int main(int argc, char **argv)
   size = read_blob(argv[1], candidate);
   set_hash(argv[1], candidate, size);
   assert(PS_SceneRuntime_EnterDevelopmentObjects(candidate, size) == 0);
+  ps_object_clock_activation = PS_SceneRuntime_SceneActivation();
   now = 65;
   assert(PS_HW6_RTOS_ObjectAdvance(now) == 0);
   assert(PS_SceneRuntime_BuildDevelopmentWaiting(&program) == 0);

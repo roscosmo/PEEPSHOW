@@ -40,6 +40,11 @@ static uint32_t s_ps_scene_runtime_development_objects;
 static const uint8_t *s_ps_installed_object_blob;
 static uint32_t s_ps_installed_object_size;
 static ps_scene_object_admission_fn_t s_ps_object_admission;
+static ps_scene_object_scene_admission_fn_t s_ps_object_scene_admission;
+static const uint8_t *s_ps_object_scene_blob;
+static uint32_t s_ps_object_scene_size;
+static uint32_t s_ps_object_replacement_rejected;
+static ps_scene_object_graph_t s_ps_object_destination;
 static ps_scene_object_graph_t s_ps_object_graph;
 static ps_scene_object_graph_stage_t s_ps_object_stage;
 static ps_scene_object_effects_t s_ps_object_effects;
@@ -58,6 +63,16 @@ static ps_scene_render_model_t s_ps_object_admission_model;
 void PS_SceneRuntime_SetObjectAdmission(ps_scene_object_admission_fn_t admission)
 {
   s_ps_object_admission = admission;
+}
+
+void PS_SceneRuntime_SetObjectSceneAdmission(ps_scene_object_scene_admission_fn_t admission)
+{
+  s_ps_object_scene_admission = admission;
+}
+
+uint32_t PS_SceneRuntime_ObjectReplacementRejected(void)
+{
+  return s_ps_object_replacement_rejected;
 }
 
 uint32_t PS_SceneRuntime_InstalledObjectsActive(void)
@@ -1320,7 +1335,7 @@ static uint32_t PS_SceneRuntime_ReplaceStateScene(uint32_t target_scene_id)
 }
 
 static uint32_t PS_SceneRuntime_EnterObjects(const uint8_t *blob, uint32_t size,
-  uint32_t installed)
+  uint32_t entry_mode)
 {
   ps_scene_runtime_state_scene_t *scene = &s_ps_scene_runtime_scene_slots[0];
   uint32_t index;
@@ -1329,7 +1344,11 @@ static uint32_t PS_SceneRuntime_EnterObjects(const uint8_t *blob, uint32_t size,
       (size > PS_TARGET_PROFILE_PACKAGE_RESIDENT_BYTES)) { return 1UL; }
   s_ps_installed_object_blob = NULL;
   s_ps_installed_object_size = 0UL;
-  if (installed != 0UL)
+  s_ps_object_scene_blob = NULL;
+  s_ps_object_scene_size = 0UL;
+  s_ps_object_replacement_rejected = 0UL;
+  /* 0: existing development, 1: installed, 2: admitted development scene set. */
+  if (entry_mode == 1UL)
   {
     ps_egg_v2_profile_result_t profile;
     if ((s_ps_object_admission == NULL) ||
@@ -1354,7 +1373,8 @@ static uint32_t PS_SceneRuntime_EnterObjects(const uint8_t *blob, uint32_t size,
   }
   for (index = 0UL; index < scene->transition_count; ++index)
   {
-    if (scene->transitions[index].target_scene_id != 0UL) { return 1UL; }
+    if ((entry_mode != 2UL) && (scene->transitions[index].target_scene_id != 0UL))
+    { return 1UL; }
   }
   for (index = 0UL; index < scene->action_count; ++index)
   {
@@ -1373,7 +1393,7 @@ static uint32_t PS_SceneRuntime_EnterObjects(const uint8_t *blob, uint32_t size,
         &s_ps_object_snapshot) != PS_SCENE_OBJECTS_OK) ||
       (PS_SceneObjectRender_Project(&s_ps_object_snapshot, scene->scene_id,
         &s_ps_object_admission_model, &next_ms) != 0UL)) { return 1UL; }
-  if ((installed != 0UL) &&
+  if ((entry_mode == 1UL) &&
       (s_ps_object_admission(blob, size, &s_ps_object_graph.objects) != 0UL))
   { return 1UL; }
   s_ps_scene_runtime_pending_shell_exit = 0UL;
@@ -1382,10 +1402,15 @@ static uint32_t PS_SceneRuntime_EnterObjects(const uint8_t *blob, uint32_t size,
   s_ps_object_sfx_take = 0UL;
   s_ps_object_effects.count = 0UL;
   s_ps_scene_runtime_development_objects = 1UL;
-  if (installed != 0UL)
+  if (entry_mode == 1UL)
   {
     s_ps_installed_object_blob = blob;
     s_ps_installed_object_size = size;
+  }
+  if (entry_mode == 2UL)
+  {
+    s_ps_object_scene_blob = blob;
+    s_ps_object_scene_size = size;
   }
   g_ps_scene_runtime_probe.activation_status = PS_SCENE_RUNTIME_STATUS_OK;
   return 0UL;
@@ -1394,6 +1419,72 @@ static uint32_t PS_SceneRuntime_EnterObjects(const uint8_t *blob, uint32_t size,
 uint32_t PS_SceneRuntime_EnterDevelopmentObjects(const uint8_t *blob, uint32_t size)
 {
   return PS_SceneRuntime_EnterObjects(blob, size, 0UL);
+}
+
+uint32_t PS_SceneRuntime_EnterDevelopmentSceneSet(const uint8_t *blob, uint32_t size)
+{
+  uint32_t scene_id;
+  ps_egg_v2_profile_result_t profile;
+  ps_egg_sprite_catalog_t catalog;
+  ps_scene_runtime_state_scene_t *scene = &s_ps_scene_runtime_scene_slots[0];
+  if ((g_ps_scene_runtime_probe.active != 0UL) || (s_ps_object_scene_admission == NULL) ||
+      (blob == NULL) || (size == 0UL) || (size > PS_TARGET_PROFILE_PACKAGE_RESIDENT_BYTES))
+  { return 1UL; }
+  if (PS_EggStateLoader_DecodeV2SceneCandidate(blob, size, 0UL, scene, &catalog, &profile) != 0UL)
+  { return 1UL; }
+  if ((profile.scene_count == 0UL) || (profile.scene_count > PS_EGG_STATE_LOADER_SCENE_MAX))
+  { return 1UL; }
+  /* Admit every initial presentation before LoadDevelopment publishes the
+   * shared immutable package catalog. No failed child resumes the loop later. */
+  for (scene_id = 1UL; scene_id <= profile.scene_count; ++scene_id)
+  {
+    if (s_ps_object_scene_admission(blob, size, scene_id, NULL) != 0UL) { return 1UL; }
+  }
+  return PS_SceneRuntime_EnterObjects(blob, size, 2UL);
+}
+
+static uint32_t PS_SceneRuntime_ReplaceObjectScene(uint32_t target_scene_id,
+  uint32_t transition_id)
+{
+  uint32_t slot = s_ps_scene_runtime_active_slot ^ 1UL;
+  ps_scene_runtime_state_scene_t *target = &s_ps_scene_runtime_scene_slots[slot];
+  g_ps_scene_runtime_probe.scene_replace_count++;
+  g_ps_scene_runtime_probe.scene_replace_source_id = g_ps_scene_runtime_probe.scene_id;
+  g_ps_scene_runtime_probe.scene_replace_target_id = target_scene_id;
+  g_ps_scene_runtime_probe.scene_replace_status = PS_SCENE_RUNTIME_STATUS_ERROR;
+  if ((s_ps_object_scene_blob == NULL) || (s_ps_object_scene_admission == NULL) ||
+      (s_ps_scene_runtime_scene_activation == UINT32_MAX) ||
+      (s_ps_scene_runtime_state_activation == UINT32_MAX) ||
+      (PS_EggStateLoader_DecodeDevelopmentScene(s_ps_object_scene_blob,
+        s_ps_object_scene_size, target_scene_id, target) != 0UL) ||
+      (PS_SceneObjectGraph_Init(&s_ps_object_destination, target,
+        PS_EggStateLoader_SceneCount(), s_ps_scene_runtime_scene_activation + 1UL) != 0UL) ||
+      (PS_SceneRuntime_FindStateIndex(target, target->entry_state_id) == PS_SCENE_RUNTIME_INDEX_INVALID) ||
+      (s_ps_object_scene_admission(s_ps_object_scene_blob, s_ps_object_scene_size,
+        target_scene_id, &s_ps_object_destination.objects) != 0UL))
+  {
+    s_ps_object_replacement_rejected = 1UL;
+    g_ps_scene_runtime_probe.scene_replace_fail_count++;
+    g_ps_scene_runtime_probe.last_status = PS_SCENE_RUNTIME_STATUS_ERROR;
+    PS_SceneObjectGraph_Abort(&s_ps_object_stage);
+    return PS_SCENE_RUNTIME_INPUT_ERROR;
+  }
+  /* No fallible work remains. The package-wide immutable catalog is already
+   * active; only its scene descriptor and fresh instance change here. */
+  (void)PS_SceneRuntime_ActivateDecodedScene(target, slot);
+  s_ps_object_graph = s_ps_object_destination;
+  PS_SceneObjectGraph_Abort(&s_ps_object_stage);
+  (void)memset(&s_ps_object_effects, 0, sizeof(s_ps_object_effects));
+  s_ps_object_sfx_take = 0UL;
+  s_ps_scene_runtime_pending_shell_exit = 0UL;
+  s_ps_scene_runtime_pending_sfx_cue = PS_SCENE_RUNTIME_INDEX_INVALID;
+  g_ps_scene_runtime_probe.primary_variable_value = s_ps_object_graph.variables[0];
+  g_ps_scene_runtime_probe.transition_match_count++;
+  g_ps_scene_runtime_probe.last_transition_id = transition_id;
+  g_ps_scene_runtime_probe.exit_count++;
+  g_ps_scene_runtime_probe.enter_count++;
+  g_ps_scene_runtime_probe.scene_replace_status = PS_SCENE_RUNTIME_STATUS_OK;
+  return PS_SCENE_RUNTIME_INPUT_APPLIED;
 }
 
 uint32_t PS_SceneRuntime_EnterStateScene(void)
@@ -1511,6 +1602,9 @@ void PS_SceneRuntime_ExitStateScene(void)
   s_ps_scene_runtime_development_objects = 0UL;
   s_ps_installed_object_blob = NULL;
   s_ps_installed_object_size = 0UL;
+  s_ps_object_scene_blob = NULL;
+  s_ps_object_scene_size = 0UL;
+  s_ps_object_replacement_rejected = 0UL;
   g_ps_scene_runtime_probe.exit_count++;
   g_ps_scene_runtime_probe.active = 0UL;
   g_ps_scene_runtime_probe.last_status = 0UL;
@@ -1709,6 +1803,8 @@ static uint32_t PS_SceneRuntime_HandleStateSceneEventId(
   uint32_t target_binding_index = PS_SCENE_RUNTIME_INDEX_INVALID;
   int32_t staged_variables[PS_SCENE_RUNTIME_VARIABLE_MAX];
 
+  s_ps_object_replacement_rejected = 0UL;
+
   if ((g_ps_scene_runtime_probe.active == 0UL) ||
       (scene_event_id == 0UL) ||
       (scene_event_id > scene->event_binding_count))
@@ -1730,6 +1826,11 @@ static uint32_t PS_SceneRuntime_HandleStateSceneEventId(
     uint32_t next_ms;
     uint32_t index;
     if (result != PS_SCENE_RUNTIME_INPUT_APPLIED) { return result; }
+    if (s_ps_object_stage.effects.target_scene_id != 0UL)
+    {
+      return PS_SceneRuntime_ReplaceObjectScene(s_ps_object_stage.effects.target_scene_id,
+        s_ps_object_stage.effects.transition_id);
+    }
     if ((PS_SceneObjects_Snapshot(&s_ps_object_stage.objects.candidate,
           &s_ps_object_snapshot) != PS_SCENE_OBJECTS_OK) ||
         (PS_SceneObjectRender_Project(&s_ps_object_snapshot, scene->scene_id,
@@ -1742,6 +1843,14 @@ static uint32_t PS_SceneRuntime_HandleStateSceneEventId(
         ((s_ps_object_admission == NULL) ||
          (s_ps_object_admission(s_ps_installed_object_blob, s_ps_installed_object_size,
            &s_ps_object_stage.objects.candidate) != 0UL)))
+    {
+      PS_SceneObjectGraph_Abort(&s_ps_object_stage);
+      return PS_SCENE_RUNTIME_INPUT_ERROR;
+    }
+    if ((s_ps_object_scene_blob != NULL) &&
+        ((s_ps_object_scene_admission == NULL) ||
+         (s_ps_object_scene_admission(s_ps_object_scene_blob, s_ps_object_scene_size,
+           scene->scene_id, &s_ps_object_stage.objects.candidate) != 0UL)))
     {
       PS_SceneObjectGraph_Abort(&s_ps_object_stage);
       return PS_SCENE_RUNTIME_INPUT_ERROR;

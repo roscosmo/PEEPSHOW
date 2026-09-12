@@ -215,7 +215,9 @@ entrypoints still require one scene. Private display-owner admission now checks
 a selected destination or all scenes' initial presentations using the existing
 leased candidate copy; a timeout retains that copy until matching completion.
 These APIs neither publish a scene nor continue a failed batch on late completion.
-Atomic runtime replacement and its hardware proof remain required before the
+Development-only fresh runtime replacement now stages and admits the destination
+before committing its instance; failed exits preserve the source. This does not
+change installed entry or preflight. Its hardware proof remains required before the
 installed restriction is lifted. See [[V2_Multiscene_Preparation]].
 
 The FW0 preflight implementation now checks SHA-256, the complete container and

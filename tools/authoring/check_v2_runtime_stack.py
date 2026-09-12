@@ -53,10 +53,24 @@ PATHS = {
     # cover their own descendants only; add the real caller chain on integration.
     "private destination admission": ((), "PS_HW6_ObjectCandidate_CheckScene"),
     "private scene-set admission": ((), "PS_HW6_ObjectCandidate_CheckSceneSet"),
+    "development scene-set launch": (OWNER + ("PS_HW6_RTOS_ObjectService",
+        "PS_SceneRuntime_EnterDevelopmentSceneSet"), "PS_HW6_RTOS_ObjectSceneCheck"),
+    "input fresh replacement": (OWNER + ("PS_HW6_RTOS_HandleRuntimeInput",
+        "PS_SceneRuntime_HandleStateSceneInput", "PS_SceneRuntime_HandleStateSceneEventId",
+        "PS_SceneRuntime_ReplaceObjectScene"), "PS_HW6_RTOS_ObjectSceneCheck"),
+    "timer fresh replacement": (COMMAND + ("PS_HW6_RTOS_RuntimeStateTimersService",
+        "PS_SceneRuntime_HandleStateSceneEvent", "PS_SceneRuntime_HandleStateSceneEventId",
+        "PS_SceneRuntime_ReplaceObjectScene"), "PS_HW6_RTOS_ObjectSceneCheck"),
+    "multi-scene local transaction": (OWNER + ("PS_HW6_RTOS_HandleRuntimeInput",
+        "PS_SceneRuntime_HandleStateSceneInput", "PS_SceneRuntime_HandleStateSceneEventId"),
+        "PS_HW6_RTOS_ObjectSceneCheck"),
 }
 ADMISSION_CALLBACKS = {
     ("PS_SceneRuntime_EnterObjects", "PS_HW6_RTOS_InstalledObjectCheck"),
     ("PS_SceneRuntime_HandleStateSceneEventId", "PS_HW6_RTOS_InstalledObjectCheck"),
+    ("PS_SceneRuntime_EnterDevelopmentSceneSet", "PS_HW6_RTOS_ObjectSceneCheck"),
+    ("PS_SceneRuntime_ReplaceObjectScene", "PS_HW6_RTOS_ObjectSceneCheck"),
+    ("PS_SceneRuntime_HandleStateSceneEventId", "PS_HW6_RTOS_ObjectSceneCheck"),
 }
 
 

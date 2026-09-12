@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include "ps_scene_object_waiting.h"
 
-#define PS_HW6_OBJECT_DEVELOPMENT_API_VERSION (3UL)
+#define PS_HW6_OBJECT_DEVELOPMENT_API_VERSION (4UL)
 
 typedef struct
 {
@@ -48,7 +48,9 @@ typedef struct
 extern volatile ps_hw6_object_lpbam_prepare_probe_t g_ps_object_lpbam_prepare_probe;
 extern volatile uint32_t g_ps_object_lpbam_prepare_request;
 
-/* Development request 2 opts into autonomous playback; request 1 stays awake. */
+/* Requests 1/2 launch the existing single-scene development subset awake/LPBAM.
+ * Requests 3/4 explicitly select all-scene admission and fresh scene exits,
+ * awake/LPBAM respectively. Neither authorizes installation or export. */
 #define PS_HW6_OBJECT_LPBAM_API_VERSION (1UL)
 typedef struct
 {
