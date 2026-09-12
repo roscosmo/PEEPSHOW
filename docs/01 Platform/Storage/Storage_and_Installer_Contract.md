@@ -211,9 +211,12 @@ See [[Peep_Studio_Restricted_V2_Export_Handoff]] and
 The private `DecodeV2SceneCandidate` preparation API can validate an entire
 resident V2 scene set and decode a selected destination without publishing it.
 It does not widen storage preflight or installed admission: existing production
-entrypoints still require one scene. Multi-scene display admission and atomic
-runtime replacement must be completed before that restriction is lifted. See
-[[V2_Multiscene_Preparation]].
+entrypoints still require one scene. Private display-owner admission now checks
+a selected destination or all scenes' initial presentations using the existing
+leased candidate copy; a timeout retains that copy until matching completion.
+These APIs neither publish a scene nor continue a failed batch on late completion.
+Atomic runtime replacement and its hardware proof remain required before the
+installed restriction is lifted. See [[V2_Multiscene_Preparation]].
 
 The FW0 preflight implementation now checks SHA-256, the complete container and
 chunk CRCs, target residency, and every included scene/state using the native

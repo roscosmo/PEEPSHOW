@@ -23,8 +23,10 @@ class ObjectCandidateQueueTests(unittest.TestCase):
         (cls.work / "candidate_globals.inc").write_text(source[start:end], encoding="ascii")
         (cls.work / "candidate_queue_under_test.inc").write_text("\n".join(
             firmware_function(source, "PS_HW6_RTOS_Candidate" + name) for name in
-            ("Release", "Reap", "Display", "Send", "Check", "Begin", "Service")) + "\n" +
+            ("Release", "Reap", "Display", "Send", "Check", "Begin", "OwnedCheck", "Service")) + "\n" +
             firmware_function(source, "PS_HW6_RTOS_InstalledObjectCheck") + "\n" +
+            firmware_function(source, "PS_HW6_ObjectCandidate_CheckScene") + "\n" +
+            firmware_function(source, "PS_HW6_ObjectCandidate_CheckSceneSet") + "\n" +
             firmware_function(source, "PS_HW6_RTOS_RunPackageValidation"), encoding="ascii")
         cls.exe = cls.work / "candidate_queue.exe"
         result = subprocess.run([os.environ.get("HOST_CC", "C:/msys64/ucrt64/bin/gcc.exe"),
@@ -56,6 +58,14 @@ class ObjectCandidateQueueTests(unittest.TestCase):
             function = firmware_function(self.source, "PS_HW6_RTOS_" + name)
             self.assertIn("ps_candidate_busy != 0UL", function)
             self.assertIn("g_ps_object_candidate_request != 0UL", function)
+
+    def test_candidate_helpers_match_probe_version(self):
+        header = (self.firmware / "Core/Inc/ps_hw6_object_candidate.h").read_text(encoding="utf-8")
+        self.assertIn("PS_HW6_OBJECT_CANDIDATE_API_VERSION (2UL)", header)
+        for name in ("__fw0_object_candidate_enable.gdb", "__fw0_object_candidate_reject_enable.gdb",
+                     "__fw0_object_candidate_prints.gdb", "__fw0_object_installed_prints.gdb"):
+            script = (self.firmware / name).read_text(encoding="utf-8")
+            self.assertIn("g_ps_object_candidate_probe.api_version != 2", script)
 
     def test_exact_gui_installed_entry_and_transaction_rollback(self):
         project = Path(__file__).resolve().parents[3] / "examples/authoring/native_v2_installation.peepproj"

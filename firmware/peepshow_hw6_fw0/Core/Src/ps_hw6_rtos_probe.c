@@ -8412,14 +8412,15 @@ static void PS_HW6_RTOS_CandidateSend(void)
 }
 
 static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
-  uint32_t mode, const ps_scene_objects_t *objects)
+  uint32_t mode, uint32_t scene_id, const ps_scene_objects_t *objects)
 {
   ps_egg_v2_profile_result_t profile;
   uint32_t token = g_ps_object_candidate_probe.request_id;
   uint32_t refused = g_ps_object_candidate_probe.refused;
   uint32_t late = g_ps_object_candidate_probe.late_completions;
   if ((ps_candidate_busy != 0UL) || (token == UINT32_MAX) ||
-      (blob == NULL) || (size == 0UL) || ((mode != 1UL) && (mode != 2UL)))
+      (blob == NULL) || (size == 0UL) || (mode < 1UL) || (mode > 3UL) ||
+      ((mode != 3UL) && (scene_id != 0UL)) || ((mode == 3UL) && (objects != NULL)))
   { g_ps_object_candidate_probe.refused++; return; }
 
   ps_candidate_busy = 1UL;
@@ -8431,6 +8432,7 @@ static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
   g_ps_object_candidate_probe.api_version = PS_HW6_OBJECT_CANDIDATE_API_VERSION;
   g_ps_object_candidate_probe.request_id = token + 1UL;
   g_ps_object_candidate_probe.mode = mode;
+  g_ps_object_candidate_probe.requested_scene = scene_id;
   g_ps_object_candidate_probe.leased = 1UL;
   g_ps_object_candidate_probe.refused = refused;
   g_ps_object_candidate_probe.late_completions = late;
@@ -8454,14 +8456,25 @@ static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
     PS_HW6_RTOS_RUNTIME_CLOCK_REACTIVE_CAPABILITIES);
   if (g_ps_object_candidate_probe.runtime_clock_status == TX_SUCCESS)
   {
-    g_ps_object_candidate_probe.profile_status = PS_EggStateLoader_DecodeV2Candidate(
-      ps_candidate_blob, ps_candidate_size, &ps_candidate_scene, &ps_candidate_catalog, &profile);
+    if (mode == 3UL)
+    {
+      g_ps_object_candidate_probe.profile_status = PS_EggStateLoader_DecodeV2SceneCandidate(
+        ps_candidate_blob, ps_candidate_size, scene_id,
+        &ps_candidate_scene, &ps_candidate_catalog, &profile);
+    }
+    else
+    {
+      g_ps_object_candidate_probe.profile_status = PS_EggStateLoader_DecodeV2Candidate(
+        ps_candidate_blob, ps_candidate_size, &ps_candidate_scene, &ps_candidate_catalog, &profile);
+    }
     g_ps_object_candidate_probe.profile_reason = profile.reason;
     g_ps_object_candidate_probe.loader_reason = profile.loader_reason;
+    g_ps_object_candidate_probe.scene_id = profile.scene_id;
+    g_ps_object_candidate_probe.scene_count = profile.scene_count;
     if (g_ps_object_candidate_probe.profile_status == 0UL)
     {
       g_ps_object_candidate_probe.graph_status = PS_SceneObjectGraph_Init(
-        &ps_candidate_graph, &ps_candidate_scene, 1UL, token + 1UL);
+        &ps_candidate_graph, &ps_candidate_scene, profile.scene_count, token + 1UL);
       if (g_ps_object_candidate_probe.graph_status == 0UL)
       {
         g_ps_object_candidate_probe.schedule_status = PS_ObjectWaiting_Build(
@@ -8487,11 +8500,14 @@ static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
 
 static void PS_HW6_RTOS_CandidateBegin(const uint8_t *blob, uint32_t size, uint32_t mode)
 {
-  PS_HW6_RTOS_CandidateCheck(blob, size, mode, NULL);
+  /* The existing debugger request only supports its two single-scene modes. */
+  if ((mode != 1UL) && (mode != 2UL))
+  { g_ps_object_candidate_probe.refused++; return; }
+  PS_HW6_RTOS_CandidateCheck(blob, size, mode, 0UL, NULL);
 }
 
-static uint32_t PS_HW6_RTOS_InstalledObjectCheck(const uint8_t *blob,
-  uint32_t size, const ps_scene_objects_t *objects)
+static uint32_t PS_HW6_RTOS_CandidateOwnedCheck(const uint8_t *blob,
+  uint32_t size, uint32_t mode, uint32_t scene_id, const ps_scene_objects_t *objects)
 {
   uint32_t token;
   uint32_t status;
@@ -8503,7 +8519,7 @@ static uint32_t PS_HW6_RTOS_InstalledObjectCheck(const uint8_t *blob,
   /* The display may finish after our bounded wait. It borrows only this private
    * copy, never the install transport buffer or the live package's bytes. */
   (void)memcpy(ps_candidate_owned_bytes, blob, size);
-  PS_HW6_RTOS_CandidateCheck(ps_candidate_owned_bytes, size, 1UL, objects);
+  PS_HW6_RTOS_CandidateCheck(ps_candidate_owned_bytes, size, mode, scene_id, objects);
   status = ((g_ps_object_candidate_probe.request_id != token) &&
     (ps_candidate_busy == 0UL) && (g_ps_object_candidate_probe.status == 0UL) &&
     (g_ps_object_candidate_probe.wait_status == TX_SUCCESS)) ? 0UL : 1UL;
@@ -8513,6 +8529,45 @@ static uint32_t PS_HW6_RTOS_InstalledObjectCheck(const uint8_t *blob,
         PS_HW6_RTOS_RUNTIME_CLOCK_REASON_REACTIVE_TRANSACTION, capabilities) != TX_SUCCESS))
   { status = 1UL; }
   return status;
+}
+
+static uint32_t PS_HW6_RTOS_InstalledObjectCheck(const uint8_t *blob,
+  uint32_t size, const ps_scene_objects_t *objects)
+{
+  return PS_HW6_RTOS_CandidateOwnedCheck(blob, size, 1UL, 0UL, objects);
+}
+
+uint32_t PS_HW6_ObjectCandidate_CheckScene(const uint8_t *blob, uint32_t size,
+  uint32_t scene_id)
+{
+  return PS_HW6_RTOS_CandidateOwnedCheck(blob, size, 3UL, scene_id, NULL);
+}
+
+uint32_t PS_HW6_ObjectCandidate_CheckSceneSet(const uint8_t *blob, uint32_t size,
+  ps_hw6_object_scene_set_result_t *result)
+{
+  uint32_t scene_id;
+  uint32_t token;
+  uint32_t status;
+  if (result == NULL) { return 1UL; }
+  (void)memset(result, 0, sizeof(*result));
+  for (scene_id = 1UL; scene_id <= PS_EGG_STATE_LOADER_SCENE_MAX; ++scene_id)
+  {
+    token = g_ps_object_candidate_probe.request_id;
+    status = PS_HW6_ObjectCandidate_CheckScene(blob, size, scene_id);
+    if (g_ps_object_candidate_probe.request_id == token) { return 1UL; }
+    result->request_id = g_ps_object_candidate_probe.request_id;
+    result->failed_scene = g_ps_object_candidate_probe.scene_id;
+    if (scene_id == 1UL) { result->scene_count = g_ps_object_candidate_probe.scene_count; }
+    if ((status != 0UL) || (result->scene_count == 0UL) ||
+        (result->scene_count > PS_EGG_STATE_LOADER_SCENE_MAX) ||
+        (g_ps_object_candidate_probe.scene_count != result->scene_count))
+    { return 1UL; }
+    result->checked++;
+    result->failed_scene = 0UL;
+    if (result->checked == result->scene_count) { return 0UL; }
+  }
+  return 1UL;
 }
 
 static UINT PS_HW6_RTOS_InstalledObjectLaunch(void)

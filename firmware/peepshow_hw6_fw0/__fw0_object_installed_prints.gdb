@@ -1,7 +1,7 @@
 set pagination off
 printf "--- HW6 installed V2 object scene ---\n"
-if g_ps_hw6_rtos_probe.version != 82 || g_ps_scene_runtime_probe.api_version != 22 || g_ps_object_candidate_probe.api_version != 1
-  printf "Probe mismatch: expected RTOS/scene/candidate APIs 82/22/1. Check the loaded ELF.\n"
+if g_ps_hw6_rtos_probe.version != 82 || g_ps_scene_runtime_probe.api_version != 22 || g_ps_object_candidate_probe.api_version != 2
+  printf "Probe mismatch: expected RTOS/scene/candidate APIs 82/22/2. Check the loaded ELF.\n"
 else
   printf "runtime stack bytes / start / end / saved SP / saved lower margin = %u / 0x%x / 0x%x / 0x%x / %u\n", ps_threads[8].tx_thread_stack_size, ps_threads[8].tx_thread_stack_start, ps_threads[8].tx_thread_stack_end, ps_threads[8].tx_thread_stack_ptr, (unsigned int)ps_threads[8].tx_thread_stack_ptr - (unsigned int)ps_threads[8].tx_thread_stack_start
   printf "Stack size must be 4096 for this build. Saved margin is a context-switch snapshot, not a worst-case high-water measurement.\n"

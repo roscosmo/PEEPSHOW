@@ -50,6 +50,7 @@ static uint32_t display_clock_failure, runtime_clock_failure;
 static uint32_t display_release_failure, runtime_release_failure;
 static uint32_t display_clock_calls, runtime_clock_calls;
 static uint32_t inject_missing_sprite;
+static uint32_t inject_missing_scene, withhold_scene;
 static ULONG queued[4];
 static UINT PS_HW6_RTOS_RequestDisplayClockCapabilities(uint32_t reason, uint32_t caps)
 {
@@ -79,7 +80,9 @@ static UINT tx_queue_send(uint32_t *queue, const ULONG *message, ULONG wait)
     (ps_candidate_blob == candidate || ps_candidate_blob == ps_candidate_owned_bytes));
   memcpy(queued, message, sizeof(queued));
   sends++;
-  if (inject_missing_sprite) { ps_candidate_catalog.frame_count = 0; }
+  if (inject_missing_sprite || (inject_missing_scene != 0 &&
+      inject_missing_scene == g_ps_object_candidate_probe.scene_id))
+  { ps_candidate_catalog.frame_count = 0; }
   if (send_status == 0 && delivery == 2) { PS_HW6_RTOS_CandidateDisplay(queued); }
   return send_status;
 }
@@ -89,6 +92,7 @@ static UINT tx_event_flags_get(uint32_t *group, ULONG flag, UINT op, ULONG *actu
   *actual = flag;
   if (wait == TX_NO_WAIT) { return TX_SUCCESS; }
   assert(wait == PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
+  if (withhold_scene != 0 && withhold_scene == g_ps_object_candidate_probe.scene_id) { return 7; }
   if (delivery == 1) { PS_HW6_RTOS_CandidateDisplay(queued); }
   return wait_status;
 }
@@ -175,7 +179,10 @@ static void workflow_test(uint32_t size)
   puts("workflow rejection reasons passed");
 }
 
-int main(int argc, char **argv)
+#ifndef PS_OBJECT_CANDIDATE_MAIN
+#define PS_OBJECT_CANDIDATE_MAIN main
+#endif
+int PS_OBJECT_CANDIDATE_MAIN(int argc, char **argv)
 {
   static ps_scene_object_graph_t active_before;
   static ps_egg_context_t catalog_before;

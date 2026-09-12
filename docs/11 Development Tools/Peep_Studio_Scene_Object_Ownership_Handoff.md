@@ -1079,3 +1079,10 @@ This is not installed multi-scene support: service stays API 43, the public expo
 profile and `multi_scene_export: false` are unchanged. GUI should continue the
 connection editor/host fixture work already underway; no new GUI command or
 device test is requested by this internal increment.
+
+Private destination/all-scene display-owner admission is now implemented too,
+with 342 authoring/native tests passing. It checks initial presentations without
+committing them; failed/timed-out checks preserve the live scene and retain any
+outstanding private copy until completion. Runtime replacement and hardware proof
+are still next. API 43 and GUI capabilities remain unchanged; continue connection
+editing and the host fixture without enabling multi-scene export.

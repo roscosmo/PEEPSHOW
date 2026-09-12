@@ -49,6 +49,10 @@ PATHS = {
                           "PS_HW6_RTOS_InstalledObjectCheck"),
     "first presentation": (LAUNCH, "PS_HW6_RTOS_InstalledObjectLaunch"),
     "shell PLAY presentation": (PLAY, "PS_HW6_RTOS_InstalledObjectLaunch"),
+    # Preparation APIs are not yet called by scene replacement. These roots
+    # cover their own descendants only; add the real caller chain on integration.
+    "private destination admission": ((), "PS_HW6_ObjectCandidate_CheckScene"),
+    "private scene-set admission": ((), "PS_HW6_ObjectCandidate_CheckSceneSet"),
 }
 ADMISSION_CALLBACKS = {
     ("PS_SceneRuntime_EnterObjects", "PS_HW6_RTOS_InstalledObjectCheck"),

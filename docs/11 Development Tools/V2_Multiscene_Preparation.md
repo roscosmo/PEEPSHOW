@@ -1,8 +1,10 @@
 # V2 Multi-scene Preparation
 
-Status: private firmware candidate decoding implemented on 2026-09-12, after
-API 43 baseline `45362f7389724dc2fd2c802d0d3c35e9060c2146`. Not multi-scene
-installation, runtime replacement, export permission or a hardware pass.
+Status: private firmware candidate decoding and display-owner admission
+implemented on 2026-09-12. Decoder baseline is
+`ac46c0e70e3f7aeab05ad22ae4b987d3e29c6436`, following authoring API 43.
+Not multi-scene installation, runtime replacement, export permission or a
+hardware pass.
 
 ## Delivered Boundary
 
@@ -54,9 +56,10 @@ or safe replacement. No display-owner admission is performed by this API.
 ## What Is Still Blocked
 
 Existing `ValidateV2Profile` and `DecodeV2Candidate` retain the installed
-single-scene restriction. The storage preflight, installed launcher and display
-candidate queue continue using those existing entrypoints. `ValidatePackage`
-retains its legacy-container contract. No production caller uses the new API yet.
+single-scene restriction. Storage preflight, the installed launcher and existing
+debugger requests continue using those entrypoints. `ValidatePackage` retains
+its legacy-container contract. The new private owner-admission APIs use selected
+decoding, but are not yet called by installed preflight or scene replacement.
 
 Authoring service remains API 43. `multi_scene_export` stays false, and the public
 `hw6_v2_resident_v1` profile is unchanged. Studio can continue its advertised
@@ -83,20 +86,75 @@ These tests use a host HASH oracle; they do not exercise hardware HASH, owner
 queues, panel transfer, STOP2 or real scene replacement. No new on-device test
 or reflash is requested for this preparation-only checkpoint.
 
-Verification at this checkpoint: **336 authoring tests pass**, including the
+Verification at the decoder checkpoint: **336 authoring tests pass**, including the
 four new native scene-set tests; the Debug firmware build, target-profile
 freshness check and `git diff --check` pass. The existing production-path stack
 analysis passes at 2368 bytes including its 512-byte reserve, leaving 1728 bytes
 of the 4096-byte runtime stack. This is static analysis, not a measured stack
 high-water mark; future replacement call paths need their own analysis.
 
+## Display-owner Admission Follow-up
+
+`PS_HW6_ObjectCandidate_CheckScene(blob, size, scene_id)` admits the fresh initial
+presentation of the requested scene; ID 0 selects package entry. Only `thRuntime`
+may call it, serialized with existing candidate/validation work. It copies the
+resident egg to the existing private owned buffer, decodes the selected scene,
+initializes a private object graph, then builds a pointer-free waiting program.
+`thDisplay` receives the existing token-only queue request and performs actual
+projection, rasterization and exact payload accounting into private workspaces.
+Neither committed framebuffer nor live LPBAM payloads/catalogs are replaced.
+
+`PS_HW6_ObjectCandidate_CheckSceneSet` checks each scene in ascending catalog ID,
+stopping on the first failure. It performs at most eight bounded child checks.
+Each child validates package integrity/features and admits its initial display;
+the batch does not combine different scenes' animation cycles or payload budgets.
+It does not prove every possible state/variable/object mutation; runtime staged
+transactions will still require their own exact admission.
+
+Both functions return success only after a matching successful display completion
+and successful clock-policy cleanup/restoration. They reuse the existing bounded
+owner waits and clock requests, not new clock settings or peripheral access.
+Busy/prearmed display, queue/clock failures, schedule/raster/payload rejection,
+stale acknowledgements and timeout all return failure without changing the source.
+
+After timeout, the private copy, catalog and waiting program remain leased until
+the matching display token completes. The caller may release/reuse its original
+buffer after return. Another check cannot overwrite leased work. Late completion
+only releases the lease: it never commits a scene, retries a failed request or
+continues an aborted batch. The batch result is a synchronous caller-owned value,
+not an asynchronously updated probe or retained pointer. Its `checked` count is
+completed successful scenes, `failed_scene` identifies the failure when known,
+and `request_id` identifies its last started child (zero if none).
+
+Candidate probe API is now **2**, adding requested scene, resolved/failed scene,
+and validated scene count. Mode 3 identifies private destination admission.
+Existing enable helpers deliberately remain single-scene modes 1 and 2; there is
+no new debugger launch helper. Candidate and installed-object print helpers have
+matching API guards. Use a matching flashed firmware/ELF when next testing; an
+updated script alone does not update the running probe layout.
+
+The actual C owner functions, decoder, scheduler, renderer and payload compiler
+are exercised by `test_firmware_object_scene_admission.py` with deterministic
+queue/clock/HASH substitutes. Five tests cover selected vs entry scene, all-scene
+and eight-scene batches, static destinations, later-scene schedule/payload limits,
+missing sprites, timeout and reuse of caller bytes, stale/duplicate completion,
+refusal while leased, explicit retry, and unchanged live graph, phase, catalog,
+framebuffer and LPBAM state. Existing single-scene installation/workflow tests
+remain passing. This is real host raster work, not physical display proof.
+
+Verification: **342 authoring tests pass**, Debug firmware build and target-profile
+check pass, and `git diff --check` passes. Static stack analysis reports a worst
+checked production path of 2408 bytes including the 512-byte reserve, leaving
+1688 bytes of runtime headroom. The new private API roots are also analyzed, but
+their future replacement caller chain is not yet present and must be added then.
+No new hardware test is requested at this preparation checkpoint. Service API 43
+and the restricted single-scene export capability remain unchanged.
+
 ## Next OS Work
 
-1. Extend private display-owner admission to the selected destination and all
-   package scenes, keeping candidate bytes reserved across bounded completion.
-2. Stage and admit a fresh destination before replacing the usable source;
+1. Stage and admit a fresh destination before replacing the usable source;
    commit catalogs, objects, variables, timer ownership and animation timeline
    coherently. Failed admission must leave the source usable with no effects.
-3. Prove input/timer exits, fresh return, stale outgoing timer rejection and
+2. Prove input/timer exits, fresh return, stale outgoing timer rejection and
    LPBAM wake/re-entry on hardware using a clearly labelled two-scene fixture.
-4. Only then widen and advertise the installed/export subset to Studio.
+3. Only then widen and advertise the installed/export subset to Studio.
