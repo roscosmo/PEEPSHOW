@@ -1203,10 +1203,73 @@ function graphEntryArrow(
   return incomingArrow(socket, side, handle === undefined ? [edge.id] : incomingPeers(edges, edge), edge.id, otherTips);
 }
 
+type StateTransitionVisualSegment = {
+  routeId: string;
+  orientation: "horizontal" | "vertical";
+  fixed: number;
+  min: number;
+  max: number;
+};
+
+type StateTransitionVisualCrossing = EditorNodePosition & {
+  orientation: "horizontal" | "vertical";
+};
+
+function visualSegmentsForTransition(
+  routeId: string,
+  points: EditorNodePosition[],
+): StateTransitionVisualSegment[] {
+  const segments: StateTransitionVisualSegment[] = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const start = points[index - 1];
+    const end = points[index];
+    if (start.y === end.y && start.x !== end.x) {
+      segments.push({
+        routeId,
+        orientation: "horizontal",
+        fixed: start.y,
+        min: Math.min(start.x, end.x),
+        max: Math.max(start.x, end.x),
+      });
+    } else if (start.x === end.x && start.y !== end.y) {
+      segments.push({
+        routeId,
+        orientation: "vertical",
+        fixed: start.x,
+        min: Math.min(start.y, end.y),
+        max: Math.max(start.y, end.y),
+      });
+    }
+  }
+  return segments;
+}
+
+function visualTransitionSegmentsCross(
+  left: StateTransitionVisualSegment,
+  right: StateTransitionVisualSegment,
+  margin = 0,
+): EditorNodePosition | null {
+  if (left.orientation === right.orientation) {
+    return null;
+  }
+  const horizontal = left.orientation === "horizontal" ? left : right;
+  const vertical = left.orientation === "vertical" ? left : right;
+  if (
+    vertical.fixed <= horizontal.min + margin
+    || vertical.fixed >= horizontal.max - margin
+    || horizontal.fixed <= vertical.min + margin
+    || horizontal.fixed >= vertical.max - margin
+  ) {
+    return null;
+  }
+  return { x: vertical.fixed, y: horizontal.fixed };
+}
+
 function StateTransitionEdge({
   data,
   id,
   selected,
+  source,
   sourcePosition,
   sourceX,
   sourceY,
@@ -1301,6 +1364,76 @@ function StateTransitionEdge({
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
   };
+  const visualCrossings = useMemo(() => {
+    const edgeOrder = new Map(flowEdges.map((edge, index) => [edge.id, index]));
+    const currentOrder = edgeOrder.get(id) ?? 0;
+    const currentSegments = visualSegmentsForTransition(id, route.points);
+    const crossings: StateTransitionVisualCrossing[] = [];
+    const seen = new Set<string>();
+
+    flowEdges.forEach((flowEdge) => {
+      if (flowEdge.id === id || flowEdge.type !== "stateTransition") {
+        return;
+      }
+      const peerOrder = edgeOrder.get(flowEdge.id) ?? 0;
+      if (peerOrder >= currentOrder) {
+        return;
+      }
+      if (flowEdge.source === source || flowEdge.target === target) {
+        return;
+      }
+
+      const sourceNode = nodeLookup.get(flowEdge.source);
+      const targetNode = nodeLookup.get(flowEdge.target);
+      const sourceHandle = sourceNode?.internals.handleBounds?.source?.find(
+        (handle) => handle.id === flowEdge.sourceHandle,
+      );
+      const targetHandle = targetNode?.internals.handleBounds?.target?.find(
+        (handle) => handle.id === flowEdge.targetHandle,
+      );
+      if (sourceNode === undefined || targetNode === undefined || sourceHandle === undefined || targetHandle === undefined) {
+        return;
+      }
+
+      const candidateData = flowEdge.data as StateTransitionEdgeData | undefined;
+      const peerSource = handleBoundary(sourceNode.internals.positionAbsolute, sourceHandle);
+      const peerTargetSide = candidateData?.targetSide ?? edgeTargetSide(targetHandle.position);
+      const peerTarget = graphEntryArrow(
+        flowEdges,
+        targetNode,
+        flowEdge,
+        handleBoundary(targetNode.internals.positionAbsolute, targetHandle),
+        peerTargetSide,
+      ).routeTarget;
+      const peerRoute = buildStateTransitionRoute({
+        sourceX: peerSource.x,
+        sourceY: peerSource.y,
+        targetX: peerTarget.x,
+        targetY: peerTarget.y,
+        sourceSide: edgeSourceSide(sourceHandle.position),
+        targetSide: peerTargetSide,
+        laneX: typeof candidateData?.laneX === "number" ? candidateData.laneX : undefined,
+        rails: Array.isArray(candidateData?.rails) ? candidateData.rails : undefined,
+      });
+      const peerSegments = visualSegmentsForTransition(flowEdge.id, peerRoute.points);
+      currentSegments.forEach((segment) => {
+        peerSegments.forEach((peerSegment) => {
+          const crossing = visualTransitionSegmentsCross(segment, peerSegment, 14);
+          if (crossing === null) {
+            return;
+          }
+          const key = `${Math.round(crossing.x)}:${Math.round(crossing.y)}`;
+          if (seen.has(key)) {
+            return;
+          }
+          seen.add(key);
+          crossings.push({ ...crossing, orientation: segment.orientation });
+        });
+      });
+    });
+
+    return crossings;
+  }, [flowEdges, id, nodeLookup, route.points, source, target]);
   const guards = Array.isArray(edgeData?.guards) ? edgeData.guards : [];
   const actions = Array.isArray(edgeData?.actions) ? edgeData.actions : [];
   const tokens = [
@@ -1498,6 +1631,21 @@ function StateTransitionEdge({
           addRouteSection(event.clientX, event.clientY);
         }}
       />
+      {visualCrossings.map((crossing, index) => {
+        const horizontal = crossing.orientation === "horizontal";
+        const maskPath = horizontal
+          ? `M ${crossing.x - 10} ${crossing.y} L ${crossing.x + 10} ${crossing.y}`
+          : `M ${crossing.x} ${crossing.y - 10} L ${crossing.x} ${crossing.y + 10}`;
+        const bridgePath = horizontal
+          ? `M ${crossing.x - 10} ${crossing.y} Q ${crossing.x} ${crossing.y - 11} ${crossing.x + 10} ${crossing.y}`
+          : `M ${crossing.x} ${crossing.y - 10} Q ${crossing.x + 11} ${crossing.y} ${crossing.x} ${crossing.y + 10}`;
+        return (
+          <g key={`${id}:local-crossing-${index}`} className="state-transition-bridge" pointerEvents="none">
+            <path d={maskPath} stroke="#eef2f0" strokeWidth={10} fill="none" />
+            <path d={bridgePath} stroke={`url(#${gradientId})`} strokeWidth={selected ? 4.8 : 4} strokeLinecap="round" fill="none" />
+          </g>
+        );
+      })}
       <path
         className={`state-transition-arrow ${selected ? "selected" : ""} ${arrowHovered ? "hovered" : ""}`}
         d={arrow.arrowPath}
