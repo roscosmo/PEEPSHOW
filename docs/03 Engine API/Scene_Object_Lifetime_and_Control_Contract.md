@@ -19,6 +19,7 @@ Related:
 - [[State_Scene_World_Entity_and_Turn_Contract]]
 - [[Peep_Studio_Scene_Object_Ownership_Handoff]]
 - [[Scene_Object_Ownership_Acceptance_Plan]]
+- [[Scene_Memory_and_Parallel_Logic_Design]]
 
 ## Ownership
 
@@ -153,6 +154,11 @@ objects without needing a state transition. This target does not imply that
 all timer scopes or state-independent object actions are already implemented.
 
 ## Groups and Prefabs
+
+Remembered selection, retained scene resume, independent timer-node authoring
+and future parallel state regions are distinguished in
+[[Scene_Memory_and_Parallel_Logic_Design]]. These agreed design directions do not
+add executable scopes or capabilities to the current profile.
 
 Groups are optional named sets of object references. They are not owners, render
 layers, independent coordinate spaces, or implicit animation controllers.

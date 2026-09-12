@@ -46,17 +46,20 @@
     },
     "scene_replacement": {
       "if": {"required": ["target_scene"]},
-      "then": {"properties": {"actions": {"items": {"properties": {"kind": {"const": "play_sfx"}}}}}}
+      "then": {"properties": {"actions": {"maxItems": 0}}}
     },
     "handler": {
       "type": "object", "additionalProperties": false,
       "required": ["handler_id", "event_ref", "guards", "actions"],
       "not": {"required": ["target_state", "target_scene"]},
-      "allOf": [{"$ref": "#/$defs/scene_replacement"}],
+      "allOf": [
+        {"$ref": "#/$defs/scene_replacement"},
+        {"if": {"required": ["scene_exit_ref"]}, "then": {"required": ["target_scene"]}}
+      ],
       "properties": {
         "handler_id": {"$ref": "#/$defs/id"}, "event_ref": {"$ref": "#/$defs/id"},
         "guards": {"$ref": "#/$defs/guards"}, "actions": {"$ref": "#/$defs/actions"},
-        "target_state": {"$ref": "#/$defs/id"}, "target_scene": {"$ref": "#/$defs/id"}
+        "target_state": {"$ref": "#/$defs/id"}, "target_scene": {"$ref": "#/$defs/id"}, "scene_exit_ref": {"$ref": "#/$defs/id"}
       }
     },
     "route": {

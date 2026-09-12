@@ -39,7 +39,7 @@ class V2ExportTests(unittest.TestCase):
     def test_service_build_exact_hardware_fixture_and_capabilities(self):
         service = AuthoringService()
         hello = service.handle(ServiceRequest("hello", "service.hello", {}))
-        self.assertEqual(42, hello["service_api_version"])
+        self.assertEqual(43, hello["service_api_version"])
         self.assertEqual(PROFILE_ID, hello["package_export"]["v2_profile"]["profile_id"])
         loaded = service.handle(ServiceRequest("load", "project.load", {"path": str(FIXTURE)}))
         self.assertEqual([], loaded["build_issues"])

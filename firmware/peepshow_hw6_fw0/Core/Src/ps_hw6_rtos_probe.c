@@ -9688,6 +9688,86 @@ static void PS_HW6_RTOS_RuntimeResume(void)
     (uint32_t)PS_STATUS_OK : (uint32_t)PS_STATUS_INTERNAL_ERROR);
 }
 
+static void PS_HW6_RTOS_RunPackageValidation(uint32_t clock_status)
+{
+  uint32_t token = g_ps_object_candidate_probe.request_id;
+  uint32_t v2 = (ps_package_validation_blob != NULL) &&
+    (ps_package_validation_size >= 8UL) &&
+    (ps_package_validation_blob[4] == 2U) && (ps_package_validation_blob[5] == 0U);
+  if (g_ps_package_workflow_probe.active != 0UL)
+  {
+    g_ps_package_workflow_probe.phase_cpu_hz[PS_PACKAGE_WORKFLOW_VALIDATING] =
+      HAL_RCC_GetHCLKFreq();
+    g_ps_package_workflow_probe.phase_ospi_hz[PS_PACKAGE_WORKFLOW_VALIDATING] =
+      g_ps_hw6_clock_policy_probe.ospi_kernel_hz;
+  }
+  ps_package_validation_status = 1UL;
+  if (clock_status == TX_SUCCESS)
+  {
+    ps_package_validation_status = (v2 != 0UL) ?
+      PS_HW6_RTOS_InstalledObjectCheck(ps_package_validation_blob,
+        ps_package_validation_size, NULL) :
+      PS_EggStateLoader_ValidatePackage(ps_package_validation_blob,
+        ps_package_validation_size);
+  }
+  g_ps_package_workflow_probe.validation_count++;
+  g_ps_package_workflow_probe.validation_status = ps_package_validation_status;
+  g_ps_package_workflow_probe.validation_scene =
+    (clock_status == TX_SUCCESS) ? g_ps_egg_validation_probe.selected_scene_id : 0UL;
+  g_ps_package_workflow_probe.validation_reason =
+    (clock_status == TX_SUCCESS) ? g_ps_egg_validation_probe.reason :
+    PS_EGG_STATE_LOADER_REASON_HASH;
+  if ((v2 == 0UL) || (clock_status != TX_SUCCESS)) { return; }
+
+  /* Refusal or transport failure is not proof of a content/render rejection.
+   * A new token is required before borrowing this attempt's candidate detail. */
+  g_ps_package_workflow_probe.validation_scene = 0UL;
+  g_ps_package_workflow_probe.validation_reason = PS_HW6_RTOS_STATUS_NOT_RUN;
+  if (ps_package_validation_size > sizeof(ps_candidate_owned_bytes))
+  { g_ps_package_workflow_probe.validation_reason = PS_EGG_STATE_LOADER_REASON_CAPACITY; }
+  else if (g_ps_object_candidate_probe.request_id != token)
+  {
+    if (g_ps_object_candidate_probe.profile_status != PS_HW6_RTOS_STATUS_NOT_RUN)
+    {
+      g_ps_package_workflow_probe.validation_scene = g_ps_egg_validation_probe.selected_scene_id;
+      if (g_ps_object_candidate_probe.profile_status != 0UL)
+      {
+        uint32_t reason = g_ps_object_candidate_probe.loader_reason;
+        if (reason == PS_EGG_STATE_LOADER_REASON_NONE)
+        {
+          switch (g_ps_object_candidate_probe.profile_reason)
+          {
+            case PS_EGG_V2_PROFILE_ARGUMENT: reason = PS_EGG_STATE_LOADER_REASON_ARGUMENT; break;
+            case PS_EGG_V2_PROFILE_CAPACITY: reason = PS_EGG_STATE_LOADER_REASON_CAPACITY; break;
+            case PS_EGG_V2_PROFILE_AUDIO: reason = PS_EGG_STATE_LOADER_REASON_AUDIO; break;
+            default: reason = PS_EGG_STATE_LOADER_REASON_UNSUPPORTED; break;
+          }
+        }
+        g_ps_package_workflow_probe.validation_reason = reason;
+      }
+      else if ((g_ps_object_candidate_probe.graph_status != PS_HW6_RTOS_STATUS_NOT_RUN) &&
+               (g_ps_object_candidate_probe.graph_status != 0UL))
+      { g_ps_package_workflow_probe.validation_reason = PS_EGG_STATE_LOADER_REASON_GRAPH; }
+      else if ((g_ps_object_candidate_probe.schedule_status != PS_HW6_RTOS_STATUS_NOT_RUN) &&
+               (g_ps_object_candidate_probe.schedule_status != 0UL))
+      { g_ps_package_workflow_probe.validation_reason = PS_EGG_STATE_LOADER_REASON_WAITING; }
+      else if (((g_ps_object_candidate_probe.projection_status != PS_HW6_RTOS_STATUS_NOT_RUN) &&
+                (g_ps_object_candidate_probe.projection_status != 0UL)) ||
+               ((g_ps_object_candidate_probe.raster_status != PS_HW6_RTOS_STATUS_NOT_RUN) &&
+                (g_ps_object_candidate_probe.raster_status != 0UL)))
+      { g_ps_package_workflow_probe.validation_reason = PS_EGG_STATE_LOADER_REASON_RENDER; }
+      else if ((g_ps_object_candidate_probe.payload_status != PS_HW6_RTOS_STATUS_NOT_RUN) &&
+               (g_ps_object_candidate_probe.payload_status != 0UL))
+      { g_ps_package_workflow_probe.validation_reason = PS_EGG_STATE_LOADER_REASON_WAITING; }
+      else if (ps_package_validation_status == 0UL)
+      { g_ps_package_workflow_probe.validation_reason = PS_EGG_STATE_LOADER_REASON_NONE; }
+    }
+    else if ((g_ps_object_candidate_probe.runtime_clock_status != PS_HW6_RTOS_STATUS_NOT_RUN) &&
+             (g_ps_object_candidate_probe.runtime_clock_status != TX_SUCCESS))
+    { g_ps_package_workflow_probe.validation_reason = PS_EGG_STATE_LOADER_REASON_HASH; }
+  }
+}
+
 static void PS_HW6_RTOS_HandleRuntimeCommand(ULONG command)
 {
   UINT clock_status = TX_SUCCESS;
@@ -9720,38 +9800,7 @@ static void PS_HW6_RTOS_HandleRuntimeCommand(ULONG command)
 
   if (command == PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_VALIDATE)
   {
-    if (g_ps_package_workflow_probe.active != 0UL)
-    {
-      g_ps_package_workflow_probe.phase_cpu_hz[PS_PACKAGE_WORKFLOW_VALIDATING] =
-        HAL_RCC_GetHCLKFreq();
-      g_ps_package_workflow_probe.phase_ospi_hz[PS_PACKAGE_WORKFLOW_VALIDATING] =
-        g_ps_hw6_clock_policy_probe.ospi_kernel_hz;
-    }
-    uint32_t v2 = (ps_package_validation_blob != NULL) &&
-      (ps_package_validation_size >= 8UL) &&
-      (ps_package_validation_blob[4] == 2U) && (ps_package_validation_blob[5] == 0U);
-    ps_package_validation_status = 1UL;
-    if (clock_status == TX_SUCCESS)
-    {
-      ps_package_validation_status = (v2 != 0UL) ?
-        PS_HW6_RTOS_InstalledObjectCheck(ps_package_validation_blob,
-          ps_package_validation_size, NULL) :
-        PS_EggStateLoader_ValidatePackage(ps_package_validation_blob,
-          ps_package_validation_size);
-    }
-    g_ps_package_workflow_probe.validation_count++;
-    g_ps_package_workflow_probe.validation_status = ps_package_validation_status;
-    g_ps_package_workflow_probe.validation_scene =
-      g_ps_egg_validation_probe.selected_scene_id;
-    g_ps_package_workflow_probe.validation_reason =
-      (clock_status == TX_SUCCESS) ? g_ps_egg_validation_probe.reason :
-      PS_EGG_STATE_LOADER_REASON_HASH;
-    if ((v2 != 0UL) && (clock_status == TX_SUCCESS))
-    {
-      g_ps_package_workflow_probe.validation_scene = 1UL;
-      g_ps_package_workflow_probe.validation_reason = (ps_package_validation_status == 0UL) ?
-        PS_EGG_STATE_LOADER_REASON_NONE : PS_EGG_STATE_LOADER_REASON_RENDER;
-    }
+    PS_HW6_RTOS_RunPackageValidation(clock_status);
   }
   else if (command == PS_HW6_RTOS_COMMAND_RUNTIME_BOOT_SHELL)
   {

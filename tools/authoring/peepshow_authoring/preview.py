@@ -204,6 +204,18 @@ class StateScenePreview:
 
         target_scene = route["target_scene"]
         if target_scene is not None:
+            if self._object_source:
+                if route["operations"]:
+                    raise PreviewError("version-2 fresh scene replacement requires an empty action list")
+                # Admit the fresh destination without modifying the live source.
+                candidate = StateScenePreview(
+                    self._package, str(target_scene),
+                    include_waiting_visuals=self._include_waiting_visuals,
+                )
+                self.__dict__.update(candidate.__dict__)
+                return PreviewInputResult(
+                    logical_source, event_kind, binding_id, True, str(route["route_id"]),
+                )
             audio_events: list[dict[str, object]] = []
             for operation in route["operations"]:
                 if int(operation["kind"]) != 7:
@@ -437,14 +449,20 @@ class StateScenePreview:
                 break
             self._advance_visual(due_in_ms)
             remaining_ms -= due_in_ms
+            timer_state = (set(self._fired_timer_bindings), dict(self._scene_timer_deadlines)) if self._object_source else None
             self._fired_timer_bindings.add(binding_index)
             self._scene_timer_deadlines.pop(binding_index, None)
-            result = self._apply_binding(
-                binding_index,
-                "time.scene_elapsed" if binding_index in self._scene_timer_delays else "time.state_entry_elapsed",
-                "elapsed",
-                binding_id,
-            )
+            try:
+                result = self._apply_binding(
+                    binding_index,
+                    "time.scene_elapsed" if binding_index in self._scene_timer_delays else "time.state_entry_elapsed",
+                    "elapsed",
+                    binding_id,
+                )
+            except PreviewError:
+                if timer_state is not None:
+                    self._fired_timer_bindings, self._scene_timer_deadlines = timer_state
+                raise
             results.append(result)
             dispatch_count += 1
             if self._suspended:

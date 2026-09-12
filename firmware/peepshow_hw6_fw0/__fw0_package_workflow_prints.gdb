@@ -13,6 +13,7 @@ else
   printf "display status/send failures/duplicates = 0x%x / %u / %u\n", g_ps_package_workflow_probe.display_status, g_ps_package_workflow_probe.display_send_failures, g_ps_package_workflow_probe.duplicate_count
   printf "preflight count/status/scene/reason = %u / 0x%x / %u / %u\n", g_ps_package_workflow_probe.validation_count, g_ps_package_workflow_probe.validation_status, g_ps_package_workflow_probe.validation_scene, g_ps_package_workflow_probe.validation_reason
   printf "preflight pending/reserved = %u\n", ps_package_validation_busy
+  echo V2 reasons preserve the current loader/graph/waiting/raster failure. Reason 0xffffffff means no specific content rejection was established (for example busy or timeout); scene 0 means not identified.\n
   if g_ps_package_workflow_probe.tick_hz != 0
     if g_ps_package_workflow_probe.display_status == 0
       printf "accepted-to-notice ms = %llu\n", ((unsigned long long)(unsigned int)(g_ps_package_workflow_probe.displayed_tick - g_ps_package_workflow_probe.accepted_tick) * 1000) / g_ps_package_workflow_probe.tick_hz

@@ -82,7 +82,7 @@ class SceneObjectCreationTests(unittest.TestCase):
 
     def test_capabilities_distinguish_creation_state_management_and_graphs(self):
         hello = self.call("service.hello")
-        self.assertEqual(42, SERVICE_API_VERSION)
+        self.assertEqual(43, SERVICE_API_VERSION)
         creation = hello["scene_creation"]
         self.assertEqual("project.create", creation["project_operation"])
         self.assertEqual("scene.add", creation["scene_command"])
@@ -101,7 +101,7 @@ class SceneObjectCreationTests(unittest.TestCase):
         self.assertIn("project.set_entry_scene", capability["supported_commands"])
         self.assertEqual(expected, set(hello["scene_object_authoring"]["state_management_commands"]))
         self.assertTrue(capability["graph_construction_commands"])
-        self.assertFalse(capability["scene_connection_commands"])
+        self.assertTrue(capability["scene_connection_commands"])
         self.assertTrue(capability["egg_export"])
         self.assertFalse(capability["export_ready"])
         self.assertTrue(hello["scene_object_authoring"]["firmware_available"])
@@ -250,10 +250,10 @@ class SceneObjectCreationTests(unittest.TestCase):
         self.call("project.undo")
         self.assertEqual(before, self.service._bundle.canonical_bytes())
 
-    def test_unsupported_connections_and_legacy_mutations_remain_blocked(self):
+    def test_unknown_commands_and_legacy_mutations_remain_blocked(self):
         self.create(scene_schema_version=2)
         for kind in ("route.create", "event_binding.upsert", "event_handler.upsert",
-                     "scene_exit.add", "state_placement.clear_override",
+                     "state_placement.clear_override",
                      "render_element.bind_waiting_animation"):
             with self.subTest(kind=kind):
                 self.assert_rejected_unchanged(self.command(kind), code="COMMAND_EXECUTION_MODEL_MISMATCH")

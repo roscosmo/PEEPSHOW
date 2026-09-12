@@ -934,3 +934,138 @@ and whole-project readiness, then export the existing installation fixture
 unchanged for the normal USB round trip. No new fixture or firmware edits are
 requested. The backend's public build produces the same 2196 fixture bytes as
 the development encoder used for the recorded hardware pass.
+
+## Scene Memory and Independent Logic Design (2026-09-12)
+
+Follow [[Scene_Memory_and_Parallel_Logic_Design]] for the agreed direction and
+explicitly unresolved execution details. This is documentation only: no service
+API, command, schema, firmware or export capability changes are delivered here.
+
+- GUI can expose independent scene timer nodes through the existing binding,
+  handler and ordered-action commands. An optional local destination transitions
+  state; action-only handlers do not. No synthetic state or duplicated per-state
+  timer wiring is required. Timers remain one-shot with explicit restart, not
+  an implicitly supported fixed-cadence periodic mode.
+- Remember selection means entering the scene's own remembered state afresh,
+  with other instance data reset. The graph direction is a Remembered State
+  entry node with a visible default fallback, not generated ports on all states.
+- Scene resume retains the instance and remaining timers. It is distinct from
+  remembered selection, existing shell resume and persistence across reboot.
+- Parallel logic uses named regions, each with its own active state and entry,
+  sharing scene-owned objects. The agreed event rules are explicit recipients,
+  common pre-event guard values, rejection of competing cross-branch writes,
+  and one atomic logical commit per event. Ordered writes within one handler
+  remain supported. Variable changes do not implicitly trigger other branches.
+  Conflicting simultaneous property overrides remain errors.
+- These event rules remain design-only. Recipient/route representation,
+  cross-branch action reads, cross-region destination/timer conflicts, mixed
+  input/timer ordering and resource limits still require specification. Existing
+  timer deadline ordering and stale-owner checks must be preserved. Do not
+  enable parallel editing or export until the corresponding capabilities arrive.
+
+OS owns shared backend/runtime implementation. Studio should not create its own
+scene snapshot cache, parallel execution model or extra wire identifiers.
+GUI can continue timer authoring and scene-connection design using delivered
+capabilities; memory and region controls remain unavailable until their separate
+increments arrive. Multi-scene export restrictions remain unchanged.
+
+## Native V2 Scene Connections (API 43)
+
+This host-only increment supersedes earlier statements that all V2 connection
+commands are blocked. It implements fresh replacement into the destination's
+single default `entry_state`. It does not implement remembered entry, retained
+scene resume, parallel regions, named destination entries or multi-scene export.
+The existing restricted single-scene V2 export profile remains unchanged.
+
+### Capability Handoff
+
+Discover support through hello's `scene_object_authoring` and each document's
+`scene_capabilities[scene_id]`, not the service version alone:
+
+- `scene_connection_commands: true`
+- `connection_commands`: exact list of named-exit and scene-flow commands
+- `route_destination_kinds: ["state", "system_exit", "scene"]`
+- `scene_entry_modes: ["fresh_default"]`
+- `scene_exit_action_kinds: []` for V2; legacy scenes retain `["play_sfx"]`
+- `multi_scene_export: false` for projects containing V2 scenes
+
+Hello advertises `multi_scene_export: false` within `scene_object_authoring`.
+Per-scene `supported_commands` includes the delivered connection commands.
+`egg_export: true` still means the restricted build path exists, not that a
+multi-scene project is ready. Require whole-project `export_ready` and report
+`build_issues`. Draft save, editing, preview and undo/redo remain available.
+
+### Commands and References
+
+Use existing `scene_exit.add`, `scene_exit.set_target`, `scene_exit.delete` and
+the `editor.scene_flow.*` commands listed by `connection_commands`. Creating an
+exit creates no input or route. Use the returned `scene_exit_id`, not a guessed
+ID. Source and destination must differ; destinations must exist. Unconnected
+draft exits and exit-renaming commands are not introduced in this increment.
+
+`route.create_trigger` can wire an input to `scene_exit_ref`; it derives the
+destination from that exit. `route.add` and `route.set_target` can declare a
+direct `target_scene` or a matching `target_scene` plus `scene_exit_ref`.
+
+V2 `event_handler.add` and `event_handler.update` now also accept an optional
+`scene_exit_ref` with a matching `target_scene`. The handler remains owned by
+its scene timer and may have guards, but an exit handler's action list is empty.
+The V2 schema now includes this reference; it is not a new wire ID. The compiler
+continues to use the existing destination-scene representation in host preview.
+Legacy handler schemas are not widened by this V2 adapter change.
+
+Retargeting a named exit updates all referring routes AND timer handlers in one
+project transaction. Retargeting an attached Go To alias does the same. Deleting
+an alias removes only its editor reference, not the semantic exit or connection.
+Aliases, node positions, socket geometry and route rails remain editor metadata.
+Scene-flow endpoints remain `scene_exit` or `route`; no separate handler endpoint
+kind is introduced. A timer handler shares the named exit node.
+
+Deleting an exit referenced by any route or handler is refused. The author must
+explicitly detach/retarget/delete those users first, optionally in the same
+batch. Detaching a handler means replacing its full record without the exit and
+destination fields, keeping its scene timer and bounded action-only handler.
+If deleting the timer too, retain the existing binding/handler pair rules.
+Unused exit deletion removes associated node/layout/alias-link metadata.
+Failed edits preserve the entire document and undo history.
+
+### Replacement Semantics
+
+V2 exit routes and handlers require `actions: []`; guards remain supported.
+Object, variable, timer, render and SFX actions are rejected rather than executed
+against a scene about to be destroyed or silently applied to the destination.
+This makes the agreed restriction explicit even for manually edited V2 source;
+older V2 drafts containing SFX on scene exits require action removal. Legacy
+V1 SFX-only replacement semantics and commands are unchanged.
+
+Host preview constructs, validates and renders a fresh destination before
+replacing the live V2 source. Destination failure preserves the source objects,
+variables and state. A failed timer-driven replacement does not consume its
+pending expiry; fake time can reach that deadline, but no hidden retry occurs.
+An explicit later advance/input is required to attempt more work.
+
+Successful replacement initializes destination defaults, animation, variables
+and scene/state timers. Returning starts fresh; it does not remember selection.
+The triggering input is not replayed into the destination. Outgoing timer arms
+are discarded, including later source expiries during one preview advance;
+remaining advance time applies to the destination's newly started timeline.
+
+### Verification and Next Work
+
+`test_scene_object_connections.py` exercises the public service, real host input
+and timer dispatch, shared exit retargeting, reference-safe deletion, alias
+behavior, save/reload, undo/redo, guards, fresh object/variable/animation return,
+outgoing timer cleanup, and injected destination validation/raster failures.
+The existing legacy service suite retains its SFX scene-replacement coverage.
+No firmware change or new hardware proof is part of this increment.
+
+Verification: **332 authoring tests pass**, including native checks and 11 new
+connection tests. Target-profile freshness and `git diff --check` pass. The
+firmware was not rebuilt or flashed because firmware files and target budgets
+are unchanged. Source-loader/schema-shape checks cover the new handler reference
+and empty-exit-action restriction; no external JSON Schema validator was run.
+
+GUI may now integrate these advertised connection controls and create host-only
+multi-scene projects. Keep export disabled for them. OS's next executable work
+is a separate bounded multi-scene profile/admission/runtime increment, followed
+by hardware proof; the memory/parallel design remains independently deferred.

@@ -7,6 +7,7 @@
 #define DISPLAY_RENDERER_H
 #include "ps_scene_object_display_admission.c"
 #include "ps_hw6_object_candidate.h"
+#include "ps_package_workflow.h"
 
 typedef uint32_t UINT;
 typedef uint32_t ULONG;
@@ -31,7 +32,11 @@ typedef uint32_t ULONG;
 #define PS_HW6_RTOS_RUNTIME_CLOCK_REACTIVE_CAPABILITIES 43U
 static uint32_t ps_event_groups[4], ps_queues[9];
 static uint32_t ps_package_validation_busy;
-static struct { uint32_t active; } g_ps_package_workflow_probe;
+static const uint8_t *ps_package_validation_blob;
+static uint32_t ps_package_validation_size, ps_package_validation_status;
+volatile ps_package_workflow_probe_t g_ps_package_workflow_probe;
+static struct { uint32_t ospi_kernel_hz; } g_ps_hw6_clock_policy_probe;
+static uint32_t HAL_RCC_GetHCLKFreq(void) { return 24000000U; }
 static struct { uint32_t runtime_active_capabilities; } g_ps_hw6_rtos_probe;
 static struct { uint32_t display_lpbam_active, display_lpbam_prearmed, display_complete; }
   g_ps_hw6_owner_probe = {0, 0, 1};
@@ -44,6 +49,7 @@ static uint32_t send_status, wait_status, delivery = 1, ack_count, sends;
 static uint32_t display_clock_failure, runtime_clock_failure;
 static uint32_t display_release_failure, runtime_release_failure;
 static uint32_t display_clock_calls, runtime_clock_calls;
+static uint32_t inject_missing_sprite;
 static ULONG queued[4];
 static UINT PS_HW6_RTOS_RequestDisplayClockCapabilities(uint32_t reason, uint32_t caps)
 {
@@ -73,6 +79,7 @@ static UINT tx_queue_send(uint32_t *queue, const ULONG *message, ULONG wait)
     (ps_candidate_blob == candidate || ps_candidate_blob == ps_candidate_owned_bytes));
   memcpy(queued, message, sizeof(queued));
   sends++;
+  if (inject_missing_sprite) { ps_candidate_catalog.frame_count = 0; }
   if (send_status == 0 && delivery == 2) { PS_HW6_RTOS_CandidateDisplay(queued); }
   return send_status;
 }
@@ -95,6 +102,79 @@ static void complete(uint32_t result)
   assert(ps_candidate_blob == NULL && ps_candidate_size == 0 && ps_candidate_catalog.records == NULL);
 }
 
+static void workflow_test(uint32_t size)
+{
+  static ps_scene_object_graph_t saved_graph;
+  static ps_egg_context_t saved_catalog;
+  uint32_t token, sent;
+  assert(PS_SceneRuntime_EnterDevelopmentObjects(baseline, baseline_size) == 0);
+  saved_graph = s_ps_object_graph;
+  saved_catalog = s_ps_egg_runtime_context;
+  ps_package_validation_blob = candidate;
+  ps_package_validation_size = size;
+  g_ps_package_workflow_probe.active = 1;
+  PS_HW6_RTOS_RunPackageValidation(TX_SUCCESS);
+  assert(ps_package_validation_status == 0 && g_ps_package_workflow_probe.validation_reason == 0);
+  assert(g_ps_package_workflow_probe.validation_scene == 1);
+  assert(g_ps_package_workflow_probe.phase_cpu_hz[PS_PACKAGE_WORKFLOW_VALIDATING] == 24000000U);
+
+  sent = sends;
+  candidate[size - 1] ^= 1; /* Same stored-digest bit as prepare_v2_rejection.py. */
+  PS_HW6_RTOS_RunPackageValidation(TX_SUCCESS);
+  assert(ps_package_validation_status == 1 && g_ps_package_workflow_probe.validation_reason == 4);
+  assert(g_ps_package_workflow_probe.validation_scene == 0 && sends == sent && !ps_candidate_busy);
+  candidate[size - 1] ^= 1;
+  candidate[44] ^= 1;
+  PS_HW6_RTOS_RunPackageValidation(TX_SUCCESS);
+  assert(ps_package_validation_status == 1 && g_ps_package_workflow_probe.validation_reason == 3);
+  assert(sends == sent);
+  candidate[44] ^= 1;
+
+  token = g_ps_object_candidate_probe.request_id;
+  ps_package_validation_size = PS_TARGET_PROFILE_PACKAGE_RESIDENT_BYTES + 1U;
+  PS_HW6_RTOS_RunPackageValidation(TX_SUCCESS);
+  assert(g_ps_package_workflow_probe.validation_reason == 13);
+  assert(g_ps_package_workflow_probe.validation_scene == 0 && g_ps_object_candidate_probe.request_id == token);
+  ps_package_validation_size = size;
+  PS_HW6_RTOS_RunPackageValidation(9);
+  assert(g_ps_package_workflow_probe.validation_reason == 15 && g_ps_package_workflow_probe.validation_scene == 0);
+  assert(g_ps_object_candidate_probe.request_id == token);
+  runtime_clock_failure = 5;
+  PS_HW6_RTOS_RunPackageValidation(TX_SUCCESS);
+  assert(g_ps_package_workflow_probe.validation_reason == 15 && sends == sent);
+  runtime_clock_failure = 0;
+
+  inject_missing_sprite = 1;
+  PS_HW6_RTOS_RunPackageValidation(TX_SUCCESS);
+  assert(ps_package_validation_status == 1 && g_ps_package_workflow_probe.validation_reason == 11);
+  assert(g_ps_object_candidate_probe.raster_status == 1 && !ps_candidate_busy);
+  inject_missing_sprite = 0;
+  g_ps_hw6_owner_probe.display_lpbam_prearmed = 1;
+  PS_HW6_RTOS_RunPackageValidation(TX_SUCCESS);
+  assert(ps_package_validation_status == 1 && g_ps_package_workflow_probe.validation_reason == UINT32_MAX);
+  assert(g_ps_object_candidate_probe.display_status == 2);
+  g_ps_hw6_owner_probe.display_lpbam_prearmed = 0;
+
+  delivery = 0; wait_status = 7;
+  PS_HW6_RTOS_RunPackageValidation(TX_SUCCESS);
+  assert(ps_candidate_busy && g_ps_package_workflow_probe.validation_reason == UINT32_MAX);
+  token = g_ps_object_candidate_probe.request_id;
+  g_ps_egg_validation_probe.reason = 4; /* Refusal must not borrow stale detail. */
+  PS_HW6_RTOS_RunPackageValidation(TX_SUCCESS);
+  assert(g_ps_object_candidate_probe.request_id == token);
+  assert(g_ps_package_workflow_probe.validation_reason == UINT32_MAX && g_ps_package_workflow_probe.validation_scene == 0);
+  PS_HW6_RTOS_CandidateDisplay(queued);
+  PS_HW6_RTOS_CandidateReap();
+  assert(!ps_candidate_busy && g_ps_package_workflow_probe.validation_reason == UINT32_MAX);
+  delivery = 1; wait_status = 0;
+  PS_HW6_RTOS_RunPackageValidation(TX_SUCCESS);
+  assert(ps_package_validation_status == 0 && g_ps_package_workflow_probe.validation_reason == 0);
+  assert(g_ps_package_workflow_probe.validation_scene == 1);
+  assert(memcmp(&saved_graph, &s_ps_object_graph, sizeof(saved_graph)) == 0);
+  assert(memcmp(&saved_catalog, &s_ps_egg_runtime_context, sizeof(saved_catalog)) == 0);
+  puts("workflow rejection reasons passed");
+}
+
 int main(int argc, char **argv)
 {
   static ps_scene_object_graph_t active_before;
@@ -110,6 +190,7 @@ int main(int argc, char **argv)
   if (argc == 3)
   {
     size = read_blob(argv[1], candidate);
+    if (strcmp(argv[2], "workflow") == 0) { workflow_test(size); return 0; }
     goto installed_tests;
   }
   assert(PS_SceneRuntime_EnterDevelopmentObjects(baseline, baseline_size) == 0);

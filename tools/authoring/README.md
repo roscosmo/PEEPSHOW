@@ -216,9 +216,23 @@ through hello and per-scene capabilities; require whole-project `export_ready`
 and inspect `build_issues`. Unsupported drafts retain editing/preview. Legacy
 projects are not implicitly migrated. Export limits and GUI integration:
 `docs/11 Development Tools/Peep_Studio_Restricted_V2_Export_Handoff.md`.
+After the normal Studio-export hardware test, `prepare_v2_rejection.py` creates
+a separate digest-damaged copy for USB rejection/recovery testing. It requires
+a valid exported V2 egg and a new output directory; it never writes to the
+source egg or accesses hardware. Follow
+`docs/11 Development Tools/V2_USB_Rejection_Recovery_Test.md`.
 Exact editing command fields and earlier increments:
 `docs/11 Development Tools/Peep_Studio_Scene_Object_Ownership_Handoff.md`,
 Connected Host Increment (API 39), Native Creation and States (API 40), and Native Local Graphs (API 41).
+
+API 43 adds native V2 named-exit and scene-flow commands, route/scene-timer
+connections, and fresh-default host replacement. Named-exit retargeting updates
+both routes and handlers; referenced exits cannot be deleted until detached.
+V2 exit actions must be empty (guards are allowed); V1 SFX behavior is unchanged.
+Discover `scene_connection_commands`, `connection_commands`, `scene_entry_modes`
+and `scene_exit_action_kinds` through hello/per-scene capabilities. This is
+host-only: multi-scene V2 export, scene memory and parallel regions remain
+unavailable. See Native V2 Scene Connections (API 43) in the ownership handoff.
 
 The canonical HW6 development limits live in
 `peepshow_authoring/target_profiles/hw6_fw0_development.json`. After changing

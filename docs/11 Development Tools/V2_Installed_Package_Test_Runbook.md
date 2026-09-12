@@ -2,14 +2,21 @@
 
 Status: hardware boot, reinstallation and launch passed after the runtime stack
 correction (2026-09-11). Detailed installed low-power timing/current acceptance
-remains separate; ordinary Studio V2 export is still disabled.
+remains separate. The API 42 Studio-exported installation fixture has now passed
+normal USB installation, PLAY and deliberate reboot; see the recorded result
+below. Next follow [[V2_USB_Rejection_Recovery_Test]] for bad staging data and
+recovery. That negative device check is still pending.
 
 Source: `examples/authoring/native_v2_installation.peepproj`, imported unchanged
 from GUI commit `e7f11f011fcbd91001aac0d15a85543c6212f3ab`. Its README describes
 the earlier GUI-only checkpoint. This is a real V2 egg, not a converted V1 or
 linked development scene.
 
-## Artifact
+## Diagnostic Artifact (Earlier Path)
+
+For the next Studio integration test, use GUI's actual exported egg unchanged,
+not this diagnostic generation command. Keep the already-tested firmware; a
+new build/reflash is not required for the host-only API 42 changes.
 
 From the workspace root:
 
@@ -19,7 +26,7 @@ cmake --build firmware/peepshow_hw6_fw0/build/Debug
 ```
 
 The egg is 2,196 bytes. `--egg-output` leaves both linked firmware fixtures
-unchanged. Ordinary Studio export is still disabled. Flash the built firmware
+unchanged. This records the earlier diagnostic path. Flash the built firmware
 normally; do not run any development scene enable helper for this test.
 
 ## USB Install, PLAY, Reboot
@@ -186,6 +193,44 @@ The restricted backend capability/readiness handoff is now delivered in
 [[Peep_Studio_Restricted_V2_Export_Handoff]]. It supersedes the blanket export
 restriction above for projects inside the advertised subset. The public build
 produces the same 2196 bytes for the unchanged installation fixture.
-Studio integration and the normal Studio-build/USB-install/PLAY/reboot round
-trip remain the next test; this does not upgrade the recorded evidence to
-shipping, current-measurement or general V2 acceptance.
+The normal Studio-build/USB-install/PLAY/reboot round trip subsequently passed
+as recorded below. This does not establish shipping, current-measurement or
+general V2 acceptance.
+
+## Normal Studio Export, USB Install And Reboot Passed
+
+The GUI-provided artifact was
+`G:/PEEPSHOW-PeepStudio/tools/peep-studio/dist/restricted-v2-export/native_v2_installation.egg`.
+OS read those actual bytes: public V2 parsing/admission passed and they matched
+the previously tested fixture byte-for-byte. Size is 2196 bytes; full-file
+SHA-256 is `9f0914597fddf5fe7d4c35e2eeeab6626c3001ecccdd400d8ae65914f77866d9`.
+No reflash or development launcher was used for this USB test.
+
+- Install count 2, status 0, COMPLETE stage 11; target record/slot/generation
+  1/0/6 at `0xc0000`, pending generation 5. All 2196 bytes were programmed in
+  9 pages and read-verified with zero mismatches. Journal commit/rescan passed.
+- Preflight count/status/scene/reason 1/0/1/0, reservation released. The workflow
+  recorded completed busy feedback after 70 ms, before work started.
+- Settled installed capture: source/active/activation/model/bytes 3/1/0/2/2196,
+  selected generation 6, UI/class/lifecycle 6/2/2, runtime stack 4096 bytes.
+- Latest admission token/completion 54/54, lease 0, status/profile/reason/
+  schedule/display all 0; exact payload 8 chunks/4672 bytes. The preceding
+  token-53/complete-0 capture was unfinished, not a completed admission pass.
+- Completed drawing 50/50, result/fault 0/0. LPBAM enabled, fault 0, publish 0,
+  4 steps at 400 ms; sleep returns/measured/reconciled 6/6/6, clock status 0.
+- Timer due/applied/error 3/3/0 and RTC selections 3 describe the whole session,
+  not three firings in one scene activation. Reveal visible, marker x=32.
+- User confirmed the requested visible scene behavior. They then explicitly
+  reset without reflashing and confirmed boot into the scene with the expected
+  initial marker and timed reveal. No separate post-reboot probe dump was
+  supplied; reboot behavior is user-observed, not inferred from a GDB reconnect.
+
+Waking once with a button before halting is necessary on this setup and is valid
+for settled-result collection. A debugger reconnect alone is not a reboot.
+
+The workflow snapshot labelled action 4 (SCAN), despite containing erase/write/
+verify/commit phase visits. It recorded READING 3090 ms and VALIDATING 340 ms,
+with HCLK 24 MHz and OSPI-policy readback 128 MHz at those phase entries. Retain
+these as reported observations, not an explanation of the delay or a verified
+scan-versus-install timing breakdown. Physical current/cadence, workflow timing
+attribution and negative USB recovery remain separate from this functional pass.

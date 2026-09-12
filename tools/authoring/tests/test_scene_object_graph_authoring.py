@@ -84,17 +84,17 @@ class SceneObjectGraphAuthoringTests(unittest.TestCase):
 
     def test_hello_and_scene_advertise_exact_local_scope(self):
         hello = self.call("service.hello")
-        self.assertEqual(42, hello["service_api_version"])
+        self.assertEqual(43, hello["service_api_version"])
         scene_caps = self.call("project.normalize")["scene_capabilities"]["main"]
         for caps, command_key in ((hello["scene_object_authoring"], "commands"), (scene_caps, "supported_commands")):
             self.assertTrue(caps["graph_construction_commands"])
-            self.assertFalse(caps["scene_connection_commands"])
+            self.assertTrue(caps["scene_connection_commands"])
             self.assertTrue(caps["egg_export"])
-            self.assertEqual(["state", "system_exit"], caps["route_destination_kinds"])
+            self.assertEqual(["state", "system_exit", "scene"], caps["route_destination_kinds"])
             self.assertEqual(list(LOCAL_GRAPH_COMMANDS), caps["local_graph_commands"])
             self.assertTrue(set(LOCAL_GRAPH_COMMANDS).issubset(caps[command_key]))
             self.assertNotIn("route.action.add", caps[command_key])
-            self.assertNotIn("scene_exit.add", caps[command_key])
+            self.assertIn("scene_exit.add", caps[command_key])
 
     def test_native_input_guard_object_actions_save_reload_and_preview(self):
         self.graph()
@@ -266,21 +266,10 @@ class SceneObjectGraphAuthoringTests(unittest.TestCase):
         self.reject(self.command("editor.state_graph.delete_system_exit"), code="COMMAND_TARGET_IN_USE")
         self.edit(self.command("route.delete", route_id=route_id), self.command("editor.state_graph.delete_system_exit"))
 
-    def test_connection_payloads_and_legacy_actions_stay_blocked(self):
+    def test_legacy_action_commands_stay_blocked(self):
         self.graph()
         self.timer()
-        self.edit({"kind": "scene.add", "display_name": "Destination", "scene_schema_version": 2})
-        remote = self.route("remote", target_scene="destination")
-        remote.pop("target_state")
-        for command in (
-            self.command("route.add", route=remote),
-            self.command("route.set_target", route_id="next", target_scene="destination"),
-            self.command("route.create_trigger", source_state="start", logical_source="BUTTON_R", scene_exit_ref="exit"),
-            self.command("event_handler.add", event_handler=self.handler(handler_id="remote", target_scene="destination")),
-            self.command("event_handler.update", event_handler=self.handler(target_scene="destination")),
-        ):
-            self.reject(command, code="SCENE_OBJECT_CONNECTION_UNAVAILABLE")
-        for kind in ("scene_exit.add", "editor.scene_flow.add_reference", "route.action.add", "route.set_action"):
+        for kind in ("route.action.add", "route.set_action"):
             self.reject(self.command(kind), code="COMMAND_EXECUTION_MODEL_MISMATCH")
         invalid = self.route("legacy", actions=[{"kind": "set_element_position", "element_ref": "panel", "x": 1, "y": 2}])
         self.reject(self.command("route.add", route=invalid))

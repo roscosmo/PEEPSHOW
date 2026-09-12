@@ -63,12 +63,18 @@ validated authoring example.
 
 ## Current Capability
 
-Authoring service API 42 now advertises restricted ordinary V2 build/export.
-See [[Peep_Studio_Restricted_V2_Export_Handoff]] for capabilities, whole-project
-readiness, conservative LPBAM budgets and the next Studio/USB hardware test.
-The existing installed fixture has passed; GUI integration remains pending.
-The V1 capability history below does not grant V2 audio, scene connections,
-shell-exit actions or unrestricted/shipping export.
+Authoring service API 43 adds host V2 scene-connection commands and fresh-default
+replacement preview. See [[Peep_Studio_Scene_Object_Ownership_Handoff]], Native
+V2 Scene Connections, for the command, action and reference-lifetime contract.
+Multi-scene V2 export remains blocked; scene memory and parallel regions remain
+design-only. No new firmware capability is implied by host editing support.
+
+Restricted ordinary V2 build/export introduced in API 42 remains available.
+See [[Peep_Studio_Restricted_V2_Export_Handoff]] for its single-scene subset,
+whole-project readiness and conservative LPBAM budgets. The normal Studio/USB
+round trip and good-egg recovery reinstall have passed for the recorded fixture;
+see [[V2_USB_Rejection_Recovery_Test]]. The V1 history below does not grant V2
+audio, multi-scene export, shell-exit actions or unrestricted/shipping export.
 
 The following path is implemented. Rows explicitly marked pending still require
 their stated HW6 proof; the remaining rows have been exercised on target.
