@@ -3244,9 +3244,11 @@ export default function App() {
     const startClientY = event.clientY;
     const startX = placementViewport.x;
     const startY = placementViewport.y;
+    let dragged = false;
     setPlacementViewportPanning(true);
 
     const move = (moveEvent: PointerEvent) => {
+      dragged = dragged || Math.abs(moveEvent.clientX - startClientX) > 2 || Math.abs(moveEvent.clientY - startClientY) > 2;
       setPlacementViewport((current) => ({
         ...current,
         x: startX + moveEvent.clientX - startClientX,
@@ -3258,6 +3260,11 @@ export default function App() {
       window.removeEventListener("pointerup", stop);
       window.removeEventListener("pointercancel", stop);
       setPlacementViewportPanning(false);
+      if (event.button === 0 && !insideScreen && !event.altKey && !dragged) {
+        placementSelectionAnchorRef.current = null;
+        setSelectedPlacementElement(null);
+        setSceneSelection({ kind: "scene" });
+      }
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop);

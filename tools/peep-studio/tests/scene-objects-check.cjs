@@ -118,6 +118,19 @@ app.whenReady().then(async () => {
   assert.notEqual(await evaluate("getComputedStyle(document.querySelector('.placement-viewport-screen')).transform"), initialViewportTransform);
   await click('.placement-viewport-controls [aria-label="Fit screen"]');
   assert.equal(await evaluate("document.querySelector('.placement-viewport-controls span').textContent.trim()"), "100%");
+  await evaluate(`(() => {
+    const stage = document.querySelector('.placement-viewport-stage');
+    const stageRect = stage.getBoundingClientRect();
+    const screenRect = document.querySelector('.placement-viewport-screen').getBoundingClientRect();
+    const clientX = screenRect.right + 16 < stageRect.right ? screenRect.right + 16 : screenRect.left - 16;
+    const clientY = screenRect.top + screenRect.height / 2;
+    stage.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 1, clientX, clientY }));
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerId: 1, clientX, clientY }));
+  })()`);
+  await wait(150);
+  assert.equal(await evaluate("document.querySelectorAll('.placement-element-box.selected').length"), 0);
+  await click('.scene-hierarchy-node.selected .placement-tree-object');
+  assert(await evaluate("!!document.querySelector('.placement-element-box.selected')"));
   const scene = () => documentResult.document.scenes.find(scene => scene.scene_id === "state_demo");
   const selectedId = await evaluate("document.querySelector('.placement-element-box.selected span').textContent");
   const object = () => scene().objects.find(object => object.object_id === selectedId);
