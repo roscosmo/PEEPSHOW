@@ -1,7 +1,8 @@
 # Restricted V2 Export Handoff
 
-Status: backend implemented in authoring service API 42; Studio integration and
-the normal Studio-build/USB-install round trip remain pending.
+Status: backend implemented in authoring service API 42; the actual Studio-exported
+installation fixture passed normal USB installation, PLAY and deliberate reboot.
+This is a fixture-specific functional pass, not unrestricted V2 or shipping support.
 
 This increment enables a conservative export subset of the installed HW6 V2
 profile. It supersedes the earlier blanket V2 export prohibition, not the
@@ -117,4 +118,9 @@ revision checks, deterministic bytes, unsupported drafts, capacity boundaries,
 timing rejection, hidden clips and conservative motion/payload budgets.
 The canonical target-profile generation check passes. No firmware source or
 generated embedded egg changed, so no full firmware rebuild was performed for
-this host-only increment. The Studio-export hardware round trip remains pending.
+this host-only increment. The Studio-export hardware round trip subsequently
+passed for the unchanged 2196-byte installation fixture. See
+[[V2_Installed_Package_Test_Runbook]] for generation-6 installation, completed
+admission/drawing, 6/6/6 sleep accounting and explicit user-observed reboot.
+[[V2_USB_Rejection_Recovery_Test]] is next; its negative device result remains
+pending. No new firmware or GUI change was needed for the successful round trip.

@@ -1,6 +1,8 @@
 # V2 USB Rejection And Recovery Test
 
-Status: preparation tool and native validator checks pass; device test pending.
+Status: device rejection, shell recovery and preservation of the installed game
+passed. The corrected checksum-reason reporting retry passed on 2026-09-12;
+the final good-egg recovery reinstall is still pending.
 Run after the unchanged fixture has passed the normal Studio export/install test.
 Keep the same firmware baseline. No rebuild, reflash or new GUI capability is
 needed. Authority: [[Storage_and_Installer_Contract]].
@@ -102,5 +104,79 @@ source preservation, overwrite refusal and invalid/V1 input rejection. Both
 native V2 profile tests consume the preparation tool's exact output, report
 loader reason `4`, preserve the live V1/V2 context and accept a good candidate
 after the failures. These native checks do not exercise USB, the panel or NOR
-writes. Shell recovery and installed-generation preservation remain pending on
-the device.
+writes. The subsequent device recovery result and separate reporting correction
+are recorded below.
+
+## Device Recovery Pass And Reporting Correction
+
+The user supplied the negative-workflow capture and confirmed B returns to the
+shell and deliberate reboot returns to the working 1-2-3-4/A-B scene.
+Preflight count/status was 1/1, reservation 0, terminal workflow ERROR, active 0.
+The writer remained at install count 0 and stage IDLE, with no package writes.
+The index retained the 2196-byte VALID generation 6 at `0xc0000`; journal
+generation 5 remained PENDING. No erase/write/verify/commit workflow phase was
+recorded. Those results establish rejection before replacement and recovery,
+not just successful queue dispatch.
+
+The workflow reported reason 11 (RENDER), rather than the intended checksum
+reason 4. Investigation found `PS_HW6_RTOS_HandleRuntimeCommand` unconditionally
+relabelled every V2 preflight failure as RENDER and hardcoded scene 1. Thus the
+old capture does not establish the exact rejection stage. The local damaged
+artifact changes only the final digest bit; its SHA-256 is
+`53f20ca33cb1c7b1443ddfdec34a4d7d7dd469384b999eba6dbc0015c48bf6ad`.
+
+The scoped correction moves the existing validation/reporting block into
+`PS_HW6_RTOS_RunPackageValidation` and preserves the current candidate's loader
+reason, graph/waiting failure or actual projection/raster failure. It requires a
+fresh request token before using candidate details. A refused/busy/transport
+failure with no specific content rejection reports reason NOT_RUN, not a false
+RENDER or stale checksum error. Scene 0 means not identified. Existing probe
+layouts, admission decisions, queue/lease handling, writes and clock policy are
+unchanged. The ARM stack check includes the new direct call in its preflight
+prefix rather than omitting that frame.
+
+Native owner-queue coverage exercises the actual validation/reporting function:
+good V2, one-bit digest and header-CRC damage, oversized input, clock refusal,
+real missing-sprite raster rejection, display busy, timeout, stale-detail
+refusal, late completion and subsequent good validation. The live scene and
+catalog remain unchanged. This is local proof, not the firmware retry result.
+
+Verification: all 321 host/native tests and the Debug firmware build pass.
+The scoped ARM stack check, including the new call frame, passes at a maximum
+1808 C bytes plus 512 reserve within the unchanged 4096-byte runtime stack.
+The preflight path itself uses 1648 C bytes plus reserve. Linked RAM remains
+550936 bytes, SRAM4 15480 bytes, and ROM is 868424 bytes. These are build and
+compiler measurements, not a whole-firmware worst-case stack proof.
+
+For the retry, flash the corrected firmware once; this is a reporting change,
+not a request to reinstall the good package. Rescan the same bad staged egg,
+then use the existing workflow helper after completion. Require status failure,
+reason 4, reservation 0, no writer start, and retained generation 6. A wake press
+before halting is acceptable. GUI work and its export capabilities are unaffected.
+Then finish the good-source recovery reinstall in the sequence above.
+
+## Corrected Digest Reporting Passed (2026-09-12)
+
+The retry reports workflow action INSTALL, phase ERROR, status `0x20`, active 0;
+preflight count/status/scene/reason is 1/1/0/4 and reservation is 0. Reason 4 is
+the intended digest rejection. Scene 0 correctly indicates that no scene was
+identified before the integrity failure. No erase, program, verify or commit
+phase was visited. This is a completed rejection, not merely a queued request.
+
+The index scan retains VALID generation 6, selected record 1/slot 0, address
+`0xc0000`, size 2196, availability 1 and matching CRCs. The older generation-5
+PENDING journal record is unchanged. Earlier user-observed B-to-shell and
+reboot-to-good-scene evidence still stands; no new reboot observation was
+provided with this reporting retry.
+
+Busy feedback completed in 60 ms. Total recorded workflow time is 9420 ms:
+STARTING 60, PREPARING 50, SCANNING 6140, READING 3110 and VALIDATING 60 ms.
+SCANNING/READING/VALIDATING phase-entry samples show HCLK 24 MHz and OSPI-policy
+readback 128 MHz. These wall times do not identify CPU utilization, actual bus
+throughput or the cause of the delay. Latency investigation remains separate;
+this result does not justify changing clocks or removing validation checks.
+
+The diagnostic correction and retained-generation checks now pass on hardware.
+Next replace the staged bad egg with the original Studio export and complete
+the normal scan/install/PLAY sequence without a firmware reflash, to close the
+remaining recovery-reinstall check. GUI requires no change for this result.

@@ -31,7 +31,8 @@ PLAY = OWNER + ("PS_HW6_RTOS_PackageWorkflowHandleMessage",
                 "PS_HW6_RTOS_RuntimePackageReplace",
                 "PS_HW6_RTOS_RuntimePackageActivateStub")
 PATHS = {
-    "install preflight": (COMMAND, "PS_HW6_RTOS_InstalledObjectCheck"),
+    "install preflight": (COMMAND + ("PS_HW6_RTOS_RunPackageValidation",),
+                          "PS_HW6_RTOS_InstalledObjectCheck"),
     "installed launch": (LAUNCH + ("PS_SceneRuntime_EnterStateScene",
                                    "PS_SceneRuntime_EnterObjects"),
                          "PS_HW6_RTOS_InstalledObjectCheck"),
