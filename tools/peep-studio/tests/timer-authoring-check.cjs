@@ -14,7 +14,7 @@ fs.mkdirSync(output, { recursive: true });
 app.setPath('userData', path.join(output, 'profile'));
 app.disableHardwareAcceleration();
 app.on('window-all-closed', () => {});
-let child, window, latest, id = 0;
+let child, window, latest, hello, id = 0;
 const pending = new Map(), batches = [], errors = [];
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const watchdog = setTimeout(() => { child?.kill(); app.exit(1); }, 90000);
@@ -31,8 +31,12 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('native:path', () => projectPath);
   ipcMain.handle('native:service', async (_, operation, params) => {
+    assert.notEqual(operation,'project.build_package','This regression must not produce an egg');
     if (operation === 'project.apply_commands') batches.push(params.commands);
-    const result = await request(operation, params); if (result.document) latest = result; return result;
+    const result = await request(operation, params);
+    if (result.document) latest = result;
+    if (operation === 'service.hello') hello = result;
+    return result;
   });
   window = new BrowserWindow({ width: 1440, height: 1000, show: false, webPreferences: {
     preload:path.join(__dirname,'native-creation-preload.cjs'), sandbox:true, contextIsolation:true, offscreen:true, backgroundThrottling:false,
@@ -83,6 +87,35 @@ app.whenReady().then(async () => {
   snapshot = await run('project.preview_input',{preview_revision:snapshot.preview_revision,logical_source:'BUTTON_A'});
   snapshot = await run('project.preview_advance',{preview_revision:snapshot.preview_revision,elapsed_ms:1000});
   assert.equal(snapshot.objects.find(o => o.object_id === 'continuity_sprite').underlying.x,85);
+  // Use a scene-entry timer so the button acts on an already running countdown.
+  await field('Selected timer',bindingId,'select');
+  await field('Timer start policy','scene_entry','select');
+  await evaluate("document.querySelector('.state-transition-edge').dispatchEvent(new MouseEvent('click',{bubbles:true}))"); await wait(300);
+  await field('Effect 1 kind','restart_timer','select');
+  assert.equal(scene().routes[0].actions[0].timer_ref,bindingId);
+  snapshot = await run('project.preview_reset',{scene_id:'main'});
+  snapshot = await run('project.preview_advance',{preview_revision:snapshot.preview_revision,elapsed_ms:700});
+  snapshot = await run('project.preview_input',{preview_revision:snapshot.preview_revision,logical_source:'BUTTON_A'});
+  snapshot = await run('project.preview_advance',{preview_revision:snapshot.preview_revision,elapsed_ms:999});
+  assert.equal(snapshot.objects.find(o => o.object_id === 'continuity_sprite').underlying.x,80,
+    'Restart must discard the old deadline and wait the full duration');
+  assert.equal(snapshot.timer_events.length,0);
+  snapshot = await run('project.preview_advance',{preview_revision:snapshot.preview_revision,elapsed_ms:1});
+  assert.equal(snapshot.objects.find(o => o.object_id === 'continuity_sprite').underlying.x,85);
+  assert.equal(snapshot.timer_events.length,1);
+  snapshot = await run('project.preview_advance',{preview_revision:snapshot.preview_revision,elapsed_ms:2000});
+  assert.equal(snapshot.objects.find(o => o.object_id === 'continuity_sprite').underlying.x,85);
+  assert.equal(snapshot.timer_events.length,0,'Restart must not introduce implicit repetition');
+  await field('Effect 1 kind','cancel_timer','select');
+  assert.equal(scene().routes[0].actions[0].timer_ref,bindingId);
+  snapshot = await run('project.preview_reset',{scene_id:'main'});
+  snapshot = await run('project.preview_advance',{preview_revision:snapshot.preview_revision,elapsed_ms:700});
+  snapshot = await run('project.preview_input',{preview_revision:snapshot.preview_revision,logical_source:'BUTTON_A'});
+  snapshot = await run('project.preview_advance',{preview_revision:snapshot.preview_revision,elapsed_ms:2000});
+  assert.equal(snapshot.objects.find(o => o.object_id === 'continuity_sprite').underlying.x,80,
+    'Cancel must prevent the pending handler from mutating the object');
+  assert.equal(snapshot.timer_events.length,0);
+  await field('Effect 1 kind','start_timer','select');
   await field('Selected timer',bindingId,'select');
   assert.equal(await evaluate("document.querySelectorAll('.action-editor-list').length"),1);
   assert(await evaluate("![...document.querySelectorAll('h3')].some(e=>e.textContent.trim()==='Selected transition')"));
@@ -141,9 +174,19 @@ app.whenReady().then(async () => {
   assert.equal(await evaluate("document.querySelector('[aria-label=\"Timer delay\"]').value"),'5000');
   await button('Cancel');
   assert.equal(JSON.stringify(scene()),beforeDraft,'Leaving a timer draft must not create or mutate records');
-  assert(await evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Build').disabled"));
+  assert.equal(hello.scene_object_authoring.egg_export,true);
+  assert.equal(hello.scene_object_authoring.export_requires_project_readiness,true);
+  const exportReady = latest.valid && !latest.build_issues.length
+    && latest.document.scenes.every(item => {
+      const capability = latest.scene_capabilities[item.scene_id];
+      return capability.egg_export && capability.export_ready
+        && capability.export_readiness_scope === 'whole_project'
+        && capability.export_profile_id === hello.package_export.v2_profile.profile_id;
+    });
+  assert.equal(exportReady,true,'This single-scene timer project must satisfy the advertised export profile');
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Build').disabled"),!exportReady);
   assert.deepEqual(errors,[]);
-  console.log('GUI timers: single-target selection, draft cancellation, paired mutations, ordered actions, timer lifetimes, undo/redo and save/reload passed');
+  console.log('GUI timers: single-target selection, draft cancellation, paired mutations, ordered actions, timer lifetimes, active restart/cancel, undo/redo, save/reload and backend export readiness passed');
 }).catch(error => { console.error(error); process.exitCode = 1; }).finally(() => {
   clearTimeout(watchdog); child?.kill(); window?.destroy(); fs.rmSync(temp,{recursive:true,force:true}); app.exit(process.exitCode || 0);
 });
