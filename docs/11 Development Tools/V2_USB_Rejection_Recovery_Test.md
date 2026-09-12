@@ -1,8 +1,8 @@
 # V2 USB Rejection And Recovery Test
 
-Status: device rejection, shell recovery and preservation of the installed game
-passed. The corrected checksum-reason reporting retry passed on 2026-09-12;
-the final good-egg recovery reinstall is still pending.
+Status: device rejection, shell recovery, preservation of the installed game,
+correct checksum-reason reporting and subsequent good-egg recovery installation
+and launch passed. This bounded functional test sequence is complete.
 Run after the unchanged fixture has passed the normal Studio export/install test.
 Keep the same firmware baseline. No rebuild, reflash or new GUI capability is
 needed. Authority: [[Storage_and_Installer_Contract]].
@@ -180,3 +180,19 @@ The diagnostic correction and retained-generation checks now pass on hardware.
 Next replace the staged bad egg with the original Studio export and complete
 the normal scan/install/PLAY sequence without a firmware reflash, to close the
 remaining recovery-reinstall check. GUI requires no change for this result.
+
+## Good-Egg Recovery Installation Passed (2026-09-12)
+
+After the rejection test, the user restored the original Studio export from
+`G:/PEEPSHOW-PeepStudio/tools/peep-studio/dist/restricted-v2-export/native_v2_installation.egg`
+and confirmed it installs and runs. This closes the final functional recovery
+step: a rejected candidate does not prevent a later good package installation
+and launch. No new probe dump accompanied this confirmation, so no new journal
+generation, timing, post-install reboot or counter values are asserted here.
+
+The bounded sequence now covers normal Studio export/install/PLAY/reboot,
+checksum rejection before replacement, retained generation, usable shell,
+boot of the retained good game and subsequent good-source installation/launch.
+No more repetitions of this sequence are required for this checkpoint. Scan/read
+latency, physical power-cut behavior and broader V2 capabilities remain separate.
+No GUI changes or replacement fixture are needed for this result.
