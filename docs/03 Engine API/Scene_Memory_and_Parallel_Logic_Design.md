@@ -154,33 +154,86 @@ editor is not automatically another active region.
 - Different active regions may control different properties of the same object.
   Simultaneously active overrides of the same property are rejected, even when
   their values agree. Editor position/order is never an implicit priority.
-- Ordered actions within one transaction retain existing underlying-value
-  semantics. Multi-region event ordering must be defined before implementation.
+- Ordered actions within one action list retain existing underlying-value
+  semantics. Multi-region dispatch follows the agreed event rules below.
 - Region changes do not restart unrelated object animation. All effective
   objects still share the existing bounded display/LPBAM admission budget.
 - Remember selection can later retain the state IDs of explicitly selected
   regions. Full resume retains all active regions as part of the scene instance.
 
-### Decisions Required Before Execution Support
+### Agreed Event Execution Rules
 
-The current single-state transaction contract does not decide these questions:
+These rules were agreed on 2026-09-12 after the initial region design. They are
+target semantics, not an implemented change to current single-region dispatch.
 
-1. Whether an input/event targets one region or is explicitly broadcast, and how
-   competing routes consume it.
-2. Whether handlers/regions evaluate guards against a shared pre-event snapshot
-   or results of earlier transactions, and the stable ordering of shared writes.
-3. Whether one event can transition multiple regions atomically, including how
-   admission failure rolls back mutations and external effects.
-4. Priority between simultaneous timer expiries, local transitions and scene
-   replacement; stale source events and held input must not leak into a new scene.
+**Explicit recipients.** A state timer targets its owning region/state
+activation. A scene timer targets its independent handler, not every region.
+Input normally targets one declared region. Delivery of one event to several
+regions is an explicit authoring choice; it is never implicit broadcast because
+several regions happen to have matching inputs.
+
+**One starting snapshot for guards.** All guards participating in one event
+evaluate against the same committed pre-event scene snapshot. A variable write
+in one region cannot change which other regions qualify for that event. For
+example, if energy starts at 10, every participating guard sees 10 even when a
+selected action will decrement it. Within an individual ordered action list,
+later actions continue to see that list's earlier writes.
+
+**Reject competing shared writes.** Distinct branches responding to the same
+event may change different variables or object properties. They must not both
+write the same variable or underlying object property in the first increment,
+even when the values agree. Do not select a winner using region order, canvas
+position or incidental runtime iteration. Coordinated writes belong in one
+handler with one ordered action list. Repeated writes within that list retain
+their declared order. This per-event conflict rule is separate from the existing
+prohibition on simultaneously active state overrides of the same property.
+
+**One atomic logical result per event.** Stage all selected region changes,
+ordered actions, timer operations and supported external-effect requests.
+Validate the complete result, including display/resource admission, before
+committing. Either the event's selected changes commit together or none do;
+publish one resulting scene snapshot. No sound or other irreversible effect
+may be emitted while evaluating a transaction that can still be rejected.
+This is logical transaction atomicity, not a promise to reverse peripheral work
+after commit; post-commit owner failures retain their own recovery contracts.
+
+**No invisible cascades.** Changing a variable does not automatically reevaluate
+every region. A branch runs in response to its declared event. State entry does
+not introduce an uncontrolled loop of immediate transitions. Any future
+completion-event mechanism requires explicit bounded semantics.
+
+**Serial events and valid timer owners.** Preserve the existing ordering of due
+timers: logical deadline, then stable compiled owner/binding order for ties.
+Complete one event transaction before considering the next. Recheck timer owner
+and arm identity before delivery; cancellation, restart, state exit or scene
+replacement must invalidate obsolete expiries. Parallel regions do not create
+threads or concurrent commits.
+
+Author-facing summary: each behavior owns its state; events explicitly select
+which behaviors respond; coordinated shared changes belong in a handler.
+
+### Details Required Before Execution Support
+
+The agreed rules still require a concrete source/service/runtime specification:
+
+1. Recipient declarations, selection among competing routes within one region,
+   and whether a region consumes an explicitly multi-recipient event locally
+   or can affect other recipients. No implicit cross-region consumption.
+2. Cross-branch action reads when one branch reads a value another writes;
+   staged merge rules and conservative validation of potentially conflicting
+   writes. Do not expose sibling intermediate values through iteration order.
+3. Explicit coordinated destinations and conflicts when multiple branches target
+   the same region or timer; handling a scene exit alongside local changes.
+4. Ordering between input and timer events arriving together, effect admission
+   and bounded dispatch failures, and held-input cleanup at scene replacement.
 5. Maximum regions, active timers, transitions per event and retained instances,
    with actionable build errors rather than arbitrary resource expansion.
-6. Initialization order, explicit cross-region destinations, and interaction
-   with future hierarchy and prefabs. Hierarchical override precedence remains
-   deferred; do not introduce "deepest state wins" through regions.
+6. Initialization order, entry memory and interaction with future hierarchy and
+   prefabs. Hierarchical override precedence remains deferred; do not introduce
+   "deepest state wins" through regions.
 
-These are open design details, not authorization to choose incidental container
-iteration order, add polling loops or silently change existing event dispatch.
+No new wire identifiers, commands, implicit retries, polling loops or GUI-local
+execution model are authorized by this design agreement.
 
 ## Acceptance Cases and Implementation Order
 
@@ -196,7 +249,14 @@ The following are requirements, not newly recorded test passes:
 | Full resume | Values, phases and remaining times retained; no implicit entry replay |
 | Navigation changes while Pet behavior waits | Pet state and deadline remain unchanged |
 | Conflicting active-region overrides | Shared validation rejects the conflict with both owners identified |
-| One event writes shared data through multiple regions | Host and device follow the same specified ordering |
+| Input targets Navigation only | Pet behavior does not receive the event implicitly |
+| One event is explicitly delivered to two regions | Both evaluate guards against the same pre-event values |
+| Two participating branches write the same variable/property | Conflict is reported, with no partially committed changes |
+| One handler performs repeated writes in an ordered list | Later actions see earlier writes in that list |
+| Two participating regions change independent properties | Changes commit together and publish one resulting snapshot |
+| One participating region fails destination/display admission | No region commits and no external effect is emitted |
+| A variable changes without another event | Unrelated branches are not automatically reevaluated |
+| A state exits before its queued expiry is delivered | The obsolete expiry is discarded |
 | Rejected destination or over-budget composition | No partially committed state/object change or abandoned usable source |
 | Reboot | No selection/instance persistence implied without a supported save contract |
 

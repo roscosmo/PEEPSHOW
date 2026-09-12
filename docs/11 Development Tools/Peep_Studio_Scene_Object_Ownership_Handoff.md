@@ -952,9 +952,16 @@ API, command, schema, firmware or export capability changes are delivered here.
 - Scene resume retains the instance and remaining timers. It is distinct from
   remembered selection, existing shell resume and persistence across reboot.
 - Parallel logic uses named regions, each with its own active state and entry,
-  sharing scene-owned objects. Event delivery, shared-write ordering, atomic
-  cross-region changes and resource limits need further specification before
-  execution support. Conflicting simultaneous property overrides remain errors.
+  sharing scene-owned objects. The agreed event rules are explicit recipients,
+  common pre-event guard values, rejection of competing cross-branch writes,
+  and one atomic logical commit per event. Ordered writes within one handler
+  remain supported. Variable changes do not implicitly trigger other branches.
+  Conflicting simultaneous property overrides remain errors.
+- These event rules remain design-only. Recipient/route representation,
+  cross-branch action reads, cross-region destination/timer conflicts, mixed
+  input/timer ordering and resource limits still require specification. Existing
+  timer deadline ordering and stale-owner checks must be preserved. Do not
+  enable parallel editing or export until the corresponding capabilities arrive.
 
 OS owns shared backend/runtime implementation. Studio should not create its own
 scene snapshot cache, parallel execution model or extra wire identifiers.
