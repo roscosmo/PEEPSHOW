@@ -4258,9 +4258,23 @@ button:focus-visible {
 }
 
 .state-route-section:hover::after,
+.state-route-section.selected::after,
 .state-route-section:focus-visible::after {
   background: #1681b8;
   box-shadow: 0 0 0 2px rgb(255 255 255 / 88%);
+  opacity: 1;
+}
+
+.scene-route-section::after {
+  background: rgb(25 113 194 / 28%);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 72%);
+  opacity: 0.45;
+}
+
+.scene-route-section:hover::after,
+.scene-route-section.selected::after,
+.scene-route-section:focus-visible::after {
+  background: #1864ab;
   opacity: 1;
 }
 

@@ -127,6 +127,24 @@ function stateActionDescription(action) {
     if (action.kind === "request_render") {
         return null;
     }
+    if (action.kind.startsWith("object.")) {
+        const target = displayRefName(action.object_ref, "object");
+        if (action.kind === "object.move_by")
+            return `Move ${target}: ${[
+                action.dx === undefined ? null : `X ${signedValue(action.dx)} (right)`,
+                action.dy === undefined ? null : `Y ${signedValue(action.dy)} (up)`,
+            ].filter(Boolean).join(", ")}`;
+        if (action.kind === "object.set_position")
+            return `Set ${target}: ${[
+                action.x === undefined ? null : `X ${action.x}`, action.y === undefined ? null : `Y ${action.y}`,
+            ].filter(Boolean).join(", ")}`;
+        if (action.kind === "object.set_visibility")
+            return `${action.visible === false ? "Hide" : "Show"} ${target}`;
+        if (action.kind === "object.set_frame")
+            return `Set ${target} frame: ${action.frame_ref ?? ""}`;
+        if (action.kind === "object.clear_frame")
+            return `Clear ${target} frame override`;
+    }
     if (action.kind === "set_variable") {
         const variableName = displayRefName(action.variable_ref, "variable");
         if (action.operation === "add") {
@@ -151,7 +169,7 @@ function stateActionDescription(action) {
     }
     if (action.kind === "set_element_position") {
         const target = displayRefName(action.element_ref, "object");
-        return action.x === undefined || action.y === undefined ? `Move ${target}` : `Move ${target} to ${action.x}, ${action.y}`;
+        return action.x === undefined || action.y === undefined ? `Set ${target} position` : `Set ${target} position to ${action.x}, ${action.y}`;
     }
     if (action.kind === "set_element_frame") {
         return `Change ${displayRefName(action.element_ref, "object")} frame${action.frame_ref === undefined ? "" : ` to ${displayRefName(action.frame_ref, "frame")}`}`;
@@ -186,7 +204,7 @@ function visibleActionCount(route) {
 }
 function routeLabel(route, inputActions) {
     const badges = [countLabel(route.guards.length, "rule"), countLabel(visibleActionCount(route), "effect")].filter(Boolean);
-    return [inputLabel(inputActions, route.action_ref), ...badges].join(" - ");
+    return [inputLabel(inputActions, route.action_ref ?? route.event_ref ?? ""), ...badges].join(" - ");
 }
 function statePosition(state, index, columns, savedPositions) {
     return {
@@ -1067,7 +1085,7 @@ function buildStateGraphModel(scene, editor) {
             .forEach((source) => {
             const outputs = outputsByState.get(source) ?? [];
             const variableRefs = variableRefsByState.get(source) ?? new Set();
-            const logicalSource = inputSource(inputActions, route.action_ref);
+            const logicalSource = inputSource(inputActions, route.action_ref ?? route.event_ref ?? "");
             const eventKind = inputActions.find((item) => item.action_id === route.action_ref)?.event_kind ?? "press";
             const physicalExit = PHYSICAL_TRIGGER_EXITS[logicalSource];
             route.guards.forEach((guard) => variableRefs.add(guard.variable_ref));
@@ -1079,13 +1097,13 @@ function buildStateGraphModel(scene, editor) {
             outputs.push({
                 id: `${route.route_id}:${source}`,
                 routeId: route.route_id,
-                label: inputLabel(inputActions, route.action_ref),
+                label: inputLabel(inputActions, route.action_ref ?? route.event_ref ?? ""),
                 guardCount: route.guards.length,
                 actionCount: effectLabels.length,
                 effectLabels,
                 logicalSource,
                 eventKind,
-                triggerKind: inputKind(inputActions, route.action_ref),
+                triggerKind: inputKind(inputActions, route.action_ref ?? route.event_ref ?? ""),
                 preferredExitSide: physicalExit?.side,
                 exitRatio: physicalExit?.ratio,
                 targetState: route.target_state,
@@ -1104,7 +1122,7 @@ function buildStateGraphModel(scene, editor) {
             label: state.display_name,
             isEntry: state.state_id === entryState,
             variableTouchCount: variableRefsByState.get(state.state_id)?.size ?? 0,
-            placementOverrideCount: state.placement_overrides?.length ?? 0,
+            placementOverrideCount: state.object_overrides?.length ?? state.placement_overrides?.length ?? 0,
             platformOutputCount: outputs.filter((output) => output.triggerKind === "platform").length,
             waitingVisualRef: state.waiting_visual_ref,
             outputs,

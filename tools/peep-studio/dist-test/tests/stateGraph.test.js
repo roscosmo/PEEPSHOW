@@ -14,6 +14,9 @@ const arrivals = [
     { id: "different-side", target: "menu", targetHandle: "entry-top-left:left" },
     { id: "different-state", target: "credits", targetHandle: "entry-top-left:top" },
 ];
+strict_1.default.equal((0, stateGraph_1.stateActionDescription)({ kind: "object.move_by", object_ref: "wizard", dx: 4, dy: -3 }), "Move Wizard: X +4 (right), Y -3 (up)");
+strict_1.default.equal((0, stateGraph_1.stateActionDescription)({ kind: "object.set_position", object_ref: "wizard", x: 30 }), "Set Wizard: X 30");
+strict_1.default.equal((0, stateGraph_1.stateActionDescription)({ kind: "object.clear_frame", object_ref: "wizard" }), "Clear Wizard frame override");
 strict_1.default.deepEqual((0, graphArrowGeometry_1.incomingPeers)(arrivals, arrivals[0]), ["a", "b", "green-entry"]);
 strict_1.default.deepEqual((0, graphArrowGeometry_1.incomingPeers)([...arrivals].reverse(), arrivals[0]), ["a", "b", "green-entry"]);
 strict_1.default.deepEqual((0, graphArrowGeometry_1.incomingPeers)(arrivals, { ...arrivals[0], targetHandle: "entry-top-left:left" }), ["a", "different-side"]);
@@ -525,7 +528,7 @@ strict_1.default.deepEqual(authoredEffects.map((action) => action.kind), [
 ]);
 strict_1.default.deepEqual(authoredEffects.map(stateGraph_1.stateActionDescription), [
     "Hide Menu cursor",
-    "Move Menu cursor to 12, 34",
+    "Set Menu cursor position to 12, 34",
     "Change Menu cursor frame to Cursor selected",
     "Animate Menu cursor",
     "Coins = 4",

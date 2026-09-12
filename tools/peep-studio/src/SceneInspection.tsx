@@ -1963,7 +1963,7 @@ function SceneFlowTransitionEdge({
       {selected && routeSections.map((section) => (
         <EdgeLabelRenderer key={`${id}:section-${section.controlSegmentIndex}`}>
           <button
-            className={`state-route-section state-route-section-${section.orientation} nodrag nopan ${selectedSection === section.controlSegmentIndex ? "selected" : ""}`}
+            className={`state-route-section scene-route-section state-route-section-${section.orientation} nodrag nopan ${selectedSection === section.controlSegmentIndex ? "selected" : ""}`}
             type="button"
             aria-label={`Move ${section.orientation} scene transition section`}
             title={section.orientation === "horizontal" ? "Drag up or down" : "Drag left or right"}

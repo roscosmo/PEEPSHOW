@@ -54,6 +54,12 @@ function routeShapeScore(route) {
         + Math.abs(route.points.at(-1).y - route.points[0].y);
     return Math.max(0, route.points.length - 2) * 12 + length * 0.015 + (length - direct) * 0.18;
 }
+function uniqueRounded(values) {
+    return [...new Set(values.map(Math.round))];
+}
+function boundedLaneValues(values, minimum, maximum) {
+    return uniqueRounded(values.map((value) => Math.max(minimum, Math.min(maximum, value))));
+}
 function obstacleScore(segments, obstacles, sourceNode, targetNode) {
     let score = 0;
     obstacles.forEach((obstacle) => {
@@ -110,6 +116,14 @@ function automaticCandidates(request, obstacles) {
     }
     const candidates = [];
     const forwardGap = target.x - source.x;
+    const spanLeft = Math.min(source.x, target.x);
+    const spanRight = Math.max(source.x, target.x);
+    const spanTop = Math.min(source.y, target.y);
+    const spanBottom = Math.max(source.y, target.y);
+    const routeObstacles = obstacles.filter((obstacle) => (obstacle.x + obstacle.width >= spanLeft - 96
+        && obstacle.x <= spanRight + 96
+        && obstacle.y + obstacle.height >= spanTop - 220
+        && obstacle.y <= spanBottom + 220));
     if (forwardGap >= 64) {
         const minimumLane = source.x + 24;
         const maximumLane = target.x - 24;
@@ -119,9 +133,13 @@ function automaticCandidates(request, obstacles) {
             source.x + forwardGap * 0.75,
             source.x + 52,
             target.x - 52,
+            ...routeObstacles.flatMap((obstacle) => [
+                obstacle.x - 38,
+                obstacle.x + obstacle.width + 38,
+                obstacle.x + obstacle.width / 2,
+            ]),
         ];
-        [...new Set(laneValues.map((value) => Math.round(Math.max(minimumLane, Math.min(maximumLane, value)))))]
-            .forEach((laneX) => {
+        boundedLaneValues(laneValues, minimumLane, maximumLane).forEach((laneX) => {
             candidates.push((0, stateGraph_1.buildOrthogonalTransitionRoute)([
                 source,
                 { x: laneX, y: source.y },
@@ -132,14 +150,35 @@ function automaticCandidates(request, obstacles) {
     }
     const allTop = Math.min(source.y, target.y, ...obstacles.map((obstacle) => obstacle.y));
     const allBottom = Math.max(source.y, target.y, ...obstacles.map((obstacle) => obstacle.y + obstacle.height));
+    const verticalBands = routeObstacles
+        .map((obstacle) => ({ min: obstacle.y - 28, max: obstacle.y + obstacle.height + 28 }))
+        .sort((left, right) => left.min - right.min);
+    const gapBridgeValues = [];
+    for (let index = 1; index < verticalBands.length; index += 1) {
+        const previous = verticalBands[index - 1];
+        const next = verticalBands[index];
+        const gap = next.min - previous.max;
+        if (gap >= 36) {
+            gapBridgeValues.push(previous.max + gap / 2);
+        }
+    }
     const bridgeValues = [
         allTop - 54,
         allBottom + 54,
         Math.min(source.y, target.y) - 54,
         Math.max(source.y, target.y) + 54,
         source.y + (target.y - source.y) / 2,
+        source.y - 72,
+        source.y + 72,
+        target.y - 72,
+        target.y + 72,
+        ...routeObstacles.flatMap((obstacle) => [
+            obstacle.y - 42,
+            obstacle.y + obstacle.height + 42,
+        ]),
+        ...gapBridgeValues,
     ];
-    [...new Set(bridgeValues.map(Math.round))].forEach((bridgeY) => {
+    uniqueRounded(bridgeValues).forEach((bridgeY) => {
         candidates.push((0, stateGraph_1.buildOrthogonalTransitionRoute)([
             source,
             { x: source.x + 48, y: source.y },
