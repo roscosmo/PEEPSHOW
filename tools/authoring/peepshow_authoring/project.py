@@ -1659,7 +1659,7 @@ def _set_scene_flow_endpoint_target(
     endpoint["target_scene"] = target_scene
     if endpoint_kind == "scene_exit":
         source_scene = _command_scene(scenes, scene_id)
-        for route in source_scene.get("routes", []):
+        for route in [*source_scene.get("routes", []), *source_scene.get("event_handlers", [])]:
             if isinstance(route, dict) and route.get("scene_exit_ref") == endpoint_id:
                 route["target_scene"] = target_scene
     else:
@@ -1791,7 +1791,7 @@ def _apply_scene_exit_set_target(
             if not isinstance(scene_exit, dict) or scene_exit.get("scene_exit_id") != scene_exit_id:
                 continue
             scene_exit["target_scene"] = target_scene
-            for route in scene.get("routes", []):
+            for route in [*scene.get("routes", []), *scene.get("event_handlers", [])]:
                 if isinstance(route, dict) and route.get("scene_exit_ref") == scene_exit_id:
                     route["target_scene"] = target_scene
             scene_flow = project.get("editor", {}).get("scene_flow", {}) if isinstance(project.get("editor"), dict) else {}
@@ -1827,11 +1827,11 @@ def _apply_scene_exit_delete(
     scene_exits = scene.get("scene_exits")
     if not isinstance(scene_exits, list):
         raise ProjectCommandError("PROJECT_TYPE_INVALID", "scene.scene_exits must be an array")
-    for route in scene.get("routes", []):
+    for route in [*scene.get("routes", []), *scene.get("event_handlers", [])]:
         if isinstance(route, dict) and route.get("scene_exit_ref") == scene_exit_id:
             raise ProjectCommandError(
                 "COMMAND_TARGET_IN_USE",
-                f"scene exit '{scene_exit_id}' is referenced by route '{route.get('route_id')}'",
+                f"scene exit '{scene_exit_id}' is referenced by {'handler' if 'handler_id' in route else 'route'} '{route.get('handler_id', route.get('route_id'))}'",
             )
     for index, scene_exit in enumerate(scene_exits):
         if isinstance(scene_exit, dict) and scene_exit.get("scene_exit_id") == scene_exit_id:
@@ -5233,6 +5233,8 @@ def _check_scene(
     audio_cue_ids: set[str],
     issues: list[ValidationIssue],
     animations: dict[str, dict[str, Any]] | None = None,
+    *,
+    allow_handler_scene_exits: bool = False,
 ) -> None:
     if scene.get("schema_version") == 2:
         from .scene_object_authoring import check_object_scene
@@ -5533,6 +5535,8 @@ def _check_scene(
         }
         if not independent:
             allowed.update({"action_ref", "scene_exit_ref"})
+        elif allow_handler_scene_exits:
+            allowed.add("scene_exit_ref")
         _check_keys(route, required, path, issues, allowed)
         if independent != (route.get("event_ref") in scene_timers):
             _issue(issues, "EVENT_HANDLER_SCOPE_INVALID", path,

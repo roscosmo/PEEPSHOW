@@ -33,8 +33,18 @@ LOCAL_GRAPH_COMMANDS = (
     "scene.set_reactive_wait_default", "scene.set_interaction_policy", "scene.set_joystick_policy",
     "editor.state_graph.set_route_layout", "editor.state_graph.delete_system_exit",
 )
+SCENE_FLOW_COMMANDS = (
+    "editor.scene_flow.set_node_position", "editor.scene_flow.set_package_entry_position",
+    "editor.scene_flow.add_reference", "editor.scene_flow.set_reference_position",
+    "editor.scene_flow.set_reference_target", "editor.scene_flow.delete_reference",
+    "editor.scene_flow.set_exit_reference", "editor.scene_flow.set_route_layout",
+)
+SCENE_CONNECTION_COMMANDS = (
+    "scene_exit.add", "scene_exit.set_target", "scene_exit.delete", *SCENE_FLOW_COMMANDS,
+)
 COMMON_SCENE_COMMANDS = (
-    "scene.rename", "project.set_entry_scene", *STATE_MANAGEMENT_COMMANDS, *LOCAL_GRAPH_COMMANDS,
+    "scene.rename", "project.set_entry_scene", *STATE_MANAGEMENT_COMMANDS,
+    *LOCAL_GRAPH_COMMANDS, *SCENE_CONNECTION_COMMANDS,
 )
 
 
@@ -100,6 +110,14 @@ def check_object_scene(scene, source, frame_lookup, animations, audio_cue_ids, i
         for index, route in enumerate(scene.get(collection, [])):
             if not isinstance(route, dict) or not isinstance(route.get("actions"), list):
                 continue
+            if "target_scene" in route:
+                path = f"{base}.{collection}[{index}]"
+                if route["target_scene"] == scene["scene_id"]:
+                    issues.append(ValidationIssue("SCENE_EXIT_TARGET_INVALID", path, "scene replacement must target another scene"))
+                if route["actions"]:
+                    issues.append(ValidationIssue("SCENE_TRANSITION_ACTION_UNSUPPORTED", f"{path}.actions", "version-2 fresh scene replacement requires an empty action list"))
+            elif "scene_exit_ref" in route:
+                issues.append(ValidationIssue("SCENE_EXIT_TARGET_MISMATCH", f"{base}.{collection}[{index}]", "a scene exit reference requires target_scene"))
             for action_index, action in enumerate(route["actions"]):
                 if not isinstance(action, dict) or not isinstance(action.get("kind"), str):
                     continue
@@ -107,15 +125,14 @@ def check_object_scene(scene, source, frame_lookup, animations, audio_cue_ids, i
                 if action["kind"].startswith("set_element_"):
                     issues.append(ValidationIssue("OBJECT_LEGACY_ACTION", path, "legacy destination-binding mutations cannot target scene objects"))
                 elif action["kind"].startswith("object."):
-                    if "target_scene" in route:
-                        issues.append(ValidationIssue("SCENE_TRANSITION_ACTION_UNSUPPORTED", path, "scene replacement currently supports only play_sfx"))
                     try:
                         apply_object_actions(scene["objects"], live, [action], sizes)
                     except SceneObjectError as exc:
                         issues.append(ValidationIssue(exc.issue.code, path, exc.issue.message))
     if len(issues) != start:
         return
-    _check_scene(graph_validation_view(scene), source, frame_lookup, set(animations), audio_cue_ids, issues)
+    _check_scene(graph_validation_view(scene), source, frame_lookup, set(animations), audio_cue_ids, issues,
+                 allow_handler_scene_exits=True)
 
 
 def check_command_model(scenes, command):
@@ -133,17 +150,8 @@ def check_command_model(scenes, command):
     elif scene is None and any(item.get("schema_version") == 2 for item in scenes):
         if kind not in {"asset.upsert", "asset.delete", "animation.upsert", "animation.delete",
                         "audio_asset.upsert", "audio_asset.delete", "audio_cue.upsert", "audio_cue.delete",
-                        "scene.add", "project.set_entry_scene"}:
+                        "scene.add", "project.set_entry_scene", *SCENE_FLOW_COMMANDS}:
             raise ProjectCommandError("COMMAND_EXECUTION_MODEL_MISMATCH", f"'{kind}' has not been integrated with mixed scene models")
-
-    if scene is not None and scene.get("schema_version") == 2 and kind in LOCAL_GRAPH_COMMANDS:
-        destination = command
-        if kind == "route.add":
-            destination = command.get("route")
-        elif kind in ("event_handler.add", "event_handler.update"):
-            destination = command.get("event_handler")
-        if isinstance(destination, dict) and {"target_scene", "scene_exit_ref"} & destination.keys():
-            raise ProjectCommandError("SCENE_OBJECT_CONNECTION_UNAVAILABLE", "version-2 graph commands currently author local state or shell destinations only")
 
 
 def apply_object_command(scenes, command):

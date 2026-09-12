@@ -35,7 +35,8 @@ from .project import (
 )
 from .preview import PreviewError, StateScenePreview
 from .scene_object_authoring import (
-    OBJECT_COMMANDS, COMMON_SCENE_COMMANDS, STATE_MANAGEMENT_COMMANDS, LOCAL_GRAPH_COMMANDS, execution_model,
+    OBJECT_COMMANDS, COMMON_SCENE_COMMANDS, STATE_MANAGEMENT_COMMANDS, LOCAL_GRAPH_COMMANDS,
+    SCENE_CONNECTION_COMMANDS, execution_model,
 )
 from .scene_objects import (
     SceneObjectError, initialize_objects, resolve_object,
@@ -58,7 +59,7 @@ from .protocol import (
 )
 
 
-SERVICE_API_VERSION = 42
+SERVICE_API_VERSION = 43
 UNDO_LIMIT = 32
 SERVICE_NAME = "peepshow_authoring"
 SERVICE_OPERATIONS = (
@@ -155,8 +156,12 @@ def _scene_capabilities(bundle: ProjectBundle) -> dict[str, Any]:
             "state_management_commands": list(STATE_MANAGEMENT_COMMANDS),
             "graph_construction_commands": True,
             "local_graph_commands": list(LOCAL_GRAPH_COMMANDS),
-            "scene_connection_commands": scene["schema_version"] == 1,
-            "route_destination_kinds": ["state", "system_exit"] + (["scene"] if scene["schema_version"] == 1 else []),
+            "scene_connection_commands": True,
+            "connection_commands": list(SCENE_CONNECTION_COMMANDS),
+            "scene_entry_modes": ["fresh_default"],
+            "scene_exit_action_kinds": [] if scene["schema_version"] == 2 else ["play_sfx"],
+            "multi_scene_export": not object_package,
+            "route_destination_kinds": ["state", "system_exit", "scene"],
         } for scene in bundle.scenes
     }
 
@@ -370,8 +375,12 @@ class AuthoringService:
                 "runtime_playback_controls": False,
                 "graph_construction_commands": True,
                 "local_graph_commands": list(LOCAL_GRAPH_COMMANDS),
-                "scene_connection_commands": False,
-                "route_destination_kinds": ["state", "system_exit"],
+                "scene_connection_commands": True,
+                "connection_commands": list(SCENE_CONNECTION_COMMANDS),
+                "scene_entry_modes": ["fresh_default"],
+                "scene_exit_action_kinds": [],
+                "multi_scene_export": False,
+                "route_destination_kinds": ["state", "system_exit", "scene"],
             },
             "target_profiles": {
                 "default_profile_id": TARGET_PROFILE_ID,
