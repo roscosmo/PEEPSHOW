@@ -1062,10 +1062,16 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   model, advertised host flags and supported command lists. The newer
   `restricted_firmware_available` status does not disable native authoring.
   Export capability and whole-project readiness checks remain independent.
-- Concrete backend blocker: reconstructing the full native multi-scene menu
-  requires scene-exit creation, reciprocal local-graph endpoints, and scene-flow
-  connections. V2 `scene_connection_commands` remains unavailable; scene creation
-  alone cannot connect Menu, Settings and Credits. Do not substitute V1 records.
+- API 43 scene connections are now integrated: named exits, scene-flow layout
+  and Go To aliases, cross-scene button routes and scene-timer destinations use
+  advertised connection commands and fresh-default entry. Exit actions are
+  restricted by `scene_exit_action_kinds`; current V2 exits require no actions.
+  Existing route actions must be explicitly removed before connecting to an exit.
+  Timer destinations can be explicitly detached back to Actions only without
+  deleting the binding/handler pair. Source-only host fixture:
+  `examples/authoring/native_v2_scene_connections.peepproj` (Lobby A -> Garden,
+  Garden B -> Lobby). Host round trips and GUI drag/create/detach, undo/redo and
+  save/reopen pass. Multi-scene export remains blocked; no hardware result.
 - Asset tags remain a separate metadata request: reusable sprite/audio assets
   need saved multi-tag assignments for grouping across reopen/Save As. Current
   asset records advertise no tag field or command. This does not block native

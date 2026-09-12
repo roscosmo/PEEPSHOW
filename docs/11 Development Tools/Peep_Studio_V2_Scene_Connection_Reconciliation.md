@@ -276,3 +276,26 @@ ran when only static validation found a potential overlap.
 The independent timer-node layout identity request above remains outstanding;
 these event-design updates do not supply it. Existing timer inspector commands
 remain usable. No memory/parallel controls, export expansion or fixture changes.
+
+## API 43 GUI Integration and Source Handoff
+
+The merged API 43 Native V2 Scene Connections handoff supersedes the earlier
+connection-command blockers in this document. Studio now consumes hello/per-scene
+connection flags, exact command lists, fresh-default entry modes and allowed exit
+actions. Scene Flow and Local Logic use the existing shared named exits; timer
+handlers select the same exits through their inspector. No timer-node visual
+design is introduced while the user prepares the Excalidraw design.
+
+Source fixture: `examples/authoring/native_v2_scene_connections.peepproj`.
+Lobby A enters Garden; Garden B returns to Lobby through its named exit and
+editor-only Go To alias. Both scenes have rendered labels and button hints.
+No audio, timers, memory or parallel features are required by this fixture.
+Host verification passed repeated round trips, default-state entry and distinct
+rendered framebuffers. GUI regression uses a disposable copy and verifies exit
+creation by dragging, no invented input, physical-button connection, timer exit
+selection and explicit detachment, empty exit action controls, undo/redo and
+save/reopen. Capability/export unit tests and the 11 shared connection tests pass.
+
+Multi-scene export remains blocked and build issues remain visible. No egg or
+firmware change was produced. The fixture commit hash is pending the user's
+checkpoint; do not substitute an earlier commit that lacks the fixture.

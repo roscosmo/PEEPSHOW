@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsNativeCreation, supportsStateManagement, supportsLocalGraphCommand, supportsObjectCommand, usesSceneObjects } from "../src/sceneCapabilities.js";
+import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsNativeCreation, supportsStateManagement, supportsLocalGraphCommand, supportsObjectCommand, supportsSceneConnection, usesSceneObjects } from "../src/sceneCapabilities.js";
 import type { SceneCapabilities, SceneDocument, ServiceHello } from "../src/types.js";
 
 const legacy: SceneDocument = { scene_id: "old", scene_type: "STATE_SCENE", display_name: "Old" };
@@ -71,3 +71,13 @@ assert(!supportsLocalGraphCommand({ ...graphHost, scene_object_authoring: { ...g
   local_graph_commands: [],
 } }, graphScene, "route.create_trigger"));
 assert(!supportsLocalGraphCommand(graphHost, graphScene, "scene_exit.add"));
+const connectionFields = {scene_connection_commands:true,connection_commands:["scene_exit.add"],scene_entry_modes:["fresh_default"],scene_exit_action_kinds:[]};
+const connectionHost = {...graphHost,scene_object_authoring:{...graphHost.scene_object_authoring,...connectionFields,commands:["scene_exit.add"]}};
+const connectionScene = {...graphScene,...connectionFields,supported_commands:["scene_exit.add"]};
+assert(supportsSceneConnection(connectionHost,connectionScene,"scene_exit.add"));
+for (const removed of [{scene_connection_commands:false},{connection_commands:[]},{scene_entry_modes:[]},{scene_exit_action_kinds:undefined}]) {
+  assert(!supportsSceneConnection({...connectionHost,scene_object_authoring:{...connectionHost.scene_object_authoring,...removed}},connectionScene,"scene_exit.add"));
+  assert(!supportsSceneConnection(connectionHost,{...connectionScene,...removed},"scene_exit.add"));
+}
+assert(!supportsSceneConnection(connectionHost,{...connectionScene,supported_commands:[]},"scene_exit.add"));
+assert(!supportsSceneConnection(connectionHost,connectionScene,"scene_exit.delete"));

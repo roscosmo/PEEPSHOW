@@ -1,0 +1,100 @@
+{
+  "schema_id": "peepshow.authoring.state_scene",
+  "schema_version": 2,
+  "scene_id": "main",
+  "display_name": "Lobby",
+  "scene_type": "STATE_SCENE",
+  "entry_state": "start",
+  "variables": [],
+  "input_actions": [
+    {
+      "action_id": "button_a_press",
+      "logical_source": "BUTTON_A",
+      "event_kind": "press"
+    }
+  ],
+  "scene_exits": [
+    {
+      "scene_exit_id": "to_garden",
+      "display_name": "Garden",
+      "target_scene": "garden"
+    }
+  ],
+  "routes": [
+    {
+      "route_id": "start_button_a_press",
+      "action_ref": "button_a_press",
+      "from_states": [
+        "start"
+      ],
+      "guards": [],
+      "actions": [],
+      "scene_exit_ref": "to_garden",
+      "target_scene": "garden"
+    }
+  ],
+  "reactive_wait_default": {
+    "policy_id": "main_wait_policy",
+    "hold_fallback_allowed": true,
+    "event_interests": [
+      "button_a_press"
+    ]
+  },
+  "interaction_policy": {
+    "policy_id": "main_interaction",
+    "mode": "continuous",
+    "meaningful_activity_actions": [
+      "button_a_press"
+    ]
+  },
+  "objects": [
+    {
+      "object_id": "title",
+      "kind": "sprite",
+      "width": 80,
+      "height": 16,
+      "z_order": 1,
+      "layer": "SCENE",
+      "defaults": {
+        "x": 16,
+        "y": 24,
+        "visible": true,
+        "visual_ref": "main_title.frame"
+      }
+    },
+    {
+      "object_id": "hint",
+      "kind": "sprite",
+      "width": 72,
+      "height": 8,
+      "z_order": 1,
+      "layer": "SCENE",
+      "defaults": {
+        "x": 16,
+        "y": 80,
+        "visible": true,
+        "visual_ref": "main_hint.frame"
+      }
+    },
+    {
+      "object_id": "border",
+      "kind": "outline_rect",
+      "width": 160,
+      "height": 136,
+      "z_order": 0,
+      "layer": "SCENE",
+      "defaults": {
+        "x": 4,
+        "y": 4,
+        "visible": true
+      }
+    }
+  ],
+  "states": [
+    {
+      "state_id": "start",
+      "display_name": "Start",
+      "object_overrides": []
+    }
+  ]
+}

@@ -68,7 +68,7 @@ import {
   type StateTriggerEventKind,
 } from "./SceneInspection";
 import type { StateGraphEntryHandle, StateGraphEntrySide } from "./stateGraph";
-import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsNativeCreation, supportsStateManagement, supportsLocalGraphCommand, supportsObjectCommand, usesSceneObjects } from "./sceneCapabilities";
+import { baseObjectRows, canEditLegacyScene, canPreviewSceneObjects, supportsNativeCreation, supportsStateManagement, supportsLocalGraphCommand, supportsObjectCommand, supportsSceneConnection, usesSceneObjects } from "./sceneCapabilities";
 import { SceneObjectInspector } from "./SceneObjectInspector";
 import { TimerInspector } from "./TimerInspector";
 import { ObjectActionContext } from "./ObjectActionContext";
@@ -1561,6 +1561,11 @@ export default function App() {
     if (bridge === undefined || project === null || busy !== null) {
       return;
     }
+    const source = scenes.find(scene => scene.scene_id === sceneId);
+    if (source?.schema_version === 2 && source.routes?.find(route => route.route_id === routeId)?.actions.length) {
+      setMessage("Remove the transition's actions before connecting it to a scene exit.");
+      return;
+    }
     setBusy("Updating scene exit");
     setPlaying(false);
     try {
@@ -2807,9 +2812,14 @@ export default function App() {
     && (!objectSceneSelected || ["state", "system_exit"].every(kind =>
       service?.scene_object_authoring?.route_destination_kinds?.includes(kind)
       && selectedSceneCapability?.route_destination_kinds?.includes(kind)));
-  const readOnlySceneIds = useMemo(() => scenes.filter((scene) =>
-    !canEditLegacyScene(scene, project?.scene_capabilities?.[scene.scene_id])).map((scene) => scene.scene_id),
-  [scenes, project?.scene_capabilities]);
+  const sceneConnectionsEditable = (scene: SceneDocument) => !usesSceneObjects(scene)
+    ? canEditLegacyScene(scene, project?.scene_capabilities?.[scene.scene_id])
+    : ["scene_exit.add", "scene_exit.set_target", "scene_exit.delete", "editor.scene_flow.set_node_position",
+      "editor.scene_flow.set_route_layout", "editor.scene_flow.set_package_entry_position", "editor.scene_flow.add_reference",
+      "editor.scene_flow.set_reference_position", "editor.scene_flow.set_reference_target", "editor.scene_flow.set_exit_reference",
+      "editor.scene_flow.delete_reference"].every(command => supportsSceneConnection(service, project?.scene_capabilities?.[scene.scene_id], command));
+  const canConnectSelectedScene = busy === null && selectedSceneDocument !== null && sceneConnectionsEditable(selectedSceneDocument);
+  const readOnlySceneIds = scenes.filter(scene => !sceneConnectionsEditable(scene)).map(scene => scene.scene_id);
   const buildReady = canBuildProject(service, project);
   const hostOnlyProject = scenes.some(scene => usesSceneObjects(scene, project?.scene_capabilities?.[scene.scene_id])) && !buildReady;
 
@@ -5686,7 +5696,7 @@ export default function App() {
               onSetSceneExitTarget={(sceneId, sceneExitId, targetScene, referenceId) => {
                 void setSceneExitTarget(sceneId, sceneExitId, targetScene, referenceId);
               }}
-              canEdit={service?.operations.includes("project.apply_commands") === true && busy === null}
+              canEdit={service?.operations.includes("project.apply_commands") === true && busy === null && scenes.every(sceneConnectionsEditable)}
               canAddScene={busy === null && (project?.document?.scenes?.find(scene => scene.scene_id === project.summary.entry_scene)?.schema_version === 2
                 ? supportsNativeCreation(service) : service?.state_scene_graph.scene_commands?.includes("scene.add") === true)}
               readOnlySceneIds={readOnlySceneIds}
@@ -5755,7 +5765,7 @@ export default function App() {
               canDeleteStates={stateCommandAllowed("state.delete")}
               canEditEntry={stateCommandAllowed("state.set_entry") && stateCommandAllowed("editor.state_graph.set_entry_layout")}
               canEdit={canEditLocalGraph}
-              canConnectScenes={canEditSelectedScene}
+              canConnectScenes={canConnectSelectedScene}
             />
           </div>
         </section>
@@ -5837,12 +5847,14 @@ export default function App() {
               onSetLegacyRouteTarget={setRouteSceneTarget}
               onSetReferenceTarget={setSceneReferenceTarget}
               onDeleteReference={deleteSceneReference}
-              canEdit={canEditSelectedScene}
+              canEdit={canConnectSelectedScene}
             />
           )}
 
           {!projectRootSelected && workspaceMode === "logic" && (
             <SceneAuthoringInspector
+              canConnectScenes={canConnectSelectedScene}
+              sceneExitActionKinds={objectSceneSelected ? selectedSceneCapability?.scene_exit_action_kinds ?? [] : ["play_sfx"]}
               timerActionKinds={objectSceneSelected ? service?.state_scene_graph.scene_timers?.actions ?? [] : []}
               onDeleteRoute={deleteLegacySceneRoute}
               localCommandAllowed={localCommandAllowed}
@@ -5885,7 +5897,8 @@ export default function App() {
           )}
 
           {!projectRootSelected && workspaceMode === "logic" && objectSceneSelected && selectedSceneDocument && (
-            <TimerInspector key={selectedSceneDocument.scene_id} scene={selectedSceneDocument} service={service}
+            <TimerInspector key={selectedSceneDocument.scene_id} scene={selectedSceneDocument} scenes={scenes} service={service}
+              canConnectScenes={canConnectSelectedScene} sceneExitActionKinds={selectedSceneCapability?.scene_exit_action_kinds ?? []}
               profileId={project?.summary.target_profile ?? ""} selection={sceneSelection} onSelect={setSceneSelection}
               supports={kind => kind === "object_actions.set"
                 ? busy === null && supportsObjectCommand(service, selectedSceneCapability, kind) : localCommandAllowed(kind)}

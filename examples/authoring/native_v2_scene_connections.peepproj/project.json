@@ -1,0 +1,50 @@
+{
+  "schema_id": "peepshow.authoring.project",
+  "schema_version": 1,
+  "project_id": "project.native_v2_scene_connections",
+  "project_name": "native_v2_scene_connections",
+  "package": {
+    "package_id": "dev.peepshow.native_v2_scene_connections",
+    "display_name": "native_v2_scene_connections",
+    "version": "0.1.0"
+  },
+  "selected_target_profile": "hw6_fw0_development",
+  "entry_scene": "main",
+  "scene_sources": [
+    "scenes/main.state.json",
+    "scenes/garden.state.json"
+  ],
+  "validation": {
+    "build_profile": "development",
+    "ruleset_version": 1
+  },
+  "asset_sources": [
+    "assets/catalog.json"
+  ],
+  "editor": {
+    "scene_flow": {
+      "nodes": {
+        "main": {
+          "x": 0,
+          "y": 80
+        },
+        "garden": {
+          "x": 520,
+          "y": 80
+        }
+      },
+      "references": {
+        "go_to_main": {
+          "target_scene": "main",
+          "x": 1000,
+          "y": 100
+        }
+      },
+      "exit_references": {
+        "garden": {
+          "scene_exit:to_main": "go_to_main"
+        }
+      }
+    }
+  }
+}

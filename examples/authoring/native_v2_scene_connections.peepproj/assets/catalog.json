@@ -1,0 +1,73 @@
+{
+  "schema_id": "peepshow.authoring.assets",
+  "schema_version": 1,
+  "assets": [
+    {
+      "asset_id": "main_title",
+      "display_name": "LOBBY",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "LOBBY",
+      "scale": 2,
+      "frames": [
+        {
+          "frame_id": "main_title.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "main_hint",
+      "display_name": "A: GARDEN",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "A: GARDEN",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "main_hint.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "garden_title",
+      "display_name": "GARDEN",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "GARDEN",
+      "scale": 2,
+      "frames": [
+        {
+          "frame_id": "garden_title.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    },
+    {
+      "asset_id": "garden_hint",
+      "display_name": "B: LOBBY",
+      "asset_type": "masked_1bpp",
+      "source_format": "system_font_text",
+      "font_id": "peepshow.system.8x8.basic.v1",
+      "text": "B: LOBBY",
+      "scale": 1,
+      "frames": [
+        {
+          "frame_id": "garden_hint.frame",
+          "pivot_x": 0,
+          "pivot_y": 0
+        }
+      ]
+    }
+  ],
+  "animations": [],
+  "audio_assets": [],
+  "audio_cues": []
+}

@@ -23,6 +23,10 @@ export type ProjectSummary = {
 export type SceneCapabilities = {
   local_graph_commands?: string[];
   scene_connection_commands?: boolean;
+  connection_commands?: string[];
+  scene_entry_modes?: string[];
+  scene_exit_action_kinds?: string[];
+  multi_scene_export?: boolean;
   route_destination_kinds?: string[];
   schema_version: number;
   execution_model: string;
@@ -144,6 +148,7 @@ export type EventBinding = {
   configuration: { delay_ms?: number; start_policy?: string; [key: string]: unknown };
 };
 export type EventHandler = {
+  scene_exit_ref?: string;
   handler_id: string;
   event_ref: string;
   guards: StateGuard[];
@@ -538,6 +543,10 @@ export type ServiceHello = {
     clip_loop_policies?: string[];
     local_graph_commands?: string[];
     scene_connection_commands?: boolean;
+    connection_commands?: string[];
+    scene_entry_modes?: string[];
+    scene_exit_action_kinds?: string[];
+    multi_scene_export?: boolean;
     route_destination_kinds?: string[];
     state_management_commands?: string[];
     status: string;

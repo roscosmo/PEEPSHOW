@@ -4018,6 +4018,8 @@ function SceneNodeInspector({
 }
 
 export function SceneAuthoringInspector({
+  canConnectScenes = false,
+  sceneExitActionKinds = ["play_sfx"],
   timerActionKinds = [],
   onDeleteRoute,
   localCommandAllowed,
@@ -4115,6 +4117,8 @@ export function SceneAuthoringInspector({
   localCommandAllowed?: (command: string) => boolean;
   onDeleteRoute?: (sceneId: string, routeId: string) => Promise<void>;
   timerActionKinds?: string[];
+  canConnectScenes?: boolean;
+  sceneExitActionKinds?: string[];
 }) {
   const variables = scene?.variables ?? [];
   const inputActions = scene?.input_actions ?? [];
@@ -4158,6 +4162,8 @@ export function SceneAuthoringInspector({
       )}
       {route !== null && scene !== null && (
         <RouteInspector
+          canConnectScenes={canConnectScenes}
+          sceneExitActionKinds={sceneExitActionKinds}
           timerActionKinds={timerActionKinds}
           onDeleteRoute={onDeleteRoute}
           localCommandAllowed={localCommandAllowed}
@@ -4200,7 +4206,7 @@ export function SceneAuthoringInspector({
           scenes={scenes}
           sceneExit={sceneExit}
           onSetSceneExitTarget={onSetSceneExitTarget}
-          canEdit={canEdit}
+          canEdit={canConnectScenes || canEdit}
         />
       )}
       {render !== null && <RenderInspector render={render} />}
@@ -4800,6 +4806,8 @@ function SceneExitInspector({
 }
 
 function RouteInspector({
+  canConnectScenes = false,
+  sceneExitActionKinds = ["play_sfx"],
   timerActionKinds = [],
   onDeleteRoute,
   localCommandAllowed,
@@ -4836,6 +4844,8 @@ function RouteInspector({
   sceneId: string;
   route: StateRoute;
   sourceState?: string;
+  canConnectScenes?: boolean;
+  sceneExitActionKinds?: string[];
   hasManualRoute: boolean;
   objectActionsEditable?: boolean;
   localCommandAllowed?: (command: string) => boolean;
@@ -4931,7 +4941,7 @@ function RouteInspector({
           <select
             id={`route-scene-exit-${route.route_id}`}
             value={routeSceneExit?.scene_exit_id ?? ""}
-            disabled={!canEdit || sceneExits.length === 0}
+            disabled={!(canConnectScenes || canEdit) || sceneExits.length === 0}
             onChange={(event) => {
               const sceneExit = sceneExits.find((item) => item.scene_exit_id === event.target.value);
               if (sceneExit !== undefined) {
@@ -5001,6 +5011,7 @@ function RouteInspector({
       />
       <h4>Then</h4>
       <EditableActionList
+        allowedActionKinds={exitsScene ? sceneExitActionKinds : undefined}
         timers={(scenes.find(scene => scene.scene_id === sceneId)?.event_bindings ?? [])
           .filter(binding => binding.event_type === "time.scene_elapsed").map(binding => binding.binding_id)}
         timerActionKinds={timerActionKinds}
@@ -5242,6 +5253,7 @@ function waitingAnimationChoices(
 }
 
 export function EditableActionList({
+  allowedActionKinds,
   timers = [],
   timerActionKinds = [],
   sceneObjects = false,
@@ -5273,6 +5285,7 @@ export function EditableActionList({
   assets: AssetRecord[];
   audioCues: AudioCueRecord[];
   localActionsAllowed: boolean;
+  allowedActionKinds?: string[];
   canAddActions: boolean;
   canEdit: boolean;
   onSetRouteAction: (
@@ -5381,7 +5394,7 @@ export function EditableActionList({
   const availableEffectKinds = [
     ...(localActionsAllowed ? [...localEffectKinds, ...timerActionKinds] : []),
     "play_sfx",
-  ].filter((kind) => defaultActionForKind(kind) !== null);
+  ].filter((kind) => defaultActionForKind(kind) !== null && (allowedActionKinds === undefined || allowedActionKinds.includes(kind)));
 
   return (
     <div className="action-editor-list">
