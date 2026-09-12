@@ -151,3 +151,62 @@ OS agrees with the shared named-exit model and proposes:
 This records OS's proposal, not an implemented command/export capability.
 GUI continues using the existing advertised command lists, export readiness and
 build issues; it makes no backend or firmware workaround for the pending subset.
+
+## Review of Scene Memory and Parallel Logic Design
+
+Reviewed OS document and updated ownership handoff from the main worktree at
+document commit `8647b1a9a1205d1189c60d914e037f80cc5a881b`. The design document
+is not yet present in the Studio worktree. This review does not merge or enable
+the documented future capabilities.
+
+The distinction is compatible with Studio: Remember selection creates a fresh
+instance at its own remembered state; Resume retains the instance. Neither means
+reboot persistence. Parallel regions share scene objects, with no generated
+object copies or implicit priority based on graph position.
+
+### Graph Questions for OS
+
+1. Remembered entry routing: does each scene connection explicitly choose Fresh
+   or Remember selection, or does a scene's entry policy route arrivals through
+   Remembered State? Define how the explicit fresh bypass is represented. The
+   GUI must not implement this by changing the destination's global entry state.
+2. Is the visible fallback a view of the existing default entry-state reference,
+   or separately editable? Prefer a single shared reference unless a distinct
+   fallback is intentionally supported. Clarify whether fallback applies only
+   on first use or also after a remembered state becomes invalid.
+3. With regions, is Remembered State one scene-level node resolving selected
+   regions, or one entry node per region? Non-remembered regions still need their
+   normal initial state. This determines the number and meaning of fallback edges.
+4. A scene-level handler's optional destination must explicitly identify region
+   and state. No destination means actions only, not re-entry of any region.
+   Does the first parallel increment allow one destination per handler, with
+   multi-region transitions deferred? UI must not infer a region from selection,
+   card proximity or the currently viewed graph.
+
+Resolved-state/fallback highlights should be runtime overlays, not saved routing
+changes. No generated edges to every possible remembered state. Final node
+appearance and region layout still need a user-reviewed visual design; this
+review does not choose a new diagram style.
+
+### Supported Timer UI and Layout Gap
+
+`TimerInspector.tsx` already edits delay/start policy, guards, ordered actions and
+an optional local destination using existing commands. `timerAuthoring.ts` creates
+scene binding/handler pairs together and omits `target_state` for action-only
+handlers; deletion follows the shared pair/reference rules. Explicit timer
+restart remains an action; no periodic/repeat checkbox is introduced.
+
+The remaining presentation work is independent scene timer nodes in Local Logic,
+with an action-only path distinct from a state-transition edge. They must not be
+represented as synthetic states or per-state duplicate routes.
+
+Concrete persistence blocker: `project.py::_apply_state_graph_node_position`
+currently accepts only state IDs, `scene-entry`, the system exit, and declared
+scene exits. It has no timer binding/handler node identity. OS should define a
+stable layout key and admit it through the existing layout contract (including
+delete cleanup and save/reload). Otherwise nodes can be automatically displayed,
+but their manual positions cannot be saved through supported commands. Do not
+invent state records, private local-storage layout or unadvertised identifiers.
+
+Scene-connection commands remain pending. Memory, resume and region controls stay
+unavailable, multi-scene export stays blocked, and no new fixture is created.
