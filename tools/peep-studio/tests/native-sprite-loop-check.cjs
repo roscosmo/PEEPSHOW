@@ -135,11 +135,9 @@ app.whenReady().then(async () => {
   assert.equal(await evaluate("document.querySelectorAll('.asset-frame-gallery button').length"), 1);
   const cardFrame = () => evaluate("document.querySelector('.asset-frame-gallery button').dataset.previewFrame");
   const cardPixels = () => evaluate("document.querySelector('.asset-frame-gallery canvas').toDataURL()");
-  assert.equal(await cardFrame(), 'audit.frame_1');
   const alpha = await evaluate("(() => {const c=document.querySelector('.asset-frame-gallery canvas');const p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;return [p[3],p[(3*c.width+2)*4+3]]})()");
   assert.deepEqual(alpha, [transparent ? 0 : 255, 255]);
   await wait(300);
-  assert.equal(await cardFrame(), 'audit.frame_1');
   const cardBounds = await evaluate("(() => {const r=document.querySelector('.asset-frame-gallery button').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()");
   window.webContents.sendInputEvent({type:'mouseMove', ...cardBounds});
   const seen = [], pixels = new Set();
@@ -149,14 +147,14 @@ app.whenReady().then(async () => {
     pixels.add(await cardPixels());
     await wait(100);
   }
-  assert.deepEqual(seen.slice(0,frameCount), Array.from({length:frameCount},(_,i)=>`audit.frame_${i+1}`));
+  assert.equal(new Set(seen).size,frameCount);
+  for(let i=1;i<seen.length;i++) assert.equal(Number(seen[i].split('_').at(-1)),Number(seen[i-1].split('_').at(-1))%frameCount+1);
   if (pixels.size !== frameCount) console.error('Thumbnail pixel diagnostic', latest.document.compiled_asset_frames.map(frame => ({
     id: frame.frame_id, opaque: frame.opaque, maskBytes: Buffer.from(frame.mask_base64, 'base64').length,
     pixels: frame.pixels_sha256,
   })));
   assert.equal(pixels.size, frameCount);
   window.webContents.sendInputEvent({type:'mouseMove',x:10,y:10}); await wait(300);
-  assert.equal(await cardFrame(), 'audit.frame_1');
   await click('[aria-label="Settings"]');
   const playback = async value => {
     await evaluate(`(() => {const e=document.querySelector('[aria-label="Animated thumbnails"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('change',{bubbles:true}));})()`); await wait(100);
@@ -169,10 +167,10 @@ app.whenReady().then(async () => {
   window.webContents.sendInputEvent({type:'mouseMove',...cardBounds}); await wait(400);
   assert.equal(await cardFrame(), 'audit.frame_1');
   assert.equal(await evaluate("JSON.parse(localStorage.getItem('peep-studio.editor-preferences.v1')).thumbnailPlayback"), 'off');
-  await playback('hover');
+  await playback('always');
   window.webContents.sendInputEvent({type:'mouseMove',x:10,y:10});
   await click('[aria-label="Close settings"]');
-  console.log('Sprite cards: one card, ordered distinct canvas frames, hover stop, Always/Off and persisted preference passed');
+  console.log('Sprite cards: one card, ordered distinct canvas frames, continuous playback, Always/Off and persisted preference passed');
   assert.equal(commands.find(c=>c.kind==='asset.upsert').asset.frames.length, frameCount);
   assert.deepEqual(commands.find(c=>c.kind==='asset.upsert').asset.frames.map(f=>f.source_rect),
     Array.from({length:frameCount},(_,i)=>({x:(i%sheetColumns)*16,y:Math.floor(i/sheetColumns)*16,width:16,height:16})));
@@ -197,6 +195,15 @@ app.whenReady().then(async () => {
   window.setSize(1440,1000); await wait(300);
   await evaluate("window.scrollTo(0,0)");
   console.log('Asset tabs: filtered controls, empty state, cleared selection and keyboard navigation passed');
+  await button('Create animation');
+  const durationField = '[aria-label="Clip duration 1"]';
+  const duration = async value => {
+    await evaluate(`(() => {const e=document.querySelector(${JSON.stringify(durationField)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`); await wait(100);
+  };
+  await duration('0');
+  assert(await evaluate("Array.from(document.querySelectorAll('.clip-editor button')).find(e=>e.textContent.trim()==='Create animation').disabled"));
+  await duration('400');
+  await evaluate("Array.from(document.querySelectorAll('.clip-editor button')).find(e=>e.textContent.trim()==='Create animation').click()");await wait(500);
   await button('Placement');
   const placementTarget = async value => {
     await evaluate(`(() => {const e=document.querySelector('[aria-label="Editing"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
@@ -205,31 +212,17 @@ app.whenReady().then(async () => {
   await placementTarget('');
   await click('[aria-label="Add sprite"]'); await click('.placement-sprite-picker-group button');
   const scene = latest.document.scenes[0]; assert.equal(scene.objects.length, 1);
-  const animation = await evaluate(`(() => {const e=document.querySelector('[aria-label="Object animation"]');return {disabled:e.disabled,options:[...e.options].map(o=>({value:o.value,text:o.text}))};})()`);
-  assert.deepEqual(animation.options, [{ value: '', text: 'Static' }]);
-  await button('New loop');
-  const durationField = '[aria-label="New loop frame duration"]';
-  const duration = async value => {
-    await evaluate(`(() => {const e=document.querySelector(${JSON.stringify(durationField)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`); await wait(100);
-  };
-  await duration('0');
-  assert(await evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Create loop').disabled"));
-  await duration('400');
-  window.webContents.invalidate(); await wait(200);
-  fs.writeFileSync(path.join(output,'create-loop.png'),(await window.webContents.capturePage()).toPNG());
-  await button('Create loop');
   const clip = latest.document.animations[0];
   assert.equal(clip.loop_policy, 'loop');
   assert.deepEqual(clip.frame_refs, Array.from({length:frameCount},(_,i)=>`audit.frame_${i+1}`));
   assert.deepEqual(clip.frame_duration_ms, Array(frameCount).fill(400));
   assert.equal(latest.document.scenes[0].objects[0].animation_ref, clip.animation_id);
-  assert(batches.some(batch => batch.length === 2 && batch[0].kind === 'animation.upsert' && batch[1].kind === 'object.bind_animation'));
+  assert(batches.some(batch => batch.length === 2 && batch[0].kind === 'object.add' && batch[1].kind === 'object.bind_animation'));
   assert(!commands.some(command => /waiting/.test(command.kind)));
   if (process.argv.includes('--edit-clip')) {
     await click('[aria-label="Add sprite"]');await click('.placement-sprite-picker-group button');
-    await evaluate(`(() => {const e=document.querySelector('[aria-label="Object animation"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(clip.animation_id)});e.dispatchEvent(new Event('change',{bubbles:true}));})()`);await wait(500);
     assert.equal(latest.document.scenes[0].objects.filter(object=>object.animation_ref===clip.animation_id).length,2);
-    await button('Edit clip');
+    await button('Assets');await click('.animation-asset-gallery button');
     assert.match(await evaluate("document.querySelector('.clip-editor summary').textContent"), /2 scene objects/);
     const setDuration = async value => {
       await evaluate(`(() => {const e=document.querySelector('[aria-label="Clip duration 1"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);await wait(150);
@@ -252,7 +245,7 @@ app.whenReady().then(async () => {
     assert(latest.build_issues.length>0);
     await click('button[title="Undo"]');assert.deepEqual(latest.document.animations,[clip]);
     await click('button[title="Redo"]');assert.deepEqual(latest.document.animations,[edited]);
-    await button('Edit clip');await setDuration('800');await button('Cancel');
+    await setDuration('800');await button('Cancel');
     assert.deepEqual(latest.document.animations,[edited]);
     await button('Save');await button('Open project');
     assert.deepEqual(latest.document.animations,[edited]);
@@ -262,8 +255,8 @@ app.whenReady().then(async () => {
     return;
   }
   await click('button[title="Undo"]');
-  assert.equal(latest.document.animations.length, 0);
-  assert.equal(latest.document.scenes[0].objects[0].animation_ref, undefined);
+  assert.equal(latest.document.scenes[0].objects.length, 0);
+  assert.deepEqual(latest.document.animations,[clip]);
   await click('button[title="Redo"]');
   assert.deepEqual(latest.document.animations, [clip]);
   assert.equal(latest.document.scenes[0].objects[0].animation_ref, clip.animation_id);
@@ -396,7 +389,7 @@ app.whenReady().then(async () => {
   assert(!(await evaluate("document.querySelector('.status-bar').textContent")).includes('PROJECT_REVISION_STALE'));
   window.webContents.invalidate(); await wait(250);
   fs.writeFileSync(path.join(output, 'fresh-sprite.png'), (await window.webContents.capturePage()).toPNG());
-  const result = {projectPath,workflow,animation,objects:currentScene().objects,clips:latest.document.animations,animationCommands:commands.filter(c=>c.kind.includes('animation')),capabilities:hello?.scene_object_authoring,errors};
+  const result = {projectPath,workflow,animation:clip,objects:currentScene().objects,clips:latest.document.animations,animationCommands:commands.filter(c=>c.kind.includes('animation')),capabilities:hello?.scene_object_authoring,errors};
   fs.writeFileSync(path.join(output,'result.json'),JSON.stringify(result,null,2));
   console.log(`Native sprite loop: fresh GUI creation, ${frameCount} ordered frames, one-batch binding, undo/redo, save/reopen and distinct looping host frames passed`);
   if (reloadRace) console.log('Delayed load: no previews during replacement; old replies ignored; reopening recovers after a failed load');

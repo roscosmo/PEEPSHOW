@@ -58,6 +58,10 @@ app.whenReady().then(async()=>{
   assert.equal(await evaluate("document.querySelector('[aria-label=\"Object Y\"]').value"),'38');
   const title='.native-object-branch[data-object-id="menu_title"]';
   await evaluate(`document.querySelector('${title} .placement-tree-object').click()`);await wait(100);
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Object animation\"]')"),null);
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Object frame\"]')"),null);
+  assert.equal(await evaluate("Array.from(document.querySelectorAll('.scene-object-inspector button')).some(e=>e.textContent.trim()==='Animate')"),false);
+  await capture('static-inspector.png');
   await evaluate(`(()=>{const e=document.querySelector('[aria-label="Editing"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,'credits');e.dispatchEvent(new Event('change',{bubbles:true}));})()`);await wait(200);
   assert.equal(previewStarts(),starts,'Hierarchy and target selection must not launch the emulator');
   await evaluate(`(()=>{const e=document.querySelector('[aria-label="Object X"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'20');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);await wait(100);

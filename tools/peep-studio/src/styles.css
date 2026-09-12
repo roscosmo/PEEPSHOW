@@ -1607,15 +1607,28 @@ button:focus-visible {
 .placement-edit-scope label { display: grid; gap: 4px; }
 .placement-edit-scope select { min-width: 0; width: 100%; }
 
+.object-frame-picker { min-width: 0; }
+.sprite-source-item { position: relative; min-width: 0; }
+.sprite-source-item > button { width: 100%; height: 100%; }
+.sprite-source-item > input { position: absolute; top: 6px; right: 6px; z-index: 1; width: 16px; height: 16px; }
+.object-frame-picker summary { cursor: pointer; font-size: 12px; padding: 6px 0; }
+.object-frame-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 6px; max-height: 240px; overflow-y: auto; padding: 4px; }
+.object-frame-options button { min-width: 0; display: grid; justify-items: center; gap: 4px; padding: 6px; border: 1px solid #bdcbc6; border-radius: 4px; background: #fff; color: inherit; }
+.object-frame-options button[aria-pressed="true"] { border: 2px solid #126a98; padding: 5px; background: #edf8fc; }
+.object-frame-options canvas { width: 56px; height: 48px; object-fit: contain; image-rendering: pixelated; }
+.object-frame-options span { font-size: 11px; overflow-wrap: anywhere; }
+
 .clip-editor { min-width: 0; padding: 12px 0; border-top: 1px solid #bdcbc6; }
 .clip-editor h4, .clip-editor li { overflow-wrap: anywhere; }
 .clip-editor fieldset { min-width: 0; padding: 0; margin: 10px 0; border: 0; }
+.clip-editor fieldset > label { display: grid; gap: 5px; font-size: 12px; }
+.clip-editor select, .clip-editor input { min-height: 32px; width: 100%; border: 1px solid #aebcb6; border-radius: 4px; padding: 5px 8px; background: #fff; color: inherit; }
 .clip-step { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 8px; padding: 10px 0; border-bottom: 1px solid #dce3df; }
 .clip-step label { display: grid; gap: 4px; min-width: 0; }
 .clip-step input, .clip-step select { width: 100%; min-width: 0; }
 .clip-step label:nth-of-type(2), .clip-step-actions { grid-column: 2; }
 .clip-step-preview { width: 40px; height: 40px; display: grid; place-items: center; }
-.clip-step-preview canvas { max-width: 40px; max-height: 40px; object-fit: contain; image-rendering: pixelated; }
+.clip-step-preview canvas { width: 40px; height: 40px; object-fit: contain; image-rendering: pixelated; }
 .clip-step-actions, .clip-editor-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 
 .audio-waveform {

@@ -43,6 +43,7 @@ import { FramebufferCanvas, FramePreviewCanvas } from "./FramebufferCanvas";
 import { parseSpriteSheetGrid } from "./spriteSheetImport";
 import { useEditorPreferences } from "./editorPreferences";
 import { SpriteAssetCard } from "./SpriteAssetCard";
+import { AnimationClipEditor } from "./AnimationClipEditor";
 import { canBuildProject } from "./exportReadiness";
 import { AudioWaveform } from "./AudioWaveform";
 import { EmulatorPanel } from "./EmulatorPanel";
@@ -75,6 +76,7 @@ import { SCENE_TIMER, STATE_TIMER, timerBounds, deleteTimerCommands } from "./ti
 import type {
   AssetFrameRecord,
   AssetRecord,
+  AuthoredClip,
   AudioAssetRecord,
   AudioAuditionResult,
   AudioCueRecord,
@@ -112,6 +114,8 @@ type PlacementPrimitiveDraft = {
 };
 type WorkspaceMode = "scene-flow" | "logic" | "placement" | "assets";
 type AssetSelection =
+  | { kind: "animation"; clipId: string }
+  | { kind: "animation-draft"; clip: AuthoredClip }
   | { kind: "sprite"; frameId: string }
   | { kind: "audio"; cueId: string }
   | null;
@@ -189,6 +193,8 @@ export default function App() {
   const [expandedSceneIds, setExpandedSceneIds] = useState<string[]>([]);
   const [collapsedHierarchyIds, setCollapsedHierarchyIds] = useState<string[]>([]);
   const [assetSelection, setAssetSelection] = useState<AssetSelection>(null);
+  const [combineAssetIds, setCombineAssetIds] = useState<string[]>([]);
+  useEffect(() => setCombineAssetIds([]), [projectPath]);
   const [assetTab, setAssetTab] = useState<"sprite" | "audio">("sprite");
   const [audioAuditionStatus, setAudioAuditionStatus] = useState("No cue auditioned.");
   const [assetPreviewPlaying, setAssetPreviewPlaying] = useState(false);
@@ -696,7 +702,7 @@ export default function App() {
   const selectAssetRecord = (selection: AssetSelection) => {
     setAssetSelection(selection);
     if (selection !== null) {
-      setAssetTab(selection.kind);
+      setAssetTab(selection.kind === "audio" ? "audio" : "sprite");
       setSceneSelection({ kind: "scene" });
     }
   };
@@ -914,6 +920,7 @@ export default function App() {
       });
       applyProjectResult(result);
       selectAssetRecord(frames[0] === undefined ? null : { kind: "sprite", frameId: frames[0].frame_id });
+      setCombineAssetIds([pendingSpriteImport.assetId]);
       setWorkspaceMode("assets");
       setPendingSpriteImport(null);
       setAssetImportDebug(`Imported ${pendingSpriteImport.sourcePath}: ${frames.length} frame${frames.length === 1 ? "" : "s"} at ${parsed.frameWidth}x${parsed.frameHeight}.`);
@@ -2656,6 +2663,23 @@ export default function App() {
 
   const scenes: SceneDocument[] = project?.document?.scenes ?? [];
   const assets: AssetRecord[] = project?.document?.assets ?? [];
+  const animationClips = project?.document?.animations ?? [];
+  const animationPolicies = service?.scene_object_authoring?.clip_loop_policies ?? [];
+  const canAuthorAnimations = service?.operations.includes("project.apply_commands") === true
+    && service?.state_scene_presentation.general_frame_animation.commands.includes("animation.upsert") === true
+    && animationPolicies.length > 0;
+  const animationLabel = (clip: AuthoredClip) => {
+    const asset = assets.find(item => item.frames.some(frame => frame.frame_id === clip.frame_refs[0]));
+    return `${asset?.display_name ?? asset?.text ?? "Animation"} - Animation ${Math.max(0, animationClips.indexOf(clip)) + 1}`;
+  };
+  const startAssetAnimation = () => {
+    const frameIds = combineAssetIds.flatMap(id => assets.find(asset => asset.asset_id === id)?.frames.map(frame => frame.frame_id) ?? []);
+    if (!frameIds.length) return;
+    let index = 1;
+    while (animationClips.some(clip => clip.animation_id === `animation_${index}`)) index++;
+    selectAssetRecord({ kind: "animation-draft", clip: { animation_id: `animation_${index}`, frame_refs: frameIds,
+      frame_duration_ms: frameIds.map(() => 400), loop_policy: animationPolicies[0] } });
+  };
   const audioAssets: AudioAssetRecord[] = project?.document?.audio_assets ?? [];
   const audioCues: AudioCueRecord[] = project?.document?.audio_cues ?? [];
   const compiledAssetFrames: CompiledAssetFrame[] = project?.document?.compiled_asset_frames ?? [];
@@ -3340,6 +3364,18 @@ export default function App() {
         </button>
       </div>
       <div className="placement-sprite-picker-groups">
+        {objectSceneSelected && animationClips.map(clip => {
+          const frames = clip.frame_refs.flatMap(id => compiledAssetFrameById.get(id) ? [compiledAssetFrameById.get(id)!] : []);
+          return <section className="placement-sprite-picker-group" key={clip.animation_id}>
+            <SpriteAssetCard frames={frames} durations={clip.frame_duration_ms} name={animationLabel(clip)} selected={false}
+              disabled={busy !== null || !scopedPlacementAddSupported || !supportsObjectCommand(service, selectedSceneCapability, "object.bind_animation")
+                || frames.length !== clip.frame_refs.length}
+              playback={preferences.thumbnailPlayback} onSelect={() => {
+                if (busy === null && scopedPlacementAddSupported && supportsObjectCommand(service, selectedSceneCapability, "object.bind_animation")
+                  && frames.length === clip.frame_refs.length) void addPlacementSprite(frames[0] ?? null, clip.animation_id);
+              }} />
+          </section>;
+        })}
         {compiledAssetFrameGroups.map((group) => (
           <section className="placement-sprite-picker-group" key={group.assetId}>
             <div>
@@ -3708,8 +3744,10 @@ export default function App() {
                 onClick={() => void createTextSpriteAsset()}
               >
                 <Type size={15} aria-hidden="true" />
-                Text sprite
+              Text sprite
               </button>
+              <button className="button secondary" type="button" disabled={!canAuthorAnimations || busy !== null || !combineAssetIds.length}
+                onClick={startAssetAnimation}><Plus size={15} />Create animation</button>
               </> : <>
               <button
                 className="button secondary"
@@ -3726,20 +3764,32 @@ export default function App() {
           <div id="asset-library-panel" role="tabpanel" aria-labelledby={`asset-tab-${assetTab}`}>
           {assetTab === "sprite" && renderSpriteImportPanel(canEditAssets)}
           <div className="asset-group-stack">
+            {assetTab === "sprite" && animationClips.length > 0 && <section className="asset-group-panel">
+              <div className="asset-group-heading"><strong>Animations</strong><span>{animationClips.length}</span></div>
+              <div className="asset-frame-gallery animation-asset-gallery">{animationClips.map(clip => <SpriteAssetCard key={clip.animation_id}
+                frames={clip.frame_refs.flatMap(id => compiledAssetFrameById.get(id) ? [compiledAssetFrameById.get(id)!] : [])}
+                durations={clip.frame_duration_ms} name={animationLabel(clip)}
+                selected={assetSelection?.kind === "animation" && assetSelection.clipId === clip.animation_id}
+                playback={preferences.thumbnailPlayback} onSelect={() => selectAssetRecord({kind:"animation",clipId:clip.animation_id})} />)}</div>
+            </section>}
             {assetTab === "sprite" && compiledAssetFrameGroups.length > 0 && (
               <section className="asset-group-panel">
                 <div className="asset-group-heading">
-                  <strong>Sprites</strong>
+                  <strong>Source sprites</strong>
                   <span>{compiledAssetFrameGroups.length} sprite{compiledAssetFrameGroups.length === 1 ? "" : "s"}</span>
                 </div>
                 <div className="asset-frame-gallery">
                   {compiledAssetFrameGroups.map(group => {
                     const authoredOrder = new Map((assetById.get(group.assetId)?.frames ?? []).map((frame, index) => [frame.frame_id, index]));
                     const frames = [...group.frames].sort((a, b) => (authoredOrder.get(a.frame_id) ?? Infinity) - (authoredOrder.get(b.frame_id) ?? Infinity));
-                    return <SpriteAssetCard key={group.assetId} frames={frames}
+                    return <div className="sprite-source-item" key={group.assetId}>
+                      {canAuthorAnimations && <input type="checkbox" aria-label={`Include ${assetDisplayName(group.assetId)} in animation`}
+                        checked={combineAssetIds.includes(group.assetId)} onChange={event => setCombineAssetIds(current => event.target.checked
+                          ? [...current, group.assetId] : current.filter(id => id !== group.assetId))} />}
+                      <SpriteAssetCard frames={frames}
                       name={assetDisplayName(group.assetId)} selected={selectedAssetFrame?.asset_id === group.assetId}
                       playback={preferences.thumbnailPlayback}
-                      onSelect={() => selectAssetRecord({ kind: "sprite", frameId: selectedAssetFrame?.asset_id === group.assetId ? selectedAssetFrame.frame_id : frames[0].frame_id })} />;
+                      onSelect={() => selectAssetRecord({ kind: "sprite", frameId: selectedAssetFrame?.asset_id === group.assetId ? selectedAssetFrame.frame_id : frames[0].frame_id })} /></div>;
                   })}
                 </div>
               </section>
@@ -4025,6 +4075,19 @@ export default function App() {
     </section>
   );
   const renderAssetInspector = () => {
+    if (assetSelection?.kind === "animation" || assetSelection?.kind === "animation-draft") {
+      const creating = assetSelection.kind === "animation-draft";
+      const clip = assetSelection.kind === "animation-draft" ? assetSelection.clip : animationClips.find(item => item.animation_id === assetSelection.clipId);
+      return <section className="inspector-section asset-inspector"><h3>Animation</h3>{clip && <AnimationClipEditor
+        key={`${creating}:${JSON.stringify(clip)}`} clip={clip} frames={compiledAssetFrames} assets={assets} scenes={scenes}
+        displayName={creating ? "New animation" : animationLabel(clip)} creating={creating} initiallyOpen loopPolicies={animationPolicies}
+        disabled={!canAuthorAnimations || busy !== null} onCancel={() => setAssetSelection(null)}
+        onApply={async commands => {
+          const applied = await applySceneObjectCommands(commands);
+          if (applied) { setCombineAssetIds([]); selectAssetRecord({kind:"animation",clipId:clip.animation_id}); }
+          return applied;
+        }} />}</section>;
+    }
     if (assetSelection?.kind === "sprite") {
       return renderSpriteInspector();
     }
@@ -4154,20 +4217,21 @@ export default function App() {
     }
     return `${prefix}_${elements.length + 1}`;
   };
-  const addSceneObject = async (element: RenderElement) => {
+  const addSceneObject = async (element: RenderElement, animationId?: string) => {
     if (selectedSceneDocument === null) return false;
     const { element_id, x, y, visible, visual_ref, ...geometry } = element;
     const stateIds = placementEditStateTargets();
     const applied = await applySceneObjectCommands([{ kind: "object.add", scene_id: selectedSceneDocument.scene_id,
       object: { ...geometry, object_id: element_id,
         defaults: { x, y, visible: visible !== false, ...(visual_ref === undefined ? {} : { visual_ref }) } },
-      ...(stateIds.length === 0 ? {} : { visible_in_states: stateIds }) }]);
+      ...(stateIds.length === 0 ? {} : { visible_in_states: stateIds }) },
+      ...(animationId ? [{kind:"object.bind_animation",scene_id:selectedSceneDocument.scene_id,object_id:element_id,animation_ref:animationId}] : [])]);
     if (applied) {
       setSelectedPlacementElement(element_id);
     }
     return applied;
   };
-  const addPlacementSprite = async (frame: CompiledAssetFrame | null) => {
+  const addPlacementSprite = async (frame: CompiledAssetFrame | null, animationId?: string) => {
     if (objectSceneSelected && selectedSceneDocument !== null && frame !== null) {
       if (frame.width > PLACEMENT_WIDTH || frame.height > PLACEMENT_HEIGHT) {
         setMessage("This sprite is larger than the placement canvas.");
@@ -4178,7 +4242,7 @@ export default function App() {
         kind: "sprite", visual_ref: frame.frame_id,
         x: Math.min(48, PLACEMENT_WIDTH - frame.width), y: Math.min(40, PLACEMENT_HEIGHT - frame.height),
         width: frame.width, height: frame.height, z_order: Math.min(255, Math.max(0, ...elements.map(item => item.z_order)) + 1),
-        layer: "SCENE", visible: true });
+        layer: "SCENE", visible: true }, animationId);
       if (added) setSpritePickerOpen(false);
       return;
     }
@@ -4960,13 +5024,11 @@ export default function App() {
       if (selectedSceneDocument === null) return null;
       return <>{renderPlacementEditScope()}<SceneObjectInspector
         key={`${selectedSceneDocument.scene_id}:${selectedPlacementElement}:${placementEditStateIds.join(",")}`}
-        scene={selectedSceneDocument} scenes={scenes} object={object}
+        scene={selectedSceneDocument} object={object}
         label={selectedElement === null ? "" : placementObjectLabelBase(selectedElement)}
         stateIds={placementEditStateTargets()} ownership={placementOwnershipScene}
         frames={compiledAssetFrames} clips={project?.document?.animations ?? []} busy={busy !== null}
         assets={assets}
-        canCreateAnimation={service?.scene_object_authoring?.clip_loop_policies?.includes("loop") === true
-          && service.state_scene_presentation.general_frame_animation.commands.includes("animation.upsert") === true}
         supports={kind => supportsObjectCommand(service, selectedSceneCapability, kind)}
         onApply={applySceneObjectCommands}
       /></>;
@@ -5728,7 +5790,6 @@ export default function App() {
                 <label>Animated thumbnails
                   <select aria-label="Animated thumbnails" value={preferences.thumbnailPlayback}
                     onChange={event => updatePreference("thumbnailPlayback", event.target.value as "hover" | "always" | "off")}>
-                    <option value="hover">Hover</option>
                     <option value="always">Always</option>
                     <option value="off">Off</option>
                   </select>

@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { FramePreviewCanvas } from "./FramebufferCanvas";
 import type { CompiledAssetFrame } from "./types";
 
-export function SpriteAssetCard({ frames, name, selected, playback, onSelect }: {
+export function SpriteAssetCard({ frames, name, selected, playback, onSelect, durations, disabled = false }: {
   frames: CompiledAssetFrame[];
   name: string;
   selected: boolean;
   playback: "hover" | "always" | "off";
   onSelect: () => void;
+  durations?: number[];
+  disabled?: boolean;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
   const [hovered, setHovered] = useState(false);
@@ -29,14 +31,16 @@ export function SpriteAssetCard({ frames, name, selected, playback, onSelect }: 
   }, []);
   useEffect(() => {
     setStep(0);
-    if (!running) return;
-    const timer = window.setInterval(() => setStep(current => (current + 1) % frames.length), 250);
-    return () => window.clearInterval(timer);
   }, [running, frames.length]);
+  useEffect(() => {
+    if (!running) return;
+    const timer = window.setTimeout(() => setStep(current => (current + 1) % frames.length), durations?.[step % frames.length] ?? 250);
+    return () => window.clearTimeout(timer);
+  }, [running, frames.length, step, durations]);
   const frame = frames[running ? step % frames.length : 0];
   if (!frame) return null;
   return (
-    <button ref={ref} type="button" className={selected ? "selected" : ""}
+    <button ref={ref} type="button" disabled={disabled} className={selected ? "selected" : ""}
       data-preview-frame={frame.frame_id} title={name} onClick={onSelect}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}>

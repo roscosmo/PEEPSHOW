@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { EyeOff, Plus, RotateCcw, Trash2 } from "lucide-react";
-import { AnimationClipEditor } from "./AnimationClipEditor";
+import { EyeOff, RotateCcw, Trash2 } from "lucide-react";
+import { FramePreviewCanvas } from "./FramebufferCanvas";
 import type { AssetRecord, AuthoredClip, CompiledAssetFrame, PlacementOwnership, RenderElement, SceneDocument, SceneObject } from "./types";
 
 type Property = "x" | "y" | "visible" | "visual_ref";
@@ -36,59 +36,17 @@ function Visibility({ value, disabled, onChange }: { value: boolean | undefined;
     checked={value === true} onChange={event => onChange(event.target.checked)} />;
 }
 
-function SpriteLoopCreator({ sceneId, object, frames, assets, clips, disabled, onApply }: {
-  sceneId: string; object: SceneObject; frames: CompiledAssetFrame[]; clips: AuthoredClip[];
-  assets: AssetRecord[];
-  disabled: boolean; onApply: (commands: Command[]) => Promise<boolean>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [duration, setDuration] = useState("400");
-  const assetId = frames.find(frame => frame.frame_id === object.defaults.visual_ref)?.asset_id;
-  const sourceFrames = assets.find(asset => asset.asset_id === assetId)?.frames ?? [];
-  const byId = new Map(frames.map(frame => [frame.frame_id, frame]));
-  const sequence = sourceFrames.flatMap(frame => {
-    const compiled = byId.get(frame.frame_id);
-    return compiled ? [compiled] : [];
-  });
-  const compatible = sequence.length === sourceFrames.length && sequence.length >= 2 && sequence.length <= 256 &&
-    sequence.every(frame => frame.width === object.width && frame.height === object.height);
-  const ms = Number(duration);
-  const valid = duration.trim() !== "" && Number.isInteger(ms) && ms >= 1 && ms <= 60000;
-  if (!compatible) return null;
-  return <div className="scene-object-property">
-    {!open ? <button className="button secondary" type="button" disabled={disabled} onClick={() => setOpen(true)}>
-      <Plus size={14} />New loop
-    </button> : <>
-      <label><span>Frame duration (ms)</span><input aria-label="New loop frame duration" type="number"
-        min={1} max={60000} step={1} value={duration} disabled={disabled}
-        onChange={event => setDuration(event.target.value)} /></label>
-      <small>{sequence.length} frames, imported order</small>
-      <button className="button primary" type="button" disabled={disabled || !valid} onClick={async () => {
-        let index = 1;
-        while (clips.some(clip => clip.animation_id === `${assetId}_loop_${index}`)) index++;
-        const animation_id = `${assetId}_loop_${index}`;
-        if (await onApply([
-          { kind: "animation.upsert", animation: { animation_id, frame_refs: sequence.map(frame => frame.frame_id),
-            frame_duration_ms: sequence.map(() => ms), loop_policy: "loop" } },
-          { kind: "object.bind_animation", scene_id: sceneId, object_id: object.object_id, animation_ref: animation_id },
-        ])) setOpen(false);
-      }}>Create loop</button>
-      <button className="button secondary" type="button" disabled={disabled} onClick={() => setOpen(false)}>Cancel</button>
-    </>}
-  </div>;
-}
-
-export function SceneObjectInspector({ scene, object, label, stateIds, ownership, frames, clips, busy, supports, onApply, canCreateAnimation = false, assets = [], scenes = [scene] }: {
+export function SceneObjectInspector({ scene, object, label, stateIds, ownership, frames, clips, busy, supports, onApply, assets = [] }: {
   scene: SceneDocument; object: SceneObject | undefined; label: string; stateIds: string[];
   ownership: PlacementOwnership["scenes"][string] | null;
   frames: CompiledAssetFrame[]; clips: AuthoredClip[]; busy: boolean;
   supports: (kind: string) => boolean;
-  canCreateAnimation?: boolean;
   assets?: AssetRecord[];
-  scenes?: SceneDocument[];
   onApply: (commands: Command[]) => Promise<boolean>;
 }) {
   if (!object) return <section className="inspector-section placement-inspector"><p className="muted">No object selected.</p></section>;
+  const selectionKey = JSON.stringify([scene.scene_id, object.object_id, stateIds]);
+  const animated = !!object.animation_ref;
   const stateScope = stateIds.length > 0;
   const targets = stateIds.map(id => ownership?.states[id]?.resolved_elements.find(item => item.element_id === object.object_id));
   const shared = <K extends Property,>(property: K): RenderElement[K] | undefined => {
@@ -115,6 +73,15 @@ export function SceneObjectInspector({ scene, object, label, stateIds, ownership
   const matchingFrames = frames.filter(frame => frame.width === object.width && frame.height === object.height);
   const matchingIds = new Set(matchingFrames.map(frame => frame.frame_id));
   const matchingClips = clips.filter(clip => clip.frame_refs.length > 0 && clip.frame_refs.every(id => matchingIds.has(id)));
+  const frameLabel = (frame: CompiledAssetFrame) => {
+    const asset = assets.find(item => item.asset_id === frame.asset_id);
+    const index = asset?.frames.findIndex(item => item.frame_id === frame.frame_id) ?? -1;
+    return `${asset?.display_name ?? asset?.text ?? "Sprite"} - Frame ${index >= 0 ? index + 1 : matchingFrames.indexOf(frame) + 1}`;
+  };
+  const clipLabel = (clip: AuthoredClip) => {
+    const asset = assets.find(item => item.frames.some(frame => frame.frame_id === clip.frame_refs[0]));
+    return `${asset?.display_name ?? asset?.text ?? "Animation"} - ${clip.frame_refs.length} frames (${matchingClips.indexOf(clip) + 1})`;
+  };
   return <section className="inspector-section placement-inspector scene-object-inspector">
     <h3>Object</h3>
     <dl className="inspector-list">
@@ -133,26 +100,29 @@ export function SceneObjectInspector({ scene, object, label, stateIds, ownership
       <Visibility value={shared("visible")} disabled={!editable} onChange={value => void set("visible", value)} /></label>
       {reset("visible")}<small>{status("visible")}</small></div>
     {object.kind === "sprite" && <>
-      <div className="scene-object-property"><label><span>{stateScope ? "Frame in this state" : "Default frame"}</span>
-        <select aria-label="Object frame" value={shared("visual_ref") ?? ""} disabled={!editable}
-          onChange={event => void set("visual_ref", event.target.value)}>
-          <option value="" disabled>Mixed</option>
-          {matchingFrames.map(frame => <option key={frame.frame_id} value={frame.frame_id}>{frame.frame_id}</option>)}
-        </select></label>{reset("visual_ref")}<small>{status("visual_ref")}</small></div>
-      <div className="scene-object-property"><label><span>Animation (all states)</span>
+      {(stateScope || animated) && <div className="scene-object-property">
+        <details key={selectionKey} className="object-frame-picker">
+          <summary>{stateScope ? "Change frame in this state" : "Change default frame"}</summary>
+          <div className="object-frame-options" aria-label="Object frame">
+            {matchingFrames.map(frame => <button key={frame.frame_id} type="button" data-frame-id={frame.frame_id}
+              aria-label={frameLabel(frame)} title={frameLabel(frame)} aria-pressed={shared("visual_ref") === frame.frame_id}
+              disabled={!editable} onClick={() => void set("visual_ref", frame.frame_id)}>
+              <FramePreviewCanvas frame={frame} /><span>{frameLabel(frame)}</span>
+            </button>)}
+          </div>
+        </details>{reset("visual_ref")}
+        {stateScope && overrideStates("visual_ref").length > 0 && <small>{status("visual_ref")}</small>}
+      </div>}
+      {(animated || (!stateScope && matchingClips.length > 0)) && <>
+      {(animated || matchingClips.length > 0) && <div className="scene-object-property"><label><span>Animation (all states)</span>
         <select aria-label="Object animation" value={object.animation_ref ?? ""}
           disabled={stateScope || busy || (!supports("object.bind_animation") && !supports("object.clear_animation"))}
-          onChange={event => void onApply([{ kind: event.target.value ? "object.bind_animation" : "object.clear_animation",
-            scene_id: scene.scene_id, object_id: object.object_id, ...(event.target.value ? { animation_ref: event.target.value } : {}) }])}>
+          onChange={event => { void onApply([{ kind: event.target.value ? "object.bind_animation" : "object.clear_animation",
+            scene_id: scene.scene_id, object_id: object.object_id, ...(event.target.value ? { animation_ref: event.target.value } : {}) }]); }}>
           <option value="" disabled={!supports("object.clear_animation")}>Static</option>
-          {matchingClips.map(clip => <option key={clip.animation_id} value={clip.animation_id} disabled={!supports("object.bind_animation")}>{clip.animation_id}</option>)}
-        </select></label></div>
-      {canCreateAnimation && <SpriteLoopCreator key={object.object_id} sceneId={scene.scene_id} object={object}
-        frames={frames} assets={assets} clips={clips} disabled={stateScope || busy || !supports("object.bind_animation")}
-        onApply={onApply} />}
-      {canCreateAnimation && clips.filter(clip => clip.animation_id === object.animation_ref).map(clip =>
-        <AnimationClipEditor key={JSON.stringify(clip)} clip={clip} frames={matchingFrames} assets={assets} scenes={scenes}
-          disabled={stateScope || busy} onApply={onApply} />)}
+          {matchingClips.map(clip => <option key={clip.animation_id} value={clip.animation_id} disabled={!supports("object.bind_animation")}>{clipLabel(clip)}</option>)}
+        </select></label></div>}
+      </>}
     </>}
     <button className="button secondary" type="button"
       disabled={busy || !supports(stateScope ? "object_override.set" : "object.delete")}

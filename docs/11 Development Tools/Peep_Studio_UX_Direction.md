@@ -552,17 +552,22 @@ Agreed delivery order:
    Coordinate persistent tag metadata with the shared authoring contract before
    adding fields or commands. Current typed sprite/audio records have no tag
    field; the contract's entity-definition tags are not an asset-tag contract.
-3. Sprite cards: implemented one card per asset, with animated thumbnails on
-   hover or keyboard focus for multi-frame sprites, in authored frame order.
-   Frame inspection remains inside the asset inspector. Assets settings offer
-   persisted Hover (default), Always and Off choices. Off-screen cards and hidden
-   windows stop thumbnail timers; inactive cards show the first frame. This uses
-   the existing 250 ms library-preview cadence, not authored clip timing, and
-   does not alter project animation records. Thumbnail rendering honors opaque
-   frames without masks as well as explicitly masked transparency. Electron
-   regression checks cover ten distinct canvas frames in order, hover stop,
-   Always/Off, settings persistence, and a transparent 2x2 sheet, followed by
-   loop creation, undo/redo and save/reopen.
+3. Animation authoring belongs in Assets. Each shared animation record is one
+   library item, continuously previewing its ordered frames at authored durations.
+   Select source-sprite checkboxes and Create animation to combine their frames;
+   the inspector edits order, per-frame duration and advertised playback modes.
+   Sources are retained in the separate Source sprites section. Multi-frame PNG
+   import preselects its source for this same creation workflow. Only backend
+   advertised loop policies are offered; the current native increment exposes Loop.
+   Placement can choose an existing animation or place its library item, but
+   contains no clip creation or timing editor. Native placement adds the object
+   and binds the existing animation together. No new ownership or schema model.
+   Always is the thumbnail default; old Hover preferences become Always, while
+   explicit Off is preserved. Off-screen cards and hidden windows stop timers.
+   Source-sheet previews use 250 ms per frame where no clip timing exists.
+   Regression: `tests/asset-animation-workflow.cjs` covers combining the numbered
+   frames, continuous distinct previews, ordering/timing, retained sources,
+   undo/redo, atomic placement binding, save/reopen and compact layout.
 4. Audio cards: implemented waveform thumbnails and clean name fallbacks without
    internal `.cue` suffixes. Library cards no longer repeat cue IDs beside names.
    The imported source WAV is silently decoded when its card appears, including
@@ -1007,6 +1012,12 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   Delete object and its trash icon. Sprite fields use Frame in this state and
   Animation (all states); ownership is labelled Scene. These labels do not
   change command behavior or animation ownership.
+  Static sprite defaults hide frame controls. Animation binding is available
+  when compatible shared clips exist; creation and timing are exclusively in
+  Assets. Animated objects show readable asset-based clip labels rather than IDs. State-specific frame
+  changes use a collapsed thumbnail picker and retain Use scene default reset.
+  The picker also exposes default-frame changes for animated sprites. Existing
+  command discovery, binding, undo/redo and export restrictions are unchanged.
   Disclosure controls only expand/collapse; selection does not launch the
   emulator. Whole-state selection and explicit emulator launch remain in Local
   logic. This is presentation only; backend ownership and legacy editing remain
@@ -1059,3 +1070,15 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   need saved multi-tag assignments for grouping across reopen/Save As. Current
   asset records advertise no tag field or command. This does not block native
   clip editing or the supported single-scene authoring workflow.
+- Native object naming is the next hierarchy usability request for OS. Concrete
+  workflow: select a scene-owned rectangle, name it Selection outline, and see
+  that name in the hierarchy, inspector and action object pickers after reopen.
+  The current `scene-object-model-v2.schema.json` object definition has no
+  display-name field, and `scene_object_authoring.py` advertises no object-name
+  editing command. `object.set_defaults` only edits placement properties.
+  OS should supply persisted author-facing names and an advertised editing
+  command, preserving object IDs, state references, actions and clip bindings.
+  Include undo/redo and save/reload; unnamed objects retain existing fallbacks.
+  GUI must consume this shared metadata, not store private aliases or rename
+  identifiers as a workaround. No backend or schema changes are made by this
+  documentation request.

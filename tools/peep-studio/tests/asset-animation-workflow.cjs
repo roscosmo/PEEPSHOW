@@ -1,0 +1,74 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),readline=require('node:readline');
+const {spawn}=require('node:child_process');
+const {app,BrowserWindow,ipcMain}=require('electron');
+const root=path.resolve(__dirname,'../../..');
+const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'peep-asset-animation-'));
+const source=path.join(temporary,'menu.peepproj');
+fs.cpSync(path.join(root,'examples/authoring/native_v2_menu.peepproj'),source,{recursive:true});
+const output=path.resolve('dist/asset-animation-workflow');fs.mkdirSync(output,{recursive:true});
+app.setPath('userData',path.join(temporary,'profile'));app.disableHardwareAcceleration();
+let child,id=0,latest;const pending=new Map(),errors=[],batches=[];
+const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const watchdog=setTimeout(()=>{child?.kill();app.exit(1)},60000);
+app.whenReady().then(async()=>{
+  child=spawn(process.env.PEEPSHOW_PYTHON,['-u','tools/authoring/egg_tool.py','service'],{cwd:root,windowsHide:true});
+  readline.createInterface({input:child.stdout}).on('line',line=>{
+    const r=JSON.parse(line),p=pending.get(r.id);pending.delete(r.id);
+    if(r.ok)p.resolve(r.result);else {errors.push(r.error);p.reject(new Error(JSON.stringify(r.error)))}
+  });
+  child.stderr.on('data',data=>process.stderr.write(data));
+  ipcMain.handle('export:source',()=>source);
+  ipcMain.handle('export:service',async(_,operation,params)=>{
+    assert(!['project.create','project.build_package'].includes(operation));
+    if(operation==='project.apply_commands') batches.push(params.commands);
+    const result=await new Promise((resolve,reject)=>{const requestId=String(++id);pending.set(requestId,{resolve,reject});
+      child.stdin.write(JSON.stringify({protocol_version:1,id:requestId,operation,params})+'\n')});
+    if(result.document) latest=result;
+    return result;
+  });
+  const window=new BrowserWindow({width:1440,height:1000,show:false,webPreferences:{
+    preload:path.join(__dirname,'restricted-export-preload.cjs'),sandbox:true,contextIsolation:true,offscreen:true}});
+  const evaluate=code=>window.webContents.executeJavaScript(code);
+  const click=async selector=>{await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);await wait(250)};
+  const button=async name=>{await evaluate(`([...document.querySelectorAll('button')].find(e=>e.textContent.trim()===${JSON.stringify(name)})).click()`);await wait(350)};
+  const field=async(label,value)=>{await evaluate(`(()=>{const e=document.querySelector('[aria-label="${label}"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(String(value))});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);await wait(100)};
+  const capture=async name=>{window.webContents.invalidate();await wait(100);fs.writeFileSync(path.join(output,name),(await window.webContents.capturePage()).toPNG())};
+  await window.loadURL('http://127.0.0.1:5174');await wait(500);await button('Open project');await button('Assets');
+  const sources=JSON.stringify(latest.document.assets);
+  assert.equal(await evaluate("document.querySelectorAll('.animation-asset-gallery button').length"),1);
+  assert.equal(await evaluate("JSON.parse(localStorage.getItem('peep-studio.editor-preferences.v1')).thumbnailPlayback"),'always');
+  const frames=new Set(),pixels=new Set();
+  for(let i=0;i<18;i++){frames.add(await evaluate("document.querySelector('.animation-asset-gallery button').dataset.previewFrame"));pixels.add(await evaluate("document.querySelector('.animation-asset-gallery canvas').toDataURL()"));await wait(100)}
+  assert.equal(frames.size,4);assert.equal(pixels.size,4);
+  for(const number of [1,2,3,4]) await click(`[aria-label="Include ${number} in animation"]`);
+  await button('Create animation');
+  assert.equal(await evaluate("document.querySelectorAll('.clip-step').length"),4);
+  await field('Clip duration 1',600);
+  await click('button[title="Move step 2 up"]');
+  await capture('create.png');
+  await evaluate("Array.from(document.querySelectorAll('.clip-editor button')).find(e=>e.textContent.trim()==='Create animation').click()");await wait(500);
+  assert.equal(latest.document.animations.length,2);
+  const clip=latest.document.animations.find(item=>item.animation_id==='animation_1');
+  assert.deepEqual(clip.frame_refs,['counter_2.frame','counter_1.frame','counter_3.frame','counter_4.frame']);
+  assert.deepEqual(clip.frame_duration_ms,[400,600,400,400]);
+  assert.equal(JSON.stringify(latest.document.assets),sources,'Combining must retain source assets');
+  assert(batches.some(batch=>batch.length===1&&batch[0].kind==='animation.upsert'));
+  await click('button[title="Undo"]');assert.equal(latest.document.animations.length,1);
+  await click('button[title="Redo"]');assert.equal(latest.document.animations.length,2);
+  await click('.animation-asset-gallery button:last-child');
+  await field('Clip duration 1',800);await button('Apply clip');
+  assert.equal(latest.document.animations[1].frame_duration_ms[0],800);
+  await capture('library.png');
+  await button('Placement');await click('[aria-label="Add sprite"]');
+  await click('.placement-sprite-picker-group:nth-child(2) button');
+  assert(batches.some(batch=>batch.length===2&&batch[0].kind==='object.add'&&batch[1].kind==='object.bind_animation'));
+  assert.equal(latest.document.scenes[0].objects.at(-1).animation_ref,'animation_1');
+  assert.equal(await evaluate("document.querySelector('.clip-editor')"),null);
+  assert.equal(await evaluate("Array.from(document.querySelectorAll('.scene-object-inspector button')).some(e=>['New loop','Animate','Edit clip'].includes(e.textContent.trim()))"),false);
+  await button('Save');const saved=JSON.stringify(latest.document.animations);await button('Open project');assert.equal(JSON.stringify(latest.document.animations),saved);
+  await button('Assets');
+  window.setSize(760,1000);await wait(200);await evaluate("document.querySelector('.animation-asset-gallery').scrollIntoView({block:'center'})");await capture('compact.png');
+  assert.deepEqual(errors,[]);
+  console.log('Asset animation workflow passed: continuous four-frame preview, combine/order/timing, retained sources, undo/redo, atomic placement binding, save/reopen and compact layout.');
+  child.kill();clearTimeout(watchdog);app.exit(0);
+}).catch(error=>{console.error(error);child?.kill();clearTimeout(watchdog);app.exit(1)});

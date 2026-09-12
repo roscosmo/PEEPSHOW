@@ -119,7 +119,7 @@ app.whenReady().then(async () => {
       e.dispatchEvent(new Event('${tag === "select" ? "change" : "input"}', { bubbles: true }));
     })()`);
     await wait(80);
-    await evaluate(`document.querySelector('[aria-label="${label}"]').dispatchEvent(new FocusEvent('focusout', { bubbles: true }))`);
+    if (tag !== 'select') await evaluate(`document.querySelector('[aria-label="${label}"]').dispatchEvent(new FocusEvent('focusout', { bubbles: true }))`);
     await wait(450);
   };
   const originalX = object().defaults.x;
@@ -171,7 +171,10 @@ app.whenReady().then(async () => {
     assert.equal(scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === selectedId).visible, false);
   }
   await click('[aria-label="Use scene default for visibility"]');
-  await setControl("Object frame", "marker.phase_b", "select");
+  await click('.object-frame-picker summary');
+  await click('.object-frame-options [data-frame-id="marker.phase_b"]');
+  window.webContents.invalidate(); await wait(150);
+  fs.writeFileSync(path.join(output, 'state-frame-picker.png'), (await window.webContents.capturePage()).toPNG());
   for (const id of [secondStateId]) {
     assert.equal(scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === selectedId).visual_ref, "marker.phase_b");
   }
