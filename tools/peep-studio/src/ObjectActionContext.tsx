@@ -28,12 +28,12 @@ export function ObjectActionPosition({ objectId, action, targetState }: {
     {object ? <>
       <dl className="inspector-list" title="Screen coordinates in pixels: X from left, Y from top">
         <div><dt>Emulator state</dt><dd>{activeState?.display_name ?? live?.scene.state_id}</dd></div>
-        <div><dt>Underlying position</dt><dd>X {object.underlying.x}, Y {object.underlying.y}</dd></div>
-        <div><dt>Effective position</dt><dd>X {object.effective.x}, Y {object.effective.y}</dd></div>
+        <div><dt>Stored position</dt><dd>X {object.underlying.x}, Y {object.underlying.y}</dd></div>
+        <div><dt>On-screen position</dt><dd>X {object.effective.x}, Y {object.effective.y}</dd></div>
       </dl>
-      {masked && <p className="plain-rule-note">{masked} movement masked by the active state's override.</p>}
+      {masked && <p className="plain-rule-note">{masked} {masked.includes("/") ? "are" : "is"} fixed by this state; movement still updates the stored position.</p>}
     </> : <p className="plain-rule-note">No current emulator position for this object.</p>}
     {destinationMasked && targetState?.state_id !== activeState?.state_id &&
-      <p className="plain-rule-note">Destination {targetState?.display_name ?? targetState?.state_id}: {destinationMasked} movement masked by an override.</p>}
+      <p className="plain-rule-note">In {targetState?.display_name ?? targetState?.state_id}, {destinationMasked} {destinationMasked.includes("/") ? "are" : "is"} fixed by that state; movement still updates the stored position.</p>}
   </div>;
 }

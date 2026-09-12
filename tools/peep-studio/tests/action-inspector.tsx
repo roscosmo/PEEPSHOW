@@ -22,7 +22,7 @@ function Fixture() {
     route_id: "move", action_ref: "right", from_states: ["start"], target_state: "start", guards: [],
     actions: [
       { kind: "request_render" },
-      native ? { kind: "object.move_by", object_ref: "wizard", dx: 5, dy: params.has("horizontal") ? 0 : 1 } : { kind: "set_element_position", element_ref: "wizard", x: 48, y: 32 },
+      params.has("frames") ? { kind: "object.set_frame", object_ref: "wizard", frame_ref: "internal.frame_1" } : native ? { kind: "object.move_by", object_ref: "wizard", dx: 5, dy: params.has("horizontal") ? 0 : 1 } : { kind: "set_element_position", element_ref: "wizard", x: 48, y: 32 },
       { kind: "set_variable", variable_ref: "gold", operation: "add", value: 1 },
       { kind: "set_element_visibility", element_ref: "wizard", visible: true },
       { kind: "play_sfx", cue_ref: "select" },
@@ -35,10 +35,12 @@ function Fixture() {
       preview: params.has("noPreview") ? null : preview, label: () => "Wizard",
     }}>
     <EditableActionList sceneId="game" route={route} sceneObjects={native} targetState={native ? targetState : undefined}
-      targetElements={[{ element_id: "wizard", kind: "sprite", x: 48, y: 32, width: 78, height: 96, z_order: 1 },
+      targetElements={[{ element_id: "wizard", kind: "sprite", visual_ref: "internal.frame_1", x: 48, y: 32, width: 78, height: 96, z_order: 1 },
         ...(params.has("duplicates") ? [{ element_id: "wizard_2", kind: "sprite", x: 0, y: 0, width: 8, height: 8, z_order: 2 }] : [])]}
       variables={[{ variable_id: "gold", value_type: "int32", initial: 0, minimum: 0, maximum: 100 }]}
-      waitingVisuals={[]} assets={[]} audioCues={[{ cue_id: "select", display_name: "Selection sound", asset_ref: "sound", priority: 1, volume: 128 }]}
+      waitingVisuals={[]} assets={params.has("frames") ? [{ asset_id: "internal", display_name: "Wizard", asset_type: "sprite", source_format: "png",
+        frames: [{ frame_id: "internal.frame_1", pivot_x: 0, pivot_y: 0 }, { frame_id: "internal.frame_2", display_name: "Walking", pivot_x: 0, pivot_y: 0 }] }] : []}
+      audioCues={[{ cue_id: "select", display_name: "Selection sound", asset_ref: "sound", priority: 1, volume: 128 }]}
       localActionsAllowed canAddActions canEdit={params.get("readonly") !== "true"}
       onSetRouteAction={async (_, __, index, action) => setRoute((r) => ({ ...r, actions: r.actions.map((a, i) => i === index ? action as typeof a : a) }))}
       onAddRouteAction={async (_, __, index, action) => setRoute((r) => {

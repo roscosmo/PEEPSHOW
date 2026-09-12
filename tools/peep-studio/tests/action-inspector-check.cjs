@@ -67,14 +67,16 @@ app.whenReady().then(async () => {
     assert(details.text.includes('Marker right'));
     assert(details.text.includes('X 85, Y 40'));
     assert(details.text.includes('X 120, Y 40'));
-    assert(details.text.includes("X movement masked by the active state's override"));
-    assert(details.text.includes('Destination Destination: Y movement masked'));
+    assert(details.text.includes('Stored position'));
+    assert(details.text.includes('On-screen position'));
+    assert(details.text.includes('X is fixed by this state; movement still updates the stored position.'));
+    assert(details.text.includes('In Destination, Y is fixed by that state; movement still updates the stored position.'));
     fs.writeFileSync(path.join(output, `object-position-${width}.png`), (await window.webContents.capturePage()).toPNG());
   }
   await window.loadURL('http://127.0.0.1:5174/tests/action-inspector.html?native&duplicates&horizontal');
   await wait(300);
   assert.deepEqual(await evaluate(`[...document.querySelector('[aria-label="Effect 1 object"]').options].map(o => o.text)`), ['Wizard (wizard)', 'Wizard (wizard_2)']);
-  assert(!(await evaluate("document.querySelector('.object-action-position').textContent")).includes('Y movement masked'));
+  assert(!(await evaluate("document.querySelector('.object-action-position').textContent")).includes('Y is fixed'));
   for (const unavailable of ['otherScene', 'noPreview']) {
     await window.loadURL(`http://127.0.0.1:5174/tests/action-inspector.html?native&${unavailable}`);
     await wait(300);
@@ -83,6 +85,16 @@ app.whenReady().then(async () => {
     assert(!text.includes('X 85'));
     assert(!text.includes('active state'));
   }
-  process.stdout.write('Action inspector layout, edits, ordering, read-only, object names, live positions and override checks passed\n');
+  await window.loadURL('http://127.0.0.1:5174/tests/action-inspector.html?native&frames');
+  await wait(300);
+  const frameSelect = '[aria-label="Effect 1 sprite frame"]';
+  assert.deepEqual(await evaluate(`[...document.querySelector(${JSON.stringify(frameSelect)}).options].map(o=>o.text)`),
+    ['Wizard - Frame 1', 'Wizard - Walking']);
+  await evaluate(`(() => { const e=document.querySelector(${JSON.stringify(frameSelect)});
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,'internal.frame_2');
+    e.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+  await wait(100);
+  assert.equal(JSON.parse(await evaluate('document.body.dataset.actions'))[1].frame_ref,'internal.frame_2');
+  process.stdout.write('Action inspector layout, edits, ordering, read-only, object names, frame labels/IDs, live positions and override checks passed\n');
 }).then(() => { clearTimeout(watchdog); window?.destroy(); app.exit(0); })
   .catch(error => { process.stderr.write(error.stack + '\n'); clearTimeout(watchdog); window?.destroy(); app.exit(1); });

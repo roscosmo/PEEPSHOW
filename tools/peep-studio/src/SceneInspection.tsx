@@ -5219,9 +5219,9 @@ function spriteFrameChoices(element: RenderElement | undefined, assets: AssetRec
   }
   const asset = assets.find((candidate) => candidate.frames.some((frame) => frame.frame_id === element.visual_ref))
     ?? assets.find((candidate) => candidate.frames.some((frame) => frame.frame_id === frameRef));
-  return (asset?.frames ?? []).map((frame) => ({
+  return (asset?.frames ?? []).map((frame, index) => ({
     frameId: frame.frame_id,
-    label: frame.display_name ?? frame.frame_id,
+    label: `${asset?.display_name ?? asset?.text ?? "Sprite"} - ${frame.display_name ?? `Frame ${index + 1}`}`,
   }));
 }
 
