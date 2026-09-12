@@ -1088,3 +1088,20 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   GUI must consume this shared metadata, not store private aliases or rename
   identifiers as a workaround. No backend or schema changes are made by this
   documentation request.
+
+### Countdown Node Design (2026-09-12)
+
+See [[Peep_Studio_Time_Node_Design_Handoff]] and the live [[Peep Studio Design]].
+The user approved sequential expiry checks, not first-match branches: stop at
+the first failure and take the preceding step's exit, or the clock default when
+the first check fails. All-pass takes the last exit. Only the selected exit's
+ordered actions run. Entering any countdown corner restarts its full duration.
+Editing shows duration; emulation shows remaining time.
+
+Documented next work is OS reconciliation of ordered checks/fallback exits,
+timer-entry restart wiring and persisted node layout, followed by GUI support
+for advertised increments. Current single-handler timer authoring remains
+usable; do not simulate the missing branching in TypeScript. The drawing's
+500-step example also needs supported sensor read/reset operations. Other time
+modes remain deferred; current-time-plus-24-hours is direction only. No new
+fixture, export expansion, migration or parallel-region controls are required.

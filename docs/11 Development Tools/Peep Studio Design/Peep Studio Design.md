@@ -82,6 +82,22 @@ authoring capability until those contracts and the Python service support it.
 - Placement of the complete emulator within the application shell remains open
   until the general Peep Studio layout is drawn and approved.
 
+### Time Nodes
+
+- TIME NODE and TIME NODE EXAMPLE now define the approved countdown direction.
+  Preserve the grey card, green corner entries, Xy/Obj indicators, name,
+  COUNTDOWN label, prominent time display and connected condition rows.
+- Expiry follows the rows sequentially. The first failed check takes the
+  preceding step's exit; failure at the first row takes the clock default.
+  Passing every row takes the last exit. Exactly one exit's ordered actions run.
+- The clock-to-row and row-to-row lines express that evaluation path, not
+  independent triggers. Returning to a corner restarts the full countdown.
+- Editing shows configured duration; emulation shows remaining time. Other
+  time modes are deferred, including the future current-time-plus-24-hours idea.
+- [[Peep_Studio_Time_Node_Design_Handoff]] records the approved behavior, the
+  500-step example, shared-backend gaps and implementation order. Sequential
+  fallback exits are not supplied by the current single-handler timer commands.
+
 ### Prefabs
 
 - Menu prefab drawings show the intended future abstraction, including named
