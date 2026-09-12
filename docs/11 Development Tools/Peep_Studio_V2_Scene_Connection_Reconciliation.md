@@ -210,3 +210,69 @@ invent state records, private local-storage layout or unadvertised identifiers.
 
 Scene-connection commands remain pending. Memory, resume and region controls stay
 unavailable, multi-scene export stays blocked, and no new fixture is created.
+
+## Parallel Event Rules: Authoring Review
+
+Reviewed updated OS design and ownership handoff from the main worktree at
+design commit `6d2efeb976696978f9d5aa5142375e1ea5827cd5`. The rules remain
+design-only; this review adds no controls, command fields or execution model.
+
+### Recipients and Destinations
+
+- Proposed event inspector label: Responding behaviors. Select explicit named
+  regions; normally one recipient, with multi-recipient selection only when
+  advertised. Never infer recipients from matching inputs or graph selection.
+- Recipient selection belongs to the delivered event declaration, not a private
+  GUI list or independently duplicated trigger records. OS must specify that
+  record's identity, ownership, empty-recipient validation and reference cleanup.
+  Do not add an implicit All behaviors default that includes future regions.
+- Keep event delivery separate from transition destination. Scene timers deliver
+  to their independent handler; a handler may then explicitly target a region
+  and state. State timers retain their owning region/state activation. Neither
+  timer should receive a generic broadcast picker merely because inputs have one.
+- Multi-recipient edges indicate delivery, not branch execution order or priority.
+  The inspector should identify recipients by name, independent of canvas layout.
+
+### Conflicting Writes
+
+Backend diagnostics should provide the event/recipient set, both branch owners
+and source locations, action indices, and the exact variable or object/property.
+Include stable IDs for navigation plus author-facing names where available.
+Studio can then highlight both branches and select the corresponding inspector
+rows without calculating its own write sets or guard satisfiability.
+
+Example author-facing message:
+
+> Navigation and Pet behavior both change Gold when A is pressed. These changes
+> cannot run together. Put the coordinated changes in one handler, or change
+> which behaviors respond.
+
+Offer navigation to both conflicting writes; do not silently move actions,
+choose a winner, change recipients or imply canvas rearrangement fixes the issue.
+Repeated writes inside one ordered handler remain valid. Separate-branch writes
+conflict even when values agree. Different object properties are distinct targets.
+
+Distinguish this diagnostic from simultaneous state-override conflicts: those
+identify both active state/region owners and the overridden property, rather than
+two action indices. OS must also distinguish a conservatively detected possible
+conflict from an actually rejected runtime event; Studio must not claim a branch
+ran when only static validation found a potential overlap.
+
+### Preview and Unresolved Contracts
+
+- Participating guards use the same pre-event values; graph order never suggests
+  one branch's writes changed another's guard decision. Later actions within one
+  ordered list can still use that list's earlier writes.
+- A rejected event must not show partial committed-state highlights or play an
+  effect locally. Preview needs backend evidence of committed/rejected outcome,
+  recipients and reasons. No GUI optimistic simulation of external effects.
+- Variable changes have no automatic outgoing event links. Explicit timer restart
+  stays an action; a rejected guard does not execute that restart. No repeat mode.
+- Still needed from OS: exact recipient representation and route choice within a
+  region; cross-branch action-read semantics; conflicts over timer operations or
+  destinations; scene exit combined with local changes; and bounded resource
+  diagnostics. Do not turn any of these into implicit GUI ordering rules.
+
+The independent timer-node layout identity request above remains outstanding;
+these event-design updates do not supply it. Existing timer inspector commands
+remain usable. No memory/parallel controls, export expansion or fixture changes.
