@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, RotateCcw, Trash2 } from "lucide-react";
+import { EyeOff, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { AnimationClipEditor } from "./AnimationClipEditor";
 import type { AssetRecord, AuthoredClip, CompiledAssetFrame, PlacementOwnership, RenderElement, SceneDocument, SceneObject } from "./types";
 
@@ -119,7 +119,7 @@ export function SceneObjectInspector({ scene, object, label, stateIds, ownership
     <h3>Object</h3>
     <dl className="inspector-list">
       <div><dt>Name</dt><dd>{label}</dd></div>
-      <div><dt>Owner</dt><dd>{scene.display_name}</dd></div>
+      <div><dt>Scene</dt><dd>{scene.display_name}</dd></div>
       <div><dt>Size</dt><dd>{object.width} x {object.height}</dd></div>
       <div><dt>Internal ID</dt><dd>{object.object_id}</dd></div>
     </dl>
@@ -133,13 +133,13 @@ export function SceneObjectInspector({ scene, object, label, stateIds, ownership
       <Visibility value={shared("visible")} disabled={!editable} onChange={value => void set("visible", value)} /></label>
       {reset("visible")}<small>{status("visible")}</small></div>
     {object.kind === "sprite" && <>
-      <div className="scene-object-property"><label><span>{stateScope ? "Frame override" : "Default frame"}</span>
+      <div className="scene-object-property"><label><span>{stateScope ? "Frame in this state" : "Default frame"}</span>
         <select aria-label="Object frame" value={shared("visual_ref") ?? ""} disabled={!editable}
           onChange={event => void set("visual_ref", event.target.value)}>
           <option value="" disabled>Mixed</option>
           {matchingFrames.map(frame => <option key={frame.frame_id} value={frame.frame_id}>{frame.frame_id}</option>)}
         </select></label>{reset("visual_ref")}<small>{status("visual_ref")}</small></div>
-      <div className="scene-object-property"><label><span>Scene animation</span>
+      <div className="scene-object-property"><label><span>Animation (all states)</span>
         <select aria-label="Object animation" value={object.animation_ref ?? ""}
           disabled={stateScope || busy || (!supports("object.bind_animation") && !supports("object.clear_animation"))}
           onChange={event => void onApply([{ kind: event.target.value ? "object.bind_animation" : "object.clear_animation",
@@ -159,7 +159,8 @@ export function SceneObjectInspector({ scene, object, label, stateIds, ownership
       onClick={() => void (stateScope ? set("visible", false) : onApply([
         { kind: "object.delete", scene_id: scene.scene_id, object_id: object.object_id },
       ]))}>
-      <Trash2 size={14} />{stateScope ? "Remove from selected states" : "Delete object"}
+      {stateScope ? <EyeOff size={14} /> : <Trash2 size={14} />}
+      {stateScope ? stateIds.length === 1 ? "Hide in this state" : "Hide in selected states" : "Delete object"}
     </button>
   </section>;
 }

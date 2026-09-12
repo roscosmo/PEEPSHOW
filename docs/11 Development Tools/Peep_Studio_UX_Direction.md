@@ -1003,6 +1003,10 @@ parallel model or expose version-2 graph construction ahead of its handoff.
   state, including one without an override yet. No cross-state composite view.
   Property labels read Using scene default or Changed in this state; reset
   tooltips read Use scene default. Technical command names remain internal.
+  Object visibility uses Hide in this state with an eye-off icon, distinct from
+  Delete object and its trash icon. Sprite fields use Frame in this state and
+  Animation (all states); ownership is labelled Scene. These labels do not
+  change command behavior or animation ownership.
   Disclosure controls only expand/collapse; selection does not launch the
   emulator. Whole-state selection and explicit emulator launch remain in Local
   logic. This is presentation only; backend ownership and legacy editing remain

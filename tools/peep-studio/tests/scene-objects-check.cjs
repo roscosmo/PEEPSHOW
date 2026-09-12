@@ -222,8 +222,8 @@ app.whenReady().then(async () => {
   window.webContents.invalidate();
   await wait(250);
   fs.writeFileSync(path.join(output, 'canvas-scoped-object.png'), (await window.webContents.capturePage()).toPNG());
-  await button('Remove from selected states');
-  assert(created(), 'State removal must not delete the scene-owned object');
+  await button('Hide in this state');
+  assert(created(), 'Hiding in a state must not delete the scene-owned object');
   for (const id of [secondStateId]) assert.equal(scene().states.find(state => state.state_id === id).object_overrides.find(item => item.object_ref === createdId).visible, false);
   await setControl('Editing', '', 'select');
   await button('Delete object');
