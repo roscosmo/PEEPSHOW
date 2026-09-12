@@ -5465,7 +5465,8 @@ export function EditableActionList({
                 </button>
               </div>
             </div>
-            <div className="logic-sentence effect-fields">
+            <div className="effect-fields">
+              <div className="effect-field-group effect-field-group-main">
               <label className="effect-field">
               <span>Action</span>
               <select
@@ -5512,8 +5513,9 @@ export function EditableActionList({
                 </select>
                 </label>
               )}
+              </div>
               {action.kind === "set_variable" && (
-                <>
+                <div className="effect-field-group effect-field-group-values">
                   <label className="effect-field">
                   <span>Operation</span>
                   <select
@@ -5570,16 +5572,17 @@ export function EditableActionList({
                     }}
                   />
                   </label>
-                </>
+                </div>
               )}
               {(action.kind === "object.move_by" || action.kind === "object.set_position") && (
-                <>
+                <div className="effect-field-group effect-field-group-motion">
                   <ObjectMotionFields action={action} index={visibleIndex + 1} disabled={!canEdit} onCommit={commit} />
                   <ObjectActionPosition objectId={elementRef} action={action}
                     targetState={targetState ?? actionScene?.states?.find(state => state.state_id === route.target_state)} />
-                </>
+                </div>
               )}
               {(action.kind === "set_element_visibility" || action.kind === "object.set_visibility") && (
+                <div className="effect-field-group effect-field-group-values">
                 <label className="logic-toggle">
                   <input
                     type="checkbox"
@@ -5593,9 +5596,10 @@ export function EditableActionList({
                   />
                   Visible
                 </label>
+                </div>
               )}
               {action.kind === "set_element_position" && (
-                <div className="effect-coordinate-fields">
+                <div className="effect-field-group effect-field-group-values effect-coordinate-fields">
                   <label className="effect-field">
                   <span>X (px from left)</span>
                   <input
@@ -5635,6 +5639,7 @@ export function EditableActionList({
                 </div>
               )}
               {(action.kind === "set_element_frame" || action.kind === "object.set_frame") && (
+                <div className="effect-field-group effect-field-group-values">
                 <label className="effect-field">
                 <span>Frame</span>
                 <select
@@ -5652,9 +5657,10 @@ export function EditableActionList({
                   ))}
                 </select>
                 </label>
+                </div>
               )}
               {action.kind === "set_element_waiting_animation" && (
-                <>
+                <div className="effect-field-group effect-field-group-values">
                   <label className="effect-field">
                   <span>Animation</span>
                   <select
@@ -5697,14 +5703,15 @@ export function EditableActionList({
                     <option value="rebase">Restart timing</option>
                   </select>
                   </label>
-                </>
+                </div>
               )}
-            {timerActionKinds.includes(action.kind) && <label className="effect-field"><span>Scene timer</span>
+            {timerActionKinds.includes(action.kind) && <div className="effect-field-group effect-field-group-values"><label className="effect-field"><span>Scene timer</span>
               <select aria-label={`Effect ${visibleIndex + 1} timer`} value={action.timer_ref ?? ""} disabled={!canEdit}
                 onChange={event => commit({ kind: action.kind, timer_ref: event.target.value })}>
                 {timers.map(id => <option key={id} value={id}>{id}</option>)}
-              </select></label>}
+              </select></label></div>}
             {action.kind === "play_sfx" && (
+                <div className="effect-field-group effect-field-group-values">
                 <label className="effect-field">
                 <span>SFX cue</span>
                 <select
@@ -5718,6 +5725,7 @@ export function EditableActionList({
                   ))}
                 </select>
                 </label>
+                </div>
               )}
             </div>
             {action.kind === "play_sfx" && audioCues.length === 0 && (

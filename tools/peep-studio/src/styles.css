@@ -5239,6 +5239,33 @@ button:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 10px;
+  color: #4e5b54;
+  font-size: 11px;
+  font-weight: 740;
+}
+
+.effect-field-group {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #dde4e0;
+  border-radius: 6px;
+  background: #f8faf9;
+}
+
+.effect-field-group-main {
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+}
+
+.effect-field-group-values {
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+}
+
+.effect-field-group-motion {
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .effect-field {
@@ -5254,6 +5281,25 @@ button:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.effect-fields select,
+.effect-fields input {
+  min-width: 62px;
+  max-width: 100%;
+  height: 29px;
+  padding: 0 7px;
+  border: 1px solid #cbd3ce;
+  border-radius: 5px;
+  background: #f9fbfa;
+  color: #242c28;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.effect-fields input {
+  font-variant-numeric: tabular-nums;
+}
+
 .effect-fields .effect-field > select,
 .effect-fields .effect-field > input {
   width: 100%;
@@ -5264,12 +5310,53 @@ button:focus-visible {
 
 .effect-coordinate-fields {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
   gap: 10px;
+}
+
+.effect-motion-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #d7e1dd;
+  border-radius: 6px;
+  background: #f8faf9;
+}
+
+.effect-motion-card.relative {
+  border-color: #bed8ca;
+  background: #f5fbf7;
+}
+
+.effect-motion-heading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.effect-motion-heading strong {
+  color: #24302a;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.effect-motion-heading span {
+  min-width: 0;
+  color: #68736d;
+  font-size: 10px;
+  font-weight: 650;
+  text-align: right;
 }
 
 .object-action-position {
   min-width: 0;
+  padding: 8px;
+  border: 1px solid #dde4e0;
+  border-radius: 6px;
+  background: #fbfcfb;
   overflow-wrap: anywhere;
 }
 

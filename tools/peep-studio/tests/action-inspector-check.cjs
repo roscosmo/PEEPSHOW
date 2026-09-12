@@ -19,18 +19,24 @@ app.whenReady().then(async () => {
     await wait(700);
     const layout = await evaluate(`(() => {
       const first = document.querySelector('.effect-fields');
-      const fields = [...first.querySelectorAll('select,input')].map(e => e.getBoundingClientRect().toJSON());
-      return { fields, clipped: [...document.querySelectorAll('select,input,button')].some(e => {
+      return {
+        groupCount: first.querySelectorAll('.effect-field-group').length,
+        hasMainGroup: !!first.querySelector('.effect-field-group-main'),
+        hasCoordinates: !!first.querySelector('.effect-coordinate-fields'),
+        clipped: [...document.querySelectorAll('select,input,button')].some(e => {
         const r=e.getBoundingClientRect(); return r.left < 0 || r.right > ${width};
-      }), labels: first.textContent, options: [...first.querySelector('select').options].map(o => o.text) };
+        }),
+        labels: first.textContent,
+        options: [...first.querySelector('select').options].map(o => o.text)
+      };
     })()`);
     assert.equal(layout.clipped, false);
+    assert(layout.groupCount >= 1);
+    assert(layout.hasMainGroup);
+    assert(layout.hasCoordinates);
     assert(layout.options.includes('Set position'));
     assert(!layout.options.includes('Move object'));
     assert(layout.labels.includes('px from top'));
-    assert(layout.fields[1].top >= layout.fields[0].bottom);
-    assert(layout.fields[2].top >= layout.fields[1].bottom);
-    assert.equal(layout.fields[2].top, layout.fields[3].top);
     fs.writeFileSync(path.join(output, `actions-${width}.png`), (await window.webContents.capturePage()).toPNG());
   }
   await evaluate(`(() => {
@@ -60,10 +66,13 @@ app.whenReady().then(async () => {
     const details = await evaluate(`(() => {
       const e = document.querySelector('.object-action-position');
       return { text: e.textContent, label: document.querySelector('[aria-label="Effect 1 object"]').selectedOptions[0].text,
+        motion: document.querySelector('.effect-motion-card')?.textContent ?? '',
         clipped: [...e.querySelectorAll('dt,dd,p')].some(item => { const r=item.getBoundingClientRect(); return r.left < 0 || r.right > ${width}; }) };
     })()`);
     assert.equal(details.label, 'Wizard');
     assert.equal(details.clipped, false);
+    assert(details.motion.includes('Relative movement'));
+    assert(details.motion.includes("Adds to the object's stored position"));
     assert(details.text.includes('Marker right'));
     assert(details.text.includes('X 85, Y 40'));
     assert(details.text.includes('X 120, Y 40'));
