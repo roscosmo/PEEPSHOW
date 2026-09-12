@@ -1069,3 +1069,13 @@ GUI may now integrate these advertised connection controls and create host-only
 multi-scene projects. Keep export disabled for them. OS's next executable work
 is a separate bounded multi-scene profile/admission/runtime increment, followed
 by hardware proof; the memory/parallel design remains independently deferred.
+
+### OS Follow-up: Private Multi-scene Decode
+
+The next OS preparation increment validates every V2 scene's feature subset and
+decodes a selected destination without changing the active scene or asset catalog.
+See [[V2_Multiscene_Preparation]] for its native verification and remaining work.
+This is not installed multi-scene support: service stays API 43, the public export
+profile and `multi_scene_export: false` are unchanged. GUI should continue the
+connection editor/host fixture work already underway; no new GUI command or
+device test is requested by this internal increment.

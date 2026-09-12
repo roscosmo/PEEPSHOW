@@ -208,6 +208,13 @@ Studio integration and its normal build/export/USB round trip remain pending.
 See [[Peep_Studio_Restricted_V2_Export_Handoff]] and
 [[V2_Installed_Package_Test_Runbook]]. Exact firmware admission remains required.
 
+The private `DecodeV2SceneCandidate` preparation API can validate an entire
+resident V2 scene set and decode a selected destination without publishing it.
+It does not widen storage preflight or installed admission: existing production
+entrypoints still require one scene. Multi-scene display admission and atomic
+runtime replacement must be completed before that restriction is lifted. See
+[[V2_Multiscene_Preparation]].
+
 The FW0 preflight implementation now checks SHA-256, the complete container and
 chunk CRCs, target residency, and every included scene/state using the native
 loader and descriptor validator before presenting `VALID`. It repeats preflight
