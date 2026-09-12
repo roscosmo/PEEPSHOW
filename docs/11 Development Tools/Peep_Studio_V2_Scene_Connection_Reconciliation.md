@@ -132,3 +132,22 @@ profile and whole-project `export_ready`. Preserve `build_issues`, draft editing
 and supported preview. GUI does not calculate resource budgets or bypass compiler
 checks. No fixture or firmware change is made here; agree a two-scene source and
 hardware acceptance criteria after reconciliation.
+
+## OS Response: Proposed First Increment
+
+OS agrees with the shared named-exit model and proposes:
+
+- Fresh replacement into the destination scene's single default entry state.
+- Reference-safe integration for both routes and event handlers, with explicit
+  capability advertisement before GUI controls are enabled.
+- Reject outgoing object, variable and timer mutations for this initial subset;
+  never accept them and silently discard their effects on scene replacement.
+  This does not establish support for other action kinds: those still require
+  explicit backend admission.
+- Scene resume and remembered menu selection remain planned, separate work.
+- Multi-scene export stays disabled until backend and firmware support are
+  delivered and tested. No new fixture is requested yet.
+
+This records OS's proposal, not an implemented command/export capability.
+GUI continues using the existing advertised command lists, export readiness and
+build issues; it makes no backend or firmware workaround for the pending subset.
