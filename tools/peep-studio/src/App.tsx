@@ -38,7 +38,7 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { FramebufferCanvas, FramePreviewCanvas } from "./FramebufferCanvas";
 import { parseSpriteSheetGrid } from "./spriteSheetImport";
 import { useEditorPreferences } from "./editorPreferences";
@@ -120,6 +120,36 @@ type AssetSelection =
   | { kind: "audio"; cueId: string }
   | null;
 const SYSTEM_FONT_8X8_BASIC_ID = "peepshow.system.8x8.basic.v1";
+const PLACEMENT_VIEWPORT_MIN_ZOOM = 0.5;
+const PLACEMENT_VIEWPORT_MAX_ZOOM = 6;
+const PLACEMENT_VIEWPORT_ZOOM_STEP = 1.25;
+const PLACEMENT_GRID_MINOR_X = Array.from({ length: PLACEMENT_WIDTH + 1 }, (_, index) => index)
+  .filter((value) => value % 8 !== 0);
+const PLACEMENT_GRID_MINOR_Y = Array.from({ length: PLACEMENT_HEIGHT + 1 }, (_, index) => index)
+  .filter((value) => value % 8 !== 0);
+const PLACEMENT_GRID_MAJOR_X = Array.from({ length: PLACEMENT_WIDTH / 8 + 1 }, (_, index) => index * 8);
+const PLACEMENT_GRID_MAJOR_Y = Array.from({ length: PLACEMENT_HEIGHT / 8 + 1 }, (_, index) => index * 8);
+
+type PlacementViewport = {
+  x: number;
+  y: number;
+  zoom: number;
+};
+
+type PlacementGridFrame = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+const clampPlacementZoom = (zoom: number) => (
+  Math.min(PLACEMENT_VIEWPORT_MAX_ZOOM, Math.max(PLACEMENT_VIEWPORT_MIN_ZOOM, zoom))
+);
+const snapPlacementGridOffset = (offset: number, origin: number, span: number) => {
+  const snapped = Math.round(origin + offset) - origin + 0.5;
+  return Math.min(Math.max(snapped, 0.5), Math.max(0.5, span - 0.5));
+};
 
 type PendingSpriteImport = {
   assetId: string;
@@ -215,6 +245,9 @@ export default function App() {
   const [placementTool, setPlacementTool] = useState<PlacementTool>("select");
   const [placementPrimitiveDraft, setPlacementPrimitiveDraft] = useState<PlacementPrimitiveDraft | null>(null);
   const [spritePickerOpen, setSpritePickerOpen] = useState(false);
+  const [placementViewport, setPlacementViewport] = useState<PlacementViewport>({ x: 0, y: 0, zoom: 1 });
+  const [placementViewportPanning, setPlacementViewportPanning] = useState(false);
+  const [placementGridFrame, setPlacementGridFrame] = useState<PlacementGridFrame | null>(null);
   const [placementDraftPositions, setPlacementDraftPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [placementDraftBounds, setPlacementDraftBounds] = useState<Record<string, { x: number; y: number; width: number; height: number }>>({});
   const [pendingSpriteImport, setPendingSpriteImport] = useState<PendingSpriteImport | null>(null);
@@ -234,6 +267,8 @@ export default function App() {
   const placementSelectionAnchorRef = useRef<string | null>(null);
   const placementSceneRef = useRef<string | null>(null);
   const placementDrawCancelRef = useRef<(() => boolean) | null>(null);
+  const placementStageRef = useRef<HTMLDivElement | null>(null);
+  const placementScreenOverlayRef = useRef<HTMLDivElement | null>(null);
 
   const stopAudioPlayback = useCallback(() => {
     audioPlaybackRequestRef.current += 1;
@@ -3134,11 +3169,189 @@ export default function App() {
       selectedPlacementRenderElement.y + dy,
     );
   };
+  const zoomPlacementViewport = (factor: number) => {
+    setPlacementViewport((current) => ({
+      ...current,
+      zoom: clampPlacementZoom(current.zoom * factor),
+    }));
+  };
+  const resetPlacementViewport = () => {
+    setPlacementViewport({ x: 0, y: 0, zoom: 1 });
+  };
+  const updatePlacementGridFrame = useCallback(() => {
+    const stage = placementStageRef.current;
+    const overlay = placementScreenOverlayRef.current;
+    if (stage === null || overlay === null) {
+      setPlacementGridFrame(null);
+      return;
+    }
+    const stageRect = stage.getBoundingClientRect();
+    const overlayRect = overlay.getBoundingClientRect();
+    const next = {
+      left: overlayRect.left - stageRect.left,
+      top: overlayRect.top - stageRect.top,
+      width: overlayRect.width,
+      height: overlayRect.height,
+    };
+    setPlacementGridFrame((current) => (
+      current !== null &&
+      Math.abs(current.left - next.left) < 0.25 &&
+      Math.abs(current.top - next.top) < 0.25 &&
+      Math.abs(current.width - next.width) < 0.25 &&
+      Math.abs(current.height - next.height) < 0.25
+        ? current
+        : next
+    ));
+  }, []);
+  useLayoutEffect(() => {
+    if (workspaceMode !== "placement") {
+      setPlacementGridFrame(null);
+      return;
+    }
+    updatePlacementGridFrame();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updatePlacementGridFrame);
+      return () => window.removeEventListener("resize", updatePlacementGridFrame);
+    }
+    const observer = new ResizeObserver(updatePlacementGridFrame);
+    if (placementStageRef.current !== null) observer.observe(placementStageRef.current);
+    if (placementScreenOverlayRef.current !== null) observer.observe(placementScreenOverlayRef.current);
+    window.addEventListener("resize", updatePlacementGridFrame);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updatePlacementGridFrame);
+    };
+  }, [placementViewport, updatePlacementGridFrame, workspaceMode]);
+  const startPlacementViewportPan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 && event.button !== 1) {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    if (target.closest(".placement-tool-palette, .placement-sprite-picker, .placement-viewport-controls, .preview-status-card")) {
+      return;
+    }
+    const insideScreen = target.closest(".panel-bezel") !== null;
+    const canPanFromScreen = event.button === 1 || (event.button === 0 && event.altKey);
+    if (insideScreen && !canPanFromScreen) {
+      return;
+    }
+
+    event.preventDefault();
+    const startClientX = event.clientX;
+    const startClientY = event.clientY;
+    const startX = placementViewport.x;
+    const startY = placementViewport.y;
+    setPlacementViewportPanning(true);
+
+    const move = (moveEvent: PointerEvent) => {
+      setPlacementViewport((current) => ({
+        ...current,
+        x: startX + moveEvent.clientX - startClientX,
+        y: startY + moveEvent.clientY - startClientY,
+      }));
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      setPlacementViewportPanning(false);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  };
+  const handlePlacementViewportWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (target instanceof Element && target.closest(".placement-tool-palette, .placement-sprite-picker, .placement-viewport-controls")) {
+      return;
+    }
+    event.preventDefault();
+    const stageRect = event.currentTarget.getBoundingClientRect();
+    const anchorX = event.clientX - stageRect.left - stageRect.width / 2;
+    const anchorY = event.clientY - stageRect.top - stageRect.height / 2;
+    const factor = event.deltaY < 0 ? PLACEMENT_VIEWPORT_ZOOM_STEP : 1 / PLACEMENT_VIEWPORT_ZOOM_STEP;
+    setPlacementViewport((current) => {
+      const nextZoom = clampPlacementZoom(current.zoom * factor);
+      if (nextZoom === current.zoom) {
+        return current;
+      }
+      const scale = nextZoom / current.zoom;
+      return {
+        x: anchorX - (anchorX - current.x) * scale,
+        y: anchorY - (anchorY - current.y) * scale,
+        zoom: nextZoom,
+      };
+    });
+  };
+  const renderPlacementViewportControls = () => (
+    <div className="placement-viewport-controls" aria-label="Placement view controls">
+      <button type="button" onClick={() => zoomPlacementViewport(1 / PLACEMENT_VIEWPORT_ZOOM_STEP)}
+        title="Zoom out" aria-label="Zoom out">
+        <Minus size={16} aria-hidden="true" />
+      </button>
+      <span aria-label={`Zoom ${Math.round(placementViewport.zoom * 100)} percent`}>
+        {Math.round(placementViewport.zoom * 100)}%
+      </span>
+      <button type="button" onClick={() => zoomPlacementViewport(PLACEMENT_VIEWPORT_ZOOM_STEP)}
+        title="Zoom in" aria-label="Zoom in">
+        <Plus size={16} aria-hidden="true" />
+      </button>
+      <button type="button" onClick={resetPlacementViewport}
+        title="Fit screen" aria-label="Fit screen">
+        <Maximize2 size={16} aria-hidden="true" />
+      </button>
+    </div>
+  );
+  const renderPlacementGridOverlay = () => {
+    if (placementGridFrame === null) {
+      return null;
+    }
+    const pixelWidth = placementGridFrame.width / PLACEMENT_WIDTH;
+    const pixelHeight = placementGridFrame.height / PLACEMENT_HEIGHT;
+    const lineX = (x: number) => snapPlacementGridOffset(x * pixelWidth, placementGridFrame.left, placementGridFrame.width);
+    const lineY = (y: number) => snapPlacementGridOffset(y * pixelHeight, placementGridFrame.top, placementGridFrame.height);
+    const gridStyle = {
+      left: `${placementGridFrame.left}px`,
+      top: `${placementGridFrame.top}px`,
+      width: `${placementGridFrame.width}px`,
+      height: `${placementGridFrame.height}px`,
+      "--placement-grid-minor-opacity": placementGridVisible ? placementGridStrength / 100 : 0,
+      "--placement-grid-major-opacity": placementGridVisible && placementMajorGridVisible ? (placementGridStrength + 6) / 100 : 0,
+    } as CSSProperties;
+    return (
+      <svg
+        className="placement-stage-grid"
+        width={placementGridFrame.width}
+        height={placementGridFrame.height}
+        style={gridStyle}
+        aria-hidden="true"
+      >
+        {PLACEMENT_GRID_MINOR_X.map((x) => (
+          <line className="minor" key={`minor-x-${x}`} x1={lineX(x)} y1={0} x2={lineX(x)} y2={placementGridFrame.height} />
+        ))}
+        {PLACEMENT_GRID_MINOR_Y.map((y) => (
+          <line className="minor" key={`minor-y-${y}`} x1={0} y1={lineY(y)} x2={placementGridFrame.width} y2={lineY(y)} />
+        ))}
+        {PLACEMENT_GRID_MAJOR_X.map((x) => (
+          <line className="major" key={`major-x-${x}`} x1={lineX(x)} y1={0} x2={lineX(x)} y2={placementGridFrame.height} />
+        ))}
+        {PLACEMENT_GRID_MAJOR_Y.map((y) => (
+          <line className="major" key={`major-y-${y}`} x1={0} y1={lineY(y)} x2={placementGridFrame.width} y2={lineY(y)} />
+        ))}
+      </svg>
+    );
+  };
   const startPlacementDrag = (
     event: ReactPointerEvent<HTMLButtonElement>,
     element: RenderElement,
     renderModelId: string | null,
   ) => {
+    if (event.button !== 0) {
+      return;
+    }
     if (selectedSceneDocument === null || busy !== null || (objectSceneSelected && !sceneObjectMoveSupported)) {
       return;
     }
@@ -3189,6 +3402,9 @@ export default function App() {
     renderModelId: string,
     handle: "nw" | "ne" | "sw" | "se",
   ) => {
+    if (event.button !== 0) {
+      return;
+    }
     if (selectedSceneDocument === null || busy !== null || element.kind === "sprite") {
       return;
     }
@@ -3455,10 +3671,22 @@ export default function App() {
         onAdvance={() => void advancePreview(250)}
         onInput={(source) => void sendInput(source)}
       /> : <section className="preview-pane preview-pane-large">
-        <div className="display-stage">
+        <div
+          className={`display-stage ${variant === "placement" ? `placement-viewport-stage ${placementViewportPanning ? "panning" : ""}` : ""}`}
+          ref={variant === "placement" ? placementStageRef : undefined}
+          onPointerDown={variant === "placement" ? startPlacementViewportPan : undefined}
+          onWheel={variant === "placement" ? handlePlacementViewportWheel : undefined}
+        >
           {variant === "placement" && renderPlacementToolPalette()}
+          {variant === "placement" && renderPlacementViewportControls()}
           {variant === "placement" && spritePickerOpen && renderSpritePicker()}
-          <div className="panel-bezel">
+          {variant === "placement" && renderPlacementGridOverlay()}
+          <div
+            className={`panel-bezel ${variant === "placement" ? "placement-viewport-screen" : ""}`}
+            style={variant === "placement" ? {
+              transform: `translate3d(${placementViewport.x}px, ${placementViewport.y}px, 0) scale(${placementViewport.zoom})`,
+            } : undefined}
+          >
             <FramebufferCanvas framebuffer={framebuffer} />
           {placementPreviewNotice !== null && (
             <div className="preview-status-card" role="status">
@@ -3470,14 +3698,10 @@ export default function App() {
               className={`placement-screen-overlay labels-${placementLabelMode} ${placementOverlayVisible ? "" : "boxes-hidden"} ${placementTool === "select" ? "" : `drawing-tool drawing-${placementTool}`}`}
               aria-label="Placement selection overlay"
               tabIndex={0}
+              ref={placementScreenOverlayRef}
               onKeyDown={handlePlacementKeyDown}
               onPointerDown={startPlacementPrimitiveDraw}
-              style={{
-                "--placement-grid-minor-opacity": placementGridVisible ? placementGridStrength / 100 : 0,
-                "--placement-grid-major-opacity": placementGridVisible && placementMajorGridVisible ? (placementGridStrength + 6) / 100 : 0,
-              } as CSSProperties}
             >
-              <div className="placement-pixel-grid" aria-hidden="true" />
               {placementPrimitiveDraft !== null && (
                 <svg className="placement-primitive-draft" viewBox={`0 0 ${PLACEMENT_WIDTH} ${PLACEMENT_HEIGHT}`} aria-hidden="true">
                   {placementPrimitiveDraft.kind === "line" && (

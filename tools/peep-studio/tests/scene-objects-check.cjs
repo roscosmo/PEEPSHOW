@@ -109,6 +109,15 @@ app.whenReady().then(async () => {
     const p = c.getContext('2d').getImageData(0,0,c.width,c.height).data;
     let dark=0; for(let i=0;i<p.length;i+=4) if(p[i]<80 && p[i+1]<80 && p[i+2]<80) dark++; return dark; })()`);
   assert(pixelCount > 0, "Placement framebuffer must contain rendered objects");
+  assert(await evaluate("!!document.querySelector('.placement-viewport-controls')"));
+  assert(await evaluate("!!document.querySelector('.placement-stage-grid')"));
+  assert.equal(await evaluate("!!document.querySelector('.placement-viewport-screen .placement-stage-grid')"), false);
+  const initialViewportTransform = await evaluate("getComputedStyle(document.querySelector('.placement-viewport-screen')).transform");
+  await click('.placement-viewport-controls [aria-label="Zoom in"]');
+  assert.equal(await evaluate("document.querySelector('.placement-viewport-controls span').textContent.trim()"), "125%");
+  assert.notEqual(await evaluate("getComputedStyle(document.querySelector('.placement-viewport-screen')).transform"), initialViewportTransform);
+  await click('.placement-viewport-controls [aria-label="Fit screen"]');
+  assert.equal(await evaluate("document.querySelector('.placement-viewport-controls span').textContent.trim()"), "100%");
   const scene = () => documentResult.document.scenes.find(scene => scene.scene_id === "state_demo");
   const selectedId = await evaluate("document.querySelector('.placement-element-box.selected span').textContent");
   const object = () => scene().objects.find(object => object.object_id === selectedId);
@@ -187,15 +196,23 @@ app.whenReady().then(async () => {
   const count = mutations.length;
   await setControl("Object Y", 9999);
   assert.equal(mutations.length, count);
-  const pointer = async (selector, type, x, y) => {
+  const pointer = async (selector, type, x, y, button = 0) => {
     await evaluate(`(() => {
       const overlay = document.querySelector('.placement-screen-overlay').getBoundingClientRect();
       const target = ${selector === "window" ? "window" : `document.querySelector(${JSON.stringify(selector)})`};
-      target.dispatchEvent(new PointerEvent(${JSON.stringify(type)}, { bubbles: true, button: 0, pointerId: 1,
+      target.dispatchEvent(new PointerEvent(${JSON.stringify(type)}, { bubbles: true, button: ${button}, pointerId: 1,
         clientX: overlay.left + ${x + 0.5} / 168 * overlay.width, clientY: overlay.top + ${y + 0.5} / 144 * overlay.height }));
     })()`);
     await wait(100);
   };
+  const middlePanMutationCount = mutations.length;
+  const middlePanTransform = await evaluate("getComputedStyle(document.querySelector('.placement-viewport-screen')).transform");
+  await pointer('.placement-element-box.selected', 'pointerdown', 20, 20, 1);
+  await pointer('window', 'pointermove', 30, 20, 1);
+  await pointer('window', 'pointerup', 30, 20, 1);
+  assert.equal(mutations.length, middlePanMutationCount, 'Middle-dragging an object must pan the viewport without moving the object');
+  assert.notEqual(await evaluate("getComputedStyle(document.querySelector('.placement-viewport-screen')).transform"), middlePanTransform);
+  await click('.placement-viewport-controls [aria-label="Fit screen"]');
   // New geometry is authored through the same two-point tools, with exact visibility scope.
   await click('.placement-tool-palette .primitive-outline_rect');
   await pointer('.placement-screen-overlay', 'pointerdown', 30, 40);
