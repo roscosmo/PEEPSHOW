@@ -934,3 +934,30 @@ and whole-project readiness, then export the existing installation fixture
 unchanged for the normal USB round trip. No new fixture or firmware edits are
 requested. The backend's public build produces the same 2196 fixture bytes as
 the development encoder used for the recorded hardware pass.
+
+## Scene Memory and Independent Logic Design (2026-09-12)
+
+Follow [[Scene_Memory_and_Parallel_Logic_Design]] for the agreed direction and
+explicitly unresolved execution details. This is documentation only: no service
+API, command, schema, firmware or export capability changes are delivered here.
+
+- GUI can expose independent scene timer nodes through the existing binding,
+  handler and ordered-action commands. An optional local destination transitions
+  state; action-only handlers do not. No synthetic state or duplicated per-state
+  timer wiring is required. Timers remain one-shot with explicit restart, not
+  an implicitly supported fixed-cadence periodic mode.
+- Remember selection means entering the scene's own remembered state afresh,
+  with other instance data reset. The graph direction is a Remembered State
+  entry node with a visible default fallback, not generated ports on all states.
+- Scene resume retains the instance and remaining timers. It is distinct from
+  remembered selection, existing shell resume and persistence across reboot.
+- Parallel logic uses named regions, each with its own active state and entry,
+  sharing scene-owned objects. Event delivery, shared-write ordering, atomic
+  cross-region changes and resource limits need further specification before
+  execution support. Conflicting simultaneous property overrides remain errors.
+
+OS owns shared backend/runtime implementation. Studio should not create its own
+scene snapshot cache, parallel execution model or extra wire identifiers.
+GUI can continue timer authoring and scene-connection design using delivered
+capabilities; memory and region controls remain unavailable until their separate
+increments arrive. Multi-scene export restrictions remain unchanged.
