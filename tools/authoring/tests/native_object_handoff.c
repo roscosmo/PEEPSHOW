@@ -3,6 +3,8 @@
 #include <string.h>
 #include "ps_scene_render_model.h"
 #include "ps_hw6_object_development.h"
+#include "ps_hw6_object_latency.h"
+#define __DMB() ((void)0)
 typedef uint32_t UINT;
 typedef uint32_t ULONG;
 #define TX_SUCCESS 0U
@@ -20,6 +22,7 @@ typedef uint32_t ULONG;
 #define HAL_OK 0U
 static uint32_t ps_event_groups[4], ps_queues[9];
 volatile ps_hw6_object_development_probe_t g_ps_object_development_probe;
+volatile ps_hw6_object_latency_probe_t g_ps_object_latency_probe;
 static ps_scene_render_model_t ps_object_display_lease;
 static ps_object_waiting_program_t ps_object_waiting_lease;
 static uint32_t ps_object_waiting_lease_request;
@@ -45,6 +48,7 @@ static uint32_t now, queue_result, wait_result, render_result, mismatch;
 static uint32_t advance_calls, project_calls, send_calls, clock_elapsed;
 static uint32_t next_duration = 250;
 static uint32_t tx_time_get(void) { return now; }
+static uint32_t HAL_RCC_GetHCLKFreq(void) { return 24000000U; }
 static uint32_t PS_HW6_RTOS_MsToTicks(uint32_t ms) { return (ms + 9) / 10; }
 static uint32_t PS_SceneRuntime_SceneActivation(void) { return 42; }
 static uint32_t PS_SceneRuntime_AdvanceDevelopmentObjects(uint32_t ms)
@@ -76,11 +80,26 @@ static UINT tx_event_flags_get(uint32_t *group, ULONG flags, UINT op, ULONG *act
 int main(void)
 {
   now = 100;
+  PS_HW6_RTOS_ObjectLatencyBegin(3, 1, 1, 2);
+  assert(g_ps_object_latency_probe.active == 0);
+  g_ps_object_latency_probe.request = 1;
+  PS_HW6_RTOS_ObjectLatencyBegin(3, 1, 1, 2);
+  assert(g_ps_object_latency_probe.active == 1 && g_ps_object_latency_probe.request == 0);
+  assert(g_ps_object_latency_probe.tick[PS_OBJECT_LATENCY_RECEIVE] == 100);
+  PS_HW6_RTOS_ObjectLatencyBegin(4, 2, 0, 0);
+  assert(g_ps_object_latency_probe.button == 3 && g_ps_object_latency_probe.sequence == 1);
   assert(PS_HW6_RTOS_ObjectPresent() == 0);
+  assert(g_ps_object_latency_probe.render_token == g_ps_object_development_probe.render_request);
+  assert(g_ps_object_latency_probe.valid[PS_OBJECT_LATENCY_PRESENT_SEND] == 1);
+  assert(g_ps_object_latency_probe.hclk_hz[PS_OBJECT_LATENCY_PRESENT_SEND] == 24000000);
+  PS_HW6_RTOS_ObjectLatencyEnd(0, 1, 2);
+  assert(g_ps_object_latency_probe.complete == 1 && g_ps_object_latency_probe.active == 0);
+  assert(g_ps_object_latency_probe.scene_after == 2);
   assert(clock_elapsed == 1000 && g_ps_object_development_probe.next_tick == 125);
   now = 113;
   assert(PS_HW6_RTOS_ObjectPresent() == 0);
   assert(clock_elapsed == 1130 && g_ps_object_development_probe.state_id == 2);
+  assert(g_ps_object_latency_probe.tick[PS_OBJECT_LATENCY_PRESENT_SEND] == 100);
   next_duration = 0;
   assert(PS_HW6_RTOS_ObjectPresent() == 0 && g_ps_object_development_probe.next_tick == 0);
   assert(builds == 0);

@@ -225,10 +225,76 @@ path is 2424 bytes including the existing 512-byte reserve, leaving 1672 bytes
 of the 4096-byte runtime stack. This is not a measured hardware high-water mark.
 Physical multi-scene drawing, fresh-entry timing and STOP2 re-entry remain NOT RUN.
 
+## Labelled HOME/AWAY Hardware Fixture Prepared
+
+While Studio finishes its scene connections, OS supplies a development-only
+fixture from `build_object_development.py --scene-exits`. No GUI project is
+modified. The linked egg is 3440 bytes, package ID
+`dev.peepshow.fresh_scene_exit`, with HOME (scene 1) and AWAY (scene 2). The
+generator's internal AWAY scene ID is `visit`. Public multi-scene export remains
+disabled; this fixture never replaces the installed package.
+
+The scene label stays at the top, digits 1-2-3-4 advance every 400 ms below it,
+and the middle marker has fixed L/R labelled slots. L/R changes local selection
+once without restarting digits; selecting the current slot does nothing.
+Every fresh scene entry starts at digit 1, marker left, empty bottom slot and
+zero local move count. HOME A enters AWAY; AWAY B returns HOME. HOME B and AWAY A
+have no authored binding. HOME's bottom slot fills once after two seconds.
+AWAY's bottom slot stays empty and its six-second scene timer returns HOME,
+independent of L/R changes. Leaving HOME early must cancel its outgoing timer.
+
+Build and flash the matching firmware. Let boot finish, HOLD START for the shell
+MENU, halt, then run:
+
+```gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_object_scene_exits_enable.gdb
+continue
+```
+
+The helper checks APIs 4/22/2/1, linked size/package identity and shell/lease
+conditions before requesting mode 4. The old single-scene awake/LPBAM enable
+helpers refuse this linked fixture and point to the new helper. Reset ends the
+development session; HOLD START suspends it in the shell, kept awake. Do not
+force manual STOP2. A debugger disconnect is not a reset: reconnect without
+resetting/reflashing to preserve the test.
+
+Observe local continuity, input exits, automatic six-second return and the
+fresh two-second HOME reveal. Include an early HOME exit before its reveal,
+then leave controls released so automatic STOP2 and autonomous animation run.
+Wake with L/R before halting and print:
+
+```gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_object_scene_exits_prints.gdb
+```
+
+The print reports scene/instance IDs, replacement failures, selected-scene
+admission, local move count, timers, wake reconciliation and display completion.
+Snapshots are not live DMA frames. Require visible transitions and continuity;
+WFI/admission counters alone do not prove low-current physical playback.
+
+Native tests cover this exact fixture through real private owner raster
+admission (four steps, 400 ms, eight chunks, 4672 bytes) and nine complete panel
+frames across local changes, input exits, cancelled outgoing timers, timed
+return and fresh reveal. The production timer scheduler is exercised with a
+deterministic host clock. All new print expressions are checked against the ARM
+ELF types, including the 64-bit elapsed field.
+
+Subsequent hardware result: **functional PASS, responsiveness unresolved**.
+The user confirmed the HOME/AWAY behaviour, but reported an obvious delay from
+button press to object movement. Replacement attempts/failures were 3/0;
+candidate token/completion 18/18, lease/status 0/0; display request/completion
+17/17 with no fault. Both timer expiries applied without errors; six WFI returns
+were measured and reconciled. These counters do not measure input latency or
+prove low-current residency. See `V2_Object_Input_Latency_Investigation.md`.
+
+Verification: **347 authoring tests pass**, Debug firmware build and generated
+target-profile freshness pass. ARM stack analysis remains 2424 bytes including
+the 512-byte reserve, with 1672 bytes of runtime headroom. Only generated
+development content, helper scripts and host tests changed; production runtime
+behavior and service capabilities are unchanged.
+
 ## Next OS Work
 
-1. Import the GUI two-scene fixture at its supplied commit without enabling
-   public export, and prepare labelled development test instructions.
-2. Prove input/timer exits, fresh return, stale outgoing timer rejection and
-   LPBAM wake/re-entry on hardware using a clearly labelled two-scene fixture.
-3. Only then widen and advertise the installed/export subset to Studio.
+1. Measure and resolve the reported HOME/AWAY response delay.
+2. Repeat with Studio's actual two-scene project when delivered.
+3. Only after those results widen and advertise the installed/export subset.

@@ -1,5 +1,8 @@
 set pagination off
 printf "--- HW6 development V2 awake object scene ---\n"
+if (*(unsigned int *)(g_ps_object_development_egg + 36) == 0xb9c7cf95) && (*(unsigned int *)(g_ps_object_development_egg + 40) == 0x2f3539de)
+  printf "NOT armed: this build contains HOME/AWAY. Use __fw0_object_scene_exits_enable.gdb instead.\n"
+else
 if (g_ps_object_development_probe.api_version != 4) || (g_ps_scene_runtime_probe.api_version != 22) || (g_ps_audio_package_probe.api_version != 1)
   printf "NOT armed: this helper requires development/scene/audio-package APIs 4/22/1. Check the flashed ELF.\n"
 else
@@ -18,4 +21,5 @@ else
       printf "After observing the numbered sequence, A/B changes and timer reveal, halt and source __fw0_object_scene_awake_prints.gdb.\n"
     end
   end
+end
 end

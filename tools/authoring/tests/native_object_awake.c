@@ -23,6 +23,50 @@ static uint32_t DisplayRenderer_RecordLpbamCursorBounds(const ps_scene_render_el
 { (void)element; assert(0); return 0; }
 #include "object_raster_under_test.inc"
 
+static void sprite_loop_equivalence(void)
+{
+  uint8_t record[PS_EGG_ASSET_RECORD_SIZE] = {0}, payload[78];
+  uint8_t expected[DISPLAY_RENDERER_BUFFER_SIZE], actual[DISPLAY_RENDERER_BUFFER_SIZE];
+  ps_egg_sprite_catalog_t catalog = {record, payload, sizeof(payload), 1};
+  ps_scene_waiting_visual_bounds_t bounds = {0, 0, 17, 13};
+  const uint16_t xs[] = {0, 1, 7, 8, 79, 150, 151};
+  const uint16_t ys[] = {0, 1, 7, 8, 63, 130, 131};
+  uint32_t ix, iy, opaque, clear, x, y, count, expected_count;
+  record[4] = 17; record[6] = 13; record[8] = 3;
+  record[20] = 39; record[24] = 39; record[28] = 39;
+  for (x = 0; x < sizeof(payload); ++x) { payload[x] = (uint8_t)(x * 37U + 19U); }
+  s_display_candidate_catalog = &catalog;
+  for (opaque = 0; opaque < 2; ++opaque)
+  for (clear = 0; clear < 2; ++clear)
+  for (ix = 0; ix < sizeof(xs) / sizeof(xs[0]); ++ix)
+  for (iy = 0; iy < sizeof(ys) / sizeof(ys[0]); ++iy)
+  {
+    record[32] = opaque ? PS_EGG_ASSET_FLAG_OPAQUE : 0;
+    bounds.x = xs[ix]; bounds.y = ys[iy];
+    memset(expected, clear ? 0xAA : 0x55, sizeof(expected));
+    memcpy(actual, expected, sizeof(actual));
+    expected_count = 0;
+    for (y = 0; y < bounds.height; ++y)
+    for (x = 0; x < bounds.width; ++x)
+    {
+      uint32_t offset = y * 3 + x / 8;
+      uint8_t bit = (uint8_t)(128U >> (x % 8));
+      uint32_t owned = opaque || (payload[39 + offset] & bit);
+      uint32_t black = (payload[offset] & bit) != 0;
+      if (owned || clear)
+      { DisplayRenderer_SetLogicalPixelInBuffer(expected, bounds.x + x, bounds.y + y, owned && black); }
+      if (owned) { expected_count += black; }
+    }
+    assert(DisplayRenderer_ApplyPackageSprite(65537, &bounds, actual, sizeof(actual), clear, &count));
+    assert(count == expected_count && memcmp(actual, expected, sizeof(actual)) == 0);
+  }
+  bounds.x = 152;
+  memcpy(expected, actual, sizeof(expected));
+  assert(!DisplayRenderer_ApplyPackageSprite(65537, &bounds, actual, sizeof(actual), 1, &count));
+  assert(memcmp(actual, expected, sizeof(actual)) == 0);
+  s_display_candidate_catalog = NULL;
+}
+
 static ps_scene_render_model_t model, original;
 static void frame(FILE *output)
 {
@@ -80,6 +124,7 @@ int PS_OBJECT_AWAKE_MAIN(int argc, char **argv)
   uint32_t size, next, phase, epoch, status;
   FILE *output;
   assert(argc == 4);
+  sprite_loop_equivalence();
   size = read_blob(argv[1], candidate);
   set_hash(argv[1], candidate, size);
   status = PS_SceneRuntime_EnterDevelopmentObjects(candidate, size);

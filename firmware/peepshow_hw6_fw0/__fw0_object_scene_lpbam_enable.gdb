@@ -1,5 +1,8 @@
 set pagination off
 printf "--- HW6 development V2 autonomous object scene ---\n"
+if (*(unsigned int *)(g_ps_object_development_egg + 36) == 0xb9c7cf95) && (*(unsigned int *)(g_ps_object_development_egg + 40) == 0x2f3539de)
+  printf "NOT armed: this build contains HOME/AWAY. Use __fw0_object_scene_exits_enable.gdb instead.\n"
+else
 if (g_ps_object_lpbam_probe.api_version != 1) || (g_ps_object_development_probe.api_version != 4) || (g_ps_scene_runtime_probe.api_version != 22)
   printf "NOT armed: this helper requires LPBAM/development/scene APIs 1/4/22. Check the flashed ELF.\n"
 else
@@ -21,4 +24,5 @@ else
       printf "A debugger disconnect is not a reset: reconnect without resetting or reflashing to retain these results.\n"
     end
   end
+end
 end

@@ -21,7 +21,8 @@ class ObjectCandidateQueueTests(unittest.TestCase):
         start = source.index("static volatile uint32_t ps_candidate_busy;")
         end = source.index("volatile ps_hw6_object_lpbam_probe_t", start)
         (cls.work / "candidate_globals.inc").write_text(source[start:end], encoding="ascii")
-        (cls.work / "candidate_queue_under_test.inc").write_text("\n".join(
+        (cls.work / "candidate_queue_under_test.inc").write_text(
+            firmware_function(source, "PS_HW6_RTOS_ObjectLatencyStamp") + "\n" + "\n".join(
             firmware_function(source, "PS_HW6_RTOS_Candidate" + name) for name in
             ("Release", "Reap", "Display", "Send", "Check", "Begin", "OwnedCheck", "Service")) + "\n" +
             firmware_function(source, "PS_HW6_RTOS_InstalledObjectCheck") + "\n" +
@@ -88,6 +89,27 @@ class ObjectCandidateQueueTests(unittest.TestCase):
             capture_output=True, text=True, timeout=10, env=self.env)
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertIn("workflow rejection reasons passed", result.stdout)
+
+    def test_exact_byte_cache_preserves_raster_rejection_and_lease_lifetimes(self):
+        blob = build_development_egg_v2(dual_fixture_bundle())
+        path = self.work / "cache.egg"
+        path.write_bytes(blob)
+        path.with_suffix(".egg.sha256").write_bytes(hashlib.sha256(blob[:-40]).digest())
+        result = subprocess.run([str(self.exe), str(path), "cache"],
+            capture_output=True, text=True, timeout=10, env=self.env)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("candidate exact-byte cache passed", result.stdout)
+
+    def test_latency_formatter_does_not_require_inferior_strings(self):
+        script = (self.firmware / "__fw0_object_latency_prints.gdb").read_text(encoding="utf-8")
+        self.assertNotIn("%s", script)
+        self.assertNotIn("$arg2", script)
+        rows = [line.strip() for line in script.splitlines()
+                if line.strip().startswith("ps_object_latency_row ")]
+        self.assertEqual(18, len(rows))
+        for row in rows:
+            self.assertEqual(3, len(row.split()))
+            self.assertTrue(all(arg.isdecimal() for arg in row.split()[1:]))
 
 
 if __name__ == "__main__":

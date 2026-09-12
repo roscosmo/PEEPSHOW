@@ -7,6 +7,7 @@
 #define DISPLAY_RENDERER_H
 #include "ps_scene_object_display_admission.c"
 #include "ps_hw6_object_candidate.h"
+#include "ps_hw6_object_latency.h"
 #include "ps_package_workflow.h"
 
 typedef uint32_t UINT;
@@ -37,6 +38,9 @@ static uint32_t ps_package_validation_size, ps_package_validation_status;
 volatile ps_package_workflow_probe_t g_ps_package_workflow_probe;
 static struct { uint32_t ospi_kernel_hz; } g_ps_hw6_clock_policy_probe;
 static uint32_t HAL_RCC_GetHCLKFreq(void) { return 24000000U; }
+static uint32_t latency_tick = 100U;
+static uint32_t tx_time_get(void) { return latency_tick; }
+volatile ps_hw6_object_latency_probe_t g_ps_object_latency_probe;
 static struct { uint32_t runtime_active_capabilities; } g_ps_hw6_rtos_probe;
 static struct { uint32_t display_lpbam_active, display_lpbam_prearmed, display_complete; }
   g_ps_hw6_owner_probe = {0, 0, 1};
@@ -103,7 +107,64 @@ static void complete(uint32_t result)
   assert(g_ps_object_candidate_probe.status == result);
   assert(g_ps_object_candidate_probe.request_id == g_ps_object_candidate_probe.display_complete);
   assert(g_ps_object_candidate_probe.leased == 0 && ps_candidate_busy == 0);
-  assert(ps_candidate_blob == NULL && ps_candidate_size == 0 && ps_candidate_catalog.records == NULL);
+  assert(ps_candidate_blob == NULL && ps_candidate_size == 0);
+  assert(ps_candidate_cache_valid || ps_candidate_catalog.records == NULL);
+}
+
+static void cache_test(uint32_t size)
+{
+  uint32_t misses, hits, sent;
+  assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size, NULL) == 0);
+  assert(ps_candidate_cache_valid);
+  misses = ps_candidate_cache_misses;
+  hits = ps_candidate_cache_hits;
+  sent = sends;
+  assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size, NULL) == 0);
+  assert(ps_candidate_cache_misses == misses && ps_candidate_cache_hits == hits + 1);
+  assert(sends == sent + 1 && g_ps_object_candidate_probe.frames_composed > 0);
+  /* A different allocation with identical bytes is reusable; address equality
+   * alone is never sufficient. Metadata is not borrowed from the caller. */
+  memcpy(baseline, candidate, size);
+  assert(PS_HW6_RTOS_InstalledObjectCheck(baseline, size, NULL) == 0);
+  assert(ps_candidate_cache_hits == hits + 2);
+  candidate[size - 1] ^= 1;
+  sent = sends;
+  assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size, NULL) == 1);
+  assert(!ps_candidate_cache_valid && sends == sent);
+  candidate[size - 1] ^= 1;
+  assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size, NULL) == 0);
+  assert(ps_candidate_cache_misses == misses + 2);
+  /* Cache hits must still reject a bad raster and discard poisoned metadata. */
+  inject_missing_sprite = 1;
+  assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size, NULL) == 1);
+  assert(!ps_candidate_cache_valid && g_ps_object_candidate_probe.raster_status == 1);
+  inject_missing_sprite = 0;
+  assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size, NULL) == 0);
+  misses = ps_candidate_cache_misses;
+  assert(PS_HW6_ObjectCandidate_CheckScene(candidate, size, 1) == 0);
+  assert(ps_candidate_cache_misses == misses + 1); /* Different admission mode. */
+  assert(PS_HW6_ObjectCandidate_CheckScene(candidate, size, 2) == 1);
+  assert(!ps_candidate_cache_valid); /* Different scene cannot reuse scene 1. */
+  assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size - 1, NULL) == 1);
+  assert(!ps_candidate_cache_valid);
+  assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size, NULL) == 0);
+  delivery = 0; wait_status = 7;
+  assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size, NULL) == 1);
+  assert(ps_candidate_busy);
+  candidate[0] ^= 1;
+  assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size, NULL) == 1);
+  assert(ps_candidate_owned_bytes[0] != candidate[0]);
+  PS_HW6_RTOS_CandidateDisplay(queued);
+  PS_HW6_RTOS_CandidateReap();
+  assert(!ps_candidate_busy && !ps_candidate_cache_valid);
+  candidate[0] ^= 1;
+  delivery = 1; wait_status = 0;
+  assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size, NULL) == 0);
+  misses = ps_candidate_cache_misses;
+  PS_HW6_RTOS_CandidateBegin(candidate, size, 1); /* Borrowed diagnostic. */
+  complete(0);
+  assert(!ps_candidate_cache_valid && ps_candidate_cache_misses == misses + 1);
+  puts("candidate exact-byte cache passed");
 }
 
 static void workflow_test(uint32_t size)
@@ -199,6 +260,7 @@ int PS_OBJECT_CANDIDATE_MAIN(int argc, char **argv)
   {
     size = read_blob(argv[1], candidate);
     if (strcmp(argv[2], "workflow") == 0) { workflow_test(size); return 0; }
+    if (strcmp(argv[2], "cache") == 0) { cache_test(size); return 0; }
     goto installed_tests;
   }
   assert(PS_SceneRuntime_EnterDevelopmentObjects(baseline, baseline_size) == 0);
@@ -209,8 +271,16 @@ int PS_OBJECT_CANDIDATE_MAIN(int argc, char **argv)
   size = read_blob(argv[1], candidate);
   set_hash(argv[1], candidate, size);
 
+  g_ps_object_latency_probe.active = 1;
   PS_HW6_RTOS_CandidateBegin(candidate, size, 1);
   complete(0);
+  assert(g_ps_object_latency_probe.candidate_token == g_ps_object_candidate_probe.request_id);
+  assert(g_ps_object_latency_probe.candidate_count == 1);
+  assert(g_ps_object_latency_probe.valid[PS_OBJECT_LATENCY_DECODE_DONE] == 1);
+  assert(g_ps_object_latency_probe.valid[PS_OBJECT_LATENCY_PACK_DONE] == 1);
+  assert(g_ps_object_latency_probe.tick[PS_OBJECT_LATENCY_PACK_DONE] == 100);
+  g_ps_object_latency_probe.active = 0;
+  latency_tick = 200;
   assert(g_ps_object_candidate_probe.steps == 8 && g_ps_object_candidate_probe.quantum_ms == 400);
   assert(g_ps_object_candidate_probe.frames_composed == 9);
   assert(g_ps_object_candidate_probe.chunks == 16 && g_ps_object_candidate_probe.bytes == 9344);
@@ -218,6 +288,8 @@ int PS_OBJECT_CANDIDATE_MAIN(int argc, char **argv)
 
   PS_HW6_RTOS_CandidateBegin(candidate, size, 2);
   complete(1);
+  assert(g_ps_object_latency_probe.candidate_count == 1);
+  assert(g_ps_object_latency_probe.tick[PS_OBJECT_LATENCY_PACK_DONE] == 100);
   assert(g_ps_object_candidate_probe.profile_status == 0 && g_ps_object_candidate_probe.raster_status == 1);
   assert(g_ps_object_candidate_probe.payload_reason == PS_LPBAM_ADMISSION_REASON_BUILD);
   assert(g_ps_object_candidate_probe.frames_composed == 0);

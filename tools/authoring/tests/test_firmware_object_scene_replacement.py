@@ -72,3 +72,18 @@ class ObjectSceneReplacementTests(unittest.TestCase):
                      "__fw0_object_scene_lpbam_enable.gdb"):
             self.assertIn("g_ps_object_development_probe.api_version != 4",
                           (self.firmware / name).read_text())
+
+    def test_labelled_hardware_fixture_real_owner_admission(self):
+        from build_object_development import scene_exit_fixture_bundle
+        blob = build_development_egg_v2(scene_exit_fixture_bundle())
+        self.assertEqual(3440, len(blob))
+        path = self.work / "hardware.egg"
+        path.write_bytes(blob)
+        path.with_suffix(".egg.sha256").write_bytes(hashlib.sha256(blob[:-40]).digest())
+        result = subprocess.run([str(self.exe), str(path), "hardware"], capture_output=True,
+                                text=True, timeout=20, env=self.env)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        helper = (self.firmware / "__fw0_object_scene_exits_enable.gdb").read_text()
+        self.assertIn("set g_ps_object_development_request = 4", helper)
+        for offset in (36, 40):
+            self.assertIn(f"0x{int.from_bytes(blob[offset:offset + 4], 'little'):08x}", helper)

@@ -26,12 +26,57 @@ static void source_unchanged(void)
   assert(PS_SceneRuntime_TakeShellExitRequest() == 0);
 }
 
+static void hardware_fixture(void)
+{
+  uint32_t next, status;
+  PS_SceneRuntime_SetObjectSceneAdmission(PS_HW6_RTOS_ObjectSceneCheck);
+  status = PS_SceneRuntime_EnterDevelopmentSceneSet(candidate, 3440);
+  if (status != 0)
+  {
+    fprintf(stderr, "entry=%u loader=%u candidate=%u profile=%u reason=%u graph=%u raster=%u payload=%u\n",
+      status, g_ps_egg_validation_probe.reason, g_ps_object_candidate_probe.status,
+      g_ps_object_candidate_probe.profile_status, g_ps_object_candidate_probe.profile_reason,
+      g_ps_object_candidate_probe.graph_status, g_ps_object_candidate_probe.raster_status,
+      g_ps_object_candidate_probe.payload_reason);
+  }
+  assert(status == 0);
+  assert(g_ps_object_candidate_probe.chunks == 8);
+  assert(g_ps_object_candidate_probe.bytes == 4672);
+  assert(PS_SceneRuntime_AdvanceDevelopmentObjects(650) == 0);
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 4) == PS_SCENE_RUNTIME_INPUT_APPLIED);
+  assert(g_ps_object_candidate_probe.requested_scene == 1);
+  assert(s_ps_object_graph.variables[0] == 1);
+  assert(s_ps_object_graph.objects.elapsed_ms == 650);
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 1) == PS_SCENE_RUNTIME_INPUT_APPLIED);
+  assert(g_ps_scene_runtime_probe.scene_id == 2 && g_ps_scene_runtime_probe.state_id == 1);
+  assert(s_ps_object_graph.variables[0] == 0 && s_ps_object_graph.objects.elapsed_ms == 0);
+  assert(PS_SceneRuntime_AdvanceDevelopmentObjects(900) == 0);
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 4) == PS_SCENE_RUNTIME_INPUT_APPLIED);
+  assert(g_ps_object_candidate_probe.requested_scene == 2);
+  assert(s_ps_object_graph.objects.elapsed_ms == 900);
+  assert(PS_SceneRuntime_HandleStateSceneInput(1, 2) == PS_SCENE_RUNTIME_INPUT_APPLIED);
+  assert(g_ps_scene_runtime_probe.scene_id == 1 && g_ps_scene_runtime_probe.state_id == 1);
+  assert(s_ps_object_graph.variables[0] == 0 && s_ps_object_graph.objects.elapsed_ms == 0);
+  assert(PS_SceneRuntime_ProjectDevelopmentObjects(&model, &next) == 0);
+  assert(s_ps_object_snapshot.objects[0].step == 0);
+  assert(s_ps_object_snapshot.objects[1].effective.x == 32);
+  assert((s_ps_object_snapshot.objects[2].effective.flags & 1) == 0);
+  assert(!ps_candidate_busy);
+  puts("labelled HOME/AWAY fixture: real owner raster admission and fresh replacement passed");
+}
+
 int main(int argc, char **argv)
 {
   uint32_t size, result, next, trial, token;
-  assert(argc == 2);
+  assert(argc == 2 || argc == 3);
   size = read_blob(argv[1], candidate);
   set_hash(argv[1], candidate, size);
+  if (argc == 3)
+  {
+    assert(size == 3440);
+    hardware_fixture();
+    return 0;
+  }
   assert(PS_SceneRuntime_EnterDevelopmentObjects(candidate, size) == 1);
   assert(PS_SceneRuntime_EnterDevelopmentSceneSet(candidate, size) == 1);
   PS_SceneRuntime_SetObjectSceneAdmission(PS_HW6_RTOS_ObjectSceneCheck);

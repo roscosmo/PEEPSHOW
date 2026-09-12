@@ -273,41 +273,32 @@ static uint32_t DisplayRenderer_ApplyPackageSprite(
     return 0UL;
   }
 
-  if (clear_bounds != 0UL)
-  {
-    for (y = 0U; y < frame.height; ++y)
-    {
-      for (x = 0U; x < frame.width; ++x)
-      {
-        DisplayRenderer_SetLogicalPixelInBuffer(
-          destination,
-          (uint16_t)(bounds->x + x),
-          (uint16_t)(bounds->y + y),
-          0UL);
-      }
-    }
-  }
-
+  /* Bounds were checked once above. A logical row walks upward through panel
+   * rows; its destination bit is constant. Clear transparent pixels in this
+   * same pass when requested, preserving opaque white and mask semantics. */
   for (y = 0U; y < frame.height; ++y)
   {
+    uint32_t source_row = (uint32_t)y * frame.row_stride_bytes;
+    uint32_t panel_x = (uint32_t)bounds->y + y;
+    uint32_t target = ((DISPLAY_RENDERER_WIDTH - 1UL - bounds->x) * LINE_WIDTH) +
+                      (panel_x >> 3U);
+    uint8_t target_bit = (uint8_t)(1U << (panel_x & 7U));
     for (x = 0U; x < frame.width; ++x)
     {
       uint8_t bit = (uint8_t)(0x80U >> (x & 7U));
-      uint32_t offset = ((uint32_t)y * frame.row_stride_bytes) +
-                        ((uint32_t)x >> 3U);
+      uint32_t offset = source_row + ((uint32_t)x >> 3U);
       uint32_t owned = (frame.opaque != 0UL) ? 1UL :
         (((frame.mask[offset] & bit) != 0U) ? 1UL : 0UL);
       uint32_t black = ((frame.pixels[offset] & bit) != 0U) ? 1UL : 0UL;
 
       if (owned != 0UL)
       {
-        DisplayRenderer_SetLogicalPixelInBuffer(
-          destination,
-          (uint16_t)(bounds->x + x),
-          (uint16_t)(bounds->y + y),
-          black);
+        if (black != 0UL) { destination[target] &= (uint8_t)~target_bit; }
+        else { destination[target] |= target_bit; }
         count += black;
       }
+      else if (clear_bounds != 0UL) { destination[target] |= target_bit; }
+      target -= LINE_WIDTH;
     }
   }
   if (black_pixels != NULL)

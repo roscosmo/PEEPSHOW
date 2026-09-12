@@ -22,6 +22,7 @@
 #include "ps_scene_runtime.h"
 #include "ps_hw6_object_development.h"
 #include "ps_hw6_object_candidate.h"
+#include "ps_hw6_object_latency.h"
 #include "ps_scene_object_graph.h"
 #include "ps_scene_object_display_admission.h"
 #include "ps_storage_filex_levelx.h"
@@ -483,6 +484,49 @@ static uint32_t PS_HW6_RTOS_InstalledObjectCheck(const uint8_t *blob,
 static UINT PS_HW6_RTOS_InstalledObjectLaunch(void);
 
 volatile uint32_t g_ps_object_development_request;
+volatile ps_hw6_object_latency_probe_t g_ps_object_latency_probe = { .api_version = 1UL };
+
+static void PS_HW6_RTOS_ObjectLatencyStamp(uint32_t stage)
+{
+  if ((g_ps_object_latency_probe.active != 0UL) && (stage < PS_OBJECT_LATENCY_STAGE_COUNT))
+  {
+    g_ps_object_latency_probe.tick[stage] = (uint32_t)tx_time_get();
+    g_ps_object_latency_probe.hclk_hz[stage] = HAL_RCC_GetHCLKFreq();
+    g_ps_object_latency_probe.valid[stage] = 1UL;
+  }
+}
+
+static void PS_HW6_RTOS_ObjectLatencyBegin(uint32_t button, uint32_t scene,
+  uint32_t lp_enabled, uint32_t wfi_returns)
+{
+  uint32_t sequence = g_ps_object_latency_probe.sequence;
+  if ((g_ps_object_latency_probe.request == 0UL) ||
+      (g_ps_object_latency_probe.active != 0UL) || (sequence == UINT32_MAX)) { return; }
+  (void)memset((void *)&g_ps_object_latency_probe, 0, sizeof(g_ps_object_latency_probe));
+  g_ps_object_latency_probe.api_version = 1UL;
+  g_ps_object_latency_probe.sequence = sequence + 1UL;
+  g_ps_object_latency_probe.button = button;
+  g_ps_object_latency_probe.scene_before = scene;
+  g_ps_object_latency_probe.lp_enabled = lp_enabled;
+  g_ps_object_latency_probe.wfi_returns = wfi_returns;
+  g_ps_object_latency_probe.tick_hz = TX_TIMER_TICKS_PER_SECOND;
+  g_ps_object_latency_probe.panel_status = UINT32_MAX;
+  g_ps_object_latency_probe.active = 1UL;
+  PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_RECEIVE);
+}
+
+static void PS_HW6_RTOS_ObjectLatencyEnd(uint32_t status, uint32_t result, uint32_t scene)
+{
+  if (g_ps_object_latency_probe.active == 0UL) { return; }
+  PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_COMPLETE);
+  g_ps_object_latency_probe.status = status;
+  g_ps_object_latency_probe.event_result = result;
+  g_ps_object_latency_probe.scene_after = scene;
+  g_ps_object_latency_probe.active = 0UL;
+  __DMB();
+  g_ps_object_latency_probe.complete = 1UL;
+}
+
 volatile ps_hw6_object_development_probe_t g_ps_object_development_probe =
 {
   .api_version = PS_HW6_OBJECT_DEVELOPMENT_API_VERSION,
@@ -511,6 +555,15 @@ static ps_scene_object_graph_t ps_candidate_graph;
 static ps_object_waiting_workspace_t ps_candidate_waiting_workspace;
 static ps_object_waiting_program_t ps_candidate_program;
 static ps_egg_sprite_catalog_t ps_candidate_catalog;
+/* The retained descriptor borrows only owned_bytes, never caller storage.
+ * It is reusable only after exact byte comparison and successful completion. */
+static uint32_t ps_candidate_cache_valid;
+static uint32_t ps_candidate_cache_size;
+static uint32_t ps_candidate_cache_mode;
+static uint32_t ps_candidate_cache_scene;
+static ps_egg_v2_profile_result_t ps_candidate_cache_profile;
+static uint32_t ps_candidate_cache_hits;
+static uint32_t ps_candidate_cache_misses;
 static ps_object_display_workspace_t ps_candidate_display_workspace;
 static ps_object_display_result_t ps_candidate_display_result;
 volatile uint32_t g_ps_object_candidate_request;
@@ -2189,13 +2242,25 @@ static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
     if ((PS_SceneRuntime_DevelopmentObjectsActive() != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_lifecycle != PS_HW6_RUNTIME_LIFECYCLE_RUNNING))
     { return; }
+    if ((event == PS_INPUT_BUTTON_LOGICAL_EVENT_PRESS) &&
+        (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL) &&
+        (g_ps_object_candidate_probe.leased == 0UL) &&
+        (g_ps_object_development_probe.lease_fault == 0UL))
+    {
+      PS_HW6_RTOS_ObjectLatencyBegin(button_id, g_ps_scene_runtime_probe.scene_id,
+        g_ps_object_lpbam_probe.enabled, g_ps_object_lpbam_probe.physical_count);
+    }
     if ((PS_SceneRuntime_DevelopmentObjectsActive() != 0UL) &&
         (PS_HW6_RTOS_ObjectAdvance((uint32_t)tx_time_get()) != 0UL))
     {
       PS_HW6_RTOS_RuntimePackageReturn();
+      PS_HW6_RTOS_ObjectLatencyEnd(TX_CALLER_ERROR, PS_SCENE_RUNTIME_INPUT_ERROR,
+        g_ps_scene_runtime_probe.scene_id);
       return;
     }
+    PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_ADVANCE);
     scene_result = PS_SceneRuntime_HandleStateSceneInput(event, button_id);
+    PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_EVENT_DONE);
     if (scene_result == PS_SCENE_RUNTIME_INPUT_APPLIED)
     {
       PS_HW6_RTOS_RuntimeInteractionRefresh(event,
@@ -2204,6 +2269,7 @@ static void PS_HW6_RTOS_HandleRuntimeInput(const ULONG *message)
       PS_HW6_RTOS_RuntimeStateTimersSync((uint32_t)tx_time_get(), 0UL);
     }
     status = PS_HW6_RTOS_CompleteStateSceneEvent(scene_result);
+    PS_HW6_RTOS_ObjectLatencyEnd(status, scene_result, g_ps_scene_runtime_probe.scene_id);
   }
 
   g_ps_hw6_rtos_probe.runtime_input_event_count++;
@@ -8265,6 +8331,7 @@ static UINT PS_HW6_RTOS_ObjectPresent(void)
   uint32_t next_ms;
   uint32_t now_tick = (uint32_t)tx_time_get();
   UINT status;
+  PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_PRESENT_BEGIN);
   if ((g_ps_object_development_probe.lease_fault != 0UL) ||
       (PS_HW6_RTOS_ObjectAdvance(now_tick) != 0UL) ||
       (PS_SceneRuntime_ProjectDevelopmentObjects(&ps_object_display_lease,
@@ -8305,8 +8372,11 @@ static UINT PS_HW6_RTOS_ObjectPresent(void)
   message[0] = PS_HW6_RTOS_OBJECT_DISPLAY_MAGIC;
   message[1] = PS_HW6_RTOS_OWNER_DISPLAY;
   message[2] = ++g_ps_object_development_probe.render_request;
+  if (g_ps_object_latency_probe.active != 0UL)
+  { g_ps_object_latency_probe.render_token = (uint32_t)message[2]; }
   message[3] = PS_SceneRuntime_SceneActivation();
   g_ps_object_development_probe.render_status = PS_HW6_RTOS_STATUS_NOT_RUN;
+  PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_PRESENT_SEND);
   status = tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_DISPLAY], message, TX_NO_WAIT);
   g_ps_object_development_probe.queue_status = status;
   if (status != TX_SUCCESS) { return status; }
@@ -8326,10 +8396,18 @@ static UINT PS_HW6_RTOS_ObjectPresent(void)
 
 static void PS_HW6_RTOS_CandidateRelease(void)
 {
+  if ((ps_candidate_blob != ps_candidate_owned_bytes) ||
+      (g_ps_object_candidate_probe.status != 0UL) ||
+      (g_ps_object_candidate_probe.wait_status != TX_SUCCESS) ||
+      (g_ps_object_candidate_probe.display_complete != g_ps_object_candidate_probe.request_id))
+  { ps_candidate_cache_valid = 0UL; }
   ps_candidate_blob = NULL;
   ps_candidate_size = 0UL;
-  (void)memset(&ps_candidate_catalog, 0, sizeof(ps_candidate_catalog));
-  (void)memset(&ps_candidate_scene, 0, sizeof(ps_candidate_scene));
+  if (ps_candidate_cache_valid == 0UL)
+  {
+    (void)memset(&ps_candidate_catalog, 0, sizeof(ps_candidate_catalog));
+    (void)memset(&ps_candidate_scene, 0, sizeof(ps_candidate_scene));
+  }
   (void)memset(&ps_candidate_graph, 0, sizeof(ps_candidate_graph));
   (void)memset(&ps_candidate_waiting_workspace, 0, sizeof(ps_candidate_waiting_workspace));
   ps_candidate_sent = 0UL;
@@ -8362,6 +8440,8 @@ static void PS_HW6_RTOS_CandidateDisplay(const ULONG *message)
 
   __DMB();
   g_ps_object_candidate_probe.display_started = token;
+  if (g_ps_object_latency_probe.candidate_token == token)
+  { PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_DISPLAY_START); }
   if ((g_ps_hw6_owner_probe.display_complete == 0UL) ||
       (g_ps_hw6_owner_probe.display_lpbam_active != 0UL) ||
       (g_ps_hw6_owner_probe.display_lpbam_prearmed != 0UL))
@@ -8378,9 +8458,13 @@ static void PS_HW6_RTOS_CandidateDisplay(const ULONG *message)
     PS_HW6_RTOS_DISPLAY_CLOCK_REASON_TRANSFER, PS_HW6_RTOS_DISPLAY_CLOCK_TRANSFER_CAPABILITIES);
   if (g_ps_object_candidate_probe.clock_status == TX_SUCCESS)
   {
+    if (g_ps_object_latency_probe.candidate_token == token)
+    { PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_DISPLAY_CLOCK); }
     g_ps_object_candidate_probe.display_status = PS_ObjectDisplay_CheckWaiting(
       &ps_candidate_program, &ps_candidate_catalog, &ps_candidate_display_workspace,
       &ps_candidate_display_result);
+    if (g_ps_object_latency_probe.candidate_token == token)
+    { PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_PACK_DONE); }
     g_ps_object_candidate_probe.projection_status = ps_candidate_display_result.projection_status;
     g_ps_object_candidate_probe.raster_status = ps_candidate_display_result.raster_status;
     g_ps_object_candidate_probe.failed_step = ps_candidate_display_result.failed_step;
@@ -8394,6 +8478,8 @@ static void PS_HW6_RTOS_CandidateDisplay(const ULONG *message)
     PS_HW6_RTOS_DISPLAY_CLOCK_REASON_RELEASE, 0UL);
   if (g_ps_object_candidate_probe.clock_release_status != TX_SUCCESS)
   { g_ps_object_candidate_probe.display_status = 1UL; }
+  if (g_ps_object_latency_probe.candidate_token == token)
+  { PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_DISPLAY_RELEASE); }
 
   /* No candidate access after this publication, including after set preempts us.
    * The event is a notification; only the matching token releases ownership. */
@@ -8416,6 +8502,7 @@ static void PS_HW6_RTOS_CandidateSend(void)
   message[3] = ~message[2];
   __DMB();
   ps_candidate_sent = 1UL;
+  PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_CANDIDATE_SEND);
   status = tx_queue_send(&ps_queues[PS_HW6_RTOS_OWNER_DISPLAY], message, TX_NO_WAIT);
   g_ps_object_candidate_probe.queue_status = status;
   if (status != TX_SUCCESS)
@@ -8455,6 +8542,11 @@ static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
   (void)memset((void *)&g_ps_object_candidate_probe, 0, sizeof(g_ps_object_candidate_probe));
   g_ps_object_candidate_probe.api_version = PS_HW6_OBJECT_CANDIDATE_API_VERSION;
   g_ps_object_candidate_probe.request_id = token + 1UL;
+  if (g_ps_object_latency_probe.active != 0UL)
+  {
+    g_ps_object_latency_probe.candidate_token = token + 1UL;
+    g_ps_object_latency_probe.candidate_count++;
+  }
   g_ps_object_candidate_probe.mode = mode;
   g_ps_object_candidate_probe.requested_scene = scene_id;
   g_ps_object_candidate_probe.leased = 1UL;
@@ -8480,18 +8572,42 @@ static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
     PS_HW6_RTOS_RUNTIME_CLOCK_REACTIVE_CAPABILITIES);
   if (g_ps_object_candidate_probe.runtime_clock_status == TX_SUCCESS)
   {
-    if (mode == 3UL)
+    PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_CLOCK_READY);
+    if ((ps_candidate_cache_valid != 0UL) &&
+        (blob == ps_candidate_owned_bytes) && (size == ps_candidate_cache_size) &&
+        (mode == ps_candidate_cache_mode) && (scene_id == ps_candidate_cache_scene))
     {
-      g_ps_object_candidate_probe.profile_status = PS_EggStateLoader_DecodeV2SceneCandidate(
-        ps_candidate_blob, ps_candidate_size, scene_id,
-        &ps_candidate_scene, &ps_candidate_catalog, &profile);
+      profile = ps_candidate_cache_profile;
+      g_ps_object_candidate_probe.profile_status = 0UL;
+      ps_candidate_cache_hits++;
     }
     else
     {
-      g_ps_object_candidate_probe.profile_status = PS_EggStateLoader_DecodeV2Candidate(
-        ps_candidate_blob, ps_candidate_size, &ps_candidate_scene, &ps_candidate_catalog, &profile);
+      ps_candidate_cache_valid = 0UL;
+      ps_candidate_cache_misses++;
+      if (mode == 3UL)
+      {
+        g_ps_object_candidate_probe.profile_status = PS_EggStateLoader_DecodeV2SceneCandidate(
+          ps_candidate_blob, ps_candidate_size, scene_id,
+          &ps_candidate_scene, &ps_candidate_catalog, &profile);
+      }
+      else
+      {
+        g_ps_object_candidate_probe.profile_status = PS_EggStateLoader_DecodeV2Candidate(
+          ps_candidate_blob, ps_candidate_size, &ps_candidate_scene, &ps_candidate_catalog, &profile);
+      }
+      if ((g_ps_object_candidate_probe.profile_status == 0UL) &&
+          (blob == ps_candidate_owned_bytes) && (mode != 2UL))
+      {
+        ps_candidate_cache_size = size;
+        ps_candidate_cache_mode = mode;
+        ps_candidate_cache_scene = scene_id;
+        ps_candidate_cache_profile = profile;
+        ps_candidate_cache_valid = 1UL;
+      }
     }
     g_ps_object_candidate_probe.profile_reason = profile.reason;
+    PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_DECODE_DONE);
     g_ps_object_candidate_probe.loader_reason = profile.loader_reason;
     g_ps_object_candidate_probe.scene_id = profile.scene_id;
     g_ps_object_candidate_probe.scene_count = profile.scene_count;
@@ -8506,11 +8622,13 @@ static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
           &ps_candidate_program, &ps_candidate_waiting_workspace);
         g_ps_object_candidate_probe.steps = ps_candidate_program.step_count;
         g_ps_object_candidate_probe.quantum_ms = ps_candidate_program.quantum_ms;
+        PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_SCHEDULE_DONE);
       }
     }
   }
   g_ps_object_candidate_probe.runtime_clock_release_status = PS_HW6_RTOS_RequestRuntimeClockCapabilities(
     PS_HW6_RTOS_RUNTIME_CLOCK_REASON_RELEASE, 0UL);
+  PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_RUNTIME_RELEASED);
   if ((g_ps_object_candidate_probe.schedule_status != 0UL) ||
       (g_ps_object_candidate_probe.runtime_clock_release_status != TX_SUCCESS))
   {
@@ -8540,9 +8658,17 @@ static uint32_t PS_HW6_RTOS_CandidateOwnedCheck(const uint8_t *blob,
   if ((ps_candidate_busy != 0UL) || (blob == NULL) || (size == 0UL) ||
       (size > sizeof(ps_candidate_owned_bytes))) { return 1UL; }
   token = g_ps_object_candidate_probe.request_id;
+  PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_COPY_BEGIN);
   /* The display may finish after our bounded wait. It borrows only this private
    * copy, never the install transport buffer or the live package's bytes. */
-  (void)memcpy(ps_candidate_owned_bytes, blob, size);
+  if ((ps_candidate_cache_valid == 0UL) || (size != ps_candidate_cache_size) ||
+      (mode != ps_candidate_cache_mode) || (scene_id != ps_candidate_cache_scene) ||
+      (memcmp(ps_candidate_owned_bytes, blob, size) != 0))
+  {
+    ps_candidate_cache_valid = 0UL;
+    (void)memcpy(ps_candidate_owned_bytes, blob, size);
+  }
+  PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_COPY_DONE);
   PS_HW6_RTOS_CandidateCheck(ps_candidate_owned_bytes, size, mode, scene_id, objects);
   status = ((g_ps_object_candidate_probe.request_id != token) &&
     (ps_candidate_busy == 0UL) && (g_ps_object_candidate_probe.status == 0UL) &&
@@ -8552,6 +8678,7 @@ static uint32_t PS_HW6_RTOS_CandidateOwnedCheck(const uint8_t *blob,
       (PS_HW6_RTOS_RequestRuntimeClockCapabilities(
         PS_HW6_RTOS_RUNTIME_CLOCK_REASON_REACTIVE_TRANSACTION, capabilities) != TX_SUCCESS))
   { status = 1UL; }
+  PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_ADMISSION_RETURN);
   return status;
 }
 
@@ -11618,7 +11745,17 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
           if (PS_HW6_RTOS_RequestDisplayClockCapabilities(
                 PS_HW6_RTOS_DISPLAY_CLOCK_REASON_TRANSFER,
                 PS_HW6_RTOS_DISPLAY_CLOCK_TRANSFER_CAPABILITIES) == TX_SUCCESS)
-          { result = PS_HW6_DisplayOwner_RenderDevelopmentObjects(&ps_object_display_lease); }
+          {
+            if (g_ps_object_latency_probe.render_token == (uint32_t)message[2])
+            { PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_PANEL_START); }
+            result = PS_HW6_DisplayOwner_RenderDevelopmentObjects(&ps_object_display_lease);
+            if ((g_ps_object_latency_probe.active != 0UL) &&
+                (g_ps_object_latency_probe.render_token == (uint32_t)message[2]))
+            {
+              g_ps_object_latency_probe.panel_status = (uint32_t)result;
+              PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_PANEL_DONE);
+            }
+          }
           if (ps_object_waiting_lease_request == (uint32_t)message[2])
           {
             if (g_ps_object_lpbam_probe.enabled != 0UL)
@@ -11636,6 +11773,8 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
             }
             g_ps_object_lpbam_prepare_probe.complete_count = g_ps_object_lpbam_prepare_probe.request_count;
           }
+          if (g_ps_object_latency_probe.render_token == (uint32_t)message[2])
+          { PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_PUBLISH_DONE); }
           (void)PS_HW6_RTOS_RequestDisplayClockCapabilities(
             PS_HW6_RTOS_DISPLAY_CLOCK_REASON_RELEASE, 0UL);
           PS_HW6_RTOS_ResetDisplayCursorBlink((uint32_t)tx_time_get());

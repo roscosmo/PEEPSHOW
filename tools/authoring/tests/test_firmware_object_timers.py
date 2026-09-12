@@ -17,6 +17,39 @@ from peepshow_authoring.project import load_project
 
 
 class ObjectTimerTests(unittest.TestCase):
+    def test_labelled_scene_exit_fixture_timing_and_panel_pixels(self):
+        from build_object_development import scene_exit_fixture_bundle
+        bundle = scene_exit_fixture_bundle()
+        actual = self.run_timer(19, bundle=bundle)
+        frames = {frame.frame_id: frame for frame in bundle.frames}
+        expected = bytearray()
+        for scene_index, phase, marker_x, revealed in (
+                (0, 0, 32, False), (0, 1, 120, False), (0, 2, 32, False),
+                (1, 0, 32, False), (1, 1, 120, False), (1, 1, 120, False),
+                (0, 0, 32, False), (0, 1, 32, True), (0, 0, 32, False)):
+            logical = bytearray(3024)
+            for index, obj in enumerate(bundle.scenes[scene_index]["objects"]):
+                defaults = obj["defaults"]
+                if not (revealed if index == 2 else defaults["visible"]):
+                    continue
+                left = marker_x if index == 1 else defaults["x"]
+                top = defaults["y"]
+                frame = None
+                if obj["kind"] == "sprite":
+                    ref = bundle.animations[0]["frame_refs"][phase] if index == 0 else defaults["visual_ref"]
+                    frame = frames[ref]
+                for y in range(obj["height"]):
+                    for x in range(obj["width"]):
+                        if frame is not None:
+                            offset = y * frame.row_stride_bytes + x // 8
+                            black = bool(frame.pixels[offset] & frame.mask[offset] & (128 >> (x % 8)))
+                        else:
+                            black = obj["kind"] == "filled_rect" or x in (0, obj["width"] - 1) or y in (0, obj["height"] - 1)
+                        if black:
+                            logical[(top + y) * 21 + (left + x) // 8] |= 128 >> ((left + x) % 8)
+            expected.extend(panel_pixels(logical))
+        self.assertEqual(expected, actual)
+
     def test_multiscene_input_and_timer_ownership_and_rejected_exit(self):
         from test_firmware_object_scene_replacement import replacement_bundle
         for mode in (16, 17, 18):
