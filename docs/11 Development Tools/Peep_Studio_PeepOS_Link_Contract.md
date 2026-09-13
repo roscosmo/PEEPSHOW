@@ -590,6 +590,27 @@ exact font ID, glyph cell, character set, scaling bounds, ink/background, and
 one-frame output contract through
 `service.hello.state_scene_presentation.build_time_text`.
 
+Runtime system-font text is a separate requirement. PeepOS system text should be
+authored as scene objects, not as built sprite assets, because the OS already
+owns the font map and runtime text drawing path. Peep Studio must not rasterize
+system-font labels into asset catalog entries as a workaround. To enable the
+Placement Type tool, the backend must advertise runtime text authoring through
+`service.hello.state_scene_presentation.runtime_text` and expose supported
+scene-object commands for creating and editing text records with at least:
+`object_id`, text content, `font_id`, position, visibility, layer/z order, scale
+or font size if supported, and any alignment/bounds fields accepted by the OS.
+Baked text sprites remain valid only for custom/user-font or explicitly
+rasterized text assets where Studio performs conversion and the resulting image
+needs to be inspected, modified, reused, or animated like other sprite assets.
+Those baked custom-font assets are emitted as ordinary PNG-backed
+`masked_1bpp` sprite assets; PeepOS and the shared backend do not need to know
+which font was used after Studio has rasterized the pixels.
+Imported custom fonts are tracked by Peep Studio in the project-local
+`assets/fonts/catalog.json` sidecar and copied under `assets/fonts/`. This
+sidecar is editor-owned metadata, not a package/compiler contract. Text sprites
+generated from those fonts enter the shared backend only as ordinary PNG sprite
+assets through `asset.upsert`.
+
 Service API version 16 adds ordered `set_element_visibility`,
 `set_element_position`, and `set_element_frame` route actions. Each action
 targets the destination state's retained render model. The service rejects

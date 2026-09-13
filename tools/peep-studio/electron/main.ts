@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeImage } from "electron";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { cp, mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
@@ -9,6 +9,14 @@ import { readThumbnailAudio } from "./audioThumbnail.js";
 const PROTOCOL_VERSION = 1;
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_SOURCE_IMAGE_DIMENSION = 4096;
+const MAX_GENERATED_PNG_BYTES = 16 * 1024 * 1024;
+
+type FontAssetRecord = {
+  font_id: string;
+  display_name: string;
+  source_path: string;
+  source_format: "ttf" | "otf";
+};
 
 type PendingRequest = {
   resolve: (value: unknown) => void;
@@ -199,6 +207,88 @@ async function uniqueAssetPath(projectPath: string, sourcePath: string, fallback
   throw new Error("Could not choose a unique asset filename");
 }
 
+function fontCatalogPath(projectRoot: string): string {
+  return path.join(projectRoot, "assets", "fonts", "catalog.json");
+}
+
+async function readFontCatalog(projectRoot: string): Promise<FontAssetRecord[]> {
+  try {
+    const parsed = JSON.parse(await readFile(fontCatalogPath(projectRoot), "utf-8")) as unknown;
+    if (parsed === null || typeof parsed !== "object" || !Array.isArray((parsed as { fonts?: unknown }).fonts)) {
+      return [];
+    }
+    return (parsed as { fonts: unknown[] }).fonts.flatMap((font): FontAssetRecord[] => {
+      if (font === null || typeof font !== "object") {
+        return [];
+      }
+      const record = font as Partial<FontAssetRecord>;
+      if (
+        typeof record.font_id === "string"
+        && typeof record.display_name === "string"
+        && typeof record.source_path === "string"
+        && (record.source_format === "ttf" || record.source_format === "otf")
+      ) {
+        return [{
+          font_id: record.font_id,
+          display_name: record.display_name,
+          source_path: record.source_path,
+          source_format: record.source_format,
+        }];
+      }
+      return [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function writeFontCatalog(projectRoot: string, fonts: FontAssetRecord[]): Promise<void> {
+  const catalog = {
+    schema_id: "peepshow.studio.font_assets",
+    schema_version: 1,
+    fonts,
+  };
+  await mkdir(path.dirname(fontCatalogPath(projectRoot)), { recursive: true });
+  await writeFile(fontCatalogPath(projectRoot), `${JSON.stringify(catalog, null, 2)}\n`, "utf-8");
+}
+
+async function uniqueFontPath(projectRoot: string, sourcePath: string, existingIds: Set<string>): Promise<{ fontId: string; relativePath: string; destinationPath: string; sourceFormat: "ttf" | "otf" }> {
+  const extension = path.extname(sourcePath).toLowerCase();
+  if (extension !== ".ttf" && extension !== ".otf") {
+    throw new Error("Font import supports .ttf and .otf files");
+  }
+  const fontsRoot = path.join(projectRoot, "assets", "fonts");
+  const baseFontId = assetIdFromFilename(sourcePath, "font");
+  await mkdir(fontsRoot, { recursive: true });
+  for (let index = 0; index < 1000; index += 1) {
+    const suffix = index === 0 ? "" : `_${index + 1}`;
+    const fontId = `${baseFontId}${suffix}`;
+    const filename = `${fontId}${extension}`;
+    const destinationPath = path.join(fontsRoot, filename);
+    if (!existingIds.has(fontId) && !(await pathExists(destinationPath))) {
+      return {
+        fontId,
+        relativePath: `assets/fonts/${filename}`,
+        destinationPath,
+        sourceFormat: extension === ".ttf" ? "ttf" : "otf",
+      };
+    }
+  }
+  throw new Error("Could not choose a unique font filename");
+}
+
+function resolveProjectRelativePath(projectRoot: string, relativePath: string): string {
+  if (path.isAbsolute(relativePath)) {
+    throw new Error("Project asset path must be relative");
+  }
+  const resolved = path.resolve(projectRoot, relativePath);
+  const relative = path.relative(projectRoot, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error("Project asset path escapes the project folder");
+  }
+  return resolved;
+}
+
 function sanitizeSpriteImage(image: Electron.NativeImage): Buffer {
   const size = image.getSize();
   const bitmap = Buffer.from(image.toBitmap());
@@ -217,6 +307,18 @@ function sanitizeSpriteImage(image: Electron.NativeImage): Buffer {
     bitmap[index + 2] = value;
   }
   return nativeImage.createFromBitmap(bitmap, { width: size.width, height: size.height }).toPNG();
+}
+
+function pngBufferFromDataUrl(dataUrl: string): Buffer {
+  const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+  if (match === null) {
+    throw new Error("Generated sprite data must be a PNG data URL");
+  }
+  const buffer = Buffer.from(match[1], "base64");
+  if (buffer.length === 0 || buffer.length > MAX_GENERATED_PNG_BYTES) {
+    throw new Error("Generated sprite PNG is empty or too large");
+  }
+  return buffer;
 }
 
 function createWindow(): void {
@@ -316,6 +418,95 @@ ipcMain.handle("peep:import-sprite-png", async (_event, projectPath: unknown) =>
   return {
     assetId: destination.assetId,
     displayName: displayNameFromFilename(sourcePath),
+    sourcePath: destination.relativePath,
+    width: size.width,
+    height: size.height,
+  };
+});
+
+ipcMain.handle("peep:read-font-assets", async (_event, projectPath: unknown) => {
+  if (typeof projectPath !== "string") {
+    throw new Error("Invalid font catalog request from renderer");
+  }
+  const projectRoot = path.resolve(projectPath);
+  if (!projectRoot.endsWith(".peepproj")) {
+    throw new Error("Font catalog target must be a .peepproj directory");
+  }
+  return readFontCatalog(projectRoot);
+});
+
+ipcMain.handle("peep:import-font-asset", async (_event, projectPath: unknown) => {
+  if (typeof projectPath !== "string") {
+    throw new Error("Invalid font import request from renderer");
+  }
+  const projectRoot = path.resolve(projectPath);
+  if (!projectRoot.endsWith(".peepproj")) {
+    throw new Error("Font import target must be a .peepproj directory");
+  }
+  const result = await dialog.showOpenDialog({
+    title: "Import font",
+    defaultPath: projectRoot,
+    properties: ["openFile"],
+    filters: [{ name: "TrueType/OpenType font", extensions: ["ttf", "otf"] }],
+  });
+  if (result.canceled || result.filePaths[0] === undefined) {
+    return null;
+  }
+  const sourcePath = path.resolve(result.filePaths[0]);
+  const fonts = await readFontCatalog(projectRoot);
+  const destination = await uniqueFontPath(projectRoot, sourcePath, new Set(fonts.map(font => font.font_id)));
+  await cp(sourcePath, destination.destinationPath);
+  const record: FontAssetRecord = {
+    font_id: destination.fontId,
+    display_name: displayNameFromFilename(sourcePath),
+    source_path: destination.relativePath,
+    source_format: destination.sourceFormat,
+  };
+  await writeFontCatalog(projectRoot, [...fonts, record]);
+  return record;
+});
+
+ipcMain.handle("peep:font-asset-source", async (_event, projectPath: unknown, sourcePath: unknown) => {
+  if (typeof projectPath !== "string" || typeof sourcePath !== "string") {
+    throw new Error("Invalid font source request from renderer");
+  }
+  const projectRoot = path.resolve(projectPath);
+  if (!projectRoot.endsWith(".peepproj")) {
+    throw new Error("Font source target must be a .peepproj directory");
+  }
+  const resolved = resolveProjectRelativePath(projectRoot, sourcePath);
+  const extension = path.extname(resolved).toLowerCase();
+  if (extension !== ".ttf" && extension !== ".otf") {
+    throw new Error("Font source must be a .ttf or .otf file");
+  }
+  const data = await readFile(resolved);
+  const mime = extension === ".ttf" ? "font/ttf" : "font/otf";
+  return {
+    key: `${sourcePath}:${data.length}`,
+    data: `data:${mime};base64,${data.toString("base64")}`,
+  };
+});
+
+ipcMain.handle("peep:write-generated-sprite-png", async (_event, projectPath: unknown, requestedAssetId: unknown, pngDataUrl: unknown) => {
+  if (typeof projectPath !== "string" || typeof requestedAssetId !== "string" || typeof pngDataUrl !== "string") {
+    throw new Error("Invalid generated sprite request from renderer");
+  }
+  const projectRoot = path.resolve(projectPath);
+  if (!projectRoot.endsWith(".peepproj")) {
+    throw new Error("Generated sprite target must be a .peepproj directory");
+  }
+  const image = nativeImage.createFromBuffer(pngBufferFromDataUrl(pngDataUrl));
+  const size = image.getSize();
+  if (image.isEmpty() || size.width <= 0 || size.height <= 0) {
+    throw new Error("Generated sprite PNG could not be loaded");
+  }
+  if (size.width > MAX_SOURCE_IMAGE_DIMENSION || size.height > MAX_SOURCE_IMAGE_DIMENSION) {
+    throw new Error(`Generated sprite PNG must be no larger than ${MAX_SOURCE_IMAGE_DIMENSION}x${MAX_SOURCE_IMAGE_DIMENSION}`);
+  }
+  const destination = await uniqueAssetPath(projectRoot, `${requestedAssetId}.png`, "sprite");
+  await writeFile(destination.destinationPath, sanitizeSpriteImage(image));
+  return {
+    assetId: destination.assetId,
     sourcePath: destination.relativePath,
     width: size.width,
     height: size.height,

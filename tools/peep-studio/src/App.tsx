@@ -113,12 +113,24 @@ type PlacementPrimitiveDraft = {
   lineDirection?: PlacementLineDirection;
 };
 type WorkspaceMode = "scene-flow" | "logic" | "placement" | "assets";
+type AssetTab = "sprite" | "audio" | "font";
 type AssetSelection =
   | { kind: "animation"; clipId: string }
   | { kind: "animation-draft"; clip: AuthoredClip }
   | { kind: "sprite"; frameId: string }
   | { kind: "audio"; cueId: string }
+  | { kind: "font"; fontId: string }
   | null;
+type CompiledAssetFrameGroup = {
+  assetId: string;
+  frames: CompiledAssetFrame[];
+};
+type AssetLibraryGroup<T> = {
+  key: string;
+  label: string;
+  detail: string;
+  items: T[];
+};
 const SYSTEM_FONT_8X8_BASIC_ID = "peepshow.system.8x8.basic.v1";
 const PLACEMENT_VIEWPORT_MIN_ZOOM = 0.5;
 const PLACEMENT_VIEWPORT_MAX_ZOOM = 6;
@@ -129,6 +141,88 @@ const PLACEMENT_GRID_MINOR_Y = Array.from({ length: PLACEMENT_HEIGHT + 1 }, (_, 
   .filter((value) => value % 8 !== 0);
 const PLACEMENT_GRID_MAJOR_X = Array.from({ length: PLACEMENT_WIDTH / 8 + 1 }, (_, index) => index * 8);
 const PLACEMENT_GRID_MAJOR_Y = Array.from({ length: PLACEMENT_HEIGHT / 8 + 1 }, (_, index) => index * 8);
+const BAKED_TEXT_MIN_FONT_SIZE = 6;
+const BAKED_TEXT_MAX_FONT_SIZE = 128;
+const BAKED_TEXT_MAX_SOURCE_DIMENSION = 4096;
+
+const normalizeTextLines = (value: string) => value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+const stableAssetIdFromLabel = (value: string, fallback: string) => {
+  const stem = value.trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+  const normalized = stem === "" ? fallback : stem;
+  const prefixed = /^[a-z]/.test(normalized) ? normalized : `${fallback}_${normalized}`;
+  return prefixed.slice(0, 48);
+};
+const parseBakedTextFontSize = (value: string) => {
+  const size = Number(value);
+  return Number.isInteger(size) && size >= BAKED_TEXT_MIN_FONT_SIZE && size <= BAKED_TEXT_MAX_FONT_SIZE
+    ? size
+    : null;
+};
+
+async function renderBakedTextPng(
+  draft: Pick<BakedTextDraft, "text" | "fontSize">,
+  fontFamily: string,
+): Promise<{ dataUrl: string; width: number; height: number }> {
+  const text = draft.text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (text.trim().length === 0) {
+    throw new Error("Text must contain at least one visible character.");
+  }
+  const fontSize = parseBakedTextFontSize(draft.fontSize);
+  if (fontSize === null) {
+    throw new Error(`Font size must be ${BAKED_TEXT_MIN_FONT_SIZE} to ${BAKED_TEXT_MAX_FONT_SIZE} px.`);
+  }
+  await document.fonts.ready;
+  const lines = normalizeTextLines(text);
+  const measure = document.createElement("canvas");
+  const measureContext = measure.getContext("2d");
+  if (measureContext === null) {
+    throw new Error("Canvas rendering is unavailable.");
+  }
+  measureContext.font = `${fontSize}px "${fontFamily}"`;
+  const measured = lines.map(line => measureContext.measureText(line.length === 0 ? " " : line));
+  const ascent = Math.max(fontSize, ...measured.map(item => item.actualBoundingBoxAscent || Math.ceil(fontSize * 0.8)));
+  const descent = Math.max(Math.ceil(fontSize * 0.25), ...measured.map(item => item.actualBoundingBoxDescent || Math.ceil(fontSize * 0.2)));
+  const lineHeight = Math.ceil((ascent + descent) * 1.15);
+  const padding = Math.max(2, Math.ceil(fontSize / 6));
+  const width = Math.ceil(Math.max(1, ...measured.map(item => item.width))) + padding * 2;
+  const height = Math.ceil(ascent + descent + lineHeight * Math.max(0, lines.length - 1)) + padding * 2;
+  if (width > BAKED_TEXT_MAX_SOURCE_DIMENSION || height > BAKED_TEXT_MAX_SOURCE_DIMENSION) {
+    throw new Error(`Rendered text must fit within ${BAKED_TEXT_MAX_SOURCE_DIMENSION}x${BAKED_TEXT_MAX_SOURCE_DIMENSION} px.`);
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (context === null) {
+    throw new Error("Canvas rendering is unavailable.");
+  }
+  context.clearRect(0, 0, width, height);
+  context.font = `${fontSize}px "${fontFamily}"`;
+  context.fillStyle = "#000000";
+  context.textBaseline = "alphabetic";
+  let y = padding + ascent;
+  for (const line of lines) {
+    context.fillText(line, padding, y);
+    y += lineHeight;
+  }
+  const image = context.getImageData(0, 0, width, height);
+  for (let index = 0; index < image.data.length; index += 4) {
+    const alpha = image.data[index + 3] ?? 0;
+    if (alpha >= 96) {
+      image.data[index] = 0;
+      image.data[index + 1] = 0;
+      image.data[index + 2] = 0;
+      image.data[index + 3] = 255;
+    } else {
+      image.data[index] = 255;
+      image.data[index + 1] = 255;
+      image.data[index + 2] = 255;
+      image.data[index + 3] = 0;
+    }
+  }
+  context.putImageData(image, 0, 0);
+  return { dataUrl: canvas.toDataURL("image/png"), width, height };
+}
 
 type PlacementViewport = {
   x: number;
@@ -161,6 +255,31 @@ type PendingSpriteImport = {
   rows: string;
 };
 
+type BakedTextDraft = {
+  assetName: string;
+  text: string;
+  fontSize: string;
+  fontId: string;
+  previewDataUrl: string | null;
+  previewWidth: number;
+  previewHeight: number;
+  status: string;
+  error: string | null;
+};
+
+type FontAssetRecord = {
+  font_id: string;
+  display_name: string;
+  source_path: string;
+  source_format: "ttf" | "otf";
+};
+
+type LoadedBakedTextFont = {
+  family: string;
+  fontId: string;
+  displayName: string;
+};
+
 type PreviewStartTarget = {
   sceneId: string;
   stateId?: string;
@@ -183,6 +302,40 @@ function errorText(error: unknown): string {
 
 function StatusMark({ ok }: { ok: boolean }) {
   return ok ? <Check size={14} aria-hidden="true" /> : <X size={14} aria-hidden="true" />;
+}
+
+function SpriteSheetAssetCard({
+  frames,
+  name,
+  selected,
+  onSelect,
+  columns,
+  textPreview = false,
+}: {
+  frames: CompiledAssetFrame[];
+  name: string;
+  selected: boolean;
+  onSelect: () => void;
+  columns?: number;
+  textPreview?: boolean;
+}) {
+  if (frames.length === 0) {
+    return null;
+  }
+  const resolvedColumns = columns ?? Math.min(4, Math.max(1, frames.length));
+  return (
+    <button type="button" className={selected ? "selected" : ""} title={name} onClick={onSelect}>
+      <span className={`asset-sheet-preview ${textPreview ? "text-sprite-preview" : ""}`} style={{ gridTemplateColumns: `repeat(${resolvedColumns}, minmax(0, 1fr))` }}>
+        {frames.map((frame) => (
+          <span className="asset-sheet-cell" key={frame.frame_id}>
+            <FramePreviewCanvas frame={frame} />
+          </span>
+        ))}
+      </span>
+      <strong>{name}</strong>
+      <small>{frames.length} frame{frames.length === 1 ? "" : "s"} / {frames[0].width}x{frames[0].height}</small>
+    </button>
+  );
 }
 
 export default function App() {
@@ -225,7 +378,8 @@ export default function App() {
   const [assetSelection, setAssetSelection] = useState<AssetSelection>(null);
   const [combineAssetIds, setCombineAssetIds] = useState<string[]>([]);
   useEffect(() => setCombineAssetIds([]), [projectPath]);
-  const [assetTab, setAssetTab] = useState<"sprite" | "audio">("sprite");
+  const [assetTab, setAssetTab] = useState<AssetTab>("sprite");
+  const [fontAssets, setFontAssets] = useState<FontAssetRecord[]>([]);
   const [audioAuditionStatus, setAudioAuditionStatus] = useState("No cue auditioned.");
   const [assetPreviewPlaying, setAssetPreviewPlaying] = useState(false);
   const [assetPreviewStep, setAssetPreviewStep] = useState(0);
@@ -251,6 +405,7 @@ export default function App() {
   const [placementDraftPositions, setPlacementDraftPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [placementDraftBounds, setPlacementDraftBounds] = useState<Record<string, { x: number; y: number; width: number; height: number }>>({});
   const [pendingSpriteImport, setPendingSpriteImport] = useState<PendingSpriteImport | null>(null);
+  const [bakedTextDraft, setBakedTextDraft] = useState<BakedTextDraft | null>(null);
   const [assetImportDebug, setAssetImportDebug] = useState("No import attempted.");
   const [message, setMessage] = useState<string | null>(null);
   const previewRef = useRef<PreviewSnapshot | null>(null);
@@ -269,6 +424,100 @@ export default function App() {
   const placementDrawCancelRef = useRef<(() => boolean) | null>(null);
   const placementStageRef = useRef<HTMLDivElement | null>(null);
   const placementScreenOverlayRef = useRef<HTMLDivElement | null>(null);
+  const bakedTextFontFacesRef = useRef(new Map<string, LoadedBakedTextFont>());
+  const bakedTextPreviewRequestRef = useRef(0);
+
+  useEffect(() => {
+    setBakedTextDraft(null);
+    setFontAssets([]);
+    bakedTextFontFacesRef.current.clear();
+  }, [projectPath]);
+
+  const refreshFontAssets = useCallback(async () => {
+    if (bridge === undefined || projectPath === null || bridge.readFontAssets === undefined) {
+      setFontAssets([]);
+      return;
+    }
+    try {
+      setFontAssets(await bridge.readFontAssets(projectPath));
+    } catch (error) {
+      setFontAssets([]);
+      setAssetImportDebug(`Font catalog load failed: ${errorText(error)}`);
+    }
+  }, [bridge, projectPath]);
+
+  useEffect(() => {
+    void refreshFontAssets();
+  }, [refreshFontAssets]);
+
+  const loadBakedTextFontFace = useCallback(async (font: FontAssetRecord): Promise<LoadedBakedTextFont> => {
+    const cached = bakedTextFontFacesRef.current.get(font.font_id);
+    if (cached !== undefined) {
+      return cached;
+    }
+    if (bridge === undefined || projectPath === null || bridge.fontAssetSource === undefined) {
+      throw new Error("Restart Peep Studio to enable imported font loading.");
+    }
+    const source = await bridge.fontAssetSource(projectPath, font.source_path);
+    const family = `peep_font_${font.font_id.replace(/[^a-zA-Z0-9_-]+/g, "_")}_${bakedTextFontFacesRef.current.size + 1}`;
+    const face = new FontFace(family, `url("${source.data}")`);
+    await face.load();
+    document.fonts.add(face);
+    const loaded = { fontId: font.font_id, family, displayName: font.display_name };
+    bakedTextFontFacesRef.current.set(font.font_id, loaded);
+    return loaded;
+  }, [bridge, projectPath]);
+
+  useEffect(() => {
+    if (bakedTextDraft === null) {
+      return;
+    }
+    const requestId = bakedTextPreviewRequestRef.current + 1;
+    bakedTextPreviewRequestRef.current = requestId;
+    const font = fontAssets.find(item => item.font_id === bakedTextDraft.fontId);
+    if (font === undefined) {
+      setBakedTextDraft(current => current === null ? null : {
+        ...current,
+        previewDataUrl: null,
+        previewWidth: 0,
+        previewHeight: 0,
+        error: null,
+        status: fontAssets.length === 0
+          ? "Import a font asset before creating baked text sprites."
+          : "Choose a font asset to render this sprite.",
+      });
+      return;
+    }
+    void loadBakedTextFontFace(font)
+      .then(loaded => renderBakedTextPng(bakedTextDraft, loaded.family)
+        .then(preview => ({ preview, loaded })))
+      .then(preview => {
+        if (bakedTextPreviewRequestRef.current !== requestId) {
+          return;
+        }
+        setBakedTextDraft(current => current === null ? null : {
+          ...current,
+          previewDataUrl: preview.preview.dataUrl,
+          previewWidth: preview.preview.width,
+          previewHeight: preview.preview.height,
+          error: null,
+          status: `${preview.loaded.displayName} - ${preview.preview.width}x${preview.preview.height} px generated sprite`,
+        });
+      })
+      .catch(error => {
+        if (bakedTextPreviewRequestRef.current !== requestId) {
+          return;
+        }
+        setBakedTextDraft(current => current === null ? null : {
+          ...current,
+          previewDataUrl: null,
+          previewWidth: 0,
+          previewHeight: 0,
+          error: errorText(error),
+          status: "Preview blocked.",
+        });
+      });
+  }, [bakedTextDraft?.fontId, bakedTextDraft?.fontSize, bakedTextDraft?.text, fontAssets, loadBakedTextFontFace]);
 
   const stopAudioPlayback = useCallback(() => {
     audioPlaybackRequestRef.current += 1;
@@ -737,11 +986,11 @@ export default function App() {
   const selectAssetRecord = (selection: AssetSelection) => {
     setAssetSelection(selection);
     if (selection !== null) {
-      setAssetTab(selection.kind === "audio" ? "audio" : "sprite");
+      setAssetTab(selection.kind === "audio" ? "audio" : selection.kind === "font" ? "font" : "sprite");
       setSceneSelection({ kind: "scene" });
     }
   };
-  const selectAssetTab = (tab: "sprite" | "audio") => {
+  const selectAssetTab = (tab: AssetTab) => {
     if (tab === assetTab) return;
     setAssetTab(tab);
     setAssetSelection(null);
@@ -969,41 +1218,128 @@ export default function App() {
     }
   };
 
-  const createTextSpriteAsset = async () => {
-    if (bridge === undefined || project === null || busy !== null) {
+  const startBakedTextSprite = () => {
+    setPendingSpriteImport(null);
+    const selectedFontId = assetSelection?.kind === "font"
+      ? assetSelection.fontId
+      : fontAssets[0]?.font_id ?? "";
+    setBakedTextDraft({
+      assetName: "Text sprite",
+      text: "LABEL",
+      fontSize: "16",
+      fontId: selectedFontId,
+      previewDataUrl: null,
+      previewWidth: 0,
+      previewHeight: 0,
+      status: selectedFontId === ""
+        ? "Import a font asset before creating baked text sprites."
+        : "Ready to render text.",
+      error: null,
+    });
+    setWorkspaceMode("assets");
+    setAssetTab("sprite");
+  };
+
+  const importFontAsset = async () => {
+    if (bridge === undefined || projectPath === null || busy !== null) {
       return;
     }
-    const assetId = uniqueTextAssetId();
-    const asset: AssetRecord = {
-      asset_id: assetId,
-      display_name: "Label",
-      asset_type: "masked_1bpp",
-      source_format: "system_font_text",
-      font_id: SYSTEM_FONT_8X8_BASIC_ID,
-      text: "LABEL",
-      scale: 1,
-      frames: [
-        {
-          frame_id: `${assetId}.frame`,
-          display_name: "Frame",
-          pivot_x: 0,
-          pivot_y: 0,
-        },
-      ],
-    };
+    if (bridge.importFontAsset === undefined) {
+      setMessage("Restart Peep Studio to enable font asset import.");
+      return;
+    }
+    setBusy("Importing font");
+    setPlaying(false);
+    try {
+      const imported = await bridge.importFontAsset(projectPath);
+      if (imported === null) {
+        setMessage("Font import cancelled.");
+        return;
+      }
+      await refreshFontAssets();
+      setFontAssets(current => current.some(item => item.font_id === imported.font_id) ? current : [...current, imported]);
+      selectAssetRecord({ kind: "font", fontId: imported.font_id });
+      setAssetTab("font");
+      setWorkspaceMode("assets");
+      setMessage(`Imported font ${imported.display_name}.`);
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const confirmBakedTextSprite = async () => {
+    if (bridge === undefined || project === null || projectPath === null || bakedTextDraft === null || busy !== null) {
+      return;
+    }
+    if (bridge.writeGeneratedSpritePng === undefined) {
+      setBakedTextDraft(current => current === null ? null : {
+        ...current,
+        error: "Restart Peep Studio to enable generated sprite writing.",
+      });
+      return;
+    }
+    const font = fontAssets.find(item => item.font_id === bakedTextDraft.fontId);
+    if (font === undefined) {
+      setBakedTextDraft(current => current === null ? null : {
+        ...current,
+        error: "Choose an imported font asset before creating a baked text sprite.",
+      });
+      return;
+    }
+    const displayName = bakedTextDraft.assetName.trim();
+    if (displayName.length === 0 || displayName.length > 64) {
+      setBakedTextDraft(current => current === null ? null : {
+        ...current,
+        error: "Asset name must be 1 to 64 characters.",
+      });
+      return;
+    }
     setBusy("Creating text sprite");
     setPlaying(false);
     try {
+      const loadedFont = await loadBakedTextFontFace(font);
+      const rendered = await renderBakedTextPng(bakedTextDraft, loadedFont.family);
+      const requestedAssetId = uniqueImportedAssetId(stableAssetIdFromLabel(`text_${displayName}`, "text"));
+      const written = await bridge.writeGeneratedSpritePng(projectPath, requestedAssetId, rendered.dataUrl);
+      const frame: AssetFrameRecord = {
+        frame_id: `${written.assetId}.frame`,
+        display_name: "Frame",
+        source_rect: { x: 0, y: 0, width: written.width, height: written.height },
+        pivot_x: 0,
+        pivot_y: 0,
+      };
       const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
         project_revision: project.project_revision,
-        commands: [{ kind: "asset.upsert", asset }],
+        commands: [
+          {
+            kind: "asset.upsert",
+            asset: {
+              asset_id: written.assetId,
+              display_name: displayName,
+              asset_type: "masked_1bpp",
+              source_path: written.sourcePath,
+              source_format: "png",
+              frames: [frame],
+            },
+          },
+        ],
       });
       applyProjectResult(result);
-      selectAssetRecord({ kind: "sprite", frameId: `${assetId}.frame` });
-      setWorkspaceMode("assets");
-      setMessage("Text sprite created. Save to write it to the project.");
+      selectAssetRecord({ kind: "sprite", frameId: frame.frame_id });
+      setCombineAssetIds([written.assetId]);
+      setBakedTextDraft(null);
+      setAssetImportDebug(`Created baked text sprite ${written.sourcePath} from ${font.display_name}.`);
+      setMessage(`Created ${displayName} as a baked text sprite. Save to write it to the project.`);
     } catch (error) {
-      setMessage(errorText(error));
+      const text = errorText(error);
+      setBakedTextDraft(current => current === null ? null : {
+        ...current,
+        error: text,
+        status: "Text sprite creation failed.",
+      });
+      setMessage(text);
     } finally {
       setBusy(null);
     }
@@ -2740,7 +3076,7 @@ export default function App() {
     }
     return frames;
   }, [assets]);
-  const compiledAssetFrameGroups = useMemo(() => {
+  const compiledAssetFrameGroups = useMemo<CompiledAssetFrameGroup[]>(() => {
     const groups = new Map<string, CompiledAssetFrame[]>();
     for (const frame of compiledAssetFrames) {
       groups.set(frame.asset_id, [...(groups.get(frame.asset_id) ?? []), frame]);
@@ -2751,11 +3087,84 @@ export default function App() {
     () => new Map(audioAssets.map((asset) => [asset.asset_id, asset])),
     [audioAssets],
   );
+  const spriteAssetKind = (asset: AssetRecord | undefined, frameCount: number) => {
+    if (asset?.text !== undefined || asset?.font_id !== undefined || asset?.asset_type === "text") {
+      return "Text";
+    }
+    if (asset?.source_format === "png" && (asset.asset_id.startsWith("text_") || asset.source_path?.includes("/text_") === true)) {
+      return "Text sprite";
+    }
+    if (frameCount > 1) {
+      return "Sprite sheet";
+    }
+    if (asset?.source_path !== undefined) {
+      return "Single frame";
+    }
+    return "Generated";
+  };
+  const isTextSpriteAsset = (asset: AssetRecord | undefined) => (
+    asset?.source_format === "system_font_text"
+    || asset?.text !== undefined
+    || asset?.font_id !== undefined
+    || asset?.asset_type === "text"
+    || (asset?.source_format === "png" && (asset.asset_id.startsWith("text_") || asset.source_path?.includes("/text_") === true))
+  );
+  const spriteSheetColumns = (asset: AssetRecord | undefined, frameCount: number) => {
+    const rects = asset?.frames.map((frame) => frame.source_rect).filter((rect) => rect !== undefined) ?? [];
+    if (rects.length === frameCount && rects.length > 0) {
+      const columns = new Set(rects.map((rect) => rect.x)).size;
+      if (columns > 0) {
+        return Math.min(8, Math.max(1, columns));
+      }
+    }
+    return Math.min(4, Math.max(1, frameCount));
+  };
+  const sourceSpriteGroups = useMemo<AssetLibraryGroup<CompiledAssetFrameGroup>[]>(() => {
+    const order = ["Sprite sheet", "Text sprite", "Single frame", "Text", "Generated"];
+    const grouped = new Map<string, CompiledAssetFrameGroup[]>();
+    for (const group of compiledAssetFrameGroups) {
+      const kind = spriteAssetKind(assetById.get(group.assetId), group.frames.length);
+      grouped.set(kind, [...(grouped.get(kind) ?? []), group]);
+    }
+    return order.flatMap((label) => {
+      const items = grouped.get(label) ?? [];
+      if (items.length === 0) {
+        return [];
+      }
+      return [{
+        key: label.toLowerCase().replace(/\s+/g, "-"),
+        label,
+        detail: `${items.length} asset${items.length === 1 ? "" : "s"}`,
+        items,
+      }];
+    });
+  }, [assetById, compiledAssetFrameGroups]);
+  const audioCueGroups = useMemo<AssetLibraryGroup<AudioCueRecord>[]>(() => {
+    const ready = audioCues.filter((cue) => audioAssetById.has(cue.asset_ref));
+    const missingSource = audioCues.filter((cue) => !audioAssetById.has(cue.asset_ref));
+    return [
+      ready.length === 0 ? null : {
+        key: "ready",
+        label: "Ready SFX",
+        detail: `${ready.length} cue${ready.length === 1 ? "" : "s"}`,
+        items: ready,
+      },
+      missingSource.length === 0 ? null : {
+        key: "missing-source",
+        label: "Missing source",
+        detail: `${missingSource.length} cue${missingSource.length === 1 ? "" : "s"}`,
+        items: missingSource,
+      },
+    ].filter((group): group is AssetLibraryGroup<AudioCueRecord> => group !== null);
+  }, [audioAssetById, audioCues]);
   const selectedAudioCue = assetSelection?.kind === "audio"
     ? audioCues.find((cue) => cue.cue_id === assetSelection.cueId) ?? null
     : null;
   const selectedAudioAsset = selectedAudioCue === null ? null : audioAssetById.get(selectedAudioCue.asset_ref) ?? null;
   const audioCueDisplayName = (cue: AudioCueRecord) => cue.display_name?.trim() || cue.cue_id.replace(/\.cue(?:_\d+)?$/, "");
+  const selectedFontAsset = assetSelection?.kind === "font"
+    ? fontAssets.find((font) => font.font_id === assetSelection.fontId) ?? null
+    : null;
   const selectedAssetFrame = assetSelection?.kind === "sprite"
     ? compiledAssetFrameById.get(assetSelection.frameId) ?? null
     : null;
@@ -3568,6 +3977,16 @@ export default function App() {
       >
         <Image size={18} aria-hidden="true" />
       </button>
+      <button
+        type="button"
+        disabled
+        title={service?.state_scene_presentation.runtime_text === true
+          ? "Runtime text objects need Studio integration"
+          : "Runtime text objects are not exposed by the authoring backend yet"}
+        aria-label="Add text"
+      >
+        <Type size={18} aria-hidden="true" />
+      </button>
       {PLACEMENT_PRIMITIVES.map((primitive) => (
         <button
           key={primitive.kind}
@@ -3933,11 +4352,125 @@ export default function App() {
       </div>
     );
   };
+  const renderBakedTextPanel = (canEditAssets: boolean) => {
+    if (bakedTextDraft === null) {
+      return null;
+    }
+    const canCreateTextSprite = canEditAssets
+      && bakedTextDraft.previewDataUrl !== null
+      && bakedTextDraft.error === null
+      && fontAssets.some(item => item.font_id === bakedTextDraft.fontId);
+    return (
+      <div className="asset-import-panel baked-text-panel">
+        <div className="asset-import-heading">
+          <div>
+            <strong>Baked text sprite</strong>
+            <span>Rasterize custom font text into an ordinary PNG sprite asset.</span>
+          </div>
+          <button className="icon-button" type="button" onClick={() => setBakedTextDraft(null)} title="Cancel text sprite" aria-label="Cancel text sprite">
+            <X size={14} aria-hidden="true" />
+          </button>
+        </div>
+        <div className="baked-text-grid">
+          <label>
+            Asset name
+            <input
+              type="text"
+              maxLength={64}
+              value={bakedTextDraft.assetName}
+              disabled={!canEditAssets}
+              onChange={(event) => setBakedTextDraft(current => current === null ? null : { ...current, assetName: event.target.value })}
+            />
+          </label>
+          <label>
+            Size px
+            <input
+              type="number"
+              min={BAKED_TEXT_MIN_FONT_SIZE}
+              max={BAKED_TEXT_MAX_FONT_SIZE}
+              step={1}
+              value={bakedTextDraft.fontSize}
+              disabled={!canEditAssets}
+              onChange={(event) => setBakedTextDraft(current => current === null ? null : { ...current, fontSize: event.target.value })}
+            />
+          </label>
+          <label>
+            Font asset
+            <select
+              value={bakedTextDraft.fontId}
+              disabled={!canEditAssets || fontAssets.length === 0}
+              onChange={(event) => setBakedTextDraft(current => current === null ? null : { ...current, fontId: event.target.value })}
+            >
+              {fontAssets.length === 0 ? (
+                <option value="">No fonts imported</option>
+              ) : fontAssets.map(font => (
+                <option key={font.font_id} value={font.font_id}>{font.display_name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="baked-text-content-field">
+            Text
+            <textarea
+              rows={3}
+              maxLength={512}
+              value={bakedTextDraft.text}
+              disabled={!canEditAssets}
+              onChange={(event) => setBakedTextDraft(current => current === null ? null : { ...current, text: event.target.value })}
+            />
+          </label>
+          <div className="baked-text-font-field">
+            <span>Font</span>
+            <button
+              className="button secondary"
+              type="button"
+              disabled={!canEditAssets}
+              onClick={() => {
+                setAssetTab("font");
+                setBakedTextDraft(null);
+              }}
+            >
+              <Type size={15} aria-hidden="true" />
+              Manage fonts
+            </button>
+            <small>{fontAssets.find(item => item.font_id === bakedTextDraft.fontId)?.source_path ?? "Import a font once, then reuse it."}</small>
+          </div>
+          <div className={`baked-text-preview ${bakedTextDraft.error !== null ? "error" : ""}`}>
+            {bakedTextDraft.previewDataUrl === null ? (
+              <span>{bakedTextDraft.error ?? bakedTextDraft.status}</span>
+            ) : (
+              <>
+                <img src={bakedTextDraft.previewDataUrl} alt="Baked text sprite preview" />
+                <span>{bakedTextDraft.previewWidth}x{bakedTextDraft.previewHeight} px</span>
+              </>
+            )}
+          </div>
+          <div className="baked-text-actions">
+            <button
+              className="button primary"
+              type="button"
+              disabled={!canCreateTextSprite}
+              onClick={() => void confirmBakedTextSprite()}
+            >
+              Create sprite
+            </button>
+          </div>
+        </div>
+        <div className={`asset-import-debug ${bakedTextDraft.error !== null ? "error" : ""}`}>
+          {bakedTextDraft.error ?? bakedTextDraft.status}
+        </div>
+      </div>
+    );
+  };
   const renderAssetsWorkspace = () => {
     const canEditAssets = bridge !== undefined && project !== null && busy === null && service?.operations.includes("project.apply_commands") === true;
     const audioSupported = service?.state_scene_audio.host_package_support === true;
     const auditionSupported = service?.operations.includes("project.audio_audition") === true;
-    const hasTabAssets = assetTab === "sprite" ? compiledAssetFrameGroups.length > 0 : audioCues.length > 0;
+    const hasTabAssets = assetTab === "sprite"
+      ? compiledAssetFrameGroups.length > 0
+      : assetTab === "audio"
+        ? audioCues.length > 0
+        : fontAssets.length > 0;
+    const assetTabs: AssetTab[] = ["sprite", "audio", "font"];
     return (
       <section className="asset-workspace-pane">
         <div className="preview-heading graph-heading">
@@ -3950,7 +4483,7 @@ export default function App() {
         <div className="asset-workspace">
           <div className="asset-workspace-summary">
             <div className="asset-library-tabs" role="tablist" aria-label="Asset types">
-              {(["sprite", "audio"] as const).map(tab => (
+              {assetTabs.map(tab => (
                 <button key={tab} type="button" role="tab" id={`asset-tab-${tab}`}
                   aria-selected={assetTab === tab} aria-controls="asset-library-panel"
                   tabIndex={assetTab === tab ? 0 : -1}
@@ -3958,12 +4491,17 @@ export default function App() {
                   onKeyDown={event => {
                     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
                     event.preventDefault();
-                    const next = event.key === "Home" ? "sprite" : event.key === "End" ? "audio" : tab === "sprite" ? "audio" : "sprite";
+                    const currentIndex = assetTabs.indexOf(tab);
+                    const next = event.key === "Home"
+                      ? assetTabs[0]
+                      : event.key === "End"
+                        ? assetTabs[assetTabs.length - 1]
+                        : assetTabs[(currentIndex + (event.key === "ArrowRight" ? 1 : assetTabs.length - 1)) % assetTabs.length];
                     selectAssetTab(next);
                     document.getElementById(`asset-tab-${next}`)?.focus();
                   }}>
-                  {tab === "sprite" ? <Image size={15} aria-hidden="true" /> : <Volume2 size={15} aria-hidden="true" />}
-                  {tab === "sprite" ? "Sprites" : "Audio"}
+                  {tab === "sprite" ? <Image size={15} aria-hidden="true" /> : tab === "audio" ? <Volume2 size={15} aria-hidden="true" /> : <Type size={15} aria-hidden="true" />}
+                  {tab === "sprite" ? "Sprites" : tab === "audio" ? "Audio" : "Fonts"}
                 </button>
               ))}
             </div>
@@ -3981,15 +4519,16 @@ export default function App() {
               <button
                 className="button secondary"
                 type="button"
-                disabled={!canEditAssets}
-                onClick={() => void createTextSpriteAsset()}
+                disabled={!canEditAssets || projectPath === null || fontAssets.length === 0}
+                title={fontAssets.length === 0 ? "Import a font asset first" : "Create baked text sprite"}
+                onClick={startBakedTextSprite}
               >
                 <Type size={15} aria-hidden="true" />
-              Text sprite
+                New text sprite
               </button>
               <button className="button secondary" type="button" disabled={!canAuthorAnimations || busy !== null || !combineAssetIds.length}
                 onClick={startAssetAnimation}><Plus size={15} />Create animation</button>
-              </> : <>
+              </> : assetTab === "audio" ? <>
               <button
                 className="button secondary"
                 type="button"
@@ -3999,14 +4538,29 @@ export default function App() {
                 <Volume2 size={15} aria-hidden="true" />
                 WAV SFX
               </button>
+              </> : <>
+              <button
+                className="button secondary"
+                type="button"
+                disabled={bridge === undefined || projectPath === null || busy !== null || bridge.importFontAsset === undefined}
+                onClick={() => void importFontAsset()}
+                title={bridge?.importFontAsset === undefined ? "Restart Peep Studio to enable font import" : "Import TTF or OTF font"}
+              >
+                <Type size={15} aria-hidden="true" />
+                Import font
+              </button>
               </>}
             </div>
           </div>
           <div id="asset-library-panel" role="tabpanel" aria-labelledby={`asset-tab-${assetTab}`}>
+          {assetTab === "sprite" && renderBakedTextPanel(canEditAssets)}
           {assetTab === "sprite" && renderSpriteImportPanel(canEditAssets)}
           <div className="asset-group-stack">
             {assetTab === "sprite" && animationClips.length > 0 && <section className="asset-group-panel">
-              <div className="asset-group-heading"><strong>Animations</strong><span>{animationClips.length}</span></div>
+              <div className="asset-group-heading">
+                <strong>Animated sprites</strong>
+                <span>{animationClips.length} animation{animationClips.length === 1 ? "" : "s"}</span>
+              </div>
               <div className="asset-frame-gallery animation-asset-gallery">{animationClips.map(clip => <SpriteAssetCard key={clip.animation_id}
                 frames={clip.frame_refs.flatMap(id => compiledAssetFrameById.get(id) ? [compiledAssetFrameById.get(id)!] : [])}
                 durations={clip.frame_duration_ms} name={animationLabel(clip)}
@@ -4016,22 +4570,38 @@ export default function App() {
             {assetTab === "sprite" && compiledAssetFrameGroups.length > 0 && (
               <section className="asset-group-panel">
                 <div className="asset-group-heading">
-                  <strong>Source sprites</strong>
+                  <strong>Static sprites</strong>
                   <span>{compiledAssetFrameGroups.length} sprite{compiledAssetFrameGroups.length === 1 ? "" : "s"}</span>
                 </div>
-                <div className="asset-frame-gallery">
-                  {compiledAssetFrameGroups.map(group => {
-                    const authoredOrder = new Map((assetById.get(group.assetId)?.frames ?? []).map((frame, index) => [frame.frame_id, index]));
-                    const frames = [...group.frames].sort((a, b) => (authoredOrder.get(a.frame_id) ?? Infinity) - (authoredOrder.get(b.frame_id) ?? Infinity));
-                    return <div className="sprite-source-item" key={group.assetId}>
-                      {canAuthorAnimations && <input type="checkbox" aria-label={`Include ${assetDisplayName(group.assetId)} in animation`}
-                        checked={combineAssetIds.includes(group.assetId)} onChange={event => setCombineAssetIds(current => event.target.checked
-                          ? [...current, group.assetId] : current.filter(id => id !== group.assetId))} />}
-                      <SpriteAssetCard frames={frames}
-                      name={assetDisplayName(group.assetId)} selected={selectedAssetFrame?.asset_id === group.assetId}
-                      playback={preferences.thumbnailPlayback}
-                      onSelect={() => selectAssetRecord({ kind: "sprite", frameId: selectedAssetFrame?.asset_id === group.assetId ? selectedAssetFrame.frame_id : frames[0].frame_id })} /></div>;
-                  })}
+                <div className="asset-subgroup-stack">
+                  {sourceSpriteGroups.map((sourceGroup) => (
+                    <section className="asset-subgroup" key={sourceGroup.key}>
+                      <div className="asset-subgroup-heading">
+                        <strong>{sourceGroup.label}</strong>
+                        <span>{sourceGroup.detail}</span>
+                      </div>
+                      <div className="asset-frame-gallery">
+                        {sourceGroup.items.map(group => {
+                          const authoredOrder = new Map((assetById.get(group.assetId)?.frames ?? []).map((frame, index) => [frame.frame_id, index]));
+                          const frames = [...group.frames].sort((a, b) => (authoredOrder.get(a.frame_id) ?? Infinity) - (authoredOrder.get(b.frame_id) ?? Infinity));
+                          const asset = assetById.get(group.assetId);
+                          const kind = spriteAssetKind(asset, frames.length);
+                          return <div className="sprite-source-item" key={group.assetId}>
+                            <span className="asset-kind-badge">{kind}</span>
+                            {canAuthorAnimations && <input type="checkbox" aria-label={`Include ${assetDisplayName(group.assetId)} in animation`}
+                              checked={combineAssetIds.includes(group.assetId)} onChange={event => setCombineAssetIds(current => event.target.checked
+                                ? [...current, group.assetId] : current.filter(id => id !== group.assetId))} />}
+                            <SpriteSheetAssetCard frames={frames}
+                              name={assetDisplayName(group.assetId)}
+                              selected={selectedAssetFrame?.asset_id === group.assetId}
+                              columns={spriteSheetColumns(assetById.get(group.assetId), frames.length)}
+                              textPreview={isTextSpriteAsset(asset)}
+                              onSelect={() => selectAssetRecord({ kind: "sprite", frameId: selectedAssetFrame?.asset_id === group.assetId ? selectedAssetFrame.frame_id : frames[0].frame_id })} />
+                          </div>;
+                        })}
+                      </div>
+                    </section>
+                  ))}
                 </div>
               </section>
             )}
@@ -4041,51 +4611,87 @@ export default function App() {
                   <strong>Sampled SFX</strong>
                   <span>{audioCues.length} cue{audioCues.length === 1 ? "" : "s"}</span>
                 </div>
-                <div className="audio-cue-gallery">
-                  {audioCues.map((cue) => {
-                    const asset = audioAssetById.get(cue.asset_ref);
-                    return (
-                      <div
-                        key={cue.cue_id}
-                        className={selectedAudioCue?.cue_id === cue.cue_id ? "selected" : ""}
-                      >
-                        <button
-                          className="audio-cue-select"
-                          type="button"
-                          onClick={() => selectAssetRecord({ kind: "audio", cueId: cue.cue_id })}
-                          title="Select this SFX cue"
-                        >
-                          <AudioWaveform projectPath={projectPath} sourcePath={asset?.source_path} revision={project?.project_revision} />
-                          <span>
-                            <strong>{audioCueDisplayName(cue)}</strong>
-                            <small>
-                              {asset === undefined ? "Source unavailable" : `${asset.duration_ms} ms / ${asset.adpcm_bytes} ADPCM bytes`}
-                            </small>
-                          </span>
-                        </button>
-                        <button
-                          className="icon-button"
-                          type="button"
-                          disabled={!auditionSupported || busy !== null || !project?.valid}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void auditionAudioCue(cue.cue_id);
-                          }}
-                          title="Audition packaged cue"
-                          aria-label={`Audition ${audioCueDisplayName(cue)}`}
-                        >
-                          <Play size={15} aria-hidden="true" />
-                        </button>
+                <div className="asset-subgroup-stack">
+                  {audioCueGroups.map((cueGroup) => (
+                    <section className="asset-subgroup" key={cueGroup.key}>
+                      <div className="asset-subgroup-heading">
+                        <strong>{cueGroup.label}</strong>
+                        <span>{cueGroup.detail}</span>
                       </div>
-                    );
-                  })}
+                      <div className="audio-cue-gallery">
+                        {cueGroup.items.map((cue) => {
+                          const asset = audioAssetById.get(cue.asset_ref);
+                          return (
+                            <div
+                              key={cue.cue_id}
+                              className={selectedAudioCue?.cue_id === cue.cue_id ? "selected" : ""}
+                            >
+                              <button
+                                className="audio-cue-select"
+                                type="button"
+                                onClick={() => selectAssetRecord({ kind: "audio", cueId: cue.cue_id })}
+                                title="Select this SFX cue"
+                              >
+                                <AudioWaveform projectPath={projectPath} sourcePath={asset?.source_path} revision={project?.project_revision} />
+                                <span>
+                                  <span className="asset-kind-badge audio-cue-badge">SFX</span>
+                                  <strong>{audioCueDisplayName(cue)}</strong>
+                                  <small>
+                                    {asset === undefined ? "Source unavailable" : `${asset.duration_ms} ms / ${asset.adpcm_bytes} ADPCM bytes`}
+                                  </small>
+                                </span>
+                              </button>
+                              <button
+                                className="icon-button"
+                                type="button"
+                                disabled={!auditionSupported || busy !== null || !project?.valid}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void auditionAudioCue(cue.cue_id);
+                                }}
+                                title="Audition packaged cue"
+                                aria-label={`Audition ${audioCueDisplayName(cue)}`}
+                              >
+                                <Play size={15} aria-hidden="true" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              </section>
+            )}
+            {assetTab === "font" && fontAssets.length > 0 && (
+              <section className="asset-group-panel">
+                <div className="asset-group-heading">
+                  <strong>Imported fonts</strong>
+                  <span>{fontAssets.length} font{fontAssets.length === 1 ? "" : "s"}</span>
+                </div>
+                <div className="font-asset-gallery">
+                  {fontAssets.map(font => (
+                    <button
+                      key={font.font_id}
+                      className={assetSelection?.kind === "font" && assetSelection.fontId === font.font_id ? "selected" : ""}
+                      type="button"
+                      onClick={() => selectAssetRecord({ kind: "font", fontId: font.font_id })}
+                    >
+                      <span className="font-asset-glyph">Ag</span>
+                      <span>
+                        <strong>{font.display_name}</strong>
+                        <small>{font.source_format.toUpperCase()} / {font.source_path}</small>
+                      </span>
+                    </button>
+                  ))}
                 </div>
               </section>
             )}
             {!hasTabAssets && (
               <div className="asset-workspace-empty">
                 <Box size={28} aria-hidden="true" />
-                <strong>{assetTab === "sprite" ? "No sprites" : "No audio assets"}</strong>
+                <strong>{assetTab === "sprite" ? "No sprites" : assetTab === "audio" ? "No audio assets" : "No fonts"}</strong>
+                {assetTab === "font" && <span>Import a custom font once, then generate text sprites from it.</span>}
               </div>
             )}
           </div>
@@ -4103,11 +4709,13 @@ export default function App() {
         (() => {
           const source = sourceFrameById.get(selectedAssetFrame.frame_id);
           const sourceAsset = source?.asset ?? assetById.get(selectedAssetFrame.asset_id) ?? null;
+          const textPreviewAsset = isTextSpriteAsset(sourceAsset ?? undefined);
+          const editableSystemTextAsset = sourceAsset?.source_format === "system_font_text";
           return (
             <>
-              <div className="asset-inspector-preview">
+              <div className={`asset-inspector-preview ${textPreviewAsset ? "text-asset-preview" : ""}`}>
                 <FramePreviewCanvas frame={animatedAssetPreviewFrame ?? selectedAssetFrame} />
-                {selectedAssetFrames.length > 1 && (
+                {selectedAssetFrames.length > 1 && !textPreviewAsset && (
                   <div className="asset-preview-controls">
                     <button
                       className="icon-button"
@@ -4147,7 +4755,7 @@ export default function App() {
                   </label>
                 </div>
               )}
-              {source !== undefined && (
+              {source !== undefined && !textPreviewAsset && (
                 <div className="asset-frame-strip-panel">
                   <div className="asset-frame-strip-heading">
                     <strong>Frames</strong>
@@ -4190,7 +4798,7 @@ export default function App() {
                   </label>
                 </div>
               )}
-              {sourceAsset?.source_format === "system_font_text" && (
+              {editableSystemTextAsset && sourceAsset !== null && (
                 <div className="asset-text-editor">
                   <label>
                     Text
@@ -4229,14 +4837,14 @@ export default function App() {
               )}
               <dl className="inspector-list">
                 <div><dt>Asset</dt><dd>{assetDisplayName(selectedAssetFrame.asset_id)}</dd></div>
-                <div><dt>Frames</dt><dd>{selectedAssetFrames.length}</dd></div>
-                <div><dt>Selected</dt><dd>{placementFrameLabel(selectedAssetFrame)}</dd></div>
+                {!textPreviewAsset && <div><dt>Frames</dt><dd>{selectedAssetFrames.length}</dd></div>}
+                {!textPreviewAsset && <div><dt>Selected</dt><dd>{placementFrameLabel(selectedAssetFrame)}</dd></div>}
                 <div><dt>Size</dt><dd>{selectedAssetFrame.width}x{selectedAssetFrame.height}</dd></div>
                 <div><dt>Mask</dt><dd>{selectedAssetFrame.opaque ? "Opaque" : "Transparent"}</dd></div>
-                <div><dt>Source</dt><dd>{sourceAsset?.source_format === "system_font_text" ? "Text sprite" : "PNG sprite"}</dd></div>
-                {sourceAsset?.source_format === "system_font_text" && <div><dt>Font</dt><dd>8x8 system</dd></div>}
+                <div><dt>Source</dt><dd>{textPreviewAsset ? "Text sprite" : "PNG sprite"}</dd></div>
+                {editableSystemTextAsset && <div><dt>Font</dt><dd>{sourceAsset.font_id ?? SYSTEM_FONT_8X8_BASIC_ID}</dd></div>}
                 <div><dt>Asset ID</dt><dd>{selectedAssetFrame.asset_id}</dd></div>
-                <div><dt>Frame ID</dt><dd>{selectedAssetFrame.frame_id}</dd></div>
+                {!textPreviewAsset && <div><dt>Frame ID</dt><dd>{selectedAssetFrame.frame_id}</dd></div>}
               </dl>
             </>
           );
@@ -4315,6 +4923,37 @@ export default function App() {
       )}
     </section>
   );
+  const renderFontInspector = () => (
+    <section className="inspector-section asset-inspector">
+      <h3><Type size={14} aria-hidden="true" /> Font</h3>
+      {selectedFontAsset === null ? (
+        <p className="muted">Import a TTF or OTF font to generate baked text sprites.</p>
+      ) : (
+        <>
+          <div className="font-inspector-preview">
+            <span>Ag</span>
+          </div>
+          <div className="audio-inspector-controls">
+            <button
+              className="button primary"
+              type="button"
+              disabled={busy !== null || projectPath === null}
+              onClick={startBakedTextSprite}
+            >
+              <Type size={15} aria-hidden="true" />
+              Create text sprite
+            </button>
+          </div>
+          <dl className="inspector-list">
+            <div><dt>Name</dt><dd>{selectedFontAsset.display_name}</dd></div>
+            <div><dt>Format</dt><dd>{selectedFontAsset.source_format.toUpperCase()}</dd></div>
+            <div><dt>Source</dt><dd title={selectedFontAsset.source_path}>{selectedFontAsset.source_path}</dd></div>
+            <div><dt>Font ID</dt><dd>{selectedFontAsset.font_id}</dd></div>
+          </dl>
+        </>
+      )}
+    </section>
+  );
   const renderAssetInspector = () => {
     if (assetSelection?.kind === "animation" || assetSelection?.kind === "animation-draft") {
       const creating = assetSelection.kind === "animation-draft";
@@ -4335,9 +4974,12 @@ export default function App() {
     if (assetSelection?.kind === "audio") {
       return renderAudioInspector();
     }
+    if (assetSelection?.kind === "font") {
+      return renderFontInspector();
+    }
     return (
       <section className="inspector-section asset-inspector">
-        <h3>{assetTab === "sprite" ? <Image size={14} aria-hidden="true" /> : <Volume2 size={14} aria-hidden="true" />} {assetTab === "sprite" ? "Sprite" : "Audio"}</h3>
+        <h3>{assetTab === "sprite" ? <Image size={14} aria-hidden="true" /> : assetTab === "audio" ? <Volume2 size={14} aria-hidden="true" /> : <Type size={14} aria-hidden="true" />} {assetTab === "sprite" ? "Sprite" : assetTab === "audio" ? "Audio" : "Font"}</h3>
       </section>
     );
   };
