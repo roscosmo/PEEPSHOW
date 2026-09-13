@@ -333,6 +333,7 @@ function SpriteSheetAssetCard({
   onSelect,
   columns,
   textPreview = false,
+  animationSelection,
 }: {
   frames: CompiledAssetFrame[];
   name: string;
@@ -340,23 +341,50 @@ function SpriteSheetAssetCard({
   onSelect: () => void;
   columns?: number;
   textPreview?: boolean;
+  animationSelection?: {
+    selectedFrameIds: string[];
+    onToggleFrame: (frameId: string) => void;
+  };
 }) {
   if (frames.length === 0) {
     return null;
   }
   const resolvedColumns = columns ?? Math.min(4, Math.max(1, frames.length));
-  return (
-    <button type="button" className={selected ? "selected" : ""} title={name} onClick={onSelect}>
-      <span className={`asset-sheet-preview ${textPreview ? "text-sprite-preview" : ""}`} style={{ gridTemplateColumns: `repeat(${resolvedColumns}, minmax(0, 1fr))` }}>
-        {frames.map((frame) => (
+  const preview = (
+    <span className={`asset-sheet-preview ${textPreview ? "text-sprite-preview" : ""}`} style={{ gridTemplateColumns: `repeat(${resolvedColumns}, minmax(0, 1fr))` }}>
+      {frames.map((frame, index) => {
+        const selectedForAnimation = animationSelection?.selectedFrameIds.includes(frame.frame_id) === true;
+        return animationSelection === undefined ? (
           <span className="asset-sheet-cell" key={frame.frame_id}>
             <FramePreviewCanvas frame={frame} />
           </span>
-        ))}
-      </span>
-      <strong>{name}</strong>
-      <small>{frames.length} frame{frames.length === 1 ? "" : "s"} / {frames[0].width}x{frames[0].height}</small>
-    </button>
+        ) : (
+          <button
+            type="button"
+            className="asset-sheet-cell asset-sheet-cell-toggle"
+            key={frame.frame_id}
+            aria-pressed={selectedForAnimation}
+            aria-label={`Include ${name} frame ${index + 1} in animation`}
+            title={`Frame ${index + 1}`}
+            onClick={() => animationSelection.onToggleFrame(frame.frame_id)}
+          >
+            <FramePreviewCanvas frame={frame} />
+            <span className="asset-sheet-frame-index">{index + 1}</span>
+          </button>
+        );
+      })}
+    </span>
+  );
+  return (
+    <div className={`asset-sheet-card ${selected ? "selected" : ""}`} title={name}>
+      {animationSelection === undefined ? (
+        <button type="button" className="asset-sheet-preview-button" onClick={onSelect}>{preview}</button>
+      ) : preview}
+      <button type="button" className="asset-sheet-card-label" onClick={onSelect}>
+        <strong>{name}</strong>
+        <small>{frames.length} frame{frames.length === 1 ? "" : "s"} / {frames[0].width}x{frames[0].height}</small>
+      </button>
+    </div>
   );
 }
 
@@ -4899,6 +4927,12 @@ export default function App() {
                               selected={selectedAssetFrame?.asset_id === group.assetId}
                               columns={spriteSheetColumns(assetById.get(group.assetId), frames.length)}
                               textPreview={isTextSpriteAsset(asset)}
+                              animationSelection={canAuthorAnimations ? {
+                                selectedFrameIds: combineFrameIds,
+                                onToggleFrame: (frameId) => setCombineFrameIds(current => current.includes(frameId)
+                                  ? current.filter(id => id !== frameId)
+                                  : [...current, frameId]),
+                              } : undefined}
                               onSelect={() => selectAssetRecord({ kind: "sprite", frameId: selectedAssetFrame?.asset_id === group.assetId ? selectedAssetFrame.frame_id : frames[0].frame_id })} />
                           </div>;
                         })}

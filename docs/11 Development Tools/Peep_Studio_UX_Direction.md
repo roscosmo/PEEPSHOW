@@ -554,8 +554,9 @@ Agreed delivery order:
    field; the contract's entity-definition tags are not an asset-tag contract.
 3. Animation authoring belongs in Assets. Each shared animation record is one
    library item, continuously previewing its ordered frames at the authored cadence.
-   Select source-sprite checkboxes and Create animation to combine their frames;
-   the inspector edits order, a single animation cadence and advertised playback modes.
+   Select source-sprite checkboxes to include a whole source sheet, or toggle
+   individual source-sheet frames before Create animation; the inspector edits
+   order, a single animation cadence and advertised playback modes.
    Sources are retained in the separate Source sprites section. Multi-frame PNG
    import preselects its source for this same creation workflow. Only backend
    advertised loop policies are offered; the current native increment exposes Loop.

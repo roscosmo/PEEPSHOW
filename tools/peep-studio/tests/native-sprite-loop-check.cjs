@@ -132,8 +132,13 @@ app.whenReady().then(async () => {
   window.webContents.invalidate(); await wait(200);
   fs.writeFileSync(path.join(output,'sheet-import.png'),(await window.webContents.capturePage()).toPNG());
   await button('Import');
-  assert.equal(await evaluate("document.querySelectorAll('.asset-frame-gallery button').length"), 1);
+  assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-card').length"), 1);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell').length"), frameCount);
+  assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount);
+  await click('.asset-sheet-cell-toggle:last-child');
+  assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount - 1);
+  await click('.asset-sheet-cell-toggle:last-child');
+  assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount);
   const alpha = await evaluate("(() => {const c=document.querySelector('.asset-frame-gallery canvas');const p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;return [p[3],p[(3*c.width+2)*4+3]]})()");
   assert.deepEqual(alpha, [transparent ? 0 : 255, 255]);
   const pixels = new Set(await evaluate("[...document.querySelectorAll('.asset-sheet-cell canvas')].map(canvas => canvas.toDataURL())"));
@@ -146,7 +151,7 @@ app.whenReady().then(async () => {
   assert.equal(commands.find(c=>c.kind==='asset.upsert').asset.frames.length, frameCount);
   assert.deepEqual(commands.find(c=>c.kind==='asset.upsert').asset.frames.map(f=>f.source_rect),
     Array.from({length:frameCount},(_,i)=>({x:(i%sheetColumns)*16,y:Math.floor(i/sheetColumns)*16,width:16,height:16})));
-  await click('.asset-frame-gallery button');
+  await click('.asset-sheet-card-label');
   assert(await evaluate("!!document.querySelector('.asset-inspector-preview')"));
   const tabRevision = latest.project_revision;
   await click('#asset-tab-audio');
@@ -156,7 +161,7 @@ app.whenReady().then(async () => {
   assert.equal(await evaluate("[...document.querySelectorAll('button')].some(e=>e.textContent.trim()==='Choose PNG')"), false);
   await evaluate("document.querySelector('#asset-tab-audio').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))"); await wait(100);
   assert.equal(await evaluate("document.activeElement.id"), 'asset-tab-sprite');
-  assert.equal(await evaluate("document.querySelector('.asset-frame-gallery button.selected')"), null);
+  assert.equal(await evaluate("document.querySelector('.asset-sheet-card.selected')"), null);
   assert.equal(latest.project_revision, tabRevision);
   window.webContents.invalidate(); await wait(200);
   fs.writeFileSync(path.join(output,'asset-tabs.png'),(await window.webContents.capturePage()).toPNG());

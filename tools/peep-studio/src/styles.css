@@ -1667,7 +1667,7 @@ button:focus-visible {
 
 .object-frame-picker { min-width: 0; }
 .sprite-source-item { position: relative; min-width: 0; }
-.sprite-source-item > button { width: 100%; height: 100%; }
+.sprite-source-item > .asset-sheet-card { width: 100%; height: 100%; }
 .sprite-source-item > input { position: absolute; top: 6px; right: 6px; z-index: 1; width: 16px; height: 16px; }
 .sprite-source-item > .asset-kind-badge {
   position: absolute;
@@ -2106,7 +2106,8 @@ button:focus-visible {
   gap: 12px;
 }
 
-.asset-frame-gallery button {
+.asset-frame-gallery > button,
+.asset-sheet-card {
   display: grid;
   gap: 8px;
   min-height: 174px;
@@ -2119,12 +2120,14 @@ button:focus-visible {
   text-align: left;
 }
 
-.asset-frame-gallery button:hover {
+.asset-frame-gallery > button:hover,
+.asset-sheet-card:hover {
   border-color: #8eb0c3;
   background: #eef7fb;
 }
 
-.asset-frame-gallery button.selected {
+.asset-frame-gallery > button.selected,
+.asset-sheet-card.selected {
   border-color: #d6812f;
   background: #fff4e8;
 }
@@ -2215,6 +2218,7 @@ button:focus-visible {
 
 .asset-sheet-preview {
   display: grid;
+  width: 100%;
   min-height: 120px;
   align-items: center;
   justify-items: center;
@@ -2233,14 +2237,68 @@ button:focus-visible {
   background-size: 10px 10px;
 }
 
+.asset-sheet-preview-button,
+.asset-sheet-card-label {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.asset-sheet-card-label {
+  display: grid;
+  gap: 2px;
+}
+
 .asset-sheet-cell {
   display: flex;
+  position: relative;
   min-width: 0;
   width: 100%;
   aspect-ratio: 1;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+}
+
+.asset-sheet-cell-toggle {
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.72);
+  color: inherit;
+  cursor: pointer;
+}
+
+.asset-sheet-cell-toggle:hover {
+  border-color: #8eb0c3;
+  background: #eef7fb;
+}
+
+.asset-sheet-cell-toggle[aria-pressed="true"] {
+  border-color: #126a98;
+  background: #dff3ff;
+  box-shadow: inset 0 0 0 2px #126a98;
+}
+
+.asset-sheet-frame-index {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  display: grid;
+  min-width: 14px;
+  height: 14px;
+  place-items: center;
+  border: 1px solid rgba(18, 106, 152, 0.72);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #145e84;
+  font-size: 9px;
+  font-weight: 850;
+  line-height: 1;
 }
 
 .asset-sheet-cell .frame-preview-canvas {
