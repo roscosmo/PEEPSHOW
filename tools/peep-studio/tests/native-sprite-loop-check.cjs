@@ -60,22 +60,46 @@ app.whenReady().then(async () => {
     }
     return result;
   });
+  let importCount = 0;
   ipcMain.handle('audit:png', () => {
-    const width = sheetColumns * 16, height = sheetRows * 16;
+    const importIndex = importCount++;
+    const cellWidth = importIndex === 0 ? 16 : 12;
+    const cellHeight = importIndex === 0 ? 16 : 10;
+    const currentFrameCount = importIndex === 0 ? frameCount : 1;
+    const currentColumns = importIndex === 0 ? sheetColumns : 1;
+    const currentRows = importIndex === 0 ? sheetRows : 1;
+    const width = currentColumns * cellWidth, height = currentRows * cellHeight;
     const pixels = Buffer.alloc(width * height * 4, 255);
     if (transparent) {
-      for (let frame = 0; frame < frameCount; frame++) {
-        const i = (Math.floor(frame / sheetColumns) * 16 * width + (frame % sheetColumns) * 16) * 4;
+      for (let frame = 0; frame < currentFrameCount; frame++) {
+        const i = (Math.floor(frame / currentColumns) * cellHeight * width + (frame % currentColumns) * cellWidth) * 4;
         pixels[i + 3] = 0;
       }
     }
-    for (let y = 3; y < 13; y++) for (let frame = 0; frame < frameCount; frame++) for (let x = 2; x < 4 + frame; x++) {
-      const i = ((y + Math.floor(frame / sheetColumns) * 16) * width + (frame % sheetColumns) * 16 + x) * 4; pixels[i] = pixels[i + 1] = pixels[i + 2] = 0;
+    for (let y = 3; y < Math.max(4, cellHeight - 3); y++) for (let frame = 0; frame < currentFrameCount; frame++) for (let x = 2; x < Math.min(cellWidth - 1, 4 + frame + importIndex); x++) {
+      const i = ((y + Math.floor(frame / currentColumns) * cellHeight) * width + (frame % currentColumns) * cellWidth + x) * 4; pixels[i] = pixels[i + 1] = pixels[i + 2] = 0;
     }
-    const destination = path.join(projectPath, 'assets', 'audit.png');
+    const assetId = importIndex === 0 ? 'audit' : 'small_text';
+    const destination = path.join(projectPath, 'assets', `${assetId}.png`);
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     fs.writeFileSync(destination, nativeImage.createFromBitmap(pixels, { width, height }).toPNG());
-    return { assetId: 'audit', displayName: 'Sprite loop test', sourcePath: 'assets/audit.png', width, height };
+    return {
+      assetId,
+      displayName: importIndex === 0 ? 'Sprite loop test' : 'Tiny text sprite',
+      sourcePath: `assets/${assetId}.png`,
+      width,
+      height,
+    };
+  });
+  ipcMain.handle('audit:generated-png', (_event, targetProjectPath, requestedAssetId, pngDataUrl) => {
+    const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(pngDataUrl);
+    assert(match, 'generated sprite must be a PNG data URL');
+    const image = nativeImage.createFromBuffer(Buffer.from(match[1], 'base64'));
+    const size = image.getSize();
+    const destination = path.join(targetProjectPath, 'assets', `${requestedAssetId}.png`);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, image.toPNG());
+    return { assetId: requestedAssetId, sourcePath: `assets/${requestedAssetId}.png`, width: size.width, height: size.height };
   });
   window = new BrowserWindow({ width: 1440, height: 1000, show: false, webPreferences: {
     preload: path.join(__dirname, 'native-sprite-loop-preload.cjs'), sandbox: true, contextIsolation: true, offscreen: true, backgroundThrottling: false,
@@ -151,6 +175,35 @@ app.whenReady().then(async () => {
   assert.equal(commands.find(c=>c.kind==='asset.upsert').asset.frames.length, frameCount);
   assert.deepEqual(commands.find(c=>c.kind==='asset.upsert').asset.frames.map(f=>f.source_rect),
     Array.from({length:frameCount},(_,i)=>({x:(i%sheetColumns)*16,y:Math.floor(i/sheetColumns)*16,width:16,height:16})));
+  if (process.argv.includes('--normalize')) {
+    await button('Choose PNG');
+    await setGrid('columns', 1);
+    await setGrid('rows', 1);
+    await button('Import');
+    await click('[aria-label="Include Sprite loop test frame 1 in animation"]');
+    await button('Create animation');
+    assert.match(await evaluate("document.querySelector('.animation-normalize-panel').textContent"), /16x16/);
+    assert.equal(await evaluate("document.querySelectorAll('.animation-normalize-strip canvas').length"), 2);
+    await evaluate("(() => {const e=document.querySelector('.animation-normalize-panel [aria-label=\"Animation cadence\"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'750'); e.dispatchEvent(new Event('input',{bubbles:true}));})()"); await wait(100);
+    assert.equal(await evaluate("document.querySelector('.animation-normalize-panel [aria-label=\"Animation playback\"]').value"), "loop");
+    await evaluate("document.querySelector('.animation-normalize-panel .button.primary').click()"); await wait(500);
+    const normalizedAsset = latest.document.assets.find(asset => asset.display_name === 'Animation backing frames');
+    assert(normalizedAsset, 'A padded generated sprite asset must be created');
+    assert.deepEqual(normalizedAsset.frames.map(frame => [frame.source_rect.width, frame.source_rect.height]), [[16,16],[16,16]]);
+    const normalizedClip = latest.document.animations.find(clip => clip.frame_refs.every(frame => frame.startsWith(`${normalizedAsset.asset_id}.`)));
+    assert(normalizedClip, 'The created animation must use normalized generated frames');
+    assert.deepEqual(normalizedClip.frame_duration_ms, [750, 750]);
+    assert.equal(normalizedClip.loop_policy, 'loop');
+    assert.equal(await evaluate("document.querySelectorAll('.animation-normalize-panel').length"), 0);
+    assert.equal(await evaluate("document.querySelectorAll('.animation-asset-gallery > button.selected').length"), 1);
+    assert.equal(await evaluate("[...document.querySelectorAll('.animation-asset-gallery > button.selected strong')].map(e=>e.textContent).join('\\n')"), "Animation 1");
+    assert.equal(await evaluate("document.querySelectorAll('.asset-subgroup .sprite-source-item').length"), 2);
+    assert.equal(await evaluate("document.body.textContent.includes('Animation backing frames')"), false);
+    assert.equal(batches.some(batch => batch.some(command => command.kind === 'asset.upsert') && batch.some(command => command.kind === 'animation.upsert')), true);
+    assert.deepEqual(errors, []);
+    console.log('Animation normalization: mixed-size sprite/text frames generate padded same-size frames and create the clip in one action passed');
+    return;
+  }
   await click('.asset-sheet-card-label');
   assert(await evaluate("!!document.querySelector('.asset-inspector-preview')"));
   const tabRevision = latest.project_revision;

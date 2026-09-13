@@ -557,6 +557,14 @@ Agreed delivery order:
    Select source-sprite checkboxes to include a whole source sheet, or toggle
    individual source-sheet frames before Create animation; the inspector edits
    order, a single animation cadence and advertised playback modes.
+   Selected frames may come from sprite sheets, single sprites, generated
+   sprites or baked text sprites. If selected frame dimensions differ, Studio
+   creates a generated padded sprite asset using user-selected horizontal and
+   vertical anchors, then creates the animation from those normalized frames in
+   the same user action. The generated normalized frame asset is backing data:
+   it must not appear as a normal static/source sprite or placement choice.
+   Normalization still exposes the animation controls, including cadence and
+   playback mode.
    Sources are retained in the separate Source sprites section. Multi-frame PNG
    import preselects its source for this same creation workflow. Only backend
    advertised loop policies are offered; the current native increment exposes Loop.

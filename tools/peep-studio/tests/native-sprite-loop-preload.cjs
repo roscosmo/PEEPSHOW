@@ -4,4 +4,6 @@ contextBridge.exposeInMainWorld('peepStudio', {
   chooseNewProjectPath: () => ipcRenderer.invoke('audit:path'),
   openProject: () => ipcRenderer.invoke('audit:path'),
   importSpritePng: () => ipcRenderer.invoke('audit:png'),
+  writeGeneratedSpritePng: (projectPath, requestedAssetId, pngDataUrl) =>
+    ipcRenderer.invoke('audit:generated-png', projectPath, requestedAssetId, pngDataUrl),
 });

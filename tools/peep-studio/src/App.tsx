@@ -121,6 +121,16 @@ type AssetSelection =
   | { kind: "audio"; cueId: string }
   | { kind: "font"; fontId: string }
   | null;
+type AnimationAnchorX = "left" | "center" | "right";
+type AnimationAnchorY = "top" | "middle" | "bottom";
+type AnimationNormalizeDraft = {
+  frameIds: string[];
+  horizontal: AnimationAnchorX;
+  vertical: AnimationAnchorY;
+  cadence: string;
+  loopPolicy: string;
+  error: string | null;
+};
 type CompiledAssetFrameGroup = {
   assetId: string;
   frames: CompiledAssetFrame[];
@@ -144,7 +154,11 @@ const PLACEMENT_GRID_MAJOR_Y = Array.from({ length: PLACEMENT_HEIGHT / 8 + 1 }, 
 const BAKED_TEXT_MIN_FONT_SIZE = 6;
 const BAKED_TEXT_MAX_FONT_SIZE = 128;
 const BAKED_TEXT_MAX_SOURCE_DIMENSION = 4096;
+const NORMALIZED_ANIMATION_MAX_SOURCE_DIMENSION = 4096;
 const DEFAULT_FONT_PREVIEW_TEXT = "PEEP STUDIO 0123456789 START SETTINGS CREDITS";
+const NORMALIZED_ANIMATION_BACKING_DISPLAY_NAME = "Animation backing frames";
+const LEGACY_NORMALIZED_ANIMATION_BACKING_DISPLAY_NAME = "Padded animation frames";
+const NORMALIZED_ANIMATION_BACKING_ID_PREFIXES = ["animation_backing_frames", "padded_animation_frames"];
 
 const normalizeTextLines = (value: string) => value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
 const stableAssetIdFromLabel = (value: string, fallback: string) => {
@@ -152,6 +166,14 @@ const stableAssetIdFromLabel = (value: string, fallback: string) => {
   const normalized = stem === "" ? fallback : stem;
   const prefixed = /^[a-z]/.test(normalized) ? normalized : `${fallback}_${normalized}`;
   return prefixed.slice(0, 48);
+};
+const isNormalizedAnimationBackingAsset = (asset: AssetRecord | undefined) => {
+  if (asset === undefined || asset.source_format !== "png") {
+    return false;
+  }
+  return asset.display_name === NORMALIZED_ANIMATION_BACKING_DISPLAY_NAME
+    || asset.display_name === LEGACY_NORMALIZED_ANIMATION_BACKING_DISPLAY_NAME
+    || NORMALIZED_ANIMATION_BACKING_ID_PREFIXES.some((prefix) => asset.asset_id === prefix || asset.asset_id.startsWith(`${prefix}_`));
 };
 const parseBakedTextFontSize = (value: string) => {
   const size = Number(value);
@@ -223,6 +245,66 @@ async function renderBakedTextPng(
   }
   context.putImageData(image, 0, 0);
   return { dataUrl: canvas.toDataURL("image/png"), width, height };
+}
+
+const animationAnchorOffset = (container: number, content: number, anchor: AnimationAnchorX | AnimationAnchorY) => {
+  if (anchor === "right" || anchor === "bottom") {
+    return container - content;
+  }
+  if (anchor === "center" || anchor === "middle") {
+    return Math.floor((container - content) / 2);
+  }
+  return 0;
+};
+
+function renderNormalizedAnimationPng(
+  frames: CompiledAssetFrame[],
+  horizontal: AnimationAnchorX,
+  vertical: AnimationAnchorY,
+): { dataUrl: string; frameWidth: number; frameHeight: number; columns: number; rows: number } {
+  if (frames.length === 0) {
+    throw new Error("Select at least one frame before normalizing.");
+  }
+  const frameWidth = Math.max(...frames.map(frame => frame.width));
+  const frameHeight = Math.max(...frames.map(frame => frame.height));
+  const columns = Math.max(1, Math.min(frames.length, Math.floor(NORMALIZED_ANIMATION_MAX_SOURCE_DIMENSION / frameWidth)));
+  const rows = Math.ceil(frames.length / columns);
+  const width = columns * frameWidth;
+  const height = rows * frameHeight;
+  if (width > NORMALIZED_ANIMATION_MAX_SOURCE_DIMENSION || height > NORMALIZED_ANIMATION_MAX_SOURCE_DIMENSION) {
+    throw new Error(`Normalized animation sheet must fit within ${NORMALIZED_ANIMATION_MAX_SOURCE_DIMENSION}x${NORMALIZED_ANIMATION_MAX_SOURCE_DIMENSION} px.`);
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (context === null) {
+    throw new Error("Canvas rendering is unavailable.");
+  }
+  context.clearRect(0, 0, width, height);
+  frames.forEach((frame, index) => {
+    const image = context.createImageData(frame.width, frame.height);
+    const pixels = atob(frame.pixels_base64);
+    const mask = atob(frame.mask_base64);
+    for (let y = 0; y < frame.height; y += 1) {
+      for (let x = 0; x < frame.width; x += 1) {
+        const byteIndex = y * frame.row_stride_bytes + (x >> 3);
+        const bit = 0x80 >> (x & 7);
+        const visible = frame.opaque || (mask.charCodeAt(byteIndex) & bit) !== 0;
+        const black = (pixels.charCodeAt(byteIndex) & bit) !== 0;
+        const target = (y * frame.width + x) * 4;
+        const value = black ? 0 : 255;
+        image.data[target] = value;
+        image.data[target + 1] = value;
+        image.data[target + 2] = value;
+        image.data[target + 3] = visible ? 255 : 0;
+      }
+    }
+    const frameX = (index % columns) * frameWidth + animationAnchorOffset(frameWidth, frame.width, horizontal);
+    const frameY = Math.floor(index / columns) * frameHeight + animationAnchorOffset(frameHeight, frame.height, vertical);
+    context.putImageData(image, frameX, frameY);
+  });
+  return { dataUrl: canvas.toDataURL("image/png"), frameWidth, frameHeight, columns, rows };
 }
 
 type PlacementViewport = {
@@ -428,6 +510,7 @@ export default function App() {
   const [assetSelection, setAssetSelection] = useState<AssetSelection>(null);
   const [combineFrameIds, setCombineFrameIds] = useState<string[]>([]);
   useEffect(() => setCombineFrameIds([]), [projectPath]);
+  const [animationNormalizeDraft, setAnimationNormalizeDraft] = useState<AnimationNormalizeDraft | null>(null);
   const [assetTab, setAssetTab] = useState<AssetTab>("sprite");
   const [fontAssets, setFontAssets] = useState<FontAssetRecord[]>([]);
   const [fontPreviewFamilies, setFontPreviewFamilies] = useState<Record<string, string>>({});
@@ -1108,6 +1191,7 @@ export default function App() {
   const clearAssetLibrarySelection = () => {
     setAssetSelection(null);
     setCombineFrameIds([]);
+    setAnimationNormalizeDraft(null);
     setAssetPreviewPlaying(false);
     stopAudioPlayback();
   };
@@ -1116,7 +1200,7 @@ export default function App() {
     if (!(target instanceof Element)) {
       return;
     }
-    if (target.closest("button, input, select, textarea, label, summary, a")) {
+    if (target.closest("button, input, select, textarea, label, summary, a, .asset-import-panel")) {
       return;
     }
     clearAssetLibrarySelection();
@@ -3364,16 +3448,112 @@ export default function App() {
     && service?.state_scene_presentation.general_frame_animation.commands.includes("animation.upsert") === true
     && animationPolicies.length > 0;
   const animationLabel = (clip: AuthoredClip) => {
+    const animationIndex = Math.max(0, animationClips.indexOf(clip)) + 1;
     const asset = assets.find(item => item.frames.some(frame => frame.frame_id === clip.frame_refs[0]));
-    return `${asset?.display_name ?? asset?.text ?? "Animation"} - Animation ${Math.max(0, animationClips.indexOf(clip)) + 1}`;
+    if (isNormalizedAnimationBackingAsset(asset)) {
+      return `Animation ${animationIndex}`;
+    }
+    return `${asset?.display_name ?? asset?.text ?? "Animation"} - Animation ${animationIndex}`;
+  };
+  const nextAnimationId = () => {
+    let index = 1;
+    while (animationClips.some(clip => clip.animation_id === `animation_${index}`)) index++;
+    return `animation_${index}`;
   };
   const startAssetAnimation = () => {
     const frameIds = combineFrameIds.filter(id => compiledAssetFrameById.has(id));
     if (!frameIds.length) return;
-    let index = 1;
-    while (animationClips.some(clip => clip.animation_id === `animation_${index}`)) index++;
-    selectAssetRecord({ kind: "animation-draft", clip: { animation_id: `animation_${index}`, frame_refs: frameIds,
+    const frames = frameIds.flatMap(id => compiledAssetFrameById.get(id) ?? []);
+    const sizes = new Set(frames.map(frame => `${frame.width}x${frame.height}`));
+    if (sizes.size > 1) {
+      setAnimationNormalizeDraft({ frameIds, horizontal: "center", vertical: "middle", cadence: "400", loopPolicy: animationPolicies[0], error: null });
+      setAssetSelection(null);
+      setMessage("Selected frames have mixed sizes. Choose padding alignment to create a normalized animation asset.");
+      return;
+    }
+    setAnimationNormalizeDraft(null);
+    selectAssetRecord({ kind: "animation-draft", clip: { animation_id: nextAnimationId(), frame_refs: frameIds,
       frame_duration_ms: frameIds.map(() => 400), loop_policy: animationPolicies[0] } });
+  };
+  const createNormalizedAnimation = async () => {
+    if (bridge === undefined || project === null || projectPath === null || animationNormalizeDraft === null || busy !== null) {
+      return;
+    }
+    if (bridge.writeGeneratedSpritePng === undefined) {
+      setAnimationNormalizeDraft(current => current === null ? null : { ...current, error: "Restart Peep Studio to enable generated sprite writing." });
+      return;
+    }
+    const selectedFrames = animationNormalizeDraft.frameIds.flatMap(id => compiledAssetFrameById.get(id) ?? []);
+    if (selectedFrames.length !== animationNormalizeDraft.frameIds.length || selectedFrames.length === 0) {
+      setAnimationNormalizeDraft(current => current === null ? null : { ...current, error: "Selected animation frames are no longer available." });
+      return;
+    }
+    const cadenceMs = Number(animationNormalizeDraft.cadence);
+    if (!Number.isInteger(cadenceMs) || cadenceMs < 1 || cadenceMs > 60000) {
+      setAnimationNormalizeDraft(current => current === null ? null : { ...current, error: "Cadence must be a whole number from 1 to 60000 ms." });
+      return;
+    }
+    if (!animationPolicies.includes(animationNormalizeDraft.loopPolicy)) {
+      setAnimationNormalizeDraft(current => current === null ? null : { ...current, error: "Choose a supported playback mode." });
+      return;
+    }
+    setBusy("Normalizing animation");
+    setPlaying(false);
+    try {
+      const rendered = renderNormalizedAnimationPng(selectedFrames, animationNormalizeDraft.horizontal, animationNormalizeDraft.vertical);
+      const displayName = NORMALIZED_ANIMATION_BACKING_DISPLAY_NAME;
+      const requestedAssetId = uniqueImportedAssetId(stableAssetIdFromLabel(displayName, "animation_frames"));
+      const written = await bridge.writeGeneratedSpritePng(projectPath, requestedAssetId, rendered.dataUrl);
+      const normalizedFrames: AssetFrameRecord[] = selectedFrames.map((_, index) => ({
+        frame_id: `${written.assetId}.frame_${index + 1}`,
+        display_name: `Frame ${index + 1}`,
+        source_rect: {
+          x: (index % rendered.columns) * rendered.frameWidth,
+          y: Math.floor(index / rendered.columns) * rendered.frameHeight,
+          width: rendered.frameWidth,
+          height: rendered.frameHeight,
+        },
+        pivot_x: 0,
+        pivot_y: 0,
+      }));
+      const frameRefs = normalizedFrames.map(frame => frame.frame_id);
+      const animationId = nextAnimationId();
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [
+          {
+            kind: "asset.upsert",
+            asset: {
+              asset_id: written.assetId,
+              display_name: displayName,
+              asset_type: "masked_1bpp",
+              source_path: written.sourcePath,
+              source_format: "png",
+              frames: normalizedFrames,
+            },
+          },
+          {
+            kind: "animation.upsert",
+            animation: {
+              animation_id: animationId,
+              frame_refs: frameRefs,
+              frame_duration_ms: frameRefs.map(() => cadenceMs),
+              loop_policy: animationNormalizeDraft.loopPolicy,
+            },
+          },
+        ],
+      });
+      applyProjectResult(result);
+      setCombineFrameIds([]);
+      setAnimationNormalizeDraft(null);
+      selectAssetRecord({ kind: "animation", clipId: animationId });
+      setMessage(`Created animation from ${rendered.frameWidth}x${rendered.frameHeight} padded frames. Save to write it to the project.`);
+    } catch (error) {
+      setAnimationNormalizeDraft(current => current === null ? null : { ...current, error: errorText(error) });
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
   };
   const audioAssets: AudioAssetRecord[] = project?.document?.audio_assets ?? [];
   const audioCues: AudioCueRecord[] = project?.document?.audio_cues ?? [];
@@ -3384,6 +3564,10 @@ export default function App() {
   );
   const assetById = useMemo(
     () => new Map(assets.map((asset) => [asset.asset_id, asset])),
+    [assets],
+  );
+  const animationEditorAssets = useMemo(
+    () => assets.map((asset) => (isNormalizedAnimationBackingAsset(asset) ? { ...asset, display_name: "Animation frames" } : asset)),
     [assets],
   );
   const sourceFrameById = useMemo(() => {
@@ -3402,6 +3586,10 @@ export default function App() {
     }
     return [...groups.entries()].map(([assetId, frames]) => ({ assetId, frames }));
   }, [compiledAssetFrames]);
+  const visibleCompiledAssetFrameGroups = useMemo(
+    () => compiledAssetFrameGroups.filter((group) => !isNormalizedAnimationBackingAsset(assetById.get(group.assetId))),
+    [assetById, compiledAssetFrameGroups],
+  );
   const audioAssetById = useMemo(
     () => new Map(audioAssets.map((asset) => [asset.asset_id, asset])),
     [audioAssets],
@@ -3468,7 +3656,7 @@ export default function App() {
   const sourceSpriteGroups = useMemo<AssetLibraryGroup<CompiledAssetFrameGroup>[]>(() => {
     const order = ["Sprite sheet", "Text sprite", "Single frame", "Text", "Generated"];
     const grouped = new Map<string, CompiledAssetFrameGroup[]>();
-    for (const group of compiledAssetFrameGroups) {
+    for (const group of visibleCompiledAssetFrameGroups) {
       const kind = spriteAssetKind(assetById.get(group.assetId), group.frames.length);
       grouped.set(kind, [...(grouped.get(kind) ?? []), group]);
     }
@@ -3484,7 +3672,7 @@ export default function App() {
         items,
       }];
     });
-  }, [assetById, bakedTextSourceByAssetId, compiledAssetFrameGroups]);
+  }, [assetById, bakedTextSourceByAssetId, visibleCompiledAssetFrameGroups]);
   const audioCueGroups = useMemo<AssetLibraryGroup<AudioCueRecord>[]>(() => {
     const ready = audioCues.filter((cue) => audioAssetById.has(cue.asset_ref));
     const missingSource = audioCues.filter((cue) => !audioAssetById.has(cue.asset_ref));
@@ -3837,10 +4025,14 @@ export default function App() {
     }
   }, [effectivePlacementElements, selectedPlacementElement]);
   useEffect(() => {
-    if (assetSelection?.kind === "sprite" && !compiledAssetFrameById.has(assetSelection.frameId)) {
+    if (assetSelection?.kind !== "sprite") {
+      return;
+    }
+    const frame = compiledAssetFrameById.get(assetSelection.frameId);
+    if (frame === undefined || isNormalizedAnimationBackingAsset(assetById.get(frame.asset_id))) {
       setAssetSelection(null);
     }
-  }, [assetSelection, compiledAssetFrameById]);
+  }, [assetById, assetSelection, compiledAssetFrameById]);
   useEffect(() => {
     setAssetPreviewStep(0);
     setAssetPreviewPlaying(false);
@@ -4375,7 +4567,7 @@ export default function App() {
               }} />
           </section>;
         })}
-        {compiledAssetFrameGroups.map((group) => (
+        {visibleCompiledAssetFrameGroups.map((group) => (
           <section className="placement-sprite-picker-group" key={group.assetId}>
             <div>
               <strong>{assetDisplayName(group.assetId)}</strong>
@@ -4808,12 +5000,109 @@ export default function App() {
       </div>
     );
   };
+  const renderAnimationNormalizePanel = (canEditAssets: boolean) => {
+    if (animationNormalizeDraft === null) {
+      return null;
+    }
+    const selectedFrames = animationNormalizeDraft.frameIds.flatMap(id => compiledAssetFrameById.get(id) ?? []);
+    const frameWidth = selectedFrames.length === 0 ? 0 : Math.max(...selectedFrames.map(frame => frame.width));
+    const frameHeight = selectedFrames.length === 0 ? 0 : Math.max(...selectedFrames.map(frame => frame.height));
+    const sizes = [...new Set(selectedFrames.map(frame => `${frame.width}x${frame.height}`))];
+    const cadenceMs = Number(animationNormalizeDraft.cadence);
+    const cadenceValid = animationNormalizeDraft.cadence.trim() !== ""
+      && Number.isInteger(cadenceMs)
+      && cadenceMs >= 1
+      && cadenceMs <= 60000;
+    const playbackValid = animationPolicies.includes(animationNormalizeDraft.loopPolicy);
+    return (
+      <div className="asset-import-panel animation-normalize-panel">
+        <div className="asset-import-heading">
+          <div>
+            <strong>Normalize animation frames</strong>
+            <span>{selectedFrames.length} selected frame{selectedFrames.length === 1 ? "" : "s"} / {sizes.join(", ")} to {frameWidth}x{frameHeight}</span>
+          </div>
+          <button className="icon-button" type="button" onClick={() => setAnimationNormalizeDraft(null)} title="Cancel normalization" aria-label="Cancel normalization">
+            <X size={14} aria-hidden="true" />
+          </button>
+        </div>
+        <div className="animation-normalize-grid">
+          <label>
+            Horizontal anchor
+            <select
+              value={animationNormalizeDraft.horizontal}
+              disabled={!canEditAssets}
+              onChange={(event) => setAnimationNormalizeDraft(current => current === null ? null : { ...current, horizontal: event.target.value as AnimationAnchorX, error: null })}
+            >
+              <option value="left">Left</option>
+              <option value="center">Center</option>
+              <option value="right">Right</option>
+            </select>
+          </label>
+          <label>
+            Vertical anchor
+            <select
+              value={animationNormalizeDraft.vertical}
+              disabled={!canEditAssets}
+              onChange={(event) => setAnimationNormalizeDraft(current => current === null ? null : { ...current, vertical: event.target.value as AnimationAnchorY, error: null })}
+            >
+              <option value="top">Top</option>
+              <option value="middle">Middle</option>
+              <option value="bottom">Bottom</option>
+            </select>
+          </label>
+          <label>
+            Cadence (ms)
+            <input
+              type="number"
+              min={1}
+              max={60000}
+              step={1}
+              aria-label="Animation cadence"
+              value={animationNormalizeDraft.cadence}
+              disabled={!canEditAssets}
+              onChange={(event) => setAnimationNormalizeDraft(current => current === null ? null : { ...current, cadence: event.target.value, error: null })}
+            />
+          </label>
+          <label>
+            Playback
+            <select
+              aria-label="Animation playback"
+              value={animationNormalizeDraft.loopPolicy}
+              disabled={!canEditAssets}
+              onChange={(event) => setAnimationNormalizeDraft(current => current === null ? null : { ...current, loopPolicy: event.target.value, error: null })}
+            >
+              {animationPolicies.map(policy => <option key={policy} value={policy}>{policy === "loop" ? "Loop" : policy === "once" ? "Play once" : policy}</option>)}
+            </select>
+          </label>
+          <div className="animation-normalize-strip" aria-label="Selected animation frames">
+            {selectedFrames.map((frame, index) => (
+              <span key={`${frame.frame_id}-${index}`}>
+                <FramePreviewCanvas frame={frame} />
+                <small>{index + 1}</small>
+              </span>
+            ))}
+          </div>
+          <button
+            className="button primary"
+            type="button"
+            disabled={!canEditAssets || selectedFrames.length === 0 || selectedFrames.length !== animationNormalizeDraft.frameIds.length || !cadenceValid || !playbackValid}
+            onClick={() => void createNormalizedAnimation()}
+          >
+            Create animation
+          </button>
+        </div>
+        <div className={`asset-import-debug ${animationNormalizeDraft.error !== null ? "error" : ""}`}>
+          {animationNormalizeDraft.error ?? "A generated sprite asset will back the animation; source sprites stay unchanged."}
+        </div>
+      </div>
+    );
+  };
   const renderAssetsWorkspace = () => {
     const canEditAssets = bridge !== undefined && project !== null && busy === null && service?.operations.includes("project.apply_commands") === true;
     const audioSupported = service?.state_scene_audio.host_package_support === true;
     const auditionSupported = service?.operations.includes("project.audio_audition") === true;
     const hasTabAssets = assetTab === "sprite"
-      ? compiledAssetFrameGroups.length > 0
+      ? animationClips.length > 0 || visibleCompiledAssetFrameGroups.length > 0
       : assetTab === "audio"
         ? audioCues.length > 0
         : fontAssets.length > 0;
@@ -4903,6 +5192,7 @@ export default function App() {
           <div id="asset-library-panel" role="tabpanel" aria-labelledby={`asset-tab-${assetTab}`}>
           {assetTab === "sprite" && renderBakedTextPanel(canEditAssets)}
           {assetTab === "sprite" && renderSpriteImportPanel(canEditAssets)}
+          {assetTab === "sprite" && renderAnimationNormalizePanel(canEditAssets)}
           <div className="asset-group-stack">
             {assetTab === "sprite" && animationClips.length > 0 && <section className="asset-group-panel">
               <div className="asset-group-heading">
@@ -4915,11 +5205,11 @@ export default function App() {
                 selected={assetSelection?.kind === "animation" && assetSelection.clipId === clip.animation_id}
                 playback={preferences.thumbnailPlayback} onSelect={() => selectAssetRecord({kind:"animation",clipId:clip.animation_id})} />)}</div>
             </section>}
-            {assetTab === "sprite" && compiledAssetFrameGroups.length > 0 && (
+            {assetTab === "sprite" && visibleCompiledAssetFrameGroups.length > 0 && (
               <section className="asset-group-panel">
                 <div className="asset-group-heading">
                   <strong>Static sprites</strong>
-                  <span>{compiledAssetFrameGroups.length} sprite{compiledAssetFrameGroups.length === 1 ? "" : "s"}</span>
+                  <span>{visibleCompiledAssetFrameGroups.length} sprite{visibleCompiledAssetFrameGroups.length === 1 ? "" : "s"}</span>
                 </div>
                 <div className="asset-subgroup-stack">
                   {sourceSpriteGroups.map((sourceGroup) => (
@@ -5457,7 +5747,7 @@ export default function App() {
       const creating = assetSelection.kind === "animation-draft";
       const clip = assetSelection.kind === "animation-draft" ? assetSelection.clip : animationClips.find(item => item.animation_id === assetSelection.clipId);
       return <section className="inspector-section asset-inspector"><h3>Animation</h3>{clip && <AnimationClipEditor
-        key={`${creating}:${JSON.stringify(clip)}`} clip={clip} frames={compiledAssetFrames} assets={assets} scenes={scenes}
+        key={`${creating}:${JSON.stringify(clip)}`} clip={clip} frames={compiledAssetFrames} assets={animationEditorAssets} scenes={scenes}
         displayName={creating ? "New animation" : animationLabel(clip)} creating={creating} initiallyOpen loopPolicies={animationPolicies}
         disabled={!canAuthorAnimations || busy !== null} onCancel={() => setAssetSelection(null)}
         onApply={async commands => {

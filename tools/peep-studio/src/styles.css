@@ -1717,6 +1717,78 @@ button:focus-visible {
 .clip-step-preview canvas { width: 40px; height: 40px; object-fit: contain; image-rendering: pixelated; }
 .clip-step-actions, .clip-editor-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 
+.animation-normalize-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.animation-normalize-grid label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.animation-normalize-grid select,
+.animation-normalize-grid input {
+  min-height: 32px;
+  width: 100%;
+  border: 1px solid #aebcb6;
+  border-radius: 4px;
+  padding: 5px 8px;
+  background: #fff;
+  color: inherit;
+}
+
+.animation-normalize-strip {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+
+.animation-normalize-strip > span {
+  position: relative;
+  display: grid;
+  min-width: 44px;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid #d6ded9;
+  border-radius: 5px;
+  background:
+    linear-gradient(45deg, #eef3f0 25%, transparent 25%),
+    linear-gradient(-45deg, #eef3f0 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #eef3f0 75%),
+    linear-gradient(-45deg, transparent 75%, #eef3f0 75%),
+    #ffffff;
+  background-position: 0 0, 0 5px, 5px -5px, -5px 0;
+  background-size: 10px 10px;
+}
+
+.animation-normalize-strip .frame-preview-canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.animation-normalize-strip small {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  min-width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #145e84;
+  font-size: 9px;
+  font-weight: 850;
+}
+
 .audio-waveform {
   display: flex;
   align-items: center;
