@@ -147,6 +147,45 @@ Rules:
 - While boot/restart is blocked without VBUS, the UI may show a plain low-battery recovery page. With VBUS present and VBAT below the restart-allow threshold, the UI may show a plain charging recovery page. Neither page is a normal shutdown-cancel target; both clear only when `thPower` reports VBAT at/above the restart-allow threshold.
 - The restart-allow threshold must be higher than the critical-shutdown threshold.
 
+Battery shutdown preparation now has independent attempt state, rather than
+using the ship-prep ownership flag or a lifetime boot-block counter as proof of
+completion. `power_battery_shutdown_prep_attempts` defaults to three total
+attempts and `power_battery_shutdown_prep_retry_ms` to 1000 ms minimum spacing
+from failed completion. These are bounded retries of admission/owner quiesce,
+not an increased periodic battery polling rate. Existing snapshot cadence and
+all voltage thresholds remain unchanged.
+
+Each retry requires a subsequent valid critical reading, or a valid blocked
+no-VBUS boot reading. Failed/zero VBAT readings do not authorize an attempt.
+Successful preparation issues the existing gated shipment request once.
+Exhaustion retains the last preparation failure and leaves shutdown preparation
+owned; it must not fabricate an ACK, resume normal work, or bypass quiesce.
+There is no blocking delay, spin loop or automatic unlimited retry.
+
+The separate `g_ps_hw6_battery_shutdown_probe` (API 1) reports reason, attempts,
+prepared, exhausted, last status and next kernel tick for the current episode.
+It resets on initialization and existing valid recovery paths: runtime voltage
+above warning, boot voltage at/above restart-allow, or boot VBUS charge recovery.
+Warning/unknown samples do not replenish the attempt budget. After charge
+recovery, removing VBUS while still boot-blocked permits a new preparation
+episode; a historical diagnostic counter no longer prevents it.
+
+This does not change START handling, the final PMIC shipment write, or retry
+that write if it fails. Automatic critical/boot shipment remains disabled.
+Physical shipment failure handling and a bounded fallback after exhausted
+preparation still require qualification before enabling automatic protection.
+Native tests compile the actual preparation and battery evaluation functions
+with fake admission/quiesce boundaries, for gates both off and on. They cover
+admission failure, quiesce timeout, spacing, exhaustion, invalid measurements,
+single request after success, recovery, VBUS removal and kernel tick wraparound.
+Physical failure injection and controlled-voltage shutdown remain untested.
+
+Verification for this preparation fix: 107 firmware tests and the Debug build
+pass; generated target-profile and whitespace checks pass. Build usage is
+RAM 552808 bytes, ROM 879664 bytes and SRAM4 15480 bytes. The existing V2 runtime
+stack check still reports 2432/4096 bytes including reserve; this is not a
+power-thread stack high-water measurement or physical shutdown evidence.
+
 Provisional FW0 thresholds, pending HW6 measurement and UX review:
 
 | Threshold / gate | Provisional value | Purpose |
@@ -334,15 +373,25 @@ reads are not a substitute for hardware battery protection.
 
 The one-shot `__fw0_battery_wake_enable.gdb` helper queues a shortening to 15
 seconds in `thPower`; it cannot lengthen the deadline or alter voltage/charging
-settings. Use a settled autonomous HOME scene after its timer reveal, or a
-settled shell page. Resume without input for 20 seconds, then wake normally if
+settings. Use the running autonomous 1234/A-B package after its timer reveal.
+The shell stayed awake in the observed test and is not a suitable test setup.
+Resume without input for 20 seconds, then wake normally if
 needed, halt and source `__fw0_battery_wake_prints.gdb`. Firmware-held test
 baselines survive debugger reconnect without reset. Require a battery RTC
 expiry and a successful due-check delta, not just a timer selection or thread
 run count; verify continued visuals/input and low-current return. A successful
 reading before expiry can replace the test deadline, so zero expiry delta is
 not a pass. Follow with a real-duration 30-minute test and controlled low-voltage
-tests. No hardware wake or discharge-protection pass is recorded yet.
+tests.
+
+The 2026-09-14 shortened hardware test passed: expiry and successful due-read
+deltas were both one, STOP2 entries two, RTC wake classifications one, clock
+failures zero, and the latest valid reading was 3861 mV. The cumulative acquisition
+record contained one earlier failure (six attempts, five successes); its cause
+is not established. This proves one battery RTC wake and successful due reading,
+not error-free lifetime monitoring, the real 30-minute interval, low-current
+residency or complete discharge protection. The 60-second warning interval is
+provisional pending energy measurement and shutdown policy qualification.
 
 ## VBUS Detection
 

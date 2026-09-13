@@ -55,6 +55,19 @@ extern "C" {
 #define PS_HW6_OWNER_SM_STATUS_NOT_RUN       (0xFFFFFFFFUL)
 #define PS_HW6_OWNER_SM_STATUS_UNAVAILABLE   (0xFFFFFFFEUL)
 
+typedef struct
+{
+  uint32_t api_version;
+  uint32_t reason;
+  uint32_t attempts;
+  uint32_t prepared;
+  uint32_t exhausted;
+  uint32_t last_status;
+  uint32_t next_tick;
+} PS_HW6_BatteryShutdownProbe;
+
+extern volatile PS_HW6_BatteryShutdownProbe g_ps_hw6_battery_shutdown_probe;
+
 typedef enum
 {
   PS_HW6_SM_POWER = 0,

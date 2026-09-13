@@ -90,6 +90,8 @@
     "power_battery_sleep_check_ms",
     "power_battery_sleep_warning_ms",
     "power_battery_sleep_retry_ms",
+    "power_battery_shutdown_prep_attempts",
+    "power_battery_shutdown_prep_retry_ms",
     "power_battery_warning_mv",
     "power_battery_critical_ship_mv",
     "power_battery_restart_allow_mv",
@@ -1137,6 +1139,30 @@
       "class": "protected_policy",
       "path": "platform.knobs.power.battery_sleep_retry_ms",
       "description": "Maximum delay to another STOP2 battery-check attempt after a failed sample; repeated failures before this deadline cannot extend it. Does not guarantee shutdown if PMIC communication is unavailable."
+    },
+    "power_battery_shutdown_prep_attempts": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "default": 3,
+      "unit": "count",
+      "timebase_domain": "none",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.battery_shutdown_prep_attempts",
+      "description": "Maximum admission/quiesce attempts per battery shutdown episode, including the first attempt. Exhaustion is exposed and never bypasses failed owner quiesce."
+    },
+    "power_battery_shutdown_prep_retry_ms": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 10000,
+      "default": 1000,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.battery_shutdown_prep_retry_ms",
+      "description": "Minimum awake time between failed battery shutdown preparation completion and a retry on a subsequent valid critical or boot-blocked reading. Not a periodic battery wake interval."
     },
     "power_battery_warning_mv": {
       "type": "integer",

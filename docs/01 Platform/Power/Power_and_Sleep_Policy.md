@@ -69,8 +69,11 @@ Early wakes preserve the remaining battery deadline unless a real successful
 battery reading refreshes it. A battery-only wake performs no synthetic package
 input or user cue and returns to STOP2 once owner work settles. This explicit
 safety wake does not authorize periodic wakes for cosmetic SOC refreshes.
-The new battery wake path awaits hardware validation; automatic critical/boot
-shipment remains gated pending controlled low-voltage and restart tests.
+One shortened battery wake and successful due reading are hardware-confirmed;
+the real-duration interval and energy cost remain unqualified. Automatic
+critical/boot shipment remains gated pending controlled low-voltage and restart
+tests. Bounded battery-shutdown preparation retries do not authorize bypassing
+failed owner quiesce or claim that physical shipment succeeded.
 
 ---
 
