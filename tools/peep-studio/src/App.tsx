@@ -275,6 +275,19 @@ type FontAssetRecord = {
   source_format: "ttf" | "otf";
 };
 
+type BakedTextSourceRecord = {
+  asset_id: string;
+  frame_id: string;
+  display_name: string;
+  font_id: string;
+  text: string;
+  font_size_px: number;
+  source_path: string;
+  width: number;
+  height: number;
+  updated_at: string;
+};
+
 type LoadedBakedTextFont = {
   family: string;
   fontId: string;
@@ -382,6 +395,7 @@ export default function App() {
   const [assetTab, setAssetTab] = useState<AssetTab>("sprite");
   const [fontAssets, setFontAssets] = useState<FontAssetRecord[]>([]);
   const [fontPreviewFamilies, setFontPreviewFamilies] = useState<Record<string, string>>({});
+  const [bakedTextSources, setBakedTextSources] = useState<BakedTextSourceRecord[]>([]);
   const [audioAuditionStatus, setAudioAuditionStatus] = useState("No cue auditioned.");
   const [assetPreviewPlaying, setAssetPreviewPlaying] = useState(false);
   const [assetPreviewStep, setAssetPreviewStep] = useState(0);
@@ -433,6 +447,7 @@ export default function App() {
     setBakedTextDraft(null);
     setFontAssets([]);
     setFontPreviewFamilies({});
+    setBakedTextSources([]);
     bakedTextFontFacesRef.current.clear();
   }, [projectPath]);
 
@@ -452,6 +467,23 @@ export default function App() {
   useEffect(() => {
     void refreshFontAssets();
   }, [refreshFontAssets]);
+
+  const refreshBakedTextSources = useCallback(async () => {
+    if (bridge === undefined || projectPath === null || bridge.readBakedTextSources === undefined) {
+      setBakedTextSources([]);
+      return;
+    }
+    try {
+      setBakedTextSources(await bridge.readBakedTextSources(projectPath));
+    } catch (error) {
+      setBakedTextSources([]);
+      setAssetImportDebug(`Text source catalog load failed: ${errorText(error)}`);
+    }
+  }, [bridge, projectPath]);
+
+  useEffect(() => {
+    void refreshBakedTextSources();
+  }, [refreshBakedTextSources]);
 
   const loadBakedTextFontFace = useCallback(async (font: FontAssetRecord): Promise<LoadedBakedTextFont> => {
     const cached = bakedTextFontFacesRef.current.get(font.font_id);
@@ -1365,10 +1397,37 @@ export default function App() {
         ],
       });
       applyProjectResult(result);
+      const sourceRecord: BakedTextSourceRecord = {
+        asset_id: written.assetId,
+        frame_id: frame.frame_id,
+        display_name: displayName,
+        font_id: font.font_id,
+        text: bakedTextDraft.text.replace(/\r\n/g, "\n").replace(/\r/g, "\n"),
+        font_size_px: parseBakedTextFontSize(bakedTextDraft.fontSize) ?? BAKED_TEXT_MIN_FONT_SIZE,
+        source_path: written.sourcePath,
+        width: written.width,
+        height: written.height,
+        updated_at: new Date().toISOString(),
+      };
+      if (bridge.upsertBakedTextSource !== undefined) {
+        try {
+          await bridge.upsertBakedTextSource(projectPath, sourceRecord);
+          setBakedTextSources(current => [
+            ...current.filter(item => item.asset_id !== sourceRecord.asset_id),
+            sourceRecord,
+          ].sort((left, right) => left.asset_id.localeCompare(right.asset_id)));
+        } catch (metadataError) {
+          setAssetImportDebug(`Created ${written.sourcePath}, but text source metadata was not saved: ${errorText(metadataError)}`);
+        }
+      } else {
+        setAssetImportDebug(`Created ${written.sourcePath}. Restart Peep Studio to persist editable text source metadata.`);
+      }
       selectAssetRecord({ kind: "sprite", frameId: frame.frame_id });
       setCombineAssetIds([written.assetId]);
       setBakedTextDraft(null);
-      setAssetImportDebug(`Created baked text sprite ${written.sourcePath} from ${font.display_name}.`);
+      if (bridge.upsertBakedTextSource !== undefined) {
+        setAssetImportDebug(`Created baked text sprite ${written.sourcePath} from ${font.display_name}.`);
+      }
       setMessage(`Created ${displayName} as a baked text sprite. Save to write it to the project.`);
     } catch (error) {
       const text = errorText(error);
@@ -3125,6 +3184,10 @@ export default function App() {
     () => new Map(audioAssets.map((asset) => [asset.asset_id, asset])),
     [audioAssets],
   );
+  const bakedTextSourceByAssetId = useMemo(
+    () => new Map(bakedTextSources.map((source) => [source.asset_id, source])),
+    [bakedTextSources],
+  );
   const spriteAssetKind = (asset: AssetRecord | undefined, frameCount: number) => {
     if (asset?.text !== undefined || asset?.font_id !== undefined || asset?.asset_type === "text") {
       return "Text";
@@ -3145,6 +3208,7 @@ export default function App() {
     || asset?.text !== undefined
     || asset?.font_id !== undefined
     || asset?.asset_type === "text"
+    || (asset !== undefined && bakedTextSourceByAssetId.has(asset.asset_id))
     || (asset?.source_format === "png" && (asset.asset_id.startsWith("text_") || asset.source_path?.includes("/text_") === true))
   );
   const spriteSheetColumns = (asset: AssetRecord | undefined, frameCount: number) => {
@@ -3176,7 +3240,7 @@ export default function App() {
         items,
       }];
     });
-  }, [assetById, compiledAssetFrameGroups]);
+  }, [assetById, bakedTextSourceByAssetId, compiledAssetFrameGroups]);
   const audioCueGroups = useMemo<AssetLibraryGroup<AudioCueRecord>[]>(() => {
     const ready = audioCues.filter((cue) => audioAssetById.has(cue.asset_ref));
     const missingSource = audioCues.filter((cue) => !audioAssetById.has(cue.asset_ref));
@@ -4757,6 +4821,8 @@ export default function App() {
           const sourceAsset = source?.asset ?? assetById.get(selectedAssetFrame.asset_id) ?? null;
           const textPreviewAsset = isTextSpriteAsset(sourceAsset ?? undefined);
           const editableSystemTextAsset = sourceAsset?.source_format === "system_font_text";
+          const bakedTextSource = sourceAsset === null ? null : bakedTextSourceByAssetId.get(sourceAsset.asset_id) ?? null;
+          const bakedTextFont = bakedTextSource === null ? null : fontAssets.find(font => font.font_id === bakedTextSource.font_id) ?? null;
           return (
             <>
               <div className={`asset-inspector-preview ${textPreviewAsset ? "text-asset-preview" : ""}`}>
@@ -4881,6 +4947,15 @@ export default function App() {
                   </label>
                 </div>
               )}
+              {bakedTextSource !== null && (
+                <div className="baked-text-source-summary">
+                  <div>
+                    <strong>Baked text source</strong>
+                    <span>{bakedTextFont?.display_name ?? bakedTextSource.font_id} / {bakedTextSource.font_size_px}px</span>
+                  </div>
+                  <p>{bakedTextSource.text}</p>
+                </div>
+              )}
               <dl className="inspector-list">
                 <div><dt>Asset</dt><dd>{assetDisplayName(selectedAssetFrame.asset_id)}</dd></div>
                 {!textPreviewAsset && <div><dt>Frames</dt><dd>{selectedAssetFrames.length}</dd></div>}
@@ -4889,6 +4964,8 @@ export default function App() {
                 <div><dt>Mask</dt><dd>{selectedAssetFrame.opaque ? "Opaque" : "Transparent"}</dd></div>
                 <div><dt>Source</dt><dd>{textPreviewAsset ? "Text sprite" : "PNG sprite"}</dd></div>
                 {editableSystemTextAsset && <div><dt>Font</dt><dd>{sourceAsset.font_id ?? SYSTEM_FONT_8X8_BASIC_ID}</dd></div>}
+                {bakedTextSource !== null && <div><dt>Font</dt><dd>{bakedTextFont?.display_name ?? bakedTextSource.font_id}</dd></div>}
+                {bakedTextSource !== null && <div><dt>Generated</dt><dd title={bakedTextSource.source_path}>{bakedTextSource.source_path}</dd></div>}
                 <div><dt>Asset ID</dt><dd>{selectedAssetFrame.asset_id}</dd></div>
                 {!textPreviewAsset && <div><dt>Frame ID</dt><dd>{selectedAssetFrame.frame_id}</dd></div>}
               </dl>

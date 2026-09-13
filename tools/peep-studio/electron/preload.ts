@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld("peepStudio", {
   readFontAssets: (projectPath: string) => ipcRenderer.invoke("peep:read-font-assets", projectPath),
   importFontAsset: (projectPath: string) => ipcRenderer.invoke("peep:import-font-asset", projectPath),
   fontAssetSource: (projectPath: string, sourcePath: string) => ipcRenderer.invoke("peep:font-asset-source", projectPath, sourcePath),
+  readBakedTextSources: (projectPath: string) => ipcRenderer.invoke("peep:read-baked-text-sources", projectPath),
+  upsertBakedTextSource: (projectPath: string, record: Record<string, unknown>) =>
+    ipcRenderer.invoke("peep:upsert-baked-text-source", projectPath, record),
   writeGeneratedSpritePng: (projectPath: string, requestedAssetId: string, pngDataUrl: string) =>
     ipcRenderer.invoke("peep:write-generated-sprite-png", projectPath, requestedAssetId, pngDataUrl),
   importAudioWav: (projectPath: string) => ipcRenderer.invoke("peep:import-audio-wav", projectPath),

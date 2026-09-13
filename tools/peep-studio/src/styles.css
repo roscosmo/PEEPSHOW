@@ -2543,6 +2543,50 @@ button:focus-visible {
   background: #eef3f0;
 }
 
+.baked-text-source-summary {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid #d7ded9;
+  border-radius: 7px;
+  background: #f7faf8;
+}
+
+.baked-text-source-summary > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.baked-text-source-summary strong {
+  color: #27302b;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.baked-text-source-summary span {
+  overflow: hidden;
+  color: #68736d;
+  font-size: 10px;
+  font-weight: 780;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.baked-text-source-summary p {
+  max-height: 92px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: #27302b;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .placement-inspector .inspector-list {
   margin-bottom: 12px;
 }

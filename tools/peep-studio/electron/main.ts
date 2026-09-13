@@ -18,6 +18,19 @@ type FontAssetRecord = {
   source_format: "ttf" | "otf";
 };
 
+type BakedTextSourceRecord = {
+  asset_id: string;
+  frame_id: string;
+  display_name: string;
+  font_id: string;
+  text: string;
+  font_size_px: number;
+  source_path: string;
+  width: number;
+  height: number;
+  updated_at: string;
+};
+
 type PendingRequest = {
   resolve: (value: unknown) => void;
   reject: (reason: Error) => void;
@@ -250,6 +263,65 @@ async function writeFontCatalog(projectRoot: string, fonts: FontAssetRecord[]): 
   };
   await mkdir(path.dirname(fontCatalogPath(projectRoot)), { recursive: true });
   await writeFile(fontCatalogPath(projectRoot), `${JSON.stringify(catalog, null, 2)}\n`, "utf-8");
+}
+
+function bakedTextCatalogPath(projectRoot: string): string {
+  return path.join(projectRoot, "assets", "text", "catalog.json");
+}
+
+function validBakedTextSource(record: Partial<BakedTextSourceRecord>): record is BakedTextSourceRecord {
+  const fontSize = record.font_size_px;
+  const width = record.width;
+  const height = record.height;
+  return (
+    typeof record.asset_id === "string"
+    && typeof record.frame_id === "string"
+    && typeof record.display_name === "string"
+    && typeof record.font_id === "string"
+    && typeof record.text === "string"
+    && typeof fontSize === "number"
+    && Number.isInteger(fontSize)
+    && fontSize >= 1
+    && fontSize <= 512
+    && typeof record.source_path === "string"
+    && typeof width === "number"
+    && Number.isInteger(width)
+    && width >= 1
+    && width <= MAX_SOURCE_IMAGE_DIMENSION
+    && typeof height === "number"
+    && Number.isInteger(height)
+    && height >= 1
+    && height <= MAX_SOURCE_IMAGE_DIMENSION
+    && typeof record.updated_at === "string"
+  );
+}
+
+async function readBakedTextCatalog(projectRoot: string): Promise<BakedTextSourceRecord[]> {
+  try {
+    const parsed = JSON.parse(await readFile(bakedTextCatalogPath(projectRoot), "utf-8")) as unknown;
+    if (parsed === null || typeof parsed !== "object" || !Array.isArray((parsed as { text_sprites?: unknown }).text_sprites)) {
+      return [];
+    }
+    return (parsed as { text_sprites: unknown[] }).text_sprites.flatMap((item): BakedTextSourceRecord[] => {
+      if (item === null || typeof item !== "object") {
+        return [];
+      }
+      const record = item as Partial<BakedTextSourceRecord>;
+      return validBakedTextSource(record) ? [record] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function writeBakedTextCatalog(projectRoot: string, textSprites: BakedTextSourceRecord[]): Promise<void> {
+  const catalog = {
+    schema_id: "peepshow.studio.baked_text_sources",
+    schema_version: 1,
+    text_sprites: textSprites,
+  };
+  await mkdir(path.dirname(bakedTextCatalogPath(projectRoot)), { recursive: true });
+  await writeFile(bakedTextCatalogPath(projectRoot), `${JSON.stringify(catalog, null, 2)}\n`, "utf-8");
 }
 
 async function uniqueFontPath(projectRoot: string, sourcePath: string, existingIds: Set<string>): Promise<{ fontId: string; relativePath: string; destinationPath: string; sourceFormat: "ttf" | "otf" }> {
@@ -485,6 +557,38 @@ ipcMain.handle("peep:font-asset-source", async (_event, projectPath: unknown, so
     key: `${sourcePath}:${data.length}`,
     data: `data:${mime};base64,${data.toString("base64")}`,
   };
+});
+
+ipcMain.handle("peep:read-baked-text-sources", async (_event, projectPath: unknown) => {
+  if (typeof projectPath !== "string") {
+    throw new Error("Invalid baked text source request from renderer");
+  }
+  const projectRoot = path.resolve(projectPath);
+  if (!projectRoot.endsWith(".peepproj")) {
+    throw new Error("Baked text source target must be a .peepproj directory");
+  }
+  return readBakedTextCatalog(projectRoot);
+});
+
+ipcMain.handle("peep:upsert-baked-text-source", async (_event, projectPath: unknown, record: unknown) => {
+  if (typeof projectPath !== "string" || record === null || typeof record !== "object") {
+    throw new Error("Invalid baked text source upsert from renderer");
+  }
+  const projectRoot = path.resolve(projectPath);
+  if (!projectRoot.endsWith(".peepproj")) {
+    throw new Error("Baked text source target must be a .peepproj directory");
+  }
+  const candidate = record as Partial<BakedTextSourceRecord>;
+  if (!validBakedTextSource(candidate)) {
+    throw new Error("Baked text source record is invalid");
+  }
+  const existing = await readBakedTextCatalog(projectRoot);
+  const next = [
+    ...existing.filter(item => item.asset_id !== candidate.asset_id),
+    candidate,
+  ].sort((left, right) => left.asset_id.localeCompare(right.asset_id));
+  await writeBakedTextCatalog(projectRoot, next);
+  return candidate;
 });
 
 ipcMain.handle("peep:write-generated-sprite-png", async (_event, projectPath: unknown, requestedAssetId: unknown, pngDataUrl: unknown) => {
