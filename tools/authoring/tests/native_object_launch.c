@@ -3,6 +3,11 @@
 #include <string.h>
 #include "ps_hw6_object_development.h"
 #include "ps_ui_router.h"
+#include "ps_hw6_object_latency.h"
+#include "ps_hw6_object_candidate.h"
+#include "native_object_trace_stubs.h"
+volatile ps_hw6_object_latency_probe_t g_ps_object_latency_probe;
+volatile ps_hw6_object_candidate_probe_t g_ps_object_candidate_probe;
 
 #define TX_SUCCESS 0U
 #define HAL_ERROR 1U

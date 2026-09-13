@@ -1,5 +1,5 @@
 set pagination off
-if g_ps_object_latency_probe.api_version != 1
+if g_ps_object_latency_probe.api_version != 3
   printf "NOT armed: flash the latency build and use its ELF.\n"
 else
   if (g_ps_object_latency_probe.active != 0) || (g_ps_object_candidate_probe.leased != 0) || (g_ps_object_development_probe.lease_fault != 0) || (g_ps_object_development_probe.render_request != g_ps_object_development_probe.render_complete)

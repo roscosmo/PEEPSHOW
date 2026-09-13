@@ -249,11 +249,13 @@ static HAL_StatusTypeDef PS_LpbamDisplay_ComposeBand(uint8_t band,
     (uint16_t)(start + count - 1U), frame, length);
 }
 
-HAL_StatusTypeDef PS_LpbamDisplay_CheckFullSceneAnimation(uint32_t sequence_count,
+HAL_StatusTypeDef PS_LpbamDisplay_CheckFullSceneAnimationProfiled(uint32_t sequence_count,
   ps_lpbam_display_compose_fn compose, void *context,
-  ps_lpbam_display_check_workspace_t *workspace, ps_lpbam_display_admission_t *result)
+  ps_lpbam_display_check_workspace_t *workspace, ps_lpbam_display_admission_t *result,
+  ps_display_work_profile_t *profile)
 {
   uint32_t step;
+  uint32_t started;
   uint16_t used_slots = 0U;
   if (result == NULL) { return HAL_ERROR; }
   (void)memset(result, 0, sizeof(*result));
@@ -263,7 +265,12 @@ HAL_StatusTypeDef PS_LpbamDisplay_CheckFullSceneAnimation(uint32_t sequence_coun
   result->payload_capacity_bytes = PS_LPBAM_DISPLAY_ARENA_SIZE;
   result->status = HAL_ERROR;
   result->reason = PS_LPBAM_ADMISSION_REASON_ARGUMENT;
-  if (workspace != NULL) { (void)memset(workspace, 0, sizeof(*workspace)); }
+  if (workspace != NULL)
+  {
+    started = PS_DisplayWork_Begin(profile);
+    (void)memset(workspace, 0, sizeof(*workspace));
+    PS_DisplayWork_End(profile, PS_DISPLAY_WORK_COPY, started);
+  }
   if ((workspace == NULL) || (compose == NULL) || (sequence_count == 0UL))
   { return HAL_ERROR; }
   if (sequence_count > PS_LPBAM_DISPLAY_SEQUENCE_MAX)
@@ -276,31 +283,42 @@ HAL_StatusTypeDef PS_LpbamDisplay_CheckFullSceneAnimation(uint32_t sequence_coun
   {
     uint8_t dirty_band[PS_LPBAM_DISPLAY_SPATIAL_CHUNK_COUNT] = {0};
     uint32_t any_dirty = 0UL;
-    uint16_t row;
     uint8_t band;
     if (compose(context, (step + 1UL) % sequence_count,
         &workspace->target[0][0], sizeof(workspace->target)) == 0UL)
     { return HAL_ERROR; }
     workspace->frames_composed++;
-    for (row = 1U; row <= DISPLAY_HEIGHT; ++row)
+    started = PS_DisplayWork_Begin(profile);
+    /* Admission emits whole bands, so compare exactly those byte spans once.
+     * Keep the row-based production packer as an independent equivalence path. */
+    for (band = 0U; band < PS_LPBAM_DISPLAY_SPATIAL_CHUNK_COUNT; ++band)
     {
-      if (PS_LpbamDisplay_RowIsDirty(workspace->previous, workspace->target, row) != 0U)
-      {
-        dirty_band[(row - 1U) / PS_LPBAM_DISPLAY_SPATIAL_ROWS] = 1U;
-        any_dirty = 1UL;
-      }
+#if PS_LPBAM_DISPLAY_UPDATE_MODE == PS_LPBAM_DISPLAY_UPDATE_MODE_PARTIAL_DIFF
+      uint16_t first = (uint16_t)(PS_LpbamDisplay_BandStartRow(band) - 1U);
+      uint32_t length = (uint32_t)PS_LpbamDisplay_BandRowCount(band) * LINE_WIDTH;
+      dirty_band[band] = (memcmp(&workspace->previous[first][0],
+        &workspace->target[first][0], length) != 0) ? 1U : 0U;
+#else
+      dirty_band[band] = 1U;
+#endif
+      any_dirty |= dirty_band[band];
     }
+    PS_DisplayWork_End(profile, PS_DISPLAY_WORK_COMPARE, started);
     /* Full-scene production packing refreshes band zero for an unchanged step. */
     if (any_dirty == 0UL) { dirty_band[0] = 1U; }
+    started = PS_DisplayWork_Begin(profile);
     for (band = 0U; band < PS_LPBAM_DISPLAY_SPATIAL_CHUNK_COUNT; ++band)
     {
       uint16_t length;
       uint16_t slot;
       if (dirty_band[band] == 0U) { continue; }
       if (result->chunk_used >= PS_LPBAM_DISPLAY_MAX_CHUNKS)
-      { result->reason = PS_LPBAM_ADMISSION_REASON_CHUNKS; return HAL_ERROR; }
+      {
+        PS_DisplayWork_End(profile, PS_DISPLAY_WORK_PAYLOAD, started);
+        result->reason = PS_LPBAM_ADMISSION_REASON_CHUNKS; return HAL_ERROR;
+      }
       if (PS_LpbamDisplay_ComposeBand(band, workspace->target, workspace->wire, &length) != HAL_OK)
-      { return HAL_ERROR; }
+      { PS_DisplayWork_End(profile, PS_DISPLAY_WORK_PAYLOAD, started); return HAL_ERROR; }
       for (slot = 0U; slot < used_slots; ++slot)
       {
         if ((workspace->band[slot] == band) && (workspace->length[slot] == length) &&
@@ -309,7 +327,10 @@ HAL_StatusTypeDef PS_LpbamDisplay_CheckFullSceneAnimation(uint32_t sequence_coun
       if (slot == used_slots)
       {
         if ((slot >= PS_LPBAM_DISPLAY_PAYLOAD_SLOT_COUNT) || (length > PS_LPBAM_SPATIAL_SLOT_BYTES))
-        { result->reason = PS_LPBAM_ADMISSION_REASON_PAYLOAD; return HAL_ERROR; }
+        {
+          PS_DisplayWork_End(profile, PS_DISPLAY_WORK_PAYLOAD, started);
+          result->reason = PS_LPBAM_ADMISSION_REASON_PAYLOAD; return HAL_ERROR;
+        }
         (void)memcpy(workspace->payload[slot], workspace->wire, length);
         workspace->length[slot] = length;
         workspace->band[slot] = band;
@@ -319,12 +340,23 @@ HAL_StatusTypeDef PS_LpbamDisplay_CheckFullSceneAnimation(uint32_t sequence_coun
       result->payload_wire_bytes = (uint16_t)(result->payload_wire_bytes + length);
       result->chunk_used++;
     }
+    PS_DisplayWork_End(profile, PS_DISPLAY_WORK_PAYLOAD, started);
     result->sequence_used++;
+    started = PS_DisplayWork_Begin(profile);
     (void)memcpy(workspace->previous, workspace->target, sizeof(workspace->previous));
+    PS_DisplayWork_End(profile, PS_DISPLAY_WORK_COPY, started);
   }
   result->status = HAL_OK;
   result->reason = PS_LPBAM_ADMISSION_REASON_NONE;
   return HAL_OK;
+}
+
+HAL_StatusTypeDef PS_LpbamDisplay_CheckFullSceneAnimation(uint32_t sequence_count,
+  ps_lpbam_display_compose_fn compose, void *context,
+  ps_lpbam_display_check_workspace_t *workspace, ps_lpbam_display_admission_t *result)
+{
+  return PS_LpbamDisplay_CheckFullSceneAnimationProfiled(sequence_count, compose,
+    context, workspace, result, NULL);
 }
 
 static void PS_LpbamDisplay_ResetPayloadState(void)

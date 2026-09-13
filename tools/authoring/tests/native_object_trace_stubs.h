@@ -1,0 +1,11 @@
+#ifndef NATIVE_OBJECT_TRACE_STUBS_H
+#define NATIVE_OBJECT_TRACE_STUBS_H
+#include "ps_hw6_trace.h"
+volatile ps_hw6_object_trace_probe_t g_ps_object_trace_probe;
+uint32_t PS_HW6_TraceObjectArm(uint32_t allowed) { (void)allowed; return 0; }
+void PS_HW6_TraceObjectBegin(uint32_t sequence) { (void)sequence; }
+void PS_HW6_TraceObjectStage(uint32_t stage, uint32_t token, uint32_t hclk)
+{ (void)stage; (void)token; (void)hclk; }
+void PS_HW6_TraceObjectRaster(uint32_t stage, uint32_t end) { (void)stage; (void)end; }
+void PS_HW6_TraceObjectEnd(uint32_t status) { (void)status; }
+#endif

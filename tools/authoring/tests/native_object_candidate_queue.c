@@ -116,11 +116,14 @@ static void cache_test(uint32_t size)
   uint32_t misses, hits, sent;
   assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size, NULL) == 0);
   assert(ps_candidate_cache_valid);
+  assert(ps_candidate_display_workspace.raster_cache.full_frames == 1);
   misses = ps_candidate_cache_misses;
   hits = ps_candidate_cache_hits;
   sent = sends;
   assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size, NULL) == 0);
   assert(ps_candidate_cache_misses == misses && ps_candidate_cache_hits == hits + 1);
+  assert(ps_candidate_raster_reuse && ps_candidate_display_workspace.raster_cache.full_frames == 0);
+  assert(ps_candidate_display_workspace.raster_cache.reused_frames == g_ps_object_candidate_probe.frames_composed);
   assert(sends == sent + 1 && g_ps_object_candidate_probe.frames_composed > 0);
   /* A different allocation with identical bytes is reusable; address equality
    * alone is never sufficient. Metadata is not borrowed from the caller. */
@@ -138,6 +141,7 @@ static void cache_test(uint32_t size)
   inject_missing_sprite = 1;
   assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size, NULL) == 1);
   assert(!ps_candidate_cache_valid && g_ps_object_candidate_probe.raster_status == 1);
+  assert(!ps_candidate_display_workspace.raster_cache.valid);
   inject_missing_sprite = 0;
   assert(PS_HW6_RTOS_InstalledObjectCheck(candidate, size, NULL) == 0);
   misses = ps_candidate_cache_misses;
@@ -165,6 +169,32 @@ static void cache_test(uint32_t size)
   complete(0);
   assert(!ps_candidate_cache_valid && ps_candidate_cache_misses == misses + 1);
   puts("candidate exact-byte cache passed");
+}
+
+static void timing_test(uint32_t size)
+{
+  g_ps_object_latency_probe.active = 1;
+  PS_HW6_RTOS_CandidateBegin(candidate, size, 2);
+  complete(1);
+  assert(g_ps_object_latency_probe.packing_valid && g_ps_object_latency_probe.packing_status == 1);
+  assert(g_ps_object_latency_probe.packing_calls[PS_DISPLAY_WORK_PROJECT] == 1);
+  assert(g_ps_object_latency_probe.packing_calls[PS_DISPLAY_WORK_RASTER] == 1);
+  assert(g_ps_object_latency_probe.packing_calls[PS_DISPLAY_WORK_COMPARE] == 0);
+  assert(g_ps_object_latency_probe.packing_calls[PS_DISPLAY_WORK_PAYLOAD] == 0);
+  assert(g_ps_object_latency_probe.packing_calls[PS_DISPLAY_WORK_COPY] == 1);
+  g_ps_hw6_owner_probe.display_lpbam_prearmed = 1;
+  PS_HW6_RTOS_CandidateBegin(candidate, size, 1);
+  complete(2);
+  assert(!g_ps_object_latency_probe.packing_valid); /* No stale previous breakdown. */
+  g_ps_hw6_owner_probe.display_lpbam_prearmed = 0;
+  delivery = 0; wait_status = 7;
+  PS_HW6_RTOS_CandidateBegin(candidate, size, 1);
+  assert(ps_candidate_busy && !g_ps_object_latency_probe.packing_valid);
+  g_ps_object_latency_probe.active = 0;
+  PS_HW6_RTOS_CandidateDisplay(queued);
+  PS_HW6_RTOS_CandidateReap();
+  assert(!ps_candidate_busy && !g_ps_object_latency_probe.packing_valid);
+  puts("candidate partial and late timing passed");
 }
 
 static void workflow_test(uint32_t size)
@@ -261,6 +291,7 @@ int PS_OBJECT_CANDIDATE_MAIN(int argc, char **argv)
     size = read_blob(argv[1], candidate);
     if (strcmp(argv[2], "workflow") == 0) { workflow_test(size); return 0; }
     if (strcmp(argv[2], "cache") == 0) { cache_test(size); return 0; }
+    if (strcmp(argv[2], "timing") == 0) { timing_test(size); return 0; }
     goto installed_tests;
   }
   assert(PS_SceneRuntime_EnterDevelopmentObjects(baseline, baseline_size) == 0);
@@ -279,6 +310,13 @@ int PS_OBJECT_CANDIDATE_MAIN(int argc, char **argv)
   assert(g_ps_object_latency_probe.valid[PS_OBJECT_LATENCY_DECODE_DONE] == 1);
   assert(g_ps_object_latency_probe.valid[PS_OBJECT_LATENCY_PACK_DONE] == 1);
   assert(g_ps_object_latency_probe.tick[PS_OBJECT_LATENCY_PACK_DONE] == 100);
+  assert(g_ps_object_latency_probe.packing_valid == 1 && g_ps_object_latency_probe.packing_status == 0);
+  assert(g_ps_object_latency_probe.packing_calls[PS_DISPLAY_WORK_PROJECT] == 9);
+  assert(g_ps_object_latency_probe.packing_calls[PS_DISPLAY_WORK_RASTER] == 9);
+  assert(g_ps_object_latency_probe.packing_calls[PS_DISPLAY_WORK_COMPARE] == 8);
+  assert(g_ps_object_latency_probe.packing_calls[PS_DISPLAY_WORK_PAYLOAD] == 8);
+  assert(g_ps_object_latency_probe.packing_calls[PS_DISPLAY_WORK_COPY] == 9);
+  assert(g_ps_object_latency_probe.packing_ticks[PS_DISPLAY_WORK_RASTER] == 0);
   g_ps_object_latency_probe.active = 0;
   latency_tick = 200;
   assert(g_ps_object_candidate_probe.steps == 8 && g_ps_object_candidate_probe.quantum_ms == 400);
@@ -288,6 +326,8 @@ int PS_OBJECT_CANDIDATE_MAIN(int argc, char **argv)
 
   PS_HW6_RTOS_CandidateBegin(candidate, size, 2);
   complete(1);
+  assert(g_ps_object_latency_probe.packing_status == 0);
+  assert(g_ps_object_latency_probe.packing_calls[PS_DISPLAY_WORK_RASTER] == 9);
   assert(g_ps_object_latency_probe.candidate_count == 1);
   assert(g_ps_object_latency_probe.tick[PS_OBJECT_LATENCY_PACK_DONE] == 100);
   assert(g_ps_object_candidate_probe.profile_status == 0 && g_ps_object_candidate_probe.raster_status == 1);

@@ -484,7 +484,13 @@ static uint32_t PS_HW6_RTOS_InstalledObjectCheck(const uint8_t *blob,
 static UINT PS_HW6_RTOS_InstalledObjectLaunch(void);
 
 volatile uint32_t g_ps_object_development_request;
-volatile ps_hw6_object_latency_probe_t g_ps_object_latency_probe = { .api_version = 1UL };
+volatile ps_hw6_object_latency_probe_t g_ps_object_latency_probe =
+  { .api_version = PS_HW6_OBJECT_LATENCY_API_VERSION };
+
+static uint32_t PS_HW6_RTOS_ObjectWorkTick(void)
+{
+  return (uint32_t)tx_time_get();
+}
 
 static void PS_HW6_RTOS_ObjectLatencyStamp(uint32_t stage)
 {
@@ -493,6 +499,8 @@ static void PS_HW6_RTOS_ObjectLatencyStamp(uint32_t stage)
     g_ps_object_latency_probe.tick[stage] = (uint32_t)tx_time_get();
     g_ps_object_latency_probe.hclk_hz[stage] = HAL_RCC_GetHCLKFreq();
     g_ps_object_latency_probe.valid[stage] = 1UL;
+    PS_HW6_TraceObjectStage(stage, g_ps_object_latency_probe.candidate_token,
+      g_ps_object_latency_probe.hclk_hz[stage]);
   }
 }
 
@@ -503,7 +511,7 @@ static void PS_HW6_RTOS_ObjectLatencyBegin(uint32_t button, uint32_t scene,
   if ((g_ps_object_latency_probe.request == 0UL) ||
       (g_ps_object_latency_probe.active != 0UL) || (sequence == UINT32_MAX)) { return; }
   (void)memset((void *)&g_ps_object_latency_probe, 0, sizeof(g_ps_object_latency_probe));
-  g_ps_object_latency_probe.api_version = 1UL;
+  g_ps_object_latency_probe.api_version = PS_HW6_OBJECT_LATENCY_API_VERSION;
   g_ps_object_latency_probe.sequence = sequence + 1UL;
   g_ps_object_latency_probe.button = button;
   g_ps_object_latency_probe.scene_before = scene;
@@ -512,6 +520,7 @@ static void PS_HW6_RTOS_ObjectLatencyBegin(uint32_t button, uint32_t scene,
   g_ps_object_latency_probe.tick_hz = TX_TIMER_TICKS_PER_SECOND;
   g_ps_object_latency_probe.panel_status = UINT32_MAX;
   g_ps_object_latency_probe.active = 1UL;
+  PS_HW6_TraceObjectBegin(sequence + 1UL);
   PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_RECEIVE);
 }
 
@@ -525,6 +534,7 @@ static void PS_HW6_RTOS_ObjectLatencyEnd(uint32_t status, uint32_t result, uint3
   g_ps_object_latency_probe.active = 0UL;
   __DMB();
   g_ps_object_latency_probe.complete = 1UL;
+  PS_HW6_TraceObjectEnd(status);
 }
 
 volatile ps_hw6_object_development_probe_t g_ps_object_development_probe =
@@ -564,8 +574,10 @@ static uint32_t ps_candidate_cache_scene;
 static ps_egg_v2_profile_result_t ps_candidate_cache_profile;
 static uint32_t ps_candidate_cache_hits;
 static uint32_t ps_candidate_cache_misses;
+static uint32_t ps_candidate_raster_reuse;
 static ps_object_display_workspace_t ps_candidate_display_workspace;
 static ps_object_display_result_t ps_candidate_display_result;
+static ps_display_work_profile_t ps_candidate_timing;
 volatile uint32_t g_ps_object_candidate_request;
 volatile ps_hw6_object_candidate_probe_t g_ps_object_candidate_probe = {
   .api_version = PS_HW6_OBJECT_CANDIDATE_API_VERSION,
@@ -8458,11 +8470,34 @@ static void PS_HW6_RTOS_CandidateDisplay(const ULONG *message)
     PS_HW6_RTOS_DISPLAY_CLOCK_REASON_TRANSFER, PS_HW6_RTOS_DISPLAY_CLOCK_TRANSFER_CAPABILITIES);
   if (g_ps_object_candidate_probe.clock_status == TX_SUCCESS)
   {
+    ps_display_work_profile_t *timing = NULL;
     if (g_ps_object_latency_probe.candidate_token == token)
     { PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_DISPLAY_CLOCK); }
-    g_ps_object_candidate_probe.display_status = PS_ObjectDisplay_CheckWaiting(
+    if ((g_ps_object_latency_probe.active != 0UL) &&
+        (g_ps_object_latency_probe.candidate_token == token))
+    {
+      (void)memset(&ps_candidate_timing, 0, sizeof(ps_candidate_timing));
+      ps_candidate_timing.clock = PS_HW6_RTOS_ObjectWorkTick;
+      timing = &ps_candidate_timing;
+    }
+    g_ps_object_candidate_probe.display_status = PS_ObjectDisplay_CheckWaitingCached(
       &ps_candidate_program, &ps_candidate_catalog, &ps_candidate_display_workspace,
-      &ps_candidate_display_result);
+      &ps_candidate_display_result, timing, ps_candidate_raster_reuse);
+    if ((timing != NULL) && (g_ps_object_latency_probe.active != 0UL) &&
+        (g_ps_object_latency_probe.candidate_token == token))
+    {
+      uint32_t stage;
+      for (stage = 0UL; stage < PS_DISPLAY_WORK_COUNT; ++stage)
+      {
+        g_ps_object_latency_probe.packing_ticks[stage] = timing->ticks[stage];
+        g_ps_object_latency_probe.packing_calls[stage] = timing->calls[stage];
+      }
+      g_ps_object_latency_probe.packing_status = g_ps_object_candidate_probe.display_status;
+      g_ps_object_latency_probe.raster_full_frames = ps_candidate_display_workspace.raster_cache.full_frames;
+      g_ps_object_latency_probe.raster_reused_frames = ps_candidate_display_workspace.raster_cache.reused_frames;
+      g_ps_object_latency_probe.raster_elements_drawn = ps_candidate_display_workspace.raster_cache.elements_drawn;
+      g_ps_object_latency_probe.packing_valid = 1UL;
+    }
     if (g_ps_object_latency_probe.candidate_token == token)
     { PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_PACK_DONE); }
     g_ps_object_candidate_probe.projection_status = ps_candidate_display_result.projection_status;
@@ -8535,6 +8570,7 @@ static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
   { g_ps_object_candidate_probe.refused++; return; }
 
   ps_candidate_busy = 1UL;
+  ps_candidate_raster_reuse = 0UL;
   ps_candidate_blob = blob;
   ps_candidate_size = size;
   /* Reset in place: a compound literal consumes a large Debug-build stack
@@ -8546,6 +8582,8 @@ static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
   {
     g_ps_object_latency_probe.candidate_token = token + 1UL;
     g_ps_object_latency_probe.candidate_count++;
+    g_ps_object_latency_probe.packing_valid = 0UL;
+    g_ps_object_latency_probe.packing_status = PS_HW6_RTOS_STATUS_NOT_RUN;
   }
   g_ps_object_candidate_probe.mode = mode;
   g_ps_object_candidate_probe.requested_scene = scene_id;
@@ -8580,6 +8618,7 @@ static void PS_HW6_RTOS_CandidateCheck(const uint8_t *blob, uint32_t size,
       profile = ps_candidate_cache_profile;
       g_ps_object_candidate_probe.profile_status = 0UL;
       ps_candidate_cache_hits++;
+      ps_candidate_raster_reuse = 1UL;
     }
     else
     {
@@ -8768,6 +8807,17 @@ static void PS_HW6_RTOS_CandidateService(void)
 
 static void PS_HW6_RTOS_ObjectService(uint32_t now_tick)
 {
+  if (g_ps_object_trace_probe.request != 0UL)
+  {
+    uint32_t allowed = (PS_SceneRuntime_DevelopmentObjectsActive() != 0UL) &&
+      (g_ps_object_lpbam_probe.enabled == 0UL) &&
+      (g_ps_ui_router_probe.current_page == PS_UI_ROUTER_PAGE_RUNTIME_HANDOFF) &&
+      (g_ps_object_latency_probe.active == 0UL) && (g_ps_object_latency_probe.request == 0UL) &&
+      (g_ps_object_candidate_probe.leased == 0UL) &&
+      (g_ps_object_development_probe.lease_fault == 0UL) &&
+      (g_ps_object_development_probe.render_request == g_ps_object_development_probe.render_complete);
+    if (PS_HW6_TraceObjectArm(allowed) != 0UL) { g_ps_object_latency_probe.request = 1UL; }
+  }
   if (g_ps_object_development_request != 0UL)
   {
     uint32_t blockers = 0UL;

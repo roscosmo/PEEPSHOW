@@ -5,6 +5,7 @@
 
 #include "LS013B7DH05.h"
 #include "ps_scene_render_model.h"
+#include "ps_scene_frame_cache.h"
 #include "ps_scene_waiting_visual.h"
 #include "ps_egg_state_loader.h"
 
@@ -136,6 +137,11 @@ uint32_t DisplayRenderer_CopySceneModelFrame(const ps_scene_render_model_t *mode
  */
 uint32_t DisplayRenderer_CopyCandidateSceneFrame(const ps_scene_render_model_t *model,
   const ps_egg_sprite_catalog_t *catalog, uint8_t *destination, uint32_t destination_size);
+
+/* Same private-catalog contract; cache and destination must not alias. */
+uint32_t DisplayRenderer_CopyCandidateSceneFrameCached(const ps_scene_render_model_t *model,
+  const ps_egg_sprite_catalog_t *catalog, ps_scene_frame_cache_t *cache,
+  uint8_t *destination, uint32_t destination_size);
 uint32_t DisplayRenderer_PrepareCursorBlinkFrame(
   uint32_t visible,
   display_renderer_stats_t *stats);

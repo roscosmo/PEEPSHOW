@@ -4,12 +4,14 @@
 #include "ps_scene_object_waiting.h"
 #include "ps_egg_state_loader.h"
 #include "ps_lpbam_display_buffers.h"
+#include "ps_scene_frame_cache.h"
 
 typedef struct
 {
   ps_scene_objects_snapshot_t snapshot;
   ps_scene_render_model_t model;
   ps_lpbam_display_check_workspace_t packing;
+  ps_scene_frame_cache_t raster_cache;
 } ps_object_display_workspace_t;
 
 typedef struct
@@ -30,5 +32,15 @@ typedef struct
 uint32_t PS_ObjectDisplay_CheckWaiting(const ps_object_waiting_program_t *program,
   const ps_egg_sprite_catalog_t *catalog, ps_object_display_workspace_t *workspace,
   ps_object_display_result_t *result);
+
+uint32_t PS_ObjectDisplay_CheckWaitingProfiled(const ps_object_waiting_program_t *program,
+  const ps_egg_sprite_catalog_t *catalog, ps_object_display_workspace_t *workspace,
+  ps_object_display_result_t *result, ps_display_work_profile_t *profile);
+
+/* Reuse only after exact immutable package/scene identity has been established
+ * under the candidate lease. Ordinary entry points start a cold cache. */
+uint32_t PS_ObjectDisplay_CheckWaitingCached(const ps_object_waiting_program_t *program,
+  const ps_egg_sprite_catalog_t *catalog, ps_object_display_workspace_t *workspace,
+  ps_object_display_result_t *result, ps_display_work_profile_t *profile, uint32_t reuse);
 
 #endif

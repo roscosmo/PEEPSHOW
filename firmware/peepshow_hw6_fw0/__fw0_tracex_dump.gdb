@@ -7,7 +7,8 @@ printf "registry total/avail = %u / %u\n", _tx_trace_total_registry_entries, _tx
 set $ps_hw6_tracex_base = (char *)g_ps_hw6_tracex_buffer_address
 set $ps_hw6_tracex_end = $ps_hw6_tracex_base + g_ps_hw6_tracex_buffer_bytes
 set $ps_hw6_tracex_can_dump = (g_ps_hw6_tracex_enable_status == 0)
-set $ps_hw6_tracex_can_dump = $ps_hw6_tracex_can_dump && (g_ps_hw6_tracex_runtime_enabled == 1)
+set $ps_hw6_tracex_frozen = (g_ps_object_trace_probe.complete == 1) && (g_ps_object_trace_probe.freeze_status == 0)
+set $ps_hw6_tracex_can_dump = $ps_hw6_tracex_can_dump && ((g_ps_hw6_tracex_runtime_enabled == 1) || $ps_hw6_tracex_frozen)
 set $ps_hw6_tracex_can_dump = $ps_hw6_tracex_can_dump && (g_ps_hw6_tracex_buffer_address != 0)
 set $ps_hw6_tracex_can_dump = $ps_hw6_tracex_can_dump && (g_ps_hw6_tracex_buffer_bytes != 0)
 if $ps_hw6_tracex_can_dump

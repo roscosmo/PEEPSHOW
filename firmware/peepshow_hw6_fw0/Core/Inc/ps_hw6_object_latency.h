@@ -2,6 +2,9 @@
 #define PS_HW6_OBJECT_LATENCY_H
 
 #include <stdint.h>
+#include "ps_display_work_profile.h"
+
+#define PS_HW6_OBJECT_LATENCY_API_VERSION (3UL)
 
 typedef enum
 {
@@ -55,6 +58,13 @@ typedef struct
   uint32_t valid[PS_OBJECT_LATENCY_STAGE_COUNT];
   uint32_t tick[PS_OBJECT_LATENCY_STAGE_COUNT];
   uint32_t hclk_hz[PS_OBJECT_LATENCY_STAGE_COUNT];
+  uint32_t packing_valid;
+  uint32_t packing_status;
+  uint32_t packing_ticks[PS_DISPLAY_WORK_COUNT];
+  uint32_t packing_calls[PS_DISPLAY_WORK_COUNT];
+  uint32_t raster_full_frames;
+  uint32_t raster_reused_frames;
+  uint32_t raster_elements_drawn;
 } ps_hw6_object_latency_probe_t;
 
 extern volatile ps_hw6_object_latency_probe_t g_ps_object_latency_probe;

@@ -4,6 +4,7 @@
 #include "ps_scene_render_model.h"
 #include "ps_hw6_object_development.h"
 #include "ps_hw6_object_latency.h"
+#include "native_object_trace_stubs.h"
 #define __DMB() ((void)0)
 typedef uint32_t UINT;
 typedef uint32_t ULONG;
@@ -83,7 +84,11 @@ int main(void)
   PS_HW6_RTOS_ObjectLatencyBegin(3, 1, 1, 2);
   assert(g_ps_object_latency_probe.active == 0);
   g_ps_object_latency_probe.request = 1;
+  g_ps_object_latency_probe.packing_valid = 1;
+  g_ps_object_latency_probe.packing_calls[0] = 7;
   PS_HW6_RTOS_ObjectLatencyBegin(3, 1, 1, 2);
+  assert(g_ps_object_latency_probe.api_version == 3 && sizeof(g_ps_object_latency_probe) == 380);
+  assert(g_ps_object_latency_probe.packing_valid == 0 && g_ps_object_latency_probe.packing_calls[0] == 0);
   assert(g_ps_object_latency_probe.active == 1 && g_ps_object_latency_probe.request == 0);
   assert(g_ps_object_latency_probe.tick[PS_OBJECT_LATENCY_RECEIVE] == 100);
   PS_HW6_RTOS_ObjectLatencyBegin(4, 2, 0, 0);

@@ -3,6 +3,7 @@
 
 #include "LS013B7DH05.h"
 #include "stm32u5xx_hal.h"
+#include "ps_display_work_profile.h"
 #include <stdint.h>
 
 #define PS_LPBAM_DISPLAY_ROWS        LCD_DMA_MAX_ROWS_PER_TRANSFER
@@ -84,6 +85,12 @@ typedef uint32_t (*ps_lpbam_display_compose_fn)(void *context, uint32_t step,
 HAL_StatusTypeDef PS_LpbamDisplay_CheckFullSceneAnimation(uint32_t sequence_count,
   ps_lpbam_display_compose_fn compose, void *context,
   ps_lpbam_display_check_workspace_t *workspace, ps_lpbam_display_admission_t *result);
+
+/* Same work and verdict, with optional caller-owned timing totals. */
+HAL_StatusTypeDef PS_LpbamDisplay_CheckFullSceneAnimationProfiled(uint32_t sequence_count,
+  ps_lpbam_display_compose_fn compose, void *context,
+  ps_lpbam_display_check_workspace_t *workspace, ps_lpbam_display_admission_t *result,
+  ps_display_work_profile_t *profile);
 
 extern uint8_t *ps_lpbam_display_tx[PS_LPBAM_DISPLAY_MAX_CHUNKS];
 extern uint8_t *ps_lpbam_display_payload_slot[

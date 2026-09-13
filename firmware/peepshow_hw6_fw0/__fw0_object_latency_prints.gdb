@@ -8,7 +8,7 @@ define ps_object_latency_row
 end
 printf "--- HW6 one-press object latency ---\n"
 set $ps_latency = &g_ps_object_latency_probe
-if ($ps_latency->api_version != 1) || ($ps_latency->complete == 0) || ($ps_latency->active != 0) || ($ps_latency->tick_hz == 0)
+if ($ps_latency->api_version != 3) || ($ps_latency->complete == 0) || ($ps_latency->active != 0) || ($ps_latency->tick_hz == 0)
   printf "No completed capture: request/active/complete = %u/%u/%u. Use __fw0_object_latency_enable.gdb, resume, change selection once, then halt.\n", $ps_latency->request, $ps_latency->active, $ps_latency->complete
 else
   printf "sequence/button/scene before/after LPBAM/WFI baseline = %u/%u/%u/%u %u/%u\n", $ps_latency->sequence, $ps_latency->button, $ps_latency->scene_before, $ps_latency->scene_after, $ps_latency->lp_enabled, $ps_latency->wfi_returns
@@ -51,6 +51,29 @@ else
   ps_object_latency_row 0 18
   printf "Runtime transaction total: "
   ps_object_latency_row 0 20
+  if $ps_latency->packing_valid != 0
+    printf "--- Captured candidate work (status=0x%x) ---\n", $ps_latency->packing_status
+    printf "Raster full/reused frames / elements drawn = %u/%u / %u\n", $ps_latency->raster_full_frames, $ps_latency->raster_reused_frames, $ps_latency->raster_elements_drawn
+    printf "Frame projection: "
+    set $ps_work_stage = 0
+    printf "%llu ms / %u calls\n", ((unsigned long long)$ps_latency->packing_ticks[$ps_work_stage] * 1000) / $ps_latency->tick_hz, $ps_latency->packing_calls[$ps_work_stage]
+    printf "Frame raster (validation, drawing, framebuffer save/restore): "
+    set $ps_work_stage = 1
+    printf "%llu ms / %u calls\n", ((unsigned long long)$ps_latency->packing_ticks[$ps_work_stage] * 1000) / $ps_latency->tick_hz, $ps_latency->packing_calls[$ps_work_stage]
+    printf "Dirty-band comparison: "
+    set $ps_work_stage = 2
+    printf "%llu ms / %u calls\n", ((unsigned long long)$ps_latency->packing_ticks[$ps_work_stage] * 1000) / $ps_latency->tick_hz, $ps_latency->packing_calls[$ps_work_stage]
+    printf "Wire construction/deduplication/storage: "
+    set $ps_work_stage = 3
+    printf "%llu ms / %u calls\n", ((unsigned long long)$ps_latency->packing_ticks[$ps_work_stage] * 1000) / $ps_latency->tick_hz, $ps_latency->packing_calls[$ps_work_stage]
+    printf "Packing workspace reset/frame copies: "
+    set $ps_work_stage = 4
+    printf "%llu ms / %u calls\n", ((unsigned long long)$ps_latency->packing_ticks[$ps_work_stage] * 1000) / $ps_latency->tick_hz, $ps_latency->packing_calls[$ps_work_stage]
+    printf "Four-step success expects calls=5/5/4/4/5, including wrap. Failed work may have partial counts.\n"
+    printf "Substage totals include preemption and observer overhead at 10 ms tick resolution, not isolated CPU time. Zero is below resolution.\n"
+  else
+    printf "No candidate work breakdown recorded for this press.\n"
+  end
   printf "One captured press only. Missing stages can mean ignored input or failure; require a real selection change and status/panel=0.\n"
   printf "Pre-runtime wake, debounce and input queue latency are excluded. WFI baseline is cumulative, not proof this press woke STOP2. HCLK is a stage-boundary sample, not a trace.\n"
   printf "Do not sum overlapping totals. Compare awake and autonomous runs without halting during the transaction.\n"

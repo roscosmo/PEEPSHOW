@@ -146,6 +146,53 @@ This is a tooling limitation, not evidence of a firmware lifecycle failure.
 
 ## TraceX Runtime Scaffold
 
+### One-Press V2 Raster Capture
+
+The HOME/AWAY awake development fixture supports an opt-in one-press TraceX
+capture through `__fw0_object_trace_enable.gdb`. The helper only writes a request;
+thRuntime restarts the existing static trace ring through ThreadX APIs, verifies
+that DWT CYCCNT advances and then arms the existing latency probe. No inferior
+function calls, new trace allocation, clock change or STOP2 override is used.
+Existing Platform trace/user-event knobs must be enabled. This diagnostic only
+admits an awake development scene with no outstanding candidate/display lease.
+
+Resume for one second before pressing the opposite L/R selection. The trace
+retains recent input/scheduler history and freezes after the matching runtime
+transaction completes, whether successful or rejected. Re-arm explicitly for
+another capture; a reset cancels an armed capture. Do not halt during the press.
+`__fw0_object_trace_prints.gdb` prints the capture state and latency summary;
+`__fw0_tracex_dump.gdb` accepts both running and successfully frozen trace buffers.
+The existing latest/timestamped `.trx` paths remain unchanged.
+
+Application markers use these ThreadX user-event IDs:
+
+| ID | Information fields 1 / 2 / 3 / 4 |
+| --- | --- |
+| `0x5170` | latency stage / capture sequence / candidate token / HCLK Hz |
+| `0x5171` | raster phase / begin=0,end=1 / capture sequence / reserved |
+| `0x5172` | ARM=1,RECEIVE=2,DONE=3 / sequence / HCLK Hz / tick at ARM/RECEIVE, result at DONE |
+
+Latency stages match `ps_hw6_object_latency.h`. Raster phases are validation=1,
+overlap closure=2, rectangle clearing=3, drawing=4, framebuffer copies=5 and cold
+full-render fallback=6. DRAW includes a nested VALIDATE; do not sum overlapping
+intervals. No per-pixel or continuous application marker loop is introduced.
+
+The current Cortex-M33 port timestamps from the 32-bit DWT cycle counter, not the
+100 Hz kernel tick. At unchanged 24 MHz, 24000 counts equal 1 ms. Check capture
+start/end HCLK and existing clock-policy markers; do not apply one conversion
+across clock changes. Use unsigned wrap arithmetic. Long halted intervals and
+STOP2 are outside this capture's timing contract.
+
+Require complete=1, arm/freeze status=0, marker_errors=0 and retained matching
+RECEIVE/DONE events before interpreting the interval. A ring wrap alone does not
+prove data loss, but overwritten/unpaired markers invalidate the affected phase.
+ThreadX scheduling/queue events distinguish running, runnable and blocked work;
+they do not prove pixels were drawn. Application phase markers and the existing
+panel result provide that additional evidence. Interrupts without explicit trace
+entry/exit hooks remain included in the apparent thread interval: this is not
+a complete ISR or isolated CPU profile. Tracing perturbs timings; compare later
+with an untraced run and debugger-detached PPK2 measurements.
+
 TraceX is allowed for HW6 FW0 bring-up as a bounded, static RAM trace buffer. It is an observation tool for RTOS scheduling, object creation, event flags, queue activity, and owner-thread lifecycle behavior. It is not a package-facing diagnostic API and it must not become a hidden control path.
 
 Rules:

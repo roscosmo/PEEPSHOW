@@ -1,6 +1,7 @@
 #define main validation_main
 #include "native_package_validation.c"
 #undef main
+#include "native_object_trace_stubs.h"
 
 #define DISPLAY_WIDTH 144U
 #define DISPLAY_HEIGHT 168U
