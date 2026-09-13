@@ -715,8 +715,10 @@ cost remain separate optimisation work.
 ## Next: Scheduled PMIC Workloads
 
 The next agreed step is the design in the PMIC and Power Contract's
-"Planned PMIC Monitoring Schedule" section. Firmware is unchanged by this
-documentation checkpoint.
+"Planned PMIC Monitoring Schedule" section. The subsequent driver API 11
+foundation separates selectable read groups and records per-group validity,
+failures and last-good values. Production callers still request ALL at the same
+cadence; scheduling and reduced bus work are not implemented yet.
 
 The current full snapshot is due once per second, not on every owner-loop
 iteration. Boot, PMIC interrupts and explicit diagnostics can also request it.
@@ -741,6 +743,19 @@ In particular, existing full-snapshot success depends on configuration checks:
 splitting the snapshot must preserve their boot/recovery admission role rather
 than silently weakening validation. No GUI capability or authoring change is
 required for this internal power-owner work.
+
+The foundation is covered by a native test compiling the complete PMIC driver
+against a fake transport: all 15 nonempty group combinations, unchanged full
+transfer order, all 24 individual read-failure positions, both W1C failures,
+new flags arriving between read and clear, ID/rail/fault rejection, lease errors,
+invalid arguments, cache invalidation and last-good retention. Hardware
+regression testing and timing measurements remain outstanding. After the user
+removed an accidental `yes` prefix in ThreadX `tx_thread_schedule.S:274`, the
+2026-09-14 Debug build linked successfully: RAM 552672 bytes, ROM 878360 bytes,
+SRAM4 15480 bytes. The V2 runtime static stack check passes at 2432/4096 bytes
+including its reserve; this is not a measured power-thread high-water mark.
+The 103 firmware tests passed across the main run and the STOP2 class rerun
+with `HOST_CC` set. No hardware pass or latency improvement is claimed yet.
 
 ## Verification
 

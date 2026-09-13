@@ -152,6 +152,7 @@ extern DMA_HandleTypeDef handle_LPDMA1_Channel0;
 volatile PS_HW6_OwnerProbe g_ps_hw6_owner_probe;
 
 static ps_dev_adp5360_t ps_hw6_pmic;
+volatile ps_dev_adp5360_monitor_t g_ps_hw6_pmic_monitor_probe = {.api_version = 1UL};
 static ps_dev_audio_t ps_hw6_audio;
 static LS013B7DH05 ps_hw6_display;
 static uint32_t ps_hw6_display_driver_initialized;
@@ -1481,6 +1482,7 @@ UINT PS_HW6_OwnerServices_Init(void)
                                 SD_MODE_Pin);
   PS_HW6_UpdateAudioDriverProbe();
   status = PS_HW_I2C3_Init(&hi2c3);
+  ps_dev_adp5360_monitor_invalidate(&g_ps_hw6_pmic_monitor_probe);
   g_ps_hw6_owner_probe.services_init_status = status;
   if (status == TX_SUCCESS)
   {
@@ -1508,6 +1510,7 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_EnableMrShippingMode(void)
 {
   ps_status_t status;
 
+  ps_dev_adp5360_monitor_invalidate(&g_ps_hw6_pmic_monitor_probe);
   status = ps_dev_adp5360_enable_mr_shipping_mode(&ps_hw6_pmic);
   g_ps_hw6_owner_probe.power_driver_mr_shipping_mode_status =
     (uint32_t)status;
@@ -1526,6 +1529,7 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_PrepareFuelGauge(void)
 {
   ps_status_t status;
 
+  ps_dev_adp5360_monitor_invalidate(&g_ps_hw6_pmic_monitor_probe);
   status = ps_dev_adp5360_prepare_fuel_gauge(&ps_hw6_pmic);
   g_ps_hw6_owner_probe.power_driver_fuel_gauge_prepare_status =
     (uint32_t)status;
@@ -1544,6 +1548,7 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_ConfigureThermistor(void)
 {
   ps_status_t status;
 
+  ps_dev_adp5360_monitor_invalidate(&g_ps_hw6_pmic_monitor_probe);
   status = ps_dev_adp5360_configure_thermistor(
     &ps_hw6_pmic,
     (uint8_t)KNOB_POWER_CHARGER_THERMISTOR_CONTROL);
@@ -1573,6 +1578,7 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_ConfigureChargerProfile(void)
   profile.thermistor_control =
     (uint8_t)KNOB_POWER_CHARGER_THERMISTOR_CONTROL;
 
+  ps_dev_adp5360_monitor_invalidate(&g_ps_hw6_pmic_monitor_probe);
   status = ps_dev_adp5360_configure_charger_profile(&ps_hw6_pmic, &profile);
   g_ps_hw6_owner_probe.power_driver_charger_profile_status =
     (uint32_t)status;
@@ -1595,6 +1601,7 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_ConfigurePmicInterrupts(void)
   profile.enable1 = (uint8_t)KNOB_POWER_PMIC_INTERRUPT_ENABLE1;
   profile.enable2 = (uint8_t)KNOB_POWER_PMIC_INTERRUPT_ENABLE2;
 
+  ps_dev_adp5360_monitor_invalidate(&g_ps_hw6_pmic_monitor_probe);
   status = ps_dev_adp5360_configure_interrupts(&ps_hw6_pmic, &profile);
   g_ps_hw6_owner_probe.power_driver_interrupt_config_status =
     (uint32_t)status;
@@ -1617,6 +1624,7 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_EnterSoftwareShipmentMode(void)
   g_ps_hw6_owner_probe.power_software_ship_request_tick =
     (uint32_t)tx_time_get();
 
+  ps_dev_adp5360_monitor_invalidate(&g_ps_hw6_pmic_monitor_probe);
   status = ps_dev_adp5360_enter_shipment_mode(&ps_hw6_pmic);
   g_ps_hw6_owner_probe.power_driver_software_shipping_mode_status =
     (uint32_t)status;
@@ -1644,6 +1652,8 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_RunSnapshot(void)
   uint32_t trace_sequence = PS_HW6_TraceObjectOwnerBegin(PS_TRACE_OWNER_PMIC_SNAPSHOT);
   status = ps_dev_adp5360_read_power_snapshot(&ps_hw6_pmic, &snapshot);
   PS_HW6_TraceObjectOwnerEnd(PS_TRACE_OWNER_PMIC_SNAPSHOT, trace_sequence, (uint32_t)status);
+  ps_dev_adp5360_monitor_record(&g_ps_hw6_pmic_monitor_probe, &snapshot,
+    (uint32_t)tx_time_get());
   for (index = 0U; index < PS_HW6_OWNER_POWER_REGISTER_COUNT; ++index)
   {
     g_ps_hw6_owner_probe.power_register_address[index] =

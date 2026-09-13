@@ -164,7 +164,8 @@ HW6 FW0 target evidence now validates the runtime policy path at one normal poin
 
 ## Planned PMIC Monitoring Schedule
 
-Status: agreed design, not implemented. FW0 still performs a full snapshot when
+Status: schedule not implemented; the read-group and diagnostic-record foundation
+is implemented as described below. FW0 still performs a full snapshot when
 the `1000 ms` monitor period is due, with additional boot, interrupt and explicit
 diagnostic requests. Checking whether the period is due is not a hardware read.
 The current snapshot performs 24 single-register reads and up to two flag-clear
@@ -238,81 +239,48 @@ tests; and hardware checks of boot, charger connect/disconnect, battery policy
 and STOP2 wake behaviour. Measure current and energy as well as responsiveness.
 No performance or battery-safety improvement is established by this design alone.
 
-## Planned PMIC Monitoring Schedule
+### Read-Group Foundation (Driver API 11)
 
-Status: agreed design, not implemented. FW0 still performs a full snapshot when
-the `1000 ms` monitor period is due, with additional boot, interrupt and explicit
-diagnostic requests. Checking whether the period is due is not a hardware read.
-The current snapshot performs 24 single-register reads and up to two flag-clear
-writes. It runs synchronously in `thPower`, so even an already-acknowledged clock
-request can wait for this work before its requesting thread runs.
+`ps_dev_adp5360_read_groups()` accepts a mask of these groups. The full-snapshot
+entry point still selects ALL, preserving the existing 24 reads in their original
+order, both conditional W1C writes, lease boundaries and admission checks.
+Boot, IRQ, diagnostics and periodic monitoring still use that full entry point.
 
-The next monitoring increment separates these workloads without transferring
-PMIC ownership away from `thPower`:
-
-| Workload | Trigger and scheduling rule | Required validity |
+| Bit / group | Read addresses in group order | Reads |
 | --- | --- | --- |
-| Battery safety | Retain the existing 1000 ms active-monitor target initially; service relevant power events promptly. Faster checks near thresholds or around load changes require an explicit policy and measurement. | Valid VBAT and the presence, fault and external-power information needed for the decision; slow SOC must not substitute for voltage safety. |
-| Charger and VBUS events | Interrupt-driven status refresh, with a bounded periodic backstop for missed events. Coalesce requests without discarding unrecorded flags. | Record observed flags before write-one-to-clear; publish decoded status only from successful reads. |
-| SOC and UI telemetry | Slower, independently scheduled updates. UI and package consumers use the published cache rather than initiating synchronous PMIC reads. | Value, last-success time, age and validity are visible to consumers. An overdue value is not a fresh measurement. |
-| Identity and configuration verification | Mandatory at boot, after configuration changes and after recovery; a separate, slower integrity audit thereafter. | Boot/recovery admission still requires verified identity and relevant rail, charger and gauge configuration. Ordinary telemetry cannot clear a failed verification. |
+| `0x1` SAFETY | `2e,2f,08,09,0a,25,26` | 7 |
+| `0x2` EVENTS | `34,35`, followed by clear of successfully read, nonzero flags | 2 |
+| `0x4` SOC | `21` | 1 |
+| `0x8` CONFIG | `00,29,2a,2b,2c,02,03,04,07,0a,32,33,20,27` | 14 |
 
-The slower telemetry, backstop and audit periods are not selected by this
-design. They must become separately described knobs, with evidence supporting
-their defaults. Do not silently repurpose the current monitor-period knob to
-mean all of these schedules. Battery voltage can change quickly under load even
-when SOC changes slowly.
+The duplicate thermistor-control read remains intentional compatibility work,
+not a new optimisation. Configuration-group success preserves existing ID/rail
+expected-value checks and requires its reads to succeed; it does not introduce
+expected-value verification of every charger/gauge setting. Those writes and
+boot sequencing retain their existing owners and checks. Safety-group success
+preserves fault-clear and rail-good checks; battery-policy validation, including
+the nonzero VBAT requirement, still applies separately.
 
-### Freshness And Failure Rules
+Each attempt reports requested/valid masks and per-group status and raw values.
+Unrequested fields are not valid readings. Any failed read invalidates its group;
+failed W1C invalidates EVENTS; acquisition/release failure invalidates all
+requested groups. Successful partial reads do not authorize boot or normal load
+admission, and ordinary telemetry cannot validate CONFIG.
 
-- Each group publishes its last successful sample time, latest attempt status,
-  validity and a defined maximum usable age. Target update period, maximum usable
-  age and permitted scheduling deferral are separate policy values.
-- Publish a group only after its required reads complete successfully. Do not
-  present a mixture of old and new fields as one current successful sample.
-  Preserve the last good sample for diagnostics while exposing failure/staleness.
-- Decisions using multiple groups must check every required group's validity
-  and age. Required freshness limits must be specified before implementing that
-  decision; this document does not establish a safe maximum age from one trace.
-- Missing, failed or over-age safety information enters the documented
-  unknown/recovery policy. It must not silently permit a new high-load operation
-  or be interpreted as zero battery voltage.
-- The present snapshot's overall success includes configuration verification.
-  Splitting reads therefore requires explicit separate verification and sample
-  validity, not merely removing configuration reads from the success test.
+`g_ps_hw6_pmic_monitor_probe` records attempts, successes, last attempt status,
+last-good raw group values and kernel tick timestamps. Failed attempts retain
+last-good values but clear validity; unrequested groups are untouched. Owner
+initialisation and PMIC configuration/shipment operations invalidate the records
+before further hardware work. This is diagnostic history, not the policy cache:
+its validity means successful acquisition since invalidation, not age-qualified
+freshness or permission to run. Kernel timestamps must not be used to infer age
+through STOP2. Maximum usable ages and a sleep-aware timebase remain part of the
+next scheduling increment; no new cadence or sleep wake source is enabled here.
 
-### Bounded Work And Sleep
-
-- Use bounded owner jobs and service pending requests between safe transaction
-  boundaries. No extra thread, cross-owner peripheral access, hidden retry loop
-  or arbitrary sleep is introduced to simulate prioritisation.
-- Routine telemetry and integrity audits may defer during bounded interactive
-  work, but retain their original deadline and a maximum deferral. Repeated input
-  cannot continually restart their deadlines. Safety and critical power events
-  cannot be postponed merely to improve animation or button latency.
-- A bus transaction remains indivisible, with its existing ownership and clock
-  protections. Grouped register reads may reduce transaction overhead later;
-  they do not replace the scheduling and freshness policy.
-- Do not wake from STOP2 solely to refresh cosmetic SOC/UI data or perform a
-  routine configuration audit. Overdue optional work is considered on natural
-  wake; freshness accounting must include elapsed STOP2 time.
-- The existing one-second owner-loop monitor is not a promise of a one-second
-  RTC wake. Any required asleep safety sampling deadline must be explicitly
-  designed with the power/sleep policy and shared RTC arbitration, then measured
-  on hardware. Do not add such a wake implicitly while splitting the snapshot.
-
-### Implementation And Acceptance
-
-First define the read groups, verification barriers and published freshness
-state; then schedule bounded jobs and tune optional periods. Preserve PMIC
-interrupt record/clear ordering, boot battery admission, charger/VBUS reporting,
-critical-battery policy and recovery behaviour throughout.
-
-Acceptance requires traces showing actual register work and request latency,
-including sustained input and simultaneous PMIC events; failure/stale-sample
-tests; and hardware checks of boot, charger connect/disconnect, battery policy
-and STOP2 wake behaviour. Measure current and energy as well as responsiveness.
-No performance or battery-safety improvement is established by this design alone.
+After rebuilding/flashing a matching ELF, `__fw0_pmic_monitor_prints.gdb` prints
+these records without requesting hardware work. During healthy full monitoring,
+requested/valid masks are `0xf/0xf`, statuses are zero and last-good read counts
+are `7/2/1/14`. Attempt counters alone do not prove successful hardware reads.
 
 ## VBUS Detection
 

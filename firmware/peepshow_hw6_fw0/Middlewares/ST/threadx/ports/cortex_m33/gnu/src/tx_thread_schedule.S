@@ -271,7 +271,7 @@ _skip_vfp_restore:
 
 __tx_ts_wait:
 #ifdef TX_PORT_USE_BASEPRI
-yes     LDR     r1, =TX_PORT_BASEPRI                    // Mask interrupt priorities =< TX_PORT_BASEPRI
+     LDR     r1, =TX_PORT_BASEPRI                    // Mask interrupt priorities =< TX_PORT_BASEPRI
     MSR     BASEPRI, r1
 #else
     CPSID   i                                       // Disable interrupts
