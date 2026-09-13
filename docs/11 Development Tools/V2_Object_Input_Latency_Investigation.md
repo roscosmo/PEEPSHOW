@@ -757,6 +757,35 @@ including its reserve; this is not a measured power-thread high-water mark.
 The 103 firmware tests passed across the main run and the STOP2 class rerun
 with `HOST_CC` set. No hardware pass or latency improvement is claimed yet.
 
+### PMIC Hardware Check and Battery Wake Increment (2026-09-14)
+
+The user subsequently confirmed the read-group foundation on hardware:
+sequence 3, requested/valid masks `0xf/0xf`, all four groups at three successful
+attempts, zero statuses and last-good read counts `7/2/1/14`. Behaviour remained
+normal. This proves full acquisitions still work, not reduced PMIC traffic.
+
+The next increment adds an independent battery deadline to shared RTC wake
+selection: normally 30 minutes, 60 seconds after a warning or failed acquisition.
+Early wakes preserve the remaining deadline using measured RTC elapsed time.
+Only a real valid battery acquisition refreshes the normal interval. Battery-only
+expiry does not fabricate package input or an interaction timeout. Awake full
+snapshot cadence remains unchanged; optional-group scheduling is still pending.
+
+Debug build and 106 firmware tests pass. Native tests cover deadline wraparound,
+early wakes, failed reads, RTC selection/expiry/failure, and the actual owner
+monitor's forced read when the battery deadline is due. Target-profile and V2
+runtime stack checks pass; the latter remains 2432/4096 bytes including reserve,
+not a power-thread high-water measurement. Build totals: RAM 552776 bytes,
+ROM 879448 bytes, SRAM4 15480 bytes.
+
+Hardware battery-wake validation is pending. The new
+`__fw0_battery_wake_enable.gdb` shortens one deadline to 15 seconds;
+`__fw0_battery_wake_prints.gdb` retains expiry and successful due-read deltas
+across debugger reconnects. Selection alone does not prove waking or reading.
+Automatic critical/boot shipment remains disabled pending a controlled
+low-voltage shutdown/restart test. This increment is not yet proof of complete
+battery protection, nor of a measured latency or energy improvement.
+
 ## Verification
 
 Native tests exercise actual stamp/begin/end functions and presentation/candidate

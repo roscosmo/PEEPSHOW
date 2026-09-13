@@ -1,4 +1,5 @@
 #include "ps_hw6_rtos_probe.h"
+#include "ps_battery_wake.h"
 
 #include <string.h>
 
@@ -144,6 +145,7 @@ extern RTC_HandleTypeDef hrtc;
 #define PS_HW6_RTOS_RTC_WAKE_SOURCE_NONE (0UL)
 #define PS_HW6_RTOS_RTC_WAKE_SOURCE_INTERACTION (1UL)
 #define PS_HW6_RTOS_RTC_WAKE_SOURCE_STATE_TIMER (2UL)
+#define PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY (3UL)
 #define PS_HW6_RTOS_EVENT_DEBUG_INDEX     (3U)
 #define PS_HW6_RTOS_ACK_OWNER(owner_id)   (1UL << (owner_id))
 #define PS_HW6_RTOS_PACKAGE_READER_ACK    (1UL << 15U)
@@ -8964,7 +8966,13 @@ void RTC_IRQHandler(void)
   {
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
     ps_runtime_interaction_rtc_irq_expired = 1UL;
-    if (ps_runtime_interaction_rtc_armed != 0UL)
+    if ((ps_runtime_interaction_rtc_armed != 0UL) &&
+        (ps_runtime_rtc_wake_source == PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY))
+    {
+      g_ps_hw6_battery_wake_probe.rtc_expiries++;
+    }
+    if ((ps_runtime_interaction_rtc_armed != 0UL) &&
+        (ps_runtime_rtc_wake_source != PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY))
     {
       if (ps_runtime_interaction_rtc_command_queued == 0UL)
       {
@@ -8981,6 +8989,7 @@ void RTC_IRQHandler(void)
 uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
 {
   uint32_t now_tick;
+  uint32_t battery_remaining_ticks;
   uint32_t remaining_ticks = 0UL;
   uint32_t interaction_remaining_ticks = 0UL;
   uint32_t interaction_available = 0UL;
@@ -9021,14 +9030,11 @@ uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
     &state_timer_remaining_ticks,
     &state_timer_binding_index);
 
-  if ((interaction_available == 0UL) && (state_timer_available == 0UL))
-  {
-    g_ps_hw6_rtos_probe.runtime_interaction_rtc_arm_status =
-      (uint32_t)HAL_OK;
-    return (uint32_t)HAL_OK;
-  }
+  battery_remaining_ticks = PS_BatteryWake_Prepare(
+    &g_ps_hw6_battery_wake_probe, now_tick);
 
   if ((state_timer_available != 0UL) &&
+      (state_timer_remaining_ticks <= battery_remaining_ticks) &&
       ((interaction_available == 0UL) ||
        (state_timer_remaining_ticks <= interaction_remaining_ticks)))
   {
@@ -9040,10 +9046,17 @@ uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
       state_timer_remaining_ticks;
     g_ps_hw6_rtos_probe.runtime_state_timer_rtc_select_count++;
   }
-  else
+  else if ((interaction_available != 0UL) &&
+           (interaction_remaining_ticks <= battery_remaining_ticks))
   {
     ps_runtime_rtc_wake_source = PS_HW6_RTOS_RTC_WAKE_SOURCE_INTERACTION;
     remaining_ticks = interaction_remaining_ticks;
+  }
+  else
+  {
+    ps_runtime_rtc_wake_source = PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY;
+    remaining_ticks = battery_remaining_ticks;
+    g_ps_hw6_battery_wake_probe.rtc_selections++;
   }
   g_ps_hw6_rtos_probe.runtime_rtc_wake_source =
     ps_runtime_rtc_wake_source;
@@ -9059,9 +9072,15 @@ uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
     }
     g_ps_hw6_rtos_probe.runtime_interaction_rtc_arm_status =
       (uint32_t)HAL_BUSY;
-    g_ps_hw6_rtos_probe.runtime_interaction_rtc_command_status =
-      (uint32_t)PS_HW6_RTOS_RequestRuntimeCommand(
-        PS_HW6_RTOS_COMMAND_RUNTIME_INTERACTION_TIMEOUT);
+    if (((interaction_available != 0UL) && (interaction_remaining_ticks == 0UL)) ||
+        ((state_timer_available != 0UL) && (state_timer_remaining_ticks == 0UL)))
+    {
+      g_ps_hw6_rtos_probe.runtime_interaction_rtc_command_status =
+        (uint32_t)PS_HW6_RTOS_RequestRuntimeCommand(
+          PS_HW6_RTOS_COMMAND_RUNTIME_INTERACTION_TIMEOUT);
+    }
+    /* No RTC was armed: leave the battery deadline anchored at prepare time. */
+    PS_BatteryWake_Finish(&g_ps_hw6_battery_wake_probe, now_tick, 0UL, 1UL);
     return (uint32_t)HAL_BUSY;
   }
 
@@ -9090,6 +9109,7 @@ uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
     &ps_runtime_interaction_rtc_start_units);
   if (status != HAL_OK)
   {
+    PS_BatteryWake_Finish(&g_ps_hw6_battery_wake_probe, now_tick, 0UL, 0UL);
     g_ps_hw6_rtos_probe.runtime_interaction_rtc_arm_status =
       (uint32_t)status;
     return (uint32_t)status;
@@ -9140,6 +9160,7 @@ uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
   if (status != HAL_OK)
   {
     HAL_NVIC_DisableIRQ(RTC_IRQn);
+    PS_BatteryWake_Finish(&g_ps_hw6_battery_wake_probe, now_tick, 0UL, 0UL);
     return (uint32_t)status;
   }
 
@@ -9167,6 +9188,11 @@ void PS_HW6_RTOS_InteractionStop2TimeoutFinish(void)
 
   if (__HAL_RTC_WAKEUPTIMER_GET_FLAG(&hrtc, RTC_FLAG_WUTF) != 0UL)
   {
+    if ((ps_runtime_interaction_rtc_irq_expired == 0UL) &&
+        (ps_runtime_rtc_wake_source == PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY))
+    {
+      g_ps_hw6_battery_wake_probe.rtc_expiries++;
+    }
     ps_runtime_interaction_rtc_irq_expired = 1UL;
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
   }
@@ -9254,6 +9280,8 @@ void PS_HW6_RTOS_InteractionStop2TimeoutFinish(void)
 
   g_ps_hw6_rtos_probe.runtime_interaction_rtc_elapsed_ticks =
     elapsed_ticks;
+  PS_BatteryWake_Finish(&g_ps_hw6_battery_wake_probe, now_tick, elapsed_ticks,
+    (read_status == HAL_OK) && (deactivate_status == HAL_OK));
   if (ps_runtime_rtc_wake_source == PS_HW6_RTOS_RTC_WAKE_SOURCE_STATE_TIMER)
   {
     g_ps_hw6_rtos_probe.runtime_state_timer_rtc_elapsed_ticks =

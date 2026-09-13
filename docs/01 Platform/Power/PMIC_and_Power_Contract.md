@@ -164,8 +164,9 @@ HW6 FW0 target evidence now validates the runtime policy path at one normal poin
 
 ## Planned PMIC Monitoring Schedule
 
-Status: schedule not implemented; the read-group and diagnostic-record foundation
-is implemented as described below. FW0 still performs a full snapshot when
+Status: optional-work scheduling is not implemented. The read-group foundation
+and periodic STOP2 battery deadline are implemented as described below, with the
+new wake path awaiting hardware validation. FW0 still performs a full snapshot when
 the `1000 ms` monitor period is due, with additional boot, interrupt and explicit
 diagnostic requests. Checking whether the period is due is not a hardware read.
 The current snapshot performs 24 single-register reads and up to two flag-clear
@@ -275,12 +276,73 @@ before further hardware work. This is diagnostic history, not the policy cache:
 its validity means successful acquisition since invalidation, not age-qualified
 freshness or permission to run. Kernel timestamps must not be used to infer age
 through STOP2. Maximum usable ages and a sleep-aware timebase remain part of the
-next scheduling increment; no new cadence or sleep wake source is enabled here.
+next optional-work scheduling increment. The separate sleep battery deadline
+below is not a general-purpose freshness API for these group records.
 
 After rebuilding/flashing a matching ELF, `__fw0_pmic_monitor_prints.gdb` prints
 these records without requesting hardware work. During healthy full monitoring,
 requested/valid masks are `0xf/0xf`, statuses are zero and last-good read counts
 are `7/2/1/14`. Attempt counters alone do not prove successful hardware reads.
+
+### Periodic STOP2 Battery Deadline
+
+Battery monitoring must not depend on a user input, package timer or charger
+interrupt eventually waking the device. The shared RTC wake timer now selects
+the earliest of battery, interaction and scene-timer deadlines, including when
+there is no active package timer or the device is in the shell. This is an
+explicit battery-safety wake, not an optional UI/SOC refresh.
+
+Provisional knobs, requiring hardware and energy validation:
+
+| Knob | Default | Meaning |
+| --- | --- | --- |
+| `power_battery_sleep_check_ms` | 1800000 (30 minutes) | Target maximum interval from a valid healthy reading to the next battery check through STOP2. |
+| `power_battery_sleep_warning_ms` | 60000 | Interval after a valid reading at/below the existing warning threshold. |
+| `power_battery_sleep_retry_ms` | 60000 | Maximum scheduled delay to another attempt after a failed reading. |
+
+Only successful full-snapshot policy readings, including the existing nonzero
+VBAT check, refresh the normal/warning deadline. Failed attempts use the retry
+interval or an already-earlier deadline; further failures before that deadline
+cannot continually push it out. Actual read work still runs through `thPower`.
+The awake one-second monitor and full snapshot validation are unchanged.
+
+`ps_battery_wake` records the remaining deadline at RTC preparation and rebases
+it using measured RTC elapsed time at finish. Scene replacement and unrelated
+wakes do not reset it; an actual successful battery reading on such a wake may
+legitimately refresh it. Timer competition does not lose the unselected battery
+deadline. A due battery check overrides the awake monitor's cadence skip even
+when ThreadX ticks were stopped. RTC read/arm failures force a fresh check and
+do not count as successful time accounting. RTC rounding and bounded owner work
+add servicing latency; the period is not a claim of exact wall-time completion.
+
+Battery-only RTC expiry does not queue a package interaction-timeout command or
+invent a button, activation, sound or UI notification. Coincident genuine scene
+or interaction deadlines are still serviced. Normal owner resume and display
+reconciliation remain in place, after which a healthy settled device can return
+to STOP2. RTC preparation is cleaned up on aborted sleep as well as real wake.
+Shared RTC source values are NONE=0, INTERACTION=1, STATE_TIMER=2, BATTERY=3.
+
+**Discharge protection remains incomplete until the shutdown path is qualified.**
+`power_critical_software_ship_enable` and `power_boot_low_battery_ship_enable`
+remain false for this wake-path increment. Low readings still enter the existing
+battery policy and quiesce path, but these defaults do not guarantee physical
+shipment. A controlled supply test must prove critical shutdown, failed-read
+handling, VBUS-present charge recovery and restart admission before enabling
+automatic shipment. Do not deliberately exhaust a cell to test this. Complete
+PMIC communication failure can prevent a software shipment command; periodic
+reads are not a substitute for hardware battery protection.
+
+The one-shot `__fw0_battery_wake_enable.gdb` helper queues a shortening to 15
+seconds in `thPower`; it cannot lengthen the deadline or alter voltage/charging
+settings. Use a settled autonomous HOME scene after its timer reveal, or a
+settled shell page. Resume without input for 20 seconds, then wake normally if
+needed, halt and source `__fw0_battery_wake_prints.gdb`. Firmware-held test
+baselines survive debugger reconnect without reset. Require a battery RTC
+expiry and a successful due-check delta, not just a timer selection or thread
+run count; verify continued visuals/input and low-current return. A successful
+reading before expiry can replace the test deadline, so zero expiry delta is
+not a pass. Follow with a real-duration 30-minute test and controlled low-voltage
+tests. No hardware wake or discharge-protection pass is recorded yet.
 
 ## VBUS Detection
 

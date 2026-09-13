@@ -87,6 +87,9 @@
     "comm_ble_rx_buffer_bytes",
     "power_rtc_wake_irq_priority",
     "power_battery_monitor_period_ms",
+    "power_battery_sleep_check_ms",
+    "power_battery_sleep_warning_ms",
+    "power_battery_sleep_retry_ms",
     "power_battery_warning_mv",
     "power_battery_critical_ship_mv",
     "power_battery_restart_allow_mv",
@@ -1098,6 +1101,42 @@
       "class": "protected_policy",
       "path": "platform.knobs.power.battery_monitor_period_ms",
       "description": "Cadence for thPower-owned PMIC battery voltage snapshots while the FW0 monitor scaffold is active."
+    },
+    "power_battery_sleep_check_ms": {
+      "type": "integer",
+      "minimum": 60000,
+      "maximum": 3600000,
+      "default": 1800000,
+      "unit": "ms",
+      "timebase_domain": "rtc",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.battery_sleep_check_ms",
+      "description": "Maximum target interval from a successful healthy battery reading to a quiet STOP2 battery wake. Provisional 30-minute default requires power and low-voltage hardware validation."
+    },
+    "power_battery_sleep_warning_ms": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 60000,
+      "default": 60000,
+      "unit": "ms",
+      "timebase_domain": "rtc",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.battery_sleep_warning_ms",
+      "description": "Shorter STOP2 battery-check interval after a valid reading at or below the existing warning threshold."
+    },
+    "power_battery_sleep_retry_ms": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 60000,
+      "default": 60000,
+      "unit": "ms",
+      "timebase_domain": "rtc",
+      "owner": "thPower",
+      "class": "protected_policy",
+      "path": "platform.knobs.power.battery_sleep_retry_ms",
+      "description": "Maximum delay to another STOP2 battery-check attempt after a failed sample; repeated failures before this deadline cannot extend it. Does not guarantee shutdown if PMIC communication is unavailable."
     },
     "power_battery_warning_mv": {
       "type": "integer",

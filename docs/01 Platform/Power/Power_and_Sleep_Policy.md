@@ -61,6 +61,17 @@ All wakes must be classified as one of:
 
 Unknown wake reasons are defects until explained.
 
+Battery safety has an independent RTC deadline even with no package timer or
+user input. The provisional healthy interval is 30 minutes, with shorter warning
+and failed-read intervals owned by `thPower`; see [[PMIC_and_Power_Contract]].
+The shared RTC selects the earliest battery, interaction or scene deadline.
+Early wakes preserve the remaining battery deadline unless a real successful
+battery reading refreshes it. A battery-only wake performs no synthetic package
+input or user cue and returns to STOP2 once owner work settles. This explicit
+safety wake does not authorize periodic wakes for cosmetic SOC refreshes.
+The new battery wake path awaits hardware validation; automatic critical/boot
+shipment remains gated pending controlled low-voltage and restart tests.
+
 ---
 
 ## Intent To Policy Mapping
