@@ -398,8 +398,8 @@ export default function App() {
   const [expandedSceneIds, setExpandedSceneIds] = useState<string[]>([]);
   const [collapsedHierarchyIds, setCollapsedHierarchyIds] = useState<string[]>([]);
   const [assetSelection, setAssetSelection] = useState<AssetSelection>(null);
-  const [combineAssetIds, setCombineAssetIds] = useState<string[]>([]);
-  useEffect(() => setCombineAssetIds([]), [projectPath]);
+  const [combineFrameIds, setCombineFrameIds] = useState<string[]>([]);
+  useEffect(() => setCombineFrameIds([]), [projectPath]);
   const [assetTab, setAssetTab] = useState<AssetTab>("sprite");
   const [fontAssets, setFontAssets] = useState<FontAssetRecord[]>([]);
   const [fontPreviewFamilies, setFontPreviewFamilies] = useState<Record<string, string>>({});
@@ -1284,7 +1284,7 @@ export default function App() {
       });
       applyProjectResult(result);
       selectAssetRecord(frames[0] === undefined ? null : { kind: "sprite", frameId: frames[0].frame_id });
-      setCombineAssetIds([pendingSpriteImport.assetId]);
+      setCombineFrameIds(frames.map(frame => frame.frame_id));
       setWorkspaceMode("assets");
       setPendingSpriteImport(null);
       setAssetImportDebug(`Imported ${pendingSpriteImport.sourcePath}: ${frames.length} frame${frames.length === 1 ? "" : "s"} at ${parsed.frameWidth}x${parsed.frameHeight}.`);
@@ -1495,7 +1495,7 @@ export default function App() {
         setAssetImportDebug(`Created ${written.sourcePath}. Restart Peep Studio to persist editable text source metadata.`);
       }
       selectAssetRecord({ kind: "sprite", frameId: frame.frame_id });
-      setCombineAssetIds([written.assetId]);
+      setCombineFrameIds([frame.frame_id]);
       setBakedTextDraft(null);
       if (bridge.upsertBakedTextSource !== undefined) {
         setAssetImportDebug(`Created baked text sprite ${written.sourcePath} from ${font.display_name}.`);
@@ -3316,7 +3316,7 @@ export default function App() {
     return `${asset?.display_name ?? asset?.text ?? "Animation"} - Animation ${Math.max(0, animationClips.indexOf(clip)) + 1}`;
   };
   const startAssetAnimation = () => {
-    const frameIds = combineAssetIds.flatMap(id => assets.find(asset => asset.asset_id === id)?.frames.map(frame => frame.frame_id) ?? []);
+    const frameIds = combineFrameIds.filter(id => compiledAssetFrameById.has(id));
     if (!frameIds.length) return;
     let index = 1;
     while (animationClips.some(clip => clip.animation_id === `animation_${index}`)) index++;
@@ -4821,7 +4821,7 @@ export default function App() {
                 <Type size={15} aria-hidden="true" />
                 New text sprite
               </button>
-              <button className="button secondary" type="button" disabled={!canAuthorAnimations || busy !== null || !combineAssetIds.length}
+              <button className="button secondary" type="button" disabled={!canAuthorAnimations || busy !== null || !combineFrameIds.length}
                 onClick={startAssetAnimation}><Plus size={15} />Create animation</button>
               </> : assetTab === "audio" ? <>
               <button
@@ -4881,11 +4881,19 @@ export default function App() {
                           const frames = [...group.frames].sort((a, b) => (authoredOrder.get(a.frame_id) ?? Infinity) - (authoredOrder.get(b.frame_id) ?? Infinity));
                           const asset = assetById.get(group.assetId);
                           const kind = spriteAssetKind(asset, frames.length);
+                          const frameIds = frames.map(frame => frame.frame_id);
+                          const selectedFrameCount = frameIds.filter(frameId => combineFrameIds.includes(frameId)).length;
                           return <div className="sprite-source-item" key={group.assetId}>
                             <span className="asset-kind-badge">{kind}</span>
-                            {canAuthorAnimations && <input type="checkbox" aria-label={`Include ${assetDisplayName(group.assetId)} in animation`}
-                              checked={combineAssetIds.includes(group.assetId)} onChange={event => setCombineAssetIds(current => event.target.checked
-                                ? [...current, group.assetId] : current.filter(id => id !== group.assetId))} />}
+                            {canAuthorAnimations && <>
+                              <input type="checkbox" aria-label={frameIds.length === 1
+                                ? `Include ${assetDisplayName(group.assetId)} in animation`
+                                : `Include ${assetDisplayName(group.assetId)} frames in animation`}
+                                checked={selectedFrameCount === frameIds.length && frameIds.length > 0} onChange={event => setCombineFrameIds(current => event.target.checked
+                                  ? [...current, ...frameIds.filter(frameId => !current.includes(frameId))]
+                                  : current.filter(frameId => !frameIds.includes(frameId)))} />
+                              {selectedFrameCount > 0 && <span className="animation-selection-badge">{selectedFrameCount}</span>}
+                            </>}
                             <SpriteSheetAssetCard frames={frames}
                               name={assetDisplayName(group.assetId)}
                               selected={selectedAssetFrame?.asset_id === group.assetId}
@@ -5395,7 +5403,7 @@ export default function App() {
         disabled={!canAuthorAnimations || busy !== null} onCancel={() => setAssetSelection(null)}
         onApply={async commands => {
           const applied = await applySceneObjectCommands(commands);
-          if (applied) { setCombineAssetIds([]); selectAssetRecord({kind:"animation",clipId:clip.animation_id}); }
+          if (applied) { setCombineFrameIds([]); selectAssetRecord({kind:"animation",clipId:clip.animation_id}); }
           return applied;
         }} />}</section>;
     }

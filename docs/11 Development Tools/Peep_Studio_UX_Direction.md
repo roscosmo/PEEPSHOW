@@ -553,20 +553,21 @@ Agreed delivery order:
    adding fields or commands. Current typed sprite/audio records have no tag
    field; the contract's entity-definition tags are not an asset-tag contract.
 3. Animation authoring belongs in Assets. Each shared animation record is one
-   library item, continuously previewing its ordered frames at authored durations.
+   library item, continuously previewing its ordered frames at the authored cadence.
    Select source-sprite checkboxes and Create animation to combine their frames;
-   the inspector edits order, per-frame duration and advertised playback modes.
+   the inspector edits order, a single animation cadence and advertised playback modes.
    Sources are retained in the separate Source sprites section. Multi-frame PNG
    import preselects its source for this same creation workflow. Only backend
    advertised loop policies are offered; the current native increment exposes Loop.
    Placement can choose an existing animation or place its library item, but
    contains no clip creation or timing editor. Native placement adds the object
    and binds the existing animation together. No new ownership or schema model.
-   Always is the thumbnail default; old Hover preferences become Always, while
-   explicit Off is preserved. Off-screen cards and hidden windows stop timers.
-   Source-sheet previews use 250 ms per frame where no clip timing exists.
+   Always is the animation thumbnail default; old Hover preferences become Always,
+   while explicit Off is preserved. Off-screen animation cards and hidden windows
+   stop timers. Source sprites display the source sheet; animated sprites animate
+   as authored animation assets.
    Regression: `tests/asset-animation-workflow.cjs` covers combining the numbered
-   frames, continuous distinct previews, ordering/timing, retained sources,
+   frames, continuous distinct previews, ordering/cadence, retained sources,
    undo/redo, atomic placement binding, save/reopen and compact layout.
 4. Audio cards: implemented waveform thumbnails and clean name fallbacks without
    internal `.cue` suffixes. Library cards no longer repeat cue IDs beside names.

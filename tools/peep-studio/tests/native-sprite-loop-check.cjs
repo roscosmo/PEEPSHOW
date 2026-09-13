@@ -133,44 +133,16 @@ app.whenReady().then(async () => {
   fs.writeFileSync(path.join(output,'sheet-import.png'),(await window.webContents.capturePage()).toPNG());
   await button('Import');
   assert.equal(await evaluate("document.querySelectorAll('.asset-frame-gallery button').length"), 1);
-  const cardFrame = () => evaluate("document.querySelector('.asset-frame-gallery button').dataset.previewFrame");
-  const cardPixels = () => evaluate("document.querySelector('.asset-frame-gallery canvas').toDataURL()");
+  assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell').length"), frameCount);
   const alpha = await evaluate("(() => {const c=document.querySelector('.asset-frame-gallery canvas');const p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;return [p[3],p[(3*c.width+2)*4+3]]})()");
   assert.deepEqual(alpha, [transparent ? 0 : 255, 255]);
-  await wait(300);
-  const cardBounds = await evaluate("(() => {const r=document.querySelector('.asset-frame-gallery button').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()");
-  window.webContents.sendInputEvent({type:'mouseMove', ...cardBounds});
-  const seen = [], pixels = new Set();
-  for (let i=0; i < frameCount * 3 + 3; i++) {
-    const frame = await cardFrame();
-    if (seen.at(-1) !== frame) seen.push(frame);
-    pixels.add(await cardPixels());
-    await wait(100);
-  }
-  assert.equal(new Set(seen).size,frameCount);
-  for(let i=1;i<seen.length;i++) assert.equal(Number(seen[i].split('_').at(-1)),Number(seen[i-1].split('_').at(-1))%frameCount+1);
+  const pixels = new Set(await evaluate("[...document.querySelectorAll('.asset-sheet-cell canvas')].map(canvas => canvas.toDataURL())"));
   if (pixels.size !== frameCount) console.error('Thumbnail pixel diagnostic', latest.document.compiled_asset_frames.map(frame => ({
     id: frame.frame_id, opaque: frame.opaque, maskBytes: Buffer.from(frame.mask_base64, 'base64').length,
     pixels: frame.pixels_sha256,
   })));
   assert.equal(pixels.size, frameCount);
-  window.webContents.sendInputEvent({type:'mouseMove',x:10,y:10}); await wait(300);
-  await click('[aria-label="Settings"]');
-  const playback = async value => {
-    await evaluate(`(() => {const e=document.querySelector('[aria-label="Animated thumbnails"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('change',{bubbles:true}));})()`); await wait(100);
-  };
-  await playback('always');
-  const alwaysFrames = new Set();
-  for (let i=0;i<5;i++) {alwaysFrames.add(await cardFrame());await wait(100);}
-  assert(alwaysFrames.size > 1);
-  await playback('off');
-  window.webContents.sendInputEvent({type:'mouseMove',...cardBounds}); await wait(400);
-  assert.equal(await cardFrame(), 'audit.frame_1');
-  assert.equal(await evaluate("JSON.parse(localStorage.getItem('peep-studio.editor-preferences.v1')).thumbnailPlayback"), 'off');
-  await playback('always');
-  window.webContents.sendInputEvent({type:'mouseMove',x:10,y:10});
-  await click('[aria-label="Close settings"]');
-  console.log('Sprite cards: one card, ordered distinct canvas frames, continuous playback, Always/Off and persisted preference passed');
+  console.log('Source sprite sheet: one card with ordered distinct static frame previews passed');
   assert.equal(commands.find(c=>c.kind==='asset.upsert').asset.frames.length, frameCount);
   assert.deepEqual(commands.find(c=>c.kind==='asset.upsert').asset.frames.map(f=>f.source_rect),
     Array.from({length:frameCount},(_,i)=>({x:(i%sheetColumns)*16,y:Math.floor(i/sheetColumns)*16,width:16,height:16})));
@@ -196,7 +168,7 @@ app.whenReady().then(async () => {
   await evaluate("window.scrollTo(0,0)");
   console.log('Asset tabs: filtered controls, empty state, cleared selection and keyboard navigation passed');
   await button('Create animation');
-  const durationField = '[aria-label="Clip duration 1"]';
+  const durationField = '[aria-label="Animation cadence"]';
   const duration = async value => {
     await evaluate(`(() => {const e=document.querySelector(${JSON.stringify(durationField)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`); await wait(100);
   };
@@ -225,7 +197,7 @@ app.whenReady().then(async () => {
     await button('Assets');await click('.animation-asset-gallery button');
     assert.match(await evaluate("document.querySelector('.clip-editor summary').textContent"), /2 scene objects/);
     const setDuration = async value => {
-      await evaluate(`(() => {const e=document.querySelector('[aria-label="Clip duration 1"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);await wait(150);
+      await evaluate(`(() => {const e=document.querySelector('[aria-label="Animation cadence"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);await wait(150);
     };
     await setDuration('0');
     assert(await evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Apply clip').disabled"));
@@ -240,7 +212,7 @@ app.whenReady().then(async () => {
     const edited=latest.document.animations[0];
     assert.equal(edited.animation_id,clip.animation_id);
     assert.deepEqual(edited.frame_refs,[clip.frame_refs[1],clip.frame_refs[0],...clip.frame_refs.slice(2)]);
-    assert.deepEqual(edited.frame_duration_ms,[400,333,...clip.frame_duration_ms.slice(2)]);
+    assert.deepEqual(edited.frame_duration_ms,Array(frameCount).fill(333));
     assert.equal(latest.document.scenes[0].objects[0].animation_ref,clip.animation_id);
     assert(latest.build_issues.length>0);
     await click('button[title="Undo"]');assert.deepEqual(latest.document.animations,[clip]);
@@ -251,7 +223,7 @@ app.whenReady().then(async () => {
     assert.deepEqual(latest.document.animations,[edited]);
     assert.equal(latest.document.scenes[0].objects.filter(object=>object.animation_ref===clip.animation_id).length,2);
     assert.deepEqual(errors,[]);
-    console.log('Clip edit: same ID/binding, ordered frame-duration pairs, duplicate/remove, draft validation, backend blockers, cancel, undo/redo and save/reopen passed');
+    console.log('Clip edit: same ID/binding, ordered frames with shared cadence, duplicate/remove, draft validation, backend blockers, cancel, undo/redo and save/reopen passed');
     return;
   }
   await click('button[title="Undo"]');
