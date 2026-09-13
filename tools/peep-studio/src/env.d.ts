@@ -28,6 +28,8 @@ interface PeepStudioBridge {
   importSpritePng(projectPath: string): Promise<{ assetId: string; displayName: string; sourcePath: string; width: number; height: number } | null>;
   readFontAssets?(projectPath: string): Promise<StudioFontAssetRecord[]>;
   importFontAsset?(projectPath: string): Promise<StudioFontAssetRecord | null>;
+  renameFontAsset?(projectPath: string, fontId: string, displayName: string): Promise<StudioFontAssetRecord>;
+  deleteFontAsset?(projectPath: string, fontId: string): Promise<{ font_id: string; deleted: boolean }>;
   fontAssetSource?(projectPath: string, sourcePath: string): Promise<{ key: string; data: string }>;
   readBakedTextSources?(projectPath: string): Promise<StudioBakedTextSourceRecord[]>;
   upsertBakedTextSource?(projectPath: string, record: StudioBakedTextSourceRecord): Promise<StudioBakedTextSourceRecord>;

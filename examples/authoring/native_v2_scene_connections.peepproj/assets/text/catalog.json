@@ -1,0 +1,18 @@
+{
+  "schema_id": "peepshow.studio.baked_text_sources",
+  "schema_version": 1,
+  "text_sprites": [
+    {
+      "asset_id": "text_text_sprite_2",
+      "frame_id": "text_text_sprite_2.frame",
+      "display_name": "Text sprite",
+      "font_id": "matcha_cih",
+      "text": "HELLO WORLD",
+      "font_size_px": 20,
+      "source_path": "assets/text_text_sprite_2.png",
+      "width": 155,
+      "height": 33,
+      "updated_at": "2026-09-13T08:33:25.745Z"
+    }
+  ]
+}

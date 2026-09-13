@@ -538,6 +538,44 @@ ipcMain.handle("peep:import-font-asset", async (_event, projectPath: unknown) =>
   return record;
 });
 
+ipcMain.handle("peep:rename-font-asset", async (_event, projectPath: unknown, fontId: unknown, displayName: unknown) => {
+  if (typeof projectPath !== "string" || typeof fontId !== "string" || typeof displayName !== "string") {
+    throw new Error("Invalid font rename request from renderer");
+  }
+  const projectRoot = path.resolve(projectPath);
+  if (!projectRoot.endsWith(".peepproj")) {
+    throw new Error("Font rename target must be a .peepproj directory");
+  }
+  const trimmed = displayName.trim();
+  if (trimmed.length === 0 || trimmed.length > 64) {
+    throw new Error("Font name must be 1 to 64 characters");
+  }
+  const fonts = await readFontCatalog(projectRoot);
+  const existing = fonts.find(font => font.font_id === fontId);
+  if (existing === undefined) {
+    throw new Error("Font asset does not exist");
+  }
+  const renamed = { ...existing, display_name: trimmed };
+  await writeFontCatalog(projectRoot, fonts.map(font => font.font_id === fontId ? renamed : font));
+  return renamed;
+});
+
+ipcMain.handle("peep:delete-font-asset", async (_event, projectPath: unknown, fontId: unknown) => {
+  if (typeof projectPath !== "string" || typeof fontId !== "string") {
+    throw new Error("Invalid font delete request from renderer");
+  }
+  const projectRoot = path.resolve(projectPath);
+  if (!projectRoot.endsWith(".peepproj")) {
+    throw new Error("Font delete target must be a .peepproj directory");
+  }
+  const fonts = await readFontCatalog(projectRoot);
+  if (!fonts.some(font => font.font_id === fontId)) {
+    throw new Error("Font asset does not exist");
+  }
+  await writeFontCatalog(projectRoot, fonts.filter(font => font.font_id !== fontId));
+  return { font_id: fontId, deleted: true };
+});
+
 ipcMain.handle("peep:font-asset-source", async (_event, projectPath: unknown, sourcePath: unknown) => {
   if (typeof projectPath !== "string" || typeof sourcePath !== "string") {
     throw new Error("Invalid font source request from renderer");

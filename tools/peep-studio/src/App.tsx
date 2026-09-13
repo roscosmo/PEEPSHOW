@@ -1349,6 +1349,68 @@ export default function App() {
     }
   };
 
+  const renameFontAsset = async (font: FontAssetRecord, nextDisplayName: string) => {
+    if (bridge === undefined || projectPath === null || busy !== null) {
+      return;
+    }
+    const displayName = nextDisplayName.trim();
+    if (displayName.length === 0 || displayName.length > 64) {
+      setMessage("Font name must be 1 to 64 characters.");
+      return;
+    }
+    if (displayName === font.display_name) {
+      return;
+    }
+    if (bridge.renameFontAsset === undefined) {
+      setMessage("Restart Peep Studio to enable font rename.");
+      return;
+    }
+    setBusy("Renaming font");
+    try {
+      const renamed = await bridge.renameFontAsset(projectPath, font.font_id, displayName);
+      setFontAssets(current => current.map(item => item.font_id === renamed.font_id ? renamed : item));
+      selectAssetRecord({ kind: "font", fontId: renamed.font_id });
+      setMessage("Font renamed.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const deleteFontAsset = async (font: FontAssetRecord) => {
+    if (bridge === undefined || projectPath === null || busy !== null) {
+      return;
+    }
+    const references = bakedTextSources.filter(source => source.font_id === font.font_id);
+    if (references.length > 0) {
+      setMessage(`Cannot delete ${font.display_name}; ${references.length} baked text sprite${references.length === 1 ? "" : "s"} still use it.`);
+      return;
+    }
+    if (bridge.deleteFontAsset === undefined) {
+      setMessage("Restart Peep Studio to enable font delete.");
+      return;
+    }
+    setBusy("Deleting font");
+    try {
+      await bridge.deleteFontAsset(projectPath, font.font_id);
+      setFontAssets(current => current.filter(item => item.font_id !== font.font_id));
+      setFontPreviewFamilies(current => {
+        const next = { ...current };
+        delete next[font.font_id];
+        return next;
+      });
+      if (assetSelection?.kind === "font" && assetSelection.fontId === font.font_id) {
+        setAssetSelection(null);
+      }
+      setMessage("Font removed from the project catalog.");
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const confirmBakedTextSprite = async () => {
     if (bridge === undefined || project === null || projectPath === null || bakedTextDraft === null || busy !== null) {
       return;
@@ -5118,6 +5180,9 @@ export default function App() {
                           fontId: event.target.value,
                         }))}
                       >
+                        {fontAssets.every(font => font.font_id !== bakedTextEdit.fontId) && (
+                          <option value={bakedTextEdit.fontId}>Missing font: {bakedTextEdit.fontId}</option>
+                        )}
                         {fontAssets.map(font => (
                           <option key={font.font_id} value={font.font_id}>{font.display_name}</option>
                         ))}
@@ -5141,7 +5206,8 @@ export default function App() {
                     <button
                       className="button primary"
                       type="button"
-                      disabled={busy !== null}
+                      disabled={busy !== null || fontAssets.every(font => font.font_id !== bakedTextEdit.fontId)}
+                      title={fontAssets.every(font => font.font_id !== bakedTextEdit.fontId) ? "Import or choose an available font before regenerating" : "Regenerate text sprite"}
                       onClick={() => void regenerateBakedTextSprite(bakedTextSource, sourceAsset, bakedTextEdit)}
                     >
                       Regenerate
@@ -5250,9 +5316,41 @@ export default function App() {
           const previewStyle: CSSProperties | undefined = previewFamily !== undefined && previewFamily !== ""
             ? { fontFamily: `"${previewFamily}"` }
             : undefined;
+          const bakedTextReferences = bakedTextSources.filter(source => source.font_id === selectedFontAsset.font_id);
           return <>
           <div className="font-inspector-preview">
             <span style={previewStyle}>{previewFamily === undefined ? "Loading preview..." : (preferences.fontPreviewText.trim() || DEFAULT_FONT_PREVIEW_TEXT)}</span>
+          </div>
+          <div className="asset-name-editor">
+            <label>
+              Font name
+              <input
+                key={`${selectedFontAsset.font_id}-${selectedFontAsset.display_name}`}
+                type="text"
+                maxLength={64}
+                defaultValue={selectedFontAsset.display_name}
+                disabled={busy !== null}
+                onBlur={(event) => {
+                  const value = event.currentTarget.value.trim();
+                  if (value.length === 0) {
+                    event.currentTarget.value = selectedFontAsset.display_name;
+                    return;
+                  }
+                  void renameFontAsset(selectedFontAsset, value);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  } else if (event.key === "Escape") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    event.currentTarget.value = selectedFontAsset.display_name;
+                    event.currentTarget.blur();
+                  }
+                }}
+              />
+            </label>
           </div>
           <div className="audio-inspector-controls">
             <button
@@ -5264,11 +5362,22 @@ export default function App() {
               <Type size={15} aria-hidden="true" />
               Create text sprite
             </button>
+            <button
+              className="button secondary"
+              type="button"
+              disabled={busy !== null || bakedTextReferences.length > 0}
+              title={bakedTextReferences.length > 0 ? "Baked text sprites still use this font" : "Remove this font from the project catalog"}
+              onClick={() => void deleteFontAsset(selectedFontAsset)}
+            >
+              <Trash2 size={15} aria-hidden="true" />
+              Delete font
+            </button>
           </div>
           <dl className="inspector-list">
             <div><dt>Name</dt><dd>{selectedFontAsset.display_name}</dd></div>
             <div><dt>Format</dt><dd>{selectedFontAsset.source_format.toUpperCase()}</dd></div>
             <div><dt>Source</dt><dd title={selectedFontAsset.source_path}>{selectedFontAsset.source_path}</dd></div>
+            <div><dt>Used by</dt><dd>{bakedTextReferences.length} text sprite{bakedTextReferences.length === 1 ? "" : "s"}</dd></div>
             <div><dt>Font ID</dt><dd>{selectedFontAsset.font_id}</dd></div>
           </dl>
         </>;

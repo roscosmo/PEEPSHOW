@@ -1,0 +1,12 @@
+{
+  "schema_id": "peepshow.studio.font_assets",
+  "schema_version": 1,
+  "fonts": [
+    {
+      "font_id": "matcha_cih",
+      "display_name": "Matcha Cih",
+      "source_path": "assets/fonts/matcha_cih.ttf",
+      "source_format": "ttf"
+    }
+  ]
+}

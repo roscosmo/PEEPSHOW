@@ -607,12 +607,15 @@ Those baked custom-font assets are emitted as ordinary PNG-backed
 which font was used after Studio has rasterized the pixels.
 Imported custom fonts are tracked by Peep Studio in the project-local
 `assets/fonts/catalog.json` sidecar and copied under `assets/fonts/`. This
-sidecar is editor-owned metadata, not a package/compiler contract. Baked text
-source records are likewise tracked by Studio in `assets/text/catalog.json`,
-keyed by the generated sprite asset ID so Studio can show the original text,
-font and size, and regenerate the PNG-backed sprite from those editor-owned
-inputs. Text sprites generated from those fonts enter the shared backend only
-as ordinary PNG sprite assets through `asset.upsert`.
+sidecar is editor-owned metadata, not a package/compiler contract. Studio may
+rename font display labels in this sidecar. Deleting a font catalog entry is
+blocked while any baked text source references it; file cleanup is intentionally
+separate from package/export semantics. Baked text source records are likewise
+tracked by Studio in `assets/text/catalog.json`, keyed by the generated sprite
+asset ID so Studio can show the original text, font and size, and regenerate the
+PNG-backed sprite from those editor-owned inputs. Text sprites generated from
+those fonts enter the shared backend only as ordinary PNG sprite assets through
+`asset.upsert`.
 
 Service API version 16 adds ordered `set_element_visibility`,
 `set_element_position`, and `set_element_frame` route actions. Each action
