@@ -401,6 +401,108 @@ target-profile check. Build totals: ordinary RAM 552360 bytes (3016 bytes less),
 ROM 875984 bytes, SRAM4 unchanged at 15480 bytes. The runtime stack check remains
 2432 bytes including reserve; it is not measured display-thread stack high water.
 
+### Direct Raster Target Result
+
+Capture `__fw0_tracex_snapshot_20260913_123219.trx` retained a complete transaction
+with no marker errors and reported 24 MHz throughout. Raster COPY groups fell
+from 15 to 5 and their elapsed cycle-derived time fell from 19.893 to 4.523 ms.
+Clearing remained 1.845 ms. Kernel-tick receipt-to-panel was 80 ms versus 100 ms
+in the prior capture. The runtime transaction was 110.174 ms in cycle-derived
+time versus 123.296 ms previously; the difference between time domains remains
+unresolved and neither is independent physical-edge timing. Drawing counts were
+8 versus 7 and owner interruptions differed. The user confirmed unchanged awake
+marker, digit and static-content behaviour.
+
+The supplied autonomous probe reported replacement attempts/failures 2/0,
+timers due/applied/errors 3/3/0, WFI returns/measured/reconciled 5/5/5, wake statuses
+zero and display request/complete/result 7/7/0. This is successful subsystem-work
+evidence, not a new low-current measurement.
+
+## Owner Work Attribution
+
+The same trace showed the first runtime clock request acknowledged near 3.9 ms,
+followed by thPower holding I2C3 near 4.3-15.6 ms before yielding. Periodic battery
+monitoring calls a broad PMIC snapshot including power, charger configuration,
+interrupt and fuel-gauge reads. This is the matching code-path hypothesis, not
+yet a named-operation marker proof. thInput execution intervals totalled about
+12.6 ms. Its cardinal sampling path wakes a suspended sensor, reads and then
+suspends it again; the raw reader also sleeps one tick while retaining its lease.
+Those sleeps release the CPU but not I2C3. HAL transfers are blocking.
+
+The next diagnostic adds event 0x5173 around the actual PMIC snapshot and
+joystick cardinal wake/read/suspend calls. Fields are operation, begin/end,
+capture sequence and driver ps_status_t; zero on end means success. Begin uses
+NOT_RUN. Completion is recorded only if the same capture remains active. Pair
+by thread, operation and sequence; a missing end at freeze is truncated work,
+not a timeout verdict. Absence of a PMIC marker does not prove battery monitoring
+is disabled: it may not have been due inside this one transaction.
+
+This adds no polling, retry, priority, sensor configuration or power-policy
+changes. It distinguishes real successful/failed driver work from scheduling,
+but does not count internal retries or separate bus time from settling/preemption.
+Reflash, run the same awake HOME/AWAY helper and collect a one-press trace with
+the existing enable/prints/dump helpers. Use it to choose the next change rather
+than weakening input reliability or PMIC safety checks based on elapsed time alone.
+
+Owner-marker verification: **356 authoring/native tests pass**, including inactive
+no-ops, matching sequence/status fields, stale completion suppression after freeze
+and re-arm, marker insertion failures and source checks around the actual calls.
+Debug build, target-profile and whitespace checks pass. Ordinary RAM is unchanged
+at 552360 bytes, ROM is 876216 bytes and SRAM4 remains 15480 bytes. The runtime
+stack check remains 2432 bytes including reserve; this is not owner-stack high
+water or hardware marker validation. Two unused-function warnings remain in
+untouched owner state-machine code. Target owner-marker capture is pending.
+
+## Successful Owner Work and Awake Joystick Lifetime (2026-09-13)
+
+The owner-marker capture `__fw0_tracex_snapshot_20260913_130422.trx` retained
+matching RECEIVE/DONE markers with zero insertion errors. Visual behaviour was
+unchanged. The completed first joystick wake/read/suspend calls took approximately
+15.6/5.6/3.9 ms in cycle timestamps, all with driver status zero. A second wake
+completed successfully; its following read was truncated by trace freeze, not
+reported as a failure. No PMIC snapshot was captured in this transaction.
+
+These are elapsed call durations, including settling and preemption, not isolated
+CPU usage. The kernel probe reported 70 ms receipt-to-panel while the retained
+cycle interval was approximately 100 ms; that discrepancy remains unresolved.
+The change from the earlier 80 ms probe is not a new optimisation: this build
+only added markers. Neither measurement includes physical input/debounce latency.
+
+The user approved retaining active TMAG conversions while awake. The bounded
+cardinal path now bypasses diagnostic parking for the existing SLOW_POLL/ACTIVE
+pair and leaves successful polls, including wake confirmation, in that pair.
+It still performs full wake setup when coming from suspended/wake-and-sleep,
+clears terminal-sleep proof on wake, and preserves recovery for inconsistent or
+failed states. Existing diagnostic preparation still parks the live device.
+STOP2/shutdown quiesce, threshold derivation/verification, terminal-write order,
+poll eligibility, sample delay and poll-period knobs are unchanged. No driver,
+clock, priority, probe-layout, calibration or package-format changes are made.
+
+Native coverage executes the production poll/preparation functions and joystick
+transition table with a fake driver: repeated awake reads have one initial wake
+and no suspend; diagnostic handoff parks; simulated terminal sleep requires a
+new wake; bounded stable/fallback confirmation is retained; injected read, wake,
+normalization and FSM failures preserve cleanup/recovery. Source checks retain
+the STOP2 preparation and polling-admission paths, but do not prove physical
+quiesce or movement wake.
+
+Target checks pending: reflash with matching ELF, repeat the awake one-press trace
+after normal polling has started, and expect READ markers without per-poll WAKE
+or SUSPEND. Then test all four joystick directions waking STOP2, correct release
+and repeat behaviour, and the unchanged HOME/AWAY animation/timers. Use existing
+`__fw0_joystick_input_prints.gdb` and `__fw0_joystick_stop2_wake_prints.gdb` for
+input/wake evidence. Compare PPK2 active-event energy and settled STOP2 current;
+short normal awake bursts do not establish the cost of longer awake sessions.
+
+Local verification: **358 authoring/native tests pass** with `HOST_CC` set to
+the native GCC path. The initial suite invocation omitted that environment
+variable and failed STOP2 test setup; the complete rerun passed. Debug build,
+target-profile and whitespace checks pass. RAM remains 552360 bytes, ROM is
+876240 bytes, and SRAM4 remains 15480 bytes. Runtime stack analysis remains
+2432 bytes including reserve (not a measured input-thread high-water result).
+The two existing unused-function warnings are unchanged. Hardware latency,
+joystick wake and power acceptance are still pending.
+
 ## Verification
 
 Native tests exercise actual stamp/begin/end functions and presentation/candidate

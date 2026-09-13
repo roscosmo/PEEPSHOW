@@ -7,6 +7,7 @@
 #include "ps_dev_audio.h"
 #include "ps_egg_state_loader.h"
 #include "ps_hw6_rtos_probe.h"
+#include "ps_hw6_trace.h"
 #include "ps_hw6_object_development.h"
 #include "ps_lpbam_display_buffers.h"
 #include "ps_lpbam_display_queue.h"
@@ -1640,7 +1641,9 @@ HAL_StatusTypeDef PS_HW6_PowerOwner_RunSnapshot(void)
   g_ps_hw6_owner_probe.power_complete = 0UL;
   g_ps_hw6_owner_probe.power_success = 0UL;
 
+  uint32_t trace_sequence = PS_HW6_TraceObjectOwnerBegin(PS_TRACE_OWNER_PMIC_SNAPSHOT);
   status = ps_dev_adp5360_read_power_snapshot(&ps_hw6_pmic, &snapshot);
+  PS_HW6_TraceObjectOwnerEnd(PS_TRACE_OWNER_PMIC_SNAPSHOT, trace_sequence, (uint32_t)status);
   for (index = 0U; index < PS_HW6_OWNER_POWER_REGISTER_COUNT; ++index)
   {
     g_ps_hw6_owner_probe.power_register_address[index] =

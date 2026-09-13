@@ -6745,6 +6745,7 @@ static HAL_StatusTypeDef PS_HW6_SM_RunJoystickCardinalProbe(
   uint32_t stable_count = 0UL;
   uint32_t previous_direction = 0UL;
   uint32_t latest_nonzero_valid = 0UL;
+  uint32_t trace_sequence;
 
   g_ps_hw6_owner_sm_probe.joystick_cardinal_request_count++;
   g_ps_hw6_owner_sm_probe.joystick_cardinal_start_tick =
@@ -6775,7 +6776,18 @@ static HAL_StatusTypeDef PS_HW6_SM_RunJoystickCardinalProbe(
     PS_UI_ROUTER_CAL_NONE;
   PS_HW6_SM_UpdateJoystickCalibrationProbe();
   (void)memset(&wake_result, 0, sizeof(wake_result));
-  status = PS_HW6_SM_PrepareJoystickInput();
+  /* Ordinary polls reuse the live configuration. Diagnostic preparation still
+     parks it before taking ownership of a different acquisition sequence. */
+  owner_state = g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK];
+  if ((owner_state == (uint32_t)JOY_SLOW_POLL) &&
+      (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_ACTIVE))
+  {
+    status = HAL_OK;
+  }
+  else
+  {
+    status = PS_HW6_SM_PrepareJoystickInput();
+  }
   if (status != HAL_OK)
   {
     PS_HW6_SM_RecordJoystickCardinalFailure(
@@ -6831,9 +6843,11 @@ static HAL_StatusTypeDef PS_HW6_SM_RunJoystickCardinalProbe(
         (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_WAKE_SLEEP))
     {
       PS_HW6_SM_ClearJoystickTerminalSleepProof();
+      trace_sequence = PS_HW6_TraceObjectOwnerBegin(PS_TRACE_OWNER_JOYSTICK_WAKE);
       driver_status = ps_dev_tmag3001_wake_continuous(
         &ps_joystick_device,
         &wake_result);
+      PS_HW6_TraceObjectOwnerEnd(PS_TRACE_OWNER_JOYSTICK_WAKE, trace_sequence, (uint32_t)driver_status);
       status = PS_HW6_SM_StatusToHal(driver_status);
     }
     else if (ps_joystick_device.state != PS_DEV_TMAG3001_STATE_ACTIVE)
@@ -6853,9 +6867,11 @@ static HAL_StatusTypeDef PS_HW6_SM_RunJoystickCardinalProbe(
 
   while ((status == HAL_OK) && (sample_count < sample_limit))
   {
+    trace_sequence = PS_HW6_TraceObjectOwnerBegin(PS_TRACE_OWNER_JOYSTICK_READ);
     driver_status = ps_dev_tmag3001_read_raw_sample(
       &ps_joystick_device,
       &sample);
+    PS_HW6_TraceObjectOwnerEnd(PS_TRACE_OWNER_JOYSTICK_READ, trace_sequence, (uint32_t)driver_status);
     status = PS_HW6_SM_StatusToHal(driver_status);
     if (status != HAL_OK)
     {
@@ -6982,30 +6998,17 @@ static HAL_StatusTypeDef PS_HW6_SM_RunJoystickCardinalProbe(
     }
   }
 
-  if (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_ACTIVE)
-  {
-    driver_status = ps_dev_tmag3001_suspend(
-      &ps_joystick_device,
-      &suspend_result);
-    if (status == HAL_OK)
-    {
-      status = PS_HW6_SM_StatusToHal(driver_status);
-      if (status != HAL_OK)
-      {
-        PS_HW6_SM_RecordJoystickCardinalFailure(
-          PS_HW6_JOYSTICK_FAILURE_STAGE_SUSPEND,
-          driver_status,
-          suspend_result.last_hal_status,
-          suspend_result.last_hal_error);
-      }
-    }
-  }
-
   if (status == HAL_OK)
   {
     status = PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
                                   JOY_EV_NORMALIZE_DONE,
                                   HAL_OK);
+    if (status == HAL_OK)
+    {
+      status = PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                                    JOY_EV_SLOW_POLL_REQUEST,
+                                    HAL_OK);
+    }
     if (status != HAL_OK)
     {
       PS_HW6_SM_RecordJoystickCardinalFailure(
@@ -7015,6 +7018,20 @@ static HAL_StatusTypeDef PS_HW6_SM_RunJoystickCardinalProbe(
         0UL);
     }
   }
+
+  /* Successful samples stay active until owner quiesce. Only failed work needs
+     local cleanup; STOP2 still performs its verified terminal configuration. */
+  if ((status != HAL_OK) &&
+      (ps_joystick_device.state == PS_DEV_TMAG3001_STATE_ACTIVE))
+  {
+    trace_sequence = PS_HW6_TraceObjectOwnerBegin(PS_TRACE_OWNER_JOYSTICK_SUSPEND);
+    driver_status = ps_dev_tmag3001_suspend(
+      &ps_joystick_device,
+      &suspend_result);
+    PS_HW6_TraceObjectOwnerEnd(PS_TRACE_OWNER_JOYSTICK_SUSPEND, trace_sequence, (uint32_t)driver_status);
+    /* Preserve the original failure even if cleanup also fails. */
+  }
+
   if ((status != HAL_OK) &&
       (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK] !=
        (uint32_t)JOY_ERROR))

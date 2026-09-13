@@ -171,11 +171,28 @@ Application markers use these ThreadX user-event IDs:
 | `0x5170` | latency stage / capture sequence / candidate token / HCLK Hz |
 | `0x5171` | raster phase / begin=0,end=1 / capture sequence / reserved |
 | `0x5172` | ARM=1,RECEIVE=2,DONE=3 / sequence / HCLK Hz / tick at ARM/RECEIVE, result at DONE |
+| `0x5173` | owner operation / begin=0,end=1 / capture sequence / driver ps_status_t (begin=NOT_RUN) |
 
 Latency stages match `ps_hw6_object_latency.h`. Raster phases are validation=1,
 overlap closure=2, rectangle clearing=3, drawing=4, framebuffer copies=5 and cold
 full-render fallback=6. DRAW includes a nested VALIDATE; do not sum overlapping
 intervals. No per-pixel or continuous application marker loop is introduced.
+
+Owner operations are PMIC snapshot=1, joystick wake=2, sample read=3 and suspend=4.
+The PMIC marker encloses the driver call in `PS_HW6_PowerOwner_RunSnapshot`;
+joystick markers enclose actual driver calls in the cardinal sampling path.
+An already-active sensor does not emit a wake marker. They report driver success
+or failure (zero is PS_STATUS_OK), not merely owner scheduling. Pair markers by
+ThreadX context, operation and capture sequence; elapsed time includes driver
+settling sleeps, mutex waits and preemption, not just bus or CPU time. These
+markers do not report individual retry counts or prove why a snapshot was requested.
+
+Begin returns the active capture sequence to the caller. End is emitted only
+for that same still-active capture; work begun before capture or completed after
+freeze/re-arm cannot produce a misleading end in another capture. An unfinished
+pair at freeze is truncated work, not proof of failure. Markers are inactive
+outside the existing one-press window and do not change polling, retries, driver
+configuration, priorities or PMIC safety policy.
 
 The current Cortex-M33 port timestamps from the 32-bit DWT cycle counter, not the
 100 Hz kernel tick. At unchanged 24 MHz, 24000 counts equal 1 ms. Check capture

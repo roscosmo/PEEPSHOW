@@ -26,6 +26,7 @@ volatile ULONG g_ps_hw6_tracex_runtime_enabled, g_ps_hw6_tracex_buffer_address;
 volatile ULONG g_ps_hw6_tracex_buffer_bytes = 32768, g_ps_hw6_tracex_registry_entries = 64;
 static uint8_t buffer[32768];
 static uint32_t running, enable_fail, insert_fail, freezes, events, last_event, last_a;
+static uint32_t last_b, last_c, last_d;
 static VOID (*wrap_notify)(VOID *);
 static UINT tx_trace_disable(void)
 { if (!running) { return TX_NOT_DONE; } running = 0; freezes++; return TX_SUCCESS; }
@@ -37,7 +38,8 @@ static UINT tx_trace_enable(VOID *ptr, ULONG size, ULONG registry)
   running = 1; return 0;
 }
 static UINT tx_trace_user_event_insert(ULONG event, ULONG a, ULONG b, ULONG c, ULONG d)
-{ (void)b; (void)c; (void)d; assert(running); events++; last_event = event; last_a = a; return insert_fail; }
+{ assert(running); events++; last_event = event; last_a = a;
+  last_b = b; last_c = c; last_d = d; return insert_fail; }
 static uint32_t HAL_RCC_GetHCLKFreq(void) { return 24000000; }
 static uint32_t tx_time_get(void) { return 100; }
 #include "trace_under_test.inc"
@@ -47,6 +49,9 @@ int main(void)
   g_ps_hw6_tracex_buffer_address = (ULONG)buffer;
   assert(!PS_HW6_TraceObjectArm(1));
   PS_HW6_TraceObjectBegin(1); PS_HW6_TraceObjectRaster(1, 0); PS_HW6_TraceObjectEnd(0);
+  assert(events == 0);
+  assert(PS_HW6_TraceObjectOwnerBegin(PS_TRACE_OWNER_PMIC_SNAPSHOT) == 0);
+  PS_HW6_TraceObjectOwnerEnd(PS_TRACE_OWNER_PMIC_SNAPSHOT, 0, 0);
   assert(events == 0);
   g_ps_object_trace_probe.request = 1;
   assert(!PS_HW6_TraceObjectArm(0) && events == 0);
@@ -66,8 +71,23 @@ int main(void)
   assert(last_event == PS_HW6_TRACE_EVENT_OBJECT_STAGE && last_a == 10);
   PS_HW6_TraceObjectRaster(3, 0);
   assert(last_event == PS_HW6_TRACE_EVENT_OBJECT_RASTER && last_a == 3);
+  for (uint32_t stage = PS_TRACE_OWNER_PMIC_SNAPSHOT; stage <= PS_TRACE_OWNER_JOYSTICK_SUSPEND; ++stage)
+  {
+    uint32_t token = PS_HW6_TraceObjectOwnerBegin(stage);
+    assert(token == 9 && last_event == PS_HW6_TRACE_EVENT_OBJECT_OWNER);
+    assert(last_a == stage && last_b == 0 && last_c == token && last_d == UINT32_MAX);
+    uint32_t saved_events = events;
+    PS_HW6_TraceObjectOwnerEnd(stage, 0, 0);
+    PS_HW6_TraceObjectOwnerEnd(stage, token + 1, 0);
+    assert(events == saved_events);
+    PS_HW6_TraceObjectOwnerEnd(stage, token, stage == PS_TRACE_OWNER_PMIC_SNAPSHOT ? 0 : 5);
+    assert(last_a == stage && last_b == 1 && last_c == token);
+    assert(last_d == (stage == PS_TRACE_OWNER_PMIC_SNAPSHOT ? 0U : 5U));
+  }
   insert_fail = 8; PS_HW6_TraceObjectRaster(3, 1);
   assert(g_ps_object_trace_probe.marker_errors == 1);
+  PS_HW6_TraceObjectOwnerEnd(PS_TRACE_OWNER_JOYSTICK_READ, 9, 0);
+  assert(g_ps_object_trace_probe.marker_errors == 2);
   insert_fail = 0;
   PS_HW6_TraceObjectEnd(0);
   assert(g_ps_object_trace_probe.complete && !g_ps_object_trace_probe.active && !running);
@@ -76,8 +96,15 @@ int main(void)
   uint32_t saved = events;
   PS_HW6_TraceObjectRaster(1, 0); PS_HW6_TraceObjectStage(1, 2, 3); PS_HW6_TraceObjectEnd(1);
   assert(saved == events && freezes == 1);
+  PS_HW6_TraceObjectOwnerEnd(PS_TRACE_OWNER_JOYSTICK_READ, 9, 0);
+  assert(saved == events);
   g_ps_object_trace_probe.request = 1;
   assert(PS_HW6_TraceObjectArm(1) && !g_ps_object_trace_probe.complete);
   assert(!g_ps_object_trace_probe.marker_errors && !g_ps_object_trace_probe.wraps);
+  PS_HW6_TraceObjectBegin(10);
+  saved = events;
+  PS_HW6_TraceObjectOwnerEnd(PS_TRACE_OWNER_JOYSTICK_READ, 9, 0);
+  assert(saved == events);
+  PS_HW6_TraceObjectEnd(0);
   return 0;
 }

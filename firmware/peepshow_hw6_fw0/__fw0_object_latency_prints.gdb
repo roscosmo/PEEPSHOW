@@ -57,7 +57,7 @@ else
     printf "Frame projection: "
     set $ps_work_stage = 0
     printf "%llu ms / %u calls\n", ((unsigned long long)$ps_latency->packing_ticks[$ps_work_stage] * 1000) / $ps_latency->tick_hz, $ps_latency->packing_calls[$ps_work_stage]
-    printf "Frame raster (validation, drawing, framebuffer save/restore): "
+    printf "Frame raster (validation, private drawing, output copy): "
     set $ps_work_stage = 1
     printf "%llu ms / %u calls\n", ((unsigned long long)$ps_latency->packing_ticks[$ps_work_stage] * 1000) / $ps_latency->tick_hz, $ps_latency->packing_calls[$ps_work_stage]
     printf "Dirty-band comparison: "

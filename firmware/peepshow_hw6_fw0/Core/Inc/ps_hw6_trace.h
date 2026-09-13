@@ -24,6 +24,15 @@ extern "C" {
 #define PS_HW6_TRACE_EVENT_OBJECT_STAGE      (0x5170UL)
 #define PS_HW6_TRACE_EVENT_OBJECT_RASTER     (0x5171UL)
 #define PS_HW6_TRACE_EVENT_OBJECT_CAPTURE    (0x5172UL)
+#define PS_HW6_TRACE_EVENT_OBJECT_OWNER      (0x5173UL)
+
+enum
+{
+  PS_TRACE_OWNER_PMIC_SNAPSHOT = 1,
+  PS_TRACE_OWNER_JOYSTICK_WAKE,
+  PS_TRACE_OWNER_JOYSTICK_READ,
+  PS_TRACE_OWNER_JOYSTICK_SUSPEND
+};
 
 enum
 {
@@ -59,6 +68,8 @@ uint32_t PS_HW6_TraceObjectArm(uint32_t allowed);
 void PS_HW6_TraceObjectBegin(uint32_t sequence);
 void PS_HW6_TraceObjectStage(uint32_t stage, uint32_t token, uint32_t hclk);
 void PS_HW6_TraceObjectRaster(uint32_t stage, uint32_t end);
+uint32_t PS_HW6_TraceObjectOwnerBegin(uint32_t stage);
+void PS_HW6_TraceObjectOwnerEnd(uint32_t stage, uint32_t sequence, uint32_t status);
 void PS_HW6_TraceObjectEnd(uint32_t status);
 
 #define PS_HW6_TRACE_SLEEP_STAGE_PREP_START  (1UL)

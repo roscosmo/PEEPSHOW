@@ -189,6 +189,20 @@ Current FW0 calibration status:
   `PWR_ACTIVE_LP`/`PWR_ACTIVE_RT`, is disabled throughout calibration and STOP
   transitions, and emits one logical activation per neutral-to-direction or
   direction-switch transition
+- successful normal polls and movement-wake confirmation leave the TMAG in
+  continuous active mode and the FW0 owner in `JOY_SLOW_POLL`. Subsequent polls
+  reuse that configuration rather than suspending and re-running identity and
+  configuration work on every sample. Poll eligibility, the existing period
+  knob and the bounded raw-sample settling delay are unchanged.
+- owner STOP2/shutdown quiesce remains responsible for verified terminal
+  wake-and-sleep or quiet-sleep configuration. Diagnostic/calibration preparation
+  still parks an active polling device before taking over. Failed acquisition
+  preserves its primary error, attempts existing cleanup if the driver remains
+  active, and enters the existing recovery path.
+- retaining active conversion is an explicit awake-current tradeoff, including
+  longer realtime, USB and deliberately awake diagnostic sessions. It does not
+  keep the MCU awake or grant extra input polling. Target latency, movement wake
+  and matched PPK2 energy measurements remain required for this lifecycle change.
 - movement wake uses `KNOB_INPUT_JOYSTICK_WAKE_CONFIRM_SAMPLES` and
   `KNOB_INPUT_JOYSTICK_WAKE_CONFIRM_STABLE_SAMPLES` to reject the transitional
   vector that can occur while the stick is still travelling after the hardware

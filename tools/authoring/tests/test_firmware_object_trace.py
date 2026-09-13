@@ -14,6 +14,7 @@ class ObjectTraceTests(unittest.TestCase):
         source = (firmware / "Core/Src/ps_hw6_trace.c").read_text(encoding="utf-8")
         functions = ("PS_HW6_ObjectTraceWrap", "PS_HW6_ObjectTraceInsert", "PS_HW6_TraceObjectArm",
                      "PS_HW6_TraceObjectBegin", "PS_HW6_TraceObjectStage", "PS_HW6_TraceObjectRaster",
+                     "PS_HW6_TraceObjectOwnerBegin", "PS_HW6_TraceObjectOwnerEnd",
                      "PS_HW6_TraceObjectEnd")
         compiler = os.environ.get("HOST_CC", "C:/msys64/ucrt64/bin/gcc.exe")
         env = dict(os.environ)
@@ -30,6 +31,27 @@ class ObjectTraceTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             result = subprocess.run([str(exe)], capture_output=True, text=True, timeout=10, env=env)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_owner_markers_enclose_actual_driver_calls(self):
+        root = Path(__file__).resolve().parents[3] / "firmware/peepshow_hw6_fw0/Core/Src"
+        power = firmware_function((root / "ps_hw6_owner_services.c").read_text(),
+                                  "PS_HW6_PowerOwner_RunSnapshot")
+        joystick = firmware_function((root / "ps_hw6_owner_state_machines.c").read_text(),
+                                     "PS_HW6_SM_RunJoystickCardinalProbe")
+        for body, phase, driver, result in (
+            (power, "PMIC_SNAPSHOT", "ps_dev_adp5360_read_power_snapshot", "status"),
+            (joystick, "JOYSTICK_WAKE", "ps_dev_tmag3001_wake_continuous", "driver_status"),
+            (joystick, "JOYSTICK_READ", "ps_dev_tmag3001_read_raw_sample", "driver_status"),
+            (joystick, "JOYSTICK_SUSPEND", "ps_dev_tmag3001_suspend", "driver_status"),
+        ):
+            with self.subTest(phase=phase):
+                begin = body.index(f"PS_HW6_TraceObjectOwnerBegin(PS_TRACE_OWNER_{phase})")
+                call = body.index(driver + "(", begin)
+                end = body.index(f"PS_HW6_TraceObjectOwnerEnd(PS_TRACE_OWNER_{phase}", call)
+                self.assertLess(begin, call)
+                self.assertLess(call, end)
+                self.assertIn(f"trace_sequence, (uint32_t){result})", body[end:])
+                self.assertEqual(body.count(driver + "("), 1)
 
     def test_local_timestamp_source_is_cycle_counter(self):
         root = Path(__file__).resolve().parents[3]

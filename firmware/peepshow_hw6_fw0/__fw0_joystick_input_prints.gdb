@@ -32,4 +32,5 @@ printf "failure stages: PREPARE=1 ARM=2 INTERRUPT=3 WAKE=4 READ=5 SAMPLE_FSM=6 N
 printf "dir bits: LEFT=0x1 RIGHT=0x2 UP=0x4 DOWN=0x8\n"
 printf "logical IDs: LEFT/RIGHT/UP/DOWN=6/7/8/9 diagonals UL/UR/DL/DR=10/11/12/13; events press/release/hold/repeat=1/2/3/4\n"
 printf "expected HOME grid: center=neutral; eight surrounding cells show canonical candidate; outer marker shows deterministic four-way shell result\n"
-printf "expected steady awake: owner/driver=5/3, poll status=0, resolved direction zero or one bit; a recovered transient increments failure and recovery success without leaving owner=14 or driver=4\n"
+printf "expected steady awake after a completed poll: owner/driver=8/2 (SLOW_POLL/ACTIVE), poll status=0, resolved direction zero or one bit; samples reuse the active configuration until quiesce or diagnostic handoff\n"
+printf "In-flight sampling can show other owner states. Recovery must not leave owner=14 or driver=4. STOP2 still requires verified terminal wake/sleep configuration.\n"

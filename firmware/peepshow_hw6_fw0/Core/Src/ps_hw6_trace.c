@@ -101,6 +101,24 @@ void PS_HW6_TraceObjectRaster(uint32_t stage, uint32_t end)
     g_ps_object_trace_probe.sequence, 0UL);
 }
 
+uint32_t PS_HW6_TraceObjectOwnerBegin(uint32_t stage)
+{
+  if (g_ps_object_trace_probe.active == 0UL) { return 0UL; }
+  uint32_t sequence = g_ps_object_trace_probe.sequence;
+  PS_HW6_ObjectTraceInsert(PS_HW6_TRACE_EVENT_OBJECT_OWNER, stage, 0UL,
+    sequence, PS_HW6_TRACE_STATUS_NOT_RUN);
+  return sequence;
+}
+
+void PS_HW6_TraceObjectOwnerEnd(uint32_t stage, uint32_t sequence, uint32_t status)
+{
+  /* A sleeping owner may finish after capture freeze or a later re-arm. */
+  if ((sequence == 0UL) || (g_ps_object_trace_probe.active == 0UL) ||
+      (sequence != g_ps_object_trace_probe.sequence)) { return; }
+  PS_HW6_ObjectTraceInsert(PS_HW6_TRACE_EVENT_OBJECT_OWNER, stage, 1UL,
+    sequence, status);
+}
+
 void PS_HW6_TraceObjectEnd(uint32_t status)
 {
   if (g_ps_object_trace_probe.active == 0UL) { return; }
