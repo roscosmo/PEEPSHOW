@@ -8,6 +8,7 @@ const defaults = {
   objectBoxes: true,
   labelMode: "hover" as "hover" | "always" | "off",
   thumbnailPlayback: "always" as "hover" | "always" | "off",
+  fontPreviewText: "PEEP STUDIO 0123456789 START SETTINGS CREDITS",
 };
 
 function readPreferences(): typeof defaults {
@@ -21,6 +22,9 @@ function readPreferences(): typeof defaults {
       gridStrength: Number.isInteger(value.gridStrength) && value.gridStrength >= 4 && value.gridStrength <= 30 ? value.gridStrength : defaults.gridStrength,
       labelMode: ["hover", "always", "off"].includes(value.labelMode) ? value.labelMode : defaults.labelMode,
       thumbnailPlayback: value.thumbnailPlayback === "off" ? "off" : "always",
+      fontPreviewText: typeof value.fontPreviewText === "string" && value.fontPreviewText.trim().length > 0 && value.fontPreviewText.length <= 120
+        ? value.fontPreviewText
+        : defaults.fontPreviewText,
     };
   } catch {
     return defaults;

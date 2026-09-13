@@ -1921,19 +1921,18 @@ button:focus-visible {
   justify-content: flex-end;
 }
 
-.font-asset-gallery {
+.font-asset-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
-.font-asset-gallery button {
+.font-asset-list button {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+  gap: 14px;
   align-items: center;
-  min-height: 70px;
-  padding: 10px;
+  min-height: 62px;
+  padding: 10px 12px;
   border: 1px solid #d7ded9;
   border-radius: 7px;
   background: #ffffff;
@@ -1942,64 +1941,66 @@ button:focus-visible {
   cursor: pointer;
 }
 
-.font-asset-gallery button:hover,
-.font-asset-gallery button.selected {
+.font-asset-list button:hover,
+.font-asset-list button.selected {
   border-color: #1674a4;
   background: #eef7fb;
 }
 
-.font-asset-glyph {
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  border: 1px solid #b9c7c0;
-  border-radius: 6px;
-  background: #f6faf8;
-  color: #27302b;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 22px;
-  font-weight: 800;
-}
-
-.font-asset-gallery span:last-child {
+.font-asset-row-meta {
   display: grid;
   min-width: 0;
   gap: 4px;
 }
 
-.font-asset-gallery strong,
-.font-asset-gallery small {
+.font-asset-list strong,
+.font-asset-list small,
+.font-asset-preview-line {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.font-asset-gallery strong {
+.font-asset-list strong {
   font-size: 13px;
   font-weight: 850;
 }
 
-.font-asset-gallery small {
+.font-asset-list small {
   color: #68736d;
   font-size: 11px;
   font-weight: 650;
 }
 
+.font-asset-preview-line {
+  display: block;
+  min-width: 0;
+  color: #19201c;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
 .font-inspector-preview {
   display: grid;
-  place-items: center;
+  align-items: center;
+  justify-items: start;
   min-height: 112px;
   margin-bottom: 12px;
+  padding: 14px;
+  overflow: hidden;
   border: 1px solid #d7ded9;
   border-radius: 7px;
   background: #f7faf8;
 }
 
 .font-inspector-preview span {
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 46px;
-  font-weight: 800;
+  max-width: 100%;
+  overflow: hidden;
+  color: #19201c;
+  font-size: 32px;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .asset-group-stack {
@@ -2812,6 +2813,7 @@ button:focus-visible {
 }
 
 .placement-view-settings label:has(input[type="range"]),
+.placement-view-settings label:has(input[type="text"]),
 .placement-view-settings label:has(select) {
   grid-template-columns: 92px minmax(0, 1fr);
 }
@@ -2826,6 +2828,7 @@ button:focus-visible {
   width: 100%;
 }
 
+.placement-view-settings input[type="text"],
 .placement-view-settings select {
   min-width: 0;
   height: 28px;

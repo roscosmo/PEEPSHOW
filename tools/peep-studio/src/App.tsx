@@ -144,6 +144,7 @@ const PLACEMENT_GRID_MAJOR_Y = Array.from({ length: PLACEMENT_HEIGHT / 8 + 1 }, 
 const BAKED_TEXT_MIN_FONT_SIZE = 6;
 const BAKED_TEXT_MAX_FONT_SIZE = 128;
 const BAKED_TEXT_MAX_SOURCE_DIMENSION = 4096;
+const DEFAULT_FONT_PREVIEW_TEXT = "PEEP STUDIO 0123456789 START SETTINGS CREDITS";
 
 const normalizeTextLines = (value: string) => value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
 const stableAssetIdFromLabel = (value: string, fallback: string) => {
@@ -380,6 +381,7 @@ export default function App() {
   useEffect(() => setCombineAssetIds([]), [projectPath]);
   const [assetTab, setAssetTab] = useState<AssetTab>("sprite");
   const [fontAssets, setFontAssets] = useState<FontAssetRecord[]>([]);
+  const [fontPreviewFamilies, setFontPreviewFamilies] = useState<Record<string, string>>({});
   const [audioAuditionStatus, setAudioAuditionStatus] = useState("No cue auditioned.");
   const [assetPreviewPlaying, setAssetPreviewPlaying] = useState(false);
   const [assetPreviewStep, setAssetPreviewStep] = useState(0);
@@ -430,6 +432,7 @@ export default function App() {
   useEffect(() => {
     setBakedTextDraft(null);
     setFontAssets([]);
+    setFontPreviewFamilies({});
     bakedTextFontFacesRef.current.clear();
   }, [projectPath]);
 
@@ -467,6 +470,41 @@ export default function App() {
     bakedTextFontFacesRef.current.set(font.font_id, loaded);
     return loaded;
   }, [bridge, projectPath]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFontPreviewFamilies(current => {
+      const next: Record<string, string> = {};
+      for (const font of fontAssets) {
+        if (current[font.font_id] !== undefined) {
+          next[font.font_id] = current[font.font_id];
+        }
+      }
+      return next;
+    });
+    for (const font of fontAssets) {
+      void loadBakedTextFontFace(font)
+        .then(loaded => {
+          if (cancelled) {
+            return;
+          }
+          setFontPreviewFamilies(current => current[font.font_id] === loaded.family
+            ? current
+            : { ...current, [font.font_id]: loaded.family });
+        })
+        .catch(() => {
+          if (cancelled) {
+            return;
+          }
+          setFontPreviewFamilies(current => current[font.font_id] === ""
+            ? current
+            : { ...current, [font.font_id]: "" });
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [fontAssets, loadBakedTextFontFace]);
 
   useEffect(() => {
     if (bakedTextDraft === null) {
@@ -4471,6 +4509,7 @@ export default function App() {
         ? audioCues.length > 0
         : fontAssets.length > 0;
     const assetTabs: AssetTab[] = ["sprite", "audio", "font"];
+    const fontPreviewText = preferences.fontPreviewText.trim() || DEFAULT_FONT_PREVIEW_TEXT;
     return (
       <section className="asset-workspace-pane">
         <div className="preview-heading graph-heading">
@@ -4669,21 +4708,28 @@ export default function App() {
                   <strong>Imported fonts</strong>
                   <span>{fontAssets.length} font{fontAssets.length === 1 ? "" : "s"}</span>
                 </div>
-                <div className="font-asset-gallery">
-                  {fontAssets.map(font => (
+                <div className="font-asset-list">
+                  {fontAssets.map(font => {
+                    const previewFamily = fontPreviewFamilies[font.font_id];
+                    const previewStyle: CSSProperties | undefined = previewFamily !== undefined && previewFamily !== ""
+                      ? { fontFamily: `"${previewFamily}"` }
+                      : undefined;
+                    return (
                     <button
                       key={font.font_id}
                       className={assetSelection?.kind === "font" && assetSelection.fontId === font.font_id ? "selected" : ""}
                       type="button"
                       onClick={() => selectAssetRecord({ kind: "font", fontId: font.font_id })}
                     >
-                      <span className="font-asset-glyph">Ag</span>
-                      <span>
+                      <span className="font-asset-row-meta">
                         <strong>{font.display_name}</strong>
                         <small>{font.source_format.toUpperCase()} / {font.source_path}</small>
                       </span>
+                      <span className="font-asset-preview-line" style={previewStyle}>
+                        {previewFamily === undefined ? "Loading preview..." : fontPreviewText}
+                      </span>
                     </button>
-                  ))}
+                  );})}
                 </div>
               </section>
             )}
@@ -4929,9 +4975,14 @@ export default function App() {
       {selectedFontAsset === null ? (
         <p className="muted">Import a TTF or OTF font to generate baked text sprites.</p>
       ) : (
-        <>
+        (() => {
+          const previewFamily = fontPreviewFamilies[selectedFontAsset.font_id];
+          const previewStyle: CSSProperties | undefined = previewFamily !== undefined && previewFamily !== ""
+            ? { fontFamily: `"${previewFamily}"` }
+            : undefined;
+          return <>
           <div className="font-inspector-preview">
-            <span>Ag</span>
+            <span style={previewStyle}>{previewFamily === undefined ? "Loading preview..." : (preferences.fontPreviewText.trim() || DEFAULT_FONT_PREVIEW_TEXT)}</span>
           </div>
           <div className="audio-inspector-controls">
             <button
@@ -4950,7 +5001,8 @@ export default function App() {
             <div><dt>Source</dt><dd title={selectedFontAsset.source_path}>{selectedFontAsset.source_path}</dd></div>
             <div><dt>Font ID</dt><dd>{selectedFontAsset.font_id}</dd></div>
           </dl>
-        </>
+        </>;
+        })()
       )}
     </section>
   );
@@ -6676,6 +6728,14 @@ export default function App() {
                     <option value="always">Always</option>
                     <option value="off">Off</option>
                   </select>
+                </label>
+                <label>Font preview text
+                  <input
+                    type="text"
+                    maxLength={120}
+                    value={preferences.fontPreviewText}
+                    onChange={event => updatePreference("fontPreviewText", event.target.value)}
+                  />
                 </label>
               </div>
             </section>
