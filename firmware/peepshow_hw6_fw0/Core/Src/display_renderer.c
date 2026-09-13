@@ -38,6 +38,8 @@ typedef struct
 } display_renderer_list_t;
 
 static uint8_t s_display_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
+/* thDisplay selects a private raster only within synchronous composition. */
+static uint8_t *s_display_draw_framebuffer = s_display_framebuffer;
 static const ps_egg_sprite_catalog_t *s_display_candidate_catalog;
 static uint8_t s_display_committed_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint8_t s_display_cursor_base_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
@@ -1835,12 +1837,12 @@ static uint32_t DisplayRenderer_SetBlack(uint16_t x, uint16_t y)
 
   index = ((uint32_t)panel_y * LINE_WIDTH) + ((uint32_t)panel_x >> 3U);
   mask = (uint8_t)(1U << (panel_x & 7U));
-  if ((s_display_framebuffer[index] & mask) == 0U)
+  if ((s_display_draw_framebuffer[index] & mask) == 0U)
   {
     return 0UL;
   }
 
-  s_display_framebuffer[index] &= (uint8_t)~mask;
+  s_display_draw_framebuffer[index] &= (uint8_t)~mask;
   return 1UL;
 }
 
@@ -2380,7 +2382,7 @@ static uint32_t DisplayRenderer_DrawSceneElement(
         };
         (void)DisplayRenderer_ApplyPackageSprite(
           element->asset_id, &bounds,
-          s_display_framebuffer, sizeof(s_display_framebuffer),
+          s_display_draw_framebuffer, sizeof(s_display_framebuffer),
           0UL, &sprite_black_pixels);
         black_pixels += sprite_black_pixels;
       }
@@ -2405,7 +2407,7 @@ static uint32_t DisplayRenderer_DrawSceneElement(
           };
           (void)DisplayRenderer_ApplyPackageSprite(
             element->asset_id, &bounds,
-            s_display_framebuffer, sizeof(s_display_framebuffer),
+            s_display_draw_framebuffer, sizeof(s_display_framebuffer),
             0UL, &sprite_black_pixels);
           black_pixels += sprite_black_pixels;
         }
@@ -2475,10 +2477,10 @@ static uint32_t DisplayRenderer_DrawSceneModel(const ps_scene_render_model_t *mo
 uint32_t DisplayRenderer_CopySceneModelFrame(const ps_scene_render_model_t *model,
   uint8_t *destination, uint32_t destination_size)
 {
-  static uint8_t saved[DISPLAY_RENDERER_BUFFER_SIZE];
   uint32_t index;
   uint32_t saved_rotation;
   if ((destination == NULL) || (destination == s_display_framebuffer) ||
+      (s_display_draw_framebuffer != s_display_framebuffer) ||
       (destination_size < DISPLAY_RENDERER_BUFFER_SIZE) ||
       (DisplayRenderer_ValidateSceneModel(model) == 0UL)) { return 0UL; }
   /* Legacy focus drawing changes cursor bookkeeping; it is not a V2 object. */
@@ -2487,14 +2489,13 @@ uint32_t DisplayRenderer_CopySceneModelFrame(const ps_scene_render_model_t *mode
     if (model->elements[index].type == PS_SCENE_RENDER_ELEMENT_FOCUS)
     { return 0UL; }
   }
-  (void)memcpy(saved, s_display_framebuffer, sizeof(saved));
-  (void)memset(s_display_framebuffer, 0xFF, sizeof(s_display_framebuffer));
+  (void)memset(destination, 0xFF, DISPLAY_RENDERER_BUFFER_SIZE);
   saved_rotation = s_rotate_ccw;
   s_rotate_ccw = 1UL;
+  s_display_draw_framebuffer = destination;
   (void)DisplayRenderer_DrawSceneModel(model);
+  s_display_draw_framebuffer = s_display_framebuffer;
   s_rotate_ccw = saved_rotation;
-  (void)memcpy(destination, s_display_framebuffer, sizeof(s_display_framebuffer));
-  (void)memcpy(s_display_framebuffer, saved, sizeof(saved));
   return 1UL;
 }
 
@@ -2574,6 +2575,7 @@ uint32_t DisplayRenderer_CopyCandidateSceneFrameCached(const ps_scene_render_mod
   uint32_t saved_rotation;
   if (cache == NULL) { return 0UL; }
   if ((catalog == NULL) || (s_display_candidate_catalog != NULL) ||
+      (s_display_draw_framebuffer != s_display_framebuffer) ||
       (destination == NULL) || (destination == cache->frame) ||
       (destination == s_display_framebuffer) ||
       (destination_size < DISPLAY_RENDERER_BUFFER_SIZE))
@@ -2647,31 +2649,25 @@ uint32_t DisplayRenderer_CopyCandidateSceneFrameCached(const ps_scene_render_mod
     PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_OVERLAP, 1UL);
     if (dirty != 0UL)
     {
-      /* Destination temporarily saves the live software frame; DMA storage is
-       * never used as scratch. Restore it before publishing the private result. */
-      PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_COPY, 0UL);
-      (void)memcpy(destination, s_display_framebuffer, sizeof(s_display_framebuffer));
-      (void)memcpy(s_display_framebuffer, cache->frame, sizeof(cache->frame));
-      PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_COPY, 1UL);
+      /* Modify the private cache in place; neither live pixels nor DMA storage
+       * are scratch. The draw destination is restored before returning. */
       PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_CLEAR, 0UL);
       for (index = 0UL; index < count; ++index)
       {
         const ps_scene_render_element_t *element = DisplayRenderer_CacheElement(cache, model, index);
         if ((dirty & (1UL << index)) == 0UL) { continue; }
-        DisplayRenderer_ClearLogicalRectInBuffer(s_display_framebuffer,
+        DisplayRenderer_ClearLogicalRectInBuffer(cache->frame,
           element->x, element->y, element->width, element->height);
       }
       PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_CLEAR, 1UL);
       PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_DRAW, 0UL);
       saved_rotation = s_rotate_ccw;
       s_rotate_ccw = 1UL;
+      s_display_draw_framebuffer = cache->frame;
       (void)DisplayRenderer_DrawSceneModelMasked(model, dirty >> cache->model.element_count);
+      s_display_draw_framebuffer = s_display_framebuffer;
       s_rotate_ccw = saved_rotation;
       PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_DRAW, 1UL);
-      PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_COPY, 0UL);
-      (void)memcpy(cache->frame, s_display_framebuffer, sizeof(cache->frame));
-      (void)memcpy(s_display_framebuffer, destination, sizeof(s_display_framebuffer));
-      PS_HW6_TraceObjectRaster(PS_TRACE_RASTER_COPY, 1UL);
     }
     cache->reused_frames++;
     for (index = 0UL; index < model->element_count; ++index)

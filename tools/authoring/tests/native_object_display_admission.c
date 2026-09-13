@@ -1,3 +1,6 @@
+#include <stdint.h>
+static void observe_private_raster(uint32_t stage, uint32_t end);
+#define NATIVE_OBJECT_RASTER_OBSERVE observe_private_raster
 #define PS_OBJECT_AWAKE_MAIN awake_main
 #include "native_object_awake.c"
 #define LS013B7DH05_H
@@ -19,18 +22,46 @@ static uint8_t payload_before[40000], payload_after[40000];
 static uint8_t display_before[DISPLAY_RENDERER_BUFFER_SIZE], reference[DISPLAY_RENDERER_BUFFER_SIZE];
 static uint32_t profile_clock_calls;
 static uint32_t profile_clock(void) { return profile_clock_calls++; }
+static uint8_t raster_live_before[DISPLAY_RENDERER_BUFFER_SIZE];
+static uint32_t raster_observe, raster_copy_groups;
+
+static void observe_private_raster(uint32_t stage, uint32_t end)
+{
+  if (raster_observe == 0) { return; }
+  assert(memcmp(s_display_framebuffer, raster_live_before, sizeof(raster_live_before)) == 0);
+  if (stage == PS_TRACE_RASTER_COPY && end == 0) { raster_copy_groups++; }
+}
 
 static void cached_frame_matches(ps_scene_frame_cache_t *cache,
   const ps_scene_render_model_t *frame_model, const ps_egg_sprite_catalog_t *catalog)
 {
   uint8_t actual[DISPLAY_RENDERER_BUFFER_SIZE], expected[DISPLAY_RENDERER_BUFFER_SIZE];
   uint8_t live[DISPLAY_RENDERER_BUFFER_SIZE];
+  uint32_t rotation = s_rotate_ccw;
   memcpy(live, s_display_framebuffer, sizeof(live));
+  memcpy(raster_live_before, live, sizeof(live));
+  raster_observe = 1;
   assert(DisplayRenderer_CopyCandidateSceneFrame(frame_model, catalog, expected, sizeof(expected)));
+  assert(s_display_draw_framebuffer == s_display_framebuffer);
+  raster_copy_groups = 0;
   assert(DisplayRenderer_CopyCandidateSceneFrameCached(frame_model, catalog, cache, actual, sizeof(actual)));
+  assert(s_display_draw_framebuffer == s_display_framebuffer);
+  assert(raster_copy_groups == 1); /* Only the completed frame goes to the packer. */
+  assert(s_rotate_ccw == rotation);
+  raster_observe = 0;
   assert(memcmp(actual, expected, sizeof(actual)) == 0);
   assert(memcmp(live, s_display_framebuffer, sizeof(live)) == 0);
   assert(s_display_candidate_catalog == NULL);
+  /* A normal draw must still hit the live frame after private composition. */
+  memset(s_display_framebuffer, 255, sizeof(s_display_framebuffer));
+  s_display_candidate_catalog = catalog;
+  s_rotate_ccw = 1;
+  (void)DisplayRenderer_DrawSceneModel(frame_model);
+  s_rotate_ccw = rotation;
+  s_display_candidate_catalog = NULL;
+  assert(memcmp(expected, s_display_framebuffer, sizeof(expected)) == 0);
+  assert(memcmp(actual, cache->frame, sizeof(actual)) == 0);
+  memcpy(s_display_framebuffer, live, sizeof(live));
 }
 
 static void clear_rect_matches(uint16_t x, uint16_t y, uint16_t width, uint16_t height)
@@ -125,8 +156,42 @@ static void raster_cache_equivalence(void)
   catalog.frame_count = 0;
   assert(!DisplayRenderer_CopyCandidateSceneFrameCached(&m, &catalog, &cache, reference, sizeof(reference)));
   assert(!cache.valid && s_display_candidate_catalog == NULL);
+  assert(s_display_draw_framebuffer == s_display_framebuffer);
   catalog.frame_count = 1;
   cached_frame_matches(&cache, &m, &catalog);
+
+  const uint32_t shapes[] = {PS_SCENE_RENDER_ELEMENT_LINE, PS_SCENE_RENDER_ELEMENT_LINE_UP_RIGHT,
+    PS_SCENE_RENDER_ELEMENT_HORIZONTAL_LINE, PS_SCENE_RENDER_ELEMENT_OUTLINE_RECT,
+    PS_SCENE_RENDER_ELEMENT_FILLED_RECT, PS_SCENE_RENDER_ELEMENT_CIRCLE,
+    PS_SCENE_RENDER_ELEMENT_ELLIPSE, PS_SCENE_RENDER_ELEMENT_FILLED_CIRCLE,
+    PS_SCENE_RENDER_ELEMENT_FILLED_ELLIPSE};
+  m.scene_id++; m.element_count = 1;
+  for (uint32_t i = 0; i < sizeof(shapes) / sizeof(shapes[0]); ++i)
+  {
+    m.elements[0] = (ps_scene_render_element_t){.element_id=1, .visible=1,
+      .type=shapes[i], .x=3, .y=5, .width=17, .height=17};
+    s_rotate_ccw = i % 2;
+    cached_frame_matches(&cache, &m, &catalog);
+    m.elements[0].x = 151; m.elements[0].y = 127;
+    cached_frame_matches(&cache, &m, &catalog);
+  }
+  uint8_t private_frame[DISPLAY_RENDERER_BUFFER_SIZE];
+  s_display_draw_framebuffer = private_frame;
+  assert(!DisplayRenderer_CopySceneModelFrame(&m, reference, sizeof(reference)));
+  assert(!DisplayRenderer_CopyCandidateSceneFrameCached(&m, &catalog, &cache, reference, sizeof(reference)));
+  assert(s_display_draw_framebuffer == private_frame && s_display_candidate_catalog == NULL);
+  s_display_draw_framebuffer = s_display_framebuffer;
+  assert(!DisplayRenderer_CopyCandidateSceneFrameCached(&m, &catalog, &cache, reference, 1));
+  assert(!DisplayRenderer_CopyCandidateSceneFrameCached(&m, &catalog, &cache, NULL, sizeof(reference)));
+  m.elements[0].type = PS_SCENE_RENDER_ELEMENT_FOCUS;
+  m.elements[0].animation_binding_id = PS_SCENE_RENDER_ANIMATION_CURSOR;
+  assert(!DisplayRenderer_CopyCandidateSceneFrame(&m, &catalog, reference, sizeof(reference)));
+  assert(!DisplayRenderer_CopyCandidateSceneFrameCached(&m, &catalog, &cache, reference, sizeof(reference)));
+  assert(s_display_draw_framebuffer == s_display_framebuffer && s_display_candidate_catalog == NULL);
+  m.elements[0].type = PS_SCENE_RENDER_ELEMENT_FILLED_RECT;
+  m.elements[0].animation_binding_id = 0;
+  cached_frame_matches(&cache, &m, &catalog);
+  s_rotate_ccw = 1;
   puts("cached pixels match full raster: motion, overlap, masks, layers, removal and invalidation");
 }
 

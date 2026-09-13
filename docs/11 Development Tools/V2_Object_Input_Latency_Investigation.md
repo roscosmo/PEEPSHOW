@@ -354,9 +354,52 @@ required. All **355 authoring/native tests pass**; target-profile and whitespace
 checks pass. The runtime stack check remains 2432 bytes including reserve, not
 a measured display-stack high-water mark. Debug build uses RAM 555376 bytes,
 ROM 876072 bytes and SRAM4 15480 bytes.
-Hardware latency improvement remains unmeasured. Reflash this build, repeat the
-same awake HOME/AWAY one-press trace after the reveal, and verify fixed outlines,
-one marker move and continuous digits before comparing CLEAR and total timings.
+Target capture `__fw0_tracex_snapshot_20260913_102755.trx` subsequently measured
+clearing at 1.625 ms versus 66.320 ms, with framebuffer-copy sections still at
+19.893 ms versus 20.918 ms. Kernel-tick receipt-to-panel improved from 160 to
+100 ms. These are separate time domains; both traces retained the complete
+transaction with no marker errors and unchanged reported 24 MHz clocks. The new
+capture drew seven elements versus eight and experienced different preemption,
+so this is not an isolated CPU-cost comparison or a latency distribution.
+
+The user confirmed repeated awake L/R changes preserved the digits and static
+content. The subsequent autonomous HOME/AWAY regression also passed visually:
+one marker move, continuous local animation, fixed outlines and automatic HOME
+return six seconds after AWAY entry. Probe evidence: replacement attempts/failures
+2/0, timers due/applied/errors 3/3/0, WFI returns/measured/reconciled 7/7/7,
+wake statuses zero and schedule four steps at 400 ms. The final render was halted
+in flight (request/complete 15/14); that snapshot is not a completed render
+failure. No new low-current or energy measurement was supplied.
+
+## Direct Private Raster Destination
+
+The next increment removes the dependency on the normal software framebuffer
+as candidate scratch. Drawing selects a private destination only within bounded,
+synchronous thDisplay composition. Shape pixels and package sprites use that
+destination; rotation and the normal destination are restored before returning.
+Nested private composition is rejected. Focus remains excluded from private
+composition because it changes cursor bookkeeping.
+
+Warm cached composition clears/draws in place and retains one final frame copy
+to the packer instead of five copies per changed frame. Full composition draws
+directly into its supplied destination too, removing its static saved-frame
+buffer. There is no new framebuffer, allocation or linker reservation. Packer
+previous/target copies, admission checks, active DMA storage, clocks and input
+polling are unchanged. COPY markers now occur once per composed cached frame,
+including the model update and final output copy, rather than three groups.
+
+Native tests check live-frame preservation at raster trace markers, destination
+and rotation restoration, normal rendering after private composition, all shape
+types and opaque/masked sprites, missing assets, focus rejection, invalid buffers
+and nested-scope refusal. Full pixel and packed-payload comparisons remain in
+place. Target timing and visual regression for this increment are pending;
+reflash and repeat the same awake one-press capture before testing autonomous
+playback. Do not infer the latency gain from the number of copies removed.
+
+Verification: **355 authoring/native tests pass**, as do the Debug build and
+target-profile check. Build totals: ordinary RAM 552360 bytes (3016 bytes less),
+ROM 875984 bytes, SRAM4 unchanged at 15480 bytes. The runtime stack check remains
+2432 bytes including reserve; it is not measured display-thread stack high water.
 
 ## Verification
 

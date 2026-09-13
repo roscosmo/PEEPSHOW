@@ -10,6 +10,7 @@
 #define LINE_WIDTH 18U
 #define DISPLAY_RENDERER_BUFFER_SIZE (18U * 168U)
 static uint8_t s_display_framebuffer[DISPLAY_RENDERER_BUFFER_SIZE];
+static uint8_t *s_display_draw_framebuffer = s_display_framebuffer;
 static const ps_egg_sprite_catalog_t *s_display_candidate_catalog;
 static uint32_t s_rotate_ccw = 1U;
 static const char *DisplayRenderer_SceneText(uint32_t id)
