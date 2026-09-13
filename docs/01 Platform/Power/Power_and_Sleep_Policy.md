@@ -13,6 +13,7 @@ The package-facing time, cadence, lifecycle, wake, and power-intent API is defin
 - Power thread is sole owner of clock and sleep transitions.
 - Runtime hosts provide intent, not hardware commands.
 - No transition is complete until timebases are verified.
+- Reapplying an unchanged ThreadX tick rate must preserve the partial SysTick countdown and pending tick. Actual rate changes still validate and configure the reload; STOP2 suspend/restore separately owns counter enable/disable and pending-state handling.
 - PMIC, battery, charger, VBUS, and shipping-mode policy is owned by [[PMIC_and_Power_Contract]].
 - Startup must respect the PMIC contract battery/VBUS gate before enabling display-intensive work, audio, vibration, radio, switched rails, package runtime, or installer behavior.
 

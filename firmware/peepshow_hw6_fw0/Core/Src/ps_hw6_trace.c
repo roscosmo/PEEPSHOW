@@ -32,6 +32,42 @@ static void PS_HW6_ObjectTraceInsert(uint32_t event, uint32_t a, uint32_t b, uin
 #endif
 }
 
+void PS_HW6_TraceSysTickBefore(ps_hw6_trace_systick_snapshot_t *snapshot, uint32_t reload_target)
+{
+  if (snapshot == NULL) { return; }
+  snapshot->sequence = 0UL;
+  if (g_ps_object_trace_probe.active == 0UL) { return; }
+  snapshot->sequence = g_ps_object_trace_probe.sequence;
+  snapshot->reload_target = reload_target;
+  snapshot->tick_before = (uint32_t)tx_time_get();
+  snapshot->cycles_before = DWT->CYCCNT;
+  snapshot->reload_before = SysTick->LOAD;
+  snapshot->value_before = SysTick->VAL;
+  snapshot->icsr_before = SCB->ICSR;
+}
+
+void PS_HW6_TraceSysTickAfter(const ps_hw6_trace_systick_snapshot_t *snapshot)
+{
+  uint32_t cycles_after;
+  uint32_t tick_after;
+  uint32_t icsr_after;
+  if ((snapshot == NULL) || (snapshot->sequence == 0UL) ||
+      (g_ps_object_trace_probe.active == 0UL) ||
+      (snapshot->sequence != g_ps_object_trace_probe.sequence)) { return; }
+  cycles_after = DWT->CYCCNT;
+  icsr_after = SCB->ICSR;
+  tick_after = (uint32_t)tx_time_get();
+  /* Emit after the existing register writes: do not insert three trace records
+     into the interval whose partial tick is about to be discarded. No CTRL
+     read here, because that would clear SysTick's COUNTFLAG. */
+  PS_HW6_ObjectTraceInsert(PS_HW6_TRACE_EVENT_SYSTICK_REGISTERS,
+    snapshot->sequence, snapshot->reload_before, snapshot->value_before, snapshot->reload_target);
+  PS_HW6_ObjectTraceInsert(PS_HW6_TRACE_EVENT_SYSTICK_BEFORE,
+    snapshot->sequence, snapshot->cycles_before, snapshot->tick_before, snapshot->icsr_before);
+  PS_HW6_ObjectTraceInsert(PS_HW6_TRACE_EVENT_SYSTICK_AFTER,
+    snapshot->sequence, cycles_after, tick_after, icsr_after);
+}
+
 /* thRuntime services the debugger request, never an inferior GDB function call.
  * The existing static buffer is reused; ThreadX re-registers live objects. */
 uint32_t PS_HW6_TraceObjectArm(uint32_t allowed)

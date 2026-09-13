@@ -15,14 +15,19 @@ class ObjectTraceTests(unittest.TestCase):
         functions = ("PS_HW6_ObjectTraceWrap", "PS_HW6_ObjectTraceInsert", "PS_HW6_TraceObjectArm",
                      "PS_HW6_TraceObjectBegin", "PS_HW6_TraceObjectStage", "PS_HW6_TraceObjectRaster",
                      "PS_HW6_TraceObjectOwnerBegin", "PS_HW6_TraceObjectOwnerEnd",
-                     "PS_HW6_TraceObjectEnd")
+                     "PS_HW6_TraceObjectEnd", "PS_HW6_TraceSysTickBefore", "PS_HW6_TraceSysTickAfter")
         compiler = os.environ.get("HOST_CC", "C:/msys64/ucrt64/bin/gcc.exe")
         env = dict(os.environ)
         env["PATH"] = str(Path(compiler).parent) + os.pathsep + env.get("PATH", "")
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
             (work / "trace_under_test.inc").write_text("\n".join(firmware_function(source, name)
-                                                               for name in functions), encoding="ascii")
+                for name in functions) + firmware_function(
+                    (firmware / "Core/Src/ps_hw6_clock_policy.c").read_text(),
+                    "PS_HW6_ClockPolicy_RetuneThreadXSysTick") + "\n".join(
+                        firmware_function((firmware / "Core/Src/ps_hw6_owner_state_machines.c").read_text(), name)
+                        for name in ("PS_HW6_SM_SuspendThreadXSystick", "PS_HW6_SM_RestoreThreadXSystick")),
+                encoding="ascii")
             exe = work / "trace.exe"
             result = subprocess.run([compiler,
                 "-std=c11", "-Wall", "-Wextra", "-Werror", "-O2", "-I", str(firmware / "Core/Inc"),

@@ -324,6 +324,7 @@ static void PS_HW6_ClockPolicy_UpdatePostSnapshotProbe(void)
 
 static UINT PS_HW6_ClockPolicy_RetuneThreadXSysTick(void)
 {
+  ps_hw6_trace_systick_snapshot_t trace_snapshot;
   uint32_t hclk_hz = HAL_RCC_GetHCLKFreq();
   uint32_t reload;
 
@@ -342,8 +343,18 @@ static UINT PS_HW6_ClockPolicy_RetuneThreadXSysTick(void)
     return TX_NOT_DONE;
   }
 
+  /* Capability requests may reapply the same clock profile. Preserve the
+     partial countdown and pending tick when the rate already matches.
+     STOP2 enable/disable remains owned by its separate suspend/restore path. */
+  if (SysTick->LOAD == reload - 1UL)
+  {
+    return TX_SUCCESS;
+  }
+
+  PS_HW6_TraceSysTickBefore(&trace_snapshot, reload - 1UL);
   SysTick->LOAD = reload - 1UL;
   SysTick->VAL = 0UL;
+  PS_HW6_TraceSysTickAfter(&trace_snapshot);
   return TX_SUCCESS;
 }
 

@@ -172,6 +172,9 @@ Application markers use these ThreadX user-event IDs:
 | `0x5171` | raster phase / begin=0,end=1 / capture sequence / reserved |
 | `0x5172` | ARM=1,RECEIVE=2,DONE=3 / sequence / HCLK Hz / tick at ARM/RECEIVE, result at DONE |
 | `0x5173` | owner operation / begin=0,end=1 / capture sequence / driver ps_status_t (begin=NOT_RUN) |
+| `0x5174` | capture sequence / SysTick LOAD before / VAL before / target LOAD |
+| `0x5175` | capture sequence / sampled DWT cycles before retune / ThreadX tick before / ICSR before |
+| `0x5176` | capture sequence / sampled DWT cycles after retune / ThreadX tick after / ICSR after |
 
 Latency stages match `ps_hw6_object_latency.h`. Raster phases are validation=1,
 overlap closure=2, rectangle clearing=3, drawing=4, framebuffer copies=5 and cold
@@ -193,6 +196,24 @@ freeze/re-arm cannot produce a misleading end in another capture. An unfinished
 pair at freeze is truncated work, not proof of failure. Markers are inactive
 outside the existing one-press window and do not change polling, retries, driver
 configuration, priorities or PMIC safety policy.
+
+The current Cortex-M33 port timestamps from the 32-bit DWT cycle counter, not the
+100 Hz kernel tick. The retune diagnostic uses the existing one-press window;
+all three records are emitted after the original LOAD/VAL writes. Use the
+explicit sampled DWT fields for before/after timing, not these records' insertion
+timestamps. Pair ordered triples by thread and capture sequence and reject
+incomplete triples or captures with marker errors. Reads are not atomic: pending
+SysTick (ICSR bit 26), active SysTick (VECTACTIVE=15), a crossing tick or preemption
+can make partial-tick accounting ambiguous. CTRL is not read, because that would
+clear COUNTFLAG. At a stable HCLK and unchanged reload, LOAD minus VAL is an
+estimate of the partial countdown discarded by the original VAL reset, not an
+independent wall-time measurement. Tracing itself does not change interrupt masks;
+its added observation cost must still be considered. With same-rate tick
+preservation, matching LOAD requests leave SysTick untouched and emit no retune
+triple. Actual reload changes retain the existing reset and diagnostic records.
+A stable 24 MHz capture should therefore contain no retune triples even when
+clock-policy requests occur. Compare the complete cycle/tick interval as well;
+absence of markers alone does not prove accurate timekeeping.
 
 The current Cortex-M33 port timestamps from the 32-bit DWT cycle counter, not the
 100 Hz kernel tick. At unchanged 24 MHz, 24000 counts equal 1 ms. Check capture

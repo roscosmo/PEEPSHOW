@@ -503,6 +503,139 @@ target-profile and whitespace checks pass. RAM remains 552360 bytes, ROM is
 The two existing unused-function warnings are unchanged. Hardware latency,
 joystick wake and power acceptance are still pending.
 
+## Active-Poll Hardware Follow-Up
+
+The `20260913_140936.trx` awake capture completed with no marker errors. It
+contained one completed READ and no joystick WAKE or SUSPEND operations. The
+input probe reported 257 polls, zero errors and owner/driver SLOW_POLL/ACTIVE
+(8/2). Cycle-derived candidate packing fell from approximately 59.1 to 47.4 ms;
+receipt-to-panel fell from approximately 99.4 to 91.4 ms. Both coarse kernel
+probes still reported 70 ms. This is one capture comparison, not a worst-case
+latency guarantee or proof of isolated CPU time saved.
+
+The subsequent autonomous test confirmed LEFT/RIGHT/UP/DOWN wakes 1/1/1/1,
+four IRQs enqueued/dequeued with zero drops, four logical activations/releases,
+211 error-free awake polls and eight STOP2 entries. Wake writes/verification
+passed (0xfff/0x7ff). This unit used the fixed 48/48 threshold fallback after
+TRANSFORM derivation rejection; the test validates movement wake with fallback,
+not calibration-derived threshold admission. These logs alone do not establish
+visual continuity, long-duration false-wake rate, repeat behaviour or current.
+PPK2 energy/current acceptance remains outstanding.
+
+## Tick-Retuning Diagnostic
+
+Source inspection found `PS_HW6_ClockPolicy_ApplyBase` calls
+`PS_HW6_ClockPolicy_RetuneThreadXSysTick` even when the physical base clock already
+matches. Retune unconditionally writes LOAD and clears VAL. Discarding partial
+tick intervals during repeated same-frequency capability requests is the current
+hypothesis for the ThreadX/cycle discrepancy; it could also extend tick-based
+sleeps and timers. This is not yet a measured attribution of the entire gap.
+
+The approved first increment only observes that existing behaviour. A bounded
+stack-local snapshot records old LOAD/VAL, target LOAD, DWT cycles, ThreadX tick
+and ICSR around the original writes. Three events (0x5174..0x5176) are emitted
+afterward, only during the active one-press capture. No new trace buffer, polling,
+clock frequency, interrupt masking, timer policy or probe layout is introduced.
+Do not read CTRL as part of this diagnostic: doing so clears COUNTFLAG.
+
+Use the existing awake HOME/AWAY, object-trace enable/prints and TraceX dump
+helpers after reflashing the matching ELF. Require complete retained triples and
+zero marker errors. At unchanged 24 MHz, old LOAD should be 239999; old LOAD
+minus old VAL estimates the fractional tick discarded. Correlate resets with
+the sampled cycles/ticks and exception state. These sequential snapshots are not
+atomic; pending/active SysTick, tick crossings and preemption limit precision.
+Do not sum insertion timestamps as if they were the reset instant. Preserve
+proper handling of real frequency changes and STOP2 restoration when designing
+the later fix. Diagnostic overhead and independent physical timing remain caveats.
+
+Retune diagnostic verification: all **358 tests pass**, with the expanded native
+trace cases also rerun directly. Tests execute the production retune function
+and preserve its unchanged-reload reset, changed-reload reset and invalid-clock
+behaviour, plus inactive/stale-capture suppression, snapshot fields, cycle wrap,
+tick/pending changes and failed marker insertion without changing the retune
+result. Debug build, target-profile, whitespace and runtime-stack checks pass.
+RAM remains 552360 bytes, ROM is 876536 bytes, and SRAM4 remains 15480 bytes.
+The stack-local diagnostic snapshot is 28 bytes; this is not a measured thPower
+stack high-water result. Existing unused-function warnings remain unchanged.
+At that checkpoint hardware retune capture was pending; the result follows.
+
+## Same-Rate Tick Preservation
+
+The 2026-09-13 capture `__fw0_tracex_snapshot_20260913_165641.trx`
+retains matching RECEIVE/DONE markers and six complete retune triples, with
+zero marker errors and unchanged 24 MHz HCLK. Each retune writes the already
+correct LOAD=239999 and clears VAL. The six discarded partial intervals total
+approximately 30.08 ms. Accounting for capture start/end tick phase reconciles
+the reported 60 ms kernel interval with approximately 88.48 ms of cycle time.
+This supports same-rate counter resets as the cause of this measurement gap;
+it is not an independent physical button-to-panel measurement.
+
+`PS_HW6_ClockPolicy_RetuneThreadXSysTick` now returns without register writes
+when LOAD already matches the requested rate. This preserves the partial
+countdown and pending tick, whether SysTick is enabled or temporarily disabled.
+It does not read CTRL. A changed reload retains the existing LOAD/VAL update;
+fractional-time preservation across actual frequency changes is not introduced.
+The separate STOP2 suspend/restore functions continue to own enable/disable
+and pending-state handling, without changes to RTC reconciliation or clocks.
+
+Native regression cases execute the production retune and STOP2 suspend/restore
+functions: repeated same-rate calls, pending ticks, boundary VAL values,
+disabled-counter preservation, 24/48 MHz changes, invalid clocks and trace
+failure isolation. The awake one-press TraceX acceptance requires that stable
+24 MHz requests emit no retune
+triples, and kernel/cycle durations should agree within tick quantisation and
+measurement overhead. A higher printed kernel duration after this fix does not
+by itself indicate slower execution. Then check HOME/AWAY timers and autonomous
+wake/animation continuity separately.
+
+Local verification: all **358 tests pass**. Debug firmware build, generated
+target-profile and whitespace checks pass. Ordinary RAM remains 552360 bytes,
+ROM is 876552 bytes and SRAM4 remains 15480 bytes. The runtime stack check
+remains 2432 bytes including reserve against 4096 bytes; this is a static check
+of covered runtime paths, not a measured thPower high-water result.
+
+### Awake Hardware Result
+
+Capture `__fw0_tracex_snapshot_20260913_184946.trx` confirms the same-rate
+preservation behaviour for one R selection change in awake HOME. All six
+clock-policy records report success at 24 MHz; no retune records occur between
+the retained RECEIVE/DONE markers. The ring wrapped once during the capture,
+but all 369 transaction events, including both boundary markers, remain.
+Capture completion and arm/freeze statuses are successful, with zero marker
+errors; candidate and panel statuses are also zero.
+
+RECEIVE-to-DONE cycle time is 104.617 ms. Runtime stage 0 to panel completion
+is 103.761 ms, and stage 0 to transaction completion is 104.580 ms. The kernel
+reports 100 ms for both totals: the difference is within one 10 ms tick,
+unlike the previous approximately 30 ms lost-time contribution.
+
+Measured cycle intervals are 49.149 ms for candidate raster/packing,
+16.681 ms for presentation queue/clock and 24.474 ms for panel render/transfer.
+These include preemption and instrumentation, not isolated CPU work. The
+approximately 105 ms transaction is not a latency optimisation claim; this
+sample is longer than the prior approximately 88.5 ms sample even though its
+kernel accounting is now consistent. Physical input latency before runtime
+receipt is still excluded.
+
+### Autonomous Hardware Follow-Up
+
+The subsequent HOME/AWAY run was reported to behave as before, confirming the
+observed timer actions and local animation continuity through sleep/wake after
+the timebase change. Launch succeeded; two scene replacements completed with
+zero failures. Admission token/completion=8/8 with lease=0 and status=0;
+payload admission remains 8 chunks/4672 bytes and the schedule 4 steps/400 ms.
+Six WFI returns have six measured and six reconciled sleep intervals, clock
+status=0 and all wake snapshot/render/map/resume statuses=0. Display
+request/completion=7/7 with result=0 and no lease fault.
+
+The halted sample has timer due/applied=3/2, ignored/errors=0/0 and four RTC
+selections. It therefore does not prove every due handler had completed at the
+halt; do not label these counters a fully settled timer result. The last
+projection describes fresh HOME entry (elapsed=0, digit phase=0, marker left,
+fill=0), not live autonomous pixels. This is a functional regression pass
+supported by the user's observation, not independent timer-accuracy or
+low-current/energy measurement. No further firmware change was made here.
+
 ## Verification
 
 Native tests exercise actual stamp/begin/end functions and presentation/candidate

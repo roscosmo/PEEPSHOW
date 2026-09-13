@@ -25,6 +25,20 @@ extern "C" {
 #define PS_HW6_TRACE_EVENT_OBJECT_RASTER     (0x5171UL)
 #define PS_HW6_TRACE_EVENT_OBJECT_CAPTURE    (0x5172UL)
 #define PS_HW6_TRACE_EVENT_OBJECT_OWNER      (0x5173UL)
+#define PS_HW6_TRACE_EVENT_SYSTICK_REGISTERS (0x5174UL)
+#define PS_HW6_TRACE_EVENT_SYSTICK_BEFORE    (0x5175UL)
+#define PS_HW6_TRACE_EVENT_SYSTICK_AFTER     (0x5176UL)
+
+typedef struct
+{
+  uint32_t sequence;
+  uint32_t reload_before;
+  uint32_t value_before;
+  uint32_t reload_target;
+  uint32_t cycles_before;
+  uint32_t tick_before;
+  uint32_t icsr_before;
+} ps_hw6_trace_systick_snapshot_t;
 
 enum
 {
@@ -71,6 +85,8 @@ void PS_HW6_TraceObjectRaster(uint32_t stage, uint32_t end);
 uint32_t PS_HW6_TraceObjectOwnerBegin(uint32_t stage);
 void PS_HW6_TraceObjectOwnerEnd(uint32_t stage, uint32_t sequence, uint32_t status);
 void PS_HW6_TraceObjectEnd(uint32_t status);
+void PS_HW6_TraceSysTickBefore(ps_hw6_trace_systick_snapshot_t *snapshot, uint32_t reload_target);
+void PS_HW6_TraceSysTickAfter(const ps_hw6_trace_systick_snapshot_t *snapshot);
 
 #define PS_HW6_TRACE_SLEEP_STAGE_PREP_START  (1UL)
 #define PS_HW6_TRACE_SLEEP_STAGE_ENTER_STOP2 (2UL)
