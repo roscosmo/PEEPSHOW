@@ -2524,6 +2524,7 @@ export function StateGraphView({
   physicalEventKinds,
   peepOSTriggers,
   onSelect,
+  onSelectBackground,
   onCreateState,
   onDeleteState,
   onMoveStateNode,
@@ -2550,6 +2551,7 @@ export function StateGraphView({
   timerTypes?: string[];
   onRequestTimer?: (stateId: string, eventType: string) => void;
   onSelect: (selection: SceneSelection) => void;
+  onSelectBackground?: () => void;
   onCreateState: (sceneId: string, x: number, y: number) => void;
   onDeleteState: (sceneId: string, stateId: string) => void;
   onMoveStateNode: (sceneId: string, stateId: string, x: number, y: number) => void;
@@ -3179,7 +3181,10 @@ export function StateGraphView({
           sourceState: String(edge.data?.source_state ?? edge.source),
         });
       }}
-      onPaneClick={() => onSelect({ kind: "scene" })}
+      onPaneClick={() => {
+        onSelect({ kind: "scene" });
+        onSelectBackground?.();
+      }}
       proOptions={{ hideAttribution: true }}
     >
       <Background gap={18} size={1} />
@@ -3378,6 +3383,7 @@ export function SceneFlowView({
   onAddScene,
   onSelectScene,
   onOpenScene,
+  onSelectBackground,
   onSelectSceneExit,
   onSelectSceneRoute,
   onSelectPackageEntry,
@@ -3411,6 +3417,7 @@ export function SceneFlowView({
   onAddScene: (displayName: string) => void;
   onSelectScene: (sceneId: string) => void;
   onOpenScene?: (sceneId: string) => void;
+  onSelectBackground?: () => void;
   onSelectSceneExit: (sceneId: string, sceneExitId: string) => void;
   onSelectSceneRoute: (sceneId: string, routeId: string) => void;
   onSelectPackageEntry: () => void;
@@ -3755,7 +3762,10 @@ export function SceneFlowView({
       onConnect={onConnect}
       onNodeDragStop={(_, node) => onNodeDragStop(node)}
       onMoveEnd={updateViewportText}
-      onPaneClick={() => setPaletteTool(null)}
+      onPaneClick={() => {
+        setPaletteTool(null);
+        onSelectBackground?.();
+      }}
       onKeyDown={handleSceneFlowKeyDown}
       zoomOnDoubleClick={false}
       onNodeDoubleClick={(_, node) => {

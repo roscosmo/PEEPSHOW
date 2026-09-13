@@ -59,6 +59,9 @@ app.whenReady().then(async()=>{
   await field('Animation cadence',800);await button('Apply clip');
   assert.deepEqual(latest.document.animations[1].frame_duration_ms,[800,800,800,800]);
   await capture('library.png');
+  await click('.asset-workspace');
+  assert.equal(await evaluate("document.querySelector('.animation-asset-gallery button.selected')"), null);
+  assert.equal(await evaluate("document.querySelector('.clip-editor')"), null);
   await button('Placement');await click('[aria-label="Add sprite"]');
   await click('.placement-sprite-picker-group:nth-child(2) button');
   assert(batches.some(batch=>batch.length===2&&batch[0].kind==='object.add'&&batch[1].kind==='object.bind_animation'));

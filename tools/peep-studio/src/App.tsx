@@ -1105,6 +1105,30 @@ export default function App() {
     setAssetPreviewPlaying(false);
     stopAudioPlayback();
   };
+  const clearAssetLibrarySelection = () => {
+    setAssetSelection(null);
+    setCombineFrameIds([]);
+    setAssetPreviewPlaying(false);
+    stopAudioPlayback();
+  };
+  const handleAssetWorkspaceBackgroundClick = (event: ReactMouseEvent<HTMLElement>) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    if (target.closest("button, input, select, textarea, label, summary, a")) {
+      return;
+    }
+    clearAssetLibrarySelection();
+  };
+  const clearSceneFlowSelection = () => {
+    setSceneSelection({ kind: "project" });
+    clearAssetLibrarySelection();
+  };
+  const clearLogicSelection = () => {
+    setSceneSelection({ kind: "scene" });
+    clearAssetLibrarySelection();
+  };
 
   useEffect(() => {
     const handleRootSelectionShortcut = (event: KeyboardEvent) => {
@@ -3995,6 +4019,7 @@ export default function App() {
         placementSelectionAnchorRef.current = null;
         setSelectedPlacementElement(null);
         setSceneSelection({ kind: "scene" });
+        clearAssetLibrarySelection();
       }
     };
     window.addEventListener("pointermove", move);
@@ -4803,7 +4828,7 @@ export default function App() {
           </div>
           {renderModeTabs()}
         </div>
-        <div className="asset-workspace">
+        <div className="asset-workspace" onClick={handleAssetWorkspaceBackgroundClick}>
           <div className="asset-workspace-summary">
             <div className="asset-library-tabs" role="tablist" aria-label="Asset types">
               {assetTabs.map(tab => (
@@ -6997,6 +7022,7 @@ export default function App() {
                 setSceneSelection({ kind: "scene" });
                 setWorkspaceMode("logic");
               }}
+              onSelectBackground={clearSceneFlowSelection}
               onSelectSceneRoute={(sceneId, routeId) => {
                 setSelectedScene(sceneId);
                 setSceneSelection({ kind: "route", id: routeId });
@@ -7078,6 +7104,7 @@ export default function App() {
                 setSceneSelection({ kind: "timerDraft", eventType, stateId: eventType === STATE_TIMER ? stateId : undefined });
               }}
               onSelect={setSceneSelection}
+              onSelectBackground={clearLogicSelection}
               onCreateState={(sceneId, x, y) => {
                 void createState(sceneId, x, y);
               }}
