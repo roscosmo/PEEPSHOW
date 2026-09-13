@@ -194,6 +194,12 @@ Current FW0 calibration status:
   reuse that configuration rather than suspending and re-running identity and
   configuration work on every sample. Poll eligibility, the existing period
   knob and the bounded raw-sample settling delay are unchanged.
+- raw sampling performs that existing settling wait before acquiring the I2C3
+  lease, leaving the bus available to other owners during the wait. Only the
+  transfer and completion hold the lease. This also applies to raw samples used
+  by wake confirmation and diagnostics; invalid arguments/state still return
+  before waiting. Acquisition failure now follows the settling wait, with the
+  existing timeout and fault reporting unchanged.
 - owner STOP2/shutdown quiesce remains responsible for verified terminal
   wake-and-sleep or quiet-sleep configuration. Diagnostic/calibration preparation
   still parks an active polling device before taking over. Failed acquisition

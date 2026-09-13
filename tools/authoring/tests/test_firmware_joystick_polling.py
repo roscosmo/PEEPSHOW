@@ -10,6 +10,42 @@ from test_firmware_package_workflow import firmware_function
 
 
 class JoystickPollingTests(unittest.TestCase):
+    def test_raw_sample_settles_before_bus_acquisition(self):
+        root = Path(__file__).resolve().parents[3]
+        firmware = root / "firmware/peepshow_hw6_fw0"
+        source = (firmware / "Core/Src/ps_dev_tmag3001.c").read_text()
+        constants = ("ACQUIRE_TIMEOUT_MS", "MAX_LEASE_MS", "TRANSFER_TIMEOUT_MS",
+                     "SAMPLE_SETTLE_TICKS", "REG_X_RESULT_MSB", "SAMPLE_WINDOW_LEN")
+        definitions = "\n".join(re.search(
+            rf"^#define PS_DEV_TMAG3001_{name}\s+[^\n]+", source, re.M).group(0)
+            for name in constants)
+        definitions += "\ntypedef struct {ps_hw_i2c3_transfer_result_t last_transfer;} ps_dev_tmag3001_transport_t;\n"
+        functions = ("ps_dev_tmag3001_finish", "ps_dev_tmag3001_set_last_hal",
+                     "ps_dev_tmag3001_read_raw_sample")
+        compiler = os.environ.get("HOST_CC", "C:/msys64/ucrt64/bin/gcc.exe")
+        env = dict(os.environ)
+        env["PATH"] = str(Path(compiler).parent) + os.pathsep + env.get("PATH", "")
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            (work / "joystick_sample_definitions.inc").write_text(definitions, encoding="ascii")
+            (work / "joystick_sample_under_test.inc").write_text(
+                "\n".join(firmware_function(source, name) for name in functions), encoding="ascii")
+            (work / "stm32u5xx_hal.h").write_text(
+                "#pragma once\n#include <stdint.h>\n"
+                "typedef enum {HAL_OK, HAL_ERROR, HAL_BUSY, HAL_TIMEOUT} HAL_StatusTypeDef;\n"
+                "typedef struct {uint32_t unused;} I2C_HandleTypeDef;\n", encoding="ascii")
+            (work / "tx_api.h").write_text(
+                "#pragma once\n#include <stdint.h>\ntypedef uint32_t ULONG;\ntypedef uint32_t UINT;\n",
+                encoding="ascii")
+            exe = work / "joystick_sample.exe"
+            result = subprocess.run([compiler, "-std=c11", "-Wall", "-Wextra", "-Werror", "-O2",
+                "-I", str(work), "-I", str(firmware / "Core/Inc"),
+                str(Path(__file__).with_name("native_joystick_sample.c")), "-o", str(exe)],
+                capture_output=True, text=True, timeout=30, env=env)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            result = subprocess.run([str(exe)], capture_output=True, text=True, timeout=10, env=env)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
     def test_awake_lifetime_and_failure_cleanup(self):
         root = Path(__file__).resolve().parents[3]
         firmware = root / "firmware/peepshow_hw6_fw0"

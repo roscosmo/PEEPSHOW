@@ -636,6 +636,82 @@ fill=0), not live autonomous pixels. This is a functional regression pass
 supported by the user's observation, not independent timer-accuracy or
 low-current/energy measurement. No further firmware change was made here.
 
+## Joystick Settling Outside the Bus Lease
+
+Further analysis of `__fw0_tracex_snapshot_20260913_184946.trx` separates the
+49.149 ms candidate interval from a 16.681 ms presentation queue/clock interval.
+Candidate raster phases total about 26.771 ms without double-counting nested
+validation: drawing 14.247 ms, copies 4.869 ms, overlap 4.721 ms, clearing
+1.853 ms and outer validation 1.080 ms. The remainder includes projection,
+comparison, packing, scheduling and unmarked work; it is not attributed to
+isolated CPU operations by this capture.
+
+The presentation delay has a directly observed dependency chain. The joystick
+takes I2C3 at 55.762 ms and sleeps one tick while holding it. The PMIC snapshot
+starts at 59.998 ms and blocks on that mutex at 60.206 ms. The display posts
+its clock request at 62.717 ms. Joystick release at 66.966 ms lets the PMIC run;
+its snapshot completes at 78.360 ms and the queued display clock request is
+acknowledged at 78.806 ms. Actual PMIC work, not just thread scheduling, is
+identified by matching owner markers and successful completion. The snapshot
+wrapper is shared by periodic and interrupt paths; its marker alone does not
+identify which trigger invoked it.
+
+The approved narrow change moves the existing
+`PS_DEV_TMAG3001_SAMPLE_SETTLE_TICKS` wait in
+`ps_dev_tmag3001_read_raw_sample` before `ps_hw_i2c3_acquire`. No bus work
+precedes this wait within the sample call. Other owners may now use I2C3 while
+the input owner settles. Invalid arguments/state still return immediately;
+acquisition failure now occurs after settling rather than before it. Read,
+release and primary-error precedence remain unchanged. The delay, timeout,
+poll eligibility, clock policy, PMIC checks and terminal STOP2 writes are not
+changed. The shared raw reader is also used for wake confirmation/diagnostics.
+
+The native regression executes the production reader and completion helpers
+with a fake bus: sleep asserts no held lease, another owner can complete work
+during that wait, and read asserts a held lease. It covers repeated reads,
+signed XYZ/status decoding, invalid state/arguments, acquisition failure,
+read failure and release failure, including preservation of the primary error.
+Hardware contention reduction and wake/visual regression checks remain pending;
+this is not a claim to remove all PMIC or candidate-preparation latency.
+
+Local verification: all **359 authoring/native tests pass**, including the
+three targeted joystick tests. Debug firmware build, generated target-profile,
+runtime-stack and whitespace checks pass. RAM/ROM/SRAM4 remain
+552360/876552/15480 bytes. Worst checked runtime stack plus reserve remains
+2432/4096 bytes; no new allocation or retained payload storage is introduced.
+
+### Bus-Lease Hardware Result
+
+Capture `__fw0_tracex_snapshot_20260913_201020.trx` retains all 386 events
+between matching RECEIVE/DONE markers, with no ring wraps or marker errors.
+The L selection transaction and panel complete successfully at unchanged
+24 MHz. Cycle-derived total is 101.142 ms (runtime receipt to panel 100.512 ms),
+consistent with the 100 ms kernel reading. No SysTick retune records occur.
+
+Both captured joystick reads now sleep before acquiring I2C3:
+38.084 -> 47.985 ms, then release at 49.450 ms; and
+88.084 -> 97.890 ms, then release at 99.344 ms. Lease intervals are about
+1.465 and 1.453 ms, with successful read-completion markers. This confirms the
+approved ordering change on hardware. No PMIC operation overlaps these two
+settling intervals, so this run does not quantify avoided contention under the
+previous overlap pattern.
+
+Candidate preparation remains 49.327 ms. Presentation queue/clock is 0.501 ms
+and panel render/transfer 25.822 ms. PMIC work occurs earlier instead: the power
+owner acknowledges the initial runtime clock request at 3.783 ms, starts its
+snapshot at 4.033 ms and completes it at 15.548 ms. Runtime consumes the
+acknowledgement at 15.759 ms after the power owner suspends. The snapshot's
+successful completion proves actual PMIC work delayed runtime progress even
+though the clock acknowledgement had already been sent. This remains separate
+from the fixed bus-holding sleep and is not a newly proven scheduler defect.
+These two samples do not establish a worst-case latency improvement. The user
+subsequently confirmed all requested autonomous checks remained normal:
+joystick wake, L/R movement, animation continuity and HOME/AWAY timer behaviour.
+This closes the functional regression check for moving settling outside the
+bus lease. It is user-observed behaviour, not an additional instrumented trace
+or a new power/current measurement. PMIC interference and candidate-preparation
+cost remain separate optimisation work.
+
 ## Verification
 
 Native tests exercise actual stamp/begin/end functions and presentation/candidate
