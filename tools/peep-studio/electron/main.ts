@@ -617,6 +617,34 @@ ipcMain.handle("peep:write-generated-sprite-png", async (_event, projectPath: un
   };
 });
 
+ipcMain.handle("peep:overwrite-generated-sprite-png", async (_event, projectPath: unknown, sourcePath: unknown, pngDataUrl: unknown) => {
+  if (typeof projectPath !== "string" || typeof sourcePath !== "string" || typeof pngDataUrl !== "string") {
+    throw new Error("Invalid generated sprite overwrite request from renderer");
+  }
+  const projectRoot = path.resolve(projectPath);
+  if (!projectRoot.endsWith(".peepproj")) {
+    throw new Error("Generated sprite target must be a .peepproj directory");
+  }
+  const normalizedSource = sourcePath.replace(/\\/g, "/");
+  if (!normalizedSource.startsWith("assets/") || path.extname(normalizedSource).toLowerCase() !== ".png") {
+    throw new Error("Generated sprite source must be a project assets PNG");
+  }
+  const image = nativeImage.createFromBuffer(pngBufferFromDataUrl(pngDataUrl));
+  const size = image.getSize();
+  if (image.isEmpty() || size.width <= 0 || size.height <= 0) {
+    throw new Error("Generated sprite PNG could not be loaded");
+  }
+  if (size.width > MAX_SOURCE_IMAGE_DIMENSION || size.height > MAX_SOURCE_IMAGE_DIMENSION) {
+    throw new Error(`Generated sprite PNG must be no larger than ${MAX_SOURCE_IMAGE_DIMENSION}x${MAX_SOURCE_IMAGE_DIMENSION}`);
+  }
+  await writeFile(resolveProjectRelativePath(projectRoot, normalizedSource), sanitizeSpriteImage(image));
+  return {
+    sourcePath: normalizedSource,
+    width: size.width,
+    height: size.height,
+  };
+});
+
 ipcMain.handle("peep:import-audio-wav", async (_event, projectPath: unknown) => {
   if (typeof projectPath !== "string") {
     throw new Error("Invalid audio import request from renderer");

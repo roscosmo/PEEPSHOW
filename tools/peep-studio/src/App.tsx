@@ -288,6 +288,14 @@ type BakedTextSourceRecord = {
   updated_at: string;
 };
 
+type BakedTextEditDraft = {
+  assetId: string;
+  displayName: string;
+  text: string;
+  fontSize: string;
+  fontId: string;
+};
+
 type LoadedBakedTextFont = {
   family: string;
   fontId: string;
@@ -422,6 +430,7 @@ export default function App() {
   const [placementDraftBounds, setPlacementDraftBounds] = useState<Record<string, { x: number; y: number; width: number; height: number }>>({});
   const [pendingSpriteImport, setPendingSpriteImport] = useState<PendingSpriteImport | null>(null);
   const [bakedTextDraft, setBakedTextDraft] = useState<BakedTextDraft | null>(null);
+  const [bakedTextEditDraft, setBakedTextEditDraft] = useState<BakedTextEditDraft | null>(null);
   const [assetImportDebug, setAssetImportDebug] = useState("No import attempted.");
   const [message, setMessage] = useState<string | null>(null);
   const previewRef = useRef<PreviewSnapshot | null>(null);
@@ -445,6 +454,7 @@ export default function App() {
 
   useEffect(() => {
     setBakedTextDraft(null);
+    setBakedTextEditDraft(null);
     setFontAssets([]);
     setFontPreviewFamilies({});
     setBakedTextSources([]);
@@ -1437,6 +1447,104 @@ export default function App() {
         status: "Text sprite creation failed.",
       });
       setMessage(text);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const regenerateBakedTextSprite = async (
+    source: BakedTextSourceRecord,
+    asset: AssetRecord,
+    draft: BakedTextEditDraft,
+  ) => {
+    if (bridge === undefined || project === null || projectPath === null || busy !== null) {
+      return;
+    }
+    if (bridge.overwriteGeneratedSpritePng === undefined || bridge.upsertBakedTextSource === undefined) {
+      setMessage("Restart Peep Studio to enable baked text regeneration.");
+      return;
+    }
+    const font = fontAssets.find(item => item.font_id === draft.fontId);
+    if (font === undefined) {
+      setMessage("Choose an imported font asset before regenerating this text sprite.");
+      return;
+    }
+    const displayName = draft.displayName.trim();
+    if (displayName.length === 0 || displayName.length > 64) {
+      setMessage("Sprite name must be 1 to 64 characters.");
+      return;
+    }
+    const fontSize = parseBakedTextFontSize(draft.fontSize);
+    if (fontSize === null) {
+      setMessage(`Font size must be ${BAKED_TEXT_MIN_FONT_SIZE} to ${BAKED_TEXT_MAX_FONT_SIZE} px.`);
+      return;
+    }
+    setBusy("Regenerating text sprite");
+    setPlaying(false);
+    try {
+      const loadedFont = await loadBakedTextFontFace(font);
+      const normalizedText = draft.text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      const rendered = await renderBakedTextPng({ text: normalizedText, fontSize: String(fontSize) }, loadedFont.family);
+      const written = await bridge.overwriteGeneratedSpritePng(projectPath, source.source_path, rendered.dataUrl);
+      const existingFrame = asset.frames.find(frame => frame.frame_id === source.frame_id) ?? asset.frames[0];
+      const frameId = existingFrame?.frame_id ?? source.frame_id;
+      const nextFrame: AssetFrameRecord = {
+        ...(existingFrame ?? {}),
+        frame_id: frameId,
+        display_name: existingFrame?.display_name ?? "Frame",
+        source_rect: { x: 0, y: 0, width: written.width, height: written.height },
+        pivot_x: existingFrame?.pivot_x ?? 0,
+        pivot_y: existingFrame?.pivot_y ?? 0,
+      };
+      const hasTargetFrame = asset.frames.some(frame => frame.frame_id === frameId);
+      const frames = asset.frames.length === 0
+        ? [nextFrame]
+        : hasTargetFrame
+          ? asset.frames.map(frame => frame.frame_id === frameId ? nextFrame : frame)
+          : [nextFrame, ...asset.frames];
+      const updatedAsset: AssetRecord = {
+        ...asset,
+        display_name: displayName,
+        source_path: written.sourcePath,
+        source_format: "png",
+        frames,
+      };
+      const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
+        project_revision: project.project_revision,
+        commands: [{ kind: "asset.upsert", asset: updatedAsset }],
+      });
+      applyProjectResult(result);
+      const nextSource: BakedTextSourceRecord = {
+        ...source,
+        frame_id: frameId,
+        display_name: displayName,
+        font_id: font.font_id,
+        text: normalizedText,
+        font_size_px: fontSize,
+        source_path: written.sourcePath,
+        width: written.width,
+        height: written.height,
+        updated_at: new Date().toISOString(),
+      };
+      await bridge.upsertBakedTextSource(projectPath, nextSource);
+      setBakedTextSources(current => [
+        ...current.filter(item => item.asset_id !== nextSource.asset_id),
+        nextSource,
+      ].sort((left, right) => left.asset_id.localeCompare(right.asset_id)));
+      selectAssetRecord({ kind: "sprite", frameId });
+      setBakedTextEditDraft({
+        assetId: nextSource.asset_id,
+        displayName: nextSource.display_name,
+        text: nextSource.text,
+        fontSize: String(nextSource.font_size_px),
+        fontId: nextSource.font_id,
+      });
+      const sizeChanged = source.width !== written.width || source.height !== written.height;
+      setMessage(sizeChanged
+        ? `Regenerated ${displayName}. Size changed ${source.width}x${source.height} to ${written.width}x${written.height}; check placements.`
+        : `Regenerated ${displayName}. Save to write it to the project.`);
+    } catch (error) {
+      setMessage(errorText(error));
     } finally {
       setBusy(null);
     }
@@ -3188,6 +3296,28 @@ export default function App() {
     () => new Map(bakedTextSources.map((source) => [source.asset_id, source])),
     [bakedTextSources],
   );
+  useEffect(() => {
+    const assetId = assetSelection?.kind === "sprite"
+      ? compiledAssetFrameById.get(assetSelection.frameId)?.asset_id ?? null
+      : null;
+    if (assetId === null) {
+      setBakedTextEditDraft(null);
+      return;
+    }
+    const source = bakedTextSourceByAssetId.get(assetId);
+    if (source === undefined) {
+      setBakedTextEditDraft(null);
+      return;
+    }
+    const asset = assetById.get(assetId);
+    setBakedTextEditDraft({
+      assetId: source.asset_id,
+      displayName: asset?.display_name ?? source.display_name,
+      text: source.text,
+      fontSize: String(source.font_size_px),
+      fontId: source.font_id,
+    });
+  }, [assetById, assetSelection, bakedTextSourceByAssetId, compiledAssetFrameById]);
   const spriteAssetKind = (asset: AssetRecord | undefined, frameCount: number) => {
     if (asset?.text !== undefined || asset?.font_id !== undefined || asset?.asset_type === "text") {
       return "Text";
@@ -4823,6 +4953,17 @@ export default function App() {
           const editableSystemTextAsset = sourceAsset?.source_format === "system_font_text";
           const bakedTextSource = sourceAsset === null ? null : bakedTextSourceByAssetId.get(sourceAsset.asset_id) ?? null;
           const bakedTextFont = bakedTextSource === null ? null : fontAssets.find(font => font.font_id === bakedTextSource.font_id) ?? null;
+          const bakedTextEdit = bakedTextSource === null
+            ? null
+            : bakedTextEditDraft?.assetId === bakedTextSource.asset_id
+              ? bakedTextEditDraft
+              : {
+                assetId: bakedTextSource.asset_id,
+                displayName: sourceAsset?.display_name ?? bakedTextSource.display_name,
+                text: bakedTextSource.text,
+                fontSize: String(bakedTextSource.font_size_px),
+                fontId: bakedTextSource.font_id,
+              };
           return (
             <>
               <div className={`asset-inspector-preview ${textPreviewAsset ? "text-asset-preview" : ""}`}>
@@ -4947,13 +5088,65 @@ export default function App() {
                   </label>
                 </div>
               )}
-              {bakedTextSource !== null && (
-                <div className="baked-text-source-summary">
+              {bakedTextSource !== null && sourceAsset !== null && bakedTextEdit !== null && (
+                <div className="baked-text-source-summary baked-text-source-editor">
                   <div>
                     <strong>Baked text source</strong>
                     <span>{bakedTextFont?.display_name ?? bakedTextSource.font_id} / {bakedTextSource.font_size_px}px</span>
                   </div>
-                  <p>{bakedTextSource.text}</p>
+                  <label>
+                    Text
+                    <textarea
+                      rows={3}
+                      maxLength={512}
+                      value={bakedTextEdit.text}
+                      disabled={busy !== null}
+                      onChange={(event) => setBakedTextEditDraft(current => ({
+                        ...(current?.assetId === bakedTextSource.asset_id ? current : bakedTextEdit),
+                        text: event.target.value,
+                      }))}
+                    />
+                  </label>
+                  <div className="baked-text-source-fields">
+                    <label>
+                      Font
+                      <select
+                        value={bakedTextEdit.fontId}
+                        disabled={busy !== null || fontAssets.length === 0}
+                        onChange={(event) => setBakedTextEditDraft(current => ({
+                          ...(current?.assetId === bakedTextSource.asset_id ? current : bakedTextEdit),
+                          fontId: event.target.value,
+                        }))}
+                      >
+                        {fontAssets.map(font => (
+                          <option key={font.font_id} value={font.font_id}>{font.display_name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Size px
+                      <input
+                        type="number"
+                        min={BAKED_TEXT_MIN_FONT_SIZE}
+                        max={BAKED_TEXT_MAX_FONT_SIZE}
+                        step={1}
+                        value={bakedTextEdit.fontSize}
+                        disabled={busy !== null}
+                        onChange={(event) => setBakedTextEditDraft(current => ({
+                          ...(current?.assetId === bakedTextSource.asset_id ? current : bakedTextEdit),
+                          fontSize: event.target.value,
+                        }))}
+                      />
+                    </label>
+                    <button
+                      className="button primary"
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => void regenerateBakedTextSprite(bakedTextSource, sourceAsset, bakedTextEdit)}
+                    >
+                      Regenerate
+                    </button>
+                  </div>
                 </div>
               )}
               <dl className="inspector-list">

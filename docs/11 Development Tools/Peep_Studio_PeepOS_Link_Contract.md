@@ -610,8 +610,9 @@ Imported custom fonts are tracked by Peep Studio in the project-local
 sidecar is editor-owned metadata, not a package/compiler contract. Baked text
 source records are likewise tracked by Studio in `assets/text/catalog.json`,
 keyed by the generated sprite asset ID so Studio can show the original text,
-font and size. Text sprites generated from those fonts enter the shared backend
-only as ordinary PNG sprite assets through `asset.upsert`.
+font and size, and regenerate the PNG-backed sprite from those editor-owned
+inputs. Text sprites generated from those fonts enter the shared backend only
+as ordinary PNG sprite assets through `asset.upsert`.
 
 Service API version 16 adds ordered `set_element_visibility`,
 `set_element_position`, and `set_element_frame` route actions. Each action

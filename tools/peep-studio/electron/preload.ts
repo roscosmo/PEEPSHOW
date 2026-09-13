@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld("peepStudio", {
     ipcRenderer.invoke("peep:upsert-baked-text-source", projectPath, record),
   writeGeneratedSpritePng: (projectPath: string, requestedAssetId: string, pngDataUrl: string) =>
     ipcRenderer.invoke("peep:write-generated-sprite-png", projectPath, requestedAssetId, pngDataUrl),
+  overwriteGeneratedSpritePng: (projectPath: string, sourcePath: string, pngDataUrl: string) =>
+    ipcRenderer.invoke("peep:overwrite-generated-sprite-png", projectPath, sourcePath, pngDataUrl),
   importAudioWav: (projectPath: string) => ipcRenderer.invoke("peep:import-audio-wav", projectPath),
   audioThumbnailSource: (projectPath: string, sourcePath: string) => ipcRenderer.invoke("peep:audio-thumbnail-source", projectPath, sourcePath),
   saveProjectAs: (sourcePath: string, defaultName: string) =>

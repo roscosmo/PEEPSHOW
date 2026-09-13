@@ -2587,6 +2587,48 @@ button:focus-visible {
   line-height: 1.35;
 }
 
+.baked-text-source-editor label {
+  display: grid;
+  gap: 5px;
+  color: #68736d;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.baked-text-source-editor textarea,
+.baked-text-source-editor input,
+.baked-text-source-editor select {
+  width: 100%;
+  border: 1px solid #c9d3ce;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #27302b;
+  font-size: 13px;
+  font-weight: 740;
+}
+
+.baked-text-source-editor textarea {
+  min-height: 74px;
+  padding: 8px;
+  resize: vertical;
+  line-height: 1.35;
+  text-transform: none;
+}
+
+.baked-text-source-editor input,
+.baked-text-source-editor select {
+  height: 32px;
+  padding: 0 8px;
+}
+
+.baked-text-source-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px auto;
+  gap: 10px;
+  align-items: end;
+}
+
 .placement-inspector .inspector-list {
   margin-bottom: 12px;
 }

@@ -32,6 +32,7 @@ interface PeepStudioBridge {
   readBakedTextSources?(projectPath: string): Promise<StudioBakedTextSourceRecord[]>;
   upsertBakedTextSource?(projectPath: string, record: StudioBakedTextSourceRecord): Promise<StudioBakedTextSourceRecord>;
   writeGeneratedSpritePng?(projectPath: string, requestedAssetId: string, pngDataUrl: string): Promise<{ assetId: string; sourcePath: string; width: number; height: number }>;
+  overwriteGeneratedSpritePng?(projectPath: string, sourcePath: string, pngDataUrl: string): Promise<{ sourcePath: string; width: number; height: number }>;
   importAudioWav(projectPath: string): Promise<{ assetId: string; sourcePath: string } | null>;
   audioThumbnailSource?(projectPath: string, sourcePath: string): Promise<{ key: string; data: string }>;
   saveProjectAs(sourcePath: string, defaultName: string): Promise<string | null>;
