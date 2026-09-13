@@ -162,6 +162,158 @@ HW6 FW0 target evidence now validates the runtime policy path at one normal poin
 
 ---
 
+## Planned PMIC Monitoring Schedule
+
+Status: agreed design, not implemented. FW0 still performs a full snapshot when
+the `1000 ms` monitor period is due, with additional boot, interrupt and explicit
+diagnostic requests. Checking whether the period is due is not a hardware read.
+The current snapshot performs 24 single-register reads and up to two flag-clear
+writes. It runs synchronously in `thPower`, so even an already-acknowledged clock
+request can wait for this work before its requesting thread runs.
+
+The next monitoring increment separates these workloads without transferring
+PMIC ownership away from `thPower`:
+
+| Workload | Trigger and scheduling rule | Required validity |
+| --- | --- | --- |
+| Battery safety | Retain the existing 1000 ms active-monitor target initially; service relevant power events promptly. Faster checks near thresholds or around load changes require an explicit policy and measurement. | Valid VBAT and the presence, fault and external-power information needed for the decision; slow SOC must not substitute for voltage safety. |
+| Charger and VBUS events | Interrupt-driven status refresh, with a bounded periodic backstop for missed events. Coalesce requests without discarding unrecorded flags. | Record observed flags before write-one-to-clear; publish decoded status only from successful reads. |
+| SOC and UI telemetry | Slower, independently scheduled updates. UI and package consumers use the published cache rather than initiating synchronous PMIC reads. | Value, last-success time, age and validity are visible to consumers. An overdue value is not a fresh measurement. |
+| Identity and configuration verification | Mandatory at boot, after configuration changes and after recovery; a separate, slower integrity audit thereafter. | Boot/recovery admission still requires verified identity and relevant rail, charger and gauge configuration. Ordinary telemetry cannot clear a failed verification. |
+
+The slower telemetry, backstop and audit periods are not selected by this
+design. They must become separately described knobs, with evidence supporting
+their defaults. Do not silently repurpose the current monitor-period knob to
+mean all of these schedules. Battery voltage can change quickly under load even
+when SOC changes slowly.
+
+### Freshness And Failure Rules
+
+- Each group publishes its last successful sample time, latest attempt status,
+  validity and a defined maximum usable age. Target update period, maximum usable
+  age and permitted scheduling deferral are separate policy values.
+- Publish a group only after its required reads complete successfully. Do not
+  present a mixture of old and new fields as one current successful sample.
+  Preserve the last good sample for diagnostics while exposing failure/staleness.
+- Decisions using multiple groups must check every required group's validity
+  and age. Required freshness limits must be specified before implementing that
+  decision; this document does not establish a safe maximum age from one trace.
+- Missing, failed or over-age safety information enters the documented
+  unknown/recovery policy. It must not silently permit a new high-load operation
+  or be interpreted as zero battery voltage.
+- The present snapshot's overall success includes configuration verification.
+  Splitting reads therefore requires explicit separate verification and sample
+  validity, not merely removing configuration reads from the success test.
+
+### Bounded Work And Sleep
+
+- Use bounded owner jobs and service pending requests between safe transaction
+  boundaries. No extra thread, cross-owner peripheral access, hidden retry loop
+  or arbitrary sleep is introduced to simulate prioritisation.
+- Routine telemetry and integrity audits may defer during bounded interactive
+  work, but retain their original deadline and a maximum deferral. Repeated input
+  cannot continually restart their deadlines. Safety and critical power events
+  cannot be postponed merely to improve animation or button latency.
+- A bus transaction remains indivisible, with its existing ownership and clock
+  protections. Grouped register reads may reduce transaction overhead later;
+  they do not replace the scheduling and freshness policy.
+- Do not wake from STOP2 solely to refresh cosmetic SOC/UI data or perform a
+  routine configuration audit. Overdue optional work is considered on natural
+  wake; freshness accounting must include elapsed STOP2 time.
+- The existing one-second owner-loop monitor is not a promise of a one-second
+  RTC wake. Any required asleep safety sampling deadline must be explicitly
+  designed with the power/sleep policy and shared RTC arbitration, then measured
+  on hardware. Do not add such a wake implicitly while splitting the snapshot.
+
+### Implementation And Acceptance
+
+First define the read groups, verification barriers and published freshness
+state; then schedule bounded jobs and tune optional periods. Preserve PMIC
+interrupt record/clear ordering, boot battery admission, charger/VBUS reporting,
+critical-battery policy and recovery behaviour throughout.
+
+Acceptance requires traces showing actual register work and request latency,
+including sustained input and simultaneous PMIC events; failure/stale-sample
+tests; and hardware checks of boot, charger connect/disconnect, battery policy
+and STOP2 wake behaviour. Measure current and energy as well as responsiveness.
+No performance or battery-safety improvement is established by this design alone.
+
+## Planned PMIC Monitoring Schedule
+
+Status: agreed design, not implemented. FW0 still performs a full snapshot when
+the `1000 ms` monitor period is due, with additional boot, interrupt and explicit
+diagnostic requests. Checking whether the period is due is not a hardware read.
+The current snapshot performs 24 single-register reads and up to two flag-clear
+writes. It runs synchronously in `thPower`, so even an already-acknowledged clock
+request can wait for this work before its requesting thread runs.
+
+The next monitoring increment separates these workloads without transferring
+PMIC ownership away from `thPower`:
+
+| Workload | Trigger and scheduling rule | Required validity |
+| --- | --- | --- |
+| Battery safety | Retain the existing 1000 ms active-monitor target initially; service relevant power events promptly. Faster checks near thresholds or around load changes require an explicit policy and measurement. | Valid VBAT and the presence, fault and external-power information needed for the decision; slow SOC must not substitute for voltage safety. |
+| Charger and VBUS events | Interrupt-driven status refresh, with a bounded periodic backstop for missed events. Coalesce requests without discarding unrecorded flags. | Record observed flags before write-one-to-clear; publish decoded status only from successful reads. |
+| SOC and UI telemetry | Slower, independently scheduled updates. UI and package consumers use the published cache rather than initiating synchronous PMIC reads. | Value, last-success time, age and validity are visible to consumers. An overdue value is not a fresh measurement. |
+| Identity and configuration verification | Mandatory at boot, after configuration changes and after recovery; a separate, slower integrity audit thereafter. | Boot/recovery admission still requires verified identity and relevant rail, charger and gauge configuration. Ordinary telemetry cannot clear a failed verification. |
+
+The slower telemetry, backstop and audit periods are not selected by this
+design. They must become separately described knobs, with evidence supporting
+their defaults. Do not silently repurpose the current monitor-period knob to
+mean all of these schedules. Battery voltage can change quickly under load even
+when SOC changes slowly.
+
+### Freshness And Failure Rules
+
+- Each group publishes its last successful sample time, latest attempt status,
+  validity and a defined maximum usable age. Target update period, maximum usable
+  age and permitted scheduling deferral are separate policy values.
+- Publish a group only after its required reads complete successfully. Do not
+  present a mixture of old and new fields as one current successful sample.
+  Preserve the last good sample for diagnostics while exposing failure/staleness.
+- Decisions using multiple groups must check every required group's validity
+  and age. Required freshness limits must be specified before implementing that
+  decision; this document does not establish a safe maximum age from one trace.
+- Missing, failed or over-age safety information enters the documented
+  unknown/recovery policy. It must not silently permit a new high-load operation
+  or be interpreted as zero battery voltage.
+- The present snapshot's overall success includes configuration verification.
+  Splitting reads therefore requires explicit separate verification and sample
+  validity, not merely removing configuration reads from the success test.
+
+### Bounded Work And Sleep
+
+- Use bounded owner jobs and service pending requests between safe transaction
+  boundaries. No extra thread, cross-owner peripheral access, hidden retry loop
+  or arbitrary sleep is introduced to simulate prioritisation.
+- Routine telemetry and integrity audits may defer during bounded interactive
+  work, but retain their original deadline and a maximum deferral. Repeated input
+  cannot continually restart their deadlines. Safety and critical power events
+  cannot be postponed merely to improve animation or button latency.
+- A bus transaction remains indivisible, with its existing ownership and clock
+  protections. Grouped register reads may reduce transaction overhead later;
+  they do not replace the scheduling and freshness policy.
+- Do not wake from STOP2 solely to refresh cosmetic SOC/UI data or perform a
+  routine configuration audit. Overdue optional work is considered on natural
+  wake; freshness accounting must include elapsed STOP2 time.
+- The existing one-second owner-loop monitor is not a promise of a one-second
+  RTC wake. Any required asleep safety sampling deadline must be explicitly
+  designed with the power/sleep policy and shared RTC arbitration, then measured
+  on hardware. Do not add such a wake implicitly while splitting the snapshot.
+
+### Implementation And Acceptance
+
+First define the read groups, verification barriers and published freshness
+state; then schedule bounded jobs and tune optional periods. Preserve PMIC
+interrupt record/clear ordering, boot battery admission, charger/VBUS reporting,
+critical-battery policy and recovery behaviour throughout.
+
+Acceptance requires traces showing actual register work and request latency,
+including sustained input and simultaneous PMIC events; failure/stale-sample
+tests; and hardware checks of boot, charger connect/disconnect, battery policy
+and STOP2 wake behaviour. Measure current and energy as well as responsiveness.
+No performance or battery-safety improvement is established by this design alone.
+
 ## VBUS Detection
 
 VBUS may be classified from:

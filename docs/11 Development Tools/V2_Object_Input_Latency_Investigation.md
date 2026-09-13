@@ -712,6 +712,36 @@ bus lease. It is user-observed behaviour, not an additional instrumented trace
 or a new power/current measurement. PMIC interference and candidate-preparation
 cost remain separate optimisation work.
 
+## Next: Scheduled PMIC Workloads
+
+The next agreed step is the design in the PMIC and Power Contract's
+"Planned PMIC Monitoring Schedule" section. Firmware is unchanged by this
+documentation checkpoint.
+
+The current full snapshot is due once per second, not on every owner-loop
+iteration. Boot, PMIC interrupts and explicit diagnostics can also request it.
+It combines battery safety, charger/VBUS status, SOC and configuration checks
+into 24 single-register reads plus conditional interrupt-flag clear writes.
+The 201020 trace shows real PMIC work from approximately 4.033 to 15.548 ms;
+runtime consumed an earlier clock acknowledgement only at 15.759 ms. This is
+evidence of synchronous owner work delaying progress, not merely a scheduled
+thread or an assumed bus conflict.
+
+Separate safety/event monitoring from slower cached telemetry and configuration
+audits before tuning transfer overhead. Retain the existing active safety
+cadence initially; define per-group freshness, bounded deferral, failure and
+verification rules. Optional refreshes must not create periodic STOP2 wakes.
+Slower periods and asleep safety deadlines still need explicit policy and
+hardware evidence. UI consumers should not request fresh hardware reads merely
+to redraw battery information.
+
+The earlier proposal to consolidate adjacent registers into bounded burst reads
+remains a possible implementation optimisation, not the next standalone fix.
+In particular, existing full-snapshot success depends on configuration checks:
+splitting the snapshot must preserve their boot/recovery admission role rather
+than silently weakening validation. No GUI capability or authoring change is
+required for this internal power-owner work.
+
 ## Verification
 
 Native tests exercise actual stamp/begin/end functions and presentation/candidate
