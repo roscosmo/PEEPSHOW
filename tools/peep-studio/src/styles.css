@@ -1758,14 +1758,7 @@ button:focus-visible {
   place-items: center;
   border: 1px solid #d6ded9;
   border-radius: 5px;
-  background:
-    linear-gradient(45deg, #eef3f0 25%, transparent 25%),
-    linear-gradient(-45deg, #eef3f0 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #eef3f0 75%),
-    linear-gradient(-45deg, transparent 75%, #eef3f0 75%),
-    #ffffff;
-  background-position: 0 0, 0 5px, 5px -5px, -5px 0;
-  background-size: 10px 10px;
+  background: var(--sprite-preview-background, #ff66ff);
 }
 
 .animation-normalize-strip .frame-preview-canvas {
@@ -2271,14 +2264,7 @@ button:focus-visible {
   justify-content: center;
   border: 1px solid #d6ded9;
   border-radius: 6px;
-  background:
-    linear-gradient(45deg, #eef3f0 25%, transparent 25%),
-    linear-gradient(-45deg, #eef3f0 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #eef3f0 75%),
-    linear-gradient(-45deg, transparent 75%, #eef3f0 75%),
-    #ffffff;
-  background-position: 0 0, 0 5px, 5px -5px, -5px 0;
-  background-size: 10px 10px;
+  background: var(--sprite-preview-background, #ff66ff);
 }
 
 .asset-frame-preview .frame-preview-canvas {
@@ -2299,14 +2285,7 @@ button:focus-visible {
   overflow: hidden;
   border: 1px solid #d6ded9;
   border-radius: 6px;
-  background:
-    linear-gradient(45deg, #eef3f0 25%, transparent 25%),
-    linear-gradient(-45deg, #eef3f0 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #eef3f0 75%),
-    linear-gradient(-45deg, transparent 75%, #eef3f0 75%),
-    #ffffff;
-  background-position: 0 0, 0 5px, 5px -5px, -5px 0;
-  background-size: 10px 10px;
+  background: var(--sprite-preview-background, #ff66ff);
 }
 
 .asset-sheet-preview-button,
@@ -2450,14 +2429,7 @@ button:focus-visible {
   margin-bottom: 12px;
   border: 1px solid #d6ded9;
   border-radius: 7px;
-  background:
-    linear-gradient(45deg, #eef3f0 25%, transparent 25%),
-    linear-gradient(-45deg, #eef3f0 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #eef3f0 75%),
-    linear-gradient(-45deg, transparent 75%, #eef3f0 75%),
-    #ffffff;
-  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
-  background-size: 12px 12px;
+  background: var(--sprite-preview-background, #ff66ff);
 }
 
 .asset-inspector-preview .frame-preview-canvas {
@@ -2853,14 +2825,7 @@ button:focus-visible {
   justify-content: center;
   border: 1px solid #d6ded9;
   border-radius: 4px;
-  background:
-    linear-gradient(45deg, #eef3f0 25%, transparent 25%),
-    linear-gradient(-45deg, #eef3f0 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #eef3f0 75%),
-    linear-gradient(-45deg, transparent 75%, #eef3f0 75%),
-    #ffffff;
-  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
-  background-size: 8px 8px;
+  background: var(--sprite-preview-background, #ff66ff);
 }
 
 .frame-preview-canvas {
@@ -2992,14 +2957,7 @@ button:focus-visible {
   justify-content: center;
   border: 1px solid #d6ded9;
   border-radius: 6px;
-  background:
-    linear-gradient(45deg, #eef3f0 25%, transparent 25%),
-    linear-gradient(-45deg, #eef3f0 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #eef3f0 75%),
-    linear-gradient(-45deg, transparent 75%, #eef3f0 75%),
-    #ffffff;
-  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
-  background-size: 8px 8px;
+  background: var(--sprite-preview-background, #ff66ff);
 }
 
 .placement-animation-strip .frame-preview-canvas {
@@ -3052,6 +3010,7 @@ button:focus-visible {
 
 .placement-view-settings label:has(input[type="range"]),
 .placement-view-settings label:has(input[type="text"]),
+.placement-view-settings label:has(input[type="color"]),
 .placement-view-settings label:has(select) {
   grid-template-columns: 92px minmax(0, 1fr);
 }
@@ -3076,6 +3035,15 @@ button:focus-visible {
   color: #27302b;
   font-size: 11px;
   font-weight: 720;
+}
+
+.placement-view-settings input[type="color"] {
+  width: 42px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid #c9d3ce;
+  border-radius: 6px;
+  background: #ffffff;
 }
 
 .placement-element-list {

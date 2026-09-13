@@ -7144,7 +7144,10 @@ export default function App() {
   );
 
   return (
-    <main className="studio-shell">
+    <main
+      className="studio-shell"
+      style={{ "--sprite-preview-background": preferences.spritePreviewBackground } as CSSProperties}
+    >
       <header className="app-toolbar">
         <div className="brand-block">
           <div className="brand-mark" aria-hidden="true">P</div>
@@ -7208,7 +7211,10 @@ export default function App() {
 
       <section
         className={`workspace-grid ${workspaceMode === "placement" ? "placement-mode" : workspaceMode === "scene-flow" ? "scene-flow-mode" : workspaceMode === "assets" ? "assets-mode" : "logic-mode"}`}
-        style={{ "--project-width": `${projectWidth}px`, "--inspector-width": `${inspectorWidth}px` } as CSSProperties}
+        style={{
+          "--project-width": `${projectWidth}px`,
+          "--inspector-width": `${inspectorWidth}px`,
+        } as CSSProperties}
       >
         <aside className="project-pane">
           {renderPreviewPanel("project")}
@@ -7466,6 +7472,14 @@ export default function App() {
                     <option value="always">Always</option>
                     <option value="off">Off</option>
                   </select>
+                </label>
+                <label>Sprite preview background
+                  <input
+                    type="color"
+                    aria-label="Sprite preview background"
+                    value={preferences.spritePreviewBackground}
+                    onChange={event => updatePreference("spritePreviewBackground", event.target.value)}
+                  />
                 </label>
                 <label>Font preview text
                   <input

@@ -116,13 +116,22 @@ app.whenReady().then(async () => {
     await evaluate(`localStorage.setItem('peep-studio.editor-preferences.v1','invalid json')`);
     await window.loadURL('http://127.0.0.1:5174'); await wait(800);
     await click('[aria-label="Settings"]');
-    assert(await evaluate("document.querySelector('.placement-view-settings input').checked"));
-    await click('.placement-view-settings input');
+    assert(await evaluate("document.querySelector('.placement-view-settings input[type=\"checkbox\"]').checked"));
+    assert.equal(await evaluate("document.querySelector('[aria-label=\"Sprite preview background\"]').value"), '#ff66ff');
+    await evaluate(`(() => {
+      const input = document.querySelector('[aria-label="Sprite preview background"]');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '#00ff00');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`); await wait(100);
+    assert.equal(await evaluate("getComputedStyle(document.querySelector('.workspace-grid')).getPropertyValue('--sprite-preview-background').trim()"), '#00ff00');
+    await click('.placement-view-settings input[type="checkbox"]');
     await click('[aria-label="Close settings"]');
     assert.equal(commands.length, 0);
     await window.loadURL('http://127.0.0.1:5174'); await wait(800);
     await click('[aria-label="Settings"]');
-    assert.equal(await evaluate("document.querySelector('.placement-view-settings input').checked"), false);
+    assert.equal(await evaluate("document.querySelector('.placement-view-settings input[type=\"checkbox\"]').checked"), false);
+    assert.equal(await evaluate("document.querySelector('[aria-label=\"Sprite preview background\"]').value"), '#00ff00');
     await evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))"); await wait(100);
     assert.equal(await evaluate("document.querySelector('[aria-label=Settings]').getAttribute('aria-pressed')"), 'false');
   }
@@ -134,13 +143,13 @@ app.whenReady().then(async () => {
     await click('[aria-label="Settings"]');
     await button('Placement');
     assert.equal(await evaluate("document.querySelector('[aria-label=Settings]').getAttribute('aria-pressed')"), 'true');
-    assert.equal(await evaluate("document.querySelector('.placement-view-settings input').checked"), false);
+    assert.equal(await evaluate("document.querySelector('.placement-view-settings input[type=\"checkbox\"]').checked"), false);
     window.webContents.invalidate(); await wait(200);
     fs.writeFileSync(path.join(output,'settings.png'),(await window.webContents.capturePage()).toPNG());
     await click('[aria-label="Close settings"]');
     assert.deepEqual(await evaluate("[...document.querySelectorAll('.scene-hierarchy-node.selected')].map(e=>e.textContent)"), selection);
     assert.equal(latest.project_revision, revision);
-    console.log('Settings: no-project access, corrupt storage fallback, reload persistence, workspace switching and selection preservation passed');
+    console.log('Settings: no-project access, preview background persistence, corrupt storage fallback, reload persistence, workspace switching and selection preservation passed');
   }
   await button('Assets'); await button('Choose PNG');
   const setGrid = async (axis, value) => {

@@ -575,6 +575,9 @@ Agreed delivery order:
    while explicit Off is preserved. Off-screen animation cards and hidden windows
    stop timers. Source sprites display the source sheet; animated sprites animate
    as authored animation assets.
+   Sprite, text and animation preview panels use a configurable editor preview
+   background. The default is `#ff66ff` to keep transparent, black and white
+   one-bit artwork readable without relying on the low-contrast checkerboard.
    Regression: `tests/asset-animation-workflow.cjs` covers combining the numbered
    frames, continuous distinct previews, ordering/cadence, retained sources,
    undo/redo, atomic placement binding, save/reopen and compact layout.
