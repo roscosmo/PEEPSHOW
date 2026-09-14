@@ -43,6 +43,26 @@ button:focus-visible {
   border: 0;
 }
 
+.studio-ui-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.button .studio-ui-icon,
+.inspector-section h3 .studio-ui-icon,
+.asset-library-tabs .studio-ui-icon {
+  width: 17px;
+  height: 17px;
+}
+
+.studio-ui-icon-empty {
+  width: 32px;
+  height: 32px;
+}
+
 .studio-shell {
   display: grid;
   grid-template-rows: 74px minmax(0, 1fr) 28px;
@@ -919,6 +939,14 @@ button:focus-visible {
 
 .scene-hierarchy-select > span {
   min-width: 0;
+}
+
+.scene-hierarchy-select > .studio-ui-icon,
+.hierarchy-branch-select > .studio-ui-icon,
+.placement-object-kind > .studio-ui-icon,
+.hierarchy-state-icon .studio-ui-icon {
+  width: 18px;
+  height: 18px;
 }
 
 .scene-hierarchy-select strong,
@@ -3715,6 +3743,11 @@ button:focus-visible {
 
 .placement-tool-palette button:disabled {
   color: rgb(242 245 243 / 32%);
+}
+
+.placement-tool-palette .studio-ui-icon {
+  width: 23px;
+  height: 23px;
 }
 
 .placement-sprite-picker {

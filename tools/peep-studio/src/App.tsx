@@ -131,6 +131,21 @@ const WORKSPACE_MODES: Array<{ mode: WorkspaceMode; label: string; icon: string 
   { mode: "assets", label: "Assets", icon: TOPBAR_ICONS.assets },
   { mode: "placement", label: "Placement", icon: TOPBAR_ICONS.placement },
 ];
+const UI_ICONS = {
+  circle: "/ui-icons/circle.png",
+  line: "/ui-icons/line.png",
+  rectangle: "/ui-icons/rectangle.png",
+  scene: "/ui-icons/scene.png",
+  sfx: "/ui-icons/sfx.png",
+  sprite: "/ui-icons/sprite.png",
+  state: "/ui-icons/state.png",
+  text: "/ui-icons/text.png",
+  textSprite: "/ui-icons/text_sprite.png",
+} as const;
+type StudioIconName = keyof typeof UI_ICONS;
+function StudioIcon({ name, className = "" }: { name: StudioIconName; className?: string }) {
+  return <img className={`studio-ui-icon ${className}`.trim()} src={UI_ICONS[name]} alt="" aria-hidden="true" />;
+}
 type AssetTab = "sprite" | "audio" | "font";
 type AssetSelection =
   | { kind: "animation"; clipId: string }
@@ -4992,7 +5007,7 @@ export default function App() {
         title={compiledAssetFrames.length === 0 ? "No sprite assets available" : "Add sprite"}
         aria-label="Add sprite"
       >
-        <Image size={18} aria-hidden="true" />
+        <StudioIcon name="sprite" />
       </button>
       <button
         type="button"
@@ -5002,7 +5017,7 @@ export default function App() {
           : "Runtime text objects are not exposed by the authoring backend yet"}
         aria-label="Add text"
       >
-        <Type size={18} aria-hidden="true" />
+        <StudioIcon name="text" />
       </button>
       {PLACEMENT_PRIMITIVES.map((primitive) => (
         <button
@@ -5612,7 +5627,7 @@ export default function App() {
                 setBakedTextDraft(null);
               }}
             >
-              <Type size={15} aria-hidden="true" />
+              <StudioIcon name="text" />
               Manage fonts
             </button>
             <small>{fontAssets.find(item => item.font_id === bakedTextDraft.fontId)?.source_path ?? "Import a font once, then reuse it."}</small>
@@ -5793,7 +5808,7 @@ export default function App() {
                     selectAssetTab(next);
                     document.getElementById(`asset-tab-${next}`)?.focus();
                   }}>
-                  {tab === "sprite" ? <Image size={15} aria-hidden="true" /> : tab === "audio" ? <Volume2 size={15} aria-hidden="true" /> : <Type size={15} aria-hidden="true" />}
+                  {tab === "sprite" ? <StudioIcon name="sprite" /> : tab === "audio" ? <StudioIcon name="sfx" /> : <StudioIcon name="text" />}
                   {tab === "sprite" ? "Sprites" : tab === "audio" ? "Audio" : "Fonts"}
                 </button>
               ))}
@@ -5839,7 +5854,7 @@ export default function App() {
                 disabled={!canEditAssets || projectPath === null}
                 onClick={() => void chooseSpritePng()}
               >
-                <Image size={15} aria-hidden="true" />
+                <StudioIcon name="sprite" />
                 Choose PNG
               </button>
               <button
@@ -5849,7 +5864,7 @@ export default function App() {
                 title={fontAssets.length === 0 ? "Import a font asset first" : "Create baked text sprite"}
                 onClick={startBakedTextSprite}
               >
-                <Type size={15} aria-hidden="true" />
+                <StudioIcon name="textSprite" />
                 New text sprite
               </button>
               <button className="button secondary" type="button" disabled={!canAuthorAnimations || busy !== null || !combineFrameIds.length}
@@ -5861,7 +5876,7 @@ export default function App() {
                 disabled={!canEditAssets || projectPath === null || !audioSupported}
                 onClick={() => void chooseAudioWav()}
               >
-                <Volume2 size={15} aria-hidden="true" />
+                <StudioIcon name="sfx" />
                 WAV SFX
               </button>
               </> : <>
@@ -5872,7 +5887,7 @@ export default function App() {
                 onClick={() => void importFontAsset()}
                 title={bridge?.importFontAsset === undefined ? "Restart Peep Studio to enable font import" : "Import TTF or OTF font"}
               >
-                <Type size={15} aria-hidden="true" />
+                <StudioIcon name="text" />
                 Import font
               </button>
               </>}
@@ -6065,7 +6080,7 @@ export default function App() {
             )}
             {!hasTabAssets && (
               <div className="asset-workspace-empty">
-                <Box size={28} aria-hidden="true" />
+                <StudioIcon name={assetTab === "sprite" ? "sprite" : assetTab === "audio" ? "sfx" : "text"} className="studio-ui-icon-empty" />
                 <strong>{assetTab === "sprite" ? "No sprites" : assetTab === "audio" ? "No audio assets" : "No fonts"}</strong>
                 {assetTab === "font" && <span>Import a custom font once, then generate text sprites from it.</span>}
               </div>
@@ -6080,7 +6095,7 @@ export default function App() {
   };
   const renderSpriteInspector = () => (
     <section className="inspector-section asset-inspector">
-      <h3><Image size={14} aria-hidden="true" /> Sprite</h3>
+      <h3><StudioIcon name="sprite" /> Sprite</h3>
       {selectedAssetFrame === null ? (
         <p className="muted">Select a sprite to inspect its frames.</p>
       ) : (
@@ -6354,7 +6369,7 @@ export default function App() {
   );
   const renderAudioInspector = () => (
     <section className="inspector-section asset-inspector">
-      <h3><Volume2 size={14} aria-hidden="true" /> Sampled SFX</h3>
+      <h3><StudioIcon name="sfx" /> Sampled SFX</h3>
       {selectedAudioCue === null ? (
         <p className="muted">Import a WAV to create a bounded STATE SFX cue.</p>
       ) : (
@@ -6431,7 +6446,7 @@ export default function App() {
   );
   const renderFontInspector = () => (
     <section className="inspector-section asset-inspector">
-      <h3><Type size={14} aria-hidden="true" /> Font</h3>
+      <h3><StudioIcon name="text" /> Font</h3>
       {selectedFontAsset === null ? (
         <p className="muted">Import a TTF or OTF font to generate baked text sprites.</p>
       ) : (
@@ -6483,7 +6498,7 @@ export default function App() {
               disabled={busy !== null || projectPath === null}
               onClick={startBakedTextSprite}
             >
-              <Type size={15} aria-hidden="true" />
+              <StudioIcon name="textSprite" />
               Create text sprite
             </button>
             <button
@@ -6536,7 +6551,7 @@ export default function App() {
     }
     return (
       <section className="inspector-section asset-inspector">
-        <h3>{assetTab === "sprite" ? <Image size={14} aria-hidden="true" /> : assetTab === "audio" ? <Volume2 size={14} aria-hidden="true" /> : <Type size={14} aria-hidden="true" />} {assetTab === "sprite" ? "Sprite" : assetTab === "audio" ? "Audio" : "Font"}</h3>
+        <h3>{assetTab === "sprite" ? <StudioIcon name="sprite" /> : assetTab === "audio" ? <StudioIcon name="sfx" /> : <StudioIcon name="text" />} {assetTab === "sprite" ? "Sprite" : assetTab === "audio" ? "Audio" : "Font"}</h3>
       </section>
     );
   };
@@ -6611,20 +6626,36 @@ export default function App() {
     }
   };
   const placementKindIcon = (kind: string) => {
+    return <StudioIcon name={placementKindIconName(kind)} />;
+  };
+  const placementKindIconName = (kind: string): StudioIconName => {
     switch (kind) {
       case "sprite":
-        return <Image size={15} aria-hidden="true" />;
+        return "sprite";
       case "line":
-        return <Minus size={15} aria-hidden="true" />;
+        return "line";
       case "outline_rect":
       case "filled_rect":
-        return <RectangleHorizontal size={15} aria-hidden="true" />;
+        return "rectangle";
       case "circle":
       case "ellipse":
-        return <CircleDot size={15} aria-hidden="true" />;
+        return "circle";
       default:
-        return <SquareMousePointer size={15} aria-hidden="true" />;
+        return "rectangle";
     }
+  };
+  const placementElementIconName = (element: RenderElement): StudioIconName => {
+    if (element.kind === "sprite") {
+      const frame = element.visual_ref === undefined
+        ? null
+        : compiledAssetFrameById.get(element.visual_ref) ?? null;
+      const asset = frame === null ? undefined : assetById.get(frame.asset_id);
+      return isTextSpriteAsset(asset) ? "textSprite" : "sprite";
+    }
+    return placementKindIconName(element.kind);
+  };
+  const placementElementIcon = (element: RenderElement) => {
+    return <StudioIcon name={placementElementIconName(element)} />;
   };
   const placementLayerLabel = (element: RenderElement) => element.layer ?? "SCENE";
   const placementSourceLabel = (element: RenderElement) => element.visual_ref ?? "Native shape";
@@ -6969,7 +7000,7 @@ export default function App() {
           <div className="placement-edit-scope">
             {!objectSceneSelected && <>
             <div className="placement-scope-header">
-              <span>{targetStates.length === 0 ? <Layers3 size={16} aria-hidden="true" /> : <Network size={16} aria-hidden="true" />}</span>
+              <span>{targetStates.length === 0 ? <StudioIcon name="scene" /> : <StudioIcon name="state" />}</span>
               <span>
                 <strong>{placementEditTargetLabel()}</strong>
                 <small>{targetStates.length === 0 ? "Scene base" : `${targetStates.length} state${targetStates.length === 1 ? "" : "s"}`}</small>
@@ -7121,7 +7152,7 @@ export default function App() {
             onDoubleClick={onDoubleClick}
           >
             <span className="placement-object-kind">
-              {placementKindIcon(element.kind)}
+              {placementElementIcon(element)}
               <span>
                 <strong>{objectLabelById.get(element.element_id) ?? placementObjectLabelBase(element)}</strong>
                 <small>{placementKindLabel(element.kind)}</small>
@@ -7162,7 +7193,7 @@ export default function App() {
                 onClick={() => selectHierarchyScene(scene.scene_id)}
                 onDoubleClick={() => toggleHierarchyScene(scene.scene_id)}
               >
-                <FileCode2 size={16} aria-hidden="true" />
+                <StudioIcon name="scene" />
                 <span>
                   <strong>{scene.display_name}</strong>
                   <small>{scene.scene_type}</small>
@@ -7206,7 +7237,7 @@ export default function App() {
                       data-state-id={state.state_id}
                       className={`hierarchy-branch-select ${sceneSelected && workspaceMode === "placement" && placementStateId === state.state_id && selectedPlacementElement === element.element_id ? "selected" : ""}`}
                       onClick={() => void openHierarchyPlacementTarget(scene, state.state_id, element.element_id)}>
-                      <Network size={14} aria-hidden="true" /><span><strong>{state.display_name}</strong><small>{description}</small></span>
+                      <StudioIcon name="state" /><span><strong>{state.display_name}</strong><small>{description}</small></span>
                     </button>)}
                   </div>}
                 </section>;
@@ -7234,7 +7265,7 @@ export default function App() {
                     }}
                     onDoubleClick={() => toggleHierarchyGroup(baseGroupId)}
                   >
-                    <Layers3 size={15} aria-hidden="true" />
+                    <StudioIcon name="scene" />
                     <span>
                       <strong>Base objects</strong>
                       <small>Scene-owned placement</small>
@@ -7286,7 +7317,7 @@ export default function App() {
                     onClick={() => selectHierarchyScene(scene.scene_id)}
                     onDoubleClick={() => toggleHierarchyGroup(statesGroupId)}
                   >
-                    <Network size={15} aria-hidden="true" />
+                    <StudioIcon name="state" />
                     <span>
                       <strong>States</strong>
                       <small>Local object changes</small>
@@ -7337,7 +7368,7 @@ export default function App() {
                             onDoubleClick={() => toggleHierarchyGroup(stateGroupId)}
                           >
                             <span className="hierarchy-state-icon">
-                              <Network size={15} aria-hidden="true" />
+                              <StudioIcon name="state" />
                               {active && (
                                 <span className="hierarchy-runtime-indicator" title="Emulator active" aria-label="Emulator active" />
                               )}
@@ -7422,7 +7453,7 @@ export default function App() {
                     onClick={() => selectHierarchyScene(scene.scene_id)}
                     onDoubleClick={() => toggleHierarchyGroup(variablesGroupId)}
                     >
-                      <Type size={15} aria-hidden="true" />
+                      <StudioIcon name="text" />
                       <span>
                         <strong>Variables</strong>
                         <small>Scene-local data</small>
@@ -7438,7 +7469,7 @@ export default function App() {
                         type="button"
                         onClick={() => void openHierarchyVariable(scene)}
                       >
-                        <Type size={14} aria-hidden="true" />
+                        <StudioIcon name="text" />
                         <span>
                           <strong>{variable.variable_id}</strong>
                           <small>{variable.value_type}</small>
@@ -7601,7 +7632,7 @@ export default function App() {
       <>
         {renderPlacementEditScope()}
         <section className="inspector-section placement-inspector">
-        <h3><Layers3 size={14} aria-hidden="true" /> Object</h3>
+        <h3>{selectedElement === null ? <StudioIcon name="rectangle" /> : placementElementIcon(selectedElement)} Object</h3>
         {selectedSceneDocument === null ? (
           <p className="muted">Select a scene to inspect placement.</p>
         ) : placementRenderModel === null ? (
