@@ -573,6 +573,10 @@ Agreed delivery order:
    Sources are retained in the separate Source sprites section. Multi-frame PNG
    import preselects its source for this same creation workflow. Only backend
    advertised loop policies are offered; the current native increment exposes Loop.
+   Large source sheets use the sprite inspector as the reliable animation
+   assembly surface: cards stay compact, while the inspector shows a scrollable
+   frame grid with larger cells, selected-frame focus, ordered animation badges,
+   Select all, Clear sheet and Create animation controls.
    Placement can choose an existing animation or place its library item, but
    contains no clip creation or timing editor. Native placement adds the object
    and binds the existing animation together. No new ownership or schema model.

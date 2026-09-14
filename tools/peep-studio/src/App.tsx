@@ -3633,6 +3633,16 @@ export default function App() {
     while (animationClips.some(clip => clip.animation_id === `animation_${index}`)) index++;
     return `animation_${index}`;
   };
+  const toggleAnimationFrameSelection = (frameId: string) => {
+    setCombineFrameIds(current => current.includes(frameId)
+      ? current.filter(id => id !== frameId)
+      : [...current, frameId]);
+  };
+  const setAnimationFrameSelectionGroup = (frameIds: string[], include: boolean) => {
+    setCombineFrameIds(current => include
+      ? [...current, ...frameIds.filter(frameId => !current.includes(frameId))]
+      : current.filter(frameId => !frameIds.includes(frameId)));
+  };
   const startAssetAnimation = () => {
     const frameIds = combineFrameIds.filter(id => compiledAssetFrameById.has(id));
     if (!frameIds.length) return;
@@ -3877,7 +3887,11 @@ export default function App() {
     : null;
   const selectedAssetFrames = selectedAssetFrame === null
     ? []
-    : compiledAssetFrameGroups.find((group) => group.assetId === selectedAssetFrame.asset_id)?.frames ?? [];
+    : (() => {
+      const frames = compiledAssetFrameGroups.find((group) => group.assetId === selectedAssetFrame.asset_id)?.frames ?? [];
+      const authoredOrder = new Map((assetById.get(selectedAssetFrame.asset_id)?.frames ?? []).map((frame, index) => [frame.frame_id, index]));
+      return [...frames].sort((left, right) => (authoredOrder.get(left.frame_id) ?? Infinity) - (authoredOrder.get(right.frame_id) ?? Infinity));
+    })();
   const animatedAssetPreviewFrame = selectedAssetFrames.length === 0
     ? selectedAssetFrame
     : selectedAssetFrames[assetPreviewPlaying ? assetPreviewStep % selectedAssetFrames.length : selectedAssetFrames.findIndex((frame) => frame.frame_id === selectedAssetFrame?.frame_id)] ?? selectedAssetFrame;
@@ -5485,15 +5499,15 @@ export default function App() {
                           const kind = spriteAssetKind(asset, frames.length);
                           const frameIds = frames.map(frame => frame.frame_id);
                           const selectedFrameCount = frameIds.filter(frameId => combineFrameIds.includes(frameId)).length;
+                          const cardFrameSelection = canAuthorAnimations && frameIds.length <= 16;
                           return <div className="sprite-source-item" key={group.assetId}>
                             <span className="asset-kind-badge">{kind}</span>
                             {canAuthorAnimations && <>
                               <input type="checkbox" aria-label={frameIds.length === 1
                                 ? `Include ${assetDisplayName(group.assetId)} in animation`
                                 : `Include ${assetDisplayName(group.assetId)} frames in animation`}
-                                checked={selectedFrameCount === frameIds.length && frameIds.length > 0} onChange={event => setCombineFrameIds(current => event.target.checked
-                                  ? [...current, ...frameIds.filter(frameId => !current.includes(frameId))]
-                                  : current.filter(frameId => !frameIds.includes(frameId)))} />
+                                checked={selectedFrameCount === frameIds.length && frameIds.length > 0}
+                                onChange={event => setAnimationFrameSelectionGroup(frameIds, event.target.checked)} />
                               {selectedFrameCount > 0 && <span className="animation-selection-badge">{selectedFrameCount}</span>}
                             </>}
                             <SpriteSheetAssetCard frames={frames}
@@ -5501,11 +5515,9 @@ export default function App() {
                               selected={selectedAssetFrame?.asset_id === group.assetId}
                               columns={spriteSheetColumns(assetById.get(group.assetId), frames.length)}
                               textPreview={isTextSpriteAsset(asset)}
-                              animationSelection={canAuthorAnimations ? {
+                              animationSelection={cardFrameSelection ? {
                                 selectedFrameIds: combineFrameIds,
-                                onToggleFrame: (frameId) => setCombineFrameIds(current => current.includes(frameId)
-                                  ? current.filter(id => id !== frameId)
-                                  : [...current, frameId]),
+                                onToggleFrame: toggleAnimationFrameSelection,
                               } : undefined}
                               onSelect={() => selectAssetRecord({ kind: "sprite", frameId: selectedAssetFrame?.asset_id === group.assetId ? selectedAssetFrame.frame_id : frames[0].frame_id })} />
                           </div>;
@@ -5642,6 +5654,9 @@ export default function App() {
                 fontSize: String(bakedTextSource.font_size_px),
                 fontId: bakedTextSource.font_id,
               };
+          const selectedAssetFrameIds = selectedAssetFrames.map(frame => frame.frame_id);
+          const selectedAnimationFrameCount = selectedAssetFrameIds.filter(frameId => combineFrameIds.includes(frameId)).length;
+          const allAssetFramesSelected = selectedAssetFrameIds.length > 0 && selectedAnimationFrameCount === selectedAssetFrameIds.length;
           return (
             <>
               <div className={`asset-inspector-preview ${textPreviewAsset ? "text-asset-preview" : ""}`}>
@@ -5686,26 +5701,63 @@ export default function App() {
                   </label>
                 </div>
               )}
-              {source !== undefined && !textPreviewAsset && (
-                <div className="asset-frame-strip-panel">
+              {canAuthorAnimations && selectedAssetFrames.length > 0 && (
+                <div className="asset-animation-frame-panel">
                   <div className="asset-frame-strip-heading">
-                    <strong>Frames</strong>
-                    <span>{selectedAssetFrames.length} total</span>
+                    <strong>Animation frames</strong>
+                    <span>{selectedAnimationFrameCount} selected</span>
                   </div>
-                  <div className="asset-frame-strip">
+                  <div className="asset-animation-frame-actions">
+                    <button
+                      className="button secondary"
+                      type="button"
+                      disabled={busy !== null || allAssetFramesSelected}
+                      onClick={() => setAnimationFrameSelectionGroup(selectedAssetFrameIds, true)}
+                    >
+                      Select all
+                    </button>
+                    <button
+                      className="button secondary"
+                      type="button"
+                      disabled={busy !== null || selectedAnimationFrameCount === 0}
+                      onClick={() => setAnimationFrameSelectionGroup(selectedAssetFrameIds, false)}
+                    >
+                      Clear sheet
+                    </button>
+                    <button
+                      className="button primary"
+                      type="button"
+                      disabled={!combineFrameIds.length || busy !== null}
+                      onClick={startAssetAnimation}
+                    >
+                      Create animation
+                    </button>
+                  </div>
+                  <div className="asset-animation-frame-grid" aria-label="Animation frame picker">
                     {selectedAssetFrames.map((frame, index) => (
                       <button
                         key={frame.frame_id}
-                        className={frame.frame_id === selectedAssetFrame.frame_id ? "selected" : ""}
+                        className={`${frame.frame_id === selectedAssetFrame.frame_id ? "current" : ""} ${combineFrameIds.includes(frame.frame_id) ? "included" : ""}`}
                         type="button"
-                        onClick={() => selectAssetRecord({ kind: "sprite", frameId: frame.frame_id })}
-                        title={placementFrameLabel(frame)}
+                        aria-pressed={combineFrameIds.includes(frame.frame_id)}
+                        onClick={() => {
+                          selectAssetRecord({ kind: "sprite", frameId: frame.frame_id });
+                          toggleAnimationFrameSelection(frame.frame_id);
+                        }}
+                        title={`${combineFrameIds.includes(frame.frame_id) ? "Remove" : "Add"} ${placementFrameLabel(frame)} ${combineFrameIds.includes(frame.frame_id) ? "from" : "to"} animation`}
                       >
                         <FramePreviewCanvas frame={frame} />
-                        <span>{index + 1}</span>
+                        <span className="asset-sheet-frame-index">{index + 1}</span>
+                        {combineFrameIds.includes(frame.frame_id) && (
+                          <span className="asset-animation-frame-order">{combineFrameIds.indexOf(frame.frame_id) + 1}</span>
+                        )}
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+              {source !== undefined && !textPreviewAsset && (
+                <div className="asset-frame-label-panel">
                   <label className="asset-selected-frame-name">
                     Selected frame label
                     <input

@@ -2,11 +2,12 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), os = requ
 const readline = require('node:readline'), { spawn } = require('node:child_process');
 const { app, BrowserWindow, ipcMain, nativeImage } = require('electron');
 const root = path.resolve(__dirname, '../../..');
-const frameCount = process.argv.includes('--ten') ? 10 : 4;
+const largeSheet = process.argv.includes('--large-sheet');
+const frameCount = largeSheet ? 48 : process.argv.includes('--ten') ? 10 : 4;
 const grid = process.argv.includes('--grid');
 const transparent = process.argv.includes('--transparent');
-const sheetColumns = grid ? 2 : frameCount;
-const sheetRows = frameCount / sheetColumns;
+const sheetColumns = largeSheet ? 8 : grid ? 2 : frameCount;
+const sheetRows = largeSheet ? 6 : frameCount / sheetColumns;
 const workflow = process.argv.includes('--workflow');
 const reloadRace = process.argv.includes('--reload-race');
 const projectPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'peep-workflow-audit-')), 'fresh.peepproj');
@@ -78,6 +79,14 @@ app.whenReady().then(async () => {
     }
     for (let y = 3; y < Math.max(4, cellHeight - 3); y++) for (let frame = 0; frame < currentFrameCount; frame++) for (let x = 2; x < Math.min(cellWidth - 1, 4 + frame + importIndex); x++) {
       const i = ((y + Math.floor(frame / currentColumns) * cellHeight) * width + (frame % currentColumns) * cellWidth + x) * 4; pixels[i] = pixels[i + 1] = pixels[i + 2] = 0;
+    }
+    for (let frame = 0; frame < currentFrameCount; frame++) {
+      const markerSpanX = Math.max(1, cellWidth - 4);
+      const markerSpanY = Math.max(1, cellHeight - 6);
+      const markerX = 2 + (frame % markerSpanX);
+      const markerY = 3 + (Math.floor(frame / markerSpanX) % markerSpanY);
+      const i = ((markerY + Math.floor(frame / currentColumns) * cellHeight) * width + (frame % currentColumns) * cellWidth + markerX) * 4;
+      pixels[i] = pixels[i + 1] = pixels[i + 2] = 255;
     }
     const assetId = importIndex === 0 ? 'audit' : 'small_text';
     const png = nativeImage.createFromBitmap(pixels, { width, height }).toPNG();
@@ -179,11 +188,20 @@ app.whenReady().then(async () => {
   assert.equal(fs.existsSync(path.join(projectPath, 'assets', 'audit.png')), true);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-card').length"), 1);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell').length"), frameCount);
-  assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount);
-  await click('.asset-sheet-cell-toggle:last-child');
-  assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount - 1);
-  await click('.asset-sheet-cell-toggle:last-child');
-  assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount);
+  assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), largeSheet ? 0 : frameCount);
+  assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-grid button').length"), frameCount);
+  assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-grid button[aria-pressed=\"true\"]').length"), frameCount);
+  await click('.asset-animation-frame-grid button:last-child');
+  assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-grid button[aria-pressed=\"true\"]').length"), frameCount - 1);
+  assert.match(await evaluate("document.querySelector('.asset-animation-frame-panel .asset-frame-strip-heading span').textContent"), new RegExp(`${frameCount - 1} selected`));
+  await click('.asset-animation-frame-grid button:last-child');
+  assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-grid button[aria-pressed=\"true\"]').length"), frameCount);
+  if (!largeSheet) {
+    await click('.asset-sheet-cell-toggle:last-child');
+    assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount - 1);
+    await click('.asset-sheet-cell-toggle:last-child');
+    assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount);
+  }
   const alpha = await evaluate("(() => {const c=document.querySelector('.asset-frame-gallery canvas');const p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;return [p[3],p[(3*c.width+2)*4+3]]})()");
   assert.deepEqual(alpha, [transparent ? 0 : 255, 255]);
   const pixels = new Set(await evaluate("[...document.querySelectorAll('.asset-sheet-cell canvas')].map(canvas => canvas.toDataURL())"));
