@@ -230,9 +230,11 @@ app.whenReady().then(async () => {
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell').length"), frameCount);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle').length"), frameCount);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), 0);
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.asset-sheet-cell-toggle')).backgroundColor"), 'rgba(0, 0, 0, 0)');
   assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-panel').length"), 0);
   await click('[aria-label="Include Sprite loop test frames in animation"]');
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount);
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.asset-sheet-cell-toggle[aria-pressed=\"true\"]')).backgroundColor"), 'rgba(0, 0, 0, 0)');
   assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-grid button').length"), 0);
   assert.match(await evaluate("document.querySelector('.asset-animation-frame-panel .asset-frame-strip-heading span').textContent"), new RegExp(`${frameCount} selected`));
   if (largeSheet) {
