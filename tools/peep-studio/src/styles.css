@@ -31,16 +31,28 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .studio-shell {
   display: grid;
-  grid-template-rows: 62px minmax(0, 1fr) 28px;
+  grid-template-rows: 74px minmax(0, 1fr) 28px;
   width: 100%;
   height: 100%;
   background: #f3f5f4;
 }
 
 .studio-shell:has(> .host-preview-notice) {
-  grid-template-rows: 62px auto minmax(0, 1fr) 28px;
+  grid-template-rows: 74px auto minmax(0, 1fr) 28px;
 }
 
 .emulator-popout-shell {
@@ -119,16 +131,16 @@ button:focus-visible {
 }
 
 .app-toolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: var(--project-width, 320px) auto minmax(160px, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 0 18px;
+  gap: 0;
+  padding: 0;
   border-bottom: 1px solid #cfd5d1;
   background: #ffffff;
 }
 
-.brand-block,
+.topbar-brand-panel,
 .toolbar-actions,
 .service-state,
 .button,
@@ -140,49 +152,219 @@ button:focus-visible {
   align-items: center;
 }
 
-.brand-block {
-  gap: 11px;
-  min-width: 220px;
+.topbar-brand-panel {
+  height: 100%;
+  min-width: 0;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0 12px;
+  border-right: 1px solid #cfd5d1;
 }
 
-.brand-mark {
+.topbar-project-title {
   display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border: 1px solid #222825;
-  border-radius: 5px;
-  background: #242a27;
-  color: #ffffff;
-  font-size: 15px;
-  font-weight: 750;
+  min-width: 0;
+  justify-items: center;
+  align-content: center;
+  padding: 0 22px;
+  text-align: center;
 }
 
-.brand-block h1,
-.preview-heading h2 {
+.topbar-project-title h1,
+.topbar-project-title p {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-project-title h1 {
   margin: 0;
-  letter-spacing: 0;
+  color: #1c211f;
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 780;
 }
 
-.brand-block h1 {
-  font-size: 16px;
-  line-height: 20px;
-}
-
-.brand-block p {
+.topbar-project-title p {
   margin: 1px 0 0;
   color: #69716d;
   font-size: 12px;
 }
 
+.brand-logo-lockup {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-icon-image {
+  display: block;
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+}
+
+.brand-name-logo {
+  display: block;
+  width: min(164px, calc(100% - 60px));
+  max-height: 56px;
+  object-fit: contain;
+}
+
+.preview-heading h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
 .toolbar-actions {
   justify-content: flex-end;
-  gap: 7px;
+  gap: 5px;
+  min-width: 0;
+}
+
+.topbar-file-actions,
+.topbar-workspace-actions {
+  height: 100%;
+}
+
+.topbar-file-actions {
+  justify-content: flex-start;
+  padding: 0 14px;
+}
+
+.topbar-workspace-actions {
+  gap: 12px;
+  padding: 0 18px 0 14px;
+}
+
+.topbar-workspace-actions .mode-tabs {
+  gap: 10px;
+}
+
+.topbar-workspace-actions .topbar-button {
+  width: 70px;
+  height: 70px;
+}
+
+.topbar-workspace-actions .topbar-icon {
+  width: 60px;
+  height: 60px;
+}
+
+.topbar-button,
+.topbar-dropdown > summary {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #29332e;
+  cursor: pointer;
+}
+
+.topbar-button:hover,
+.topbar-dropdown > summary:hover {
+  border-color: #abc0b5;
+  background: #f0f6f3;
+}
+
+.topbar-button.active,
+.topbar-dropdown[open] > summary {
+  border-color: #2d637f;
+  background: #e5f2f8;
+  color: #174f70;
+}
+
+.topbar-button.primary {
+  border-color: transparent;
+  background: transparent;
+  color: #26302b;
+}
+
+.topbar-button:disabled,
+.topbar-dropdown.disabled > summary {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.topbar-icon {
+  display: block;
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+}
+
+.topbar-dropdown {
+  position: relative;
+}
+
+.topbar-dropdown > summary {
+  list-style: none;
+}
+
+.topbar-dropdown > summary::-webkit-details-marker {
+  display: none;
+}
+
+.topbar-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  z-index: 80;
+  display: grid;
+  min-width: 138px;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid #bec9c2;
+  border-radius: 7px;
+  background: #ffffff;
+  box-shadow: 0 12px 26px rgba(25, 35, 30, 0.16);
+}
+
+.topbar-dropdown-menu button {
+  display: flex;
+  height: 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #26302b;
+  font-size: 12px;
+  font-weight: 680;
+  text-align: left;
+  cursor: pointer;
+}
+
+.topbar-dropdown-menu button:hover {
+  background: #edf6f2;
+}
+
+.topbar-history {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 2px;
+}
+
+.topbar-history .icon-button {
+  width: 34px;
+  height: 64px;
+  flex-basis: 34px;
+  border-color: transparent;
+  background: transparent;
 }
 
 .service-state {
   gap: 6px;
-  margin-right: 6px;
+  margin-left: 4px;
   color: #69716d;
   font-size: 12px;
   white-space: nowrap;
@@ -1528,7 +1710,7 @@ button:focus-visible {
 .state-graph-pane {
   grid-area: graph;
   display: grid;
-  grid-template-rows: 55px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   background: #eef2f0;
@@ -1537,7 +1719,7 @@ button:focus-visible {
 .placement-pane {
   grid-area: placement;
   display: grid;
-  grid-template-rows: 55px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   background: #eef2f0;
@@ -1546,7 +1728,7 @@ button:focus-visible {
 .scene-flow-pane {
   grid-area: scene-flow;
   display: grid;
-  grid-template-rows: 55px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   background: #eef2f0;
@@ -1572,38 +1754,16 @@ button:focus-visible {
 .mode-tabs {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
 }
 
 .mode-tabs {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
 }
 
 .mode-tabs button {
-  display: inline-flex;
-  height: 32px;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  border: 1px solid #c7d0ca;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #3f4a44;
-  font-size: 11px;
-  font-weight: 740;
-  cursor: pointer;
-}
-
-.mode-tabs button:hover {
-  border-color: #8eb0c3;
-  background: #eef7fb;
-}
-
-.mode-tabs button.active {
-  border-color: #2d637f;
-  background: #e7f3f8;
-  color: #174f70;
+  flex: 0 0 auto;
 }
 
 .graph-surface {
@@ -1665,7 +1825,7 @@ button:focus-visible {
   display: grid;
   min-width: 0;
   min-height: 0;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   background: #f8faf8;
 }
 
@@ -6623,9 +6783,37 @@ button:focus-visible {
     grid-template-columns: var(--project-width, 300px) 6px minmax(480px, 1fr) 6px minmax(320px, var(--inspector-width, 360px));
   }
 
-  .service-state,
   .example-button {
     display: none;
+  }
+
+  .topbar-button,
+  .topbar-dropdown > summary {
+    width: 58px;
+    height: 58px;
+  }
+
+  .topbar-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .topbar-history .icon-button {
+    height: 58px;
+  }
+
+  .brand-logo-lockup {
+    gap: 7px;
+  }
+
+  .brand-icon-image {
+    width: 46px;
+    height: 46px;
+  }
+
+  .brand-name-logo {
+    width: min(148px, calc(100% - 54px));
+    max-height: 50px;
   }
 
   .preview-pane-compact {
@@ -6676,13 +6864,28 @@ button:focus-visible {
   }
 
   .app-toolbar {
-    min-height: 62px;
-    flex-wrap: wrap;
+    grid-template-columns: 1fr;
+    min-height: 74px;
     padding: 10px 12px;
   }
 
-  .toolbar-actions {
+  .topbar-brand-panel {
+    min-height: 64px;
+    border-right: 0;
+    border-bottom: 1px solid #d7ded9;
+  }
+
+  .topbar-file-actions,
+  .topbar-workspace-actions {
     flex-wrap: wrap;
+    justify-content: flex-start;
+    height: auto;
+  }
+
+  .topbar-file-actions {
+    padding: 0 0 7px;
+    border-right: 0;
+    border-bottom: 1px solid #d7ded9;
   }
 
   .workspace-grid {

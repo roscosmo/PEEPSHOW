@@ -8,12 +8,9 @@ import {
   ChevronRight,
   Circle,
   CircleDot,
-  Download,
   Eye,
   FileCode2,
-  FilePlus2,
   FolderOpen,
-  Hammer,
   Image,
   Layers3,
   LoaderCircle,
@@ -28,9 +25,6 @@ import {
   RectangleHorizontal,
   RotateCcw,
   Redo2,
-  Save,
-  SaveAll,
-  Settings,
   SquareMousePointer,
   Trash2,
   Type,
@@ -116,6 +110,27 @@ type PlacementPrimitiveDraft = {
   lineDirection?: PlacementLineDirection;
 };
 type WorkspaceMode = "scene-flow" | "logic" | "placement" | "assets";
+const TOPBAR_ICONS = {
+  assets: "/topbar-icons/assets.png",
+  build: "/topbar-icons/build.png",
+  egg: "/topbar-icons/egg.png",
+  logic: "/topbar-icons/local_logic.png",
+  newProject: "/topbar-icons/new_project.png",
+  open: "/topbar-icons/open.png",
+  studioIcon: "/topbar-icons/peep_studio_icon.png",
+  studioName: "/topbar-icons/peep_studio_name_logo.png",
+  placement: "/topbar-icons/placement.png",
+  save: "/topbar-icons/save.png",
+  saveAs: "/topbar-icons/save_as.png",
+  sceneFlow: "/topbar-icons/Scene_flow.png",
+  settings: "/topbar-icons/settings.png",
+} as const;
+const WORKSPACE_MODES: Array<{ mode: WorkspaceMode; label: string; icon: string }> = [
+  { mode: "scene-flow", label: "Scene flow", icon: TOPBAR_ICONS.sceneFlow },
+  { mode: "logic", label: "Logic", icon: TOPBAR_ICONS.logic },
+  { mode: "assets", label: "Assets", icon: TOPBAR_ICONS.assets },
+  { mode: "placement", label: "Placement", icon: TOPBAR_ICONS.placement },
+];
 type AssetTab = "sprite" | "audio" | "font";
 type AssetSelection =
   | { kind: "animation"; clipId: string }
@@ -5285,39 +5300,19 @@ export default function App() {
     );
   };
   const renderModeTabs = () => (
-    <div className="mode-tabs" aria-label="Workspace mode">
-      <button
-        className={workspaceMode === "scene-flow" ? "active" : ""}
-        type="button"
-        onClick={() => setWorkspaceMode("scene-flow")}
-      >
-        <Network size={15} aria-hidden="true" />
-        Scene flow
-      </button>
-      <button
-        className={workspaceMode === "logic" ? "active" : ""}
-        type="button"
-        onClick={() => setWorkspaceMode("logic")}
-      >
-        <Network size={15} aria-hidden="true" />
-        Local logic
-      </button>
-      <button
-        className={workspaceMode === "placement" ? "active" : ""}
-        type="button"
-        onClick={() => setWorkspaceMode("placement")}
-      >
-        <Maximize2 size={15} aria-hidden="true" />
-        Placement
-      </button>
-      <button
-        className={workspaceMode === "assets" ? "active" : ""}
-        type="button"
-        onClick={() => setWorkspaceMode("assets")}
-      >
-        <Image size={15} aria-hidden="true" />
-        Assets
-      </button>
+    <div className="mode-tabs topbar-mode-tabs" aria-label="Workspace mode">
+      {WORKSPACE_MODES.map(mode => (
+        <button
+          key={mode.mode}
+          className={`topbar-button ${workspaceMode === mode.mode ? "active" : ""}`}
+          type="button"
+          onClick={() => setWorkspaceMode(mode.mode)}
+          title={mode.label}
+        >
+          <img className="topbar-icon" src={mode.icon} alt="" aria-hidden="true" />
+          <span className="sr-only">{mode.label}</span>
+        </button>
+      ))}
     </div>
   );
   const renderSpriteImportPanel = (canEditAssets: boolean) => {
@@ -5778,13 +5773,6 @@ export default function App() {
     } as CSSProperties;
     return (
       <section className="asset-workspace-pane">
-        <div className="preview-heading graph-heading">
-          <div>
-            <span className="section-kicker">Assets</span>
-            <h2>Project library</h2>
-          </div>
-          {renderModeTabs()}
-        </div>
         <div className="asset-workspace" style={assetLibraryZoomStyle} onClick={handleAssetWorkspaceBackgroundClick} onWheel={handleAssetWorkspaceWheel}>
           <div className="asset-workspace-summary">
             <div className="asset-library-tabs" role="tablist" aria-label="Asset types">
@@ -7923,63 +7911,107 @@ export default function App() {
       )}
     </>
   );
+  const workspaceDetail = workspaceMode === "placement"
+    ? selectedSceneDocument === null
+      ? "Placement / no scene selected"
+      : `Placement / ${selectedSceneDocument.display_name} / ${placementState?.display_name ?? "Scene default"}`
+    : workspaceMode === "logic"
+      ? `Logic / ${selectedSceneDocument?.display_name ?? "No scene selected"}`
+      : workspaceMode === "assets"
+        ? `Assets / ${assetTab === "sprite" ? "Sprites" : assetTab === "audio" ? "Audio" : "Fonts"}`
+        : `Scene flow / ${project?.summary.project_name ?? "No project open"}`;
+  const openMenuDisabled = bridge === undefined || busy !== null;
 
   return (
     <main
       className="studio-shell"
-      style={{ "--sprite-preview-background": preferences.spritePreviewBackground } as CSSProperties}
+      style={{
+        "--sprite-preview-background": preferences.spritePreviewBackground,
+        "--project-width": `${projectWidth}px`,
+        "--inspector-width": `${inspectorWidth}px`,
+      } as CSSProperties}
     >
       <header className="app-toolbar">
-        <div className="brand-block">
-          <div className="brand-mark" aria-hidden="true">P</div>
-          <div>
-            <h1>Peep Studio</h1>
-            <p>{project?.summary.project_name ?? "STATE authoring workbench"}</p>
+        <div className="topbar-brand-panel">
+          <div className="brand-logo-lockup">
+            <img className="brand-icon-image" src={TOPBAR_ICONS.studioIcon} alt="" aria-hidden="true" />
+            <img className="brand-name-logo" src={TOPBAR_ICONS.studioName} alt="Peep Studio" />
           </div>
+          <span className={`service-state topbar-service ${connected ? "connected" : "disconnected"}`}>
+            <MonitorDot size={15} aria-hidden="true" />
+            {connected ? `API ${service.service_api_version}` : "Offline"}
+          </span>
         </div>
 
-        <div className="toolbar-actions">
-          <span className={`service-state ${connected ? "connected" : "disconnected"}`}>
-            <MonitorDot size={15} aria-hidden="true" />
-            {connected ? `Service API ${service.service_api_version}` : "Service offline"}
-          </span>
-          <button className="button secondary" onClick={newProject} disabled={bridge === undefined || busy !== null || service?.operations.includes("project.create") !== true}>
-            <FilePlus2 size={16} aria-hidden="true" />
-            New project
+        <div className="toolbar-actions topbar-file-actions" aria-label="Project actions">
+          <button className="topbar-button" onClick={newProject} disabled={bridge === undefined || busy !== null || service?.operations.includes("project.create") !== true} title="New project" aria-label="New project">
+            <img className="topbar-icon" src={TOPBAR_ICONS.newProject} alt="" aria-hidden="true" />
+            <span className="sr-only">New project</span>
           </button>
-          <button className="button secondary example-button" onClick={openExample} disabled={bridge === undefined || busy !== null}>
-            <FileCode2 size={16} aria-hidden="true" />
-            Open example
+          <details className={`topbar-dropdown ${openMenuDisabled ? "disabled" : ""}`}>
+            <summary
+              className="topbar-button"
+              aria-label="Open"
+              onClick={(event) => {
+                if (openMenuDisabled) event.preventDefault();
+              }}
+              onKeyDown={(event) => {
+                if (openMenuDisabled && (event.key === "Enter" || event.key === " ")) event.preventDefault();
+              }}
+              title="Open"
+            >
+              <img className="topbar-icon" src={TOPBAR_ICONS.open} alt="" aria-hidden="true" />
+              <span className="sr-only">Open</span>
+            </summary>
+            <div className="topbar-dropdown-menu">
+              <button type="button" onClick={(event) => { (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open"); void openExample(); }}>
+                <FileCode2 size={14} aria-hidden="true" />
+                Example
+              </button>
+              <button type="button" onClick={(event) => { (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open"); void openProject(); }}>
+                <FolderOpen size={14} aria-hidden="true" />
+                Project
+              </button>
+            </div>
+          </details>
+          <button className="topbar-button" onClick={saveProject} disabled={!dirty || project === null || busy !== null || service?.operations.includes("project.save") !== true} title="Save" aria-label="Save">
+            <img className="topbar-icon" src={TOPBAR_ICONS.save} alt="" aria-hidden="true" />
+            <span className="sr-only">Save</span>
           </button>
-          <button className="button secondary" onClick={openProject} disabled={bridge === undefined || busy !== null}>
-            <FolderOpen size={16} aria-hidden="true" />
-            Open project
+          <button className="topbar-button" onClick={saveProjectAs} disabled={project === null || projectPath === null || busy !== null || service?.operations.includes("project.save") !== true} title="Save as" aria-label="Save as">
+            <img className="topbar-icon" src={TOPBAR_ICONS.saveAs} alt="" aria-hidden="true" />
+            <span className="sr-only">Save as</span>
           </button>
-          <button className="button primary" onClick={buildPackage} disabled={!buildReady || busy !== null}>
-            <Hammer size={16} aria-hidden="true" />
-            Build
+          <div className="topbar-history" aria-label="Edit history">
+            <button className="icon-button" onClick={() => void stepHistory("project.undo")} disabled={!canUndo || project === null || busy !== null || service?.operations.includes("project.undo") !== true} title="Undo">
+              <Undo2 size={18} aria-hidden="true" />
+            </button>
+            <button className="icon-button" onClick={() => void stepHistory("project.redo")} disabled={!canRedo || project === null || busy !== null || service?.operations.includes("project.redo") !== true} title="Redo">
+              <Redo2 size={18} aria-hidden="true" />
+            </button>
+          </div>
+          <button className="topbar-button primary" onClick={buildPackage} disabled={!buildReady || busy !== null} title="Build" aria-label="Build">
+            <img className="topbar-icon" src={TOPBAR_ICONS.build} alt="" aria-hidden="true" />
+            <span className="sr-only">Build</span>
           </button>
-          <button className="icon-button" onClick={() => void stepHistory("project.undo")} disabled={!canUndo || project === null || busy !== null || service?.operations.includes("project.undo") !== true} title="Undo">
-            <Undo2 size={18} aria-hidden="true" />
+          <button className="topbar-button" onClick={exportPackage} disabled={build === null || busy !== null || !buildReady || build.project_revision !== project?.project_revision} title="Export .egg" aria-label="Export .egg">
+            <img className="topbar-icon" src={TOPBAR_ICONS.egg} alt="" aria-hidden="true" />
+            <span className="sr-only">Export .egg</span>
           </button>
-          <button className="icon-button" onClick={() => void stepHistory("project.redo")} disabled={!canRedo || project === null || busy !== null || service?.operations.includes("project.redo") !== true} title="Redo">
-            <Redo2 size={18} aria-hidden="true" />
-          </button>
-          <button className="button secondary" onClick={saveProject} disabled={!dirty || project === null || busy !== null || service?.operations.includes("project.save") !== true}>
-            <Save size={16} aria-hidden="true" />
-            Save
-          </button>
-          <button className="button secondary" onClick={saveProjectAs} disabled={project === null || projectPath === null || busy !== null || service?.operations.includes("project.save") !== true}>
-            <SaveAll size={16} aria-hidden="true" />
-            Save as
-          </button>
-          <button className="icon-button" onClick={exportPackage} disabled={build === null || busy !== null || !buildReady || build.project_revision !== project?.project_revision} title="Export .egg">
-            <Download size={18} aria-hidden="true" />
-          </button>
-          <button className="icon-button" type="button" title="Settings" aria-label="Settings"
+        </div>
+
+        <div className="topbar-project-title">
+          <h1>{project?.summary.project_name ?? "Peep Studio"}</h1>
+          <p>{workspaceDetail}</p>
+        </div>
+
+        <div className="toolbar-actions topbar-workspace-actions" aria-label="Workspace actions">
+          {renderModeTabs()}
+          <button className={`topbar-button ${settingsOpen ? "active" : ""}`} type="button" title="Settings" aria-label="Settings"
             aria-pressed={settingsOpen} aria-controls="studio-inspector"
             onClick={() => setSettingsOpen(current => !current)}>
-            <Settings size={18} aria-hidden="true" />
+            <img className="topbar-icon" src={TOPBAR_ICONS.settings} alt="" aria-hidden="true" />
+            <span className="sr-only">Settings</span>
           </button>
         </div>
       </header>
@@ -8052,30 +8084,12 @@ export default function App() {
 
         {workspaceMode === "placement" && (
           <section className="placement-pane">
-            <div className="preview-heading graph-heading">
-              <div>
-                <span className="section-kicker">Placement mode</span>
-                <h2>
-                  {selectedSceneDocument === null
-                    ? "No scene selected"
-                    : `${selectedSceneDocument.display_name} / ${placementState?.display_name ?? "Base Placement"}`}
-                </h2>
-              </div>
-              {renderModeTabs()}
-            </div>
             {renderPreviewPanel("placement")}
           </section>
         )}
 
         {workspaceMode === "scene-flow" && (
         <section className="scene-flow-pane">
-          <div className="preview-heading graph-heading">
-            <div>
-              <span className="section-kicker">Scene flow</span>
-              <h2>{project?.summary.project_name ?? "No project open"}</h2>
-            </div>
-            {renderModeTabs()}
-          </div>
           <div className="graph-surface">
             <SceneFlowView
               scenes={scenes}
@@ -8156,13 +8170,6 @@ export default function App() {
 
         {workspaceMode === "logic" && (
         <section className="state-graph-pane">
-          <div className="preview-heading graph-heading">
-            <div>
-              <span className="section-kicker">Logic graph</span>
-              <h2>{selectedSceneDocument?.display_name ?? "No scene selected"}</h2>
-            </div>
-            {renderModeTabs()}
-          </div>
           <div className="graph-surface">
             <StateGraphView
               scene={selectedSceneDocument}
