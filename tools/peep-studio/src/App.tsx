@@ -37,6 +37,8 @@ import {
   Undo2,
   Volume2,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { FramebufferCanvas, FramePreviewCanvas } from "./FramebufferCanvas";
@@ -175,6 +177,9 @@ const BAKED_TEXT_MIN_FONT_SIZE = 6;
 const BAKED_TEXT_MAX_FONT_SIZE = 128;
 const BAKED_TEXT_MAX_SOURCE_DIMENSION = 4096;
 const NORMALIZED_ANIMATION_MAX_SOURCE_DIMENSION = 4096;
+const ASSET_LIBRARY_MIN_ZOOM = 0.6;
+const ASSET_LIBRARY_MAX_ZOOM = 1.8;
+const ASSET_LIBRARY_ZOOM_STEP = 0.1;
 const DEFAULT_FONT_PREVIEW_TEXT = "PEEP STUDIO 0123456789 START SETTINGS CREDITS";
 const NORMALIZED_ANIMATION_BACKING_DISPLAY_NAME = "Animation backing frames";
 const LEGACY_NORMALIZED_ANIMATION_BACKING_DISPLAY_NAME = "Padded animation frames";
@@ -209,6 +214,24 @@ const parseBakedTextFontSize = (value: string) => {
   return Number.isInteger(size) && size >= BAKED_TEXT_MIN_FONT_SIZE && size <= BAKED_TEXT_MAX_FONT_SIZE
     ? size
     : null;
+};
+const clampAssetLibraryZoom = (zoom: number) => (
+  Math.min(ASSET_LIBRARY_MAX_ZOOM, Math.max(ASSET_LIBRARY_MIN_ZOOM, Math.round(zoom * 10) / 10))
+);
+const spriteSheetPreviewMetrics = (columns: number, frameCount: number, zoom: number) => {
+  const safeColumns = Math.max(1, columns);
+  const rows = Math.max(1, Math.ceil(frameCount / safeColumns));
+  const cellSize = Math.round(32 * zoom);
+  const gap = Math.max(3, Math.round(5 * zoom));
+  const padding = Math.round(8 * zoom);
+  const cardPadding = Math.round(10 * zoom);
+  const width = safeColumns * cellSize + Math.max(0, safeColumns - 1) * gap + padding * 2 + cardPadding * 2 + 2;
+  const height = rows * cellSize + Math.max(0, rows - 1) * gap + padding * 2;
+  return {
+    cellSize,
+    width: Math.max(width, Math.round(178 * zoom)),
+    height: Math.max(height, Math.round(120 * zoom)),
+  };
 };
 
 const parseSpriteImportConversion = (
@@ -576,8 +599,9 @@ function SpriteSheetAssetCard({
     return null;
   }
   const resolvedColumns = columns ?? Math.min(4, Math.max(1, frames.length));
+  const sheetColumnSize = textPreview ? "minmax(0, 1fr)" : "var(--asset-sheet-cell-size, var(--asset-library-sheet-cell-size, 32px))";
   const preview = (
-    <span className={`asset-sheet-preview ${textPreview ? "text-sprite-preview" : ""}`} style={{ gridTemplateColumns: `repeat(${resolvedColumns}, minmax(0, 1fr))` }}>
+    <span className={`asset-sheet-preview ${textPreview ? "text-sprite-preview" : ""}`} style={{ gridTemplateColumns: `repeat(${resolvedColumns}, ${sheetColumnSize})` }}>
       {frames.map((frame, index) => {
         const selectedForAnimation = animationSelection?.selectedFrameIds.includes(frame.frame_id) === true;
         return animationSelection === undefined ? (
@@ -675,6 +699,7 @@ export default function App() {
   const setPlacementGridStrength = (value: number) => updatePreference("gridStrength", value);
   const setPlacementOverlayVisible = (value: boolean) => updatePreference("objectBoxes", value);
   const setPlacementLabelMode = (value: "hover" | "always" | "off") => updatePreference("labelMode", value);
+  const setAssetLibraryZoom = (value: number) => updatePreference("assetLibraryZoom", clampAssetLibraryZoom(value));
   const [placementTool, setPlacementTool] = useState<PlacementTool>("select");
   const [placementPrimitiveDraft, setPlacementPrimitiveDraft] = useState<PlacementPrimitiveDraft | null>(null);
   const [spritePickerOpen, setSpritePickerOpen] = useState(false);
@@ -1405,6 +1430,13 @@ export default function App() {
       return;
     }
     clearAssetLibrarySelection();
+  };
+  const handleAssetWorkspaceWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (!event.ctrlKey && !event.metaKey) {
+      return;
+    }
+    event.preventDefault();
+    setAssetLibraryZoom(preferences.assetLibraryZoom + (event.deltaY < 0 ? ASSET_LIBRARY_ZOOM_STEP : -ASSET_LIBRARY_ZOOM_STEP));
   };
   const clearSceneFlowSelection = () => {
     setSceneSelection({ kind: "project" });
@@ -3877,7 +3909,7 @@ export default function App() {
     if (rects.length === frameCount && rects.length > 0) {
       const columns = new Set(rects.map((rect) => rect.x)).size;
       if (columns > 0) {
-        return Math.min(8, Math.max(1, columns));
+        return Math.min(24, Math.max(1, columns));
       }
     }
     return Math.min(4, Math.max(1, frameCount));
@@ -5470,6 +5502,24 @@ export default function App() {
         : fontAssets.length > 0;
     const assetTabs: AssetTab[] = ["sprite", "audio", "font"];
     const fontPreviewText = preferences.fontPreviewText.trim() || DEFAULT_FONT_PREVIEW_TEXT;
+    const assetLibraryZoom = preferences.assetLibraryZoom;
+    const assetLibraryZoomPercent = Math.round(assetLibraryZoom * 100);
+    const assetLibraryZoomStyle = {
+      "--asset-library-card-min": `${Math.round(178 * assetLibraryZoom)}px`,
+      "--asset-library-card-min-height": `${Math.round(174 * assetLibraryZoom)}px`,
+      "--asset-library-card-padding": `${Math.round(10 * assetLibraryZoom)}px`,
+      "--asset-library-gallery-gap": `${Math.round(12 * assetLibraryZoom)}px`,
+      "--asset-library-preview-height": `${Math.round(120 * assetLibraryZoom)}px`,
+      "--asset-library-frame-width": `${Math.round(136 * assetLibraryZoom)}px`,
+      "--asset-library-frame-height": `${Math.round(104 * assetLibraryZoom)}px`,
+      "--asset-library-sheet-padding": `${Math.round(8 * assetLibraryZoom)}px`,
+      "--asset-library-sheet-gap": `${Math.max(3, Math.round(5 * assetLibraryZoom))}px`,
+      "--asset-library-sheet-cell-size": `${Math.round(32 * assetLibraryZoom)}px`,
+      "--asset-library-text-preview-width": `${Math.round(220 * assetLibraryZoom)}px`,
+      "--asset-library-text-preview-min": `${Math.round(96 * assetLibraryZoom)}px`,
+      "--asset-library-audio-card-min": `${Math.round(236 * assetLibraryZoom)}px`,
+      "--asset-library-font-preview-size": `${Math.round(24 * assetLibraryZoom)}px`,
+    } as CSSProperties;
     return (
       <section className="asset-workspace-pane">
         <div className="preview-heading graph-heading">
@@ -5479,7 +5529,7 @@ export default function App() {
           </div>
           {renderModeTabs()}
         </div>
-        <div className="asset-workspace" onClick={handleAssetWorkspaceBackgroundClick}>
+        <div className="asset-workspace" style={assetLibraryZoomStyle} onClick={handleAssetWorkspaceBackgroundClick} onWheel={handleAssetWorkspaceWheel}>
           <div className="asset-workspace-summary">
             <div className="asset-library-tabs" role="tablist" aria-label="Asset types">
               {assetTabs.map(tab => (
@@ -5503,6 +5553,39 @@ export default function App() {
                   {tab === "sprite" ? "Sprites" : tab === "audio" ? "Audio" : "Fonts"}
                 </button>
               ))}
+            </div>
+            <div className="asset-library-zoom-controls" aria-label="Asset library zoom controls" onClick={(event) => event.stopPropagation()}>
+              <button
+                className="icon-button"
+                type="button"
+                title="Zoom asset library out"
+                aria-label="Zoom asset library out"
+                disabled={assetLibraryZoom <= ASSET_LIBRARY_MIN_ZOOM}
+                onClick={() => setAssetLibraryZoom(assetLibraryZoom - ASSET_LIBRARY_ZOOM_STEP)}
+              >
+                <ZoomOut size={15} aria-hidden="true" />
+              </button>
+              <span className="asset-library-zoom-value">{assetLibraryZoomPercent}%</span>
+              <button
+                className="icon-button"
+                type="button"
+                title="Zoom asset library in"
+                aria-label="Zoom asset library in"
+                disabled={assetLibraryZoom >= ASSET_LIBRARY_MAX_ZOOM}
+                onClick={() => setAssetLibraryZoom(assetLibraryZoom + ASSET_LIBRARY_ZOOM_STEP)}
+              >
+                <ZoomIn size={15} aria-hidden="true" />
+              </button>
+              <button
+                className="icon-button"
+                type="button"
+                title="Reset asset library zoom"
+                aria-label="Reset asset library zoom"
+                disabled={assetLibraryZoom === 1}
+                onClick={() => setAssetLibraryZoom(1)}
+              >
+                <RotateCcw size={14} aria-hidden="true" />
+              </button>
             </div>
             <div className="asset-workspace-actions">
               {assetTab === "sprite" ? <>
@@ -5588,8 +5671,18 @@ export default function App() {
                           const kind = spriteAssetKind(asset, frames.length);
                           const frameIds = frames.map(frame => frame.frame_id);
                           const selectedFrameCount = frameIds.filter(frameId => combineFrameIds.includes(frameId)).length;
+                          const columns = spriteSheetColumns(asset, frames.length);
+                          const textPreview = isTextSpriteAsset(asset);
+                          const sheetMetrics = !textPreview && frames.length > 1
+                            ? spriteSheetPreviewMetrics(columns, frames.length, assetLibraryZoom)
+                            : null;
+                          const sourceItemStyle = sheetMetrics === null ? undefined : {
+                            "--asset-sheet-card-min-width": `${sheetMetrics.width}px`,
+                            "--asset-sheet-preview-height": `${sheetMetrics.height}px`,
+                            "--asset-sheet-cell-size": `${sheetMetrics.cellSize}px`,
+                          } as CSSProperties;
                           const cardFrameSelection = canAuthorAnimations && frameIds.length <= 16;
-                          return <div className="sprite-source-item" key={group.assetId}>
+                          return <div className="sprite-source-item" style={sourceItemStyle} key={group.assetId}>
                             <span className="asset-kind-badge">{kind}</span>
                             {canAuthorAnimations && <>
                               <input type="checkbox" aria-label={frameIds.length === 1
@@ -5602,8 +5695,8 @@ export default function App() {
                             <SpriteSheetAssetCard frames={frames}
                               name={assetDisplayName(group.assetId)}
                               selected={selectedAssetFrame?.asset_id === group.assetId}
-                              columns={spriteSheetColumns(assetById.get(group.assetId), frames.length)}
-                              textPreview={isTextSpriteAsset(asset)}
+                              columns={columns}
+                              textPreview={textPreview}
                               animationSelection={cardFrameSelection ? {
                                 selectedFrameIds: combineFrameIds,
                                 onToggleFrame: toggleAnimationFrameSelection,
@@ -7879,6 +7972,17 @@ export default function App() {
                     aria-label="Sprite preview background"
                     value={preferences.spritePreviewBackground}
                     onChange={event => updatePreference("spritePreviewBackground", event.target.value)}
+                  />
+                </label>
+                <label>Library zoom
+                  <input
+                    type="range"
+                    min={ASSET_LIBRARY_MIN_ZOOM}
+                    max={ASSET_LIBRARY_MAX_ZOOM}
+                    step={ASSET_LIBRARY_ZOOM_STEP}
+                    aria-label="Asset library zoom"
+                    value={preferences.assetLibraryZoom}
+                    onChange={event => setAssetLibraryZoom(Number(event.target.value))}
                   />
                 </label>
                 <label>Font preview text

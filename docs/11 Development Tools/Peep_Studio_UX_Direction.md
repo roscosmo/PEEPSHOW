@@ -544,7 +544,9 @@ Agreed delivery order:
    without changing selection. Preferences apply across projects on this
    machine, not to authored project data. Implemented first: Placement pixel
    grid, major lines, grid strength, object boxes and label mode, persisted in
-   local editor storage. The old Placement-only Settings tab is removed.
+   local editor storage. Asset library zoom is also persisted locally and can
+   be changed with toolbar controls, Settings, or `Ctrl`/`Cmd` + mouse wheel
+   over the asset workspace. The old Placement-only Settings tab is removed.
 2. Library organization: implemented separate Sprites and Audio tabs with
    filtered import controls, independent empty states and keyboard navigation.
    Switching tabs clears the previous asset selection and stops its preview;

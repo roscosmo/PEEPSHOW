@@ -152,6 +152,7 @@ app.whenReady().then(async () => {
     await button('Placement');
     assert.equal(await evaluate("document.querySelector('[aria-label=Settings]').getAttribute('aria-pressed')"), 'true');
     assert.equal(await evaluate("document.querySelector('.placement-view-settings input[type=\"checkbox\"]').checked"), false);
+    assert.equal(await evaluate("document.querySelector('[aria-label=\"Asset library zoom\"]').value"), '1');
     window.webContents.invalidate(); await wait(200);
     fs.writeFileSync(path.join(output,'settings.png'),(await window.webContents.capturePage()).toPNG());
     await click('[aria-label="Close settings"]');
@@ -159,7 +160,22 @@ app.whenReady().then(async () => {
     assert.equal(latest.project_revision, revision);
     console.log('Settings: no-project access, preview background persistence, corrupt storage fallback, reload persistence, workspace switching and selection preservation passed');
   }
-  await button('Assets'); await button('Choose PNG');
+  await button('Assets');
+  if (process.argv.includes('--settings')) {
+    assert.equal(await evaluate("document.querySelector('.asset-library-zoom-value').textContent"), '100%');
+    await click('[aria-label="Zoom asset library in"]');
+    assert.equal(await evaluate("document.querySelector('.asset-library-zoom-value').textContent"), '110%');
+    await evaluate(`(() => {
+      const event = new WheelEvent('wheel', { deltaY: -120, ctrlKey: true, bubbles: true, cancelable: true });
+      document.querySelector('.asset-workspace').dispatchEvent(event);
+    })()`);
+    await wait(100);
+    assert.equal(await evaluate("document.querySelector('.asset-library-zoom-value').textContent"), '120%');
+    assert.equal(await evaluate("getComputedStyle(document.querySelector('.asset-workspace')).getPropertyValue('--asset-library-card-min').trim()"), '214px');
+    await click('[aria-label="Reset asset library zoom"]');
+    assert.equal(await evaluate("document.querySelector('.asset-library-zoom-value').textContent"), '100%');
+  }
+  await button('Choose PNG');
   assert.equal(fs.existsSync(path.join(projectPath, 'assets', 'audit.png')), false);
   const setImportSelect = async (label, value) => {
     await evaluate(`(() => {const e=document.querySelector(${JSON.stringify(`[aria-label="${label}"]`)}); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(String(value))}); e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
@@ -206,6 +222,22 @@ app.whenReady().then(async () => {
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-card').length"), 1);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell').length"), frameCount);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), largeSheet ? 0 : frameCount);
+  if (largeSheet) {
+    const baseSheetCellWidth = await evaluate("document.querySelector('.asset-sheet-cell').getBoundingClientRect().width");
+    const baseSheetCanvasWidth = await evaluate("document.querySelector('.asset-sheet-cell canvas').getBoundingClientRect().width");
+    const baseSheetCardWidth = await evaluate("document.querySelector('.asset-sheet-card').getBoundingClientRect().width");
+    const baseCardMinWidth = await evaluate("parseFloat(getComputedStyle(document.querySelector('.asset-workspace')).getPropertyValue('--asset-library-card-min'))");
+    assert(baseSheetCardWidth > baseCardMinWidth);
+    assert(baseSheetCanvasWidth > 18);
+    assert.deepEqual(await evaluate("(() => { const e = document.querySelector('.asset-sheet-preview:not(.text-sprite-preview)'); return [e.scrollWidth > e.clientWidth + 2, e.scrollHeight > e.clientHeight + 2]; })()"), [false, false]);
+    await click('[aria-label="Zoom asset library in"]');
+    const zoomedSheetCellWidth = await evaluate("document.querySelector('.asset-sheet-cell').getBoundingClientRect().width");
+    const zoomedSheetCanvasWidth = await evaluate("document.querySelector('.asset-sheet-cell canvas').getBoundingClientRect().width");
+    assert(zoomedSheetCellWidth > baseSheetCellWidth);
+    assert(zoomedSheetCanvasWidth > baseSheetCanvasWidth);
+    assert.deepEqual(await evaluate("(() => { const e = document.querySelector('.asset-sheet-preview:not(.text-sprite-preview)'); return [e.scrollWidth > e.clientWidth + 2, e.scrollHeight > e.clientHeight + 2]; })()"), [false, false]);
+    await click('[aria-label="Reset asset library zoom"]');
+  }
   assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-grid button').length"), frameCount);
   assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-grid button[aria-pressed=\"true\"]').length"), frameCount);
   await click('.asset-animation-frame-grid button:last-child');

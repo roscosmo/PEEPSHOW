@@ -9,6 +9,7 @@ const defaults = {
   labelMode: "hover" as "hover" | "always" | "off",
   thumbnailPlayback: "always" as "hover" | "always" | "off",
   spritePreviewBackground: "#ff66ff",
+  assetLibraryZoom: 1,
   fontPreviewText: "PEEP STUDIO 0123456789 START SETTINGS CREDITS",
 };
 
@@ -30,6 +31,9 @@ function readPreferences(): typeof defaults {
       spritePreviewBackground: isHexColor(value.spritePreviewBackground)
         ? value.spritePreviewBackground.toLowerCase()
         : defaults.spritePreviewBackground,
+      assetLibraryZoom: typeof value.assetLibraryZoom === "number" && Number.isFinite(value.assetLibraryZoom) && value.assetLibraryZoom >= 0.6 && value.assetLibraryZoom <= 1.8
+        ? Math.round(value.assetLibraryZoom * 10) / 10
+        : defaults.assetLibraryZoom,
       fontPreviewText: typeof value.fontPreviewText === "string" && value.fontPreviewText.trim().length > 0 && value.fontPreviewText.length <= 120
         ? value.fontPreviewText
         : defaults.fontPreviewText,
