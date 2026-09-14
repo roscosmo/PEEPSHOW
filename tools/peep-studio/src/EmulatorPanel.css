@@ -131,10 +131,23 @@
 .emulator-panel.collapsed .emulator-toolbar { min-height: 28px; padding-block: 2px; }
 
 .emulator-panel.popout {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  height: 100vh;
   min-height: 100vh;
+  overflow: hidden;
   border-bottom: 0;
+}
+
+.emulator-panel.popout .emulator-inputs {
+  --direction-size: clamp(22px, 8cqw, 42px);
+  --face-size: clamp(28px, 9.5cqw, 52px);
+  align-content: start;
+  min-height: 0;
+  padding-block: 8px;
 }
 
 @media (max-width: 860px) {
   .emulator-panel { max-width: 520px; margin-inline: auto; }
+  .emulator-panel.popout { max-width: none; margin-inline: 0; }
 }

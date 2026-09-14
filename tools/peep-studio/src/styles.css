@@ -46,9 +46,9 @@ button:focus-visible {
 .emulator-popout-shell {
   width: 100vw;
   min-width: 0;
-  min-height: 100vh;
+  height: 100vh;
   margin: 0;
-  overflow: auto;
+  overflow: hidden;
   background: #f8f9fa;
 }
 

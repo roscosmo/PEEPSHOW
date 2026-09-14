@@ -695,6 +695,7 @@ export default function App() {
   const [playing, setPlaying] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("scene-flow");
   const [emulatorPoppedOut, setEmulatorPoppedOut] = useState(false);
+  const [nativeWindowInteracting, setNativeWindowInteracting] = useState(false);
   useEffect(() => {
     if (workspaceMode !== "logic") setSceneSelection(current => current.kind === "timerDraft" ? { kind: "scene" } : current);
   }, [workspaceMode]);
@@ -1035,6 +1036,13 @@ export default function App() {
     };
   }, [bridge]);
 
+  useEffect(() => {
+    if (bridge?.onNativeWindowInteraction === undefined) {
+      return undefined;
+    }
+    return bridge.onNativeWindowInteraction(setNativeWindowInteracting);
+  }, [bridge]);
+
   const startPreview = useCallback(
     async (sceneId: string, options: PreviewStartOptions = {}) => {
       const revision = options.revision ?? project?.project_revision;
@@ -1236,12 +1244,12 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (!playing) {
+    if (!playing || nativeWindowInteracting) {
       return undefined;
     }
     const interval = window.setInterval(() => void advancePreview(250), 250);
     return () => window.clearInterval(interval);
-  }, [advancePreview, playing]);
+  }, [advancePreview, nativeWindowInteracting, playing]);
 
   const playPreviewAudioEvents = useCallback(
     async (snapshot: PreviewSnapshot) => {
@@ -4242,11 +4250,11 @@ export default function App() {
   }), [playing, preview, scenes]);
 
   useEffect(() => {
-    if (!emulatorPoppedOut || bridge?.syncEmulatorPopout === undefined) {
+    if (!emulatorPoppedOut || nativeWindowInteracting || bridge?.syncEmulatorPopout === undefined) {
       return;
     }
     void bridge.syncEmulatorPopout(emulatorPopoutState);
-  }, [bridge, emulatorPoppedOut, emulatorPopoutState]);
+  }, [bridge, emulatorPoppedOut, emulatorPopoutState, nativeWindowInteracting]);
 
   useEffect(() => {
     if (!projectValid || scenes.length === 0) {

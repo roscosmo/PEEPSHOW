@@ -44,6 +44,13 @@ contextBridge.exposeInMainWorld("peepStudio", {
     ipcRenderer.on("peep:emulator-popout-closed", listener);
     return () => ipcRenderer.removeListener("peep:emulator-popout-closed", listener);
   },
+  onNativeWindowInteraction: (callback: (active: boolean) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: unknown) => {
+      callback(state !== null && typeof state === "object" && (state as { active?: unknown }).active === true);
+    };
+    ipcRenderer.on("peep:native-window-interaction", listener);
+    return () => ipcRenderer.removeListener("peep:native-window-interaction", listener);
+  },
   saveProjectAs: (sourcePath: string, defaultName: string) =>
     ipcRenderer.invoke("peep:save-project-as", sourcePath, defaultName),
   exportEgg: (defaultName: string, blobBase64: string) =>

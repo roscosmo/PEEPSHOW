@@ -10,10 +10,16 @@ const PROTOCOL_VERSION = 1;
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_SOURCE_IMAGE_DIMENSION = 4096;
 const MAX_GENERATED_PNG_BYTES = 16 * 1024 * 1024;
+const EMULATOR_POPOUT_CONTENT_WIDTH = 430;
+const EMULATOR_POPOUT_CONTENT_HEIGHT = 560;
+const EMULATOR_POPOUT_ASPECT_RATIO = EMULATOR_POPOUT_CONTENT_WIDTH / EMULATOR_POPOUT_CONTENT_HEIGHT;
+const EMULATOR_POPOUT_MIN_WIDTH = 300;
+const EMULATOR_POPOUT_MIN_HEIGHT = Math.round(EMULATOR_POPOUT_MIN_WIDTH / EMULATOR_POPOUT_ASPECT_RATIO);
 
 let studioWindow: BrowserWindow | null = null;
 let emulatorPopoutWindow: BrowserWindow | null = null;
 let latestEmulatorPopoutState: unknown = null;
+let nativeWindowInteractionTimer: NodeJS.Timeout | null = null;
 
 type FontAssetRecord = {
   font_id: string;
@@ -426,6 +432,7 @@ function createWindow(): void {
   window.setMenuBarVisibility(false);
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event) => event.preventDefault());
+  trackNativeWindowInteraction(window);
   window.once("ready-to-show", () => window.show());
 
   loadRenderer(window);
@@ -454,6 +461,41 @@ function sendLatestEmulatorPopoutState(): void {
   emulatorPopoutWindow.webContents.send("peep:emulator-popout-state", latestEmulatorPopoutState);
 }
 
+function sendNativeWindowInteraction(active: boolean): void {
+  if (studioWindow === null || studioWindow.isDestroyed()) {
+    return;
+  }
+  studioWindow.webContents.send("peep:native-window-interaction", { active });
+}
+
+function markNativeWindowInteraction(): void {
+  if (nativeWindowInteractionTimer !== null) {
+    clearTimeout(nativeWindowInteractionTimer);
+  }
+  sendNativeWindowInteraction(true);
+  nativeWindowInteractionTimer = setTimeout(() => {
+    nativeWindowInteractionTimer = null;
+    sendNativeWindowInteraction(false);
+    sendLatestEmulatorPopoutState();
+  }, 120);
+}
+
+function finishNativeWindowInteraction(): void {
+  if (nativeWindowInteractionTimer !== null) {
+    clearTimeout(nativeWindowInteractionTimer);
+    nativeWindowInteractionTimer = null;
+  }
+  sendNativeWindowInteraction(false);
+  sendLatestEmulatorPopoutState();
+}
+
+function trackNativeWindowInteraction(window: BrowserWindow): void {
+  window.on("move", markNativeWindowInteraction);
+  window.on("resize", markNativeWindowInteraction);
+  window.on("moved", finishNativeWindowInteraction);
+  window.on("resized", finishNativeWindowInteraction);
+}
+
 function createEmulatorPopout(owner: BrowserWindow | null): void {
   if (emulatorPopoutWindow !== null && !emulatorPopoutWindow.isDestroyed()) {
     emulatorPopoutWindow.show();
@@ -461,10 +503,11 @@ function createEmulatorPopout(owner: BrowserWindow | null): void {
     return;
   }
   const window = new BrowserWindow({
-    width: 430,
-    height: 590,
-    minWidth: 300,
-    minHeight: 360,
+    width: EMULATOR_POPOUT_CONTENT_WIDTH,
+    height: EMULATOR_POPOUT_CONTENT_HEIGHT,
+    minWidth: EMULATOR_POPOUT_MIN_WIDTH,
+    minHeight: EMULATOR_POPOUT_MIN_HEIGHT,
+    useContentSize: true,
     backgroundColor: "#f3f5f4",
     title: "Peep Studio Emulator",
     show: false,
@@ -480,10 +523,12 @@ function createEmulatorPopout(owner: BrowserWindow | null): void {
   });
   emulatorPopoutWindow = window;
   window.setAlwaysOnTop(true, "floating");
+  window.setAspectRatio(EMULATOR_POPOUT_ASPECT_RATIO);
   window.setMenuBarVisibility(false);
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event) => event.preventDefault());
   window.webContents.on("did-finish-load", sendLatestEmulatorPopoutState);
+  trackNativeWindowInteraction(window);
   window.once("ready-to-show", () => window.show());
   window.on("closed", () => {
     if (emulatorPopoutWindow === window) {

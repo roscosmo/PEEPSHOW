@@ -46,6 +46,7 @@ interface PeepStudioBridge {
   onEmulatorPopoutState?(callback: (state: unknown) => void): () => void;
   onEmulatorPopoutCommand?(callback: (command: unknown) => void): () => void;
   onEmulatorPopoutClosed?(callback: () => void): () => void;
+  onNativeWindowInteraction?(callback: (active: boolean) => void): () => void;
   saveProjectAs(sourcePath: string, defaultName: string): Promise<string | null>;
   exportEgg(defaultName: string, blobBase64: string): Promise<string | null>;
 }
