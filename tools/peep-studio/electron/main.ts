@@ -486,11 +486,11 @@ ipcMain.handle("peep:import-sprite-png", async (_event, projectPath: unknown) =>
     throw new Error(`Sprite source PNG must be no larger than ${MAX_SOURCE_IMAGE_DIMENSION}x${MAX_SOURCE_IMAGE_DIMENSION}`);
   }
   const destination = await uniqueAssetPath(projectRoot, sourcePath, "sprite");
-  await writeFile(destination.destinationPath, sanitizeSpriteImage(image));
   return {
     assetId: destination.assetId,
     displayName: displayNameFromFilename(sourcePath),
-    sourcePath: destination.relativePath,
+    sourceName: path.basename(sourcePath),
+    sourceDataUrl: `data:image/png;base64,${image.toPNG().toString("base64")}`,
     width: size.width,
     height: size.height,
   };

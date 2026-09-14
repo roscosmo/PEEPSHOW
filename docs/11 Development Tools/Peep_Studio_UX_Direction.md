@@ -552,6 +552,11 @@ Agreed delivery order:
    Coordinate persistent tag metadata with the shared authoring contract before
    adding fields or commands. Current typed sprite/audio records have no tag
    field; the contract's entity-definition tags are not an asset-tag contract.
+   Sprite PNG import is staged: choosing a file shows source and converted
+   previews, then Import writes the masked 1bpp PNG into the project. Current
+   controls cover threshold, alpha cutoff, invert and sheet columns/rows. Future
+   indexed-color and dither import should be added as conversion modes in this
+   same staged importer, not as a separate path.
 3. Animation authoring belongs in Assets. Each shared animation record is one
    library item, continuously previewing its ordered frames at the authored cadence.
    Select source-sprite checkboxes to include a whole source sheet, or toggle

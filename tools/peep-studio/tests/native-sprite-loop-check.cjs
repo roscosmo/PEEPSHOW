@@ -80,13 +80,12 @@ app.whenReady().then(async () => {
       const i = ((y + Math.floor(frame / currentColumns) * cellHeight) * width + (frame % currentColumns) * cellWidth + x) * 4; pixels[i] = pixels[i + 1] = pixels[i + 2] = 0;
     }
     const assetId = importIndex === 0 ? 'audit' : 'small_text';
-    const destination = path.join(projectPath, 'assets', `${assetId}.png`);
-    fs.mkdirSync(path.dirname(destination), { recursive: true });
-    fs.writeFileSync(destination, nativeImage.createFromBitmap(pixels, { width, height }).toPNG());
+    const png = nativeImage.createFromBitmap(pixels, { width, height }).toPNG();
     return {
       assetId,
       displayName: importIndex === 0 ? 'Sprite loop test' : 'Tiny text sprite',
-      sourcePath: `assets/${assetId}.png`,
+      sourceName: `${assetId}.png`,
+      sourceDataUrl: `data:image/png;base64,${png.toString('base64')}`,
       width,
       height,
     };
@@ -152,6 +151,18 @@ app.whenReady().then(async () => {
     console.log('Settings: no-project access, preview background persistence, corrupt storage fallback, reload persistence, workspace switching and selection preservation passed');
   }
   await button('Assets'); await button('Choose PNG');
+  assert.equal(fs.existsSync(path.join(projectPath, 'assets', 'audit.png')), false);
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Sprite conversion mode\"]').value"), 'threshold_1bpp');
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Sprite import threshold\"]').value"), '128');
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Sprite import alpha cutoff\"]').value"), '1');
+  assert.equal(await evaluate("document.querySelectorAll('.sprite-import-preview-canvas img').length"), 2);
+  const setImportValue = async (label, value) => {
+    await evaluate(`(() => {const e=document.querySelector(${JSON.stringify(`[aria-label="${label}"]`)}); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(String(value))}); e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await wait(100);
+  };
+  await setImportValue('Sprite import threshold', '-1');
+  assert(await evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Import').disabled"));
+  await setImportValue('Sprite import threshold', '128');
   const setGrid = async (axis, value) => {
     await evaluate(`(() => {const e=document.querySelector('[aria-label="Sprite sheet ${axis}"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(String(value))}); e.dispatchEvent(new Event('input',{bubbles:true}));})()`); await wait(100);
   };
@@ -165,6 +176,7 @@ app.whenReady().then(async () => {
   window.webContents.invalidate(); await wait(200);
   fs.writeFileSync(path.join(output,'sheet-import.png'),(await window.webContents.capturePage()).toPNG());
   await button('Import');
+  assert.equal(fs.existsSync(path.join(projectPath, 'assets', 'audit.png')), true);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-card').length"), 1);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell').length"), frameCount);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount);

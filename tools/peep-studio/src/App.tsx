@@ -121,6 +121,17 @@ type AssetSelection =
   | { kind: "audio"; cueId: string }
   | { kind: "font"; fontId: string }
   | null;
+type SpriteImportConversionMode = "threshold_1bpp";
+type SpriteImportPreview = {
+  dataUrl: string;
+  width: number;
+  height: number;
+  visiblePixels: number;
+  blackPixels: number;
+  whitePixels: number;
+  transparentPixels: number;
+  error: string | null;
+};
 type AnimationAnchorX = "left" | "center" | "right";
 type AnimationAnchorY = "top" | "middle" | "bottom";
 type AnimationNormalizeDraft = {
@@ -181,6 +192,90 @@ const parseBakedTextFontSize = (value: string) => {
     ? size
     : null;
 };
+
+const parseSpriteImportConversion = (
+  draft: Pick<PendingSpriteImport, "threshold" | "alphaCutoff" | "invert">,
+): { threshold: number; alphaCutoff: number; invert: boolean; error?: undefined } | { error: string } => {
+  const threshold = Number(draft.threshold);
+  if (!Number.isInteger(threshold) || threshold < 0 || threshold > 255) {
+    return { error: "Threshold must be a whole number from 0 to 255." };
+  }
+  const alphaCutoff = Number(draft.alphaCutoff);
+  if (!Number.isInteger(alphaCutoff) || alphaCutoff < 1 || alphaCutoff > 255) {
+    return { error: "Alpha cutoff must be a whole number from 1 to 255." };
+  }
+  return { threshold, alphaCutoff, invert: draft.invert };
+};
+
+async function loadImageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Sprite source preview could not be loaded."));
+    image.src = dataUrl;
+  });
+}
+
+async function renderSpriteImportPng(
+  sourceDataUrl: string,
+  conversion: { threshold: number; alphaCutoff: number; invert: boolean },
+): Promise<SpriteImportPreview> {
+  const source = await loadImageFromDataUrl(sourceDataUrl);
+  const width = source.naturalWidth;
+  const height = source.naturalHeight;
+  if (width <= 0 || height <= 0) {
+    throw new Error("Sprite source preview is empty.");
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (context === null) {
+    throw new Error("Canvas rendering is unavailable.");
+  }
+  context.clearRect(0, 0, width, height);
+  context.drawImage(source, 0, 0);
+  const image = context.getImageData(0, 0, width, height);
+  let visiblePixels = 0;
+  let blackPixels = 0;
+  let whitePixels = 0;
+  let transparentPixels = 0;
+  for (let index = 0; index < image.data.length; index += 4) {
+    const alpha = image.data[index + 3] ?? 0;
+    if (alpha < conversion.alphaCutoff) {
+      image.data[index] = 255;
+      image.data[index + 1] = 255;
+      image.data[index + 2] = 255;
+      image.data[index + 3] = 0;
+      transparentPixels += 1;
+      continue;
+    }
+    const average = ((image.data[index] ?? 0) + (image.data[index + 1] ?? 0) + (image.data[index + 2] ?? 0)) / 3;
+    const black = (average < conversion.threshold) !== conversion.invert;
+    const value = black ? 0 : 255;
+    image.data[index] = value;
+    image.data[index + 1] = value;
+    image.data[index + 2] = value;
+    image.data[index + 3] = 255;
+    visiblePixels += 1;
+    if (black) {
+      blackPixels += 1;
+    } else {
+      whitePixels += 1;
+    }
+  }
+  context.putImageData(image, 0, 0);
+  return {
+    dataUrl: canvas.toDataURL("image/png"),
+    width,
+    height,
+    visiblePixels,
+    blackPixels,
+    whitePixels,
+    transparentPixels,
+    error: null,
+  };
+}
 
 async function renderBakedTextPng(
   draft: Pick<BakedTextDraft, "text" | "fontSize">,
@@ -331,11 +426,16 @@ const snapPlacementGridOffset = (offset: number, origin: number, span: number) =
 type PendingSpriteImport = {
   assetId: string;
   displayName: string;
-  sourcePath: string;
+  sourceName: string;
+  sourceDataUrl: string;
   width: number;
   height: number;
   columns: string;
   rows: string;
+  conversionMode: SpriteImportConversionMode;
+  threshold: string;
+  alphaCutoff: string;
+  invert: boolean;
 };
 
 type BakedTextDraft = {
@@ -540,6 +640,7 @@ export default function App() {
   const [placementDraftPositions, setPlacementDraftPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [placementDraftBounds, setPlacementDraftBounds] = useState<Record<string, { x: number; y: number; width: number; height: number }>>({});
   const [pendingSpriteImport, setPendingSpriteImport] = useState<PendingSpriteImport | null>(null);
+  const [spriteImportPreview, setSpriteImportPreview] = useState<SpriteImportPreview | null>(null);
   const [bakedTextDraft, setBakedTextDraft] = useState<BakedTextDraft | null>(null);
   const [bakedTextEditDraft, setBakedTextEditDraft] = useState<BakedTextEditDraft | null>(null);
   const [assetImportDebug, setAssetImportDebug] = useState("No import attempted.");
@@ -562,8 +663,11 @@ export default function App() {
   const placementScreenOverlayRef = useRef<HTMLDivElement | null>(null);
   const bakedTextFontFacesRef = useRef(new Map<string, LoadedBakedTextFont>());
   const bakedTextPreviewRequestRef = useRef(0);
+  const spriteImportPreviewRequestRef = useRef(0);
 
   useEffect(() => {
+    setPendingSpriteImport(null);
+    setSpriteImportPreview(null);
     setBakedTextDraft(null);
     setBakedTextEditDraft(null);
     setFontAssets([]);
@@ -605,6 +709,58 @@ export default function App() {
   useEffect(() => {
     void refreshBakedTextSources();
   }, [refreshBakedTextSources]);
+
+  useEffect(() => {
+    if (pendingSpriteImport === null) {
+      setSpriteImportPreview(null);
+      return;
+    }
+    const requestId = spriteImportPreviewRequestRef.current + 1;
+    spriteImportPreviewRequestRef.current = requestId;
+    const conversion = parseSpriteImportConversion(pendingSpriteImport);
+    if (conversion.error !== undefined) {
+      setSpriteImportPreview({
+        dataUrl: "",
+        width: pendingSpriteImport.width,
+        height: pendingSpriteImport.height,
+        visiblePixels: 0,
+        blackPixels: 0,
+        whitePixels: 0,
+        transparentPixels: 0,
+        error: conversion.error,
+      });
+      return;
+    }
+    void renderSpriteImportPng(pendingSpriteImport.sourceDataUrl, conversion)
+      .then(preview => {
+        if (spriteImportPreviewRequestRef.current !== requestId) {
+          return;
+        }
+        setSpriteImportPreview(preview);
+      })
+      .catch(error => {
+        if (spriteImportPreviewRequestRef.current !== requestId) {
+          return;
+        }
+        setSpriteImportPreview({
+          dataUrl: "",
+          width: pendingSpriteImport.width,
+          height: pendingSpriteImport.height,
+          visiblePixels: 0,
+          blackPixels: 0,
+          whitePixels: 0,
+          transparentPixels: 0,
+          error: errorText(error),
+        });
+      });
+  }, [
+    pendingSpriteImport?.alphaCutoff,
+    pendingSpriteImport?.height,
+    pendingSpriteImport?.invert,
+    pendingSpriteImport?.sourceDataUrl,
+    pendingSpriteImport?.threshold,
+    pendingSpriteImport?.width,
+  ]);
 
   const loadBakedTextFontFace = useCallback(async (font: FontAssetRecord): Promise<LoadedBakedTextFont> => {
     const cached = bakedTextFontFacesRef.current.get(font.font_id);
@@ -1364,10 +1520,14 @@ export default function App() {
         assetId,
         columns: String(suggestTiles ? imported.width / 16 : 1),
         rows: String(suggestTiles ? imported.height / 16 : 1),
+        conversionMode: "threshold_1bpp",
+        threshold: "128",
+        alphaCutoff: "1",
+        invert: false,
       });
       setWorkspaceMode("assets");
-      setAssetImportDebug(`Picked ${imported.sourcePath} (${imported.width}x${imported.height}).`);
-      setMessage("Choose columns and rows, then import the sprite.");
+      setAssetImportDebug(`Picked ${imported.sourceName} (${imported.width}x${imported.height}).`);
+      setMessage("Adjust conversion and frame split, then import the sprite.");
     } catch (error) {
       const text = errorText(error);
       setAssetImportDebug(`PNG picker failed: ${text}`);
@@ -1378,12 +1538,17 @@ export default function App() {
   };
 
   const confirmSpriteImport = async () => {
-    if (bridge === undefined || project === null || pendingSpriteImport === null || busy !== null) {
+    if (bridge === undefined || project === null || projectPath === null || pendingSpriteImport === null || busy !== null) {
       return;
     }
     setBusy("Importing sprite");
     setPlaying(false);
     try {
+      if (bridge.writeGeneratedSpritePng === undefined) {
+        setAssetImportDebug("Import blocked: restart Peep Studio to enable staged sprite writing.");
+        setMessage("Restart Peep Studio to enable staged sprite writing.");
+        return;
+      }
       const parsed = parseSpriteSheetGrid(
         pendingSpriteImport.width,
         pendingSpriteImport.height,
@@ -1395,10 +1560,18 @@ export default function App() {
         setMessage(parsed.error);
         return;
       }
+      const conversion = parseSpriteImportConversion(pendingSpriteImport);
+      if (conversion.error !== undefined) {
+        setAssetImportDebug(`Import blocked: ${conversion.error}`);
+        setMessage(conversion.error);
+        return;
+      }
+      const converted = await renderSpriteImportPng(pendingSpriteImport.sourceDataUrl, conversion);
+      const written = await bridge.writeGeneratedSpritePng(projectPath, pendingSpriteImport.assetId, converted.dataUrl);
       const frames = createGridFrames(
-        pendingSpriteImport.assetId,
-        pendingSpriteImport.width,
-        pendingSpriteImport.height,
+        written.assetId,
+        written.width,
+        written.height,
         parsed.frameWidth,
         parsed.frameHeight,
       );
@@ -1408,10 +1581,10 @@ export default function App() {
           {
             kind: "asset.upsert",
             asset: {
-              asset_id: pendingSpriteImport.assetId,
+              asset_id: written.assetId,
               display_name: pendingSpriteImport.displayName,
               asset_type: "masked_1bpp",
-              source_path: pendingSpriteImport.sourcePath,
+              source_path: written.sourcePath,
               source_format: "png",
               frames,
             },
@@ -1423,8 +1596,8 @@ export default function App() {
       setCombineFrameIds(frames.map(frame => frame.frame_id));
       setWorkspaceMode("assets");
       setPendingSpriteImport(null);
-      setAssetImportDebug(`Imported ${pendingSpriteImport.sourcePath}: ${frames.length} frame${frames.length === 1 ? "" : "s"} at ${parsed.frameWidth}x${parsed.frameHeight}.`);
-      setMessage(`Imported ${pendingSpriteImport.assetId} with ${frames.length} frame${frames.length === 1 ? "" : "s"}. Save to write it to the project.`);
+      setAssetImportDebug(`Imported ${pendingSpriteImport.sourceName}: ${frames.length} frame${frames.length === 1 ? "" : "s"} at ${parsed.frameWidth}x${parsed.frameHeight}, threshold ${conversion.threshold}, alpha ${conversion.alphaCutoff}${conversion.invert ? ", inverted" : ""}.`);
+      setMessage(`Imported ${written.assetId} with ${frames.length} frame${frames.length === 1 ? "" : "s"}. Save to write it to the project.`);
     } catch (error) {
       const text = errorText(error);
       setAssetImportDebug(`Import failed: ${text}`);
@@ -4823,8 +4996,12 @@ export default function App() {
     const frameCount = pendingSpriteImport === null || importCheck === null || importCheck.error !== undefined
       ? 0
       : (pendingSpriteImport.width / importCheck.frameWidth) * (pendingSpriteImport.height / importCheck.frameHeight);
+    const conversionCheck = pendingSpriteImport === null
+      ? null
+      : parseSpriteImportConversion(pendingSpriteImport);
+    const previewError = spriteImportPreview?.error ?? conversionCheck?.error ?? null;
     return (
-      <div className="asset-import-panel">
+      <div className="asset-import-panel sprite-import-panel">
         {pendingSpriteImport === null ? (
           <div>
             <strong>PNG import</strong>
@@ -4834,13 +5011,90 @@ export default function App() {
             <div className="asset-import-heading">
               <div>
                 <strong>{pendingSpriteImport.displayName}</strong>
-                <span>{pendingSpriteImport.sourcePath} - {pendingSpriteImport.width}x{pendingSpriteImport.height}</span>
+                <span>{pendingSpriteImport.sourceName} - {pendingSpriteImport.width}x{pendingSpriteImport.height}</span>
               </div>
               <button className="icon-button" type="button" onClick={() => setPendingSpriteImport(null)} title="Cancel import" aria-label="Cancel import">
                 <X size={14} aria-hidden="true" />
               </button>
             </div>
+            <div className="sprite-import-preview-grid">
+              <div className="sprite-import-preview-panel">
+                <strong>Source</strong>
+                <div className="sprite-import-preview-canvas">
+                  <img src={pendingSpriteImport.sourceDataUrl} alt="" />
+                </div>
+              </div>
+              <div className="sprite-import-preview-panel">
+                <strong>Converted</strong>
+                <div className={`sprite-import-preview-canvas ${previewError !== null ? "error" : ""}`}>
+                  {spriteImportPreview !== null && spriteImportPreview.error === null ? (
+                    <img src={spriteImportPreview.dataUrl} alt="" />
+                  ) : (
+                    <span>{previewError ?? "Rendering preview..."}</span>
+                  )}
+                </div>
+              </div>
+            </div>
             <div className="asset-import-controls">
+              <label>
+                Conversion
+                <select
+                  aria-label="Sprite conversion mode"
+                  value={pendingSpriteImport.conversionMode}
+                  disabled={!canEditAssets}
+                  onChange={(event) => {
+                    const value = event.target.value as SpriteImportConversionMode;
+                    setPendingSpriteImport((current) => current === null ? null : { ...current, conversionMode: value });
+                  }}
+                >
+                  <option value="threshold_1bpp">B/W mask</option>
+                </select>
+              </label>
+              <label>
+                Threshold
+                <input
+                  type="number"
+                  min={0}
+                  max={255}
+                  step={1}
+                  aria-label="Sprite import threshold"
+                  value={pendingSpriteImport.threshold}
+                  disabled={!canEditAssets}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setPendingSpriteImport((current) => current === null ? null : { ...current, threshold: value });
+                  }}
+                />
+              </label>
+              <label>
+                Alpha cutoff
+                <input
+                  type="number"
+                  min={1}
+                  max={255}
+                  step={1}
+                  aria-label="Sprite import alpha cutoff"
+                  value={pendingSpriteImport.alphaCutoff}
+                  disabled={!canEditAssets}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setPendingSpriteImport((current) => current === null ? null : { ...current, alphaCutoff: value });
+                  }}
+                />
+              </label>
+              <label className="asset-import-inline-toggle">
+                Invert
+                <input
+                  type="checkbox"
+                  aria-label="Invert sprite import"
+                  checked={pendingSpriteImport.invert}
+                  disabled={!canEditAssets}
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    setPendingSpriteImport((current) => current === null ? null : { ...current, invert: checked });
+                  }}
+                />
+              </label>
               <label>
                 Columns
                 <input
@@ -4876,10 +5130,15 @@ export default function App() {
               <div className={`asset-import-result ${importCheck?.error !== undefined ? "error" : ""}`}>
                 {importCheck?.error ?? `${frameCount} frame${frameCount === 1 ? "" : "s"} / ${importCheck?.frameWidth}x${importCheck?.frameHeight} px each`}
               </div>
+              <div className={`asset-import-result ${previewError !== null ? "error" : ""}`}>
+                {previewError ?? (spriteImportPreview === null
+                  ? "Rendering preview..."
+                  : `${spriteImportPreview.blackPixels} black / ${spriteImportPreview.whitePixels} white / ${spriteImportPreview.transparentPixels} transparent`)}
+              </div>
               <button
                 className="button primary"
                 type="button"
-                disabled={!canEditAssets || importCheck?.error !== undefined}
+                disabled={!canEditAssets || importCheck?.error !== undefined || previewError !== null || spriteImportPreview === null}
                 onClick={() => void confirmSpriteImport()}
               >
                 Import

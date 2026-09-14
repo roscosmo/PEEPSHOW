@@ -25,7 +25,7 @@ interface PeepStudioBridge {
   chooseNewProjectPath(): Promise<string | null>;
   openProject(): Promise<string | null>;
   openExampleProject(): Promise<string>;
-  importSpritePng(projectPath: string): Promise<{ assetId: string; displayName: string; sourcePath: string; width: number; height: number } | null>;
+  importSpritePng(projectPath: string): Promise<{ assetId: string; displayName: string; sourceName: string; sourceDataUrl: string; width: number; height: number } | null>;
   readFontAssets?(projectPath: string): Promise<StudioFontAssetRecord[]>;
   importFontAsset?(projectPath: string): Promise<StudioFontAssetRecord | null>;
   renameFontAsset?(projectPath: string, fontId: string, displayName: string): Promise<StudioFontAssetRecord>;
