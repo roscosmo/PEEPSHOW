@@ -13,6 +13,8 @@ export function AnimationClipEditor({ clip, frames, assets, scenes, disabled, on
   onDelete?: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(initiallyOpen);
+  const initialName = () => clip.display_name ?? displayName ?? clip.animation_id;
+  const [name, setName] = useState(initialName);
   const [loopPolicy, setLoopPolicy] = useState(clip.loop_policy);
   const initial = () => clip.frame_refs.map((frame) => ({ frame }));
   const initialCadence = () => String(clip.frame_duration_ms[0] ?? 400);
@@ -23,11 +25,14 @@ export function AnimationClipEditor({ clip, frames, assets, scenes, disabled, on
   const firstFrame = byId.get(steps[0]?.frame);
   const cadenceNumber = Number(cadence);
   const frameRefs = steps.map(step => step.frame);
+  const trimmedName = name.trim();
   const valid = steps.length > 0 && steps.length <= 256 && steps.every(step =>
     byId.has(step.frame) && byId.get(step.frame)?.width === firstFrame?.width && byId.get(step.frame)?.height === firstFrame?.height)
     && cadence.trim() !== "" && Number.isInteger(cadenceNumber) && cadenceNumber >= 1 && cadenceNumber <= 60000
+    && trimmedName.length > 0 && trimmedName.length <= 64
     && (!loopPolicies || loopPolicies.includes(loopPolicy));
   const changed = creating || clipHasMixedCadence || loopPolicy !== clip.loop_policy
+    || trimmedName !== initialName()
     || cadenceNumber !== (clip.frame_duration_ms[0] ?? 400)
     || JSON.stringify(frameRefs) !== JSON.stringify(clip.frame_refs);
   const frameLabel = (id: string) => {
@@ -43,7 +48,7 @@ export function AnimationClipEditor({ clip, frames, assets, scenes, disabled, on
     return next;
   });
   if (!open) return <button className="button secondary" type="button" disabled={disabled}
-    onClick={() => { setSteps(initial()); setCadence(initialCadence()); setOpen(true); }}><Pencil size={14} />Edit clip</button>;
+    onClick={() => { setName(initialName()); setSteps(initial()); setCadence(initialCadence()); setOpen(true); }}><Pencil size={14} />Edit clip</button>;
   const deleteDisabled = disabled || creating || onDelete === undefined || users.length > 0;
   return <section className="clip-editor" aria-label="Animation clip editor" onKeyDown={event => {
       if (event.key === "Escape") { event.stopPropagation(); setOpen(false); onCancel?.(); }
@@ -71,6 +76,11 @@ export function AnimationClipEditor({ clip, frames, assets, scenes, disabled, on
       <ul>{users.map((user, i) => <li key={i}>{user}</li>)}</ul>
     </details>
     <fieldset disabled={disabled}>
+      <section className="clip-editor-panel">
+        <h5>Details</h5>
+        <label className="clip-editor-name">Name<input type="text" maxLength={64} aria-label="Animation name"
+          value={name} onChange={event => setName(event.target.value)} /></label>
+      </section>
       <section className="clip-editor-panel">
         <h5>Playback</h5>
         <div className="clip-editor-settings">
@@ -104,11 +114,11 @@ export function AnimationClipEditor({ clip, frames, assets, scenes, disabled, on
           </div>
         </div>)}
       </section>
-      {!valid && <p role="status">Frames must be available and the same size, with one whole cadence from 1 to 60000 ms and supported playback.</p>}
+      {!valid && <p role="status">Use a name from 1 to 64 characters. Frames must be available and the same size, with one whole cadence from 1 to 60000 ms and supported playback.</p>}
       <div className="clip-editor-actions">
         <button className="button primary" type="button" disabled={!valid || !changed} onClick={async () => {
           if (await onApply([{ kind: "animation.upsert", animation: { ...clip,
-            loop_policy: loopPolicy, frame_refs: frameRefs, frame_duration_ms: frameRefs.map(() => cadenceNumber) } }])) { if (!initiallyOpen) setOpen(false); }
+            display_name: trimmedName, loop_policy: loopPolicy, frame_refs: frameRefs, frame_duration_ms: frameRefs.map(() => cadenceNumber) } }])) { if (!initiallyOpen) setOpen(false); }
         }}>{creating ? "Create animation" : "Apply clip"}</button>
         <button className="button secondary" type="button" onClick={() => { setOpen(false); onCancel?.(); }}>Cancel</button>
       </div>

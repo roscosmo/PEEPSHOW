@@ -5073,8 +5073,11 @@ def _check_animation(animation: dict[str, Any], path: str, issues: list[Validati
         {"animation_id", "frame_refs", "frame_duration_ms", "loop_policy"},
         path,
         issues,
+        {"animation_id", "display_name", "frame_refs", "frame_duration_ms", "loop_policy"},
     )
     _stable_id(animation.get("animation_id"), f"{path}.animation_id", issues)
+    if "display_name" in animation:
+        _text(animation.get("display_name"), f"{path}.display_name", issues, 64)
     frame_refs = animation.get("frame_refs")
     durations = animation.get("frame_duration_ms")
     if not isinstance(frame_refs, list) or not 1 <= len(frame_refs) <= 256:

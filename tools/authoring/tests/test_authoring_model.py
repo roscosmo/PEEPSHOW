@@ -884,6 +884,7 @@ class AuthoringModelTests(unittest.TestCase):
             catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
             catalog["assets"][0]["display_name"] = "Cursor Sprite"
             catalog["assets"][0]["frames"][0]["display_name"] = "Cursor Open"
+            catalog["animations"][0]["display_name"] = "Cursor Blink"
             catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
 
             bundle = load_project(project_root)
@@ -891,6 +892,7 @@ class AuthoringModelTests(unittest.TestCase):
             normalized = bundle.normalized()
             self.assertEqual("Cursor Sprite", normalized["assets"][0]["display_name"])
             self.assertEqual("Cursor Open", normalized["assets"][0]["frames"][0]["display_name"])
+            self.assertEqual("Cursor Blink", normalized["animations"][0]["display_name"])
 
             package = parse_egg(build_egg(bundle))
             self.assertEqual("cursor.phase_a", package.assets[0]["frame_id"])

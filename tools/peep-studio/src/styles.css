@@ -1794,6 +1794,12 @@ button:focus-visible {
   font-size: 12px;
   letter-spacing: 0;
 }
+.clip-editor-name {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  font-size: 12px;
+}
 .clip-editor-panel-heading {
   display: flex;
   align-items: center;

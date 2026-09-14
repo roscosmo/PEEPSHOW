@@ -3719,7 +3719,7 @@ export default function App() {
   const canDeleteAnimations = service?.operations.includes("project.apply_commands") === true
     && generalAnimationCommands.includes("animation.delete");
   const canAuthorAnimations = canUpsertAnimations && animationPolicies.length > 0;
-  const animationLabel = (clip: AuthoredClip) => {
+  const animationFallbackLabel = (clip: AuthoredClip) => {
     const animationIndex = Math.max(0, animationClips.indexOf(clip)) + 1;
     const asset = assets.find(item => item.frames.some(frame => frame.frame_id === clip.frame_refs[0]));
     if (isNormalizedAnimationBackingAsset(asset)) {
@@ -3727,15 +3727,29 @@ export default function App() {
     }
     return `${asset?.display_name ?? asset?.text ?? "Animation"} - Animation ${animationIndex}`;
   };
+  const animationLabel = (clip: AuthoredClip) => clip.display_name?.trim() || animationFallbackLabel(clip);
   const nextAnimationId = () => {
     let index = 1;
     while (animationClips.some(clip => clip.animation_id === `animation_${index}`)) index++;
     return `animation_${index}`;
   };
+  const uniqueAnimationDisplayName = (base: string) => {
+    const normalizedBase = base.trim() || "Animation";
+    const existingNames = new Set(animationClips.map(animationLabel));
+    let candidate = normalizedBase.slice(0, 64);
+    let index = 2;
+    while (existingNames.has(candidate)) {
+      const suffix = ` ${index}`;
+      candidate = `${normalizedBase.slice(0, 64 - suffix.length)}${suffix}`;
+      index++;
+    }
+    return candidate;
+  };
   const duplicateAnimationClip = async (clip: AuthoredClip) => {
     if (!canUpsertAnimations || busy !== null) return;
     const animationId = nextAnimationId();
-    const applied = await applySceneObjectCommands([{ kind: "animation.upsert", animation: { ...clip, animation_id: animationId } }]);
+    const displayName = uniqueAnimationDisplayName(`${animationLabel(clip)} copy`);
+    const applied = await applySceneObjectCommands([{ kind: "animation.upsert", animation: { ...clip, animation_id: animationId, display_name: displayName } }]);
     if (applied) {
       setCombineFrameIds([]);
       selectAssetRecord({ kind: "animation", clipId: animationId });
@@ -3784,7 +3798,7 @@ export default function App() {
       return;
     }
     setAnimationNormalizeDraft(null);
-    selectAssetRecord({ kind: "animation-draft", clip: { animation_id: nextAnimationId(), frame_refs: frameIds,
+    selectAssetRecord({ kind: "animation-draft", clip: { animation_id: nextAnimationId(), display_name: uniqueAnimationDisplayName(`Animation ${animationClips.length + 1}`), frame_refs: frameIds,
       frame_duration_ms: frameIds.map(() => 400), loop_policy: animationPolicies[0] } });
   };
   const createNormalizedAnimation = async () => {
@@ -3830,6 +3844,7 @@ export default function App() {
       }));
       const frameRefs = normalizedFrames.map(frame => frame.frame_id);
       const animationId = nextAnimationId();
+      const animationDisplayName = uniqueAnimationDisplayName(`Animation ${animationClips.length + 1}`);
       const result = await bridge.serviceRequest<ProjectCommandResult>("project.apply_commands", {
         project_revision: project.project_revision,
         commands: [
@@ -3848,6 +3863,7 @@ export default function App() {
             kind: "animation.upsert",
             animation: {
               animation_id: animationId,
+              display_name: animationDisplayName,
               frame_refs: frameRefs,
               frame_duration_ms: frameRefs.map(() => cadenceMs),
               loop_policy: animationNormalizeDraft.loopPolicy,
@@ -6340,7 +6356,7 @@ export default function App() {
       const clip = assetSelection.kind === "animation-draft" ? assetSelection.clip : animationClips.find(item => item.animation_id === assetSelection.clipId);
       return <section className="inspector-section asset-inspector"><h3>Animation</h3>{clip && <AnimationClipEditor
         key={`${creating}:${JSON.stringify(clip)}`} clip={clip} frames={compiledAssetFrames} assets={animationEditorAssets} scenes={scenes}
-        displayName={creating ? "New animation" : animationLabel(clip)} creating={creating} initiallyOpen loopPolicies={animationPolicies}
+        displayName={creating ? clip.display_name ?? "New animation" : animationLabel(clip)} creating={creating} initiallyOpen loopPolicies={animationPolicies}
         disabled={!canAuthorAnimations || busy !== null} onCancel={() => setAssetSelection(null)}
         onDuplicate={!creating && canUpsertAnimations ? () => duplicateAnimationClip(clip) : undefined}
         onDelete={!creating && canDeleteAnimations ? () => deleteAnimationClip(clip) : undefined}

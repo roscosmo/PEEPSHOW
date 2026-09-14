@@ -55,6 +55,7 @@ The initial catalog shape is:
   }],
   "animations": [{
     "animation_id": "cursor.blink",
+    "display_name": "Cursor blink",
     "frame_refs": ["cursor.phase_a"],
     "frame_duration_ms": [250],
     "loop_policy": "loop"

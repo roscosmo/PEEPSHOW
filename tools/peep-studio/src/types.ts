@@ -357,6 +357,7 @@ export type ProjectDocument = {
 
 export type AuthoredClip = {
   animation_id: string;
+  display_name?: string;
   frame_refs: string[];
   frame_duration_ms: number[];
   loop_policy: string;

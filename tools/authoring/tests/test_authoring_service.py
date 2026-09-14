@@ -2398,6 +2398,7 @@ class AuthoringServiceTests(unittest.TestCase):
                                 "kind": "animation.upsert",
                                 "animation": {
                                     "animation_id": "cursor.blink",
+                                    "display_name": "Cursor Blink",
                                     "frame_refs": ["cursor.phase_a", "cursor.phase_b"],
                                     "frame_duration_ms": [100, 300],
                                     "loop_policy": "loop",
@@ -2410,6 +2411,7 @@ class AuthoringServiceTests(unittest.TestCase):
             service.handle(request("project.save", {"project_revision": changed["project_revision"]}))
             reloaded = load_project(project_root)
             cursor = next(item for item in reloaded.animations if item["animation_id"] == "cursor.blink")
+            self.assertEqual("Cursor Blink", cursor["display_name"])
             self.assertEqual([100, 300], cursor["frame_duration_ms"])
 
     def test_short_start_can_be_authored_compiled_and_previewed(self) -> None:

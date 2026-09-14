@@ -1073,6 +1073,7 @@ system_font_text_asset:
 
 frame_animation:
   animation_id
+  display_name                 # optional author-facing label, not packaged
   frame_refs[]
   frame_duration_ms[]
   loop_policy
