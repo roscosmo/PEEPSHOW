@@ -1671,6 +1671,11 @@ button:focus-visible {
   min-width: var(--asset-sheet-card-min-width, 0);
 }
 
+.sprite-source-item-sheet {
+  grid-column: 1 / -1;
+  width: min(100%, var(--asset-sheet-card-min-width, 100%));
+}
+
 .sprite-source-item > .asset-sheet-card {
   width: 100%;
   min-width: var(--asset-sheet-card-min-width, 0);

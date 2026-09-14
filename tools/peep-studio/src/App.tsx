@@ -5697,8 +5697,12 @@ export default function App() {
                             "--asset-sheet-preview-height": `${sheetMetrics.height}px`,
                             "--asset-sheet-cell-size": `${sheetMetrics.cellSize}px`,
                           } as CSSProperties;
+                          const sourceItemClassName = [
+                            "sprite-source-item",
+                            sheetMetrics === null ? "" : "sprite-source-item-sheet",
+                          ].filter(Boolean).join(" ");
                           const cardFrameSelection = canAuthorAnimations && frameIds.length <= 16;
-                          return <div className="sprite-source-item" style={sourceItemStyle} key={group.assetId}>
+                          return <div className={sourceItemClassName} style={sourceItemStyle} key={group.assetId}>
                             <span className="asset-kind-badge">{kind}</span>
                             {canAuthorAnimations && <>
                               <input type="checkbox" aria-label={frameIds.length === 1

@@ -64,11 +64,12 @@ app.whenReady().then(async () => {
   let importCount = 0;
   ipcMain.handle('audit:png', () => {
     const importIndex = importCount++;
-    const cellWidth = importIndex === 0 ? 16 : 12;
-    const cellHeight = importIndex === 0 ? 16 : 10;
-    const currentFrameCount = importIndex === 0 ? frameCount : 1;
-    const currentColumns = importIndex === 0 ? sheetColumns : 1;
-    const currentRows = importIndex === 0 ? sheetRows : 1;
+    const sheetImport = importIndex === 0 || (largeSheet && importIndex === 1);
+    const cellWidth = sheetImport ? 16 : 12;
+    const cellHeight = sheetImport ? 16 : 10;
+    const currentFrameCount = sheetImport ? frameCount : 1;
+    const currentColumns = sheetImport ? sheetColumns : 1;
+    const currentRows = sheetImport ? sheetRows : 1;
     const width = currentColumns * cellWidth, height = currentRows * cellHeight;
     const pixels = Buffer.alloc(width * height * 4, 255);
     if (transparent) {
@@ -88,11 +89,11 @@ app.whenReady().then(async () => {
       const i = ((markerY + Math.floor(frame / currentColumns) * cellHeight) * width + (frame % currentColumns) * cellWidth + markerX) * 4;
       pixels[i] = pixels[i + 1] = pixels[i + 2] = 255;
     }
-    const assetId = importIndex === 0 ? 'audit' : 'small_text';
+    const assetId = sheetImport ? (importIndex === 0 ? 'audit' : `audit_${importIndex + 1}`) : 'small_text';
     const png = nativeImage.createFromBitmap(pixels, { width, height }).toPNG();
     return {
       assetId,
-      displayName: importIndex === 0 ? 'Sprite loop test' : 'Tiny text sprite',
+      displayName: sheetImport ? (importIndex === 0 ? 'Sprite loop test' : `Sprite loop test ${importIndex + 1}`) : 'Tiny text sprite',
       sourceName: `${assetId}.png`,
       sourceDataUrl: `data:image/png;base64,${png.toString('base64')}`,
       width,
@@ -229,6 +230,12 @@ app.whenReady().then(async () => {
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell').length"), frameCount);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), largeSheet ? 0 : frameCount);
   if (largeSheet) {
+    await button('Choose PNG');
+    await setGrid('columns', sheetColumns);
+    await setGrid('rows', sheetRows);
+    await button('Import');
+    assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-card').length"), 2);
+    assert.equal(await evaluate("(() => { const cards = [...document.querySelectorAll('.sprite-source-item-sheet .asset-sheet-card')].map(e => e.getBoundingClientRect()); return cards.length === 2 && (cards[0].right <= cards[1].left || cards[1].right <= cards[0].left || cards[0].bottom <= cards[1].top || cards[1].bottom <= cards[0].top); })()"), true);
     const baseSheetCellWidth = await evaluate("document.querySelector('.asset-sheet-cell').getBoundingClientRect().width");
     const baseSheetCanvasWidth = await evaluate("document.querySelector('.asset-sheet-cell canvas').getBoundingClientRect().width");
     const baseSheetCardWidth = await evaluate("document.querySelector('.asset-sheet-card').getBoundingClientRect().width");
@@ -259,7 +266,7 @@ app.whenReady().then(async () => {
   }
   const alpha = await evaluate("(() => {const c=document.querySelector('.asset-frame-gallery canvas');const p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;return [p[3],p[(3*c.width+2)*4+3]]})()");
   assert.deepEqual(alpha, [transparent ? 0 : 255, 255]);
-  const pixels = new Set(await evaluate("[...document.querySelectorAll('.asset-sheet-cell canvas')].map(canvas => canvas.toDataURL())"));
+  const pixels = new Set(await evaluate("[...document.querySelector('.asset-sheet-card').querySelectorAll('.asset-sheet-cell canvas')].map(canvas => canvas.toDataURL())"));
   if (pixels.size !== frameCount) console.error('Thumbnail pixel diagnostic', latest.document.compiled_asset_frames.map(frame => ({
     id: frame.frame_id, opaque: frame.opaque, maskBytes: Buffer.from(frame.mask_base64, 'base64').length,
     pixels: frame.pixels_sha256,
@@ -337,8 +344,9 @@ app.whenReady().then(async () => {
   await click('[aria-label="Add sprite"]'); await click('.placement-sprite-picker-group button');
   const scene = latest.document.scenes[0]; assert.equal(scene.objects.length, 1);
   const clip = latest.document.animations[0];
+  const expectedAnimationAssetId = largeSheet ? 'audit_2' : 'audit';
   assert.equal(clip.loop_policy, 'loop');
-  assert.deepEqual(clip.frame_refs, Array.from({length:frameCount},(_,i)=>`audit.frame_${i+1}`));
+  assert.deepEqual(clip.frame_refs, Array.from({length:frameCount},(_,i)=>`${expectedAnimationAssetId}.frame_${i+1}`));
   assert.deepEqual(clip.frame_duration_ms, Array(frameCount).fill(400));
   assert.equal(latest.document.scenes[0].objects[0].animation_ref, clip.animation_id);
   assert(batches.some(batch => batch.length === 2 && batch[0].kind === 'object.add' && batch[1].kind === 'object.bind_animation'));
