@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronRight, Pause, Play, RotateCcw, StepForward } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronRight, Maximize2, Pause, Play, RotateCcw, StepForward, X } from "lucide-react";
 import { FramebufferCanvas } from "./FramebufferCanvas";
 import type { PreviewSnapshot } from "./types";
 import "./EmulatorPanel.css";
@@ -11,7 +11,7 @@ const directions = [
   { source: "JOY_DOWN", label: "Down", Icon: ArrowDown, position: "down" },
 ];
 
-export function EmulatorPanel({ preview, sceneName, playing, onReset, onTogglePlaying, onAdvance, onInput }: {
+export function EmulatorPanel({ preview, sceneName, playing, onReset, onTogglePlaying, onAdvance, onInput, onPopOut, onDock, mode = "docked" }: {
   preview: PreviewSnapshot | null;
   sceneName: string;
   playing: boolean;
@@ -19,12 +19,15 @@ export function EmulatorPanel({ preview, sceneName, playing, onReset, onTogglePl
   onTogglePlaying: () => void;
   onAdvance: () => void;
   onInput: (source: string) => void;
+  onPopOut?: () => void;
+  onDock?: () => void;
+  mode?: "docked" | "popout";
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const id = useId();
   const available = preview !== null;
   return (
-    <section className={`emulator-panel ${collapsed ? "collapsed" : "expanded"}`} aria-label="Device emulator">
+    <section className={`emulator-panel ${collapsed ? "collapsed" : "expanded"} ${mode === "popout" ? "popout" : "docked"}`} aria-label="Device emulator">
       <div className="emulator-toolbar">
         <button className="emulator-collapse" type="button" aria-expanded={!collapsed}
           aria-controls={`${id}-transport ${id}-inputs`}
@@ -40,6 +43,17 @@ export function EmulatorPanel({ preview, sceneName, playing, onReset, onTogglePl
             {playing ? <Pause size={18} /> : <Play size={18} />}
           </button>
           <button type="button" onClick={onAdvance} disabled={!available} title="Advance 250 ms" aria-label="Advance 250 ms"><StepForward size={17} /></button>
+        </div>
+        <div className="emulator-window-actions">
+          {mode === "docked" && onPopOut !== undefined ? (
+            <button type="button" onClick={onPopOut}
+              title="Pop out emulator" aria-label="Pop out emulator"><Maximize2 size={16} /></button>
+          ) : mode === "popout" && onDock !== undefined ? (
+            <button type="button" onClick={onDock}
+              title="Dock emulator" aria-label="Dock emulator"><X size={16} /></button>
+          ) : (
+            null
+          )}
         </div>
       </div>
       <div className="emulator-display"><FramebufferCanvas framebuffer={preview?.framebuffer ?? null} /></div>

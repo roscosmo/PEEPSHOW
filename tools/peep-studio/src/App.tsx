@@ -49,6 +49,7 @@ import { AnimationClipEditor } from "./AnimationClipEditor";
 import { canBuildProject } from "./exportReadiness";
 import { AudioWaveform } from "./AudioWaveform";
 import { EmulatorPanel } from "./EmulatorPanel";
+import type { EmulatorPopoutState } from "./EmulatorPopoutApp";
 import {
   lineDirectionFromPoints,
   normalizePrimitiveBounds,
@@ -123,6 +124,11 @@ type AssetSelection =
   | { kind: "audio"; cueId: string }
   | { kind: "font"; fontId: string }
   | null;
+type EmulatorPopoutCommand =
+  | { kind: "reset" }
+  | { kind: "togglePlaying" }
+  | { kind: "advance"; elapsedMs?: number }
+  | { kind: "input"; source?: string };
 type SpriteImportConversionMode = "threshold_1bpp";
 type SpriteImportAlphaMode = "respect_alpha" | "ignore_alpha" | "transparent_as_white";
 type SpriteImportPreset = {
@@ -688,6 +694,7 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("scene-flow");
+  const [emulatorPoppedOut, setEmulatorPoppedOut] = useState(false);
   useEffect(() => {
     if (workspaceMode !== "logic") setSceneSelection(current => current.kind === "timerDraft" ? { kind: "scene" } : current);
   }, [workspaceMode]);
@@ -1005,6 +1012,29 @@ export default function App() {
       .catch((error) => setMessage(errorText(error)));
   }, [bridge]);
 
+  useEffect(() => {
+    if (bridge?.getEmulatorPopoutStatus === undefined) {
+      return undefined;
+    }
+    let cancelled = false;
+    void bridge.getEmulatorPopoutStatus()
+      .then((status) => {
+        if (!cancelled) {
+          setEmulatorPoppedOut(status.open);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEmulatorPoppedOut(false);
+        }
+      });
+    const removeClosedListener = bridge.onEmulatorPopoutClosed?.(() => setEmulatorPoppedOut(false));
+    return () => {
+      cancelled = true;
+      removeClosedListener?.();
+    };
+  }, [bridge]);
+
   const startPreview = useCallback(
     async (sceneId: string, options: PreviewStartOptions = {}) => {
       const revision = options.revision ?? project?.project_revision;
@@ -1045,6 +1075,17 @@ export default function App() {
     },
     [bridge, project?.project_revision, stopAudioPlayback],
   );
+
+  const resetProjectPreview = useCallback(() => {
+    const target = previewStartRef.current;
+    if (target !== null) {
+      void startPreview(target.sceneId, { stateId: target.stateId, updateSelection: false });
+      return;
+    }
+    if (selectedSceneRef.current !== null) {
+      void startPreview(selectedSceneRef.current, { updateSelection: false });
+    }
+  }, [startPreview]);
 
   const loadProject = useCallback(
     async (path: string) => {
@@ -1260,31 +1301,55 @@ export default function App() {
     [bridge, service?.operations],
   );
 
-  const sendInput = async (logicalSource: string) => {
-    const current = previewRef.current;
-    if (bridge === undefined || current === null || operationLock.current) {
-      return;
-    }
-    operationLock.current = true;
-    try {
-      const result = await bridge.serviceRequest<PreviewSnapshot>("project.preview_input", {
-        project_revision: current.project_revision,
-        preview_revision: current.preview_revision,
-        logical_source: logicalSource,
-      });
-      setPreview(result);
-      void playPreviewAudioEvents(result);
-      if (result.scene.scene_id !== selectedScene) {
-        setSelectedScene(result.scene.scene_id);
-        setSceneSelection((current) => current.kind === "project" ? current : { kind: "scene" });
+  const sendInput = useCallback(
+    async (logicalSource: string) => {
+      const current = previewRef.current;
+      if (bridge === undefined || current === null || operationLock.current) {
+        return;
       }
-      setMessage(null);
-    } catch (error) {
-      setMessage(errorText(error));
-    } finally {
-      operationLock.current = false;
+      operationLock.current = true;
+      try {
+        const result = await bridge.serviceRequest<PreviewSnapshot>("project.preview_input", {
+          project_revision: current.project_revision,
+          preview_revision: current.preview_revision,
+          logical_source: logicalSource,
+        });
+        setPreview(result);
+        void playPreviewAudioEvents(result);
+        if (result.scene.scene_id !== selectedSceneRef.current) {
+          setSelectedScene(result.scene.scene_id);
+          setSceneSelection((current) => current.kind === "project" ? current : { kind: "scene" });
+        }
+        setMessage(null);
+      } catch (error) {
+        setMessage(errorText(error));
+      } finally {
+        operationLock.current = false;
+      }
+    },
+    [bridge, playPreviewAudioEvents],
+  );
+
+  useEffect(() => {
+    if (bridge?.onEmulatorPopoutCommand === undefined) {
+      return undefined;
     }
-  };
+    return bridge.onEmulatorPopoutCommand((value) => {
+      if (value === null || typeof value !== "object") {
+        return;
+      }
+      const command = value as EmulatorPopoutCommand;
+      if (command.kind === "reset") {
+        resetProjectPreview();
+      } else if (command.kind === "togglePlaying") {
+        setPlaying((current) => !current);
+      } else if (command.kind === "advance") {
+        void advancePreview(command.elapsedMs ?? 250);
+      } else if (command.kind === "input" && typeof command.source === "string") {
+        void sendInput(command.source);
+      }
+    });
+  }, [advancePreview, bridge, resetProjectPreview, sendInput]);
 
   const buildPackage = async () => {
     if (bridge === undefined || project === null || busy !== null || !canBuildProject(service, project)) {
@@ -4170,6 +4235,18 @@ export default function App() {
   const readOnlySceneIds = scenes.filter(scene => !sceneConnectionsEditable(scene)).map(scene => scene.scene_id);
   const buildReady = canBuildProject(service, project);
   const hostOnlyProject = scenes.some(scene => usesSceneObjects(scene, project?.scene_capabilities?.[scene.scene_id])) && !buildReady;
+  const emulatorPopoutState = useMemo<EmulatorPopoutState>(() => ({
+    preview,
+    sceneName: scenes.find((scene) => scene.scene_id === preview?.scene.scene_id)?.display_name ?? "No active scene",
+    playing,
+  }), [playing, preview, scenes]);
+
+  useEffect(() => {
+    if (!emulatorPoppedOut || bridge?.syncEmulatorPopout === undefined) {
+      return;
+    }
+    void bridge.syncEmulatorPopout(emulatorPopoutState);
+  }, [bridge, emulatorPoppedOut, emulatorPopoutState]);
 
   useEffect(() => {
     if (!projectValid || scenes.length === 0) {
@@ -4973,6 +5050,58 @@ export default function App() {
       </div>
     </div>
   );
+  const openEmulatorPopout = async () => {
+    if (bridge?.openEmulatorPopout === undefined) {
+      return;
+    }
+    try {
+      await bridge.openEmulatorPopout();
+      setEmulatorPoppedOut(true);
+      await bridge.syncEmulatorPopout?.(emulatorPopoutState);
+    } catch (error) {
+      setMessage(errorText(error));
+    }
+  };
+  const focusEmulatorPopout = async () => {
+    try {
+      const focused = await bridge?.focusEmulatorPopout?.();
+      if (focused === false) {
+        setEmulatorPoppedOut(false);
+      }
+    } catch (error) {
+      setEmulatorPoppedOut(false);
+      setMessage(errorText(error));
+    }
+  };
+  const closeEmulatorPopout = async () => {
+    try {
+      await bridge?.closeEmulatorPopout?.();
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setEmulatorPoppedOut(false);
+    }
+  };
+  const renderDockedEmulator = () => (
+    emulatorPoppedOut ? (
+      <section className="emulator-dock-strip" aria-label="Device emulator">
+        <div>
+          <span className="section-kicker">Emulator</span>
+          <strong>Popped out</strong>
+        </div>
+        <div>
+          <button className="button secondary" type="button" onClick={() => void focusEmulatorPopout()}>
+            <MonitorDot size={15} aria-hidden="true" />
+            Show
+          </button>
+          <button className="button secondary" type="button" onClick={() => void closeEmulatorPopout()}>
+            <X size={15} aria-hidden="true" />
+            Dock
+          </button>
+        </div>
+      </section>
+    ) : renderPreviewPanel("project")
+  );
   const renderPreviewPanel = (variant: "project" | "placement") => {
     const placementPreviewMatches = placementPreview?.project_revision === projectRevision && (
       placementState === null
@@ -5000,19 +5129,13 @@ export default function App() {
     return (
       variant === "project" ? <EmulatorPanel
         preview={preview}
-        sceneName={scenes.find((scene) => scene.scene_id === preview?.scene.scene_id)?.display_name ?? "No active scene"}
+        sceneName={emulatorPopoutState.sceneName}
         playing={playing}
-        onReset={() => {
-          const target = previewStartRef.current;
-          if (target !== null) {
-            void startPreview(target.sceneId, { stateId: target.stateId, updateSelection: false });
-          } else if (selectedScene !== null) {
-            void startPreview(selectedScene, { updateSelection: false });
-          }
-        }}
+        onReset={resetProjectPreview}
         onTogglePlaying={() => setPlaying((value) => !value)}
         onAdvance={() => void advancePreview(250)}
         onInput={(source) => void sendInput(source)}
+        onPopOut={bridge?.openEmulatorPopout === undefined ? undefined : () => void openEmulatorPopout()}
       /> : <section className="preview-pane preview-pane-large">
         <div
           className={`display-stage ${variant === "placement" ? `placement-viewport-stage ${placementViewportPanning ? "panning" : ""}` : ""}`}
@@ -7867,7 +7990,7 @@ export default function App() {
         } as CSSProperties}
       >
         <aside className="project-pane">
-          {renderPreviewPanel("project")}
+          {renderDockedEmulator()}
 
           {project !== null && (
             <div className="project-hierarchy-root">

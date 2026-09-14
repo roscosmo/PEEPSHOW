@@ -37,6 +37,15 @@ interface PeepStudioBridge {
   overwriteGeneratedSpritePng?(projectPath: string, sourcePath: string, pngDataUrl: string): Promise<{ sourcePath: string; width: number; height: number }>;
   importAudioWav(projectPath: string): Promise<{ assetId: string; sourcePath: string } | null>;
   audioThumbnailSource?(projectPath: string, sourcePath: string): Promise<{ key: string; data: string }>;
+  getEmulatorPopoutStatus?(): Promise<{ open: boolean }>;
+  openEmulatorPopout?(): Promise<boolean>;
+  focusEmulatorPopout?(): Promise<boolean>;
+  closeEmulatorPopout?(): Promise<boolean>;
+  syncEmulatorPopout?(state: unknown): Promise<boolean>;
+  sendEmulatorPopoutCommand?(command: unknown): Promise<boolean>;
+  onEmulatorPopoutState?(callback: (state: unknown) => void): () => void;
+  onEmulatorPopoutCommand?(callback: (command: unknown) => void): () => void;
+  onEmulatorPopoutClosed?(callback: () => void): () => void;
   saveProjectAs(sourcePath: string, defaultName: string): Promise<string | null>;
   exportEgg(defaultName: string, blobBase64: string): Promise<string | null>;
 }

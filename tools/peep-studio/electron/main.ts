@@ -11,6 +11,10 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_SOURCE_IMAGE_DIMENSION = 4096;
 const MAX_GENERATED_PNG_BYTES = 16 * 1024 * 1024;
 
+let studioWindow: BrowserWindow | null = null;
+let emulatorPopoutWindow: BrowserWindow | null = null;
+let latestEmulatorPopoutState: unknown = null;
+
 type FontAssetRecord = {
   font_id: string;
   display_name: string;
@@ -410,16 +414,84 @@ function createWindow(): void {
     },
   });
 
+  studioWindow = window;
+  window.on("closed", () => {
+    if (studioWindow === window) {
+      studioWindow = null;
+    }
+    if (emulatorPopoutWindow !== null) {
+      emulatorPopoutWindow.close();
+    }
+  });
   window.setMenuBarVisibility(false);
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event) => event.preventDefault());
   window.once("ready-to-show", () => window.show());
 
+  loadRenderer(window);
+}
+
+function loadRenderer(window: BrowserWindow, view?: string): void {
   if (app.isPackaged) {
-    void window.loadFile(path.join(__dirname, "..", "dist", "index.html"));
+    if (view === undefined) {
+      void window.loadFile(path.join(__dirname, "..", "dist", "index.html"));
+    } else {
+      void window.loadFile(path.join(__dirname, "..", "dist", "index.html"), { query: { view } });
+    }
   } else {
-    void window.loadURL("http://127.0.0.1:5173");
+    const url = new URL("http://127.0.0.1:5173");
+    if (view !== undefined) {
+      url.searchParams.set("view", view);
+    }
+    void window.loadURL(url.toString());
   }
+}
+
+function sendLatestEmulatorPopoutState(): void {
+  if (emulatorPopoutWindow === null || emulatorPopoutWindow.isDestroyed() || latestEmulatorPopoutState === null) {
+    return;
+  }
+  emulatorPopoutWindow.webContents.send("peep:emulator-popout-state", latestEmulatorPopoutState);
+}
+
+function createEmulatorPopout(owner: BrowserWindow | null): void {
+  if (emulatorPopoutWindow !== null && !emulatorPopoutWindow.isDestroyed()) {
+    emulatorPopoutWindow.show();
+    emulatorPopoutWindow.focus();
+    return;
+  }
+  const window = new BrowserWindow({
+    width: 430,
+    height: 590,
+    minWidth: 300,
+    minHeight: 360,
+    backgroundColor: "#f3f5f4",
+    title: "Peep Studio Emulator",
+    show: false,
+    alwaysOnTop: true,
+    parent: owner ?? undefined,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      backgroundThrottling: false,
+    },
+  });
+  emulatorPopoutWindow = window;
+  window.setAlwaysOnTop(true, "floating");
+  window.setMenuBarVisibility(false);
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.on("will-navigate", (event) => event.preventDefault());
+  window.webContents.on("did-finish-load", sendLatestEmulatorPopoutState);
+  window.once("ready-to-show", () => window.show());
+  window.on("closed", () => {
+    if (emulatorPopoutWindow === window) {
+      emulatorPopoutWindow = null;
+    }
+    studioWindow?.webContents.send("peep:emulator-popout-closed");
+  });
+  loadRenderer(window, "emulator-popout");
 }
 
 ipcMain.handle(
@@ -431,6 +503,46 @@ ipcMain.handle(
     return sidecar.request(operation, params as Record<string, unknown>);
   },
 );
+
+ipcMain.handle("peep:emulator-popout-status", () => ({
+  open: emulatorPopoutWindow !== null && !emulatorPopoutWindow.isDestroyed(),
+}));
+
+ipcMain.handle("peep:emulator-popout-open", (event) => {
+  createEmulatorPopout(BrowserWindow.fromWebContents(event.sender));
+  return true;
+});
+
+ipcMain.handle("peep:emulator-popout-focus", () => {
+  if (emulatorPopoutWindow === null || emulatorPopoutWindow.isDestroyed()) {
+    return false;
+  }
+  emulatorPopoutWindow.show();
+  emulatorPopoutWindow.focus();
+  return true;
+});
+
+ipcMain.handle("peep:emulator-popout-close", () => {
+  if (emulatorPopoutWindow === null || emulatorPopoutWindow.isDestroyed()) {
+    return false;
+  }
+  emulatorPopoutWindow.close();
+  return true;
+});
+
+ipcMain.handle("peep:emulator-popout-sync", (_event, state: unknown) => {
+  latestEmulatorPopoutState = state;
+  sendLatestEmulatorPopoutState();
+  return true;
+});
+
+ipcMain.handle("peep:emulator-popout-command", (_event, command: unknown) => {
+  if (studioWindow === null || studioWindow.isDestroyed()) {
+    return false;
+  }
+  studioWindow.webContents.send("peep:emulator-popout-command", command);
+  return true;
+});
 
 ipcMain.handle("peep:open-project", async () => {
   const result = await dialog.showOpenDialog({

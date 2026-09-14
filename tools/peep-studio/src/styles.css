@@ -43,6 +43,15 @@ button:focus-visible {
   grid-template-rows: 62px auto minmax(0, 1fr) 28px;
 }
 
+.emulator-popout-shell {
+  width: 100vw;
+  min-width: 0;
+  min-height: 100vh;
+  margin: 0;
+  overflow: auto;
+  background: #f8f9fa;
+}
+
 .host-preview-notice {
   padding: 6px 18px;
   border-bottom: 1px solid #afc8d8;
@@ -284,6 +293,39 @@ button:focus-visible {
 
 .project-pane {
   grid-area: project;
+}
+
+.emulator-dock-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #cbd2cd;
+  background: #f8f9fa;
+}
+
+.emulator-dock-strip > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.emulator-dock-strip > div:first-child {
+  display: grid;
+  align-items: center;
+  gap: 1px;
+}
+
+.emulator-dock-strip strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #27302b;
+  font-size: 12px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inspector-pane {

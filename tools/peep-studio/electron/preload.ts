@@ -23,6 +23,27 @@ contextBridge.exposeInMainWorld("peepStudio", {
     ipcRenderer.invoke("peep:overwrite-generated-sprite-png", projectPath, sourcePath, pngDataUrl),
   importAudioWav: (projectPath: string) => ipcRenderer.invoke("peep:import-audio-wav", projectPath),
   audioThumbnailSource: (projectPath: string, sourcePath: string) => ipcRenderer.invoke("peep:audio-thumbnail-source", projectPath, sourcePath),
+  getEmulatorPopoutStatus: () => ipcRenderer.invoke("peep:emulator-popout-status"),
+  openEmulatorPopout: () => ipcRenderer.invoke("peep:emulator-popout-open"),
+  focusEmulatorPopout: () => ipcRenderer.invoke("peep:emulator-popout-focus"),
+  closeEmulatorPopout: () => ipcRenderer.invoke("peep:emulator-popout-close"),
+  syncEmulatorPopout: (state: unknown) => ipcRenderer.invoke("peep:emulator-popout-sync", state),
+  sendEmulatorPopoutCommand: (command: unknown) => ipcRenderer.invoke("peep:emulator-popout-command", command),
+  onEmulatorPopoutState: (callback: (state: unknown) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: unknown) => callback(state);
+    ipcRenderer.on("peep:emulator-popout-state", listener);
+    return () => ipcRenderer.removeListener("peep:emulator-popout-state", listener);
+  },
+  onEmulatorPopoutCommand: (callback: (command: unknown) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, command: unknown) => callback(command);
+    ipcRenderer.on("peep:emulator-popout-command", listener);
+    return () => ipcRenderer.removeListener("peep:emulator-popout-command", listener);
+  },
+  onEmulatorPopoutClosed: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("peep:emulator-popout-closed", listener);
+    return () => ipcRenderer.removeListener("peep:emulator-popout-closed", listener);
+  },
   saveProjectAs: (sourcePath: string, defaultName: string) =>
     ipcRenderer.invoke("peep:save-project-as", sourcePath, defaultName),
   exportEgg: (defaultName: string, blobBase64: string) =>

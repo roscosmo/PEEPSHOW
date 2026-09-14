@@ -16,6 +16,11 @@
   padding: 7px 8px;
 }
 
+.emulator-window-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .emulator-panel button {
   display: grid;
   place-items: center;
@@ -47,6 +52,13 @@
 .emulator-transport button {
   width: clamp(28px, 10cqw, 48px);
   height: clamp(28px, 10cqw, 48px);
+  border-radius: 50%;
+  background: #fff;
+}
+
+.emulator-window-actions button {
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: #fff;
 }
@@ -117,6 +129,11 @@
 .emulator-button.button-l { transform: rotate(-15deg); }
 .emulator-button.button-r { transform: rotate(15deg); }
 .emulator-panel.collapsed .emulator-toolbar { min-height: 28px; padding-block: 2px; }
+
+.emulator-panel.popout {
+  min-height: 100vh;
+  border-bottom: 0;
+}
 
 @media (max-width: 860px) {
   .emulator-panel { max-width: 520px; margin-inline: auto; }
