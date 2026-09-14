@@ -228,7 +228,13 @@ app.whenReady().then(async () => {
   assert.equal(fs.existsSync(path.join(projectPath, 'assets', 'audit.png')), true);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-card').length"), 1);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell').length"), frameCount);
-  assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), largeSheet ? 0 : frameCount);
+  assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle').length"), frameCount);
+  assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), 0);
+  assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-panel').length"), 0);
+  await click('[aria-label="Include Sprite loop test frames in animation"]');
+  assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount);
+  assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-grid button').length"), 0);
+  assert.match(await evaluate("document.querySelector('.asset-animation-frame-panel .asset-frame-strip-heading span').textContent"), new RegExp(`${frameCount} selected`));
   if (largeSheet) {
     await button('Choose PNG');
     await setGrid('columns', sheetColumns);
@@ -236,6 +242,9 @@ app.whenReady().then(async () => {
     await button('Import');
     assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-card').length"), 2);
     assert.equal(await evaluate("(() => { const cards = [...document.querySelectorAll('.sprite-source-item-sheet .asset-sheet-card')].map(e => e.getBoundingClientRect()); return cards.length === 2 && (cards[0].right <= cards[1].left || cards[1].right <= cards[0].left || cards[0].bottom <= cards[1].top || cards[1].bottom <= cards[0].top); })()"), true);
+    assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), 0);
+    await click('[aria-label="Include Sprite loop test 2 frames in animation"]');
+    assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount);
     const baseSheetCellWidth = await evaluate("document.querySelector('.asset-sheet-cell').getBoundingClientRect().width");
     const baseSheetCanvasWidth = await evaluate("document.querySelector('.asset-sheet-cell canvas').getBoundingClientRect().width");
     const baseSheetCardWidth = await evaluate("document.querySelector('.asset-sheet-card').getBoundingClientRect().width");
@@ -251,19 +260,14 @@ app.whenReady().then(async () => {
     assert.deepEqual(await evaluate("(() => { const e = document.querySelector('.asset-sheet-preview:not(.text-sprite-preview)'); return [e.scrollWidth > e.clientWidth + 2, e.scrollHeight > e.clientHeight + 2]; })()"), [false, false]);
     await click('[aria-label="Reset asset library zoom"]');
   }
-  assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-grid button').length"), frameCount);
-  assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-grid button[aria-pressed=\"true\"]').length"), frameCount);
-  await click('.asset-animation-frame-grid button:last-child');
-  assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-grid button[aria-pressed=\"true\"]').length"), frameCount - 1);
+  assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-grid button').length"), 0);
+  await evaluate("(() => { const sheets = document.querySelectorAll('.sprite-source-item-sheet'); sheets[sheets.length - 1].querySelector('.asset-sheet-cell-toggle:last-child').click(); })()");
+  await wait(450);
+  assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount - 1);
   assert.match(await evaluate("document.querySelector('.asset-animation-frame-panel .asset-frame-strip-heading span').textContent"), new RegExp(`${frameCount - 1} selected`));
-  await click('.asset-animation-frame-grid button:last-child');
-  assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-grid button[aria-pressed=\"true\"]').length"), frameCount);
-  if (!largeSheet) {
-    await click('.asset-sheet-cell-toggle:last-child');
-    assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount - 1);
-    await click('.asset-sheet-cell-toggle:last-child');
-    assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount);
-  }
+  await evaluate("(() => { const sheets = document.querySelectorAll('.sprite-source-item-sheet'); sheets[sheets.length - 1].querySelector('.asset-sheet-cell-toggle:last-child').click(); })()");
+  await wait(450);
+  assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount);
   const alpha = await evaluate("(() => {const c=document.querySelector('.asset-frame-gallery canvas');const p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;return [p[3],p[(3*c.width+2)*4+3]]})()");
   assert.deepEqual(alpha, [transparent ? 0 : 255, 255]);
   const pixels = new Set(await evaluate("[...document.querySelector('.asset-sheet-card').querySelectorAll('.asset-sheet-cell canvas')].map(canvas => canvas.toDataURL())"));
@@ -281,6 +285,7 @@ app.whenReady().then(async () => {
     await setGrid('columns', 1);
     await setGrid('rows', 1);
     await button('Import');
+    await click('[aria-label="Include Tiny text sprite in animation"]');
     await click('[aria-label="Include Sprite loop test frame 1 in animation"]');
     await button('Create animation');
     assert.match(await evaluate("document.querySelector('.animation-normalize-panel').textContent"), /16x16/);
@@ -326,6 +331,7 @@ app.whenReady().then(async () => {
   window.setSize(1440,1000); await wait(300);
   await evaluate("window.scrollTo(0,0)");
   console.log('Asset tabs: filtered controls, empty state, cleared selection and keyboard navigation passed');
+  await click(`[aria-label="${largeSheet ? "Include Sprite loop test 2 frames in animation" : "Include Sprite loop test frames in animation"}"]`);
   await button('Create animation');
   const durationField = '[aria-label="Animation cadence"]';
   const duration = async value => {
