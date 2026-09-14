@@ -464,6 +464,28 @@ HW6 FW0 evidence `EV-HW6-20260811-P1-SLEEP-034` validates the pre-STOP portion o
 
 ## Required Measurements
 
+### Battery Fault Wait
+
+Exhausted battery-shutdown preparation or returned shipment-write failures latch
+a fault wait, not a normal scene wait. The existing `PWR_FORCED_SLEEP` state
+owns this fallback. Shipment attempts remain exhausted. Every sleep attempt
+requires runtime suspension, terminal owner quiesce, released clock leases,
+safe buses/GPIO and the final queue/input check. No failed check is overridden.
+Failed attempts are spaced by `power_battery_sleep_retry_ms`.
+
+Only the battery deadline participates in the shared RTC selection in this
+mode. Wakes restore clocks/timebases and acquire a fresh battery reading, but
+do not resume package playback, advance scene timers or restore normal physical
+owners. The battery check interval is capped by `power_battery_sleep_retry_ms`.
+Buttons can wake the MCU but cannot dispatch gameplay or replenish shipment
+retries. Valid voltage at/above `power_battery_restart_allow_mv`, successful
+base-clock restoration and owner recovery are required to clear the fault.
+Package execution remains suspended until its normal recovery action.
+
+This fallback cannot guarantee low current if an owner cannot safely stop, nor
+can software guarantee power removal after permanent PMIC communication loss.
+Physical current measurements and independent hardware protection remain required.
+
 For every candidate active operating point, record the full internal configuration used for evidence: SYSCLK/HCLK, voltage scale, flash latency/cache state, relevant kernel clocks, instrumentation state, and firmware/configuration identity.
 
 Reactive sweeps must record:

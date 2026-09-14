@@ -37,6 +37,7 @@ typedef enum {HAL_OK, HAL_ERROR, HAL_BUSY, HAL_TIMEOUT} HAL_StatusTypeDef;
 
 static uint32_t hrtc, rtc_flag, units, tick, commands, arms, disarms;
 static uint32_t samples, ps_power_battery_monitor_period_ticks;
+static struct { uint32_t active, force_read; } g_ps_hw6_battery_fault_wait_probe;
 static struct {uint32_t battery_policy_last_tick, battery_policy_next_tick;}
   g_ps_hw6_owner_sm_probe;
 static HAL_StatusTypeDef read_status, arm_status, disarm_status;
@@ -111,6 +112,7 @@ static void reset_fixture(void)
   units = 256000;
   commands = arms = disarms = rtc_flag = 0;
   samples = ps_power_battery_monitor_period_ticks = 0;
+  memset(&g_ps_hw6_battery_fault_wait_probe, 0, sizeof(g_ps_hw6_battery_fault_wait_probe));
   g_ps_hw6_battery_wake_test_request_ms = 0;
   g_ps_hw6_owner_sm_probe.battery_policy_last_tick = tick;
   read_status = arm_status = disarm_status = HAL_OK;
@@ -129,6 +131,33 @@ static void reset_fixture(void)
 int main(void)
 {
   uint32_t i;
+  reset_fixture();
+  g_ps_hw6_battery_fault_wait_probe.active = 1;
+  PS_BatteryWake_Record(&g_ps_hw6_battery_wake_probe, tick, 1, 1);
+  ps_runtime_interaction_mode = ps_runtime_interaction_state = 1;
+  ps_runtime_interaction_deadline_tick = tick + 100;
+  ps_runtime_state_timers[0].active = 1;
+  ps_runtime_state_timers[0].deadline_tick = tick + 200;
+  assert(PS_HW6_RTOS_InteractionStop2TimeoutPrepare() == HAL_OK);
+  assert(ps_runtime_rtc_wake_source == PS_HW6_RTOS_RTC_WAKE_SOURCE_BATTERY);
+  assert(ps_runtime_rtc_selected_remaining_ticks == 6000);
+  units += 60 * 256;
+  rtc_flag = 1;
+  RTC_IRQHandler();
+  PS_HW6_RTOS_InteractionStop2TimeoutFinish();
+  assert(commands == 0 && ps_runtime_interaction_timeout_forced == 0);
+  assert(ps_runtime_interaction_deadline_tick == tick + 100);
+  assert(ps_runtime_state_timers[0].deadline_tick == tick + 200);
+  assert(g_ps_hw6_battery_wake_probe.pending);
+  assert(PS_HW6_OwnerStateMachines_RunBatteryMonitor(tick) == HAL_OK);
+  assert(samples == 1);
+  tick += 100;
+  assert(PS_HW6_OwnerStateMachines_RunBatteryMonitor(tick) == HAL_OK);
+  assert(samples == 1); /* Fault wait does not read every awake second. */
+  g_ps_hw6_battery_fault_wait_probe.force_read = 1;
+  assert(PS_HW6_OwnerStateMachines_RunBatteryMonitor(tick) == HAL_OK);
+  assert(samples == 2 && g_ps_hw6_battery_fault_wait_probe.force_read == 0);
+
   reset_fixture();
   assert(PS_HW6_RTOS_InteractionStop2TimeoutPrepare() == HAL_OK);
   assert(ps_runtime_rtc_wake_source == 3 && arms == 1);

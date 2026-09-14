@@ -489,10 +489,60 @@ manual/START one-shot isolation. Normal Debug and BatteryShutdownTest builds
 pass: RAM 553488, ROM 881896, SRAM4 15480 bytes. No device flash or physical
 failure injection was performed for this increment.
 
-Exhaustion remains a reported fault condition, NOT an energy-safe terminal
-state. A bounded emergency low-power response still needs a separately reviewed
-design that does not force STOP2 past unsafe owners or resume package work.
+At that checkpoint, exhaustion remained a reported fault condition, NOT an
+energy-safe terminal state. The following increment implements the separately
+reviewed fallback; physical qualification remains outstanding.
 Persistent PMIC communication loss may prevent software shipment entirely;
 hardware battery-protection qualification is required independently. Do not
 enable normal automatic gates or claim complete discharge protection on the
 strength of these retry tests.
+
+## Exhausted-Shutdown Fault Wait (2026-09-14)
+
+Exhausted preparation or returned shipment failures now latch a dedicated fault
+wait in `thPower`. The exhausted episode and first/last shipment failure remain
+available. START/manual requests cannot trigger additional shipment writes while
+latched. Normal successful shipment behavior and all default-off gates are unchanged.
+
+Each fallback sleep requires admission, terminal owner quiesce and the existing
+clock/GPIO/RTC/final-input checks. Pending package work, candidate leases and
+unfinished renders also refuse entry. Failed attempts are spaced by the existing
+60-second battery retry interval. This does not force unsafe owners into STOP2.
+Display-owner quiesce explicitly aborts autonomous animation. Normal UI/input,
+runtime service and presentation paths are suppressed while the fault is latched.
+
+Fault wakes restore clocks/timebases but skip normal physical-owner resume and
+package time reconciliation. Only the battery deadline selects the RTC wake;
+scene timers and interaction deadlines do not fire or advance through the sleep.
+A fresh reading is requested after each WFI return, and the check deadline is
+capped at the battery retry interval. Valid voltage at/above the restart threshold,
+successful base-clock restoration and successful owner resume are required for
+recovery. VBUS or buttons alone cannot clear exhaustion. Package execution remains
+suspended for its normal recovery action.
+
+The existing `__fw0_battery_power_prints.gdb` now includes the separate API 1
+`g_ps_hw6_battery_fault_wait_probe`: active, attempts, WFI returns, latest status,
+next attempt tick, forced reading and recovery status. Shipment API stays 2.
+These counters are cumulative except active/deadline/read state. WFI returns do
+not prove sustained STOP2 or measured low current. Do not use this updated helper
+against an older ELF lacking the fault-wait probe.
+
+Eight focused battery tests pass, including native compilation of the actual
+policy, retry scheduler, state tables, monitor and shared RTC prepare/finish.
+They cover gates off/on, exhausted retry retention, admission/sleep refusal and
+spacing, no manual bypass, invalid recovery samples, failed clock/owner recovery,
+restart hysteresis, forced post-wake reads, and no scene/interaction timer work
+during fault RTC sleep. Hardware sleep is stubbed in the policy tests; structural
+checks verify integration with the real STOP2 safety checks and resume exclusion.
+
+Normal Debug and BatteryShutdownTest builds pass: RAM 553520, ROM 883304,
+SRAM4 15480 bytes. The two existing unused-function warnings remain. No device
+flash, PMIC failure injection or fallback-current measurement was performed.
+
+Next bench checkpoint: controlled fault injection using the isolated battery-input
+supply, with cell and device USB disconnected. Verify retained exhaustion, no
+new shipment attempts on button wakes, no animation/input dispatch, battery RTC
+checks, measured low-current residency when owners can park, and valid-voltage
+recovery. Also verify an intentionally refused owner prevents STOP2 and reports
+the failure. A dedicated injection procedure is still required; do not disconnect
+the live PMIC bus or treat an ordinary successful shipment test as this proof.

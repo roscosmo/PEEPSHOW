@@ -11,6 +11,39 @@ from test_firmware_package_workflow import firmware_function
 
 
 class BatteryShutdownTests(unittest.TestCase):
+    def test_fault_wait_uses_checked_stop_without_runtime_resume(self):
+        firmware = Path(__file__).resolve().parents[3] / "firmware/peepshow_hw6_fw0"
+        owner = (firmware / "Core/Src/ps_hw6_owner_state_machines.c").read_text()
+        rtos = (firmware / "Core/Src/ps_hw6_rtos_probe.c").read_text()
+        stop = firmware_function(owner, "PS_HW6_OwnerStateMachines_RunStop2StartWakeScaffold")
+        # Structural checks supplement fake-owner policy/RTC tests; not physical proof.
+        for check in ("PS_HW6_RequestPowerQuiesce", "PS_HW6_ClockPolicy_PrepareStop2",
+                      "PS_HW6_RTOS_Stop2FinalInputReady"):
+            self.assertLess(stop.index(check), stop.index("HAL_PWREx_EnterSTOP2Mode"))
+        self.assertIn("(fault_wait != 0UL) ? HAL_OK : PS_HW6_RequestPostStopResume()", stop)
+        self.assertIn("clock_restore_status != TX_SUCCESS", stop)
+        self.assertIn("g_ps_hw6_battery_fault_wait_probe.force_read = 1UL", stop)
+        park = firmware_function(owner, "PS_HW6_OwnerStateMachines_QuiesceForPowerBarrier")
+        self.assertIn("PS_HW6_DisplayOwner_AbortLpbamStop2()", park)
+        for function in ("PS_HW6_RTOS_RunStop2AutoIdlePeriodic",
+                         "PS_HW6_RTOS_RunDisplayCursorBlinkPeriodic",
+                         "PS_HW6_RTOS_DeliverInputLogicalEvent",
+                         "PS_HW6_RTOS_DeliverJoystickLogicalEvent",
+                         "PS_HW6_RTOS_SendPowerStartEvent",
+                         "PS_HW6_RTOS_HandleRuntimeCommand",
+                         "PS_HW6_RTOS_ObjectSleepClockBegin"):
+            self.assertIn("g_ps_hw6_battery_fault_wait_probe.active",
+                          firmware_function(rtos, function), function)
+        ready = firmware_function(rtos, "PS_HW6_RTOS_Stop2FinalInputReady")
+        for guard in ("ps_object_runtime_busy", "ps_candidate_busy",
+                      "ps_package_validation_busy", "g_ps_package_workflow_probe.active",
+                      "g_ps_object_candidate_probe.leased"):
+            self.assertIn(guard, ready)
+        command = firmware_function(rtos, "PS_HW6_RTOS_HandleRuntimeCommand")
+        refusal = command[:command.index("return;")]
+        self.assertIn("ps_package_validation_busy = 0UL", refusal)
+        self.assertIn("PS_HW6_RTOS_PACKAGE_VALIDATE_ACK", refusal)
+
     def test_actual_policy_retries(self):
         firmware = Path(__file__).resolve().parents[3] / "firmware/peepshow_hw6_fw0"
         source = (firmware / "Core/Src/ps_hw6_owner_state_machines.c").read_text()
@@ -18,10 +51,14 @@ class BatteryShutdownTests(unittest.TestCase):
         functions = "\n".join(firmware_function(source, name) for name in (
             "PS_HW6_BatteryPolicyPrepareForShipment",
             "PS_HW6_BatteryPolicyRequestSoftwareShipment",
-            "PS_HW6_BatteryShutdownReset", "PS_HW6_OwnerStateMachines_ProcessSoftwareShipment",
+            "PS_HW6_BatteryShutdownReset", "PS_HW6_BatteryFaultWaitLatch",
+            "PS_HW6_OwnerStateMachines_ProcessSoftwareShipment",
             "PS_HW6_BatteryShutdownTryPrepare",
-            "PS_HW6_SM_EvaluateBatteryPolicy"))
+            "PS_HW6_SM_EvaluateBatteryPolicy",
+            "PS_HW6_OwnerStateMachines_RunBatteryFaultWait"))
         typedef = re.search(r"typedef struct\s*\{[^}]*\}\s*PS_HW6_BatteryShutdownProbe;", header).group()
+        typedef += "\n" + re.search(
+            r"typedef struct\s*\{[^}]*\}\s*PS_HW6_BatteryFaultWaitProbe;", header).group()
         tables = "\n".join(re.search(
             r"static const PS_HW6_StateTransition " + name + r"\[\]\s*=\s*\{.*?\n\};",
             source, re.S).group() for name in ("ps_power_transitions", "ps_pmic_transitions"))

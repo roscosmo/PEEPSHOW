@@ -2927,7 +2927,9 @@ static UINT PS_HW6_RTOS_AdmitSystemAction(uint32_t action)
     return TX_SUCCESS;
   }
 
-  if ((overlay_active != 0UL) && (power_action == 0UL))
+  if (((overlay_active != 0UL) ||
+       (g_ps_hw6_battery_fault_wait_probe.active != 0UL)) &&
+      (power_action == 0UL))
   {
     PS_HW6_RTOS_RecordAdmission(
       action,
@@ -4624,6 +4626,8 @@ static void PS_HW6_RTOS_RunDisplayCursorBlinkPeriodic(uint32_t now_tick)
   uint32_t sequence_active = 0UL;
   HAL_StatusTypeDef render_status;
 
+  if (g_ps_hw6_battery_fault_wait_probe.active != 0UL) { return; }
+
   if (g_ps_package_workflow_probe.active != 0UL)
   {
     PS_HW6_RTOS_ResetDisplayCursorBlink(now_tick);
@@ -5492,6 +5496,13 @@ uint32_t PS_HW6_RTOS_Stop2FinalInputReady(void)
             (PS_HW6_OwnerStateMachines_JoystickStop2WakeArmed() == 0UL) ||
             ((g_ps_hw6_rtos_probe.stop2_final_input_gpioc_idr &
               (uint32_t)JOY_INT_Pin) != 0UL)) &&
+           ((g_ps_hw6_battery_fault_wait_probe.active == 0UL) ||
+            ((ps_object_runtime_busy == 0UL) && (ps_candidate_busy == 0UL) &&
+             (ps_package_validation_busy == 0UL) &&
+             (g_ps_object_candidate_probe.leased == 0UL) &&
+             (g_ps_object_development_probe.render_request ==
+              g_ps_object_development_probe.render_complete) &&
+             (g_ps_package_workflow_probe.active == 0UL))) &&
            (queue_mask == 0UL) &&
            (PS_InputButtons_Stop2Ready() != 0UL)) ? 1UL : 0UL;
   g_ps_hw6_rtos_probe.stop2_final_input_last_status =
@@ -5970,7 +5981,8 @@ static void PS_HW6_RTOS_RunStop2AutoIdlePeriodic(uint32_t now_tick)
   uint32_t period_ticks =
     PS_HW6_RTOS_MsToTicks((uint32_t)KNOB_POWER_AUTO_STOP2_CHECK_PERIOD_MS);
 
-  if (KNOB_POWER_AUTO_STOP2_ENABLE == 0)
+  if ((KNOB_POWER_AUTO_STOP2_ENABLE == 0) ||
+      (g_ps_hw6_battery_fault_wait_probe.active != 0UL))
   {
     return;
   }
@@ -6275,7 +6287,8 @@ static UINT PS_HW6_RTOS_DeliverInputLogicalEvent(
     reason = PS_HW6_RTOS_INPUT_POLICY_REASON_UNSUPPORTED_EVENT;
   }
   else if ((g_ps_hw6_rtos_probe.input_policy_lock_active != 0UL) ||
-           (g_ps_package_workflow_probe.active != 0UL))
+           (g_ps_package_workflow_probe.active != 0UL) ||
+           (g_ps_hw6_battery_fault_wait_probe.active != 0UL))
   {
     reason = PS_HW6_RTOS_INPUT_POLICY_REASON_LOCKED;
   }
@@ -6586,7 +6599,8 @@ static UINT PS_HW6_RTOS_DeliverJoystickLogicalEvent(
     g_ps_hw6_rtos_probe.joystick_logical_drop_count++;
   }
   else if ((g_ps_hw6_rtos_probe.input_policy_lock_active != 0UL) ||
-           (g_ps_package_workflow_probe.active != 0UL))
+           (g_ps_package_workflow_probe.active != 0UL) ||
+           (g_ps_hw6_battery_fault_wait_probe.active != 0UL))
   {
     g_ps_hw6_rtos_probe.joystick_logical_drop_count++;
   }
@@ -6732,7 +6746,8 @@ static void PS_HW6_RTOS_RunJoystickAwakeInput(uint32_t now_tick)
   uint32_t wake_logical_direction = 0UL;
   uint32_t wake_direction_available = 0UL;
 
-  if (PS_HW6_RTOS_JoystickAwakePollingAllowed() == 0UL)
+  if ((g_ps_hw6_battery_fault_wait_probe.active != 0UL) ||
+      (PS_HW6_RTOS_JoystickAwakePollingAllowed() == 0UL))
   {
     ps_joystick_awake_poll_next_tick = 0UL;
     ps_joystick_awake_published_direction_mask = 0UL;
@@ -7152,6 +7167,8 @@ static UINT PS_HW6_RTOS_SendPowerStartEvent(
 {
   ULONG message[PS_HW6_RTOS_MESSAGE_WORDS];
   UINT status;
+
+  if (g_ps_hw6_battery_fault_wait_probe.active != 0UL) { return TX_NOT_DONE; }
 
   message[0] = PS_HW6_RTOS_POWER_INPUT_MAGIC;
   message[1] = PS_HW6_RTOS_OWNER_POWER;
@@ -8540,6 +8557,7 @@ uint32_t PS_HW6_RTOS_ObjectSleepClockBegin(void)
 {
   HAL_StatusTypeDef status;
   ps_object_rtc_valid = 0UL;
+  if (g_ps_hw6_battery_fault_wait_probe.active != 0UL) { return (uint32_t)HAL_OK; }
   if ((g_ps_object_lpbam_probe.enabled == 0UL) ||
       (PS_SceneRuntime_DevelopmentObjectsActive() == 0UL)) { return (uint32_t)HAL_OK; }
   status = PS_HW6_RTOS_ObjectRtcMilliseconds(&ps_object_rtc_start_ms);
@@ -8612,6 +8630,8 @@ static UINT PS_HW6_RTOS_ObjectPresent(void)
   uint32_t next_ms;
   uint32_t now_tick = (uint32_t)tx_time_get();
   UINT status;
+
+  if (g_ps_hw6_battery_fault_wait_probe.active != 0UL) { return TX_NOT_DONE; }
   PS_HW6_RTOS_ObjectLatencyStamp(PS_OBJECT_LATENCY_PRESENT_BEGIN);
   if ((g_ps_object_development_probe.lease_fault != 0UL) ||
       (PS_HW6_RTOS_ObjectAdvance(now_tick) != 0UL) ||
@@ -9297,6 +9317,12 @@ uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
     &state_timer_remaining_ticks,
     &state_timer_binding_index);
 
+  if (g_ps_hw6_battery_fault_wait_probe.active != 0UL)
+  {
+    interaction_available = 0UL;
+    state_timer_available = 0UL;
+  }
+
   battery_remaining_ticks = PS_BatteryWake_Prepare(
     &g_ps_hw6_battery_wake_probe, now_tick);
 
@@ -9355,7 +9381,8 @@ uint32_t PS_HW6_RTOS_InteractionStop2TimeoutPrepare(void)
     (interaction_available != 0UL) ? interaction_remaining_ticks : 0UL;
   ps_runtime_interaction_rtc_armed_epoch = ps_runtime_interaction_epoch;
   ps_runtime_rtc_selected_remaining_ticks = remaining_ticks;
-  if (ps_runtime_state_timer_paused == 0UL)
+  if ((ps_runtime_state_timer_paused == 0UL) &&
+      (g_ps_hw6_battery_fault_wait_probe.active == 0UL))
   {
     for (timer_index = 0UL;
          timer_index < PS_SCENE_RUNTIME_EVENT_BINDING_MAX;
@@ -9486,7 +9513,8 @@ void PS_HW6_RTOS_InteractionStop2TimeoutFinish(void)
   }
 
   now_tick = (uint32_t)tx_time_get();
-  if ((ps_runtime_interaction_rtc_armed_epoch ==
+  if ((g_ps_hw6_battery_fault_wait_probe.active == 0UL) &&
+      (ps_runtime_interaction_rtc_armed_epoch ==
        ps_runtime_interaction_epoch) &&
       (ps_runtime_interaction_state ==
        PS_HW6_RUNTIME_INTERACTION_STATE_ACTIVE) &&
@@ -9512,7 +9540,8 @@ void PS_HW6_RTOS_InteractionStop2TimeoutFinish(void)
       ps_runtime_interaction_deadline_tick;
   }
 
-  if ((ps_runtime_state_timer_paused == 0UL) &&
+  if ((g_ps_hw6_battery_fault_wait_probe.active == 0UL) &&
+      (ps_runtime_state_timer_paused == 0UL) &&
       (ps_runtime_rtc_state_timer_scene_revision ==
        ps_runtime_state_timer_scene_revision))
   {
@@ -10351,6 +10380,29 @@ static void PS_HW6_RTOS_HandleRuntimeCommand(ULONG command)
   uint32_t release_after_command = 1UL;
   uint32_t capabilities = PS_HW6_RTOS_RUNTIME_CLOCK_REACTIVE_CAPABILITIES;
   uint32_t reason = PS_HW6_RTOS_RUNTIME_CLOCK_REASON_REACTIVE_TRANSACTION;
+
+  if ((g_ps_hw6_battery_fault_wait_probe.active != 0UL) &&
+      (command != PS_HW6_RTOS_COMMAND_RUNTIME_POWER_SUSPEND) &&
+      (command != PS_HW6_RTOS_COMMAND_RUNTIME_SUSPEND))
+  {
+    g_ps_hw6_rtos_probe.runtime_last_status = PS_STATUS_BUSY;
+    if (command == PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_VALIDATE)
+    {
+      /* Release this queued reservation without decoding or touching assets. */
+      TX_INTERRUPT_SAVE_AREA
+      ps_package_validation_status = 1UL;
+      g_ps_package_workflow_probe.validation_count++;
+      g_ps_package_workflow_probe.validation_status = 1UL;
+      g_ps_package_workflow_probe.validation_scene = 0UL;
+      g_ps_package_workflow_probe.validation_reason = PS_HW6_RTOS_STATUS_NOT_RUN;
+      TX_DISABLE
+      ps_package_validation_busy = 0UL;
+      (void)tx_event_flags_set(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+                               PS_HW6_RTOS_PACKAGE_VALIDATE_ACK, TX_OR);
+      TX_RESTORE
+    }
+    return;
+  }
 
   if (command == PS_HW6_RTOS_COMMAND_RUNTIME_PACKAGE_REALTIME_STUB)
   {
@@ -12050,6 +12102,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       }
       else if (PS_HW6_RTOS_PowerInputCommandIsValid(owner_id, message) != 0UL)
       {
+        if (g_ps_hw6_battery_fault_wait_probe.active != 0UL) { continue; }
         if ((uint32_t)message[2] ==
             (uint32_t)PS_INPUT_START_POWER_EVENT_SHIP_DISPLAY_CLEAR)
         {
@@ -12137,6 +12190,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       }
       else if (PS_HW6_RTOS_DisplayUiCommandIsValid(owner_id, message) != 0UL)
       {
+        if (g_ps_hw6_battery_fault_wait_probe.active != 0UL) { continue; }
         HAL_StatusTypeDef display_status;
         uint32_t shutdown = PS_HW6_RTOS_DisplayUiPackedShutdown(message[3]);
         uint32_t previous_page = g_ps_hw6_owner_probe.display_ui_page;
@@ -12188,6 +12242,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       else if (PS_HW6_RTOS_UiLifecycleCommandIsValid(owner_id, message) !=
                0UL)
       {
+        if (g_ps_hw6_battery_fault_wait_probe.active != 0UL) { continue; }
         uint32_t action = (uint32_t)PS_UI_ROUTER_ACTION_NONE;
 
         (void)PS_HW6_RTOS_RequestUiClockCapabilities(
@@ -12212,6 +12267,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       }
       else if (PS_HW6_RTOS_UiInputCommandIsValid(owner_id, message) != 0UL)
       {
+        if (g_ps_hw6_battery_fault_wait_probe.active != 0UL) { continue; }
         if (g_ps_package_workflow_probe.active != 0UL)
         {
           g_ps_package_workflow_probe.duplicate_count++;
@@ -12313,10 +12369,17 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (ps_power_boot_done != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
-      PS_HW6_RTOS_RuntimeStateTimersService((uint32_t)now);
-      PS_HW6_RTOS_RuntimeInteractionService((uint32_t)now);
-      PS_HW6_RTOS_CandidateService();
-      PS_HW6_RTOS_ObjectService((uint32_t)tx_time_get());
+      if (g_ps_hw6_battery_fault_wait_probe.active == 0UL)
+      {
+        PS_HW6_RTOS_RuntimeStateTimersService((uint32_t)now);
+        PS_HW6_RTOS_RuntimeInteractionService((uint32_t)now);
+        PS_HW6_RTOS_CandidateService();
+        PS_HW6_RTOS_ObjectService((uint32_t)tx_time_get());
+      }
+      else
+      {
+        PS_HW6_RTOS_CandidateReap();
+      }
     }
 
     if ((owner_id == PS_HW6_RTOS_OWNER_AUDIO) &&
@@ -12614,9 +12677,14 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
       (void)PS_HW6_OwnerStateMachines_RunBatteryMonitor((uint32_t)now);
+      (void)PS_HW6_OwnerStateMachines_RunBatteryFaultWait();
       boot_gate_clear_count =
         g_ps_hw6_owner_sm_probe.battery_policy_boot_restart_gate_clear_count;
-      if ((g_ps_hw6_owner_sm_probe.battery_policy_state ==
+      if (g_ps_hw6_battery_fault_wait_probe.active != 0UL)
+      {
+        /* Fault wakes service battery policy, not the normal UI lifecycle. */
+      }
+      else if ((g_ps_hw6_owner_sm_probe.battery_policy_state ==
            PS_HW6_POWER_BATTERY_POLICY_BOOT_RESTART_BLOCKED) &&
           ((g_ps_hw6_rtos_probe.boot_low_battery_ui_sent == 0UL) ||
            (g_ps_ui_router_probe.shutdown_state !=
@@ -12794,8 +12862,8 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       g_ps_hw6_joystick_cardinal_request = 0UL;
       ps_joystick_int_consumed_count = ps_joystick_int_pending_count;
       g_ps_hw6_rtos_probe.joystick_irq_pending_count = 0UL;
-      cardinal_status =
-        PS_HW6_OwnerStateMachines_RunJoystickWakeCardinalProbe();
+      cardinal_status = (g_ps_hw6_battery_fault_wait_probe.active != 0UL) ?
+        HAL_BUSY : PS_HW6_OwnerStateMachines_RunJoystickWakeCardinalProbe();
       if (cardinal_status == HAL_OK)
       {
         (void)
@@ -12997,6 +13065,7 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_UI) &&
         (ps_ui_boot_complete_sent == 0UL) &&
+        (g_ps_hw6_battery_fault_wait_probe.active == 0UL) &&
         (ps_power_boot_done != 0UL) &&
         (g_ps_hw6_owner_sm_probe
            .joystick_calibration_persistent_boot_resolved != 0UL) &&
@@ -13055,6 +13124,11 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
         (g_ps_ui_router_request != 0UL) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
+      if (g_ps_hw6_battery_fault_wait_probe.active != 0UL)
+      {
+        g_ps_ui_router_request = 0UL;
+        continue;
+      }
       (void)PS_HW6_RTOS_RequestUiClockCapabilities(
         PS_HW6_RTOS_UI_CLOCK_REASON_REACTIVE_TRANSACTION,
         PS_HW6_RTOS_UI_CLOCK_REACTIVE_CAPABILITIES);

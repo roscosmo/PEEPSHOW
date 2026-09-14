@@ -76,6 +76,21 @@ extern volatile PS_HW6_BatteryShutdownProbe g_ps_hw6_battery_shutdown_probe;
 /* thPower only; battery requests are separate from manual/START one-shots. */
 void PS_HW6_OwnerStateMachines_ProcessSoftwareShipment(void);
 
+typedef struct
+{
+  uint32_t api_version;
+  uint32_t active;
+  uint32_t attempts;
+  uint32_t wfi_returns;
+  uint32_t last_status;
+  uint32_t next_tick;
+  uint32_t force_read;
+  uint32_t recovery_status;
+} PS_HW6_BatteryFaultWaitProbe;
+
+extern volatile PS_HW6_BatteryFaultWaitProbe g_ps_hw6_battery_fault_wait_probe;
+HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunBatteryFaultWait(void);
+
 typedef enum
 {
   PS_HW6_SM_POWER = 0,

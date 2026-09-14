@@ -168,6 +168,19 @@ Exhaustion retains the last preparation failure and leaves shutdown preparation
 owned; it must not fabricate an ACK, resume normal work, or bypass quiesce.
 There is no blocking delay, spin loop or automatic unlimited retry.
 
+Exhaustion latches battery fault-wait without replenishing shipment attempts.
+`thPower` repeats admission and physical owner quiesce before fault sleep,
+using the original battery reason for terminal peripheral parking. STOP2 retains
+clock, RTC, GPIO, queue and final-input validation. Failed sleep attempts are
+spaced by `power_battery_sleep_retry_ms`, also the maximum fault-read interval.
+Fault wakes restore clocks/timebases but do not resume normal owners, package
+timers, animation or input delivery. Every real wake requests a fresh reading.
+Recovery requires a valid reading at/above restart-allow and successful physical
+owner resume; buttons and VBUS alone cannot clear the episode. Package work
+remains suspended for explicit recovery. If safe sleep cannot be established,
+the failure remains visible; firmware must not claim low-power residency.
+Independent hardware protection is still required.
+
 The separate `g_ps_hw6_battery_shutdown_probe` (API 2) reports reason, attempts,
 prepared, exhausted, last status and next kernel tick for the current episode.
 It also reports battery shipment pending, actual owner-call attempts, returned
