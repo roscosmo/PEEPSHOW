@@ -163,6 +163,14 @@ type AssetLibraryGroup<T> = {
   detail: string;
   items: T[];
 };
+type AudioAuditionProgress = {
+  cueId: string;
+  progress: number;
+};
+
+function audioCueDisplayName(cue: Pick<AudioCueRecord, "cue_id" | "display_name">): string {
+  return cue.display_name?.trim() || cue.cue_id.replace(/\.cue(?:_\d+)?$/i, "");
+}
 const SYSTEM_FONT_8X8_BASIC_ID = "peepshow.system.8x8.basic.v1";
 const PLACEMENT_VIEWPORT_MIN_ZOOM = 0.5;
 const PLACEMENT_VIEWPORT_MAX_ZOOM = 6;
@@ -701,6 +709,7 @@ export default function App() {
   const [fontPreviewFamilies, setFontPreviewFamilies] = useState<Record<string, string>>({});
   const [bakedTextSources, setBakedTextSources] = useState<BakedTextSourceRecord[]>([]);
   const [audioAuditionStatus, setAudioAuditionStatus] = useState("No cue auditioned.");
+  const [audioAuditionProgress, setAudioAuditionProgress] = useState<AudioAuditionProgress | null>(null);
   const [assetPreviewPlaying, setAssetPreviewPlaying] = useState(false);
   const [assetPreviewStep, setAssetPreviewStep] = useState(0);
   const [sceneFlowLayoutStatus, setSceneFlowLayoutStatus] = useState("No layout move yet");
@@ -955,6 +964,7 @@ export default function App() {
 
   const stopAudioPlayback = useCallback(() => {
     audioPlaybackRequestRef.current += 1;
+    setAudioAuditionProgress(null);
     const audio = audioPlaybackRef.current;
     if (audio !== null) {
       audio.pause();
@@ -1222,6 +1232,7 @@ export default function App() {
         }
 
         const currentAudio = audioPlaybackRef.current;
+        setAudioAuditionProgress(null);
         if (currentAudio !== null) {
           currentAudio.pause();
           currentAudio.currentTime = 0;
@@ -2059,7 +2070,7 @@ export default function App() {
       selectAssetRecord({ kind: "audio", cueId });
       setWorkspaceMode("assets");
       setAudioAuditionStatus(`Imported ${imported.sourcePath}.`);
-      setMessage(`Imported ${assetId} as ${cueId}. Save to write it to the project.`);
+      setMessage(`Imported ${assetId} as an SFX cue. Save to write it to the project.`);
     } catch (error) {
       const text = errorText(error);
       setAudioAuditionStatus(`Import failed: ${text}`);
@@ -2081,17 +2092,36 @@ export default function App() {
         project_revision: project.project_revision,
         cue_id: cueId,
       });
+      const cueLabel = audioCueDisplayName(audioCues.find((cue) => cue.cue_id === cueId) ?? { cue_id: cueId });
       const audio = new Audio(`data:audio/wav;base64,${result.audio.wav_base64}`);
       audioPlaybackRef.current = audio;
+      let progressFrame = 0;
+      const updateProgress = () => {
+        if (audioPlaybackRef.current !== audio) {
+          return;
+        }
+        const fallbackDuration = Math.max(0.001, result.audio.duration_ms / 1000);
+        const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : fallbackDuration;
+        setAudioAuditionProgress({ cueId, progress: Math.min(1, Math.max(0, audio.currentTime / duration)) });
+        if (!audio.paused && !audio.ended) {
+          progressFrame = window.requestAnimationFrame(updateProgress);
+        }
+      };
       audio.addEventListener("ended", () => {
         if (audioPlaybackRef.current === audio) {
           audioPlaybackRef.current = null;
+          setAudioAuditionProgress({ cueId, progress: 1 });
+          window.setTimeout(() => {
+            setAudioAuditionProgress((current) => current?.cueId === cueId && current.progress >= 1 ? null : current);
+          }, 250);
         }
+        window.cancelAnimationFrame(progressFrame);
       }, { once: true });
       await audio.play();
+      progressFrame = window.requestAnimationFrame(updateProgress);
       selectAssetRecord({ kind: "audio", cueId });
       setAudioAuditionStatus(`Played packaged ${result.audio.duration_ms} ms cue at ${result.audio.sample_rate_hz} Hz.`);
-      setMessage(`Auditioned ${cueId} from packaged ADPCM bytes.`);
+      setMessage(`Auditioned ${cueLabel} from packaged ADPCM bytes.`);
     } catch (error) {
       const text = errorText(error);
       setAudioAuditionStatus(`Audition failed: ${text}`);
@@ -2159,7 +2189,7 @@ export default function App() {
       setMessage("Audio names must be 1 to 64 characters.");
       return;
     }
-    if (displayName === (cue.display_name ?? cue.cue_id)) {
+    if (displayName === audioCueDisplayName(cue)) {
       return;
     }
     setBusy("Renaming audio cue");
@@ -4023,7 +4053,6 @@ export default function App() {
     ? audioCues.find((cue) => cue.cue_id === assetSelection.cueId) ?? null
     : null;
   const selectedAudioAsset = selectedAudioCue === null ? null : audioAssetById.get(selectedAudioCue.asset_ref) ?? null;
-  const audioCueDisplayName = (cue: AudioCueRecord) => cue.display_name?.trim() || cue.cue_id.replace(/\.cue(?:_\d+)?$/, "");
   const selectedFontAsset = assetSelection?.kind === "font"
     ? fontAssets.find((font) => font.font_id === assetSelection.fontId) ?? null
     : null;
@@ -5848,7 +5877,12 @@ export default function App() {
                                 onClick={() => selectAssetRecord({ kind: "audio", cueId: cue.cue_id })}
                                 title="Select this SFX cue"
                               >
-                                <AudioWaveform projectPath={projectPath} sourcePath={asset?.source_path} revision={project?.project_revision} />
+                                <AudioWaveform
+                                  projectPath={projectPath}
+                                  sourcePath={asset?.source_path}
+                                  revision={project?.project_revision}
+                                  progress={audioAuditionProgress?.cueId === cue.cue_id ? audioAuditionProgress.progress : null}
+                                />
                                 <span>
                                   <span className="asset-kind-badge audio-cue-badge">SFX</span>
                                   <strong>{audioCueDisplayName(cue)}</strong>
@@ -6238,6 +6272,12 @@ export default function App() {
             </label>
           </div>
           <div className="audio-inspector-controls">
+            <AudioWaveform
+              projectPath={projectPath}
+              sourcePath={selectedAudioAsset?.source_path}
+              revision={project?.project_revision}
+              progress={audioAuditionProgress?.cueId === selectedAudioCue.cue_id ? audioAuditionProgress.progress : null}
+            />
             <button
               className="button primary"
               type="button"

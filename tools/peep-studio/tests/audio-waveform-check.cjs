@@ -35,6 +35,8 @@ app.whenReady().then(async()=>{
   await window.loadURL(url);await wait(800);
   assert.equal(await evaluate("document.querySelectorAll('canvas').length"),3);
   assert.equal(await evaluate("document.body.dataset.decodes"),'3');
+  assert.equal(await evaluate("document.querySelector('[data-audio=pulse] .audio-waveform').classList.contains('playing')"),true);
+  assert.equal(await evaluate("document.querySelector('[data-audio=ramp] .audio-waveform').classList.contains('playing')"),false);
   const pictures=await evaluate("[...document.querySelectorAll('canvas')].map(c=>c.toDataURL())");
   assert.equal(new Set(pictures).size,3);
   const ink=await evaluate("[...document.querySelectorAll('canvas')].map(c=>{const p=c.getContext('2d').getImageData(0,0,128,40).data;let n=0;for(let i=3;i<p.length;i+=4)if(p[i])n++;return n})");

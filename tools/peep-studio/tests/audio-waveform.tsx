@@ -14,7 +14,7 @@ createRoot(document.getElementById("root")!).render(
   <div className="audio-cue-gallery" style={{maxWidth:520,padding:16}}>
     {["pulse", "ramp", "silence", "missing"].map(name => <div key={name}>
       <button className="audio-cue-select" data-audio={name}>
-        <AudioWaveform projectPath={projectPath} sourcePath={`assets/${name}.wav`} />
+        <AudioWaveform projectPath={projectPath} sourcePath={`assets/${name}.wav`} progress={name === "pulse" ? 0.5 : null} />
         <span><strong>{name}</strong><small>Source waveform</small></span>
       </button>
     </div>)}

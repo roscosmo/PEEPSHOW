@@ -39,11 +39,14 @@ async function decodePeaks(key: string, data: string): Promise<number[]> {
   return normalized;
 }
 
-export function AudioWaveform({ projectPath, sourcePath, revision }: {
-  projectPath: string | null; sourcePath?: string; revision?: number;
+export function AudioWaveform({ projectPath, sourcePath, revision, progress = null }: {
+  projectPath: string | null; sourcePath?: string; revision?: number; progress?: number | null;
 }) {
   const [peaks, setPeaks] = useState<number[] | null>(null);
   const ref = useRef<HTMLCanvasElement>(null);
+  const clampedProgress = typeof progress === "number" && Number.isFinite(progress)
+    ? Math.min(1, Math.max(0, progress))
+    : null;
   useEffect(() => {
     let cancelled = false;
     setPeaks(null);
@@ -66,13 +69,24 @@ export function AudioWaveform({ projectPath, sourcePath, revision }: {
     const context = ref.current?.getContext("2d");
     if (!context || !peaks) return;
     context.clearRect(0, 0, 128, 40);
-    context.fillStyle = "#377d82";
-    peaks.forEach((peak, index) => {
-      const height = Math.max(1, Math.round(peak * 36));
-      context.fillRect(index * 2, (40 - height) / 2, 1, height);
-    });
-  }, [peaks]);
-  return <span className="audio-waveform" aria-hidden="true">
+    const drawBars = (color: string) => {
+      context.fillStyle = color;
+      peaks.forEach((peak, index) => {
+        const height = Math.max(1, Math.round(peak * 36));
+        context.fillRect(index * 2, (40 - height) / 2, 1, height);
+      });
+    };
+    drawBars(clampedProgress === null ? "#377d82" : "#b8d2d4");
+    if (clampedProgress !== null) {
+      context.save();
+      context.beginPath();
+      context.rect(0, 0, Math.round(128 * clampedProgress), 40);
+      context.clip();
+      drawBars("#d6812f");
+      context.restore();
+    }
+  }, [clampedProgress, peaks]);
+  return <span className={clampedProgress === null ? "audio-waveform" : "audio-waveform playing"} aria-hidden="true">
     {peaks ? <canvas ref={ref} width={128} height={40} /> : <Volume2 size={22} />}
   </span>;
 }
