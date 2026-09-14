@@ -9621,9 +9621,13 @@ static HAL_StatusTypeDef PS_HW6_SM_QuiesceJoystick(uint32_t cycle_index)
 
   if (status == HAL_OK)
   {
-    status = PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
-                                  JOY_EV_QUIESCE,
-                                  status);
+    /* Match the cached sleep-proof path; OFF is the normal early-boot state. */
+    if ((state != (uint32_t)JOY_OFF) && (state != (uint32_t)JOY_SUSPENDED))
+    {
+      status = PS_HW6_SM_Transition(PS_HW6_SM_JOYSTICK,
+                                    JOY_EV_QUIESCE,
+                                    status);
+    }
   }
   else
   {

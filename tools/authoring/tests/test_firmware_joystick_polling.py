@@ -52,7 +52,12 @@ class JoystickPollingTests(unittest.TestCase):
         source = (firmware / "Core/Src/ps_hw6_owner_state_machines.c").read_text()
         table = re.search(r"static const PS_HW6_StateTransition ps_joystick_transitions\[\] =\s*\{.*?\n\};",
                           source, re.S).group(0)
-        functions = ("PS_HW6_SM_PrepareJoystickInput", "PS_HW6_SM_RunJoystickCardinalProbe")
+        table += "\n" + re.search(
+            r"typedef struct\s*\{[^}]*\}\s*ps_hw6_joystick_wake_profile_t;", source).group()
+        for name in ("PS_HW6_TMAG_STOP2_INT_CONFIG1_TARGET", "PS_HW6_TMAG_QUIET_INT_CONFIG1_TARGET"):
+            table += "\n" + re.search(rf"^#define {name}\s+[^\n]+", source, re.M).group()
+        functions = ("PS_HW6_SM_PrepareJoystickInput", "PS_HW6_SM_RunJoystickCardinalProbe",
+                     "PS_HW6_SM_JoystickTerminalSleepProofValid", "PS_HW6_SM_QuiesceJoystick")
         compiler = os.environ.get("HOST_CC", "C:/msys64/ucrt64/bin/gcc.exe")
         env = dict(os.environ)
         env["PATH"] = str(Path(compiler).parent) + os.pathsep + env.get("PATH", "")

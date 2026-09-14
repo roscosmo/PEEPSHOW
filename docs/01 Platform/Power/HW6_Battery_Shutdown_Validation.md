@@ -136,7 +136,8 @@ separate.
   and power active, but PMIC remained `SHIP_PENDING`. The recovery code omitted
   that state. Package suspension is separate and does not imply auto-resume.
 
-The new recovery cleanup is native-tested and built but not yet hardware-tested.
+The recovery cleanup was initially native-tested; subsequent target results
+are recorded below.
 The completed timing capture confirmed the circular wait at measured 3163 mV:
 barrier 484..1484, display 486..1484, clock waiting at both barrier begin and
 display dispatch, one clock completion/failure with status `0x7` and elapsed
@@ -157,24 +158,128 @@ checks pass. The native handoff test uses actual barrier/request/handoff code
 with simulated queue boundaries, not a ThreadX scheduling or physical shutdown
 test. It covers an outstanding clock request, new requests during the handoff,
 grant/send/ACK/release failures and unchanged sleep/START paths. Build usage:
-RAM 552912, ROM 880160, SRAM4 15480 bytes. Target confirmation remains pending.
+RAM 552912, ROM 880160, SRAM4 15480 bytes for that increment.
 
-### Next Capture
+### Runtime Revalidation and Low-Boot Follow-Up
 
-Flash the matching new build at 3800 mV with cell and device USB disconnected.
-Boot normally, then lower the source to 3200 mV without resetting. Wake normally
-if needed and allow 15 seconds running time without halting during preparation.
-Then halt and run:
+- At measured 3175 mV, preparation completed on attempt 1 in ticks 479..482
+  (30 ms). All owner masks were 0x7e with no failures. A pending display clock
+  request completed successfully in 3 ticks, with no clock failures. Preparation
+  succeeded without the previous timeout. Shipment remained disabled.
+- Restoring source 3800 mV produced measured 3782 mV, policy OK, power/PMIC 2/3,
+  reset preparation tracking and no physical shipment request. Runtime
+  preparation/recovery passes; this does not prove physical power-off.
+- Booting at source 3400 mV produced measured 3374 mV, no VBUS, boot blocked and
+  CHARGE BATTERY (LOW_BOOT) displayed. This message does not mean charging.
+  Preparation succeeded on attempt 2; the retained second barrier was
+  1384..1384 with all owner ACKs/actions successful and no clock failures.
+  The first attempt's failure was overwritten. Low-boot preparation is not yet
+  a clean pass. The disabled shutdown gate leaves power/PMIC 8/8, which blocks
+  ordinary STOP2: staying awake is a gated-test condition, not acceptable final
+  depleted-battery behaviour.
+
+Timing API 2 now preserves a separate first failed battery barrier until reset,
+including owner action/ACK results and clock grant/release results. Success,
+later failures, sleep barriers and voltage recovery cannot overwrite it.
+No admission-before-barrier failures are captured by this record. No scheduling,
+retry, shipment or voltage policy is changed. Five focused battery tests and
+Debug build pass; RAM 553296, ROM 880832, SRAM4 15480 bytes. The readonly helper
+loads against the matching ELF offline; live first-failure capture is pending.
+
+The API-2 capture subsequently preserved the first boot failure:
+barrier 258..1260, storage 260..1260 with ACK status 0x7/action NOT_RUN, input
+ACK success but action 0x1. After resuming, barrier 2 at tick 1384 reported all
+owner actions/ACKs successful and the warning appeared. The first failure was
+unchanged, proving retention across the retry. A late storage action success in
+the live power probe must not be mistaken for a timely first-attempt ACK.
+
+At that checkpoint the first-failure mechanism was unresolved. Storage boot calibration
+requests clocks from thPower; power can evaluate low-battery policy while that
+work is pending. Input's quiesce path calls joystick sleep without first using
+its ordinary stabilization/recovery path. These are candidate dependencies,
+not proof of the exact failed operations. API 3 adds storage-clock wait markers,
+boot/calibration progress and input driver state/results to the same retained
+record. No policy, retries, clocks or owner dispatch behaviour is changed.
+Five focused battery tests and the Debug build pass; the helper loads offline
+against the matching ELF. RAM 553456, ROM 881320, SRAM4 15480 bytes.
+
+### API-3 Result and Corrective Increment
+
+At measured 3371 mV with no VBUS, the first barrier again took ticks 258..1260.
+Power boot was done, calibration load had started but was unresolved, and
+storage clock wait was active at barrier begin, dispatch and completion. The
+request sampled at dispatch started at tick 28 with capabilities 0x2. This
+confirms the power/storage circular wait; the flags alone do not prove that one
+unchanged clock request persisted at all three sampling points. The successful
+retry had calibration resolved and no outstanding storage clock wait.
+
+Input remained JOY_OFF (0), while the driver went READY (1) to WAKE_SLEEP (5).
+Ready/identity/sleep-write/driver status and I2C error were zero, with terminal
+sleep committed. Its action HAL_ERROR came from requesting an undefined
+JOY_OFF -> QUIESCE transition after hardware success, not from failed sleep.
+The user observed a long blank period before the warning appeared.
+
+The corrective build holds flash clocks under thPower during battery barriers,
+including early boot before FLASH_READY. It answers the outstanding storage
+clock request, avoids further circular clock waits during quiesce, and consumes
+the superseded queued request without reapplying it or generating another ACK.
+The real storage owner still performs its work and acknowledges quiesce.
+Unsupported capabilities and grant failures are not reported as successful;
+cleanup cannot overwrite the pending caller's failed grant result.
+Joystick first-sleep success now handles OFF/SUSPENDED like the existing cached
+proof path. Actual sleep-write or required-transition failures remain failures.
+
+Focused native tests exercise the actual request/barrier and joystick quiesce
+functions with mocked hardware/queue boundaries. They cover pending storage
+work, flash grant retention through a local release, unsupported capabilities,
+grant/send/ACK/release failures, stale request consumption, ordinary sleep/START,
+first and repeated joystick sleep, and real sleep failure propagation. These
+are not a ThreadX scheduling or physical shutdown test. Debug build passes:
+RAM 553472, ROM 881680, SRAM4 15480 bytes. Shipment gates remain disabled.
+
+### Low-Boot Revalidation Pass
+
+The 2026-09-14 corrective-build capture at measured 3373 mV, no VBUS, passed:
+
+- Admission and preparation succeeded on attempt 1, with no exhaustion.
+- Barrier ticks 258..261: 30 ms rather than the previous 10-second timeout.
+- All six owner sends, ACKs and actions succeeded; masks were 0x7e with no
+  failed bits. FIRST FAILED had no record.
+- Storage clock wait was 1 at barrier begin and 0 at dispatch/completion.
+  Required/grant/release were 1/0/0; storage completed at tick 261.
+- Input remained JOY_OFF, while the driver reached WAKE_SLEEP. Ready, identity,
+  sleep-write and action statuses were zero, terminal sleep committed was 1,
+  and I2C error was zero.
+- The user confirmed the warning appeared directly after boot, and the UI and
+  display probes both showed LOW_BOOT. The 30 ms is preparation time, not a
+  measured reset-to-visible-warning interval.
+- The user confirmed recovery after raising voltage. No post-recovery probe
+  was supplied in this run, so this is observed recovery rather than a new
+  numerical policy/PMIC recovery capture.
+
+This closes the delayed-warning/first-preparation failure. Shipment gates were
+0/0, shipment requests remained zero and the gate skip incremented once.
+Physical shutdown, shutdown current and automatic discharge protection remain
+unqualified; the device still stays awake in this gated test condition.
+
+### Repeat Procedure
+
+Flash the corrective build at 3800 mV with cell and device USB disconnected.
+Set the source to 3400 mV and reset to perform a low-voltage boot. Allow 15
+seconds uninterrupted execution, observing when the warning appears, then halt
+and run:
 
 ```gdb
 source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_battery_power_prints.gdb
 source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_battery_quiesce_timing_prints.gdb
 ```
 
-Require preparation status 0, prepared=1, all owner ACKs successful, no display
-clock failures and no 1000-tick timeout plateau. Clock completion count may be
-zero if no queued clock wait overlaps the capture; bypassed requests are not
-counted as queue completions. Restore 3800 mV,
-resume several seconds, and print battery power again. Recovery should now give
+Expect attempt 1 prepared successfully, all owner actions/ACKs successful,
+storage clock required/grant/release 1/0/0, and no 1000-tick stall. The warning
+must be observed; queue counters alone do not prove it was drawn promptly.
+Capture both LATEST and FIRST FAILED sections, even if the retry succeeded.
+A missing first-failure record means no qualifying barrier failure was captured,
+not proof that no admission failed. Do not reset between boot and printing.
+Restore 3800 mV, resume several seconds, and print battery power again. Recovery should give
 policy OK and power/PMIC `2/3`, with no shipment request. Do not require automatic
 package resume, enable shipment, or proceed to charger testing yet.

@@ -15,9 +15,13 @@ class BatteryQuiesceTimingTests(unittest.TestCase):
         source = (firmware / "Core/Src/ps_hw6_rtos_probe.c").read_text()
         probe = re.search(r"typedef struct\s*\{[^}]*\}\s*PS_HW6_BatteryQuiesceTimingProbe;", source).group()
         functions = "\n".join(firmware_function(source, name) for name in (
+            "PS_HW6_RTOS_StorageBarrierClockStatus",
             "PS_HW6_RTOS_RequestPowerClockProfile",
             "PS_HW6_RTOS_BeginPowerDisplayBarrier", "PS_HW6_RTOS_EndPowerDisplayBarrier",
+            "PS_HW6_RTOS_BeginPowerStorageBarrier", "PS_HW6_RTOS_ConsumeStorageBarrierClockRequest",
             "PS_HW6_RTOS_RunPowerQuiesceBarrier"))
+        handler = firmware_function(source, "PS_HW6_RTOS_HandleOwnerCommand")
+        self.assertRegex(handler, r"if \(PS_HW6_RTOS_ConsumeStorageBarrierClockRequest\(requester_id\) != 0UL\)\s*\{\s*/\*.*?\*/\s*return;")
         compiler = os.environ.get("HOST_CC", "C:/msys64/ucrt64/bin/gcc.exe")
         env = dict(os.environ)
         env["PATH"] = str(Path(compiler).parent) + os.pathsep + env.get("PATH", "")

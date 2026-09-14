@@ -176,14 +176,28 @@ same cleanup applies when a blocked boot enters VBUS charge recovery, before
 selecting the charging state. Do not clear a START-only pending shipment merely
 because a healthy voltage sample arrived. This is software-state cleanup, not
 automatic package resume or evidence that physical shipment occurred. Native
-regressions exercise the actual power/PMIC transition tables; target revalidation
-of this cleanup is pending.
+regressions exercise the actual power/PMIC transition tables. On 2026-09-14,
+runtime recovery at measured 3782 mV returned policy OK and power/PMIC to 2/3,
+cleared preparation tracking and issued no shipment request.
 
-The battery quiesce timing probe (API 1) retains the latest critical/boot-low
+The battery quiesce timing probe (API 3) retains the latest critical/boot-low
 barrier, per-owner dispatch/wait-completion ticks and display clock queue/ACK
 completions observed during that barrier. Normal STOP2 barriers do not overwrite
 it. `__fw0_battery_quiesce_timing_prints.gdb` prints the record. Each preparation
-retry replaces the prior record. These timestamps include scheduling and waits;
+retry replaces the latest record. A separate first-failure record survives all
+later barriers and recovery until reset. It freezes the first completed battery
+barrier with a failed result or an observed display clock queue/ACK failure.
+Both records include per-owner send/ACK/flags/action results, final barrier
+status and display/storage clock grant/release results. Owner action results
+are sampled when that owner's wait returns; late completions cannot alter the
+frozen record. Admission failures before the barrier are outside this probe.
+API 3 also samples boot/calibration progress, an outstanding storage clock
+transaction at barrier begin and storage dispatch/completion, and joystick
+owner/driver states and ready/identity/sleep-write results around input quiesce.
+These copy existing software probes without additional peripheral reads.
+Storage wait=1 means a clock transaction is outstanding; it does not by itself
+prove a clock fault. Input results without an ACK may be pending or historical.
+The final result is recorded after storage-clock cleanup. These timestamps include scheduling and waits;
 they do not measure isolated CPU time. The last display clock result can replace
 an earlier result, while the failure count remains cumulative for that barrier.
 No queue, timeout, clock-transition or acknowledgement behaviour is changed by
@@ -201,7 +215,44 @@ the superseded request from restoring transfer capabilities later. Cleanup ends
 the handoff and releases the display grant; grant/release failure rejects
 preparation. Normal sleep and START barriers remain unchanged. Owner ACKs are
 still required; this does not synthesize a display-quiesce acknowledgement.
-Focused native regression tests pass; hardware revalidation is pending.
+Focused native regression tests pass. Runtime target revalidation at measured
+3175 mV completed preparation in ticks 479..482 (30 ms), with all owner actions
+and ACKs successful and an outstanding display clock request completing with
+zero failures. Physical shipment remained gated off. Low-voltage boot at
+measured 3374 mV subsequently required two attempts; only the successful second
+attempt was retained by API 1. The new first-failure capture is intended to
+identify that unresolved first attempt, not to declare boot preparation fixed.
+The subsequent retained first failure showed storage ACK timeout from tick
+260 to 1260 and input action HAL_ERROR despite its successful ACK. The second
+barrier at tick 1384 completed successfully and the user saw the warning appear.
+The API-3 capture confirmed boot/calibration overlap: calibration was started
+but unresolved, storage was waiting for a clock reply at barrier begin and
+dispatch (request start tick 28, capabilities 0x2), and thPower waited for its
+quiesce ACK until timeout. The joystick hardware operation actually succeeded:
+ready/identity/sleep-write and driver status were zero, terminal sleep was
+committed, but owner state JOY_OFF rejected JOY_EV_QUIESCE. The retry accepted
+the existing sleep proof. This was a state-handling error, not an I2C failure.
+
+Battery-critical/boot-low preparation now reserves the storage flash clock even
+before FLASH_READY. A power-owned storage handoff answers a pending clock
+request and serves flash-clock requests/releases locally while the real owner
+barrier runs. The grant remains held until barrier cleanup; it does not grant
+USB/MSC capabilities or manufacture storage's quiesce ACK. A grant failure is
+retained for the waiting caller even if cleanup subsequently succeeds. The
+superseded queued request is consumed without a second ACK or clock change.
+Grant, owner send/ACK/action and cleanup failures still reject preparation.
+Normal sleep/START storage handoff behaviour is unchanged. After successful
+hardware sleep, input now handles JOY_OFF/JOY_SUSPENDED consistently with the
+cached sleep-proof path; other states still require their valid transition.
+These corrections are native-tested and build-verified. Low-boot target
+revalidation at measured 3373 mV completed on attempt 1 in ticks 258..261
+(30 ms), with all owner actions/ACKs successful and no first failed barrier.
+The pending storage clock wait cleared before storage dispatch; its grant and
+release succeeded. Input's hardware sleep and owner action both succeeded.
+The user confirmed the warning appeared directly after boot and recovery after
+raising voltage. Recovery is visually confirmed in this run; no post-recovery
+probe was supplied. Shipment remained disabled, so physical shutdown and
+discharge protection are not established by this pass.
 
 This does not change START handling, the final PMIC shipment write, or retry
 that write if it fails. Automatic critical/boot shipment remains disabled.

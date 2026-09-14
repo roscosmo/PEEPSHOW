@@ -22,6 +22,10 @@ static uint32_t wakes, reads, suspends, recoveries, proof_clears;
 static uint32_t fail_event, failure_stage, fail_normalize, fail_suspend;
 static uint32_t fail_read, fail_wake, tick;
 static uint32_t directions[3];
+static uint32_t ps_joystick_stop2_wake_allowed, ps_joystick_stop2_wake_armed;
+static uint32_t ps_joystick_calibration_session_active;
+static ps_input_joystick_calibration_t ps_joystick_active_calibration;
+static uint32_t sleep_calls, fail_sleep, wake_sleep_calls;
 
 static ULONG tx_time_get(void) {return ++tick;}
 static void PS_HW6_SM_UpdateJoystickCalibrationProbe(void) {}
@@ -101,6 +105,45 @@ static HAL_StatusTypeDef PS_HW6_SM_NormalizeJoystickSample(
   ps_joystick_input_state.direction_mask = (uint32_t)sample->x;
   return fail_normalize ? HAL_ERROR : HAL_OK;
 }
+static void PS_HW6_SM_BuildJoystickWakeProfile(
+  const ps_input_joystick_calibration_t *calibration, ps_hw6_joystick_wake_profile_t *profile)
+{
+  assert(calibration->valid);
+  memset(profile, 0, sizeof(*profile));
+  profile->status = PS_STATUS_OK;
+  profile->threshold_x_code = profile->threshold_y_code = 48U;
+}
+static void PS_HW6_SM_UpdateStop2ExpectedWakePin(void) {}
+static void PS_HW6_SM_ClearStop2JoystickWakePending(void) {}
+static uint8_t PS_HW6_SM_JoystickWakeSleepPeriodCode(void) {return 4U;}
+ps_status_t ps_hw_i2c3_diagnostics(uint32_t *state, uint32_t *error)
+{*state = 0U; *error = 0U; return PS_STATUS_OK;}
+ps_status_t ps_dev_tmag3001_prepare_sleep(ps_dev_tmag3001_t *device, uint8_t target,
+                                        ps_dev_tmag3001_sleep_audit_result_t *result)
+{
+  sleep_calls++;
+  memset(result, 0, sizeof(*result));
+  result->sleep_write_status = fail_sleep ? PS_STATUS_INTERNAL_ERROR : PS_STATUS_OK;
+  result->terminal_sleep_committed = fail_sleep ? 0U : 1U;
+  result->post_sleep_read_omitted = 1U;
+  result->int_config1_target = result->int_config1_after = target;
+  device->state = fail_sleep ? PS_DEV_TMAG3001_STATE_FAULT : PS_DEV_TMAG3001_STATE_WAKE_SLEEP;
+  return result->sleep_write_status;
+}
+ps_status_t ps_dev_tmag3001_prepare_wake_sleep_omnipolar_xy(ps_dev_tmag3001_t *device,
+  uint8_t period, uint8_t x, uint8_t y, uint8_t hysteresis, ps_dev_tmag3001_wake_sleep_result_t *result)
+{
+  (void)hysteresis;
+  assert(period == 4U && x == 48U && y == 48U);
+  wake_sleep_calls++;
+  memset(result, 0, sizeof(*result));
+  result->terminal_write_status = fail_sleep ? PS_STATUS_INTERNAL_ERROR : PS_STATUS_OK;
+  result->terminal_write_committed = fail_sleep ? 0U : 1U;
+  result->post_terminal_read_omitted = 1U;
+  result->int_config1_target = result->int_config1_after = PS_HW6_TMAG_STOP2_INT_CONFIG1_TARGET;
+  device->state = fail_sleep ? PS_DEV_TMAG3001_STATE_FAULT : PS_DEV_TMAG3001_STATE_WAKE_SLEEP;
+  return result->terminal_write_status;
+}
 #include "joystick_under_test.inc"
 
 static void reset(uint32_t owner, uint32_t driver)
@@ -111,6 +154,9 @@ static void reset(uint32_t owner, uint32_t driver)
   ps_joystick_device.state = driver;
   wakes = reads = suspends = recoveries = proof_clears = 0U;
   fail_event = failure_stage = fail_normalize = fail_suspend = fail_read = fail_wake = 0U;
+  ps_joystick_stop2_wake_allowed = ps_joystick_stop2_wake_armed = 0U;
+  sleep_calls = fail_sleep = wake_sleep_calls = 0U;
+  memset(&ps_joystick_active_calibration, 0, sizeof(ps_joystick_active_calibration));
   directions[0] = directions[1] = directions[2] = PS_INPUT_JOYSTICK_DIRECTION_RIGHT;
 }
 static void assert_live(void)
@@ -184,5 +230,32 @@ int main(void)
   fail_wake = 1U;
   assert(PS_HW6_SM_RunJoystickCardinalProbe(0U) == HAL_ERROR);
   assert(reads == 0U && suspends == 0U && failure_stage == PS_HW6_JOYSTICK_FAILURE_STAGE_WAKE);
+
+  /* First low boot must actually sleep the sensor, not fail OFF -> QUIESCE. */
+  const uint32_t initial_states[] = {JOY_OFF, JOY_SUSPENDED, JOY_SLOW_POLL};
+  for (uint32_t i = 0U; i < sizeof(initial_states) / sizeof(initial_states[0]); ++i)
+  {
+    reset(initial_states[i], PS_DEV_TMAG3001_STATE_READY);
+    assert(PS_HW6_SM_QuiesceJoystick(0U) == HAL_OK);
+    assert(sleep_calls == 1U && ps_joystick_device.state == PS_DEV_TMAG3001_STATE_WAKE_SLEEP);
+    assert(PS_HW6_SM_JoystickTerminalSleepProofValid());
+    assert(g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK] ==
+           (initial_states[i] == JOY_OFF ? JOY_OFF : JOY_SUSPENDED));
+    assert(PS_HW6_SM_QuiesceJoystick(0U) == HAL_OK && sleep_calls == 1U);
+    reset(initial_states[i], PS_DEV_TMAG3001_STATE_READY);
+    fail_sleep = 1U;
+    assert(PS_HW6_SM_QuiesceJoystick(0U) == HAL_ERROR && sleep_calls == 1U);
+    assert(!PS_HW6_SM_JoystickTerminalSleepProofValid());
+  }
+  reset(JOY_SLOW_POLL, PS_DEV_TMAG3001_STATE_ACTIVE);
+  fail_event = JOY_EV_QUIESCE;
+  assert(PS_HW6_SM_QuiesceJoystick(0U) == HAL_ERROR && sleep_calls == 1U);
+  assert(PS_HW6_SM_QuiesceJoystick(0U) == HAL_ERROR && sleep_calls == 1U);
+  reset(JOY_SLOW_POLL, PS_DEV_TMAG3001_STATE_ACTIVE);
+  ps_joystick_stop2_wake_allowed = ps_joystick_active_calibration.valid = 1U;
+  assert(PS_HW6_SM_QuiesceJoystick(0U) == HAL_OK && wake_sleep_calls == 1U);
+  assert(PS_HW6_SM_JoystickTerminalSleepProofValid());
+  assert(ps_joystick_stop2_wake_armed && sleep_calls == 0U);
+  assert(g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK] == JOY_SUSPENDED);
   return 0;
 }

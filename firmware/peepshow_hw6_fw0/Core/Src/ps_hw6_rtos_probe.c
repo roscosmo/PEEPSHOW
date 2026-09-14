@@ -433,6 +433,13 @@ static uint8_t ps_runtime_package_reader_header[64U];
 static uint32_t ps_display_blink_stop2_suppressed;
 static volatile uint32_t ps_display_blink_transfer_active;
 static volatile uint32_t ps_display_clock_wait_active;
+static volatile uint32_t ps_storage_clock_wait_active;
+static uint32_t ps_storage_clock_wait_start_tick;
+static uint32_t ps_storage_clock_wait_capabilities;
+static UINT ps_storage_clock_handoff_result;
+static volatile uint32_t ps_storage_power_barrier_active;
+static UINT ps_storage_power_barrier_clock_status;
+static uint32_t ps_storage_power_barrier_drop_clock_request;
 static volatile uint32_t ps_display_power_barrier_active;
 static uint32_t ps_display_power_barrier_drop_clock_request;
 typedef struct
@@ -452,10 +459,40 @@ typedef struct
   uint32_t display_clock_last_status;
   uint32_t display_clock_last_capabilities;
   uint32_t display_clock_last_elapsed_ticks;
+  uint32_t status;
+  uint32_t send_status[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
+  uint32_t ack_status[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
+  uint32_t ack_flags[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
+  uint32_t owner_status[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
+  uint32_t display_clock_grant_status;
+  uint32_t display_clock_release_status;
+  uint32_t storage_clock_required;
+  uint32_t storage_clock_grant_status;
+  uint32_t storage_clock_release_status;
+  uint32_t power_boot_done;
+  uint32_t calibration_load_started;
+  uint32_t calibration_boot_resolved;
+  uint32_t storage_clock_wait_at_begin;
+  uint32_t storage_clock_wait_at_send;
+  uint32_t storage_clock_wait_at_done;
+  uint32_t storage_clock_wait_start_tick;
+  uint32_t storage_clock_wait_capabilities;
+  uint32_t input_state_before;
+  uint32_t input_driver_state_before;
+  uint32_t input_state_after;
+  uint32_t input_driver_state_after;
+  uint32_t input_driver_status;
+  uint32_t input_ready_status;
+  uint32_t input_identity_status;
+  uint32_t input_sleep_write_status;
+  uint32_t input_terminal_sleep_committed;
+  uint32_t input_i2c_error;
 } PS_HW6_BatteryQuiesceTimingProbe;
 
 volatile PS_HW6_BatteryQuiesceTimingProbe g_ps_hw6_battery_quiesce_timing_probe =
-  {.api_version = 1UL};
+  {.api_version = 3UL};
+volatile PS_HW6_BatteryQuiesceTimingProbe g_ps_hw6_battery_quiesce_first_failure_probe =
+  {.api_version = 3UL};
 static uint32_t ps_stop2_lpbam_edge_request_pending;
 static uint32_t ps_stop2_lpbam_edge_rearm_needed;
 static uint32_t ps_stop2_lpbam_edge_target_tick;
@@ -3427,6 +3464,16 @@ static UINT PS_HW6_RTOS_SendClockProfileCommand(uint32_t requester_id,
                        TX_NO_WAIT);
 }
 
+static UINT PS_HW6_RTOS_StorageBarrierClockStatus(uint32_t capabilities)
+{
+  if (ps_storage_power_barrier_clock_status != TX_SUCCESS)
+  {
+    return ps_storage_power_barrier_clock_status;
+  }
+  return ((capabilities & ~PS_HW6_RTOS_STORAGE_CLOCK_FLASH_CAPABILITIES) == 0UL) ?
+    TX_SUCCESS : TX_QUEUE_ERROR;
+}
+
 static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t requester_id,
                                                  uint32_t profile,
                                                  uint32_t capabilities)
@@ -3447,6 +3494,12 @@ static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t requester_id,
   {
     return (UINT)g_ps_hw6_clock_policy_probe.requester_status[requester_id];
   }
+  if ((requester_id == PS_HW6_RTOS_OWNER_STORAGE) &&
+      (ps_storage_power_barrier_active != 0UL))
+  {
+    /* Releases are deferred until thPower completes the real owner barrier. */
+    return PS_HW6_RTOS_StorageBarrierClockStatus(capabilities);
+  }
 
   (void)tx_event_flags_get(&ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
                            ack_flag,
@@ -3458,6 +3511,13 @@ static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t requester_id,
   {
     display_start_tick = (uint32_t)tx_time_get();
     ps_display_clock_wait_active = 1UL;
+  }
+  if (requester_id == PS_HW6_RTOS_OWNER_STORAGE)
+  {
+    ps_storage_clock_wait_start_tick = (uint32_t)tx_time_get();
+    ps_storage_clock_wait_capabilities = capabilities;
+    ps_storage_clock_handoff_result = PS_HW6_RTOS_STATUS_NOT_RUN;
+    ps_storage_clock_wait_active = 1UL;
   }
   send_status = PS_HW6_RTOS_SendClockProfileCommand(requester_id,
                                                     profile,
@@ -3490,10 +3550,23 @@ static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t requester_id,
     ps_display_clock_wait_active = 0UL;
   }
 
+  if (requester_id == PS_HW6_RTOS_OWNER_STORAGE)
+  {
+    ps_storage_clock_wait_active = 0UL;
+    if (send_status != TX_SUCCESS)
+    {
+      ps_storage_power_barrier_drop_clock_request = 0UL;
+    }
+  }
   if ((send_status == TX_SUCCESS) &&
       (wait_status == TX_SUCCESS) &&
       ((actual_flags & ack_flag) != 0UL))
   {
+    if ((requester_id == PS_HW6_RTOS_OWNER_STORAGE) &&
+        (ps_storage_clock_handoff_result != PS_HW6_RTOS_STATUS_NOT_RUN))
+    {
+      return ps_storage_clock_handoff_result;
+    }
     return (UINT)g_ps_hw6_clock_policy_probe.requester_status[requester_id];
   }
 
@@ -3516,6 +3589,32 @@ static void PS_HW6_RTOS_BeginPowerDisplayBarrier(void)
 static void PS_HW6_RTOS_EndPowerDisplayBarrier(void)
 {
   ps_display_power_barrier_active = 0UL;
+}
+
+static void PS_HW6_RTOS_BeginPowerStorageBarrier(UINT clock_status)
+{
+  ps_storage_power_barrier_clock_status = clock_status;
+  ps_storage_power_barrier_active = 1UL;
+  if (ps_storage_clock_wait_active != 0UL)
+  {
+    ps_storage_clock_handoff_result =
+      PS_HW6_RTOS_StorageBarrierClockStatus(ps_storage_clock_wait_capabilities);
+    ps_storage_power_barrier_drop_clock_request = 1UL;
+    (void)tx_event_flags_set(
+      &ps_event_groups[PS_HW6_RTOS_EVENT_DEBUG_INDEX],
+      PS_HW6_RTOS_ClockAckFlag(PS_HW6_RTOS_OWNER_STORAGE), TX_OR);
+  }
+}
+
+static uint32_t PS_HW6_RTOS_ConsumeStorageBarrierClockRequest(uint32_t requester_id)
+{
+  if ((requester_id == PS_HW6_RTOS_OWNER_STORAGE) &&
+      (ps_storage_power_barrier_drop_clock_request != 0UL))
+  {
+    ps_storage_power_barrier_drop_clock_request = 0UL;
+    return 1UL;
+  }
+  return 0UL;
 }
 
 static void PS_HW6_RTOS_ScheduleClockReleaseStop2Recheck(
@@ -7318,6 +7417,11 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunPowerQuiesceBarrier(uint32_t reason)
   UINT display_clock_release_status = TX_SUCCESS;
 
   storage_clock_required = PS_HW6_RTOS_PowerQuiesceNeedsStorageClock();
+  if (trace_battery != 0UL)
+  {
+    /* Boot calibration may need flash before its owner reaches FLASH_READY. */
+    storage_clock_required = 1UL;
+  }
   if (storage_clock_required != 0UL)
   {
     storage_clock_status = PS_HW6_RTOS_ApplyStorageClockCapabilitiesFromPower(
@@ -7331,13 +7435,31 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunPowerQuiesceBarrier(uint32_t reason)
     uint32_t sequence = g_ps_hw6_battery_quiesce_timing_probe.sequence + 1UL;
     memset((void *)&g_ps_hw6_battery_quiesce_timing_probe, 0,
            sizeof(g_ps_hw6_battery_quiesce_timing_probe));
-    g_ps_hw6_battery_quiesce_timing_probe.api_version = 1UL;
+    g_ps_hw6_battery_quiesce_timing_probe.api_version = 3UL;
     g_ps_hw6_battery_quiesce_timing_probe.sequence = sequence;
     g_ps_hw6_battery_quiesce_timing_probe.reason = reason;
     g_ps_hw6_battery_quiesce_timing_probe.start_tick = (uint32_t)tx_time_get();
     g_ps_hw6_battery_quiesce_timing_probe.display_clock_last_status = PS_HW6_RTOS_STATUS_NOT_RUN;
     g_ps_hw6_battery_quiesce_timing_probe.display_clock_wait_at_begin = ps_display_clock_wait_active;
+    g_ps_hw6_battery_quiesce_timing_probe.power_boot_done = ps_power_boot_done;
+    g_ps_hw6_battery_quiesce_timing_probe.calibration_load_started = ps_joystick_calibration_boot_load_started;
+    g_ps_hw6_battery_quiesce_timing_probe.calibration_boot_resolved =
+      g_ps_hw6_owner_sm_probe.joystick_calibration_persistent_boot_resolved;
+    g_ps_hw6_battery_quiesce_timing_probe.storage_clock_wait_at_begin = ps_storage_clock_wait_active;
+    g_ps_hw6_battery_quiesce_timing_probe.status = PS_HW6_RTOS_STATUS_NOT_RUN;
+    g_ps_hw6_battery_quiesce_timing_probe.display_clock_grant_status = PS_HW6_RTOS_STATUS_NOT_RUN;
+    g_ps_hw6_battery_quiesce_timing_probe.display_clock_release_status = PS_HW6_RTOS_STATUS_NOT_RUN;
+    g_ps_hw6_battery_quiesce_timing_probe.storage_clock_required = storage_clock_required;
+    g_ps_hw6_battery_quiesce_timing_probe.storage_clock_grant_status = storage_clock_status;
+    g_ps_hw6_battery_quiesce_timing_probe.storage_clock_release_status = PS_HW6_RTOS_STATUS_NOT_RUN;
+    for (index = 0U; index < PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT; ++index)
+    {
+      g_ps_hw6_battery_quiesce_timing_probe.send_status[index] = PS_HW6_RTOS_STATUS_NOT_RUN;
+      g_ps_hw6_battery_quiesce_timing_probe.ack_status[index] = PS_HW6_RTOS_STATUS_NOT_RUN;
+      g_ps_hw6_battery_quiesce_timing_probe.owner_status[index] = PS_HW6_RTOS_STATUS_NOT_RUN;
+    }
     g_ps_hw6_battery_quiesce_timing_probe.active = 1UL;
+    PS_HW6_RTOS_BeginPowerStorageBarrier(storage_clock_status);
   }
   for (index = 0U;
        index < (sizeof(quiesce_order) / sizeof(quiesce_order[0]));
@@ -7362,6 +7484,19 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunPowerQuiesceBarrier(uint32_t reason)
       if (owner_id == PS_HW6_RTOS_OWNER_DISPLAY)
       {
         g_ps_hw6_battery_quiesce_timing_probe.display_clock_wait_at_send = ps_display_clock_wait_active;
+      }
+      if (owner_id == PS_HW6_RTOS_OWNER_STORAGE)
+      {
+        g_ps_hw6_battery_quiesce_timing_probe.storage_clock_wait_at_send = ps_storage_clock_wait_active;
+        g_ps_hw6_battery_quiesce_timing_probe.storage_clock_wait_start_tick = ps_storage_clock_wait_start_tick;
+        g_ps_hw6_battery_quiesce_timing_probe.storage_clock_wait_capabilities = ps_storage_clock_wait_capabilities;
+      }
+      if (owner_id == PS_HW6_RTOS_OWNER_INPUT)
+      {
+        g_ps_hw6_battery_quiesce_timing_probe.input_state_before =
+          g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK];
+        g_ps_hw6_battery_quiesce_timing_probe.input_driver_state_before =
+          g_ps_hw6_owner_sm_probe.joystick_driver_state;
       }
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) && (trace_battery != 0UL))
@@ -7404,6 +7539,27 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunPowerQuiesceBarrier(uint32_t reason)
     if (trace_battery != 0UL)
     {
       g_ps_hw6_battery_quiesce_timing_probe.done_tick[owner_id] = (uint32_t)tx_time_get();
+      g_ps_hw6_battery_quiesce_timing_probe.send_status[owner_id] = send_status;
+      g_ps_hw6_battery_quiesce_timing_probe.ack_status[owner_id] = wait_status;
+      g_ps_hw6_battery_quiesce_timing_probe.ack_flags[owner_id] = (uint32_t)actual_flags;
+      g_ps_hw6_battery_quiesce_timing_probe.owner_status[owner_id] =
+        g_ps_hw6_owner_sm_probe.power_quiesce_owner_status[owner_id];
+      if (owner_id == PS_HW6_RTOS_OWNER_STORAGE)
+      {
+        g_ps_hw6_battery_quiesce_timing_probe.storage_clock_wait_at_done = ps_storage_clock_wait_active;
+      }
+      if (owner_id == PS_HW6_RTOS_OWNER_INPUT)
+      {
+        g_ps_hw6_battery_quiesce_timing_probe.input_state_after =
+          g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_JOYSTICK];
+        g_ps_hw6_battery_quiesce_timing_probe.input_driver_state_after = g_ps_hw6_owner_sm_probe.joystick_driver_state;
+        g_ps_hw6_battery_quiesce_timing_probe.input_driver_status = g_ps_hw6_owner_sm_probe.joystick_driver_last_status;
+        g_ps_hw6_battery_quiesce_timing_probe.input_ready_status = g_ps_hw6_owner_sm_probe.joystick_ready_status;
+        g_ps_hw6_battery_quiesce_timing_probe.input_identity_status = g_ps_hw6_owner_sm_probe.joystick_identity_status;
+        g_ps_hw6_battery_quiesce_timing_probe.input_sleep_write_status = g_ps_hw6_owner_sm_probe.joystick_sleep_write_status;
+        g_ps_hw6_battery_quiesce_timing_probe.input_terminal_sleep_committed = g_ps_hw6_owner_sm_probe.joystick_terminal_sleep_committed;
+        g_ps_hw6_battery_quiesce_timing_probe.input_i2c_error = g_ps_hw6_owner_sm_probe.joystick_i2c_error_after;
+      }
     }
     PS_HW6_OwnerStateMachines_RecordPowerQuiesceCommand(
       owner_id, send_status, wait_status, (uint32_t)actual_flags);
@@ -7420,14 +7576,8 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunPowerQuiesceBarrier(uint32_t reason)
       barrier_status = HAL_ERROR;
     }
   }
-  if (trace_battery != 0UL)
-  {
-    g_ps_hw6_battery_quiesce_timing_probe.end_tick = (uint32_t)tx_time_get();
-    g_ps_hw6_battery_quiesce_timing_probe.active = 0UL;
-  }
-
   if ((storage_clock_required != 0UL) &&
-      (storage_clock_status == TX_SUCCESS))
+      ((storage_clock_status == TX_SUCCESS) || (trace_battery != 0UL)))
   {
     storage_clock_release_status =
       PS_HW6_RTOS_ApplyStorageClockCapabilitiesFromPower(
@@ -7440,6 +7590,25 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunPowerQuiesceBarrier(uint32_t reason)
     }
   }
 
+  if (trace_battery != 0UL)
+  {
+    ps_storage_power_barrier_active = 0UL;
+    g_ps_hw6_battery_quiesce_timing_probe.display_clock_grant_status = display_clock_status;
+    g_ps_hw6_battery_quiesce_timing_probe.display_clock_release_status = display_clock_release_status;
+    g_ps_hw6_battery_quiesce_timing_probe.storage_clock_required = storage_clock_required;
+    g_ps_hw6_battery_quiesce_timing_probe.storage_clock_grant_status = storage_clock_status;
+    g_ps_hw6_battery_quiesce_timing_probe.storage_clock_release_status = storage_clock_release_status;
+    g_ps_hw6_battery_quiesce_timing_probe.status = (uint32_t)barrier_status;
+    g_ps_hw6_battery_quiesce_timing_probe.end_tick = (uint32_t)tx_time_get();
+    g_ps_hw6_battery_quiesce_timing_probe.active = 0UL;
+    if ((g_ps_hw6_battery_quiesce_first_failure_probe.sequence == 0UL) &&
+        ((barrier_status != HAL_OK) ||
+         (g_ps_hw6_battery_quiesce_timing_probe.display_clock_failures != 0UL)))
+    {
+      /* Preserve the first completed failure across retries and later recovery. */
+      g_ps_hw6_battery_quiesce_first_failure_probe = g_ps_hw6_battery_quiesce_timing_probe;
+    }
+  }
   return barrier_status;
 }
 static HAL_StatusTypeDef PS_HW6_RTOS_RunPostStopResumeBarrier(void)
@@ -11188,6 +11357,12 @@ static void PS_HW6_RTOS_HandleOwnerCommand(uint32_t owner_id,
     uint32_t capabilities =
       PS_HW6_RTOS_ClockPayloadCapabilities(cycle_index);
     ULONG ack_flag = PS_HW6_RTOS_ClockAckFlag(requester_id);
+
+    if (PS_HW6_RTOS_ConsumeStorageBarrierClockRequest(requester_id) != 0UL)
+    {
+      /* Already answered by the handoff: no second ACK or stale clock grant. */
+      return;
+    }
 
     if ((requester_id == PS_HW6_RTOS_OWNER_DISPLAY) &&
         (ps_display_power_barrier_drop_clock_request != 0UL))
