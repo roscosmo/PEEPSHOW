@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import type { CompiledAssetFrame, Framebuffer } from "./types";
 
 export function FramebufferCanvas({ framebuffer }: { framebuffer: Framebuffer | null }) {
@@ -48,7 +48,7 @@ export function FramebufferCanvas({ framebuffer }: { framebuffer: Framebuffer | 
   return <canvas ref={canvasRef} className="preview-canvas" aria-label="168 by 144 display preview" />;
 }
 
-export function FramePreviewCanvas({ frame }: { frame: CompiledAssetFrame }) {
+export function FramePreviewCanvas({ frame, style }: { frame: CompiledAssetFrame; style?: CSSProperties }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -84,5 +84,5 @@ export function FramePreviewCanvas({ frame }: { frame: CompiledAssetFrame }) {
     context.putImageData(image, 0, 0);
   }, [frame]);
 
-  return <canvas ref={canvasRef} className="frame-preview-canvas" aria-hidden="true" />;
+  return <canvas ref={canvasRef} className="frame-preview-canvas" style={style} aria-hidden="true" />;
 }

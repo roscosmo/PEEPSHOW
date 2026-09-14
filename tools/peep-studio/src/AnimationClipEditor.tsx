@@ -3,11 +3,14 @@ import { ArrowDown, ArrowUp, Copy, Pencil, Trash2 } from "lucide-react";
 import { FramePreviewCanvas } from "./FramebufferCanvas";
 import type { AssetRecord, AuthoredClip, CompiledAssetFrame, SceneDocument } from "./types";
 
-export function AnimationClipEditor({ clip, frames, assets, scenes, disabled, onApply, displayName, initiallyOpen = false, creating = false, loopPolicies, onCancel }: {
+export function AnimationClipEditor({ clip, frames, assets, scenes, disabled, onApply, displayName, initiallyOpen = false,
+  creating = false, loopPolicies, onCancel, onDuplicate, onDelete }: {
   clip: AuthoredClip; frames: CompiledAssetFrame[]; assets: AssetRecord[]; scenes: SceneDocument[];
   disabled: boolean; onApply: (commands: Record<string, unknown>[]) => Promise<boolean>;
   displayName?: string;
   initiallyOpen?: boolean; creating?: boolean; loopPolicies?: string[]; onCancel?: () => void;
+  onDuplicate?: () => Promise<void>;
+  onDelete?: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(initiallyOpen);
   const [loopPolicy, setLoopPolicy] = useState(clip.loop_policy);
@@ -41,39 +44,66 @@ export function AnimationClipEditor({ clip, frames, assets, scenes, disabled, on
   });
   if (!open) return <button className="button secondary" type="button" disabled={disabled}
     onClick={() => { setSteps(initial()); setCadence(initialCadence()); setOpen(true); }}><Pencil size={14} />Edit clip</button>;
+  const deleteDisabled = disabled || creating || onDelete === undefined || users.length > 0;
   return <section className="clip-editor" aria-label="Animation clip editor" onKeyDown={event => {
       if (event.key === "Escape") { event.stopPropagation(); setOpen(false); onCancel?.(); }
   }}>
-    <h4>{displayName ?? clip.animation_id}</h4>
-    {!creating && <p className="muted">Changes apply everywhere this animation is used.</p>}
+    <div className="clip-editor-heading">
+      <div>
+        <h4>{displayName ?? clip.animation_id}</h4>
+        {!creating && <p className="muted">Changes apply everywhere this animation is used.</p>}
+      </div>
+      {!creating && <div className="clip-editor-record-actions">
+        <button className="button secondary" type="button" disabled={disabled || onDuplicate === undefined}
+          onClick={() => { void onDuplicate?.(); }}><Copy size={14} />Duplicate</button>
+        <button className="button danger" type="button" disabled={deleteDisabled}
+          title={users.length > 0 ? "Clear this animation from scene objects before deleting it." : "Delete this animation"}
+          onClick={() => { void onDelete?.(); }}><Trash2 size={14} />Delete animation</button>
+      </div>}
+    </div>
+    <dl className="clip-editor-summary">
+      <div><dt>Frames</dt><dd>{steps.length}</dd></div>
+      <div><dt>Cadence</dt><dd>{cadence} ms</dd></div>
+      <div><dt>Playback</dt><dd>{loopPolicy === "loop" ? "Loop" : loopPolicy === "once" ? "Play once" : loopPolicy}</dd></div>
+      <div><dt>ID</dt><dd>{clip.animation_id}</dd></div>
+    </dl>
     <details><summary>Used by {users.length} scene object{users.length === 1 ? "" : "s"}</summary>
       <ul>{users.map((user, i) => <li key={i}>{user}</li>)}</ul>
     </details>
     <fieldset disabled={disabled}>
-      <div className="clip-editor-settings">
-        {loopPolicies && <label>Playback<select aria-label="Animation playback" value={loopPolicy} onChange={event => setLoopPolicy(event.target.value)}>
-          {loopPolicies.map(policy => <option key={policy} value={policy}>{policy === "loop" ? "Loop" : policy === "once" ? "Play once" : policy}</option>)}
-        </select></label>}
-        <label>Cadence (ms)<input type="number" min={1} max={60000} step={1} aria-label="Animation cadence"
-          value={cadence} onChange={event => setCadence(event.target.value)} /></label>
-      </div>
+      <section className="clip-editor-panel">
+        <h5>Playback</h5>
+        <div className="clip-editor-settings">
+          {loopPolicies && <label>Mode<select aria-label="Animation playback" value={loopPolicy} onChange={event => setLoopPolicy(event.target.value)}>
+            {loopPolicies.map(policy => <option key={policy} value={policy}>{policy === "loop" ? "Loop" : policy === "once" ? "Play once" : policy}</option>)}
+          </select></label>}
+          <label>Cadence (ms)<input type="number" min={1} max={60000} step={1} aria-label="Animation cadence"
+            value={cadence} onChange={event => setCadence(event.target.value)} /></label>
+        </div>
+      </section>
       {clipHasMixedCadence && <p className="muted">This clip has older mixed frame timings. Applying it will use one cadence for every frame.</p>}
-      {steps.map((step, index) => <div className="clip-step" key={index}>
-        <span className="clip-step-preview">{byId.get(step.frame) && <FramePreviewCanvas frame={byId.get(step.frame)!} />}</span>
-        <div className="clip-step-frame">
-          <span>Frame {index + 1}</span>
-          <strong>{frameLabel(step.frame)}</strong>
-          <small>{byId.has(step.frame) ? `${byId.get(step.frame)!.width}x${byId.get(step.frame)!.height}` : "Unavailable"}</small>
+      <section className="clip-editor-panel">
+        <div className="clip-editor-panel-heading">
+          <h5>Frame order</h5>
+          <span>{steps.length} frame{steps.length === 1 ? "" : "s"}</span>
         </div>
-        <div className="clip-step-actions">
-          <button type="button" className="icon-button" title={`Move step ${index + 1} up`} disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp size={14} /></button>
-          <button type="button" className="icon-button" title={`Move step ${index + 1} down`} disabled={index === steps.length - 1} onClick={() => move(index, 1)}><ArrowDown size={14} /></button>
-          <button type="button" className="icon-button" title={`Duplicate step ${index + 1}`} disabled={steps.length >= 256}
-            onClick={() => setSteps(current => [...current.slice(0, index + 1), { ...step }, ...current.slice(index + 1)])}><Copy size={14} /></button>
-          <button type="button" className="icon-button" title={`Remove step ${index + 1}`} disabled={steps.length <= 1}
-            onClick={() => setSteps(current => current.filter((_, i) => i !== index))}><Trash2 size={14} /></button>
-        </div>
-      </div>)}
+        {steps.map((step, index) => <div className="clip-step" key={index}>
+          <span className="clip-step-preview">{byId.get(step.frame) && <FramePreviewCanvas frame={byId.get(step.frame)!} />}</span>
+          <div className="clip-step-frame">
+            <span>Frame {index + 1}</span>
+            <strong>{frameLabel(step.frame)}</strong>
+            <small>{byId.has(step.frame) ? `${byId.get(step.frame)!.width}x${byId.get(step.frame)!.height}` : "Unavailable"}</small>
+          </div>
+          <div className="clip-step-actions">
+            <button type="button" className="icon-button" title={`Move step ${index + 1} up`} disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp size={14} /></button>
+            <button type="button" className="icon-button" title={`Move step ${index + 1} down`} disabled={index === steps.length - 1} onClick={() => move(index, 1)}><ArrowDown size={14} /></button>
+            <button type="button" className="icon-button" title={`Duplicate step ${index + 1}`} disabled={steps.length >= 256}
+              onClick={() => setSteps(current => [...current.slice(0, index + 1), { ...step }, ...current.slice(index + 1)])}><Copy size={14} /></button>
+            <button type="button" className="icon-button" title={`Remove step ${index + 1}`} disabled={steps.length <= 1}
+              onClick={() => setSteps(current => current.filter((_, i) => i !== index))}><Trash2 size={14} /></button>
+          </div>
+        </div>)}
+      </section>
       {!valid && <p role="status">Frames must be available and the same size, with one whole cadence from 1 to 60000 ms and supported playback.</p>}
       <div className="clip-editor-actions">
         <button className="button primary" type="button" disabled={!valid || !changed} onClick={async () => {

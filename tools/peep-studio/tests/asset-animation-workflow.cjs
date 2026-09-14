@@ -58,6 +58,17 @@ app.whenReady().then(async()=>{
   await click('.animation-asset-gallery button:last-child');
   await field('Animation cadence',800);await button('Apply clip');
   assert.deepEqual(latest.document.animations[1].frame_duration_ms,[800,800,800,800]);
+  await button('Duplicate');
+  assert.equal(latest.document.animations.length,3);
+  const duplicate=latest.document.animations.find(item=>item.animation_id==='animation_2');
+  assert(duplicate);
+  assert.deepEqual(duplicate.frame_refs,latest.document.animations[1].frame_refs);
+  assert.deepEqual(duplicate.frame_duration_ms,[800,800,800,800]);
+  assert(batches.some(batch=>batch.length===1&&batch[0].kind==='animation.upsert'&&batch[0].animation.animation_id==='animation_2'));
+  await button('Delete animation');
+  assert.equal(latest.document.animations.length,2);
+  assert(batches.some(batch=>batch.length===1&&batch[0].kind==='animation.delete'&&batch[0].animation_id==='animation_2'));
+  await click('.animation-asset-gallery button:last-child');
   await capture('library.png');
   await click('.asset-workspace');
   assert.equal(await evaluate("document.querySelector('.animation-asset-gallery button.selected')"), null);

@@ -218,19 +218,30 @@ const parseBakedTextFontSize = (value: string) => {
 const clampAssetLibraryZoom = (zoom: number) => (
   Math.min(ASSET_LIBRARY_MAX_ZOOM, Math.max(ASSET_LIBRARY_MIN_ZOOM, Math.round(zoom * 10) / 10))
 );
-const spriteSheetPreviewMetrics = (columns: number, frameCount: number, zoom: number) => {
+const spriteSheetPreviewMetrics = (columns: number, frames: CompiledAssetFrame[], zoom: number) => {
   const safeColumns = Math.max(1, columns);
-  const rows = Math.max(1, Math.ceil(frameCount / safeColumns));
-  const cellSize = Math.round(32 * zoom);
+  const rows = Math.max(1, Math.ceil(frames.length / safeColumns));
+  const maxFrameWidth = Math.max(1, ...frames.map(frame => frame.width));
+  const maxFrameHeight = Math.max(1, ...frames.map(frame => frame.height));
+  const maxFrameDimension = Math.max(maxFrameWidth, maxFrameHeight);
+  const frameScale = Math.max(1, Math.round((32 * zoom) / maxFrameDimension));
+  const cellWidth = maxFrameWidth * frameScale;
+  const cellHeight = maxFrameHeight * frameScale;
   const gap = Math.max(3, Math.round(5 * zoom));
   const padding = Math.round(8 * zoom);
   const cardPadding = Math.round(10 * zoom);
-  const width = safeColumns * cellSize + Math.max(0, safeColumns - 1) * gap + padding * 2 + cardPadding * 2 + 2;
-  const height = rows * cellSize + Math.max(0, rows - 1) * gap + padding * 2;
+  const previewWidth = safeColumns * cellWidth + Math.max(0, safeColumns - 1) * gap + padding * 2;
+  const previewHeight = rows * cellHeight + Math.max(0, rows - 1) * gap + padding * 2;
+  const cardWidth = previewWidth + cardPadding * 2 + 2;
+  const compactCardWidth = Math.round(178 * zoom);
+  const compactPreviewHeight = Math.round(120 * zoom);
   return {
-    cellSize,
-    width: Math.max(width, Math.round(178 * zoom)),
-    height: Math.max(height, Math.round(120 * zoom)),
+    cellWidth,
+    cellHeight,
+    frameScale,
+    width: Math.max(cardWidth, 178),
+    height: previewHeight,
+    expanded: cardWidth > compactCardWidth + cardPadding || previewHeight > compactPreviewHeight,
   };
 };
 
@@ -581,6 +592,7 @@ function SpriteSheetAssetCard({
   selected,
   onSelect,
   columns,
+  frameScale,
   textPreview = false,
   animationSelection,
 }: {
@@ -589,6 +601,7 @@ function SpriteSheetAssetCard({
   selected: boolean;
   onSelect: () => void;
   columns?: number;
+  frameScale?: number;
   textPreview?: boolean;
   animationSelection?: {
     selectedFrameIds: string[];
@@ -599,14 +612,18 @@ function SpriteSheetAssetCard({
     return null;
   }
   const resolvedColumns = columns ?? Math.min(4, Math.max(1, frames.length));
-  const sheetColumnSize = textPreview ? "minmax(0, 1fr)" : "var(--asset-sheet-cell-size, var(--asset-library-sheet-cell-size, 32px))";
+  const sheetColumnSize = textPreview ? "minmax(0, 1fr)" : "var(--asset-sheet-cell-width, var(--asset-sheet-cell-size, var(--asset-library-sheet-cell-size, 32px)))";
   const preview = (
     <span className={`asset-sheet-preview ${textPreview ? "text-sprite-preview" : ""}`} style={{ gridTemplateColumns: `repeat(${resolvedColumns}, ${sheetColumnSize})` }}>
       {frames.map((frame, index) => {
         const selectedForAnimation = animationSelection?.selectedFrameIds.includes(frame.frame_id) === true;
+        const frameStyle = frameScale === undefined ? undefined : {
+          width: `${frame.width * frameScale}px`,
+          height: `${frame.height * frameScale}px`,
+        };
         return animationSelection === undefined ? (
           <span className="asset-sheet-cell" key={frame.frame_id}>
-            <FramePreviewCanvas frame={frame} />
+            <FramePreviewCanvas frame={frame} style={frameStyle} />
           </span>
         ) : (
           <button
@@ -618,7 +635,7 @@ function SpriteSheetAssetCard({
             title={`Frame ${index + 1}`}
             onClick={() => animationSelection.onToggleFrame(frame.frame_id)}
           >
-            <FramePreviewCanvas frame={frame} />
+            <FramePreviewCanvas frame={frame} style={frameStyle} />
             <span className="asset-sheet-frame-index">{index + 1}</span>
           </button>
         );
@@ -3418,9 +3435,10 @@ export default function App() {
     return placementEditStateIds.filter((stateId) => validIds.has(stateId));
   };
   const applySceneObjectCommands = async (commands: Record<string, unknown>[]) => {
+    const supportedAnimationCommands = service?.state_scene_presentation.general_frame_animation.commands ?? [];
     if (bridge === undefined || project === null || busy !== null || selectedSceneDocument === null || commands.length === 0
-      || commands.some(command => command.kind === "animation.upsert"
-        ? command.scene_id !== undefined || service?.state_scene_presentation.general_frame_animation.commands.includes("animation.upsert") !== true
+      || commands.some(command => ["animation.upsert", "animation.delete"].includes(String(command.kind))
+        ? command.scene_id !== undefined || !supportedAnimationCommands.includes(String(command.kind))
         : command.scene_id !== selectedSceneDocument.scene_id
         || !supportsObjectCommand(service, selectedSceneCapability, String(command.kind)))) return false;
     setBusy("Updating scene object");
@@ -3695,9 +3713,12 @@ export default function App() {
   const assets: AssetRecord[] = project?.document?.assets ?? [];
   const animationClips = project?.document?.animations ?? [];
   const animationPolicies = service?.scene_object_authoring?.clip_loop_policies ?? [];
-  const canAuthorAnimations = service?.operations.includes("project.apply_commands") === true
-    && service?.state_scene_presentation.general_frame_animation.commands.includes("animation.upsert") === true
-    && animationPolicies.length > 0;
+  const generalAnimationCommands = service?.state_scene_presentation.general_frame_animation.commands ?? [];
+  const canUpsertAnimations = service?.operations.includes("project.apply_commands") === true
+    && generalAnimationCommands.includes("animation.upsert");
+  const canDeleteAnimations = service?.operations.includes("project.apply_commands") === true
+    && generalAnimationCommands.includes("animation.delete");
+  const canAuthorAnimations = canUpsertAnimations && animationPolicies.length > 0;
   const animationLabel = (clip: AuthoredClip) => {
     const animationIndex = Math.max(0, animationClips.indexOf(clip)) + 1;
     const asset = assets.find(item => item.frames.some(frame => frame.frame_id === clip.frame_refs[0]));
@@ -3710,6 +3731,30 @@ export default function App() {
     let index = 1;
     while (animationClips.some(clip => clip.animation_id === `animation_${index}`)) index++;
     return `animation_${index}`;
+  };
+  const duplicateAnimationClip = async (clip: AuthoredClip) => {
+    if (!canUpsertAnimations || busy !== null) return;
+    const animationId = nextAnimationId();
+    const applied = await applySceneObjectCommands([{ kind: "animation.upsert", animation: { ...clip, animation_id: animationId } }]);
+    if (applied) {
+      setCombineFrameIds([]);
+      selectAssetRecord({ kind: "animation", clipId: animationId });
+      setMessage(`Duplicated ${animationLabel(clip)}. Save to write it to the project.`);
+    }
+  };
+  const deleteAnimationClip = async (clip: AuthoredClip) => {
+    if (!canDeleteAnimations || busy !== null) return;
+    const used = scenes.some(scene => (scene.objects ?? []).some(object => object.animation_ref === clip.animation_id));
+    if (used) {
+      setMessage("Clear this animation from scene objects before deleting it.");
+      return;
+    }
+    const applied = await applySceneObjectCommands([{ kind: "animation.delete", animation_id: clip.animation_id }]);
+    if (applied) {
+      setCombineFrameIds([]);
+      selectAssetRecord(null);
+      setMessage(`Deleted ${animationLabel(clip)}. Save to write it to the project.`);
+    }
   };
   const toggleAnimationFrameSelection = (frameId: string) => {
     if (compiledAssetFrameById.has(frameId)) {
@@ -5713,16 +5758,19 @@ export default function App() {
                           const columns = spriteSheetColumns(asset, frames.length);
                           const textPreview = isTextSpriteAsset(asset);
                           const sheetMetrics = !textPreview && frames.length > 1
-                            ? spriteSheetPreviewMetrics(columns, frames.length, assetLibraryZoom)
+                            ? spriteSheetPreviewMetrics(columns, frames, assetLibraryZoom)
                             : null;
                           const sourceItemStyle = sheetMetrics === null ? undefined : {
-                            "--asset-sheet-card-min-width": `${sheetMetrics.width}px`,
                             "--asset-sheet-preview-height": `${sheetMetrics.height}px`,
-                            "--asset-sheet-cell-size": `${sheetMetrics.cellSize}px`,
+                            "--asset-sheet-cell-width": `${sheetMetrics.cellWidth}px`,
+                            "--asset-sheet-cell-height": `${sheetMetrics.cellHeight}px`,
+                            "--asset-sheet-card-width": `${sheetMetrics.width}px`,
+                            ...(sheetMetrics.expanded ? { "--asset-sheet-card-min-width": `${sheetMetrics.width}px` } : {}),
                           } as CSSProperties;
                           const sourceItemClassName = [
                             "sprite-source-item",
-                            sheetMetrics === null ? "" : "sprite-source-item-sheet",
+                            sheetMetrics && !sheetMetrics.expanded ? "sprite-source-item-compact" : "",
+                            sheetMetrics?.expanded ? "sprite-source-item-sheet" : "",
                           ].filter(Boolean).join(" ");
                           const cardFrameSelection = canAuthorAnimations && !textPreview && frameIds.length > 1;
                           return <div className={sourceItemClassName} style={sourceItemStyle} key={group.assetId}>
@@ -5739,6 +5787,7 @@ export default function App() {
                               name={assetDisplayName(group.assetId)}
                               selected={selectedAssetFrame?.asset_id === group.assetId}
                               columns={columns}
+                              frameScale={sheetMetrics?.frameScale}
                               textPreview={textPreview}
                               animationSelection={cardFrameSelection ? {
                                 selectedFrameIds: combineFrameIds,
@@ -6293,6 +6342,8 @@ export default function App() {
         key={`${creating}:${JSON.stringify(clip)}`} clip={clip} frames={compiledAssetFrames} assets={animationEditorAssets} scenes={scenes}
         displayName={creating ? "New animation" : animationLabel(clip)} creating={creating} initiallyOpen loopPolicies={animationPolicies}
         disabled={!canAuthorAnimations || busy !== null} onCancel={() => setAssetSelection(null)}
+        onDuplicate={!creating && canUpsertAnimations ? () => duplicateAnimationClip(clip) : undefined}
+        onDelete={!creating && canDeleteAnimations ? () => deleteAnimationClip(clip) : undefined}
         onApply={async commands => {
           const applied = await applySceneObjectCommands(commands);
           if (applied) { setCombineFrameIds([]); selectAssetRecord({kind:"animation",clipId:clip.animation_id}); }

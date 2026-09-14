@@ -3,11 +3,14 @@ const readline = require('node:readline'), { spawn } = require('node:child_proce
 const { app, BrowserWindow, ipcMain, nativeImage } = require('electron');
 const root = path.resolve(__dirname, '../../..');
 const largeSheet = process.argv.includes('--large-sheet');
-const frameCount = largeSheet ? 48 : process.argv.includes('--ten') ? 10 : 4;
+const narrowSheet = process.argv.includes('--narrow-sheet');
+const frameCount = largeSheet ? 48 : narrowSheet ? 2 : process.argv.includes('--ten') ? 10 : 4;
 const grid = process.argv.includes('--grid');
 const transparent = process.argv.includes('--transparent');
-const sheetColumns = largeSheet ? 8 : grid ? 2 : frameCount;
-const sheetRows = largeSheet ? 6 : frameCount / sheetColumns;
+const sheetColumns = largeSheet ? 8 : narrowSheet ? 2 : grid ? 2 : frameCount;
+const sheetRows = largeSheet ? 6 : narrowSheet ? 1 : frameCount / sheetColumns;
+const sheetCellWidth = narrowSheet ? 8 : 16;
+const sheetCellHeight = 16;
 const workflow = process.argv.includes('--workflow');
 const reloadRace = process.argv.includes('--reload-race');
 const projectPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'peep-workflow-audit-')), 'fresh.peepproj');
@@ -65,8 +68,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('audit:png', () => {
     const importIndex = importCount++;
     const sheetImport = importIndex === 0 || (largeSheet && importIndex === 1);
-    const cellWidth = sheetImport ? 16 : 12;
-    const cellHeight = sheetImport ? 16 : 10;
+    const cellWidth = sheetImport ? sheetCellWidth : 12;
+    const cellHeight = sheetImport ? sheetCellHeight : 10;
     const currentFrameCount = sheetImport ? frameCount : 1;
     const currentColumns = sheetImport ? sheetColumns : 1;
     const currentRows = sheetImport ? sheetRows : 1;
@@ -162,6 +165,7 @@ app.whenReady().then(async () => {
     console.log('Settings: no-project access, preview background persistence, corrupt storage fallback, reload persistence, workspace switching and selection preservation passed');
   }
   await button('Assets');
+  await click('[aria-label="Reset asset library zoom"]');
   if (process.argv.includes('--settings')) {
     assert.equal(await evaluate("document.querySelector('.asset-library-zoom-value').textContent"), '100%');
     await click('[aria-label="Zoom asset library in"]');
@@ -217,9 +221,9 @@ app.whenReady().then(async () => {
   }
   await setGrid('columns', sheetColumns);
   await setGrid('rows', sheetRows);
-  assert.match(await evaluate("document.querySelector('.asset-import-result').textContent"), /16x16 px each/);
+  assert.match(await evaluate("document.querySelector('.asset-import-result').textContent"), new RegExp(`${sheetCellWidth}x${sheetCellHeight} px each`));
   const sourceImportPreviewWidth = await evaluate("document.querySelector('.sprite-import-workspace .sprite-import-preview-canvas img').getBoundingClientRect().width");
-  assert(sourceImportPreviewWidth > sheetColumns * 16);
+  assert(sourceImportPreviewWidth > sheetColumns * sheetCellWidth);
   window.webContents.invalidate(); await wait(200);
   fs.writeFileSync(path.join(output,'sheet-import.png'),(await window.webContents.capturePage()).toPNG());
   await button('Import');
@@ -231,6 +235,44 @@ app.whenReady().then(async () => {
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle').length"), frameCount);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), 0);
   assert.equal(await evaluate("getComputedStyle(document.querySelector('.asset-sheet-cell-toggle')).backgroundColor"), 'rgba(0, 0, 0, 0)');
+  if (!largeSheet) {
+    const compactSheetLayout = await evaluate(`(() => {
+      const item = document.querySelector('.sprite-source-item');
+      const preview = document.querySelector('.asset-sheet-preview:not(.text-sprite-preview)');
+      return {
+        expanded: item.classList.contains('sprite-source-item-sheet'),
+        overflow: [preview.scrollWidth > preview.clientWidth + 2, preview.scrollHeight > preview.clientHeight + 2],
+      };
+    })()`);
+    assert.equal(compactSheetLayout.expanded, false);
+    assert.deepEqual(compactSheetLayout.overflow, [false, false]);
+    for (let i = 0; i < 8; i++) await click('[aria-label="Zoom asset library in"]');
+    const compactSheetZoomLayout = await evaluate(`(() => {
+      const item = document.querySelector('.sprite-source-item');
+      const card = item.querySelector('.asset-sheet-card');
+      const label = item.querySelector('.asset-sheet-card-label');
+      const canvas = item.querySelector('.asset-sheet-cell canvas');
+      const cardRect = card.getBoundingClientRect();
+      const labelRect = label.getBoundingClientRect();
+      const canvasRect = canvas.getBoundingClientRect();
+      const scaleX = canvasRect.width / canvas.width;
+      const scaleY = canvasRect.height / canvas.height;
+      return {
+        expanded: item.classList.contains('sprite-source-item-sheet'),
+        trailingSpace: cardRect.bottom - labelRect.bottom,
+        scaleX,
+        scaleY,
+      };
+    })()`);
+    if (narrowSheet || !compactSheetZoomLayout.expanded) {
+      assert.equal(compactSheetZoomLayout.expanded, false);
+      assert(compactSheetZoomLayout.trailingSpace < 36);
+    }
+    assert.equal(Number.isInteger(compactSheetZoomLayout.scaleX), true);
+    assert.equal(Number.isInteger(compactSheetZoomLayout.scaleY), true);
+    assert.equal(compactSheetZoomLayout.scaleX, compactSheetZoomLayout.scaleY);
+    await click('[aria-label="Reset asset library zoom"]');
+  }
   assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-panel').length"), 0);
   await click('[aria-label="Include Sprite loop test frames in animation"]');
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount);
@@ -254,7 +296,7 @@ app.whenReady().then(async () => {
     assert(baseSheetCardWidth > baseCardMinWidth);
     assert(baseSheetCanvasWidth > 18);
     assert.deepEqual(await evaluate("(() => { const e = document.querySelector('.asset-sheet-preview:not(.text-sprite-preview)'); return [e.scrollWidth > e.clientWidth + 2, e.scrollHeight > e.clientHeight + 2]; })()"), [false, false]);
-    await click('[aria-label="Zoom asset library in"]');
+    for (let i = 0; i < 4; i++) await click('[aria-label="Zoom asset library in"]');
     const zoomedSheetCellWidth = await evaluate("document.querySelector('.asset-sheet-cell').getBoundingClientRect().width");
     const zoomedSheetCanvasWidth = await evaluate("document.querySelector('.asset-sheet-cell canvas').getBoundingClientRect().width");
     assert(zoomedSheetCellWidth > baseSheetCellWidth);
@@ -263,11 +305,11 @@ app.whenReady().then(async () => {
     await click('[aria-label="Reset asset library zoom"]');
   }
   assert.equal(await evaluate("document.querySelectorAll('.asset-animation-frame-grid button').length"), 0);
-  await evaluate("(() => { const sheets = document.querySelectorAll('.sprite-source-item-sheet'); sheets[sheets.length - 1].querySelector('.asset-sheet-cell-toggle:last-child').click(); })()");
+  await evaluate("(() => { const sheets = document.querySelectorAll('.sprite-source-item'); sheets[sheets.length - 1].querySelector('.asset-sheet-cell-toggle:last-child').click(); })()");
   await wait(450);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount - 1);
   assert.match(await evaluate("document.querySelector('.asset-animation-frame-panel .asset-frame-strip-heading span').textContent"), new RegExp(`${frameCount - 1} selected`));
-  await evaluate("(() => { const sheets = document.querySelectorAll('.sprite-source-item-sheet'); sheets[sheets.length - 1].querySelector('.asset-sheet-cell-toggle:last-child').click(); })()");
+  await evaluate("(() => { const sheets = document.querySelectorAll('.sprite-source-item'); sheets[sheets.length - 1].querySelector('.asset-sheet-cell-toggle:last-child').click(); })()");
   await wait(450);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell-toggle[aria-pressed=\"true\"]').length"), frameCount);
   const alpha = await evaluate("(() => {const c=document.querySelector('.asset-frame-gallery canvas');const p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;return [p[3],p[(3*c.width+2)*4+3]]})()");
@@ -281,7 +323,7 @@ app.whenReady().then(async () => {
   console.log('Source sprite sheet: one card with ordered distinct static frame previews passed');
   assert.equal(commands.find(c=>c.kind==='asset.upsert').asset.frames.length, frameCount);
   assert.deepEqual(commands.find(c=>c.kind==='asset.upsert').asset.frames.map(f=>f.source_rect),
-    Array.from({length:frameCount},(_,i)=>({x:(i%sheetColumns)*16,y:Math.floor(i/sheetColumns)*16,width:16,height:16})));
+    Array.from({length:frameCount},(_,i)=>({x:(i%sheetColumns)*sheetCellWidth,y:Math.floor(i/sheetColumns)*sheetCellHeight,width:sheetCellWidth,height:sheetCellHeight})));
   if (process.argv.includes('--normalize')) {
     await button('Choose PNG');
     await setGrid('columns', 1);
