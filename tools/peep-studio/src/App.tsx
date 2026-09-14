@@ -5093,8 +5093,19 @@ export default function App() {
       : parseSpriteImportConversion(pendingSpriteImport);
     const previewError = spriteImportPreview?.error ?? conversionCheck?.error ?? null;
     const selectedPresetId = pendingSpriteImport === null ? "custom" : spriteImportPresetId(pendingSpriteImport);
+    const importPreviewScale = pendingSpriteImport === null
+      ? 1
+      : Math.max(2, Math.round(preferences.assetLibraryZoom * 3));
+    const spriteImportPanelClass = [
+      "asset-import-panel",
+      "sprite-import-panel",
+      pendingSpriteImport === null ? "" : "sprite-import-workspace",
+    ].filter(Boolean).join(" ");
+    const spriteImportPanelStyle = pendingSpriteImport === null ? undefined : {
+      "--sprite-import-preview-width": `${pendingSpriteImport.width * importPreviewScale}px`,
+    } as CSSProperties;
     return (
-      <div className="asset-import-panel sprite-import-panel">
+      <div className={spriteImportPanelClass} style={spriteImportPanelStyle}>
         {pendingSpriteImport === null ? (
           <div>
             <strong>PNG import</strong>
@@ -5500,6 +5511,7 @@ export default function App() {
       : assetTab === "audio"
         ? audioCues.length > 0
         : fontAssets.length > 0;
+    const spriteImportActive = assetTab === "sprite" && pendingSpriteImport !== null;
     const assetTabs: AssetTab[] = ["sprite", "audio", "font"];
     const fontPreviewText = preferences.fontPreviewText.trim() || DEFAULT_FONT_PREVIEW_TEXT;
     const assetLibraryZoom = preferences.assetLibraryZoom;
@@ -5635,6 +5647,10 @@ export default function App() {
             </div>
           </div>
           <div id="asset-library-panel" role="tabpanel" aria-labelledby={`asset-tab-${assetTab}`}>
+          {spriteImportActive ? (
+            renderSpriteImportPanel(canEditAssets)
+          ) : (
+            <>
           {assetTab === "sprite" && renderBakedTextPanel(canEditAssets)}
           {assetTab === "sprite" && renderSpriteImportPanel(canEditAssets)}
           {assetTab === "sprite" && renderAnimationNormalizePanel(canEditAssets)}
@@ -5807,6 +5823,8 @@ export default function App() {
               </div>
             )}
           </div>
+            </>
+          )}
           </div>
         </div>
       </section>

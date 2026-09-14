@@ -1977,6 +1977,42 @@ button:focus-visible {
   gap: 10px;
 }
 
+.sprite-import-workspace {
+  min-height: calc(100% - 6px);
+  margin-bottom: 0;
+  padding: 14px;
+}
+
+.sprite-import-workspace .asset-import-heading strong {
+  font-size: 16px;
+}
+
+.sprite-import-workspace .sprite-import-preview-grid {
+  grid-template-columns: repeat(2, minmax(320px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.sprite-import-workspace .sprite-import-preview-panel {
+  align-content: start;
+}
+
+.sprite-import-workspace .sprite-import-preview-canvas {
+  min-height: clamp(360px, 52vh, 760px);
+  max-height: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 10px;
+}
+
+.sprite-import-workspace .sprite-import-preview-canvas img {
+  width: min(100%, var(--sprite-import-preview-width, 100%));
+  max-width: none;
+  max-height: none;
+  height: auto;
+  object-fit: contain;
+}
+
 .sprite-import-preview-panel {
   display: grid;
   min-width: 0;
@@ -6459,6 +6495,10 @@ button:focus-visible {
 
   .asset-import-controls {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .sprite-import-workspace .sprite-import-preview-grid {
+    grid-template-columns: 1fr;
   }
 
   .asset-import-result,

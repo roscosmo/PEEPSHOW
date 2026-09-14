@@ -176,6 +176,8 @@ app.whenReady().then(async () => {
     assert.equal(await evaluate("document.querySelector('.asset-library-zoom-value').textContent"), '100%');
   }
   await button('Choose PNG');
+  assert.equal(await evaluate("document.querySelector('.sprite-import-workspace') !== null"), true);
+  assert.equal(await evaluate("document.querySelector('.asset-group-stack') === null"), true);
   assert.equal(fs.existsSync(path.join(projectPath, 'assets', 'audit.png')), false);
   const setImportSelect = async (label, value) => {
     await evaluate(`(() => {const e=document.querySelector(${JSON.stringify(`[aria-label="${label}"]`)}); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(String(value))}); e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
@@ -215,9 +217,13 @@ app.whenReady().then(async () => {
   await setGrid('columns', sheetColumns);
   await setGrid('rows', sheetRows);
   assert.match(await evaluate("document.querySelector('.asset-import-result').textContent"), /16x16 px each/);
+  const sourceImportPreviewWidth = await evaluate("document.querySelector('.sprite-import-workspace .sprite-import-preview-canvas img').getBoundingClientRect().width");
+  assert(sourceImportPreviewWidth > sheetColumns * 16);
   window.webContents.invalidate(); await wait(200);
   fs.writeFileSync(path.join(output,'sheet-import.png'),(await window.webContents.capturePage()).toPNG());
   await button('Import');
+  assert.equal(await evaluate("document.querySelector('.sprite-import-workspace') === null"), true);
+  assert.equal(await evaluate("document.querySelector('.asset-group-stack') !== null"), true);
   assert.equal(fs.existsSync(path.join(projectPath, 'assets', 'audit.png')), true);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-card').length"), 1);
   assert.equal(await evaluate("document.querySelectorAll('.asset-sheet-cell').length"), frameCount);
