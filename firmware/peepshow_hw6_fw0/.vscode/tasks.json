@@ -2,6 +2,23 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "Configure HW6 FW0 (BATTERY SHUTDOWN TEST)",
+            "type": "process",
+            "command": "cmake",
+            "args": ["--preset", "BatteryShutdownTest"],
+            "options": {"cwd": "${workspaceFolder}"},
+            "problemMatcher": []
+        },
+        {
+            "label": "Build HW6 FW0 (BATTERY SHUTDOWN TEST)",
+            "type": "process",
+            "command": "cmake",
+            "args": ["--build", "--preset", "BatteryShutdownTest"],
+            "options": {"cwd": "${workspaceFolder}"},
+            "dependsOn": "Configure HW6 FW0 (BATTERY SHUTDOWN TEST)",
+            "problemMatcher": "$gcc"
+        },
+        {
             "label": "Configure HW6 FW0 (Debug)",
             "type": "process",
             "command": "cmake",

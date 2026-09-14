@@ -37,6 +37,36 @@ message("Build type: " ${CMAKE_BUILD_TYPE})
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
 
+option(PS_HW6_BATTERY_SHUTDOWN_TEST "Isolated bench build with automatic battery shipment" OFF)
+if(PS_HW6_BATTERY_SHUTDOWN_TEST)
+    if(CMAKE_BINARY_DIR STREQUAL "${CMAKE_SOURCE_DIR}/build/Debug")
+        message(FATAL_ERROR "Battery shipment testing must not replace the normal Debug build")
+    endif()
+    set(_battery_knobs "${CMAKE_BINARY_DIR}/battery-shutdown-knobs.h")
+    if(NOT EXISTS "${_battery_knobs}")
+        message(FATAL_ERROR "Generate the battery-shutdown-knobs.h snapshot using the documented knobs pipeline first")
+    endif()
+    file(READ "${_battery_knobs}" _battery_knobs_text)
+    file(READ "${CMAKE_SOURCE_DIR}/Core/Inc/knobs_autogen.h" _normal_knobs_text)
+    set(_battery_knobs_normalized "${_battery_knobs_text}")
+    foreach(_gate POWER_CRITICAL_SOFTWARE_SHIP_ENABLE POWER_BOOT_LOW_BATTERY_SHIP_ENABLE)
+        if(NOT _battery_knobs_text MATCHES "#define KNOB_${_gate}[ \t]+\\(1\\)")
+            message(FATAL_ERROR "Battery test snapshot must enable KNOB_${_gate}")
+        endif()
+        string(REGEX REPLACE "(#define KNOB_${_gate}[ \t]+)\\(1\\)" "\\1(0)"
+            _battery_knobs_normalized "${_battery_knobs_normalized}")
+    endforeach()
+    if(NOT _battery_knobs_normalized STREQUAL _normal_knobs_text)
+        message(FATAL_ERROR "Stale or unsafe battery test snapshot: only the two battery shipment gates may differ from normal knobs")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${_battery_knobs}" "${CMAKE_SOURCE_DIR}/Core/Inc/knobs_autogen.h")
+    # The generated include guard prevents later includes from selecting normal knobs.
+    target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE
+        "$<$<COMPILE_LANGUAGE:C>:-include${_battery_knobs}>")
+    message(WARNING "BENCH ONLY: automatic critical and low-boot shipment ENABLED; START shipment unchanged")
+endif()
+
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
 

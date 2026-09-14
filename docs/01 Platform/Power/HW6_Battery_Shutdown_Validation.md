@@ -361,3 +361,78 @@ START wake, low-voltage boot block and normal boot at healthy source voltage.
 Automatic critical/boot triggering and repeated low-voltage restart shutdown
 remain untested. Next is a separately identified automatic-shutdown test build;
 do not treat the one-shot result as completed automatic discharge protection.
+
+### Isolated Automatic-Shutdown Build
+
+The `BatteryShutdownTest` configure/build preset is a bench-only increment.
+It enables critical-battery and low-boot shipment through the existing knobs
+pipeline. Normal Debug remains gates-off. START shipment, thresholds, owner
+preparation, retry limits and the final PMIC write path are unchanged.
+The test ELF is `build/BatteryShutdownTest/peepshow_hw6_fw0.elf`.
+
+The generated snapshot is a local build artifact, not another configuration
+source. To recreate it, from `firmware/peepshow_hw6_fw0`:
+
+1. Stop builds. Temporarily set only `power_critical_software_ship_enable` and
+   `power_boot_low_battery_ship_enable` to `true` in `config/knobs.json`.
+2. Generate and retain the test header:
+
+```powershell
+python tools/gen_knobs.py
+New-Item -ItemType Directory -Force build/BatteryShutdownTest
+Copy-Item Core/Inc/knobs_autogen.h build/BatteryShutdownTest/battery-shutdown-knobs.h
+```
+
+3. Restore those two JSON values to `false`, then regenerate normal knobs and
+   build the isolated profile:
+
+```powershell
+python tools/gen_knobs.py
+cmake --preset BatteryShutdownTest
+cmake --build --preset BatteryShutdownTest
+```
+
+Do not commit temporary enabled values or manually edit either header. CMake
+rejects missing/stale snapshots, any difference beyond those two gates, and
+attempts to use this profile in the normal Debug directory. The snapshot is
+force-included in C compilation; its generated include guard prevents normal
+knobs from replacing it. Changing normal knobs requires snapshot regeneration.
+
+On 2026-09-14, isolated and normal builds passed. Offline GDB macro inspection
+of their actual ELFs confirmed critical/boot/START gates `1/1/0` and `0/0/0`
+respectively. Seven focused battery tests passed, including eight build-profile
+admission cases. These are build checks, not automatic-shutdown hardware proof.
+
+### Automatic-Shutdown Bench Procedure
+
+Use the isolated PPK2 setup above: cell and device USB disconnected. Do not
+use a real cell for forced low-voltage tests.
+
+1. At source 3800 mV, select VSCode
+   `HW6 FW0: BATTERY SHUTDOWN TEST (flash)`, then resume through normal boot.
+   Halt and run `__fw0_battery_power_prints.gdb`; require critical/boot gates
+   `1/1`. Use the matching test attach configuration for later reconnects.
+2. Set source 3400 mV and intentionally reset or power-cycle. Resume without
+   halting during preparation. No one-shot helper is required. Expect automatic
+   preparation followed by shipment and a sustained current reduction.
+3. Press START while still at 3400 mV. This new low-voltage boot must shut down
+   again without another debugger request. It must not remain drawing mA or
+   repeatedly restart without a button press.
+4. Restore 3800 mV and press START. Expect normal boot and package operation.
+5. After the low-boot result is confirmed, test runtime critical voltage:
+   boot normally at 3800 mV, then lower the source to 3200 mV without resetting.
+   Expect the critical path to prepare and shut down. Do not lower further.
+
+Observe current and, where accessible, the system rail. Debugger loss alone
+does not prove shutdown. The warning may be brief or not finish drawing before
+power removal; this increment adds no warning dwell. The earlier 5.6 uA result
+is a comparison, not a new acceptance limit. Record restart behaviour as well
+as the settled current. If shutdown fails or a restart loop appears, restore
+3800 mV and capture the existing battery power/preparation probes if accessible;
+do not force a manual shipment to turn a failed automatic test into a pass.
+
+The flashed test remains automatic-shutdown enabled across restarts. At the
+end, restore 3800 mV and flash normal Debug; confirm gates `0/0`. Editing or
+restoring source knobs alone does not change firmware already on the device.
+Final-write failure handling and charger interaction remain separate tests;
+successful automatic shipment alone is not complete discharge-protection proof.
