@@ -435,6 +435,27 @@ static volatile uint32_t ps_display_blink_transfer_active;
 static volatile uint32_t ps_display_clock_wait_active;
 static volatile uint32_t ps_display_power_barrier_active;
 static uint32_t ps_display_power_barrier_drop_clock_request;
+typedef struct
+{
+  uint32_t api_version;
+  uint32_t sequence;
+  uint32_t active;
+  uint32_t reason;
+  uint32_t start_tick;
+  uint32_t end_tick;
+  uint32_t send_tick[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
+  uint32_t done_tick[PS_HW6_OWNER_SM_PHYSICAL_OWNER_COUNT];
+  uint32_t display_clock_wait_at_begin;
+  uint32_t display_clock_wait_at_send;
+  uint32_t display_clock_completions;
+  uint32_t display_clock_failures;
+  uint32_t display_clock_last_status;
+  uint32_t display_clock_last_capabilities;
+  uint32_t display_clock_last_elapsed_ticks;
+} PS_HW6_BatteryQuiesceTimingProbe;
+
+volatile PS_HW6_BatteryQuiesceTimingProbe g_ps_hw6_battery_quiesce_timing_probe =
+  {.api_version = 1UL};
 static uint32_t ps_stop2_lpbam_edge_request_pending;
 static uint32_t ps_stop2_lpbam_edge_rearm_needed;
 static uint32_t ps_stop2_lpbam_edge_target_tick;
@@ -3414,6 +3435,7 @@ static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t requester_id,
   ULONG actual_flags = 0UL;
   UINT send_status;
   UINT wait_status;
+  uint32_t display_start_tick = 0UL;
 
   if (ack_flag == 0UL)
   {
@@ -3434,6 +3456,7 @@ static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t requester_id,
 
   if (requester_id == PS_HW6_RTOS_OWNER_DISPLAY)
   {
+    display_start_tick = (uint32_t)tx_time_get();
     ps_display_clock_wait_active = 1UL;
   }
   send_status = PS_HW6_RTOS_SendClockProfileCommand(requester_id,
@@ -3452,6 +3475,18 @@ static UINT PS_HW6_RTOS_RequestPowerClockProfile(uint32_t requester_id,
 
   if (requester_id == PS_HW6_RTOS_OWNER_DISPLAY)
   {
+    if (g_ps_hw6_battery_quiesce_timing_probe.active != 0UL)
+    {
+      g_ps_hw6_battery_quiesce_timing_probe.display_clock_completions++;
+      if (wait_status != TX_SUCCESS)
+      {
+        g_ps_hw6_battery_quiesce_timing_probe.display_clock_failures++;
+      }
+      g_ps_hw6_battery_quiesce_timing_probe.display_clock_last_status = wait_status;
+      g_ps_hw6_battery_quiesce_timing_probe.display_clock_last_capabilities = capabilities;
+      g_ps_hw6_battery_quiesce_timing_probe.display_clock_last_elapsed_ticks =
+        (uint32_t)tx_time_get() - display_start_tick;
+    }
     ps_display_clock_wait_active = 0UL;
   }
 
@@ -7276,6 +7311,11 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunPowerQuiesceBarrier(uint32_t reason)
   UINT storage_clock_status = TX_SUCCESS;
   UINT storage_clock_release_status = TX_SUCCESS;
   HAL_StatusTypeDef barrier_status;
+  uint32_t trace_battery =
+    ((reason == (uint32_t)PS_HW6_POWER_QUIESCE_REASON_BATTERY_CRITICAL) ||
+     (reason == (uint32_t)PS_HW6_POWER_QUIESCE_REASON_BOOT_LOW_BATTERY)) ? 1UL : 0UL;
+  UINT display_clock_status = TX_SUCCESS;
+  UINT display_clock_release_status = TX_SUCCESS;
 
   storage_clock_required = PS_HW6_RTOS_PowerQuiesceNeedsStorageClock();
   if (storage_clock_required != 0UL)
@@ -7286,6 +7326,19 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunPowerQuiesceBarrier(uint32_t reason)
   }
 
   PS_HW6_OwnerStateMachines_BeginPowerQuiesce(reason);
+  if (trace_battery != 0UL)
+  {
+    uint32_t sequence = g_ps_hw6_battery_quiesce_timing_probe.sequence + 1UL;
+    memset((void *)&g_ps_hw6_battery_quiesce_timing_probe, 0,
+           sizeof(g_ps_hw6_battery_quiesce_timing_probe));
+    g_ps_hw6_battery_quiesce_timing_probe.api_version = 1UL;
+    g_ps_hw6_battery_quiesce_timing_probe.sequence = sequence;
+    g_ps_hw6_battery_quiesce_timing_probe.reason = reason;
+    g_ps_hw6_battery_quiesce_timing_probe.start_tick = (uint32_t)tx_time_get();
+    g_ps_hw6_battery_quiesce_timing_probe.display_clock_last_status = PS_HW6_RTOS_STATUS_NOT_RUN;
+    g_ps_hw6_battery_quiesce_timing_probe.display_clock_wait_at_begin = ps_display_clock_wait_active;
+    g_ps_hw6_battery_quiesce_timing_probe.active = 1UL;
+  }
   for (index = 0U;
        index < (sizeof(quiesce_order) / sizeof(quiesce_order[0]));
        ++index)
@@ -7303,7 +7356,32 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunPowerQuiesceBarrier(uint32_t reason)
                              TX_NO_WAIT);
     actual_flags = 0UL;
 
-    if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
+    if (trace_battery != 0UL)
+    {
+      g_ps_hw6_battery_quiesce_timing_probe.send_tick[owner_id] = (uint32_t)tx_time_get();
+      if (owner_id == PS_HW6_RTOS_OWNER_DISPLAY)
+      {
+        g_ps_hw6_battery_quiesce_timing_probe.display_clock_wait_at_send = ps_display_clock_wait_active;
+      }
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) && (trace_battery != 0UL))
+    {
+      /* thPower cannot service queued clock requests while awaiting this ACK. */
+      display_clock_status = PS_HW6_RTOS_ApplyDisplayClockCapabilitiesDirect(
+        PS_HW6_RTOS_DISPLAY_CLOCK_REASON_TRANSFER,
+        PS_HW6_RTOS_DISPLAY_CLOCK_TRANSFER_CAPABILITIES);
+      if (display_clock_status == TX_SUCCESS)
+      {
+        PS_HW6_RTOS_BeginPowerDisplayBarrier();
+      }
+    }
+    if ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) &&
+        (display_clock_status != TX_SUCCESS))
+    {
+      send_status = display_clock_status;
+      wait_status = display_clock_status;
+    }
+    else if ((owner_id == PS_HW6_RTOS_OWNER_STORAGE) &&
         (storage_clock_required != 0UL) &&
         (storage_clock_status != TX_SUCCESS))
     {
@@ -7323,10 +7401,30 @@ static HAL_StatusTypeDef PS_HW6_RTOS_RunPowerQuiesceBarrier(uint32_t reason)
           PS_HW6_RTOS_OWNER_ACK_WAIT_TICKS);
       }
     }
+    if (trace_battery != 0UL)
+    {
+      g_ps_hw6_battery_quiesce_timing_probe.done_tick[owner_id] = (uint32_t)tx_time_get();
+    }
     PS_HW6_OwnerStateMachines_RecordPowerQuiesceCommand(
       owner_id, send_status, wait_status, (uint32_t)actual_flags);
   }
   barrier_status = PS_HW6_OwnerStateMachines_EndPowerQuiesce();
+  if (trace_battery != 0UL)
+  {
+    display_clock_release_status = PS_HW6_RTOS_ApplyDisplayClockCapabilitiesDirect(
+      PS_HW6_RTOS_DISPLAY_CLOCK_REASON_RELEASE, 0UL);
+    PS_HW6_RTOS_EndPowerDisplayBarrier();
+    if ((display_clock_status != TX_SUCCESS) ||
+        (display_clock_release_status != TX_SUCCESS))
+    {
+      barrier_status = HAL_ERROR;
+    }
+  }
+  if (trace_battery != 0UL)
+  {
+    g_ps_hw6_battery_quiesce_timing_probe.end_tick = (uint32_t)tx_time_get();
+    g_ps_hw6_battery_quiesce_timing_probe.active = 0UL;
+  }
 
   if ((storage_clock_required != 0UL) &&
       (storage_clock_status == TX_SUCCESS))

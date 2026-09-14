@@ -1002,6 +1002,12 @@ static HAL_StatusTypeDef PS_HW6_SM_EvaluateBatteryPolicy(
         (void)PS_HW6_SM_Transition(PS_HW6_SM_POWER,
                                    PWR_EV_LP_REQUEST,
                                    HAL_OK);
+        if (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC] ==
+            PMIC_SHIP_PENDING)
+        {
+          (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
+                                    PMIC_EV_RECOVER_OK, HAL_OK);
+        }
         ps_power_battery_owns_ship_prep = 0UL;
       }
       ps_power_boot_restart_gate_blocked = 1UL;
@@ -1106,6 +1112,12 @@ static HAL_StatusTypeDef PS_HW6_SM_EvaluateBatteryPolicy(
     (void)PS_HW6_SM_Transition(PS_HW6_SM_POWER,
                                PWR_EV_LP_REQUEST,
                                HAL_OK);
+    if (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_PMIC] ==
+        PMIC_SHIP_PENDING)
+    {
+      (void)PS_HW6_SM_Transition(PS_HW6_SM_PMIC,
+                                PMIC_EV_RECOVER_OK, HAL_OK);
+    }
     ps_power_battery_owns_ship_prep = 0UL;
   }
 

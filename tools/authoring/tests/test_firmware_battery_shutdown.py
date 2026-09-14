@@ -21,7 +21,10 @@ class BatteryShutdownTests(unittest.TestCase):
             "PS_HW6_BatteryShutdownReset", "PS_HW6_BatteryShutdownTryPrepare",
             "PS_HW6_SM_EvaluateBatteryPolicy"))
         typedef = re.search(r"typedef struct\s*\{[^}]*\}\s*PS_HW6_BatteryShutdownProbe;", header).group()
-        constants = sorted(set(re.findall(r"\b(?:PS_HW6|PMIC|PWR)_[A-Z][A-Z0-9_]+\b", functions)))
+        tables = "\n".join(re.search(
+            r"static const PS_HW6_StateTransition " + name + r"\[\]\s*=\s*\{.*?\n\};",
+            source, re.S).group() for name in ("ps_power_transitions", "ps_pmic_transitions"))
+        constants = sorted(set(re.findall(r"\b(?:PS_HW6|PMIC|PWR)_[A-Z][A-Z0-9_]+\b", functions + tables)))
         compiler = os.environ.get("HOST_CC", "C:/msys64/ucrt64/bin/gcc.exe")
         env = dict(os.environ)
         env["PATH"] = str(Path(compiler).parent) + os.pathsep + env.get("PATH", "")
@@ -41,6 +44,7 @@ class BatteryShutdownTests(unittest.TestCase):
                     f"uint32_t {f}" + ("[128];" if f == "current_state" else ";")
                     for f in fields) + "} " + probe + ";")
             (work / "battery_declarations.inc").write_text("\n".join(declarations), encoding="ascii")
+            (work / "battery_transitions.inc").write_text(tables, encoding="ascii")
             (work / "battery_policy.inc").write_text(functions, encoding="ascii")
             for enabled in (0, 1):
                 exe = work / f"battery{enabled}.exe"

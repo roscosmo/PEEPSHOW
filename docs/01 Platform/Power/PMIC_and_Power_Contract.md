@@ -170,6 +170,39 @@ Warning/unknown samples do not replenish the attempt budget. After charge
 recovery, removing VBUS while still boot-blocked permits a new preparation
 episode; a historical diagnostic counter no longer prevents it.
 
+For voltage recovery from battery-owned `PWR_SHIP_PREP`, recover
+`PMIC_SHIP_PENDING` to `PMIC_MONITOR` before clearing battery ownership. The
+same cleanup applies when a blocked boot enters VBUS charge recovery, before
+selecting the charging state. Do not clear a START-only pending shipment merely
+because a healthy voltage sample arrived. This is software-state cleanup, not
+automatic package resume or evidence that physical shipment occurred. Native
+regressions exercise the actual power/PMIC transition tables; target revalidation
+of this cleanup is pending.
+
+The battery quiesce timing probe (API 1) retains the latest critical/boot-low
+barrier, per-owner dispatch/wait-completion ticks and display clock queue/ACK
+completions observed during that barrier. Normal STOP2 barriers do not overwrite
+it. `__fw0_battery_quiesce_timing_prints.gdb` prints the record. Each preparation
+retry replaces the prior record. These timestamps include scheduling and waits;
+they do not measure isolated CPU time. The last display clock result can replace
+an earlier result, while the failure count remains cumulative for that barrier.
+No queue, timeout, clock-transition or acknowledgement behaviour is changed by
+this observer. Do not halt during the measured preparation.
+
+The 2026-09-14 completed target capture established a circular wait: thPower
+awaited display quiesce while display awaited a clock reply from thPower.
+Preparation took 1000 ticks (10 seconds) and reported success after a display
+clock ACK timeout. That result is not a clean preparation pass.
+Battery-critical and boot-low barriers now use the existing power/display
+handoff: thPower grants display transfer clocks directly before waiting for
+display, satisfies an outstanding clock wait, and holds the grant while display
+finishes and processes quiesce. The existing queued-request suppression prevents
+the superseded request from restoring transfer capabilities later. Cleanup ends
+the handoff and releases the display grant; grant/release failure rejects
+preparation. Normal sleep and START barriers remain unchanged. Owner ACKs are
+still required; this does not synthesize a display-quiesce acknowledgement.
+Focused native regression tests pass; hardware revalidation is pending.
+
 This does not change START handling, the final PMIC shipment write, or retry
 that write if it fails. Automatic critical/boot shipment remains disabled.
 Physical shipment failure handling and a bounded fallback after exhausted
@@ -204,8 +237,8 @@ HW6 FW0 target evidence now validates the runtime policy path at one normal poin
 ## Planned PMIC Monitoring Schedule
 
 Status: optional-work scheduling is not implemented. The read-group foundation
-and periodic STOP2 battery deadline are implemented as described below, with the
-new wake path awaiting hardware validation. FW0 still performs a full snapshot when
+and periodic STOP2 battery deadline are implemented as described below, with one
+shortened battery wake/read hardware-confirmed. FW0 still performs a full snapshot when
 the `1000 ms` monitor period is due, with additional boot, interrupt and explicit
 diagnostic requests. Checking whether the period is due is not a hardware read.
 The current snapshot performs 24 single-register reads and up to two flag-clear
