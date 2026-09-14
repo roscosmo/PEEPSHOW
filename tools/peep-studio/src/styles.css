@@ -6993,3 +6993,237 @@ button:focus-visible {
     width: min(86vw, 560px);
   }
 }
+
+.studio-shell[data-theme="dark"] {
+  color: #dfe7e2;
+  background: #121614;
+  color-scheme: dark;
+}
+
+.studio-shell[data-theme="dark"] .app-toolbar,
+.studio-shell[data-theme="dark"] .project-pane,
+.studio-shell[data-theme="dark"] .inspector-pane,
+.studio-shell[data-theme="dark"] .asset-workspace-pane,
+.studio-shell[data-theme="dark"] .asset-workspace,
+.studio-shell[data-theme="dark"] .state-graph-pane,
+.studio-shell[data-theme="dark"] .placement-pane,
+.studio-shell[data-theme="dark"] .scene-flow-pane,
+.studio-shell[data-theme="dark"] .preview-heading,
+.studio-shell[data-theme="dark"] .pane-heading,
+.studio-shell[data-theme="dark"] .asset-group-panel,
+.studio-shell[data-theme="dark"] .inspector-section,
+.studio-shell[data-theme="dark"] .placement-view-settings,
+.studio-shell[data-theme="dark"] .placement-position-editor,
+.studio-shell[data-theme="dark"] .placement-edit-scope,
+.studio-shell[data-theme="dark"] .baked-text-panel,
+.studio-shell[data-theme="dark"] .baked-text-source-summary,
+.studio-shell[data-theme="dark"] .baked-text-source-editor,
+.studio-shell[data-theme="dark"] .asset-text-editor,
+.studio-shell[data-theme="dark"] .audio-inspector-controls,
+.studio-shell[data-theme="dark"] .native-object-row,
+.studio-shell[data-theme="dark"] .scene-object-property {
+  border-color: #34423b;
+  background: #171d1a;
+  color: #dfe7e2;
+}
+
+.studio-shell[data-theme="dark"] .app-toolbar,
+.studio-shell[data-theme="dark"] .topbar-brand-panel,
+.studio-shell[data-theme="dark"] .topbar-file-actions,
+.studio-shell[data-theme="dark"] .project-resize-handle,
+.studio-shell[data-theme="dark"] .inspector-resize-handle {
+  border-color: #2f3a34;
+}
+
+.studio-shell[data-theme="dark"] .topbar-project-title h1,
+.studio-shell[data-theme="dark"] .brand-project-copy h1,
+.studio-shell[data-theme="dark"] .asset-group-heading strong,
+.studio-shell[data-theme="dark"] .asset-frame-gallery strong,
+.studio-shell[data-theme="dark"] .audio-cue-select strong,
+.studio-shell[data-theme="dark"] .font-asset-row-meta strong,
+.studio-shell[data-theme="dark"] .scene-hierarchy-select strong,
+.studio-shell[data-theme="dark"] .hierarchy-branch-select strong,
+.studio-shell[data-theme="dark"] .placement-object-kind strong,
+.studio-shell[data-theme="dark"] .inspector-section h3,
+.studio-shell[data-theme="dark"] .inspector-list dt,
+.studio-shell[data-theme="dark"] .inspector-list dd {
+  color: #f1f6f2;
+}
+
+.studio-shell[data-theme="dark"] .topbar-project-title p,
+.studio-shell[data-theme="dark"] .brand-project-copy p,
+.studio-shell[data-theme="dark"] .asset-group-heading span,
+.studio-shell[data-theme="dark"] .asset-frame-gallery small,
+.studio-shell[data-theme="dark"] .audio-cue-select small,
+.studio-shell[data-theme="dark"] .font-asset-row-meta small,
+.studio-shell[data-theme="dark"] .scene-hierarchy-select small,
+.studio-shell[data-theme="dark"] .hierarchy-branch-select small,
+.studio-shell[data-theme="dark"] .placement-object-kind small,
+.studio-shell[data-theme="dark"] .muted,
+.studio-shell[data-theme="dark"] .section-kicker,
+.studio-shell[data-theme="dark"] .service-state,
+.studio-shell[data-theme="dark"] .asset-library-zoom-value {
+  color: #9eada5;
+}
+
+.studio-shell[data-theme="dark"] .button.secondary,
+.studio-shell[data-theme="dark"] .icon-button,
+.studio-shell[data-theme="dark"] .input-button,
+.studio-shell[data-theme="dark"] .topbar-button,
+.studio-shell[data-theme="dark"] .topbar-dropdown > summary,
+.studio-shell[data-theme="dark"] .asset-library-tabs button,
+.studio-shell[data-theme="dark"] .asset-frame-strip button,
+.studio-shell[data-theme="dark"] .placement-sprite-picker-frames button,
+.studio-shell[data-theme="dark"] .object-frame-options button,
+.studio-shell[data-theme="dark"] .text-button,
+.studio-shell[data-theme="dark"] .scene-reference-row,
+.studio-shell[data-theme="dark"] .audio-cue-gallery > div,
+.studio-shell[data-theme="dark"] .font-asset-list button,
+.studio-shell[data-theme="dark"] .asset-frame-gallery > button,
+.studio-shell[data-theme="dark"] .asset-frame-gallery > div,
+.studio-shell[data-theme="dark"] .asset-inspector-preview,
+.studio-shell[data-theme="dark"] .asset-import-panel,
+.studio-shell[data-theme="dark"] .asset-import-controls,
+.studio-shell[data-theme="dark"] .asset-import-result,
+.studio-shell[data-theme="dark"] .clip-editor,
+.studio-shell[data-theme="dark"] .clip-step,
+.studio-shell[data-theme="dark"] .effect-field {
+  border-color: #3c4a43;
+  background: #1d2521;
+  color: #e4ebe6;
+}
+
+.studio-shell[data-theme="dark"] .button.secondary:hover,
+.studio-shell[data-theme="dark"] .icon-button:hover:not(:disabled),
+.studio-shell[data-theme="dark"] .input-button:hover:not(:disabled),
+.studio-shell[data-theme="dark"] .topbar-button:hover,
+.studio-shell[data-theme="dark"] .topbar-dropdown > summary:hover,
+.studio-shell[data-theme="dark"] .asset-library-tabs button:hover,
+.studio-shell[data-theme="dark"] .scene-hierarchy-select:hover,
+.studio-shell[data-theme="dark"] .hierarchy-branch-select:hover,
+.studio-shell[data-theme="dark"] .scene-reference-row:hover,
+.studio-shell[data-theme="dark"] .asset-frame-gallery > button:hover,
+.studio-shell[data-theme="dark"] .audio-cue-select:hover {
+  border-color: #4f7080;
+  background: #22312d;
+}
+
+.studio-shell[data-theme="dark"] .button.primary {
+  border-color: #7fb4c8;
+  background: #1d5d78;
+  color: #f4fbff;
+}
+
+.studio-shell[data-theme="dark"] .topbar-button.active,
+.studio-shell[data-theme="dark"] .topbar-dropdown[open] > summary,
+.studio-shell[data-theme="dark"] .asset-library-tabs button[aria-selected="true"],
+.studio-shell[data-theme="dark"] .scene-hierarchy-node.selected .scene-hierarchy-select,
+.studio-shell[data-theme="dark"] .hierarchy-branch-select.selected,
+.studio-shell[data-theme="dark"] .asset-frame-gallery .selected,
+.studio-shell[data-theme="dark"] .audio-cue-gallery > div.selected,
+.studio-shell[data-theme="dark"] .font-asset-list button.selected {
+  border-color: #58a6c8;
+  background: #1b3a47;
+  color: #d9f3ff;
+}
+
+.studio-shell[data-theme="dark"] .topbar-dropdown-menu,
+.studio-shell[data-theme="dark"] .placement-sprite-picker,
+.studio-shell[data-theme="dark"] .scene-exit-picker,
+.studio-shell[data-theme="dark"] .react-flow__panel,
+.studio-shell[data-theme="dark"] .node-context-menu {
+  border-color: #43514a;
+  background: #1b211e;
+  color: #dfe7e2;
+  box-shadow: 0 16px 34px rgb(0 0 0 / 36%);
+}
+
+.studio-shell[data-theme="dark"] input,
+.studio-shell[data-theme="dark"] select,
+.studio-shell[data-theme="dark"] textarea,
+.studio-shell[data-theme="dark"] .scene-object-property input:not([type="checkbox"]),
+.studio-shell[data-theme="dark"] .scene-object-property select,
+.studio-shell[data-theme="dark"] .placement-edit-scope select {
+  border-color: #4d5d55;
+  background: #111613;
+  color: #edf4ef;
+}
+
+.studio-shell[data-theme="dark"] input:disabled,
+.studio-shell[data-theme="dark"] select:disabled,
+.studio-shell[data-theme="dark"] textarea:disabled,
+.studio-shell[data-theme="dark"] button:disabled {
+  color: #6d7a73;
+  background-color: #18201c;
+}
+
+.studio-shell[data-theme="dark"] .project-hierarchy-root,
+.studio-shell[data-theme="dark"] .scene-hierarchy-children,
+.studio-shell[data-theme="dark"] .hierarchy-nested-branches,
+.studio-shell[data-theme="dark"] .hierarchy-reference-rows,
+.studio-shell[data-theme="dark"] .placement-object-children,
+.studio-shell[data-theme="dark"] .native-object-overrides {
+  border-color: #33413a;
+}
+
+.studio-shell[data-theme="dark"] .project-root-row,
+.studio-shell[data-theme="dark"] .scene-hierarchy-select,
+.studio-shell[data-theme="dark"] .hierarchy-branch-select,
+.studio-shell[data-theme="dark"] .placement-object-row {
+  color: #dce5df;
+}
+
+.studio-shell[data-theme="dark"] .project-root-row.selected,
+.studio-shell[data-theme="dark"] .placement-object-row.selected {
+  border-color: #58a6c8;
+  background: #1b3a47;
+}
+
+.studio-shell[data-theme="dark"] .preview-pane,
+.studio-shell[data-theme="dark"] .preview-pane-large,
+.studio-shell[data-theme="dark"] .preview-pane-compact,
+.studio-shell[data-theme="dark"] .graph-surface,
+.studio-shell[data-theme="dark"] .asset-workspace,
+.studio-shell[data-theme="dark"] .placement-stage-viewport {
+  background: #101513;
+}
+
+.studio-shell[data-theme="dark"] .placement-workspace,
+.studio-shell[data-theme="dark"] .graph-canvas,
+.studio-shell[data-theme="dark"] .react-flow,
+.studio-shell[data-theme="dark"] .react-flow__renderer {
+  background-color: #111815;
+}
+
+.studio-shell[data-theme="dark"] .placement-grid-background {
+  background-color: #141b18;
+  background-image:
+    linear-gradient(#25322c 1px, transparent 1px),
+    linear-gradient(90deg, #25322c 1px, transparent 1px);
+}
+
+.studio-shell[data-theme="dark"] .panel-bezel {
+  border-color: #53625a;
+  background: #161c19;
+  box-shadow: 0 16px 34px rgb(0 0 0 / 30%);
+}
+
+.studio-shell[data-theme="dark"] .status-bar {
+  border-color: #3b4841;
+  background: #0e1210;
+  color: #b9c6bf;
+}
+
+.studio-shell[data-theme="dark"] .host-preview-notice,
+.studio-shell[data-theme="dark"] .status-banner {
+  border-color: #4f7080;
+  background: #172834;
+  color: #c6e4f1;
+}
+
+.studio-shell[data-theme="dark"] .asset-sheet-preview,
+.studio-shell[data-theme="dark"] .asset-inspector-preview,
+.studio-shell[data-theme="dark"] .frame-preview-canvas,
+.studio-shell[data-theme="dark"] .audio-waveform {
+  border-color: #48564f;
+}

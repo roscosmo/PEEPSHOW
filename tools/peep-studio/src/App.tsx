@@ -755,6 +755,19 @@ export default function App() {
   const [projectWidth, setProjectWidth] = useState(320);
   const [inspectorWidth, setInspectorWidth] = useState(390);
   const { preferences, update: updatePreference } = useEditorPreferences();
+  const [systemPrefersDark, setSystemPrefersDark] = useState(() => (
+    typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches
+  ));
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    const updateSystemTheme = () => setSystemPrefersDark(query.matches);
+    updateSystemTheme();
+    query.addEventListener("change", updateSystemTheme);
+    return () => query.removeEventListener("change", updateSystemTheme);
+  }, []);
+  const resolvedTheme = preferences.theme === "system"
+    ? systemPrefersDark ? "dark" : "light"
+    : preferences.theme;
   const { gridVisible: placementGridVisible, majorGridVisible: placementMajorGridVisible,
     gridStrength: placementGridStrength, objectBoxes: placementOverlayVisible,
     labelMode: placementLabelMode } = preferences;
@@ -7956,6 +7969,7 @@ export default function App() {
   return (
     <main
       className="studio-shell"
+      data-theme={resolvedTheme}
       style={{
         "--sprite-preview-background": preferences.spritePreviewBackground,
         "--project-width": `${projectWidth}px`,
@@ -8282,6 +8296,19 @@ export default function App() {
             )}
           </div>
           {settingsOpen ? <>
+            <section className="inspector-section">
+              <h3>Appearance</h3>
+              <div className="placement-view-settings">
+                <label>Theme
+                  <select aria-label="Theme" value={preferences.theme}
+                    onChange={event => updatePreference("theme", event.target.value as "light" | "dark" | "system")}>
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                    <option value="system">System</option>
+                  </select>
+                </label>
+              </div>
+            </section>
             <section className="inspector-section">
               <h3>Assets</h3>
               <div className="placement-view-settings">
