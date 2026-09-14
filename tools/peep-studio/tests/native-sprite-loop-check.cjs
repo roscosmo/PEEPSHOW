@@ -341,6 +341,23 @@ app.whenReady().then(async () => {
   assert(await evaluate("Array.from(document.querySelectorAll('.clip-editor button')).find(e=>e.textContent.trim()==='Create animation').disabled"));
   await duration('400');
   await evaluate("Array.from(document.querySelectorAll('.clip-editor button')).find(e=>e.textContent.trim()==='Create animation').click()");await wait(500);
+  const animationPreviewSize = await evaluate(`(() => {
+    const canvas = document.querySelector('.animation-asset-gallery .asset-frame-preview canvas');
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  })()`);
+  assert(animationPreviewSize && animationPreviewSize.width > 18 && animationPreviewSize.height > 18);
+  await click('[aria-label="Zoom asset library in"]');
+  const zoomedAnimationPreviewSize = await evaluate(`(() => {
+    const canvas = document.querySelector('.animation-asset-gallery .asset-frame-preview canvas');
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  })()`);
+  assert(zoomedAnimationPreviewSize && zoomedAnimationPreviewSize.width > animationPreviewSize.width);
+  assert(zoomedAnimationPreviewSize.height > animationPreviewSize.height);
+  await click('[aria-label="Reset asset library zoom"]');
   await button('Placement');
   const placementTarget = async value => {
     await evaluate(`(() => {const e=document.querySelector('[aria-label="Editing"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
