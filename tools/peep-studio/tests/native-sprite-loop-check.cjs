@@ -161,10 +161,27 @@ app.whenReady().then(async () => {
   }
   await button('Assets'); await button('Choose PNG');
   assert.equal(fs.existsSync(path.join(projectPath, 'assets', 'audit.png')), false);
+  const setImportSelect = async (label, value) => {
+    await evaluate(`(() => {const e=document.querySelector(${JSON.stringify(`[aria-label="${label}"]`)}); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(String(value))}); e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await wait(100);
+  };
   assert.equal(await evaluate("document.querySelector('[aria-label=\"Sprite conversion mode\"]').value"), 'threshold_1bpp');
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Sprite import preset\"]').value"), 'standard');
   assert.equal(await evaluate("document.querySelector('[aria-label=\"Sprite import threshold\"]').value"), '128');
   assert.equal(await evaluate("document.querySelector('[aria-label=\"Sprite import alpha cutoff\"]').value"), '1');
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Sprite import transparency\"]').value"), 'respect_alpha');
   assert.equal(await evaluate("document.querySelectorAll('.sprite-import-preview-canvas img').length"), 2);
+  await setImportSelect('Sprite import preset', 'white_art');
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Sprite import threshold\"]').value"), '64');
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Sprite import transparency\"]').value"), 'respect_alpha');
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Invert sprite import\"]').checked"), false);
+  await setImportSelect('Sprite import preset', 'opaque_sheet');
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Sprite import transparency\"]').value"), 'ignore_alpha');
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Sprite import alpha cutoff\"]').disabled"), true);
+  await setImportSelect('Sprite import transparency', 'respect_alpha');
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Sprite import preset\"]').value"), 'standard');
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Sprite import alpha cutoff\"]').disabled"), false);
+  await setImportSelect('Sprite import preset', 'standard');
   const setImportValue = async (label, value) => {
     await evaluate(`(() => {const e=document.querySelector(${JSON.stringify(`[aria-label="${label}"]`)}); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(String(value))}); e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await wait(100);

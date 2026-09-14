@@ -122,6 +122,15 @@ type AssetSelection =
   | { kind: "font"; fontId: string }
   | null;
 type SpriteImportConversionMode = "threshold_1bpp";
+type SpriteImportAlphaMode = "respect_alpha" | "ignore_alpha" | "transparent_as_white";
+type SpriteImportPreset = {
+  id: string;
+  label: string;
+  threshold: string;
+  alphaCutoff: string;
+  alphaMode: SpriteImportAlphaMode;
+  invert: boolean;
+};
 type SpriteImportPreview = {
   dataUrl: string;
   width: number;
@@ -170,6 +179,15 @@ const DEFAULT_FONT_PREVIEW_TEXT = "PEEP STUDIO 0123456789 START SETTINGS CREDITS
 const NORMALIZED_ANIMATION_BACKING_DISPLAY_NAME = "Animation backing frames";
 const LEGACY_NORMALIZED_ANIMATION_BACKING_DISPLAY_NAME = "Padded animation frames";
 const NORMALIZED_ANIMATION_BACKING_ID_PREFIXES = ["animation_backing_frames", "padded_animation_frames"];
+const SPRITE_IMPORT_ALPHA_MODES: SpriteImportAlphaMode[] = ["respect_alpha", "ignore_alpha", "transparent_as_white"];
+const SPRITE_IMPORT_PRESETS: SpriteImportPreset[] = [
+  { id: "standard", label: "Standard B/W", threshold: "128", alphaCutoff: "1", alphaMode: "respect_alpha", invert: false },
+  { id: "white_art", label: "White art on transparent", threshold: "64", alphaCutoff: "1", alphaMode: "respect_alpha", invert: false },
+  { id: "faint_dark", label: "Faint dark lines", threshold: "192", alphaCutoff: "1", alphaMode: "respect_alpha", invert: false },
+  { id: "inverted", label: "Invert source", threshold: "128", alphaCutoff: "1", alphaMode: "respect_alpha", invert: true },
+  { id: "opaque_sheet", label: "Opaque sheet", threshold: "128", alphaCutoff: "1", alphaMode: "ignore_alpha", invert: false },
+  { id: "transparent_white", label: "Transparent as white", threshold: "128", alphaCutoff: "1", alphaMode: "transparent_as_white", invert: false },
+];
 
 const normalizeTextLines = (value: string) => value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
 const stableAssetIdFromLabel = (value: string, fallback: string) => {
@@ -194,17 +212,39 @@ const parseBakedTextFontSize = (value: string) => {
 };
 
 const parseSpriteImportConversion = (
-  draft: Pick<PendingSpriteImport, "threshold" | "alphaCutoff" | "invert">,
-): { threshold: number; alphaCutoff: number; invert: boolean; error?: undefined } | { error: string } => {
+  draft: Pick<PendingSpriteImport, "threshold" | "alphaCutoff" | "alphaMode" | "invert">,
+): { threshold: number; alphaCutoff: number; alphaMode: SpriteImportAlphaMode; invert: boolean; error?: undefined } | { error: string } => {
   const threshold = Number(draft.threshold);
   if (!Number.isInteger(threshold) || threshold < 0 || threshold > 255) {
     return { error: "Threshold must be a whole number from 0 to 255." };
   }
+  if (!SPRITE_IMPORT_ALPHA_MODES.includes(draft.alphaMode)) {
+    return { error: "Choose a supported transparency mode." };
+  }
   const alphaCutoff = Number(draft.alphaCutoff);
-  if (!Number.isInteger(alphaCutoff) || alphaCutoff < 1 || alphaCutoff > 255) {
+  if (draft.alphaMode !== "ignore_alpha" && (!Number.isInteger(alphaCutoff) || alphaCutoff < 1 || alphaCutoff > 255)) {
     return { error: "Alpha cutoff must be a whole number from 1 to 255." };
   }
-  return { threshold, alphaCutoff, invert: draft.invert };
+  return { threshold, alphaCutoff: draft.alphaMode === "ignore_alpha" ? 1 : alphaCutoff, alphaMode: draft.alphaMode, invert: draft.invert };
+};
+
+const spriteImportPresetId = (draft: PendingSpriteImport) => (
+  SPRITE_IMPORT_PRESETS.find(preset => preset.threshold === draft.threshold
+    && preset.alphaCutoff === draft.alphaCutoff
+    && preset.alphaMode === draft.alphaMode
+    && preset.invert === draft.invert)?.id ?? "custom"
+);
+
+const spriteImportAlphaLabel = (alphaMode: SpriteImportAlphaMode) => {
+  switch (alphaMode) {
+    case "ignore_alpha":
+      return "Ignore alpha";
+    case "transparent_as_white":
+      return "Transparent as white";
+    case "respect_alpha":
+    default:
+      return "Respect alpha";
+  }
 };
 
 async function loadImageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> {
@@ -218,7 +258,7 @@ async function loadImageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> 
 
 async function renderSpriteImportPng(
   sourceDataUrl: string,
-  conversion: { threshold: number; alphaCutoff: number; invert: boolean },
+  conversion: { threshold: number; alphaCutoff: number; alphaMode: SpriteImportAlphaMode; invert: boolean },
 ): Promise<SpriteImportPreview> {
   const source = await loadImageFromDataUrl(sourceDataUrl);
   const width = source.naturalWidth;
@@ -242,7 +282,8 @@ async function renderSpriteImportPng(
   let transparentPixels = 0;
   for (let index = 0; index < image.data.length; index += 4) {
     const alpha = image.data[index + 3] ?? 0;
-    if (alpha < conversion.alphaCutoff) {
+    const sourceTransparent = conversion.alphaMode !== "ignore_alpha" && alpha < conversion.alphaCutoff;
+    if (sourceTransparent && conversion.alphaMode === "respect_alpha") {
       image.data[index] = 255;
       image.data[index + 1] = 255;
       image.data[index + 2] = 255;
@@ -250,8 +291,10 @@ async function renderSpriteImportPng(
       transparentPixels += 1;
       continue;
     }
-    const average = ((image.data[index] ?? 0) + (image.data[index + 1] ?? 0) + (image.data[index + 2] ?? 0)) / 3;
-    const black = (average < conversion.threshold) !== conversion.invert;
+    const average = sourceTransparent
+      ? 255
+      : ((image.data[index] ?? 0) + (image.data[index + 1] ?? 0) + (image.data[index + 2] ?? 0)) / 3;
+    const black = sourceTransparent ? false : (average < conversion.threshold) !== conversion.invert;
     const value = black ? 0 : 255;
     image.data[index] = value;
     image.data[index + 1] = value;
@@ -435,6 +478,7 @@ type PendingSpriteImport = {
   conversionMode: SpriteImportConversionMode;
   threshold: string;
   alphaCutoff: string;
+  alphaMode: SpriteImportAlphaMode;
   invert: boolean;
 };
 
@@ -755,6 +799,7 @@ export default function App() {
       });
   }, [
     pendingSpriteImport?.alphaCutoff,
+    pendingSpriteImport?.alphaMode,
     pendingSpriteImport?.height,
     pendingSpriteImport?.invert,
     pendingSpriteImport?.sourceDataUrl,
@@ -1523,6 +1568,7 @@ export default function App() {
         conversionMode: "threshold_1bpp",
         threshold: "128",
         alphaCutoff: "1",
+        alphaMode: "respect_alpha",
         invert: false,
       });
       setWorkspaceMode("assets");
@@ -1596,7 +1642,7 @@ export default function App() {
       setCombineFrameIds(frames.map(frame => frame.frame_id));
       setWorkspaceMode("assets");
       setPendingSpriteImport(null);
-      setAssetImportDebug(`Imported ${pendingSpriteImport.sourceName}: ${frames.length} frame${frames.length === 1 ? "" : "s"} at ${parsed.frameWidth}x${parsed.frameHeight}, threshold ${conversion.threshold}, alpha ${conversion.alphaCutoff}${conversion.invert ? ", inverted" : ""}.`);
+      setAssetImportDebug(`Imported ${pendingSpriteImport.sourceName}: ${frames.length} frame${frames.length === 1 ? "" : "s"} at ${parsed.frameWidth}x${parsed.frameHeight}, threshold ${conversion.threshold}, ${spriteImportAlphaLabel(conversion.alphaMode).toLowerCase()}${conversion.alphaMode === "ignore_alpha" ? "" : ` ${conversion.alphaCutoff}`}${conversion.invert ? ", inverted" : ""}.`);
       setMessage(`Imported ${written.assetId} with ${frames.length} frame${frames.length === 1 ? "" : "s"}. Save to write it to the project.`);
     } catch (error) {
       const text = errorText(error);
@@ -5014,6 +5060,7 @@ export default function App() {
       ? null
       : parseSpriteImportConversion(pendingSpriteImport);
     const previewError = spriteImportPreview?.error ?? conversionCheck?.error ?? null;
+    const selectedPresetId = pendingSpriteImport === null ? "custom" : spriteImportPresetId(pendingSpriteImport);
     return (
       <div className="asset-import-panel sprite-import-panel">
         {pendingSpriteImport === null ? (
@@ -5050,6 +5097,32 @@ export default function App() {
               </div>
             </div>
             <div className="asset-import-controls">
+              <label className="asset-import-preset-control">
+                Preset
+                <select
+                  aria-label="Sprite import preset"
+                  value={selectedPresetId}
+                  disabled={!canEditAssets}
+                  onChange={(event) => {
+                    const preset = SPRITE_IMPORT_PRESETS.find(item => item.id === event.target.value);
+                    if (preset === undefined) {
+                      return;
+                    }
+                    setPendingSpriteImport((current) => current === null ? null : {
+                      ...current,
+                      threshold: preset.threshold,
+                      alphaCutoff: preset.alphaCutoff,
+                      alphaMode: preset.alphaMode,
+                      invert: preset.invert,
+                    });
+                  }}
+                >
+                  <option value="custom">Custom</option>
+                  {SPRITE_IMPORT_PRESETS.map((preset) => (
+                    <option key={preset.id} value={preset.id}>{preset.label}</option>
+                  ))}
+                </select>
+              </label>
               <label>
                 Conversion
                 <select
@@ -5062,6 +5135,22 @@ export default function App() {
                   }}
                 >
                   <option value="threshold_1bpp">B/W mask</option>
+                </select>
+              </label>
+              <label>
+                Transparency
+                <select
+                  aria-label="Sprite import transparency"
+                  value={pendingSpriteImport.alphaMode}
+                  disabled={!canEditAssets}
+                  onChange={(event) => {
+                    const value = event.target.value as SpriteImportAlphaMode;
+                    setPendingSpriteImport((current) => current === null ? null : { ...current, alphaMode: value });
+                  }}
+                >
+                  <option value="respect_alpha">Respect alpha</option>
+                  <option value="ignore_alpha">Ignore alpha</option>
+                  <option value="transparent_as_white">Transparent as white</option>
                 </select>
               </label>
               <label>
@@ -5089,7 +5178,7 @@ export default function App() {
                   step={1}
                   aria-label="Sprite import alpha cutoff"
                   value={pendingSpriteImport.alphaCutoff}
-                  disabled={!canEditAssets}
+                  disabled={!canEditAssets || pendingSpriteImport.alphaMode === "ignore_alpha"}
                   onChange={(event) => {
                     const value = event.target.value;
                     setPendingSpriteImport((current) => current === null ? null : { ...current, alphaCutoff: value });

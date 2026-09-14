@@ -1874,6 +1874,10 @@ button:focus-visible {
   grid-template-columns: repeat(4, minmax(84px, 1fr));
 }
 
+.sprite-import-panel .asset-import-preset-control {
+  grid-column: span 2;
+}
+
 .asset-import-controls label {
   display: grid;
   gap: 5px;
