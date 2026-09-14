@@ -1,7 +1,8 @@
 # HW6 Battery Shutdown Validation
 
-Status: healthy/warning/critical-preparation results recorded below. Recovery
-cleanup revalidation, boot/restart and physical automatic shipment remain pending.
+Status: runtime and low-boot preparation/recovery pass. Prepared one-shot
+shipment and START restart pass at the bench points recorded below. Automatic
+low-battery shutdown, charger recovery and complete discharge protection remain pending.
 
 Authority: [[PMIC_and_Power_Contract]], [[Power_and_Sleep_Policy]] and
 [[HW6_Hardware_Revision_Contract]]. This is a Platform bench test, not a package
@@ -10,8 +11,9 @@ capability or a cell-discharge experiment.
 ## Scope
 
 First validate actual voltage classification and owner preparation with all
-automatic software-shipment gates OFF. Physical automatic shutdown, restart
-after shipment, charger recovery and failure fallback are later tests. A
+automatic software-shipment gates OFF. The prepared one-shot shipment/restart
+result is recorded below; automatic shutdown, charger recovery and failure
+fallback remain later tests. A
 debugger disconnect or a preparation counter is not physical shutdown proof.
 
 The existing battery RTC test separately established one shortened wake and
@@ -109,6 +111,61 @@ Do not enable automatic shipment solely because the first test passes.
   into the battery-input PPK2 setup used above.
 - Measure charge per battery wake and select warning/retry cadence against
   discharge margin and shutdown behaviour. The 60-second interval is provisional.
+
+## Prepared One-Shot Physical Test
+
+This first physical step uses the already-built, gates-off firmware. It does
+not enable automatic battery or START shipment. The helper checks successful
+battery preparation, the matching owner barrier, clock cleanup, low voltage,
+absent VBUS, PMIC boot setup, and no earlier shipment attempt. It only sets the
+existing `g_ps_hw6_pmic_software_ship_request`; thPower performs the PMIC write.
+It does not call target functions or overwrite readings/ACKs. The checks use
+the last completed target readings, not new measurements while halted.
+The helper loads against the matching ARM ELF offline. A host-only GDB fixture
+executes the actual helper across 13 cases: prepared boot/critical acceptance,
+API/voltage/read/VBUS/preparation/owner/ACK/clock/pending/duplicate/default-gate
+refusals, including rejection of a second source after queuing. Only the request
+flag is written. This validates helper behaviour, not the physical PMIC result.
+
+1. Keep the isolated setup above: cell disconnected, device USB disconnected,
+   PPK2 supplying the battery input. Begin at 3800 mV. Do not reflash just for
+   this helper; use the matching ELF from the passed preparation build.
+2. Boot at source 3400 mV and let the warning appear. Run several seconds before
+   halting. Save the battery power and quiesce timing prints. Require successful
+   preparation and zero automatic gates, as in the recorded pass.
+3. Start PPK2 recording and note the pre-shutdown current. Keep the source
+   voltage and wiring unchanged, halt, then source:
+
+   ```gdb
+   source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_battery_ship_once_enable.gdb
+   ```
+
+4. If it prints NOT armed, retain that output; do not force the request flag.
+   If it queues the request, resume immediately and leave all buttons alone.
+   Observe the current transition and sustained post-shutdown level, plus an
+   accessible system supply rail if measurable. The warning image may remain;
+   a retained frame or debugger disconnect does not settle the power verdict.
+5. If current does not fall or the board repeatedly restarts, stop this test.
+   If still powered, halt and use the battery power print for the actual PMIC
+   shipment result. Do not repeatedly source the helper after a failed attempt.
+6. After a sustained power-off observation, raise the source to 3800 mV and
+   press START to test healthy restart. Record whether the package boots and
+   works. Raising voltage alone is not assumed to leave PMIC shipment mode.
+   If it does not restart, stop and report rather than repeatedly cycling it.
+
+Report the PPK2 source settings, pre/post current, debugger connection state,
+rail observation if available, and restart behaviour. Debug wiring can alter
+low-current readings; any suspected back-power invalidates the current result.
+No absolute shipment-current limit is qualified by this procedure.
+
+The request flag is consumed once by thPower; the helper rejects another
+attempt in the same boot. Power loss resets RAM, so retain the pre-request
+prints and PPK2 trace rather than expecting post-mortem counters to survive.
+This establishes only the prepared-state -> manual physical shipment ->
+healthy restart path. Low-voltage restart with automatic re-shipment, fully
+automatic critical/boot triggering, final-write failure and charger recovery
+remain separate tests. Automatic-gate enablement still requires the identified
+test-build procedure, not arbitrary writes to status probes.
 
 ## Result Record
 
@@ -283,3 +340,24 @@ not proof that no admission failed. Do not reset between boot and printing.
 Restore 3800 mV, resume several seconds, and print battery power again. Recovery should give
 policy OK and power/PMIC `2/3`, with no shipment request. Do not require automatic
 package resume, enable shipment, or proceed to charger testing yet.
+
+### Prepared One-Shot Shipment and Restart Pass
+
+On 2026-09-14, booting with source 3400 mV produced a valid prepared low-boot
+state. `__fw0_battery_ship_once_enable.gdb` accepted measured 3369 mV and queued
+one request. After resuming, the user observed PPK2 current fall and settle at
+5.6 uA. This is physical current evidence, not merely a queued-command counter
+or debugger disconnect. No separate system-rail voltage measurement was supplied;
+5.6 uA is the observed bench result, not a qualified production current limit.
+
+Pressing START restarted the device while the source was still 3400 mV. It
+remained on LOW BATTERY at approximately 2.5 mA. This is expected for the
+gates-off build: the one-shot request does not survive reboot and does not
+enable automatic re-shipment. It is not acceptable final low-battery behaviour.
+The user then confirmed normal boot after restoring source 3800 mV.
+
+Pass scope: successful preparation -> manually requested physical shipment ->
+START wake, low-voltage boot block and normal boot at healthy source voltage.
+Automatic critical/boot triggering and repeated low-voltage restart shutdown
+remain untested. Next is a separately identified automatic-shutdown test build;
+do not treat the one-shot result as completed automatic discharge protection.
