@@ -64,9 +64,17 @@ typedef struct
   uint32_t exhausted;
   uint32_t last_status;
   uint32_t next_tick;
+  uint32_t ship_pending;
+  uint32_t ship_attempts;
+  uint32_t ship_failures;
+  uint32_t ship_last_status;
+  uint32_t ship_first_failure;
 } PS_HW6_BatteryShutdownProbe;
 
 extern volatile PS_HW6_BatteryShutdownProbe g_ps_hw6_battery_shutdown_probe;
+
+/* thPower only; battery requests are separate from manual/START one-shots. */
+void PS_HW6_OwnerStateMachines_ProcessSoftwareShipment(void);
 
 typedef enum
 {

@@ -18,7 +18,8 @@ class BatteryShutdownTests(unittest.TestCase):
         functions = "\n".join(firmware_function(source, name) for name in (
             "PS_HW6_BatteryPolicyPrepareForShipment",
             "PS_HW6_BatteryPolicyRequestSoftwareShipment",
-            "PS_HW6_BatteryShutdownReset", "PS_HW6_BatteryShutdownTryPrepare",
+            "PS_HW6_BatteryShutdownReset", "PS_HW6_OwnerStateMachines_ProcessSoftwareShipment",
+            "PS_HW6_BatteryShutdownTryPrepare",
             "PS_HW6_SM_EvaluateBatteryPolicy"))
         typedef = re.search(r"typedef struct\s*\{[^}]*\}\s*PS_HW6_BatteryShutdownProbe;", header).group()
         tables = "\n".join(re.search(

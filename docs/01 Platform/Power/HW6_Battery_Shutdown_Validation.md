@@ -1,8 +1,10 @@
 # HW6 Battery Shutdown Validation
 
-Status: runtime and low-boot preparation/recovery pass. Prepared one-shot
-shipment and START restart pass at the bench points recorded below. Automatic
-low-battery shutdown, charger recovery and complete discharge protection remain pending.
+Status: preparation/recovery, automatic low-boot shipment, runtime-critical
+shipment and shortened unattended battery-wake shutdown pass at the bench
+points below. Returned-command failure handling has native regression coverage;
+permanent-failure fallback, charger recovery and complete discharge protection
+remain pending.
 
 Authority: [[PMIC_and_Power_Contract]], [[Power_and_Sleep_Policy]] and
 [[HW6_Hardware_Revision_Contract]]. This is a Platform bench test, not a package
@@ -12,8 +14,8 @@ capability or a cell-discharge experiment.
 
 First validate actual voltage classification and owner preparation with all
 automatic software-shipment gates OFF. The prepared one-shot shipment/restart
-result is recorded below; automatic shutdown, charger recovery and failure
-fallback remain later tests. A
+result and subsequent automatic-shutdown results are recorded below. Charger
+recovery and failure fallback remain later tests. A
 debugger disconnect or a preparation counter is not physical shutdown proof.
 
 The existing battery RTC test separately established one shortened wake and
@@ -21,7 +23,8 @@ successful due reading. It did not qualify the 30-minute interval or energy cost
 
 ## Setup
 
-- Flash the build containing battery preparation probe API 1 and bounded retries.
+- Use the matching build and helpers; preparation-only evidence used probe API 1,
+  while returned shipment-command result handling uses API 2.
   Use its matching ELF and helpers. Preserve the installed package.
 - Physically disconnect the cell. Connect the PPK2 to the board's battery input
   with verified polarity, in Source Meter mode. Begin at 3800 mV.
@@ -436,3 +439,60 @@ end, restore 3800 mV and flash normal Debug; confirm gates `0/0`. Editing or
 restoring source knobs alone does not change firmware already on the device.
 Final-write failure handling and charger interaction remain separate tests;
 successful automatic shipment alone is not complete discharge-protection proof.
+
+### Automatic-Shutdown Hardware Results
+
+On 2026-09-14, with the isolated automatic-shutdown build and cell/device USB
+disconnected, the user confirmed:
+
+- Source 3400 mV boot immediately entered shipment before visible screen work.
+  START at the same voltage repeated the shutdown; source 3800 mV booted normally.
+- After a healthy boot and STOP2 entry, source 3200 mV did not immediately cause
+  shutdown. One button wake returned to STOP2; a later wake caused automatic
+  shipment, with settled PPK2 current 4.7 uA. An arbitrary input wake does not
+  force a battery read; the monitor's read cadence still applies.
+- With the existing one-shot battery deadline shortened to 15 seconds, the
+  device woke from STOP2 without input and shut down at source 3200 mV. Settled
+  current was 4.8 uA. The user restored source 3800 mV afterward.
+
+These are physical current and observed behaviour results, not just request
+counters. No rail-voltage capture or production current limit is claimed.
+The 15-second result does not qualify a full 30-minute residency or its energy
+cost. These results precede the returned-command retry implementation below.
+
+### Returned Shipment Failure Handling
+
+The 2026-09-14 review found that the power loop cleared a shipment request and
+discarded the returned owner status. Prepared state then suppressed subsequent
+attempts, even after a failed final command. Normal STOP2 rejects the remaining
+shipment-preparation state, so that was not an automatic low-power fallback.
+
+Battery requests now use their own pending field and result handling in
+`thPower`. Failed calls clear prepared state and wait for a subsequent valid
+qualifying sample plus the existing retry spacing. Every attempted write must
+follow successful admission/quiesce, including retries. All preparations share
+the existing three-attempt episode budget; no separate unlimited write loop is
+introduced. Manual/START one-shots remain separate and are not retried by this
+policy. Valid recovery clears only the battery episode and its pending request.
+
+Probe API 2 exposes actual call attempts, failures, latest status and first
+failure. The queued policy status is NOT_RUN until the owner returns. HAL_OK
+means a returned command result, not measured power removal. The existing
+`__fw0_battery_power_prints.gdb` prints both preparation and shipment results;
+the manual one-shot helper now requires the matching API 2 build.
+
+Seven focused battery tests pass. Native tests compile the actual policy and
+shipment consumer with fake owner results and cover both gates-off/on, transient
+write failure, successful retry, failed re-quiesce, permanent failure exhaustion,
+invalid readings, wraparound spacing, healthy/boot-charge cancellation, and
+manual/START one-shot isolation. Normal Debug and BatteryShutdownTest builds
+pass: RAM 553488, ROM 881896, SRAM4 15480 bytes. No device flash or physical
+failure injection was performed for this increment.
+
+Exhaustion remains a reported fault condition, NOT an energy-safe terminal
+state. A bounded emergency low-power response still needs a separately reviewed
+design that does not force STOP2 past unsafe owners or resume package work.
+Persistent PMIC communication loss may prevent software shipment entirely;
+hardware battery-protection qualification is required independently. Do not
+enable normal automatic gates or claim complete discharge protection on the
+strength of these retry tests.

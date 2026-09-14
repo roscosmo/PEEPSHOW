@@ -6,7 +6,7 @@
 /* Host-only memory fixture. There is no PMIC driver or request consumer. */
 volatile uint32_t g_ps_hw6_pmic_software_ship_request;
 volatile PS_HW6_BatteryShutdownProbe g_ps_hw6_battery_shutdown_probe = {
-  .api_version = 1U, .reason = 3U, .attempts = 1U, .prepared = 1U
+  .api_version = 2U, .reason = 3U, .attempts = 1U, .prepared = 1U
 };
 volatile PS_HW6_OwnerStateMachineProbe g_ps_hw6_owner_sm_probe = {
   .magic = PS_HW6_OWNER_SM_PROBE_MAGIC,

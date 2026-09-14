@@ -157,13 +157,24 @@ all voltage thresholds remain unchanged.
 
 Each retry requires a subsequent valid critical reading, or a valid blocked
 no-VBUS boot reading. Failed/zero VBAT readings do not authorize an attempt.
-Successful preparation issues the existing gated shipment request once.
+Successful preparation issues one gated battery-owned shipment request. The
+final owner call reports its result back to battery policy. A returned failure
+invalidates prepared state and permits another attempt only after the existing
+retry spacing and a subsequent valid qualifying reading. Every retry repeats
+admission and owner quiesce; the same total preparation-attempt budget bounds
+the whole episode, including attempts following a failed shipment command.
+Manual/START shipment requests remain separate one-shot requests.
 Exhaustion retains the last preparation failure and leaves shutdown preparation
 owned; it must not fabricate an ACK, resume normal work, or bypass quiesce.
 There is no blocking delay, spin loop or automatic unlimited retry.
 
-The separate `g_ps_hw6_battery_shutdown_probe` (API 1) reports reason, attempts,
+The separate `g_ps_hw6_battery_shutdown_probe` (API 2) reports reason, attempts,
 prepared, exhausted, last status and next kernel tick for the current episode.
+It also reports battery shipment pending, actual owner-call attempts, returned
+failures, latest result and first failure. A queued request reports NOT_RUN,
+not successful execution. A returned HAL_OK is command completion, not proof
+that the rail fell. No repeat is scheduled from HAL_OK alone. The actual
+physical-shutdown test still requires current/rail evidence.
 It resets on initialization and existing valid recovery paths: runtime voltage
 above warning, boot voltage at/above restart-allow, or boot VBUS charge recovery.
 Warning/unknown samples do not replenish the attempt budget. After charge
@@ -254,15 +265,21 @@ raising voltage. Recovery is visually confirmed in this run; no post-recovery
 probe was supplied. Shipment remained disabled, so physical shutdown and
 discharge protection are not established by this pass.
 
-This does not change START handling, the final PMIC shipment write, or retry
-that write if it fails. Automatic critical/boot shipment remains disabled.
+That preparation fix did not change START handling or retry the final PMIC
+shipment write. The later API 2 result-handling increment above adds bounded
+re-preparation after a returned write failure; the driver primitive is unchanged.
+Automatic critical/boot shipment remains disabled in normal builds.
 Physical shipment failure handling and a bounded fallback after exhausted
 preparation still require qualification before enabling automatic protection.
 Native tests compile the actual preparation and battery evaluation functions
 with fake admission/quiesce boundaries, for gates both off and on. They cover
 admission failure, quiesce timeout, spacing, exhaustion, invalid measurements,
 single request after success, recovery, VBUS removal and kernel tick wraparound.
-Physical failure injection and controlled-voltage shutdown remain untested.
+Controlled-voltage automatic low-boot and runtime shutdown subsequently passed
+in the isolated test build, including a shortened unattended RTC wake to
+shipment at 4.8 uA; see [[HW6_Battery_Shutdown_Validation]]. Physical failure
+injection, permanent-failure low-power behaviour and independent hardware
+protection remain unqualified.
 
 Verification for this preparation fix: 107 firmware tests and the Debug build
 pass; generated target-profile and whitespace checks pass. Build usage is

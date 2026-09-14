@@ -826,12 +826,12 @@ static void PS_HW6_BatteryPolicyRequestSoftwareShipment(uint32_t boot_check)
     g_ps_hw6_owner_sm_probe.battery_policy_software_ship_last_tick =
       (uint32_t)tx_time_get();
     g_ps_hw6_owner_sm_probe.battery_policy_software_ship_last_status =
-      (uint32_t)HAL_OK;
+      PS_HW6_OWNER_SM_STATUS_NOT_RUN;
     g_ps_hw6_owner_sm_probe.battery_policy_state =
       PS_HW6_POWER_BATTERY_POLICY_SHIP_REQUESTED;
     g_ps_hw6_owner_sm_probe.battery_policy_last_event =
       PS_HW6_POWER_BATTERY_EVENT_SHIP_REQUEST;
-    g_ps_hw6_pmic_software_ship_request = 1UL;
+    g_ps_hw6_battery_shutdown_probe.ship_pending = 1UL;
   }
   else
   {
@@ -847,8 +847,55 @@ static void PS_HW6_BatteryShutdownReset(void)
 {
   memset((void *)&g_ps_hw6_battery_shutdown_probe, 0,
          sizeof(g_ps_hw6_battery_shutdown_probe));
-  g_ps_hw6_battery_shutdown_probe.api_version = 1UL;
+  g_ps_hw6_battery_shutdown_probe.api_version = 2UL;
   g_ps_hw6_battery_shutdown_probe.last_status = PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_battery_shutdown_probe.ship_last_status = PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  g_ps_hw6_battery_shutdown_probe.ship_first_failure = PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+}
+
+void PS_HW6_OwnerStateMachines_ProcessSoftwareShipment(void)
+{
+  volatile PS_HW6_BatteryShutdownProbe *probe = &g_ps_hw6_battery_shutdown_probe;
+  HAL_StatusTypeDef status;
+
+  if (probe->ship_pending == 0UL)
+  {
+    if (g_ps_hw6_pmic_software_ship_request != 0UL)
+    {
+      g_ps_hw6_pmic_software_ship_request = 0UL;
+      (void)PS_HW6_PowerOwner_EnterSoftwareShipmentMode();
+    }
+    return;
+  }
+
+  probe->ship_pending = 0UL;
+  probe->ship_attempts++;
+  probe->ship_last_status = PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  status = PS_HW6_PowerOwner_EnterSoftwareShipmentMode();
+  probe->ship_last_status = (uint32_t)status;
+  g_ps_hw6_owner_sm_probe.battery_policy_software_ship_last_status = (uint32_t)status;
+  if (status == HAL_OK)
+  {
+    return;
+  }
+
+  if (probe->ship_failures == 0UL)
+  {
+    probe->ship_first_failure = (uint32_t)status;
+  }
+  probe->ship_failures++;
+  /* A later valid reading must repeat admission/quiesce before another write. */
+  probe->prepared = 0UL;
+  if (probe->attempts >= (uint32_t)KNOB_POWER_BATTERY_SHUTDOWN_PREP_ATTEMPTS)
+  {
+    probe->exhausted = 1UL;
+    probe->next_tick = 0UL;
+  }
+  else
+  {
+    probe->next_tick = (uint32_t)tx_time_get() +
+      PS_HW6_SM_MsToTicks((uint32_t)KNOB_POWER_BATTERY_SHUTDOWN_PREP_RETRY_MS);
+  }
 }
 
 static void PS_HW6_BatteryShutdownTryPrepare(uint32_t reason, uint32_t boot_check)

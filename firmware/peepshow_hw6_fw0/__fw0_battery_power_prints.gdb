@@ -45,6 +45,10 @@ printf "barrier ack stat A/I/D/S/ST/C = 0x%x / 0x%x / 0x%x / 0x%x / 0x%x / 0x%x\
 printf "ship gates crit/boot  = %u / %u\n", $sm->battery_policy_critical_ship_enabled, $sm->battery_policy_boot_ship_enabled
 printf "battery preparation API/reason/attempts/prepared/exhausted/status/next = %u / %u / %u / %u / %u / 0x%x / %u\n", g_ps_hw6_battery_shutdown_probe.api_version, g_ps_hw6_battery_shutdown_probe.reason, g_ps_hw6_battery_shutdown_probe.attempts, g_ps_hw6_battery_shutdown_probe.prepared, g_ps_hw6_battery_shutdown_probe.exhausted, g_ps_hw6_battery_shutdown_probe.last_status, g_ps_hw6_battery_shutdown_probe.next_tick
 printf "Preparation success is admission plus owner quiesce, not physical shipment. Exhaustion preserves the last failure; retries do not bypass quiesce. Fields describe the current battery shutdown episode.\n"
+if g_ps_hw6_battery_shutdown_probe.api_version == 2
+  printf "battery shipment pending/attempts/failures/status/first failure = %u / %u / %u / 0x%x / 0x%x\n", g_ps_hw6_battery_shutdown_probe.ship_pending, g_ps_hw6_battery_shutdown_probe.ship_attempts, g_ps_hw6_battery_shutdown_probe.ship_failures, g_ps_hw6_battery_shutdown_probe.ship_last_status, g_ps_hw6_battery_shutdown_probe.ship_first_failure
+  printf "Shipment attempts count actual owner calls, not power-off proof. Failed calls require fresh qualifying voltage and re-preparation within the same attempt budget. Exhaustion is NOT a low-power fallback.\n"
+end
 printf "ship req/skip/status/tick = %u / %u / 0x%x / %u\n", $sm->battery_policy_software_ship_request_count, $sm->battery_policy_software_ship_skipped_count, $sm->battery_policy_software_ship_last_status, $sm->battery_policy_software_ship_last_tick
 printf "power state/pmic state = %u / %u\n", $sm->current_state[0], $sm->current_state[1]
 printf "ui page/shutdown/count = %u / %u / %u\n", $ui->current_page, $ui->shutdown_state, $ui->shutdown_event_count

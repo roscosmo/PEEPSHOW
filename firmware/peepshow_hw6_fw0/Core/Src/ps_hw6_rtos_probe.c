@@ -12476,11 +12476,11 @@ static void PS_HW6_RTOS_OwnerEntry(ULONG thread_input)
       PS_HW6_RTOS_RunPowerWorkflow();
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
-        (g_ps_hw6_pmic_software_ship_request != 0UL) &&
+        ((g_ps_hw6_pmic_software_ship_request != 0UL) ||
+         (g_ps_hw6_battery_shutdown_probe.ship_pending != 0UL)) &&
         (g_ps_hw6_rtos_probe.runtime_complete != 0UL))
     {
-      g_ps_hw6_pmic_software_ship_request = 0UL;
-      (void)PS_HW6_PowerOwner_EnterSoftwareShipmentMode();
+      PS_HW6_OwnerStateMachines_ProcessSoftwareShipment();
     }
     if ((owner_id == PS_HW6_RTOS_OWNER_POWER) &&
         (g_ps_hw6_power_stop2_eligibility_request != 0UL) &&

@@ -7,7 +7,7 @@ set $sm = &g_ps_hw6_owner_sm_probe
 set $owner = &g_ps_hw6_owner_probe
 set $prep = &g_ps_hw6_battery_shutdown_probe
 set $timing = &g_ps_hw6_battery_quiesce_timing_probe
-if $sm->magic != 0x48364653 || $sm->version != 85 || $owner->magic != 0x48364f57 || $owner->version != 46 || $prep->api_version != 1 || $timing->api_version != 3
+if $sm->magic != 0x48364653 || $sm->version != 85 || $owner->magic != 0x48364f57 || $owner->version != 46 || $prep->api_version != 2 || $timing->api_version != 3
   printf "NOT armed: mismatched firmware/probes. Use the matching ELF.\n"
   set $ship_ok = 0
 end
