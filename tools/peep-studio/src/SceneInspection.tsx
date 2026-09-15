@@ -46,7 +46,6 @@ import {
   Plus,
   Route,
   RotateCcw,
-  Triangle,
   Trash2,
   X,
   Volume2,
@@ -107,6 +106,20 @@ import type {
   StateVariable,
   WaitingVisual,
 } from "./types";
+
+const SCENE_TOOL_ICONS = {
+  exitToPeepOS: "/ui-icons/exit_to_peepos.png",
+  gameEntry: "/ui-icons/game_entry.png",
+  goToScene: "/ui-icons/go_to_scene.png",
+  newScene: "/ui-icons/new_scene.png",
+  newState: "/ui-icons/new_state.png",
+  sceneEntry: "/ui-icons/scene_entry.png",
+  sceneExit: "/ui-icons/scene_exit.png",
+} as const;
+type SceneToolIconName = keyof typeof SCENE_TOOL_ICONS;
+function SceneToolIcon({ name, className = "" }: { name: SceneToolIconName; className?: string }) {
+  return <img className={`scene-tool-icon ${className}`.trim()} src={SCENE_TOOL_ICONS[name]} alt="" aria-hidden="true" />;
+}
 
 export type SceneSelection =
   | { kind: "project" }
@@ -877,6 +890,7 @@ function SceneEndpointNode({ data, selected }: NodeProps<Node<SceneEndpointNodeD
         }}
       >
         <Handle id="system-exit-in" type="target" position={Position.Left} isConnectable={canEdit} />
+        <SceneToolIcon name="exitToPeepOS" className="state-scene-endpoint-icon" />
         <span>System action</span>
         <strong>{endpoint.label}</strong>
         <small>{endpoint.detail}</small>
@@ -899,8 +913,8 @@ function SceneEndpointNode({ data, selected }: NodeProps<Node<SceneEndpointNodeD
         }
       }}
     >
-      <span className="scene-boundary-direction" aria-hidden="true">
-        <Triangle size={36} strokeWidth={1.5} fill="currentColor" />
+      <span className="scene-boundary-icon-badge" aria-hidden="true">
+        <SceneToolIcon name={isEntry ? "sceneEntry" : "sceneExit"} />
       </span>
       {isEntry ? (
         <Handle
@@ -2443,7 +2457,8 @@ function PackageEntryNode({ data, selected }: NodeProps<Node<PackageEntryNodeDat
         }
       }}
     >
-      <strong>Start</strong>
+      <SceneToolIcon name="gameEntry" className="package-entry-icon" />
+      <span className="sr-only">Package entry</span>
       <Handle
         className={`package-entry-handle ${outputSide}`}
         id="package-entry-out"
@@ -2480,8 +2495,8 @@ function SceneReferenceNode({ data, selected }: NodeProps<Node<SceneReferenceNod
         }
       }}
     >
-      <span className="scene-boundary-direction" aria-hidden="true">
-        <Triangle size={36} strokeWidth={1.5} fill="currentColor" />
+      <span className="scene-boundary-icon-badge" aria-hidden="true">
+        <SceneToolIcon name="goToScene" />
       </span>
       <strong>{graphNode.label.replace(/^Go to /, "")}</strong>
       <Handle
@@ -3298,6 +3313,7 @@ export function StateGraphView({
           className="button secondary"
           disabled={!canCreateState}
           title="Add state"
+          aria-label="Add state"
           type="button"
           onClick={() => {
             const stateNodes = nodes.flatMap((node) => graphNodeById.has(node.id)
@@ -3312,14 +3328,15 @@ export function StateGraphView({
             onCreateState(scene.scene_id, position.x, position.y);
           }}
         >
-          <Plus size={14} aria-hidden="true" />
-          Add state
+          <SceneToolIcon name="newState" className="graph-panel-button-icon" />
+          <span className="sr-only">Add state</span>
         </button>
         {!graph.endpoints.some((endpoint) => endpoint.kind === "system") && (
           <button
             className="button secondary"
             disabled={!canEdit}
             title="Place Exit to PeepOS"
+            aria-label="Place Exit to PeepOS"
             type="button"
             onClick={() => {
               const stateNodes = nodes.flatMap((node) => graphNodeById.has(node.id)
@@ -3335,8 +3352,8 @@ export function StateGraphView({
               onMoveStateNode(scene.scene_id, "system-exit", position.x, position.y);
             }}
           >
-            <LogOut size={14} aria-hidden="true" />
-            Exit to PeepOS
+            <SceneToolIcon name="exitToPeepOS" className="graph-panel-button-icon" />
+            <span className="sr-only">Exit to PeepOS</span>
           </button>
         )}
       </Panel>
@@ -3822,7 +3839,7 @@ export function SceneFlowView({
             aria-label="New scene"
             onClick={() => setPaletteTool((current) => current === "scene" ? null : "scene")}
           >
-            <Plus size={18} aria-hidden="true" />
+            <SceneToolIcon name="newScene" className="scene-flow-palette-icon" />
           </button>
           <button
             className={paletteTool === "reference" ? "active" : ""}
@@ -3832,7 +3849,7 @@ export function SceneFlowView({
             aria-label="Add Go To reference"
             onClick={() => setPaletteTool((current) => current === "reference" ? null : "reference")}
           >
-            <ExternalLink size={17} aria-hidden="true" />
+            <SceneToolIcon name="goToScene" className="scene-flow-palette-icon" />
           </button>
         </div>
         {paletteTool === "scene" && (
@@ -3962,7 +3979,7 @@ export function SceneFlowInspector({
     const entryScene = scenes.find((item) => item.scene_id === entrySceneId);
     return (
       <section className="inspector-section selected-record">
-        <h3><Play size={14} aria-hidden="true" /> Package entry</h3>
+        <h3><SceneToolIcon name="gameEntry" className="inspector-heading-icon" /> Package entry</h3>
         <div className="compact-grid">
           <div>
             <span>Connected scene</span>
@@ -4371,7 +4388,7 @@ export function SceneAuthoringInspector({
       {waiting !== null && <WaitingInspector waiting={waiting} />}
       {selection.kind === "systemExit" && (
         <section className="inspector-section selected-record">
-          <h3><LogOut size={14} aria-hidden="true" /> Exit to PeepOS</h3>
+          <h3><SceneToolIcon name="exitToPeepOS" className="inspector-heading-icon" /> Exit to PeepOS</h3>
           <div className="compact-grid">
             <div>
               <span>Destination</span>

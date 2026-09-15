@@ -24,11 +24,9 @@ import {
   Plus,
   RectangleHorizontal,
   RotateCcw,
-  Redo2,
   SquareMousePointer,
   Trash2,
   Type,
-  Undo2,
   Volume2,
   X,
   ZoomIn,
@@ -124,6 +122,8 @@ const TOPBAR_ICONS = {
   saveAs: "/topbar-icons/save_as.png",
   sceneFlow: "/topbar-icons/Scene_flow.png",
   settings: "/topbar-icons/settings.png",
+  undo: "/topbar-icons/undo.png",
+  redo: "/topbar-icons/redo.png",
 } as const;
 const WORKSPACE_MODES: Array<{ mode: WorkspaceMode; label: string; icon: string }> = [
   { mode: "scene-flow", label: "Scene flow", icon: TOPBAR_ICONS.sceneFlow },
@@ -8041,14 +8041,6 @@ export default function App() {
             <img className="topbar-icon" src={TOPBAR_ICONS.saveAs} alt="" aria-hidden="true" />
             <span className="sr-only">Save as</span>
           </button>
-          <div className="topbar-history" aria-label="Edit history">
-            <button className="icon-button" onClick={() => void stepHistory("project.undo")} disabled={!canUndo || project === null || busy !== null || service?.operations.includes("project.undo") !== true} title="Undo">
-              <Undo2 size={18} aria-hidden="true" />
-            </button>
-            <button className="icon-button" onClick={() => void stepHistory("project.redo")} disabled={!canRedo || project === null || busy !== null || service?.operations.includes("project.redo") !== true} title="Redo">
-              <Redo2 size={18} aria-hidden="true" />
-            </button>
-          </div>
           <button className="topbar-button primary" onClick={buildPackage} disabled={!buildReady || busy !== null} title="Build" aria-label="Build">
             <img className="topbar-icon" src={TOPBAR_ICONS.build} alt="" aria-hidden="true" />
             <span className="sr-only">Build</span>
@@ -8065,6 +8057,14 @@ export default function App() {
         </div>
 
         <div className="toolbar-actions topbar-workspace-actions" aria-label="Workspace actions">
+          <div className="topbar-history" aria-label="Edit history">
+            <button className="icon-button" onClick={() => void stepHistory("project.undo")} disabled={!canUndo || project === null || busy !== null || service?.operations.includes("project.undo") !== true} title="Undo" aria-label="Undo">
+              <img className="topbar-history-icon" src={TOPBAR_ICONS.undo} alt="" aria-hidden="true" />
+            </button>
+            <button className="icon-button" onClick={() => void stepHistory("project.redo")} disabled={!canRedo || project === null || busy !== null || service?.operations.includes("project.redo") !== true} title="Redo" aria-label="Redo">
+              <img className="topbar-history-icon" src={TOPBAR_ICONS.redo} alt="" aria-hidden="true" />
+            </button>
+          </div>
           {renderModeTabs()}
           <button className={`topbar-button ${settingsOpen ? "active" : ""}`} type="button" title="Settings" aria-label="Settings"
             aria-pressed={settingsOpen} aria-controls="studio-inspector"

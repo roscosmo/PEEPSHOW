@@ -56,11 +56,25 @@ button:focus-visible {
   object-fit: contain;
 }
 
+.scene-tool-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
 .button .studio-ui-icon,
 .inspector-section h3 .studio-ui-icon,
+.inspector-section h3 .scene-tool-icon,
 .asset-library-tabs .studio-ui-icon {
   width: 17px;
   height: 17px;
+}
+
+.inspector-section h3 .inspector-heading-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .studio-ui-icon-empty {
@@ -392,6 +406,13 @@ button:focus-visible {
   background: transparent;
   color: inherit;
   -webkit-app-region: no-drag;
+}
+
+.topbar-history-icon {
+  display: block;
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
 }
 
 .service-state {
@@ -4287,6 +4308,9 @@ button:focus-visible {
 .state-scene-endpoint.system {
   border-color: #8b1e3f;
   background: #fff0f3;
+  min-height: 78px;
+  justify-items: center;
+  text-align: center;
 }
 
 .state-scene-endpoint.selected {
@@ -4304,6 +4328,12 @@ button:focus-visible {
 .state-scene-endpoint.system > strong {
   overflow-wrap: anywhere;
   font-size: 13px;
+}
+
+.state-scene-endpoint-icon {
+  width: 30px;
+  height: 30px;
+  margin-bottom: 2px;
 }
 
 .state-scene-endpoint.system .react-flow__handle {
@@ -4333,33 +4363,30 @@ button:focus-visible {
   white-space: nowrap;
 }
 
-.scene-boundary-direction {
+.scene-boundary-icon-badge {
   position: absolute;
-  top: -18px;
+  top: -48px;
   z-index: 2;
   display: grid;
-  width: 36px;
-  height: 36px;
-  color: #40c057;
+  width: 88px;
+  height: 88px;
+  place-items: center;
   line-height: 0;
   pointer-events: none;
 }
 
-.scene-boundary-direction svg {
-  display: block;
-  fill: currentcolor;
-  stroke: #303733;
+.scene-boundary-icon-badge .scene-tool-icon {
+  width: 88px;
+  height: 88px;
+  filter: drop-shadow(0 3px 4px rgb(20 28 24 / 18%));
 }
 
-.state-scene-endpoint.entry .scene-boundary-direction {
-  left: -14px;
-  transform: rotate(135deg);
+.state-scene-endpoint.entry .scene-boundary-icon-badge {
+  left: -42px;
 }
 
-.state-scene-endpoint.exit .scene-boundary-direction {
-  right: -14px;
-  color: #fa5252;
-  transform: rotate(45deg);
+.state-scene-endpoint.exit .scene-boundary-icon-badge {
+  right: -42px;
 }
 
 .state-scene-endpoint.boundary .scene-boundary-local-handle {
@@ -4575,13 +4602,13 @@ button:focus-visible {
 .package-entry-node {
   position: relative;
   display: grid;
-  width: 108px;
-  height: 108px;
+  width: 224px;
+  height: 224px;
   place-items: center;
-  border: 2px solid #2c312e;
-  border-radius: 50%;
-  background: #40c057;
-  color: #ffffff;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: #27302b;
   cursor: pointer;
   font-size: 24px;
   font-weight: 900;
@@ -4589,11 +4616,11 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
-.package-entry-node > strong {
-  color: #ffffff;
-  font-size: inherit;
-  font-weight: inherit;
-  line-height: 1;
+.package-entry-icon {
+  width: 216px;
+  height: 216px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 9px rgb(20 28 24 / 18%));
 }
 
 .package-entry-node.selected,
@@ -4639,6 +4666,18 @@ button:focus-visible {
 
 .scene-reference-node {
   cursor: pointer;
+  width: 260px;
+  min-height: 104px;
+  padding: 16px 28px;
+}
+
+.scene-reference-node > strong {
+  font-size: 18px;
+}
+
+.scene-reference-node .scene-boundary-icon-badge {
+  top: -48px;
+  right: -42px;
 }
 
 .scene-exit-picker {
@@ -5589,26 +5628,31 @@ button:focus-visible {
 
 .scene-flow-tool-palette {
   display: grid;
-  gap: 6px;
-  padding: 7px;
+  gap: 10px;
+  padding: 10px;
   border: 1px solid rgb(25 32 29 / 24%);
-  border-radius: 8px;
+  border-radius: 10px;
   background: rgb(24 30 27 / 92%);
   box-shadow: 0 12px 26px rgb(25 32 29 / 20%);
 }
 
 .scene-flow-tool-palette button {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 96px;
+  height: 96px;
   align-items: center;
   justify-items: center;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 10px;
   background: transparent;
   color: #f2f5f3;
   cursor: pointer;
+}
+
+.scene-flow-palette-icon {
+  width: 78px;
+  height: 78px;
 }
 
 .scene-flow-tool-palette button:hover:not(:disabled),
@@ -5690,19 +5734,42 @@ button:focus-visible {
 }
 
 .state-graph-toolbar.react-flow__panel {
-  display: flex;
-  gap: 6px;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgb(25 32 29 / 24%);
+  border-radius: 10px;
+  background: rgb(24 30 27 / 92%);
+  box-shadow: 0 12px 26px rgb(25 32 29 / 20%);
   z-index: 30;
 }
 
 .state-graph-toolbar .button {
-  min-height: 34px;
-  gap: 6px;
-  padding: 0 10px;
+  display: grid;
+  width: 96px;
+  height: 96px;
+  min-height: 96px;
+  place-items: center;
+  padding: 0;
+  border-color: transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #f2f5f3;
+}
+
+.state-graph-toolbar .button:hover:not(:disabled),
+.state-graph-toolbar .button:focus-visible {
+  border-color: rgb(255 255 255 / 24%);
+  background: rgb(255 255 255 / 14%);
+}
+
+.graph-panel-button-icon {
+  width: 78px;
+  height: 78px;
 }
 
 .state-graph-status.react-flow__panel {
-  margin-top: 52px;
+  margin-top: 232px;
 }
 
 .graph-selection-summary {
@@ -7615,4 +7682,22 @@ button:focus-visible {
   border-color: transparent;
   background: #c42b1c;
   color: #ffffff;
+}
+
+.studio-shell[data-theme="dark"] .state-graph-toolbar.react-flow__panel {
+  border-color: rgb(25 32 29 / 24%);
+  background: rgb(24 30 27 / 92%);
+  color: #f2f5f3;
+}
+
+.studio-shell[data-theme="dark"] .state-graph-toolbar .button {
+  border-color: transparent;
+  background: transparent;
+  color: #f2f5f3;
+}
+
+.studio-shell[data-theme="dark"] .state-graph-toolbar .button:hover:not(:disabled),
+.studio-shell[data-theme="dark"] .state-graph-toolbar .button:focus-visible {
+  border-color: rgb(255 255 255 / 24%);
+  background: rgb(255 255 255 / 14%);
 }
