@@ -11,9 +11,9 @@ remain pending.
 Normal Debug now enables automatic critical-battery and boot-low-battery
 shipment. START software shipment remains off. This promotes the tested
 battery policy without changing voltage thresholds, wake periods, retry
-budgets, physical owner checks or fault fallback. The normal-build hardware
-confirmation is pending; earlier automatic-shutdown evidence used the isolated
-BatteryShutdownTest preset.
+budgets, physical owner checks or fault fallback. Normal-build low-boot and
+shortened unattended critical-shutdown/recovery checks now pass by user bench
+observation; earlier evidence used the isolated BatteryShutdownTest preset.
 
 Verification: nine focused battery tests pass, including actual policy tests
 with enabled/disabled gates, schema/generated-default agreement and CMake
@@ -47,6 +47,23 @@ Actual healthy sleep cadence remains 30 minutes unless deliberately shortened
 for this test. Earlier fault-test wake peaks were only visually estimated;
 the user clarified that the apparent 10-second spacing was not a measurement.
 Regular wakes were confirmed, but exact wall-clock cadence remains unmeasured.
+
+### Normal-Build Bench Confirmation
+
+Against the promoted normal-build defaults committed at `7a97e3858b8fab5a0e39c216b6c0bbcd7a5fb97f`,
+the user confirmed shutdown at 3.4 V and normal boot on START at 3.8 V.
+For the separate shortened battery-wake test, the user followed the STOP2
+procedure above and reported shutdown after approximately 15 seconds, then
+confirmed normal boot on START after restoring 3.8 V. These are physical bench
+observations, not inferred from debugger disconnection or queue counters.
+No new numeric shipment-current, rail trace or post-shutdown RAM capture was
+provided for this normal-build confirmation. The 15-second deadline is a test
+override, not a change to the 30-minute healthy-battery default.
+
+This closes the normal-build low-boot and unattended critical-shutdown/restart
+checks at those bench points. It does not qualify exact long-interval timing,
+charger-connected recovery, permanently failed hardware or complete cell
+discharge protection.
 
 Authority: [[PMIC_and_Power_Contract]], [[Power_and_Sleep_Policy]] and
 [[HW6_Hardware_Revision_Contract]]. This is a Platform bench test, not a package

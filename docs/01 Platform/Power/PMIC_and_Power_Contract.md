@@ -136,8 +136,10 @@ As of the 2026-09-15 integration checkpoint, normal HW6 FW0 defaults enable
 `power_critical_software_ship_enable` and `power_boot_low_battery_ship_enable`.
 The controlled bench tests established low-boot and runtime-critical shipment,
 shortened unattended battery-wake shutdown, synthetic failure backoff and
-valid-voltage recovery. Normal-build hardware confirmation follows this
-promotion; permanent physical failures and charger recovery remain unqualified.
+valid-voltage recovery. The user also confirmed the promoted normal build's
+3.4 V boot shutdown, shortened unattended critical shutdown after approximately
+15 seconds, and normal START boot after restoring 3.8 V. Permanent physical
+failures, exact long-interval cadence and charger recovery remain unqualified.
 `power_start_software_ship_enable` remains false. Voltage thresholds and battery
 wake intervals are unchanged: warning 3500 mV, critical 3300 mV, restart 3600 mV,
 healthy sleep checks 30 minutes and warning/failure checks 60 seconds.
