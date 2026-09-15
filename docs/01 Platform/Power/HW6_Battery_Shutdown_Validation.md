@@ -6,6 +6,14 @@ points below. Returned-command failure handling has native regression coverage;
 permanent-failure fallback, charger recovery and complete discharge protection
 remain pending.
 
+Charger-connected recovery and real-cell shutdown/charging measurements are
+deferred until the PPK2 Ammeter-mode battery harness is available. Scope and
+prerequisites are recorded in the
+[PPK2 battery-harness test plan](PMIC_and_Power_Contract.md#deferred-ppk2-battery-harness-tests-2026-09-15).
+The conservative `100 mA` baseline remains unchanged. These pending hardware
+tests do not block the return to V2 package integration and are not recorded
+as passes.
+
 ## Current Build Defaults (2026-09-15)
 
 Normal Debug now enables automatic critical-battery and boot-low-battery

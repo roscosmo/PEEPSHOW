@@ -771,6 +771,56 @@ Rules:
 
 ---
 
+## Deferred PPK2 Battery-Harness Tests (2026-09-15)
+
+Charger-connected recovery and real-cell current characterization are deferred
+until a reviewed battery harness supports measurement with PPK2 in Ammeter
+mode, not Source Meter mode. This is follow-up Platform validation, not a
+blocker for continuing V2 package integration. The conservative `100 mA`
+baseline remains unchanged; no higher-current profile is approved by this plan.
+
+Harness prerequisites:
+
+- Confirm cell identity and approved limits, polarity, protection, connector
+  wiring, NTC contact, and USB/debugger ground and power paths before use.
+- Qualify the instrument and wiring for charging and discharging current
+  directions, range, burden voltage and measurement offset. Do not assume one
+  PPK2 connection measures both directions correctly; use an appropriate
+  additional measurement method where required. Do not drive the real cell
+  from PPK2 Source Meter output.
+- Record where current is measured. Net battery current, USB input current,
+  programmed charging current and the VBUS input limit are different quantities;
+  system load must be accounted for when comparing them.
+
+Planned tests:
+
+1. Measure real-cell active, STOP2, periodic battery-check and shipment current,
+   including energy per wake and elapsed wake intervals using log timestamps.
+   Record debugger attachment and repeat relevant measurements detached.
+2. Observe battery voltage and current through low-battery shutdown, attempted
+   restart and recovery. Repeat with charger absent/present; distinguish
+   battery isolation from a system still powered by USB. Do not deliberately
+   deep-discharge the cell to exercise firmware thresholds.
+3. Check charger attachment while low-boot blocked or shipped, recovery through
+   the restart threshold, and detachment while still low. Confirm there is no
+   sustained awake drain or repeated boot/shutdown loop.
+4. Characterize charging at the retained baseline with active and sleeping
+   system loads: battery/USB current, cell voltage and temperature, charger
+   state, taper, termination and recharge. Validate temperature protection
+   through a separately reviewed controlled test, not by overheating the cell.
+5. Consider staged charge-current increases only after the actual cell limits,
+   PMIC limits, USB source budget, system load and thermal results support them.
+   Any approved setting must use the knobs/profile path and verified register
+   readback. The goal is a qualified charge rate, not simply the cell maximum.
+
+Retain the wiring diagram, cell/source identification, firmware revision and
+settings, instrument configuration, timestamped PPK2 logs, voltage/temperature
+measurements and PMIC status/readbacks with each result. Earlier isolated-supply
+shutdown passes remain valid for their stated scope; they do not establish
+charger recovery, charging performance or complete discharge protection.
+
+---
+
 ## Failure Policy
 
 PMIC/power faults are potentially fatal.
