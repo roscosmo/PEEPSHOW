@@ -608,6 +608,7 @@ export type ServiceHello = {
   state_scene_graph: {
     scene_timers?: { event_type: string; start_policies: string[]; actions: string[] };
     command_batch_maximum: number;
+    target_scene_actions?: string[];
     scene_commands: string[];
     scene_flow_commands: string[];
     peepos_trigger_commands: string[];

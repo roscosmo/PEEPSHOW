@@ -6,12 +6,12 @@ import { createTimerCommands, deleteTimerCommands, SCENE_TIMER, STATE_TIMER, tim
 import type { TimerCommand } from "./timerAuthoring";
 import type { AssetRecord, AudioCueRecord, PlacementOwnership, SceneDocument, ServiceHello, StateAction, StateGuard, StateRoute } from "./types";
 
-export function TimerInspector({ scene, scenes = [], service, profileId, selection, onSelect, supports, onApply, ownership, assets, audioCues, canConnectScenes = false, sceneExitActionKinds = [] }: {
+export function TimerInspector({ scene, scenes = [], service, profileId, selection, onSelect, supports, onApply, ownership, assets, audioCues, canConnectScenes = false, sceneExitActionKinds = [], routeActionKinds = [] }: {
   scene: SceneDocument; service: ServiceHello | null; profileId: string;
   selection: SceneSelection; onSelect: (selection: SceneSelection) => void; supports: (kind: string) => boolean;
   onApply: (commands: TimerCommand[]) => Promise<boolean>;
   ownership: PlacementOwnership["scenes"][string] | null; assets: AssetRecord[]; audioCues: AudioCueRecord[];
-  canConnectScenes?: boolean; sceneExitActionKinds?: string[];
+  canConnectScenes?: boolean; sceneExitActionKinds?: string[]; routeActionKinds?: string[];
   scenes?: SceneDocument[];
 }) {
   const section = useRef<HTMLElement>(null);
@@ -160,6 +160,7 @@ export function TimerInspector({ scene, scenes = [], service, profileId, selecti
       <h4>Then</h4>
       <EditableActionList sceneObjects sceneId={scene.scene_id} route={viewRecord} variables={scene.variables ?? []}
         allowedActionKinds={record.target_scene ? sceneExitActionKinds : undefined}
+        routeActionKinds={routeActionKinds}
         targetElements={baseObjectRows(scene, ownership)} waitingVisuals={[]} assets={assets} audioCues={audioCues}
         localActionsAllowed canAddActions={record.actions.length < (service?.state_scene_graph.limits.actions_per_route ?? 0)}
         canEdit={supports("object_actions.set")} timers={sceneTimers} timerActionKinds={timerActions}

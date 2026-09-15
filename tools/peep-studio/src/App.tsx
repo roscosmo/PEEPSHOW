@@ -4290,6 +4290,10 @@ export default function App() {
   const localCommandAllowed = (command: string) => objectSceneSelected
     ? busy === null && supportsLocalGraphCommand(service, selectedSceneCapability, command)
     : canEditSelectedScene;
+  const audioRouteActionKinds = service?.state_scene_audio.host_package_support === true && service.state_scene_audio.route_action
+    ? [service.state_scene_audio.route_action]
+    : [];
+  const targetSceneActionKinds = service?.state_scene_graph.target_scene_actions ?? audioRouteActionKinds;
   const canEditLocalGraph = ["route.create_trigger", "route.rebind_trigger", "editor.state_graph.set_route_layout",
     "editor.state_graph.delete_system_exit"].every(localCommandAllowed)
     && (!objectSceneSelected || ["state", "system_exit"].every(kind =>
@@ -8544,7 +8548,8 @@ export default function App() {
           {!projectRootSelected && workspaceMode === "logic" && (
             <SceneAuthoringInspector
               canConnectScenes={canConnectSelectedScene}
-              sceneExitActionKinds={objectSceneSelected ? selectedSceneCapability?.scene_exit_action_kinds ?? [] : ["play_sfx"]}
+              sceneExitActionKinds={objectSceneSelected ? selectedSceneCapability?.scene_exit_action_kinds ?? [] : targetSceneActionKinds}
+              routeActionKinds={audioRouteActionKinds}
               timerActionKinds={objectSceneSelected ? service?.state_scene_graph.scene_timers?.actions ?? [] : []}
               onDeleteRoute={deleteLegacySceneRoute}
               localCommandAllowed={localCommandAllowed}
@@ -8589,6 +8594,7 @@ export default function App() {
           {!projectRootSelected && workspaceMode === "logic" && objectSceneSelected && selectedSceneDocument && (
             <TimerInspector key={selectedSceneDocument.scene_id} scene={selectedSceneDocument} scenes={scenes} service={service}
               canConnectScenes={canConnectSelectedScene} sceneExitActionKinds={selectedSceneCapability?.scene_exit_action_kinds ?? []}
+              routeActionKinds={audioRouteActionKinds}
               profileId={project?.summary.target_profile ?? ""} selection={sceneSelection} onSelect={setSceneSelection}
               supports={kind => kind === "object_actions.set"
                 ? busy === null && supportsObjectCommand(service, selectedSceneCapability, kind) : localCommandAllowed(kind)}

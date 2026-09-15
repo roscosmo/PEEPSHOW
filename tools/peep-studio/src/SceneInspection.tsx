@@ -4195,6 +4195,7 @@ function SceneNodeInspector({
 export function SceneAuthoringInspector({
   canConnectScenes = false,
   sceneExitActionKinds = ["play_sfx"],
+  routeActionKinds = [],
   timerActionKinds = [],
   onDeleteRoute,
   localCommandAllowed,
@@ -4292,6 +4293,7 @@ export function SceneAuthoringInspector({
   localCommandAllowed?: (command: string) => boolean;
   onDeleteRoute?: (sceneId: string, routeId: string) => Promise<void>;
   timerActionKinds?: string[];
+  routeActionKinds?: string[];
   canConnectScenes?: boolean;
   sceneExitActionKinds?: string[];
 }) {
@@ -4339,6 +4341,7 @@ export function SceneAuthoringInspector({
         <RouteInspector
           canConnectScenes={canConnectScenes}
           sceneExitActionKinds={sceneExitActionKinds}
+          routeActionKinds={routeActionKinds}
           timerActionKinds={timerActionKinds}
           onDeleteRoute={onDeleteRoute}
           localCommandAllowed={localCommandAllowed}
@@ -4983,6 +4986,7 @@ function SceneExitInspector({
 function RouteInspector({
   canConnectScenes = false,
   sceneExitActionKinds = ["play_sfx"],
+  routeActionKinds = [],
   timerActionKinds = [],
   onDeleteRoute,
   localCommandAllowed,
@@ -5021,6 +5025,7 @@ function RouteInspector({
   sourceState?: string;
   canConnectScenes?: boolean;
   sceneExitActionKinds?: string[];
+  routeActionKinds?: string[];
   hasManualRoute: boolean;
   objectActionsEditable?: boolean;
   localCommandAllowed?: (command: string) => boolean;
@@ -5187,6 +5192,10 @@ function RouteInspector({
       <h4>Then</h4>
       <EditableActionList
         allowedActionKinds={exitsScene ? sceneExitActionKinds : undefined}
+        emptyActionMessage={exitsScene && sceneExitActionKinds.length === 0
+          ? "Scene exits in this V2 project cannot run effects yet."
+          : undefined}
+        routeActionKinds={routeActionKinds}
         timers={(scenes.find(scene => scene.scene_id === sceneId)?.event_bindings ?? [])
           .filter(binding => binding.event_type === "time.scene_elapsed").map(binding => binding.binding_id)}
         timerActionKinds={timerActionKinds}
@@ -5429,6 +5438,8 @@ function waitingAnimationChoices(
 
 export function EditableActionList({
   allowedActionKinds,
+  emptyActionMessage = "No visible effects.",
+  routeActionKinds = [],
   timers = [],
   timerActionKinds = [],
   sceneObjects = false,
@@ -5459,8 +5470,10 @@ export function EditableActionList({
   waitingVisuals: WaitingVisual[];
   assets: AssetRecord[];
   audioCues: AudioCueRecord[];
+  routeActionKinds?: string[];
   localActionsAllowed: boolean;
   allowedActionKinds?: string[];
+  emptyActionMessage?: string;
   canAddActions: boolean;
   canEdit: boolean;
   onSetRouteAction: (
@@ -5566,14 +5579,23 @@ export function EditableActionList({
     "set_element_frame",
     "set_element_waiting_animation",
   ];
-  const availableEffectKinds = [
+  const candidateEffectKinds = Array.from(new Set([
     ...(localActionsAllowed ? [...localEffectKinds, ...timerActionKinds] : []),
-    "play_sfx",
-  ].filter((kind) => defaultActionForKind(kind) !== null && (allowedActionKinds === undefined || allowedActionKinds.includes(kind)));
+    ...routeActionKinds,
+  ])).filter((kind) => allowedActionKinds === undefined || allowedActionKinds.includes(kind));
+  const enabledEffectKinds = candidateEffectKinds.filter((kind) => defaultActionForKind(kind) !== null);
+  const addEffectKinds = candidateEffectKinds.filter((kind) => defaultActionForKind(kind) !== null || kind === "play_sfx");
+  const effectKindUnavailableLabel = (kind: string) => {
+    if (kind === "play_sfx" && audioCues.length === 0) {
+      return `${EFFECT_KIND_LABELS[kind]} - import SFX first`;
+    }
+    return `${EFFECT_KIND_LABELS[kind] ?? "Advanced effect"} - unavailable`;
+  };
+  const sfxActionNeedsCue = candidateEffectKinds.includes("play_sfx") && audioCues.length === 0;
 
   return (
     <div className="action-editor-list">
-      {visibleActions.length === 0 && <div className="plain-rule-note">No visible effects.</div>}
+      {visibleActions.length === 0 && <div className="plain-rule-note">{emptyActionMessage}</div>}
       {visibleActions.map(({ action, actionIndex }, visibleIndex) => {
         const variableRef = action.variable_ref ?? variables[0]?.variable_id ?? "";
         const variable = variables.find((item) => item.variable_id === variableRef);
@@ -5587,9 +5609,9 @@ export function EditableActionList({
         const frames = spriteFrameChoices(element, assets, action.frame_ref);
         const animationChoices = waitingAnimationChoices(elementRef, targetState, waitingVisuals);
         const animationKey = `${action.waiting_visual_ref ?? ""}:${action.waiting_element_ref ?? ""}`;
-        const kindOptions = availableEffectKinds.includes(action.kind)
-          ? availableEffectKinds
-          : [action.kind, ...availableEffectKinds];
+        const kindOptions = candidateEffectKinds.includes(action.kind)
+          ? candidateEffectKinds
+          : [action.kind, ...candidateEffectKinds];
         const commit = (nextAction: Record<string, unknown>) => {
           void onSetRouteAction(sceneId, route.route_id, actionIndex, nextAction);
         };
@@ -5655,9 +5677,14 @@ export function EditableActionList({
                   }
                 }}
               >
-                {kindOptions.map((kind) => (
-                  <option key={kind} value={kind}>{EFFECT_KIND_LABELS[kind] ?? "Advanced effect"}</option>
-                ))}
+                {kindOptions.map((kind) => {
+                  const available = defaultActionForKind(kind) !== null;
+                  return (
+                    <option key={kind} value={kind} disabled={!available && kind !== action.kind}>
+                      {available || kind === action.kind ? EFFECT_KIND_LABELS[kind] ?? "Advanced effect" : effectKindUnavailableLabel(kind)}
+                    </option>
+                  );
+                })}
               </select>
               </label>
               {isElementAction && (
@@ -5909,7 +5936,7 @@ export function EditableActionList({
           </div>
         );
       })}
-      {canAddActions && availableEffectKinds.length > 0 && (
+      {canAddActions && addEffectKinds.length > 0 && (
         <label className="effect-add-control">
           <Plus size={13} aria-hidden="true" />
           <select
@@ -5924,11 +5951,19 @@ export function EditableActionList({
             }}
           >
             <option value="">Add effect...</option>
-            {availableEffectKinds.map((kind) => (
-              <option key={kind} value={kind}>{EFFECT_KIND_LABELS[kind]}</option>
-            ))}
+            {addEffectKinds.map((kind) => {
+              const available = enabledEffectKinds.includes(kind);
+              return (
+                <option key={kind} value={kind} disabled={!available}>
+                  {available ? EFFECT_KIND_LABELS[kind] : effectKindUnavailableLabel(kind)}
+                </option>
+              );
+            })}
           </select>
         </label>
+      )}
+      {sfxActionNeedsCue && (
+        <div className="plain-rule-note">Import an SFX cue before adding Play SFX.</div>
       )}
     </div>
   );
