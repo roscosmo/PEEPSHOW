@@ -739,7 +739,7 @@ button:focus-visible {
   align-items: center;
   min-width: 0;
   border-bottom: 1px solid #dce1de;
-  background: #ffffff;
+  background: transparent;
 }
 
 .project-hierarchy-root .project-root-row {
@@ -771,14 +771,12 @@ button:focus-visible {
 }
 
 .project-root-copy strong {
-  font-size: 12px;
+  font-size: 14px;
+  line-height: 1.15;
 }
 
 .project-root-copy small {
-  margin-top: 2px;
-  color: #75807a;
-  font-size: 9px;
-  text-transform: uppercase;
+  display: none;
 }
 
 .project-section {
@@ -925,7 +923,7 @@ button:focus-visible {
 
 .scene-hierarchy {
   display: grid;
-  gap: 4px;
+  gap: 1px;
   padding: 0 7px 12px;
   outline: none;
 }
@@ -940,14 +938,14 @@ button:focus-visible {
   width: 100%;
   align-items: center;
   box-sizing: border-box;
-  gap: 2px;
+  gap: 3px;
 }
 
 .hierarchy-disclosure-control {
   display: grid;
-  width: 24px;
-  height: 32px;
-  flex: 0 0 24px;
+  width: 22px;
+  height: 36px;
+  flex: 0 0 22px;
   place-items: center;
   padding: 0;
   border: 0;
@@ -964,9 +962,9 @@ button:focus-visible {
 
 .hierarchy-emulator-load {
   display: grid;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
   place-items: center;
   padding: 0;
   border: 1px solid transparent;
@@ -997,14 +995,14 @@ button:focus-visible {
 
 .scene-hierarchy-select {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr);
   min-width: 0;
-  min-height: 42px;
+  min-height: 38px;
   flex: 1 1 auto;
   align-items: center;
-  gap: 7px;
-  padding: 5px 7px;
-  border: 1px solid transparent;
+  gap: 9px;
+  padding: 4px 7px;
+  border: 0;
   border-radius: 5px;
   background: transparent;
   color: #303733;
@@ -1018,9 +1016,9 @@ button:focus-visible {
 }
 
 .scene-hierarchy-node.selected .scene-hierarchy-select {
-  border-color: #a9c7da;
   background: #e6f0f6;
   color: #154969;
+  box-shadow: inset 4px 0 #1573a6;
 }
 
 .scene-hierarchy-select > span {
@@ -1031,8 +1029,8 @@ button:focus-visible {
 .hierarchy-branch-select > .studio-ui-icon,
 .placement-object-kind > .studio-ui-icon,
 .hierarchy-state-icon .studio-ui-icon {
-  width: 18px;
-  height: 18px;
+  width: 28px;
+  height: 28px;
 }
 
 .scene-hierarchy-select strong,
@@ -1044,21 +1042,19 @@ button:focus-visible {
 }
 
 .scene-hierarchy-select strong {
-  font-size: 12px;
+  font-size: 14px;
+  line-height: 1.15;
 }
 
 .scene-hierarchy-select small {
-  margin-top: 1px;
-  color: #727b76;
-  font-size: 9px;
-  text-transform: uppercase;
+  display: none;
 }
 
 .scene-hierarchy-children {
   display: grid;
-  gap: 6px;
-  margin: 2px 0 7px 14px;
-  padding: 5px 0 3px 8px;
+  gap: 2px;
+  margin: 2px 0 7px 11px;
+  padding: 4px 0 3px 11px;
   border-left: 2px solid #dce4df;
 }
 
@@ -1069,14 +1065,14 @@ button:focus-visible {
 
 .hierarchy-branch-select {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
   min-width: 0;
-  min-height: 36px;
+  min-height: 38px;
   flex: 1 1 auto;
   align-items: center;
-  gap: 6px;
-  padding: 5px 6px;
-  border: 1px solid transparent;
+  gap: 9px;
+  padding: 4px 7px;
+  border: 0;
   border-radius: 5px;
   background: transparent;
   color: #303a34;
@@ -1086,12 +1082,10 @@ button:focus-visible {
 }
 
 .hierarchy-branch-select:hover {
-  border-color: #c8d7cf;
   background: #f0f5f2;
 }
 
 .hierarchy-branch-select.selected {
-  border-color: #175f8a;
   background: #e7f4fa;
   box-shadow: inset 4px 0 #175f8a;
 }
@@ -1099,17 +1093,17 @@ button:focus-visible {
 .hierarchy-state-icon {
   position: relative;
   display: grid;
-  width: 18px;
-  height: 18px;
+  width: 30px;
+  height: 30px;
   place-items: center;
 }
 
 .hierarchy-runtime-indicator {
   position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 7px;
-  height: 7px;
+  right: 0;
+  bottom: 0;
+  width: 9px;
+  height: 9px;
   border: 1px solid #ffffff;
   border-radius: 50%;
   background: #2f9e44;
@@ -1144,28 +1138,25 @@ button:focus-visible {
 }
 
 .hierarchy-branch-select strong {
-  font-size: 11px;
+  font-size: 13px;
+  line-height: 1.15;
 }
 
 .hierarchy-branch-select small {
-  margin-top: 1px;
-  color: #68736d;
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
+  display: none;
 }
 
 .hierarchy-nested-branches,
 .hierarchy-reference-rows {
   display: grid;
-  gap: 4px;
-  margin: 3px 0 2px 12px;
-  padding-left: 8px;
+  gap: 2px;
+  margin: 3px 0 2px 13px;
+  padding-left: 10px;
   border-left: 1px solid #dce4df;
 }
 
 .hierarchy-branch > .placement-object-children {
-  margin-top: 3px;
+  margin-top: 2px;
 }
 
 .scene-reference-branch {
@@ -1986,9 +1977,9 @@ button:focus-visible {
 .native-object-row { display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 4px; }
 .native-object-disclosure-spacer { width: 20px; }
 .native-object-row .placement-tree-object { width: 100%; min-width: 0; }
-.native-object-overrides { display: grid; gap: 4px; margin: 4px 0 8px 28px; padding-left: 8px; border-left: 1px solid #bdcbc6; }
-.native-object-overrides .hierarchy-branch-select { width: 100%; min-width: 0; grid-template-columns: 16px minmax(0, 1fr); }
-.native-object-overrides small { white-space: normal; overflow-wrap: anywhere; }
+.native-object-overrides { display: grid; gap: 2px; margin: 3px 0 8px 28px; padding-left: 10px; border-left: 1px solid #bdcbc6; }
+.native-object-overrides .hierarchy-branch-select { width: 100%; min-width: 0; grid-template-columns: 30px minmax(0, 1fr); }
+.native-object-overrides small { display: none; }
 .placement-edit-scope label { display: grid; gap: 4px; }
 .placement-edit-scope select { min-width: 0; width: 100%; }
 
@@ -4155,7 +4146,7 @@ button:focus-visible {
 
 .placement-object-children {
   display: grid;
-  gap: 4px;
+  gap: 2px;
   padding-left: 13px;
 }
 
@@ -4165,14 +4156,14 @@ button:focus-visible {
 
 .placement-tree-object {
   grid-template-columns: minmax(0, 1fr) auto;
-  min-height: 34px;
+  min-height: 38px;
 }
 
 .placement-object-kind {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
-  gap: 7px;
+  gap: 9px;
   min-width: 0;
   text-align: left;
 }
@@ -4189,10 +4180,27 @@ button:focus-visible {
   max-width: 86px;
 }
 
+.placement-tree-object.hierarchy-object-row {
+  min-height: 38px;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+}
+
+.placement-tree-object.hierarchy-object-row:hover {
+  background: #f0f5f2;
+}
+
 .placement-tree-object.selected,
 .placement-element-list button.selected {
   border-color: #d6812f;
   background: #fff4e8;
+}
+
+.placement-tree-object.hierarchy-object-row.selected {
+  background: #fff4e8;
+  box-shadow: inset 4px 0 #d6812f;
 }
 
 .placement-tree-object strong,
@@ -4207,16 +4215,13 @@ button:focus-visible {
 
 .placement-tree-object strong,
 .placement-element-list strong {
-  font-size: 11px;
+  font-size: 13px;
+  line-height: 1.15;
 }
 
 .placement-tree-object small,
 .placement-element-list small {
-  margin-top: 2px;
-  color: #68736d;
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
+  display: none;
 }
 
 .placement-object-tree code,
@@ -4344,13 +4349,23 @@ button:focus-visible {
 }
 
 .state-scene-endpoint.boundary {
-  width: 157px;
-  min-height: 57px;
+  width: 176px;
+  min-height: 64px;
   place-items: center;
-  padding: 9px 22px;
+  padding: 9px 18px;
   border-color: #303733;
   background: #ced4da;
   text-align: center;
+}
+
+.state-scene-endpoint.boundary.entry {
+  padding-right: 18px;
+  padding-left: 52px;
+}
+
+.state-scene-endpoint.boundary.exit {
+  padding-right: 52px;
+  padding-left: 18px;
 }
 
 .state-scene-endpoint.boundary > strong {
@@ -4365,7 +4380,7 @@ button:focus-visible {
 
 .scene-boundary-icon-badge {
   position: absolute;
-  top: -48px;
+  top: 50%;
   z-index: 2;
   display: grid;
   width: 88px;
@@ -4373,6 +4388,7 @@ button:focus-visible {
   place-items: center;
   line-height: 0;
   pointer-events: none;
+  transform: translateY(-50%);
 }
 
 .scene-boundary-icon-badge .scene-tool-icon {
@@ -4617,10 +4633,13 @@ button:focus-visible {
 }
 
 .package-entry-icon {
+  position: relative;
+  z-index: 2;
   width: 216px;
   height: 216px;
   object-fit: contain;
   filter: drop-shadow(0 6px 9px rgb(20 28 24 / 18%));
+  pointer-events: none;
 }
 
 .package-entry-node.selected,
@@ -4630,14 +4649,14 @@ button:focus-visible {
 }
 
 .package-entry-node .package-entry-handle {
-  z-index: 3;
+  z-index: 1;
   width: 18px;
   height: 18px;
   background: #fa5252;
 }
 
 .package-entry-node .package-entry-handle.top {
-  top: 0;
+  top: 22px;
   right: auto;
   bottom: auto;
   left: 50%;
@@ -4645,7 +4664,7 @@ button:focus-visible {
 
 .package-entry-node .package-entry-handle.right {
   top: 50%;
-  right: 0;
+  right: 22px;
   bottom: auto;
   left: auto;
 }
@@ -4653,7 +4672,7 @@ button:focus-visible {
 .package-entry-node .package-entry-handle.bottom {
   top: auto;
   right: auto;
-  bottom: 0;
+  bottom: 22px;
   left: 50%;
 }
 
@@ -4661,14 +4680,14 @@ button:focus-visible {
   top: 50%;
   right: auto;
   bottom: auto;
-  left: 0;
+  left: 22px;
 }
 
 .scene-reference-node {
   cursor: pointer;
   width: 260px;
   min-height: 104px;
-  padding: 16px 28px;
+  padding: 16px 68px 16px 28px;
 }
 
 .scene-reference-node > strong {
@@ -4676,7 +4695,6 @@ button:focus-visible {
 }
 
 .scene-reference-node .scene-boundary-icon-badge {
-  top: -48px;
   right: -42px;
 }
 

@@ -7171,8 +7171,9 @@ export default function App() {
         ) => (
           <button
             key={key}
-            className={`placement-tree-object ${selected ? "selected" : ""}`}
+            className={`placement-tree-object hierarchy-object-row ${selected ? "selected" : ""}`}
             type="button"
+            title={`${objectLabelById.get(element.element_id) ?? placementObjectLabelBase(element)} · ${placementKindLabel(element.kind)}${badges.length ? ` · ${badges.join(", ")}` : ""}`}
             onClick={onClick}
             onDoubleClick={onDoubleClick}
           >
@@ -7180,7 +7181,6 @@ export default function App() {
               {placementElementIcon(element)}
               <span>
                 <strong>{objectLabelById.get(element.element_id) ?? placementObjectLabelBase(element)}</strong>
-                <small>{placementKindLabel(element.kind)}</small>
               </span>
             </span>
             <span className="placement-object-badges">
@@ -7221,7 +7221,6 @@ export default function App() {
                 <StudioIcon name="scene" />
                 <span>
                   <strong>{scene.display_name}</strong>
-                  <small>{scene.scene_type}</small>
                 </span>
               </button>
             </div>
@@ -7261,8 +7260,9 @@ export default function App() {
                     {overrides.map(({ state, description }) => <button type="button" key={state.state_id}
                       data-state-id={state.state_id}
                       className={`hierarchy-branch-select ${sceneSelected && workspaceMode === "placement" && placementStateId === state.state_id && selectedPlacementElement === element.element_id ? "selected" : ""}`}
+                      title={`${state.display_name} · ${description}`}
                       onClick={() => void openHierarchyPlacementTarget(scene, state.state_id, element.element_id)}>
-                      <StudioIcon name="state" /><span><strong>{state.display_name}</strong><small>{description}</small></span>
+                      <StudioIcon name="state" /><span><strong>{state.display_name}</strong></span>
                     </button>)}
                   </div>}
                 </section>;
@@ -7293,7 +7293,6 @@ export default function App() {
                     <StudioIcon name="scene" />
                     <span>
                       <strong>Base objects</strong>
-                      <small>Scene-owned placement</small>
                     </span>
                     <span className="hierarchy-state-meta">
                       {sceneSelected && workspaceMode === "placement" && placementStateId === null && (
@@ -7345,7 +7344,6 @@ export default function App() {
                     <StudioIcon name="state" />
                     <span>
                       <strong>States</strong>
-                      <small>Local object changes</small>
                     </span>
                     <code>{scene.states?.length ?? 0}</code>
                   </button>
@@ -7389,6 +7387,12 @@ export default function App() {
                             type="button"
                             aria-selected={selected}
                             aria-current={active ? "step" : undefined}
+                            title={[
+                              state.display_name,
+                              active ? "Emulator active" : null,
+                              primary ? "Placement preview" : null,
+                              state.state_id,
+                            ].filter(Boolean).join(" · ")}
                             onClick={(event) => { if (event.detail < 2) openHierarchyState(scene, state, event); }}
                             onDoubleClick={() => toggleHierarchyGroup(stateGroupId)}
                           >
@@ -7400,15 +7404,6 @@ export default function App() {
                             </span>
                             <span>
                               <strong>{state.display_name}</strong>
-                              <small>
-                                {active && primary
-                                  ? "Emulator active / Placement preview"
-                                  : active
-                                    ? "Emulator active"
-                                    : primary
-                                      ? "Placement preview"
-                                      : state.state_id}
-                              </small>
                             </span>
                             <span className="hierarchy-state-meta">
                               {primary && (
@@ -7481,7 +7476,6 @@ export default function App() {
                       <StudioIcon name="text" />
                       <span>
                         <strong>Variables</strong>
-                        <small>Scene-local data</small>
                       </span>
                       <code>{scene.variables?.length ?? 0}</code>
                     </button>
@@ -7497,7 +7491,6 @@ export default function App() {
                         <StudioIcon name="text" />
                         <span>
                           <strong>{variable.variable_id}</strong>
-                          <small>{variable.value_type}</small>
                         </span>
                       </button>
                     ))}
@@ -8128,7 +8121,6 @@ export default function App() {
               <Box size={17} aria-hidden="true" />
               <span className="project-root-copy">
                 <strong>{project.summary.project_name}</strong>
-                <small>Project</small>
               </span>
               <span className={`validation-state ${project.valid ? "valid" : "invalid"}`}>
                 <StatusMark ok={project.valid} /> {project.valid ? "Valid" : "Invalid"}
