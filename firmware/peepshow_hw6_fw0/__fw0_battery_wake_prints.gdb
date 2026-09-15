@@ -14,5 +14,5 @@ else
   printf "Test: test arms>0, request=0, expiry and due-success deltas>=1, failures/clock failures=0, last valid=1, snapshot status=0.\n"
   printf "RTC selection alone is not a wake or read. Require expiry plus a successful due check, unchanged visuals/input, and return to low-power residency.\n"
   printf "Battery deadlines use RTC elapsed time through STOP2; the raw deadline tick is rebased after each sleep attempt.\n"
-  printf "Automatic low-battery shipment remains gated OFF pending controlled low-voltage and restart testing. This is not complete discharge-protection proof.\n"
+  printf "Shipment follows the gate values above. With automatic gates enabled, a qualifying low-battery check can cut power: collect current/rail evidence, not post-shutdown RAM prints. This is not complete discharge-protection proof.\n"
 end

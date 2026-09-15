@@ -49,14 +49,17 @@ if(PS_HW6_BATTERY_SHUTDOWN_TEST)
     file(READ "${_battery_knobs}" _battery_knobs_text)
     file(READ "${CMAKE_SOURCE_DIR}/Core/Inc/knobs_autogen.h" _normal_knobs_text)
     set(_battery_knobs_normalized "${_battery_knobs_text}")
+    set(_normal_knobs_normalized "${_normal_knobs_text}")
     foreach(_gate POWER_CRITICAL_SOFTWARE_SHIP_ENABLE POWER_BOOT_LOW_BATTERY_SHIP_ENABLE)
         if(NOT _battery_knobs_text MATCHES "#define KNOB_${_gate}[ \t]+\\(1\\)")
             message(FATAL_ERROR "Battery test snapshot must enable KNOB_${_gate}")
         endif()
         string(REGEX REPLACE "(#define KNOB_${_gate}[ \t]+)\\(1\\)" "\\1(0)"
             _battery_knobs_normalized "${_battery_knobs_normalized}")
+        string(REGEX REPLACE "(#define KNOB_${_gate}[ \t]+)\\([01]\\)" "\\1(0)"
+            _normal_knobs_normalized "${_normal_knobs_normalized}")
     endforeach()
-    if(NOT _battery_knobs_normalized STREQUAL _normal_knobs_text)
+    if(NOT _battery_knobs_normalized STREQUAL _normal_knobs_normalized)
         message(FATAL_ERROR "Stale or unsafe battery test snapshot: only the two battery shipment gates may differ from normal knobs")
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS

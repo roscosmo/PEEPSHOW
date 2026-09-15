@@ -131,5 +131,12 @@ class BatteryShutdownTests(unittest.TestCase):
         knobs = json.loads((firmware / "config/knobs.json").read_text())
         self.assertEqual(3, knobs["power_battery_shutdown_prep_attempts"])
         self.assertEqual(1000, knobs["power_battery_shutdown_prep_retry_ms"])
+        for name in ("critical_software", "boot_low_battery"):
+            self.assertTrue(knobs[f"power_{name}_ship_enable"])
+        self.assertFalse(knobs["power_start_software_ship_enable"])
+        schema = json.loads((firmware / "config/knobs.schema.json").read_text())
+        generated = (firmware / "Core/Inc/knobs_autogen.h").read_text()
         for name in ("critical_software", "boot_low_battery", "start_software"):
-            self.assertFalse(knobs[f"power_{name}_ship_enable"])
+            key = f"power_{name}_ship_enable"
+            self.assertEqual(knobs[key], schema["properties"][key]["default"])
+            self.assertRegex(generated, rf"#define KNOB_{key.upper()}\s+\({int(knobs[key])}\)")

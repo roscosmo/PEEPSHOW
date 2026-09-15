@@ -194,16 +194,40 @@ button:focus-visible {
 .project-pane,
 .inspector-pane {
   min-width: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: #f9faf9;
 }
 
 .project-pane {
   grid-area: project;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(112 126 117 / 48%) transparent;
 }
 
 .inspector-pane {
   grid-area: inspector;
+}
+
+.project-pane::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.project-pane::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.project-pane::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgb(112 126 117 / 48%);
+  background-clip: padding-box;
+}
+
+.project-pane::-webkit-scrollbar-thumb:hover {
+  background: rgb(112 126 117 / 72%);
+  background-clip: padding-box;
 }
 
 .inspector-resize-handle {

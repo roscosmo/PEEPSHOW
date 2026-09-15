@@ -132,11 +132,24 @@ storage, or communication diagnostic cycles.
 
 Critical-battery shutdown is a PeepOS-controlled sequence while firmware is still alive enough to make a safe decision.
 
+As of the 2026-09-15 integration checkpoint, normal HW6 FW0 defaults enable
+`power_critical_software_ship_enable` and `power_boot_low_battery_ship_enable`.
+The controlled bench tests established low-boot and runtime-critical shipment,
+shortened unattended battery-wake shutdown, synthetic failure backoff and
+valid-voltage recovery. Normal-build hardware confirmation follows this
+promotion; permanent physical failures and charger recovery remain unqualified.
+`power_start_software_ship_enable` remains false. Voltage thresholds and battery
+wake intervals are unchanged: warning 3500 mV, critical 3300 mV, restart 3600 mV,
+healthy sleep checks 30 minutes and warning/failure checks 60 seconds.
+Explicit gates-off diagnostic builds remain possible, but must never be mistaken
+for battery-protected normal firmware. The fault-injection helpers deliberately
+refuse the enabled normal build; do not clear their guards to run them.
+
 Rules:
 
 - On critical battery, `thPower` must request owner quiesce/save through bounded Platform-owned hooks before any software shipment request.
 - If the critical-battery software-shipment gate is disabled, firmware must record and expose that shipment would have been requested, but it must not write ADP5360 Shipment Mode register `0x36`.
-- If the gate is enabled and quiesce/save policy succeeds or reaches its bounded fallback, `thPower` may request ADP5360 Shipment Mode register `0x36 = 1`.
+- If the gate is enabled and owner preparation succeeds, `thPower` may request ADP5360 Shipment Mode register `0x36 = 1`. Exhausted preparation uses the checked fault-wait path; it does not bypass a failed owner to write shipment mode.
 - The ADP5360 hardware BAT_UV / ISOFET cutoff remains a lower emergency protection path if firmware cannot act in time.
 - Startup must read battery/VBUS state before enabling display-intensive work, audio, vibration, radio, switched rails, package runtime, or installer behavior.
 - Battery threshold decisions must use a valid decoded VBAT measurement; successful I2C reads with all-zero/raw-invalid fuel-gauge voltage must be treated as unknown and must not trigger critical shutdown.

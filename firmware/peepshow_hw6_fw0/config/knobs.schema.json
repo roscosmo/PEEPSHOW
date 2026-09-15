@@ -1311,23 +1311,23 @@
     },
     "power_critical_software_ship_enable": {
       "type": "boolean",
-      "default": false,
+      "default": true,
       "unit": "bool",
       "timebase_domain": "threadx",
       "owner": "thPower",
       "class": "protected_policy",
       "path": "platform.knobs.power.critical_software_ship_enable",
-      "description": "When true, critical-battery policy may request ADP5360 software shipment after the bounded quiesce scaffold. Default false records would-ship only."
+      "description": "Default true enables critical-battery ADP5360 software shipment after successful bounded owner preparation. False is for explicit preparation-only diagnostics; it records would-ship without removing power."
     },
     "power_boot_low_battery_ship_enable": {
       "type": "boolean",
-      "default": false,
+      "default": true,
       "unit": "bool",
       "timebase_domain": "boot_snapshot",
       "owner": "thPower",
       "class": "protected_policy",
       "path": "platform.knobs.power.boot_low_battery_ship_enable",
-      "description": "When true, boot below restart-allow voltage with no VBUS may re-enter ADP5360 software shipment. Default false records would-ship only."
+      "description": "Default true permits boot below restart-allow voltage with no VBUS to re-enter ADP5360 software shipment after successful preparation. False is for explicit preparation-only diagnostics and leaves the device powered."
     },
     "power_start_software_ship_enable": {
       "type": "boolean",

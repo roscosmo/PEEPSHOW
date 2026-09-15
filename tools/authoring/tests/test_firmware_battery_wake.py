@@ -46,7 +46,7 @@ class BatteryWakeTests(unittest.TestCase):
     def test_shared_rtc_hardware_boundary(self):
         self.run_native("native_battery_rtc.c", rtc=True)
 
-    def test_owner_integration_and_shipping_stays_gated(self):
+    def test_owner_integration_and_automatic_battery_shipping_enabled(self):
         import json
         firmware = Path(__file__).resolve().parents[3] / "firmware/peepshow_hw6_fw0"
         source = (firmware / "Core/Src/ps_hw6_owner_state_machines.c").read_text()
@@ -63,5 +63,6 @@ class BatteryWakeTests(unittest.TestCase):
         self.assertEqual(1800000, knobs["power_battery_sleep_check_ms"])
         self.assertEqual(60000, knobs["power_battery_sleep_warning_ms"])
         self.assertEqual(60000, knobs["power_battery_sleep_retry_ms"])
-        self.assertFalse(knobs["power_critical_software_ship_enable"])
-        self.assertFalse(knobs["power_boot_low_battery_ship_enable"])
+        self.assertTrue(knobs["power_critical_software_ship_enable"])
+        self.assertTrue(knobs["power_boot_low_battery_ship_enable"])
+        self.assertFalse(knobs["power_start_software_ship_enable"])

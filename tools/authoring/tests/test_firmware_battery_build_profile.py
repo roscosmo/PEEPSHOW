@@ -14,27 +14,33 @@ class BatteryBuildProfileTests(unittest.TestCase):
         generator = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(generator)
         knobs = json.loads((firmware / "config/knobs.json").read_text())
-        self.assertFalse(knobs["power_critical_software_ship_enable"])
-        self.assertFalse(knobs["power_boot_low_battery_ship_enable"])
+        self.assertTrue(knobs["power_critical_software_ship_enable"])
+        self.assertTrue(knobs["power_boot_low_battery_ship_enable"])
         self.assertFalse(knobs["power_start_software_ship_enable"])
         base = generator._render_header(knobs)
         self.assertEqual(base, (firmware / "Core/Inc/knobs_autogen.h").read_text())
         test_knobs = dict(knobs, power_critical_software_ship_enable=True,
                           power_boot_low_battery_ship_enable=True)
         snapshot = generator._render_header(test_knobs)
+        gates_off = generator._render_header(dict(knobs, power_critical_software_ship_enable=False,
+                                                  power_boot_low_battery_ship_enable=False))
         cmake = (firmware / "CMakeLists.txt").read_text()
         guard = cmake[cmake.index("option(PS_HW6_BATTERY_SHUTDOWN_TEST"):
                       cmake.index("    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS")]
         cases = (
             ("approved", snapshot, base, "BatteryShutdownTest", "ON", True),
-            ("disabled_gate", base, base, "BatteryShutdownTest", "ON", False),
+            ("disabled_gates", gates_off, base, "BatteryShutdownTest", "ON", False),
+            ("disabled_critical", generator._render_header(dict(test_knobs, power_critical_software_ship_enable=False)),
+             base, "BatteryShutdownTest", "ON", False),
+            ("disabled_boot", generator._render_header(dict(test_knobs, power_boot_low_battery_ship_enable=False)),
+             base, "BatteryShutdownTest", "ON", False),
             ("start_enabled", generator._render_header(dict(test_knobs, power_start_software_ship_enable=True)),
              base, "BatteryShutdownTest", "ON", False),
             ("changed_threshold", generator._render_header(dict(test_knobs, power_battery_warning_mv=3499)),
              base, "BatteryShutdownTest", "ON", False),
             ("missing", None, base, "BatteryShutdownTest", "ON", False),
             ("normal_directory", snapshot, base, "Debug", "ON", False),
-            ("normal_enabled", snapshot, snapshot, "BatteryShutdownTest", "ON", False),
+            ("normal_disabled", snapshot, gates_off, "BatteryShutdownTest", "ON", True),
             ("normal_default", None, base, "Debug", "OFF", True),
         )
         with tempfile.TemporaryDirectory() as directory:

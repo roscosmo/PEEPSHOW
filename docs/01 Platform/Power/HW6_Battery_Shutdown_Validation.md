@@ -6,6 +6,48 @@ points below. Returned-command failure handling has native regression coverage;
 permanent-failure fallback, charger recovery and complete discharge protection
 remain pending.
 
+## Current Build Defaults (2026-09-15)
+
+Normal Debug now enables automatic critical-battery and boot-low-battery
+shipment. START software shipment remains off. This promotes the tested
+battery policy without changing voltage thresholds, wake periods, retry
+budgets, physical owner checks or fault fallback. The normal-build hardware
+confirmation is pending; earlier automatic-shutdown evidence used the isolated
+BatteryShutdownTest preset.
+
+Verification: nine focused battery tests pass, including actual policy tests
+with enabled/disabled gates, schema/generated-default agreement and CMake
+snapshot admission/rejection. Both Debug and BatteryShutdownTest build
+successfully: RAM 553632, ROM 883944, SRAM4 15480 bytes. Existing unused-function
+and unused-parameter warnings remain. No hardware was flashed by the agent.
+
+Historical gates-off procedures below describe the builds tested at those
+checkpoints, not today's normal Debug defaults. Manual shipment and fault-test
+helpers intentionally refuse enabled normal builds. They require an explicitly
+identified diagnostic build with all shipment gates disabled. Do not bypass
+their guards. The BatteryShutdownTest preset still requires both battery gates
+on and permits no other differences from the current generated knobs snapshot;
+its gate comparison now works with either enabled or disabled normal defaults.
+
+Normal-build bench confirmation uses the isolated PPK2 battery-input supply,
+cell and device USB disconnected:
+
+1. Flash `HW6 FW0: Debug with ST-LINK` at 3.8 V. Resume and confirm normal boot.
+2. Intentionally restart at 3.4 V. It should return to shipment after successful
+   preparation; a screen update is not required. Confirm low current, not merely
+   debugger loss. START while still at 3.4 V should repeat that refusal.
+3. Raise to 3.8 V and START: normal boot should recover.
+4. For the separate unattended-critical check, use the existing
+   `__fw0_battery_wake_enable.gdb` at healthy voltage to shorten one deadline to
+   15 seconds. Resume into ordinary STOP2, lower the isolated source to 3.2 V
+   and observe shipment after the due battery check. No post-shutdown RAM print
+   is expected. Collect current/rail evidence, then restore 3.8 V and START.
+
+Actual healthy sleep cadence remains 30 minutes unless deliberately shortened
+for this test. Earlier fault-test wake peaks were only visually estimated;
+the user clarified that the apparent 10-second spacing was not a measurement.
+Regular wakes were confirmed, but exact wall-clock cadence remains unmeasured.
+
 Authority: [[PMIC_and_Power_Contract]], [[Power_and_Sleep_Policy]] and
 [[HW6_Hardware_Revision_Contract]]. This is a Platform bench test, not a package
 capability or a cell-discharge experiment.
