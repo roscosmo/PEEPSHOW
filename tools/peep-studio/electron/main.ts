@@ -410,6 +410,7 @@ function createWindow(): void {
     minWidth: 1040,
     minHeight: 700,
     backgroundColor: "#f3f5f4",
+    frame: false,
     show: false,
     title: "Peep Studio",
     webPreferences: {
@@ -587,6 +588,30 @@ ipcMain.handle("peep:emulator-popout-command", (_event, command: unknown) => {
   }
   studioWindow.webContents.send("peep:emulator-popout-command", command);
   return true;
+});
+
+ipcMain.handle("peep:window-control", (event, action: unknown) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (window === null || window.isDestroyed()) {
+    return false;
+  }
+  if (action === "minimize") {
+    window.minimize();
+    return true;
+  }
+  if (action === "maximize") {
+    if (window.isMaximized()) {
+      window.unmaximize();
+    } else {
+      window.maximize();
+    }
+    return true;
+  }
+  if (action === "close") {
+    window.close();
+    return true;
+  }
+  return false;
 });
 
 ipcMain.handle("peep:open-project", async () => {

@@ -3,6 +3,10 @@
   color: #1c211f;
   background: #f3f5f4;
   --transition-bridge-mask: #eef2f0;
+  --studio-chrome: #1f5fa8;
+  --studio-chrome-text: #f5fbff;
+  --studio-chrome-edge: color-mix(in srgb, var(--studio-chrome), #000 28%);
+  --studio-chrome-soft: color-mix(in srgb, var(--studio-chrome), #fff 16%);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   letter-spacing: 0;
@@ -153,12 +157,14 @@ button:focus-visible {
 
 .app-toolbar {
   display: grid;
-  grid-template-columns: var(--project-width, 320px) auto minmax(160px, 1fr) auto;
+  grid-template-columns: var(--project-width, 320px) auto minmax(160px, 1fr) auto auto;
   align-items: center;
   gap: 0;
   padding: 0;
-  border-bottom: 1px solid #cfd5d1;
-  background: #ffffff;
+  border-bottom: 1px solid var(--studio-chrome-edge);
+  background: var(--studio-chrome);
+  color: var(--studio-chrome-text);
+  -webkit-app-region: drag;
 }
 
 .topbar-brand-panel,
@@ -179,7 +185,7 @@ button:focus-visible {
   justify-content: flex-start;
   gap: 10px;
   padding: 0 12px;
-  border-right: 1px solid #cfd5d1;
+  border-right: 1px solid color-mix(in srgb, var(--studio-chrome-text), transparent 74%);
 }
 
 .topbar-project-title {
@@ -201,7 +207,7 @@ button:focus-visible {
 
 .topbar-project-title h1 {
   margin: 0;
-  color: #1c211f;
+  color: var(--studio-chrome-text);
   font-size: 17px;
   line-height: 22px;
   font-weight: 780;
@@ -209,7 +215,7 @@ button:focus-visible {
 
 .topbar-project-title p {
   margin: 1px 0 0;
-  color: #69716d;
+  color: color-mix(in srgb, var(--studio-chrome-text), transparent 24%);
   font-size: 12px;
 }
 
@@ -285,27 +291,28 @@ button:focus-visible {
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
-  color: #29332e;
+  color: inherit;
   cursor: pointer;
+  -webkit-app-region: no-drag;
 }
 
 .topbar-button:hover,
 .topbar-dropdown > summary:hover {
-  border-color: #abc0b5;
-  background: #f0f6f3;
+  border-color: color-mix(in srgb, var(--studio-chrome-text), transparent 62%);
+  background: color-mix(in srgb, var(--studio-chrome-text), transparent 86%);
 }
 
 .topbar-button.active,
 .topbar-dropdown[open] > summary {
-  border-color: #2d637f;
-  background: #e5f2f8;
-  color: #174f70;
+  border-color: color-mix(in srgb, var(--studio-chrome-text), transparent 48%);
+  background: color-mix(in srgb, var(--studio-chrome-text), transparent 78%);
+  color: var(--studio-chrome-text);
 }
 
 .topbar-button.primary {
   border-color: transparent;
   background: transparent;
-  color: #26302b;
+  color: inherit;
 }
 
 .topbar-button:disabled,
@@ -323,6 +330,7 @@ button:focus-visible {
 
 .topbar-dropdown {
   position: relative;
+  -webkit-app-region: no-drag;
 }
 
 .topbar-dropdown > summary {
@@ -346,6 +354,7 @@ button:focus-visible {
   border-radius: 7px;
   background: #ffffff;
   box-shadow: 0 12px 26px rgba(25, 35, 30, 0.16);
+  -webkit-app-region: no-drag;
 }
 
 .topbar-dropdown-menu button {
@@ -381,12 +390,14 @@ button:focus-visible {
   flex-basis: 34px;
   border-color: transparent;
   background: transparent;
+  color: inherit;
+  -webkit-app-region: no-drag;
 }
 
 .service-state {
   gap: 6px;
   margin-left: 4px;
-  color: #69716d;
+  color: color-mix(in srgb, var(--studio-chrome-text), transparent 18%);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -440,6 +451,47 @@ button:focus-visible {
 .input-button:hover:not(:disabled) {
   border-color: #8e9993;
   background: #edf1ef;
+}
+
+.app-toolbar .icon-button {
+  border-color: transparent;
+  background: transparent;
+  color: inherit;
+}
+
+.app-toolbar .icon-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--studio-chrome-text), transparent 62%);
+  background: color-mix(in srgb, var(--studio-chrome-text), transparent 86%);
+}
+
+.window-controls {
+  display: flex;
+  align-self: stretch;
+  height: 100%;
+  border-left: 1px solid color-mix(in srgb, var(--studio-chrome-text), transparent 74%);
+  -webkit-app-region: no-drag;
+}
+
+.window-control-button {
+  display: grid;
+  width: 46px;
+  height: 100%;
+  min-height: 34px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.window-control-button:hover {
+  background: color-mix(in srgb, var(--studio-chrome-text), transparent 84%);
+}
+
+.window-control-button.close:hover {
+  background: #c42b1c;
+  color: #ffffff;
 }
 
 .button.primary:hover:not(:disabled) {
@@ -546,15 +598,15 @@ button:focus-visible {
 .project-resize-handle,
 .inspector-resize-handle {
   min-width: 6px;
-  border-right: 1px solid #cfd5d1;
-  border-left: 1px solid #dce1de;
-  background: #e5ebe7;
+  border-right: 1px solid var(--studio-chrome-edge);
+  border-left: 1px solid color-mix(in srgb, var(--studio-chrome-text), transparent 80%);
+  background: var(--studio-chrome);
   cursor: col-resize;
 }
 
 .project-resize-handle:hover,
 .inspector-resize-handle:hover {
-  background: #d1ddd6;
+  background: var(--studio-chrome-soft);
 }
 
 .pane-heading {
@@ -563,11 +615,23 @@ button:focus-visible {
   align-items: center;
   justify-content: space-between;
   padding: 0 13px;
-  border-bottom: 1px solid #dce1de;
-  color: #343b37;
+  border-bottom: 1px solid var(--studio-chrome-edge);
+  background: var(--studio-chrome);
+  color: var(--studio-chrome-text);
   font-size: 12px;
   font-weight: 750;
   text-transform: uppercase;
+}
+
+.pane-heading .icon-button {
+  border-color: transparent;
+  background: transparent;
+  color: inherit;
+}
+
+.pane-heading .icon-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--studio-chrome-text), transparent 62%);
+  background: color-mix(in srgb, var(--studio-chrome-text), transparent 86%);
 }
 
 .inspector-heading {
@@ -6790,9 +6854,9 @@ button:focus-visible {
   justify-content: space-between;
   gap: 16px;
   padding: 0 10px;
-  border-top: 1px solid #ccd2ce;
-  background: #252b28;
-  color: #d8deda;
+  border-top: 1px solid var(--studio-chrome-edge);
+  background: var(--studio-chrome);
+  color: var(--studio-chrome-text);
   font-size: 10px;
 }
 
@@ -7489,4 +7553,66 @@ button:focus-visible {
 
 .studio-shell[data-theme="dark"] .ordered-records code {
   color: #9bd3ec;
+}
+
+.studio-shell[data-theme="dark"] .app-toolbar,
+.studio-shell[data-theme="dark"] .pane-heading,
+.studio-shell[data-theme="dark"] .status-bar,
+.studio-shell[data-theme="dark"] .project-resize-handle,
+.studio-shell[data-theme="dark"] .inspector-resize-handle {
+  border-color: var(--studio-chrome-edge);
+  background: var(--studio-chrome);
+  color: var(--studio-chrome-text);
+}
+
+.studio-shell[data-theme="dark"] .topbar-brand-panel,
+.studio-shell[data-theme="dark"] .window-controls {
+  border-color: color-mix(in srgb, var(--studio-chrome-text), transparent 74%);
+}
+
+.studio-shell[data-theme="dark"] .topbar-project-title h1,
+.studio-shell[data-theme="dark"] .topbar-button,
+.studio-shell[data-theme="dark"] .topbar-dropdown > summary,
+.studio-shell[data-theme="dark"] .app-toolbar .icon-button,
+.studio-shell[data-theme="dark"] .pane-heading .icon-button,
+.studio-shell[data-theme="dark"] .window-control-button {
+  color: var(--studio-chrome-text);
+}
+
+.studio-shell[data-theme="dark"] .topbar-project-title p,
+.studio-shell[data-theme="dark"] .topbar-service {
+  color: color-mix(in srgb, var(--studio-chrome-text), transparent 24%);
+}
+
+.studio-shell[data-theme="dark"] .topbar-button,
+.studio-shell[data-theme="dark"] .topbar-dropdown > summary,
+.studio-shell[data-theme="dark"] .app-toolbar .icon-button,
+.studio-shell[data-theme="dark"] .pane-heading .icon-button,
+.studio-shell[data-theme="dark"] .window-control-button {
+  border-color: transparent;
+  background: transparent;
+}
+
+.studio-shell[data-theme="dark"] .topbar-button:hover,
+.studio-shell[data-theme="dark"] .topbar-dropdown > summary:hover,
+.studio-shell[data-theme="dark"] .app-toolbar .icon-button:hover:not(:disabled),
+.studio-shell[data-theme="dark"] .pane-heading .icon-button:hover:not(:disabled),
+.studio-shell[data-theme="dark"] .window-control-button:hover,
+.studio-shell[data-theme="dark"] .project-resize-handle:hover,
+.studio-shell[data-theme="dark"] .inspector-resize-handle:hover {
+  border-color: color-mix(in srgb, var(--studio-chrome-text), transparent 62%);
+  background: color-mix(in srgb, var(--studio-chrome-text), transparent 86%);
+}
+
+.studio-shell[data-theme="dark"] .topbar-button.active,
+.studio-shell[data-theme="dark"] .topbar-dropdown[open] > summary {
+  border-color: color-mix(in srgb, var(--studio-chrome-text), transparent 48%);
+  background: color-mix(in srgb, var(--studio-chrome-text), transparent 78%);
+  color: var(--studio-chrome-text);
+}
+
+.studio-shell[data-theme="dark"] .window-control-button.close:hover {
+  border-color: transparent;
+  background: #c42b1c;
+  color: #ffffff;
 }

@@ -146,6 +146,17 @@ type StudioIconName = keyof typeof UI_ICONS;
 function StudioIcon({ name, className = "" }: { name: StudioIconName; className?: string }) {
   return <img className={`studio-ui-icon ${className}`.trim()} src={UI_ICONS[name]} alt="" aria-hidden="true" />;
 }
+
+function readableTextForColor(hex: string): string {
+  const match = /^#([0-9a-fA-F]{6})$/.exec(hex);
+  if (match === null) return "#f5fbff";
+  const value = match[1];
+  const red = parseInt(value.slice(0, 2), 16) / 255;
+  const green = parseInt(value.slice(2, 4), 16) / 255;
+  const blue = parseInt(value.slice(4, 6), 16) / 255;
+  const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  return luminance > 0.62 ? "#111613" : "#f5fbff";
+}
 type AssetTab = "sprite" | "audio" | "font";
 type AssetSelection =
   | { kind: "animation"; clipId: string }
@@ -768,6 +779,7 @@ export default function App() {
   const resolvedTheme = preferences.theme === "system"
     ? systemPrefersDark ? "dark" : "light"
     : preferences.theme;
+  const chromeTextColor = readableTextForColor(preferences.chromeColor);
   const { gridVisible: placementGridVisible, majorGridVisible: placementMajorGridVisible,
     gridStrength: placementGridStrength, objectBoxes: placementOverlayVisible,
     labelMode: placementLabelMode } = preferences;
@@ -7972,6 +7984,8 @@ export default function App() {
       data-theme={resolvedTheme}
       style={{
         "--sprite-preview-background": preferences.spritePreviewBackground,
+        "--studio-chrome": preferences.chromeColor,
+        "--studio-chrome-text": chromeTextColor,
         "--project-width": `${projectWidth}px`,
         "--inspector-width": `${inspectorWidth}px`,
       } as CSSProperties}
@@ -8059,6 +8073,22 @@ export default function App() {
             <span className="sr-only">Settings</span>
           </button>
         </div>
+        {bridge?.windowControl !== undefined && (
+          <div className="window-controls" aria-label="Window controls">
+            <button type="button" className="window-control-button" title="Minimize" aria-label="Minimize"
+              onClick={() => void bridge.windowControl?.("minimize")}>
+              <Minus size={16} aria-hidden="true" />
+            </button>
+            <button type="button" className="window-control-button" title="Maximize or restore" aria-label="Maximize or restore"
+              onClick={() => void bridge.windowControl?.("maximize")}>
+              <Maximize2 size={15} aria-hidden="true" />
+            </button>
+            <button type="button" className="window-control-button close" title="Close" aria-label="Close"
+              onClick={() => void bridge.windowControl?.("close")}>
+              <X size={17} aria-hidden="true" />
+            </button>
+          </div>
+        )}
       </header>
 
       {hostOnlyProject && <div className="host-preview-notice" role="status">
@@ -8306,6 +8336,14 @@ export default function App() {
                     <option value="dark">Dark</option>
                     <option value="system">System</option>
                   </select>
+                </label>
+                <label>Chrome colour
+                  <input
+                    type="color"
+                    aria-label="Chrome colour"
+                    value={preferences.chromeColor}
+                    onChange={event => updatePreference("chromeColor", event.target.value)}
+                  />
                 </label>
               </div>
             </section>

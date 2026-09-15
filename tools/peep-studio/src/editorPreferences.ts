@@ -12,6 +12,7 @@ const defaults = {
   assetLibraryZoom: 1,
   fontPreviewText: "PEEP STUDIO 0123456789 START SETTINGS CREDITS",
   theme: "light" as "light" | "dark" | "system",
+  chromeColor: "#1f5fa8",
 };
 
 function isHexColor(value: unknown): value is string {
@@ -39,6 +40,9 @@ function readPreferences(): typeof defaults {
         ? value.fontPreviewText
         : defaults.fontPreviewText,
       theme: value.theme === "dark" || value.theme === "system" ? value.theme : defaults.theme,
+      chromeColor: isHexColor(value.chromeColor)
+        ? value.chromeColor.toLowerCase()
+        : defaults.chromeColor,
     };
   } catch {
     return defaults;

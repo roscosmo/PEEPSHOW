@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld("peepStudio", {
   closeEmulatorPopout: () => ipcRenderer.invoke("peep:emulator-popout-close"),
   syncEmulatorPopout: (state: unknown) => ipcRenderer.invoke("peep:emulator-popout-sync", state),
   sendEmulatorPopoutCommand: (command: unknown) => ipcRenderer.invoke("peep:emulator-popout-command", command),
+  windowControl: (action: "minimize" | "maximize" | "close") => ipcRenderer.invoke("peep:window-control", action),
   onEmulatorPopoutState: (callback: (state: unknown) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: unknown) => callback(state);
     ipcRenderer.on("peep:emulator-popout-state", listener);
