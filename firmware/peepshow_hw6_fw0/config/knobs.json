@@ -86,6 +86,8 @@
   "power_battery_sleep_retry_ms": 60000,
   "power_battery_shutdown_prep_attempts": 3,
   "power_battery_shutdown_prep_retry_ms": 1000,
+  "power_battery_fault_test_inspect_ms": 60000,
+  "power_battery_fault_test_wake_ms": 15000,
   "power_battery_warning_mv": 3500,
   "power_battery_critical_ship_mv": 3300,
   "power_battery_restart_allow_mv": 3600,

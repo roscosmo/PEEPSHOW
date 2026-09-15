@@ -1080,6 +1080,8 @@ void PS_HW6_RTOS_Stop2WakeClassifyAfterWake(void)
   g_ps_hw6_rtos_probe.stop2_wake_classify_tick =
     (uint32_t)tx_time_get();
   g_ps_hw6_rtos_probe.stop2_wake_source_mask = source_mask;
+  PS_HW6_OwnerStateMachines_BatteryFaultTestWake(
+    source_mask & (PS_HW6_RTOS_WAKE_SOURCE_START | PS_HW6_RTOS_WAKE_SOURCE_BUTTON));
   g_ps_hw6_rtos_probe.stop2_wake_primary_cause =
     PS_HW6_RTOS_Stop2WakePrimary(source_mask);
   g_ps_hw6_rtos_probe.stop2_wake_exti_rising = exti_rising;
@@ -11802,6 +11804,19 @@ static ULONG PS_HW6_RTOS_OwnerReceiveWaitTicks(uint32_t owner_id,
 {
   int32_t remaining_ticks;
   ULONG wait_ticks = PS_HW6_RTOS_HEARTBEAT_TICKS;
+
+  /* Disabled services cannot advance their deadlines; do not spin on them. */
+  if ((g_ps_hw6_battery_fault_wait_probe.active != 0UL) &&
+      ((owner_id == PS_HW6_RTOS_OWNER_DISPLAY) ||
+       (owner_id == PS_HW6_RTOS_OWNER_RUNTIME)))
+  {
+    if (owner_id == PS_HW6_RTOS_OWNER_DISPLAY)
+    {
+      g_ps_hw6_rtos_probe.display_deadline_wait_last_ticks =
+        (uint32_t)wait_ticks;
+    }
+    return wait_ticks;
+  }
 
   if (owner_id == PS_HW6_RTOS_OWNER_INPUT)
   {

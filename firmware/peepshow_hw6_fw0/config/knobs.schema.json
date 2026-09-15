@@ -92,6 +92,8 @@
     "power_battery_sleep_retry_ms",
     "power_battery_shutdown_prep_attempts",
     "power_battery_shutdown_prep_retry_ms",
+    "power_battery_fault_test_inspect_ms",
+    "power_battery_fault_test_wake_ms",
     "power_battery_warning_mv",
     "power_battery_critical_ship_mv",
     "power_battery_restart_allow_mv",
@@ -1163,6 +1165,30 @@
       "class": "protected_policy",
       "path": "platform.knobs.power.battery_shutdown_prep_retry_ms",
       "description": "Minimum awake time after failed battery preparation or shipment-command completion before re-preparation on a subsequent valid critical or boot-blocked reading. Not a periodic battery wake interval."
+    },
+    "power_battery_fault_test_inspect_ms": {
+      "type": "integer",
+      "minimum": 10000,
+      "maximum": 120000,
+      "default": 60000,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "debug_visibility",
+      "path": "platform.knobs.power.battery_fault_test_inspect_ms",
+      "description": "Running-time awake inspection window after the first button wake in an explicitly armed, shipment-disabled battery fault test. Halting freezes this timebase. Does not affect ordinary fault wait."
+    },
+    "power_battery_fault_test_wake_ms": {
+      "type": "integer",
+      "minimum": 5000,
+      "maximum": 60000,
+      "default": 15000,
+      "unit": "ms",
+      "timebase_domain": "threadx",
+      "owner": "thPower",
+      "class": "debug_visibility",
+      "path": "platform.knobs.power.battery_fault_test_wake_ms",
+      "description": "Maximum battery RTC interval only during an explicitly armed fault test; RTC elapsed time rebases the deadline through STOP2. No production cadence change."
     },
     "power_battery_warning_mv": {
       "type": "integer",

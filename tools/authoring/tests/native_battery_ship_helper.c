@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include "ps_hw6_owner_state_machines.h"
 #include "ps_hw6_owner_services.h"
+#include "ps_battery_wake.h"
 #include "timing_probe.inc"
 
 /* Host-only memory fixture. There is no PMIC driver or request consumer. */
@@ -8,6 +9,9 @@ volatile uint32_t g_ps_hw6_pmic_software_ship_request;
 volatile PS_HW6_BatteryShutdownProbe g_ps_hw6_battery_shutdown_probe = {
   .api_version = 2U, .reason = 3U, .attempts = 1U, .prepared = 1U
 };
+volatile PS_HW6_BatteryFaultWaitProbe g_ps_hw6_battery_fault_wait_probe = {.api_version = 1U};
+volatile PS_HW6_BatteryFaultTestProbe g_ps_hw6_battery_fault_test_probe = {.api_version = 2U};
+volatile ps_battery_wake_t g_ps_hw6_battery_wake_probe;
 volatile PS_HW6_OwnerStateMachineProbe g_ps_hw6_owner_sm_probe = {
   .magic = PS_HW6_OWNER_SM_PROBE_MAGIC,
   .version = PS_HW6_OWNER_SM_PROBE_VERSION,
@@ -33,7 +37,7 @@ volatile PS_HW6_OwnerProbe g_ps_hw6_owner_probe = {
 volatile PS_HW6_BatteryQuiesceTimingProbe g_ps_hw6_battery_quiesce_timing_probe = {
   .api_version = 3U, .sequence = 1U, .reason = 3U
 };
-volatile struct {uint32_t runtime_complete;} g_ps_hw6_rtos_probe = {1U};
+volatile struct {uint32_t runtime_complete, runtime_lifecycle;} g_ps_hw6_rtos_probe = {1U, 0U};
 
 int main(void)
 {

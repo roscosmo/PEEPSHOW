@@ -76,6 +76,8 @@
 #define KNOB_POWER_AUTO_STOP2_ENABLE                       (1)
 #define KNOB_POWER_AUTO_STOP2_IDLE_MS                      (0)
 #define KNOB_POWER_BATTERY_CRITICAL_SHIP_MV                (3300)
+#define KNOB_POWER_BATTERY_FAULT_TEST_INSPECT_MS           (60000)
+#define KNOB_POWER_BATTERY_FAULT_TEST_WAKE_MS              (15000)
 #define KNOB_POWER_BATTERY_MONITOR_PERIOD_MS               (1000)
 #define KNOB_POWER_BATTERY_RESTART_ALLOW_MV                (3600)
 #define KNOB_POWER_BATTERY_SHUTDOWN_PREP_ATTEMPTS          (3)

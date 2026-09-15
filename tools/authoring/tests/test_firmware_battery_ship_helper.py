@@ -67,6 +67,36 @@ class BatteryShipHelperTests(unittest.TestCase):
                 if expected:
                     commands += [f"source {helper.as_posix()}"]
                 commands += ["kill"]
+            fault_helper = firmware / "__fw0_battery_fault_test_enable.gdb"
+            fault_print = firmware / "__fw0_battery_fault_test_prints.gdb"
+            reject_helper = firmware / "__fw0_battery_fault_owner_reject_enable.gdb"
+            self.assertEqual(["g_ps_hw6_battery_fault_test_probe.request = 2"],
+                re.findall(r"^\s*set var (.+)$", reject_helper.read_text(), re.M))
+            self.assertEqual(["g_ps_hw6_battery_fault_test_probe.request = 1"],
+                re.findall(r"^\s*set var (.+)$", fault_helper.read_text(), re.M))
+            fault_cases = {
+                "prepared": ([], 1),
+                "wrong_api": (["g_ps_hw6_battery_fault_test_probe.api_version = 0"], 0),
+                "old_api": (["g_ps_hw6_battery_fault_test_probe.api_version = 1"], 0),
+                "automatic": (["g_ps_hw6_owner_sm_probe.battery_policy_boot_ship_enabled = 1"], 0),
+                "start": (["g_ps_hw6_owner_sm_probe.start_power_software_ship_enabled = 1"], 0),
+                "usb": (["g_ps_hw6_owner_probe.power_mcu_vbus_present = 1"], 0),
+                "unprepared": (["g_ps_hw6_battery_shutdown_probe.prepared = 0"], 0),
+                "duplicate": (["g_ps_hw6_battery_fault_test_probe.accepted = 1"], 0),
+            }
+            for name, (changes, expected) in fault_cases.items():
+                commands += ["start"] + [f"set var {change}" for change in changes]
+                commands += [f"source {fault_helper.as_posix()}",
+                    f'printf "FAULT_CASE {name}=%u\\n", g_ps_hw6_battery_fault_test_probe.request',
+                    f"source {fault_print.as_posix()}", "kill"]
+                commands += ["start"] + [f"set var {change}" for change in changes]
+                commands += [f"source {reject_helper.as_posix()}",
+                    f'printf "REJECT_CASE {name}=%u\\n", g_ps_hw6_battery_fault_test_probe.request',
+                    "set var g_ps_hw6_battery_fault_test_probe.mode = 2",
+                    "set var g_ps_hw6_battery_fault_test_probe.owner_retry_seen = 1",
+                    "set var g_ps_hw6_battery_fault_test_probe.owner_retry_tick = 6500",
+                    "set var g_ps_hw6_battery_fault_test_probe.owner_refusal_tick = 500",
+                    f"source {fault_print.as_posix()}", "kill"]
             script = work / "checks.gdb"
             script.write_text("\n".join(commands) + "\n", encoding="ascii")
             result = subprocess.run([str(debugger), "-q", "-batch", str(exe), "-x", str(script)],
@@ -76,3 +106,8 @@ class BatteryShipHelperTests(unittest.TestCase):
                 self.assertIn(f"CASE {name}={expected}", result.stdout)
             self.assertEqual(2, result.stdout.count("Queued ONE physical shipment request"))
             self.assertIn("shipment is already queued", result.stdout)
+            for name, (_, expected) in fault_cases.items():
+                self.assertIn(f"FAULT_CASE {name}={expected}", result.stdout)
+                self.assertIn(f"REJECT_CASE {name}={expected * 2}", result.stdout)
+            self.assertIn("refusal-to-retry ticks / intervening WFI / successful due reads = 6000 / 0 / 0", result.stdout)
+            self.assertIn("injected failures / last REAL preparation status", result.stdout)

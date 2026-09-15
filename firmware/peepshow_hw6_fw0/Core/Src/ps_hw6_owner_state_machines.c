@@ -226,6 +226,7 @@ extern UART_HandleTypeDef hlpuart1;
 volatile PS_HW6_OwnerStateMachineProbe g_ps_hw6_owner_sm_probe;
 volatile PS_HW6_BatteryShutdownProbe g_ps_hw6_battery_shutdown_probe;
 volatile PS_HW6_BatteryFaultWaitProbe g_ps_hw6_battery_fault_wait_probe;
+volatile PS_HW6_BatteryFaultTestProbe g_ps_hw6_battery_fault_test_probe;
 volatile uint32_t g_ps_hw6_owner_sm_start_request;
 volatile uint32_t g_ps_hw6_pmic_software_ship_request;
 volatile uint32_t g_ps_hw6_power_sleep_prep_request;
@@ -846,6 +847,9 @@ static void PS_HW6_BatteryPolicyRequestSoftwareShipment(uint32_t boot_check)
 
 static void PS_HW6_BatteryShutdownReset(void)
 {
+  g_ps_hw6_battery_fault_test_probe.active = 0UL;
+  g_ps_hw6_battery_fault_test_probe.inspect_active = 0UL;
+  g_ps_hw6_battery_fault_test_probe.owner_pending = 0UL;
   g_ps_hw6_battery_fault_wait_probe.active = 0UL;
   g_ps_hw6_battery_fault_wait_probe.force_read = 0UL;
   g_ps_hw6_battery_fault_wait_probe.next_tick = 0UL;
@@ -870,12 +874,78 @@ static void PS_HW6_BatteryFaultWaitLatch(void)
   }
 }
 
+static void PS_HW6_BatteryFaultTestRequest(HAL_StatusTypeDef snapshot_status)
+{
+  volatile PS_HW6_BatteryFaultTestProbe *test = &g_ps_hw6_battery_fault_test_probe;
+  uint32_t request = test->request;
+  test->request = 0UL;
+  if (request == 0UL) { return; }
+  test->status = (uint32_t)HAL_ERROR;
+  if (((request != 1UL) && (request != 2UL)) || (test->accepted != 0UL) ||
+      (KNOB_POWER_CRITICAL_SOFTWARE_SHIP_ENABLE != 0) ||
+      (KNOB_POWER_BOOT_LOW_BATTERY_SHIP_ENABLE != 0) ||
+      (KNOB_POWER_START_SOFTWARE_SHIP_ENABLE != 0) ||
+      (snapshot_status != HAL_OK) ||
+      (g_ps_hw6_owner_sm_probe.battery_policy_fuel_ok == 0UL) ||
+      (g_ps_hw6_owner_probe.power_battery_present == 0UL) ||
+      (g_ps_hw6_owner_probe.power_vbus_ok != 0UL) ||
+      (g_ps_hw6_owner_probe.power_mcu_vbus_present != 0UL) ||
+      (g_ps_hw6_owner_probe.power_vbus_agree == 0UL) ||
+      (g_ps_hw6_battery_fault_wait_probe.active != 0UL) ||
+      (g_ps_hw6_battery_shutdown_probe.prepared != 1UL) ||
+      (g_ps_hw6_battery_shutdown_probe.exhausted != 0UL) ||
+      (g_ps_hw6_battery_shutdown_probe.last_status != (uint32_t)HAL_OK) ||
+      (g_ps_hw6_battery_shutdown_probe.ship_pending != 0UL) ||
+      (g_ps_hw6_pmic_software_ship_request != 0UL) ||
+      (g_ps_hw6_owner_probe.power_software_ship_request_count != 0UL) ||
+      (g_ps_hw6_owner_sm_probe.current_state[PS_HW6_SM_POWER] != PWR_SHIP_PREP) ||
+      (ps_power_battery_owns_ship_prep == 0UL))
+  { return; }
+  if (!(((g_ps_hw6_battery_shutdown_probe.reason == PS_HW6_POWER_QUIESCE_REASON_BOOT_LOW_BATTERY) &&
+         (ps_power_boot_restart_gate_pending != 0UL) &&
+         (g_ps_hw6_owner_sm_probe.battery_policy_vbat_mv < KNOB_POWER_BATTERY_RESTART_ALLOW_MV)) ||
+        ((g_ps_hw6_battery_shutdown_probe.reason == PS_HW6_POWER_QUIESCE_REASON_BATTERY_CRITICAL) &&
+         (g_ps_hw6_owner_sm_probe.battery_policy_vbat_mv <= KNOB_POWER_BATTERY_CRITICAL_SHIP_MV))))
+  { return; }
+
+  PS_HW6_BatteryShutdownReset();
+  test->accepted = 1UL;
+  test->active = 1UL;
+  test->mode = request;
+  test->owner_pending = (request == 2UL) ? 1UL : 0UL;
+  test->owner_real_status = PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  test->status = (uint32_t)HAL_OK;
+  test->last_real_status = PS_HW6_OWNER_SM_STATUS_NOT_RUN;
+  test->inspect_ms = KNOB_POWER_BATTERY_FAULT_TEST_INSPECT_MS;
+  test->wake_ms = KNOB_POWER_BATTERY_FAULT_TEST_WAKE_MS;
+  test->wfi_baseline = g_ps_hw6_battery_fault_wait_probe.wfi_returns;
+  test->expiry_baseline = g_ps_hw6_battery_wake_probe.rtc_expiries;
+  test->due_success_baseline = g_ps_hw6_battery_wake_probe.due_successes;
+  test->ship_baseline = g_ps_hw6_owner_probe.power_software_ship_request_count;
+}
+
+void PS_HW6_OwnerStateMachines_BatteryFaultTestWake(uint32_t button_wake)
+{
+  volatile PS_HW6_BatteryFaultTestProbe *test = &g_ps_hw6_battery_fault_test_probe;
+  if ((button_wake != 0UL) && (test->active != 0UL) &&
+      (test->inspect_count == 0UL) &&
+      (g_ps_hw6_battery_fault_wait_probe.active != 0UL) &&
+      (g_ps_hw6_battery_fault_wait_probe.wfi_returns > test->wfi_baseline))
+  {
+    test->inspect_count = 1UL;
+    test->inspect_active = 1UL;
+    test->inspect_until = (uint32_t)tx_time_get() +
+      PS_HW6_SM_MsToTicks(KNOB_POWER_BATTERY_FAULT_TEST_INSPECT_MS);
+  }
+}
+
 void PS_HW6_OwnerStateMachines_ProcessSoftwareShipment(void)
 {
   volatile PS_HW6_BatteryShutdownProbe *probe = &g_ps_hw6_battery_shutdown_probe;
   HAL_StatusTypeDef status;
 
-  if (g_ps_hw6_battery_fault_wait_probe.active != 0UL)
+  if ((g_ps_hw6_battery_fault_wait_probe.active != 0UL) ||
+      (g_ps_hw6_battery_fault_test_probe.active != 0UL))
   {
     /* An old START/manual request cannot bypass an exhausted battery episode. */
     g_ps_hw6_pmic_software_ship_request = 0UL;
@@ -940,6 +1010,16 @@ static void PS_HW6_BatteryShutdownTryPrepare(uint32_t reason, uint32_t boot_chec
   probe->reason = reason;
   probe->attempts++;
   status = PS_HW6_BatteryPolicyPrepareForShipment(reason);
+  if (g_ps_hw6_battery_fault_test_probe.active != 0UL)
+  {
+    g_ps_hw6_battery_fault_test_probe.last_real_status = (uint32_t)status;
+    if (status == HAL_OK)
+    {
+      /* Inject a returned failure, never a forged physical-owner ACK. */
+      g_ps_hw6_battery_fault_test_probe.injections++;
+      status = HAL_ERROR;
+    }
+  }
   probe->last_status = (uint32_t)status;
   if (status == HAL_OK)
   {
@@ -1034,6 +1114,9 @@ static HAL_StatusTypeDef PS_HW6_SM_EvaluateBatteryPolicy(
   if (g_ps_hw6_battery_fault_wait_probe.active != 0UL)
   {
     uint32_t retry_ticks = PS_HW6_SM_MsToTicks((uint32_t)KNOB_POWER_BATTERY_SLEEP_RETRY_MS);
+    uint32_t test_ticks = PS_HW6_SM_MsToTicks(KNOB_POWER_BATTERY_FAULT_TEST_WAKE_MS);
+    if ((g_ps_hw6_battery_fault_test_probe.active != 0UL) && (test_ticks < retry_ticks))
+    { retry_ticks = test_ticks; }
     uint32_t remaining = PS_BatteryWake_Remaining(&g_ps_hw6_battery_wake_probe, now_tick);
     if (remaining > retry_ticks)
     {
@@ -10682,6 +10765,9 @@ void PS_HW6_OwnerStateMachines_Init(void)
   memset((void *)&g_ps_hw6_battery_fault_wait_probe, 0,
          sizeof(g_ps_hw6_battery_fault_wait_probe));
   g_ps_hw6_battery_fault_wait_probe.api_version = 1UL;
+  memset((void *)&g_ps_hw6_battery_fault_test_probe, 0,
+         sizeof(g_ps_hw6_battery_fault_test_probe));
+  g_ps_hw6_battery_fault_test_probe.api_version = 2UL;
   PS_HW6_BatteryShutdownReset();
   ps_power_boot_restart_gate_blocked = 0UL;
   ps_power_battery_monitor_period_ticks =
@@ -11609,6 +11695,14 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunBatteryFaultWait(void)
   uint32_t remaining = probe->next_tick - now;
   HAL_StatusTypeDef status;
 
+  if (g_ps_hw6_battery_fault_test_probe.inspect_active != 0UL)
+  {
+    uint32_t inspect_remaining = g_ps_hw6_battery_fault_test_probe.inspect_until - now;
+    if ((inspect_remaining != 0UL) && (inspect_remaining <= INT32_MAX))
+    { return HAL_BUSY; }
+    g_ps_hw6_battery_fault_test_probe.inspect_active = 0UL;
+  }
+
   if ((probe->active == 0UL) || (probe->force_read != 0UL) ||
       ((remaining != 0UL) && (remaining <= INT32_MAX)))
   {
@@ -11616,6 +11710,16 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunBatteryFaultWait(void)
   }
   if (PS_HW6_RTOS_Stop2FinalInputReady() == 0UL) { return HAL_BUSY; }
 
+  if ((g_ps_hw6_battery_fault_test_probe.active != 0UL) &&
+      (g_ps_hw6_battery_fault_test_probe.owner_refusals != 0UL) &&
+      (g_ps_hw6_battery_fault_test_probe.owner_retry_seen == 0UL))
+  {
+    g_ps_hw6_battery_fault_test_probe.owner_retry_seen = 1UL;
+    g_ps_hw6_battery_fault_test_probe.owner_retry_tick = now;
+    g_ps_hw6_battery_fault_test_probe.owner_wfi_at_retry = probe->wfi_returns;
+    g_ps_hw6_battery_fault_test_probe.owner_reads_at_retry =
+      g_ps_hw6_battery_wake_probe.due_successes;
+  }
   probe->attempts++;
   status = PS_HW6_RequestPowerAdmission(g_ps_hw6_battery_shutdown_probe.reason);
   if (status == HAL_OK)
@@ -11880,11 +11984,13 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunBatteryMonitor(
 
   if ((g_ps_hw6_battery_fault_wait_probe.active != 0UL) &&
       (g_ps_hw6_battery_fault_wait_probe.force_read == 0UL) &&
+      (g_ps_hw6_battery_fault_test_probe.request == 0UL) &&
       (PS_BatteryWake_Remaining(&g_ps_hw6_battery_wake_probe, now_tick) != 0UL))
   {
     return HAL_OK;
   }
   if ((g_ps_hw6_battery_fault_wait_probe.force_read == 0UL) &&
+      (g_ps_hw6_battery_fault_test_probe.request == 0UL) &&
       (PS_BatteryWake_Remaining(&g_ps_hw6_battery_wake_probe, now_tick) != 0UL) &&
       (last_tick != 0UL) &&
       ((now_tick - last_tick) < ps_power_battery_monitor_period_ticks))
@@ -11899,6 +12005,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunBatteryMonitor(
     PS_HW6_SM_UpdateUsbHostAvailability(
       (uint32_t)PS_HW6_USB_HOST_EVENT_POWER_SNAPSHOT);
     snapshot_status = PS_HW6_SM_EvaluateBatteryPolicy(snapshot_status, 0UL);
+    PS_HW6_BatteryFaultTestRequest(snapshot_status);
   }
   test_ms = g_ps_hw6_battery_wake_test_request_ms;
   g_ps_hw6_battery_wake_test_request_ms = 0UL;
@@ -12320,6 +12427,29 @@ void PS_HW6_OwnerStateMachines_BeginPowerQuiesce(uint32_t reason)
   }
 }
 
+static HAL_StatusTypeDef PS_HW6_BatteryFaultTestOwnerResult(
+  uint32_t owner_id, HAL_StatusTypeDef status)
+{
+  volatile PS_HW6_BatteryFaultTestProbe *test = &g_ps_hw6_battery_fault_test_probe;
+  if ((owner_id == PS_HW6_RTOS_OWNER_SENSOR) && (test->active != 0UL) &&
+      (test->owner_pending != 0UL) &&
+      (g_ps_hw6_battery_fault_wait_probe.active != 0UL))
+  {
+    /* Report refusal through the real owner ACK path; never fake successful parking. */
+    test->owner_pending = 0UL;
+    test->owner_real_status = (uint32_t)status;
+    if (status == HAL_OK)
+    {
+      test->owner_refusals++;
+      test->owner_refusal_tick = (uint32_t)tx_time_get();
+      test->owner_wfi_at_refusal = g_ps_hw6_battery_fault_wait_probe.wfi_returns;
+      test->owner_reads_at_refusal = g_ps_hw6_battery_wake_probe.due_successes;
+      return HAL_ERROR;
+    }
+  }
+  return status;
+}
+
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_QuiesceForPowerBarrier(
   uint32_t owner_id)
 {
@@ -12450,6 +12580,7 @@ HAL_StatusTypeDef PS_HW6_OwnerStateMachines_QuiesceForPowerBarrier(
       break;
   }
 
+  status = PS_HW6_BatteryFaultTestOwnerResult(owner_id, status);
   g_ps_hw6_owner_sm_probe.power_quiesce_owner_status[owner_id] =
     (uint32_t)status;
   if (status == HAL_OK)

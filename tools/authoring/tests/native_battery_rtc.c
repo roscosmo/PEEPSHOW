@@ -38,6 +38,9 @@ typedef enum {HAL_OK, HAL_ERROR, HAL_BUSY, HAL_TIMEOUT} HAL_StatusTypeDef;
 static uint32_t hrtc, rtc_flag, units, tick, commands, arms, disarms;
 static uint32_t samples, ps_power_battery_monitor_period_ticks;
 static struct { uint32_t active, force_read; } g_ps_hw6_battery_fault_wait_probe;
+static struct { uint32_t request; } g_ps_hw6_battery_fault_test_probe;
+static void PS_HW6_BatteryFaultTestRequest(HAL_StatusTypeDef status)
+{ (void)status; g_ps_hw6_battery_fault_test_probe.request = 0; }
 static struct {uint32_t battery_policy_last_tick, battery_policy_next_tick;}
   g_ps_hw6_owner_sm_probe;
 static HAL_StatusTypeDef read_status, arm_status, disarm_status;
@@ -114,6 +117,7 @@ static void reset_fixture(void)
   samples = ps_power_battery_monitor_period_ticks = 0;
   memset(&g_ps_hw6_battery_fault_wait_probe, 0, sizeof(g_ps_hw6_battery_fault_wait_probe));
   g_ps_hw6_battery_wake_test_request_ms = 0;
+  g_ps_hw6_battery_fault_test_probe.request = 0;
   g_ps_hw6_owner_sm_probe.battery_policy_last_tick = tick;
   read_status = arm_status = disarm_status = HAL_OK;
   ps_runtime_interaction_rtc_armed = ps_runtime_interaction_rtc_irq_expired = 0;
@@ -157,6 +161,9 @@ int main(void)
   g_ps_hw6_battery_fault_wait_probe.force_read = 1;
   assert(PS_HW6_OwnerStateMachines_RunBatteryMonitor(tick) == HAL_OK);
   assert(samples == 2 && g_ps_hw6_battery_fault_wait_probe.force_read == 0);
+  g_ps_hw6_battery_fault_test_probe.request = 1;
+  assert(PS_HW6_OwnerStateMachines_RunBatteryMonitor(tick) == HAL_OK);
+  assert(samples == 3 && g_ps_hw6_battery_fault_test_probe.request == 0);
 
   reset_fixture();
   assert(PS_HW6_RTOS_InteractionStop2TimeoutPrepare() == HAL_OK);

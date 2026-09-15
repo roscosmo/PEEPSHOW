@@ -1,7 +1,7 @@
 set pagination off
 set input-radix 10
 printf "--- HW6 battery fault-wait bench result ---\n"
-if g_ps_hw6_battery_fault_test_probe.api_version != 1 || g_ps_hw6_battery_fault_wait_probe.api_version != 1 || g_ps_hw6_battery_shutdown_probe.api_version != 2
+if g_ps_hw6_battery_fault_test_probe.api_version != 2 || g_ps_hw6_battery_fault_wait_probe.api_version != 1 || g_ps_hw6_battery_shutdown_probe.api_version != 2
   printf "Probe mismatch: use the matching normal Debug ELF.\n"
 else
   set $ft = &g_ps_hw6_battery_fault_test_probe
@@ -9,6 +9,15 @@ else
   set $bs = &g_ps_hw6_battery_shutdown_probe
   printf "request/accepted/test active/status = %u / %u / %u / 0x%x\n", $ft->request, $ft->accepted, $ft->active, $ft->status
   printf "injected failures / last REAL preparation status = %u / 0x%x\n", $ft->injections, $ft->last_real_status
+  printf "mode / owner pending/refusals/REAL status = %u / %u / %u / 0x%x\n", $ft->mode, $ft->owner_pending, $ft->owner_refusals, $ft->owner_real_status
+  if $ft->mode == 2
+    printf "owner refusal tick / next retry seen/tick = %u / %u / %u\n", $ft->owner_refusal_tick, $ft->owner_retry_seen, $ft->owner_retry_tick
+    if $ft->owner_retry_seen != 0
+      printf "refusal-to-retry ticks / intervening WFI / successful due reads = %u / %u / %u\n", (unsigned int)($ft->owner_retry_tick - $ft->owner_refusal_tick), (unsigned int)($ft->owner_wfi_at_retry - $ft->owner_wfi_at_refusal), (unsigned int)($ft->owner_reads_at_retry - $ft->owner_reads_at_refusal)
+    end
+    printf "Mode 2 expects ONE SENSOR refusal after real status=0. Retry spacing >=6000 ticks at 100 Hz, no intervening WFI, and successful battery reads during backoff.\n"
+    printf "Source __fw0_battery_quiesce_timing_prints.gdb: FIRST FAILED barrier requires SENSOR ACK success/action=1, failure mask bit 0x10; later full quiesce must succeed before sleep.\n"
+  end
   printf "preparation attempts/prepared/exhausted/status = %u / %u / %u / 0x%x\n", $bs->attempts, $bs->prepared, $bs->exhausted, $bs->last_status
   printf "fault active/sleep attempts/WFI returns/status/force read = %u / %u / %u / 0x%x / %u\n", $fw->active, $fw->attempts, $fw->wfi_returns, $fw->last_status, $fw->force_read
   printf "test WFI returns / battery RTC expiry / successful due-read deltas = %u / %u / %u\n", $fw->wfi_returns - $ft->wfi_baseline, g_ps_hw6_battery_wake_probe.rtc_expiries - $ft->expiry_baseline, g_ps_hw6_battery_wake_probe.due_successes - $ft->due_success_baseline

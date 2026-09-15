@@ -91,6 +91,41 @@ typedef struct
 extern volatile PS_HW6_BatteryFaultWaitProbe g_ps_hw6_battery_fault_wait_probe;
 HAL_StatusTypeDef PS_HW6_OwnerStateMachines_RunBatteryFaultWait(void);
 
+typedef struct
+{
+  uint32_t api_version;
+  uint32_t request;
+  uint32_t accepted;
+  uint32_t active;
+  uint32_t status;
+  uint32_t injections;
+  uint32_t last_real_status;
+  uint32_t inspect_active;
+  uint32_t inspect_count;
+  uint32_t inspect_until;
+  uint32_t inspect_ms;
+  uint32_t wake_ms;
+  uint32_t wfi_baseline;
+  uint32_t expiry_baseline;
+  uint32_t due_success_baseline;
+  uint32_t ship_baseline;
+  uint32_t mode;
+  uint32_t owner_pending;
+  uint32_t owner_refusals;
+  uint32_t owner_real_status;
+  uint32_t owner_refusal_tick;
+  uint32_t owner_retry_seen;
+  uint32_t owner_retry_tick;
+  uint32_t owner_wfi_at_refusal;
+  uint32_t owner_wfi_at_retry;
+  uint32_t owner_reads_at_refusal;
+  uint32_t owner_reads_at_retry;
+} PS_HW6_BatteryFaultTestProbe;
+
+extern volatile PS_HW6_BatteryFaultTestProbe g_ps_hw6_battery_fault_test_probe;
+/* thPower wake classification only; buttons never dispatch package work here. */
+void PS_HW6_OwnerStateMachines_BatteryFaultTestWake(uint32_t button_wake);
+
 typedef enum
 {
   PS_HW6_SM_POWER = 0,

@@ -1,6 +1,6 @@
 set pagination off
 set input-radix 10
-printf "--- HW6 battery fault-wait bench test ---\n"
+printf "--- HW6 battery fault-wait one-shot owner refusal ---\n"
 printf "BENCH ONLY: cell and device USB disconnected; isolated PPK2 battery-input supply.\n"
 set $fault_test_ok = 1
 if g_ps_hw6_owner_sm_probe.magic != 0x48364653 || g_ps_hw6_owner_sm_probe.version != 85 || g_ps_hw6_battery_shutdown_probe.api_version != 2 || g_ps_hw6_battery_fault_wait_probe.api_version != 1 || g_ps_hw6_battery_fault_test_probe.api_version != 2
@@ -12,7 +12,7 @@ if g_ps_hw6_owner_sm_probe.battery_policy_critical_ship_enabled != 0 || g_ps_hw6
   set $fault_test_ok = 0
 end
 if g_ps_hw6_rtos_probe.runtime_complete != 1 || g_ps_hw6_battery_shutdown_probe.prepared != 1 || g_ps_hw6_battery_shutdown_probe.exhausted != 0 || g_ps_hw6_owner_sm_probe.current_state[0] != 8
-  printf "NOT armed: let low-battery preparation finish first, then halt. For the boot case, boot at 3.4 V and wait for LOW BATTERY.\n"
+  printf "NOT armed: boot at 3.4 V and let LOW BATTERY preparation finish, then halt.\n"
   set $fault_test_ok = 0
 end
 if g_ps_hw6_battery_fault_test_probe.accepted != 0 || g_ps_hw6_battery_fault_test_probe.request != 0 || g_ps_hw6_battery_fault_wait_probe.active != 0
@@ -24,11 +24,10 @@ if g_ps_hw6_owner_probe.power_vbus_ok != 0 || g_ps_hw6_owner_probe.power_mcu_vbu
   set $fault_test_ok = 0
 end
 if $fault_test_ok != 0
-  set var g_ps_hw6_battery_fault_test_probe.request = 1
-  printf "Queued. thPower rechecks a fresh sample, then injects failed preparation returns AFTER real successful owner quiesce.\n"
-  printf "No PMIC shipment write or bus fault is injected. The normal bounded retries must exhaust and enter checked fault STOP2.\n"
-  printf "Resume at 3.4 V, leave buttons released and observe current for about 25 seconds. Battery RTC checks use a 15-second maximum interval in this test.\n"
-  printf "Then tap A once. The FIRST button wake opens a 60-second RUNNING-TIME awake inspection window; RTC wakes do not.\n"
-  printf "Reattach with HW6 FW0: Attach with ST-LINK if needed, WITHOUT reset/reflash. Halt and source __fw0_battery_fault_test_prints.gdb.\n"
-  printf "Halting freezes the inspection countdown. High current in that window is intentional; measure fault-sleep current BEFORE the button wake.\n"
+  set var g_ps_hw6_battery_fault_test_probe.request = 2
+  printf "Queued mode 2. Three preparation failures lead to fault wait, then SENSOR reports ONE synthetic refusal after real successful quiesce.\n"
+  printf "The first sleep MUST be refused. Awake current for about 60 seconds is intentional; the existing retry backoff is unchanged. Battery reads remain scheduled.\n"
+  printf "Resume at 3.4 V, leave buttons released and observe for about 90 seconds. The next full barrier must succeed before STOP2 resumes; subsequent battery wakes use 15 seconds.\n"
+  printf "Then tap A once for the 60-second inspection window, attach WITHOUT reset/reflash if needed, halt and source __fw0_battery_fault_test_prints.gdb and __fw0_battery_quiesce_timing_prints.gdb.\n"
+  printf "The FIRST FAILED barrier must retain SENSOR action=1 with a real ACK, not an ACK timeout. No bus is disconnected and no PMIC shipment call is made.\n"
 end

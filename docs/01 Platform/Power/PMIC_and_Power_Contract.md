@@ -181,6 +181,38 @@ remains suspended for explicit recovery. If safe sleep cannot be established,
 the failure remains visible; firmware must not claim low-power residency.
 Independent hardware protection is still required.
 
+The explicit FW0 fault-wait bench request is admitted once per boot only with
+all shipment gates disabled, fresh qualifying battery data, absent/agreeing
+VBUS detection and a completed battery preparation. `thPower` restarts that
+test episode and injects a failed preparation return only after the actual
+admission/quiesce call succeeds. Real owner results are retained separately;
+no physical ACK is fabricated, and failed real preparation is not relabelled as
+successful injection. The existing retry budget and spacing still determine
+exhaustion. Shipment requests are discarded while this test is active.
+
+Only this armed test caps the battery wake interval with
+`power_battery_fault_test_wake_ms` (15000 ms). Its first classified button wake
+opens one `power_battery_fault_test_inspect_ms` (60000 ms) awake inspection
+window. RTC wakes do not open the window; later buttons cannot extend it.
+The window uses running ThreadX time, so a debugger halt freezes its countdown.
+Package suppression and battery monitoring remain active. Current measured
+during inspection is not fault-sleep current. Healthy recovery ends the test
+but preserves its evidence; another injection requires an intentional reset.
+
+FW0 fault-test mode 2 uses the same admission and preparation exhaustion, then
+consumes one SENSOR-owner result injection during the first fault quiesce.
+The physical owner runs its real quiesce first. Only a real HAL_OK becomes a
+reported HAL_ERROR; a real failure is preserved and consumes the injection
+without claiming a synthetic refusal. Normal owner result/mask publication and
+ACK delivery are unchanged, so receipt of the ACK does not permit sleep when
+the reported action failed. There is no withheld ACK or deliberate bus fault.
+The existing `power_battery_sleep_retry_ms` backoff is unchanged. Battery checks
+continue while awake, and the next attempt must pass a new complete barrier.
+Recovery clears any pending injection. Retained fault-test API 2 data separates
+the real result, synthetic refusal, next attempt timing, intervening WFI and
+successful due reads. This qualifies transient refusal handling, not safe
+parking of permanently broken hardware.
+
 The separate `g_ps_hw6_battery_shutdown_probe` (API 2) reports reason, attempts,
 prepared, exhausted, last status and next kernel tick for the current episode.
 It also reports battery shipment pending, actual owner-call attempts, returned

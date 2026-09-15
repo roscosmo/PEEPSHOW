@@ -544,5 +544,190 @@ supply, with cell and device USB disconnected. Verify retained exhaustion, no
 new shipment attempts on button wakes, no animation/input dispatch, battery RTC
 checks, measured low-current residency when owners can park, and valid-voltage
 recovery. Also verify an intentionally refused owner prevents STOP2 and reports
-the failure. A dedicated injection procedure is still required; do not disconnect
-the live PMIC bus or treat an ordinary successful shipment test as this proof.
+the failure. The following procedure covers synthetic preparation-return failure;
+it does not cover a genuinely failed physical owner. Do not disconnect the live
+PMIC bus or treat an ordinary successful shipment test as this proof.
+
+### Fault-Wait Bench Capture With Retained RAM
+
+Use the **normal Debug** configuration `HW6 FW0: Debug with ST-LINK`, NOT
+`HW6 FW0: BATTERY SHUTDOWN TEST (flash)`. All three shipment gates must be off.
+Keep the cell and device USB disconnected and use only the isolated PPK2
+battery-input supply. This test does not write shipment mode or deliberately
+break a bus. It simulates a returned preparation failure after working owners
+have actually acknowledged quiesce. This distinction must accompany results.
+
+1. Flash normal Debug at 3.8 V. While stopped at `main`, set the isolated source
+   to 3.4 V and resume. Wait for LOW BATTERY and completed preparation, then halt.
+2. Queue the one-shot test:
+
+```gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_battery_fault_test_enable.gdb
+```
+
+3. Resume at 3.4 V with all buttons released. The owner rechecks fresh voltage,
+   then runs the existing three-attempt budget with synthetic failed returns
+   after real successful admission/quiesce. After exhaustion, the checked fault
+   fallback should sleep. Observe current for about 25 seconds; this test caps
+   the battery RTC interval at 15 seconds. No screen animation is expected.
+4. Record current **before** pressing a button. Tap A once. The first classified
+   button wake opens a 60-second **running-time** awake inspection window, without
+   enabling gameplay or shipment. RTC wakes do not open it. Reconnect using
+   `HW6 FW0: Attach with ST-LINK` if needed, without reset/reflash, then halt:
+
+```gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_battery_fault_test_prints.gdb
+```
+
+5. Expected before recovery: accepted=1, injections=3, last REAL preparation
+   status=0, preparation attempts/exhausted=3/1, injected status=HAL_ERROR,
+   fault active=1, successful fault sleep status, positive WFI/RTC-expiry/due-read
+   deltas, no actual shipment calls, and measured low current outside inspection.
+   A queued request or WFI counter alone is not physical low-current proof.
+6. Keep 3.4 V and resume if checking window expiry: it ends after 60 seconds of
+   running kernel time from the first button wake. Halting freezes that countdown.
+   Later button wakes cannot reopen/extend it. Once capture is complete, raise
+   the source to 3.8 V and resume; a valid reading and successful owner recovery
+   should clear fault/test active. Injection counts remain until reset.
+
+The helper writes only the request mailbox; firmware checks admission again.
+Native tests exercise actual request admission, enabled battery/START gate
+refusal, injected retry exhaustion, shipment suppression, RTC-vs-button wake
+selection, one-shot inspection, deadline wraparound/expiry and recovery cleanup.
+Host GDB executes both helpers against a memory-only fixture to check names,
+formatting and refusal paths.
+
+### Fault-Wait Scheduling Failure and Correction (2026-09-15)
+
+The first bench run did NOT enter STOP2: measured current remained about
+3.73 mA, falling to 3.12 mA after a minute. Test admission succeeded, all three
+synthetic failures followed successful real preparation, and exhaustion latched.
+Fault sleep attempts/WFI returns were 1/0; inspection never opened and no
+shipment call occurred. This is a failed fallback test, not low-power proof.
+
+The first failed barrier ran from tick 664 to 3664. COMM, SENSOR and STORAGE
+commands all queued successfully, but each ACK timed out after 1000 ticks with
+status 0x7 and owner action NOT_RUN. AUDIO, INPUT and DISPLAY acknowledged.
+Clock grants/releases succeeded. The display deadline was 663, suppression was
+zero, its queue wait was zero, and the overdue counter reached 1684893.
+
+Fault mode suppressed the display service without suppressing its deadline in
+the owner receive-wait calculation. The expired deadline therefore made the
+display thread spin, starving the three lower-priority owners. The correction
+ignores display and runtime service deadlines while fault mode disables those
+services, using the existing bounded heartbeat queue wait instead. Queued owner
+commands still wake the receiver immediately. Button scheduling, audio servicing,
+normal scheduling and all physical STOP2 checks remain unchanged; no owner ACK
+is fabricated or bypassed.
+
+A native regression compiles the actual receive-wait function and reproduces
+deadline 663 at tick 664. It checks bounded fault waits, no overdue-counter churn,
+ignored runtime deadlines, preserved button/audio waits and normal scheduling
+after fault clears. This proves the wait calculation, not target scheduling or
+physical sleep. Repeat the retained-RAM bench procedure above after flashing the
+corrected normal Debug build. Require all owner results successful, positive WFI
+and RTC deltas, and measured low current before the inspection button wake.
+
+### Fault-Wait Bench Pass and Voltage Recovery (2026-09-15)
+
+The corrected normal Debug build passed the synthetic preparation-failure bench
+sequence. The user observed two automatic wakes and STOP2 at the normal sleep
+current; no numeric current value was supplied for this run.
+
+- At 3395 mV: accepted/test active=1/1, injections=3, last real preparation
+  status=0, preparation attempts/exhausted=3/1. Fault sleep attempts/WFI returns
+  were 3/3, battery RTC expiry/due-success deltas were 2/2, and all STOP2
+  quiesce/clock prepare/clock restore statuses were zero.
+- All six owners acknowledged and completed successfully: required/ACK/success
+  masks=0x7e/0x7e/0x7e, failures=0. The latest barrier began and ended at tick 741
+  (below the 10 ms tick resolution); no first failed barrier was recorded.
+- The button wake opened inspection once: active/count=1/1. Actual shipment
+  calls and pending requests remained zero.
+- After raising the isolated supply: valid VBAT=3794 mV, recovery status=0,
+  fault/test/inspection active=0/0/0. Preparation attempts/exhaustion reset,
+  retained injections stayed at 3, and actual shipment calls remained zero.
+  Power state returned to ACTIVE_LP (2); runtime lifecycle was 2.
+
+Nine focused battery tests and both Debug/BatteryShutdownTest firmware builds
+passed before this hardware run. This qualifies retry exhaustion, checked
+fallback sleep, periodic battery reads, inspection and valid-voltage recovery
+with working physical owners. It does not qualify a genuinely failed owner,
+a failed PMIC shipment write, or permanent bus failure. Inspection-window expiry
+without voltage recovery was not separately confirmed in this capture.
+
+### One-Shot Owner Refusal Test (2026-09-15, Functional Pass; Cadence Pending)
+
+Fault-test probe API is now 2; shutdown API remains 2 and fault-wait API remains
+1. Existing mode 1 behaviour is unchanged, but its helpers require the matching
+new ELF. Mode 2 adds exactly one SENSOR result refusal after preparation
+exhaustion. Its actual sensor quiesce still runs; only a successful real result
+is replaced with HAL_ERROR before normal result/mask publication and ACK.
+A real error is preserved, consumes the injection, and is not counted as a
+successful synthetic refusal. No physical fault or shipment is injected.
+
+Use the normal `HW6 FW0: Debug with ST-LINK` build, all shipment gates OFF,
+cell/device USB disconnected, isolated PPK2 supply only. Flash at 3.8 V, boot
+at 3.4 V, let LOW BATTERY preparation complete, then halt and source:
+
+```gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_battery_fault_owner_reject_enable.gdb
+```
+
+Resume and leave controls released at 3.4 V for about 90 seconds. The first
+fault sleep attempt MUST be refused. Awake current during the existing
+60-second backoff is intentional; battery reads continue. The next barrier
+must succeed before sleep resumes. Thereafter the test's 15-second battery
+RTC checks apply. Record the current transition and sleep current, then tap A
+once for inspection, attach without resetting/reflashing if necessary, halt:
+
+```gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_battery_fault_test_prints.gdb
+source G:/PEEPSHOW/firmware/peepshow_hw6_fw0/__fw0_battery_quiesce_timing_prints.gdb
+```
+
+Require mode=2, owner pending/refusals/REAL status=0/1/0, retry seen=1,
+refusal-to-retry >=6000 ticks at 100 Hz, intervening WFI=0 and positive
+successful due reads during backoff. FIRST FAILED barrier must show SENSOR
+send/ACK=0/0, flags=0x10, action=1; this is not an ACK timeout. The latest
+successful barrier must have all six real ACK/action successes before STOP2.
+Require measured sleep current, RTC reads, and no actual shipment calls.
+Then raise the isolated supply to 3.8 V, resume and confirm valid-voltage
+recovery clears fault/test active without erasing the retained refusal.
+
+Native tests compile the actual result injection, aggregate quiesce decision
+and fault retry scheduler with fake hardware/queue completions. They verify
+no injection before fault mode, no other-owner injection, preservation of real
+errors, one-shot consumption, no WFI during backoff, battery reads, fresh
+successful retry and recovery. Host GDB executes the new request and print
+paths, including old-API, shipment-gate, USB and duplicate-request refusals.
+Nine focused tests and both firmware builds pass. This does not qualify a
+permanently unresponsive owner or failed physical shipment.
+
+Bench result: the user confirmed current fell to normal STOP2 levels after
+about a minute. No numeric current was supplied. The first barrier at tick 664
+retained SENSOR send/ACK/action=0/0/1, with all other owner actions successful.
+The next attempt was at tick 6668: 6004 ticks (60.04 seconds), zero intervening
+WFI returns, and four successful due battery reads. The injected owner refusal
+occurred exactly once after real quiesce status=0; the injection was consumed.
+
+The later capture recorded 46 fault sleep attempts, 45 WFI returns and 44 RTC
+expiries, with 48 successful due-read deltas. Latest quiesce required/ACK/success
+masks were all 0x7e, failure mask=0, and quiesce/clock prepare/clock restore
+statuses were all zero. Inspection opened once on the button wake. No actual
+shipment calls occurred. The first failed barrier remained available alongside
+the latest successful one.
+
+At valid VBAT=3774 mV, recovery status=0, fault/test/inspection active=0/0/0,
+and preparation attempts/exhaustion reset. Power returned to ACTIVE_LP (2).
+The one-shot refusal and retry evidence remained intact, due-read delta reached
+49, and shipment calls stayed zero. This passes synthetic transient-owner
+refusal, checked retry, battery monitoring, observed low-current sleep and
+valid-voltage recovery. It does not establish behaviour with physically broken
+hardware or independently qualify inspection-window expiry.
+
+Follow-up: the user reported regular wake-current peaks approximately every
+10 seconds in the PPK log. The armed test configures a 15000 ms battery wake
+interval, so physical cadence is not yet qualified. RTC expiry/read counters
+establish that battery work occurred but do not establish the wall-clock
+interval or identify every current peak. Obtain cursor measurements of
+consecutive peaks before attributing this to RTC timing or another wake source.
