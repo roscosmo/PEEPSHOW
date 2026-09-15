@@ -1641,7 +1641,7 @@ function StateTransitionEdge({
           : `M ${crossing.x} ${crossing.y - 10} Q ${crossing.x + 11} ${crossing.y} ${crossing.x} ${crossing.y + 10}`;
         return (
           <g key={`${id}:local-crossing-${index}`} className="state-transition-bridge" pointerEvents="none">
-            <path d={maskPath} stroke="#eef2f0" strokeWidth={10} fill="none" />
+            <path d={maskPath} stroke="var(--transition-bridge-mask, #eef2f0)" strokeWidth={10} fill="none" />
             <path d={bridgePath} stroke={`url(#${gradientId})`} strokeWidth={selected ? 4.8 : 4} strokeLinecap="round" fill="none" />
           </g>
         );
@@ -2067,7 +2067,7 @@ function SceneFlowTransitionEdge({
           : `M ${crossing.x} ${crossing.y - 10} Q ${crossing.x + 11} ${crossing.y} ${crossing.x} ${crossing.y + 10}`;
         return (
           <g key={`${id}:crossing-${index}`} className="scene-transition-bridge" pointerEvents="none">
-            <path d={maskPath} stroke="#eef2f0" strokeWidth={10} fill="none" />
+            <path d={maskPath} stroke="var(--transition-bridge-mask, #eef2f0)" strokeWidth={10} fill="none" />
             <path d={bridgePath} stroke={`url(#${gradientId})`} strokeWidth={selected ? 4.8 : 4} strokeLinecap="round" fill="none" />
           </g>
         );
